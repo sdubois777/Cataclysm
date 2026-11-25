@@ -27,6 +27,7 @@ CONSTANTS = {
     "NextAttackDamageAction": "next_attack_damage",
     "NextSkillEffectivenessAction": "next_skill_effectiveness",
     "EnemyArmorRemovedAction": "enemy_armor_removed",
+    "EnemyArmorRemovedNearbyAction": "enemy_armor_removed_nearby",
     "AttackerDamageRemovedAction": "attacker_damage_removed",
     # AND THE THREE EVERY-Nth NAMES, since issue #1833's every Nth.
     "NthHitTakenDamageAction": "nth_hit_taken_damage",
@@ -77,6 +78,7 @@ CONSTANTS = {
     "StunNearTheDyingAction": "stun_near_the_dying",
     "AllDotsStatus": "All DoTs",
     "SmiteNearbyByArmourAction": "smite_nearby_by_armor",
+    "SmiteNearbyByHitAction": "smite_nearby_by_hit",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -190,8 +192,10 @@ def test_the_generator_accepts_exactly_the_next_use_names_the_engine_has() -> No
 
 
 def test_the_generator_accepts_exactly_the_placed_names_the_engine_has() -> None:
+    # AND `EnemyArmorRemovedNearbyAction`, the same stack on every enemy nearby (the War vow options' second slice,
+    # V2b, 2026-11-25), whose name ends in "NearbyAction".
     engine = {name for constant, name in engine_names().items()
-              if constant.endswith("RemovedAction")}
+              if constant.endswith("RemovedAction") or constant.endswith("RemovedNearbyAction")}
     assert set(gen.PLACED_ACTIONS) == engine
 
 
@@ -221,9 +225,11 @@ def test_the_generator_accepts_exactly_the_health_cap_name_the_engine_has() -> N
 def test_the_generator_accepts_exactly_the_nearby_names_the_engine_has() -> None:
     """Issue #1833 group D part 3."""
     names = engine_names()
+    # AND THE NOVA SIZED BY A HIT, the War vow options' second slice, V2b, 2026-11-25.
     assert set(gen.NEARBY_ACTIONS) == {names["SmiteNearbyAction"],
                                        names["HealNearbyEnemiesAction"],
-                                       names["SmiteNearbyByArmourAction"]}
+                                       names["SmiteNearbyByArmourAction"],
+                                       names["SmiteNearbyByHitAction"]}
 
 
 def test_the_generator_accepts_exactly_the_remaining_damage_names_the_engine_has() -> None:
