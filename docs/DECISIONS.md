@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The trees base: the Demonic tree rework, the passive order fixes, the War rulings, the tree screen's marks and six trees laid out as their emblems, on one branch for one window
+
+**Affects:** `docs/Berserker_Class_Tree_Final.json`, `docs/Bulwark_Class_Tree_Final.json`,
+`docs/Saboteur_Class_Tree_Final.json`, `docs/Masochist_Class_Tree_Final.json`, `docs/Ravager_Class_Tree_Final.json`,
+`docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv` (positions only), and this entry. The
+branch feat/trees-base-2026-11-25 was assembled for one test window at the coordinating session's brief of
+2026-11-25, because the War and Death tree lines are both built on this work. No new game code is written here.
+
+### What the branch holds
+
+| Commit | What it brings |
+| :-- | :-- |
+| merge of `docs/war-rulings-q20` (83a3b9690) | the Demonic tree rework (cf18466a7, three C++ merges), the passive order fixes (5d883e185), and the War rulings entry; one merge because each branch contains the one before |
+| 244a3528a, bd948e875 | two comment lines in `CataclysmPassiveTreeTests.cpp` that opened with one slash, which stops the compile, each made `//` in its own commit; the War line's b702d166a makes the identical change |
+| merge of `feat/sigil-tree-screen` (afdeb9f97) | the passive tree screen draws each node as a mark sized by its kind |
+| 29d245976 | Berserker, Bulwark, Saboteur, Masochist, Ravager and Ritualist laid out as their emblems, positions only |
+| merges of `development` | the base kept current |
+
+**The Saboteur vows are not here.** They exist only in df77c40d6 on the War line, about forty commits deep; the
+coordinating session ruled that they stay there. **The three Death trees' emblems are not here either**: cd63c2a94 is
+on the `feat/death-trees-*` branches and is not an ancestor of this branch.
+
+### Conflicts and how each was resolved
+
+- **`docs/DECISIONS.md`**, at each merge: every branch entry placed by the author time of the commit that first wrote
+  it, among development's entries, which do not move. The War rulings (22:32 on 2026-11-24) and the Demonic rework
+  (21:21) sit between development's 22:38 and 20:58 entries; the tree screen's (17:30) between 17:42 and 17:13.
+- **`docs/All_Things_Cataclysm.xlsx`**, which git cannot merge: development's copy taken, then
+  `tools/reapply_demonic_tree_rework_workbook.py` run on it (119 changes; Passive Effects 364 rows and a
+  `Scale Max Steps` column). Compared with openpyxl, cell by cell, against development, the branch and their merge
+  base 5f302b0a7: Weapon Skills, Skill Slots and Enemy Drops were changed only by development and equal
+  development's; Passive Effects was changed only by the branch and equals the branch's; the other 24 sheets were
+  changed by neither and equal both. The regenerated CSVs equal the ones git merged, byte for byte.
+- No other file conflicted, and no C++ was resolved by hand.
+
+### The emblem positions
+
+Each node's `position.x` and `position.y` were copied by node id from the emblem files the owner accepted on
+2026-11-24 (`<Class>_Class_Tree_Sigil.json`, made in the coordinating session's `constellations/` working folder;
+Berserker is version A). Checked for all six: every id and every edge (source, target, handles, id) in the emblem
+file equals the current tree's, no node's type differs, every node holds the emblem's position, and every other
+field of every file is unchanged; the diff holds only `"x"` and `"y"` lines. `game/Data/PassiveNodes.csv` changes
+only in `PositionX` and `PositionY`, on all 441 rows. Five Masochist ids carry a different name from the one the
+emblem drawing showed (the rework's renames and the order fix's Blood Price and Deeper Cuts swap); the positions
+follow the ids, as the coordinating session ruled.
+
+**Two existing Unreal tests read the real positions**, so they test the emblems: `Passives.` real trees fit the
+panel at a readable zoom, and `PassiveMarks.` PM2, no two marks overlap. Computed in Python from the C++ rules on the
+new CSV, not run in Unreal: every tree's mark scale is 1.000 with no overlapping pair, and the tightest fit is about
+0.35 against the floor of 0.2.
+
+### Checks before the window
+
+- `tools/check_includes.py --since origin/development`: 53 .cpp files, 0 types used that the file cannot see, 0
+  notes. `tools/check_resolved_cpp.py` on the 71 changed C++ files: 0 complaints.
+- The Python suite on d11e0efa7: "2 failed, 8621 passed, 10 skipped"; JUnit 8633 tests, 2 failures, 0 errors.
+  `test_every_dated_entry_is_preceded_by_a_rule_and_a_blank_line` was a separator this branch's merge left out,
+  corrected in 8f6e88c84; afterwards the 99 test files that mention the decisions log: "3753 passed, 1 skipped".
+  `test_every_csv_still_hashes_to_what_was_recorded` fails until the editor step rebuilds the two assets below, and
+  fails the same way on 83a3b9690 ("1 failed, 17 passed"). `ruff`: "All checks passed!"
+
+### Registered for the window
+
+- **Editor step:** `DT_PassiveEffects` and `DT_PassiveNodes`, the only CSVs that differ from development.
+- **Groups alone, new:** `SanguineLedger.` 3, `VesselOfPlagues.` 3, `Stigmata.` 4, `UnstableAura.` 4,
+  `Carnivore.` 4, `ReprisalWave.` 2, `IronhideOverwhelm.` 3, `Thronged.` 3, `Stoked.` 2, `SecondWind.` 3,
+  `Relentless.` 4, `DeeperHurt.` 4, `YourCurse.` 3, `OpenChannel.` 2, `WardedFlesh.` 2, `Swarm.` 2,
+  `PressGangedWand.` 1, `Rekindled.` 2, `PassiveScaleCap.` 1, `RitualistRework.` 6, `PassiveMarks.` 4.
+- **Groups alone, grown** (counts from the newest whole-suite log): `Ailments.` 23 to 24, `MasochistCostRows.` 5 to 6,
+  `Player.` 20 to 21. **Rewritten, same count:** `Passives.` 161, `MasochistRows.` 9, `MasochistHealingRows.` 5,
+  `Fervour.` 32, `DeathRewards.` 4, `MinionDeath.` 18, `FervourRows.` 4, `PartialClauses.` 5, `ReachRows.` 5,
+  `StatExemption.` 37, `Command.` 31.
+- **The whole suite:** the branch adds 98 test names and removes 33 against development, net 65 (the rework's 61 and
+  the tree screen's 4, as both entries predict). On the newest whole-suite log's 5520 that is **5585**, once the Rifts
+  are on development and merged here; it is recounted before the window starts.
+
+### Guard proofs: eleven, one for each change
+
+**The coordinating session's ruling, 2026-11-25:** three a change is a ceiling and not a target, and the War and
+Death lines wait for this machine. So one proof for each of the rework's eight changes, the one that guards the
+change's central rule, and three for the tree screen.
+
+| Proof | Change | Break (file: before -> after) | Must fail |
+| :-- | :-- | :-- | :-- |
+| TB1 | Masochist 1 | `CataclysmFervour.cpp`: `? FMath::Min(Before, FloorAgainstHealing(AbilitySystem, Context))` -> `? 0.0f` | `SanguineLedger.HealingNeverTakesTheFervourBelowFifty`, `SanguineLedger.APoolAlreadyBelowFiftyLosesNothingToHealingAndStillFills`, `MasochistHealingRows.SanguineLedgerKeepsARealMasochistsFervourAtFiftyThroughHealing` |
+| TB2 | Masochist 2 | `CataclysmAbilitySystemComponent.cpp` (`StacksHeld`): `FMath::Max(0.0f, WindowSeconds + StackExtraWindowSeconds[Index])` -> `FMath::Max(0.0f, WindowSeconds)` | `Carnivore.ACarnageStackLastsASecondLongerForEveryTenFervourHeld` |
+| TB3 | Ravager 1 | `CataclysmDamageCalculation.cpp`: `bOverwhelmHalvedOnArmour ? Hit.OverwhelmPoints * 0.5f : Hit.OverwhelmPoints` -> `... * 1.0f ...` | `IronhideOverwhelm.OverwhelmTakesHalfAsManyPointsOffAHoldersArmour` |
+| TB4 | Ravager 2 | `CataclysmBasicAttack.cpp`: `if (Suppressed <= 0.0f)` -> `if (Suppressed <= 1000.0f)` | `Relentless.ARowLoweringAttackSpeedIsDroppedAndAnEarnedOneKept` |
+| TB5 | Relentless ruling | `CataclysmPlayerCharacter.cpp` (`RefreshMovementSpeed`): `if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= 0.0f)` -> `... Row.Value >= -1000.0f)` | `Player.MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` |
+| TB6 | Ritualist 1 | `CataclysmRisenImps.cpp`: `if (Active && Active->Spec.GetContext().GetInstigator() == Curser)` -> `if (Active)` | `YourCurse.ARowHoldsAgainstATargetCarryingYourCurseAndNotAStrangersCurse` |
+| TB7 | Ritualist 2 | `CataclysmPlayerCharacter.cpp`: `&& (Notice.Killer == this \|\| UCataclysmCommand::CommanderOf(Notice.Killer) == this))` -> `&& Notice.Killer == this)` | `Swarm.AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone` |
+| TB8 | Ritualist 3 | `CataclysmPassiveTree.cpp`: `Modifier.ScaleMaxSteps = FMath::Max(0, Effect->ScaleMaxSteps);` -> `Modifier.ScaleMaxSteps = 0;` | `PassiveScaleCap.ARowsCapReachesItsModifierAndStopsTheScaleAtTwentyMinions` |
+| PMK1 | tree screen | a keystone's mark 28 | 4 performed, 2 failed: PM1, PM3 |
+| PMK3 | tree screen | a pair needs its marks' whole sizes, not half | 4 performed, 1 failed: PM2 (every real tree still draws at 1) |
+| PMK5 | tree screen | an unspent mark says "0/1" | 4 performed, 1 failed: PM4 |
+
+**TB3, the Ironhide break, touches a line a Python test reads as text, so it does not run beside the Python suite**
+(issue #1630).
+
+**Why these:** TB1 is the floor Sanguine Ledger holds, the one Masochist 1 rule with tests in two groups; TB2 is
+the Fervour-held scaling the Masochist 2 nodes share; TB3 is Ironhide's halving, which the coordinating session named
+for this set; TB4 is Relentless keeping attack speed, the rule the Relentless ruling then extended to movement speed;
+TB5 is that ruling's only break; TB6 is "your curse", the condition the Ritualist 1 rows are written against; TB7 is
+The Swarm counting a minion's kill as the commander's; TB8 is the cap on a passive row, the new column Ritualist 3
+teaches the generator and the game. PMK1, PMK3 and PMK5 between them fail all four tree screen tests.
+
+**Dropped, by the same ruling, and not run:** the rework entry's other thirteen (Vessel of Plagues and Stigmata in
+Masochist 1; Unstable Aura and Reprisal Wave in Masochist 2; Thronged and Stoked in Ravager 1; Deeper Hurt and Second
+Wind in Ravager 2; Open Channel and Warded Flesh in Ritualist 1; Press-Ganged and Rekindled in Ritualist 2; the
+minion health exemption in Ritualist 3) and the tree screen entry's PMK2, PMK4, PMK6, PMK7 and PMK8. Their tests
+still run, alone and in the whole suite; what is not shown is that each would fail without its line. PMK2 and PMK8
+fail only PM1, which PMK1 already fails; PMK4, PMK6 and PMK7 fail PM3 or PM4, which PMK1 and PMK5 already fail.
+**No proof for the emblem positions** (data, read by the two existing tests above) **or for the two comment
+commits** (no behaviour).
+
+---
+
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
 
 **Tools only; no Unreal build.** Branch `fix/prove-guard-restore-retry`, at the coordinating session's brief of
