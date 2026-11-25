@@ -95,7 +95,11 @@ is `IsGadget` (deployable and not a trap), whose gadgets `DevicesOf`, and the re
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On `3b396bf167de1ae9c0d9ec71de8c099bbe7cc38e`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9058 passed, 9 skipped in 677.15s**, and the JUnit file `tests="9068" failures="1"
+errors="0" skipped="9"`, which is 9,058 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
 
 ### INCLUDE AUDIT
 
