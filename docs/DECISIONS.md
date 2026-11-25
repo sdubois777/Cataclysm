@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Every affix and implicit is a whole number, from seven stated tier ranges, and every creature's health and damage are re-fitted to the character those affixes make (#2883, #2884)
+
+**Python, the workbook and C++ written; no Unreal build yet.** Branch `feat/affixes-and-rebalance-2883-2884`, from
+development `db7427d7a`. Two windows: window 1 measures the Corrupted Stalker and the reference build in the game,
+then the Stalker's tables are re-fitted, then window 2 proves. The affix ranges and the rebalance ship together,
+because the rebalance's factors are the reference character's figures under the new affixes, and each without the
+other makes tier 8 far too easy or far too hard.
+
+### The rulings
+
+- **The affix ranges (#2883).** The owner, 2026-11-24, on the proposal of branch `proposal/affix-ranges`
+  (`2cb507406`): "Approve as written (Recommended)". Every affix states seven whole-number ranges at +0
+  (`T1 Min` .. `T7 Max`), tiers do not overlap and each holds at least two values; fourteen affixes roll on fewer
+  kinds of piece; a hybrid at tier N grants each half at that half's tier N - 2 (D6); thirteen enchantments' numbers
+  become whole (D8); each implicit is a whole +0 number (D9).
+- **The rebalance (#2884).** The owner, 2026-11-24: "A middle build (Recommended)" (the re-fitted reference
+  character leaves its 13 freed suffix places empty) and "Accept all four (Recommended)": the damage target stays in
+  hits; certain block and capped armour accepted; the 89% mitigation ceiling kept with its rule restated; minion
+  damage re-fitted in its own slice.
+- **The coordinating session, 2026-11-25:** the two ship as one branch; Top Value and Floor stay, unused, for
+  #2904 to retire; a hybrid saved at tier 1 or 2 is read as tier 3 with no save step; a dropped hybrid's tier is
+  capped by what it grants (a tier 1 drop's hybrid is tier 3 and grants both halves at tier 1); D8 accepted as listed,
+  with row 4 a new stat `melee_reach_centimetres` beside Overreach's `melee_reach_metres` rather than a rename,
+  because 48 open branches carry Overreach's metres row; Brute's Heart keeps 0.5 seconds a kill and changes its
+  sentence only ("1 second for every 2 kills", the same rate); the two minion pins hold what the game does now and
+  name #2903.
+- **The factors were re-fitted on development `db7427d7a` before any code** and came out unchanged: health 1.00,
+  1.16, 1.28, 1.29, 1.31, 1.42, 1.42, 1.44 and damage 1.00, 1.84, 2.52, 2.95, 3.65, 4.75, 5.12, 5.73, tiers 1 to 8.
+
+### What it does
+
+- **The value rule, in the game and the simulation.** Each end of a tier's +0 range is upgraded on its own in
+  integers, `(AtZero x (100 + 15 x Level) x Hands + 50) / 100`, and the roll picks one of the whole numbers between
+  the two ends, each equally likely. `UCataclysmItemValues::UpgradedWhole`, `WholeAtRoll`, `AffixValue` (from the
+  row), `HybridHalfValue` and `ImplicitValueAtLevel` (renamed, so a caller passing a +10 figure fails to compile);
+  `sim/cataclysm_sim/affix_ranges.py`. `tools/tests/test_affix_values_port.py` holds the data, the constants and the
+  rule's source equal.
+- **The data.** `tools/reapply_affix_ranges_workbook_edit.py` writes 1,218 cells as frozen data and refuses a cell
+  holding anything but its value before or after: 1,022 tier cells and 14 headers on 73 affix rows, 20 slot lists, 76
+  implicits and 2 headers, and 84 enchantment cells. Its affix and implicit cells equal the proposal's own `apply`
+  on every cell. `tools/generate_datatables.py` refuses a range that is not whole, a tier of one value and an
+  overlap.
+- **The drop roll** raises a hybrid to tier 3 after the draw, so no extra number is drawn and every seeded drop keeps
+  its other results. The forge cannot see the affix table, so it does not bound a hybrid: upgrading a hybrid saved
+  at tier 1 takes it to 2, which still reads as 3. Only saves made before this change carry such a hybrid.
+- **The rebalance.** `UCataclysmEnemyScore::HealthFactorByTier` and `DamageFactorByTier`, applied in
+  `UCataclysmEnemyStrength::StartingFiguresFor`, and `enemy_stats.HEALTH_FACTOR_BY_TIER` and `DAMAGE_FACTOR_BY_TIER`,
+  applied in `stats_for`; armour does not move. `tools/tests/test_enemy_rebalance_port.py` holds them equal. The
+  enemy strength fixture is regenerated.
+- **D8.** Thirteen rows; nine renamed, each in `FCataclysmEnchantmentRenames` and `enchantment_row_names.txt`, the
+  older names of the four renamed before pointing straight at the newest. Reach reads metres x 100 plus centimetres.
+
+### What moved, and what was decided about it
+
+| Figure | Before | Now | Where it is stated |
+| :-- | --: | --: | :-- |
+| Damage target, tier 8 | 1,860 | 2,679 | "The Damage Target" |
+| Base needed / from affixes / from weapons | 219 / 132 / 87 | 315 / 228 / 87 | the same |
+| Axe and Sword / Axe and Axe | 86 / 92 | 85 / 90 | the same; the two-handed section |
+| Two-hander over the target / lone one-hander | 1.32 / 0.81 | 1.22 / 0.87 | the same |
+| Two-hander per hit / per second / affix-only multiplier | 1.29 / 1.22 / 3.40 | 1.20 / 1.14 / 2.90 | the two-handed section |
+| Reference character, tier 8: armour, block, damage reduction | 7,299 / 28 / 23.95 | 12,550 / 98 / 42.95 | "How Long a Geared Character Survives" |
+| Share of a hit that lands | 9.17% | 2.95% | the same; the ceiling's rule |
+| Slots to cap all resistances | about 12 | 3.6 | the one-affix-per-group section |
+| Health crossover | 2,110 to 6,330 | 679 | `sim/tests/test_affixes.py` (R1) |
+
+**Three consequences are pinned in tests and handed on, not decided here.** Three imps deal 0.78 to 0.80 of the
+summoner's basic attack at tiers 6 to 8 (#2903). Affixes alone now fill the Cripple and Weaken magnitude caps, 418%
+against 267% and 400%, which #300's decision assumed they could not (#2913). Top Value, Floor and the 70% hybrid
+share are no longer read (#2904).
+
+**The tier 1 starting character moves by one rounding.** Its Greataxe's implicit at +0 is 58 rather than 57.6,
+because the implicit is now a whole number. The simulation's tier 1 guards pass with it; window 1 shows the game's.
+
+### Tests
+
+The whole Python suite is run once the remaining items stand; its line is added here then. Until window 1, the two
+Corrupted Stalker tests fail by design: their tables are re-fitted from the game's measured Stalker.
+
+---
+
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
 
 **Tools only; no Unreal build.** Branch `fix/prove-guard-restore-retry`, at the coordinating session's brief of
@@ -161941,7 +162022,7 @@ position stops holding the text quoted for it.
 | Code | The row that position holds |
 | :-- | :-- |
 | P092 | Staggered enemies take 20%-35% increased damage from all sources |
-| P093 | Enemies you stagger are also briefly rooted for 0.5-1.5 seconds |
+| P093 | Enemies you stagger are also briefly rooted for 1-2 seconds |
 | P224 | Gadgets apply a 1-2 second stagger to enemies they hit, once every 5 seconds |
 | P253 | Stagger effects you apply last 50%-100% longer |
 | P254 | Hitting a staggered enemy resets your heavy attack cooldown |
@@ -161951,6 +162032,8 @@ position stops holding the text quoted for it.
 | P307 | Enemies that enter your persistent AOE zones are briefly staggered |
 | N150 | Staggered enemies deal 15%-30% increased damage to you |
 | N151 | You cannot stagger enemies above 50% HP |
+
+**P093's text was "0.5-1.5 seconds" when this entry was written**; the whole-number enchantments of issue #2883 (D8, 2026-11-25) made it "1-2 seconds", and the quote follows the row so the check above keeps holding.
 
 **P255 never says "stagger" and belongs anyway.** A charge skill knocks down,
 and `ApplyKnockdown` is one of the three calls above that leave the state, so
