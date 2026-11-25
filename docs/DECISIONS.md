@@ -4133,7 +4133,9 @@ suite, so by the narrowed re-run rule there is no second whole suite: w1's stand
   not 0 is quoted in the record; if no such fall occurs, the record says so, because the third fix is then unobserved.
 - **`Cataclysm.Travel.` alone:** 10 performed, 10 succeeded, 0 failed (10 in window ss2-w1's log; 9 of 10 passed in w1).
 - **Then the C++ proofs P1, P5 and P6**, as registered in the table above, with `test_prefix="Cataclysm.EmpireRun."`.
-- **Python, on the head with these fixes**, all but this line, with a JUnit file: PYTHON_LINE_W2.
+- **Python, run on the head with these fixes** (`0620eb673`), all but this line, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8502 passed, 10 skipped in 419.39s`; the JUnit file agrees, 8,512
+  tests, 0 failures, 0 errors, 10 skipped. Ruff: `All checks passed!`.
 
 ---
 
