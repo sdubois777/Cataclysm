@@ -154,6 +154,7 @@ namespace
 		{ TEXT("target_rarity_is"),             ECataclysmStatCondition::TargetRarityIs },
 		{ TEXT("seconds_after_kill"),           ECataclysmStatCondition::WithinSecondsOfKill },
 		{ TEXT("target_in_your_siphon"),        ECataclysmStatCondition::TargetInYourSiphon },
+		{ TEXT("seconds_after_fervour_spent"),  ECataclysmStatCondition::WithinSecondsOfFervourSpent },
 	};
 
 	struct FNamedStatScale
@@ -468,6 +469,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// AND THE WINDOW AFTER A KILL, the Death trees of 2026-11-24: it opens at a kill and closes when its seconds run
 	// out, which nothing announces.
 	case C::WithinSecondsOfKill:
+	case C::WithinSecondsOfFervourSpent:
 		return EOn::Time;
 
 	// WHETHER THE CHARACTER IS CHANNELLING AT ALL. Ruled 2026-10-08. Both of its
@@ -1308,6 +1310,12 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetStandsInYourZone` is. The Death trees' slice C2
 		// (2026-11-25). False is also "no target in hand" and "nothing asked".
 		return State.bTargetInYourSiphon;
+
+	case ECataclysmStatCondition::WithinSecondsOfFervourSpent:
+		// THE SAME TWO RULES AS EVERY CLOCK: never spent reads -1 and refuses, and "within" is inclusive. The Death
+		// trees' slice C3a (2026-11-25).
+		return State.SecondsSinceFervourSpent >= 0.0f
+			&& State.SecondsSinceFervourSpent <= Value;
 
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills

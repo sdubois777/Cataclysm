@@ -1004,6 +1004,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 
 	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
 	State.EnemiesInSiphon = EnemiesInSiphon();
+
+	// AND HOW LONG AGO IT LAST SPENT FERVOUR, for `seconds_after_fervour_spent`. The Death trees' slice C3a.
+	State.SecondsSinceFervourSpent = SecondsSinceFervourSpent();
 	State.SecondsSinceSupportSkill = SecondsSinceSupportSkillUsed();
 	State.SecondsSinceMovementSkill = SecondsSinceMovementSkillUsed();
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
@@ -3109,6 +3112,12 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// window opened by striking a Boss survived the character's revival. Found
 	// while adding the five below; the respawn test now opens every window.
 	LastStruckABossAtSeconds = -1.0f;
+	// AND THE DEATH TREES' TWO CLOCKS: the last kill, with the decay's hold after it (slice B left both out of here,
+	// so a kill before a death held the decay and opened `seconds_after_kill` after the revival), and the last spend
+	// of Fervour (slice C3a, 2026-11-25).
+	LastOwnKillAtSeconds = -1.0f;
+	KillDecayHeldUntilSeconds = -1.0f;
+	LastFervourSpentAtSeconds = -1.0f;
 	// AND WHO HAS STRUCK IT, so a revived character is "not yet struck" by
 	// everyone again. Issue #1815.
 	StruckBy.Reset();
@@ -3877,6 +3886,31 @@ bool UCataclysmAbilitySystemComponent::KillDecayIsHeld() const
 	}
 
 	return KillDecayHeldUntilSeconds >= 0.0f && World->GetTimeSeconds() < KillDecayHeldUntilSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags)
+{
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+	// THE STAMP FIRST, then the event, as `NoteHealthCostPaid` does: a row on the event under the clock would read
+	// nought and always hold, which the generator refuses.
+	if (const UWorld* World = GetWorld())
+	{
+		LastFervourSpentAtSeconds = World->GetTimeSeconds();
+	}
+	ActOnEvent(FName(TEXT("fervour_spent")), SpendingTags, Amount);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceFervourSpent() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastFervourSpentAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastFervourSpentAtSeconds);
 }
 
 int32 UCataclysmAbilitySystemComponent::EnemiesInSiphon() const
@@ -4888,6 +4922,12 @@ float UCataclysmAbilitySystemComponent::HealthPercentNow() const
 bool UCataclysmAbilitySystemComponent::EventThresholdCrossed(
 	const FCataclysmPoolAction& Action, float EventAmount) const
 {
+	// "10 OR MORE FERVOUR AT ONCE": a row on `fervour_spent` with an Event Value acts only when that much or more was
+	// spent by the one payment. With none it acts on every spend. The Death trees' slice C3a (2026-11-25).
+	if (Action.Event == FName(TEXT("fervour_spent")))
+	{
+		return Action.EventValue <= 0.0f || EventAmount >= Action.EventValue;
+	}
 	if (Action.Event != HealthFallsBelowEvent)
 	{
 		return true;

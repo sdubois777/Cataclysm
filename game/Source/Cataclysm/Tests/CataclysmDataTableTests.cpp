@@ -528,8 +528,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// nodes and options today's rows state whole, the first passive action rows
 	// among them; the Soul Collector 48 in all, the Necromancer 19, the Shadow 67.
 	// AND 525 THE SAME DAY, for slice C2: the Soul Collector's Siphon and its limb,
-	// 27 rows on twelve nodes; the Soul Collector 75 in all.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        525)
+	// 27 rows on twelve nodes; the Soul Collector 75 in all. AND 529 FOR SLICE C3a:
+	// Spent Breath, Quick Kindling and Burnt Offering, rows on the record of Fervour
+	// spent; the Soul Collector 79.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        529)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

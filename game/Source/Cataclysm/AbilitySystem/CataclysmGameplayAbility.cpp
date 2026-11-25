@@ -687,6 +687,10 @@ void UCataclysmGameplayAbility::ApplyCost(
 				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
 		{
 			Paying->NoteResourceConsumed(Fervour, &SkillTagsForStats());
+
+			// AND FERVOUR SPENT, with the amount and the skill's tags: the Death trees' slice C3a (2026-11-25).
+			// `resource_consumed` also fires for a next-use charge spent, so it cannot stand for Fervour.
+			Paying->NoteFervourSpent(Fervour, &SkillTagsForStats());
 		}
 	}
 

@@ -461,6 +461,18 @@ NODES: tuple[Node, ...] = (
     # once a second as half a Fervour for each enemy, up to 8 enemies.
     Node(SC + "keystone_c_kA", "Living Harvest",
          (R("siphon_fervour_per_second", "flat", 0.5, scale=SIPHONED, step=1, cap=8),)),
+
+    # ---- SLICE C3a (2026-11-25): THE NODES THAT ARE ROWS ON THE RECORD OF FERVOUR
+    # SPENT. Spent Breath's "10 or more Fervour at once" is the Event Value of its
+    # own stack, which `fervour_spent` grants and a new spend renews; Quick
+    # Kindling and Burnt Offering read the clock.
+    Node(SC + "basic_d_stem0", "Spent Breath",
+         damage("increased", 3, scale=OWN, step=1, cap=1, event="fervour_spent", stack_seconds=4,
+                event_value=10)),
+    Node(SC + "basic_d_stem2", "Quick Kindling",
+         (R("cooldown_reduction", "flat", 1, cond="seconds_after_fervour_spent", cond_value=4),)),
+    Node(SC + "basic_d_b0", "Burnt Offering",
+         (R("damage_taken", "increased", -1, cond="seconds_after_fervour_spent", cond_value=4),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

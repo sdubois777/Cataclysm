@@ -1802,6 +1802,18 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetInYourSiphon
 		UMETA(DisplayName = "Target In Your Siphon"),
+
+	/**
+	 * At or within `ConditionValue` seconds since this character last spent Fervour. The Death trees' slice C3a
+	 * (2026-11-25): the Soul Collector's Quick Kindling and Burnt Offering, "for 4 seconds after you spend Fervour".
+	 *
+	 * A SPEND IS WHAT `UCataclysmAbilitySystemComponent::NoteFervourSpent` RECORDS: a skill's Fervour cost paid
+	 * (`UCataclysmGameplayAbility::ApplyCost`). A next-use charge spent is no spend of Fervour and stamps nothing.
+	 *
+	 * A CHARACTER THAT HAS NEVER SPENT READS -1 AND REFUSES, as every clock's "never" does.
+	 */
+	WithinSecondsOfFervourSpent
+		UMETA(DisplayName = "Within Seconds Of Fervour Spent"),
 };
 
 /**
@@ -2867,6 +2879,12 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * `FCataclysmSiphon::Step` keeps; nought for a character with no Siphon.
 	 */
 	int32 EnemiesInSiphon = 0;
+
+	/**
+	 * Seconds since this character last spent Fervour, or -1 if it never has, for
+	 * `ECataclysmStatCondition::WithinSecondsOfFervourSpent`. The Death trees' slice C3a (2026-11-25).
+	 */
+	float SecondsSinceFervourSpent = -1.0f;
 
 	/**
 	 * Whether the character struck is in the asker's Siphon, for `ECataclysmStatCondition::TargetInYourSiphon`. Filled
@@ -5193,7 +5211,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-ninth, which is the drift that put the passive tree eight
+	 * adds an eightieth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5202,7 +5220,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-SIX OF THE SEVENTY-EIGHT COMPARE NOTHING. They are the case labels
+	 * THIRTY-SIX OF THE SEVENTY-NINE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

@@ -3989,6 +3989,22 @@ public:
 	float SecondsSinceOwnKill() const;
 
 	/**
+	 * Record that this character has just spent `Amount` Fervour, and raise `fervour_spent` with that amount and the
+	 * spending skill's tags. The Death trees' slice C3a (2026-11-25): the clock `seconds_after_fervour_spent` reads,
+	 * and an action row on `fervour_spent` whose `EventValue` is N acts only when N or more was spent at once ("after
+	 * you spend 10 or more Fervour at once").
+	 *
+	 * CALLED WHERE A SKILL PAYS ITS FERVOUR COST (`UCataclysmGameplayAbility::ApplyCost`), beside `resource_consumed`,
+	 * which also fires for a next-use charge spent and so cannot stand for Fervour. The Fervour mechanics' own spends
+	 * (Wrung Out, Bought With Ruin) raise nothing, by the rule `NoteResourceConsumed` states. Nothing for an amount
+	 * of nothing or less.
+	 */
+	void NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags = nullptr);
+
+	/** How long ago this character last spent Fervour, in seconds, or -1 if it never has. */
+	float SecondsSinceFervourSpent() const;
+
+	/**
 	 * Whether the decay after the last kill is still held off: true until the time the last kill's grace ran to, and
 	 * false for a character that has never killed, whose Fervour came from somewhere else and decays at once.
 	 */
@@ -5695,6 +5711,9 @@ protected:
 
 	/** When this character last killed an enemy, in world seconds. Negative means never. The Death trees, 2026-11-24. */
 	float LastOwnKillAtSeconds = -1.0f;
+
+	/** When this character last spent Fervour, in world seconds. Negative means never. See `NoteFervourSpent`. */
+	float LastFervourSpentAtSeconds = -1.0f;
 
 	/**
 	 * Until when, in world seconds, the decay after the last kill is held off. Negative means never held, which is a

@@ -2257,7 +2257,7 @@ class TestHealthThresholdAndFloorStart:
             gen.enchantment_effects(self.heal(tmp_path, {"Event Value": None}))
 
     def test_an_event_value_on_another_event_is_refused(self, tmp_path):
-        with pytest.raises(gen.DataError, match="Only health_falls_below reads one"):
+        with pytest.raises(gen.DataError, match="Only health_falls_below, fervour_spent and"):
             gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "block"}))
 
     def test_an_event_value_of_a_hundred_is_refused(self, tmp_path):

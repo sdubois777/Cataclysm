@@ -681,7 +681,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 525 ON 2026-11-25, for the Death trees' slice C2: the Soul Collector's
 #: Siphon and the eleven nodes of its limb, 27 rows. Measured then: the Soul
 #: Collector 75 rows on 36 nodes.
-AUTHORED_ROWS = 525
+#:
+#: AND TO 529 THE SAME DAY, for slice C3a's three nodes that are rows on the
+#: record of Fervour spent: Spent Breath (two), Quick Kindling and Burnt
+#: Offering. The Soul Collector 79 rows on 39 nodes.
+AUTHORED_ROWS = 529
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1110,7 +1114,9 @@ AUTHORED_ROWS = 525
 #:
 #: AND TO 318 ON 2026-11-25, for the Death trees' slice C2's twelve Siphon nodes:
 #: the Soul Collector 36 of its 73.
-AUTHORED_NODES = 318
+#:
+#: AND TO 321 THE SAME DAY, for slice C3a's three: the Soul Collector 39 of its 73.
+AUTHORED_NODES = 321
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1561,6 +1567,9 @@ CONDITION_WORDS = {
     # (2026-11-25): Soul-Heavy Air, "Enemies in your Siphon take 1% increased
     # damage from you". No value.
     "target_in_your_siphon": ("enemies in your siphon", None),
+    # "for 4 seconds after you spend Fervour": Quick Kindling and Burnt Offering,
+    # the Death trees' slice C3a (2026-11-25).
+    "seconds_after_fervour_spent": ("after you spend", "{value:g} second"),
 
     # THE FIVE MOVEMENT CONDITIONS. Issue #41, slice 2. No row in
     # PassiveEffects.csv uses any of them yet, so these entries are not
@@ -2060,7 +2069,10 @@ SCALE_WORDS = {
     # written by the Death trees' slice C1 (2026-11-25): Kill Chain's "for each
     # kill in your current chain" and Wearing Cut's "for each hit in a row".
     # Each says "for each", so the step is 1.
-    "own_stacks": (("for each",), None, None),
+    # AND "after you spend" SINCE THE DEATH TREES' SLICE C3a (2026-11-25): Spent
+    # Breath's own stack, granted by `fervour_spent` with a cap of one, is a
+    # window renewed by each spend and counts nothing.
+    "own_stacks": ((("for each", "after you spend"),), None, None),
 
     # THE ENEMIES IN THE CHARACTER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Sapping Cold, Stolen Strength, Life Siphon and Living Harvest

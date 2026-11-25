@@ -75,7 +75,8 @@ def ordinal_word(word: str) -> int:
 
 
 HEADER_SENTENCE = re.compile(r"([A-Z]+(?:-[A-Z]+)?) OF THE ([A-Z]+(?:-[A-Z]+)?) COMPARE NOTHING")
-ORDINAL_SENTENCE = re.compile(r"adds a ([a-z]+(?:-[a-z]+)?),")
+#: "a" or "an": "adds an eightieth" since the Death trees' slice C3a (2026-11-25).
+ORDINAL_SENTENCE = re.compile(r"adds an? ([a-z]+(?:-[a-z]+)?),")
 SWITCH_SENTENCE = re.compile(r"Each of the ([a-z]+(?:-[a-z]+)?) says")
 
 

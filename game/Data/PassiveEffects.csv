@@ -524,3 +524,7 @@ SoulCollector_basic_c_c0#1,SoulCollector_basic_c_c0,siphon_linger_seconds,flat,1
 SoulCollector_basic_c_c0#2,SoulCollector_basic_c_c0,siphon_linger_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_c_c1#1,SoulCollector_basic_c_c1,siphon_radius_metres,increased,4.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_keystone_c_kA#1,SoulCollector_keystone_c_kA,siphon_fervour_per_second,flat,0.5,,,0.0,enemies_in_siphon,1.0,0,-1.0,0,8,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_d_stem0#1,SoulCollector_basic_d_stem0,attack_damage,increased,3.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,fervour_spent,,4.0,0.0,0.0,0,,0.0,0.0,10.0,,0.0,0
+SoulCollector_basic_d_stem0#2,SoulCollector_basic_d_stem0,spell_damage,increased,3.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,fervour_spent,,4.0,0.0,0.0,0,,0.0,0.0,10.0,,0.0,0
+SoulCollector_basic_d_stem2#1,SoulCollector_basic_d_stem2,cooldown_reduction,flat,1.0,,seconds_after_fervour_spent,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_d_b0#1,SoulCollector_basic_d_b0,damage_taken,increased,-1.0,,seconds_after_fervour_spent,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

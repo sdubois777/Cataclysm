@@ -5432,6 +5432,12 @@ CONDITIONS = {
     # stamp the Death classes' decay grace is measured from. The wearer's own
     # clock, so any asker judges it.
     "seconds_after_kill": (0.0, 60.0, "a number of seconds"),
+    # "for 4 seconds after you spend Fervour" is `seconds_after_fervour_spent`:
+    # Quick Kindling and Burnt Offering. The Death trees' slice C3a
+    # (2026-11-25). Stamped by `UCataclysmAbilitySystemComponent::
+    # NoteFervourSpent` where a skill pays its Fervour cost; it derives the event
+    # `fervour_spent`, which carries the amount.
+    "seconds_after_fervour_spent": (0.0, 60.0, "a number of seconds"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -7605,6 +7611,9 @@ EVENTS_WITH_AN_AMOUNT = (
     "retaliation_dealt",
     "kill",
     "afflicted_death",
+    # THE FERVOUR ONE PAYMENT SPENT. The Death trees' slice C3a (2026-11-25),
+    # raised by `UCataclysmAbilitySystemComponent::NoteFervourSpent`.
+    "fervour_spent",
 )
 
 
@@ -9674,11 +9683,24 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"gadget within {event_value:g} metres of a trap. The "
                     f"radius is 0, any distance, up to "
                     f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:g}.")
+    elif action_event == SPENT_EVENT:
+        # OR THE FERVOUR ONE PAYMENT MUST SPEND, "after you spend 10 or more
+        # Fervour at once": empty or nought is any spend. The Death trees' slice
+        # C3a (2026-11-25); `UCataclysmAbilitySystemComponent::
+        # EventThresholdCrossed` reads it.
+        if event_value_text:
+            event_value = number(event_value_text, "Event Value", index)
+            if not 0 <= event_value <= MAX_FERVOUR_SPENT_AT_ONCE:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} wants "
+                    f"{event_value:g} Fervour spent at once. It is 0, any "
+                    f"spend, up to {MAX_FERVOUR_SPENT_AT_ONCE:g}.")
     elif event_value_text:
         raise DataError(
             f"Enchantment Effects row {index}: {name} states an Event Value on "
-            f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT} "
-            f"reads one, so it would be dropped.")
+            f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT}, "
+            f"{SPENT_EVENT} and {GADGET_FIRES_AT_TRAP_ENEMY_ACTION} read one, "
+            f"so it would be dropped.")
 
     # THE AILMENT A REMAINING DAMAGE ACTION IS LIMITED TO. Issue #1833 group D
     # part 4, ruled 2026-10-01: required on `dot_remaining_target`, allowed on
@@ -12659,10 +12681,23 @@ def refuse_a_window_scale_with_no_own_stack_row(
 KILL_EVENT = "kill"
 KILL_CLOCK = "seconds_after_kill"
 
+#: The event a spend of Fervour raises, the clock it stamps, and the most an
+#: Event Value on it may ask to be spent at once. The Death trees' slice C3a.
+SPENT_EVENT = "fervour_spent"
+SPENT_CLOCK = "seconds_after_fervour_spent"
+MAX_FERVOUR_SPENT_AT_ONCE = 1000.0
+
+#: Each event whose own clock is stamped before its rows act, with that clock.
+EVENTS_STAMPING_THEIR_CLOCK_FIRST = {KILL_EVENT: KILL_CLOCK, SPENT_EVENT: SPENT_CLOCK}
+
 
 def refuse_a_kill_clock_on_a_kill_action(sheet: str,
                                          rows: list[dict]) -> list[str]:
-    """No action hung on the `kill` event asks `seconds_after_kill`.
+    """No action hung on an event asks the clock that event stamps first:
+    `kill` and `seconds_after_kill`, and since the Death trees' slice C3a
+    (2026-11-25) `fervour_spent` and `seconds_after_fervour_spent`, whose stamp
+    `UCataclysmAbilitySystemComponent::NoteFervourSpent` writes before it raises
+    the event, for the same reason.
 
     IT WOULD ALWAYS HOLD. The kill handler (`ACataclysmPlayerCharacter::
     OnSomethingDied`) pays the kill's Fervour, then stamps the kill clock, then
@@ -12680,18 +12715,20 @@ def refuse_a_kill_clock_on_a_kill_action(sheet: str,
     for row in rows:
         if not str(row.get("Action") or "").strip():
             continue
-        if str(row.get("ActionEvent") or "").strip().lower() != KILL_EVENT:
+        event = str(row.get("ActionEvent") or "").strip().lower()
+        clock = EVENTS_STAMPING_THEIR_CLOCK_FIRST.get(event)
+        if clock is None:
             continue
         for column in ("Condition", "Condition2"):
-            if str(row.get(column) or "").strip().lower() == KILL_CLOCK:
+            if str(row.get(column) or "").strip().lower() == clock:
                 problems.append(
-                    f"{sheet}/{row['Name']}: acts on {KILL_EVENT!r} under "
-                    f"{KILL_CLOCK!r} ({column}). The kill clock is stamped by "
-                    f"the same kill before its rows act, so the window reads "
-                    f"nought and always holds: the row would act on EVERY "
-                    f"kill. A kill's own stat, such as fervour_per_kill, may "
-                    f"ask it: that is asked before the stamp and reads the "
-                    f"time since the previous kill.")
+                    f"{sheet}/{row['Name']}: acts on {event!r} under "
+                    f"{clock!r} ({column}). The clock is stamped by the same "
+                    f"event before its rows act, so the window reads nought and "
+                    f"always holds: the row would act EVERY time. A kill's own "
+                    f"stat, such as fervour_per_kill, may ask the kill clock: "
+                    f"that is asked before the stamp and reads the time since "
+                    f"the previous kill.")
     return problems
 
 
