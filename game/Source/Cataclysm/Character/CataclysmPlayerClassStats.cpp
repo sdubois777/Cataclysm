@@ -1035,6 +1035,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// their rows are not refused; nothing reads them on the wearer. No gameplay attribute and no base.
 		TEXT("socket_fits_any_gem"),
 		TEXT("socketed_gem_effect"),
+		// The Ritualist's demonic tree rework of 2026-11-24, each read off the commander with no tags. Open Channel's
+		// imps beyond the first that a cursed death raises, read by UCataclysmRisenImps::RiseOnDeath; and Warded
+		// Flesh's share of the maximum energy shield regained when a minion dies, read by
+		// UCataclysmRegeneration::GiveShieldOnMinionDeath. Flat. No gameplay attribute and no base.
+		TEXT("curse_death_extra_imps"),
+		TEXT("energy_shield_on_minion_death_percent"),
 	};
 	return Stats;
 }

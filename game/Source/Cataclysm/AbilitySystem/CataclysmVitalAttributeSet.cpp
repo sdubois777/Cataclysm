@@ -37,6 +37,9 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the shield Warded Flesh gives a commander when one of its minions dies.
+// The demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRegeneration.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
 // apart from its own. Issue #975.
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -3081,6 +3084,11 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	{
 		UCataclysmFervour::GainOnMinionDeath(
 			UCataclysmTargeting::AbilitySystemOf(Commander));
+
+		// AND THE SHIELD WARDED FLESH GIVES FOR THE SAME DEATH. The demonic tree rework of 2026-11-24, the First Pact's
+		// second option: "Each time one of your minions dies, you regain 10% of your Maximum Energy Shield". Here,
+		// beside the Fervour, so it answers exactly the deaths that grant it; nothing for a commander without the row.
+		UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander);
 	}
 
 	// WHAT A REPLACEMENT NEEDS, TAKEN BEFORE THE DEATH IS HANDLED. Issue #1515:

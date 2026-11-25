@@ -5354,6 +5354,17 @@ CONDITIONS = {
     # as `target_is_silenced` is, so it is one of `CONDITIONS_OF_A_HIT_DEALT`.
     # NOT `while_moving`, which reads the wearer's own movement.
     "target_is_moving": None,
+
+    # "+20% increased Spell Damage against enemies carrying your curse" and
+    # "your minions deal 20% increased damage to enemies carrying your curse",
+    # Subjugator and Long Servitude in the Ritualist tree since the demonic tree
+    # rework of 2026-11-24. The character struck carries a `Status.Debuff.*` the
+    # asker laid (`UCataclysmRisenImps::CarriesCurseLaidBy`); for a minion's blow
+    # the asker is its summoner. IT TAKES NO VALUE. A fact of the target in hand,
+    # read by `WithTargetState` as `target_is_moving` is, so it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`. NOT `target_carries_any_debuff`, which a burn
+    # satisfies.
+    "target_carries_your_curse": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -10255,6 +10266,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_within_metres",
     "target_is_silenced",
     "target_is_moving",
+    "target_carries_your_curse",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for

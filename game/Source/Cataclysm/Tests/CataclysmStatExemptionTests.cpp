@@ -10074,6 +10074,87 @@ namespace CataclysmStatExemptionTest
 					  IsValid(Spawned) && Skill->LivingMinionCount() == 1);
 	}
 
+	/** A curser with room in its pool for many imps, for the two Ritualist probes below. */
+	void GiveRoomForImps(FScopedSwinger& Who)
+	{
+		Who.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		Who.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 150.0f);
+	}
+
+	/**
+	 * `curse_death_extra_imps`, read off the curser with no tags by `UCataclysmRisenImps::RiseOnDeath`. Open Channel,
+	 * the demonic tree rework of 2026-11-24. ONE CURSER HOLDING THE RISEN-IMP RULE, laying Shred on two victims. THE
+	 * CONTROL IS THE FIRST DEATH, BEFORE THE STAT IS GRANTED: one imp rises. Granted at a flat 1, the second death raises
+	 * two.
+	 *
+	 * WHAT THIS DOES NOT REACH. Where they stand and the pool refusing the second: `Cataclysm.OpenChannel.`.
+	 */
+	void ProbeCurseDeathExtraImps(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Curser(World, FVector::ZeroVector);
+		GiveRoomForImps(Curser);
+		FScopedFighter First(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Second(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Curser.Actor, {{FName(UCataclysmRisenImps::RisesStat), 1.0f}});
+
+		const FGameplayTag Shred = FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Status.Debuff.Shred")), /*ErrorIfNotFound=*/false);
+		if (!Test.TestTrue(TEXT("curse_death_extra_imps: set-up, Shred on the first"),
+				UCataclysmSkillEffects::ApplyTagForDuration(Curser.Actor, First.Actor, Shred, 10.0f))
+			|| !Test.TestTrue(TEXT("curse_death_extra_imps: set-up, and on the second"),
+				UCataclysmSkillEffects::ApplyTagForDuration(Curser.Actor, Second.Actor, Shred, 10.0f)))
+		{
+			return;
+		}
+
+		UCataclysmRisenImps::RiseOnDeath(First.Actor);
+		const int32 AfterOne = UCataclysmCommand::MinionsOfTypeCommandedBy(Curser.Actor, TEXT("Imp")).Num();
+		Test.TestEqual(TEXT("control: with no curse_death_extra_imps a cursed death raises one imp"), AfterOne, 1);
+
+		GrantFlats(Curser.Actor, {{FName(UCataclysmRisenImps::RisesStat), 1.0f},
+								  {FName(UCataclysmRisenImps::ExtraImpsStat), 1.0f}});
+		UCataclysmRisenImps::RiseOnDeath(Second.Actor);
+		Test.TestEqual(TEXT("with curse_death_extra_imps at 1 the next cursed death raises two, so "
+							"UCataclysmRisenImps::RiseOnDeath really reads it"),
+					   UCataclysmCommand::MinionsOfTypeCommandedBy(Curser.Actor, TEXT("Imp")).Num() - AfterOne, 2);
+	}
+
+	/**
+	 * `energy_shield_on_minion_death_percent`, read off the commander with no tags by
+	 * `UCataclysmRegeneration::GiveShieldOnMinionDeath`. Warded Flesh, the demonic tree rework of 2026-11-24. ONE
+	 * COMMANDER WITH 1000 MAXIMUM ENERGY SHIELD AND NONE HELD. THE CONTROL IS THE CALL BEFORE THE STAT IS GRANTED: no
+	 * shield. Granted at a flat 10, the same call gives 100.
+	 *
+	 * WHAT THIS DOES NOT REACH. That a real death of a real minion calls it: `Cataclysm.WardedFlesh.`.
+	 */
+	void ProbeShieldOnMinionDeath(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Commander(World, FVector::ZeroVector);
+		Commander.Set(Vital::GetMaxEnergyShieldAttribute(), 1000.0f);
+		Commander.Set(Vital::GetEnergyShieldAttribute(), 0.0f);
+
+		Test.TestEqual(TEXT("control: with no energy_shield_on_minion_death_percent a minion's death gives no shield"),
+					   UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander.Actor), 0.0f, 0.001f);
+		GrantFlat(Commander.Actor, UCataclysmRegeneration::ShieldOnMinionDeathStat, 10.0f);
+		Test.TestEqual(TEXT("with energy_shield_on_minion_death_percent at 10 a minion's death gives a tenth of 1000, "
+							"so UCataclysmRegeneration::GiveShieldOnMinionDeath really reads it"),
+					   UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander.Actor), 100.0f, 0.01f);
+	}
+
 	/** What one temporal rift did, for the seven probes below. */
 	struct FTimeLockRiftProbeOutcome
 	{
@@ -10867,6 +10948,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_types_carried"), &ProbeDamageTypesCarried},
 			{TEXT("socket_fits_any_gem"), &ProbeSocketFitsAnyGem},
 			{TEXT("socketed_gem_effect"), &ProbeSocketedGemEffect},
+			{TEXT("curse_death_extra_imps"), &ProbeCurseDeathExtraImps},
+			{TEXT("energy_shield_on_minion_death_percent"), &ProbeShieldOnMinionDeath},
 		};
 		return Made;
 	}

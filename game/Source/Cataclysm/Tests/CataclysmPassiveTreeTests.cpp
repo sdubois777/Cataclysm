@@ -3533,7 +3533,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_is_silenced")
 			// RULED 2026-10-23 (#2235), "WHILE THE ENEMY IS MOVING": the character struck is moving. It names a
 			// state, so it compares nothing.
-			|| Name == TEXT("target_is_moving");
+			|| Name == TEXT("target_is_moving")
+			// THE DEMONIC TREE REWORK OF 2026-11-24, "ENEMIES CARRYING YOUR CURSE": the character struck carries a
+			// curse the asker laid. It names a state, so it compares nothing.
+			|| Name == TEXT("target_carries_your_curse");
 	}
 }
 
