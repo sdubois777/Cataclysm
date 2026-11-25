@@ -158,7 +158,10 @@ namespace CataclysmSaveRecordTest
 			// points became a double so a fraction of a point is kept (issue #52);
 			// Account_v1.json is a migration input now.
 			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v8.json") },
-			// RUN IS AT v17 SINCE 2026-11-22, when a thrall's saved creature came to keep the
+			// RUN IS AT v19 SINCE 2026-11-24, when a floor's rule state came to keep a Rift's
+			// fallen altars (issue #51 slice B1); it was at v18 from the same day, when an item
+			// came to record where it arrived (issue #2848); Run_v18.json is a migration input now.
+			// RUN WAS AT v17 FROM 2026-11-22, when a thrall's saved creature came to keep the
 			// skill that took it and its level factor (issue #2840); it was at v16 from the
 			// same day, when a run came to carry whether the cleanse
 			// city upgrade was bought (issue #2838), at v15 from the same day, when
@@ -232,7 +235,7 @@ namespace CataclysmSaveRecordTest
 			// hold Imperial Prowess's extra option (slice 8); Character_v13.json and the older
 			// files are migration inputs now.
 			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v18.json") },
-			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v18.json") },
+			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v19.json") },
 		};
 	}
 }
@@ -1157,7 +1160,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1170,7 +1173,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v18.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v19.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1264,7 +1267,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1286,7 +1289,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v18.json no longer carries a PartialDay line to "
+		AddError(TEXT("Run_v19.json no longer carries a PartialDay line to "
 					  "remove, so this test would prove nothing. If the field "
 					  "was renamed, rename it here."));
 		return false;
@@ -1348,7 +1351,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1362,7 +1365,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v18.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v19.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1423,7 +1426,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1462,7 +1465,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 		if (!bRemoved)
 		{
 			AddError(FString::Printf(
-				TEXT("Run_v18.json no longer carries the line `%s`, so this test "
+				TEXT("Run_v19.json no longer carries the line `%s`, so this test "
 					 "would prove nothing. If the field was renamed or its value "
 					 "changed, change it here too."), *Line));
 			return false;
@@ -1696,7 +1699,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1709,7 +1712,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 										GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v18.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v19.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1736,7 +1739,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1758,7 +1761,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v18.json no longer carries the two dark floor lines to remove, so this test would prove "
+		AddError(TEXT("Run_v19.json no longer carries the two dark floor lines to remove, so this test would prove "
 					  "nothing. If a field was renamed, rename it here."));
 		return false;
 	}

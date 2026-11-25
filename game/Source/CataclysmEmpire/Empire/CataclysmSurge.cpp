@@ -3,6 +3,7 @@
 #include "Empire/CataclysmSurge.h"
 
 #include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmSeedMix.h"
 
 // ---------------------------------------------------------------------------
 // One dungeon
@@ -64,6 +65,13 @@ bool FCataclysmDungeon::IsAscendant() const
 {
 	return Type == ECataclysmDungeonType::Quest
 		&& SubType == ECataclysmDungeonSubType::Ascendant;
+}
+
+bool FCataclysmDungeon::IsARift() const
+{
+	// A QUEST DUNGEON DEMONIC SENT, whatever its sub-type: the header says why the sub-type cannot answer. Issue #51.
+	return Type == ECataclysmDungeonType::Quest
+		&& Cataclysm == ECataclysmType::Demonic;
 }
 
 int32 FCataclysmDungeon::WalkSeed(int32 RunMask) const
@@ -1175,6 +1183,109 @@ int32 UCataclysmSurgeScheduler::PickRelocation(
 	return Targets[Stream.RandRange(0, Targets.Num() - 1)];
 }
 
+// ---------------------------------------------------------------------------
+// Demonic's Infernal Rifts, issue #51 slice B2
+// ---------------------------------------------------------------------------
+
+namespace CataclysmRiftPick
+{
+	/**
+	 * One city of `Cities` by `Weights`, in one draw: the surge's tier weights, walked as `PickTargets` walks them.
+	 * `INDEX_NONE`, with no draw, when nothing has weight. A NAMED NAMESPACE, since a unity build joins this file's
+	 * anonymous namespace to its neighbours'.
+	 */
+	int32 ByWeight(const TArray<int32>& Cities, const TArray<float>& Weights, FRandomStream& Draws)
+	{
+		float Total = 0.0f;
+		for (const float Weight : Weights)
+		{
+			Total += FMath::Max(0.0f, Weight);
+		}
+		if (Cities.Num() == 0 || Total <= 0.0f)
+		{
+			return INDEX_NONE;
+		}
+
+		float Roll = Draws.FRand() * Total;
+		for (int32 Index = 0; Index < Cities.Num(); ++Index)
+		{
+			Roll -= FMath::Max(0.0f, Weights[Index]);
+			if (Roll < 0.0f)
+			{
+				return Cities[Index];
+			}
+		}
+		// FLOATING POINT CAN LEAVE A SLIVER AT THE END; the last city with weight takes it.
+		for (int32 Index = Cities.Num() - 1; Index >= 0; --Index)
+		{
+			if (Weights[Index] > 0.0f)
+			{
+				return Cities[Index];
+			}
+		}
+		return INDEX_NONE;
+	}
+}
+
+int32 UCataclysmSurgeScheduler::RiftSeedFor(int32 RunSeed, int32 DungeonId, int32 Draw)
+{
+	// THE RIFT'S OWN SEED, THEN THE DRAW'S: `Mix` takes one index, and a Rift's draws are two numbers deep.
+	return CataclysmSeedMix::Mix(CataclysmSeedMix::Mix(RunSeed, RiftSalt, DungeonId), RiftSalt, Draw);
+}
+
+bool UCataclysmSurgeScheduler::RiftSendsOn(int32 SpawnedDay, int32 Day)
+{
+	const int32 Age = Day - SpawnedDay;
+	return Age > 0 && Age % RiftSendEveryDays == 0;
+}
+
+int32 UCataclysmSurgeScheduler::DaysUntilRiftSends(int32 SpawnedDay, int32 Day)
+{
+	// A DAY BEFORE IT OPENED, which only a dungeon built by hand can carry, counts as the day it opened.
+	const int32 Age = FMath::Max(0, Day - SpawnedDay);
+	return RiftSendEveryDays - Age % RiftSendEveryDays;
+}
+
+int32 UCataclysmSurgeScheduler::PickRiftCity(const UCataclysmEmpireMap& Map, FRandomStream& Draws,
+											 const TArray<int32>& DungeonsPerCity)
+{
+	// EVERY STANDING CITY BUT THE PILLAR, SEALED ONES INCLUDED: `AliveCities` leaves the Pillar out by default, and
+	// it is asked again so a map built by hand cannot slip it in.
+	TArray<int32> Cities;
+	TArray<float> Weights;
+	for (const int32 CityId : Map.AliveCities())
+	{
+		const FCataclysmCity* City = Map.Find(CityId);
+		if (City == nullptr || CityId == Map.PillarId || RoomLeftOn(*City, DungeonsPerCity) <= 0)
+		{
+			continue;
+		}
+		Cities.Add(CityId);
+		Weights.Add(TargetWeightFor(City->Tier));
+	}
+	return CataclysmRiftPick::ByWeight(Cities, Weights, Draws);
+}
+
+int32 UCataclysmSurgeScheduler::PickRiftTarget(const UCataclysmEmpireMap& Map, const FCataclysmCity& From,
+											   FRandomStream& Draws, const TArray<int32>& DungeonsPerCity)
+{
+	// `PickRelocation`'S FILTER, AND THE CAP A SURGE RESPECTS: a city a surge could target.
+	TArray<int32> Cities;
+	TArray<float> Weights;
+	for (const int32 CityId : AdjacentCities(From))
+	{
+		const FCataclysmCity* City = Map.Find(CityId);
+		if (City == nullptr || CityId == Map.PillarId || !Map.IsExposed(CityId)
+			|| RoomLeftOn(*City, DungeonsPerCity) <= 0)
+		{
+			continue;
+		}
+		Cities.Add(CityId);
+		Weights.Add(TargetWeightFor(City->Tier));
+	}
+	return CataclysmRiftPick::ByWeight(Cities, Weights, Draws);
+}
+
 int32 UCataclysmSurgeScheduler::PickRefuge(
 	const UCataclysmEmpireMap& Map,
 	const FCataclysmCity& Fallen,
@@ -1298,7 +1409,21 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 			? ECataclysmDungeonType::Quest
 			: ECataclysmDungeonType::Basic;
 
-	const FCataclysmDungeonSpec Spec = SpecFor(Kind, City.Tier);
+	FCataclysmDungeonSpec Spec = SpecFor(Kind, City.Tier);
+
+	// A RIFT IS FOUR FLOORS, EXACTLY, since issue #51 slice B2: the owner, 2026-11-24, "let's make them 4 floors?", one
+	// altar on each. So its depth is rolled from four to four, and the city's floor upgrades and the empire tree add
+	// nothing below: it ends at four, with `UpgradeFloors` nought. ONE DRAW STILL: `RandRange` over a range of one
+	// number takes a draw as any range does, so the stream moves exactly as it did. The walk and the timer follow from
+	// the four floors, so the timer is a 4-floor dungeon's ("Keep the short timer for rifts"). The same test as
+	// `FCataclysmDungeon::IsARift`, asked of the sender passed in, because the caller stamps `Cataclysm` on the dungeon
+	// after this returns.
+	const bool bARift = Kind == ECataclysmDungeonType::Quest && Cataclysm == ECataclysmType::Demonic;
+	if (bARift)
+	{
+		Spec.LeastFloors = RiftFloors;
+		Spec.MostFloors = RiftFloors;
+	}
 
 	FCataclysmDungeon Dungeon;
 	Dungeon.DungeonId = DungeonId;
@@ -1337,10 +1462,10 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// AND THE EMPIRE UPGRADE TREE'S FLOORS WITH THEM, which are added floors in the same sense: counted in `UpgradeFloors`
 	// below, so the timer and the walk grow with them and the hit does not. Issue #2741 slice 4, W3. Exclusionary
 	// Mapping can make it negative, and the clamp at one floor below holds then too.
-	const int32 Deeper = FMath::RoundToInt(
+	const int32 Deeper = bARift ? 0 : FMath::RoundToInt(
 		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonFloorsMore)) + FloorsTheTreeAdds;
 
-	const int32 Shallower = FMath::RoundToInt(
+	const int32 Shallower = bARift ? 0 : FMath::RoundToInt(
 		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonFloorsFewer));
 
 	// A MINIMUM OF ONE, which is what "to a minimum of 1" in the sheet says and
@@ -1471,7 +1596,7 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
 	FRandomStream& Stream, const TArray<int32>& DungeonsPerCity,
 	const TArray<int32>& SiegesPerCityNow,
-	const TFunction<ECataclysmType()>& DrawCataclysm, bool bFromEmptyBoard) const
+	const TFunction<ECataclysmType()>& DrawCataclysm, bool bFromEmptyBoard, int32 RiftSeed) const
 {
 	TArray<FCataclysmDungeon> Wave;
 
@@ -1490,6 +1615,10 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	// -- so counting only what was already standing would let a single wave put
 	// two Sieges on one city, which is the thing the cap forbids.
 	TArray<int32> Sieges = SiegesPerCityNow;
+
+	// THE DUNGEONS STANDING ON EACH CITY AS THIS WAVE LANDS, for a Rift's own city draw: what stood before it and what
+	// it has put down so far. Issue #51 slice B2. Only counted where the caller counted (`RoomLeftOn`'s convention).
+	TArray<int32> Standing = DungeonsPerCity;
 
 	for (int32 Index = 0; Index < Targets.Num(); ++Index)
 	{
@@ -1538,6 +1667,20 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 		const ECataclysmType Sender =
 			Senders.IsValidIndex(Index) ? Senders[Index] : ECataclysmType::None;
 
+		// A DEMONIC QUEST DUNGEON IS A RIFT, AND IT OPENS ANYWHERE BUT THE PILLAR, behind the front included: the
+		// owner, 2026-11-24, "Rift = Quest dungeon (Recommended)" and "Anywhere but the Pillar (Recommended)". Its
+		// city is drawn again by `PickRiftCity`, FROM A STREAM OF ITS OWN (`RiftSeedFor`), so `Stream` moves exactly
+		// as it did. Where no city qualifies it keeps the front-line city it was drawn. Issue #51 slice B2.
+		// `bSiegeAllowed` stays the drawn city's: a Rift's sub-type is fixed, and the roll it reads is thrown away.
+		if (Kind == ECataclysmDungeonType::Quest && Sender == ECataclysmType::Demonic)
+		{
+			FRandomStream RiftDraws(RiftSeedFor(RiftSeed, FirstDungeonId + Index, RiftPlaceDraw));
+			if (const FCataclysmCity* Anywhere = Map.Find(PickRiftCity(Map, RiftDraws, Standing)))
+			{
+				City = Anywhere;
+			}
+		}
+
 		FCataclysmDungeon Dungeon = MakeDungeon(FirstDungeonId + Index, *City,
 												Day, Stream, bSiegeAllowed,
 												Kind, Sender);
@@ -1555,6 +1698,11 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 		}
 
 		Wave.Add(Dungeon);
+
+		if (Standing.IsValidIndex(Dungeon.CityId))
+		{
+			++Standing[Dungeon.CityId];
+		}
 	}
 
 	return Wave;

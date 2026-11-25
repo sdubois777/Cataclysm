@@ -47,6 +47,20 @@ TArray<FCataclysmFloorModifierLine> UCataclysmFloorModifierPanelLayout::LinesFor
 			continue;
 		}
 
+		// AND A RIFT'S LINE, NO ROW EITHER: named for what it is, with how many of its altars have fallen. Issue #51 B1.
+		if (Key == FName(RiftAltarsKey))
+		{
+			Line.bIsTheRiftAltars = true;
+			Line.Built = ECataclysmModifierBuilt::Built;
+			Line.Name = RiftAltarsName;
+			if (const FString* Counting = LiveCounts.Find(Key))
+			{
+				Line.LiveCount = *Counting;
+			}
+			Lines.Add(MoveTemp(Line));
+			continue;
+		}
+
 		Line.Built = UCataclysmDungeonModifierEffects::BuiltStateOf(Key);
 
 		const FCataclysmDungeonModifierRow* Row =
@@ -81,9 +95,10 @@ FString UCataclysmFloorModifierPanelLayout::NameLineFor(const FCataclysmFloorMod
 {
 	FString Named;
 
-	if (Line.bIsTheConsumptionDouble || Line.bIsTheCataclysmBoss)
+	if (Line.bIsTheConsumptionDouble || Line.bIsTheCataclysmBoss || Line.bIsTheRiftAltars)
 	{
-		// The double's or the Cataclysm Boss's: no row, and not marked as a missing one. Issues #2688 and #1324.
+		// The double's, the Cataclysm Boss's or a Rift's: no row, and not marked as a missing one. Issues #2688, #1324
+		// and #51.
 		Named = Line.Name;
 	}
 	else if (!Line.bIsARow)

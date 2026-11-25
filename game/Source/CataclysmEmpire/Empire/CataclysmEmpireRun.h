@@ -375,6 +375,24 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	int32 Surges = 0;
 
 	/**
+	 * The dungeons an unsealed Rift sent today, in the order they were made; `Spawned` lists them too, and
+	 * `SurgeDungeons` does not, because no surge brought them. Issue #51 slice B2: the owner, 2026-11-24, "every 5
+	 * days an unsealed Rift sends an ordinary Basic Demonic dungeon to an adjacent city a surge could target, with no
+	 * limit on how many it has sent". `UCataclysmEmpireRun::SendFromRifts` fills it. Additive only, as `Hits` is; the
+	 * model counts the same dungeons in `Simulation.rift_spawns`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> RiftSent;
+
+	/**
+	 * Whether a death in a Rift brought a surge in this report. `bSurged` and `Surges` say so too. Issue #51 slice B2:
+	 * the owner, 2026-11-24, "Every death, no gap (Recommended)". Only the report
+	 * `UCataclysmEmpireRun::SurgeForADeathInARift` answers sets it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bSurgedForARiftDeath = false;
+
+	/**
 	 * The cities on which a city upgrade was finished today, one entry per upgrade. Issue #2825: the capital's account
 	 * of the days away names them. Additive only, as `Hits` is; the model has no city upgrades.
 	 */
@@ -2067,6 +2085,36 @@ public:
 	FCataclysmDayReport ResolveDungeonOnDeath(int32 DungeonId);
 
 	/**
+	 * A death in a Rift brings an ordinary surge at once: the owner, 2026-11-24, issue #51, "Every death, no gap
+	 * (Recommended)", matching their ruling of the same day that every city's fall brings its own surge. Issue #51
+	 * slice B2.
+	 *
+	 * FIRES WHATEVER THE GAP SINCE THE LAST SURGE, on the clock's day, through the same wave a scheduled surge rolls,
+	 * so it moves the next scheduled surge on and advances the escalation. The caller decides it was a Rift:
+	 * `ACataclysmDungeonGameMode::EndTheDungeonForADeath` asks `FCataclysmDungeon::IsARift` of the dungeon the player
+	 * died in before its resolve, and calls this after the walk's days have run and before the death's own days, which
+	 * is the day of the death. A judgement of slice B2; the ruling says "at once". The model:
+	 * `Simulation._surge_for_a_rift_death`.
+	 *
+	 * @return the surge's report: `bSurged`, `Surges` 1, `bSurgedForARiftDeath`, what it landed. Empty when the run
+	 *         has not begun.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	FCataclysmDayReport SurgeForADeathInARift();
+
+	/**
+	 * Days until the Rift `DungeonId` next sends its dungeon, 1 to `UCataclysmSurgeScheduler::RiftSendEveryDays`,
+	 * counted from its `SpawnedDay`; 0 when that dungeon is not a Rift on the map. What the capital map shows beside
+	 * each Rift (issue #51 slice B2, "the map shows each Rift and its next spawn day").
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 DaysUntilRiftSends(int32 DungeonId) const;
+
+	/** How many Rifts stand on this city: the capital map marks a city holding one. Issue #51 slice B2. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 RiftsOn(int32 CityId) const;
+
+	/**
 	 * How many days a death costs in this run: 5 Standard, 10 Hardcore, 15
 	 * Heretic.
 	 *
@@ -2236,6 +2284,22 @@ private:
 	 * @param bFromEmptyBoard whether an empty board fired it, which brings `ExtraDungeonsOnEmptyBoard` more (#2865)
 	 */
 	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport, bool bFromEmptyBoard = false);
+
+	/**
+	 * Each unsealed Rift whose day it is sends its dungeon: every `UCataclysmSurgeScheduler::RiftSendEveryDays` days
+	 * from its `SpawnedDay`, an ordinary Basic Demonic dungeon, made as a surge makes one for that city, to an
+	 * adjacent city a surge could target (`PickRiftTarget`), with no limit on how many of its dungeons stand. Nothing
+	 * when no neighbour qualifies. The owner, 2026-11-24, issue #51: "Anywhere but the Pillar (Recommended)" and "No
+	 * limit". Called by `AdvanceDay` after the day's resolves. Issue #51 slice B2; the model's `_rift_spawns`.
+	 *
+	 * NOTHING ABOUT THE CLOCK IS SAVED, AND NOTHING NEEDS TO BE: `SpawnedDay` is saved on the dungeon and set only
+	 * when the dungeon is made, so a Rift's days come back with it from a save, and a Rift that leaves the map takes
+	 * its clock with it. Each send draws from a stream of its own (`RiftSeedFor`), so no shared stream moves.
+	 *
+	 * @param Today     the day being run
+	 * @param OutReport the day's report: each sent dungeon goes into `Spawned` and `RiftSent`
+	 */
+	void SendFromRifts(int32 Today, FCataclysmDayReport& OutReport);
 
 	/**
 	 * Which active Cataclysm sent one dungeon of a wave.

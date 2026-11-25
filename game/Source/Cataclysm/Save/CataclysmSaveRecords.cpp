@@ -1393,6 +1393,26 @@ namespace CataclysmRunSaveMigration
 		return CataclysmSaveArrival::WriteWhereEachItemArrived(Record, OutError);
 	}
 
+	/**
+	 * A run written before a Rift's altars stood holds none fallen: no dungeon placed an altar before issue #51 slice
+	 * B1, 2026-11-24. Written out, for `Migrate_1_to_2`'s reason, as an empty `RiftAltarsDestroyed` in the floor's rule
+	 * state, and only where the file has one; a version 1 file always has it, as `Migrate_1_to_2` says. Written whatever
+	 * the key held, for `Migrate_7_to_8`'s reason: a run written at 18 never wrote it.
+	 */
+	bool Migrate_18_to_19(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid()
+			&& (*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) && RuleState && RuleState->IsValid())
+		{
+			// A migration's: no Rift altar had fallen, written out.
+			(*RuleState)->SetArrayField(TEXT("RiftAltarsDestroyed"), TArray<TSharedPtr<FJsonValue>>());
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1412,6 +1432,7 @@ namespace CataclysmRunSaveMigration
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
 		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
+		{ 18, TEXT("Migrate_18_to_19"), &Migrate_18_to_19 },
 	};
 }
 

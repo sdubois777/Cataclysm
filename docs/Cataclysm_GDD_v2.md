@@ -6901,6 +6901,49 @@ Each Cataclysm has a unique world mechanic that layers onto the standard dungeon
 
 Infernal Rifts tear open across the map, spawning dungeons without needing a direct path. Players must assault Rifts, destroy the four altars powering each one, and seal 10 Rifts to challenge the enemy capital. Unchecked Rifts spawn a dungeon on an adjacent city every 5 days. Dying during a Rift assault triggers a Surge.
 
+**The Rift, as the owner ruled it on 2026-11-24 (issue #51).** Each is the owner's chosen option, verbatim, with what
+it means.
+
+- **A Rift is the Demonic Quest dungeon**: "Rift = Quest dungeon (Recommended)". Sealing a Rift is clearing it, and
+  one sealed Rift is one of Demonic's 10 quest objectives, as one cleared Quest dungeon is one objective. The Quest
+  dungeon rules hold for it: it is Elite (a boss at every floor's exit), it hits its city on its timer, and it moves
+  when its city falls.
+- **A Rift is four floors deep, with one altar on each floor.** The owner, later the same day: "Rift are quest
+  dungeons yes, but we determined they have 4 pillars the player needs to destroy. So... let's make them 4 floors? Is
+  that reasonable? Their difficulty would need to be increased a decent amount, but that seems fair to me." And:
+  "Keep the short timer for rifts. It's only fair, it has 4 floors. If you keep on top of them it wont matter." Its
+  timer is the ordinary depth-scaled Quest timer for four floors. **Its added difficulty is eight dungeon modifiers
+  and nothing else**, the owner's chosen option the same day, verbatim "(b) 8 modifiers only (Recommended)": its
+  floors are an ordinary four-floor dungeon's, and every Rift carries eight modifiers ("Also, I think we should make
+  it so Rifts always have 8 dungeon modifiers. Keep it spicy"). Written in slice B2.
+- **Where the altars stand**: "One per floor, spread (Recommended)": altar i on floor ceil(i x floors / 4), the spread
+  ruled for a Fallen City's bosses on 2026-10-29; a Rift of fewer than four floors puts the rest on its last floor. At
+  four floors that is one altar on each floor. The spread is kept for a Rift of any other depth -- one Demonic sent
+  before Rifts were made four floors deep, or one a city's floor upgrades deepened or shallowed -- at most one a floor,
+  the rest on the last.
+- **An altar** "does not attack, has the floor boss's health, and seals its floor's stairs while it stands, as the
+  Heavenly Core does". Its health is the floor boss's at Common, as the Core's is. "The Rift is sealed when the last
+  altar falls and the boss is dead": the last floor's stairs, which clear the Rift, stay sealed while its altar or its
+  boss stands. The floor panel names the Rift and says how many of its four altars have fallen and what seals the way
+  on; each altar wears the word "Altar" under its health bar.
+- **No chasm opens on a floor holding an altar, and a fall in a Rift lands no deeper than the next floor holding one**
+  (Those in the Dark). A judgement by the session that built the altars, so a fall never carries the player past an
+  altar; a four-floor Rift has no chasm at all.
+- **Where a Rift opens and what it sends**: "Anywhere but the Pillar (Recommended)": on any standing city except the
+  Pillar, behind the front included, weighted by the scheduler's tier weights (Outpost 5, Bulwark 3, Sanctuary 1.5).
+  Every 5 days, counted from the day it opened and not reset when it moves, an unsealed Rift sends an ordinary Basic
+  Demonic dungeon, made as a surge makes one for that city, to an adjacent city a surge could target; nothing is sent
+  when no neighbour qualifies.
+- **A death in a Rift**: "Every death, no gap (Recommended)": each death during a Rift assault brings an ordinary
+  surge at once, with no least-interval brake.
+
+What is written for the game and not yet built or run: the four altars, their seals and the boss's, the panel line
+and the saved state (issue #51 slice B1); and the Rift on the empire map in the paragraph below, its four-floor
+depth, its eight modifiers, where it opens, the 5-day spawn, the surge on a death and the map's marks (slice B2).
+The two are built and run together in one window.
+
+**The Rift on the empire map, as the owner ruled it on 2026-11-24 (issue #51).** A Rift is a Demonic Quest dungeon ("Rift = Quest dungeon (Recommended)"), so sealing one is clearing it, one of Demonic's 10 objectives. It opens on any standing city except the Pillar, cities behind the front included, by the tier weights a surge uses ("Anywhere but the Pillar (Recommended)"). It is exactly four floors, one altar on each ("let's make them 4 floors?"), whatever a city's floor upgrades or the empire upgrade tree would add, with the ordinary Quest timer for four floors ("Keep the short timer for rifts. It's only fair, it has 4 floors. If you keep on top of them it wont matter."). It always carries eight dungeon modifiers ("Also, I think we should make it so Rifts always have 8 dungeon modifiers. Keep it spicy"), and they are the whole of its added difficulty: its floors are an ordinary four-floor dungeon's ("(b) 8 modifiers only (Recommended)"). At difficulty tier 1 a Rift never draws the Demonic Guide among its eight; at tier 2 and above it may, as any modifier is drawn. The owner, 2026-11-25: "Make demonic guide not spawn on the Rifts. It would be really annoying if you're trying to destroy a pillar and you can't because that guy will kill you if you let him get out of range.", and a moment later, "at least not on t1" (a pillar is a Rift's altar). Every 5 days from the day it opened, not reset when it moves, an unsealed Rift sends an ordinary Basic Demonic dungeon, made as a surge makes one for that city, to an adjacent city a surge could target, and nothing when no neighbour qualifies; there is no limit on how many of its dungeons stand ("No limit"). Each death in a Rift brings an ordinary surge at once, with no least-interval brake ("Every death, no gap (Recommended)"). The capital map marks a city holding a Rift and gives each Rift's days until it next sends. Measured in the simulation before the game was written: at difficulty tier 1 with no empire tree a 4-floor Rift with no limit loses about 15 cities of 24 against 10.4 without Rifts, at about the same win rate (42% against 44%); the figures are in `docs/DECISIONS.md`, 2026-11-24. The drop rarity fix (issue #2853) cannot move them, since those campaigns do not model gear drops, so they stand as measured, as play-test points (the coordinating session's ruling of 2026-11-25).
+
   
 
 ## **Dead Rising (Death)**
