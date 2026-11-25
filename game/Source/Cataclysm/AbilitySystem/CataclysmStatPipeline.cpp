@@ -153,6 +153,7 @@ namespace
 		{ TEXT("target_rarity_at_least"),       ECataclysmStatCondition::TargetRarityAtLeast },
 		{ TEXT("target_rarity_is"),             ECataclysmStatCondition::TargetRarityIs },
 		{ TEXT("seconds_after_kill"),           ECataclysmStatCondition::WithinSecondsOfKill },
+		{ TEXT("target_in_your_siphon"),        ECataclysmStatCondition::TargetInYourSiphon },
 	};
 
 	struct FNamedStatScale
@@ -171,6 +172,7 @@ namespace
 		{ TEXT("carnage_stacks"),      ECataclysmStatScale::PerStackOfCarnage },
 		{ TEXT("debuffs_carried"),     ECataclysmStatScale::PerDebuffCarried },
 		{ TEXT("minions_held"),        ECataclysmStatScale::PerMinionHeld },
+		{ TEXT("enemies_in_siphon"),   ECataclysmStatScale::PerEnemyInSiphon },
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
@@ -315,6 +317,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesADot:
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 	case ECataclysmStatCondition::TargetStandsInYourZone:
+	case ECataclysmStatCondition::TargetInYourSiphon:
 	case ECataclysmStatCondition::WhileUnderDamageOverTime:
 	case ECataclysmStatCondition::WhileChannelling:
 	case ECataclysmStatCondition::HitDealtIsNotSpell:
@@ -322,7 +325,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsMoving:
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-five says
+		// nothing for a number to be compared against. Each of the thirty-six says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -514,6 +517,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesADot:
 	case C::TargetDamagedByYouWithinSeconds:
 	case C::TargetStandsInYourZone:
+	case C::TargetInYourSiphon:
 	case C::OpponentFirstStruckByYouSecondsAgo:
 		return EOn::TheBlowOrSkill;
 
@@ -1300,6 +1304,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		return State.SecondsSinceOwnKill >= 0.0f
 			&& State.SecondsSinceOwnKill <= Value;
 
+	case ECataclysmStatCondition::TargetInYourSiphon:
+		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetStandsInYourZone` is. The Death trees' slice C2
+		// (2026-11-25). False is also "no target in hand" and "nothing asked".
+		return State.bTargetInYourSiphon;
+
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills
 		// deal 25%-40% less damage if you have moved in the last 2 seconds" is
@@ -1852,6 +1861,10 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	// a Ritualist standing alone.
 	case ECataclysmStatScale::PerMinionHeld:
 		return StackedValue(Modifier, State.MinionsHeld);
+
+	// THE ENEMIES IN THE CHARACTER'S SIPHON. The Death trees' slice C2 (2026-11-25).
+	case ECataclysmStatScale::PerEnemyInSiphon:
+		return StackedValue(Modifier, State.EnemiesInSiphon);
 
 	// PER ENEMY STANDING WITHIN THE ROW'S OWN REACH. Issue #1597, and the
 	// third scale that is a count of things after debuffs carried and

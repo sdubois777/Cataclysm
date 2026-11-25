@@ -841,7 +841,16 @@ float UCataclysmDebuffs::DealLessPercentOn(const UAbilitySystemComponent* Carrie
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Carrier);
-	return Cataclysm ? Cataclysm->DebuffDamageCutPercentNow() : 0.0f;
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	// AND THE CUT OF THE SIPHONS IT IS IN, multiplied with the debuffs' rather than added: two "less" multipliers. The
+	// Death trees' slice C2 (2026-11-25), ruled by the coordinating session: "deals reduced damage" in the Siphon is
+	// what the enemy deals, through this.
+	const float Debuff = FMath::Clamp(Cataclysm->DebuffDamageCutPercentNow(), 0.0f, 100.0f);
+	const float Siphon = FMath::Clamp(Cataclysm->SiphonDamageCutPercentNow(), 0.0f, 100.0f);
+	return 100.0f * (1.0f - (1.0f - Debuff / 100.0f) * (1.0f - Siphon / 100.0f));
 }
 
 const TCHAR* UCataclysmDebuffs::ImmuneAndAppliesNoneStat = TEXT("immune_to_debuffs_and_applies_none");

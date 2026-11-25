@@ -1101,6 +1101,20 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("fervour_per_kill"),
 		TEXT("fervour_kill_decay_per_second"),
 		TEXT("fervour_kill_decay_grace_seconds"),
+		// THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25):
+		// its radius, the cut to what a member deals, its slow, the linger after
+		// leaving, and the four paid once a second (Drain's damage, Necrotic
+		// Siphon's chance, Life Siphon's health, Living Harvest's Fervour). Each
+		// is asked by FCataclysmSiphon on the regeneration step, through the
+		// pipeline, and none has a gameplay attribute.
+		TEXT("siphon_radius_metres"),
+		TEXT("siphon_enemies_deal_less_percent"),
+		TEXT("siphon_enemy_slow_percent"),
+		TEXT("siphon_linger_seconds"),
+		TEXT("siphon_drain_weapon_percent"),
+		TEXT("siphon_necrosis_chance"),
+		TEXT("siphon_life_percent"),
+		TEXT("siphon_fervour_per_second"),
 	};
 	return Stats;
 }

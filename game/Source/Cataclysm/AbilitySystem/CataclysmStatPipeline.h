@@ -1788,6 +1788,20 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WithinSecondsOfKill
 		UMETA(DisplayName = "Within Seconds Of Kill"),
+
+	/**
+	 * The character struck is in the asker's Siphon. The Death trees' slice C2 (2026-11-25): the Soul Collector's
+	 * Soul-Heavy Air, "Enemies in your Siphon take 1% increased damage from you per point for every 50 Fervour you
+	 * hold".
+	 *
+	 * IN THE SIPHON IS WHAT `FCataclysmSiphon::Step` KEEPS: an enemy within the Siphon's radius, or one that left it
+	 * no longer ago than the Siphon's linger (Lingering Pull). Read from the asker's own record in
+	 * `UCataclysmAbilitySystemComponent::WithTargetState`, so a character with no Siphon never holds it.
+	 *
+	 * NO THRESHOLD, SO `Value` IS NOT READ.
+	 */
+	TargetInYourSiphon
+		UMETA(DisplayName = "Target In Your Siphon"),
 };
 
 /**
@@ -2588,6 +2602,18 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPercentOfIncreasedMovementSpeed
 		UMETA(DisplayName = "Per Percent Of Increased Movement Speed"),
+
+	/**
+	 * `Value` per whole `ScaleStep` enemies in the character's Siphon. The Death trees' slice C2 (2026-11-25): the
+	 * Soul Collector's Sapping Cold and Stolen Strength, "for each of them, up to 10 enemies", and Life Siphon's and
+	 * Living Harvest's "each enemy in your Siphon".
+	 *
+	 * READ FROM `FCataclysmStatConditions::EnemiesInSiphon`, which `CurrentConditions` fills from the character's own
+	 * record (`FCataclysmSiphon::Step` keeps it), so a character with no Siphon counts nobody. A cap is the row's
+	 * `ScaleMaxSteps`.
+	 */
+	PerEnemyInSiphon
+		UMETA(DisplayName = "Per Enemy In Siphon"),
 };
 
 /**
@@ -2834,6 +2860,19 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceOwnKill = -1.0f;
+
+	/**
+	 * How many enemies are in this character's Siphon, for `ECataclysmStatScale::PerEnemyInSiphon`. The Death trees'
+	 * slice C2 (2026-11-25). Filled by `UCataclysmAbilitySystemComponent::CurrentConditions` from the record
+	 * `FCataclysmSiphon::Step` keeps; nought for a character with no Siphon.
+	 */
+	int32 EnemiesInSiphon = 0;
+
+	/**
+	 * Whether the character struck is in the asker's Siphon, for `ECataclysmStatCondition::TargetInYourSiphon`. Filled
+	 * by `UCataclysmAbilitySystemComponent::WithTargetState` only when a row asks.
+	 */
+	bool bTargetInYourSiphon = false;
 
 	/**
 	 * Seconds since the character last used the skill in its Support slot. Negative means neither known
@@ -5154,7 +5193,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-eighth, which is the drift that put the passive tree eight
+	 * adds a seventy-ninth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5163,7 +5202,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-FIVE OF THE SEVENTY-SEVEN COMPARE NOTHING. They are the case labels
+	 * THIRTY-SIX OF THE SEVENTY-EIGHT COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

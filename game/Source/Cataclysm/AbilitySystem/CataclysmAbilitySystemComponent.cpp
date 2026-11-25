@@ -1001,6 +1001,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
 	State.SecondsSinceOwnKill = SecondsSinceOwnKill();
+
+	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
+	State.EnemiesInSiphon = EnemiesInSiphon();
 	State.SecondsSinceSupportSkill = SecondsSinceSupportSkillUsed();
 	State.SecondsSinceMovementSkill = SecondsSinceMovementSkillUsed();
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
@@ -1645,6 +1648,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsBoss = false;
 	bool bWantsHistory = false;
 	bool bWantsZone = false;
+	bool bWantsSiphon = false;
 	bool bWantsSilence = false;
 	bool bWantsMoving = false;
 	bool bWantsYourCurse = false;
@@ -1692,6 +1696,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
 			case ECataclysmStatCondition::TargetStandsInYourZone:
 				bWantsZone = true;
+				break;
+			// AND WHETHER THE TARGET IS IN THE ASKER'S SIPHON. The Death trees' slice C2 (2026-11-25).
+			case ECataclysmStatCondition::TargetInYourSiphon:
+				bWantsSiphon = true;
 				break;
 			// AND WHETHER THE TARGET IS SILENCED, LISTED HERE FOR THE REASON THE AILMENT COMMENT ABOVE GIVES. Ruled
 			// 2026-10-17, for the Null Emperor 6-piece's gain of Void.
@@ -1826,6 +1834,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 				State.bTargetStandsInYourZone = true;
 				break;
 			}
+		}
+	}
+
+	// WHETHER IT IS IN THE ASKER'S SIPHON, from the asker's own record. The Death trees' slice C2 (2026-11-25). Only
+	// when a row asks, as the zone above.
+	if (bWantsSiphon && State.AskingAbilitySystem)
+	{
+		if (const UCataclysmAbilitySystemComponent* Asker =
+				Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem))
+		{
+			State.bTargetInYourSiphon = Asker->HasInSiphon(Target);
 		}
 	}
 
@@ -3858,6 +3877,52 @@ bool UCataclysmAbilitySystemComponent::KillDecayIsHeld() const
 	}
 
 	return KillDecayHeldUntilSeconds >= 0.0f && World->GetTimeSeconds() < KillDecayHeldUntilSeconds;
+}
+
+int32 UCataclysmAbilitySystemComponent::EnemiesInSiphon() const
+{
+	// THE ONES STILL IN THE WORLD AND ALIVE. A creature killed or removed between two steps is still in the record
+	// until the next step clears it, and is no longer in anybody's Siphon.
+	int32 Count = 0;
+	for (const TPair<TWeakObjectPtr<AActor>, FSiphonMember>& Each : SiphonMemberRecord)
+	{
+		const AActor* Member = Each.Key.Get();
+		Count += Member && !UCataclysmSkillEffects::IsDead(Member) ? 1 : 0;
+	}
+	return Count;
+}
+
+bool UCataclysmAbilitySystemComponent::HasInSiphon(const AActor* Target) const
+{
+	if (!Target || UCataclysmSkillEffects::IsDead(Target))
+	{
+		return false;
+	}
+	return SiphonMemberRecord.Contains(TWeakObjectPtr<AActor>(const_cast<AActor*>(Target)));
+}
+
+void UCataclysmAbilitySystemComponent::NoteSiphonDamageCut(float Percent, float UntilSeconds)
+{
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	// THE LARGEST WHILE IT RUNS, THEN THE NEW ONE. Several Siphons do not stack, as several holders of Ground Down do
+	// not (ruled 2026-09-24): the strongest holds, and the later end time is kept.
+	if (SiphonDamageCutUntilSeconds < Now)
+	{
+		SiphonDamageCutPercent = 0.0f;
+	}
+	SiphonDamageCutPercent = FMath::Max(SiphonDamageCutPercent, FMath::Clamp(Percent, 0.0f, 100.0f));
+	SiphonDamageCutUntilSeconds = FMath::Max(SiphonDamageCutUntilSeconds, UntilSeconds);
+}
+
+float UCataclysmAbilitySystemComponent::SiphonDamageCutPercentNow() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || SiphonDamageCutUntilSeconds < World->GetTimeSeconds())
+	{
+		return 0.0f;
+	}
+	return SiphonDamageCutPercent;
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::RendPercentStat =

@@ -635,9 +635,11 @@ public:
 						 bool bIsASpreadCopy);
 
 	/**
-	 * The percent less this character deals now for the debuffs it carries, 0
-	 * to 100: nought for an ability system that is not this project's. Read by
-	 * `UCataclysmSkillEffects::WeaponDamageOf`.
+	 * The percent less this character deals now for the debuffs it carries and
+	 * the Siphons it is in, 0 to 100, the two multiplied: nought for an ability
+	 * system that is not this project's. Read by
+	 * `UCataclysmSkillEffects::WeaponDamageOf`. The Siphon's share since the
+	 * Death trees' slice C2 (2026-11-25).
 	 */
 	static float DealLessPercentOn(const UAbilitySystemComponent* Carrier);
 

@@ -94,6 +94,14 @@ HOOKS = {
                 "kill generator, 2026-11-24). Deleting it leaves the pool "
                 "never draining between kills, while each test of the decay, "
                 "which calls the step directly, still passes",
+            "FCataclysmSiphon::Step":
+                "the Soul Collector's Siphon (the Death trees' slice C2, "
+                "2026-11-25): who is in it, the cut to what each member deals "
+                "and its slow, and once a second Drain's damage, Necrotic "
+                "Siphon's chance, Life Siphon's health and Living Harvest's "
+                "Fervour. Deleting it leaves the Siphon empty, so every node "
+                "of its limb does nothing, while each test that calls the "
+                "step directly still passes",
             "UCataclysmNova::Step":
                 "the nova a character at very low health releases, issue #1050",
             "UCataclysmContagion::AuraStep":

@@ -3995,6 +3995,42 @@ public:
 	bool KillDecayIsHeld() const;
 
 	/**
+	 * One enemy in this character's Siphon (the Death trees' slice C2, 2026-11-25): when it entered, and when it was
+	 * last within the Siphon's radius, both in world seconds. Kept by `FCataclysmSiphon::Step`.
+	 */
+	struct FSiphonMember
+	{
+		float EnteredAtSeconds = 0.0f;
+		float LastInsideAtSeconds = 0.0f;
+	};
+
+	/** Who is in this character's Siphon now, kept by `FCataclysmSiphon::Step`. Empty for a character with none. */
+	TMap<TWeakObjectPtr<AActor>, FSiphonMember>& SiphonMembers() { return SiphonMemberRecord; }
+	const TMap<TWeakObjectPtr<AActor>, FSiphonMember>& SiphonMembers() const { return SiphonMemberRecord; }
+
+	/** How many enemies are in this character's Siphon: the ones in the record that are still in the world. */
+	int32 EnemiesInSiphon() const;
+
+	/** Whether `Target` is in this character's Siphon. */
+	bool HasInSiphon(const AActor* Target) const;
+
+	/**
+	 * The seconds counted toward this character's next Siphon pulse. Its effects that say "each second" are paid once
+	 * a second (ruled 2026-11-25), so `FCataclysmSiphon::Step` adds each step's seconds here and pays at one.
+	 */
+	float SiphonPulseSeconds = 0.0f;
+
+	/**
+	 * On a character in somebody's Siphon: record that it deals `Percent` less until `UntilSeconds` (the Death trees'
+	 * slice C2: Sapping Cold and Enfeeble). The largest of several Siphons holds, as one Siphon's effects do not stack
+	 * with another's. Read by `UCataclysmDebuffs::DealLessPercentOn` through `SiphonDamageCutPercentNow`.
+	 */
+	void NoteSiphonDamageCut(float Percent, float UntilSeconds);
+
+	/** The percent less this character deals now for the Siphons it is in, 0 to 100. */
+	float SiphonDamageCutPercentNow() const;
+
+	/**
 	 * Record that a blow of `Striker`'s got through to THIS character, and
 	 * whether it was a critical strike. Issue #1815, "your first hit against
 	 * each enemy".
@@ -5665,6 +5701,13 @@ protected:
 	 * character that has never killed. See `NoteOwnKill`.
 	 */
 	float KillDecayHeldUntilSeconds = -1.0f;
+
+	/** Who is in this character's Siphon. See `SiphonMembers`. The Death trees' slice C2, 2026-11-25. */
+	TMap<TWeakObjectPtr<AActor>, FSiphonMember> SiphonMemberRecord;
+
+	/** The cut a Siphon puts on what this character deals, and until when. See `NoteSiphonDamageCut`. */
+	float SiphonDamageCutPercent = 0.0f;
+	float SiphonDamageCutUntilSeconds = -1.0f;
 
 	/**
 	 * The combat clock, in world seconds. Issue #1815. Negative means none since

@@ -4927,6 +4927,11 @@ CONDITIONS = {
     # VALUE. It does not reach the zone's own damage, which is priced with no
     # target.
     "target_in_your_zone": None,
+    # "Enemies in your Siphon take 1% increased damage from you per point for
+    # every 50 Fervour you hold" is `target_in_your_siphon`: the character struck
+    # is in the asker's Siphon (`FCataclysmSiphon` keeps who is). The Death
+    # trees' slice C2, 2026-11-25. IT TAKES NO VALUE.
+    "target_in_your_siphon": None,
 
     # "Deal 30%-50% more damage to Boss enemies" is `target_is_boss`, and it
     # takes no value. Issue #1815. It is the mirror of `opponent_is_boss` above:
@@ -5554,6 +5559,11 @@ SCALES = {
     # reserves 30 and an imp 10 against the Ritualist's 150. A step of ten
     # minions stays a sanity limit on what a row may state.
     "minions_held": (0.0, 10.0, "a number of minions"),
+    # THE ENEMIES IN THE CHARACTER'S SIPHON. The Death trees' slice C2
+    # (2026-11-25): Sapping Cold's and Stolen Strength's "for each of them, up
+    # to 10 enemies", and Life Siphon's and Living Harvest's "each enemy in your
+    # Siphon". Read from the character's own record, as `minions_held` is.
+    "enemies_in_siphon": (0.0, 10.0, "a number of enemies"),
 
     # "for each enemy within 4 metres of you" is `enemies_in_reach` with a
     # step of 1. Issue #1597, and the third scale that is a count of things
@@ -10611,6 +10621,15 @@ STATS_WITH_AN_ASKER = frozenset({
     "area_of_effect",
     "health_restored_on_kill_at_no_cost",
     "ultimate_fervour_cost_reduction",
+    # THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25). Its
+    # radius (Pall of Souls scales it by the Fervour held), Life Siphon's health
+    # and Living Harvest's Fervour (each scaled by the enemies in the Siphon):
+    # `FCataclysmSiphon` asks each through `StatForSkill` with the holder's
+    # state; `ProbeScaledSiphonRadius`, `ProbeScaledSiphonLife` and
+    # `ProbeScaledSiphonFervour` measure them.
+    "siphon_radius_metres",
+    "siphon_life_percent",
+    "siphon_fervour_per_second",
 })
 
 
@@ -10690,6 +10709,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_is_boss",
     "target_is_not_boss",
     "target_in_your_zone",
+    "target_in_your_siphon",
     "target_is_staggered",
     "target_not_yet_crit_by_you",
     "target_not_yet_struck_by_you",

@@ -12,6 +12,7 @@
 // For health owed falling due. Issue #991.
 // For the Fervour that arrives from the passage of time. Issue #1008.
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmSiphon.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 // For Brute's Heart's Ground Pound, which fires by itself. Ruled 2026-10-17.
 #include "AbilitySystem/CataclysmGroundPound.h"
@@ -268,6 +269,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 		// the reason `UCataclysmFervour::KillDecayPerSecondStat` gives. Nought for every character without one of
 		// those starting nodes, and its return value is dropped as every call above it is.
 		UCataclysmFervour::KillDecayStep(UCataclysmTargeting::AbilitySystemOf(this), UCataclysmRegeneration::StepSeconds);
+
+		// AND THE SOUL COLLECTOR'S SIPHON (the Death trees' slice C2, 2026-11-25): who is in it, what each member
+		// carries, and once a second what each second pays. Nothing for a character without the keystone, whose
+		// record is cleared. Its return value is dropped as every call above it is.
+		FCataclysmSiphon::Step(this, UCataclysmRegeneration::StepSeconds);
 	}
 
 	// AND A CHARACTER LOW ENOUGH ON HEALTH MAY RELEASE A NOVA. Issue #1050.
