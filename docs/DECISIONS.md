@@ -2,6 +2,112 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — A record of Fervour spent, the clock after a spend, three Soul Collector nodes on it, and death resets the kill clock (Death trees, slice C3a)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteFervourSpent`,
+  `SecondsSinceFervourSpent`, `LastFervourSpentAtSeconds`; `EventThresholdCrossed` for `fervour_spent`; the clock in
+  `CurrentConditions`; and `ClearWhatDeathEnds` resets the new clock and the kill clock.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `seconds_after_fervour_spent`
+  (`WithinSecondsOfFervourSpent`).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp`: `ApplyCost` records the spend.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourSpentTests.cpp`, new (3); `CataclysmDeathTests.cpp` and
+  `CataclysmDataTableTests.cpp`; `tools/tests/test_fervour_spent_is_recorded_where_a_cost_is_paid.py`, new (6);
+  `test_passive_effects_match_the_node_text.py`, `test_generate_datatables.py` and
+  `test_the_condition_count_sentences_agree_with_the_code.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (529 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **ONLY A SKILL'S FERVOUR COST IS RECORDED AS A SPEND.** It is the one cost the game charges today (every Ultimate's
+  50, and Subjugate's 30). The Ravager's Wrung Out and Bought With Ruin also take Fervour and raise nothing, by the rule
+  `NoteResourceConsumed` states for the Fervour mechanics' own spends (a judgement kept, not made here). The Death
+  weapon skills' spends (Requiem, on `feat/death-skills-2885`) must call `NoteFervourSpent` when that branch meets
+  this one.
+- **A SLICE B GAP, CLOSED HERE: death did not reset the kill clock.** `ClearWhatDeathEnds` left `LastOwnKillAtSeconds`
+  and `KillDecayHeldUntilSeconds` as they were, so a kill before a death held the Death classes' decay and opened
+  `seconds_after_kill` after the revival. Both are reset now, with the new clock, and the respawn test opens and checks
+  all three.
+- **QUICK KINDLING DOES NOT REACH THE SKILL THAT SPENT.** Unreal Engine 5.8 commits a skill's cooldown before its cost
+  (`UGameplayAbility::CommitExecute`), so the skill whose cost opened the window has already had its cooldown set.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECES:** Soul Fuel and Deeper Draw, Pyre, Soul Shatter, Final Rites, Soul Furnace,
+  Feast, Spirit to Mana, Ashen Ward, Cinders Kept, Turn of the Wheel, Bound Offering, Phylactery, the Shadow's Borrowed
+  Step, and the Fervour thresholds.
+
+### What a spend is now
+
+`UCataclysmAbilitySystemComponent::NoteFervourSpent(Amount, SpendingTags)` stamps the clock
+`seconds_after_fervour_spent` and then raises `fervour_spent` with the amount and the spending skill's tags, the shape
+of `NoteHealthCostPaid`. `UCataclysmGameplayAbility::ApplyCost` calls it where it pays a Fervour cost, beside
+`resource_consumed`, which also fires with nothing for every next-use charge spent and so cannot stand for Fervour. A
+spend of nothing records nothing.
+
+**"N or more at once."** An action row on `fervour_spent` whose Event Value is N acts only on one payment of N or more
+(`EventThresholdCrossed`); with none it acts on every spend. The generator allows that Event Value from 0 to 1000,
+counts `fervour_spent` among the events that carry an amount, and refuses an action on it under its own clock, which is
+stamped first and would always hold, as it refuses one on `kill` under the kill clock.
+
+**The refusal's wording** for an Event Value on any other event now names all three readers: `health_falls_below`,
+`fervour_spent` and the gadget's shot at a trap's enemy, which read one already.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Spent Breath | attack_damage and spell_damage, increased, 3, scale=own_stacks, step=1, cap=1, event=fervour_spent, stack_seconds=4, event_value=10 |
+| Quick Kindling | cooldown_reduction, flat, 1, cond=seconds_after_fervour_spent, cond_value=4 |
+| Burnt Offering | damage_taken, increased, -1, cond=seconds_after_fervour_spent, cond_value=4 |
+
+Spent Breath is an own stack with a cap of one because a clock cannot carry a threshold: the stack's Event Value
+does, and each qualifying spend renews its window. Quick Kindling is flat, the bucket every "increased Cooldown
+Reduction" in the trees is written in (the Shadow's Quick Recovery). `PassiveEffects.csv` 525 to 529; 95 of the 220
+Death nodes grant something.
+
+### Research
+
+None new. The record is this game's own event and clock machinery, and the three nodes' figures are the owner's
+approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourSpent.` | new: `ASpendStampsTheClockAndAChargeSpentDoesNot`, `BurntOfferingAndQuickKindlingHoldForFourSecondsAfterASpend`, `SpentBreathsRealRowsWantTenOrMoreSpentAtOnce` | 3 |
+| `Cataclysm.Death.` | `ARespawnClosesEveryWindowAnEventOpened` opens and checks the kill clock, its decay hold and the spend clock | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 529 | unchanged |
+
+Each new test has a control: a charge spent and a spend of nothing; before a spend and after its 4 seconds; a spend of
+5 against Spent Breath's 10.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `EventThresholdCrossed`:
+   `return Action.EventValue <= 0.0f || EventAmount >= Action.EventValue;` becomes `return true;`. Prefix
+   `Cataclysm.FervourSpent.`; must fail `SpentBreathsRealRowsWantTenOrMoreSpentAtOnce`.
+2. `CataclysmAbilitySystemComponent.cpp`, `NoteFervourSpent`: `LastFervourSpentAtSeconds = World->GetTimeSeconds();`
+   taken out. Prefix `Cataclysm.FervourSpent.`; must fail `ASpendStampsTheClockAndAChargeSpentDoesNot` and
+   `BurntOfferingAndQuickKindlingHoldForFourSecondsAfterASpend`.
+3. `CataclysmAbilitySystemComponent.cpp`, `ClearWhatDeathEnds`: `LastFervourSpentAtSeconds = -1.0f;` taken out. Prefix
+   `Cataclysm.Death.ARespawnClosesEveryWindowAnEventOpened`; must fail it.
+
+### What was run
+
+SUITE_FIGURES_C3A
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`018aac859`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| `ApplyCost`'s call to `NoteFervourSpent` taken out | `test_fervour_spent_is_recorded_where_a_cost_is_paid.py::test_the_cost_path_records_the_spend` |
+| The bound on a spend's Event Value taken off | `test_fervour_spent_is_recorded_where_a_cost_is_paid.py::test_an_event_value_past_its_bound_or_on_another_event_is_refused` |
+| `fervour_spent` taken off the events that stamp their clock first | `test_fervour_spent_is_recorded_where_a_cost_is_paid.py::test_an_action_on_a_spend_under_its_own_clock_is_refused` |
+| Burnt Offering's condition to `seconds_after_kill` | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+---
+
 ## 2026-11-25 — The Soul Collector's Siphon and the eleven nodes that act on it, and an end-to-end test of a real passive action row (Death trees, slice C2)
 
 **Affects:**
