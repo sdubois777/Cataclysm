@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The three damage-type auras each help their side differently: Pall of Ending gives 10% more damage to you, your minions and allies; Conflagration passes a dying enemy's burn on; Blood and Iron is built, and an immunity to Slow now works
+
+**Nothing here has run in Unreal.** The owner's rulings of 2026-11-25, verbatim: "make it 10% more and I'm good with
+it" (Death's aura), and for Demonic's and War's, after the coordinating session proposed options, "I like those
+recommendations. Go with A for both"; with the reason for all three, "I think we should avoid making all of the
+aura's kinda samey". The coordinating session ruled the five questions this raised on the same day; each is named
+below where it applies.
+
+| Aura | Until today | From today |
+| :-- | :-- | :-- |
+| Pall of Ending (Death) | Allies within it deal 8% increased damage; the caster gets nothing | You, your minions and your allies within it deal 10% **more** damage, a separate multiplier. Enemies' 15% less damage and its 5 s linger unchanged |
+| Conflagration (Demonic) | Allies within it deal 8% increased damage | When a burning enemy dies within it, its burn passes to the nearest other enemy within 4 m, as the caster's burn, with the seconds it had left. Its ring damage, burning and 15% Shred unchanged |
+| Blood and Iron (War) | No shape, so it did nothing (granted the placeholder) | Built on the Aura shape: 10 m; enemies within lose 10% armour and 15% movement speed; you and your allies within cannot be slowed and move 15% faster; drains the Aura slot's 20 mana a second |
+
+### What was built
+
+- **Pall of Ending: a new key, `AllyMoreDamage=10`**, not a new meaning for `AllyIncreasedDamage`, which five auras
+  keep (Exposing Light, Miasma, Undertow, Unreason, Gnawing Want: 8 increased, allies only). `HelpAlliesInside` gives
+  a More modifier, source `SkillBuff`, to every ally inside -- a minion is an ally, sharing its summoner's team -- and
+  **to the caster** (the coordinating session's ruling: the owner's "you" includes the caster). The aura effect and
+  buff potency rows raise it as they raise the increase (ruled).
+- **The 5 s linger was already built**: "15% less damage" is a Weaken of 15, refreshed every pulse, whose own duration
+  on the Status Effects sheet is 5 s, so an enemy that walks out keeps it for 5 s. Nothing was built for it; a test
+  shows it holds.
+- **Conflagration: a new key, `BurnPassesOnDeath=4`.** While the aura runs it listens to
+  `UCataclysmCombatEvents::OnDeath`. A victim hostile to the caster (by `UCataclysmTeams::AttitudeBetween`, since the
+  hostility test refuses the dead) that fell within the ring and carried a burn passes it, by
+  `UCataclysmSkillEffects::ApplySpreadCopy`, to the nearest other living enemy within 4 m of the body, credited to the
+  caster. **Any burn, the strongest** (ruled): an enemy carries one application of an ailment, the strongest
+  (`RunningAilmentOn`). The receiver takes it by the ordinary rule for burns. The 4 m is raised by the aura effect row.
+  A burn already passes at a death only for a row that says so (`UCataclysmContagion::SpreadFromTheDying`, Disease by
+  itself), so this repeats nothing.
+- **Blood and Iron: four new keys** -- `EnemyArmourRemoved=10`, `EnemyMovementSpeedReduced=15`, `AllyMovementSpeed=15`,
+  `AllyImmune=Slow` -- with `Immune=Slow` for the caster. They are held as **aura shares**, a new list on the ability
+  system component (`FCataclysmAuraShare`, `HoldAuraShare`), renewed every pulse and lapsing **two pulses after a
+  character leaves** (ruled: "two pulses after leaving (2 s), no new linger"). The armour share joins the sum damage
+  reads (`ArmourRemovedPercentNow`); two auras give the larger share, not the sum, as an armour removal does. The
+  slow is **movement only** (Cripple also slows attacks, which the row does not say), in
+  `ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows`. The haste is multiplied into the player's speed, a
+  creature's walk and a minion's walk.
+- **AN IMMUNITY TO SLOW NOW WORKS EVERYWHERE** (the coordinating session's ruling of 2026-11-25). Until today
+  `Immune=Slow` blocked nothing: no code that slows asked the immunity. Now an actor immune to Slow ignores every
+  movement reduction: the player takes the branch that already drops reductions for "nothing may lower this
+  character's speed" (Cripple, Wither, every reducing part of the speed line and an aura's slow), keeping the
+  bonuses; a creature drops Cripple, Ground Down, its ailments' slows and an aura's slow, keeping a commander's and the
+  Vengeful Wraiths rule's pace. **THREE ROWS CHANGE IN PLAY**, because they always stated it: **Grave Shroud** (Death
+  dagger, `Immune=Slow, Stun`), **Fevered Blood** (Pestilence fist, `Immune=Slow`) and **Living Pyre** (Demonic fist
+  Ultimate, `Immune=Stun, Slow, Displacement`). A player's speed is now worked out again on every regeneration step
+  while an aura share or an immunity to Slow is held, and once after either ends.
+- **Judgements of this change, labelled as such:** the rows' Tags are left as they were (Conflagration and Blood and
+  Iron still carry `Stat.Offense.Global`), to keep the change to what the owner ruled; War's ally shares lapse two
+  pulses after leaving as its enemy shares do (the ruling named the enemies); `AllyImmune` grants every ally inside
+  whatever the caster wears, where the older stat-gated sharing grants only for a caster wearing
+  `aura_shares_immunities_with_allies`.
+
+### Files
+
+- `CataclysmSkillShape.h/.cpp` (the six keys, `AllyImmune` read as text), `CataclysmSkillTemplates.h/.cpp` (the aura),
+  `CataclysmAbilitySystemComponent.h/.cpp` (aura shares), `CataclysmPlayerCharacter.h/.cpp`,
+  `CataclysmEnemyCharacter.h/.cpp`, `CataclysmBruteCharacter.cpp`, `CataclysmMinion.cpp` (speeds),
+  `CataclysmSkillEffects.h`, `CataclysmSkillTemplate.h`, `CataclysmTargeting.h` (comments made true).
+- `docs/All_Things_Cataclysm.xlsx`, Weapon Skills, seven cells, by `tools/reapply_damage_type_auras_workbook_edit.py`
+  (refuses unless each cell holds its value before or after, and checks no other cell moved); `game/Data/WeaponSkills.csv`
+  regenerated, three rows; `tools/generate_datatables.py` accepts the six keys.
+- `docs/Cataclysm_GDD_v2.md`: the two table lines and a paragraph on the three auras and Slow immunity.
+
+### Tests
+
+- **Unreal, new, `Cataclysm.DamageTypeAuras.`, six**, each with a control:
+  `PallOfEndingGivesItsCasterAndAMinionInsideTenPercentMoreAndOneOutsideNothing`,
+  `AnEnemyLeavingPallOfEndingKeepsItsWeakenForTheFiveSecondsItLasts`,
+  `ABurningEnemyDyingInConflagrationPassesItsBurnToTheNearestOtherWithinFourMetres`,
+  `BloodAndIronTakesArmourAndSpeedFromEnemiesInsideAndNotOutside`,
+  `BloodAndIronMakesItsCasterAndAMinionInsideFasterAndUnslowable`,
+  `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest` (the control for the three rows that change in
+  play: a granted immunity to Slow answers through the same `IsImmuneTo` a running row's `Immune=Slow` does).
+- **Unreal, changed:** `Cataclysm.AuraDamage.EveryAuraRowDealsOnlyTheDamageItsRowStates` counts thirteen Aura rows,
+  Blood and Iron among them.
+- **Python, changed:** `test_an_aura_deals_damage_only_where_its_row_states_it.py` (Blood and Iron listed;
+  Conflagration's `BurnPassesOnDeath=4` and no `AllyIncreasedDamage`). `test_stalker_kit_shape_keys.py` caught
+  `AllyImmune` missing from the C++ `TextKeys`, which would have read "Slow" as nought.
+
+**MERGE OBLIGATION:** `feat/death-skills-2885` carries the three old rows in its copy of the workbook. Whichever
+lands second re-applies the other's cells; for this change that is `tools/reapply_damage_type_auras_workbook_edit.py`.
+
+---
+
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
 
 **Tools only; no Unreal build.** Branch `fix/prove-guard-restore-retry`, at the coordinating session's brief of

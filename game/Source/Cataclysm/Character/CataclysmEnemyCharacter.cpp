@@ -1332,6 +1332,22 @@ float ACataclysmEnemyCharacter::AilmentWalkMultiplier() const
 	return 1.0f - Slow / 100.0f;
 }
 
+float ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows() const
+{
+	const UCataclysmAbilitySystemComponent* Abilities =
+		Cast<const UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	const float Raised =
+		1.0f + (Abilities ? Abilities->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) : 0.0f) / 100.0f;
+	if (UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow")))
+	{
+		return CommanderMultiplier() * (bWalkSpeedFollowsACommander ? 1.0f : WraithMultiplier()) * Raised;
+	}
+	const float Reduced = 1.0f
+		- FMath::Clamp(Abilities ? Abilities->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced) : 0.0f,
+					   0.0f, 99.0f) / 100.0f;
+	return WalkSpeedMultiplier() * AilmentWalkMultiplier() * Reduced * Raised;
+}
+
 void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
@@ -1384,7 +1400,7 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 	//
 	// BUT NOT THE VENGEFUL WRAITHS RULE'S 1.2, WHILE IT IS COMMANDED: a standing figure a dungeon rule gives the
 	// player's enemies, ruled the same night after window follow-w1. See `WalkSpeedMultiplier`.
-	const float Wanted = Base * WalkSpeedMultiplier() * AilmentWalkMultiplier();
+	const float Wanted = Base * WalkSpeedMultiplierWithSlows();
 
 	// ONLY ON A CHANGE. Assigning the same float every frame is harmless, and
 	// checking first says out loud that this is a state that changes rarely

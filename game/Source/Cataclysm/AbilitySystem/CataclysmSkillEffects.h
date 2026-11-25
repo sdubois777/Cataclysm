@@ -2816,9 +2816,15 @@ public:
 	 * and `ApplyLaunch` all move a target through. Each asks this before any
 	 * of its other rules.
 	 *
-	 * A STAGGER, A PIN, A SLOW AND MADNESS DO NOT ASK IT. `IsImmuneTo`'s own
-	 * header names Slow, Pin and Madness, but no code asks the immunity for
-	 * them, and the ruling follows the code. `ApplyStagger` keeps its own
+	 * A STAGGER, A PIN AND MADNESS DO NOT ASK IT, AND A SLOW ASKS IT ELSEWHERE.
+	 * `IsImmuneTo`'s own header names Slow, Pin and Madness. Pin and Madness
+	 * are still asked by no code. Slow is asked since 2026-11-25 (the
+	 * coordinating session's ruling that an actor immune to Slow ignores every
+	 * movement reduction) by the code that works out a walking speed --
+	 * `ACataclysmPlayerCharacter::RefreshMovementSpeed` and
+	 * `ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows` -- and not by
+	 * a function applying an effect, so this ceiling does not reach it. The
+	 * ruling follows the code. `ApplyStagger` keeps its own
 	 * ceiling, `StaggerHealthCeilingStat`. A stagger that follows a shove or
 	 * a knockdown is reached only when that landed, so it passes both
 	 * ceilings: the target's health is at or below 100 less the larger of

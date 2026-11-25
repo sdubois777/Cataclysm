@@ -47,6 +47,8 @@
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -5092,6 +5094,18 @@ void UCataclysmAuraSkill::ActivateAbility(
 	// otherwise begin at whatever the first one ended at. Issue #1162.
 	BlowsTaken = 0;
 	HealthReturned = 0.0f;
+	BurnsPassedOn = 0;
+
+	// A BURNING ENEMY THAT DIES IN THE RING PASSES ITS BURN ON, for a row stating it: Demonic's Conflagration, the
+	// owner's ruling of 2026-11-25 ("Go with A"). Bound while the aura runs and removed in `EndAbility`.
+	if (Params.BurnPassesOnDeath > 0.0f)
+	{
+		if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World))
+		{
+			Events->OnDeath.Remove(SomeoneDiedHandle);
+			SomeoneDiedHandle = Events->OnDeath.AddUObject(this, &UCataclysmAuraSkill::OnSomeoneDied);
+		}
+	}
 
 	// AND THE KEY COUNTS AS STILL DOWN UNTIL A RELEASE ARRIVES. Issue #1114.
 	// Cleared here rather than in `EndAbility`, because the aura also ends for
@@ -5299,6 +5313,9 @@ int32 UCataclysmAuraSkill::Pulse()
 		}
 	}
 
+	// AND WHAT A ROW HOLDS ON WHAT STANDS INSIDE: War's Blood and Iron, 2026-11-25.
+	HoldSharesInside(Inside);
+
 	// AND THE ALLIES INSIDE ARE HELPED. Conflagration: "allies within it deal 8%
 	// increased fire damage." The aura never looked for an ally at all before
 	// this, though `UCataclysmTargeting::FindAlliesInSphere` had existed for it
@@ -5440,7 +5457,11 @@ bool UCataclysmAuraSkill::IsHelping(const AActor* Ally) const
 void UCataclysmAuraSkill::HelpAlliesInside()
 {
 	AActor* Self = Avatar();
-	if (Params.AllyIncreasedDamage <= 0.0f || !Self)
+	// `AllyMoreDamage` FIRST: Death's Pall of Ending, the owner's ruling of 2026-11-25, "make it 10% more". A row
+	// states one of the two, and five auras keep `AllyIncreasedDamage` as the increase it was.
+	const bool bMore = Params.AllyMoreDamage > 0.0f;
+	const float Figure = bMore ? Params.AllyMoreDamage : Params.AllyIncreasedDamage;
+	if (Figure <= 0.0f || !Self)
 	{
 		return;
 	}
@@ -5457,13 +5478,20 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 	// `Leaving` below and loses the bonus at this pulse, as one that walked out
 	// does.
 	TSet<AActor*> ShouldCarry;
-	ShouldCarry.Reserve(Allies.Num());
+	ShouldCarry.Reserve(Allies.Num() + 1);
 	for (AActor* Ally : Allies)
 	{
 		if (IsValid(Ally) && !UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Ally))
 		{
 			ShouldCarry.Add(Ally);
 		}
+	}
+	// AND THE CASTER, FOR THE MORE: the owner's "you, your minions and your allies within it", ruled for Death on
+	// 2026-11-25. Never refused: a character's own buffs never ask `RefusesBuffsFromAllies`. Never for the increase,
+	// which reached allies only and still does.
+	if (bMore)
+	{
+		ShouldCarry.Add(Self);
 	}
 
 	// TAKE IT BACK FROM WHOEVER WALKED OUT, and drop any key whose actor has
@@ -5516,8 +5544,11 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 		// `SkillBuff` AS THE SOURCE, matching `UCataclysmSelfBuffSkill::
 		// GrantIncrease`. The source decides whether a modifier is allowed into
 		// the `More` bucket at all, and this one is not asking for that bucket.
+		//
+		// AND THE MORE BUCKET FOR `AllyMoreDamage`, BECAUSE THAT ROW SAYS `more`: a separate multiplier. `SkillBuff` is a
+		// source that may grant More.
 		FCataclysmStatModifier Modifier;
-		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Bucket = bMore ? ECataclysmStatBucket::More : ECataclysmStatBucket::Increased;
 		Modifier.Source = ECataclysmModifierSource::SkillBuff;
 		// MORE OF IT WHEN A ROW MAKES THE CASTER'S AURAS MORE EFFECTIVE. Ruled
 		// 2026-10-13. Settled when the ally is given the bonus: an ally already
@@ -5528,7 +5559,7 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 		// 2026-10-13: this bonus is a buff a skill of the caster's lays on its
 		// allies, so both rows apply to it and multiply. 8 with 50% more
 		// effective and 40% more potent is 16.8.
-		const float Effective = MoreEffective(Params.AllyIncreasedDamage);
+		const float Effective = MoreEffective(Figure);
 		Modifier.Value = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, Effective);
 
 		// SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2) on
@@ -5610,6 +5641,152 @@ void UCataclysmAuraSkill::StopSharingImmunities()
 	ImmuneAllies.Reset();
 }
 
+void UCataclysmAuraSkill::HoldSharesInside(const TArray<AActor*>& EnemiesInside)
+{
+	AActor* Self = Avatar();
+	const bool bAnyShare = Params.EnemyArmourRemoved > 0.0f || Params.EnemyMovementSpeedReduced > 0.0f
+		|| Params.AllyMovementSpeed > 0.0f || !Params.AllyImmune.IsEmpty();
+	if (!Self || !bAnyShare)
+	{
+		return;
+	}
+
+	// FOR TWO PULSES, RENEWED EVERY PULSE, so a character that walks out keeps it two pulses more and then loses it:
+	// the coordinating session's ruling of 2026-11-25, the same span the aura's shared immunities are granted for.
+	const float Seconds = 2.0f * (Params.Interval > 0.0f ? Params.Interval : 1.0f);
+	auto Remember = [this](AActor* Who) { SharedWith.AddUnique(Who); };
+
+	// THE ENEMIES: armour removed and movement slowed, each raised by a row making the caster's auras more
+	// effective, as the aura's other figures are (ruled 2026-11-25).
+	const float Armour = MoreEffective(Params.EnemyArmourRemoved);
+	const float Slower = MoreEffective(Params.EnemyMovementSpeedReduced);
+	for (AActor* Enemy : EnemiesInside)
+	{
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Enemy));
+		if (!IsValid(Enemy) || !Theirs || UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			continue;
+		}
+		if (Armour > 0.0f)
+		{
+			Theirs->HoldAuraShare(ECataclysmAuraShareKind::ArmourRemoved, this, Armour, Seconds);
+		}
+		if (Slower > 0.0f)
+		{
+			Theirs->HoldAuraShare(ECataclysmAuraShareKind::MovementReduced, this, Slower, Seconds);
+		}
+		Remember(Enemy);
+	}
+
+	if (Params.AllyMovementSpeed <= 0.0f && Params.AllyImmune.IsEmpty())
+	{
+		return;
+	}
+
+	// THE CASTER AND EVERY ALLY INSIDE: faster, and what the row says they cannot be. The speed is a buff the caster's
+	// skill lays, so a row making the caster's buffs more potent raises it too, as it raises an aura's damage bonus.
+	// The caster's own immunity is the row's `Immune`, which `IsImmuneTo` reads off this running skill.
+	const float Faster = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, MoreEffective(Params.AllyMovementSpeed));
+	TArray<FString> Kinds;
+	Params.AllyImmune.ParseIntoArray(Kinds, TEXT(","));
+	TArray<AActor*> Friends = UCataclysmTargeting::FindAlliesInSphere(
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
+	Friends.Insert(Self, 0);
+	for (AActor* Friend : Friends)
+	{
+		const bool bCaster = Friend == Self;
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Friend));
+		// AN ALLY THAT REFUSES BUFFS FROM ALLIES IS GIVEN NOTHING (ruled 2026-10-19); the caster never refuses its own.
+		if (!IsValid(Friend) || !Theirs || UCataclysmSkillEffects::IsDead(Friend)
+			|| (!bCaster && UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Friend)))
+		{
+			continue;
+		}
+		if (Faster > 0.0f)
+		{
+			Theirs->HoldAuraShare(ECataclysmAuraShareKind::MovementRaised, this, Faster, Seconds);
+		}
+		if (!bCaster)
+		{
+			for (FString Kind : Kinds)
+			{
+				Kind.TrimStartAndEndInline();
+				Theirs->GrantImmunity(FName(*Kind), this, Seconds);
+			}
+		}
+		Remember(Friend);
+	}
+}
+
+void UCataclysmAuraSkill::ReleaseEveryShare()
+{
+	for (const TWeakObjectPtr<AActor>& Was : SharedWith)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Was.Get())))
+		{
+			Theirs->ReleaseAuraSharesFrom(this);
+			Theirs->RevokeImmunitiesFrom(this);
+		}
+	}
+	SharedWith.Reset();
+}
+
+void UCataclysmAuraSkill::OnSomeoneDied(const FCataclysmDeathNotice& Notice)
+{
+	AActor* Self = Avatar();
+	AActor* Victim = Notice.Victim;
+	if (!Self || !IsValid(Victim) || Victim == Self || Params.BurnPassesOnDeath <= 0.0f)
+	{
+		return;
+	}
+
+	// AN ENEMY OF THE CASTER'S, by the attitude every search compares (`UCataclysmTeams::AttitudeBetween`, which
+	// `UCataclysmTargeting::MatchesAttitude` ends on). Not `IsHostileTo` itself: that refuses the dead, and the death
+	// tag is on before this announcement is raised.
+	if (UCataclysmTeams::AttitudeBetween(Self, Victim) != ETeamAttitude::Hostile)
+	{
+		return;
+	}
+
+	// THAT DIED INSIDE THE RING: where the death notice says it fell, against the ring as it stands now.
+	if (FVector::DistSquared(Notice.Location, Self->GetActorLocation()) > FMath::Square(ScaledRadiusCm()))
+	{
+		return;
+	}
+
+	// AND WAS BURNING: ANY BURN, NOT ONLY THIS AURA'S, and the strongest when it carried more than one -- an enemy
+	// carries one application of an ailment, the strongest (`RunningAilmentOn`). The coordinating session's ruling of
+	// 2026-11-25.
+	UCataclysmSkillEffects::FRunningAilment Running;
+	if (!UCataclysmSkillEffects::RunningAilmentOn(Victim, UCataclysmSkillEffects::BurnTag(), Running))
+	{
+		return;
+	}
+
+	// TO THE NEAREST OTHER LIVING ENEMY WITHIN THE ROW'S METRES OF THE BODY, raised by a row making the caster's
+	// auras more effective. The search refuses the dead, so the body is never its own recipient. The copy carries the
+	// rate and the seconds left, credited to the caster, and the receiver takes it by the ordinary rule for burns.
+	const float RangeCm = MoreEffective(Params.BurnPassesOnDeath) * 100.0f;
+	for (AActor* Target : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, Notice.Location, RangeCm, 2))
+	{
+		if (Target == Victim)
+		{
+			continue;
+		}
+		if (UCataclysmSkillEffects::ApplySpreadCopy(Self, Target, Running))
+		{
+			++BurnsPassedOn;
+			UE_LOG(LogCataclysm, Log, TEXT("%s: %s died burning in the ring; its burn of %.1f a second for %.1f s "
+										   "passed to %s."),
+				   *SkillName, *Victim->GetName(), Running.DamagePerSecond, Running.SecondsLeft, *Target->GetName());
+		}
+		break;
+	}
+}
+
 void UCataclysmAuraSkill::StopHelpingEveryone()
 {
 	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
@@ -5662,6 +5839,15 @@ void UCataclysmAuraSkill::EndAbility(
 	// taking the sword out of the ground here. Issue #1182.
 	StopHelpingEveryone();
 	StopSharingImmunities();
+	ReleaseEveryShare();
+	if (SomeoneDiedHandle.IsValid())
+	{
+		if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
+		{
+			Events->OnDeath.Remove(SomeoneDiedHandle);
+		}
+		SomeoneDiedHandle.Reset();
+	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);
