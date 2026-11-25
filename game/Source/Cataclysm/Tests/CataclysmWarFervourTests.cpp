@@ -19,6 +19,8 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -537,6 +539,177 @@ CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourRowsTest,
 						  "python tools/run_editor_python.py tools/generate_datatable_assets.py"));
 		}
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Fervour spends, 2026-11-25
+// ---------------------------------------------------------------------------
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourIronWillTest,
+	"Cataclysm.WarFervour.ANegatedBlockPaysIronWillsCostAndABlockThatTookAShareDoesNot")
+{
+	using namespace CataclysmWarFervourTest;
+	// IRON WILL THROUGH THE DAMAGE PATH: a defender at 50 Fervour holding a negation chance of 100 and a cost of 20 blocks a
+	// real blow, which is negated and costs 20. THE CONTROL: the cost alone, with no negation, on a block that took only
+	// its share, costs nothing. And a cost above what the pool holds takes what there is.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FWarFervourPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FWarFervourPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+
+	const FWarFervourFighter Attacker(World, 100.0f);
+	const FWarFervourFighter Defender(World, 0.0f);
+	Defender.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
+
+	HoldWarFervourStats(Defender.AbilitySystem, {{FCataclysmWarFervour::CostPerNegatedBlockStat, 20.0f}});
+	Defender.SetFervour(50.0f);
+	{
+		const FCataclysmDamageResult Result = WarFervourBlow(Attacker, Defender);
+		if (TestTrue(TEXT("set-up: the control blow was blocked"), Result.bBlocked))
+		{
+			TestFalse(TEXT("and not negated: no negation chance is held"), Result.bNegated);
+			TestEqual(TEXT("control: a block that took its share costs nothing"), Defender.Fervour(), 50.0f, 0.001f);
+		}
+	}
+
+	HoldWarFervourStats(Defender.AbilitySystem, {{TEXT("block_negation_chance"), 100.0f},
+												 {FCataclysmWarFervour::CostPerNegatedBlockStat, 20.0f}});
+	World->TimeSeconds += 1.0f;
+	{
+		const FCataclysmDamageResult Result = WarFervourBlow(Attacker, Defender);
+		if (TestTrue(TEXT("set-up: the blow was negated"), Result.bNegated))
+		{
+			TestEqual(TEXT("a negated block costs 20"), Defender.Fervour(), 30.0f, 0.001f);
+			TestEqual(TEXT("and nothing reached health"), Result.DealtToHealth, 0.0f, 0.001f);
+		}
+	}
+
+	Defender.SetFervour(5.0f);
+	World->TimeSeconds += 1.0f;
+	WarFervourBlow(Attacker, Defender);
+	TestEqual(TEXT("a cost of 20 with 5 held takes the 5"), Defender.Fervour(), 0.0f, 0.001f);
+	return true;
+}
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourUndyingTest,
+	"Cataclysm.WarFervour.UndyingSpendsThePoolOnALethalBlowAndRestoresFivePercentForEachTen")
+{
+	using namespace CataclysmWarFervourTest;
+	// UNDYING THROUGH THE DAMAGE PATH: a defender at 50 of 1,000 health and 73 Fervour, holding 5% for each 10, takes a
+	// blow of 100. It is left 1, the 73 are spent, and seven whole steps of 50 come back: 351. THE CONTROL: the same blow
+	// on a defender without the row empties its health.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FWarFervourPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FWarFervourPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+
+	const FWarFervourFighter Attacker(World, 100.0f);
+	const auto Health = [](const FWarFervourFighter& Who)
+	{
+		return Who.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+	const auto Weaken = [](const FWarFervourFighter& Who)
+	{
+		Who.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		Who.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50.0f);
+		Who.SetFervour(73.0f);
+	};
+
+	const FWarFervourFighter Unsaved(World, 0.0f);
+	Weaken(Unsaved);
+	WarFervourBlow(Attacker, Unsaved);
+	TestEqual(TEXT("control: without the row the blow empties health"), Health(Unsaved), 0.0f, 0.001f);
+	TestEqual(TEXT("control: and spends no Fervour"), Unsaved.Fervour(), 73.0f, 0.001f);
+
+	const FWarFervourFighter Saved(World, 0.0f);
+	Weaken(Saved);
+	HoldWarFervourStats(Saved.AbilitySystem, {{FCataclysmWarFervour::LethalBlowHealthPerTenFervourStat, 5.0f}});
+	WarFervourBlow(Attacker, Saved);
+	TestEqual(TEXT("Undying spends the whole pool"), Saved.Fervour(), 0.0f, 0.001f);
+	TestEqual(TEXT("and leaves 1 health with seven steps of 5% of 1,000 restored"), Health(Saved), 351.0f, 0.001f);
+	return true;
+}
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourCleaveTest,
+	"Cataclysm.WarFervour.CleavePaysForEachEnemyBeyondTheFirstAndGainsForEachPaid")
+{
+	using namespace CataclysmWarFervourTest;
+	// CLEAVE'S TRADE, with its rows on melee: a cost of 5 and a gain of 3 for each paid. Three enemies struck with 20 held
+	// pay twice and gain twice, 16. THE CONTROLS: one enemy struck, and three struck by an attack that is not melee, change
+	// nothing; and 4 held cannot pay for the first extra enemy, so nothing is paid or gained.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FWarFervourFighter Holder(World, 0.0f);
+	HoldWarFervourStats(Holder.AbilitySystem, {{FCataclysmWarFervour::CostPerExtraEnemyHitStat, 5.0f, TEXT("Type.Melee")},
+											   {FCataclysmWarFervour::GainPerExtraEnemyHitPaidStat, 3.0f,
+												TEXT("Type.Melee")}});
+	FGameplayTagContainer Melee;
+	Melee.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")), false));
+	if (!TestEqual(TEXT("set-up: the melee tag exists"), Melee.Num(), 1))
+	{
+		return false;
+	}
+
+	Holder.SetFervour(20.0f);
+	FCataclysmWarFervour::TradeForEnemiesStruckTogether(Holder.AbilitySystem, Melee, 1);
+	TestEqual(TEXT("control: one enemy struck changes nothing"), Holder.Fervour(), 20.0f, 0.001f);
+	FCataclysmWarFervour::TradeForEnemiesStruckTogether(Holder.AbilitySystem, FGameplayTagContainer(), 3);
+	TestEqual(TEXT("control: an attack that is not melee changes nothing"), Holder.Fervour(), 20.0f, 0.001f);
+	TestEqual(TEXT("three enemies struck by a melee attack: two paid at 5, two gained at 3"),
+			  FCataclysmWarFervour::TradeForEnemiesStruckTogether(Holder.AbilitySystem, Melee, 3), -4.0f, 0.001f);
+	TestEqual(TEXT("which leaves 16"), Holder.Fervour(), 16.0f, 0.001f);
+
+	Holder.SetFervour(4.0f);
+	FCataclysmWarFervour::TradeForEnemiesStruckTogether(Holder.AbilitySystem, Melee, 3);
+	TestEqual(TEXT("4 held cannot pay for the first extra enemy, so nothing is paid or gained"), Holder.Fervour(), 4.0f,
+			  0.001f);
+	return true;
+}
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourBloodTitheTest,
+	"Cataclysm.WarFervour.BloodTitheTakesFervourForEachWholeStepOfHealthRegenerated")
+{
+	using namespace CataclysmWarFervourTest;
+	// BLOOD TITHE THROUGH THE HEAL'S OWN ROUTE, `UCataclysmRegeneration::TopUp`: 5 Fervour for each 100 health regenerated.
+	// 250 regenerated takes 10 and carries 50; 60 more makes a third step and takes 5. THE CONTROL: 500 restored by a heal
+	// that is not regeneration takes nothing.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FWarFervourFighter Holder(World, 0.0f);
+	HoldWarFervourStats(Holder.AbilitySystem, {{FCataclysmWarFervour::LostToRegenerationStat, 5.0f},
+											   {FCataclysmWarFervour::RegenerationPerLossStat, 100.0f}});
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	FGameplayTagContainer Regenerating;
+	Regenerating.AddTag(UCataclysmFervour::RegenerationTag());
+	Holder.AbilitySystem->SetNumericAttributeBase(Health, 1000.0f);
+	Holder.SetFervour(50.0f);
+
+	UCataclysmRegeneration::TopUp(*Holder.AbilitySystem, Health, Maximum, 500.0f, FGameplayTagContainer());
+	TestEqual(TEXT("control: 500 restored by a heal that is not regeneration takes nothing"), Holder.Fervour(), 50.0f,
+			  0.001f);
+
+	UCataclysmRegeneration::TopUp(*Holder.AbilitySystem, Health, Maximum, 250.0f, Regenerating);
+	TestEqual(TEXT("250 regenerated takes two steps of 5"), Holder.Fervour(), 40.0f, 0.001f);
+	UCataclysmRegeneration::TopUp(*Holder.AbilitySystem, Health, Maximum, 60.0f, Regenerating);
+	TestEqual(TEXT("and 60 more, with the 50 carried, a third"), Holder.Fervour(), 35.0f, 0.001f);
 	return true;
 }
 

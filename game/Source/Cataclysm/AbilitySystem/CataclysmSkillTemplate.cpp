@@ -19,6 +19,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBerserkerStates.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For the share of a point-blank skill's blow struck at the allies inside its area. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
@@ -2303,6 +2304,13 @@ bool UCataclysmSkillTemplate::BeginAttackOn(const TArray<AActor*>& Targets)
 		UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
 			GetAbilitySystemComponentFromActorInfo(), SkillTags,
 			AttackEnemiesStruckTogether);
+
+	// AND CLEAVE'S TRADE, ONCE FOR THE WHOLE ATTACK, before Berserking spends what is left: "Each enemy hit beyond the
+	// first costs 5 Fervour and generates 3 Fervour per point if Fervour was available to pay the cost." Nothing for a
+	// character without `fervour_cost_per_extra_enemy_hit`, or an attack that struck one enemy. The Fervour spends,
+	// 2026-11-25.
+	FCataclysmWarFervour::TradeForEnemiesStruckTogether(
+		GetAbilitySystemComponentFromActorInfo(), SkillTags, AttackEnemiesStruckTogether);
 
 	// AND BERSERKING'S SPEND, ONCE FOR THE WHOLE ATTACK, INTO THE SAME SUM: "your next melee attack consumes all Fervour.
 	// For each point of Fervour consumed that attack deals +10% bonus damage per point invested." Nothing for a

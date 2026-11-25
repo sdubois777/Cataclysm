@@ -954,7 +954,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// AND WHAT IT REMOVED, which the block event carries. Issue #1833
 			// group E part 3.
 			const float BeforeBlock = Damage;
-			Damage *= NegationChance >= 100.0f || NegationRoll < NegationChance
+			Result.bNegated = NegationChance >= 100.0f || NegationRoll < NegationChance;
+			Damage *= Result.bNegated
 				? 0.0f
 				: 1.0f - BlockShareOf(Defender, BlowOf(Hit)) / 100.0f;
 			Result.DamageBlocked = BeforeBlock - Damage;

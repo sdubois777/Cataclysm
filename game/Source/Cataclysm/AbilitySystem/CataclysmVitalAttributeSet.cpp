@@ -1485,6 +1485,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// share of the cut figure, as was done until 2026-10-13, which leaves a wearer of the second save well
 			// above the share of health its heal watches and so not healed by the blow the row cut for it.
 			bool bSavedFromALethalBlow = false;
+			// THE HEALTH UNDYING RESTORES, paid after the blow's write below. The Fervour spends, 2026-11-25.
+			float UndyingRestore = 0.0f;
 			if (UCataclysmAbilitySystemComponent* Guarded =
 					Cast<UCataclysmAbilitySystemComponent>(
 						GetOwningAbilitySystemComponent()))
@@ -1594,6 +1596,26 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					bSavedFromALethalBlow = true;
 					Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 					Guarded->NoteLethalHitReprieved();
+				}
+
+				// AND THE BERSERKER'S UNDYING, FOR A BLOW OR A TICK NEITHER SAVE ABOVE TOOK. The Fervour spends,
+				// 2026-11-25: "When you would be reduced to 0 HP, if you have at least 50 Fervour, you are instead
+				// reduced to 1 HP. All of your Fervour is instantly spent, restoring HP equal to 5% of your maximum HP
+				// per 10 Fervour spent." AFTER THE TWO, because each of them costs nothing and this costs the whole
+				// pool; A TICK TOO, as the reprieve reads "would be killed". The blow leaves one point and the restore is
+				// paid after it is written, through `TopUp`, as any heal is.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& EmptiesHealthLessTheDelayedShare())
+				{
+					const float Restore = FCataclysmWarFervour::SpendAllOnLethalBlow(Guarded);
+					if (Restore >= 0.0f)
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+						UndyingRestore = Restore;
+					}
 				}
 
 				// AND A WORN ROW THAT HEALS AS HEALTH FALLS BELOW ITS SHARE, which
@@ -2336,6 +2358,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// AND UNDYING'S RESTORE, NOW THAT THE BLOW HAS LEFT ONE POINT. Through `TopUp`, so every rule of a heal
+			// applies to it: the unreserved maximum, any reduction to healing received. With no tags: it is not
+			// regeneration, and not leech. The Fervour spends, 2026-11-25.
+			if (UndyingRestore > 0.0f)
+			{
+				if (UAbilitySystemComponent* Restoring = GetOwningAbilitySystemComponent())
+				{
+					UCataclysmRegeneration::TopUp(*Restoring, GetHealthAttribute(), GetMaxHealthAttribute(), UndyingRestore,
+												  FGameplayTagContainer());
+				}
+			}
+
 			// THE BONDED CREATURE'S ALLIES PAY THE REST, EVENLY. Issue #1559.
 			//
 			// EACH IS TOLD WHO STRUCK FIRST, so a death this causes credits
@@ -2468,6 +2502,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Cataclysm->NoteBlocked(
 						UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
 						Outcome.DamageBlocked);
+
+					// AND IRON WILL'S COST FOR A NEGATED BLOCK, before the block's own Fervour gain, so the 75 Fervour
+					// condition is judged on the pool that negated it. Nought for every character without
+					// `fervour_cost_per_negated_block`. The Fervour spends, 2026-11-25.
+					if (Outcome.bNegated)
+					{
+						FCataclysmWarFervour::SpendOnNegatedBlock(Cataclysm);
+					}
 
 					// AND THE BULWARK'S FERVOUR FOR A BLOCK, "Taking hits, blocking and killing enemies generate
 					// Fervour". Nought for every character without `fervour_per_block`. Slice C, 2026-11-24.

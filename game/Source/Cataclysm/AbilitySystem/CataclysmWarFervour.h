@@ -136,7 +136,72 @@ public:
 	 */
 	static float OutOfCombatDecayStep(ACataclysmCharacterBase* Character, float SecondsInStep);
 
+	//~ THE FERVOUR SPENDS, `plan_death_and_war.md`, 2026-11-25. Each is a figure read through the stat pipeline at the
+	// moment it applies, so the condition its row is stated under ("While above 75 Fervour", "if you have at least 50
+	// Fervour", "Two-handed weapons only") is judged then, and a spend takes no more than the pool holds.
+
+	/**
+	 * Iron Will (`Bulwark_basic_ic_resolve_001`): "While above 75 Fervour, blocked attacks automatically negate all
+	 * damage from that hit, draining 20 Fervour per block. Per point: reduces the Fervour drain by 2." Fervour taken for
+	 * each block that negated its blow, in points: the rows are 20 once and -2 a point, under the 75 Fervour condition.
+	 */
+	static const TCHAR* CostPerNegatedBlockStat;
+
+	/** Take `CostPerNegatedBlockStat` from the pool, at most what it holds. Call it for a block that negated its blow,
+	 *  where the block is announced and before the block's own Fervour gain. @return what was taken, nought or more */
+	static float SpendOnNegatedBlock(UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Undying (`Berserker_leech_004`): "When you would be reduced to 0 HP, if you have at least 50 Fervour, you are
+	 * instead reduced to 1 HP. All of your Fervour is instantly spent, restoring HP equal to 5% of your maximum HP per 10
+	 * Fervour spent." The share of maximum health restored for each whole 10 Fervour spent; the row is stated under
+	 * `class_resource_points_at_least` 50. THE 10 IS THE STAT'S UNIT, as 1% of maximum health is `fervour_from_damage`'s.
+	 */
+	static const TCHAR* LethalBlowHealthPerTenFervourStat;
+
+	/**
+	 * Undying's save: when `LethalBlowHealthPerTenFervourStat` holds, spend the whole pool and work out the health it
+	 * restores, whole steps of 10 rounded down (the 2026-08-25 rule that a bonus counts whole steps).
+	 * @return the health to restore after the blow leaves 1, or below nought when there is no save
+	 */
+	static float SpendAllOnLethalBlow(UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Cleave (`Berserker_twoh_004`): "Each enemy hit beyond the first costs 5 Fervour and generates 3 Fervour per point if
+	 * Fervour was available to pay the cost." The cost for each enemy an attack strikes beyond the first, and the
+	 * Fervour gained for each one paid for; both on `Type.Melee`, stated under `wielding_two_handed_weapon`.
+	 */
+	static const TCHAR* CostPerExtraEnemyHitStat;
+	static const TCHAR* GainPerExtraEnemyHitPaidStat;
+
+	/**
+	 * Cleave's trade, once for an attack, before its first blow: for each enemy beyond the first, in turn, the cost is
+	 * paid if the pool holds it and the gain then added (scaled by `class_resource_generation`, clamped); an enemy the
+	 * pool cannot pay for gains nothing. Read with the attack's skill tags. @return the change to the pool
+	 */
+	static float TradeForEnemiesStruckTogether(UAbilitySystemComponent* AbilitySystem, const FGameplayTagContainer& SkillTags,
+											   int32 EnemiesStruck);
+
+	/**
+	 * Blood Tithe (`Bulwark_basic_jg_resolve_001`): "Lose 5 Fervour for every 100 flat HP regenerated. ... At 6 points:
+	 * The Fervour cost is reduced to 1 per 150 HP regenerated." The Fervour lost for each whole step of health
+	 * regenerated, and the step in points of health: 5 and 100 at one point, 1 and 150 from six.
+	 */
+	static const TCHAR* LostToRegenerationStat;
+	static const TCHAR* RegenerationPerLossStat;
+
+	/**
+	 * Blood Tithe's loss: for healing tagged as regeneration that restored `Restored` health, count it towards the step
+	 * and take the loss for every whole step, carrying the rest to the next. Called by `UCataclysmRegeneration::TopUp`
+	 * beside the Masochist's removal for healing, with what fit. @return what was taken, nought or more
+	 */
+	static float LoseForRegeneration(UAbilitySystemComponent* AbilitySystem, float Restored,
+									 const FGameplayTagContainer& Healing);
+
 private:
+	/** Take up to `Amount` from the pool, clamped at nought, and return what was taken. */
+	static float TakeFromPool(UAbilitySystemComponent* AbilitySystem, float Amount);
+
 	/** The one gain every function above makes: the rate `Stat` grants, read with `Tags`, scaled, clamped, written. */
 	static float GainByRate(UAbilitySystemComponent* AbilitySystem, const TCHAR* Stat, const FGameplayTagContainer& Tags);
 };

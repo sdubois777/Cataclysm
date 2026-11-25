@@ -459,4 +459,86 @@ bool FCataclysmWarDataRowsRidersTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The Fervour spends, 2026-11-25
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarDataRowsSpendsTest,
+	"Cataclysm.WarDataRows.TheSpendsCarryTheMeleeRangeAndChangeAtTheirPoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Fervour spends' rows (`tools/reapply_war_fervour_spends_workbook.py`):
+ *
+ *   - WARMONGER AND CUT AND RUN count enemies within melee range, 4 metres by the coordinating session's ruling, carried
+ *     into the modifier; Warmonger's drain is 3 at one point and at six, its damage 8 a point (THE CONTROL).
+ *   - IRON WILL's cost is 20 less 2 a point: 18 at one point, 4 at eight.
+ *   - CLEAVE's arc is 180 and 10 a point: 190 at one, 240 at six.
+ *   - BLOOD TITHE's loss is 5 for each 100 below six points and 1 for each 150 from six.
+ */
+bool FCataclysmWarDataRowsSpendsTest::RunTest(const FString&)
+{
+	using namespace CataclysmWarDataRowsTest;
+	const UDataTable* Nodes = nullptr;
+	const UDataTable* Effects = nullptr;
+	if (!LoadTables(*this, Nodes, Effects))
+	{
+		return false;
+	}
+	if (UCataclysmPassiveTree::EffectsFor(Effects, FName(TEXT("Berserker_twoh_016"))).Num() == 0)
+	{
+		AddError(TEXT("Warmonger has no row in DT_PassiveEffects. If it has one in game/Data/PassiveEffects.csv, the asset "
+					  "is older than the CSV: run  python tools/run_editor_python.py tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	for (const int32 Points : {1, 6})
+	{
+		const TMap<FName, TArray<FCataclysmStatModifier>> Granted =
+			GrantedBy(Nodes, Effects, TEXT("Berserker_twoh_016"), Points);
+		const TArray<FCataclysmStatModifier> Drain = OnStat(Granted, TEXT("fervour_drain_per_second"),
+															ECataclysmStatBucket::Flat);
+		if (TestEqual(*FString::Printf(TEXT("Warmonger at %d points: one drain row"), Points), Drain.Num(), 1))
+		{
+			TestEqual(TEXT("3 for each enemy, once"), Drain[0].Value, 3.0f, 0.001f);
+			TestTrue(TEXT("for each enemy in reach"), Drain[0].Scale == ECataclysmStatScale::PerEnemyInReach);
+			TestEqual(TEXT("within melee range, 4 metres"), Drain[0].ReachMetres, 4.0f, 0.001f);
+		}
+		TestEqual(*FString::Printf(TEXT("and its damage is 8 a point (the control): %d"), Points * 8),
+				  Summed(OnStat(Granted, TEXT("attack_damage"), ECataclysmStatBucket::Increased)),
+				  8.0f * static_cast<float>(Points), 0.001f);
+	}
+
+	const TArray<FCataclysmStatModifier> CutAndRun = OnStat(
+		GrantedBy(Nodes, Effects, TEXT("Berserker_capstone_50"), 1, 2), TEXT("movement_speed"), ECataclysmStatBucket::Increased);
+	if (TestEqual(TEXT("Cut and Run: one movement speed row"), CutAndRun.Num(), 1))
+	{
+		TestEqual(TEXT("5% for each enemy"), CutAndRun[0].Value, 5.0f, 0.001f);
+		TestEqual(TEXT("within 4 metres"), CutAndRun[0].ReachMetres, 4.0f, 0.001f);
+		TestTrue(TEXT("in Frenzy"), CutAndRun[0].Condition == ECataclysmStatCondition::InFrenzy);
+	}
+
+	const auto FlatSum = [&](const TCHAR* Node, int32 Points, const TCHAR* Stat)
+	{
+		return Summed(OnStat(GrantedBy(Nodes, Effects, Node, Points), Stat, ECataclysmStatBucket::Flat));
+	};
+	TestEqual(TEXT("Iron Will at 1 point costs 18"),
+			  FlatSum(TEXT("Bulwark_basic_ic_resolve_001"), 1, TEXT("fervour_cost_per_negated_block")), 18.0f, 0.001f);
+	TestEqual(TEXT("and at 8 points 4"),
+			  FlatSum(TEXT("Bulwark_basic_ic_resolve_001"), 8, TEXT("fervour_cost_per_negated_block")), 4.0f, 0.001f);
+	TestEqual(TEXT("Cleave's arc at 1 point is 190 degrees"),
+			  FlatSum(TEXT("Berserker_twoh_004"), 1, TEXT("strike_arc_at_least_degrees")), 190.0f, 0.001f);
+	TestEqual(TEXT("and at 6 points 240"),
+			  FlatSum(TEXT("Berserker_twoh_004"), 6, TEXT("strike_arc_at_least_degrees")), 240.0f, 0.001f);
+	TestEqual(TEXT("Blood Tithe at 5 points loses 5"),
+			  FlatSum(TEXT("Bulwark_basic_jg_resolve_001"), 5, TEXT("fervour_lost_to_regeneration")), 5.0f, 0.001f);
+	TestEqual(TEXT("for each 100 regenerated"),
+			  FlatSum(TEXT("Bulwark_basic_jg_resolve_001"), 5, TEXT("regeneration_per_fervour_loss")), 100.0f, 0.001f);
+	TestEqual(TEXT("and at 6 points 1"),
+			  FlatSum(TEXT("Bulwark_basic_jg_resolve_001"), 6, TEXT("fervour_lost_to_regeneration")), 1.0f, 0.001f);
+	TestEqual(TEXT("for each 150"),
+			  FlatSum(TEXT("Bulwark_basic_jg_resolve_001"), 6, TEXT("regeneration_per_fervour_loss")), 150.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

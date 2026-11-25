@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -16,6 +18,12 @@ const TCHAR* FCataclysmWarFervour::PerGadgetPlacedStat = TEXT("fervour_per_gadge
 const TCHAR* FCataclysmWarFervour::PerTrapTriggeredStat = TEXT("fervour_per_trap_triggered");
 const TCHAR* FCataclysmWarFervour::PerDeviceHitStat = TEXT("fervour_per_device_hit");
 const TCHAR* FCataclysmWarFervour::PerHitDealtStat = TEXT("fervour_per_hit_dealt");
+const TCHAR* FCataclysmWarFervour::CostPerNegatedBlockStat = TEXT("fervour_cost_per_negated_block");
+const TCHAR* FCataclysmWarFervour::LethalBlowHealthPerTenFervourStat = TEXT("health_percent_per_ten_fervour_on_lethal_blow");
+const TCHAR* FCataclysmWarFervour::CostPerExtraEnemyHitStat = TEXT("fervour_cost_per_extra_enemy_hit");
+const TCHAR* FCataclysmWarFervour::GainPerExtraEnemyHitPaidStat = TEXT("fervour_per_extra_enemy_hit_paid");
+const TCHAR* FCataclysmWarFervour::LostToRegenerationStat = TEXT("fervour_lost_to_regeneration");
+const TCHAR* FCataclysmWarFervour::RegenerationPerLossStat = TEXT("regeneration_per_fervour_loss");
 const TCHAR* FCataclysmWarFervour::OutOfCombatDecayPerSecondStat = TEXT("fervour_decay_out_of_combat_per_second");
 
 const TArray<const TCHAR*>& FCataclysmWarFervour::GainStats()
@@ -24,6 +32,123 @@ const TArray<const TCHAR*>& FCataclysmWarFervour::GainStats()
 											   PerTrapPlacedStat,	 PerGadgetPlacedStat, PerTrapTriggeredStat,
 											   PerDeviceHitStat,	 PerHitDealtStat};
 	return Stats;
+}
+
+float FCataclysmWarFervour::TakeFromPool(UAbilitySystemComponent* AbilitySystem, float Amount)
+{
+	if (!AbilitySystem || Amount <= 0.0f || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return 0.0f;
+	}
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+	// AT MOST WHAT THE POOL HOLDS: a spend here is never refused for being short (unlike an Ultimate's cost); it takes
+	// what there is, as each sentence's "draining" does.
+	const float Taken = FMath::Min(Amount, FMath::Max(0.0f, Before));
+	if (Taken <= 0.0f)
+	{
+		return 0.0f;
+	}
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
+	return Before - AbilitySystem->GetNumericAttribute(Pool);
+}
+
+float FCataclysmWarFervour::SpendOnNegatedBlock(UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	// THROUGH THE PIPELINE WITH NO TAGS, so the 75 Fervour condition is judged on the pool before the cost comes out of
+	// it: the same pool that let the block negate.
+	return TakeFromPool(AbilitySystem,
+						Cataclysm->StatForSkill(FName(CostPerNegatedBlockStat), FGameplayTagContainer(), 0.0f));
+}
+
+float FCataclysmWarFervour::SpendAllOnLethalBlow(UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return -1.0f;
+	}
+	// THE ROW IS STATED UNDER "AT LEAST 50 FERVOUR", so a character holding less reads nought and is not saved.
+	const float PercentPerTen =
+		Cataclysm->StatForSkill(FName(LethalBlowHealthPerTenFervourStat), FGameplayTagContainer(), 0.0f);
+	if (PercentPerTen <= 0.0f)
+	{
+		return -1.0f;
+	}
+	const float Spent = TakeFromPool(
+		AbilitySystem,
+		AbilitySystem->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()));
+	const float MaximumHealth =
+		FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+	// WHOLE STEPS OF 10, ROUNDED DOWN: 73 Fervour is seven steps.
+	return FMath::FloorToFloat(Spent / 10.0f) * PercentPerTen / 100.0f * MaximumHealth;
+}
+
+float FCataclysmWarFervour::TradeForEnemiesStruckTogether(UAbilitySystemComponent* AbilitySystem,
+														  const FGameplayTagContainer& SkillTags, int32 EnemiesStruck)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem ? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+	if (!Cataclysm || !Resource || EnemiesStruck <= 1)
+	{
+		return 0.0f;
+	}
+	const float Cost = Cataclysm->StatForSkill(FName(CostPerExtraEnemyHitStat), SkillTags, 0.0f);
+	if (Cost <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
+		AbilitySystem, FMath::Max(0.0f, Cataclysm->StatForSkill(FName(GainPerExtraEnemyHitPaidStat), SkillTags, 0.0f)));
+
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+	const float Most = Resource->MaximumClassResourceAsked();
+	// EACH ENEMY IN TURN, PAID THEN GAINED: "Each enemy hit beyond the first costs 5 Fervour and generates 3 Fervour per
+	// point if Fervour was available to pay the cost." An enemy the pool cannot pay for gains nothing, and nor can one
+	// after it, since the pool has not moved.
+	float Held = Before;
+	for (int32 Extra = 1; Extra < EnemiesStruck; ++Extra)
+	{
+		if (Held < Cost)
+		{
+			break;
+		}
+		Held = FMath::Min(Held - Cost + Gain, Most);
+	}
+	const float Change = Held - Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float FCataclysmWarFervour::LoseForRegeneration(UAbilitySystemComponent* AbilitySystem, float Restored,
+												const FGameplayTagContainer& Healing)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	// REGENERATION ONLY, by the tag `UCataclysmRegeneration`'s step puts on it: a potion or a leech is not "HP
+	// regenerated".
+	if (!Cataclysm || Restored <= 0.0f || !Healing.HasTag(UCataclysmFervour::RegenerationTag()))
+	{
+		return 0.0f;
+	}
+	const float Loss = Cataclysm->StatForSkill(FName(LostToRegenerationStat), FGameplayTagContainer(), 0.0f);
+	const float Step = Cataclysm->StatForSkill(FName(RegenerationPerLossStat), FGameplayTagContainer(), 0.0f);
+	if (Loss <= 0.0f || Step <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const int32 Steps = Cataclysm->CountRegenerationSteps(Restored, Step);
+	return Steps > 0 ? TakeFromPool(AbilitySystem, Loss * static_cast<float>(Steps)) : 0.0f;
 }
 
 bool FCataclysmWarFervour::HasARate(const UAbilitySystemComponent* AbilitySystem)

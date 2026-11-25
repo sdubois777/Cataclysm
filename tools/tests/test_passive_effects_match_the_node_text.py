@@ -671,7 +671,11 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #:
 #: AND TO 449 ON 2026-11-25, the War riders: twenty rows on six Berserker and
 #: four Bulwark nodes that had none (`tools/reapply_war_riders_workbook.py`).
-AUTHORED_ROWS = 449
+#:
+#: AND TO 465 THE SAME DAY, the Fervour spends: sixteen rows on Warmonger, Cut
+#: and Run (a capstone option), Iron Will, Undying, Cleave and Blood Tithe
+#: (`tools/reapply_war_fervour_spends_workbook.py`).
+AUTHORED_ROWS = 465
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1096,7 +1100,9 @@ AUTHORED_ROWS = 449
 #:
 #: AND TO 262 ON 2026-11-25: Wrath, Frenzy and Berserking, the Berserker's states.
 #: AND TO 272 THE SAME DAY: the ten nodes of the War riders.
-AUTHORED_NODES = 272
+#: AND TO 277 THE SAME DAY: Warmonger, Iron Will, Undying, Cleave and Blood Tithe,
+#: the Fervour spends (Cut and Run is an option of a capstone already counted).
+AUTHORED_NODES = 277
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1190,7 +1196,9 @@ AUTHORED_NODES = 272
 #: Iron Aegis and Titan's Blood (its Second Oath), and the Berserker's Vital
 #: Strikes, Thrill of the Hunt and Crimson Pact (the third option of each Oath).
 #: Each capstone had no row, so all four move `AUTHORED_NODES` too.
-AUTHORED_OPTIONS = 41
+#: AND TO 42 ON 2026-11-25: Cut and Run, the Berserker's Second Oath's second
+#: option, with the Fervour spends. Its capstone already had a row.
+AUTHORED_OPTIONS = 42
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1510,7 +1518,10 @@ CONDITION_WORDS = {
     # 2026-11-25), read as at least 50: the only points condition is inclusive,
     # and the two readings differ at the single value 50 of a pool that drains
     # in quarter-second steps. A judgement, recorded in docs/DECISIONS.md.
-    "class_resource_points_at_least": (("or more fervour", "while above"), "{value:g}"),
+    #
+    # AND UNDYING'S "if you have at least 50 Fervour" (the Fervour spends,
+    # 2026-11-25), the inclusive reading in so many words.
+    "class_resource_points_at_least": (("or more fervour", "while above", "have at least"), "{value:g}"),
 
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
@@ -2517,9 +2528,25 @@ VALUE_FORMS = {
     # AND TITAN'S GRIP'S "drain 4 additional Fervour per second" and STEELED
     # RESOLVE'S "drains 5 Fervour per second" (the War riders, 2026-11-25).
     "fervour_drain_per_second": ("drains at {value:g} per second", "drain {value:g} additional Fervour per second",
-                                 "drains {value:g} Fervour per second"),
+                                 "drains {value:g} Fervour per second",
+                                 # AND WARMONGER'S "each enemy within melee range
+                                 # drains 3 additional Fervour per second" (the
+                                 # Fervour spends, 2026-11-25).
+                                 "drains {value:g} additional Fervour per second"),
     "fervour_per_hit_dealt": "generate {value:g} additional Fervour",
     "berserking_damage_per_fervour": "{value:g}% bonus damage",
+    # THE FERVOUR SPENDS, 2026-11-25. Iron Will's "draining 20 Fervour per block"
+    # and "reduces the Fervour drain by 2"; Undying's "5% of your maximum HP per
+    # 10 Fervour"; Cleave's "180 degree arc", "by 10 degrees", "costs 5
+    # Fervour" and "generates 3 Fervour per point"; Blood Tithe's "Lose 5
+    # Fervour" and "100 flat HP regenerated".
+    "fervour_cost_per_negated_block": ("draining {value:g} Fervour per block", "reduces the Fervour drain by {value:g}"),
+    "health_percent_per_ten_fervour_on_lethal_blow": "{value:g}% of your maximum HP per 10 Fervour",
+    "strike_arc_at_least_degrees": ("{value:g} degree arc", "by {value:g} degrees"),
+    "fervour_cost_per_extra_enemy_hit": "costs {value:g} Fervour",
+    "fervour_per_extra_enemy_hit_paid": "generates {value:g} Fervour per point",
+    "fervour_lost_to_regeneration": "Lose {value:g} Fervour",
+    "regeneration_per_fervour_loss": "{value:g} flat HP regenerated",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2558,6 +2585,14 @@ VALUE_IN_WORDS = {
     # row with no condition (its other drain row is under the 50 Fervour one).
     ("Bulwark_basic_jg_t1_001", "fervour_per_hit_taken"): ("is doubled", 100.0),
     ("Bulwark_basic_trunk_009", "fervour_drain_per_second", "", "flat"): ("reduces the drain rate to 2", -3.0),
+    # THE FERVOUR SPENDS, 2026-11-25. Iron Will's "negate all damage from that
+    # hit", a negation chance of 100. Blood Tithe's "At 6 points: The Fervour
+    # cost is reduced to 1 per 150 HP regenerated": 4 less than the 5 and 50 more
+    # than the 100, each from 6 points -- keyed by the threshold as well, since
+    # each stat's two rows differ in nothing else.
+    ("Bulwark_basic_ic_resolve_001", "block_negation_chance"): ("negate all damage", 100.0),
+    ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration", "", "flat", "6"): ("reduced to 1 per 150", -4.0),
+    ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss", "", "flat", "6"): ("reduced to 1 per 150", 50.0),
     # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%
     # of your Armor value" is 1 maximum health for every 10 armour, a share of
     # another stat. Its other max_health row, "+2% Maximum HP per point", is an
@@ -2931,8 +2966,15 @@ def in_words(row: dict):
     conditions, each stated in its own words (2026-11-24); the four-part key
     for one granting a stat twice in two buckets, one of them stated as a share
     of another stat (Iron Constitution, slice D, 2026-11-24)."""
+    #
+    # AND A FIVE-PART KEY, the threshold as well, for a node whose two rows of one
+    # stat differ only in it: Blood Tithe's "At 6 points" rows (the Fervour
+    # spends, 2026-11-25).
+    min_points = str(int(float(row.get("MinPoints") or 0)))
     return (VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip(),
-                                row["ValueKind"].strip().lower()))
+                                row["ValueKind"].strip().lower(), min_points))
+            or VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip(),
+                                   row["ValueKind"].strip().lower()))
             or VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip()))
             or VALUE_IN_WORDS.get((row["Node"], row["Stat"])))
 
@@ -3724,6 +3766,21 @@ FIXED_FROM_THE_FIRST_POINT = frozenset({
     ("Bulwark_basic_tw_t3_001", "retaliation_radius_metres"),
     ("Berserker_twoh_011", "fervour_drain_per_second"),
     ("Bulwark_basic_trunk_009", "fervour_drain_per_second"),
+    # AND WARMONGER'S "each enemy within melee range drains 3 additional Fervour
+    # per second", 3 for each enemy whatever the points (the Fervour spends,
+    # 2026-11-25).
+    ("Berserker_twoh_016", "fervour_drain_per_second"),
+    # AND THE FERVOUR SPENDS' ONCE-ONLY FIGURES, 2026-11-25: Iron Will's
+    # negation and its 20 (the point figure is the -2 beside it); Cleave's 180
+    # degrees and its cost of 5 (the 10 degrees and the gain of 3 are a point
+    # each); Blood Tithe's 50% maximum health and its 5 per 100.
+    ("Bulwark_basic_ic_resolve_001", "block_negation_chance"),
+    ("Bulwark_basic_ic_resolve_001", "fervour_cost_per_negated_block"),
+    ("Berserker_twoh_004", "strike_arc_at_least_degrees"),
+    ("Berserker_twoh_004", "fervour_cost_per_extra_enemy_hit"),
+    ("Bulwark_basic_jg_resolve_001", "max_health"),
+    ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration"),
+    ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss"),
 })
 
 
@@ -3900,3 +3957,38 @@ def test_plain_damage_on_a_passive_node_is_attack_and_spell_damage(effects, node
     assert len(checked) >= 60, f"the check read only {len(checked)} rows: {checked}"
     assert not alone, ("plain damage on a passive node is attack damage and spell damage, two rows of one bonus "
                        "(the owner's ruling of 2026-08-25):\n" + "\n".join(alone))
+
+
+#: "Melee range" in a node is 4 metres: the coordinating session's ruling of
+#: 2026-11-25, a sentence in the design document's Passive Class Trees.
+MELEE_RANGE_METRES = 4.0
+
+
+def test_a_reach_is_the_one_the_node_states(effects, nodes):
+    """A row's `ReachMetres` is a distance its node's own sentence states.
+
+    ADDED 2026-11-25 WITH WARMONGER AND CUT AND RUN, the first rows whose reach
+    comes from a ruling rather than a number in the sentence. A reach decides
+    which enemies count, and nothing at run time reports a wrong one: the count
+    is simply smaller or larger than the sentence promises. Every other column
+    a row carries is held to the sentence somewhere in this file; the reach was
+    not.
+
+    THE SENTENCE WRITES THE NUMBER, "4 metres" or "4 meters", OR "MELEE RANGE"
+    FOR 4, per `MELEE_RANGE_METRES`. Measured 2026-11-25: 23 rows carry a reach,
+    three of them Warmonger's and Cut and Run's, and every one states it this
+    way.
+    """
+    checked = []
+    wrong = []
+    for row in effects:
+        reach = float(row.get("ReachMetres") or -1)
+        if reach <= 0:
+            continue
+        checked.append(row["Name"])
+        words = words_of(row, nodes).lower()
+        stated = any(f"{reach:g} {unit}" in words for unit in ("metre", "meter"))
+        if not stated and not (reach == MELEE_RANGE_METRES and "melee range" in words):
+            wrong.append(f"{row['Name']}: a reach of {reach:g} metres, and the node says: {words}")
+    assert len(checked) >= 23, f"the check read only {len(checked)} rows with a reach: {checked}"
+    assert not wrong, "a row's reach is not the one its node states:\n" + "\n".join(wrong)

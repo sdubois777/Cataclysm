@@ -457,6 +457,29 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
      'FName(DrainPerSecondStat), FGameplayTagContainer(), 0.0f'):
         'the drain, asked on a timer with no blow, target or skill in hand',
+    # THE FERVOUR SPENDS, 2026-11-25.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CostPerNegatedBlockStat), FGameplayTagContainer(), 0.0f'):
+        "Iron Will's cost, asked where a negated block is announced, after "
+        'the blow resolved; the blow is not handed over',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(LethalBlowHealthPerTenFervourStat), FGameplayTagContainer(), 0.0f'):
+        "Undying's restore, asked inside a lethal blow's saves with the "
+        "wearer's state; the blow is not handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CostPerExtraEnemyHitStat), SkillTags, 0.0f'):
+        "Cleave's cost, asked as an attack begins with the attack's tags; no "
+        'blow is resolved yet',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(GainPerExtraEnemyHitPaidStat), SkillTags, 0.0f'):
+        "Cleave's gain, asked beside its cost",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(LostToRegenerationStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Tithe's loss, asked when regeneration restores health; no "
+        'blow, target or skill is in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RegenerationPerLossStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Tithe's step, asked beside its loss",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'Stat, Context, Plain'):
         'class resource generation, asked on a timer with no blow, '

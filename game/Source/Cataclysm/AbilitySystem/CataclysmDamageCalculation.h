@@ -461,6 +461,14 @@ struct CATACLYSM_API FCataclysmDamageResult
 	float DamageBlocked = 0.0f;
 
 	/**
+	 * The block negated the whole blow: its negation chance (`block_negation_chance`) succeeded. False for an unblocked
+	 * blow and for a block that took only its share. The Fervour spends, 2026-11-25: Iron Will's "blocked attacks
+	 * automatically negate all damage from that hit, draining 20 Fervour per block" pays for a negation, not a block.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bNegated = false;
+
+	/**
 	 * The hit landed as a critical strike and its damage above already carries
 	 * the multiplier.
 	 *

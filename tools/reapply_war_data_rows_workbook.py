@@ -87,6 +87,7 @@ class Row:
     per_point_from: int | None = None
     cond2: str | None = None
     cond_value2: float | None = None
+    reach: float | None = None
 
     def key(self) -> tuple:
         def num(value):
@@ -94,7 +95,7 @@ class Row:
         return (self.stat, self.kind, float(self.value), self.tags or None, self.cond or None,
                 num(self.cond_value), self.scale or None, num(self.step), num(self.option),
                 num(self.min_points), num(self.cap), num(self.per_point_from), self.cond2 or None,
-                num(self.cond_value2) or None)
+                num(self.cond_value2) or None, num(self.reach) if self.reach and self.reach > 0 else None)
 
 
 R = Row
@@ -191,7 +192,8 @@ def row_from_cells(cells: dict[str, object]) -> Row:
                option=number(cells.get("Option")) or None, min_points=number(cells.get("Min Points")) or None,
                cap=number(cells.get(helpers.CAP_COLUMN)) or None,
                per_point_from=number(cells.get(PER_POINT_FROM)) or None,
-               cond2=text(cells.get(CONDITION_2)), cond_value2=number(cells.get(CONDITION_VALUE_2)))
+               cond2=text(cells.get(CONDITION_2)), cond_value2=number(cells.get(CONDITION_VALUE_2)),
+               reach=number(cells.get("Reach Metres")))
 
 
 def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
@@ -202,7 +204,7 @@ def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
     return {"Node": node, "Stat": row.stat, "Value Kind": row.kind, "Value Per Point": out(row.value),
             "Required Tags": row.tags, "Condition": row.cond, "Condition Value": out(row.cond_value),
             "Scale": row.scale, "Scale Step": out(row.step), "Option": out(row.option), "Node Name": label,
-            "Reach Metres": None, "Min Points": out(row.min_points), helpers.CAP_COLUMN: out(row.cap),
+            "Reach Metres": out(row.reach), "Min Points": out(row.min_points), helpers.CAP_COLUMN: out(row.cap),
             PER_POINT_FROM: out(row.per_point_from), CONDITION_2: row.cond2,
             CONDITION_VALUE_2: out(row.cond_value2)}
 

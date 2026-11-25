@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Fervour spends: Iron Will, Undying, Cleave and Blood Tithe spend or lose Fervour where their sentences say, and Warmonger and Cut and Run count enemies within melee range, which is 4 metres
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`: `SpendOnNegatedBlock`, `SpendAllOnLethalBlow`,
+  `TradeForEnemiesStruckTogether` and `LoseForRegeneration`, each reading its stat where it applies, and `TakeFromPool`.
+- The call sites: `CataclysmDamageCalculation.h` and `.cpp` (`FCataclysmDamageResult::bNegated`, set where the block's
+  negation is rolled); `CataclysmVitalAttributeSet.cpp` (Iron Will's cost after `NoteBlocked`; Undying's save after the
+  reprieve, and its restore through `TopUp` after the blow's write); `CataclysmSkillTemplate.cpp` (`BeginAttackOn`,
+  Cleave's trade before Berserking's spend); `CataclysmRegeneration.cpp` (`TopUp`, Blood Tithe's loss beside the
+  Masochist's removal for healing). `CataclysmAbilitySystemComponent.h`: Blood Tithe's count of health regenerated.
+- Six stats in `UCataclysmPlayerClassStats::StatsWithNoAttribute`, each probed in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`; `fervour_drain_per_second` in
+  `STATS_WITH_AN_ASKER` with `ProbeScaledFervourDrainPerSecond`; seven stats in `CONDITIONED_STATS_WITH_AN_ASKER`.
+- `docs/Cataclysm_GDD_v2.md`, Passive Class Trees: **"Melee range" in a node is 4 metres.**
+- `docs/All_Things_Cataclysm.xlsx`: sixteen rows (`tools/reapply_war_fervour_spends_workbook.py`, new); slice D's `Row`
+  carries a reach. `game/Data/PassiveEffects.csv` (465 rows). **The editor step must rebuild `DT_PassiveEffects`.**
+- Tests: `CataclysmWarFervourTests.cpp` (four), `CataclysmWarDataRowsTests.cpp` (one), `CataclysmDataTableTests.cpp`
+  (the pin, 465); `tools/tests/test_war_fervour_spends_scripts.py`, new; `test_passive_effects_match_the_node_text.py`
+  (a new reach check, a five-part value key, the words, 465 rows, 277 nodes, 42 options);
+  `test_war_data_rows_scripts.py` (deletes by node and option); `test_stat_lookups_hand_over_what_they_should.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  `Cataclysm.WarFervour.` (ten tests, four new), `Cataclysm.WarDataRows.` (five, one new), `Cataclysm.StatExemption.`
+  (same count; six more probes in one test and one more in the scaled probes) and `Cataclysm.Data.` (the pin, 465).
+- **CLEAVE'S TRADE IS NOT EXERCISED THROUGH ITS CALL SITE** (`BeginAttackOn`): its test calls the function. The site is
+  one call beside Berserking's spend, read only.
+- **NOT IN THIS BRANCH:** Riposte, Vengeful Discharge and Crimson Tide, ruled the same day (below) and going on the next
+  branch; Skull Splitter, Deathmark and Blood Price (a mark, a mark, and a sentence to rule).
+- **A NEW CHECK, AND WHAT IT FOUND:** no test held a row's reach to its sentence. `test_a_reach_is_the_one_the_node_states`
+  does now; the 23 rows with a reach all pass it, so nothing was wrong before.
+
+### WHAT WAS RULED
+
+- **"Melee range" is 4 metres**, the coordinating session's ruling of 2026-11-25 under the owner's delegation: the reach
+  the trees already use for enemies near a character in melee (the Ravager's core count, Reprisal Wave). Written into the
+  design document.
+- **For the next branch**, the coordinating session the same day, under the owner's delegation: Vengeful Discharge's
+  "100% of your retaliation damage" is the retaliation percentage times the last blow taken, remembered for the purpose,
+  nothing if none was taken this floor, and only its own drain triggers it; Crimson Tide counts spends and drains but
+  not decay, and a leech payout within a quarter second meets "instantly"; Riposte's stun is a general Stun branch of
+  `apply_status` on another character, with one Riposte action that checks "at least 25" and "at maximum" before it
+  spends.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Iron Will.** A negated block (the hit's new `bNegated`) costs `fervour_cost_per_negated_block`, paid where the block
+   is announced and before the block's own Fervour gain, so the "above 75 Fervour" condition is judged on the pool that
+   negated it. Rows: negation 100 and cost 20, each once, and -2 a point, all at 75 Fervour or more. **Judgements:** 18
+   at one point and 4 at eight ("Per point: reduces the Fervour drain by 2" counts the first point); a block that took
+   only its share costs nothing; a cost above the pool takes what there is.
+2. **Undying.** A third lethal-blow save, after Nothing Stops It and the Demon King's reprieve (each costs nothing): with
+   the row held (stated under at least 50 Fervour), the blow leaves 1 health, the whole pool is spent, and 5% of maximum
+   health returns for each whole 10 spent, through `TopUp` after the blow's write. **Judgements:** whole steps rounded
+   down (the 2026-08-25 rule a bonus counts whole steps); a tick is saved too, as the reprieve reads "would be killed";
+   no cooldown, since the sentence states none and the pool must refill to 50.
+3. **Cleave.** `strike_arc_at_least_degrees` 180 once and 10 a point on melee, two-handed; each enemy beyond the first, in
+   turn, costs 5 if the pool holds it and then gains 3 a point (scaled by generation); an enemy the pool cannot pay for
+   gains nothing. Paid once as an attack begins, before Berserking spends what is left. **Judgements:** 190 degrees at one
+   point; the cost per enemy rather than for the whole attack ("Each enemy hit beyond the first costs 5"); Cleave before
+   Berserking.
+4. **Blood Tithe.** For health restored by regeneration (the tag `UCataclysmRegeneration`'s step puts on it), on what
+   fit, a loss for each whole step, the rest carried: 5 for each 100, and from 6 points 1 for each 150 (rows of -4 and
+   +50 from 6 points). Above 50% Fervour, 50% increased maximum health, once. **Judgements:** "50% Fervour" is the share
+   condition `class_resource_above`, and "50 Fervour" elsewhere the points one; the 50% maximum health is not per point.
+5. **Warmonger and Cut and Run**, on `enemies_in_reach` with a reach of 4: Warmonger's drain 3 for each enemy, once, and
+   its damage 8% a point for each; Cut and Run's speed 5% for each enemy, in Frenzy.
+6. **"At least 50 Fervour" and "above 75 Fervour" are `class_resource_points_at_least`**, the only points condition, as
+   the War riders' Steeled Resolve was.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Both reported `proved` True: a named test
+failed with the break in, and all 26 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| Warmonger's drain row, `Berserker_twoh_016#1`, reach 4 to 5 | `test_a_reach_is_the_one_the_node_states` |
+| Blood Tithe's 6-point loss row, `Bulwark_basic_jg_resolve_001#3`, -4 to -3 | `test_every_value_appears_in_the_nodes_own_description` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarFervour.ANegatedBlockPaysIronWillsCostAndABlockThatTookAShareDoesNot` | a block that took its share costs nothing (control); a negated one costs 20 and nothing reaches health; 20 with 5 held takes 5 |
+| `Cataclysm.WarFervour.UndyingSpendsThePoolOnALethalBlowAndRestoresFivePercentForEachTen` | without the row the blow kills (control); with it, 73 spent and 1 + 350 health |
+| `Cataclysm.WarFervour.CleavePaysForEachEnemyBeyondTheFirstAndGainsForEachPaid` | one enemy or a non-melee attack: nothing (controls); three: -4; 4 held: nothing |
+| `Cataclysm.WarFervour.BloodTitheTakesFervourForEachWholeStepOfHealthRegenerated` | a heal that is not regeneration: nothing (control); 250: -10; 60 more: -5 |
+| `Cataclysm.WarDataRows.TheSpendsCarryTheMeleeRangeAndChangeAtTheirPoints` | the 4 m reach in both modifiers; Iron Will 18 and 4; Cleave 190 and 240; Blood Tithe 5 per 100 and 1 per 150 |
+
+Predicted counts: `Cataclysm.WarFervour.` 10; `Cataclysm.WarDataRows.` 5.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. Iron Will's site: in `CataclysmVitalAttributeSet.cpp`, `if (Outcome.bNegated)` becomes `if (false && Outcome.bNegated)`.
+   Must fail `ANegatedBlockPaysIronWillsCostAndABlockThatTookAShareDoesNot`.
+2. Undying's steps: in `CataclysmWarFervour.cpp`, `FMath::FloorToFloat(Spent / 10.0f)` becomes
+   `FMath::FloorToFloat(Spent / 20.0f)`. Must fail `UndyingSpendsThePoolOnALethalBlowAndRestoresFivePercentForEachTen`.
+3. Blood Tithe's site: in `CataclysmRegeneration.cpp`, `LoseForRegeneration(&AbilitySystem, Restored, Healing)` becomes
+   `LoseForRegeneration(&AbilitySystem, 0.0f, Healing)`. Must fail
+   `BloodTitheTakesFervourForEachWholeStepOfHealthRegenerated`.
+
+---
+
 ## 2026-11-25 — The War riders: ten Berserker and Bulwark nodes written as rows on the Berserker's states and the War Fervour rates, and the workbook gains a second condition
 
 **Affects:**

@@ -10452,6 +10452,11 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-11-25 FOR WARMONGER, "While in Wrath, each enemy within melee
+    # range drains 3 additional Fervour per second": `fervour_drain_per_second`
+    # scaled by enemies within 4 metres. `FCataclysmBerserkerStates::DrainStep`
+    # asks it with `StatForSkill`; `ProbeScaledFervourDrainPerSecond` measures it.
+    "fervour_drain_per_second",
     # ADDED 2026-10-05 FOR "Starvation (10-Piece Bonus): When you kill an enemy,
     # gain a stack of 'Famished.' Each stack increases all of your leech by 5%",
     # issue #1833, three rows scaled by their own stacks. `UCataclysmLeech::NoteHit`
@@ -10774,6 +10779,24 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # table by `ProbeWarFervourGain`.
     "fervour_per_critical_strike": ASKER_PASSES_NOTHING_MORE,
     "fervour_per_hit_taken": ASKER_PASSES_NOTHING_MORE,
+    # THE FERVOUR SPENDS, 2026-11-25. Iron Will's cost, Undying's restore and
+    # Cleave's cost and gain, each asked by `FCataclysmWarFervour` with the
+    # wearer's state (Cleave's with the attack's skill tags) and probed in the
+    # table of stats with no attribute; and three stats the engine already
+    # asked with the live state, which a War row now states under a condition:
+    # `strike_arc_at_least_degrees` (`UCataclysmStrikeSkill::ArcAtLeastDegrees`,
+    # Cleave under "Two-handed weapons only"), `max_health`
+    # (`RefreshLiveMaximumHealth`, Blood Tithe above 50% Fervour) and
+    # `block_negation_chance` (`UCataclysmDamageCalculation`'s block step, with
+    # the blow being taken; Iron Will above 75 Fervour). Each has a probe in one
+    # of the three tables already.
+    "fervour_cost_per_negated_block": ASKER_PASSES_NOTHING_MORE,
+    "health_percent_per_ten_fervour_on_lethal_blow": ASKER_PASSES_NOTHING_MORE,
+    "fervour_cost_per_extra_enemy_hit": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_extra_enemy_hit_paid": ASKER_PASSES_NOTHING_MORE,
+    "strike_arc_at_least_degrees": ASKER_PASSES_NOTHING_MORE,
+    "max_health": ASKER_PASSES_NOTHING_MORE,
+    "block_negation_chance": ASKER_PASSES_A_BLOW_TAKEN,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
     # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
     # cannot move while channeling any skill". Its probe is `ProbeCannotWalk`,

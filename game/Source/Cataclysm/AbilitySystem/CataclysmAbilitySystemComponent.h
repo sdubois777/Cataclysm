@@ -4568,6 +4568,24 @@ public:
 	void SetBerserkingArmed(bool bArmed) { bBerserkingArmed = bArmed; }
 
 	/**
+	 * Blood Tithe's count (the Fervour spends, 2026-11-25): add `Restored` health regenerated towards the next loss of
+	 * Fervour, and return how many whole steps of `Step` it now holds, keeping the rest for the next heal. A step of
+	 * nought or below clears the count and returns nought. Asked only by `FCataclysmWarFervour::LoseForRegeneration`.
+	 */
+	int32 CountRegenerationSteps(float Restored, float Step)
+	{
+		if (Step <= 0.0f)
+		{
+			RegeneratedTowardsFervourLoss = 0.0f;
+			return 0;
+		}
+		RegeneratedTowardsFervourLoss += FMath::Max(0.0f, Restored);
+		const int32 Steps = FMath::FloorToInt(RegeneratedTowardsFervourLoss / Step);
+		RegeneratedTowardsFervourLoss -= static_cast<float>(Steps) * Step;
+		return Steps;
+	}
+
+	/**
 	 * What the last blow aimed at this character resolved to.
 	 *
 	 * WHY THIS HAS TO BE RECORDED AT ALL. Issue #1156. The damage a caller hands
@@ -5578,6 +5596,9 @@ protected:
 	 */
 	ECataclysmBerserkerState HeldBerserkerState = ECataclysmBerserkerState::None;
 	bool bBerserkingArmed = false;
+
+	/** Health regenerated since Blood Tithe last took Fervour, short of a whole step. Not saved, not replicated. */
+	float RegeneratedTowardsFervourLoss = 0.0f;
 
 	/** Whether this character has the pool: a maximum above nought. */
 	bool HasLeechPool(ECataclysmLeechPool LeechPool) const;

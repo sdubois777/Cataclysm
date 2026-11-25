@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For emptying Fervour when health comes back. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For a patch of burning ground that heals whoever left it faster while they
 // stand in it. Blood Pyre. Issue #1162.
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -346,6 +347,11 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
 	{
 		UCataclysmFervour::RemoveForHealing(&AbilitySystem, Restored, Healing);
+
+		// AND BLOOD TITHE'S LOSS, "Lose 5 Fervour for every 100 flat HP regenerated": a count of points of health
+		// rather than a share of the maximum, for regeneration only, on what fit. Nought for every character without
+		// `fervour_lost_to_regeneration`. The Fervour spends, 2026-11-25.
+		FCataclysmWarFervour::LoseForRegeneration(&AbilitySystem, Restored, Healing);
 	}
 }
 

@@ -516,7 +516,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 429 SINCE 2026-11-25, for the Berserker's states: eight rows on Wrath,
 	// Frenzy and Berserking.
 	// AND 449 SINCE 2026-11-25, for the War riders: twenty rows on ten nodes.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        449)
+	// AND 465 THE SAME DAY, for the Fervour spends: sixteen rows on six nodes.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        465)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

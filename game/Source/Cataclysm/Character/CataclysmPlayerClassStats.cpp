@@ -1122,6 +1122,17 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),
+		// THE FERVOUR SPENDS, 2026-11-25, each read by FCataclysmWarFervour: Iron Will's cost for a negated block
+		// (SpendOnNegatedBlock, at the block's announcement), Undying's health for each 10 Fervour spent on a lethal
+		// blow (SpendAllOnLethalBlow, in the vital attribute set's saves), Cleave's cost and gain for each extra enemy
+		// (TradeForEnemiesStruckTogether, at the start of an attack), and Blood Tithe's loss and its step of health
+		// regenerated (LoseForRegeneration, in UCataclysmRegeneration::TopUp).
+		TEXT("fervour_cost_per_negated_block"),
+		TEXT("health_percent_per_ten_fervour_on_lethal_blow"),
+		TEXT("fervour_cost_per_extra_enemy_hit"),
+		TEXT("fervour_per_extra_enemy_hit_paid"),
+		TEXT("fervour_lost_to_regeneration"),
+		TEXT("regeneration_per_fervour_loss"),
 	};
 	return Stats;
 }

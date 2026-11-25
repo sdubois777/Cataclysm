@@ -189,9 +189,12 @@ def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
     sheet = book[rows.SHEET]
     header = [cell.value for cell in sheet[1]]
     node_column = header.index("Node") + 1
-    ours = {node for node, _, _ in rows.NODES}
+    option_column = header.index("Option") + 1
+    # BY NODE AND OPTION, SINCE 2026-11-25: the Berserker's Second Oath holds slice D's option 3 and, since the Fervour
+    # spends, Cut and Run's option 2, which this script does not put back.
+    ours = {(node, option) for node, _, wanted in rows.NODES for option in {int(row.option or 0) for row in wanted}}
     for index in range(sheet.max_row, 1, -1):
-        if sheet.cell(index, node_column).value in ours:
+        if (sheet.cell(index, node_column).value, int(sheet.cell(index, option_column).value or 0)) in ours:
             sheet.delete_rows(index, 1)
     sheet.delete_cols(header.index(rows.PER_POINT_FROM) + 1, 1)
     book.save(copy)

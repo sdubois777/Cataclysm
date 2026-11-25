@@ -5895,6 +5895,42 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmStacks::Held(Killer.AbilitySystem, ECataclysmStackKind::Carnage), 0);
 	}
 
+	/**
+	 * `fervour_drain_per_second`, scaled by debuffs carried, asked by `FCataclysmBerserkerStates::DrainStep`. Added
+	 * 2026-11-25 for Warmonger, which scales it by enemies within 4 metres; any scale proves the ask.
+	 */
+	void ProbeScaledFervourDrainPerSecond(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		ScaledBy(Holder, TEXT("fervour_drain_per_second"), 1.0f, ECataclysmStatScale::PerDebuffCarried, /*Base=*/1.0f);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		FCataclysmBerserkerStates::DrainStep(Holder, 1.0f);
+		const float Clean = 50.0f - System->GetNumericAttribute(Pool);
+		GiveTwoDebuffs(Holder);
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		FCataclysmBerserkerStates::DrainStep(Holder, 1.0f);
+		const float Carrying = 50.0f - System->GetNumericAttribute(Pool);
+
+		Test.TestTrue(FString::Printf(TEXT("fervour_drain_per_second is asked for, so debuffs raise the step's drain: "
+										   "%.3f against %.3f"),
+									  Carrying, Clean),
+					  Carrying > Clean + 0.0001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5913,6 +5949,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},
 			{TEXT("fervour_from_minions"),       &ProbeScaledFervourFromMinions},
 			{TEXT("fervour_per_enemy_in_reach"), &ProbeScaledFervourPerEnemyInReach},
+			{TEXT("fervour_drain_per_second"),   &ProbeScaledFervourDrainPerSecond},
 			{TEXT("class_resource"),             &ProbeScaledMaximumClassResource},
 			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
 			{TEXT("health_reserved"),            &ProbeScaledHealthReserved},
@@ -11712,6 +11749,131 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and the whole pool is consumed"), System->GetNumericAttribute(Pool), 0.0f, 0.001f);
 	}
 
+	/** A holder for the Fervour spends' probes, with 50 of 100 Fervour and 10,000 maximum health. 2026-11-25. */
+	UCataclysmAbilitySystemComponent* SpendsHolder(FAutomationTestBase& Test, UWorld* World, ACataclysmEnemyCharacter*& Out)
+	{
+		Out = RavagerReworkHolder(Test, World);
+		return Out ? Cast<UCataclysmAbilitySystemComponent>(Out->GetAbilitySystemComponent()) : nullptr;
+	}
+
+	/** `fervour_cost_per_negated_block`, read by `FCataclysmWarFervour::SpendOnNegatedBlock`: nothing without it, 20 with
+	 *  20 of it. */
+	void ProbeCostPerNegatedBlock(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		if (!System)
+		{
+			return;
+		}
+		const float Plain = FCataclysmWarFervour::SpendOnNegatedBlock(System);
+		GrantFlat(Holder, FCataclysmWarFervour::CostPerNegatedBlockStat, 20.0f);
+		const float Held = FCataclysmWarFervour::SpendOnNegatedBlock(System);
+		Test.TestEqual(TEXT("fervour_cost_per_negated_block: control, nothing is taken without it"), Plain, 0.0f);
+		Test.TestEqual(TEXT("and 20 with 20 of it, so SpendOnNegatedBlock really reads it"), Held, 20.0f, 0.001f);
+	}
+
+	/** `health_percent_per_ten_fervour_on_lethal_blow`, read by `FCataclysmWarFervour::SpendAllOnLethalBlow`: no save
+	 *  without it; with 5 of it the 50 held are spent for five steps of 5% of 10,000. */
+	void ProbeLethalBlowHealthPerTenFervour(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		if (!System)
+		{
+			return;
+		}
+		const float Plain = FCataclysmWarFervour::SpendAllOnLethalBlow(System);
+		GrantFlat(Holder, FCataclysmWarFervour::LethalBlowHealthPerTenFervourStat, 5.0f);
+		const float Held = FCataclysmWarFervour::SpendAllOnLethalBlow(System);
+		Test.TestTrue(TEXT("health_percent_per_ten_fervour_on_lethal_blow: control, no save without it"), Plain < 0.0f);
+		Test.TestEqual(TEXT("with 5 of it, 50 Fervour restore 2,500 of 10,000, so SpendAllOnLethalBlow really reads it"),
+					   Held, 2500.0f, 0.001f);
+	}
+
+	/** `fervour_cost_per_extra_enemy_hit` and `fervour_per_extra_enemy_hit_paid`, read by
+	 *  `FCataclysmWarFervour::TradeForEnemiesStruckTogether` for three enemies struck: nothing without the cost; 10 paid
+	 *  with a cost of 5; 4 net with a gain of 3 beside it. */
+	void ProbeExtraEnemyTrade(FAutomationTestBase& Test, bool bAskTheGain)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayTagContainer NoTags;
+		if (!bAskTheGain)
+		{
+			const float Plain = FCataclysmWarFervour::TradeForEnemiesStruckTogether(System, NoTags, 3);
+			GrantFlat(Holder, FCataclysmWarFervour::CostPerExtraEnemyHitStat, 5.0f);
+			const float Held = FCataclysmWarFervour::TradeForEnemiesStruckTogether(System, NoTags, 3);
+			Test.TestEqual(TEXT("fervour_cost_per_extra_enemy_hit: control, nothing is paid without it"), Plain, 0.0f);
+			Test.TestEqual(TEXT("and 10 for two extra enemies at 5 each, so the trade really reads it"), Held, -10.0f,
+						   0.001f);
+			return;
+		}
+		GrantFlat(Holder, FCataclysmWarFervour::CostPerExtraEnemyHitStat, 5.0f);
+		const float Plain = FCataclysmWarFervour::TradeForEnemiesStruckTogether(System, NoTags, 3);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+		GrantFlats(Holder, {{FName(FCataclysmWarFervour::CostPerExtraEnemyHitStat), 5.0f},
+							{FName(FCataclysmWarFervour::GainPerExtraEnemyHitPaidStat), 3.0f}});
+		const float Held = FCataclysmWarFervour::TradeForEnemiesStruckTogether(System, NoTags, 3);
+		Test.TestEqual(TEXT("fervour_per_extra_enemy_hit_paid: control, the cost alone is -10"), Plain, -10.0f, 0.001f);
+		Test.TestEqual(TEXT("and with 3 of it each paid enemy gains 3 back, -4, so the trade really reads it"), Held, -4.0f,
+					   0.001f);
+	}
+
+	/** `fervour_lost_to_regeneration` and `regeneration_per_fervour_loss`, read by
+	 *  `FCataclysmWarFervour::LoseForRegeneration` for 250 health regenerated: nothing with one of the pair alone; 10
+	 *  with 5 for each 100. */
+	void ProbeRegenerationLoss(FAutomationTestBase& Test, bool bAskTheStep)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		if (!System)
+		{
+			return;
+		}
+		FGameplayTagContainer Regenerating;
+		Regenerating.AddTag(UCataclysmFervour::RegenerationTag());
+		const FName Loss(FCataclysmWarFervour::LostToRegenerationStat);
+		const FName Step(FCataclysmWarFervour::RegenerationPerLossStat);
+		GrantFlats(Holder, {{bAskTheStep ? Loss : Step, bAskTheStep ? 5.0f : 100.0f}});
+		const float Plain = FCataclysmWarFervour::LoseForRegeneration(System, 250.0f, Regenerating);
+		GrantFlats(Holder, {{Loss, 5.0f}, {Step, 100.0f}});
+		const float Held = FCataclysmWarFervour::LoseForRegeneration(System, 250.0f, Regenerating);
+		Test.TestEqual(*FString::Printf(TEXT("%s: control, nothing is lost without it"),
+										*(bAskTheStep ? Step : Loss).ToString()),
+					   Plain, 0.0f);
+		Test.TestEqual(TEXT("and 10 for 250 regenerated at 5 for each 100, so LoseForRegeneration really reads it"), Held,
+					   10.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -11985,6 +12147,13 @@ namespace CataclysmStatExemptionTest
 										  ECataclysmBerserkerState::Frenzy); }},
 			{TEXT("fervour_drain_per_second"), &ProbeBerserkerDrain},
 			{TEXT("berserking_damage_per_fervour"), &ProbeBerserkingSpend},
+			// THE FERVOUR SPENDS, 2026-11-25.
+			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},
+			{TEXT("health_percent_per_ten_fervour_on_lethal_blow"), &ProbeLethalBlowHealthPerTenFervour},
+			{TEXT("fervour_cost_per_extra_enemy_hit"), [](FAutomationTestBase& Test) { ProbeExtraEnemyTrade(Test, false); }},
+			{TEXT("fervour_per_extra_enemy_hit_paid"), [](FAutomationTestBase& Test) { ProbeExtraEnemyTrade(Test, true); }},
+			{TEXT("fervour_lost_to_regeneration"), [](FAutomationTestBase& Test) { ProbeRegenerationLoss(Test, false); }},
+			{TEXT("regeneration_per_fervour_loss"), [](FAutomationTestBase& Test) { ProbeRegenerationLoss(Test, true); }},
 		};
 		return Made;
 	}
