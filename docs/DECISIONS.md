@@ -102,9 +102,31 @@ stack. Prefix `Cataclysm.FervourLossAndChain.`; must fail
 
 ### What was run
 
-SUITE_FIGURES_C6C
+**The whole Python suite on `29965375f`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8582 passed, 9 skipped in 383.68s
+(0:06:23)". The JUnit file agrees: tests 8592, failures 1, errors 0, skipped 9, so 8582 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the two
+inventory checks described under "Said first", fixed before the commit.
 
-PYTHON_PROOFS_C6C
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Seven Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`f07956c6c`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The decay taken below Miser's Grip's floor | `test_charge_and_placed_action_names_match_the_engine.py::test_how_fervour_is_lost_and_what_fills_past_the_bar_are_wired` |
+| Soulbound's loss never asked on health lost | the same test |
+| Soulbound's remainder thrown away | the same test |
+| Overflow measured as the whole gain rather than what did not fit | the same test |
+| Unbroken Chain lengthening an enchantment's kill stack too | the same test |
+| Soul Tide back on the plain kill clock | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` and `::test_every_exception_is_still_needed` |
+| Miser's Grip at 4% a point rather than 3% | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
