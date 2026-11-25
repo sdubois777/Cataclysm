@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — When the Necromancer's minions die, and when he is hurt: the minion death event, eight nodes, and a War node's slow (Death trees, slice C6d2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`: `IsImmuneTo` answers true for Slow while
+  `movement_speed_reduction_suppressed` stands above nought, as well as for `immune_to_slow`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h` and `.cpp`: where a follower's health reaches
+  nought, Eternal Army's refusal first, then `NoteMinionDied` beside the Fervour for losing it; the share of maximum
+  health a hit took handed to `NoteHitTaken`; Shared Leech's payment beside the leech a blow pays.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteMinionDied` (the event
+  `minion_death`, and a minute of deaths with their distances); `NoteHitTaken` holds the share while it raises
+  `hit_taken`; `MultiplierForStatAgainst` takes the minion asking; `BoundBonesHealthAdded`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: four conditions, `seconds_after_minion_death`,
+  `minion_death_in_reach_within_seconds`, `hit_took_at_least_percent_of_max_health` and `minion_within_metres_of_you`;
+  `IsJudgedAtItsEvent`. The count sentences: forty-six of the hundred-and-four compare nothing, and the
+  hundred-and-fifth.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: an own-stack row's event condition goes on its grant and comes off
+  its stat.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`, `CataclysmMinion.cpp`: the summoner's minion
+  lookups take the minion asking, named at a minion's and a thrall's blow and explosion.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmLeech.h` and `.cpp`: `NoteMinionHit`. `CataclysmRegeneration.h` and
+  `.cpp`: `BoundBonesStep`, after `SharedBloodStep` each step.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: three stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmMinionLossTests.cpp`, new (10); `CataclysmSuppressedSlowTests.cpp`,
+  new (2); `CataclysmStatExemptionTests.cpp` (a scaled probe and three no-attribute probes);
+  `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (four),
+  `test_a_minion_row_asks_only_what_its_read_can_answer.py`, `test_passive_effects_match_the_node_text.py`,
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (one exception), and the inventory in
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py` (`EVENT_CONDITIONS`), `tools/reapply_death_trees_workbook.py`,
+  `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (657 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **THIS CHANGES THREE WAR NODES' BEHAVIOUR**, as ruled by the coordinating session on the C6d1 report, as a fix to
+  bundle 1's ruling that an immunity to Slow works everywhere. Unstoppable, Nothing Moves You and Relentless state
+  `movement_speed_reduction_suppressed`, which dropped the reducing rows of `movement_speed` in
+  `RefreshMovementSpeed` but not a War aura's movement reduction, which only `IsImmuneTo`'s answer drops. They now
+  answer `IsImmuneTo(..., "Slow")` too, so Blood and Iron's reduction no longer slows them. The stat's reader in
+  `RefreshMovementSpeed` is unchanged. A character holding Relentless now answers immune at every regeneration step,
+  so its speed is worked out again on each step, as for any immunity to Slow.
+- **`minion_death` IS A FOLLOWER KILLED**, as ruled (P1): a minion, an imp or a thrall whose health reached nought, told
+  to its commander where the Fervour for losing it is granted, while the body still stands. NOT a gadget or a trap,
+  which raise `gadget_destroyed` or nothing; NOT a lifespan running out or a release to make room, which never reach
+  that place. Marrow Feast's "or is detonated" waits for the Death skills, where detonation lives.
+- **`hit_taken` CARRIES THE SHARE OF MAXIMUM HEALTH THE HIT TOOK** as its amount, as ruled (Q2), nought when it is not
+  known; it carried nought before. No row on `hit_taken` read the amount: its pool actions take a share of the maximum,
+  its own stacks count, and its status lands on the wearer. `AnExistingHitTakenHealthRowIsUnchangedByTheShareTheHitCarries`
+  measures one. The share is also held on the character while the event is raised, because an action's condition is
+  judged without the amount in hand. It is what reached health, as Soulbound counts. Avenging Dead's "more than 5%" is
+  the ruled `at_least` 5.
+- **AN EVENT CONDITION IS NEW**: `hit_took_at_least_percent_of_max_health` reads a fact that exists only while
+  `hit_taken` is raised, so on Avenging Dead's own-stack row it is put on the stack's grant and taken off the stat
+  (`UCataclysmStatPipeline::IsJudgedAtItsEvent`, `CataclysmItem.cpp`). The generator allows it only as the Condition of
+  an action row or of an own-stack row on `hit_taken` (`EVENT_CONDITIONS`), and refuses it anywhere else.
+- **DEATH WARD READS A SECOND CLOCK, NOT `target_within_metres` ON ITS GRANT.** The plan put the distance on the
+  stack's grant; an own-stack row's condition is the stat's, not the grant's, so the death is recorded with its
+  distance instead and `minion_death_in_reach_within_seconds` counts only deaths within the row's reach.
+- **ETERNAL ARMY REFUSES EVERY WRITE OF HEALTH AT NOUGHT** while the commander is strictly above 50%, leaving the
+  follower at 1, before the Fervour, the event and the death. A rule that ends a creature by calling `HandleDeath`
+  outright (Epidemic's chain ending, Infernal Sacrifice eating an ally) does not pass there.
+- **BOUND BONES REACHES MINIONS AND THRALLS**, as the owner's ruling of 2026-09-16 makes "minion" mean in these trees,
+  not only summoned minions as Shared Blood does. Each step it writes only the difference from what it last added, a
+  rise to the maximum and to health, a fall to the maximum with health held within it. Anything else that rewrote a
+  follower's maximum health from nothing would leave that record wrong; nothing found does.
+- **SHARED LEECH PAYS AS A LIFE LEECH DOES**: the commander's share of what the blow took, shield and mana absorbed
+  included, paid over the commander's own leech time. The blow still leeches nothing for the minion.
+- **MARSHAL MEASURES THE MINION AT EACH BLOW**, and at its death for an explosion. A lookup that names no minion -- the
+  trap damage a trap's blow is priced with by tag -- grants nothing from it.
+
+### What each reads
+
+- **DEATH WARD (basic, 6 points):** `damage_reduction` 2% increased a point while a minion died in the last 3 seconds
+  within 6 metres.
+- **BONE KNIT (basic, 6 points):** `health_regen` 3% increased a point while a minion died in the last 3 seconds.
+- **MARROW FEAST (keystone):** 1% of maximum health on each `minion_death`, with a 0.1 second wait (Q3).
+- **AVENGING DEAD (basic, 8 points):** `minion_attack_speed` 3% increased a point for 4 seconds, an own stack granted
+  by a landed hit that took at least 5% of maximum health.
+- **MARSHAL (basic, 10 points):** `minion_damage` 2% increased a point for a minion within 10 metres.
+- **SHARED LEECH (basic, 8 points):** `minion_damage_leeched_to_you_percent` 1, from 8 points.
+- **ETERNAL ARMY (the Final Rite, option 2):** `minion_cannot_die_above_health_percent` 50.
+- **BOUND BONES (the Third Rite, option 3):** `minion_health_percent_of_yours_per_other_minion` 5.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Death Ward | damage_reduction, increased, 2, cond=minion_death_in_reach_within_seconds 3, reach 6 |
+| Bone Knit | health_regen, increased, 3, cond=seconds_after_minion_death 3 |
+| Marrow Feast | health 1 on minion_death, fraction of maximum, trigger cooldown 0.1 |
+| Avenging Dead | minion_attack_speed, increased, 3, cond=hit_took_at_least_percent_of_max_health 5, scale own_stacks, step 1, at most 1, on hit_taken, 4 seconds |
+| Marshal | minion_damage, increased, 2, cond=minion_within_metres_of_you 10 |
+| Shared Leech | minion_damage_leeched_to_you_percent, flat, 1, from 8 points |
+| Eternal Army (option 2) | minion_cannot_die_above_health_percent, flat, 50 |
+| Bound Bones (option 3) | minion_health_percent_of_yours_per_other_minion, flat, 5 |
+
+`PassiveEffects.csv` 649 to 657; the Necromancer 32 to 40 rows. The pins: rows 657, nodes 394, options 57.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25. On the C6d/C6e plan: P1, a minion death event and
+`seconds_after_minion_death`; Q2, Avenging Dead on a share of maximum health a hit took, with an existing `hit_taken`
+row tested unchanged; Q3, Marrow Feast's cap as a 0.1 second wait; Q4, Bound Bones on Shared Blood's pattern. On the
+C6d1 report: `IsImmuneTo` also answers `movement_speed_reduction_suppressed`, as one small change, saying here that it
+changes a War node's behaviour.
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: a follower's death (issue #1518), own stacks (issue
+#1833), the leech payments (issue #895), Shared Blood (the Ritualist's 50 vow), and bundle 1's slow immunity.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.MinionLoss.` | new: `AMinionKilledRaisesMinionDeathOnceAndStartsBoneKnitsClock`, `DeathWardHoldsForADeathWithinSixMetresAndNotForOneFurther`, `MarrowFeastHealsOnePercentForEachDeathAtMostTenTimesASecond`, `AvengingDeadsStackIsGrantedOnlyByAHitThatTookFivePercent`, `AnExistingHitTakenHealthRowIsUnchangedByTheShareTheHitCarries`, `MarshalRaisesTheDamageOfAMinionWithinTenMetresOnly`, `SharedLeechPaysTheSummonerAShareOfAMinionsLandedBlow`, `EternalArmyKeepsAMinionAtOneHealthOnlyWhileTheSummonerIsAboveHalf`, `BoundBonesRecountsTheHealthAsMinionsComeAndGo`, `TheEightNodesRowsAreTheirSentences` | 10 |
+| `Cataclysm.SuppressedSlow.` | new: `UnstoppablesRowIsNotSlowedByAWarAurasMovementReduction` (fails before the change), `RelentlessFoldedIntoTheAttributeIsNotSlowedByAWarAurasMovementReduction` | 2 |
+| `Cataclysm.StatExemption.` | the scaled probe table runs `minion_attack_speed`, the no-attribute table three more | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 657 | unchanged |
+
+Each new test has a control: the row worth nothing before a death; a death beyond the reach; a second death in the
+same instant; a hit that took 4% and a tick; a hit that took 1%; a minion 15 metres away and none named; a blow with no
+row; the summoner at exactly 50% and at 40%; a step with the same count; a player holding nothing.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmVitalAttributeSet.cpp`,
+`NotifyIfHealthReachedZero`: Eternal Army's `> AbovePercent` made `< AbovePercent`. Prefix `Cataclysm.MinionLoss.`;
+must fail `EternalArmyKeepsAMinionAtOneHealthOnlyWhileTheSummonerIsAboveHalf`.
+
+### What was run
+
+FIGURES_HERE
+
+---
+
 ## 2026-11-25 — The Necromancer's ranks: rows held by minions within reach, Ringed in Bone's slow immunity, and a minion's blow announced to its summoner (Death trees, slice C6d1)
 
 **Affects:**
