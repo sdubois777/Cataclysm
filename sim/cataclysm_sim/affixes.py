@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import damage, enemy_stats, player_power
+from . import affix_ranges, damage, enemy_stats, player_power
 from .character import (ALL_STATS, ATTRIBUTE_NAMES, RESISTANCE_STATS,
                         SKILL_SLOTS)
 
@@ -697,8 +697,9 @@ class AffixFamily:
         questions this module answers -- how many slots to reach the resistance
         cap -- are about what a finished, crafted character can achieve.
         """
-        return affix_value(self.top_value, tier, roll, gear_level,
-                           self.floor)
+        # SINCE ISSUE #2883, a whole number from the family's seven tier ranges
+        # (`affix_ranges`); `top_value` and `floor` are no longer read here.
+        return float(affix_ranges.value(self.name, tier, roll, gear_level))
 
     def average_at(self, tier: int) -> float:
         """The middle of the band. What an uncrafted drop is worth on average."""
@@ -811,10 +812,12 @@ class StatAffix:
         `two_handed` applies TWO_HANDED_MULTIPLIER, which is what balances four
         affix slots on a two-handed weapon against eight across two one-handed
         ones. It is only ever true for an affix rolled on a two-handed weapon.
+
+        SINCE ISSUE #2883, a whole number from the affix's seven tier ranges
+        (`affix_ranges`), a two-handed weapon doubling inside the rounding;
+        `top_value` and `floor` are no longer read here (issue #2904 retires them).
         """
-        value = affix_value(self.top_value, tier, roll, gear_level,
-                            self.floor)
-        return value * (TWO_HANDED_MULTIPLIER if two_handed else 1.0)
+        return float(affix_ranges.value(self.name, tier, roll, gear_level, two_handed))
 
     def added_value(self, base_before_increases: float, existing_increases: float,
                     tier: int = 7, roll: float = 1.0) -> float:
@@ -1052,7 +1055,7 @@ INCREASED_ARMOR = StatAffix("Increased armor", "armor", "increased", 12.0,
 #: has any, so gear supplies all of it. At 4 points a piece, fifteen slots reach
 #: the cap, which is a real investment rather than an incidental one.
 FLAT_EVASION = StatAffix("Flat evasion", "evasion", "flat", 4.0,
-                         EVASION_SLOTS, PREFIX, floor=1.0)
+                         frozenset({"Chest"}), PREFIX, floor=1.0)
 INCREASED_EVASION = StatAffix("Increased evasion", "evasion", "increased", 12.0,
                               EVASION_SLOTS, PREFIX)
 
@@ -1066,7 +1069,7 @@ INCREASED_SPELL_DAMAGE = StatAffix("Increased spell damage", "spell_damage",
 #: Against the class base: 100 to 150 depending on class, and 6% is 7.
 FLAT_CLASS_RESOURCE = StatAffix("Flat maximum class resource", "class_resource",
                                 "flat", 7.0,
-                                frozenset({"Belt", "Ring", "Relic", "Necklace"}),
+                                frozenset({"Necklace", "Relic"}),
                                 PREFIX, floor=1.75)
 
 # -- Suffixes: how often, how fast, how much gets through -----------------
@@ -1077,13 +1080,13 @@ UTILITY_SLOTS = frozenset({"Boots", "Belt", "Ring", "Necklace", "Relic"})
 #: Against the class base: 15.85 health and 10.9 mana regeneration at level 100,
 #: and 6% of each. Energy shield regeneration is anchored on the Ritualist's 21.8.
 FLAT_HEALTH_REGEN = StatAffix("Flat health regeneration", "health_regen",
-                              "flat", 8.0, RECOVERY_SLOTS, SUFFIX,
+                              "flat", 8.0, frozenset({"Belt", "Chest", "Necklace"}), SUFFIX,
                               floor=2.0)
 INCREASED_HEALTH_REGEN = StatAffix("Increased health regeneration",
                                    "health_regen", "increased", 12.0,
                                    RECOVERY_SLOTS, SUFFIX)
 FLAT_MANA_REGEN = StatAffix("Flat mana regeneration", "mana_regen", "flat",
-                            0.65, RECOVERY_SLOTS, SUFFIX, floor=0.2)
+                            0.65, frozenset({"Belt", "Necklace"}), SUFFIX, floor=0.2)
 INCREASED_MANA_REGEN = StatAffix("Increased mana regeneration", "mana_regen",
                                  "increased", 12.0, RECOVERY_SLOTS, SUFFIX)
 #: THE FLAT ONE DID NOT EXIST UNTIL 2026-09-04, and health and mana both had
@@ -1104,7 +1107,7 @@ INCREASED_MANA_REGEN = StatAffix("Increased mana regeneration", "mana_regen",
 #: refill in two seconds instead.
 FLAT_ENERGY_SHIELD_REGEN = StatAffix(
     "Flat energy shield regeneration", "energy_shield_regen", "flat",
-    10.0, SHIELD_SLOTS, SUFFIX)
+    10.0, frozenset({"Chest", "Head", "Shoulders"}), SUFFIX)
 INCREASED_ENERGY_SHIELD_REGEN = StatAffix(
     "Increased energy shield regeneration", "energy_shield_regen", "increased",
     12.0, SHIELD_SLOTS, SUFFIX)
@@ -1115,7 +1118,7 @@ INCREASED_ENERGY_SHIELD_REGEN = StatAffix(
 #: By convention: the Ravager's 3% is the only leech any class has, and leech
 #: compounds with every point of damage a character stacks, so it stays small.
 FLAT_LIFE_LEECH = StatAffix("Flat life leech", "life_leech", "flat", 4.0,
-                            OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
+                            frozenset({"Weapon"}), SUFFIX, floor=1.0)
 
 #: Mana and energy shield leech, added for issue #214. The design already relied
 #: on both: the Energy Leech class drains enemy mana to refill its own pool, and
@@ -1138,14 +1141,14 @@ FLAT_LIFE_LEECH = StatAffix("Flat life leech", "life_leech", "flat", 4.0,
 #: ON THE SAME SLOTS AS LIFE LEECH. Leech comes from hitting, so it belongs where
 #: a hit comes from, which is what OFFENSIVE_SLOTS is.
 FLAT_MANA_LEECH = StatAffix("Flat mana leech", "mana_leech", "flat", 4.0,
-                            OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
+                            frozenset({"Weapon"}), SUFFIX, floor=1.0)
 
 #: Energy shield is leechable even though the Vampire class cannot use one. That
 #: is a restriction on one class rather than on the stat: the Ritualist is the
 #: class with an energy shield and it is the one this is for.
 FLAT_ENERGY_SHIELD_LEECH = StatAffix("Flat energy shield leech",
                                      "energy_shield_leech", "flat", 4.0,
-                                     OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
+                                     frozenset({"Weapon"}), SUFFIX, floor=1.0)
 
 #: The three together, so a rule about leech can be written once.
 LEECH_AFFIXES: tuple[StatAffix, ...] = (FLAT_LIFE_LEECH, FLAT_MANA_LEECH,
@@ -1160,13 +1163,13 @@ LEECH_PAYOUT_SECONDS = 3.0
 #: By convention. Block removes half a hit and needs no cap, so a full defensive
 #: investment reaching a high figure is legal by design rather than a mistake.
 FLAT_BLOCK_CHANCE = StatAffix("Flat block chance", "block_chance", "flat", 5.0,
-                              DEFENSIVE_SLOTS, SUFFIX, floor=1.25)
+                              frozenset({"Belt", "Shoulders"}), SUFFIX, floor=1.25)
 
 #: By convention, and deliberately the smallest defensive affix in the pool.
 #: Damage reduction is a flat percentage off everything, with no curve and no
 #: cap of its own, so it is the one defensive stat that would run away.
 FLAT_DAMAGE_REDUCTION = StatAffix("Flat damage reduction", "damage_reduction",
-                                  "flat", 4.0, DEFENSIVE_SLOTS, SUFFIX,
+                                  "flat", 4.0, frozenset({"Pants"}), SUFFIX,
                                   floor=1.0)
 
 #: RETALIATION IS A PERCENTAGE OF THE BLOW SINCE ISSUE #1227, so this is
@@ -1179,18 +1182,18 @@ FLAT_DAMAGE_REDUCTION = StatAffix("Flat damage reduction", "damage_reduction",
 #: returns 7,489 of a difficulty tier 8 Boss's 17,075 blow before the Boss's
 #: own armour and resistance.
 FLAT_RETALIATION = StatAffix("Flat retaliation", "retaliation", "flat", 4.0,
-                             DEFENSIVE_SLOTS, SUFFIX, floor=1.0)
+                             frozenset({"Head", "Shoulders"}), SUFFIX, floor=1.0)
 
 #: By convention: at 5 points a piece, twenty slots reach immunity, which the
 #: design already allows -- a character at 100% cannot be stunned at all.
 FLAT_CROWD_CONTROL_RESISTANCE = StatAffix(
     "Flat crowd control resistance", "crowd_control_resistance", "flat", 5.0,
-    DEFENSIVE_SLOTS, SUFFIX, floor=1.25)
+    frozenset({"Belt", "Boots"}), SUFFIX, floor=1.25)
 
 #: By convention. Critical strike chance has a hard cap of 100 and its base
 #: comes from the skill, so gear supplies the climb toward that cap.
 FLAT_CRIT_CHANCE = StatAffix("Flat critical strike chance", "crit_chance",
-                             "flat", 5.0, OFFENSIVE_SLOTS, SUFFIX,
+                             "flat", 5.0, frozenset({"Gloves", "Weapon"}), SUFFIX,
                              floor=1.25)
 INCREASED_CRIT_CHANCE = StatAffix("Increased critical strike chance",
                                   "crit_chance", "increased", 25.0,
@@ -1324,7 +1327,7 @@ DOT_LEVER_AFFIXES: tuple[StatAffix, ...] = (INCREASED_DOT_DAMAGE,
 #: beyond it grants nothing, so a handful of these covers the hardest target in
 #: the vertical slice and more is wasted.
 FLAT_PENETRATION = StatAffix("Flat penetration", "penetration", "flat", 4.0,
-                             OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
+                             frozenset({"Weapon"}), SUFFIX, floor=1.0)
 
 #: A BOOTS MODIFIER SINCE 2026-09-04, worth 35% at its top. It was 8% and
 #: rolled on Belt, Boots and Ring, which with eight ring slots is ten worn
@@ -1617,10 +1620,13 @@ class Implicit:
         `two_handed` applies TWO_HANDED_MULTIPLIER. Pass a weapon base's
         `value_multiplier` rather than deciding here, so the rule lives in one
         place. An armour base is never two-handed.
+
+        SINCE ISSUE #2883 (D9), a whole number: the stated +10 figure over 2.5,
+        rounded half up and at least 1, upgraded as an affix's range is
+        (`affix_ranges.implicit_value`). The game reads the same +0 number from
+        the base row's ImplicitNAtZero.
         """
-        at_zero = self.value / gear_level_multiplier(MAX_GEAR_LEVEL)
-        multiplier = TWO_HANDED_MULTIPLIER if two_handed else 1.0
-        return at_zero * gear_level_multiplier(gear_level) * multiplier
+        return float(affix_ranges.implicit_value(self.value, gear_level, two_handed))
 
 
 # --------------------------------------------------------------------------
@@ -2347,7 +2353,7 @@ class AilmentAffix:
                 f"{self.name} allows slots that do not exist: {sorted(unknown)}")
 
     def range_at(self, tier: int) -> tuple[float, float]:
-        return tier_band(self.top_chance, tier)
+        return (self.chance_at(tier, 0.0), self.chance_at(tier, 1.0))
 
     def chance_at(self, tier: int, roll: float = 1.0,
                   gear_level: int = MAX_GEAR_LEVEL,
@@ -2360,9 +2366,11 @@ class AilmentAffix:
         and the game's `UCataclysmItemValues::AffixValue` doubles an ailment
         chance on a two-handed weapon like every other affix. It is only ever
         true for an affix rolled on a two-handed weapon.
+
+        SINCE ISSUE #2883, a whole number from the affix's seven tier ranges
+        (`affix_ranges`), a two-handed weapon doubling inside the rounding.
         """
-        chance = affix_value(self.top_chance, tier, roll, gear_level)
-        return chance * (TWO_HANDED_MULTIPLIER if two_handed else 1.0)
+        return float(affix_ranges.value(self.name, tier, roll, gear_level, two_handed))
 
     def slots_available(self) -> int:
         return slots_available_to(self.allowed_slots)
@@ -2545,7 +2553,10 @@ class HybridAffix:
                  gear_level: int = MAX_GEAR_LEVEL) -> float:
         if part not in self.parts:
             raise ValueError(f"{part.name} is not part of {self.name}")
-        return part.value_at(tier, roll, gear_level) * HYBRID_FRACTION
+        # SINCE ISSUE #2883 (D6), each half is its own affix two tiers down,
+        # which is the design's 70% share read off the half's own whole-number
+        # ladder; a hybrid at tier 1 or 2 is read as tier 3.
+        return float(affix_ranges.hybrid_half(part.name, tier, roll, gear_level))
 
     def values_at(self, tier: int = 7, roll: float = 1.0,
                   gear_level: int = MAX_GEAR_LEVEL) -> dict[str, float]:
@@ -3225,6 +3236,24 @@ def _check_only_a_two_handed_weapon_multiplies_its_values() -> None:
                 f"{base.value_multiplier}, expected {expected}")
 
 
+def _check_the_affix_ranges_agree_with_this_module_and_name_every_affix() -> None:
+    """`affix_ranges` restates three of this module's constants, because it cannot import this
+    module, and must name every non-hybrid affix in the pool, or an affix would have no value."""
+    if (affix_ranges.LEVEL_STEP_HUNDREDTHS != round(GEAR_LEVEL_FACTOR * 100)
+            or affix_ranges.TWO_HANDED_FACTOR != TWO_HANDED_MULTIPLIER
+            or affix_ranges.MAX_GEAR_LEVEL != MAX_GEAR_LEVEL
+            or affix_ranges.MAX_TIER != AFFIX_TIERS[-1]):
+        raise ValueError("affix_ranges disagrees with affixes.py on the upgrade step, the "
+                         "two-handed multiplier, the highest gear level or the highest tier")
+    names = ({a.name for a in AFFIX_POOL} | {f.name for f in RESISTANCE_FAMILIES}
+             | {a.name for a in AILMENT_AFFIXES})
+    if names != set(affix_ranges.TIER_RANGES):
+        raise ValueError(f"affix_ranges does not name exactly the affixes in the pool: missing "
+                         f"{sorted(names - set(affix_ranges.TIER_RANGES))}, extra "
+                         f"{sorted(set(affix_ranges.TIER_RANGES) - names)}")
+
+
+_check_the_affix_ranges_agree_with_this_module_and_name_every_affix()
 _check_every_affix_tier_has_a_drop_weight()
 _check_a_higher_affix_tier_is_never_more_likely()
 _check_every_slot_can_fill_all_four_of_its_affixes()

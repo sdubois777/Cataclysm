@@ -513,30 +513,88 @@ public:
 	static float WorstMultiplier();
 
 	/**
-	 * One affix's value: its tier band, where in it the roll landed, the
-	 * piece's upgrade level, and whether the piece is a two-handed weapon.
-	 *
-	 * The stated top values are the +10 figures, so this divides by the +10
-	 * multiplier before applying the piece's own.
-	 *
-	 * THE LADDER RUNS FROM THE FLOOR TO THE TOP, since issue #1230. Without
-	 * a floor the three ladders multiply to 10, so the worst roll was always
-	 * a tenth of the top however small that top was.
-	 *
-	 * A FLOOR OF ZERO MEANS NONE WAS STATED and the affix is unchanged. The
-	 * derived floor is `TopValue * WorstMultiplier()`, and the remap below is
-	 * the identity map at exactly that value, so this is not a special case
-	 * that could rot -- it is the same arithmetic reaching the same answer.
+	 * Each upgrade level adds this many hundredths to the multiplier: +0 is
+	 * 100, +10 is 250. GearLevelFactor written as whole hundredths, because
+	 * the upgrade rounding below is exact only in integers: 10 x 1.15 is 11.5
+	 * on paper and 11.4999... in floating point, which rounds the wrong way.
+	 * Issue #2883.
+	 */
+	static constexpr int32 GearLevelStepHundredths = 15;
+
+	/**
+	 * A HYBRID AT TIER N GRANTS EACH HALF AS ITS OWN AFFIX AT TIER N - 2, so a
+	 * hybrid rolls tiers 3 to 7 only. Two tiers down on the old ladder was
+	 * 0.693 of the value, the design's 70% hybrid share within one per cent,
+	 * read off each half's own whole-number ladder rather than multiplied
+	 * (D6 of the approved proposal, issue #2883).
+	 */
+	static constexpr int32 HybridTierDrop = 2;
+	static constexpr int32 LowestHybridTier = HybridTierDrop + 1;
+
+	/**
+	 * A +0 whole number at an upgrade level: multiplied in whole hundredths
+	 * and rounded once, a half going up. Always from the +0 number, never
+	 * from the level below, so rounding never compounds. A two-handed weapon
+	 * doubles inside the rounding. Issue #2883, rule 3.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
-	static float AffixValue(float TopValue, float Floor, int32 Tier,
-							float Roll, int32 GearLevel,
-							bool bTwoHanded = false);
+	static int32 UpgradedWhole(int32 AtZero, int32 GearLevel, bool bTwoHanded = false);
 
-	/** An implicit's value. It does not roll, so it has no tier and no band. */
+	/**
+	 * One of the whole numbers Low to High, each equally likely: the roll in
+	 * [0, 1] is cut into High - Low + 1 equal shares. EnchantmentValue's rule
+	 * at a precision of one. Issue #2883, rule 4.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
-	static float ImplicitValue(float StatedValue, int32 GearLevel,
-							   bool bTwoHanded = false);
+	static int32 WholeAtRoll(int32 Low, int32 High, float Roll);
+
+	/** An affix's tier range at an upgrade level: both ends of its +0 range
+	 *  upgraded. Zero to zero on a Hybrid row. */
+	static void AffixRangeAt(const FCataclysmAffixRow& Affix, int32 Tier,
+							 int32 GearLevel, bool bTwoHanded,
+							 int32& OutLow, int32& OutHigh);
+
+	/**
+	 * One affix's value, a whole number: the roll's position among the whole
+	 * numbers of its tier's range at the piece's upgrade level.
+	 *
+	 * SINCE ISSUE #2883 THE RANGE IS READ FROM THE ROW'S T1Min..T7Max, the
+	 * approved proposal's whole-number ranges at +0. TopValue and Floor are no
+	 * longer read here; issue #2904 retires them.
+	 *
+	 * THE ROLL IS A POSITION, NOT A +0 NUMBER. An item stores its roll in
+	 * [0, 1], and the number is that position among the tier's whole numbers at
+	 * the item's level, so every number a tool tip's range shows can roll, and
+	 * upgrading never lowers a roll. A save carries Affix, Tier and Roll and
+	 * never a value, so the new ranges need no save migration.
+	 */
+	static float AffixValue(const FCataclysmAffixRow& Affix, int32 Tier,
+							float Roll, int32 GearLevel, bool bTwoHanded = false);
+
+	/**
+	 * One half of a hybrid at a hybrid tier: that half's own affix at tier
+	 * HybridTier - HybridTierDrop.
+	 *
+	 * A HYBRID SAVED AT TIER 1 OR 2 IS READ AS TIER 3, and is not migrated.
+	 * Such saves exist because the drop roll never bounded a hybrid's tier
+	 * before issue #2883; the coordinating session ruled on 2026-11-25 to
+	 * clamp when the value is read, with no save step.
+	 */
+	static float HybridHalfValue(const FCataclysmAffixRow& Half, int32 HybridTier,
+								 float Roll, int32 GearLevel, bool bTwoHanded = false);
+
+	/**
+	 * An implicit's value: its whole +0 value (the base row's ImplicitNAtZero)
+	 * upgraded as an affix's range is. It does not roll, so it has no tier.
+	 *
+	 * RENAMED FROM ImplicitValue IN ISSUE #2883, which took the stated +10
+	 * figure and divided it. A different name rather than a changed parameter,
+	 * so a caller still passing the +10 figure fails to compile instead of
+	 * being converted to an integer in silence.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float ImplicitValueAtLevel(int32 AtZero, int32 GearLevel,
+									  bool bTwoHanded = false);
 
 	/**
 	 * One enchantment number: where a roll lands inside a stated range.
