@@ -188,6 +188,9 @@ OWN = "own_stacks"
 HITS = "consecutive_hits"
 MINIONS = "minions_held"
 
+#: The scale slice C2 writes: the enemies in the character's Siphon.
+SIPHONED = "enemies_in_siphon"
+
 #: The Death rows that are data today: a stat, a condition and a scale the game
 #: already has. The survey of 2026-11-24 (plan section 4.1, group (a)) found 46
 #: such entries, and all 46 are here. Untouched and Through and Through say "for
@@ -425,6 +428,39 @@ NODES: tuple[Node, ...] = (
          + damage("more", 100, cond="target_health_below", cond_value=15, cond2=RUNG_AT_LEAST,
                   cond_value2=4),
          option=2),
+
+    # ---- SLICE C2 (2026-11-25): THE SOUL COLLECTOR'S SIPHON AND ITS LIMB, read by
+    # `FCataclysmSiphon`. "Increased area of your Siphon" is an increase on its
+    # radius, as every area in this game multiplies its radius.
+    Node(SC + "basic_c_stem0", "The Siphon", (R("siphon_radius_metres", "flat", 6),)),
+    Node(SC + "basic_c_stem1", "Sapping Cold",
+         (R("siphon_enemies_deal_less_percent", "flat", 1),)
+         + tuple(row for points in (2, 4, 6)
+                 for row in (R("siphon_enemy_slow_percent", "flat", 3, min_points=points),)
+                 + damage("increased", 1, scale=SIPHONED, step=1, cap=10, min_points=points)
+                 + (R("movement_speed", "increased", 1, scale=SIPHONED, step=1, cap=10,
+                      min_points=points),))),
+    Node(SC + "basic_c_stem2", "Pall of Souls",
+         (R("siphon_radius_metres", "increased", 1, scale=HELD, step=20),)),
+    # LIFE SIPHON: "At 10 points: each enemy in your Siphon restores 1% of your
+    # maximum health each second, up to 5 enemies", granted whole from 10 points.
+    Node(SC + "basic_c_a0", "Life Siphon",
+         (R("siphon_life_percent", "flat", 1, scale=SIPHONED, step=1, cap=5, min_points=10),)),
+    Node(SC + "basic_c_a1", "Drain", (R("siphon_drain_weapon_percent", "flat", 2),)),
+    Node(SC + "basic_c_a2", "Necrotic Siphon", (R("siphon_necrosis_chance", "flat", 5),)),
+    Node(SC + "basic_c_b0", "Enfeeble", (R("siphon_enemies_deal_less_percent", "flat", 1),)),
+    Node(SC + "basic_c_b1", "Stolen Strength",
+         tuple(R("damage_reduction", "increased", 1, scale=SIPHONED, step=1, cap=10, min_points=points)
+               for points in (4, 8))),
+    Node(SC + "basic_c_b2", "Soul-Heavy Air",
+         damage("increased", 1, cond="target_in_your_siphon", scale=HELD, step=50)),
+    Node(SC + "basic_c_c0", "Lingering Pull",
+         tuple(R("siphon_linger_seconds", "flat", 1, min_points=points) for points in (4, 8))),
+    Node(SC + "basic_c_c1", "Reaching Cold", (R("siphon_radius_metres", "increased", 4),)),
+    # LIVING HARVEST: "1 Fervour every 2 seconds, up to 4 Fervour a second", paid
+    # once a second as half a Fervour for each enemy, up to 8 enemies.
+    Node(SC + "keystone_c_kA", "Living Harvest",
+         (R("siphon_fervour_per_second", "flat", 0.5, scale=SIPHONED, step=1, cap=8),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

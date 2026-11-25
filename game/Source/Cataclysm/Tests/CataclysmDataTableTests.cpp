@@ -527,7 +527,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 498 SINCE 2026-11-25, for the Death trees' slice C1: 39 rows on sixteen
 	// nodes and options today's rows state whole, the first passive action rows
 	// among them; the Soul Collector 48 in all, the Necromancer 19, the Shadow 67.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        498)
+	// AND 525 THE SAME DAY, for slice C2: the Soul Collector's Siphon and its limb,
+	// 27 rows on twelve nodes; the Soul Collector 75 in all.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        525)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

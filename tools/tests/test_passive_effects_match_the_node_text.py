@@ -677,7 +677,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: nodes and options that today's rows state whole, the first passive action
 #: rows among them. Measured then: the Soul Collector 48 rows on 24 nodes, the
 #: Necromancer 19 on 15, the Shadow 67 on 41.
-AUTHORED_ROWS = 498
+#:
+#: AND TO 525 ON 2026-11-25, for the Death trees' slice C2: the Soul Collector's
+#: Siphon and the eleven nodes of its limb, 27 rows. Measured then: the Soul
+#: Collector 75 rows on 36 nodes.
+AUTHORED_ROWS = 525
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1103,7 +1107,10 @@ AUTHORED_ROWS = 498
 #: AND TO 306 ON 2026-11-25, for the Death trees' slice C1's fifteen nodes not
 #: counted before (the Soul Collector's 50-point vow already was): the Soul
 #: Collector 24 of its 73, the Necromancer 15 of its 73 and the Shadow 41 of its 74.
-AUTHORED_NODES = 306
+#:
+#: AND TO 318 ON 2026-11-25, for the Death trees' slice C2's twelve Siphon nodes:
+#: the Soul Collector 36 of its 73.
+AUTHORED_NODES = 318
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1550,6 +1557,10 @@ CONDITION_WORDS = {
     "target_not_yet_struck_by_you": ("first hit against each enemy", None),
     "in_combat_for_seconds": ("in combat", "{value:g} second"),
     "target_carries_your_curse": ("carrying your curse", None),
+    # THE CHARACTER STRUCK IS IN THE ASKER'S SIPHON, the Death trees' slice C2
+    # (2026-11-25): Soul-Heavy Air, "Enemies in your Siphon take 1% increased
+    # damage from you". No value.
+    "target_in_your_siphon": ("enemies in your siphon", None),
 
     # THE FIVE MOVEMENT CONDITIONS. Issue #41, slice 2. No row in
     # PassiveEffects.csv uses any of them yet, so these entries are not
@@ -2050,6 +2061,12 @@ SCALE_WORDS = {
     # kill in your current chain" and Wearing Cut's "for each hit in a row".
     # Each says "for each", so the step is 1.
     "own_stacks": (("for each",), None, None),
+
+    # THE ENEMIES IN THE CHARACTER'S SIPHON, the Death trees' slice C2
+    # (2026-11-25): Sapping Cold, Stolen Strength, Life Siphon and Living Harvest
+    # each say "each enemy in your Siphon", and count single enemies, so the
+    # step is 1. Their caps ("up to 10 enemies") are the rows' Scale Max Steps.
+    "enemies_in_siphon": (("each enemy in your siphon",), None, None),
     "consecutive_hits": ((("hit in a row", "hits in a row"),), None, None),
 
     # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
@@ -2456,6 +2473,10 @@ VALUE_FORMS = {
                          "+{value:g} Fervour"),
     "fervour_kill_decay_per_second": ("decays at {value:g} per second",
                                       "drains at {value:g} per second"),
+    # THE SIPHON'S RADIUS AND ITS LINGER, the Death trees' slice C2 (2026-11-25):
+    # "within 6 metres of you" and "for 1 second for every 4 points".
+    "siphon_radius_metres": ("within {value:g} metres",),
+    "siphon_linger_seconds": ("{value:g} second",),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
                                          "for {value:g} seconds rather than",
                                          "{value:g} second later",
@@ -2536,6 +2557,11 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # LIVING HARVEST, the Death trees' slice C2 (2026-11-25): "Each enemy in your
+    # Siphon gives you 1 Fervour every 2 seconds" is half a Fervour a second for
+    # each, paid once a second.
+    ("SoulCollector_keystone_c_kA", "siphon_fervour_per_second"):
+        ("1 fervour every 2 seconds", 0.5),
     # DEATH SENTENCE'S BOSS HALF, the Death trees' slice C1 (2026-11-25):
     # "Bosses take double damage from you below 15%" is 100% more, in a word.
     ("Shadow_capstone_200", "attack_damage", "target_health_below"):
