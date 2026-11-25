@@ -764,6 +764,73 @@ class TuningConfig:
         "Void": "Hollow",
     })
 
+    # --- Demonic's Infernal Rifts (Hell on Earth, issue #51) ------------
+    #
+    # THE OWNER'S RULINGS OF 2026-11-24, on issue #51 (comment 7149391315), each
+    # the option they chose, verbatim:
+    #   Q1 "Rift = Quest dungeon (Recommended)": a Rift IS a Demonic Quest
+    #      dungeon. Sealing one is one quest objective; it is Elite, hits its
+    #      city on its timer and moves when its city falls, as any Quest
+    #      dungeon does.
+    #   Q3/Q4 "Anywhere but the Pillar (Recommended)": it opens on any standing
+    #      city but the Pillar, behind the front included, by the surge's tier
+    #      weights (`SURGE_TARGET_WEIGHT`). Every 5 days from the day it opened,
+    #      not reset when it moves, an unsealed Rift sends an ordinary Basic
+    #      Demonic dungeon, made as a surge makes one, to an adjacent city a
+    #      surge could target; nothing when no neighbour qualifies.
+    #   Q5 "Every death, no gap (Recommended)": each death in a Rift brings an
+    #      ordinary surge at once, with no least-interval brake.
+    #
+    # AND ON THE RIFT ITSELF, the same day, after the measurement of 4-floor
+    # Rifts (issue #51, the newest comment), verbatim: "Rift are quest dungeons
+    # yes, but we determined they have 4 pillars the player needs to destroy.
+    # So... let's make them 4 floors?", "Keep the short timer for rifts. It's
+    # only fair, it has 4 floors. If you keep on top of them it wont matter.",
+    # "Also, I think we should make it so Rifts always have 8 dungeon modifiers.
+    # Keep it spicy", "No limit" and "(b) 8 modifiers only (Recommended)". So a
+    # Rift is exactly 4 floors, one altar on each, with the quest timer of 4
+    # floors, exactly 8 modifiers, and the enemies of an ordinary 4-floor
+    # dungeon; it sends with no limit on how many of its dungeons stand.
+    #
+    # THE RIFTS SHIP ON, IN THE SAME CHANGE AS THE GAME'S (slice B2), ruled by
+    # the coordinating session on 2026-11-24 "so the model and the game agree".
+    # Off, nothing reads the switches below and a campaign is the one measured
+    # before the Rifts existed. A campaign whose character never faces Demonic
+    # is the same either way: the Rift code takes no draw unless Demonic sends a
+    # Quest dungeon.
+    demonic_rifts: bool = True
+    #: Days between an unsealed Rift's dungeons, counted from the day it opened.
+    #: The design's 5 (section XI). 0 sends none.
+    rift_spawn_every_days: int = 5
+    #: Whether a death in a Rift brings an ordinary surge at once.
+    rift_death_brings_surge: bool = True
+    #: A Rift is made as any Demonic Quest dungeon (depth rolled for its city)
+    #: and then given exactly this many floors, whatever the empire tree adds;
+    #: its walk and its reward are these floors. 4, ruled above. 0 keeps a Rift
+    #: as deep as any Quest dungeon, the rule of comment 7149391315 before the
+    #: owner chose 4.
+    rift_floors: int = 4
+    #: With `rift_floors` set, whether the Rift's quest timer is the one its
+    #: rolled depth gives (True) or the one its own floors give (False, ruled:
+    #: "Keep the short timer for rifts"). Quest timers scale with depth (the
+    #: owner, 2026-10-16), so a short Rift's own timer runs out, and hits its
+    #: city, far more often.
+    rift_timer_from_quest_depth: bool = False
+    #: With `rift_floors` set, whether the Rift's floors fight the enemies of
+    #: its rolled depth (True: floor i fights floor ceil(i x depth / floors),
+    #: kept as `Dungeon.strength_floors` for `combat.death_chance`) or their
+    #: own, as an ordinary dungeon of that many floors (False, ruled: "(b) 8
+    #: modifiers only").
+    rift_strength_from_quest_depth: bool = False
+    #: How many dungeon modifiers a Rift carries, whatever the tier; 0 carries
+    #: what any dungeon of the tier does (one a tier). 8, ruled above.
+    rift_modifiers: int = 8
+    #: A Rift sends only while none of the dungeons it sent still stands.
+    #: Recommended to the owner on 2026-11-24 against the board filling up
+    #: under the 5-day spawn, and refused: "No limit". Kept so it can still be
+    #: measured.
+    rift_one_sent_at_a_time: bool = False
+
     # --- the Siege sub-type ----------------------------------------------
     #
     # THE ONE PLACE IN THIS MODEL WHERE DAMAGE IS STILL A SHARE OF A CITY'S
@@ -807,12 +874,13 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 9 / 25 / 40 (the walk today, re-measured on 2026-11-19 over 10,000
+    # 8 / 23 / 37 (the walk today, re-measured on 2026-11-24 over 10,000
     # campaigns, seeds 0 to 9999, by the prose test's own method: its report
     # settings, no tree, `triage`, every dungeon recorded when it is made, with
-    # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749 and
-    # Demonic following the front line since the same issue; it was
-    # 9 / 23 / 35 earlier that day, with Demonic landing behind the line,
+    # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749, Demonic
+    # following the front line since the same issue, the surge rulings of issue
+    # #2865 and Demonic's Rifts since issue #51; it was 9 / 25 / 40 on
+    # 2026-11-19, and 9 / 23 / 35 earlier that day, with Demonic landing behind the line,
     # 14 / 23 / 35 on 2026-10-18 with an Outpost's dungeons 8 to 15,
     # 14 / 22 / 34 on 2026-10-12, 14 / 23 / 37 on the day of the cut and
     # 14 / 24 / 37 after issue #1432), so on the day of the cut the

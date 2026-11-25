@@ -1953,6 +1953,82 @@ public:
 		bool bCarriesSiege = false,
 		const TArray<int32>& SiegesPerCityNow = TArray<int32>());
 
+	// -- Demonic's Infernal Rifts (Hell on Earth), issue #51 slice B2 ----------------------------------------------
+	//
+	// THE OWNER'S RULINGS OF 2026-11-24, on issue #51, each verbatim: "Rift = Quest dungeon (Recommended)", "Anywhere
+	// but the Pillar (Recommended)", "Every death, no gap (Recommended)", "let's make them 4 floors?", "Keep the short
+	// timer for rifts", the eight modifiers (`UCataclysmDungeonModifierRules::RiftModifierCount` quotes that ruling), "No
+	// limit" and "(b) 8 modifiers only (Recommended)".
+	// A Rift is `FCataclysmDungeon::IsARift`: a Quest dungeon Demonic sent. `sim/cataclysm_sim/engine.py` holds the
+	// same rules (`Simulation.trigger_surge`, `_rift_spawns`, `_surge_for_a_rift_death`), and
+	// `tools/tests/test_demonic_rifts_port.py` holds the two halves equal.
+
+	/**
+	 * How many floors a Rift has: exactly four, one altar on each, whatever the city's floor upgrades and the empire
+	 * tree would add. The owner, 2026-11-24, "let's make them 4 floors?", and of the altars, "One per floor". A port
+	 * of `TuningConfig.rift_floors`.
+	 */
+	static constexpr int32 RiftFloors = 4;
+
+	/**
+	 * Days between the dungeons an unsealed Rift sends, counted from its `SpawnedDay` and not reset when it moves.
+	 * The design's 5 (section XI, "An unchecked Rift spawns a dungeon on an adjacent city every 5 days"). A port of
+	 * `TuningConfig.rift_spawn_every_days`.
+	 */
+	static constexpr int32 RiftSendEveryDays = 5;
+
+	/** The salt a Rift's own seeds are mixed with: "rift". */
+	static constexpr int32 RiftSalt = 0x72696674;
+
+	/**
+	 * Which of a Rift's draws a seed is for: its city (0), its modifiers (1), and the N-th dungeon it sends, N from 1,
+	 * `RiftSendDraw + N`, so 2 and up and never one of the first two.
+	 */
+	static constexpr int32 RiftPlaceDraw = 0;
+	static constexpr int32 RiftModifierDraw = 1;
+	static constexpr int32 RiftSendDraw = 1;
+
+	/**
+	 * The seed of one of a Rift's draws: `CataclysmSeedMix::Mix` of the run's seed and the Rift's identifier, mixed
+	 * again with the draw. Never nought.
+	 *
+	 * **A RIFT TAKES NO NUMBER OFF THE STREAMS THE REST OF THE RUN DRAWS FROM.** Its city, its eight modifiers and
+	 * every dungeon it sends come from streams made from this, so every other dungeon of a fixed-seed run rolls what it
+	 * rolled before Rifts existed, and nothing new is saved: the run's seed (`UCataclysmEmpireRun::
+	 * CorruptedStalkerSeed`, saved), the Rift's identifier and its `SpawnedDay` (saved on the dungeon) say all of it.
+	 * The draws an ordinary dungeon takes are still taken from the shared streams and thrown away, as the Quest
+	 * dungeon's sub-type draw is (`MakeDungeon`). A judgement of slice B2, in the shape of the Corrupted Stalker's
+	 * seed (issue #1308).
+	 */
+	static int32 RiftSeedFor(int32 RunSeed, int32 DungeonId, int32 Draw);
+
+	/**
+	 * Whether a Rift that opened on `SpawnedDay` sends its dungeon on `Day`: every `RiftSendEveryDays`-th day after it
+	 * opened, never on the day itself.
+	 */
+	static bool RiftSendsOn(int32 SpawnedDay, int32 Day);
+
+	/** Days from `Day` until a Rift that opened on `SpawnedDay` next sends: 1 to `RiftSendEveryDays`. */
+	static int32 DaysUntilRiftSends(int32 SpawnedDay, int32 Day);
+
+	/**
+	 * Where a Rift opens: any standing city but the Pillar, sealed cities behind the front included, by the surge's
+	 * tier weights (`TargetWeightFor`), and not a city at its dungeon cap (`RoomLeftOn`). The owner, 2026-11-24,
+	 * "Anywhere but the Pillar (Recommended)". `INDEX_NONE`, with no draw, when no city qualifies; the caller then
+	 * keeps the front-line city the wave drew. One draw otherwise.
+	 */
+	static int32 PickRiftCity(const UCataclysmEmpireMap& Map, FRandomStream& Draws,
+							  const TArray<int32>& DungeonsPerCity = TArray<int32>());
+
+	/**
+	 * Where a Rift standing on `From` sends its dungeon: an adjacent city a surge could target (`AdjacentCities`,
+	 * exposed and so standing, not the Pillar, not at its dungeon cap), by the surge's tier weights. `INDEX_NONE`,
+	 * with no draw, when no neighbour qualifies: "Nothing is sent when no neighbour qualifies". Choosing among several
+	 * neighbours by the tier weights is a judgement of slice B2; the ruling names no rule for it.
+	 */
+	static int32 PickRiftTarget(const UCataclysmEmpireMap& Map, const FCataclysmCity& From, FRandomStream& Draws,
+								const TArray<int32>& DungeonsPerCity = TArray<int32>());
+
 	/**
 	 * Where a Quest dungeon standing on a city that has just fallen goes, or
 	 * `INDEX_NONE` when nowhere qualifies and it stays on the fallen city.
@@ -2050,6 +2126,10 @@ public:
 	 * @param bFromEmptyBoard true for a surge an empty board fired: the wave is
 	 *                       `DungeonsInNextSurge(true)`, `ExtraDungeonsOnEmptyBoard`
 	 *                       larger. Issue #2865.
+	 * @param RiftSeed       the run's seed for its Rifts' own draws (`RiftSeedFor`):
+	 *                       a Demonic Quest dungeon, a Rift, re-draws its city with
+	 *                       `PickRiftCity` from a stream of its own. Issue #51 slice
+	 *                       B2. 0 by default, which is still a seed.
 	 */
 	TArray<FCataclysmDungeon> RollWave(
 		const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
@@ -2058,5 +2138,5 @@ public:
 		const TArray<int32>& SiegesPerCityNow = TArray<int32>(),
 		const TFunction<ECataclysmType()>& DrawCataclysm =
 			TFunction<ECataclysmType()>(),
-		bool bFromEmptyBoard = false) const;
+		bool bFromEmptyBoard = false, int32 RiftSeed = 0) const;
 };

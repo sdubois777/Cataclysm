@@ -232,6 +232,15 @@ public:
 	static FString FallenCityDetail(const UCataclysmEmpireRun* Run, int32 CityId);
 
 	/**
+	 * What a city's box adds when Rifts stand on it: ", Rift", or ", 2 Rifts"; nothing otherwise. The map widget puts
+	 * it after `CityLabel`, so "Bulwark 80%, Rift" says where each Rift is without hovering. Issue #51 slice B2, "the
+	 * map shows each Rift and its next spawn day": the next spawn day is on the city's detail line
+	 * (`CityDetailDungeonLine`). Nothing for a run that has not begun.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString RiftMark(const UCataclysmEmpireRun* Run, int32 CityId);
+
+	/**
 	 * What the PLAYER has done to the map: dungeons beaten, and Quest dungeons among them.
 	 *
 	 * "4 dungeons cleared, 1 Quest dungeon cleared". Everything else the empire screen

@@ -459,8 +459,11 @@ bool FCataclysmDungeonModifierRunTest::RunTest(const FString& Parameters)
 
 	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 	{
-		const int32 Wanted = UCataclysmDungeonModifierRules::CountFor(
-			4, Dungeon.SubType);
+		// A RIFT CARRIES EIGHT WHATEVER THE TIER, since issue #51 slice B2 (seed 42 at tier 4 faces Demonic, so a
+		// Quest dungeon of its wave can be one). The pool here holds four rows a Cataclysm, sixteen at tier 4.
+		const int32 Wanted = Dungeon.IsARift()
+			? UCataclysmDungeonModifierRules::RiftModifierCount
+			: UCataclysmDungeonModifierRules::CountFor(4, Dungeon.SubType);
 
 		TestEqual(FString::Printf(
 			TEXT("dungeon %d carries %d modifiers"), Dungeon.DungeonId, Wanted),

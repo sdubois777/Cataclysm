@@ -78,7 +78,8 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
                  rate: float = OVERWHELM_RATE,
                  cap: float = OVERWHELM_CAP,
                  extra_per_floor: float = 0.0,
-                 extra_cap: int = 0) -> float:
+                 extra_cap: int = 0,
+                 strength_floors: int = 0) -> float:
     """Probability of dying at least once on the way through.
 
     Risk on a floor is proportional to how much harder Overwhelm makes you get
@@ -86,8 +87,22 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
 
     `extra_per_floor` and `extra_cap` raise the modifier score floor by floor
     (`floor_modifier_score`), the boss's floor included. Both 0 by default.
+
+    `strength_floors`, WHEN SET AND NOT `total_floors`, IS A DEEPER DUNGEON
+    WHOSE ENEMIES THESE FLOORS FIGHT: floor i of the `total_floors` walked
+    fights floor ceil(i x strength_floors / total_floors) of a dungeon
+    `strength_floors` deep, and the boss is that dungeon's last-floor boss.
+    Every floor walked is evaluated, not sampled, and counts once. A 4-floor
+    Rift (`TuningConfig.rift_floors`, the owner's proposal of 2026-11-24 on
+    issue #51) is the only dungeon that sets it. 0, the default, leaves the
+    path below exactly as it was.
     """
     tw = scoring.tier_width(tier)
+    if strength_floors > 0 and strength_floors != total_floors:
+        return _death_chance_against_a_deeper_dungeon(
+            player_power, tier, dtype, subtype, total_floors, strength_floors,
+            modifier_score, per_floor_risk, boss_risk_multiplier, boss_rarity,
+            rate, cap, extra_per_floor, extra_cap)
     survive = 1.0
 
     # Ordinary floors, sampled and weighted by how many floors each stands for.
@@ -112,6 +127,37 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
                     * (damage_multiplier(ow) - 1.0))
     survive *= max(0.05, 1.0 - boss_risk)
 
+    return 1.0 - survive
+
+
+def _death_chance_against_a_deeper_dungeon(
+        player_power: float, tier: int, dtype: str, subtype: str,
+        total_floors: int, strength_floors: int, modifier_score: float,
+        per_floor_risk: float, boss_risk_multiplier: float, boss_rarity: str,
+        rate: float, cap: float, extra_per_floor: float,
+        extra_cap: int) -> float:
+    """`death_chance` for floors that fight a deeper dungeon's floors; see its
+    `strength_floors`. The same per-floor risk and boss risk as that path, with
+    each walked floor counted once."""
+    tw = scoring.tier_width(tier)
+    survive = 1.0
+    for floor in range(1, total_floors + 1):
+        deep = math.ceil(floor * strength_floors / total_floors)
+        threat = floor_threat(tier, dtype, subtype, strength_floors, deep,
+                              floor_modifier_score(modifier_score, floor,
+                                                   extra_per_floor, extra_cap))
+        ow = overwhelm(player_power, threat, tw, rate, cap)
+        risk = per_floor_risk * (damage_multiplier(ow) - 1.0)
+        if risk > 0:
+            survive *= max(0.0, 1.0 - risk)
+    boss = scoring.enemy_scores(tier, dtype, subtype, strength_floors,
+                                strength_floors,
+                                floor_modifier_score(modifier_score, total_floors,
+                                                     extra_per_floor, extra_cap))[boss_rarity]
+    ow = overwhelm(player_power, boss, tw, rate, cap)
+    boss_risk = min(0.95, per_floor_risk * boss_risk_multiplier
+                    * (damage_multiplier(ow) - 1.0))
+    survive *= max(0.05, 1.0 - boss_risk)
     return 1.0 - survive
 
 
