@@ -101,9 +101,31 @@ a Boss beyond 10 metres; a death carrying only the holder's Poison; nothing with
 
 ### What was run
 
-SUITE_FIGURES_C4C2
+**The whole Python suite on `ef27e95ce`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8527 passed, 9 skipped in 378.14s
+(0:06:18)". The JUnit file agrees: tests 8537, failures 1, errors 0, skipped 9, so 8527 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the
+check that every damage over time names its skill, which Blood Debt's call now satisfies by being listed with the rule
+that a passive's damage credits no skill.
 
-PYTHON_PROOFS_C4C2
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`96f2b9aae`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The early return in `WithTargetState` losing the near-kill flag | `test_charge_and_placed_action_names_match_the_engine.py::test_every_target_question_reaches_both_lists_in_with_target_state` |
+| The kill handler no longer marking the enemies near its kill | `test_charge_and_placed_action_names_match_the_engine.py::test_grim_wake_marks_the_enemies_near_a_kill_and_the_condition_reads_the_mark` |
+| The strongest chosen by health alone | `test_charge_and_placed_action_names_match_the_engine.py::test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body` |
+| Blood Debt's row accepted on a kill | `test_generate_datatables.py::test_a_bleed_left_row_is_refused_where_the_game_would_pass_nothing` |
+| Grim Wake's two rows losing their condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` |
+| Blood Debt over 3 seconds rather than 2 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
