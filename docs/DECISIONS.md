@@ -616,9 +616,17 @@ design document's Hell on Earth section.
   3.7% and the boss dungeon opened in 8.3% of campaigns instead of 99.2%, because a Rift as deep as any Quest dungeon
   takes 20 to 50 days to seal and sends a dungeon every 5 of them. The owner then made a Rift four floors, with eight
   modifiers. As built, the same world loses about 15 cities of 24 against 10.4 without Rifts, at 42% won against 44%.
-- **THE MODEL SHIPS ITS RIFTS OFF; THE GAME HAS THEM.** `TuningConfig.demonic_rifts` stays False by the coordinating
-  session's instruction of 2026-11-24, and every other Rift setting defaults to the ruling.
-  `tools/tests/test_demonic_rifts_port.py` holds that one gap on purpose and says how to close it.
+- **THE MODEL'S RIFTS SHIP ON, WITH THE GAME'S.** `TuningConfig.demonic_rifts` is True, ruled by the coordinating
+  session on 2026-11-24 "so the model and the game agree", and every other Rift setting defaults to the ruling. Until
+  that ruling it shipped off (`76eac65c0`) and `tools/tests/test_demonic_rifts_port.py` held the gap;
+  `test_both_halves_ship_the_rifts_on` now holds it closed. A model campaign whose character faces Demonic has Rifts
+  from here on, so a figure measured before for such a campaign moves; one that never faces Demonic is unchanged.
+- **WITH THE MODEL'S RIFTS ON, A RIFT CAN KILL A YOUNG CHARACTER, AND THE RING GUARD NOW LEAVES RIFTS OUT.** In the
+  tier 1 campaigns `tools/tests/test_the_starting_character_survives_a_pack.py` walks, four Rift clears on a Bulwark
+  or a Sanctuary (seed 12, levels 8 to 11) were lost or won under 10% health: a Rift's eight modifiers make it harder,
+  as the owner chose. The guard fits each ring's damage figure to ordinary content, and fitting it to a Rift would make
+  every ordinary dungeon on the ring easier, so it leaves Rifts out. A judgement of this slice, put to the
+  coordinating session; `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out` holds that Rift clears exist.
 - **NO RUN RECORD VERSION STEP.** A Rift's 5-day count is worked out from `FCataclysmDungeon::SpawnedDay`, which is
   saved and set only when a dungeon is made (neither a move on its timer nor a move on its city's fall changes it), so
   nothing new is stored. Slice B1 and `feat/abyssal-rifts-2864` each take the run record from 18 to 19; this slice
@@ -656,8 +664,9 @@ Each is the owner's chosen option or words, verbatim, from issue #51 (comment 71
 - **A Rift's city, its eight modifiers and every dungeon it sends are drawn from streams of their own**
   (`RiftSeedFor`: the run's saved `CorruptedStalkerSeed`, the Rift's identifier, and which draw), and the draws an
   ordinary dungeon would take from the shared streams are still taken and thrown away. So every dungeon of a
-  fixed-seed run that is not a Rift, or sent by one, rolls exactly what it rolled before. The model draws from its own
-  stream and is off by default, so its figures before this slice are unchanged too.
+  fixed-seed run that is not a Rift, or sent by one, rolls exactly what it rolled before. In the model a Rift draws
+  from the campaign's stream, but no draw is taken unless Demonic sends a Quest dungeon, so a campaign that never faces
+  Demonic is unchanged.
 - **A Rift and a sent dungeon respect a city's dungeon cap** (`RoomLeftOn`), as a surge does; a sent dungeon may be a
   Siege only where none stands.
 - **The map:** a city holding a Rift reads ", Rift" (", 2 Rifts") after its box's label, and each Rift's detail line
@@ -710,8 +719,20 @@ nothing here.
   death surge, a whole campaign), and `sim/tests/test_a_short_rift_and_the_one_dungeon_limit.py`, 18 (the ruled
   defaults, four floors, the timer, the enemies, eight modifiers, the one-dungeon limit kept for measurement). Each
   rule has a control.
-- **The two halves**: `tools/tests/test_demonic_rifts_port.py`, 14 tests: the three numbers, what a Rift is, where it
-  opens, when and where it sends and what, its modifiers, and the death surge's place in the death.
+- **The two halves**: `tools/tests/test_demonic_rifts_port.py`, 14 tests: the three numbers, that both halves ship
+  the Rifts on, what a Rift is, where it opens, when and where it sends and what, its modifiers, and the death surge's
+  place in the death.
+- **With the model's Rifts on, three Python files changed:** `sim/tests/test_every_cataclysm_lands_on_the_front_line.py`
+  leaves Rifts out of its three front-line checks (the ruling on #1085 reserved the design's Demonic quest mechanic, and
+  a Rift is that mechanic) and holds every other wave dungeon to the line;
+  `tools/tests/test_the_starting_character_survives_a_pack.py` leaves Rifts out of the ring guard (above) and gains
+  `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out`; and the median walk `policies.siege_urgency` states
+  was measured again over its 10,000 campaigns: 8 / 23 / 37 / 125 days and a slack of 17 / 16 / 18, against
+  9 / 25 / 40 / 125 measured on 2026-11-19. The same campaigns with the Rifts off give 8 / 24 / 40 / 125, so issue
+  #2865's surges moved the Outpost and the Bulwark by a day each, inside the check's tolerance, and the Rifts the
+  Bulwark by one more and the Sanctuary by three. `sim/cataclysm_sim/policies.py`, the comment on
+  `siege_damage_growth_per_day` in `sim/cataclysm_sim/config.py` and the re-measurement notes under the Siege's entry
+  below carry the new figures.
 - **New in the game**, 16 tests:
   - `Cataclysm.Rifts.` (`game/Source/CataclysmEmpire/Tests/CataclysmRiftsTests.cpp`), 12:
     `ARiftIsFourFloorsWithTheTimerOfFourFloorsWhateverTheTreeAdds`, `MakingARiftTakesTheDrawsAnyQuestDungeonTakes`,
@@ -766,15 +787,17 @@ Python in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`).
   `Cataclysm.DungeonModifiers.`, `Cataclysm.FirstSurge.`, `Cataclysm.EmpireRun.`, `Cataclysm.Roster.` and
   `Cataclysm.EmpireScreen.` at that count. `Cataclysm.Rifts.` does not select B1's `Cataclysm.RiftAltars.`.
 - **The whole suite.** The base's last measured total plus 16; 0 failed; 0 saves left behind.
-- **Python, run on the tree this entry was committed with**, all but this line, with `python -u -m pytest
-  --junit-xml=<a file outside the repository>`: `8293 passed, 10 skipped in 491.12s`; the JUnit file agrees, 8,303 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check
-  .`: `All checks passed!`. The run before it failed one test,
-  `tools/tests/test_game_readme_is_true.py::test_the_empire_layer_claim_is_still_true`, because the new
-  `CataclysmRiftsTests.cpp` was in neither its list nor `game/README.md`; both name it now. The 97 test files that read
-  this log were run again after this line was written.
+- **Python, run on the tree this entry was committed with**, all but this block, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8294 passed, 10 skipped in 546.10s`; the JUnit file agrees, 8,304 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff
+  check .`: `All checks passed!`. The 97 test files that read this log were run again after this block was written.
+  **TWO EARLIER RUNS FAILED.** Before `76eac65c0`, one test, `tools/tests/test_game_readme_is_true.py::
+  test_the_empire_layer_claim_is_still_true`, because the new `CataclysmRiftsTests.cpp` was in neither its list nor
+  `game/README.md` (both name it now); that commit's own tree then passed, `8293 passed, 10 skipped in 491.12s`. With
+  the model's Rifts turned on after it, six: the three front-line checks, the median walk to a Bulwark, and the ring
+  guard on the Bulwark and on the Sanctuary, each changed as the tests section above says.
 - **Python guard proofs, run** with `tools/prove_guard.break_and_run` in a copy of the branch (`git archive` of
-  `697ccb368` with this slice's uncommitted files laid over it), each `PROVED` (failed with the break in, passed with
-  it out):
+  `76eac65c0` with the switch-on changes laid over it), each `PROVED` (failed with the break in, passed with it out).
+  PP1 to PP4 gave the same named failures on `76eac65c0`'s own tree, before the switch went on:
   - PP1, the model's `rift_modifiers: int = 8` becomes `0`: 3 named failures, `test_the_switches_default_to_the_ruling`,
     `test_a_rift_made_with_the_defaults_is_the_ruled_one` and `test_a_rift_carries_eight_modifiers_in_both`.
   - PP2, the game's `RiftSendEveryDays = 5` becomes `6`: 1, `test_a_rift_sends_every_five_days_in_both`.
@@ -784,6 +807,8 @@ Python in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`).
     `sim/tests/test_a_short_rift_and_the_one_dungeon_limit.py` (the limit and its control), four in
     `sim/tests/test_demonic_rifts_as_ruled.py` (three on sending and the campaign test), and
     `test_it_sends_after_the_days_resolves_and_before_the_empty_board_check_in_both`.
+  - PP5, the ring guard's `rift = self.is_rift(dungeon)` becomes `rift = False`: 3, the guard on the Bulwark and on the
+    Sanctuary, and `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out`.
 - **C++ guard proofs, registered and not run**, each `prove_cpp_guard`, alone, never while the Python suite runs:
 
 | # | Break | Prefix | Predicted named failures |
@@ -167090,6 +167115,15 @@ any dose: 70 days against a median walk of 123.
 > dungeons) by the prose test's own method: Against a median walk of 9 / 25 / 40
 > days, the slack is sixteen, fourteen and fifteen days. It was 9 / 23 / 35 and
 > sixteen, sixteen and twenty earlier that day. The Pillar's median is still 125.
+
+> **Re-measured on 2026-11-24**, with the surge rulings of issue #2865 and Demonic's
+> Rifts (issue #51, which ship on in the model from slice B2), over 10,000 campaigns
+> (seeds 0 to 9999, 1,343,305 dungeons) by the prose test's own method: Against a
+> median walk of 8 / 23 / 37 days, the slack is seventeen, sixteen and eighteen days.
+> It was 9 / 25 / 40 and sixteen, fourteen and fifteen on 2026-11-19. The same
+> campaigns with the Rifts off give 8 / 24 / 40, so issue #2865's surges moved the
+> Outpost and the Bulwark by a day each and the Rifts the Bulwark by one more and the
+> Sanctuary by three. The Pillar's median is still 125.
 
 ### The other six sub-types took the 7.5 in proportion, rounded to one decimal
 

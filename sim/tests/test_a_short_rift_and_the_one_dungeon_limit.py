@@ -4,7 +4,7 @@ THE RULING, verbatim from the newest comment on issue #51: "let's make them 4 fl
 rifts. It's only fair, it has 4 floors.", "Rifts always have 8 dungeon modifiers. Keep it spicy", "No limit" and "(b) 8
 modifiers only (Recommended)". So a Rift is exactly 4 floors (`rift_floors`), with the quest timer of 4 floors
 (`rift_timer_from_quest_depth` False), exactly 8 dungeon modifiers (`rift_modifiers`) and the enemies of an ordinary
-4-floor dungeon (`rift_strength_from_quest_depth` False). Those are the defaults; `demonic_rifts` itself ships off.
+4-floor dungeon (`rift_strength_from_quest_depth` False). Those are the defaults, and `demonic_rifts` ships on.
 
 THE VARIANTS STAY MEASURABLE: the rolled depth's timer, the rolled depth's enemies (Rift floor i fights floor
 ceil(i x rolled depth / 4) of a dungeon that deep), and the one-dungeon limit (`rift_one_sent_at_a_time`, a Rift sends
@@ -45,7 +45,7 @@ def quest_on(sim: Simulation, tier: CityTier, source: str = "Demonic"):
 
 def test_the_switches_default_to_the_ruling() -> None:
     cfg = TuningConfig()
-    assert cfg.demonic_rifts is False, "the Rifts ship on before the game has them"
+    assert cfg.demonic_rifts is True, "the model's Rifts ship off while the game has them (slice B2)"
     assert cfg.rift_floors == 4
     assert cfg.rift_timer_from_quest_depth is False
     assert cfg.rift_strength_from_quest_depth is False

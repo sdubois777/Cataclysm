@@ -9,8 +9,8 @@ THE RULINGS, each the option the owner chose on issue #51 (comment 7149391315), 
   Q5 "Every death, no gap (Recommended)": each death in a Rift brings an ordinary surge at once, with no
      least-interval brake.
 
-`TuningConfig.demonic_rifts` SHIPS OFF until the measurement is accepted and the game has the Rifts (slice B2); these
-tests switch it on. EACH RULE HAS A CONTROL that fails if the rule is not what made the test pass.
+`TuningConfig.demonic_rifts` SHIPS ON, with the game's Rifts (slice B2), as the coordinating session ruled on 2026-11-24.
+These tests name it anyway, on or off, so none leans on the default. EACH RULE HAS A CONTROL that fails if the rule is not what made the test pass.
 
 DRIVEN BY HAND: the scheduled clock and the empty-board surge are out of the way, the board starts empty, and Demonic
 is the only active Cataclysm.
@@ -63,9 +63,9 @@ def run_days(sim: Simulation, n: int) -> None:
 # -- the switches ---------------------------------------------------------------------------------------------------
 
 
-def test_the_rifts_ship_off_with_the_rulings_numbers() -> None:
+def test_the_rifts_ship_on_with_the_rulings_numbers() -> None:
     cfg = TuningConfig()
-    assert cfg.demonic_rifts is False, "the Rifts ship on before the measurement is accepted and the game has them"
+    assert cfg.demonic_rifts is True, "the model's Rifts ship off while the game has them (slice B2)"
     assert cfg.rift_spawn_every_days == 5, "the design's 5 days, section XI"
     assert cfg.rift_death_brings_surge is True
 
@@ -75,7 +75,7 @@ def test_a_campaign_without_demonic_is_the_same_with_the_rifts_on() -> None:
     unchanged to the last field."""
     base = TuningConfig()
     seed = next(s for s in range(100) if "Demonic" not in active_cataclysms_for(base, s))
-    off = Simulation(base, seed=seed).run(policies.triage)
+    off = Simulation(replace(base, demonic_rifts=False), seed=seed).run(policies.triage)
     on = Simulation(replace(base, demonic_rifts=True), seed=seed).run(policies.triage)
     assert on == off
 
@@ -287,6 +287,6 @@ def test_a_demonic_campaign_opens_rifts_that_send_and_kill() -> None:
     sim = Simulation(replace(base, demonic_rifts=True), seed=seed)
     sim.run(policies.triage)
     assert sim.rifts_opened > 0 and sim.rift_spawns > 0
-    control = Simulation(base, seed=seed)
+    control = Simulation(replace(base, demonic_rifts=False), seed=seed)
     control.run(policies.triage)
     assert (control.rifts_opened, control.rift_spawns, control.surges_from_rift_deaths) == (0, 0, 0)

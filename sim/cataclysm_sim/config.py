@@ -792,10 +792,13 @@ class TuningConfig:
     # floors, exactly 8 modifiers, and the enemies of an ordinary 4-floor
     # dungeon; it sends with no limit on how many of its dungeons stand.
     #
-    # THE RIFTS THEMSELVES ARE OFF BY DEFAULT UNTIL THE GAME HAS THEM (slice
-    # B2); the switches below default to the ruling. Nothing reads them while
-    # `demonic_rifts` is off, so every figure measured before them is unchanged.
-    demonic_rifts: bool = False
+    # THE RIFTS SHIP ON, IN THE SAME CHANGE AS THE GAME'S (slice B2), ruled by
+    # the coordinating session on 2026-11-24 "so the model and the game agree".
+    # Off, nothing reads the switches below and a campaign is the one measured
+    # before the Rifts existed. A campaign whose character never faces Demonic
+    # is the same either way: the Rift code takes no draw unless Demonic sends a
+    # Quest dungeon.
+    demonic_rifts: bool = True
     #: Days between an unsealed Rift's dungeons, counted from the day it opened.
     #: The design's 5 (section XI). 0 sends none.
     rift_spawn_every_days: int = 5
@@ -871,12 +874,13 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 9 / 25 / 40 (the walk today, re-measured on 2026-11-19 over 10,000
+    # 8 / 23 / 37 (the walk today, re-measured on 2026-11-24 over 10,000
     # campaigns, seeds 0 to 9999, by the prose test's own method: its report
     # settings, no tree, `triage`, every dungeon recorded when it is made, with
-    # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749 and
-    # Demonic following the front line since the same issue; it was
-    # 9 / 23 / 35 earlier that day, with Demonic landing behind the line,
+    # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749, Demonic
+    # following the front line since the same issue, the surge rulings of issue
+    # #2865 and Demonic's Rifts since issue #51; it was 9 / 25 / 40 on
+    # 2026-11-19, and 9 / 23 / 35 earlier that day, with Demonic landing behind the line,
     # 14 / 23 / 35 on 2026-10-18 with an Outpost's dungeons 8 to 15,
     # 14 / 22 / 34 on 2026-10-12, 14 / 23 / 37 on the day of the cut and
     # 14 / 24 / 37 after issue #1432), so on the day of the cut the

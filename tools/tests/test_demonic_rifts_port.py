@@ -13,9 +13,9 @@ RiftFloors`, `RiftSendEveryDays`, `RiftSendsOn`, `PickRiftCity`, `PickRiftTarget
 THE C++ IS READ AS CODE, COMMENTS TAKEN OUT (`code_only`), because the comments beside these rules name every
 identifier the checks look for.
 
-ONE GAP IS HELD ON PURPOSE, in `test_the_model_ships_its_rifts_off_while_the_game_has_them`: the coordinating
-session's instruction of 2026-11-24 keeps `demonic_rifts` off in the model until slice B2's window; the game has the
-Rifts from B2 on. RESTORE when the model's switch ships on: assert it is True there and delete that test's skip text.
+BOTH HALVES HAVE THE RIFTS ON. The model's `demonic_rifts` ships on in the same change as the game's Rifts, ruled
+by the coordinating session on 2026-11-24 "so the model and the game agree"; until that ruling the model's shipped off
+and this file held the gap. `test_both_halves_ship_the_rifts_on` holds it closed.
 """
 from __future__ import annotations
 
@@ -103,12 +103,9 @@ def test_the_ruled_forms_ship_in_the_model(model) -> None:
     assert model.rift_death_brings_surge is True
 
 
-def test_the_model_ships_its_rifts_off_while_the_game_has_them(model) -> None:
-    """THE ONE GAP, HELD ON PURPOSE (the module's docstring). The game's Rifts have no switch: every Demonic Quest
-    dungeon is one. RESTORE when the model's switch ships on."""
-    assert model.demonic_rifts is False, (
-        "the model's Rifts now ship on: the gap this test holds is closed, so assert True here and say so in the "
-        "module's docstring")
+def test_both_halves_ship_the_rifts_on(model) -> None:
+    """The game's Rifts have no switch: every Demonic Quest dungeon is one. So the model's ships on."""
+    assert model.demonic_rifts is True, "the model's Rifts ship off while the game has them"
     assert "bool FCataclysmDungeon::IsARift() const" in read(SURGE_CPP)
 
 
