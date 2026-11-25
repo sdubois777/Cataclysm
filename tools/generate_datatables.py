@@ -5749,6 +5749,15 @@ SCALES = {
     # and `passive_effects` refuses the scale outright: a passive node has no
     # own stacks.
     "enemies_in_reach_while_own_stack": (1.0, 1.0, "one enemy"),
+
+    # "you gain 1% increased Attack Speed for every 2% increased Movement Speed
+    # you have" is `increased_movement_speed` with a step of 2. The Ravager tree
+    # rework of 2026-11-24, Relentless. The INCREASES bucket of the character's
+    # own `movement_speed` line, in percentage points, judged with its state;
+    # `ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed` says how it is
+    # read. Whole steps, rounded down. Bounded at 1,000, the bound the other
+    # percentage-of-a-stat scales take.
+    "increased_movement_speed": (0.0, 1000.0, "a percentage of increased movement speed"),
 }
 
 
@@ -10235,6 +10244,23 @@ STATS_WITH_AN_ASKER = frozenset({
     # `StatForSkill` when a blow or a tick would kill;
     # `ProbeScaledLethalHitReprieveEvery` measures that.
     "lethal_hit_reprieve_every_seconds",
+    # ADDED 2026-11-24 FOR THE RAVAGER TREE REWORK, three rows scaled by the
+    # enemies within 4 metres. `area_of_effect` for Reach, "+1% increased Area
+    # of Effect per point for each enemy within 4 metres":
+    # `UCataclysmSkillEffects::AsMultiplierForSkill` has asked it through
+    # `StatForSkill` with the skill's tags since issue #943, so nothing was
+    # built; `ProbeScaledAreaOfEffect` measures the scaled row.
+    # `health_restored_on_kill_at_no_cost` for Long Hold, "Killing an enemy
+    # restores 1% of your maximum health for each enemy within 4 metres of
+    # you": `UCataclysmFervour::RestoreHealthOnKillAtNoCost` asks it through
+    # `StatForSkill`; `ProbeScaledHealthRestoredOnKill` measures it.
+    # `ultimate_fervour_cost_reduction` for Thronged, "Your Ultimate costs 5
+    # less Fervour for each enemy within 4 metres of you when you use it":
+    # `UCataclysmGameplayAbility::FervourCostFor` asks it, built for it;
+    # `ProbeScaledUltimateFervourCostReduction` measures it.
+    "area_of_effect",
+    "health_restored_on_kill_at_no_cost",
+    "ultimate_fervour_cost_reduction",
 })
 
 

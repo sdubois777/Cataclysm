@@ -463,6 +463,48 @@ public:
 	static int32 HoldAppliedNearbyStep(AActor* Character, float StepSeconds);
 
 	/**
+	 * `cripple_and_weaken_spread_on_death_metres`: the radius, in metres, within
+	 * which a Cripple or a Weaken this character applied passes on when its
+	 * carrier dies. The Ravager tree rework of 2026-11-24, Deeper Hurt: "When an
+	 * enemy you have Crippled or Weakened dies, its Cripple and Weaken pass to
+	 * the nearest enemy within 1 metre per point." Flat, a metre a point; above
+	 * nought is held. No gameplay attribute, so
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* SpreadOnDeathMetresStat;
+
+	/**
+	 * Pass each Cripple and Weaken `Dying` carries to the enemy nearest its body,
+	 * for every applier holding `SpreadOnDeathMetresStat`, within that applier's
+	 * radius. The Ravager tree rework of 2026-11-24, Deeper Hurt.
+	 *
+	 * ONLY WHAT A HOLDER APPLIED: an effect is matched by its instigator, the
+	 * rule `HoldAppliedNearbyStep` keeps, so a Cripple from anyone without the
+	 * node dies with its carrier.
+	 *
+	 * THE NEAREST ENEMY OF THE APPLIER, measured from the body, never the body
+	 * itself and never one already carrying that effect: a pass is spent on an
+	 * enemy it is new to, the ruling of 2026-10-06 for an ailment that spreads
+	 * from the dying. Cripple and Weaken are passed separately, so they may land
+	 * on two different enemies only when the nearer one already carries one of
+	 * them.
+	 *
+	 * AT THE FIGURE THE APPLICATION STATED, so a Cripple strengthened by chance
+	 * past certainty passes as strong as it was, and FOR THE EFFECT'S OWN
+	 * DESIGNED DURATION, the rule `UCataclysmSkillEffects::CopyDebuffsTo` keeps
+	 * for a copy; the applier's duration rows are not read again, as
+	 * `UCataclysmAilments` says of every spread. CREDITED TO THE APPLIER, so the
+	 * passed effect is still "yours" and passes on again when its new carrier
+	 * dies.
+	 *
+	 * CALLED FROM THE ENEMY'S DEATH, outside the killer's block, because the
+	 * sentence asks who applied the effect and not who landed the last blow.
+	 *
+	 * @return how many effects were passed
+	 */
+	static int32 PassCrippleAndWeakenOnDeath(AActor* Dying);
+
+	/**
 	 * Ground Down's radius in metres and its share of both speeds, the
 	 * `Ravager_capstone_100` option 1 stats its row will carry. Issue #1515:
 	 * "Enemies within 4 metres of you have 15% reduced Movement Speed and 15%

@@ -1477,8 +1477,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// crippled -- and a lookup asking only about crippled enemies must not pay
 	// for the distances-only walk, nor the reverse.
 	float WidestCrippled = -1.0f;
+	// AND WHETHER A ROW SCALES BY INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless. Filled
+	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
+	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
+	bool bWantsIncreasedMovementSpeed = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
+		if (Modifier.Scale == ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed)
+		{
+			bWantsIncreasedMovementSpeed = true;
+		}
+
 		// EITHER CONDITION MAY ASK, since issue #1833 gave a row a second one.
 		if (Modifier.Condition == ECataclysmStatCondition::EnemiesInReachAtLeast
 			|| Modifier.Condition2 == ECataclysmStatCondition::EnemiesInReachAtLeast
@@ -1494,6 +1503,35 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
 		}
+	}
+
+	// THE INCREASES OF THIS CHARACTER'S OWN MOVEMENT SPEED LINE, ONLY WHEN A ROW
+	// ASKS. One pipeline pass over that line with the state built the same way,
+	// so a conditioned movement row counts while it holds. THE ROWS THAT
+	// THEMSELVES ASK FOR THIS SCALE ARE LEFT OUT OF THAT PASS, so a movement row
+	// scaled by its own increases cannot ask for itself without end. No line
+	// recorded means nothing increased, which is nought rather than unknown: a
+	// character with no movement rows has no increased movement speed.
+	if (bWantsIncreasedMovementSpeed)
+	{
+		const FCataclysmStatInputs* Movement = StatInputs.Find(FName(TEXT("movement_speed")));
+		float Increased = 0.0f;
+		if (Movement)
+		{
+			TArray<FCataclysmStatModifier> NotAskingForItself;
+			NotAskingForItself.Reserve(Movement->Modifiers.Num());
+			for (const FCataclysmStatModifier& Row : Movement->Modifiers)
+			{
+				if (Row.Scale != ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed)
+				{
+					NotAskingForItself.Add(Row);
+				}
+			}
+			Increased = UCataclysmStatPipeline::Evaluate(
+				Movement->Base, NotAskingForItself, FGameplayTagContainer(),
+				WithEnemiesInReach(NotAskingForItself, CurrentConditions())).SumOfIncreases;
+		}
+		State.IncreasedMovementSpeedPercent = FMath::Max(0.0f, Increased);
 	}
 
 	// A ROW THAT ASKS WITHOUT A REACH IS STILL NOTHING TO WALK. Its own

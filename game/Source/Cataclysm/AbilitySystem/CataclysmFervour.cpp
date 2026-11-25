@@ -39,6 +39,10 @@ const TCHAR* UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat =
 const TCHAR* UCataclysmFervour::PerEnemyHitStat = TEXT("fervour_per_enemy_hit");
 const TCHAR* UCataclysmFervour::HealthRestoredOnKillAtNoCostStat =
 	TEXT("health_restored_on_kill_at_no_cost");
+const TCHAR* UCataclysmFervour::DecayGraceSecondsStat =
+	TEXT("fervour_decay_grace_seconds");
+const TCHAR* UCataclysmFervour::HealthRestoredOnFullStat =
+	TEXT("health_restored_on_fervour_full");
 const TCHAR* UCataclysmFervour::OnEnemyDeathNearbyStat =
 	TEXT("fervour_on_enemy_death_nearby");
 
@@ -522,9 +526,17 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 		}
 	}
 
-	if (!Cataclysm->OutOfContactFor(DecayGraceSeconds))
+	// THE THREE SECONDS AND WHAT A ROW ADDS TO THEM. The Ravager tree rework of
+	// 2026-11-24, Stoked: "Your Fervour starts to decay 1 second later per
+	// point." Asked here, after the cheaper refusals above, so a character with
+	// no decay rate never asks; a fallback of nought, and a negative row is
+	// floored so nothing can make the grace shorter than the starting node's.
+	const float Grace = DecayGraceSeconds
+		+ FMath::Max(0.0f, Cataclysm->StatForSkill(FName(DecayGraceSecondsStat),
+												   FGameplayTagContainer(), 0.0f));
+	if (!Cataclysm->OutOfContactFor(Grace))
 	{
-		// INSIDE THE THREE SECONDS. The node grants the grace so that stepping
+		// INSIDE THE GRACE. The node grants the grace so that stepping
 		// behind a pillar does not empty a bar the character spent a fight
 		// filling.
 		return 0.0f;
@@ -777,6 +789,45 @@ float UCataclysmFervour::RestoreHealthOnKillAtNoCost(
 	const float Before = AbilitySystem->GetNumericAttribute(Health);
 	if (Maximum <= 0.0f || Before >= Maximum)
 	{
+		return 0.0f;
+	}
+
+	// `TopUp`, FOR THE REASON `RestoreHealthOnKill` GIVES: the same ceiling and
+	// the same received-healing reductions as every other restoration.
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, MaxHealth,
+								  Maximum * Percent / 100.0f);
+
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
+float UCataclysmFervour::RestoreHealthOnFervourFull(UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !AbilitySystem->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		// No vital set means no health to restore.
+		return 0.0f;
+	}
+
+	// THE NODE FIRST, BECAUSE IT REFUSES ALMOST EVERYONE. Nought for every
+	// character without Second Wind, so nobody else reads their health when
+	// their pool fills.
+	const float Percent = Cataclysm->StatForSkill(
+		FName(HealthRestoredOnFullStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+	if (Maximum <= 0.0f || Before <= 0.0f || Before >= Maximum)
+	{
+		// FULL ALREADY, OR DEAD: a corpse whose pool fills is not restored.
 		return 0.0f;
 	}
 

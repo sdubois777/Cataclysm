@@ -1048,6 +1048,31 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// gameplay attribute and no base.
 		TEXT("minion_lifetime_renewed_every_seconds"),
 		TEXT("kill_summons_minion_where_it_fell"),
+		// THE RAVAGER TREE REWORK OF 2026-11-24, six stats its rows grant and code
+		// reads by name. None has a gameplay attribute or a base.
+		// Ironhide's second row, a flag read on the defender at the armour step
+		// of UCataclysmDamageCalculation::Resolve: Overwhelm takes half as much
+		// from its armour.
+		TEXT("armor_overwhelm_halved"),
+		// Thronged, Fervour off the Ultimate's cost, read in
+		// UCataclysmGameplayAbility::FervourCostFor with the skill's tags; its
+		// row is scaled by the enemies within 4 metres.
+		TEXT("ultimate_fervour_cost_reduction"),
+		// Stoked, seconds added to the grace before Fervour decays, read in
+		// UCataclysmFervour::DecayStep.
+		TEXT("fervour_decay_grace_seconds"),
+		// Second Wind, the share of maximum health restored when Fervour becomes
+		// full, read by UCataclysmFervour::RestoreHealthOnFervourFull from
+		// ACataclysmPlayerCharacter::OnClassResourceChanged.
+		TEXT("health_restored_on_fervour_full"),
+		// Relentless, a flag by which nothing lowers attack speed, read by
+		// UCataclysmBasicAttack::AttackSpeedAfterSlows for both attack speed
+		// readers.
+		TEXT("attack_speed_reduction_suppressed"),
+		// Deeper Hurt, the radius within which a Cripple or a Weaken the holder
+		// applied passes on when its carrier dies, read by
+		// UCataclysmDebuffs::PassCrippleAndWeakenOnDeath from the enemy's death.
+		TEXT("cripple_and_weaken_spread_on_death_metres"),
 	};
 	return Stats;
 }
