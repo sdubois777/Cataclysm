@@ -1485,7 +1485,9 @@ private:
 	 *
 	 * PRIVATE, unlike the wave state above, because it is bookkeeping for the
 	 * tick and says nothing about the dungeon. A test drives
-	 * `BringTheNextWaveIn` or ticks this actor rather than reading it.
+	 * `BringTheNextWaveIn` or ticks this actor rather than writing it. ONE
+	 * READER SINCE 2026-11-24: `SecondsTowardTheNextBeat`, for the pause's
+	 * tests, which tick the whole world and ask whether this clock moved.
 	 */
 	float SinceWaveCheckSeconds = 0.0f;
 
@@ -3675,6 +3677,13 @@ public:
 
 	/** Seconds since this floor or wave was placed, on the beat. */
 	float SecondsOnThisFloor() const { return FloorSecondsSincePlaced; }
+
+	/**
+	 * Seconds `Tick` has counted toward the next beat: the clock every timed floor rule counts by, The Reaper's ten
+	 * seconds among them, since each beat hands its rules the time it covered. Read by the pause's tests, which tick the
+	 * world and ask whether it moved; a paused world does not tick this game mode. 2026-11-24.
+	 */
+	float SecondsTowardTheNextBeat() const { return SinceWaveCheckSeconds; }
 
 	/**
 	 * The seconds after placing at which this floor or wave was first found cleared, or -1 while it has not

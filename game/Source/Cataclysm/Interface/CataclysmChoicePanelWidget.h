@@ -15,8 +15,9 @@ class UTextBlock;
  * The panel a floor object opens when the player reaches it: its name, what the choice is about, one button per
  * choice and "Leave". Issues #1820 and #41, the interaction and choice screen.
  *
- * IT DOES NOT PAUSE THE GAME, like every other screen in the project; creatures go on while it is open. It is laid
- * out by `WBP_ChoicePanel`, which `tools/generate_interface_assets.py` builds.
+ * IT DOES NOT PAUSE THE GAME, like every other screen in the project but the pause screen; creatures go on while it is
+ * open. Esc closes it as "Leave" does (`ACataclysmPlayerController::CloseEveryScreenEscCloses`, 2026-11-24). It is
+ * laid out by `WBP_ChoicePanel`, which `tools/generate_interface_assets.py` builds.
  *
  * A CHOICE IS THE DUNGEON GAME MODE'S, not this panel's: pressing one calls
  * `ACataclysmDungeonGameMode::ChooseAtFloorObject`, and the panel then closes. "Leave" closes it and chooses nothing.

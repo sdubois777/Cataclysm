@@ -459,6 +459,17 @@ damage calculation.** That is at most one frame later than the blow that
 caused it, and it keeps the save system out of the path every hit in the game
 runs through.
 
+**A paused game writes nothing, and no record holds a pause.** Esc pauses the
+game since 2026-11-24 (the design document's Pausing, under Controls and Key
+Bindings). The clock stops with it: `UCataclysmSaveWriter` is a tickable world
+subsystem, and the engine does not tick one while the world is paused. The
+events in the table above come from play, which has stopped, so play raises
+none during a pause; a console command that changes the character still writes
+it, as the character is. The pause itself belongs to the world (its pauser),
+which no record gathers, so a character continued or loaded always starts
+running, and quitting from a pause keeps what the last write held, as quitting
+at any other moment does.
+
 ### Death is written first, and synchronously
 
 The one rule that cannot be relaxed. For a Hardcore character, death is the event

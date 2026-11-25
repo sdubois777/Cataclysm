@@ -268,6 +268,36 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 
   
 
+### **Pausing**
+
+**The game can always be paused, offline and online.** The project owner, 2026-11-24: "Offline and online, pause is a must". Offline is built; online play is not built, and the rule for it is below.
+
+**Esc closes what is open first, and only Esc with nothing open pauses.** It is the same in both control schemes, and it is not in the two tables above, which list the bindings `tools/generate_input_assets.py` makes: Esc is read by the player controller itself, so that it reaches the game while the game is paused.
+
+- **A screen open:** Esc closes every open screen -- the inventory, the character sheet, the passive tree, the skill choice screen, the loot filter screen, the empire map, a city, the empire upgrade tree, the forge and the merchant -- and the floor object's choice panel, which it closes as its leave button does, choosing nothing. The game does not pause. The floor map on Tab is not a screen; it stays.
+- **Nothing open:** Esc pauses the game and shows the pause screen: "Paused", a Resume button, and "Esc resumes as well".
+- **Paused:** Esc, or Resume, lets the game run again.
+
+**Everything in play stops while paused**, because the pause is the engine's own: the world stops ticking its actors and its timers, and its clock stands still. Combat, creature brains, cooldowns, damage over time, ground zones, projectiles, buffs and debuffs, and every dungeon timer (The Reaper's ten seconds, the floor's clocks) stop together, and go on from where they were. Nothing in play runs on the real clock. The player's own frame takes nothing while paused: no material is swept up and no attack is swung. The interface does not pause, so the pause screen works.
+
+**The empire does not run in real time, so there is nothing more to stop there.** Days pass only by what the player does: a floor walked, a death, a craft at the forge, a respec of the empire upgrade tree. On the empire map Esc closes the map, and a second Esc pauses as anywhere else.
+
+**A pause is never saved.** The game saves itself on a clock and on events (Save System Design, section 6). The clock stops with the game, and play, which raises the events, has stopped too, so the game writes nothing during a pause (a console command that changes the character still writes it, as it is); nothing a record holds says whether the game was paused, and a game loaded or continued always starts running. Quitting from a pause keeps what the last save held, as quitting at any other moment does.
+
+**Other screens do not pause.** The skill choice screen's ruling (Q2, 2026-10-25) is that it does not, and the same holds for every screen but the pause screen. A recommendation, kept as it is: Diablo III's players report that its menu pauses a solo game, and Last Epoch offline pauses on Esc; Path of Exile also pauses on its full-screen interfaces such as the passive tree, which is the alternative if the owner wants it.
+
+**In Play In Editor, Shift+Esc stops Play.** The editor binds Esc to its Stop command and reads it before the game, so `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc for this project. `Cataclysm.PauseGame` pauses and resumes from the console as well.
+
+**Online, when it exists -- a recommendation for the owner, not a ruling.**
+
+- **Solo online: Esc pauses the instance, as offline does.** The instance is the player's alone and the empire clock is moved only by what the player does, so stopping the instance stops everything the player can lose. The server holds a paused instance for a time and then saves and closes it, as Diablo III's solo game is reported by its players to unpause itself and log an idle player out "after a while"; the length is a judgement for the owner. Diablo IV and Last Epoch online cannot pause at all, even alone, and Diablo IV's players go to town to stop; the owner's rule rules that out here.
+- **A party: the instance pauses only while every player in it has paused.** One player's Esc opens their pause screen without stopping the others, and the moment the last player pauses, the instance stops. This is how Path of Exile 2's party pause is reported to work (a player's account of an interview with its director; Grinding Gear Games has not published it). A host-only pause would let one player stop three; no pause at all would break the owner's rule for every party.
+- **Boss fights:** Path of Exile refuses to pause during its pinnacle boss fights ("Temporal Interference"). The save design's section 6 asks every way out of a fight to answer its rule, and a pause is not a way out, so nothing here refuses one; if the owner wants such fights unpausable, it is a per-fight flag, and a separate decision.
+
+`docs/DECISIONS.md`, 2026-11-24, has the sources.
+
+  
+
 ## **Core Gameplay Loop**
 
 ### **Game Start**
@@ -2983,7 +3013,7 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** Some dungeon modifiers place things on a floor for the player to act on: a totem to embrace or cleanse, and in time altars, chests and relics. Each shows its name over it as a drop does, and clicking the name within three metres opens a panel of what it offers, with a button for each choice and one to leave; a click from further off walks the character there first, as it does for a drop. The panel does not pause the game, like every other screen, so creatures go on while the player decides. Choosing is final: the modifier that placed the object answers it, and the object usually goes. No new key is needed, because the left mouse button already picks up what is named under the cursor.
+**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** Some dungeon modifiers place things on a floor for the player to act on: a totem to embrace or cleanse, and in time altars, chests and relics. Each shows its name over it as a drop does, and clicking the name within three metres opens a panel of what it offers, with a button for each choice and one to leave; a click from further off walks the character there first, as it does for a drop. The panel does not pause the game, like every other screen but the pause screen (Pausing, under Controls and Key Bindings), so creatures go on while the player decides; Esc closes it as its leave button does. Choosing is final: the modifier that placed the object answers it, and the object usually goes. No new key is needed, because the left mouse button already picks up what is named under the cursor.
 
   
 

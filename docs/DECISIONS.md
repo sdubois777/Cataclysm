@@ -2,6 +2,211 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Esc pauses the game: it closes what is open first, and with nothing open it pauses everything in play and shows a pause screen; online's rule is a recommendation
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `game/Source/Cataclysm/Player/
+  CataclysmPlayerController.cpp`: `ECataclysmEscape`, `InputKey`, `PressEscape`, `EscapeDoes`, `PauseTheGame`,
+  `ResumeTheGame`, `IsPauseScreenWanted`, `HasAScreenEscCloses`, `CloseEveryScreenEscCloses`, `SetAScreenOpenForTest`,
+  `ShowPauseScreen`, `HidePauseScreen`, all new; `PostProcessInput` does nothing to the world on a paused frame;
+  `CursorIsOverInterface` answers true under the pause screen; four comments that said no screen pauses.
+- `game/Source/Cataclysm/Interface/CataclysmPauseScreenWidget.h` and `.cpp`, new: the screen, built in C++ with no
+  Widget Blueprint, and the console command `Cataclysm.PauseGame`.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`: `SecondsTowardTheNextBeat`, a read of the beat's clock.
+- `game/Source/Cataclysm/Interface/CataclysmChoicePanelWidget.h` and `CataclysmLootFilterWidget.h`: comments.
+- `game/Config/DefaultEditorSettings.ini`, new: the editor's Stop moved from Esc to Shift+Esc for this project.
+- `game/Source/Cataclysm/Tests/CataclysmPauseTests.cpp`, new: `Cataclysm.Pause.`, ten tests.
+- `tools/tests/test_editor_stop_is_on_shift_escape.py`, new.
+- `docs/Cataclysm_GDD_v2.md`: Pausing, a new subsection of Controls and Key Bindings, and the choice panel's sentence;
+  `docs/Save_System_Design.md`, section 6; `docs/Play_Loop_Checklist.md`, "Before you start" and step 28.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN.** Written by an agent that may not build; a window builds it and runs
+  `Cataclysm.Pause.` (ten tests, registered below) and the three guard proofs below.
+- **FIVE OF THE TEN TESTS TICK A WHOLE TEST WORLD WITH `UWorld::Tick`, WHICH NO OTHER TEST IN THE PROJECT DOES.** The
+  pause is the engine's choice not to tick, so only the engine's tick can show it: `RunClock` fires the timers by hand
+  and would fire them in a paused game too. The world is given a plain `UGameInstance` and the engine's own
+  `AGameModeBase` (never `ACataclysmGameMode`, which would begin saving), because `APlayerController::SetPause` asks
+  the world's authority game mode. Epic's own `System.Engine.TimerManager` ticks a test world the same way. If those
+  five fail for a reason that is not the pause -- something in a whole world tick a test world lacks -- that is the
+  harness and not the feature, and their messages say which reading failed.
+- **THE EDITOR SETTING IS UNTESTED BY ANY RUN.** In Play In Editor, Esc reached the editor's Stop command before the
+  game (`UGameViewportClient::InputKey` runs `UEditorEngine::ProcessDebuggerCommands` first), so the pause could not be
+  reached where the owner plays. `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc through the engine's
+  project-defined chords (`FUserDefinedChords::LoadChords`, Slate's InputBindingManager.cpp). Only opening the editor
+  shows it took; a Python check holds the entry's nine fields, because `LoadChord` reads them unchecked and a missing
+  one stops the editor as it starts. If it does not take, `Cataclysm.PauseGame` pauses from the console.
+- **NOTHING IN THE GAME READ ESC BEFORE THIS.** The brief said Esc closed screens; it did not. In a packaged or
+  standalone game Esc did nothing, and in Play In Editor it stopped Play (an earlier entry, on writing the passive
+  tree: "Escape in Play In Editor stops play without closing it"). So "Esc closes an open screen first" is new
+  behaviour, not kept behaviour.
+
+### The ruling
+
+The project owner, 2026-11-24, verbatim: "Also, i'm pretty sure it's already in the design, but we need to be able to
+pause. Offline and online, pause is a must". It was not in the design: `docs/Cataclysm_GDD_v2.md` named "pause" only
+for a Siege pausing city upgrades.
+
+### What Esc does
+
+`ACataclysmPlayerController::EscapeDoes(bAScreenIsOpen, bGameIsPaused)`:
+
+| Paused | A screen open | Esc |
+| :-- | :-- | :-- |
+| yes | either | resumes: the pause screen is on top |
+| no | yes | closes every open screen; does not pause |
+| no | no | pauses and shows the pause screen |
+
+- **The screens Esc closes** are `IsAFullScreenOpen`'s eleven and the choice panel, each through the function its own
+  key or button calls (the inventory lets go of what is on the cursor, as I does), the empire's four through
+  `CloseEmpireScreens`, and the choice panel through `Close`, its "Leave". One Esc closes every open one.
+- **The floor map on Tab is not a screen** and stays: it is drawn over play and takes no input. A judgement.
+- **Only a press acts.** A release and a repeat are taken and do nothing, so holding Esc does not toggle.
+- **The pause screen** is "Paused", a Resume button and "Esc resumes as well", over a dim. It takes every click on it.
+- **Esc is read in `InputKey`, not bound as an Enhanced Input action. A judgement**, for two reasons: the engine calls
+  `InputKey` from the viewport whether or not the world is paused, where an action would need `bTriggerWhenPaused` set
+  by `tools/generate_input_assets.py`, which only an editor run writes; and Esc is the menu key a player should not
+  rebind away. So the controls tables (which list the generator's bindings) do not list Esc; the GDD's Pausing does.
+
+### What stops, and what keeps running
+
+The pause is the engine's own (`APlayerController::SetPause` through `AGameModeBase::SetPause`, which sets the world's
+pauser). Read out of UE 5.8's `UWorld::Tick` (LevelTick.cpp): while paused, actor and component ticks run only for tick
+functions marked `bTickEvenWhenPaused`, the world's timer manager is not ticked, latent actions are not processed,
+`TimeSeconds` does not advance, and `FTickableGameObject`s tick only if `IsTickableWhenPaused`. So every system in this
+game stops together: combat, creature brains (`ACataclysmEnemyController`'s think timer), cooldowns and damage over
+time (gameplay effects, which the ability system times with the world's timers and clock), ground zones, projectiles,
+the dungeon's beat and every timed floor rule (The Reaper's ten seconds), the save writer's clock.
+
+**Searched for anything on the real clock**: `FPlatformTime`, `GetRealTimeSeconds`, `GetUnpausedTimeSeconds`,
+`GetAudioTimeSeconds`, `FApp` time, `FDateTime`, `FTSTicker`, `bTickEvenWhenPaused`, `IsTickableWhenPaused`, a game
+instance timer manager, and widgets' `NativeTick`. In play, none: `FDateTime` and `FPlatformTime::Cycles` seed random
+streams; `FPlatformTime::Seconds` bounds waits for a save write to finish; `FTSTicker` completes asynchronous save
+writes (`CataclysmSaveStorage.cpp`) and runs the cloth stress command, a developer tool; the widgets' `NativeTick`s
+redraw what changed and advance nothing. No actor, component or tickable in the project ticks while paused.
+
+**One thing in play did run while paused, and is stopped now: the player's own frame.** A player controller ticks on
+a pause frame so input reaches it, and `PostProcessInput` is part of that tick: its sweep took materials and souls in
+reach, a pending attack could swing and a pending pick-up be taken, Shoulder Through pushed, fear walked the pawn. A
+paused frame now only lets go of held skill keys and takes the ground hover's tooltip down.
+
+**A world-time stamp also stops.** Three comments in `CataclysmDungeonGameMode.h` (Edict of Silence, Death's Embrace's
+warning and its count) say "a subtraction from world time would count a paused game". `UWorld::TimeSeconds` does not
+advance while paused, so it would not; their conclusion, counting by the beat, is right for their other reason and is
+left alone. Only `GetRealTimeSeconds` and `GetUnpausedTimeSeconds` count a pause.
+
+### The empire layer
+
+Nothing advances in real time. Days pass only through `UCataclysmEmpireRun::AdvanceDay` and `AdvanceDays`, called by a
+floor's time spent, a death's days, a forge craft, an empire tree respec and console commands. The empire map's
+`NativeTick` only redraws when the day changes. So pausing on the empire map stops nothing more; Esc there closes the
+map, and a second Esc pauses as anywhere.
+
+### Saving and loading
+
+Nothing saves the pause. The save writer's clock is a tickable world subsystem, not ticked while paused; every event
+trigger comes from play, which has stopped (a console command that changes the character still writes it, as it is);
+and the pause is the world's pauser, which no record gathers (`CataclysmSaveGather` reads no world time either). A
+level change makes a new world, which runs; so a continue or a load always starts running. Quitting from a pause keeps
+what the last write held, as quitting at any other moment does.
+
+### The pause screen's buttons: only Resume, and why
+
+The owner asked for the existing actions that fit. **None exists to add.** The save design: "The game saves itself,
+often, and there is no manual save" (section 6, set by the owner on 2026-08-20). No way back to the character select
+screen exists from inside a level; the nearest machinery, `ACataclysmGameMode::TravelTo` with its synchronous
+hand-over, writes the records with no floor held, so used mid-dungeon it would drop the floor and its boss's damage:
+the Hardcore escape section 6 forbids. A "Quit" and a "Return to character select" are left for the owner.
+
+### Other screens do not pause: a recommendation
+
+Kept as built. The skill choice screen's ruling Q2 (2026-10-25) is "no pause", and every other screen follows it.
+Diablo III's players report its menu pauses a solo game; Last Epoch offline pauses on Esc. Path of Exile is the
+counter-example: since 3.26 "You can now pause the game by opening the menu or any fullscreen interface like the
+Passive Skill Tree", which would be the shape to take if the owner wants screens to pause.
+
+### Online: a recommendation for the owner, not a ruling
+
+Online play is not built ("Online play needs a service that does not exist yet"). The rule is written into the GDD as
+the owner stated it, with this recommendation:
+
+- **Solo online: Esc pauses the instance, as offline.** Nothing shared runs in real time: the empire clock moves only by
+  the player's actions, so stopping the instance stops everything the player can lose. The server keeps a paused
+  instance for a time and then saves and closes it; Diablo III's players report its solo pause unpauses itself and
+  logs an idle player out "after a while". The length is a judgement left to the owner.
+- **A party: the instance pauses only while every player in it has paused.** One player's Esc shows their pause screen
+  without stopping the others. Path of Exile 2's party pause is reported to work this way. A host-only pause lets one
+  player stop three; no pause breaks the owner's rule for every party. A judgement among those three.
+- **Boss fights.** Path of Exile refuses a pause in its pinnacle fights ("Temporal Interference"). A pause is not a way
+  out of a fight, so section 6's rule does not require that here; it would be a per-fight flag, and a separate decision.
+
+**Sources**, read 2026-11-24:
+- Path of Exile 3.26 patch notes, Grinding Gear Games:
+  [pathofexile.com/forum/view-thread/3787013](https://www.pathofexile.com/forum/view-thread/3787013) -- the menu and
+  any fullscreen interface pause; lag or a disconnect pauses; "Temporal Interference" prevents pausing in pinnacle
+  fights. Maxroll calls it "effectively identical" to Path of Exile 2's:
+  [maxroll.gg](https://maxroll.gg/poe/news/pause-feature-is-coming-to-path-of-exile-1-in-3-26).
+- Path of Exile 2's party pause, "multiplayer instances pause when all players in that instance are pausing": a
+  player's second-hand account of an interview with Jonathan Rogers, not Grinding Gear Games' own words:
+  [pathofexile.com/forum/view-thread/3591746](https://pathofexile.com/forum/view-thread/3591746).
+- Diablo III: players on Blizzard's forum, no Blizzard employee: Escape "pauses the in-game action in a solo game";
+  "you CANNOT pause a public game or when another player is with you":
+  [us.forums.blizzard.com/en/d3/t/rip-during-pause-again/14646](https://us.forums.blizzard.com/en/d3/t/rip-during-pause-again/14646).
+- Diablo IV: no pause, solo or not; players go to town:
+  [eu.forums.blizzard.com/en/d4/t/how-can-i-pause-the-game/7702](https://eu.forums.blizzard.com/en/d4/t/how-can-i-pause-the-game/7702).
+- Last Epoch: "no way to pause the game during online play, either with friends or alone"; offline, Esc pauses:
+  [ginx.tv](https://www.ginx.tv/en/?p=61103) (a guide, updated 2024-07-20).
+- The Path of Exile 2 wiki's Pause page (poe2wiki.net) answered with a bot-protection page and was not read.
+
+### Judgements, each labelled
+
+- Esc read in `InputKey` rather than bound as an action (above).
+- One Esc closes every open screen, rather than one at a time: the screens are independent toggles with no stack.
+- A paused game resumes on Esc even with a screen open under the pause screen.
+- The floor map stays on Esc.
+- The project's editor setting moving Stop to Shift+Esc (the alternative left the pause unreachable in Play In Editor).
+- The pause screen's look: a dim of 60%, the inventory's panel colours, a button of solid colours. Looks.
+- The online recommendations (above).
+
+### Tests, registered before the window
+
+`Cataclysm.Pause.` is new and performs **10**; no existing test changes, so the whole suite performs the base's last
+measured total plus 10.
+
+| Test | What it asserts |
+| :-- | :-- |
+| `EscClosesAScreenFirstPausesWithNothingOpenAndResumesAPausedGame` | the rule's four cases |
+| `EscWithNothingOpenPausesTheGameAndAsksForThePauseScreen` | Esc through `InputKey`: the world paused, the screen wanted; CONTROL: it ran before |
+| `EscOnThePausedGameResumesIt` | a second Esc resumes; a third pauses again |
+| `EscWithAScreenOpenClosesItAndDoesNotPause` | the control: closed, not paused, no screen wanted; the next Esc pauses |
+| `ThePauseScreensResumeButtonResumesTheGame` | Resume resumes; CONTROL: with no controller it does nothing |
+| `OnlyAPressOfEscActsAndNoEscIsPassedOn` | a release and a repeat are taken and do nothing; a press pauses |
+| `WhilePausedACooldownDoesNotRunDown` | 10 s cooldown: 9 after 1 s running (CONTROL), still 9 after 1 s paused, 8 after 1 s running |
+| `WhilePausedADamageOverTimeDoesNotTick` | a burn takes health running (CONTROL), nothing paused, health again resumed |
+| `WhilePausedTheDungeonsBeatDoesNotAdvance` | the beat's clock moves running (CONTROL), not paused, and again resumed |
+| `APausedFrameTakesNoMaterialAndAnUnpausedOneDoes` | `PostProcessInput` paused leaves a material lying; unpaused (CONTROL) takes it |
+
+**No test sees** the screen drawn, a mouse click on Resume, or Esc through Play In Editor; step 28 of
+`docs/Play_Loop_Checklist.md` is the owner's press for those.
+
+### Guard proofs, planned (three, one a mechanism), prefix `Cataclysm.Pause.`
+
+| | Mechanism | Break, in `CataclysmPlayerController.cpp` | Must fail |
+| :-- | :-- | :-- | :-- |
+| P1 | Esc closes before it pauses | `return ECataclysmEscape::ClosedScreens; // Esc's first job: what is open closes.` becomes `return ECataclysmEscape::Paused; // Esc's first job: what is open closes.` | `EscClosesAScreenFirstPausesWithNothingOpenAndResumesAPausedGame`, `EscWithAScreenOpenClosesItAndDoesNotPause` |
+| P2 | Esc pauses the engine | `SetPause(/*bPause=*/true);` becomes `SetPause(/*bPause=*/false);` | the eight that pause: every test above but the rule's and the frame's |
+| P3 | the paused frame does nothing | `const bool bThePlayersFrameActs = !bGamePaused;` becomes `const bool bThePlayersFrameActs = true;` | `APausedFrameTakesNoMaterialAndAnUnpausedOneDoes` |
+
+### Python
+
+The whole suite, once, on the change as committed bar this section, on the base `5f302b0a7`:
+`python -u -m pytest --junit-xml=<outside the repository>` printed `8257 passed, 9 skipped in 387.97s (0:06:27)`; the
+JUnit file holds tests 8266, failures 0, errors 0, skipped 9, so 8257 passed. `python -m ruff check .`: "All checks
+passed!". `python tools/check_resolved_cpp.py --changed`: "8 files read, 0 with complaints".
+
+---
+
 ## 2026-11-22 — The carried inventory has three tabs: the 48 slots hold gear, and crafting materials and gems each have a store of their own, one stack per kind, with no limit (#2849)
 
 **Affects:**

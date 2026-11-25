@@ -38,8 +38,29 @@ struct FCataclysmFloorModifiersShown
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
 class UCataclysmPassiveTreeWidget;
+class UCataclysmPauseScreenWidget;
 class UInputMappingContext;
 struct FInputActionValue;
+
+/**
+ * What one press of Esc did. The project owner, 2026-11-24: "Offline and online, pause is a must".
+ * `ACataclysmPlayerController::EscapeDoes` decides the first three from two facts; `Refused` is the engine's answer
+ * when the game could not be paused. `docs/DECISIONS.md`, 2026-11-24.
+ */
+enum class ECataclysmEscape : uint8
+{
+	/** Screens were open: every one Esc closes was closed, and the game was not paused. */
+	ClosedScreens,
+
+	/** Nothing was open: the game is paused and the pause screen asked for. */
+	Paused,
+
+	/** The game was paused: it runs again and the pause screen is gone. */
+	Resumed,
+
+	/** Nothing was open and the game could not be paused: no game mode to ask, on a client, and the log says so. */
+	Refused,
+};
 
 // THE UNDERLYING TYPE IS PART OF THE DECLARATION for a scoped enum, and it
 // has to match CataclysmWearing.h exactly or the two are different types.
@@ -184,6 +205,70 @@ public:
 	 * tree, the skill assignment, or one of the empire's screens. The floor map is not drawn under one. Issue #2805.
 	 */
 	bool IsAFullScreenOpen() const;
+
+	/**
+	 * Esc, READ HERE BEFORE ENHANCED INPUT SEES IT, and every other key passed on unchanged. The project owner,
+	 * 2026-11-24: "Offline and online, pause is a must". A press runs `PressEscape`; a release or a repeat does
+	 * nothing, so holding Esc does not pause and resume over and over.
+	 *
+	 * NOT AN INPUT ACTION, and that is a judgement with two reasons. The engine calls this from the game viewport
+	 * whether or not the world is paused, so Esc reaches it while paused with nothing more to set; an input action
+	 * would need `bTriggerWhenPaused` set by `tools/generate_input_assets.py`, which only an editor run can write. And
+	 * Esc is the one key a game menu needs that a player should not rebind away. `docs/DECISIONS.md`, 2026-11-24.
+	 *
+	 * IN PLAY IN EDITOR THE EDITOR TAKES ESC FIRST, for its Stop command, before this is called
+	 * (`UGameViewportClient::InputKey` asks the editor's play-world commands before the player controller).
+	 * `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc for this project, so Esc reaches the game there.
+	 */
+	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
+
+	/**
+	 * What a press of Esc does, as `InputKey` runs it: what `EscapeDoes` decides from whether a screen is open and
+	 * whether the game is paused, done. Public so a test can press it; a test world has no viewport to press from.
+	 */
+	ECataclysmEscape PressEscape();
+
+	/**
+	 * What Esc does, from two facts. A PAUSED GAME RESUMES, because the pause screen is the one on top. Otherwise AN
+	 * OPEN SCREEN CLOSES and the game goes on. Otherwise THE GAME PAUSES. Never `Refused`, which is the engine's answer
+	 * and not this rule's. Static, so a test can ask the rule with no screen.
+	 */
+	static ECataclysmEscape EscapeDoes(bool bAScreenIsOpen, bool bGameIsPaused);
+
+	/**
+	 * Pauses the game and puts the pause screen up. Through `APlayerController::SetPause`, the engine's own pause:
+	 * the world stops ticking its actors and its timers and its clock stands still (`UWorld::Tick`), so combat,
+	 * creature brains, cooldowns, damage over time, ground zones, projectiles and every dungeon timer stop together,
+	 * and Slate, which draws and clicks the screen, does not stop. True when the game is paused afterwards; false,
+	 * logged, when the game mode refused: none to ask, which a client has.
+	 */
+	bool PauseTheGame();
+
+	/** Takes the pause screen down and lets the game run. True when the game runs afterwards. */
+	bool ResumeTheGame();
+
+	/**
+	 * Whether the pause screen is wanted: from `PauseTheGame` until `ResumeTheGame`. Set before the screen is made, as
+	 * `ShowFloorModifiers` records what it was told, because a test world has no local player and so no screen.
+	 */
+	bool IsPauseScreenWanted() const { return bPauseScreenWanted; }
+
+	/** Whether Esc has a screen to close: any full screen (`IsAFullScreenOpen`) or the choice panel. */
+	bool HasAScreenEscCloses() const;
+
+	/**
+	 * Closes every screen Esc closes, EACH THROUGH WHAT CLOSES IT TODAY: its own toggle, which on an open screen is its
+	 * close, so Esc does exactly what the screen's key does (the inventory lets go of what is on the cursor); the
+	 * empire's four through `CloseEmpireScreens`, as a walk closes them; and the choice panel through `Close`, which is
+	 * its "Leave" and chooses nothing. The floor map is not a screen: it is drawn over play and stays.
+	 */
+	void CloseEveryScreenEscCloses();
+
+	/**
+	 * For automation tests: a screen Esc closes, standing in for the real ones, which a test world cannot put in a
+	 * viewport. `CloseEveryScreenEscCloses` clears it. Nothing in the game calls it.
+	 */
+	void SetAScreenOpenForTest(bool bOpen) { bScreenOpenForTest = bOpen; }
 
 	/**
 	 * Marks what the player can see of the floor as seen, when the player has entered a new cell or the floor has
@@ -1081,4 +1166,20 @@ private:
 
 	/** Whether Alt, the key that shows the drops the loot filter hides, is held. Issue #2846, slice LF1. */
 	bool bRevealHiddenDrops = false;
+
+	/** Puts the pause screen in the viewport, made the first time; nothing without a local player, as in a test. */
+	void ShowPauseScreen();
+
+	/** Takes the pause screen out of the viewport, if it is in it. */
+	void HidePauseScreen();
+
+	/** The pause screen, once the game has been paused at least once. A UPROPERTY so it is kept between pauses. */
+	UPROPERTY()
+	TObjectPtr<UCataclysmPauseScreenWidget> PauseScreen = nullptr;
+
+	/** See `IsPauseScreenWanted`. */
+	bool bPauseScreenWanted = false;
+
+	/** See `SetAScreenOpenForTest`. */
+	bool bScreenOpenForTest = false;
 };

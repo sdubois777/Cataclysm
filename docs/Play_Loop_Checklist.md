@@ -15,6 +15,9 @@ capital with the days away shown, a second walk ended by a death, and a Continue
   creatures into the front end level and the screen was black. **If Play shows anything other than the character select
   screen, rebuild first.**
 - **Open the project in the editor.** It opens on `L_FrontEnd`, the character select level.
+- **Esc pauses the game; Shift+Esc stops Play.** Since 2026-11-24 the project moves the editor's Stop from Esc to
+  Shift+Esc (`game/Config/DefaultEditorSettings.ini`), so that Esc reaches the game's pause. The Stop button on the
+  toolbar still stops Play. Step 28 checks the pause.
 - **Open the log:** Window > Output Log, and type `PLAY LOOP` in its search box. Every step below writes one line that
   begins `PLAY LOOP:`, and the search box then shows those lines and nothing else. The same lines are in
   `game/Saved/Logs/Cataclysm.log`.
@@ -634,6 +637,21 @@ In the capital, between walks (issue #48, slice S1). Open the empire map (M) and
 - **In the log:**
 
   `PLAY LOOP: sold Masterful Handwraps of Warding, +3, for 7 gold; 107 gold held`
+
+### 28. Pause with Esc
+
+The project owner, 2026-11-24: "Offline and online, pause is a must". Anywhere in a level: the capital or a dungeon.
+
+- **Press Esc with no screen open.** The game dims, and a panel says "Paused", with a Resume button and "Esc resumes
+  as well". Everything stops: creatures, their attacks, projectiles, a burn's ticks, the cooldown sweeps on the skill
+  bar. The log says `The game is paused. Esc, or the pause screen's Resume, lets it run again.`
+- **Press Esc again,** or click Resume. Everything goes on from where it stopped, and the log says
+  `The game runs again.`
+- **Open a screen (I, C, P, K, L or M) and press Esc.** The screen closes and the game does **not** pause. A second Esc
+  pauses. With two screens open, one Esc closes both.
+- **In a dungeon, with a floor object's choice panel open,** Esc closes it as its leave button does, choosing nothing.
+- **Shift+Esc stops Play,** and plain Esc no longer does. If plain Esc still stops Play, the editor did not take the
+  project's setting: say so, and use `Cataclysm.PauseGame` in the console to pause meanwhile.
 
 ## If a step does not show what it should
 
