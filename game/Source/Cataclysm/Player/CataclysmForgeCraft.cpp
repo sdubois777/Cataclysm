@@ -121,6 +121,47 @@ namespace
 		Out.MaterialTable = UCataclysmDropRoll::LoadCraftingMaterialTable();
 		return Out;
 	}
+
+	/** The tree's crafting nodes for a craft on `Item` today whose own material is `CraftMaterial` (slices C1, C2). */
+	FCataclysmForgeCosts ForgeCostsOf(const UObject* WorldContext, const FCataclysmItem& Item, const UCataclysmEmpireRun& Run,
+									  FName CraftMaterial)
+	{
+		const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+		FCataclysmForgeCosts Out;
+		// EACH FACTOR THAT APPLIES, MULTIPLIED (D9): Limited Knowledge on the item's gear level BEFORE the craft,
+		// Heat Shielding on the craft's OWN material's tier, not the options' (the coordinating session, 2026-11-25).
+		Out.ResidueFactor = Tree.CraftResidueFactor;
+		if (Item.GearLevel < UCataclysmForge::LimitedKnowledgeBelowLevel)
+		{
+			Out.ResidueFactor *= Tree.LowLevelCraftResidueFactor;
+		}
+		if (UCataclysmForgeCraft::MaterialTierOf(CraftMaterial) >= UCataclysmForge::HeatShieldingLowestTier)
+		{
+			Out.ResidueFactor *= Tree.RareMaterialCraftResidueFactor;
+		}
+		Out.StabilizerShareReduced = Tree.StabilizerShareReduced;
+		Out.bResidueReset =
+			UCataclysmForge::ResidueResetLands(Item, Tree.ResidueResetChancePerHundred, Run.WalkSeedMask, Run.Day());
+		Out.DaysFactor = FMath::Max(0.0f, 1.0f - Tree.CraftDaysReduced) * FMath::Max(0.0f, 1.0f - Tree.CraftDaysReducedMore);
+		Out.DaysOff = Tree.CraftDaysOff;
+		// ANCIENT TECHNIQUES (slice C6): its days off join Master Craftsman's on an item with four affixes or more BEFORE
+		// the craft (R2), as Limited Knowledge reads the gear level before it.
+		if (Item.Affixes.Num() >= UCataclysmForge::AncientTechniquesLowestAffixes)
+		{
+			Out.DaysOff += Tree.CraftDaysOffOnFullItems;
+		}
+		return Out;
+	}
+
+	/** The tree's three material draws for an item craft on `Item` today (#47 slice F6b, Q13). */
+	FCataclysmForgeKeeping ForgeMaterialKeepingOf(const UObject* WorldContext, const FCataclysmItem& Item,
+												  const UCataclysmEmpireRun& Run)
+	{
+		const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+		return UCataclysmForge::KeepingOn(Item, Tree.LowTierMaterialKeptChance, Tree.RareMaterialKeptChance,
+										  Tree.HighResidueMaterialsReturnedChance, Run.WalkSeedMask, Run.Day(),
+										  UCataclysmDropRoll::LoadCraftingMaterialTable());
+	}
 }
 
 namespace
@@ -211,7 +252,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 	}
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Stone));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -473,7 +514,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -620,7 +661,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketWork(const UObject* WorldCon
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -704,7 +745,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(const UObject* WorldConte
 	}
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -726,7 +767,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(const UObject* WorldConte
 			// and the day before the craft's days pass, so the same item on the same day of the same run draws the same.
 			if (Craft == ECataclysmForgeAffixCraft::RerollValue)
 			{
-				Done.ToRoll = UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run.WalkSeedMask, Run.Day());
+				Done.ToRoll = UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run.WalkSeedMask, Run.Day(),
+																 RollsFor(WorldContext));
 			}
 			FCataclysmRolledAffix& Affixed = Changed.Affixes[Plan.Affix];
 			Affixed.Tier = Done.ToTier;
@@ -784,7 +826,7 @@ FCataclysmForgeAffixChange UCataclysmForgeCraft::AddAffixPlanFor(const UObject* 
 	return UCataclysmForge::DeterministicAffixOf(
 		*Item, AffixRow, Tier, Seed, AffixTable, BaseTable,
 		Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::SchematicFragmentsRow)), GoldTierOf(WorldContext),
-		GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
+		GoldHeldIn(WorldContext), PricingFor(WorldContext, Target), RollsFor(WorldContext));
 }
 
 FCataclysmForgeAffixChange UCataclysmForgeCraft::ShiftAffixPlanFor(const UObject* WorldContext,
@@ -855,7 +897,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(const UObject* WorldCo
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -958,7 +1000,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(const UObject* World
 	}
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -1105,7 +1147,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -1307,8 +1349,9 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 	{
 		const float Threshold =
 			UCataclysmEquipmentComponent::ConsumptionThresholdFor(ACataclysmGameMode::DifficultyTierIn(World));
-		const float Now = Equipment->WornResidue();
-		const float After = Now + Added;
+		// AS THE THRESHOLD COUNTS IT (Residue Protocols, slice C6): the residue the craft adds is counted the same way.
+		const float Now = UCataclysmWearing::CountedWornResidue(WorldContext, Equipment->WornResidue());
+		const float After = UCataclysmWearing::CountedWornResidue(WorldContext, Equipment->WornResidue() + Added);
 		bCrosses = Now < Threshold && After >= Threshold;
 		if (bCrosses && !bConfirmedPastThreshold)
 		{
@@ -1383,6 +1426,14 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		OutMessage = Refusal.IsEmpty() ? FString(TEXT("The item could not be changed; nothing changed.")) : Refusal;
 		return ECataclysmForgeResult::Refused;
 	}
+	// THE EMPIRE TREE'S AFFIX NODES (#2741's crafting slices C3 and C4): on the item the craft changed, Rough Draft, then
+	// Apprentice Smith, then Quality Materials (D1), each drawn from the item as it stood and the day the craft began.
+	// Not on a dismantle, which ends the piece (G1). Put back with the rest of the change when a later step fails.
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	const FCataclysmForgeAffixNodesDone TreeAffixes = Step.bTreeAffixNodes
+		? UCataclysmForge::AffixNodesOn(Changed, Before, AffixNodesFor(WorldContext), Run->WalkSeedMask, Run->Day(),
+										AffixTable, UCataclysmItemModifiers::LoadBaseTable(), Run->DifficultyTier)
+		: FCataclysmForgeAffixNodesDone();
 	Changed.Residue = Step.ResidueAfter;
 	const auto PutTheItem = [&](const FCataclysmItem& Item)
 	{
@@ -1411,6 +1462,14 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		return ECataclysmForgeResult::Refused;
 	}
 
+	// THE EMPIRE TREE'S MATERIAL NODES (#47 slice F6b): what they keep goes back in the bag ONCE THE CRAFT CAN NO LONGER
+	// FAIL, before its days pass (N1). Every failure above gave back all it took, so nothing is given back twice; and the
+	// craft's own line, said after, counts what is left with the kept ones in. Drawn from the item as it stood and the day
+	// before the craft's days, as the question said it (Q13).
+	const FCataclysmForgeKeeping Keeping = ForgeMaterialKeepingOf(WorldContext, Before, *Run);
+	const TArray<FCataclysmForgeMaterialTake> Kept = Keeping.KeptOf(Taken);
+	GiveMaterialsBack(Inventory, Kept);
+
 	// THE DAYS, through the run's own day loop, so a surge or a resolve inside them happens on its own day; AND THEIR
 	// REPORTS KEPT, with the dungeons standing named before them, since a dungeon the days resolve is gone from the run
 	// after. Until issue #2857 the reports were thrown away here, and the owner saw dungeons gone with nothing saying why.
@@ -1431,6 +1490,17 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeOptionsLine(
 			Name, Step.Options.bStabilizerUsed, Step.Options.ShardsUsed, Step.Options.ResidueSaved, Step.Options.DaysSaved,
 			Step.Options.Gold));
+	}
+	// AND WHAT THE EMPIRE TREE KEPT, only when it kept anything (N4).
+	if (!Kept.IsEmpty())
+	{
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeMaterialsKeptLine(Name, Keeping.KeptPartsOf(Kept)));
+	}
+	// AND WHAT THE EMPIRE TREE'S AFFIX NODES DID, only when they did anything (slices C3 and C4).
+	if (TreeAffixes.Any())
+	{
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeAffixNodesLine(
+			Name, UCataclysmForge::AffixNodesDoneText(TreeAffixes, AffixTable)));
 	}
 
 	// AND WHAT THE DAYS DID, in the walk's words after the forge's lead (`FCataclysmPlayLoopLog::AwayAccount`), said
@@ -1455,7 +1525,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 FCataclysmForgeOptionEffect UCataclysmForgeCraft::OptionsFor(const UObject* WorldContext, float ResidueBefore,
 															 float ResidueAfter, int32 Days, int64 CraftGold,
 															 const FCataclysmForgeCraftOptions& Options,
-															 const FCataclysmForgePricing& Pricing)
+															 const FCataclysmForgePricing& Pricing,
+															 const FCataclysmForgeCosts& Costs)
 {
 	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
 	const UCataclysmInventoryComponent* Inventory = Character != nullptr ? Character->GetInventory() : nullptr;
@@ -1463,7 +1534,7 @@ FCataclysmForgeOptionEffect UCataclysmForgeCraft::OptionsFor(const UObject* Worl
 		ResidueBefore, ResidueAfter, Days, CraftGold, Options,
 		Inventory != nullptr ? Inventory->CountOfMaterial(FName(UCataclysmForge::ChaosStabilizerRow)) : 0,
 		Inventory != nullptr ? Inventory->CountOfMaterial(FName(UCataclysmForge::TaintedShardRow)) : 0,
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), Pricing);
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), Pricing, Costs);
 }
 
 FCataclysmForgePricing UCataclysmForgeCraft::PricingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target)
@@ -1475,6 +1546,60 @@ FCataclysmForgePricing UCataclysmForgeCraft::PricingFor(const UObject* WorldCont
 		? UCataclysmForge::ForgeUpgradesSeed(*Item, Run->WalkSeedMask, Run->Day())
 		: 0;
 	return ForgePricingOnSeed(WorldContext, Seed);
+}
+
+FCataclysmForgeKeeping UCataclysmForgeCraft::KeepingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	return Item != nullptr && Run != nullptr ? ForgeMaterialKeepingOf(WorldContext, *Item, *Run) : FCataclysmForgeKeeping();
+}
+
+FCataclysmForgeCosts UCataclysmForgeCraft::CostsFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+												  FName CraftMaterial)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	return Item != nullptr && Run != nullptr ? ForgeCostsOf(WorldContext, *Item, *Run, CraftMaterial) : FCataclysmForgeCosts();
+}
+
+FString UCataclysmForgeCraft::KeptTextFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName Material,
+										  int32 Count, const TArray<FCataclysmForgeMaterialTake>& OptionMaterials)
+{
+	// THE MATERIALS AS THE CRAFT TAKES THEM: its own, then the options' (`ForgeStepOf`).
+	TArray<FCataclysmForgeMaterialTake> Materials;
+	Materials.Add({Material, Count});
+	Materials.Append(OptionMaterials);
+	return UCataclysmForge::KeptText(KeepingFor(WorldContext, Target), Materials);
+}
+
+FCataclysmForgeRolls UCataclysmForgeCraft::RollsFor(const UObject* WorldContext)
+{
+	const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+	FCataclysmForgeRolls Out;
+	Out.Floor = Tree.AffixRollFloor;
+	Out.TopQuarterChance = Tree.AffixRollTopQuarterChance;
+	return Out;
+}
+
+FCataclysmForgeAffixNodes UCataclysmForgeCraft::AffixNodesFor(const UObject* WorldContext)
+{
+	const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+	FCataclysmForgeAffixNodes Out;
+	Out.AddedChance = Tree.AffixAddedChance;
+	Out.TierRaisedChance = Tree.AffixTierRaisedChance;
+	Out.RollMaxedChance = Tree.AffixRollMaxedChance;
+	Out.Rolls = RollsFor(WorldContext);
+	return Out;
+}
+
+FString UCataclysmForgeCraft::AffixNodesTextFor(const UObject* WorldContext, bool bDrawsARoll)
+{
+	const FCataclysmForgeAffixNodes Nodes = AffixNodesFor(WorldContext);
+	return (bDrawsARoll ? UCataclysmForge::RollsText(Nodes.Rolls) : FString())
+		+ UCataclysmForge::AffixNodesChanceText(Nodes);
 }
 
 FCataclysmForgePricing UCataclysmForgeCraft::CombinePricingFor(const UObject* WorldContext, int32 Rung)
@@ -1495,7 +1620,8 @@ FCataclysmForgeCleanse UCataclysmForgeCraft::CleansePlanFor(const UObject* World
 	}
 	return UCataclysmForge::CleanseOf(
 		*Item, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::PurifiedEssenceRow)),
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target),
+		CostsFor(WorldContext, Target, FName(UCataclysmForge::PurifiedEssenceRow)));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::Cleanse(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -1598,6 +1724,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContex
 		Step.ResidueAfter = Held->Residue;
 	}
 	Step.ThresholdWords = TEXT("Dismantling");
+	Step.bTreeAffixNodes = false; // THE PIECE ENDS: the empire tree's affix nodes have nothing to act on (G1).
 	Step.NothingThereRefusal = TEXT("There is nothing there to dismantle.");
 
 	FCataclysmForgeDismantle Done = Plan;

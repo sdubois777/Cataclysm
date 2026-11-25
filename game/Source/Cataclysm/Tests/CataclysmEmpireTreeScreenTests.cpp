@@ -63,7 +63,8 @@ namespace CataclysmEmpireTreeScreenTest
 	const FName StructuralIntegrity(TEXT("basic_0000000w"));	// Architect, a root, 10 points
 	const FName FortifiedGates(TEXT("basic_arch_t1d"));			// <- Structural Integrity at 2, 8 points
 	const FName MasonryTechniques(TEXT("basic_00000010"));		// <- Fortified Gates at 6, 15 points
-	const FName RoughDraft(TEXT("basic_arts_t1d"));			// Artisan, a root; waits on crafting
+	const FName MerchantGuild(TEXT("basic_tres_t1e"));		// Treasury, <- Coinage at 2; waits on a market
+	// (Rough Draft, an Artisan root, was the node used here until #2741's crafting slice C4 built it, 2026-11-25.)
 	const FName Foundations(TEXT("capstone_0000000m"));			// the centre, at 25: Aegis of Hope, The Delver, The Hoarder
 
 	/** The one sentence buying, choosing and respec all say during a walk. */
@@ -425,19 +426,21 @@ bool FCataclysmEmpireTreeScreenClickTest::RunTest(const FString&)
 	TestTrue(TEXT("its box shows it held"), Held->IsChosen());
 	TestFalse(TEXT("and not dimmed, with points left to spend"), Held->IsDimmed());
 
-	// A NODE THE RULES REFUSE: Rough Draft waits on crafting.
+	// A NODE THE RULES REFUSE: Merchant Guild waits on a market. Its edge is shut as well, so its tool tip and the
+	// screen's refusal, which name the market, are what show the system is the reason, not the dimmed box alone.
 	UCataclysmChoiceButton* Refused = NewObject<UCataclysmChoiceButton>();
-	Screen->DescribeNodeButtonForTests(*Refused, RoughDraft);
-	Screen->ShowBranch(TEXT("Artisan"));
-	const bool bRefusedBought = Screen->TouchNode(RoughDraft);
-	AddInfo(FString::Printf(TEXT("CLICK: Rough Draft %s, \"%s\"; its tool tip \"%s\""),
+	Screen->DescribeNodeButtonForTests(*Refused, MerchantGuild);
+	Screen->ShowBranch(TEXT("Treasury"));
+	const bool bRefusedBought = Screen->TouchNode(MerchantGuild);
+	AddInfo(FString::Printf(TEXT("CLICK: Merchant Guild %s, \"%s\"; its tool tip \"%s\""),
 							bRefusedBought ? TEXT("bought") : TEXT("refused"), *Screen->RefusalText().ToString(),
 							*Refused->GetToolTipText().ToString()));
-	TestTrue(TEXT("Rough Draft's box is dimmed"), Refused->IsDimmed());
+	TestTrue(TEXT("Merchant Guild's box is dimmed"), Refused->IsDimmed());
 	TestTrue(TEXT("and still clickable"), Refused->IsAvailable());
-	TestTrue(TEXT("its tool tip says it waits on crafting"), Refused->GetToolTipText().ToString().Contains(TEXT("crafting")));
+	TestTrue(TEXT("its tool tip says it waits on a market"),
+			 Refused->GetToolTipText().ToString().Contains(TEXT("a market")));
 	TestFalse(TEXT("a click on it buys nothing"), bRefusedBought);
-	TestTrue(TEXT("and the screen says why"), Screen->RefusalText().ToString().Contains(TEXT("crafting")));
+	TestTrue(TEXT("and the screen says why"), Screen->RefusalText().ToString().Contains(TEXT("a market")));
 	TestEqual(TEXT("the tree is as it was"), Account->EmpireTree.Total(), 1);
 	TestTrue(TEXT("and the bank"), Account->EmpireUpgradePoints == 2.5);
 	return true;

@@ -331,6 +331,604 @@ ruling: one branch, one writer).
 
 ---
 
+## 2026-11-25 — Ancient Techniques takes a day a point off a forge craft on a four-affix item, and Residue Protocols ignores 5% a point of the Worn Residue the Consumption Threshold counts (#2741, crafting slice C6)
+
+**Affects:**
+- `docs/Empire_Development_Tree_Final.json`: the two nodes' sentences, reworded to the rulings.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: two effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: two
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h`: `AncientTechniquesLowestAffixes`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`: `ForgeCostsOf` adds Ancient Techniques' days off;
+  `DoItemCraft`'s crossing counts Worn Residue through the one function.
+- `game/Source/Cataclysm/Items/CataclysmWearing.h` and `game/Source/Cataclysm/Items/CataclysmWearing.cpp`:
+  `CountedWornResidueOf`, `IgnoredWornResidueShare`, `CountedWornResidue`; `CrossingFor` reads them.
+- `game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.h`,
+  `game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.cpp` and
+  `game/Source/Cataclysm/Interface/CataclysmCharacterSheetWidget.cpp`: the Worn Residue line.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeAncientProtocolsTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
+- `tools/tests/test_forge_ancient_protocols.py`, new; `tools/tests/test_forge_affix_nodes.py`,
+  `tools/tests/test_empire_tree_effects_match_their_texts.py` and
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py`.
+- `docs/Play_Loop_Checklist.md` step 33.
+
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), its crafting group, slice C6. On
+`feat/forge-ancient-protocols-c6`, written on top of slices C3 and C4 (`feat/forge-affix-nodes-c3c4`, which holds #47
+slice F6b and slices C1 and C2). It joins their window.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **NO NEW GENRE RESEARCH.** Both nodes copy this project's own: Ancient Techniques is Master Craftsman's days off with a
+  condition; Residue Protocols is the design document's and the simulation's own use of the node.
+- **NO SAVE VERSION MOVES.** Both read the tree and the items as they stand.
+
+### The rulings, the coordinating session, 2026-11-25
+
+The owner left the six forge node questions to the coordinating session: "I'll let you decide on those questions". Its
+rulings for these two (the table in slices C3 and C4's entry has all six), and the plan for this slice, accepted with:
+
+- **Ancient Techniques (question 1)**: "for crafts with 4 or more affixes", a full item; an enchantment is not an affix.
+  **R2**: the item's affixes **before** the craft, as Limited Knowledge reads the gear level before it.
+- **Residue Protocols (question 3)**: the keystones document's "Ignore 5% of Cataclysmic Residue per point when crafting",
+  which the design document, the simulation and the Consumption Threshold's derivation already use. **R1**: it acts on
+  the Worn Residue measured against the Consumption Threshold, through one function the three places read. The design
+  document says "Three or four points in Residue Protocols, at 5% ignored per point, does the same" as one Purified
+  Essence, and `sim/cataclysm_sim/residue.py`'s `points_of_residue_protocols_needed` multiplies the whole residue by
+  `1 - 0.05 x points`; the craft-gain reading would make both false.
+
+### What it does
+
+| Node | Sentence, reworded | Built as |
+| :-- | :-- | :-- |
+| Ancient Techniques (10) | "-1 Day crafting time per point for crafts with 4 or more affixes." | `CraftDaysOffOnFullItems` 1: 10 days at 10, added to `FCataclysmForgeCosts::DaysOff` when the item had 4 affixes or more before the craft |
+| Residue Protocols (10) | "Ignore 5% of Worn Residue per point when it is measured against the Consumption Threshold." | `WornResidueIgnored` 0.05: 50% at 10 |
+
+- **Ancient Techniques' days** are taken as Master Craftsman's are (`TreeDaysFor`: after the multipliers, before the
+  rounding; a craft of a day keeps one) and said by the question's words for the tree's crafting costs.
+- **Worn Residue as the threshold counts it** is `UCataclysmWearing::CountedWornResidue`: the sum times
+  `1 - share`, the share held inside 0 to 1. The equip crossing (`CrossingFor`), the forge's crossing (`DoItemCraft`,
+  the residue the craft adds counted the same way) and the character sheet's line read it. The items keep their residue,
+  so a craft's gold and days, the cleanse and an item's tooltip are unchanged.
+- **The sheet's line** names the share: "Worn Residue 750 of 1950 (tier 1), 50% ignored by Residue Protocols"; with
+  none ignored it is as before.
+
+### Tests
+
+`Cataclysm.ForgeAncientProtocols.`, a new group of five:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheTwoNodesGiveTheirFigures` | 10 days and 0.5 at full points; CONTROL none held |
+| `AncientTechniquesTakesDaysOffACraftOnAFourAffixItem` | in a world: four affixes 10 days off, three none; with Master Craftsman 20, a craft of 5 days keeping 1 |
+| `WornResidueIsCountedLessTheShareIgnored` | 1,000 at a half 500, at none exactly 1,000, the share held inside 0 to 1 |
+| `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols` | in a world, a cuirass worn at 1,500 and a helm carried at 600 on tier 1: no node, 1,500 to 2,100, crossing; at 10, 750 to 1,050, not crossing; the sheet's line; the items keep their residue |
+| `TheSheetLineNamesTheShareIgnoredOnlyWhenThereIsOne` | none ignored, the line as before; a quarter named |
+
+Python: `tools/tests/test_forge_ancient_protocols.py`, three checks (the list at its top), one of which counts every
+`->WornResidue()` outside the equipment component, so a new raw comparison with the threshold fails it. The tree checks
+count 142 built nodes and slice 15's 20 points, and the "later slice" reason is gone; `CataclysmDataTableTests.cpp`
+pins 148 effect rows; checklist step 33.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `6ff5f9f48`, each narrowed to
+`tools/tests/test_forge_ancient_protocols.py` (three checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| CP1 | the equip crossing's `After` reads the raw sum | "PROVED: 1 failed, 2 passed in 1.03s \| restored: 3 passed in 1.72s" | `test_every_comparison_with_the_threshold_reads_the_one_function` |
+| CP2 | `AncientTechniquesLowestAffixes` 5 | "PROVED: 1 failed, 2 passed in 1.04s \| restored: 3 passed in 1.05s" | `test_ancient_techniques_reads_the_item_before_the_craft_at_four_affixes` |
+| CP3 | the sheet's line reads the raw sum | "PROVED: 1 failed, 2 passed in 1.03s \| restored: 3 passed in 1.01s" | `test_every_comparison_with_the_threshold_reads_the_one_function` |
+
+**The whole Python suite at `6ff5f9f48`:** "1 failed, 8544 passed, 9 skipped in 590.25s (0:09:50)"; JUnit 8554 tests, 1
+failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree CSVs,
+whose assets the window's editor step rebuilds.
+
+**For the window**: this slice joins #47 slice F6b's and #2741's slices C1 to C4's (the coordinating session,
+2026-11-25), and the window runs from this branch, which holds all of them. **Re-registered from the trees base window's
+whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`, as theirs does.
+- **The whole suite: 5521** (their 5516 + this slice's 5 in `Cataclysm.ForgeAncientProtocols.`, none removed).
+- **No save record moves.**
+- **Groups alone, 31**: theirs (21), `ForgeAncientProtocols.` 5 (new), and every group that reads Worn Residue against
+  the threshold, since all three readers changed: `Wearing.` (34 name literals), `Equipment.` (30), `ConsumptionDouble.`
+  (15), `ItemComparison.` (11), `CharacterSheet.` (10), `BothHandsFull.` (7), `ConsumptionMark.` (6), `HeldItem.` (5) and
+  `ThresholdQuestion.` (4). Static counts of name literals; the run's counts are the ones quoted.
+- **Three C++ guard proofs**, each anchor once at `6ff5f9f48`:
+
+| Proof | File | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| GF1 | `CataclysmWearing.cpp` | `CountedWornResidueOf`'s `return WornResidue * (1.0f - FMath::Clamp(IgnoredShare, 0.0f, 1.0f));` read as `return WornResidue;` | `Cataclysm.ForgeAncientProtocols.` | `WornResidueIsCountedLessTheShareIgnored`, `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols` |
+| GF2 | `CataclysmForgeCraft.cpp` | `Item.Affixes.Num() >= UCataclysmForge::AncientTechniquesLowestAffixes` read as `>` | `Cataclysm.ForgeAncientProtocols.` | `AncientTechniquesTakesDaysOffACraftOnAFourAffixItem` |
+| GF3 | `CataclysmCharacterSheetLayout.cpp` | `return Ignored > 0 ?` read as `return Ignored < 0 ?` | `Cataclysm.ForgeAncientProtocols.` | `TheSheetLineNamesTheShareIgnoredOnlyWhenThereIsOne`, `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols` |
+
+**The window runs eight C++ guard proofs, two a slice, not all twelve** (the coordinating session, 2026-11-25: the War
+and Death trees wait behind this machine). Kept, each guarding its slice's central rule: MF1 and MF3 (#47 slice F6b:
+which tiers Material Conservation keeps, and that the kept materials go back in the bag), KF1 and KF2 (slices C1 and C2:
+the tree's residue factor, and a craft of a day keeping one), AF1 and AF3 (slices C3 and C4: Master's Workshop's floor,
+and Rough Draft's free slot), GF1 and GF2 (this slice: the share Residue Protocols ignores, and Ancient Techniques' four
+affixes). **Dropped, not run:**
+- **MF2**, Tempting Fate's "more than 500": a boundary of one node inside the slice's draws, not its central rule.
+- **KF3**, Heat Shielding's tier 3: one of three residue factors; KF1 already proves the factor reaches the craft.
+- **AF2**, Apprentice Smith's tier 7 bound: a bound inside one of the three draws; AF3 already proves a draw's
+  condition is read.
+- **GF3**, the sheet line's share words: wording; GF1 already proves the counted figure the line shows.
+Their Python and Unreal tests still run in the whole suite and the groups; only the break-and-run proof of each is not
+made.
+
+---
+
+## 2026-11-25 — The empire tree's five forge affix nodes act: Master's Workshop and Precision Crafting raise the rolls the forge draws, and Rough Draft, Apprentice Smith and Quality Materials add, raise and perfect an affix on a craft; the crafting rows still refused say what each waits on (#2741, crafting slices C3 and C4)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: five effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: five
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgeRolls`, `FCataclysmForgeAffixNodes`, `FCataclysmForgeAffixNodesDone`; `RerolledAffixRoll` and
+  `DeterministicAffixOf` take the rolls; `AffixNodesOn`, `AffixNodesChanceText`, `RollsText`, `AffixNodesDoneText`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `RollsFor`, `AffixNodesFor`, `AffixNodesTextFor`; `DoItemCraft` applies the nodes and says what they did; the step's
+  `bTreeAffixNodes`, off for the dismantle.
+- `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.cpp`:
+  `ForgeAffixNodesLine`.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the eight priced questions.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeAffixNodesTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`, `game/Source/Cataclysm/Tests/CataclysmEmpireTreeTests.cpp`,
+  `game/Source/Cataclysm/Tests/CataclysmEmpireTreeAccountTests.cpp` and
+  `game/Source/Cataclysm/Tests/CataclysmEmpireTreeScreenTests.cpp`.
+- `tools/tests/test_forge_affix_nodes.py`, new; `tools/tests/test_forge_gold_nodes.py`,
+  `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py` and
+  `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
+- `docs/Play_Loop_Checklist.md` step 32.
+
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), its crafting group, second slice: C3 (the rolls)
+with C4 (the affixes). On `feat/forge-affix-nodes-c3c4`, written on top of slices C1 and C2 (`feat/forge-costs-c1c2`,
+which holds #47 slice F6b), and moved onto development with them.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **THREE EMPIRE TREE TESTS NAMED ROUGH DRAFT AS THE NODE A MISSING SYSTEM REFUSES**, and this slice builds it:
+  `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, `APointBoughtComesOffTheBankAndTheAccountIsWritten` and the screen's
+  click test. Each now names **Merchant Guild**, which waits on a market. The refusal still reads the system first
+  (`RefusalForSpending` asks `WaitsOn` before the edges), so its shut edge (Coinage at 2) does not decide it; the
+  screen test checks the tool tip and the refusal name the market, not only the dimmed box. The only refused root left
+  is The Alchemist's Transmutation, a capstone that waits on the owner's answer, so it was not chosen.
+- **QUALITY MATERIALS IS 5% A POINT, 50% AT 10.** First written at the tree file's 10% a point (100% at 10), as the
+  C3/C4 detail ruled, and changed before the window registered by the ruling on the owner's question 5 below.
+
+### The owner's six forge node questions, ruled by the coordinating session on 2026-11-25
+
+The owner left them to the coordinating session: "I'll let you decide on those questions".
+
+| Question | Ruling | Where it lands |
+| :-- | :-- | :-- |
+| 6, Industrial Speed | 10% a point (the keystones document's figure), 50% at its 5 points; the tree file's 1% rounds away to nothing | slice C2, before this window: the tree file's sentence, the data and the C1/C2 checks |
+| 5, Quality Materials | 5% a point, 50% at 10, so the Primal Spark's craft still matters | this slice, before this window: the tree file's sentence, the data, the checks |
+| 1, Ancient Techniques | "for crafts with 4 or more affixes": a full item; an enchantment does not count as an affix | a later slice; refused for now as "a later slice of issue #2741" |
+| 3, Residue Protocols | the design document's "ignore 5% of residue per point", which the design document, the simulation and the Consumption Threshold's derivation already use; the tree file's sentence to be reworded; no saved state, so it leaves C5 | the same later slice; its sentence is not yet reworded |
+| 4, The Alchemist's Transmutation | as written, no cap: a 200-point capstone, a play-test point | still waits on a mark on each affix the forge crafted (C5) |
+| 2, Refining Techniques | left unbuilt: there are no item tiers | joins issue #2897 with the nine the owner left unbuilt |
+
+The ten nodes in issue #2897 are the nine the owner ruled on 2026-11-25 ("Leave them unbuilt for now, we have a lot of
+stuff going. Just make sure there's an issue for them") and Refining Techniques; their refusal reasons name #2897.
+- **NO NEW GENRE RESEARCH.** A roll's floor and a chance of a better band copy this project's own drop roll
+  (`FRandomStream::FRand` from 0 up to 1); Rough Draft's affix is drawn as the shift draws one.
+- **NO SAVE VERSION MOVES.** An affix's tier and roll, and the piece's rarity (read from its affix count), are saved
+  already.
+
+### The rulings, the coordinating session, 2026-11-25
+
+The C3/C4 detail was accepted as written:
+
+- **Where the rolls act**: `FCataclysmForgeRolls` (Master's Workshop's floor, Precision Crafting's chance) passed to the
+  reroll, the Deterministic Affix and Rough Draft's affix, defaulting to none (ruling A's shape). A roll is
+  `Low + (1 - Low) x draw`, `Low` the floor, or 0.75 when Precision Crafting's own draw (salt "FPRC", on the roll's seed)
+  lands and that is higher. The shift and the tier upgrade keep the roll (F1 Q12), so neither takes them.
+- **D1, the order**: once in `DoItemCraft`, after the craft's own change and before its residue is written: Rough Draft,
+  then Apprentice Smith, then Quality Materials, each on a draw of its own (salts "FRDR", "FAPS", "FQMT") from the item as
+  it stood and the day, each choosing among the affixes as they stand at its turn.
+- **G1**: every item craft through `DoItemCraft` but the dismantle, which ends the piece.
+- **Rough Draft**: only on a free slot (`Affixes + EnchantmentCount < 4`) whose side has room (two prefixes, two
+  suffixes); a side at random when both have, as a drop picks the side of an odd affix; the slot's candidates
+  (`UCataclysmDropRoll::CandidatesFor`) of no stat group the piece holds, evenly, as the shift draws one. **D2**: its tier
+  is `UCataclysmDropRoll::MaxAffixTierOnADrop` of the run's difficulty. **D3**: the piece is promoted by its new affix
+  count, as rarity is read. No residue, days or gold of its own.
+- **Apprentice Smith and Quality Materials** pick among the regular affixes only: below tier 7, and with a roll below 1.
+  None to pick, nothing happens.
+- **G3, the words**: every priced question ends with the chances of the nodes held; the reroll's and the addition's
+  questions say the rolls before them; a PLAY LOOP line says what happened, only when anything did.
+- **D4, G4's split**, as amended by the rulings above: naming #2897, a crafting station (Expanded Station x3, Assembly
+  Line, The Hidden Stash), a double craft (Explorer Synergy), an Exalted item (Flawless Production, Residue Mastery) and
+  an item tier (Grand Forge, Refining Techniques); naming #2741, a later slice (Ancient Techniques, Residue Protocols), a
+  mark on each affix the forge crafted (The Alchemist's Transmutation) and residue held over between crafts (Steady
+  Hands).
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Precision Crafting (15) | "+3% chance per point for affixes to roll in the top 25% of their range." | `AffixRollTopQuarterChance` 0.03: 45% at 15 |
+| Master's Workshop (15) | "+2% to the minimum roll range of all affixes on a crafted item per point." | `AffixRollFloor` 0.02: from 30% up at 15 |
+| Quality Materials (10) | "+5% chance per point for a craft to roll maximum values on one random affix." | `AffixRollMaxedChance` 0.05: 50% at 10 |
+| Apprentice Smith (10) | "1% chance per point to upgrade a random affix to next tier when using the smith." | `AffixTierRaisedChance` 0.01: 10% at 10 |
+| Rough Draft (8) | "+5% chance per point for a crafted item to roll one additional affix." | `AffixAddedChance` 0.05: 40% at 8 |
+
+- **The words**: " The empire tree's affix nodes: a 40% chance of one more affix; a 10% chance one affix rises a tier; a
+  50% chance one affix's roll is made its best." after every priced question; " Its roll is drawn from 30 percent up,
+  with a 45% chance from 75 percent up." before it on a reroll and an addition.
+- **The line**: `the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier 2; made Flat
+  evasion's roll its best, 37 to 100 percent`.
+- **The refusals**: the 103 points of crafting rows still refused are counted by their seven reasons, not one.
+
+### Tests
+
+`Cataclysm.ForgeAffixNodes.`, a new group of eight:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheFiveNodesGiveTheirFigures` | through the tables, every node at full points; CONTROL none held |
+| `ARollIsDrawnFromTheFloorUpAndOnPrecisionCraftingsDrawFromThreeQuartersUp` | the default rolls return each draw exactly; 0.5 at a floor of 0.3 is 0.65, from 0.75 up 0.875, the higher of the two; at 45% a seed that lands and one that misses, and 800 to 1,000 of 2,000 land; a reroll with no node draws as before, and with the floor from 0.3 up |
+| `TheDeterministicAffixDrawsItsRollWithTheRolls` | its roll from 0.3 up, the rest of its draw unchanged |
+| `RoughDraftAddsOneAffixOnAFreeSlotAtTheDropsBestTier` | a second affix last, at tier 2 on a tier 1 run, of another stat group, the piece one rarity up; two prefixes and a suffix gain a suffix; CONTROL four affixes, three and an enchantment, no node |
+| `ApprenticeSmithRaisesATierAndQualityMaterialsMakesARollItsBest` | the affix below tier 7 rises one, its roll kept; the affix below its best is made 1, its tier kept; CONTROL all at 7, all at their best |
+| `TheThreeActInOrderEachOnTheAffixesAsTheyStand` | on a helm whose one affix is at tier 7 and its best, all three act on the affix Rough Draft added; the words in order; the same item and day draw the same |
+| `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays` | in a world: Quality Materials at 10 (50%) makes the roll 1 on a helm whose draw lands and keeps it on one whose draw misses, Master's Workshop at 15 places the reroll from 0.3 up, each as its question said; CONTROL none held |
+| `TheWordsSayTheChancesTheRollsAndWhatWasDone` | every sentence, the line, and nothing when nothing |
+
+The dismantle has no Unreal test of its own: the piece is gone, so there is nothing to read. The Python check below
+reads that only the dismantle turns the nodes off.
+
+Python: `tools/tests/test_forge_affix_nodes.py`, five checks (the list at its top). The tree checks count 140 built nodes,
+slice 14's 58 points and the seven reasons' 11, 10, 35, 25, 20, 1 and 1 in place of crafting's 161; `CataclysmDataTableTests.cpp`
+pins 146 effect rows; the play loop check counts forty-one places; checklist step 32. **F6a's two pricing checks now
+accept the rolls after the pricing as well, and still check the pricing.**
+
+### Not done
+
+- **Ancient Techniques and Residue Protocols**, ruled above, wait on a small slice after this window; Residue
+  Protocols' sentence in the tree file is reworded there.
+- **The Alchemist's Transmutation** waits on a mark on each affix the forge crafted (C5).
+- **The ten nodes of issue #2897**, and Steady Hands, wait on systems the game does not have, each saying which.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `7c52bafb1`, each narrowed to
+`tools/tests/test_forge_affix_nodes.py` (five checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| AP1 | the dismantle's `Step.bTreeAffixNodes = false;` removed | "PROVED: 1 failed, 4 passed in 1.12s \| restored: 5 passed in 1.06s" | `test_only_the_dismantle_turns_the_nodes_off` |
+| AP2 | `AddAffixPlanFor` without `RollsFor(WorldContext)` | "PROVED: 1 failed, 4 passed in 1.05s \| restored: 5 passed in 1.01s" | `test_the_reroll_and_the_addition_draw_with_the_rolls_and_the_shift_does_not` |
+| AP3 | the cleanse's question without `AffixNodesTextFor` | "PROVED: 1 failed, 4 passed in 1.36s \| restored: 5 passed in 1.02s" | `test_every_priced_question_says_the_chances_and_only_the_two_draws_say_the_rolls` |
+
+**A check from the affix crafts' slice moved**: `tools/tests/test_the_forge_crafts_one_affix.py`'s
+`test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes` read the reroll's call word for word and failed
+on the first whole-suite run here (8551 tests, 2 failures); it now reads the call with the rolls after the day, and still
+requires the draw from the item before the craft, the mask and the day.
+
+**The whole Python suite at `7c52bafb1`:** "1 failed, 8541 passed, 9 skipped in 515.65s (0:08:35)"; JUnit 8551 tests, 1
+failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree CSVs,
+whose assets the window's editor step rebuilds.
+
+**For the window**: this slice joins #47 slice F6b's and slices C1 and C2's (on `feat/forge-costs-c1c2`), since it is
+done and its Python run clean before that window registers; it carries their registration and adds its own.
+**Re-registered from the Rifts window's whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`, as theirs does.
+- **The whole suite: 5516** (their 5508 + this slice's 8 in `Cataclysm.ForgeAffixNodes.`, none removed).
+- **No save record moves.**
+- **Groups alone, 21**: theirs (19, 153 tests), `ForgeAffixNodes.` 8 (new), and `EmpireTreeScreen.` (11 name literals in
+  `CataclysmEmpireTreeScreenTests.cpp`; the run's count is the one quoted), whose click test now names Merchant Guild.
+  `EmpireTree.`, `Data.` and `PlayLoop.` are in theirs already.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeAffixNodes.`, each anchor once in `CataclysmForge.cpp` at
+  `7c52bafb1`:
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| AF1 | `FCataclysmForgeRolls::Shape`'s `float Low = FMath::Clamp(Floor, 0.0f, 1.0f);` read as `float Low = 0.0f;` | `ARollIsDrawnFromTheFloorUpAndOnPrecisionCraftingsDrawFromThreeQuartersUp`, `TheDeterministicAffixDrawsItsRollWithTheRolls`, `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays` |
+| AF2 | Apprentice Smith's `Tier < UCataclysmItemValues::MaxAffixTier` read as `<=` | `ApprenticeSmithRaisesATierAndQualityMaterialsMakesARollItsBest`; `TheThreeActInOrderEachOnTheAffixesAsTheyStand` only if its draw picks the tier 7 affix |
+| AF3 | Rough Draft's free-slot `>= UCataclysmItemValues::SlotsPerPiece` read as `>` | `RoughDraftAddsOneAffixOnAFreeSlotAtTheDropsBestTier` (the helm with three affixes and an enchantment gains one) |
+
+---
+
+## 2026-11-25 — The empire tree's eight forge residue and day nodes act: three take residue off a craft, Stable Compounds strengthens the Chaos Stabilizer, Master's Touch can leave an item at 0, and three take days off (#2741, crafting slices C1 and C2)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: eight effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: eight
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgeCosts`; `OptionsOn` and `CleanseOf` take it; `ResidueResetLands`, `TreeDaysFor`, `CostsText`,
+  `CleanseCostsText`; the option effect's and the cleanse's figures before the tree.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `CostsFor`, passed by every `OptionsFor` call and the cleanse's plan.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the seven questions with options and the cleanse's.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeTreeCostsTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
+- `tools/tests/test_forge_tree_costs.py`, new; `tools/tests/test_forge_gold_nodes.py`,
+  `tools/tests/test_empire_tree_effects_match_their_texts.py` and
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py`.
+- `docs/Play_Loop_Checklist.md` step 31.
+
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), its crafting group: the 18 empire tree nodes that
+change the forge's crafts, ruled by the coordinating session on 2026-11-25 to belong to #2741. This is its first slice,
+C1 (residue) with C2 (days). On `feat/forge-costs-c1c2`, written on top of #47 slice F6b (`feat/forge-material-nodes-f6b`)
+and moved onto development once F6b merges.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **THE PLAN** (`plan_crafting_18_nodes.md`, from a read-only survey agent's report, its four main findings checked by
+  this session) was accepted with every C1 and C2 recommendation as written, and G1 to G4.
+- **NO NEW GENRE RESEARCH.** The combination rules copy this project's own: the three-bucket pipeline, "(multiplicative)"
+  as compounding per point (the 2026-09-07 entry; `WalkTimeCompounded`), and D9 (separately capped reductions multiply).
+- **INDUSTRIAL SPEED IS 10% A POINT**, the keystones document's figure, 50% at its 5 points. The owner left the six
+  forge node questions to the coordinating session ("I'll let you decide on those questions"), which ruled on 2026-11-25 that the tree file's
+  1% rounds away to nothing. This slice was first written at the tree file's 1% (ruling C1, the owner's question 6);
+  the tree file's sentence, the generator's row and the checks were changed to 10% before the window registered.
+- **NO SAVE VERSION MOVES.** Master's Touch's draw is the item's and the day's.
+
+### The rulings, the coordinating session, 2026-11-25
+
+- **G1**: "crafting action", "craft", "crafted item", "crafting project" and "when crafting" mean every forge item craft
+  through `DoItemCraft`, the cleanse included; not the combines or the dismantle (no residue, no day).
+- **G2**: the costs are worked out once and passed to `OptionsOn` as a trailing parameter defaulting to none (ruling A's
+  shape), so the question and the press read the same figures; the cleanse takes them in its own plan.
+- **G3**: a draw that changes a cost shows its outcome in the question (F6a Q10, F6b Q13): Master's Touch.
+- **G4**: each remaining crafting row's refusal reason says what it waits on, in the first slice that touches the list
+  (not done here: see "Not done").
+- **C1**: Tool Maintenance 0.95 to the points; Limited Knowledge 0.975 to the points on an item below +6 before the
+  craft; Heat Shielding 0.975 to the points on a tier 3+ craft material only (the options do not decide it); Stable
+  Compounds 0.5 less 0.025 a point; Master's Touch 1% per whole 100 residue before the craft, the after-craft residue
+  then 0, its days, gold and any Consumption mark unchanged.
+- **C2**: after the Tainted Shards, the multipliers (Industrial Speed, then Sovereign's Assembly, multiplied), then
+  Master Craftsman's days off, then rounded (the city upgrade's order); **a craft that had at least one day keeps one,
+  and a craft of none stays at none** (the coordinating session's own ruling, Q7; the owner can change it).
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Tool Maintenance (8) | "-5% CR gained from all crafting actions per point (multiplicative)." | `CraftResidueKept` 0.05: 0.95 to the points (0.663 at 8) |
+| Limited Knowledge (10) | "-2.5% CR gained from crafting actions on items below +6 per point (multiplicative)." | `LowLevelCraftResidueKept` 0.025: 0.975 to the points (0.776 at 10) below +6 |
+| Heat Shielding (5) | "-2.5% CR gained from crafting actions using T3+ materials per point (multiplicative)." | `RareMaterialCraftResidueKept` 0.025: 0.975 to the points (0.881 at 5) on a tier 3+ craft material |
+| Stable Compounds (10) | "Chaos Stabilizer reduces CR gain by an additional 2.5% per point." | `StabilizerShareReduced` 0.025: the Stabilizer keeps 0.25 at 10 |
+| Master's Touch (1) | "1% chance per 100 CR on an item to reset CR to 0 when crafting." | `ResidueResetChancePerHundred` 0.01 |
+| Master Craftsman (10) | "-1 Day to crafting time per point." | `CraftDaysOff` 1 |
+| Industrial Speed (5) | "-10% of Days required for any crafting project per point." | `CraftDaysReduced` 0.10: 0.5 at 5 |
+| Sovereign's Assembly (1) | "Reduce total crafting time required by 50%." | `CraftDaysReducedMore` 0.5 |
+
+- **The costs** (`FCataclysmForgeCosts`, `UCataclysmForgeCraft::CostsFor` with the craft's own material): the residue
+  factor of the nodes that apply, Stable Compounds' reduction, Master's Touch's draw (salt "FMTC"), the day multiplier
+  and the days off.
+- **`OptionsOn`**: the Stabilizer keeps `StabilizedResidueShare - StabilizerShareReduced`; the options' own residue and
+  days are kept (`OptionsResidueAfter`, `OptionsDays`) for their sentences; then the residue added is multiplied by the
+  factor, Master's Touch sets it to 0, and the days take `TreeDaysFor`; then the gold refusal.
+- **The cleanse**: its days take `TreeDaysFor` and Master's Touch can leave it at 0 (it adds no residue for the factors).
+- **The words**: after the options' sentences, " The empire tree's crafting nodes: residue 250 to 266.6, not 275; 1 day,
+  not 5."; with Master's Touch, "Master's Touch and the empire tree's crafting nodes: ...". The cleanse's question says
+  the same. Nothing when nothing changed.
+
+### Tests
+
+`Cataclysm.ForgeTreeCosts.`, a new group of eight:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheEightNodesGiveTheirFigures` | through the tables, every node at full points; CONTROL none held |
+| `TheResidueTakesTheTreesFactorTheStabilizersShareAndTheReset` | 100 to 200: a factor of 0.5 gives 150 (options alone 200); a Stabilizer at a quarter gives 125 alone, saving 75, then 112.5; the reset 0; CONTROL the default Stabilizer 150 |
+| `TheDaysTakeTheMultipliersThenTheDaysOffThenRoundAfterTheShards` | 10 at 0.475 is 5, less 2 is 3; 1 less 10 keeps 1; 0 stays 0; a shard first (6 to 5), then 2 off (3); CONTROL the default 3 |
+| `MastersTouchCountsWholeHundredsOfTheResidueBeforeTheCraft` | 99 never, 10,000 always, 250 on some of 400 days; the same item and day the same |
+| `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays` | in a world with Tool Maintenance and Master Craftsman: the plan's residue times 0.663, its days less 10 (at least one), the question saying both; CONTROL none held |
+| `LimitedKnowledgeIsBelowSixAndHeatShieldingIsTheCraftsOwnMaterial` | +5 to +6 (tier 3 stone) both; +6 to +7 (tier 4) Heat Shielding only; +2 to +3 (tier 2) Limited Knowledge only, a Stabilizer in the bag not counted |
+| `TheCleanseTakesTheDayNodesAndMastersTouch` | 1,200 residue: 3 days and 600 bare; 1 day and 0 with the nodes on a landing draw; its words |
+| `TheWordsSayWhatTheTreeChangedAfterTheOptions` | both, the days only, and nothing |
+
+Python: `tools/tests/test_forge_tree_costs.py`, five checks (the list at its top). The tree checks count 135 built nodes
+and slice 13's 50 points, and "crafting" falls from 211 to 161; `CataclysmDataTableTests.cpp` pins 141 effect rows;
+checklist step 31. **F6a's two pricing checks required the pricing to be the last parameter of a plan and the last
+argument of its call; they now accept the costs after it, and still check the pricing.** The Chaos Stabilizer's line
+`Out.ResidueAfter = ResidueBefore + Added * StabilizedResidueShare;`, which `test_every_item_craft_goes_through_one_sequence.py`
+pins, is kept: Stable Compounds acts in a branch after it, so that pin did not move.
+
+### Not done
+
+- **G4's refusal reasons**: the ten crafting rows still refused still say "crafting, which the game does not have yet
+  (issue #47)". Left for slice C3 with C4, which touches the same list, so this slice moves no row it does not build.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `067a088af`, each narrowed to
+`tools/tests/test_forge_tree_costs.py` (five checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| KP1 | `OptionsOn`'s `Out.Days = TreeDaysFor(Out.Days, Costs);` removed | "PROVED: 1 failed, 4 passed in 1.03s \| restored: 5 passed in 0.94s" | `test_options_on_keeps_the_options_figures_then_applies_the_tree_before_its_refusal` |
+| KP2 | Limited Knowledge's `<` read as `<=` | "PROVED: 1 failed, 4 passed in 1.00s \| restored: 5 passed in 0.92s" | `test_the_costs_read_the_gear_level_and_the_crafts_material_and_the_days_keep_one` |
+| KP3 | the cleanse question without `CleanseCostsText` | "PROVED: 1 failed, 4 passed in 0.98s \| restored: 5 passed in 0.93s" | `test_every_question_with_options_and_the_cleanse_say_what_the_tree_changed` |
+
+**The whole Python suite at `067a088af`:** "1 failed, 8535 passed, 9 skipped in 431.97s"; JUnit 8545 tests, 1
+failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree
+CSVs, whose assets the window's editor step rebuilds.
+
+**For the window**, after #47 slice F6b's (this slice is on its branch): registered from F6b's registration, its whole
+suite 5500; **re-registered from the newest whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`.
+- **The whole suite: 5508** (F6b's 5500 + this slice's 8 in `Cataclysm.ForgeTreeCosts.`, none removed); 58 skipped halves;
+  the test saves as F6b's window records them, plus whatever the 8 new tests write.
+- **No save record moves.**
+- **Groups alone, 19, 153 tests**: `ForgeTreeCosts.` 8 (new) and F6b's 18 (`ForgeMaterialNodes.` 7, `Forge.` 9,
+  `ForgeAffixChange.` 5, `ForgeAffixes.` 6, `ForgeCosts.` 3, `ForgeDamageTypes.` 6, `ForgeEnchantments.` 12, `ForgeGems.`
+  4, `ForgeGoldNodes.` 8, `ForgeMilestones.` 6, `ForgeResidueTools.` 5, `ForgeScreen.` 5, `ForgeSockets.` 6,
+  `Dismantle.` 12, `Data.` 7, `EmpireTree.` 24, `PlayLoop.` 13, `InventoryTabs.` 7): every forge group, since every
+  craft with options and the cleanse take the costs and their questions changed.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeTreeCosts.`, each anchor once on the branch:
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| KF1 | `CataclysmForge.cpp` | `OptionsOn`'s `Out.ResidueAfter = ResidueBefore + (Out.ResidueAfter - ResidueBefore) * TreeShare;` removed | `TheResidueTakesTheTreesFactorTheStabilizersShareAndTheReset`, `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays` |
+| KF2 | `CataclysmForge.cpp` | `TreeDaysFor`'s `return FMath::Max(1, FMath::RoundToInt(Taken));` read as `return FMath::RoundToInt(Taken);` | `TheDaysTakeTheMultipliersThenTheDaysOffThenRoundAfterTheShards`, `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays`, `TheCleanseTakesTheDayNodesAndMastersTouch` |
+| KF3 | `CataclysmForgeCraft.cpp` | Heat Shielding's `>= UCataclysmForge::HeatShieldingLowestTier` read as `>` | `LimitedKnowledgeIsBelowSixAndHeatShieldingIsTheCraftsOwnMaterial` |
+
+---
+
+## 2026-11-25 — The empire tree's three forge material nodes act: Material Conservation and Resource Management keep a craft's materials on a draw, by tier, and Tempting Fate returns them all on an item above 500 residue (#47, slice F6b)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: three effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: three
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgeKeeping`, `KeepingOn`, `KeptText`, three salts, `TemptingFateResidueAbove`,
+  `MaterialConservationHighestTier`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `KeepingFor`, `KeptTextFor`, and the keeping in `DoItemCraft`.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the eight priced questions.
+- `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.cpp`:
+  `ForgeMaterialsKeptLine`.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeMaterialNodesTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
+- `tools/tests/test_forge_material_nodes.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, `tools/tests/test_forge_gold_nodes.py` and
+  `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
+- `docs/Play_Loop_Checklist.md` step 30.
+
+Issue [#47](https://github.com/sdubois777/Cataclysm/issues/47), which closes when this slice merges (the coordinating
+session's ruling of 2026-11-25). On `feat/forge-material-nodes-f6b`, from development `4a961ce84` (#47 slices F6 and F6a
+and #2857 merged, PR #2895).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **MOST OF THE QUESTIONS WERE RULED BEFORE THIS SLICE WAS WRITTEN**: Q11 to Q17 on 2026-11-22, in the F6 plan, and F5's
+  tier list. Five new ones, N1 to N5, were ruled on 2026-11-25 as recommended.
+- **GENRE RESEARCH, BY WEB SEARCH SUMMARIES ONLY, NOT BY READING THE PAGES** (recorded as the coordinating session asked):
+  Last Epoch's Glyph of Hope gives "a 25% chance to prevent the Forging Potential cost of a craft" (the search's summary
+  of Sportskeeda and Icy Veins), one glyph a craft, rolled at the craft and shown to the player only as its chance. No
+  Path of Exile atlas passive of the shape was found. So the genre supports one roll a craft (Q12). Showing the outcome
+  in the question before the press (Q13) is this project's rule, as F6a's Forge Upgrades is, because the draw is seeded
+  by the item and the day; the genre shows the chance.
+- **NO SAVE VERSION MOVES.** Each draw is the item's and the day's; nothing is counted.
+
+### The rulings
+
+The coordinating session, 2026-11-22 (the F6 plan's questions, "ruled as the table recommends"):
+
+| Q | Ruled | Kind |
+| :-- | :-- | :-- |
+| Q11 | the material nodes never act on the combines: a kept stone would make stones from nothing | derived |
+| Q12 | one roll for the craft: all of a node's materials kept, or all taken | judgement |
+| Q13 | drawn from a seed of the item and the day, as Forge Upgrades, and shown in the question | copies Q10 |
+| Q14 | "Rare" is tier 3 and above, so the two chance nodes cover every material once | judgement |
+| Q15 | Tempting Fate reads the item's residue before the craft | judgement |
+| Q16 | the draws are independent; a material is kept if any node covering it lands | judgement |
+| Q17 | the option materials (a Chaos Stabilizer, Tainted Shards) count, by their tier | judgement |
+
+The coordinating session, 2026-11-25, as recommended:
+
+| N | Ruled | Kind |
+| :-- | :-- | :-- |
+| N1 | the craft takes every material as before and puts the kept ones back once it can no longer fail, before its days pass, so no failure path changes | judgement |
+| N2 | a gem is not a crafting material; the Jeweler's Setting Agent is | judgement |
+| N3 | the cleanse counts | judgement |
+| N4 | the question names what the tree will keep, a PLAY LOOP line what it kept, the done message adds nothing, and Tempting Fate's return names it alone | judgement |
+| N5 | "above 500" is more than 500 | derived |
+
+"(Boss drops, Essence)", in `docs/Empire_Skill_Tree_Keystones.md`'s Resource Management, agrees with Q14: the materials
+that drop from bosses and elites (Aetherial Shard, Chaos Stabilizer) are tier 3, and both essences are tier 5.
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Material Conservation (10 points) | "2% chance per point to not consume T2 and below crafting materials." | `LowTierMaterialKeptChance`, 0.02 a point, to 20%: the craft's tier 1 and 2 materials |
+| Resource Management (20) | "+1% chance per point to not consume Rare materials when crafting." | `RareMaterialKeptChance`, 0.01 a point, to 20%: its tier 3 to 5 materials |
+| Tempting Fate (1) | "While your item's CR is above 500, all crafting actions on that item have a 15% chance to return all crafting materials used." | `HighResidueMaterialsReturnedChance`, 0.15: every material, on an item above 500 residue |
+
+- **The draws**: `UCataclysmForge::KeepingOn`, each chance on its own seed (`AffixCraftSeed` with the salts "FMCN",
+  "FRMG" and "FTMF", as `ForgeUpgradesSeed`), Tempting Fate's only when `Item.Residue > TemptingFateResidueAbove`.
+- **The keeping**: in `UCataclysmForgeCraft::DoItemCraft`, after the hooks' after and before the days, from the item as it
+  stood and the day: `Keeping.KeptOf(Taken)` goes back in the bag. Every craft that runs the sequence keeps by it
+  (the upgrade, the socketing, the socket work, the affix crafts, the damage type crafts, the enchantment crafts, the
+  cleanse); the dismantle takes no material; the combines do not run it.
+- **The words**: each of the forge screen's eight priced questions ends, when anything will be kept, "The empire tree
+  keeps 2 Upgrade Stone +3 (Material Conservation)." After the craft's own line and its options':
+  `the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm`.
+
+### Tests
+
+`Cataclysm.ForgeMaterialNodes.`, a new group of seven:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheThreeNodesGiveTheirChances` | through the generated tables: 20% at 10 points and 6% at 3, 20% at 20, 15%; CONTROL none held |
+| `EachNodeKeepsItsOwnTiersAndTheWordsNameIt` | stones +3 and a Mote (tiers 2, 1) Material Conservation's, the Stabilizer (3) Resource Management's, all three Tempting Fate's named alone; a Primal Spark (5) Resource Management's; a name not in the table neither's; the question's and the line's words; CONTROL no draw |
+| `TheDrawsAreTheItemsAndTheDaysAndEachIsItsOwn` | at a chance of 1 the two land, Tempting Fate at 500.5 and not at 500; nought never; the same item and day the same draw; over 40 days each lands on some, and Material Conservation's and Resource Management's differ on some |
+| `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo` | in a world at 10 points: the +2 to +3 upgrade done, both stones back, the question naming them; CONTROL a draw that misses takes them and names nothing |
+| `TemptingFateReturnsEveryMaterialAboveFiveHundredTheOptionsToo` | in a world: at 501 residue both stones and the Stabilizer back; CONTROL at 400 nothing back |
+| `ACombineKeepsNothingWhateverTheTreeHolds` | all three held: ten combines of two +1 stones, on ten days, leave no +1 stone and make ten +2 |
+| `TheCleanseWithResourceManagementKeepsItsEssence` | in a world at 20 points: residue 300 to 150 and the Purified Essence back; CONTROL a draw that misses takes it |
+
+Python: `tools/tests/test_forge_material_nodes.py`, six checks (the list at its top). The two tree checks count 127 built
+nodes and slice 12's 31 points, and "crafting" falls from 242 to 211; `CataclysmDataTableTests.cpp` pins 133 effect rows;
+the play loop check names the fortieth place; checklist step 30. **F6a's check of its five effect kinds pinned them as
+the last five of the list; it now finds them together wherever they stand**, since this slice adds three after them.
+The play loop check's text said "thirty-five places" while its list held 39; it now says forty, the list's count with
+this slice's line.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `b6f120066`, each narrowed to
+`tools/tests/test_forge_material_nodes.py` (six checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| PM1 | `DoItemCraft`'s `GiveMaterialsBack(Inventory, Kept);` removed | "PROVED: 1 failed, 5 passed in 1.10s \| restored: 6 passed in 0.96s" | `test_the_sequence_keeps_once_after_its_last_failure_and_before_its_days` |
+| PM2 | Tempting Fate's `Item.Residue > TemptingFateResidueAbove` read as `>=` | "PROVED: 1 failed, 5 passed in 0.98s \| restored: 6 passed in 0.97s" | `test_the_draws_have_their_own_salts_and_fate_reads_more_than_five_hundred` |
+| PM3 | the cleanse question without `KeptTextFor` | "PROVED: 1 failed, 5 passed in 1.01s \| restored: 6 passed in 0.97s" | `test_every_priced_question_names_what_the_tree_will_keep` |
+
+**The whole Python suite at `b6f120066`:** "1 failed, 8529 passed, 10 skipped in 449.37s"; JUnit 8540 tests, 1
+failure, 0 errors, 10 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree
+CSVs, whose assets the window's editor step rebuilds. The tenth skip is `test_run_editor_python.py`'s check for a
+checkout with no compiled modules: this worktree holds window forge-f6-w1's builds.
+
+**For the window**, registered from window forge-f6-w1's whole-suite engine log, `forge_suite_engine_88c917b0.log` in
+the worktree `C:/forgew1` (5493 performed, 58 skipped halves, "874 written and deleted, 0 left behind"). **The Rifts
+window runs first; this is registered again from the newest whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` and records them in
+  `game/Data/datatable_asset_sources.json`.
+- **The whole suite: 5500 performed** (5493 + this slice's 7 in `Cataclysm.ForgeMaterialNodes.`, none removed); **58
+  skipped halves** (no `ReportSkippedHalf` call added); **874 test saves** and whatever the 7 new tests write, recorded
+  either way.
+- **No save record moves.**
+- **Groups alone, 18, 145 tests**, each counted in the base log and checked against the name strings on development and
+  on the branch: `ForgeMaterialNodes.` 7 (new), `Forge.` 9, `ForgeAffixChange.` 5, `ForgeAffixes.` 6, `ForgeCosts.` 3,
+  `ForgeDamageTypes.` 6, `ForgeEnchantments.` 12, `ForgeGems.` 4, `ForgeGoldNodes.` 8, `ForgeMilestones.` 6,
+  `ForgeResidueTools.` 5, `ForgeScreen.` 5, `ForgeSockets.` 6, `Dismantle.` 12, `Data.` 7, `EmpireTree.` 24,
+  `PlayLoop.` 13, `InventoryTabs.` 7: every forge group, since every item craft runs the changed sequence and every
+  priced question changed, and the groups of the tables and the play log.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeMaterialNodes.`, each anchor once on the branch:
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| MF1 | `CataclysmForge.cpp` | `NodeFor`'s `Tier <= UCataclysmForge::MaterialConservationHighestTier` read as `<` | `EachNodeKeepsItsOwnTiersAndTheWordsNameIt`, `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo` |
+| MF2 | `CataclysmForge.cpp` | `Item.Residue > TemptingFateResidueAbove` read as `>=` | `TheDrawsAreTheItemsAndTheDaysAndEachIsItsOwn` |
+| MF3 | `CataclysmForgeCraft.cpp` | `DoItemCraft`'s `GiveMaterialsBack(Inventory, Kept);` removed | `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo`, `TemptingFateReturnsEveryMaterialAboveFiveHundredTheOptionsToo`, `TheCleanseWithResourceManagementKeepsItsEssence` |
+
+---
+
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
 
 **Tools only; no Unreal build.** Branch `fix/prove-guard-restore-retry`, at the coordinating session's brief of
@@ -396,7 +994,6 @@ second half; control: the source still holds the break) and
 | :-- | :-- | :-- | :-- |
 | PG1 | `for wait in (*RESTORE_WAITS_SECONDS, None):` read as `for wait in (None,):`, one try | "4 failed, 124 passed": both "refused twice" tests and both "always refused" tests | "128 passed" |
 | PG2 | the `if refused:` before `raise files_left_broken_error(` read as `if False:` | "2 failed, 126 passed": the "always refused" test and the one-try control | "128 passed" |
-
 ---
 
 ## 2026-11-24 — The empire tree's five forge gold nodes act: Workshop Upgrades, Apprentice Oversight, Architectural Synergy and Treasury Synergy take a share off every forge price, held at 75%, and Forge Upgrades a tenth more on a draw (#47, slice F6a)

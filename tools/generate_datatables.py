@@ -3871,7 +3871,16 @@ EMPIRE_TREE_SYSTEMS = {
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
                                 "game does not have"),
-    "crafting": "crafting, which the game does not have yet (issue #47)",
+    # #2741's crafting group, G4 (the coordinating session, 2026-11-25): the one "crafting" reason split into what
+    # each row still waits on, now that the forge is built. The ten nodes the owner left unbuilt the same day ("Leave
+    # them unbuilt for now") name issue #2897, which holds them.
+    "crafting station": ("a crafting station with workers, a queue or a project that finishes later, which the "
+                         "game does not have (issue #2897)"),
+    "double craft": "a double craft, which the game does not have (issue #2897)",
+    "exalted item": "an Exalted item, which the game does not have (issue #2897)",
+    "item tier": "an item tier, which item bases and their stats do not have (issue #2897)",
+    "crafted-affix mark": "a mark on each affix the forge crafted, which the game does not have (issue #2741)",
+    "held-over residue": "residue held over between crafts, which the game does not have (issue #2741)",
     "loot chest": "a loot chest on a dungeon floor, which the game does not have",
     "stash": "a stash inside dungeons, which the game does not have",
     "modifier reroll": "dungeon modifier rerolls, which the game does not have",
@@ -3913,6 +3922,23 @@ EMPIRE_TREE_BUILT = {
     # and 2026-11-24 (A, B). Numbered 11, the slice after F6's 10.
     "Workshop Upgrades": 11, "Apprentice Oversight": 11,
     "Architectural Synergy": 11, "Treasury Synergy": 11, "Forge Upgrades": 11,
+    # #47 slice F6b: the three forge material nodes, ruled by the coordinating
+    # session on 2026-11-22 (Q11 to Q17) and 2026-11-25 (N1 to N5). Numbered 12,
+    # the slice after F6a's 11.
+    "Material Conservation": 12, "Resource Management": 12, "Tempting Fate": 12,
+    # #2741's crafting group, slices C1 and C2: a forge craft's residue and days,
+    # ruled by the coordinating session on 2026-11-25. Numbered 13, the slice
+    # after F6b's 12.
+    "Tool Maintenance": 13, "Limited Knowledge": 13, "Heat Shielding": 13,
+    "Stable Compounds": 13, "Master's Touch": 13, "Master Craftsman": 13,
+    "Industrial Speed": 13, "Sovereign's Assembly": 13,
+    # #2741's crafting group, slices C3 and C4: a forge craft's affixes, ruled
+    # by the coordinating session on 2026-11-25 (D1 to D4). Numbered 14.
+    "Precision Crafting": 14, "Master's Workshop": 14, "Quality Materials": 14,
+    "Apprentice Smith": 14, "Rough Draft": 14,
+    # #2741's crafting group, slice C6: Ancient Techniques and Residue Protocols,
+    # ruled by the coordinating session on 2026-11-25 (R1, R2). Numbered 15.
+    "Ancient Techniques": 15, "Residue Protocols": 15,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -4017,26 +4043,16 @@ EMPIRE_TREE_REFUSED = {
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
     # Artisan.
-    "Apprentice Smith": "crafting", "Material Conservation": "crafting",
-    "Rough Draft": "crafting", "Tool Maintenance": "crafting",
-    "Limited Knowledge": "crafting",
-    "Industrial Speed": "crafting",
-    "Refining Techniques": "crafting",
-    "Quality Materials": "crafting",
-    "Stable Compounds": "crafting", "Explorer Synergy": "crafting",
-    "Master Craftsman": "crafting",
-    "Resource Management": "crafting", "Expanded Station (Jeweler)": "crafting",
-    "Expanded Station (Smith)": "crafting",
-    "Expanded Station (Enchantress)": "crafting",
-    "Precision Crafting": "crafting",
-    "Master's Touch": "crafting", "Sovereign's Assembly": "crafting",
-    "Heat Shielding": "crafting", "Flawless Production": "crafting",
-    "Residue Protocols": "crafting", "Grand Forge": "crafting",
-    "Ancient Techniques": "crafting", "Master's Workshop": "crafting",
-    "Residue Mastery": "crafting", "The Hidden Stash": "crafting",
-    "Assembly Line": "crafting",
-    "The Alchemist's Transmutation": "crafting", "Steady Hands": "crafting",
-    "Tempting Fate": "crafting",
+    "Refining Techniques": "item tier",
+    "Explorer Synergy": "double craft",
+    "Expanded Station (Jeweler)": "crafting station",
+    "Expanded Station (Smith)": "crafting station",
+    "Expanded Station (Enchantress)": "crafting station",
+    "Flawless Production": "exalted item",
+    "Grand Forge": "item tier",
+    "Residue Mastery": "exalted item", "The Hidden Stash": "crafting station",
+    "Assembly Line": "crafting station",
+    "The Alchemist's Transmutation": "crafted-affix mark", "Steady Hands": "held-over residue",
 }
 
 
@@ -4283,6 +4299,16 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # #47 slice F6a: the five forge gold nodes, read by CraftGoldFactorFor.
     "CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
     "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance",
+    # #47 slice F6b: the three forge material nodes, drawn by UCataclysmForge::KeepingOn.
+    "LowTierMaterialKeptChance", "RareMaterialKeptChance", "HighResidueMaterialsReturnedChance",
+    # #2741's crafting group, slices C1 and C2: a forge craft's residue and days.
+    "CraftResidueKept", "LowLevelCraftResidueKept", "RareMaterialCraftResidueKept", "StabilizerShareReduced",
+    "ResidueResetChancePerHundred", "CraftDaysOff", "CraftDaysReduced", "CraftDaysReducedMore",
+    # #2741's crafting group, slices C3 and C4: a forge craft's affixes.
+    "AffixRollTopQuarterChance", "AffixRollFloor", "AffixRollMaxedChance", "AffixTierRaisedChance",
+    "AffixAddedChance",
+    # #2741's crafting group, slice C6.
+    "CraftDaysOffOnFullItems", "WornResidueIgnored",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4400,6 +4426,54 @@ EMPIRE_TREE_EFFECTS = {
     "Architectural Synergy": [("CraftGoldReducedPerBranchStep", 0.01, 10, "Treasury", 0.30)],
     "Treasury Synergy": [("CraftGoldReducedPerSpendingStep", 0.01, 0, "", 0.30)],
     "Forge Upgrades": [("CraftGoldTenthOffChance", 0.01)],
+    # #47 slice F6b: the forge's materials. "2% chance per point to not consume
+    # T2 and below crafting materials"; "+1% chance per point to not consume
+    # Rare materials when crafting" ("Rare" is tier 3 and above, Q14); "While
+    # your item's CR is above 500, all crafting actions on that item have a 15%
+    # chance to return all crafting materials used" (the 500 is
+    # UCataclysmForge::TemptingFateResidueAbove, read before the craft, Q15, N5).
+    "Material Conservation": [("LowTierMaterialKeptChance", 0.02)],
+    "Resource Management": [("RareMaterialKeptChance", 0.01)],
+    "Tempting Fate": [("HighResidueMaterialsReturnedChance", 0.15)],
+    # #2741's crafting group, slices C1 and C2 (2026-11-25). "-5% CR gained from
+    # all crafting actions per point (multiplicative)"; "-2.5% CR gained from
+    # crafting actions on items below +6 per point (multiplicative)"; "-2.5% CR
+    # gained from crafting actions using T3+ materials per point
+    # (multiplicative)"; "Chaos Stabilizer reduces CR gain by an additional 2.5%
+    # per point"; "1% chance per 100 CR on an item to reset CR to 0 when
+    # crafting"; "-1 Day to crafting time per point"; "-10% of Days required for
+    # any crafting project per point" (the keystones document's figure, ruled
+    # by the coordinating session on 2026-11-25 under the owner's delegation:
+    # the tree file's 1% rounded away to nothing; 50% at 5 points); "Reduce
+    # total crafting time required by 50%".
+    "Tool Maintenance": [("CraftResidueKept", 0.05)],
+    "Limited Knowledge": [("LowLevelCraftResidueKept", 0.025)],
+    "Heat Shielding": [("RareMaterialCraftResidueKept", 0.025)],
+    "Stable Compounds": [("StabilizerShareReduced", 0.025)],
+    "Master's Touch": [("ResidueResetChancePerHundred", 0.01)],
+    "Master Craftsman": [("CraftDaysOff", 1.0)],
+    "Industrial Speed": [("CraftDaysReduced", 0.10)],
+    "Sovereign's Assembly": [("CraftDaysReducedMore", 0.5)],
+    # #2741's crafting group, slices C3 and C4 (2026-11-25). "+3% chance per
+    # point for affixes to roll in the top 25% of their range"; "+2% to the
+    # minimum roll range of all affixes on a crafted item per point"; "+5%
+    # chance per point for a craft to roll maximum values on one random affix"
+    # (ruled on 2026-11-25 under the owner's delegation: 50% at 10 points, so
+    # the Primal Spark's craft still matters); "1% chance per point to upgrade a random affix
+    # to next tier when using the smith"; "+5% chance per point for a crafted
+    # item to roll one additional affix".
+    "Precision Crafting": [("AffixRollTopQuarterChance", 0.03)],
+    "Master's Workshop": [("AffixRollFloor", 0.02)],
+    "Quality Materials": [("AffixRollMaxedChance", 0.05)],
+    "Apprentice Smith": [("AffixTierRaisedChance", 0.01)],
+    "Rough Draft": [("AffixAddedChance", 0.05)],
+    # #2741's crafting group, slice C6 (2026-11-25). "-1 Day crafting time per
+    # point for crafts with 4 or more affixes" (the owner's question 1, ruled:
+    # 4, a full item); "Ignore 5% of Worn Residue per point when it is measured
+    # against the Consumption Threshold" (question 3, ruled: the keystones
+    # document's figure, as the design document and the simulation use it).
+    "Ancient Techniques": [("CraftDaysOffOnFullItems", 1.0)],
+    "Residue Protocols": [("WornResidueIgnored", 0.05)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).
