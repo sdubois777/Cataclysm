@@ -419,7 +419,7 @@
       "data": {
         "kind": "basic",
         "name": "Brimming",
-        "description": "+1% increased Attack and Cast Speed per point while you hold 50 or more Fervour.",
+        "description": "+1% increased Attack Speed per point while you hold 50 or more Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -573,7 +573,7 @@
       "data": {
         "kind": "keystone",
         "name": "Overflow",
-        "description": "Fervour gained above the maximum becomes 5 seconds of attack and cast speed. Each Fervour above it gives 1% increased Attack and Cast Speed for 5 seconds, up to 30%.",
+        "description": "Fervour gained above the maximum becomes 5 seconds of attack speed. Each Fervour above it gives 1% increased Attack Speed for 5 seconds, up to 30%.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -661,7 +661,7 @@
       "data": {
         "kind": "basic",
         "name": "Empty Hands",
-        "description": "+2% increased Attack and Cast Speed per point while you hold fewer than 20 Fervour, to fill the bar again quickly.",
+        "description": "+2% increased Attack Speed per point while you hold fewer than 20 Fervour, to fill the bar again quickly.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1249,7 +1249,7 @@
           },
           {
             "name": "Swift Reaper",
-            "description": "2% movement speed for every 10 Fervour held."
+            "description": "+2% increased Movement Speed for every 10 Fervour held."
           }
         ],
         "selectedOption": null,
@@ -1327,7 +1327,7 @@
           },
           {
             "name": "Soul Haste",
-            "description": "3% attack and cast speed for every 10 Fervour held."
+            "description": "+3% increased Attack Speed for every 10 Fervour held."
           }
         ],
         "selectedOption": null,

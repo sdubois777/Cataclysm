@@ -1076,9 +1076,9 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
 **Every figure in this table is an increase, and an increase does nothing to a stat the character has none of.** A point
 multiplies what the class, the weapon and items already give, added to the items' own increases; it never supplies a
-stat by itself. No class has a base of evasion, block chance, cooldown reduction or magic find, only the Ritualist has
-energy shield, and the Ritualist has no armour, so those parts of Agility, Constitution, Efficacy, Luck and Spirit do
-nothing until an item adds a flat amount of the stat. Holding a weapon gives a critical strike chance of 5%, which
+stat by itself. No class but the Shadow has a base of evasion, none has one of block chance, cooldown reduction or
+magic find, only the Ritualist has energy shield, and the Ritualist has no armour, so those parts of Agility,
+Constitution, Efficacy, Luck and Spirit do nothing for them until an item adds a flat amount of the stat. Holding a weapon gives a critical strike chance of 5%, which
 Ferocity raises. The project owner ruled on 2026-11-21, choosing "Keep it, just explain it" over flat amounts where a
 stat has no base and over a small base of every stat for every class: the attributes stay as they are, and hovering an attribute on the character sheet says plainly which parts do nothing until an item adds the stat
 (issue #2815). Whether Luck's "+0.01% magic find" was meant as a flat amount is issue #2816.
@@ -1396,6 +1396,49 @@ The Masochist keeps a normal mana pool. "Uses HP instead of mana" is delivered b
 Class resource **behaviour** is not set here, only the pool size. What each resource does, how it builds and how it decays belongs with the passive trees.
 
   
+
+### **The Three Death Class Stat Lines**
+
+The Soul Collector, the Necromancer and the Shadow, added on 2026-11-24 with their passive trees. Values are at level 100 with no gear and no attribute points spent. Only the stats any of the three overrides are listed, with energy shield, which none of them takes.
+
+
+
+| Stat | Soul Collector | Necromancer | Shadow |
+| :-- | :-: | :-: | :-: |
+| Maximum Health | 1,798 | 1,273 | 1,377 |
+| Maximum Mana | 644 | 961 | 644 |
+| Maximum Energy Shield | 0 | 0 | 0 |
+| Health Regeneration | 26.75 | 15.85 | 15.85 |
+| Mana Regeneration | 10.9 | 19.32 | 10.9 |
+| Armor | 0 | 213 | 0 |
+| Evasion | 0 | 0 | 14.9% |
+| Damage Reduction | 6.96% | 4.97% | 0 |
+| Crowd Control Resistance | 10.92 | 14.9 | 0 |
+| Critical Strike Multiplier | 150% | 150% | 160% |
+| Movement Speed | 4.2 | 3.8 | 4.4 |
+| Class Resource | 100 | 100 | 100 |
+
+
+
+**Every stat a Death tree raises by an "increased" percentage has a base on its class's line or on the default line.** An increase multiplies a base, so a node raising a stat its class has none of is worth nothing to the only class that can take it, which is what happened to two Masochist nodes until 2026-08-31. The Demonic lines met this without it being a rule; the Death lines were made to meet it.
+
+
+
+**Soul Collector.** It fights inside its own Siphon, among enemies, and takes power from the dead rather than from what it wears. More health than the default line, twice its health regeneration, and a little flat damage reduction and crowd control resistance, which its tree's Pale Ward, Stolen Strength and Held Close increase. It refuses armor, evasion, energy shield and leech.
+
+
+
+**Necromancer.** The summoner of the Death three, and not a second Ritualist: the Ritualist survives at range behind an energy shield, the Necromancer behind bone. It takes armor, a little flat damage reduction and crowd control resistance, which its Grave limb increases, a mana pool half again the default's, and less health than the default. It walks behind its army. It refuses evasion, energy shield and leech.
+
+
+
+**Shadow.** The first class with a base of evasion, which its Evasion limb increases; a larger critical strike multiplier than the default, which its Blade limb scales; less health than the default; and faster on foot. It refuses armor, energy shield, damage reduction and leech: it is not there when the blow lands.
+
+
+
+**Where the shapes come from.** In Diablo II the Necromancer gains 1.5 life and 2 mana a level against the Barbarian's 2 and 1, and the Assassin 2 and 1.5. In Path of Exile the Shadow starts with 57 life and 59 evasion against the Marauder's 66 and 58. So a summoner trades health for mana and an assassin trades a little health for evasion. Every number is a judgement under the owner's delegation of unstated numbers, and `docs/DECISIONS.md` has the sources.
+
+
 
 ### **Stat Calculation**
 

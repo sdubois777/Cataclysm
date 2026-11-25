@@ -166,7 +166,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	CHECK_TABLE(FCataclysmGearRarityRow,        "GearRarity.csv",              8)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
-	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             33)
+	// 49 SINCE 2026-11-24: the three Death classes' lines, five rows for the
+	// Soul Collector, seven for the Necromancer and four for the Shadow.
+	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             49)
 	// 5. Two summoned creatures and three deployed machines. The Imp, which
 	// Summon Imp and Open the Rift both produce, and the Mote from Cinder Swarm
 	// landed with issue #336. The bolt turret, ballista and spike trap followed
@@ -232,12 +234,17 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// IT RISES A LOT AGAIN WHEN THE OTHER EIGHTEEN TREES ARRIVE, issue #24, and
 	// that is what a pin is for: a jump nobody meant is the same shape as a jump
 	// somebody did.
-	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          441)
+	//
+	// 660 SINCE 2026-11-24, when the three Death trees were added: the Soul
+	// Collector 73 nodes, the Necromancer 72 and the Shadow 74, which is 219.
+	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          660)
 	// 416: every dependency edge of those six trees. Fewer than the nodes,
 	// because the four capstones of each tree deliberately have none -- a
 	// capstone tier is reached by total points spent rather than along a path.
 	// 278 until 2026-09-07, and the two new trees carry 69 edges each.
-	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          416)
+	// 620 SINCE 2026-11-24: the Soul Collector's 68 edges, the Necromancer's 67
+	// and the Shadow's 69.
+	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          620)
 	// 159: every node of the empire upgrade tree, `docs/Empire_Development_Tree_Final.json` -- 110 basic, 41 keystones
 	// and 8 capstones, four in the middle and one at the end of each branch. Issue #2741.
 	CHECK_TABLE(FCataclysmEmpireTreeNodeRow,    "EmpireTreeNodes.csv",       159)
@@ -505,7 +512,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// starting node, curse_death_raises_imp. Issue #1479.
 	// AND 325 SINCE 2026-09-30, for Every Swing Lands' arc: a second row on
 	// the Ravager keystone, melee_arc_full_circle. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        325)
+	// AND 374 SINCE 2026-11-24, for the three Death trees' first 49 rows on 42
+	// nodes: 11 the Soul Collector's, 9 the Necromancer's, 29 the Shadow's.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        374)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

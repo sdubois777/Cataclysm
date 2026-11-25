@@ -859,7 +859,7 @@
       "data": {
         "kind": "keystone",
         "name": "Executioner",
-        "description": "Double damage against enemies below 30% health.",
+        "description": "You deal 100% more damage against enemies below 30% health.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

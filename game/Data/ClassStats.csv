@@ -32,3 +32,19 @@ Masochist_health_regen,Masochist,health_regen,3.0,0.35
 Masochist_armor,Masochist,armor,5.0,0.5
 Masochist_retaliation,Masochist,retaliation,1.0,0.15
 Masochist_crowd_control_resistance,Masochist,crowd_control_resistance,10.0,0.2
+Soul_Collector_max_health,Soul Collector,max_health,115.0,17.0
+Soul_Collector_health_regen,Soul Collector,health_regen,2.0,0.25
+Soul_Collector_damage_reduction,Soul Collector,damage_reduction,3.0,0.04
+Soul_Collector_crowd_control_resistance,Soul Collector,crowd_control_resistance,3.0,0.08
+Soul_Collector_movement_speed,Soul Collector,movement_speed,4.2,0.0
+Necromancer_max_health,Necromancer,max_health,85.0,12.0
+Necromancer_max_mana,Necromancer,max_mana,70.0,9.0
+Necromancer_mana_regen,Necromancer,mana_regen,1.5,0.18
+Necromancer_armor,Necromancer,armor,15.0,2.0
+Necromancer_damage_reduction,Necromancer,damage_reduction,2.0,0.03
+Necromancer_crowd_control_resistance,Necromancer,crowd_control_resistance,5.0,0.1
+Necromancer_movement_speed,Necromancer,movement_speed,3.8,0.0
+Shadow_max_health,Shadow,max_health,90.0,13.0
+Shadow_evasion,Shadow,evasion,5.0,0.1
+Shadow_crit_multiplier,Shadow,crit_multiplier,160.0,0.0
+Shadow_movement_speed,Shadow,movement_speed,4.4,0.0

@@ -573,7 +573,7 @@
       "data": {
         "kind": "keystone",
         "name": "Lone Revenant",
-        "description": "You can have one permanent minion only; it has 400% more health and damage.",
+        "description": "Your permanent minions reserve 300% more Fervour and have 400% more health and damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1336,7 +1336,7 @@
         "options": [
           {
             "name": "Abomination",
-            "description": "When you have killed at least 50% of the creatures the floor started with, their remains combine into an Abomination that fights for you until you leave the floor. It reserves 100 Fervour and releases whatever else you have out that would stop it being raised. Its health and damage are a share of every creature killed on the floor so far, and it grows with each kill after it rises, so a floor of Elites makes a stronger one. Creatures a rule keeps sending (rift hunters, Horde waves) do not count toward the 50%. With Lone Revenant, the Abomination is your one permanent minion and gains Lone Revenant's bonus."
+            "description": "When you have killed at least 50% of the creatures the floor started with, their remains combine into an Abomination that fights for you until you leave the floor. It reserves 100 Fervour and releases whatever else you have out that would stop it being raised. Its health and damage are a share of every creature killed on the floor so far, and it grows with each kill after it rises, so a floor of Elites makes a stronger one. Creatures a rule keeps sending (rift hunters, Horde waves) do not count toward the 50%. With Lone Revenant, the Abomination has Lone Revenant's 400% more health and damage, and still reserves 100 Fervour."
           },
           {
             "name": "Eternal Army",
@@ -1344,7 +1344,7 @@
           },
           {
             "name": "The Horde Ascendant",
-            "description": "Whenever you cast a skill, every minion within 10 m casts it too, at 10% of its damage."
+            "description": "Whenever you cast a skill, every minion within 10 metres casts it too, at 10% of its damage."
           }
         ],
         "selectedOption": null,

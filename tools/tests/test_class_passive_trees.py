@@ -224,8 +224,16 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: "reduced" rather than "less" because the percentages reaching a kind add.
 #: The Fervour node's sentence changed the same day and uses neither word,
 #: before or after.
-STRINGS_CONTAINING_THE_WORD = 45
-STRINGS_USING_IT_AS_A_MAGNITUDE = 26
+#:
+#: CONTAINING ROSE BY 34 AND MAGNITUDES BY 13 ON 2026-11-24, when the three
+#: Death trees landed: 15 Necromancer strings contain the word and 7 are
+#: magnitudes, 12 Soul Collector strings and 3, 7 Shadow strings and 3. Every
+#: magnitude is on a keystone or a vow option except the Soul Collector's
+#: starting node, "You deal 0.5% more damage for each Fervour you hold", which
+#: the tree's summary asks the owner about. The other 21 are ordinary English,
+#: "10 or more Fervour", "one more charge", "more than 4 metres".
+STRINGS_CONTAINING_THE_WORD = 79
+STRINGS_USING_IT_AS_A_MAGNITUDE = 39
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -283,7 +291,13 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #: retreating and states none either. No Ravager node outside a keystone now
 #: uses the wording at all, so the remaining nine are the empire tree's four,
 #: the Masochist's two, the Ritualist's two and the Saboteur's one.
-NODES_RELYING_ON_THE_WIDENED_RULE = 9
+#:
+#: FIFTEEN SINCE 2026-11-24, when the three Death trees landed with six: the
+#: Necromancer's First, Third and Final Rites, the Shadow's First Cut, and the
+#: Soul Collector's First Vow (its third option's first threshold, "20% more
+#: Area of Effect") and starting node ("0.5% more damage for each Fervour you
+#: hold"). The starting node is the only basic node among them.
+NODES_RELYING_ON_THE_WIDENED_RULE = 15
 
 
 def tree_path(tree_name: str) -> pathlib.Path:
