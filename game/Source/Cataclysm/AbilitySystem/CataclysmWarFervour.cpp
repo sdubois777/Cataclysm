@@ -4,6 +4,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRetaliation.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -24,6 +27,13 @@ const TCHAR* FCataclysmWarFervour::CostPerExtraEnemyHitStat = TEXT("fervour_cost
 const TCHAR* FCataclysmWarFervour::GainPerExtraEnemyHitPaidStat = TEXT("fervour_per_extra_enemy_hit_paid");
 const TCHAR* FCataclysmWarFervour::LostToRegenerationStat = TEXT("fervour_lost_to_regeneration");
 const TCHAR* FCataclysmWarFervour::RegenerationPerLossStat = TEXT("regeneration_per_fervour_loss");
+const TCHAR* FCataclysmWarFervour::RiposteShareOfBlockedStat = TEXT("riposte_share_of_blocked");
+const TCHAR* FCataclysmWarFervour::RiposteFervourCostStat = TEXT("riposte_fervour_cost");
+const TCHAR* FCataclysmWarFervour::RiposteStunSecondsAtMaximumStat = TEXT("riposte_stun_seconds_at_maximum");
+const TCHAR* FCataclysmWarFervour::PulseDrainPerSecondStat = TEXT("retaliation_pulse_drain_per_second");
+const TCHAR* FCataclysmWarFervour::PulseRadiusMetresStat = TEXT("retaliation_pulse_radius_metres");
+const TCHAR* FCataclysmWarFervour::PulseAppliesBleedStat = TEXT("retaliation_pulse_applies_bleed");
+const TCHAR* FCataclysmWarFervour::HealthPerTenFervourSpentStat = TEXT("health_percent_per_ten_fervour_spent");
 const TCHAR* FCataclysmWarFervour::OutOfCombatDecayPerSecondStat = TEXT("fervour_decay_out_of_combat_per_second");
 
 const TArray<const TCHAR*>& FCataclysmWarFervour::GainStats()
@@ -50,7 +60,127 @@ float FCataclysmWarFervour::TakeFromPool(UAbilitySystemComponent* AbilitySystem,
 		return 0.0f;
 	}
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
-	return Before - AbilitySystem->GetNumericAttribute(Pool);
+	const float Spent = Before - AbilitySystem->GetNumericAttribute(Pool);
+	NoteFervourSpent(AbilitySystem, Spent);
+	return Spent;
+}
+
+float FCataclysmWarFervour::NoteFervourSpent(UAbilitySystemComponent* AbilitySystem, float Spent)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || Spent <= 0.0f || !AbilitySystem->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		return 0.0f;
+	}
+	// THE RATE FIRST, so nothing is counted for a character without Crimson Tide.
+	const float PercentPerTen = Cataclysm->StatForSkill(FName(HealthPerTenFervourSpentStat), FGameplayTagContainer(), 0.0f);
+	if (PercentPerTen <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const int32 Steps = Cataclysm->CountFervourSpentSteps(Spent, 10.0f);
+	if (Steps <= 0)
+	{
+		return 0.0f;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+	// THROUGH `TopUp`, AS ANY HEAL, with no tags: "generates a heal", which is neither regeneration nor leech.
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, Maximum,
+								  static_cast<float>(Steps) * PercentPerTen / 100.0f
+									  * FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Maximum)),
+								  FGameplayTagContainer());
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
+float FCataclysmWarFervour::RiposteOnBlock(UAbilitySystemComponent* AbilitySystem, AActor* Attacker, float DamageBlocked)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	AActor* Self = AbilitySystem
+		? (AbilitySystem->GetAvatarActor() ? AbilitySystem->GetAvatarActor() : AbilitySystem->GetOwnerActor())
+		: nullptr;
+	if (!Cataclysm || !Self || !Attacker || DamageBlocked <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// BOTH FIGURES BEFORE THE COST: the share holds at 25 Fervour or more, the stun at the maximum, each judged on the
+	// pool as the block left it.
+	const float Share = Cataclysm->StatForSkill(FName(RiposteShareOfBlockedStat), FGameplayTagContainer(), 0.0f);
+	if (Share <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float StunSeconds =
+		Cataclysm->StatForSkill(FName(RiposteStunSecondsAtMaximumStat), FGameplayTagContainer(), 0.0f);
+	TakeFromPool(AbilitySystem, Cataclysm->StatForSkill(FName(RiposteFervourCostStat), FGameplayTagContainer(), 0.0f));
+
+	// DELIVERED AS `reflect_blocked` DELIVERS: unscaled by the wearer's increases, no critical strike or leech, and marked
+	// as a blow returned for a blow taken, so it cannot be retaliated against.
+	const float Offered = DamageBlocked * Share / 100.0f;
+	FCataclysmHitDelivery Delivery;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+	Delivery.bIsRetaliation = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Self, Attacker, Offered, Delivery);
+	if (StunSeconds > 0.0f)
+	{
+		UCataclysmSkillEffects::ApplyStun(Self, Attacker, StunSeconds, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+	}
+	return Offered;
+}
+
+float FCataclysmWarFervour::RetaliationPulseDrainStep(ACataclysmCharacterBase* Character, float SecondsInStep)
+{
+	if (!Character || SecondsInStep <= 0.0f)
+	{
+		return 0.0f;
+	}
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+		Enemy && Enemy->bHoldsAPlayerBuild)
+	{
+		return 0.0f;
+	}
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
+	const UCataclysmClassResourceAttributeSet* Resource =
+		Cataclysm ? Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+	if (!Resource)
+	{
+		return 0.0f;
+	}
+	const float PerSecond = Cataclysm->StatForSkill(FName(PulseDrainPerSecondStat), FGameplayTagContainer(), 0.0f);
+	if (PerSecond <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = Cataclysm->GetNumericAttribute(Pool);
+	if (Before <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Change =
+		FMath::Clamp(Before - PerSecond * SecondsInStep, 0.0f, Resource->MaximumClassResourceAsked()) - Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	const float After = Cataclysm->GetNumericAttribute(Pool);
+	NoteFervourSpent(Cataclysm, Before - After);
+
+	// THIS DRAIN EMPTIED THE POOL: the pulse.
+	if (After <= 0.0f)
+	{
+		UCataclysmRetaliation::PayPulse(
+			Cataclysm, Character,
+			Cataclysm->StatForSkill(FName(PulseRadiusMetresStat), FGameplayTagContainer(), 0.0f),
+			Cataclysm->StatForSkill(FName(PulseAppliesBleedStat), FGameplayTagContainer(), 0.0f) > 0.0f);
+	}
+	return After - Before;
 }
 
 float FCataclysmWarFervour::SpendOnNegatedBlock(UAbilitySystemComponent* AbilitySystem)
@@ -114,6 +244,7 @@ float FCataclysmWarFervour::TradeForEnemiesStruckTogether(UAbilitySystemComponen
 	// point if Fervour was available to pay the cost." An enemy the pool cannot pay for gains nothing, and nor can one
 	// after it, since the pool has not moved.
 	float Held = Before;
+	float CostsPaid = 0.0f;
 	for (int32 Extra = 1; Extra < EnemiesStruck; ++Extra)
 	{
 		if (Held < Cost)
@@ -121,7 +252,10 @@ float FCataclysmWarFervour::TradeForEnemiesStruckTogether(UAbilitySystemComponen
 			break;
 		}
 		Held = FMath::Min(Held - Cost + Gain, Most);
+		CostsPaid += Cost;
 	}
+	// THE COSTS ARE SPENT, for Crimson Tide, whatever the gains returned.
+	NoteFervourSpent(AbilitySystem, CostsPaid);
 	const float Change = Held - Before;
 	if (FMath::IsNearlyZero(Change))
 	{

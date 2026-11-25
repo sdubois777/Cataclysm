@@ -6951,9 +6951,17 @@ MAX_STATUS_SIZE = 10
 #: The statuses `apply_status_seconds` may name: the two whose duration a row
 #: may state in place of their own. Cripple keeps its row's strength for the
 #: stated seconds. Issue #1833 group E part 1.
+#:
+#: AND STUN, ON ANOTHER CHARACTER, SINCE 2026-11-25: the coordinating session's
+#: ruling for Riposte's "stuns the target for 1 second" and the Saboteur's
+#: Concealed (R20), made general. A DESIGNED STUN for the row's seconds
+#: (`UCataclysmAbilitySystemComponent::ApplyStatusOf`). NOT IN `APPLY_STATUSES`,
+#: for the reason that list gives: a stun has no length of its own to fall back
+#: on, so only a row that states its seconds may lay one.
 APPLY_STATUSES_FOR_SECONDS = (
     "Stagger",
     "Cripple",
+    "Stun",
 )
 
 #: The longest a stated status may last. A sanity bound, as the clocks' is.
@@ -10797,6 +10805,12 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "strike_arc_at_least_degrees": ASKER_PASSES_NOTHING_MORE,
     "max_health": ASKER_PASSES_NOTHING_MORE,
     "block_negation_chance": ASKER_PASSES_A_BLOW_TAKEN,
+    # RIPOSTE, 2026-11-25: its share under at least 25 Fervour and its stun
+    # under the pool at its maximum, each asked by
+    # `FCataclysmWarFervour::RiposteOnBlock` with the wearer's state and no
+    # blow, and probed in the table of stats with no attribute.
+    "riposte_share_of_blocked": ASKER_PASSES_NOTHING_MORE,
+    "riposte_stun_seconds_at_maximum": ASKER_PASSES_NOTHING_MORE,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
     # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
     # cannot move while channeling any skill". Its probe is `ProbeCannotWalk`,

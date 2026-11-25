@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For ON_SCOPE_EXIT, which drains the queued deaths after the depth guard ends.
 #include "Misc/ScopeExit.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -8310,6 +8311,17 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 			&& UCataclysmSilence::ApplySilence(Applier, Other, UCataclysmSilence::SilenceSeconds);
 	}
 
+	// A STUN ON THE EVENT'S OTHER CHARACTER, for the row's seconds: the coordinating session's ruling of 2026-11-25, made
+	// general for Riposte's stun and the Saboteur's Concealed (R20). A DESIGNED STUN, as the wearer's own seconds stun is:
+	// it skips the stun's threshold of damage and keeps its immunity window. Seconds only; the generator accepts Stun on
+	// `apply_status_seconds` alone.
+	if (Action.StatusName.Equals(StunStatus, ESearchCase::IgnoreCase))
+	{
+		return bSeconds
+			&& UCataclysmSkillEffects::ApplyStun(Applier, Other, Action.Percent, /*DamageDealt=*/0.0f,
+												 /*bStunIsDesigned=*/true);
+	}
+
 	// EVERY OTHER STATUS IS AN AILMENT A BLOW CARRIES, and the code classifies
 	// those one way: `RollOnLandedBlow` asks `BlowCanCarryAnAilment` before any
 	// of the eleven, Cripple and Stun included, and so does a random damage over
@@ -8567,8 +8579,46 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	if (!FMath::IsNearlyZero(Change))
 	{
 		ApplyModToAttribute(Held, EGameplayModOp::Additive, Change);
+
+		// A DRAIN OF FERVOUR, for Crimson Tide's heal for every 10 Fervour drained (2026-11-25).
+		if (Held == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+		{
+			FCataclysmWarFervour::NoteFervourSpent(this, -Change);
+		}
 	}
 }
+void UCataclysmAbilitySystemComponent::NoteBlowTakenForRetaliation(float DamageTaken)
+{
+	const UWorld* World = GetWorld();
+	if (DamageTaken <= 0.0f || !World)
+	{
+		return;
+	}
+	LastBlowTakenForRetaliation = DamageTaken;
+	LastBlowTakenAtSeconds = World->GetTimeSeconds();
+}
+
+float UCataclysmAbilitySystemComponent::LastBlowTakenThisFloor() const
+{
+	const UWorld* World = GetWorld();
+	if (LastBlowTakenForRetaliation <= 0.0f || LastBlowTakenAtSeconds < 0.0f || !World)
+	{
+		return 0.0f;
+	}
+	// TAKEN BEFORE THIS FLOOR BEGAN IS NOT "THIS FLOOR", read off the same floor clock `CurrentConditions` reads. A floor
+	// that has not begun (-1) leaves the blow as it is.
+	if (const ACataclysmPlayerState* Player = Cast<ACataclysmPlayerState>(GetOwnerActor()))
+	{
+		const float Now = World->GetTimeSeconds();
+		const float OnFloor = Player->SecondsOnFloor(Now);
+		if (OnFloor >= 0.0f && Now - LastBlowTakenAtSeconds > OnFloor)
+		{
+			return 0.0f;
+		}
+	}
+	return LastBlowTakenForRetaliation;
+}
+
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)
 {
 	const int32 Index = StatModifierHandles.IndexOfByKey(Handle);

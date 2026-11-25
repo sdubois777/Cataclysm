@@ -2511,6 +2511,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						FCataclysmWarFervour::SpendOnNegatedBlock(Cataclysm);
 					}
 
+					// AND RIPOSTE'S COUNTER-ATTACK, after Iron Will's cost (that cost is part of the block itself, "blocked
+					// attacks ... draining 20 Fervour per block"; the counter-attack comes "after a successful block") and
+					// before the block's own gain. A judgement on the order. Nought for every character without
+					// `riposte_share_of_blocked`. Riposte, 2026-11-25.
+					FCataclysmWarFervour::RiposteOnBlock(
+						Cataclysm, UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
+						Outcome.DamageBlocked);
+
 					// AND THE BULWARK'S FERVOUR FOR A BLOCK, "Taking hits, blocking and killing enemies generate
 					// Fervour". Nought for every character without `fervour_per_block`. Slice C, 2026-11-24.
 					FCataclysmWarFervour::GainOnBlock(Cataclysm);

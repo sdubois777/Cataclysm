@@ -675,7 +675,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #: AND TO 465 THE SAME DAY, the Fervour spends: sixteen rows on Warmonger, Cut
 #: and Run (a capstone option), Iron Will, Undying, Cleave and Blood Tithe
 #: (`tools/reapply_war_fervour_spends_workbook.py`).
-AUTHORED_ROWS = 465
+#:
+#: AND TO 481 THE SAME DAY: sixteen rows on Riposte, Vengeful Discharge and
+#: Crimson Tide (`tools/reapply_war_riposte_discharge_tide_workbook.py`).
+AUTHORED_ROWS = 481
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1102,7 +1105,8 @@ AUTHORED_ROWS = 465
 #: AND TO 272 THE SAME DAY: the ten nodes of the War riders.
 #: AND TO 277 THE SAME DAY: Warmonger, Iron Will, Undying, Cleave and Blood Tithe,
 #: the Fervour spends (Cut and Run is an option of a capstone already counted).
-AUTHORED_NODES = 277
+#: AND TO 280 THE SAME DAY: Riposte, Vengeful Discharge and Crimson Tide.
+AUTHORED_NODES = 280
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1525,7 +1529,10 @@ CONDITION_WORDS = {
 
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
-    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full"), None),
+    # AND RIPOSTE'S "While at maximum Fervour this counter-attack also stuns"
+    # (2026-11-25): a state held while the event happens, which "while" says,
+    # unlike the seventeen "when you attack at maximum Fervour".
+    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full", "while at maximum fervour"), None),
 
     # THE CONDITIONS THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW
     # FOR THE FIRST TIME. Each was already known to the generator and the game;
@@ -2547,6 +2554,15 @@ VALUE_FORMS = {
     "fervour_per_extra_enemy_hit_paid": "generates {value:g} Fervour per point",
     "fervour_lost_to_regeneration": "Lose {value:g} Fervour",
     "regeneration_per_fervour_loss": "{value:g} flat HP regenerated",
+    # RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25: "draining 25
+    # Fervour", "stuns the target for 1 second", "drains 10 Fervour per second",
+    # "within 4 metres", and Crimson Tide's "a heal equal to 1% of your maximum
+    # HP", which its "1% life leech" beside it would otherwise satisfy.
+    "riposte_fervour_cost": "draining {value:g} Fervour",
+    "riposte_stun_seconds_at_maximum": "for {value:g} second",
+    "retaliation_pulse_drain_per_second": "drains {value:g} Fervour per second",
+    "retaliation_pulse_radius_metres": "within {value:g} metres",
+    "health_percent_per_ten_fervour_spent": "heal equal to {value:g}% of your maximum HP",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2591,6 +2607,11 @@ VALUE_IN_WORDS = {
     # than the 100, each from 6 points -- keyed by the threshold as well, since
     # each stat's two rows differ in nothing else.
     ("Bulwark_basic_ic_resolve_001", "block_negation_chance"): ("negate all damage", 100.0),
+    # VENGEFUL DISCHARGE'S "At 5 points: this also applies Bleed", a flag; and
+    # CRIMSON TIDE'S "Life leech is applied instantly", 1,100 on a payout rate
+    # of 100, which pays within the next quarter-second step (2026-11-25).
+    ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_applies_bleed"): ("also applies bleed", 1.0),
+    ("Berserker_leech_001", "leech_payout_rate"): ("applied instantly", 1100.0),
     ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration", "", "flat", "6"): ("reduced to 1 per 150", -4.0),
     ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss", "", "flat", "6"): ("reduced to 1 per 150", 50.0),
     # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%
@@ -3781,6 +3802,10 @@ FIXED_FROM_THE_FIRST_POINT = frozenset({
     ("Bulwark_basic_jg_resolve_001", "max_health"),
     ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration"),
     ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss"),
+    # AND VENGEFUL DISCHARGE'S DRAIN AND PULSE RADIUS, each one figure whatever
+    # the points; the 3% beside them is the per-point one (2026-11-25).
+    ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_drain_per_second"),
+    ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_radius_metres"),
 })
 
 

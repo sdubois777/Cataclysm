@@ -277,6 +277,10 @@ void ACataclysmCharacterBase::RegenerationStep()
 		// 2026-11-25: "Fervour drains at 5 per second" while in Wrath, 8 in Frenzy, each a row under its state. After both
 		// decays and inside the same guard; its return value is dropped too.
 		FCataclysmBerserkerStates::DrainStep(this, UCataclysmRegeneration::StepSeconds);
+
+		// AND VENGEFUL DISCHARGE'S OWN DRAIN, whose emptying of the pool sets off its retaliation pulse. Its own stat, so
+		// no other drain or spend sets the pulse off. Its return value is dropped too. 2026-11-25.
+		FCataclysmWarFervour::RetaliationPulseDrainStep(this, UCataclysmRegeneration::StepSeconds);
 	}
 
 	// AND A CHARACTER LOW ENOUGH ON HEALTH MAY RELEASE A NOVA. Issue #1050.

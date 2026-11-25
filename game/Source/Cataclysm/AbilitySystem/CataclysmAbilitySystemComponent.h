@@ -4586,6 +4586,36 @@ public:
 	}
 
 	/**
+	 * Crimson Tide's count (2026-11-25): add `Spent` Fervour spent or drained, and return how many whole steps of `Step`
+	 * it now holds, keeping the rest. The same shape as `CountRegenerationSteps`. Asked only by
+	 * `FCataclysmWarFervour::NoteFervourSpent`.
+	 */
+	int32 CountFervourSpentSteps(float Spent, float Step)
+	{
+		if (Step <= 0.0f)
+		{
+			FervourSpentTowardsHeal = 0.0f;
+			return 0;
+		}
+		FervourSpentTowardsHeal += FMath::Max(0.0f, Spent);
+		const int32 Steps = FMath::FloorToInt(FervourSpentTowardsHeal / Step);
+		FervourSpentTowardsHeal -= static_cast<float>(Steps) * Step;
+		return Steps;
+	}
+
+	/**
+	 * Remember a blow this character took, before mitigation, for Vengeful Discharge's pulse (the coordinating
+	 * session's ruling of 2026-11-25: "the retaliation percentage times the damage of the last blow taken, remembered for
+	 * the purpose; nothing if no blow has been taken this floor"). Called by `UCataclysmRetaliation::Pay`, which every
+	 * landed blow reaches with what it would have dealt.
+	 */
+	void NoteBlowTakenForRetaliation(float DamageTaken);
+
+	/** The last blow `NoteBlowTakenForRetaliation` remembered, or nought when none was, or when it was taken before the
+	 *  floor the player is on began. A character with no player state has no floors and keeps its last blow. */
+	float LastBlowTakenThisFloor() const;
+
+	/**
 	 * What the last blow aimed at this character resolved to.
 	 *
 	 * WHY THIS HAS TO BE RECORDED AT ALL. Issue #1156. The damage a caller hands
@@ -5599,6 +5629,14 @@ protected:
 
 	/** Health regenerated since Blood Tithe last took Fervour, short of a whole step. Not saved, not replicated. */
 	float RegeneratedTowardsFervourLoss = 0.0f;
+
+	/** Fervour spent or drained since Crimson Tide last healed, short of a whole step. Not saved, not replicated. */
+	float FervourSpentTowardsHeal = 0.0f;
+
+	/** The last blow taken, before mitigation, and the world time it was taken at, or -1. See
+	 *  `NoteBlowTakenForRetaliation`. Not saved, not replicated. */
+	float LastBlowTakenForRetaliation = 0.0f;
+	float LastBlowTakenAtSeconds = -1.0f;
 
 	/** Whether this character has the pool: a maximum above nought. */
 	bool HasLeechPool(ECataclysmLeechPool LeechPool) const;

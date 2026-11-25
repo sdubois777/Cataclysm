@@ -243,6 +243,18 @@ public:
 							  float DamageTaken);
 
 	/**
+	 * A retaliation pulse: every enemy within `RadiusMetres` of `Instigator` is paid the defender's retaliation, sized as
+	 * a blow's would be by the last blow the defender took this floor (`LastBlowTakenThisFloor`), priced and delivered
+	 * as `Pay` delivers. Nothing when no blow was taken this floor. Vengeful Discharge (the War rulings' R7): "When this
+	 * drain reduces you to 0 Fervour, you retaliate against every enemy within 4 metres for 100% of your retaliation
+	 * damage. At 5 points: this also applies Bleed to every enemy it strikes." The size is the coordinating session's
+	 * ruling of 2026-11-25. `bApplyBleed` lays Bleed on every enemy the pulse took health from.
+	 *
+	 * @return the health taken from every enemy struck, altogether
+	 */
+	static float PayPulse(UAbilitySystemComponent* Defender, AActor* Instigator, float RadiusMetres, bool bApplyBleed);
+
+	/**
 	 * A creature carrying Thorns of Glass strikes back at whatever hit it: one blow of its own attack damage, sized by
 	 * its own strength and reduced by the attacker's defences, whatever the blow it took was worth. Issue #2749 (B2),
 	 * the owner's ruling of 2026-11-18: "When struck, a reflecting creature hits back for its own attack damage, sized

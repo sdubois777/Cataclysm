@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Riposte, Vengeful Discharge and Crimson Tide: a counter-attack that stuns at a full pool, a drain whose emptying pulses retaliation on the last blow taken, a heal for Fervour spent or drained, and a Stun on another character for a row's seconds
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`: `RiposteOnBlock`, `RetaliationPulseDrainStep`
+  and `NoteFervourSpent` (called by `TakeFromPool`, Cleave's costs, and the sites below).
+- `CataclysmRetaliation.h` and `.cpp`: `Pay` remembers every blow taken; `PayPulse`, new.
+- `CataclysmAbilitySystemComponent.h` and `.cpp`: the last blow taken and when (`NoteBlowTakenForRetaliation`,
+  `LastBlowTakenThisFloor`), Crimson Tide's count, `ApplyStatusOf`'s new Stun branch, and a pool action's Fervour drain
+  noted for Crimson Tide.
+- The other call sites: `CataclysmVitalAttributeSet.cpp` (Riposte after Iron Will's cost), `CataclysmCharacterBase.cpp`
+  (the pulse drain in the regeneration step), `CataclysmBerserkerStates.cpp` (its drain and Berserking noted),
+  `CataclysmGameplayAbility.cpp` (the Ultimate's Fervour cost noted).
+- `tools/generate_datatables.py`: `Stun` in `APPLY_STATUSES_FOR_SECONDS`; two Riposte stats in
+  `CONDITIONED_STATS_WITH_AN_ASKER`. Seven stats in `StatsWithNoAttribute`, each probed.
+- `docs/Bulwark_Class_Tree_Final.json` and `docs/Berserker_Class_Tree_Final.json`: Vengeful Discharge and Crimson Tide
+  reworded (`tools/apply_war_riposte_discharge_tide_2026_11_25.py`, new). `docs/All_Things_Cataclysm.xlsx`: sixteen
+  rows (`tools/reapply_war_riposte_discharge_tide_workbook.py`, new). `game/Data/PassiveEffects.csv` (481 rows).
+  **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- Tests: `CataclysmWarFervourTests.cpp` (three), `CataclysmApplyStatusTests.cpp` (one), `CataclysmStatExemptionTests.cpp`
+  (seven probes), `CataclysmDataTableTests.cpp` (the pin, 481); `tools/tests/test_war_riposte_discharge_tide_scripts.py`,
+  new; `test_passive_effects_match_the_node_text.py` (words, 481 rows, 280 nodes), `test_stat_lookups_hand_over_what_they_should.py`,
+  `test_charge_and_placed_action_names_match_the_engine.py` (Stun is the one seconds-status not in `APPLY_STATUSES`).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run
+  `Cataclysm.WarFervour.` (thirteen tests, three new), `Cataclysm.ApplyStatus.` (one new),
+  `Cataclysm.StatExemption.` (same count, seven more probes) and `Cataclysm.Data.` (the pin, 481).
+- **CRIMSON TIDE'S "INSTANTLY" PAYS WITHIN A QUARTER SECOND, NOT IN THE SAME FRAME**, the data route the coordinating
+  session accepted: 1,100 more leech payout rate on its base of 100 pays a leech on the next quarter-second step.
+- **CRIMSON TIDE DOES NOT COUNT THE MASOCHIST'S OR THE RAVAGER'S SPENDS** in `UCataclysmFervour` (Bought With Ruin, Wrung
+  Out), which the Death trees session owns. Every War spend and drain counts, and so do the Ultimate's Fervour cost and
+  a pool action's drain. A Berserker holding a Demonic node beside Crimson Tide would not count those two.
+- **THE GENERAL STUN BRANCH IS EXERCISED ON A PLAIN EVENT** (`deployable_hit`); the Saboteur's Concealed, which asked for
+  it on a trap trigger, is not built here.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation:
+- **Vengeful Discharge's** "100% of your retaliation damage" is the retaliation percentage times the damage of the last
+  blow taken, remembered for the purpose; nothing if no blow has been taken this floor. Only its own drain sets the pulse
+  off. Its sentence takes the War rulings' R7, which the owner accepted on 2026-11-24.
+- **Crimson Tide** counts spends and drains, not decay; a payout on the next quarter-second step meets "instantly".
+- **Riposte's** stun is a general Stun branch of `apply_status` on another character (for the Saboteur's Concealed, R20,
+  too), and Riposte is one action that judges "at least 25" and "at maximum" before it spends.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Riposte** (`RiposteOnBlock`), where the block is announced: the share (at 25 Fervour or more) and the stun (at the
+   maximum) read first, then the 25 taken, then 75% of the damage blocked dealt to the attacker as `reflect_blocked`
+   delivers it, then the stun. **A judgement on the order:** after Iron Will's cost, which is part of the block itself,
+   and before the block's own gain.
+2. **Vengeful Discharge**: its own drain, `retaliation_pulse_drain_per_second` 10 (once); when that drain takes the pool to
+   nought, `UCataclysmRetaliation::PayPulse` pays every enemy within 4 metres the retaliation a blow of the last size taken
+   would earn, delivered as `Pay` delivers. "This floor" is read by comparing when the blow was taken with when the floor
+   began (`ACataclysmPlayerState::SecondsOnFloor`), so no reset was added. **Judgements:** the +3% a point holds whether or
+   not the drain is draining; the Bleed is laid on an enemy the pulse took health from, without the rule of a tenth.
+3. **Crimson Tide**: its fractions made steps by the design document's rule "A threshold or a step, never a fraction" (as
+   Bloodthirst's were): 1% life leech on melee for every 2 points (2% at 4, 4% at 8, as 0.5 a point gave), and the heal 1%
+   of maximum health for every 2 points for each whole 10 Fervour spent or drained (`NoteFervourSpent`, the rest carried).
+4. **The Stun branch** (`ApplyStatusOf`): a designed stun on the event's other character for the row's seconds, on
+   `apply_status_seconds` only; a plain row naming Stun lays nothing.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Both reported `proved` True: a named test failed
+with the break in, and all 26 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| Riposte's share row, `Bulwark_keystone_ic_t1#1`, its condition value 25 to 20 | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Crimson Tide's leech payout row, 1,100 to 1,000 | `test_every_value_appears_in_the_nodes_own_description` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarFervour.RiposteCountersABlockAtTwentyFiveFervourAndStunsAtTheMaximum` | no share, nothing dealt or spent (control); with it the attacker loses health and 25 are spent; with the stun, stunned |
+| `Cataclysm.WarFervour.VengefulDischargesDrainPulsesOnTheLastBlowTakenWhenItEmptiesThePool` | no blow this floor, the pulse strikes nothing (control); with a blow of 100, a creature a metre away is struck |
+| `Cataclysm.WarFervour.CrimsonTideHealsForFervourDrainedAndNotForFervourDecayed` | 20 decayed heals nothing (control); 20 drained heals 800 |
+| `Cataclysm.ApplyStatus.AStunWithStatedSecondsIsLaidOnTheOtherCharacterAndAPlainStunRowIsNot` | a plain Stun row stuns nobody (control); a seconds row stuns |
+
+Predicted counts: `Cataclysm.WarFervour.` 13; `Cataclysm.ApplyStatus.` one more than its last measured count.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. Riposte's site: in `CataclysmVitalAttributeSet.cpp`, `Outcome.DamageBlocked);` in the `RiposteOnBlock` call becomes
+   `0.0f);`. Must fail `RiposteCountersABlockAtTwentyFiveFervourAndStunsAtTheMaximum`.
+2. The pulse's trigger: in `CataclysmWarFervour.cpp`, `if (After <= 0.0f)` becomes `if (After < -1.0f)`. Must fail
+   `VengefulDischargesDrainPulsesOnTheLastBlowTakenWhenItEmptiesThePool`.
+3. Crimson Tide's drain site: in `CataclysmBerserkerStates.cpp`, `FCataclysmWarFervour::NoteFervourSpent(Cataclysm, -Moved);`
+   becomes `FCataclysmWarFervour::NoteFervourSpent(Cataclysm, 0.0f);`. Must fail
+   `CrimsonTideHealsForFervourDrainedAndNotForFervourDecayed`.
+
+---
+
 ## 2026-11-25 — The Fervour spends: Iron Will, Undying, Cleave and Blood Tithe spend or lose Fervour where their sentences say, and Warmonger and Cut and Run count enemies within melee range, which is 4 metres
 
 **Affects:**

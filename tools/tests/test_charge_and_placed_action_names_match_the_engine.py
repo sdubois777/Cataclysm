@@ -450,7 +450,8 @@ def test_every_status_a_row_may_name_is_one_the_engine_applies() -> None:
     names = engine_names()
     named = {names["StaggerStatus"], names["RandomDebuffStatus"]}
     assert set(gen.APPLY_STATUSES) - named == kinds - {"Stun"}
-    assert set(gen.APPLY_STATUSES_FOR_SECONDS) <= set(gen.APPLY_STATUSES)
+    # STUN IS THE ONE EXCEPTION, since 2026-11-25: on another character it is laid only for a row's stated seconds.
+    assert set(gen.APPLY_STATUSES_FOR_SECONDS) - {"Stun"} <= set(gen.APPLY_STATUSES)
 
 
 def test_the_generator_spells_silence_as_the_engine_does() -> None:

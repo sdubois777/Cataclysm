@@ -11874,6 +11874,154 @@ namespace CataclysmStatExemptionTest
 					   10.0f, 0.001f);
 	}
 
+	/** The holder and a hostile creature a metre away with 1,000 health, for Riposte's and the pulse's probes. */
+	ACataclysmEnemyCharacter* RiposteCreature(FAutomationTestBase& Test, UWorld* World)
+	{
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		if (UAbilitySystemComponent* Its = Creature ? Creature->GetAbilitySystemComponent() : nullptr)
+		{
+			Its->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+			Its->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1000.0f);
+		}
+		return Creature;
+	}
+
+	/** Riposte's three stats, read by `FCataclysmWarFervour::RiposteOnBlock` for 100 blocked: the share (nothing without
+	 *  it, 75 with 75), the cost beside the share (50 kept without it, 25 with 25), and the stun beside the share. */
+	void ProbeRiposte(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		ACataclysmEnemyCharacter* Creature = RiposteCreature(Test, World);
+		if (!System || !Creature)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		const FName Share(FCataclysmWarFervour::RiposteShareOfBlockedStat);
+		if (Which == 0)
+		{
+			const float Plain = FCataclysmWarFervour::RiposteOnBlock(System, Creature, 100.0f);
+			GrantFlat(Holder, FCataclysmWarFervour::RiposteShareOfBlockedStat, 75.0f);
+			const float Held = FCataclysmWarFervour::RiposteOnBlock(System, Creature, 100.0f);
+			Test.TestEqual(TEXT("riposte_share_of_blocked: control, nothing without it"), Plain, 0.0f);
+			Test.TestEqual(TEXT("and 75 of 100 with 75 of it, so RiposteOnBlock really reads it"), Held, 75.0f, 0.001f);
+			return;
+		}
+		if (Which == 1)
+		{
+			GrantFlat(Holder, FCataclysmWarFervour::RiposteShareOfBlockedStat, 75.0f);
+			FCataclysmWarFervour::RiposteOnBlock(System, Creature, 100.0f);
+			const float Kept = System->GetNumericAttribute(Pool);
+			System->SetNumericAttributeBase(Pool, 50.0f);
+			GrantFlats(Holder, {{Share, 75.0f}, {FName(FCataclysmWarFervour::RiposteFervourCostStat), 25.0f}});
+			FCataclysmWarFervour::RiposteOnBlock(System, Creature, 100.0f);
+			Test.TestEqual(TEXT("riposte_fervour_cost: control, the 50 held are kept without it"), Kept, 50.0f, 0.001f);
+			Test.TestEqual(TEXT("and 25 are taken with 25 of it, so RiposteOnBlock really reads it"),
+						   System->GetNumericAttribute(Pool), 25.0f, 0.001f);
+			return;
+		}
+		GrantFlat(Holder, FCataclysmWarFervour::RiposteShareOfBlockedStat, 75.0f);
+		FCataclysmWarFervour::RiposteOnBlock(System, Creature, 100.0f);
+		const bool bStunnedWithout = UCataclysmSkillEffects::IsStunned(Creature);
+		GrantFlats(Holder, {{Share, 75.0f}, {FName(FCataclysmWarFervour::RiposteStunSecondsAtMaximumStat), 1.0f}});
+		FCataclysmWarFervour::RiposteOnBlock(System, Creature, 100.0f);
+		Test.TestFalse(TEXT("riposte_stun_seconds_at_maximum: control, no stun without it"), bStunnedWithout);
+		Test.TestTrue(TEXT("and a stun with 1 of it, so RiposteOnBlock really reads it"),
+					  UCataclysmSkillEffects::IsStunned(Creature));
+	}
+
+	/** Vengeful Discharge's three stats, read by `FCataclysmWarFervour::RetaliationPulseDrainStep`: the drain (50 kept
+	 *  without it, 45 after a second of 5), and with a drain that empties the pool, a last blow of 100 and 50% retaliation,
+	 *  the radius (a creature a metre away untouched with none, struck with 4) and the bleed flag beside the radius. */
+	void ProbePulse(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		ACataclysmEnemyCharacter* Creature = RiposteCreature(Test, World);
+		if (!System || !Creature)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		if (Which == 0)
+		{
+			FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+			const float Plain = System->GetNumericAttribute(Pool);
+			GrantFlat(Holder, FCataclysmWarFervour::PulseDrainPerSecondStat, 5.0f);
+			System->SetNumericAttributeBase(Pool, 50.0f);
+			FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+			Test.TestEqual(TEXT("retaliation_pulse_drain_per_second: control, 50 kept without it"), Plain, 50.0f, 0.001f);
+			Test.TestEqual(TEXT("and 45 after a second of 5, so the pulse drain really reads it"),
+						   System->GetNumericAttribute(Pool), 45.0f, 0.001f);
+			return;
+		}
+		System->NoteBlowTakenForRetaliation(100.0f);
+		const FName Drain(FCataclysmWarFervour::PulseDrainPerSecondStat);
+		const FName Radius(FCataclysmWarFervour::PulseRadiusMetresStat);
+		UAbilitySystemComponent* Its = Creature->GetAbilitySystemComponent();
+		if (Which == 1)
+		{
+			GrantFlats(Holder, {{Drain, 100.0f}, {FName(TEXT("retaliation")), 50.0f}});
+			FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+			const float Untouched = Its->GetNumericAttribute(Vital::GetHealthAttribute());
+			System->SetNumericAttributeBase(Pool, 50.0f);
+			GrantFlats(Holder, {{Drain, 100.0f}, {FName(TEXT("retaliation")), 50.0f}, {Radius, 4.0f}});
+			FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+			Test.TestEqual(TEXT("retaliation_pulse_radius_metres: control, no radius strikes nobody"), Untouched, 1000.0f,
+						   0.001f);
+			Test.TestTrue(TEXT("and a radius of 4 strikes the creature a metre away, so the pulse really reads it"),
+						  Its->GetNumericAttribute(Vital::GetHealthAttribute()) < 1000.0f);
+			return;
+		}
+		GrantFlats(Holder, {{Drain, 100.0f}, {FName(TEXT("retaliation")), 50.0f}, {Radius, 4.0f}});
+		FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+		const bool bBleedingWithout = Its->HasMatchingGameplayTag(UCataclysmDebuffs::BleedTag());
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		GrantFlats(Holder, {{Drain, 100.0f}, {FName(TEXT("retaliation")), 50.0f}, {Radius, 4.0f},
+							{FName(FCataclysmWarFervour::PulseAppliesBleedStat), 1.0f}});
+		FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+		Test.TestFalse(TEXT("retaliation_pulse_applies_bleed: control, no bleed without it"), bBleedingWithout);
+		Test.TestTrue(TEXT("and a bleed with it, so the pulse really reads it"),
+					  Its->HasMatchingGameplayTag(UCataclysmDebuffs::BleedTag()));
+	}
+
+	/** `health_percent_per_ten_fervour_spent`, read by `FCataclysmWarFervour::NoteFervourSpent`: nothing for 20 spent
+	 *  without it; with 5 of it, two steps of 5% of 10,000. */
+	void ProbeHealthPerTenFervourSpent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		if (!System)
+		{
+			return;
+		}
+		const float Plain = FCataclysmWarFervour::NoteFervourSpent(System, 20.0f);
+		GrantFlat(Holder, FCataclysmWarFervour::HealthPerTenFervourSpentStat, 5.0f);
+		const float Held = FCataclysmWarFervour::NoteFervourSpent(System, 20.0f);
+		Test.TestEqual(TEXT("health_percent_per_ten_fervour_spent: control, nothing without it"), Plain, 0.0f);
+		Test.TestEqual(TEXT("and 1,000 for 20 spent with 5 of it, so NoteFervourSpent really reads it"), Held, 1000.0f,
+					   0.001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -12154,6 +12302,14 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_extra_enemy_hit_paid"), [](FAutomationTestBase& Test) { ProbeExtraEnemyTrade(Test, true); }},
 			{TEXT("fervour_lost_to_regeneration"), [](FAutomationTestBase& Test) { ProbeRegenerationLoss(Test, false); }},
 			{TEXT("regeneration_per_fervour_loss"), [](FAutomationTestBase& Test) { ProbeRegenerationLoss(Test, true); }},
+			// RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25.
+			{TEXT("riposte_share_of_blocked"), [](FAutomationTestBase& Test) { ProbeRiposte(Test, 0); }},
+			{TEXT("riposte_fervour_cost"), [](FAutomationTestBase& Test) { ProbeRiposte(Test, 1); }},
+			{TEXT("riposte_stun_seconds_at_maximum"), [](FAutomationTestBase& Test) { ProbeRiposte(Test, 2); }},
+			{TEXT("retaliation_pulse_drain_per_second"), [](FAutomationTestBase& Test) { ProbePulse(Test, 0); }},
+			{TEXT("retaliation_pulse_radius_metres"), [](FAutomationTestBase& Test) { ProbePulse(Test, 1); }},
+			{TEXT("retaliation_pulse_applies_bleed"), [](FAutomationTestBase& Test) { ProbePulse(Test, 2); }},
+			{TEXT("health_percent_per_ten_fervour_spent"), &ProbeHealthPerTenFervourSpent},
 		};
 		return Made;
 	}

@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
@@ -142,6 +143,8 @@ float FCataclysmBerserkerStates::DrainStep(ACataclysmCharacterBase* Character, f
 			{
 				Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 				Moved = Cataclysm->GetNumericAttribute(Pool) - Before;
+				// A DRAIN, for Crimson Tide (2026-11-25).
+				FCataclysmWarFervour::NoteFervourSpent(Cataclysm, -Moved);
 			}
 		}
 	}
@@ -183,6 +186,8 @@ float FCataclysmBerserkerStates::SpendBerserking(UAbilitySystemComponent* Abilit
 		return 0.0f;
 	}
 	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Consumed);
+	// A SPEND, for Crimson Tide (2026-11-25).
+	FCataclysmWarFervour::NoteFervourSpent(Cataclysm, Consumed);
 	return PerFervour * Consumed;
 }
 

@@ -480,6 +480,28 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
      'FName(RegenerationPerLossStat), FGameplayTagContainer(), 0.0f'):
         "Blood Tithe's step, asked beside its loss",
+    # RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RiposteShareOfBlockedStat), FGameplayTagContainer(), 0.0f'):
+        "Riposte's share, asked where a block is announced, before its cost is taken; the blow is not handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RiposteFervourCostStat), FGameplayTagContainer(), 0.0f'):
+        "Riposte's cost, asked beside its share",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RiposteStunSecondsAtMaximumStat), FGameplayTagContainer(), 0.0f'):
+        "Riposte's stun, asked beside its share, before the cost is taken",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(PulseDrainPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        "Vengeful Discharge's drain, asked on a timer with no blow, target or skill in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(PulseRadiusMetresStat), FGameplayTagContainer(), 0.0f'):
+        "the pulse's radius, asked when that drain empties the pool",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(PulseAppliesBleedStat), FGameplayTagContainer(), 0.0f'):
+        "the pulse's bleed flag, asked beside its radius",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(HealthPerTenFervourSpentStat), FGameplayTagContainer(), 0.0f'):
+        "Crimson Tide's heal, asked at every spend and drain with the wearer's state; no blow is handed over",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'Stat, Context, Plain'):
         'class resource generation, asked on a timer with no blow, '

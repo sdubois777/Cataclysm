@@ -2,6 +2,7 @@
 
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -207,6 +208,59 @@ float UCataclysmRetaliation::StrikeBack(AActor* Creature, AActor* Attacker)
 	return FMath::Max(0.0f, Before - HealthOfRetaliationTarget(Attacker));
 }
 
+float UCataclysmRetaliation::PayPulse(UAbilitySystemComponent* Defender, AActor* Instigator, float RadiusMetres,
+									   bool bApplyBleed)
+{
+	UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(Defender);
+	if (!Paying || !Instigator || RadiusMetres <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Amount = AmountFor(Defender, Paying->LastBlowTakenThisFloor(), -1.0f)
+		* UCataclysmSkillEffects::KeptUnderWitheredTouch(Instigator);
+	if (Amount <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// DELIVERED AS `Pay` DELIVERS: no retaliation back, no critical strike, no weapon subtype, no ordinary leech, marked as
+	// a retaliation payment, and unmitigated where the defender's row says so.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+	Delivery.bIsRetaliation = true;
+	Delivery.bCannotBeMitigated = CannotBeMitigatedFor(Defender);
+
+	const FCataclysmAilmentKind* Bleed = bApplyBleed ? UCataclysmAilments::KindNamed(TEXT("Bleed")) : nullptr;
+	float TakenAltogether = 0.0f;
+	for (AActor* Target : UCataclysmTargeting::FindEnemiesInSphere(Instigator->GetWorld(), Instigator,
+																	Instigator->GetActorLocation(),
+																	RadiusMetres * CentimetresPerMetre))
+	{
+		const float Before = HealthOfRetaliationTarget(Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount, Delivery);
+		const float Taken = FMath::Max(0.0f, Before - HealthOfRetaliationTarget(Target));
+		TakenAltogether += Taken;
+		Paying->ActOnEvent(FName(TEXT("retaliation_dealt")), /*EventTags=*/nullptr, /*EventAmount=*/Taken,
+						   /*bLanded=*/Taken > 0.0f, Target);
+		// "THIS ALSO APPLIES BLEED TO EVERY ENEMY IT STRIKES": an enemy it took health from. Laid directly, as the
+		// sentence names it, and not through the rule of a tenth an event's status row keeps. A judgement.
+		if (Bleed && Taken > 0.0f)
+		{
+			UCataclysmAilments::Apply(Instigator, Target, *Bleed, /*Magnitude=*/1.0f, /*Skill=*/nullptr, NAME_None,
+									  /*Seconds=*/0.0f);
+		}
+	}
+
+	if (TakenAltogether > 0.0f && LeechesFor(Defender))
+	{
+		UCataclysmLeech::NoteRetaliation(Defender, TakenAltogether);
+	}
+	return TakenAltogether;
+}
+
 float UCataclysmRetaliation::PayReflected(UAbilitySystemComponent* Defender, AActor* Instigator, AActor* Attacker,
 										  float DamageTaken)
 {
@@ -217,6 +271,13 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 								 AActor* Instigator, AActor* Attacker,
 								 float DamageTaken, float PercentInPlaceOfTheStat)
 {
+	// THE BLOW IS REMEMBERED WHETHER OR NOT ANYTHING IS PAID FOR IT, for Vengeful Discharge's pulse, which pays later on
+	// the last blow taken this floor. The Fervour spends' follow-up, 2026-11-25.
+	if (UCataclysmAbilitySystemComponent* Remembering = Cast<UCataclysmAbilitySystemComponent>(Defender))
+	{
+		Remembering->NoteBlowTakenForRetaliation(DamageTaken);
+	}
+
 	// AND WITHERED TOUCH ON THE DEFENDING BODY, ruled 2026-10-26 (#2541): the curse cuts a share of another's blow that
 	// the player's own increases raise, and `AmountFor` prices this one through the defender's, as a retaliation or as a
 	// reflected melee hit. `Instigator` is the defending body, the character the curse lands on. A minion carries no

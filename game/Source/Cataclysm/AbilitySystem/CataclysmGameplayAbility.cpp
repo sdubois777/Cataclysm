@@ -7,6 +7,7 @@
 // rather than reading a gameplay attribute that is zero by design. Issue #973.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -687,6 +688,9 @@ void UCataclysmGameplayAbility::ApplyCost(
 				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
 		{
 			Paying->NoteResourceConsumed(Fervour, &SkillTagsForStats());
+
+			// AND A SPEND, for Crimson Tide's heal for every 10 Fervour spent (2026-11-25).
+			FCataclysmWarFervour::NoteFervourSpent(Paying, Fervour);
 		}
 	}
 

@@ -1233,7 +1233,7 @@
       "data": {
         "kind": "basic",
         "name": "Vengeful Discharge",
-        "description": "Passively drains 10 Fervour per second to increase your retaliation damage by +3% per point. When this drain reduces you to 0 Fervour, automatically trigger a retaliation pulse hitting all nearby enemies for 100% of your retaliation damage. At 5 points: This pulse also applies a bleed stack to all enemies hit.",
+        "description": "Passively drains 10 Fervour per second to increase your retaliation damage by +3% per point. When this drain reduces you to 0 Fervour, you retaliate against every enemy within 4 metres for 100% of your retaliation damage. At 5 points: this also applies Bleed to every enemy it strikes.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6

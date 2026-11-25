@@ -198,6 +198,61 @@ public:
 	static float LoseForRegeneration(UAbilitySystemComponent* AbilitySystem, float Restored,
 									 const FGameplayTagContainer& Healing);
 
+	//~ RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25, on the coordinating session's rulings of that day.
+
+	/**
+	 * Riposte (`Bulwark_keystone_ic_t1`): "After a successful block, if you have at least 25 Fervour, automatically unleash a
+	 * counter-attack dealing damage equal to 75% of the damage just blocked, draining 25 Fervour. While at maximum Fervour
+	 * this counter-attack also stuns the target for 1 second." The share of the damage blocked (stated under at least 25
+	 * Fervour), the Fervour it costs, and the stun's seconds (stated under the pool at its maximum).
+	 */
+	static const TCHAR* RiposteShareOfBlockedStat;
+	static const TCHAR* RiposteFervourCostStat;
+	static const TCHAR* RiposteStunSecondsAtMaximumStat;
+
+	/**
+	 * Riposte as one action, after a block that removed something and names its attacker: both figures read FIRST, on the
+	 * pool as the block left it, then the cost taken, the counter-attack dealt (as `reflect_blocked` delivers it:
+	 * unscaled, no critical strike, no leech, no retaliation back) and the stun laid. So taking the 25 can never refuse
+	 * the counter-attack it pays for, nor the stun the full pool earned. The coordinating session's ruling of 2026-11-25.
+	 * @return the damage offered to the attacker
+	 */
+	static float RiposteOnBlock(UAbilitySystemComponent* AbilitySystem, AActor* Attacker, float DamageBlocked);
+
+	/**
+	 * Vengeful Discharge (`Bulwark_basic_tw_resolve_001`, the War rulings' R7): its own drain, the radius of the pulse
+	 * the drain sets off when it empties the pool, and a flag that the pulse lays Bleed (from 5 points).
+	 */
+	static const TCHAR* PulseDrainPerSecondStat;
+	static const TCHAR* PulseRadiusMetresStat;
+	static const TCHAR* PulseAppliesBleedStat;
+
+	/**
+	 * One step of Vengeful Discharge's drain; when THIS drain takes the pool from above nought to nought, the retaliation
+	 * pulse (`UCataclysmRetaliation::PayPulse`). Any other emptying of the pool sets nothing off: "When THIS drain reduces
+	 * you to 0" (the coordinating session's ruling of 2026-11-25). Refuses a creature holding a player build.
+	 * @return the change to the pool, nought or below
+	 */
+	static float RetaliationPulseDrainStep(ACataclysmCharacterBase* Character, float SecondsInStep);
+
+	/**
+	 * Crimson Tide (`Berserker_leech_001`): "Every 10 Fervour you spend or drain generates a heal equal to 1% of your
+	 * maximum HP for every 2 points." The share of maximum health healed for each whole 10 spent or drained; 10 is the
+	 * stat's unit, as it is Undying's.
+	 */
+	static const TCHAR* HealthPerTenFervourSpentStat;
+
+	/**
+	 * Count Fervour spent or drained towards Crimson Tide's heal, and heal for every whole 10, the rest carried. CALLED
+	 * BY EVERY SPEND AND DRAIN, and by no decay (the coordinating session's ruling of 2026-11-25: "spends and drains
+	 * count, decay does not"): `TakeFromPool`, Cleave's costs, `FCataclysmBerserkerStates`' drain and Berserking, this
+	 * file's pulse drain, the Ultimate's Fervour cost (`UCataclysmGameplayAbility`) and a pool action's drain
+	 * (`UCataclysmAbilitySystemComponent::ApplyPoolAction`). NOT the Masochist's and Ravager's spends in
+	 * `UCataclysmFervour`, which the Death trees session owns; a Berserker holding a Demonic node beside Crimson Tide
+	 * would not count those. @return the health restored
+	 */
+	static float NoteFervourSpent(UAbilitySystemComponent* AbilitySystem, float Spent);
+
 private:
 	/** Take up to `Amount` from the pool, clamped at nought, and return what was taken. */
 	static float TakeFromPool(UAbilitySystemComponent* AbilitySystem, float Amount);

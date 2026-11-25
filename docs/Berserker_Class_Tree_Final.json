@@ -1343,7 +1343,7 @@
       "data": {
         "kind": "basic",
         "name": "Crimson Tide",
-        "description": "+0.5% life leech per point on melee attacks. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fervour you spend or drain generates a heal equal to 0.5% per point of your maximum HP.",
+        "description": "+1% life leech on melee attacks for every 2 points. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fervour you spend or drain generates a heal equal to 1% of your maximum HP for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

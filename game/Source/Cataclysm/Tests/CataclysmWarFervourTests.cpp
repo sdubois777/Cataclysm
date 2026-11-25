@@ -19,6 +19,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -710,6 +711,180 @@ CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourBloodTitheTest,
 	TestEqual(TEXT("250 regenerated takes two steps of 5"), Holder.Fervour(), 40.0f, 0.001f);
 	UCataclysmRegeneration::TopUp(*Holder.AbilitySystem, Health, Maximum, 60.0f, Regenerating);
 	TestEqual(TEXT("and 60 more, with the 50 carried, a third"), Holder.Fervour(), 35.0f, 0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Riposte, Vengeful Discharge and Crimson Tide, 2026-11-25
+// ---------------------------------------------------------------------------
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourRiposteTest,
+	"Cataclysm.WarFervour.RiposteCountersABlockAtTwentyFiveFervourAndStunsAtTheMaximum")
+{
+	using namespace CataclysmWarFervourTest;
+	// RIPOSTE THROUGH THE DAMAGE PATH: a defender holding 75% of the damage blocked, a cost of 25 and a stun of 1 second
+	// (the share as 25 Fervour or more would grant it; the stun as a full pool would) blocks real blows. THE CONTROL: with
+	// no share, a block deals nothing back and spends nothing. With the share, the attacker loses health and 25 are spent;
+	// with the stun beside it, the attacker is stunned too.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FWarFervourPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FWarFervourPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	const FWarFervourPinned NeverNegates(TEXT("Cataclysm.BlockNegationRoll"), 100.0f);
+
+	const FWarFervourFighter Attacker(World, 100.0f);
+	const FWarFervourFighter Defender(World, 0.0f);
+	Defender.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
+	const auto AttackersHealth = [&Attacker]()
+	{
+		return Attacker.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+
+	HoldWarFervourStats(Defender.AbilitySystem, {{FCataclysmWarFervour::RiposteFervourCostStat, 25.0f}});
+	Defender.SetFervour(50.0f);
+	const float Untouched = AttackersHealth();
+	{
+		const FCataclysmDamageResult Result = WarFervourBlow(Attacker, Defender);
+		if (TestTrue(TEXT("set-up: the control blow was blocked"), Result.bBlocked))
+		{
+			TestEqual(TEXT("control: with no share nothing is dealt back"), AttackersHealth(), Untouched, 0.001f);
+			TestEqual(TEXT("control: and nothing is spent"), Defender.Fervour(), 50.0f, 0.001f);
+		}
+	}
+
+	HoldWarFervourStats(Defender.AbilitySystem, {{FCataclysmWarFervour::RiposteShareOfBlockedStat, 75.0f},
+												 {FCataclysmWarFervour::RiposteFervourCostStat, 25.0f}});
+	World->TimeSeconds += 1.0f;
+	{
+		const FCataclysmDamageResult Result = WarFervourBlow(Attacker, Defender);
+		if (TestTrue(TEXT("set-up: the blow was blocked and removed something"), Result.DamageBlocked > 0.0f))
+		{
+			TestTrue(TEXT("Riposte deals the attacker damage"), AttackersHealth() < Untouched);
+			TestEqual(TEXT("and spends 25"), Defender.Fervour(), 25.0f, 0.001f);
+			TestFalse(TEXT("with no stun held, the attacker is not stunned"), UCataclysmSkillEffects::IsStunned(Attacker.Actor));
+		}
+	}
+
+	HoldWarFervourStats(Defender.AbilitySystem, {{FCataclysmWarFervour::RiposteShareOfBlockedStat, 75.0f},
+												 {FCataclysmWarFervour::RiposteFervourCostStat, 25.0f},
+												 {FCataclysmWarFervour::RiposteStunSecondsAtMaximumStat, 1.0f}});
+	World->TimeSeconds += 1.0f;
+	WarFervourBlow(Attacker, Defender);
+	TestTrue(TEXT("with the stun held, the attacker is stunned"), UCataclysmSkillEffects::IsStunned(Attacker.Actor));
+	return true;
+}
+
+namespace CataclysmWarFervourTest
+{
+	/** A character with a pool of 100 holding 50, 10,000 maximum health and 1,000 health, on the players' team. */
+	ACataclysmEnemyCharacter* SpendsCharacter(FAutomationTestBase& Test, UWorld* World)
+	{
+		ACataclysmEnemyCharacter* Holder =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a character with an ability system"), System))
+		{
+			return nullptr;
+		}
+		Holder->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		System->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Holder));
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+		return Holder;
+	}
+}
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourVengefulDischargeTest,
+	"Cataclysm.WarFervour.VengefulDischargesDrainPulsesOnTheLastBlowTakenWhenItEmptiesThePool")
+{
+	using namespace CataclysmWarFervourTest;
+	// VENGEFUL DISCHARGE'S PULSE: a holder draining 100 a second with 50% retaliation and a radius of 4 empties its pool
+	// in one step. THE CONTROL: with no blow remembered this floor the pulse is sized at nothing, so a creature a metre
+	// away is untouched. With a blow of 100 remembered, the same emptying strikes it.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	ACataclysmEnemyCharacter* Holder = SpendsCharacter(*this, World);
+	ACataclysmEnemyCharacter* Creature =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	UAbilitySystemComponent* Its = Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+	if (!Holder || !TestNotNull(TEXT("set-up: a creature with an ability system"), Its))
+	{
+		return false;
+	}
+	Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+	UCataclysmAbilitySystemComponent* System = Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent());
+	HoldWarFervourStats(System, {{FCataclysmWarFervour::PulseDrainPerSecondStat, 100.0f},
+								 {TEXT("retaliation"), 50.0f},
+								 {FCataclysmWarFervour::PulseRadiusMetresStat, 4.0f}});
+	const auto CreaturesHealth = [Its]()
+	{
+		return Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+
+	FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+	TestEqual(TEXT("set-up: the drain emptied the pool"),
+			  System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()), 0.0f, 0.001f);
+	TestEqual(TEXT("control: with no blow taken this floor the pulse strikes nothing"), CreaturesHealth(), 1000.0f,
+			  0.001f);
+
+	System->NoteBlowTakenForRetaliation(100.0f);
+	System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+	FCataclysmWarFervour::RetaliationPulseDrainStep(Holder, 1.0f);
+	TestTrue(TEXT("with a blow of 100 remembered, the emptying drain strikes the creature a metre away"),
+			 CreaturesHealth() < 1000.0f);
+	return true;
+}
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourCrimsonTideTest,
+	"Cataclysm.WarFervour.CrimsonTideHealsForFervourDrainedAndNotForFervourDecayed")
+{
+	using namespace CataclysmWarFervourTest;
+	// CRIMSON TIDE, 4% of maximum health for each 10 spent or drained (its value at 8 points). THE CONTROL: 20 Fervour lost
+	// to the out-of-combat decay heals nothing (the coordinating session's ruling: decay does not count). 20 drained by
+	// the Berserker states' drain heals two steps of 4% of 10,000.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	ACataclysmEnemyCharacter* Holder = SpendsCharacter(*this, World);
+	if (!Holder)
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* System = Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent());
+	const auto Health = [System]()
+	{
+		return System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+
+	HoldWarFervourStats(System, {{FCataclysmWarFervour::HealthPerTenFervourSpentStat, 4.0f},
+								 {FCataclysmWarFervour::OutOfCombatDecayPerSecondStat, 20.0f}});
+	World->TimeSeconds += 10.0f;
+	FCataclysmWarFervour::OutOfCombatDecayStep(Holder, 1.0f);
+	TestEqual(TEXT("set-up: the decay took 20"), System->GetNumericAttribute(Pool), 30.0f, 0.001f);
+	TestEqual(TEXT("control: Fervour decayed heals nothing"), Health(), 1000.0f, 0.001f);
+
+	HoldWarFervourStats(System, {{FCataclysmWarFervour::HealthPerTenFervourSpentStat, 4.0f},
+								 {FCataclysmBerserkerStates::DrainPerSecondStat, 20.0f}});
+	FCataclysmBerserkerStates::DrainStep(Holder, 1.0f);
+	TestEqual(TEXT("set-up: the drain took 20"), System->GetNumericAttribute(Pool), 10.0f, 0.001f);
+	TestEqual(TEXT("20 drained heals two steps of 4% of 10,000"), Health(), 1800.0f, 0.001f);
 	return true;
 }
 

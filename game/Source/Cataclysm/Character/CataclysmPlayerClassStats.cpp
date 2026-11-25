@@ -1133,6 +1133,17 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("fervour_per_extra_enemy_hit_paid"),
 		TEXT("fervour_lost_to_regeneration"),
 		TEXT("regeneration_per_fervour_loss"),
+		// RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25, each read by FCataclysmWarFervour: Riposte's share of
+		// the damage blocked, its cost and its stun (RiposteOnBlock, where a block is announced); Vengeful Discharge's
+		// drain, its pulse's radius and its bleed flag (RetaliationPulseDrainStep, in the regeneration step); Crimson
+		// Tide's health for every 10 Fervour spent or drained (NoteFervourSpent, at every spend and drain).
+		TEXT("riposte_share_of_blocked"),
+		TEXT("riposte_fervour_cost"),
+		TEXT("riposte_stun_seconds_at_maximum"),
+		TEXT("retaliation_pulse_drain_per_second"),
+		TEXT("retaliation_pulse_radius_metres"),
+		TEXT("retaliation_pulse_applies_bleed"),
+		TEXT("health_percent_per_ten_fervour_spent"),
 	};
 	return Stats;
 }
