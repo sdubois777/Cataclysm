@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Rows sized by what a spend of Fervour carried, a cut to every other skill's cooldown, and a reserve held counting as a spend (Death trees, slice C3b)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`: `ECataclysmPoolActionBase::ForEachOfEventAmount` and
+  `ForEachTenOfEventAmount`; `CooldownReduce` may be `Others`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `TimesSizedByEventAmount`,
+  `SlotOfTheEventsSkill` (the read `RollAndResetCooldowns` made inline, now shared), `CooldownReduceOthersAction`,
+  `ReduceCooldowns(Action, EventTags)`, and `ActOnEvent` sizing a row before any action reads it.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`: `HoldReserve` takes the making skill's tags and
+  raises Bound Offering's spend; `ReservedFervourSpentPercentStat`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`: the two summons and Subjugate hold their reserve
+  through `HoldReserve` rather than writing it themselves.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: the two Fraction Of values and `cooldown_reduce_others`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: `reserved_fervour_spent_percent` has no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmSpendSizedTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp` (a
+  probe) and `CataclysmDataTableTests.cpp`; `tools/tests/test_a_spend_sizes_what_it_pays.py`, new (12);
+  `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
+  `test_charge_and_placed_action_names_match_the_engine.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (535 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **A JUDGEMENT: A SPEND NAMING NO SKILL CUTS EVERY COOLDOWN UNDER TURN OF THE WHEEL.** "The cooldowns of your skills
+  that did not spend it": when no skill spent it, none did. Bound Offering's reserve held for a warhound, a risen imp, a
+  replacement minion or a skill gadget or trap placed by an enchantment names no skill. A reset of every other cooldown
+  still clears nothing in that case (ruled 2026-09-25), because "reset all other skill cooldowns" is said of one
+  skill's use.
+- **A JUDGEMENT: "FOR EACH FERVOUR" IS WHOLE FERVOUR**, as ruling 3 made "for every 10" whole tens. Every cost the game
+  charges is whole, so this reaches only Bound Offering's share: 15% of a 25 reserve is 3.75, and Feast heals 3%.
+- **BOUND OFFERING CANNOT ACT INSIDE ANOTHER EVENT'S ACTION.** `ActOnEvent` drops an event raised from inside an action
+  (depth one), so a reserve held by a row's own action raises nothing there. No Death row holds a reserve from an
+  action today.
+- **THREE MAKERS WROTE THEIR RESERVE THEMSELVES** and now hold it through `HoldReserve`: `UCataclysmSummonSkill::
+  SummonReplacementAt`, `SummonOne` and `Possess` (Subjugate). Each did exactly `HoldReserve`'s two steps, so nothing
+  else changes for them; Subjugate's later clamp runs a second time and changes nothing.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECES:** Cinders Kept, Phylactery, the Shadow's Borrowed Step (C3c); the Fervour
+  thresholds (C3d); Soul Fuel and Deeper Draw, Pyre, Soul Shatter, Final Rites, after `feat/death-skills-2885` merges.
+
+### What a row sized by its spend is
+
+Two new Fraction Of values, `for_each_of_event_amount` and `for_each_ten_of_event_amount`, multiply a row's value by
+the whole units, or whole tens, of what its event carried (`UCataclysmAbilitySystemComponent::TimesSizedByEventAmount`,
+rounded down with a ten-thousandth's allowance). `ActOnEvent` does it once, before the first action is dispatched, and
+hands on a copy whose base is the maximum again, so a pool, a smite and a cooldown cut are all sized in one place. None
+to multiply is nothing done: a spend of 9 against "every 10" starts no wait.
+
+**The generator** accepts them on a pool, a nearby action and a cooldown reduction, each on an event that carries an
+amount, and refuses them anywhere else: on an event with no amount, on a cooldown reset (a chance multiplied is not a
+chance) and on every action that takes no fraction.
+
+**`cooldown_reduce_others`** takes its seconds off every skill's cooldown but the one whose `Slot.*` tag the event
+carries, on whichever key each sits, and off the cooldowns kept for skills off the keys, as `cooldown_reset_others`
+reads the slot.
+
+**Bound Offering.** `UCataclysmCommand::HoldReserve`, which every maker now holds a reserve through, raises
+`NoteFervourSpent(reserve x reserved_fervour_spent_percent / 100)` with the making skill's tags. Nothing is taken from
+the pool. A level lowering a reserve already held (`UCataclysmSkillLevels`) is not a hold.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Feast | action health, 1, event=fervour_spent, fraction_of=for_each_of_event_amount |
+| Spirit to Mana | action mana, 1, event=fervour_spent, fraction_of=for_each_ten_of_event_amount |
+| Ashen Ward | action energy_shield, 1, event=fervour_spent, fraction_of=for_each_ten_of_event_amount |
+| Soul Furnace | action smite_nearby, 10, event=fervour_spent, fraction_of=for_each_of_event_amount, event_value=10 |
+| Turn of the Wheel | action cooldown_reduce_others, 1, event=fervour_spent, fraction_of=for_each_ten_of_event_amount |
+| Bound Offering | reserved_fervour_spent_percent, flat, 15 |
+
+Soul Furnace's "within 5 metres" is the five metres every nearby action reaches (`NearbyActionRadiusCm`).
+`PassiveEffects.csv` 529 to 535; 101 of the 220 Death nodes grant something.
+
+### Rulings recorded here
+
+The coordinating session's rulings of 2026-11-25, given on slice C3a, apply from here on:
+1. Soul Fuel adds nothing to an Ultimate (every Ultimate costs 50, the owner's rule) and applies to the other skills
+   with a cooldown, movement skills excluded.
+2. Soul Fuel skips any skill whose own row already spends or holds Fervour, written as a rule naming Cold Blood and
+   Requiem in its comment and tested with a stand-in; the second of this line and `feat/death-skills-2885` to merge
+   confirms the two are caught.
+3. "For every 10 Fervour spent" is whole tens: a spend of 19 pays once. Built here.
+4. The generator accepts a vow-level row with no option only on a capstone whose own description states that clause.
+
+And the reorder, agreed the same day: Soul Fuel, Deeper Draw, Pyre, Soul Shatter and Final Rites are built after
+`feat/death-skills-2885` merges, on its `UCataclysmSkillTemplate::FervourSpentThisUse`, with no second record here.
+
+### Research
+
+None new. The sizing is this game's own action machinery, and the six nodes' figures are the owner's approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.SpendSized.` | new: `ARowActsForEachWholeFervourOrEachWholeTen`, `FeastSpiritToManaAndAshenWardRestoreWhatASpendSizes`, `SoulFurnaceSmitesForEachFervourFromTenSpentAtOnce`, `TurnOfTheWheelCutsEveryCooldownButTheSpendersASecondForEachTen`, `BoundOfferingCountsAShareOfEachReserveHeldAsASpend`, `TheFiveRealRowsReachASoulCollectorSizedAsTheirSentencesSay` | 6 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs a new probe for `reserved_fervour_spent_percent` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 535 | unchanged |
+
+Each new test has a control: other bases act once; a spend of 9 (no whole ten, and under Soul Furnace's ten); an
+unsized 400% smite beside the sized one; the spender's own cooldown, and a spend naming no skill; a hold before the
+stat and a hold of nothing; the starting node alone.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `ActOnEvent`: `Sized->Percent *= Times;` taken out. Prefix
+   `Cataclysm.SpendSized.`; must fail `FeastSpiritToManaAndAshenWardRestoreWhatASpendSizes`,
+   `SoulFurnaceSmitesForEachFervourFromTenSpentAtOnce` and
+   `TurnOfTheWheelCutsEveryCooldownButTheSpendersASecondForEachTen`.
+2. `CataclysmAbilitySystemComponent.cpp`, `ReduceCooldowns`: `const ECataclysmAbilitySlot Spender =
+   SlotOfTheEventsSkill(EventTags);` becomes `... = ECataclysmAbilitySlot::None;`. Prefix `Cataclysm.SpendSized.`; must
+   fail `TurnOfTheWheelCutsEveryCooldownButTheSpendersASecondForEachTen`.
+3. `CataclysmCommand.cpp`, `HoldReserve`: `Theirs->NoteFervourSpent(Reserve * Percent / 100.0f, SpendingTags);` taken
+   out. Prefix `Cataclysm.SpendSized.`; must fail `BoundOfferingCountsAShareOfEachReserveHeldAsASpend`.
+
+### What was run
+
+SUITE_FIGURES_C3B
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`c8b0e7b3d`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The refusal of a sized row on an event with no amount taken out of `_sized_by_the_amount` | `test_a_spend_sizes_what_it_pays.py::test_a_sized_row_on_an_event_with_no_amount_is_refused[smite_nearby]` and `[cooldown_reduce_others]` |
+| `ActOnEvent` handing a reduction no event tags | `test_a_spend_sizes_what_it_pays.py::test_act_on_event_sizes_a_row_before_any_action_reads_it` |
+| `HoldReserve`'s call to `NoteFervourSpent` taken out | `test_a_spend_sizes_what_it_pays.py::test_a_reserve_held_raises_the_spend_and_every_maker_holds_through_it` |
+| Spirit to Mana's Fraction Of to `for_each_of_event_amount` | `test_passive_effects_match_the_node_text.py::test_a_row_sized_by_a_spend_says_each_or_every_ten` |
+
+The health row's refusal on an event with no amount is the pool check's, which the first break does not touch; the
+parametrised test's `health` case passed with the break in, as it should.
+
+---
+
 ## 2026-11-25 — A record of Fervour spent, the clock after a spend, three Soul Collector nodes on it, and death resets the kill clock (Death trees, slice C3a)
 
 **Affects:**
