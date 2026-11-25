@@ -1335,6 +1335,27 @@ public:
 	static float DeviceWirePinSecondsFor(const AActor* Player);
 	static float DeviceWireRepinSecondsFor(const AActor* Player);
 
+	/**
+	 * Walking Arsenal, V5b3, 2026-11-25: "Your gadgets walk after you, staying within 8 metres of you, and keep firing as
+	 * they move." The 8 is a flat stat of the player's, with no gameplay attribute; nought is no following. See
+	 * `WalkAfterSummoner`.
+	 */
+	static const TCHAR* GadgetFollowWithinMetresStat;
+	static float GadgetFollowWithinCmFor(const AActor* Player);
+
+	/**
+	 * One step of Walking Arsenal for this gadget, `Seconds` long, on the coordinating session's rulings A1 and A2: a
+	 * gadget, skill or War alike (never a trap, a scrap trap included), farther along the floor from its summoner than
+	 * `GadgetFollowWithinCmFor` moves toward it by the speed its summoner's other followers walk
+	 * (`UCataclysmCommand::CommandedWalkSpeedShareOfCommander` of the summoner's walking speed now) times `Seconds`,
+	 * stopping at the reach. Moved in steps, as Creeping Mines moves a trap.
+	 *
+	 * IT KEEPS FIRING AS IT MOVES BECAUSE NOTHING ABOUT ITS FIRING CHANGES. It still `StaysWhereItIsPut`, so its brain
+	 * still fires at an enemy in reach on its attack interval, from wherever the step has put it, and a skill gadget still
+	 * casts from its own step. A gadget that cannot act does not walk. Returns whether it moved.
+	 */
+	bool WalkAfterSummoner(float Seconds);
+
 	/** The seconds between two device steps: `ACataclysmCharacterBase` steps every device every quarter second. */
 	static constexpr float DeviceStepSeconds = 0.25f;
 

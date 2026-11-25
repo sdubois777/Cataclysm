@@ -738,7 +738,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 588 THE SAME DAY: Cat's Cradle's three flat rows, its reach, its pin and the seconds between pins
 #: (`tools/reapply_war_vows_v5b2_workbook.py`, V5b2).
-AUTHORED_ROWS = 588
+#:
+#: AND TO 589 THE SAME DAY: Walking Arsenal's reach (`tools/reapply_war_vows_v5b3_workbook.py`, V5b3).
+AUTHORED_ROWS = 589
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1305,7 +1307,8 @@ AUTHORED_NODES = 322
 #: capstone already had a row.
 #: AND TO 69 THE SAME DAY: V5b1 -- Scrap Mines (Saboteur). Its capstone already had a row.
 #: AND TO 70 THE SAME DAY: V5b2 -- Cat's Cradle (Saboteur). Its capstone already had a row.
-AUTHORED_OPTIONS = 70
+#: AND TO 71 THE SAME DAY: V5b3 -- Walking Arsenal (Saboteur). Its capstone already had a row.
+AUTHORED_OPTIONS = 71
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2940,6 +2943,8 @@ VALUE_IN_WORDS = {
     ("Saboteur_capstone_50", "device_wire_reach_metres"): ("every other one within 10 metres", 10.0),
     ("Saboteur_capstone_50", "device_wire_pin_seconds"): ("pinned for 1 second", 1.0),
     ("Saboteur_capstone_50", "device_wire_repin_seconds"): ("no more than once every 4 seconds", 4.0),
+    # WALKING ARSENAL (V5b3, 2026-11-25): how near the player its gadgets stay.
+    ("Saboteur_capstone_25", "gadget_follow_within_metres"): ("staying within 8 metres of you", 8.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.

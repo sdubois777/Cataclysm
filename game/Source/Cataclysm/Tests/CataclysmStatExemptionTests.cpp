@@ -9554,6 +9554,29 @@ namespace CataclysmStatExemptionTest
 	void ProbeDeviceWireRepin(FAutomationTestBase& Test) { ProbeDeviceWireFigures(Test, 2); }
 
 	/**
+	 * Walking Arsenal's `gadget_follow_within_metres`, read by `ACataclysmMinion::GadgetFollowWithinCmFor`, which a
+	 * gadget's step asks. The War vow options' fifth slice, second half, third part, V5b3, 2026-11-25. Two characters;
+	 * only the second holds 8, and only it is answered 800 centimetres.
+	 */
+	void ProbeGadgetFollowWithin(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::GadgetFollowWithinMetresStat), 8.0f}});
+		Test.TestEqual(TEXT("a character without the stat is answered nought"),
+					   ACataclysmMinion::GadgetFollowWithinCmFor(Plain.Actor), 0.0f);
+		Test.TestEqual(TEXT("and one holding it 800 centimetres, so a gadget's step really reads it"),
+					   ACataclysmMinion::GadgetFollowWithinCmFor(Holding.Actor), 800.0f, 0.01f);
+	}
+
+	/**
 	 * Lightning Rod's `blow_to_device_chance_per_device`, read by `UCataclysmAbilitySystemComponent::
 	 * BlowToDeviceChanceFor`. V5a, 2026-11-25. A character holding 3 is answered 12 with four devices and the cap of 30
 	 * with twenty; one without it is answered nought.
@@ -12952,6 +12975,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("device_wire_reach_metres"), &ProbeDeviceWireReach},
 			{TEXT("device_wire_pin_seconds"), &ProbeDeviceWirePin},
 			{TEXT("device_wire_repin_seconds"), &ProbeDeviceWireRepin},
+			{TEXT("gadget_follow_within_metres"), &ProbeGadgetFollowWithin},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},

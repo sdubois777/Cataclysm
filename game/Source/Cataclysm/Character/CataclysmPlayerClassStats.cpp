@@ -789,6 +789,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("device_wire_reach_metres"),
 		TEXT("device_wire_pin_seconds"),
 		TEXT("device_wire_repin_seconds"),
+		// Walking Arsenal's reach, read by ACataclysmMinion::GadgetFollowWithinCmFor at a gadget's step. V5b3,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("gadget_follow_within_metres"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on

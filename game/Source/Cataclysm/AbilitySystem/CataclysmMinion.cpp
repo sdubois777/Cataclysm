@@ -713,6 +713,10 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 		return;
 	}
 
+	// WALKING ARSENAL (V5b3), BEFORE ANYTHING THE GADGET FIRES ON THIS STEP, so what it fires is fired from where it has
+	// walked to. Nothing for a gadget whose summoner holds no reach.
+	Gadget->WalkAfterSummoner(DeviceStepSeconds);
+
 	// THE COPY OF THE SUMMONER'S LAST SKILL, ON ITS OWN CLOCK, BEFORE THE VOLLEY, which returns early for a gadget
 	// whose summoner holds no volley row. Ruled 2026-10-14. A copy's blows are the summoner's and do not come back on
 	// the gadget, but a gadget a copy has somehow ended fires no volley on this step.
@@ -3042,10 +3046,12 @@ const TCHAR* ACataclysmMinion::TrapCreepReachMetresStat = TEXT("trap_creep_reach
 const TCHAR* ACataclysmMinion::DeviceWireReachMetresStat = TEXT("device_wire_reach_metres");
 const TCHAR* ACataclysmMinion::DeviceWirePinSecondsStat = TEXT("device_wire_pin_seconds");
 const TCHAR* ACataclysmMinion::DeviceWireRepinSecondsStat = TEXT("device_wire_repin_seconds");
+const TCHAR* ACataclysmMinion::GadgetFollowWithinMetresStat = TEXT("gadget_follow_within_metres");
 
 namespace
 {
-	// A PLAYER'S FLAT DEVICE FIGURE, never below nought: Creeping Mines' two (V5a) and Cat's Cradle's three (V5b2).
+	// A PLAYER'S FLAT DEVICE FIGURE, never below nought: Creeping Mines' two (V5a), Cat's Cradle's three (V5b2) and
+	// Walking Arsenal's reach (V5b3).
 	float CataclysmTrapCreepFigure(const AActor* Player, const TCHAR* Stat)
 	{
 		const UCataclysmAbilitySystemComponent* Theirs =
@@ -3077,6 +3083,43 @@ float ACataclysmMinion::DeviceWirePinSecondsFor(const AActor* Player)
 float ACataclysmMinion::DeviceWireRepinSecondsFor(const AActor* Player)
 {
 	return CataclysmTrapCreepFigure(Player, DeviceWireRepinSecondsStat);
+}
+
+float ACataclysmMinion::GadgetFollowWithinCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, GadgetFollowWithinMetresStat) * 100.0f;
+}
+
+bool ACataclysmMinion::WalkAfterSummoner(float Seconds)
+{
+	if (!IsGadget() || IsActorBeingDestroyed() || Seconds <= 0.0f || UCataclysmSkillEffects::IsDead(this)
+		|| UCataclysmSkillEffects::CannotAct(this))
+	{
+		return false;
+	}
+	AActor* const Player = Summoner.Get();
+	const float Within = GadgetFollowWithinCmFor(Player);
+	if (!IsValid(Player) || Within <= 0.0f)
+	{
+		return false;
+	}
+	// AT THE SPEED THE SUMMONER'S OTHER FOLLOWERS WALK (ruled A1): its walking speed now, times the share every commanded
+	// creature walks at. `UCataclysmCommand::CommandedWalkSpeedCmPerSecond` itself answers nought for a gadget, which
+	// stays where it is put, so the figure is taken from the summoner here.
+	const ACharacter* Walker = Cast<ACharacter>(Player);
+	const UCharacterMovementComponent* Movement = Walker ? Walker->GetCharacterMovement() : nullptr;
+	const float Speed =
+		Movement ? Movement->MaxWalkSpeed * UCataclysmCommand::CommandedWalkSpeedShareOfCommander : 0.0f;
+	const FVector Here = GetActorLocation();
+	const FVector Toward = Player->GetActorLocation() - Here;
+	const float Beyond = Toward.Size2D() - Within;
+	if (Speed <= 0.0f || Beyond <= 0.0f)
+	{
+		return false;
+	}
+	const float Step = FMath::Min(Speed * Seconds, Beyond);
+	SetActorLocation(Here + Toward.GetSafeNormal2D() * Step, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+	return true;
 }
 
 bool ACataclysmMinion::CreepTowardNearestEnemy(float Seconds)

@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' fifth slice, second half, third part (V5b3): Walking Arsenal
+
+**Affects:**
+- `tools/reapply_war_vows_v5b3_workbook.py` (new) writes one row into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (589 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- C++:
+  - `CataclysmMinion.h` and `.cpp`: the stat `gadget_follow_within_metres`, `GadgetFollowWithinCmFor`, and
+    `WalkAfterSummoner`, called by `GadgetStep` after the drain and before anything the gadget fires.
+  - `CataclysmPlayerClassStats.cpp`: the stat listed as having no gameplay attribute.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5b3Tests.cpp` (new, two tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe for the stat.
+    - `CataclysmDataTableTests.cpp`: the pin, 589.
+  - Python:
+    - `tools/tests/test_war_vows_v5b3_scripts.py` (new, six).
+    - `test_passive_effects_match_the_node_text.py`: 589 rows and 71 authored options, and Walking Arsenal's words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5b3.`: two tests, new.
+  - `Cataclysm.StatExemption.` (one probe more), and `Cataclysm.Data.` (589), its count unchanged.
+  - The groups that step a gadget, counts unchanged: `Cataclysm.SkillGadgets.`, `Cataclysm.GadgetCopiesSkill.`,
+    `Cataclysm.WarVowsV4b.`, `Cataclysm.WarVowsV5a.`, `Cataclysm.WarVowsV5b1.`.
+- **A2 IS MET WITHOUT THE NEW BRANCH IN THE MINION CONTROLLER THAT THE RULING EXPECTED.** The gadget is moved in steps,
+  as Creeping Mines moves a trap (ruled CM2), and it still `StaysWhereItIsPut`. So its brain goes on firing at an
+  enemy in reach on its attack interval, from wherever the step has put it, and a skill gadget goes on casting from its
+  own step. Nothing that reads the flag changes: the sweep found four readers (`UCataclysmCommand::
+  CommandedWalkSpeedCmPerSecond`, `ACataclysmMinion::Spawn`'s tick, its `RefreshWalkSpeed`, and
+  `ACataclysmEnemyController`'s follow), and two test files.
+- **THE GADGET JUMPS: IT IS MOVED ONCE EVERY QUARTER SECOND, AND ITS DRAWN POSITION IS NOT SMOOTHED BETWEEN STEPS.**
+  At a player walk of 6 m a second each jump is up to 1.875 m. This is a known prototype limit, accepted by the
+  coordinating session on 2026-11-25 ("interpolate its drawn position between steps, or say in the entry that it jumps
+  and that this is a known prototype limit"). Nobody has seen it in a running game.
+- **WITH THE GADGET RULE (V5g)**, which moves every gadget to the cursor when the reserve cannot fit another: a following
+  gadget goes to the cursor with the rest, and its following resumes from there on its next step. V5g holds that with
+  one test, as the coordinating session asked, because V5g lands after this slice.
+- **FIRING WHILE MOVING IS HELD ONLY BY THE FLAG.** The tests assert the walking turret still stays where it is put; no
+  test ticks a brain and watches it fire, because a test world is never ticked.
+
+### WHAT WAS RULED
+
+- A1 (2026-11-25): "Skill gadgets and War gadgets both follow the player when farther than 8 m away, at the speed the
+  commander's other followers walk. A skill gadget already casts from its step wherever it stands."
+- A2: "Under Walking Arsenal it never stops: it fires at an enemy in reach on its attack interval while following."
+
+### JUDGEMENTS
+
+- **A TRAP DOES NOT FOLLOW**, a scrap trap included: "your gadgets". `IsGadget` is the test.
+- **A GADGET THAT CANNOT ACT DOES NOT WALK.**
+- **IT STOPS AT 8 m**, measured along the floor to the summoner's centre, and never closer.
+- **THE SPEED** is the summoner's walking speed now times `UCataclysmCommand::CommandedWalkSpeedShareOfCommander`
+  (1.25), the figure every commanded creature walks at; taken from the summoner here, because the command's own
+  function answers nought for a gadget.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 52
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5b3Tests.cpp` without `#include "AbilitySystem/CataclysmCommand.h"` failed.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True.
+
+| Break | Command | Named failures |
+|---|---|---|
+| `CataclysmMinion.cpp`: the stat name misspelt (`gadget_follow_within_metre`) | `pytest tools/tests/test_war_vows_v5b3_scripts.py` | `test_the_engine_reads_the_name` |
+| `tools/reapply_war_vows_v5b3_workbook.py`: 9 metres for 8 | the same | `test_the_script_lists_walking_arsenals_row`, `test_the_workbook_holds_the_rows`, `test_the_script_writes_the_row_once` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5b3.AGadgetFartherThanEightMetresWalksAfterThePlayerAndStopsAtEight` | without the option a step moves nothing (the control); with it a turret 20 m away moves one step's worth nearer, a turret 5 m away does not (the control), a Spike Trap does not follow (the control), the walking turret still stays where it is put (the control for A2), and steps enough bring it to 8 m and no nearer |
+| `Cataclysm.WarVowsV5b3.AWarPlayerTakingWalkingArsenalIsHandedItsReach` | through `SetPassiveAllocation`: 800 cm; Baited hands over none (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: `WalkAfterSummoner` not stopping at the reach (`Beyond` replaced by the whole distance in the step's `Min`) | `Cataclysm.WarVowsV5b3.` | `AGadgetFartherThanEightMetresWalksAfterThePlayerAndStopsAtEight` |
+
+---
+
 ## 2026-11-25 — The War vow options' fifth slice, second half, second part (V5b2): Cat's Cradle, with its wires seen
 
 **Affects:**

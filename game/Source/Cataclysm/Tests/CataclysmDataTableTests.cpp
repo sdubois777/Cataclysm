@@ -538,7 +538,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 583 THE SAME DAY, for V5a: Lightning Rod, Creeping Mines' two, Where They Fall and Crossfire.
 	// AND 585 THE SAME DAY, for V5b1: Scrap Mines' two.
 	// AND 588 THE SAME DAY, for V5b2: Cat's Cradle's three.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        588)
+	// AND 589 THE SAME DAY, for V5b3: Walking Arsenal's reach.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        589)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
