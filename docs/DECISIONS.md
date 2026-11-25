@@ -32,7 +32,10 @@ Decisions made outside the Google Drive documents, newest first.
   prefix without it) and `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 - **THE BULWARK'S FERVOUR FOR A KILL IS NOT BUILT.** Its sentence still says "killing enemies generate Fervour". The Death
   trees session is building per-kill Fervour in `UCataclysmFervour` at the same time, and the coordinating session asked
-  that the two not collide; the Bulwark's kill gain should be built on that piece once it lands, not beside it.
+  that the two not collide; the Bulwark's kill gain should be built on that piece once it lands, not beside it. **THAT
+  PIECE EXISTS** on `feat/death-trees-b` (`d50c26c6b`): every kill credited to the character pays `fervour_per_kill`,
+  asked against the slain creature. The Bulwark's kill row is to be a `fervour_per_kill` row on its starting node,
+  written once that branch has landed.
 - **TWO SITES ARE NOT EXERCISED BY AN UNREAL TEST**: a skill trap triggering (`TriggerSkillTrap`) and a device's landed
   blow (`AttackTarget`, `ApplyHit`'s `deployable_hit`). Each needs a weapon skill to cast or a War machine. Their gain
   functions are exercised directly and by the probes; the call sites were checked by reading only.
@@ -73,8 +76,10 @@ Decisions made outside the Google Drive documents, newest first.
    meets both rules. Not scaled by generation (a decay is not a gain). A Corrupted Stalker holding a War build does not
    decay, as `DecayStep` refuses it.
 6. **The rates.** Every gain on a starting node is 1, the rate the Ravager's and the Masochist's starting nodes grant per
-   event. **A judgement** under the owner's delegation of unstated numbers; the constants are to be tuned in play. No
-   genre research was needed: the sources are the design's own sentences and only their sizes are chosen here.
+   event. **A judgement** under the owner's delegation of unstated numbers, and **A PLAY-TEST POINT, NOT A MEASURED
+   FIGURE** (the coordinating session, 2026-11-24): a Berserker landing about one critical strike a second takes about
+   50 seconds to afford a 50-Fervour Ultimate from critical strikes alone, before its tree adds more. No genre research
+   was needed: the sources are the design's own sentences and only their sizes are chosen here.
 7. **The sentences** now say so. The Bulwark: "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit
    you take and 1 for each block. While you have this, your Fervour decays at 5 per second after 3 seconds out of
    combat." The Saboteur: "Placing a trap or a gadget generates Fervour, and so does one of them dealing damage or
