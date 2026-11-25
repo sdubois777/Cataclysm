@@ -76,13 +76,22 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On the merge of `development` into this line, `a696d2ad2dcfbf5e6337371f604c7b3363ba26a1` (tree `f17f67f49`, the tree
+the run read), 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed,
+9025 passed, 9 skipped in 904.66s**, and the JUnit file `tests="9035" failures="1" errors="0" skipped="9"`, which is
+9,025 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**IT RAN ON THE MERGE, NOT ON THIS SLICE'S OWN COMMIT** (`abdd2ab88`). No run was made on that commit alone.
 
 ### INCLUDE AUDIT
 
 `tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
 .cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
 - Result: 83 files, **0 types used that the file cannot see, 0 notes**.
+- Repeated after the merge of `development`: the 49 .cpp files that differ from `development`, 0 and 0; the same
+  control failed.
 - Control: a copy of `CataclysmWarVowsV5b1Tests.cpp` without `#include "AbilitySystem/CataclysmMinion.h"` failed,
   naming `ACataclysmMinion`.
 
