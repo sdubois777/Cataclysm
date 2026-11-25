@@ -216,10 +216,10 @@ bool FCataclysmOpenChannelTwoImpsTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const float Nearest = FMath::Min(FVector::Dist2D(Risen[0]->GetActorLocation(), DiedAt),
-									 FVector::Dist2D(Risen[1]->GetActorLocation(), DiedAt));
-	const float Furthest = FMath::Max(FVector::Dist2D(Risen[0]->GetActorLocation(), DiedAt),
-									  FVector::Dist2D(Risen[1]->GetActorLocation(), DiedAt));
+	const float First = static_cast<float>(FVector::Dist2D(Risen[0]->GetActorLocation(), DiedAt));
+	const float Second = static_cast<float>(FVector::Dist2D(Risen[1]->GetActorLocation(), DiedAt));
+	const float Nearest = FMath::Min(First, Second);
+	const float Furthest = FMath::Max(First, Second);
 	TestTrue(TEXT("one stands where the creature died"), Nearest < 1.0f);
 	TestEqual(TEXT("and the other a metre from it"), Furthest, UCataclysmRisenImps::ExtraImpSpacingCm, 1.0f);
 	TestEqual(TEXT("each holds Summon Imp's reserve, three in all"),

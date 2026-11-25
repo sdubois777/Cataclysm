@@ -1999,7 +1999,17 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: AILMENT JOINED ON 2026-10-01 for issue #1833 group D part 4, built ahead of
 #: its rows while the design workbook is with another session.
 #: IT LEFT with the remaining damage rows, and the table is empty again.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#: SCALE MAX STEPS ON THE PASSIVE EFFECTS SHEET JOINED ON 2026-11-24, for the
+#: Ritualist's Wall of Servants ("You take 1% less damage for each minion you
+#: have, up to 20% less"), the demonic tree rework the owner approved that day,
+#: built ahead of the workbook column while the workbook is with the
+#: coordinating session. It leaves when the column is in the workbook, which
+#: `tools/tests/test_required_workbook_columns.py` then requires.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Passive Effects": {
+        "Scale Max Steps": "the demonic tree rework of 2026-11-24 (Wall of Servants' 20% ceiling)",
+    },
+}
 
 
 class _Headers(dict):
@@ -5820,8 +5830,9 @@ MAX_SCALE_OFFSET = 230
 #: its sentence, "While leeching, reduce your max resistances by 1%-3% per
 #: second", states no end. The ruling caps it at 10 seconds; the engine's
 #: scale holds no cap of its own, so a row written without one would be
-#: UNCAPPED. The row is refused instead. The Passive Effects sheet has no
-#: such column, so a row there naming one of these is refused outright.
+#: UNCAPPED. The row is refused instead. The Passive Effects sheet has carried
+#: the column since 2026-11-24, so a row there naming one of these is refused
+#: unless it states a cap, as an enchantment's is.
 SCALES_THAT_NEED_A_CAP = frozenset({"seconds_leeching"})
 
 #: The scales whose count is a FRACTION and not a number of whole steps. Ruled
@@ -5944,15 +5955,18 @@ def passive_effects(book) -> list[dict]:
     rows = list(book["Passive Effects"].iter_rows(values_only=True))
     headers = _header_index(rows, "Passive Effects")
 
-    # NO CAP ON THIS SHEET. Issue #1815. `ScaleMaxSteps` is read from an
-    # enchantment's row only; a passive node's modifier never carries one, so a
-    # cap written here would be dropped with no error.
-    if "Scale Max Steps" in headers:
-        raise DataError(
-            "the Passive Effects sheet has a 'Scale Max Steps' column, and the "
-            "game reads a cap from the Enchantment Effects sheet only. Remove it.")
+    # A CAP ON THIS SHEET SINCE 2026-11-24. Issue #1815 refused the column
+    # because a passive node's modifier carried no cap, so a cap written here
+    # was dropped with no error. The demonic tree rework the owner approved
+    # that day needs one: the Ritualist's Wall of Servants reads "You take 1%
+    # less damage for each minion you have, up to 20% less", and the owner
+    # answered that the per-minion damage reduction is capped at 20%. So the
+    # row struct carries `ScaleMaxSteps` and `UCataclysmPassiveTree::
+    # AccumulateInto` copies it onto the modifier, which `ScaledValue` caps by,
+    # as an enchantment's is. It is read below, by the same rules the
+    # Enchantment Effects sheet keeps.
 
-    # NOR STACK SECONDS, FOR THE SAME REASON. Issue #1833.
+    # NO STACK SECONDS ON THIS SHEET. Issue #1833.
     if "Stack Seconds" in headers:
         raise DataError(
             "the Passive Effects sheet has a 'Stack Seconds' column, and the "
@@ -5996,11 +6010,38 @@ def passive_effects(book) -> list[dict]:
         # #1593; one copy means the wording and the rules cannot drift apart.
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Passive Effects", index, node)
-        if scale in SCALES_THAT_NEED_A_CAP:
+
+        # "UP TO 20% LESS" IS A CAP OF 20 WHOLE STEPS, since 2026-11-24 (see
+        # above). THE ENCHANTMENT SHEET'S RULES, KEPT THE SAME: empty is no
+        # cap; a cap needs a scale to cap; it is a whole number of steps from 1
+        # to MAX_SCALE_STEPS; a scale counting a fraction takes none; and a
+        # scale that needs one must state one.
+        cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
+        scale_max_steps = 0
+        if cap_text:
+            if scale in SCALES_THAT_COUNT_A_FRACTION:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} scales by {scale!r} "
+                    f"and states Scale Max Steps {cap_text!r}. That scale counts "
+                    f"a fraction and not whole steps, and is capped at the row's "
+                    f"whole value by itself. Leave the column empty.")
+            cap = number(cap_text, "Scale Max Steps", index)
+            if not scale:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a cap of {cap:g} "
+                    f"steps and no scale. A cap limits how many steps a scale "
+                    f"counts, so with no scale it caps nothing.")
+            if cap != int(cap) or not 1 <= cap <= MAX_SCALE_STEPS:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a cap of {cap:g} "
+                    f"steps. A cap is a whole number of steps from 1 to "
+                    f"{MAX_SCALE_STEPS}; leave the column empty for none.")
+            scale_max_steps = int(cap)
+        if scale in SCALES_THAT_NEED_A_CAP and scale_max_steps < 1:
             raise DataError(
-                f"Passive Effects row {index}: {node} scales by {scale!r}, which "
-                f"needs a cap in Scale Max Steps, and this sheet has no such "
-                f"column. The row would be uncapped.")
+                f"Passive Effects row {index}: {node} scales by {scale!r} and "
+                f"states no Scale Max Steps. That scale has no cap of its own, "
+                f"so the row would be uncapped. State the cap.")
         # AND THE SCALE THAT COUNTS ENEMIES ONLY WHILE AN OWN STACK IS HELD.
         # Ruled by the project owner on 2026-10-17. A passive node holds no own
         # stacks, so its modifier would have no window to read.
@@ -6117,6 +6158,9 @@ def passive_effects(book) -> list[dict]:
             "Option": option,
             "ReachMetres": reach_metres,
             "MinPoints": min_points,
+            # LAST, AFTER MIN POINTS, so every column before it keeps its
+            # place. 0 is no cap. Since 2026-11-24; see above.
+            "ScaleMaxSteps": scale_max_steps,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -8424,8 +8468,8 @@ def enchantment_effects(book) -> list[dict]:
                 f"{', '.join(EVENTS_CARRYING_A_HIT_DEALTS_TAGS)}.")
 
         # "UP TO 10 STACKS" IS A CAP OF 10 WHOLE STEPS. Issue #1815. This sheet
-        # alone carries the column, because only an enchantment's modifier reads
-        # it (`UCataclysmItemModifiers`); `passive_effects` refuses the column.
+        # carried the column alone until 2026-11-24, when `passive_effects`
+        # began reading it by these same rules for the demonic tree rework.
         # Empty is no cap. A cap needs a scale to cap, and is a whole number of
         # steps, from 1 up to the largest a sentence states.
         cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
@@ -10161,6 +10205,16 @@ STATS_WITH_AN_ASKER = frozenset({
     # measures it on a trap's blow with the scale and the offset the first of
     # those rows carries.
     "minion_damage",
+    # ADDED 2026-11-24 FOR BOUND SERVANTS, the Ritualist's First Pact's first
+    # option in the demonic tree rework the owner approved that day: "Your
+    # minions deal 5% increased damage and have 5% increased health for each
+    # minion you have", two rows scaled by `minions_held`. A minion's health is
+    # asked when it is made, in `ACataclysmMinion::Spawn`, through
+    # `UCataclysmCommand::SummonerMultiplierFor`, which runs the summoner's line
+    # through the pipeline with `CurrentConditions` -- so the scaled row is read
+    # with the summoner's count, the minion being made included. The list is
+    # brought up to the code; `ProbeScaledMinionHealth` measures it.
+    "minion_health",
     # ADDED 2026-10-17 FOR SPELLSLINGER, Spellblade's Will's six-piece bonus,
     # "makes your spells cost 10% less mana per stack", a row scaled by
     # its own stacks; ruled that day (R1). `UCataclysmGameplayAbility::ManaCostFor`

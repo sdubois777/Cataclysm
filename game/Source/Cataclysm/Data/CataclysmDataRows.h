@@ -2785,6 +2785,20 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	int32 MinPoints = 0;
+
+	/**
+	 * The most whole steps the row's scale counts, or 0 for no cap. Copied onto the modifier's
+	 * `FCataclysmStatModifier::ScaleMaxSteps`, which `UCataclysmStatPipeline::ScaledValue` caps by, as an enchantment
+	 * row's is.
+	 *
+	 * SINCE THE DEMONIC TREE REWORK OF 2026-11-24. Issue #1815 kept this sheet without the column, because a passive
+	 * modifier carried no cap and one written here would have been dropped. The Ritualist's Wall of Servants needs one,
+	 * "You take 1% less damage for each minion you have, up to 20% less", and the owner answered that day that the
+	 * per-minion damage reduction is capped at 20%: a cap of 20 steps of 1. The generator refuses a cap on a row with
+	 * no scale, as `ValidateModifier` does.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	int32 ScaleMaxSteps = 0;
 };
 
 /**

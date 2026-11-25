@@ -5183,6 +5183,58 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `minion_health`, scaled by the minions held, asked by `ACataclysmMinion::Spawn` through
+	 * `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state. The demonic tree rework of 2026-11-24, for
+	 * Bound Servants: "Your minions deal 5% increased damage and have 5% increased health for each minion you have".
+	 *
+	 * ONE SUMMONER WITH A ROW OF 50% INCREASED PER MINION HELD. The minion being made is already commanded when its
+	 * health is asked (`Spawn` sets its summoner first), so the first imp is read with one minion held and the fourth
+	 * with four: 1.5 and 3.0 times the Imp row's health, a ratio of 2. Read the attribute instead and the ratio is 1.
+	 */
+	void ProbeScaledMinionHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		FCataclysmStatModifier PerMinion;
+		PerMinion.Bucket = ECataclysmStatBucket::Increased;
+		PerMinion.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerMinion.Value = 50.0f;
+		PerMinion.Scale = ECataclysmStatScale::PerMinionHeld;
+		PerMinion.ScaleStep = 1.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("minion_health")));
+		Line.Base = 0.0f;
+		Line.Modifiers = {PerMinion};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		const auto Summon = [&](float Metres)
+		{
+			return ACataclysmMinion::Spawn(Summoner.Actor, FVector(Metres * M, 0, 0), /*Lifetime=*/60.0f,
+										   /*bBurns=*/false, TEXT("Imp"));
+		};
+		ACataclysmMinion* First = Summon(4.0f);
+		Summon(8.0f);
+		Summon(12.0f);
+		ACataclysmMinion* Fourth = Summon(16.0f);
+		if (!Test.TestNotNull(TEXT("minion_health: the first imp"), First)
+			|| !Test.TestNotNull(TEXT("minion_health: the fourth imp"), Fourth)
+			|| !Test.TestTrue(TEXT("minion_health: the first imp has health"), MaxHealthOf(First) > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(
+			TEXT("minion_health is asked for with the summoner's count of minions, so the fourth imp, made with four "
+				 "held, has twice the health of the first, made with one: ACataclysmMinion::Spawn really reads it"),
+			MaxHealthOf(Fourth) / MaxHealthOf(First), 2.0f, 0.001f);
+	}
+
+	/**
 	 * `mana_cost`, scaled by the row's own stacks, asked by `UCataclysmGameplayAbility::ManaCostFor` through
 	 * `StatAppliedTo` with the skill's tags. Ruled 2026-10-17 (R1) for Spellslinger, Spellblade's Will's six-piece
 	 * bonus: "makes your spells cost 10% less mana per stack", a `more` of -10 scoped `Type.Spell`.
@@ -5395,6 +5447,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
 			{TEXT("energy_shield_leech"),        &ProbeScaledEnergyShieldLeech},
 			{TEXT("minion_damage"),              &ProbeScaledMinionDamage},
+			{TEXT("minion_health"),              &ProbeScaledMinionHealth},
 			{TEXT("mana_cost"),                  &ProbeScaledManaCost},
 			{TEXT("crit_multiplier"),            &ProbeScaledCritMultiplier},
 			{TEXT("lethal_hit_reprieve_every_seconds"), &ProbeScaledLethalHitReprieveEvery},
