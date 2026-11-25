@@ -339,6 +339,22 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString ForgeSoulForgeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel);
 
 	/**
+	 * What the empire tree's material nodes kept of a forge craft, said after the craft's own line and its options' (N4):
+	 * "the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm". Issue #47, slice
+	 * F6b. Said by `UCataclysmForgeCraft::DoItemCraft`, only when it kept anything; `Kept` is
+	 * `FCataclysmForgeKeeping::KeptPartsOf`.
+	 */
+	static FString ForgeMaterialsKeptLine(const FString& ItemName, const FString& Kept);
+
+	/**
+	 * What the empire tree's affix nodes did to a forge craft's item, said after the craft's own line, its options' and
+	 * what the material nodes kept: "the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier
+	 * 5; made Flat life's roll its best, 37 to 100 percent". #2741's crafting group, slices C3 and C4. Said by
+	 * `UCataclysmForgeCraft::DoItemCraft`, only when they did anything; `Done` is `UCataclysmForge::AffixNodesDoneText`.
+	 */
+	static FString ForgeAffixNodesLine(const FString& ItemName, const FString& Done);
+
+	/**
 	 * The Master Tinkerer's critical success, said after the enchantment craft's own line: "a critical success on
 	 * Quality Helm: the rolls were drawn twice with the better kept, and the craft took no days". Issue #47, slice F6.
 	 * Said by `UCataclysmForgeCraft::DoEnchantmentWork`, only on a critical success.

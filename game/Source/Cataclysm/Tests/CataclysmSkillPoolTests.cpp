@@ -481,20 +481,45 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	TestEqual(TEXT("control: created War, the slots carry War first"), Joined(Carrier.Slots->GetDamageTypes()),
 			  FString(TEXT("War, Demonic")));
 	// A BUILT SKILL TAKES A KEY BEFORE ONE THAT IS NOT, since issue #837 slice 1 (the owner's Q2 of 2026-11-24, "a
-	// skill that is not built yet does not take a key a built skill made for it could"). None of the War Greataxe's six
-	// is built, so the keys hold the Demonic Greataxe's built six although War comes first. This control asked for the
-	// War Greataxe's six until window ss2-w1 (2026-11-25), having been written before Q2. The creation type's place
-	// first is still what the line above checks.
-	bool bAnyWarAxeSkillBuilt = false;
-	for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")))
+	// skill that is not built yet does not take a key a built skill made for it could"). So each slot holds the War
+	// Greataxe's skill when it is built and the Demonic Greataxe's built skill in that slot when it is not, although War
+	// comes first. This control asked for the War Greataxe's six until window ss2-w1 (2026-11-25), having been written
+	// before Q2, and then for the Demonic six whole while none of the War six was built, until bundle 1 (2026-11-25):
+	// Blood and Iron, built that day, is War's aura for every weapon (its weapon type is "All"), so no weapon's War six
+	// is unbuilt any more, on this branch or on any branch queued then (death-skills-2885, the war-vows line to v5g,
+	// affixes-and-rebalance-2883-2884, read from their WeaponSkills.csv). The expectation is worked out slot by slot
+	// from the rule, so a War Greataxe skill built later moves it without breaking it. The creation type's place first
+	// is still what the line above checks.
+	const TArray<FCataclysmWeaponSkill> WarAxeSkills = UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War"));
+	const TArray<FCataclysmWeaponSkill> DemonicAxeSkills =
+		UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic"));
+	TArray<FCataclysmWeaponSkill> ByTheRule;
+	int32 WarAxeUnbuilt = 0;
+	// BUILT IS READ FROM THE TABLE'S OWN ROW, A SHAPE NAMED IN IT, and not from `UCataclysmWeaponSkills::IsBuilt`, the
+	// predicate the fill itself reads: an expectation worked out with the fill's own test would compare the fill with
+	// itself (the coordinating session, 2026-11-25).
+	for (const FCataclysmWeaponSkill& Skill : WarAxeSkills)
 	{
-		bAnyWarAxeSkillBuilt = bAnyWarAxeSkillBuilt || UCataclysmWeaponSkills::IsBuilt(Skill);
+		if (Skill.Shape != ECataclysmSkillShape::None)
+		{
+			ByTheRule.Add(Skill);
+			continue;
+		}
+		++WarAxeUnbuilt;
+		if (const FCataclysmWeaponSkill* Same = DemonicAxeSkills.FindByPredicate(
+				[&Skill](const FCataclysmWeaponSkill& Other) { return Other.Slot == Skill.Slot; }))
+		{
+			ByTheRule.Add(*Same);
+		}
 	}
-	TestFalse(TEXT("set-up: none of the War Greataxe's six is built yet"), bAnyWarAxeSkillBuilt);
+	TestTrue(TEXT("set-up: some of the War Greataxe's six is not built, so the rule has something to choose"),
+			 WarAxeUnbuilt > 0);
+	TestEqual(TEXT("set-up: the rule fills all six slots"), ByTheRule.Num(), 6);
 	// AS SETS, NOT LISTS: here the keys came back as "Molten Cleave, Infernal Plunge, Emberhurl, Burning Wrath,
 	// Pyroclasm, Conflagration" (window ss2-w2), and `SkillsFor` lists the same six in another order; ss2-w2 failed on
 	// comparing them as lists.
-	TestEqual(TEXT("control: so the keys hold the Demonic Greataxe's built six (Q2)"), HeldSix(), DemonicAxe);
+	TestEqual(TEXT("control: so each key holds the built skill for its slot, War's where built (Q2)"), HeldSix(),
+			  SkillNamesInAnyOrder(ByTheRule));
 	const FString WarAxe =
 		SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")));
 	TestTrue(TEXT("control: and not the War Greataxe's six"), HeldSix() != WarAxe);

@@ -2277,6 +2277,10 @@ private:
 	 * REFRESHED, NOT RE-ADDED, for an ally who is still inside. Adding a second
 	 * modifier every second would stack the bonus without limit, which is the
 	 * one way this could go badly wrong and is why the set is kept at all.
+	 *
+	 * TWO BONUSES, A ROW STATING ONE: `AllyMoreDamage` (Death's Pall of Ending,
+	 * 2026-11-25), a More modifier given to the caster too, or
+	 * `AllyIncreasedDamage`, an Increased one given to allies only.
 	 */
 	void HelpAlliesInside();
 
@@ -2331,6 +2335,35 @@ private:
 
 	/** Every ally currently holding immunities this aura granted. Weak, as above. */
 	TArray<TWeakObjectPtr<AActor>> ImmuneAllies;
+
+	/**
+	 * War's Blood and Iron, 2026-11-25: hold the row's shares for two pulses on what stands inside -- armour removed
+	 * and movement slowed on every enemy, movement raised on the caster and every ally -- and grant every ally inside
+	 * the row's `AllyImmune`. Nothing here takes a share back when its holder walks out: it lapses two pulses later
+	 * (the coordinating session's ruling of 2026-11-25, no new linger). Inert for a row stating none of the four.
+	 */
+	void HoldSharesInside(const TArray<AActor*>& EnemiesInside);
+
+	/** Take back every share and every `AllyImmune` grant this aura holds on anyone. */
+	void ReleaseEveryShare();
+
+	/** Everyone this aura holds a share or an `AllyImmune` grant on. Weak, as above. */
+	TArray<TWeakObjectPtr<AActor>> SharedWith;
+
+	/**
+	 * Demonic's Conflagration, 2026-11-25 ("Go with A"): a burning enemy that died inside the ring passes its burn on.
+	 * Bound to `UCataclysmCombatEvents::OnDeath` while the aura runs and a row states `BurnPassesOnDeath`.
+	 */
+	void OnSomeoneDied(const struct FCataclysmDeathNotice& Notice);
+
+	/** The binding above, removed when the aura ends. */
+	FDelegateHandle SomeoneDiedHandle;
+
+public:
+	/** How many burns this activation has passed on at a death. Public so tests can read it. */
+	int32 BurnsPassedOn = 0;
+
+private:
 
 	FTimerHandle PulseTimer;
 	FTimerHandle FinishTimer;

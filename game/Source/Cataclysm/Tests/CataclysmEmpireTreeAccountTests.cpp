@@ -49,7 +49,8 @@ namespace CataclysmEmpireTreeAccountTest
 	const FName StructuralIntegrity(TEXT("basic_0000000w"));	// Architect, a root, 10 points
 	const FName FortifiedGates(TEXT("basic_arch_t1d"));			// <- Structural Integrity at 2, 8 points
 	const FName MasonryTechniques(TEXT("basic_00000010"));		// <- Fortified Gates at 6, 15 points
-	const FName RoughDraft(TEXT("basic_arts_t1d"));			// Artisan, a root; waits on crafting
+	const FName MerchantGuild(TEXT("basic_tres_t1e"));		// Treasury, <- Coinage at 2; waits on a market
+	// (Rough Draft, an Artisan root, was the node used here until #2741's crafting slice C4 built it, 2026-11-25.)
 	const FName Foundations(TEXT("capstone_0000000m"));			// the centre, at 25: Aegis of Hope, The Delver, The Hoarder
 
 	/** A world with this project's game instance and a possessed player of one partition. */
@@ -548,8 +549,8 @@ bool FCataclysmEmpireTreeAccountHeldTest::RunTest(const FString&)
 
 /**
  * A point bought through the game instance comes off the bank and into the tree, and the account record is written:
- * its slot reads back the same tree and bank, and so does a new game instance. A refused buy -- Rough Draft, which waits
- * on crafting -- changes nothing and writes nothing. Prints "BUY".
+ * its slot reads back the same tree and bank, and so does a new game instance. A refused buy -- Merchant Guild, which
+ * waits on a market -- changes nothing and writes nothing. Prints "BUY".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeAccountBuyTest,
 	"Cataclysm.EmpireTree.APointBoughtComesOffTheBankAndTheAccountIsWritten",
@@ -593,11 +594,11 @@ bool FCataclysmEmpireTreeAccountBuyTest::RunTest(const FString&)
 	// A REFUSED BUY, after: nothing changes and nothing is written.
 	const int32 WritesBeforeTheRefusal = Writer->WritesStarted();
 	FString Refusal;
-	const bool bRefusedBought = UCataclysmGameInstance::BuyEmpireTreePoint(Scene.World, RoughDraft, Refusal);
+	const bool bRefusedBought = UCataclysmGameInstance::BuyEmpireTreePoint(Scene.World, MerchantGuild, Refusal);
 	const int32 WritesForTheRefusal = Writer->WritesStarted() - WritesBeforeTheRefusal;
 
 	AddInfo(FString::Printf(TEXT("BUY: %s (%s) with %d write(s); the tree %s, %g banked; the slot %s (%s) holds %s, %g; "
-								 "a new game instance %s. Rough Draft %s: \"%s\", %d write(s); the tree %s, %g banked"),
+								 "a new game instance %s. Merchant Guild %s: \"%s\", %d write(s); the tree %s, %g banked"),
 							bBought ? TEXT("bought") : TEXT("refused"), *Reason, WritesForTheBuy,
 							*Describe(Account->EmpireTree), Account->EmpireUpgradePoints,
 							Read != nullptr ? TEXT("read") : TEXT("did not read"),
@@ -623,8 +624,8 @@ bool FCataclysmEmpireTreeAccountBuyTest::RunTest(const FString&)
 	TestTrue(TEXT("and the bank it was paid from"), Read->EmpireUpgradePoints == 2.5);
 	TestTrue(TEXT("and a new game instance reads the same tree"),
 			 NextSession != nullptr && NextSession->EmpireTree.PointsIn(StructuralIntegrity) == 1);
-	TestFalse(TEXT("Rough Draft is refused"), bRefusedBought);
-	TestTrue(TEXT("because it waits on crafting"), Refusal.Contains(TEXT("crafting")));
+	TestFalse(TEXT("Merchant Guild is refused"), bRefusedBought);
+	TestTrue(TEXT("because it waits on a market"), Refusal.Contains(TEXT("a market")));
 	TestEqual(TEXT("which writes nothing"), WritesForTheRefusal, 0);
 	TestEqual(TEXT("and changes nothing in the tree"), Account->EmpireTree.Total(), 1);
 	TestTrue(TEXT("or the bank"), Account->EmpireUpgradePoints == 2.5);

@@ -785,6 +785,10 @@ public:
 	 * is how a row loses one of them in a later edit.
 	 *
 	 * @param Who     the character that might be immune
+	 * `Slow` IS ASKED BY THE CODE THAT WORKS OUT A WALKING SPEED, since 2026-11-25: an actor immune to Slow ignores
+	 * every movement reduction (`ACataclysmPlayerCharacter::RefreshMovementSpeed`,
+	 * `ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows`). `Pin` and `Madness` are asked by no code.
+	 *
 	 * @param Effect  one of `Stun`, `Knockdown`, `Slow`, `Displacement`, `Pin`
 	 *                or `Madness`. The design's own words, from its table of
 	 *                which effects the anti-stun-lock rule covers

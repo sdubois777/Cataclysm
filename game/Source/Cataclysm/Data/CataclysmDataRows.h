@@ -2541,6 +2541,67 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The chance a forge craft costs a tenth less, 1% a point (Forge Upgrades, Q8 to Q10). #47 slice F6a. */
 	CraftGoldTenthOffChance,
+
+	/** The chance a forge item craft keeps its tier 1 and 2 crafting materials, 2% a point (Material Conservation).
+	 *  #47 slice F6b, drawn by `UCataclysmForge::KeepingOn`. */
+	LowTierMaterialKeptChance,
+
+	/** The chance a forge item craft keeps its tier 3 to 5 crafting materials, 1% a point (Resource Management: "Rare"
+	 *  is tier 3 and above, Q14). #47 slice F6b. */
+	RareMaterialKeptChance,
+
+	/** The chance a forge item craft returns every crafting material it used, on an item whose residue before the craft
+	 *  is above `UCataclysmForge::TemptingFateResidueAbove` (Tempting Fate, Q15, N5). #47 slice F6b. */
+	HighResidueMaterialsReturnedChance,
+
+	/** The residue every forge item craft adds, kept at 0.95 to the power of the points (Tool Maintenance, "-5% CR gained
+	 *  from all crafting actions per point (multiplicative)"). #2741's crafting group, slice C1. */
+	CraftResidueKept,
+
+	/** The same at 0.975 a point, on an item below +6 before the craft (Limited Knowledge). Slice C1. */
+	LowLevelCraftResidueKept,
+
+	/** The same at 0.975 a point, on a craft whose own material is tier 3 or above (Heat Shielding). Slice C1. */
+	RareMaterialCraftResidueKept,
+
+	/** Off the Chaos Stabilizer's share of the residue a craft adds, 0.025 a point (Stable Compounds). Slice C1. */
+	StabilizerShareReduced,
+
+	/** The chance, for each whole 100 of an item's residue before a craft, that the craft leaves it at 0 (Master's
+	 *  Touch). Slice C1. */
+	ResidueResetChancePerHundred,
+
+	/** Days off every forge item craft, one a point (Master Craftsman), after the multipliers. Slice C2. */
+	CraftDaysOff,
+
+	/** Off a forge item craft's days, 1% a point (Industrial Speed). Slice C2. */
+	CraftDaysReduced,
+
+	/** Off a forge item craft's days again, multiplied with the above, 50% (Sovereign's Assembly). Slice C2. */
+	CraftDaysReducedMore,
+
+	/** The chance an affix roll the forge draws is drawn from the top quarter of its band, 3% a point (Precision
+	 *  Crafting). #2741's crafting group, slice C3. */
+	AffixRollTopQuarterChance,
+
+	/** The floor of an affix roll the forge draws, 0.02 a point (Master's Workshop). Slice C3. */
+	AffixRollFloor,
+
+	/** The chance a forge item craft makes one random affix's roll its best, 10% a point (Quality Materials). Slice C3. */
+	AffixRollMaxedChance,
+
+	/** The chance a forge item craft raises one random affix a tier, 1% a point (Apprentice Smith). Slice C4. */
+	AffixTierRaisedChance,
+
+	/** The chance a forge item craft adds one affix, 5% a point (Rough Draft). Slice C4. */
+	AffixAddedChance,
+
+	/** Days off a forge craft on an item with four affixes or more before it, 1 a point (Ancient Techniques). #2741's
+	 *  crafting group, slice C6. */
+	CraftDaysOffOnFullItems,
+
+	/** The share of Worn Residue the Consumption Threshold does not count, 0.05 a point (Residue Protocols). Slice C6. */
+	WornResidueIgnored,
 };
 
 /**

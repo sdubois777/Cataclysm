@@ -168,6 +168,417 @@ bool UCataclysmForge::ForgeUpgradesTenthOff(float Chance, int32 Seed)
 	return Stream.GetFraction() < Chance;
 }
 
+FString FCataclysmForgeKeeping::NodeFor(FName Material) const
+{
+	if (Material.IsNone())
+	{
+		return FString();
+	}
+	if (bAllReturned)
+	{
+		return TEXT("Tempting Fate"); // Every material, whatever its tier (N4: it names itself alone).
+	}
+	const int32 Tier = MaterialTable != nullptr ? UCataclysmDropRoll::MaterialTierOf(MaterialTable, Material) : 0;
+	if (Tier <= 0)
+	{
+		return FString(); // Not a crafting material (N2) or not in the table.
+	}
+	if (Tier <= UCataclysmForge::MaterialConservationHighestTier)
+	{
+		return bLowTierKept ? TEXT("Material Conservation") : FString();
+	}
+	return bRareKept ? TEXT("Resource Management") : FString();
+}
+
+TArray<FCataclysmForgeMaterialTake> FCataclysmForgeKeeping::KeptOf(const TArray<FCataclysmForgeMaterialTake>& Materials) const
+{
+	TArray<FCataclysmForgeMaterialTake> Kept;
+	for (const FCataclysmForgeMaterialTake& Take : Materials)
+	{
+		if (Take.Count > 0 && !NodeFor(Take.Material).IsEmpty())
+		{
+			Kept.Add(Take); // WHOLE (Q12): a node keeps all of its materials or none.
+		}
+	}
+	return Kept;
+}
+
+FString FCataclysmForgeKeeping::KeptPartsOf(const TArray<FCataclysmForgeMaterialTake>& Materials) const
+{
+	TArray<FString> Parts;
+	for (const FCataclysmForgeMaterialTake& Take : KeptOf(Materials))
+	{
+		const FString Name = UCataclysmDropRoll::MaterialNameOf(MaterialTable, Take.Material);
+		Parts.Add(FString::Printf(TEXT("%d %s (%s)"), Take.Count, Name.IsEmpty() ? *Take.Material.ToString() : *Name,
+								  *NodeFor(Take.Material)));
+	}
+	return FString::Join(Parts, TEXT(", "));
+}
+
+FCataclysmForgeKeeping UCataclysmForge::KeepingOn(const FCataclysmItem& Item, float LowTierChance, float RareChance,
+												  float ReturnAllChance, int32 WalkSeedMask, int32 Day,
+												  const UDataTable* MaterialTable)
+{
+	// EACH ON ITS OWN SEED (Q16), and a chance of nought draws nothing, so a player holding none of the three draws as
+	// before this slice.
+	const auto Lands = [&Item, WalkSeedMask, Day](float Chance, int32 Salt)
+	{
+		if (Chance <= 0.0f)
+		{
+			return false;
+		}
+		FRandomStream Stream(AffixCraftSeed(Item, Salt, 0, WalkSeedMask, Day));
+		return Stream.GetFraction() < Chance;
+	};
+	FCataclysmForgeKeeping Out;
+	Out.MaterialTable = MaterialTable;
+	Out.bLowTierKept = Lands(LowTierChance, MaterialConservationSalt);
+	Out.bRareKept = Lands(RareChance, ResourceManagementSalt);
+	// THE RESIDUE BEFORE THE CRAFT (Q15), MORE THAN 500 (N5).
+	Out.bAllReturned = Item.Residue > TemptingFateResidueAbove && Lands(ReturnAllChance, TemptingFateSalt);
+	return Out;
+}
+
+FString UCataclysmForge::KeptText(const FCataclysmForgeKeeping& Keeping, const TArray<FCataclysmForgeMaterialTake>& Materials)
+{
+	const FString Parts = Keeping.KeptPartsOf(Materials);
+	return Parts.IsEmpty() ? FString() : FString::Printf(TEXT(" The empire tree keeps %s."), *Parts);
+}
+
+bool UCataclysmForge::ResidueResetLands(const FCataclysmItem& Item, float ChancePerStep, int32 WalkSeedMask, int32 Day)
+{
+	// WHOLE STEPS OF THE RESIDUE BEFORE THE CRAFT (C3's whole steps, Q15's "before").
+	const float Chance = ChancePerStep * FMath::FloorToFloat(FMath::Max(0.0f, Item.Residue) / MastersTouchResidueStep);
+	if (Chance <= 0.0f)
+	{
+		return false;
+	}
+	FRandomStream Stream(AffixCraftSeed(Item, MastersTouchSalt, 0, WalkSeedMask, Day));
+	return Stream.GetFraction() < Chance;
+}
+
+int32 UCataclysmForge::TreeDaysFor(int32 Days, const FCataclysmForgeCosts& Costs)
+{
+	if (Days <= 0)
+	{
+		return 0; // A CRAFT OF NO DAY STAYS AT NONE.
+	}
+	// THE MULTIPLIERS, THEN THE DAYS OFF, THEN ROUNDED (the city upgrade's order), AND AT LEAST ONE DAY.
+	const float Taken = static_cast<float>(Days) * FMath::Max(0.0f, Costs.DaysFactor) - FMath::Max(0.0f, Costs.DaysOff);
+	return FMath::Max(1, FMath::RoundToInt(Taken));
+}
+
+namespace CataclysmForgeCostsText
+{
+	/** A residue as the screen says it, as `OptionsQuestion` does: whole when whole, else to one place. */
+	FString ResidueWords(float Value)
+	{
+		return FMath::IsNearlyEqual(Value, FMath::RoundToFloat(Value), 0.01f)
+			? FString::Printf(TEXT("%d"), FMath::RoundToInt(Value))
+			: FString::Printf(TEXT("%.1f"), Value);
+	}
+
+	FString Sentence(float ResidueBefore, float ResidueAfter, float ResidueWithout, bool bReset, int32 Days, int32 DaysWithout)
+	{
+		TArray<FString> Parts;
+		if (!FMath::IsNearlyEqual(ResidueAfter, ResidueWithout, 0.01f))
+		{
+			Parts.Add(FString::Printf(TEXT("residue %s to %s, not %s"), *ResidueWords(ResidueBefore),
+									  *ResidueWords(ResidueAfter), *ResidueWords(ResidueWithout)));
+		}
+		if (Days != DaysWithout)
+		{
+			Parts.Add(FString::Printf(TEXT("%d day%s, not %d"), Days, Days == 1 ? TEXT("") : TEXT("s"), DaysWithout));
+		}
+		if (Parts.IsEmpty())
+		{
+			return FString();
+		}
+		return FString::Printf(TEXT(" %s: %s."), bReset ? TEXT("Master's Touch and the empire tree's crafting nodes")
+														: TEXT("The empire tree's crafting nodes"),
+							   *FString::Join(Parts, TEXT("; ")));
+	}
+}
+
+FString UCataclysmForge::CostsText(const FCataclysmForgeOptionEffect& Effect, float ResidueBefore)
+{
+	return CataclysmForgeCostsText::Sentence(ResidueBefore, Effect.ResidueAfter, Effect.OptionsResidueAfter,
+											 Effect.bResidueReset, Effect.Days, Effect.OptionsDays);
+}
+
+FString UCataclysmForge::CleanseCostsText(const FCataclysmForgeCleanse& Plan)
+{
+	const float Halved = FMath::Max(0.0f, Plan.ResidueBefore) * CleansedResidueShare;
+	return CataclysmForgeCostsText::Sentence(Plan.ResidueBefore, Plan.ResidueAfter, Halved, Plan.bResidueReset, Plan.Days,
+											 Plan.DaysBeforeTheTree);
+}
+
+bool FCataclysmForgeRolls::TopQuarterLands(int32 Seed) const
+{
+	if (TopQuarterChance <= 0.0f)
+	{
+		return false;
+	}
+	// ITS OWN STREAM, from the roll's seed and its salt, so the roll's own draws land where they did before this slice.
+	FRandomStream Stream(CataclysmSeedMix::Mix(Seed, UCataclysmForge::PrecisionCraftingSalt, 0));
+	return Stream.GetFraction() < TopQuarterChance;
+}
+
+float FCataclysmForgeRolls::Shape(float Draw, int32 Seed) const
+{
+	// THE HIGHER OF THE TWO FLOORS (the coordinating session, 2026-11-25), and the draw spread from it up to 1.
+	float Low = FMath::Clamp(Floor, 0.0f, 1.0f);
+	if (TopQuarterLands(Seed))
+	{
+		Low = FMath::Max(Low, UCataclysmForge::TopQuarterFloor);
+	}
+	return Low + (1.0f - Low) * Draw;
+}
+
+namespace CataclysmForgeAffixNodes
+{
+	/** "a 40%" for a chance, held inside 0 to 100. */
+	int32 PercentOf(float Chance)
+	{
+		return FMath::RoundToInt(FMath::Clamp(Chance, 0.0f, 1.0f) * 100.0f);
+	}
+
+	/** Whether a node's draw lands for a craft on `Before`: its chance above nought and a draw on its stream below it. */
+	bool Lands(float Chance, FRandomStream& Stream)
+	{
+		return Chance > 0.0f && Stream.GetFraction() < Chance;
+	}
+
+	/** How many of the item's affixes are prefixes and how many suffixes, by their rows' positions. */
+	void CountSides(const FCataclysmItem& Item, const UDataTable* AffixTable, int32& OutPrefixes, int32& OutSuffixes)
+	{
+		OutPrefixes = 0;
+		OutSuffixes = 0;
+		for (const FCataclysmRolledAffix& Rolled : Item.Affixes)
+		{
+			const FCataclysmAffixRow* Row = AffixTable->FindRow<FCataclysmAffixRow>(
+				Rolled.Affix, TEXT("CataclysmForgeAffixNodes::CountSides"), /*bWarnIfMissing=*/false);
+			if (Row != nullptr && Row->Position.Equals(TEXT("prefix"), ESearchCase::IgnoreCase))
+			{
+				++OutPrefixes;
+			}
+			else if (Row != nullptr && Row->Position.Equals(TEXT("suffix"), ESearchCase::IgnoreCase))
+			{
+				++OutSuffixes;
+			}
+		}
+	}
+
+	/**
+	 * Rough Draft's affix for `Item`, on `Stream`: a side with room (a drop's pick of the two when both have), then one
+	 * of that side's candidates for the slot that is of no stat group the item holds, evenly, as a shift draws one; the
+	 * other side when the first has none. False when no slot is free or nothing can be added.
+	 */
+	bool RoughDraftAffixFor(const FCataclysmItem& Item, FRandomStream& Stream, const UDataTable* AffixTable,
+							const UDataTable* BaseTable, FCataclysmAffixCandidate& OutDrawn)
+	{
+		if (AffixTable == nullptr || Item.Affixes.Num() + Item.EnchantmentCount >= UCataclysmItemValues::SlotsPerPiece)
+		{
+			return false; // A FREE SLOT OF THE FOUR, as the Deterministic Affix asks.
+		}
+		const FString Slot = UCataclysmForge::SlotOf(Item, BaseTable);
+		if (Slot.IsEmpty())
+		{
+			return false;
+		}
+		int32 Prefixes = 0;
+		int32 Suffixes = 0;
+		CountSides(Item, AffixTable, Prefixes, Suffixes);
+		TArray<FString> Sides;
+		if (Prefixes < UCataclysmItemValues::PrefixesPerPiece)
+		{
+			Sides.Add(TEXT("prefix"));
+		}
+		if (Suffixes < UCataclysmItemValues::SuffixesPerPiece)
+		{
+			Sides.Add(TEXT("suffix"));
+		}
+		// BOTH HAVE ROOM: A SIDE AT RANDOM, as a drop picks the side of an odd affix (`SplitForADrop`).
+		if (Sides.Num() == 2 && Stream.RandRange(0, 1) == 1)
+		{
+			Sides.Swap(0, 1);
+		}
+		TSet<FString> Held;
+		UCataclysmForge::HeldGroupsOf(Item, AffixTable, Held);
+		for (const FString& Side : Sides)
+		{
+			TArray<FCataclysmAffixCandidate> Candidates;
+			UCataclysmDropRoll::CandidatesFor(AffixTable, Slot, Side, Stream, Candidates);
+			TArray<FCataclysmAffixCandidate> Open;
+			for (const FCataclysmAffixCandidate& Candidate : Candidates)
+			{
+				const FCataclysmAffixRow* Row = AffixTable->FindRow<FCataclysmAffixRow>(
+					Candidate.Affix, TEXT("CataclysmForgeAffixNodes::RoughDraftAffixFor"), /*bWarnIfMissing=*/false);
+				if (Row == nullptr)
+				{
+					continue;
+				}
+				TSet<FString> Groups;
+				UCataclysmDropRoll::GroupsOf(AffixTable, *Row, Candidate.DamageTypes, Groups);
+				if (Groups.Intersect(Held).Num() == 0)
+				{
+					Open.Add(Candidate);
+				}
+			}
+			if (!Open.IsEmpty())
+			{
+				OutDrawn = Open[Stream.RandRange(0, Open.Num() - 1)];
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+FCataclysmForgeAffixNodesDone UCataclysmForge::AffixNodesOn(FCataclysmItem& Changed, const FCataclysmItem& Before,
+															 const FCataclysmForgeAffixNodes& Nodes, int32 WalkSeedMask,
+															 int32 Day, const UDataTable* AffixTable,
+															 const UDataTable* BaseTable, int32 DifficultyTier)
+{
+	FCataclysmForgeAffixNodesDone Done;
+
+	// ROUGH DRAFT FIRST (D1): one more affix, at the drop's best tier for the run (D2), its roll drawn with the tree's
+	// roll nodes; the piece's rarity follows its affix count (D3).
+	{
+		const int32 Seed = AffixCraftSeed(Before, RoughDraftSalt, 0, WalkSeedMask, Day);
+		FRandomStream Stream(Seed);
+		FCataclysmAffixCandidate Drawn;
+		if (CataclysmForgeAffixNodes::Lands(Nodes.AddedChance, Stream)
+			&& CataclysmForgeAffixNodes::RoughDraftAffixFor(Changed, Stream, AffixTable, BaseTable, Drawn))
+		{
+			FCataclysmRolledAffix Added;
+			Added.Affix = Drawn.Affix;
+			Added.Tier = UCataclysmDropRoll::MaxAffixTierOnADrop(DifficultyTier);
+			Added.Roll = Nodes.Rolls.Shape(Stream.FRand(), Seed);
+			Added.DamageTypes = Drawn.DamageTypes;
+			Done.Added = Changed.Affixes.Add(Added);
+			Done.AddedRow = Added.Affix;
+			Done.AddedTier = Added.Tier;
+		}
+	}
+
+	// THEN APPRENTICE SMITH: one regular affix below tier 7, a tier up, its roll kept as the tier upgrade keeps it.
+	{
+		FRandomStream Stream(AffixCraftSeed(Before, ApprenticeSmithSalt, 0, WalkSeedMask, Day));
+		if (CataclysmForgeAffixNodes::Lands(Nodes.TierRaisedChance, Stream))
+		{
+			TArray<int32> Below;
+			for (int32 Index = 0; Index < Changed.Affixes.Num(); ++Index)
+			{
+				if (Changed.Affixes[Index].Tier < UCataclysmItemValues::MaxAffixTier)
+				{
+					Below.Add(Index);
+				}
+			}
+			if (!Below.IsEmpty())
+			{
+				const int32 Index = Below[Stream.RandRange(0, Below.Num() - 1)];
+				Done.Raised = Index;
+				Done.RaisedRow = Changed.Affixes[Index].Affix;
+				Done.RaisedFromTier = Changed.Affixes[Index].Tier;
+				Changed.Affixes[Index].Tier += 1;
+			}
+		}
+	}
+
+	// THEN QUALITY MATERIALS: one regular affix's roll below the top, made the top.
+	{
+		FRandomStream Stream(AffixCraftSeed(Before, QualityMaterialsSalt, 0, WalkSeedMask, Day));
+		if (CataclysmForgeAffixNodes::Lands(Nodes.RollMaxedChance, Stream))
+		{
+			TArray<int32> Below;
+			for (int32 Index = 0; Index < Changed.Affixes.Num(); ++Index)
+			{
+				if (Changed.Affixes[Index].Roll < 1.0f)
+				{
+					Below.Add(Index);
+				}
+			}
+			if (!Below.IsEmpty())
+			{
+				const int32 Index = Below[Stream.RandRange(0, Below.Num() - 1)];
+				Done.Maxed = Index;
+				Done.MaxedRow = Changed.Affixes[Index].Affix;
+				Done.MaxedFromRoll = Changed.Affixes[Index].Roll;
+				Changed.Affixes[Index].Roll = 1.0f;
+			}
+		}
+	}
+	return Done;
+}
+
+FString UCataclysmForge::AffixNodesChanceText(const FCataclysmForgeAffixNodes& Nodes)
+{
+	TArray<FString> Parts;
+	if (Nodes.AddedChance > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("a %d%% chance of one more affix"),
+								  CataclysmForgeAffixNodes::PercentOf(Nodes.AddedChance)));
+	}
+	if (Nodes.TierRaisedChance > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("a %d%% chance one affix rises a tier"),
+								  CataclysmForgeAffixNodes::PercentOf(Nodes.TierRaisedChance)));
+	}
+	if (Nodes.RollMaxedChance > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("a %d%% chance one affix's roll is made its best"),
+								  CataclysmForgeAffixNodes::PercentOf(Nodes.RollMaxedChance)));
+	}
+	if (Parts.IsEmpty())
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT(" The empire tree's affix nodes: %s."), *FString::Join(Parts, TEXT("; ")));
+}
+
+FString UCataclysmForge::RollsText(const FCataclysmForgeRolls& Rolls)
+{
+	const int32 Floor = CataclysmForgeAffixNodes::PercentOf(Rolls.Floor);
+	const int32 Top = CataclysmForgeAffixNodes::PercentOf(Rolls.TopQuarterChance);
+	const int32 TopFloor = CataclysmForgeAffixNodes::PercentOf(TopQuarterFloor);
+	if (Floor > 0 && Top > 0)
+	{
+		return FString::Printf(TEXT(" Its roll is drawn from %d percent up, with a %d%% chance from %d percent up."),
+							   Floor, Top, TopFloor);
+	}
+	if (Floor > 0)
+	{
+		return FString::Printf(TEXT(" Its roll is drawn from %d percent up."), Floor);
+	}
+	if (Top > 0)
+	{
+		return FString::Printf(TEXT(" Its roll has a %d%% chance to be drawn from %d percent up."), Top, TopFloor);
+	}
+	return FString();
+}
+
+FString UCataclysmForge::AffixNodesDoneText(const FCataclysmForgeAffixNodesDone& Done, const UDataTable* AffixTable)
+{
+	TArray<FString> Parts;
+	if (Done.Added != INDEX_NONE)
+	{
+		Parts.Add(FString::Printf(TEXT("added %s at tier %d"), *AffixNameOf(Done.AddedRow, AffixTable),
+								  Done.AddedTier));
+	}
+	if (Done.Raised != INDEX_NONE)
+	{
+		Parts.Add(FString::Printf(TEXT("raised %s from tier %d to tier %d"), *AffixNameOf(Done.RaisedRow, AffixTable),
+								  Done.RaisedFromTier, Done.RaisedFromTier + 1));
+	}
+	if (Done.Maxed != INDEX_NONE)
+	{
+		Parts.Add(FString::Printf(TEXT("made %s's roll its best, %d to 100 percent"),
+								  *AffixNameOf(Done.MaxedRow, AffixTable), RollPercent(Done.MaxedFromRoll)));
+	}
+	return FString::Join(Parts, TEXT("; "));
+}
+
 FString UCataclysmForge::DiscountText(const FCataclysmForgePricing& Pricing, FName Material)
 {
 	const int32 Off = Pricing.PercentOffFor(Material);
@@ -837,11 +1248,14 @@ int32 UCataclysmForge::RerolledAffixSeed(const FCataclysmItem& Item, int32 Affix
 	return CataclysmSeedMix::Mix(OfTheRunAndDay, static_cast<int32>(Crc), Affix);
 }
 
-float UCataclysmForge::RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day)
+float UCataclysmForge::RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day,
+										const FCataclysmForgeRolls& Rolls)
 {
-	// EVENLY FROM 0 UP TO 1, AS A DROP DRAWS AN AFFIX'S ROLL (`UCataclysmDropRoll`, `Rolled.Roll = Stream.FRand()`).
-	const FRandomStream Stream(RerolledAffixSeed(Item, Affix, WalkSeedMask, Day));
-	return Stream.FRand();
+	// EVENLY FROM 0 UP TO 1, AS A DROP DRAWS AN AFFIX'S ROLL (`UCataclysmDropRoll`, `Rolled.Roll = Stream.FRand()`), then
+	// placed by the empire tree's roll nodes (#2741's crafting slice C3), whose own draw is on another stream.
+	const int32 Seed = RerolledAffixSeed(Item, Affix, WalkSeedMask, Day);
+	const FRandomStream Stream(Seed);
+	return Rolls.Shape(Stream.FRand(), Seed);
 }
 
 int32 UCataclysmForge::RollPercent(float Roll)
@@ -950,7 +1364,7 @@ FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclys
 																  int32 Seed, const UDataTable* AffixTable,
 																  const UDataTable* BaseTable, int32 FragmentsHeld,
 																  int32 DifficultyTier, int64 GoldHeld,
-	const FCataclysmForgePricing& Pricing)
+	const FCataclysmForgePricing& Pricing, const FCataclysmForgeRolls& Rolls)
 {
 	FCataclysmForgeAffixChange Out;
 	Out.Affix = Item.Affixes.Num();
@@ -1015,7 +1429,7 @@ FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclys
 			Out.ToDamageTypes.Add(Pool[Taken]);
 		}
 	}
-	Out.Roll = Stream.FRand();
+	Out.Roll = Rolls.Shape(Stream.FRand(), Seed); // #2741's crafting slice C3: the empire tree's roll nodes.
 
 	if (Out.MaterialHeld < 1)
 	{
@@ -1659,12 +2073,14 @@ int32 UCataclysmForge::PenaltyDaysFor(float Residue)
 FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, float ResidueAfter, int32 Days, int64 CraftGold,
 													   const FCataclysmForgeCraftOptions& Options, int32 StabilizersHeld,
 													   int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld,
-	const FCataclysmForgePricing& Pricing)
+	const FCataclysmForgePricing& Pricing, const FCataclysmForgeCosts& Costs)
 {
 	FCataclysmForgeOptionEffect Out;
 	Out.ResidueAfter = ResidueAfter;
 	Out.Days = Days;
 	const float Added = ResidueAfter - ResidueBefore;
+	// THE EMPIRE TREE'S RESIDUE NODES ON WHAT THE CRAFT ADDS (slice C1), applied with the options' below and said apart.
+	const float TreeShare = Added > 0.0f ? FMath::Max(0.0f, Costs.ResidueFactor) : 1.0f;
 
 	// A CHAOS STABILIZER HALVES WHAT THE CRAFT ADDS, CERTAINLY (Q27). The days and the craft's gold are read from the
 	// residue before the craft, so they do not change.
@@ -1685,6 +2101,13 @@ FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, floa
 		Out.bStabilizerUsed = true;
 		Out.ResidueAfter = ResidueBefore + Added * StabilizedResidueShare;
 		Out.ResidueSaved = ResidueAfter - Out.ResidueAfter;
+		// STABLE COMPOUNDS (slice C1): "reduces CR gain by an additional 2.5% per point", off the Stabilizer's share.
+		if (Costs.StabilizerShareReduced > 0.0f)
+		{
+			Out.ResidueAfter =
+				ResidueBefore + Added * FMath::Max(0.0f, StabilizedResidueShare - Costs.StabilizerShareReduced);
+			Out.ResidueSaved = ResidueAfter - Out.ResidueAfter;
+		}
 		// ITS ROW'S BASE GOLD THROUGH `GoldFor`, ONCE (G1).
 		const int64 GoldBeforeTheStabilizer = Out.Gold;
 		Out.Gold += GoldFor(BaseGoldOf(ReduceResidueGainOperationRow, BaseGoldFor(0)), ResidueBefore, DifficultyTier);
@@ -1732,6 +2155,19 @@ FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, floa
 		Out.Materials.Add({FName(TaintedShardRow), Shards});
 	}
 
+	// THE EMPIRE TREE'S CRAFTING NODES, AFTER THE OPTIONS (slices C1 and C2): what the options alone give is kept for
+	// their sentences, then the residue they leave is taken down by the tree's factor (multiplied: D9), Master's Touch
+	// leaves it at 0, and the days after the Tainted Shards take the day nodes.
+	Out.OptionsResidueAfter = Out.ResidueAfter;
+	Out.OptionsDays = Out.Days;
+	Out.ResidueAfter = ResidueBefore + (Out.ResidueAfter - ResidueBefore) * TreeShare;
+	if (Costs.bResidueReset)
+	{
+		Out.ResidueAfter = 0.0f;
+		Out.bResidueReset = true;
+	}
+	Out.Days = TreeDaysFor(Out.Days, Costs);
+
 	// THE GOLD, THE CRAFT'S AND THE OPTIONS' TOGETHER.
 	if (Out.Gold > 0 && FMath::Max<int64>(0, GoldHeld) < CraftGold + Out.Gold)
 	{
@@ -1755,13 +2191,13 @@ FString UCataclysmForge::OptionsQuestion(const FCataclysmForgeOptionEffect& Effe
 	if (Effect.bStabilizerUsed)
 	{
 		Out += FString::Printf(TEXT(" With a Chaos Stabilizer: residue %s to %s, not %s."), *Residue(ResidueBefore),
-							   *Residue(Effect.ResidueAfter), *Residue(PlanResidueAfter));
+							   *Residue(Effect.OptionsResidueAfter), *Residue(PlanResidueAfter));
 	}
 	if (Effect.ShardsUsed > 0)
 	{
 		Out += FString::Printf(TEXT(" With %d Tainted Shard%s: %d day%s, not %d."), Effect.ShardsUsed,
-							   Effect.ShardsUsed == 1 ? TEXT("") : TEXT("s"), Effect.Days, Effect.Days == 1 ? TEXT("") : TEXT("s"),
-							   PlanDays);
+							   Effect.ShardsUsed == 1 ? TEXT("") : TEXT("s"), Effect.OptionsDays,
+							   Effect.OptionsDays == 1 ? TEXT("") : TEXT("s"), PlanDays);
 	}
 	if (Effect.Gold > 0)
 	{
@@ -1772,7 +2208,7 @@ FString UCataclysmForge::OptionsQuestion(const FCataclysmForgeOptionEffect& Effe
 
 FCataclysmForgeCleanse UCataclysmForge::CleanseOf(const FCataclysmItem& Item, int32 EssenceHeld, int32 DifficultyTier,
 												  int64 GoldHeld,
-	const FCataclysmForgePricing& Pricing)
+	const FCataclysmForgePricing& Pricing, const FCataclysmForgeCosts& Costs)
 {
 	FCataclysmForgeCleanse Out;
 	Out.Material = FName(PurifiedEssenceRow);
@@ -1781,6 +2217,15 @@ FCataclysmForgeCleanse UCataclysmForge::CleanseOf(const FCataclysmItem& Item, in
 	Out.ResidueAfter = FMath::Max(0.0f, Item.Residue) * CleansedResidueShare;
 	// "1 day per 500 CR", A PART COUNTING AS A DAY, AND AT LEAST ONE (Q25).
 	Out.Days = FMath::Max(1, FMath::CeilToInt(FMath::Max(0.0f, Item.Residue) / ResiduePerCleanseDay));
+	// THE EMPIRE TREE'S CRAFTING NODES (slices C1, C2): the cleanse adds no residue for the residue nodes to take, but
+	// Master's Touch can leave it at 0 and the day nodes take its days, as every forge item craft's (G1, G2).
+	Out.DaysBeforeTheTree = Out.Days;
+	Out.Days = TreeDaysFor(Out.Days, Costs);
+	if (Costs.bResidueReset)
+	{
+		Out.ResidueAfter = 0.0f;
+		Out.bResidueReset = true;
+	}
 	Out.Gold = GoldFor(BaseGoldOf(CleanseOperationRow, BaseGoldFor(1)), Item.Residue, DifficultyTier);
 	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
