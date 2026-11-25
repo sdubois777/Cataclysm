@@ -16,6 +16,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Player/CataclysmPowerScore.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/DataTable.h"
 
@@ -131,6 +132,61 @@ TArray<ECataclysmGearSlot> UCataclysmGearSlots::CandidateSlotsFor(const FString&
 	// why the four potion slots are absent -- and a caller asking about one
 	// should get "nowhere", not a warning.
 	return {};
+}
+
+ECataclysmGearSlot UCataclysmGearSlots::SlotToReplace(const FCataclysmItem& Incoming,
+													  const TArray<ECataclysmGearSlot>& Candidates,
+													  const TArray<FCataclysmItem>& Worn)
+{
+	// A RARITY AS A RANK, Everyday 0 to Cataclysmic 7, and a piece with none below every one of them (the header says
+	// why). A lambda and not a named helper, so a unity build cannot meet its name in another file.
+	const auto RankOf = [](const FCataclysmItem& Item)
+	{
+		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+		return UCataclysmItemModifiers::RarityOfItem(Item, Rarity) ? static_cast<int32>(Rarity) : -1;
+	};
+	const auto WornIn = [&Worn](ECataclysmGearSlot Slot) -> const FCataclysmItem*
+	{
+		const int32 Index = static_cast<int32>(Slot);
+		return Worn.IsValidIndex(Index) && !Worn[Index].Base.IsNone() ? &Worn[Index] : nullptr;
+	};
+
+	// FIRST, WHICH RARITY IS REPLACED: the incoming piece's own when one of that rarity is worn, else the lowest worn.
+	const int32 IncomingRank = RankOf(Incoming);
+	bool bOwnRarityWorn = false;
+	int32 LowestRank = TNumericLimits<int32>::Max();
+	for (const ECataclysmGearSlot Slot : Candidates)
+	{
+		if (const FCataclysmItem* Piece = WornIn(Slot))
+		{
+			const int32 Rank = RankOf(*Piece);
+			bOwnRarityWorn = bOwnRarityWorn || Rank == IncomingRank;
+			LowestRank = FMath::Min(LowestRank, Rank);
+		}
+	}
+	const int32 ReplacedRank = bOwnRarityWorn ? IncomingRank : LowestRank;
+
+	// THEN WHICH PIECE OF IT: the lowest Power Score, and the first in the candidates' order among equals, which a
+	// strict "lower than" over the candidates in order gives.
+	ECataclysmGearSlot Chosen = Candidates.IsEmpty() ? ECataclysmGearSlot::Count : Candidates[0];
+	float ChosenScore = 0.0f;
+	bool bChosen = false;
+	for (const ECataclysmGearSlot Slot : Candidates)
+	{
+		const FCataclysmItem* Piece = WornIn(Slot);
+		if (Piece == nullptr || RankOf(*Piece) != ReplacedRank)
+		{
+			continue;
+		}
+		const float Score = UCataclysmPowerScore::WornPieceScoreOf(*Piece, Slot);
+		if (!bChosen || Score < ChosenScore)
+		{
+			Chosen = Slot;
+			ChosenScore = Score;
+			bChosen = true;
+		}
+	}
+	return Chosen;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,18 +469,34 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::Equip(
 		return ECataclysmEquipResult::NoSlotForThisItem;
 	}
 
-	// THE FIRST FREE ONE, AND THE FIRST ONE WHEN NONE IS FREE. With eight ring
-	// slots, filling a free one rather than replacing an occupied one is what a
-	// player means by "wear this"; replacing only becomes the answer once there
-	// is nowhere left to put it. EquipInto is how a player says which.
+	// THE FIRST FREE ONE. With eight ring slots, filling a free one rather than
+	// replacing an occupied one is what a player means by "wear this";
+	// replacing only becomes the answer once there is nowhere left to put it.
+	// EquipInto is how a player says which.
 	ECataclysmGearSlot Chosen = Candidates[0];
+	bool bOneIsFree = false;
 	for (const ECataclysmGearSlot Candidate : Candidates)
 	{
 		if (SlotIsEmpty(Candidate))
 		{
 			Chosen = Candidate;
+			bOneIsFree = true;
 			break;
 		}
+	}
+
+	// NONE FREE, AND SEVERAL TO CHOOSE FROM: THE ONE OF ITS OWN RARITY, ELSE THE
+	// LOWEST RARITY WORN (`UCataclysmGearSlots::SlotToReplace`). The owner's
+	// report of 2026-11-24: a ring was compared with Ring 1 "no matter what",
+	// because until it this took the first candidate, and the comparison asks
+	// this function (`PreviewEquip`). A WEAPON ONLY WHEN ONE HAND'S WEAPON COMES
+	// OFF: when the new one cannot stand beside either held weapon both come off,
+	// whichever hand is named, and the hand it lands in is left as it was.
+	if (!bOneIsFree && Candidates.Num() > 1
+		&& (!UCataclysmGearSlots::IsWeaponSlot(Chosen)
+			|| WeaponsComingOffFor(UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable)) == 1))
+	{
+		Chosen = UCataclysmGearSlots::SlotToReplace(Item, Candidates, Slots);
 	}
 
 	const ECataclysmEquipResult Result =
