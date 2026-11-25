@@ -37,6 +37,11 @@ condition. Every one was read by hand:
 A new condition in `CONDITION_WORDS` is read this way unless it is added to the first list, and a new sentence that
 states a condition without a row carrying it fails unless it is added to the second with how it carries it.
 
+**A KNOWN LIMIT: THE SIX CONDITIONS ON THE FIRST LIST ARE NOT CHECKED AT ALL.** A row that loses `health_below`,
+`enemies_in_reach_at_least`, `fervour_threshold_reached`, `class_resource_points_at_least`, `attacker_beyond_metres` or
+`opponent_within_metres` is still not caught. The coordinating session named a later refinement, not made now: read
+those six by fuller phrases, such as "below N% health", rather than by single words.
+
 ### Ruling recorded here
 
 The coordinating session's answer of 2026-11-25 to item 3 of slice C4a's report: not an issue, but a small slice of its

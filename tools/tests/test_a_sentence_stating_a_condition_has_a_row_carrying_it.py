@@ -18,6 +18,10 @@ many sentences that state no such condition; each says how many it matched on 20
 each remaining sentence that says a condition's words and carries it some other way: a stat whose meaning includes it, a
 stack's own life or the event that grants it. Each says how. When this check was written it found no row in any tree
 that had lost its condition.
+
+A KNOWN LIMIT: THE CONDITIONS ON `TOO_GENERAL_TO_READ_BACKWARDS` ARE NOT CHECKED AT ALL, so a row that loses one of them
+is still not caught. A later refinement, named by the coordinating session and not made now, is to read them by fuller
+phrases, such as "below N% health", rather than by single words.
 """
 
 from __future__ import annotations
