@@ -159,6 +159,82 @@ bool UCataclysmAbilitySystemComponent::HasGrantedImmunityTo(const FString& Effec
 	return false;
 }
 
+void UCataclysmAbilitySystemComponent::HoldAuraShare(ECataclysmAuraShareKind Kind, const UObject* From, float Percent,
+													 float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Percent <= 0.0f || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	PruneLapsedAuraShares();
+	for (FCataclysmAuraShare& Held : AuraShares)
+	{
+		if (Held.Kind == Kind && Held.From.Get() == From)
+		{
+			Held.Percent = Percent;
+			Held.UntilSeconds = Now + Seconds;
+			return;
+		}
+	}
+	FCataclysmAuraShare Share;
+	Share.Kind = Kind;
+	Share.From = From;
+	Share.Percent = Percent;
+	Share.UntilSeconds = Now + Seconds;
+	AuraShares.Add(Share);
+}
+
+int32 UCataclysmAbilitySystemComponent::ReleaseAuraSharesFrom(const UObject* From)
+{
+	// LAPSED NOW RATHER THAN REMOVED, so `HoldsAnyAuraShare` stays true until the next refresh of this character's
+	// speed prunes it: a player's speed has no event for a share ending, and removing it here would leave the raised
+	// speed standing.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	int32 Released = 0;
+	for (FCataclysmAuraShare& Held : AuraShares)
+	{
+		if (Held.From.Get() == From && Held.UntilSeconds > Now)
+		{
+			Held.UntilSeconds = Now;
+			++Released;
+		}
+	}
+	return Released;
+}
+
+float UCataclysmAbilitySystemComponent::AuraSharePercentNow(ECataclysmAuraShareKind Kind) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Largest = 0.0f;
+	for (const FCataclysmAuraShare& Held : AuraShares)
+	{
+		if (Held.Kind == Kind && Held.UntilSeconds > Now)
+		{
+			Largest = FMath::Max(Largest, Held.Percent);
+		}
+	}
+	return Largest;
+}
+
+void UCataclysmAbilitySystemComponent::PruneLapsedAuraShares()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	AuraShares.RemoveAll([Now](const FCataclysmAuraShare& Held) { return Held.UntilSeconds <= Now; });
+}
+
 int32 UCataclysmAbilitySystemComponent::ClearPendingResummons()
 {
 	int32 Running = 0;
@@ -4204,8 +4280,10 @@ float UCataclysmAbilitySystemComponent::ArmourRemovedPercentNow() const
 		? FMath::Max(0.0f, ArmourRemovedPercent) : 0.0f;
 	// AND WHAT RIDES ON THE AILMENTS IT CARRIES, in the same sum. Issue #1833,
 	// ruled 2026-10-06: every armour reduction on a character adds in one place.
+	// AND AN AURA'S SHARE, War's Blood and Iron's 10%, in the same sum. 2026-11-25.
 	return FMath::Clamp(Rending + PlacedPercentNow(EPlacedStackKind::ArmourRemoved)
-							+ AilmentRiderPercentNow(ECataclysmAilmentRider::ArmourRemoved),
+							+ AilmentRiderPercentNow(ECataclysmAilmentRider::ArmourRemoved)
+							+ AuraSharePercentNow(ECataclysmAuraShareKind::ArmourRemoved),
 						0.0f, 100.0f);
 }
 

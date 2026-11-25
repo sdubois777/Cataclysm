@@ -239,6 +239,52 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** Forge Upgrades' chance a craft costs a tenth less, 1% a point (Q8 to Q10): times `ForgeUpgradesFactor` after
 	 *  the capped reductions, rolled once a craft from the item and the day (`UCataclysmForge::ForgeUpgradesTenthOff`). */
 	float CraftGoldTenthOffChance = 0.0f;
+
+	/** #47 slice F6b, the forge's materials (the coordinating session's Q11 to Q17 of 2026-11-22, N1 to N5 of 2026-11-25).
+	 *  Each a chance drawn once a forge item craft from the item and the day (`UCataclysmForge::KeepingOn`): Material
+	 *  Conservation's, 2% a point, keeps the craft's tier 1 and 2 materials; Resource Management's, 1% a point, its tier
+	 *  3 to 5 ones; Tempting Fate's, 15%, every material, on an item whose residue before the craft is above 500. */
+	float LowTierMaterialKeptChance = 0.0f;
+	float RareMaterialKeptChance = 0.0f;
+	float HighResidueMaterialsReturnedChance = 0.0f;
+
+	/** #2741's crafting group, slices C1 and C2 (the coordinating session's rulings of 2026-11-25). The residue a forge
+	 *  item craft adds is multiplied by each factor that applies to it, each compounded per point: Tool Maintenance's
+	 *  on every craft, Limited Knowledge's on an item below +6 before the craft, Heat Shielding's on a craft whose own
+	 *  material is tier 3 or above. `UCataclysmForgeCraft::CostsFor` chooses which apply. */
+	float CraftResidueFactor = 1.0f;
+	float LowLevelCraftResidueFactor = 1.0f;
+	float RareMaterialCraftResidueFactor = 1.0f;
+
+	/** Stable Compounds' 0.025 a point off the Chaos Stabilizer's share of the residue a craft adds (0.5). */
+	float StabilizerShareReduced = 0.0f;
+
+	/** Master's Touch's 1% for each whole 100 of an item's residue before a craft that the craft leaves it at 0. */
+	float ResidueResetChancePerHundred = 0.0f;
+
+	/** A forge item craft's days: times (1 - `CraftDaysReduced`) (Industrial Speed) and (1 - `CraftDaysReducedMore`)
+	 *  (Sovereign's Assembly), less `CraftDaysOff` (Master Craftsman), then rounded; a craft of at least one day keeps
+	 *  one, and a craft of none stays at none (`UCataclysmForge::TreeDaysFor`). */
+	float CraftDaysOff = 0.0f;
+	float CraftDaysReduced = 0.0f;
+	float CraftDaysReducedMore = 0.0f;
+
+	/** #2741's crafting group, slices C3 and C4 (the coordinating session's rulings of 2026-11-25). An affix roll the
+	 *  forge draws (a reroll, a Deterministic Affix, Rough Draft's affix) is drawn from `AffixRollFloor` up (Master's
+	 *  Workshop, 0.02 a point), and on Precision Crafting's draw (`AffixRollTopQuarterChance`, 3% a point) from 0.75 up.
+	 *  A forge item craft, on draws of its own: adds one affix (Rough Draft, 5% a point), raises one random affix a tier
+	 *  (Apprentice Smith, 1% a point), makes one random affix's roll its best (Quality Materials, 10% a point). */
+	float AffixRollTopQuarterChance = 0.0f;
+	float AffixRollFloor = 0.0f;
+	float AffixRollMaxedChance = 0.0f;
+	float AffixTierRaisedChance = 0.0f;
+	float AffixAddedChance = 0.0f;
+
+	/** #2741's crafting group, slice C6 (the coordinating session's rulings of 2026-11-25). Ancient Techniques: days off
+	 *  a forge craft on an item that has four affixes or more before it, added to Master Craftsman's. Residue Protocols:
+	 *  the share of Worn Residue the Consumption Threshold does not count (`UCataclysmWearing::CountedWornResidue`). */
+	float CraftDaysOffOnFullItems = 0.0f;
+	float WornResidueIgnored = 0.0f;
 };
 
 /**

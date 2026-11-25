@@ -1695,7 +1695,13 @@ void ACataclysmMinion::RefreshWalkSpeed()
 	// ITS SUMMONER'S PACE, OR ITS OWN WHEN THERE IS NO SUMMONER TO READ. `CommandedWalkSpeedCmPerSecond` answers nought
 	// for a summoner that is not a walking character, which no shipped summon has. Issue #2793.
 	const float Commanded = UCataclysmCommand::CommandedWalkSpeedCmPerSecond(this);
-	const float Wanted = Commanded > 0.0f ? Commanded : UncommandedWalkSpeedCmPerSecond;
+	// AND FASTER WHILE AN AURA HOLDS THAT ON IT: War's Blood and Iron, "you and your allies within it ... move 15%
+	// faster", 2026-11-25. A minion has no slow to drop for its immunity: nothing slows a minion's walk.
+	const UCataclysmAbilitySystemComponent* Abilities =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this));
+	const float Raised =
+		1.0f + (Abilities ? Abilities->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) : 0.0f) / 100.0f;
+	const float Wanted = (Commanded > 0.0f ? Commanded : UncommandedWalkSpeedCmPerSecond) * Raised;
 
 	// ONLY ON A CHANGE, as a creature's walking speed is written: a state that changes rarely, not a value recomputed.
 	if (!FMath::IsNearlyEqual(Movement->MaxWalkSpeed, Wanted))

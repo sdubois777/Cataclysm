@@ -173,12 +173,14 @@ public:
 	 * Every ally within RadiusCm of Origin, nearest first. Excludes the
 	 * instigator itself.
 	 *
-	 * FOR THE ALLY HALF OF AN AURA. Conflagration and Blood and Iron both state
-	 * a benefit for allies standing in them -- "allies within it deal 8%
-	 * increased fire damage" -- and before there were sides there was no way to
-	 * ask who those were. The benefit itself is a buff magnitude, which is issue
-	 * #166 and is still not applied; this is the half that finds who to apply it
-	 * to.
+	 * FOR THE ALLY HALF OF AN AURA, which finds who to apply it to; before there
+	 * were sides there was no way to ask who those were. Five auras state "allies
+	 * within it deal 8% increased damage" (`AllyIncreasedDamage`), and since
+	 * 2026-11-25 the three damage-type auras each do a different thing (the
+	 * owner's "avoid making all of the aura's kinda samey"): Pall of Ending's 10%
+	 * more damage and Blood and Iron's speed and slow immunity reach allies found
+	 * here AND the caster, which `UCataclysmAuraSkill` adds itself because this
+	 * excludes it; Conflagration's ally half was replaced by a burn passing on.
 	 *
 	 * @param MaxTargets  zero means no limit
 	 */

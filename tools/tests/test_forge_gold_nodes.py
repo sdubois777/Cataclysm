@@ -83,9 +83,12 @@ def test_the_five_nodes_are_built_with_their_rows_and_caps() -> None:
         assert gen.EMPIRE_TREE_BUILT.get(name) == 11, f"{name} is not built in slice 11"
         assert name not in gen.EMPIRE_TREE_REFUSED, f"{name} is still refused"
         assert gen.EMPIRE_TREE_EFFECTS.get(name) == effects, f"{name}'s row is {gen.EMPIRE_TREE_EFFECTS.get(name)}"
+    # THE FIVE KINDS TOGETHER, IN THIS ORDER, wherever they stand: they were the last five until #47 slice F6b added three
+    # after them.
     kinds = gen.EMPIRE_TREE_EFFECT_KINDS
-    assert kinds[-5:] == ("CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
-                          "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance")
+    start = kinds.index("CraftGoldReduced")
+    assert kinds[start:start + 5] == ("CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
+                                      "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance")
 
 
 def test_the_factor_holds_the_reductions_at_three_quarters_and_takes_the_tenth_after() -> None:
@@ -117,10 +120,19 @@ def test_every_plan_applies_the_pricing_after_its_price_and_before_its_refusal()
         match = re.search(rf"\n\w[\w<>]* UCataclysmForge::{name}\(", forge)
         assert match, name
         signature = flat(forge[match.start():forge.index("{", match.start())]).rstrip()
-        assert signature.endswith("int64 GoldHeld, const FCataclysmForgePricing& Pricing)"), f"{name}: {signature[-80:]}"
+        # THE PRICING LAST, or before the empire tree's crafting costs (#2741's crafting group, slices C1 and C2) or its
+        # roll nodes (slice C3).
+        assert signature.endswith(("int64 GoldHeld, const FCataclysmForgePricing& Pricing)",
+                                   "int64 GoldHeld, const FCataclysmForgePricing& Pricing, const FCataclysmForgeCosts& Costs)",
+                                   "int64 GoldHeld, const FCataclysmForgePricing& Pricing, const FCataclysmForgeRolls& Rolls)")
+                                  ), f"{name}: {signature[-80:]}"
         declared = re.search(rf"static \w+ {name}\([^;]*\);", header)
         assert declared and declared.group(0).endswith(
-            "const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());"), f"{name}'s default is not no discount"
+            ("const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());",
+             "const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(), const FCataclysmForgeCosts& Costs = "
+             "FCataclysmForgeCosts());",
+             "const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(), const FCataclysmForgeRolls& Rolls = "
+             "FCataclysmForgeRolls());")), f"{name}'s default is not no discount"
         text = flat(body(forge, f"UCataclysmForge::{name}("))
         prices = [m.end() for m in re.finditer(r"Out\.Gold = (GoldFor|CombineGoldFor)\(", text)]
         applied = text.find(f"Out.Gold = Pricing.Apply(Out.Gold, {material});")
@@ -155,13 +167,19 @@ def test_every_plan_and_options_call_the_game_makes_passes_a_pricing() -> None:
         arguments = flat(craft[match.end():index - 1])
         if "GoldHeldIn(WorldContext)" not in arguments:
             continue
+        # THE EMPIRE TREE'S CRAFTING COSTS MAY FOLLOW THE PRICING (slices C1 and C2); the pricing is still checked.
+        if ", CostsFor(WorldContext, Target," in arguments:
+            arguments = arguments[:arguments.rindex(", CostsFor(WorldContext, Target,")]
+        # AND THE EMPIRE TREE'S ROLL NODES (slice C3), after the pricing, which is still checked.
+        if arguments.endswith(", RollsFor(WorldContext)"):
+            arguments = arguments[:-len(", RollsFor(WorldContext)")]
         assert arguments.endswith((", PricingFor(WorldContext, Target)", ", CombinePricingFor(WorldContext, Level - 1)",
                                    ", CombinePricingFor(WorldContext, static_cast<int32>(Rarity))")), (
             f"UCataclysmForge::{match.group(1)} is called with the character's gold and without its pricing: {arguments}")
         passed += 1
     assert passed == len(PLANS), f"{passed} plan calls pass the gold held; the plans with a price are {len(PLANS)}"
     options = flat(body(craft, "FCataclysmForgeOptionEffect UCataclysmForgeCraft::OptionsFor("))
-    assert "GoldTierOf(WorldContext), GoldHeldIn(WorldContext), Pricing)" in options
+    assert "GoldTierOf(WorldContext), GoldHeldIn(WorldContext), Pricing, Costs)" in options
     calls = 0
     for path, pricing in ((CRAFT_CPP, "PricingFor(WorldContext, Target)"),
                           (WIDGET_CPP, "UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget)")):

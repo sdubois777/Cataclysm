@@ -150,7 +150,7 @@ public:
 	 * IT is the coordinating session's judgement (2026-11-01), which the owner can change at the launch check: the sum
 	 * alone does not say how near the character is to being consumed.
 	 */
-	static FString WornResidueLine(float WornResidue, int32 DifficultyTier);
+	static FString WornResidueLine(float WornResidue, int32 DifficultyTier, float IgnoredShare = 0.0f);
 
 	/**
 	 * "Marked: crossed the Consumption Threshold" for a marked character, and nothing for one that is not. Issue #2688.
