@@ -2007,7 +2007,25 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: `tools/tests/test_required_workbook_columns.py` then requires.
 #: IT LEFT THE SAME DAY, when `tools/reapply_demonic_tree_rework_workbook.py`
 #: added the column with Wall of Servants' 20, and the table is empty again.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#: THE PASSIVE ROW PORT'S FOURTEEN COLUMNS JOINED ON 2026-11-24
+#: (`plan_death_and_war.md`, slice B28): the thirteen action columns the
+#: Enchantment Effects sheet already has, and Per Point From. Built ahead of
+#: their rows, which the War and Death tree slices author; the first slice that
+#: writes a row using one adds that column to the workbook with its re-apply
+#: script and deletes it here, which `tools/tests/test_required_workbook_columns.py`
+#: then requires.
+_PASSIVE_PORT_COLUMN_REASON = (
+    "the passive row port of 2026-11-24; added to the workbook by the first War "
+    "or Death tree slice that authors a row using it")
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Passive Effects": {
+        column: _PASSIVE_PORT_COLUMN_REASON
+        for column in ("Action", "Action Event", "Fraction Of", "Stack Seconds",
+                       "Scale Offset", "Every Seconds", "Every Nth",
+                       "Condition 2", "Condition Value 2", "Trigger Cooldown",
+                       "Event Value", "Ailment", "Damage Share",
+                       "Per Point From")},
+}
 
 
 class _Headers(dict):
@@ -5927,6 +5945,200 @@ def _check_value_kind(sheet: str, index: int, who: str, stat: str,
             f"it is removed and nothing else, so the row would grant nothing.")
 
 
+#: The Enchantment Effects columns a Passive Effects row may state since the
+#: passive row port of 2026-11-24 (`plan_death_and_war.md`, slice B28): what a
+#: row DOES when an event happens, its own stacks, a second condition, an offset
+#: on its scale, and the rest of that sheet's action columns. A row stating any
+#: of them is read by `_effect_row`, which holds the Enchantment Effects sheet's
+#: own per-row rules, and the game builds it with the enchantment rows' builder
+#: (`UCataclysmItemModifiers::AccumulateEnchantmentsInto`), so a passive action
+#: and a worn one cannot be judged by two sets of rules.
+PASSIVE_ACTION_COLUMNS = (
+    "Action", "Action Event", "Fraction Of", "Stack Seconds", "Scale Offset",
+    "Every Seconds", "Every Nth", "Condition 2", "Condition Value 2",
+    "Trigger Cooldown", "Event Value", "Ailment", "Damage Share")
+
+#: The scales whose count an action grants: a row's own stacks, and its hits in
+#: a row on one enemy. A passive row naming one is read the action way too,
+#: because the stacks need the action that grants them, which only the
+#: enchantment rows' builder makes. `UCataclysmPassiveTree::
+#: IsBuiltAsAnEnchantmentRow` names the same two.
+SCALES_AN_ACTION_GRANTS = frozenset({"own_stacks", "consecutive_hits"})
+
+#: The Enchantment Effects columns a Passive Effects row may never state. Each
+#: is about an item: its name and words, and the roll that picks a value inside
+#: a range. A passive row names its node, is paid per point and rolls nothing.
+ENCHANTMENT_ONLY_COLUMNS = (
+    "Enchantment", "Effect", "Value Low", "Value High", "Scale Step High",
+    "Stack Seconds High", "Condition Value High")
+
+#: The fields a Passive Effects row carries for the action columns, in the
+#: order `game/Data/PassiveEffects.csv` writes them, with the value a row
+#: stating none of them carries: what `_effect_row` writes for an empty cell.
+#: `FCataclysmPassiveEffectRow` holds the same thirteen, after `ScaleMaxSteps`,
+#: and `PerPointFrom` after them.
+PASSIVE_PORT_DEFAULTS = (
+    ("Action", ""), ("ActionEvent", ""), ("FractionOf", ""),
+    ("StackSeconds", 0.0), ("ScaleOffset", 0.0), ("EverySeconds", 0.0),
+    ("EveryNth", 0), ("Condition2", ""), ("ConditionValue2", 0.0),
+    ("TriggerCooldown", 0.0), ("EventValue", 0.0), ("Ailment", ""),
+    ("DamageShare", 0.0))
+PASSIVE_PORT_FIELDS = tuple(field for field, _ in PASSIVE_PORT_DEFAULTS)
+
+#: The names the passive sheet's reach rule counts within a radius. Issue
+#: #1597, and the crippled-enemy scale of issue #1515.
+PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach",
+                                 "crippled_enemies_in_reach"})
+
+
+def _passive_row_is_action_shaped(raw, headers) -> bool:
+    """Whether a Passive Effects row is read by the Enchantment Effects rules.
+
+    A ROW STATING ANY ACTION COLUMN, OR SCALED BY A COUNT AN ACTION GRANTS. The
+    passive row port of 2026-11-24. Every other row is read as it always was.
+    """
+    if any(clean(_cell(raw, headers, column)) for column in PASSIVE_ACTION_COLUMNS):
+        return True
+    return clean(_cell(raw, headers, "Scale")) in SCALES_AN_ACTION_GRANTS
+
+
+def _passive_action_row(raw, headers, index: int, node: str,
+                        sentence: str) -> dict:
+    """A Passive Effects row stating action columns, read by `_effect_row`.
+
+    THE PASSIVE SHEET'S NAMES ARE MAPPED ONTO THE ENCHANTMENT SHEET'S, and
+    nothing else is changed: `Node` is read where `Enchantment` would be, and
+    `Value Per Point` where `Value Low` would be. A plain dict rather than the
+    sheet's own header map, so a column this sheet does not have reads as empty
+    in that function, as `OPTIONAL_COLUMNS` already allows the action columns
+    to here.
+
+    `sentence` IS THE NODE'S OWN WORDS, or the option's for a capstone option
+    row, so that a rule reading a row's words (the name of its kept stacks)
+    reads the words the player is shown.
+
+    A REFUSAL IS REPORTED AGAINST THIS SHEET. `_effect_row` names the
+    Enchantment Effects sheet in every message it raises, and the row number it
+    gives is this sheet's, so the sheet's name is corrected and the rest of the
+    message left as it was.
+    """
+    aliased = dict(headers)
+    aliased["Enchantment"] = headers["Node"]
+    aliased["Value Low"] = headers["Value Per Point"]
+    try:
+        return _effect_row(raw, aliased, index, node, {node: sentence},
+                           {node: ""}, {node: frozenset()},
+                           sheet_repeats_the_words=False)
+    except DataError as error:
+        raise DataError(str(error).replace(
+            "Enchantment Effects row", "Passive Effects row", 1)) from error
+
+
+def _passive_node_sentences() -> dict[tuple[str, int], str]:
+    """Each node's words, and each capstone option's, by node and option number.
+
+    0 IS THE NODE'S OWN SENTENCE; 1 TO 3 A CAPSTONE'S OPTIONS. Read from the
+    tree files by `passive_nodes`, which is what the game shows.
+    """
+    sentences: dict[tuple[str, int], str] = {}
+    for row in passive_nodes():
+        sentences[(row["Name"], 0)] = row["Description"]
+        for option in range(1, CAPSTONE_OPTIONS + 1):
+            sentences[(row["Name"], option)] = row[f"Option{option}Description"]
+    return sentences
+
+
+def _passive_option(raw, headers, index: int, node: str) -> int:
+    """Which of a capstone's three options a Passive Effects row belongs to.
+
+    Issue #1029. Empty is "not an option", which is every row in the trees
+    except the capstones'.
+
+    A COLUMN AND NOT THE `Condition` COLUMN, and the reason is concrete rather
+    than stylistic. A row may need an option AND a real condition at once: the
+    Second Vow's second option reads "Dropping below 50% health grants immunity
+    to all damage for 5 seconds", which is option 2 and a health trigger
+    together, and one column cannot hold both.
+
+    WHICH NODES MAY CARRY ONE IS CHECKED IN `validate_passive_effects`, because
+    that is where the node table is in hand and its `Kind` column says which
+    nodes are capstones. Moved out of `passive_effects` unchanged on 2026-11-24,
+    so its action rows read it by the same rule.
+    """
+    option = 0
+    if clean(_cell(raw, headers, "Option")):
+        option = int(number(_cell(raw, headers, "Option"), "Option", index))
+        if not 1 <= option <= CAPSTONE_OPTIONS:
+            raise DataError(
+                f"Passive Effects row {index}: {node} names option "
+                f"{option}, and a capstone offers {CAPSTONE_OPTIONS}. Leave "
+                f"the column empty for a row that is not a capstone option.")
+    return option
+
+
+def _passive_min_points(raw, headers, index: int, node: str) -> int:
+    """From how many points in its own node a Passive Effects row applies.
+
+    Issue #1755. Empty is 0, which is every row before the column: the row
+    applies from the first point and is paid per point. Above 0 is a node
+    sentence's "At 4 points: ..." clause, which the node grants whole from that
+    point on and never multiplies by the points, unless the row's Per Point From
+    says otherwise (`_per_point_from`). Moved out of `passive_effects`
+    unchanged on 2026-11-24, so its action rows read it by the same rule.
+    """
+    min_points = 0
+    if clean(_cell(raw, headers, "Min Points")):
+        written = number(_cell(raw, headers, "Min Points"), "Min Points", index)
+        if written != int(written) or written < 1:
+            raise DataError(
+                f"Passive Effects row {index}: {node} has a Min Points of "
+                f"{written}, and it takes a whole number of points from 1 "
+                f"up. Leave the column empty for a row paid per point.")
+        min_points = int(written)
+    return min_points
+
+
+def _per_point_from(raw, headers, index: int, node: str, min_points: int) -> int:
+    """The Per Point From column: from which point a threshold row is paid per point.
+
+    THE PASSIVE ROW PORT OF 2026-11-24, for "per point from N points". Empty is
+    0, which keeps the rule of issue #1755: a row with Min Points applies from
+    that many points and once. A number N from 1 up makes it pay its value once
+    for every point from the Nth on, so Tempered Steel's "At 6 points: These
+    bonuses are doubled while at maximum Fervour" is Min Points 6 and Per Point
+    From 1 (all of its points), and Tinkerer's "At 6 points: Gadgets remain
+    active 20% longer per point invested beyond 6" is Min Points 7 and Per Point
+    From 7 (the seventh point and the eighth).
+
+    IT NEEDS A THRESHOLD AND CANNOT START ABOVE IT. With no Min Points a row is
+    already paid per point from the first, so the column would change nothing;
+    above the threshold, the row would apply at that threshold and count no
+    points there, which is a row worth nothing at the point it switches on.
+    """
+    written = clean(_cell(raw, headers, "Per Point From"))
+    if not written:
+        return 0
+    value = number(written, "Per Point From", index)
+    if value != int(value) or value < 1:
+        raise DataError(
+            f"Passive Effects row {index}: {node} has a Per Point From of "
+            f"{value:g}, and it takes a whole number of points from 1 up. Leave "
+            f"the column empty for a row paid once from its Min Points.")
+    if not min_points:
+        raise DataError(
+            f"Passive Effects row {index}: {node} has a Per Point From of "
+            f"{int(value)} and no Min Points. A row with no threshold is paid "
+            f"per point from its first point already, so the column would "
+            f"change nothing.")
+    if value > min_points:
+        raise DataError(
+            f"Passive Effects row {index}: {node} is paid per point from point "
+            f"{int(value)} and applies from {min_points} points, so at {min_points} "
+            f"points it would apply and count no points. Per Point From is at "
+            f"most the Min Points.")
+    return int(value)
+
+
 def passive_effects(book) -> list[dict]:
     """What a passive node grants, one stat effect per row.
 
@@ -5973,18 +6185,25 @@ def passive_effects(book) -> list[dict]:
     # as an enchantment's is. It is read below, by the same rules the
     # Enchantment Effects sheet keeps.
 
-    # NO STACK SECONDS ON THIS SHEET. Issue #1833.
-    if "Stack Seconds" in headers:
-        raise DataError(
-            "the Passive Effects sheet has a 'Stack Seconds' column, and the "
-            "game reads a row's own stacks from the Enchantment Effects sheet "
-            "only. Remove it.")
-    # NOR AN OFFSET, FOR THE SAME REASON. Issue #1686.
-    if "Scale Offset" in headers:
-        raise DataError(
-            "the Passive Effects sheet has a 'Scale Offset' column, and the "
-            "game reads an offset from the Enchantment Effects sheet only. "
-            "Remove it.")
+    # STACK SECONDS AND AN OFFSET ARE READ HERE SINCE THE PASSIVE ROW PORT OF
+    # 2026-11-24, with the rest of the action columns (`PASSIVE_ACTION_COLUMNS`).
+    # Issues #1833 and #1686 refused them, because the game read a row's own
+    # stacks and an offset from the Enchantment Effects sheet only; a passive
+    # row stating one is now built by that sheet's builder in the game.
+    #
+    # THE COLUMNS ABOUT AN ITEM ARE STILL REFUSED. A passive row rolls nothing
+    # and repeats no enchantment's words.
+    for column in ENCHANTMENT_ONLY_COLUMNS:
+        if column in headers:
+            raise DataError(
+                f"the Passive Effects sheet has a {column!r} column, which is "
+                f"about an item: its enchantment, its words or the roll that "
+                f"picks a value inside a range. A passive row names its node and "
+                f"is paid per point. Remove it.")
+
+    # EACH NODE'S WORDS, read only when a row states an action column. See
+    # `_passive_action_row`.
+    sentences: dict[tuple[str, int], str] | None = None
 
     out = []
     counts: dict[str, int] = {}
@@ -5998,6 +6217,67 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: the node name {node!r} contains "
                 f"a number sign, which this file uses to separate a node from "
                 f"the index of its effect. Rename the node.")
+
+        # THE THREE COLUMNS ABOUT THE NODE'S POINTS AND OPTIONS, read first,
+        # because both kinds of row below carry them by the same rules.
+        option = _passive_option(raw, headers, index, node)
+        min_points = _passive_min_points(raw, headers, index, node)
+        per_point_from = _per_point_from(raw, headers, index, node, min_points)
+
+        # A ROW STATING AN ACTION COLUMN, OR SCALED BY A COUNT AN ACTION GRANTS,
+        # IS READ BY THE ENCHANTMENT EFFECTS SHEET'S OWN RULES. The passive row
+        # port of 2026-11-24. See `PASSIVE_ACTION_COLUMNS` and
+        # `_passive_action_row`.
+        if _passive_row_is_action_shaped(raw, headers):
+            if sentences is None:
+                sentences = _passive_node_sentences()
+            shared = _passive_action_row(raw, headers, index, node,
+                                         sentences.get((node, option), ""))
+
+            # NO RADIUS, because the enchantment rows' builder carries none: it
+            # would count nobody. No authored passive row needs both yet.
+            reach_named = PASSIVE_REACH_NAMES & {
+                shared["Condition"], shared["Condition2"], shared["Scale"]}
+            if reach_named or clean(_cell(raw, headers, "Reach Metres")):
+                raise DataError(
+                    f"Passive Effects row {index}: {node} states an action column "
+                    f"and counts the enemies within a radius "
+                    f"({', '.join(sorted(reach_named)) or 'Reach Metres'}). A "
+                    f"row with an action column is built by the enchantment rows' "
+                    f"builder, which carries no radius, so it would count nobody. "
+                    f"Write the radius-counting part as a row of its own.")
+            # NOR THE SCALE THAT COUNTS ENEMIES WHILE AN OWN STACK IS HELD, which
+            # needs a second row sharing its key; no passive row needs it yet.
+            if shared["Scale"] == WINDOW_SCALE:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} scales by "
+                    f"{WINDOW_SCALE!r}, which the Passive Effects sheet does not "
+                    f"read yet. No passive row needs it; add it with the row that "
+                    f"does.")
+
+            counts[node] = counts.get(node, 0) + 1
+            out.append({
+                "Name": f"{node}#{counts[node]}",
+                "Node": node,
+                "Stat": shared["Stat"],
+                "ValueKind": shared["ValueKind"],
+                # PER POINT, as every passive value is: `_effect_row` read it
+                # where an enchantment's lowest roll would be, and a passive row
+                # has no other end to a range.
+                "ValuePerPoint": shared["ValueLow"],
+                "RequiredTags": shared["RequiredTags"],
+                "Condition": shared["Condition"],
+                "ConditionValue": shared["ConditionValue"],
+                "Scale": shared["Scale"],
+                "ScaleStep": shared["ScaleStep"],
+                "Option": option,
+                "ReachMetres": -1.0,
+                "MinPoints": min_points,
+                "ScaleMaxSteps": shared["ScaleMaxSteps"],
+                **{column: shared[column] for column in PASSIVE_PORT_FIELDS},
+                "PerPointFrom": per_point_from,
+            })
+            continue
 
         stat = clean(_cell(raw, headers, "Stat"))
         if not stat:
@@ -6110,43 +6390,9 @@ def passive_effects(book) -> list[dict]:
                     f"{reach_metres}, and a radius takes metres above 0 and up "
                     f"to 100. A reach of nothing counts nobody.")
 
-        # WHICH OF A CAPSTONE'S THREE OPTIONS THIS ROW BELONGS TO. Issue #1029.
-        # Empty is "not an option", which is every row in the four trees except
-        # the capstones'.
-        #
-        # A COLUMN AND NOT THE `Condition` COLUMN ABOVE, and the reason is
-        # concrete rather than stylistic. A row may need an option AND a real
-        # condition at once: the Second Vow's second option reads "Dropping
-        # below 50% health grants immunity to all damage for 5 seconds", which
-        # is option 2 and a health trigger together, and one column cannot hold
-        # both.
-        #
-        # WHICH NODES MAY CARRY ONE IS CHECKED IN `validate_passive_effects`,
-        # because that is where the node table is in hand and its `Kind` column
-        # says which nodes are capstones.
-        option = 0
-        if clean(_cell(raw, headers, "Option")):
-            option = int(number(_cell(raw, headers, "Option"), "Option", index))
-            if not 1 <= option <= CAPSTONE_OPTIONS:
-                raise DataError(
-                    f"Passive Effects row {index}: {node} names option "
-                    f"{option}, and a capstone offers {CAPSTONE_OPTIONS}. Leave "
-                    f"the column empty for a row that is not a capstone option.")
-
-        # FROM HOW MANY POINTS IN ITS OWN NODE THE ROW APPLIES, AND THEN ONCE.
-        # Issue #1755. Empty is 0, which is every row before the column: the
-        # row applies from the first point and is paid per point. Above 0 is a
-        # node sentence's "At 4 points: ..." clause, which the node grants whole
-        # from that point on and never multiplies by the points.
-        min_points = 0
-        if clean(_cell(raw, headers, "Min Points")):
-            written = number(_cell(raw, headers, "Min Points"), "Min Points", index)
-            if written != int(written) or written < 1:
-                raise DataError(
-                    f"Passive Effects row {index}: {node} has a Min Points of "
-                    f"{written}, and it takes a whole number of points from 1 "
-                    f"up. Leave the column empty for a row paid per point.")
-            min_points = int(written)
+        # THE OPTION AND THE MIN POINTS WERE READ AT THE TOP OF THE LOOP, by
+        # `_passive_option` and `_passive_min_points`, because the action rows
+        # above carry them too.
 
         counts[node] = counts.get(node, 0) + 1
 
@@ -6165,9 +6411,13 @@ def passive_effects(book) -> list[dict]:
             "Option": option,
             "ReachMetres": reach_metres,
             "MinPoints": min_points,
-            # LAST, AFTER MIN POINTS, so every column before it keeps its
-            # place. 0 is no cap. Since 2026-11-24; see above.
+            # AFTER MIN POINTS, so every column before it keeps its place. 0 is
+            # no cap. Since 2026-11-24; see above.
             "ScaleMaxSteps": scale_max_steps,
+            # AND THE PASSIVE ROW PORT'S COLUMNS, LAST, empty on a row stating
+            # none of them, which is every row read here. Since 2026-11-24.
+            **dict(PASSIVE_PORT_DEFAULTS),
+            "PerPointFrom": per_point_from,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -6190,11 +6440,17 @@ def passive_effects(book) -> list[dict]:
     #
     # AND SO IS THE POINT THRESHOLD, since issue #1755: a node could grant a
     # stat per point and the same stat again, whole, from "At 4 points".
-    pairs: dict[tuple[str, str, str, float, str, float, int, int], int] = {}
+    #
+    # AND SO ARE THE ACTION COLUMNS AND A SECOND CONDITION, since the passive
+    # row port of 2026-11-24, as the Enchantment Effects sheet's key has them:
+    # one node may restore health and generate Fervour on the same event.
+    pairs: dict[tuple, int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
-               row["Option"], row["MinPoints"])
+               row["Option"], row["MinPoints"], row["Action"],
+               row["ActionEvent"], row["FractionOf"], row["Condition2"],
+               row["ConditionValue2"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:
@@ -6205,6 +6461,27 @@ def passive_effects(book) -> list[dict]:
             f"{listed}. Two rows for one node are for two different stats, or "
             f"for the same stat under different conditions, scales or options; "
             f"anything else is a duplicated row.")
+
+    # ONE ROW PER NODE, OPTION, ACTION AND EVENT. The game keys what an action
+    # row keeps -- its trigger cooldown, a next-use charge, a count of every
+    # Nth event, a kept stack -- by the node, the option, the action and the
+    # event (`UCataclysmPassiveTree::EnchantmentRowsFor`), as an enchantment's
+    # are keyed by its name, action and event. Two rows sharing all four would
+    # share one cooldown and one count. The passive row port of 2026-11-24.
+    keyed: dict[tuple, int] = {}
+    for row in out:
+        if row["Action"]:
+            key = (row["Node"], row["Option"], row["Action"], row["ActionEvent"])
+            keyed[key] = keyed.get(key, 0) + 1
+    shared_keys = sorted(key for key, count in keyed.items() if count > 1)
+    if shared_keys:
+        listed = ", ".join(f"{node} option {option} {action} on {event or '(none)'}"
+                           for node, option, action, event in shared_keys)
+        raise DataError(
+            f"the Passive Effects sheet gives one node two rows of the same "
+            f"action on the same event: {listed}. The game keeps one cooldown "
+            f"and one count for each node, option, action and event, so the two "
+            f"would share them. Write the two as one row.")
 
     if not out:
         raise DataError("the Passive Effects sheet is empty")
@@ -8260,6 +8537,1253 @@ def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
     return condition, condition_value, scale, scale_step
 
 
+def _effect_row(raw, headers: dict[str, int], index: int, name: str,
+                words: dict[str, str], types: dict[str, str],
+                rolls_down: dict[str, frozenset[int]], *,
+                sheet_repeats_the_words: bool = True) -> dict:
+    """One row in the Enchantment Effects sheet's shape, checked, as a dict
+    without its row name.
+
+    THE PER-ROW RULES OF `enchantment_effects`, MOVED HERE UNCHANGED, so that
+    `passive_effects` reads a passive row carrying the action columns by the
+    same rules rather than by a copy of them that could drift. The passive row
+    port of 2026-11-24. `words` holds each name's sentence, `types` its
+    enchantment type ("Set" or not) and `rolls_down` the places of its ranges
+    that roll downward, as `enchantment_effects` gathers them; the passive
+    reader hands over the node's own sentence, no type and no ranges.
+
+    `sheet_repeats_the_words` IS FALSE FOR THE PASSIVE SHEET, which has no
+    `Effect` column repeating a sentence: a node's words are in the tree files,
+    and the passive reader hands them over in `words` for the rules that read
+    them.
+    """
+    if name not in words:
+        raise DataError(
+            f"Enchantment Effects row {index}: no enchantment is called "
+            f"{name!r}. Use the row name game/Data/EnchantmentsPositive.csv "
+            f"or game/Data/EnchantmentsNegative.csv gives it.")
+
+    said = (clean(_cell(raw, headers, "Effect")) if sheet_repeats_the_words
+            else words[name])
+    if said != words[name]:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} is written here as "
+            f"{said!r} and in the Enchantments sheet as {words[name]!r}. "
+            f"The two must agree, so that an enchantment that is reworded "
+            f"is read again before its numbers are trusted.")
+
+    stat = clean(_cell(raw, headers, "Stat"))
+    action = clean(_cell(raw, headers, "Action")).lower()
+    action_event = clean(_cell(raw, headers, "Action Event")).lower()
+    fraction_of = clean(_cell(raw, headers, "Fraction Of")).lower()
+    kind = clean(_cell(raw, headers, "Value Kind")).lower()
+
+    # A ROW CHANGES A STAT OR MOVES A POOL, NEVER BOTH AND NEVER NEITHER.
+    # Both would be two effects wearing one roll, and the hover text shows
+    # one number; neither is a row that validates and grants nothing.
+    if stat and action:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} names both the stat "
+            f"{stat!r} and the pool action {action!r}. A row does one or "
+            f"the other: a stat row changes a number the pipeline reads, "
+            f"an action row moves a pool when an event happens.")
+    if not stat and not action:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} names no stat and no "
+            f"pool action. Known pools: {', '.join(POOL_ACTIONS)}.")
+
+    if action:
+        _check_pool_action(index, name, action, action_event, fraction_of,
+                           kind, raw, headers)
+        if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS \
+                and action not in NTH_ACTIONS \
+                and action not in COOLDOWN_RESET_ACTIONS \
+                and action not in COOLDOWN_REDUCE_ACTIONS \
+                and action != RANDOM_DOT_ACTION \
+                and action != HEALTH_CAP_ACTION \
+                and action not in NEARBY_ACTIONS \
+                and action not in REMAINING_DAMAGE_ACTIONS \
+                and action not in ALL_APPLY_STATUS_ACTIONS \
+                and action != DAMAGE_IMMUNITY_ACTION \
+                and action != TELEPORT_RANDOMLY_ACTION \
+                and action != GADGETS_CAST_NOW_ACTION \
+                and action != REFLECT_BLOCKED_ACTION \
+                and action != BLAST_FROM_THE_DYING_ACTION \
+                and action != STUN_NEAR_THE_DYING_ACTION \
+                and action != SLOW_FOR_SECONDS_ACTION \
+                and action != CLEANSE_ACTION \
+                and action != OVERKILL_EXPLOSION_ACTION \
+                and action != KILLING_BLOW_EXPLOSION_ACTION \
+                and action not in TRAPS_NEARBY_ACTIONS \
+                and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
+                and action != STRIKE_TARGET_ACTION \
+                and action != EXECUTE_TARGET_ACTION \
+                and action != TEMPORARY_ABSORB_ACTION \
+                and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
+                and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
+                and action not in SKILL_IN_HAND_ACTIONS \
+                and action not in AILMENT_RIDER_ACTIONS:
+            fraction_of = fraction_of or FRACTION_BASES[0]
+    else:
+        _check_value_kind("Enchantment Effects", index, name, stat, kind)
+
+    low = number(_cell(raw, headers, "Value Low"), "Value Low", index)
+    high_text = clean(_cell(raw, headers, "Value High"))
+    high = number(high_text, "Value High", index) if high_text else low
+
+    # CHECKED BEFORE THE RANGE BELOW, so that a range on a set row is
+    # reported for what it is rather than as a range its words do not
+    # state.
+    if types[name].casefold() == "set" and high != low:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} is a set row stating "
+            f"the range {low:g} to {high:g}. Each of a set's rows states "
+            f"one number: an item records only the set's lowest threshold "
+            f"row, so nothing records a roll for the 6-piece or 10-piece "
+            f"row and a range could not be read back.")
+
+    value_as_stated = None
+    if high != low:
+        # A RANGE IS ONE THE SENTENCE STATES, IN ITS ORDER AND WITH ONE
+        # SIGN. The owner ruled on 2026-09-11 that an enchantment rolls a
+        # value evenly inside its range, and the game shows that number in
+        # place of the range in the sentence, so a row whose two ends are
+        # not that range would give the character one number and the
+        # player another. "Low" is the value at the lowest roll and "high"
+        # at the highest, so "reduced by 30%-50%" is -30 and -50.
+        stated = enchantment_ranges(words[name])
+        # OR ITS COMPLEMENT, FOR THE FEW NAMED. See
+        # `COMPLEMENT_RANGE_ENCHANTMENTS`: both ends negative, each 100
+        # minus the sentence's number at the same place.
+        shown = ((100.0 - abs(low), 100.0 - abs(high))
+                 if name in COMPLEMENT_RANGE_ENCHANTMENTS and low < 0
+                 else (abs(low), abs(high)))
+        # OR ITS BASE PLUS THE VALUE, FOR THE FEW NAMED. See
+        # `BASE_PLUS_RANGE_ENCHANTMENTS`: each end the base plus the value.
+        if name in BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
+            base = BASE_PLUS_RANGE_ENCHANTMENTS[name]
+            shown = (base + low, base + high)
+        if (low < 0) != (high < 0) or shown not in stated:
+            written = ", ".join(f"{a:g} to {b:g}" for a, b in stated)
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states the "
+                f"range {low:g} to {high:g}, which its words "
+                f"{words[name]!r} do not state in that order. The ranges "
+                f"they state: {written or 'none'}. Write the first number "
+                f"as Value Low and the second as Value High, both with "
+                f"the row's sign.")
+        value_as_stated = shown
+
+    condition, condition_value, scale, scale_step = _condition_and_scale(
+        raw, headers, "Enchantment Effects", index, name)
+
+    # A CONDITION READ FROM AN ACTION'S EVENT NEEDS AN ACTION AND AN EVENT
+    # CARRYING THE HIT'S TAGS. Ruled 2026-10-17. On a stat row it is
+    # refused by `refuse_a_condition_nothing_asks_for`; here, an action row
+    # on any other event would judge an event with no hit and hold every
+    # time, which is "not a spell" said of nothing.
+    if condition in CONDITIONS_OF_AN_ACTIONS_EVENT and action \
+            and action_event not in EVENTS_CARRYING_A_HIT_DEALTS_TAGS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} moves {action} on the "
+            f"event {action_event or '(none)'!r} under the condition "
+            f"{condition!r}, which is judged from the tags of a hit the "
+            f"wearer dealt. Only these events carry them: "
+            f"{', '.join(EVENTS_CARRYING_A_HIT_DEALTS_TAGS)}.")
+
+    # "UP TO 10 STACKS" IS A CAP OF 10 WHOLE STEPS. Issue #1815. This sheet
+    # carried the column alone until 2026-11-24, when `passive_effects`
+    # began reading it by these same rules for the demonic tree rework.
+    # Empty is no cap. A cap needs a scale to cap, and is a whole number of
+    # steps, from 1 up to the largest a sentence states.
+    cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
+    scale_max_steps = 0
+    if cap_text and scale in SCALES_THAT_COUNT_A_FRACTION:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} scales by {scale!r} "
+            f"and states Scale Max Steps {cap_text!r}. That scale counts a "
+            f"fraction of a charge's range and not whole steps, and is "
+            f"capped at the row's whole value by itself, so there is "
+            f"nothing for a cap in steps to limit. Leave the column empty.")
+    if cap_text:
+        cap = number(cap_text, "Scale Max Steps", index)
+        if not scale and action not in NEXT_USE_ACTIONS \
+                and action not in PLACED_ACTIONS \
+                and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
+                and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
+                and action not in TRAPS_NEARBY_ACTIONS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has a cap of "
+                f"{cap:g} steps and no scale. A cap limits how many steps "
+                f"a scale counts, so with no scale it caps nothing.")
+        if cap != int(cap) or not 1 <= cap <= MAX_SCALE_STEPS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has a cap of "
+                f"{cap:g} steps. A cap is a whole number of steps from 1 "
+                f"to {MAX_SCALE_STEPS}; leave the column empty for none.")
+        scale_max_steps = int(cap)
+    if scale in SCALES_THAT_NEED_A_CAP and scale_max_steps < 1:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} scales by {scale!r} "
+            f"and states no Scale Max Steps. That scale has no cap of its "
+            f"own, so the row would be uncapped. State the cap.")
+
+    # A NEXT-USE ROW STATES HOW MANY CHARGES IT HOLDS. Issue #1833, phase
+    # 2: one for a sentence stating no stacking, five for "stacking up to
+    # 5 times". Required rather than defaulted, so the one judgement a row
+    # makes is written in the sheet.
+    if action in NEXT_USE_ACTIONS:
+        if scale_max_steps < 1:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} grants a "
+                f"{action} charge and states no Scale Max Steps. It is "
+                f"how many charges the row holds: 1 when the sentence "
+                f"states no stacking.")
+        if low <= 0 or high <= 0:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} grants a "
+                f"{action} charge worth {low:g} to {high:g}. A charge is "
+                f"increased damage, so both ends are above nought.")
+
+    # A ROW THAT GAINS KEPT STACKS STATES THE MOST IT HOLDS, AND ITS VALUE
+    # IS THE SHARE OF ITS DAMAGE EACH EXTRA CAST DEALS, above 0 and up to
+    # 100. Ruled 2026-10-12. The cap is required rather than defaulted: "to
+    # at most 5" is the ruling's and not the sentence's, so the sheet is
+    # where it is written.
+    if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+        if scale_max_steps < 1:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gains kept "
+                f"stacks and states no Scale Max Steps. On {action} that "
+                f"column is the most stacks held, a whole number from 1.")
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} casts a skill "
+                f"again at {low:g} to {high:g} per cent of its damage. On "
+                f"{action} the value is that share, above 0 and up to "
+                f"100, and 100 is the whole.")
+
+    # AND A ROW THAT GAINS THEM TOWARDS A FREE NEXT ABILITY STATES THE CAP
+    # THE ABILITY IS BOUGHT AT, AND ITS VALUE IS HOW MUCH MORE DAMAGE THAT
+    # ABILITY DEALS, in per cent, above 0. Ruled 2026-10-17: "At 10 stacks"
+    # is the cap and "100% more" the value.
+    if action == KEPT_STACKS_FREE_NEXT_ABILITY_ACTION:
+        if scale_max_steps < 1:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gains kept "
+                f"stacks and states no Scale Max Steps. On {action} that "
+                f"column is the count the next ability is bought at, a "
+                f"whole number from 1.")
+        if not (0 < low <= MAX_FREE_NEXT_ABILITY_MORE_PERCENT
+                and 0 < high <= MAX_FREE_NEXT_ABILITY_MORE_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} makes its free "
+                f"next ability deal {low:g} to {high:g} per cent more "
+                f"damage. On {action} the value is that more, above 0 and "
+                f"up to {MAX_FREE_NEXT_ABILITY_MORE_PERCENT:g}: 100 is "
+                f"twice.")
+
+    # A COOLDOWN RESET'S VALUE IS ITS CHANCE, above 0 and up to 100. Issue
+    # #1833, the cooldown reset action. 100 is always.
+    if action in COOLDOWN_RESET_ACTIONS:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} resets cooldowns "
+                f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                f"and up to 100, and 100 is always.")
+        if scale_max_steps:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} resets cooldowns "
+                f"and states Scale Max Steps. A reset has no stacks, so it "
+                f"would be dropped.")
+
+    # A RANDOM DAMAGE OVER TIME'S VALUE IS ITS CHANCE, above 0 and up to
+    # 100, as a reset's is. Issue #1833 group D. 100 is always.
+    if action == RANDOM_DOT_ACTION:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} applies a random "
+                f"damage over time with a chance of {low:g} to {high:g}. A "
+                f"chance is above 0 and up to 100, and 100 is always.")
+        if scale_max_steps:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} applies a random "
+                f"damage over time and states Scale Max Steps. It has no "
+                f"stacks, so it would be dropped.")
+
+    # A HEALTH CAP'S VALUE IS A SHARE OF MAXIMUM HEALTH, above 0 and below
+    # 100, since 100 would cap nothing. Issue #1833 group D part 2.
+    if action == HEALTH_CAP_ACTION:
+        if not (0 < low < 100 and 0 < high < 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} lowers health to "
+                f"{low:g} to {high:g} per cent of its maximum. The share is "
+                f"above 0 and below 100.")
+        if scale_max_steps:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} lowers health and "
+                f"states Scale Max Steps. It has no stacks, so it would be "
+                f"dropped.")
+
+    # A NEARBY ACTION'S VALUE IS A SHARE, above 0 and up to its bound: of
+    # weapon damage for a smite, of each one's maximum health for a heal.
+    # Issue #1833 group D part 3.
+    if action in NEARBY_ACTIONS:
+        bound = MAX_NEARBY_PERCENT[action]
+        if not (0 < low <= bound and 0 < high <= bound):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts on the "
+                f"characters nearby at {low:g} to {high:g} per cent. "
+                f"{action} takes above 0 and up to {bound:g}.")
+
+    # A REFLECT'S VALUE IS A SHARE OF WHAT THE BLOCK REMOVED, above 0 and up
+    # to 100. Issue #1833 group E part 3.
+    if action == REFLECT_BLOCKED_ACTION:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reflects {low:g} to "
+                f"{high:g} per cent of what a block removed. It reflects above "
+                f"0 and up to 100.")
+
+    # A BLAST'S VALUE IS A SHARE OF THE DEAD ENEMY'S MAXIMUM HEALTH, above 0
+    # and up to 100. Ruled 2026-10-07.
+    if action == BLAST_FROM_THE_DYING_ACTION:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} blasts for {low:g} "
+                f"to {high:g} per cent of a dead enemy's maximum health. It "
+                f"blasts for above 0 and up to 100.")
+
+    # A STUN NEAR THE DYING'S VALUE IS ITS CHANCE, above 0 and up to 100,
+    # rolled once for the death. Ruled 2026-10-08. 100 is always. Its
+    # seconds are checked where Stack Seconds is read.
+    if action == STUN_NEAR_THE_DYING_ACTION:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} stuns the enemies "
+                f"near an enemy that died with a chance of {low:g} to "
+                f"{high:g}. A chance is above 0 and up to 100, and 100 is "
+                f"always.")
+
+    # AN OVERKILL EXPLOSION'S VALUE IS A SHARE OF THE OVERKILL, above 0 and
+    # up to the bound. Ruled 2026-10-07.
+    if action == OVERKILL_EXPLOSION_ACTION:
+        if not (0 < low <= MAX_OVERKILL_EXPLOSION_SHARE
+                and 0 < high <= MAX_OVERKILL_EXPLOSION_SHARE):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} explodes a killed "
+                f"enemy for {low:g} to {high:g} per cent of its overkill. "
+                f"The share is above 0 and up to "
+                f"{MAX_OVERKILL_EXPLOSION_SHARE:g}.")
+    # AND A KILLING BLOW EXPLOSION'S IS A SHARE OF THAT BLOW, the same way.
+    # Ruled 2026-10-21 (traps layer 4, F10).
+    if action == KILLING_BLOW_EXPLOSION_ACTION:
+        if not (0 < low <= MAX_KILLING_BLOW_EXPLOSION_SHARE
+                and 0 < high <= MAX_KILLING_BLOW_EXPLOSION_SHARE):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} explodes a killed "
+                f"enemy for {low:g} to {high:g} per cent of the blow that "
+                f"killed it. The share is above 0 and up to "
+                f"{MAX_KILLING_BLOW_EXPLOSION_SHARE:g}.")
+
+    # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
+    # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
+    # its Scale Max Steps is 1, the nearest trap alone, or empty, every trap.
+    # Ruled 2026-10-22 (traps layer 5, H10, H11).
+    if action in TRAPS_NEARBY_ACTIONS:
+        if action_event in TRAPS_NEARBY_EVERY_TRAP_EVENTS:
+            if not (low == 0 and high == 0):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts on the "
+                    f"wearer's traps on {action_event!r} within {low:g} to "
+                    f"{high:g} metres. That event names no place to measure "
+                    f"from, so the radius is 0, every trap.")
+            if scale_max_steps:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts on the "
+                    f"wearer's traps on {action_event!r} and states Scale "
+                    f"Max Steps {scale_max_steps}. That event acts on every "
+                    f"trap, so the column must be empty.")
+        elif not (0 < low <= MAX_TRAPS_NEARBY_METRES
+                  and 0 < high <= MAX_TRAPS_NEARBY_METRES):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts on the "
+                f"wearer's traps within {low:g} to {high:g} metres. The "
+                f"radius is above 0 and up to "
+                f"{MAX_TRAPS_NEARBY_METRES:g}.")
+        if scale_max_steps not in (0, 1):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts on the "
+                f"wearer's traps and states Scale Max Steps "
+                f"{scale_max_steps}. It is 1, the nearest trap alone, or "
+                f"empty, every trap.")
+
+    # A GADGET'S SHOT AT A TRAP'S ENEMY STATES ITS "MORE" IN PER CENT, above
+    # 0 and up to the bound: 100 is the gadget's normal blow. Ruled
+    # 2026-10-22 (traps layer 6, J6, J10).
+    if action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION:
+        if not (0 < low <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT
+                and 0 < high <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} fires a gadget at "
+                f"a trap's enemy at {low:g} to {high:g} per cent of its "
+                f"normal blow. The figure is above 0 and up to "
+                f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT:g}; 100 is its "
+                f"normal blow.")
+
+    # A STRIKE'S VALUE IS A PERCENTAGE OF THE WEARER'S ATTACK DAMAGE, above
+    # 0 and up to the bound. Ruled 2026-10-07.
+    if action == STRIKE_TARGET_ACTION:
+        if not (0 < low <= MAX_STRIKE_TARGET_PERCENT
+                and 0 < high <= MAX_STRIKE_TARGET_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} strikes for "
+                f"{low:g} to {high:g} per cent of attack damage. A strike "
+                f"is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
+
+    # AN EXECUTE'S VALUE IS ITS CHANCE, above 0 and up to 100. Ruled
+    # 2026-10-12. 100 is always. Its share of health is checked where the
+    # Condition Value is read.
+    if action == EXECUTE_TARGET_ACTION:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} executes an enemy "
+                f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                f"and up to 100, and 100 is always.")
+
+    # A TEMPORARY ABSORB'S VALUE IS A PERCENTAGE OF THE WEARER'S MAXIMUM
+    # HEALTH, above 0 and up to the bound. Ruled 2026-10-07.
+    if action == TEMPORARY_ABSORB_ACTION:
+        if not (0 < low <= MAX_TEMPORARY_ABSORB_PERCENT
+                and 0 < high <= MAX_TEMPORARY_ABSORB_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} grants a temporary "
+                f"absorb of {low:g} to {high:g} per cent of maximum health. "
+                f"It is above 0 and up to {MAX_TEMPORARY_ABSORB_PERCENT:g}.")
+
+    # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
+    if action in SKILL_IN_HAND_ACTIONS:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} repeats a skill "
+                f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                f"and up to 100, and 100 is always.")
+
+    # A NO-DAMAGE WINDOW'S VALUE IS SECONDS, above 0 and up to the bound.
+    # Issue #1833 group E part 2.
+    if action == DAMAGE_IMMUNITY_ACTION:
+        if not (0 < low <= MAX_DAMAGE_IMMUNITY_SECONDS
+                and 0 < high <= MAX_DAMAGE_IMMUNITY_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} opens a no-damage "
+                f"window of {low:g} to {high:g} seconds. It lasts above 0 and "
+                f"up to {MAX_DAMAGE_IMMUNITY_SECONDS:g}.")
+
+    # A MOVE TO A RANDOM POINT STATES METRES, above 0 and up to the bound.
+    # Ruled 2026-10-12.
+    if action == TELEPORT_RANDOMLY_ACTION:
+        if not (0 < low <= MAX_TELEPORT_RANDOMLY_METRES
+                and 0 < high <= MAX_TELEPORT_RANDOMLY_METRES):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} moves its wearer "
+                f"to a random point within {low:g} to {high:g} metres. It is "
+                f"above 0 and up to {MAX_TELEPORT_RANDOMLY_METRES:g}.")
+
+    # A RIDER'S VALUE IS A PERCENT, above 0 and up to 100. Issue #1833.
+    if action in AILMENT_RIDER_ACTIONS:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} hangs {low:g} to "
+                f"{high:g} per cent on an ailment. A rider moves a number by "
+                f"above 0 and up to 100 per cent.")
+        if scale_max_steps:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} hangs a number on "
+                f"an ailment and states Scale Max Steps. It has no stacks, "
+                f"so it would be dropped.")
+        # AND THE ONE THAT LOWERS MAXIMUM HEALTH STOPS AT HALF. Ruled
+        # 2026-10-08. See `MAX_AILMENT_MAX_HEALTH_REMOVED`.
+        if (action == AILMENT_MAX_HEALTH_ACTION
+                and max(low, high) > MAX_AILMENT_MAX_HEALTH_REMOVED):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} takes {low:g} to "
+                f"{high:g} per cent off its carrier's maximum health. A "
+                f"lowered maximum takes above 0 and up to "
+                f"{MAX_AILMENT_MAX_HEALTH_REMOVED:g} per cent.")
+
+    # A ROW THAT FIRES THE WEARER'S GADGETS AT ITS DEATH STATES 100, which the
+    # game does not read: every cast is whole. Ruled 2026-10-19 (C2).
+    if action == GADGETS_CAST_NOW_ACTION:
+        if not (low == 100 and high == 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} fires its "
+                f"wearer's gadgets and states the value {low:g} to "
+                f"{high:g}. Each gadget casts at the whole of its damage, "
+                f"so its value is 100 and nothing else.")
+
+    # A CLEANSE'S VALUE IS 100, which the game does not read. Issue #1833.
+    if action == CLEANSE_ACTION:
+        if not (low == 100 and high == 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} cleanses and "
+                f"states the value {low:g} to {high:g}. A cleanse has no "
+                f"size, so its value is 100 and nothing else.")
+        if scale_max_steps:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} cleanses and "
+                f"states Scale Max Steps. It has no stacks, so it would be "
+                f"dropped.")
+
+    # A STATUS ACTION'S VALUE IS A CHANCE, above 0 and up to 100, or SECONDS,
+    # above 0 and up to the bound. Issue #1833 group E part 1. Neither has
+    # stacks.
+    if action in ("apply_status_to_self_sized", APPLY_STATUS_SIZED_ACTION):
+        if not (low == int(low) and high == int(high)
+                and 1 <= low <= MAX_STATUS_SIZE
+                and 1 <= high <= MAX_STATUS_SIZE):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} lays a status "
+                f"at {low:g} to {high:g} times its ordinary "
+                f"size. A size is a whole number from 1 to {MAX_STATUS_SIZE}.")
+    if action in ("apply_status", "apply_status_to_self"):
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} applies a status "
+                f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                f"and up to 100, and 100 is always.")
+    if action in ("apply_status_seconds", "apply_status_to_self_seconds"):
+        if not (0 < low <= MAX_STATUS_SECONDS
+                and 0 < high <= MAX_STATUS_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} applies a status "
+                f"for {low:g} to {high:g} seconds. It lasts above 0 and up to "
+                f"{MAX_STATUS_SECONDS:g}.")
+    # A SLOW'S VALUE IS ITS STRENGTH IN PER CENT, above 0 and up to
+    # Cripple's cap. Traps layer 3, ruled 2026-10-21 (M3).
+    if action == SLOW_FOR_SECONDS_ACTION:
+        if not (0 < low <= MAX_SLOW_PERCENT and 0 < high <= MAX_SLOW_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} slows by {low:g} "
+                f"to {high:g} per cent. A slow is above 0 and up to "
+                f"{MAX_SLOW_PERCENT:g}, Cripple's cap.")
+
+    # A REMAINING DAMAGE ACTION'S VALUE IS A SHARE OF THAT DAMAGE, above 0 and
+    # up to 100. Issue #1833 group D part 4.
+    if action in REMAINING_DAMAGE_ACTIONS:
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} deals {low:g} to "
+                f"{high:g} per cent of the remaining damage. It deals above 0 "
+                f"and up to 100.")
+
+    # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
+    # Issue #1833, the cooldown reduction action.
+    if action in COOLDOWN_REDUCE_ACTIONS:
+        if not (0 < low <= MAX_COOLDOWN_REDUCE_SECONDS
+                and 0 < high <= MAX_COOLDOWN_REDUCE_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} takes {low:g} to "
+                f"{high:g} seconds off cooldowns. It takes above 0 and up "
+                f"to {MAX_COOLDOWN_REDUCE_SECONDS:g} seconds.")
+        if scale_max_steps:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reduces cooldowns "
+                f"and states Scale Max Steps. A reduction has no stacks, so "
+                f"it would be dropped.")
+
+    # A ROW'S OWN STACKS. Issue #1833, ruled 2026-09-23: the row's Action
+    # Event grants a stack, Stack Seconds is how long they last and Scale
+    # Max Steps the cap. All three are required, and none of them means
+    # anything on any other stat row, so each is refused there rather than
+    # dropped.
+    stack_text = clean(_cell(raw, headers, "Stack Seconds"))
+    stack_seconds = 0.0
+    if not action and scale == "own_stacks":
+        known_events = granting_events()
+        if action_event not in known_events:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts its own "
+                f"stacks and names the event {action_event or '(none)'!r} "
+                f"to grant them. Known: {', '.join(sorted(known_events))}.")
+        if not stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts its own "
+                f"stacks and states no Stack Seconds for them to last.")
+        stack_seconds = number(stack_text, "Stack Seconds", index)
+        if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has stacks lasting "
+                f"{stack_seconds:g} seconds. They last above 0 and up to "
+                f"{MAX_STACK_SECONDS:g}.")
+        # NO CAP ON THE EVENTS WHOSE UNCAPPED STACKS LAPSE ALONE. Traps
+        # layer 3, ruled 2026-10-21 (M4 (a)).
+        if scale_max_steps < 1 \
+                and action_event not in OWN_STACKS_LAPSING_ALONE_EVENTS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts its own "
+                f"stacks and states no cap in Scale Max Steps. \"Up to 5 "
+                f"stacks\" is 5.")
+    elif action in PLACED_ACTIONS:
+        # A STACK PLACED ON THE OTHER CHARACTER. Issue #1833, phase 2. The
+        # window is required and the cap is not: "stacking indefinitely"
+        # states none. Each stack takes away a share, so both ends are
+        # above nought.
+        if not stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} places {action} "
+                f"and states no Stack Seconds for the stacks to last.")
+        stack_seconds = number(stack_text, "Stack Seconds", index)
+        if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} places stacks "
+                f"lasting {stack_seconds:g} seconds. They last above 0 and "
+                f"up to {MAX_STACK_SECONDS:g}.")
+        if low <= 0 or high <= 0:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} places {action} "
+                f"worth {low:g} to {high:g} a stack. A stack takes away a "
+                f"share, so both ends are above nought.")
+    elif action in (KEPT_STACKS_REPEAT_SKILL_ACTION,
+                    KEPT_STACKS_FREE_NEXT_ABILITY_ACTION):
+        # A KEPT STACK HAS NO LIFETIME. Ruled 2026-10-12, and for the second
+        # action that gains them on 2026-10-17. Refused rather than
+        # dropped, so that a row is never read as stating one.
+        if stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gains kept "
+                f"stacks and states Stack Seconds. A kept stack has no "
+                f"lifetime: it is held until a use spends it, the dungeon "
+                f"is left, the wearer dies or the gear comes off. Leave "
+                f"the column empty.")
+    elif action == STUN_NEAR_THE_DYING_ACTION:
+        # HOW LONG THE STUN LASTS. Ruled 2026-10-08: a chance and a duration
+        # on one row, the duration here because the value is the chance.
+        # Required, and bounded as a stated status's seconds are and not as
+        # a stack's. No stack is behind it. See `MAX_STACK_SECONDS` for
+        # everything else this column holds.
+        if not stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} stuns the enemies "
+                f"near an enemy that died and states no Stack Seconds. On "
+                f"{action} that column is how long the stun lasts.")
+        stack_seconds = number(stack_text, "Stack Seconds", index)
+        if not 0.0 < stack_seconds <= MAX_STATUS_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} stuns for "
+                f"{stack_seconds:g} seconds. A stun lasts above 0 and up to "
+                f"{MAX_STATUS_SECONDS:g}.")
+    elif action == SLOW_FOR_SECONDS_ACTION:
+        # HOW LONG THE SLOW LASTS. Traps layer 3, ruled 2026-10-21 (M3): the
+        # duration here because the value is the strength, as the stun near
+        # the dying's is; required, and bounded as a stated status's seconds
+        # are.
+        if not stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} slows and states "
+                f"no Stack Seconds. On {action} that column is how long the "
+                f"slow lasts.")
+        stack_seconds = number(stack_text, "Stack Seconds", index)
+        if not 0.0 < stack_seconds <= MAX_STATUS_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} slows for "
+                f"{stack_seconds:g} seconds. A slow lasts above 0 and up to "
+                f"{MAX_STATUS_SECONDS:g}.")
+    elif not action and scale == "consecutive_hits":
+        # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2. The event must
+        # name who was struck, the cap is required, and there is no window.
+        if action_event not in CONSECUTIVE_HIT_EVENTS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts hits in a "
+                f"row and names the event {action_event or '(none)'!r} to "
+                f"count them. Only an event naming who was struck can: "
+                f"{', '.join(CONSECUTIVE_HIT_EVENTS)}.")
+        if stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts hits in a "
+                f"row and states Stack Seconds. The count has no timer "
+                f"(ruled 2026-09-24), so they would be dropped.")
+        if scale_max_steps < 1:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts hits in a "
+                f"row and states no cap in Scale Max Steps. \"Up to 8 "
+                f"stacks\" is 8.")
+    elif not action:
+        if stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Stack "
+                f"Seconds and is not scaled by own_stacks, so they would "
+                f"be dropped.")
+        if action_event:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} changes a stat "
+                f"and names the event {action_event!r}. A stat row reads "
+                f"an event only to grant its own stacks, with the scale "
+                f"own_stacks; here it would be dropped.")
+
+    # "ABOVE 100" IS AN OFFSET OF 100. Issue #1686. Empty is none. An offset
+    # needs a scale that reads one, and is a number of points from 0 up to
+    # the point budget.
+    offset_text = clean(_cell(raw, headers, "Scale Offset"))
+    scale_offset = 0.0
+    if offset_text:
+        offset = number(offset_text, "Scale Offset", index)
+        if scale not in SCALES_THAT_TAKE_AN_OFFSET:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has an offset of "
+                f"{offset:g} on the scale {scale or '(none)'!r}. Only "
+                f"{', '.join(sorted(SCALES_THAT_TAKE_AN_OFFSET))} reads an "
+                f"offset, so here it would be dropped.")
+        if not 0 <= offset <= MAX_SCALE_OFFSET:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has an offset of "
+                f"{offset:g}. An offset is a number of points from 0 to "
+                f"{MAX_SCALE_OFFSET}; leave the column empty for none.")
+        scale_offset = offset
+
+    # A TIMED ROW STATES ITS PERIOD, AND ONLY A TIMED ROW DOES. Issue
+    # #1833: "Every 10 seconds" is 10. Refused either way round, so a
+    # period is never written where nothing reads it, nor a clock left
+    # with none.
+    #
+    # AND A ROW THAT GAINS KEPT STACKS DOES AS WELL. Ruled 2026-10-12. Its
+    # Action Event is the use that spends the stacks, so its period cannot
+    # be told from its event; the game reads Every Seconds for it whatever
+    # the event is. Required there, with the same bound.
+    every_text = clean(_cell(raw, headers, "Every Seconds"))
+    every_seconds = 0.0
+    if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+        if not every_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gains kept "
+                f"stacks and states no Every Seconds, so it would never "
+                f"gain one. On {action} that column is the period of the "
+                f"gain.")
+        every_seconds = number(every_text, "Every Seconds", index)
+        if not 0.0 < every_seconds <= MAX_EVERY_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gains a kept "
+                f"stack every {every_seconds:g} seconds. A period is above "
+                f"0 and up to {MAX_EVERY_SECONDS:g}.")
+    elif action_event == TIMED_EVENT:
+        if not every_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} grants on "
+                f"{TIMED_EVENT} and states no Every Seconds, so it "
+                f"would never grant.")
+        every_seconds = number(every_text, "Every Seconds", index)
+        if not 0.0 < every_seconds <= MAX_EVERY_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} grants every "
+                f"{every_seconds:g} seconds. A period is above 0 and up "
+                f"to {MAX_EVERY_SECONDS:g}.")
+    elif every_text:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} states Every "
+            f"Seconds on the event {action_event or '(none)'!r}. Only "
+            f"{TIMED_EVENT} reads a period, so it would be dropped.")
+
+    # AN EVERY-Nth ROW STATES N, AND ONLY IT DOES. Issue #1833, phase 2:
+    # "Every third cast" is 3. A whole number from 2: "every 1st" is every
+    # time, which a row would say without counting. An attack's value is
+    # 100, "no damage"; the other two take something, so both ends are
+    # above nought. Neither a window nor a cap means anything here.
+    nth_text = clean(_cell(raw, headers, "Every Nth"))
+    every_nth = 0
+    if action in NTH_ACTIONS:
+        if not nth_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is the every-Nth "
+                f"action {action} and states no Every Nth, so it would "
+                f"never act.")
+        nth = number(nth_text, "Every Nth", index)
+        if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts every "
+                f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
+        every_nth = int(nth)
+        if action == "nth_attack_no_damage":
+            if low != 100 or high != 100:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} is "
+                    f"{action} worth {low:g} to {high:g}. No damage is all "
+                    f"of it: 100.")
+        elif low <= 0 or high <= 0:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is {action} "
+                f"worth {low:g} to {high:g}. It takes something, so both "
+                f"ends are above nought.")
+        if stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is {action} and "
+                f"states Stack Seconds. A count has no window (ruled "
+                f"2026-09-24), so they would be dropped.")
+    elif action in NEARBY_ACTIONS and nth_text:
+        # A NEARBY ACTION ON THE Nth OF ITS EVENTS INSIDE A WINDOW. Issue
+        # #1833 group E part 3, ruled 2026-10-02: "Every 3 blocks in quick
+        # succession" is Every Nth 3 with Stack Seconds 3, and the count
+        # starts again once it acts. The window is required: "in quick
+        # succession" without one is no window at all.
+        nth = number(nth_text, "Every Nth", index)
+        if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts every "
+                f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
+        every_nth = int(nth)
+        if not stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts {every_nth} "
+                f"of its events and states no Stack Seconds for the window "
+                f"they fall in.")
+        stack_seconds = number(stack_text, "Stack Seconds", index)
+        if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts its events in "
+                f"a window of {stack_seconds:g} seconds. It is above 0 and up "
+                f"to {MAX_STACK_SECONDS:g}.")
+    elif action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION and nth_text:
+        # A GADGET'S SHOT ON THE Nth TRAP TRIGGERED, WITH NO WINDOW. Ruled
+        # 2026-10-22 (traps layer 6, J4, J10): "For every 3 traps
+        # triggered" is Every Nth 3, one count per player that starts again
+        # after each third and at death. A window would be one no sentence
+        # states, so Stack Seconds is refused.
+        nth = number(nth_text, "Every Nth", index)
+        if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts every "
+                f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
+        every_nth = int(nth)
+        if stack_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} counts {every_nth} "
+                f"traps triggered and states Stack Seconds. The count has no "
+                f"window (ruled 2026-10-22, J4), so they would be dropped.")
+    elif nth_text:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} states Every Nth and "
+            f"is not an every-Nth action, so it would be dropped. Those "
+            f"actions: {', '.join(NTH_ACTIONS)}; and a nearby action, "
+            f"{', '.join(NEARBY_ACTIONS)}, with a window in Stack Seconds.")
+    elif action in NEARBY_ACTIONS and stack_text:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} is a nearby action and "
+            f"states Stack Seconds with no Every Nth, so they would be "
+            f"dropped.")
+
+    # AND STACK SECONDS ON ANY OTHER ACTION. Issue #2337. The branches
+    # above read the column for the actions in
+    # `ACTIONS_THAT_READ_STACK_SECONDS` and refuse it on the ones that
+    # count without a window; every other action, `apply_status` among
+    # them, carried nothing and wrote 0.0, so a row stating "lasts 3
+    # seconds" there lasted nothing and said nothing.
+    if (action and stack_text
+            and action not in ACTIONS_THAT_READ_STACK_SECONDS):
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} states Stack Seconds "
+            f"on the action {action}, which does not read it, so it would "
+            f"be dropped. The column is read on a stat row scaled by "
+            f"own_stacks and on these actions: "
+            f"{', '.join(sorted(ACTIONS_THAT_READ_STACK_SECONDS))}.")
+
+    # THE STEP'S HIGH END, WHEN THE STEP ROLLS WITH THE VALUE. Issue #1833,
+    # the kill counter: "for every 100,000-500,000 kills" states the step
+    # as a range, and the item's roll picks one step where it picks the
+    # value, so the hover text, which shows both numbers at that roll, and
+    # the effect agree. The pair is a range the sentence states, low end
+    # first, and the high end is inside the scale's bounds.
+    step_high_text = clean(_cell(raw, headers, "Scale Step High"))
+    scale_step_high = 0.0
+    if action in USE_INCREASED_DAMAGE_ACTIONS:
+        # ON THESE TWO ACTIONS THE PAIR IS THE SIZE OF THE INCREASE AND NOT
+        # A STEP. Ruled 2026-10-06. See `USE_INCREASED_DAMAGE_ACTIONS`. It
+        # is required, because a row without it would roll and add
+        # nothing; it is refused with a Scale, because then it would be
+        # read as that scale's step; and it is a range the sentence
+        # states, as a step's range is.
+        if scale:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} rolls a use's "
+                f"increased damage and states the scale {scale!r}. Its "
+                f"Scale Step is the size of the increase and not a step, "
+                f"so the Scale column must be empty.")
+        step_text = clean(_cell(raw, headers, "Scale Step"))
+        if not step_text or not step_high_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} rolls a use's "
+                f"increased damage and does not state how large the "
+                f"increase is. On the action {action!r} that is Scale Step "
+                f"and Scale Step High, the sentence's second range.")
+        scale_step = number(step_text, "Scale Step", index)
+        scale_step_high = number(step_high_text, "Scale Step High", index)
+        if not 0.0 < scale_step < scale_step_high <= MAX_USE_INCREASE:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gives an "
+                f"increase from {scale_step:g} to {scale_step_high:g}. The "
+                f"low end is above 0, the high end above it and at most "
+                f"{MAX_USE_INCREASE:g}.")
+        if (scale_step, scale_step_high) not in enchantment_ranges(words[name]):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gives an "
+                f"increase from {scale_step:g} to {scale_step_high:g}, "
+                f"which its words {words[name]!r} do not state as a range, "
+                f"so the hover text would show one size and the effect "
+                f"use another.")
+    elif step_high_text:
+        scale_step_high = number(step_high_text, "Scale Step High", index)
+        if not scale:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Scale "
+                f"Step High and no scale, so it would be dropped.")
+        top = SCALES[scale][1]
+        if not scale_step < scale_step_high <= top:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} steps from "
+                f"{scale_step:g} to {scale_step_high:g}. The high end is "
+                f"above the step and at most {top:g}.")
+        if (scale_step, scale_step_high) not in enchantment_ranges(words[name]):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} steps from "
+                f"{scale_step:g} to {scale_step_high:g}, which its words "
+                f"{words[name]!r} do not state as a range, so the hover "
+                f"text would show one step and the effect use another.")
+
+    # THE STACKS' HIGH END, WHEN HOW LONG THEY LAST ROLLS WITH THE VALUE.
+    # Issue #1833, ruled 2026-09-30 under the owner's delegation, following
+    # Scale Step High: "Killing an enemy triggers a 1-2 second global
+    # cooldown on all your skills" states the time as a range, and the
+    # item's roll picks one time where it picks the value. The pair is a
+    # range the sentence states, low end first, and the high end is inside
+    # the bound every stack's time keeps.
+    stack_high_text = clean(_cell(raw, headers, "Stack Seconds High"))
+    stack_seconds_high = 0.0
+    if stack_high_text:
+        stack_seconds_high = number(stack_high_text, "Stack Seconds High", index)
+        if not stack_seconds:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Stack "
+                f"Seconds High and no Stack Seconds, so it would be dropped.")
+        # A STUN'S SECONDS KEEP THEIR OWN BOUND AT THE HIGH END TOO. Ruled
+        # 2026-10-08. See `STUN_NEAR_THE_DYING_ACTION`.
+        longest = (MAX_STATUS_SECONDS
+                   if action in (STUN_NEAR_THE_DYING_ACTION,
+                                 SLOW_FOR_SECONDS_ACTION)
+                   else MAX_STACK_SECONDS)
+        if not stack_seconds < stack_seconds_high <= longest:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has stacks lasting "
+                f"{stack_seconds:g} to {stack_seconds_high:g} seconds. The "
+                f"high end is above Stack Seconds and at most "
+                f"{longest:g}.")
+        if (stack_seconds, stack_seconds_high) not in enchantment_ranges(words[name]):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has stacks lasting "
+                f"{stack_seconds:g} to {stack_seconds_high:g} seconds, which "
+                f"its words {words[name]!r} do not state as a range, so the "
+                f"hover text would show one time and the effect use another.")
+
+    # A SECOND CONDITION, WHICH MUST HOLD AS WELL. Issue #1833, ruled
+    # 2026-09-30 under the owner's delegation: "While stationary you take
+    # 20%-35% increased damage from ranged attacks" names two states, and the
+    # literal reading is both. Only a stat row carries it: an action row's
+    # condition is copied onto its action one at a time.
+    condition2 = clean(_cell(raw, headers, "Condition 2")).lower()
+    condition_value2 = 0.0
+    value2_text = clean(_cell(raw, headers, "Condition Value 2"))
+    if condition2:
+        if condition2 not in CONDITIONS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} names the second "
+                f"condition {condition2!r}, which the game cannot judge. "
+                f"Known: {', '.join(sorted(CONDITIONS))}.")
+        if not condition:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Condition 2 "
+                f"and no Condition. Write a single condition in Condition.")
+        if condition2 == condition:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} names "
+                f"{condition!r} as both conditions.")
+        if action:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} moves {action} and "
+                f"states Condition 2. An action carries one condition.")
+        if CONDITIONS[condition2] is None:
+            if value2_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} carries the "
+                    f"second condition {condition2!r} and a value of "
+                    f"{value2_text!r}. That condition compares nothing, so "
+                    f"the value would be ignored. Leave the column empty.")
+        else:
+            condition_value2 = number(value2_text, "Condition Value 2", index)
+            low2, high2, units2 = CONDITIONS[condition2]
+            if not low2 <= condition_value2 <= high2:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has a second "
+                    f"condition value of {condition_value2}, and "
+                    f"{condition2!r} takes {units2} between {low2:g} and "
+                    f"{high2:g}.")
+    elif value2_text:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} states Condition Value "
+            f"2 and no Condition 2, so it would be dropped.")
+
+    # THE CONDITION'S HIGH END, WHEN THE THRESHOLD ROLLS WITH THE VALUE.
+    # Issue #1833, ruled 2026-09-30, following Scale Step High: "Your
+    # abilities are free when above 80%-95% hp" states the threshold as a
+    # range, and the item's roll picks one threshold where it picks the
+    # value. The pair is a range the sentence states, low end first, inside
+    # the condition's own bounds. Only a stat row's threshold rolls.
+    condition_high_text = clean(_cell(raw, headers, "Condition Value High"))
+    condition_value_high = 0.0
+    if condition_high_text:
+        condition_value_high = number(condition_high_text,
+                                      "Condition Value High", index)
+        if not condition or CONDITIONS[condition] is None:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Condition "
+                f"Value High and no condition that compares a value, so it "
+                f"would be dropped.")
+        if action:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} moves {action} and "
+                f"states Condition Value High. An action's threshold does "
+                f"not roll.")
+        top_condition = CONDITIONS[condition][1]
+        if not condition_value < condition_value_high <= top_condition:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has a threshold of "
+                f"{condition_value:g} to {condition_value_high:g}. The high "
+                f"end is above Condition Value and at most "
+                f"{top_condition:g}.")
+        if (condition_value, condition_value_high) not in enchantment_ranges(words[name]):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has a threshold of "
+                f"{condition_value:g} to {condition_value_high:g}, which its "
+                f"words {words[name]!r} do not state as a range, so the "
+                f"hover text would show one threshold and the effect use "
+                f"another.")
+
+    # HOW LONG A TRIGGER WAITS AFTER IT FIRES. Issue #1833 group D, ruled
+    # 2026-09-30 under the owner's delegation. Only an action row that
+    # makes something happen takes one, and not on the timed event, whose
+    # own period is its spacing. EMPTY IS THE DEFAULT, written here so the
+    # table says what each row does: `DEFAULT_TRIGGER_COOLDOWN` on a
+    # hit-fired event and none elsewhere. An explicit 0 is none, for a
+    # sentence that says every hit.
+    cooldown_text = clean(_cell(raw, headers, "Trigger Cooldown"))
+    trigger_cooldown = 0.0
+    # AN OWN STACK TAKES ONE WHEN ITS SENTENCE STATES ONE, ruled 2026-09-30
+    # for the Demon King's Regalia's "(5 minute cd)", and never by default.
+    own_stack_grant = not action and scale == "own_stacks"
+    if cooldown_text:
+        trigger_cooldown = number(cooldown_text, "Trigger Cooldown", index)
+        if not ((action and takes_a_trigger_cooldown(action)) or own_stack_grant) \
+                or action_event == TIMED_EVENT:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states a Trigger "
+                f"Cooldown of {trigger_cooldown:g} seconds. Only an action "
+                f"row that moves a pool, resets or reduces a cooldown or "
+                f"applies a random damage over time on an event takes one; "
+                f"a row that counts or stacks never waits, so it would be "
+                f"dropped.")
+        if not 0 <= trigger_cooldown <= MAX_TRIGGER_COOLDOWN:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has a Trigger "
+                f"Cooldown of {trigger_cooldown:g} seconds. It is from 0, "
+                f"which is none, up to {MAX_TRIGGER_COOLDOWN:g}.")
+    elif action and takes_a_trigger_cooldown(action) \
+            and action not in ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN \
+            and action_event in HIT_FIRED_EVENTS:
+        trigger_cooldown = DEFAULT_TRIGGER_COOLDOWN
+
+    # THE THRESHOLD ITS EVENT CROSSES. Issue #1833 group D part 2, ruled
+    # 2026-09-30: only `health_falls_below` reads it, so it is required there
+    # and refused everywhere else, on an action row and an own stack alike.
+    event_value_text = clean(_cell(raw, headers, "Event Value"))
+    event_value = 0.0
+    if action_event == THRESHOLD_EVENT:
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} hangs on "
+                f"{THRESHOLD_EVENT} and states no Event Value. It is the share "
+                f"of maximum health, in per cent, that health falls below.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value < 100:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has an Event Value "
+                f"of {event_value:g}. It is a share of maximum health above 0 "
+                f"and below 100.")
+    elif action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION:
+        # OR THE METRES FROM THE TRAP A GADGET MUST STAND WITHIN, for a
+        # gadget's shot at a trap's enemy: empty or nought is any distance.
+        # Ruled 2026-10-22 (traps layer 6, J1, J5, J10).
+        if event_value_text:
+            event_value = number(event_value_text, "Event Value", index)
+            if not 0 <= event_value <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} fires the "
+                    f"gadget within {event_value:g} metres of a trap. The "
+                    f"radius is 0, any distance, up to "
+                    f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:g}.")
+    elif event_value_text:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} states an Event Value on "
+            f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT} "
+            f"reads one, so it would be dropped.")
+
+    # THE AILMENT A REMAINING DAMAGE ACTION IS LIMITED TO. Issue #1833 group D
+    # part 4, ruled 2026-10-01: required on `dot_remaining_target`, allowed on
+    # `dot_remaining_nearby`, and refused everywhere else, as Event Value is.
+    ailment = clean(_cell(raw, headers, "Ailment"))
+    # AND THE STATUS A STATUS ACTION APPLIES, in the same cell. Issue #1833
+    # group E part 1, ruled 2026-10-01: required on both status actions.
+    if action in ALL_APPLY_STATUS_ACTIONS:
+        known = {"apply_status_seconds": APPLY_STATUSES_FOR_SECONDS,
+                 "apply_status_to_self_seconds": APPLY_STATUSES_TO_SELF_FOR_SECONDS,
+                 "apply_status_to_self_sized": (APPLIED_DOT_STATUS,),
+                 # AND `apply_status_sized` NAMES A DAMAGE OVER TIME, whose
+                 # size is what a tick deals. Traps layer 3, 2026-10-21.
+                 APPLY_STATUS_SIZED_ACTION: AILMENTS,
+                 # AND `apply_status` ALONE MAY NAME ALL FIVE DAMAGE OVER
+                 # TIME AILMENTS AT ONCE. The owner, 2026-10-08.
+                 "apply_status": APPLY_STATUSES + (ALL_DOTS_STATUS,
+                                                   SILENCE_STATUS),
+                 # AND `apply_status_to_self` ALONE MAY NAME THE STATUSES
+                 # THAT ARE ONLY FOR A WEARER. Ruled 2026-10-12.
+                 "apply_status_to_self": APPLY_STATUSES + APPLY_STATUSES_TO_SELF_ONLY,
+                 }.get(action, APPLY_STATUSES)
+        if ailment not in known:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} applies the status "
+                f"{ailment or '(none)'!r}, which {action} cannot. Known: "
+                f"{', '.join(known)}.")
+    elif action in (KEPT_STACKS_REPEAT_SKILL_ACTION,
+                    KEPT_STACKS_FREE_NEXT_ABILITY_ACTION):
+        # WHAT THE SENTENCE CALLS THE STACKS, in the same cell. Ruled
+        # 2026-10-12. Required, and a name the row's own words write
+        # between single quotes: "a stack of 'Temporal Flux.'" gives
+        # Temporal Flux, the full stop left out. The same for the second
+        # action that gains kept stacks, ruled 2026-10-17: "'Void.'" gives
+        # Void, which is why that sentence's double quotes are reworded
+        # (O10).
+        if not ailment:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} gains kept "
+                f"stacks and states no name for them in Ailment. On "
+                f"{action} that cell is what the sentence calls the "
+                f"stacks, which the game shows with their count.")
+        if ailment.endswith(".") or not re.search(
+                r"'" + re.escape(ailment) + r"\.?'", words[name]):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} calls its kept "
+                f"stacks {ailment!r}, which its words {words[name]!r} do "
+                f"not write between single quotes. Write the name as the "
+                f"sentence gives it, without its full stop.")
+    elif ailment:
+        if action not in REMAINING_DAMAGE_ACTIONS \
+                and action not in AILMENT_RIDER_ACTIONS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} names the ailment "
+                f"{ailment!r} on {action or stat!r}. Only "
+                f"{', '.join(REMAINING_DAMAGE_ACTIONS + ALL_APPLY_STATUS_ACTIONS + AILMENT_RIDER_ACTIONS)} "
+                f"read one, so it would be dropped.")
+        if action == AILMENT_DETONATION_ACTION:
+            if ailment not in DETONATING_AILMENTS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} makes the ailment "
+                    f"{ailment!r} detonate. The game detonates only "
+                    f"{', '.join(DETONATING_AILMENTS)}, so the row would do "
+                    f"nothing.")
+        elif action == AILMENT_SPREAD_ACTION and ailment in SPREADING_SHARE_AILMENTS:
+            pass
+        elif ailment not in AILMENTS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} names the ailment "
+                f"{ailment!r}, which is not one the game has. Known: "
+                f"{', '.join(AILMENTS)}.")
+    elif action == "dot_remaining_target":
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} deals remaining damage on "
+            f"the event's target and names no Ailment. Name one of "
+            f"{', '.join(AILMENTS)}.")
+    elif action in AILMENT_RIDER_ACTIONS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {name} hangs a number on an "
+            f"ailment and names no Ailment. Name one of "
+            f"{', '.join(AILMENTS)}.")
+
+    # THE SHARE OF ITS DAMAGE A REPEAT DEALS, in percent. Mechanism B2, ruled
+    # 2026-10-05: "Each skill has a 20%-40% chance to cast a duplicate at 50%
+    # damage" is 50. Read by `repeat_skill` alone and refused everywhere
+    # else, as Event Value is. An empty cell is written as 0, which the
+    # game reads as the whole of the damage.
+    share_text = clean(_cell(raw, headers, "Damage Share"))
+    damage_share = 0.0
+    if share_text:
+        if action != REPEAT_SKILL_ACTION:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states a Damage "
+                f"Share on {action or stat!r}. Only {REPEAT_SKILL_ACTION} "
+                f"reads one, so it would be dropped.")
+        damage_share = number(share_text, "Damage Share", index)
+        if not 0 < damage_share <= 100:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} repeats a skill at "
+                f"{damage_share:g} per cent of its damage. A share is above 0 "
+                f"and up to 100, and an empty cell is the whole.")
+
+    # A RANGE THE SENTENCE MARKS AS ROLLING DOWN IS WRITTEN THE OTHER WAY
+    # ROUND. Every pair above was checked in the sentence's own order, which
+    # is how the sheet states it. The game reads the first of a pair at a
+    # roll of 0 and the second at a roll of 1, so a range whose best or
+    # harshest figure is its FIRST number leaves here with its ends
+    # exchanged. See `ranges_rolling_down`. LAST, so that every check above
+    # reads the pair as a person wrote it.
+    marked = {
+        stated for place, stated
+        in enumerate(enchantment_ranges(words[name]), start=1)
+        if place in rolls_down[name]}
+
+    if value_as_stated is not None and value_as_stated in marked:
+        low, high = high, low
+    if scale_step_high and (scale_step, scale_step_high) in marked:
+        scale_step, scale_step_high = scale_step_high, scale_step
+    if stack_seconds_high and (stack_seconds, stack_seconds_high) in marked:
+        stack_seconds, stack_seconds_high = stack_seconds_high, stack_seconds
+    if condition_value_high and (condition_value, condition_value_high) in marked:
+        condition_value, condition_value_high = condition_value_high, condition_value
+
+    return {
+        "Enchantment": name,
+        "Stat": stat,
+        "ValueKind": kind,
+        "ValueLow": low,
+        "ValueHigh": high,
+        "RequiredTags": clean(_cell(raw, headers, "Required Tags")),
+        "Condition": condition,
+        "ConditionValue": condition_value,
+        "Scale": scale,
+        "ScaleStep": scale_step,
+        "Action": action,
+        "ActionEvent": action_event,
+        "FractionOf": fraction_of,
+        "ScaleMaxSteps": scale_max_steps,
+        "StackSeconds": stack_seconds,
+        "ScaleOffset": scale_offset,
+        "EverySeconds": every_seconds,
+        "EveryNth": every_nth,
+        "ScaleStepHigh": scale_step_high,
+        "StackSecondsHigh": stack_seconds_high,
+        "Condition2": condition2,
+        "ConditionValue2": condition_value2,
+        "ConditionValueHigh": condition_value_high,
+        "TriggerCooldown": trigger_cooldown,
+        "EventValue": event_value,
+        "Ailment": ailment,
+        "DamageShare": damage_share,
+    }
+
+
 def enchantment_effects(book) -> list[dict]:
     """What an enchantment grants, one stat effect per row. Issue #45.
 
@@ -8341,1232 +9865,10 @@ def enchantment_effects(book) -> list[dict]:
         if not name:
             continue
 
-        if name not in words:
-            raise DataError(
-                f"Enchantment Effects row {index}: no enchantment is called "
-                f"{name!r}. Use the row name game/Data/EnchantmentsPositive.csv "
-                f"or game/Data/EnchantmentsNegative.csv gives it.")
-
-        said = clean(_cell(raw, headers, "Effect"))
-        if said != words[name]:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} is written here as "
-                f"{said!r} and in the Enchantments sheet as {words[name]!r}. "
-                f"The two must agree, so that an enchantment that is reworded "
-                f"is read again before its numbers are trusted.")
-
-        stat = clean(_cell(raw, headers, "Stat"))
-        action = clean(_cell(raw, headers, "Action")).lower()
-        action_event = clean(_cell(raw, headers, "Action Event")).lower()
-        fraction_of = clean(_cell(raw, headers, "Fraction Of")).lower()
-        kind = clean(_cell(raw, headers, "Value Kind")).lower()
-
-        # A ROW CHANGES A STAT OR MOVES A POOL, NEVER BOTH AND NEVER NEITHER.
-        # Both would be two effects wearing one roll, and the hover text shows
-        # one number; neither is a row that validates and grants nothing.
-        if stat and action:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} names both the stat "
-                f"{stat!r} and the pool action {action!r}. A row does one or "
-                f"the other: a stat row changes a number the pipeline reads, "
-                f"an action row moves a pool when an event happens.")
-        if not stat and not action:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} names no stat and no "
-                f"pool action. Known pools: {', '.join(POOL_ACTIONS)}.")
-
-        if action:
-            _check_pool_action(index, name, action, action_event, fraction_of,
-                               kind, raw, headers)
-            if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS \
-                    and action not in NTH_ACTIONS \
-                    and action not in COOLDOWN_RESET_ACTIONS \
-                    and action not in COOLDOWN_REDUCE_ACTIONS \
-                    and action != RANDOM_DOT_ACTION \
-                    and action != HEALTH_CAP_ACTION \
-                    and action not in NEARBY_ACTIONS \
-                    and action not in REMAINING_DAMAGE_ACTIONS \
-                    and action not in ALL_APPLY_STATUS_ACTIONS \
-                    and action != DAMAGE_IMMUNITY_ACTION \
-                    and action != TELEPORT_RANDOMLY_ACTION \
-                    and action != GADGETS_CAST_NOW_ACTION \
-                    and action != REFLECT_BLOCKED_ACTION \
-                    and action != BLAST_FROM_THE_DYING_ACTION \
-                    and action != STUN_NEAR_THE_DYING_ACTION \
-                    and action != SLOW_FOR_SECONDS_ACTION \
-                    and action != CLEANSE_ACTION \
-                    and action != OVERKILL_EXPLOSION_ACTION \
-                    and action != KILLING_BLOW_EXPLOSION_ACTION \
-                    and action not in TRAPS_NEARBY_ACTIONS \
-                    and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
-                    and action != STRIKE_TARGET_ACTION \
-                    and action != EXECUTE_TARGET_ACTION \
-                    and action != TEMPORARY_ABSORB_ACTION \
-                    and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
-                    and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
-                    and action not in SKILL_IN_HAND_ACTIONS \
-                    and action not in AILMENT_RIDER_ACTIONS:
-                fraction_of = fraction_of or FRACTION_BASES[0]
-        else:
-            _check_value_kind("Enchantment Effects", index, name, stat, kind)
-
-        low = number(_cell(raw, headers, "Value Low"), "Value Low", index)
-        high_text = clean(_cell(raw, headers, "Value High"))
-        high = number(high_text, "Value High", index) if high_text else low
-
-        # CHECKED BEFORE THE RANGE BELOW, so that a range on a set row is
-        # reported for what it is rather than as a range its words do not
-        # state.
-        if types[name].casefold() == "set" and high != low:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} is a set row stating "
-                f"the range {low:g} to {high:g}. Each of a set's rows states "
-                f"one number: an item records only the set's lowest threshold "
-                f"row, so nothing records a roll for the 6-piece or 10-piece "
-                f"row and a range could not be read back.")
-
-        value_as_stated = None
-        if high != low:
-            # A RANGE IS ONE THE SENTENCE STATES, IN ITS ORDER AND WITH ONE
-            # SIGN. The owner ruled on 2026-09-11 that an enchantment rolls a
-            # value evenly inside its range, and the game shows that number in
-            # place of the range in the sentence, so a row whose two ends are
-            # not that range would give the character one number and the
-            # player another. "Low" is the value at the lowest roll and "high"
-            # at the highest, so "reduced by 30%-50%" is -30 and -50.
-            stated = enchantment_ranges(words[name])
-            # OR ITS COMPLEMENT, FOR THE FEW NAMED. See
-            # `COMPLEMENT_RANGE_ENCHANTMENTS`: both ends negative, each 100
-            # minus the sentence's number at the same place.
-            shown = ((100.0 - abs(low), 100.0 - abs(high))
-                     if name in COMPLEMENT_RANGE_ENCHANTMENTS and low < 0
-                     else (abs(low), abs(high)))
-            # OR ITS BASE PLUS THE VALUE, FOR THE FEW NAMED. See
-            # `BASE_PLUS_RANGE_ENCHANTMENTS`: each end the base plus the value.
-            if name in BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
-                base = BASE_PLUS_RANGE_ENCHANTMENTS[name]
-                shown = (base + low, base + high)
-            if (low < 0) != (high < 0) or shown not in stated:
-                written = ", ".join(f"{a:g} to {b:g}" for a, b in stated)
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states the "
-                    f"range {low:g} to {high:g}, which its words "
-                    f"{words[name]!r} do not state in that order. The ranges "
-                    f"they state: {written or 'none'}. Write the first number "
-                    f"as Value Low and the second as Value High, both with "
-                    f"the row's sign.")
-            value_as_stated = shown
-
-        condition, condition_value, scale, scale_step = _condition_and_scale(
-            raw, headers, "Enchantment Effects", index, name)
-
-        # A CONDITION READ FROM AN ACTION'S EVENT NEEDS AN ACTION AND AN EVENT
-        # CARRYING THE HIT'S TAGS. Ruled 2026-10-17. On a stat row it is
-        # refused by `refuse_a_condition_nothing_asks_for`; here, an action row
-        # on any other event would judge an event with no hit and hold every
-        # time, which is "not a spell" said of nothing.
-        if condition in CONDITIONS_OF_AN_ACTIONS_EVENT and action \
-                and action_event not in EVENTS_CARRYING_A_HIT_DEALTS_TAGS:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} moves {action} on the "
-                f"event {action_event or '(none)'!r} under the condition "
-                f"{condition!r}, which is judged from the tags of a hit the "
-                f"wearer dealt. Only these events carry them: "
-                f"{', '.join(EVENTS_CARRYING_A_HIT_DEALTS_TAGS)}.")
-
-        # "UP TO 10 STACKS" IS A CAP OF 10 WHOLE STEPS. Issue #1815. This sheet
-        # carried the column alone until 2026-11-24, when `passive_effects`
-        # began reading it by these same rules for the demonic tree rework.
-        # Empty is no cap. A cap needs a scale to cap, and is a whole number of
-        # steps, from 1 up to the largest a sentence states.
-        cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
-        scale_max_steps = 0
-        if cap_text and scale in SCALES_THAT_COUNT_A_FRACTION:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} scales by {scale!r} "
-                f"and states Scale Max Steps {cap_text!r}. That scale counts a "
-                f"fraction of a charge's range and not whole steps, and is "
-                f"capped at the row's whole value by itself, so there is "
-                f"nothing for a cap in steps to limit. Leave the column empty.")
-        if cap_text:
-            cap = number(cap_text, "Scale Max Steps", index)
-            if not scale and action not in NEXT_USE_ACTIONS \
-                    and action not in PLACED_ACTIONS \
-                    and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
-                    and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
-                    and action not in TRAPS_NEARBY_ACTIONS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has a cap of "
-                    f"{cap:g} steps and no scale. A cap limits how many steps "
-                    f"a scale counts, so with no scale it caps nothing.")
-            if cap != int(cap) or not 1 <= cap <= MAX_SCALE_STEPS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has a cap of "
-                    f"{cap:g} steps. A cap is a whole number of steps from 1 "
-                    f"to {MAX_SCALE_STEPS}; leave the column empty for none.")
-            scale_max_steps = int(cap)
-        if scale in SCALES_THAT_NEED_A_CAP and scale_max_steps < 1:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} scales by {scale!r} "
-                f"and states no Scale Max Steps. That scale has no cap of its "
-                f"own, so the row would be uncapped. State the cap.")
-
-        # A NEXT-USE ROW STATES HOW MANY CHARGES IT HOLDS. Issue #1833, phase
-        # 2: one for a sentence stating no stacking, five for "stacking up to
-        # 5 times". Required rather than defaulted, so the one judgement a row
-        # makes is written in the sheet.
-        if action in NEXT_USE_ACTIONS:
-            if scale_max_steps < 1:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} grants a "
-                    f"{action} charge and states no Scale Max Steps. It is "
-                    f"how many charges the row holds: 1 when the sentence "
-                    f"states no stacking.")
-            if low <= 0 or high <= 0:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} grants a "
-                    f"{action} charge worth {low:g} to {high:g}. A charge is "
-                    f"increased damage, so both ends are above nought.")
-
-        # A ROW THAT GAINS KEPT STACKS STATES THE MOST IT HOLDS, AND ITS VALUE
-        # IS THE SHARE OF ITS DAMAGE EACH EXTRA CAST DEALS, above 0 and up to
-        # 100. Ruled 2026-10-12. The cap is required rather than defaulted: "to
-        # at most 5" is the ruling's and not the sentence's, so the sheet is
-        # where it is written.
-        if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
-            if scale_max_steps < 1:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gains kept "
-                    f"stacks and states no Scale Max Steps. On {action} that "
-                    f"column is the most stacks held, a whole number from 1.")
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} casts a skill "
-                    f"again at {low:g} to {high:g} per cent of its damage. On "
-                    f"{action} the value is that share, above 0 and up to "
-                    f"100, and 100 is the whole.")
-
-        # AND A ROW THAT GAINS THEM TOWARDS A FREE NEXT ABILITY STATES THE CAP
-        # THE ABILITY IS BOUGHT AT, AND ITS VALUE IS HOW MUCH MORE DAMAGE THAT
-        # ABILITY DEALS, in per cent, above 0. Ruled 2026-10-17: "At 10 stacks"
-        # is the cap and "100% more" the value.
-        if action == KEPT_STACKS_FREE_NEXT_ABILITY_ACTION:
-            if scale_max_steps < 1:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gains kept "
-                    f"stacks and states no Scale Max Steps. On {action} that "
-                    f"column is the count the next ability is bought at, a "
-                    f"whole number from 1.")
-            if not (0 < low <= MAX_FREE_NEXT_ABILITY_MORE_PERCENT
-                    and 0 < high <= MAX_FREE_NEXT_ABILITY_MORE_PERCENT):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} makes its free "
-                    f"next ability deal {low:g} to {high:g} per cent more "
-                    f"damage. On {action} the value is that more, above 0 and "
-                    f"up to {MAX_FREE_NEXT_ABILITY_MORE_PERCENT:g}: 100 is "
-                    f"twice.")
-
-        # A COOLDOWN RESET'S VALUE IS ITS CHANCE, above 0 and up to 100. Issue
-        # #1833, the cooldown reset action. 100 is always.
-        if action in COOLDOWN_RESET_ACTIONS:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} resets cooldowns "
-                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
-                    f"and up to 100, and 100 is always.")
-            if scale_max_steps:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} resets cooldowns "
-                    f"and states Scale Max Steps. A reset has no stacks, so it "
-                    f"would be dropped.")
-
-        # A RANDOM DAMAGE OVER TIME'S VALUE IS ITS CHANCE, above 0 and up to
-        # 100, as a reset's is. Issue #1833 group D. 100 is always.
-        if action == RANDOM_DOT_ACTION:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} applies a random "
-                    f"damage over time with a chance of {low:g} to {high:g}. A "
-                    f"chance is above 0 and up to 100, and 100 is always.")
-            if scale_max_steps:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} applies a random "
-                    f"damage over time and states Scale Max Steps. It has no "
-                    f"stacks, so it would be dropped.")
-
-        # A HEALTH CAP'S VALUE IS A SHARE OF MAXIMUM HEALTH, above 0 and below
-        # 100, since 100 would cap nothing. Issue #1833 group D part 2.
-        if action == HEALTH_CAP_ACTION:
-            if not (0 < low < 100 and 0 < high < 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} lowers health to "
-                    f"{low:g} to {high:g} per cent of its maximum. The share is "
-                    f"above 0 and below 100.")
-            if scale_max_steps:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} lowers health and "
-                    f"states Scale Max Steps. It has no stacks, so it would be "
-                    f"dropped.")
-
-        # A NEARBY ACTION'S VALUE IS A SHARE, above 0 and up to its bound: of
-        # weapon damage for a smite, of each one's maximum health for a heal.
-        # Issue #1833 group D part 3.
-        if action in NEARBY_ACTIONS:
-            bound = MAX_NEARBY_PERCENT[action]
-            if not (0 < low <= bound and 0 < high <= bound):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} acts on the "
-                    f"characters nearby at {low:g} to {high:g} per cent. "
-                    f"{action} takes above 0 and up to {bound:g}.")
-
-        # A REFLECT'S VALUE IS A SHARE OF WHAT THE BLOCK REMOVED, above 0 and up
-        # to 100. Issue #1833 group E part 3.
-        if action == REFLECT_BLOCKED_ACTION:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} reflects {low:g} to "
-                    f"{high:g} per cent of what a block removed. It reflects above "
-                    f"0 and up to 100.")
-
-        # A BLAST'S VALUE IS A SHARE OF THE DEAD ENEMY'S MAXIMUM HEALTH, above 0
-        # and up to 100. Ruled 2026-10-07.
-        if action == BLAST_FROM_THE_DYING_ACTION:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} blasts for {low:g} "
-                    f"to {high:g} per cent of a dead enemy's maximum health. It "
-                    f"blasts for above 0 and up to 100.")
-
-        # A STUN NEAR THE DYING'S VALUE IS ITS CHANCE, above 0 and up to 100,
-        # rolled once for the death. Ruled 2026-10-08. 100 is always. Its
-        # seconds are checked where Stack Seconds is read.
-        if action == STUN_NEAR_THE_DYING_ACTION:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} stuns the enemies "
-                    f"near an enemy that died with a chance of {low:g} to "
-                    f"{high:g}. A chance is above 0 and up to 100, and 100 is "
-                    f"always.")
-
-        # AN OVERKILL EXPLOSION'S VALUE IS A SHARE OF THE OVERKILL, above 0 and
-        # up to the bound. Ruled 2026-10-07.
-        if action == OVERKILL_EXPLOSION_ACTION:
-            if not (0 < low <= MAX_OVERKILL_EXPLOSION_SHARE
-                    and 0 < high <= MAX_OVERKILL_EXPLOSION_SHARE):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} explodes a killed "
-                    f"enemy for {low:g} to {high:g} per cent of its overkill. "
-                    f"The share is above 0 and up to "
-                    f"{MAX_OVERKILL_EXPLOSION_SHARE:g}.")
-        # AND A KILLING BLOW EXPLOSION'S IS A SHARE OF THAT BLOW, the same way.
-        # Ruled 2026-10-21 (traps layer 4, F10).
-        if action == KILLING_BLOW_EXPLOSION_ACTION:
-            if not (0 < low <= MAX_KILLING_BLOW_EXPLOSION_SHARE
-                    and 0 < high <= MAX_KILLING_BLOW_EXPLOSION_SHARE):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} explodes a killed "
-                    f"enemy for {low:g} to {high:g} per cent of the blow that "
-                    f"killed it. The share is above 0 and up to "
-                    f"{MAX_KILLING_BLOW_EXPLOSION_SHARE:g}.")
-
-        # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
-        # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
-        # its Scale Max Steps is 1, the nearest trap alone, or empty, every trap.
-        # Ruled 2026-10-22 (traps layer 5, H10, H11).
-        if action in TRAPS_NEARBY_ACTIONS:
-            if action_event in TRAPS_NEARBY_EVERY_TRAP_EVENTS:
-                if not (low == 0 and high == 0):
-                    raise DataError(
-                        f"Enchantment Effects row {index}: {name} acts on the "
-                        f"wearer's traps on {action_event!r} within {low:g} to "
-                        f"{high:g} metres. That event names no place to measure "
-                        f"from, so the radius is 0, every trap.")
-                if scale_max_steps:
-                    raise DataError(
-                        f"Enchantment Effects row {index}: {name} acts on the "
-                        f"wearer's traps on {action_event!r} and states Scale "
-                        f"Max Steps {scale_max_steps}. That event acts on every "
-                        f"trap, so the column must be empty.")
-            elif not (0 < low <= MAX_TRAPS_NEARBY_METRES
-                      and 0 < high <= MAX_TRAPS_NEARBY_METRES):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} acts on the "
-                    f"wearer's traps within {low:g} to {high:g} metres. The "
-                    f"radius is above 0 and up to "
-                    f"{MAX_TRAPS_NEARBY_METRES:g}.")
-            if scale_max_steps not in (0, 1):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} acts on the "
-                    f"wearer's traps and states Scale Max Steps "
-                    f"{scale_max_steps}. It is 1, the nearest trap alone, or "
-                    f"empty, every trap.")
-
-        # A GADGET'S SHOT AT A TRAP'S ENEMY STATES ITS "MORE" IN PER CENT, above
-        # 0 and up to the bound: 100 is the gadget's normal blow. Ruled
-        # 2026-10-22 (traps layer 6, J6, J10).
-        if action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION:
-            if not (0 < low <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT
-                    and 0 < high <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} fires a gadget at "
-                    f"a trap's enemy at {low:g} to {high:g} per cent of its "
-                    f"normal blow. The figure is above 0 and up to "
-                    f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT:g}; 100 is its "
-                    f"normal blow.")
-
-        # A STRIKE'S VALUE IS A PERCENTAGE OF THE WEARER'S ATTACK DAMAGE, above
-        # 0 and up to the bound. Ruled 2026-10-07.
-        if action == STRIKE_TARGET_ACTION:
-            if not (0 < low <= MAX_STRIKE_TARGET_PERCENT
-                    and 0 < high <= MAX_STRIKE_TARGET_PERCENT):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} strikes for "
-                    f"{low:g} to {high:g} per cent of attack damage. A strike "
-                    f"is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
-
-        # AN EXECUTE'S VALUE IS ITS CHANCE, above 0 and up to 100. Ruled
-        # 2026-10-12. 100 is always. Its share of health is checked where the
-        # Condition Value is read.
-        if action == EXECUTE_TARGET_ACTION:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} executes an enemy "
-                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
-                    f"and up to 100, and 100 is always.")
-
-        # A TEMPORARY ABSORB'S VALUE IS A PERCENTAGE OF THE WEARER'S MAXIMUM
-        # HEALTH, above 0 and up to the bound. Ruled 2026-10-07.
-        if action == TEMPORARY_ABSORB_ACTION:
-            if not (0 < low <= MAX_TEMPORARY_ABSORB_PERCENT
-                    and 0 < high <= MAX_TEMPORARY_ABSORB_PERCENT):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} grants a temporary "
-                    f"absorb of {low:g} to {high:g} per cent of maximum health. "
-                    f"It is above 0 and up to {MAX_TEMPORARY_ABSORB_PERCENT:g}.")
-
-        # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
-        if action in SKILL_IN_HAND_ACTIONS:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} repeats a skill "
-                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
-                    f"and up to 100, and 100 is always.")
-
-        # A NO-DAMAGE WINDOW'S VALUE IS SECONDS, above 0 and up to the bound.
-        # Issue #1833 group E part 2.
-        if action == DAMAGE_IMMUNITY_ACTION:
-            if not (0 < low <= MAX_DAMAGE_IMMUNITY_SECONDS
-                    and 0 < high <= MAX_DAMAGE_IMMUNITY_SECONDS):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} opens a no-damage "
-                    f"window of {low:g} to {high:g} seconds. It lasts above 0 and "
-                    f"up to {MAX_DAMAGE_IMMUNITY_SECONDS:g}.")
-
-        # A MOVE TO A RANDOM POINT STATES METRES, above 0 and up to the bound.
-        # Ruled 2026-10-12.
-        if action == TELEPORT_RANDOMLY_ACTION:
-            if not (0 < low <= MAX_TELEPORT_RANDOMLY_METRES
-                    and 0 < high <= MAX_TELEPORT_RANDOMLY_METRES):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} moves its wearer "
-                    f"to a random point within {low:g} to {high:g} metres. It is "
-                    f"above 0 and up to {MAX_TELEPORT_RANDOMLY_METRES:g}.")
-
-        # A RIDER'S VALUE IS A PERCENT, above 0 and up to 100. Issue #1833.
-        if action in AILMENT_RIDER_ACTIONS:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} hangs {low:g} to "
-                    f"{high:g} per cent on an ailment. A rider moves a number by "
-                    f"above 0 and up to 100 per cent.")
-            if scale_max_steps:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} hangs a number on "
-                    f"an ailment and states Scale Max Steps. It has no stacks, "
-                    f"so it would be dropped.")
-            # AND THE ONE THAT LOWERS MAXIMUM HEALTH STOPS AT HALF. Ruled
-            # 2026-10-08. See `MAX_AILMENT_MAX_HEALTH_REMOVED`.
-            if (action == AILMENT_MAX_HEALTH_ACTION
-                    and max(low, high) > MAX_AILMENT_MAX_HEALTH_REMOVED):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} takes {low:g} to "
-                    f"{high:g} per cent off its carrier's maximum health. A "
-                    f"lowered maximum takes above 0 and up to "
-                    f"{MAX_AILMENT_MAX_HEALTH_REMOVED:g} per cent.")
-
-        # A ROW THAT FIRES THE WEARER'S GADGETS AT ITS DEATH STATES 100, which the
-        # game does not read: every cast is whole. Ruled 2026-10-19 (C2).
-        if action == GADGETS_CAST_NOW_ACTION:
-            if not (low == 100 and high == 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} fires its "
-                    f"wearer's gadgets and states the value {low:g} to "
-                    f"{high:g}. Each gadget casts at the whole of its damage, "
-                    f"so its value is 100 and nothing else.")
-
-        # A CLEANSE'S VALUE IS 100, which the game does not read. Issue #1833.
-        if action == CLEANSE_ACTION:
-            if not (low == 100 and high == 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} cleanses and "
-                    f"states the value {low:g} to {high:g}. A cleanse has no "
-                    f"size, so its value is 100 and nothing else.")
-            if scale_max_steps:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} cleanses and "
-                    f"states Scale Max Steps. It has no stacks, so it would be "
-                    f"dropped.")
-
-        # A STATUS ACTION'S VALUE IS A CHANCE, above 0 and up to 100, or SECONDS,
-        # above 0 and up to the bound. Issue #1833 group E part 1. Neither has
-        # stacks.
-        if action in ("apply_status_to_self_sized", APPLY_STATUS_SIZED_ACTION):
-            if not (low == int(low) and high == int(high)
-                    and 1 <= low <= MAX_STATUS_SIZE
-                    and 1 <= high <= MAX_STATUS_SIZE):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} lays a status "
-                    f"at {low:g} to {high:g} times its ordinary "
-                    f"size. A size is a whole number from 1 to {MAX_STATUS_SIZE}.")
-        if action in ("apply_status", "apply_status_to_self"):
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} applies a status "
-                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
-                    f"and up to 100, and 100 is always.")
-        if action in ("apply_status_seconds", "apply_status_to_self_seconds"):
-            if not (0 < low <= MAX_STATUS_SECONDS
-                    and 0 < high <= MAX_STATUS_SECONDS):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} applies a status "
-                    f"for {low:g} to {high:g} seconds. It lasts above 0 and up to "
-                    f"{MAX_STATUS_SECONDS:g}.")
-        # A SLOW'S VALUE IS ITS STRENGTH IN PER CENT, above 0 and up to
-        # Cripple's cap. Traps layer 3, ruled 2026-10-21 (M3).
-        if action == SLOW_FOR_SECONDS_ACTION:
-            if not (0 < low <= MAX_SLOW_PERCENT and 0 < high <= MAX_SLOW_PERCENT):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} slows by {low:g} "
-                    f"to {high:g} per cent. A slow is above 0 and up to "
-                    f"{MAX_SLOW_PERCENT:g}, Cripple's cap.")
-
-        # A REMAINING DAMAGE ACTION'S VALUE IS A SHARE OF THAT DAMAGE, above 0 and
-        # up to 100. Issue #1833 group D part 4.
-        if action in REMAINING_DAMAGE_ACTIONS:
-            if not (0 < low <= 100 and 0 < high <= 100):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} deals {low:g} to "
-                    f"{high:g} per cent of the remaining damage. It deals above 0 "
-                    f"and up to 100.")
-
-        # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
-        # Issue #1833, the cooldown reduction action.
-        if action in COOLDOWN_REDUCE_ACTIONS:
-            if not (0 < low <= MAX_COOLDOWN_REDUCE_SECONDS
-                    and 0 < high <= MAX_COOLDOWN_REDUCE_SECONDS):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} takes {low:g} to "
-                    f"{high:g} seconds off cooldowns. It takes above 0 and up "
-                    f"to {MAX_COOLDOWN_REDUCE_SECONDS:g} seconds.")
-            if scale_max_steps:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} reduces cooldowns "
-                    f"and states Scale Max Steps. A reduction has no stacks, so "
-                    f"it would be dropped.")
-
-        # A ROW'S OWN STACKS. Issue #1833, ruled 2026-09-23: the row's Action
-        # Event grants a stack, Stack Seconds is how long they last and Scale
-        # Max Steps the cap. All three are required, and none of them means
-        # anything on any other stat row, so each is refused there rather than
-        # dropped.
-        stack_text = clean(_cell(raw, headers, "Stack Seconds"))
-        stack_seconds = 0.0
-        if not action and scale == "own_stacks":
-            known_events = granting_events()
-            if action_event not in known_events:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts its own "
-                    f"stacks and names the event {action_event or '(none)'!r} "
-                    f"to grant them. Known: {', '.join(sorted(known_events))}.")
-            if not stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts its own "
-                    f"stacks and states no Stack Seconds for them to last.")
-            stack_seconds = number(stack_text, "Stack Seconds", index)
-            if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has stacks lasting "
-                    f"{stack_seconds:g} seconds. They last above 0 and up to "
-                    f"{MAX_STACK_SECONDS:g}.")
-            # NO CAP ON THE EVENTS WHOSE UNCAPPED STACKS LAPSE ALONE. Traps
-            # layer 3, ruled 2026-10-21 (M4 (a)).
-            if scale_max_steps < 1 \
-                    and action_event not in OWN_STACKS_LAPSING_ALONE_EVENTS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts its own "
-                    f"stacks and states no cap in Scale Max Steps. \"Up to 5 "
-                    f"stacks\" is 5.")
-        elif action in PLACED_ACTIONS:
-            # A STACK PLACED ON THE OTHER CHARACTER. Issue #1833, phase 2. The
-            # window is required and the cap is not: "stacking indefinitely"
-            # states none. Each stack takes away a share, so both ends are
-            # above nought.
-            if not stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} places {action} "
-                    f"and states no Stack Seconds for the stacks to last.")
-            stack_seconds = number(stack_text, "Stack Seconds", index)
-            if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} places stacks "
-                    f"lasting {stack_seconds:g} seconds. They last above 0 and "
-                    f"up to {MAX_STACK_SECONDS:g}.")
-            if low <= 0 or high <= 0:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} places {action} "
-                    f"worth {low:g} to {high:g} a stack. A stack takes away a "
-                    f"share, so both ends are above nought.")
-        elif action in (KEPT_STACKS_REPEAT_SKILL_ACTION,
-                        KEPT_STACKS_FREE_NEXT_ABILITY_ACTION):
-            # A KEPT STACK HAS NO LIFETIME. Ruled 2026-10-12, and for the second
-            # action that gains them on 2026-10-17. Refused rather than
-            # dropped, so that a row is never read as stating one.
-            if stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gains kept "
-                    f"stacks and states Stack Seconds. A kept stack has no "
-                    f"lifetime: it is held until a use spends it, the dungeon "
-                    f"is left, the wearer dies or the gear comes off. Leave "
-                    f"the column empty.")
-        elif action == STUN_NEAR_THE_DYING_ACTION:
-            # HOW LONG THE STUN LASTS. Ruled 2026-10-08: a chance and a duration
-            # on one row, the duration here because the value is the chance.
-            # Required, and bounded as a stated status's seconds are and not as
-            # a stack's. No stack is behind it. See `MAX_STACK_SECONDS` for
-            # everything else this column holds.
-            if not stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} stuns the enemies "
-                    f"near an enemy that died and states no Stack Seconds. On "
-                    f"{action} that column is how long the stun lasts.")
-            stack_seconds = number(stack_text, "Stack Seconds", index)
-            if not 0.0 < stack_seconds <= MAX_STATUS_SECONDS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} stuns for "
-                    f"{stack_seconds:g} seconds. A stun lasts above 0 and up to "
-                    f"{MAX_STATUS_SECONDS:g}.")
-        elif action == SLOW_FOR_SECONDS_ACTION:
-            # HOW LONG THE SLOW LASTS. Traps layer 3, ruled 2026-10-21 (M3): the
-            # duration here because the value is the strength, as the stun near
-            # the dying's is; required, and bounded as a stated status's seconds
-            # are.
-            if not stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} slows and states "
-                    f"no Stack Seconds. On {action} that column is how long the "
-                    f"slow lasts.")
-            stack_seconds = number(stack_text, "Stack Seconds", index)
-            if not 0.0 < stack_seconds <= MAX_STATUS_SECONDS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} slows for "
-                    f"{stack_seconds:g} seconds. A slow lasts above 0 and up to "
-                    f"{MAX_STATUS_SECONDS:g}.")
-        elif not action and scale == "consecutive_hits":
-            # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2. The event must
-            # name who was struck, the cap is required, and there is no window.
-            if action_event not in CONSECUTIVE_HIT_EVENTS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts hits in a "
-                    f"row and names the event {action_event or '(none)'!r} to "
-                    f"count them. Only an event naming who was struck can: "
-                    f"{', '.join(CONSECUTIVE_HIT_EVENTS)}.")
-            if stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts hits in a "
-                    f"row and states Stack Seconds. The count has no timer "
-                    f"(ruled 2026-09-24), so they would be dropped.")
-            if scale_max_steps < 1:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts hits in a "
-                    f"row and states no cap in Scale Max Steps. \"Up to 8 "
-                    f"stacks\" is 8.")
-        elif not action:
-            if stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states Stack "
-                    f"Seconds and is not scaled by own_stacks, so they would "
-                    f"be dropped.")
-            if action_event:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} changes a stat "
-                    f"and names the event {action_event!r}. A stat row reads "
-                    f"an event only to grant its own stacks, with the scale "
-                    f"own_stacks; here it would be dropped.")
-
-        # "ABOVE 100" IS AN OFFSET OF 100. Issue #1686. Empty is none. An offset
-        # needs a scale that reads one, and is a number of points from 0 up to
-        # the point budget.
-        offset_text = clean(_cell(raw, headers, "Scale Offset"))
-        scale_offset = 0.0
-        if offset_text:
-            offset = number(offset_text, "Scale Offset", index)
-            if scale not in SCALES_THAT_TAKE_AN_OFFSET:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has an offset of "
-                    f"{offset:g} on the scale {scale or '(none)'!r}. Only "
-                    f"{', '.join(sorted(SCALES_THAT_TAKE_AN_OFFSET))} reads an "
-                    f"offset, so here it would be dropped.")
-            if not 0 <= offset <= MAX_SCALE_OFFSET:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has an offset of "
-                    f"{offset:g}. An offset is a number of points from 0 to "
-                    f"{MAX_SCALE_OFFSET}; leave the column empty for none.")
-            scale_offset = offset
-
-        # A TIMED ROW STATES ITS PERIOD, AND ONLY A TIMED ROW DOES. Issue
-        # #1833: "Every 10 seconds" is 10. Refused either way round, so a
-        # period is never written where nothing reads it, nor a clock left
-        # with none.
-        #
-        # AND A ROW THAT GAINS KEPT STACKS DOES AS WELL. Ruled 2026-10-12. Its
-        # Action Event is the use that spends the stacks, so its period cannot
-        # be told from its event; the game reads Every Seconds for it whatever
-        # the event is. Required there, with the same bound.
-        every_text = clean(_cell(raw, headers, "Every Seconds"))
-        every_seconds = 0.0
-        if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
-            if not every_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gains kept "
-                    f"stacks and states no Every Seconds, so it would never "
-                    f"gain one. On {action} that column is the period of the "
-                    f"gain.")
-            every_seconds = number(every_text, "Every Seconds", index)
-            if not 0.0 < every_seconds <= MAX_EVERY_SECONDS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gains a kept "
-                    f"stack every {every_seconds:g} seconds. A period is above "
-                    f"0 and up to {MAX_EVERY_SECONDS:g}.")
-        elif action_event == TIMED_EVENT:
-            if not every_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} grants on "
-                    f"{TIMED_EVENT} and states no Every Seconds, so it "
-                    f"would never grant.")
-            every_seconds = number(every_text, "Every Seconds", index)
-            if not 0.0 < every_seconds <= MAX_EVERY_SECONDS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} grants every "
-                    f"{every_seconds:g} seconds. A period is above 0 and up "
-                    f"to {MAX_EVERY_SECONDS:g}.")
-        elif every_text:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} states Every "
-                f"Seconds on the event {action_event or '(none)'!r}. Only "
-                f"{TIMED_EVENT} reads a period, so it would be dropped.")
-
-        # AN EVERY-Nth ROW STATES N, AND ONLY IT DOES. Issue #1833, phase 2:
-        # "Every third cast" is 3. A whole number from 2: "every 1st" is every
-        # time, which a row would say without counting. An attack's value is
-        # 100, "no damage"; the other two take something, so both ends are
-        # above nought. Neither a window nor a cap means anything here.
-        nth_text = clean(_cell(raw, headers, "Every Nth"))
-        every_nth = 0
-        if action in NTH_ACTIONS:
-            if not nth_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} is the every-Nth "
-                    f"action {action} and states no Every Nth, so it would "
-                    f"never act.")
-            nth = number(nth_text, "Every Nth", index)
-            if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} acts every "
-                    f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
-            every_nth = int(nth)
-            if action == "nth_attack_no_damage":
-                if low != 100 or high != 100:
-                    raise DataError(
-                        f"Enchantment Effects row {index}: {name} is "
-                        f"{action} worth {low:g} to {high:g}. No damage is all "
-                        f"of it: 100.")
-            elif low <= 0 or high <= 0:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} is {action} "
-                    f"worth {low:g} to {high:g}. It takes something, so both "
-                    f"ends are above nought.")
-            if stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} is {action} and "
-                    f"states Stack Seconds. A count has no window (ruled "
-                    f"2026-09-24), so they would be dropped.")
-        elif action in NEARBY_ACTIONS and nth_text:
-            # A NEARBY ACTION ON THE Nth OF ITS EVENTS INSIDE A WINDOW. Issue
-            # #1833 group E part 3, ruled 2026-10-02: "Every 3 blocks in quick
-            # succession" is Every Nth 3 with Stack Seconds 3, and the count
-            # starts again once it acts. The window is required: "in quick
-            # succession" without one is no window at all.
-            nth = number(nth_text, "Every Nth", index)
-            if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} acts every "
-                    f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
-            every_nth = int(nth)
-            if not stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts {every_nth} "
-                    f"of its events and states no Stack Seconds for the window "
-                    f"they fall in.")
-            stack_seconds = number(stack_text, "Stack Seconds", index)
-            if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts its events in "
-                    f"a window of {stack_seconds:g} seconds. It is above 0 and up "
-                    f"to {MAX_STACK_SECONDS:g}.")
-        elif action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION and nth_text:
-            # A GADGET'S SHOT ON THE Nth TRAP TRIGGERED, WITH NO WINDOW. Ruled
-            # 2026-10-22 (traps layer 6, J4, J10): "For every 3 traps
-            # triggered" is Every Nth 3, one count per player that starts again
-            # after each third and at death. A window would be one no sentence
-            # states, so Stack Seconds is refused.
-            nth = number(nth_text, "Every Nth", index)
-            if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} acts every "
-                    f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
-            every_nth = int(nth)
-            if stack_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} counts {every_nth} "
-                    f"traps triggered and states Stack Seconds. The count has no "
-                    f"window (ruled 2026-10-22, J4), so they would be dropped.")
-        elif nth_text:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} states Every Nth and "
-                f"is not an every-Nth action, so it would be dropped. Those "
-                f"actions: {', '.join(NTH_ACTIONS)}; and a nearby action, "
-                f"{', '.join(NEARBY_ACTIONS)}, with a window in Stack Seconds.")
-        elif action in NEARBY_ACTIONS and stack_text:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} is a nearby action and "
-                f"states Stack Seconds with no Every Nth, so they would be "
-                f"dropped.")
-
-        # AND STACK SECONDS ON ANY OTHER ACTION. Issue #2337. The branches
-        # above read the column for the actions in
-        # `ACTIONS_THAT_READ_STACK_SECONDS` and refuse it on the ones that
-        # count without a window; every other action, `apply_status` among
-        # them, carried nothing and wrote 0.0, so a row stating "lasts 3
-        # seconds" there lasted nothing and said nothing.
-        if (action and stack_text
-                and action not in ACTIONS_THAT_READ_STACK_SECONDS):
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} states Stack Seconds "
-                f"on the action {action}, which does not read it, so it would "
-                f"be dropped. The column is read on a stat row scaled by "
-                f"own_stacks and on these actions: "
-                f"{', '.join(sorted(ACTIONS_THAT_READ_STACK_SECONDS))}.")
-
-        # THE STEP'S HIGH END, WHEN THE STEP ROLLS WITH THE VALUE. Issue #1833,
-        # the kill counter: "for every 100,000-500,000 kills" states the step
-        # as a range, and the item's roll picks one step where it picks the
-        # value, so the hover text, which shows both numbers at that roll, and
-        # the effect agree. The pair is a range the sentence states, low end
-        # first, and the high end is inside the scale's bounds.
-        step_high_text = clean(_cell(raw, headers, "Scale Step High"))
-        scale_step_high = 0.0
-        if action in USE_INCREASED_DAMAGE_ACTIONS:
-            # ON THESE TWO ACTIONS THE PAIR IS THE SIZE OF THE INCREASE AND NOT
-            # A STEP. Ruled 2026-10-06. See `USE_INCREASED_DAMAGE_ACTIONS`. It
-            # is required, because a row without it would roll and add
-            # nothing; it is refused with a Scale, because then it would be
-            # read as that scale's step; and it is a range the sentence
-            # states, as a step's range is.
-            if scale:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} rolls a use's "
-                    f"increased damage and states the scale {scale!r}. Its "
-                    f"Scale Step is the size of the increase and not a step, "
-                    f"so the Scale column must be empty.")
-            step_text = clean(_cell(raw, headers, "Scale Step"))
-            if not step_text or not step_high_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} rolls a use's "
-                    f"increased damage and does not state how large the "
-                    f"increase is. On the action {action!r} that is Scale Step "
-                    f"and Scale Step High, the sentence's second range.")
-            scale_step = number(step_text, "Scale Step", index)
-            scale_step_high = number(step_high_text, "Scale Step High", index)
-            if not 0.0 < scale_step < scale_step_high <= MAX_USE_INCREASE:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gives an "
-                    f"increase from {scale_step:g} to {scale_step_high:g}. The "
-                    f"low end is above 0, the high end above it and at most "
-                    f"{MAX_USE_INCREASE:g}.")
-            if (scale_step, scale_step_high) not in enchantment_ranges(words[name]):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gives an "
-                    f"increase from {scale_step:g} to {scale_step_high:g}, "
-                    f"which its words {words[name]!r} do not state as a range, "
-                    f"so the hover text would show one size and the effect "
-                    f"use another.")
-        elif step_high_text:
-            scale_step_high = number(step_high_text, "Scale Step High", index)
-            if not scale:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states Scale "
-                    f"Step High and no scale, so it would be dropped.")
-            top = SCALES[scale][1]
-            if not scale_step < scale_step_high <= top:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} steps from "
-                    f"{scale_step:g} to {scale_step_high:g}. The high end is "
-                    f"above the step and at most {top:g}.")
-            if (scale_step, scale_step_high) not in enchantment_ranges(words[name]):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} steps from "
-                    f"{scale_step:g} to {scale_step_high:g}, which its words "
-                    f"{words[name]!r} do not state as a range, so the hover "
-                    f"text would show one step and the effect use another.")
-
-        # THE STACKS' HIGH END, WHEN HOW LONG THEY LAST ROLLS WITH THE VALUE.
-        # Issue #1833, ruled 2026-09-30 under the owner's delegation, following
-        # Scale Step High: "Killing an enemy triggers a 1-2 second global
-        # cooldown on all your skills" states the time as a range, and the
-        # item's roll picks one time where it picks the value. The pair is a
-        # range the sentence states, low end first, and the high end is inside
-        # the bound every stack's time keeps.
-        stack_high_text = clean(_cell(raw, headers, "Stack Seconds High"))
-        stack_seconds_high = 0.0
-        if stack_high_text:
-            stack_seconds_high = number(stack_high_text, "Stack Seconds High", index)
-            if not stack_seconds:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states Stack "
-                    f"Seconds High and no Stack Seconds, so it would be dropped.")
-            # A STUN'S SECONDS KEEP THEIR OWN BOUND AT THE HIGH END TOO. Ruled
-            # 2026-10-08. See `STUN_NEAR_THE_DYING_ACTION`.
-            longest = (MAX_STATUS_SECONDS
-                       if action in (STUN_NEAR_THE_DYING_ACTION,
-                                     SLOW_FOR_SECONDS_ACTION)
-                       else MAX_STACK_SECONDS)
-            if not stack_seconds < stack_seconds_high <= longest:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has stacks lasting "
-                    f"{stack_seconds:g} to {stack_seconds_high:g} seconds. The "
-                    f"high end is above Stack Seconds and at most "
-                    f"{longest:g}.")
-            if (stack_seconds, stack_seconds_high) not in enchantment_ranges(words[name]):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has stacks lasting "
-                    f"{stack_seconds:g} to {stack_seconds_high:g} seconds, which "
-                    f"its words {words[name]!r} do not state as a range, so the "
-                    f"hover text would show one time and the effect use another.")
-
-        # A SECOND CONDITION, WHICH MUST HOLD AS WELL. Issue #1833, ruled
-        # 2026-09-30 under the owner's delegation: "While stationary you take
-        # 20%-35% increased damage from ranged attacks" names two states, and the
-        # literal reading is both. Only a stat row carries it: an action row's
-        # condition is copied onto its action one at a time.
-        condition2 = clean(_cell(raw, headers, "Condition 2")).lower()
-        condition_value2 = 0.0
-        value2_text = clean(_cell(raw, headers, "Condition Value 2"))
-        if condition2:
-            if condition2 not in CONDITIONS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} names the second "
-                    f"condition {condition2!r}, which the game cannot judge. "
-                    f"Known: {', '.join(sorted(CONDITIONS))}.")
-            if not condition:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states Condition 2 "
-                    f"and no Condition. Write a single condition in Condition.")
-            if condition2 == condition:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} names "
-                    f"{condition!r} as both conditions.")
-            if action:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} moves {action} and "
-                    f"states Condition 2. An action carries one condition.")
-            if CONDITIONS[condition2] is None:
-                if value2_text:
-                    raise DataError(
-                        f"Enchantment Effects row {index}: {name} carries the "
-                        f"second condition {condition2!r} and a value of "
-                        f"{value2_text!r}. That condition compares nothing, so "
-                        f"the value would be ignored. Leave the column empty.")
-            else:
-                condition_value2 = number(value2_text, "Condition Value 2", index)
-                low2, high2, units2 = CONDITIONS[condition2]
-                if not low2 <= condition_value2 <= high2:
-                    raise DataError(
-                        f"Enchantment Effects row {index}: {name} has a second "
-                        f"condition value of {condition_value2}, and "
-                        f"{condition2!r} takes {units2} between {low2:g} and "
-                        f"{high2:g}.")
-        elif value2_text:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} states Condition Value "
-                f"2 and no Condition 2, so it would be dropped.")
-
-        # THE CONDITION'S HIGH END, WHEN THE THRESHOLD ROLLS WITH THE VALUE.
-        # Issue #1833, ruled 2026-09-30, following Scale Step High: "Your
-        # abilities are free when above 80%-95% hp" states the threshold as a
-        # range, and the item's roll picks one threshold where it picks the
-        # value. The pair is a range the sentence states, low end first, inside
-        # the condition's own bounds. Only a stat row's threshold rolls.
-        condition_high_text = clean(_cell(raw, headers, "Condition Value High"))
-        condition_value_high = 0.0
-        if condition_high_text:
-            condition_value_high = number(condition_high_text,
-                                          "Condition Value High", index)
-            if not condition or CONDITIONS[condition] is None:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states Condition "
-                    f"Value High and no condition that compares a value, so it "
-                    f"would be dropped.")
-            if action:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} moves {action} and "
-                    f"states Condition Value High. An action's threshold does "
-                    f"not roll.")
-            top_condition = CONDITIONS[condition][1]
-            if not condition_value < condition_value_high <= top_condition:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has a threshold of "
-                    f"{condition_value:g} to {condition_value_high:g}. The high "
-                    f"end is above Condition Value and at most "
-                    f"{top_condition:g}.")
-            if (condition_value, condition_value_high) not in enchantment_ranges(words[name]):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has a threshold of "
-                    f"{condition_value:g} to {condition_value_high:g}, which its "
-                    f"words {words[name]!r} do not state as a range, so the "
-                    f"hover text would show one threshold and the effect use "
-                    f"another.")
-
-        # HOW LONG A TRIGGER WAITS AFTER IT FIRES. Issue #1833 group D, ruled
-        # 2026-09-30 under the owner's delegation. Only an action row that
-        # makes something happen takes one, and not on the timed event, whose
-        # own period is its spacing. EMPTY IS THE DEFAULT, written here so the
-        # table says what each row does: `DEFAULT_TRIGGER_COOLDOWN` on a
-        # hit-fired event and none elsewhere. An explicit 0 is none, for a
-        # sentence that says every hit.
-        cooldown_text = clean(_cell(raw, headers, "Trigger Cooldown"))
-        trigger_cooldown = 0.0
-        # AN OWN STACK TAKES ONE WHEN ITS SENTENCE STATES ONE, ruled 2026-09-30
-        # for the Demon King's Regalia's "(5 minute cd)", and never by default.
-        own_stack_grant = not action and scale == "own_stacks"
-        if cooldown_text:
-            trigger_cooldown = number(cooldown_text, "Trigger Cooldown", index)
-            if not ((action and takes_a_trigger_cooldown(action)) or own_stack_grant) \
-                    or action_event == TIMED_EVENT:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states a Trigger "
-                    f"Cooldown of {trigger_cooldown:g} seconds. Only an action "
-                    f"row that moves a pool, resets or reduces a cooldown or "
-                    f"applies a random damage over time on an event takes one; "
-                    f"a row that counts or stacks never waits, so it would be "
-                    f"dropped.")
-            if not 0 <= trigger_cooldown <= MAX_TRIGGER_COOLDOWN:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has a Trigger "
-                    f"Cooldown of {trigger_cooldown:g} seconds. It is from 0, "
-                    f"which is none, up to {MAX_TRIGGER_COOLDOWN:g}.")
-        elif action and takes_a_trigger_cooldown(action) \
-                and action not in ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN \
-                and action_event in HIT_FIRED_EVENTS:
-            trigger_cooldown = DEFAULT_TRIGGER_COOLDOWN
-
-        # THE THRESHOLD ITS EVENT CROSSES. Issue #1833 group D part 2, ruled
-        # 2026-09-30: only `health_falls_below` reads it, so it is required there
-        # and refused everywhere else, on an action row and an own stack alike.
-        event_value_text = clean(_cell(raw, headers, "Event Value"))
-        event_value = 0.0
-        if action_event == THRESHOLD_EVENT:
-            if not event_value_text:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} hangs on "
-                    f"{THRESHOLD_EVENT} and states no Event Value. It is the share "
-                    f"of maximum health, in per cent, that health falls below.")
-            event_value = number(event_value_text, "Event Value", index)
-            if not 0 < event_value < 100:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} has an Event Value "
-                    f"of {event_value:g}. It is a share of maximum health above 0 "
-                    f"and below 100.")
-        elif action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION:
-            # OR THE METRES FROM THE TRAP A GADGET MUST STAND WITHIN, for a
-            # gadget's shot at a trap's enemy: empty or nought is any distance.
-            # Ruled 2026-10-22 (traps layer 6, J1, J5, J10).
-            if event_value_text:
-                event_value = number(event_value_text, "Event Value", index)
-                if not 0 <= event_value <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:
-                    raise DataError(
-                        f"Enchantment Effects row {index}: {name} fires the "
-                        f"gadget within {event_value:g} metres of a trap. The "
-                        f"radius is 0, any distance, up to "
-                        f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:g}.")
-        elif event_value_text:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} states an Event Value on "
-                f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT} "
-                f"reads one, so it would be dropped.")
-
-        # THE AILMENT A REMAINING DAMAGE ACTION IS LIMITED TO. Issue #1833 group D
-        # part 4, ruled 2026-10-01: required on `dot_remaining_target`, allowed on
-        # `dot_remaining_nearby`, and refused everywhere else, as Event Value is.
-        ailment = clean(_cell(raw, headers, "Ailment"))
-        # AND THE STATUS A STATUS ACTION APPLIES, in the same cell. Issue #1833
-        # group E part 1, ruled 2026-10-01: required on both status actions.
-        if action in ALL_APPLY_STATUS_ACTIONS:
-            known = {"apply_status_seconds": APPLY_STATUSES_FOR_SECONDS,
-                     "apply_status_to_self_seconds": APPLY_STATUSES_TO_SELF_FOR_SECONDS,
-                     "apply_status_to_self_sized": (APPLIED_DOT_STATUS,),
-                     # AND `apply_status_sized` NAMES A DAMAGE OVER TIME, whose
-                     # size is what a tick deals. Traps layer 3, 2026-10-21.
-                     APPLY_STATUS_SIZED_ACTION: AILMENTS,
-                     # AND `apply_status` ALONE MAY NAME ALL FIVE DAMAGE OVER
-                     # TIME AILMENTS AT ONCE. The owner, 2026-10-08.
-                     "apply_status": APPLY_STATUSES + (ALL_DOTS_STATUS,
-                                                       SILENCE_STATUS),
-                     # AND `apply_status_to_self` ALONE MAY NAME THE STATUSES
-                     # THAT ARE ONLY FOR A WEARER. Ruled 2026-10-12.
-                     "apply_status_to_self": APPLY_STATUSES + APPLY_STATUSES_TO_SELF_ONLY,
-                     }.get(action, APPLY_STATUSES)
-            if ailment not in known:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} applies the status "
-                    f"{ailment or '(none)'!r}, which {action} cannot. Known: "
-                    f"{', '.join(known)}.")
-        elif action in (KEPT_STACKS_REPEAT_SKILL_ACTION,
-                        KEPT_STACKS_FREE_NEXT_ABILITY_ACTION):
-            # WHAT THE SENTENCE CALLS THE STACKS, in the same cell. Ruled
-            # 2026-10-12. Required, and a name the row's own words write
-            # between single quotes: "a stack of 'Temporal Flux.'" gives
-            # Temporal Flux, the full stop left out. The same for the second
-            # action that gains kept stacks, ruled 2026-10-17: "'Void.'" gives
-            # Void, which is why that sentence's double quotes are reworded
-            # (O10).
-            if not ailment:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} gains kept "
-                    f"stacks and states no name for them in Ailment. On "
-                    f"{action} that cell is what the sentence calls the "
-                    f"stacks, which the game shows with their count.")
-            if ailment.endswith(".") or not re.search(
-                    r"'" + re.escape(ailment) + r"\.?'", words[name]):
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} calls its kept "
-                    f"stacks {ailment!r}, which its words {words[name]!r} do "
-                    f"not write between single quotes. Write the name as the "
-                    f"sentence gives it, without its full stop.")
-        elif ailment:
-            if action not in REMAINING_DAMAGE_ACTIONS \
-                    and action not in AILMENT_RIDER_ACTIONS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} names the ailment "
-                    f"{ailment!r} on {action or stat!r}. Only "
-                    f"{', '.join(REMAINING_DAMAGE_ACTIONS + ALL_APPLY_STATUS_ACTIONS + AILMENT_RIDER_ACTIONS)} "
-                    f"read one, so it would be dropped.")
-            if action == AILMENT_DETONATION_ACTION:
-                if ailment not in DETONATING_AILMENTS:
-                    raise DataError(
-                        f"Enchantment Effects row {index}: {name} makes the ailment "
-                        f"{ailment!r} detonate. The game detonates only "
-                        f"{', '.join(DETONATING_AILMENTS)}, so the row would do "
-                        f"nothing.")
-            elif action == AILMENT_SPREAD_ACTION and ailment in SPREADING_SHARE_AILMENTS:
-                pass
-            elif ailment not in AILMENTS:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} names the ailment "
-                    f"{ailment!r}, which is not one the game has. Known: "
-                    f"{', '.join(AILMENTS)}.")
-        elif action == "dot_remaining_target":
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} deals remaining damage on "
-                f"the event's target and names no Ailment. Name one of "
-                f"{', '.join(AILMENTS)}.")
-        elif action in AILMENT_RIDER_ACTIONS:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} hangs a number on an "
-                f"ailment and names no Ailment. Name one of "
-                f"{', '.join(AILMENTS)}.")
-
-        # THE SHARE OF ITS DAMAGE A REPEAT DEALS, in percent. Mechanism B2, ruled
-        # 2026-10-05: "Each skill has a 20%-40% chance to cast a duplicate at 50%
-        # damage" is 50. Read by `repeat_skill` alone and refused everywhere
-        # else, as Event Value is. An empty cell is written as 0, which the
-        # game reads as the whole of the damage.
-        share_text = clean(_cell(raw, headers, "Damage Share"))
-        damage_share = 0.0
-        if share_text:
-            if action != REPEAT_SKILL_ACTION:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} states a Damage "
-                    f"Share on {action or stat!r}. Only {REPEAT_SKILL_ACTION} "
-                    f"reads one, so it would be dropped.")
-            damage_share = number(share_text, "Damage Share", index)
-            if not 0 < damage_share <= 100:
-                raise DataError(
-                    f"Enchantment Effects row {index}: {name} repeats a skill at "
-                    f"{damage_share:g} per cent of its damage. A share is above 0 "
-                    f"and up to 100, and an empty cell is the whole.")
-
-        # A RANGE THE SENTENCE MARKS AS ROLLING DOWN IS WRITTEN THE OTHER WAY
-        # ROUND. Every pair above was checked in the sentence's own order, which
-        # is how the sheet states it. The game reads the first of a pair at a
-        # roll of 0 and the second at a roll of 1, so a range whose best or
-        # harshest figure is its FIRST number leaves here with its ends
-        # exchanged. See `ranges_rolling_down`. LAST, so that every check above
-        # reads the pair as a person wrote it.
-        marked = {
-            stated for place, stated
-            in enumerate(enchantment_ranges(words[name]), start=1)
-            if place in rolls_down[name]}
-
-        if value_as_stated is not None and value_as_stated in marked:
-            low, high = high, low
-        if scale_step_high and (scale_step, scale_step_high) in marked:
-            scale_step, scale_step_high = scale_step_high, scale_step
-        if stack_seconds_high and (stack_seconds, stack_seconds_high) in marked:
-            stack_seconds, stack_seconds_high = stack_seconds_high, stack_seconds
-        if condition_value_high and (condition_value, condition_value_high) in marked:
-            condition_value, condition_value_high = condition_value_high, condition_value
-
+        row = _effect_row(raw, headers, index, name, words, types,
+                          rolls_down)
         counts[name] = counts.get(name, 0) + 1
-        out.append({
-            "Name": f"{name}#{counts[name]}",
-            "Enchantment": name,
-            "Stat": stat,
-            "ValueKind": kind,
-            "ValueLow": low,
-            "ValueHigh": high,
-            "RequiredTags": clean(_cell(raw, headers, "Required Tags")),
-            "Condition": condition,
-            "ConditionValue": condition_value,
-            "Scale": scale,
-            "ScaleStep": scale_step,
-            "Action": action,
-            "ActionEvent": action_event,
-            "FractionOf": fraction_of,
-            "ScaleMaxSteps": scale_max_steps,
-            "StackSeconds": stack_seconds,
-            "ScaleOffset": scale_offset,
-            "EverySeconds": every_seconds,
-            "EveryNth": every_nth,
-            "ScaleStepHigh": scale_step_high,
-            "StackSecondsHigh": stack_seconds_high,
-            "Condition2": condition2,
-            "ConditionValue2": condition_value2,
-            "ConditionValueHigh": condition_value_high,
-            "TriggerCooldown": trigger_cooldown,
-            "EventValue": event_value,
-            "Ailment": ailment,
-            "DamageShare": damage_share,
-        })
+        out.append({"Name": f"{name}#{counts[name]}", **row})
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
     # DOUBLE HELPING, unless the two are conditioned or scaled differently. The
@@ -14261,10 +14563,15 @@ def validate_passive_effects(tables: dict[str, list[dict]],
                 f"PassiveEffects/{row['Name']}: no passive node is called "
                 f"{row['Node']}, so the effect reaches nothing")
 
+        # AN ACTION ROW HAS NO STAT, since the passive row port of 2026-11-24,
+        # so the two stat checks below are not asked of it, as
+        # `validate_enchantment_effects` does not ask them of an action row.
+        is_action = bool(row.get("Action"))
+
         # A REMOVAL IS NOT ASKED FOR A BASE, for the reason
         # `validate_enchantment_effects` gives: it multiplies nothing. Issue #1791.
         # The two sheets share one vocabulary of kinds, so they share this too.
-        if (stats and str(row["ValueKind"]).lower() != "removed"
+        if (stats and not is_action and str(row["ValueKind"]).lower() != "removed"
                 and row["Stat"] not in stats):
             problems.append(
                 f"PassiveEffects/{row['Name']}: {row['Stat']!r} is not a stat "
@@ -14277,7 +14584,7 @@ def validate_passive_effects(tables: dict[str, list[dict]],
         # A node's rows reach the character through the same
         # `UCataclysmPlayerClassStats::ApplyTo` that records a stat only when it
         # is in `StatToAttribute` or `StatsWithNoAttribute`.
-        if (str(row["ValueKind"]).lower() == "flat"
+        if (not is_action and str(row["ValueKind"]).lower() == "flat"
                 and row["Stat"] not in stats_with_an_attribute()
                 and row["Stat"] not in stats_with_no_attribute()):
             problems.append(

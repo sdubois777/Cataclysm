@@ -1056,9 +1056,8 @@ int32 UCataclysmEquipmentComponent::RefreshAttributesAs(
 				UCataclysmDropRoll::LoadPositiveEnchantmentTable(), UCataclysmDropRoll::LoadNegativeEnchantmentTable(),
 				&Actions, &BuffRows);
 		}
-		// WHOLESALE, NOT MERGED, for the reason `SetStatInputs` is: a row that
-		// came off with the gear must stop firing rather than keep firing.
-		Cataclysm->SetPoolActions(MoveTemp(Actions));
+		// THE ACTIONS ARE HANDED OVER BELOW, AFTER THE PASSIVE TREE, since the passive row port of 2026-11-24: a node
+		// may now act on an event too, and its actions join the worn rows' in the one list `SetPoolActions` takes.
 	}
 	TMap<FName, float> Bases = StatBasesFromWeapons();
 
@@ -1165,10 +1164,36 @@ int32 UCataclysmEquipmentComponent::RefreshAttributesAs(
 		const FCataclysmPassiveAllocation Counted =
 			UCataclysmPassiveTree::ReducedToPointsEarned(
 				Build->PassiveAllocation, PointsEarned);
+		const UDataTable* PassiveNodeTable = UCataclysmPassiveTree::LoadNodeTable();
+		const UDataTable* PassiveEffectTable = UCataclysmPassiveTree::LoadEffectTable();
 		UCataclysmPassiveTree::AccumulateInto(
-			Modifiers, Counted,
-			UCataclysmPassiveTree::LoadNodeTable(),
-			UCataclysmPassiveTree::LoadEffectTable(), Carried);
+			Modifiers, Counted, PassiveNodeTable, PassiveEffectTable, Carried);
+
+		// AND WHAT THE COUNTED NODES DO WHEN AN EVENT HAPPENS, AND THE OWN STACKS THEY COUNT. The passive row port of
+		// 2026-11-24 (`plan_death_and_war.md`, slice B28). The tree copies each such row into an enchantment row
+		// (`UCataclysmPassiveTree::EnchantmentRowsFor`) and the builder every worn row goes through makes its action,
+		// and its modifier when it counts its own stacks, exactly as it does for the rows a held random buff wears.
+		// The same allocation as the stat rows above, so points that add nothing add no action either.
+		//
+		// THE BUILDER ASKS FOR THE THREE ENCHANTMENT TABLES, which every game holds, and grants nothing without them;
+		// the loaders report a missing one, as they do for the worn rows' call above.
+		const TArray<FCataclysmEnchantmentEffectRow> PassiveRows =
+			UCataclysmPassiveTree::EnchantmentRowsFor(Counted, PassiveNodeTable, PassiveEffectTable, Carried);
+		if (!PassiveRows.IsEmpty())
+		{
+			UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+				Modifiers, TArray<FCataclysmItem>(), UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
+				UCataclysmDropRoll::LoadPositiveEnchantmentTable(), UCataclysmDropRoll::LoadNegativeEnchantmentTable(),
+				&Actions, &PassiveRows);
+		}
+	}
+
+	// WHAT THE WORN ITEMS, A HELD RANDOM BUFF AND THE PASSIVE TREE DO WHEN AN EVENT HAPPENS, HANDED OVER TOGETHER.
+	// WHOLESALE, NOT MERGED, for the reason `SetStatInputs` is: a row that came off with the gear, or a node whose
+	// tree no worn weapon reaches any more, must stop firing rather than keep firing.
+	if (UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Cataclysm->SetPoolActions(MoveTemp(Actions));
 	}
 
 	// AND THE DUNGEON FLOOR BEING STOOD ON, since issue #41. Starvation takes a

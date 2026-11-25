@@ -2,6 +2,134 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — A passive node can act on an event: Passive Effects rows carry the enchantment row's action columns, a second condition, an offset on a scale, and a per-point count from a threshold (the passive row port)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: fourteen fields on `FCataclysmPassiveEffectRow` after
+  `ScaleMaxSteps`: the thirteen action fields of `FCataclysmEnchantmentEffectRow` (`Action`, `ActionEvent`,
+  `FractionOf`, `StackSeconds`, `ScaleOffset`, `EverySeconds`, `EveryNth`, `Condition2`, `ConditionValue2`,
+  `TriggerCooldown`, `EventValue`, `Ailment`, `DamageShare`) and `PerPointFrom`.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp`: `IsBuiltAsAnEnchantmentRow`, `PointsPaid`,
+  `EnchantmentNameFor`, `EnchantmentRowsFor`, `SetEffectTableForTests`; `AccumulateInto` walks the counted rows through
+  one shared walk and reads the second condition and the offset.
+- `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`: the refresh hands the counted nodes' action rows to the
+  enchantment rows' builder, and calls `SetPoolActions` after the passive tree rather than before it.
+- `game/Source/Cataclysm/Tests/CataclysmPassiveRowPortTests.cpp`, new: six tests in `Cataclysm.PassiveRowPort.`.
+- `tools/generate_datatables.py`: the Enchantment Effects sheet's per-row rules moved, unchanged, into `_effect_row`;
+  `passive_effects` reads a row stating an action column through it; `Per Point From`; fourteen columns declared in
+  `OPTIONAL_COLUMNS`; `validate_passive_effects` asks no stat question of an action row.
+- `game/Data/PassiveEffects.csv`, generated: fourteen columns added, empty on all 365 rows. **The editor step must
+  rebuild `DT_PassiveEffects`.**
+- `tools/tests/test_passive_rows_carry_the_action_columns.py`, new; `tools/tests/test_generate_datatables.py` (two
+  tests that asserted the old refusal of `Stack Seconds` and `Scale Offset` now assert they are read);
+  `tools/tests/test_csv_columns_match_their_row_structs.py` (its pattern reads a `meta = (...)` inside `UPROPERTY`).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile it, run
+  the editor step for `DT_PassiveEffects`, and run `Cataclysm.PassiveRowPort.` (six tests) and the groups that read
+  passive rows (`Cataclysm.Passives.`, `Cataclysm.PassiveScaleCap`).
+- **NO AUTHORED ROW USES THE NEW COLUMNS YET**, and the workbook is not changed: the fourteen columns are declared in
+  `OPTIONAL_COLUMNS` until the first War or Death tree slice that writes a row using one adds that column with its
+  re-apply script. So nothing a player can reach changes until such a row lands; the end-to-end test drives the real
+  refresh with a table of its own (`SetEffectTableForTests`).
+- **NO FORMULA IS CHOSEN HERE, SO NO GENRE RESEARCH WAS NEEDED.** Every column means what it already means on the
+  Enchantment Effects sheet; the port makes passive rows say the same things through the same code.
+
+### WHAT WAS ASKED
+
+The project owner, 2026-11-24, verbatim: "Let's get the war and death trees in and working." `plan_death_and_war.md`
+(section 4.1, "The mechanisms that unblock the most") puts first the passive row port: `Action`, `ActionEvent`,
+`StackSeconds`, `ScaleMaxSteps`, `TriggerCooldown`, `Condition2`, `ScaleOffset` and "per point from N points" on
+`FCataclysmPassiveEffectRow`, needed by 42 War entries (64 with the last three) and about ten Death ones.
+`ScaleMaxSteps` arrived first, with the Demonic tree rework of the same day (the owner's Q17). The coordinating
+session asked for it on a branch of its own, `feat/passive-row-port`, from `feat/demonic-tree-rework`, because the
+Death trees session builds on it.
+
+### WHAT WAS BUILT
+
+1. **One builder for passive and worn rows.** A passive row stating `Action`, or scaled by `own_stacks` or
+   `consecutive_hits`, is not made a modifier by `UCataclysmPassiveTree::AccumulateInto`.
+   `UCataclysmPassiveTree::EnchantmentRowsFor` copies it into an `FCataclysmEnchantmentEffectRow`, and the equipment's
+   refresh hands the copies to `UCataclysmItemModifiers::AccumulateEnchantmentsInto` as its extra rows, the path a held
+   random buff's rows have taken since issue #2538. That function makes the action, and for an own stack both the
+   stack action and the modifier that reads it, under one key. **A judgement:** a second builder written for passive
+   rows would have to be kept in step with the first, which holds over forty kinds of action.
+2. **The keys are the node and the option.** A copy is named `Passive_<node>`, or `Passive_<node>_Option<n>` for a
+   capstone option's row (`EnchantmentNameFor`), and every key the builder keeps (trigger cooldown, own stacks,
+   next-use charge, every-Nth count) is made from that name. The same name at every refresh, so a held stack survives
+   the next item swap. The generator refuses two action rows of one node, option, action and event, which would share
+   a cooldown. **A judgement**, the enchantment rows' rule (one name, action and event per row) carried over.
+3. **The same choices as the stat rows.** `AccumulateInto` and `EnchantmentRowsFor` share one walk
+   (`ForEachCountedPassiveEffectRow`): a node the table no longer has, a tree no worn weapon reaches, an option not
+   taken and a threshold not reached grant nothing. The refresh hands both the same reduced allocation, so points that
+   add nothing (ruled 2026-10-09) add no action either. Only `ValuePerPoint` is multiplied by the points; every other
+   column is the row's.
+4. **A second condition and an offset on a stat row.** `AccumulateInto` copies `Condition2` (read through
+   `UCataclysmStatPipeline::ConditionNamed`, so an unknown name grants nothing, as the first condition's does) and
+   `ScaleOffset` (on a scale this build knows, as the cap is) onto the modifier.
+5. **Per Point From.** A row with `MinPoints` may state `PerPointFrom` N: from the threshold it pays `ValuePerPoint`
+   once for every point from the Nth on (`PointsPaid`). Tempered Steel's "At 6 points: These bonuses are doubled while
+   at maximum Fervour" is `MinPoints` 6 and 1; Tinkerer's "At 6 points: Gadgets remain active 20% longer per point
+   invested beyond 6" is `MinPoints` 7 and 7. The generator refuses it without `MinPoints`, above `MinPoints`, and
+   below 1. **A judgement:** one integer column covers both readings the War trees use.
+6. **The generator reads a passive action row by the Enchantment Effects sheet's own rules.** The per-row body of
+   `enchantment_effects` moved, unchanged, into `_effect_row`; every generated CSV was byte-identical after the move
+   (`python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date"). `passive_effects` maps
+   `Node` onto `Enchantment` and `Value Per Point` onto `Value Low` and calls it, handing over the node's own sentence
+   (the option's, for an option row) where a rule reads a row's words. A refusal is reported against the Passive
+   Effects sheet. The columns about an item (`Enchantment`, `Effect`, `Value Low`, `Value High`, `Scale Step High`,
+   `Stack Seconds High`, `Condition Value High`) are refused on the passive sheet.
+7. **Two refusals, judgements, because the enchantment builder could not honour them:** a passive action row may not
+   count enemies within a radius (the builder carries no reach, so it would count nobody), and may not use the scale
+   that counts enemies while an own stack is held (no passive row needs it yet).
+8. **`DataTableImportOptional` on the fourteen fields.** Unreal's CSV importer reports every struct field missing from
+   a CSV header as a problem (`UDataTable::GetTablePropertyArray`, UE 5.8 `DataTable.cpp`, under `WITH_EDITOR`), unless
+   the field carries that metadata. The generator always writes all fourteen and a Python test holds the written header
+   to them; the mark lets a test build a table from a CSV naming only the columns it uses, which keeps the four
+   in-memory passive tables the tests built before the port valid. **A judgement:** the Demonic tree rework instead
+   added its one column to every such table; fourteen columns to four tables was more churn than the mark.
+9. **A test seam, `UCataclysmPassiveTree::SetEffectTableForTests`.** The refresh loads the tables by path and no
+   authored row acts on an event yet, so without it the only way to show a node's action reaching a character would
+   have been to author one. Nothing in play calls it; the test that sets it puts the generated table back at scope exit.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.PassiveRowPort.APointsRowIsPaidByTheThreeRules` | `PointsPaid`: every point, once from a threshold, every point from N |
+| `Cataclysm.PassiveRowPort.AnActionRowIsCopiedForTheBuilderAndNotMadeAModifier` | the copies and the modifiers from one allocation |
+| `Cataclysm.PassiveRowPort.ACopyFollowsTheTreeTheOptionAndTheThreshold` | threshold, option and dormant tree, for a copy |
+| `Cataclysm.PassiveRowPort.AStatRowCarriesASecondConditionAndAnOffset` | `Condition2`, `ScaleOffset` and `PerPointFrom` on modifiers |
+| `Cataclysm.PassiveRowPort.ACopiedRowIsBuiltIntoAnActionAndAStack` | the builder makes the actions and one shared stack key |
+| `Cataclysm.PassiveRowPort.ANodesActionReachesTheCharacterThroughTheRefresh` | the real refresh, with a control before and after |
+
+Predicted counts: `Cataclysm.PassiveRowPort.` 6. `Cataclysm.Passives.` and `Cataclysm.PassiveScaleCap` unchanged in
+number; their in-memory tables are unchanged.
+
+**Planned guard proofs** (one per mechanism; not run):
+1. The routing: in `CataclysmPassiveTree.cpp`, `if (UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(*Effect))` inside
+   `AccumulateInto` becomes `if (false && UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(*Effect))`. Must fail
+   `AnActionRowIsCopiedForTheBuilderAndNotMadeAModifier` and
+   `ANodesActionReachesTheCharacterThroughTheRefresh`.
+2. The refresh: in `CataclysmEquipmentComponent.cpp`, `&Actions, &PassiveRows);` becomes `nullptr, &PassiveRows);`.
+   Must fail `ANodesActionReachesTheCharacterThroughTheRefresh`.
+3. Per Point From: in `PointsPaid`, `return Effect.PerPointFrom > 0 ? FMath::Max(0, Points - Effect.PerPointFrom + 1) : 1;`
+   becomes `return 1;`. Must fail `APointsRowIsPaidByTheThreeRules` and `AStatRowCarriesASecondConditionAndAnOffset`.
+
+### PYTHON
+
+`python -u -m pytest --junit-xml=<outside the repository>` on the branch before this entry's figures were written:
+"1 failed, 8359 passed, 9 skipped in 362.13s"; the JUnit file: tests 8369, failures 1, errors 0, skipped 9. **The one
+failure is inherited**: `test_datatable_assets_are_current.py::...test_every_csv_still_hashes_to_what_was_recorded`
+names `PassiveEffects.csv` and `PassiveNodes.csv`, whose assets the editor step has not rebuilt, and the same test fails
+the same way on `feat/demonic-tree-rework` at `cf18466a7` (run in a `git archive` copy of that commit: "1 failed, 17
+passed"). `python -m ruff check .`: "All checks passed!". `python tools/check_resolved_cpp.py --changed`: "4 files read,
+0 with complaints". `python tools/generate_datatables.py --check` after the generator's move and before the new
+columns: "All 34 DataTable CSVs are up to date".
+
+---
+
 ## 2026-11-24 — The three Demonic passive trees reworked as their audits proposed: the Masochist, the Ravager and the Ritualist, in words, rows and code
 
 **Affects:**

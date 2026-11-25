@@ -2799,6 +2799,91 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	int32 ScaleMaxSteps = 0;
+
+	//~ THE PASSIVE ROW PORT OF 2026-11-24 (`plan_death_and_war.md`, slice B28).
+	//
+	// THE THIRTEEN FIELDS BELOW ARE `FCataclysmEnchantmentEffectRow`'S, SAME NAMES AND SAME MEANINGS, read there; this
+	// comment does not restate them. They let a node DO something when an event happens -- restore health on a block,
+	// gain a stack when hit, apply a bleed when retaliation is paid -- and carry a second condition and an offset on
+	// its scale. A row stating `Action`, or scaled by `own_stacks` or `consecutive_hits`, is not read by
+	// `UCataclysmPassiveTree::AccumulateInto`: `UCataclysmPassiveTree::EnchantmentRowsFor` copies it into an
+	// enchantment row and the equipment's refresh hands that to `UCataclysmItemModifiers::AccumulateEnchantmentsInto`,
+	// the builder every worn row goes through, so a passive action and a worn one are built by one piece of code.
+	//
+	// THE ROLL'S COLUMNS ARE NOT HERE (`ValueHigh`, `ScaleStepHigh`, `StackSecondsHigh`, `ConditionValueHigh`): a
+	// passive row is paid per point and rolls nothing. Only `ValuePerPoint` is multiplied by the points; every field
+	// below is the row's whatever the points.
+	//
+	// MARKED `DataTableImportOptional`, the engine's own metadata for a column a CSV may leave out: the importer
+	// (`UDataTable::GetTablePropertyArray`, UE 5.8 DataTable.cpp, under WITH_EDITOR) reports every other struct field
+	// missing from a CSV's header as a problem. The generator always writes all fourteen, and
+	// `tools/tests/test_passive_rows_carry_the_action_columns.py` holds the written header to them; the mark lets a
+	// test build a table from a CSV naming only the columns it uses, as the tables written before the port do.
+
+	/** See `FCataclysmEnchantmentEffectRow::Action`. Empty on a row that changes a stat. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString Action;
+
+	/** See `FCataclysmEnchantmentEffectRow::ActionEvent`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString ActionEvent;
+
+	/** See `FCataclysmEnchantmentEffectRow::FractionOf`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString FractionOf;
+
+	/** See `FCataclysmEnchantmentEffectRow::StackSeconds`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float StackSeconds = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::ScaleOffset`. Read on a stat row too, by `AccumulateInto`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float ScaleOffset = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::EverySeconds`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float EverySeconds = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::EveryNth`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	int32 EveryNth = 0;
+
+	/** See `FCataclysmEnchantmentEffectRow::Condition2`. Read on a stat row too, by `AccumulateInto`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString Condition2;
+
+	/** See `FCataclysmEnchantmentEffectRow::ConditionValue2`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float ConditionValue2 = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::TriggerCooldown`. The generator writes its default, as there. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float TriggerCooldown = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::EventValue`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float EventValue = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::Ailment`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString Ailment;
+
+	/** See `FCataclysmEnchantmentEffectRow::DamageShare`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float DamageShare = 0.0f;
+
+	/**
+	 * From which point a row with `MinPoints` is paid per point, or 0 for once. The passive row port of 2026-11-24,
+	 * for a node sentence's "per point" inside an "At N points" clause.
+	 *
+	 * 0 KEEPS THE RULE OF ISSUE #1755: from `MinPoints`, `ValuePerPoint` once. A number from 1 up pays `ValuePerPoint`
+	 * for every point from that one on: Tempered Steel's "At 6 points: These bonuses are doubled while at maximum
+	 * Fervour" is `MinPoints` 6 and 1 here (all its points), and Tinkerer's "At 6 points: Gadgets remain active 20%
+	 * longer per point invested beyond 6" is `MinPoints` 7 and 7 here (the seventh and eighth). The generator refuses
+	 * it on a row with no `MinPoints`, and above it. `UCataclysmPassiveTree::PointsPaid` reads it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	int32 PerPointFrom = 0;
 };
 
 /**

@@ -1496,25 +1496,21 @@ class TestAPassiveNodeCanGrantSeveralStats:
         with pytest.raises(gen.DataError, match="same stat twice"):
             gen.passive_effects(rows)
 
-    def test_a_stack_seconds_column_on_this_sheet_is_refused(self, tmp_path):
-        """Issue #1833. Only an enchantment's row counts stacks of its own."""
+    @pytest.mark.parametrize("column", ["Stack Seconds", "Scale Offset"])
+    def test_a_stack_seconds_or_offset_column_on_this_sheet_is_read(self, tmp_path, column):
+        """Issues #1833 and #1686 refused these two columns here, because only an
+        enchantment's row was built with its own stacks or an offset. Since the
+        passive row port of 2026-11-24 a passive row stating one is built by the
+        enchantment rows' builder, so the columns are read: empty here, and a row
+        stating them is tested in `test_passive_rows_carry_the_action_columns.py`."""
+        header = self.sheet([])[0] + [column]
+        line = ["A_node", "armor", "increased", 3]
+        line += [None] * (len(header) - len(line))
         book = openpyxl.load_workbook(workbook_with(
-            tmp_path / "effects.xlsx",
-            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
-                                  "Required Tags", "Stack Seconds"],
-                                 ["A_node", "armor", "increased", 3, None, None]]}))
-        with pytest.raises(gen.DataError, match="Stack Seconds"):
-            gen.passive_effects(book)
-
-    def test_an_offset_column_on_this_sheet_is_refused(self, tmp_path):
-        """Issue #1686. Only an enchantment's modifier reads an offset."""
-        book = openpyxl.load_workbook(workbook_with(
-            tmp_path / "effects.xlsx",
-            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
-                                  "Required Tags", "Scale Offset"],
-                                 ["A_node", "armor", "increased", 3, None, None]]}))
-        with pytest.raises(gen.DataError, match="Scale Offset"):
-            gen.passive_effects(book)
+            tmp_path / "effects.xlsx", {"Passive Effects": [header, line]}))
+        out = gen.passive_effects(book)
+        assert [r["Stat"] for r in out] == ["armor"]
+        assert out[0]["StackSeconds"] == 0.0 and out[0]["ScaleOffset"] == 0.0
 
     def capped(self, tmp_path, scale, step, cap):
         """One row under a scale and a cap, every other column the reader asks

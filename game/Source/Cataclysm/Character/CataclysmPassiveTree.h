@@ -8,6 +8,8 @@
 #include "CataclysmPassiveTree.generated.h"
 
 struct FCataclysmPassiveNodeRow;
+struct FCataclysmPassiveEffectRow;
+struct FCataclysmEnchantmentEffectRow;
 class UDataTable;
 
 /**
@@ -180,8 +182,20 @@ public:
 	/** The generated edge table, the same way. */
 	static const UDataTable* LoadEdgeTable();
 
-	/** The generated effect table: what a node grants. Null when missing. */
+	/** The generated effect table: what a node grants. Null when missing. A table `SetEffectTableForTests` set
+	 *  wins while it is set. */
 	static const UDataTable* LoadEffectTable();
+
+	/**
+	 * The effect table `LoadEffectTable` hands back while one is set, for a test that drives the real equipment
+	 * refresh with rows of its own; null puts the generated table back. NOTHING IN PLAY CALLS IT, and a test that sets
+	 * one puts it back before it ends.
+	 *
+	 * WHY IT EXISTS. The passive row port of 2026-11-24: the refresh loads the tables by path, and no authored row acts
+	 * on an event yet, so without it the only way to show a node's action reaching the character would be to author
+	 * one. Held weakly, so a table the test let go of is never handed back.
+	 */
+	static void SetEffectTableForTests(const UDataTable* Table);
 
 	/** Every tree the node table names, in alphabetical order. */
 	static TArray<FString> TreeNames(const UDataTable* NodeTable);
@@ -505,6 +519,61 @@ public:
 		const FCataclysmPassiveAllocation& Allocation,
 		const UDataTable* NodeTable, const UDataTable* EffectTable,
 		const TArray<FName>& DamageTypes);
+
+	//~ The passive row port of 2026-11-24 (`plan_death_and_war.md`, slice B28).
+
+	/**
+	 * Whether a passive row is built as an enchantment row rather than read by `AccumulateInto`.
+	 *
+	 * A ROW THAT MOVES SOMETHING WHEN AN EVENT HAPPENS, OR WHOSE SIZE IS A COUNT AN EVENT GRANTS: a row stating
+	 * `Action`, or scaled by `own_stacks` or `consecutive_hits`. Both need an action the character fires on its event,
+	 * and the code that makes one from a row is `UCataclysmItemModifiers::AccumulateEnchantmentsInto`'s; the stat half
+	 * of an own-stack row must be made there too, so its stack key and its grant's are one key. The generator's
+	 * `SCALES_AN_ACTION_GRANTS` names the same two scales.
+	 */
+	static bool IsBuiltAsAnEnchantmentRow(const FCataclysmPassiveEffectRow& Effect);
+
+	/**
+	 * How many times a row's `ValuePerPoint` is paid at this many points in its node.
+	 *
+	 * THE THREE RULES IN ONE PLACE, so the stat rows and the enchantment-row copies cannot pay differently:
+	 *   - no `MinPoints`: once per point, every point (the rule every row followed before issue #1755);
+	 *   - `MinPoints` and no `PerPointFrom`: nothing below the threshold, then once (issue #1755);
+	 *   - `MinPoints` and `PerPointFrom` N: nothing below the threshold, then once for every point from the Nth on
+	 *     (the passive row port of 2026-11-24).
+	 * Never below nought.
+	 */
+	static int32 PointsPaid(const FCataclysmPassiveEffectRow& Effect, int32 Points);
+
+	/**
+	 * The name a passive row carries when it is copied into an enchantment row: `Passive_` and its node, and
+	 * `_Option` and the option for a capstone option's row.
+	 *
+	 * EVERY KEY THE BUILDER KEEPS IS MADE FROM IT -- a row's trigger cooldown, its own stacks, a next-use charge, an
+	 * every-Nth count -- so it is the node and the option and never the row: two rows of one node share an own stack
+	 * the way two rows of one enchantment do, and the generator refuses two action rows of one node, option, action
+	 * and event, which would share a cooldown. THE SAME NAME AT EVERY REFRESH, so a stack held survives the refresh
+	 * that the next item swap makes (`SetPoolActions` forgets a stack only when no action carries its key).
+	 *
+	 * NO ENCHANTMENT CAN BE CALLED THIS. An enchantment's row name keeps letters, digits and underscores and begins
+	 * `Positive_` or `Negative_`.
+	 */
+	static FString EnchantmentNameFor(FName Node, int32 Option);
+
+	/**
+	 * The passive rows `IsBuiltAsAnEnchantmentRow` names, for the nodes this allocation holds, each copied into an
+	 * enchantment row for `UCataclysmItemModifiers::AccumulateEnchantmentsInto`.
+	 *
+	 * THE SAME CHOICES `AccumulateInto` MAKES, in the same order: a node the table no longer has, a tree no worn
+	 * weapon reaches, an option not taken and a threshold not reached each grant nothing. The value is
+	 * `ValuePerPoint` times `PointsPaid`, written as both ends of the copy's range, so any roll gives it.
+	 *
+	 * RETURNED RATHER THAN BUILT HERE, so the builder stays the only code that turns a row into an action, and a test
+	 * can read what the tree hands over.
+	 */
+	static TArray<FCataclysmEnchantmentEffectRow> EnchantmentRowsFor(
+		const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable,
+		const UDataTable* EffectTable, const TArray<FName>& DamageTypes);
 
 	//~ More points spent than earned. Ruled 2026-10-09.
 
