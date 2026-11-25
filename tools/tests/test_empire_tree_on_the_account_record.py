@@ -56,10 +56,10 @@ EDGES_CSV = REPO_ROOT / "game" / "Data" / "EmpireTreeEdges.csv"
 RECORDS_H = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveRecords.h"
 GAME_INSTANCE = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player" / "CataclysmGameInstance.cpp"
 TRIGGERS = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveTriggers.cpp"
-# `Account_v7.json` SINCE ISSUE #2741 SLICE 9 AND `Character_v17.json` SINCE ISSUE #837 SLICE 1 (`Character_v16.json` from
-# issue #2849, `Character_v15.json` from issue
+# `Account_v8.json` SINCE #47 SLICE F6a (`Account_v7.json` from issue #2741 slice 9) AND `Character_v17.json` SINCE
+# ISSUE #837 SLICE 1 (`Character_v16.json` from issue #2849, `Character_v15.json` from issue
 # #2848, `Character_v14.json` from slice 9), `Account_v6.json` and `Character_v13.json` from issue #46 and slice 8.
-ACCOUNT_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Account_v7.json"
+ACCOUNT_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Account_v8.json"
 CHARACTER_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Character_v17.json"
 
 #: `class CATACLYSM_API UCataclysmAccountSave ... SchemaVersionNow = 7;` (6 until issue #2741 slice 9, 5 until slice 8,

@@ -473,6 +473,44 @@ struct FCataclysmForgeDismantle
 };
 
 /**
+ * THE FORGE'S GOLD AFTER THE EMPIRE TREE'S FIVE FORGE GOLD NODES, for one craft (#47 slice F6a): what a plan's price is
+ * multiplied by, for each crafting material tier. `UCataclysmForgeCraft::PricingFor` works it out once from the tree,
+ * each tier's factor by `UCataclysmEmpireTree::CraftGoldFactorFor`, and passes it to the plan, which applies it to its
+ * price before its gold refusal, so a player who can afford the discounted price is not refused.
+ *
+ * A TRAILING PARAMETER WITH A DEFAULT OF NO DISCOUNT, the coordinating session's ruling A of 2026-11-24: every factor is
+ * 1, so the plan tests that pass no pricing price at full, and a Python check makes sure every plan call the game makes
+ * passes the character's. Forge Upgrades' tenth is rolled once for the craft and is in every factor, so the craft's
+ * options take the same roll at their own materials' tiers (ruling B of 2026-11-24).
+ */
+struct FCataclysmForgePricing
+{
+	/** The highest crafting material tier (`MaterialTiers.csv`: 1 Common to 5 Extremely Rare). */
+	static constexpr int32 MaxMaterialTier = 5;
+
+	/** The multiplier on a price, by its material's tier; tier 0 is a craft with no material (a gem combine). */
+	float Factors[MaxMaterialTier + 1] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+
+	/** Whether Forge Upgrades' tenth landed for this craft. Every factor holds it already; this is kept to say so. */
+	bool bTenthOff = false;
+
+	/** The crafting material table, for a material's tier. None prices every material at tier 0's factor. */
+	const UDataTable* MaterialTable = nullptr;
+
+	/** The tier of `Material` in `MaterialTable`: 0 for none, or for a name the table does not hold. */
+	int32 TierOf(FName Material) const;
+
+	/** The factor for `Material`'s tier. */
+	float FactorFor(FName Material) const;
+
+	/** `Gold` times `FactorFor(Material)`, rounded, and at least 1 when `Gold` is: a discounted price is never free. */
+	int64 Apply(int64 Gold, FName Material) const;
+
+	/** The whole percent `FactorFor(Material)` takes off, rounded, for the screen. 0 with no discount. */
+	int32 PercentOffFor(FName Material) const;
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -587,7 +625,8 @@ public:
 	 * REFUSED for no item, for an item at +10, for fewer than two stones of the next level, and for too little gold.
 	 */
 	static FCataclysmForgeUpgrade UpgradeOf(const FCataclysmItem& Item, int32 StonesOfTheNextLevelHeld,
-											int32 DifficultyTier, int64 GoldHeld);
+											int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What combining two stones of this level into one of the next takes, against the stones of this level held.
@@ -596,7 +635,8 @@ public:
 	 * gold (`CombineGoldFor` at rung `Level - 1`).
 	 */
 	static FCataclysmForgeCombine CombineOf(int32 Level, int32 StonesOfThisLevelHeld, int32 DifficultyTier,
-											int64 GoldHeld);
+											int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	//~ Combining gems. Issue #46, slice G6.
 
@@ -616,7 +656,8 @@ public:
 	 * STONE COMBINE'S, `CombineGoldFor` at the rarity's rung (#2830).
 	 */
 	static FCataclysmForgeGemCombine GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis,
-												  int32 DifficultyTier, int64 GoldHeld);
+												  int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What the first press of Upgrade says, before the second does it: "Press again to upgrade to +3: two +3 stones,
@@ -675,7 +716,8 @@ public:
 	 */
 	static FCataclysmForgeSocketing SocketGemOf(const FCataclysmItem& Item, int32 Socket, FName Gem,
 												ECataclysmRarity Rarity, const FString& GemType, int32 GemsHeld,
-												int32 AgentsHeld, int32 DifficultyTier, int64 GoldHeld);
+												int32 AgentsHeld, int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What taking the gem out of the item's socket `Socket` takes, against the Dismantling Dust held and whether the bag
@@ -684,7 +726,8 @@ public:
 	 * REFUSED for no item, no such socket, an empty socket, no Dust, no room, and too little gold.
 	 */
 	static FCataclysmForgeSocketing UnsocketGemOf(const FCataclysmItem& Item, int32 Socket, int32 DustHeld,
-												  bool bRoomForTheGem, int32 DifficultyTier, int64 GoldHeld);
+												  bool bRoomForTheGem, int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What the first press of a socketing says, before the second does it: "Press again to socket Of The Viper (Superb)
@@ -731,7 +774,8 @@ public:
 	 * most sockets, 6."), no Shattered Core, and too little gold.
 	 */
 	static FCataclysmForgeSocketWork AddSocketOf(const FCataclysmItem& Item, int32 MaxSockets, int32 CoresHeld,
-												 int32 DifficultyTier, int64 GoldHeld);
+												 int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What making the item's socket `Socket` a socket of `NewType` takes, against the Focusing Lenses held.
@@ -741,7 +785,8 @@ public:
 	 */
 	static FCataclysmForgeSocketWork ChangeSocketTypeOf(const FCataclysmItem& Item, int32 Socket,
 														ECataclysmSocketType NewType, int32 LensesHeld,
-														int32 DifficultyTier, int64 GoldHeld);
+														int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * EVERYTHING THE ITEM SAVES, WRITTEN OUT AS TEXT, for the seed of an added socket's type: its base, gear level and
@@ -816,7 +861,8 @@ public:
 	 * material, and too little gold. A reroll of a roll at the top is not refused: it can fall, and the player chose it.
 	 */
 	static FCataclysmForgeAffixWork AffixWorkOf(const FCataclysmItem& Item, ECataclysmForgeAffixCraft Craft, int32 Affix,
-												int32 MaterialHeld, int32 DifficultyTier, int64 GoldHeld);
+												int32 MaterialHeld, int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * The seed of a rerolled affix's roll: `CataclysmSeedMix::Mix` of the run's `WalkSeedMask`, `RerolledAffixSalt` and the
@@ -908,7 +954,8 @@ public:
 	static FCataclysmForgeAffixChange DeterministicAffixOf(const FCataclysmItem& Item, FName AffixRow, int32 Tier,
 														   int32 Seed, const UDataTable* AffixTable,
 														   const UDataTable* BaseTable, int32 FragmentsHeld,
-														   int32 DifficultyTier, int64 GoldHeld);
+														   int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What shifting the item's affix `Affix` to another stat takes, against the Crystals of Instability held. The new
@@ -920,7 +967,8 @@ public:
 	 */
 	static FCataclysmForgeAffixChange AffixShiftOf(const FCataclysmItem& Item, int32 Affix, int32 Seed,
 												   const UDataTable* AffixTable, const UDataTable* BaseTable,
-												   int32 CrystalsHeld, int32 DifficultyTier, int64 GoldHeld);
+												   int32 CrystalsHeld, int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/** An affix row's name as the sheet gives it, "Flat armor"; the row key when the table does not hold it. */
 	static FString AffixNameOf(FName AffixRow, const UDataTable* AffixTable);
@@ -1009,7 +1057,8 @@ public:
 														  ECataclysmForgeDamageTypeCraft Craft, FName Chosen,
 														  int32 Seed, const UDataTable* WeaponSkillTable,
 														  const UDataTable* BaseTable, int32 MaterialHeld,
-														  int32 DifficultyTier, int64 GoldHeld);
+														  int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What the first press of one says, before the second does it: "Press again to infuse a random damage type: one
@@ -1065,7 +1114,8 @@ public:
 	 */
 	static FCataclysmForgeEnchantmentWork ImprintOf(const FCataclysmItem& Item, int32 Affix, int32 ShardsHeld,
 													const UDataTable* GearRarityTable, int32 DifficultyTier,
-													int64 GoldHeld);
+													int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What changing the negative of the item's enchantment pair `Pair` takes, against the Regret Essences held.
@@ -1075,7 +1125,8 @@ public:
 	 */
 	static FCataclysmForgeEnchantmentWork ChangeNegativeOf(const FCataclysmItem& Item, int32 Pair, int32 EssencesHeld,
 														   const UDataTable* PositiveTable, int32 DifficultyTier,
-														   int64 GoldHeld);
+														   int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * The item an imprint makes: the affix `Affix` given up, `Pair` added and the enchantment count raised with it (the
@@ -1133,6 +1184,29 @@ public:
 	/** The salts of the two draws: "SOUL" and "CRIT". */
 	static constexpr int32 SoulForgeSalt = 0x534F554C;
 	static constexpr int32 EnchantCriticalSalt = 0x43524954;
+
+	// ---- #47 slice F6a: Forge Upgrades' tenth, "1% chance per point to reduce the cost of a craft in the forge by 10%".
+	// ROLLED IN THE PLAN, NOT AT THE PRESS (Q10, as `AddedSocketSeed`): the price on the screen is the price paid, a reload
+	// cannot roll it again, and the screen can say it landed.
+
+	/** The salt of Forge Upgrades' draw: "FGLD". */
+	static constexpr int32 ForgeUpgradesSalt = 0x46474C44;
+
+	/** The seed of Forge Upgrades' draw for a craft on `Item`: the item and the day of the run (Q10). */
+	static int32 ForgeUpgradesSeed(const FCataclysmItem& Item, int32 WalkSeedMask, int32 Day);
+
+	/** The seed of Forge Upgrades' draw for a combine, which has no item: the rung and the day (Q10). */
+	static int32 CombineForgeUpgradesSeed(int32 Rung, int32 WalkSeedMask, int32 Day);
+
+	/** Whether Forge Upgrades' tenth lands: `Chance` above nought and a draw on `Seed` below it. */
+	static bool ForgeUpgradesTenthOff(float Chance, int32 Seed);
+
+	/**
+	 * The forge screen's words for a price the empire tree discounts, said after the craft's question: "" with no
+	 * discount; otherwise " The empire tree's forge nodes take 28% off its gold." and, when Forge Upgrades' tenth landed,
+	 * " Forge Upgrades' tenth is in it." The price the question names is already the discounted one.
+	 */
+	static FString DiscountText(const FCataclysmForgePricing& Pricing, FName Material);
 
 	/**
 	 * How many gear levels an upgrade of the item to `ToLevel` adds: 2 when `Chance` is above nought, `ToLevel` is below
@@ -1219,7 +1293,8 @@ public:
 	 */
 	static FCataclysmForgeOptionEffect OptionsOn(float ResidueBefore, float ResidueAfter, int32 Days, int64 CraftGold,
 												 const FCataclysmForgeCraftOptions& Options, int32 StabilizersHeld,
-												 int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld);
+												 int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What the options add to a craft's first-press question, empty with none. An added socket at 250 residue, tier 1,
@@ -1235,7 +1310,8 @@ public:
 	 * REFUSED for no item, an item carrying no residue, no Purified Essence, and too little gold.
 	 */
 	static FCataclysmForgeCleanse CleanseOf(const FCataclysmItem& Item, int32 EssenceHeld, int32 DifficultyTier,
-											int64 GoldHeld);
+											int64 GoldHeld,
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
 
 	/**
 	 * What the first press of a cleanse says, at tier 1: "Press again to cleanse half the residue: one Purified Essence,

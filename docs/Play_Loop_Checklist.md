@@ -689,6 +689,22 @@ Vanguard, which opens at 100. Neither is greyed any more. With Imperial Prowess,
 - **The outcome is not shown before the press**, only the chance. The same piece on the same day draws the same, so a
   reload does not change it.
 
+### 29. Take the forge's gold nodes in the empire tree, and see a forge price fall
+
+The five gold nodes of the empire tree's Artisan branch (issue #47, slice F6a). With none held, note the gold of an
+upgrade at the forge (step 16), say 4,500 for a +2 helm carrying 250 residue.
+
+- **Buy Workshop Upgrades to 8 points and Apprentice Oversight.** The same upgrade's question now names 3,060 gold and
+  ends: "The empire tree's forge nodes take 32% off its gold." Workshop Upgrades takes 1.5% a point from every forge
+  price; Apprentice Oversight 20% more when the craft's material is tier 1 or 2 (the +3 stone is tier 2). A +5 upgrade,
+  whose stone is tier 3, takes only Workshop Upgrades' 12%.
+- **Architectural Synergy** takes 1% a point for each 10 points spent in the Treasury branch, at most 30%. **Treasury
+  Synergy** takes 1% for each 50,000 gold (at tier 1) spent at the forge since the count began, at most 30%. All four
+  together are held at 75% off.
+- **Forge Upgrades** gives a 1% a point chance that a craft costs a tenth less. When it lands the question adds "Forge
+  Upgrades' tenth is in it." The same piece on the same day always draws the same, so a reload does not change it.
+- **The price named is the price paid**, and a character holding the discounted price is not refused.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

@@ -59,6 +59,11 @@ basic_expl_t2g#1,basic_expl_t2g,0,FloorsPerBranchStep,1.0,10,Architect,10.0
 capstone_0000000o#1,capstone_0000000o,1,RemoveAnotherDungeonChance,0.15,0,,0.0
 capstone_0000000n#3,capstone_0000000n,3,UpgradeExtraLevelChance,0.15,0,,0.0
 capstone_0000000o#2,capstone_0000000o,2,EnchantCriticalChance,0.05,0,,0.0
+basic_arts_t1f#1,basic_arts_t1f,0,CraftGoldReduced,0.015,0,,0.0
+keystone_00000051#1,keystone_00000051,0,LowTierCraftGoldReduced,0.2,0,,0.0
+basic_arts_t3g#1,basic_arts_t3g,0,CraftGoldReducedPerBranchStep,0.01,10,Treasury,0.3
+keystone_0000005j#1,keystone_0000005j,0,CraftGoldReducedPerSpendingStep,0.01,0,,0.3
+basic_arts_t2e#1,basic_arts_t2e,0,CraftGoldTenthOffChance,0.01,0,,0.0
 basic_expl_t1d#1,basic_expl_t1d,0,EmpirePointsFromClears,0.03,0,,0.0
 basic_0000002a#1,basic_0000002a,0,MagicFindAdded,0.05,0,,0.0
 basic_0000002e#1,basic_0000002e,0,LootQuantityIncreased,0.05,0,,0.0

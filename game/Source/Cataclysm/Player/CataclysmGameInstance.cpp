@@ -576,6 +576,52 @@ bool UCataclysmGameInstance::AddGoldSpentOnCityUpgradesFor(const UObject* WorldC
 	return true;
 }
 
+bool UCataclysmGameInstance::GoldSpentAtTheForgeBy(const UObject* WorldContext, double& OutSpentAtTierOne)
+{
+	OutSpentAtTierOne = 0.0;
+	const ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		OutSpentAtTierOne = State->GetOwnGoldSpentAtTheForge();
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	const UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	OutSpentAtTierOne = Account->GoldSpentAtTheForge;
+	return true;
+}
+
+bool UCataclysmGameInstance::AddGoldSpentAtTheForgeFor(const UObject* WorldContext, double SpentAtTierOne)
+{
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	const double Added = FMath::Max(0.0, SpentAtTierOne);
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		State->SetOwnGoldSpentAtTheForge(State->GetOwnGoldSpentAtTheForge() + Added);
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	Account->GoldSpentAtTheForge = FMath::Max(0.0, Account->GoldSpentAtTheForge) + Added;
+	return true;
+}
+
 bool UCataclysmGameInstance::SpendGoldOnCreditFor(const UObject* WorldContext, int64 Price, int64 Allowance,
 												  bool bRepaidDaily, bool& bOutFromTheCharacter, int64& OutOwed)
 {

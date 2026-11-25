@@ -482,6 +482,24 @@ public:
 	static bool AddGoldSpentOnCityUpgradesFor(const UObject* WorldContext, double SpentAtTierOne);
 
 	/**
+	 * The tier 1 gold the character playing has spent at the forge across runs, which Treasury Synergy reads (#47 slice
+	 * F6a, Q5, as Reinvestment's V2): a Solo Self-Found character's own, on its player state and in its character
+	 * record, every other character's in its lethality mode's account record. Counted whether the node is held or not.
+	 *
+	 * @return false, with 0, where `GoldHeldBy` has no balance
+	 */
+	static bool GoldSpentAtTheForgeBy(const UObject* WorldContext, double& OutSpentAtTierOne);
+
+	/**
+	 * Adds a done craft's price, in tier 1 gold and unrounded (Q5, as V4 and V20), to that count. IT DOES NOT WRITE THE
+	 * RECORD: the craft raises the saves, as it does for the gold (`AccountChanged` when the account paid, the character's
+	 * own record otherwise).
+	 *
+	 * @return false where there is no count to add to
+	 */
+	static bool AddGoldSpentAtTheForgeFor(const UObject* WorldContext, double SpentAtTierOne);
+
+	/**
 	 * Takes a price the balance cannot cover on credit (D2): THE WHOLE BALANCE, AND THE REST OWED. Only while nothing is
 	 * owed, and only when the rest is no more than `Allowance`. With `bRepaidDaily` -- Sovereign Loans held at the
 	 * purchase (D4) -- a tenth of the debt, rounded up, is saved as the part taken each day. A price the balance covers

@@ -220,6 +220,25 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** The Master Tinkerer's chance an enchantment craft is a critical success, 0.05 when chosen
 	 *  (`UCataclysmForge::EnchantCritical`). */
 	float EnchantCriticalChance = 0.0f;
+
+	// ---- #47 slice F6a: the five forge gold nodes, ruled 2026-11-22 (Q1 to Q10) and 2026-11-24 (A, B). ----
+
+	/** Workshop Upgrades' 1.5% a point, and Architectural Synergy's 1% a point for each 10 points in the Treasury branch
+	 *  (its own cap 30%, the owner's), off every forge gold price. Added with the two below and held at
+	 *  `CraftGoldReductionCap` (Q1, as P1) by `UCataclysmEmpireTree::CraftGoldFactorFor`. */
+	float CraftGoldReduced = 0.0f;
+
+	/** Apprentice Oversight's 20% off a forge price whose material is tier 1 or 2 (Q3). A gem combine has no material. */
+	float LowTierCraftGoldReduced = 0.0f;
+
+	/** Treasury Synergy's 1% off for each `TreasurySynergyGoldAStep` tier 1 gold spent at the forge, and the most it may
+	 *  give (30%, its own, inside the 75%: Q7). `UCataclysmEmpireTree::CraftGoldFromSpendingFor` reads them. */
+	float CraftGoldReducedPerSpendingStep = 0.0f;
+	float CraftGoldSpendingCap = 0.0f;
+
+	/** Forge Upgrades' chance a craft costs a tenth less, 1% a point (Q8 to Q10): times `ForgeUpgradesFactor` after
+	 *  the capped reductions, rolled once a craft from the item and the day (`UCataclysmForge::ForgeUpgradesTenthOff`). */
+	float CraftGoldTenthOffChance = 0.0f;
 };
 
 /**
@@ -627,6 +646,39 @@ public:
 
 	/** Whether either credit node is held, so a debt can be the reason no more credit is given. */
 	static bool AllowsUpgradeCredit(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
+
+	/**
+	 * THE MOST A FORGE GOLD PRICE IS REDUCED BY, as a city upgrade's is (Q1 copies P1): Workshop Upgrades' 12%,
+	 * Apprentice Oversight's 20%, Architectural Synergy's 30% and Treasury Synergy's 30% add to 92% at full, and are held
+	 * here. #47 slice F6a.
+	 */
+	static constexpr float CraftGoldReductionCap = UpgradePriceReductionCap;
+
+	/** Treasury Synergy's "For every 50,000 Gold spent on crafting", in tier 1 gold, as Reinvestment's step is (Q5). */
+	static constexpr int64 TreasurySynergyGoldAStep = 50000;
+
+	/** Forge Upgrades' "reduce the cost of a craft in the forge by 10%": a price it reaches is multiplied by this (Q9). */
+	static constexpr float ForgeUpgradesFactor = 0.9f;
+
+	/** The highest crafting material tier Apprentice Oversight's "Tier 1 and Tier 2 crafts" covers (Q3). */
+	static constexpr int32 LowTierCraftHighestTier = 2;
+
+	/**
+	 * Treasury Synergy's reduction of every forge gold price: 1% for each whole `TreasurySynergyGoldAStep` of
+	 * `GoldSpentAtTierOne` spent at the forge, held at its own 30% cap (Q7). Nought without the node. The count is kept
+	 * whether the node is held or not (Q5, as V5). A copy of `EmpirePointsFromSpendingFor`. #47 slice F6a.
+	 */
+	static float CraftGoldFromSpendingFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, double GoldSpentAtTierOne);
+
+	/**
+	 * What a forge gold price is multiplied by (#47 slice F6a; Q1, Q3, Q9). One less the sum of Workshop Upgrades' and
+	 * Architectural Synergy's reductions, Apprentice Oversight's when the craft's material is tier 1 or 2, and Treasury
+	 * Synergy's from the gold spent at the forge, the sum held at `CraftGoldReductionCap`; then times
+	 * `ForgeUpgradesFactor` when Forge Upgrades' roll for this craft landed. A copy of `UpgradePriceFactorFor`'s shape.
+	 * Exactly 1 with no forge gold node and no tenth. `MaterialTier` 0 is a craft with no material (a gem combine).
+	 */
+	static float CraftGoldFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, double CraftGoldSpentAtTierOne,
+									int32 MaterialTier, bool bTenthOff);
 
 	/** Whether a debt made now is repaid by day: Sovereign Loans held at the purchase (D4). */
 	static bool RepaidDailyFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses);

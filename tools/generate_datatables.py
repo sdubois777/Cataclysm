@@ -3884,6 +3884,11 @@ EMPIRE_TREE_BUILT = {
     # #47 slice F6: the two crafting options, ruled by the coordinating session
     # on 2026-11-22 (R1 to R8). Numbered 10, the slice after slice 9.
     "The Soul Forge": 10, "The Master Tinkerer": 10,
+    # #47 slice F6a: the five forge gold nodes, ruled by the coordinating session
+    # on 2026-11-22 (Q1 to Q10; the owner's 30% cap for Architectural Synergy)
+    # and 2026-11-24 (A, B). Numbered 11, the slice after F6's 10.
+    "Workshop Upgrades": 11, "Apprentice Oversight": 11,
+    "Architectural Synergy": 11, "Treasury Synergy": 11, "Forge Upgrades": 11,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -3990,22 +3995,22 @@ EMPIRE_TREE_REFUSED = {
     # Artisan.
     "Apprentice Smith": "crafting", "Material Conservation": "crafting",
     "Rough Draft": "crafting", "Tool Maintenance": "crafting",
-    "Workshop Upgrades": "crafting", "Limited Knowledge": "crafting",
-    "Apprentice Oversight": "crafting", "Industrial Speed": "crafting",
+    "Limited Knowledge": "crafting",
+    "Industrial Speed": "crafting",
     "Refining Techniques": "crafting",
-    "Quality Materials": "crafting", "Forge Upgrades": "crafting",
+    "Quality Materials": "crafting",
     "Stable Compounds": "crafting", "Explorer Synergy": "crafting",
     "Master Craftsman": "crafting",
     "Resource Management": "crafting", "Expanded Station (Jeweler)": "crafting",
     "Expanded Station (Smith)": "crafting",
     "Expanded Station (Enchantress)": "crafting",
-    "Precision Crafting": "crafting", "Architectural Synergy": "crafting",
+    "Precision Crafting": "crafting",
     "Master's Touch": "crafting", "Sovereign's Assembly": "crafting",
     "Heat Shielding": "crafting", "Flawless Production": "crafting",
     "Residue Protocols": "crafting", "Grand Forge": "crafting",
     "Ancient Techniques": "crafting", "Master's Workshop": "crafting",
     "Residue Mastery": "crafting", "The Hidden Stash": "crafting",
-    "Treasury Synergy": "crafting", "Assembly Line": "crafting",
+    "Assembly Line": "crafting",
     "The Alchemist's Transmutation": "crafting", "Steady Hands": "crafting",
     "Tempting Fate": "crafting",
 }
@@ -4251,6 +4256,9 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "DismantleMaterialsIncreased", "DismantleMaterialsIncreasedSuperbAndAbove",
     # #47 slice F6: The Soul Forge and The Master Tinkerer, read by the forge.
     "UpgradeExtraLevelChance", "EnchantCriticalChance",
+    # #47 slice F6a: the five forge gold nodes, read by CraftGoldFactorFor.
+    "CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
+    "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4356,6 +4364,18 @@ EMPIRE_TREE_EFFECTS = {
     # 1"; "5% chance to hit a critical success" (docs/Empire_Skill_Tree_Keystones.md).
     "The Soul Forge": [("UpgradeExtraLevelChance", 0.15)],
     "The Master Tinkerer": [("EnchantCriticalChance", 0.05)],
+    # #47 slice F6a: the forge's gold. "-1.5% Gold cost for all crafting actions
+    # per point"; "Reduces the Gold cost of all Tier 1 and Tier 2 crafts by 20%"
+    # (a craft's tier is its material's, Q3); "-1% crafting Gold cost per 10
+    # points invested in the Treasury branch per point", capped at 30% by the
+    # owner (2026-11-22, Q4); "For every 50,000 Gold spent on crafting, gain a
+    # permanent 1% discount ... (Cap 30%)" (the count is the game's, Q5); "1%
+    # chance per point to reduce the cost of a craft in the forge by 10%".
+    "Workshop Upgrades": [("CraftGoldReduced", 0.015)],
+    "Apprentice Oversight": [("LowTierCraftGoldReduced", 0.20)],
+    "Architectural Synergy": [("CraftGoldReducedPerBranchStep", 0.01, 10, "Treasury", 0.30)],
+    "Treasury Synergy": [("CraftGoldReducedPerSpendingStep", 0.01, 0, "", 0.30)],
+    "Forge Upgrades": [("CraftGoldTenthOffChance", 0.01)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).

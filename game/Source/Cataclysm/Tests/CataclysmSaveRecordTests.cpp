@@ -154,7 +154,7 @@ namespace CataclysmSaveRecordTest
 			// ACCOUNT WAS AT v2 FROM 2026-11-03, when its banked empire upgrade
 			// points became a double so a fraction of a point is kept (issue #52);
 			// Account_v1.json is a migration input now.
-			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v7.json") },
+			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v8.json") },
 			// RUN IS AT v17 SINCE 2026-11-22, when a thrall's saved creature came to keep the
 			// skill that took it and its level factor (issue #2840); it was at v16 from the
 			// same day, when a run came to carry whether the cleanse

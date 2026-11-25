@@ -578,6 +578,22 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::EnchantCriticalChance:
 			Bonuses.EnchantCriticalChance = FMath::Max(Bonuses.EnchantCriticalChance, Row->PerPoint);
 			break;
+		// #47 SLICE F6a: the forge's gold. Architectural Synergy's per-step total adds to Workshop Upgrades', as Temporal
+		// Efficiency's adds to the loot figure; Treasury Synergy keeps its cap beside its figure, as Reinvestment does.
+		case ECataclysmEmpireTreeEffect::CraftGoldReduced:
+		case ECataclysmEmpireTreeEffect::CraftGoldReducedPerBranchStep:
+			Bonuses.CraftGoldReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LowTierCraftGoldReduced:
+			Bonuses.LowTierCraftGoldReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftGoldReducedPerSpendingStep:
+			Bonuses.CraftGoldReducedPerSpendingStep += Total;
+			Bonuses.CraftGoldSpendingCap = FMath::Max(Bonuses.CraftGoldSpendingCap, Row->Cap);
+			break;
+		case ECataclysmEmpireTreeEffect::CraftGoldTenthOffChance:
+			Bonuses.CraftGoldTenthOffChance += Total;
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:
@@ -1056,6 +1072,33 @@ float UCataclysmEmpireTree::EmpirePointsFromSpendingFor(const FCataclysmEmpireTr
 		FMath::FloorToDouble(GoldSpentAtTierOne / static_cast<double>(ReinvestmentGoldAStep)));
 	const float Share = Steps * Bonuses.EmpirePointsPerSpendingStep;
 	return Bonuses.EmpirePointsSpendingCap > 0.0f ? FMath::Min(Share, Bonuses.EmpirePointsSpendingCap) : Share;
+}
+
+float UCataclysmEmpireTree::CraftGoldFromSpendingFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+													 double GoldSpentAtTierOne)
+{
+	if (Bonuses.CraftGoldReducedPerSpendingStep <= 0.0f || GoldSpentAtTierOne <= 0.0)
+	{
+		return 0.0f;
+	}
+	const float Steps = static_cast<float>(
+		FMath::FloorToDouble(GoldSpentAtTierOne / static_cast<double>(TreasurySynergyGoldAStep)));
+	const float Share = Steps * Bonuses.CraftGoldReducedPerSpendingStep;
+	return Bonuses.CraftGoldSpendingCap > 0.0f ? FMath::Min(Share, Bonuses.CraftGoldSpendingCap) : Share;
+}
+
+float UCataclysmEmpireTree::CraftGoldFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+											   double CraftGoldSpentAtTierOne, int32 MaterialTier, bool bTenthOff)
+{
+	float Reduced = Bonuses.CraftGoldReduced + CraftGoldFromSpendingFor(Bonuses, CraftGoldSpentAtTierOne);
+	// A CRAFT'S TIER IS ITS MATERIAL'S (Q3): tier 1 or 2. A gem combine has no material, tier 0, and takes none.
+	if (MaterialTier >= 1 && MaterialTier <= LowTierCraftHighestTier)
+	{
+		Reduced += Bonuses.LowTierCraftGoldReduced;
+	}
+	const float AfterTheReductions = 1.0f - FMath::Clamp(Reduced, 0.0f, CraftGoldReductionCap);
+	// FORGE UPGRADES' TENTH IS A MULTIPLIER OF ITS OWN, after the cap (Q9), as Scaffolding's is on a city upgrade.
+	return bTenthOff ? AfterTheReductions * ForgeUpgradesFactor : AfterTheReductions;
 }
 
 int64 UCataclysmEmpireTree::UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price)

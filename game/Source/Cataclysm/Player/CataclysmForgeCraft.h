@@ -350,7 +350,22 @@ public:
 	 * `UCataclysmForge::OptionsOn`.
 	 */
 	static FCataclysmForgeOptionEffect OptionsFor(const UObject* WorldContext, float ResidueBefore, float ResidueAfter,
-												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options);
+												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options,
+												  const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
+
+	/**
+	 * The empire tree's forge gold pricing for a craft on the item at a target (#47 slice F6a): each material tier's
+	 * factor by `UCataclysmEmpireTree::CraftGoldFactorFor`, from the character's tree, the gold it has spent at the forge
+	 * (Treasury Synergy's count) and Forge Upgrades' roll for this item on this day of the run. Every plan call with an
+	 * item passes it, and so does every `OptionsFor` call, so a craft and its options take one roll (ruling B).
+	 */
+	static FCataclysmForgePricing PricingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * The same for a combine of the rung `Rung` (a stone combine's `Level - 1`, a gem combine's rarity), which has no
+	 * item: Forge Upgrades' roll is seeded by the rung and the day (Q10).
+	 */
+	static FCataclysmForgePricing CombinePricingFor(const UObject* WorldContext, int32 Rung);
 
 	/** What cleansing the item at a target would take now. */
 	static FCataclysmForgeCleanse CleansePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
