@@ -45,14 +45,14 @@ public:
 	 * row of `DamageType` that raises it.
 	 *
 	 * @param Target      the cursed creature
-	 * @param Caster      who cursed it: whom the risen one fights for
-	 * @param Kind        `RisesAs`, a Minion Types row
+	 * @param Curser      who cursed it: whom the risen one fights for
+	 * @param RisesAs     `RisesAs`, a Minion Types row
 	 * @param DamageType  the cursing skill's damage type, whose Summon row is read
-	 * @param Curses      the curses the row laid, which "while it rattles" asks about
+	 * @param Laid        the curses the row laid, which "while it rattles" asks about
 	 * @return the mark, or null when no Summon row of that damage type raises the kind, which is logged
 	 */
-	static UCataclysmRisingCurse* MarkOn(AActor* Target, AActor* Caster, const FString& Kind, const FString& DamageType,
-										 const TArray<FGameplayTag>& Curses);
+	static UCataclysmRisingCurse* MarkOn(AActor* Target, AActor* Curser, const FString& RisesAs,
+										 const FString& DamageType, const TArray<FGameplayTag>& Laid);
 
 	/**
 	 * Raise what this creature's mark names, where it died, for its curser, if the curse still holds and the curser's
@@ -68,7 +68,7 @@ public:
 	 * The one Summon row of `DamageType` whose `Minions` names `Kind` with a `Duration` of its own, not possessing.
 	 * @return whether one was found, written to `OutRow`
 	 */
-	static bool FindTheRowThatRaises(const FString& DamageType, const FString& Kind, FCataclysmWeaponSkill& OutRow);
+	static bool FindTheRowThatRaises(const FString& DamageType, const FString& RisesAs, FCataclysmWeaponSkill& OutRow);
 
 	/** Whom the risen one fights for. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Rising Curse")

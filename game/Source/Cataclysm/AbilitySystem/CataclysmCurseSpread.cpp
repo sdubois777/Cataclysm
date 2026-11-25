@@ -67,7 +67,7 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 	AActor* Credited = Mark->Caster.IsValid() ? Mark->Caster.Get() : Dying;
 
 	// WHAT A PAYING CURSE CARRIES, copied before anything below can refresh this mark. Issue #2885, N6.
-	const float KillFervour = Mark->KillFervour;
+	const float PaysOnDeath = Mark->KillFervour;
 	const FString PayingSkill = Mark->SkillName;
 	const TArray<FGameplayTag> PayingCurses = Mark->Curses;
 
@@ -75,14 +75,14 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 	// the Death draft's N6, slice DS3: the Sword's Death Warrant, "if it dies while the warrant holds, you gain 10
 	// Fervour". HOLDS means the dying creature still carries one of the curses that skill laid, laid by that caster, so
 	// a warrant that ran out or was cleansed pays nothing. ONLY WHILE THE CASTER IS HERE: a caster gone has no pool.
-	if (KillFervour > 0.0f && Mark->Caster.IsValid()
+	if (PaysOnDeath > 0.0f && Mark->Caster.IsValid()
 		&& UCataclysmKillFervour::CarriesACurseLaidBy(Dying, PayingCurses, Mark->Caster.Get()))
 	{
 		const float Paid = UCataclysmFervour::GainStated(
-			UCataclysmTargeting::AbilitySystemOf(Mark->Caster.Get()), KillFervour);
+			UCataclysmTargeting::AbilitySystemOf(Mark->Caster.Get()), PaysOnDeath);
 		UE_LOG(LogCataclysm, Display,
 			TEXT("%s died under %s's curse, which holds: %.1f Fervour paid of the %.1f its row states."),
-			*GetNameSafe(Dying), *PayingSkill, Paid, KillFervour);
+			*GetNameSafe(Dying), *PayingSkill, Paid, PaysOnDeath);
 	}
 
 	// "THE NEAREST LIVING ENEMY" IS AN ENEMY OF THE CASTER'S SIDE, which is the
@@ -129,9 +129,9 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 		// AND WHAT ITS DEATH WOULD PAY GOES WITH IT, so each holder in the chain is worth the row's figure: "the warrant
 		// passes to the nearest enemy". The copies `CopyDebuffsTo` laid are credited to the caster, so the next death
 		// is asked "does the warrant hold" of the same curses. Issue #2885, N6.
-		if (Passed && KillFervour > 0.0f)
+		if (Passed && PaysOnDeath > 0.0f)
 		{
-			Passed->KillFervour = KillFervour;
+			Passed->KillFervour = PaysOnDeath;
 			Passed->SkillName = PayingSkill;
 			Passed->Curses = PayingCurses;
 		}

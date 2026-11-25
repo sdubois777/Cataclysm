@@ -12,10 +12,10 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 
-UCataclysmRisingCurse* UCataclysmRisingCurse::MarkOn(AActor* Target, AActor* Caster, const FString& Kind,
-													 const FString& DamageType, const TArray<FGameplayTag>& Curses)
+UCataclysmRisingCurse* UCataclysmRisingCurse::MarkOn(AActor* Target, AActor* Curser, const FString& RisesAs,
+													 const FString& DamageType, const TArray<FGameplayTag>& Laid)
 {
-	if (!IsValid(Target) || !IsValid(Caster) || Kind.IsEmpty())
+	if (!IsValid(Target) || !IsValid(Curser) || RisesAs.IsEmpty())
 	{
 		return nullptr;
 	}
@@ -23,12 +23,12 @@ UCataclysmRisingCurse* UCataclysmRisingCurse::MarkOn(AActor* Target, AActor* Cas
 	// THE ROW THAT RAISES THE KIND, READ NOW, while the curse is laid, so the death needs no table. The generator refuses
 	// a `RisesAs` no row raises, so missing here means the table was edited outside it, and is said out loud.
 	FCataclysmWeaponSkill Row;
-	if (!FindTheRowThatRaises(DamageType, Kind, Row))
+	if (!FindTheRowThatRaises(DamageType, RisesAs, Row))
 	{
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("'%s' was cursed to rise as a %s, and no %s Summon row raises a %s with a Duration, so nothing will rise "
 				 "from it."),
-			*GetNameSafe(Target), *Kind, *DamageType, *Kind);
+			*GetNameSafe(Target), *RisesAs, *DamageType, *RisesAs);
 		return nullptr;
 	}
 
@@ -44,8 +44,8 @@ UCataclysmRisingCurse* UCataclysmRisingCurse::MarkOn(AActor* Target, AActor* Cas
 		Mark->RegisterComponent();
 	}
 
-	Mark->Caster = Caster;
-	Mark->Kind = Kind;
+	Mark->Caster = Curser;
+	Mark->Kind = RisesAs;
 	Mark->FromRow = Row.Name;
 	Mark->LifetimeSeconds = Row.Params.Duration;
 	Mark->StatedReserve = Row.Params.FervourReserve;
@@ -53,11 +53,11 @@ UCataclysmRisingCurse* UCataclysmRisingCurse::MarkOn(AActor* Target, AActor* Cas
 	Mark->RadiusCm = Row.Params.RadiusCm;
 	Mark->bTaunts = Row.Params.bTaunts;
 	Mark->bBurns = Row.Params.bBurns;
-	Mark->Curses = Curses;
+	Mark->Curses = Laid;
 	return Mark;
 }
 
-bool UCataclysmRisingCurse::FindTheRowThatRaises(const FString& DamageType, const FString& Kind,
+bool UCataclysmRisingCurse::FindTheRowThatRaises(const FString& DamageType, const FString& RisesAs,
 												 FCataclysmWeaponSkill& OutRow)
 {
 	for (const FCataclysmWeaponSkill& Skill :
@@ -69,7 +69,7 @@ bool UCataclysmRisingCurse::FindTheRowThatRaises(const FString& DamageType, cons
 		}
 		for (const FCataclysmMinionSpawn& Spawn : Skill.Params.Minions)
 		{
-			if (Spawn.Type.Equals(Kind, ESearchCase::IgnoreCase))
+			if (Spawn.Type.Equals(RisesAs, ESearchCase::IgnoreCase))
 			{
 				OutRow = Skill;
 				return true;
