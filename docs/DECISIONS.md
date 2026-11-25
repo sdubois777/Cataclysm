@@ -132,7 +132,13 @@ still fail `Cataclysm.SpendSized.BoundOfferingCountsAShareOfEachReserveHeldAsASp
 
 ### What was run
 
-RULING_FIGURES_C3C
+**The ruling's commit, `527b26a23`** (Cinders Kept returns nothing of a reserve counted as spent; its figures not yet
+written in), the whole Python suite: "1 failed, 8497 passed, 9 skipped in 379.56s (0:06:19)". The JUnit file agrees:
+tests 8507, failures 1, errors 0, skipped 9, so 8497 passed; the one failure is the same asset check as below. ruff:
+"All checks passed!"; `check_resolved_cpp.py` on the 5 C++ files it changed: "5 files read, 0 with complaints". One
+Python guard proof, `break_and_run` in a `git archive` copy of `527b26a23`, `proved`: `HoldReserve` recording its spend
+as taken from the pool fails
+`test_fervour_paid_where_the_engine_reads_it.py::test_a_reserve_counted_as_spent_is_not_returned`.
 
 **The whole Python suite on `77558cc60`** (this entry with its figures not yet written in),
 `python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8496 passed, 9 skipped in 376.62s
