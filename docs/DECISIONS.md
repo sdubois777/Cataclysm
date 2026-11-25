@@ -2,6 +2,74 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
+
+**Tools only; no Unreal build.** Branch `fix/prove-guard-restore-retry`, at the coordinating session's brief of
+2026-11-25.
+
+### Why
+
+**The War trees session's whole-suite run, 2026-11-25.** A guard case in
+`tools/tests/test_what_a_run_ending_costs.py` broke `docs/Cataclysm_GDD_v2.md` on purpose, and `break_and_run`'s
+restore, one `path.write_bytes` in a `finally`, raised OSError [Errno 22] Invalid argument. The break ("Worn Residue can
+consume a character outright") stayed in the design document, the next case failed against it, and nothing said the
+document was still broken. Which process held the file is not known.
+
+**Measured on a scratch file, 2026-11-25.** While another process has the file memory-mapped, `write_bytes` raises
+OSError 22, the reported error; while another process holds a byte-range lock, PermissionError 13. Both cleared as soon
+as the holder let go, after a 1.5 second hold, and the next write succeeded with the content intact. Writing the 15 MB
+`docs/DECISIONS.md` back and reading it again takes about 12 ms.
+
+**UNVERIFIED, A LIKELY HOLDER** (the coordinating session's suggestion, not tested): ripgrep maps the files it searches,
+and every Claude session's Grep tool runs ripgrep, so a session searching `docs/` while a proof runs would hold a map on
+a document for a moment.
+
+### What changed
+
+- **`prove_guard.write_back`** writes a file back and reads it again, trying six times with waits of 0.1, 0.2, 0.4, 0.8
+  and 1.6 seconds (`RESTORE_WAITS_SECONDS`, 3.1 seconds at most). It returns the last error instead of raising, so a
+  restore loop goes on to its other files; until now one refusal stopped the loop and its OSError replaced whatever
+  explained the run.
+- **`break_and_run`** restores every file through it. A file still refused raises **`FilesLeftBroken`**, which names
+  each file, its last error and `git checkout -- <path>`, and carries the run as `.result`: a `GuardResult` with
+  `unrestored` set, `proved` False and a summary beginning "FILES LEFT BROKEN". No second half runs while a file holds
+  the break. When another exception is already leaving, the same text is attached to it as a note, as
+  `prove_cpp_guard` does for issue #384.
+- **RAISED, NOT RETURNED, A JUDGEMENT THE COORDINATING SESSION ACCEPTED.** The brief asked for a field on the result.
+  The case that met the fault passes `restored_half_supplied_by`, so its `proved` is always False, and asserts on
+  `named_failures`, as `CLAUDE.md` tells such a caller to; a returned result with the document still broken would have
+  carried its named failures, the case would have passed, and the next would have failed against the broken document
+  with nothing saying why. That is the fault itself.
+- **`unreal_build`**: `restore_and_touch` goes through `write_back`, with the modification time pushed inside the same
+  tries. `prove_cpp_guard` restores every file; a file still refused keeps the recovery file, runs no restore build (it
+  would compile the break and be read as the restore) and raises `FilesLeftBroken` pointing at `restore-proof`, its
+  result carrying `unrestored`. `restore-proof` prints which file it could not write back, keeps the recovery file and
+  exits 1.
+- **`CLAUDE.md`**, one sentence in the guard-proof section, quoted to the coordinating session before it was committed.
+
+### Tests
+
+**Python, the refusals faked with monkeypatch on one probe file; nothing holds a real one.** In
+`tools/tests/test_prove_guard.py`: `test_a_restore_refused_twice_is_tried_again_and_the_file_comes_back`; its control
+`test_control_one_try_alone_would_have_left_that_file_broken`;
+`test_a_restore_always_refused_raises_naming_the_file_and_how_to_restore_it` (every try made, the file and the command
+named, the result kept, no second half, the other file still restored; control: the refused file still holds the
+break); `test_an_edit_that_raises_keeps_its_own_error_with_the_broken_file_attached`. In
+`tools/tests/test_unreal_build.py`: `test_a_cpp_restore_refused_twice_is_tried_again_and_the_proof_completes`,
+`test_a_cpp_restore_always_refused_raises_keeps_the_recovery_file_and_builds_nothing_more` (one build, not two; no
+second half; control: the source still holds the break) and
+`test_restore_proof_says_which_file_it_could_not_write_back_and_keeps_the_recovery_file`. The two files with
+`test_unreal_build_held_log.py`: "136 passed".
+
+**Guard proofs**, `prove_guard.break_and_run` in a `git archive` copy of `b5bbf1d99`, each PROVED as predicted:
+
+| Proof | Break in `tools/prove_guard.py` | With the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| PG1 | `for wait in (*RESTORE_WAITS_SECONDS, None):` read as `for wait in (None,):`, one try | "4 failed, 124 passed": both "refused twice" tests and both "always refused" tests | "128 passed" |
+| PG2 | the `if refused:` before `raise files_left_broken_error(` read as `if False:` | "2 failed, 126 passed": the "always refused" test and the one-try control | "128 passed" |
+
+---
+
 ## 2026-11-24 — Bug batches 1 and 2 and the creation skill count on development after the inventory tabs: the whole suite 5422 with three test faults corrected, and 42 of 42 guard proofs under the owner's budget of three a change
 
 **Said first:**
