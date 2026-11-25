@@ -38,6 +38,7 @@ const TCHAR* UCataclysmDamageCalculation::BlockDamageReductionStat =
 	TEXT("block_damage_reduction");
 const TCHAR* UCataclysmDamageCalculation::BlockNegationChanceStat =
 	TEXT("block_negation_chance");
+const TCHAR* UCataclysmDamageCalculation::EveryBlockNegatesStat = TEXT("every_block_negates");
 const TCHAR* UCataclysmDamageCalculation::SpellAbsorbChanceStat = TEXT("spell_absorb_chance");
 const TCHAR* UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat =
 	TEXT("minion_defences_percent_of_yours");
@@ -954,7 +955,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// AND WHAT IT REMOVED, which the block event carries. Issue #1833
 			// group E part 3.
 			const float BeforeBlock = Damage;
-			Result.bNegated = NegationChance >= 100.0f || NegationRoll < NegationChance;
+			// AND EVERY BLOCK FOR A DEFENDER HOLDING THE UNBREAKABLE WALL'S FLAG, whatever was rolled. The owner's ruling
+			// of 2026-11-25. Recorded apart, so Iron Will does not charge for a block the flag negated.
+			Result.bNegatedByEveryBlock =
+				DefenderStat(Defender, EveryBlockNegatesStat, 0.0f, BlowOf(Hit)) > 0.0f;
+			Result.bNegated = Result.bNegatedByEveryBlock
+				|| NegationChance >= 100.0f || NegationRoll < NegationChance;
 			Damage *= Result.bNegated
 				? 0.0f
 				: 1.0f - BlockShareOf(Defender, BlowOf(Hit)) / 100.0f;

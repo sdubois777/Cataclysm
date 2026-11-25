@@ -616,7 +616,8 @@ bool FCataclysmBerserkerRowsTest::RunTest(const FString&)
 		{TEXT("Berserker_dw_001"), TEXT("attack_speed"), TEXT("increased"), 20.0f, TEXT("in_frenzy")},
 		{TEXT("Berserker_dw_001"), FCataclysmWarFervour::PerHitDealtStat, TEXT("flat"), 2.0f, TEXT("in_frenzy")},
 		{TEXT("Berserker_dw_001"), FCataclysmBerserkerStates::DrainPerSecondStat, TEXT("flat"), 8.0f, TEXT("in_frenzy")},
-		{TEXT("Berserker_trunk_009"), FCataclysmBerserkerStates::BerserkingDamagePerFervourStat, TEXT("flat"), 10.0f,
+		// 1 SINCE THE OWNER'S RULING OF 2026-11-25, "yeah lower it to 1%" (was 10).
+		{TEXT("Berserker_trunk_009"), FCataclysmBerserkerStates::BerserkingDamagePerFervourStat, TEXT("flat"), 1.0f,
 		 TEXT("")},
 	};
 	for (const FExpected& Each : Expected)

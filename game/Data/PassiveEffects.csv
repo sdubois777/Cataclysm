@@ -427,7 +427,7 @@ Berserker_dw_001#1,Berserker_dw_001,frenzy_on_full_fervour,flat,1.0,,dual_wieldi
 Berserker_dw_001#2,Berserker_dw_001,attack_speed,increased,20.0,,in_frenzy,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_dw_001#3,Berserker_dw_001,fervour_per_hit_dealt,flat,2.0,Type.Melee,in_frenzy,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_dw_001#4,Berserker_dw_001,fervour_drain_per_second,flat,8.0,,in_frenzy,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
-Berserker_trunk_009#1,Berserker_trunk_009,berserking_damage_per_fervour,flat,10.0,Type.Melee,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_trunk_009#1,Berserker_trunk_009,berserking_damage_per_fervour,flat,1.0,Type.Melee,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_trunk_001#1,Berserker_trunk_001,fervour_per_critical_strike,flat,1.0,Type.Melee,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_crit_001#1,Berserker_crit_001,crit_multiplier,flat,4.0,Type.Melee,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_crit_001#2,Berserker_crit_001,fervour_per_critical_strike,flat,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
@@ -563,3 +563,4 @@ Berserker_capstone_100#3,Berserker_capstone_100,,,30.0,,in_frenzy,0.0,,0.0,2,-1.
 Berserker_capstone_200#4,Berserker_capstone_200,,,50.0,,in_wrath,0.0,,0.0,1,-1.0,0,0,smite_nearby_by_hit,hit_dealt,,0.0,0.0,0.0,0,,0.0,0.25,6.0,,0.0,0,0
 Bulwark_capstone_25#3,Bulwark_capstone_25,retaliation_penetration,flat,25.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Bulwark_capstone_100#3,Bulwark_capstone_100,blocked_damage_added_to_next_retaliation,flat,1.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_200#3,Bulwark_capstone_200,every_block_negates,flat,1.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

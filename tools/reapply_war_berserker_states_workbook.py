@@ -48,7 +48,9 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("fervour_per_hit_dealt", "flat", 2, tags=MELEE, cond="in_frenzy"),
         R("fervour_drain_per_second", "flat", 8, cond="in_frenzy"))),
     ("Berserker_trunk_009", "Berserking", (
-        R("berserking_damage_per_fervour", "flat", 10, tags=MELEE),)),
+        # 1 A POINT SINCE THE OWNER'S RULING OF 2026-11-25, "yeah lower it to 1%" (was 10); written into the workbook by
+        # `tools/apply_war_owner_rulings_2026_11_25.py`.
+        R("berserking_damage_per_fervour", "flat", 1, tags=MELEE),)),
 )
 
 

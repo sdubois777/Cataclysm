@@ -6908,6 +6908,38 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `every_block_negates`, read by `UCataclysmDamageCalculation::Resolve` inside the block step. The owner's ruling of
+	 * 2026-11-25: The Unbreakable Wall, "Every block negates the whole hit." The negation roll is pinned at 99 and no
+	 * negation chance is held, so only the flag can negate: a defender holding it keeps nothing of a blocked blow, and
+	 * the plain one keeps its share.
+	 */
+	void ProbeEveryBlockNegates(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 0.0f);
+		const FPinnedRoll Negation(TEXT("Cataclysm.BlockNegationRoll"), 99.0f);
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Carrying(World, /*AttackDamage=*/0.0f);
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatModifier Flag;
+		Flag.Value = 1.0f;
+		Lines.FindOrAdd(FName(UCataclysmDamageCalculation::EveryBlockNegatesStat)).Modifiers.Add(Flag);
+
+		const float Kept = BlockedBlowOn(Test, World, Plain, {});
+		const float KeptCarrying = BlockedBlowOn(Test, World, Carrying, MoveTemp(Lines));
+		Test.TestTrue(*FString::Printf(TEXT("control: the plain blocked blow kept something: %.1f"), Kept), Kept > 0.0f);
+		Test.TestEqual(TEXT("and with every_block_negates the defender kept nothing, so the block step really reads it"),
+					   KeptCarrying, 0.0f, 0.001f);
+	}
+
+	/**
 	 * The More damage an ally `AllyMetres` along X from a player carrying
 	 * `Value` of `Stat` holds after one shared-buff step. With `bWithBuff`, the
 	 * player first casts an unscoped 4% More buff in the Support slot, with one
@@ -12485,6 +12517,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("pin_suppressed"), &ProbePinSuppressed},
 			{TEXT("block_damage_reduction"), &ProbeBlockDamageReduction},
 			{TEXT("block_negation_chance"), &ProbeBlockNegationChance},
+			{TEXT("every_block_negates"), &ProbeEveryBlockNegates},
 			{TEXT("spell_absorb_chance"), &ProbeSpellAbsorbChance},
 			{TEXT("melee_reflect_chance"), &ProbeMeleeReflectChance},
 			{TEXT("self_buff_shared_within_metres"), &ProbeSelfBuffShared},
@@ -15322,6 +15355,55 @@ bool FCataclysmRandomDirectionRowTest::RunTest(const FString&)
 			 WalkPlain.WalkingToward.Equals(FVector(1.0f, 0.0f, 0.0f), 0.001));
 	TestTrue(TEXT("with the row and the roll at 90 it walks toward +Y"),
 			 WalkCarrying.WalkingToward.Equals(FVector(0.0f, 1.0f, 0.0f), 0.001));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallSparesIronWillsFervourTest,
+	"Cataclysm.WarOwnerRulings.IronWillChargesNothingForABlockTheUnbreakableWallNegated",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The coordinating session's ruling of 2026-11-25: a player holding both The Unbreakable Wall and Iron Will does not pay
+ * Iron Will's Fervour for a block the Wall already negates whole; Iron Will charges only when its negation changes what
+ * lands. Two defenders with 100 of 100 Fervour block a real blow, the negation roll pinned at 0. Both hold Iron Will's
+ * shape: 100 negation chance and a cost of 20 a negated block. THE CONTROL, Iron Will alone: the block is negated and
+ * costs 20. With the Wall's `every_block_negates` as well, the block is negated and costs nothing.
+ */
+bool FCataclysmWallSparesIronWillsFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	const FPinnedRoll Negation(TEXT("Cataclysm.BlockNegationRoll"), 0.0f);
+
+	const auto FervourAfterABlock = [&](bool bWall)
+	{
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Defender.Actor));
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(UCataclysmDamageCalculation::BlockNegationChanceStat)).Base = 100.0f;
+		Lines.FindOrAdd(FName(FCataclysmWarFervour::CostPerNegatedBlockStat)).Base = 20.0f;
+		if (bWall)
+		{
+			Lines.FindOrAdd(FName(UCataclysmDamageCalculation::EveryBlockNegatesStat)).Base = 1.0f;
+		}
+		const float Kept = BlockedBlowOn(*this, World, Defender, MoveTemp(Lines));
+		TestEqual(*FString::Printf(TEXT("set-up: the block was negated (%s)"), bWall ? TEXT("with the Wall") : TEXT("alone")),
+				  Kept, 0.0f, 0.001f);
+		return Defender.AbilitySystem->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	};
+	TestEqual(TEXT("control: Iron Will alone charges 20 for the negated block"), FervourAfterABlock(false), 80.0f, 0.001f);
+	TestEqual(TEXT("with The Unbreakable Wall as well it charges nothing"), FervourAfterABlock(true), 100.0f, 0.001f);
 	return true;
 }
 

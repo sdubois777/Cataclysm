@@ -469,6 +469,14 @@ struct CATACLYSM_API FCataclysmDamageResult
 	bool bNegated = false;
 
 	/**
+	 * The block was negated because the defender holds `EveryBlockNegatesStat`, The Unbreakable Wall's flag, whatever
+	 * the negation roll was. The owner's ruling of 2026-11-25, and the coordinating session's that day: Iron Will
+	 * charges its Fervour only when its negation changes what lands, so it charges nothing for such a block.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bNegatedByEveryBlock = false;
+
+	/**
 	 * The hit landed as a critical strike and its damage above already carries
 	 * the multiplier.
 	 *
@@ -722,6 +730,14 @@ public:
 	 * so it covers whatever a block covers.
 	 */
 	static const TCHAR* BlockNegationChanceStat;
+
+	/**
+	 * `every_block_negates`: a flag on the DEFENDER. Above nought, every block removes all of the hit, whatever the
+	 * negation roll. The owner's ruling of 2026-11-25: The Unbreakable Wall, "Every block negates the whole hit." A
+	 * flag rather than a negation chance of 100, ruled that day, so the block step can tell a block the flag negated
+	 * from one Iron Will's chance negated (`FCataclysmDamageResult::bNegatedByEveryBlock`). No attribute and no base.
+	 */
+	static const TCHAR* EveryBlockNegatesStat;
 
 	/**
 	 * The chance, in per cent, that a SPELL that hits the defender is absorbed and deals nothing. Ruled 2026-10-06:

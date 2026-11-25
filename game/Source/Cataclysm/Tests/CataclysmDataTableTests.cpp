@@ -529,7 +529,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 559 THE SAME DAY, for the second slice, V2a: Unbridled, Opportunist, Unstoppable's pin, Titan, Ragnarok's
 	// doubling and Bastion.
 	// AND 564 THE SAME DAY, for V2b: Warlord, Pure Carnage, Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        564)
+	// AND 565 THE SAME DAY, for The Unbreakable Wall, by the owner's ruling.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        565)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

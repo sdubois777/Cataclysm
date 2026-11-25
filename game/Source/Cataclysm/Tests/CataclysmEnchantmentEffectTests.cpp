@@ -7158,7 +7158,7 @@ bool FCataclysmHealingSkillUseDamageTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseGadgetRowsTest,
-	"Cataclysm.HealingSkillUse.TheGadgetRowsAreStillGrantedByAnyGadgetDestroyedAndRaiseOnlyADeployablesDamage",
+	"Cataclysm.HealingSkillUse.TheGadgetRowsAreStillGrantedByAnyGadgetDestroyedAndRaiseOnlyAGadgetsDamage",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -7167,7 +7167,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseGadgetRowsTest,
  * rows of "When any of your gadgets is destroyed, all remaining gadgets gain 30%-50% increased damage for 5
  * seconds", WORN.
  *
- * A `gadget_destroyed` event grants both rows' stacks; attack damage asked for a skill tagged `Type.Deployable`
+ * A `gadget_destroyed` event grants both rows' stacks; attack damage asked for a skill tagged `Type.Gadget`
  * rises by the rolled 30% to 50%, and attack damage asked for a melee strike does not. After the stacks run out, a
  * `gadget_destroyed` event carrying NO tags grants them again: the grant does not read the row's tag. And a use
  * of Living Pyre grants neither, because the rows are on `gadget_destroyed`.
@@ -7186,7 +7186,7 @@ bool FCataclysmHealingSkillUseGadgetRowsTest::RunTest(const FString&)
 	}
 
 	const FGameplayTag Deployable = FGameplayTag::RequestGameplayTag(
-		FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+		FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false);
 	const FGameplayTagContainer Gadget(Deployable);
 	const FGameplayTagContainer Strike = UCataclysmSkillShapes::TagsFromCell(PlainStrikeTagCell);
 	const FGameplayTagContainer LivingPyre = UCataclysmSkillShapes::TagsFromCell(LivingPyreTagCell);
@@ -7198,7 +7198,7 @@ bool FCataclysmHealingSkillUseGadgetRowsTest::RunTest(const FString&)
 	}
 
 	// THE TWO ROWS AS WORN: two grants on `gadget_destroyed`, neither requiring a tag, and on the attack damage
-	// line one modifier scaled by its own stacks that requires `Type.Deployable`.
+	// line one modifier scaled by its own stacks that requires `Type.Gadget`.
 	TArray<FName> Keys;
 	bool bAGrantRequiresATag = false;
 	for (const FCataclysmPoolAction& Action : System->GetPoolActions())
@@ -7223,7 +7223,7 @@ bool FCataclysmHealingSkillUseGadgetRowsTest::RunTest(const FString&)
 						" If none, DT_EnchantmentEffects may be older than the rows"), Keys.Num(), 2)
 		|| !TestFalse(TEXT("set-up: neither grant requires a tag"), bAGrantRequiresATag)
 		|| !TestEqual(TEXT("set-up: the attack damage line holds one of the two rows' modifiers, requiring "
-						   "Type.Deployable"), ScopedStackModifiers, 1)
+						   "Type.Gadget"), ScopedStackModifiers, 1)
 		|| !TestTrue(TEXT("set-up: no stack is held before any event"),
 			System->OwnStacksHeld(Keys[0]) == 0 && System->OwnStacksHeld(Keys[1]) == 0))
 	{
@@ -7239,7 +7239,7 @@ bool FCataclysmHealingSkillUseGadgetRowsTest::RunTest(const FString&)
 	const float Gained = System->IncreasesForStat(Attack, Gadget) - GadgetBefore;
 	TestTrue(*FString::Printf(TEXT("a deployable's damage rose by the rolled 30%% to 50%%: %.3f"), Gained),
 		Gained >= 0.30f - 0.0001f && Gained <= 0.50f + 0.0001f);
-	TestEqual(TEXT("and the damage of a skill without Type.Deployable did not rise"),
+	TestEqual(TEXT("and the damage of a skill without Type.Gadget did not rise"),
 		System->IncreasesForStat(Attack, Strike), StrikeBefore, 0.0001f);
 
 	Worn.World->TimeSeconds += 5.1f;
@@ -8660,7 +8660,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDamageRowsTest,
 
 /**
  * Issue #1833, deployable Part 1: a machine's blow reads its summoner's
- * attack_damage rows that name `Type.Deployable`, and an imp's does not.
+ * attack_damage rows that name `Type.Gadget`, and an imp's does not.
  *
  * "Gadgets deal 20%-40% increased damage", at 40: a ballista's blow is 1.4 times
  * a plain summoner's ballista, and an imp's is unchanged. The row is written on
@@ -8707,7 +8707,7 @@ bool FCataclysmGadgetDamageRowsTest::RunTest(const FString&)
 	// AN UNSCOPED ROW RECORDED AS A STAT LINE, which is what the naming filter
 	// keeps off a machine's blow. First that the row is live on the summoner:
 	// moving, its own attack_damage is 0.75 times, since the gadget row names
-	// Type.Deployable and is not asked here.
+	// Type.Gadget and is not asked here.
 	FSummoner Moving(Scope.World, TEXT("Positive_Gadgets_deal_20_40_increased_damage"),
 		TEXT("Negative_While_moving_your_skills_deal_15_25_less_damag"));
 	Moving.ASC()->NoteMovedMetres(1.0f);
@@ -8748,7 +8748,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetBodyRowsTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Issue #1833, deployable Part 1: three rows scoped to `Type.Deployable` on the
+ * Issue #1833, deployable Part 1: three rows scoped to `Type.Gadget` on the
  * summoner's minion stats reach a ballista and not an imp, because a minion is
  * asked with its own type tags.
  *
@@ -10110,7 +10110,7 @@ bool FCataclysmGadgetArmorRowTest::RunTest(const FString&)
 	// THE IMP IS KEPT OFF BY THE ROW'S REQUIRED TAGS, NOT BY THE `IsDeployable()`
 	// GATE IN FRONT OF `deployable_hit`. The event carries the striking minion's
 	// own type tags, and `PoolActionAllowed` refuses this row, which requires
-	// `Type.Deployable`, for an imp either way; removing the gate fails nothing
+	// `Type.Gadget`, for an imp either way; removing the gate fails nothing
 	// here (measured 2026-09-27, proof C of deployable Part 2). This check does
 	// not prove the gate.
 	ACataclysmMinion* Imp = Summoner.Make(TEXT("Imp"));
@@ -10765,7 +10765,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetRangeRowTest,
  * "Gadgets have 20%-40% increased attack range", worn at the top: a Bolt Turret
  * the wearer summons reaches and notices 40% further than one summoned by a
  * character wearing nothing. Issue #1833, `minion_range` scoped to
- * `Type.Deployable`.
+ * `Type.Gadget`.
  */
 bool FCataclysmGadgetRangeRowTest::RunTest(const FString&)
 {
@@ -12284,9 +12284,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDestroyedRowTest,
 /**
  * "When any of your gadgets is destroyed, all remaining gadgets gain 30%-50%
  * increased damage for 5 seconds". Issue #1833 group D part 5: two own stacks,
- * attack and spell damage, scoped to `Type.Deployable`, 5 s, cap 1, on
+ * attack and spell damage, scoped to `Type.Gadget`, 5 s, cap 1, on
  * `gadget_destroyed`. WORN, and a real spike trap of the wearer's killed by a real
- * blow: the wearer's damage for a deployable rises by the rolled share, and for
+ * blow: the wearer's damage for a gadget rises by the rolled share (`Type.Gadget` since the owner's ruling of
+ * 2026-11-25; the grant itself reads no tag, so a trap's death still grants it), and for
  * anything else does not, and it lapses after five seconds.
  */
 bool FCataclysmGadgetDestroyedRowTest::RunTest(const FString&)
@@ -12309,7 +12310,7 @@ bool FCataclysmGadgetDestroyedRowTest::RunTest(const FString&)
 	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
 
 	const FGameplayTag Deployable = FGameplayTag::RequestGameplayTag(
-		FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+		FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false);
 	if (!TestTrue(TEXT("the deployable tag exists"), Deployable.IsValid()))
 	{
 		return false;
@@ -26587,7 +26588,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornMostHealthRowTest,
 
 /**
  * "Your gadgets prioritize the highest HP enemy within their range instead of the nearest". One row: the flag stat
- * `gadgets_target_most_health`, flat, 1 to 1, Required Tags `Type.Deployable`.
+ * `gadgets_target_most_health`, flat, 1 to 1, Required Tags `Type.Gadget`.
  *
  * TWO SUMMONERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin: one without the row, the control, and
  * one with it. Each places a Bolt Turret 50 m along +X, and four creatures stand along +X from the turret, as the
@@ -26604,10 +26605,10 @@ bool FCataclysmWornMostHealthRowTest::RunTest(const FString&)
 
 	const TCHAR* const Stat = ACataclysmMinion::GadgetsTargetMostHealthStat;
 	const FWrittenRow Written = WrittenFor(MostHealthBenefit, /*bBenefit=*/true);
-	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Gadget"));
 	if (!IsWrittenOnce(*this, MostHealthBenefit, Written)
-		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Deployable"), 1.0f, 1.0f)
-		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Gadget"), 1.0f, 1.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Gadget is registered"), Deployable.IsValid()))
 	{
 		return false;
 	}
@@ -26718,7 +26719,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornVolleyRowTest,
 
 /**
  * "Gadgets fire at all enemies within range simultaneously once every 5-8 seconds". One row:
- * `gadget_volley_every_seconds`, flat, WRITTEN 8 TO 5, Required Tags `Type.Deployable`.
+ * `gadget_volley_every_seconds`, flat, WRITTEN 8 TO 5, Required Tags `Type.Gadget`.
  *
  * THE RANGE ROLLS DOWN. Ruled 2026-10-05: a roll of 1 gives a benefit its best figure. An item's roll of 0 gives the
  * first number of a row and a roll of 1 the second, which is how `HelmCarrying` states it and how
@@ -26748,10 +26749,10 @@ bool FCataclysmWornVolleyRowTest::RunTest(const FString&)
 
 	const TCHAR* const Stat = ACataclysmMinion::GadgetVolleyEverySecondsStat;
 	const FWrittenRow Written = WrittenFor(VolleyBenefit, /*bBenefit=*/true);
-	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Gadget"));
 	if (!IsWrittenOnce(*this, VolleyBenefit, Written)
-		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Deployable"), 8.0f, 5.0f)
-		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Gadget"), 8.0f, 5.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Gadget is registered"), Deployable.IsValid()))
 	{
 		return false;
 	}
@@ -26909,7 +26910,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornBurstOnKillRowTest,
 
 /**
  * "When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range". One row: the
- * flag stat `gadgets_burst_on_kill`, flat, 1 to 1, Required Tags `Type.Deployable`.
+ * flag stat `gadgets_burst_on_kill`, flat, 1 to 1, Required Tags `Type.Gadget`.
  *
  * TWO SUMMONERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin: one without the row, the control, and
  * one with it. Each places a Bolt Turret 50 m along +X, and three creatures stand along +X from the turret, as the
@@ -26926,10 +26927,10 @@ bool FCataclysmWornBurstOnKillRowTest::RunTest(const FString&)
 
 	const TCHAR* const Stat = ACataclysmMinion::GadgetsBurstOnKillStat;
 	const FWrittenRow Written = WrittenFor(BurstOnKillBenefit, /*bBenefit=*/true);
-	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Gadget"));
 	if (!IsWrittenOnce(*this, BurstOnKillBenefit, Written)
-		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Deployable"), 1.0f, 1.0f)
-		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Gadget"), 1.0f, 1.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Gadget is registered"), Deployable.IsValid()))
 	{
 		return false;
 	}
@@ -27052,7 +27053,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornNoDamageAndDrainRowsTest,
 /**
  * "Your gadgets are invincible but lose 5% of their maximum HP per second passively". Two rows: the flag stat
  * `gadgets_take_no_damage`, flat, 1 to 1, and `gadget_health_lost_percent_per_second`, flat, 5 to 5, each with
- * Required Tags `Type.Deployable`.
+ * Required Tags `Type.Gadget`.
  *
  * TWO SUMMONERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin: one without the rows, the control, and
  * one with them. Each places a Bolt Turret 50 m along +X, and one creature stands 3 m along +X from the turret.
@@ -27072,7 +27073,7 @@ bool FCataclysmWornNoDamageAndDrainRowsTest::RunTest(const FString&)
 
 	const TCHAR* const NoDamageStat = ACataclysmMinion::GadgetsTakeNoDamageStat;
 	const TCHAR* const DrainStat = ACataclysmMinion::GadgetHealthLostPercentPerSecondStat;
-	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Gadget"));
 	int32 RowsOfTheEnchantment = 0;
 	int32 RowsCountedAgain = 0;
 	const FWrittenRow WrittenNoDamage = WrittenForStat(NoDamageAndDrainBenefit, NoDamageStat, RowsOfTheEnchantment);
@@ -27083,9 +27084,9 @@ bool FCataclysmWornNoDamageAndDrainRowsTest::RunTest(const FString&)
 			RowsOfTheEnchantment, 2)
 		|| !TestEqual(TEXT("set-up: of them, the rows on gadgets_take_no_damage"), WrittenNoDamage.EffectRows, 1)
 		|| !TestEqual(TEXT("set-up: and the rows on gadget_health_lost_percent_per_second"), WrittenDrain.EffectRows, 1)
-		|| !IsWrittenAsAStat(*this, WrittenNoDamage, NoDamageStat, TEXT("flat"), TEXT("Type.Deployable"), 1.0f, 1.0f)
-		|| !IsWrittenAsAStat(*this, WrittenDrain, DrainStat, TEXT("flat"), TEXT("Type.Deployable"), 5.0f, 5.0f)
-		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+		|| !IsWrittenAsAStat(*this, WrittenNoDamage, NoDamageStat, TEXT("flat"), TEXT("Type.Gadget"), 1.0f, 1.0f)
+		|| !IsWrittenAsAStat(*this, WrittenDrain, DrainStat, TEXT("flat"), TEXT("Type.Gadget"), 5.0f, 5.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Gadget is registered"), Deployable.IsValid()))
 	{
 		return false;
 	}

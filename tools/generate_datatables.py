@@ -12133,12 +12133,16 @@ def refuse_an_exploding_ailment_row_the_game_cannot_read(
 #: The tag a row about "your gadgets" is scoped by, as the merged gadget rows
 #: are: "Gadgets have 40%-70% increased HP", "Gadgets fire 20%-40% faster".
 #:
-#: A SPIKE TRAP CARRIES THIS TAG TOO AND IS NOT A GADGET. It also carries
-#: `Type.Trap` (ruled 2026-10-07), and the game answers every stat below
-#: nought for it: `ACataclysmMinion::SummonersGadgetStat` asks
-#: `ACataclysmMinion::IsGadget` before it asks the summoner anything. So the
-#: tag scopes the row to placed machines and the code leaves the trap out.
-GADGET_ROW_TAG = "Type.Deployable"
+#: `Type.Gadget` SINCE THE OWNER'S RULING OF 2026-11-25 ("agree with your
+#: rec"), which moved the 18 enchantments that say "gadget" off
+#: `Type.Deployable`. Every machine that is not a trap carries `Type.Gadget`
+#: (the Saboteur's rows, 2026-11-25), a Bolt Turret and a Ballista included, so
+#: the tag itself now leaves a Spike Trap out. The game still asks
+#: `ACataclysmMinion::IsGadget` first in `ACataclysmMinion::SummonersGadgetStat`.
+#:
+#: UNTIL THEN `Type.Deployable`, which a Spike Trap carries too: the code alone
+#: left the trap out.
+GADGET_ROW_TAG = "Type.Gadget"
 
 #: The flag by which a summoner's gadgets choose the enemy with the most
 #: current health within their reach. Ruled 2026-10-13 by the coordinating

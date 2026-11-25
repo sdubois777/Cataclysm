@@ -2519,7 +2519,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// AND IRON WILL'S COST FOR A NEGATED BLOCK, before the block's own Fervour gain, so the 75 Fervour
 					// condition is judged on the pool that negated it. Nought for every character without
 					// `fervour_cost_per_negated_block`. The Fervour spends, 2026-11-25.
-					if (Outcome.bNegated)
+					// NOT FOR A BLOCK THE UNBREAKABLE WALL NEGATED: Iron Will charges only when its negation changes
+					// what lands, the coordinating session's ruling of 2026-11-25.
+					if (Outcome.bNegated && !Outcome.bNegatedByEveryBlock)
 					{
 						FCataclysmWarFervour::SpendOnNegatedBlock(Cataclysm);
 					}

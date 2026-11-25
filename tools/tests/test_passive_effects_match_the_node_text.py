@@ -715,7 +715,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 564 THE SAME DAY: five rows of V2b (`tools/reapply_war_vows_v2b_workbook.py`): Warlord, Pure Carnage,
 #: Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
-AUTHORED_ROWS = 564
+#:
+#: AND TO 565 THE SAME DAY: The Unbreakable Wall's flag, by the owner's ruling
+#: (`tools/apply_war_owner_rulings_2026_11_25.py`).
+AUTHORED_ROWS = 565
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1262,7 +1265,8 @@ AUTHORED_NODES = 317
 #: AND TO 57 THE SAME DAY: V2b -- Warlord and Pure Carnage (Berserker), and Blood Oath and Spiteful Guard (Bulwark).
 #: Each capstone already had a row, so `AUTHORED_NODES` does not move. Ragnarok's shockwaves are a third row on an
 #: option already counted.
-AUTHORED_OPTIONS = 57
+#: AND TO 58 THE SAME DAY: The Unbreakable Wall (Bulwark), by the owner's ruling. Its capstone already had a row.
+AUTHORED_OPTIONS = 58
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2831,6 +2835,9 @@ VALUE_IN_WORDS = {
     # retaliation hit", a flag.
     ("Bulwark_capstone_100", "blocked_damage_added_to_next_retaliation"):
         ("blocked damage is stored and added to your next retaliation hit", 1.0),
+    # THE UNBREAKABLE WALL, the Bulwark's Final Oath (the owner's ruling of 2026-11-25): "Every block negates the
+    # whole hit.", a flag.
+    ("Bulwark_capstone_200", "every_block_negates"): ("every block negates the whole hit", 1.0),
     # RAGNAROK, the Berserker's Final Oath, 2026-11-25: "Wrath no longer drains Fervour passively", the drain removed.
     ("Berserker_capstone_200", "fervour_drain_per_second"): ("no longer drains fervour", 1.0),
     # COLOSSUS ETERNAL, the Bulwark's Final Oath (R17), 2026-11-25: "the healing you receive are doubled", a More of

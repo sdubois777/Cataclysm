@@ -221,7 +221,7 @@
       "data": {
         "kind": "basic",
         "name": "Berserking",
-        "description": "When you reach maximum Fervour your next melee attack consumes all Fervour. For each point of Fervour consumed that attack deals +10% bonus damage per point invested.",
+        "description": "When you reach maximum Fervour your next melee attack consumes all Fervour. For each point of Fervour consumed that attack deals +1% bonus damage per point invested.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10

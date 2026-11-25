@@ -475,6 +475,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Issue #1833 group E part 2.
 		TEXT("block_damage_reduction"),
 		TEXT("block_negation_chance"),
+		// The Unbreakable Wall's flag: every block negates the whole hit, read in
+		// UCataclysmDamageCalculation's block step. The owner's ruling of
+		// 2026-11-25. No gameplay attribute and no base.
+		TEXT("every_block_negates"),
 		// The two chances a defender rolls against an incoming blow, in
 		// UCataclysmVitalAttributeSet beside the no-damage window: a spell
 		// absorbed, and a melee hit reflected whole as retaliation. Ruled

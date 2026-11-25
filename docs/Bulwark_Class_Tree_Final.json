@@ -1703,7 +1703,7 @@
           {
             "name": "The Unbreakable Wall",
             "identity": "Block/Shield",
-            "description": "You may equip a shield in your primary weapon slot. You may now block AOE damage."
+            "description": "Every block negates the whole hit."
           },
           {
             "name": "Colossus Eternal",

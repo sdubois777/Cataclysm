@@ -123,7 +123,7 @@ CATACLYSM_WAR_VOWS_V1_TEST(FCataclysmWarVowsV1StatRowsTest,
 	for (const FCapstoneRows& Each : TArray<FCapstoneRows>{{TEXT("Berserker_capstone_200"), 4},
 														   {TEXT("Bulwark_capstone_25"), 3},
 														   {TEXT("Bulwark_capstone_100"), 3},
-														   {TEXT("Bulwark_capstone_200"), 2}})
+														   {TEXT("Bulwark_capstone_200"), 3}})
 	{
 		const int32 Held = UCataclysmPassiveTree::EffectsFor(Effects, FName(Each.Node)).Num();
 		if (Held != Each.Rows)

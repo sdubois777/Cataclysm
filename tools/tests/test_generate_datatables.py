@@ -8040,7 +8040,7 @@ class GadgetRowsOnAMadeUpSheet:
     """
 
     HEADER = TestScaleStepHigh.HEADER
-    TAG = "Type.Deployable"
+    TAG = "Type.Gadget"
     #: What the sentence's own Tags cell holds. A class whose real sentence
     #: carries more than the one tag says so.
     SENTENCE_TAGS = TAG
@@ -8068,7 +8068,7 @@ class GadgetRowsOnAMadeUpSheet:
 
     def validation(self, rows):
         """What the generator's check of the finished sheet says of these
-        rows, told that `Type.Deployable` is a tag the game has."""
+        rows, told that `Type.Gadget` is a tag the game has."""
         return gen.validate_enchantment_effects(
             {"EnchantmentEffects": rows}, {self.TAG})
 
@@ -8087,7 +8087,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
     """`gadgets_target_most_health`, ruled 2026-10-13 and built ahead of its
     row, for "Your gadgets prioritize the highest HP enemy within their range
     instead of the nearest". One flag at a flat 1, scoped to
-    `Type.Deployable`: `ACataclysmMinion::MostHealthWithinReach` asks whether
+    `Type.Gadget`: `ACataclysmMinion::MostHealthWithinReach` asks whether
     it is above nought each time the shared brain chooses a gadget's target.
     """
 
@@ -8095,7 +8095,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
              "instead of the nearest")
     STAT = "gadgets_target_most_health"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_is_carried_through_and_is_not_refused(
             self, tmp_path):
@@ -8103,7 +8103,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
         assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"]) for row in out] == [
-            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "")]
+            (self.STAT, "flat", 1.0, 1.0, "Type.Gadget", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8112,7 +8112,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
         assert self.validation(out) == []
         # AND THE CONTROL OF THAT LAST LINE: told of no such tag, the sheet's
         # validation refuses the row for its tag, so it does read the row.
-        assert any("undefined tag Type.Deployable" in problem
+        assert any("undefined tag Type.Gadget" in problem
                    for problem in gen.validate_enchantment_effects(
                        {"EnchantmentEffects": out}, set()))
 
@@ -8148,7 +8148,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
                 ({"RequiredTags": ""}, "under the required tags ''"),
                 ({"RequiredTags": "Type.Trap"},
                  "under the required tags 'Type.Trap'"),
-                ({"RequiredTags": "Type.Deployable, Minion.Projectile"},
+                ({"RequiredTags": "Type.Gadget, Minion.Projectile"},
                  "under the required tags"),
                 ({"Action": "health"}, "with the action 'health'"),
                 ({"ValueLow": 0.0}, "states 0 on"),
@@ -8202,7 +8202,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
 class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
     """`gadget_volley_every_seconds`, ruled 2026-10-13 and built ahead of its
     row, for "Gadgets fire at all enemies within range simultaneously once
-    every 5-8 seconds". One flat row scoped to `Type.Deployable`.
+    every 5-8 seconds". One flat row scoped to `Type.Gadget`.
 
     THE ROW ROLLS DOWN, ruled: 5 seconds is the better figure. The sheet
     states the pair as the sentence does, 5 to 8, and the sentence's one
@@ -8214,7 +8214,7 @@ class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
              "every 5-8 seconds")
     STAT = "gadget_volley_every_seconds"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 5, "Value High": 8,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_with_its_mark_is_carried_through_falling(
             self, tmp_path):
@@ -8222,7 +8222,7 @@ class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
         assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"]) for row in out] == [
-            (self.STAT, "flat", 8.0, 5.0, "Type.Deployable", "", "", "")]
+            (self.STAT, "flat", 8.0, 5.0, "Type.Gadget", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8328,12 +8328,13 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
     """`gadgets_burst_on_kill`, ruled 2026-10-13 and built ahead of its row,
     for "When a gadget kills an enemy, it fires an additional burst at the
     nearest enemy within its range". One flag at a flat 1, scoped to
-    `Type.Deployable`, with no action and no action event:
+    `Type.Gadget`, with no action and no action event:
     `ACataclysmMinion::AttackTarget` asks whether it is above nought when a
     blow of the gadget's own has killed.
 
-    THE SENTENCE'S OWN TAGS ARE TWO, `Type.Deployable, Trigger.OnKill`, and
-    the row requires the first alone.
+    THE SENTENCE'S OWN TAGS ARE TWO, `Type.Deployable, Trigger.OnKill`, its
+    roll tags, which the owner's ruling of 2026-11-25 leaves alone; the row
+    requires `Type.Gadget` alone since that ruling.
     """
 
     WORDS = ("When a gadget kills an enemy, it fires an additional burst at "
@@ -8341,7 +8342,7 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
     STAT = "gadgets_burst_on_kill"
     SENTENCE_TAGS = "Type.Deployable, Trigger.OnKill"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_is_carried_through_and_is_not_refused(
             self, tmp_path):
@@ -8350,7 +8351,7 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"], row["ActionEvent"])
                 for row in out] == [
-            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+            (self.STAT, "flat", 1.0, 1.0, "Type.Gadget", "", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8386,8 +8387,8 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
         for change, said in (
                 ({"ValueKind": "increased"}, "value kind 'increased'"),
                 ({"RequiredTags": ""}, "under the required tags ''"),
-                ({"RequiredTags": "Type.Deployable, Trigger.OnKill"},
-                 "under the required tags 'Type.Deployable, Trigger.OnKill'"),
+                ({"RequiredTags": "Type.Gadget, Trigger.OnKill"},
+                 "under the required tags 'Type.Gadget, Trigger.OnKill'"),
                 ({"Action": "strike_target"},
                  "with the action 'strike_target'"),
                 ({"ValueLow": 0.0}, "states 0 on"),
@@ -8417,7 +8418,7 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
     ruled 2026-10-13 and built ahead of their rows, for "Your gadgets are
     invincible but lose 5% of their maximum HP per second passively". One
     sentence is two rows on one enchantment, both flat and scoped to
-    `Type.Deployable`: the flag 1 to 1 and the percent 5 to 5.
+    `Type.Gadget`: the flag 1 to 1 and the percent 5 to 5.
     `ACataclysmMinion::StepNoDamageAndDrain` reads both on the gadget's step.
     """
 
@@ -8426,9 +8427,9 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
     NO_DAMAGE = "gadgets_take_no_damage"
     DRAIN = "gadget_health_lost_percent_per_second"
     FLAG_ROW = {"Stat": NO_DAMAGE, "Value Kind": "flat", "Value Low": 1,
-                "Value High": 1, "Required Tags": "Type.Deployable"}
+                "Value High": 1, "Required Tags": "Type.Gadget"}
     DRAIN_ROW = {"Stat": DRAIN, "Value Kind": "flat", "Value Low": 5,
-                 "Value High": 5, "Required Tags": "Type.Deployable"}
+                 "Value High": 5, "Required Tags": "Type.Gadget"}
 
     def pair(self, tmp_path):
         return self.out(tmp_path, self.WORDS, [self.FLAG_ROW, self.DRAIN_ROW])
@@ -8440,9 +8441,9 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
                  row["ValueLow"], row["ValueHigh"], row["RequiredTags"],
                  row["Condition"], row["Scale"], row["Action"])
                 for row in out] == [
-            ("1", self.NO_DAMAGE, "flat", 1.0, 1.0, "Type.Deployable", "", "",
+            ("1", self.NO_DAMAGE, "flat", 1.0, 1.0, "Type.Gadget", "", "",
              ""),
-            ("2", self.DRAIN, "flat", 5.0, 5.0, "Type.Deployable", "", "",
+            ("2", self.DRAIN, "flat", 5.0, 5.0, "Type.Gadget", "", "",
              "")]
         assert out[0]["Enchantment"] == out[1]["Enchantment"]
         assert self.refusals(out) == []
@@ -8553,7 +8554,7 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
 class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
     """`gadgets_copy_your_last_skill`, ruled 2026-10-14 and built ahead of its
     row, for "Gadgets copy the last skill you used and fire it at their target
-    once every 2 seconds". One flag at a flat 1, scoped to `Type.Deployable`,
+    once every 2 seconds". One flag at a flat 1, scoped to `Type.Gadget`,
     with no action and no action event: `ACataclysmMinion::StepSkillCopy`
     asks whether it is above nought on each step of the gadget. THE 2 SECONDS
     ARE THE ENGINE'S, not the row's.
@@ -8563,7 +8564,7 @@ class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
              "target once every 2 seconds")
     STAT = "gadgets_copy_your_last_skill"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_is_carried_through_and_is_not_refused(
             self, tmp_path):
@@ -8572,7 +8573,7 @@ class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"], row["ActionEvent"])
                 for row in out] == [
-            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+            (self.STAT, "flat", 1.0, 1.0, "Type.Gadget", "", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8619,8 +8620,8 @@ class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
         for change, said in (
                 ({"ValueKind": "increased"}, "value kind 'increased'"),
                 ({"RequiredTags": ""}, "under the required tags ''"),
-                ({"RequiredTags": "Type.Deployable, Type.Trap"},
-                 "under the required tags 'Type.Deployable, Type.Trap'"),
+                ({"RequiredTags": "Type.Gadget, Type.Trap"},
+                 "under the required tags 'Type.Gadget, Type.Trap'"),
                 ({"Action": "strike_target"},
                  "with the action 'strike_target'"),
                 ({"ValueLow": 0.0}, "states 0 on"),

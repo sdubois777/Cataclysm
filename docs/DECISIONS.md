@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Three owner rulings on the War line: Berserking at 1% a point, the gadget enchantments scoped to Type.Gadget, and The Unbreakable Wall negating every block, with Iron Will charging nothing for a block the Wall negated
+
+**Affects:**
+- `tools/apply_war_owner_rulings_2026_11_25.py` (new) writes all three into `docs/All_Things_Cataclysm.xlsx`,
+  `docs/Berserker_Class_Tree_Final.json` and `docs/Bulwark_Class_Tree_Final.json`. The generated tables:
+  `game/Data/PassiveEffects.csv` (565 rows), `game/Data/EnchantmentEffects.csv` (709 rows, count unchanged) and
+  `game/Data/PassiveNodes.csv`. `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects`,
+  `DT_EnchantmentEffects` and `DT_PassiveNodes`.**
+- `tools/reapply_war_berserker_states_workbook.py`: Berserking's row states 1.
+- `tools/generate_datatables.py`: `GADGET_ROW_TAG` is `Type.Gadget`.
+- C++:
+  - `CataclysmDamageCalculation.h` and `.cpp`: `EveryBlockNegatesStat` (`every_block_negates`), read at the block
+    step, and `FCataclysmDamageResult::bNegatedByEveryBlock`.
+  - `CataclysmVitalAttributeSet.cpp`: Iron Will's cost is not charged for a block the flag negated.
+  - `CataclysmPlayerClassStats.cpp`: the flag in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmStatExemptionTests.cpp`: a probe, `ProbeEveryBlockNegates`; and a new test,
+      `Cataclysm.WarOwnerRulings.IronWillChargesNothingForABlockTheUnbreakableWallNegated`.
+    - `CataclysmSkillTrapTests.cpp`: the gadget armour row's test reads the shipped row's tags, `Type.Gadget`.
+    - `CataclysmEnchantmentEffectTests.cpp`: 29 places that named the gadget rows' tag move to `Type.Gadget`, and one
+      test is renamed: `...TheGadgetRowsAreStillGrantedByAnyGadgetDestroyedAndRaiseOnlyADeployablesDamage` is now
+      `...RaiseOnlyAGadgetsDamage`.
+    - `CataclysmBerserkerStatesTests.cpp`: the generated Berserking row, 1.
+    - `CataclysmWarVowsV1Tests.cpp`: the Bulwark Final Oath's row count, 3.
+    - `CataclysmDataTableTests.cpp`: the pin, 565.
+  - Python:
+    - `tools/tests/test_war_owner_rulings_scripts.py` (new, seven).
+    - `test_generate_datatables.py`: the five gadget-stat classes' made-up rows require `Type.Gadget`.
+    - `test_passive_effects_match_the_node_text.py`: 565 rows, 58 authored options, the Wall's words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the three assets, and run:
+  - `Cataclysm.WarOwnerRulings.`: one test, new.
+  - `Cataclysm.StatExemption.`: one more probe inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - `Cataclysm.Traps.`, `Cataclysm.Enchantments.`, `Cataclysm.HealingSkillUse.` (one test renamed),
+    `Cataclysm.BerserkerStates.`, `Cataclysm.WarVowsV1.`, `Cataclysm.Data.` (565): counts unchanged.
+- **BERSERKING IS A TENTH OF WHAT IT WAS.** At 10 points with 100 Fervour, one melee attack deals +1,000%, not
+  +10,000%.
+- **THE GADGET ENCHANTMENTS NO LONGER REACH A TRAP.** Rows scoped to `Type.Deployable` reached Spike Traps and
+  War traps, unless the reading code left traps out by itself. Now the tag leaves them out.
+  - The enchantments' own roll tags, which decide where they can roll, are unchanged.
+  - The one enchantment that says "deployables" ("Your deployables reserve 15%-30% reduced Fervour") keeps
+    `Type.Deployable`.
+  - THE STANDING RULE against changing War enchantments' tags is lifted for these 18 by the owner's ruling, quoted
+    below.
+- **THE UNBREAKABLE WALL AND IRON WILL, THE OVERLAP.** A character holding both has every block negated by the Wall.
+  Iron Will's negation then changes nothing. As built until now, Iron Will would still have charged its 20 Fervour
+  (less 2 a point) on each such block at or above 75 Fervour. By the coordinating session's ruling it now charges
+  nothing for a block the Wall negated.
+  - **NOT CHANGED, and not part of this ruling:** a partial negation chance from other sources still sums with Iron
+    Will's 100 as before. Iron Will still charges for a block those sources alone might have negated.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, relayed by the coordinating session, verbatim:
+  - Berserking: "yeah lower it to 1%".
+  - The 18 enchantment rows that mean gadgets and read `Type.Deployable`: "agree with your rec".
+  - The Unbreakable Wall: "accepted", the sentence "Every block negates the whole hit."
+- The coordinating session, 2026-11-25:
+  - "a player holding both The Unbreakable Wall and Iron Will must not pay Iron Will's Fervour for a block The
+    Unbreakable Wall already negates whole. Iron Will charges only when its negation changes what lands."
+  - "Accepted: the flag stat every_block_negates for The Unbreakable Wall, a block negates if the flag holds or the
+    roll succeeds, and Iron Will charges only on a negated block when the flag does not hold."
+
+**The sentences** (old beside new):
+
+| Node | Old | New |
+|---|---|---|
+| Berserking (`Berserker_trunk_009`) | "... that attack deals +10% bonus damage per point invested." | "... that attack deals +1% bonus damage per point invested." |
+| The Unbreakable Wall (`Bulwark_capstone_200`, option 1) | "You may equip a shield in your primary weapon slot. You may now block AOE damage." | "Every block negates the whole hit." |
+
+**The 18 enchantments**, 21 rows from `Type.Deployable` to `Type.Gadget` (three of them have two rows each):
+- Gadgets deal 20%-40% increased damage (two rows);
+- Gadgets deal bonus damage equal to 3%-6% of your maximum HP;
+- While stationary your gadgets deal 20%-40% increased damage;
+- Gadgets have 40%-70% increased HP;
+- Gadgets last 30%-60% longer;
+- Gadgets fire 20%-40% faster;
+- Gadgets apply a 15%-25% armor reduction;
+- Gadgets deal 5%-10% increased damage for each second;
+- Gadgets that survive for 15 seconds;
+- Gadgets have 20%-40% increased attack range;
+- When any of your gadgets is destroyed (two rows);
+- Your gadgets prioritize the highest HP enemy;
+- Gadgets fire at all enemies within range simultaneously;
+- When a gadget kills an enemy;
+- Your gadgets are invincible but lose 5% (two rows);
+- Gadgets copy the last skill you used;
+- When a gadget is destroyed it arms all traps;
+- When a gadget is destroyed the nearest active trap.
+
+### JUDGEMENTS
+
+- **The Wall is a flag, not a negation chance of 100**, ruled as above, so the block step can tell a block the Wall
+  negated (`bNegatedByEveryBlock`) from one Iron Will's chance negated.
+- **The generator's gadget-stat rule moves with the rows.** `refuse_a_gadget_row_the_game_cannot_read` held the six
+  gadget-only stats to exactly `Type.Deployable`. It now holds them to `Type.Gadget`. The reader asks with the
+  machine's own type tags, and every machine that is not a trap carries `Type.Gadget`, Bolt Turret, Ballista and the
+  skill gadget included.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and the
+tracked files identical afterwards to a copy taken before.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `tools/apply_war_owner_rulings_2026_11_25.py`: the workbook written before the sentences are checked | `pytest tools/tests/test_war_owner_rulings_scripts.py` | `test_the_script_refuses_a_sentence_somebody_wrote_since` |
+| `tools/generate_datatables.py`: `GADGET_ROW_TAG` back to `Type.Deployable` | `pytest tools/tests/test_generate_datatables.py -k GadgetsChooseTheMostHealth` | three, among them `test_the_ruled_row_is_carried_through_and_is_not_refused` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarOwnerRulings.IronWillChargesNothingForABlockTheUnbreakableWallNegated` | two defenders with 100 Fervour and Iron Will's shape block a real blow: alone, the negated block costs 20 (the control); with the Wall's flag as well, it costs nothing |
+| `ProbeEveryBlockNegates` (inside `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`) | the negation roll pinned at 99: the plain blocked blow keeps its share, and the defender holding the flag keeps nothing |
+| `Cataclysm.Traps.TheGadgetArmourReductionRowReachesASkillGadgetsHitAndNotASkillTrapsHit` | the shipped row requires `Type.Gadget`; a skill gadget's hit takes 20% of its enemy's armour, and a skill trap's takes none (the control) |
+
+### C++ GUARD PROOFS (planned, two)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: Iron Will charged for every negated block (`&& !Outcome.bNegatedByEveryBlock` taken out) | `Cataclysm.WarOwnerRulings.` | `IronWillChargesNothingForABlockTheUnbreakableWallNegated` |
+| `CataclysmDamageCalculation.cpp`: the flag not read (`bNegatedByEveryBlock = false`) | `Cataclysm.WarOwnerRulings.` | the same test: the Wall's block is no longer negated, at the set-up check |
+
+---
+
 ## 2026-11-25 — The War machines reserve their Fervour: Bolt Turret, Ballista and Iron Fortress hold 5 each, the pool is their only limit, and Iron Fortress places its whole set or none of it (issue #1934)
 
 **Affects:**
