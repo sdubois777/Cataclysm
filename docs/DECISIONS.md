@@ -78,6 +78,18 @@ the enemy; if not, the mark needs a basic display."
    it; "melee" is a delivery flagged melee or a skill carrying `Type.Melee`; a use a minion cast in the player's name, a
    damage-over-time tick and an area skill's share struck at an ally neither carry nor spend it.
 
+### THE PYTHON SUITE
+
+Run on `9de1000212c783334f436b0280417115beab8e4f`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8484 passed, 9 skipped in 450.72s**, and the JUnit file `tests="8494" failures="1" errors="0"
+skipped="9"`, which is 8,484 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. Nine more passed than on `bce3d40d1` (8,475): the
+nine tests of `test_war_skull_deathmark_blood_scripts.py`. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed` before the commit: 13 files read, 0 with complaints; and the new test
+file on its own: 1 read, 0 with complaints.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
