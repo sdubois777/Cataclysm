@@ -8,8 +8,8 @@ the plan of selling and dismantling, sections 6 to 8, and D1 to D5.
      Disassembly Expert 20% from Superb up (N7, O4); the salt "DISM" (D5);
   2. the two nodes raise the three drawn yields and never the refund;
   3. the craft goes through `DoItemCraft` with no gold and no days (D2), draws from the item as it stood and the run's
-     day before anything moves (D5), reads the player's own magic find (D3), and checks for room before it removes the
-     piece, in one block naming #2849 (D4);
+     day before anything moves (D5), and reads the player's own magic find (D3); since #2849 it asks no room (D4 was
+     a room check until then);
   4. a drop and the weapon made at creation record where they arrived, and the seed text adds it only when known;
   5. the two nodes are built, with their effects, and the screen offers no dismantle for a worn piece or the weapon made
      at creation.
@@ -105,12 +105,8 @@ def test_the_craft_is_instant_draws_from_the_item_and_day_and_checks_for_room_fi
             in craft), "the draw is not seeded from the item as it stood and the run's day (D5)"
     assert "UCataclysmDropSpawner::LootStatsOf(Character, MagicFind, LootQuantity);" in craft, (
         "the stone's material tier does not read the player's own magic find (D3)")
-    raw = body(CRAFT_CPP.read_text(encoding="utf-8"), "ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(")
-    start = raw.find("REMOVE THIS BLOCK WHEN ISSUE #2849")
-    end = raw.find("END OF THE #2849 BLOCK")
-    removed = raw.find("Inventory->RemoveItemAt(Target.CarriedSlot)")
-    assert -1 < start < end < removed, "the room check is not one #2849 block before the piece is removed (D4)"
-    assert 'TEXT("Make room in the bag first.")' in raw[start:end], "the room check does not say what to do"
+    assert "NewKindsADismantleNeeds" not in craft and "NumFreeSlots" not in craft, (
+        "a dismantle asks for room again: since #2849 what it gives back goes to stores that never refuse")
 
 
 def test_a_piece_records_where_it_arrived_and_the_seed_text_adds_it_only_when_known() -> None:

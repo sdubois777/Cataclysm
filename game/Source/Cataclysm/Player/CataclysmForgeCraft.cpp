@@ -239,15 +239,8 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 		return false;
 	}
 
-	// ROOM FOR THE MADE STONE, asked before anything moves: a stack of it to join, a free cell, or the cell the two
-	// taken empty.
-	const bool bRoom = Inventory->CountOfMaterial(Plan.Into) > 0 || Inventory->NumFreeSlots() > 0
-		|| Plan.StonesHeld == Plan.StonesNeeded;
-	if (!bRoom)
-	{
-		OutReason = FString::Printf(TEXT("The bag has no free cell for a +%d stone."), Plan.IntoLevel);
-		return false;
-	}
+	// NO ROOM IS ASKED FOR THE MADE STONE: since #2849 the materials tab holds one stack per material with no limit, so
+	// a stone always has room, whatever the gear tab holds. Until then this refused when the bag had no free cell.
 
 	// THE GOLD FIRST, given back if a later step fails (#2830).
 	bool bGoldFromTheCharacter = false;
@@ -262,7 +255,7 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 		OutReason = TEXT("The stones could not be taken from the bag.");
 		return false;
 	}
-	if (Inventory->AddMaterial(Plan.Into, 1) == INDEX_NONE)
+	if (!Inventory->AddMaterial(Plan.Into, 1))
 	{
 		Inventory->AddMaterial(Plan.From, Plan.StonesNeeded);
 		GiveTheGoldBack(WorldContext, Plan.Gold);
@@ -306,16 +299,7 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 		return false;
 	}
 
-	// ROOM FOR THE MADE GEM, asked before anything moves: a stack of it to join, a free cell, or the cell the two taken
-	// empty.
-	const bool bRoom = Inventory->CountOfGems(Gem, Plan.Into) > 0 || Inventory->NumFreeSlots() > 0
-		|| Plan.GemsHeld == Plan.GemsNeeded;
-	if (!bRoom)
-	{
-		OutReason = FString::Printf(TEXT("The bag has no free cell for a %s %s."), *UCataclysmGems::RarityName(Plan.Into),
-									*UCataclysmGems::NameOf(Gem));
-		return false;
-	}
+	// NO ROOM IS ASKED FOR THE MADE GEM: since #2849 the gems tab holds one stack per gem and rarity with no limit.
 
 	// THE GOLD FIRST, given back if a later step fails (#2830).
 	bool bGoldFromTheCharacter = false;
@@ -330,7 +314,7 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 		OutReason = TEXT("The gems could not be taken from the bag.");
 		return false;
 	}
-	if (Inventory->AddGems(Gem, Plan.Into, 1) == INDEX_NONE)
+	if (!Inventory->AddGems(Gem, Plan.Into, 1))
 	{
 		Inventory->AddGems(Gem, Plan.From, Plan.GemsNeeded);
 		GiveTheGoldBack(WorldContext, Plan.Gold);
@@ -384,11 +368,11 @@ FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(const UObject* Wo
 	}
 	const UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 	const int32 Dust = Inventory->CountOfMaterial(FName(UCataclysmForge::DismantlingDustRow));
-	// ROOM FOR THE GEM: a stack of it to join, a free cell, or the cell the last Dust taken empties.
+	// ROOM FOR THE GEM IS ALWAYS THERE since #2849: the gems tab holds one stack per gem and rarity with no limit,
+	// whatever the gear tab holds. Until then this asked for a stack to join, a free cell, or the cell the last
+	// Dismantling Dust emptied, which stopped being true once the Dust and the gem were carried apart.
 	const FCataclysmSocket* From = Item->Sockets.IsValidIndex(Socket) ? &Item->Sockets[Socket] : nullptr;
-	const bool bRoom = From != nullptr
-		&& (Inventory->SlotOfGems(From->Gem, From->GemRarity) != INDEX_NONE || Inventory->NumFreeSlots() > 0
-			|| Dust == 1);
+	const bool bRoom = From != nullptr;
 	return UCataclysmForge::UnsocketGemOf(*Item, Socket, Dust, bRoom, GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
 }
 
@@ -456,7 +440,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 	FCataclysmForgeCraftHooks Hooks;
 	if (Plan.bUnsocket)
 	{
-		Hooks.AfterTheChange = [Inventory, Plan]() { return Inventory->AddGems(Plan.Gem, Plan.Rarity, 1) != INDEX_NONE; };
+		Hooks.AfterTheChange = [Inventory, Plan]() { return Inventory->AddGems(Plan.Gem, Plan.Rarity, 1); };
 		Hooks.AfterRefusal = TEXT("The gem had nowhere to go in the bag; nothing changed.");
 	}
 	else
@@ -1450,43 +1434,6 @@ FCataclysmForgeDismantle UCataclysmForgeCraft::DismantlePlanFor(const UObject* W
 										UCataclysmDropRoll::LoadGearRarityTable());
 }
 
-int32 UCataclysmForgeCraft::NewKindsADismantleNeeds(const UCataclysmInventoryComponent& Inventory,
-													 const FCataclysmForgeDismantle& Done)
-{
-	TSet<FName> Materials;
-	if (Done.Fragments > 0)
-	{
-		Materials.Add(FName(UCataclysmForge::SchematicFragmentsRow));
-	}
-	if (Done.Dust > 0)
-	{
-		Materials.Add(FName(UCataclysmForge::DismantlingDustRow));
-	}
-	for (const FName& Stone : Done.RefundStones)
-	{
-		Materials.Add(Stone);
-	}
-	for (const FName& Stone : Done.BaseStones)
-	{
-		Materials.Add(Stone);
-	}
-	int32 New = 0;
-	for (const FName& Material : Materials)
-	{
-		New += Inventory.SlotOfMaterial(Material) == INDEX_NONE ? 1 : 0;
-	}
-	TSet<TPair<FName, ECataclysmRarity>> Gems;
-	for (const TPair<FName, ECataclysmRarity>& Gem : Done.Gems)
-	{
-		Gems.Add(Gem);
-	}
-	for (const TPair<FName, ECataclysmRarity>& Gem : Gems)
-	{
-		New += Inventory.SlotOfGems(Gem.Key, Gem.Value) == INDEX_NONE ? 1 : 0;
-	}
-	return New;
-}
-
 ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 													  FCataclysmForgeDismantle& OutDone, FString& OutMessage)
 {
@@ -1530,18 +1477,10 @@ ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContex
 	FCataclysmItem Dismantled;
 	FCataclysmForgeCraftHooks Hooks;
 	Hooks.AfterRefusal = TEXT("The piece could not be dismantled; nothing changed.");
-	FString* const AfterRefusal = &Hooks.AfterRefusal;
-	Hooks.AfterTheChange = [&Done, &Dismantled, Inventory, &Target, AfterRefusal]() -> bool
+	Hooks.AfterTheChange = [&Done, &Dismantled, Inventory, &Target]() -> bool
 	{
-		// ---- ROOM FOR EVERY NEW KIND, CHECKED BEFORE ANYTHING IS DESTROYED (D4). REMOVE THIS BLOCK WHEN ISSUE #2849
-		// ---- LANDS: its stores of materials and gems never refuse, so the check has nothing left to protect.
-		// The piece's own slot is freed by the dismantle, so it counts as room.
-		if (NewKindsADismantleNeeds(*Inventory, Done) > Inventory->NumFreeSlots() + 1)
-		{
-			*AfterRefusal = TEXT("Make room in the bag first.");
-			return false;
-		}
-		// ---- END OF THE #2849 BLOCK.
+		// NO ROOM IS ASKED (issue #2849): the materials and gems a dismantle gives back go to stores that never refuse.
+		// Until #2849 a full bag refused here first, "Make room in the bag first." (D4).
 
 		// THE PIECE LEAVES THE BAG, THEN WHAT IT GIVES JOINS IT. Anything that cannot be added puts back what was added
 		// and the piece itself, so nothing is half done.
@@ -1565,7 +1504,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContex
 		};
 		const auto AddOne = [&](FName Material) -> bool
 		{
-			if (Inventory->AddMaterial(Material, 1) == INDEX_NONE)
+			if (!Inventory->AddMaterial(Material, 1))
 			{
 				return false;
 			}
@@ -1591,7 +1530,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContex
 		}
 		for (int32 Each = 0; bAdded && Each < Done.Gems.Num(); ++Each)
 		{
-			bAdded = Inventory->AddGems(Done.Gems[Each].Key, Done.Gems[Each].Value, 1) != INDEX_NONE;
+			bAdded = Inventory->AddGems(Done.Gems[Each].Key, Done.Gems[Each].Value, 1);
 			if (bAdded)
 			{
 				AddedGems.Add(Done.Gems[Each]);

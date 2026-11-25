@@ -235,10 +235,12 @@ bool FCataclysmGemDropsFloorTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// GD4. A gem drop is saved and restored as one, and a gem stack dropped from the bag lies whole on the floor.
+// GD4. A gem drop is saved and restored as one, and a carried gem stack cannot be dropped from a carried slot. Until
+// issue #2849 a stack dropped from the bag lay whole on the floor; since then the stacks are the gems tab, not a slot,
+// and there is deliberately no way to drop one (ruled 2026-11-22: it would be collected straight back within 15 m).
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemDropsSaveTest,
-	"Cataclysm.GemDrops.AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor",
+	"Cataclysm.GemDrops.AGemDropIsSavedAndRestoredAndACarriedStackCannotBeDropped",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmGemDropsSaveTest::RunTest(const FString&)
@@ -274,28 +276,25 @@ bool FCataclysmGemDropsSaveTest::RunTest(const FString&)
 	TestEqual(TEXT("three of them"), Restored->GemQuantity, 3);
 	TestEqual(TEXT("named as a spawned one is"), Restored->DisplayName, FString(TEXT("Of Life (Superb)")));
 
-	// A STACK DROPPED FROM THE BAG LIES WHOLE, as one gem drop, and leaves the bag.
+	// A CARRIED STACK IS IN NO SLOT, so slot 0, where it went until #2849, holds nothing to drop, and it stays carried.
 	UCataclysmInventoryComponent* Bag = NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
-	if (!TestEqual(TEXT("set-up: three Superb Of The Viper in the bag"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 3),
-				   0))
+	if (!TestTrue(TEXT("set-up: three Superb Of The Viper in the bag"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 3)))
 	{
 		return false;
 	}
 	const FVector At(-500.0f, 0.0f, 0.0f);
-	TestTrue(TEXT("the stack is dropped"),
-			 UCataclysmWearing::DropCarried(Bag, 0, World, At) == ECataclysmWearResult::Dropped);
-	TestEqual(TEXT("and has left the bag"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 0);
+	TestTrue(TEXT("slot 0 holds nothing to drop"),
+			 UCataclysmWearing::DropCarried(Bag, 0, World, At) == ECataclysmWearResult::NothingToDrop);
+	TestEqual(TEXT("and all three are still carried"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
 	int32 ViperDrops = 0;
+	int32 LifeDrops = 0;
 	for (const ACataclysmDroppedItem* Drop : GemDropsIn(World))
 	{
-		if (Drop->Gem == Viper && FVector::Dist2D(Drop->GetActorLocation(), At) < 1.0f)
-		{
-			++ViperDrops;
-			TestEqual(TEXT("the three lie as one drop"), Drop->GemQuantity, 3);
-			TestTrue(TEXT("at their rarity"), Drop->GemRarity == ECataclysmRarity::Superb);
-		}
+		ViperDrops += Drop->Gem == Viper ? 1 : 0;
+		LifeDrops += Drop->Gem == Life ? 1 : 0;
 	}
-	TestEqual(TEXT("one drop of them lies where it was put"), ViperDrops, 1);
+	TestEqual(TEXT("no Of The Viper lies on the floor"), ViperDrops, 0);
+	TestEqual(TEXT("CONTROL: the restored Of Life is found on it, so the search can see a gem drop"), LifeDrops, 1);
 	return true;
 }
 

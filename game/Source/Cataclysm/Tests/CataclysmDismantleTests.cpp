@@ -8,7 +8,7 @@
  * gems and the refund, one upgrade stone of each level raised through, which are certain; and Schematic Fragments by
  * rarity (N4), Dismantling Dust a socket (N5) and base upgrade stones by rarity (section 8), each drawn as its whole part
  * and one more with its fraction's chance (D5), raised by Salvage Protocol and Disassembly Expert (N6, N7), which never
- * raise the refund. A full bag refuses first (D4). An item records the gear level and the tier it arrived at, and the
+ * raise the refund. A full gear tab does not refuse it (#2849; D4 until then). An item records the gear level and the tier it arrived at, and the
  * character and run records went to versions 15 and 18 to carry them (ruled 2026-11-24; DM11 and DM12).
  *
  * EVERY TEST READS THE TABLES THE GAME LOADS. The scene is the one `CataclysmForgeEnchantmentsTests.cpp` builds, renamed
@@ -460,16 +460,17 @@ bool FCataclysmDismantleCraftTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// DM6. A full bag: refused before anything is destroyed (D4).
+// DM6. A full gear tab: the dismantle is done, and what it gives back is taken (#2849; refused before it, D4).
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDismantleFullBagTest,
-	"Cataclysm.Dismantle.AFullBagIsRefusedBeforeAnythingIsDestroyed",
+	"Cataclysm.Dismantle.AFullGearTabStillDismantlesAndTakesWhatItGivesBack",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The helm in a bag filled with other pieces: it would give back Of Life and four stones the bag holds no stack of, and
- * only its own slot would free, so it is refused, "Make room in the bag first.", and the helm stays in its cell. THE
- * CONTROL: with eight other pieces taken out, it is done. Prints "FULL BAG".
+ * The helm in a bag whose other 47 gear slots hold other pieces. Until #2849 a full bag refused, "Make room in the bag
+ * first." (D4), because the helm gives back Of Life and four stones the bag held no stack of. Since #2849 materials and
+ * gems go to stores that never refuse, so it is done: the helm leaves its cell and Of Life (Superb) is carried. THE
+ * CONTROL: the other 47 pieces are all still carried. Prints "FULL BAG".
  */
 bool FCataclysmDismantleFullBagTest::RunTest(const FString&)
 {
@@ -496,32 +497,28 @@ bool FCataclysmDismantleFullBagTest::RunTest(const FString&)
 	{
 		Others.Add(Cell2);
 	}
-	if (!TestEqual(TEXT("set-up: the bag is full"), Scene.Bag()->NumFreeSlots(), 0) || !TestTrue(TEXT("set-up: and holds "
-		"eight other pieces at least"), Others.Num() >= 8))
+	if (!TestEqual(TEXT("set-up: the gear tab is full"), Scene.Bag()->NumFreeSlots(), 0)
+		|| !TestEqual(TEXT("set-up: and holds 47 other pieces"), Others.Num(), 47))
 	{
 		return false;
 	}
 	FCataclysmForgeDismantle Done;
 	FString Message;
-	const ECataclysmForgeResult Refused =
+	const ECataclysmForgeResult Result =
 		UCataclysmForgeCraft::Dismantle(Scene.World, FCataclysmForgeTarget::Carried(Cell), Done, Message);
-	TestEqual(TEXT("refused"), static_cast<int32>(Refused), static_cast<int32>(ECataclysmForgeResult::Refused));
-	TestEqual(TEXT("saying why"), Message, FString(TEXT("Make room in the bag first.")));
-	const FCataclysmItem* Still = Scene.Bag()->ItemAt(Cell);
-	TestTrue(TEXT("the helm is still in its cell, with its gem"), Still != nullptr && Still->Sockets.Num() == 1
-		&& Still->Sockets[0].Gem == OfLife);
-	TestEqual(TEXT("and no gem was added"), Scene.Bag()->CountOfGems(OfLife, ECataclysmRarity::Superb), 0);
-
-	for (int32 Each = 0; Each < 8; ++Each)
-	{
-		Scene.Bag()->RemoveItemAt(Others[Each]);
-	}
-	const ECataclysmForgeResult Control =
-		UCataclysmForgeCraft::Dismantle(Scene.World, FCataclysmForgeTarget::Carried(Cell), Done, Message);
-	AddInfo(FString::Printf(TEXT("FULL BAG: refused '%s'; with 8 slots free: %s"), *Message,
-							*UCataclysmForge::DismantleGiven(Done)));
-	TestEqual(TEXT("control: with room, it is done"), static_cast<int32>(Control),
+	AddInfo(FString::Printf(TEXT("FULL BAG: '%s'; %s; %d gear slots free"), *Message, *UCataclysmForge::DismantleGiven(Done),
+							Scene.Bag()->NumFreeSlots()));
+	TestEqual(TEXT("**the dismantle is done with every gear slot full**"), static_cast<int32>(Result),
 			  static_cast<int32>(ECataclysmForgeResult::Done));
+	TestNull(TEXT("**the helm has left its cell**"), Scene.Bag()->ItemAt(Cell));
+	TestEqual(TEXT("**and Of Life (Superb) is carried**"), Scene.Bag()->CountOfGems(OfLife, ECataclysmRarity::Superb), 1);
+	TestEqual(TEXT("one gear slot is free: the helm's"), Scene.Bag()->NumFreeSlots(), 1);
+	int32 StillCarried = 0;
+	for (const int32 Each : Others)
+	{
+		StillCarried += Scene.Bag()->ItemAt(Each) != nullptr ? 1 : 0;
+	}
+	TestEqual(TEXT("CONTROL: the other 47 pieces are all still carried"), StillCarried, 47);
 	return true;
 }
 
@@ -759,9 +756,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDismantleCharacterMigrationTest,
 /**
  * The character record went to version 15 for the two fields (ruled by the coordinating session on 2026-11-24, by
  * `game/Tests/SaveFixtures/README.md`). `Character_v14.json`, written before them, migrates: each carried item reads
- * -1 and 0, "not known", and every other field is kept. CONTROL: `Character_v15.json` is read, not migrated, and its
- * carried Circlet states +4 at tier 2, not the defaults, so the fields are read from the file. Prints "ARRIVAL
- * CHARACTER".
+ * -1 and 0, "not known", and every other field is kept. CONTROL: the committed character file is read, not migrated,
+ * and its carried Circlet states +4 at tier 2, not the defaults, so the fields are read from the file: `Character_v16.json`
+ * since issue #2849, which moved the inventory's stacks to tabs of their own (`Character_v15.json` from issue #2848), so
+ * `Character_v14.json` also passes through that step, and the expected record takes both steps' defaults. Prints
+ * "ARRIVAL CHARACTER".
  */
 bool FCataclysmDismantleCharacterMigrationTest::RunTest(const FString&)
 {
@@ -773,18 +772,23 @@ bool FCataclysmDismantleCharacterMigrationTest::RunTest(const FString&)
 	const UCataclysmCharacterSave* Old =
 		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v14.json"), OldText, OldResult);
 	const UCataclysmCharacterSave* Committed =
-		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v15.json"), NewText, NewResult);
-	if (!TestNotNull(TEXT("Character_v14.json loads"), Old) || !TestNotNull(TEXT("Character_v15.json loads"), Committed)
+		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v16.json"), NewText, NewResult);
+	if (!TestNotNull(TEXT("Character_v14.json loads"), Old) || !TestNotNull(TEXT("Character_v16.json loads"), Committed)
 		|| !TestEqual(TEXT("set-up: Character_v14.json carries two slots"), Old->CarriedSlots.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Character_v15.json carries two slots"), Committed->CarriedSlots.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Character_v16.json carries two slots"), Committed->CarriedSlots.Num(), 2))
 	{
 		return false;
 	}
 	FString Where;
 	const bool bKept = KeepsEveryOtherField(OldText, UCataclysmCharacterSave::SchemaVersionNow,
-											&CataclysmSaveFixtures::AddTheCharactersVersion15Defaults, Old, Where);
+											[](FJsonObject& Expected)
+											{
+												CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(Expected);
+												CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(Expected); // And 16, issue #2849.
+											},
+											Old, Where);
 	AddInfo(FString::Printf(TEXT("ARRIVAL CHARACTER: Character_v14.json %s, carried %s, the rest %s; "
-								 "Character_v15.json %s, carried %s"),
+								 "Character_v16.json %s, carried %s"),
 							FCataclysmSaveStorage::Describe(OldResult), *ArrivalsOf(CharacterItems(*Old)),
 							bKept ? TEXT("kept") : *Where, FCataclysmSaveStorage::Describe(NewResult),
 							*ArrivalsOf(CharacterItems(*Committed))));
@@ -793,7 +797,7 @@ bool FCataclysmDismantleCharacterMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("**each carried item arrived at a place not known**"), ArrivalsOf(CharacterItems(*Old)),
 			  FString(TEXT("-1:0 -1:0")));
 	TestTrue(TEXT("and every other field is kept"), bKept);
-	TestEqual(TEXT("CONTROL: Character_v15.json is read, not migrated"), static_cast<int32>(NewResult),
+	TestEqual(TEXT("CONTROL: Character_v16.json is read, not migrated"), static_cast<int32>(NewResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("CONTROL: its Circlet arrived at +4 at tier 2, and its empty slot is not known, as it states"),
 			  ArrivalsOf(CharacterItems(*Committed)), FString(TEXT("4:2 -1:0")));

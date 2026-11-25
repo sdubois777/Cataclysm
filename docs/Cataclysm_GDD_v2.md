@@ -4983,6 +4983,18 @@ opens is its own rather than the account's.
 **The carried inventory is 48 slots, four rows of twelve, and nothing increases
 it.** One item takes one slot whatever it is, the same rule the stash uses.
 
+**Since 2026-11-22 the 48 slots are for gear, and crafting materials and gems are
+carried in two tabs of their own.** The project owner: "I think we need to add tabs
+to the inventory. One for crafting materials and one for gems. Otherwise you wont be
+able to carry any loot", and then, of their shape, "One cell per kind, no limit
+(Recommended)". The materials tab shows every crafting material, by tier, with how
+many are carried; the gems tab shows each stack of a gem at a rarity that is carried.
+Neither fills and neither refuses a pickup, so a material or a gem never takes one of
+the 48 slots. Diablo IV's Materials and Socketables tabs work this way. Issue #2849.
+**The pressure described below is therefore a pressure on gear**: what fills the
+bag partway down a dungeon is pieces of gear, and a full bag still leaves gear on the
+floor.
+
   
 
 **Crafting materials stack, and every material of one kind takes one slot however many are held.** Decided by the project owner on 2026-08-19: "all crafting materials stack". A material is a quantity of an interchangeable thing rather than a piece with its own rolls, so two of them are not two objects the way two swords are, and a stack has no stated ceiling. That is what every game in the genre does with its currency and crafting items, and it is what stops eighteen material kinds from filling a 48-slot bag before any gear is picked up.

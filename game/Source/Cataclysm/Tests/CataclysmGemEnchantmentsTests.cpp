@@ -288,7 +288,7 @@ bool FCataclysmGemEnchantmentsBothTest::RunTest(const FString&)
 	}
 	UCataclysmInventoryComponent* Bag = NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
 	if (!TestNotNull(TEXT("set-up: a bag"), Bag)
-		|| !TestEqual(TEXT("set-up: one Superb Of The Viper in it"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 1), 0))
+		|| !TestTrue(TEXT("set-up: one Superb Of The Viper in it"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 1)))
 	{
 		return false;
 	}

@@ -1544,6 +1544,25 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 
 	UCataclysmInventoryComponent* Bag = Wearer->GetInventory();
 
+	// A TAB'S NAME SHOWS THAT TAB, issue #2849: gear, crafting materials or gems. Nothing is picked up or put down by it,
+	// and an item already on the cursor stays there. The materials and gems tabs take no other press: a stack is never
+	// picked up, and dropping one is not offered, because the 15 m automatic collection would take it straight back (Q9,
+	// revised 2026-11-22).
+	ECataclysmInventoryTab Tab = ECataclysmInventoryTab::Gear;
+	if (InventoryScreen->TabUnderCursor(Point, Tab))
+	{
+		InventoryScreen->ShowTab(Tab);
+		return;
+	}
+
+	// AND THE GEMS TAB'S "PREVIOUS" AND "NEXT" TURN ITS PAGE: the coordinating session, 2026-11-22.
+	int32 PageStep = 0;
+	if (InventoryScreen->GemPagerUnderCursor(Point, PageStep))
+	{
+		InventoryScreen->TurnGemPage(PageStep);
+		return;
+	}
+
 	// THE CARRIED GRID FIRST. The two panels cannot overlap, so the order only
 	// decides which is asked first and not which answers.
 	const int32 Carried = InventoryScreen->CarriedSlotUnderCursor(Point);

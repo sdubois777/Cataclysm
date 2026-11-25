@@ -78,11 +78,15 @@ def test_a_gem_stack_is_not_an_empty_slot() -> None:
 
 
 def test_a_stack_is_found_by_gem_and_rarity() -> None:
-    found = body(code(INVENTORY_CPP), "int32 UCataclysmInventoryComponent::SlotOfGems(", INVENTORY_CPP.name)
-    assert "Slots[Slot].Gem == Gem" in found and "Slots[Slot].GemRarity == Rarity" in found, (
-        "SlotOfGems must match both the gem and its rarity: one stack per gem and rarity, ruled 2026-11-21")
-    adding = body(code(INVENTORY_CPP), "int32 UCataclysmInventoryComponent::AddGems(", INVENTORY_CPP.name)
-    assert "SlotOfGems(Gem, Rarity)" in adding, "AddGems does not look for the stack of that gem at that rarity"
+    # SINCE ISSUE #2849 THE STACKS ARE IN THE GEMS TAB, `GemStacks`, and not in the 48 slots: `StackOfGems` finds one,
+    # and `PutGems` (which `AddGems` calls) adds to it.
+    found = body(code(INVENTORY_CPP), "int32 UCataclysmInventoryComponent::StackOfGems(", INVENTORY_CPP.name)
+    assert "GemStacks[Stack].Gem == Gem" in found and "GemStacks[Stack].GemRarity == Rarity" in found, (
+        "StackOfGems must match both the gem and its rarity: one stack per gem and rarity, ruled 2026-11-21")
+    putting = body(code(INVENTORY_CPP), "void UCataclysmInventoryComponent::PutGems(", INVENTORY_CPP.name)
+    assert "StackOfGems(Gem, Rarity)" in putting, "PutGems does not look for the stack of that gem at that rarity"
+    adding = body(code(INVENTORY_CPP), "bool UCataclysmInventoryComponent::AddGems(", INVENTORY_CPP.name)
+    assert "PutGems(Gem, Rarity, Quantity)" in adding, "AddGems does not put the gems on their stack"
 
 
 def test_a_dropped_gem_stack_goes_to_the_floor_as_gems() -> None:

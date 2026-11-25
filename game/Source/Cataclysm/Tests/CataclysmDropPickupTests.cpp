@@ -1463,20 +1463,25 @@ bool FCataclysmDropNothingTest::RunTest(const FString&)
 }
 
 /**
- * A crafting material drops as its whole stack, with the count intact.
+ * A crafting material stack cannot be dropped from a carried slot, and stays
+ * carried whole.
  *
- * A SLOT HOLDS ONE STACK AND THIS EMPTIES ONE SLOT. Dropping part of a stack
- * would need a quantity to be chosen and there is no screen for choosing one.
- * The quantity is the part that would be easy to lose: ACataclysmDroppedItem
- * carries the material name and the count in two separate fields, and a drop
- * that set only the name would put a stack of zero on the floor.
+ * UNTIL ISSUE #2849 IT DROPPED AS ITS WHOLE STACK, because a stack sat in one of
+ * the 48 slots and dropping emptied the slot. Since the owner's ruling of
+ * 2026-11-22 the stack is in the materials tab, not in a slot, and there is
+ * deliberately no way to drop one: a dropped stack would be collected straight
+ * back within 15 m. So the slot the stack used to take holds nothing to drop,
+ * nothing reaches the floor, and all seven are still carried. CONTROL: a piece
+ * of gear put in that slot does drop, so "nothing to drop" is about what the slot
+ * holds and not a drop that cannot be reached.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropMaterialStackTest,
-	"Cataclysm.DropPickup.DroppingACraftingMaterialDropsTheWholeStack",
+	"Cataclysm.DropPickup.ACraftingMaterialStackCannotBeDroppedAndStaysCarried",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDropMaterialStackTest::RunTest(const FString&)
 {
+	using namespace CataclysmDropPickupTest;
 	using namespace CataclysmDropFromBagTest;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -1493,31 +1498,37 @@ bool FCataclysmDropMaterialStackTest::RunTest(const FString&)
 		return false;
 	}
 
-	const int32 Slot =
-		Inventory->AddMaterial(FName(TEXT("Material_Corrupted_Mote")), 7);
-	// TestTrue RATHER THAN TestNotEqual, because INDEX_NONE is an untyped -1 and
-	// the overload set cannot pick between its int32 and int64 forms.
-	if (!TestTrue(TEXT("the materials went in"), Slot != INDEX_NONE))
+	const FName Mote(TEXT("Material_Corrupted_Mote"));
+	if (!TestTrue(TEXT("the materials went in"), Inventory->AddMaterial(Mote, 7)))
 	{
 		return false;
 	}
 
-	TestEqual(TEXT("they were dropped"),
-		UCataclysmWearing::DropCarried(Inventory, Slot, World,
+	// SLOT 0, WHERE THE STACK WENT UNTIL #2849.
+	TestEqual(TEXT("slot 0 holds nothing to drop"),
+		UCataclysmWearing::DropCarried(Inventory, 0, World,
+									   FVector(150.0f, 0.0f, 0.0f)),
+		ECataclysmWearResult::NothingToDrop);
+	TestEqual(TEXT("nothing was put on the floor"), OnTheFloor(World), 0);
+	TestEqual(TEXT("and all seven are still carried"), Inventory->CountOfMaterial(Mote), 7);
+
+	// CONTROL: GEAR IN THAT SLOT DOES DROP, and the stack does not go with it.
+	if (!TestEqual(TEXT("set-up: a greataxe goes in slot 0"),
+			Inventory->AddItem(SomeItem(TEXT("Greataxe"))), 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: the greataxe is dropped"),
+		UCataclysmWearing::DropCarried(Inventory, 0, World,
 									   FVector(150.0f, 0.0f, 0.0f)),
 		ECataclysmWearResult::Dropped);
-	TestEqual(TEXT("the bag is empty"), Inventory->NumItems(), 0);
-
 	ACataclysmDroppedItem* Drop = TheOnlyDrop(World);
 	if (!TestNotNull(TEXT("the drop"), Drop))
 	{
 		return false;
 	}
-
-	TestTrue(TEXT("what is lying there is a material"), Drop->IsMaterial());
-	TestEqual(TEXT("it is the material that was carried"), Drop->Material,
-		FName(TEXT("Material_Corrupted_Mote")));
-	TestEqual(TEXT("and all seven went, not one"), Drop->MaterialQuantity, 7);
+	TestFalse(TEXT("what is lying there is not a material"), Drop->IsMaterial());
+	TestEqual(TEXT("and the stack is still carried, all seven"), Inventory->CountOfMaterial(Mote), 7);
 
 	return true;
 }
