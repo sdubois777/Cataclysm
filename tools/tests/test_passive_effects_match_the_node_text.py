@@ -749,7 +749,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 649 THE SAME DAY, for slice C6d1: Gravekeeper's Hide (two), Shielding
 #: Ranks, Steadfast Among Them (two), Ringed in Bone (two), Cold Hands, Grave
 #: Cold (two), Hasty Dead (two) and Grave Pact.
-AUTHORED_ROWS = 649
+#:
+#: AND TO 653 THE SAME DAY, for slice C6d2: Death Ward, Bone Knit, Marrow Feast
+#: and Avenging Dead.
+AUTHORED_ROWS = 653
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1234,7 +1237,10 @@ AUTHORED_ROWS = 649
 #: AND TO 386 THE SAME DAY, for slice C6d1's Gravekeeper's Hide, Shielding
 #: Ranks, Steadfast Among Them, Ringed in Bone, Cold Hands, Grave Cold, Hasty
 #: Dead and Grave Pact.
-AUTHORED_NODES = 386
+#:
+#: AND TO 390 THE SAME DAY, for slice C6d2's Death Ward, Bone Knit, Marrow Feast
+#: and Avenging Dead.
+AUTHORED_NODES = 390
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1925,6 +1931,14 @@ CONDITION_WORDS = {
                                   {3.0: "three or more of your minions",
                                    5.0: "five or more of your minions"}),
     "target_carries_necrosis": ("that have necrosis", None),
+    # THE THREE OF THE DEATH TREES' SLICE C6d2 (2026-11-25): Bone Knit's "while
+    # one of your minions has died in the last 3 seconds"; Death Ward's "for 3
+    # seconds after one of your minions dies within 6 metres of you", its reach
+    # the row's Reach Metres; Avenging Dead's "When a hit takes more than 5% of
+    # your maximum health", an event condition judged at the stack's grant.
+    "seconds_after_minion_death": ("has died in the last", "{value:g} second"),
+    "minion_death_in_reach_within_seconds": ("after one of your minions dies within", "{value:g} second"),
+    "hit_took_at_least_percent_of_max_health": ("when a hit takes more than", "{value:g}% of your maximum health"),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"
@@ -2305,7 +2319,10 @@ SCALE_WORDS = {
     # AND "after you spend" SINCE THE DEATH TREES' SLICE C3a (2026-11-25): Spent
     # Breath's own stack, granted by `fervour_spent` with a cap of one, is a
     # window renewed by each spend and counts nothing.
-    "own_stacks": ((("for each", "after you spend"),), None, None),
+    # AND "your minions gain" SINCE SLICE C6d2: Avenging Dead's own stack, granted
+    # by `hit_taken` with a cap of one, is a window renewed by each hit that took
+    # enough, and counts nothing, as Spent Breath's does.
+    "own_stacks": ((("for each", "after you spend", "your minions gain"),), None, None),
 
     # THE ENEMIES IN THE CHARACTER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Sapping Cold, Stolen Strength, Life Siphon and Living Harvest
@@ -3340,7 +3357,9 @@ ACTION_VALUE_FORMS = {
     # (2026-11-25): a pool's share of its maximum (Feast, Spirit to Mana, Ashen
     # Ward), a smite's share of weapon damage (Soul Furnace) and a cut's seconds
     # (Turn of the Wheel). Each is the figure for ONE Fervour, or one ten.
-    "health": ("{value:g}% of maximum health",),
+    # AND MARROW FEAST'S "you recover 1% of your maximum health" (the Death trees'
+    # slice C6d2, 2026-11-25).
+    "health": ("{value:g}% of maximum health", "recover {value:g}% of your maximum health"),
     "mana": ("{value:g}% of your maximum mana",),
     "energy_shield": ("{value:g}% of your Maximum Energy Shield",),
     "smite_nearby": ("{value:g}% of your weapon damage",),

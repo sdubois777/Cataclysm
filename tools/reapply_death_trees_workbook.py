@@ -782,6 +782,24 @@ NODES: tuple[Node, ...] = (
     Node(NE + "basic_ch_b0", "Hasty Dead",
          (R("minion_attack_speed", "increased", 2), R("minion_movement_speed", "increased", 2))),
     Node(NE + "keystone_lg_kC", "Grave Pact", (R("minion_damage_taken", "more", -30),)),
+
+    # ---- SLICE C6d2 (2026-11-25): WHEN THE NECROMANCER'S MINIONS DIE, AND WHEN HE
+    # IS HURT, as ruled. A follower killed raises `minion_death` on him and starts
+    # two clocks: `seconds_after_minion_death` (Bone Knit) and
+    # `minion_death_in_reach_within_seconds`, which also needs the death within
+    # the row's reach (Death Ward). Marrow Feast heals on each death, at most ten
+    # times a second (Q3). Avenging Dead's stack is granted only by a hit that
+    # took at least 5% of maximum health (Q2), an event condition.
+    Node(NE + "basic_gr_b1", "Death Ward",
+         (R("damage_reduction", "increased", 2, cond="minion_death_in_reach_within_seconds", cond_value=3,
+            reach=6),)),
+    Node(NE + "basic_gr_b2", "Bone Knit",
+         (R("health_regen", "increased", 3, cond="seconds_after_minion_death", cond_value=3),)),
+    Node(NE + "keystone_gr_kB", "Marrow Feast",
+         (A("health", 1, event="minion_death", fraction_of="maximum", trigger_cooldown=0.1),)),
+    Node(NE + "basic_gr_stem2", "Avenging Dead",
+         (R("minion_attack_speed", "increased", 3, cond="hit_took_at_least_percent_of_max_health", cond_value=5,
+            scale="own_stacks", step=1, cap=1, event="hit_taken", stack_seconds=4),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

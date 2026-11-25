@@ -2085,6 +2085,18 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	MinionDeathInReachWithinSeconds
 		UMETA(DisplayName = "Minion Death In Reach Within Seconds"),
+
+	/**
+	 * The hit being announced as `hit_taken` took at least `ConditionValue` per cent of the character's maximum health:
+	 * Avenging Dead, "When a hit takes more than 5% of your maximum health, your minions gain ...". The Death trees'
+	 * slice C6d2 (2026-11-25), as ruled (Q2). Read from `HitTakenPercentOfMaxHealth`, which `CurrentConditions` copies
+	 * from the hit `UCataclysmAbilitySystemComponent::NoteHitTaken` is announcing, and -1, which refuses, at every
+	 * other moment. AN EVENT CONDITION (`IsJudgedAtItsEvent`): on a row scaled by its own stacks it is judged when the
+	 * stack is granted and not when the stat is read. What reached health, as Soulbound counts. IT TAKES A VALUE: the
+	 * share in per cent.
+	 */
+	HitTookAtLeastPercentOfMaxHealth
+		UMETA(DisplayName = "Hit Took At Least Percent Of Max Health"),
 };
 
 /**
@@ -3283,6 +3295,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> RecentMinionDeathMetres;
+
+	/**
+	 * The share of maximum health, in per cent, that the hit being announced as `hit_taken` took from health; -1 at
+	 * every other moment. The Death trees' slice C6d2 (2026-11-25). See `HitTookAtLeastPercentOfMaxHealth`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float HitTakenPercentOfMaxHealth = -1.0f;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
@@ -5790,7 +5809,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-third, which is the drift that put the passive tree eight
+	 * adds a hundred-and-fourth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5807,7 +5826,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-SIX OF THE HUNDRED-AND-TWO COMPARE NOTHING. They are the case labels
+	 * FORTY-SIX OF THE HUNDRED-AND-THREE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
@@ -5835,6 +5854,14 @@ public:
 	 * would make a predicate judge a number it was never meant to have.
 	 */
 	static bool ConditionTakesAValue(ECataclysmStatCondition Condition);
+
+	/**
+	 * Whether a condition is judged at its row's event rather than when the stat is read: true for
+	 * `HitTookAtLeastPercentOfMaxHealth` alone. The Death trees' slice C6d2 (2026-11-25). An own-stack row naming one
+	 * puts it on the stack's grant and leaves it off the stat (`CataclysmItem.cpp`), because the fact it reads exists
+	 * only while the event is raised.
+	 */
+	static bool IsJudgedAtItsEvent(ECataclysmStatCondition Condition);
 
 	/**
 	 * What a condition's answer depends on. Issue #1821. See

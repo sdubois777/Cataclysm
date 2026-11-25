@@ -179,6 +179,7 @@ namespace
 		{ TEXT("target_carries_necrosis"), ECataclysmStatCondition::TargetCarriesNecrosis },
 		{ TEXT("seconds_after_minion_death"), ECataclysmStatCondition::WithinSecondsOfMinionDeath },
 		{ TEXT("minion_death_in_reach_within_seconds"), ECataclysmStatCondition::MinionDeathInReachWithinSeconds },
+		{ TEXT("hit_took_at_least_percent_of_max_health"), ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth },
 	};
 
 	struct FNamedStatScale
@@ -357,6 +358,11 @@ int32 CataclysmFervourThresholds::IndexOf(float FigureAskedFor)
 		}
 	}
 	return -1;
+}
+
+bool UCataclysmStatPipeline::IsJudgedAtItsEvent(ECataclysmStatCondition Condition)
+{
+	return Condition == ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth;
 }
 
 bool UCataclysmStatPipeline::ConditionTakesAValue(
@@ -538,6 +544,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfMovementSkillEnd:
 	case C::WithinSecondsOfMinionDeath:
 	case C::MinionDeathInReachWithinSeconds:
+	case C::HitTookAtLeastPercentOfMaxHealth:
 	case C::WithinSecondsOfSpell:
 	case C::WithinSecondsOfMeleeHitTaken:
 	case C::WithinSecondsOfCrowdControl:
@@ -1554,6 +1561,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	// THE DEATH TREES' SLICE C6d2 (2026-11-25): a clock, as every clock is, never reads -1 and refuses, inclusive.
 	case ECataclysmStatCondition::WithinSecondsOfMinionDeath:
 		return State.SecondsSinceMinionDied >= 0.0f && State.SecondsSinceMinionDied <= Value;
+
+	// THE HIT BEING ANNOUNCED TOOK AT LEAST THIS SHARE OF MAXIMUM HEALTH. -1, outside the announcement, refuses.
+	case ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth:
+		return State.HitTakenPercentOfMaxHealth >= 0.0f && State.HitTakenPercentOfMaxHealth >= Value;
 
 	// AND ONE THAT FELL WITHIN THE ROW'S REACH: any recorded death recent enough and near enough. No reach counts nothing.
 	case ECataclysmStatCondition::MinionDeathInReachWithinSeconds:

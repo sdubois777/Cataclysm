@@ -2603,10 +2603,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// blow does. A TICK REACHES THIS LINE, as the count just below
 				// says by refusing one, so it is said here and not assumed. The
 				// same `AttackerOf` the evade above passes.
+				// AND THE SHARE OF MAXIMUM HEALTH IT TOOK FROM HEALTH, for Avenging Dead's "when a hit takes more than 5%
+				// of your maximum health" (the Death trees' slice C6d2, 2026-11-25), as ruled (Q2).
+				const float MaximumHealthNow = GetMaxHealth();
 				Cataclysm->NoteHitTaken(
 					!Outcome.bEvaded,
 					UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
-					Hit.bIsDamageOverTime);
+					Hit.bIsDamageOverTime,
+					MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);
 
 				// AND AN "EVERY Nth HIT YOU TAKE" ROW COUNTS IT, ruled 2026-09-24:
 				// a landed hit, not a tick and not an evaded blow; a blocked blow

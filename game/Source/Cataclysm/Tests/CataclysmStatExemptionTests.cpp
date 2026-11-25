@@ -6273,10 +6273,13 @@ namespace CataclysmStatExemptionTest
 	// window had yet compiled.
 	void ProbeScaledProjectileCount(FAutomationTestBase& Test);
 	void ProbeScaledDotDamage(FAutomationTestBase& Test);
+	void ProbeScaledMinionAttackSpeed(FAutomationTestBase& Test);
 
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
+			// THE DEATH TREES' SLICE C6d2 (2026-11-25): Avenging Dead's minion attack speed by the summoner's own stacks.
+			{TEXT("minion_attack_speed"),        &ProbeScaledMinionAttackSpeed},
 			{TEXT("crowd_control_resistance"),   &ProbeScaledCrowdControlResistance},
 			// THE DEATH TREES' SLICE C6a (2026-11-25): Soul Barrage's projectiles by the Fervour held.
 			{TEXT("projectile_count"),           &ProbeScaledProjectileCount},
@@ -7560,6 +7563,51 @@ namespace CataclysmStatExemptionTest
 	 * target, the tick's figure taking the ratio. A real Poison of the holder's is laid on a real creature. At once the
 	 * ratio is 1 (no whole second yet); 3 seconds later, 1.03.
 	 */
+	/**
+	 * `minion_attack_speed`, read by `UCataclysmCommand::AttackIntervalScaleFor` through the summoner's
+	 * `IncreasesForStat`, with the summoner's state. The Death trees' slice C6d2 (2026-11-25), shipped scaled by the
+	 * summoner's own stacks (Avenging Dead). 50% increased for one stack: a follower's attack interval is 1 / 1.5 of
+	 * what it was once the stack is granted. A RATIO TO ITS OWN FIRST READING, so it does not depend on the interval.
+	 */
+	void ProbeScaledMinionAttackSpeed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		const FName Key(TEXT("Probe_minion_attack_speed"));
+		FCataclysmStatModifier PerStack;
+		PerStack.Bucket = ECataclysmStatBucket::Increased;
+		PerStack.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerStack.Value = 50.0f;
+		PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+		PerStack.ScaleStep = 1.0f;
+		PerStack.ScaleMaxSteps = 1;
+		PerStack.StackKey = Key;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(TEXT("minion_attack_speed"))).Modifiers = {PerStack};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner.Actor, FVector(3.0f * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+		if (!Test.TestNotNull(TEXT("minion_attack_speed: an Imp"), Imp))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Before = UCataclysmCommand::AttackIntervalScaleFor(Imp, nullptr);
+		Summoner.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/60.0f, /*Cap=*/1);
+		const float After = UCataclysmCommand::AttackIntervalScaleFor(Imp, nullptr);
+		if (!Test.TestTrue(TEXT("minion_attack_speed: the interval is positive"), Before > 0.0f && After > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("minion_attack_speed is asked with the summoner's state, so one stack makes the interval 1/1.5"),
+					   After / Before, 1.0f / 1.5f, 0.001f);
+	}
+
 	void ProbeScaledDotDamage(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();

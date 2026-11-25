@@ -5607,6 +5607,14 @@ CONDITIONS = {
     # metres of you", the same deaths with how far from the character each fell,
     # read within the row's `Reach Metres`. The value is the seconds.
     "minion_death_in_reach_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # AND AVENGING DEAD'S "When a hit takes more than 5% of your maximum health",
+    # as ruled (Q2): the share of maximum health the hit being announced as
+    # `hit_taken` took from health. AN EVENT CONDITION: it exists only while
+    # `hit_taken` is raised, so on a row scaled by its own stacks the game judges
+    # it at the grant and not at the stat (`IsJudgedAtItsEvent`), and it is
+    # refused anywhere else (`EVENT_CONDITIONS` below). The value is a share in
+    # per cent.
+    "hit_took_at_least_percent_of_max_health": (0.0, 100.0, "a share of maximum health in per cent"),
     # THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25). Read the Blow's
     # "attacks from Elite and stronger enemies" is `opponent_rarity_at_least`,
     # the attacker's rung on a blow taken, the value the rung. Vigil Over the
@@ -11028,6 +11036,12 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE DEATH TREES' SLICE C6d2 (2026-11-25): a minion's attack speed scaled by
+    # the summoner's own stacks, the Necromancer's Avenging Dead. Asked through
+    # `UCataclysmAbilitySystemComponent::IncreasesForStat` on the summoner, with
+    # the summoner's state, by `UCataclysmCommand::AttackIntervalScaleFor`;
+    # `ProbeScaledMinionAttackSpeed` measures it.
+    "minion_attack_speed",
     # THE DEATH TREES' SLICE C6a (2026-11-25): extra projectiles scaled by the
     # Fervour held, the Soul Collector's Soul Barrage. Asked through the
     # pipeline with the character's state by
@@ -11551,6 +11565,16 @@ def what_a_condition_needs(condition: str) -> str:
     return ""
 
 
+#: Conditions judged at their row's event rather than when a stat is read, each
+#: with the one event whose raising fills what it reads. The Death trees' slice
+#: C6d2 (2026-11-25): Avenging Dead's share of maximum health a hit took, held
+#: while `hit_taken` is raised. `UCataclysmStatPipeline::IsJudgedAtItsEvent`
+#: names the same. Allowed only as the Condition of an action row, or of a row
+#: scaled by its own stacks, on that event, where the game judges it at the
+#: grant; anywhere else it reads -1 and refuses every time.
+EVENT_CONDITIONS = {"hit_took_at_least_percent_of_max_health": "hit_taken"}
+
+
 def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[str]:
     """A row may only carry a Condition on a stat whose asker can judge it.
 
@@ -11558,10 +11582,33 @@ def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[st
     `refuse_a_scale_nothing_asks_for` makes for a scale. A row with no stat is
     an action, whose condition is judged where the action fires, and is skipped.
     Both of a row's conditions are checked.
+
+    AN EVENT CONDITION (`EVENT_CONDITIONS`) is checked first, on every row: it
+    is allowed only as the Condition of an action row or of an own-stack row on
+    its event, and it asks nothing of the stat's asker.
     """
     problems = []
     for row in rows:
         stat = str(row.get("Stat") or "").strip()
+        event_ok = True
+        for column in ("Condition", "Condition2"):
+            condition = str(row.get(column) or "").strip()
+            if condition not in EVENT_CONDITIONS:
+                continue
+            event = str(row.get("ActionEvent") or "").strip()
+            granted = not stat or str(row.get("Scale") or "").strip() == "own_stacks"
+            if column != "Condition" or event != EVENT_CONDITIONS[condition] or not granted:
+                event_ok = False
+                problems.append(
+                    f"{sheet}/{row['Name']}: names {condition!r}, which reads a "
+                    f"fact held only while {EVENT_CONDITIONS[condition]!r} is "
+                    f"raised. It may be only the Condition of an action row or of "
+                    f"a row scaled by own_stacks whose event is "
+                    f"{EVENT_CONDITIONS[condition]!r}; anywhere else it refuses "
+                    f"every time and the row grants nothing.")
+        if not event_ok or (str(row.get("Condition") or "").strip() in EVENT_CONDITIONS
+                            and not str(row.get("Condition2") or "").strip()):
+            continue
         if not stat:
             continue
         for column in ("Condition", "Condition2"):

@@ -976,6 +976,14 @@ namespace
 			// ROLLED WITH THE VALUE WHEN THE ROW STATES TWO THRESHOLDS. Issue #1833,
 			// ruled 2026-09-30.
 			Out.ConditionValue = UCataclysmItemModifiers::RolledConditionValue(Effect, Roll);
+			// AN EVENT CONDITION IS THE GRANT'S, NOT THE STAT'S: Avenging Dead's "when a hit takes more than 5%", the
+			// Death trees' slice C6d2 (2026-11-25). The fact it reads exists only while the event is raised, so on the
+			// stat it would refuse at every read. The grant below takes it.
+			if (UCataclysmStatPipeline::IsJudgedAtItsEvent(Out.Condition))
+			{
+				Out.Condition = ECataclysmStatCondition::Always;
+				Out.ConditionValue = 0.0f;
+			}
 		}
 
 		// AND A SECOND CONDITION, WHICH MUST HOLD AS WELL. Issue #1833, ruled
@@ -1184,6 +1192,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				// and writes none by default.
 				Stack.EventValue = Effect->EventValue;
 				Stack.TriggerCooldownSeconds = Effect->TriggerCooldown;
+				// AND ITS CONDITION, WHEN THE ROW'S IS JUDGED AT ITS EVENT: Avenging Dead, the Death trees' slice C6d2.
+				// `PoolActionAllowed` judges it as the event is raised; the stat above was given none.
+				ECataclysmStatCondition AtTheEvent = ECataclysmStatCondition::Always;
+				if (!Effect->Condition.IsEmpty() && UCataclysmStatPipeline::ConditionNamed(Effect->Condition, AtTheEvent)
+					&& UCataclysmStatPipeline::IsJudgedAtItsEvent(AtTheEvent))
+				{
+					Stack.Condition = AtTheEvent;
+					Stack.ConditionValue = Effect->ConditionValue;
+				}
 				Stack.TriggerKey = FName(*FString::Printf(TEXT("%s:%s"),
 					*Stack.StackKey.ToString(), *Effect->ActionEvent));
 				// A COUNT OF HITS IN A ROW IS SCOPED BY THE ROW'S TAGS, ruled

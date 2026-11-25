@@ -648,3 +648,7 @@ Necromancer_keystone_spine_002#2,Necromancer_keystone_spine_002,minion_damage,mo
 Necromancer_basic_ch_b0#1,Necromancer_basic_ch_b0,minion_attack_speed,increased,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Necromancer_basic_ch_b0#2,Necromancer_basic_ch_b0,minion_movement_speed,increased,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Necromancer_keystone_lg_kC#1,Necromancer_keystone_lg_kC,minion_damage_taken,more,-30.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_b1#1,Necromancer_basic_gr_b1,damage_reduction,increased,2.0,,minion_death_in_reach_within_seconds,3.0,,0.0,0,6.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_b2#1,Necromancer_basic_gr_b2,health_regen,increased,3.0,,seconds_after_minion_death,3.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_keystone_gr_kB#1,Necromancer_keystone_gr_kB,,,1.0,,,0.0,,0.0,0,-1.0,0,0,health,minion_death,maximum,0.0,0.0,0.0,0,,0.0,0.1,0.0,,0.0,0,0.0
+Necromancer_basic_gr_stem2#1,Necromancer_basic_gr_stem2,minion_attack_speed,increased,3.0,,hit_took_at_least_percent_of_max_health,5.0,own_stacks,1.0,0,-1.0,0,1,,hit_taken,,4.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0

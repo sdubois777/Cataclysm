@@ -1112,6 +1112,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND SINCE IT ENDED, for Arrival. The Death trees' slice C6b2 (2026-11-25).
 	State.SecondsSinceMovementSkillEnded = SecondsSinceMovementSkillEnded();
 	State.SecondsSinceMinionDied = SecondsSinceMinionDied();
+	State.HitTakenPercentOfMaxHealth = HitBeingAnnouncedPercentOfMaxHealth;
 	if (const UWorld* World = GetWorld(); World && RecentMinionDeaths.Num() > 0)
 	{
 		for (const FMinionDeathRecord& Death : RecentMinionDeaths)
@@ -3733,7 +3734,8 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded)
 	NoteHitTaken(bLanded, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
 }
 
-void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime)
+void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime,
+												float PercentOfMaxHealthLost)
 {
 	if (const UWorld* World = GetWorld())
 	{
@@ -3793,6 +3795,8 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	// on a tick: `TeleportRandomlyAction`, 2026-10-12. The event itself carries no such fact. Put back when this
 	// call returns, so it reads false at every other time.
 	TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);
+	// AND HOW MUCH OF MAXIMUM HEALTH IT TOOK, for Avenging Dead (the Death trees' slice C6d2), held only while announced.
+	TGuardValue<float> SaysHowMuchItTook(HitBeingAnnouncedPercentOfMaxHealth, PercentOfMaxHealthLost);
 	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded);
 
 	// AND A LANDED BLOW THAT IS NOT A TICK MAY SUMMON A WARHOUND, Warlord's Will's six-piece. Ruled 2026-10-18 (Q4):

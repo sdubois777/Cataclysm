@@ -1805,6 +1805,14 @@ public:
 	bool bHitBeingAnnouncedIsATick = false;
 
 	/**
+	 * The share of maximum health, in per cent, that the hit being announced as `hit_taken` took from health, for
+	 * `HitTookAtLeastPercentOfMaxHealth`; -1 at every other moment. The Death trees' slice C6d2 (2026-11-25). WRITTEN BY
+	 * `NoteHitTaken` ONLY, for the length of its announcement; `hit_taken` still carries an amount of nought, so no
+	 * row written before is sized differently.
+	 */
+	float HitBeingAnnouncedPercentOfMaxHealth = -1.0f;
+
+	/**
 	 * Move this character to a random reachable point within this many metres of where it stands, or leave it where
 	 * it stands. Ruled 2026-10-12, for "Teleport to a random location within 4 meters when hit".
 	 *
@@ -4203,7 +4211,8 @@ public:
 	 *                         not.
 	 * @param bDamageOverTime  whether the blow was a tick and not a hit
 	 */
-	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime);
+	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime,
+					  float PercentOfMaxHealthLost = -1.0f);
 
 	/**
 	 * The same, for a blow that landed. Kept as a form of its own rather than
