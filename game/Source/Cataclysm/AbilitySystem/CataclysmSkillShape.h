@@ -369,7 +369,14 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * the design can state them and scale by nothing, which is the state
 	 * StunSeconds is in and is recorded rather than hidden. A skill naming one
 	 * deals its plain damage. Three of the four belong to the Greatsword and
-	 * issue #1141 carries them.
+	 * issue #1141 carries them. (That paragraph predates the counts some of them
+	 * since gained, and is kept as written.)
+	 *
+	 * `Fervour` IS A TWELFTH, issue #2885 slice DS3, the Death draft's N7: the
+	 * Fervour held, read by a Strike's blow (`UCataclysmSkillTemplate::
+	 * ScalingUnits`, Grim Swath) and by a self buff's bonus as it changes
+	 * (`UCataclysmSelfBuffSkill::ScalingCount`, Cold Blood). The generator
+	 * refuses it on any other shape.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ScalingSource;
@@ -998,6 +1005,29 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	/** Centimetres the on-death effect reaches for its next target. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float OnDeathRangeCm = 0.0f;
+
+	// --- Fervour a skill pays and holds (the Death skills, issue #2885) ----
+
+	/**
+	 * Extra Fervour for each enemy this skill kills, or that dies carrying its mark. `KillFervour=N`, the Death draft's
+	 * N6, slice DS3: Grim Swath, Last Toll, Pale Rider and Restless Spirits pay for what their own blow kills
+	 * (`UCataclysmKillFervour::PayForTheKillingBlow`); Death Warrant pays for a death while its curse holds, through the
+	 * mark `OnDeath=SpreadDebuff` leaves (`UCataclysmCurseSpread`); Hungering Soul for each host its soul leaves dead,
+	 * through the weapon `OnDeath=Leap` buries (`UCataclysmBuriedWeapon`); and Danse Macabre, a flicker counting kills,
+	 * for each death during the dance (`UCataclysmMovementSkill::NoteADeathWhileItRuns`). One death pays one skill once.
+	 * Scaled by how fast the class resource generates, as every gain is (`UCataclysmFervour::GainStated`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float KillFervour = 0.0f;
+
+	/**
+	 * True when the holder's Fervour does not decay while this self buff runs. `HoldsFervour=1`, the Death draft's N8,
+	 * slice DS3: the Sword's Cold Blood, "while it lasts your Fervour does not decay". `UCataclysmFervour::DecayStep`, the
+	 * one decay built (the Ravager's), asks `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`; the Soul Collector's and
+	 * the Shadow's decay from the last kill, not built yet, must ask the same when it is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bHoldsFervour = false;
 
 	// --- Projectile extras -------------------------------------------------
 

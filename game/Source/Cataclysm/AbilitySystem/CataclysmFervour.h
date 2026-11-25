@@ -517,6 +517,23 @@ public:
 	static float GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Add Fervour a skill's row states it pays, and answer what arrived. Issue #2885, the Death draft's N6, slice DS3:
+	 * `KillFervour`, "every enemy it kills gives you 5 Fervour". A FIFTH FUNCTION THAT ADDS A PLAIN COUNT, beside the
+	 * four above, and the one whose count is the row's own rather than a stat's: so nothing is asked of the stat lines.
+	 *
+	 * IT DOES NOT DECIDE WHETHER THE KILL HAPPENED OR WHOSE IT WAS. `UCataclysmKillFervour`, the curse spread, the buried
+	 * weapon and the flicker do; this is the write to the pool, which happens in this file for every route so there is
+	 * one place that clamps it.
+	 *
+	 * SCALED BY HOW FAST THE CLASS RESOURCE GENERATES and CLAMPED AT THE SPENDABLE MAXIMUM, as every gain here is.
+	 *
+	 * @param AbilitySystem  whoever's skill it was: the caster's, never the dying creature's
+	 * @param Stated         the row's figure; nought or less adds nothing
+	 * @return how much Fervour was really added, which is zero for a full bar and for no class resource set
+	 */
+	static float GainStated(UAbilitySystemComponent* AbilitySystem, float Stated);
+
+	/**
 	 * Fervour gained when an enemy dies near this character.
 	 * `Ritualist_capstone_50`'s second option, Fed by the Fallen, is its only
 	 * source. Issue #1515.

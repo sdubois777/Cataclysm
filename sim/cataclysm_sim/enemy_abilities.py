@@ -79,8 +79,12 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # `Detonates` and `CommandStrike` joined on 2026-11-24 with the Death skills
     # (issue #2885, the draft's N3 and N4), for the Greatsword's Gravebell; the
     # caster's minions explode, so no enemy ability uses either.
+    # `KillFervour` joined the same day with slice DS3 (the draft's N6) on
+    # Strike, Projectile, Movement and Debuff: extra Fervour for a kill. No
+    # enemy ability uses it.
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
-               "DisarmsUntilRecalled", "Detonates", "CommandStrike"),
+               "DisarmsUntilRecalled", "Detonates", "CommandStrike",
+               "KillFervour"),
     # A PROJECTILE MAY REPEAT since 2026-09-01. Butcher's Bill throws thirty
     # axes over ten seconds, which needs the Count, Duration and Interval a
     # Summon has always had. No enemy ability uses them on a projectile yet.
@@ -90,10 +94,15 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
                    "CommandStrike",
                    "TetherTargets", "TetherLength", "TetherDuration",
                    # N3, issue #2885: the Staff's Marrow Lance.
-                   "Detonates"),
+                   "Detonates",
+                   # N6, slice DS3: Restless Spirits and Hungering Soul.
+                   "KillFervour"),
     # `Interval` joined on 2026-09-02 with the Spear's Held Fast, which is
     # the first self buff that repeats. No enemy ability states it yet.
-    "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease"),
+    # `HoldsFervour` joined on 2026-11-24 with slice DS3 (the Death draft's N8,
+    # Cold Blood). No enemy ability uses it.
+    "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease",
+                 "HoldsFervour"),
     # `MaxTargets` JOINED ON 2026-09-01, and the engine had always read it: all
     # three movement modes that hit anything hand it straight to the targeting
     # search. The Spear's Nail Down impales "the first enemy you reach" where the
@@ -102,7 +111,7 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # `Detonates` joined on 2026-11-24 (issue #2885, N3): Barrow Leap, Open Grave
     # and Grave Return. No enemy ability uses it.
     "Movement": ("Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits", "Detonates"),
+                 "RearHits", "Detonates", "KillFervour"),
     # `Taunts` joined on 2026-11-24 with the Death skills (issue #2885, the
     # Crossbow draft's C3) on Summon and Deployable: what a row raises or places
     # taunts the enemies within the row's Radius of it. No enemy ability uses it.
@@ -122,8 +131,10 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     "Aura": ("Radius", "Duration", "Interval"),
     # `SpreadWhen` and `SpreadRadius` joined on 2026-09-02 with the
     # Wand's Hex of Cinders. No enemy ability states either yet.
+    # `KillFervour` joined on 2026-11-24 with slice DS3 (N6), for the Sword's
+    # Death Warrant. No enemy ability states it.
     "Debuff": ("Range", "Radius", "MaxTargets", "Duration",
-               "SpreadWhen", "SpreadRadius"),
+               "SpreadWhen", "SpreadRadius", "KillFervour"),
 }
 
 #: Riders any shape may carry, from the same section of the design document.

@@ -1347,6 +1347,43 @@ int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
 	return Told;
 }
 
+float UCataclysmSkillTemplate::FervourHeldBy(const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO POOL, NOTHING HELD: every creature and every minion. Issue #2885, N7.
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(
+								UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()));
+}
+
+bool UCataclysmSkillTemplate::ARunningBuffHoldsFervour(const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// THE SAME WALK `NoteKill` MAKES. Issue #2885, N8: Cold Blood's `HoldsFervour=1`.
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmSelfBuffSkill* Buff = Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance());
+		if (Buff && Buff->Params.bHoldsFervour)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
 										 const FString& Effect)
 {
@@ -1796,7 +1833,19 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 	if (Applied > 0 && Params.OnDeathRangeCm > 0.0f
 		&& Params.OnDeath.Equals(TEXT("SpreadDebuff"), ESearchCase::IgnoreCase))
 	{
-		UCataclysmCurseSpread::MarkOn(Target, Self, Params.OnDeathRangeCm);
+		UCataclysmCurseSpread* Mark = UCataclysmCurseSpread::MarkOn(Target, Self, Params.OnDeathRangeCm);
+
+		// AND WHAT A DEATH UNDER IT PAYS, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N6, slice DS3: the Sword's
+		// Death Warrant, "if it dies while the warrant holds, you gain 10 Fervour and the warrant passes to the nearest
+		// enemy within 10 meters". The curses this application laid are what "the warrant holds" asks about, so a
+		// creature whose warrant ran out or was cleansed pays nothing when it dies. `MarkOn` clears all three, so a
+		// curse that states none -- Anathema's, Quarry's -- leaves none behind.
+		if (Mark && Params.KillFervour > 0.0f)
+		{
+			Mark->KillFervour = Params.KillFervour;
+			Mark->SkillName = SkillName;
+			Mark->Curses = Laying;
+		}
 	}
 
 	return Applied;
@@ -2359,6 +2408,16 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		}
 
 		return 0.0f;
+	}
+
+	if (Params.ScalingSource.Equals(TEXT("Fervour"), ESearchCase::IgnoreCase))
+	{
+		// THE FERVOUR HELD AS THE BLOW LANDS. Issue #2885, the Death draft's N7, slice DS3: the Greataxe's Grim Swath,
+		// "200% weapon damage, 1% more for every 2 Fervour you hold, to at most 350%", written as `MoreDamagePer=0.5;
+		// ScalingSource=Fervour; MaxDamagePercent=350`. Every point held is a unit, so 100 held is 50% more. Read here,
+		// at the blow, after the use's own Fervour cost was paid (`CommitAndBegin`), which is "what you hold" when it
+		// lands; the draft's judgement that it reads before Soul Fuel spends is about a node not built.
+		return FervourHeldBy(Avatar());
 	}
 
 	// One of the sources nothing counts here -- Kill, Bounce, Pierced, Pinned --

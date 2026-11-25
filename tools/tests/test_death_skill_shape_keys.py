@@ -156,3 +156,74 @@ def test_a_summons_effect_that_nothing_lays_is_refused(params, damage):
 def test_an_effect_on_any_other_shape_is_not_this_checks_to_judge():
     """THE CONTROL: a Strike naming an effect and no damage of its own is the slot's figure and lays it with its swing."""
     gen.check_a_summon_effect_has_a_carrier({"Effect": "Cripple"}, "Strike", "", WHERE)
+
+
+# --------------------------------------------------------------------------
+# Slice DS3: N6 KillFervour, N7 ScalingSource=Fervour, N8 HoldsFervour
+
+
+@pytest.mark.parametrize("shape, text", [
+    # Grim Swath, Last Toll, Restless Spirits, Hungering Soul, Pale Rider and Death Warrant, word for word.
+    ("Strike", "Radius=4; Angle=160; MoreDamagePer=0.5; ScalingSource=Fervour; MaxDamagePercent=350; KillFervour=2"),
+    ("Strike", "Radius=12; Angle=360; ForcedMovement=Pull, Knockdown; ForcedMovementDuration=1.5; "
+               "Ailment=Necrosis; KillFervour=5"),
+    ("Projectile", "Range=12; Radius=1; Speed=1800; Count=6; Duration=2; Interval=0.33; TargetMode=Nearest; "
+                   "Ailment=Necrosis; KillFervour=1"),
+    ("Projectile", "Range=14; Radius=1; Speed=2600; Ailment=Necrosis; OnDeath=Leap; OnDeathRange=8; KillFervour=2"),
+    ("Movement", "Mode=Charge; Range=14; Duration=1.5; Radius=2.5; Immune=CrowdControl; Effect=Cripple; "
+                 "EffectMagnitude=50; EffectDuration=4; KillFervour=5"),
+    ("Debuff", "Range=15; Radius=1.5; MaxTargets=1; EffectDuration=10; Effect=Cripple; EffectMagnitude=30; "
+               "OnDeath=SpreadDebuff; OnDeathRange=10; KillFervour=10"),
+])
+def test_kill_fervour_is_accepted_on_the_shapes_whose_kills_are_their_own(shape, text):
+    assert float(parse(text, shape)["KillFervour"]) > 0.0
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Summon", "Count=1; Radius=3; Minions=Imp:1; FervourReserve=3; KillFervour=2"),
+    ("Deployable", "Count=1; Duration=5; Minions=BoltTurret:1; FervourReserve=5; KillFervour=2"),
+    ("SelfBuff", "Duration=6; KillFervour=2"),
+    ("Aura", "Radius=8; Duration=8; Interval=1; KillFervour=2"),
+])
+def test_kill_fervour_on_a_shape_whose_kills_are_something_elses_is_refused(shape, text):
+    """A summon's and a machine's kills are their minions', a buff and an aura pay for none: refused by name."""
+    assert "has no parameter 'KillFervour'" in refused(text, shape)
+
+
+def test_kill_fervour_below_nought_is_refused():
+    assert "below nought" in refused("Radius=3; Angle=90; KillFervour=-2", "Strike")
+
+
+def test_a_curse_paying_kill_fervour_without_marking_the_death_is_refused():
+    """A Support-slot curse strikes no blow of its own, so its Fervour is for a death it marks, which only
+    `OnDeath=SpreadDebuff` does."""
+    said = refused("Range=15; Radius=1.5; MaxTargets=1; EffectDuration=10; Effect=Cripple; KillFervour=10", "Debuff")
+    assert "OnDeath=SpreadDebuff" in said
+
+
+def test_a_curse_stating_kill_fervour_at_nought_beside_no_mark_passes():
+    """THE CONTROL for the refusal above: nought is the key switched off."""
+    assert parse("Range=15; Radius=1.5; MaxTargets=1; EffectDuration=10; Effect=Cripple; KillFervour=0", "Debuff")
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Strike", "Radius=4; Angle=160; MoreDamagePer=0.5; ScalingSource=Fervour; MaxDamagePercent=350; KillFervour=2"),
+    ("SelfBuff", "Duration=6; MoreDamagePer=0.25; ScalingSource=Fervour; HoldsFervour=1"),
+])
+def test_scaling_by_the_fervour_held_is_accepted_on_a_strike_and_a_self_buff(shape, text):
+    """Grim Swath's and Cold Blood's cells, word for word."""
+    assert parse(text, shape)["ScalingSource"] == "Fervour"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Projectile", "Range=14; Radius=1; Speed=2400; MoreDamagePer=1; ScalingSource=Fervour"),
+    ("Movement", "Mode=Leap; Range=10; Radius=3; MoreDamagePer=1; ScalingSource=Fervour"),
+    ("Aura", "Radius=8; Duration=8; Interval=1; MoreDamagePer=1; ScalingSource=Fervour"),
+])
+def test_scaling_by_the_fervour_held_on_a_shape_that_does_not_read_it_is_refused(shape, text):
+    assert "ScalingSource=Fervour" in refused(text, shape)
+
+
+def test_holding_fervour_is_a_self_buffs_alone():
+    assert parse("Duration=6; HoldsFervour=1", "SelfBuff")["HoldsFervour"] == "1"
+    assert "has no parameter 'HoldsFervour'" in refused("Radius=3; Angle=90; HoldsFervour=1", "Strike")

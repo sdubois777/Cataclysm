@@ -4,6 +4,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For whether a running buff holds Fervour from decay. Issue #2885, N8.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -481,6 +483,16 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 		return 0.0f;
 	}
 
+	// AND NOTHING DECAYS WHILE A BUFF THAT HOLDS FERVOUR RUNS. Issue #2885, the Death draft's N8, slice DS3: the Sword's
+	// Cold Blood, "while it lasts your Fervour does not decay" (`HoldsFervour=1`). Asked after the two cheap refusals
+	// above and before the search for bodies below: a walk over the character's own running abilities, which the
+	// search costs more than. THIS IS THE ONE DECAY BUILT; the Soul Collector's and the Shadow's, from the last kill,
+	// must ask `ARunningBuffHoldsFervour` too when they are built.
+	if (UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Character))
+	{
+		return 0.0f;
+	}
+
 	// THE RADIUS IS A STAT AND TWO NODES ADD TO IT. The starting node grants 4
 	// and `Ravager_keystone_d_kC` No Ground Given grants 4 more, so a character
 	// holding both is asking about 8 -- which is what that keystone's sentence
@@ -944,6 +956,40 @@ float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySyste
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
 	const float Change =
 		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath),
+					 0.0f, Resource->MaximumClassResourceAsked())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainStated(UAbilitySystemComponent* AbilitySystem, float Stated)
+{
+	if (!AbilitySystem || Stated <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	if (!Resource)
+	{
+		// No class resource set means no pool to fill, which is every enemy and every minion.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// CLAMPED BEFORE IT IS WRITTEN, AND SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES, the two rules every other
+	// gain in this file follows (ruled 2026-10-07 for the second). Issue #2885, N6.
+	const float Change =
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, Stated),
 					 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))

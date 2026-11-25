@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
+// For the ailment a throwing row states, laid on each new host. Issue #2885.
+#include "AbilitySystem/CataclysmAilments.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -47,6 +49,9 @@ namespace CataclysmBuriedWeaponLeap
 		FName SkillRow;
 		FString SkillName;
 		int32 Leaps = 0;
+		/** What each host left dead pays, and the ailment each new host is given. Issue #2885, N6. */
+		float KillFervour = 0.0f;
+		FString StatedAilment;
 	};
 
 	/** The skill's name for a log line, or "A buried" weapon's when it was buried by no skill. */
@@ -87,6 +92,12 @@ UCataclysmBuriedWeapon* UCataclysmBuriedWeapon::BuryIn(
 	Buried->Caster = Caster;
 	Buried->CastBy = InCastBy;
 	Buried->SkillRow = InSkillRow;
+
+	// AND NOTHING IT WOULD PAY OR LAY, until the caller says otherwise. Issue #2885, N6: a throw whose row states
+	// `KillFervour` or `Ailment` writes them back after this call, and a leap carries them on; a refresh by any other
+	// weapon -- a Harrower in a creature a Hungering Soul lodged in -- leaves a weapon that pays and lays nothing.
+	Buried->KillFervour = 0.0f;
+	Buried->StatedAilment.Reset();
 	return Buried;
 }
 
@@ -208,7 +219,17 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	Carried.SkillRow = Buried->SkillRow;
 	Carried.SkillName = Buried->SkillName;
 	Carried.Leaps = Buried->Leaps;
+	Carried.KillFervour = Buried->KillFervour;
+	Carried.StatedAilment = Buried->StatedAilment;
 	const FString Whose = WhoseWeapon(Carried.SkillName);
+
+	// THE HOST IT TEARS FREE OF IS A HOST IT LEAVES DEAD, WHOEVER KILLED IT. Issue #2885, the Death draft's N6, slice
+	// DS3: Hungering Soul, "every host it leaves dead gives you 2 Fervour". Paid before the leap, and whether or not a
+	// living enemy is in reach to leap to. ONLY WHILE THE THROWER IS HERE: a thrower gone has no pool to fill.
+	if (Carried.KillFervour > 0.0f && Carried.Caster.IsValid())
+	{
+		UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Carried.Caster.Get()), Carried.KillFervour);
+	}
 
 	AActor* From = Dying;
 	// WHERE THE WEAPON CAME INTO `From` FROM, once it has leapt: the side it is drawn in, if it stops there.
@@ -246,6 +267,8 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 				{
 					Rests->Leaps = Carried.Leaps;
 					Rests->SkillName = Carried.SkillName;
+					Rests->KillFervour = Carried.KillFervour;
+					Rests->StatedAilment = Carried.StatedAilment;
 					Rests->DrawIn(CameIntoFromWhere);
 				}
 			}
@@ -316,6 +339,27 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 											  /*SkillRowWithNoSkill=*/Carried.SkillRow);
 		}
 
+		// AND THE AILMENT THE THROWING ROW STATES, BY THE BURN'S OWN RULE ABOVE: on a blow that landed, carrying damage,
+		// on a host that lives. Issue #2885, slice DS3: Hungering Soul's soul "lodges in it, giving it Necrosis", in each
+		// host in turn. At magnitude one, naming the throwing skill's tags and row as the burn does, the skill object
+		// being long gone. Nothing for a weapon whose row states none, which is Harrower's.
+		if (!Carried.StatedAilment.IsEmpty() && Dealt > 0.0f && !Resolved.bEvaded && !bKilledIt)
+		{
+			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(Carried.StatedAilment))
+			{
+				UCataclysmAilments::Apply(Credited, NextHost, *Kind, /*Magnitude=*/1.0f, /*Skill=*/nullptr,
+					/*DamageType=*/NAME_None, /*Seconds=*/0.0f, /*SkillTagsWithNoSkill=*/&Carried.SkillTags,
+					/*SkillRowWithNoSkill=*/Carried.SkillRow);
+			}
+		}
+
+		// AND A HOST THIS LEAP'S OWN BLOW KILLED IS A HOST IT LEAVES DEAD TOO, paid now: its death was recorded inside
+		// the blow, before the weapon was in it, so nothing else pays for it. Issue #2885, N6.
+		if (bKilledIt && bThrowerIsHere && Carried.KillFervour > 0.0f)
+		{
+			UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Credited), Carried.KillFervour);
+		}
+
 		// AND THE FERVOUR THE LANDING EARNS WHOEVER THREW THE AXE. Issue #1515, the
 		// Ravager's starting node: "1 for each enemy your attacks hit". This blow
 		// never passes through `UCataclysmSkillTemplate::HitTargets`, so it pays
@@ -361,6 +405,8 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 			{
 				Moved->Leaps = Carried.Leaps;
 				Moved->SkillName = Carried.SkillName;
+				Moved->KillFervour = Carried.KillFervour;
+				Moved->StatedAilment = Carried.StatedAilment;
 				Moved->DrawIn(FromWhere);
 			}
 			break;

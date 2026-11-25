@@ -197,4 +197,23 @@ public:
 	 */
 	UPROPERTY()
 	FName SkillRow;
+
+	/**
+	 * The Fervour each host it leaves dead pays its thrower, or nought. Issue #2885, the Death draft's N6, slice DS3:
+	 * the Wand's Hungering Soul, "every host it leaves dead gives you 2 Fervour", `KillFervour=2` beside `OnDeath=Leap`.
+	 * `LeapFromDying` pays it for the host it tears free of, whoever killed it, and for each host its own leap's blow
+	 * kills. NOUGHT FOR EVERY WEAPON BUT ONE THAT STATES IT, Harrower's axe among them: `BuryIn` clears it, and the
+	 * throwing skill writes it back (`UCataclysmProjectileSkill::BuryInStruck`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Buried Weapon")
+	float KillFervour = 0.0f;
+
+	/**
+	 * The ailment the throwing row states, laid on each new host its leap's blow lands on, or empty. Issue #2885,
+	 * slice DS3, found while completing Hungering Soul: "it lodges in it, giving it Necrosis, and when its host dies it
+	 * tears free and flies into the nearest living enemy ... again and again", so each host it lodges in is given its
+	 * Necrosis, as `bBurns` sets each alight for Harrower. Cleared by `BuryIn` and written back as `KillFervour` is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Buried Weapon")
+	FString StatedAilment;
 };

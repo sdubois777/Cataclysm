@@ -29,6 +29,8 @@
 #include "AbilitySystem/CataclysmPinnedLine.h"
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the Fervour a self buff scaling by it follows. Issue #2885, N7.
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 // For what a rack's spawn-less throw resolved to, and the Fervour it earns.
 // Issue #1515. `CataclysmSkillEffects.h` only declares the result.
@@ -2134,6 +2136,11 @@ int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
 		// AND THE SKILL'S NAME, FOR THE LINES EACH LEAP WRITES, AND THE WEAPON DRAWN IN WHAT IT STRUCK, its blade
 		// toward the creature from where the use was cast. Issue #2872: "nothing shows the axe leaping".
 		Left->SkillName = SkillName;
+		// AND WHAT EACH HOST IT LEAVES DEAD PAYS, AND THE AILMENT EACH NEW HOST IS GIVEN, from this row. Issue #2885, the
+		// Death draft's N6, slice DS3: Hungering Soul's `KillFervour=2` and `Ailment=Necrosis`. Nought and empty for
+		// every row that states neither, Harrower's among them, as `BuryIn` left them.
+		Left->KillFervour = Params.KillFervour;
+		Left->StatedAilment = Params.Ailment;
 		Left->DrawIn(CastOrigin());
 		UE_LOG(LogCataclysm, Display,
 			TEXT("%s%s's weapon is buried in %s; when that one dies it leaps to the nearest living enemy within %.1f m%s."),
@@ -2395,6 +2402,15 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 
 	GrantIncrease();
 
+	// AND A BONUS SCALING BY THE FERVOUR HELD FOLLOWS IT FOR AS LONG AS THE BUFF RUNS. Issue #2885, the Death draft's
+	// N7, slice DS3: the Sword's Cold Blood, "your hits deal 1% more damage for every 4 Fervour you hold". "Hold" is
+	// now, so the bonus granted above is put back each time the pool crosses a whole point, unlike Burning Wrath's
+	// count, which its sentence fixes at the cast ("currently burning").
+	if (Params.ScalingSource.Equals(TEXT("Fervour"), ESearchCase::IgnoreCase))
+	{
+		WatchTheFervourHeld();
+	}
+
 	// GRANTED ONLY IF THE SKILL NAMES AN EFFECT, and neither designed self buff
 	// does: the design gives Burning Wrath and Martyr's Ember a duration and a
 	// magnitude but never names the buff, so there is no status in the Buffs
@@ -2476,6 +2492,10 @@ void UCataclysmSelfBuffSkill::EndAbility(
 	// buff can also end because the ability was cancelled, because the avatar
 	// died, or because the ability system was cleared, and an increase left
 	// behind by any of those would last until the character was destroyed.
+	//
+	// AND THE FERVOUR IS NO LONGER FOLLOWED, FIRST, for the same reason: a binding left on the pool would put the
+	// increase back after it was taken off. Issue #2885, N7.
+	StopWatchingTheFervourHeld();
 	RevokeIncrease();
 
 	// AND THE REPEAT STOPS FOR THE SAME REASON. A looping timer left running
@@ -2623,10 +2643,63 @@ int32 UCataclysmSelfBuffSkill::ScalingCount() const
 		return SecondsHeld;
 	}
 
+	// AND `Fervour` IS WHAT IS HELD NOW, IN WHOLE POINTS. Issue #2885, the Death draft's N7, slice DS3: the Sword's Cold
+	// Blood, `MoreDamagePer=0.25; ScalingSource=Fervour`, so 100 held is 25% more. Read afresh each time the bonus is
+	// put back, which `FervourChanged` does whenever the pool crosses a whole point.
+	if (Params.ScalingSource.Equals(TEXT("Fervour"), ESearchCase::IgnoreCase))
+	{
+		return FMath::FloorToInt(FervourHeldBy(Avatar()));
+	}
+
 	// One of the sources nothing counts. A buff naming one grants nothing, which
 	// is the safe answer: the alternative is a number taken from whatever
 	// happened to be to hand.
 	return 0;
+}
+
+void UCataclysmSelfBuffSkill::WatchTheFervourHeld()
+{
+	StopWatchingTheFervourHeld();
+
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Avatar());
+	if (!AbilitySystem || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO POOL TO FOLLOW, so the bonus granted at the cast, nought, stands.
+		return;
+	}
+
+	FervourChangedHandle = AbilitySystem->GetGameplayAttributeValueChangeDelegate(
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+		.AddUObject(this, &UCataclysmSelfBuffSkill::FervourChanged);
+	FervourWatched = AbilitySystem;
+}
+
+void UCataclysmSelfBuffSkill::StopWatchingTheFervourHeld()
+{
+	if (UAbilitySystemComponent* Watched = FervourWatched.Get())
+	{
+		if (FervourChangedHandle.IsValid())
+		{
+			Watched->GetGameplayAttributeValueChangeDelegate(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+				.Remove(FervourChangedHandle);
+		}
+	}
+	FervourChangedHandle.Reset();
+	FervourWatched.Reset();
+}
+
+void UCataclysmSelfBuffSkill::FervourChanged(const FOnAttributeChangeData& Change)
+{
+	// ONLY WHILE THE BUFF RUNS, AND ONLY ACROSS A WHOLE POINT: the count is whole points, so a fraction gained or spent
+	// inside one leaves the bonus where it is. The pool has already moved when this is heard, so `ScalingCount` reads
+	// the new figure.
+	if (!IsActive() || FMath::FloorToInt(Change.OldValue) == FMath::FloorToInt(Change.NewValue))
+	{
+		return;
+	}
+	RevokeIncrease();
+	GrantIncrease();
 }
 
 void UCataclysmSelfBuffSkill::SecondPassed()

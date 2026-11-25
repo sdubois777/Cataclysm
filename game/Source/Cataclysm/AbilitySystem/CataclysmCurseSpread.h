@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "GameplayTagContainer.h"
 #include "CataclysmCurseSpread.generated.h"
 
 /**
@@ -82,4 +83,23 @@ public:
 	/** Who is credited with whatever the spread applies. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Curse")
 	TWeakObjectPtr<AActor> Caster;
+
+	/**
+	 * The Fervour a death under this curse pays its caster, or nought. Issue #2885, the Death draft's N6, slice DS3: the
+	 * Sword's Death Warrant, "if it dies while the warrant holds, you gain 10 Fervour and the warrant passes to the
+	 * nearest enemy within 10 meters". `SpreadFromDying` pays it when the dying creature still carries one of `Curses`
+	 * laid by `Caster` -- "while the warrant holds" -- and the mark it leaves on the next holder carries it on, so each
+	 * holder in the chain is worth it. NOUGHT FOR EVERY CURSE THAT STATES NONE, Anathema's and Quarry's: `MarkOn`
+	 * clears it, and the skill that laid the curse writes it back only when its row states `KillFervour`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Curse")
+	float KillFervour = 0.0f;
+
+	/** The name of the skill whose curse this is, when it pays: one death pays one skill once. Issue #2885, N6. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Curse")
+	FString SkillName;
+
+	/** The curses that skill laid, which "while the warrant holds" asks about. Issue #2885, N6. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Curse")
+	TArray<FGameplayTag> Curses;
 };

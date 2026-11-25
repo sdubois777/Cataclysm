@@ -418,10 +418,22 @@ SHAPE_RIDERS = {
 #: CLOSED FOR THE SAME REASON THE PARAMETER LIST IS. A misspelled value that
 #: parsed would be a skill that runs and quietly does nothing, which is the
 #: failure `parse_shape_params` exists to prevent one level up.
+#:
+#: `Fervour` JOINED ON 2026-11-24, issue #2885 slice DS3: the Death draft's N7,
+#: the Fervour held when the blow lands or while the buff runs. The Greataxe's
+#: Grim Swath ("1% more for every 2 Fervour you hold") on a Strike, and the
+#: Sword's Cold Blood ("1% more damage for every 4 Fervour you hold") on a self
+#: buff; `check_death_skill_keys` refuses it on any other shape, where nothing
+#: reads it.
 SCALING_SOURCES = frozenset({
     "Kill", "Burning", "Second", "Meter", "HitTaken", "Consume", "Consumed",
-    "Bounce", "Pierced", "Pinned", "HealthMissing",
+    "Bounce", "Pierced", "Pinned", "HealthMissing", "Fervour",
 })
+
+#: The shapes that read `ScalingSource=Fervour`: a Strike's blow, through
+#: `UCataclysmSkillTemplate::ScalingUnits`, and a self buff's bonus, through
+#: `UCataclysmSelfBuffSkill::ScalingCount`. Issue #2885, N7.
+FERVOUR_SCALING_SHAPES = frozenset({"Strike", "SelfBuff"})
 FORCED_MOVEMENTS = frozenset({"Knockdown", "Launch", "Pull", "Drag", "Pin"})
 TERRAIN_KINDS = frozenset({"Pit", "Wall", "Fissure", "Thicket"})
 REQUIREMENTS = frozenset({"Burning", "Target", "Stationary", "RearHit"})
@@ -599,7 +611,12 @@ SHAPE_PARAMS = {
                # minion of the caster's inside the swing, and N4, `CommandStrike`,
                # orders everything else it commands onto the first enemy the
                # swing struck, as Compel orders them onto what its bolt hit.
-               "Detonates", "CommandStrike"},
+               "Detonates", "CommandStrike",
+               # SLICE DS3, 2026-11-24, issue #2885: N6, `KillFervour`, extra
+               # Fervour for each enemy the skill's own blow kills (Grim Swath,
+               # Last Toll). On the four shapes whose blows are their own, and
+               # `check_death_skill_keys` says what a Debuff's means.
+               "KillFervour"},
     # A PROJECTILE MAY NOW REPEAT. Butcher's Bill throws thirty axes over ten
     # seconds, which needs the same Count, Duration and Interval a Summon has
     # always had; before this it could only be written as prose. `TargetMode`
@@ -612,14 +629,22 @@ SHAPE_PARAMS = {
                    "TetherTargets", "TetherLength", "TetherDuration",
                    # N3, issue #2885, for the Staff's Marrow Lance: the
                    # caster's minions on the line it flew explode.
-                   "Detonates"},
+                   "Detonates",
+                   # N6, slice DS3: Restless Spirits' kills, and Hungering
+                   # Soul's hosts, whose buried soul carries it on.
+                   "KillFervour"},
     # `Interval` JOINED ON 2026-09-02 WITH THE SPEAR'S HELD FAST, whose
     # sentence has a per-second half: "any pinned enemy within 12 meters is
     # set alight again each second it is held". Until then a self buff was
     # the one lasting shape that could not repeat, so that half of the row
     # could not be written down at all. Strike, Projectile, Movement, Summon,
     # Deployable and Aura all already had it.
-    "SelfBuff": {"Duration", "Interval", "Radius", "RangeIncrease"},
+    #
+    # `HoldsFervour` JOINED ON 2026-11-24, issue #2885 slice DS3: the Death
+    # draft's N8, the Sword's Cold Blood, "while it lasts your Fervour does not
+    # decay". `UCataclysmFervour::DecayStep` asks whether a running buff holds it.
+    "SelfBuff": {"Duration", "Interval", "Radius", "RangeIncrease",
+                 "HoldsFervour"},
     # Inexorable walks for three seconds and Everywhere at Once flickers for
     # four, so a movement can now last and repeat. `RearHits` says every blow it
     # lands counts as struck from behind.
@@ -639,8 +664,11 @@ SHAPE_PARAMS = {
     # Grave and Grave Return explode the caster's minions where they arrive.
     # `check_death_skill_keys` refuses it on a flicker and a walked charge,
     # whose blows are struck elsewhere and do not detonate.
+    #
+    # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: Pale Rider's kills, and
+    # Danse Macabre's deaths during the dance.
     "Movement": {"Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits", "Detonates"},
+                 "RearHits", "Detonates", "KillFervour"},
     # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
     #
     # `Taunts` JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885: the
@@ -684,8 +712,12 @@ SHAPE_PARAMS = {
                    "Interval", "Minions", "HealthPercent", "FervourReserve",
                    "Taunts"},
     "Aura": {"Radius", "Duration", "Interval"},
+    # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: the Sword's Death
+    # Warrant, "if it dies while the warrant holds, you gain 10 Fervour". A
+    # curse pays for a death it marks, so `check_death_skill_keys` asks for
+    # `OnDeath=SpreadDebuff` beside it.
     "Debuff": {"Range", "Radius", "MaxTargets", "Duration",
-               "SpreadWhen", "SpreadRadius"},
+               "SpreadWhen", "SpreadRadius", "KillFervour"},
 }
 
 #: The movement modes, and what each one is.
@@ -814,6 +846,39 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
                 f"{where}: states Detonates on a {'walked charge' if walks else 'flicker'}. "
                 f"A move detonates where its single arrival strikes, and this "
                 f"one's blows are struck step by step, so nothing would explode")
+    check_kill_fervour_and_fervour_scaling(params, shape, where)
+
+
+def check_kill_fervour_and_fervour_scaling(params: dict[str, str], shape: str,
+                                           where: str) -> None:
+    """Refuse N6's `KillFervour` and N7's `ScalingSource=Fervour` where they would pay or scale nothing.
+
+    Issue #2885, slice DS3. `SHAPE_PARAMS` already keeps `KillFervour` to the
+    four shapes whose blows are their own; this refuses what is left. A
+    payment below nought takes Fervour for a kill, which no row means. A
+    Debuff deals no blow of its own in the Support slot, so its Fervour is for
+    a death it marks -- Death Warrant's "if it dies while the warrant holds" --
+    and the mark is `OnDeath=SpreadDebuff`; without it the curse pays nothing.
+    And `ScalingSource=Fervour` is read by a Strike's blow and a self buff's
+    bonus alone (`FERVOUR_SCALING_SHAPES`).
+    """
+    if "KillFervour" in params:
+        amount = float(params["KillFervour"])
+        if amount < 0.0:
+            raise DataError(
+                f"{where}: states KillFervour={params['KillFervour']}, below "
+                f"nought, which would take Fervour for a kill")
+        if amount > 0.0 and shape == "Debuff" and params.get("OnDeath") != "SpreadDebuff":
+            raise DataError(
+                f"{where}: a Debuff states KillFervour={params['KillFervour']} "
+                f"and not OnDeath=SpreadDebuff. A curse pays for a death it "
+                f"marks, and only OnDeath=SpreadDebuff marks one, so this would "
+                f"pay nothing")
+    if params.get("ScalingSource") == "Fervour" and shape not in FERVOUR_SCALING_SHAPES:
+        raise DataError(
+            f"{where}: a {shape} states ScalingSource=Fervour, which only a "
+            f"Strike's blow and a self buff's bonus read "
+            f"({sorted(FERVOUR_SCALING_SHAPES)}), so it would scale nothing")
 
 
 def check_a_summon_effect_has_a_carrier(params: dict[str, str], shape: str,

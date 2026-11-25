@@ -9,6 +9,9 @@
 class ACataclysmMinion;
 class ACataclysmPlantedWeapon;
 class ACataclysmProjectile;
+class UAbilitySystemComponent;
+// The pool's change a self buff scaling by `Fervour` follows. Issue #2885, N7.
+struct FOnAttributeChangeData;
 
 /**
  * The seven shared skill templates.
@@ -1196,8 +1199,30 @@ private:
 	 * `Burning` is the count taken at the cast; `Kill` is the running tally.
 	 * Every other source answers zero, so a buff naming one grants nothing
 	 * rather than a figure taken from the wrong thing.
+	 *
+	 * AND `Fervour`, SINCE ISSUE #2885 SLICE DS3, the Death draft's N7: the whole
+	 * points of Fervour held now, read again each time the pool moves across a
+	 * whole point (`FervourChanged`). The Sword's Cold Blood: "your hits deal 1%
+	 * more damage for every 4 Fervour you hold".
 	 */
 	int32 ScalingCount() const;
+
+	/**
+	 * Follow the Fervour held while a buff scaling by it runs: bind `FervourChanged` to the pool's change. Issue #2885,
+	 * N7. `StopWatchingTheFervourHeld` unbinds it, from `EndAbility`, however the buff ends.
+	 */
+	void WatchTheFervourHeld();
+	void StopWatchingTheFervourHeld();
+
+	/**
+	 * The pool moved while a buff scaling by `Fervour` runs: put the bonus back at what is held now, when a whole point
+	 * was crossed. Put back rather than adjusted, as `NoteKill` and `SecondPassed` put theirs back. Issue #2885, N7.
+	 */
+	void FervourChanged(const FOnAttributeChangeData& Change);
+
+	/** The binding `WatchTheFervourHeld` made, and the ability system it was made on. Empty while none is made. */
+	FDelegateHandle FervourChangedHandle;
+	TWeakObjectPtr<UAbilitySystemComponent> FervourWatched;
 
 
 	FTimerHandle FinishTimer;

@@ -6,8 +6,10 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -16,6 +18,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -392,6 +395,39 @@ namespace CataclysmDeathSkillsTest
 		ECataclysmAbilitySlot Slot;
 		const TCHAR* Name;
 	};
+
+	/** The Fervour anything with an ability system holds now; nought for anything without one. Slice DS3. */
+	float DeathSkillFervourOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System ? System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+					  : 0.0f;
+	}
+
+	/** Write anything's Fervour, by its base, which is how a test fills or empties a pool. Slice DS3. */
+	void DeathSkillSetFervour(const AActor* Actor, float Fervour)
+	{
+		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor))
+		{
+			System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Fervour);
+		}
+	}
+
+	/**
+	 * Kill a creature by the route the game takes, its health written to nought, which runs
+	 * `ACataclysmEnemyCharacter::HandleDeath` and so `UCataclysmSkillEffects::MarkDead`. Slice DS3: a death nobody's blow
+	 * dealt, as a burn or a rule deals one.
+	 */
+	void DeathSkillKillCreature(const FDeathSkillCreature& Creature)
+	{
+		Creature.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	}
+
+	/** Health a creature has lost from the 100000 `FDeathSkillCreature` gives it. Slice DS3. */
+	float DeathSkillHealthLost(const FDeathSkillCreature& Creature)
+	{
+		return 100000.0f - DeathSkillHealthOf(Creature.Actor);
+	}
 }
 
 // EVERY TEST OPENS THE NAMESPACE INSIDE ITS OWN BODY, because this module is built as a unity blob and a `using
@@ -2359,6 +2395,433 @@ bool FCataclysmDeathSkillsBoneChoirTest::RunTest(const FString&)
 	TestTrue(TEXT("a mage's blow Crippled the enemy 7 m off"), Far.AbilitySystem->HasMatchingGameplayTag(Cripple));
 	TestEqual(TEXT("at 20"), UCataclysmSkillEffects::StatedStrengthOn(Far.Actor, Cripple), 20.0f, DeathSkillAllowance);
 	TestEqual(TEXT("for 2 seconds"), DeathSkillSecondsLeft(Far.Actor, Cripple), 2.0f, DeathSkillAllowance);
+	return true;
+}
+
+// ==========================================================================
+// Slice DS3, change A. N6: Fervour paid for a kill. N7: scaling by the Fervour held. N8: a buff that holds Fervour from
+// decay.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsKillFervourByTheBlowTest,
+	"Cataclysm.DeathSkills.AStrikeStatingKillFervourPaysItForEachEnemyItsBlowKillsAndNothingForOneLeftStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N6 by the blow (`UCataclysmKillFervour::PayForTheKillingBlow`, from `UCataclysmSkillEffects::MarkDead`): a ring swing
+ * stating `KillFervour=2` reaches three creatures 2 m off, kills the two of 1 health and leaves the one of 100000
+ * standing, and its caster, at nought Fervour, then holds 4: 2 for each kill and nothing for the one left standing. THE
+ * CONTROL, 100 m along +Y: the same swing stating no `KillFervour` kills a creature of 1 health and pays nothing.
+ */
+bool FCataclysmDeathSkillsKillFervourByTheBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	FDeathSkillCreature FirstWeak(World, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature SecondWeak(World, FVector(-2.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Sturdy(World, FVector(0.0f, 2.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	FirstWeak.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	SecondWeak.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	DeathSkillSetFervour(Caster.Actor, 0.0f);
+	UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=360; KillFervour=2"),
+		TEXT("A paying swing"));
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Swing)
+		|| !TestEqual(TEXT("set-up: the caster holds no Fervour"), DeathSkillFervourOf(Caster.Actor), 0.0f,
+					  DeathSkillAllowance))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the swing reaches all three"), Swing->SwingOnce(), 3);
+	TestTrue(TEXT("the first creature of 1 health died"), UCataclysmSkillEffects::IsDead(FirstWeak.Actor));
+	TestTrue(TEXT("and the second"), UCataclysmSkillEffects::IsDead(SecondWeak.Actor));
+	TestFalse(TEXT("the creature of 100000 stands"), UCataclysmSkillEffects::IsDead(Sturdy.Actor));
+	TestTrue(TEXT("though it was struck"), DeathSkillHealthLost(Sturdy) > 0.0f);
+	TestEqual(TEXT("two kills at 2 each: the caster holds 4, and nothing for the one left standing"),
+			  DeathSkillFervourOf(Caster.Actor), 4.0f, DeathSkillAllowance);
+
+	// THE CONTROL: the same swing stating no KillFervour.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature PlainWeak(World, FVector(2.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+								  ECataclysmTeam::Monsters);
+	PlainWeak.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	DeathSkillSetFervour(Plain.Actor, 0.0f);
+	UCataclysmStrikeSkill* PlainSwing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=360"),
+		TEXT("A swing that pays nothing"));
+	if (!TestNotNull(TEXT("set-up: the control swing is granted"), PlainSwing))
+	{
+		return false;
+	}
+	PlainSwing->SwingOnce();
+	TestTrue(TEXT("control: its creature of 1 health died"), UCataclysmSkillEffects::IsDead(PlainWeak.Actor));
+	TestEqual(TEXT("control: and its caster holds no Fervour for it"), DeathSkillFervourOf(Plain.Actor), 0.0f,
+			  DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsKillFervourUnderACurseTest,
+	"Cataclysm.DeathSkills.ADeathWhileAPayingCurseHoldsPaysItsCasterAndTheCursePassedOnPaysAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N6 through a curse's mark (`UCataclysmCurseSpread::SpreadFromDying`): a curse stating `Effect=Cripple; OnDeath=
+ * SpreadDebuff; OnDeathRange=10; KillFervour=10` -- Death Warrant's cell, cast from the Support slot, whose curse strikes
+ * no blow -- is laid on the nearest creature, 5 m off. Its death pays the caster 10 and passes the Cripple to the
+ * creature 3 m from it, whose own death pays 10 more: 20. THE CONTROL, 100 m along +Y: a creature warranted the same way
+ * whose Cripple is cleansed before it dies -- the warrant no longer holds -- pays nothing.
+ */
+bool FCataclysmDeathSkillsKillFervourUnderACurseTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestTrue(TEXT("set-up: the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+	const TCHAR* const Warrant = TEXT("Range=15; Radius=1.5; MaxTargets=1; EffectDuration=10; Effect=Cripple; "
+									  "EffectMagnitude=30; OnDeath=SpreadDebuff; OnDeathRange=10; KillFervour=10");
+
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	FDeathSkillCreature Marked(World, FVector(5.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Next(World, FVector(5.0f * DeathSkillMetre, 3.0f * DeathSkillMetre, 0.0f),
+							 ECataclysmTeam::Monsters);
+	DeathSkillSetFervour(Caster.Actor, 0.0f);
+	UCataclysmDebuffSkill* Curse = GrantDeathSkill<UCataclysmDebuffSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Support, Warrant, TEXT("A paying warrant"));
+	if (!TestNotNull(TEXT("set-up: the curse is granted"), Curse)
+		|| !TestTrue(TEXT("the warrant is signed"), ActivateDeathSkill(Caster.AbilitySystem, Curse))
+		|| !TestTrue(TEXT("the nearest creature, 5 m off, is warranted"),
+					 Marked.AbilitySystem->HasMatchingGameplayTag(Cripple))
+		|| !TestFalse(TEXT("and the one 3 m beyond it is not yet: the row takes one"),
+					  Next.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+
+	DeathSkillKillCreature(Marked);
+	if (!TestTrue(TEXT("set-up: the warranted creature died"), UCataclysmSkillEffects::IsDead(Marked.Actor)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its death under the warrant paid the caster 10"), DeathSkillFervourOf(Caster.Actor), 10.0f,
+			  DeathSkillAllowance);
+	TestTrue(TEXT("and the warrant passed to the creature 3 m from it"), Next.AbilitySystem->HasMatchingGameplayTag(Cripple));
+
+	DeathSkillKillCreature(Next);
+	TestTrue(TEXT("set-up: that creature died too"), UCataclysmSkillEffects::IsDead(Next.Actor));
+	TestEqual(TEXT("and its death under the passed warrant paid 10 more"), DeathSkillFervourOf(Caster.Actor), 20.0f,
+			  DeathSkillAllowance);
+
+	// THE CONTROL: a warrant lifted before the death.
+	FDeathSkillFighter Lifter(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Lifted(World, FVector(5.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	DeathSkillSetFervour(Lifter.Actor, 0.0f);
+	UCataclysmDebuffSkill* LiftedCurse = GrantDeathSkill<UCataclysmDebuffSkill>(
+		Lifter.AbilitySystem, Lifter.Actor, ECataclysmAbilitySlot::Support, Warrant, TEXT("A warrant lifted"));
+	if (!TestNotNull(TEXT("set-up: the control curse is granted"), LiftedCurse)
+		|| !TestTrue(TEXT("set-up: the control warrant is signed"), ActivateDeathSkill(Lifter.AbilitySystem, LiftedCurse))
+		|| !TestTrue(TEXT("set-up: on the control creature"), Lifted.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	Lifted.AbilitySystem->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(Cripple));
+	if (!TestFalse(TEXT("set-up: its Cripple is cleansed"), Lifted.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	DeathSkillKillCreature(Lifted);
+	TestTrue(TEXT("set-up: the control creature died"), UCataclysmSkillEffects::IsDead(Lifted.Actor));
+	TestEqual(TEXT("control: a death after the warrant was lifted pays nothing"), DeathSkillFervourOf(Lifter.Actor),
+			  0.0f, DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsKillFervourForEachHostTest,
+	"Cataclysm.DeathSkills.ASoulStatingKillFervourPaysForEachHostItLeavesDeadAndGivesEachNewHostItsAilment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N6 through a buried weapon (`UCataclysmBuriedWeapon::LeapFromDying`), and the stated ailment its leap lays: a shot
+ * stating `Ailment=Necrosis; OnDeath=Leap; OnDeathRange=8; KillFervour=2` -- Hungering Soul's cell -- lodges in the
+ * creature 5 m along +X. That host's death pays 2, and the soul leaps into the creature 4 m from it, striking it and
+ * giving it Necrosis; that one's death pays 2 more, 4 in all. THE CONTROL, 100 m along +Y: the same shot stating neither
+ * `KillFervour` nor `Ailment`, Harrower's shape, pays nothing for its host's death, and its leap strikes the next
+ * creature without giving it Necrosis.
+ */
+bool FCataclysmDeathSkillsKillFervourForEachHostTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Necrosis = DeathSkillTagNamed(TEXT("Keyword.DoT.Necrosis"));
+	if (!TestTrue(TEXT("set-up: the vocabulary has Necrosis's tag"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	FDeathSkillCreature Host(World, FVector(5.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Next(World, FVector(5.0f * DeathSkillMetre, 4.0f * DeathSkillMetre, 0.0f),
+							 ECataclysmTeam::Monsters);
+	DeathSkillSetFervour(Caster.Actor, 0.0f);
+	UCataclysmProjectileSkill* Soul = GrantDeathSkill<UCataclysmProjectileSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Heavy,
+		TEXT("Range=14; Radius=1; Speed=2600; Ailment=Necrosis; OnDeath=Leap; OnDeathRange=8; KillFervour=2"),
+		TEXT("A hungering shot"));
+	if (!TestNotNull(TEXT("set-up: the shot is granted"), Soul)
+		|| !TestTrue(TEXT("the shot is loosed"), ActivateDeathSkill(Caster.AbilitySystem, Soul)))
+	{
+		return false;
+	}
+	DeathSkillFlyToTheEnd(Soul->InFlight.Get());
+
+	const UCataclysmBuriedWeapon* Lodged = Host.Actor->FindComponentByClass<UCataclysmBuriedWeapon>();
+	if (!TestNotNull(TEXT("the soul lodged in the creature 5 m along"), Lodged)
+		|| !TestEqual(TEXT("carrying the row's 2 for each host it leaves dead"), Lodged->KillFervour, 2.0f,
+					  DeathSkillAllowance)
+		|| !TestEqual(TEXT("and its ailment"), Lodged->StatedAilment, FString(TEXT("Necrosis"))))
+	{
+		return false;
+	}
+	TestFalse(TEXT("set-up: the creature 4 m from it carries no Necrosis yet"),
+			  Next.AbilitySystem->HasMatchingGameplayTag(Necrosis));
+	TestEqual(TEXT("set-up: nothing is paid while the host lives"), DeathSkillFervourOf(Caster.Actor), 0.0f,
+			  DeathSkillAllowance);
+
+	DeathSkillKillCreature(Host);
+	TestTrue(TEXT("set-up: the host died"), UCataclysmSkillEffects::IsDead(Host.Actor));
+	TestEqual(TEXT("the host it left dead paid 2"), DeathSkillFervourOf(Caster.Actor), 2.0f, DeathSkillAllowance);
+	TestTrue(TEXT("the soul struck the creature 4 m from it"), DeathSkillHealthLost(Next) > 0.0f);
+	TestTrue(TEXT("and gave it Necrosis"), Next.AbilitySystem->HasMatchingGameplayTag(Necrosis));
+	TestNotNull(TEXT("and lodged in it"), Next.Actor->FindComponentByClass<UCataclysmBuriedWeapon>());
+
+	DeathSkillKillCreature(Next);
+	TestTrue(TEXT("set-up: the second host died"), UCataclysmSkillEffects::IsDead(Next.Actor));
+	TestEqual(TEXT("and paid 2 more: 4 in all"), DeathSkillFervourOf(Caster.Actor), 4.0f, DeathSkillAllowance);
+
+	// THE CONTROL: Harrower's shape, which states neither.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature PlainHost(World, FVector(5.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+								  ECataclysmTeam::Monsters);
+	FDeathSkillCreature PlainNext(World, FVector(5.0f * DeathSkillMetre, 104.0f * DeathSkillMetre, 0.0f),
+								  ECataclysmTeam::Monsters);
+	DeathSkillSetFervour(Plain.Actor, 0.0f);
+	UCataclysmProjectileSkill* PlainShot = GrantDeathSkill<UCataclysmProjectileSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Heavy,
+		TEXT("Range=14; Radius=1; Speed=2600; OnDeath=Leap; OnDeathRange=8"), TEXT("A plain leaping shot"));
+	if (!TestNotNull(TEXT("set-up: the control shot is granted"), PlainShot)
+		|| !TestTrue(TEXT("set-up: the control shot is loosed"), ActivateDeathSkill(Plain.AbilitySystem, PlainShot)))
+	{
+		return false;
+	}
+	DeathSkillFlyToTheEnd(PlainShot->InFlight.Get());
+	if (!TestNotNull(TEXT("set-up: the control weapon lodged"),
+					 PlainHost.Actor->FindComponentByClass<UCataclysmBuriedWeapon>()))
+	{
+		return false;
+	}
+	DeathSkillKillCreature(PlainHost);
+	TestEqual(TEXT("control: its host's death pays nothing"), DeathSkillFervourOf(Plain.Actor), 0.0f,
+			  DeathSkillAllowance);
+	TestTrue(TEXT("control: its leap struck the next creature"), DeathSkillHealthLost(PlainNext) > 0.0f);
+	TestFalse(TEXT("control: without giving it Necrosis"), PlainNext.AbilitySystem->HasMatchingGameplayTag(Necrosis));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsStrikeScalesByFervourTest,
+	"Cataclysm.DeathSkills.AStrikeScalingByFervourDealsMoreForEachPointHeldUpToItsCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N7 on a strike (`UCataclysmSkillTemplate::ScalingUnits`): a ring swing of 200% stating `MoreDamagePer=0.5;
+ * ScalingSource=Fervour; MaxDamagePercent=320` -- Grim Swath's rate, under a ceiling low enough to reach -- strikes a
+ * creature half again as hard at 100 Fervour as at none (300% against 200%), and at 150 Fervour for its 320% ceiling,
+ * where its rate alone would make 350%. THE CONTROL: the same swing stating no scaling, at 100 Fervour, strikes as hard
+ * as the scaling one at none. Read as ratios of the health each swing took, so no figure of the damage pipeline beyond
+ * the skill's own percent is assumed; each swing is a fresh caster and creature, 100 m apart.
+ */
+bool FCataclysmDeathSkillsStrikeScalesByFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const TCHAR* const Scaling = TEXT("Radius=3; Angle=360; MoreDamagePer=0.5; ScalingSource=Fervour; MaxDamagePercent=320");
+	const auto LostAt = [World](float Fervour, const TCHAR* Cell, float AcrossMetres) -> float
+	{
+		FDeathSkillFighter Swinger(World, FVector(0.0f, AcrossMetres * DeathSkillMetre, 0.0f));
+		FDeathSkillCreature Struck(World, FVector(2.0f * DeathSkillMetre, AcrossMetres * DeathSkillMetre, 0.0f),
+								   ECataclysmTeam::Monsters);
+		DeathSkillSetFervour(Swinger.Actor, Fervour);
+		UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+			Swinger.AbilitySystem, Swinger.Actor, ECataclysmAbilitySlot::Heavy, Cell, TEXT("A swing scaling by Fervour"));
+		if (!Swing)
+		{
+			return -1.0f;
+		}
+		Swing->DamagePercentOverride = 200.0f;
+		Swing->SwingOnce();
+		return DeathSkillHealthLost(Struck);
+	};
+
+	const float AtNone = LostAt(0.0f, Scaling, 0.0f);
+	if (!TestTrue(TEXT("set-up: the swing at no Fervour struck"), AtNone > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 100 Fervour it strikes half again as hard: 300% against 200%"),
+			  LostAt(100.0f, Scaling, 100.0f) / AtNone, 1.5f, DeathSkillAllowance);
+	TestEqual(TEXT("at 150 Fervour it strikes for its ceiling, 320% against 200%, not the 350% its rate makes"),
+			  LostAt(150.0f, Scaling, 200.0f) / AtNone, 1.6f, DeathSkillAllowance);
+	TestEqual(TEXT("control: the same swing stating no scaling, at 100 Fervour, strikes as the scaling one at none"),
+			  LostAt(100.0f, TEXT("Radius=3; Angle=360"), 300.0f) / AtNone, 1.0f, DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBuffScalesByFervourTest,
+	"Cataclysm.DeathSkills.ASelfBuffScalingByFervourGrantsMoreDamageForWhatIsHeldAndFollowsItWhileItRuns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N7 on a self buff (`UCataclysmSelfBuffSkill::ScalingCount`, `FervourChanged`): a buff stating `Duration=6;
+ * MoreDamagePer=0.25; ScalingSource=Fervour` -- Cold Blood's rate -- goes up at 100 Fervour granting 25% more damage and
+ * follows the pool while it runs: at 40, 10%. Cancelled, it grants nothing, and the pool rising to 80 afterwards gives it
+ * nothing back. THE CONTROL: the same buff scaling by `Burning`, at 100 Fervour with nothing alight, grants nothing.
+ */
+bool FCataclysmDeathSkillsBuffScalesByFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	DeathSkillSetFervour(Holder.Actor, 100.0f);
+	UCataclysmSelfBuffSkill* Blood = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=6; MoreDamagePer=0.25; ScalingSource=Fervour"), TEXT("A buff scaling by Fervour"));
+	if (!TestNotNull(TEXT("set-up: the buff is granted"), Blood)
+		|| !TestTrue(TEXT("the buff goes up"), ActivateDeathSkill(Holder.AbilitySystem, Blood)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 100 Fervour it grants 25% more damage"), Blood->GrantedIncrease, 25.0f, DeathSkillAllowance);
+
+	DeathSkillSetFervour(Holder.Actor, 40.0f);
+	TestEqual(TEXT("and follows the pool down to 40: 10%"), Blood->GrantedIncrease, 10.0f, DeathSkillAllowance);
+
+	Holder.AbilitySystem->CancelAbilityHandle(Blood->GetCurrentAbilitySpecHandle());
+	TestFalse(TEXT("set-up: the buff is cancelled"), Blood->IsActive());
+	TestEqual(TEXT("cancelled, it grants nothing"), Blood->GrantedIncrease, 0.0f, DeathSkillAllowance);
+	DeathSkillSetFervour(Holder.Actor, 80.0f);
+	TestEqual(TEXT("and the pool rising afterwards gives it nothing back"), Blood->GrantedIncrease, 0.0f,
+			  DeathSkillAllowance);
+
+	// THE CONTROL: the same rate counting burning enemies, of which there are none.
+	FDeathSkillFighter Other(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSetFervour(Other.Actor, 100.0f);
+	UCataclysmSelfBuffSkill* Burning = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Other.AbilitySystem, Other.Actor, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=6; Radius=15; MoreDamagePer=0.25; ScalingSource=Burning"), TEXT("A buff counting fires"));
+	if (!TestNotNull(TEXT("set-up: the control buff is granted"), Burning)
+		|| !TestTrue(TEXT("set-up: the control buff goes up"), ActivateDeathSkill(Other.AbilitySystem, Burning)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: counting fires, at 100 Fervour and nothing alight, it grants nothing"),
+			  Burning->GrantedIncrease, 0.0f, DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBuffHoldsFervourTest,
+	"Cataclysm.DeathSkills.ASelfBuffThatHoldsFervourStopsItsDecayAndTheDecayReturnsWhenItEnds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N8 (`UCataclysmFervour::DecayStep`, `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`): a character given the
+ * Ravager's decay -- 5 a second, with nothing hostile within its 4 m -- loses 5 of its 50 Fervour in a second's step,
+ * which is THE CONTROL that the decay is real; with a buff stating `Duration=6; HoldsFervour=1` running, the next step
+ * takes nothing; and once that buff is cancelled, the step after takes 5 again. The character is a creature on the
+ * players' side, since the decay asks a character and a bare actor is not one.
+ */
+bool FCataclysmDeathSkillsBuffHoldsFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature Holder(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	Holder.Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	Holder.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	DeathSkillSetFervour(Holder.Actor, 50.0f);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.FindOrAdd(FName(UCataclysmFervour::DecayPerSecondStat)).Base = 5.0f;
+	Stats.FindOrAdd(FName(UCataclysmFervour::DecayGraceMetresStat)).Base = 4.0f;
+	Holder.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	UCataclysmFervour::DecayStep(Holder.Actor, 1.0f);
+	if (!TestEqual(TEXT("control: out of contact, a second's step takes 5 of the 50"), DeathSkillFervourOf(Holder.Actor),
+				   45.0f, DeathSkillAllowance))
+	{
+		return false;
+	}
+
+	UCataclysmSelfBuffSkill* Holding = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Support, TEXT("Duration=6; HoldsFervour=1"),
+		TEXT("A buff that holds Fervour"));
+	if (!TestNotNull(TEXT("set-up: the buff is granted"), Holding)
+		|| !TestTrue(TEXT("the buff goes up"), ActivateDeathSkill(Holder.AbilitySystem, Holding)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a running buff holds the Fervour"), UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Holder.Actor));
+	UCataclysmFervour::DecayStep(Holder.Actor, 1.0f);
+	TestEqual(TEXT("while it runs, a second's step takes nothing"), DeathSkillFervourOf(Holder.Actor), 45.0f,
+			  DeathSkillAllowance);
+
+	Holder.AbilitySystem->CancelAbilityHandle(Holding->GetCurrentAbilitySpecHandle());
+	TestFalse(TEXT("cancelled, it holds nothing"), UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Holder.Actor));
+	UCataclysmFervour::DecayStep(Holder.Actor, 1.0f);
+	TestEqual(TEXT("and the next step takes 5 again"), DeathSkillFervourOf(Holder.Actor), 40.0f, DeathSkillAllowance);
 	return true;
 }
 

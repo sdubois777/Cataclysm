@@ -753,6 +753,23 @@ public:
 	static int32 NoteKill(AActor* Killer);
 
 	/**
+	 * The Fervour this character holds now: its class resource pool's current value, or nought for a character with no
+	 * pool. Issue #2885, the Death draft's N7, slice DS3: what `ScalingSource=Fervour` counts, for a Strike's blow
+	 * (`ScalingUnits`, the Greataxe's Grim Swath) and a self buff's bonus (`UCataclysmSelfBuffSkill::ScalingCount`, the
+	 * Sword's Cold Blood). What is held, not the pool's maximum: a reservation lowers what may be held, and a Fervour
+	 * cost paid before the blow has already left.
+	 */
+	static float FervourHeldBy(const AActor* Who);
+
+	/**
+	 * Whether a self buff running on this character holds its Fervour from decaying: one stating `HoldsFervour=1`.
+	 * Issue #2885, the Death draft's N8, slice DS3, the Sword's Cold Blood. Asked by `UCataclysmFervour::DecayStep`.
+	 * ASKED OF THE RUNNING ABILITIES RATHER THAN HELD AS STATE, as `NoteKill` above asks them: a buff that lasts is an
+	 * active ability for as long as it lasts, so nothing is left behind when it ends, is cancelled, or its owner dies.
+	 */
+	static bool ARunningBuffHoldsFervour(const AActor* Who);
+
+	/**
 	 * How much further a self buff this character is holding makes its blows
 	 * reach, as a percentage.
 	 *

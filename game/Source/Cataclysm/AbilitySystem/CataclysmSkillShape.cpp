@@ -537,6 +537,15 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.OnDeathRangeCm = Number * ToCm;
 		}
+		// The Death draft's N6 and N8, issue #2885 slice DS3: Fervour paid for a kill, and Fervour held from decay.
+		else if (Key.Equals(TEXT("KillFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.KillFervour = Number;
+		}
+		else if (Key.Equals(TEXT("HoldsFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.bHoldsFervour = Number != 0.0f;
+		}
 		// --- Projectile extras ------------------------------------------
 		else if (Key.Equals(TEXT("Bounces"), ESearchCase::IgnoreCase))
 		{

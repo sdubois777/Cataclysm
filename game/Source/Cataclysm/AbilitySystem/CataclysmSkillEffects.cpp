@@ -22,6 +22,8 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCurseSpread.h"
+// For the Fervour a skill's killing blow pays. Issue #2885, N6.
+#include "AbilitySystem/CataclysmKillFervour.h"
 // For a line of creatures run through by one spear, which comes apart when any
 // one of them dies. The Spear's Skewer is the only thing that binds one.
 #include "AbilitySystem/CataclysmPinnedLine.h"
@@ -4656,6 +4658,13 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 		return false;
 	}
 	BeingMarked.Add(Actor);
+
+	// THE SKILL WHOSE BLOW KILLED IT PAYS ITS ROW'S `KillFervour`, FIRST. Issue #2885, the Death draft's N6, slice DS3:
+	// Grim Swath, Last Toll, Pale Rider and Restless Spirits, "every enemy it kills gives you 5 Fervour". Here, the one
+	// place every death is recorded, and BEFORE THE HOOKS BELOW, so a mark of the same skill's that one of them pays
+	// for -- a warrant still holding, a soul still buried -- is still on the dying creature to be asked about, and one
+	// death pays one skill once. Inert for every death but one a stating skill's blow dealt: a last-blow lookup.
+	UCataclysmKillFervour::PayForTheKillingBlow(Actor);
 
 	// A CURSE THAT PASSES ON DOES SO NOW, BEFORE THE DEATH IS RECORDED. The
 	// Wand's Anathema: "anything that dies while damned passes the curse to the
