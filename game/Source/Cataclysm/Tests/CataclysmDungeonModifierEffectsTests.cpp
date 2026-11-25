@@ -63417,16 +63417,16 @@ bool FCataclysmCorruptedStalkerRingTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
-	// TYPED, so a moved constant fails here: 0.06 times 0.10, 0.12 and 0.07 over 0.05, since issue #2865 lowered the
-	// ring figures (0.11, 0.13 and 0.10 until then, giving 0.132, 0.156 and 0.12).
-	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.06"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.06f, 0.0001f);
-	TestEqual(TEXT("a Bulwark's at tier 1 is 0.12"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.12f, 0.0001f);
-	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.144"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.144f, 0.0001f);
-	TestEqual(TEXT("the Pillar's at tier 1 is 0.084"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.084f, 0.0001f);
+	// TYPED, so a moved constant fails here: 0.05 times 0.10, 0.12 and 0.07 over 0.05, since the re-fit of 2026-11-25
+	// (0.06 and so 0.12, 0.144 and 0.084 before it; 0.132, 0.156 and 0.12 until issue #2865 lowered the ring figures).
+	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.05"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.05f, 0.0001f);
+	TestEqual(TEXT("a Bulwark's at tier 1 is 0.10"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.10f, 0.0001f);
+	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.12"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.12f, 0.0001f);
+	TestEqual(TEXT("the Pillar's at tier 1 is 0.07"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.07f, 0.0001f);
 	for (int32 Tier = 2; Tier <= 8; ++Tier)
 	{
 		TestEqual(FString::Printf(TEXT("tier %d: a Sanctuary's is an Outpost's"), Tier),
@@ -64576,8 +64576,11 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 	// (was 945.6, +4.8%) to 7122.1 at tier 8 (was 6902.3, +3.2%). By the coordinating session's ruling the multiplier
 	// is kept and only these figures follow the build; the Stalker's tables are fitted again in the affix ranges and
 	// rebalance bundle (issues #2883 and #2884), which measures the new game first.
-	constexpr float FittedBuiltHealth[8] = {990.9f, 1553.3f, 2231.9f, 3044.2f, 4086.0f, 5492.8f, 6309.4f, 7122.1f};
-	constexpr float FittedBlow[8] = {348.0f, 468.0f, 634.0f, 867.0f, 1195.0f, 1661.0f, 1874.0f, 2101.0f};
+	//
+	// AND THEY WERE, ON 2026-11-25: window ar-w1 measured these figures under the whole-number affix ranges and the
+	// enemy rebalance, and the two tables in CataclysmDungeonModifierEffects.cpp are fitted to them.
+	constexpr float FittedBuiltHealth[8] = {1684.8f, 2961.9f, 4725.7f, 6866.4f, 9840.8f, 13982.5f, 16460.1f, 19068.6f};
+	constexpr float FittedBlow[8] = {366.7f, 505.2f, 733.7f, 1038.8f, 1433.3f, 2119.9f, 2354.6f, 2658.6f};
 	for (int32 Tier = 1; Tier <= 8; ++Tier)
 	{
 		ACataclysmCorruptedStalkerCharacter* Stalker =
