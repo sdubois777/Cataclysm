@@ -617,8 +617,8 @@ design document's Hell on Earth section.
 - **THE MEASUREMENTS WERE CALLED PROVISIONAL** because the gear drop rarity fix (issue #2853) was not in. It merged
   before the rebuild, and it cannot move them: a campaign with the Rifts on, run on 2026-11-25 for two seeds that face
   Demonic, loads none of `sim/cataclysm_sim/player_power.py`, `loot.py` or `affixes.py`, the model files #2853
-  changed, as the ring fit loads none (the #2865 entry). The coordinating session ruled the ring figures no longer
-  provisional on that ground; whether these are is its call.
+  changed, as the ring fit loads none (the #2865 entry). **The coordinating session ruled on 2026-11-25 that they are
+  no longer provisional**, for the same reason as the ring figures: they stand as measured, as play-test points.
 - **AS FIRST RULED, THE RIFTS MADE TIER 1 WITH NO EMPIRE TREE NEARLY UNWINNABLE**: the win rate fell from 44.1% to
   3.7% and the boss dungeon opened in 8.3% of campaigns instead of 99.2%, because a Rift as deep as any Quest dungeon
   takes 20 to 50 days to seal and sends a dungeon every 5 of them. The owner then made a Rift four floors, with eight
@@ -881,7 +881,8 @@ base and every count below is taken again from it.
   predicted 881: 874 + 3 for B1's `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` (its twin,
   `AHeavenlyCoreDestroyedStaysDestroyedAfterALoad`, wrote 3 in w1) + 2 for each of B2's two death-cost tests (each dies
   once, as `ADeathThatFellsItsCityKeepsWhatEndingTheWalkComputed` does, which wrote 2). The count is printed against
-  this and does not stop the window; a save left behind does. Skipped halves 58, as in w1; none of the three new test
+  this and does not stop the window; a save left behind does (a rule the coordinating session accepted on 2026-11-25;
+  the runners before this one stopped on any mismatch of the count). Skipped halves 58, as in w1; none of the three new test
   files reports one. The Python suite runs alongside.
 - **C++ guard proofs, six, three a slice** (the coordinating session's limit of three a change), each with
   `prove_cpp_guard`, alone, after the suite and Python have ended:
