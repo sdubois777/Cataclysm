@@ -170,6 +170,36 @@ working tree, failed that one and nothing else.
 - **THE ENGINE CONSTANT IS `CriticalNextHitAction`, NOT `NextHitCriticalAction`,** because
   `test_the_generator_accepts_exactly_the_next_use_names_the_engine_has` reads every constant whose name begins `Next`
   as a next-use action. The data name is `next_hit_critical`.
+- **A MERGE OBLIGATION, NAMED (recorded 2026-11-25 at the coordinating session's direction): `fervour_per_critical_strike`
+  IS BUILT TWICE.** `feat/war-fervour-sources` (`c1f33f5c4`, not on `development` when this was written) builds the same
+  stat name as `FCataclysmWarFervour::PerCriticalStrikeStat`, paid by `FCataclysmWarFervour::GainOnCriticalStrike`
+  through `GainByRate`, for the Berserker's starting node (`Berserker_trunk_000`, flat 1) and Battle Lust. If both land
+  unchanged, a critical strike pays twice for a character holding the stat, the stat is registered twice, and on War's
+  path Telling Blows' "Elite or stronger" is not judged, because no target is handed over. This slice's own plan said the
+  Shadow's half would go on War's stat when the lines met; building it here without reconciling was the miss. **The War
+  line lands first, so the obligation falls to the Death line when it merges after it:**
+  1. Keep ONE payment, this slice's `UCataclysmFervour::GainOnCriticalStrike`: read against the struck enemy, once per
+     landed critical strike of the character's own, paid through `RaisePool` (War's `GainByRate` writes the pool with
+     `ApplyModToAttribute` directly, which every gain stopped doing in slice C4b1).
+  2. **Carry over what War's path does that this one does not:** it asks the stat with the blow's skill tags
+     (`Notice.SkillTags`), so Battle Lust's "on every critical melee strike" adds to a melee one only. This slice's path
+     asks with no tags; it has to take and pass the skill tags.
+  3. Make `FCataclysmWarFervour::PerCriticalStrikeStat` name this slice's constant (`UCataclysmFervour::PerCriticalStrikeStat`),
+     and drop War's second call in `CataclysmPlayerCharacter.cpp` (after the `critical_strike` rows), its second entry
+     in `CataclysmPlayerClassStats.cpp`'s list, its second probe in `CataclysmStatExemptionTests.cpp`, and any second
+     entry in the generator's stat lists.
+  4. What War's path does besides paying, as the War session read it (its V3b entry, `feat/war-vows-v3b` `f1a395dbc`):
+     the skill-tag scope above; nothing paid to a character with no class resource set; scaled by
+     `class_resource_generation`; clamped to `MaximumClassResourceAsked` (the maximum after reserves); no event raised.
+     This slice's path already pays nothing without a class resource set, scales by the same rate and clamps to the same
+     maximum. KEEP the skill-tag scope and the clamp after reserves.
+  5. A MINION'S BLOW THAT CONDUIT CREDITS TO THE PLAYER: War's critical-strike call pays for it, unlike its own
+     `GainOnHitDealt`, which leaves it out. Decided as the coordinating session directed, to match `GainOnHitDealt`:
+     left out. This slice's call already leaves it out (`!Cast<ACataclysmMinion>(Notice.DealtBy)`).
+  6. One difference left to the War session's word: War pays after the `critical_strike` rows and this slice before
+     them.
+  7. Test each: a Berserker's critical strike paying its 1 once; a melee-scoped row paying on a melee critical strike
+     and not on a spell's; the clamp after reserves; a minion's critical strike credited by Conduit paying nothing.
 
 ### What each reads
 
