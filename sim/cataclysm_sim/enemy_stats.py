@@ -315,13 +315,16 @@ BODY_SCALE_PER_STEP = 1.20
 #: damage target of 2 non-critical hits at tier 8 ("The Damage Target") holds within its 5%.
 #: DAMAGE: each tier's factor is the tier's reference character's effective health (`fight.reference_player`: health
 #: over the share of a hit that lands) under the new affixes over today's, so every creature takes as many hits to
-#: kill it as today; at tier 8 that is the #108 fit re-solved (the Gatekeeper in 2, an average Common in 25).
+#: kill it as today; at tier 8 that is the #108 fit re-solved (the Gatekeeper in 2, an average Common in 27).
+#: FITTED TO THE RE-FIT WITH ITS 13 FREED SUFFIX SLOTS EMPTY, by the project owner's ruling on issue #2884,
+#: 2026-11-24, verbatim: "A middle build (Recommended)". It was 2.38 to 15.35 at tiers 2 to 8 against the first
+#: version of the re-fit, which filled those slots with Vitality and Constitution.
 #: TIER 1 IS 1.00 IN BOTH, deliberately: tier 1's damage is fitted to the starting character (#2749: no affixes, a
 #: gear-level-0 Greataxe), which the affix change does not touch, so its ring scales and the opening guards stand.
 #: `sim/analyse_enemy_rebalance_2884.py` measures every figure; `.claude/windows/proposal_2884_enemy_rebalance.md`
 #: has the method and the owner's questions.
 HEALTH_SCALE_BY_TIER_2884: tuple[float, ...] = (1.00, 1.16, 1.28, 1.29, 1.31, 1.42, 1.42, 1.44)
-DAMAGE_SCALE_BY_TIER_2884: tuple[float, ...] = (1.00, 2.38, 3.79, 5.28, 8.34, 12.31, 13.65, 15.35)
+DAMAGE_SCALE_BY_TIER_2884: tuple[float, ...] = (1.00, 1.84, 2.52, 2.95, 3.65, 4.75, 5.12, 5.73)
 
 
 def rebalance_factors_2884(tier: int) -> tuple[float, float]:

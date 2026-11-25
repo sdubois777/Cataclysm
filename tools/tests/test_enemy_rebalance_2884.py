@@ -103,10 +103,26 @@ def test_the_narrowed_slots_reach_the_simulations_affixes_and_their_hybrids():
 # The re-fitted reference build
 # ---------------------------------------------------------------------------
 
-def test_the_reference_build_spends_every_slot_and_keeps_its_six_and_six_damage_affixes():
-    assert rb.spent_slots() == (36, 36)
+def test_the_reference_build_leaves_the_13_freed_suffix_slots_empty_and_keeps_its_six_and_six_damage_affixes():
+    """The owner's ruling on #2884, 2026-11-24: "A middle build (Recommended)", the re-fit with its 13 freed slots
+    left empty. Every prefix is spent; 23 of the 36 suffixes are."""
+    assert rb.spent_slots() == (36, 23)
+    assert rb.EMPTY_SUFFIX_SLOTS == 13
     assert rb.PREFIX_SPEND["FLAT_DAMAGE"] == 6 and rb.PREFIX_SPEND["INCREASED_DAMAGE"] == 6
     assert rb.RESISTANCE_AFFIXES == math.ceil(af.slots_to_cap(af.ALL_RESISTANCE, 8, 8))
+
+
+def test_the_empty_places_are_exactly_the_ones_the_health_filled_version_spent_on_its_attributes():
+    filled = dict(rb.HEALTH_FILLED_SUFFIXES_2884)
+    for name, count in rb.SUFFIX_SPEND.items():
+        filled[name] -= count
+    assert {n: c for n, c in filled.items() if c} == {"INCREASED_VITALITY": 8, "INCREASED_CONSTITUTION": 5}
+
+
+def test_a_piece_with_an_empty_place_is_labelled_by_what_fills_it():
+    """Rarity is the label for what fills the slots, so seven pieces with one empty suffix are Superb and three with
+    two are Quality."""
+    assert rb.rarity_of_each_piece() == {"Masterful": 8, "Superb": 7, "Quality": 3}
 
 
 def test_the_reference_build_caps_every_resistance_at_tier_8():
@@ -163,9 +179,9 @@ def test_the_boss_kills_the_tiers_character_as_fast_as_today_after_the_first(tie
 
 def test_control_todays_enemies_do_not_restore_the_survival_table(monkeypatch):
     """The tests above would pass for nothing if the factors changed no figure. With them at 1.00 the Gatekeeper
-    takes 28 hits to kill the re-fitted character, not 2."""
+    takes 11 hits to kill the re-fitted character, not 2."""
     monkeypatch.setattr(es, "DAMAGE_SCALE_BY_TIER_2884", (1.0,) * 8)
     gatekeeper = es.stats_on_floor("Cataclysm Boss", 8, "Cataclysm", kind="Gatekeeper")
     hits = dmg.hits_to_kill(dmg.Attacker(damage=gatekeeper.average_damage_per_hit,
                                          damage_type=gatekeeper.damage_type), rb.defender(8))
-    assert hits > 10 * DESIGN_SURVIVAL_HITS["Gatekeeper"]
+    assert hits > 5 * DESIGN_SURVIVAL_HITS["Gatekeeper"]

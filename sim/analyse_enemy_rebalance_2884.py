@@ -121,40 +121,89 @@ def survival(m) -> dict:
     return out
 
 
-def sensitivity(m) -> dict:
-    """The effective health of three other ways to re-fit the build, against the one adopted. Only on a checkout that
-    has the re-fit (`reference_build.LAYOUT`). Counted as totals, as the build was before #2884, and not placed piece by
-    piece: the offence-leaning one fills the 23 offensive suffix places the twelve offensive pieces have left after
-    penetration (crit chance 8, multiplier 8, attack speed 7) and leaves six defensive-piece suffixes on utility."""
-    rb, fg = m["reference_build"], m["fight"]
+#: The creatures of the survival table, built as the game builds them (`strength_on_floor`: the tier relief, the
+#: minimum, the tier's damage scale and #2884's factors) on the design table's own floor, the last of a 50-floor
+#: Cataclysm dungeon. That dungeon stands on the Pillar, whose damage scale is the one that applies at tier 1.
+SURVIVAL_FLOOR = ("Cataclysm", "None", 50, None)
+SURVIVAL_RING = "Pillar"
+
+
+def build_rows(m) -> list[dict]:
+    """For the build `reference_build` holds now, at every tier: what each creature of the survival table and a pack of
+    ten Imps take to kill the tier's reference character, and the kill times against the game's Boss on floor 25 of a
+    50-floor Basic dungeon (`fight.BOSS_DUNGEON`), with and without the build's own attack speed and crits."""
+    fg, pd, es, dmg = m["fight"], m["player_damage"], m["enemy_stats"], m["damage"]
+    rows = []
+    for tier in TIERS:
+        hero = fg.reference_player(tier)
+        defender = fg._defender(hero, tier)
+        landed = landed_share(m, defender)
+        row = {"tier": tier, "health": defender.health, "effective_health": defender.health / landed,
+               "block": defender.block_chance, "landed": landed, "hits": {}}
+        for name, rarity in MET_AT:
+            e = es.strength_on_floor(rarity, tier, *SURVIVAL_FLOOR[:3], floor=SURVIVAL_FLOOR[3], kind=name,
+                                     ring=SURVIVAL_RING)
+            row["hits"][name] = dmg.hits_to_kill(
+                dmg.Attacker(damage=e.average_damage_per_hit, damage_type=e.damage_type), defender)
+        imp = es.strength_on_floor("Common", tier, *SURVIVAL_FLOOR[:3], floor=SURVIVAL_FLOOR[3], kind="Imp",
+                                   ring=SURVIVAL_RING)
+        per_imp = dmg.average_damage_taken(dmg.Attacker(damage=imp.average_damage_per_hit,
+                                                        damage_type=imp.damage_type), defender)
+        row["ten_imps_seconds"] = defender.health / (per_imp * 10 / imp.attack_interval)
+        boss = es.strength_on_floor("Boss", tier, *fg.BOSS_DUNGEON[:3], floor=fg.BOSS_DUNGEON[3])
+        chance = min(100.0, hero.stat("crit_chance")) / 100.0
+        crit = 1.0 - chance + chance * hero.stat("crit_multiplier") / 100.0
+        basic = pd.damage_per_second(tier) * boss.damage_taken_fraction()
+        row["boss_seconds"] = boss.effective_health / basic
+        row["boss_seconds_with_build"] = boss.effective_health / (
+            basic * (1.0 + hero.gear.increased.get("attack_speed", 0.0)) * crit)
+        hit = boss.average_damage_per_hit
+        boss_landed = dmg.average_damage_taken(dmg.Attacker(damage=hit, damage_type=boss.damage_type), defender) / hit
+        row["boss_kills_in"] = defender.health / (hit * boss_landed / boss.attack_interval)
+        rows.append(row)
+    return rows
+
+
+def builds(m) -> dict:
+    """`build_rows` for the reference build and, on a checkout that has #2884's re-fit, the two builds the owner chose
+    between on 2026-11-24: the 13 freed suffix slots filled with health (Increased Vitality 8 and Constitution 5) and
+    the build leaning on offence (block on one piece; crit chance 8, multiplier 8, attack speed 7, the most the twelve
+    offensive pieces hold after penetration; six defensive-piece suffixes empty). The two are counted as totals and
+    not placed piece by piece, as the build was before #2884."""
+    rb = m["reference_build"]
     if not hasattr(rb, "LAYOUT"):
-        return {}
-    saved = dict(rb.PREFIX_SPEND), dict(rb.SUFFIX_SPEND), rb.RESISTANCE_AFFIXES
-    base = {"FLAT_BLOCK_CHANCE": 2, "FLAT_DAMAGE_REDUCTION": 1, "FLAT_PENETRATION": 1, "INCREASED_CRIT_CHANCE": 4,
-            "FLAT_CRIT_MULTIPLIER": 4, "INCREASED_ATTACK_SPEED": 4}
-    variants = {
-        "adopted: freed defensive slots on Vitality 8 and Constitution 5": dict(rb.SUFFIX_SPEND),
-        "freed slots left empty (16 unspent suffixes)": dict(base),
-        "block on one piece, freed slots on offence": dict(base, FLAT_BLOCK_CHANCE=1, INCREASED_CRIT_CHANCE=8,
-                                                           FLAT_CRIT_MULTIPLIER=8, INCREASED_ATTACK_SPEED=7),
-        "freed slots on Vitality only (13)": dict(base, INCREASED_VITALITY=13, INCREASED_CRIT_CHANCE=5,
-                                                  FLAT_CRIT_MULTIPLIER=5, INCREASED_ATTACK_SPEED=5),
-    }
+        return {"today's build": build_rows(m)}
+    saved = dict(rb.SUFFIX_SPEND), rb.RESISTANCE_AFFIXES
+    offence = {"FLAT_BLOCK_CHANCE": 1, "FLAT_DAMAGE_REDUCTION": 1, "FLAT_PENETRATION": 1, "INCREASED_CRIT_CHANCE": 8,
+               "FLAT_CRIT_MULTIPLIER": 8, "INCREASED_ATTACK_SPEED": 7}
+    variants = {"empty (ref)": dict(saved[0]),
+                "health": dict(rb.HEALTH_FILLED_SUFFIXES_2884),
+                "offence": offence}
     out = {}
     try:
         for label, suffixes in variants.items():
             rb.SUFFIX_SPEND.clear()
             rb.SUFFIX_SPEND.update(suffixes)
-            rb.RESISTANCE_AFFIXES = 4
-            out[label] = [fg._defender(fg.reference_player(t), t).health / landed_share(
-                m, fg._defender(fg.reference_player(t), t)) for t in TIERS]
+            out[label] = build_rows(m)
     finally:
-        rb.PREFIX_SPEND.clear()
-        rb.PREFIX_SPEND.update(saved[0])
         rb.SUFFIX_SPEND.clear()
-        rb.SUFFIX_SPEND.update(saved[1])
-        rb.RESISTANCE_AFFIXES = saved[2]
+        rb.SUFFIX_SPEND.update(saved[0])
+        rb.RESISTANCE_AFFIXES = saved[1]
     return out
+
+
+def print_builds(all_rows: dict) -> None:
+    names = [n for n, _ in MET_AT]
+    print("   Each build at each tier: hits each creature takes to kill it (as the game builds them, last floor of a")
+    print("   50-floor Cataclysm dungeon), ten Imps in seconds, and the game's Boss duel in seconds.")
+    print("   build / tier      health  eff.health  " + " ".join(f"{n.split()[-1][:9]:>9}" for n in names)
+          + "  10 Imps s  boss s  boss s (build)  boss kills s")
+    for label, rows in all_rows.items():
+        for r in rows:
+            print(f"   {label[:14]:<14} T{r['tier']} {r['health']:>8,.0f} {r['effective_health']:>11,.0f}  "
+                  + " ".join(f"{r['hits'][n]:>9.0f}" for n in names)
+                  + f"  {r['ten_imps_seconds']:>9.1f} {r['boss_seconds']:>7.1f} {r['boss_seconds_with_build']:>15.1f}"
+                    f" {r['boss_kills_in']:>13.1f}")
 
 
 def report(m, label: str) -> dict:
@@ -162,7 +211,7 @@ def report(m, label: str) -> dict:
     tables = (getattr(es, "HEALTH_SCALE_BY_TIER_2884", None), getattr(es, "DAMAGE_SCALE_BY_TIER_2884", None))
     rows = per_tier(m)
     surv = survival(m)
-    sens = sensitivity(m)
+    per_build = builds(m)
     print(f"== {label}")
     print(f"   enemy factor tables: health {tables[0]}, damage {tables[1]}")
     print(f"   DAMAGE_AT_COMMON {es.DAMAGE_AT_COMMON}, DAMAGE_PER_STEP {es.DAMAGE_PER_STEP}, "
@@ -189,13 +238,10 @@ def report(m, label: str) -> dict:
           + ", ".join(f"{n} {s:.1f} s" for n, s in surv["pack_seconds"].items())
           + f"; the Gatekeeper's hit {surv['gatekeeper_hit']:,.0f} against a gearless pool of "
             f"{surv['gearless_pool']:,.0f}")
-    if sens:
-        print()
-        print("   The re-fit's effective health at tiers 1 to 8, against other ways to spend the freed slots:")
-        for label_, values in sens.items():
-            print(f"   {label_:<62} " + " ".join(f"{v:>10,.0f}" for v in values))
     print()
-    return {"label": label, "tables": tables, "per_tier": rows, "survival": surv, "sensitivity": sens}
+    print_builds(per_build)
+    print()
+    return {"label": label, "tables": tables, "per_tier": rows, "survival": surv, "builds": per_build}
 
 
 def fit(before_path: str, after_path: str) -> None:
