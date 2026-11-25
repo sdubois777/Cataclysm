@@ -289,11 +289,14 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 	// penalty, DropWeightAt also divides by how far a rarity sits above the
 	// tier, and at tier 1 that is real: Superb is two rungs up, so its finished
 	// weight is a quarter of the table's on purpose.
+	//
+	// UP TO TIER 1'S CAP, MASTERFUL, since issue #2853: above it DropWeightAt is
+	// 0 by the owner's ruling of 2026-11-24, and Cataclysm.RarityCap. checks it.
 	for (int32 Rung = 0; Rung < FDrop::RarityCount; ++Rung)
 	{
 		const FCataclysmGearRarityRow* Row =
 			FDrop::RarityRow(Rarities, Ladder()[Rung]);
-		if (!Row)
+		if (!Row || Rung > static_cast<int32>(FDrop::HighestDroppableRarity(1)))
 		{
 			continue;
 		}
@@ -306,36 +309,42 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 								 Row->DropWeight * 1e-5f));
 	}
 
-	// A LOW TIER REACHES EVERY RUNG, AND THIS USED TO ASSERT THE OPPOSITE.
-	// Until 2026-08-23 difficulty tier 1 was five sevenths Everyday, two
-	// sevenths Quality and exactly zero of everything else. The project owner
-	// played that and said it was too strict, so a rarity above the tier's own
-	// reach is divided by RarityPenaltyAboveTheTier per rung instead of
-	// forbidden. Superb is two rungs above tier 1 and arrives about one drop in
-	// 19; Cataclysmic is six rungs above and arrives about one in 1.5 million.
+	// A LOW TIER REACHES ABOVE ITS OWN REACH, UP TO ITS CAP. Until 2026-08-23
+	// difficulty tier 1 was five sevenths Everyday, two sevenths Quality and
+	// exactly zero of everything else. The project owner played that and said it
+	// was too strict, so a rarity above the tier's own reach is divided by
+	// RarityPenaltyAboveTheTier per rung instead of forbidden. Superb is two
+	// rungs above tier 1 and arrives about one drop in 19. ABOVE MASTERFUL,
+	// NOTHING since issue #2853: until then Cataclysmic was one in 1.5 million
+	// here, and the owner found two in two days.
 	//
 	// Printed by loot.rarity_distribution(1, 0.0).
 	const float ShareAtTierOne[] = {
-		0.6679531444f, 0.2671812578f, 0.0534362516f, 0.0106872503f,
-		0.0006679531f, 0.0000667953f, 0.0000066795f, 0.0000006680f,
+		0.6684491979f, 0.2673796791f, 0.0534759358f, 0.0106951872f,
+		0.0f, 0.0f, 0.0f, 0.0f,
 	};
 
 	FDrop::RarityDistribution(Rarities, 1, 0.0f, Shares);
 	for (int32 Index = 0; Index < 8; ++Index)
 	{
+		const bool bAboveTheCap = ShareAtTierOne[Index] == 0.0f;
 		TestTrue(*FString::Printf(
 			TEXT("%s is %.10f of drops at tier 1 (%.10f)"),
 			*FDrop::RowNameFor(Ladder()[Index]).ToString(),
 			ShareAtTierOne[Index], Shares[Index]),
-			FMath::Abs(Shares[Index] - ShareAtTierOne[Index])
-				< ShareAtTierOne[Index] * 1e-3f);
+			bAboveTheCap ? Shares[Index] == 0.0f
+						 : FMath::Abs(Shares[Index] - ShareAtTierOne[Index])
+							   < ShareAtTierOne[Index] * 1e-3f);
 
-		// AND NONE OF THEM IS ZERO, which is the whole of the change and is
-		// stated separately because a reader looking at eight literals cannot
-		// see which of them used to be forbidden.
-		TestTrue(*FString::Printf(TEXT("%s can drop at tier 1 at all"),
-			*FDrop::RowNameFor(Ladder()[Index]).ToString()),
-			Shares[Index] > 0.0f);
+		// AND NONE OF THE FOUR UP TO THE CAP IS ZERO, which is the change of
+		// 2026-08-23 and is stated separately because a reader looking at eight
+		// literals cannot see which of them used to be forbidden.
+		if (!bAboveTheCap)
+		{
+			TestTrue(*FString::Printf(TEXT("%s can drop at tier 1 at all"),
+				*FDrop::RowNameFor(Ladder()[Index]).ToString()),
+				Shares[Index] > 0.0f);
+		}
 	}
 
 	// EVERY DISTRIBUTION SUMS TO ONE, at every tier and with magic find on. It

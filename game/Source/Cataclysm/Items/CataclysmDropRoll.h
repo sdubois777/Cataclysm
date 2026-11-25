@@ -162,12 +162,12 @@ public:
 	 * What a rarity's weight is divided by for each rung it sits above the
 	 * tier's own reach.
 	 *
-	 * EVERY GEAR RARITY DROPS AT EVERY DIFFICULTY TIER. RaritiesAboveDifficulty
+	 * BELOW THE CAP ONLY (RaritiesAboveTheReachThatDrop). RaritiesAboveDifficulty
 	 * used to be a hard cap: nothing above it could drop at all, which left
 	 * difficulty tier 1 producing only Everyday and Quality items. The project
-	 * owner played that on 2026-08-23 and said it was too strict. Nothing is
-	 * forbidden now; a Cataclysmic at tier 1 is divided by 2 six times over, so
-	 * it arrives about one drop in 1.5 million rather than never.
+	 * owner played that on 2026-08-23 and said it was too strict, and this
+	 * penalty replaced it. Until issue #2853 nothing was forbidden: a
+	 * Cataclysmic at tier 1 was one drop in 1.5 million.
 	 *
 	 * DIABLO II'S SHAPE. It has no hard gate on item quality either: a shallow
 	 * monster can produce a high-level unique at a much reduced chance.
@@ -179,6 +179,25 @@ public:
 	 * two copies disagree.
 	 */
 	static constexpr float RarityPenaltyAboveTheTier = 2.0f;
+
+	/**
+	 * How many rungs above the tier's own reach a drop can roll at all.
+	 *
+	 * THE OWNER'S RULING OF 2026-11-24 ON ISSUE #2853, "Hard cap by tier
+	 * (Recommended)": "a tier can drop at most two rarities above its normal
+	 * reach, so the highest droppable rarity is number tier + 3 (tier 1
+	 * Masterful, tier 2 Legendary, tier 3 Mythical ...). Everyday, Quality,
+	 * Superb and Masterful keep their current chances; the halving per rung stays
+	 * below the cap." Cataclysmic pieces had dropped at tier 1, at +10.
+	 *
+	 * ON THE WEIGHT: DropWeightAt answers 0 above HighestDroppableRarity, so the
+	 * cascade, the exact distribution, the gem roll and RollRarityAtLeast all
+	 * follow it without each knowing the rule. Mirrors
+	 * `DROP_RARITIES_ABOVE_THE_REACH` in `sim/cataclysm_sim/loot.py`, and
+	 * `tools/tests/test_gear_rarity_gate_is_stated_everywhere.py` fails when the
+	 * two copies disagree.
+	 */
+	static constexpr int32 RaritiesAboveTheReachThatDrop = 2;
 
 	/**
 	 * How many rarities sit below the enchantment boundary. Everyday to
@@ -370,11 +389,21 @@ public:
 	static ECataclysmRarity HighestUnpenalisedRarity(int32 DifficultyTier);
 
 	/**
+	 * The rarest gear or gem a drop can roll at a difficulty tier: rarity number
+	 * tier + 3, stopping at Cataclysmic. Tier 1 Masterful, tier 2 Legendary, tier
+	 * 3 Mythical, tier 4 Ascendant, tiers 5 to 8 Cataclysmic. The owner's cap of
+	 * 2026-11-24, issue #2853; see RaritiesAboveTheReachThatDrop. Mirrors
+	 * `highest_droppable_rarity` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static ECataclysmRarity HighestDroppableRarity(int32 DifficultyTier);
+
+	/**
 	 * What a rarity's weight is divided by at this difficulty tier.
 	 *
 	 * One at or below the tier's own reach, and RarityPenaltyAboveTheTier once
-	 * per rung above it. Never zero and never infinite, so nothing is ever
-	 * forbidden -- which is the whole of the change. Mirrors
+	 * per rung above it. Never zero and never infinite: the cap above
+	 * HighestDroppableRarity is DropWeightAt's, not this divisor's. Mirrors
 	 * `penalty_above_the_tier` in `sim/cataclysm_sim/loot.py`.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
