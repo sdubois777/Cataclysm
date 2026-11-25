@@ -174,6 +174,16 @@ was proved with `tools/prove_guard.py`, two breaks, each PROVED (failed with the
 `test_shield_wall_is_the_owners_wording_and_its_share_is_a_quarter`; `BattleCryResistanceCut = 25.0f` to `20.0f`
 failed `test_battle_cry_states_one_figure_in_the_code_and_the_row`.
 
+### Python, as run on the branch
+
+The whole suite, `python -u -m pytest --junit-xml=<scratch>`, on `56815da5a`: **"1 failed, 8301 passed, 9 skipped in
+330.77s"**; the JUnit report agrees, tests 8311, failures 1, errors 0, skipped 9. The one failure is
+`test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`, naming
+`EnemyModifiers.csv` and `StatusEffects.csv`, which the window's editor step clears (Said first). The run before it
+found two more, `test_the_random_buff_table_names_buff_rows.py` and `test_unreal_pinned_row_counts.py`, both answered
+in `56815da5a` and described above. `python -m ruff check .`: "All checks passed!". `tools/check_resolved_cpp.py` on
+the 24 C++ files the branch changes against `9acbb3528`: "24 files read, 0 with complaints".
+
 ---
 
 ## 2026-11-24 — Bug batches 1 and 2 and the creation skill count on development after the inventory tabs: the whole suite 5422 with three test faults corrected, and 42 of 42 guard proofs under the owner's budget of three a change
