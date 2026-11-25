@@ -1257,6 +1257,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					const bool bDamageRemoved = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction,
 						ESearchCase::IgnoreCase);
+					// AND THORNWALL'S, THE THIRD KIND: retaliation taken. V3a, 2026-11-25.
+					const bool bRetaliationTaken = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction,
+						ESearchCase::IgnoreCase);
 					// AN "EVERY Nth" ROW, keyed by the enchantment and the action.
 					// Issue #1833, phase 2. The action names what is counted, so
 					// the row has no Action Event.
@@ -1304,13 +1308,14 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						}
 					}
-					if (bArmourRemoved || bDamageRemoved)
+					if (bArmourRemoved || bDamageRemoved || bRetaliationTaken)
 					{
 						Action.PlacedKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						Action.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
 						Action.StackCap = Effect->ScaleMaxSteps;
 						Action.bPlacedCutsDamage = bDamageRemoved;
+						Action.bPlacedRaisesRetaliationTaken = bRetaliationTaken;
 					}
 					// A NEXT-SPELL COOLDOWN CHARGE, the fourth next-use kind. Issue
 					// #1833, the cooldown reduction action.
@@ -1627,6 +1632,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// from the energy shield. The value is a percentage of maximum health.
 					Action.bTemporaryAbsorb = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::TemporaryAbsorbAction,
+						ESearchCase::IgnoreCase);
+					// AND WHETHER IT PAYS WRATH INCARNATE'S RETALIATION PULSE, its radius in Event Value. V3a,
+					// 2026-11-25.
+					Action.bRetaliationPulse = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::RetaliationPulseAction,
 						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,

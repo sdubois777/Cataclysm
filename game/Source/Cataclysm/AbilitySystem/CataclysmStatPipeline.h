@@ -4499,6 +4499,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bPlacedCutsDamage = false;
 
 	/**
+	 * Set, the placed stack raises the retaliation the other character takes, and `bPlacedCutsDamage` is not read:
+	 * Thornwall's, `UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction`. The War vow options' third
+	 * slice, V3a, 2026-11-25.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPlacedRaisesRetaliationTaken = false;
+
+	/**
 	 * Set, this action COUNTS ITS KIND OF EVENT, and acts on every Nth. Issue
 	 * #1833, phase 2. `EveryNth` is N, `Percent` what the Nth is worth (unused
 	 * for an attack, which deals none) and `NthKey` whose count it is: the
@@ -4950,6 +4958,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * `tools/generate_datatables.py` holds the name and allows it on the timed event only.
 	 */
 	bool bTemporaryAbsorb = false;
+
+	/**
+	 * Set, this action PAYS A RETALIATION PULSE: `Percent` of the retaliation the big hit being answered earns, to every
+	 * enemy within `EventValue` metres of the wearer. Wrath Incarnate, the War vow options' third slice, V3a,
+	 * 2026-11-25. On `big_hit_taken` only. See `UCataclysmAbilitySystemComponent::RetaliationPulseAction`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bRetaliationPulse = false;
 
 	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for

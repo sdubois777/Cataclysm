@@ -102,6 +102,23 @@ public:
 	static const TCHAR* BlockedDamageAddedStat;
 
 	/**
+	 * Absorb and Return's "+3% bonus retaliation damage per point for hits that deal more than 10% of your max HP": a
+	 * flat stat added to the retaliation share by `AmountFor` while the defender's ability system says it is paying for
+	 * a big hit (`UCataclysmAbilitySystemComponent::IsPayingForABigHit`), and at no other time. Ruled 2026-11-25:
+	 * "added to the share". So it raises Wrath Incarnate's pulse for the same hit too. The War vow options' third slice,
+	 * V3a. No gameplay attribute and no base.
+	 */
+	static const TCHAR* BigHitShareStat;
+
+	/**
+	 * What a payment to `Target` is multiplied by for the Thornwall stacks placed on it: 1 plus their sum in per cent.
+	 * 1 for a target with none, or with no ability system of this project's kind. A multiplier of its own on the
+	 * receiving side, apart from the defender's increases (ruled 2026-11-25). Read by `Pay` and `PayPulseFor` for each
+	 * target, and not by `StrikeBack`. V3a.
+	 */
+	static float TakenMultiplierOf(const AActor* Target);
+
+	/**
 	 * Whether this character's retaliation cannot be reduced or mitigated by what it strikes.
 	 *
 	 * ASKED WITH NO TAGS AND A FALLBACK OF NOUGHT, where retaliation is paid. Retaliation is not a skill and
@@ -270,6 +287,17 @@ public:
 	 * @return the health taken from every enemy struck, altogether
 	 */
 	static float PayPulse(UAbilitySystemComponent* Defender, AActor* Instigator, float RadiusMetres, bool bApplyBleed);
+
+	/**
+	 * A retaliation pulse sized by a stated blow: every enemy within `RadiusMetres` of `Instigator` is paid
+	 * `PercentOfPayment` per cent of the retaliation a blow worth `BlowWorth` earns, priced and delivered as `Pay`
+	 * delivers. `PayPulse` is this with the last blow taken this floor and 100. Wrath Incarnate (the War vow options'
+	 * third slice, V3a, 2026-11-25) pays 200 of the big hit it answers.
+	 *
+	 * @return the health taken from every enemy struck, altogether
+	 */
+	static float PayPulseFor(UAbilitySystemComponent* Defender, AActor* Instigator, float RadiusMetres,
+							 float BlowWorth, float PercentOfPayment, bool bApplyBleed);
 
 	/**
 	 * A creature carrying Thorns of Glass strikes back at whatever hit it: one blow of its own attack damage, sized by

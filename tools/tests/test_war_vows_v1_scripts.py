@@ -27,7 +27,9 @@ WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 DOCS = REPO_ROOT / "docs"
 #: 9 until the second slice, V2a, took over Unstoppable's two rows and Ragnarok's drain row the same day
 #: (`tools/reapply_war_vows_v2a_workbook.py`, whose tests now hold Unstoppable's conditions).
-ROW_COUNT = 6
+#: 6 until the third slice, V3a, took over Eternal Hunger's leech row and Wrath Incarnate's armour row the same day
+#: (`tools/reapply_war_vows_v3a_workbook.py`, whose tests now hold both).
+ROW_COUNT = 4
 
 
 # ---------------------------------------------------------------------------
@@ -116,12 +118,14 @@ def _rows_of(node: str) -> tuple:
     return found
 
 
-def test_the_script_writes_six_rows_on_six_options():
+def test_the_script_writes_four_rows_on_four_options():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
     options = {(node, row.option) for node, _, wanted in rows.NODES for row in wanted}
-    assert len(options) == 6
+    assert len(options) == 4
     assert ("Berserker_capstone_50", 1) not in options and ("Berserker_capstone_200", 1) not in options, (
         "Unstoppable's and Ragnarok's rows are the second slice's script's")
+    assert ("Berserker_capstone_200", 3) not in options and ("Bulwark_capstone_200", 3) not in options, (
+        "Eternal Hunger's and Wrath Incarnate's rows are the third slice's script's")
     assert rows.base.PORT_EIGHT == ("Fraction Of", "Scale Offset", "Every Seconds", "Every Nth", "Trigger Cooldown",
                                     "Event Value", "Ailment", "Damage Share")
 

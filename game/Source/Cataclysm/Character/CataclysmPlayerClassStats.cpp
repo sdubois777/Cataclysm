@@ -764,6 +764,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// and no base.
 		TEXT("retaliation_penetration"),
 		TEXT("blocked_damage_added_to_next_retaliation"),
+		// Absorb and Return's share for a big hit, read by UCataclysmRetaliation::AmountFor while a big hit is paid
+		// for; and Eternal Hunger's cap and decay, read by UCataclysmAbilitySystemComponent::NoteLeechHealed and
+		// DecayLeechAbsorb. The War vow options' third slice, V3a, 2026-11-25. No gameplay attribute and no base.
+		TEXT("retaliation_for_big_hits"),
+		TEXT("leech_overheal_absorb_percent_of_maximum_health"),
+		TEXT("leech_overheal_absorb_decay_percent_per_second"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on

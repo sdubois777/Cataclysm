@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' third slice (V3a): Thornwall's stack on the attacker, the big hit with Wrath Incarnate's pulse and Absorb and Return, and Eternal Hunger's health above the maximum held in the temporary absorb
+
+**Affects:**
+- `tools/reapply_war_vows_v3a_workbook.py` (new) writes five rows into `docs/All_Things_Cataclysm.xlsx` and takes over
+  two earlier rows from `tools/reapply_war_vows_v1_workbook.py`, which no longer lists them. The generated table:
+  `game/Data/PassiveEffects.csv` (570 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - a placed action, `attacker_retaliation_taken`, on `hit_taken`;
+  - an event, `big_hit_taken`, which carries an amount;
+  - an action on it, `retaliation_pulse`, its radius in Event Value (above 0, up to 20) and its share above 0, up to
+    1,000, with no fraction, value kind or scale;
+  - `hit_taken` and `big_hit_taken` in `STRIKE_TARGET_EVENTS`, because both now name a living attacker.
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - the placed stacks carry one of three kinds, `EPlacedStackKind` (armour removed, damage cut, retaliation
+      taken), in place of a bool, and `RetaliationTakenPercentNow`;
+    - `hit_taken` names the attacker of a landed hit that is not a tick and not the character's own;
+    - `IsBigHit`, `NoteBigHitTaken`, `IsPayingForABigHit` and `SetPayingForABigHit`;
+    - `NoteLeechHealed`, `DecayLeechAbsorb` and `LeechAbsorbHeld`, Eternal Hunger's part of the temporary absorb,
+      cut to what remains when damage spends the absorb and cleared at a respawn;
+    - the pulse in `ApplyPoolAction`.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bPlacedRaisesRetaliationTaken` and `bRetaliationPulse`.
+  - `CataclysmItem.cpp`: the builder sets both.
+  - `CataclysmRetaliation.h` and `.cpp`:
+    - `TakenMultiplierOf`, applied to each target in `Pay` and in the pulse;
+    - `BigHitShareStat` (`retaliation_for_big_hits`), added to the share in `AmountFor` while a big hit is paid for;
+    - `PayPulseFor`, a pulse sized by a stated blow and share; `PayPulse` is now that function with the last blow
+      taken this floor and 100.
+  - `CataclysmVitalAttributeSet.cpp`: the big hit is judged where retaliation is paid and announced after
+    `NoteHitTaken`.
+  - `CataclysmRegeneration.cpp`: a leech heal of health is noted, with what did not fit, and Eternal Hunger's part
+    decays at each regeneration step.
+  - `CataclysmPlayerClassStats.cpp`: the three new stats in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV3aTests.cpp` (new, four tests).
+    - `CataclysmStatExemptionTests.cpp`: three probes, `ProbeRetaliationForBigHits`, `ProbeLeechOverhealAbsorbCap`
+      and `ProbeLeechOverhealAbsorbDecay`.
+    - `CataclysmDataTableTests.cpp`: the pin, 570.
+    - `CataclysmWarVowsV1Tests.cpp` and `CataclysmWarVowsV2aTests.cpp`: the Final Oaths' row counts, 6 (Berserker)
+      and 4 (Bulwark).
+    - `CataclysmWarDataRowsTests.cpp`: a comment that said Thornwall has no row.
+  - Python:
+    - `tools/tests/test_war_vows_v3a_scripts.py` (new, nineteen).
+    - `test_war_vows_v1_scripts.py`: four rows on four options.
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the two new action names.
+    - `test_pool_action_names_match_the_engine.py`: `hit_taken` now carries a character; the control that carries none
+      is `health_cost`.
+    - `test_damage_over_time_names_its_skill.py`: Vengeful Discharge's Bleed is laid in `PayPulseFor`.
+    - `test_passive_effects_match_the_node_text.py`: 570 rows, 318 authored nodes, 59 authored options.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the three new stat lookups.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run:
+  - `Cataclysm.WarVowsV3a.`: four tests, new.
+  - `Cataclysm.StatExemption.`: three more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins moved: `Cataclysm.Data.` (570), `Cataclysm.WarVowsV1.` and `Cataclysm.WarVowsV2a.`;
+    - the groups touching what this changes: `Cataclysm.WarVowsV2b.`, `Cataclysm.WarDataRows.`,
+      `Cataclysm.Retaliation.`, `Cataclysm.RetaliationUnmitigated.`, `Cataclysm.WarFervour.` (Vengeful Discharge's
+      pulse), `Cataclysm.Enchantments.` (the placed stacks and `hit_taken`), `Cataclysm.TeleportWhenHit.`,
+      `Cataclysm.HitCancels.`, `Cataclysm.OverhealAbsorb.`, `Cataclysm.TemporaryAbsorb.`, `Cataclysm.Regeneration.`,
+      `Cataclysm.SetBonus.` and `Cataclysm.StrikeTarget.`.
+- **TITANFALL IS NOT BUILT, AND IS DEFERRED, NOT DROPPED.** It is the Bulwark's keystone `keystone_jg_final`: "When you
+  absorb a single hit exceeding 5,000 flat damage, you become unkillable for 2 seconds and your next attack deals damage
+  equal to the full amount of that hit. Requires 25,000 Maximum HP to activate. Can only trigger once every 30
+  seconds." It has no rows and is still marked "(not built yet: it does nothing)". The coordinating session ruled on
+  2026-11-25 that it is built after V5. The big-hit event here is fixed at 10% of maximum health and does not serve
+  Titanfall's 5,000 flat line as it stands.
+- **COLOSSUS ETERNAL AND THOUSAND DEATHS ARE V3b's**, the next slice. Thousand Deaths is still marked not built.
+- **`hit_taken` NOW NAMES THE ATTACKER** of a landed hit that is not a tick and not the character's own blow. Before
+  this it named nobody. The shipped rows on `hit_taken` were swept first: three enchantment action rows (`health`,
+  `apply_status_to_self`, `teleport_randomly`) and the Feasting set bonus's own-stack row. All of them act on the wearer
+  and none carries a condition on the target, so none of them changes.
+- **THE PLACED STACKS' BOOL BECAME A KIND.** `ReceivePlacedStack` with a bool still exists and places the same two
+  kinds as before, so no caller changed.
+
+### WHAT WAS RULED
+
+- The vow survey, 2026-11-25:
+  - item 8, Eternal Hunger: "health above maximum held in the temporary absorb, up to 100% of maximum HP, losing 1% of
+    maximum HP a second while not leeching (a judgement, play-test)";
+  - item 12, Thornwall: "any hit, the attacker passed on hit taken; 10 s, refreshed by each hit";
+  - item 18, Wrath Incarnate: "the big hit measured after defences".
+- The coordinating session's rulings on the V3 questions, 2026-11-25, "every proposal as written":
+  - Q0: V3a, then V3b; "Titanfall deferred, but kept on your list: it is a War keystone and gets built after V5".
+  - Q1: Thornwall, "a landed hit only". Q2: "a separate multiplier on the receiving side, in Pay and PayPulse, not in a
+    minion's StrikeBack".
+  - Q3: the big hit counts "all four pools (health, energy shield, mana, temporary absorb), the same 'got through'
+    figure leech uses: damage your energy shield took was still dealt to you. The 10% fixed in the engine."
+  - Q4: the pulse, a new action on `big_hit_taken`, 200% within the row's 4 metres, the attacker included, delivered as
+    `PayPulse` delivers, and paid besides the ordinary payment. Q5: Absorb and Return, "added to the share".
+  - Q6: "the decay applies only to Eternal Hunger's own part, with its own count cut by damage; other sources' shields
+    are not drained". Q7: "not leeching" is no leech payment in the last second.
+
+### JUDGEMENTS
+
+- **Thornwall's stacks are read whoever placed them.** Only a player can wear Thornwall, and the multiplier is the
+  target's, so "the retaliation damage they take from you" is not narrowed further.
+- **The pulse is sized as retaliation is: by what the blow was worth before the defender's defences** (`Hit.Damage`,
+  which `Pay` is given). The big hit is judged on what got through after them, as ruled. So the line is drawn after
+  defences and the payment is priced before them, as every retaliation payment is.
+- **The character's own blow is never a big hit and places no Thornwall stack**: it has nobody to answer.
+- **A leech payment that all fitted still counts as leeching**: its time is noted whether or not anything overflowed.
+- **The decay is a stat of its own** (`leech_overheal_absorb_decay_percent_per_second`, 1), not a constant, so the
+  play-test point can be tuned in the workbook.
+- **`hit_taken` and `big_hit_taken` are events a strike may hang on.** The test that reads the engine requires every
+  event raised with a character to be on that list or on the list of characters that cannot be struck. No row strikes
+  on either today.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| a retaliation pulse given the default fraction of maximum | `pytest tools/tests/test_war_vows_v3a_scripts.py` | `test_the_control_a_pulse_is_read_with_its_radius_and_no_fraction` |
+| a retaliation pulse allowed on `hit_taken` | the same | `test_a_pulse_on_an_event_that_is_not_a_big_hit_is_refused`, `test_the_names_are_the_generators` |
+| Thornwall's stack allowed on `block` | the same | `test_thornwalls_stack_on_an_event_naming_nobody_who_struck_is_refused`, `test_the_names_are_the_generators` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV3a.ThornwallStacksOnTheAttackerOfALandedHitAndRaisesTheRetaliationItTakes` | a tick and an evaded blow place nothing (the controls); twelve landed hits place the cap of ten, 50%; a payment of 100 reaches the striker as 150 and a bystander as 100 (the control); the stacks lapse after 10 seconds |
+| `Cataclysm.WarVowsV3a.ABigHitPaysWrathIncarnatesPulseToEveryEnemyWithinItsRadius` | real blows on a wearer of 100,000 health with retaliation at 10: a blow of 5,000 is not big (the control), the striker takes 500 and the creature 3 metres away nothing; a blow of 15,000 is big, the striker takes 1,500 and the pulse's 3,000, the creature 3 metres away 3,000 and the one 7 metres away nothing |
+| `Cataclysm.WarVowsV3a.EternalHungersPartOfTheAbsorbIsCutByDamageAndDecaysAloneWhileNotLeeching` | a heal that is not leech adds nothing (the control); a leech payment of 3,000 at full health is all held; within a second of it nothing decays (the control); the decay takes the part and stops at another source's 2,000; damage cuts the part to what remains |
+| `Cataclysm.WarVowsV3a.AWarPlayerTakingTheOptionsIsHandedTheirActionsAndStats` | through `SetPassiveAllocation`: Thornwall's stack, the pulse, 6 for big hits at 2 points of Absorb and Return, Eternal Hunger's cap of 100 and decay of 1; the first options and no Absorb and Return hand over none of it (the controls) |
+| the three probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | `retaliation_for_big_hits` at 3: a big hit's payment of 100 becomes 115, and not for a blow that is not big; the cap: a leech payment of 300 at full health is held, a further 900 stops at 1,000; the decay at 1: 500 loses 10 in a second, and a holder without it loses nothing |
+
+### C++ GUARD PROOFS (planned, three)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmRetaliation.cpp`: `Pay` sends `Amount + Stored` without `TakenMultiplierOf(Target)` | `Cataclysm.WarVowsV3a.` | `ThornwallStacksOnTheAttackerOfALandedHitAndRaisesTheRetaliationItTakes` |
+| `CataclysmVitalAttributeSet.cpp`: the big hit never announced (`IsBigHit(GotThrough, GetMaxHealth())` in the announcement replaced by `false`) | `Cataclysm.WarVowsV3a.` | `ABigHitPaysWrathIncarnatesPulseToEveryEnemyWithinItsRadius` |
+| `CataclysmAbilitySystemComponent.cpp`: `SpendTemporaryAbsorb` leaves Eternal Hunger's part uncut | `Cataclysm.WarVowsV3a.` | `EternalHungersPartOfTheAbsorbIsCutByDamageAndDecaysAloneWhileNotLeeching` |
+
+---
+
 ## 2026-11-25 — Three owner rulings on the War line: Berserking at 1% a point, the gadget enchantments scoped to Type.Gadget, and The Unbreakable Wall negating every block, with Iron Will charging nothing for a block the Wall negated
 
 **Affects:**

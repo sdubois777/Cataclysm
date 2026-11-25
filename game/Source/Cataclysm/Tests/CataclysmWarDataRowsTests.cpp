@@ -303,8 +303,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarDataRowsOathsTest,
 /**
  * The Bulwark's Second Oath: Iron Aegis, "Your Block Chance is doubled while you have not attacked in the last 3
  * seconds", is option 1; Titan's Blood, "Your HP regeneration is doubled", option 2. Each grants its own row and not the
- * other's. THE CONTROLS are the Oath with nothing chosen and with Thornwall, option 3, which has no row: neither grants
- * either. And the Berserker's First Oath, Vital Strikes (option 3): damage reduction for every 1% of life leech while
+ * other's. THE CONTROLS are the Oath with nothing chosen and with Thornwall, option 3, whose one row is a stack placed
+ * on an attacker (since the War vow options' third slice, V3a, 2026-11-25), not a stat: neither grants either. And the Berserker's First Oath, Vital Strikes (option 3): damage reduction for every 1% of life leech while
  * above 50% Fervour, which Warlord (option 1) does not grant.
  */
 bool FCataclysmWarDataRowsOathsTest::RunTest(const FString&)

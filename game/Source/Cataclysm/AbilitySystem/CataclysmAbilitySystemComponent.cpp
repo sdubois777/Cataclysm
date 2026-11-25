@@ -3166,6 +3166,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// until damage removes it. A judgement by the writing session that a respawn
 	// empties it: it is temporary, and this function removes what is temporary.
 	TemporaryAbsorb = 0.0f;
+	// AND ETERNAL HUNGER'S PART OF IT, with it (V3a, 2026-11-25).
+	LeechAbsorb = 0.0f;
+	LastLeechHealedAtSeconds = -1.0f;
 
 	// AND THE RESISTANCE A ROW WAS HOLDING AT NOUGHT. Ruled 2026-10-12. A judgement by the writing session: the hold
 	// is a temporary thing laid on the character, and this function removes what is temporary. The revived
@@ -3802,7 +3805,14 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	// on a tick: `TeleportRandomlyAction`, 2026-10-12. The event itself carries no such fact. Put back when this
 	// call returns, so it reads false at every other time.
 	TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);
-	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded);
+	// AND WHO STRUCK, since the War vow options' third slice, V3a (2026-11-25), ruled "any hit: pass the attacker on
+	// hit taken" for Thornwall's stack. NOT FOR A TICK, which is not a hit (ruled the same day: "a landed hit only"),
+	// and not for the character's own blow, which has no other character to place anything on. A row that places a
+	// stack acts only on a landed event naming a character, so an evaded blow places nothing either. NO SHIPPED ROW
+	// ON `hit_taken` READ A TARGET BEFORE THIS: its three action rows (`health`, `apply_status_to_self`,
+	// `teleport_randomly`) and Feasting's own-stack row all act on the wearer, and none carries a target condition.
+	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded,
+			   bDamageOverTime || bOwnBlow ? nullptr : Attacker);
 
 	// AND A LANDED BLOW THAT IS NOT A TICK MAY SUMMON A WARHOUND, Warlord's Will's six-piece. Ruled 2026-10-18 (Q4):
 	// "10% per blow taken through hit_taken with its 0.25 s trigger cooldown; damage-over-time ticks do not count". The
@@ -4182,7 +4192,7 @@ float UCataclysmAbilitySystemComponent::ArmourRemovedPercentNow() const
 		? FMath::Max(0.0f, ArmourRemovedPercent) : 0.0f;
 	// AND WHAT RIDES ON THE AILMENTS IT CARRIES, in the same sum. Issue #1833,
 	// ruled 2026-10-06: every armour reduction on a character adds in one place.
-	return FMath::Clamp(Rending + PlacedPercentNow(/*bCutsDamage=*/false)
+	return FMath::Clamp(Rending + PlacedPercentNow(EPlacedStackKind::ArmourRemoved)
 							+ AilmentRiderPercentNow(ECataclysmAilmentRider::ArmourRemoved),
 						0.0f, 100.0f);
 }
@@ -4301,10 +4311,16 @@ UCataclysmAbilitySystemComponent::NthCountsForDisplay() const
 
 float UCataclysmAbilitySystemComponent::DamageCutPercentNow() const
 {
-	return FMath::Clamp(PlacedPercentNow(/*bCutsDamage=*/true), 0.0f, 100.0f);
+	return FMath::Clamp(PlacedPercentNow(EPlacedStackKind::DamageCut), 0.0f, 100.0f);
 }
 
-float UCataclysmAbilitySystemComponent::PlacedPercentNow(bool bCutsDamage) const
+float UCataclysmAbilitySystemComponent::RetaliationTakenPercentNow() const
+{
+	// NO CEILING: Thornwall's cap of ten stacks is the row's, held where a stack is placed. Never below nought.
+	return FMath::Max(0.0f, PlacedPercentNow(EPlacedStackKind::RetaliationTaken));
+}
+
+float UCataclysmAbilitySystemComponent::PlacedPercentNow(EPlacedStackKind Kind) const
 {
 	const UWorld* World = GetWorld();
 	if (!World)
@@ -4315,7 +4331,7 @@ float UCataclysmAbilitySystemComponent::PlacedPercentNow(bool bCutsDamage) const
 	for (const TPair<FName, FPlacedStack>& Each : PlacedStacks)
 	{
 		const FPlacedStack& Held = Each.Value;
-		if (Held.bCutsDamage == bCutsDamage && Held.Count > 0
+		if (Held.Kind == Kind && Held.Count > 0
 			&& World->GetTimeSeconds() - Held.GrantedAtSeconds <= Held.WindowSeconds)
 		{
 			Total += Held.Count * Held.PercentPerStack;
@@ -4326,6 +4342,13 @@ float UCataclysmAbilitySystemComponent::PlacedPercentNow(bool bCutsDamage) const
 
 void UCataclysmAbilitySystemComponent::ReceivePlacedStack(FName Key,
 	float PercentPerStack, float WindowSeconds, int32 Cap, bool bCutsDamage)
+{
+	ReceivePlacedStack(Key, PercentPerStack, WindowSeconds, Cap,
+					   bCutsDamage ? EPlacedStackKind::DamageCut : EPlacedStackKind::ArmourRemoved);
+}
+
+void UCataclysmAbilitySystemComponent::ReceivePlacedStack(FName Key,
+	float PercentPerStack, float WindowSeconds, int32 Cap, EPlacedStackKind Kind)
 {
 	const UWorld* World = GetWorld();
 	if (Key.IsNone() || PercentPerStack <= 0.0f || WindowSeconds <= 0.0f || !World)
@@ -4344,7 +4367,7 @@ void UCataclysmAbilitySystemComponent::ReceivePlacedStack(FName Key,
 	Held.GrantedAtSeconds = Now;
 	Held.WindowSeconds = WindowSeconds;
 	Held.PercentPerStack = PercentPerStack;
-	Held.bCutsDamage = bCutsDamage;
+	Held.Kind = Kind;
 }
 
 bool UCataclysmAbilitySystemComponent::NoteStruckBy(
@@ -4676,6 +4699,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::EnemyArmorRemovedNearbyAction =
 	TEXT("enemy_armor_removed_nearby");
 const TCHAR* UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction =
 	TEXT("attacker_damage_removed");
+const TCHAR* UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction =
+	TEXT("attacker_retaliation_taken");
 const TCHAR* UCataclysmAbilitySystemComponent::NthHitTakenDamageAction =
 	TEXT("nth_hit_taken_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::NthSpellManaCostAction =
@@ -5078,6 +5103,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByHitAction =
 	TEXT("smite_nearby_by_hit");
+const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
+	TEXT("retaliation_pulse");
 
 namespace
 {
@@ -6046,6 +6073,81 @@ void UCataclysmAbilitySystemComponent::NoteOverheal(float Overheal)
 void UCataclysmAbilitySystemComponent::SpendTemporaryAbsorb(float Taken)
 {
 	TemporaryAbsorb = FMath::Max(0.0f, TemporaryAbsorb - FMath::Max(0.0f, Taken));
+	// AND ETERNAL HUNGER'S PART IS CUT TO WHAT REMAINS, ruled 2026-11-25 ("its own count cut by damage"): damage takes
+	// the absorb as one pool, and the part can never be more than the whole.
+	LeechAbsorb = FMath::Min(LeechAbsorb, TemporaryAbsorb);
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::LeechOverhealAbsorbCapStat =
+	TEXT("leech_overheal_absorb_percent_of_maximum_health");
+const TCHAR* UCataclysmAbilitySystemComponent::LeechOverhealAbsorbDecayStat =
+	TEXT("leech_overheal_absorb_decay_percent_per_second");
+
+void UCataclysmAbilitySystemComponent::NoteLeechHealed(float Overheal)
+{
+	// THE PAYMENT'S TIME, WHETHER OR NOT ANYTHING OVERFLOWED: a payment that all fitted is still leeching.
+	if (const UWorld* World = GetWorld())
+	{
+		LastLeechHealedAtSeconds = World->GetTimeSeconds();
+	}
+	if (Overheal <= 0.0f)
+	{
+		return;
+	}
+	const float CapPercent = StatForSkill(FName(LeechOverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f);
+	const FGameplayAttribute MaxHealthAttribute = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (CapPercent <= 0.0f || !HasAttributeSetForAttribute(MaxHealthAttribute))
+	{
+		return;
+	}
+	// ETERNAL HUNGER'S PART HAS ITS OWN CAP, "up to 100% above your Maximum HP", of the whole maximum. ADDED TO THE
+	// ONE ABSORB, which damage takes first, and counted in the part so the decay can find it.
+	const float Cap = GetNumericAttribute(MaxHealthAttribute) * CapPercent / 100.0f;
+	const float Added = FMath::Min(Overheal, FMath::Max(0.0f, Cap - LeechAbsorb));
+	if (Added > 0.0f)
+	{
+		LeechAbsorb += Added;
+		TemporaryAbsorb += Added;
+	}
+}
+
+void UCataclysmAbilitySystemComponent::DecayLeechAbsorb(float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (LeechAbsorb <= 0.0f || Seconds <= 0.0f || !World)
+	{
+		return;
+	}
+	// "WHILE YOU ARE NOT LEECHING": no leech payment in the last second, ruled 2026-11-25.
+	if (LastLeechHealedAtSeconds >= 0.0f && World->GetTimeSeconds() - LastLeechHealedAtSeconds < 1.0f)
+	{
+		return;
+	}
+	const float PercentPerSecond = StatForSkill(FName(LeechOverhealAbsorbDecayStat), FGameplayTagContainer(), 0.0f);
+	const FGameplayAttribute MaxHealthAttribute = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (PercentPerSecond <= 0.0f || !HasAttributeSetForAttribute(MaxHealthAttribute))
+	{
+		return;
+	}
+	// ONLY ETERNAL HUNGER'S PART, AND THE WHOLE ABSORB BY THE SAME AMOUNT, so another source's shield keeps what it held.
+	const float Lost = FMath::Min(LeechAbsorb,
+								  GetNumericAttribute(MaxHealthAttribute) * PercentPerSecond / 100.0f * Seconds);
+	LeechAbsorb -= Lost;
+	TemporaryAbsorb = FMath::Max(0.0f, TemporaryAbsorb - Lost);
+}
+
+bool UCataclysmAbilitySystemComponent::IsBigHit(float GotThrough, float MaximumHealth)
+{
+	return MaximumHealth > 0.0f && GotThrough > MaximumHealth * BigHitShareOfMaximumHealthPercent / 100.0f;
+}
+
+void UCataclysmAbilitySystemComponent::NoteBigHitTaken(float GotThrough, float BlowWorth, const AActor* Attacker)
+{
+	// THE BLOW'S WORTH AND "PAID FOR A BIG HIT" HELD WHILE THE ROWS ACT, for Wrath Incarnate's pulse and Absorb and
+	// Return's share, and put back when they are done.
+	TGuardValue<float> Worth(BigHitBlowWorth, BlowWorth);
+	TGuardValue<bool> Big(bPayingForABigHit, true);
+	ActOnEvent(FName(TEXT("big_hit_taken")), nullptr, GotThrough, /*bLanded=*/true, Attacker);
 }
 
 float UCataclysmAbilitySystemComponent::SpendStoredAbsorbedDamage(float HitDamage)
@@ -6894,8 +6996,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 							UCataclysmTargeting::AbilitySystemOf(EventTarget)))
 				{
 					StackedThisEvent.Add(Action.PlacedKey);
+					// THORNWALL'S IS THE THIRD KIND, V3a (2026-11-25): it raises the retaliation the attacker takes.
 					Other->ReceivePlacedStack(Action.PlacedKey, Action.Percent,
-						Action.StackSeconds, Action.StackCap, Action.bPlacedCutsDamage);
+						Action.StackSeconds, Action.StackCap,
+						Action.bPlacedRaisesRetaliationTaken ? EPlacedStackKind::RetaliationTaken
+						: Action.bPlacedCutsDamage			 ? EPlacedStackKind::DamageCut
+															 : EPlacedStackKind::ArmourRemoved);
 				}
 			}
 			continue;
@@ -8889,6 +8995,19 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	// from the energy shield. The row's value is a percentage of MAXIMUM HEALTH,
 	// whatever its Fraction Of would say; the generator refuses a row that states
 	// one. See `GrantTemporaryAbsorb`.
+	// WRATH INCARNATE'S PULSE, V3a (2026-11-25): the row's share of the retaliation the big hit earns, to every enemy
+	// within its Event Value in metres. Only while a big hit's rows act, which the generator makes its one event; at
+	// any other time there is no blow to size it by, and nothing is paid.
+	if (Action.bRetaliationPulse)
+	{
+		if (bPayingForABigHit && BigHitBlowWorth > 0.0f)
+		{
+			UCataclysmRetaliation::PayPulseFor(this, GetAvatarActor(), Action.EventValue, BigHitBlowWorth,
+											   Action.Percent, /*bApplyBleed=*/false);
+		}
+		return;
+	}
+
 	if (Action.bTemporaryAbsorb)
 	{
 		// TOUCH OF NOTHING REFUSES THE ABSORB, unless a drawback granted it. Issue #1722.

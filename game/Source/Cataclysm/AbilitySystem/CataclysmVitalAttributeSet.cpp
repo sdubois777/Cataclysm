@@ -2004,10 +2004,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// well-defended Masochist retaliates for as much as a poorly
 					// defended one struck by the same blow. Using what landed
 					// would punish the class for its own defences.
+					//
+					// AND WHETHER THIS IS A BIG HIT IS SAID WHILE IT IS PAID FOR, for Absorb and Return's share (the War
+					// vow options' third slice, V3a, 2026-11-25): what got through, of all four pools, above a tenth of
+					// maximum health. Put back afterwards.
+					UCataclysmAbilitySystemComponent* PayingFor =
+						Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+					const bool bWasBig = PayingFor && PayingFor->SetPayingForABigHit(
+						UCataclysmAbilitySystemComponent::IsBigHit(
+							Outcome.DealtToHealth + Outcome.AbsorbedByShield + Outcome.AbsorbedByMana
+								+ Outcome.AbsorbedByTemporary,
+							GetMaxHealth()));
 					UCataclysmRetaliation::Pay(
 						GetOwningAbilitySystemComponent(), CataclysmDefendingBody(*this),
 						Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
+					if (PayingFor)
+					{
+						PayingFor->SetPayingForABigHit(bWasBig);
+					}
 
 					// AND A CREATURE CARRYING THORNS OF GLASS STRIKES BACK, with its
 					// own attack damage, whatever the hit was worth. Issue #2749
@@ -2606,6 +2621,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					!Outcome.bEvaded,
 					UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
 					Hit.bIsDamageOverTime);
+
+				// AND A BIG HIT IS ANNOUNCED, after the hit taken. The War vow options' third slice, V3a, ruled
+				// 2026-11-25: a landed hit, not a tick, that took more than 10% of maximum health after defences, counting
+				// what reached health, the energy shield, mana and the temporary absorb, the figure leech reads ("damage
+				// your energy shield took was still dealt to you"). NOT THE CHARACTER'S OWN BLOW, which has nobody to
+				// answer. It carries what got through and names the attacker; the retaliation pulse it may pay is
+				// sized, as retaliation is, by what the blow was worth before defences.
+				{
+					const AActor* BigHitAttacker = UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext());
+					const float GotThrough = Outcome.DealtToHealth + Outcome.AbsorbedByShield + Outcome.AbsorbedByMana
+						+ Outcome.AbsorbedByTemporary;
+					const bool bOwnBlow = BigHitAttacker
+						&& (BigHitAttacker == Cataclysm->GetAvatarActor() || BigHitAttacker == Cataclysm->GetOwnerActor());
+					if (!Outcome.bEvaded && !Hit.bIsDamageOverTime && !bOwnBlow
+						&& UCataclysmAbilitySystemComponent::IsBigHit(GotThrough, GetMaxHealth()))
+					{
+						Cataclysm->NoteBigHitTaken(GotThrough, Hit.Damage, BigHitAttacker);
+					}
+				}
 
 				// AND AN "EVERY Nth HIT YOU TAKE" ROW COUNTS IT, ruled 2026-09-24:
 				// a landed hit, not a tick and not an evaded blow; a blocked blow

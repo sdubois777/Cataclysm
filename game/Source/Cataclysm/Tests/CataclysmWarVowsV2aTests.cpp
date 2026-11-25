@@ -185,9 +185,10 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aStatRowsTest,
 		return false;
 	}
 	// 3, 4 AND 3 SINCE V2b, the same day: Pure Carnage, Ragnarok's shockwaves and Spiteful Guard.
+	// AND 6 SINCE V3a, the same day: Eternal Hunger's cap and decay.
 	if (!WarVowsV2aTableHolds(*this, Effects, TEXT("Berserker_trunk_004"), 2)
 		|| !WarVowsV2aTableHolds(*this, Effects, TEXT("Berserker_capstone_100"), 3)
-		|| !WarVowsV2aTableHolds(*this, Effects, TEXT("Berserker_capstone_200"), 4)
+		|| !WarVowsV2aTableHolds(*this, Effects, TEXT("Berserker_capstone_200"), 6)
 		|| !WarVowsV2aTableHolds(*this, Effects, TEXT("Bulwark_capstone_100"), 3))
 	{
 		return false;

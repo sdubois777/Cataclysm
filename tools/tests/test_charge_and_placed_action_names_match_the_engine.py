@@ -29,6 +29,8 @@ CONSTANTS = {
     "EnemyArmorRemovedAction": "enemy_armor_removed",
     "EnemyArmorRemovedNearbyAction": "enemy_armor_removed_nearby",
     "AttackerDamageRemovedAction": "attacker_damage_removed",
+    # AND THORNWALL'S STACK ON THE ATTACKER, the War vow options' third slice, V3a, 2026-11-25.
+    "AttackerRetaliationTakenAction": "attacker_retaliation_taken",
     # AND THE THREE EVERY-Nth NAMES, since issue #1833's every Nth.
     "NthHitTakenDamageAction": "nth_hit_taken_damage",
     "NthSpellManaCostAction": "nth_spell_mana_cost",
@@ -79,6 +81,8 @@ CONSTANTS = {
     "AllDotsStatus": "All DoTs",
     "SmiteNearbyByArmourAction": "smite_nearby_by_armor",
     "SmiteNearbyByHitAction": "smite_nearby_by_hit",
+    # AND WRATH INCARNATE'S PULSE, V3a, 2026-11-25.
+    "RetaliationPulseAction": "retaliation_pulse",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -194,9 +198,17 @@ def test_the_generator_accepts_exactly_the_next_use_names_the_engine_has() -> No
 def test_the_generator_accepts_exactly_the_placed_names_the_engine_has() -> None:
     # AND `EnemyArmorRemovedNearbyAction`, the same stack on every enemy nearby (the War vow options' second slice,
     # V2b, 2026-11-25), whose name ends in "NearbyAction".
+    # AND `AttackerRetaliationTakenAction`, Thornwall's stack (the War vow options' third slice, V3a, 2026-11-25),
+    # which raises what the attacker takes rather than removing anything.
     engine = {name for constant, name in engine_names().items()
-              if constant.endswith("RemovedAction") or constant.endswith("RemovedNearbyAction")}
+              if constant.endswith("RemovedAction") or constant.endswith("RemovedNearbyAction")
+              or constant == "AttackerRetaliationTakenAction"}
     assert set(gen.PLACED_ACTIONS) == engine
+
+
+def test_the_generator_accepts_exactly_the_retaliation_pulse_name_the_engine_has() -> None:
+    """The War vow options' third slice, V3a, 2026-11-25: Wrath Incarnate."""
+    assert gen.RETALIATION_PULSE_ACTION == engine_names()["RetaliationPulseAction"]
 
 
 def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:

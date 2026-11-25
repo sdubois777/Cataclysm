@@ -564,3 +564,8 @@ Berserker_capstone_200#4,Berserker_capstone_200,,,50.0,,in_wrath,0.0,,0.0,1,-1.0
 Bulwark_capstone_25#3,Bulwark_capstone_25,retaliation_penetration,flat,25.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Bulwark_capstone_100#3,Bulwark_capstone_100,blocked_damage_added_to_next_retaliation,flat,1.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Bulwark_capstone_200#3,Bulwark_capstone_200,every_block_negates,flat,1.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_50#3,Bulwark_capstone_50,,,5.0,,,0.0,,0.0,3,-1.0,0,10,attacker_retaliation_taken,hit_taken,,10.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_200#4,Bulwark_capstone_200,,,200.0,,,0.0,,0.0,3,-1.0,0,0,retaliation_pulse,big_hit_taken,,0.0,0.0,0.0,0,,0.0,0.0,4.0,,0.0,0,0
+Bulwark_basic_tw_t2_001#1,Bulwark_basic_tw_t2_001,retaliation_for_big_hits,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_200#5,Berserker_capstone_200,leech_overheal_absorb_percent_of_maximum_health,flat,100.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_200#6,Berserker_capstone_200,leech_overheal_absorb_decay_percent_per_second,flat,1.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

@@ -6689,6 +6689,16 @@ PLACED_ACTIONS = {
     # `UCataclysmAbilitySystemComponent::EnemyArmorRemovedNearbyAction` holds
     # the same name.
     "enemy_armor_removed_nearby": ("hit_dealt",),
+    # A STACK RAISING THE RETALIATION THE ATTACKER TAKES, placed on whoever
+    # landed a hit on the wearer. The War vow options' third slice, V3a,
+    # 2026-11-25: Thornwall, "Enemies that hit you are inflicted with a stack of
+    # Exposed. Each stack of Exposed increases the retaliation damage they take
+    # from you by 5%, stacking up to 10 times", ruled "any hit: pass the attacker
+    # on hit taken", a landed hit and not a tick, 10 seconds refreshed by each
+    # hit. `hit_taken` names the attacker since that slice.
+    # `UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction` holds
+    # the same name.
+    "attacker_retaliation_taken": ("hit_taken",),
 }
 
 #: The actions that COUNT A KIND OF EVENT AND ACT ON EVERY Nth, each naming
@@ -7421,6 +7431,13 @@ STRIKE_TARGET_EVENTS = (
     "block",
     "melee_hit_taken",
     "dodge",
+    # THE ATTACKER OF A LANDED HIT THAT IS NOT A TICK, and of a big hit. The War
+    # vow options' third slice, V3a, 2026-11-25, which made `hit_taken` name the
+    # attacker for Thornwall and raised `big_hit_taken` with it: a living
+    # character other than the wearer, as `melee_hit_taken`'s is. No row strikes
+    # on either today.
+    "hit_taken",
+    "big_hit_taken",
 )
 
 #: The events that carry a character a strike cannot land on, each with why.
@@ -7558,6 +7575,20 @@ MAX_EVERY_SECONDS = 60.0
 #: attributes, what is held and the most that can be held, and the absorb is
 #: one plain number with no maximum of its own.
 TEMPORARY_ABSORB_ACTION = "temporary_absorb"
+
+#: The action that PAYS A RETALIATION PULSE for a big hit: its value is the
+#: share of the retaliation the big hit earns, paid to every enemy within its
+#: Event Value in metres of the wearer, as retaliation is delivered. The War vow
+#: options' third slice, V3a, 2026-11-25: Wrath Incarnate, "When a single hit
+#: takes more than 10% of your Maximum HP, you retaliate against every enemy
+#: within 4 metres for 200% of your retaliation damage". ON THE BIG HIT ONLY,
+#: which is the one event carrying a blow to size it by.
+#: `UCataclysmAbilitySystemComponent::RetaliationPulseAction` holds the same
+#: name.
+RETALIATION_PULSE_ACTION = "retaliation_pulse"
+RETALIATION_PULSE_EVENTS = ("big_hit_taken",)
+MAX_RETALIATION_PULSE_METRES = 20.0
+MAX_RETALIATION_PULSE_PERCENT = 1000.0
 
 #: The events a temporary absorb may be granted on: the clock, and no other
 #: until a sentence asks for one. The clock counts only while the wearer is in
@@ -7727,6 +7758,14 @@ ACTION_ONLY_EVENTS = (
     # "Entering Frenzy immediately resets the cooldown of your movement skill", is
     # a `cooldown_reset_movement` row on it. Clockless.
     "frenzy_entered",
+    # A BIG HIT TAKEN: one landed hit, not a tick and not the wearer's own,
+    # that took more than 10% of maximum health after defences, counting what
+    # reached health, the energy shield, mana and the temporary absorb. Raised
+    # by `UCataclysmAbilitySystemComponent::NoteBigHitTaken` with that amount
+    # and the attacker. The War vow options' third slice, V3a, ruled 2026-11-25
+    # ("the 10% fixed in the engine"): Wrath Incarnate's pulse is a
+    # `retaliation_pulse` row on it. Clockless.
+    "big_hit_taken",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -7762,6 +7801,8 @@ EVENTS_WITH_AN_AMOUNT = (
     "retaliation_dealt",
     "kill",
     "afflicted_death",
+    # What the big hit took, after defences. V3a, 2026-11-25.
+    "big_hit_taken",
 )
 
 
@@ -7883,6 +7924,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
     if action == TEMPORARY_ABSORB_ACTION:
         _check_temporary_absorb_action(index, who, action, event, fraction_of,
                                        kind, raw, headers)
+        return
+    if action == RETALIATION_PULSE_ACTION:
+        _check_retaliation_pulse_action(index, who, action, event, fraction_of,
+                                        kind, raw, headers)
         return
     if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
         _check_kept_stacks_repeat_skill_action(index, who, action, event,
@@ -8288,6 +8333,31 @@ def _check_temporary_absorb_action(index: int, who: str, action: str,
                 f"absorb and states {column} {written!r}. Its value is a "
                 f"percentage of maximum health and nothing else, so the "
                 f"column must be empty.")
+
+
+def _check_retaliation_pulse_action(index: int, who: str, action: str,
+                                    event: str, fraction_of: str, kind: str,
+                                    raw, headers: dict[str, int]) -> None:
+    """Everything a retaliation pulse row must say, and everything it must not.
+    The War vow options' third slice, V3a, 2026-11-25: Wrath Incarnate. On the
+    big hit only, which carries the blow the pulse is sized by; the radius is
+    checked where Event Value is read. A fraction, a value kind and a scale
+    each mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in RETALIATION_PULSE_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} pays a retaliation pulse "
+            f"on the event {event or '(none)'!r}. Only a big hit carries a blow "
+            f"to size it by: {', '.join(RETALIATION_PULSE_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} pays a retaliation "
+                f"pulse and states {column} {written!r}. Its value is a share "
+                f"of the retaliation the big hit earns and nothing else, so "
+                f"the column must be empty.")
 
 
 def _check_strike_target_action(index: int, who: str, action: str, event: str,
@@ -8832,6 +8902,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != STRIKE_TARGET_ACTION \
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
+                and action != RETALIATION_PULSE_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9173,6 +9244,16 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} grants a temporary "
                 f"absorb of {low:g} to {high:g} per cent of maximum health. "
                 f"It is above 0 and up to {MAX_TEMPORARY_ABSORB_PERCENT:g}.")
+
+    # A RETALIATION PULSE'S VALUE IS A SHARE OF THE RETALIATION THE BIG HIT
+    # EARNS, above 0 and up to the bound. V3a, 2026-11-25.
+    if action == RETALIATION_PULSE_ACTION:
+        if not (0 < low <= MAX_RETALIATION_PULSE_PERCENT
+                and 0 < high <= MAX_RETALIATION_PULSE_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} pays a retaliation "
+                f"pulse of {low:g} to {high:g} per cent. It is above 0 and up "
+                f"to {MAX_RETALIATION_PULSE_PERCENT:g}.")
 
     # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
     if action in SKILL_IN_HAND_ACTIONS:
@@ -9859,6 +9940,19 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == RETALIATION_PULSE_ACTION:
+        # OR THE RADIUS OF A RETALIATION PULSE, in metres, required, and its
+        # share bounded. V3a, 2026-11-25. See `RETALIATION_PULSE_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} pays a retaliation "
+                f"pulse and states no Event Value. It is the radius in metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_RETALIATION_PULSE_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reaches "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_RETALIATION_PULSE_METRES:g}.")
     elif event_value_text:
         raise DataError(
             f"Enchantment Effects row {index}: {name} states an Event Value on "

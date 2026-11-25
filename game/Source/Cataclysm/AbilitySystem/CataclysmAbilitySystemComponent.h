@@ -1177,6 +1177,24 @@ public:
 	void ReceivePlacedStack(FName Key, float PercentPerStack, float WindowSeconds,
 							int32 Cap, bool bCutsDamage);
 
+	/** The three things a placed stack does. The War vow options' third slice, V3a, 2026-11-25, added the third. */
+	enum class EPlacedStackKind : uint8
+	{
+		ArmourRemoved,
+		DamageCut,
+		RetaliationTaken,
+	};
+
+	/** The same, saying which of the three the stack does. The form above places `ArmourRemoved` or `DamageCut`. */
+	void ReceivePlacedStack(FName Key, float PercentPerStack, float WindowSeconds, int32 Cap, EPlacedStackKind Kind);
+
+	/**
+	 * How much more retaliation this character takes now, in per cent, from the Thornwall stacks placed on it, summed;
+	 * nought with none. Read per target by `UCataclysmRetaliation`, as a multiplier of its own on the receiving side
+	 * (ruled 2026-11-25). V3a.
+	 */
+	float RetaliationTakenPercentNow() const;
+
 	/**
 	 * The share of this character's damage the stacks placed on it take away
 	 * now, 0 to 100. Issue #1833, phase 2. Read by `ApplyHit` on the attacker.
@@ -1249,6 +1267,14 @@ public:
 	 */
 	static const TCHAR* EnemyArmorRemovedAction;
 	static const TCHAR* AttackerDamageRemovedAction;
+
+	/**
+	 * Thornwall's stack, placed on the attacker of a landed hit that is not a tick: `hit_taken` names the attacker
+	 * since the War vow options' third slice, V3a, 2026-11-25 ("any hit: pass the attacker on hit taken"). Each stack
+	 * raises the retaliation that character takes, read per target by `UCataclysmRetaliation::Pay` and `PayPulse`
+	 * through `RetaliationTakenPercentNow`. In `PLACED_ACTIONS` too.
+	 */
+	static const TCHAR* AttackerRetaliationTakenAction;
 
 	/**
 	 * The armour stack of `EnemyArmorRemovedAction` placed on every enemy within `NearbyActionRadiusCm` of the
@@ -1758,6 +1784,15 @@ public:
 	 * too.
 	 */
 	static const TCHAR* SmiteNearbyByHitAction;
+
+	/**
+	 * Wrath Incarnate's pulse. The War vow options' third slice, V3a, 2026-11-25: "When a single hit takes more than 10%
+	 * of your Maximum HP, you retaliate against every enemy within 4 metres for 200% of your retaliation damage". On
+	 * `big_hit_taken` only: the row's value is the share of the retaliation the big hit earns, and its Event Value the
+	 * radius in metres. Paid by `UCataclysmRetaliation::PayPulseFor`. In `tools/generate_datatables.py` as
+	 * `RETALIATION_PULSE_ACTION`.
+	 */
+	static const TCHAR* RetaliationPulseAction;
 
 	/**
 	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
@@ -2278,6 +2313,44 @@ public:
 
 	/** What the temporary absorb holds now. */
 	float TemporaryAbsorbHeld() const { return TemporaryAbsorb; }
+
+	/**
+	 * Eternal Hunger, the War vow options' third slice, V3a, 2026-11-25: "Life leech can heal you up to 100% above your
+	 * Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and
+	 * damage you take removes it first." Ruled that day: what a leech payment offers beyond what fits is held in the
+	 * temporary absorb, which damage already removes first, up to this stat's per cent of maximum health. LEECH ONLY:
+	 * regeneration and every other heal do not overflow into it.
+	 *
+	 * A FLAT STAT WITH NO GAMEPLAY ATTRIBUTE AND NO BASE, asked with no tags. Nought, which is every character without
+	 * the option, adds nothing.
+	 */
+	static const TCHAR* LeechOverhealAbsorbCapStat;
+
+	/**
+	 * The per cent of maximum health a second Eternal Hunger's part of the absorb loses while its wearer is not leeching.
+	 * V3a, 2026-11-25: 1, "a judgement, play-test". A flat stat with no gameplay attribute, asked with no tags.
+	 */
+	static const TCHAR* LeechOverhealAbsorbDecayStat;
+
+	/**
+	 * A leech payment healed this character's health and offered `Overheal` points more than fitted under the heal's
+	 * ceiling (nought when it all fitted). Notes the payment's time, which `DecayLeechAbsorb` reads, and adds the
+	 * overheal to the temporary absorb, counted as Eternal Hunger's part, to no more than `LeechOverhealAbsorbCapStat`
+	 * per cent of maximum health in that part. Called from `UCataclysmRegeneration::TopUp` for a heal of health
+	 * carrying the leech tag, and from nowhere else outside a test.
+	 */
+	void NoteLeechHealed(float Overheal);
+
+	/**
+	 * Eternal Hunger's part of the temporary absorb loses `LeechOverhealAbsorbDecayStat` per cent of maximum health a
+	 * second, for `Seconds`, when no leech payment has healed this character in the last second ("not leeching", ruled
+	 * 2026-11-25). ONLY THAT PART: a shield another source granted is not drained (ruled the same day). Called at each
+	 * regeneration step.
+	 */
+	void DecayLeechAbsorb(float Seconds);
+
+	/** Eternal Hunger's part of the temporary absorb now. Never more than the whole absorb. */
+	float LeechAbsorbHeld() const { return LeechAbsorb; }
 
 	/** The shield rate this character's last regeneration step gave it, per
 	 *  second, which Shared Blood's minions share. Issue #1515. */
@@ -4031,6 +4104,44 @@ public:
 	 */
 	void NoteHitTaken() { NoteHitTaken(true); }
 
+	/**
+	 * The share of maximum health, in per cent, that one hit must take after defences to be a big hit. The War vow
+	 * options' third slice, V3a, 2026-11-25, ruled "the 10% fixed in the engine": Wrath Incarnate's "When a single hit
+	 * takes more than 10% of your Maximum HP" and Absorb and Return's "hits that deal more than 10% of your max HP".
+	 */
+	static constexpr float BigHitShareOfMaximumHealthPercent = 10.0f;
+
+	/**
+	 * Whether a hit that took `GotThrough` from a character whose maximum health is `MaximumHealth` is a big hit: more
+	 * than `BigHitShareOfMaximumHealthPercent` of it. `GotThrough` is what reached health, the energy shield, mana and
+	 * the temporary absorb together, the figure leech reads (ruled 2026-11-25: "damage your energy shield took was
+	 * still dealt to you"). False for a maximum of nought or less.
+	 */
+	static bool IsBigHit(float GotThrough, float MaximumHealth);
+
+	/**
+	 * Raise `big_hit_taken` for a landed big hit that was not a tick, carrying what it took (`GotThrough`) and naming
+	 * `Attacker`. `BlowWorth` is what the blow was worth before this character's defences, the figure retaliation is
+	 * paid on; `RetaliationPulseAction` reads it while the event's rows act, with `IsPayingForABigHit` true. Called by
+	 * `UCataclysmVitalAttributeSet` after `NoteHitTaken`. V3a, 2026-11-25.
+	 */
+	void NoteBigHitTaken(float GotThrough, float BlowWorth, const AActor* Attacker);
+
+	/**
+	 * Whether the retaliation being paid now is paid for a big hit: true while `UCataclysmVitalAttributeSet` pays for
+	 * one and while `big_hit_taken`'s rows act. `UCataclysmRetaliation::AmountFor` reads it to add
+	 * `retaliation_for_big_hits` (Absorb and Return) to the share. V3a, 2026-11-25.
+	 */
+	bool IsPayingForABigHit() const { return bPayingForABigHit; }
+
+	/** Set what `IsPayingForABigHit` answers; returns what it answered before, for the caller to put back. */
+	bool SetPayingForABigHit(bool bBig)
+	{
+		const bool bWas = bPayingForABigHit;
+		bPayingForABigHit = bBig;
+		return bWas;
+	}
+
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
 
@@ -5391,7 +5502,7 @@ protected:
 		float GrantedAtSeconds = 0.0f;
 		float WindowSeconds = 0.0f;
 		float PercentPerStack = 0.0f;
-		bool bCutsDamage = false;
+		EPlacedStackKind Kind = EPlacedStackKind::ArmourRemoved;
 	};
 
 	/**
@@ -5401,8 +5512,8 @@ protected:
 	 */
 	TMap<FName, FPlacedStack> PlacedStacks;
 
-	/** What the placed stacks of one kind take away now, summed, unclamped. */
-	float PlacedPercentNow(bool bCutsDamage) const;
+	/** What the placed stacks of one kind take away, or add, now, summed, unclamped. */
+	float PlacedPercentNow(EPlacedStackKind Kind) const;
 
 	/** What one applier's worn rows hung on one ailment this character carries. */
 	struct FCarriedRiders
@@ -5588,6 +5699,18 @@ protected:
 
 	/** The temporary absorb, separate from the energy shield. See `GrantTemporaryAbsorb`. */
 	float TemporaryAbsorb = 0.0f;
+
+	/** Eternal Hunger's part of `TemporaryAbsorb`. See `NoteLeechHealed`. V3a, 2026-11-25. */
+	float LeechAbsorb = 0.0f;
+
+	/** When a leech payment last healed this character, or below nought for never. See `DecayLeechAbsorb`. */
+	float LastLeechHealedAtSeconds = -1.0f;
+
+	/** Whether retaliation is being paid for a big hit now. See `IsPayingForABigHit`. V3a, 2026-11-25. */
+	bool bPayingForABigHit = false;
+
+	/** What the big hit whose `big_hit_taken` rows are acting was worth before defences. See `NoteBigHitTaken`. */
+	float BigHitBlowWorth = 0.0f;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

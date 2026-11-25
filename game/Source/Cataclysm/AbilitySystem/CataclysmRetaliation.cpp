@@ -20,6 +20,14 @@ const TCHAR* UCataclysmRetaliation::CannotBeMitigatedStat =
 	TEXT("retaliation_cannot_be_mitigated");
 const TCHAR* UCataclysmRetaliation::PenetrationStat = TEXT("retaliation_penetration");
 const TCHAR* UCataclysmRetaliation::BlockedDamageAddedStat = TEXT("blocked_damage_added_to_next_retaliation");
+const TCHAR* UCataclysmRetaliation::BigHitShareStat = TEXT("retaliation_for_big_hits");
+
+float UCataclysmRetaliation::TakenMultiplierOf(const AActor* Target)
+{
+	const UCataclysmAbilitySystemComponent* Taking =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	return Taking ? 1.0f + Taking->RetaliationTakenPercentNow() / 100.0f : 1.0f;
+}
 
 namespace
 {
@@ -84,9 +92,17 @@ float UCataclysmRetaliation::AmountFor(const UAbilitySystemComponent* Defender,
 	}
 
 	// A REFLECTED HIT STATES ITS OWN SHARE, the whole of it, and does not read the defender's stat.
-	const float Percent = PercentInPlaceOfTheStat >= 0.0f ? PercentInPlaceOfTheStat : StatOfRetaliator(
+	float Percent = PercentInPlaceOfTheStat >= 0.0f ? PercentInPlaceOfTheStat : StatOfRetaliator(
 		Defender, AmountStat,
 		UCataclysmCombatAttributeSet::GetRetaliationAttribute());
+
+	// AND ABSORB AND RETURN'S BONUS, ADDED TO THE SHARE, for a payment answering a big hit (V3a, 2026-11-25). Not for a
+	// reflected hit, which states its own share.
+	const UCataclysmAbilitySystemComponent* Paying = Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	if (PercentInPlaceOfTheStat < 0.0f && Paying && Paying->IsPayingForABigHit())
+	{
+		Percent += Paying->StatForSkill(FName(BigHitShareStat), FGameplayTagContainer(), 0.0f);
+	}
 	if (Percent <= 0.0f)
 	{
 		return 0.0f;
@@ -213,12 +229,20 @@ float UCataclysmRetaliation::StrikeBack(AActor* Creature, AActor* Attacker)
 float UCataclysmRetaliation::PayPulse(UAbilitySystemComponent* Defender, AActor* Instigator, float RadiusMetres,
 									   bool bApplyBleed)
 {
+	const UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(Defender);
+	return Paying ? PayPulseFor(Defender, Instigator, RadiusMetres, Paying->LastBlowTakenThisFloor(), 100.0f, bApplyBleed)
+				  : 0.0f;
+}
+
+float UCataclysmRetaliation::PayPulseFor(UAbilitySystemComponent* Defender, AActor* Instigator, float RadiusMetres,
+										  float BlowWorth, float PercentOfPayment, bool bApplyBleed)
+{
 	UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(Defender);
-	if (!Paying || !Instigator || RadiusMetres <= 0.0f)
+	if (!Paying || !Instigator || RadiusMetres <= 0.0f || PercentOfPayment <= 0.0f)
 	{
 		return 0.0f;
 	}
-	const float Amount = AmountFor(Defender, Paying->LastBlowTakenThisFloor(), -1.0f)
+	const float Amount = AmountFor(Defender, BlowWorth, -1.0f) * PercentOfPayment / 100.0f
 		* UCataclysmSkillEffects::KeptUnderWitheredTouch(Instigator);
 	if (Amount <= 0.0f)
 	{
@@ -242,7 +266,8 @@ float UCataclysmRetaliation::PayPulse(UAbilitySystemComponent* Defender, AActor*
 																	RadiusMetres * CentimetresPerMetre))
 	{
 		const float Before = HealthOfRetaliationTarget(Target);
-		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount, Delivery);
+		// AND THORNWALL'S STACKS ON THIS TARGET, a multiplier of its own (V3a, 2026-11-25).
+		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount * TakenMultiplierOf(Target), Delivery);
 		const float Taken = FMath::Max(0.0f, Before - HealthOfRetaliationTarget(Target));
 		TakenAltogether += Taken;
 		Paying->ActOnEvent(FName(TEXT("retaliation_dealt")), /*EventTags=*/nullptr, /*EventAmount=*/Taken,
@@ -342,7 +367,9 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 		// is 25, and the target's own armour and resistance now take a share
 		// before that -- so what was sent and what landed differ twice over.
 		const float Before = HealthOfRetaliationTarget(Target);
-		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount + Stored,
+		// AND THORNWALL'S STACKS ON THIS TARGET, a multiplier of its own on the receiving side, of the whole blow sent,
+		// what blocks stored included (V3a, ruled 2026-11-25).
+		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, (Amount + Stored) * TakenMultiplierOf(Target),
 												  Delivery);
 		Stored = 0.0f;
 		const float Taken =

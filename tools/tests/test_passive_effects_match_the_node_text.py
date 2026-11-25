@@ -718,7 +718,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 565 THE SAME DAY: The Unbreakable Wall's flag, by the owner's ruling
 #: (`tools/apply_war_owner_rulings_2026_11_25.py`).
-AUTHORED_ROWS = 565
+#:
+#: AND TO 570 THE SAME DAY: five rows of V3a (`tools/reapply_war_vows_v3a_workbook.py`): Thornwall's stack, Wrath
+#: Incarnate's pulse, Absorb and Return's share for big hits, and Eternal Hunger's cap and decay.
+AUTHORED_ROWS = 570
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1158,7 +1161,10 @@ AUTHORED_ROWS = 565
 #: AND TO 316 THE SAME DAY: four oaths, with the War vow options' first slice.
 #: AND TO 317 THE SAME DAY: Unbridled, with the second slice, V2a. Its options
 #: (Opportunist, Titan, Bastion) are on capstones already counted.
-AUTHORED_NODES = 317
+#: AND TO 318 THE SAME DAY: Absorb and Return, with the third slice, V3a. Its
+#: other option rows (Thornwall, Wrath Incarnate's pulse, Eternal Hunger's) are
+#: on capstones already counted.
+AUTHORED_NODES = 318
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1266,7 +1272,9 @@ AUTHORED_NODES = 317
 #: Each capstone already had a row, so `AUTHORED_NODES` does not move. Ragnarok's shockwaves are a third row on an
 #: option already counted.
 #: AND TO 58 THE SAME DAY: The Unbreakable Wall (Bulwark), by the owner's ruling. Its capstone already had a row.
-AUTHORED_OPTIONS = 58
+#: AND TO 59 THE SAME DAY: V3a -- Thornwall (Bulwark). Its capstone already had a row. Wrath Incarnate's pulse and
+#: Eternal Hunger's two are rows on options already counted.
+AUTHORED_OPTIONS = 59
 
 #: How many capstone options are named at all, across every tree.
 #:

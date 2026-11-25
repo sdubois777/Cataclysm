@@ -321,6 +321,15 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		{
 			const float Room = Ceiling > 0.0f ? FMath::Max(0.0f, Ceiling - Current) : 0.0f;
 			Overhealed->NoteOverheal(Gain - FMath::Min(Gain, Room));
+
+			// AND A LEECH PAYMENT IS NOTED, WITH WHAT DID NOT FIT, for Eternal Hunger (the War vow options' third slice,
+			// V3a, 2026-11-25): "Life leech can heal you up to 100% above your Maximum HP". LEECH ONLY, known by the
+			// tag `UCataclysmLeech` hands over; nothing for a character without the option but the payment's time.
+			const FGameplayTag Leech = UCataclysmFervour::LeechTag();
+			if (Leech.IsValid() && Healing.HasTag(Leech))
+			{
+				Overhealed->NoteLeechHealed(Gain - FMath::Min(Gain, Room));
+			}
 		}
 	}
 
@@ -504,6 +513,10 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 		// `RefreshLiveMaximumHealth`, which runs only for a character whose
 		// maximum moves with its state and would miss one whose reservation does.
 		Cataclysm->HoldHealthToUnreserved();
+
+		// AND ETERNAL HUNGER'S PART OF THE ABSORB DECAYS while its wearer is not leeching (V3a, 2026-11-25). Nothing
+		// for a character holding none of it.
+		Cataclysm->DecayLeechAbsorb(SecondsInStep);
 	}
 
 	// THE HEALTH STEP SAYS IT IS REGENERATION, and the other two do not bother

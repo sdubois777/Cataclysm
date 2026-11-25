@@ -741,6 +741,18 @@ INVENTORY = {
      'FName(UCataclysmRetaliation::PenetrationStat), FGameplayTagContainer(), 0.0f'):
         "Blood Oath's retaliation-only penetration (V2b, 2026-11-25), asked of the attacker of a blow stamped as "
         "retaliation; retaliation is not a skill and carries no tags, and the stat is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(LeechOverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f'):
+        "Eternal Hunger's cap (the War vow options' third slice, V3a, 2026-11-25), asked at a leech payment of health; "
+        "a heal is not a skill and carries no tags, and the stat is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(LeechOverhealAbsorbDecayStat), FGameplayTagContainer(), 0.0f'):
+        "Eternal Hunger's decay (V3a, 2026-11-25), asked at a regeneration step; no blow and no skill are in hand, and "
+        "the stat is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp',
+     'FName(BigHitShareStat), FGameplayTagContainer(), 0.0f'):
+        "Absorb and Return's share (V3a, 2026-11-25), asked while retaliation for a big hit is priced; retaliation is "
+        "not a skill and carries no tags, and the stat is stated under no condition",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(PinSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Unstoppable's flag (the War vow options' second slice, 2026-11-25), asked of the target of a pin before "

@@ -9257,6 +9257,121 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `retaliation_for_big_hits`, read by `UCataclysmRetaliation::AmountFor` while the defender pays for a big hit. The
+	 * War vow options' third slice, V3a, 2026-11-25: Absorb and Return, "added to the share". Two retaliators, each
+	 * with retaliation at 20, each pay for a blow of 500 struck by an attacker with no defences, said to be a big hit.
+	 * Only the second holds 3 of the stat: its payment is 115 and the first's 100. THE CONTROL: the second's payment
+	 * for a blow that is not big is 100.
+	 */
+	void ProbeRetaliationForBigHits(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		Plain.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		Holding.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		GrantFlats(Holding.Actor, {{FName(UCataclysmRetaliation::BigHitShareStat), 3.0f}});
+
+		Test.TestEqual(TEXT("control: a payment for a blow that is not big is the 100 the stat sends"),
+					   UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, 500.0f),
+					   100.0f, 0.01f);
+		Plain.AbilitySystem->SetPayingForABigHit(true);
+		Holding.AbilitySystem->SetPayingForABigHit(true);
+		Test.TestEqual(TEXT("control: with none of the stat a big hit's payment is 100"),
+					   UCataclysmRetaliation::Pay(Plain.AbilitySystem, Plain.Actor, Attacker.Actor, 500.0f),
+					   100.0f, 0.01f);
+		Test.TestEqual(TEXT("and with retaliation_for_big_hits at 3 it is 115, so AmountFor really reads it"),
+					   UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, 500.0f),
+					   115.0f, 0.01f);
+	}
+
+	/**
+	 * `leech_overheal_absorb_percent_of_maximum_health`, read by `UCataclysmAbilitySystemComponent::NoteLeechHealed`
+	 * at each leech payment of health. The War vow options' third slice, V3a, 2026-11-25: Eternal Hunger. Two
+	 * characters at full health, 1,000, each take a leech payment of 300 through the top-up. Only the second holds a
+	 * cap of 100: its absorb holds the 300, and the first's nothing. A further payment of 900 fills it to its cap of
+	 * 1,000 and no more.
+	 */
+	void ProbeLeechOverhealAbsorbCap(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Held(World, FVector(0, 100 * M, 0));
+		GrantFlats(Held.Actor, {{FName(UCataclysmAbilitySystemComponent::LeechOverhealAbsorbCapStat), 100.0f}});
+		FGameplayTagContainer Leeching;
+		Leeching.AddTag(UCataclysmFervour::LeechTag());
+		for (FScopedSwinger* Healed : {&Plain, &Held})
+		{
+			Healed->Set(Vital::GetMaxHealthAttribute(), 1000.0f);
+			Healed->Set(Vital::GetHealthAttribute(), 1000.0f);
+			UCataclysmRegeneration::TopUp(*Healed->AbilitySystem, Vital::GetHealthAttribute(),
+										  Vital::GetMaxHealthAttribute(), 300.0f, Leeching);
+		}
+
+		Test.TestEqual(TEXT("a character without leech_overheal_absorb_percent_of_maximum_health holds no absorb after "
+							"a leech payment at full health"),
+					   Plain.AbilitySystem->TemporaryAbsorbHeld(), 0.0f);
+		Test.TestEqual(TEXT("and one carrying it holds the 300, so NoteLeechHealed really reads it"),
+					   Held.AbilitySystem->LeechAbsorbHeld(), 300.0f, 0.01f);
+		UCataclysmRegeneration::TopUp(*Held.AbilitySystem, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+									  900.0f, Leeching);
+		Test.TestEqual(TEXT("and a further 900 fills it to the cap of 1,000 and no more"),
+					   Held.AbilitySystem->LeechAbsorbHeld(), 1000.0f, 0.01f);
+	}
+
+	/**
+	 * `leech_overheal_absorb_decay_percent_per_second`, read by `UCataclysmAbilitySystemComponent::DecayLeechAbsorb`.
+	 * The War vow options' third slice, V3a, 2026-11-25: Eternal Hunger. Two characters at full health, 1,000, each
+	 * holding a cap of 100, each take a leech payment of 500 and then decay for 1 second two seconds later. Only the
+	 * second holds the decay at 1: it loses 10, and the first nothing.
+	 */
+	void ProbeLeechOverhealAbsorbDecay(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Held(World, FVector(0, 100 * M, 0));
+		GrantFlats(Plain.Actor, {{FName(UCataclysmAbilitySystemComponent::LeechOverhealAbsorbCapStat), 100.0f}});
+		GrantFlats(Held.Actor, {{FName(UCataclysmAbilitySystemComponent::LeechOverhealAbsorbCapStat), 100.0f},
+								{FName(UCataclysmAbilitySystemComponent::LeechOverhealAbsorbDecayStat), 1.0f}});
+		FGameplayTagContainer Leeching;
+		Leeching.AddTag(UCataclysmFervour::LeechTag());
+		for (FScopedSwinger* Healed : {&Plain, &Held})
+		{
+			Healed->Set(Vital::GetMaxHealthAttribute(), 1000.0f);
+			Healed->Set(Vital::GetHealthAttribute(), 1000.0f);
+			UCataclysmRegeneration::TopUp(*Healed->AbilitySystem, Vital::GetHealthAttribute(),
+										  Vital::GetMaxHealthAttribute(), 500.0f, Leeching);
+		}
+		World->TimeSeconds += 2.0f;
+		Plain.AbilitySystem->DecayLeechAbsorb(1.0f);
+		Held.AbilitySystem->DecayLeechAbsorb(1.0f);
+
+		Test.TestEqual(TEXT("a character without leech_overheal_absorb_decay_percent_per_second keeps its 500"),
+					   Plain.AbilitySystem->LeechAbsorbHeld(), 500.0f, 0.01f);
+		Test.TestEqual(TEXT("and one carrying it at 1 loses 10 in a second, so DecayLeechAbsorb really reads it"),
+					   Held.AbilitySystem->LeechAbsorbHeld(), 490.0f, 0.01f);
+	}
+
+	/**
 	 * `enemies_immune_to_you_after_seconds`, read by `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` where a
 	 * blow is resolved. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune
 	 * to your damage until you disengage for 3 seconds". Two attackers each strike the same enemy once and then stay
@@ -12617,6 +12732,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("retaliation_cannot_be_mitigated"), &ProbeRetaliationCannotBeMitigated},
 			{TEXT("retaliation_penetration"), &ProbeRetaliationPenetration},
 			{TEXT("blocked_damage_added_to_next_retaliation"), &ProbeBlockedDamageAddedToNextRetaliation},
+			{TEXT("retaliation_for_big_hits"), &ProbeRetaliationForBigHits},
+			{TEXT("leech_overheal_absorb_percent_of_maximum_health"), &ProbeLeechOverhealAbsorbCap},
+			{TEXT("leech_overheal_absorb_decay_percent_per_second"), &ProbeLeechOverhealAbsorbDecay},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
