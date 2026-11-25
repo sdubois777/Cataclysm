@@ -172,8 +172,31 @@ window's base log:
   `AQuestSiegeBitesAQuarterOfWhatAnOrdinarySiegeBites`; and the day's cap (`QuestSiegesToday >= QuestSiegesPerDay`
   read as `false`), guarded by `AWaveMakesNoMoreWarQuestSiegesThanTheDayHasLeft`. Each keeps its own test with a
   control. WC1 is kept because the fall rule is the one rule new to both halves.
-- **The sweeps** (`sim/experiments.py`, W5): not run yet. They run when no Unreal window is running, and their War
-  rows are added here.
+- **The sweeps** (`sim/experiments.py`, W5) ran on `c37b947ca`: "Done. 39,240 campaigns run." **Their report has no row
+  per Cataclysm**, so it has no War rows to quote: each campaign draws its Cataclysms from its seed and the report
+  averages over them. So W5 was met by a focused measurement instead, approved by the coordinating session the same
+  day: campaigns whose drawn Cataclysms include War, 1000 per cell, `policies.triage`, the report settings, with the
+  fall rule (`war_fall_makes_a_quest_siege`) on and off. The noise between two cells is 2.2 points.
+
+| Tier | Fall rule | Won | Lost | Cities lost | War Quest Sieges a fall made |
+| :-- | :-- | --: | --: | --: | --: |
+| 1 | off | 6.8% | 93.2% | 23.86 | 0.00 |
+| 1 | on | 2.6% | 97.4% | 23.98 | 6.82 |
+| 2 | off | 35.1% | 64.9% | 23.57 | 0.00 |
+| 2 | on | 32.3% | 67.7% | 23.75 | 5.00 |
+| 3 | off | 21.7% | 78.3% | 23.96 | 0.00 |
+| 3 | on | 22.3% | 77.7% | 23.99 | 3.88 |
+
+- **The fall rule costs tier 1 4.2 points and tier 2 2.8**, each more than the noise; tier 3's 0.6 is within it.
+- **THE LOW TIER 1 BASE PREDATES THIS SLICE.** War-only tier 1 campaigns win 6.8% with the fall rule off. The same 1000
+  seeds give **7.5% on `development` (`551381d2b`) and 7.5% on this slice's parent (`75200dd18`)**, each in its own
+  extracted copy in one session. The 0.7-point gap to this slice, with its fall rule off, is within the noise; it holds the
+  per-day cap and the re-draw together. Opened as [#2916](https://github.com/sdubois777/Cataclysm/issues/2916), "War-only tier 1
+  campaigns win about 7% in the simulation"; the coordinating session ruled the slice is not held for it.
+- **THE PER-DAY CAP WAS NOT MEASURED ON ITS OWN, AND WHY:** it has no switch, so both cells above hold it. Telling it
+  apart from the re-draw would need a run with the re-draw removed. The coordinating session ruled it not measured
+  unless the fall rule's figures looked wrong; against the 10-point condition it set, they did not. The comparison with
+  the parent bounds the cap and the re-draw together at 0.7 points at tier 1, within the noise.
 
 ---
 
