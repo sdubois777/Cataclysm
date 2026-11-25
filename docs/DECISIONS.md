@@ -572,11 +572,37 @@ JUnit 8505 tests, 1 failure, 0 errors, 9 skipped. ruff: "All checks passed!". **
 three character-version failures of `29c13a0ce` are gone. Development `be7ffb06e` (#2892, one bullet in this log)
 was merged on top afterwards, in `d97b30307`.
 
-**THE REGISTRATION.** Base: window ss2-w1's whole-suite engine log, `ss2_suite_engine_56360b4d.log` in the worktree
-`sharp-meitner-246682`'s `.claude/windows/` (skill selection on `56360b4d6`: "5474 tests performed", "58 skipped part of
-what they check", "Test saves: 874 written and deleted, 0 left behind"). Its game files are development `eb34af972`'s but
-for one test file, `CataclysmSkillPoolTests.cpp`, whose control ss2-w2 and ss2-w3 corrected without changing its count
-of 11. **If another window's whole suite lands on development first, this is re-registered from its log.**
+**On development `0d9259653` (2026-11-25): the empty-board surge (#2865, PR #2893) merged in, in `42bad349b`**, by the
+coordinating session's instruction of that day, with no conflict. #2865 changes the day loop: an empty board is one with
+no ordinary dungeon standing and brings a surge with no least gap, four dungeons larger; every city's fall brings a
+surge; and a day report counts its surges (`FCataclysmDayReport::Surges`), which `AwayAccount` and `NoteDaysAway` add
+up since then instead of counting a day with `bSurged`. It renames seven `Cataclysm.EmpireRun.` tests and adds none. The
+sweep for what it and #2857 both touch:
+- **`FCataclysmPlayLoopLog::DaysDidSomething` (#2857) asked `bSurged` while the account it guards counts `Surges`**; it
+  asks `Surges` now (`3b35f7151`), and its test's surge day is written as `FireSurge` writes it (`bSurged`, `Surges` 1,
+  six dungeons) and checks the account names "1 surge brought 6 dungeons". A day the game writes sets both, so no play
+  changes. **No guard proof**: the difference shows only on a day built by hand with the flag and no count, which the
+  game never writes.
+- **The day reports the tests build by hand** (2865-w1's lesson): a search of the game's tests for `bSurged =` finds
+  three, #2865's two (which set `Surges` too) and the one above.
+- **A surge on a day spent in the capital**: since #2865 a forge craft's or a respec's days on a board with no ordinary
+  dungeon bring a surge on their first day, and the account then names it. The tests that spend such days compare what
+  follows by its start or by what it contains (`Cataclysm.Forge.`'s, `ForgeScreen.`'s and `EmpireTreeScreen.`'s #2857
+  tests), allow for an account (`ForgeScreen.`'s upgrade test, whose board starts empty), or compare nothing a surge moves
+  (gold, levels, residue, days, the forge count: `ForgeMilestones.`, `ForgeGoldNodes.`). The forecast test's checks are
+  on named dungeons and the days their timers ran out. Every other forge screen test compares a done message by its
+  start or not at all, and its exact comparisons are refusals, which spend no day. No test counts the PLAY LOOP lines of
+  a craft.
+- **The `Cataclysm.EmpireRun.` count**: 71 on development and in 2865-w1's log, 72 on the branch (#2857's one).
+- `.claude/windows/unity_name_check.py` against `0d9259653`: 0 findings; the hidden-member script across the merge: 0;
+  D1's and D2's anchors, in the two game files both changed, once each.
+
+**THE REGISTRATION**, made again from 2865-w1's log, with the same figures. Base: window 2865-w1's whole-suite engine log,
+`2865_suite_engine_62612be6.log` in the worktree `interesting-snyder-dca273`'s `.claude/windows/` (#2865 on `62612be63`:
+"5474 tests performed", "58 skipped part of what they check", "Test saves: 874 written and deleted, 0 left behind"; its
+three failures were test faults, fixed in two test files without changing a count). Its game files are development
+`0d9259653`'s but for those two test files. It replaces the registration from ss2-w1's log (5474, 58, 874, the same
+figures). **If another window's whole suite lands on development first, this is re-registered from its log.**
 - **The editor step**, after the build: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes` and
   `DT_EmpireTreeEffects` and records them in `game/Data/datatable_asset_sources.json`; those three files only are
   committed alone, and the tested head becomes that commit. No other data file differs from development.
