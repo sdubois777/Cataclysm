@@ -17,6 +17,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import generate_datatables as gen  # noqa: E402
 
+#: The passive row port's fourteen columns, required on the Passive Effects sheet since the Death trees' slice
+#: C1 (2026-11-25) put them in the workbook. A test sheet that leaves them empty appends them, as each appended
+#: `Scale Max Steps` when that column became required.
+PASSIVE_PORT_HEADERS = list(gen.PASSIVE_ACTION_COLUMNS) + ["Per Point From"]
+
 
 def workbook_with(path: pathlib.Path, sheets: dict[str, list[list]]) -> pathlib.Path:
     """Build a workbook from {sheet name: rows}, always including a Tags sheet."""
@@ -1461,7 +1466,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
                  "Scale Step", "Option", "Reach Metres", "Min Points",
-                 "Scale Max Steps"]] + rows
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1520,7 +1525,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Min Points", "Scale Max Steps"],
+                                  "Min Points", "Scale Max Steps"] + PASSIVE_PORT_HEADERS,
                                  ["A_node", "damage_taken", "more", -1, None, None,
                                   None, scale, step, None, None, None, cap]]}))
         return gen.passive_effects(book)
@@ -1564,7 +1569,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Min Points"],
+                                  "Min Points"] + PASSIVE_PORT_HEADERS,
                                  ["A_node", "armor", "increased", 3]]}))
         with pytest.raises(gen.DataError, match="Scale Max Steps"):
             gen.passive_effects(book)
@@ -1683,7 +1688,7 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
                  "Reach Metres", "Required Tags", "Option", "Min Points",
-                 "Scale Max Steps"]] + rows
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5332,7 +5337,7 @@ class TestAnAtNPointsRowStatesItsThreshold:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Min Points", "Required Tags", "Condition", "Condition Value",
                  "Scale", "Scale Step", "Option", "Reach Metres",
-                 "Scale Max Steps"]] + rows
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5379,7 +5384,7 @@ class TestAnAtNPointsRowStatesItsThreshold:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Scale Max Steps"],
+                                  "Scale Max Steps"] + PASSIVE_PORT_HEADERS,
                                  ["A_node", "armor", "increased", 5]]}))
         with pytest.raises(gen.DataError, match="Min Points"):
             gen.passive_effects(book)

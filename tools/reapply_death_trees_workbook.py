@@ -59,12 +59,31 @@ GENERATOR = REPO_ROOT / "tools" / "generate_datatables.py"
 EFFECTS_SHEET = "Passive Effects"
 CLASS_SHEET = "Class Stats"
 
-#: The Passive Effects columns this script reads and writes, by header name. A
-#: column the sheet has and this does not name (the Demonic rework's
-#: `Scale Max Steps`) is left empty on the rows written here, which is "no cap".
+#: The Passive Effects columns this script reads and writes, by header name, that
+#: the sheet must already have.
 EFFECT_COLUMNS = ("Node", "Stat", "Value Kind", "Value Per Point", "Required Tags",
                   "Condition", "Condition Value", "Scale", "Scale Step", "Option",
                   "Node Name", "Reach Metres", "Min Points")
+
+#: The columns a row here MAY state, each with the `Row` field it fills. The
+#: Demonic rework's `Scale Max Steps`, then the passive row port's thirteen action
+#: columns and `Per Point From` (2026-11-24). THE PORT'S FOURTEEN ARE ADDED TO THE
+#: SHEET when it lacks them, after its last column: the port left them optional in
+#: the generator "until the first slice that writes such a row adds them with its
+#: re-apply script", and the Death trees' slice C1 (2026-11-25) is that slice.
+#: `tools/generate_datatables.py` names the same thirteen in `PASSIVE_ACTION_COLUMNS`.
+OPTIONAL_EFFECT_COLUMNS = (
+    ("Scale Max Steps", "cap"),
+    ("Action", "action"), ("Action Event", "event"), ("Fraction Of", "fraction_of"),
+    ("Stack Seconds", "stack_seconds"), ("Scale Offset", "scale_offset"),
+    ("Every Seconds", "every_seconds"), ("Every Nth", "every_nth"),
+    ("Condition 2", "cond2"), ("Condition Value 2", "cond_value2"),
+    ("Trigger Cooldown", "trigger_cooldown"), ("Event Value", "event_value"),
+    ("Ailment", "ailment"), ("Damage Share", "damage_share"),
+    ("Per Point From", "per_point_from"))
+
+#: Of those, the ones that hold words rather than numbers.
+TEXT_FIELDS = frozenset({"action", "event", "fraction_of", "cond2", "ailment"})
 
 CLASS_COLUMNS = ("Class", "Stat", "Base", "Per Level")
 
@@ -82,9 +101,10 @@ class ReapplyError(Exception):
 
 @dataclasses.dataclass(frozen=True)
 class Row:
-    """One Passive Effects row, less the node it belongs to and its human label."""
-    stat: str
-    kind: str
+    """One Passive Effects row, less the node it belongs to and its human label.
+    An action row has no stat and no value kind: write it with `A`."""
+    stat: str | None
+    kind: str | None
     value: float
     tags: str | None = None
     cond: str | None = None
@@ -93,16 +113,40 @@ class Row:
     step: float | None = None
     reach: float | None = None
     min_points: int | None = None
+    cap: int | None = None
+    action: str | None = None
+    event: str | None = None
+    fraction_of: str | None = None
+    stack_seconds: float | None = None
+    scale_offset: float | None = None
+    every_seconds: float | None = None
+    every_nth: int | None = None
+    cond2: str | None = None
+    cond_value2: float | None = None
+    trigger_cooldown: float | None = None
+    event_value: float | None = None
+    ailment: str | None = None
+    damage_share: float | None = None
+    per_point_from: int | None = None
 
     def key(self) -> tuple:
         def num(v):
             return None if v is None else float(v)
-        return (self.stat, self.kind, float(self.value), self.tags or None,
+        optional = tuple((getattr(self, field) or None) if field in TEXT_FIELDS
+                         else num(getattr(self, field))
+                         for _, field in OPTIONAL_EFFECT_COLUMNS)
+        return (self.stat or None, self.kind or None, float(self.value), self.tags or None,
                 self.cond or None, num(self.cond_value), self.scale or None,
-                num(self.step), num(self.reach), num(self.min_points))
+                num(self.step), num(self.reach), num(self.min_points)) + optional
 
 
 R = Row
+
+
+def A(action: str, value: float, **more) -> Row:
+    """An action row: no stat and no value kind, the pool or status in `action`
+    and the event in `event`, as the passive row port writes one."""
+    return Row(None, None, value, action=action, **more)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -137,6 +181,12 @@ GRACE = "fervour_kill_decay_grace_seconds"
 #: 4 Boss, 5 Cataclysm Boss.
 RUNG_IS = "target_rarity_is"
 RUNG_AT_LEAST = "target_rarity_at_least"
+
+#: The scales slice C1 writes: a row's own stacks, its hits in a row on one
+#: enemy (each granted by the event on the row), and the minions held.
+OWN = "own_stacks"
+HITS = "consecutive_hits"
+MINIONS = "minions_held"
 
 #: The Death rows that are data today: a stat, a condition and a scale the game
 #: already has. The survey of 2026-11-24 (plan section 4.1, group (a)) found 46
@@ -309,6 +359,72 @@ NODES: tuple[Node, ...] = (
          (R("movement_speed", "increased", 3, scale=HELD, step=10),), option=3),
     Node(SH + "capstone_50", "Honed Edge",
          (R("crit_chance", "flat", 1, scale=HELD, step=10),), option=3),
+
+    # ---- SLICE C1 (2026-11-25): THE SIXTEEN NODES AND OPTIONS TODAY'S VOCABULARY
+    # STATES WHOLE, the passive row port's action columns included. Each was put
+    # through the generator before it was written. Burnt Offering waits for C3's
+    # record of Fervour spent: `resource_consumed`, its event today, also fires
+    # for a next-use charge spent.
+    Node(SC + "basic_spine_002", "Last Breath",
+         tuple(R("health_restored_on_kill_at_no_cost", "flat", 1, min_points=points)
+               for points in (2, 4, 6))),
+    Node(SC + "basic_a_stem1", "Gathered Weight",
+         (R("area_of_effect", "increased", 1, scale=HELD, step=40),)),
+    # KILL CHAIN: a kill grants a stack and restarts the one window all the stacks
+    # share (`UCataclysmAbilitySystemComponent::GrantOwnStack`), so they lapse
+    # together 2 seconds after the last kill, which is "kills within 2 seconds of
+    # each other form a chain". The four rows of a stat share one stack, granted
+    # once a kill (`StackedThisEvent`).
+    Node(SC + "basic_b_a0", "Kill Chain",
+         tuple(row for points in (2, 4, 6, 8)
+               for row in damage("increased", 1, scale=OWN, step=1, cap=10, event="kill",
+                                 stack_seconds=2, min_points=points))),
+    Node(SC + "capstone_50", "Second Wind",
+         (A("health", 100, event="resource_full", fraction_of="maximum", trigger_cooldown=60),
+          A("mana", 100, event="resource_full", fraction_of="maximum", trigger_cooldown=60)),
+         option=1),
+    Node(NE + "basic_spine_008", "Massed Dead",
+         (R("minion_damage", "increased", 1, scale=MINIONS, step=5, cap=5),)),
+    Node(NE + "basic_ch_c1", "Cheap Bones", (R("minion_reserve_percent_less", "flat", 4),)),
+    Node(NE + "capstone_25", "Strength in Numbers",
+         damage("more", 1, scale=MINIONS, step=1, cap=20)
+         + (R("damage_taken", "more", -1, scale=MINIONS, step=1, cap=20),), option=3),
+    # GATHERING DARK: "gain 2% area" read as increased, the bucket every other
+    # "+N% area" in the trees is (a judgement).
+    Node(NE + "capstone_50", "Gathering Dark",
+         (R("area_of_effect", "increased", 2, scale=MINIONS, step=1),), option=3),
+    Node(NE + "basic_gr_stem0", "Among the Dead",
+         (R("max_health", "increased", 1),
+          R("armor", "increased", 1, scale=MINIONS, step=5, cap=4))),
+    # CARAPACE: "while you have 10 or more minions" as a count of minions in steps
+    # of 10 capped at one step, which is nought below 10 and one step from 10 on.
+    # No condition counts minions held (a judgement).
+    Node(NE + "basic_gr_a2", "Carapace",
+         (R("max_health", "increased", 2, scale=MINIONS, step=10, cap=1),)),
+    Node(NE + "keystone_gr_kA", "Bone Armour",
+         (R("damage_taken", "more", -1, scale=MINIONS, step=1, cap=20),)),
+    # ENVENOM: the Bleed half is the stat every Bleed on a critical strike reads;
+    # the Poison half applies Poison at its own size and duration on a critical
+    # strike, by the chance the value states.
+    Node(SH + "basic_spine_008", "Envenom",
+         (R("bleed_on_crit_chance", "flat", 6),
+          A("apply_status", 6, event="critical_strike", ailment="Poison", trigger_cooldown=0))),
+    Node(SH + "basic_a_c1", "Bide",
+         (A("apply_status", 3, event="hit_dealt", ailment="Poison", cond="target_is_boss",
+            trigger_cooldown=0),)),
+    Node(SH + "basic_b_b1", "Wearing Cut",
+         tuple(row for points in (2, 4, 6, 8)
+               for row in damage("increased", 1, scale=HITS, step=1, cap=10, event="hit_dealt",
+                                 min_points=points))),
+    Node(SH + "basic_c_a1", "Quick Kill",
+         (R(PER_KILL, "flat", 1, cond="seconds_after_movement_skill", cond_value=2),)),
+    # DEATH SENTENCE: the execute never takes a Boss or a Cataclysm Boss (the engine
+    # holds that inside the action), and the double damage is for those two rungs.
+    Node(SH + "capstone_200", "Death Sentence",
+         (A("execute_target", 100, event="hit_dealt", cond="target_health_below", cond_value=15),)
+         + damage("more", 100, cond="target_health_below", cond_value=15, cond2=RUNG_AT_LEAST,
+                  cond_value2=4),
+         option=2),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).
@@ -361,22 +477,29 @@ def _out(value):
 
 
 def row_from_cells(cells: dict[str, object]) -> Row:
-    return Row(stat=_text(cells.get("Stat")), kind=(_text(cells.get("Value Kind")) or "").lower(),
+    optional = {field: (_text(cells.get(column)) if field in TEXT_FIELDS
+                        else _number(cells.get(column)))
+                for column, field in OPTIONAL_EFFECT_COLUMNS}
+    return Row(stat=_text(cells.get("Stat")),
+               kind=(_text(cells.get("Value Kind")) or "").lower() or None,
                value=_number(cells.get("Value Per Point")) or 0,
                tags=_text(cells.get("Required Tags")), cond=_text(cells.get("Condition")),
                cond_value=_number(cells.get("Condition Value")),
                scale=_text(cells.get("Scale")), step=_number(cells.get("Scale Step")),
                reach=_number(cells.get("Reach Metres")),
-               min_points=_number(cells.get("Min Points")) or None)
+               min_points=_number(cells.get("Min Points")) or None, **optional)
 
 
 def cells_from_row(node: Node, row: Row) -> dict[str, object]:
-    return {"Node": node.key, "Stat": row.stat, "Value Kind": row.kind,
-            "Value Per Point": _out(row.value), "Required Tags": row.tags,
-            "Condition": row.cond, "Condition Value": _out(row.cond_value),
-            "Scale": row.scale, "Scale Step": _out(row.step),
-            "Option": node.option or None, "Node Name": node.label,
-            "Reach Metres": _out(row.reach), "Min Points": _out(row.min_points)}
+    cells = {"Node": node.key, "Stat": row.stat, "Value Kind": row.kind,
+             "Value Per Point": _out(row.value), "Required Tags": row.tags,
+             "Condition": row.cond, "Condition Value": _out(row.cond_value),
+             "Scale": row.scale, "Scale Step": _out(row.step),
+             "Option": node.option or None, "Node Name": node.label,
+             "Reach Metres": _out(row.reach), "Min Points": _out(row.min_points)}
+    for column, field in OPTIONAL_EFFECT_COLUMNS:
+        cells[column] = _out(getattr(row, field))
+    return cells
 
 
 def _multiset(rows) -> collections.Counter:
@@ -437,6 +560,14 @@ def plan_effects(sheet, nodes: tuple[Node, ...] = NODES) -> SheetPlan:
     report: list[str] = []
     added: list[dict[str, object]] = []
     changed = 0
+    # THE COLUMNS THE SHEET LACKS, after its last one. Every row already there
+    # keeps its cells and leaves the new ones empty, which is what an empty cell
+    # always meant to the generator.
+    missing = [column for column, _ in OPTIONAL_EFFECT_COLUMNS if column not in header]
+    if missing:
+        header = header + missing
+        changed += 1
+        report.append(f"{sheet.title!r}: added the column(s) {missing} after its last one")
     seen: set[tuple[str, int]] = set()
     for node in nodes:
         if not node.key.startswith(DEATH_PREFIXES):
@@ -494,8 +625,10 @@ def plan_class_stats(sheet, lines=CLASS_STATS) -> SheetPlan:
 
 
 def _describe(row: Row) -> str:
-    parts = [row.stat, row.kind, f"{row.value:g}"]
-    for name in ("tags", "cond", "cond_value", "scale", "step", "reach", "min_points"):
+    parts = [row.stat or f"action={row.action}", row.kind or "-", f"{row.value:g}"]
+    names = ("tags", "cond", "cond_value", "scale", "step", "reach", "min_points") + tuple(
+        field for _, field in OPTIONAL_EFFECT_COLUMNS if field != "action")
+    for name in names:
         value = getattr(row, name)
         if value is not None:
             parts.append(f"{name}={value:g}" if isinstance(value, (int, float))
@@ -504,6 +637,8 @@ def _describe(row: Row) -> str:
 
 
 def _write(sheet, the_plan: SheetPlan) -> None:
+    for column, name in enumerate(the_plan.header, start=1):
+        sheet.cell(1, column).value = name
     for offset, cells in enumerate(the_plan.new):
         for column, name in enumerate(the_plan.header, start=1):
             sheet.cell(offset + 2, column).value = cells.get(name)

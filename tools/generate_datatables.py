@@ -2014,18 +2014,10 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: writes a row using one adds that column to the workbook with its re-apply
 #: script and deletes it here, which `tools/tests/test_required_workbook_columns.py`
 #: then requires.
-_PASSIVE_PORT_COLUMN_REASON = (
-    "the passive row port of 2026-11-24; added to the workbook by the first War "
-    "or Death tree slice that authors a row using it")
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Passive Effects": {
-        column: _PASSIVE_PORT_COLUMN_REASON
-        for column in ("Action", "Action Event", "Fraction Of", "Stack Seconds",
-                       "Scale Offset", "Every Seconds", "Every Nth",
-                       "Condition 2", "Condition Value 2", "Trigger Cooldown",
-                       "Event Value", "Ailment", "Damage Share",
-                       "Per Point From")},
-}
+#: THEY LEFT ON 2026-11-25, when the Death trees' slice C1 wrote the first rows
+#: using them and `tools/reapply_death_trees_workbook.py` added all fourteen to
+#: the workbook, and the table is empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):

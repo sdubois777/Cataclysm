@@ -174,14 +174,19 @@ def test_a_column_about_an_item_is_refused(tmp_path, column):
              headers=HEADERS + [column])
 
 
-def test_the_sheet_reads_with_no_port_column_at_all(tmp_path):
-    """The workbook has none of the fourteen yet. `OPTIONAL_COLUMNS` lets the sheet read without them, until the
-    first slice that writes a row using one adds that column."""
+def test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them(tmp_path):
+    """The fourteen were optional until the first rows using them came.
+
+    Until 2026-11-25 this read "the sheet reads with no port column at all": the workbook had none of the fourteen,
+    and `OPTIONAL_COLUMNS` let the sheet read without them. The Death trees' slice C1 wrote the first rows using them,
+    put all fourteen in the workbook with `tools/reapply_death_trees_workbook.py` and took them out of
+    `OPTIONAL_COLUMNS`, so a sheet without them is now refused like any other column the generator reads."""
     old = HEADERS[:HEADERS.index("Action")]
-    out = read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
-    assert out[0]["Action"] == "" and out[0]["PerPointFrom"] == 0
-    declared = set(gen.OPTIONAL_COLUMNS["Passive Effects"])
-    assert declared == set(gen.PASSIVE_ACTION_COLUMNS) | {"Per Point From"}
+    with pytest.raises(gen.DataError, match="the Passive Effects sheet has no '") as refused:
+        read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
+    missing = str(refused.value).split("'")[1]
+    assert missing in set(gen.PASSIVE_ACTION_COLUMNS) | {"Per Point From"}, missing
+    assert "Passive Effects" not in gen.OPTIONAL_COLUMNS
 
 
 # ---------------------------------------------------------------------------

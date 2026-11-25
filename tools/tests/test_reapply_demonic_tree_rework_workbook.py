@@ -150,7 +150,27 @@ def test_the_cap_column_is_added_when_missing(copy_of_the_workbook):
     book.save(copy_of_the_workbook)
 
     reapply.apply(copy_of_the_workbook)
-    assert sheet_rows(copy_of_the_workbook) == sheet_rows(WORKBOOK)
+    # COMPARED BY COLUMN NAME, NOT POSITION, AND WITHOUT THE DEATH ROWS. The
+    # script adds the cap column after the sheet's last one, which was its place
+    # until the Death trees' slice C1 (2026-11-25) added the passive row port's
+    # fourteen columns after it; put back, it now lands after those, and the
+    # generator reads every column by its header. And deleting the column takes
+    # the Death rows' caps with it (Kill Chain's 10 and others), which
+    # `tools/reapply_death_trees_workbook.py` writes and this script does not.
+    assert sheet_rows_by_name(copy_of_the_workbook) == sheet_rows_by_name(WORKBOOK)
+
+
+#: The Death trees' row prefixes, whose rows `tools/reapply_death_trees_workbook.py` writes.
+DEATH_PREFIXES = ("SoulCollector_", "Necromancer_", "Shadow_")
+
+
+def sheet_rows_by_name(path: pathlib.Path) -> list[dict]:
+    """Each row but the Death trees' as its cells keyed by header, the empty ones left out."""
+    rows = sheet_rows(path)
+    header = rows[0]
+    keyed = [{name: value for name, value in zip(header, row, strict=False) if value is not None}
+             for row in rows[1:]]
+    return [row for row in keyed if not str(row.get("Node") or "").startswith(DEATH_PREFIXES)]
 
 
 def test_every_for_every_n_points_series_is_whole_and_counts_from_n():
