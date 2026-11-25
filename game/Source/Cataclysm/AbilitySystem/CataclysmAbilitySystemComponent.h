@@ -2554,8 +2554,10 @@ public:
 	 * WITH ONE EXCEPTION. `UCataclysmAbilitySystemComponent::CurrentConditions`
 	 * fills `ClassResourceMaximum` and may NOT call this: the lookup asks
 	 * `AttributePlusWhatWasNotFolded`, which asks `CurrentConditions` for the
-	 * readings a conditional row needs, so the call would not return. The
-	 * comment on that line says so and says what it costs.
+	 * readings a conditional row needs, so the call would not return. Since the
+	 * War vow options' second slice (V2b, 2026-11-25) it works out the same
+	 * figure itself, once, with the state it has built; the comment near its end
+	 * says how, and the one case where the two differ.
 	 *
 	 * ZERO WHEN THERE IS NO CLASS RESOURCE ATTRIBUTE SET, which is every enemy in
 	 * the game. Reading an attribute whose set the component does not hold raises

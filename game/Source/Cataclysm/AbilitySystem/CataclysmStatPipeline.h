@@ -2982,6 +2982,12 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * whose pool cannot hold anything is not "at maximum" in any sense a node
 	 * means, and answering yes would hand Communion of Pain's bonus to every
 	 * class that never generates a point.
+	 *
+	 * WITH THE `class_resource` ROWS THAT HOLD NOW, since the War vow options'
+	 * second slice (V2b, 2026-11-25): `CurrentConditions` reads the attribute
+	 * and, last but one, evaluates the line once with the state it has built.
+	 * Ragnarok's doubling makes it 200 over an attribute of 100. A row on that
+	 * line that itself asks a Fervour share is judged against the attribute.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceMaximum = -1.0f;
@@ -3310,9 +3316,11 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * `class_resource` rows that hold now counted, or -1. The War vow options' second slice, 2026-11-25, for Titan and
 	 * Unbridled; read by `ECataclysmStatScale::PerPointOfMaximumClassResource`.
 	 *
-	 * NOT `ClassResourceMaximum`, which is the attribute and leaves out a conditioned row. Ragnarok's "Your maximum
-	 * Fervour is doubled" is one, under "Two-handed weapons only", and the ruling of 2026-11-25 is that it raises
-	 * Titan's health.
+	 * NOT `ClassResourceMaximum` WHEN THIS WAS WRITTEN (V2a), which was then the attribute and left out a conditioned
+	 * row: Ragnarok's "Your maximum Fervour is doubled" is one, under "Two-handed weapons only", and the ruling of
+	 * 2026-11-25 is that it raises Titan's health. Since V2b that field counts the same rows in one pass, so the two
+	 * agree for every row written; they differ only for a `class_resource` row that asks a Fervour share, which this
+	 * reading counts against the larger maximum and that field against the attribute.
 	 *
 	 * NEGATIVE MEANS UNKNOWN, which is every state but one a lookup asking for that scale was given: `CurrentConditions`
 	 * never fills it. `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills it, and only when a row in the list it

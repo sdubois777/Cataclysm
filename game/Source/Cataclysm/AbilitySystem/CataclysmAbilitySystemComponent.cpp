@@ -1069,22 +1069,21 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		State.ClassResourceMaximum =
 			FMath::Max(0.0f, Resource->GetMaxClassResource());
 
-		// THE ATTRIBUTE, AND THIS IS THE ONE READER THAT MAY NOT ASK FOR IT.
+		// THE ATTRIBUTE HERE, AND REPLACED NEAR THE END OF THIS FUNCTION.
 		// Issue #1515 gave the maximum a lookup, `MaximumClassResource` above,
 		// so a row that scales it reaches play, and every other reader in the
-		// game now goes through it. This line cannot: that lookup asks
+		// game goes through it. This line cannot: that lookup asks
 		// `AttributePlusWhatWasNotFolded`, which asks this very function for
-		// the readings a conditional row needs, so the call would not be slow,
-		// it would not return. It is the same exception the energy shield's
-		// maximum makes twenty lines up, for the same reason.
+		// the readings a conditional row needs, so the call would not return.
 		//
-		// WHAT IT COSTS, STATED RATHER THAN LEFT TO BE FOUND: a row conditioned
-		// on the class resource -- `class_resource_at_maximum`, or the share
-		// `class_resource_above` reads -- compares against the UNSCALED
-		// maximum. So a Ritualist holding Vessel with a large mana pool reads
-		// "at maximum" a little before its bar really is. The alternative is a
-		// stat worked out while working out that same stat, which is not an
-		// alternative.
+		// UNTIL 2026-11-25 THAT WAS THE WHOLE ANSWER, and its cost was written
+		// here: a row conditioned on the class resource -- the share
+		// `class_resource_above` reads, or a full bar -- compared against the
+		// maximum without its conditioned or scaled rows. A few points for
+		// Vessel; half the bar once Ragnarok's doubling (the War vow options'
+		// second slice) made a bar of 200 over an attribute of 100. So the
+		// `class_resource` line is now evaluated once, with the state this
+		// function has built, just before it returns. See there.
 
 		// AND HOW MUCH HEALTH THE CHARACTER OWES, AS A SHARE OF ITS MAXIMUM.
 		// Issue #994. Compound Interest grows with it: "+1% increased damage per
@@ -1498,6 +1497,46 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		State.MinionSecondsActive = PricedFor->GetGameTimeSinceCreation();
 		State.bIsMoving = false;
 		State.SecondsSinceMoved = PricedFor->SecondsSinceSkillGadgetPlaced();
+	}
+
+	// THE CLASS RESOURCE'S MAXIMUM WITH ITS ROWS THAT HOLD NOW, IN ONE PASS, LAST BUT ONE. The War vow options' second
+	// slice, V2b, 2026-11-25, ruled in by the coordinating session: with Ragnarok's "Your maximum Fervour is doubled"
+	// the bar is 200 over an attribute of 100, and "above 75% Fervour" must mean 151 of 200, not 76.
+	//
+	// THE ARITHMETIC `AttributePlusWhatWasNotFolded` DOES -- the attribute plus what the line comes to now less what it
+	// came to when folded -- with the state built above rather than through `MaximumClassResource`, which asks this
+	// function and would not return. Only a line with a row that a state can move is evaluated: an unconditioned,
+	// unscaled row comes to the same figure both times.
+	//
+	// ONE PASS, AND ITS LIMIT. A `class_resource` row that itself asks a Fervour share or a full bar is judged here
+	// against the attribute, not against this maximum. No row is written that way.
+	//
+	// THE FULL BAR AND WHAT MINIONS RESERVE. The Death line's slice C1 (`feat/death-trees-c1`) judges "full" against
+	// `ClassResourceMaximum` less what minions hold back. Whichever of the two merges second keeps both: this maximum,
+	// less that reserve.
+	if (State.ClassResourceMaximum >= 0.0f)
+	{
+		if (const FCataclysmStatInputs* Line = StatInputs.Find(FName(TEXT("class_resource"))))
+		{
+			bool bMoves = false;
+			for (const FCataclysmStatModifier& Row : Line->Modifiers)
+			{
+				if (Row.Scale != ECataclysmStatScale::Fixed || Row.Condition != ECataclysmStatCondition::Always
+					|| Row.Condition2 != ECataclysmStatCondition::Always)
+				{
+					bMoves = true;
+					break;
+				}
+			}
+			if (bMoves)
+			{
+				const float Folded = UCataclysmStatPipeline::Evaluate(
+					Line->Base, Line->Modifiers, FGameplayTagContainer(), FCataclysmStatConditions()).Final;
+				const float Now = UCataclysmStatPipeline::Evaluate(
+					Line->Base, Line->Modifiers, FGameplayTagContainer(), State).Final;
+				State.ClassResourceMaximum = FMath::Max(0.0f, State.ClassResourceMaximum + (Now - Folded));
+			}
+		}
 	}
 
 	// WHO IS ASKING, SET LAST. Issue #1815. `FromHealth` near the top of this
