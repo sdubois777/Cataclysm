@@ -2,6 +2,117 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — A held item pressed onto a gear slot is worn in that slot, and a press that does not do what was asked says why on the inventory screen (#837, slice 3)
+
+**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, after slice 2 and after the merge of
+`fix/ring-comparison` (`5acf6bd2a`, its own entry below the slice 1 entry), which the coordinating session asked to
+come first on 2026-11-24 so that a pressed slot overrides that branch's choice of ring. Issue
+[#837](https://github.com/sdubois777/Cataclysm/issues/837).
+
+### Why
+
+Slice 1 made the hands decide only which weapon the basic attack swings, so the player needs a way to put a weapon in
+the hand they choose. Until this slice a left press on a gear slot while holding an item was refused
+(`AlreadyHolding`), because no rule had been chosen for it, and the refusal of taking off the only weapon worn reached
+only the log, so it looked exactly like a press that missed.
+
+### The rulings
+
+**The owner, 2026-11-24, issue #837 comment 7150408605: "Approve all three (Recommended)".** For this slice: Q5,
+pressing a held item onto a gear slot wears it in that slot, with what was there going into the bag; Q6, the rule
+that the only weapon worn cannot be taken off stays (ruled 2026-09-14 under #841), its refusal is shown on the
+inventory screen, and its sentence names the new press: "That is your only weapon, and you have to hold one. Press
+another weapon onto this hand to swap them." No ARPG source was read for the press; it follows the click-to-place
+gesture `docs/Inventory_Screen_Design.md` already chose after looking at Path of Exile, Last Epoch and Diablo, and it
+is a judgement, as the plan said.
+
+### What changed
+
+- **The press.** `UCataclysmWearing::WearHeldInto(Inventory, Equipment, GearSlot, ...)` wears the held cell's item in
+  the slot pressed: `WearFromCarried` with a new last parameter, `Into`, the slot named (`ECataclysmGearSlot::Count`,
+  the default, is `Equip`'s own choice, so every existing caller is unchanged). With a slot named it calls
+  `EquipInto` instead of `Equip`, and keeps every check: the room for a second weapon coming off, the Consumption
+  Threshold question, the play loop's line and the end of the hold.
+  `ACataclysmPlayerController::PressOnTheInventoryScreen` calls it for a press on a gear slot while holding; holding
+  nothing, the press still picks the worn piece up (`PickUpWorn`, unchanged, still answers `AlreadyHolding` itself).
+- **A pressed slot is the only slot.** With every ring slot full, `Equip` now replaces the ring
+  `UCataclysmGearSlots::SlotToReplace` names (`fix/ring-comparison`); a press names its own slot and goes through
+  `EquipInto`, so that choice is not asked: the coordinating session's ruling of 2026-11-24, "a pressed slot overrides
+  SlotToReplace's choice and every other path keeps it".
+- **The question is about the slot pressed.** `UCataclysmEquipmentComponent::PreviewEquip` and
+  `WornResidueIfEquipped`, `UCataclysmWearing::CrossingFor` and `WearAfterConfirming`,
+  `ACataclysmPlayerController::AskBeforeWearing` and the pawn's `WearPastTheThreshold` (a new overload) each take the
+  slot, so the question's total is the one that slot would leave and its "Wear it" wears the item there.
+- **`UCataclysmEquipmentComponent::SlotItLandsIn`**: the rule that a two-handed weapon without Both Hands Full is kept
+  in Weapon 1, moved out of `Equip`, which now reports its slot through it, as the named-slot wear does.
+- **The screen says why.** `ReportInventoryPress` shows its answer above the inventory panel for four seconds
+  (`UCataclysmInventoryWidget::ShowPressLine`) in the words `UCataclysmInventoryScreen::PressLineFor` gives, and logs
+  the same line; a press that did what was asked takes the line away.
+- **`Explain(TheLastWeapon)`** is the owner's sentence above.
+- **`docs/Inventory_Screen_Design.md`**, "How it is operated": the left press on a worn item while holding one, and
+  two paragraphs on the press and the line.
+
+### Judgements of this change
+
+1. **The question carries the slot pressed.** The plan said only that the press keeps the threshold question. Asked
+   of `Equip`'s slot, a ring pressed over a worn ring would be asked about with the total of adding it to a free slot,
+   and the "Wear it" would put it in that other slot. So the slot travels to the wear, a wider change than the plan
+   named, reported to the coordinating session before it was written.
+2. **The room check is `WearFromCarried`'s, unchanged, and it is exact for a named hand.** Two weapons come off only
+   when both hands are held, and then the hand pressed does not change how many.
+3. **An item pressed onto a slot it cannot go in is refused before anything moves**, so it stays in its own cell:
+   taken out and put back, `AddItem` would put it in the first free cell.
+4. **The line shows every answer the log shows**, a drop on the floor included, so the two never disagree. It sits
+   above the panel, which leaves at least 14% of the screen free over it, rather than in it, so the panel keeps the
+   size `CellSizeFor` worked out. Four seconds is a judgement.
+5. **Hidden by opacity, not visibility.** `test_the_inventory_screen_draws_the_designed_grid.py` forbids collapsing or
+   wholly hit-test-hiding anything in the widget, which would stop the cells' tool tips; the line is drawn at no
+   opacity while nothing is shown, as the item on the cursor is.
+6. **The pawn's confirmed wear is an overload, not a default parameter**, because its header declares the slot enum
+   without its values; the six existing test calls are unchanged.
+
+### Tests
+
+**Unreal, registered** (none run): `Cataclysm.Wearing.` gains fifteen in a new file, `CataclysmWearHeldIntoTests.cpp`:
+`AWeaponPressedOntoAFilledHandIsWornThereAndTheOtherGoesToTheBag`, `PressedOntoTheOtherHandItReplacesWeaponTwo`
+(control: the right press replaces Weapon 1), `PressedOntoTheOnlyWeaponsHandItSwapsWithoutAnEmptyHand` (one
+announcement, made with a weapon in hand; control: the only weapon still cannot be taken off),
+`PressedOntoAnEmptyHandItIsWornThere`, `ATwoHandedWeaponPressedOntoEitherHandTakesBoth`,
+`ATwoHandedWeaponWithNoRoomForTheSecondIsRefusedAndNothingMoves` (control: one free cell),
+`AOneHanderPressedOntoATwoHandersHandTakesItOff`, `AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` (control:
+the head), `ARingPressedOntoRingFiveGoesInRingFive` (control: the right press's slot is Ring 2),
+`APressedRingSlotOverridesTheRingEquipWouldReplace` (eight rings worn, the ring report's case; control: `Equip` would
+replace the Quality ring in Ring 3, and the press onto Ring 1 replaces Ring 1),
+`PressedPastTheConsumptionThresholdItAsksFirst`, `TheThresholdQuestionIsAboutTheSlotPressed` (control: the total for
+the first free ring slot crosses), `WearingTheHeldItemEndsTheHold` (control: nothing held is `NothingHeld`),
+`TheLastWeaponRefusalNamesThePress` and `ARefusedPressIsShownOnTheScreen` (control: the six answers that did what was
+asked show nothing).
+
+**Python**: `tools/tests/test_a_held_item_pressed_onto_a_gear_slot_is_worn_there.py`, four checks, new.
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of the working tree (a tree written
+through a temporary index file, so the branch's own index was not touched), each PROVED:
+
+| Proof | Break | Named failure |
+| :-- | :-- | :-- |
+| PR1 | the held press asks `AskBeforeWearing(Wearer, HeldCell, ECataclysmGearSlot::Count)` | `test_a_press_on_a_gear_slot_while_holding_wears_the_held_item_there` |
+| PR2 | the question's "Wear it" calls `WearPastTheThreshold(CarriedSlot, &AskedAbout, Went)` | `test_the_question_is_about_the_slot_pressed_and_its_yes_wears_it_there` |
+| PR3 | `ReportInventoryPress`'s `InventoryScreen->ShowPressLine(...)` removed | `test_a_refused_press_is_shown_on_the_screen` |
+
+**C++ guard proofs registered, at most three:**
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| SR1 | `WearFromCarried`'s named-slot refusal `if (bNamed && !(Base && ...Contains(Into)))` read as `if (false)` | `Cataclysm.Wearing.` | `AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` |
+| SR2 | `CrossingFor`'s `WornResidueIfEquipped(*Carried, Into)` read as `WornResidueIfEquipped(*Carried)` | `Cataclysm.Wearing.` | `TheThresholdQuestionIsAboutTheSlotPressed` |
+| SR3 | `WearFromCarried`'s `if (bNamed)` before `EquipInto` read as `if (false)`, so `Equip` chooses | `Cataclysm.Wearing.` | `PressedOntoTheOtherHandItReplacesWeaponTwo`, `PressedOntoTheOnlyWeaponsHandItSwapsWithoutAnEmptyHand`, `AOneHanderPressedOntoATwoHandersHandTakesItOff`, `ARingPressedOntoRingFiveGoesInRingFive`, `APressedRingSlotOverridesTheRingEquipWouldReplace`, `TheThresholdQuestionIsAboutTheSlotPressed` |
+
+**Registration moves by fifteen:** `Cataclysm.Wearing.` 34 (19 in window rc-w1's log, `rc_suite_engine_5e8be468.log`,
+whose names no later commit changed, + 15). The whole suite: slice 2's 5378, + 3 for the merged ring comparison
+(`Cataclysm.ItemComparison.` 8 to 11, its proofs R1 to R3, its entry below), + 15 = 5396.
+
+---
+
 ## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)
 
 **WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, after slice 1 (the entry below). Issue

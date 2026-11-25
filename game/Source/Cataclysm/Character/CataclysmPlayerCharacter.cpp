@@ -2595,8 +2595,17 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 																	 const FCataclysmItem* AskedAbout,
 																	 ECataclysmGearSlot& OutSlot)
 {
+	return WearPastTheThreshold(CarriedSlot, AskedAbout, OutSlot, ECataclysmGearSlot::Count);
+}
+
+ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 CarriedSlot,
+																	 const FCataclysmItem* AskedAbout,
+																	 ECataclysmGearSlot& OutSlot,
+																	 ECataclysmGearSlot Into)
+{
 	ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>();
-	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot).Crosses();
+	// THE SLOT THE QUESTION WAS ABOUT, issue #837's slice 3: `Count` is `Equip`'s choice, as before it.
+	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot, 0, Into).Crosses();
 	const bool bWasMarked = State && State->IsMarkedByConsumption();
 
 	// MARKED FIRST, so the character record the equip writes already holds it. See the header.
@@ -2604,8 +2613,9 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 
 	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
 	const ECataclysmWearResult Result = AskedAbout
-		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went)
-		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true);
+		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went, 0, Into)
+		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true,
+											 0, Into);
 	const bool bWorn = Result == ECataclysmWearResult::Worn || Result == ECataclysmWearResult::Swapped;
 	if (bWorn)
 	{

@@ -301,14 +301,14 @@ float UCataclysmEquipmentComponent::ConsumptionThresholdFor(int32 DifficultyTier
 	return ByTier[Tier - 1];
 }
 
-float UCataclysmEquipmentComponent::WornResidueIfEquipped(const FCataclysmItem& Item)
+float UCataclysmEquipmentComponent::WornResidueIfEquipped(const FCataclysmItem& Item, ECataclysmGearSlot Into)
 {
 	// ONE PROBE FOR BOTH QUESTIONS, since issue #832: the tooltip's comparison and this one ask `PreviewEquip`.
-	const FCataclysmEquipPreview Preview = PreviewEquip(Item);
+	const FCataclysmEquipPreview Preview = PreviewEquip(Item, Into);
 	return Preview.bWearable ? WornResidueOf(Preview.SlotsAfter) : WornResidue();
 }
 
-FCataclysmEquipPreview UCataclysmEquipmentComponent::PreviewEquip(const FCataclysmItem& Item)
+FCataclysmEquipPreview UCataclysmEquipmentComponent::PreviewEquip(const FCataclysmItem& Item, ECataclysmGearSlot Into)
 {
 	FCataclysmEquipPreview Out;
 	const TArray<FCataclysmItem> SlotsBefore = Slots;
@@ -318,11 +318,14 @@ FCataclysmEquipPreview UCataclysmEquipmentComponent::PreviewEquip(const FCatacly
 		FCataclysmItem FirstOff;
 		FCataclysmItem SecondOff;
 		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-		const ECataclysmEquipResult Result = Equip(Item, FirstOff, SecondOff, Went);
+		// A SLOT THE PLAYER NAMED GOES THROUGH `EquipInto`, as the wear itself will (issue #837, slice 3).
+		const ECataclysmEquipResult Result = Into == ECataclysmGearSlot::Count
+			? Equip(Item, FirstOff, SecondOff, Went)
+			: EquipInto(Item, Into, FirstOff, SecondOff);
 		if (Result == ECataclysmEquipResult::Equipped || Result == ECataclysmEquipResult::Swapped)
 		{
 			Out.bWearable = true;
-			Out.Slot = Went;
+			Out.Slot = Into == ECataclysmGearSlot::Count ? Went : SlotItLandsIn(Item, Into);
 			// BOTH, IN `Equip`'S ORDER: a two-handed weapon put on over two held weapons takes both off, and a
 			// comparison that named only the first would compare a greatsword against half of what it replaces.
 			if (!FirstOff.Base.IsNone())
@@ -505,15 +508,22 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::Equip(
 	// EquipInto sends a two-handed weapon to Weapon1 whichever weapon slot it
 	// was given, unless Both Hands Full is held, when it goes where it was put.
 	// So the slot reported back follows the same rule rather than the slot
-	// asked for.
-	OutSlot = Chosen;
-	if (UCataclysmGearSlots::IsWeaponSlot(Chosen)
-		&& UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable)
+	// asked for. SlotItLandsIn holds that rule since issue #837's slice 3, which
+	// reports a slot the player named the same way.
+	OutSlot = SlotItLandsIn(Item, Chosen);
+	return Result;
+}
+
+ECataclysmGearSlot UCataclysmEquipmentComponent::SlotItLandsIn(const FCataclysmItem& Item,
+															   ECataclysmGearSlot Asked) const
+{
+	if (UCataclysmGearSlots::IsWeaponSlot(Asked)
+		&& UCataclysmItemModifiers::IsTwoHanded(Item, UCataclysmItemModifiers::LoadBaseTable())
 		&& !MayHoldTwoTwoHanded())
 	{
-		OutSlot = ECataclysmGearSlot::Weapon1;
+		return ECataclysmGearSlot::Weapon1;
 	}
-	return Result;
+	return Asked;
 }
 
 ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmItem& Item,

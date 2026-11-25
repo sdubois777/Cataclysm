@@ -20,7 +20,8 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	int32 CarriedSlot,
 	ECataclysmGearSlot& OutSlot,
 	bool bConfirmedPastThreshold,
-	int32 DifficultyTier)
+	int32 DifficultyTier,
+	ECataclysmGearSlot Into)
 {
 	if (!Inventory || !Equipment)
 	{
@@ -59,6 +60,22 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 		? BaseTable->FindRow<FCataclysmItemBaseRow>(
 			  Item.Base, TEXT("WearFromCarried"), /*bWarnIfMissing=*/false)
 		: nullptr;
+
+	// A SLOT THE PLAYER NAMED IS ASKED ABOUT FIRST. Issue #837, slice 3. An item
+	// that does not go there is refused before anything moves, so it stays in its
+	// own cell: taken out and put back, AddItem would put it in the first free
+	// cell.
+	const bool bNamed = Into != ECataclysmGearSlot::Count;
+	if (bNamed && !(Base && UCataclysmGearSlots::CandidateSlotsFor(Base->Slot).Contains(Into)))
+	{
+		return ECataclysmWearResult::CannotBeWorn;
+	}
+
+	// THE SAME ROOM CHECK FOR A NAMED HAND, AND IT IS EXACT THERE TOO. Two
+	// weapons come off only when both hands are held, and then the hand pressed
+	// does not change how many: a two-handed weapon without Both Hands Full
+	// takes both from either hand, and a weapon of the other kind from the pair
+	// held takes both wherever it goes.
 	const bool bWeapon = Base
 		&& UCataclysmGearSlots::CandidateSlotsFor(Base->Slot)
 			   .Contains(ECataclysmGearSlot::Weapon1);
@@ -70,9 +87,10 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	}
 
 	// ASKED AFTER THE ROOM, so a player is never asked about an equip that
-	// would then be refused anyway. Issue #2687.
+	// would then be refused anyway. Issue #2687. ABOUT THE SLOT NAMED, when one
+	// was: a ring pressed over a worn ring replaces it (issue #837, slice 3).
 	if (!bConfirmedPastThreshold
-		&& CrossingFor(Inventory, Equipment, CarriedSlot, DifficultyTier).Crosses())
+		&& CrossingFor(Inventory, Equipment, CarriedSlot, DifficultyTier, Into).Crosses())
 	{
 		return ECataclysmWearResult::WouldCrossConsumptionThreshold;
 	}
@@ -88,8 +106,16 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 
 	FCataclysmItem First;
 	FCataclysmItem Second;
-	const ECataclysmEquipResult Result =
-		Equipment->Equip(Item, First, Second, OutSlot);
+	ECataclysmEquipResult Result = ECataclysmEquipResult::NotAnItem;
+	if (bNamed)
+	{
+		Result = Equipment->EquipInto(Item, Into, First, Second);
+		OutSlot = Equipment->SlotItLandsIn(Item, Into);
+	}
+	else
+	{
+		Result = Equipment->Equip(Item, First, Second, OutSlot);
+	}
 
 	if (Result != ECataclysmEquipResult::Equipped
 		&& Result != ECataclysmEquipResult::Swapped)
@@ -106,7 +132,8 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	// lands exactly there whenever no lower slot is free, being put in the
 	// first free slot. The player would then see a piece they never
 	// picked up drawn on the pointer, and the next press would move it.
-	// Every wear the player chooses -- the right button's, the one asked about
+	// Every wear the player chooses -- the right button's, a held item pressed
+	// onto a gear slot (WearHeldInto, issue #837), the one asked about
 	// first (WearAfterConfirming) and the Cataclysm.Equip command's -- comes
 	// through here, so this is the one place that covers them all. Wearing a different item leaves the
 	// hold where it is: that item is still in its slot.
@@ -146,6 +173,30 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 
 	return bAnythingCameOff ? ECataclysmWearResult::Swapped
 							: ECataclysmWearResult::Worn;
+}
+
+ECataclysmWearResult UCataclysmWearing::WearHeldInto(
+	UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	ECataclysmGearSlot GearSlot,
+	ECataclysmGearSlot& OutSlot,
+	bool bConfirmedPastThreshold,
+	int32 DifficultyTier)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	if (!Inventory->IsHolding())
+	{
+		return ECataclysmWearResult::NothingHeld;
+	}
+
+	// THE HELD CELL, WORN IN THE SLOT PRESSED. WearFromCarried ends the hold when
+	// the item goes on and leaves it on every refusal, the threshold question
+	// included, so a "Keep it off" leaves the item on the cursor.
+	return WearFromCarried(Inventory, Equipment, Inventory->HeldSlot(), OutSlot,
+						   bConfirmedPastThreshold, DifficultyTier, GearSlot);
 }
 
 ECataclysmWearResult UCataclysmWearing::TakeOffInto(
@@ -439,7 +490,8 @@ ECataclysmWearResult UCataclysmWearing::WearAfterConfirming(
 	int32 CarriedSlot,
 	const FCataclysmItem& AskedAbout,
 	ECataclysmGearSlot& OutSlot,
-	int32 DifficultyTier)
+	int32 DifficultyTier,
+	ECataclysmGearSlot Into)
 {
 	if (!Inventory || !Equipment)
 	{
@@ -454,14 +506,15 @@ ECataclysmWearResult UCataclysmWearing::WearAfterConfirming(
 		return ECataclysmWearResult::NoLongerThere;
 	}
 	return WearFromCarried(Inventory, Equipment, CarriedSlot, OutSlot,
-						   /*bConfirmedPastThreshold=*/true, DifficultyTier);
+						   /*bConfirmedPastThreshold=*/true, DifficultyTier, Into);
 }
 
 FCataclysmThresholdCrossing UCataclysmWearing::CrossingFor(
 	const UCataclysmInventoryComponent* Inventory,
 	UCataclysmEquipmentComponent* Equipment,
 	int32 CarriedSlot,
-	int32 DifficultyTier)
+	int32 DifficultyTier,
+	ECataclysmGearSlot Into)
 {
 	FCataclysmThresholdCrossing Crossing;
 	Crossing.Tier = DifficultyTier > 0 ? DifficultyTier : ACataclysmGameMode::DifficultyTierIn(Equipment);
@@ -474,7 +527,7 @@ FCataclysmThresholdCrossing UCataclysmWearing::CrossingFor(
 	Crossing.After = Crossing.Now;
 	if (const FCataclysmItem* Carried = Inventory ? Inventory->ItemAt(CarriedSlot) : nullptr)
 	{
-		Crossing.After = Equipment->WornResidueIfEquipped(*Carried);
+		Crossing.After = Equipment->WornResidueIfEquipped(*Carried, Into);
 	}
 	return Crossing;
 }
@@ -510,8 +563,10 @@ FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 	case ECataclysmWearResult::NoRoomInTheBag:
 		return TEXT("There is no room in the bag, so nothing was moved.");
 	case ECataclysmWearResult::TheLastWeapon:
+		// THE OWNER'S Q6 OF 2026-11-24 (issue #837): the sentence names the
+		// press that swaps the weapon, WearHeldInto.
 		return TEXT("That is your only weapon, and you have to hold one. "
-					"Wear a different weapon over it instead.");
+					"Press another weapon onto this hand to swap them.");
 	case ECataclysmWearResult::NothingToWorkWith:
 		return TEXT("This character has no inventory or no equipment.");
 	case ECataclysmWearResult::PickedUp:

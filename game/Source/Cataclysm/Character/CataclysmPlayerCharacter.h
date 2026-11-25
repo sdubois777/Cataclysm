@@ -539,6 +539,15 @@ public:
 	 */
 	ECataclysmWearResult WearPastTheThreshold(int32 CarriedSlot, const FCataclysmItem* AskedAbout, ECataclysmGearSlot& OutSlot);
 
+	/**
+	 * The same, for a question about a gear slot the player named: a held item pressed onto that slot (issue #837,
+	 * slice 3). The crossing is judged for that slot and the item goes on there. The overload above is this one with
+	 * `ECataclysmGearSlot::Count`, `Equip`'s own choice; it is an overload rather than a default because this header
+	 * declares the slot enum without its values.
+	 */
+	ECataclysmWearResult WearPastTheThreshold(int32 CarriedSlot, const FCataclysmItem* AskedAbout, ECataclysmGearSlot& OutSlot,
+											  ECataclysmGearSlot Into);
+
 	/** What the character is wearing. Issue #828. */
 	UCataclysmEquipmentComponent* GetEquipment() const { return Equipment; }
 

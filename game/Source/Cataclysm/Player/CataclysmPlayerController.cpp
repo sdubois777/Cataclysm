@@ -14,6 +14,7 @@
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmEmpireTreeWidget.h"
 #include "Interface/CataclysmForgeWidget.h"
+#include "Interface/CataclysmInventoryScreen.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
@@ -1542,18 +1543,18 @@ bool ACataclysmPlayerController::InventoryPressTarget(
 void ACataclysmPlayerController::ReportInventoryPress(
 	ECataclysmWearResult Result) const
 {
-	switch (Result)
+	// THE SCREEN'S LINE DECIDES WHAT IS SAID, and the log says the same. Issue
+	// #837, slice 3. A press that did what was asked takes the last line away,
+	// so a refusal is never left up beside the change that followed it.
+	const FString Line = UCataclysmInventoryScreen::PressLineFor(Result);
+	if (!Line.IsEmpty())
 	{
-	case ECataclysmWearResult::Worn:
-	case ECataclysmWearResult::Swapped:
-	case ECataclysmWearResult::TakenOff:
-	case ECataclysmWearResult::PickedUp:
-	case ECataclysmWearResult::PutDown:
-	case ECataclysmWearResult::Exchanged:
-		return;
-	default:
-		UE_LOG(LogCataclysm, Log, TEXT("%s"),
-			   *UCataclysmWearing::Explain(Result));
+		UE_LOG(LogCataclysm, Log, TEXT("%s"), *Line);
+	}
+	if (InventoryScreen)
+	{
+		const UWorld* World = GetWorld();
+		InventoryScreen->ShowPressLine(Line, World ? World->GetTimeSeconds() : 0.0);
 	}
 }
 
@@ -1610,11 +1611,28 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 	const ECataclysmGearSlot Worn = InventoryScreen->GearSlotUnderCursor(Point);
 	if (Worn != ECataclysmGearSlot::Count)
 	{
-		// A WORN PIECE COMES OFF ONTO THE CURSOR. Putting one back ON with a
-		// left press is not defined by docs/Inventory_Screen_Design.md, whose
-		// table gives left only "pick it up off the body the same way", so a
-		// press on a gear slot while holding something is refused rather than
-		// given behaviour nobody chose.
+		// HOLDING AN ITEM, THE PRESS WEARS IT IN THIS SLOT, and what was there
+		// goes into the bag. The owner's Q5 of 2026-11-24 (issue #837 comment
+		// 7150408605), which docs/Inventory_Screen_Design.md's table now states;
+		// until then this press was refused because no rule had been chosen. A
+		// crossing of the Consumption Threshold is asked about first, about this
+		// slot, as the right press asks it.
+		if (Bag && Bag->IsHolding())
+		{
+			const int32 HeldCell = Bag->HeldSlot();
+			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+			const ECataclysmWearResult Result = UCataclysmWearing::WearHeldInto(
+				Bag, Wearer->GetEquipment(), Worn, Went);
+			if (Result == ECataclysmWearResult::WouldCrossConsumptionThreshold)
+			{
+				AskBeforeWearing(Wearer, HeldCell, Worn);
+				return;
+			}
+			ReportInventoryPress(Result);
+			return;
+		}
+
+		// HOLDING NOTHING, A WORN PIECE COMES OFF ONTO THE CURSOR.
 		ReportInventoryPress(UCataclysmWearing::PickUpWorn(
 			Bag, Wearer->GetEquipment(), Worn));
 		return;
@@ -1671,7 +1689,7 @@ void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
 			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went);
 		if (Result == ECataclysmWearResult::WouldCrossConsumptionThreshold)
 		{
-			AskBeforeWearing(Wearer, Carried);
+			AskBeforeWearing(Wearer, Carried, ECataclysmGearSlot::Count);
 			return;
 		}
 		ReportInventoryPress(Result);
@@ -2049,7 +2067,8 @@ bool ACataclysmPlayerController::WearingQuestionIsOpen() const
 	return ChoicePanel && ChoicePanel->IsAskingAQuestion() && ChoicePanel->IsInViewport();
 }
 
-void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot)
+void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot,
+												  ECataclysmGearSlot Into)
 {
 	UCataclysmInventoryComponent* Bag = Wearer ? Wearer->GetInventory() : nullptr;
 	const FCataclysmItem* Carried = Bag ? Bag->ItemAt(CarriedSlot) : nullptr;
@@ -2061,8 +2080,9 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 
 	// A COPY, because the yes is about this item, and WearAfterConfirming compares the cell with it.
 	const FCataclysmItem AskedAbout = *Carried;
+	// ABOUT THE SLOT PRESSED, when one was (issue #837, slice 3), and the yes puts it there.
 	const FCataclysmThresholdCrossing Crossing =
-		UCataclysmWearing::CrossingFor(Bag, Wearer->GetEquipment(), CarriedSlot);
+		UCataclysmWearing::CrossingFor(Bag, Wearer->GetEquipment(), CarriedSlot, 0, Into);
 	const FString Name = UCataclysmItemName::NameOf(
 		AskedAbout, UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable());
 
@@ -2076,7 +2096,7 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 	Panel->SetQuestion(
 		TEXT("Past the Consumption Threshold"), UCataclysmWearing::ThresholdQuestion(Name, Crossing), {WearIt},
 		TEXT("Keep it off"),
-		[Asker, CarriedSlot, AskedAbout](FName)
+		[Asker, CarriedSlot, AskedAbout, Into](FName)
 		{
 			ACataclysmPlayerController* Controller = Asker.Get();
 			ACataclysmPlayerCharacter* Now =
@@ -2086,7 +2106,7 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 				return;
 			}
 			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-			Controller->ReportInventoryPress(Now->WearPastTheThreshold(CarriedSlot, &AskedAbout, Went));
+			Controller->ReportInventoryPress(Now->WearPastTheThreshold(CarriedSlot, &AskedAbout, Went, Into));
 		});
 	if (!Panel->IsInViewport())
 	{

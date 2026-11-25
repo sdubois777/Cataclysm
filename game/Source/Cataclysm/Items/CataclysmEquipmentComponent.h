@@ -243,8 +243,11 @@ public:
 	 * disagree about where an item goes. Not const, for `PreviewEquip`'s reason.
 	 *
 	 * An item `Equip` refuses changes nothing, so the answer is the Worn Residue now.
+	 *
+	 * @param Into  a slot the player named, for a held item pressed onto a gear slot (issue #837, slice 3): the
+	 *              total is then the one `EquipInto` that slot would leave. `Count`, the default, is `Equip`'s choice.
 	 */
-	float WornResidueIfEquipped(const FCataclysmItem& Item);
+	float WornResidueIfEquipped(const FCataclysmItem& Item, ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
 
 	/**
 	 * What `Equip` would do with this item, found by running it and putting everything back. Issue #832, the tooltip's
@@ -261,8 +264,14 @@ public:
 	 *
 	 * NOT `UCataclysmWearing::WearFromCarried`'S REFUSALS: a full bag refusing a weapon that would take two off is the
 	 * wearer's rule, not `Equip`'s, and a preview of such an item still says what `Equip` would do.
+	 *
+	 * @param Into  a slot the player named: `EquipInto` that slot runs instead of `Equip`, on the same copy put back.
+	 *              Issue #837, slice 3, a held item pressed onto a gear slot, whose threshold question has to be about
+	 *              the slot pressed: a ring pressed over a worn ring replaces it, where `Equip` would add it in a free
+	 *              slot, or, with every ring slot full, replace the one `UCataclysmGearSlots::SlotToReplace` names.
+	 *              `Count`, the default, is `Equip`'s choice.
 	 */
-	FCataclysmEquipPreview PreviewEquip(const FCataclysmItem& Item);
+	FCataclysmEquipPreview PreviewEquip(const FCataclysmItem& Item, ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
 
 	/**
 	 * The player's numbers `RefreshAttributes` reads before it gathers: the owning pawn's player state's, through
@@ -381,6 +390,14 @@ public:
 									ECataclysmGearSlot Slot,
 									FCataclysmItem& OutRemoved,
 									FCataclysmItem& OutAlsoRemoved);
+
+	/**
+	 * The slot an item put in `Asked` ends up in: `Asked`, except a two-handed weapon without Both Hands Full, which
+	 * `EquipInto` keeps in Weapon1 whichever hand it was given. `Equip` reports its `OutSlot` through this, and so does
+	 * `UCataclysmWearing::WearFromCarried` for a slot the player named (issue #837, slice 3), so the rule is written
+	 * once beside `EquipInto`, which carries it out.
+	 */
+	ECataclysmGearSlot SlotItLandsIn(const FCataclysmItem& Item, ECataclysmGearSlot Asked) const;
 
 	/**
 	 * Take the item out of a slot.
