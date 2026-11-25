@@ -74,9 +74,13 @@ new CSV, not run in Unreal: every tree's mark scale is 1.000 with no overlapping
   `Player.` 20 to 21. **Rewritten, same count:** `Passives.` 161, `MasochistRows.` 9, `MasochistHealingRows.` 5,
   `Fervour.` 32, `DeathRewards.` 4, `MinionDeath.` 18, `FervourRows.` 4, `PartialClauses.` 5, `ReachRows.` 5,
   `StatExemption.` 37, `Command.` 31.
-- **The whole suite:** the branch adds 98 test names and removes 33 against development, net 65 (the rework's 61 and
-  the tree screen's 4, as both entries predict). On the newest whole-suite log's 5520 that is **5585**, once the Rifts
-  are on development and merged here; it is recounted before the window starts.
+- **The whole suite: 5587.** The newest whole-suite log is the Rifts' first window on b80da905a: "5520 tests
+  performed", and `unreal_build.declared_tests` counts 5520 declared there. Development at db7427d7a, with the Rifts
+  merged, declares 5522: the Rifts' second window, which ran no whole suite, added
+  `DungeonModifiers.ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse` and
+  `Rifts.ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay`. This branch adds 98 test names and removes 33
+  against development, net 65 (the rework's 61 and the tree screen's 4, as both entries predict), and declares 5587
+  at 261307eb3. The groups' counts above are from the b80da905a log; neither added test is in one of them.
 
 ### Guard proofs: eleven, one for each change
 
