@@ -140,9 +140,32 @@ which assumes the player's critical strike multiplier is above 120%.
 
 ### What was run
 
-SUITE_FIGURES_C4D1
+**The whole Python suite on `b3c979664`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8547 passed, 9 skipped in 481.18s
+(0:08:01)". The JUnit file agrees: tests 8557, failures 1, errors 0, skipped 9, so 8547 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and two
+pins that list the conditioned stats (`test_dot_damage_on_a_moving_target_rows.py` and
+`test_every_conditioned_stat_has_an_asker.py`), each moved by one for `fervour_per_critical_strike` before the commit.
 
-PYTHON_PROOFS_C4D1
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Seven Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`da9767032`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The hit handler no longer paying Fervour for a critical strike | `test_charge_and_placed_action_names_match_the_engine.py::test_a_critical_strike_pays_fervour_and_a_minions_does_not` |
+| The execute no longer marking the character it kills | `test_charge_and_placed_action_names_match_the_engine.py::test_reapers_edge_marks_an_executes_kill_for_its_payment_and_rows` |
+| Relentless sized by tens rather than hundreds | `test_charge_and_placed_action_names_match_the_engine.py::test_relentless_is_sized_by_the_whole_hundreds_of_fervour_held` |
+| A Chain Execution charge never used | `test_charge_and_placed_action_names_match_the_engine.py::test_chain_execution_makes_the_next_landed_hit_critical_and_is_used_by_it` |
+| Chain Execution's row accepted on a hit | `test_generate_datatables.py::TestDeathTreeC4d1Actions::test_chain_executions_row_on_another_event_is_refused[hit_dealt]` |
+| Telling Blows' row losing its condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` |
+| Relentless taking 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
