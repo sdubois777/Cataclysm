@@ -1172,6 +1172,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// And the Shadow's Deathmark and Two Marks, the Death trees' slice C6e: how many enemies a character marks.
 		// Read by UCataclysmAbilitySystemComponent::MaintainShadowMarks. No attribute and no base.
 		TEXT("death_marks_held"),
+		// And its Hollow Step: a movement skill that passes through enemies and hits each one. Read by
+		// UCataclysmMovementSkill::PassesThroughEnemies. No attribute and no base.
+		TEXT("movement_passes_through_enemies"),
 		// And the Shadow's starting node and Telling Blows, the Death trees' slice C4d1: the Fervour a landed critical
 		// strike pays, read by UCataclysmFervour::GainOnCriticalStrike against the character struck. No attribute and no
 		// base.

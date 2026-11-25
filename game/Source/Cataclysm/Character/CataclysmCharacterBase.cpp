@@ -558,10 +558,30 @@ void ACataclysmCharacterBase::RefreshPassThroughBody()
 	}
 
 	// BOTH HALVES: what this body is when another moves into it, and what it moves through itself. A body whose bit is
-	// nought ignores nothing and is ignored by nothing, which is every creature.
+	// nought ignores nothing, which is every creature; and a creature on the monsters' side carries `HostileBodyMaskBit`
+	// as what it is, which only a character with Hollow Step ignores, and only while its movement skill moves it (the
+	// Death trees' slice C6e, 2026-11-25). Before that, no creature's filter carried a bit at all.
+	static_assert((HostileBodyMaskBit & PassThroughBodyMaskBits) == 0 && HostileBodyMaskBit < (1 << NumExtraFilterBits),
+				  "The hostile body bit must be its own, and inside the engine's extra filter bits.");
 	const uint8 OwnBit = PassThroughBodyMaskBit();
-	Capsule->SetMaskFilterOnBodyInstance(OwnBit);
+	const bool bHostile = OwnBit == 0 && TeamId == UCataclysmTeams::IdFor(ECataclysmTeam::Monsters);
+	Capsule->SetMaskFilterOnBodyInstance(bHostile ? HostileBodyMaskBit : OwnBit);
 	Capsule->SetMoveIgnoreMask(MovesThroughMaskFor(OwnBit));
+}
+
+void ACataclysmCharacterBase::SetMovesThroughHostiles(bool bThrough)
+{
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetMoveIgnoreMask(
+			MovesThroughMaskFor(PassThroughBodyMaskBit()) | (bThrough ? HostileBodyMaskBit : static_cast<uint8>(0)));
+	}
+}
+
+bool ACataclysmCharacterBase::MovesThroughHostiles() const
+{
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	return Capsule && (Capsule->GetMoveIgnoreMask() & HostileBodyMaskBit) != 0;
 }
 
 FGenericTeamId ACataclysmCharacterBase::GetGenericTeamId() const

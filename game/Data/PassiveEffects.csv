@@ -661,3 +661,4 @@ Shadow_keystone_b_kB#2,Shadow_keystone_b_kB,attack_damage,more,30.0,,target_mark
 Shadow_keystone_b_kB#3,Shadow_keystone_b_kB,spell_damage,more,30.0,,target_marked_by_you,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_keystone_b_kB#4,Shadow_keystone_b_kB,fervour_per_critical_strike,flat,5.0,,target_marked_by_you,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_keystone_b_kD#1,Shadow_keystone_b_kD,death_marks_held,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_keystone_c_kB#1,Shadow_keystone_c_kB,movement_passes_through_enemies,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0

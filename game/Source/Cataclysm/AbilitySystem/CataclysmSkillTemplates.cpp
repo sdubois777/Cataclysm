@@ -49,6 +49,8 @@
 #include "Character/CataclysmPlayerCharacter.h"
 // For a thrall's Compel strike, ordered as a rule's. Issue #783.
 #include "Character/CataclysmEnemyCharacter.h"
+// For Hollow Step's step out of an enemy's body: the capsules' radii (the Death trees' slice C6e).
+#include "Components/CapsuleComponent.h"
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
 #include "AbilitySystem/CataclysmTerrain.h"
@@ -3128,10 +3130,85 @@ bool UCataclysmMovementSkill::RolledDirection(FVector& OutDirection) const
 	return true;
 }
 
-void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed)
+const TCHAR* UCataclysmMovementSkill::PassesThroughEnemiesStat = TEXT("movement_passes_through_enemies");
+
+bool UCataclysmMovementSkill::PassesThroughEnemies() const
+{
+	return WornRowStat(PassesThroughEnemiesStat) > 0.0f;
+}
+
+void UCataclysmMovementSkill::PassThroughEnemies(bool bThrough)
+{
+	if (ACataclysmCharacterBase* Mover = Cast<ACataclysmCharacterBase>(Avatar()))
+	{
+		Mover->SetMovesThroughHostiles(bThrough);
+	}
+	bPassingThrough = bThrough;
+}
+
+void UCataclysmMovementSkill::StepOutOfEnemies(const FVector& LineStart)
+{
+	ACharacter* Mover = Cast<ACharacter>(Avatar());
+	UWorld* World = GetWorld();
+	if (!Mover || !World || !Mover->GetCapsuleComponent())
+	{
+		return;
+	}
+	const float MyRadius = Mover->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const FVector Ended = Mover->GetActorLocation();
+	const FVector Toward = FVector(LineStart.X - Ended.X, LineStart.Y - Ended.Y, 0.0f);
+	const float Length = Toward.Size();
+	const FVector Back = Length > 0.0f ? Toward / Length : FVector::ZeroVector;
+	const auto Overlaps = [this, World, Mover, MyRadius](const FVector& At)
+	{
+		for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(World, Mover, At, MyRadius + 200.0f))
+		{
+			const ACharacter* Body = Cast<ACharacter>(Enemy);
+			const float TheirRadius = Body && Body->GetCapsuleComponent()
+				? Body->GetCapsuleComponent()->GetScaledCapsuleRadius() : 0.0f;
+			if (!UCataclysmSkillEffects::IsDead(Enemy) && FVector::Dist2D(At, Enemy->GetActorLocation()) < MyRadius + TheirRadius)
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	for (float Walked = 0.0f; Walked <= Length + 1.0f; Walked += 10.0f)
+	{
+		const FVector At = Ended + Back * FMath::Min(Walked, Length);
+		if (!Overlaps(At))
+		{
+			if (Walked > 0.0f)
+			{
+				Mover->SetActorLocation(At, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+				ArrivedAt = At;
+			}
+			return;
+		}
+	}
+}
+
+void UCataclysmMovementSkill::HitTheLineOnce(const FVector& From, const FVector& To,
+											 const TArray<AActor*>& AlreadyStruck)
+{
+	TArray<AActor*> Crossed;
+	for (AActor* OnTheLine : UCataclysmTargeting::FindEnemiesInLine(GetWorld(), Avatar(), From, To, ScaledRadiusCm()))
+	{
+		if (!AlreadyStruck.Contains(OnTheLine))
+		{
+			Crossed.Add(OnTheLine);
+		}
+	}
+	// AT THE SKILL'S OWN PERCENT: what its own hit gives a target, with nothing consumed.
+	HitWhatThePathCrossed(Crossed, PercentHitScaledGivesAnAlly(TArray<AActor*>()));
+}
+
+void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed, float PercentOverride)
 {
 	AActor* Self = Avatar();
-	const float Percent = (Self && !Crossed.IsEmpty()) ? WornRowStat(PathDamagePercentStat) : 0.0f;
+	const float Percent = (Self && !Crossed.IsEmpty())
+		? (PercentOverride >= 0.0f ? PercentOverride : WornRowStat(PathDamagePercentStat))
+		: 0.0f;
 	if (Percent <= 0.0f)
 	{
 		return;
@@ -3687,6 +3764,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// character inside it, AND NOT REFUSED FOR STARTING ON THE FLOOR, issues #2203
 	// and #2505: a blink in the frame the player is placed moved 0 cm.
 	const FVector SelfWas = Self->GetActorLocation();
+	// HOLLOW STEP: the move passes through enemies, for the move only, and never ends inside one (the Death trees'
+	// slice C6e). A Swap's teleport is not stopped by anything, so it only gains the line hit below.
+	const bool bThroughEnemies = PassesThroughEnemies();
 	if (Params.MovementMode == ECataclysmMovementMode::Swap)
 	{
 		// THE CASTER'S HALF OF THE EXCHANGE: unswept, and unchecked because `ChooseTradePartner` asked the fit.
@@ -3695,7 +3775,17 @@ void UCataclysmMovementSkill::ActivateAbility(
 	}
 	else
 	{
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(true);
+		}
 		UCataclysmMovement::MoveWithoutSticking(Self, End - Self->GetActorLocation());
+		ArrivedAt = Self->GetActorLocation();
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(false);
+			StepOutOfEnemies(Start);
+		}
 	}
 	ArrivedAt = Self->GetActorLocation();
 
@@ -3800,6 +3890,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// 2026-10-07. AFTER THE SKILL'S OWN BLOW AND WHAT FOLLOWS FROM IT, so a kill one of these makes is not counted
 	// as the arrival's. THE PULL IS LAST, so who the two hits reach does not depend on whether the pull is worn.
 	HitAlongThePath(Start, ArrivedAt);
+	// AND HOLLOW STEP'S "hits each one": every enemy on the line its own hit did not strike, once.
+	if (bThroughEnemies)
+	{
+		HitTheLineOnce(Start, ArrivedAt, Targets);
+	}
 	ExplodeAtBothEnds(Start, ArrivedAt);
 	PullNearbyToWhereItArrived();
 
@@ -3856,8 +3951,19 @@ void UCataclysmMovementSkill::FlickerOnce()
 						   Next->GetActorLocation().Y,
 						   Self->GetActorLocation().Z);
 		const FVector SelfWas = Self->GetActorLocation();
+		// HOLLOW STEP: each arrival passes through enemies and never ends inside one, the creature arrived at included.
+		const bool bThroughEnemies = PassesThroughEnemies();
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(true);
+		}
 		UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
 		ArrivedAt = Self->GetActorLocation();
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(false);
+			StepOutOfEnemies(SelfWas);
+		}
 
 		// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
 		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
@@ -3873,6 +3979,11 @@ void UCataclysmMovementSkill::FlickerOnce()
 		TArray<AActor*> One;
 		One.Add(Next);
 		HitScaled(One, TArray<AActor*>());
+		// AND EVERY OTHER ENEMY ON THIS ARRIVAL'S LINE, once.
+		if (bThroughEnemies)
+		{
+			HitTheLineOnce(SelfWas, ArrivedAt, One);
+		}
 
 		return;
 	}
@@ -3940,6 +4051,14 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	EnemiesHit = 0;
 	StruckAlready.Reset();
 	ArrivedAt = Start;
+
+	// HOLLOW STEP: a walked Charge passes through enemies until the ability ends, however it ends (`EndAbility`). It
+	// already hits each enemy on its line once, so it gains no line hit.
+	if (PassesThroughEnemies())
+	{
+		PassingThroughFrom = Start;
+		PassThroughEnemies(true);
+	}
 
 	// THE DIRECTION, TAKEN ONCE. `AimedPointWithin` is what every other movement
 	// mode uses to find where the player pointed, and taking it here rather than
@@ -4063,6 +4182,14 @@ void UCataclysmMovementSkill::EndAbility(
 		World->GetTimerManager().ClearTimer(AdvanceTimer);
 		World->GetTimerManager().ClearTimer(FlickerTimer);
 		World->GetTimerManager().ClearTimer(StopTimer);
+	}
+
+	// HOLLOW STEP'S MASK IS RESTORED ON EVERY WAY OUT, a cancelled or interrupted walked Charge included, and the mover
+	// is put outside any enemy it stopped inside (the Death trees' slice C6e, as ruled, H1 condition 3).
+	if (bPassingThrough)
+	{
+		PassThroughEnemies(false);
+		StepOutOfEnemies(PassingThroughFrom);
 	}
 
 	// A USE THAT WAS PAID FOR HAS ENDED, which Arrival's clock counts from (the Death trees' slice C6b2, 2026-11-25).

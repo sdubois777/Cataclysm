@@ -825,6 +825,9 @@ NODES: tuple[Node, ...] = (
           R("spell_damage", "more", 30, cond="target_marked_by_you"),
           R("fervour_per_critical_strike", "flat", 5, cond="target_marked_by_you"))),
     Node(SH + "keystone_b_kD", "Two Marks", (R("death_marks_held", "flat", 1),)),
+    # Hollow Step, as ruled (H1, H2): the movement skill passes through enemies
+    # for the move only, never ends inside one, and hits the line once.
+    Node(SH + "keystone_c_kB", "Hollow Step", (R("movement_passes_through_enemies", "flat", 1),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

@@ -754,8 +754,9 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: and Avenging Dead. AND TO 654 FOR ITS MARSHAL. AND TO 657 FOR ITS SHARED
 #: LEECH, ETERNAL ARMY AND BOUND BONES.
 #:
-#: AND TO 662 THE SAME DAY, for slice C6e: Deathmark (four) and Two Marks.
-AUTHORED_ROWS = 662
+#: AND TO 662 THE SAME DAY, for slice C6e: Deathmark (four) and Two Marks. AND
+#: TO 663 FOR ITS HOLLOW STEP.
+AUTHORED_ROWS = 663
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1247,8 +1248,9 @@ AUTHORED_ROWS = 662
 #: `AUTHORED_OPTIONS`; their capstones had no row before, so each moves this
 #: count too, to 394.
 #:
-#: AND TO 396 THE SAME DAY, for slice C6e's Deathmark and Two Marks.
-AUTHORED_NODES = 396
+#: AND TO 396 THE SAME DAY, for slice C6e's Deathmark and Two Marks. AND TO 397
+#: FOR ITS HOLLOW STEP.
+AUTHORED_NODES = 397
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -3234,6 +3236,8 @@ VALUE_IN_WORDS = {
     # one each, Deathmark's "is marked" and Two Marks' "You mark two enemies".
     ("Shadow_keystone_b_kB", "death_marks_held"): ("the strongest enemy within 15 metres is marked", 1.0),
     ("Shadow_keystone_b_kD", "death_marks_held"): ("you mark two enemies", 1.0),
+    # AND HOLLOW STEP'S FLAG, "passes through enemies and hits each one".
+    ("Shadow_keystone_c_kB", "movement_passes_through_enemies"): ("passes through enemies and hits each one", 1.0),
     # AND DEATHMARK'S "each critical strike on it gives 5 Fervour", worded
     # differently from the forms `fervour_per_critical_strike` takes.
     ("Shadow_keystone_b_kB", "fervour_per_critical_strike"): ("each critical strike on it gives 5 fervour", 5.0),
