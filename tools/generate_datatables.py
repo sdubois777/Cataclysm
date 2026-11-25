@@ -5435,6 +5435,13 @@ CONDITIONS = {
     # else. IT TAKES NO VALUE. Read by `CurrentConditions` from that mark, so
     # not one of `CONDITIONS_OF_A_HIT_DEALT`.
     "killing_blow_was_a_hit": None,
+    # "Enemies within 3 metres of an enemy you kill ... for 3 seconds" is
+    # `target_near_your_kill_within_seconds`: the Soul Collector's Grim Wake,
+    # the Death trees' slice C4c2 (2026-11-25), as ruled. A record kept on the
+    # character marked, keyed by the killer, written at the kill for every enemy
+    # within the row's `Reach Metres` of the body. The value is the seconds. A
+    # fact of the target in hand, so one of `CONDITIONS_OF_A_HIT_DEALT`.
+    "target_near_your_kill_within_seconds": (0.0, 60.0, "a number of seconds"),
 
     # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
     # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
@@ -6489,7 +6496,11 @@ def passive_effects(book) -> list[dict]:
         # radius exactly as the two above do and so needs one just as much.
         counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach",
                           "crippled_enemies_in_reach"}
-        named = counts_enemies & {condition, scale}
+        # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
+        # rather than around the character, read at the kill from this column.
+        # The Death trees' slice C4c2 (2026-11-25).
+        reads_a_radius = counts_enemies | {"target_near_your_kill_within_seconds"}
+        named = reads_a_radius & {condition, scale}
         written_reach = clean(_cell(raw, headers, "Reach Metres"))
         reach_metres = -1.0
         if named and not written_reach:
@@ -7855,6 +7866,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_slain_burst_action(index, who, action, event, fraction_of,
                                   kind, raw, headers)
         return
+    if action == BLEED_LEFT_TO_STRONGEST_ACTION:
+        _check_bleed_left_to_strongest_action(index, who, action, event,
+                                              fraction_of, kind, raw, headers)
+        return
     if action in TRAPS_NEARBY_ACTIONS:
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -7887,6 +7902,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {KILLING_BLOW_EXPLOSION_ACTION}; "
             f"or {SLAIN_BURST_ACTION}; "
+            f"or {BLEED_LEFT_TO_STRONGEST_ACTION}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
@@ -8805,6 +8821,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != OVERKILL_EXPLOSION_ACTION \
                 and action != KILLING_BLOW_EXPLOSION_ACTION \
                 and action != SLAIN_BURST_ACTION \
+                and action != BLEED_LEFT_TO_STRONGEST_ACTION \
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
@@ -9085,6 +9102,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} bursts a killed enemy "
                 f"for {low:g} to {high:g} per cent of its maximum health. The "
                 f"share is above 0 and up to {MAX_SLAIN_BURST_SHARE:g}.")
+
+    # AND BLOOD DEBT'S IS THE SECONDS THE BLEED LEFT IS DEALT OVER. The Death
+    # trees' slice C4c2 (2026-11-25).
+    if action == BLEED_LEFT_TO_STRONGEST_ACTION:
+        if not (0 < low <= MAX_BLEED_LEFT_SECONDS and 0 < high <= MAX_BLEED_LEFT_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} passes a Bleed's "
+                f"damage left over {low:g} to {high:g} seconds. The seconds are "
+                f"above 0 and up to {MAX_BLEED_LEFT_SECONDS:g}.")
 
     # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
     # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
@@ -10874,6 +10900,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_carries_cripple_and_weaken",
     "target_carries_void_splinter",
     "target_damaged_by_you_within_seconds",
+    "target_near_your_kill_within_seconds",
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",
@@ -14410,6 +14437,19 @@ KILLING_BLOW_EXPLOSION_EVENTS = ("kill",)
 SLAIN_BURST_ACTION = "burst_slain_for_share_of_maximum_health"
 SLAIN_BURST_EVENTS = ("kill",)
 
+#: The wearer's Bleed left on an enemy that died, passed to the strongest
+#: enemy within 10 metres of the body over the value's seconds: the Shadow's
+#: Blood Debt, the Death trees' slice C4c2 (2026-11-25).
+#: `UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction` holds the
+#: same name. ON `afflicted_death` AND NO OTHER EVENT: the one event that names
+#: a body carrying the wearer's ailment, raised with that ailment's tags.
+BLEED_LEFT_TO_STRONGEST_ACTION = "pass_bleed_left_to_strongest"
+BLEED_LEFT_TO_STRONGEST_EVENTS = ("afflicted_death",)
+
+#: The most seconds the Bleed left may be dealt over. A bound for typing
+#: mistakes; the one sentence is 2.
+MAX_BLEED_LEFT_SECONDS = 10.0
+
 #: The most its share may be, in per cent of the slain creature's maximum
 #: health. A bound for typing mistakes; the one sentence is 10.
 MAX_SLAIN_BURST_SHARE = 100.0
@@ -14444,6 +14484,32 @@ def _check_killing_blow_explosion_action(index: int, who: str, action: str,
                 f"for a share of the blow that killed it and states {column} "
                 f"{written!r}. Its value is that share and nothing else, so the "
                 f"column must be empty.")
+
+
+def _check_bleed_left_to_strongest_action(index: int, who: str, action: str,
+                                          event: str, fraction_of: str,
+                                          kind: str, raw,
+                                          headers: dict[str, int]) -> None:
+    """Everything a Blood Debt row must say, and everything it must not. The
+    Death trees' slice C4c2 (2026-11-25). ON `afflicted_death` ONLY, the one
+    event naming a body that carried the wearer's ailment; the seconds are
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in BLEED_LEFT_TO_STRONGEST_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} passes a dead enemy's "
+            f"Bleed left on the event {event or '(none)'!r}. Only the death of "
+            f"an enemy carrying the wearer's ailment names that body: "
+            f"{', '.join(BLEED_LEFT_TO_STRONGEST_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} passes a dead enemy's "
+                f"Bleed left and states {column} {written!r}. Its value is the "
+                f"seconds and nothing else, so the column must be empty.")
 
 
 def _check_slain_burst_action(index: int, who: str, action: str, event: str,

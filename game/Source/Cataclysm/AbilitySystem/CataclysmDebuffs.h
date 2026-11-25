@@ -291,6 +291,30 @@ public:
 	static bool CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier);
 
 	/**
+	 * The damage `Applier`'s Bleeds on `Carrier` have left to deal, held to what a Bleed's movement still allows
+	 * (`UCataclysmSkillEffects::RemainingDamageOverTime`). Blood Debt's figure, the Death trees' slice C4c2 (2026-11-25).
+	 */
+	static float BleedLeftLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
+	 * The strongest enemy of `Asker`'s within `RadiusCm` of `Of`, `Of` itself and the dead left out: the highest rarity
+	 * rung, then the most current health, then the nearest. As ruled for Blood Debt, the Death trees' slice C4c2
+	 * (2026-11-25). Null when there is none.
+	 */
+	static AActor* StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm);
+
+	/** How far Blood Debt looks from the body: "the strongest enemy within 10 metres". */
+	static constexpr float BloodDebtReachCm = 1000.0f;
+
+	/**
+	 * Blood Debt: the damage `Applier`'s Bleed on `Dead` had left, laid on the strongest enemy within
+	 * `BloodDebtReachCm` of it as a Bleed of `Applier`'s over `Seconds`, unscaled. As a Bleed, so "the stronger
+	 * application wins" holds: on an enemy already carrying a stronger Bleed of `Applier`'s it only refreshes, as ruled.
+	 * Answers whether a Bleed was laid. The Deathmark half is not built.
+	 */
+	static bool PassBleedLeftToStrongest(AActor* Applier, AActor* Dead, float Seconds);
+
+	/**
 	 * How many seconds of movement one bleed ticks through before it stops: "ticks only while the affected target is
 	 * moving, stopping after 4 seconds of movement" (the DoTs sheet, `DoT_Bleed`). Issue #918, ruled 2026-10-31.
 	 */

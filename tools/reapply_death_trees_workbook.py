@@ -586,6 +586,17 @@ NODES: tuple[Node, ...] = (
     Node(SC + "capstone_200", "The Ferryman",
          (A("burst_slain_for_share_of_maximum_health", 10, event="kill", cond="class_resource_at_maximum"),),
          option=2),
+
+    # ---- SLICE C4c2 (2026-11-25): MARKS LEFT BY A DEATH. Grim Wake marks the
+    # enemies within its rows' 3 metres of a kill of yours, a follower's under
+    # Death's Toll included, and your damage to a marked enemy is raised for 3
+    # seconds; Blood Debt passes your Bleed left on an enemy that died to the
+    # strongest enemy within 10 metres, over 2 seconds. Its Deathmark half is not
+    # built.
+    Node(SC + "basic_b_a2", "Grim Wake",
+         damage("increased", 2, cond="target_near_your_kill_within_seconds", cond_value=3, reach=3)),
+    Node(SH + "keystone_a_kB", "Blood Debt",
+         (A("pass_bleed_left_to_strongest", 2, event="afflicted_death", tags="Keyword.DoT.Bleed"),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

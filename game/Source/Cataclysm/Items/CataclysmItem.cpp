@@ -1598,6 +1598,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// C4c1 (2026-11-25). The value is the share, in per cent.
 					Action.bBurstSlainForMaximumHealth = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT PASSES THE WEARER'S BLEED LEFT ON A DEAD ENEMY TO THE STRONGEST NEAR IT: Blood
+					// Debt, the Death trees' slice C4c2 (2026-11-25). The value is the seconds.
+					Action.bPassBleedLeftToStrongest = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

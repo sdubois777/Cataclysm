@@ -1675,6 +1675,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsMoving = false;
 	bool bWantsYourCurse = false;
 	bool bWantsYourPoisonOrBleed = false;
+	bool bWantsNearKill = false;
 	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1714,6 +1715,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// AND HOW LONG AGO, from the same record. Issue #1515, Set Upon.
 			case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 				bWantsHistory = true;
+				break;
+			// AND WHETHER THE TARGET STOOD NEAR A KILL OF THE ASKER'S, Grim Wake, the Death trees' slice C4c2.
+			case ECataclysmStatCondition::TargetNearYourKillWithinSeconds:
+				bWantsNearKill = true;
 				break;
 			// AND WHETHER THE TARGET STANDS IN ONE OF THE ASKER'S ZONES, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
@@ -1764,8 +1769,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			bWantsAilments = true;
 		}
 
-		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence
-			&& bWantsMoving && bWantsYourCurse && bWantsRarity)
+		// EVERY FLAG DECLARED ABOVE IS IN THIS LIST AND THE ONE BELOW. The Death trees' slice C4c2 (2026-11-25) found
+		// three that were in neither -- the Siphon's of slice C2, the poison-or-bleed of C4a and its own near kill -- so
+		// a stat line whose only question about the target was one of them returned below before the fill, and the
+		// condition refused. `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` holds the lists
+		// to the declarations.
+		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSiphon
+			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill
+			&& bWantsRarity)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1778,8 +1789,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// because nothing could do anything differently with the distinction: a
 	// lookup with no row asking has no condition to answer.
 	if (!Target
-		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence
-			&& !bWantsMoving && !bWantsYourCurse && !bWantsRarity))
+		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSiphon
+			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill
+			&& !bWantsRarity))
 	{
 		return State;
 	}
@@ -1791,6 +1803,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	{
 		State.bTargetCarriesYourCurse = UCataclysmRisenImps::CarriesCurseLaidBy(
 			Target, State.AskingAbilitySystem->GetAvatarActor());
+	}
+
+	// AND HOW LONG AGO IT STOOD NEAR A KILL OF THE ASKER'S, from the record kept on it (the Death trees' slice C4c2).
+	if (bWantsNearKill && State.AskingAbilitySystem)
+	{
+		if (const UCataclysmAbilitySystemComponent* Marked =
+				Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			State.SecondsSinceNearYourKill = Marked->SecondsSinceNearKillBy(State.AskingAbilitySystem);
+		}
 	}
 
 	// AND WHETHER IT CARRIES A POISON OR A BLEED THE ASKER APPLIED, the same way (the Death trees' slice C4a).
@@ -3953,6 +3975,43 @@ void UCataclysmAbilitySystemComponent::ExtendKillDecayHold(float Seconds, float 
 	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Capped);
 }
 
+void UCataclysmAbilitySystemComponent::NoteNearKillBy(const UAbilitySystemComponent* Killer)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Killer)
+	{
+		return;
+	}
+	NearKillBy.Add(Killer, World->GetTimeSeconds());
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceNearKillBy(const UAbilitySystemComponent* Killer) const
+{
+	const UWorld* World = GetWorld();
+	const float* At = Killer ? NearKillBy.Find(Killer) : nullptr;
+	if (!World || !At || *At < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
+}
+
+float UCataclysmAbilitySystemComponent::WidestReachOfCondition(ECataclysmStatCondition Condition) const
+{
+	float Widest = 0.0f;
+	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
+	{
+		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
+		{
+			if (Row.Condition == Condition || Row.Condition2 == Condition)
+			{
+				Widest = FMath::Max(Widest, Row.ReachMetres);
+			}
+		}
+	}
+	return Widest;
+}
+
 float UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionRadiusCm()
 {
 	// DEFINED HERE AND NOT IN THE HEADER, which does not include `CataclysmSkillEffects.h` for the old radius.
@@ -5227,6 +5286,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction 
 	TEXT("burst_slain_for_share_of_maximum_health");
 const TCHAR* UCataclysmAbilitySystemComponent::OverkillExplosionRadiusMetresStat =
 	TEXT("overkill_explosion_radius_metres");
+const TCHAR* UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction = TEXT("pass_bleed_left_to_strongest");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
@@ -7558,6 +7618,20 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				PendingSlainBurstSharePercent = FMath::Max(PendingSlainBurstSharePercent, Action.Percent);
+			}
+			continue;
+		}
+		// THE WEARER'S BLEED LEFT ON AN ENEMY THAT DIED, PASSED TO THE STRONGEST ENEMY NEAR IT: Blood Debt, the Death
+		// trees' slice C4c2 (2026-11-25). Landed only, once per row per event, for an event naming who died; the row's
+		// required tag keeps it to a death carrying the wearer's Bleed. `Percent` is the seconds it is dealt over.
+		if (Action.bPassBleedLeftToStrongest)
+		{
+			AActor* Dead = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Dead && Self && Action.Percent > 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				UCataclysmDebuffs::PassBleedLeftToStrongest(Self, Dead, Action.Percent);
 			}
 			continue;
 		}

@@ -14,6 +14,7 @@
 // For refusing a corpse, which `HoldStep` does. Issue #1070.
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -307,6 +308,74 @@ float UCataclysmDebuffs::DamageAgainstSharedDebuff(
 	// a sum of fractions. The stat holds a percentage because that is what the
 	// node's sentence states.
 	return Percent / 100.0f;
+}
+
+float UCataclysmDebuffs::BleedLeftLaidBy(const AActor* Carrier, const AActor* Applier)
+{
+	const UAbilitySystemComponent* Theirs = Carrier ? UCataclysmTargeting::AbilitySystemOf(Carrier) : nullptr;
+	if (!Theirs || !Applier || !BleedTag().IsValid())
+	{
+		return 0.0f;
+	}
+	float Left = 0.0f;
+	for (const FActiveGameplayEffectHandle& Handle :
+		 Theirs->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(BleedTag()))))
+	{
+		const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+		if (Active && Active->Spec.GetContext().GetInstigator() == Applier)
+		{
+			Left += UCataclysmSkillEffects::RemainingDamageOverTime(Theirs, Handle);
+		}
+	}
+	return Left;
+}
+
+AActor* UCataclysmDebuffs::StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm)
+{
+	const UWorld* World = Of ? Of->GetWorld() : nullptr;
+	if (!World || !Asker)
+	{
+		return nullptr;
+	}
+	AActor* Strongest = nullptr;
+	int32 BestRung = -2;
+	float BestHealth = -1.0f;
+	// NEAREST FIRST, so a tie on rung and health keeps the nearer.
+	for (AActor* Candidate : UCataclysmTargeting::FindEnemiesInSphere(World, Asker, Of->GetActorLocation(), RadiusCm))
+	{
+		if (Candidate == Of || UCataclysmSkillEffects::IsDead(Candidate))
+		{
+			continue;
+		}
+		const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Candidate);
+		const int32 Rung = Enemy ? Enemy->RarityStep : -1;
+		const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Candidate);
+		const float Health = Theirs ? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+		if (Rung > BestRung || (Rung == BestRung && Health > BestHealth))
+		{
+			Strongest = Candidate;
+			BestRung = Rung;
+			BestHealth = Health;
+		}
+	}
+	return Strongest;
+}
+
+bool UCataclysmDebuffs::PassBleedLeftToStrongest(AActor* Applier, AActor* Dead, float Seconds)
+{
+	if (!Applier || !Dead || Seconds <= 0.0f)
+	{
+		return false;
+	}
+	const float Left = BleedLeftLaidBy(Dead, Applier);
+	AActor* Strongest = Left > 0.0f ? StrongestEnemyNear(Dead, Applier, BloodDebtReachCm) : nullptr;
+	if (!Strongest)
+	{
+		return false;
+	}
+	// ONE TICK A SECOND, as an unscaled application is (`ApplySpreadCopy`), so the whole is dealt over the seconds.
+	return UCataclysmSkillEffects::ApplyDamageOverTime(Applier, Strongest, Left / Seconds, Seconds, BleedTag(),
+													   /*bScalesWithInstigator=*/false);
 }
 
 bool UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier)

@@ -1885,6 +1885,22 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	KillingBlowWasAHit
 		UMETA(DisplayName = "Killing Blow Was A Hit"),
+
+	/**
+	 * The character struck stood within reach of an enemy the asker killed, at most `ConditionValue` seconds ago: the
+	 * Soul Collector's Grim Wake, "Enemies within 3 metres of an enemy you kill take 2% increased damage from you per
+	 * point for 3 seconds". The Death trees' slice C4c2 (2026-11-25), as ruled.
+	 *
+	 * KEPT ON THE CHARACTER MARKED, keyed by the killer, as the record `TargetDamagedByYouWithinSeconds` reads is:
+	 * `UCataclysmAbilitySystemComponent::NoteNearKillBy`, written at the kill by `UCataclysmFervour::MarkNearAKill` for
+	 * every enemy within the widest `ReachMetres` of the asker's rows under this condition. A follower's kill Death's
+	 * Toll makes the character's marks too. Read by `WithTargetState` only when a row asks; never marked reads -1 and
+	 * refuses.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	TargetNearYourKillWithinSeconds
+		UMETA(DisplayName = "Target Near Your Kill Within Seconds"),
 };
 
 /**
@@ -3631,6 +3647,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bKillingBlowWasAHit = false;
 
 	/**
+	 * How long ago the character struck stood near a kill of the asker's, in seconds; -1 for never, and for a target
+	 * nobody read. The Death trees' slice C4c2 (2026-11-25). See `ECataclysmStatCondition::TargetNearYourKillWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceNearYourKill = -1.0f;
+
+	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
 	 * trees of 2026-11-24. Filled by `WithTargetState` only when some modifier in the lookup asks; see
 	 * `ECataclysmStatCondition::TargetRarityAtLeast`.
@@ -4992,6 +5015,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bBurstSlainForMaximumHealth = false;
 
 	/**
+	 * Set, this action passes the damage the wearer's Bleed on an enemy that just died had left to deal to the strongest
+	 * enemy near the body, over `Percent` seconds: the Shadow's Blood Debt. The Death trees' slice C4c2 (2026-11-25). On
+	 * `afflicted_death` and no other event, under the required tag `Keyword.DoT.Bleed`. See
+	 * `UCataclysmDebuffs::PassBleedLeftToStrongest`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPassBleedLeftToStrongest = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
@@ -5385,7 +5417,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-fifth, which is the drift that put the passive tree eight
+	 * adds an eighty-sixth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5402,7 +5434,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-NINE OF THE EIGHTY-FOUR COMPARE NOTHING. They are the case labels
+	 * THIRTY-NINE OF THE EIGHTY-FIVE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

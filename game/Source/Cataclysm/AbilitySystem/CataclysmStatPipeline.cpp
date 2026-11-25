@@ -160,6 +160,7 @@ namespace
 		{ TEXT("target_carries_your_poison_or_bleed"), ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed },
 		{ TEXT("fervour_gain_not_from_a_kill"), ECataclysmStatCondition::FervourGainNotFromAKill },
 		{ TEXT("killing_blow_was_a_hit"), ECataclysmStatCondition::KillingBlowWasAHit },
+		{ TEXT("target_near_your_kill_within_seconds"), ECataclysmStatCondition::TargetNearYourKillWithinSeconds },
 	};
 
 	struct FNamedStatScale
@@ -580,6 +581,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesAnyDebuff:
 	case C::TargetCarriesADot:
 	case C::TargetDamagedByYouWithinSeconds:
+	case C::TargetNearYourKillWithinSeconds:
 	case C::TargetStandsInYourZone:
 	case C::TargetInYourSiphon:
 	case C::OpponentFirstStruckByYouSecondsAgo:
@@ -1068,6 +1070,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		return State.bTargetStrikeHistoryKnown
 			&& State.SecondsSinceStruckByYou >= 0.0f
 			&& State.SecondsSinceStruckByYou <= Value;
+
+	case ECataclysmStatCondition::TargetNearYourKillWithinSeconds:
+		// THE DEATH TREES' SLICE C4c2 (2026-11-25), GRIM WAKE: the target stood within reach of a kill of the asker's
+		// at most `Value` seconds ago. Never read, -1, refuses; the window is inclusive, as every clock's is.
+		return State.SecondsSinceNearYourKill >= 0.0f && State.SecondsSinceNearYourKill <= Value;
 
 	case ECataclysmStatCondition::TargetCarriesCripple:
 		// THE EXPLICIT TAG AND NOT AN IMPLIED PARENT. Issue #1515.

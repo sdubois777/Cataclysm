@@ -150,6 +150,9 @@ CONSTANTS = {
     # AND THE DEATH TREES' SLICE C4c1 (2026-11-25): an enemy killed bursts for a
     # share of its maximum health, The Ferryman.
     "BurstSlainForMaximumHealthAction": "burst_slain_for_share_of_maximum_health",
+    # AND THE DEATH TREES' SLICE C4c2 (2026-11-25): the wearer's Bleed left on an
+    # enemy that died passed to the strongest enemy near it, Blood Debt.
+    "PassBleedLeftToStrongestAction": "pass_bleed_left_to_strongest",
     # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
@@ -696,6 +699,81 @@ def test_passed_on_reads_the_hit_mark_and_takes_the_largest_radius_any_row_gives
                      engine)
     assert re.search(r"PendingOverkillExplosionRadiusCm = FMath::Max\(PendingOverkillExplosionRadiusCm, RowRadiusCm\);",
                      engine)
+
+
+def test_grim_wake_marks_the_enemies_near_a_kill_and_the_condition_reads_the_mark() -> None:
+    """The Death trees' slice C4c2 (2026-11-25), as ruled (Q6). The kill
+    handler and a follower's kill under Death's Toll both mark the enemies near
+    the body; the marking reads the rows' own reach, leaves the slain out and
+    writes the record keyed by the killer; the conditions fill reads that record
+    for the asker; and the condition holds within its seconds and never for -1.
+    Read from the code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"UCataclysmFervour::NoteOwnKill\(Acting, Notice\.Victim\);\s*"
+                     r"UCataclysmFervour::MarkNearAKill\(Acting, Notice\.Victim, Notice\.Location\);", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"NoteOwnKill\(AbilitySystem, Notice\.Victim\);\s*"
+                     r"MarkNearAKill\(AbilitySystem, Notice\.Victim, Notice\.Location\);", fervour)
+    assert re.search(r"WidestReachOfCondition\(ECataclysmStatCondition::TargetNearYourKillWithinSeconds\)", fervour)
+    assert re.search(r"FindEnemiesInSphere\(World, KillerActor, At, ReachMetres \* 100\.0f\)", fervour)
+    assert re.search(r"if \(Near == Slain\)\s*\{\s*continue;", fervour)
+    assert "Marked->NoteNearKillBy(Killer);" in fervour
+    engine = code_without_comments(SOURCE)
+    assert "State.SecondsSinceNearYourKill = Marked->SecondsSinceNearKillBy(State.AskingAbilitySystem);" in engine
+    assert re.search(r"Row\.Condition == Condition \|\| Row\.Condition2 == Condition", engine)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::TargetNearYourKillWithinSeconds:\s*"
+                     r"return State\.SecondsSinceNearYourKill >= 0\.0f && State\.SecondsSinceNearYourKill <= Value;",
+                     pipeline)
+
+
+def test_every_target_question_reaches_both_lists_in_with_target_state() -> None:
+    """The Death trees' slice C4c2 (2026-11-25). `WithTargetState` declares a
+    `bWants...` flag for each question a row may ask about the target, stops
+    walking the rows once every flag is set, and returns before any fill when
+    none is. A flag missing from the stop-early list can end the walk before
+    its row is seen; one missing from the early return makes a stat line whose
+    only question it is return before the fill, so its condition refuses. Three
+    were missing from both until this slice. THE CONTROL: the declarations are
+    found, and there are more than three, so an empty reading cannot pass."""
+    engine = code_without_comments(SOURCE)
+    start = engine.index("FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(")
+    body = engine[start:engine.index("\n}\n", start)]
+    declared = set(re.findall(r"bool (bWants\w+) = false;", body))
+    assert len(declared) >= 10, declared
+    stop_early = re.search(r"if \((bWants\w+(?:\s*&&\s*bWants\w+)+)\)\s*\{\s*break;", body)
+    early_return = re.search(r"if \(!Target\s*\|\|\s*\((!bWants\w+(?:\s*&&\s*!bWants\w+)+)\)\)\s*\{\s*return State;",
+                             body)
+    assert stop_early and early_return
+    assert set(re.findall(r"bWants\w+", stop_early.group(1))) == declared
+    assert set(re.findall(r"bWants\w+", early_return.group(1))) == declared
+
+
+def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:
+    """The Death trees' slice C4c2 (2026-11-25), as ruled (Q7). The generator's
+    name is the engine's, on `afflicted_death` only; the item recognises the
+    row by its constant; the event loop passes the Bleed left once per row per
+    event, landed only; and the pass lays a Bleed of the applier's on the
+    strongest enemy within 10 metres, the whole left over the row's seconds,
+    unscaled. Read from the code with comments taken out."""
+    names = engine_names()
+    assert gen.BLEED_LEFT_TO_STRONGEST_ACTION == names["PassBleedLeftToStrongestAction"]
+    assert gen.BLEED_LEFT_TO_STRONGEST_EVENTS == ("afflicted_death",)
+    assert gen.BLEED_LEFT_TO_STRONGEST_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bPassBleedLeftToStrongest = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(bLanded && Dead && Self && Action\.Percent > 0\.0f && "
+                     r"!StackedThisEvent\.Contains\(Action\.TriggerKey\)\)", engine)
+    assert "UCataclysmDebuffs::PassBleedLeftToStrongest(Self, Dead, Action.Percent);" in engine
+    debuffs = code_without_comments(SOURCE.parent / "CataclysmDebuffs.cpp")
+    assert "StrongestEnemyNear(Dead, Applier, BloodDebtReachCm)" in debuffs
+    assert re.search(r"ApplyDamageOverTime\(Applier, Strongest, Left / Seconds, Seconds, BleedTag\(\),\s*"
+                     r"false\)", debuffs)
+    assert re.search(r"if \(Rung > BestRung \|\| \(Rung == BestRung && Health > BestHealth\)\)", debuffs)
+    header = code_without_comments(SOURCE.parent / "CataclysmDebuffs.h")
+    assert "static constexpr float BloodDebtReachCm = 1000.0f;" in header
 
 
 def test_the_two_trap_actions_of_traps_layer_five_set_off_a_recorded_trap_whole_once_a_chain() -> None:

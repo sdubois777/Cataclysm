@@ -1454,6 +1454,8 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			UCataclysmFervour::GiveBackDecayOnKill(Acting);
 			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
 			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
+			// AND GRIM WAKE'S MARK on the enemies near the body, the Death trees' slice C4c2 (2026-11-25).
+			UCataclysmFervour::MarkNearAKill(Acting, Notice.Victim, Notice.Location);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
 			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
 			// slain enemy. No row read either on this event before; a row that takes

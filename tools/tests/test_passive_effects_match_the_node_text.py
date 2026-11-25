@@ -714,7 +714,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 573 THE SAME DAY, for slice C4c1: Passed On (two: the explosion and
 #: its radius) and The Ferryman (vow 200, option 2). The Soul Collector 113 rows.
-AUTHORED_ROWS = 573
+#:
+#: AND TO 576 THE SAME DAY, for slice C4c2: Grim Wake (two, attack and spell
+#: damage) and the Shadow's Blood Debt. The Soul Collector 115 rows.
+AUTHORED_ROWS = 576
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1170,7 +1173,9 @@ AUTHORED_ROWS = 573
 #:
 #: AND TO 348 THE SAME DAY, for slice C4c1's Passed On. The Ferryman is an option
 #: of a capstone already counted.
-AUTHORED_NODES = 348
+#:
+#: AND TO 350 THE SAME DAY, for slice C4c2's Grim Wake and Blood Debt.
+AUTHORED_NODES = 350
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1780,6 +1785,11 @@ CONDITION_WORDS = {
     # `Ritualist_capstone_100`: "enemies you have damaged in the last 2
     # seconds". Issue #1515. The singular matches the plural, as elsewhere.
     "target_damaged_by_you_within_seconds": ("damaged in the last", "{value:g} second"),
+
+    # GRIM WAKE, `SoulCollector_basic_b_a2`: "Enemies within 3 metres of an enemy
+    # you kill take 2% increased damage from you per point for 3 seconds." The
+    # Death trees' slice C4c2 (2026-11-25). The row's reach is the 3 metres.
+    "target_near_your_kill_within_seconds": ("of an enemy you kill", "{value:g} second"),
 
     # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
     # REDUCTION, and which stat that row should use is with the project owner
@@ -3126,6 +3136,9 @@ ACTION_VALUE_FORMS = {
     # THE FERRYMAN, the Death trees' slice C4c1 (2026-11-25): "bursts for 10% of
     # its maximum health".
     "burst_slain_for_share_of_maximum_health": ("bursts for {value:g}% of its maximum health",),
+    # BLOOD DEBT, the Death trees' slice C4c2 (2026-11-25): "is dealt over 2
+    # seconds to the strongest enemy within 10 metres". The value is the seconds.
+    "pass_bleed_left_to_strongest": ("dealt over {value:g} seconds",),
     # THE ROWS SIZED BY WHAT A SPEND CARRIED, the Death trees' slice C3b
     # (2026-11-25): a pool's share of its maximum (Feast, Spirit to Mana, Ashen
     # Ward), a smite's share of weapon damage (Soul Furnace) and a cut's seconds

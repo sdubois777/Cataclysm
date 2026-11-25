@@ -770,6 +770,22 @@ public:
 	bool IsActingOnAKillByAHit() const { return bActingOnAKillByAHit; }
 
 	/**
+	 * Record, on THIS character, that it stood near an enemy `Killer` killed, now. Grim Wake's record, kept on the
+	 * character marked and keyed by the killer, as `NoteStruckBy`'s is. The Death trees' slice C4c2 (2026-11-25).
+	 */
+	void NoteNearKillBy(const UAbilitySystemComponent* Killer);
+
+	/** How long ago this character stood near a kill of `Killer`'s, in seconds, or -1 if it never has. */
+	float SecondsSinceNearKillBy(const UAbilitySystemComponent* Killer) const;
+
+	/**
+	 * The widest `ReachMetres` of this character's stat rows under `Condition` (in either condition column), or nought
+	 * when none carries one. Grim Wake's marking reads it at the kill, as ruled: the 3 metres are the rows' own. The
+	 * Death trees' slice C4c2 (2026-11-25).
+	 */
+	float WidestReachOfCondition(ECataclysmStatCondition Condition) const;
+
+	/**
 	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
 	 * of its maximum health. Ruled 2026-10-12 under the owner's delegation, for "Strike skills have a 10%-20% chance
 	 * to execute enemies below 15% HP". See `FCataclysmPoolAction::bExecuteTarget`.
@@ -1843,6 +1859,13 @@ public:
 	 * gives, as ruled. No attribute and no base.
 	 */
 	static const TCHAR* OverkillExplosionRadiusMetresStat;
+
+	/**
+	 * The action that passes the wearer's Bleed left on an enemy that died to the strongest enemy near it: Blood Debt.
+	 * The Death trees' slice C4c2 (2026-11-25). `tools/generate_datatables.py` holds the same name as
+	 * `BLEED_LEFT_TO_STRONGEST_ACTION`. See `FCataclysmPoolAction::bPassBleedLeftToStrongest`.
+	 */
+	static const TCHAR* PassBleedLeftToStrongestAction;
 
 	/**
 	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
@@ -6340,6 +6363,9 @@ protected:
 
 	/** Whether the kill whose rows are acting was made by a hit. See `SetActingOnAKillByAHit`. */
 	bool bActingOnAKillByAHit = false;
+
+	/** When this character last stood near each killer's kill, in world seconds. See `NoteNearKillBy`. */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> NearKillBy;
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;

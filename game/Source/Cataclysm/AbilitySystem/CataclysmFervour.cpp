@@ -146,6 +146,31 @@ void UCataclysmFervour::BurstTheSlain(AActor* Killer, const AActor* Slain, const
 	}
 }
 
+void UCataclysmFervour::MarkNearAKill(UAbilitySystemComponent* Killer, const AActor* Slain, const FVector& At)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Killer);
+	AActor* KillerActor = Cataclysm ? Cataclysm->GetAvatarActor() : nullptr;
+	const UWorld* World = KillerActor ? KillerActor->GetWorld() : nullptr;
+	const float ReachMetres =
+		Cataclysm ? Cataclysm->WidestReachOfCondition(ECataclysmStatCondition::TargetNearYourKillWithinSeconds) : 0.0f;
+	if (!World || ReachMetres <= 0.0f)
+	{
+		return;
+	}
+	for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(World, KillerActor, At, ReachMetres * 100.0f))
+	{
+		if (Near == Slain)
+		{
+			continue;
+		}
+		if (UCataclysmAbilitySystemComponent* Marked =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Near)))
+		{
+			Marked->NoteNearKillBy(Killer);
+		}
+	}
+}
+
 bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, AActor* Commander,
 											 const FCataclysmDeathNotice& Notice)
 {
@@ -161,6 +186,8 @@ bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySys
 	GiveBackDecayOnKill(AbilitySystem);
 	GainOnOwnKill(AbilitySystem, Notice.Victim);
 	NoteOwnKill(AbilitySystem, Notice.Victim);
+	// AND GRIM WAKE'S MARK on the enemies near the body (the Death trees' slice C4c2), as for an own kill.
+	MarkNearAKill(AbilitySystem, Notice.Victim, Notice.Location);
 
 	// `kill`, RAISED TO THE SOUL COLLECTOR'S OWN ROWS ONLY (Kill Chain's stacks among them), carrying the slain creature
 	// and its maximum health as an own kill's does. Not for a kill a row made, for the reason the own kill gives.

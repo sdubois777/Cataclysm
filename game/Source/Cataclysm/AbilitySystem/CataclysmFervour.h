@@ -822,6 +822,15 @@ public:
 	static void BurstTheSlain(AActor* Killer, const AActor* Slain, const FVector& At, float SlainMaximum,
 							  float SharePercent);
 
+	/**
+	 * Grim Wake: mark every enemy of the killer's within the widest `ReachMetres` of its rows under
+	 * `target_near_your_kill_within_seconds`, around `At`, `Slain` left out, as having stood near its kill now
+	 * (`UCataclysmAbilitySystemComponent::NoteNearKillBy`). Nothing for a character with no such row. Called by the
+	 * player's kill handler for its own kill and by `CreditAFollowersKill` for a follower's kill Death's Toll makes its
+	 * own. The Death trees' slice C4c2 (2026-11-25).
+	 */
+	static void MarkNearAKill(UAbilitySystemComponent* Killer, const AActor* Slain, const FVector& At);
+
 	/** The start of every Soul Collector row's trigger key: `Passive_SoulCollector_`. See `CreditAFollowersKill`. */
 	static FString SoulCollectorRowKeyPrefix();
 

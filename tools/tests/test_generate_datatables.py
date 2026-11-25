@@ -10049,6 +10049,20 @@ def test_a_slain_burst_row_is_refused_where_the_game_would_burst_nothing() -> No
         check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "", "flat", (), {})
 
 
+def test_a_bleed_left_row_is_refused_where_the_game_would_pass_nothing() -> None:
+    """The Death trees' slice C4c2 (2026-11-25), Blood Debt's action. ON
+    `afflicted_death` ONLY, and a fraction, a value kind or a scale is refused.
+    THE CONTROL: the same row on `afflicted_death` with none of them passes."""
+    check = gen._check_bleed_left_to_strongest_action
+    check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "", "", (), {})
+    with pytest.raises(gen.DataError, match="Only the death of an enemy carrying the wearer's ailment"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "kill", "", "", (), {})
+    with pytest.raises(gen.DataError, match="states Fraction Of 'maximum'"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "maximum", "", (), {})
+    with pytest.raises(gen.DataError, match="states Value Kind 'flat'"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "", "flat", (), {})
+
+
 def test_the_two_trap_events_are_clockless_events_a_row_may_hang_on():
     """Ruled 2026-10-19 (M2, M5): `trap_placed` and `trap_triggered` join
     `ACTION_ONLY_EVENTS`, and, because each is raised with a character (the

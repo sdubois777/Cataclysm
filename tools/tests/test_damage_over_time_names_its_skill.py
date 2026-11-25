@@ -55,6 +55,11 @@ _SIPHON = ("the Soul Collector's Siphon, a passive tree's rule and no skill: dam
 #: The calls that name neither a skill nor a row, by rule, each with its reason.
 CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
     ("AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::Explode", "ApplyBurn", 0): _EXPLOSION,
+    # BLOOD DEBT, the Shadow's keystone, a passive tree's rule and no skill: the
+    # Bleed left on a dead enemy laid again on the strongest near it. The Death
+    # trees' slice C4c2, 2026-11-25.
+    ("AbilitySystem/CataclysmDebuffs.cpp", "UCataclysmDebuffs::PassBleedLeftToStrongest", "ApplyDamageOverTime", 0):
+        _WORN_ROW + "; Blood Debt, the Death trees' slice C4c2, 2026-11-25",
     ("AbilitySystem/CataclysmAbilitySystemComponent.cpp", "UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer",
      "UCataclysmAilments::Apply", 0): _WORN_ROW + "; laid on its own wearer",
     ("AbilitySystem/CataclysmAbilitySystemComponent.cpp", "UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer",

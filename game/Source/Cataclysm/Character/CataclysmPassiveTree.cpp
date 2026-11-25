@@ -1257,6 +1257,11 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			// A ROW THAT COUNTS NOTHING CARRIES -1 AND IS LEFT AT -1, which is
 			// what `FCataclysmStatModifier` already defaults to, so this line
 			// changes nothing for the rows that do not count enemies.
+			//
+			// AND A THIRD READER SINCE THE DEATH TREES' SLICE C4c2 (2026-11-25):
+			// Grim Wake's rows under `target_near_your_kill_within_seconds`
+			// carry the radius around a kill's body that
+			// `UCataclysmFervour::MarkNearAKill` marks within.
 			Modifier.ReachMetres = Effect->ReachMetres;
 
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
