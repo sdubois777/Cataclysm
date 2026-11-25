@@ -590,8 +590,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryTabsPagesTest,
 /**
  * The coordinating session's addition of 2026-11-22: 224 gem stacks are reachable, and a tab running off the screen
  * would hide gems, so the gems tab pages. With the crafting material table's 27 materials the materials tab uses 3 rows
- * of twelve, so a page is 36 stacks. A bag of 200 stacks, Gem_000 to Gem_199 at Everyday, is 6 pages; page 2 begins at
- * place 36, which is Gem_036, the 37th; page 6 holds the last 20. Page 0 and page 9 are held to 1 and 6, and an empty tab
+ * of twelve, so a page is 36 stacks. A bag of 200 stacks, Gem000 to Gem199 at Everyday, is 6 pages; page 2 begins at
+ * place 36, which is Gem036, the 37th; page 6 holds the last 20. Page 0 and page 9 are held to 1 and 6, and an empty tab
  * is page 1 of 1. Prints "TABS PAGES".
  */
 bool FCataclysmInventoryTabsPagesTest::RunTest(const FString&)
@@ -602,9 +602,13 @@ bool FCataclysmInventoryTabsPagesTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	// NO UNDERSCORE BEFORE THE DIGITS. An FName keeps a trailing "_<number>" without a leading zero as a number apart
+	// from its text, and `FName::LexicalLess`, the tab's order, compares the text first: Gem_100 to Gem_199 are the
+	// text "Gem" and sorted before Gem_000 to Gem_099, so place 36 held Gem_136 (window inv-w1, 2026-11-24). No real
+	// gem name ends in a number (game/Data/Gems.csv: Gem_Of_The_Viper and the like).
 	for (int32 N = 0; N < 200; ++N)
 	{
-		Bag->AddGems(FName(*FString::Printf(TEXT("Gem_%03d"), N)), ECataclysmRarity::Everyday, 1);
+		Bag->AddGems(FName(*FString::Printf(TEXT("Gem%03d"), N)), ECataclysmRarity::Everyday, 1);
 	}
 	using FScreen = UCataclysmInventoryScreen;
 	const int32 PerPage = FScreen::GemStacksPerPage(Table->GetRowNames().Num());
@@ -624,7 +628,7 @@ bool FCataclysmInventoryTabsPagesTest::RunTest(const FString&)
 	TestEqual(TEXT("**36 stacks a page: 3 rows of twelve, as the materials tab's 27 use**"), PerPage, 36);
 	TestEqual(TEXT("**6 pages**"), Pages, 6);
 	TestEqual(TEXT("**page 2 begins at place 36**"), SecondStart, 36);
-	TestTrue(TEXT("**which is the 37th stack, Gem_036**"), SecondFirst == FName(TEXT("Gem_036")));
+	TestTrue(TEXT("**which is the 37th stack, Gem036**"), SecondFirst == FName(TEXT("Gem036")));
 	TestEqual(TEXT("the last page holds the last 20"), Stacks - LastStart, 20);
 	TestEqual(TEXT("**its words**"), FScreen::GemPageText(2, Pages), FString(TEXT("Page 2 of 6")));
 	TestEqual(TEXT("page 0 is held to 1"), FScreen::ClampGemPage(0, Pages), 1);
