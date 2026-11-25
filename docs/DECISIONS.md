@@ -120,7 +120,21 @@ stat and a hold of nothing; the starting node alone.
 
 ### What was run
 
-SUITE_FIGURES_C3B
+**The whole Python suite on `cfc4844fb`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8488 passed, 9 skipped in 389.38s
+(0:06:29)". The JUnit file agrees: tests 8498, failures 1, errors 0, skipped 9, so 8488 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`. The run before, on the working tree that became
+`c8b0e7b3d`, gave the same figures and the same one failure.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 11 C++ files this slice changed: "11 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the new tests' helpers are in `namespace CataclysmSpendSizedTest`, and each new test class, helper and the new probe
+  is named in one file only.
 
 **Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `c8b0e7b3d`, and each `proved`:
