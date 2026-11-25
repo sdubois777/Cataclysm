@@ -609,9 +609,16 @@ design document's Hell on Earth section.
 
 - **WRITTEN AND NOT COMPILED.** On `feat/demonic-rifts-51`, cut from `fix/empty-board-surge-2865` at `09426c7b8`
   (development `4d33f5994` and issue #2865's commits, which must land first: this slice relies on every fall bringing
-  its own surge).
-- **THE MEASUREMENTS ARE PROVISIONAL.** The gear drop rarity fix (issue #2853) was not in, so the player's power in the
-  model is not yet what the game will give.
+  its own surge). **REBUILT ON 2026-11-25** as `feat/demonic-rifts-51-2`, by the coordinating session's instruction,
+  once #2865 had merged: its five commits rebased onto development `0d9259653` (`git rebase --onto origin/development
+  09426c7b8`), so #2865's commits dropped out. The top of this log and the empire map's layout conflicted: the layout
+  keeps development's four fallen-city functions (issue #2866) and this slice's `RiftMark` beside them. It then joins
+  the altar slice, `feat/rift-altars-51-2`, for one window.
+- **THE MEASUREMENTS WERE CALLED PROVISIONAL** because the gear drop rarity fix (issue #2853) was not in. It merged
+  before the rebuild, and it cannot move them: a campaign with the Rifts on, run on 2026-11-25 for two seeds that face
+  Demonic, loads none of `sim/cataclysm_sim/player_power.py`, `loot.py` or `affixes.py`, the model files #2853
+  changed, as the ring fit loads none (the #2865 entry). The coordinating session ruled the ring figures no longer
+  provisional on that ground; whether these are is its call.
 - **AS FIRST RULED, THE RIFTS MADE TIER 1 WITH NO EMPIRE TREE NEARLY UNWINNABLE**: the win rate fell from 44.1% to
   3.7% and the boss dungeon opened in 8.3% of campaigns instead of 99.2%, because a Rift as deep as any Quest dungeon
   takes 20 to 50 days to seal and sends a dungeon every 5 of them. The owner then made a Rift four floors, with eight
