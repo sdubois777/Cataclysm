@@ -235,10 +235,10 @@ TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND = (GEAR_PIECES_WITH_AN_OFFHAND
 #: both, and no weapon base damage number needs changing.
 #:
 #: Without the implicit half the two-hander is strictly worse. Two one-handed
-#: bases sum to more than any two-handed base -- an Axe and a Sword give 86
+#: bases sum to more than any two-handed base -- an Axe and a Sword give 85
 #: against a Greatsword's 78 -- so with only the affix half it loses on damage
 #: while also holding one fewer damage type. Reaching the SAME edge through the
-#: affix half alone needs a multiplier of 3.40, which hands the two-hander 13.6
+#: affix half alone needs a multiplier of 2.90, which hands the two-hander 11.6
 #: affix slots-worth on the weapon against the dual wielder's 8: the same free
 #: power section VII forbids, pointed the other way.
 #:
@@ -249,7 +249,7 @@ TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND = (GEAR_PIECES_WITH_AN_OFFHAND
 #: `sim/tests/test_analysis_scripts.py`. Issue #319.
 #:
 #: What it produces, measured in `sim/analyse_two_handed_multiplier.py`: the
-#: two-hander deals 1.29x per hit and about 1.22x per second, the dual wielder
+#: two-hander deals 1.20x per hit and about 1.14x per second, the dual wielder
 #: holds a fourth damage type and a wider spread of affixes, and the affix
 #: budgets are exactly equal.
 #:
@@ -257,6 +257,11 @@ TOTAL_AFFIX_SLOTS_WITH_AN_OFFHAND = (GEAR_PIECES_WITH_AN_OFFHAND
 #: itself did not move. The flat damage affix rose from 18 to 22 there, so the
 #: affixes supply more of the base bracket and the weapon's doubled implicit is a
 #: smaller share of it. The edge is still the implicit half doing the work.
+#:
+#: AND FELL AGAIN, TO 1.20 AND 1.14, WITH ISSUE #2883, for the same reason: the
+#: flat damage affix's top rose from 22 to 38 with the whole-number ranges, and
+#: each implicit became a whole number at +0 (the Axe's 46 is 45 at +10). The
+#: affix-only multiplier fell from 3.40 to 2.90 with them.
 TWO_HANDED_MULTIPLIER = 2.0
 
 

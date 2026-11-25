@@ -928,8 +928,11 @@ def test_the_affix_ceiling_is_the_computed_one(weakening_run):
 
 def test_a_two_handed_weapon_adds_its_own_chance_again(weakening_run):
     """Issue #1575. A two-handed weapon doubles its own chance, so the affix
-    total with one is the one-handed total plus one more weapon's chance --
-    180% against 165% at the top tier -- and the script prints it."""
+    total with one is the one-handed total with the weapon's chance replaced by
+    its two-handed one, and the script prints it. Since issue #2883 the
+    two-handed chance is doubled inside the rounding (`affix_ranges.upgraded`),
+    so it is the rule with two hands rather than exactly twice: 455% against
+    418% at the top tier."""
     printed, ns = weakening_run
     from cataclysm_sim import affixes as af
     for name in ("Cripple", "Weaken", "Shred", "Madness"):
@@ -937,8 +940,9 @@ def test_a_two_handed_weapon_adds_its_own_chance_again(weakening_run):
         pieces, one = ns["affix_ceiling"](affix)
         pieces_2h, two = ns["affix_ceiling"](affix, two_handed_weapon=True)
         weapon = affix.chance_at(ns["AFFIX_TIER"], gear_level=ns["GEAR_LEVEL"])
+        weapon_2h = affix.chance_at(ns["AFFIX_TIER"], gear_level=ns["GEAR_LEVEL"], two_handed=True)
         assert pieces_2h == pieces
-        assert two == pytest.approx(one + af.GEAR_SLOTS["Weapon"] * weapon)
+        assert two == pytest.approx(one + af.GEAR_SLOTS["Weapon"] * (weapon_2h - weapon))
         assert f"{two:>12.0f}%" in printed
 
 
@@ -956,22 +960,29 @@ def test_the_chance_needed_to_fill_a_cap_is_the_solved_one(weakening_run):
         assert needed == pytest.approx(100.0 * cap / base)
 
 
-def test_the_caps_are_not_filled_by_affixes_alone(weakening_run):
-    """THE FIRST DIRECTION THE DECISION RESTS ON. If affixes alone filled the
-    caps, chance to apply would stop paying long before a build ran out of
-    them, and the argument that it keeps scaling would fail."""
+def test_the_caps_are_now_filled_by_affixes_alone(weakening_run):
+    """THE FIRST DIRECTION ISSUE #300'S DECISION RESTED ON, AND IT NO LONGER
+    HOLDS. The decision argued that chance to apply keeps paying because the
+    caps cannot be filled by affixes alone, so a build has to spend on gems as
+    well. Since issue #2883 every ailment affix is 35 to 38 at tier 7 on +10 gear
+    (the approved proposal's row R3: "Ailment affixes at 38-40 (76-80
+    two-handed) against gems of 60 to 200"), and eleven pieces of affixes reach
+    418%, past both caps: Cripple needs 267%, Weaken 400%.
+
+    PINNED AT THE MEASURED FIGURES rather than deleted, so the next change to
+    either side is seen. Reported to the coordinating session on 2026-11-25 as
+    a consequence of the approved ranges for the decision of #300 to be
+    revisited; this test does not decide it."""
     _, ns = weakening_run
     rows = ns["status_effect_rows"]()
-    for name in ("Cripple", "Weaken"):
+    for name, need in (("Cripple", 266.6666666666667), ("Weaken", 400.0)):
         base, _ = ns["base_strength"](rows[name])
         cap = ns["magnitude_cap"](rows[name])
         needed = ns["chance_needed_to_fill_the_cap"](base, cap)
         _, from_affixes = ns["affix_ceiling"](ns["WEAKENING"][name])
-        assert from_affixes < needed, (
-            f"{name}'s magnitude cap is now filled by affixes alone "
-            f"({from_affixes:.0f}% against {needed:.0f}% needed). Issue #300's "
-            f"answer assumes a build has to spend on gems as well, which is "
-            f"what makes the chance affix keep paying.")
+        assert needed == pytest.approx(need)
+        assert from_affixes == pytest.approx(418.0)
+        assert from_affixes >= needed
 
 
 def test_the_caps_are_filled_with_a_handful_of_sockets(weakening_run):
@@ -1880,7 +1891,10 @@ def test_one_affix_still_shows_only_one_number(affix_spread_run):
         affix.name for affix in ns["every_measurable_affix"]()
         if len(ns["displayed_values"](affix)[0]) == 1)
 
-    assert one_number == ["Flat mana regeneration"], (
+    # EMPTY SINCE ISSUE #2883. Every tier now holds at least two whole numbers
+    # at every upgrade level, so no affix can show only one; flat mana
+    # regeneration's tier 1 is 1 to 2 at +0.
+    assert one_number == [], (
         f"the affixes that can show only one number on an early drop have "
         f"changed to {one_number}. If a stated top or floor moved, say so on "
         f"#1230 and update this list; if new ones appeared, that is a "
@@ -1914,9 +1928,9 @@ def test_the_squeezed_list_shrank_from_nine_to_one(affix_spread_run):
         affix.name for affix in ns["every_measurable_affix"]()
         if len(ns["displayed_values"](affix)[0]) <= ns["FEW"])
 
-    assert squeezed == [
-        "Flat mana regeneration",
-    ], (
+    # EMPTY SINCE ISSUE #2883, the whole-number ranges: issue #858 was acted
+    # on, and no affix can show three numbers or fewer on an early drop.
+    assert squeezed == [], (
         f"the affixes that can show three numbers or fewer on an early drop "
         f"have changed to {squeezed}. Before #1179 there were twelve, and "
         f"before #1227 there were eight. A longer "
