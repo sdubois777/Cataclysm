@@ -413,8 +413,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillPoolFillOrderTest,
 /**
  * Q11: the creation type first when it is carried, then the other carried types; within a type the worn weapons in
  * `WornWeapons` order, the first OCCUPIED slot first. A Greataxe carrying War then Demonic, on a character created
- * Demonic, fills the Demonic six; created War, the War six (the control). A War Sword in Weapon1 and a War Axe in
- * Weapon2 fill the Sword's; swapped, the Axe's; and a War Axe alone in Weapon2 fills the Axe's.
+ * Demonic, carries Demonic first and fills the Demonic six; created War, it carries War first (the control), and since
+ * issue #837 slice 1 (Q2) still fills the Demonic six, because none of the War Greataxe's is built and a built skill
+ * takes a key first. A War Sword in Weapon1 and a War Axe in Weapon2 fill the Sword's; swapped, the Axe's; and a War
+ * Axe alone in Weapon2 fills the Axe's.
  *
  * THE LONE WEAPON IS PUT IN WEAPON2 BY `EquipInto`, with Weapon1 empty and no two-handed weapon taken off. Before the
  * branch `fix/lone-one-hander-goes-to-the-right-hand` lands, a lone one-hander chosen at creation is in Weapon2 in play
@@ -457,7 +459,19 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("control: created War, the slots carry War first"), Joined(Carrier.Slots->GetDamageTypes()),
 			  FString(TEXT("War, Demonic")));
-	TestEqual(TEXT("control: and fill the War Greataxe's six"), HeldSix(), WarAxe);
+	// A BUILT SKILL TAKES A KEY BEFORE ONE THAT IS NOT, since issue #837 slice 1 (the owner's Q2 of 2026-11-24, "a
+	// skill that is not built yet does not take a key a built skill made for it could"). None of the War Greataxe's six
+	// is built, so the keys hold the Demonic Greataxe's built six although War comes first. This control asked for the
+	// War Greataxe's six until window ss2-w1 (2026-11-25), having been written before Q2. The creation type's place
+	// first is still what the line above checks.
+	bool bAnyWarAxeSkillBuilt = false;
+	for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")))
+	{
+		bAnyWarAxeSkillBuilt = bAnyWarAxeSkillBuilt || UCataclysmWeaponSkills::IsBuilt(Skill);
+	}
+	TestFalse(TEXT("set-up: none of the War Greataxe's six is built yet"), bAnyWarAxeSkillBuilt);
+	TestEqual(TEXT("control: so the keys hold the Demonic Greataxe's built six (Q2)"), HeldSix(), DemonicAxe);
+	TestTrue(TEXT("control: and not the War Greataxe's six"), HeldSix() != WarAxe);
 
 	// CREATED DEMONIC, the same weapon put on again: it lists War first and the creation type still goes first.
 	Carrier.State->SetCreationChoice(FName(TEXT("Greataxe")), Demonic);

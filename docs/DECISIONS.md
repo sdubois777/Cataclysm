@@ -389,6 +389,46 @@ whose names no later commit changed, + 15). The whole suite: slice 2's 5378, + 3
   SP3, SQ1 to SQ3, SR1 to SR3, R1 to R3), three a change. Each anchor occurs once in the file it breaks, checked on the
   rebuild.
 
+### Window ss2-w1, 2026-11-25, on `56360b4d6`: ONE TEST FAILED, A TEST'S EXPECTATION THAT Q2 REPLACED
+
+**NOT PASSED. One test failed, in its group alone and in the whole suite; no guard proof was run.** Under the lock
+`ss2-w1`; scripts and logs in `.claude/windows/` in the sharp-meitner worktree (`run_ss2.py`, `ss2_run.out`).
+
+- **Builds**, under the lock `skill-selection-compile`: the branch, "Build: Succeeded - 75 actions, 68 files
+  compiled"; each changed `.cpp` out of its unity file, "61 actions, 58 files compiled"; the unity files again, "23
+  actions, 20 files compiled". 0 compiler warning or error lines in each.
+- **Groups alone**: 29 of 30 passed at their registered counts. `Cataclysm.SkillPool.` performed 11, succeeded 10.
+- **The whole suite**: "Tests: 5474 tests performed, 5473 succeeded, 1 failed:
+  TheDefaultFillTakesTheCreationTypeFirstThenTheWornWeaponsInSlotOrder. 58 skipped part of what they check"; "Test
+  saves: 874 written and deleted, 0 left behind"; "Declared: 5474 tests in the tree at 56360b4d6; 5474 performed, gap
+  0". Every figure but the one failure is the registered one.
+- **Python**, alongside: "8474 passed, 10 skipped in 348.94s"; JUnit 8484 tests, 0 failures, 0 errors. ruff: "All
+  checks passed!".
+
+**THE FAILURE**: `Cataclysm.SkillPool.TheDefaultFillTakesTheCreationTypeFirstThenTheWornWeaponsInSlotOrder`, "Expected
+'control: and fill the War Greataxe's six' to be "Sundering Arc, Savage Leap, Spinning Axe, Blood Frenzy, Annihilator,
+Blood and Iron", but it was "Molten Cleave, Infernal Plunge, Emberhurl, Burning Wrath, Pyroclasm, Conflagration"".
+A character created War wears a Greataxe carrying War and Demonic. The slots carry War first, as that test's line
+before it checked and passed (Q11). **But none of the War Greataxe's six is built** (the log: "the weapons added 0
+skills to the pool on no key, and 6 not built yet"), and slice 1's rule, the owner's Q2, gives each key the first BUILT
+skill designed for it: "a skill that is not built yet does not take a key a built skill made for it could". So the
+keys hold the Demonic Greataxe's built six, as ruled. The control was written for layer 3's Q11 before Q2 existed.
+**It is this branch's fault, not the rebuild's**: the test file is unchanged by the branch and by development, and
+development passed it in sd2-w1 (`SkillPool.` 11 of 11). Slice 1's registration predicted `SkillPool.` passing; it
+should have searched the tests that assert a default fill for a weapon whose skills are not built.
+
+**THE CORRECTION**, in that test only: the control's line now checks, as a set-up check, that none of the War
+Greataxe's six is built, then that the keys hold the Demonic Greataxe's six and not the War Greataxe's; its comment
+and the test's description say why. No game code changed. The old guard proof L2-G2 (the fill ignoring the creation
+type's priority) failed three checks of this test, none of them the line changed: `InFillOrder` putting Demonic first
+for a character created Demonic, the slots carrying Demonic first, and the Demonic six on the keys. The first two are
+unchanged and still fail under that break; the third now holds either way, because Q2 puts the built Demonic six on
+the keys whichever type comes first. L2-G2's failure in test 8's control is untouched.
+
+**FOR A SECOND WINDOW**, at the coordinating session's word: the build (it compiles the one test file),
+`Cataclysm.SkillPool.` alone (11, all succeeding), the whole suite (5474, all succeeding, 58 skipped halves, 874
+saves), Python alongside, then the twelve guard proofs.
+
 ---
 
 ## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)
