@@ -860,8 +860,10 @@ def test_every_dungeon_a_tier_one_campaign_clears_on_this_ring_is_won_with_healt
     # A RIFT IS LEFT OUT, since issue #51 slice B2: the owner made it harder on purpose ("Keep it spicy", eight dungeon
     # modifiers, "(b) 8 modifiers only (Recommended)"), so a ring's figure is not fitted to it, or every ordinary dungeon
     # on the ring would be made easier to make it survivable. With the model's Rifts on, 4 of these campaigns' Bulwark
-    # and Sanctuary clears were Rifts lost or won under 10% health (seed 12, levels 8 to 11). A judgement of slice B2,
-    # put to the coordinating session on 2026-11-24. `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out`.
+    # and Sanctuary clears were Rifts lost or won under 10% health (seed 12, levels 8 to 11). RULED BY THE
+    # COORDINATING SESSION ON 2026-11-24: "the guard fits ordinary content, and softening Rifts or lowering the rings
+    # would undo a ruling or make every ordinary dungeon easier". `test_the_campaigns_clear_rifts_and_the_guard_leaves_
+    # them_out` holds that the campaigns clear Rifts, so leaving them out is not a check over nothing.
     for clear in (c for c in clears if c.ring == ring and not c.is_rift):
         result = walk_clear(clear, model=model, lines=class_lines, constants=constants, slots=slots, weapon=weapon)
         if not result["won"] or result["left"] < LEAST_HEALTH_LEFT:

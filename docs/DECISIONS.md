@@ -625,8 +625,11 @@ design document's Hell on Earth section.
   tier 1 campaigns `tools/tests/test_the_starting_character_survives_a_pack.py` walks, four Rift clears on a Bulwark
   or a Sanctuary (seed 12, levels 8 to 11) were lost or won under 10% health: a Rift's eight modifiers make it harder,
   as the owner chose. The guard fits each ring's damage figure to ordinary content, and fitting it to a Rift would make
-  every ordinary dungeon on the ring easier, so it leaves Rifts out. A judgement of this slice, put to the
-  coordinating session; `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out` holds that Rift clears exist.
+  every ordinary dungeon on the ring easier, so it leaves Rifts out. **The coordinating session's ruling of
+  2026-11-24**, on this slice's judgement, verbatim: "the owner chose the eight modifiers to make Rifts harder ("Keep
+  it spicy"); the guard fits ordinary content, and softening Rifts or lowering the rings would undo a ruling or make
+  every ordinary dungeon easier." `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out` holds that Rift clears
+  exist, so the exemption is not empty, and proof PP5 below shows it is what lets the guard pass.
 - **NO RUN RECORD VERSION STEP.** A Rift's 5-day count is worked out from `FCataclysmDungeon::SpawnedDay`, which is
   saved and set only when a dungeon is made (neither a move on its timer nor a move on its city's fall changes it), so
   nothing new is stored. Slice B1 and `feat/abyssal-rifts-2864` each take the run record from 18 to 19; this slice
