@@ -922,6 +922,25 @@ public:
 	static const TCHAR* ArmorPenetrationSuppressedStat;
 
 	/**
+	 * `armor_overwhelm_halved`: the stat saying Overwhelm takes only half as many
+	 * points off this character's armour. The Ravager tree rework of 2026-11-24.
+	 *
+	 * `Ravager_keystone_spine_001` Ironhide's second row: "Your Armor cannot be
+	 * ignored, and Overwhelm takes only half as much from it." A flag; above
+	 * nought is held.
+	 *
+	 * ARMOUR ONLY, THE PROJECT OWNER'S RULING OF 2026-11-24: Ironhide is an
+	 * exception to the design's "Overwhelm strips every kind of mitigation", and
+	 * only halves what it takes from armour. Resistance, block and evasion stay
+	 * fully overwhelmed, so the keystone cannot be used to sidestep the rule.
+	 *
+	 * READ ON THE DEFENDER, at the armour step of `Resolve`, beside the
+	 * penetration flag above and for its reason: the node protects the armour of
+	 * whoever bought it. No gameplay attribute; `StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* ArmorOverwhelmHalvedStat;
+
+	/**
 	 * `minion_defences_percent_of_yours`: the share of its summoner's armour
 	 * and resistances a minion takes, in percent. Ruled 2026-10-08 under the
 	 * owner's delegation: "Summoned minions inherit 10%-25% of your armor and

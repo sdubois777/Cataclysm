@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmMovement.h"
 // For this creature's debuffs passing to whatever stands by its body. #1060.
 #include "AbilitySystem/CataclysmContagion.h"
+// For Deeper Hurt's pass of a Cripple and a Weaken on death. The Ravager tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 // For dropping an ordinary blow whose attacker was frightened before it landed.
 // Issue #783.
@@ -546,6 +548,13 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// before the ailments pass on by themselves.
 	UCataclysmContagion::AnnounceAfflictedDeath(this);
 	UCataclysmContagion::SpreadFromTheDying(this);
+
+	// AND A CRIPPLE OR A WEAKEN PASSES TO THE NEAREST ENEMY, FOR AN APPLIER HOLDING DEEPER HURT. The Ravager tree
+	// rework of 2026-11-24: "When an enemy you have Crippled or Weakened dies, its Cripple and Weaken pass to the
+	// nearest enemy within 1 metre per point." Outside the killer's block for the reason the spread above is: the
+	// sentence asks who applied the effect, which is read off this creature's own running effects. Nought for every
+	// death of a creature no holder of the node crippled or weakened.
+	UCataclysmDebuffs::PassCrippleAndWeakenOnDeath(this);
 
 	// AND A CREATURE THAT DIES CURSED MAY RISE AS AN IMP FOR WHOEVER CURSED IT.
 	// Issue #1479, the Ritualist's starting node: "An enemy that dies carrying a

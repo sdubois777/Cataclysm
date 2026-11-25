@@ -16,8 +16,8 @@
     {
       "id": "basic_trunk_000",
       "position": {
-        "x": 0,
-        "y": 770
+        "x": 0.0,
+        "y": 860.0
       },
       "type": "basic",
       "data": {
@@ -38,8 +38,8 @@
     {
       "id": "basic_trunk_001",
       "position": {
-        "x": -320,
-        "y": 530
+        "x": -282.1,
+        "y": 650.8
       },
       "type": "basic",
       "data": {
@@ -60,8 +60,8 @@
     {
       "id": "basic_trunk_002",
       "position": {
-        "x": -320,
-        "y": 410
+        "x": -378.1,
+        "y": 512.0
       },
       "type": "basic",
       "data": {
@@ -82,8 +82,8 @@
     {
       "id": "basic_trunk_004",
       "position": {
-        "x": 0,
-        "y": 650
+        "x": -73.3,
+        "y": 827.8
       },
       "type": "basic",
       "data": {
@@ -104,8 +104,8 @@
     {
       "id": "basic_trunk_008",
       "position": {
-        "x": -480,
-        "y": 290
+        "x": -454.2,
+        "y": 361.2
       },
       "type": "basic",
       "data": {
@@ -126,8 +126,8 @@
     {
       "id": "basic_trunk_003",
       "position": {
-        "x": -160,
-        "y": 650
+        "x": 0.0,
+        "y": 726.7
       },
       "type": "basic",
       "data": {
@@ -148,8 +148,8 @@
     {
       "id": "basic_trunk_005",
       "position": {
-        "x": 160,
-        "y": 650
+        "x": 111.6,
+        "y": 805.4
       },
       "type": "basic",
       "data": {
@@ -170,8 +170,8 @@
     {
       "id": "basic_trunk_007",
       "position": {
-        "x": -160,
-        "y": 530
+        "x": 0.0,
+        "y": 593.3
       },
       "type": "basic",
       "data": {
@@ -192,8 +192,8 @@
     {
       "id": "basic_trunk_006",
       "position": {
-        "x": 0,
-        "y": 530
+        "x": -162.3,
+        "y": 769.4
       },
       "type": "basic",
       "data": {
@@ -214,8 +214,8 @@
     {
       "id": "keystone_trunk_001",
       "position": {
-        "x": -150.76023868137105,
-        "y": 296.74261997285373
+        "x": 150.0,
+        "y": 460.0
       },
       "type": "keystone",
       "data": {
@@ -236,8 +236,8 @@
     {
       "id": "keystone_trunk_002",
       "position": {
-        "x": 320,
-        "y": 290
+        "x": 112.0,
+        "y": 650.0
       },
       "type": "keystone",
       "data": {
@@ -258,8 +258,8 @@
     {
       "id": "keystone_trunk_003",
       "position": {
-        "x": -480,
-        "y": -310
+        "x": -359.7,
+        "y": -247.0
       },
       "type": "keystone",
       "data": {
@@ -280,8 +280,8 @@
     {
       "id": "basic_trunk_009",
       "position": {
-        "x": -160,
-        "y": 410
+        "x": 0.0,
+        "y": 460.0
       },
       "type": "basic",
       "data": {
@@ -302,8 +302,8 @@
     {
       "id": "basic_ic_stem_001",
       "position": {
-        "x": -480,
-        "y": 50
+        "x": -559.7,
+        "y": 40.7
       },
       "type": "basic",
       "data": {
@@ -324,8 +324,8 @@
     {
       "id": "basic_ic_stem_002",
       "position": {
-        "x": -640,
-        "y": -70
+        "x": -596.8,
+        "y": -142.3
       },
       "type": "basic",
       "data": {
@@ -346,8 +346,8 @@
     {
       "id": "basic_ic_resolve_001",
       "position": {
-        "x": -480,
-        "y": -70
+        "x": -424.7,
+        "y": 160.7
       },
       "type": "basic",
       "data": {
@@ -368,8 +368,8 @@
     {
       "id": "basic_ic_stem_003",
       "position": {
-        "x": -321.1486173512044,
-        "y": 294.71983398099763
+        "x": -228.1,
+        "y": 472.0
       },
       "type": "basic",
       "data": {
@@ -390,8 +390,8 @@
     {
       "id": "basic_ic_t2_001",
       "position": {
-        "x": -480,
-        "y": 170
+        "x": -513.9,
+        "y": 203.2
       },
       "type": "basic",
       "data": {
@@ -412,8 +412,8 @@
     {
       "id": "basic_ic_t1_001",
       "position": {
-        "x": -800,
-        "y": -430
+        "x": -640.0,
+        "y": -700.0
       },
       "type": "basic",
       "data": {
@@ -434,8 +434,8 @@
     {
       "id": "basic_ic_t2_002",
       "position": {
-        "x": -640,
-        "y": -190
+        "x": -621.6,
+        "y": -327.2
       },
       "type": "basic",
       "data": {
@@ -456,8 +456,8 @@
     {
       "id": "basic_ic_t1_002",
       "position": {
-        "x": -960,
-        "y": -550
+        "x": -493.0,
+        "y": -700.0
       },
       "type": "basic",
       "data": {
@@ -478,8 +478,8 @@
     {
       "id": "basic_ic_t2_003",
       "position": {
-        "x": -800,
-        "y": -310
+        "x": -635.5,
+        "y": -513.1
       },
       "type": "basic",
       "data": {
@@ -500,8 +500,8 @@
     {
       "id": "basic_ic_stem_004",
       "position": {
-        "x": -640,
-        "y": -550
+        "x": -529.7,
+        "y": -598.3
       },
       "type": "basic",
       "data": {
@@ -522,8 +522,8 @@
     {
       "id": "basic_ic_t1_003",
       "position": {
-        "x": -960,
-        "y": -670
+        "x": -346.0,
+        "y": -700.0
       },
       "type": "basic",
       "data": {
@@ -544,8 +544,8 @@
     {
       "id": "basic_ic_stem_005",
       "position": {
-        "x": -406.3581617138485,
-        "y": -188.97800992054616
+        "x": -389.7,
+        "y": -122.0
       },
       "type": "basic",
       "data": {
@@ -566,8 +566,8 @@
     {
       "id": "basic_ic_t3_001",
       "position": {
-        "x": -320,
-        "y": -70
+        "x": -419.7,
+        "y": 3.0
       },
       "type": "basic",
       "data": {
@@ -588,8 +588,8 @@
     {
       "id": "basic_ic_t3_002",
       "position": {
-        "x": -480,
-        "y": -190
+        "x": -289.7,
+        "y": 215.7
       },
       "type": "basic",
       "data": {
@@ -610,8 +610,8 @@
     {
       "id": "basic_ic_final_001",
       "position": {
-        "x": -640,
-        "y": -670
+        "x": -419.4,
+        "y": -496.7
       },
       "type": "basic",
       "data": {
@@ -632,8 +632,8 @@
     {
       "id": "keystone_ic_t1",
       "position": {
-        "x": -960,
-        "y": -790
+        "x": -199.0,
+        "y": -700.0
       },
       "type": "keystone",
       "data": {
@@ -654,8 +654,8 @@
     {
       "id": "keystone_ic_t2",
       "position": {
-        "x": -640,
-        "y": -310
+        "x": -480.0,
+        "y": -277.7
       },
       "type": "keystone",
       "data": {
@@ -676,8 +676,8 @@
     {
       "id": "keystone_ic_t3",
       "position": {
-        "x": -320,
-        "y": -310
+        "x": -279.7,
+        "y": 33.0
       },
       "type": "keystone",
       "data": {
@@ -698,8 +698,8 @@
     {
       "id": "keystone_ic_final",
       "position": {
-        "x": -640,
-        "y": -790
+        "x": -309.1,
+        "y": -395.0
       },
       "type": "keystone",
       "data": {
@@ -720,8 +720,8 @@
     {
       "id": "basic_jg_stem_001",
       "position": {
-        "x": 160,
-        "y": 530
+        "x": 285.4,
+        "y": 646.7
       },
       "type": "basic",
       "data": {
@@ -742,8 +742,8 @@
     {
       "id": "basic_jg_stem_002",
       "position": {
-        "x": 160,
-        "y": 410
+        "x": 215.0,
+        "y": 575.0
       },
       "type": "basic",
       "data": {
@@ -764,8 +764,8 @@
     {
       "id": "basic_jg_resolve_001",
       "position": {
-        "x": 160,
-        "y": 290
+        "x": 270.0,
+        "y": 440.0
       },
       "type": "basic",
       "data": {
@@ -786,8 +786,8 @@
     {
       "id": "basic_jg_t1_001",
       "position": {
-        "x": 0,
-        "y": 170
+        "x": 0.0,
+        "y": 193.3
       },
       "type": "basic",
       "data": {
@@ -808,8 +808,8 @@
     {
       "id": "basic_jg_stem_003",
       "position": {
-        "x": 480,
-        "y": 290
+        "x": 504.5,
+        "y": 231.2
       },
       "type": "basic",
       "data": {
@@ -830,8 +830,8 @@
     {
       "id": "basic_jg_t1_002",
       "position": {
-        "x": 0,
-        "y": 290
+        "x": 0.0,
+        "y": 326.7
       },
       "type": "basic",
       "data": {
@@ -852,8 +852,8 @@
     {
       "id": "basic_jg_stem_004",
       "position": {
-        "x": 320,
-        "y": 410
+        "x": 412.9,
+        "y": 448.6
       },
       "type": "basic",
       "data": {
@@ -874,8 +874,8 @@
     {
       "id": "basic_jg_t1_003",
       "position": {
-        "x": 0,
-        "y": 50
+        "x": 0.0,
+        "y": 60.0
       },
       "type": "basic",
       "data": {
@@ -896,8 +896,8 @@
     {
       "id": "basic_jg_t2_001",
       "position": {
-        "x": -160,
-        "y": -430
+        "x": 0.0,
+        "y": -394.0
       },
       "type": "basic",
       "data": {
@@ -918,8 +918,8 @@
     {
       "id": "basic_jg_stem_005",
       "position": {
-        "x": -160,
-        "y": -550
+        "x": 0.0,
+        "y": -508.0
       },
       "type": "basic",
       "data": {
@@ -940,8 +940,8 @@
     {
       "id": "basic_jg_t2_002",
       "position": {
-        "x": -320,
-        "y": -670
+        "x": 0.0,
+        "y": -622.0
       },
       "type": "basic",
       "data": {
@@ -962,8 +962,8 @@
     {
       "id": "basic_jg_t3_001",
       "position": {
-        "x": 0,
-        "y": -70
+        "x": -147.2,
+        "y": -25.0
       },
       "type": "basic",
       "data": {
@@ -984,8 +984,8 @@
     {
       "id": "basic_jg_t2_003",
       "position": {
-        "x": -320,
-        "y": -790
+        "x": 0.0,
+        "y": -736.0
       },
       "type": "basic",
       "data": {
@@ -1006,8 +1006,8 @@
     {
       "id": "basic_jg_t3_002",
       "position": {
-        "x": 0,
-        "y": -190
+        "x": -147.2,
+        "y": -195.0
       },
       "type": "basic",
       "data": {
@@ -1028,8 +1028,8 @@
     {
       "id": "basic_jg_final_001",
       "position": {
-        "x": 160,
-        "y": 170
+        "x": 315.0,
+        "y": 295.0
       },
       "type": "basic",
       "data": {
@@ -1050,8 +1050,8 @@
     {
       "id": "keystone_jg_t1",
       "position": {
-        "x": 0,
-        "y": -310
+        "x": 0.0,
+        "y": -110.0
       },
       "type": "keystone",
       "data": {
@@ -1072,8 +1072,8 @@
     {
       "id": "keystone_jg_t2",
       "position": {
-        "x": -320,
-        "y": -910
+        "x": 0.0,
+        "y": -850.0
       },
       "type": "keystone",
       "data": {
@@ -1094,8 +1094,8 @@
     {
       "id": "keystone_jg_t3",
       "position": {
-        "x": -163.29172550025456,
-        "y": -668.0636908822032
+        "x": -150.0,
+        "y": -508.0
       },
       "type": "keystone",
       "data": {
@@ -1116,8 +1116,8 @@
     {
       "id": "keystone_jg_final",
       "position": {
-        "x": 0,
-        "y": -670
+        "x": 440.0,
+        "y": -350.0
       },
       "type": "keystone",
       "data": {
@@ -1138,8 +1138,8 @@
     {
       "id": "basic_tw_stem_001",
       "position": {
-        "x": 480,
-        "y": 170
+        "x": 568.4,
+        "y": 3.7
       },
       "type": "basic",
       "data": {
@@ -1160,8 +1160,8 @@
     {
       "id": "basic_tw_stem_002",
       "position": {
-        "x": 480,
-        "y": 50
+        "x": 609.9,
+        "y": -228.8
       },
       "type": "basic",
       "data": {
@@ -1182,8 +1182,8 @@
     {
       "id": "basic_tw_t2_001",
       "position": {
-        "x": 480,
-        "y": -70
+        "x": 632.8,
+        "y": -463.9
       },
       "type": "basic",
       "data": {
@@ -1204,8 +1204,8 @@
     {
       "id": "basic_tw_stem_003",
       "position": {
-        "x": -160,
-        "y": -70
+        "x": 147.2,
+        "y": -25.0
       },
       "type": "basic",
       "data": {
@@ -1226,8 +1226,8 @@
     {
       "id": "basic_tw_resolve_001",
       "position": {
-        "x": 480,
-        "y": -310
+        "x": 527.5,
+        "y": -700.0
       },
       "type": "basic",
       "data": {
@@ -1248,8 +1248,8 @@
     {
       "id": "basic_tw_t2_002",
       "position": {
-        "x": 640,
-        "y": -70
+        "x": 459.9,
+        "y": -228.8
       },
       "type": "basic",
       "data": {
@@ -1270,8 +1270,8 @@
     {
       "id": "basic_tw_stem_004",
       "position": {
-        "x": -160,
-        "y": -310
+        "x": -0.0,
+        "y": -280.0
       },
       "type": "basic",
       "data": {
@@ -1292,8 +1292,8 @@
     {
       "id": "basic_tw_t2_003",
       "position": {
-        "x": 480,
-        "y": -190
+        "x": 640.0,
+        "y": -700.0
       },
       "type": "basic",
       "data": {
@@ -1314,8 +1314,8 @@
     {
       "id": "basic_tw_t1_001",
       "position": {
-        "x": 0,
-        "y": -430
+        "x": 170.0,
+        "y": -370.0
       },
       "type": "basic",
       "data": {
@@ -1336,8 +1336,8 @@
     {
       "id": "basic_tw_t3_001",
       "position": {
-        "x": 640,
-        "y": -430
+        "x": 415.0,
+        "y": -700.0
       },
       "type": "basic",
       "data": {
@@ -1358,8 +1358,8 @@
     {
       "id": "basic_tw_t1_002",
       "position": {
-        "x": 0,
-        "y": -550
+        "x": 305.0,
+        "y": -360.0
       },
       "type": "basic",
       "data": {
@@ -1380,8 +1380,8 @@
     {
       "id": "basic_tw_t3_002",
       "position": {
-        "x": 800,
-        "y": -550
+        "x": 302.5,
+        "y": -700.0
       },
       "type": "basic",
       "data": {
@@ -1402,8 +1402,8 @@
     {
       "id": "basic_tw_stem_005",
       "position": {
-        "x": -160,
-        "y": -190
+        "x": 147.2,
+        "y": -195.0
       },
       "type": "basic",
       "data": {
@@ -1424,8 +1424,8 @@
     {
       "id": "basic_tw_t1_003",
       "position": {
-        "x": 160,
-        "y": -550
+        "x": 285.0,
+        "y": -465.0
       },
       "type": "basic",
       "data": {
@@ -1446,8 +1446,8 @@
     {
       "id": "basic_tw_final_001",
       "position": {
-        "x": 640,
-        "y": -310
+        "x": 529.7,
+        "y": -598.3
       },
       "type": "basic",
       "data": {
@@ -1468,8 +1468,8 @@
     {
       "id": "keystone_tw_t2",
       "position": {
-        "x": 160,
-        "y": 50
+        "x": 355.0,
+        "y": 145.0
       },
       "type": "keystone",
       "data": {
@@ -1490,8 +1490,8 @@
     {
       "id": "keystone_tw_t1",
       "position": {
-        "x": 160,
-        "y": -670
+        "x": 400.0,
+        "y": -560.0
       },
       "type": "keystone",
       "data": {
@@ -1512,8 +1512,8 @@
     {
       "id": "keystone_tw_t3",
       "position": {
-        "x": 800,
-        "y": -670
+        "x": 190.0,
+        "y": -700.0
       },
       "type": "keystone",
       "data": {
@@ -1534,8 +1534,8 @@
     {
       "id": "keystone_tw_final",
       "position": {
-        "x": 0,
-        "y": 410
+        "x": -150.0,
+        "y": 593.3
       },
       "type": "keystone",
       "data": {
@@ -1556,8 +1556,8 @@
     {
       "id": "capstone_25",
       "position": {
-        "x": -1200,
-        "y": 770
+        "x": -880.0,
+        "y": 860.0
       },
       "type": "capstone",
       "data": {
@@ -1599,8 +1599,8 @@
     {
       "id": "capstone_50",
       "position": {
-        "x": -1200,
-        "y": 530
+        "x": -880.0,
+        "y": 620.0
       },
       "type": "capstone",
       "data": {
@@ -1642,8 +1642,8 @@
     {
       "id": "capstone_100",
       "position": {
-        "x": -1200,
-        "y": 290
+        "x": -880.0,
+        "y": 380.0
       },
       "type": "capstone",
       "data": {
@@ -1685,8 +1685,8 @@
     {
       "id": "capstone_200",
       "position": {
-        "x": -1200,
-        "y": 50
+        "x": -880.0,
+        "y": 140.0
       },
       "type": "capstone",
       "data": {

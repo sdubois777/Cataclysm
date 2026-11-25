@@ -149,6 +149,7 @@ namespace
 		{ TEXT("hit_dealt_is_not_spell"),       ECataclysmStatCondition::HitDealtIsNotSpell },
 		{ TEXT("target_is_silenced"),           ECataclysmStatCondition::TargetIsSilenced },
 		{ TEXT("target_is_moving"),             ECataclysmStatCondition::TargetIsMoving },
+		{ TEXT("target_carries_your_curse"),    ECataclysmStatCondition::TargetCarriesYourCurse },
 	};
 
 	struct FNamedStatScale
@@ -199,6 +200,7 @@ namespace
 		{ TEXT("seconds_leeching"),    ECataclysmStatScale::PerSecondLeeching },
 		{ TEXT("share_of_range_moved"), ECataclysmStatScale::ShareOfRangeMoved },
 		{ TEXT("enemies_in_reach_while_own_stack"), ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld },
+		{ TEXT("increased_movement_speed"), ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed },
 	};
 
 	/**
@@ -315,8 +317,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitDealtIsNotSpell:
 	case ECataclysmStatCondition::TargetIsSilenced:
 	case ECataclysmStatCondition::TargetIsMoving:
+	case ECataclysmStatCondition::TargetCarriesYourCurse:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-four says
+		// nothing for a number to be compared against. Each of the thirty-five says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -520,6 +523,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE STRUCK CHARACTER IS MOVING, ruled 2026-10-23 (#2235, Q1): a fact of the target in hand, after
 	// `TargetIsSilenced`.
 	case C::TargetIsMoving:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK CHARACTER CARRIES A CURSE THE ASKER LAID, the demonic tree rework of 2026-11-24: a fact of the
+	// target in hand, after `TargetIsMoving`.
+	case C::TargetCarriesYourCurse:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -1245,6 +1253,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// hand" and "nothing asked", and all refuse together.
 		return State.bTargetIsMoving;
 
+	case ECataclysmStatCondition::TargetCarriesYourCurse:
+		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`. The demonic tree rework of
+		// 2026-11-24. False is also "no target in hand", "no asker" and "nothing asked", and all refuse together.
+		return State.bTargetCarriesYourCurse;
+
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills
 		// deal 25%-40% less damage if you have moved in the last 2 seconds" is
@@ -1842,6 +1855,22 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		return Asking && !Modifier.StackKey.IsNone() && Asking->OwnStacksHeld(Modifier.StackKey) > 0
 			? StackedValue(Modifier, EnemiesInReach(State, Modifier.ReachMetres))
 			: 0.0f;
+	}
+
+	// PER WHOLE STEP OF INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless: "1% increased
+	// Attack Speed for every 2% increased Movement Speed you have" is a step of 2. The same two refusals as the
+	// readings above: an unknown reading, which is every state a lookup not asking for this scale was given, and a
+	// step of nothing. WHOLE STEPS, ROUNDED DOWN, the rule every per-point scale here follows; a sum below nought
+	// counts nothing.
+	case ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed:
+	{
+		if (State.IncreasedMovementSpeedPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps =
+			FMath::FloorToFloat(State.IncreasedMovementSpeedPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 	}
 

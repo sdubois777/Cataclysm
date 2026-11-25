@@ -2,6 +2,202 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The trees base: the Demonic tree rework, the passive order fixes, the War rulings, the tree screen's marks and six trees laid out as their emblems, on one branch for one window
+
+**Affects:** `docs/Berserker_Class_Tree_Final.json`, `docs/Bulwark_Class_Tree_Final.json`,
+`docs/Saboteur_Class_Tree_Final.json`, `docs/Masochist_Class_Tree_Final.json`, `docs/Ravager_Class_Tree_Final.json`,
+`docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv` (positions only), and this entry. The
+branch feat/trees-base-2026-11-25 was assembled for one test window at the coordinating session's brief of
+2026-11-25, because the War and Death tree lines are both built on this work. No new game code is written here.
+
+### What the branch holds
+
+| Commit | What it brings |
+| :-- | :-- |
+| merge of `docs/war-rulings-q20` (83a3b9690) | the Demonic tree rework (cf18466a7, three C++ merges), the passive order fixes (5d883e185), and the War rulings entry; one merge because each branch contains the one before |
+| 244a3528a, bd948e875 | two comment lines in `CataclysmPassiveTreeTests.cpp` that opened with one slash, which stops the compile, each made `//` in its own commit; the War line's b702d166a makes the identical change |
+| merge of `feat/sigil-tree-screen` (afdeb9f97) | the passive tree screen draws each node as a mark sized by its kind |
+| 29d245976 | Berserker, Bulwark, Saboteur, Masochist, Ravager and Ritualist laid out as their emblems, positions only |
+| merges of `development` | the base kept current |
+
+**The Saboteur vows are not here.** They exist only in df77c40d6 on the War line, about forty commits deep; the
+coordinating session ruled that they stay there. **The three Death trees' emblems are not here either**: cd63c2a94 is
+on the `feat/death-trees-*` branches and is not an ancestor of this branch.
+
+### Conflicts and how each was resolved
+
+- **`docs/DECISIONS.md`**, at each merge: every branch entry placed by the author time of the commit that first wrote
+  it, among development's entries, which do not move. The War rulings (22:32 on 2026-11-24) and the Demonic rework
+  (21:21) sit between development's 22:38 and 20:58 entries; the tree screen's (17:30) between 17:42 and 17:13.
+- **`docs/All_Things_Cataclysm.xlsx`**, which git cannot merge: development's copy taken, then
+  `tools/reapply_demonic_tree_rework_workbook.py` run on it (119 changes; Passive Effects 364 rows and a
+  `Scale Max Steps` column). Compared with openpyxl, cell by cell, against development, the branch and their merge
+  base 5f302b0a7: Weapon Skills, Skill Slots and Enemy Drops were changed only by development and equal
+  development's; Passive Effects was changed only by the branch and equals the branch's; the other 24 sheets were
+  changed by neither and equal both. The regenerated CSVs equal the ones git merged, byte for byte.
+- No other file conflicted, and no C++ was resolved by hand.
+
+### The emblem positions
+
+Each node's `position.x` and `position.y` were copied by node id from the emblem files the owner accepted on
+2026-11-24 (`<Class>_Class_Tree_Sigil.json`, made in the coordinating session's `constellations/` working folder;
+Berserker is version A). Checked for all six: every id and every edge (source, target, handles, id) in the emblem
+file equals the current tree's, no node's type differs, every node holds the emblem's position, and every other
+field of every file is unchanged; the diff holds only `"x"` and `"y"` lines. `game/Data/PassiveNodes.csv` changes
+only in `PositionX` and `PositionY`, on all 441 rows. Five Masochist ids carry a different name from the one the
+emblem drawing showed (the rework's renames and the order fix's Blood Price and Deeper Cuts swap); the positions
+follow the ids, as the coordinating session ruled.
+
+**Two existing Unreal tests read the real positions**, so they test the emblems: `Passives.` real trees fit the
+panel at a readable zoom, and `PassiveMarks.` PM2, no two marks overlap. Computed in Python from the C++ rules on the
+new CSV, not run in Unreal: every tree's mark scale is 1.000 with no overlapping pair, and the tightest fit is about
+0.35 against the floor of 0.2.
+
+### Checks before the window
+
+- `tools/check_includes.py --since origin/development`: 53 .cpp files, 0 types used that the file cannot see, 0
+  notes. `tools/check_resolved_cpp.py` on the 71 changed C++ files: 0 complaints.
+- The Python suite on d11e0efa7: "2 failed, 8621 passed, 10 skipped"; JUnit 8633 tests, 2 failures, 0 errors.
+  `test_every_dated_entry_is_preceded_by_a_rule_and_a_blank_line` was a separator this branch's merge left out,
+  corrected in 8f6e88c84; afterwards the 99 test files that mention the decisions log: "3753 passed, 1 skipped".
+  `test_every_csv_still_hashes_to_what_was_recorded` fails until the editor step rebuilds the two assets below, and
+  fails the same way on 83a3b9690 ("1 failed, 17 passed"). `ruff`: "All checks passed!"
+
+### Registered for the window
+
+- **Editor step:** `DT_PassiveEffects` and `DT_PassiveNodes`, the only CSVs that differ from development.
+- **Groups alone, new:** `SanguineLedger.` 3, `VesselOfPlagues.` 3, `Stigmata.` 4, `UnstableAura.` 4,
+  `Carnivore.` 4, `ReprisalWave.` 2, `IronhideOverwhelm.` 3, `Thronged.` 3, `Stoked.` 2, `SecondWind.` 3,
+  `Relentless.` 4, `DeeperHurt.` 4, `YourCurse.` 3, `OpenChannel.` 2, `WardedFlesh.` 2, `Swarm.` 2,
+  `PressGangedWand.` 1, `Rekindled.` 2, `PassiveScaleCap.` 1, `RitualistRework.` 6, `PassiveMarks.` 4.
+- **Groups alone, grown** (counts from the newest whole-suite log): `Ailments.` 23 to 24, `MasochistCostRows.` 5 to 6,
+  `Player.` 20 to 21. **Rewritten, same count:** `Passives.` 161, `MasochistRows.` 9, `MasochistHealingRows.` 5,
+  `Fervour.` 32, `DeathRewards.` 4, `MinionDeath.` 18, `FervourRows.` 4, `PartialClauses.` 5, `ReachRows.` 5,
+  `StatExemption.` 37, `Command.` 31. **The tree screen entry's three, missed from the first list:**
+  `EmpireTreeScreen.` 11, `EmpireScreen.` 16 and `Creation.` 17, which share its layout constants and choice button.
+- **The whole suite: 5587.** The newest whole-suite log is the Rifts' first window on b80da905a: "5520 tests
+  performed", and `unreal_build.declared_tests` counts 5520 declared there. Development at db7427d7a, with the Rifts
+  merged, declares 5522: the Rifts' second window, which ran no whole suite, added
+  `DungeonModifiers.ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse` and
+  `Rifts.ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay`. This branch adds 98 test names and removes 33
+  against development, net 65 (the rework's 61 and the tree screen's 4, as both entries predict), and declares 5587
+  at 261307eb3. The groups' counts above are from the b80da905a log; neither added test is in one of them.
+
+### Guard proofs: eleven, one for each change
+
+**The coordinating session's ruling, 2026-11-25:** three a change is a ceiling and not a target, and the War and
+Death lines wait for this machine. So one proof for each of the rework's eight changes, the one that guards the
+change's central rule, and three for the tree screen.
+
+| Proof | Change | Break (file: before -> after) | Must fail |
+| :-- | :-- | :-- | :-- |
+| TB1 | Masochist 1 | `CataclysmFervour.cpp`: `? FMath::Min(Before, FloorAgainstHealing(AbilitySystem, Context))` -> `? 0.0f` | `SanguineLedger.HealingNeverTakesTheFervourBelowFifty`, `SanguineLedger.APoolAlreadyBelowFiftyLosesNothingToHealingAndStillFills`, `MasochistHealingRows.SanguineLedgerKeepsARealMasochistsFervourAtFiftyThroughHealing` |
+| TB2 | Masochist 2 | `CataclysmAbilitySystemComponent.cpp` (`StacksHeld`): `FMath::Max(0.0f, WindowSeconds + StackExtraWindowSeconds[Index])` -> `FMath::Max(0.0f, WindowSeconds)` | `Carnivore.ACarnageStackLastsASecondLongerForEveryTenFervourHeld` |
+| TB3 | Ravager 1 | `CataclysmDamageCalculation.cpp`: `bOverwhelmHalvedOnArmour ? Hit.OverwhelmPoints * 0.5f : Hit.OverwhelmPoints` -> `... * 1.0f ...` | `IronhideOverwhelm.OverwhelmTakesHalfAsManyPointsOffAHoldersArmour` |
+| TB4 | Ravager 2 | `CataclysmBasicAttack.cpp`: `if (Suppressed <= 0.0f)` -> `if (Suppressed <= 1000.0f)` | `Relentless.ARowLoweringAttackSpeedIsDroppedAndAnEarnedOneKept` |
+| TB5 | Relentless ruling | `CataclysmPlayerCharacter.cpp` (`RefreshMovementSpeed`): `if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= 0.0f)` -> `... Row.Value >= -1000.0f)` | `Player.MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` |
+| TB6 | Ritualist 1 | `CataclysmRisenImps.cpp`: `if (Active && Active->Spec.GetContext().GetInstigator() == Curser)` -> `if (Active)` | `YourCurse.ARowHoldsAgainstATargetCarryingYourCurseAndNotAStrangersCurse` |
+| TB7 | Ritualist 2 | `CataclysmPlayerCharacter.cpp`: `&& (Notice.Killer == this \|\| UCataclysmCommand::CommanderOf(Notice.Killer) == this))` -> `&& Notice.Killer == this)` | `Swarm.AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone` |
+| TB8 | Ritualist 3 | `CataclysmPassiveTree.cpp`: `Modifier.ScaleMaxSteps = FMath::Max(0, Effect->ScaleMaxSteps);` -> `Modifier.ScaleMaxSteps = 0;` | `PassiveScaleCap.ARowsCapReachesItsModifierAndStopsTheScaleAtTwentyMinions` |
+| PMK1 | tree screen | a keystone's mark 28 | 4 performed, 2 failed: PM1, PM3 |
+| PMK3 | tree screen | a pair needs its marks' whole sizes, not half | 4 performed, 2 failed: PM2 and PM3 (see below) |
+| PMK5 | tree screen | an unspent mark says "0/1" | 4 performed, 1 failed: PM4 |
+
+**TB3, the Ironhide break, touches a line a Python test reads as text, so it does not run beside the Python suite**
+(issue #1630).
+
+**Why these:** TB1 is the floor Sanguine Ledger holds, the one Masochist 1 rule with tests in two groups; TB2 is
+the Fervour-held scaling the Masochist 2 nodes share; TB3 is Ironhide's halving, which the coordinating session named
+for this set; TB4 is Relentless keeping attack speed, the rule the Relentless ruling then extended to movement speed;
+TB5 is that ruling's only break; TB6 is "your curse", the condition the Ritualist 1 rows are written against; TB7 is
+The Swarm counting a minion's kill as the commander's; TB8 is the cap on a passive row, the new column Ritualist 3
+teaches the generator and the game. PMK1, PMK3 and PMK5 between them fail all four tree screen tests.
+
+**PMK3'S PREDICTION IS NOT THE TREE SCREEN ENTRY'S, BECAUSE OF THE EMBLEM POSITIONS.** That entry predicted PM2 alone,
+since every real tree then still drew at 1 with the break in (its raw scale 1.25 to 1.56). Computed in Python from
+`MarkScaleFor`'s rule on this branch's `PassiveNodes.csv`, the break leaves the Masochist tree at 0.839 and the
+Saboteur at 0.912; the others stay above 1. PM3 shows the Masochist tree and places the hovered name by the mark's
+size times that scale (`NodeNameCaptionPositionForTests`), while it expects the unscaled size, so it fails as well.
+PM1 and PM4 read no scale. PMK1 and PMK5 cannot lower a scale, so their predictions stand.
+
+**Dropped, by the same ruling, and not run:** the rework entry's other thirteen (Vessel of Plagues and Stigmata in
+Masochist 1; Unstable Aura and Reprisal Wave in Masochist 2; Thronged and Stoked in Ravager 1; Deeper Hurt and Second
+Wind in Ravager 2; Open Channel and Warded Flesh in Ritualist 1; Press-Ganged and Rekindled in Ritualist 2; the
+minion health exemption in Ritualist 3) and the tree screen entry's PMK2, PMK4, PMK6, PMK7 and PMK8. Their tests
+still run, alone and in the whole suite; what is not shown is that each would fail without its line. PMK2 and PMK8
+fail only PM1, which PMK1 already fails; PMK4, PMK6 and PMK7 fail PM3 or PM4, which PMK1 and PMK5 already fail.
+**No proof for the emblem positions** (data, read by the two existing tests above) **or for the two comment
+commits** (no behaviour).
+
+### Window tb-w1, 2026-11-25: what it measured
+
+**SEVEN TESTS FAILED AND NO PROOF RAN.** The whole suite on 2feb41fe: "5587 tests performed, 5580 succeeded, 7
+failed"; declared 5587, gap 0; "Test saves: 881 written and deleted, 0 left behind"; 58 skipped halves, all as
+registered. This is the first whole suite to run the Rifts' second window's two tests. Python beside it: "8694 passed,
+10 skipped", JUnit 8704 tests, 0 failures; `ruff` clean. Of the 38 groups alone, 37 passed at their registered counts;
+`Passives.` performed 161 with 5 failed.
+
+- **The first build of d2551a312 failed** ("Build: Failed - 72 actions, 67 files compiled"):
+  `CataclysmChoiceButton.h` declared `GetLabel()` twice, because development's skill screen (#2891) and the tree screen
+  each added one at different lines, and git merged both with no conflict. 292ec1e27 keeps development's. Neither
+  `check_resolved_cpp.py` nor `check_includes.py` sees a duplicate declaration: issue #2900. The three builds of
+  292ec1e27 then succeeded with no warning.
+- **The editor step** rebuilt `DT_PassiveEffects` (325 rows to 364) and `DT_PassiveNodes` (441), committed alone as
+  2feb41fe; `test_datatable_assets_are_current.py` "18 passed".
+- **Four `Passives.ClassPointsFromGear.` tests** stopped at their set-up, "Willing Flesh has an unconditioned row on
+  health_regen worth something a point": the rework gave Willing Flesh a scale (health missing). They read what the
+  stat line records, which is the value a point times the points whatever the scale, so they now read the row through
+  `PerPointRecordedOn`, which accepts a scale; Willing Flesh keeps its place as one of the two nodes the root opens.
+- **`Passives.DeficitPaysForHealthMissingAndHealthOwedOnARealCharacter`**: owing a fifth gave 9 points, not 10. Two
+  single-test diagnostic runs under the lock: only the option's own owed row contributes, and at maximum health
+  678.72 and "owed 20.0000%" it counted 9 steps of 2%. Inferred, not printed to enough digits: the float reading is a
+  hair under 20 and the step count floors it with no tolerance, a pipeline fault the rework's new maximum health
+  exposed, carried by issue #2905. By the coordinating session's ruling the test now owes 21%, off the boundary.
+- **`CapstoneOptions.EveryDemonicCapstoneOptionGrantsItsRowsAndNoOthers`**: "Ritualist: at least 18 rows checked, 16
+  were". The rework's pact options carry fewer rows. The floors are the counts measured here: Masochist 32, Ravager 20,
+  Ritualist 16.
+- **`DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`**: the Stalker's health before its multiplier
+  was above the fitted table at every tier, 990.9 against 945.6 at tier 1 (+4.8%) to 7122.1 against 6902.3 at tier 8
+  (+3.2%). **THE DEMONIC CORRUPTED STALKER IS 3 TO 5% TOUGHER**, because the rework raised the Ravager's health rows
+  its build holds (`Ravager_basic_spine_001` 0.5 to 1.0 increased a point; new rows on `Ravager_basic_a_stem2` and
+  `Ravager_basic_a_c1`). By the coordinating session's ruling the multiplier is kept and only the test's fitted figures
+  follow; the Stalker's tables are fitted again in the affix ranges and rebalance bundle (#2883, #2884), which
+  measures the new game first.
+
+### Registered for window tb-w2
+
+**Narrowed, by the coordinating session's ruling:** tb-w1's whole suite stands, because its seven failures were all
+in the three groups below and the only change since is those groups' test files. No editor step: no CSV or asset
+changes. The build, then alone: `Cataclysm.Passives.` 161, `Cataclysm.CapstoneOptions.` 1 and
+`Cataclysm.DungeonModifierEffects.` 786 (counts from tb-w1's whole-suite log), each all succeeded; then the eleven
+proofs in the table above, with the predictions above.
+
+### Window tb-w2, 2026-11-25: what it measured
+
+On 19f39356a, under the lock tb-w2. The build: "Succeeded - 8 actions, 5 files compiled". Alone, every test succeeded:
+`Cataclysm.Passives.` 161, `Cataclysm.CapstoneOptions.` 1, `Cataclysm.DungeonModifierEffects.` 786. Python, run off
+the machine on the same head beforehand: "8694 passed, 10 skipped", JUnit 8704 tests, 0 failures, 0 errors; `ruff`
+clean. **All eleven proofs PROVED**, every anchor matching once and the source hash the same before and after:
+
+| Proof | With the break in | Restored |
+| :-- | :-- | :-- |
+| TB1 | 8 performed, 3 failed: both `SanguineLedger.` tests and `MasochistHealingRows.SanguineLedgerKeepsARealMasochistsFervourAtFiftyThroughHealing`, as registered | 8, 0 failed |
+| TB2 | 4 performed, 3 failed: the registered `ACarnageStackLastsASecondLongerForEveryTenFervourHeld` and also `AKillsCarnageLastsLongerToo` and `TheLastStackGrantedDecidesHowLongTheWholeCountLasts` | 4, 0 failed |
+| TB3 | 3 performed, 1 failed: `OverwhelmTakesHalfAsManyPointsOffAHoldersArmour`, as registered | 3, 0 failed |
+| TB4 | 4 performed, 2 failed: the registered `ARowLoweringAttackSpeedIsDroppedAndAnEarnedOneKept` and also `CrippleDoesNotSlowTheSwingOfAPlayerHoldingIt` | 4, 0 failed |
+| TB5 | 21 performed, 5 failed: the registered `MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` and four more `Player.` movement speed tests | 21, 0 failed |
+| TB6 | 3 performed, 2 failed: the registered `ARowHoldsAgainstATargetCarryingYourCurseAndNotAStrangersCurse` and also `AMinionsBlowReadsItsSummonersCurse` | 3, 0 failed |
+| TB7 | 2 performed, 1 failed: `AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone`, as registered | 2, 0 failed |
+| TB8 | 1 performed, 1 failed: `ARowsCapReachesItsModifierAndStopsTheScaleAtTwentyMinions`, as registered | 1, 0 failed |
+| PMK1 | 4 performed, 2 failed: PM1 and PM3, as registered | 4, 0 failed |
+| PMK3 | 4 performed, 2 failed: PM2 and PM3, the prediction this entry corrected from the tree screen entry's | 4, 0 failed |
+| PMK5 | 4 performed, 1 failed: PM4, as registered | 4, 0 failed |
+
+**FOUR PROOFS FAILED MORE TESTS THAN REGISTERED** (TB2, TB4, TB5, TB6). Each failed the test it was registered for;
+the others are further tests in the same group that read the same line, which the rework entry's table did not list.
+
+---
+
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
 
 **Tools only; no Unreal build.** Branch `fix/prove-guard-restore-retry`, at the coordinating session's brief of
@@ -1008,6 +1204,311 @@ break in, except RP1's (it selects three and must fail only the first-floor test
 changes what happens in play have a fourth proof (creature-combat's CC4: the skip of a creature that cannot be hurt
 changes which creatures Sacrifice and Epidemic hit); a printed line is not a play mechanism, and the whole suite still
 runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
+
+---
+
+## 2026-11-24 — The War trees' rulings pass (Q20): 29 sentences the owner accepted, for Bulwark, Berserker and Saboteur nodes that broke an existing rule or stated figures on an old scale
+
+**Affects:** this entry, and `docs/Cataclysm_GDD_v2.md` (Retaliation, one sentence, R7). The node sentences in
+`docs/Bulwark_Class_Tree_Final.json`, `docs/Berserker_Class_Tree_Final.json` and `docs/Saboteur_Class_Tree_Final.json`
+are NOT changed here: the slice that writes each node's rows rewrites its sentence by node name, with the rows.
+
+### SAID FIRST
+
+- **RECORDED, NOT BUILT.** No row, sentence in a tree file or code changes here; each sentence below becomes the
+  node's words when its rows are written.
+- **EVERY NUMBER IN THE SENTENCES IS A JUDGEMENT** of the War trees session, sized against the simulation's reference
+  character (`sim/cataclysm_sim/fight.py`, `reference_player`): at tier 8, level 100, 11,023 maximum health, 7,299
+  armour, 3% life leech, a 258% critical strike multiplier, 25.4 health regeneration a second and a 1,853 hit; flat
+  damage 16.5 to 22 and flat maximum health 90 to 120 per affix at affix tier 7. Maximum health by tier: 1,283 (tier 1,
+  level 12), 2,064, 3,067, 4,259 (tier 4, level 50), 5,766, 7,791, 9,401, 11,023.
+- **FLURRY (R11) KEEPS ITS OLD SIZE**, 50% more per point on every 5th attack: at 8 points the 5th attack deals 5 times
+  its damage, an average of 80% more over five. The coordinating session, 2026-11-24: build it as written and mark it
+  as a play-test point, not a measured figure.
+
+### THE RULING
+
+The project owner, 2026-11-24, verbatim: "I'll go with your recommendations on the war rulings." That accepts every
+sentence below (R1 to R29 of `war_rulings_q20_draft.md`, the War trees session's draft of that day), the rule R28
+and the rename R29. It answers `plan_death_and_war.md` Q20 ("one rulings pass on the 31 War entries before their
+slice"), which the owner had accepted the same day: "Your recommendations work for all of those death/war questions."
+
+**10 of the 31 were already settled and are not repeated:** Serrated Edge ("+10% duration of bleeds you apply, per
+point.") and five Saboteur count caps (Bag of Tricks, Minefield, Overwhelming Presence, Precision Placement,
+Calculated Chaos) by `tools/apply_passive_order_fixes_2026_11_24.py`; the four Saboteur oaths by the twelve options
+of `saboteur_vows_draft.md`, approved 2026-11-24.
+
+**A rule settled on the way (R7):** "retaliation cannot apply an ailment" (Retaliation, in the design document) is
+about what the retaliation payment itself rolls. A row acting on the retaliation event may apply one: the enchantment
+"Your retaliation damage also applies a bleed stack to the attacker" has been built so since 2026-10-01
+(`apply_status` Bleed on `retaliation_dealt`). The design document now says so.
+
+### THE SENTENCES
+
+| # | Node | Ruled sentence | The rule it broke |
+|---|---|---|---|
+| R1 | Crushing Presence (`Bulwark_basic_jg_stem_003`) | "+1 flat damage per point for every 1,000 Maximum HP." | an absolute health total on the old scale |
+| R2 | Weight of the World (`Bulwark_basic_jg_t2_002`) | "+1% damage per point for every 5,000 Maximum HP (multiplicative)." | an absolute health total on the old scale |
+| R3 | Colossus (`Bulwark_basic_jg_stem_004`) | "+10 flat Maximum HP per point for every 1,000 Maximum HP you have from other sources." | reads its own result, and an old-scale figure |
+| R4 | Immovable Object (`Bulwark_keystone_jg_t1`) | "While above 50% health, you are immune to crowd control. Each crowd control effect you are immune to this way deals damage equal to 3% of your Maximum HP to the enemy that applied it." | an absolute health total on the old scale |
+| R5 | Mountain's Wrath (`Bulwark_keystone_jg_t2`) | "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP." | an absolute health total on the old scale |
+| R6 | Titanfall (`Bulwark_keystone_jg_final`) | "When a single hit takes more than 20% of your Maximum HP, you cannot be killed for 2 seconds and your next attack deals bonus damage equal to that hit. Can only happen once every 30 seconds." | an absolute health total on the old scale |
+| R7 | Vengeful Discharge (`Bulwark_basic_tw_resolve_001`) | "Passively drains 10 Fervour per second to increase your retaliation damage by +3% per point. When this drain reduces you to 0 Fervour, you retaliate against every enemy within 4 metres for 100% of your retaliation damage. At 5 points: this also applies Bleed to every enemy it strikes." | "a bleed stack"; no radius |
+| R8 | Hemorrhage (`Bulwark_keystone_tw_t1`) | "Your retaliation also applies Bleed to the attacker, at twice its normal strength." | a conversion lost under one bleed per enemy |
+| R9 | Blood Price (`Bulwark_basic_tw_t1_002`) | "+5% bleed damage per point." | counts bleed stacks; an enemy carries one |
+| R10 | Open Wounds (`Bulwark_basic_tw_t1_003`) | "+3% retaliation damage per point for each bleeding enemy within 4 metres, up to 5 enemies. At 5 points: your hits deal 20% increased damage to bleeding enemies." | counts bleed stacks; a mark (#964) |
+| R11 | Flurry (`Berserker_dw_002`) | "Dual wield only. Every 5th consecutive melee attack deals 50% more damage per point." | an offhand strike; one attack deals both weapons |
+| R12 | Weaving (`Berserker_dw_003`) | "Dual wield only. Using a different melee skill from the one you used last increases your damage by 2% per point, stacking up to 6 times. Using the same melee skill twice in a row removes the stacks. While in Frenzy, each stack you gain costs 3 Fervour and the damage per stack is doubled." | alternating hands; one attack deals both weapons |
+| R13 | Vital Strike (`Berserker_leech_003`) | "+1% life leech per point on critical melee strikes. While your health is full, your critical melee strikes generate 1 additional Fervour per point." | a leech cap the design does not have |
+| R14 | Eternal Hunger (Berserker Final Oath, option 3) | "Life leech can heal you up to 100% above your Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and damage you take removes it first. Your life leech is increased by 50%." | a leech cap the design does not have |
+| R15 | Crimson Pact (Berserker Third Oath, option 3) | "Your critical strike multiplier is increased by 10% for every 1% of life leech you have." | each half reads the other |
+| R16 | Flesh Fortress (`Bulwark_keystone_tw_t2`) | "While you do not hold a shield: your Armor is 0, you gain 1% increased Maximum HP for every 50 Armor you would have had, and you gain 50% increased Fervour from all sources." | "1% Armor" has no meaning; no system refuses an item |
+| R17 | Colossus Eternal (Bulwark Final Oath, option 2) | "Your health regeneration and the healing you receive are doubled, and your increases to Maximum HP count twice. While above 50% health, a hit that would kill you leaves you at 1 HP instead. While above 75% health, your attacks deal bonus damage equal to 2% of your current HP." | no instant-kill effect exists; "HP bonuses" unclear |
+| R18 | Wrath Incarnate (Bulwark Final Oath, option 3) | "Your retaliation damage is increased by 1% for every 100 Armor you have. When a single hit takes more than 10% of your Maximum HP, you retaliate against every enemy within 4 metres for 200% of your retaliation damage." | each half reads the other; no radius |
+| R19 | Siege Mode (`Saboteur_keystone_gadget_sus`) | "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each second you have stood still, up to 10 seconds. Moving ends the bonus." | who stands still; a reset that contradicts it |
+| R20 | Concealed (`Saboteur_basic_trap_mid_003`) | "The first enemy to trigger each of your traps is stunned for 1 second." | no mechanic for "position"; no root status; a decimal per point on one point |
+| R21 | Saturation (`Saboteur_basic_trap_qty_003`) | "+5% evasion chance for each of your active traps, up to 5 traps." | raises a cap the engine does not enforce |
+| R22 | Meat Shield (`Bulwark_basic_jg_stem_001`) | "+4% Maximum HP per point. Each 1,000 Maximum HP increases your maximum Fervour by 3." | figures on the old scale |
+| R23 | Dense Muscle (`Bulwark_basic_jg_t2_001`) | "+1% damage reduction per point for every 5,000 Maximum HP (multiplicative)." | figures on the old scale |
+| R24 | Unstoppable Force (`Bulwark_basic_jg_stem_005`) | "+1% damage per point for every 1,000 Maximum HP." | figures on the old scale |
+| R25 | Walking Fortress (`Bulwark_basic_jg_final_001`) | "+40 flat Maximum HP per point. At 6 points: +1% damage reduction for every 5,000 Maximum HP (multiplicative)." | figures on the old scale |
+| R26 | Ironblood (`Bulwark_basic_jg_stem_002`) | "+2 flat HP Regen per second per point." | figures on the old scale |
+| R27 | Dead Weight (`Bulwark_basic_jg_t1_003`) | "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: each crowd control effect applied to you deals damage equal to 3% of your Maximum HP to the enemy that applied it." | figures on the old scale |
+| R28 | the Juggernaut limb | No node asks for an absolute health total; a requirement is a step per 1,000 (or 5,000) Maximum HP, or a share of maximum health. | the five thresholds of 5,000 to 25,000 |
+| R29 | `Bulwark_basic_tw_stem_004` | The basic node "Wrath Incarnate" is renamed "Outnumbered"; the Final Oath's option keeps the name. | two entries in one tree with one name |
+
+### EVIDENCE
+
+The sentences in the table were extracted by script from the draft the owner accepted
+(`.claude/windows/war_rulings_q20_draft.md`, untracked, in the War trees session's worktree), so they are its words.
+The draft also held each node's current sentence, the reasoning behind each size and what building it needs; it is not
+kept in the repository, so each War tree slice that writes a node's rows states the sizing it used in its own entry.
+No row or code depends on this entry yet.
+
+---
+
+## 2026-11-24 — The three Demonic passive trees reworked as their audits proposed: the Masochist, the Ravager and the Ritualist, in words, rows and code
+
+**Affects:**
+- `tools/apply_demonic_tree_rework_2026_11_24.py`, new, and `tools/tests/test_apply_demonic_tree_rework_2026_11_24.py`,
+  new: the node sentences, by name, after `tools/apply_passive_order_fixes_2026_11_24.py`.
+- `tools/reapply_demonic_tree_rework_workbook.py`, new, and `tools/tests/test_reapply_demonic_tree_rework_workbook.py`,
+  new: the Passive Effects rows, by node and option.
+- `docs/Masochist_Class_Tree_Final.json` (the order fix's Masochist part, then the rework),
+  `docs/Ravager_Class_Tree_Final.json`, `docs/Ritualist_Class_Tree_Final.json`.
+- `docs/All_Things_Cataclysm.xlsx`, Passive Effects: 325 rows to 364, and a `Scale Max Steps` column.
+- `game/Data/PassiveEffects.csv` (364 rows, a `ScaleMaxSteps` column) and `game/Data/PassiveNodes.csv`, generated.
+  **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`** before any real-row test can pass.
+- The Masochist's C++: `CataclysmFervour`, `CataclysmDebuffs`, `CataclysmStigmata` (new), `CataclysmNova`,
+  `CataclysmStacks`, `CataclysmRetaliation`, `CataclysmSkillEffects`, `CataclysmAbilitySystemComponent`.
+- The Ravager's C++: `CataclysmDamageCalculation`, `CataclysmGameplayAbility`, `CataclysmFervour`,
+  `CataclysmPlayerCharacter`, `CataclysmBasicAttack`, `CataclysmSkillTemplates`, `CataclysmStatPipeline`,
+  `CataclysmAbilitySystemComponent`, `CataclysmDebuffs`, `CataclysmEnemyCharacter`.
+- The Ritualist's C++: `CataclysmStatPipeline`, `CataclysmRisenImps`, `CataclysmRegeneration`,
+  `CataclysmVitalAttributeSet`, `CataclysmSkillTemplates`, `CataclysmPlayerCharacter`, `CataclysmMinion`,
+  `CataclysmPassiveTree`, `Data/CataclysmDataRows.h`, `CataclysmAbilitySystemComponent`.
+- `CataclysmPlayerClassStats.cpp`: fifteen stats in `StatsWithNoAttribute`.
+- Unreal tests: twenty new test files (58 tests) and changes in `CataclysmPassiveTreeTests.cpp`,
+  `CataclysmStatExemptionTests.cpp`, `CataclysmCommandTests.cpp`, `CataclysmAilmentTests.cpp` and others.
+- `tools/generate_datatables.py`: the condition `target_carries_your_curse`, the scale `increased_movement_speed`,
+  a cap on a passive row, and the stat askers; the Python checks that mirror those lists.
+- `tools/tests/test_passive_effects_match_the_node_text.py` and `tools/tests/test_class_passive_trees.py`.
+- `docs/Cataclysm_GDD_v2.md`: Passive Class Trees (core counts, whole-number steps) and Overwhelm (Ironhide).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was written by three agents working in parallel, read as the
+  compiler, and merged; the Python suite and `ruff` ran (below). A window has to compile the branch, run the editor
+  step for the two DataTable assets, and run the groups predicted under "Unreal tests".
+- **FIVE SENTENCES ARE NOT THE AUDITS' WORDS, each a judgement, because the audits' words would have been untrue or
+  refused:**
+  - **Broken Will, the coordinating session's judgement (2026-11-24): "your sentence is accepted".** The audit wrote "when you kill an enemy, each curse and burn it carries has a 50% chance to pass".
+    The stat it named, `debuff_spread_on_death_chance` (Empathic Link's), rolls on every enemy's death whoever killed
+    it, and for every debuff, bleeds included. The sentence now says that: "At 4 points: when an enemy dies, each
+    debuff it carries has a 50% chance to pass to a random enemy within 6 metres." A passed curse is credited to the
+    killer, so its new carrier still rises as an imp for the Ritualist (tested). Making the audit's sentence true would
+    need a stat of its own; it was not built.
+  - **Wade In and Headlong** are reordered: "3% increased Armor and 2% more Attack Damage" puts both magnitude words in
+    one clause, which issue #582's rule refuses. Now "2% more Attack Damage and 3% increased Armor", and Headlong's
+    "50% more damage" is a sentence of its own.
+  - **Nowhere to Run** says "for each enemy within 8 metres of you" rather than "for each enemy held this way": the
+    same enemies, in the words the scale's wording check reads.
+  - **Beacon of Despair** keeps "lasting 4% longer per point": the audit kept the aura's row, which is both the aura's
+    switch and that duration, and a row whose number the sentence does not state is refused.
+- **TWO NAMES AND ONE THRESHOLD THE AUDITS LEFT OPEN, judgements:** the Ritualist's new Second Pact option is "Wall of
+  Servants"; Long Servitude's clause is "At 4 points" (half its eight, as Grip of the Pact and Steady Hand use);
+  "Deep Wells", "Longer Leash" and "Short Leash" keep their names, which the audits called optional to change.
+- **THE SWARM HAS A STAT OF ITS OWN, `kill_summons_minion_where_it_fell`**, not the Reaper's Embrace's
+  `minion_kill_spawns_minion`, which was ruled on 2026-10-19 to answer the wearer's own kills only and to give nothing
+  without a summon skill. Sharing it would have changed a set bonus nobody re-ruled. A judgement.
+- **THE CRIPPLE AND WEAKEN RULE NEEDED NO CODE.** The owner's answer to question 3 of the Ravager audit ("game-wide,
+  copying the stun rule") is already how the game works: `UCataclysmAilments::Application` turns chance above 100%
+  into magnitude and `CapThenExtend` (#1256) turns magnitude above 80 into duration, as the design document's
+  ailments section says ("Chance above 100% becomes magnitude"). The audit's finding D was wrong. A test now holds it
+  at Attrition's figures: 174% Cripple and 166% Weaken give 52.2 and 33.2.
+- **RELENTLESS: BOTH SPEEDS DROP EACH REDUCING ROW ON ITS OWN, ruled by the coordinating session on 2026-11-24.**
+  The first version of this branch left the two speeds different: attack speed dropped each reducing row on its own
+  (+40% beside -50% kept the +40%), while movement speed summed each bucket and floored the sum (+12% beside -40% in
+  the increased bucket gave nothing). The ruling: "'Cannot be reduced' means every reducing row is ignored on its own
+  and every bonus still counts, so +12% beside -40% gives +12% for both speeds." `ACataclysmPlayerCharacter::
+  RefreshMovementSpeed` now drops the reducing rows, as `UCataclysmBasicAttack::AttackSpeedAfterSlows` does.
+  - **Only under the flag.** A character without `movement_speed_reduction_suppressed` -- every character a creature,
+    a dungeon rule or Cripple slows outside Relentless -- still sums its rows exactly as before; that path is
+    unchanged.
+  - **The flag is shared, and so is the rule.** Unstoppable's clause while an enemy is within 4 metres and Nothing
+    Moves You's clause at 50 or more Fervour grant the same stat, so they now read the same way. Their sentences say
+    the holder cannot be slowed, which is this rule.
+  - Tested by `Cataclysm.Player.MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` (+12% and
+    -40%, both increases: 0.72 of the plain speed without the flag, 1.12 with it; the old floor gave 1.0).
+- **CROWD CONTROL RESISTANCE IS WRITTEN TWO WAYS**, as the audits wrote it: "+4 Crowd Control Resistance per point"
+  (Masochist), "+2 Crowd Control Resistance per point" (Ritualist), "+5% Crowd Control Resistance per point" and "+10%
+  Crowd Control Resistance" (Ravager). One stat, one number either way.
+- **THE MASOCHIST ORDER FIX IS APPLIED TO `docs/` HERE**, its Masochist part only (`--only Masochist`), because this
+  rework was written against it. Its workbook half -- Deeper Cuts' and Blood Price's rows at their swapped ids and
+  Grand Tithe at 2% -- had no script, so `tools/reapply_demonic_tree_rework_workbook.py` carries it. The order-fix
+  script finds that tree already fixed, so applying it to every tree later changes nothing here.
+
+### The approval
+
+The project owner, 2026-11-24, on the three audits `audit_demonic_masochist.md`, `audit_demonic_ravager.md` and
+`audit_demonic_ritualist.md`: **"Accept all, write them (Recommended)"** -- every proposal in the three, and the
+fifteen questions answered as each audit recommended. The questions and the answers taken, in the audits' words:
+
+- **Masochist Q1**, the core count: "**Fervour held.**" Q2, which keystone trades stay: "**The Reckoning and Point of
+  No Return** ... The other six become upgrades." Q3, Stigmata's self-burn: "**Yes, 1% of maximum health a second.**"
+  Q4, values below 1: "**Steps.**" (whole numbers "for every 2 points", with `MinPoints` in the duplicate-row key).
+  Q5, Deeper Cuts: "**Yes: '1% of your current health for every 2 points' (5% at 10).**"
+- **Ravager Q1**, the core count: "**Enemies within 4 metres.**" Q2, flat points for damage reduction, crowd control
+  resistance and leech: "**Yes.**" Q3, Cripple and Weaken above 100%: "**Game-wide**, one rule copied from the stun
+  rule." Q4, Ironhide and Overwhelm: "**Yes, but only halve it.**" Q5, "more" in the vows: "**Yes, for the vows.** ...
+  Keep basic nodes on 'increased', as ruled 2026-09-08."
+- **Ritualist Q1**, the starting node's imps: "**keep it on the starting node as part of how the class fills Fervour,
+  and record it as the exception.**" Q2, the Wand: "**yes.** Dominion stays Staff-only, because it is the thrall
+  keystone." Q3, a ceiling: "**a ceiling of 20% on that one option only.**" Q4, "At N points:" bonuses: "**yes**".
+  Q5, Fervour held pays out: "**yes.**"
+
+**THE RULES THE AUDITS WERE WRITTEN UNDER**, given by the owner on 2026-11-24 and quoted here as the audits quote
+them, since this is the first entry to record them: keystones "are upgrades by default, conditions welcome, at most
+one or two conversions per tree"; each vow tier has "one option per tier that scales with the class's core count";
+and "a class-specific mechanic belongs on a keystone or a vow". **The Ritualist's starting node is the recorded
+exception to the last**, by Ritualist Q1: an enemy dying cursed rises as an imp, which is how a Wand Ritualist, with
+no summon skill, fills Fervour at all.
+
+### What changed
+
+Every node keeps its identifier, kind, maximum points and edges, so saved allocations load as they are and the
+approved sigil layouts stay valid. A character holding points in a changed node gets its new effect.
+
+- **Masochist** (50 nodes and 5 vow options, after the order fix's swap and Grand Tithe): Fervour pays out on basic nodes (Gathered Pain, the old Cataclysmic
+  Resonance, "+1% increased damage per point for every full 25 Fervour you hold"; Unflinching, Ceaseless and Deep
+  Reserves at 50 or more Fervour; Communion of Pain at 100 or more); the fifteen copied nodes get fifteen jobs; the
+  Flagellant limb gets its own debuff (Stigmata's self-burn); Low Life's thresholds move to 35% and 50%; Communion,
+  Sanguine Ledger, Flesh Craver, Blood Tithe, Vessel of Plagues and Exsanguinate lose their drawbacks; five decimals
+  become "for every N points" steps. Glutton becomes "1% more damage for every 10 Fervour you hold" (a player who
+  chose it gets the new one); Reprisal Wave, Feeding Wound and Carnivore scale with Fervour held.
+- **Ravager** (36 nodes and 6 vow options): damage reduction, leech and crowd control resistance nodes grant flat
+  points; Ironhide halves the Overwhelm taken from armour; Weight Bearing is 1 armour per 4 maximum health; Stoked
+  delays decay, Second Wind heals when the bar fills, Relentless also protects attack speed and turns increased
+  movement speed into attack speed; Deeper Hurt passes Cripple and Weaken on death; No Ground Given stops decay; the
+  vows' damage clauses use "more"; Long Hold scales with the enemies near; Weight Against Them is replaced by
+  Thronged, "Your Ultimate costs 5 less Fervour for each enemy within 4 metres of you when you use it."
+- **Ritualist** (17 nodes, the Volatile swap and 5 pact options): Volatile moves to Every One Bursts' parent and its old place becomes
+  Legion; The Swarm summons where a kill falls, for your kills and your minions', with or without a summon skill;
+  Press-Ganged works for a Wand; Rekindled keeps a minion whose time ran out; Binding Sigils pays for Fervour held;
+  seven nodes gain "At N points:" bonuses; Bound Servants and Set the Pack On scale per minion; Warded Flesh gives
+  shield on a minion's death; Open Channel raises two imps per cursed death; Fed by the Fallen is replaced by Wall of
+  Servants, "1% less damage for each minion you have, up to 20% less".
+
+### Three additions to the vocabulary
+
+- **`target_carries_your_curse`, a condition.** It asks whether the target carries a `Status.Debuff.*` effect whose
+  instigator is the asker; for a minion's blow the asker is its summoner, so "your curse" is the Ritualist's. It
+  compares no number. It **refuses -- the row does not apply -- when there is no target, no asker, or no row asks**,
+  the direction every target condition takes. Built for Subjugator ("+20% increased Spell Damage against enemies
+  carrying your curse") and Long Servitude; `UCataclysmRisenImps::CarriesCurseLaidBy` is the query.
+  `target_carries_any_debuff` could not serve: every Demonic skill burns, so it is nearly always true.
+- **`increased_movement_speed`, a scale**: the character's summed increased movement speed, in percent, for
+  Relentless's "1% increased Attack Speed for every 2% increased Movement Speed you have". Movement rows that use the
+  scale themselves are left out of the reading, so it cannot loop.
+- **A cap on a passive row.** The Passive Effects sheet gains `Scale Max Steps`, the Enchantment Effects sheet's rule
+  (issue #1815 had refused it on passive rows because nothing read it there); `UCataclysmPassiveTree::AccumulateInto`
+  now copies it to the modifier. Wall of Servants' row is the one that states one: 20.
+
+### Research, and what it settles
+
+The audits read, on 2026-11-24: Maxroll's *Passive Skill Tree for Beginners* (Path of Exile), poedb's pages on
+Rage, Resolute Technique, Unwavering Stance, Unstoppable, Armour Mastery and the small two-handed node, Maxroll's
+*Paragon Boards* (Diablo IV), Crate's *Devotion* guide (Grim Dawn), Maxroll's Last Epoch 1.1 patch notes, and a Last
+Epoch forum thread (community answers only); Last Epoch's own pages returned 403 and nothing relies on them.
+
+- **Settled by the research:** plain per-point nodes are normal as travel, and the payoff sits at the end of a run or
+  behind a threshold (Path of Exile's notables, Diablo IV's rare nodes, Grim Dawn's completed constellations, Last
+  Epoch's threshold bonuses); a decaying resource is supported by nodes on its maximum, gain, decay rate and decay
+  delay (Path of Exile's Rage); a defensive bonus per minion is capped in the genre (Path of Exile's Bone Barrier at
+  10%); "movement speed cannot be reduced" is one line of a bundle there, not a keystone of its own.
+- **A judgement, specific to this game:** every number; the three core counts; flat points for damage reduction and
+  leech (this project's ruling of 2026-09-14 is the precedent, not another game); Thronged; the self-burn; kills that
+  summon; a minion's time renewed; two imps from one death.
+
+### Unreal tests, predicted
+
+New groups (by the tests registered in their files): `Cataclysm.SanguineLedger.` 3, `Cataclysm.VesselOfPlagues.` 3,
+`Cataclysm.Stigmata.` 4, `Cataclysm.UnstableAura.` 4, `Cataclysm.Carnivore.` 4, `Cataclysm.ReprisalWave.` 2,
+`Cataclysm.IronhideOverwhelm.` 3, `Cataclysm.Thronged.` 3, `Cataclysm.Stoked.` 2, `Cataclysm.SecondWind.` 3,
+`Cataclysm.Relentless.` 4, `Cataclysm.DeeperHurt.` 4, `Cataclysm.YourCurse.` 3, `Cataclysm.OpenChannel.` 2,
+`Cataclysm.WardedFlesh.` 2, `Cataclysm.Swarm.` 2, `Cataclysm.PressGangedWand.` 1, `Cataclysm.Rekindled.` 2,
+`Cataclysm.PassiveScaleCap.` 1, `Cataclysm.RitualistRework.` 6: 58 in all. Grown: `Cataclysm.Ailments.` +1,
+`Cataclysm.MasochistCostRows.` +1 and `Cataclysm.Player.` +1 (the Relentless ruling), so **61 more tests** than the
+base's total. Every other group keeps its count;
+about forty existing tests were rewritten or renamed for the new rows.
+
+### Guard proofs registered for the window
+
+One break per mechanism, at most three per change; each must fail the tests named and pass restored.
+
+| Change | Break (file: before -> after) | Must fail |
+|---|---|---|
+| Masochist 1 | `CataclysmFervour.cpp`: `? FMath::Min(Before, FloorAgainstHealing(AbilitySystem, Context))` -> `? 0.0f` | `SanguineLedger.HealingNeverTakesTheFervourBelowFifty`, `SanguineLedger.APoolAlreadyBelowFiftyLosesNothingToHealingAndStillFills`, `MasochistHealingRows.SanguineLedgerKeepsARealMasochistsFervourAtFiftyThroughHealing` |
+| Masochist 1 | `CataclysmAbilitySystemComponent.cpp`: `UCataclysmDebuffs::CountCarriedOn(this)` -> `UCataclysmDebuffs::CountOn(this)` | `VesselOfPlagues.EachDebuffOnItsHolderCountsTwiceForTheNodesThatCountThem` |
+| Masochist 1 | `CataclysmSkillEffects.cpp`: `UCataclysmStigmata::AfterSettingAlight(Instigator, Target, EffectTag);` -> `(void)0;` | `Stigmata.SettingAnEnemyAlightSetsTheHolderAlightForFourSecondsAtOnePercentASecond` |
+| Masochist 2 | `CataclysmNova.cpp`: `+ AmountFromWeaponDamage(WeaponSharePercent,` -> `+ 0.0f * AmountFromWeaponDamage(WeaponSharePercent,` | `UnstableAura.ANovaIsAShareOfWeaponDamage` |
+| Masochist 2 | `CataclysmAbilitySystemComponent.cpp` (`StacksHeld`): `FMath::Max(0.0f, WindowSeconds + StackExtraWindowSeconds[Index])` -> `FMath::Max(0.0f, WindowSeconds)` | `Carnivore.ACarnageStackLastsASecondLongerForEveryTenFervourHeld` |
+| Masochist 2 | `CataclysmRetaliation.cpp` (`RadiusMetresFor`): `Defender, RadiusMetresStat,` -> `Defender, AmountStat,` | `ReprisalWave.TheWaveReachesAMetreFurtherForEveryTwentyFiveFervourHeld` |
+| Ravager 1 | `CataclysmDamageCalculation.cpp`: `bOverwhelmHalvedOnArmour ? Hit.OverwhelmPoints * 0.5f : Hit.OverwhelmPoints` -> `... * 1.0f ...` | `IronhideOverwhelm.OverwhelmTakesHalfAsManyPointsOffAHoldersArmour` |
+| Ravager 1 | `CataclysmGameplayAbility.cpp`: `Cost = FMath::Max(0.0f, Cost - FMath::Max(0.0f, Less));` -> `Cost = FMath::Max(0.0f, Cost - 0.0f * FMath::Max(0.0f, Less));` | `Thronged.TheUltimateCostsFiveLessFervourForEachEnemyWithinFourMetres` |
+| Ravager 1 | `CataclysmFervour.cpp`: `+ FMath::Max(0.0f, Cataclysm->StatForSkill(FName(DecayGraceSecondsStat),` -> `+ 0.0f * FMath::Max(...` | `Stoked.SixPointsHoldTheBarForNineSecondsAfterContactIsLost` |
+| Ravager 2 | `CataclysmBasicAttack.cpp`: `if (Suppressed <= 0.0f)` -> `if (Suppressed <= 1000.0f)` | `Relentless.ARowLoweringAttackSpeedIsDroppedAndAnEarnedOneKept` |
+| Ravager 2 | `CataclysmDebuffs.cpp`: `? Theirs->StatForSkill(FName(SpreadOnDeathMetresStat), FGameplayTagContainer(), 0.0f)` -> `? 0.0f * Theirs->StatForSkill(...)` | `DeeperHurt.ACrippleAndAWeakenPassToTheNearestEnemyWhenTheirCarrierDies` |
+| Ravager 2 | `CataclysmPlayerCharacter.cpp`: `UCataclysmFervour::RestoreHealthOnFervourFull(Cataclysm);` -> `(void)Cataclysm;` | `SecondWind.EachTimeTheBarFillsItRestoresItsShareOfMaximumHealth` |
+| Relentless ruling | `CataclysmPlayerCharacter.cpp` (`RefreshMovementSpeed`): `if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= 0.0f)` -> `if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= -1000.0f)` | `Player.MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` |
+| Ritualist 1 | `CataclysmRisenImps.cpp`: `if (Active && Active->Spec.GetContext().GetInstigator() == Curser)` -> `if (Active)` | `YourCurse.ARowHoldsAgainstATargetCarryingYourCurseAndNotAStrangersCurse` |
+| Ritualist 1 | `CataclysmRisenImps.cpp`: `Count += FMath::Max(0, FMath::FloorToInt(Extra + KINDA_SMALL_NUMBER));` -> `Count += 0;` | `OpenChannel.ACursedDeathRaisesTwoImpsApartAndWithoutTheRowOne` |
+| Ritualist 1 | `CataclysmVitalAttributeSet.cpp`: delete `UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander);` | `WardedFlesh.EachMinionDeathGivesItsCommanderATenthOfItsShield` |
+| Ritualist 2 | `CataclysmSkillTemplates.cpp` (`ReplaceLost`): `: UCataclysmRisenImps::SummonImpKindFor(Commander, Where, /*bRisen=*/false);` -> `: nullptr;` | `PressGangedWand.ARisenImpLostWithNoSummonSkillHeldIsReplacedBySummonImpsKind` |
+| Ritualist 2 | `CataclysmPlayerCharacter.cpp`: `&& (Notice.Killer == this \|\| UCataclysmCommand::CommanderOf(Notice.Killer) == this))` -> `&& Notice.Killer == this)` | `Swarm.AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone` |
+| Ritualist 2 | `CataclysmMinion.cpp`: `if (RenewLifetimeIfRekindled())` -> `if (false && RenewLifetimeIfRekindled())` | both `Rekindled.` tests |
+| Ritualist 3 | `CataclysmPassiveTree.cpp`: `Modifier.ScaleMaxSteps = FMath::Max(0, Effect->ScaleMaxSteps);` -> `Modifier.ScaleMaxSteps = 0;` | `PassiveScaleCap.ARowsCapReachesItsModifierAndStopsTheScaleAtTwentyMinions` |
+| Ritualist 3 | `CataclysmMinion.cpp` (`Spawn`): delete `* UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_health"), Minion->TypeTags)` | `StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline` |
+
+**The Ironhide break touches a line a Python test reads as text, so it must not run beside the Python suite** (issue
+#1630).
+
+### Python guard proofs, run
+
+`tools/prove_guard.py`, `assert result.proved`, on this branch's working tree; each failed with its break in and
+passed restored:
+
+- **PG1**, `MinPoints` in the duplicate-row key still refuses a real duplicate: Brutal Determination's last step moved
+  from 10 points to 8 in `PassiveEffects.csv`. Failed `test_no_node_grants_the_same_stat_twice` and
+  `test_a_for_every_n_points_sentence_has_a_row_at_every_step` (2 failed, 22 passed; restored 24 passed).
+- **PG2**, a "for every N points" series missing a step: Rolling Debt's row at 6 points deleted. Failed
+  `test_a_for_every_n_points_sentence_has_a_row_at_every_step` and `test_the_coverage_is_what_it_was_measured_to_be`
+  (2 failed, 22 passed; restored 24 passed).
+- **PG3**, the workbook must hold the script's rows: Stubborn's written row changed from 5 to 6 in the script. Failed
+  `test_the_committed_workbook_holds_every_change` and `test_the_rows_put_back_are_turned_into_the_committed_sheet`.
+- **PG4**, `docs/` must be what the tree script writes: Stubborn's sentence changed to "+6%" in the script. Failed
+  five tests of `test_apply_demonic_tree_rework_2026_11_24.py`, among them
+  `test_the_unreworked_tree_is_turned_into_the_file_in_docs[Ravager]` (5 failed, 16 passed; restored 21 passed).
 
 ---
 
@@ -2539,6 +3040,102 @@ the function names), and none was added: the Demonic rows' shapes are already he
 
 **The Python suite, on `9e9e5e73d`:** "8244 passed, 9 skipped in 343.41s (0:05:43)"; JUnit 8253 tests, 0 failures, 0
 errors, 9 skipped. ruff: "All checks passed!".
+
+---
+
+## 2026-11-24 — The passive tree screen draws each node as a mark sized by its kind, names the node hovered or selected beside its mark, and draws thicker edges, so a class tree's shape reads (the class-tree sigils)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/sigil-tree-screen` from development `6dd62aba6`, at the
+  coordinating session's request of 2026-11-24, while the bug batches waited for the machine. **No tree file changes**:
+  re-laying each class tree as a sigil is its own pull request, one tree each, after this, as the sigil README
+  recommends.
+- **No existing test pinned a node's size or its text.** The choice button had no label getter, so nothing read what a
+  node said; the layout tests read the fit, zoom and edge arithmetic, which is unchanged. So no existing test changes.
+  `UCataclysmChoiceButton::GetLabel` is added for the new tests.
+
+### Why
+
+The owner wants every class tree laid out as a heraldic emblem of its class (a "sigil": nine layouts are drafted, with
+previews, in `nice-carson-77a188/.claude/windows/constellations/`). Its README measured that the screen buried any shape:
+every node was the same 150 x 44 labelled button, and one close pair shrank every node of a tree (Bulwark's to 0.49).
+**Its recommendation, taken here: change the screen first, then re-lay one tree per pull request.**
+
+### What it does
+
+| | Until now | Now |
+| :-- | :-- | :-- |
+| An ordinary node | a 150 x 44 box holding "Name n/max" | a 28 x 28 mark |
+| A keystone | the same box | a 48 x 48 mark, larger both ways |
+| A vow (the files' "capstone") | the same box | a 72 x 40 mark, wider than tall |
+| What a node says on itself | its name and count | its spent count, "2/3", and nothing when unspent |
+| The name | on the box | beside the mark of the node hovered or last selected, "Shield Mastery  2/3", with "(N add nothing)" when it applies |
+| Edges | 3 px at zoom 1 | 10 px at zoom 1 |
+| Shrinking | `NodeScaleFor`, by the 150 x 44 box | `MarkScaleFor`, each pair by its own two marks |
+
+- **Every class tree and all nine sigil drafts draw at 1** under `MarkScaleFor`, measured on 2026-11-24 (Bulwark was
+  0.49 under the box rule). The rule stays so a tree laid out closer is drawn smaller, not overlapping.
+- **The empire tree is unchanged**: its screen reads `NodeWidthPx`, `NodeHeightPx` and `EdgeThicknessPx`, which keep
+  150, 44 and 3.
+- **Kept as they were:** spending, refusing, the class refusal and its tool tip, the "points add nothing" tool tip, the
+  vow's three options, the fit, the zoom and the drag.
+- **On screen it is still the passive tree, never a sigil**: "sigil" already names the Unholy Sigils modifier and the
+  Ritualist's Binding Sigils node (the README's warning); a Python check holds the screen's strings to it.
+- **A stale paragraph corrected**: the widget's class comment said it drew "a list", untrue since #937.
+
+**Judgements of this session, labelled as such:** the three sizes (28, 48 and 72 x 40), the 10 px edge (the README
+said 8 to 12), the count on the mark rather than beside it, and one name label that follows the hovered or selected
+node rather than names for keystones at all times. The README also suggests brightening a path once points are spent
+along it, and tinting the panel by the class's colours; neither is built here.
+
+### Tests
+
+**Unreal, a new group `Cataclysm.PassiveMarks.`, 4 tests**, in `CataclysmPassiveTreeMarksTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| PM1 | `AMarkIsSizedByItsNodesKindAndTheThreeKindsReadApart` | the kinds' marks and sizes; the Bulwark tree's 55, 15 and 4; edges 10 px; CONTROL the empire box 150 x 44 and 3 px |
+| PM2 | `MarksShrinkOnlyAsFarAsTheClosestPairNeedsAndNoRealTreeNeedsIt` | a made tree 20 / 28; one node 1; every real tree 1 with no overlapping pair |
+| PM3 | `HoveringANodeShowsItsNameAndCountBesideItsMark` | CONTROL no name; "Fervour  0/1" 8 px past its mark, level; a keystone's further by half its mark; no spend; another tree clears it |
+| PM4 | `ASpentNodeShowsItsCountOnItsMarkAndAnUnspentOneShowsNothing` | CONTROL nothing before; "1/1" after a spend; its child and a vow nothing; "Fervour  1/1" named |
+
+**Python, `tools/tests/test_passive_tree_marks.py`, 4 checks**: the sizes and the empire box; a mark chosen by the
+files' words; the screen sizes by mark, draws thick edges, says only the count, adds the name last and hit-test
+invisible; no string in the screen says "sigil".
+
+**Python guard proofs** (`.claude/windows/prove_marks_python.py`, in a `git archive` copy): **6 of 6 PROVED** -- a
+keystone the ordinary size, the empire box narrowed, a capstone read as ordinary, edges at 3 px, the name label added
+before the nodes, and "sigil" in the vow's opening line. **The last first failed to fail**: the check read only a whole
+`TEXT("...")`, and that line is two joined strings; it now reads every string, and the proof passes.
+
+**Python suite**: in a `git archive` copy of the head, "11 failed, 8219 passed, 15 skipped"; JUnit 8245 tests, 11 failures, 0
+errors, 15 skipped. **The 11 are the three files that ask git, which a copy is not** ("fatal: not a git
+repository"): `test_map_built_data_is_not_committed.py`, `test_only_one_session_can_hold_the_unreal_editor.py` and
+`test_stray_lfs_hook_directory_is_ignored.py`. In the worktree those three gave "31 passed". ruff: "All checks
+passed!".
+
+### Registered for its window
+
+**The whole suite: the base's last measured total plus 4**, all succeeded; skipped halves and test saves unchanged
+(no new test reports a skipped half or writes a save). No editor step: no CSV or asset changes. Groups alone, each at
+its count in the base's newest engine log (sd-w2's figures in brackets): `Cataclysm.PassiveMarks.` 4 (new),
+`Cataclysm.Passives.` (161), `Cataclysm.EmpireTreeScreen.` (10), `Cataclysm.EmpireScreen.` (16) and
+`Cataclysm.Creation.` (14), the last three for the shared layout constants and the choice button.
+
+**C++ guard proofs**, each narrowed to `Cataclysm.PassiveMarks.` (`.claude/windows/prove_marks_table.py.txt`), every
+anchor matching once. Predicted, not run:
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| PMK1 | a keystone's mark 28 | 4 performed, 2 failed: PM1, PM3 |
+| PMK2 | a capstone read as ordinary | 4, 1 failed: PM1 |
+| PMK3 | a pair needs its marks' whole sizes, not half | 4, 1: PM2 (every real tree still draws at 1) |
+| PMK4 | the mark says the name, as the box did | 4, 1: PM4 |
+| PMK5 | an unspent mark says "0/1" | 4, 1: PM4 |
+| PMK6 | the name at the mark's centre plus the gap | 4, 1: PM3 |
+| PMK7 | the name's count read as 0 | 4, 1: PM4 |
+| PMK8 | edges at 3 px | 4, 1: PM1 |
 
 ---
 

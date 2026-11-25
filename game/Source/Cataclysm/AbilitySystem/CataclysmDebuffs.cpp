@@ -142,6 +142,41 @@ int32 UCataclysmDebuffs::CountOnActor(const AActor* Actor)
 	return CountOn(UCataclysmTargeting::AbilitySystemOf(Actor));
 }
 
+// WHAT VESSEL OF PLAGUES GRANTS SINCE THE PROJECT OWNER'S APPROVAL OF
+// 2026-11-24: "each debuff on you counts twice for everything that counts the
+// debuffs on you."
+const TCHAR* UCataclysmDebuffs::CountTwiceStat = TEXT("debuffs_carried_count_twice");
+
+bool UCataclysmDebuffs::CountsTwiceOn(const UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return false;
+	}
+
+	const FCataclysmStatInputs* Inputs = Cataclysm->GetStatInputs(FName(CountTwiceStat));
+	if (!Inputs)
+	{
+		// NOTHING RECORDED: every character without the keystone.
+		return false;
+	}
+
+	// THE LINE THROUGH THE PIPELINE WITH NO STATE AND NO TAGS, which is what the
+	// header promises and why this cannot recurse: the default state refuses
+	// every condition rather than asking `CurrentConditions` for one.
+	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+											FGameplayTagContainer(),
+											FCataclysmStatConditions()).Final > 0.0f;
+}
+
+int32 UCataclysmDebuffs::CountCarriedOn(const UAbilitySystemComponent* AbilitySystem)
+{
+	const int32 Distinct = CountOn(AbilitySystem);
+	return CountsTwiceOn(AbilitySystem) ? Distinct * 2 : Distinct;
+}
+
 int32 UCataclysmDebuffs::Cleanse(AActor* Character)
 {
 	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Character);
@@ -545,6 +580,109 @@ int32 UCataclysmDebuffs::HoldAppliedNearbyStep(AActor* Character, float StepSeco
 		}
 	}
 	return Held;
+}
+
+const TCHAR* UCataclysmDebuffs::SpreadOnDeathMetresStat =
+	TEXT("cripple_and_weaken_spread_on_death_metres");
+
+int32 UCataclysmDebuffs::PassCrippleAndWeakenOnDeath(AActor* Dying)
+{
+	UAbilitySystemComponent* Carrier = UCataclysmTargeting::AbilitySystemOf(Dying);
+	if (!Dying || !Carrier)
+	{
+		return 0;
+	}
+
+	const FVector Body = Dying->GetActorLocation();
+	int32 Passed = 0;
+	for (const FGameplayTag& Tag : {CrippleTag(), WeakenTag()})
+	{
+		if (!Tag.IsValid())
+		{
+			continue;
+		}
+
+		// GATHERED FIRST, AND PASSED AFTER, so nothing the passes do can change the list being read. One entry for
+		// each application on the body by an applier holding the node, with the figure that application stated.
+		struct FPassing
+		{
+			AActor* Applier = nullptr;
+			float Metres = 0.0f;
+			float Stated = 0.0f;
+		};
+		TArray<FPassing> Passing;
+		FGameplayTagContainer Granted;
+		Granted.AddTag(Tag);
+		for (const FActiveGameplayEffectHandle& Handle :
+			 Carrier->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Granted)))
+		{
+			const FActiveGameplayEffect* Active = Carrier->GetActiveGameplayEffect(Handle);
+			AActor* Applier = Active ? Active->Spec.GetContext().GetInstigator() : nullptr;
+			if (!Applier || Applier == Dying)
+			{
+				continue;
+			}
+			const UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Applier));
+			// THE NODE FIRST AND CHEAPLY: nought for every applier without Deeper Hurt, which is every enemy and almost
+			// every player.
+			const float Metres = Theirs
+				? Theirs->StatForSkill(FName(SpreadOnDeathMetresStat), FGameplayTagContainer(), 0.0f)
+				: 0.0f;
+			if (Metres <= 0.0f)
+			{
+				continue;
+			}
+			FPassing One;
+			One.Applier = Applier;
+			One.Metres = Metres;
+			One.Stated = FMath::Max(0.0f, Active->Spec.GetSetByCallerMagnitude(
+				FName(UCataclysmSkillEffects::StatedMagnitudeDataName),
+				/*WarnIfNotFound=*/false, /*DefaultIfNotFound=*/0.0f));
+			Passing.Add(One);
+		}
+
+		// THE EFFECT'S OWN DESIGNED DURATION, as a copy keeps. A row with none is an effect nobody wrote.
+		const float Seconds = UCataclysmSkillEffects::NumbersForEffectTag(Tag).DurationSeconds;
+		if (Passing.IsEmpty() || Seconds <= 0.0f)
+		{
+			continue;
+		}
+
+		for (const FPassing& One : Passing)
+		{
+			// THE APPLIER'S ENEMIES AROUND THE BODY, so sides are judged from the one whose effect it is; the body
+			// itself left out whatever the search answers, and so is any enemy already carrying this effect.
+			TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+				Dying->GetWorld(), One.Applier, Body, One.Metres * 100.0f);
+			Nearby.Remove(Dying);
+			Nearby.RemoveAll([&Tag](const AActor* Candidate)
+			{
+				const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Candidate);
+				return !Its || Its->HasMatchingGameplayTag(Tag) || UCataclysmSkillEffects::IsDead(Candidate);
+			});
+			if (Nearby.IsEmpty())
+			{
+				continue;
+			}
+			Nearby.Sort([&Body](const AActor& A, const AActor& B)
+			{
+				return FVector::DistSquared(A.GetActorLocation(), Body)
+					< FVector::DistSquared(B.GetActorLocation(), Body);
+			});
+
+			// CRIPPLE CARRIES ITS FIGURE ON THE TAG AND WEAKEN MOVES A STAT, the split `UCataclysmAilments::Apply`
+			// makes; each is laid the way that function lays it. A stated figure of nought takes the row's own.
+			const bool bLaid = Tag == WeakenTag()
+				? UCataclysmSkillEffects::ApplyNamedEffect(One.Applier, Nearby[0], Tag, Seconds, One.Stated, NAME_None)
+				: UCataclysmSkillEffects::ApplyTagForDuration(One.Applier, Nearby[0], Tag, Seconds, One.Stated);
+			if (bLaid)
+			{
+				++Passed;
+			}
+		}
+	}
+	return Passed;
 }
 
 int32 UCataclysmDebuffs::HoldStep(AActor* Character, float StepSeconds)

@@ -391,9 +391,6 @@ INVENTORY = {
         "an ailment's chance and magnitude, asked with the skill's tags "
         'so a row scoped to a kind of skill reaches it; no blow is in '
         'hand',
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp',
-     'FName(TEXT("attack_speed")), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Speed)'):
-        "the basic attack's own speed, asked before a blow is thrown",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmContagion.cpp',
      'FName(AuraDurationStat), FGameplayTagContainer(), 0.0f'):
         "an aura's duration and chance, asked of the character rather "
@@ -438,6 +435,10 @@ INVENTORY = {
      'FName(LossSuppressedStat), Healing, 0.0f'):
         'class resource generation, asked on a timer with no blow, '
         'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(FloorAgainstHealingStat), Healing, 0.0f'):
+        "Sanguine Ledger's floor, asked with the healing's tags when healing "
+        'removes Fervour, with no blow, target or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(PerSecondStat), FGameplayTagContainer(), 0.0f'):
         'class resource generation, asked on a timer with no blow, '
@@ -558,6 +559,9 @@ INVENTORY = {
         'container',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmNova.cpp',
      'FName(DamageStat), FGameplayTagContainer(), 0.0f'):
+        "a nova's own figures, asked before it strikes anything",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNova.cpp',
+     'FName(WeaponDamageStat), FGameplayTagContainer(), 0.0f'):
         "a nova's own figures, asked before it strikes anything",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp',
      'FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat), SkillTags, UCataclysmDamageCalculation::NormalProjectileLaterHitDamage'):
@@ -721,6 +725,14 @@ INVENTORY = {
      'FName(CarnageHasNoMaximumStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
         'how long a stack lasts and how many may be held, read off the '
         'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp',
+     'FName(CarnageStackSecondsStat), FGameplayTagContainer(), 0.0f'):
+        'how long a stack lasts and how many may be held, read off the '
+        'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmStigmata.cpp',
+     'FName(SelfBurnStat), FGameplayTagContainer(EffectTag), 0.0f'):
+        "a switch read off the character that laid a burn, with the burn's "
+        'own tag and no blow, target or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat), AssetTags, Swinging->GetNumericAttribute(Suppressed)'):
         'a defender reading with no blow in hand',
@@ -1105,6 +1117,22 @@ INVENTORY = {
         "share is judged on the struck character's health by KillIfLeftBelow "
         "once the hit's damage is written, so no blow and no target are "
         "handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
+     'FName(ExtraImpsStat), FGameplayTagContainer(), 0.0f'):
+        "Open Channel's imps beyond the first, asked of the curser of a "
+        "creature that has just died (the demonic tree rework of "
+        "2026-11-24); a death is not a skill, so no tags, and no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(LifetimeRenewedEverySecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Rekindled's seconds between two lifetimes renewed, asked of the "
+        "summoner when a minion's time runs out (the demonic tree rework of "
+        "2026-11-24); an expiry is not a skill, so no tags, and no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(KillSummonsMinionStat), FGameplayTagContainer(), 0.0f'):
+        "The Swarm's flag, asked by SummonAtAKillFor of the commander at a "
+        "kill of its own or one of its minions' (the demonic tree rework of "
+        "2026-11-24); the kill has already happened and no skill of it is "
+        "in hand, so no tags and no blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
      'FName(KillSpawnsMinionStat), FGameplayTagContainer(), 0.0f'):
         "the flag by which a kill spawns one minion of the first summon skill "
@@ -1156,13 +1184,42 @@ INVENTORY = {
         "with Type.Trap alone from a placing and from the skill bar; a "
         "placing is not a blow and neither row has a condition, so no blow "
         "and no target are handed over",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp',
      'FName(TEXT("attack_speed")), SkillTags, Attribute'):
-        "the attack speed a rack's seconds between throws are divided by "
-        "(issue #2233, ruled 2026-10-23), asked by SecondsBetweenThrows "
-        "with the skill's own tags once, when BeginEmptyingTheRack starts "
-        "the rack, the attribute the fallback; the throws have not landed, "
-        "so no blow and no target are handed over",
+        "the attack speed both readers pace by, asked by AttackSpeedAfterSlows "
+        "(the Ravager tree rework, 2026-11-24): for the basic attack's swing "
+        "with no tags, and for a rack's seconds between throws (issue #2233, "
+        "ruled 2026-10-23) with the projectile skill's own tags once, when "
+        "BeginEmptyingTheRack starts the rack; the attribute the fallback; "
+        "nothing has landed, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp',
+     'FName(AttackSpeedReductionSuppressedStat), FGameplayTagContainer(), 0.0f'):
+        "Relentless's flag that nothing lowers attack speed (the Ravager tree "
+        "rework, 2026-11-24), asked by AttackSpeedAfterSlows of the swinger "
+        "whatever the skill; a flag about the character, so no blow, no "
+        "target and no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(SpreadOnDeathMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Deeper Hurt's radius (the Ravager tree rework, 2026-11-24), asked of "
+        "whoever applied a Cripple or a Weaken when its carrier dies; the "
+        "death is over and no blow or skill is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(DecayGraceSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Stoked's seconds added to the decay grace (the Ravager tree rework, "
+        "2026-11-24), asked in DecayStep on the regeneration step; time "
+        "passing is not a blow and no skill is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HealthRestoredOnFullStat), FGameplayTagContainer(), 0.0f'):
+        "Second Wind's share of maximum health (the Ravager tree rework, "
+        "2026-11-24), asked when the Fervour pool becomes full; a crossing "
+        "of the pool is not a blow and no skill is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(UltimateFervourCostReductionStat), SkillTagsForStats(), 0.0f'):
+        "Thronged's Fervour off the Ultimate's cost (the Ravager tree "
+        "rework, 2026-11-24), asked in FervourCostFor with the skill's tags; "
+        "its row is scaled by the enemies within 4 metres, which the "
+        "character's own state counts; a cost is read before any blow, so "
+        "no blow and no target",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'FName(TEXT("dot_damage")), TickTags, 100.0f, -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(Ticked), Ticked'):
         "the applier's dot_damage on each tick its stats priced, with the "

@@ -42,6 +42,9 @@
 // healing reach it and the Masochist's rule that healing removes Fervour
 // applies to it. Issue #1815.
 #include "AbilitySystem/CataclysmRegeneration.h"
+// For whether the character being hit carries a curse the asker laid, which
+// `target_carries_your_curse` reads. The demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRisenImps.h"
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -1209,7 +1212,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// one debuff may or may not be Bleeding, and a bleeding character may carry
 	// three debuffs; neither reading can be worked out from the other.
 	State.bIsBleeding = UCataclysmDebuffs::IsBleeding(this);
-	State.DebuffsCarried = UCataclysmDebuffs::CountOn(this);
+	// TWICE OVER FOR A HOLDER OF VESSEL OF PLAGUES, approved by the project
+	// owner on 2026-11-24: "each debuff on you counts twice for everything that
+	// counts the debuffs on you". This reading is what every node paying per
+	// debuff on you scales by, so doubling it here doubles each of them.
+	State.DebuffsCarried = UCataclysmDebuffs::CountCarriedOn(this);
 
 	// AND WHETHER IT IS UNDER ANY DAMAGE OVER TIME AT ALL. Ruled 2026-10-07. The
 	// parent of the bleed tag, asked of the same tag list, so a burn, a poison
@@ -1474,8 +1481,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// crippled -- and a lookup asking only about crippled enemies must not pay
 	// for the distances-only walk, nor the reverse.
 	float WidestCrippled = -1.0f;
+	// AND WHETHER A ROW SCALES BY INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless. Filled
+	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
+	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
+	bool bWantsIncreasedMovementSpeed = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
+		if (Modifier.Scale == ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed)
+		{
+			bWantsIncreasedMovementSpeed = true;
+		}
+
 		// EITHER CONDITION MAY ASK, since issue #1833 gave a row a second one.
 		if (Modifier.Condition == ECataclysmStatCondition::EnemiesInReachAtLeast
 			|| Modifier.Condition2 == ECataclysmStatCondition::EnemiesInReachAtLeast
@@ -1491,6 +1507,35 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
 		}
+	}
+
+	// THE INCREASES OF THIS CHARACTER'S OWN MOVEMENT SPEED LINE, ONLY WHEN A ROW
+	// ASKS. One pipeline pass over that line with the state built the same way,
+	// so a conditioned movement row counts while it holds. THE ROWS THAT
+	// THEMSELVES ASK FOR THIS SCALE ARE LEFT OUT OF THAT PASS, so a movement row
+	// scaled by its own increases cannot ask for itself without end. No line
+	// recorded means nothing increased, which is nought rather than unknown: a
+	// character with no movement rows has no increased movement speed.
+	if (bWantsIncreasedMovementSpeed)
+	{
+		const FCataclysmStatInputs* Movement = StatInputs.Find(FName(TEXT("movement_speed")));
+		float Increased = 0.0f;
+		if (Movement)
+		{
+			TArray<FCataclysmStatModifier> NotAskingForItself;
+			NotAskingForItself.Reserve(Movement->Modifiers.Num());
+			for (const FCataclysmStatModifier& Row : Movement->Modifiers)
+			{
+				if (Row.Scale != ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed)
+				{
+					NotAskingForItself.Add(Row);
+				}
+			}
+			Increased = UCataclysmStatPipeline::Evaluate(
+				Movement->Base, NotAskingForItself, FGameplayTagContainer(),
+				WithEnemiesInReach(NotAskingForItself, CurrentConditions())).SumOfIncreases;
+		}
+		State.IncreasedMovementSpeedPercent = FMath::Max(0.0f, Increased);
 	}
 
 	// A ROW THAT ASKS WITHOUT A REACH IS STILL NOTHING TO WALK. Its own
@@ -1596,6 +1641,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsZone = false;
 	bool bWantsSilence = false;
 	bool bWantsMoving = false;
+	bool bWantsYourCurse = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
@@ -1650,6 +1696,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetIsMoving:
 				bWantsMoving = true;
 				break;
+			// AND WHETHER THE TARGET CARRIES A CURSE THE ASKER LAID, LISTED HERE FOR THE REASON THE AILMENT COMMENT
+			// ABOVE GIVES. The demonic tree rework of 2026-11-24: Subjugator and Long Servitude.
+			case ECataclysmStatCondition::TargetCarriesYourCurse:
+				bWantsYourCurse = true;
+				break;
 			default:
 				break;
 			}
@@ -1665,7 +1716,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		}
 
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence
-			&& bWantsMoving)
+			&& bWantsMoving && bWantsYourCurse)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1679,9 +1730,18 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// lookup with no row asking has no condition to answer.
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence
-			&& !bWantsMoving))
+			&& !bWantsMoving && !bWantsYourCurse))
 	{
 		return State;
+	}
+
+	// WHETHER THE TARGET CARRIES A CURSE THE ASKER LAID. The demonic tree rework of 2026-11-24. THE ASKER IS THE
+	// ABILITY SYSTEM'S AVATAR, the character a curse names as its instigator; for a minion's blow that is its
+	// summoner, whose component the minion's damage is read through. No asker in hand leaves it false, which refuses.
+	if (bWantsYourCurse && State.AskingAbilitySystem)
+	{
+		State.bTargetCarriesYourCurse = UCataclysmRisenImps::CarriesCurseLaidBy(
+			Target, State.AskingAbilitySystem->GetAvatarActor());
 	}
 
 	// WHETHER THE TARGET IS SILENCED NOW. Ruled 2026-10-17. Its tag, read through `UCataclysmSilence`, the one place
@@ -2108,6 +2168,27 @@ void UCataclysmAbilitySystemComponent::NoteMinionReplaced(bool bForExplosion,
 		? MinionExplosionReplacementNextAllowedSeconds
 		: MinionDeathReplacementNextAllowedSeconds;
 	NextAllowed = World->GetTimeSeconds() + IntervalSeconds;
+}
+
+bool UCataclysmAbilitySystemComponent::MayRenewMinionLifetime() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	return MinionLifetimeRenewalNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= MinionLifetimeRenewalNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteMinionLifetimeRenewed(float IntervalSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+	MinionLifetimeRenewalNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat =
@@ -2603,13 +2684,18 @@ int32 UCataclysmAbilitySystemComponent::StacksHeld(ECataclysmStackKind Kind,
 	// REPORTED RATHER THAN STORED, so asking does not reset anything. The count
 	// held in the field is only meaningful inside the window; outside it the
 	// answer is zero, and the field is corrected on the next grant.
+	//
+	// AND THE EXTRA THE LAST GRANT DECIDED ON, nought for every kind but
+	// Carnivore's Carnage. See `GrantStack`.
 	const float Since = World->GetTimeSeconds() - StackGrantedAtSeconds[Index];
-	return Since > FMath::Max(0.0f, WindowSeconds) ? 0 : StackCounts[Index];
+	return Since > FMath::Max(0.0f, WindowSeconds + StackExtraWindowSeconds[Index])
+		? 0 : StackCounts[Index];
 }
 
 void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
 												  float WindowSeconds,
-												  int32 Cap)
+												  int32 Cap,
+												  float ExtraWindowSeconds)
 {
 	const int32 Index = static_cast<int32>(Kind);
 	if (Index < 0 || Index >= UCataclysmStacks::KindCount)
@@ -2651,6 +2737,12 @@ void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
 	// AND THE WHOLE LOT'S EXPIRY MOVES WITH IT. See the header for why this is
 	// one timestamp per kind rather than one per stack.
 	StackGrantedAtSeconds[Index] = World->GetTimeSeconds();
+
+	// AND SO DOES HOW MUCH LONGER THAN ITS WINDOW IT LASTS, AFTER `Standing` WAS
+	// READ: whether the count had lapsed is judged on what the last grant
+	// decided, and this grant decides for the next. Floored at nought, so no
+	// grant shortens a kind's own window.
+	StackExtraWindowSeconds[Index] = FMath::Max(0.0f, ExtraWindowSeconds);
 }
 
 void UCataclysmAbilitySystemComponent::NoteBuffNegated()
@@ -2687,6 +2779,7 @@ void UCataclysmAbilitySystemComponent::ClearStacks(ECataclysmStackKind Kind)
 	// with nothing before it looks at the clock.
 	StackCounts[Index] = 0;
 	StackGrantedAtSeconds[Index] = 0.0f;
+	StackExtraWindowSeconds[Index] = 0.0f;
 }
 
 bool UCataclysmAbilitySystemComponent::SpendStack(ECataclysmStackKind Kind,

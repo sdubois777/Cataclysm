@@ -1092,6 +1092,94 @@ bool FCataclysmPlayerSpeedKeepsItsEarnedIncrease::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedKeepsAnIncreaseInItsOwnBucket,
+	"Cataclysm.Player.MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Cannot be reduced" drops each reducing ROW, not the sum of a bucket. The
+ * coordinating session's ruling of 2026-11-24, on the Ravager's Relentless:
+ * every reducing row is ignored on its own and every bonus still counts, so
+ * +12% beside -40% gives +12%, for movement speed as for attack speed.
+ *
+ * WHY THE TEST ABOVE DID NOT SETTLE IT. Its bonus is an increase and its
+ * reduction a "less" multiplier, two buckets, so flooring each bucket's sum
+ * and dropping each reducing row give the same answer there. Here both rows
+ * are increases: until that ruling the bucket summed to -28%, was floored at
+ * nought, and the character walked at its plain speed, losing the 12% it
+ * earned. The two answers differ by about an eighth, which no tolerance here
+ * hides, and the plain speed is asserted against as well.
+ */
+bool FCataclysmPlayerSpeedKeepsAnIncreaseInItsOwnBucket::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// TWELVE PER CENT EARNED AND FORTY TAKEN, BOTH IN THE INCREASED BUCKET.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::Increased, 12.0f));
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::Increased, -40.0f));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	// THE CONTROL: WITHOUT THE NODE THE TWO SUM, as for every character.
+	if (!TestEqual(TEXT("without the node the increases sum: 12% and -40% make -28%"),
+				   Movement->MaxWalkSpeed, Plain * 0.72f, 0.01f))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::
+			GetMovementSpeedReductionSuppressedAttribute(), 1.0f);
+	Character->RefreshMovementSpeed();
+
+	TestEqual(TEXT("with the node the -40% row is dropped on its own and the 12% kept"),
+			  Movement->MaxWalkSpeed, Plain * 1.12f, 0.01f);
+	TestTrue(TEXT("and the answer is above the plain speed, which flooring the bucket's "
+				  "sum at nought could never give"),
+			 Movement->MaxWalkSpeed > Plain + 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmPlayerSpeedIgnoresAReductionOnlyWhileCrowded,
 	"Cataclysm.Player.MovementSpeedReductionIsDroppedOnlyWhileAnEnemyIsNear",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

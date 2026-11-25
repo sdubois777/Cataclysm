@@ -71,7 +71,14 @@ def test_a_creatures_blow_on_a_player_carries_it():
 def test_resolve_takes_it_beside_penetration_before_the_cap():
     text = (SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.cpp").read_text(encoding="utf-8")
     assert "Hit.ResistancePenetration + Hit.OverwhelmPoints, ResistanceCapOf(Defender));" in text
-    assert "ArmorReduction(Armor, Tier) - Hit.OverwhelmPoints" in text
+    # ARMOUR TAKES IT THROUGH ONE LOCAL SINCE THE RAVAGER TREE REWORK OF
+    # 2026-11-24: the whole of the blow's points, or half of them for a defender
+    # holding Ironhide's `armor_overwhelm_halved` (the owner's ruling that day).
+    # Resistance, evasion and block still take the whole, asserted above and
+    # below.
+    assert "ArmorReduction(Armor, Tier) - OverwhelmOnArmour" in text
+    assert ("bOverwhelmHalvedOnArmour ? Hit.OverwhelmPoints * 0.5f : Hit.OverwhelmPoints"
+            in text)
     assert text.count("- Hit.OverwhelmPoints))") == 2, "evasion and block each take it off their chance"
 
 

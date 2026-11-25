@@ -38,9 +38,11 @@
  *   2. The rule in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`,
  *      which requires all three of melee, critical, and damage that actually
  *      reached health.
- *   3. The authored row that gives a real character the chance. That one is in
- *      `CataclysmPassiveTreeTests.cpp` beside the other real-character tests,
- *      as `Cataclysm.Passives.MutilationMasteryGivesARealMasochistFortyPercent`.
+ *   3. The authored row that gave a real character the chance, Mutilation
+ *      Mastery's, was tested as `Cataclysm.Passives.MutilationMasteryGivesARealMasochistFortyPercent`
+ *      until the Masochist tree rework the project owner approved on 2026-11-24
+ *      made that node Ravenous. No passive row grants the chance now; this rule
+ *      still reads it for anything that does.
  *
  * THE ROLL ITSELF IS NOT EXERCISED END TO END AND CANNOT BE. It is
  * `FMath::FRandRange(0.0f, 100.0f)` inside `PostGameplayEffectExecute` with no
