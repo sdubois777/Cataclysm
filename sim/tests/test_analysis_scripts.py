@@ -970,8 +970,7 @@ def test_the_caps_are_now_filled_by_affixes_alone(weakening_run):
     418%, past both caps: Cripple needs 267%, Weaken 400%.
 
     PINNED AT THE MEASURED FIGURES rather than deleted, so the next change to
-    either side is seen. Reported to the coordinating session on 2026-11-25 as
-    a consequence of the approved ranges for the decision of #300 to be
+    either side is seen. Issue #2913 asks for the decision of #300 to be
     revisited; this test does not decide it."""
     _, ns = weakening_run
     rows = ns["status_effect_rows"]()
