@@ -4022,8 +4022,14 @@ public:
 	 * which also fires for a next-use charge spent and so cannot stand for Fervour. The Fervour mechanics' own spends
 	 * (Wrung Out, Bought With Ruin) raise nothing, by the rule `NoteResourceConsumed` states. Nothing for an amount
 	 * of nothing or less.
+	 *
+	 * @param bTakenFromThePool false for Fervour only COUNTED as spent, which nothing took from the pool: Bound
+	 *        Offering's share of a reserve held (`UCataclysmCommand::HoldReserve`). Every row reading a spend reads it
+	 *        alike; only Cinders Kept's return asks, because there is nothing to return of Fervour never taken. Ruled
+	 *        by the coordinating session on 2026-11-25 (the Death trees' slice C3c).
 	 */
-	void NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags = nullptr);
+	void NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags = nullptr,
+						  bool bTakenFromThePool = true);
 
 	/** How long ago this character last spent Fervour, in seconds, or -1 if it never has. */
 	float SecondsSinceFervourSpent() const;

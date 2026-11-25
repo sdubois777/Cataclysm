@@ -14,9 +14,11 @@ Decisions made outside the Google Drive documents, newest first.
 - `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`: `MovementOnCooldownFervourCostStat`,
   `FervourToUseOnCooldown`; `CheckCooldown` lets a borrowed use through and `ApplyCooldown` takes its Fervour.
 - `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the three new stats have no attribute.
-- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourPaidTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp`
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`: `HoldReserve` records Bound Offering's share as
+  not taken from the pool (the ruling below).
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourPaidTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
   (three probes) and `CataclysmDataTableTests.cpp`; `tools/tests/test_fervour_paid_where_the_engine_reads_it.py`, new
-  (8); `test_passive_effects_match_the_node_text.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+  (9); `test_passive_effects_match_the_node_text.py` and `test_stat_lookups_hand_over_what_they_should.py`.
 - `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (539
   rows), `docs/README.md`.
 
@@ -24,7 +26,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 - **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
   groups under "Unreal tests".
-- **FOUR JUDGEMENTS, each labelled where it is made:**
+- **THREE JUDGEMENTS ACCEPTED AND ONE RULED AGAINST, each labelled where it is made:**
   1. **Phylactery is the last save asked**, after Nothing Stops It, the Demon King's reprieve and Archon's Aegis's
      crossing: it costs everything held, so a save that costs less goes first.
   2. **Phylactery saves a damage-over-time tick too**, as the reprieve reads "would be killed": the sentence's "a blow
@@ -32,10 +34,9 @@ Decisions made outside the Google Drive documents, newest first.
   3. **Borrowed Step's use leaves the movement skill's cooldown running as it was.** A use borrowed on cooldown does not
      start another cooldown. The test lets a second pass before the borrowed use, so a cooldown started again would
      read longer than the one measured.
-  4. **Cinders Kept returns a share of every spend**, Bound Offering's reserve and Phylactery's save included, since
-     each counts as Fervour spent. With Bound Offering at six points (90%) and Cinders Kept at six (18%), holding back 20
-     returns about 3.2 Fervour 4 seconds later that was never taken from the pool. The two are neighbours in the same
-     limb; flagged in case the pairing is not meant to pay.
+  4. **RULED AGAINST: Cinders Kept returns a share only of Fervour taken from the pool.** As first written it returned a
+     share of every spend, Bound Offering's included, so with both at six points holding back 20 returned about 3.2
+     Fervour never taken. The coordinating session ruled on 2026-11-25 that it does not: see "Rulings recorded here".
 - **TWO FIGURES ARE THE ENGINE'S, NOT ROWS:** Cinders Kept's 4 seconds (`FervourReturnedAfterSeconds`) and Phylactery's
   50 (`FervourLethalSaveLeast`), as the Siphon's fixed seconds are. Phylactery's 60 seconds and Borrowed Step's 40 and 2
   are rows.
@@ -49,7 +50,8 @@ Decisions made outside the Google Drive documents, newest first.
 ### What each node does now
 
 **Cinders Kept.** `NoteFervourSpent` asks `fervour_spent_returned_percent` with the spending skill's tags and queues
-that share of the spend, due 4 seconds later. The regeneration step's `ReturnFervourDue` adds every share now due, as
+that share of a spend taken from the pool, due 4 seconds later. Its new argument `bTakenFromThePool` is false only from
+`UCataclysmCommand::HoldReserve`, for Bound Offering's share, which every other row reading a spend still reads. The regeneration step's `ReturnFervourDue` adds every share now due, as
 far as the Fervour that may be held allows (a share returning to a full bar is lost, as a gain is), and is not scaled by
 how fast the class resource generates: it is Fervour coming back, not Fervour made. A death forgets the shares.
 
@@ -76,6 +78,12 @@ skill's Fervour cost does, and returns without starting a cooldown.
 
 ### Rulings recorded here
 
+**On this slice, 2026-11-25: Cinders Kept returns a share only of Fervour actually taken from the pool.** Bound
+Offering's share of a reserve is counted as spent for everything that reads a spend (Feast, Turn of the Wheel and the
+rest), but nothing was taken, so there is nothing to return; returning it would make every summon a source of Fervour,
+which no node says. Phylactery's spend is taken from the pool, so Cinders Kept returns its share. Built in a commit of
+its own after the slice was accepted, with a test whose control is a skill's cost.
+
 The coordinating session's rulings of 2026-11-25 on slice C3b:
 1. **Turn of the Wheel: a spend that names no skill takes the second off every skill's cooldown.** "Your skills that
    did not spend it": when no skill spent it, none of them did. The 2026-09-25 ruling that a reset of every other
@@ -98,7 +106,7 @@ and the three nodes' figures are the owner's approved trees'.
 
 | Group | Change | Predicted |
 |---|---|---|
-| `Cataclysm.FervourPaid.` | new: `CindersKeptReturnsAShareOfEachSpendFourSecondsLater`, `PhylacterySavesALethalBlowBySpendingAllTheFervourHeld`, `PhylacteryWaitsItsSecondsAndNeedsFiftyHeld`, `BorrowedStepUsesTheMovementSkillOnCooldownForFervour`, `TheRealRowsGiveEighteenSixtyAndTwentyFour` | 5 |
+| `Cataclysm.FervourPaid.` | new: `CindersKeptReturnsAShareOfEachSpendFourSecondsLater`, `CindersKeptReturnsNothingOfAReserveCountedAsSpent`, `PhylacterySavesALethalBlowBySpendingAllTheFervourHeld`, `PhylacteryWaitsItsSecondsAndNeedsFiftyHeld`, `BorrowedStepUsesTheMovementSkillOnCooldownForFervour`, `TheRealRowsGiveEighteenSixtyAndTwentyFour` | 6 |
 | `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs three new probes | unchanged |
 | `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 539 | unchanged |
 
@@ -117,7 +125,14 @@ point.
    FervourReturnedAfterSeconds,` becomes `(void)(World->GetTimeSeconds() + FervourReturnedAfterSeconds,`. Prefix
    `Cataclysm.FervourPaid.`; must fail `CindersKeptReturnsAShareOfEachSpendFourSecondsLater`.
 
+**SLICE C3b'S THIRD C++ GUARD PROOF NAMES A LINE THIS SLICE CHANGED.** It takes `Theirs->NoteFervourSpent(Reserve *
+Percent / 100.0f, SpendingTags);` out of `HoldReserve`; on this branch that line reads `Theirs->NoteFervourSpent(Reserve
+* Percent / 100.0f, SpendingTags, /*bTakenFromThePool=*/false);`. The break is the same, taking the line out, and must
+still fail `Cataclysm.SpendSized.BoundOfferingCountsAShareOfEachReserveHeldAsASpend`.
+
 ### What was run
+
+RULING_FIGURES_C3C
 
 **The whole Python suite on `77558cc60`** (this entry with its figures not yet written in),
 `python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8496 passed, 9 skipped in 376.62s

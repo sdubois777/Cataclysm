@@ -3892,7 +3892,8 @@ bool UCataclysmAbilitySystemComponent::KillDecayIsHeld() const
 	return KillDecayHeldUntilSeconds >= 0.0f && World->GetTimeSeconds() < KillDecayHeldUntilSeconds;
 }
 
-void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags)
+void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags,
+														 bool bTakenFromThePool)
 {
 	if (Amount <= 0.0f)
 	{
@@ -3904,10 +3905,13 @@ void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGam
 	{
 		LastFervourSpentAtSeconds = World->GetTimeSeconds();
 
-		// CINDERS KEPT: a share of every spend comes back later, Bound Offering's and Phylactery's included, since
-		// each counts as Fervour spent. Asked with the spending skill's tags, as a stat about a skill's use is.
+		// CINDERS KEPT: a share of every spend TAKEN FROM THE POOL comes back later, Phylactery's included. Not of
+		// Bound Offering's share of a reserve, which is only counted as spent: nothing was taken, so there is nothing
+		// to return, and returning it would make every summon a source of Fervour, which no node says. Ruled by the
+		// coordinating session on 2026-11-25. Asked with the spending skill's tags, as a stat about a skill's use is.
 		const FGameplayTagContainer& Tags = SpendingTags ? *SpendingTags : FGameplayTagContainer::EmptyContainer;
-		const float Returned = StatForSkill(FName(FervourSpentReturnedPercentStat), Tags, 0.0f);
+		const float Returned =
+			bTakenFromThePool ? StatForSkill(FName(FervourSpentReturnedPercentStat), Tags, 0.0f) : 0.0f;
 		if (Returned > 0.0f)
 		{
 			FervourToReturn.Emplace(World->GetTimeSeconds() + FervourReturnedAfterSeconds,

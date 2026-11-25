@@ -951,7 +951,7 @@ void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacter
 	const float Percent = Theirs->StatForSkill(FName(ReservedFervourSpentPercentStat), Tags, 0.0f);
 	if (Percent > 0.0f)
 	{
-		Theirs->NoteFervourSpent(Reserve * Percent / 100.0f, SpendingTags);
+		Theirs->NoteFervourSpent(Reserve * Percent / 100.0f, SpendingTags, /*bTakenFromThePool=*/false);
 	}
 }
 

@@ -55,6 +55,17 @@ def test_a_spend_queues_its_returned_share_and_the_step_returns_it():
     assert "->ReturnFervourDue()" in step, "the regeneration step no longer returns what is due"
 
 
+def test_a_reserve_counted_as_spent_is_not_returned():
+    """Ruled by the coordinating session on 2026-11-25: Cinders Kept returns a share only of Fervour taken from the
+    pool, so Bound Offering's share of a reserve, counted as spent and never taken, returns nothing."""
+    spend = body_of(read(ASC), "void UCataclysmAbilitySystemComponent::NoteFervourSpent(")
+    assert re.search(r"bTakenFromThePool\s*\?\s*StatForSkill\(FName\(FervourSpentReturnedPercentStat\)", spend), (
+        "Cinders Kept's share is asked whether or not the Fervour was taken from the pool")
+    hold = body_of(read("AbilitySystem/CataclysmCommand.cpp"), "void UCataclysmCommand::HoldReserve(")
+    assert re.search(r"NoteFervourSpent\([^;]*,\s*false\)", hold), (
+        "HoldReserve records a reserve as Fervour taken from the pool, so Cinders Kept would return it")
+
+
 def test_a_death_forgets_the_shares_and_the_save_wait():
     death = body_of(read(ASC), "FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds(")
     assert "FervourToReturn.Reset()" in death, "a death leaves Cinders Kept's shares to arrive after the revival"

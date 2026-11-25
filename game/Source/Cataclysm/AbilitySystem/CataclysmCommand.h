@@ -408,7 +408,8 @@ public:
 	 * held back". The Death trees' slice C3b. Raised through
 	 * `UCataclysmAbilitySystemComponent::NoteFervourSpent`, so it stamps the clock
 	 * and every row on `fervour_spent` reads it; nothing is taken from the pool,
-	 * since what is held back is already out of it.
+	 * since what is held back is already out of it. So Cinders Kept returns none
+	 * of it: ruled by the coordinating session on 2026-11-25 (slice C3c).
 	 *
 	 * EVERY NEW HOLD IS ONE, a summon, a replacement, a thrall taken, an imp risen,
 	 * a skill gadget or trap placed. A level that lowers a reserve already held

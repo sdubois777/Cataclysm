@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -14,6 +15,7 @@
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -91,17 +93,26 @@ namespace CataclysmFervourPaidTest
 		float Fervour() const { return Get(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()); }
 		float Health() const { return Get(UCataclysmVitalAttributeSet::GetHealthAttribute()); }
 
-		/** One stat given flat by hand, as its row will give it. */
+		/** One stat given flat by hand, as its row will give it. Replaces every stat given before. */
 		void Grant(const TCHAR* Stat, float Value) const
 		{
-			FCataclysmStatModifier Flat;
-			Flat.Bucket = ECataclysmStatBucket::Flat;
-			Flat.Source = ECataclysmModifierSource::PassiveKeystone;
-			Flat.Value = Value;
+			GrantEach({{Stat, Value}});
+		}
+
+		/** Several stats given flat by hand at once, since a grant replaces the whole stat line. */
+		void GrantEach(std::initializer_list<TPair<const TCHAR*, float>> Stats) const
+		{
 			TMap<FName, FCataclysmStatInputs> Inputs;
-			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
-			Line.Base = 0.0f;
-			Line.Modifiers = {Flat};
+			for (const TPair<const TCHAR*, float>& Each : Stats)
+			{
+				FCataclysmStatModifier Flat;
+				Flat.Bucket = ECataclysmStatBucket::Flat;
+				Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+				Flat.Value = Each.Value;
+				FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Each.Key));
+				Line.Base = 0.0f;
+				Line.Modifiers = {Flat};
+			}
 			AbilitySystem->SetStatInputs(MoveTemp(Inputs));
 		}
 
@@ -192,6 +203,43 @@ bool FCataclysmFervourPaidCindersTest::RunTest(const FString&)
 	System->NoteFervourSpent(50.0f);
 	System->ClearWhatDeathEnds();
 	TestEqual(TEXT("control: a death forgets what was waiting"), System->FervourWaitingToReturn(), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourPaidReserveNotReturnedTest,
+	"Cataclysm.FervourPaid.CindersKeptReturnsNothingOfAReserveCountedAsSpent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled by the coordinating session on 2026-11-25: Cinders Kept returns a share only of Fervour taken from the pool. With
+ * Bound Offering at 90% and Cinders Kept at 18%, holding back 20 for a follower counts as a spend, and nothing waits to
+ * return. THE CONTROL: the same character's spend of 50 on a skill's cost leaves its 9.
+ */
+bool FCataclysmFervourPaidReserveNotReturnedTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourPaidTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPayer Payer(World, FVector::ZeroVector);
+	UCataclysmAbilitySystemComponent* System = Payer.AbilitySystem;
+	ACataclysmEnemyCharacter* Follower =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a follower"), Follower))
+	{
+		return false;
+	}
+	Payer.GrantEach({{UCataclysmCommand::ReservedFervourSpentPercentStat, 90.0f},
+					 {UCataclysmAbilitySystemComponent::FervourSpentReturnedPercentStat, 18.0f}});
+
+	UCataclysmCommand::HoldReserve(Payer.Actor, Follower, 20.0f);
+	TestEqual(TEXT("holding back 20 counts as a spend"), System->SecondsSinceFervourSpent(), 0.0f, 0.001f);
+	TestEqual(TEXT("and nothing of it waits to return, since nothing was taken"), System->FervourWaitingToReturn(),
+			  0.0f);
+
+	System->NoteFervourSpent(50.0f);
+	TestEqual(TEXT("control: a spend of 50 taken from the pool leaves 9 to return"), System->FervourWaitingToReturn(),
+			  9.0f, 0.001f);
 	return true;
 }
 
