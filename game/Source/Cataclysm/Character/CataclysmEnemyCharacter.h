@@ -1148,6 +1148,21 @@ public:
 	bool bRisenByUndyingWill = false;
 
 	/**
+	 * What the War modifiers keep on the creature, written 2026-11-25 ahead of their window, public and unsaved for
+	 * the reasons the Death modifiers' fields above give.
+	 *
+	 * Battle Cry's clock; Artillery Barrage's clock, the seconds a volley in the air has left (nought when none is),
+	 * where its shells will land and the circles drawn for them (held weakly: each marker removes itself when its time
+	 * is up); and how many allies Phalanx counted on its last step, which its damage reduction is written from.
+	 */
+	float SecondsSinceBattleCry = 0.0f;
+	float SecondsSinceArtilleryBarrage = 0.0f;
+	float ArtilleryShellsSecondsLeft = 0.0f;
+	TArray<FVector> ArtilleryShellsAt;
+	TArray<TWeakObjectPtr<class ACataclysmTelegraphMarker>> ArtilleryShellMarkers;
+	int32 PhalanxAlliesCounted = 0;
+
+	/**
 	 * Writes the attribute changes this creature's modifiers ask for.
 	 *
 	 * CALLED LAST BY `ApplyStartingAttributes`, SO THEY WIN. Every write in that
@@ -1441,6 +1456,13 @@ public:
 	// The Succubus takes the tag off again when an ally leaves its aura or when
 	// it dies. The other three grant it for a stated time and let it expire.
 	// This is what the tag DOES.
+	//
+	// THE LIST ABOVE IS DATED 2026-09-14 AND IS NOT THE LIST NOW. The dungeon
+	// rule War_Commander_s_Aura grants it too, and since 2026-11-25 so does War's
+	// Commander enemy modifier, from `UCataclysmEnemyModifiers::AuraStep`, for a
+	// stated time. AND COMMANDER IS NO LONGER THE ONLY THING THAT MAKES A
+	// CREATURE BETTER: War's Drums of War grants a buff of its own, read beside
+	// this one by `DrumsOfWarMultiplier` below.
 	// ----------------------------------------------------------------------
 
 	/**
@@ -1464,6 +1486,22 @@ public:
 	 * help it.
 	 */
 	float CommanderMultiplier() const;
+
+	/**
+	 * How much a creature holding Drums of War gains, as a percentage: War's Drums of War enemy modifier, "Increases
+	 * nearby allies move speed and attack speed by 50%", the row's figure and the `Buff_Drums_of_War` row's. Written
+	 * 2026-11-25 ahead of its window.
+	 */
+	static constexpr float DrumsOfWarIncreasePercent = 50.0f;
+
+	/**
+	 * What Drums of War multiplies, or 1.0 when this creature does not hold it. THE SAME SHAPE AS COMMANDER'S: the tag
+	 * is the truth, granted for a stated time by `UCataclysmEnemyModifiers::AuraStep`, and it names both speeds, so it
+	 * is a factor of `SpeedMultiplierWithWraithFactor` by that function's rule. A SEPARATE FACTOR FROM COMMANDER AND
+	 * MULTIPLIED WITH IT, as Commander and the Vengeful Wraiths rule's increase already are: a creature holding both
+	 * is 1.2 x 1.5 faster. A judgement, recorded.
+	 */
+	float DrumsOfWarMultiplier() const;
 
 	/**
 	 * What Cripple multiplies, or 1.0 when this creature is not crippled.
@@ -1574,7 +1612,7 @@ public:
 	/** `SpeedMultiplier`'s factors, with the wraith's given, so the list is written once. Issue #2793. */
 	float SpeedMultiplierWithWraithFactor(float WraithFactor) const
 	{
-		return CommanderMultiplier() * CrippleMultiplier() * WraithFactor
+		return CommanderMultiplier() * DrumsOfWarMultiplier() * CrippleMultiplier() * WraithFactor
 			* GroundDownMultiplier() * AilmentSlowMultiplier();
 	}
 

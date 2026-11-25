@@ -416,8 +416,10 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierMortalReminderTest,
 	};
 
 	// THE CONTROL: a plain creature's hit sets no ceiling, and a heal reaches the maximum.
+	const FGameplayTag ReminderStatus = DeathStatus(TEXT("Mortal Reminder"));
 	DeathBlowTook(Plain, Player.Character, 50.0f);
 	TestTrue(TEXT("a plain hit sets no ceiling"), UCataclysmEnemyModifiers::RecoveryCeilingOn(*Player.System) < 0.0f);
+	TestFalse(TEXT("and lays no Mortal Reminder status"), UCataclysmSkillEffects::HasTag(Player.Character, ReminderStatus));
 	Player.SetHealth(600.0f);
 	Heal(500.0f);
 	TestEqual(TEXT("so a heal of 500 from 600 reaches the maximum"), Player.Health(), DeathModifiersMostHealth, 0.01f);
@@ -433,6 +435,10 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierMortalReminderTest,
 			  Left, 0.01f);
 	TestTrue(TEXT("and the status line says so"),
 			 UCataclysmCombatOverlay::DeathModifierTextFor(Player.Character).Contains(TEXT("Recovery capped")));
+	// AND THE STATUS THE DEBUFFS SHEET'S ROW GIVES IT SINCE 2026-11-25, so the player's effects list names it.
+	TestTrue(TEXT("set-up: the Mortal Reminder status tag exists"), ReminderStatus.IsValid());
+	TestTrue(TEXT("and the player carries the Mortal Reminder status"),
+			 UCataclysmSkillEffects::HasTag(Player.Character, ReminderStatus));
 
 	// LOWER IT BY 300, AS ANOTHER BLOW WOULD, AND HEAL 500: the heal stops at the ceiling.
 	Player.SetHealth(Left - 300.0f);
@@ -892,10 +898,23 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierLingeringDecayTest,
 	TestEqual(TEXT("the creature standing in it is not cut: it is not the players' side"),
 			  UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(Decayer), 0.0f, 0.01f);
 
+	// AND THE STATUS THE DEBUFFS SHEET'S ROW GIVES IT SINCE 2026-11-25, laid on the player's own step while inside.
+	const FGameplayTag DecayStatus = DeathStatus(TEXT("Lingering Decay"));
+	TestTrue(TEXT("set-up: the Lingering Decay status tag exists"), DecayStatus.IsValid());
+	DeathSteps(Player.Character, 1);
+	TestTrue(TEXT("a step inside, the player carries the Lingering Decay status"),
+			 UCataclysmSkillEffects::HasTag(Player.Character, DecayStatus));
+	DeathSteps(Decayer, 1);
+	TestFalse(TEXT("and the creature, standing in its own zone, does not"),
+			  UCataclysmSkillEffects::HasTag(Decayer, DecayStatus));
+
 	Player.Character->SetActorLocation(FVector(1000.0f, 0.0f, 0.0f));
 	TestEqual(TEXT("ten metres away, nothing is cut"),
 			  UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(Player.Character), 0.0f, 0.01f);
 	TestEqual(TEXT("and a heal of 100 restores 100"), Restored(), 100.0f, 0.01f);
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	TestFalse(TEXT("a second after leaving, the status has gone"),
+			  UCataclysmSkillEffects::HasTag(Player.Character, DecayStatus));
 	return true;
 }
 

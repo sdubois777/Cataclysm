@@ -1009,8 +1009,9 @@ FString UCataclysmCombatOverlay::DeathModifierTextFor(const AActor* Actor)
 		}
 	}
 
-	// THE FOUR TAGGED ONES BY THEIR STATUS NAMES, and Mortal Reminder and Lingering Decay, which have no status row and
-	// so no tag, by what the character's ability system and the zones say.
+	// THE THREE TAGGED ONES BY THEIR STATUS NAMES, and Mortal Reminder and Lingering Decay by what the character's
+	// ability system and the zones say, which is what decides them. Those two had no status row until 2026-11-25; their
+	// tags are laid now for the player's effects list and do not decide the words here.
 	const TCHAR* const StatusNames[] = {TEXT("Final Curse"), TEXT("Soul Tether"), TEXT("Haunting")};
 	const TCHAR* const StatusWords[] = {TEXT("Final Curse"), TEXT("Soul Tether"), TEXT("Haunted")};
 	for (int32 Index = 0; Index < static_cast<int32>(UE_ARRAY_COUNT(StatusNames)); ++Index)
@@ -1033,6 +1034,45 @@ FString UCataclysmCombatOverlay::DeathModifierTextFor(const AActor* Actor)
 		Words.Add(TEXT("Decaying"));
 	}
 	return FString::Join(Words, TEXT("  "));
+}
+
+FString UCataclysmCombatOverlay::WarModifierTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+
+	TArray<FString> WarWords;
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor))
+	{
+		// PHALANX'S REDUCTION AS IT STANDS, whole, so the player sees what pulling the pack apart is worth.
+		if (UCataclysmEnemyModifiers::Carries(Enemy->ModifierRows, UCataclysmEnemyModifiers::PhalanxRow)
+			&& Enemy->PhalanxAlliesCounted > 0)
+		{
+			WarWords.Add(FString::Printf(TEXT("Phalanx -%d%%"),
+										 FMath::RoundToInt(UCataclysmEnemyModifiers::PhalanxDamageReductionFor(
+											 Enemy->PhalanxAlliesCounted))));
+		}
+		if (UCataclysmEnemyModifiers::IsArtilleryBarrageInTheAir(Enemy))
+		{
+			WarWords.Add(TEXT("Barrage"));
+		}
+	}
+
+	// THE ONE BUFF AND THE ONE DEBUFF BY THEIR STATUS NAMES: Drums of War on a creature, Battle Cry on a character of
+	// the players' side. Commander is not named here: several things grant it, and this line names what War's
+	// modifiers add.
+	const TCHAR* const WarStatusNames[] = {TEXT("Drums of War"), TEXT("Battle Cry")};
+	for (const TCHAR* StatusName : WarStatusNames)
+	{
+		const FGameplayTag Tag = UCataclysmSkillShapes::StatusTagFor(StatusName);
+		if (Tag.IsValid() && UCataclysmSkillEffects::HasTag(Actor, Tag))
+		{
+			WarWords.Add(StatusName);
+		}
+	}
+	return FString::Join(WarWords, TEXT("  "));
 }
 
 FString UCataclysmCombatOverlay::PlaguebearerTextFor(const AActor* Actor)
@@ -1067,6 +1107,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  // AND WHAT DEATH'S MODIFIERS HAVE DONE, beside the shroud, which is the other "a blow did nothing". 2026-11-24.
 		  DeathModifierTextFor(Actor),
+		  // AND WHAT WAR'S DO, beside them. 2026-11-25.
+		  WarModifierTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
 		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.

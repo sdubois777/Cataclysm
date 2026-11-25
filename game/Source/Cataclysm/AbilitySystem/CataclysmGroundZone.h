@@ -567,7 +567,9 @@ public:
 	 * NOT APPLIED BY THE SWEEP. A heal asks for it when it arrives, through
 	 * `UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt`, which walks the patches as
 	 * `RegenerationScaleFor` above does. So the cut holds exactly while the character stands inside, needs no status
-	 * effect, and outlives the creature that left the patch for the patch's own life.
+	 * effect, and outlives the creature that left the patch for the patch's own life. The status the player's effects
+	 * list shows, `Status.Debuff.LingeringDecay` (the Debuffs sheet's row since 2026-11-25), is laid for display by
+	 * `UCataclysmEnemyModifiers::TimedStep` and decides nothing.
 	 */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	float HealingLessPercentInside = 0.0f;

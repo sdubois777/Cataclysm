@@ -179,6 +179,26 @@ public:
 	static const TCHAR* SoulTetherRow;
 	static const TCHAR* MortalReminderRow;
 
+	/**
+	 * Eight of War's nine modifiers, written 2026-11-25 ahead of their build-and-test window, on the owner's rulings of
+	 * 2026-11-24 for the Death and War plan (Q10 to Q12, "Your recommendations work for all of those death/war
+	 * questions"). Each one's sentence is its row in `game/Data/EnemyModifiers.csv`; `docs/DECISIONS.md` carries the
+	 * research and every figure the rows do not state.
+	 *
+	 * 1 ON 1 HAS NO CONSTANT BECAUSE IT IS NOT BUILT. Its arena -- a ring that holds the player walking and lets the
+	 * player's movement skill cross it, as the owner ruled -- needs a hold on the player's own movement that no code in
+	 * the project has; the 2026-11-25 entry in `docs/DECISIONS.md` describes the mechanism and leaves it. A creature
+	 * carrying it behaves as it did before, and the hover panel still names it.
+	 */
+	static const TCHAR* CommanderRow;
+	static const TCHAR* BattleCryRow;
+	static const TCHAR* ArmoredJuggernautRow;
+	static const TCHAR* DrumsOfWarRow;
+	static const TCHAR* ShieldWallRow;
+	static const TCHAR* ArtilleryBarrageRow;
+	static const TCHAR* BattleScarredRow;
+	static const TCHAR* PhalanxRow;
+
 	/** Whether a creature carries a named modifier. */
 	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);
 
@@ -537,6 +557,14 @@ public:
 	static constexpr float LingeringDecayRadiusCm = 300.0f;
 
 	/**
+	 * How long `Status.Debuff.LingeringDecay` is laid for on a character of the players' side standing in a zone,
+	 * re-laid on every quarter-second step while it stays: two steps, so the status goes within half a second of the
+	 * character leaving. Display only; the cut itself is asked of where the character stands. The status row is the
+	 * Debuffs sheet's, added 2026-11-25 on the owner's acceptance of 2026-11-24. A judgement, recorded.
+	 */
+	static constexpr float LingeringDecayStatusSeconds = 0.5f;
+
+	/**
 	 * Final Curse: "Upon death, curse the player for 5 seconds, causing them to take damage when using abilities."
 	 *
 	 * THE FIVE SECONDS ARE THE ROW'S. Each skill used under the curse, every slot but the basic attack, costs 5% of
@@ -585,6 +613,133 @@ public:
 	static constexpr float HauntingCopyHealthShare = 0.5f;
 	static constexpr float HauntingResistanceCut = 25.0f;
 	static constexpr float HauntingSeconds = 5.0f;
+
+	// ----------------------------------------------------------------------
+	// The War modifiers' numbers, 2026-11-25
+	//
+	// THE ROW'S OWN FIGURE WHERE IT GIVES ONE, the owner's ruling where one was
+	// asked, and a judgement named in `docs/DECISIONS.md` with its genre source
+	// where neither says. Whole numbers wherever a player sees them.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Commander: "Inspires allies, increasing their movement speed and attack speed by 20%."
+	 *
+	 * IT GRANTS THE COMMANDER BUFF, `Buff_Commander`, which is that sentence already: its 20% is
+	 * `ACataclysmEnemyCharacter::CommanderIncreasePercent` and `CommanderMultiplier` reads it. A second buff meaning
+	 * the same thing would be two names for one effect, the reason Horde Leader gives.
+	 *
+	 * EIGHT METRES, THE BUFF'S OWN REACH, so one buff reaches as far whoever grants it: the Succubus's Dominion and the
+	 * Commander's Aura dungeon rule (`UCataclysmDungeonModifierEffects::CommandersAuraRadiusCm`) both grant it to
+	 * allies within 8 metres. Written here and held equal to that figure by
+	 * `tools/tests/test_war_enemy_modifiers_match_their_rows.py`. A judgement, recorded.
+	 *
+	 * RE-GRANTED ON EVERY AURA PULSE, ONCE A SECOND, FOR TWO SECONDS, so an ally that stays keeps it and one that walks
+	 * away loses it within two seconds: Abyssal Aura's and Starving Aura's two seconds, the figure the status table
+	 * gives an enemy's aura for the same shape. One effect per tag, so standing beside two commanders is still 20%.
+	 */
+	static constexpr float CommanderReachCm = 800.0f;
+	static constexpr float WarAuraGrantSeconds = 2.0f;
+
+	/**
+	 * Drums of War: "Increases nearby allies move speed and attack speed by 50%."
+	 *
+	 * THE 50% IS THE ROW'S, under its own buff, `Buff_Drums_of_War`, read by
+	 * `ACataclysmEnemyCharacter::DrumsOfWarMultiplier`. HALF COMMANDER'S REACH, FOUR METRES: the plan's
+	 * recommendation for Q12, which the owner accepted on 2026-11-24 ("Your recommendations work for all of those
+	 * death/war questions"): keep both, Drums of War with half Commander's radius, so the stronger buff needs the pack
+	 * close. Granted on the same pulse and for the same two seconds as Commander's.
+	 */
+	static constexpr float DrumsOfWarReachCm = CommanderReachCm * 0.5f;
+
+	/**
+	 * Armored Juggernaut: "Gain 50% armor".
+	 *
+	 * HALF AGAIN ITS OWN ARMOUR, a multiplier on the freshly computed figure as `MaxHealthMultiplier` is on health.
+	 * Path of Exile 2's monster modifiers state armour the same way, as a share added in proportion ("monster
+	 * additional strength ratio % for armour [50]", poe2db.tw/us/Monster_Modifiers). A KIND DESIGNED WITH NO ARMOUR
+	 * GAINS NONE: the Imp's armour share is 0.0, and half again of nothing is nothing. A judgement, recorded.
+	 */
+	static constexpr float ArmoredJuggernautArmourMultiplier = 1.5f;
+
+	/**
+	 * Battle Scarred: "Become more dangerous, gaining increased critical strike chance and damage resistance."
+	 *
+	 * DOUBLE ITS OWN CRITICAL STRIKE CHANCE AND 30 MORE RESISTANCE, FROM THE START. Path of Exile's Deadeye monster
+	 * modifier gives "100% increased Critical Strike Chance" (poedb.tw/us/Archnemesis), and Path of Exile 2's
+	 * monster modifiers give "+30% to all Elemental Resistances" (poe2db.tw/us/Monster_Modifiers); a creature's
+	 * resistance here is one figure against every type. "Become" is read as what the modifier does to the creature
+	 * and not as a moment it changes, since the row names none. Judgements, recorded.
+	 */
+	static constexpr float BattleScarredCritChanceIncreasedPercent = 100.0f;
+	static constexpr float BattleScarredResistance = 30.0f;
+
+	/**
+	 * Shield Wall: "Take 75% less damage from projectiles."
+	 *
+	 * THE WORDING THE OWNER ACCEPTED ON 2026-11-24 (the plan's Q10), replacing "from attacks from the front", by the
+	 * owner's ruling of 2026-08-09: "we don't do positional weak points. That's too tedious in a diablo like arpg".
+	 * A quarter of every projectile's contact and of
+	 * its blast reaches the carrier, asked where every projectile lands (`ACataclysmProjectile::HitOne`); every other
+	 * blow reaches it whole.
+	 */
+	static constexpr float ShieldWallProjectileDamageShare = 0.25f;
+
+	/**
+	 * Phalanx: "Gains 10% damage reduction for every other enemy within 5 meters."
+	 *
+	 * BOTH FIGURES ARE THE ROW'S. Damage reduction is the game's own stat of that name, step 5 of the damage
+	 * calculation, so its 75% cap (`UCataclysmDamageCalculation::DamageReductionCap`) bounds it at eight allies. An
+	 * "other enemy" is another creature of its side that can lose health: not a floor-rule object, nor one that
+	 * cannot be hurt, the reading Sacrificial Bond's allies were ruled to on 2026-09-30 (#1559).
+	 */
+	static constexpr float PhalanxReachCm = 500.0f;
+	static constexpr float PhalanxDamageReductionPerAlly = 10.0f;
+
+	/**
+	 * Battle Cry: "Emit a terrifying shout that reduces the player's resistances or armor for 5 seconds."
+	 *
+	 * EVERY RESISTANCE CUT BY 25, NEVER BELOW NOUGHT, FOR THE ROW'S FIVE SECONDS, under `Debuff_Battle_Cry`, whose
+	 * row names the eight resistances it moves; resistances and not armour, a judgement: the row offers either, and
+	 * one status row moves one kind of stat. The 25 is Abyssal Aura's and Haunting's cut, the figure the status table
+	 * already gives an enemy's resistance debuff. A SHOUT EVERY EIGHT SECONDS, Path of Exile's Intimidating Cry's
+	 * cooldown ("Cooldown Time: 8.00 sec", poedb.tw/us/Intimidating_Cry), so it is up five seconds in eight; and only
+	 * when a target is within the six metres every enemy aura reaches, the clock waiting otherwise.
+	 */
+	static constexpr float BattleCryIntervalSeconds = 8.0f;
+	static constexpr float BattleCrySeconds = 5.0f;
+	static constexpr float BattleCryResistanceCut = 25.0f;
+	static constexpr float BattleCryReachCm = AuraRadiusCm;
+	static_assert(BattleCrySeconds < BattleCryIntervalSeconds,
+				  "Battle Cry must lapse before the next shout, or the player is never out of it");
+
+	/**
+	 * Artillery Barrage: "Call down explosive projectiles in random areas near the player."
+	 *
+	 * A VOLLEY OF THREE SHELLS EVERY SIX SECONDS, each a three metre circle drawn on the floor at a random point within
+	 * four metres of the player, landing a second and a half later for one and a half of the creature's hits on
+	 * everyone of the player's side inside it. Diablo III's Mortar elite affix fires "3 projectiles per cast" with a
+	 * "3 yards radius for direct hit" (maxroll.gg/d3/resources/elite-affixes); Path of Exile's Bombardier
+	 * "Periodically Fires a Nova of Fire Mortars (6 second cooldown)" (poedb.tw/us/Archnemesis). The warning is
+	 * derived as the Artillery Strike dungeon rule's is: twice the time a player at the base 400 cm a second takes to
+	 * walk out of a circle from its middle. The four metres and the one and a half hits are judgements: a shell can
+	 * fall on the player and three cannot cover the ground round them, and the hits are Inferno Charge's 150%, the
+	 * creature's other drawn attack a player walks out of. Only when a target is within Inferno Charge's 20 metres.
+	 */
+	static constexpr float ArtilleryBarrageIntervalSeconds = 6.0f;
+	static constexpr int32 ArtilleryBarrageShells = 3;
+	static constexpr float ArtilleryBarrageShellRadiusCm = 300.0f;
+	static constexpr float ArtilleryBarrageWarningSeconds = 1.5f;
+	static constexpr float ArtilleryBarrageLandsWithinCm = 400.0f;
+	static constexpr float ArtilleryBarrageShellHits = 1.5f;
+	static constexpr float ArtilleryBarrageReachCm = 2000.0f;
+	static_assert(ArtilleryBarrageWarningSeconds * 400.0f >= ArtilleryBarrageShellRadiusCm * 2.0f,
+				  "a player at the base walk speed must be able to walk out of a shell's circle twice over");
+	static_assert(ArtilleryBarrageWarningSeconds < ArtilleryBarrageIntervalSeconds,
+				  "a volley must land before the next is called");
+
+	/** Keeps a barrage's points off the other seeded draws of the same creature and clock, as `PhaseDrawSalt` does. */
+	static constexpr int32 ArtilleryBarrageDrawSalt = 0xA27B;
 
 	// ----------------------------------------------------------------------
 	// What the carried modifiers do to a creature's stats
@@ -731,7 +886,10 @@ public:
 
 	/**
 	 * One step of the modifiers that act on a timer of their own: Infernal
-	 * Sacrifice, Unholy Sigils and Inferno Charge.
+	 * Sacrifice, Unholy Sigils and Inferno Charge; Death's Spectral Shift,
+	 * Shadow Step and Lingering Decay, and a bone pyre's fuse; and War's
+	 * Phalanx, Battle Cry and Artillery Barrage. A character of the players'
+	 * side is given Lingering Decay's status here while it stands in a zone.
 	 *
 	 * ON THE SAME PER-CHARACTER STEP THE AURAS AND PHASEWALKER USE, for the
 	 * reason every job on it gives: it already runs four times a second.
@@ -816,7 +974,9 @@ public:
 	/**
 	 * Mortal Reminder, on a hit that took health: the target may not be healed above the health it holds now for
 	 * `MortalReminderSeconds`. Kept on its ability system and read by `UCataclysmRegeneration::HealthHealingCeiling`,
-	 * which every heal of health asks. A dead target is given nothing, as Infernal Brand refuses one (#2874).
+	 * which every heal of health asks; `Status.Debuff.MortalReminder` is laid beside it for the same time since
+	 * 2026-11-25, so the player's effects list names it. A dead target is given nothing, as Infernal Brand refuses
+	 * one (#2874).
 	 *
 	 * @return whether a ceiling was set
 	 */
@@ -850,7 +1010,8 @@ public:
 
 	/**
 	 * What a creature's death does through the Death modifiers that act at it: Final Curse curses the player, and a
-	 * creature Shadow Step hid is shown again, so its fall can be seen. Called by `ACataclysmEnemyCharacter::
+	 * creature Shadow Step hid is shown again, so its fall can be seen. And since 2026-11-25 a volley of War's
+	 * Artillery Barrage still in the air is called off, its circles taken away. Called by `ACataclysmEnemyCharacter::
 	 * HandleDeath` once the death is marked. Haunting and Undying Will act at a death too, from the dungeon game mode,
 	 * because only it can place a creature.
 	 *
@@ -913,6 +1074,45 @@ public:
 	 * `UCataclysmRegeneration::TopUp` adds it to the healing received reduction for health.
 	 */
 	static float LingeringDecayHealingLessPercentAt(const AActor* Healed);
+
+	// ----------------------------------------------------------------------
+	// The War modifiers, 2026-11-25
+	//
+	// Commander and Drums of War are granted on `AuraStep`'s pulse; Phalanx,
+	// Battle Cry and Artillery Barrage run on `TimedStep`; Armored Juggernaut and
+	// Battle Scarred are figures `ACataclysmEnemyCharacter::
+	// ApplyStartingAttributes` writes; Shield Wall is asked where a projectile
+	// lands. 1 On 1 is not built (see `CommanderRow`).
+	// ----------------------------------------------------------------------
+
+	/** Armored Juggernaut: what the modifiers multiply a creature's armour by, applied to the freshly computed base. */
+	static float ArmourMultiplier(const TArray<FName>& Rows);
+
+	/** Battle Scarred: what the modifiers multiply a creature's own critical strike chance by, one plus the increase. */
+	static float CritChanceMultiplier(const TArray<FName>& Rows);
+
+	/** Battle Scarred: the resistance the modifiers add to a creature's own, in points. */
+	static float AddedResistance(const TArray<FName>& Rows);
+
+	/**
+	 * Shield Wall: the share of a projectile's damage that reaches `Target`, `ShieldWallProjectileDamageShare` for a
+	 * creature carrying it and one for anything else. Asked by `ACataclysmProjectile::HitOne` for every contact and
+	 * every blast.
+	 */
+	static float ShareOfProjectileDamageTaken(const AActor* Target);
+
+	/**
+	 * Phalanx: the damage reduction, in percent, that `Others` other creatures of its side within
+	 * `PhalanxReachCm` give a carrier, before the damage calculation's own cap. PURE, so the arithmetic can be
+	 * checked without a world.
+	 */
+	static float PhalanxDamageReductionFor(int32 Others);
+
+	/** Phalanx: how many other creatures of `Character`'s side within `PhalanxReachCm` count, by the row's reading. */
+	static int32 CountPhalanxAllies(const AActor* Character);
+
+	/** Whether a volley of Artillery Barrage this creature called is in the air now. */
+	static bool IsArtilleryBarrageInTheAir(const AActor* Character);
 
 	/**
 	 * Whether a row belongs to a Cataclysm a creature of this one may draw.

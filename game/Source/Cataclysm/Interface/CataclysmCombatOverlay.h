@@ -834,6 +834,13 @@ public:
 	static FString DeathModifierTextFor(const AActor* Actor);
 
 	/**
+	 * What War's enemy modifiers are doing to this character, in words, or empty. Written 2026-11-25 ahead of their
+	 * window. A creature: "Phalanx -30%" (what its allies give it now), "Barrage" (a volley of Artillery Barrage it
+	 * called is in the air) and "Drums of War" (it holds that buff). A character of the players' side: "Battle Cry".
+	 */
+	static FString WarModifierTextFor(const AActor* Actor);
+
+	/**
 	 * "Second Self" under the health bar of the minion or thrall A Second Self
 	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
 	 * it says what the creature is. Nothing else on screen marks a minion.

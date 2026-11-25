@@ -1157,6 +1157,19 @@ float ACataclysmEnemyCharacter::CommanderMultiplier() const
 	return 1.0f + CommanderIncreasePercent / 100.0f;
 }
 
+float ACataclysmEnemyCharacter::DrumsOfWarMultiplier() const
+{
+	// COMMANDER'S SHAPE: THE TAG IS THE TRUTH. War's Drums of War grants it for a stated time on its aura pulse and
+	// lets it lapse, so nothing here has to be told. 2026-11-25, ahead of its window.
+	const FGameplayTag Drums = UCataclysmSkillShapes::StatusTagFor(TEXT("Drums of War"));
+	if (!Drums.IsValid() || !UCataclysmSkillEffects::HasTag(this, Drums))
+	{
+		return 1.0f;
+	}
+
+	return 1.0f + DrumsOfWarIncreasePercent / 100.0f;
+}
+
 float ACataclysmEnemyCharacter::WraithMultiplier() const
 {
 	if (!bIsVengefulWraith)
@@ -2305,11 +2318,17 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// split FCataclysmEnemyRarityRow states: rarity scales MAGNITUDE, and
 	// evasion, critical chance and critical multiplier say what KIND of creature
 	// this is. A Legendary Imp is a bigger Imp, not a different one.
+	//
+	// AND WHAT TWO OF WAR'S MODIFIERS DO TO THESE FIGURES, 2026-11-25, ahead of their window: Armored Juggernaut's
+	// "Gain 50% armor" multiplies the armour and Battle Scarred's "increased critical strike chance" the chance, each
+	// on the freshly computed figure as Titanic Resolve's multiplier is on health, so a recompute never compounds them.
+	// One for every creature carrying neither. Overpowered's certain critical strike still wins: it is written after,
+	// in `ApplyModifierAttributes`.
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetArmorAttribute(),
-				StartingArmour * ArmourScale);
+				StartingArmour * ArmourScale * UCataclysmEnemyModifiers::ArmourMultiplier(ModifierRows));
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetEvasionAttribute(), EvasionPercent);
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritChanceAttribute(),
-				CritChancePercent);
+				FMath::Min(100.0f, CritChancePercent * UCataclysmEnemyModifiers::CritChanceMultiplier(ModifierRows)));
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(),
 				CritMultiplierPercent);
 
@@ -2325,8 +2344,11 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// -- deliberately, because this creature resists everything equally, so a type
 	// would be choosing between eight copies of one number. With no type there was
 	// no slot to pick and all eight were skipped. Issue #486.
+	//
+	// AND BATTLE SCARRED'S "DAMAGE RESISTANCE", ADDED TO IT, War's modifier, 2026-11-25, ahead of its window. Nought
+	// for every creature not carrying it. The damage calculation's own resistance cap still bounds the sum.
 	ApplyIfHeld(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(),
-				ResistancePercent);
+				ResistancePercent + UCataclysmEnemyModifiers::AddedResistance(ModifierRows));
 
 	// A CREATURE DOES NOT REGENERATE, AND THAT IS A STATED POSITION RATHER THAN
 	// AN OMISSION. Issue #653 wired up the three regeneration attributes, which
