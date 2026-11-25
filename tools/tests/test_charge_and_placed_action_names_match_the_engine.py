@@ -1473,3 +1473,54 @@ def test_marshal_shared_leech_and_bound_bones_are_read_where_they_act() -> None:
     assert re.search(r"UCataclysmLeech::NoteHit\([^;]*;\s*UCataclysmLeech::NoteMinionHit\(", vitals)
     regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
     assert re.search(r"SharedBloodStep\(Character, SecondsInStep, false\);\s*BoundBonesStep\(Character\);", regeneration)
+
+
+def test_the_shadows_marks_are_kept_moved_and_asked() -> None:
+    """The Death trees' slice C6e (2026-11-25), as ruled (Q5). The marks are
+    kept up each regeneration step, moved off a dying creature where its death
+    begins and before its own `HandleDeath`, and asked of the marker by
+    `WithTargetState`. Read from the code with comments taken out."""
+    regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
+    assert re.search(r"BoundBonesStep\(Character\);\s*if \(UCataclysmAbilitySystemComponent\* Marker = "
+                     r"Cast<UCataclysmAbilitySystemComponent>\(AbilitySystem\)\)\s*\{\s*Marker->MaintainShadowMarks\(\);",
+                     regeneration)
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    start = vitals.index("void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero(")
+    body = vitals[start:vitals.index("\n}\n", start)]
+    assert body.index("UCataclysmAbilitySystemComponent::MoveShadowMarksOff(Character);") \
+        < body.index("Character->HandleDeath();")
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.bTargetMarkedByYou = Marker && Marker->HoldsShadowMarkOn\(Target\);", engine)
+    start = engine.index("void UCataclysmAbilitySystemComponent::MaintainShadowMarks(")
+    maintain = engine[start:engine.index("\n}\n", start)]
+    assert "UCataclysmDebuffs::StrongestEnemyNear(Self, Self, ShadowMarkReachCm, Marked)" in maintain
+    start = engine.index("void UCataclysmAbilitySystemComponent::MoveShadowMarkFrom(")
+    move = engine[start:engine.index("\n}\n", start)]
+    assert "UCataclysmDebuffs::StrongestEnemyNear(Dying, Self, ShadowMarkMoveCm, Marked)" in move
+
+
+def test_hollow_step_passes_through_for_the_move_only_and_hits_the_line_once() -> None:
+    """The Death trees' slice C6e (2026-11-25), as ruled (H1, H2). A creature
+    on the monsters' side carries the hostile bit on its filter only; an
+    instant move passes through it, is restored, and steps out of any body it
+    ended in; `EndAbility` restores and steps out on every way out; and the line
+    is hit once, skipping the skill's own targets. Read from the code with
+    comments taken out."""
+    base = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmCharacterBase.cpp")
+    assert "Capsule->SetMaskFilterOnBodyInstance(bHostile ? HostileBodyMaskBit : OwnBit);" in base
+    assert "Capsule->SetMoveIgnoreMask(MovesThroughMaskFor(OwnBit));" in base
+    templates = code_without_comments(SOURCE.parent / "CataclysmSkillTemplates.cpp")
+    assert re.search(r"if \(bThroughEnemies\)\s*\{\s*PassThroughEnemies\(true\);\s*\}\s*"
+                     r"UCataclysmMovement::MoveWithoutSticking\(Self, End - Self->GetActorLocation\(\)\);\s*"
+                     r"ArrivedAt = Self->GetActorLocation\(\);\s*if \(bThroughEnemies\)\s*\{\s*"
+                     r"PassThroughEnemies\(false\);\s*StepOutOfEnemies\(Start\);", templates)
+    assert re.search(r"if \(bThroughEnemies\)\s*\{\s*HitTheLineOnce\(Start, ArrivedAt, Targets\);", templates)
+    start = templates.index("void UCataclysmMovementSkill::EndAbility(")
+    end_ability = templates[start:templates.index("\n}\n", start)]
+    assert re.search(r"if \(bPassingThrough\)\s*\{\s*PassThroughEnemies\(false\);\s*"
+                     r"StepOutOfEnemies\(PassingThroughFrom\);", end_ability)
+    assert end_ability.index("PassThroughEnemies(false);") < end_ability.index("Super::EndAbility(")
+    start = templates.index("void UCataclysmMovementSkill::HitTheLineOnce(")
+    line = templates[start:templates.index("\n}\n", start)]
+    assert "if (!AlreadyStruck.Contains(OnTheLine))" in line
+    assert "HitWhatThePathCrossed(Crossed, PercentHitScaledGivesAnAlly(TArray<AActor*>()));" in line
