@@ -3011,6 +3011,7 @@ bool FCataclysmSurgeQuestCampaignTest::RunTest(const FString& Parameters)
 		}
 
 		TSet<int32> Counted;
+		TSet<int32> SentByRifts; // Issue #51 slice B2: no surge rolled these.
 		int32 Here = 0;
 
 		auto RecordWhatIsNew = [&](const UCataclysmEmpireRun& Live)
@@ -3020,7 +3021,9 @@ bool FCataclysmSurgeQuestCampaignTest::RunTest(const FString& Parameters)
 				// A FALLEN CITY IS NOT A DUNGEON A SURGE ROLLED, so counting it
 				// would dilute the share this test is measuring with dungeons
 				// the roll never saw. Issue #1324 slice 2 is what creates them.
-				if (Dungeon.Type == ECataclysmDungeonType::FallenCity)
+				// NOR IS A DUNGEON A RIFT SENT, since issue #51 slice B2.
+				if (Dungeon.Type == ECataclysmDungeonType::FallenCity
+					|| SentByRifts.Contains(Dungeon.DungeonId))
 				{
 					continue;
 				}
@@ -3058,6 +3061,15 @@ bool FCataclysmSurgeQuestCampaignTest::RunTest(const FString& Parameters)
 						UCataclysmSurgeScheduler::SpecFor(
 							ECataclysmDungeonType::Quest, Dungeon.CityTier);
 
+					// A RIFT IS FOUR FLOORS, its own rule since issue #51 slice B2: a Quest dungeon Demonic sent
+					// (campaign seed 4 faces Demonic at tier 1).
+					if (Dungeon.IsARift())
+					{
+						TestEqual(TEXT("a landed Rift is four floors"), Dungeon.Floors,
+								  UCataclysmSurgeScheduler::RiftFloors);
+						continue;
+					}
+
 					TestTrue(FString::Printf(
 						TEXT("landed Quest dungeon %d is %d floors, inside %d "
 							 "to %d"), Dungeon.DungeonId, Dungeon.Floors,
@@ -3075,7 +3087,7 @@ bool FCataclysmSurgeQuestCampaignTest::RunTest(const FString& Parameters)
 		int32 Advanced = 0;
 		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
 		{
-			Run->AdvanceDay();
+			SentByRifts.Append(Run->AdvanceDay().RiftSent);
 			++Advanced;
 			RecordWhatIsNew(*Run);
 		}
@@ -4224,6 +4236,7 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 	int32 FixedQuests = 0;
 	int32 Overridden = 0;
 	int32 SiegesFreed = 0;
+	int32 RiftsLeftOut = 0; // Issue #51 slice B2: compared by kind and depth only, below.
 
 	for (int32 Seed = 1; Seed <= 60; ++Seed)
 	{
@@ -4262,11 +4275,24 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 			const FCataclysmDungeon& A = Without[Index];
 			const FCataclysmDungeon& B = With[Index];
 
-			TestEqual(TEXT("on the same city"), B.CityId, A.CityId);
 			TestEqual(TEXT("of the same kind"),
 					  static_cast<int32>(B.Type), static_cast<int32>(A.Type));
-			TestEqual(TEXT("at the same depth"), B.Floors, A.Floors);
-			TestEqual(TEXT("with the same timer"), B.ResolveDays, A.ResolveDays);
+
+			// A RIFT IS THE ONE DUNGEON THAT MOVES, BY ITS OWN RULE AND NOT BY THE STREAM, since issue #51 slice B2: a
+			// Quest dungeon Demonic sent opens on a city drawn from a stream of its own, with four floors and the timer
+			// of four. `Cataclysm.Rifts.ARiftsCityIsDrawnFromItsOwnStreamAndTheWaveRollsAsBefore` holds the rest of the
+			// wave unmoved around it.
+			if (B.IsARift())
+			{
+				++RiftsLeftOut;
+				TestEqual(TEXT("a Rift is four floors"), B.Floors, UCataclysmSurgeScheduler::RiftFloors);
+			}
+			else
+			{
+				TestEqual(TEXT("on the same city"), B.CityId, A.CityId);
+				TestEqual(TEXT("at the same depth"), B.Floors, A.Floors);
+				TestEqual(TEXT("with the same timer"), B.ResolveDays, A.ResolveDays);
+			}
 
 			TestEqual(TEXT("a wave with no callback stamps nobody"),
 					  static_cast<int32>(A.Cataclysm),
@@ -4317,8 +4343,8 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d dungeons compared, %d fixed Quest dungeons, %d of them a "
 			 "different sub-type from the one rolled; %d Sieges a fixed one "
-			 "left room for"),
-		Compared, FixedQuests, Overridden, SiegesFreed));
+			 "left room for; %d Rifts compared by kind and depth only"),
+		Compared, FixedQuests, Overridden, SiegesFreed, RiftsLeftOut));
 
 	// THE CONTROL. Unless some fixed Quest dungeon really came out different
 	// from what it rolled, the two waves never differed and the comparison

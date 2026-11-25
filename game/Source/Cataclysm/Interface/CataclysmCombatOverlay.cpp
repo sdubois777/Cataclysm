@@ -30,6 +30,8 @@
 #include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
+// For "Altar" under a Rift's altar. Issue #51 slice B1.
+#include "Character/CataclysmRiftAltarCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystemComponent.h"
@@ -876,6 +878,13 @@ FString UCataclysmCombatOverlay::RiftTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::RiftAltarTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmRiftAltarCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Altar"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::InfectionBloomTextFor(const AActor* Actor)
 {
 	return Actor && Actor->IsA<ACataclysmInfectionBloomCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
@@ -1002,7 +1011,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor), RiftAltarTextFor(Actor),
 		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
 		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
 		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor), TitheAngelTextFor(Actor),

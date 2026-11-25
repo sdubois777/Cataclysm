@@ -110,6 +110,23 @@ FName UCataclysmDungeonModifierRules::CorruptedStalkerKey()
 	return FName(TEXT("Generic_Corrupted_Stalker"));
 }
 
+FName UCataclysmDungeonModifierRules::DemonicGuideKey()
+{
+	return FName(TEXT("Demonic_Demonic_Guide"));
+}
+
+TArray<FCataclysmDungeonModifier> UCataclysmDungeonModifierRules::RiftPoolFor(
+	const TArray<FCataclysmDungeonModifier>& Pool, int32 DifficultyTier)
+{
+	// ABOVE THE TIER THE OWNER NAMED, THE POOL AS IT IS: "at least not on t1", the owner, 2026-11-25. Issue #51.
+	if (DifficultyTier > RiftWithoutTheGuideUpToTier)
+	{
+		return Pool;
+	}
+	const FName Guide = DemonicGuideKey();
+	return Pool.FilterByPredicate([&Guide](const FCataclysmDungeonModifier& Row) { return Row.RowKey != Guide; });
+}
+
 bool UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker(int32 RunStalkerSeed, int32 WalkSeed)
 {
 	const float Pinned = CVarCorruptedStalkerRoll.GetValueOnAnyThread();

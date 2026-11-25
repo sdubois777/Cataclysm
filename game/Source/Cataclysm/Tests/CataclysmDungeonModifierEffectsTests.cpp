@@ -55785,6 +55785,113 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 }
 
+// A RIFT'S ALTARS AND THOSE IN THE DARK, issue #51 slice B1: no chasm opens on a floor of a Rift that holds an altar,
+// and a fall in a Rift lands no deeper than the next floor holding one, so no fall carries the player past an altar.
+// Both are the writing session's judgement, stated in `ACataclysmDungeonGameMode::PlaceTheChasms`.
+//
+// THE OWNER'S RIFT IS FOUR FLOORS DEEP with one altar on each, so no floor of it has a chasm, which the first half
+// shows on the same floor and seed that has chasms in a Quest dungeon Death sent. THE FALL IS A RIFT OF ANOTHER DEPTH'S,
+// thirty floors here, as Demonic rolled one before the empire made Rifts four floors deep: from floor 3 the fall lands
+// on 8, the next altar's floor, where in a dungeon that is no Rift it lands on 13. Prints "RIFT CHASMS".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftAltarsThoseInTheDarkTest,
+	"Cataclysm.DungeonModifierEffects.ARiftsAltarFloorsHaveNoChasmsAndAFallLandsNoDeeperThanTheNextAltar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRiftAltarsThoseInTheDarkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	UCataclysmEmpireRun* Run = nullptr;
+	int32 DungeonId = INDEX_NONE;
+	ACataclysmDungeonGameMode* Mode =
+		ADarkFloorEmpireDungeon(*this, World, Player, 4, Run, DungeonId, ECataclysmDungeonType::Quest);
+	if (!Mode)
+	{
+		return false;
+	}
+	const auto SentBy = [Run, DungeonId](ECataclysmType Sender, int32 Floors)
+	{
+		for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			if (Dungeon.DungeonId == DungeonId)
+			{
+				Dungeon.Cataclysm = Sender;
+				Dungeon.Floors = Floors;
+			}
+		}
+	};
+
+	// FOUR FLOORS, A QUEST DUNGEON DEATH SENT: ITS FLOOR 2 HAS CHASMS ON SOME SEED.
+	SentBy(ECataclysmType::Death, 4);
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 1, Seed))
+	{
+		return false;
+	}
+	TestFalse(TEXT("CONTROL: a Quest dungeon Death sent is no Rift"), Mode->IsARift());
+
+	// THE SAME DUNGEON, FLOOR AND SEED, A RIFT: AN ALTAR AND NO CHASM. And none on its floors 1 and 3, which hold one each.
+	SentBy(ECataclysmType::Demonic, 4);
+	FString Seen;
+	for (int32 Floor = 1; Floor <= 3; ++Floor)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("set-up: the Rift's floor %d was built"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		Seen += FString::Printf(TEXT(" floor %d: %d altar(s), %d chasm(s);"), Floor, Mode->RiftAltarsPlacedHere(),
+								Mode->ThoseInTheDarkChasmCellsNow().Num());
+		TestEqual(FString::Printf(TEXT("the Rift's floor %d holds its altar"), Floor), Mode->RiftAltarsPlacedHere(), 1);
+		TestTrue(FString::Printf(TEXT("and no chasm opens on floor %d"), Floor),
+				 Mode->ThoseInTheDarkChasmCellsNow().IsEmpty());
+	}
+
+	// THIRTY FLOORS, A DUNGEON THAT IS NO RIFT: THE FALL FROM FLOOR 3 LANDS ON 13.
+	SentBy(ECataclysmType::Death, 30);
+	if (!TestTrue(TEXT("set-up: the thirty-floor dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId))
+		|| !AFloorWithChasms(*this, Mode, Player, 3, 1, Seed) || !FallIntoAChasm(*this, Mode, Player))
+	{
+		return false;
+	}
+	const int32 OrdinaryLanding = Mode->FloorNumber;
+	if (!LeaveTheDarkFloorByItsStairs(*this, Mode))
+	{
+		return false;
+	}
+
+	// THE SAME, A RIFT: THE FALL FROM FLOOR 3 LANDS ON 8, WHERE ITS FIRST ALTAR STANDS.
+	SentBy(ECataclysmType::Demonic, 30);
+	if (!AFloorWithChasms(*this, Mode, Player, 3, 1, Seed))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: floor 3 of a thirty-floor Rift holds no altar, so it may have chasms"),
+			  Mode->RiftAltarsPlacedHere(), 0);
+	if (!FallIntoAChasm(*this, Mode, Player))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("RIFT CHASMS:%s a fall from floor 3 of 30 lands on %d in no Rift and on %d in a Rift"),
+							*Seen, OrdinaryLanding, Mode->FloorNumber));
+	TestEqual(TEXT("CONTROL: in a dungeon that is no Rift the fall from floor 3 of 30 lands on 13"), OrdinaryLanding, 13);
+	TestEqual(TEXT("in a Rift it lands on 8, the next floor holding an altar"), Mode->FloorNumber, 8);
+	TestEqual(TEXT("from floor 3"), Mode->TheDarkFloorFellFromFloor(), 3);
+	TestEqual(TEXT("and the dark floor holds no altar of its own"), Mode->RiftAltarsPlacedHere(), 0);
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("its stairs, its creatures cleared away, lead to floor 8"), TakeTheStairs(*this, Mode), 8);
+	TestEqual(TEXT("where the Rift's first altar stands"), Mode->RiftAltarsStandingNow().Num(), 1);
+	return true;
+}
+
 // D1. THE DARK FLOOR IS ITS OWN FLOOR, AND A FLOOR BUILT WITHOUT A FALL IS WHAT IT WAS BEFORE THIS LAYER.
 //
 // ONE DRAW IS EXCEPTED, ruled 2026-10-09, and is not what this test reads: the row now answers Built, so the pool

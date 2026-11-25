@@ -331,18 +331,29 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
 
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
-    and static surges of five dungeons every 120 days, the median walk is 9
-    days to an Outpost, 25 to a Bulwark, 40 to a Sanctuary and 125 to the
+    and static surges of five dungeons every 120 days, the median walk is 8
+    days to an Outpost, 23 to a Bulwark, 37 to a Sanctuary and 125 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 16 / 14 / 15 days. Measured on 2026-11-19 over 10,000
-    campaigns (seeds 0 to 9999) and 708,009 dungeons, each recorded at the
+    sizes, the slack is 17 / 16 / 18 days. Measured on 2026-11-24 over 10,000
+    campaigns (seeds 0 to 9999) and 1,343,305 dungeons, each recorded at the
     moment it was made, with an ordinary dungeon leaving after it hits its city
     (`dungeon_persists_after_resolve` False, the default since 2026-10-12),
     each Cataclysm's Quest dungeons one fixed sub-type, War's at most two a
-    wave, an Outpost's ordinary dungeons 5 to 10 floors (issue #2749, B9), and
-    every Cataclysm's wave on the front line, Demonic included (issue #2749,
-    the ruling on #1085). FEW DUNGEONS REACH A SANCTUARY SINCE THEN: 1,106 of
-    the 708,009, and 17,390 a Bulwark, against 8,625 and 47,108 while Demonic
+    wave, an Outpost's ordinary dungeons 5 to 10 floors (issue #2749, B9),
+    every Cataclysm's wave on the front line (the ruling on #1085), the surge
+    rulings of issue #2865 (an empty board brings the next surge at once and
+    four larger, every city's fall brings one), and Demonic's Rifts (issue #51:
+    a four-floor Quest dungeon that opens anywhere but the Pillar and sends a
+    Basic dungeon every 5 days), which ship on since 2026-11-24. Of the
+    dungeons, 250,790 were made on a Bulwark and 67,360 on a Sanctuary. THE
+    SAME 10,000 CAMPAIGNS WITH THE RIFTS OFF give 8 / 24 / 40 / 125 over
+    1,215,787 dungeons: issue #2865's surges moved the Outpost and the Bulwark
+    by a day each, and the Rifts the Bulwark by one more and the Sanctuary by
+    three. Measured with `sim/tests/test_the_siege_prose_in_policies_is_true.py`'s
+    own `_Recording` and `REPORT_SETTINGS` over seeds 0 to 9999.
+    UNTIL 2026-11-24 THIS SAID 9 / 25 / 40 / 125 AND A SLACK OF 16 / 14 / 15,
+    measured on 2026-11-19 over 708,009 dungeons, of which 1,106 reached a
+    Sanctuary and 17,390 a Bulwark, against 8,625 and 47,108 while Demonic
     could land behind the line. EARLIER ON 2026-11-19 THIS SAID 9 / 23 / 35 /
     125 AND A SLACK OF 16 / 16 / 20, over 707,221 dungeons with Demonic landing
     behind the line.

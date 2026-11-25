@@ -4152,6 +4152,100 @@ bool FCataclysmSaveLoadCoreTest::RunTest(const FString&)
 }
 
 /**
+ * A Rift's altar felled stays fallen after a load, and the stairs it sealed stay open. Issue #51 slice B1, run record
+ * version 19. A Rift four floors deep, as the owner made one: a Quest dungeon Demonic sent, Elite; its floor 1's one
+ * altar is felled and the run saved. THE LOAD REBUILDS THE FLOOR, WHICH PLACES THE ALTAR AGAIN, and the saved rule state
+ * fells it again: CONTROL, the rebuilt floor did place one, so its absence is the save's doing and not a floor that
+ * placed none. Prints "LOAD RIFT ALTAR".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRiftAltarTest,
+	"Cataclysm.SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRiftAltarTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	const FName AltarSeal(ACataclysmDungeonGameMode::RiftAltarsSealKey);
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		// A RIFT, FOUR FLOORS DEEP: a Quest dungeon Demonic sent, Elite as its Quest dungeons are.
+		if (UCataclysmEmpireRun* Run = Scene.Base.Instance->GetOrBeginEmpireRun())
+		{
+			for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.DungeonId == DungeonId)
+				{
+					Dungeon.Floors = 4;
+					Dungeon.Type = ECataclysmDungeonType::Quest;
+					Dungeon.SubType = ECataclysmDungeonSubType::Elite;
+					Dungeon.Cataclysm = ECataclysmType::Demonic;
+				}
+			}
+		}
+		if (!TestTrue(TEXT("set-up: a Rift was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the Rift was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: it is a Rift"), Scene.Mode->IsARift())
+			|| !TestEqual(TEXT("set-up: its floor 1 placed one altar"), Scene.Mode->RiftAltarsPlacedHere(), 1)
+			|| !TestTrue(TEXT("set-up: the altar seals the stairs"), Scene.Mode->StairsSealedBy().Contains(AltarSeal))
+			|| !KillOnTheFloor(*this, *Scene.Base.Character, Scene.Mode->RiftAltarsStandingNow()[0], TEXT("the altar"))
+			|| !TestFalse(TEXT("set-up: and no longer seals them"), Scene.Mode->StairsSealedBy().Contains(AltarSeal)))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const bool bRift = Scene.Mode->IsARift();
+	const int32 Placed = Scene.Mode->RiftAltarsPlacedHere();
+	const int32 Standing = Scene.Mode->RiftAltarsStandingNow().Num();
+	const bool bSealed = Scene.Mode->StairsSealedBy().Contains(AltarSeal);
+
+	AddInfo(FString::Printf(TEXT("LOAD RIFT ALTAR: %s (%s); a Rift %s, floor %d, %d altar(s) placed, %d standing; the "
+								 "stairs %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, bRift ? TEXT("yes") : TEXT("NO"),
+							Scene.Mode->FloorNumber, Placed, Standing, bSealed ? TEXT("SEALED") : TEXT("unsealed")));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("the loaded walk is the Rift"), bRift);
+	TestEqual(TEXT("CONTROL: the rebuilt floor placed its altar again"), Placed, 1);
+	TestEqual(TEXT("and the saved state felled it again"), Standing, 0);
+	TestFalse(TEXT("so the stairs stay unsealed"), bSealed);
+	return true;
+}
+
+/**
  * A Soul Chains gate neither opens nor pays on a load: a gate opened before the save stays open without paying again,
  * and a closed gate keeps its bearers, which the load re-links instead of choosing. Until this a load destroyed the
  * rebuilt floor's bearers and every closed gate opened and paid on the next beat. Issue #753, Group 3c-1, ruled
@@ -5544,8 +5638,8 @@ bool FCataclysmSaveLoadVengefulWraithTest::RunTest(const FString&)
 /**
  * `Run_v9.json`, written before a saved creature said whether it is a Vengeful Wraith, migrates to no wraith: a
  * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: the committed run file,
- * `Run_v18.json` since the run record went to version 18 (issue #2848), `Run_v17.json` from version 17 (issue
- * #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
+ * `Run_v19.json` since the run record went to version 19 (issue #51), `Run_v18.json` from version 18 (issue #2848),
+ * `Run_v17.json` from version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
  * `Run_v13.json` from version 13 (issue #2825),
  * `Run_v12.json` from version 12 (issue
  * #2741 slice 6b), reads true on its first creature, the risen Brute that sees 30 times as far, and false on its
@@ -5561,7 +5655,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -5602,7 +5696,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentMessage;
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, CurrentMessage));
-	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v18.json loads"), Current))
+	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v19.json loads"), Current))
 	{
 		AddError(Message + TEXT(" | ") + CurrentMessage);
 		return false;
@@ -5623,6 +5717,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -5641,7 +5736,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	};
 
 	AddInfo(FString::Printf(TEXT("WRAITH MIGRATED: the step %d (%s); false written on %d creature(s); the record at "
-								 "version %d with flags %s; Run_v18.json flags %s; the rest %s"),
+								 "version %d with flags %s; Run_v19.json flags %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, WrittenFalse, Read->SchemaVersion, *Flags(*Read),
 							*Flags(*Current), bSame ? TEXT("kept") : *Where));
 	TestEqual(TEXT("the chain migrates the version 9 file"), static_cast<int32>(Stepping),
@@ -5650,7 +5745,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
 	TestEqual(TEXT("and neither creature is a wraith"), Flags(*Read), FString(TEXT("00")));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v18.json's first creature is a wraith and its second is not"), Flags(*Current),
+	TestEqual(TEXT("CONTROL: Run_v19.json's first creature is a wraith and its second is not"), Flags(*Current),
 			  FString(TEXT("10")));
 	return true;
 }
@@ -9557,8 +9652,13 @@ namespace CataclysmFirstSurgeTest
 			Test.TestEqual(Name + TEXT("'s timer is still full"), Run.Clock->DaysUntilResolveFor(Dungeon.DungeonId),
 						   Dungeon.ResolveDays, 0.0001f);
 			Test.TestEqual(Name + TEXT(" arrived on day 0"), Dungeon.SpawnedDay, 0);
-			Test.TestEqual(Name + TEXT(" carries its tier's modifiers for its sub-type"), SlotModifiersOf(Dungeon),
-						   UCataclysmDungeonModifierRules::CountFor(Run.DifficultyTier, Dungeon.SubType));
+			// A RIFT CARRIES EIGHT WHATEVER THE TIER, since issue #51 slice B2: a new character's Cataclysms are drawn
+			// by the clock, so its opening wave can hold a Quest dungeon Demonic sent.
+			Test.TestEqual(Name + TEXT(" carries its tier's modifiers for its sub-type, or a Rift's eight"),
+						   SlotModifiersOf(Dungeon),
+						   Dungeon.IsARift() ? UCataclysmDungeonModifierRules::RiftModifierCount
+											 : UCataclysmDungeonModifierRules::CountFor(Run.DifficultyTier,
+																						 Dungeon.SubType));
 			const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Dungeon.SubType);
 			Parts.Add(FString::Printf(TEXT("%d %s%s%s %d floors %d modifiers"), Dungeon.DungeonId,
 									  *UCataclysmSurgeScheduler::KindName(Dungeon.Type),
@@ -11808,6 +11908,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -11838,7 +11939,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v18.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * `Run_v19.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
  * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
  * B10, `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and `Run_v9.json` until it went
  * to version 10 the same day, issue #2725, and `Run_v10.json` until it went to version 11 on 2026-11-20, issue #2741
@@ -11846,8 +11947,8 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
  * went to version 13 on 2026-11-21, issue #2825, and `Run_v13.json` until it went to version 14 on 2026-11-22, issue #46,
  * and `Run_v14.json` until it went to version 15 the same day, issue #2741 slice 9, and `Run_v15.json` until it went to
  * version 16 the same day, issue #2838, and `Run_v16.json` until it went to version 17 the same day, issue #2840,
- * and `Run_v17.json` until it went to version 18 on 2026-11-24, issue #2848, and the twelve hold the same
- * values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
+ * and `Run_v17.json` until it went to version 18 on 2026-11-24, issue #2848, and `Run_v18.json` until it went to
+ * version 19 the same day, issue #51, and the thirteen hold the same values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
  */
@@ -11859,7 +11960,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -11870,7 +11971,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v18.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v19.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}

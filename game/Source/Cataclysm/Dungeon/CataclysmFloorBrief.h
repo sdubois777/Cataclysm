@@ -382,6 +382,62 @@ public:
 							  int32 FloorNumber);
 
 	/**
+	 * Where the `One`-th of `Count` things spread evenly down `TotalFloors` floors stands: floor
+	 * ceil(One x TotalFloors / Count), so the last of them is on the final floor.
+	 *
+	 * THE SPREAD THE OWNER CHOSE FOR A FALLEN CITY'S BOSSES on 2026-10-29 (issue #1466, "Spread evenly"), and the one
+	 * the owner chose for a Rift's four altars on 2026-11-24 (issue #51). Both rules call this, so the two cannot come
+	 * apart. NOT HELD TO ONE A FLOOR HERE: a caller that wants that passes a `Count` no larger than `TotalFloors`, as
+	 * both do. Nought for a `Count` below one.
+	 */
+	static int32 SpreadFloorOf(int32 One, int32 Count, int32 TotalFloors);
+
+	// ----------------------------------------------------------------------
+	// A Rift's four altars: the Demonic Quest dungeon, issue #51 slice B1
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How many altars a Rift holds. `docs/Cataclysm_GDD_v2.md` section XI, Hell on Earth: "destroy the four altars
+	 * powering each one". `tools/tests/test_a_rifts_four_altars.py` holds this to that sentence.
+	 */
+	static constexpr int32 RiftAltars = 4;
+
+	/**
+	 * Which floor of a Rift `TotalFloors` deep altar `Altar` (counted from 1) stands on, or nought when there is no
+	 * such altar or no such floor.
+	 *
+	 * THE OWNER'S RULING OF 2026-11-24 (issue #51, Q2), VERBATIM: "One per floor, spread (Recommended)", that is
+	 * "Altar *i* on floor ceil(*i* x floors / 4), the spread ruled for a Fallen City's bosses on 2026-10-29 (#1466); a
+	 * Rift of fewer than four floors puts the rest on its last floor."
+	 *
+	 * SO, AS THE FALLEN CITY'S BOSSES ARE, AT MOST ONE A FLOOR, AND THE REST ON THE LAST. Of four altars and F floors,
+	 * min(4, F) are spread by `SpreadFloorOf`, one a floor, and the remaining 4 - min(4, F) stand on floor F. From four
+	 * floors on that is ceil(i x F / 4) for every altar. Below four it is altar i on floor i and the rest on the last:
+	 * 1, 2, 2, 2 for a Rift of two floors. A READING OF THE RULING, stated so it can be checked: the bare formula would
+	 * give 1, 1, 2, 2 there, two on the first floor, which is not "one per floor" and leaves no "rest" for the last.
+	 *
+	 * A RIFT IS FOUR FLOORS DEEP, the owner's ruling later the same day: "A Rift is a Quest dungeon of exactly 4 floors,
+	 * one altar on each floor (this replaces the altar spread ceil(i x floors / 4), which now always gives one per
+	 * floor)." At four floors this gives 1, 2, 3, 4. THE SPREAD IS KEPT FOR ANY OTHER DEPTH, ruled by the coordinating
+	 * session that evening: a Quest dungeon Demonic rolled before the empire makes Rifts four floors deep (slice B2, not
+	 * this) is 20 to 70 floors deep, and a city's floor upgrades may move a Rift's depth if slice B2 lets them.
+	 */
+	static int32 RiftAltarFloor(int32 TotalFloors, int32 Altar);
+
+	/** How many of a Rift's altars stand on `FloorNumber` of a Rift `TotalFloors` deep, by `RiftAltarFloor`. */
+	static int32 RiftAltarsOnFloor(int32 TotalFloors, int32 FloorNumber);
+
+	/**
+	 * How many of a Rift's altars stand on floors above `FloorNumber`, by `RiftAltarFloor`. Every one of them has
+	 * fallen by the time the player stands on `FloorNumber`: each seals its floor's stairs while it stands, and no chasm
+	 * opens on a floor holding one (`ACataclysmDungeonGameMode::PlaceTheChasms`).
+	 */
+	static int32 RiftAltarsAboveFloor(int32 TotalFloors, int32 FloorNumber);
+
+	/** The first floor below `FloorNumber` of a Rift `TotalFloors` deep that holds an altar, or nought when none does. */
+	static int32 NextRiftAltarFloorAfter(int32 TotalFloors, int32 FloorNumber);
+
+	/**
 	 * Whether this floor's creatures arrive as one wave.
 	 *
 	 * ONE FLOOR IS ONE WAVE, WHICH IS WHAT THE DESIGN SENTENCE COUNTS:

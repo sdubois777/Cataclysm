@@ -1779,6 +1779,521 @@ rc-w1's log, + 4 = 26), `Cataclysm.SkillChoiceScreen.` 9 (8 + 1); the whole suit
 
 ---
 
+## 2026-11-24 — Demonic's Infernal Rifts on the empire map: a Rift is a four-floor Demonic Quest dungeon with eight modifiers that opens anywhere but the Pillar, sends a Basic Demonic dungeon to a neighbour every 5 days, and brings a surge when the player dies in it (#51, slice B2)
+
+**Affects:** `FCataclysmDungeon::IsARift` (taken from slice B1, below), `UCataclysmSurgeScheduler::RiftFloors`,
+`RiftSendEveryDays`, `RiftSeedFor`, `RiftSendsOn`, `DaysUntilRiftSends`, `PickRiftCity`, `PickRiftTarget`, new,
+`MakeDungeon` and `RollWave(..., RiftSeed)` (`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`);
+`UCataclysmDungeonModifierRules::RiftModifierCount`, new (`game/Source/CataclysmEmpire/Empire/CataclysmDungeonModifier.h`);
+`UCataclysmEmpireRun::SendFromRifts`, `SurgeForADeathInARift`, `DaysUntilRiftSends`, `RiftsOn`, new, `GiveModifiersFrom`,
+`FireSurge` and `AdvanceDay`, and `FCataclysmDayReport::RiftSent` and `bSurgedForARiftDeath`, new
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); `ACataclysmDungeonGameMode::
+EndTheDungeonForADeath` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`);
+`UCataclysmEmpireMapLayout::CityDetailDungeonLine` and `RiftMark`, new, and the map widget's city boxes
+(`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h`, `.cpp` and `CataclysmEmpireMapWidget.cpp`);
+`TuningConfig.demonic_rifts`, `rift_spawn_every_days`, `rift_death_brings_surge`, `rift_floors`,
+`rift_timer_from_quest_depth`, `rift_strength_from_quest_depth`, `rift_modifiers` and `rift_one_sent_at_a_time`, new
+(`sim/cataclysm_sim/config.py`); `Simulation.is_rift`, `_rift_spawns`, `_surge_for_a_rift_death`, `trigger_surge`,
+`_make_dungeon`, `_empire_day`, `_walk_day`, `_finish_current` and `Dungeon.strength_floors`
+(`sim/cataclysm_sim/engine.py`); `combat.death_chance(..., strength_floors)` (`sim/cataclysm_sim/combat.py`); the
+design document's Hell on Earth section.
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** On `feat/demonic-rifts-51`, cut from `fix/empty-board-surge-2865` at `09426c7b8`
+  (development `4d33f5994` and issue #2865's commits, which must land first: this slice relies on every fall bringing
+  its own surge). **REBUILT ON 2026-11-25** as `feat/demonic-rifts-51-2`, by the coordinating session's instruction,
+  once #2865 had merged: its five commits rebased onto development `0d9259653` (`git rebase --onto origin/development
+  09426c7b8`), so #2865's commits dropped out. The top of this log and the empire map's layout conflicted: the layout
+  keeps development's four fallen-city functions (issue #2866) and this slice's `RiftMark` beside them. It then joins
+  the altar slice, `feat/rift-altars-51-2`, for one window.
+- **THE MEASUREMENTS WERE CALLED PROVISIONAL** because the gear drop rarity fix (issue #2853) was not in. It merged
+  before the rebuild, and it cannot move them: a campaign with the Rifts on, run on 2026-11-25 for two seeds that face
+  Demonic, loads none of `sim/cataclysm_sim/player_power.py`, `loot.py` or `affixes.py`, the model files #2853
+  changed, as the ring fit loads none (the #2865 entry). **The coordinating session ruled on 2026-11-25 that they are
+  no longer provisional**, for the same reason as the ring figures: they stand as measured, as play-test points.
+- **AS FIRST RULED, THE RIFTS MADE TIER 1 WITH NO EMPIRE TREE NEARLY UNWINNABLE**: the win rate fell from 44.1% to
+  3.7% and the boss dungeon opened in 8.3% of campaigns instead of 99.2%, because a Rift as deep as any Quest dungeon
+  takes 20 to 50 days to seal and sends a dungeon every 5 of them. The owner then made a Rift four floors, with eight
+  modifiers. As built, the same world loses about 15 cities of 24 against 10.4 without Rifts, at 42% won against 44%.
+- **THE MODEL'S RIFTS SHIP ON, WITH THE GAME'S.** `TuningConfig.demonic_rifts` is True, ruled by the coordinating
+  session on 2026-11-24 "so the model and the game agree", and every other Rift setting defaults to the ruling. Until
+  that ruling it shipped off (`76eac65c0`) and `tools/tests/test_demonic_rifts_port.py` held the gap;
+  `test_both_halves_ship_the_rifts_on` now holds it closed. A model campaign whose character faces Demonic has Rifts
+  from here on, so a figure measured before for such a campaign moves; one that never faces Demonic is unchanged.
+- **WITH THE MODEL'S RIFTS ON, A RIFT CAN KILL A YOUNG CHARACTER, AND THE RING GUARD NOW LEAVES RIFTS OUT.** In the
+  tier 1 campaigns `tools/tests/test_the_starting_character_survives_a_pack.py` walks, four Rift clears on a Bulwark
+  or a Sanctuary (seed 12, levels 8 to 11) were lost or won under 10% health: a Rift's eight modifiers make it harder,
+  as the owner chose. The guard fits each ring's damage figure to ordinary content, and fitting it to a Rift would make
+  every ordinary dungeon on the ring easier, so it leaves Rifts out. **The coordinating session's ruling of
+  2026-11-24**, on this slice's judgement, verbatim: "the owner chose the eight modifiers to make Rifts harder ("Keep
+  it spicy"); the guard fits ordinary content, and softening Rifts or lowering the rings would undo a ruling or make
+  every ordinary dungeon easier." `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out` holds that Rift clears
+  exist, so the exemption is not empty, and proof PP5 below shows it is what lets the guard pass.
+- **NO RUN RECORD VERSION STEP.** A Rift's 5-day count is worked out from `FCataclysmDungeon::SpawnedDay`, which is
+  saved and set only when a dungeon is made (neither a move on its timer nor a move on its city's fall changes it), so
+  nothing new is stored. Slice B1 and `feat/abyssal-rifts-2864` each take the run record from 18 to 19; this slice
+  takes none and cannot collide with either there.
+- **`FCataclysmDungeon::IsARift` WAS TAKEN FROM SLICE B1** (`feat/rift-altars-51`, `3945ec0dc`) by applying that
+  commit's two hunks in `CataclysmSurge.h` and `CataclysmSurge.cpp` with `git apply`, so the text is identical;
+  whichever slice merges second keeps one copy.
+
+### The rulings
+
+Each is the owner's chosen option or words, verbatim, from issue #51 (comment 7149391315 and the two after it).
+
+| Question | The owner, 2026-11-24 | What the game and the model do |
+| :-- | :-- | :-- |
+| What a Rift is | "Rift = Quest dungeon (Recommended)" | A Quest dungeon Demonic sent: `IsARift`, `Simulation.is_rift`. Sealing one is clearing it, one Demonic objective |
+| Where it opens | "Anywhere but the Pillar (Recommended)" | Any standing city but the Pillar, sealed ones included, by the surge's tier weights (5, 3, 1.5) |
+| What it sends | the same option | Every 5 days from its `SpawnedDay`, not reset when it moves, a Basic Demonic dungeon made as a surge makes one for that city, to an adjacent city a surge could target; nothing when none qualifies |
+| A death in one | "Every death, no gap (Recommended)" | An ordinary surge at once, no least-interval brake |
+| Its depth | "let's make them 4 floors?" | Exactly four floors, whatever a city's floor upgrades or the tree would add |
+| Its timer | "Keep the short timer for rifts. It's only fair, it has 4 floors. If you keep on top of them it wont matter." | The ordinary Quest timer for four floors |
+| Its modifiers | "Also, I think we should make it so Rifts always have 8 dungeon modifiers. Keep it spicy" | Eight, whatever the tier, drawn as any dungeon's are, no repeats |
+| Its difficulty | "(b) 8 modifiers only (Recommended)" | The eight modifiers are all of it: its floors are an ordinary four-floor dungeon's |
+| A limit on sending | "No limit" | None: a Rift sends whatever of its dungeons still stand |
+
+### Judgements of this slice, each labelled where it is written
+
+- **The neighbour a Rift sends to is drawn by the surge's tier weights**; the ruling names no rule for choosing among
+  several (`PickRiftTarget`, `Simulation._rift_spawns`).
+- **A Rift sends after the day's timers and resolves and before the empty-board check**, so one that moved today
+  sends from where it stands and what it sends is on the board when that check asks. The count runs by the calendar,
+  so it is not paused while the player is inside the Rift; a sealed Rift is off the map before the walk's days run.
+- **The death surge lands on the day of the death**: after the walk's days and before the death's own, the order the
+  game already charges a death in. It is an ordinary surge: it moves the next scheduled surge on and advances the
+  escalation.
+- **A Rift's city, its eight modifiers and every dungeon it sends are drawn from streams of their own**
+  (`RiftSeedFor`: the run's saved `CorruptedStalkerSeed`, the Rift's identifier, and which draw), and the draws an
+  ordinary dungeon would take from the shared streams are still taken and thrown away. So every dungeon of a
+  fixed-seed run that is not a Rift, or sent by one, rolls exactly what it rolled before. In the model a Rift draws
+  from the campaign's stream, but no draw is taken unless Demonic sends a Quest dungeon, so a campaign that never faces
+  Demonic is unchanged.
+- **A Rift and a sent dungeon respect a city's dungeon cap** (`RoomLeftOn`), as a surge does; a sent dungeon may be a
+  Siege only where none stands.
+- **The map:** a city holding a Rift reads ", Rift" (", 2 Rifts") after its box's label, and each Rift's detail line
+  reads "Infernal Rift of 4 floors, 12 days left, sends a dungeon in 5 days". "Infernal Rift" is slice B1's floor
+  panel name.
+
+### The measurements
+
+`.claude/windows/measure_rifts_51.py`, `measure_rifts_alternatives_51.py`, `measure_rifts_four_floors_51.py`,
+`measure_rifts_four_floors_g_51.py` and `measure_rifts_eight_modifiers_51.py`, with their `.out` files, in the
+opening session's worktree (not committed). Method: the #2865 measurement's (STATIC, resolve ratio 2.0, the shipped
+cadence, the empty-board rule and the every-fall surge), policy `triage`, 2,000 campaigns a cell in two disjoint blocks
+of 1,000, **only campaigns whose character faces Demonic** (13.5% of campaigns at tier 1, 50.3% at tier 4). Block to
+block, the win rate differs by up to about 4 points.
+
+Tier 1, no empire tree (cities lost of 24 / won / boss dungeon opened / Last Stand reached / dungeons Rifts sent per
+campaign / most dungeons standing on any day):
+
+| Variant | Cities | Won | Boss | Last Stand | Sent | Peak |
+| :-- | --: | --: | --: | --: | --: | --: |
+| Today, no Rifts | 10.44 | 44.1% | 99.2% | 8.3% | 0 | 41 |
+| Rifts as deep as any Quest dungeon, as first ruled | 23.54 | 3.7% | 8.3% | 98.2% | 293 | 140 |
+| Placement alone (no sending, no death surge) | 10.54 | 42.9% | 98.5% | 10.8% | 0 | 41 |
+| Four floors, the 4-floor timer, one modifier, no limit | 14.70 | 42.2% | 100% | 44.3% | 129 | 99 |
+| The same with at most one sent dungeon standing | 8.97 | 42.1% | 100% | 11.2% | 27 | 42 |
+| (a) eight modifiers and the deep floors' enemies, no limit | 15.08 | 42.6% | 99.9% | 47.6% | 133 | 100 |
+| **(b) eight modifiers on an ordinary 4-floor dungeon, no limit: as ruled and built** | **14.99** | **42.4%** | **99.9%** | **46.9%** | **132** | **100** |
+| (b) with at most one sent dungeon standing | 8.96 | 42.0% | 100% | 10.9% | 27 | 42 |
+
+- **With four-floor Rifts a campaign lasts about 360 days against 522**: ten four-floor Rifts are sealed quickly, so
+  the boss dungeon opens sooner. Final player power falls from 187 to 173, because a four-floor Rift pays four floors.
+- **One walk of a tier 1 Rift**, at 0.3 of the tier's width of power (a campaign starts at 0.35), on an Outpost,
+  Bulwark and Sanctuary: deep 15.2%, 19.8% and 20.7%; four floors with one modifier 7.9% to 8.2%; (a) 9.5% to 9.7%;
+  (b) 8.9%. Eight modifiers add about 86 to every enemy's score against about 12 for one, on a tier whose power runs 0
+  to 385. The model scores a modifier only by its danger score, not by what it does.
+- **Tier 1, the Architect tree**: no city lost in any variant; won 43.2% to 49.5%; the boss dungeon opens in every
+  campaign.
+- **Tier 4, no tree**: the empire falls in every variant, as it does today (23.7 to 24.0 cities, the Last Stand in
+  about every campaign); won 18.1% to 22.1% against 19.6%.
+- **The other limits measured on the deep Rift**, at tier 1 with no tree: sending every 10 days, 20.10 cities and 19.4%
+  won; every 15 days, 16.54 and 31.5%; a player who seals a sending Rift first, 22.29 and 17.6%.
+
+Research: the one guide on Total War: Warhammer III's Chaos Rifts that could be read (gamepressure.com) says they open
+"every dozen or so turns" and harm the province they stand in; it gives no army spawn interval and no limit. It settled
+nothing here.
+
+### Tests
+
+- **The model**: `sim/tests/test_demonic_rifts_as_ruled.py`, 18 tests (where a Rift opens, what it sends and when, the
+  death surge, a whole campaign), and `sim/tests/test_a_short_rift_and_the_one_dungeon_limit.py`, 18 (the ruled
+  defaults, four floors, the timer, the enemies, eight modifiers, the one-dungeon limit kept for measurement). Each
+  rule has a control.
+- **The two halves**: `tools/tests/test_demonic_rifts_port.py`, 14 tests: the three numbers, that both halves ship
+  the Rifts on, what a Rift is, where it opens, when and where it sends and what, its modifiers, and the death surge's
+  place in the death.
+- **With the model's Rifts on, three Python files changed:** `sim/tests/test_every_cataclysm_lands_on_the_front_line.py`
+  leaves Rifts out of its three front-line checks (the ruling on #1085 reserved the design's Demonic quest mechanic, and
+  a Rift is that mechanic) and holds every other wave dungeon to the line;
+  `tools/tests/test_the_starting_character_survives_a_pack.py` leaves Rifts out of the ring guard (above) and gains
+  `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out`; and the median walk `policies.siege_urgency` states
+  was measured again over its 10,000 campaigns: 8 / 23 / 37 / 125 days and a slack of 17 / 16 / 18, against
+  9 / 25 / 40 / 125 measured on 2026-11-19. The same campaigns with the Rifts off give 8 / 24 / 40 / 125, so issue
+  #2865's surges moved the Outpost and the Bulwark by a day each, inside the check's tolerance, and the Rifts the
+  Bulwark by one more and the Sanctuary by three. `sim/cataclysm_sim/policies.py`, the comment on
+  `siege_damage_growth_per_day` in `sim/cataclysm_sim/config.py` and the re-measurement notes under the Siege's entry
+  below carry the new figures.
+- **New in the game**, 16 tests:
+  - `Cataclysm.Rifts.` (`game/Source/CataclysmEmpire/Tests/CataclysmRiftsTests.cpp`), 12:
+    `ARiftIsFourFloorsWithTheTimerOfFourFloorsWhateverTheTreeAdds`, `MakingARiftTakesTheDrawsAnyQuestDungeonTakes`,
+    `ARiftOpensOnAnyStandingCityButThePillarByTierWeight`, `ARiftsCityIsDrawnFromItsOwnStreamAndTheWaveRollsAsBefore`,
+    `ARiftCarriesEightDifferentModifiersWhateverTheTier`,
+    `ARiftsModifiersLeaveTheRunsModifierStreamWhereAQuestDungeonsWould`,
+    `ARiftSendsABasicDemonicDungeonOnItsFifthDayAndItsTenth`, `AQuestDungeonAnotherCataclysmSentSendsNothing`,
+    `ARiftThatMovesKeepsItsCountAndSendsFromWhereItStands`,
+    `ARiftWithNoNeighbourASurgeCouldTargetSendsNothingUntilALaneOpens`,
+    `ASealedRiftSendsNothingAndIsOneDemonicObjective`, `ADeathInARiftBringsAnOrdinarySurgeOnTheDayOfAnotherSurge`.
+  - `Cataclysm.RiftMap.` (`game/Source/Cataclysm/Tests/CataclysmRiftMapTests.cpp`), 2:
+    `ARiftsDetailLineNamesItAndTheDaysUntilItSends`, `ACityHoldingRiftsSaysSoOnItsBox`.
+  - `Cataclysm.DeathCost.` (`game/Source/Cataclysm/Tests/CataclysmDeathCostTests.cpp`), 2:
+    `ADeathInARiftBringsASurgeOnTheDayOfTheDeath` and its control `ADeathInAQuestDungeonThatIsNoRiftBringsNoSurge`.
+    They die on the first floor and take no stairs, because B1's altars seal a Rift's stairs.
+
+### The sweep of the tests a Rift can change
+
+Every Unreal test was read for a Demonic Quest dungeon made, rolled in a wave, or left standing while days pass. A run
+faces Demonic at tier 1 for seeds 4, 29, 43, 48, 57, 59, 62, 68, 84, 97 and more (`UCataclysmRoster::OrderFor`, in
+Python in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`).
+
+- **Changed, in their test files only:**
+  - `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls`: a Rift is compared by kind and depth only. Its
+    city, depth and timer are its own rule; the new `ARiftsCityIsDrawnFromItsOwnStreamAndTheWaveRollsAsBefore` holds
+    the rest of the wave unmoved.
+  - `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`: a landed Rift is asserted four floors, not the Quest row's
+    depth (seed 4 faces Demonic), and the dungeons Rifts send are left out of the share of dungeons the surges rolled.
+  - `Cataclysm.DungeonModifiers.EveryDungeonASurgeLandsCarriesModifiers` (seed 42 at tier 4 faces Demonic) and
+    `Cataclysm.FirstSurge.ANewCharactersRunStandsTheOpeningWaveOnDayZeroAndItsRecordHoldsIt` (a new character's
+    Cataclysms are drawn by the clock): a Rift carries eight.
+- **Read and left**, each asserting nothing a Rift changes: in `Cataclysm.Surge.`,
+  `NoDungeonACampaignMakesComesOutWithoutASubType`, `InARunSevenCataclysmsQuestDungeonsAreTheirOneSubType` and
+  `TheVoidsQuestDungeonIsAHollowThatRemembersItsNaturalFloors`; in `Cataclysm.EmpireRun.`,
+  `AnUnattendedEmpireAlwaysLosesThePathToThePillar`, `ACityNeverHoldsTwoSieges`, `AQuestDungeonHitsItsCityAndThenRefreshes`,
+  `AQuestDungeonMovesToAnAdjacentCity`, `ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice` and
+  `OnlyAResolveThatCostACitySomethingIsCounted`; in `Cataclysm.Roster.`, `TheCataclysmDungeonOpensAtHalfTheActiveCataclysms`
+  and `EveryDungeonASurgeLandsNamesTheCataclysmThatSentIt`; in `Cataclysm.DungeonModifiers.`,
+  `TheSameSeedDrawsTheSameModifiers` and `TheDrawDoesNotShiftAnythingElseTheRunRolls`. The city detail and city screen
+  tests place Quest dungeons with no sender, which are not Rifts; no existing test dies in a Rift.
+- **Python guards that read the edited functions** were kept as they stood: the four-floor rule is the roll's range
+  (four to four) and nought from the upgrades and the tree, so `MakeDungeon` still assigns `Dungeon.Floors` and
+  `Dungeon.UpgradeFloors` exactly as often as `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`
+  requires.
+
+### Registered for the window
+
+- **The build.** The empire module's `CataclysmSurge.h`, `CataclysmEmpireRun.h` and `CataclysmDungeonModifier.h`
+  change, so most of both modules rebuild. Read the "files compiled" line.
+- **The groups alone, each with a trailing dot**, counted from the newest measured log at the turn: `Cataclysm.Rifts.`
+  12 (new), `Cataclysm.RiftMap.` 2 (new), `Cataclysm.DeathCost.` that count plus 2, and `Cataclysm.Surge.`,
+  `Cataclysm.DungeonModifiers.`, `Cataclysm.FirstSurge.`, `Cataclysm.EmpireRun.`, `Cataclysm.Roster.` and
+  `Cataclysm.EmpireScreen.` at that count. `Cataclysm.Rifts.` does not select B1's `Cataclysm.RiftAltars.`.
+- **The whole suite.** The base's last measured total plus 16; 0 failed; 0 saves left behind.
+- **Python, run on the tree this entry was committed with**, all but this block, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8294 passed, 10 skipped in 546.10s`; the JUnit file agrees, 8,304 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff
+  check .`: `All checks passed!`. The 97 test files that read this log were run again after this block was written.
+  **TWO EARLIER RUNS FAILED.** Before `76eac65c0`, one test, `tools/tests/test_game_readme_is_true.py::
+  test_the_empire_layer_claim_is_still_true`, because the new `CataclysmRiftsTests.cpp` was in neither its list nor
+  `game/README.md` (both name it now); that commit's own tree then passed, `8293 passed, 10 skipped in 491.12s`. With
+  the model's Rifts turned on after it, six: the three front-line checks, the median walk to a Bulwark, and the ring
+  guard on the Bulwark and on the Sanctuary, each changed as the tests section above says.
+- **Python guard proofs, run** with `tools/prove_guard.break_and_run` in a copy of the branch (`git archive` of
+  `76eac65c0` with the switch-on changes laid over it), each `PROVED` (failed with the break in, passed with it out).
+  PP1 to PP4 gave the same named failures on `76eac65c0`'s own tree, before the switch went on:
+  - PP1, the model's `rift_modifiers: int = 8` becomes `0`: 3 named failures, `test_the_switches_default_to_the_ruling`,
+    `test_a_rift_made_with_the_defaults_is_the_ruled_one` and `test_a_rift_carries_eight_modifiers_in_both`.
+  - PP2, the game's `RiftSendEveryDays = 5` becomes `6`: 1, `test_a_rift_sends_every_five_days_in_both`.
+  - PP3, the game mode's `WhatTheRiftBrought = Run->SurgeForADeathInARift();` becomes `WhatTheRiftBrought =
+    FCataclysmDayReport();`: 1, `test_a_death_in_a_rift_brings_an_ordinary_surge_after_the_walks_days_in_both`.
+  - PP4, the model's `self._rift_spawns()` in `_empire_day` becomes `pass`: 7, two in
+    `sim/tests/test_a_short_rift_and_the_one_dungeon_limit.py` (the limit and its control), four in
+    `sim/tests/test_demonic_rifts_as_ruled.py` (three on sending and the campaign test), and
+    `test_it_sends_after_the_days_resolves_and_before_the_empty_board_check_in_both`.
+  - PP5, the ring guard's `rift = self.is_rift(dungeon)` becomes `rift = False`: 3, the guard on the Bulwark and on the
+    Sanctuary, and `test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out`.
+- **C++ guard proofs, registered and not run**, each `prove_cpp_guard`, alone, never while the Python suite runs:
+
+| # | Break | Prefix | Predicted named failures |
+| :-- | :-- | :-- | :-- |
+| P1 | `MakeDungeon`: `Spec.LeastFloors = RiftFloors;` and `Spec.MostFloors = RiftFloors;` become `RiftFloors + 1` (a Rift of five floors) | `Cataclysm.Rifts.` | `ARiftIsFourFloorsWithTheTimerOfFourFloorsWhateverTheTreeAdds`, `ARiftOpensOnAnyStandingCityButThePillarByTierWeight` |
+| P2 | `RiftSendsOn`: `return Age > 0 && Age % RiftSendEveryDays == 0;` becomes `return false;` | `Cataclysm.Rifts.` | `ARiftSendsABasicDemonicDungeonOnItsFifthDayAndItsTenth`, `ARiftThatMovesKeepsItsCountAndSendsFromWhereItStands`, `ARiftWithNoNeighbourASurgeCouldTargetSendsNothingUntilALaneOpens` |
+| P3 | `EndTheDungeonForADeath`: `WhatTheRiftBrought = Run->SurgeForADeathInARift();` becomes `WhatTheRiftBrought = FCataclysmDayReport();` | `Cataclysm.DeathCost.` | `ADeathInARiftBringsASurgeOnTheDayOfTheDeath` |
+
+Four builds a proof, twelve for the three. Slice B1's entry carries the altars' proofs.
+
+### The rebuild's sweep, 2026-11-25
+
+Development's Unreal test files changed since this slice's base (`4d33f5994`, 84 files, which covers the altar slice's
+later base `5cdd6bdc4`) were searched for a run begun or a wave rolled (`Begin(`, `MakeRun(`, `QuietRun(`,
+`MakeWalkRun`, `EmpireRunFor`, `RollWave`, `FireSurge`, `MakeDungeon(`) and for a Demonic or Quest dungeon made by
+hand (`ECataclysmType::Demonic`, `ECataclysmDungeonType::Quest`, `.Cataclysm = `). Each run's seed was checked with
+`order_for` in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`; a run at tier N faces the first N of its
+draw.
+
+- **Seeds 2848, 2741, 3 and 4242** face Demonic from tier 7, 4, 7 and 8, and these runs are at tier 1: no Rift.
+  `MakeRun`'s default seed 1 faces it from tier 4.
+- **Seed 2849 (`Cataclysm.InventoryTabs.`) and seed 48 (`Cataclysm.Merchant.`) face Demonic at tier 1**, so their
+  opening waves hold Rifts. NOT AFFECTED, by reading: the first uses its run for its tier and gold only; the second
+  asserts that no day passes and that a walk is under way, and reads no dungeon. Both groups run alone.
+- **No new test builds a Demonic Quest dungeon by hand or walks one**, so none meets an altar (slice B1). The map's
+  city button now ends with `RiftMark`; the new tests that read the map (`Cataclysm.WalkFromTheScreen.` and the
+  merchant's map button) run seeds 4242 and 3, with no Rift.
+
+### Registered for the shared window, 2026-11-25: slices B1 and B2 on `feat/rift-altars-51-2`
+
+**Registered before it ran; window rifts-w1 ran it (the next section).** The coordinating session's plan of 2026-11-24:
+after #2865, ONE window for the altar slice (B1) and this slice, on `feat/rift-altars-51-2`, which is B1 rebuilt on
+development `0d9259653` with this slice's `feat/demonic-rifts-51-2` merged in, and development `4a961ce84` (the forge,
+#2895) merged in after them. It replaces this entry's registration above and B1's proof list, which were written before
+either was rebuilt. Base: the newest whole-suite log, the forge window's `forge_suite_engine_88c917b0.log` (5493
+performed, 5493 succeeded, 0 failed, 58 skipped halves, 874 saves written and deleted and 0 left behind, on `88c917b08`,
+whose tree differs from development `4a961ce84` only in `docs/DECISIONS.md`). Every count below was taken again from
+that log on 2026-11-25, after the merge, as this paragraph said would happen if another whole suite ran on development
+first. They were first taken from window 2865-w1's `2865_suite_engine_62612be6.log` (5474 performed on `62612be63`).
+Between the two logs, of the groups that run alone, only `Cataclysm.EmpireRun.` moved (71 to 72, the forge's timer
+forecast); the forge's merge adds two groups to the list, below.
+
+- **What the forge's merge changed for this window.** Three save tests conflicted, on fixture names only
+  (`CataclysmEmpireTreeNineTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmSaveRecordTests.cpp`). Each now reads
+  development's `Account_v8.json` and `Character_v18.json` and this branch's `Run_v19.json`, with both sides' comments
+  kept, and every file that calls a record's second-newest defaults step calls its newest as often (the run record's in
+  14 files, the character's in 10, the account's in 4, the fixtures header among them). The forge's new tests were swept
+  for Rifts by the seed each run begins with: the gold-node and milestone tests begin on seed 4706, which faces Demonic
+  at tier 1, so they run alone, although neither scene fires the opening surge and nothing they check reads the board.
+  The timer tests the forge added, `Forge.AnUpgradeWhoseDaysRunOutATimerSaysWhatResolvedAndTheCityItHit`,
+  `ForgeScreen.TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid`,
+  `EmpireTreeScreen.ARespecSaysWhichTimersItsDaysRunOutAndThenWhatTheyDid`,
+  `PlayLoop.DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead` and
+  `EmpireRun.TheTimersForecastToRunOutAreTheOnesTheDaysRunOut`, begin on seeds 2766, 2766, 2741, 4242 and 2857, none of
+  which faces Demonic at tier 1. The forecast they test, `UCataclysmEmpireRun::TimersRunningOutWithin`, lists a Quest
+  dungeon's timer, and a Rift's timer runs out and hits its host as any Quest dungeon's does, so it lists a Rift
+  correctly and needs no change.
+- **The build.** Both modules change (`CataclysmSurge.h`, `CataclysmEmpireRun.h`, `CataclysmDungeonModifier.h`,
+  `CataclysmDungeonGameMode.h`, `CataclysmFloorBrief.h`, `CataclysmSaveRecords.h`), so most of both rebuild. Predicted:
+  succeeds; read the "files compiled" line.
+- **The groups alone**, each with a trailing dot, counted with `grep -F` on that log's `Test Completed.` lines, plus the
+  names the diff adds (27 registrations, none removed). Predicted for each: every test succeeds, 0 failed, 0 saves left
+  behind.
+
+| Group | Count | Why it runs alone |
+| :-- | --: | :-- |
+| `Cataclysm.Rifts.` | 12 | new (B2) |
+| `Cataclysm.RiftMap.` | 2 | new (B2) |
+| `Cataclysm.RiftAltars.` | 9 | new (B1) |
+| `Cataclysm.DeathCost.` | 11 | 9 + 2 (B2: a death in a Rift, and its control) |
+| `Cataclysm.SaveLoad.` | 84 | 83 + 1 (B1: a fallen altar after a load) |
+| `Cataclysm.Surge.`, `Cataclysm.DungeonModifiers.`, `Cataclysm.FirstSurge.`, `Cataclysm.EmpireRun.`, `Cataclysm.Roster.`, `Cataclysm.EmpireScreen.` | 54, 31, 3, 72, 11, 16 | B2's sweep: tests that roll or keep a Demonic Quest dungeon (`EmpireRun.` 71 + 1, the forge's timer forecast) |
+| `Cataclysm.DungeonMode.`, `Cataclysm.WalkFromTheScreen.` | 46, 6 | the dungeon game mode both slices change; the map layout merged by hand |
+| `Cataclysm.CityCleanseSave.`, `CityUpgradeBuildSave.`, `ConsumptionDouble.`, `Dismantle.`, `EarnedBossSave.`, `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `GemSave.`, `Gold.`, `SaveRecords.`, `Seeding.`, `ThrallSave.`, `Travel.`, `WalkSeed.`, `WinningTheRun.` | 1, 2, 15, 12, 3, 9, 13, 15, 1, 2, 13, 18, 3, 3, 10, 5, 11 | B1's run record step: each reads `Run_v19.json` or adds the step's write |
+| `Cataclysm.InventoryTabs.`, `Cataclysm.Merchant.` | 7, 7 | the rebuild's sweep: development's new tests whose runs face Demonic at tier 1 (seeds 2849 and 48) |
+| `Cataclysm.ForgeGoldNodes.`, `Cataclysm.ForgeMilestones.` | 8, 6 | the forge merge's sweep: the forge's new tests whose runs face Demonic at tier 1 (seed 4706) |
+| `Cataclysm.DungeonModifierEffects.` | 786 | 785 + 1 (B1: no chasm on an altar floor); the largest group, so last |
+
+- **The whole suite:** 5520 performed (the forge window's 5493 + 27), 5520 succeeded, 0 failed; 0 saves left behind. Saves written,
+  predicted 881: 874 (the forge window's count, and w1's) + 3 for B1's `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` (its twin,
+  `AHeavenlyCoreDestroyedStaysDestroyedAfterALoad`, wrote 3 in w1) + 2 for each of B2's two death-cost tests (each dies
+  once, as `ADeathThatFellsItsCityKeepsWhatEndingTheWalkComputed` does, which wrote 2). The count is printed against
+  this and does not stop the window; a save left behind does (a rule the coordinating session accepted on 2026-11-25;
+  the runners before this one stopped on any mismatch of the count). Skipped halves 58, as in the forge window and in w1; none of the three new test
+  files reports one. The Python suite runs alongside.
+- **C++ guard proofs, six, three a slice** (the coordinating session's limit of three a change), each with
+  `prove_cpp_guard`, alone, after the suite and Python have ended:
+
+| # | Slice | Break | `test_prefix` | Predicted to fail |
+| :-- | :-- | :-- | :-- | :-- |
+| P1 | B2 | `MakeDungeon`'s `Spec.LeastFloors = RiftFloors;` and `Spec.MostFloors = RiftFloors;` become `RiftFloors + 1` | `Cataclysm.Rifts.` | `ARiftIsFourFloorsWithTheTimerOfFourFloorsWhateverTheTreeAdds`, `ARiftOpensOnAnyStandingCityButThePillarByTierWeight` |
+| P2 | B2 | `RiftSendsOn` returns `false && Age > 0 && Age % RiftSendEveryDays == 0` | `Cataclysm.Rifts.` | `ARiftSendsABasicDemonicDungeonOnItsFifthDayAndItsTenth`, `ARiftThatMovesKeepsItsCountAndSendsFromWhereItStands`, `ARiftWithNoNeighbourASurgeCouldTargetSendsNothingUntilALaneOpens` |
+| P3 | B2 | `WhatTheRiftBrought = Run->SurgeForADeathInARift();` becomes `WhatTheRiftBrought = FCataclysmDayReport();` | `Cataclysm.DeathCost.` | `ADeathInARiftBringsASurgeOnTheDayOfTheDeath` |
+| RA1 | B1 | `const int32 Spread = FMath::Min(RiftAltars, TotalFloors);` becomes `const int32 Spread = RiftAltars;` | `Cataclysm.RiftAltars.` | `AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen` |
+| RA2 | B1 | `if (RiftAltarsSealTheStairs())` becomes `if (false && RiftAltarsSealTheStairs())` | `Cataclysm.RiftAltars.` and `Cataclysm.SaveLoad.` | `AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls`, `AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `ARiftsFallenAltarStaysFallenAfterALoad` |
+| RA3 | B1 | `if (RiftAltarsHere.IsValidIndex(Index))` becomes `if (false && RiftAltarsHere.IsValidIndex(Index))` | `Cataclysm.RiftAltars.` and `Cataclysm.SaveLoad.` | `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `ARiftsFallenAltarStaysFallenAfterALoad` |
+
+P2's break keeps `Age` read, so the build cannot stop on an unreferenced variable. Four builds a proof, twenty-four
+for the six.
+- **Python, run on `4dc3bfc0a`**, the merge of development `4a961ce84` into this branch, which this head differs from
+  only in `docs/DECISIONS.md`, with `python -u -m pytest --junit-xml=<a file outside the repository>`: `8583 passed, 10
+  skipped in 483.48s (0:08:03)`; the JUnit file agrees, 8,593 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff
+  check .`: `All checks passed!`. The test files that read this log were run again on the head that carries this line.
+
+### Window rifts-w1, 2026-11-25: 34 of 35 groups and 5519 of 5520 passed; one fault in a test's control, and no proof run
+
+**Ran on `b80da905a`, lock `rifts-w1`.** The pre-checks all passed at 06:59 local, with the check for an open pull
+request that changes `game/` waived for #2896 by number (the coordinating session's ruling of 2026-11-25: its hold
+covers #2896). Development was `7a5adc23d` (#2894, tools and documents only, merged during the registration; the branch
+was left behind it for the window, by the same session's instruction).
+
+| Stage | Registered | Measured |
+| :-- | :-- | :-- |
+| Build | succeeds | "Succeeded - 77 actions, 70 files compiled" |
+| The 35 groups alone | each its count, 0 failed | 34 passed at their counts; `Cataclysm.Rifts.` "12 tests performed, 11 succeeded, 1 failed: ARiftCarriesEightDifferentModifiersWhateverTheTier"; 1307 performed in all |
+| The whole suite | 5520 performed, 5520 succeeded | "5520 tests performed, 5519 succeeded, 1 failed: ARiftCarriesEightDifferentModifiersWhateverTheTier"; "Declared: 5520 tests in the tree at b80da905a; 5520 performed, gap 0" |
+| Skipped halves | 58 | 58 |
+| Test saves | 881 written (printed), 0 left behind (a stop) | "881 written and deleted, 0 left behind" |
+| Python, alongside | passes | "8583 passed, 10 skipped in 451.24s"; JUnit 8,593 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!" |
+| Guard proofs | six | none run: the runner stops before the proofs when a group or the whole suite fails |
+
+**THE ONE FAILURE IS IN THE TEST'S CONTROL, NOT IN A RIFT.** Every error is the same assertion,
+`CataclysmRiftsTests.cpp` line 357: "Expected 'an ordinary dungeon carries one a tier' to be 1, but it was 2" four times
+(tier 1) and "... to be 4, but it was 8" four times (tier 4). The Rift half of the same test, "a Rift carries eight
+different modifiers", passed for all 20 dungeon ids at both tiers. The whole suite's engine log has this one failing
+test and no other. These tests had not run before this window: slice B2's own window was folded into this shared one.
+
+**THE DIAGNOSIS CAME FROM READING THE CODE, NOT FROM A RUN.** The control builds an ordinary Demonic dungeon with
+`MakeDungeon(Id + 100, ..., FRandomStream(Id), false, Basic, Demonic)` for ids 500 to 519 and expected one modifier a
+tier. `MakeDungeon` rolls the dungeon's sub-type from weights that include Sacrificial (`SpawnWeightSacrificial` in
+`CataclysmSurge.cpp`), and `UCataclysmDungeonModifierRules::CountFor` gives a Sacrificial dungeon twice the tier's count
+(`SacrificialMultiplier`, 2). Exactly twice, at both tiers, for 4 of the 20 ids at each (the same stream seeds at both),
+fits that and nothing else in `CountFor`. The coordinating session ruled the game right, since a Sacrificial dungeon
+carries twice the modifiers by design, and approved a change to the test only: the control compares with `CountFor(Tier,
+Basic.SubType)`, and prints each control dungeon's sub-type and count in a "RIFT CONTROL:" line, so window rifts-w2
+shows which ids rolled Sacrificial.
+
+**The new tests' own lines**, from this window's groups alone:
+
+- `Cataclysm.RiftMap.`: `RIFT LINE: "Infernal Rift of 4 floors, 12 days left, sends a dungeon in 5 days"`
+- `Cataclysm.RiftAltars.`: `RIFT ALTAR FLOORS: 1:1,1,1,1 2:1,2,2,2 3:1,2,3,3 4:1,2,3,4 5:2,3,4,5 6:2,3,5,6 7:2,4,6,7 8:2,4,6,8 9:3,5,7,9 10:3,5,8,10 11:3,6,9,11 12:3,6,9,12`
+- `Cataclysm.RiftAltars.`: `RIFT ALTARS FILES: Run_v18.json read, and migrated on the way in, fallen []; Run_v19.json read, fallen [0,2]`
+- `Cataclysm.DeathCost.`: `RIFT DEATH: surges fired 1 before, 2 after; days away counted 1 surges; the death was on day 2`
+- `Cataclysm.SaveLoad.`: `LOAD RIFT ALTAR: Loaded (character ... and run ... were put back: day 1, 166 creatures, placed where it was saved); a Rift yes, floor 1, 1 altar(s) placed, 0 standing; the stairs unsealed`
+- `Cataclysm.DungeonModifierEffects.`: `RIFT CHASMS: floor 1: 1 altar(s), 0 chasm(s); floor 2: 1 altar(s), 0 chasm(s); floor 3: 1 altar(s), 0 chasm(s); a fall from floor 3 of 30 lands on 13 in no Rift and on 8 in a Rift`
+
+**The include check, with no machine time**, at the coordinating session's request: `tools/check_includes.py` from
+`chore/check-includes` at `a1f63e435` (not yet merged), copied outside the repository and called through its `main()`
+with this worktree's `game/Source`, on the 34 `.cpp` files that differ from development `7a5adc23d`: "34 .cpp file(s)
+read: 0 type(s) used that the file cannot see, 0 note(s)", exit 0. Its control: a copy of `CataclysmRiftsTests.cpp` with
+its six project includes removed exits 1 and fails on 12 types, among them `FCataclysmDungeon` and
+`UCataclysmEmpireRun`.
+
+**Next: window rifts-w2**, by the narrowed re-run rule (only a test file changes after this window's whole suite, which
+stands for every other test): the build, `Cataclysm.Rifts.` alone, and the six proofs, registered in the next section.
+
+### A Rift at difficulty tier 1 never draws the Demonic Guide, 2026-11-25
+
+**The owner, 2026-11-25, verbatim:** "Make demonic guide not spawn on the Rifts. It would be really annoying if you're
+trying to destroy a pillar and you can't because that guy will kill you if you let him get out of range.", and a moment
+later, "at least not on t1". A pillar here is a Rift's altar. So a Rift at difficulty tier 1 never draws the Demonic
+Guide (`Demonic_Demonic_Guide`) among its eight modifiers, and at tier 2 and above it draws it as it draws any row.
+
+- **Built in `b82192d49`.** `UCataclysmDungeonModifierRules::RiftPoolFor` leaves the Guide's row out of the pool at
+  `RiftWithoutTheGuideUpToTier` (1) and below, and `UCataclysmEmpireRun::GiveModifiersFrom` draws a Rift's eight from
+  it. The empire module names the row itself (`DemonicGuideKey`), because it may not include the Cataclysm module's
+  `UCataclysmDungeonModifierEffects::DemonicGuideKey`;
+  `tools/tests/test_a_tier_one_rift_never_draws_the_demonic_guide.py` holds the two names, the table's row and the
+  model's tier together.
+- **No other route reaches a tier 1 Rift**, by reading every write to a dungeon's modifiers: a Rift's sub-type is fixed
+  as Elite, so the Volatile per-floor redraw never applies; Reality Twister, which adds a row from any Cataclysm, is
+  `Chaos_Reality_Twister`, which a tier 1 pool (Demonic alone) cannot hold; Unstable Dimensions gives an enemy modifier,
+  not a dungeon row; the only other addition is a Celestial Edict; and the console's override is a debugging tool. No
+  city upgrade or empire tree effect adds a dungeon modifier.
+- **The model changes too**, by the coordinating session's ruling of 2026-11-25 (option (a), so the model and the game
+  agree): `TuningConfig.rift_without_the_guide_up_to_tier` = 1, and `_make_dungeon` draws a tier 1 Rift's eight without
+  `'Demonic Guide'` (`modifiers.DEMONIC_GUIDE`, checked against Demonic's column when the module loads).
+- **Tests, each with a control.** `Cataclysm.Rifts.ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay`: 200 Rifts
+  at tier 1 from Demonic's 14 rows and the Guide hold it 0 times and eight different modifiers each; 200 at tier 2 and
+  200 ordinary Demonic dungeons at tier 1 hold it at least once ("RIFT GUIDE:" prints the three counts).
+  `Cataclysm.DungeonModifiers.ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse`: tiers 0 and 1 lose that row
+  alone, in order; tiers 2 and 8 keep the pool as given; a pool without it loses nothing.
+  `sim/tests/test_a_tier_one_rift_never_draws_the_demonic_guide.py`, 6, and the five in `tools/tests/` named above;
+  `test_demonic_rifts_port.py` pins the new draw in both halves.
+- **The model's guard, proved** with `tools/prove_guard.py` in a `git archive` copy of `b82192d49`: the exclusion in
+  `engine.py` broken to `if False and ...`, "PROVED: 1 failed, 5 passed | restored: 6 passed", named failure
+  `test_no_tier_one_rift_holds_the_guide_and_each_still_holds_eight_different`. The game's guard is proof G1 below.
+- **The Rift figures, measured again on the same seeds** (`.claude/windows/measure_rifts_guide_51.py` in this worktree,
+  not committed: the ruled Rift, variant (b), on today's model with the switch at 0 and at 1, 2,000 Demonic campaigns a
+  cell in two blocks of 1,000). With the switch at 0 today's model gives exactly the ruled row above (14.99 cities,
+  42.4% won, 99.9% boss, 46.9% Last Stand, 132.0 sent, 99.8 peak), so the difference is this change alone. With it at 1:
+  14.90 cities, 42.6% won, 100% boss, 46.8% Last Stand, 132.3 sent, 100.1 peak, death 9.0% a Rift walk against 8.8%. The
+  Architect tree at tier 1: 44.0% won against 44.5%, no city lost either way. One walk at 0.3 of the tier's width: 8.9%
+  to 9.0% against 8.9%; the modifier score 87.1 to 87.4 against 86.1; the Guide in 56% of Rifts before and in none
+  after. Every figure is inside the block-to-block variation the figures were ruled with (the win rate's blocks differ
+  by up to 4.7 points here), so they stand as ruled. Tier 4 does not change: the switch reads nothing above tier 1.
+
+### Registered for window rifts-w2, 2026-11-25: the build, two groups alone, and seven proofs
+
+**Nothing here has run.** By the narrowed re-run rule (the coordinating session's approval of 2026-11-25), extended by
+its instruction of the same day to take in the Demonic Guide change before w2: after rifts-w1, `CataclysmRiftsTests.cpp`
+changed (the control, `d21d1fb4a`) and the Guide change touched `CataclysmDungeonModifier.h` and `.cpp`,
+`CataclysmEmpireRun.cpp` and `CataclysmDungeonModifierTests.cpp` (`b82192d49`). w1's whole suite stands for every other
+test, so no second whole suite runs. Lock `rifts-w2`, on the commit that carries this section. The pre-check for an open
+pull request that changes `game/` finds none to waive: #2896 merged.
+
+- **The build.** Predicted: succeeds, compiling the CataclysmEmpire module's changed files and what includes
+  `CataclysmDungeonModifier.h`; read the "files compiled" line.
+- **`Cataclysm.Rifts.` alone: 13 performed, 13 succeeded** (12 + the Guide test), 0 failed, 0 saves left behind. Each of
+  the 40 control dungeons prints a `RIFT CONTROL:` line, and in every line the two counts are equal. From w1's errors,
+  predicted: at each tier exactly 4 lines say `sub-type Sacrificial`, for the same 4 dungeon numbers at both tiers, with
+  2 modifiers at tier 1 and 8 at tier 4; the other 16 at each tier carry 1 and 4. If the lines show anything else, the
+  diagnosis recorded above was wrong, and that is said first. `RIFT GUIDE:` prints 0 at tier 1 and more than 0 at tier 2
+  and for the ordinary dungeons.
+- **`Cataclysm.DungeonModifiers.` alone: 32 performed, 32 succeeded** (31 in the forge window's log and in w1, + 1), 0
+  failed.
+- **Seven guard proofs**, each with `prove_cpp_guard`, alone, one at a time. **G1** first: in `RiftPoolFor`, `if
+  (DifficultyTier > RiftWithoutTheGuideUpToTier)` becomes `if (true || DifficultyTier > RiftWithoutTheGuideUpToTier)`,
+  `test_prefix` `Cataclysm.Rifts.` and `Cataclysm.DungeonModifiers.`, predicted to fail
+  `ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay` and
+  `ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse` and nothing else. Then P1 to P3 and RA1 to RA3 exactly as
+  registered for the shared window above: the same breaks, `test_prefix` values and predicted failures. Neither later
+  change touches the predicted tests' assertions; P1's break changes a Rift's floors, which the modifier tests do not
+  read. G1 is the Guide change's one proof (the limit is three a change); if it is counted in slice B2's three instead,
+  P1 is the one to drop, since the four floors are also read by the `RIFT LINE` and altar tests.
+- **Python, run on `b82192d49`**, which this head differs from only in `docs/DECISIONS.md`, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8594 passed, 10 skipped in 477.01s (0:07:57)`; the JUnit file agrees,
+  8,604 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`: `All checks passed!`. The test files that
+  read this log were run again on the head that carries this line.
+
+
+### Window rifts-w2, 2026-11-25: the build, 9 of 9 groups alone, and 7 of 7 proofs as registered
+
+**Ran on `efb1d1cb6`, lock `rifts-w2`**, the pre-checks all passing (development `e6cac7fca`, its CI and Unreal runs
+both succeeding; no open pull request). The tested head was still the branch's head at the end. **SEVEN GROUPS WERE
+ADDED TO THE REGISTRATION BEFORE THE WINDOW STARTED**, by the coordinating session's approval of 2026-11-25: `b82192d49`
+changes game code, so the groups whose runs face Demonic at tier 1 or read Rifts ran alone too, at w1's counts. The
+approval message registered them; this entry did not, because moving the registered commit would have meant another
+Python run for a list of counts.
+
+| Stage | Registered | Measured |
+| :-- | :-- | :-- |
+| Build | succeeds | "Succeeded - 68 actions, 63 files compiled" |
+| `Cataclysm.Rifts.` alone | 13 of 13 | 13 performed, 13 succeeded, 0 failed |
+| `Cataclysm.DungeonModifiers.` alone | 32 of 32 | 32, 32, 0 |
+| The seven added groups, at w1's counts | each all succeeded | `RiftMap.` 2, `RiftAltars.` 9, `DeathCost.` 11, `EmpireRun.` 72, `Surge.` 54, `InventoryTabs.` 7, `Merchant.` 7, each all succeeded, 0 failed |
+| Guard proofs | seven, each failing exactly its registered tests | seven PROVED, each failing exactly its registered tests and nothing else (below) |
+
+**THE DIAGNOSIS OF w1's FAILURE, SHOWN BY A RUN.** All 40 `RIFT CONTROL:` lines give equal counts, and exactly 4 at each
+tier say Sacrificial, the same 4 dungeon numbers at both tiers, with 2 and 8 modifiers, as registered:
+
+```
+RIFT CONTROL: tier 1, dungeon 600, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 1, dungeon 607, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 1, dungeon 610, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 1, dungeon 617, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 4, dungeon 600, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+RIFT CONTROL: tier 4, dungeon 607, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+RIFT CONTROL: tier 4, dungeon 610, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+RIFT CONTROL: tier 4, dungeon 617, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+```
+
+**The Demonic Guide**: `RIFT GUIDE: of 200 Rifts at tier 1, 0 hold the Demonic Guide; at tier 2, 58; of 200 ordinary
+Demonic dungeons at tier 1, 16`.
+
+| Proof | With the break in | Failed, by name | Restored |
+| :-- | :-- | :-- | :-- |
+| G1 | "45 tests performed, 43 succeeded, 2 failed" | ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay, ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse | 45 of 45 |
+| P1 | "13 tests performed, 11 succeeded, 2 failed" | ARiftIsFourFloorsWithTheTimerOfFourFloorsWhateverTheTreeAdds, ARiftOpensOnAnyStandingCityButThePillarByTierWeight | 13 of 13 |
+| P2 | "13 tests performed, 10 succeeded, 3 failed" | ARiftSendsABasicDemonicDungeonOnItsFifthDayAndItsTenth, ARiftThatMovesKeepsItsCountAndSendsFromWhereItStands, ARiftWithNoNeighbourASurgeCouldTargetSendsNothingUntilALaneOpens | 13 of 13 |
+| P3 | "11 tests performed, 10 succeeded, 1 failed" | ADeathInARiftBringsASurgeOnTheDayOfTheDeath | 11 of 11 |
+| RA1 | "9 tests performed, 6 succeeded, 3 failed" | AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen, AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour, ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor | 9 of 9 |
+| RA2 | "93 tests performed, 88 succeeded, 5 failed" | AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen, AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen, AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls, ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor, ARiftsFallenAltarStaysFallenAfterALoad | 93 of 93 |
+| RA3 | "93 tests performed, 91 succeeded, 2 failed" | AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen, ARiftsFallenAltarStaysFallenAfterALoad | 93 of 93 |
+
+Each proof: not crashed, every anchor matched once, the source hash the same before and after. Both halves' engine logs
+are kept as `rifts_<proof>_run1_<group>.log` and `run2` in the worktree's `.claude/windows`. RA2's restored half is cut
+short in the runner's printed summary; its kept logs show `RiftAltars.` 9 succeeded and `SaveLoad.` 84 succeeded, 0
+failed each.
+
+---
+
 ## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
 
 **RUN AND PASSED IN WINDOWS ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THE SLICE 3 ENTRY.** On
@@ -2160,6 +2675,188 @@ half). Each anchor occurs once in the file.
 
 The breaks were not compiled when registered; they were run in window ss2-w3 (the slice 3 entry's record). Each leaves
 every variable read, so none should stop the build on an unused variable.
+
+---
+
+## 2026-11-24 — A Rift's four altars: each of a Rift's floors holds an altar that seals its stairs until it falls, and the Rift is sealed when the last altar and its boss have fallen (#51, slice B1)
+
+**Said first:**
+
+- **WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `feat/rift-altars-51`, made from `feat/bug-batch-2`
+  (`632a43022`) with `origin/development` (`5cdd6bdc4`) merged in, by an agent for the coordinating session; a later
+  window builds and runs it. Its commits are to be cherry-picked onto development after the bug batches squash-merge.
+  Issue [#51](https://github.com/sdubois777/Cataclysm/issues/51), slice B1 of the plan `plan_death_and_war.md`.
+  **REBUILT ON 2026-11-25** as `feat/rift-altars-51-2`, by the coordinating session's instruction: this commit
+  (`3945ec0dc`) cherry-picked onto development `0d9259653`, its merge of development left behind. Three save tests
+  conflicted, `CataclysmEmpireTreeNineTests.cpp`, `CataclysmGoldTests.cpp` and `CataclysmSaveRecordTests.cpp`: each
+  keeps development's newest character file, `Character_v17.json` (the inventory tabs and skill selection took the
+  character record to 17), and this slice's `Run_v19.json`. Every test that adds the run's version 18 defaults also
+  adds version 19's, and no test development added since names `Run_v18.json` as the newest file.
+- **AT THE REBUILD, DEVELOPMENT'S RUN RECORD WAS 18, SO THIS STEP STAYS 18 TO 19.** Slice B2 steps no record: the
+  coordinating session accepted on 2026-11-24 that a Rift's 5-day count reads the dungeon's `SpawnedDay`, which is
+  already saved. `feat/abyssal-rifts-2864` steps it and renumbers at its own rebase. The paragraph that follows is as
+  written before the rebuild.
+- **IT TAKES THE RUN RECORD FROM 18 TO 19, AND SO DO TWO OTHER BRANCHES.** `feat/abyssal-rifts-2864` (left out of
+  batch 2 for that reason) and slice B2 (`feat/demonic-rifts-51`, the Rift's clock) both step the run record. Whichever
+  merges second renumbers its step: `Migrate_18_to_19`, `Run_v19.json`, `AddTheRunsVersion19Defaults`, `SchemaVersionNow`,
+  the fixtures README and `tools/tests/test_a_rifts_four_altars.py`, all mechanical. The chain-test files conflict
+  line by line with the other branch's.
+- **THE OWNER RULED AGAIN WHILE THIS WAS WRITTEN: A RIFT IS FOUR FLOORS DEEP.** The coordinating session relayed it,
+  and the tests were rewritten around a Rift of four floors. **Nothing here sets a Rift's depth** (slice B2, the empire
+  side); a test needing a four-floor Rift builds one. **Nothing here makes a Rift's floors harder**, which the owner
+  wants and has not settled; the coordinating session said not to build it. **The owner settled it later that day**,
+  verbatim "(b) 8 modifiers only (Recommended)": a Rift carries eight dungeon modifiers and its floors are an ordinary
+  four-floor dungeon's (slice B2). The design document says so.
+- **The spread is kept general**, as the coordinating session asked: at four floors it gives one altar a floor; any
+  other depth spreads the four, the rest on the last floor of a Rift of fewer than four.
+
+### The rulings, verbatim
+
+The owner, 2026-11-24, on issue #51 (Q1 and Q2 of the plan; each the option chosen, with its text):
+
+- **Q1, "Rift = Quest dungeon (Recommended)"**: "A Rift is a Demonic Quest dungeon. Sealing one counts as one quest
+  objective, as clearing a Quest dungeon does now. The existing Quest dungeon rules hold: it is Elite, it hits its city
+  on its timer, and it moves when its city falls."
+- **Q2, "One per floor, spread (Recommended)"**: "Altar *i* on floor ceil(*i* x floors / 4), the spread ruled for a
+  Fallen City's bosses on 2026-10-29 (#1466); a Rift of fewer than four floors puts the rest on its last floor. An altar
+  does not attack, has the floor boss's health, and seals its floor's stairs while it stands, as the Heavenly Core
+  does. The Rift is sealed when the last altar falls and the boss is dead."
+
+And later the same evening, the owner's second comment on #51: "Rift are quest dungeons yes, but we determined they
+have 4 pillars the player needs to destroy. So... let's make them 4 floors? Is that reasonable? Their difficulty would
+need to be increased a decent amount, but that seems fair to me." And: "Keep the short timer for rifts. It's only
+fair, it has 4 floors. If you keep on top of them it wont matter." The comment's summary: "A Rift is a Quest dungeon of
+exactly 4 floors, one altar on each floor (this replaces the altar spread ceil(i x floors / 4), which now always gives
+one per floor)."
+
+### What a player sees in a Rift
+
+- **On each floor, an altar**: a still creature wearing the placeholder cylinder the Heavenly Core wears, with "Altar"
+  under its health bar and the floor boss's health (the Gatekeeper's 1,248). It never attacks and pays nothing.
+- **The stairs do not take the player down while it stands.** The floor panel lists "Infernal Rift" with a line:
+  "altars 0 of 4 fallen; the altar on this floor seals the stairs"; once it falls, "altars 1 of 4 fallen; the next
+  stands on floor 2", and the stairs work.
+- **On the last floor**, the fourth altar and the floor's boss (every floor of a Rift has a boss at its exit, as every
+  Elite dungeon's does). The way out stays sealed until both are dead; with the altar fallen and the boss standing the
+  line says "the boss stands, and the Rift is sealed when it dies". Then the stairs seal the Rift: it comes off the map
+  and counts as one of Demonic's 10 quest objectives, by the clear the game already makes.
+- **A save on a Rift's floor keeps its fallen altars fallen** after a load, and the boss of its last floor still
+  seals the way out if it stood at the save.
+
+### How the game knows a Rift (the choice the brief asked for)
+
+**`FCataclysmDungeon::IsARift()`, in the empire module: a Quest dungeon whose `Cataclysm` is Demonic.** The dungeon
+game mode asks it of the dungeon bound to the walk (`ACataclysmDungeonGameMode::IsARift`, read live, nothing copied, so
+nothing to reset). **A judgement**, for two reasons: the quest-objective count already reads `FCataclysmDungeon::Cataclysm`
+(`UCataclysmEmpireRun::ClearDungeon`), so the Rift is the dungeon that count credits to Demonic; and slice B2 needs the
+same definition on the empire side (a Rift on the map, a death in a Rift), so it lives where both can call it. **By
+sender and not by sub-type**, unlike `IsHollow` and `IsAscendant`: Elite is not Demonic's alone, since an ordinary dungeon
+rolls it. `FCataclysmDungeonIdentity` gains no Cataclysm field and no creature does: that is slice B3.
+
+### Judgements, each labelled
+
+1. **Fewer than four floors: one a floor, the rest on the last** (1 / 1,2,2,2 / 1,2,3,3). The bare formula gives
+   1,1,2,2 for two floors, two altars on the first and none "the rest" on the last; the ruling says "one per floor" and
+   "the rest on its last floor", so the spread is held to one a floor, as `BossAtTheExit` holds a Fallen City's bosses.
+   A reading, made visible in a test. Reachable only if something moves a Rift's depth below four.
+2. **The arithmetic is shared**, not copied: `FCataclysmDungeonFloorRules::SpreadFloorOf` is ceil(i x floors / count),
+   and `BossAtTheExit` calls it where it called `FMath::DivideAndRoundUp` itself. The two rules cannot drift.
+3. **An altar's health is the Gatekeeper's at Common** (`GatekeeperHealth`, 1,248), as the Heavenly Core's was ruled
+   on 2026-10-22; the owner's "the floor boss's health" names that ruling.
+4. **The altars seal every floor that holds one, the last included** (whose stairs clear the Rift), and **the boss
+   seals only the last floor**, while it stands: the ruling's "sealed when the last altar falls and the boss is dead" is
+   about the seal of the Rift, which is the last floor's way out. On the other floors the boss at the exit does not
+   seal, as on any Elite dungeon.
+5. **An altar a floor had no room for counts as fallen** and seals nothing, as a floor whose Cataclysm Boss could not
+   be placed is not sealed: a seal nothing can lift would make the Rift unbeatable. Altars stand where floor sources
+   stand (`EternalChorusCells`, 20 m from the entrance and from each other), so one altar a floor always has room.
+6. **Those in the Dark: no chasm on a floor holding an altar, and a fall in a Rift lands no deeper than the next floor
+   holding one.** A fall goes down without the stairs, and from up to ten floors above it would carry the player past
+   an altar, leaving the Rift sealable with an altar standing. A four-floor Rift therefore has no chasm at all; the fall
+   cap matters only for a Rift of another depth.
+7. **"The floor's own" altars-fallen count is worked out, not kept**: the altars of the floors above the one walked
+   (every one fell, for the stairs to open or by 6 above) and this floor's that no longer stand. No walk state is saved
+   for it.
+8. **On a load, the Rift's boss is the saved Gatekeeper that neither rose from the dead nor was raised by a rule**: the
+   population places one Gatekeeper, at the exit, and a creature a rule raised is saved only with a `RaisedBy` tag. Its
+   rung is drawn, so the rung cannot tell it apart as it tells the Cataclysm Boss. No field is added for it.
+9. **A floor's fallen altars are saved by their place in the order placed**, as the Infested Veins and the beacons are,
+   in the floor's rule state, `RiftAltarsDestroyed`. A field added to a save record takes a version, by
+   `game/Tests/SaveFixtures/README.md`, so **the run record goes to 19**: `Migrate_18_to_19` writes an empty list, and
+   `Run_v19.json` holds places 0 and 2.
+10. **The panel's words** -- "Infernal Rift", "altars N of 4 fallen", "Altar" under the health bar -- are the writing
+    session's; "Infernal Rifts" is the design's own name, section XI.
+
+**No genre research was done for this slice**, and none was needed for a formula: the spread and every rule are the
+owner's. The plan's Q2 cites Diablo II's Chaos Sanctuary (five seals and three seal bosses before the boss appears,
+Maxroll's guide) for the shape of the objective; this session did not re-read that source.
+
+### What changed, by file
+
+- `CataclysmEmpire/Empire/CataclysmSurge.h`, `.cpp`: `FCataclysmDungeon::IsARift`.
+- `Cataclysm/Dungeon/CataclysmFloorBrief.h`, `.cpp`: `SpreadFloorOf` (shared with `BossAtTheExit`), `RiftAltars` (4),
+  `RiftAltarFloor`, `RiftAltarsOnFloor`, `RiftAltarsAboveFloor`, `NextRiftAltarFloorAfter`.
+- `Cataclysm/Character/CataclysmRiftAltarCharacter.h` (new): the altar, a floor source as the Heavenly Core is.
+- `Cataclysm/Dungeon/CataclysmDungeonGameMode.h`, `.cpp`: `IsARift`, the altars placed beside the Heavenly Core and
+  forgotten on leaving, the two seals in `StairsSealedBy`, the Rift's boss recorded as the population places it and
+  found again on a load, the panel line, the death notice, the chasm rule and the fall cap, and the saved state.
+- `Cataclysm/Interface/CataclysmFloorModifierPanelLayout.h`, `.cpp`, `CataclysmFloorModifierPanel.cpp`: the Rift's line,
+  not a row, not dimmed, not counted as a modifier. `CataclysmCombatOverlay.h`, `.cpp`: "Altar".
+- `Cataclysm/Save/CataclysmSaveRecords.h`, `.cpp`: `RiftAltarsDestroyed`, version 19, `Migrate_18_to_19`.
+- `game/Tests/SaveFixtures/Run_v19.json` (new) and its README; `Tests/CataclysmSaveFixtures.h`:
+  `AddTheRunsVersion19Defaults`; every test running an older run file through the chain adds it, and every test that
+  read `Run_v18.json` as the committed file reads `Run_v19.json`.
+- `docs/Cataclysm_GDD_v2.md`, section XI, Hell on Earth: the rulings.
+
+### Tests
+
+Registered, not run. **Eleven new automation tests:**
+
+- **`Cataclysm.RiftAltars.`, a new group of 9** (`Tests/CataclysmRiftAltarsTests.cpp`):
+  `AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour` (the floors for 1 to 12 and 30 floors, the Fallen
+  City cross-check, the bare formula as a control), `ARiftIsAQuestDungeonDemonicSentAndNothingElseIs`,
+  `AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls`,
+  `AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen` (the objective counted),
+  `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor` (the fallback; the boss felled first),
+  `AQuestDungeonAnotherCataclysmSentAndAnOrdinaryDungeonHoldNoAltars` (controls, and a positive control),
+  `ALoadFindsTheRiftsBossAgainAndNotOneThatRoseOrARulesCreature`,
+  `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `ARunFileFromVersion18MigratesWithNoAltarFallen`.
+- **`Cataclysm.SaveLoad.` +1**: `ARiftsFallenAltarStaysFallenAfterALoad` (a real save and load of a four-floor Rift;
+  it writes and deletes a run slot and a character slot, as the Heavenly Core's twin does).
+- **`Cataclysm.DungeonModifierEffects.` +1**:
+  `ARiftsAltarFloorsHaveNoChasmsAndAFallLandsNoDeeperThanTheNextAltar`.
+- **Changed, to read `Run_v19.json` or add the step's write**: tests in `Cataclysm.CityCleanseSave.`,
+  `CityUpgradeBuildSave.`, `ConsumptionDouble.`, `DeathCost.`, `Dismantle.`, `EarnedBossSave.`, `EmpireTreeClearGold.`,
+  `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `GemSave.`, `Gold.`, `SaveLoad.`, `SaveRecords.`,
+  `Seeding.`, `ThrallSave.`, `Travel.`, `WalkSeed.` and `WinningTheRun.`. Run those groups alone first.
+- **Python**: `tools/tests/test_a_rifts_four_altars.py`, 9 checks, including the altar-floor table worked out again from
+  the ruling's sentence against the automation test's table.
+
+**Guard proofs registered for the window**, one a mechanism:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| RA1 | `const int32 Spread = FMath::Min(RiftAltars, TotalFloors);` to `const int32 Spread = RiftAltars;` (`CataclysmFloorBrief.cpp`, `RiftAltarFloor`) | `AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen` |
+| RA2 | `if (RiftAltarsSealTheStairs())` to `if (false && RiftAltarsSealTheStairs())` (`CataclysmDungeonGameMode.cpp`, `StairsSealedBy`) | `AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls`, `AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` |
+| RA3 | `if (RiftAltarsHere.IsValidIndex(Index))` to `if (false && RiftAltarsHere.IsValidIndex(Index))` (`CataclysmDungeonGameMode.cpp`, `RestoreFloorRuleState`) | `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` |
+
+**SUPERSEDED ON 2026-11-25** by the shared window's registration in slice B2's entry ("Registered for the shared
+window"), which runs RA1 to RA3 with these breaks, after this slice was rebuilt on development and slice B2 merged
+into it; it adds `Cataclysm.SaveLoad.` to RA2's and RA3's prefix, since each names a test in that group.
+
+**Not proved**: the boss's seal (its tests assert it, both orders), the chasm rule and the fall cap, and the boss found
+again on a load.
+
+### What slice B2 needs from this
+
+- **What a Rift is**: `FCataclysmDungeon::IsARift()`. A Rift on the map, a death in a Rift (the walk's dungeon,
+  `UCataclysmDayClock::CurrentDungeonId`) and a Rift's clock should all ask it.
+- **A sealed Rift is a cleared one**: `UCataclysmEmpireRun::ClearDungeon` takes it off the map and counts one Demonic
+  objective. "Unsealed" is "still in `Dungeons`"; B2's 5-day clock should key on the dungeon's identifier and drop
+  when it leaves the map.
+- **Its depth**: four floors, set where the empire makes the dungeon. The dungeon side reads whatever depth it has; at
+  four, one altar a floor. Whether a city's floor upgrades may move a Rift's depth is B2's call; the altars cope.
+- **Nothing else**: no field on the empire record, no new report. The run record's version is shared (above).
 
 ---
 
@@ -168169,6 +168866,15 @@ any dose: 70 days against a median walk of 123.
 > dungeons) by the prose test's own method: Against a median walk of 9 / 25 / 40
 > days, the slack is sixteen, fourteen and fifteen days. It was 9 / 23 / 35 and
 > sixteen, sixteen and twenty earlier that day. The Pillar's median is still 125.
+
+> **Re-measured on 2026-11-24**, with the surge rulings of issue #2865 and Demonic's
+> Rifts (issue #51, which ship on in the model from slice B2), over 10,000 campaigns
+> (seeds 0 to 9999, 1,343,305 dungeons) by the prose test's own method: Against a
+> median walk of 8 / 23 / 37 days, the slack is seventeen, sixteen and eighteen days.
+> It was 9 / 25 / 40 and sixteen, fourteen and fifteen on 2026-11-19. The same
+> campaigns with the Rifts off give 8 / 24 / 40, so issue #2865's surges moved the
+> Outpost and the Bulwark by a day each and the Rifts the Bulwark by one more and the
+> Sanctuary by three. The Pillar's median is still 125.
 
 ### The other six sub-types took the 7.5 in proportion, rounded to one decimal
 

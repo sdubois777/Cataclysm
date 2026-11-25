@@ -308,8 +308,23 @@ void UCataclysmEmpireRun::GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomS
 	const int32 Count = UCataclysmDungeonModifierRules::CountFor(
 		DifficultyTier, Dungeon.SubType);
 
-	const TArray<FCataclysmDungeonModifier> Drawn =
+	TArray<FCataclysmDungeonModifier> Drawn =
 		UCataclysmDungeonModifierRules::Draw(Pool, Count, Draws); // `ModifierStream` but for a bonus dungeon (slice 9).
+
+	// A RIFT CARRIES EIGHT, WHATEVER THE TIER: the owner, 2026-11-24, "Rifts always have 8 dungeon modifiers. Keep it
+	// spicy" (`UCataclysmDungeonModifierRules::RiftModifierCount`). Issue #51 slice B2. THE ORDINARY COUNT ABOVE IS
+	// STILL DRAWN FROM `Draws` AND THROWN AWAY, so every later dungeon's modifiers are what they were; the eight come
+	// from the Rift's own stream (`UCataclysmSurgeScheduler::RiftSeedFor`), with no repeats, as any dungeon's do.
+	// AT TIER 1, NEVER THE DEMONIC GUIDE: the owner, 2026-11-25, "Make demonic guide not spawn on the Rifts" and "at
+	// least not on t1" (`UCataclysmDungeonModifierRules::RiftPoolFor`). This is the only draw that reaches a tier 1
+	// Rift: its sub-type is Elite, so no floor redraws its rows, and Reality Twister is a Chaos row a tier 1 pool lacks.
+	if (Dungeon.IsARift())
+	{
+		FRandomStream RiftDraws(UCataclysmSurgeScheduler::RiftSeedFor(
+			CorruptedStalkerSeed, Dungeon.DungeonId, UCataclysmSurgeScheduler::RiftModifierDraw));
+		Drawn = UCataclysmDungeonModifierRules::Draw(UCataclysmDungeonModifierRules::RiftPoolFor(Pool, DifficultyTier),
+													 UCataclysmDungeonModifierRules::RiftModifierCount, RiftDraws);
+	}
 
 	Dungeon.Modifiers = UCataclysmDungeonModifierRules::KeysOf(Drawn);
 	Dungeon.ModifierScore = UCataclysmDungeonModifierRules::DangerOf(Drawn);
@@ -610,6 +625,11 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 		}
 	}
 
+	// EACH UNSEALED RIFT SENDS ITS DUNGEON ON ITS DAY, after the day's timers and resolves, so a Rift a fall or its own
+	// timer moved today sends from where it stands now, and before the empty-board check, so what it sends is on the
+	// board when that asks. The model's order (`Simulation._empire_day`); a judgement of issue #51 slice B2.
+	SendFromRifts(Today, Report);
+
 	// AND STIMULUS PACKAGE'S CHECK, AFTER THE DAY'S BITES (issue #2741 slice 6b, B2).
 	NotePopulationAgainstHalf();
 
@@ -853,7 +873,8 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	TArray<FCataclysmDungeon> Wave =
 		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
 						 SiegesStanding,
-						 [this]() { return RollCataclysm(); }, bFromEmptyBoard);
+						 [this]() { return RollCataclysm(); }, bFromEmptyBoard,
+						 /* RiftSeed: a Rift's own draws, issue #51 slice B2 */ CorruptedStalkerSeed);
 
 	for (FCataclysmDungeon& Dungeon : Wave)
 	{
@@ -2205,6 +2226,132 @@ int32 UCataclysmEmpireRun::AddBonusDungeon(int32 CityId, FRandomStream& Roll)
 	Dungeons.Add(Dungeon);
 	NextDungeonId = FMath::Max(NextDungeonId, Dungeon.DungeonId + 1);
 	return Dungeon.DungeonId;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic's Infernal Rifts, issue #51 slice B2
+// ---------------------------------------------------------------------------
+
+void UCataclysmEmpireRun::SendFromRifts(int32 Today, FCataclysmDayReport& OutReport)
+{
+	if (Map == nullptr || Surges == nullptr || Clock == nullptr)
+	{
+		return;
+	}
+
+	// THE RIFTS WHOSE DAY IT IS, BY IDENTIFIER, collected before any sends: `Dungeons.Add` below can move the array,
+	// and what a Rift sends is Basic, never a Rift, so nothing sent today sends today. "Unsealed" is "still on the
+	// map": a sealed Rift is a cleared one, which `ClearDungeon` took off it.
+	TArray<int32> Sending;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		if (Dungeon.IsARift() && UCataclysmSurgeScheduler::RiftSendsOn(Dungeon.SpawnedDay, Today))
+		{
+			Sending.Add(Dungeon.DungeonId);
+		}
+	}
+
+	for (const int32 RiftId : Sending)
+	{
+		const FCataclysmDungeon* Rift = FindDungeon(RiftId);
+		const FCataclysmCity* From = Rift != nullptr ? Map->Find(Rift->CityId) : nullptr;
+		if (From == nullptr)
+		{
+			continue;
+		}
+
+		// WHAT STANDS ON EACH CITY NOW, counted as `FireSurge` counts it, a bonus dungeon left out: the cap a surge
+		// respects, and the Siege a city already holds. Counted again for each Rift, since the one before may have
+		// sent to the same city.
+		TArray<int32> DungeonsPerCity;
+		DungeonsPerCity.AddZeroed(Map->Cities.Num());
+		TArray<int32> SiegesStanding;
+		SiegesStanding.AddZeroed(Map->Cities.Num());
+		for (const FCataclysmDungeon& Standing : Dungeons)
+		{
+			if (Standing.bBonus || !DungeonsPerCity.IsValidIndex(Standing.CityId))
+			{
+				continue;
+			}
+			++DungeonsPerCity[Standing.CityId];
+			if (Standing.SubType == ECataclysmDungeonSubType::Siege)
+			{
+				++SiegesStanding[Standing.CityId];
+			}
+		}
+
+		// THIS SEND'S OWN STREAM: the Rift's identifier and which of its sends this is, from its `SpawnedDay`, which
+		// is saved and which a move does not reset. So nothing about the clock is stored, and no shared stream moves.
+		const int32 SendNumber = (Today - Rift->SpawnedDay) / UCataclysmSurgeScheduler::RiftSendEveryDays;
+		FRandomStream Draws(UCataclysmSurgeScheduler::RiftSeedFor(
+			CorruptedStalkerSeed, RiftId, UCataclysmSurgeScheduler::RiftSendDraw + SendNumber));
+
+		// "NOTHING IS SENT WHEN NO NEIGHBOUR QUALIFIES" (the owner's Q4).
+		const FCataclysmCity* To =
+			Map->Find(UCataclysmSurgeScheduler::PickRiftTarget(*Map, *From, Draws, DungeonsPerCity));
+		if (To == nullptr)
+		{
+			continue;
+		}
+
+		// AN ORDINARY BASIC DEMONIC DUNGEON, MADE AS A SURGE MAKES ONE FOR THAT CITY: its depth for the city's tier
+		// and upgrades, the ordinary sub-type roll (a Siege only where none stands), its timer and its modifiers. The
+		// steps a landed dungeon takes, in `AddBonusDungeon`'s order.
+		const bool bSiegeAllowed = !SiegesStanding.IsValidIndex(To->CityId)
+			|| SiegesStanding[To->CityId] < UCataclysmSurgeScheduler::SiegesPerCity;
+		FCataclysmDungeon Sent = Surges->MakeDungeon(NextDungeonId, *To, Today, Draws, bSiegeAllowed,
+													 ECataclysmDungeonType::Basic, ECataclysmType::Demonic);
+		Sent.Cataclysm = ECataclysmType::Demonic;
+		GiveModifiersFrom(Sent, Draws);
+
+		if (!Clock->AddDungeon(Sent.DungeonId, Sent.Floors))
+		{
+			continue;
+		}
+		Clock->SetResolveDays(Sent.DungeonId, Sent.ResolveDays);
+		Dungeons.Add(Sent);
+		OutReport.Spawned.Add(Sent.DungeonId);
+		OutReport.RiftSent.Add(Sent.DungeonId);
+		NextDungeonId = FMath::Max(NextDungeonId, Sent.DungeonId + 1);
+	}
+}
+
+FCataclysmDayReport UCataclysmEmpireRun::SurgeForADeathInARift()
+{
+	FCataclysmDayReport Report;
+	if (Map == nullptr || Surges == nullptr || Clock == nullptr)
+	{
+		return Report;
+	}
+
+	// AN ORDINARY SURGE, ON THE DAY OF THE DEATH, WITH NO BRAKE: the owner, 2026-11-24, "Every death, no gap
+	// (Recommended)". Through `FireSurge` with no city-fall flag, as the clock's surge goes, so it moves the next
+	// scheduled surge on from today and advances the escalation, as `Simulation._surge_for_a_rift_death` does.
+	// `ACataclysmDungeonGameMode::EndTheDungeonForADeath` calls this after the walk's days and before the death's own.
+	Report.Day = Clock->Day;
+	FireSurge(Report.Day, /* bFromCityFall */ false, Report);
+	Report.bSurgedForARiftDeath = true;
+	return Report;
+}
+
+int32 UCataclysmEmpireRun::DaysUntilRiftSends(int32 DungeonId) const
+{
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	if (Dungeon == nullptr || !Dungeon->IsARift() || Clock == nullptr)
+	{
+		return 0;
+	}
+	return UCataclysmSurgeScheduler::DaysUntilRiftSends(Dungeon->SpawnedDay, Clock->Day);
+}
+
+int32 UCataclysmEmpireRun::RiftsOn(int32 CityId) const
+{
+	int32 Rifts = 0;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		Rifts += (Dungeon.CityId == CityId && Dungeon.IsARift()) ? 1 : 0;
+	}
+	return Rifts;
 }
 
 bool UCataclysmEmpireRun::LetABonusDungeonLeave(int32 DungeonId)
