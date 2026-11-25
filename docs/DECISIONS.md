@@ -668,7 +668,11 @@ above) and `test_datatable_assets_are_current.py::...::test_every_csv_still_hash
 step). **With the workbook stage run** on a `git archive` copy of `b433c33ca` (`python tools/apply_halved_gear_drops.py`:
 7 cells written, every CSV then "up to date"; a second run wrote nothing), `test_generate_datatables.py`,
 `test_enemy_drop_sheet_matches_the_model.py`, `test_apply_halved_gear_drops.py` and
-`test_docs_readme_sheet_table_is_true.py` gave "1082 passed". `python -m ruff check .`: "All checks passed!".
+`test_docs_readme_sheet_table_is_true.py` gave "1082 passed", and the whole suite on that copy "12 failed, 8362 passed,
+15 skipped in 368.30s": the 12 are the editor step's asset test and 11 that run git, which a `git archive` copy is not
+(`test_map_built_data_is_not_committed.py` 4, `test_stray_lfs_hook_directory_is_ignored.py` 6,
+`test_only_one_session_can_hold_the_unreal_editor.py` 1, each "not a git repository"); no workbook, drop or gem test
+failed. `python -m ruff check .`: "All checks passed!".
 
 **Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of `b3d1b9f81`, each PROVED (failed
 with the break in, passed restored):
