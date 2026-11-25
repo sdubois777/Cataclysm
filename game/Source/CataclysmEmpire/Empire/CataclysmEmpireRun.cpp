@@ -315,12 +315,15 @@ void UCataclysmEmpireRun::GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomS
 	// spicy" (`UCataclysmDungeonModifierRules::RiftModifierCount`). Issue #51 slice B2. THE ORDINARY COUNT ABOVE IS
 	// STILL DRAWN FROM `Draws` AND THROWN AWAY, so every later dungeon's modifiers are what they were; the eight come
 	// from the Rift's own stream (`UCataclysmSurgeScheduler::RiftSeedFor`), with no repeats, as any dungeon's do.
+	// AT TIER 1, NEVER THE DEMONIC GUIDE: the owner, 2026-11-25, "Make demonic guide not spawn on the Rifts" and "at
+	// least not on t1" (`UCataclysmDungeonModifierRules::RiftPoolFor`). This is the only draw that reaches a tier 1
+	// Rift: its sub-type is Elite, so no floor redraws its rows, and Reality Twister is a Chaos row a tier 1 pool lacks.
 	if (Dungeon.IsARift())
 	{
 		FRandomStream RiftDraws(UCataclysmSurgeScheduler::RiftSeedFor(
 			CorruptedStalkerSeed, Dungeon.DungeonId, UCataclysmSurgeScheduler::RiftModifierDraw));
-		Drawn = UCataclysmDungeonModifierRules::Draw(Pool, UCataclysmDungeonModifierRules::RiftModifierCount,
-													 RiftDraws);
+		Drawn = UCataclysmDungeonModifierRules::Draw(UCataclysmDungeonModifierRules::RiftPoolFor(Pool, DifficultyTier),
+													 UCataclysmDungeonModifierRules::RiftModifierCount, RiftDraws);
 	}
 
 	Dungeon.Modifiers = UCataclysmDungeonModifierRules::KeysOf(Drawn);

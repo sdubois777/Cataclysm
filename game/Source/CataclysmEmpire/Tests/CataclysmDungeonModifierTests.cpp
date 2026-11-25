@@ -1419,4 +1419,49 @@ bool FCataclysmCorruptedStalkerControlTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModifierRiftGuideTest,
+	"Cataclysm.DungeonModifiers.ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `UCataclysmDungeonModifierRules::RiftPoolFor`: the owner, 2026-11-25, issue #51, "Make demonic guide not spawn on the
+ * Rifts" and "at least not on t1". At tier 1 (and below) the pool loses the Demonic Guide's row and no other, in its
+ * order; at tier 2 and above it is the pool as given. CONTROLS: a pool without the Guide is unchanged at tier 1, and
+ * the key is the table's row name.
+ */
+bool FCataclysmDungeonModifierRiftGuideTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	TestEqual(TEXT("the Guide's key is the table's row name"), Rules::DemonicGuideKey(),
+			  FName(TEXT("Demonic_Demonic_Guide")));
+	TestEqual(TEXT("the tier the owner named"), Rules::RiftWithoutTheGuideUpToTier, 1);
+
+	TArray<FCataclysmDungeonModifier> Pool;
+	Pool.Add(Make(TEXT("Demonic_Blood_Bond"), ECataclysmType::Demonic, 20.0f));
+	Pool.Add(Make(TEXT("Demonic_Demonic_Guide"), ECataclysmType::Demonic, 10.0f));
+	Pool.Add(Make(TEXT("Demonic_Hellfire"), ECataclysmType::Demonic, 10.0f));
+
+	for (const int32 Tier : { 0, 1 })
+	{
+		const TArray<FCataclysmDungeonModifier> Left = Rules::RiftPoolFor(Pool, Tier);
+		TestEqual(FString::Printf(TEXT("at tier %d one row goes"), Tier), Left.Num(), 2);
+		TestTrue(FString::Printf(TEXT("at tier %d it is the Guide, and the others keep their order"), Tier),
+				 Left.Num() == 2 && Left[0].RowKey == Pool[0].RowKey && Left[1].RowKey == Pool[2].RowKey);
+	}
+	for (const int32 Tier : { 2, 8 })
+	{
+		const TArray<FCataclysmDungeonModifier> All = Rules::RiftPoolFor(Pool, Tier);
+		TestTrue(FString::Printf(TEXT("CONTROL: at tier %d the pool is as given, the Guide in it"), Tier),
+				 All.Num() == 3 && All[1].RowKey == Rules::DemonicGuideKey());
+	}
+
+	TArray<FCataclysmDungeonModifier> WithoutIt = Pool;
+	WithoutIt.RemoveAt(1);
+	TestEqual(TEXT("CONTROL: a pool without the Guide loses nothing at tier 1"), Rules::RiftPoolFor(WithoutIt, 1).Num(),
+			  2);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

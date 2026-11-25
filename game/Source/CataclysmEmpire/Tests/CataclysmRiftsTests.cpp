@@ -370,6 +370,92 @@ bool FCataclysmRiftsEightModifiersTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// No Demonic Guide in a tier 1 Rift
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsDemonicGuideTest,
+	"Cataclysm.Rifts.ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner, 2026-11-25, issue #51, verbatim: "Make demonic guide not spawn on the Rifts. It would be really annoying
+ * if you're trying to destroy a pillar and you can't because that guy will kill you if you let him get out of range."
+ * and "at least not on t1". 200 Rifts at tier 1 from a pool of Demonic's 14 rows and the Guide: none holds the Guide,
+ * and each still holds eight different modifiers. CONTROLS: 200 Rifts at tier 2 from the same rows hold it at least
+ * once, and so do 200 ordinary Demonic dungeons at tier 1. Prints "RIFT GUIDE".
+ */
+bool FCataclysmRiftsDemonicGuideTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmRiftsTest;
+	const FName Guide = UCataclysmDungeonModifierRules::DemonicGuideKey();
+	int32 RiftsAtOne = 0;
+	int32 RiftsAtTwo = 0;
+	int32 OrdinaryAtOne = 0;
+
+	for (const int32 Tier : { 1, 2 })
+	{
+		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		// AS THE EIGHT-MODIFIER TEST ABOVE: 14 rows a Cataclysm, so at tier 1 the pool is Demonic's 14 and the Guide.
+		AddRows(Run->ModifierPool, ECataclysmType::Demonic, TEXT("Demonic"), 14);
+		AddRows(Run->ModifierPool, ECataclysmType::Death, TEXT("Death"), 14);
+		AddRows(Run->ModifierPool, ECataclysmType::War, TEXT("War"), 14);
+		AddRows(Run->ModifierPool, ECataclysmType::Pestilence, TEXT("Pestilence"), 14);
+		AddRows(Run->ModifierPool, ECataclysmType::Chaos, TEXT("Chaos"), 14);
+		AddRows(Run->ModifierPool, ECataclysmType::Void, TEXT("Void"), 14);
+		AddRows(Run->ModifierPool, ECataclysmType::Famine, TEXT("Famine"), 14);
+		AddRows(Run->ModifierPool, ECataclysmType::Celestial, TEXT("Celestial"), 14);
+		FCataclysmDungeonModifier GuideRow;
+		GuideRow.RowKey = Guide;
+		GuideRow.ModifierName = Guide;
+		GuideRow.Cataclysm = ECataclysmType::Demonic;
+		GuideRow.Danger = 10.0f;
+		Run->ModifierPool.Add(GuideRow);
+		Run->Begin(4, ECataclysmSurgeMode::Static, 0, Tier);
+		TestTrue(TEXT("seed 4 faces Demonic"), Run->ActiveCataclysms.Contains(ECataclysmType::Demonic));
+
+		for (int32 Id = 600; Id < 800; ++Id)
+		{
+			FRandomStream Stream(Id);
+			FCataclysmDungeon Rift = Run->Surges->MakeDungeon(Id, FirstOf(*Run, ECataclysmCityTier::Outpost), 1, Stream,
+															  true, ECataclysmDungeonType::Quest,
+															  ECataclysmType::Demonic);
+			Rift.Cataclysm = ECataclysmType::Demonic;
+			Run->GiveModifiers(Rift);
+			TSet<FName> Slotted;
+			for (const FName Key : Rift.Modifiers)
+			{
+				if (Key != UCataclysmDungeonModifierRules::CorruptedStalkerKey())
+				{
+					Slotted.Add(Key);
+				}
+			}
+			TestEqual(TEXT("a Rift still carries eight different modifiers"), Slotted.Num(),
+					  UCataclysmDungeonModifierRules::RiftModifierCount);
+			(Tier == 1 ? RiftsAtOne : RiftsAtTwo) += Slotted.Contains(Guide) ? 1 : 0;
+
+			if (Tier == 1)
+			{
+				FRandomStream Same(Id);
+				FCataclysmDungeon Basic = Run->Surges->MakeDungeon(Id + 300, FirstOf(*Run, ECataclysmCityTier::Outpost),
+																   1, Same, false, ECataclysmDungeonType::Basic,
+																   ECataclysmType::Demonic);
+				Basic.Cataclysm = ECataclysmType::Demonic;
+				Run->GiveModifiers(Basic);
+				OrdinaryAtOne += Basic.Modifiers.Contains(Guide) ? 1 : 0;
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("RIFT GUIDE: of 200 Rifts at tier 1, %d hold the Demonic Guide; at tier 2, %d; of 200 "
+								 "ordinary Demonic dungeons at tier 1, %d"),
+							RiftsAtOne, RiftsAtTwo, OrdinaryAtOne));
+	TestEqual(TEXT("no Rift at tier 1 holds the Demonic Guide"), RiftsAtOne, 0);
+	TestTrue(TEXT("CONTROL: a Rift at tier 2 can hold it"), RiftsAtTwo > 0);
+	TestTrue(TEXT("CONTROL: an ordinary Demonic dungeon at tier 1 can hold it"), OrdinaryAtOne > 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsModifierStreamTest,
 	"Cataclysm.Rifts.ARiftsModifiersLeaveTheRunsModifierStreamWhereAQuestDungeonsWould",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

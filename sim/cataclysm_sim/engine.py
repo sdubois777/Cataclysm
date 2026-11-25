@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from . import combat, scoring
 from .config import CityTier, DungeonType, SurgeMode, TuningConfig
-from .modifiers import CORRUPTED_STALKER, pool_for
+from .modifiers import CORRUPTED_STALKER, DEMONIC_GUIDE, pool_for
 from .patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 from .world import City, Empire, build_empire
 
@@ -484,6 +484,12 @@ class Simulation:
         if a_rift and cfg.rift_modifiers > 0:
             n_mods = cfg.rift_modifiers
         pool = self.modifier_pool
+        # A RIFT AT TIER 1 NEVER DRAWS THE DEMONIC GUIDE: the owner, 2026-11-25,
+        # "Make demonic guide not spawn on the Rifts" and "at least not on t1"
+        # (`TuningConfig.rift_without_the_guide_up_to_tier`). Its eight come
+        # from the pool without that row; above the tier, from the whole pool.
+        if a_rift and cfg.tier <= cfg.rift_without_the_guide_up_to_tier:
+            pool = [row for row in pool if row[0] != DEMONIC_GUIDE]
         picked: list[tuple[str, float]] = []
         if pool and n_mods > 0:
             k = min(n_mods, len(pool))

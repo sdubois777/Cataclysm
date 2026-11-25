@@ -221,3 +221,10 @@ def pool_for(active_types) -> list[tuple[str, float]]:
 #: The Corrupted Stalker's row: its name and its weight, read from the table
 #: rather than written again, so the weight it adds is the one the table holds.
 CORRUPTED_STALKER: tuple[str, float] = MODIFIERS[GENERIC][0]
+
+#: The Demonic Guide's name in Demonic's column, which a Rift at tier 1 never
+#: draws (`TuningConfig.rift_without_the_guide_up_to_tier`). Checked against
+#: the column here, so a renamed row stops the import rather than leaving the
+#: exclusion matching nothing.
+DEMONIC_GUIDE = 'Demonic Guide'
+assert any(name == DEMONIC_GUIDE for name, _ in MODIFIERS['Demonic']), DEMONIC_GUIDE

@@ -210,11 +210,16 @@ def test_a_rifts_modifiers_are_eight_whatever_the_tier_in_both() -> None:
     game = body_of(read(RUN_CPP), "void UCataclysmEmpireRun::GiveModifiersFrom(")
     in_order(game, ["UCataclysmDungeonModifierRules::Draw(Pool, Count, Draws);",
                     "if (Dungeon.IsARift())",
-                    "UCataclysmDungeonModifierRules::Draw(Pool, UCataclysmDungeonModifierRules::RiftModifierCount, "
-                    "RiftDraws);"], "GiveModifiersFrom")
+                    # FROM THE POOL WITHOUT THE DEMONIC GUIDE AT TIER 1 since 2026-11-25: the owner, "Make demonic guide
+                    # not spawn on the Rifts" and "at least not on t1".
+                    "UCataclysmDungeonModifierRules::Draw(UCataclysmDungeonModifierRules::RiftPoolFor(Pool, "
+                    "DifficultyTier), UCataclysmDungeonModifierRules::RiftModifierCount, RiftDraws);"],
+             "GiveModifiersFrom")
     from cataclysm_sim.engine import Simulation
     model = inspect.getsource(Simulation._make_dungeon)
     assert "if a_rift and cfg.rift_modifiers > 0:" in model and "n_mods = cfg.rift_modifiers" in model
+    assert "if a_rift and cfg.tier <= cfg.rift_without_the_guide_up_to_tier:" in model, \
+        "the model's Rift no longer leaves the Demonic Guide out at tier 1"
 
 
 # -- a death in one -------------------------------------------------------------------------------------------------

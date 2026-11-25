@@ -825,6 +825,15 @@ class TuningConfig:
     #: How many dungeon modifiers a Rift carries, whatever the tier; 0 carries
     #: what any dungeon of the tier does (one a tier). 8, ruled above.
     rift_modifiers: int = 8
+    #: The highest difficulty tier at which a Rift never draws the Demonic
+    #: Guide; above it a Rift draws it as any row. The owner, 2026-11-25,
+    #: issue #51, verbatim: "Make demonic guide not spawn on the Rifts. It
+    #: would be really annoying if you're trying to destroy a pillar and you
+    #: can't because that guy will kill you if you let him get out of
+    #: range.", and a moment later, "at least not on t1". 0 lets every Rift
+    #: draw it. Ported to the game as
+    #: `UCataclysmDungeonModifierRules::RiftWithoutTheGuideUpToTier`.
+    rift_without_the_guide_up_to_tier: int = 1
     #: A Rift sends only while none of the dungeons it sent still stands.
     #: Recommended to the owner on 2026-11-24 against the board filling up
     #: under the 5-day spawn, and refused: "No limit". Kept so it can still be
