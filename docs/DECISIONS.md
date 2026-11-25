@@ -2,6 +2,58 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — A passive node whose sentence states a condition has a row carrying it (Death trees, the check after slice C4b)
+
+**Affects:** `tools/tests/test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`, new (3). No game code and no data.
+
+### SAID FIRST
+
+- **THE CHECK FOUND NO ROW IN ANY TREE THAT HAS LOST ITS CONDITION.** The coordinating session asked for any such rows to
+  be listed and not fixed; the list is empty. Every sentence the check flagged was read by hand, and each carries its
+  condition another way, listed below.
+- **THE SHAPE DIFFERS FROM THE RULING'S WORDS, AS A JUDGEMENT.** The ruling asked that "a row on a node whose sentence
+  states a condition ... carries a condition". The check asks instead that each condition a sentence states is carried
+  by at least one of that sentence's rows. It catches a lost condition as well, and it lets a node have an unconditioned
+  clause beside a conditioned one, as Hunting Leap does. Measured on 2026-11-25: asking every row on such a sentence to
+  carry some condition flagged 93 rows.
+
+### What it reads
+
+The phrase table `CONDITION_WORDS` in `test_passive_effects_match_the_node_text.py`, imported rather than copied, read
+from a sentence to its rows: a node's description, or a capstone option's for a row under that option. On 2026-11-25
+it read every condition in the table except six, and found 94 sentences that said a condition's words and carried no such
+condition. Every one was read by hand:
+
+- 86 came from six conditions whose words appear in sentences that state no such condition. These are not read this way
+  (`TOO_GENERAL_TO_READ_BACKWARDS`): `enemies_in_reach_at_least` ("within", 32: an area's size, "within 2 seconds", the
+  scale `enemies_in_reach`), `health_below` ("below", 24), `fervour_threshold_reached` and
+  `class_resource_points_at_least` (one phrase, "or more fervour", for both, 11 and 6), `attacker_beyond_metres` ("more
+  than", 7: "no more than once every N seconds") and `opponent_within_metres` ("enemies within", 6: an area's size).
+- 8 carry the condition another way and are named with how (`EXPRESSED_ANOTHER_WAY`): Kill Chain's stacks last 2
+  seconds; Grave Patience's stat is the grace after a kill; two Siphon nodes' stats are the Siphon's own; the Masochist
+  vow whose stat makes every cost a health cost; the Ritualist vow read on a cursed enemy's death; the Soul Collector
+  node whose stacks come from a spend of 10 or more Fervour; and Gleaning's "each enemy you kill".
+
+A new condition in `CONDITION_WORDS` is read this way unless it is added to the first list, and a new sentence that
+states a condition without a row carrying it fails unless it is added to the second with how it carries it.
+
+### Ruling recorded here
+
+The coordinating session's answer of 2026-11-25 to item 3 of slice C4a's report: not an issue, but a small slice of its
+own after C4b, with the Death's Patience break as its guard proof and a named list for any row that legitimately has
+none.
+
+### What was run
+
+MISSING_FIGURES
+
+**One Python guard proof**, `proved`, with `break_and_run` in a `git archive` copy of `02099f695`: Death's Patience's
+row with its condition removed, slice C4a's break, fails
+`test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows`
+while all 25 tests in `test_passive_effects_match_the_node_text.py` still pass; restored, all 28 pass.
+
+---
+
 ## 2026-11-25 — Deaths the Soul Collector did not make, and decay given back: Reclaimed, Claimed and Death's Toll (Death trees, slice C4b2)
 
 **Affects:**
