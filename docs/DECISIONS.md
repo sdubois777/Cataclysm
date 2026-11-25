@@ -172,6 +172,30 @@ changes. The build, then alone: `Cataclysm.Passives.` 161, `Cataclysm.CapstoneOp
 `Cataclysm.DungeonModifierEffects.` 786 (counts from tb-w1's whole-suite log), each all succeeded; then the eleven
 proofs in the table above, with the predictions above.
 
+### Window tb-w2, 2026-11-25: what it measured
+
+On 19f39356a, under the lock tb-w2. The build: "Succeeded - 8 actions, 5 files compiled". Alone, every test succeeded:
+`Cataclysm.Passives.` 161, `Cataclysm.CapstoneOptions.` 1, `Cataclysm.DungeonModifierEffects.` 786. Python, run off
+the machine on the same head beforehand: "8694 passed, 10 skipped", JUnit 8704 tests, 0 failures, 0 errors; `ruff`
+clean. **All eleven proofs PROVED**, every anchor matching once and the source hash the same before and after:
+
+| Proof | With the break in | Restored |
+| :-- | :-- | :-- |
+| TB1 | 8 performed, 3 failed: both `SanguineLedger.` tests and `MasochistHealingRows.SanguineLedgerKeepsARealMasochistsFervourAtFiftyThroughHealing`, as registered | 8, 0 failed |
+| TB2 | 4 performed, 3 failed: the registered `ACarnageStackLastsASecondLongerForEveryTenFervourHeld` and also `AKillsCarnageLastsLongerToo` and `TheLastStackGrantedDecidesHowLongTheWholeCountLasts` | 4, 0 failed |
+| TB3 | 3 performed, 1 failed: `OverwhelmTakesHalfAsManyPointsOffAHoldersArmour`, as registered | 3, 0 failed |
+| TB4 | 4 performed, 2 failed: the registered `ARowLoweringAttackSpeedIsDroppedAndAnEarnedOneKept` and also `CrippleDoesNotSlowTheSwingOfAPlayerHoldingIt` | 4, 0 failed |
+| TB5 | 21 performed, 5 failed: the registered `MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` and four more `Player.` movement speed tests | 21, 0 failed |
+| TB6 | 3 performed, 2 failed: the registered `ARowHoldsAgainstATargetCarryingYourCurseAndNotAStrangersCurse` and also `AMinionsBlowReadsItsSummonersCurse` | 3, 0 failed |
+| TB7 | 2 performed, 1 failed: `AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone`, as registered | 2, 0 failed |
+| TB8 | 1 performed, 1 failed: `ARowsCapReachesItsModifierAndStopsTheScaleAtTwentyMinions`, as registered | 1, 0 failed |
+| PMK1 | 4 performed, 2 failed: PM1 and PM3, as registered | 4, 0 failed |
+| PMK3 | 4 performed, 2 failed: PM2 and PM3, the prediction this entry corrected from the tree screen entry's | 4, 0 failed |
+| PMK5 | 4 performed, 1 failed: PM4, as registered | 4, 0 failed |
+
+**FOUR PROOFS FAILED MORE TESTS THAN REGISTERED** (TB2, TB4, TB5, TB6). Each failed the test it was registered for;
+the others are further tests in the same group that read the same line, which the rework entry's table did not list.
+
 ---
 
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
