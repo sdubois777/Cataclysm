@@ -94,7 +94,21 @@ Each new test has a control: a charge spent and a spend of nothing; before a spe
 
 ### What was run
 
-SUITE_FIGURES_C3A
+**The whole Python suite on `7e79fb835`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8475 passed, 9 skipped in 357.27s
+(0:05:57)". The JUnit file agrees: tests 8485, failures 1, errors 0, skipped 9, so 8475 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`. The run before, on `018aac859`, failed that one and
+the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 8 C++ files this slice changed: "8 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the new tests' helpers are in `namespace CataclysmFervourSpentTest`, and each new test class and helper is named in
+  one file only.
 
 **Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `018aac859`, and each `proved`:
