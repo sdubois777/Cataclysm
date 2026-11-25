@@ -1431,7 +1431,7 @@ def test_a_followers_death_is_told_to_its_commander_and_eternal_army_comes_first
     assert "Death.Metres = (Self && Body) ? UCataclysmTargeting::MetresBetween(Self, Body) : -1.0f;" in died
 
 
-def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_still_carries_nought() -> None:
+def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_carries_the_share() -> None:
     """The Death trees' slice C6d2 (2026-11-25), as ruled (Q2). `NoteHitTaken`
     holds the share of maximum health the hit took while it raises `hit_taken`,
     which carries the same share as its amount (nought when unknown); an
