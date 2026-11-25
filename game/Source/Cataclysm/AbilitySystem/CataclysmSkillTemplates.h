@@ -1983,9 +1983,10 @@ private:
  * of zero in game/Data/MinionTypes.csv, while an imp states 4.4. So "stays where
  * it is put" falls out of the data rather than being a rule this class imposes.
  *
- * NO OLDEST-EXPLODES RULE. That belongs to Summon Imp, whose design says a fourth
- * imp destroys the oldest. Nothing in the three deployable skills says anything
- * of the kind, so reaching the cap here simply stops placing more.
+ * NO OLDEST-EXPLODES RULE AND NO COUNT CAP. Each machine reserves its row's
+ * Fervour (issue #1934, approved by the owner on 2026-11-25), and the pool is the
+ * only limit, as for every kind that reserves since issue #2787: a press whose
+ * whole set does not fit places none of it and sets `bRefusedForRoom`.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmDeployableSkill : public UCataclysmSkillTemplate
@@ -2014,9 +2015,18 @@ public:
 								 const FGameplayAbilityActivationInfo ActivationInfo,
 								 const FGameplayEventData* TriggerEventData) override;
 
-	/** Put one of a named type down. Public so a test can drive it directly. */
+	/** Put one of a named type down, holding the row's Fervour reserve, or refuse when the pool has no room for it.
+	 *  Public so a test can drive it directly. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	ACataclysmMinion* DeployOne(const FString& InTypeName);
+
+	/**
+	 * Whether the last use, or the last `DeployOne`, was refused for want of room in the pool. Issue #1934, ruled
+	 * 2026-11-25 (Q3): a refusal writes a log line saying why and sets this, which a test asserts, as the thrall's
+	 * `UCataclysmSummonSkill::bRefusedForRoom` does. An on-screen refusal is a separate item for every reserve.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	bool bRefusedForRoom = false;
 
 	/**
 	 * What this ability instance has out, oldest first.

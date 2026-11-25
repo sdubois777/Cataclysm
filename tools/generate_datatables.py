@@ -15887,21 +15887,26 @@ def refuse_a_count_cap_on_a_summon(tables: dict[str, list[dict]]) -> list[str]:
 
     A ROW WITH AN `Interval` IS LEFT ALONE: that is Open the Rift's pattern, a
     spawn every Interval over the skill's Duration, where `SpawnTick` reads
-    `MaxActive` as how many one cast makes in all. A `Deployable` is left alone
-    too: the War deployables keep their caps under the no-War rule until issue
-    #1934.
+    `MaxActive` as how many one cast makes in all.
+
+    AND A `Deployable` SINCE ISSUE #1934 (2026-11-25): the War machines reserve
+    their rows' Fervour and lost their caps, ruled that day under the same
+    ruling, and `UCataclysmDeployableSkill::DeployOne` reads no `MaxActive`. A
+    Deployable has no Interval pattern, so any `MaxActive` on one is refused.
     """
     problems = []
     for row in tables.get("WeaponSkills") or []:
-        if row.get("Shape") != "Summon" or not row.get("ShapeParams"):
+        shape = row.get("Shape")
+        if shape not in ("Summon", "Deployable") or not row.get("ShapeParams"):
             continue
         where = f"WeaponSkills/{row['Name']}"
         params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
-        if "MaxActive" in params and "Interval" not in params:
+        if "MaxActive" in params and (shape == "Deployable" or "Interval" not in params):
             problems.append(
-                f"{where}: is a Summon stating MaxActive={params['MaxActive']} "
-                "and no Interval. Nothing that reserves the class resource has "
-                "a count cap (issue #2787): the reserve is the limit, and "
+                f"{where}: is a {shape} stating MaxActive={params['MaxActive']}"
+                f"{'' if shape == 'Deployable' else ' and no Interval'}. "
+                "Nothing that reserves the class resource has a count cap "
+                "(issues #2787 and #1934): the reserve is the limit, and "
                 "nothing in the game reads this one. Remove it.")
     return problems
 

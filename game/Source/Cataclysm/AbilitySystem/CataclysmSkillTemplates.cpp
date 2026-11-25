@@ -4204,15 +4204,17 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		return nullptr;
 	}
 
-	// THE CAP STOPS PLACING RATHER THAN REPLACING: none of the three War
-	// deployable skills says anything of the kind, so reaching the cap here
-	// simply means nothing more goes down. THE ROW'S OWN FIGURE AND NO BONUS:
-	// these War rows reserve nothing yet (issue #1934, the no-War rule), so they
-	// keep the cap issue #2787 took from everything that reserves, and the cap
-	// bonus that once raised it became "Your deployables reserve 15%-30% reduced".
-	const int32 DeployCap = Params.MaxActive;
-	if (DeployCap > 0 && LivingDeployedCount() >= DeployCap)
+	// NO COUNT CAP: THE POOL IS THE LIMIT. Issue #1934, ruled 2026-11-25 under the owner's ruling of 2026-11-20 on
+	// issue #2787 ("that's limiting on its own"): a War machine reserves its row's Fervour, so it loses the count cap
+	// it kept while it reserved nothing. A machine that does not fit is refused, nothing is made and nothing is
+	// destroyed, as Summon Imp's is. `ActivateAbility` asks for a whole set before placing any of it.
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
 	{
+		bRefusedForRoom = true;
+		UE_LOG(LogCataclysm, Log,
+			TEXT("DEPLOY REFUSED: '%s' has no room in its pool for another machine reserving %.0f Fervour: %s."),
+			*SkillName, Reserve, *UCataclysmSkillTemplate::ReservedFervourByKindText(Self));
 		return nullptr;
 	}
 
@@ -4229,12 +4231,10 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	{
 		Deployed.Add(Machine);
 
-		// A WAR GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: these
-		// are War skills and the owner's mandate is no War work yet, so #1934
-		// stays open for them. (The skill gadget an enchantment places reserves
-		// since issue #2787; it is `ACataclysmMinion::PlaceSkillGadget`, not this.) Their rows already state `FervourReserve`, so building
-		// it is this one line, with a fit check before the spawn like Summon
-		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
+		// "RESERVES 5 FERVOUR WHILE IT STANDS." Issue #1934, the owner's approval of 2026-11-25. Through `HoldReserve`,
+		// as every maker's, so the reserve reaches `ReservedFervourOf`, what is spendable is cut to it at once, and
+		// everything that reads the reserve sees a machine as it sees an imp.
+		UCataclysmCommand::HoldReserve(Self, Machine, Reserve);
 
 		// AND THE SABOTEUR'S FERVOUR FOR PLACING IT, "Placing a trap or a gadget generates Fervour". Slice C, 2026-11-24.
 		// A MACHINE THAT IS A TRAP earns the trap-placed rate and raises no event: `trap_placed` is the skill traps'
@@ -4285,6 +4285,30 @@ void UCataclysmDeployableSkill::ActivateAbility(
 		return;
 	}
 
+	// THE WHOLE SET HAS TO FIT, OR NONE OF IT GOES DOWN. Issue #1934, ruled 2026-11-25 (Q1): Iron Fortress places five
+	// machines in one cast, "so the set reserves 25", and a fortress placed in part is a press that half-works. Asked
+	// before anything is placed; the press is spent, as a refused Summon Imp's is.
+	bRefusedForRoom = false;
+	int32 Machines = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		Machines += FMath::Max(0, Kind.Count);
+	}
+	const float Each = FervourReserveFor(Self, Params, SkillTags, this);
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Each * static_cast<float>(Machines)))
+	{
+		bRefusedForRoom = true;
+		const UCataclysmAbilitySystemComponent* Pool =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+		UE_LOG(LogCataclysm, Log,
+			TEXT("DEPLOY REFUSED: '%s' places %d machines reserving %.0f Fervour each, %.0f in all, and the pool has no "
+				 "room: %s, against a maximum of %.0f. Nothing was placed."),
+			*SkillName, Machines, Each, Each * static_cast<float>(Machines),
+			*UCataclysmSkillTemplate::ReservedFervourByKindText(Self), Pool ? Pool->MaximumClassResource() : 0.0f);
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
 	// PUT DOWN WHERE IT WAS AIMED, WHICH IS THE POINT OF THE SHAPE. A deployable
 	// with no Range goes at the caster's feet, which is what a spike trap laid
 	// underfoot would be.
@@ -4314,10 +4338,9 @@ void UCataclysmDeployableSkill::ActivateAbility(
 
 	if (Placed == 0)
 	{
-		// Names nothing, or the cap was already full. Verbose rather than a
-		// warning: a player pressing a deployable key with its cap full is an
-		// ordinary event, and a row that names nothing is refused by the
-		// generator before it reaches here.
+		// Names nothing. Verbose rather than a warning: a row that names nothing
+		// is refused by the generator before it reaches here, and a press the
+		// pool has no room for returned above, saying so.
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' deployed nothing."), *SkillName);
 	}

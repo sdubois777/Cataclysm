@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War machines reserve their Fervour: Bolt Turret, Ballista and Iron Fortress hold 5 each, the pool is their only limit, and Iron Fortress places its whole set or none of it (issue #1934)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` and `.h`:
+  - `UCataclysmDeployableSkill::DeployOne` drops its `MaxActive` count cap. It refuses a machine the pool has no room
+    for (`UCataclysmCommand::HasRoomToReserve`), and holds each placed machine's reserve through
+    `UCataclysmCommand::HoldReserve`.
+  - `ActivateAbility` checks the whole set's reserve before placing any of it.
+  - Both refusals write a log line saying why and set the new `bRefusedForRoom`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`: the three rows lose `MaxActive` and the sentence
+  stating the cap (`tools/apply_war_gadget_reserves_2026_11_25.py`, new). **The editor step must rebuild
+  `DT_WeaponSkills`.**
+- `tools/generate_datatables.py`: `refuse_a_count_cap_on_a_summon` refuses a `MaxActive` on a Deployable row too.
+- Tests:
+  - Unreal, in `CataclysmCommandTests.cpp`:
+    - two tests rewritten for the reserve (below);
+    - `Cataclysm.FervourReserve.AWarMachineReservesFiveAndTheSpendableFervourDropsAtOnce` and
+      `Cataclysm.FervourReserve.IronFortressPlacesItsWholeSetOrNoneOfIt`, new.
+  - Python:
+    - `tools/tests/test_war_gadget_reserves_scripts.py` (new, five).
+    - `test_minion_skill_shapes.py`: a Deployable stating a cap is refused, with its control; the control that a
+      Deployable was left alone is gone.
+    - `tools/tests/test_a_deployable_cap_holds_what_base_timing_allows.py` is REWRITTEN, keeping its name because this
+      log names it. It held the caps of the ruling of 2026-09-25, which this one replaces. It now holds that the three
+      shipped machine rows state a reserve of 5 and no cap.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_WeaponSkills`, and run:
+  - `Cataclysm.FervourReserve.`: two tests more than before.
+  - `Cataclysm.Command.`:
+    - `TheShippedDeployablesStateCapsAndThreeActivationsLeaveOneBoltTurret` is renamed
+      `TheShippedDeployablesReserveFiveEachAndThePoolIsTheirOnlyLimit`;
+    - its count is unchanged.
+  - `Cataclysm.MinionDeath.`:
+    - `AGadgetKilledThroughItsHealthFreesItsPlaceAtOnce` now frees a reserve, not a capped place;
+    - the name and count are unchanged.
+  - `Cataclysm.KindReserves.` and `Cataclysm.NoCaps.`: neighbours, unchanged.
+- **PLAY CHANGES FOR EVERY WAR PLAYER WITH THESE SKILLS.**
+  - A machine now takes 5 Fervour off what can be spent while it stands; Crowned's, the reduction percentages' and the
+    skill level's changes apply.
+  - The count caps of 1, 2 and 5 are gone. **A full bar of 100 now holds up to 20 Bolt Turrets**, each press placing
+    one while its cooldown allows. Before, one could stand at a time.
+- **A MERGE OBLIGATION.** The Death line's slice C1 (`feat/death-trees-c1`, `54aa0bfb3`) judges "the bar is full"
+  against the maximum less what minions reserve (`FCataclysmStatConditions::ClassResourceReserved`, from
+  `UCataclysmCommand::ReservedFervourAmong`). A War machine's reserve is held through `HoldReserve` like every
+  follower's, so that rule counts it once both lines are merged.
+  - The test the coordinating session asked for cannot compile here, because this line lacks that field.
+  - It is to be written by whichever line merges second: a War player with a full 100 who places one Bolt Turret
+    reads `class_resource_at_maximum` at 95 held and not at 94.
+- **A REFUSED PRESS IS SPENT**, as a refused Summon Imp's is. On-screen refusals for every reserve (imp, thrall and
+  machine) are a separate backlog item, by the coordinating session.
+- **#1934 IS CLOSED BY HAND WHEN THIS MERGES.** The coordinating session does it: "Closes #1934" does not fire on a
+  merge into `development`.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, relayed by the coordinating session: "build War skill gadget Fervour reserves (issue #1934)
+  next, after V2b and before V3."
+- The coordinating session, 2026-11-25:
+  - "Q1 (a): Iron Fortress checks the whole set's reserve before placing any; if it does not fit, none is placed."
+  - "Q2: remove the count caps once the machines reserve. The owner's ruling of 2026-11-20 under #2787 ("that's
+    limiting on its own") is about exactly this ... Update the rows' and descriptions' wording that states a cap, and
+    say in the entry that a full bar now holds up to 20 turrets."
+  - "Q3: the log line and a flag a test asserts, as the thrall and imp do, the press spent."
+
+**The rows** (old beside new; the Shape Params lose only `; MaxActive=N`):
+
+| Skill | Sentence removed from the description | `MaxActive` removed |
+|---|---|---|
+| Bolt Turret (`War_Crossbow_Special`) | "One turret may stand at a time." | 1 |
+| Ballista (`War_Spear_Special`) | "Up to 2 ballistas may stand at once." | 2 |
+| Iron Fortress (`War_Spear_Ultimate`) | "One set may stand at a time." | 5 |
+
+Each description still says "reserves 5 Fervour while it stands", and Iron Fortress's "so the set reserves 25".
+
+### JUDGEMENTS
+
+- **`DeployOne` checks room for one machine as well**, so a test or a later caller placing one directly honours the
+  reserve. `ActivateAbility`'s whole-set check comes first, so a press either places the set or refuses before
+  `DeployOne` is asked.
+- **Each machine of a set reserves the row's figure, asked with the skill's tags**, as Summon Imp's is. A reduction
+  scoped to `Type.Trap` reaches Iron Fortress's spike traps only if the skill's tags carry it. They do: the row's tags
+  include `Type.Trap`.
+- **`LivingDeployedCount` and the `Deployed` list are kept.** Nothing reads them as a cap now; the list holds what this
+  instance has out.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### PYTHON GUARD PROOF
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; `proved` True, and the
+tracked files identical afterwards to a copy taken before.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `tools/generate_datatables.py`: the count-cap refusal reads Summon rows only again | `pytest tools/tests/test_minion_skill_shapes.py` | `test_a_deployable_stating_a_count_cap_is_refused` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.FervourReserve.AWarMachineReservesFiveAndTheSpendableFervourDropsAtOnce` | a Bolt Turret in a full pool of 150 reserves 5, leaves 145 spendable and cuts the pool to 145. Control: the row with no reserve holds nothing |
+| `Cataclysm.FervourReserve.IronFortressPlacesItsWholeSetOrNoneOfIt` | the shipped row in a pool of 24 places nothing and sets the flag. Control: in a pool of 25 all five stand, reserving 25 |
+| `Cataclysm.Command.TheShippedDeployablesReserveFiveEachAndThePoolIsTheirOnlyLimit` | the three shipped rows state no cap and 5 a machine; three presses in a pool of 150 leave three turrets reserving 15. Control: in a pool of 10, two stand and the third is refused for room |
+| `Cataclysm.MinionDeath.AGadgetKilledThroughItsHealthFreesItsPlaceAtOnce` | a pool of 5: a second turret is refused for room while the first lives, and placed once it dies |
+
+Predicted counts: `Cataclysm.FervourReserve.` two more; `Cataclysm.Command.` and `Cataclysm.MinionDeath.` unchanged.
+
+### C++ GUARD PROOFS (planned, two, with `test_prefix="Cataclysm.FervourReserve."`)
+
+| Break | Predicted named failure |
+|---|---|
+| `ActivateAbility`: the whole set's check asks for one machine's reserve (`Each * 1.0f`) | `IronFortressPlacesItsWholeSetOrNoneOfIt` (four are placed in a pool of 24) |
+| `DeployOne`: `HoldReserve(Self, Machine, Reserve)` holds 0 | `AWarMachineReservesFiveAndTheSpendableFervourDropsAtOnce` |
+
+---
+
 ## 2026-11-25 — The War vow options' second slice (V2b): Fervour shares judged against the maximum the Fervour rows make, Warlord's armour removal on every enemy nearby, a nova sized by a hit for Pure Carnage and Ragnarok's shockwaves, Blood Oath's retaliation penetration, Spiteful Guard's store of blocked damage, and a second condition on an action
 
 **Affects:**
