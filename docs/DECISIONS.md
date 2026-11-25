@@ -36,6 +36,14 @@ Decisions made outside the Google Drive documents, newest first.
   the poison-or-bleed row, so it would fail as written on `ebc9fb095`; with this fix it should pass. In play Death's
   Patience was not lost, because the Shadow's starting node asks the rarity rung on the same stat. A Python check now
   holds both lists to the declarations.
+- **A KNOWN FAULT IN PLAY, NOW FIXED: SOUL-HEAVY AIR DID NOTHING FROM SLICE C2 TO SLICE C4c1** for a character whose
+  attack and spell damage carried no other row asking about the target. Soul-Heavy Air (`SoulCollector_basic_c_b2`) is
+  the one node under `target_in_your_siphon`. In the Soul Collector tree the other rows that ask are Quarry's
+  (`target_rarity_at_least`) and, from this slice, Grim Wake's; an equipped item's row with a target condition on
+  those stats would also have filled the state. `Cataclysm.Siphon.SoulHeavyAirsRealRowRaisesTheDamageAMemberTakesAndNotAnOutsiders`
+  gives the real rows of only The Siphon (whose one row is `siphon_radius_metres`) and Soul-Heavy Air, so it would
+  have read 100 against a member where it expects 116; its control would have passed. From this slice it should pass.
+  Recorded at the coordinating session's request.
 - **BLOOD DEBT'S DEATHMARK HALF IS NOT BUILT.** "(the enemy Deathmark marked, if you have Deathmark)" needs Deathmark,
   which no slice has built. Blood Debt always picks the strongest enemy.
 - **THE BOUND ON BLOOD DEBT'S SECONDS (0 to 10) IS NOT TESTED**, as The Ferryman's share bound of slice C4c1 is not.
