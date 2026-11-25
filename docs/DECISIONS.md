@@ -100,9 +100,28 @@ must fail `ADoubledEvasionGivesTwoCriticalStrikesThenNoMore`, `AFullBarsChargeIs
 
 ### What was run
 
-SUITE_FIGURES_C6B4
+**The whole Python suite on `7ce475f1a`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8581 passed, 9 skipped in 388.15s
+(0:06:28)". The JUnit file agrees: tests 8591, failures 1, errors 0, skipped 9, so 8581 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run on the working
+tree before the code commit gave the same one failure and nothing else.
 
-PYTHON_PROOFS_C6B4
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+
+**Seven Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`d1a5e818e`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A doubled evasion granting one | `test_charge_and_placed_action_names_match_the_engine.py::test_a_doubled_evasion_and_an_unbroken_poison_are_recorded_and_read` |
+| A grant adding to what is held rather than taking the larger | the same test |
+| Every Poison laid restarting Festering's time | the same test |
+| The record read on a creature no longer carrying the Poison | the same test |
+| Soul Barrage's probe named in the table before any declaration | `test_every_scaled_stat_has_an_asker.py::test_every_probe_a_table_names_is_declared_above_the_table` |
+| A chance accepted on any action | `test_passive_rows_carry_the_action_columns.py::test_a_chance_is_refused_on_a_row_that_does_not_move_the_class_resource`, both cases |
+| Twice Answered's charge holding 3 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
