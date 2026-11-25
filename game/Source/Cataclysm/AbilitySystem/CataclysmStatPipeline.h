@@ -1725,6 +1725,29 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetIsMoving
 		UMETA(DisplayName = "Target Is Moving"),
+
+	/**
+	 * The target carries a curse the ASKER laid: a running `Status.Debuff.*` effect whose instigator is the asking
+	 * ability system's avatar, `UCataclysmRisenImps::CarriesCurseLaidBy`. The demonic tree rework of 2026-11-24, for
+	 * the Ritualist's Subjugator ("+20% increased Spell Damage against enemies carrying your curse") and Long Servitude
+	 * ("your minions deal 20% increased damage to enemies carrying your curse").
+	 *
+	 * A CURSE IS ANY `Status.Debuff.*`, the reading the Ritualist's starting node takes (ruled 2026-09-27), and NOT
+	 * `TargetCarriesAnyDebuff`, which also counts every burn and so holds on almost every enemy a Demonic build has
+	 * touched. ANYONE'S CURSE IS NOT YOURS: one a creature, a trap or another player laid refuses.
+	 *
+	 * "YOUR" IS THE ASKER, WHICH FOR A MINION'S BLOW IS ITS SUMMONER: a minion's damage is read through its summoner's
+	 * component (`UCataclysmCommand::SummonerMultiplierAgainst`), so the asker is the summoner, and a curse the
+	 * summoner laid is the one asked about. The rule `curse_death_raises_imp` is NOT asked: this is about who laid the
+	 * curse, not whether its carrier will rise.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetIsMoving` is. False is "no curse of yours", "no target
+	 * in hand", "no asker" and "nothing asked", and all refuse.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetCarriesYourCurse
+		UMETA(DisplayName = "Target Carries Your Curse"),
 };
 
 /**
@@ -3297,6 +3320,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetIsMoving = false;
+
+	/**
+	 * Whether the character being hit carries a curse the asker laid. The demonic tree rework of 2026-11-24. Filled by
+	 * `WithTargetState` only when some modifier in the lookup asks, and only with an asker in hand; false otherwise,
+	 * which refuses. See `ECataclysmStatCondition::TargetCarriesYourCurse`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCarriesYourCurse = false;
 
 	/**
 	 * Whether the character being hit is a boss. Issue #1815.
@@ -5013,7 +5044,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-fourth, which is the drift that put the passive tree eight
+	 * adds a seventy-fifth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5022,7 +5053,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-FOUR OF THE SEVENTY-THREE COMPARE NOTHING. They are the case labels
+	 * THIRTY-FIVE OF THE SEVENTY-FOUR COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

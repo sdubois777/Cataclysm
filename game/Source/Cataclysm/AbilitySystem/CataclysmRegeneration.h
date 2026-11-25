@@ -192,6 +192,29 @@ public:
 										float HealthArrived);
 
 	/**
+	 * `energy_shield_on_minion_death_percent`: the percentage of its maximum energy shield a character regains each
+	 * time one of its minions dies. Warded Flesh, the Ritualist's First Pact's second option since the demonic tree
+	 * rework of 2026-11-24: "Each time one of your minions dies, you regain 10% of your Maximum Energy Shield", a
+	 * `flat` row of 10. Asked with no tags. No gameplay attribute and no base.
+	 */
+	static const TCHAR* ShieldOnMinionDeathStat;
+
+	/**
+	 * Gives a commander that has just lost a minion its `ShieldOnMinionDeathStat` share of its maximum energy shield,
+	 * and answers how much was added. Nought when it carries no such row, has no energy shield, or is already full.
+	 *
+	 * CALLED FROM THE ONE PLACE A COMMANDED DEATH IS HEARD, beside the Fervour the Ritualist's starting node grants
+	 * for the same death (`UCataclysmVitalAttributeSet`'s death hook), so it answers exactly the deaths that grant
+	 * that Fervour: a summoned or risen imp, a thrall, and every other follower. A lifetime running out writes no
+	 * health and is no death, so an imp that expires gives nothing.
+	 *
+	 * THE MAXIMUM IS `UCataclysmAbilitySystemComponent::MaximumEnergyShield`, the one the bar and the clamp read, so
+	 * Hollow Crown's scaled shield counts. INTO THE ORDINARY SHIELD THROUGH `TopUp`, which stops at that maximum.
+	 * THE RECHARGE WAIT IS NEITHER READ NOR RESTARTED, as for `GiveHealingSkillShield`: this is not regeneration.
+	 */
+	static float GiveShieldOnMinionDeath(AActor* Commander);
+
+	/**
 	 * The stat saying this character's energy shield recharges before the
 	 * wait after being damaged has run out, at a reduced rate. Issue #1515.
 	 *

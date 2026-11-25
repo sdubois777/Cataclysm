@@ -1479,6 +1479,9 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	const float Duration =
 		Lifetime * UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_duration"), Minion->TypeTags);
 	Minion->SetLifeSpan(Duration > 0.0f ? Duration : Lifetime);
+	// AND REMEMBERED, because it is what Rekindled gives again when the time runs out. The demonic tree rework of
+	// 2026-11-24; see `LifeSpanExpired`.
+	Minion->GrantedLifetimeSeconds = Duration > 0.0f ? Duration : Lifetime;
 
 	// AND A GADGET TAKES ITS FIRST STEP AS IT IS PLACED. Ruled 2026-10-13. The step every character has comes a
 	// quarter of a second after the spawn, and a gadget whose summoner's row says it takes no damage would take
@@ -1830,6 +1833,51 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 }
 
 const TCHAR* ACataclysmMinion::GadgetsBurstOnKillStat = TEXT("gadgets_burst_on_kill");
+
+const TCHAR* ACataclysmMinion::LifetimeRenewedEverySecondsStat =
+	TEXT("minion_lifetime_renewed_every_seconds");
+
+bool ACataclysmMinion::RenewLifetimeIfRekindled()
+{
+	// A BODY, A MACHINE, OR ONE WITH NO LIFETIME IS NEVER KEPT. A dead minion's body is removed by the same call
+	// `DeadBodySeconds` after its death; a deployable is a machine and not one of the Ritualist's minions.
+	if (UCataclysmSkillEffects::IsDead(this) || IsDeployable() || GrantedLifetimeSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	AActor* Commander = Summoner.Get();
+	UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs || UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return false;
+	}
+
+	// THE KEYSTONE'S INTERVAL IS ITS ROW'S FIGURE, and above nought IS the keystone being held, the shape
+	// Press-Ganged's stat takes. The clock is the summoner's, so one renewal in five seconds whatever is expiring.
+	const float Every = Theirs->StatForSkill(FName(LifetimeRenewedEverySecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Every <= 0.0f || !Theirs->MayRenewMinionLifetime())
+	{
+		return false;
+	}
+
+	// THE WHOLE LIFETIME IT WAS GIVEN, "it stays for that long again". Its reserve stays held, because it is the
+	// same minion: nothing was lost and nothing is made.
+	SetLifeSpan(GrantedLifetimeSeconds);
+	Theirs->NoteMinionLifetimeRenewed(Every);
+	++TimesLifetimeRenewed;
+	return true;
+}
+
+void ACataclysmMinion::LifeSpanExpired()
+{
+	if (RenewLifetimeIfRekindled())
+	{
+		return;
+	}
+	Super::LifeSpanExpired();
+}
 
 void ACataclysmMinion::HandleDeath()
 {

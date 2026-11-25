@@ -29,6 +29,9 @@
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
+// For who commands a killer, so The Swarm hears a kill by one of this
+// character's minions. The demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
@@ -1518,6 +1521,18 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// and not the killing skill's.
 			UCataclysmRisenImps::RiseOnNecrosisKill(
 				this, Notice.Victim, Notice.Location, Notice.KillingTags);
+		}
+
+		// AND THE SWARM: A MINION WHERE AN ENEMY THIS CHARACTER OR ONE OF ITS MINIONS KILLED FELL. The demonic tree
+		// rework of 2026-11-24: "When you or one of your minions kills an enemy, a new minion is summoned where it fell,
+		// if your Fervour has room for it." OUTSIDE THE KILLER TEST ABOVE, because a minion's kill is the minion's own
+		// unless Conduit is taken: with Conduit the killer is this character, without it the killer is a minion (or a
+		// thrall) this character commands, and either way it is heard once. Nothing without the keystone; the enemy
+		// test and the pool's room are `UCataclysmSummonSkill::SummonAtAKillFor`'s.
+		if (Notice.Killer
+			&& (Notice.Killer == this || UCataclysmCommand::CommanderOf(Notice.Killer) == this))
+		{
+			UCataclysmSummonSkill::SummonAtAKillFor(this, Notice.Victim, Notice.Location);
 		}
 
 		// AND LONG HOLD, BEFORE WRUNG OUT BELOW CAN BUY ANYTHING. Issue #1515.

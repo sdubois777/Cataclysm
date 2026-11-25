@@ -2791,41 +2791,41 @@ namespace CataclysmPassiveEffectTest
 		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints\r\n"
+			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints,ScaleMaxSteps\r\n"
 			// A plain increase on a node that holds five points, so the
 			// multiplication by the points held is visible rather than assumed.
-			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0,0,-1,0\r\n"
+			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0,0,-1,0,0\r\n"
 			// A more multiplier, which is the other bucket a passive may use.
-			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0,0,-1,0\r\n"
+			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0,0,-1,0,0\r\n"
 			// AND A SECOND STAT ON THAT SAME NODE. Issue #953. The Masochist's
 			// starting node grants three Fervour rates at once and two other
 			// nodes grant a health increase and an armour increase together, so
 			// one row per node is a shape the design does not fit.
-			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0,0,-1,0\r\n"
+			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0,0,-1,0,0\r\n"
 			// A scoped one, to prove the tag column reaches the modifier.
-			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0,0,-1,0\r\n"
+			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0,0,-1,0,0\r\n"
 			// AND ONE THAT DEPENDS ON THE CHARACTER'S HEALTH. Issue #959, and
 			// it proves the two condition columns reach the modifier.
-			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0,0,-1,0\r\n"
+			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0,0,-1,0,0\r\n"
 			// AND ONE THAT DEPENDS ON A WINDOW AFTER AN EVENT. Issue #962. It is
 			// a second row on the SAME node deliberately: a new node would change
 			// the rectangle the tree occupies and move an unrelated layout test's
 			// answer.
-			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0,0,-1,0\r\n"
+			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0,0,-1,0,0\r\n"
 			// AND ONE WHOSE SIZE GROWS WITH A STATE rather than switching on and
 			// off with it. Issue #968. A third row on the same node, for the same
 			// reason the second one is.
-			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5,0,-1,0\r\n"
+			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5,0,-1,0,0\r\n"
 			// AND ONE UNDER THE SECOND KIND OF TIMED WINDOW. Issue #975. The
 			// two windows are separate names and separate enumerators, so
 			// covering one says nothing at all about the other.
-			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0,0,-1,0\r\n"
+			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0,0,-1,0,0\r\n"
 			// AND ONE THAT GROWS WITH WHAT THE CHARACTER OWES. Issue #994. A
 			// SECOND scale, and telling it apart from the one above is the
 			// point: health missing and health owed are different states of one
 			// character, so a build that mapped either name onto either
 			// enumerator would pass every check written before this row.
-			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5,0,-1,0\r\n"
+			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5,0,-1,0,0\r\n"
 			// AND THREE COUNTS OF STACKS, ONE PER KIND. Issues #1002, #1003 and
 			// #1004. All three are here rather than one of them, because the
 			// three names must not be interchangeable: each kind is granted by a
@@ -2833,36 +2833,36 @@ namespace CataclysmPassiveEffectTest
 			// that mapped two of the names onto one enumerator would hand a node
 			// somebody else's stacks with nothing reporting it. One row cannot
 			// catch that; three can.
-			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1,0,-1,0\r\n"
-			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1,0,-1,0\r\n"
-			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1,0,-1,0\r\n"
+			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1,0,-1,0,0\r\n"
+			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1,0,-1,0,0\r\n"
+			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1,0,-1,0,0\r\n"
 			// AND A COUNT OF THE DEBUFFS THE CHARACTER IS UNDER. Issue #962. A
 			// fourth count beside the three stacks, and its own row for the same
 			// argument: a build that mapped this name onto a stack enumerator
 			// would count something the character EARNED instead of something
 			// being DONE to it, and every check above would still pass.
-			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1,0,-1,0\r\n"
+			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1,0,-1,0,0\r\n"
 			// AND A CONDITION THAT NAMES AN EFFECT RATHER THAN A THRESHOLD.
 			// Issue #962. It is the only condition that reads no value, so it is
 			// the only one where the value column could be carried across and
 			// compared against with nothing reporting it.
-			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0,-1,0\r\n"
+			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0,-1,0,0\r\n"
 			// AND A THRESHOLD THAT POINTS UPWARDS. Issue #1070. Ceaseless
 			// Penance is the only node in the game asking whether health is
 			// still HIGH, and the failure if the name goes unrecognised is the
 			// worst of the three: the row is left UNCONDITIONAL, so the option
 			// would hold a character's debuffs still at every health rather
 			// than only above half.
-			"Ravager_low#11,Ravager_low,block_chance,flat,1.0,,health_above,50,,0,0,-1,0\r\n"
+			"Ravager_low#11,Ravager_low,block_chance,flat,1.0,,health_above,50,,0,0,-1,0,0\r\n"
 			// AND ONE THAT COUNTS THE ENEMIES STANDING NEARBY. Issue #1597. The
 			// only row here carrying a `ReachMetres`, and the only one that can
 			// show the column travelling from a table row to a modifier. Every
 			// other row carries -1, which is what a row that counts no enemies
 			// carries, so a build that dropped the column on the way would leave
 			// this one indistinguishable from all of them.
-			"Ravager_low#12,Ravager_low,retaliation,increased,4.0,,enemies_in_reach_at_least,3,,0,0,4,0\r\n"
+			"Ravager_low#12,Ravager_low,retaliation,increased,4.0,,enemies_in_reach_at_least,3,,0,0,4,0,0\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
-			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0,-1,0\r\n"
+			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0,-1,0,0\r\n"
 			// A CAPSTONE'S THREE OPTIONS, ONE ROW EACH. Issue #1029. Only the
 			// option the player chose may apply, and a capstone with no choice
 			// made yet grants none of the three.
@@ -2872,9 +2872,9 @@ namespace CataclysmPassiveEffectTest
 			// third says the skip is by option NUMBER rather than by "not the
 			// first one". Each grants a different stat so the test can tell which
 			// of the three arrived.
-			"Ravager_cap#1,Ravager_cap,armor,increased,10.0,,,0,,0,1,-1,0\r\n"
-			"Ravager_cap#2,Ravager_cap,evasion,increased,20.0,,,0,,0,2,-1,0\r\n"
-			"Ravager_cap#3,Ravager_cap,magic_find,increased,30.0,,,0,,0,3,-1,0\r\n"));
+			"Ravager_cap#1,Ravager_cap,armor,increased,10.0,,,0,,0,1,-1,0,0\r\n"
+			"Ravager_cap#2,Ravager_cap,evasion,increased,20.0,,,0,,0,2,-1,0,0\r\n"
+			"Ravager_cap#3,Ravager_cap,magic_find,increased,30.0,,,0,,0,3,-1,0,0\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -3017,11 +3017,11 @@ bool FCataclysmPassiveMinPointsTest::RunTest(const FString&)
 	UDataTable* EffectTable = NewObject<UDataTable>();
 	EffectTable->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 	const TArray<FString> Problems = EffectTable->CreateTableFromCSVString(TEXT(
-		"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints\r\n"
+		"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints,ScaleMaxSteps\r\n"
 		// Paid per point, from the first.
-		"Ravager_low#1,Ravager_low,armor,increased,1.5,,,0,,0,0,-1,0\r\n"
+		"Ravager_low#1,Ravager_low,armor,increased,1.5,,,0,,0,0,-1,0,0\r\n"
 		// "At 4 points: +5% increased Crowd Control Resistance."
-		"Ravager_low#2,Ravager_low,crowd_control_resistance,increased,5.0,,,0,,0,0,-1,4\r\n"));
+		"Ravager_low#2,Ravager_low,crowd_control_resistance,increased,5.0,,,0,,0,0,-1,4,0\r\n"));
 	for (const FString& Problem : Problems)
 	{
 		AddError(Problem);
@@ -3424,8 +3424,8 @@ namespace CataclysmPassiveConditionTest
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(
 			FString::Printf(
 				TEXT("Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,")
-				TEXT("Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints\r\n")
-				TEXT("Ravager_low#1,Ravager_low,%s,increased,3.0,,%s,%s,,0,0,-1,0\r\n"),
+				TEXT("Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres,MinPoints,ScaleMaxSteps\r\n")
+				TEXT("Ravager_low#1,Ravager_low,%s,increased,3.0,,%s,%s,,0,0,-1,0,0\r\n"),
 				Stat, Condition, Value));
 
 		for (const FString& Problem : Problems)
@@ -3533,7 +3533,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_is_silenced")
 			// RULED 2026-10-23 (#2235), "WHILE THE ENEMY IS MOVING": the character struck is moving. It names a
 			// state, so it compares nothing.
-			|| Name == TEXT("target_is_moving");
+			|| Name == TEXT("target_is_moving")
+			// THE DEMONIC TREE REWORK OF 2026-11-24, "ENEMIES CARRYING YOUR CURSE": the character struck carries a
+			// curse the asker laid. It names a state, so it compares nothing.
+			|| Name == TEXT("target_carries_your_curse");
 	}
 }
 
@@ -11023,24 +11026,23 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSwarmOnARealCharacterTest,
-	"Cataclysm.Passives.TheSwarmLowersARealRitualistsImpReserveByTwelvePercent",
+	"Cataclysm.Passives.TheSwarmGivesARealRitualistAMinionWhereItsKillFell",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718, and issue
- * #2787's branch B.
+ * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718, issue #2787's branch B, and the demonic tree
+ * rework of 2026-11-24.
  *
- * "Your minions reserve 12% reduced Fervour."
+ * "When you or one of your minions kills an enemy, a new minion is summoned where it fell, if your Fervour has room
+ * for it."
  *
- * IT WAS "Each skill that limits how many of its minions may be active allows 2
- * more", flat 2 on `minion_cap_bonus`, until the owner's ruling of 2026-11-20
- * removed the count caps and made what raised them a smaller reserve instead.
- * Sized to let the player hold about as many more as the old 2 did: imps at 10 on
- * a Ritualist's 150 are fifteen, and 2 / (15 + 2) is about 12 percent, a
- * judgement of issue #2787.
+ * IT WAS "Your minions reserve 12% reduced Fervour", flat 12 on `minion_reserve_percent_less`, from issue #2787 until
+ * the rework, which found it a far weaker copy of Crowned (two more imps in 150 Fervour, where Crowned fits fifteen
+ * more) and the owner approved the change on 2026-11-24.
  *
- * THE ROW HOLDS 12, untagged, so it reaches every kind. Read where the reserve is
- * read, `UCataclysmCommand::ReserveFor` with an imp's tags: an imp's 10 is 8.8.
+ * THE ROW HOLDS 1, a flag, on `kill_summons_minion_where_it_fell`. Read where a kill is heard,
+ * `UCataclysmSummonSkill::SummonAtAKillFor`: with the node, a kill of an enemy summons a minion where it fell; without
+ * it, nothing. Which kills (a minion's too) and the Wand's kind are `Cataclysm.Swarm.`.
  */
 bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 {
@@ -11075,33 +11077,40 @@ bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the percent less a minion reserves"),
-			  Effects[0]->Stat, FString(UCataclysmCommand::MinionReservePercentLessStat));
+	TestEqual(TEXT("and it is the flag that summons a minion at a kill"),
+			  Effects[0]->Stat, FString(UCataclysmSummonSkill::KillSummonsMinionStat));
 	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
-	TestEqual(TEXT("of twelve"), Effects[0]->ValuePerPoint, 12.0f);
+	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
 	TestEqual(TEXT("and carrying no condition"),
 			  Effects[0]->Condition, FString());
 
-	const FGameplayTagContainer ImpTags = ACataclysmMinion::TagsOfType(TEXT("Imp"));
-	const auto ImpReserve = [&Player, &ImpTags]()
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: an enemy"), Enemy))
 	{
-		return UCataclysmCommand::ReserveFor(Player.Character, 10.0f, ImpTags);
-	};
+		return false;
+	}
+	Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	const FVector Fell(500.0f, 300.0f, 0.0f);
 
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("an unspent Ritualist's imp reserves its whole 10"), ImpReserve(), 10.0f, 0.001f);
+	TestNull(TEXT("an unspent Ritualist's kill summons nothing"),
+			 UCataclysmSummonSkill::SummonAtAKillFor(Player.Character, Enemy, Fell));
 
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 1);
 	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("taking The Swarm makes it 8.8"), ImpReserve(), 8.8f, 0.001f);
+	ACataclysmMinion* Summoned = UCataclysmSummonSkill::SummonAtAKillFor(Player.Character, Enemy, Fell);
+	TestTrue(TEXT("taking The Swarm summons a minion where the kill fell"),
+			 IsValid(Summoned) && FVector::Dist2D(Summoned->GetActorLocation(), Fell) < 1.0);
 
 	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
 									   TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("and giving the point back makes it 10 again"), ImpReserve(), 10.0f, 0.001f);
+	TestNull(TEXT("and giving the point back summons nothing again"),
+			 UCataclysmSummonSkill::SummonAtAKillFor(Player.Character, Enemy, Fell));
 
 	return true;
 }
@@ -15417,12 +15426,13 @@ bool FCataclysmLongHoldBeforeWrungOutTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFedByTheFallenRadiusTest,
-	"Cataclysm.DeathRewards.FedByTheFallenGrantsFervourForAnEnemyDyingWithinTenMetres",
+	"Cataclysm.DeathRewards.TheDeathNearbyRowGrantsFervourForAnEnemyDyingWithinTenMetres",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The Ritualist's Fed by the Fallen capstone option on a real character.
- * Issue #1515.
+ * `fervour_on_enemy_death_nearby` on a real character, granted by hand. Issue #1515.
+ * The Ritualist's Fed by the Fallen capstone option until the demonic tree rework
+ * of 2026-11-24; the Masochist's Gorge and the Ravager's Swing Through since.
  *
  * "You gain 10 Fervour whenever an enemy dies within 10 metres of you."
  *
@@ -15538,7 +15548,7 @@ bool FCataclysmFedByTheFallenRadiusTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFedByTheFallenOwnMinionTest,
-	"Cataclysm.DeathRewards.FedByTheFallenGrantsNothingForTheRitualistsOwnMinion",
+	"Cataclysm.DeathRewards.TheDeathNearbyRowGrantsNothingForTheRitualistsOwnMinion",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -15869,18 +15879,20 @@ bool FCataclysmPassiveLongHoldRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFedByTheFallenRowTest,
-	"Cataclysm.Passives.FedByTheFallenGrantsTenFervourForAnEnemyDyingNearby",
+	"Cataclysm.Passives.WallOfServantsTakesOnePercentLessDamagePerMinionUpToTwenty",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The Second Pact's second option, Fed by the Fallen, read out of the tables the
- * game loads. Issue #1515.
+ * The Second Pact's second option, Wall of Servants, read out of the tables the game loads. The demonic tree rework of
+ * 2026-11-24, which replaced Fed by the Fallen ("You gain 10 Fervour whenever an enemy dies within 10 metres of you",
+ * issue #1515) with the tier's option that scales with the minions held, and the owner's answer that day that the
+ * per-minion damage reduction is capped at 20%.
  *
- * "You gain 10 Fervour whenever an enemy dies within 10 metres of you."
+ * "You take 1% less damage for each minion you have, up to 20% less."
  *
- * The row and the attribute it lands on, as Long Hold's test reads its own. The
- * ten metres are a constant in code, not a column. What a death does with the
- * stat is `Cataclysm.DeathRewards.FedByTheFallenGrantsFervourForAnEnemyDyingWithinTenMetres`.
+ * The row, its cap in the `ScaleMaxSteps` column, and the modifier it becomes: worth 1% less a minion and stopping at
+ * 20 minions. Fed by the Fallen's stat, `fervour_on_enemy_death_nearby`, is still read and still tested by hand in
+ * `Cataclysm.DeathRewards.`; the reworked Masochist and Ravager trees grant it.
  */
 bool FCataclysmPassiveFedByTheFallenRowTest::RunTest(const FString&)
 {
@@ -15897,32 +15909,34 @@ bool FCataclysmPassiveFedByTheFallenRowTest::RunTest(const FString&)
 	}
 
 	const FCataclysmPassiveEffectRow* Row = RowFor(
-		EffectTable, TEXT("Ritualist_capstone_50"), 2,
-		UCataclysmFervour::OnEnemyDeathNearbyStat);
-	if (!TestNotNull(TEXT("Fed by the Fallen has a row"), Row))
+		EffectTable, TEXT("Ritualist_capstone_50"), 2, TEXT("damage_taken"));
+	if (!TestNotNull(TEXT("Wall of Servants has a row"), Row))
 	{
 		return false;
 	}
-	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
-	TestEqual(TEXT("of ten"), Row->ValuePerPoint, 10.0f);
+	TestEqual(TEXT("stated as more"), Row->ValueKind, FString(TEXT("more")));
+	TestEqual(TEXT("of minus one"), Row->ValuePerPoint, -1.0f);
 	TestEqual(TEXT("under no condition"), Row->Condition, FString());
-	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+	TestEqual(TEXT("scaled by the minions held"), Row->Scale, FString(TEXT("minions_held")));
+	TestEqual(TEXT("one minion a step"), Row->ScaleStep, 1.0f);
+	TestEqual(TEXT("and capped at twenty steps"), Row->ScaleMaxSteps, 20);
 
 	TMap<FName, TArray<FCataclysmStatModifier>> Out;
 	const TArray<FCataclysmStatModifier>* Gained = Granted(
-		Out, NodeTable, EffectTable, TEXT("Ritualist_capstone_50"), 1, 2,
-		UCataclysmFervour::OnEnemyDeathNearbyStat);
-	if (!TestNotNull(TEXT("choosing Fed by the Fallen grants the stat"), Gained))
+		Out, NodeTable, EffectTable, TEXT("Ritualist_capstone_50"), 1, 2, TEXT("damage_taken"));
+	if (!TestNotNull(TEXT("choosing Wall of Servants grants the stat"), Gained)
+		|| !TestEqual(TEXT("as one modifier"), Gained->Num(), 1))
 	{
 		return false;
 	}
-	TestEqual(TEXT("worth ten Fervour"),
-			  UCataclysmStatPipeline::Evaluate(0.0f, *Gained,
-											   FGameplayTagContainer()).Final,
-			  10.0f, 0.001f);
-	TestNotNull(TEXT("and the stat has an attribute for ApplyTo to write"),
-				UCataclysmPlayerClassStats::StatToAttribute().Find(
-					FString(UCataclysmFervour::OnEnemyDeathNearbyStat)));
+	FCataclysmStatConditions Ten;
+	Ten.MinionsHeld = 10;
+	FCataclysmStatConditions ThirtyMinions;
+	ThirtyMinions.MinionsHeld = 30;
+	TestEqual(TEXT("ten minions make 10% less"),
+			  UCataclysmStatPipeline::ScaledValue((*Gained)[0], Ten), -10.0f, 0.001f);
+	TestEqual(TEXT("and thirty make 20% less, the ceiling"),
+			  UCataclysmStatPipeline::ScaledValue((*Gained)[0], ThirtyMinions), -20.0f, 0.001f);
 	return true;
 }
 
@@ -16110,8 +16124,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveVolatileRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_basic_b_a2` Volatile, read out of the tables the game loads.
- * Issue #1515.
+ * `Ritualist_basic_b_b2` Volatile, read out of the tables the game loads.
+ * Issue #1515. AT `basic_b_b2` SINCE THE DEMONIC TREE REWORK OF 2026-11-24, which
+ * swapped it with Spiteful Ash so the explosion node is the parent of Every One
+ * Bursts, the keystone that makes minions explode; `basic_b_a2` is now Legion.
  *
  * "+3% increased damage of the explosion a minion leaves per point."
  *
@@ -16138,7 +16154,7 @@ bool FCataclysmPassiveVolatileRowTest::RunTest(const FString&)
 	}
 
 	const FCataclysmPassiveEffectRow* Row = RowFor(
-		EffectTable, TEXT("Ritualist_basic_b_a2"), 0,
+		EffectTable, TEXT("Ritualist_basic_b_b2"), 0,
 		TEXT("minion_explosion_damage"));
 	if (!TestNotNull(TEXT("Volatile has an explosion damage row"), Row))
 	{
@@ -16152,7 +16168,7 @@ bool FCataclysmPassiveVolatileRowTest::RunTest(const FString&)
 
 	TMap<FName, TArray<FCataclysmStatModifier>> Out;
 	const TArray<FCataclysmStatModifier>* Damage = Granted(
-		Out, NodeTable, EffectTable, TEXT("Ritualist_basic_b_a2"), 8, 0,
+		Out, NodeTable, EffectTable, TEXT("Ritualist_basic_b_b2"), 8, 0,
 		TEXT("minion_explosion_damage"));
 	if (!TestNotNull(TEXT("eight points grant explosion damage"), Damage))
 	{
@@ -18486,7 +18502,7 @@ bool FCataclysmWoundChannelingTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReplacementRowsTest,
-	"Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp",
+	"Cataclysm.Passives.PressGangedReplacesAndRekindledKeepsARealRitualistsImp",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -18495,12 +18511,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReplacementRowsTest,
  *
  * READ FROM THE ROWS AND SPENT THROUGH THE PLAYER STATE, not granted by hand,
  * so this fails while either row is missing. Each row's value is the seconds
- * between replacements, the number its sentence states.
+ * between two, the number its sentence states.
  *
- * TWO LOSSES: an imp that dies, with Press-Ganged held; and an imp that
- * explodes on its death, with Rekindled and Every One Bursts
- * (`Ritualist_keystone_b_kB`, whose row makes a minion's death an explosion)
- * held. Each is replaced; with nothing spent, neither is.
+ * REKINDLED IS THE DEMONIC TREE REWORK'S OF 2026-11-24: "When one of your
+ * minions reaches the end of its time, it stays for that long again, no more
+ * than once every 5 seconds", on `minion_lifetime_renewed_every_seconds`. It
+ * replaced an exploded minion until then, on
+ * `minion_explosion_replaced_every_seconds`, which no row grants now.
+ *
+ * AN IMP THAT DIES, with Press-Ganged held, is replaced; AN IMP WHOSE TIME RUNS
+ * OUT, with Rekindled held, stays. With nothing spent, neither.
  */
 bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
 {
@@ -18529,7 +18549,6 @@ bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
 
 	const FName PressGanged(TEXT("Ritualist_keystone_a_kB"));
 	const FName Rekindled(TEXT("Ritualist_keystone_b_kC"));
-	const FName EveryOneBursts(TEXT("Ritualist_keystone_b_kB"));
 
 	const auto OneRow = [&](FName Node, const TCHAR* Stat) -> bool
 	{
@@ -18548,11 +18567,11 @@ bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
 		TestEqual(*FString::Printf(TEXT("%s grants its stat"), *Node.ToString()),
 				  Effects[0]->Stat, FString(Stat));
 		TestEqual(TEXT("stated flat"), Effects[0]->ValueKind, FString(TEXT("flat")));
-		return TestTrue(TEXT("of the seconds between replacements, above nothing"),
+		return TestTrue(TEXT("of the seconds between two, above nothing"),
 						Effects[0]->ValuePerPoint > 0.0f);
 	};
 	if (!OneRow(PressGanged, UCataclysmSummonSkill::ReplacedOnDeathStat)
-		|| !OneRow(Rekindled, UCataclysmSummonSkill::ReplacedOnExplosionStat))
+		|| !OneRow(Rekindled, ACataclysmMinion::LifetimeRenewedEverySecondsStat))
 	{
 		return false;
 	}
@@ -18616,9 +18635,32 @@ bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
 	TestEqual(TEXT("with Press-Ganged a dead imp is replaced"),
 			  LivingAfterALoss(), 1);
 
-	Spend({Rekindled, EveryOneBursts});
-	TestEqual(TEXT("with Rekindled an imp that explodes on its death is replaced"),
-			  LivingAfterALoss(), 1);
+	// AN IMP WHOSE TIME RUNS OUT: kept with Rekindled, gone without it.
+	const auto StaysWhenItsTimeRunsOut = [&]()
+	{
+		ACataclysmMinion* Imp = Skill->SummonOne();
+		if (!Imp)
+		{
+			AddError(TEXT("No imp was summoned."));
+			return false;
+		}
+		Imp->LifeSpanExpired();
+		const bool bStayed = IsValid(Imp);
+		if (bStayed)
+		{
+			Imp->Destroy();
+		}
+		Skill->LivingMinionCount();
+		return bStayed;
+	};
+
+	Spend({});
+	TestFalse(TEXT("with nothing spent an imp whose time runs out is gone"),
+			  StaysWhenItsTimeRunsOut());
+
+	Spend({Rekindled});
+	TestTrue(TEXT("with Rekindled an imp whose time runs out stays"),
+			 StaysWhenItsTimeRunsOut());
 
 	return true;
 }
@@ -19302,7 +19344,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSetThePackOnRowTest,
 /**
  * `Ritualist_capstone_100` option 1, Set the Pack On, from its row, on a real
  * Ritualist. Issue #1515. "Enemies you have damaged in the last 2 seconds take
- * 25% more damage from your minions."
+ * 3% more damage from your minions for each minion you have", since the demonic
+ * tree rework of 2026-11-24 made it the tier's option that scales with the
+ * minions held; it was a flat 25% more until then. TWO IMPS ARE HELD when the
+ * multiplier is read, so the struck reading is the unstruck one times 1 + 2 x 3%.
  *
  * A HUNDRED POINTS FIRST, because that is when the capstone opens, placed
  * everywhere in the tree except Set Upon, so the one row under the window is
@@ -19360,6 +19405,7 @@ bool FCataclysmPassiveSetThePackOnRowTest::RunTest(const FString&)
 	TestEqual(TEXT("against enemies you damaged"), Row->Condition,
 			  FString(TEXT("target_damaged_by_you_within_seconds")));
 	TestEqual(TEXT("in the last 2 seconds"), Row->ConditionValue, 2.0f, 0.001f);
+	TestEqual(TEXT("for each minion held"), Row->Scale, FString(TEXT("minions_held")));
 	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
 								   Row->ValuePerPoint),
 				  Row->ValuePerPoint > 0.0f))
@@ -19407,10 +19453,22 @@ bool FCataclysmPassiveSetThePackOnRowTest::RunTest(const FString&)
 	}
 	Equipment->RefreshAttributes(AbilitySystem);
 
+	// TWO IMPS, so the scale has a count to read.
+	for (const float Metres : {3.0f, 6.0f})
+	{
+		if (!TestNotNull(TEXT("set-up: an imp of the Ritualist's"),
+						 ACataclysmMinion::Spawn(Character, Character->GetActorLocation()
+												 + FVector(Metres * 100.0f, 0.0f, 0.0f),
+												 /*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"))))
+		{
+			return false;
+		}
+	}
+
 	const float Unstruck = Multiplier(Untouched);
-	TestEqual(*FString::Printf(TEXT("against an enemy struck a moment ago, %.0f%% more"),
+	TestEqual(*FString::Printf(TEXT("against an enemy struck a moment ago, %.0f%% more for each of two minions"),
 							   Row->ValuePerPoint),
-			  Multiplier(Struck), Unstruck * (1.0f + Row->ValuePerPoint / 100.0f),
+			  Multiplier(Struck), Unstruck * (1.0f + 2.0f * Row->ValuePerPoint / 100.0f),
 			  0.0001f);
 
 	World->TimeSeconds += 2.5f;
@@ -21205,8 +21263,8 @@ namespace CataclysmPartialClauseTest
 	/**
 	 * A real Ritualist holding Summon Imp and these nodes, and a way to lose an
 	 * imp: summon one, take it to nothing, and say how many the skill then holds.
-	 * The same steps `PressGangedAndRekindledRowsReplaceARealRitualistsLostImp`
-	 * takes.
+	 * The same steps `PressGangedReplacesAndRekindledKeepsARealRitualistsImp`
+	 * takes, and a way to let an imp's time run out.
 	 */
 	struct FReplacer
 	{
@@ -21265,6 +21323,25 @@ namespace CataclysmPartialClauseTest
 			Skill->LivingMinionCount();
 			return Living;
 		}
+
+		/** Summon one imp and let its time run out; whether it stayed, with it then cleared. */
+		bool StaysWhenItsTimeRunsOut(FAutomationTestBase& Test)
+		{
+			ACataclysmMinion* Imp = Skill->SummonOne();
+			if (!Imp)
+			{
+				Test.AddError(TEXT("No imp was summoned."));
+				return false;
+			}
+			Imp->LifeSpanExpired();
+			const bool bStayed = IsValid(Imp);
+			if (bStayed)
+			{
+				Imp->Destroy();
+			}
+			Skill->LivingMinionCount();
+			return bStayed;
+		}
 	};
 }
 
@@ -21307,14 +21384,15 @@ bool FCataclysmPressGangedLimitTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledLimitTest,
-	"Cataclysm.PartialClauses.RekindledReplacesARealRitualistsExplodedImpNoMoreThanOnceEveryFiveSeconds",
+	"Cataclysm.PartialClauses.RekindledKeepsARealRitualistsImpWhoseTimeRanOutNoMoreThanOnceEveryFiveSeconds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_keystone_b_kC` Rekindled: "When a minion explodes a new minion is
- * summoned where it stood, no more than once every 5 seconds." With Every One
- * Bursts held, so an imp's death is an explosion. Replaced; at once, not; four
- * seconds on, still not; five and a little, replaced again.
+ * `Ritualist_keystone_b_kC` Rekindled since the demonic tree rework of
+ * 2026-11-24: "When one of your minions reaches the end of its time, it stays
+ * for that long again, no more than once every 5 seconds." Kept; at once, not;
+ * four seconds on, still not; five and a little, kept again. Until the rework it
+ * replaced an exploded minion on the same clock.
  */
 bool FCataclysmRekindledLimitTest::RunTest(const FString&)
 {
@@ -21329,20 +21407,18 @@ bool FCataclysmRekindledLimitTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FReplacer Ritualist;
-	if (!Ritualist.Start(*this, World, {FName(TEXT("Ritualist_keystone_b_kC")),
-										FName(TEXT("Ritualist_keystone_b_kB"))}))
+	if (!Ritualist.Start(*this, World, {FName(TEXT("Ritualist_keystone_b_kC"))}))
 	{
 		return false;
 	}
 
-	TestEqual(TEXT("the first explosion is replaced"), Ritualist.LivingAfterALoss(*this), 1);
-	TestEqual(TEXT("a second at once is not"), Ritualist.LivingAfterALoss(*this), 0);
+	TestTrue(TEXT("the first imp whose time runs out stays"), Ritualist.StaysWhenItsTimeRunsOut(*this));
+	TestFalse(TEXT("a second at once does not"), Ritualist.StaysWhenItsTimeRunsOut(*this));
 	CataclysmTestWorld::RunClock(World, 4.0f);
-	TestEqual(TEXT("nor four seconds after the replacement"),
-			  Ritualist.LivingAfterALoss(*this), 0);
+	TestFalse(TEXT("nor four seconds after the first stayed"), Ritualist.StaysWhenItsTimeRunsOut(*this));
 	CataclysmTestWorld::RunClock(World, 1.1f);
-	TestEqual(TEXT("and five seconds and a little after it, one is again"),
-			  Ritualist.LivingAfterALoss(*this), 1);
+	TestTrue(TEXT("and five seconds and a little after it, one stays again"),
+			 Ritualist.StaysWhenItsTimeRunsOut(*this));
 	return true;
 }
 

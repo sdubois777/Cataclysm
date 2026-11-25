@@ -42,6 +42,9 @@
 // healing reach it and the Masochist's rule that healing removes Fervour
 // applies to it. Issue #1815.
 #include "AbilitySystem/CataclysmRegeneration.h"
+// For whether the character being hit carries a curse the asker laid, which
+// `target_carries_your_curse` reads. The demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRisenImps.h"
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -1596,6 +1599,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsZone = false;
 	bool bWantsSilence = false;
 	bool bWantsMoving = false;
+	bool bWantsYourCurse = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
@@ -1650,6 +1654,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetIsMoving:
 				bWantsMoving = true;
 				break;
+			// AND WHETHER THE TARGET CARRIES A CURSE THE ASKER LAID, LISTED HERE FOR THE REASON THE AILMENT COMMENT
+			// ABOVE GIVES. The demonic tree rework of 2026-11-24: Subjugator and Long Servitude.
+			case ECataclysmStatCondition::TargetCarriesYourCurse:
+				bWantsYourCurse = true;
+				break;
 			default:
 				break;
 			}
@@ -1665,7 +1674,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		}
 
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence
-			&& bWantsMoving)
+			&& bWantsMoving && bWantsYourCurse)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1679,9 +1688,18 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// lookup with no row asking has no condition to answer.
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence
-			&& !bWantsMoving))
+			&& !bWantsMoving && !bWantsYourCurse))
 	{
 		return State;
+	}
+
+	// WHETHER THE TARGET CARRIES A CURSE THE ASKER LAID. The demonic tree rework of 2026-11-24. THE ASKER IS THE
+	// ABILITY SYSTEM'S AVATAR, the character a curse names as its instigator; for a minion's blow that is its
+	// summoner, whose component the minion's damage is read through. No asker in hand leaves it false, which refuses.
+	if (bWantsYourCurse && State.AskingAbilitySystem)
+	{
+		State.bTargetCarriesYourCurse = UCataclysmRisenImps::CarriesCurseLaidBy(
+			Target, State.AskingAbilitySystem->GetAvatarActor());
 	}
 
 	// WHETHER THE TARGET IS SILENCED NOW. Ruled 2026-10-17. Its tag, read through `UCataclysmSilence`, the one place
@@ -2108,6 +2126,27 @@ void UCataclysmAbilitySystemComponent::NoteMinionReplaced(bool bForExplosion,
 		? MinionExplosionReplacementNextAllowedSeconds
 		: MinionDeathReplacementNextAllowedSeconds;
 	NextAllowed = World->GetTimeSeconds() + IntervalSeconds;
+}
+
+bool UCataclysmAbilitySystemComponent::MayRenewMinionLifetime() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	return MinionLifetimeRenewalNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= MinionLifetimeRenewalNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteMinionLifetimeRenewed(float IntervalSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+	MinionLifetimeRenewalNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat =

@@ -1492,12 +1492,15 @@ bool FCataclysmRitualistDeathTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBindingSigilsTest,
-	"Cataclysm.Fervour.BindingSigilsScalesWhatMinionsGenerate",
+	"Cataclysm.Fervour.AnIncreaseToMinionFervourScalesWhatMinionsGenerate",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBindingSigilsTest::RunTest(const FString&)
 {
-	// THE RITUALIST'S `Binding Sigils` NODE. Issue #1518: "+2% increased
+	// THE RITUALIST'S `Binding Sigils` NODE UNTIL THE DEMONIC TREE REWORK OF
+	// 2026-11-24, which made it spell damage for the Fervour held; the rows
+	// increasing `fervour_from_minions` are granted by hand here, and the rate is
+	// still read for any row that grants it. Issue #1518: "+2% increased
 	// Fervour gained from your minions per point", over 12 points, so +24% at
 	// full investment.
 	//
@@ -1570,7 +1573,7 @@ bool FCataclysmBindingSigilsTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBindingSigilsLeakTest,
-	"Cataclysm.Fervour.BindingSigilsDoesNotTouchTheMasochistsOwnRate",
+	"Cataclysm.Fervour.AnIncreaseToMinionFervourDoesNotTouchTheMasochistsOwnRate",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBindingSigilsLeakTest::RunTest(const FString&)
@@ -3182,11 +3185,14 @@ bool FCataclysmPressGangedTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledTest,
-	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedMinionWhereItStood",
+	"Cataclysm.MinionDeath.TheExplosionReplacementReplacesAnExplodedMinionWhereItStood",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_keystone_b_kC` Rekindled, its stat granted by hand. Issue #1515.
+ * `minion_explosion_replaced_every_seconds`, its stat granted by hand. Issue #1515.
+ * REKINDLED'S UNTIL THE DEMONIC TREE REWORK OF 2026-11-24, which gave the keystone a
+ * minion whose time ran out instead; no row grants this stat now, and the mechanism
+ * stays for whatever next does.
  *
  * "When a minion explodes a new minion is summoned where it stood, no more than
  * once every 5 seconds."
@@ -5067,11 +5073,12 @@ bool FCataclysmThrallBurstsTest::RunTest(const FString&)
 
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledThrallTest,
-	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedThrallWithAnImpWhereItStood",
+	"Cataclysm.MinionDeath.TheExplosionReplacementReplacesAnExplodedThrallWithAnImpWhereItStood",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_keystone_b_kC` Rekindled for a thrall. Issue #2570, ruled 2026-10-28: "When a minion explodes a new
+ * `minion_explosion_replaced_every_seconds` for a thrall, Rekindled's stat until the demonic tree rework of
+ * 2026-11-24 (no row grants it now). Issue #2570, ruled 2026-10-28: "When a minion explodes a new
  * minion is summoned where it stood, no more than once every 5 seconds", and a thrall explodes under Every One Bursts
  * since #2540. Replaced as Press-Ganged replaces one: by the commander's summon skill's kind.
  *
