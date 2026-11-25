@@ -1027,6 +1027,14 @@ def strength_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 #: stopped with neither one over its own cap. "No combination of these layers
 #: reaches immunity" is a statement about the combination, and until issue #483
 #: nothing checked the combination.
+#:
+#: ITS RULE SINCE 2026-11-25: BELOW WHAT THE REFERENCE CHARACTER STOPS, AND 89%.
+#: The re-fit of the reference character for the whole-number affix ranges
+#: (issue #2883; the middle build, the owner's ruling on #2884 of 2026-11-24)
+#: stops 97.05% at tier 8, so "the whole percent below the player" would now be
+#: 97%. The owner ruled on #2884 (ruling 4) to keep the ceiling at 89% and
+#: restate the rule rather than raise it. The figures above are the history it
+#: was set from.
 ENEMY_MITIGATION_CEILING = 89.0
 
 #: An armour figure large enough to sit at `damage.ARMOR_REDUCTION_CAP` at any

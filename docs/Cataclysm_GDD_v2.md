@@ -3453,7 +3453,7 @@ The split above says which pool an affix is drawn from. It does not say what an 
 
 
 
-**What it does not do.** It does not stop a stat appearing across several pieces. Capping a resistance takes roughly twelve affix slots and is meant to be spread over a set; the rule constrains one piece, not one character.
+**What it does not do.** It does not stop a stat appearing across several pieces. Capping a resistance takes roughly four affix slots and is meant to be spread over a set; the rule constrains one piece, not one character. (Roughly twelve until the whole-number affix ranges of issue #2883, whose all-resistances affix reaches 40 at tier 7 on +10 gear: 3.6 slots cap all eight at tier 8.)
 
 
 
@@ -5271,15 +5271,17 @@ A reference character at difficulty tier 8 — a level 100 Ravager spending ever
 
 | Layer | What it removes |
 | :-- | :-: |
-| Armor, 7,299 points against the tier 8 curve | 53.3% |
+| Armor, 12,550 points against the tier 8 curve | 66.2% |
 | Resistance, at the cap | 70.0% |
-| Block chance 28%, removing half a hit each time | 14.0% on average |
-| Damage reduction | 23.95% |
-| **All four together** | **90.8%** |
+| Block chance 98%, removing half a hit each time | 49.0% on average |
+| Damage reduction | 42.95% |
+| **All four together** | **97.05%** |
 
   
 
-So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen without reference to that is chosen against nothing, which is what happened before: an average Common enemy needed 176 hits to kill that character.
+So a hit lands for about **3%** of itself, 2.95%.
+
+**The reference character was re-fitted on 2026-11-25** with the whole-number affix ranges (issue #2883): block chance rolls on two kinds of piece, damage reduction on one, and four all-resistance affixes cap all eight resistances. By the owner's ruling on issue #2884 (2026-11-24, "A middle build (Recommended)"), the 13 suffix places that freed are left empty. It was 7,299 armour, 28% block and 23.95% damage reduction, stopping 90.8%, and a hit landed for about a tenth of itself. Every creature's damage was raised by the same ruling (1.84 times at tier 2 to 5.73 times at tier 8), so the table below is unchanged. Any enemy damage figure chosen without reference to that is chosen against nothing, which is what happened before: an average Common enemy needed 176 hits to kill that character.
 
   
 
@@ -5383,7 +5385,7 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
-**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 90.8% of what is thrown at them. The ceiling is **89%**, below it, so that an enemy sitting exactly at the ceiling still stops less than the player after the published figure is rounded. It was set as the whole percent below the 89.9% the character stopped then, and kept when a stronger damage reduction affix raised that to 90.8% on 2026-09-04: it still sits below, with more room.
+**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 97.05% of what is thrown at them. The ceiling is **89%**, below it. It was set as the whole percent below the 89.9% the character stopped then, and kept when a stronger damage reduction affix raised that to 90.8% on 2026-09-04. **Its rule since 2026-11-25 is: below what the reference character stops, and 89%.** The re-fit for the whole-number affix ranges raised the character to 97.05%, and the owner ruled on issue #2884 (2026-11-24) to keep the ceiling at 89% and restate its rule rather than raise it to follow the character.
 
   
 
