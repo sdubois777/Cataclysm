@@ -77,6 +77,16 @@ Judgements:
 7. **Titan's Grip, Death Blow and Brute Force need no Wrath or weapon condition beyond the one stated**: Titan's Grip's rows
    are under `in_wrath`, and Wrath ends when its two-handed rule stops holding.
 
+### THE PYTHON SUITE
+
+Run on `1d95f7289ad5dc22333855732e735f23aca8329a`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8414 passed, 9 skipped in 396.24s**, and the JUnit file `tests="8424" failures="1" errors="0"
+skipped="9"`, which is 8,414 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 2 files read, 0 with complaints.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
