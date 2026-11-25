@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -154,6 +155,12 @@ namespace CataclysmSaboteurDeviceTest
 		return Row;
 	}
 
+	/** A row and the stat it is on, as `SaboteurDeviceHolds` takes them. */
+	TPair<FName, FCataclysmStatModifier> SaboteurDeviceOn(const TCHAR* Stat, const FCataclysmStatModifier& Row)
+	{
+		return TPair<FName, FCataclysmStatModifier>(FName(Stat), Row);
+	}
+
 	/** REPLACES THE WHOLE STAT LINE with these rows, each on its stat. */
 	void SaboteurDeviceHolds(const FSaboteurDevicePlayer& Player,
 							 const TArray<TPair<FName, FCataclysmStatModifier>>& Rows)
@@ -292,7 +299,7 @@ CATACLYSM_SABOTEUR_DEVICE_TEST(FCataclysmSaboteurDeviceSharedKeyTest,
 	Row.Scale = ECataclysmStatScale::PerOwnStack;
 	Row.ScaleStep = 1.0f;
 	Row.StackKey = Key;
-	SaboteurDeviceHolds(Player, {{FName(TEXT("evasion")), Row}, {FName(TEXT("evasion")), Row}});
+	SaboteurDeviceHolds(Player, {SaboteurDeviceOn(TEXT("evasion"), Row), SaboteurDeviceOn(TEXT("evasion"), Row)});
 	TArray<FCataclysmPoolAction> Grants;
 	for (const TCHAR* Event : {TEXT("trap_placed"), TEXT("gadget_placed")})
 	{
@@ -419,9 +426,9 @@ CATACLYSM_SABOTEUR_DEVICE_TEST(FCataclysmSaboteurDeviceAmbushTest,
 		return false;
 	}
 	Player.Pool(100.0f, 50.0f);
-	SaboteurDeviceHolds(Player, {{FName(TEXT("minion_damage")),
-								  SaboteurDeviceRow(5.0f, ECataclysmStatBucket::Increased, TEXT("Type.Trap"),
-													ECataclysmStatCondition::TargetNotYetTriggeredYourTrap)}});
+	SaboteurDeviceHolds(Player, {SaboteurDeviceOn(TEXT("minion_damage"),
+												  SaboteurDeviceRow(5.0f, ECataclysmStatBucket::Increased, TEXT("Type.Trap"),
+																	ECataclysmStatCondition::TargetNotYetTriggeredYourTrap))});
 	ACataclysmMinion* TrapA = ACataclysmMinion::PlaceSkillTrap(Player.Character, ECataclysmAbilitySlot::Heavy,
 															   FVector(10.0f * SaboteurDeviceMetre, 0.0f, 0.0f));
 	ACataclysmMinion* TrapB = ACataclysmMinion::PlaceSkillTrap(Player.Character, ECataclysmAbilitySlot::Heavy,
