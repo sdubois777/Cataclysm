@@ -3466,8 +3466,19 @@ public:
 	 * returned without a word. The count stayed at five and the brand exploded
 	 * on every hit after the fifth. The warning is what stops the two readings
 	 * disagreeing in silence again. To remove stacks, call `ClearStacks`.
+	 *
+	 * @param ExtraWindowSeconds  how much longer than `WindowSeconds` the whole
+	 *        count lasts from this grant, decided at the grant and kept with it
+	 *        until the next one. Nought for every kind but one: Carnivore's
+	 *        Carnage, whose "each stack lasts 1 second longer for every 10
+	 *        Fervour you hold" (approved by the project owner on 2026-11-24) is
+	 *        read when a stack arrives, by `UCataclysmStacks::CarnageExtraSeconds`.
+	 *        Decided here rather than when the count is asked, because the
+	 *        count is asked from inside `CurrentConditions`, where asking the
+	 *        pipeline again would re-enter it.
 	 */
-	void GrantStack(ECataclysmStackKind Kind, float WindowSeconds, int32 Cap);
+	void GrantStack(ECataclysmStackKind Kind, float WindowSeconds, int32 Cap,
+					float ExtraWindowSeconds = 0.0f);
 
 	/**
 	 * Remove every stack of a kind, as if none had ever been granted.
@@ -6052,6 +6063,13 @@ protected:
 	 */
 	int32 StackCounts[UCataclysmStacks::KindCount] = {};
 	float StackGrantedAtSeconds[UCataclysmStacks::KindCount] = {};
+
+	/**
+	 * How much longer than its kind's window each count lasts, decided by its
+	 * last grant. Nought for every kind but Carnage on a holder of Carnivore.
+	 * See `GrantStack`. Written by `GrantStack` and `ClearStacks` only.
+	 */
+	float StackExtraWindowSeconds[UCataclysmStacks::KindCount] = {};
 
 	/** When Touch of Nothing last refused a buff, in world seconds; negative for never. Issue #1722. */
 	float BuffNegatedAtSeconds = -1.0f;

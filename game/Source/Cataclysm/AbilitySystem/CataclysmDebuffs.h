@@ -143,6 +143,37 @@ public:
 	static int32 CountOnActor(const AActor* Actor);
 
 	/**
+	 * Above nought, each debuff on its holder counts twice for everything that
+	 * counts the debuffs on it. The Masochist's Vessel of Plagues, reworked by
+	 * the project owner's approval of 2026-11-24: "Debuffs on you last 50%
+	 * longer, and each debuff on you counts twice for everything that counts the
+	 * debuffs on you." A yes or a no, with no gameplay attribute.
+	 */
+	static const TCHAR* CountTwiceStat;
+
+	/**
+	 * Whether this character holds `CountTwiceStat`. Vessel of Plagues.
+	 *
+	 * READ FROM THE RECORDED LINE WITH NO STATE IN HAND, AND NOT THROUGH
+	 * `StatForSkill`, because its one caller is
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions`, which is what
+	 * `StatForSkill` calls: asking the pipeline here would re-enter it. The
+	 * cost is that a row stating the switch under a condition would be refused,
+	 * since no state is handed over; the one row that states it carries none.
+	 */
+	static bool CountsTwiceOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The debuffs this character is carrying AS THE NODES THAT COUNT THEM SEE
+	 * THEM: `CountOn`, twice over for a holder of Vessel of Plagues. Read by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` for the pipeline's
+	 * `debuffs_carried` scale, which is how every node paying per debuff on you
+	 * counts them. `CountOn` stays the plain count of distinct debuffs, which
+	 * the spreading nodes choose from and the console prints.
+	 */
+	static int32 CountCarriedOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Cleanse a character: every timed effect on it that grants a tag under `DebuffRoots` and that somebody else put
 	 * there is removed, and the cleanse is announced on `UCataclysmCombatEvents::OnCleansed` so the dungeon game mode
 	 * can clear the stacks whose rows say they are cleansed. Ruled by the coordinating session under the owner's
