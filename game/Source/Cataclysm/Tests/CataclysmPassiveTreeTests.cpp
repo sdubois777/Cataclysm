@@ -3534,6 +3534,9 @@ namespace CataclysmPassiveConditionTest
 			// number, so it compares nothing.
 			|| Name == TEXT("wielding_two_handed_weapon")
 			|| Name == TEXT("target_in_your_zone")
+			// THE DEATH TREES' SLICE C2, 2026-11-25: the character struck is in the asker's Siphon. It names a place,
+			// so it compares nothing.
+			|| Name == TEXT("target_in_your_siphon")
 			// RULED 2026-10-17, THE NULL EMPEROR'S "YOUR ATTACKS": the hit an action row fires on is not a spell. It
 			// names a kind of hit, so it compares nothing.
 			|| Name == TEXT("hit_dealt_is_not_spell")

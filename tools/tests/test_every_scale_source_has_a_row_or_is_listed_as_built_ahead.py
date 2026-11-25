@@ -193,7 +193,10 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 41 WHEN `enemies_in_reach_while_own_stack` GAINED ITS TWO ROWS, 2026-10-18,
 #: for Warlord's Will's ten-piece bonus.
-EXPECTED_NAMED_BY_A_ROW = 41
+#:
+#: AND 42 WHEN `enemies_in_siphon` GAINED ITS ROWS, 2026-11-25, for the Soul
+#: Collector's Siphon (the Death trees' slice C2).
+EXPECTED_NAMED_BY_A_ROW = 42
 
 
 def scales_named_by_a_row() -> set[str]:

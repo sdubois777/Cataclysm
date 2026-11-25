@@ -1231,6 +1231,12 @@ INVENTORY = {
         "Death trees' kill generator, 2026-11-24), asked in KillDecayStep "
         "on the regeneration step; time passing is not a blow and no skill "
         "is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "every stat of the Soul Collector's Siphon (the Death trees' slice C2, "
+        "2026-11-25), asked of its holder on the regeneration step and the "
+        "once-a-second pulse; a step is not a blow, so no blow, no target and "
+        "no skill",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(UltimateFervourCostReductionStat), SkillTagsForStats(), 0.0f'):
         "Thronged's Fervour off the Ultimate's cost (the Ravager tree "

@@ -49,6 +49,8 @@ _FLOOR = "a dungeon floor's own hazard, dealt in the floor's name: no skill deal
 _CREATURE = "a creature's or a dungeon rule's damage, not the player's: no skill deals it"
 _EXPLOSION = ("a minion's explosion's burn: every explosion is one a passive sets off, which credits nothing "
               "(judgement 2), since issue #2787 removed Summon Imp's cap explosion, the one that credited the skill")
+_SIPHON = ("the Soul Collector's Siphon, a passive tree's rule and no skill: damage a passive adds credits nothing "
+           "(judgement 2, 2026-11-19); the Death trees' slice C2, 2026-11-25")
 
 #: The calls that name neither a skill nor a row, by rule, each with its reason.
 CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
@@ -82,6 +84,8 @@ CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
      "UCataclysmAilments::Apply", 0): _CREATURE + "; a dungeon modifier at a creature's death",
     ("Dungeon/CataclysmDungeonGameMode.cpp", "ACataclysmDungeonGameMode::NoteDeathForSporeClouds",
      "UCataclysmAilments::Apply", 0): _CREATURE + "; a dungeon modifier at a creature's death",
+    ("AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::DrainOnce", DAMAGE_OVER_TIME_DELIVERY, 0): _SIPHON,
+    ("AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::NecrosisOnce", "UCataclysmAilments::Apply", 0): _SIPHON,
     **{("Dungeon/CataclysmDungeonGameMode.cpp", f"ACataclysmDungeonGameMode::{step}", DAMAGE_OVER_TIME_DELIVERY, 0): _FLOOR
        for step in ("StepPlagueConvergence", "StepRawSewage", "StepSwarmOfLocusts", "StepInfestedHoard",
                     "StepFunerealProcession", "StepInfestedVeins", "StepBloodPrice", "StepNecroticGround")},
