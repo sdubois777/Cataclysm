@@ -1105,6 +1105,22 @@ INVENTORY = {
         "share is judged on the struck character's health by KillIfLeftBelow "
         "once the hit's damage is written, so no blow and no target are "
         "handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
+     'FName(ExtraImpsStat), FGameplayTagContainer(), 0.0f'):
+        "Open Channel's imps beyond the first, asked of the curser of a "
+        "creature that has just died (the demonic tree rework of "
+        "2026-11-24); a death is not a skill, so no tags, and no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(LifetimeRenewedEverySecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Rekindled's seconds between two lifetimes renewed, asked of the "
+        "summoner when a minion's time runs out (the demonic tree rework of "
+        "2026-11-24); an expiry is not a skill, so no tags, and no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(KillSummonsMinionStat), FGameplayTagContainer(), 0.0f'):
+        "The Swarm's flag, asked by SummonAtAKillFor of the commander at a "
+        "kill of its own or one of its minions' (the demonic tree rework of "
+        "2026-11-24); the kill has already happened and no skill of it is "
+        "in hand, so no tags and no blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
      'FName(KillSpawnsMinionStat), FGameplayTagContainer(), 0.0f'):
         "the flag by which a kill spawns one minion of the first summon skill "
