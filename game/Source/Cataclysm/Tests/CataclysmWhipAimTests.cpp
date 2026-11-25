@@ -17,7 +17,11 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
+// For what a swing waits on when its test ends. Window bb12-w2.
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -147,6 +151,7 @@ namespace CataclysmWhipAimTest
 				if (Skill && Skill->Slot == ECataclysmAbilitySlot::BasicAttack)
 				{
 					Basic = Skill;
+					BasicHandle = Spec.Handle;
 				}
 			}
 		}
@@ -196,11 +201,104 @@ namespace CataclysmWhipAimTest
 			return !Basic->IsWaitingForTheSwingToConnect();
 		}
 
+		/** Whether the basic attack's spec still counts as active in the ability system. */
+		bool IsStrikeActive() const
+		{
+			const FGameplayAbilitySpec* Spec = System ? System->FindAbilitySpecFromHandle(BasicHandle) : nullptr;
+			return Spec && Spec->IsActive();
+		}
+
+		/**
+		 * What the swing is waiting on, read once: the spec's active count, the ability object's own flag, the swing's
+		 * timer, a montage on the ability system or on the mesh, and which way the character faces. Window bb12-w2 asked
+		 * whether a swing with the controller in the actor info waits on a turn, a montage or a timer.
+		 */
+		FString WhatTheSwingWaitsOn() const
+		{
+			const FGameplayAbilitySpec* Spec = System ? System->FindAbilitySpecFromHandle(BasicHandle) : nullptr;
+			const USkeletalMeshComponent* Mesh = Player ? Player->GetMesh() : nullptr;
+			const UAnimInstance* Anim = Mesh ? Mesh->GetAnimInstance() : nullptr;
+			const UAnimMontage* OnTheMesh = Anim ? Anim->GetCurrentActiveMontage() : nullptr;
+			const UAnimMontage* OnTheSystem = System ? System->GetCurrentMontage() : nullptr;
+			const FVector Facing = Player ? Player->GetActorForwardVector() : FVector::ZeroVector;
+			return FString::Printf(TEXT("active count %d, the ability object %s, the swing timer %s, montage on the "
+										"ability system %s, montage on the mesh %s, facing (%.3f, %.3f)"),
+								   Spec ? static_cast<int32>(Spec->ActiveCount) : -1,
+								   Basic && Basic->IsActive() ? TEXT("active") : TEXT("not active"),
+								   Basic && Basic->IsWaitingForTheSwingToConnect() ? TEXT("waiting") : TEXT("none"),
+								   OnTheSystem ? *OnTheSystem->GetName() : TEXT("none"),
+								   OnTheMesh ? *OnTheMesh->GetName() : TEXT("none"), Facing.X, Facing.Y);
+		}
+
 		ACataclysmPlayerController* Controller = nullptr;
 		ACataclysmPlayerCharacter* Player = nullptr;
 		UCataclysmAbilitySystemComponent* System = nullptr;
 		UCataclysmSkillTemplate* Basic = nullptr;
+		FGameplayAbilitySpecHandle BasicHandle;
 	};
+
+	/**
+	 * After a test's last check, every rig's basic attack ends: the world's clock is run in tenths of a second until no
+	 * rig's strike spec counts as active, for at most three seconds of game time, and each rig says how long its strike
+	 * stayed active and what it was waiting on when the wait began. Prints "SWING END".
+	 *
+	 * WHY. Window bb12-w2 (2026-11-24): with the player state owned by its controller, so that the abilities' actor info
+	 * holds the controller as it does in the game, all three tests failed on the engine's ensure that clearing the
+	 * abilities found "Default__CataclysmStrikeSkill was still active". Either the world was destroyed mid-swing or the
+	 * strike never ends; this tells the two apart, and checks the basic attack ends. Nothing here cancels an ability.
+	 */
+	void EachSwingEnds(FAutomationTestBase& Test, UWorld* World, const TArray<const FWhipAimRig*>& Rigs)
+	{
+		constexpr float CapSeconds = 3.0f;
+		constexpr float StepSeconds = 0.1f;
+		TArray<float> EndedAfter;
+		EndedAfter.Init(-1.0f, Rigs.Num());
+		TArray<FString> WaitingOn;
+		for (const FWhipAimRig* Rig : Rigs)
+		{
+			WaitingOn.Add(Rig->WhatTheSwingWaitsOn());
+		}
+
+		float Waited = 0.0f;
+		while (true)
+		{
+			bool bAllEnded = true;
+			for (int32 Index = 0; Index < Rigs.Num(); ++Index)
+			{
+				if (EndedAfter[Index] < 0.0f)
+				{
+					if (Rigs[Index]->IsStrikeActive())
+					{
+						bAllEnded = false;
+					}
+					else
+					{
+						EndedAfter[Index] = Waited;
+					}
+				}
+			}
+			if (bAllEnded || Waited >= CapSeconds - KINDA_SMALL_NUMBER)
+			{
+				break;
+			}
+			CataclysmTestWorld::RunClock(World, StepSeconds);
+			Waited += StepSeconds;
+		}
+
+		for (int32 Index = 0; Index < Rigs.Num(); ++Index)
+		{
+			const bool bEnded = EndedAfter[Index] >= 0.0f;
+			Test.AddInfo(FString::Printf(TEXT("SWING END, rig %d: %s; when the wait began: %s"), Index + 1,
+										 bEnded ? *FString::Printf(TEXT("ended %.1f s after the test's last check"),
+																	EndedAfter[Index])
+												: TEXT("STILL ACTIVE after 3.0 s"),
+										 *WaitingOn[Index]));
+			Test.TestTrue(*FString::Printf(TEXT("THE SWING ENDED: rig %d's strike was still active for %.1f s after the "
+												"test's last check, of at most 3.0"),
+										   Index + 1, bEnded ? EndedAfter[Index] : CapSeconds),
+						  bEnded);
+		}
+	}
 }
 
 #define CATACLYSM_WHIP_AIM_TEST(TestClass, TestName) \
@@ -276,6 +374,9 @@ CATACLYSM_WHIP_AIM_TEST(FCataclysmWhipAimBesideTest,
 	}
 	TestFalse(TEXT("and an enemy 1 m ahead and 1.5 m to the side, its body a metre clear of the swing's edge, is not"),
 		WhipAimStruck(Clear));
+
+	// AND EVERY SWING ENDS, before the world is destroyed.
+	EachSwingEnds(*this, World, {&Control, &Case, &Edge});
 	return true;
 }
 
@@ -340,6 +441,9 @@ CATACLYSM_WHIP_AIM_TEST(FCataclysmWhipAimFollowsTheCursorTest,
 							  Case.Player->GetActorForwardVector().X, Case.Player->GetActorForwardVector().Y),
 		FVector::DotProduct(Case.Player->GetActorForwardVector(), FVector(0.0f, -1.0f, 0.0f)) > 0.99f);
 	Case.Controller->ForgetCursorForTest();
+
+	// AND EVERY SWING ENDS, before the world is destroyed.
+	EachSwingEnds(*this, World, {&Control, &Case});
 	return true;
 }
 
@@ -423,6 +527,9 @@ CATACLYSM_WHIP_AIM_TEST(FCataclysmWhipAimAtTheEnemyUnderTheCursorTest,
 	TestTrue(TEXT("with a corpse under the cursor, the floor point"),
 		Case.Controller->AimPointUnderCursor(Aimed) && Aimed.Equals(CaseHome + Behind, 0.01f));
 	Case.Controller->ForgetCursorForTest();
+
+	// AND EVERY SWING ENDS, before the world is destroyed.
+	EachSwingEnds(*this, World, {&Control, &Case});
 	return true;
 }
 
