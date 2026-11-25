@@ -288,10 +288,10 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 
 **In Play In Editor, Shift+Esc stops Play.** The editor binds Esc to its Stop command and reads it before the game, so `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc for this project. `Cataclysm.PauseGame` pauses and resumes from the console as well.
 
-**Online, when it exists -- a recommendation for the owner, not a ruling.**
+**Online, when it exists.** The party's rule is the owner's ruling of 2026-11-24; how long a paused instance is held, and boss fights, are recommendations.
 
 - **Solo online: Esc pauses the instance, as offline does.** The instance is the player's alone and the empire clock is moved only by what the player does, so stopping the instance stops everything the player can lose. The server holds a paused instance for a time and then saves and closes it, as Diablo III's solo game is reported by its players to unpause itself and log an idle player out "after a while"; the length is a judgement for the owner. Diablo IV and Last Epoch online cannot pause at all, even alone, and Diablo IV's players go to town to stop; the owner's rule rules that out here.
-- **A party: the instance pauses only while every player in it has paused.** One player's Esc opens their pause screen without stopping the others, and the moment the last player pauses, the instance stops. This is how Path of Exile 2's party pause is reported to work (a player's account of an interview with its director; Grinding Gear Games has not published it). A host-only pause would let one player stop three; no pause at all would break the owner's rule for every party.
+- **A party: only the host can pause, and the host's pause stops the game for the whole party.** The owner's ruling, 2026-11-24: "Host pauses everyone". A player who is not the host cannot pause the party. Considered and not chosen: the instance pausing only while every player in it has paused, which is how Path of Exile 2's party pause is reported to work (a player's account of an interview with its director; Grinding Gear Games has not published it), and no pause in a party at all.
 - **Boss fights:** Path of Exile refuses to pause during its pinnacle boss fights ("Temporal Interference"). The save design's section 6 asks every way out of a fight to answer its rule, and a pause is not a way out, so nothing here refuses one; if the owner wants such fights unpausable, it is a per-fight flag, and a separate decision.
 
 `docs/DECISIONS.md`, 2026-11-24, has the sources.

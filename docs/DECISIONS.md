@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-24 — Esc pauses the game: it closes what is open first, and with nothing open it pauses everything in play and shows a pause screen; online's rule is a recommendation
+## 2026-11-24 — Esc pauses the game: it closes what is open first, and with nothing open it pauses everything in play and shows a pause screen; online, a solo game pauses and a party is paused by its host
 
 **Affects:**
 - `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `game/Source/Cataclysm/Player/
@@ -36,7 +36,9 @@ Decisions made outside the Google Drive documents, newest first.
   reached where the owner plays. `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc through the engine's
   project-defined chords (`FUserDefinedChords::LoadChords`, Slate's InputBindingManager.cpp). Only opening the editor
   shows it took; a Python check holds the entry's nine fields, because `LoadChord` reads them unchecked and a missing
-  one stops the editor as it starts. If it does not take, `Cataclysm.PauseGame` pauses from the console.
+  one stops the editor as it starts. If it does not take, `Cataclysm.PauseGame` pauses from the console. The owner
+  ruled the move itself on 2026-11-24 ("Move Stop to Shift+Esc (Recommended)"); whether the editor applies it is
+  still unmeasured.
 - **NOTHING IN THE GAME READ ESC BEFORE THIS.** The brief said Esc closed screens; it did not. In a packaged or
   standalone game Esc did nothing, and in Play In Editor it stopped Play (an earlier entry, on writing the passive
   tree: "Escape in Play In Editor stops play without closing it"). So "Esc closes an open screen first" is new
@@ -47,6 +49,18 @@ Decisions made outside the Google Drive documents, newest first.
 The project owner, 2026-11-24, verbatim: "Also, i'm pretty sure it's already in the design, but we need to be able to
 pause. Offline and online, pause is a must". It was not in the design: `docs/Cataclysm_GDD_v2.md` named "pause" only
 for a Siege pausing city upgrades.
+
+**The owner's rulings on the three points this change left open, 2026-11-24**, relayed by the coordinating session,
+the chosen options verbatim:
+
+1. **The editor's Stop:** "Move Stop to Shift+Esc (Recommended)". `game/Config/DefaultEditorSettings.ini` stays as
+   written.
+2. **The pause screen:** "Resume only, for now (Recommended)". Settings and Quit come later, once a settings screen
+   exists and leaving mid-dungeon is ruled.
+3. **Online party pause:** "Host pauses everyone". This differs from the recommendation below, which was the instance
+   pausing only while every player in it has paused. The GDD's Pausing now says that in a party only the host can
+   pause, and the host's pause stops the game for the whole party; solo online pauses the instance, as recommended.
+   The recommendation and its research stay below as the record of what was considered.
 
 ### What Esc does
 
@@ -117,7 +131,9 @@ The owner asked for the existing actions that fit. **None exists to add.** The s
 often, and there is no manual save" (section 6, set by the owner on 2026-08-20). No way back to the character select
 screen exists from inside a level; the nearest machinery, `ACataclysmGameMode::TravelTo` with its synchronous
 hand-over, writes the records with no floor held, so used mid-dungeon it would drop the floor and its boss's damage:
-the Hardcore escape section 6 forbids. A "Quit" and a "Return to character select" are left for the owner.
+the Hardcore escape section 6 forbids. A "Quit" and a "Return to character select" were left for the owner, who ruled
+"Resume only, for now (Recommended)": Settings and Quit come later, once a settings screen exists and leaving
+mid-dungeon is ruled.
 
 ### Other screens do not pause: a recommendation
 
@@ -126,10 +142,12 @@ Diablo III's players report its menu pauses a solo game; Last Epoch offline paus
 counter-example: since 3.26 "You can now pause the game by opening the menu or any fullscreen interface like the
 Passive Skill Tree", which would be the shape to take if the owner wants screens to pause.
 
-### Online: a recommendation for the owner, not a ruling
+### Online: the recommendation that was put to the owner
 
 Online play is not built ("Online play needs a service that does not exist yet"). The rule is written into the GDD as
-the owner stated it, with this recommendation:
+the owner stated it. **The party's rule was then ruled differently from what is recommended here**: "Host pauses
+everyone" (above), and the GDD follows the ruling. The recommendation as it was made, kept as the record of what was
+considered:
 
 - **Solo online: Esc pauses the instance, as offline.** Nothing shared runs in real time: the empire clock moves only by
   the player's actions, so stopping the instance stops everything the player can lose. The server keeps a paused
@@ -166,8 +184,9 @@ the owner stated it, with this recommendation:
 - A paused game resumes on Esc even with a screen open under the pause screen.
 - The floor map stays on Esc.
 - The project's editor setting moving Stop to Shift+Esc (the alternative left the pause unreachable in Play In Editor).
+  Ruled since: "Move Stop to Shift+Esc (Recommended)".
 - The pause screen's look: a dim of 60%, the inventory's panel colours, a button of solid colours. Looks.
-- The online recommendations (above).
+- The online recommendations (above). The party's was overruled: "Host pauses everyone".
 
 ### Tests, registered before the window
 
@@ -204,6 +223,10 @@ The whole suite, once, on the change as committed bar this section, on the base 
 `python -u -m pytest --junit-xml=<outside the repository>` printed `8257 passed, 9 skipped in 387.97s (0:06:27)`; the
 JUnit file holds tests 8266, failures 0, errors 0, skipped 9, so 8257 passed. `python -m ruff check .`: "All checks
 passed!". `python tools/check_resolved_cpp.py --changed`: "8 files read, 0 with complaints".
+
+Again after the owner's three rulings were written into this entry and the GDD, on `fcb002e22` with those edits and
+before this paragraph: `8257 passed, 9 skipped in 454.05s (0:07:34)`; JUnit tests 8266, failures 0, errors 0,
+skipped 9, so 8257 passed.
 
 ---
 
