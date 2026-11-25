@@ -110,6 +110,117 @@ are not used: by its report they no longer fail anything, the two protections ea
 
 ---
 
+## 2026-11-24 — Bug batch 1: five fix branches in one window, and a guard proof registered for every new test (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Assembled on `feat/bug-batch-1` from development `6dd62aba6` (#2880
+  merged), as the coordinating session asked on 2026-11-24. Its window comes after the rarity cap window and inv-w1.
+- **27 OF THE 37 NEW UNREAL TESTS HAD NO GUARD PROOF IN THEIR ENTRIES.** The coordinating session ruled that each gets
+  one before the window. The writing agents' planned breaks, passed on in their reports, were checked here against
+  this branch; one was rewritten (G4) and three were written here (GD8 to GD10) for tests no planned break covered.
+- The five branches' own entries, below this one, hold each fix's reasons, rulings and tests.
+
+### What it holds
+
+Merged in this order, `git merge --no-ff`:
+
+| Merge | Branch | Issues |
+| :-- | :-- | :-- |
+| `2bde3bc06` | `fix/creature-combat-2874` at `c371d75d8`, with `fix/drops-and-death-2871` at `472bc1b56` inside it | #2871, #2874, #2876, #2877 |
+| `2e0f8ef8e` | `fix/modifiers-2854` at `83fdb1e61` | #2855, #2854 |
+| `0fcbb55ec` | `fix/empire-cities-2859` at `95534b793` | #2859, #2866 |
+| `282ade7e5` | `fix/demonic-guide-2860` at `6d9815cc1` | #2860, #2861, #2862 |
+| `5d696dc7e` | `fix/masochist-shield-2873` at `a04b611ee` | #2873, #2863 |
+
+- **Only this log conflicted**, at every merge, resolved with `tools/resolve_decisions_log.py`. No code file conflicted,
+  the overlaps named beforehand included (`CataclysmVitalAttributeSet.cpp`, `CataclysmSkillEffects.*`,
+  `CataclysmEnemyCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`).
+- **The resolutions left some of the 2026-11-24 entries below the 2026-11-22 ones**; `b80b1f21a` puts the seven new
+  entries first, newest first by the author date of the branch commit that first wrote each heading, each one's text
+  checked equal to its branch's.
+- **Every file arrived as written**: each of the 70 changed files but this log differs from development by exactly the
+  union of the five branches' changed lines, compared from their base `4d33f5994`.
+- `tools/check_resolved_cpp.py` on the 57 changed C++ files: "57 files read, 0 with complaints".
+- No branch names a save version or a committed save file; they were written at run 17 and character 14, and
+  development is at 18 and 15 since #2880.
+- The engine-name and anonymous-helper checks: "7 passed". **Full Python suite: "8259 passed, 10 skipped"; JUnit 8269
+  tests, 0 failures, 0 errors, 10 skipped.** ruff: "All checks passed!".
+
+### Registered for its window
+
+**The base is window sd-w2's whole-suite engine log** (`sdw2_suite_engine_45a0138d.log`, 5341 performed, 57 skipped
+halves, 861 test saves). The batch adds 38 test names and removes 1 (`...HurtsThePlayerWithinReach`, renamed
+`...AnywhereOnTheFloor`), read from the name literals in the diff, since several files register through their own
+wrapper macros. **The whole suite is registered as 5378**, all succeeded; 57 skipped halves and 861 test saves written
+and deleted, 0 left behind (no added line reports a skipped half or writes a save: a reading).
+
+| Branch | New tests |
+| :-- | --: |
+| creature-combat | 6 |
+| drops-and-death | 4 |
+| modifiers | 3, and 1 renamed |
+| empire-cities | 6 (its entry lists none; counted from the code) |
+| demonic-guide | 11 |
+| masochist-shield | 7 |
+
+**Groups alone, first**, at sd-w2's count plus what the batch adds: `EffectPlacement.` 4 (new), `PassThroughBodies.` 5
+(new), `DungeonModifierEffects.` 785 (777 + 8), `EnemyModifiers.` 61 (57 + 4), `EnemyHitTiming.` 15, `EnemyStrength.` 9,
+`PlayerCopies.` 8, `BuriedWeaponKills.` 4, `HitLog.` 8, `Fervour.` 32, `ThornsOfGlass.` 11, `EmpireTreeCity.` 21,
+`EmpireTreeEvents.` 15, `WalkFromTheScreen.` 6; and with nothing added, `EmpireScreen.` 16, `CityScreen.` 19 and
+`SaveLoad.` 81, because empire-cities changes the map, the city screen's layout and the load code. No editor step: no
+branch changes a CSV or an asset. Python and ruff beside the whole suite.
+
+**35 C++ guard proofs**, in `.claude/windows/prove_bb1_table.py.txt`, every anchor matching once on `b80b1f21a`. Each
+is narrowed to the tests it is for -- a group with its trailing dot, or the tests' full names joined with `+` -- so a
+break that moves other tests of a large group is not read as this proof's. Predicted, not run:
+
+| Proof | Break | Selects | Must fail |
+| :-- | :-- | --: | :-- |
+| EP1 | `OnTheFloor` returns the point asked | 4 | all four `EffectPlacement.` tests |
+| EP2 | a ground zone drawn where asked | 4 | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
+| EP3 | a telegraph marker drawn where asked | 4 | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
+| EP4 | debris left where asked | 4 | `DebrisIsLeftOnTheFloorUnderTheImpact` |
+| F1 | Fervour from the health lost only | 32 | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
+| F2 | the shield's recharge removes Fervour | 32 | `TheEnergyShieldRechargingRemovesNoFervour` |
+| B1 | Blood Altar's old reach back | 2 | `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`, `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
+| B2 | the unfed pulse's line reworded | 2 | `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
+| T1 | Thorns of Glass's interval without buffs | 11 | `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond` |
+| T2 | ticks let into the strike back | 11 | `ADamageOverTimeTickIsNotStruckBack`, `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval` |
+| G1 | `MarkDead` never notes the actor being marked | 1 | `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` |
+| G2 | a death keeps the waiting blow | 1 | `EnemyHitTiming.ACreatureKilledBeforeItsSwingConnectsDealsNothingAfterwards` |
+| G3 | Infernal Brand brands a dead target | 1 | `EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt` |
+| G4 | the death line said at Verbose, not Display | 1 | `HitLog.ACreaturesDeathIsSaidOnceAfterTheBlowThatKilledIt` |
+| CC1 | the brand called for every blow, ticks included | 1 | `EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` |
+| CC2 | the brand's explosion can critically strike | 1 | `EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` |
+| CC3 | a dead copy's waiting swing still lands | 1 | `PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` |
+| CC4 | Infernal Sacrifice eats a creature that cannot be hurt | 1 | `EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` |
+| CC5 | the chain's end kills a creature that cannot be hurt | 1 | `DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` |
+| CC6 | a creature's damage scaled by 2 (the measurement's control) | 1 | `EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` |
+| GD1 | the search takes the guide | 1 | `DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` |
+| GD2 | a blow at the guide is not refused | 1 | `DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` |
+| GD3 | "untargetable" forgets the guide | 2 | both guide tests above |
+| GD4 | the guide's body never refreshed | 1 | `DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` |
+| GD5 | every capsule ignores nothing | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ThePlayerAndItsMinionWalkThroughEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| GD6 | a waiting guide's prints told it walks | 1 | `DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` |
+| GD7 | prints last 100 times as long | 1 | `DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` |
+| GD8 | a jump read as a walk (100 times the jump) | 1 | `DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` |
+| GD9 | a creature moves through every pass-through body | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| GD10 | a body moves through its own kind | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `TwoMinionsStillBlockEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| EC1 | a buy or respec does not keep the shares | 3 | `EmpireTreeCity.ABoughtNodeKeepsEveryCityAtItsShareOfTheRaisedMaximum`, `ARespecKeepsEveryCityAtItsShareOfTheLoweredMaximum`, `ABuyAndARespecInTheCapitalKeepACitysShare` |
+| EC2 | an upgrade does not keep the shares | 1 | `EmpireTreeCity.TheRoyalEngineersCountMovingKeepsEveryCityAtItsShare` |
+| EC3 | a fall does not keep the shares | 1 | the same |
+| EC4 | the day's turn does not keep the shares | 1 | `EmpireTreeEvents.EnduringFoundationsKeepsTheCitysShareAsTheDayTurns` |
+| EC5 | a fallen city's box opens nothing | 1 | `WalkFromTheScreen.AFallenCityOpensItsScreenAndItsFallenCityDungeonIsWalkedFromIt` |
+
+**Every proof must also pass every selected test restored.** B1 and B2 were registered by their entry with the whole
+`DungeonModifierEffects.` group (785 tests); they are narrowed to the two Blood Altar tests here so the group does not
+run twice per proof. B1 and T2 are anchored on a longer text than their entry quotes, because the quoted text occurs
+12 and 5 times in its file. **G4 is rewritten**: the planned break gave a one-placeholder format extra arguments, which
+the engine's compile-time format check may refuse.
+
+---
+
 ## 2026-11-24 — A thrall's Fervour reserve rises with the rarity of the creature taken: Common 30, Elite 45, Legendary 60, Herald 90 (#2856, #2868)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A third commit on `fix/thralls-2856`, by the coordinating
@@ -346,6 +457,186 @@ raises its wall from the floor's own surface, where the search finds that same s
 | :-- | :-- | :-- | :-- |
 | `CataclysmTerrain.cpp` | `Near.Z = FloorZ;` to `Near.Z = Start.Z;` | `Cataclysm.Terrain.` | `AWallRaisedFromACapsuleCentreStandsOnTheFloorUnderIt`, `ARaisedWallStopsACreatureWalkingIntoIt`, `APitLeftAtACapsuleCentreLiesOnTheFloorAndStillFloorsWhatFallsIn` |
 | `CataclysmEnemyController.cpp` | `return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ));` to `return FVector(Point.X, Point.Y, Driven->GetActorLocation().Z - Driven->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());` | `Cataclysm.Telegraph.` | `APointOverRaisedGroundIsBroughtToItsSurfaceNotToTheCreaturesFeet`, `ARockThrownAtATargetOnTheStairsIsAimedAtTheirTopNotInsideThem` |
+
+---
+
+## 2026-11-24 — The tier 1 Boss Brute killed with its Infernal Brand, not its swing: a brand is built by hits alone and its explosion never critically strikes; a creature killed mid-swing lands nothing; Sacrifice and Epidemic pass over a creature that cannot be hurt (#2874, #2877, #2876)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/creature-combat-2874`, made from
+`fix/drops-and-death-2871`, a bug-fix agent of the coordinating session, 2026-11-24. Issues
+[#2874](https://github.com/sdubois777/Cataclysm/issues/2874) (part 2),
+[#2877](https://github.com/sdubois777/Cataclysm/issues/2877) and
+[#2876](https://github.com/sdubois777/Cataclysm/issues/2876), and an addition the coordinating session sent the same
+day.
+
+**THIS ENTRY SUPERSEDES TWO SENTENCES OF THE ENTRY BELOW**, written on the branch this one was made from, which is not
+this branch's to change. It said of the owner's death "The brand was not part of the kill -- the swing took the 396
+health left", and "the melee critical is the outlier and the reading of this branch cannot say why". **The killing
+blow was the brand's explosion, and there was no melee critical.** What follows is the evidence.
+
+### What the owner said, and what was ruled
+
+- **The owner, verbatim, on #2874:** "I just got 1 shot by something. I killed a boss, and immediately died."
+- **The coordinating session's rulings of 2026-11-24, verbatim:** "(1a) approved: Infernal Brand stacks only on hits,
+  never on damage-over-time ticks (the row says "on hit"; "a tick is not a hit" is the project's rule). (1b) approved
+  as the coordinating session's ruling, not only a judgement: the Brand's explosion cannot critically strike,
+  consistent with the overkill explosion and death blast ruled 2026-10-07; keep it as its own commit and quote that
+  precedent. (1c) yes, add the melee-critical measurement test. Correct the base branch's DECISIONS note that "the
+  brand was not part of the kill" in your entry (the base branch is not yours to push to; say in your entry that it
+  supersedes that note). (2) Do NOT take the design workbook: it is a binary git cannot merge, so only one branch may
+  carry an unmerged edit to it, and other branches may. Leave #2876's row unchanged and report the exact new text; I
+  will schedule the workbook edit separately."
+- **The precedent (1b) names**, this file, 2026-10-07, ruling 4 on the overkill explosion: "Direct damage of no damage
+  type, dealt by the killer, delivered as area damage and never retaliated against, as `ACataclysmMinion::DeathBlast`
+  delivers a blast at a death. It cannot critically strike."
+- **The addition**, the coordinating session, 2026-11-24: Infernal Sacrifice and Epidemic's chain end write a
+  creature's health to nought and call `HandleDeath` directly, which skips the health hold, so they can kill creatures
+  that cannot be hurt; make both refuse such a target and one already dead or being marked dead, and check the two
+  other direct `HandleDeath` callers.
+
+### #2874: what the log shows
+
+`game/Saved/Logs/Cataclysm.log` in the main checkout, read 2026-11-24:
+
+```
+18:51:16.330  HIT: took 76 from CataclysmBruteCharacter_136 (Boss), ranged attack: 39 to health; health 430 of 430 before it
+18:51:17.512  HIT: took 8.9 from CataclysmBruteCharacter_136 (Boss), burn, 2 ticks within one second: 4.1 to health; ...
+18:51:19.499  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.7 to health; ...
+18:51:19.499  HIT: took 396 from CataclysmBruteCharacter_136 (Boss), attack: 396 to health; critical; health 396 of 430 before it
+18:51:19.507  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.5 to health; damage over time; health 396 of 430 before the first
+18:51:19.507  CataclysmPlayerCharacter_0 died at 0 of 430 health ... the killing blow: 396 from CataclysmBruteCharacter_136 (Boss), attack: ...
+18:51:19.509  CataclysmBruteCharacter_136's Infernal Brand reached five stacks on CataclysmPlayerState_0 and dealt 367.
+```
+
+1. **"attack" is not the Brute's swing.** The hit log names a blow with no skill by its tags: a spell, a ranged attack,
+   a melee attack, or "attack" when it carries none of the three (`FCataclysmHitLog::WhatText`). A creature's ordinary
+   swing carries `Type.Melee` (`ACataclysmEnemyCharacter::BasicAttackTags`) and the Brute's stomp carries it too, so
+   either would read "melee attack". The log holds 779 "melee attack" lines and none is from
+   `CataclysmBruteCharacter_136`.
+2. **Every "attack" line that is not a retaliation is a brand's explosion.** All 11 in the log are followed in the same
+   frame, by the same creature, with "Infernal Brand reached five stacks ... dealt X":
+
+   | Time | Creature | Took | Dealt (sent) |
+   | :-- | :-- | --: | --: |
+   | 17:00:47.866 | AbyssalWarden_16 (Boss) | 144, the health left: the killing blow | 273 |
+   | 17:01:27.913 | Imp_151 (Legendary) | 13 | 16 |
+   | 17:16:00.573 | Brute_37 (Boss) | 190 | 245 |
+   | 17:16:59.769 | Imp_284 (Boss) | 59 | 76 |
+   | 17:18:26.152 | Imp_377 (Herald) | 41 | 53 |
+   | 17:20:08.334 | Imp_486 (Boss) | 87 | 105 |
+   | 17:20:12.402 | Imp_478 (Herald) | 50 | 63 |
+   | 18:01:53.309 | Brute_108 (Herald) | 136 | 238 |
+   | 18:35:50.854 | Brute_120 (Boss) | 214, the health left: the killing blow | 532 |
+   | 18:51:19.499 | Brute_136 (Boss) | 396 critical, the health left: the killing blow | 367 |
+   | 19:15:24.904 | Hellhound_242 (Boss) | 272 critical | 225 |
+
+   `BrandOnHit` writes its line after the explosion's blow returns, so the blow's own line comes first, and the death
+   line between them is the explosion's kill. **Three of the owner's deaths that day were brand explosions.**
+3. **The explosion of 18:51:19 was 367 sent**, five times an attack damage of 73.4, **struck critically**, so 734, and
+   was cut to the 396 health left. The design's Brute there, `strength_on_floor("Boss", 1, "Basic", "Timed", 10, 6,
+   kind="Brute", ring="Outpost")`, hits for 72.32; the 1.5% between them was not traced and is most likely the
+   dungeon's modifier score, which that call leaves at nought.
+4. **Its five stacks were one rock and four burn ticks.** `UCataclysmVitalAttributeSet` called `BrandOnHit` for every
+   blow that took health, ticks of damage over time included. The ticks before 16.330 took nothing from health; the
+   rock (39 to health), the two ticks of 17.512, the tick closed at 19.499 and the tick at 19.507 made five, and the
+   last of them, a tick of 0.5, set off the explosion. **The Brute never landed a melee swing in this fight.**
+5. **The other figures fit the design**, as #2874 said: the rock sent 110.1 (150% of 73.4) and landed 76, so the
+   character kept 69% of a hit; the aura's tick is 9% of the hit, 6.6, and landed 4.5.
+
+### What changed
+
+1. **A brand is built by hits alone** (ruling 1a). `BrandOnHit` is called inside the `!Hit.bIsDamageOverTime` block,
+   beside `WitherOnHit` and `TouchOfNothingOnHit`, which the owner's rule for Withering Blows on #1722 already put
+   there: "one stack per hit that takes health". Beguiling's charm is left where it was, on any blow the creature takes.
+2. **The explosion can never be a critical strike** (ruling 1b), in its own commit. `BrandOnHit` sends it with a
+   delivery whose `bCannotCriticallyStrike` is set, as the overkill explosion's is.
+3. **A creature killed while its swing waits lands nothing** (#2877). The Corrupted Stalker and the Worn Residue double
+   strike through the player's skill templates, whose blow waits on `UCataclysmSkillTemplate::SwingTimer`, which
+   nothing cleared at a creature's death. The timer now asks, when it fires, whether its avatar is a creature that has
+   died; if so the blow is dropped and the skill ended as a cancelled one, as an interrupted skill is. **A player's
+   waiting blow is unchanged**: the question is asked only of an `ACataclysmEnemyCharacter`, and the owner answered
+   #1549, a dead player's waiting blow, "not important" with no change planned.
+4. **Infernal Sacrifice and Epidemic's chain end pass over a creature that cannot be hurt, or whose death is being
+   marked** (the addition): each asks `bCannotBeHurt` and `IsBeingMarkedDead` beside `IsDead`, and goes on to the next
+   creature. Shrouded creatures (`bShrouded`) are not passed over: the ruling of 2026-09-26 keeps that field apart from
+   `bCannotBeHurt` for rules that read the latter, and the addition named the latter.
+5. **The two other direct `HandleDeath` callers have the same shape and cannot reach such a creature today; not
+   changed.** The delayed-damage drain (`UCataclysmDelayedDamage::DrainStep`): `TakesNoDamage` empties a blow on a
+   creature that cannot be hurt before `DelayShare` takes its share, so no parcel is ever held. The health-debt drain
+   (`UCataclysmHealthDebt`): a debt is run up only through the class resource set's unpayable-cost rule, and as far
+   as was read a creature holds that set only with a player's build (the Stalker, the double), which no rule makes
+   unhurtable: Blood Bond takes the Elite rung alone, and both stand at Common. The Demonic Guide is handled on
+   `fix/demonic-guide-2860`.
+6. **`docs/Cataclysm_GDD_v2.md`**: "Nor does a payout of damage banked from earlier blows" under the critical strike
+   rule, and "A blow a creature has not yet struck is not struck" under "What Dying Does at the Moment It Happens".
+
+### #2874: the figures, reported and not retuned
+
+- **The melee critical is the design's.** A floor-built tier 1 Outpost Boss Brute on floor 6 hits for 72.32 and
+  critically for 144.64 before mitigation. On the level 6 reference character -- the starting Ravager with its
+  starting weapon and nothing else, 230 health, 42.5 armour (5.05% at tier 1) and 3.25% reduction -- with the
+  Boss's Overwhelm taking the armour's share away, about 140 lands, about 61% of its health: **not a one-shot**. On
+  the owner's character, which kept 69% of a hit, about 100 of 430. **Predicted, not run**: the measurement test
+  below is what runs it.
+- **The Boss Brute's brand, as now built, is 361.6 before mitigation, never doubled.** About 250 of the owner's 430,
+  58%. **On the level 6 reference character it is about 350 against 230 health: it still kills a gearless level 6
+  character outright**, which the design states as intended ("A geared character is never one-shot, and a gearless
+  one still is", `docs/Cataclysm_GDD_v2.md`, "How Long a Geared Character Survives", fitted at tier 8). Reported for
+  the coordinating session, not retuned. After this change the brand needs five of the Brute's own hits within eight
+  seconds of each other, which a Brute swinging every 1.2 seconds in contact reaches in about six.
+
+### #2876: the design says Commander, so the row's text changes, in the workbook, later
+
+- **What the design says.** This file, 2026-09-05, "The remaining six Demonic enemy modifiers", under Infernal
+  Sacrifice: "**The damage buff is Commander**, which is the buff this game has for "hits harder and moves faster",
+  rather than inventing a second one meaning the same thing." Commander had been ruled by the owner on 2026-08-20 to
+  move two stats only (`docs/Cataclysm_GDD_v2.md`: "Those two stats and not every stat"): 20% increased movement speed
+  and attack speed. **So the code grants what the design chose, and the row's "temporary damage buffs" is the
+  inaccuracy.** Nothing in `docs/Cataclysm_GDD_v2.md` names Infernal Sacrifice.
+- **Not changed here, by ruling (2).** The row's text is generated from the design workbook's Enemy Modifiers sheet,
+  so the change is a workbook edit, `game/Data/EnemyModifiers.csv` regenerated, and `DT_EnemyModifiers` rebuilt in a
+  window. **The proposed text**, for the Demonic column's Infernal Sacrifice cell: "Infernal Sacrifice: Sacrifice a
+  nearby ally every 6 seconds to heal yourself for a quarter of your maximum health and gain Commander (20% increased
+  movement speed and attack speed) for 8 seconds." Its figures are the code's: `SacrificeIntervalSeconds` 6,
+  `SacrificeHealShareOfHealth` 0.25, `SacrificeBuffSeconds` 8.
+- **The code's comment beside the grant** said Commander makes "nearby allies hit harder"; it now says what Commander
+  moves and points at #2876.
+
+### Tests
+
+**Six new Unreal tests, in four groups:**
+
+| Test | What it shows |
+| :-- | :-- |
+| `Cataclysm.EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` | CONTROL: one direct hit is one brand. THEN the brander's burn runs three seconds on the clock, at least two ticks taking health, and the player still holds one brand and nothing burst |
+| `Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` | every roll critical (chance 100, roll pinned 0); CONTROL: the five one-point hits are each critical. The explosion sends five 100-point hits, is not critical, and lands no more than it sent |
+| `Cataclysm.EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` | the Brute built in `ApplyDesignedStats`' order on the owner's floor: attack damage the design's 72.32 within 0.5%, multiplier 200; its swing ordered and landed when it connects, critical and melee, on the starting class at level 6, lands within 1% of 144.64 times what armour and resistance less its Overwhelm and the flat reduction leave, and less than the character's health. Prints "BOSS BRUTE MELEE CRITICAL" with every figure |
+| `Cataclysm.PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` | CONTROL: Famine's Stalker's first blow waits and lands when its swing connects. THEN its second blow waits, it is killed in the gap, the clock runs past the swing's moment, nothing waits, its body still stands, and the target is untouched |
+| `Cataclysm.EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` | an unhurtable ally nearest the eater and an ordinary one farther: CONTROL, the ordinary one is eaten; the unhurtable one stands at its whole health |
+| `Cataclysm.DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` | the chain test's line and an unhurtable Imp 3 m from the fifth kill: CONTROL, every creature of the line dies; the unhurtable Imp stands |
+
+**Python:** `tools/tests/test_a_brand_is_built_by_hits_and_a_dead_creature_lands_nothing.py`, 6 checks, by reading the
+source with comments stripped: `BrandOnHit` is called once, inside the block that calls `WitherOnHit`; the explosion's
+delivery is marked before the blow is sent with it; the swing timer asks a creature avatar's death before the blow;
+Sacrifice and Epidemic ask `bCannotBeHurt` and `IsBeingMarkedDead` before `HandleDeath`; and the measurement's design
+figure is `enemy_stats.strength_on_floor`'s.
+
+### Judgements of this change
+
+- **The measurement's reference character** is the starting class at level 6 with its starting weapon and nothing
+  else, which `tools/tests/test_the_starting_character_survives_a_pack.py` and `sim/analyse_opening.py` measure, and
+  its design figure after mitigation includes the Overwhelm the Boss applies (#2824 slice b) and resistance, which
+  that file's `share_of_a_hit_taken` leaves out. A judgement: the design now has Overwhelm, and a figure without it
+  would not be what the game should land. Tolerance 1%.
+- **A creature's dropped blow ends its skill as a cancelled use**, not merely skipped, so nothing of it is left
+  running; a judgement following "A CANCELLED SKILL STRIKES NOTHING" in `UCataclysmSkillTemplate::EndAbility`.
+- **The words of the two `docs/Cataclysm_GDD_v2.md` paragraphs.**
+
+### Sources
+
+No shipped game was researched: no formula or number is chosen. The two brand rulings apply this project's own rules
+(a tick is not a hit; a payout banked from earlier blows cannot critically strike, as ruled 2026-10-07), and the rest
+restore what the code and the design already said.
 
 ---
 
@@ -907,590 +1198,6 @@ the leap's delivery, that test alone failed, and it passed with the file restore
 
 ---
 
-## 2026-11-24 — A character continued inside a dungeon stands where it was saved, and a level's first floor starts for the player once: the dungeon level's start no longer stands it at the entrance, or starts the floor again, after the floor's own start has reached it (#2858)
-
-**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/resume-position-2858`, from the coordinating
-session's brief of 2026-11-24. Issue [#2858](https://github.com/sdubois777/Cataclysm/issues/2858).
-
-**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
-`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `game/Source/Cataclysm/Player/CataclysmGameMode.cpp`,
-`game/Source/Cataclysm/Save/CataclysmSaveLoad.h`, `game/Source/Cataclysm/Save/CataclysmSaveLoad.cpp`,
-`game/Source/Cataclysm/Save/CataclysmSaveWriter.cpp`, `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`,
-`docs/Save_System_Design.md`.
-
-### What the owner saw, and why no ruling was needed
-
-The owner, playtest of 2026-11-22, verbatim: "It should be loading you back in the spot you were, with whatever enemies
-were alive as well. Right now it seems to load you back at the start of the level." And on the issue the same day: "The
-enemies were dead up to where I had made it on that floor". `docs/Save_System_Design.md` section 6 already restores
-"Which floor, and where on it the character is standing", so this is a fault against the design, not a new rule.
-
-### The cause, read from the code in the order it runs
-
-1. **The pawn stands before play begins.** The engine spawns the player at login and only then begins play:
-   `UEngine::LoadMap` calls `SpawnPlayActor` before `BeginPlay` (UnrealEngine.cpp lines 16647 and 16661 in the 5.8
-   install), and Play In Editor does the same (GameInstance.cpp 538 and 566). `AGameModeBase::HandleStartingNewPlayer`
-   restarts the player at once. The load it asks for (`ACataclysmGameMode::LoadThePendingCharacter`) waits, because
-   the save writer begins in `StartPlay`.
-2. **`ACataclysmDungeonGameMode::StartPlay` builds the level's floor and calls `Super::StartPlay`**, where the writer
-   begins and the load runs: `ResumeEmpireDungeon` builds the saved floor (the first "Floor N carries ..." line), the
-   saved creatures go back, and `FCataclysmSaveApply::PlacementInto` puts the character where its record says. The load
-   logs "placed where it was saved", and that was true.
-3. **Back in the dungeon's `StartPlay`, `PlaceAtEntrance` stood the pawn at the floor's entrance**, and
-   `ApplyFloorRulesKeepingHealth` wrote "Floor N carries ..." a second time: the 3 milliseconds the issue measured.
-
-**The save was not at fault**: `FCataclysmSaveGather::PlacementFrom` writes the character's own location, and the
-creatures came back as the owner saw. The entrance placement after `Super::StartPlay` came with the dungeon level (#40,
-commit `23d3fec0c`); the load joined the parent's `StartPlay` with select-screen step 3a (commit `17c95a8d1`). No test
-ran a resume through `StartPlay`: every one called the load after it.
-
-### What changed
-
-- `FCataclysmLoadReport::bPutWhereSaved` and `SavedLocation`: set when a placement was found for the character on a
-  record that holds a floor. `ACataclysmGameMode::LoadThePendingCharacter` keeps it, and
-  `PendingLoadPutTheCharacterWhereSaved` answers it.
-- `ACataclysmDungeonGameMode::StartPlay` asks which pawn stood before its `GoToFloor` ran. After `Super::StartPlay` it
-  starts the first floor for the player -- the entrance, `NoteTheConsumptionDoubleAsAFloorIsEntered`,
-  `ApplyFloorRulesKeepingHealth` and `floor_start` -- only when that `GoToFloor` reached no pawn and no load put the
-  character where it was saved. Otherwise it logs which of the two it was, with how far a loaded character stands from
-  the entrance. A hand-over's record, which holds no floor, leaves the character where `GoToFloor` stood it.
-- **The log lines the issue asked for.** Every run record write logs the trigger that raised it and the place it holds
-  ("The run record was written for the clock: the character at X=... on floor N of '...', with M creature(s)
-  standing"); the load logs where the character stands just after the put-back, and a timer logs it again a second
-  later.
-- The comments that said no pawn stands during `StartPlay`'s first `GoToFloor` were corrected; they were the premise
-  the old order rested on.
-- No save record version and no fixture changed.
-
-### Judgements
-
-- **A judgement: the level's start reads a flag the load sets, rather than the load moving after the entrance
-  placement.** The placement stays for what it is for: a pawn that did not stand when `GoToFloor` ran, and a load that
-  put back no place. A flag answers exactly the question the start needs, and a load that runs later, in
-  `HandleStartingNewPlayer`, already came after every placement.
-- **A judgement: every run record write is logged, not only the clock's, a floor change's and the hand-over's.** Every
-  write restarts the clock, so in a fight the last write before a quit is usually a creature's death or a fight starting,
-  and a line for three triggers would miss the write a resume reads. The run record is written at most once a frame, so
-  the lines are at most one a frame.
-- **A judgement: the line a second after the load comes from a timer** on the world's timer manager, held by a weak
-  pointer to the character, so it is written in play and never in an automation test, whose world is not ticked.
-- **First reported, then ruled and fixed in the same branch.** In a launched game the first floor's start reached the
-  player twice, because `StartPlay` repeated `NoteTheConsumptionDoubleAsAFloorIsEntered`,
-  `ApplyFloorRulesKeepingHealth` and the `floor_start` event for a pawn `GoToFloor` had already reached; after a load the
-  repeated `floor_start` came after the saved health was put back, so "You start every dungeon floor at 30%-50% of your
-  maximum HP" capped a resumed character. The coordinating session, 2026-11-24, verbatim: "ruled by the coordinating
-  session as a defect, not a design question: the first floor's start must reach the player once, not twice. (1) In a
-  launched game, StartPlay must not repeat NoteTheConsumptionDoubleAsAFloorIsEntered, ApplyFloorRulesKeepingHealth and
-  the floor_start event when GoToFloor already reached the pawn. (2) On a resume (a load that put the character where it
-  was saved), the floor is not newly started: the floor_start event must not fire again after the saved health is put
-  back, so "You start every dungeon floor at 30%-50% of your maximum HP" (health_capped_at) does not cap a resumed
-  character."
-- **A judgement: "reached" means the same pawn stood before `GoToFloor` and after `Super::StartPlay`,** held by a weak
-  pointer, so a pawn destroyed or replaced in between is started here as before. No floor rule is lost by not repeating
-  them: they are held on the ability system (`SetDungeonStatModifiers`), so the stat refresh the character's
-  `BeginPlay` makes when it puts on its starting weapon keeps them.
-- **A judgement: the resume is protected twice, by the reached pawn and by the load's flag.** In a launched game and in
-  every test the pawn the load reaches is the one `GoToFloor` reached, so either answer alone keeps a resume's health;
-  the flag is kept for a pawn that came to stand inside `Super::StartPlay`, which `AGameModeBase` does not do today. So
-  no single-line break of either answer alone fails the resume tests, and their guard proof breaks the line that joins
-  the two.
-
-### Tests
-
-- New: `Cataclysm.SaveLoad.ACharacterContinuedInsideADungeonStandsWhereItWasSaved`. Saved as play saves it (floor 2 of
-  a walk, two creatures killed, the character moved to a cell three cells or more from both ends of the floor, the
-  clock's write), continued through the dungeon level's own `StartPlay` with the pawn standing first, then one beat of
-  the floor. The character must be within 10 cm of where the record says it stood after the start and after the beat;
-  the CONTROL is that place's distance from the entrance, over 100 times that. It also asserts the creatures standing
-  are the ones saved and that the clock's line and the start's line are each written once.
-- Changed: `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` asserts a hand-over's load
-  reports no place put back, so the level's start still stands that character at the entrance.
-- New: `Cataclysm.Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce`. The pawn stands before the dungeon level's
-  `StartPlay`, as login leaves it, and nothing is pending: `floor_start` reaches it exactly once, and it stands at the
-  floor's entrance (the CONTROL that the floor's start did reach it).
-- New: `Cataclysm.SaveLoad.AResumedCharacterWearingTheFloorStartCapKeepsItsSavedHealth`. Saved on floor 2 wearing the
-  cap on a helm, at 80% of its maximum health; continued through `StartPlay`. It keeps the health it was saved with,
-  and still after a beat, and no `floor_start` reaches it after the load put it back. CONTROLS: the loaded character
-  wears the cap, its saved health is above any share the cap lowers to, and the resumed floor's start did reach it
-  during the load.
-
----
-
-## 2026-11-24 — Subjugate takes a creature its blow would have killed, its refusal line names every reason including "dead", and a taken Gatekeeper's Imps wear the green bar (#2856, #2867); a thrall's minion scaling is as designed and goes to the owner (#2868)
-
-**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/thralls-2856`, from development `4d33f5994`, by
-the coordinating session's brief of 2026-11-24. Nothing below has been built or run in Unreal; the counts and proofs
-are registered for the window, not measured. Issues [#2856](https://github.com/sdubois777/Cataclysm/issues/2856),
-[#2867](https://github.com/sdubois777/Cataclysm/issues/2867) and
-[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
-
-**Affects:** `UCataclysmCommand` (`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`, `.cpp`: the list
-`ECataclysmSubjugateRefusal`, `WhySubjugateRefuses`, `SubjugateRefusalHolds`, `SubjugateRefusalName`,
-`SubjugateRefusalsText`, `IsHeldAliveForATake` and `TopCommanderOf`, all new, and `Subjugate`, which now refuses by
-the list); `ACataclysmCharacterBase::bHeldAliveForATake` (new); `UCataclysmSummonSkill::Possess` and its header
-(`CataclysmSkillTemplates.cpp`, `.h`); `UCataclysmVitalAttributeSet::PreAttributeChange` and its damage branch
-(`CataclysmVitalAttributeSet.cpp`); `UCataclysmCombatOverlay::HealthFillHexFor` (`CataclysmCombatOverlay.cpp`, `.h`);
-`docs/Cataclysm_GDD_v2.md` (Subjugate's row and the health bar paragraph); four new automation tests and one new
-Python test.
-
-### The rulings and reports it carries, verbatim
-
-- **#2856, the owner, 2026-11-22:** "ok, well it should still take them even if it would kill". The report before it,
-  the owner the same day: "just did it again with over 50 fervour. It's just killing them". The issue's first report:
-  "subjugate has stopped taking enemies, it's just killing them now".
-- **#2867, the owner's playtest of 2026-11-23:** "The Gatekeeper's minions when subjugated appear with red healthbars,
-  making it seem like they're enemies."
-- **#2868, the same playtest:** "verify subjugated minions are getting the minion scaling from my character, it doesn't
-  seem like they are. My imps are hitting harder than a Herald."
-- **Standing:** the owner's of 2026-09-13, "turn their healthbar green so you know it's yours"; and #2791's rulings of
-  2026-11-20 by the coordinating session, that a taken Gatekeeper's Imps follow the Gatekeeper and not the player, and
-  "stay on its commander's side after it dies, until they are killed".
-
-### #2856: taken instead of killed
-
-**What changes in play.** When Subjugate's blow would kill a target it could otherwise take -- not dead, not a boss,
-not one that cannot be hurt, not already the caster's, and with room in the Fervour pool for the thrall -- the blow
-leaves it at 1 health instead. One health is below the row's half (and below Dominion's 65%), so the take goes
-ahead, and the take restores it to full as before. The half-health condition is unchanged: a blow that leaves a
-creature above the threshold still takes nothing. Anything the take would refuse anyway is not spared: a boss, a
-creature already the caster's, and every target when the pool has no room can still be killed by the blow.
-
-**How it is built.** `Possess` asks `UCataclysmCommand::WhySubjugateRefuses` and `HasRoomForAnotherThrall` before
-its blow -- the same two questions it asks after -- and when neither refuses, sets the target's
-`bHeldAliveForATake` for the length of `HitTargets` and clears it after. `UCataclysmVitalAttributeSet` holds such a
-target at one health exactly where it holds a creature in a friendly Unholy Sigil (issue #1559): in
-`PreAttributeChange`, so every write that would empty health -- a blow, a tick, an execute's direct loss -- leaves
-one point; and in the damage branch, so the blow is announced as not lethal and the health base is written back to
-the point held.
-
-**Judgement 1, how to build the ruling: a hold at one health during the blow, not a take decided before the
-damage.** The ruling left it open ("for example, the hit could stop at 1 health on a target that can be taken, or
-the take could be decided before the hit lands"). The hold was chosen because a blow's outcome is resolved inside the
-target's own attribute set -- evasion, block, armour, energy shield, the saves -- and cannot be known before it
-lands, so deciding first would have to take creatures the blow never reached; and because the hold is the shape the
-sigil already uses, at the same two places, so no new kind of rule enters the damage path. The option not taken:
-take the target before the blow and skip or soften the blow. It would also have changed what the blow does to a
-target that is then refused, which the ruling did not ask for.
-
-**Judgement 2, what the hold covers: everything the blow sets off before `HitTargets` returns** -- a burn's first
-tick if it fires on application, a row's answer to the hit, an execute the hit asks for. The ruling says the hit
-"must not kill it first", and those are the hit's. Nothing after the call is held: the take then heals the creature
-to full.
-
-**Judgement 3, the threshold is not pre-judged.** It depends on the blow, so it is judged after it, as before. One
-health passes it for any creature whose maximum is above two at the row's 50%.
-
-**The genre agrees that a kill need not stop a take**, re-fetched 2026-11-24. Path of Exile's Dominating Blow
-([poedb](https://poedb.tw/us/Dominating_Blow)): "If a non-unique enemy dies while affected by the debuff", "a
-Sentinel of Dominance with the same rarity, prefix and suffix modifiers will be summoned"; unique enemies are
-excluded. Diablo 2's Conversion ([diablo2.io](https://diablo2.io/skills/conversion-t4033.html)) takes the monster
-alive: a successful attack "has a chance to convert the target to fight evil", and it "will not work on Super Unique
-Monsters, Champions, and Bosses". **What the research settles:** a take survives the target's death in one shipped
-game, and bosses are excluded in both. **What it does not settle, and is Judgement 1:** Path of Exile raises a copy
-from the corpse, and this game keeps the creature itself, because Subjugate's row says it "keeps its own abilities"
-and is "restored to full health"; holding it at one point is how it stays the same creature.
-
-### #2856: the refusal line names every reason, "dead" among them
-
-**What was wrong.** The play log's line for the command's own refusal asked three of `Subjugate`'s six reasons
-again for itself -- boss, cannot be hurt, already on its side -- so the owner's log of 2026-11-22 read "TAKE REFUSED:
-'Subjugate' could not take 'CataclysmBruteCharacter_258': boss no, cannot be hurt no, already on its side no." for a
-creature the blow had killed.
-
-**What it prints now.** "TAKE REFUSED: '<skill>' could not take '<creature>', refused as <reason>: nothing to take
-no, not a character no, dead yes, boss no, cannot be hurt no, already on its side no." Both halves come from the list
-`ECataclysmSubjugateRefusal`: the reason is `WhySubjugateRefuses`, which `Subjugate` itself now refuses by, and the
-list is every reason asked by `SubjugateRefusalHolds`. So a refusal always prints a "yes", and a reason added to the
-list is printed without anybody editing the line. The order of the reasons is the order `Subjugate` asked them in.
-
-### #2856: the no-room refusal is still silent to the player, and nothing was built for it
-
-The issue's body asks three questions for a ruling: (1) show the refusal on screen, "at least 'No room: imps reserve
-80 of 104 Fervour'"; (2) refuse the press before the blow when no thrall would fit; (3) displace the oldest imp. Its
-recommendation of (1) is the filing session's, not the owner's, and no comment on the issue rules on any of the
-three. **So nothing was built for them**, by the brief ("do it if it is stated"). The play log line is unchanged.
-
-### #2867: the bar follows the top of the chain of command
-
-**The cause.** `HealthFillHexFor` was green only when `UCataclysmCommand::CommanderOf(creature)` was the local
-player. A taken Gatekeeper's Imps answer the Gatekeeper there (#2791), so every Imp a taken Gatekeeper called wore
-the enemy red. A thrall the player takes directly, Gatekeeper's Imps included, was already green: its owner is the
-player.
-
-**What it does now.** It climbs the chain with `UCataclysmCommand::TopCommanderOf` -- each step `CommanderOf`, at most
-eight -- and is green when the local player is at the top. Every creature the game makes a commander for was checked:
-a thrall (owner, set by `Subjugate`, the Warzone's allies and a load), a summoned minion (`Summoner`), and a taken
-Gatekeeper's Imps (owner, the Gatekeeper); no other code names a commander.
-
-**Judgement 4, an Imp whose taken Gatekeeper is gone stays green.** Once the Gatekeeper's body is destroyed its Imps'
-chain stops at nobody: the owner is a destroyed actor, and later nothing. They still fight on the player's side,
-ruled for #2791, so a creature that answers to nobody still here is green when it is on the local player's side
-(`UCataclysmTeams::ShareSideIgnoringMadness`). Every ordinary creature answers to nobody and is on the Monsters side,
-so it stays red. **A creature at the top of whose chain stands somebody else stays red**, as another commander's
-thrall always was: the green says "yours", not "on your side". The option not taken: the side alone, which would
-turn another player's creatures green if co-op is ever built.
-
-### #2868: what the design says, and what the code does -- for the owner to rule
-
-**Nothing was changed.** The design gives a thrall its commander's minion modifiers and keeps its own base figures,
-and the code does both. Quoted:
-
-- The owner, 2026-09-13 (entry "A subjugated enemy is a minion, is healed to full when taken, and says so in its own
-  description"): the enemy you take over "should be considered a minion".
-- The entry of 2026-10-02, "A subjugated enemy takes its commander's minion damage and minion health, as the owner
-  ruled it should": "A thrall's blow is multiplied by its commander's minion damage, read at the blow and against its
-  target", and "A thrall's maximum health is multiplied by its commander's minion health when it is taken".
-- Issue #340, ruled 2026-11-02 by the coordinating session: a thrall is asked as a `Minion.Creature`, so its
-  commander's Spirit reaches its blow through `game/Data/MinionScaling.csv`, as it reaches an imp's.
-- `docs/Cataclysm_GDD_v2.md`, the minion channels: "A minion reaches its summoner through exactly three channels" --
-  its side; "Its base health and base damage | The type's own base, raised by the summoner's **level**"; and increased
-  damage from one primary attribute. Subjugate's row in `game/Data/WeaponSkills.csv`: a thrall "keeps its own
-  abilities".
-- The owner's "minions update live rather than snapshotting", recorded on 2026-09-13 "and not built".
-
-**What the code does.** A thrall's blows through `UCataclysmSkillEffects::ApplyHit` are multiplied by
-`UCataclysmCommand::ThrallDamageMultiplierAgainst`, its commander's `minion_damage` asked as `Minion.Creature`; its
-maximum health by `minion_health` once, at the take; its attack interval by `minion_attack_speed`
-(`AttackIntervalScaleFor`); its blows on creatures by Subjugate's level factor (#2764). **What it does not get:** the
-summoner's level on its base figures, which stay the creature's own (archetype, rarity, the floor's tier), because the
-design states that channel for a minion TYPE's base and a thrall has no type; minion damage on what does not pass
-through `ApplyHit` (burning ground, its damage over time, Infernal Brand, retaliation, Shared Ruin, Chorus), listed in
-the 2026-10-02 entry; and later changes to minion health, which is fixed at the take. A summoned Imp's base IS raised
-by the player's level, so an Imp at a high character level can out-hit a thrall taken on a low tier even with the same
-minion modifiers. **Whether a thrall's base should also follow its commander's level is a design question for the
-owner.**
-
-### Tests
-
-Registered, not run. **Four new automation tests**, predicting `Cataclysm.Command.` 25 to 28 and
-`Cataclysm.Gatekeeper.` 14 to 15:
-
-- `Cataclysm.Command.SubjugateTakesAnEnemyItsBlowWouldHaveKilled`: the control first, a caster with no room whose
-  300% blow kills a creature at 50 of 1,000 health; then a caster with room takes an identical creature, alive, at its
-  full maximum, commanded, and not left held.
-- `Cataclysm.Command.SubjugatesBlowStillKillsABossItCannotTake`: the same blow kills a boss at 50 health from a caster
-  with room, and takes nothing.
-- `Cataclysm.Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem`: each of the six reasons made to hold once; each is
-  refused, named, and says "yes" for itself, every reason is named in every text, a dead creature's says "dead yes";
-  and a creature that can be taken names none and says "yes" to nothing.
-- `Cataclysm.Gatekeeper.ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain`: a free Gatekeeper's
-  Imps red; the taken Gatekeeper and its Imps green to its commander; another commander's Gatekeeper's Imps red to it
-  and green to theirs; and the Imps of the taken Gatekeeper still green after it is destroyed.
-
-**One new Python test**, `test_the_commands_refusal_line_names_every_reason_it_can_refuse_for` in
-`tools/tests/test_a_refused_press_and_a_take_say_why.py`: the line prints the reason and the list, `Subjugate` refuses
-by `WhySubjugateRefuses`, and every reason on the list is asked and named. **Proved** with `tools/prove_guard.py`,
-the list in the line replaced by a fixed "boss no": `PROVED: 1 failed, 4 passed | restored: 5 passed`, the failure
-being that test.
-
-**Guard proofs registered for the window**, each with the test it must fail:
-
-| Proof | Break | Must fail |
-| :-- | :-- | :-- |
-| H1 | `Held->bHeldAliveForATake = true;` to `= false;` (`CataclysmSkillTemplates.cpp`) | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
-| H2 | `IsHeldAliveForATake(CataclysmDefendingBody(*this)))` to `IsHeldAliveForATake(nullptr))` in `PreAttributeChange` | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
-| H3 | `if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None` to `if (true` | `SubjugatesBlowStillKillsABossItCannotTake` |
-| R1 | `return Character && UCataclysmSkillEffects::IsDead(Character);` to `return false;` | `ATakeRefusalNamesItsReasonAndDeadIsOneOfThem` |
-| B1 | `UCataclysmCommand::TopCommanderOf(Creature))` to `UCataclysmCommand::CommanderOf(Creature))` in `HealthFillHexFor` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` |
-| B2 | `return UCataclysmTeams::ShareSideIgnoringMadness(Creature, LocalPlayerPawn)` to `return false` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` (the destroyed Gatekeeper's Imps only) |
-
-**Regressions to read in the window:** `Cataclysm.Overlay.ACreatureThePlayerCommandsHasAGreenHealthBar`, every
-`Cataclysm.Command.` Subjugate test, `Cataclysm.Gatekeeper.ATakenGatekeepersImpsFightForItsCommanderAndAFreeOnesDoNot`,
-and the `Cataclysm.SkillLevelSources.` and `Cataclysm.LevelCosts.` tests that call `Possess`.
-
----
-
-## 2026-11-24 — Bug batch 1: five fix branches in one window, and a guard proof registered for every new test (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863)
-
-**Said first:**
-
-- **NOT COMPILED, NOT RUN IN THE ENGINE.** Assembled on `feat/bug-batch-1` from development `6dd62aba6` (#2880
-  merged), as the coordinating session asked on 2026-11-24. Its window comes after the rarity cap window and inv-w1.
-- **27 OF THE 37 NEW UNREAL TESTS HAD NO GUARD PROOF IN THEIR ENTRIES.** The coordinating session ruled that each gets
-  one before the window. The writing agents' planned breaks, passed on in their reports, were checked here against
-  this branch; one was rewritten (G4) and three were written here (GD8 to GD10) for tests no planned break covered.
-- The five branches' own entries, below this one, hold each fix's reasons, rulings and tests.
-
-### What it holds
-
-Merged in this order, `git merge --no-ff`:
-
-| Merge | Branch | Issues |
-| :-- | :-- | :-- |
-| `2bde3bc06` | `fix/creature-combat-2874` at `c371d75d8`, with `fix/drops-and-death-2871` at `472bc1b56` inside it | #2871, #2874, #2876, #2877 |
-| `2e0f8ef8e` | `fix/modifiers-2854` at `83fdb1e61` | #2855, #2854 |
-| `0fcbb55ec` | `fix/empire-cities-2859` at `95534b793` | #2859, #2866 |
-| `282ade7e5` | `fix/demonic-guide-2860` at `6d9815cc1` | #2860, #2861, #2862 |
-| `5d696dc7e` | `fix/masochist-shield-2873` at `a04b611ee` | #2873, #2863 |
-
-- **Only this log conflicted**, at every merge, resolved with `tools/resolve_decisions_log.py`. No code file conflicted,
-  the overlaps named beforehand included (`CataclysmVitalAttributeSet.cpp`, `CataclysmSkillEffects.*`,
-  `CataclysmEnemyCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`).
-- **The resolutions left some of the 2026-11-24 entries below the 2026-11-22 ones**; `b80b1f21a` puts the seven new
-  entries first, newest first by the author date of the branch commit that first wrote each heading, each one's text
-  checked equal to its branch's.
-- **Every file arrived as written**: each of the 70 changed files but this log differs from development by exactly the
-  union of the five branches' changed lines, compared from their base `4d33f5994`.
-- `tools/check_resolved_cpp.py` on the 57 changed C++ files: "57 files read, 0 with complaints".
-- No branch names a save version or a committed save file; they were written at run 17 and character 14, and
-  development is at 18 and 15 since #2880.
-- The engine-name and anonymous-helper checks: "7 passed". **Full Python suite: "8259 passed, 10 skipped"; JUnit 8269
-  tests, 0 failures, 0 errors, 10 skipped.** ruff: "All checks passed!".
-
-### Registered for its window
-
-**The base is window sd-w2's whole-suite engine log** (`sdw2_suite_engine_45a0138d.log`, 5341 performed, 57 skipped
-halves, 861 test saves). The batch adds 38 test names and removes 1 (`...HurtsThePlayerWithinReach`, renamed
-`...AnywhereOnTheFloor`), read from the name literals in the diff, since several files register through their own
-wrapper macros. **The whole suite is registered as 5378**, all succeeded; 57 skipped halves and 861 test saves written
-and deleted, 0 left behind (no added line reports a skipped half or writes a save: a reading).
-
-| Branch | New tests |
-| :-- | --: |
-| creature-combat | 6 |
-| drops-and-death | 4 |
-| modifiers | 3, and 1 renamed |
-| empire-cities | 6 (its entry lists none; counted from the code) |
-| demonic-guide | 11 |
-| masochist-shield | 7 |
-
-**Groups alone, first**, at sd-w2's count plus what the batch adds: `EffectPlacement.` 4 (new), `PassThroughBodies.` 5
-(new), `DungeonModifierEffects.` 785 (777 + 8), `EnemyModifiers.` 61 (57 + 4), `EnemyHitTiming.` 15, `EnemyStrength.` 9,
-`PlayerCopies.` 8, `BuriedWeaponKills.` 4, `HitLog.` 8, `Fervour.` 32, `ThornsOfGlass.` 11, `EmpireTreeCity.` 21,
-`EmpireTreeEvents.` 15, `WalkFromTheScreen.` 6; and with nothing added, `EmpireScreen.` 16, `CityScreen.` 19 and
-`SaveLoad.` 81, because empire-cities changes the map, the city screen's layout and the load code. No editor step: no
-branch changes a CSV or an asset. Python and ruff beside the whole suite.
-
-**35 C++ guard proofs**, in `.claude/windows/prove_bb1_table.py.txt`, every anchor matching once on `b80b1f21a`. Each
-is narrowed to the tests it is for -- a group with its trailing dot, or the tests' full names joined with `+` -- so a
-break that moves other tests of a large group is not read as this proof's. Predicted, not run:
-
-| Proof | Break | Selects | Must fail |
-| :-- | :-- | --: | :-- |
-| EP1 | `OnTheFloor` returns the point asked | 4 | all four `EffectPlacement.` tests |
-| EP2 | a ground zone drawn where asked | 4 | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
-| EP3 | a telegraph marker drawn where asked | 4 | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
-| EP4 | debris left where asked | 4 | `DebrisIsLeftOnTheFloorUnderTheImpact` |
-| F1 | Fervour from the health lost only | 32 | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
-| F2 | the shield's recharge removes Fervour | 32 | `TheEnergyShieldRechargingRemovesNoFervour` |
-| B1 | Blood Altar's old reach back | 2 | `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`, `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
-| B2 | the unfed pulse's line reworded | 2 | `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
-| T1 | Thorns of Glass's interval without buffs | 11 | `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond` |
-| T2 | ticks let into the strike back | 11 | `ADamageOverTimeTickIsNotStruckBack`, `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval` |
-| G1 | `MarkDead` never notes the actor being marked | 1 | `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` |
-| G2 | a death keeps the waiting blow | 1 | `EnemyHitTiming.ACreatureKilledBeforeItsSwingConnectsDealsNothingAfterwards` |
-| G3 | Infernal Brand brands a dead target | 1 | `EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt` |
-| G4 | the death line said at Verbose, not Display | 1 | `HitLog.ACreaturesDeathIsSaidOnceAfterTheBlowThatKilledIt` |
-| CC1 | the brand called for every blow, ticks included | 1 | `EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` |
-| CC2 | the brand's explosion can critically strike | 1 | `EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` |
-| CC3 | a dead copy's waiting swing still lands | 1 | `PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` |
-| CC4 | Infernal Sacrifice eats a creature that cannot be hurt | 1 | `EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` |
-| CC5 | the chain's end kills a creature that cannot be hurt | 1 | `DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` |
-| CC6 | a creature's damage scaled by 2 (the measurement's control) | 1 | `EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` |
-| GD1 | the search takes the guide | 1 | `DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` |
-| GD2 | a blow at the guide is not refused | 1 | `DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` |
-| GD3 | "untargetable" forgets the guide | 2 | both guide tests above |
-| GD4 | the guide's body never refreshed | 1 | `DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` |
-| GD5 | every capsule ignores nothing | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ThePlayerAndItsMinionWalkThroughEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
-| GD6 | a waiting guide's prints told it walks | 1 | `DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` |
-| GD7 | prints last 100 times as long | 1 | `DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` |
-| GD8 | a jump read as a walk (100 times the jump) | 1 | `DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` |
-| GD9 | a creature moves through every pass-through body | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
-| GD10 | a body moves through its own kind | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `TwoMinionsStillBlockEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
-| EC1 | a buy or respec does not keep the shares | 3 | `EmpireTreeCity.ABoughtNodeKeepsEveryCityAtItsShareOfTheRaisedMaximum`, `ARespecKeepsEveryCityAtItsShareOfTheLoweredMaximum`, `ABuyAndARespecInTheCapitalKeepACitysShare` |
-| EC2 | an upgrade does not keep the shares | 1 | `EmpireTreeCity.TheRoyalEngineersCountMovingKeepsEveryCityAtItsShare` |
-| EC3 | a fall does not keep the shares | 1 | the same |
-| EC4 | the day's turn does not keep the shares | 1 | `EmpireTreeEvents.EnduringFoundationsKeepsTheCitysShareAsTheDayTurns` |
-| EC5 | a fallen city's box opens nothing | 1 | `WalkFromTheScreen.AFallenCityOpensItsScreenAndItsFallenCityDungeonIsWalkedFromIt` |
-
-**Every proof must also pass every selected test restored.** B1 and B2 were registered by their entry with the whole
-`DungeonModifierEffects.` group (785 tests); they are narrowed to the two Blood Altar tests here so the group does not
-run twice per proof. B1 and T2 are anchored on a longer text than their entry quotes, because the quoted text occurs
-12 and 5 times in its file. **G4 is rewritten**: the planned break gave a one-placeholder format extra arguments, which
-the engine's compile-time format check may refuse.
-
----
-
-## 2026-11-24 — The tier 1 Boss Brute killed with its Infernal Brand, not its swing: a brand is built by hits alone and its explosion never critically strikes; a creature killed mid-swing lands nothing; Sacrifice and Epidemic pass over a creature that cannot be hurt (#2874, #2877, #2876)
-
-**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/creature-combat-2874`, made from
-`fix/drops-and-death-2871`, a bug-fix agent of the coordinating session, 2026-11-24. Issues
-[#2874](https://github.com/sdubois777/Cataclysm/issues/2874) (part 2),
-[#2877](https://github.com/sdubois777/Cataclysm/issues/2877) and
-[#2876](https://github.com/sdubois777/Cataclysm/issues/2876), and an addition the coordinating session sent the same
-day.
-
-**THIS ENTRY SUPERSEDES TWO SENTENCES OF THE ENTRY BELOW**, written on the branch this one was made from, which is not
-this branch's to change. It said of the owner's death "The brand was not part of the kill -- the swing took the 396
-health left", and "the melee critical is the outlier and the reading of this branch cannot say why". **The killing
-blow was the brand's explosion, and there was no melee critical.** What follows is the evidence.
-
-### What the owner said, and what was ruled
-
-- **The owner, verbatim, on #2874:** "I just got 1 shot by something. I killed a boss, and immediately died."
-- **The coordinating session's rulings of 2026-11-24, verbatim:** "(1a) approved: Infernal Brand stacks only on hits,
-  never on damage-over-time ticks (the row says "on hit"; "a tick is not a hit" is the project's rule). (1b) approved
-  as the coordinating session's ruling, not only a judgement: the Brand's explosion cannot critically strike,
-  consistent with the overkill explosion and death blast ruled 2026-10-07; keep it as its own commit and quote that
-  precedent. (1c) yes, add the melee-critical measurement test. Correct the base branch's DECISIONS note that "the
-  brand was not part of the kill" in your entry (the base branch is not yours to push to; say in your entry that it
-  supersedes that note). (2) Do NOT take the design workbook: it is a binary git cannot merge, so only one branch may
-  carry an unmerged edit to it, and other branches may. Leave #2876's row unchanged and report the exact new text; I
-  will schedule the workbook edit separately."
-- **The precedent (1b) names**, this file, 2026-10-07, ruling 4 on the overkill explosion: "Direct damage of no damage
-  type, dealt by the killer, delivered as area damage and never retaliated against, as `ACataclysmMinion::DeathBlast`
-  delivers a blast at a death. It cannot critically strike."
-- **The addition**, the coordinating session, 2026-11-24: Infernal Sacrifice and Epidemic's chain end write a
-  creature's health to nought and call `HandleDeath` directly, which skips the health hold, so they can kill creatures
-  that cannot be hurt; make both refuse such a target and one already dead or being marked dead, and check the two
-  other direct `HandleDeath` callers.
-
-### #2874: what the log shows
-
-`game/Saved/Logs/Cataclysm.log` in the main checkout, read 2026-11-24:
-
-```
-18:51:16.330  HIT: took 76 from CataclysmBruteCharacter_136 (Boss), ranged attack: 39 to health; health 430 of 430 before it
-18:51:17.512  HIT: took 8.9 from CataclysmBruteCharacter_136 (Boss), burn, 2 ticks within one second: 4.1 to health; ...
-18:51:19.499  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.7 to health; ...
-18:51:19.499  HIT: took 396 from CataclysmBruteCharacter_136 (Boss), attack: 396 to health; critical; health 396 of 430 before it
-18:51:19.507  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.5 to health; damage over time; health 396 of 430 before the first
-18:51:19.507  CataclysmPlayerCharacter_0 died at 0 of 430 health ... the killing blow: 396 from CataclysmBruteCharacter_136 (Boss), attack: ...
-18:51:19.509  CataclysmBruteCharacter_136's Infernal Brand reached five stacks on CataclysmPlayerState_0 and dealt 367.
-```
-
-1. **"attack" is not the Brute's swing.** The hit log names a blow with no skill by its tags: a spell, a ranged attack,
-   a melee attack, or "attack" when it carries none of the three (`FCataclysmHitLog::WhatText`). A creature's ordinary
-   swing carries `Type.Melee` (`ACataclysmEnemyCharacter::BasicAttackTags`) and the Brute's stomp carries it too, so
-   either would read "melee attack". The log holds 779 "melee attack" lines and none is from
-   `CataclysmBruteCharacter_136`.
-2. **Every "attack" line that is not a retaliation is a brand's explosion.** All 11 in the log are followed in the same
-   frame, by the same creature, with "Infernal Brand reached five stacks ... dealt X":
-
-   | Time | Creature | Took | Dealt (sent) |
-   | :-- | :-- | --: | --: |
-   | 17:00:47.866 | AbyssalWarden_16 (Boss) | 144, the health left: the killing blow | 273 |
-   | 17:01:27.913 | Imp_151 (Legendary) | 13 | 16 |
-   | 17:16:00.573 | Brute_37 (Boss) | 190 | 245 |
-   | 17:16:59.769 | Imp_284 (Boss) | 59 | 76 |
-   | 17:18:26.152 | Imp_377 (Herald) | 41 | 53 |
-   | 17:20:08.334 | Imp_486 (Boss) | 87 | 105 |
-   | 17:20:12.402 | Imp_478 (Herald) | 50 | 63 |
-   | 18:01:53.309 | Brute_108 (Herald) | 136 | 238 |
-   | 18:35:50.854 | Brute_120 (Boss) | 214, the health left: the killing blow | 532 |
-   | 18:51:19.499 | Brute_136 (Boss) | 396 critical, the health left: the killing blow | 367 |
-   | 19:15:24.904 | Hellhound_242 (Boss) | 272 critical | 225 |
-
-   `BrandOnHit` writes its line after the explosion's blow returns, so the blow's own line comes first, and the death
-   line between them is the explosion's kill. **Three of the owner's deaths that day were brand explosions.**
-3. **The explosion of 18:51:19 was 367 sent**, five times an attack damage of 73.4, **struck critically**, so 734, and
-   was cut to the 396 health left. The design's Brute there, `strength_on_floor("Boss", 1, "Basic", "Timed", 10, 6,
-   kind="Brute", ring="Outpost")`, hits for 72.32; the 1.5% between them was not traced and is most likely the
-   dungeon's modifier score, which that call leaves at nought.
-4. **Its five stacks were one rock and four burn ticks.** `UCataclysmVitalAttributeSet` called `BrandOnHit` for every
-   blow that took health, ticks of damage over time included. The ticks before 16.330 took nothing from health; the
-   rock (39 to health), the two ticks of 17.512, the tick closed at 19.499 and the tick at 19.507 made five, and the
-   last of them, a tick of 0.5, set off the explosion. **The Brute never landed a melee swing in this fight.**
-5. **The other figures fit the design**, as #2874 said: the rock sent 110.1 (150% of 73.4) and landed 76, so the
-   character kept 69% of a hit; the aura's tick is 9% of the hit, 6.6, and landed 4.5.
-
-### What changed
-
-1. **A brand is built by hits alone** (ruling 1a). `BrandOnHit` is called inside the `!Hit.bIsDamageOverTime` block,
-   beside `WitherOnHit` and `TouchOfNothingOnHit`, which the owner's rule for Withering Blows on #1722 already put
-   there: "one stack per hit that takes health". Beguiling's charm is left where it was, on any blow the creature takes.
-2. **The explosion can never be a critical strike** (ruling 1b), in its own commit. `BrandOnHit` sends it with a
-   delivery whose `bCannotCriticallyStrike` is set, as the overkill explosion's is.
-3. **A creature killed while its swing waits lands nothing** (#2877). The Corrupted Stalker and the Worn Residue double
-   strike through the player's skill templates, whose blow waits on `UCataclysmSkillTemplate::SwingTimer`, which
-   nothing cleared at a creature's death. The timer now asks, when it fires, whether its avatar is a creature that has
-   died; if so the blow is dropped and the skill ended as a cancelled one, as an interrupted skill is. **A player's
-   waiting blow is unchanged**: the question is asked only of an `ACataclysmEnemyCharacter`, and the owner answered
-   #1549, a dead player's waiting blow, "not important" with no change planned.
-4. **Infernal Sacrifice and Epidemic's chain end pass over a creature that cannot be hurt, or whose death is being
-   marked** (the addition): each asks `bCannotBeHurt` and `IsBeingMarkedDead` beside `IsDead`, and goes on to the next
-   creature. Shrouded creatures (`bShrouded`) are not passed over: the ruling of 2026-09-26 keeps that field apart from
-   `bCannotBeHurt` for rules that read the latter, and the addition named the latter.
-5. **The two other direct `HandleDeath` callers have the same shape and cannot reach such a creature today; not
-   changed.** The delayed-damage drain (`UCataclysmDelayedDamage::DrainStep`): `TakesNoDamage` empties a blow on a
-   creature that cannot be hurt before `DelayShare` takes its share, so no parcel is ever held. The health-debt drain
-   (`UCataclysmHealthDebt`): a debt is run up only through the class resource set's unpayable-cost rule, and as far
-   as was read a creature holds that set only with a player's build (the Stalker, the double), which no rule makes
-   unhurtable: Blood Bond takes the Elite rung alone, and both stand at Common. The Demonic Guide is handled on
-   `fix/demonic-guide-2860`.
-6. **`docs/Cataclysm_GDD_v2.md`**: "Nor does a payout of damage banked from earlier blows" under the critical strike
-   rule, and "A blow a creature has not yet struck is not struck" under "What Dying Does at the Moment It Happens".
-
-### #2874: the figures, reported and not retuned
-
-- **The melee critical is the design's.** A floor-built tier 1 Outpost Boss Brute on floor 6 hits for 72.32 and
-  critically for 144.64 before mitigation. On the level 6 reference character -- the starting Ravager with its
-  starting weapon and nothing else, 230 health, 42.5 armour (5.05% at tier 1) and 3.25% reduction -- with the
-  Boss's Overwhelm taking the armour's share away, about 140 lands, about 61% of its health: **not a one-shot**. On
-  the owner's character, which kept 69% of a hit, about 100 of 430. **Predicted, not run**: the measurement test
-  below is what runs it.
-- **The Boss Brute's brand, as now built, is 361.6 before mitigation, never doubled.** About 250 of the owner's 430,
-  58%. **On the level 6 reference character it is about 350 against 230 health: it still kills a gearless level 6
-  character outright**, which the design states as intended ("A geared character is never one-shot, and a gearless
-  one still is", `docs/Cataclysm_GDD_v2.md`, "How Long a Geared Character Survives", fitted at tier 8). Reported for
-  the coordinating session, not retuned. After this change the brand needs five of the Brute's own hits within eight
-  seconds of each other, which a Brute swinging every 1.2 seconds in contact reaches in about six.
-
-### #2876: the design says Commander, so the row's text changes, in the workbook, later
-
-- **What the design says.** This file, 2026-09-05, "The remaining six Demonic enemy modifiers", under Infernal
-  Sacrifice: "**The damage buff is Commander**, which is the buff this game has for "hits harder and moves faster",
-  rather than inventing a second one meaning the same thing." Commander had been ruled by the owner on 2026-08-20 to
-  move two stats only (`docs/Cataclysm_GDD_v2.md`: "Those two stats and not every stat"): 20% increased movement speed
-  and attack speed. **So the code grants what the design chose, and the row's "temporary damage buffs" is the
-  inaccuracy.** Nothing in `docs/Cataclysm_GDD_v2.md` names Infernal Sacrifice.
-- **Not changed here, by ruling (2).** The row's text is generated from the design workbook's Enemy Modifiers sheet,
-  so the change is a workbook edit, `game/Data/EnemyModifiers.csv` regenerated, and `DT_EnemyModifiers` rebuilt in a
-  window. **The proposed text**, for the Demonic column's Infernal Sacrifice cell: "Infernal Sacrifice: Sacrifice a
-  nearby ally every 6 seconds to heal yourself for a quarter of your maximum health and gain Commander (20% increased
-  movement speed and attack speed) for 8 seconds." Its figures are the code's: `SacrificeIntervalSeconds` 6,
-  `SacrificeHealShareOfHealth` 0.25, `SacrificeBuffSeconds` 8.
-- **The code's comment beside the grant** said Commander makes "nearby allies hit harder"; it now says what Commander
-  moves and points at #2876.
-
-### Tests
-
-**Six new Unreal tests, in four groups:**
-
-| Test | What it shows |
-| :-- | :-- |
-| `Cataclysm.EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` | CONTROL: one direct hit is one brand. THEN the brander's burn runs three seconds on the clock, at least two ticks taking health, and the player still holds one brand and nothing burst |
-| `Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` | every roll critical (chance 100, roll pinned 0); CONTROL: the five one-point hits are each critical. The explosion sends five 100-point hits, is not critical, and lands no more than it sent |
-| `Cataclysm.EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` | the Brute built in `ApplyDesignedStats`' order on the owner's floor: attack damage the design's 72.32 within 0.5%, multiplier 200; its swing ordered and landed when it connects, critical and melee, on the starting class at level 6, lands within 1% of 144.64 times what armour and resistance less its Overwhelm and the flat reduction leave, and less than the character's health. Prints "BOSS BRUTE MELEE CRITICAL" with every figure |
-| `Cataclysm.PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` | CONTROL: Famine's Stalker's first blow waits and lands when its swing connects. THEN its second blow waits, it is killed in the gap, the clock runs past the swing's moment, nothing waits, its body still stands, and the target is untouched |
-| `Cataclysm.EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` | an unhurtable ally nearest the eater and an ordinary one farther: CONTROL, the ordinary one is eaten; the unhurtable one stands at its whole health |
-| `Cataclysm.DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` | the chain test's line and an unhurtable Imp 3 m from the fifth kill: CONTROL, every creature of the line dies; the unhurtable Imp stands |
-
-**Python:** `tools/tests/test_a_brand_is_built_by_hits_and_a_dead_creature_lands_nothing.py`, 6 checks, by reading the
-source with comments stripped: `BrandOnHit` is called once, inside the block that calls `WitherOnHit`; the explosion's
-delivery is marked before the blow is sent with it; the swing timer asks a creature avatar's death before the blow;
-Sacrifice and Epidemic ask `bCannotBeHurt` and `IsBeingMarkedDead` before `HandleDeath`; and the measurement's design
-figure is `enemy_stats.strength_on_floor`'s.
-
-### Judgements of this change
-
-- **The measurement's reference character** is the starting class at level 6 with its starting weapon and nothing
-  else, which `tools/tests/test_the_starting_character_survives_a_pack.py` and `sim/analyse_opening.py` measure, and
-  its design figure after mitigation includes the Overwhelm the Boss applies (#2824 slice b) and resistance, which
-  that file's `share_of_a_hit_taken` leaves out. A judgement: the design now has Overwhelm, and a figure without it
-  would not be what the game should land. Tolerance 1%.
-- **A creature's dropped blow ends its skill as a cancelled use**, not merely skipped, so nothing of it is left
-  running; a judgement following "A CANCELLED SKILL STRIKES NOTHING" in `UCataclysmSkillTemplate::EndAbility`.
-- **The words of the two `docs/Cataclysm_GDD_v2.md` paragraphs.**
-
-### Sources
-
-No shipped game was researched: no formula or number is chosen. The two brand rulings apply this project's own rules
-(a tick is not a hit; a payout banked from earlier blows cannot critically strike, as ruled 2026-10-07), and the rest
-restore what the code and the design already said.
-
----
-
 ## 2026-11-24 — An effect drawn on the ground is drawn on the floor under it, through one helper, and every effect spawn site was checked (#2863)
 
 **WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
@@ -1713,6 +1420,115 @@ Masochist assertion is rewritten for the new paragraph, as
 | :-- | :-- | :-- |
 | `CataclysmVitalAttributeSet.cpp` | `GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);` to `GetOwningAbilitySystemComponent(), HealthLostToTheBlow, AssetTags);` | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
 | `CataclysmRegeneration.cpp` | `if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())\n\t{\n\t\tUCataclysmFervour::RemoveForHealing(` to the same with `\|\| Pool == UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()` added inside the condition | `TheEnergyShieldRechargingRemovesNoFervour` |
+
+---
+
+## 2026-11-24 — A character continued inside a dungeon stands where it was saved, and a level's first floor starts for the player once: the dungeon level's start no longer stands it at the entrance, or starts the floor again, after the floor's own start has reached it (#2858)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/resume-position-2858`, from the coordinating
+session's brief of 2026-11-24. Issue [#2858](https://github.com/sdubois777/Cataclysm/issues/2858).
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `game/Source/Cataclysm/Player/CataclysmGameMode.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveLoad.h`, `game/Source/Cataclysm/Save/CataclysmSaveLoad.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveWriter.cpp`, `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`,
+`docs/Save_System_Design.md`.
+
+### What the owner saw, and why no ruling was needed
+
+The owner, playtest of 2026-11-22, verbatim: "It should be loading you back in the spot you were, with whatever enemies
+were alive as well. Right now it seems to load you back at the start of the level." And on the issue the same day: "The
+enemies were dead up to where I had made it on that floor". `docs/Save_System_Design.md` section 6 already restores
+"Which floor, and where on it the character is standing", so this is a fault against the design, not a new rule.
+
+### The cause, read from the code in the order it runs
+
+1. **The pawn stands before play begins.** The engine spawns the player at login and only then begins play:
+   `UEngine::LoadMap` calls `SpawnPlayActor` before `BeginPlay` (UnrealEngine.cpp lines 16647 and 16661 in the 5.8
+   install), and Play In Editor does the same (GameInstance.cpp 538 and 566). `AGameModeBase::HandleStartingNewPlayer`
+   restarts the player at once. The load it asks for (`ACataclysmGameMode::LoadThePendingCharacter`) waits, because
+   the save writer begins in `StartPlay`.
+2. **`ACataclysmDungeonGameMode::StartPlay` builds the level's floor and calls `Super::StartPlay`**, where the writer
+   begins and the load runs: `ResumeEmpireDungeon` builds the saved floor (the first "Floor N carries ..." line), the
+   saved creatures go back, and `FCataclysmSaveApply::PlacementInto` puts the character where its record says. The load
+   logs "placed where it was saved", and that was true.
+3. **Back in the dungeon's `StartPlay`, `PlaceAtEntrance` stood the pawn at the floor's entrance**, and
+   `ApplyFloorRulesKeepingHealth` wrote "Floor N carries ..." a second time: the 3 milliseconds the issue measured.
+
+**The save was not at fault**: `FCataclysmSaveGather::PlacementFrom` writes the character's own location, and the
+creatures came back as the owner saw. The entrance placement after `Super::StartPlay` came with the dungeon level (#40,
+commit `23d3fec0c`); the load joined the parent's `StartPlay` with select-screen step 3a (commit `17c95a8d1`). No test
+ran a resume through `StartPlay`: every one called the load after it.
+
+### What changed
+
+- `FCataclysmLoadReport::bPutWhereSaved` and `SavedLocation`: set when a placement was found for the character on a
+  record that holds a floor. `ACataclysmGameMode::LoadThePendingCharacter` keeps it, and
+  `PendingLoadPutTheCharacterWhereSaved` answers it.
+- `ACataclysmDungeonGameMode::StartPlay` asks which pawn stood before its `GoToFloor` ran. After `Super::StartPlay` it
+  starts the first floor for the player -- the entrance, `NoteTheConsumptionDoubleAsAFloorIsEntered`,
+  `ApplyFloorRulesKeepingHealth` and `floor_start` -- only when that `GoToFloor` reached no pawn and no load put the
+  character where it was saved. Otherwise it logs which of the two it was, with how far a loaded character stands from
+  the entrance. A hand-over's record, which holds no floor, leaves the character where `GoToFloor` stood it.
+- **The log lines the issue asked for.** Every run record write logs the trigger that raised it and the place it holds
+  ("The run record was written for the clock: the character at X=... on floor N of '...', with M creature(s)
+  standing"); the load logs where the character stands just after the put-back, and a timer logs it again a second
+  later.
+- The comments that said no pawn stands during `StartPlay`'s first `GoToFloor` were corrected; they were the premise
+  the old order rested on.
+- No save record version and no fixture changed.
+
+### Judgements
+
+- **A judgement: the level's start reads a flag the load sets, rather than the load moving after the entrance
+  placement.** The placement stays for what it is for: a pawn that did not stand when `GoToFloor` ran, and a load that
+  put back no place. A flag answers exactly the question the start needs, and a load that runs later, in
+  `HandleStartingNewPlayer`, already came after every placement.
+- **A judgement: every run record write is logged, not only the clock's, a floor change's and the hand-over's.** Every
+  write restarts the clock, so in a fight the last write before a quit is usually a creature's death or a fight starting,
+  and a line for three triggers would miss the write a resume reads. The run record is written at most once a frame, so
+  the lines are at most one a frame.
+- **A judgement: the line a second after the load comes from a timer** on the world's timer manager, held by a weak
+  pointer to the character, so it is written in play and never in an automation test, whose world is not ticked.
+- **First reported, then ruled and fixed in the same branch.** In a launched game the first floor's start reached the
+  player twice, because `StartPlay` repeated `NoteTheConsumptionDoubleAsAFloorIsEntered`,
+  `ApplyFloorRulesKeepingHealth` and the `floor_start` event for a pawn `GoToFloor` had already reached; after a load the
+  repeated `floor_start` came after the saved health was put back, so "You start every dungeon floor at 30%-50% of your
+  maximum HP" capped a resumed character. The coordinating session, 2026-11-24, verbatim: "ruled by the coordinating
+  session as a defect, not a design question: the first floor's start must reach the player once, not twice. (1) In a
+  launched game, StartPlay must not repeat NoteTheConsumptionDoubleAsAFloorIsEntered, ApplyFloorRulesKeepingHealth and
+  the floor_start event when GoToFloor already reached the pawn. (2) On a resume (a load that put the character where it
+  was saved), the floor is not newly started: the floor_start event must not fire again after the saved health is put
+  back, so "You start every dungeon floor at 30%-50% of your maximum HP" (health_capped_at) does not cap a resumed
+  character."
+- **A judgement: "reached" means the same pawn stood before `GoToFloor` and after `Super::StartPlay`,** held by a weak
+  pointer, so a pawn destroyed or replaced in between is started here as before. No floor rule is lost by not repeating
+  them: they are held on the ability system (`SetDungeonStatModifiers`), so the stat refresh the character's
+  `BeginPlay` makes when it puts on its starting weapon keeps them.
+- **A judgement: the resume is protected twice, by the reached pawn and by the load's flag.** In a launched game and in
+  every test the pawn the load reaches is the one `GoToFloor` reached, so either answer alone keeps a resume's health;
+  the flag is kept for a pawn that came to stand inside `Super::StartPlay`, which `AGameModeBase` does not do today. So
+  no single-line break of either answer alone fails the resume tests, and their guard proof breaks the line that joins
+  the two.
+
+### Tests
+
+- New: `Cataclysm.SaveLoad.ACharacterContinuedInsideADungeonStandsWhereItWasSaved`. Saved as play saves it (floor 2 of
+  a walk, two creatures killed, the character moved to a cell three cells or more from both ends of the floor, the
+  clock's write), continued through the dungeon level's own `StartPlay` with the pawn standing first, then one beat of
+  the floor. The character must be within 10 cm of where the record says it stood after the start and after the beat;
+  the CONTROL is that place's distance from the entrance, over 100 times that. It also asserts the creatures standing
+  are the ones saved and that the clock's line and the start's line are each written once.
+- Changed: `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` asserts a hand-over's load
+  reports no place put back, so the level's start still stands that character at the entrance.
+- New: `Cataclysm.Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce`. The pawn stands before the dungeon level's
+  `StartPlay`, as login leaves it, and nothing is pending: `floor_start` reaches it exactly once, and it stands at the
+  floor's entrance (the CONTROL that the floor's start did reach it).
+- New: `Cataclysm.SaveLoad.AResumedCharacterWearingTheFloorStartCapKeepsItsSavedHealth`. Saved on floor 2 wearing the
+  cap on a helm, at 80% of its maximum health; continued through `StartPlay`. It keeps the health it was saved with,
+  and still after a beat, and no `floor_start` reaches it after the load put it back. CONTROLS: the loaded character
+  wears the cap, its saved health is above any share the cap lowers to, and the resumed floor's start did reach it
+  during the load.
 
 ---
 
@@ -1966,6 +1782,190 @@ brought no surge of its own.** A fall surge would have made dungeons numbered af
 surges. The fall did not cause the surge the owner saw; the rule worked as written. No surge rule changed here. The
 capital's summary does not say whether a fall brought a surge or was refused one, and the design's line does not name
 the 25-day brake; both are left to the coordinating session, since fix/empty-board-surge-2865 changes surges.
+
+---
+
+## 2026-11-24 — Subjugate takes a creature its blow would have killed, its refusal line names every reason including "dead", and a taken Gatekeeper's Imps wear the green bar (#2856, #2867); a thrall's minion scaling is as designed and goes to the owner (#2868)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/thralls-2856`, from development `4d33f5994`, by
+the coordinating session's brief of 2026-11-24. Nothing below has been built or run in Unreal; the counts and proofs
+are registered for the window, not measured. Issues [#2856](https://github.com/sdubois777/Cataclysm/issues/2856),
+[#2867](https://github.com/sdubois777/Cataclysm/issues/2867) and
+[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
+
+**Affects:** `UCataclysmCommand` (`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`, `.cpp`: the list
+`ECataclysmSubjugateRefusal`, `WhySubjugateRefuses`, `SubjugateRefusalHolds`, `SubjugateRefusalName`,
+`SubjugateRefusalsText`, `IsHeldAliveForATake` and `TopCommanderOf`, all new, and `Subjugate`, which now refuses by
+the list); `ACataclysmCharacterBase::bHeldAliveForATake` (new); `UCataclysmSummonSkill::Possess` and its header
+(`CataclysmSkillTemplates.cpp`, `.h`); `UCataclysmVitalAttributeSet::PreAttributeChange` and its damage branch
+(`CataclysmVitalAttributeSet.cpp`); `UCataclysmCombatOverlay::HealthFillHexFor` (`CataclysmCombatOverlay.cpp`, `.h`);
+`docs/Cataclysm_GDD_v2.md` (Subjugate's row and the health bar paragraph); four new automation tests and one new
+Python test.
+
+### The rulings and reports it carries, verbatim
+
+- **#2856, the owner, 2026-11-22:** "ok, well it should still take them even if it would kill". The report before it,
+  the owner the same day: "just did it again with over 50 fervour. It's just killing them". The issue's first report:
+  "subjugate has stopped taking enemies, it's just killing them now".
+- **#2867, the owner's playtest of 2026-11-23:** "The Gatekeeper's minions when subjugated appear with red healthbars,
+  making it seem like they're enemies."
+- **#2868, the same playtest:** "verify subjugated minions are getting the minion scaling from my character, it doesn't
+  seem like they are. My imps are hitting harder than a Herald."
+- **Standing:** the owner's of 2026-09-13, "turn their healthbar green so you know it's yours"; and #2791's rulings of
+  2026-11-20 by the coordinating session, that a taken Gatekeeper's Imps follow the Gatekeeper and not the player, and
+  "stay on its commander's side after it dies, until they are killed".
+
+### #2856: taken instead of killed
+
+**What changes in play.** When Subjugate's blow would kill a target it could otherwise take -- not dead, not a boss,
+not one that cannot be hurt, not already the caster's, and with room in the Fervour pool for the thrall -- the blow
+leaves it at 1 health instead. One health is below the row's half (and below Dominion's 65%), so the take goes
+ahead, and the take restores it to full as before. The half-health condition is unchanged: a blow that leaves a
+creature above the threshold still takes nothing. Anything the take would refuse anyway is not spared: a boss, a
+creature already the caster's, and every target when the pool has no room can still be killed by the blow.
+
+**How it is built.** `Possess` asks `UCataclysmCommand::WhySubjugateRefuses` and `HasRoomForAnotherThrall` before
+its blow -- the same two questions it asks after -- and when neither refuses, sets the target's
+`bHeldAliveForATake` for the length of `HitTargets` and clears it after. `UCataclysmVitalAttributeSet` holds such a
+target at one health exactly where it holds a creature in a friendly Unholy Sigil (issue #1559): in
+`PreAttributeChange`, so every write that would empty health -- a blow, a tick, an execute's direct loss -- leaves
+one point; and in the damage branch, so the blow is announced as not lethal and the health base is written back to
+the point held.
+
+**Judgement 1, how to build the ruling: a hold at one health during the blow, not a take decided before the
+damage.** The ruling left it open ("for example, the hit could stop at 1 health on a target that can be taken, or
+the take could be decided before the hit lands"). The hold was chosen because a blow's outcome is resolved inside the
+target's own attribute set -- evasion, block, armour, energy shield, the saves -- and cannot be known before it
+lands, so deciding first would have to take creatures the blow never reached; and because the hold is the shape the
+sigil already uses, at the same two places, so no new kind of rule enters the damage path. The option not taken:
+take the target before the blow and skip or soften the blow. It would also have changed what the blow does to a
+target that is then refused, which the ruling did not ask for.
+
+**Judgement 2, what the hold covers: everything the blow sets off before `HitTargets` returns** -- a burn's first
+tick if it fires on application, a row's answer to the hit, an execute the hit asks for. The ruling says the hit
+"must not kill it first", and those are the hit's. Nothing after the call is held: the take then heals the creature
+to full.
+
+**Judgement 3, the threshold is not pre-judged.** It depends on the blow, so it is judged after it, as before. One
+health passes it for any creature whose maximum is above two at the row's 50%.
+
+**The genre agrees that a kill need not stop a take**, re-fetched 2026-11-24. Path of Exile's Dominating Blow
+([poedb](https://poedb.tw/us/Dominating_Blow)): "If a non-unique enemy dies while affected by the debuff", "a
+Sentinel of Dominance with the same rarity, prefix and suffix modifiers will be summoned"; unique enemies are
+excluded. Diablo 2's Conversion ([diablo2.io](https://diablo2.io/skills/conversion-t4033.html)) takes the monster
+alive: a successful attack "has a chance to convert the target to fight evil", and it "will not work on Super Unique
+Monsters, Champions, and Bosses". **What the research settles:** a take survives the target's death in one shipped
+game, and bosses are excluded in both. **What it does not settle, and is Judgement 1:** Path of Exile raises a copy
+from the corpse, and this game keeps the creature itself, because Subjugate's row says it "keeps its own abilities"
+and is "restored to full health"; holding it at one point is how it stays the same creature.
+
+### #2856: the refusal line names every reason, "dead" among them
+
+**What was wrong.** The play log's line for the command's own refusal asked three of `Subjugate`'s six reasons
+again for itself -- boss, cannot be hurt, already on its side -- so the owner's log of 2026-11-22 read "TAKE REFUSED:
+'Subjugate' could not take 'CataclysmBruteCharacter_258': boss no, cannot be hurt no, already on its side no." for a
+creature the blow had killed.
+
+**What it prints now.** "TAKE REFUSED: '<skill>' could not take '<creature>', refused as <reason>: nothing to take
+no, not a character no, dead yes, boss no, cannot be hurt no, already on its side no." Both halves come from the list
+`ECataclysmSubjugateRefusal`: the reason is `WhySubjugateRefuses`, which `Subjugate` itself now refuses by, and the
+list is every reason asked by `SubjugateRefusalHolds`. So a refusal always prints a "yes", and a reason added to the
+list is printed without anybody editing the line. The order of the reasons is the order `Subjugate` asked them in.
+
+### #2856: the no-room refusal is still silent to the player, and nothing was built for it
+
+The issue's body asks three questions for a ruling: (1) show the refusal on screen, "at least 'No room: imps reserve
+80 of 104 Fervour'"; (2) refuse the press before the blow when no thrall would fit; (3) displace the oldest imp. Its
+recommendation of (1) is the filing session's, not the owner's, and no comment on the issue rules on any of the
+three. **So nothing was built for them**, by the brief ("do it if it is stated"). The play log line is unchanged.
+
+### #2867: the bar follows the top of the chain of command
+
+**The cause.** `HealthFillHexFor` was green only when `UCataclysmCommand::CommanderOf(creature)` was the local
+player. A taken Gatekeeper's Imps answer the Gatekeeper there (#2791), so every Imp a taken Gatekeeper called wore
+the enemy red. A thrall the player takes directly, Gatekeeper's Imps included, was already green: its owner is the
+player.
+
+**What it does now.** It climbs the chain with `UCataclysmCommand::TopCommanderOf` -- each step `CommanderOf`, at most
+eight -- and is green when the local player is at the top. Every creature the game makes a commander for was checked:
+a thrall (owner, set by `Subjugate`, the Warzone's allies and a load), a summoned minion (`Summoner`), and a taken
+Gatekeeper's Imps (owner, the Gatekeeper); no other code names a commander.
+
+**Judgement 4, an Imp whose taken Gatekeeper is gone stays green.** Once the Gatekeeper's body is destroyed its Imps'
+chain stops at nobody: the owner is a destroyed actor, and later nothing. They still fight on the player's side,
+ruled for #2791, so a creature that answers to nobody still here is green when it is on the local player's side
+(`UCataclysmTeams::ShareSideIgnoringMadness`). Every ordinary creature answers to nobody and is on the Monsters side,
+so it stays red. **A creature at the top of whose chain stands somebody else stays red**, as another commander's
+thrall always was: the green says "yours", not "on your side". The option not taken: the side alone, which would
+turn another player's creatures green if co-op is ever built.
+
+### #2868: what the design says, and what the code does -- for the owner to rule
+
+**Nothing was changed.** The design gives a thrall its commander's minion modifiers and keeps its own base figures,
+and the code does both. Quoted:
+
+- The owner, 2026-09-13 (entry "A subjugated enemy is a minion, is healed to full when taken, and says so in its own
+  description"): the enemy you take over "should be considered a minion".
+- The entry of 2026-10-02, "A subjugated enemy takes its commander's minion damage and minion health, as the owner
+  ruled it should": "A thrall's blow is multiplied by its commander's minion damage, read at the blow and against its
+  target", and "A thrall's maximum health is multiplied by its commander's minion health when it is taken".
+- Issue #340, ruled 2026-11-02 by the coordinating session: a thrall is asked as a `Minion.Creature`, so its
+  commander's Spirit reaches its blow through `game/Data/MinionScaling.csv`, as it reaches an imp's.
+- `docs/Cataclysm_GDD_v2.md`, the minion channels: "A minion reaches its summoner through exactly three channels" --
+  its side; "Its base health and base damage | The type's own base, raised by the summoner's **level**"; and increased
+  damage from one primary attribute. Subjugate's row in `game/Data/WeaponSkills.csv`: a thrall "keeps its own
+  abilities".
+- The owner's "minions update live rather than snapshotting", recorded on 2026-09-13 "and not built".
+
+**What the code does.** A thrall's blows through `UCataclysmSkillEffects::ApplyHit` are multiplied by
+`UCataclysmCommand::ThrallDamageMultiplierAgainst`, its commander's `minion_damage` asked as `Minion.Creature`; its
+maximum health by `minion_health` once, at the take; its attack interval by `minion_attack_speed`
+(`AttackIntervalScaleFor`); its blows on creatures by Subjugate's level factor (#2764). **What it does not get:** the
+summoner's level on its base figures, which stay the creature's own (archetype, rarity, the floor's tier), because the
+design states that channel for a minion TYPE's base and a thrall has no type; minion damage on what does not pass
+through `ApplyHit` (burning ground, its damage over time, Infernal Brand, retaliation, Shared Ruin, Chorus), listed in
+the 2026-10-02 entry; and later changes to minion health, which is fixed at the take. A summoned Imp's base IS raised
+by the player's level, so an Imp at a high character level can out-hit a thrall taken on a low tier even with the same
+minion modifiers. **Whether a thrall's base should also follow its commander's level is a design question for the
+owner.**
+
+### Tests
+
+Registered, not run. **Four new automation tests**, predicting `Cataclysm.Command.` 25 to 28 and
+`Cataclysm.Gatekeeper.` 14 to 15:
+
+- `Cataclysm.Command.SubjugateTakesAnEnemyItsBlowWouldHaveKilled`: the control first, a caster with no room whose
+  300% blow kills a creature at 50 of 1,000 health; then a caster with room takes an identical creature, alive, at its
+  full maximum, commanded, and not left held.
+- `Cataclysm.Command.SubjugatesBlowStillKillsABossItCannotTake`: the same blow kills a boss at 50 health from a caster
+  with room, and takes nothing.
+- `Cataclysm.Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem`: each of the six reasons made to hold once; each is
+  refused, named, and says "yes" for itself, every reason is named in every text, a dead creature's says "dead yes";
+  and a creature that can be taken names none and says "yes" to nothing.
+- `Cataclysm.Gatekeeper.ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain`: a free Gatekeeper's
+  Imps red; the taken Gatekeeper and its Imps green to its commander; another commander's Gatekeeper's Imps red to it
+  and green to theirs; and the Imps of the taken Gatekeeper still green after it is destroyed.
+
+**One new Python test**, `test_the_commands_refusal_line_names_every_reason_it_can_refuse_for` in
+`tools/tests/test_a_refused_press_and_a_take_say_why.py`: the line prints the reason and the list, `Subjugate` refuses
+by `WhySubjugateRefuses`, and every reason on the list is asked and named. **Proved** with `tools/prove_guard.py`,
+the list in the line replaced by a fixed "boss no": `PROVED: 1 failed, 4 passed | restored: 5 passed`, the failure
+being that test.
+
+**Guard proofs registered for the window**, each with the test it must fail:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| H1 | `Held->bHeldAliveForATake = true;` to `= false;` (`CataclysmSkillTemplates.cpp`) | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H2 | `IsHeldAliveForATake(CataclysmDefendingBody(*this)))` to `IsHeldAliveForATake(nullptr))` in `PreAttributeChange` | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H3 | `if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None` to `if (true` | `SubjugatesBlowStillKillsABossItCannotTake` |
+| R1 | `return Character && UCataclysmSkillEffects::IsDead(Character);` to `return false;` | `ATakeRefusalNamesItsReasonAndDeadIsOneOfThem` |
+| B1 | `UCataclysmCommand::TopCommanderOf(Creature))` to `UCataclysmCommand::CommanderOf(Creature))` in `HealthFillHexFor` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` |
+| B2 | `return UCataclysmTeams::ShareSideIgnoringMadness(Creature, LocalPlayerPawn)` to `return false` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` (the destroyed Gatekeeper's Imps only) |
+
+**Regressions to read in the window:** `Cataclysm.Overlay.ACreatureThePlayerCommandsHasAGreenHealthBar`, every
+`Cataclysm.Command.` Subjugate test, `Cataclysm.Gatekeeper.ATakenGatekeepersImpsFightForItsCommanderAndAFreeOnesDoNot`,
+and the `Cataclysm.SkillLevelSources.` and `Cataclysm.LevelCosts.` tests that call `Possess`.
 
 ---
 
