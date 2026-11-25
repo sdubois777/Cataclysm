@@ -91,7 +91,11 @@ The coordinating session's rulings on V4, 2026-11-25, "every recommendation as w
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On `f1a3bab7d8ed7a8bf344d2e43d07b220b5d43282`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8638 passed, 9 skipped in 524.23s**, and the JUnit file `tests="8648" failures="1"
+errors="0" skipped="9"`, which is 8,638 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed. The first run.
 
 ### INCLUDE AUDIT
 
