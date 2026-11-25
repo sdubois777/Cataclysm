@@ -1513,6 +1513,13 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		// projectile still flies and still sets alight what it touches.
 		BindTether(Caster);
 
+		// THE RECORD OF THE FERVOUR THIS USE PAYS FOR ENEMIES HIT, MADE FRESH FOR EACH USE and handed to every shot it
+		// fires, a rack's included, so the row's cap a cast is the use's and not each shot's. Issue #2885, the Death
+		// draft's N19, slice DS5: the Spear's Soul Lance, "at most 4 a throw" however many lances a row of the user's
+		// adds (a judgement of the draft's, kept). Nought paid until a shot lands; a row stating no `HitFervour` pays
+		// nothing into it.
+		HitFervourOfThisUse = MakeShared<float>(0.0f);
+
 		// A RACK OF THIRTY RATHER THAN ONE THROW. The Axe's Butcher's Bill is
 		// the only row that states a Count beside an Interval, and it needs the
 		// ability to stay alive across all of them rather than ending when the
@@ -1587,6 +1594,8 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		InFlight->StrikesFromPoint = Origin;
 		// AND WHO IT WAS CAST BY, which outlives the use: a skill gadget's shot is its own when it lands. Stack 2.
 		InFlight->CastBy = FreeRepeatCastBy;
+		// AND THE USE'S RECORD OF THE FERVOUR PAID FOR ENEMIES HIT. Issue #2885, N19.
+		InFlight->HitFervourStatedInItsUse = HitFervourOfThisUse;
 
 		// AND IT GLANCES ONWARD IF THE ROW SAYS SO. The Axe's Carom: "it glances
 		// from them to the next nearest and onward through three more ... every
@@ -1654,6 +1663,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 				Shot->bStrikesFromAPoint = bFreeRepeatHasOrigin;
 				Shot->StrikesFromPoint = Origin;
 				Shot->CastBy = FreeRepeatCastBy;
+				Shot->HitFervourStatedInItsUse = HitFervourOfThisUse;
 				Shot->JoinsAUse(LandedOn, Index);
 				LetItGlance(Shot);
 				Shot->OnFinished.AddUObject(
@@ -1963,6 +1973,9 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		// AND WHO IT WAS CAST BY: A RACK'S LAST AXES LAND AFTER THE USE HAS ENDED, and are still a skill gadget's.
 		// Ruled 2026-10-16, stack 2.
 		Axe->CastBy = FreeRepeatCastBy;
+		// AND THE USE'S RECORD OF THE FERVOUR PAID FOR ENEMIES HIT, so a rack's cap a cast is the rack's. Null for a
+		// throw a test made with no use begun, whose axe then counts its own. Issue #2885, N19.
+		Axe->HitFervourStatedInItsUse = HitFervourOfThisUse;
 	}
 
 	// AND EACH AXE OF A RACK GLANCES AS A SINGLE THROW DOES, when the row states bounces or a row of the
@@ -4295,6 +4308,16 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	// 9.3 metres a second, a little over twice a Ravager's 4.6 metre walk.
 	SpeedCmPerSecond = ScaledRangeCm() / Params.Duration;
 	LastSearchedFrom = Start;
+
+	// "NOTHING CAN TOUCH YOU WHILE YOU DRIFT", FOR THE WHOLE WALK. Issue #2885, the Death draft's N18, slice DS5: the
+	// Staff's Wraithwalk. The flicker's own call (`ActivateAbility`), for the walk's `Duration`, the time the stop timer
+	// below ends it at: until 2026-11-24 only a flicker read `Untargetable=1`, and a walked charge stating it was
+	// touchable throughout. A walk cut short keeps what is left of it, as a flicker cut short does: the tag runs out by
+	// its own time and is not taken off at the end.
+	if (Params.bUntargetable)
+	{
+		UCataclysmSkillEffects::ApplyUntargetable(Self, Self, Params.Duration);
+	}
 
 	// THE ENGINE MOVES THE CHARACTER, AND THIS SKILL USED TO DO IT ITSELF. Until
 	// 2026-09-02 `AdvanceOneStep` teleported the character 46.7cm at a time with

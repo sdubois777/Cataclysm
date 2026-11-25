@@ -447,7 +447,14 @@ REQUIREMENTS = frozenset({"Burning", "Target", "Stationary", "RearHit"})
 #: as a husk, the same husk Shallow Graves raises". A Debuff's alone, beside
 #: `RisesAs=<kind>`, which `validate_risen_kinds` holds to a Summon row of the
 #: same damage type raising that kind.
-ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release", "Rise"})
+#:
+#: `Burst` JOINED THE SAME DAY WITH SLICE DS5: the Death draft's N14, the
+#: Fist's Gravetouch, "if it dies while the wound still bleeds, it bursts,
+#: dealing 10% of its maximum health to every enemy within 4 meters". Beside
+#: the row's `Ailment` (the wound), `BurstPercentOfMaximumHealth` and
+#: `OnDeathRange`, which `check_a_bursting_wound_a_paid_hit_and_an_escape`
+#: asks for.
+ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release", "Rise", "Burst"})
 
 #: How a `RisesAs` value is written: one Minion Types row's name.
 RISEN_KIND = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
@@ -640,7 +647,11 @@ SHAPE_PARAMS = {
                # Necrosis around it deal all they had left (the Fist's
                # Quietus). N9 needs no key: `RefundsCooldown` is a rider, and
                # a strike now reads it.
-               "SpendsAllFervour", "CashInRadius"},
+               "SpendsAllFervour", "CashInRadius",
+               # SLICE DS5, 2026-11-24, issue #2885: N14, the share of the
+               # dying creature's maximum health a wound bursts for, beside
+               # `OnDeath=Burst` (the Fist's Gravetouch).
+               "BurstPercentOfMaximumHealth"},
     # A PROJECTILE MAY NOW REPEAT. Butcher's Bill throws thirty axes over ten
     # seconds, which needs the same Count, Duration and Interval a Summon has
     # always had; before this it could only be written as prose. `TargetMode`
@@ -656,7 +667,10 @@ SHAPE_PARAMS = {
                    "Detonates",
                    # N6, slice DS3: Restless Spirits' kills, and Hungering
                    # Soul's hosts, whose buried soul carries it on.
-                   "KillFervour"},
+                   "KillFervour",
+                   # N19, slice DS5: the Spear's Soul Lance, Fervour for each
+                   # enemy a flying shot lands on, to a cap a cast.
+                   "HitFervour", "HitFervourPerCast"},
     # `Interval` JOINED ON 2026-09-02 WITH THE SPEAR'S HELD FAST, whose
     # sentence has a per-second half: "any pinned enemy within 12 meters is
     # set alight again each second it is held". Until then a self buff was
@@ -891,6 +905,78 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
     check_a_rising_curse(params, shape, where)
     check_a_spending_or_cashing_strike(params, where)
     check_a_bursting_rift_and_a_buff_on_every_blow(params, where)
+    check_a_bursting_wound_a_paid_hit_and_an_escape(params, shape, where)
+
+
+def flies(params: dict[str, str]) -> bool:
+    """Whether a Projectile row puts a shot in the air: a `Speed` or an `Arc` above nought, not a beam."""
+    return float(params.get("Speed", "0")) > 0.0 or float(params.get("Arc", "0")) > 0.0
+
+
+def check_a_bursting_wound_a_paid_hit_and_an_escape(params: dict[str, str], shape: str,
+                                                   where: str) -> None:
+    """Refuse N14's wound burst, N19's Fervour per hit and N18's untouchable walk where they would do nothing.
+
+    Issue #2885, slice DS5. `OnDeath=Burst` bursts a creature that dies while
+    the ailment the skill laid still runs on it, so a row naming no `Ailment`
+    has no wound, and one stating no share or no reach bursts for nothing or
+    at nobody; the share alone, without the burst, says nothing. Fervour for
+    each enemy hit is paid at a flying shot's contact, so a beam would pay
+    none, and a cap a cast without the payment caps nothing. `Untargetable=1`
+    is read by a move that lasts -- a flicker and a walked charge (a `Charge`
+    stating a `Duration`) -- and by nothing else, so on any other move or shape
+    it would make its caster untouchable for no time at all.
+    """
+    if params.get("OnDeath") == "Burst":
+        if not (params.get("Ailment") or "").strip():
+            raise DataError(
+                f"{where}: states OnDeath=Burst and names no Ailment, so it "
+                f"lays no wound for the dying to burst while it still runs")
+        if float(params.get("BurstPercentOfMaximumHealth", "0")) <= 0.0:
+            raise DataError(
+                f"{where}: states OnDeath=Burst and no "
+                f"BurstPercentOfMaximumHealth above nought, so the burst "
+                f"would deal nothing")
+        if float(params.get("OnDeathRange", "0")) <= 0.0:
+            raise DataError(
+                f"{where}: states OnDeath=Burst and no OnDeathRange above "
+                f"nought, so the burst would reach nobody")
+    elif "BurstPercentOfMaximumHealth" in params:
+        raise DataError(
+            f"{where}: states BurstPercentOfMaximumHealth="
+            f"{params['BurstPercentOfMaximumHealth']} and not OnDeath=Burst, "
+            f"so nothing bursts for it")
+    if "HitFervour" in params:
+        if float(params["HitFervour"]) <= 0.0:
+            raise DataError(
+                f"{where}: states HitFervour={params['HitFervour']}, which "
+                f"pays nothing. Fervour for each enemy hit has to be more "
+                f"than nought")
+        if shape == "Projectile" and not flies(params):
+            raise DataError(
+                f"{where}: states HitFervour on a projectile with no Speed "
+                f"and no Arc, a beam, and only a flying shot's contact pays "
+                f"it")
+    if "HitFervourPerCast" in params:
+        if "HitFervour" not in params:
+            raise DataError(
+                f"{where}: states HitFervourPerCast and no HitFervour, so "
+                f"there is no payment to cap")
+        if float(params["HitFervourPerCast"]) <= 0.0:
+            raise DataError(
+                f"{where}: states HitFervourPerCast="
+                f"{params['HitFervourPerCast']}, a cap that would let no "
+                f"payment through")
+    if is_on(params, "Untargetable"):
+        lasts = shape == "Movement" and (
+            params.get("Mode") == "Flicker"
+            or (params.get("Mode") == "Charge" and float(params.get("Duration", "0")) > 0.0))
+        if not lasts:
+            raise DataError(
+                f"{where}: a {shape} states Untargetable={params['Untargetable']}, "
+                f"which only a flicker and a walked charge (a Charge stating a "
+                f"Duration) read, for as long as they run. Anything else would "
+                f"make its caster untouchable for no time at all")
 
 
 def check_a_bursting_rift_and_a_buff_on_every_blow(params: dict[str, str],

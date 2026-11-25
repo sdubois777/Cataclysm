@@ -86,9 +86,12 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # (the draft's N13 and N15): the Wand's Requiem spends every Fervour held,
     # and the Fist's Quietus cashes in its caster's ailments. No enemy ability
     # uses either.
+    # `BurstPercentOfMaximumHealth` joined with slice DS5 (N14, the Fist's
+    # Gravetouch). No enemy ability uses it.
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
                "DisarmsUntilRecalled", "Detonates", "CommandStrike",
-               "KillFervour", "SpendsAllFervour", "CashInRadius"),
+               "KillFervour", "SpendsAllFervour", "CashInRadius",
+               "BurstPercentOfMaximumHealth"),
     # A PROJECTILE MAY REPEAT since 2026-09-01. Butcher's Bill throws thirty
     # axes over ten seconds, which needs the Count, Duration and Interval a
     # Summon has always had. No enemy ability uses them on a projectile yet.
@@ -100,7 +103,9 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
                    # N3, issue #2885: the Staff's Marrow Lance.
                    "Detonates",
                    # N6, slice DS3: Restless Spirits and Hungering Soul.
-                   "KillFervour"),
+                   "KillFervour",
+                   # N19, slice DS5: the Spear's Soul Lance.
+                   "HitFervour", "HitFervourPerCast"),
     # `Interval` joined on 2026-09-02 with the Spear's Held Fast, which is
     # the first self buff that repeats. No enemy ability states it yet.
     # `HoldsFervour` joined on 2026-11-24 with slice DS3 (the Death draft's N8,

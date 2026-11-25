@@ -3428,6 +3428,32 @@ bool UCataclysmSkillTemplate::LayWhatALandedShotCarries(AActor* Firer, AActor* T
 	return bPinned;
 }
 
+float UCataclysmSkillTemplate::PayHitFervourFor(AActor* Firer, float& StatedPaidThisUse) const
+{
+	if (Params.HitFervour <= 0.0f || !IsValid(Firer))
+	{
+		// The ordinary case: every skill but Soul Lance states none.
+		return 0.0f;
+	}
+
+	// WHAT THIS CONTACT OFFERS: the row's figure, or what is left under the row's cap a cast, in the row's own figures. A
+	// cap of nought or less is none. See the header for why the cap counts what was offered and not what arrived.
+	float Offered = Params.HitFervour;
+	if (Params.HitFervourPerCast > 0.0f)
+	{
+		Offered = FMath::Min(Offered, Params.HitFervourPerCast - StatedPaidThisUse);
+	}
+	if (Offered <= 0.0f)
+	{
+		return 0.0f;
+	}
+	StatedPaidThisUse += Offered;
+
+	// THROUGH THE ONE WRITE EVERY ROW'S STATED FERVOUR TAKES (`UCataclysmFervour::GainStated`, N6's): scaled by how fast
+	// the class resource generates, and clamped at what may be held.
+	return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), Offered);
+}
+
 bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target) const
 {
 	if (Params.Ailment.IsEmpty() || !IsValid(Self) || !IsValid(Target))

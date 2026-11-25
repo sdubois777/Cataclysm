@@ -3297,7 +3297,7 @@ public:
 	/**
 	 * Mark this actor dead. Does nothing to one already marked, AND NOTHING TO ONE WHOSE DEATH IS BEING MARKED NOW.
 	 *
-	 * THE SECOND HALF IS ISSUE #2871. The tag is added at the END of this function, after five hooks that can strike
+	 * THE SECOND HALF IS ISSUE #2871. The tag is added at the END of this function, after six hooks that can strike
 	 * other creatures, and the check that refuses a second death is at its TOP. A hook's blow can reach back to the
 	 * dying actor before the tag is on it: Harrower's axe leaps to a creature carrying Sacrificial Bond, the bond pays
 	 * a share of that blow to its allies by `ReduceHealthDirectly`, the dying creature is one of them, and the health

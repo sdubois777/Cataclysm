@@ -28,6 +28,8 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+// For a wound that bursts as its bearer dies. Slice DS5, N14.
+#include "AbilitySystem/CataclysmWoundBurst.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "AbilitySystemComponent.h"
@@ -4945,6 +4947,302 @@ bool FCataclysmDeathSkillsGrimReachTest::RunTest(const FString&)
 	TestEqual(TEXT("at the row's 30"), UCataclysmSkillEffects::StatedStrengthOn(Far.Actor, Cripple), 30.0f,
 			  DeathSkillAllowance);
 	TestEqual(TEXT("for its 4 seconds"), DeathSkillSecondsLeft(Far.Actor, Cripple), 4.0f, DeathSkillAllowance);
+	return true;
+}
+
+// ==========================================================================
+// Slice DS5, change A. N18: a walked charge stating `Untargetable=1` cannot be touched while it walks. N19: a flying shot
+// pays Fervour for each enemy it lands on, to a cap a cast. N14: a creature dying while a skill's wound still runs on
+// it bursts for a share of its maximum health.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsUntouchableWalkTest,
+	"Cataclysm.DeathSkills.AWalkedChargeStatingUntargetableCannotBeTouchedForItsWalkAndOneStatingNoneCan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N18 (`UCataclysmMovementSkill::BeginAdvance`): a charge stating `Duration=1; Untargetable=1` -- Wraithwalk's walk --
+ * goes up, and its walker carries the untargetable tag for the walk's 1 second; a blow another fighter aims at it lands
+ * nothing and takes no health. THE CONTROL, 100 m along +Y: the same walk stating no `Untargetable` leaves its walker
+ * touchable, and the same blow lands.
+ */
+bool FCataclysmDeathSkillsUntouchableWalkTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Untargetable = UCataclysmSkillEffects::UntargetableTag();
+	if (!TestTrue(TEXT("set-up: the untargetable tag"), Untargetable.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Drifter(World, FVector::ZeroVector);
+	FDeathSkillFighter Striker(World, FVector(0.0f, -3.0f * DeathSkillMetre, 0.0f));
+	UCataclysmMovementSkill* Drift = GrantDeathSkill<UCataclysmMovementSkill>(
+		Drifter.AbilitySystem, Drifter.Actor, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=12; Duration=1; Radius=1.5; Untargetable=1"), TEXT("An untouchable walk"));
+	if (!TestNotNull(TEXT("set-up: the walk is granted"), Drift)
+		|| !TestTrue(TEXT("the walk goes up"), ActivateDeathSkill(Drifter.AbilitySystem, Drift)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its walker cannot be touched"), UCataclysmSkillEffects::IsUntargetable(Drifter.Actor));
+	TestEqual(TEXT("for the walk's 1 second"), DeathSkillSecondsLeft(Drifter.Actor, Untargetable), 1.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("a blow aimed at it lands nothing"),
+			  UCataclysmSkillEffects::ApplyHit(Striker.Actor, Drifter.Actor, 100.0f, FGameplayTagContainer(),
+											   FCataclysmHitDelivery()),
+			  0.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and takes no health"), DeathSkillFighterHealthLost(Drifter), 0.0f, DeathSkillAllowance);
+
+	// THE CONTROL: the same walk stating no Untargetable.
+	FDeathSkillFighter Walker(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillFighter ControlStriker(World, FVector(0.0f, 97.0f * DeathSkillMetre, 0.0f));
+	UCataclysmMovementSkill* Walk = GrantDeathSkill<UCataclysmMovementSkill>(
+		Walker.AbilitySystem, Walker.Actor, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=12; Duration=1; Radius=1.5"), TEXT("A plain walk"));
+	if (!TestNotNull(TEXT("set-up: the control walk is granted"), Walk)
+		|| !TestTrue(TEXT("set-up: the control walk goes up"), ActivateDeathSkill(Walker.AbilitySystem, Walk)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: its walker can be touched"), UCataclysmSkillEffects::IsUntargetable(Walker.Actor));
+	UCataclysmSkillEffects::ApplyHit(ControlStriker.Actor, Walker.Actor, 100.0f, FGameplayTagContainer(),
+									 FCataclysmHitDelivery());
+	TestTrue(TEXT("control: and the same blow takes health"), DeathSkillFighterHealthLost(Walker) > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsFervourForEachHitTest,
+	"Cataclysm.DeathSkills.AShotPayingFervourForEachEnemyItHitsPaysOneEachToItsCapACastAndAgainTheNextCast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N19 (`UCataclysmSkillTemplate::PayHitFervourFor`, from `ACataclysmProjectile::HitOne`): a piercing shot stating
+ * `HitFervour=1; HitFervourPerCast=4` -- Soul Lance's -- thrown along +X through five creatures 2 to 10 m off strikes all
+ * five and pays 4 Fervour, its cap a cast, where five hits would pay 5. Thrown again, a fresh cast, it pays 4 more. THE
+ * CONTROLS, each a fresh thrower 100 m further along +Y: the same shot through two creatures pays 2, one a hit under the
+ * cap; and a shot stating neither key, through two, pays nothing.
+ */
+bool FCataclysmDeathSkillsFervourForEachHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const TCHAR* const Paying = TEXT("Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=1; HitFervourPerCast=4");
+
+	FDeathSkillFighter Thrower(World, FVector::ZeroVector);
+	DeathSkillSetFervour(Thrower.Actor, 0.0f);
+	TArray<TUniquePtr<FDeathSkillCreature>> Line;
+	for (int32 Index = 1; Index <= 5; ++Index)
+	{
+		Line.Add(MakeUnique<FDeathSkillCreature>(World, FVector(2.0f * Index * DeathSkillMetre, 0.0f, 0.0f),
+												 ECataclysmTeam::Monsters));
+	}
+	UCataclysmProjectileSkill* Lance = GrantDeathSkill<UCataclysmProjectileSkill>(
+		Thrower.AbilitySystem, Thrower.Actor, ECataclysmAbilitySlot::Special, Paying, TEXT("A paying lance"));
+	if (!TestNotNull(TEXT("set-up: the lance is granted"), Lance))
+	{
+		return false;
+	}
+	Lance->DamagePercentOverride = 150.0f;
+	Lance->CooldownOverride = 0.0f;
+	if (!TestTrue(TEXT("the lance is thrown"), ActivateDeathSkill(Thrower.AbilitySystem, Lance)))
+	{
+		return false;
+	}
+	DeathSkillFlyToTheEnd(Lance->InFlight.Get());
+	int32 Struck = 0;
+	for (const TUniquePtr<FDeathSkillCreature>& One : Line)
+	{
+		Struck += DeathSkillHealthLost(*One) > 0.0f ? 1 : 0;
+	}
+	TestEqual(TEXT("it passed through all five creatures in the line"), Struck, 5);
+	TestEqual(TEXT("and paid 4 Fervour, its cap a cast, not the 5 its hits would"), DeathSkillFervourOf(Thrower.Actor),
+			  4.0f, DeathSkillAllowance);
+	TestEqual(TEXT("the use's record holds the 4 it paid"), Lance->HitFervourStatedThisUse(), 4.0f, DeathSkillAllowance);
+
+	if (!TestTrue(TEXT("a fresh cast is thrown"), ActivateDeathSkill(Thrower.AbilitySystem, Lance)))
+	{
+		return false;
+	}
+	DeathSkillFlyToTheEnd(Lance->InFlight.Get());
+	TestEqual(TEXT("and pays its own 4 more"), DeathSkillFervourOf(Thrower.Actor), 8.0f, DeathSkillAllowance);
+
+	// THE FIRST CONTROL: the same lance through two creatures, under its cap.
+	FDeathSkillFighter Short(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature NearOne(World, FVector(3.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+								ECataclysmTeam::Monsters);
+	FDeathSkillCreature NearTwo(World, FVector(6.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+								ECataclysmTeam::Monsters);
+	DeathSkillSetFervour(Short.Actor, 0.0f);
+	UCataclysmProjectileSkill* ShortLance = GrantDeathSkill<UCataclysmProjectileSkill>(
+		Short.AbilitySystem, Short.Actor, ECataclysmAbilitySlot::Special, Paying, TEXT("A lance through two"));
+	if (!TestNotNull(TEXT("set-up: the second lance is granted"), ShortLance)
+		|| !TestTrue(TEXT("set-up: the second lance is thrown"), ActivateDeathSkill(Short.AbilitySystem, ShortLance)))
+	{
+		return false;
+	}
+	DeathSkillFlyToTheEnd(ShortLance->InFlight.Get());
+	TestTrue(TEXT("control: it struck both"), DeathSkillHealthLost(NearOne) > 0.0f && DeathSkillHealthLost(NearTwo) > 0.0f);
+	TestEqual(TEXT("control: and paid 2, one a hit under its cap"), DeathSkillFervourOf(Short.Actor), 2.0f,
+			  DeathSkillAllowance);
+
+	// THE SECOND CONTROL: a lance stating neither key.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 200.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature PlainOne(World, FVector(3.0f * DeathSkillMetre, 200.0f * DeathSkillMetre, 0.0f),
+								 ECataclysmTeam::Monsters);
+	FDeathSkillCreature PlainTwo(World, FVector(6.0f * DeathSkillMetre, 200.0f * DeathSkillMetre, 0.0f),
+								 ECataclysmTeam::Monsters);
+	DeathSkillSetFervour(Plain.Actor, 0.0f);
+	UCataclysmProjectileSkill* PlainLance = GrantDeathSkill<UCataclysmProjectileSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Special,
+		TEXT("Range=14; Radius=1; Pierce=99; Speed=2400"), TEXT("A lance that pays nothing"));
+	if (!TestNotNull(TEXT("set-up: the plain lance is granted"), PlainLance)
+		|| !TestTrue(TEXT("set-up: the plain lance is thrown"), ActivateDeathSkill(Plain.AbilitySystem, PlainLance)))
+	{
+		return false;
+	}
+	DeathSkillFlyToTheEnd(PlainLance->InFlight.Get());
+	TestTrue(TEXT("control: it struck both"), DeathSkillHealthLost(PlainOne) > 0.0f && DeathSkillHealthLost(PlainTwo) > 0.0f);
+	TestEqual(TEXT("control: and paid nothing, stating no HitFervour"), DeathSkillFervourOf(Plain.Actor), 0.0f,
+			  DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsWoundBurstsTest,
+	"Cataclysm.DeathSkills.ACreatureDyingWhileItsWoundRunsBurstsForATenthOfItsMaximumHealthAndNoOtherDeathDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N14 (`UCataclysmWoundBurst::BurstFromDying`, from `UCataclysmSkillEffects::MarkDead`): a swing stating `Ailment=Bleed;
+ * OnDeath=Burst; BurstPercentOfMaximumHealth=10; OnDeathRange=4` -- Gravetouch's -- bleeds the creature 1.5 m ahead.
+ * Killed while the bleed runs, it bursts: the creature 3 m from it takes 10% of its maximum health, exactly what the same
+ * figure sent with the burst's delivery takes from a reference creature, and the blow names the swing's skill; the
+ * creature 5 m from it, beyond the 4 m, takes nothing. THE CONTROLS, each a fresh caster and pair 100 m further along
+ * +Y: a creature bleeding from the caster's bleed laid by no skill dies and bursts nothing; and one the swing wounded
+ * whose bleed was then ended dies and bursts nothing.
+ */
+bool FCataclysmDeathSkillsWoundBurstsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Bleed = DeathSkillAilmentTag(TEXT("Bleed"));
+	if (!TestTrue(TEXT("set-up: the vocabulary has the Bleed"), Bleed.IsValid()))
+	{
+		return false;
+	}
+	const TCHAR* const Wounding =
+		TEXT("Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed; OnDeath=Burst; BurstPercentOfMaximumHealth=10; "
+			 "OnDeathRange=4");
+
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	FDeathSkillCreature Wounded(World, FVector(1.5f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Near(World, FVector(1.5f * DeathSkillMetre, 3.0f * DeathSkillMetre, 0.0f),
+							 ECataclysmTeam::Monsters);
+	FDeathSkillCreature Far(World, FVector(1.5f * DeathSkillMetre, -5.0f * DeathSkillMetre, 0.0f),
+							ECataclysmTeam::Monsters);
+	FDeathSkillCreature Reference(World, FVector(0.0f, -50.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Touch = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Heavy, Wounding, TEXT("A wounding touch"));
+	if (!TestNotNull(TEXT("set-up: the touch is granted"), Touch))
+	{
+		return false;
+	}
+	Touch->DamagePercentOverride = 100.0f;
+	TestEqual(TEXT("the touch strikes the creature 1.5 m ahead alone"), Touch->SwingOnce(), 1);
+	if (!TestTrue(TEXT("and opens a wound that bleeds"), DeathSkillCarriesAilment(Wounded.Actor, TEXT("Bleed")))
+		|| !TestTrue(TEXT("set-up: neither neighbour was struck"),
+					 DeathSkillHealthLost(Near) == 0.0f && DeathSkillHealthLost(Far) == 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the wound is the touch's, and bursts"), UCataclysmWoundBurst::WoundThatBursts(Wounded.Actor) == Touch);
+
+	const float Maximum = Wounded.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	DeathSkillKillCreature(Wounded);
+	if (!TestTrue(TEXT("set-up: the wounded creature died"), UCataclysmSkillEffects::IsDead(Wounded.Actor)))
+	{
+		return false;
+	}
+
+	// THE SAME FIGURE, SENT WITH THE BURST'S DELIVERY, at a reference creature: what 10% of the maximum takes through a
+	// creature's defences.
+	FCataclysmHitDelivery AsTheBurst;
+	AsTheBurst.bIsArea = true;
+	AsTheBurst.bCannotBeRetaliatedAgainst = true;
+	AsTheBurst.bCannotCriticallyStrike = true;
+	AsTheBurst.bCarriesNoWeaponSubType = true;
+	AsTheBurst.bCannotLeech = true;
+	AsTheBurst.bIsConsequenceOfADeath = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Caster.Actor, Reference.Actor, 0.1f * Maximum, AsTheBurst);
+	TestTrue(TEXT("set-up: the reference figure takes health"), DeathSkillHealthLost(Reference) > 0.0f);
+	TestTrue(TEXT("its death burst on the creature 3 m from it"), DeathSkillHealthLost(Near) > 0.0f);
+	TestEqual(TEXT("for 10% of its maximum health, as the reference took"), DeathSkillHealthLost(Near),
+			  DeathSkillHealthLost(Reference), 1.0f);
+	TestTrue(TEXT("and the burst is the touch's, by name"), Near.AbilitySystem->GetLastBlow().Skill.Get() == Touch);
+	TestEqual(TEXT("the creature 5 m from it, beyond the 4 m, took nothing"), DeathSkillHealthLost(Far), 0.0f,
+			  DeathSkillAllowance);
+
+	// THE FIRST CONTROL: the caster's bleed laid by no skill.
+	FDeathSkillFighter Bleeder(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Bled(World, FVector(1.5f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+							 ECataclysmTeam::Monsters);
+	FDeathSkillCreature BesideBled(World, FVector(1.5f * DeathSkillMetre, 103.0f * DeathSkillMetre, 0.0f),
+								   ECataclysmTeam::Monsters);
+	if (!TestTrue(TEXT("set-up: the caster's bleed, laid by no skill"),
+				  DeathSkillLayAilment(Bleeder.Actor, Bled.Actor, TEXT("Bleed"))))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: no skill's wound bursts it"), UCataclysmWoundBurst::WoundThatBursts(Bled.Actor) == nullptr);
+	DeathSkillKillCreature(Bled);
+	TestEqual(TEXT("control: its death bursts nothing on the creature 3 m from it"), DeathSkillHealthLost(BesideBled),
+			  0.0f, DeathSkillAllowance);
+
+	// THE SECOND CONTROL: the touch's wound, ended before the death.
+	FDeathSkillFighter Healer(World, FVector(0.0f, 200.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Closed(World, FVector(1.5f * DeathSkillMetre, 200.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	FDeathSkillCreature BesideClosed(World, FVector(1.5f * DeathSkillMetre, 203.0f * DeathSkillMetre, 0.0f),
+									 ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* SecondTouch = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Healer.AbilitySystem, Healer.Actor, ECataclysmAbilitySlot::Heavy, Wounding, TEXT("A touch whose wound closes"));
+	if (!TestNotNull(TEXT("set-up: the second touch is granted"), SecondTouch))
+	{
+		return false;
+	}
+	SecondTouch->DamagePercentOverride = 100.0f;
+	SecondTouch->SwingOnce();
+	if (!TestTrue(TEXT("set-up: it wounds its creature"), DeathSkillCarriesAilment(Closed.Actor, TEXT("Bleed"))))
+	{
+		return false;
+	}
+	Closed.AbilitySystem->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(Bleed));
+	TestFalse(TEXT("set-up: and the wound is ended"), DeathSkillCarriesAilment(Closed.Actor, TEXT("Bleed")));
+	DeathSkillKillCreature(Closed);
+	TestEqual(TEXT("control: a death after the wound closed bursts nothing"), DeathSkillHealthLost(BesideClosed), 0.0f,
+			  DeathSkillAllowance);
 	return true;
 }
 

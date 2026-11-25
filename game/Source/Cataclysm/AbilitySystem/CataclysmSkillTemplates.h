@@ -669,6 +669,20 @@ public:
 	int32 CursesSpread = 0;
 
 	/**
+	 * The Fervour, in the row's own figures, the last use has paid for enemies its shots landed on, under the row's
+	 * `HitFervourPerCast`; nought before a use, and for a row stating no `HitFervour`. Issue #2885, the Death draft's
+	 * N19, slice DS5: the Spear's Soul Lance. Read by tests.
+	 */
+	float HitFervourStatedThisUse() const { return HitFervourOfThisUse.IsValid() ? *HitFervourOfThisUse : 0.0f; }
+
+	/**
+	 * The record `HitFervourStatedThisUse` reads: made fresh by each use as it releases its throw, and handed to every
+	 * projectile that use fires (`ACataclysmProjectile::HitFervourStatedInItsUse`), a rack's axes included. Null before
+	 * the first use. Issue #2885, N19.
+	 */
+	TSharedPtr<float> HitFervourOfThisUse;
+
+	/**
 	 * Bind a burning line between enemies near the caster, if the row asks.
 	 *
 	 * ONE ROW ASKS: the Whip's Tether, "bind two enemies within 12 meters

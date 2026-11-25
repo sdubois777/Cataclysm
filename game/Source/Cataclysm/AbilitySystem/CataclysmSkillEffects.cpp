@@ -47,6 +47,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For a wound that bursts as its bearer dies, from `MarkDead`. Issue #2885, the Death draft's N14, slice DS5.
+#include "AbilitySystem/CataclysmWoundBurst.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 // For the boss check in ApplyStun: boss-ness lives on the enemy as its rarity
@@ -4643,7 +4645,7 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	}
 
 	// A DEATH ALREADY BEING MARKED IS NOT MARKED AGAIN FROM INSIDE ITSELF. Issue #2871. The tag goes on at the bottom of
-	// this function, after the five hooks below, and every one of them can strike: a hook's blow that reaches back to
+	// this function, after the six hooks below, and every one of them can strike: a hook's blow that reaches back to
 	// this actor -- Harrower's leap into a creature carrying Sacrificial Bond, which pays this dying ally a share of it
 	// -- writes its health at nought and calls its `HandleDeath` again before the tag is on. Without this the second
 	// call ran the hooks again and returned true, and so did every call inside it, so `HandleDeath` paid the kill once
@@ -4698,6 +4700,13 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	// bound to no line, which is all of them but one Skewer's catch: it costs a
 	// component lookup.
 	UCataclysmPinnedLine::ReleaseFromDying(Actor);
+
+	// AND A WOUND STILL RUNNING ON IT BURSTS, for the same reasons and at the same moment. Issue #2885, the Death draft's
+	// N14, slice DS5: the Fist's Gravetouch, "if it dies while the wound still bleeds, it bursts, dealing 10% of its
+	// maximum health to every enemy within 4 meters". Here, so a wounded creature killed by its own bleed, by another's
+	// blow or by a rule bursts alike, and before the tag, while the running bleed is still on it to be read. Inert for
+	// every creature carrying no wound whose skill bursts it: a walk of its running effects.
+	UCataclysmWoundBurst::BurstFromDying(Actor);
 
 	// AND A SWING THIS CHARACTER HAD DRAWN BACK IS LOST, for the fourth time for
 	// the same reasons and at the same moment. The Greatsword's The Whole

@@ -1033,7 +1033,10 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 
 	// --- On death ----------------------------------------------------------
 
-	/** What happens when an affected enemy dies: Leap, SpreadDebuff, Release or, since issue #2885 (N5), Rise. */
+	/**
+	 * What happens when an affected enemy dies: Leap, SpreadDebuff, Release or, since issue #2885 (N5), Rise, and since
+	 * slice DS5 (N14) Burst, a wound that bursts as its bearer dies (`BurstPercentOfMaximumHealth`).
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString OnDeath;
 
@@ -1049,6 +1052,17 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString RisesAs;
+
+	/**
+	 * The share of its own maximum health, in per cent, a creature bursts for when it dies while the ailment this skill
+	 * laid on it still runs, dealt to every enemy of the skill's caster within `OnDeathRangeCm` of it; nought for none.
+	 * `OnDeath=Burst; BurstPercentOfMaximumHealth=10`, beside the row's `Ailment`. Issue #2885, the Death draft's N14,
+	 * slice DS5: the Fist's Gravetouch, "if it dies while the wound still bleeds, it bursts, dealing 10% of its maximum
+	 * health to every enemy within 4 meters". `UCataclysmWoundBurst::BurstFromDying`, from
+	 * `UCataclysmSkillEffects::MarkDead`, reads it off the skill the running ailment names.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float BurstPercentOfMaximumHealth = 0.0f;
 
 	// --- Fervour a skill pays and holds (the Death skills, issue #2885) ----
 
@@ -1090,6 +1104,24 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float CashInRadiusCm = 0.0f;
+
+	/**
+	 * The Fervour each enemy a flying shot of this skill lands on pays its firer; nought for none. `HitFervour=1`, on a
+	 * Projectile with a speed. Issue #2885, the Death draft's N19, slice DS5: the Spear's Soul Lance, "each enemy it
+	 * hits gives you 1 Fervour, at most 4 a throw". Paid at each landed contact carrying damage
+	 * (`UCataclysmSkillTemplate::PayHitFervourFor`, from `ACataclysmProjectile::HitOne`), scaled by how fast the class
+	 * resource generates, as every gain is (`UCataclysmFervour::GainStated`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float HitFervour = 0.0f;
+
+	/**
+	 * The most `HitFervour` one use of this skill pays, in the row's own figures, before the generation rate; nought for
+	 * no cap. `HitFervourPerCast=4`, Soul Lance's "at most 4 a throw". Counted across every projectile the use puts in
+	 * the air, through the record the use hands each of them (`ACataclysmProjectile::HitFervourStatedInItsUse`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float HitFervourPerCast = 0.0f;
 
 	// --- Projectile extras -------------------------------------------------
 
@@ -1216,7 +1248,12 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString RefundsCooldown;
 
-	/** True when the caster cannot be hit while the skill runs. */
+	/**
+	 * True when the caster cannot be hit while the skill runs. Read by a flicker for its whole `Duration` (the Dagger's
+	 * Everywhere at Once, the Sword's Danse Macabre) and, since issue #2885 slice DS5, the Death draft's N18, by a walked
+	 * charge for its `Duration` (`UCataclysmMovementSkill::BeginAdvance`): the Staff's Wraithwalk, "nothing can touch
+	 * you while you drift". The generator refuses it on any other move or shape, which would end in the frame it began.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bUntargetable = false;
 

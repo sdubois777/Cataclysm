@@ -558,6 +558,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.RisesAs = Value;
 		}
+		// The Death draft's N14, issue #2885 slice DS5: the share of its maximum health a wounded creature bursts for.
+		else if (Key.Equals(TEXT("BurstPercentOfMaximumHealth"), ESearchCase::IgnoreCase))
+		{
+			Params.BurstPercentOfMaximumHealth = Number;
+		}
 		// The Death draft's N6 and N8, issue #2885 slice DS3: Fervour paid for a kill, and Fervour held from decay.
 		else if (Key.Equals(TEXT("KillFervour"), ESearchCase::IgnoreCase))
 		{
@@ -576,6 +581,15 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("CashInRadius"), ESearchCase::IgnoreCase))
 		{
 			Params.CashInRadiusCm = Number * ToCm;
+		}
+		// The Death draft's N19, issue #2885 slice DS5: Fervour for each enemy a flying shot lands on, to a cap a cast.
+		else if (Key.Equals(TEXT("HitFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.HitFervour = Number;
+		}
+		else if (Key.Equals(TEXT("HitFervourPerCast"), ESearchCase::IgnoreCase))
+		{
+			Params.HitFervourPerCast = Number;
 		}
 		// --- Projectile extras ------------------------------------------
 		else if (Key.Equals(TEXT("Bounces"), ESearchCase::IgnoreCase))

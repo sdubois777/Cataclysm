@@ -351,6 +351,23 @@ public:
 	void PayManaOnHitTo(UAbilitySystemComponent* AbilitySystem) const;
 
 	/**
+	 * Pay `Firer` the Fervour this skill's row states for one enemy a flying shot of its landed on, held to the row's cap
+	 * a cast, and answer what arrived. Issue #2885, the Death draft's N19, slice DS5: the Spear's Soul Lance, `HitFervour=1;
+	 * HitFervourPerCast=4`, "each enemy it hits gives you 1 Fervour, at most 4 a throw". CALLED FROM
+	 * `ACataclysmProjectile::HitOne`, at a contact that landed and carried damage, beside `LayWhatALandedShotCarries`.
+	 *
+	 * THE CAP COUNTS THE ROW'S OWN FIGURES, a judgement of slice DS5: what each contact offered, before the generation
+	 * rate and whether a full pool took it, so "at most 4 a throw" is four enemies' worth however the pool stood. EACH
+	 * CONTACT IS ITS OWN LANDING, as `fervour_per_enemy_hit`'s are (ruled 2026-09-16): a return pass pays again, under the
+	 * same cap. PAID TO THE FIRER'S OWN ABILITY SYSTEM, as that Fervour is, because a shot lands after its use has ended.
+	 *
+	 * @param StatedPaidThisUse  the row's figures this use has already paid, which this adds to: the record the use's
+	 *                           projectiles share (`ACataclysmProjectile::HitFervourStatedInItsUse`)
+	 * @return the Fervour that arrived: nought for a row stating none, for a use at its cap, and for a full pool
+	 */
+	float PayHitFervourFor(AActor* Firer, float& StatedPaidThisUse) const;
+
+	/**
 	 * How far the character had moved since its own last attack when this skill
 	 * was last used, in metres. Issue #41, slice 2.
 	 *

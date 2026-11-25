@@ -458,3 +458,103 @@ def test_a_buff_adding_no_reach_is_refused(metres):
 def test_added_melee_reach_is_a_self_buffs_alone():
     """A strike's own reach is its `Radius`; the flat reach is what a running buff adds to it."""
     assert "has no parameter 'MeleeReachMetres'" in refused("Radius=3; Angle=90; MeleeReachMetres=3", "Strike")
+
+
+# --------------------------------------------------------------------------
+# Slice DS5: N14 OnDeath=Burst, N19 HitFervour, N18 Untargetable on a walked charge
+
+GRAVETOUCH = ("Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed; OnDeath=Burst; BurstPercentOfMaximumHealth=10; "
+              "OnDeathRange=4")
+SOUL_LANCE = "Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=1; HitFervourPerCast=4"
+WRAITHWALK = ("Mode=Charge; Range=12; Duration=1; Radius=1.5; Untargetable=1; Effect=Cripple; EffectMagnitude=30; "
+              "EffectDuration=3")
+
+
+def test_a_wound_that_bursts_as_its_bearer_dies_is_accepted_on_a_strike():
+    """Gravetouch's cell, word for word."""
+    params = parse(GRAVETOUCH, "Strike")
+    assert params["OnDeath"] == "Burst" and params["BurstPercentOfMaximumHealth"] == "10"
+
+
+@pytest.mark.parametrize("text, said", [
+    ("Radius=2; Angle=60; MaxTargets=1; OnDeath=Burst; BurstPercentOfMaximumHealth=10; OnDeathRange=4",
+     "names no Ailment"),
+    ("Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed; OnDeath=Burst; OnDeathRange=4", "would deal nothing"),
+    ("Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed; OnDeath=Burst; BurstPercentOfMaximumHealth=0; OnDeathRange=4",
+     "would deal nothing"),
+    ("Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed; OnDeath=Burst; BurstPercentOfMaximumHealth=10",
+     "would reach nobody"),
+])
+def test_a_wound_burst_that_could_burst_nothing_is_refused(text, said):
+    """No wound to bleed, no share to deal, or no reach: a burst that would do nothing."""
+    assert said in refused(text, "Strike")
+
+
+def test_a_burst_share_without_the_burst_is_refused():
+    assert "not OnDeath=Burst" in refused(
+        "Radius=2; Angle=60; Ailment=Bleed; BurstPercentOfMaximumHealth=10; OnDeathRange=4", "Strike")
+
+
+def test_a_strike_laying_a_bleed_with_no_burst_passes():
+    """THE CONTROL for the refusals above: Severing Rush's bleed, and a strike's, burst nothing and need no share."""
+    assert parse("Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed", "Strike")["Ailment"] == "Bleed"
+
+
+def test_a_burst_share_is_a_strikes_alone():
+    assert "has no parameter 'BurstPercentOfMaximumHealth'" in refused(
+        "Range=12; Radius=2; Speed=2000; Ailment=Poison; OnDeath=Burst; BurstPercentOfMaximumHealth=10; "
+        "OnDeathRange=4", "Projectile")
+
+
+def test_a_shot_paying_fervour_for_each_enemy_hit_to_a_cap_is_accepted():
+    """Soul Lance's cell, word for word."""
+    params = parse(SOUL_LANCE, "Projectile")
+    assert params["HitFervour"] == "1" and params["HitFervourPerCast"] == "4"
+
+
+def test_a_shot_paying_fervour_with_no_cap_passes():
+    """THE CONTROL for the cap's refusals: a cap is the row's to state, and a row stating none pays every hit."""
+    assert parse("Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=1", "Projectile")["HitFervour"] == "1"
+
+
+@pytest.mark.parametrize("text, said", [
+    ("Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=0", "pays nothing"),
+    ("Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=-1", "pays nothing"),
+    ("Range=14; Radius=1; Pierce=99; HitFervour=1; HitFervourPerCast=4", "a beam"),
+    ("Range=14; Radius=1; Pierce=99; Speed=2400; HitFervourPerCast=4", "no payment to cap"),
+    ("Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=1; HitFervourPerCast=0", "would let no payment"),
+])
+def test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused(text, said):
+    """Nought or less a hit; a beam, whose landing is no flying contact; a cap with nothing to cap; a cap of nought."""
+    assert said in refused(text, "Projectile")
+
+
+@pytest.mark.parametrize("key", ["HitFervour=1", "HitFervourPerCast=4"])
+def test_fervour_for_each_enemy_hit_is_a_projectiles_alone(key):
+    assert f"has no parameter '{key.split('=')[0]}'" in refused(f"Radius=3; Angle=90; {key}", "Strike")
+
+
+@pytest.mark.parametrize("text", [
+    WRAITHWALK,
+    # The Dagger's Everywhere at Once and the Sword's Danse Macabre, the two flickers that stated it before.
+    "Mode=Flicker; Range=10; Duration=4; Interval=0.33; Burn=1; RearHits=1; Untargetable=1",
+])
+def test_an_untouchable_move_that_lasts_is_accepted(text):
+    assert parse(text, "Movement")["Untargetable"] == "1"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Movement", "Mode=Leap; Range=10; Radius=3; Untargetable=1"),
+    ("Movement", "Mode=Charge; Range=12; Radius=2; Untargetable=1"),
+    ("Movement", "Mode=Blink; Range=10; Radius=3; Untargetable=1"),
+    ("SelfBuff", "Duration=6; Untargetable=1"),
+    ("Strike", "Radius=3; Angle=90; Untargetable=1"),
+])
+def test_untargetable_on_a_move_or_shape_that_does_not_last_is_refused(shape, text):
+    """A leap, a charge with no `Duration` and a blink arrive in the frame they start; no other shape reads it."""
+    assert "untouchable for no time" in refused(text, shape)
+
+
+def test_untargetable_switched_off_on_a_leap_passes():
+    """THE CONTROL for the refusal above: nought is the key switched off."""
+    assert parse("Mode=Leap; Range=10; Radius=3; Untargetable=0", "Movement")["Untargetable"] == "0"

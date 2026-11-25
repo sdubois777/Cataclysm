@@ -826,6 +826,13 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 						PinnedAlongItsFlight.AddUnique(Target);
 					}
 
+					// AND THE FERVOUR THE FIRING ROW PAYS FOR EACH ENEMY ITS SHOT LANDS ON, TO ITS CAP A CAST. Issue #2885,
+					// the Death draft's N19, slice DS5: the Spear's Soul Lance. By the test above: landed, and carrying
+					// damage. Counted against the record the use's projectiles share, or this shot's own when it was
+					// handed none. Nothing for a row stating no `HitFervour`, which is every other.
+					Firing->PayHitFervourFor(Firer, HitFervourStatedInItsUse.IsValid() ? *HitFervourStatedInItsUse
+																					  : HitFervourStatedByThisShot);
+
 					// AND THE FIRING SLOT'S MANA ON HIT, TO THE FIRER, AT THE FIRST LANDING OF THE USE. Issue #2722,
 					// approved by the coordinating session on 2026-11-19: "The basic attack returns 6 mana each time it
 					// lands" (`docs/Cataclysm_GDD_v2.md`) names no weapon, and until then a Wand's, a Crossbow's, a
