@@ -1379,3 +1379,26 @@ def test_the_minion_stats_of_the_slice_are_read_where_they_act() -> None:
     command = code_without_comments(SOURCE.parent / "CataclysmCommand.cpp")
     assert re.search(r"return Movement->MaxWalkSpeed \* CommandedWalkSpeedShareOfCommander\s*\* SummonerMultiplierFor\("
                      r"Commander, TEXT\(\"minion_movement_speed\"\),", command)
+
+
+def test_a_row_saying_nothing_may_slow_the_character_is_an_immunity_to_slow() -> None:
+    """The Death trees' slice C6d2 (2026-11-25), ruled by the coordinating
+    session as a fix to bundle 1's ruling that an immunity to Slow works
+    everywhere: `IsImmuneTo` answers true for Slow while
+    `movement_speed_reduction_suppressed` stands above nought, asked with its
+    conditions judged and the attribute as the answer when no row states it,
+    so Unstoppable, Nothing Moves You and Relentless drop a War aura's movement
+    reduction. And the movement refresh still reads the stat as it did. Read
+    from the code with comments taken out."""
+    template = code_without_comments(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    start = template.index("bool UCataclysmSkillTemplate::IsImmuneTo(")
+    body = template[start:template.index("\n}\n", start)]
+    assert re.search(r"UCataclysmCombatAttributeSet::GetMovementSpeedReductionSuppressedAttribute\(\);\s*"
+                     r"const float Held = Cataclysm->HasAttributeSetForAttribute\(Suppressed\)\s*"
+                     r"\? Cataclysm->GetNumericAttribute\(Suppressed\)\s*: 0\.0f;\s*"
+                     r"if \(Cataclysm->StatForSkill\(FName\(TEXT\(\"movement_speed_reduction_suppressed\"\)\), "
+                     r"FGameplayTagContainer\(\),\s*Held\) > 0\.0f\)\s*\{\s*return true;", body)
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"const float Suppressed = Cataclysm->StatForSkill\(\s*FName\(MovementSpeedReductionSuppressedStat\)",
+                     player)
+    assert "if (Suppressed <= 0.0f && !bImmuneToSlow)" in player

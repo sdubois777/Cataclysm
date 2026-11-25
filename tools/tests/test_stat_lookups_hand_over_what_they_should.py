@@ -712,6 +712,12 @@ INVENTORY = {
         "the share of its stated time a ground zone or a terrain lasts (ruled "
         "2026-10-06), asked where the area is left; an area is not a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("movement_speed_reduction_suppressed")), FGameplayTagContainer(), Held'):
+        "whether nothing may lower the character's speed (the Death trees' "
+        "slice C6d2: Unstoppable, Nothing Moves You, Relentless), asked in "
+        "IsImmuneTo for Slow as the movement refresh asks it, the attribute "
+        "the answer when no row states it; a flag of the character's, so no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(TEXT("immune_to_slow")), FGameplayTagContainer(), 0.0f'):
         "whether the character cannot be slowed (the Death trees' slice C6d1, "
         "Ringed in Bone), asked in IsImmuneTo for Slow with the character's "
