@@ -177,6 +177,8 @@ namespace
 		{ TEXT("kill_chain_within_seconds"), ECataclysmStatCondition::KillChainWithinSeconds },
 		{ TEXT("minions_in_reach_at_least"), ECataclysmStatCondition::MinionsInReachAtLeast },
 		{ TEXT("target_carries_necrosis"), ECataclysmStatCondition::TargetCarriesNecrosis },
+		{ TEXT("seconds_after_minion_death"), ECataclysmStatCondition::WithinSecondsOfMinionDeath },
+		{ TEXT("minion_death_in_reach_within_seconds"), ECataclysmStatCondition::MinionDeathInReachWithinSeconds },
 	};
 
 	struct FNamedStatScale
@@ -534,6 +536,8 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfSupportSkill:
 	case C::WithinSecondsOfMovementSkill:
 	case C::WithinSecondsOfMovementSkillEnd:
+	case C::WithinSecondsOfMinionDeath:
+	case C::MinionDeathInReachWithinSeconds:
 	case C::WithinSecondsOfSpell:
 	case C::WithinSecondsOfMeleeHitTaken:
 	case C::WithinSecondsOfCrowdControl:
@@ -1546,6 +1550,30 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 
 	case ECataclysmStatCondition::TargetCarriesNecrosis:
 		return State.bTargetCarriesNecrosis;
+
+	// THE DEATH TREES' SLICE C6d2 (2026-11-25): a clock, as every clock is, never reads -1 and refuses, inclusive.
+	case ECataclysmStatCondition::WithinSecondsOfMinionDeath:
+		return State.SecondsSinceMinionDied >= 0.0f && State.SecondsSinceMinionDied <= Value;
+
+	// AND ONE THAT FELL WITHIN THE ROW'S REACH: any recorded death recent enough and near enough. No reach counts nothing.
+	case ECataclysmStatCondition::MinionDeathInReachWithinSeconds:
+	{
+		if (ReachMetres <= 0.0f)
+		{
+			return false;
+		}
+		const int32 Known = FMath::Min(State.RecentMinionDeathSecondsAgo.Num(), State.RecentMinionDeathMetres.Num());
+		for (int32 Index = 0; Index < Known; ++Index)
+		{
+			const float Ago = State.RecentMinionDeathSecondsAgo[Index];
+			const float Metres = State.RecentMinionDeathMetres[Index];
+			if (Ago >= 0.0f && Ago <= Value && Metres >= 0.0f && Metres <= ReachMetres)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 
 	case ECataclysmStatCondition::TargetInYourSiphon:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetStandsInYourZone` is. The Death trees' slice C2

@@ -5597,6 +5597,16 @@ CONDITIONS = {
     # `CONDITIONS_OF_A_HIT_DEALT`.
     "seconds_after_movement_skill_ends": (0.0, 60.0, "a number of seconds"),
     "target_struck_by_your_movement_skill_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # THE DEATH TREES' SLICE C6d2 (2026-11-25), as ruled (P1): Bone Knit's
+    # "while one of your minions has died in the last 3 seconds", a clock whose
+    # value is the seconds. Its event, `minion_death`, is raised by
+    # `UCataclysmAbilitySystemComponent::NoteMinionDied` for a minion, an imp or
+    # a thrall killed, and not for a gadget or a trap.
+    "seconds_after_minion_death": (0.0, 60.0, "a number of seconds"),
+    # AND DEATH WARD'S "for 3 seconds after one of your minions dies within 6
+    # metres of you", the same deaths with how far from the character each fell,
+    # read within the row's `Reach Metres`. The value is the seconds.
+    "minion_death_in_reach_within_seconds": (0.0, 60.0, "a number of seconds"),
     # THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25). Read the Blow's
     # "attacks from Elite and stronger enemies" is `opponent_rarity_at_least`,
     # the attacker's rung on a blow taken, the value the rung. Vigil Over the
@@ -6741,7 +6751,11 @@ def passive_effects(book) -> list[dict]:
         # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
         # rather than around the character, read at the kill from this column.
         # The Death trees' slice C4c2 (2026-11-25).
-        reads_a_radius = counts_enemies | {"target_near_your_kill_within_seconds"}
+        reads_a_radius = counts_enemies | {"target_near_your_kill_within_seconds",
+                                           # AND DEATH WARD'S, the Death trees'
+                                           # slice C6d2: a minion's death within
+                                           # the radius of the character.
+                                           "minion_death_in_reach_within_seconds"}
         named = reads_a_radius & {condition, scale}
         written_reach = clean(_cell(raw, headers, "Reach Metres"))
         reach_metres = -1.0
@@ -7676,6 +7690,9 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # minion's blow landed on; Cold Hands and Grave Cold apply Necrosis to it,
     # and NO STRIKE ON IT IS RULED, as for `trap_triggered` above.
     "minion_hit",
+    # AND `minion_death` (the Death trees' slice C6d2, 2026-11-25), which carries
+    # the commander's own follower as it dies: nothing a row may strike.
+    "minion_death",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing

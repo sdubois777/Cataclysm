@@ -2063,6 +2063,28 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetCarriesNecrosis
 		UMETA(DisplayName = "Target Carries Necrosis"),
+
+	/**
+	 * One of the character's own followers -- a minion, an imp or a thrall, not a gadget or a trap -- was killed within
+	 * the last `ConditionValue` seconds: Bone Knit, "while one of your minions has died in the last 3 seconds". The
+	 * Death trees' slice C6d2 (2026-11-25), as ruled (P1). Read from `SecondsSinceMinionDied`, which
+	 * `UCataclysmAbilitySystemComponent::NoteMinionDied` keeps; its event, `minion_death`, is raised there. Negative
+	 * refuses, as every clock's does, and the window is inclusive. IT TAKES A VALUE: the seconds.
+	 */
+	WithinSecondsOfMinionDeath
+		UMETA(DisplayName = "Within Seconds Of Minion Death"),
+
+	/**
+	 * One of the character's own followers was killed within the last `ConditionValue` seconds AND within the row's
+	 * own `ReachMetres` of the character, measured as it fell: Death Ward, "for 3 seconds after one of your minions dies
+	 * within 6 metres of you". The Death trees' slice C6d2 (2026-11-25). Read from `RecentMinionDeathSecondsAgo` and
+	 * `RecentMinionDeathMetres`, which `CurrentConditions` copies from the deaths
+	 * `UCataclysmAbilitySystemComponent::NoteMinionDied` records. A row with no reach counts nothing, as every reach
+	 * condition does. NOT NAMED `seconds_after_...`, which would name an action event; `minion_death` is the one.
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	MinionDeathInReachWithinSeconds
+		UMETA(DisplayName = "Minion Death In Reach Within Seconds"),
 };
 
 /**
@@ -3244,6 +3266,23 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceMovementSkillEnded = -1.0f;
+
+	/**
+	 * Seconds since one of the character's own followers was last killed. Negative means neither known nor ever, as
+	 * above. The Death trees' slice C6d2 (2026-11-25). See `WithinSecondsOfMinionDeath`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMinionDied = -1.0f;
+
+	/**
+	 * The character's own followers killed in the last minute: how long ago each died, and, at the same index, how far
+	 * from the character it fell. The Death trees' slice C6d2 (2026-11-25). See `MinionDeathInReachWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> RecentMinionDeathSecondsAgo;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> RecentMinionDeathMetres;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
@@ -5751,7 +5790,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-first, which is the drift that put the passive tree eight
+	 * adds a hundred-and-third, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5768,7 +5807,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-SIX OF THE HUNDRED COMPARE NOTHING. They are the case labels
+	 * FORTY-SIX OF THE HUNDRED-AND-TWO COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

@@ -3171,6 +3171,20 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		// second option: "Each time one of your minions dies, you regain 10% of your Maximum Energy Shield". Here,
 		// beside the Fervour, so it answers exactly the deaths that grant it; nothing for a commander without the row.
 		UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander);
+
+		// AND THE COMMANDER IS TOLD ONE OF ITS MINIONS DIED, `minion_death`: Death Ward, Bone Knit and Marrow Feast, the
+		// Death trees' slice C6d2 (2026-11-25), as ruled (P1). HERE, beside the Fervour, so a minion, an imp and a thrall
+		// are told alike and once; while the body still stands, so a row may ask how far away it fell. NOT FOR A
+		// GADGET OR A TRAP, which is a machine rather than a minion and raises `gadget_destroyed` or nothing.
+		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+		if (!AsMinion || !AsMinion->IsDeployable())
+		{
+			if (UCataclysmAbilitySystemComponent* Commanders =
+					Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander)))
+			{
+				Commanders->NoteMinionDied(Character, AsMinion ? AsMinion->TypeTags : UCataclysmCommand::ThrallMinionTags());
+			}
+		}
 	}
 
 	// WHAT A REPLACEMENT NEEDS, TAKEN BEFORE THE DEATH IS HANDLED. Issue #1515:

@@ -1111,6 +1111,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceMovementSkill = SecondsSinceMovementSkillUsed();
 	// AND SINCE IT ENDED, for Arrival. The Death trees' slice C6b2 (2026-11-25).
 	State.SecondsSinceMovementSkillEnded = SecondsSinceMovementSkillEnded();
+	State.SecondsSinceMinionDied = SecondsSinceMinionDied();
+	if (const UWorld* World = GetWorld(); World && RecentMinionDeaths.Num() > 0)
+	{
+		for (const FMinionDeathRecord& Death : RecentMinionDeaths)
+		{
+			State.RecentMinionDeathSecondsAgo.Add(FMath::Max(0.0f, World->GetTimeSeconds() - Death.AtSeconds));
+			State.RecentMinionDeathMetres.Add(Death.Metres);
+		}
+	}
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
 	State.SecondsSinceMeleeHitTaken = SecondsSinceMeleeHitTaken();
 	State.SecondsSinceCrowdControl = SecondsSinceCrowdControlApplied();
@@ -3398,6 +3407,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LastSupportSkillAtSeconds = -1.0f;
 	LastMovementSkillAtSeconds = -1.0f;
 	LastMovementSkillEndedAtSeconds = -1.0f;
+	LastMinionDiedAtSeconds = -1.0f;
+	RecentMinionDeaths.Reset();
 	LastSpellAtSeconds = -1.0f;
 	LastMeleeHitTakenAtSeconds = -1.0f;
 	LastCrowdControlAtSeconds = -1.0f;
@@ -5157,6 +5168,38 @@ void UCataclysmAbilitySystemComponent::NoteMovementSkillEnded()
 	}
 
 	ActOnEvent(FName(TEXT("movement_skill_ends")));
+}
+
+void UCataclysmAbilitySystemComponent::NoteMinionDied(const AActor* Body, const FGameplayTagContainer& FollowerTags)
+{
+	if (const UWorld* World = GetWorld())
+	{
+		const float Now = World->GetTimeSeconds();
+		LastMinionDiedAtSeconds = Now;
+		// KEPT A MINUTE, with how far from this character it fell, for Death Ward's reach.
+		RecentMinionDeaths.RemoveAll([Now](const FMinionDeathRecord& Old)
+		{
+			return Now - Old.AtSeconds > MinionDeathKeptSeconds;
+		});
+		FMinionDeathRecord Death;
+		Death.AtSeconds = Now;
+		const AActor* Self = GetAvatarActor();
+		Death.Metres = (Self && Body) ? UCataclysmTargeting::MetresBetween(Self, Body) : -1.0f;
+		RecentMinionDeaths.Add(Death);
+	}
+
+	ActOnEvent(FName(TEXT("minion_death")), &FollowerTags, 0.0f, /*bLanded=*/true, Body);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceMinionDied() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastMinionDiedAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMinionDiedAtSeconds);
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillEnded() const

@@ -4963,6 +4963,18 @@ public:
 	float SecondsSinceMovementSkillEnded() const;
 
 	/**
+	 * One of this character's own followers was killed: a minion, an imp or a thrall, not a gadget or a trap, which
+	 * raise `gadget_destroyed` or nothing. The Death trees' slice C6d2 (2026-11-25), as ruled (P1). Records when, for
+	 * `seconds_after_minion_death`, and raises the action event `minion_death` with the follower's tags and the body,
+	 * which is still standing, so a row may ask how far away it fell. Called by
+	 * `UCataclysmVitalAttributeSet` before the follower's own `HandleDeath`, beside the Fervour for losing it.
+	 */
+	void NoteMinionDied(const AActor* Body, const FGameplayTagContainer& FollowerTags);
+
+	/** Seconds since `NoteMinionDied` last ran, or -1 for never. */
+	float SecondsSinceMinionDied() const;
+
+	/**
 	 * Record that this character has just used a skill carrying `Type.Spell`. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -6324,6 +6336,20 @@ protected:
 
 	/** When this character's movement skill last ended, in world seconds; negative means never. See `NoteMovementSkillEnded`. */
 	float LastMovementSkillEndedAtSeconds = -1.0f;
+
+	/** When one of this character's followers was last killed, in world seconds; -1 for never. The Death trees' slice C6d2. */
+	float LastMinionDiedAtSeconds = -1.0f;
+
+	/** Each follower killed in the last minute: when, in world seconds, and how far from this character it fell. */
+	struct FMinionDeathRecord
+	{
+		float AtSeconds = 0.0f;
+		float Metres = -1.0f;
+	};
+	TArray<FMinionDeathRecord> RecentMinionDeaths;
+
+	/** The longest a minion's death is kept for `MinionDeathInReachWithinSeconds`; the generator bounds the seconds at 60. */
+	static constexpr float MinionDeathKeptSeconds = 60.0f;
 
 	/** When this character last used a skill carrying `Type.Spell`, in world seconds; negative means never. */
 	float LastSpellAtSeconds = -1.0f;
