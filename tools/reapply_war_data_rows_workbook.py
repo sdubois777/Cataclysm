@@ -65,9 +65,16 @@ PER_POINT_FROM = "Per Point From"
 #: 25% HP" and the like.
 CONDITION_2 = "Condition 2"
 CONDITION_VALUE_2 = "Condition Value 2"
+#: THE EVENT THAT GRANTS A ROW ITS OWN STACK, AND HOW LONG THE STACK LASTS, added to the workbook by the first War slice
+#: whose row is "for N seconds after" an event: the Saboteur's device conditions, 2026-11-25
+#: (`tools/reapply_war_saboteur_devices_workbook.py`), for Sprung's "+3% movement speed per point for 3 seconds after one
+#: of your traps is triggered". A row scaled by `own_stacks`, as the Enchantment Effects sheet writes one since issue
+#: #1833; the passive row port of 2026-11-24 made the Passive Effects sheet read the same columns.
+ACTION_EVENT = "Action Event"
+STACK_SECONDS = "Stack Seconds"
 #: The columns this script adds to the sheet when it lacks one an appended row uses, in the order they are added. The two
 #: condition columns go together, so a row's second condition never lands without its value's column.
-ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2)
+ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS)
 ReapplyError = helpers.ReapplyError
 
 @dataclasses.dataclass(frozen=True)
@@ -88,6 +95,8 @@ class Row:
     cond2: str | None = None
     cond_value2: float | None = None
     reach: float | None = None
+    action_event: str | None = None
+    stack_seconds: float | None = None
 
     def key(self) -> tuple:
         def num(value):
@@ -95,7 +104,8 @@ class Row:
         return (self.stat, self.kind, float(self.value), self.tags or None, self.cond or None,
                 num(self.cond_value), self.scale or None, num(self.step), num(self.option),
                 num(self.min_points), num(self.cap), num(self.per_point_from), self.cond2 or None,
-                num(self.cond_value2) or None, num(self.reach) if self.reach and self.reach > 0 else None)
+                num(self.cond_value2) or None, num(self.reach) if self.reach and self.reach > 0 else None,
+                self.action_event or None, num(self.stack_seconds) or None)
 
 
 R = Row
@@ -193,7 +203,8 @@ def row_from_cells(cells: dict[str, object]) -> Row:
                cap=number(cells.get(helpers.CAP_COLUMN)) or None,
                per_point_from=number(cells.get(PER_POINT_FROM)) or None,
                cond2=text(cells.get(CONDITION_2)), cond_value2=number(cells.get(CONDITION_VALUE_2)),
-               reach=number(cells.get("Reach Metres")))
+               reach=number(cells.get("Reach Metres")), action_event=text(cells.get(ACTION_EVENT)),
+               stack_seconds=number(cells.get(STACK_SECONDS)))
 
 
 def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
@@ -206,7 +217,8 @@ def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
             "Scale": row.scale, "Scale Step": out(row.step), "Option": out(row.option), "Node Name": label,
             "Reach Metres": out(row.reach), "Min Points": out(row.min_points), helpers.CAP_COLUMN: out(row.cap),
             PER_POINT_FROM: out(row.per_point_from), CONDITION_2: row.cond2,
-            CONDITION_VALUE_2: out(row.cond_value2)}
+            CONDITION_VALUE_2: out(row.cond_value2), ACTION_EVENT: row.action_event,
+            STACK_SECONDS: out(row.stack_seconds)}
 
 
 def _multiset(rows) -> collections.Counter:

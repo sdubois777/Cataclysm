@@ -5931,6 +5931,38 @@ namespace CataclysmStatExemptionTest
 					  Carrying > Clean + 0.0001f);
 	}
 
+	/**
+	 * `trap_trigger_radius`, scaled by debuffs carried, asked by `ACataclysmMinion::SkillTrapTriggerRadiusCmFor`. Added
+	 * 2026-11-25 for Support Network, which scales it by gadgets active from 4 points; any scale proves the ask.
+	 */
+	void ProbeScaledTrapTriggerRadius(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		ScaledBy(Holder, ACataclysmMinion::TrapTriggerRadiusStat, 50.0f, ECataclysmStatScale::PerDebuffCarried,
+				 /*Base=*/0.0f);
+		FGameplayTagContainer TrapTags;
+		TrapTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Type.Trap")));
+
+		const float Clean = ACataclysmMinion::SkillTrapTriggerRadiusCmFor(Holder, TrapTags);
+		GiveTwoDebuffs(Holder);
+		const float Carrying = ACataclysmMinion::SkillTrapTriggerRadiusCmFor(Holder, TrapTags);
+
+		Test.TestEqual(TEXT("trap_trigger_radius with no debuff carried: the radius as it stands"), Clean,
+					   ACataclysmMinion::SkillTrapTriggerRadiusCm, 0.01f);
+		Test.TestEqual(TEXT("trap_trigger_radius is asked for, so two debuffs at 50% each double the radius"), Carrying,
+					   2.0f * ACataclysmMinion::SkillTrapTriggerRadiusCm, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5950,6 +5982,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_from_minions"),       &ProbeScaledFervourFromMinions},
 			{TEXT("fervour_per_enemy_in_reach"), &ProbeScaledFervourPerEnemyInReach},
 			{TEXT("fervour_drain_per_second"),   &ProbeScaledFervourDrainPerSecond},
+			{TEXT("trap_trigger_radius"),        &ProbeScaledTrapTriggerRadius},
 			{TEXT("class_resource"),             &ProbeScaledMaximumClassResource},
 			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
 			{TEXT("health_reserved"),            &ProbeScaledHealthReserved},

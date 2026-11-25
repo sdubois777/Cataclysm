@@ -678,7 +678,11 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #:
 #: AND TO 481 THE SAME DAY: sixteen rows on Riposte, Vengeful Discharge and
 #: Crimson Tide (`tools/reapply_war_riposte_discharge_tide_workbook.py`).
-AUTHORED_ROWS = 481
+#:
+#: AND TO 488 THE SAME DAY: seven rows on Snap Back, Sprung, Emergency Protocol
+#: and Support Network, the Saboteur's device conditions that need no code
+#: (`tools/reapply_war_saboteur_devices_workbook.py`).
+AUTHORED_ROWS = 488
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1106,7 +1110,9 @@ AUTHORED_ROWS = 481
 #: AND TO 277 THE SAME DAY: Warmonger, Iron Will, Undying, Cleave and Blood Tithe,
 #: the Fervour spends (Cut and Run is an option of a capstone already counted).
 #: AND TO 280 THE SAME DAY: Riposte, Vengeful Discharge and Crimson Tide.
-AUTHORED_NODES = 280
+#: AND TO 284 THE SAME DAY: Snap Back, Sprung, Emergency Protocol and Support
+#: Network, the Saboteur's device conditions that need no code.
+AUTHORED_NODES = 284
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2107,7 +2113,18 @@ SCALE_WORDS = {
     # active gadget"; Saturation's "for each of your active traps".
     "armor": (("of your armor",), "{value:g}%", None),
     "gadgets_active": (("active gadget",), None, "each active gadget"),
-    "traps_active": (("active traps",), None, "for each of your active traps"),
+    # AND SNAP BACK'S "while you have at least one active trap" (2026-11-25), the
+    # trap count capped at one step, which is exactly "at least one"; and SUPPORT
+    # NETWORK'S "for each active trap on the battlefield" the same day.
+    "traps_active": ([("active traps",), ("at least one active trap",), ("each active trap",)], None,
+                     "for each of your active traps"),
+    # A ROW'S OWN STACK, ON A PASSIVE ROW FOR THE FIRST TIME (the Saboteur's
+    # device conditions, 2026-11-25): Sprung's "for 3 seconds after one of your
+    # traps is triggered" and Emergency Protocol's "for 5 seconds when a gadget is
+    # destroyed". One stack at a time, so the step is one.
+    # `test_an_own_stack_states_its_event_and_its_seconds` holds the event and
+    # the seconds to the sentence.
+    "own_stacks": (("for", "second"), None, None),
 
     # THE SCALES THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW FOR
     # THE FIRST TIME. Beacon of Despair counts the debuffs on the enemy struck
@@ -2132,6 +2149,38 @@ SCALE_WORDS = {
 STEP_OF_ONE_ON_ONE_NODE = {
     ("Berserker_capstone_25", "life_leech"): "your current life leech percentage",
 }
+
+
+#: The words that say which event grants a passive row its own stack, by the
+#: row's Action Event. The Saboteur's device conditions, 2026-11-25.
+OWN_STACK_EVENT_WORDS = {
+    "trap_triggered": ("traps is triggered",),
+    "gadget_destroyed": ("gadget is destroyed",),
+}
+
+
+def test_an_own_stack_states_its_event_and_its_seconds(effects, nodes):
+    """A passive row's own stack is granted by its Action Event and lasts its
+    Stack Seconds, and the node's sentence states both: the event in the words
+    `OWN_STACK_EVENT_WORDS` gives, and the seconds as "for N second(s)". A stack
+    lasting 4 seconds on a node that says 3, or granted by the wrong event, gives
+    a player something the sentence does not promise, and the arithmetic still
+    runs. THE CONTROL is the first assertion: the check reads at least one row."""
+    stacked = [row for row in effects if row["Scale"].strip() == "own_stacks"]
+    assert stacked, "no passive row is scaled by own_stacks, so this check reads nothing"
+    for row in stacked:
+        words = words_of(row, nodes).lower()
+        event = row["ActionEvent"].strip()
+        assert event in OWN_STACK_EVENT_WORDS, (
+            f"{row['Name']} grants its own stack on {event!r}, whose words this test does not know. "
+            f"Known: {sorted(OWN_STACK_EVENT_WORDS)}.")
+        assert all(phrase in words for phrase in OWN_STACK_EVENT_WORDS[event]), (
+            f"{row['Name']} grants its own stack on {event!r} and its node does not say "
+            f"{OWN_STACK_EVENT_WORDS[event]}: {words_of(row, nodes)}")
+        seconds = float(row["StackSeconds"] or 0)
+        assert seconds > 0 and f"for {seconds:g} second" in words, (
+            f"{row['Name']}'s stack lasts {seconds:g} seconds and its node does not say "
+            f"\"for {seconds:g} second(s)\": {words_of(row, nodes)}")
 
 
 def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):

@@ -10460,6 +10460,12 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # ADDED 2026-11-25 FOR SUPPORT NETWORK, "At 4 points: Active gadgets increase
+    # trap trigger radius by 10%": `trap_trigger_radius` scaled by gadgets active,
+    # one step at most. `ACataclysmMinion::SkillTrapTriggerRadiusCmFor` asks it
+    # through `IncreasesForStat`, which evaluates the rows against the player's
+    # state; `ProbeScaledTrapTriggerRadius` measures it.
+    "trap_trigger_radius",
     # ADDED 2026-11-25 FOR WARMONGER, "While in Wrath, each enemy within melee
     # range drains 3 additional Fervour per second": `fervour_drain_per_second`
     # scaled by enemies within 4 metres. `FCataclysmBerserkerStates::DrainStep`
