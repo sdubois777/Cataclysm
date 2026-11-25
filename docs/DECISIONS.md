@@ -35,7 +35,12 @@ Issue [#2849](https://github.com/sdubois777/Cataclysm/issues/2849).
 
 ### SAID FIRST
 
-- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **BUILT AND TESTED IN WINDOW inv-w1 (2026-11-24). THE WHOLE UNREAL SUITE RAN ONCE, AT `8fb8c6965`, WITH ONE
+  FAILURE**: this change's own paging test, whose made-up gem names sorted in an order the test did not expect. The
+  test's names were changed at `fb69687b8`, and the re-run covered `Cataclysm.InventoryTabs.` alone and the five
+  guard proofs only, as the coordinating session ruled, because the only change after `8fb8c6965` is string literals
+  in one test. So **the whole Unreal suite has not run at the final head**. The first build also failed, on a member
+  named like an older local. Both are under "Window inv-w1" below.
 - **REBASED ON 2026-11-24 ONTO THE SELLING AND DISMANTLING WINDOW (sd-w2, #48 S1 and #2848 S2, PR #2880), WHICH TOOK
   CHARACTER RECORD 15** (where each item arrived). As the coordinating session directed the same day, this change's
   step moved from 14 to 15 to **15 to 16**: `Migrate_15_to_16`, `AddTheCharactersVersion16Defaults`, and
@@ -129,7 +134,7 @@ and icy-veins.com returned 403. No page read gives Diablo IV's gem stack cap, or
 | `RestoringPutsBothTabsBackAndAStackInASavedSlotGoesToItsTab` | gathered and restored, the piece, 4 Mote and 2 Quality Of Life come back; a saved slot holding 6 Ash puts them in the materials tab and leaves the slot empty |
 | `TheForgeCombinesAndUnsocketsWithEveryGearSlotFull` | every gear slot full: two +1 stones combine, two Everyday Of Life combine, and unsocketing the Viper with one Dust is offered |
 | `TheScreenNamesTheTabsAndShowsEveryMaterialByTier` | "Materials (12)", "Gems (3)"; all 27 materials, by tier; the Corrupted Mote named; nought says "0"; the shown tab's colour differs |
-| `TheGemsTabPagesItsStacksAsManyRowsAPageAsTheMaterialsTabUses` | 200 stacks, Gem_000 to Gem_199: 36 a page, 6 pages; page 2 begins at place 36, Gem_036, the 37th; the last page holds 20; "Page 2 of 6"; pages 0 and 9 held to 1 and 6; an empty tab is one page |
+| `TheGemsTabPagesItsStacksAsManyRowsAPageAsTheMaterialsTabUses` | 200 stacks, Gem000 to Gem199 (no underscore since the window, below): 36 a page, 6 pages; page 2 begins at place 36, Gem036, the 37th; the last page holds 20; "Page 2 of 6"; pages 0 and 9 held to 1 and 6; an empty tab is one page |
 
 **Existing tests rewritten to the ruling.** Four are renamed, because their names now state the opposite:
 
@@ -214,6 +219,62 @@ what they check", "Test saves: 861 written and deleted, 0 left behind"). They we
 | C3 | `CataclysmForgeCraft.cpp` | the unsocket's room check as it was, without the Dust: `const bool bRoom = From != nullptr;` written `const bool bRoom = From != nullptr && (Inventory->CountOfGems(From->Gem, From->GemRarity) > 0 \|\| Inventory->NumFreeSlots() > 0);` | 6, 1: `TheForgeCombinesAndUnsocketsWithEveryGearSlotFull` |
 | C4 | `CataclysmInventoryComponent.cpp` | `RestoreSlots` drops a stack it finds in a saved slot: `PutMaterial(From.Material, From.Quantity);` removed | 6, 1: `RestoringPutsBothTabsBackAndAStackInASavedSlotGoesToItsTab` |
 | C5 | `CataclysmInventoryScreen.cpp` | a page starts one page late: `return (FMath::Max(1, Page) - 1) * FMath::Max(1, PerPage);` written `return FMath::Max(1, Page) * FMath::Max(1, PerPage);` | 6, 1: `TheGemsTabPagesItsStacksAsManyRowsAPageAsTheMaterialsTabUses` |
+
+### Window inv-w1 (2026-11-24)
+
+On development `5cdd6bdc4` (the rarity cap, #2853, merged), branch `feat/inv-w1-2`, in the worktree `C:/invw1`, with
+the scripts `.claude/windows/*_inv.py` there, made by `make_window_inv.py` from the #2784 window's. Registered from the
+rarity cap window's log: 5354 tests, 57 skipped halves, 861 test saves, 44 groups alone (469 tests).
+
+**Attempt 1, the builds at `269dbac82`: FAILED.** The branch's build: "Build: Failed - 90 actions, 80 files compiled",
+one error, `CataclysmInventoryWidget.cpp(376,21): error C4458: declaration of 'GearGrid' hides class member`. This change
+had added a member `GearGrid`, the carried gear tab's grid; `BuildGearPanel` already had a local of that name, for the
+worn-gear grid, from before this change. The member is renamed `CarriedGearGrid` (`8fb8c6965`), and the local, which is
+development's, is left as it was. A script then found no other member this change added that is named like a local or
+a parameter in its class's .cpp.
+
+**Attempt 2, the whole window at `8fb8c6965`: ONE TEST FAILED.**
+
+| Step | Measured |
+| :-- | :-- |
+| Builds, lock `inv-w1-compile` | the branch "Succeeded - 8 actions, 4 files compiled"; each changed file alone "60 actions, 57 files compiled"; the unity files again "26 actions, 23 files compiled"; 0 compiler warning or error lines in any |
+| 44 groups alone, lock `inv-w1` | 43 passed at their registered counts; `InventoryTabs.` "7 tests performed, 6 succeeded, 1 failed: TheGemsTabPagesItsStacksAsManyRowsAPageAsTheMaterialsTabUses" |
+| Whole suite | **5354 performed, 5353 succeeded, 1 failed**, the same test; 57 skipped halves; "Test saves: 861 written and deleted, 0 left behind"; "Declared: 5354 tests in the tree at 8fb8c6965; 5354 performed, gap 0" |
+| Python, beside it | "8252 passed, 10 skipped in 349.97s"; JUnit 8262 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!" |
+| Proofs | not run: the run script stops before them on any failure |
+
+**THE FAILURE WAS THE TEST'S NAMES, NOT THE PAGING.** It printed "page 2 starts at 36 with Gem_136" where it expected
+Gem_036. An FName keeps a trailing `_<number>` without a leading zero as a number apart from its text, and
+`FName::LexicalLess`, the gems tab's order, compares the text first: `Gem_100` to `Gem_199` are the text "Gem", and
+sorted before `Gem_000` to `Gem_099`, which keep their digits as text. No real gem name ends in a number
+(`game/Data/Gems.csv`: `Gem_Of_The_Viper` and the like), so the game's order is unchanged. The test's names became
+`Gem000` to `Gem199`, with no underscore before the digits (`fb69687b8`, that one test file only: 8 lines added, 4
+removed).
+
+**Attempt 3, a narrowed re-run at `fb69687b8`: PASSED.** The coordinating session's ruling of 2026-11-24: "the only
+change after 8fb8c6965 is string literals in one test, so the first run's whole suite (5354 performed, 5353 succeeded;
+57 skipped halves; 861 saves, 0 left behind) stands for every other test. Run: the builds (incremental), the
+InventoryTabs. group alone (it must show all its tests passing, including the fixed one), then the guard proofs C1 to
+C5. No second whole suite." **The whole Unreal suite did not run at `fb69687b8`.**
+
+| Step | Measured |
+| :-- | :-- |
+| Builds | the branch "Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.32.cpp"; each changed file alone "28 actions, 25 files compiled"; the unity files again "26 actions, 23 files compiled"; 0 compiler warning or error lines in any |
+| `InventoryTabs.` alone | "7 tests performed, 7 succeeded, 0 failed" |
+| Python, off the machine, before the proofs | "8252 passed, 10 skipped in 349.15s"; JUnit 8262 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!" |
+| Guard proofs | **5 of 5 PROVED**, each narrowed to `Cataclysm.InventoryTabs.`, each failing exactly the tests registered for it |
+
+| Proof | With the break in | Restored |
+| :-- | :-- | :-- |
+| C1 | "7 tests performed, 5 succeeded, 2 failed: AFullGearTabStillCollectsMaterialsAndGems, TheForgeCombinesAndUnsocketsWithEveryGearSlotFull" | 7 succeeded, 0 failed |
+| C2 | "7 tests performed, 6 succeeded, 1 failed: AVersion14RecordsStacksMoveIntoTheTabsAndItsGearKeepsItsCell" | 7 succeeded, 0 failed |
+| C3 | "7 tests performed, 6 succeeded, 1 failed: TheForgeCombinesAndUnsocketsWithEveryGearSlotFull" | 7 succeeded, 0 failed |
+| C4 | "7 tests performed, 6 succeeded, 1 failed: RestoringPutsBothTabsBackAndAStackInASavedSlotGoesToItsTab" | 7 succeeded, 0 failed |
+| C5 | "7 tests performed, 6 succeeded, 1 failed: TheGemsTabPagesItsStacksAsManyRowsAPageAsTheMaterialsTabUses" | 7 succeeded, 0 failed |
+
+The Python runs in this worktree skip 10 tests since the builds, against 9 before them: the tenth is
+`test_run_editor_python.py`'s `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, which says "this
+checkout has its modules built, so nothing is missing".
 
 ---
 
