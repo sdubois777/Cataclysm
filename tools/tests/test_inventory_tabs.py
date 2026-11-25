@@ -91,8 +91,9 @@ def test_the_forge_asks_no_gear_slot_for_a_stack() -> None:
 def test_the_record_is_at_sixteen_and_its_step_moves_and_blanks() -> None:
     header = code(RECORDS_H)
     character = header[header.index("class CATACLYSM_API UCataclysmCharacterSave"):]
-    assert re.search(r"SchemaVersionNow\s*=\s*16\s*;", character[:character.index("};")]) or (
-        re.search(r"SchemaVersionNow\s*=\s*16\s*;", character)), "the character record is not at version 16"
+    # AT 16 OR LATER: issue #837 slice 1 took it to 17 (the keys' remembered defaults); a later step keeps this one's.
+    version = re.search(r"SchemaVersionNow\s*=\s*(\d+)\s*;", character)
+    assert version and int(version.group(1)) >= 16, "the character record is below version 16"
     for field in ("TArray<FCataclysmCarriedSlot> CarriedMaterials;", "TArray<FCataclysmCarriedSlot> CarriedGems;"):
         assert field in flat(character), f"the character record has no {field}"
     # THE CHARACTER RECORD'S OWN STEPS: the run record has a `Migrate_15_to_16` too (issue #2838's cleanse).

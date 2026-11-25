@@ -130,11 +130,72 @@ FString UCataclysmEmpireMapLayout::CityLabel(const UCataclysmEmpireMap* Map,
 	// a city is at nothing would stop defending it, and a city at 0.4% is still
 	// standing and still savable.
 	//
-	// OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE, so a point bought mid-run shows: a full Outpost reads 96% after one
-	// point of Foundation, the "1000 of 1050" of the coordinating session's S1. Issue #2741 slice 3a.
+	// OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE. Issue #2741 slice 3a. A point bought mid-run keeps the share, since
+	// issue #2859: an Outpost at 80% reads 80% after a point of Foundation, at 840 of 1050.
 	const int32 Percent = FMath::CeilToInt(Map->DefenceFractionOf(*City) * 100.0f);
 
 	return FString::Printf(TEXT("%s %d%%"), *Tier, FMath::Clamp(Percent, 0, 100));
+}
+
+bool UCataclysmEmpireMapLayout::CityOpensItsScreen(const UCataclysmEmpireMap* Map, int32 CityId)
+{
+	// EVERY CITY, A FALLEN ONE INCLUDED: its screen lists the Fallen City dungeon standing on it, with the Walk that
+	// retakes it, and an erased one's says it can never be retaken. Issue #2866.
+	return Map != nullptr && Map->Find(CityId) != nullptr;
+}
+
+bool UCataclysmEmpireMapLayout::IsCityDimmed(const UCataclysmEmpireMap* Map, int32 CityId)
+{
+	return MarkFor(Map, CityId) == ECataclysmCityMark::Fallen;
+}
+
+int32 UCataclysmEmpireMapLayout::FallenCityDungeonOn(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	if (Run == nullptr)
+	{
+		return INDEX_NONE;
+	}
+
+	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.CityId == CityId && Dungeon.Type == ECataclysmDungeonType::FallenCity)
+		{
+			return Dungeon.DungeonId;
+		}
+	}
+
+	return INDEX_NONE;
+}
+
+FString UCataclysmEmpireMapLayout::FallenCityDetail(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	const FCataclysmCity* City = Run != nullptr && Run->Map != nullptr ? Run->Map->Find(CityId) : nullptr;
+	if (City == nullptr || !City->bFallen)
+	{
+		return FString();
+	}
+
+	// AN ERASED CITY LEAVES NO FALLEN CITY DUNGEON (`UCataclysmEmpireRun::AddFallenCityDungeon`), and `Retake` refuses it.
+	if (City->bErased)
+	{
+		return TEXT("erased by the Void, it can never be retaken");
+	}
+
+	// HOW IT COMES BACK, while the dungeon that brings it back stands on it. Issue #2866.
+	return FallenCityDungeonOn(Run, CityId) != INDEX_NONE
+		? FString(TEXT("fallen: walk its Fallen City dungeon to retake it (press the city, then Walk)"))
+		: FString(TEXT("fallen"));
+}
+
+FString UCataclysmEmpireMapLayout::RiftMark(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	// THE RUN'S OWN LIST, BY `FCataclysmDungeon::IsARift`, and no new state. Issue #51 slice B2.
+	const int32 Rifts = Run != nullptr ? Run->RiftsOn(CityId) : 0;
+	if (Rifts <= 0)
+	{
+		return FString();
+	}
+	return Rifts == 1 ? FString(TEXT(", Rift")) : FString::Printf(TEXT(", %d Rifts"), Rifts);
 }
 
 FString UCataclysmEmpireMapLayout::StandingPart(const UCataclysmEmpireRun* Run)
@@ -174,6 +235,17 @@ FString UCataclysmEmpireMapLayout::CityDetailDungeonLine(const UCataclysmEmpireR
 	if (Dungeon == nullptr || Run->Clock == nullptr)
 	{
 		return FString();
+	}
+
+	// A RIFT IS NAMED AS ONE, WITH THE DAYS UNTIL IT NEXT SENDS A DUNGEON, since issue #51 slice B2: "Infernal Rift of 4
+	// floors, 3 days left, sends a dungeon in 2 days". "Infernal Rift" is the floor panel's name for it (slice B1). Its
+	// sub-type is not named: every Rift is Elite.
+	if (Dungeon->IsARift())
+	{
+		const int32 Sends = Run->DaysUntilRiftSends(DungeonId);
+		return FString::Printf(TEXT("Infernal Rift of %d floors, %.0f days left, sends a dungeon in %d day%s"),
+							   Dungeon->Floors, Run->Clock->DaysUntilResolveFor(DungeonId), Sends,
+							   Sends == 1 ? TEXT("") : TEXT("s"));
 	}
 
 	// THE SUB-TYPE FOR EVERY DUNGEON, AND THE KIND AFTER IT FOR A QUEST DUNGEON ONLY. Issue #2800, ruled 2026-11-21.
@@ -524,6 +596,33 @@ FString UCataclysmEmpireMapLayout::DaysAwayLine(const UCataclysmEmpireRun* Run)
 	}
 
 	return FString::Printf(TEXT("While you were away, from day %d to day %d: %s."), Away.FromDay, Away.ToDay,
+						   *FString::Join(Parts, TEXT("; ")));
+}
+
+FString UCataclysmEmpireMapLayout::TimersRunningOutText(const UCataclysmEmpireRun* Run, int32 Days)
+{
+	if (Run == nullptr || Days <= 0)
+	{
+		return FString();
+	}
+	const TArray<FCataclysmTimerForecast> Forecast = Run->TimersRunningOutWithin(Days);
+	if (Forecast.IsEmpty())
+	{
+		return FString();
+	}
+
+	// EACH DUNGEON BY ITS NUMBER AND THE NAME THE PLAY LOOP GIVES IT, "13 (the dungeon on Outpost (-3,0))", then the city
+	// it would hit and the day, soonest first.
+	TArray<FString> Parts;
+	for (const FCataclysmTimerForecast& Each : Forecast)
+	{
+		const FString Named = Run->NameOfDungeon(Each.DungeonId);
+		Parts.Add(FString::Printf(TEXT("dungeon %d (%s) hits %s on day %d"), Each.DungeonId,
+								  Named.IsEmpty() ? TEXT("a dungeon") : *Named, *CityNameIn(*Run, Each.CityId), Each.Day));
+	}
+	const int32 Count = Forecast.Num();
+	return FString::Printf(TEXT(" Within %d day%s, %d %s: %s."), Days, Days == 1 ? TEXT("") : TEXT("s"), Count,
+						   Count == 1 ? TEXT("dungeon's timer runs out") : TEXT("dungeons' timers run out"),
 						   *FString::Join(Parts, TEXT("; ")));
 }
 

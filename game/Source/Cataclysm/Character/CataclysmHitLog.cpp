@@ -10,6 +10,7 @@
 
 const TCHAR* const FCataclysmHitLog::Prefix = TEXT("HIT: ");
 const TCHAR* const FCataclysmHitLog::OutgoingPrefix = TEXT("HIT OUT: ");
+const TCHAR* const FCataclysmHitLog::CreatureDeathPrefix = TEXT("DIED: ");
 
 namespace CataclysmHitLog
 {
@@ -188,6 +189,20 @@ FString FCataclysmHitLog::OutgoingLine(const FCataclysmHitNotice& Notice)
 		Out += TEXT("; reflected or retaliation");
 	}
 	return Out;
+}
+
+FString FCataclysmHitLog::CreatureDeathLine(const AActor* Creature, float Health, float MaxHealth,
+											const AActor* LastStruckBy)
+{
+	using CataclysmHitLog::NumberText;
+
+	// THE CREATURE AS A BLOW'S LINE NAMES IT, with its rarity; WHO STRUCK LAST AS A BLOW'S LINE NAMES AN ATTACKER, so
+	// "itself" for a creature that dealt its own last blow.
+	const FString StruckBy = LastStruckBy != nullptr
+		? AttackerText(LastStruckBy, Creature)
+		: FString(TEXT("nobody on record"));
+	return FString::Printf(TEXT("%s%s at %s of %s health; last struck by %s"), CreatureDeathPrefix,
+						   *AttackerText(Creature, nullptr), *NumberText(Health), *NumberText(MaxHealth), *StruckBy);
 }
 
 TArray<FString> FCataclysmHitLog::Note(const FCataclysmHitNotice& Notice, float HealthBefore, float MaxHealth,

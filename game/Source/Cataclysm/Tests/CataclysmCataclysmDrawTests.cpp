@@ -221,6 +221,8 @@ bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
 	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
+	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
+	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -268,7 +270,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v16.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v18.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -280,7 +282,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v16.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v18.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -300,7 +302,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 							UCataclysmCharacterSave::CataclysmOrderSeedFor(Read->CharacterId),
 							Back ? *FString::FromInt(Back->CataclysmOrderSeed) : *Error));
 
-	// THE CURRENT VERSION SINCE `Character_v16.json` BECAME THE COMMITTED FILE (issue #2849); it was 15 from issue #2848, 14 from issue #2741 slice 9, 13 from issue #46,
+	// THE CURRENT VERSION SINCE `Character_v18.json` BECAME THE COMMITTED FILE (#47 slice F6a); it was 17 from issue #837 slice 1, 16 from issue #2849, 15 from issue #2848, 14 from issue #2741 slice 9, 13 from issue #46,
 	// the gems window, 12 from issue #2741 slice 8, 11 from issue #2741 slice 6e, 10 from issue #2764, 9 from issue #2741 slice 1c, 8 until then.
 	TestEqual(TEXT("set-up: the file is the current version"), Read->SchemaVersion,
 			  UCataclysmCharacterSave::SchemaVersionNow);

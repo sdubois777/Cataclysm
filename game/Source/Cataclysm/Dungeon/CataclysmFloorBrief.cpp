@@ -128,12 +128,67 @@ bool FCataclysmDungeonFloorRules::BossAtTheExit(
 	const int32 Count = FMath::Clamp(Dungeon.Bosses, 1, Dungeon.TotalFloors);
 	for (int32 Boss = 1; Boss < Count; ++Boss)
 	{
-		if (FMath::DivideAndRoundUp(Boss * Dungeon.TotalFloors, Count) == FloorNumber)
+		if (SpreadFloorOf(Boss, Count, Dungeon.TotalFloors) == FloorNumber)
 		{
 			return true;
 		}
 	}
 	return false;
+}
+
+int32 FCataclysmDungeonFloorRules::SpreadFloorOf(int32 One, int32 Count, int32 TotalFloors)
+{
+	// CEIL(ONE x FLOORS / COUNT), the Fallen City's spread of issue #1466, and since issue #51 a Rift's altars'.
+	return Count >= 1 ? FMath::DivideAndRoundUp(One * TotalFloors, Count) : 0;
+}
+
+int32 FCataclysmDungeonFloorRules::RiftAltarFloor(int32 TotalFloors, int32 Altar)
+{
+	// NO FLOOR, OR NO SUCH ALTAR: none. A dungeon with no floor count is the sandbox's, which no Rift is.
+	if (TotalFloors < 1 || Altar < 1 || Altar > RiftAltars)
+	{
+		return 0;
+	}
+
+	// AT MOST ONE A FLOOR, SPREAD EVENLY, as the Fallen City's bosses are; THE REST ON THE LAST FLOOR. Issue #51, the
+	// owner's ruling of 2026-11-24: see the header for the reading.
+	const int32 Spread = FMath::Min(RiftAltars, TotalFloors);
+	return Altar <= Spread ? SpreadFloorOf(Altar, Spread, TotalFloors) : TotalFloors;
+}
+
+int32 FCataclysmDungeonFloorRules::RiftAltarsOnFloor(int32 TotalFloors, int32 FloorNumber)
+{
+	int32 Here = 0;
+	for (int32 Altar = 1; Altar <= RiftAltars; ++Altar)
+	{
+		Here += (FloorNumber >= 1 && RiftAltarFloor(TotalFloors, Altar) == FloorNumber) ? 1 : 0;
+	}
+	return Here;
+}
+
+int32 FCataclysmDungeonFloorRules::RiftAltarsAboveFloor(int32 TotalFloors, int32 FloorNumber)
+{
+	int32 Above = 0;
+	for (int32 Altar = 1; Altar <= RiftAltars; ++Altar)
+	{
+		const int32 Floor = RiftAltarFloor(TotalFloors, Altar);
+		Above += (Floor >= 1 && Floor < FloorNumber) ? 1 : 0;
+	}
+	return Above;
+}
+
+int32 FCataclysmDungeonFloorRules::NextRiftAltarFloorAfter(int32 TotalFloors, int32 FloorNumber)
+{
+	// THE ALTARS ARE IN FLOOR ORDER, altar i never above altar i + 1, so the first one deeper is the next.
+	for (int32 Altar = 1; Altar <= RiftAltars; ++Altar)
+	{
+		const int32 Floor = RiftAltarFloor(TotalFloors, Altar);
+		if (Floor > FloorNumber)
+		{
+			return Floor;
+		}
+	}
+	return 0;
 }
 
 int32 FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(int32 DungeonSeed)

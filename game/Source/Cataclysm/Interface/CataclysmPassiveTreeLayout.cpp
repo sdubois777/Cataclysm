@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Interface/CataclysmPassiveTreeLayout.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 
@@ -40,22 +41,58 @@ FCataclysmTreeExtent UCataclysmPassiveTreeLayout::ExtentOf(
 	return Extent;
 }
 
-float UCataclysmPassiveTreeLayout::NodeScaleFor(const UDataTable* NodeTable,
-												const FString& Tree)
+ECataclysmTreeMark UCataclysmPassiveTreeLayout::MarkFor(const FString& Kind)
+{
+	// THE TREE FILES' OWN WORDS, the ones `UCataclysmPassiveTree` reads: a vow is a "capstone" there.
+	if (Kind == UCataclysmPassiveTree::KeystoneKind)
+	{
+		return ECataclysmTreeMark::Keystone;
+	}
+	if (Kind == UCataclysmPassiveTree::CapstoneKind)
+	{
+		return ECataclysmTreeMark::Vow;
+	}
+	return ECataclysmTreeMark::Ordinary;
+}
+
+FVector2D UCataclysmPassiveTreeLayout::MarkSizePx(ECataclysmTreeMark Mark)
+{
+	switch (Mark)
+	{
+	case ECataclysmTreeMark::Keystone:
+		return FVector2D(KeystoneMarkPx, KeystoneMarkPx);
+	case ECataclysmTreeMark::Vow:
+		return FVector2D(VowMarkWidthPx, VowMarkHeightPx);
+	case ECataclysmTreeMark::Ordinary:
+	default:
+		return FVector2D(OrdinaryMarkPx, OrdinaryMarkPx);
+	}
+}
+
+FVector2D UCataclysmPassiveTreeLayout::MarkSizeForNode(const UDataTable* NodeTable, FName Node)
+{
+	const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(NodeTable, Node);
+	return MarkSizePx(Row ? MarkFor(Row->Kind) : ECataclysmTreeMark::Ordinary);
+}
+
+float UCataclysmPassiveTreeLayout::MarkScaleFor(const UDataTable* NodeTable, const FString& Tree)
 {
 	if (!NodeTable || Tree.IsEmpty())
 	{
 		return 1.0f;
 	}
 
+	// EACH NODE'S POSITION AND ITS OWN MARK'S SIZE, since a keystone's or a vow's mark needs more room than an
+	// ordinary one.
 	TArray<FVector2D> Points;
+	TArray<FVector2D> Sizes;
 	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
 	{
-		const FCataclysmPassiveNodeRow* Row =
-			reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+		const FCataclysmPassiveNodeRow* Row = reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
 		if (Row && Row->Tree == Tree)
 		{
 			Points.Add(FVector2D(Row->PositionX, Row->PositionY));
+			Sizes.Add(MarkSizePx(MarkFor(Row->Kind)));
 		}
 	}
 
@@ -65,31 +102,43 @@ float UCataclysmPassiveTreeLayout::NodeScaleFor(const UDataTable* NodeTable,
 		return 1.0f;
 	}
 
-	// EVERY PAIR, WHICH IS ABOUT 2,700 OF THEM FOR A 74-NODE TREE. That is work
-	// for the one moment a tree is opened rather than for a frame, and there is
-	// no cheaper answer: the closest pair by distance is not the binding one,
-	// because a node is much wider than it is tall.
+	// EVERY PAIR, ABOUT 2,700 OF THEM FOR A 74-NODE TREE: work for the moment a tree is opened, not for a frame.
 	float Allowed = 1.0f;
 	for (int32 First = 0; First < Points.Num(); ++First)
 	{
 		for (int32 Second = First + 1; Second < Points.Num(); ++Second)
 		{
 			const FVector2D Apart = (Points[First] - Points[Second]).GetAbs();
+			const FVector2D Needed = (Sizes[First] + Sizes[Second]) * 0.5;
 
-			// TWO BOXES MISS EACH OTHER WHEN THEY ARE CLEAR ON EITHER AXIS, so
-			// this pair permits the LARGER of what each axis allows.
-			const float ByThisPair = FMath::Max(
-				static_cast<float>(Apart.X) / NodeWidthPx,
-				static_cast<float>(Apart.Y) / NodeHeightPx);
-
+			// TWO MARKS MISS EACH OTHER WHEN THEY ARE CLEAR ON EITHER AXIS, so this pair permits the LARGER of what
+			// each axis allows.
+			const float ByThisPair = FMath::Max(static_cast<float>(Apart.X / Needed.X),
+												static_cast<float>(Apart.Y / Needed.Y));
 			Allowed = FMath::Min(Allowed, ByThisPair);
 		}
 	}
 
-	// A FLOOR, BECAUSE TWO NODES ON EXACTLY THE SAME POINT PERMIT NOTHING. None
-	// of the four trees has such a pair, but a node of zero size would be one
-	// nobody could ever click, and the tree would look as though it had lost it.
+	// A FLOOR, BECAUSE TWO NODES ON EXACTLY THE SAME POINT PERMIT NOTHING, and a mark of no size could not be clicked.
 	return FMath::Clamp(Allowed, 0.05f, 1.0f);
+}
+
+FString UCataclysmPassiveTreeLayout::MarkCaption(int32 Points, int32 MaxPoints)
+{
+	// NOTHING ON A NODE HOLDING NO POINTS, so the marks of an unspent tree stay plain and its shape reads; a spent node
+	// keeps its count readable without a hover.
+	return Points > 0 ? FString::Printf(TEXT("%d/%d"), Points, MaxPoints) : FString();
+}
+
+FString UCataclysmPassiveTreeLayout::NameCaption(const FString& Name, int32 Points, int32 MaxPoints)
+{
+	// THE TEXT A NODE'S BOX HELD UNTIL 2026-11-24, now drawn beside the mark of the node hovered or selected.
+	return FString::Printf(TEXT("%s  %d/%d"), *Name, Points, MaxPoints);
+}
+
+FVector2D UCataclysmPassiveTreeLayout::NameCaptionPosition(FVector2D MarkCentre, FVector2D MarkSize)
+{
+	return FVector2D(MarkCentre.X + MarkSize.X * 0.5 + CaptionGapPx, MarkCentre.Y);
 }
 
 float UCataclysmPassiveTreeLayout::ZoomToFit(const FCataclysmTreeExtent& Extent,

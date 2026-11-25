@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from . import combat, scoring
 from .config import CityTier, DungeonType, SurgeMode, TuningConfig
-from .modifiers import CORRUPTED_STALKER, pool_for
+from .modifiers import CORRUPTED_STALKER, DEMONIC_GUIDE, pool_for
 from .patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 from .world import City, Empire, build_empire
 
@@ -149,6 +149,10 @@ class Dungeon:
     #: The day this dungeon reached the city it stands on now. None until it
     #: first moves, and then `spawned_day` is that day.
     arrived_day: int | None = None
+    #: The depth whose floors this dungeon's enemies are, when it is not its
+    #: own: a short Rift's rolled depth (`TuningConfig.rift_floors`, issue #51).
+    #: 0, for every other dungeon, means its own `floors`.
+    strength_floors: int = 0
 
     def days_on_its_city(self, day: int) -> int:
         """Days this dungeon has stood on the city it stands on now.
@@ -327,6 +331,19 @@ class Simulation:
         #: this rule the number of surges in a campaign stops being a fixed
         #: budget, so "surges per campaign" changes meaning rather than value.
         self.surges_from_empty_board = 0
+        #: Demonic's Rifts, with `TuningConfig.demonic_rifts` on (issue #51):
+        #: Rifts opened, Basic dungeons they sent, and surges a death in one
+        #: brought. All 0 with it off.
+        self.rifts_opened = 0
+        self.rift_spawns = 0
+        self.surges_from_rift_deaths = 0
+        #: The last dungeon each Rift sent, by the Rift's id, for
+        #: `rift_one_sent_at_a_time`.
+        self.rift_sent: dict[int, int] = {}
+        #: A death in a Rift whose surge has not landed yet: it lands after the
+        #: walk's days have run, on the day of the death. See
+        #: `_surge_for_a_rift_death`.
+        self.rift_death_pending = False
 
         self.current: Dungeon | None = None
         self.crafting = False
@@ -458,7 +475,21 @@ class Simulation:
         n_mods = cfg.modifiers_per_tier * cfg.tier
         if subtype == "Sacrificial":
             n_mods *= cfg.sacrificial_modifier_multiplier
+        # A RIFT CARRIES `rift_modifiers` WHEN SET, whatever the tier: the
+        # owner, 2026-11-24, issue #51, "Rifts always have 8 dungeon modifiers.
+        # Keep it spicy". Drawn as any dungeon's are, so fewer only if the pool
+        # holds fewer, which no pool does (the smallest column is 12).
+        a_rift = (cfg.demonic_rifts and dtype is DungeonType.QUEST
+                  and source == "Demonic")
+        if a_rift and cfg.rift_modifiers > 0:
+            n_mods = cfg.rift_modifiers
         pool = self.modifier_pool
+        # A RIFT AT TIER 1 NEVER DRAWS THE DEMONIC GUIDE: the owner, 2026-11-25,
+        # "Make demonic guide not spawn on the Rifts" and "at least not on t1"
+        # (`TuningConfig.rift_without_the_guide_up_to_tier`). Its eight come
+        # from the pool without that row; above the tier, from the whole pool.
+        if a_rift and cfg.tier <= cfg.rift_without_the_guide_up_to_tier:
+            pool = [row for row in pool if row[0] != DEMONIC_GUIDE]
         picked: list[tuple[str, float]] = []
         if pool and n_mods > 0:
             k = min(n_mods, len(pool))
@@ -490,6 +521,25 @@ class Simulation:
             # and do not detonate.
             resolve = cfg.fallen_city_resolve_days
 
+        # A SHORT RIFT, with `TuningConfig.rift_floors` set: the owner's proposal
+        # of 2026-11-24 on issue #51, unruled and kept for measurement. Rolled
+        # as above, then given exactly `rift_floors` floors whatever the tree
+        # adds; the rolled depth stays as `strength_floors`, whose enemies it
+        # fights (or, with `rift_strength_from_quest_depth` off, its own 4
+        # floors' enemies). Its timer is the rolled depth's unless
+        # `rift_timer_from_quest_depth` is off, which takes its own floors with
+        # the same variation. NO DRAW IS ADDED, so the stream does not move.
+        # THE TREE ADDS NOTHING TO IT: `tree_floors` is set to 0 below.
+        strength = 0
+        shortened = a_rift and cfg.rift_floors > 0
+        if shortened:
+            if cfg.rift_strength_from_quest_depth:
+                strength = floors
+            if not cfg.rift_timer_from_quest_depth:
+                short = cfg.resolve_base_days + cfg.rift_floors * cfg.resolve_floor_ratio
+                resolve = short * jitter + cfg.tree.resolve_bonus_days
+            floors = cfg.rift_floors
+
         d = Dungeon(
             did=self._next_did,
             dtype=dtype,
@@ -508,7 +558,10 @@ class Simulation:
             modifier_names=tuple(n for n, _ in picked),
             modifier_score=mod_score,
             power_scale=1.0 + cfg.dungeon_power_escalation_per_100_days * (self.day / 100.0),
+            strength_floors=strength,
         )
+        if shortened:
+            d.tree_floors = 0
         if subtype == "Hollow":
             d.hollow_from = natural
         self._next_did += 1
@@ -588,8 +641,9 @@ class Simulation:
         including its modifiers, less the content relief at tier 2 and up
         (`TuningConfig.content_relief`), the same relief `death_chance` gives."""
         cfg = self.cfg
+        # A SHORT RIFT IS AS HARD AS THE DEPTH IT WAS ROLLED AT (issue #51).
         base = scoring.dungeon_score(cfg.tier, SCORING_TYPE[d.dtype], d.subtype,
-                                     d.floors, d.modifier_score)
+                                     d.strength_floors or d.floors, d.modifier_score)
         return (base - cfg.content_relief() * self.tier_width) * d.power_scale
 
     def death_chance(self, d: Dungeon) -> float:
@@ -629,6 +683,7 @@ class Simulation:
                              if d.subtype == "Ascendant" else 0.0),
             extra_cap=(cfg.ascendant_extra_modifiers_cap
                        if d.subtype == "Ascendant" else 0),
+            strength_floors=d.strength_floors,
         )
 
     def average_modifier_score(self) -> float:
@@ -717,8 +772,14 @@ class Simulation:
 
     # -- surges ----------------------------------------------------------
 
-    def surge_count(self) -> int:
+    def surge_count(self, from_empty_board: bool = False) -> int:
         """Dungeons in the next surge.
+
+        AN EMPTY-BOARD SURGE IS THE SCHEDULED SIZE PLUS
+        `empty_board_surge_extra` when `empty_board_surge_larger` is on: the
+        owner's ruling of 2026-11-24 on issue #2865, "Flat +4, no stacking".
+        Added before the cap and the lethality multiplier, which apply to it as
+        to any wave (the coordinating session's judgement of that day).
 
         Grows with the surge index under SWELLING/BOTH, and with the number of
         simultaneous Cataclysms in every mode.
@@ -738,6 +799,8 @@ class Simulation:
                   else cfg.surge_dungeon_count)
         if cfg.surge_mode in (SurgeMode.SWELLING, SurgeMode.BOTH):
             n += cfg.surge_count_growth * self.surge_index
+        if from_empty_board and cfg.empty_board_surge_larger:
+            n += cfg.empty_board_surge_extra
         n = min(n, float(cfg.surge_count_max))
         return max(1, int(n * cfg.surge_dungeon_multiplier))
 
@@ -768,7 +831,8 @@ class Simulation:
         held = cfg.quest_dungeon_chance * max(1.0, len(self.active_types) / volume)
         return min(1.0, held)
 
-    def trigger_surge(self, from_city_fall: bool = False) -> None:
+    def trigger_surge(self, from_city_fall: bool = False,
+                      from_empty_board: bool = False) -> None:
         cfg = self.cfg
         # Only the exposed frontier can be attacked. Everything behind a
         # standing city is sealed until that city falls.
@@ -787,7 +851,7 @@ class Simulation:
         pats = [PATTERNS.get(t, PATTERN_DEFAULT) for t in self.active_types]
         cmults = [p.count_mult for p in pats]
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
-        count = max(1, int(round(self.surge_count() * volume)))
+        count = max(1, int(round(self.surge_count(from_empty_board) * volume)))
         quest_chance = self.quest_chance(volume)
         quest_sieges: dict[str, int] = {}
 
@@ -837,12 +901,28 @@ class Simulation:
                     city = self.rng.choices([c for c, _ in free],
                                             weights=[wc for _, wc in free], k=1)[0]
 
+            # A DEMONIC QUEST DUNGEON IS A RIFT AND OPENS ON ANY STANDING CITY
+            # BUT THE PILLAR, BEHIND THE FRONT INCLUDED, by the surge's tier
+            # weights. The owner, 2026-11-24, issue #51: "Rift = Quest dungeon
+            # (Recommended)" and "Anywhere but the Pillar (Recommended)". A
+            # SECOND DRAW, after the front-line city and the kind were drawn as
+            # for any dungeon, so with the Rifts off the stream is where it was.
+            rift = (cfg.demonic_rifts and dtype is DungeonType.QUEST
+                    and ctype == "Demonic")
+            if rift:
+                anywhere = self.empire.alive_cities()
+                rw = [cfg.SURGE_TARGET_WEIGHT[c.tier] for c in anywhere]
+                if sum(rw) > 0:
+                    city = self.rng.choices(anywhere, weights=rw, k=1)[0]
+
             self.making_for = ctype
             try:
                 d = self._make_dungeon(dtype, city, floors_mult=pat.floors_mult)
             finally:
                 self.making_for = ""
             d.source = ctype
+            if rift:
+                self.rifts_opened += 1
 
         gap = self.surge_gap()
         self.surge_log.append((self.day, gap, count))
@@ -864,6 +944,14 @@ class Simulation:
         `self.dungeons` and both are something to do, which is the whole
         question this asks.
         """
+        # ONLY AN ORDINARY DUNGEON KEEPS THE BOARD FROM BEING EMPTY, under the
+        # owner's ruling of 2026-11-23 on issue #2865 (point 1): Quest dungeons,
+        # the Cataclysm boss dungeon, the Last Stand and Fallen City dungeons do
+        # not count. Ordinary is `DungeonType.BASIC`. Off, every dungeon counts,
+        # as below.
+        if self.cfg.empty_board_counts_ordinary_only:
+            return not any(d.dtype is DungeonType.BASIC
+                           for d in self.dungeons.values())
         return not self.dungeons
 
     def days_since_last_surge(self) -> float:
@@ -921,13 +1009,110 @@ class Simulation:
             return
         if not self.board_is_empty():
             return
-        if self.days_since_last_surge() < cfg.surge_interval_min:
-            return
+        # NO BRAKE WHEN THE RULING OF 2026-11-23 IS ON (issue #2865, point 3):
+        # every surge adds at least one dungeon, so the board is not empty
+        # again until the player has cleared or lost every ordinary one.
+        if cfg.empty_board_surge_braked:
+            if self.days_since_last_surge() < cfg.surge_interval_min:
+                return
 
+        before = len(self.surge_log)
+        # AN ORDINARY SURGE, AS THE GAME FIRES ONE, while the ruling's larger wave
+        # is off (`tools/tests/test_surge_port.py` holds the two equal); with it
+        # on, flagged so `surge_count` adds `empty_board_surge_extra`.
+        if cfg.empty_board_surge_larger:
+            self.trigger_surge(from_empty_board=True)
+        else:
+            self.trigger_surge()
+        if len(self.surge_log) > before:
+            self.surges_from_empty_board += 1
+
+    # -- Demonic's Rifts (issue #51) ---------------------------------------
+
+    def is_rift(self, d: Dungeon) -> bool:
+        """Whether `d` is a Rift: a Quest dungeon Demonic sent, with
+        `TuningConfig.demonic_rifts` on. The owner, 2026-11-24: "Rift = Quest
+        dungeon (Recommended)"."""
+        return (self.cfg.demonic_rifts and d.dtype is DungeonType.QUEST
+                and d.source == "Demonic")
+
+    def _rift_spawns(self) -> None:
+        """Every unsealed Rift sends a Basic Demonic dungeon on each
+        `rift_spawn_every_days`-th day since it opened.
+
+        THE OWNER, 2026-11-24, issue #51, "Anywhere but the Pillar
+        (Recommended)": every 5 days, counted from the day it opened and not
+        reset when it moves, an unsealed Rift sends an ordinary Basic Demonic
+        dungeon, made as a surge makes one for that city, to an adjacent city a
+        surge could target (`Empire.adjacent_exposed_cities`: standing, exposed,
+        not the Pillar). Nothing is sent when no neighbour qualifies, so a Rift
+        deep behind the front sends nothing until a lane opens next to it.
+
+        THE NEIGHBOUR IS DRAWN BY THE SURGE'S TIER WEIGHTS, as a surge draws its
+        city: a judgement of this layer, since the ruling names no rule for
+        choosing among several neighbours. ONE DRAW FOR THE CITY, then the
+        dungeon's own draws in `_make_dungeon`; none when nothing qualifies.
+
+        A CALENDAR CLOCK AND NOT A TIMER, so it is not paused while the player
+        is inside the Rift: a death leaves the Rift standing and the walk's days
+        then count. A sealed Rift is off the map before those days run and sends
+        nothing.
+        """
+        cfg = self.cfg
+        every = cfg.rift_spawn_every_days
+        if not cfg.demonic_rifts or every <= 0:
+            return
+        pat = PATTERNS.get("Demonic", PATTERN_DEFAULT)
+        for d in [x for x in self.dungeons.values() if self.is_rift(x)]:
+            age = self.day - d.spawned_day
+            if age <= 0 or age % every:
+                continue
+            # ONE OF ITS DUNGEONS AT A TIME, with `rift_one_sent_at_a_time` on
+            # (unruled, for measurement): the day is skipped, not deferred.
+            if (cfg.rift_one_sent_at_a_time
+                    and self.rift_sent.get(d.did) in self.dungeons):
+                continue
+            host = self.empire.cities.get(d.city_id)
+            if host is None:
+                continue
+            targets = self.empire.adjacent_exposed_cities(host)
+            weights = [cfg.SURGE_TARGET_WEIGHT[c.tier] for c in targets]
+            if sum(weights) <= 0:
+                continue
+            target = self.rng.choices(targets, weights=weights, k=1)[0]
+            self.making_for = "Demonic"
+            try:
+                sent = self._make_dungeon(DungeonType.BASIC, target,
+                                          floors_mult=pat.floors_mult)
+            finally:
+                self.making_for = ""
+            sent.source = "Demonic"
+            self.rift_sent[d.did] = sent.did
+            self.rift_spawns += 1
+
+    def _surge_for_a_rift_death(self) -> None:
+        """A death in a Rift brings an ordinary surge at once.
+
+        THE OWNER, 2026-11-24, issue #51, "Every death, no gap (Recommended)":
+        each death brings one, with no least-interval brake, matching their
+        ruling of the same day that every city fall brings its own surge.
+
+        ON THE DAY OF THE DEATH: after the walk's days have run and before the
+        death's own days, which is the order the game charges a death in
+        (`ACataclysmDungeonGameMode::EndTheDungeonForADeath`: the resolve, the
+        walk's days, then the death's days). A judgement of this layer; the
+        ruling says "at once".
+
+        AN ORDINARY SURGE, so it advances the escalation and moves the next
+        scheduled surge as a scheduled one does.
+        """
+        if not self.rift_death_pending:
+            return
+        self.rift_death_pending = False
         before = len(self.surge_log)
         self.trigger_surge()
         if len(self.surge_log) > before:
-            self.surges_from_empty_board += 1
+            self.surges_from_rift_deaths += 1
 
     # -- consequences ----------------------------------------------------
 
@@ -1440,20 +1625,22 @@ class Simulation:
             finally:
                 self.making_floors = None
 
-        # A FALL RESPECTS THE SAME MINIMUM GAP AS THE OTHER TWO TRIGGERS. Issue
-        # #1432, ruled 2026-09-14. The scheduled wave spaces itself by
-        # `surge_gap()` and the board-empty trigger refuses inside
-        # `surge_interval_min`; this trigger had no spacing at all, so a fall the
-        # day after a surge landed a whole second wave and two cities falling on
-        # one day landed two. At difficulty tier 4 that was 89% of every surge
-        # that fired, 82% of them inside the 25-day floor. The fall itself still
-        # stands -- the Fallen City dungeon, the lane opening -- and the
-        # scheduled clock is untouched; only the extra wave is withheld when the
-        # last one landed less than `surge_interval_min` days ago. A braked
-        # fall is not retried later: the fall is a moment, not a standing state
-        # like an empty board, and the scheduled wave still comes.
-        if (cfg.surge_on_city_fall
-                and self.days_since_last_surge() >= cfg.surge_interval_min):
+        # EVERY FALL FIRES A SURGE, WHATEVER THE GAP SINCE THE LAST ONE. The
+        # owner's ruling of 2026-11-24 on issue #2865, verbatim: "surges from
+        # cities falling should happen regardless". So a fall the day after a
+        # surge lands a second wave, and two cities falling on one day land two.
+        #
+        # FROM ISSUE #1432 (RULED 2026-09-14) UNTIL THEN a fall respected the
+        # minimum gap: at difficulty tier 4 with no tree the fall trigger had
+        # been 89% of every surge that fired, 82% of them inside the 25-day
+        # floor. `city_fall_surge_braked` gives that rule back. A braked fall
+        # was not retried later: the fall is a moment, not a standing state like
+        # an empty board. The fall itself stands either way -- the Fallen City
+        # dungeon, the lane opening.
+        if cfg.surge_on_city_fall:
+            if (cfg.city_fall_surge_braked
+                    and self.days_since_last_surge() < cfg.surge_interval_min):
+                return
             self.trigger_surge(from_city_fall=True)
 
     def _quest_refuge(self, d: Dungeon, fallen: City) -> City | None:
@@ -1582,6 +1769,11 @@ class Simulation:
             # holds the order in both files.
             if cfg.death_resolves_dungeon:
                 self._resolve_on_death(d)
+
+            # A DEATH IN A RIFT BRINGS A SURGE, which lands once the walk's days
+            # have run: `_surge_for_a_rift_death`. Issue #51.
+            if self.is_rift(d) and cfg.rift_death_brings_surge:
+                self.rift_death_pending = True
 
             self.current = None
             # Dying to the Cataclysm -- whether you went to it or it came to
@@ -2023,6 +2215,7 @@ class Simulation:
         if self.days_remaining <= 0:
             self._finish_current()
             self._settle_owed(walked.did)
+            self._surge_for_a_rift_death()
             return
 
         # THE CAMPAIGN ENDS INSIDE THE WALK. Its days run now, so a campaign
@@ -2103,6 +2296,12 @@ class Simulation:
             if d.resolve_in <= 0:
                 self._resolve(d)
 
+        # EACH UNSEALED RIFT SENDS ITS DUNGEON ON ITS DAY, after the timers, so a
+        # Rift that moved today sends from where it stands now, and before the
+        # empty-board check, so what it sends is on the board when that asks.
+        # Issue #51; a judgement of this layer.
+        self._rift_spawns()
+
         # A Sanctuary has fallen: the Cataclysm reaches the Pillar and comes to
         # the player. In practice this is the end of the run. The fight is
         # winnable in principle and almost never in practice -- measured on
@@ -2159,6 +2358,7 @@ class Simulation:
             self.days_remaining -= 1
             if self.days_remaining <= 0:
                 self._finish_current()
+                self._surge_for_a_rift_death()
             return
 
         self.free_days += 1

@@ -179,7 +179,10 @@ HOOKS = {
                 "item, any kill's one more material, a boss's Legendary or rarer item, "
                 "issue #2741 slice 5b",
             "UCataclysmDropSpawner::SpawnGemsFor":
-                "the gems the creature dropped, last, from a stream of their own, issue #46 slice G5",
+                "the gems the creature dropped, from a stream of their own, issue #46 slice G5",
+            "UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor":
+                "the Cataclysm Boss's one piece of the next tier's best rarity, last, after the gems, "
+                "and nothing for any other rung, issue #2853 (the owner's ruling of 2026-11-24)",
             "UCataclysmHealthDebt::ClearOnKill":
                 "a kill clearing what the killer owes, issue #997",
             "UCataclysmStacks::NoteEnemyKilled":
@@ -209,9 +212,16 @@ HOOKS = {
             "UCataclysmRisenImps::RiseOnDeath":
                 "a creature dying carrying a curse a Ritualist laid rising as "
                 "an imp for that Ritualist, issue #1479",
+            "FCataclysmHitLog::CreatureDeathLine":
+                "the log line saying the creature died, with its health and who "
+                "struck it last, so a play session's log shows a death among the "
+                "blows around it, issue #2874",
         },
         "questions": {
             "UCataclysmSkillEffects::MarkDead",
+            # THE HEALTH AND ITS MAXIMUM, READ FOR THE DEATH LINE ABOVE. Issue #2874.
+            "UCataclysmVitalAttributeSet::GetHealthAttribute",
+            "UCataclysmVitalAttributeSet::GetMaxHealthAttribute",
             "UCataclysmDropSpawner::PlayerLootStats",
             # WHETHER THIS KILL DROPS GOLD: the character playing has a balance to put it in. Issue #2742.
             "UCataclysmDropSpawner::GoldDropsIn",

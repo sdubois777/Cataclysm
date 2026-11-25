@@ -44,6 +44,8 @@
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Dungeon/CataclysmHarvestedSoul.h"
+// For the footprints Demonic Guide's guide leaves. Issue #2862.
+#include "Dungeon/CataclysmGuideFootprints.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -61,6 +63,8 @@
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmHeavenlyCoreCharacter.h"
+// For a Rift's altars, the Demonic Quest dungeon's. Issue #51 slice B1.
+#include "Character/CataclysmRiftAltarCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
@@ -121,8 +125,15 @@ namespace
 	 * #1833 group D part 2, ruled 2026-09-30: called after the floor's rules
 	 * reach the player in `StartPlay` and `GoToFloor`, and not on leaving the
 	 * dungeon, which also applies the rules and starts no floor. A Horde wave is
-	 * not a floor start. The first floor's `GoToFloor` runs before there is a
-	 * pawn, so it reaches nobody and `StartPlay`'s call is the one that counts.
+	 * not a floor start. `StartPlay` raises it for the first floor only for a
+	 * pawn its `GoToFloor` could not reach, and never after a load has put the
+	 * character back where it was saved, so a floor's start reaches the player
+	 * once. Until issue #2858 this said `GoToFloor` runs before there is a pawn
+	 * and `StartPlay` always raised it again; in a launched game the pawn stands
+	 * by then (the engine spawns it at login, before play begins), so the first
+	 * floor's start reached the player twice, and a resume's second one capped
+	 * the health the load had put back. Ruled a defect by the coordinating
+	 * session on 2026-11-24.
 	 */
 	void DungeonGameModeRaiseFloorStart(UWorld* World)
 	{
@@ -1343,32 +1354,74 @@ void ACataclysmDungeonGameMode::StartPlay()
 	// save writer, which records the floor being stood on, and a floor that does
 	// not exist yet is one the record cannot describe.
 	//
-	// ITS LAST STEP, STANDING THE PLAYER AT THE ENTRANCE, DOES NOTHING HERE and
-	// that is expected rather than a waste: there is no pawn until the parent has
-	// run, so it is done again below.
+	// ITS LAST STEPS -- STANDING THE PLAYER AT THE ENTRANCE, THE CORRUPTED
+	// DOUBLE'S NOTE, THE FLOOR'S RULES AND ITS `floor_start` -- REACH THE PLAYER
+	// WHEN A PAWN STANDS, and in a launched game one does: the engine spawns the
+	// player's pawn at login, which `UEngine::LoadMap` and Play In Editor both
+	// run before play begins. This said there was no pawn until the parent had
+	// run, until issue #2858. WHICH PAWN STOOD is asked first, so the steps below
+	// can tell whether this floor's start has reached the player already.
+	const APlayerController* FirstAtTheStart = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	const TWeakObjectPtr<APawn> ReachedByTheFloorsStart = FirstAtTheStart ? FirstAtTheStart->GetPawn() : nullptr;
 	GoToFloor(ChooseFloorNumber());
 
 	Super::StartPlay();
 
-	// AND THE PLAYER IS MOVED AFTER, because the pawn is created during login,
-	// which the parent's `StartPlay` is downstream of. Moved rather than spawned
-	// there: the player start is wherever the map put it, and where the player
-	// arrives is decided by the generator and is different every floor.
-	if (const APlayerController* Controller =
-			GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr)
+	// AND THE FIRST FLOOR STARTS FOR THE PLAYER HERE -- stood at the entrance,
+	// the Corrupted Double's note (issue #2688), the floor's rules (issue #41)
+	// and `floor_start` -- ONLY FOR A PAWN NOTHING HAS STARTED A FLOOR FOR. Moved
+	// rather than spawned there: the player start is wherever the map put it, and
+	// where the player arrives is decided by the generator and is different every
+	// floor.
+	//
+	// **NOT FOR THE PAWN `GoToFloor` REACHED ABOVE.** Issue #2858, ruled a defect
+	// by the coordinating session on 2026-11-24: "the first floor's start must
+	// reach the player once, not twice". Until then these four ran here whatever
+	// `GoToFloor` had done, because this said the pawn is created during login
+	// downstream of the parent's `StartPlay`; login runs before play begins, so in
+	// a launched game the first floor's start reached the player twice.
+	//
+	// **AND NOT FOR A CHARACTER THE PARENT'S LOAD HAS JUST PUT WHERE IT WAS
+	// SAVED.** Continue on a character saved inside a dungeon loads it in the
+	// parent's `StartPlay` (`LoadThePendingCharacter`): the dungeon is entered
+	// again at the saved floor, whose `GoToFloor` starts it for the character, and
+	// the character's place and health are put back last. This stood it at the
+	// floor's entrance a moment later, while the load's own line said "placed
+	// where it was saved", and raised `floor_start` after its health was put back,
+	// so "You start every dungeon floor at 30%-50% of your maximum HP" capped it.
+	// In a launched game the pawn reached above is the one loaded, so this is the
+	// same answer asked a second way, for a pawn that came to stand inside the
+	// parent's `StartPlay`. A load that put back no place -- a record with no
+	// floor, which a trip from the capital writes -- leaves the character where
+	// `GoToFloor` stood it.
+	const APlayerController* Controller = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	APawn* Standing = Controller ? Controller->GetPawn() : nullptr;
+	const bool bTheFloorsStartReachedIt = Standing != nullptr && ReachedByTheFloorsStart.Get() == Standing;
+	const bool bLeftWhereTheLoadPutIt = PendingLoadPutTheCharacterWhereSaved();
+	const bool bStartTheFloorForThePlayerHere = !bTheFloorsStartReachedIt && !bLeftWhereTheLoadPutIt;
+	if (bStartTheFloorForThePlayerHere)
 	{
-		PlaceAtEntrance(Controller->GetPawn());
+		PlaceAtEntrance(Standing);
+		NoteTheConsumptionDoubleAsAFloorIsEntered();
+		ApplyFloorRulesKeepingHealth();
+		DungeonGameModeRaiseFloorStart(GetWorld());
 	}
-
-	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THE FIRST FLOOR, for the same reason: `GoToFloor` ran before there was a
-	// player state to read the mark from. Issue #2688.
-	NoteTheConsumptionDoubleAsAFloorIsEntered();
-
-	// AND THE FIRST FLOOR'S MODIFIERS REACH THE PLAYER, for the same reason the
-	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
-	// Issue #41.
-	ApplyFloorRulesKeepingHealth();
-	DungeonGameModeRaiseFloorStart(GetWorld());
+	else if (bLeftWhereTheLoadPutIt && Standing)
+	{
+		const FVector At = Standing->GetActorLocation();
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("The loaded character stays where its save put it, at X=%.0f Y=%.0f Z=%.0f on floor %d, "
+					"%.0f cm from the floor's entrance, rather than being stood at the entrance; the floor's start is "
+					"not raised again."),
+			   At.X, At.Y, At.Z, FloorNumber,
+			   CurrentFloor ? FVector::Dist2D(At, CurrentFloor->EntranceWorld()) : -1.0f);
+	}
+	else
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Floor %d's start reached the player as the floor was built, so the level's start does not raise "
+					"it again."), FloorNumber);
+	}
 
 	// AND A DEATH ANYWHERE ON THE FLOOR REACHES THE NIHIL'S EMBRACE'S CLEANSE.
 	// Issue #41, slice 2.
@@ -2087,6 +2140,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// population places it, and a Horde wave records its own. Issue #1324 slice 6d.
 	ForgetTheCataclysmBoss();
 
+	// AND A RIFT'S BOSS, FOR THE SAME REASON: recorded below as the population places it on the Rift's last floor.
+	// Issue #51 slice B1.
+	ForgetTheRiftBoss();
+
 	// AND INFERNAL SEALS' BEARERS AND PIECES: each floor's stairs are sealed afresh. Issues #1820 and #41.
 	InfernalSealBearers.Reset();
 	InfernalSealBearerGave.Reset();
@@ -2209,6 +2266,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// AND AN ASCENDANT'S HEAVENLY CORE, ON ITS LAST FLOOR ONLY, FOR THE SAME REASON. Since 2026-10-22.
 		ForgetTheHeavenlyCore();
 		PlaceTheHeavenlyCore();
+
+		// AND A RIFT'S ALTARS, ON THE FLOORS THE RULING SPREADS THEM TO, FOR THE SAME REASON, and before the chasms
+		// below, which a floor holding one is not given. Issue #51 slice B1.
+		ForgetTheRiftAltars();
+		PlaceTheRiftAltars();
 
 		// AND PESTILENT EMPOWERMENT'S BEACONS, FOR THE SAME REASON. The last floor's were counted in
 		// `GoToFloor` before its creatures were cleared. Issues #1820 and #41.
@@ -2417,6 +2479,15 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 				if (PlacedRung == CataclysmBossRung)
 				{
 					NoteTheCataclysmBoss(Enemy);
+				}
+
+				// AND THE BOSS OF A RIFT'S LAST FLOOR, the one Gatekeeper the population places there (at the exit, at
+				// most one: `FCataclysmFloorPopulator`), which the Rift's seal waits for. At its drawn rung. Issue #51
+				// slice B1. NOT IN `ContinueTheWaveArriving`: a Rift is Elite, never a Horde, and a Horde floor has no
+				// stairs to seal.
+				if (Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsARift() && IsOnTheLastFloor())
+				{
+					NoteTheRiftBoss(Enemy);
 				}
 
 				// ON THE DARK FLOOR EACH CREATURE THE FLOOR PLACES IS ONE RUNG HIGHER THAN IT WAS DRAWN, held to Herald.
@@ -5415,6 +5486,170 @@ void ACataclysmDungeonGameMode::PlaceTheHeavenlyCore()
 		   HeavenlyCore.IsValid() ? TEXT("a") : TEXT("no room for a"), FloorNumber);
 }
 
+// ---------------------------------------------------------------------------
+// A Rift's four altars: the Demonic Quest dungeon, issue #51 slice B1
+// ---------------------------------------------------------------------------
+
+bool ACataclysmDungeonGameMode::IsARift() const
+{
+	// THE BOUND DUNGEON'S OWN ANSWER, READ LIVE: a Quest dungeon Demonic sent. Nothing bound, nothing a Rift.
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	return Dungeon != nullptr && Dungeon->IsARift();
+}
+
+int32 ACataclysmDungeonGameMode::RiftAltarsOnThisFloor() const
+{
+	// NONE ON THE DARK FLOOR, which carries the number of the floor its stairs lead to and is not that floor: the
+	// altars stand on the floor itself, and are placed when the stairs bring the player there.
+	if (bOnTheDarkFloor || !IsARift())
+	{
+		return 0;
+	}
+	return FCataclysmDungeonFloorRules::RiftAltarsOnFloor(EmpireDungeonFloors(), ChooseFloorNumber());
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::RiftAltarsStandingNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : RiftAltarsHere)
+	{
+		ACataclysmEnemyCharacter* Altar = One.Get();
+		if (IsValid(Altar) && !UCataclysmSkillEffects::IsDead(Altar))
+		{
+			Standing.Add(Altar);
+		}
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::RiftAltarsFallen() const
+{
+	if (!IsARift())
+	{
+		return 0;
+	}
+
+	// EVERY ALTAR OF THE FLOORS ABOVE THIS ONE: the player could not have come down past one standing, by the stairs it
+	// sealed or by a fall, which never lands past the next floor holding one. And THIS FLOOR'S that no longer stand,
+	// counting one the floor had no room for. On the dark floor, the floors above the one its stairs lead to.
+	const int32 Above =
+		FCataclysmDungeonFloorRules::RiftAltarsAboveFloor(EmpireDungeonFloors(), ChooseFloorNumber());
+	return FMath::Clamp(Above + RiftAltarsOnThisFloor() - RiftAltarsStandingNow().Num(), 0,
+						FCataclysmDungeonFloorRules::RiftAltars);
+}
+
+bool ACataclysmDungeonGameMode::RiftAltarsSealTheStairs() const
+{
+	// WHILE ONE STANDS, ON EVERY FLOOR THAT HOLDS ONE, THE LAST INCLUDED: its stairs are the way out that clears the
+	// Rift, so the seal holds back the clear and the quest objective with it, as the Heavenly Core's does.
+	return !RiftAltarsStandingNow().IsEmpty();
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::RiftBossNow() const
+{
+	ACataclysmEnemyCharacter* Boss = RiftBoss.Get();
+	return IsValid(Boss) && !UCataclysmSkillEffects::IsDead(Boss) ? Boss : nullptr;
+}
+
+bool ACataclysmDungeonGameMode::RiftBossSealsTheStairs() const
+{
+	// ON THE RIFT'S LAST FLOOR, WHILE ITS BOSS STANDS, AND ON NOTHING ELSE. "The Rift is sealed when the last altar
+	// falls and the boss is dead." A floor whose boss could not be placed is not sealed by it: a seal nothing can lift
+	// would leave the Rift unbeatable.
+	return IsARift() && IsOnTheLastFloor() && RiftBossNow() != nullptr;
+}
+
+void ACataclysmDungeonGameMode::NoteTheRiftBoss(ACataclysmEnemyCharacter* Boss)
+{
+	RiftBoss = Boss;
+	bRiftBossPlaced = Boss != nullptr;
+	UE_LOG(LogCataclysm, Log, TEXT("Rift: its boss %s stands on its last floor, %d; the Rift is not sealed until it dies"),
+		   Boss ? *Boss->GetName() : TEXT("(none)"), FloorNumber);
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRiftBoss()
+{
+	RiftBoss = nullptr;
+	bRiftBossPlaced = false;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForTheRift(const FCataclysmDeathNotice& Notice)
+{
+	// ANY DEATH, WHOEVER DEALT IT, as the Cataclysm Boss's: the owner's "when the last altar falls and the boss is dead"
+	// names no killer. The seals open by themselves; this tells the panel now rather than on its next refresh.
+	if (Notice.Victim == nullptr)
+	{
+		return;
+	}
+	const bool bAnAltar = RiftAltarsHere.ContainsByPredicate([&Notice](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One)
+	{
+		return One.Get() == Notice.Victim;
+	});
+	const bool bTheBoss = Notice.Victim == RiftBoss.Get();
+	if (!bAnAltar && !bTheBoss)
+	{
+		return;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Rift: %s fell on floor %d; %d of %d altars fallen"),
+		   bAnAltar ? TEXT("an altar") : TEXT("its boss"), FloorNumber, RiftAltarsFallen(),
+		   FCataclysmDungeonFloorRules::RiftAltars);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRiftAltars()
+{
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : RiftAltarsHere)
+	{
+		if (ACataclysmEnemyCharacter* Altar = One.Get())
+		{
+			Altar->Destroy();
+		}
+	}
+	RiftAltarsHere.Reset();
+}
+
+void ACataclysmDungeonGameMode::PlaceTheRiftAltars()
+{
+	UWorld* World = GetWorld();
+	const int32 Count = RiftAltarsOnThisFloor();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt() || Count <= 0)
+	{
+		return;
+	}
+
+	// WHERE A FLOOR SOURCE STANDS, AS THE HEAVENLY CORE DOES: floor cells well away from the entrance and from each
+	// other, on the floor's own stream, so a rebuilt floor puts the same altar on the same cell in the same order.
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmRiftAltarCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, RiftAltarCellsSalt))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Altar =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Altar)
+		{
+			continue;
+		}
+		// THE FLOOR BOSS'S HEALTH AT COMMON, as the Core's, ruled. It never attacks: a floor source has no brain. It
+		// pays nothing and is not one of the floor's creatures, as the other floor sources are not, so a save skips it
+		// and puts it back by `FCataclysmSavedFloorRuleState::RiftAltarsDestroyed`.
+		Altar->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Altar->SetHealth(RiftAltarHealth());
+		Altar->SetRarityStep(0);
+		Altar->bDiesUnpaid = true;
+		Altar->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Altar);
+		RiftAltarsHere.Add(Altar);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Rift: %d of the %d altar(s) of floor %d placed; %d of %d fallen above it"),
+		   RiftAltarsHere.Num(), Count, FloorNumber,
+		   FCataclysmDungeonFloorRules::RiftAltarsAboveFloor(EmpireDungeonFloors(), ChooseFloorNumber()),
+		   FCataclysmDungeonFloorRules::RiftAltars);
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepGoldenSpires(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -6274,8 +6509,14 @@ void ACataclysmDungeonGameMode::ForgetTheGuide()
 	{
 		Chain->Destroy();
 	}
+	// AND ITS FOOTPRINTS, WHICH LAST AS LONG AS IT DOES. Issue #2862.
+	if (ACataclysmGuideFootprints* Footprints = DemonicGuideFootprints.Get())
+	{
+		Footprints->Destroy();
+	}
 	DemonicGuide = nullptr;
 	DemonicGuideChain = nullptr;
+	DemonicGuideFootprints = nullptr;
 	DemonicGuidePanelKey = -1;
 }
 
@@ -6309,7 +6550,14 @@ void ACataclysmDungeonGameMode::PlaceTheGuide()
 	// AT ITS SHARE OF THE PLAYER'S DEFAULT WALK UNTIL THE FIRST STEP READS THE PLAYER'S OWN. Issue #2790.
 	Guide->SetGuideWalkSpeed(ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond
 							 * Effects::DemonicGuideWalkShareOfPlayer);
+	// AND ITS BODY IS THE GUIDE'S NOW THAT IT IS ONE, so the player and what the player commands pass through it and it
+	// through them; a creature still blocks it. Issue #2861. After the flag, which is what the body is read from. It is
+	// nobody's target from the flag on as well (`IsNeverATarget`, issue #2860), which needs no call.
+	Guide->RefreshPassThroughBody();
 	DemonicGuide = Guide;
+
+	// AND THE TRAIL IT LEAVES, empty until the first step prints where it stands. Issue #2862.
+	DemonicGuideFootprints = ACataclysmGuideFootprints::Begin(GetWorld(), Guide->GetActorLocation());
 	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
 }
@@ -6805,6 +7053,15 @@ void ACataclysmDungeonGameMode::StepDemonicGuide(
 			DemonicGuideChain = ACataclysmGroundZone::SpawnForTheFloor(
 				Source, Where, Where, Effects::DemonicGuideChainCm, 0.0f, /*bAffectsEveryone=*/false,
 				/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::DemonicGuideKey));
+		}
+
+		// AND ITS FOOTPRINTS: printed along where it walked since the last beat, at its feet, and aged by this beat
+		// unless it waits for the player. Issue #2862.
+		if (ACataclysmGuideFootprints* Footprints = DemonicGuideFootprints.Get())
+		{
+			const UCapsuleComponent* Body = Guide->GetCapsuleComponent();
+			const FVector Feet(At.X, At.Y, At.Z - (Body ? Body->GetScaledCapsuleHalfHeight() : 0.0f));
+			Footprints->Step(Feet, Guide->GetActorRotation(), BeatSeconds, bWaits);
 		}
 	}
 
@@ -8088,6 +8345,17 @@ void ACataclysmDungeonGameMode::PlaceTheChasms()
 		return;
 	}
 
+	// AND NONE ON A FLOOR OF A RIFT THAT HOLDS AN ALTAR, as none on the last floor: a fall goes down without the stairs,
+	// and the altar sealing them would be left standing behind the player, and the Rift sealed with it unfallen. Issue
+	// #51 slice B1, a judgement by the writing session: "destroy the four altars" is the whole of the Rift's quest.
+	// `ThePlayerFellIntoAChasm` holds a fall from any other floor to the next floor holding one.
+	if (RiftAltarsOnThisFloor() > 0)
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Those in the Dark: no chasms on floor %d (a Rift's altar stands on it)"),
+			   FloorNumber);
+		return;
+	}
+
 	// THE DRAW IS MADE ONCE, WITH EVERY RULE, ruled 2026-10-09. What each rule cost is not counted in play; a test
 	// asks `ThoseInTheDarkCountsRuleByRule` for that.
 	int32 Walkable = 0;
@@ -8186,7 +8454,22 @@ void ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm(ACataclysmPlayerCharacte
 	// final floor when that is nearer. With no empire dungeon bound there is no final floor and the count of
 	// floors asked is nought, so the answer is ten deeper: a judgement by the writing session.
 	const int32 FellFrom = ChooseFloorNumber();
-	const int32 Destination = Effects::ThoseInTheDarkDestinationFloor(FellFrom, EmpireDungeonFloors());
+	int32 Destination = Effects::ThoseInTheDarkDestinationFloor(FellFrom, EmpireDungeonFloors());
+
+	// AND IN A RIFT NO DEEPER THAN THE NEXT FLOOR HOLDING AN ALTAR, so a fall never carries the player past one: its
+	// dark floor's stairs lead to that floor, where the altar stands. Issue #51 slice B1, the judgement `PlaceTheChasms`
+	// states. Every floor before a Rift's last has an altar at or below it -- the fourth stands on the last floor -- so
+	// the next one is always there and always deeper than the floor fallen from, which holds none. A RIFT FOUR FLOORS
+	// DEEP, THE OWNER'S, HAS NO CHASM TO FALL INTO: each of its floors holds an altar and the last has none. So this
+	// reaches only a Rift of another depth, one Demonic rolled before the empire made Rifts four floors deep.
+	if (IsARift())
+	{
+		const int32 NextAltar = FCataclysmDungeonFloorRules::NextRiftAltarFloorAfter(EmpireDungeonFloors(), FellFrom);
+		if (NextAltar > FellFrom)
+		{
+			Destination = FMath::Min(Destination, NextAltar);
+		}
+	}
 
 	// THE FLAG FIRST, THEN THE ORDINARY FLOOR CHANGE TO THE DESTINATION'S NUMBER. `GoToFloor` is not changed by this
 	// layer: with the flag set, the seed it builds from is the dark floor's own, the floor is not the last, it
@@ -15449,6 +15732,16 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	{
 		Sealing.Add(FName(CataclysmBossSealKey));
 	}
+	// AND A RIFT'S ALTARS, WHICH SEAL THEIR FLOOR'S STAIRS WHILE ONE STANDS, THE LAST FLOOR'S INCLUDED; AND THE BOSS OF A
+	// RIFT'S LAST FLOOR, WHICH SEALS ITS WAY OUT WHILE IT STANDS. Issue #51 slice B1, the owner's ruling of 2026-11-24.
+	if (RiftAltarsSealTheStairs())
+	{
+		Sealing.Add(FName(RiftAltarsSealKey));
+	}
+	if (RiftBossSealsTheStairs())
+	{
+		Sealing.Add(FName(RiftBossSealKey));
+	}
 	return Sealing;
 }
 
@@ -16260,6 +16553,18 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 		NoteTheCataclysmBoss(&Creature);
 	}
 
+	// AND THE BOSS OF A RIFT'S LAST FLOOR, FOR THE SAME REASON: the saved Gatekeeper that neither rose from the dead nor
+	// was raised by a rule, which only the population places, at most one and at the exit. Issue #51 slice B1. NO SAVED
+	// FIELD IS ADDED: the record's class, `bRisenFromTheDead` and `RaisedBy` say it. Its rung is drawn, so the rung
+	// cannot tell it apart as it tells the Cataclysm Boss; a creature a rule raised is saved only with a `RaisedBy` tag
+	// (`FCataclysmSaveGather::FloorFrom`), so one with none is the floor's own. A boss dead at the save has no record,
+	// and the seal it held stays open.
+	if (IsARift() && IsOnTheLastFloor() && Creature.IsA<ACataclysmGatekeeperCharacter>() && !Saved.bRisenFromTheDead
+		&& Saved.RaisedBy == NAME_None)
+	{
+		NoteTheRiftBoss(&Creature);
+	}
+
 	// AND A CLOSED SOUL CHAINS GATE'S BEARER, back on its gate, which then has bearers again. Issue #753, Group 3c-1.
 	if (Saved.SoulChainsGate != INDEX_NONE)
 	{
@@ -16638,6 +16943,15 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 	// THE CORE DESTROYED: on the floor that places one, and standing no more.
 	Out.bHeavenlyCoreDestroyed = ChooseSubType() == ECataclysmDungeonSubType::Ascendant && IsOnTheLastFloor()
 		&& !HeavenlyCoreStands();
+	// A RIFT'S ALTARS FALLEN ON THIS FLOOR, BY THEIR PLACE IN THE ORDER PLACED. Issue #51 slice B1.
+	for (int32 Index = 0; Index < RiftAltarsHere.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Altar = RiftAltarsHere[Index].Get();
+		if (!IsValid(Altar) || UCataclysmSkillEffects::IsDead(Altar))
+		{
+			Out.RiftAltarsDestroyed.Add(Index);
+		}
+	}
 	Out.bQuarantineBroken = bQuarantineBroken;
 	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : QuarantinePatches)
 	{
@@ -16829,6 +17143,20 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 		if (ACataclysmEnemyCharacter* Core = HeavenlyCore.Get())
 		{
 			Core->Destroy();
+		}
+	}
+
+	// A RIFT'S ALTARS FALLEN, EACH BY ITS PLACE: the rebuilt floor placed them again in the same order, and each named
+	// is destroyed without a death notice, so nothing is paid or said again and its seal opens. A place the rebuilt
+	// floor did not fill is passed over. Issue #51 slice B1.
+	for (const int32 Index : State.RiftAltarsDestroyed)
+	{
+		if (RiftAltarsHere.IsValidIndex(Index))
+		{
+			if (ACataclysmEnemyCharacter* Altar = RiftAltarsHere[Index].Get())
+			{
+				Altar->Destroy();
+			}
 		}
 	}
 
@@ -17293,6 +17621,9 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheHeavenlyCore();
 	// AND THE CATACLYSM BOSS'S RECORD, which belongs to the floor left. Issue #1324 slice 6d.
 	ForgetTheCataclysmBoss();
+	// AND A RIFT'S ALTARS AND ITS BOSS'S RECORD, which belong to the floor left. Issue #51 slice B1.
+	ForgetTheRiftAltars();
+	ForgetTheRiftBoss();
 
 	// AND PESTILENT EMPOWERMENT'S BEACONS AND THE COUNT CARRIED BETWEEN FLOORS, beside Echoes' reset:
 	// no beacon of this dungeon strengthens the next one. Issues #1820 and #41.
@@ -20060,6 +20391,8 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForTheConsumptionDouble(Notice);
 	// AND THE CATACLYSM BOSS, WHOEVER KILLED IT: the stairs it sealed are open. Issue #1324 slice 6d.
 	NoteDeathForTheCataclysmBoss(Notice);
+	// AND A RIFT'S ALTAR OR ITS BOSS, WHOEVER KILLED IT: the panel says so at once. Issue #51 slice B1.
+	NoteDeathForTheRift(Notice);
 	NoteDeathForBloodBond(Notice);
 	NoteDeathForPlagueConvergence(Notice);
 	NoteDeathForEchoesOfThePast(Notice);
@@ -21416,6 +21749,15 @@ void ACataclysmDungeonGameMode::EpidemicEndTheChain(
 			continue;
 		}
 
+		// NOR ONE THAT CANNOT BE HURT, NOR ONE WHOSE DEATH IS ALREADY BEING MARKED. The coordinating session,
+		// 2026-11-24: the health written to nought below is held at the maximum for a creature that cannot be hurt
+		// (`UCataclysmVitalAttributeSet::PreAttributeChange`), and the `HandleDeath` after it killed it anyway, so a
+		// chain ended beside the Reaper or an echo could kill it. Divine Wrath's beam passes such a creature too.
+		if (UCataclysmSkillEffects::IsBeingMarkedDead(Creature) || Creature->bCannotBeHurt)
+		{
+			continue;
+		}
+
 		// NOR THE CORRUPTED STALKER, for the reason Divine Wrath's beam spares it: a player could end the encounter by
 		// finishing a chain beside it. Ruled by the coordinating session on 2026-10-26. Issue #2523.
 		if (Creature->IsA<ACataclysmCorruptedStalkerCharacter>())
@@ -21773,6 +22115,14 @@ TArray<FName> ACataclysmDungeonGameMode::RowsTheFloorPanelLists() const
 	if (IsTheCataclysmBossFloor())
 	{
 		Listed.AddUnique(FName(UCataclysmFloorModifierPanelLayout::CataclysmBossKey));
+	}
+
+	// AND A RIFT'S LINE, ON EVERY FLOOR OF A RIFT, LAST: not a row, named by its own line
+	// (`UCataclysmFloorModifierPanelLayout::RiftAltarsKey`) with how many of its four altars have fallen and what seals
+	// the way on. Issue #51 slice B1: every system has a basic screen, and this is the Rift's on the floor.
+	if (IsARift())
+	{
+		Listed.AddUnique(FName(UCataclysmFloorModifierPanelLayout::RiftAltarsKey));
 	}
 	return Listed;
 }
@@ -22587,6 +22937,47 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 				: bCataclysmBossPlaced
 				? FString(TEXT("slain; the way out is open"))
 				: FString(TEXT("none could be placed; the way out is open")));
+	}
+
+	// AND A RIFT: how many of its four altars have fallen, and what seals the way on -- this floor's altars, the next
+	// floor holding one, or on the last floor its boss. Issue #51 slice B1.
+	if (IsARift())
+	{
+		const int32 Fallen = RiftAltarsFallen();
+		const int32 StandingHere = RiftAltarsStandingNow().Num();
+		const int32 Floors = EmpireDungeonFloors();
+		// ON THE DARK FLOOR THE NEXT ALTAR MAY STAND ON THE FLOOR ITS STAIRS LEAD TO, whose number it carries.
+		const int32 NextAltar = FCataclysmDungeonFloorRules::NextRiftAltarFloorAfter(
+			Floors, ChooseFloorNumber() - (bOnTheDarkFloor ? 1 : 0));
+		const FString Count = FString::Printf(TEXT("altars %d of %d fallen"), Fallen,
+											  FCataclysmDungeonFloorRules::RiftAltars);
+		FString Line;
+		if (StandingHere == 1)
+		{
+			Line = Count + TEXT("; the altar on this floor seals the stairs");
+		}
+		else if (StandingHere > 1)
+		{
+			Line = Count + FString::Printf(TEXT("; the %d altars on this floor seal the stairs"), StandingHere);
+		}
+		else if (Fallen < FCataclysmDungeonFloorRules::RiftAltars && NextAltar > 0)
+		{
+			Line = Count + FString::Printf(TEXT("; the next stands on floor %d"), NextAltar);
+		}
+		else if (IsOnTheLastFloor() && RiftBossNow() != nullptr)
+		{
+			Line = Count + TEXT("; the boss stands, and the Rift is sealed when it dies");
+		}
+		else if (IsOnTheLastFloor())
+		{
+			Line = Count + (bRiftBossPlaced ? FString(TEXT(" and the boss slain; the stairs seal the Rift"))
+											: FString(TEXT(" and no boss could be placed; the stairs seal the Rift")));
+		}
+		else
+		{
+			Line = Count + TEXT("; the Rift is sealed when the boss of its last floor dies");
+		}
+		Counting.Add(FName(UCataclysmFloorModifierPanelLayout::RiftAltarsKey), Line);
 	}
 
 	// AND CHAOS TOUCHED: the stacks of all eight kinds. Issues #1820 and #41.
@@ -24098,14 +24489,15 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 		return;
 	}
 
-	// THE ALTAR, PLACED ONCE A FLOOR ON THE EXIT CELL. Drawn as its row's type, so its
-	// colour is its own rather than whatever the shared source was last typed as.
+	// THE ALTAR, PLACED ONCE A FLOOR ON THE EXIT CELL AND MARKED BY A RING. Drawn as its
+	// row's type, so its colour is its own rather than whatever the shared source was
+	// last typed as. THE RING IS A MARK, NOT A REACH, since issue #2855: see below.
 	ACataclysmGroundZone* Ring = BloodAltarRing.Get();
 	if (!Ring)
 	{
 		const FVector Altar = CurrentFloor->ExitWorld();
 		Ring = ACataclysmGroundZone::SpawnForTheFloor(
-			Source, Altar, Altar, Effects::BloodAltarReachCm, 0.0f,
+			Source, Altar, Altar, Effects::BloodAltarRingRadiusCm, 0.0f,
 			/*bAffectsEveryone=*/false, FName(*Row->CataclysmType));
 		if (!Ring)
 		{
@@ -24121,23 +24513,37 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 	}
 	BloodAltarSecondsSinceLastPulse = 0.0f;
 
-	// THE PLAYER, FOUND THE WAY ARTILLERY STRIKE FINDS WHO IS UNDER ITS SHELL, so
-	// "within reach" is measured to a body, as every area rule measures it. Anyone
-	// else the search finds is left alone.
-	const FVector Where = Ring->GetActorLocation();
-	const TArray<AActor*> Inside = UCataclysmTargeting::FindEveryoneInLine(
-		World, Source, Where, Where, Effects::BloodAltarReachCm);
-	if (!Inside.Contains(Player))
+	// THE PLAYER, WHEREVER ON THE FLOOR THEY STAND. Issue #2855: "The altar sends out
+	// damaging pulses", and the coordinating session's brief of 2026-11-24 asks for a
+	// pulse that "damages the player anywhere on the floor". Until then a pulse asked
+	// whether the player's body was inside the ring at the stairs, and in play it never
+	// was: the owner walked four Blood Altar floors on 2026-11-22, about six minutes,
+	// and no pulse found them, because a player reaches the stairs and goes down them
+	// well inside one 30 second pulse. Still the player's pawn alone: a pulse that
+	// struck creatures could kill them, and each death would feed the next pulse.
+	//
+	// A DEAD PLAYER IS NOT STRUCK AGAIN, and says no line: the beat can come between a
+	// killing blow and the walk ending.
+	if (UCataclysmSkillEffects::IsDead(Player))
 	{
 		return;
 	}
 
-	const float Damage = Effects::BloodAltarPulseDamage(
-		AbilitySystem->GetNumericAttribute(
-			UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
-		BloodAltarDeaths);
+	const FGameplayAttribute HealthAttribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float MaximumHealth = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Damage = Effects::BloodAltarPulseDamage(MaximumHealth, BloodAltarDeaths);
+
+	// EVERY PULSE SAYS ONE LINE, an unfed altar's included, so a play log shows the
+	// altar's clock running whether or not it has anything to send. Issue #2855: the
+	// owner's log had "no line ... mentions the altar or a pulse", and could not say
+	// whether the rule pulsed at all.
 	if (Damage <= 0.0f)
 	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Blood Altar: pulse on floor %d after %d death(s) counted: sends nothing (maximum health "
+					"%.0f)."),
+			   FloorNumber, BloodAltarDeaths, MaximumHealth);
 		return;
 	}
 
@@ -24146,7 +24552,19 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsArea = true;
 	Delivery.DamageType = FName(*Row->CataclysmType);
+	const float HealthBefore = AbilitySystem->GetNumericAttribute(HealthAttribute);
 	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Damage, Delivery);
+
+	// WHAT IT SENT AND WHAT HEALTH LOST, measured rather than assumed: the player's
+	// Demonic resistance and other defences take their share, and an energy shield
+	// may take some before health does.
+	const float HealthTaken =
+		FMath::Max(0.0f, HealthBefore - AbilitySystem->GetNumericAttribute(HealthAttribute));
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Blood Altar: pulse on floor %d after %d death(s) counted: sent %.1f, %.1f%% of maximum "
+				"health %.0f; took %.1f of health %.1f."),
+		   FloorNumber, BloodAltarDeaths, Damage, Damage / MaximumHealth * 100.0f, MaximumHealth,
+		   HealthTaken, HealthBefore);
 }
 
 void ACataclysmDungeonGameMode::StepNecroticGround(
@@ -24784,8 +25202,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 
-	// NO PLAYER DURING THE FIRST `GoToFloor` OF `StartPlay`, whose pawn is made
-	// later by the parent's login. `StartPlay` calls this again once it exists.
+	// NO PLAYER DURING THE FIRST `GoToFloor` OF `StartPlay` WHEN NO PAWN STANDS
+	// YET, and `StartPlay` calls this again for a pawn that stands once the
+	// parent has run. In a launched game one stands already, made at login before
+	// play begins; this said it was made later until issue #2858.
 	if (ACataclysmPlayerCharacter* Player =
 			Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr)
 	{
@@ -25651,6 +26071,10 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// the days the walk owes, since 2026-10-24: the run's own day does not move
 	// while the player is inside.
 	const bool bItResolves = DungeonDiedIn != nullptr && DungeonDiedIn->Resolves();
+
+	// AND WHETHER IT WAS A RIFT, read here for the same reason: a death in one brings a surge after the walk's days
+	// (step 2b). A Rift is a Quest dungeon, which nothing resolves, but its city can fall in those days. Issue #51.
+	const bool bDiedInARift = DungeonDiedIn != nullptr && DungeonDiedIn->IsARift();
 	const int32 DaysTheWalkOwed = Run->DaysOwed();
 	const int32 DayOfTheDeath = Run->Day() + DaysTheWalkOwed;
 	const int32 DayTheWalkLeft = Run->Day(); // For the summary of the days away, issue #2733 slice 3.
@@ -25684,6 +26108,15 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	LastWalksDays.Reset();
 	LeaveEmpireDungeon();
 
+	// 2b. A DEATH IN A RIFT BRINGS AN ORDINARY SURGE, ON THE DAY OF THE DEATH: after the walk's days, which reached
+	// it, and before the death's own. The owner, 2026-11-24, issue #51, "Every death, no gap (Recommended)". Issue #51
+	// slice B2; `UCataclysmEmpireRun::SurgeForADeathInARift` says the rest.
+	FCataclysmDayReport WhatTheRiftBrought;
+	if (bDiedInARift)
+	{
+		WhatTheRiftBrought = Run->SurgeForADeathInARift();
+	}
+
 	// 3. AND THE DAYS ARE PAID, whole days through the same call every other
 	// run of days goes through, so a surge, a repair and a resolve that fall
 	// inside them happen on their own days.
@@ -25702,6 +26135,10 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	TArray<FCataclysmDayReport> DaysAway;
 	DaysAway.Add(WhatTheDeathResolved);
 	DaysAway.Append(LastWalksDays);
+	if (bDiedInARift)
+	{
+		DaysAway.Add(WhatTheRiftBrought); // The Rift's surge, between the walk's days and the death's (issue #51).
+	}
 	DaysAway.Append(DaysTheDeathRan);
 	Run->NoteDaysAway(DayTheWalkLeft, Run->Day(), DaysAway, /*bEndedInAClear*/ false);
 
@@ -25881,8 +26318,11 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// AND THE PLAYER IS STOOD ON IT, AFTER the floor is built and not before, or
 	// they would be placed at the previous floor's entrance.
 	//
-	// NOTHING TO MOVE DURING `StartPlay`, where the pawn does not exist yet and
-	// the caller does this again afterwards.
+	// NOTHING TO MOVE DURING `StartPlay` WHEN NO PAWN STANDS YET, and the caller
+	// starts the floor for a pawn that stands by the time it returns, and only
+	// for one this did not reach. In a launched game one stands already (the
+	// engine spawns it at login, before play begins); this said it did not exist
+	// yet until issue #2858.
 	//
 	// AND NOT AT ALL WHEN THE FLOOR IS THE SAME SPACE IT WAS. A Horde dungeon's
 	// next wave arrives around the player; teleporting them back to the mouth of
@@ -25942,8 +26382,8 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// too, so its rules apply per wave. Issue #41.
 	// THE STARVATION CURSE ADDS ITS STACK AS THE FLOOR BEGINS, before the floor's rules
 	// reach the player, so floor 1 counts and each floor adds exactly one. Here and not in
-	// `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for the first floor.
-	// Issues #1820 and #41.
+	// `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for a first floor whose
+	// pawn this did not reach (issue #2858). Issues #1820 and #41.
 	if (FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::StarvationCurseKey)))
 	{
@@ -25958,8 +26398,8 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	}
 
 	// ECHOES OF THE PAST HANDS THE LAST FLOOR'S DEAD TO THIS ONE, once a floor, here rather than
-	// in `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for the first floor.
-	// Issues #1820 and #41.
+	// in `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for a first floor whose
+	// pawn this did not reach (issue #2858). Issues #1820 and #41.
 	EchoesFromLastFloor = MoveTemp(EchoesThisFloor);
 	EchoesThisFloor.Reset();
 

@@ -58,7 +58,10 @@ namespace CataclysmGenericBuffsTest
 	const TCHAR* const GenericBuffsBurningWrathTags =
 		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Buff, Stat.Offense.Global, Keyword.DoT.Burn, Trigger.OnHit");
 
-	/** Conflagration's row: allies inside its 10 m ring are given 8% increased damage. */
+	/**
+	 * Conflagration's row as it stood before 2026-11-24: allies inside its 10 m ring are given 8% increased damage.
+	 * Issue #2869 made the row's ring 4 m; the ally here stands 3 m out, inside either.
+	 */
 	const TCHAR* const GenericBuffsConflagrationRow =
 		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; AllyIncreasedDamage=8");
 

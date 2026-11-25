@@ -489,9 +489,11 @@ class _Ledger(Simulation):
             self.walk_days += 1
         super().step(policy)
 
-    def trigger_surge(self, from_city_fall: bool = False) -> None:
+    def trigger_surge(self, from_city_fall: bool = False,
+                      from_empty_board: bool = False) -> None:
         before = self._next_did
-        super().trigger_surge(from_city_fall=from_city_fall)
+        super().trigger_surge(from_city_fall=from_city_fall,
+                              from_empty_board=from_empty_board)
         if self._next_did > before:
             self.spawned += self._next_did - before
             self.surges_fired += 1

@@ -82,6 +82,14 @@ public:
 	FString FrontEndRequested() const { return FrontEndRequest; }
 
 	/**
+	 * Whether the last load `LoadThePendingCharacter` ran put the character where its record says it stood
+	 * (`FCataclysmLoadReport::bPutWhereSaved`); false until a load has. Issue #2858: a dungeon level's `StartPlay` reads
+	 * it after the parent's, where the arrival's load runs, and leaves such a character where it was put rather than
+	 * standing it at the floor's entrance.
+	 */
+	bool PendingLoadPutTheCharacterWhereSaved() const { return bPendingLoadPutTheCharacterWhereSaved; }
+
+	/**
 	 * Take the playing character to another level: the capital's Walk to `L_Dungeon`, and the end of a walk back to
 	 * `L_Capital`. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17.
 	 *
@@ -346,8 +354,8 @@ public:
 
 	/**
 	 * The ring the dungeon being walked was rolled on, which moves a creature's damage at difficulty tier 1: 0.05 on an
-	 * Outpost, 0.11 on a Bulwark, 0.13 on a Sanctuary, 0.10 on the Pillar (`UCataclysmEnemyScore::DamageScale`). Issue
-	 * #2749's ring slice.
+	 * Outpost, 0.10 on a Bulwark, 0.12 on a Sanctuary, 0.07 on the Pillar (`UCataclysmEnemyScore::DamageScale`). Issue
+	 * #2749's ring slice, and issue #2865 for the figures.
 	 *
 	 * AN OUTPOST IN THE SANDBOX, which is what every floor read before the ring existed. The dungeon game mode answers
 	 * with the bound empire dungeon's `FCataclysmDungeon::CityTier`.
@@ -1161,8 +1169,8 @@ public:
 	// WHAT RARITY CHANGES HERE, AND IT IS NOT THE STAT BLOCK. Health, armour and
 	// attack damage come from the settings above and are untouched by these. What
 	// rarity decides is what a kill gives and whether the creature can be stunned:
-	// `game/Data/EnemyDrops.csv` gives a Common 0.16 gear drops and a Boss exactly
-	// 5, a Boss adds 300% magic find to its own drops and a Cataclysm Boss 500%,
+	// `game/Data/EnemyDrops.csv` gives a Common 0.08 gear drops and a Boss 2.5 on
+	// average, a Boss adds 300% magic find to its own drops and a Cataclysm Boss 500%,
 	// and the design's rule that a boss cannot be stunned at all is
 	// `RarityStep >= FirstBossRarityStep`. See the longer note beside the stat
 	// figures above for why that mixture is acceptable in a sandbox and not in a
@@ -1277,4 +1285,7 @@ private:
 
 	/** See `TravelRequested`. */
 	FString TravelRequest;
+
+	/** See `PendingLoadPutTheCharacterWhereSaved`. */
+	bool bPendingLoadPutTheCharacterWhereSaved = false;
 };

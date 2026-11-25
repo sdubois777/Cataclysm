@@ -288,7 +288,9 @@ still proves nothing, so make it narrow enough that the module still imports.
 It clears every `__pycache__` first, runs with bytecode writing off so the run
 cannot poison the next case, and restores every file in a `finally` so a crash
 does not leave the repository broken. Issue #159 has the incident that produced
-it.
+it. **A file the restore cannot write back -- tried six times over 3.1 seconds --
+raises `FilesLeftBroken` from either helper, naming the file and how to put it
+back: do not catch it and carry on, because that file still holds the break.**
 
 **It breaks the real files, so run it in a copy when anything else in the
 worktree imports them.** Its `disturbed` check catches another process *writing*

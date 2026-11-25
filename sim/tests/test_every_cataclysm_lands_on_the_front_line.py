@@ -8,6 +8,12 @@ game's `UCataclysmSurgeScheduler` draws every wave slot, whichever Cataclysm sen
 included, through a `Pattern.ignores_frontier` field that only it set. Issue #2749 removed the field, and this file is
 what fails if any Cataclysm lands behind the line again.
 
+**A RIFT IS THE ONE EXCEPTION, AND THE RULING ON #1085 RESERVED IT.** The owner's rulings of 2026-11-24 on issue
+#51 make a Quest dungeon Demonic sends a Rift, which opens on any standing city but the Pillar ("Anywhere but the
+Pillar (Recommended)"), and the model's Rifts ship on with the game's (slice B2). Every check below leaves Rifts out
+(`Simulation.is_rift`) and still holds every other wave dungeon, Demonic's included, to the line;
+`sim/tests/test_demonic_rifts_as_ruled.py` holds the Rifts to their own rule.
+
 **EACH CHECK SAYS FIRST THAT IT COULD FAIL.** A wave on an untouched map can only reach the rim, and a check that the
 rim is where it landed proves nothing unless the Cataclysm would have gone further: so each one first asserts that the
 Cataclysm's own weight wants at least one sealed city, and that the campaigns reached cities behind the rim at all.
@@ -18,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 from cataclysm_sim import policies
-from cataclysm_sim.config import CityTier, TuningConfig
+from cataclysm_sim.config import CityTier, DungeonType, TuningConfig
 from cataclysm_sim.engine import Simulation
 from cataclysm_sim.patterns import PATTERNS
 
@@ -66,7 +72,7 @@ def test_the_first_wave_of_each_cataclysm_alone_lands_only_on_the_front_line(cat
         sim.trigger_surge()
         for dungeon in sim.dungeons.values():
             landed += 1
-            if dungeon.city_id in sealed_ids:
+            if dungeon.city_id in sealed_ids and not sim.is_rift(dungeon):
                 behind.append((seed, dungeon.city_id, dungeon.city_tier.value))
     assert landed > 0
     assert not behind, (
@@ -91,7 +97,8 @@ def test_a_demonic_wave_reaches_a_bulwark_once_its_lane_opens_and_no_sealed_one(
     for _ in range(30):
         sim.trigger_surge()
     on_opened = [d for d in sim.dungeons.values() if d.city_id in opened]
-    on_sealed = [(d.city_id, d.city_tier.value) for d in sim.dungeons.values() if d.city_id in sealed]
+    on_sealed = [(d.city_id, d.city_tier.value) for d in sim.dungeons.values()
+                 if d.city_id in sealed and not sim.is_rift(d)]
     assert on_opened, f"thirty Demonic waves and none reached the opened Bulwark {bulwark.cid}"
     assert not on_sealed, f"{len(on_sealed)} Demonic dungeons landed on sealed cities: {on_sealed[:10]}"
 
@@ -103,16 +110,19 @@ class _Watched(Simulation):
         self._log, self._in_wave = log, False
         super().__init__(cfg, seed=seed)
 
-    def trigger_surge(self, from_city_fall: bool = False) -> None:
+    def trigger_surge(self, from_city_fall: bool = False,
+                      from_empty_board: bool = False) -> None:
         self._in_wave = True
         try:
-            super().trigger_surge(from_city_fall)
+            super().trigger_surge(from_city_fall, from_empty_board)
         finally:
             self._in_wave = False
 
     def _make_dungeon(self, dtype, city, floors_mult: float = 1.0):
         if self._in_wave:
-            self._log.append((self.making_for, city.tier, self.empire.is_exposed(city)))
+            # A RIFT IS NOTED AS ONE, for the module's reason: `Simulation.is_rift`'s test, on what is being made.
+            rift = self.cfg.demonic_rifts and dtype is DungeonType.QUEST and self.making_for == "Demonic"
+            self._log.append((self.making_for, city.tier, self.empire.is_exposed(city) or rift))
         return super()._make_dungeon(dtype, city, floors_mult=floors_mult)
 
 

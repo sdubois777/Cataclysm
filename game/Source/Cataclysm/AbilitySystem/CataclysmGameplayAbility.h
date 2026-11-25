@@ -152,7 +152,8 @@ public:
 	float FervourCostOverride = -1.0f;
 
 	/**
-	 * Percent of weapon damage one use deals. Negative takes the slot's.
+	 * Percent of weapon damage one use deals. Negative takes the slot's, except on an aura, where it deals none
+	 * (ruled 2026-11-24, issue #2875; `UCataclysmSkillTemplate::GetDamagePercent`).
 	 *
 	 * THE THIRD OF THE THREE, AND IT ARRIVED LAST FOR A REASON. The other
 	 * two above were built when a skill could only sit in the slot it was

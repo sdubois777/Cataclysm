@@ -237,6 +237,14 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   `PLAY LOOP: respecced the empire upgrade tree: 1 point back, 1.0 points banked; it cost 5 days, day 20 to day 25`
 
+  **and then what those 5 days did** (issue #2857):
+
+  `PLAY LOOP: for the respec, days 20 to 25: dungeons resolved: none; cities hit: none; cities fallen: none; no surge`
+
+  When a dungeon's timer runs out within the respec's days, the first press says which, the city it hits and the
+  day, under the branch ("Within 5 days, 1 dungeon's timer runs out: ..."), and the second says what the days did
+  ("Meanwhile, days 20 to 25: dungeons resolved: ...").
+
 - **A centre capstone's choice is not reached in one session**: the first, Foundations of the Empire, opens at 25
   points spent in the tree. When it has, click it in the fifth list entry, "The centre", then one of the three options
   the list shows in its place:
@@ -293,6 +301,13 @@ until then they waited for the next item, death or trip to be written, and stopp
 
   `PLAY LOOP: forgot the Heavy slot's skill choice: it shows its default again`
 
+- **Put a second weapon on** from the bag beside the one worn, of a type not worn yet (since issue #837 slice 2). The
+  keys stay as they were; a notice says what the weapon added: "The Fist adds 5 skills to your pool. Press K, or click
+  a skill box, to choose." **Click a skill box** on the bar: the skill screen opens with that key selected.
+- **In the log:**
+
+  `PLAY LOOP: the Fist added 5 skills to the pool on no key, and 0 not built yet`
+
 - **A reset** gives the points back, and has a line of its own. Only the console resets, with
   `Cataclysm.ResetPassivePoints` and `Cataclysm.ResetAttributePoints`; **skip them here**, so step 15 has the points
   to show:
@@ -344,6 +359,22 @@ click like any other.
 - **In the log:**
 
   `PLAY LOOP: upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left, and 510 gold; residue 52 to 77; it cost 1 day, day 25 to day 26`
+
+  **and then what those days did**, in the words the capital uses for a walk's days away, after every craft that costs
+  a day (issue #2857):
+
+  `PLAY LOOP: at the forge, days 25 to 26: dungeons resolved: none; cities hit: none; cities fallen: none; no surge`
+
+- **When a craft's days run a dungeon's timer out**, its first press says so before you commit, after what it costs:
+  "Within 3 days, 1 dungeon's timer runs out: dungeon 13 (the Timed dungeon on Outpost (-3,0)) hits Outpost (-3,0) on
+  day 28." Nothing is added when no timer runs out. The second press ends with what the days did, "Meanwhile, days 25
+  to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0)); cities hit: Outpost (-3,0) lost 750 defence and
+  1200 people; cities fallen: none; no surge.", and the log says the same:
+
+  `PLAY LOOP: at the forge, days 25 to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0)); cities hit: Outpost (-3,0) lost 750 defence and 1200 people; cities fallen: none; no surge`
+
+  A dungeon that leaves the map while you are at the forge has resolved and hit its city in those days; clearing
+  another dungeon never takes it.
 
 - **Click "Combine two +1 stones into one +2".** Two +1 stones become one +2 for 50 gold, and no day passes. A
   combine costs 50 gold at the lowest rung and twice as much for each rung above it.
@@ -634,6 +665,45 @@ In the capital, between walks (issue #48, slice S1). Open the empire map (M) and
 - **In the log:**
 
   `PLAY LOOP: sold Masterful Handwraps of Warding, +3, for 7 gold; 107 gold held`
+
+### 28. Choose The Soul Forge or The Master Tinkerer in the empire tree, and craft until it fires
+
+The two crafting options of the empire tree's centre milestones (issue #47, slice F6). The Soul Forge is the third
+option of Edicts of Power, which opens at 50 points spent in the tree; The Master Tinkerer is the second of The Imperial
+Vanguard, which opens at 100. Neither is greyed any more. With Imperial Prowess, either can be the extra option.
+
+- **With The Soul Forge chosen and its point bought, upgrade a piece at the forge.** The first press ends: "The Soul
+  Forge: a 15% chance it rises two levels instead of one." It costs what one level costs. About one upgrade in seven
+  rises two, never past +10. When it does, after the upgrade's own line:
+
+  `PLAY LOOP: The Soul Forge raised Quality Helm two levels, +3 to +5`
+
+- **With The Master Tinkerer chosen and its point bought, imprint an enchantment or change a drawback.** The first press
+  ends: "The Master Tinkerer: a 5% chance of a critical success, its rolls drawn twice with the better kept, taking no
+  days." About one craft in twenty is a critical success: the enchantment's benefit is the better of two rolls and its
+  drawback the milder of two, no day of the run passes, and the residue, the gold and the material are still taken. After
+  the craft's own line:
+
+  `PLAY LOOP: a critical success on Quality Helm: the rolls were drawn twice with the better kept, and the craft took no days`
+
+- **The outcome is not shown before the press**, only the chance. The same piece on the same day draws the same, so a
+  reload does not change it.
+
+### 29. Take the forge's gold nodes in the empire tree, and see a forge price fall
+
+The five gold nodes of the empire tree's Artisan branch (issue #47, slice F6a). With none held, note the gold of an
+upgrade at the forge (step 16), say 4,500 for a +2 helm carrying 250 residue.
+
+- **Buy Workshop Upgrades to 8 points and Apprentice Oversight.** The same upgrade's question now names 3,060 gold and
+  ends: "The empire tree's forge nodes take 32% off its gold." Workshop Upgrades takes 1.5% a point from every forge
+  price; Apprentice Oversight 20% more when the craft's material is tier 1 or 2 (the +3 stone is tier 2). A +5 upgrade,
+  whose stone is tier 3, takes only Workshop Upgrades' 12%.
+- **Architectural Synergy** takes 1% a point for each 10 points spent in the Treasury branch, at most 30%. **Treasury
+  Synergy** takes 1% for each 50,000 gold (at tier 1) spent at the forge since the count began, at most 30%. All four
+  together are held at 75% off.
+- **Forge Upgrades** gives a 1% a point chance that a craft costs a tenth less. When it lands the question adds "Forge
+  Upgrades' tenth is in it." The same piece on the same day always draws the same, so a reload does not change it.
+- **The price named is the price paid**, and a character holding the discounted price is not refused.
 
 ## If a step does not show what it should
 

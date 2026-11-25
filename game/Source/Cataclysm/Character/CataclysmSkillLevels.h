@@ -107,7 +107,8 @@ public:
 	/**
 	 * Re-prices what everything `SkillRow`'s skill made holds back of its commander's pool, at the skill's level now:
 	 * the thralls it took (`ACataclysmEnemyCharacter::TakenBySkillRow`) and the minions it summoned
-	 * (`ACataclysmMinion::SummoningSkillRow`), each to the skill's `UCataclysmSummonSkill::FervourReserveOfOne`; and
+	 * (`ACataclysmMinion::SummoningSkillRow`), each to the skill's `UCataclysmSummonSkill::FervourReserveOfOne`, a
+	 * thrall's for its own rarity (the owner's ruling of 2026-11-24, "Reserve grows with rarity"); and
 	 * each skill gadget and skill trap standing for a slot that holds the skill, to
 	 * `ACataclysmMinion::SkillGadgetReserveFor` or `SkillTrapReserveFor`. A level
 	 * never raises a reserve, so a re-price only ever frees room; a reserve already lower is kept. Nothing happens when

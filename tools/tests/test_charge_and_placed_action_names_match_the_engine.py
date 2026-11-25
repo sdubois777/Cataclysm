@@ -635,12 +635,15 @@ def test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_pri
     assert "LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)" in template
     assert "PerTick * TrapsPartOfTheTick" in template
     buried = code_of(SOURCE.parent / "CataclysmBuriedWeapon.cpp")
-    assert "Buried->Caster.Get()" in buried
+    # THE CONTROL READS THE CASTER THROUGH `Get` WHEREVER THE LEAP KEEPS IT: on the component until issue #2872, and
+    # since then on what the leap copies out of the component before any blow (`Carried`).
+    assert "Carried.Caster.Get()" in buried
     assert "CastBy.Get()" not in buried
     templates = code_of(SOURCE.parent / "CataclysmSkillTemplates.cpp")
     # THE TRAP'S IDENTITY IS STILL HANDED TO THE BURIED AXE, and since issue #2764 slice 2a the throwing skill's row after
-    # it, so a leap scales by that skill's level and credits it.
-    assert re.search(r"Params\.bBurns, FreeRepeatCastBy,\s*UCataclysmSkillLevels::RowThatLevels\(this\)\)\)", templates)
+    # it, so a leap scales by that skill's level and credits it. Two closing brackets and not three since issue #2872,
+    # when the call's result was kept (`Left`) rather than tested inside an `if`.
+    assert re.search(r"Params\.bBurns, FreeRepeatCastBy,\s*UCataclysmSkillLevels::RowThatLevels\(this\)\);", templates)
     engine = code_of(SOURCE)
     assert "SpentSkillTraps.Empty();" in engine
 

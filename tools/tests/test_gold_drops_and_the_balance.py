@@ -161,13 +161,27 @@ def test_the_workbook_gold_sheet_is_what_the_table_was_generated_from() -> None:
         f"the Gold sheet holds {workbook} and game/Data/Gold.csv {table}: run tools/generate_datatables.py")
 
 
-def test_a_kills_gold_piles_are_its_gear_drops() -> None:
-    """G1, ruled 2026-11-18: the gear ladder, from the owner's words "as gear and materials drop today"."""
-    wrong = [f"{row['EnemyRarity']}: gold {row['GoldDrops']}, gear {row['GearDrops']}"
-             for row in rows("EnemyDrops.csv") if float(row["GoldDrops"]) != pytest.approx(float(row["GearDrops"]))]
+#: Gold piles a kill, as G1 ruled them on 2026-11-18: the gear column of that day.
+GOLD_PILES_AS_RULED = {"Common": 0.16, "Elite": 0.5, "Legendary": 1.0, "Herald": 2.0, "Boss": 5.0,
+                       "Cataclysm Boss": 12.0}
+
+
+def test_a_kills_gold_piles_are_the_gear_ladder_g1_ruled() -> None:
+    """G1, ruled 2026-11-18: the gear ladder, from the owner's words "as gear and materials drop today".
+
+    THE GEAR COLUMN HALVED ON 2026-11-24 AND THE GOLD COLUMN DID NOT (issue #2853): the owner ruled "Halve gear drops
+    (Recommended)" for the gear column, and the drop supply proposal it adopted said the gold and material columns do
+    not move. So a rung's gold piles are still the gear ladder of 2026-11-18, which is twice its gear drops today: the
+    ladder's shape, and G1's figures. Reading gold as "equal to whatever gear is" would have halved every kill's gold, a
+    change to the economy nobody ruled (a judgement, recorded in `docs/DECISIONS.md`)."""
+    table = {row["EnemyRarity"]: row for row in rows("EnemyDrops.csv")}
+    assert {rarity: float(row["GoldDrops"]) for rarity, row in table.items()} == pytest.approx(GOLD_PILES_AS_RULED), (
+        "game/Data/EnemyDrops.csv's gold piles are not the figures G1 ruled (issue #2742); a change is a new ruling")
+    wrong = [f"{rarity}: gold {row['GoldDrops']}, gear {row['GearDrops']}" for rarity, row in table.items()
+             if float(row["GoldDrops"]) != pytest.approx(2.0 * float(row["GearDrops"]))]
     assert not wrong, (
-        "game/Data/EnemyDrops.csv gives a rung gold piles that are not its gear drops: " + "; ".join(wrong)
-        + ". The coordinating session ruled them equal (G1, issue #2742); a change to either is a new ruling.")
+        "game/Data/EnemyDrops.csv gives a rung gold piles that are not twice its gear drops, so the two ladders no "
+        "longer have one shape: " + "; ".join(wrong))
 
 
 # --------------------------------------------------------------------------

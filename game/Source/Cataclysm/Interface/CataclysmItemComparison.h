@@ -73,7 +73,9 @@ struct FCataclysmComparisonResult
  * WHAT IS COMPARED WITH WHAT, ruled by the coordinating session on 2026-11-02 and recorded in `docs/DECISIONS.md`:
  * the piece `UCataclysmEquipmentComponent::Equip` would actually replace (`PreviewEquip`), so a ring is compared with
  * the ring the equip action would take off, a free slot is "compared with nothing", and a two-handed weapon over two
- * one-handed weapons is compared with both.
+ * one-handed weapons is compared with both. With every ring slot full that ring is the worn one of the hovered ring's
+ * own rarity, else the lowest rarity worn (`UCataclysmGearSlots::SlotToReplace`, the owner's report of 2026-11-24);
+ * it was Ring 1 whatever was worn until then, and the comparison followed `Equip` into the same mistake.
  *
  * HOW THE TOTALS ARE FOUND: the worn set and the set with the item swapped in are each restored onto an equipment
  * component that belongs to no actor and gathered by `RefreshAttributesAs`, the one gatherer, onto

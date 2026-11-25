@@ -33,11 +33,16 @@
  */
 namespace CataclysmCapstoneOptionTest
 {
-	/** Per tree, the options and rows counted on development cd6e3f81. */
+	/**
+	 * Per tree, the options and rows counted. The options as on development cd6e3f81. The rows since the Demonic tree
+	 * rework (2026-11-24), as window tb-w1 checked them: Masochist 28 to 32 and Ravager 18 to 20, and Ritualist 18 to
+	 * 16, because the rework's pact options carry fewer rows (Ritualist_capstone_25's second and third options went
+	 * from two rows each to one).
+	 */
 	constexpr int32 FewestOptions = 12;
-	constexpr int32 FewestMasochistRows = 28;
-	constexpr int32 FewestRavagerRows = 18;
-	constexpr int32 FewestRitualistRows = 18;
+	constexpr int32 FewestMasochistRows = 32;
+	constexpr int32 FewestRavagerRows = 20;
+	constexpr int32 FewestRitualistRows = 16;
 
 	/**
 	 * The modifier a row should become at one point spent, or false with the

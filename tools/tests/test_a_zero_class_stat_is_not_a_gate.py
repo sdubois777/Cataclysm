@@ -27,6 +27,8 @@ WHAT IS ASSERTED HERE.
     it says gear supplies it, and names a source that really exists in the
       generated item data
     it says what the zero does cost, which is that nothing compounds
+    it says what a shield no longer costs a Masochist since 2026-11-24, and what
+      it still keeps from one
     the Stat Calculation rule it depends on is still there
     the tree and the document agree about the node that prompted the question
 
@@ -37,9 +39,12 @@ is still a starting value and gear can still supply the stat -- and the last
 assertion now holds the tree and the document to the same story rather than
 requiring the node to exist. `docs/DECISIONS.md`, 2026-08-25, has the reasoning.
 
-WHAT IS NOT ASSERTED. Whether a Masochist energy shield build is any good. It
-buys resource generation away for nothing at all now, which is a real cost the
-document records, and whether that matters needs play rather than a test.
+WHAT IS NOT ASSERTED. Whether a Masochist energy shield build is any good.
+Until 2026-11-24 it bought resource generation away for nothing at all; since
+the owner's change of that day (issue #2873) damage the shield absorbs fills
+Fervour as health lost does, and what the shield still costs is the time the
+class spends out of its low-health states. Whether that matters needs play
+rather than a test.
 """
 
 from __future__ import annotations
@@ -168,19 +173,35 @@ def test_it_says_what_the_zero_does_cost(stat_lines) -> None:
         "supplied. Issue #345.")
 
 
-def test_it_says_why_the_masochist_case_is_worse_than_the_general_one(
+def test_it_says_what_a_shield_does_and_no_longer_does_to_a_masochist(
         stat_lines) -> None:
     """The class-specific half, and the one a reader would otherwise have to
-    derive from how the Masochist fills Fervour, which is from health lost. A
-    shield absorbs damage before health does."""
-    assert "every point of energy shield is a point of resource the class does not generate" in stat_lines, (
-        "the section does not say that an energy shield costs a Masochist its "
-        "resource generation. It fills Fervour from health lost and a shield "
-        "absorbs damage before health does. Without this the trade looks free. "
-        "Issue #345.")
+    derive from how the Masochist fills Fervour.
+
+    WHAT IT ASSERTS CHANGED ON 2026-11-24, issue #2873. Until then the
+    Masochist filled Fervour from health lost alone, a shield absorbs damage
+    before health does, and this asserted that "every point of energy shield is
+    a point of resource the class does not generate". The project owner changed
+    the rule that day -- "the massochist doesn't gain fervour with damage to
+    energy shield, and it should" -- so the section has to say the shield no
+    longer costs generation, and what it still costs: the states that read
+    health rather than Fervour.
+    """
+    assert "it no longer costs resource generation" in stat_lines, (
+        "the section does not say that an energy shield no longer costs a "
+        "Masochist its resource generation. Since 2026-11-24 damage the shield "
+        "absorbs fills Fervour as health lost does. Issue #2873.")
+    assert "damage the shield absorbs now fills Fervour exactly as health lost does" in stat_lines, (
+        "the section does not state the rule of 2026-11-24 it rests on: damage "
+        "the energy shield absorbs fills Fervour exactly as health lost does. "
+        "Issue #2873.")
+    assert "The Breaking Point converts only the damage that reaches health" in stat_lines, (
+        "the section no longer says what a shield still keeps from a Masochist. "
+        "Without it a shield reads as free, and it is not: everything that "
+        "reads health rather than Fervour still sees less. Issues #345 and #2873.")
     assert "Rupture Focus" in stat_lines, (
         "the section describes the trade without naming the one passive node "
-        "that buys something with it. Issue #345.")
+        "that once bought something with it. Issue #345.")
 
 
 # --------------------------------------------------------------------------

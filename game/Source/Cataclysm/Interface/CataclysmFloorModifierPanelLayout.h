@@ -64,6 +64,14 @@ struct CATACLYSM_API FCataclysmFloorModifierLine
 	bool bIsTheCataclysmBoss = false;
 
 	/**
+	 * Whether the line is a Rift's (`UCataclysmFloorModifierPanelLayout::RiftAltarsKey`): not a row and not a modifier,
+	 * but the Demonic Quest dungeon's four altars, how many have fallen and what seals the way on. Issue #51 slice B1.
+	 * Named plainly, not dimmed, and not counted in the heading's modifiers, as the Cataclysm Boss's.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	bool bIsTheRiftAltars = false;
+
+	/**
 	 * What this row is counting right now, e.g. "3 of 20", or empty for a row
 	 * that counts nothing.
 	 *
@@ -129,6 +137,16 @@ public:
 
 	/** What the Cataclysm Boss's line is named. */
 	static constexpr const TCHAR* CataclysmBossName = TEXT("The Cataclysm Boss");
+
+	/**
+	 * The key the dungeon game mode lists a Rift's line by, after the floor's rows, on every floor of a Rift. Issue #51
+	 * slice B1. Not a row key, and the same text as `ACataclysmDungeonGameMode::RiftAltarsSealKey`, which `StairsSealedBy`
+	 * names while an altar stands.
+	 */
+	static constexpr const TCHAR* RiftAltarsKey = TEXT("Rift_Altars");
+
+	/** What a Rift's line is named: the design's own words, section XI, "Infernal Rifts". */
+	static constexpr const TCHAR* RiftAltarsName = TEXT("Infernal Rift");
 
 	/**
 	 * One line per modifier, in the order the floor carries them.

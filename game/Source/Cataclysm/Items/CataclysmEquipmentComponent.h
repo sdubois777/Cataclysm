@@ -243,25 +243,35 @@ public:
 	 * disagree about where an item goes. Not const, for `PreviewEquip`'s reason.
 	 *
 	 * An item `Equip` refuses changes nothing, so the answer is the Worn Residue now.
+	 *
+	 * @param Into  a slot the player named, for a held item pressed onto a gear slot (issue #837, slice 3): the
+	 *              total is then the one `EquipInto` that slot would leave. `Count`, the default, is `Equip`'s choice.
 	 */
-	float WornResidueIfEquipped(const FCataclysmItem& Item);
+	float WornResidueIfEquipped(const FCataclysmItem& Item, ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
 
 	/**
 	 * What `Equip` would do with this item, found by running it and putting everything back. Issue #832, the tooltip's
 	 * comparison; `WornResidueIfEquipped` asks it too.
 	 *
 	 * `Equip` ITSELF DECIDES, ON A COPY THAT IS PUT BACK. Which slot an item goes to and what comes off with it -- the
-	 * first free ring slot or Ring1, a two-handed weapon over two held ones, Both Hands Full read off the owner's
-	 * ability system -- is decided in `Equip` and `EquipInto`, and a second copy of that rule written for a preview
-	 * would one day disagree with the first. So the slots are copied, `Equip` runs on them with nothing announced,
-	 * what went where and what came off are recorded, and the slots and the change count are put back as they were.
+	 * first free ring slot or the ring `UCataclysmGearSlots::SlotToReplace` names, a two-handed weapon over two held
+	 * ones, Both Hands Full read off the owner's ability system -- is decided in `Equip` and `EquipInto`, and a second
+	 * copy of that rule written for a preview would one day disagree with the first. So the slots are copied, `Equip`
+	 * runs on them with nothing announced, what went where and what came off are recorded, and the slots and the change
+	 * count are put back as they were.
 	 * Nothing leaves the component, so nothing can be lost, and no listener hears of it. Not const for that reason
 	 * alone.
 	 *
 	 * NOT `UCataclysmWearing::WearFromCarried`'S REFUSALS: a full bag refusing a weapon that would take two off is the
 	 * wearer's rule, not `Equip`'s, and a preview of such an item still says what `Equip` would do.
+	 *
+	 * @param Into  a slot the player named: `EquipInto` that slot runs instead of `Equip`, on the same copy put back.
+	 *              Issue #837, slice 3, a held item pressed onto a gear slot, whose threshold question has to be about
+	 *              the slot pressed: a ring pressed over a worn ring replaces it, where `Equip` would add it in a free
+	 *              slot, or, with every ring slot full, replace the one `UCataclysmGearSlots::SlotToReplace` names.
+	 *              `Count`, the default, is `Equip`'s choice.
 	 */
-	FCataclysmEquipPreview PreviewEquip(const FCataclysmItem& Item);
+	FCataclysmEquipPreview PreviewEquip(const FCataclysmItem& Item, ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
 
 	/**
 	 * The player's numbers `RefreshAttributes` reads before it gathers: the owning pawn's player state's, through
@@ -324,9 +334,14 @@ public:
 	/**
 	 * Wear an item, choosing the slot from its base.
 	 *
-	 * A ring goes in the first free ring slot, and in Ring1 when all eight are
-	 * full. A one-handed weapon goes in the first free weapon slot. Anything
-	 * else has exactly one slot to go in.
+	 * A ring goes in the first free ring slot. When all eight are full it
+	 * replaces the worn ring of its own rarity, else the ring of the lowest
+	 * rarity worn, the lowest Power Score among several
+	 * (`UCataclysmGearSlots::SlotToReplace`, the owner's report of 2026-11-24;
+	 * until it, always Ring1). A weapon goes in the first free weapon slot, and
+	 * with both hands full a weapon that may stand beside either held one
+	 * replaces the hand chosen by the same rule. Anything else has exactly one
+	 * slot to go in.
 	 *
 	 * TWO ITEMS CAN COME OFF FOR ONE GOING ON, and forgetting the second one
 	 * destroys it. A two-handed weapon put on while two one-handed weapons are
@@ -377,6 +392,14 @@ public:
 									FCataclysmItem& OutAlsoRemoved);
 
 	/**
+	 * The slot an item put in `Asked` ends up in: `Asked`, except a two-handed weapon without Both Hands Full, which
+	 * `EquipInto` keeps in Weapon1 whichever hand it was given. `Equip` reports its `OutSlot` through this, and so does
+	 * `UCataclysmWearing::WearFromCarried` for a slot the player named (issue #837, slice 3), so the rule is written
+	 * once beside `EquipInto`, which carries it out.
+	 */
+	ECataclysmGearSlot SlotItLandsIn(const FCataclysmItem& Item, ECataclysmGearSlot Asked) const;
+
+	/**
 	 * Take the item out of a slot.
 	 *
 	 * @return whether there was one to take.
@@ -402,6 +425,12 @@ public:
 
 	/** The one announcement after a save restore. See `RestoreWornGear`. */
 	void AnnounceRestored();
+
+	/**
+	 * Whether the announcement under way is a restore's (`AnnounceRestored`), so a listener can tell a load from the
+	 * player changing gear. Issue #837 slice 2: the skill pool's notice is not posted for a load.
+	 */
+	bool IsAnnouncingARestore() const { return bAnnouncingARestore; }
 
 	/**
 	 * One kill by the wearer: each worn weapon's `FCataclysmItem::Kills` rises
@@ -690,6 +719,9 @@ private:
 	 */
 	void AnnounceChange();
 
+	/** See `IsAnnouncingARestore`. True only inside `AnnounceRestored`. */
+	bool bAnnouncingARestore = false;
+
 	/**
 	 * The count ChangeCount answers with. Starts at zero, only ever rises.
 	 *
@@ -816,4 +848,30 @@ public:
 	 * carry, on purpose.
 	 */
 	static TArray<ECataclysmGearSlot> CandidateSlotsFor(const FString& BaseSlot);
+
+	/**
+	 * Which of several slots of one kind, every one of them full, a piece put on replaces: the slot `Equip` chooses for a
+	 * ring when all eight ring slots hold one, and for a weapon that may stand beside either of two held weapons.
+	 *
+	 * THE OWNER'S REPORT OF 2026-11-24: "when a ring drops on the ground and actually shows through the filter, it's
+	 * supposed to compare against whatever ring is of equal tier. At the moment, it just compares with ring 1 no matter
+	 * what". Ruled by the coordinating session under it:
+	 *   1. the worn piece of the SAME RARITY as the one put on; with several, the one with the lowest Power Score
+	 *      (`UCataclysmPowerScore::WornPieceScoreOf`), and among those the first in `Candidates`' order, the lowest
+	 *      slot number;
+	 *   2. with none of that rarity worn, the piece of the LOWEST rarity worn -- the loot filter's reference for rings
+	 *      ("Rings compare with the lowest ring worn") -- with the same two tie rules.
+	 * A PIECE WITH NO RARITY -- no affix and no enchantment, as the starting weapon is -- ranks below Everyday, a
+	 * judgement: the loot filter reads such a piece as nothing worn, and nothing is the lowest there is.
+	 *
+	 * ONLY THE FULL CANDIDATES ARE WEIGHED: a free slot is `Equip`'s first answer and never reaches this. With none of
+	 * the candidates holding anything the answer is the first candidate, and `Count` for no candidates.
+	 *
+	 * STATIC AND HANDED THE SLOTS, so a test asks it of plain values and the comparison cannot ask a different question
+	 * from `Equip`: `Equip` calls it, and the tooltip's comparison asks `Equip` (`PreviewEquip`).
+	 *
+	 * @param Worn  every slot's item, `UCataclysmEquipmentComponent::GetSlots`'s shape: indexed by `ECataclysmGearSlot`
+	 */
+	static ECataclysmGearSlot SlotToReplace(const FCataclysmItem& Incoming, const TArray<ECataclysmGearSlot>& Candidates,
+											const TArray<FCataclysmItem>& Worn);
 };

@@ -792,6 +792,7 @@ bool FCataclysmEmpirePointsAccountV1MigratesTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheAccountsVersion5Defaults(*Expected); // And 5, #2741 slice 6e: no debt.
 	CataclysmSaveFixtures::AddTheAccountsVersion6Defaults(*Expected); // And 6, #2741 slice 8: no extra option.
 	CataclysmSaveFixtures::AddTheAccountsVersion7Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheAccountsVersion8Defaults(*Expected); // And #47 slice F6a's: the forge count.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -814,7 +815,7 @@ bool FCataclysmEmpirePointsAccountV1MigratesTest::RunTest(const FString&)
 }
 
 /**
- * `Account_v7.json`, the committed account file since issue #2741 slice 9, reads a fraction of a point, 37.625, into the record: the double is
+ * `Account_v8.json`, the committed account file since #47 slice F6a (`Account_v7.json` from issue #2741 slice 9), reads a fraction of a point, 37.625, into the record: the double is
  * read and not an integer field. Prints "ACCOUNT FILE". It read `Account_v2.json` until the account record went to
  * version 3 on 2026-11-18 (issue #2742), and `Account_v3.json` until it went to version 4 the same day (issue #2741
  * slice 1b); each holds the same points.
@@ -827,7 +828,7 @@ bool FCataclysmEmpirePointsAccountV2ReadsTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Account_v7.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Account_v8.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -839,7 +840,7 @@ bool FCataclysmEmpirePointsAccountV2ReadsTest::RunTest(const FString&)
 		Text, UCataclysmAccountSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Account_v7.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Account_v8.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

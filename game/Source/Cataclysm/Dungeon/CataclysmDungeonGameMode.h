@@ -455,7 +455,8 @@ public:
 	 * `ApplyNothingIsForgottenFigures` is NOT called, because it adds the void's health to a maximum that already holds it. THE CATACLYSM BOSS, issue #1324 slice 6d: on
 	 * `IsTheCataclysmBossFloor`, the saved Gatekeeper at `CataclysmBossRung` whose record does not say it rose from the
 	 * dead is the floor's boss again, so the stairs stay sealed under it; one that rose (Dead Rising, Divine Resurgence)
-	 * is not, as it is not in play.
+	 * is not, as it is not in play. AND THE BOSS OF A RIFT'S LAST FLOOR, issue #51 slice B1: there, the saved Gatekeeper
+	 * that neither rose from the dead nor was raised by a rule is the Rift's boss again, for the same reason.
 	 */
 	void RestoreCreatureRoles(ACataclysmEnemyCharacter& Creature, const struct FCataclysmSavedCreature& Saved);
 
@@ -1673,8 +1674,10 @@ private:
 	 *
 	 * A PULSE EVERY `BloodAltarSecondsBetweenPulses` FROM THE FLOOR'S START. It takes
 	 * a share of the player's maximum health for each death the altar has counted,
-	 * nothing from an altar nobody has fed, and only from the player, only within
-	 * the altar's reach.
+	 * nothing from an altar nobody has fed, and only from the player, WHEREVER ON THE
+	 * FLOOR THE PLAYER STANDS since issue #2855: until then only within the ring at
+	 * the stairs, which no player in play was standing in when a pulse came. Each
+	 * pulse says one line in the log, "Blood Altar: pulse on floor ...".
 	 */
 	void StepBloodAltar(
 		class ACataclysmPlayerCharacter* Player,
@@ -2562,6 +2565,9 @@ public:
 	/** Demonic Guide, for the panel and tests: the floor's guide, or null. */
 	ACataclysmEnemyCharacter* DemonicGuideOnTheFloor() const { return DemonicGuide.Get(); }
 
+	/** Demonic Guide, for tests: the footprints the floor's guide leaves, or null. Issue #2862. */
+	class ACataclysmGuideFootprints* DemonicGuideFootprintsOnTheFloor() const { return DemonicGuideFootprints.Get(); }
+
 	/** The Plaguebearer on this floor, or null; and the stacks every other creature carries. Issues #1820 and #41. */
 	ACataclysmEnemyCharacter* PlaguebearerOnTheFloor() const { return Plaguebearer.Get(); }
 	int32 PlaguebearerStacksNow() const { return PlaguebearerStacks; }
@@ -2703,6 +2709,81 @@ public:
 	 * IS SEALED HERE, as the Core seals it and unlike every modifier row that seals the stairs.
 	 */
 	bool CataclysmBossSealsTheStairs() const;
+
+	// ----------------------------------------------------------------------
+	// A Rift's four altars: the Demonic Quest dungeon, issue #51 slice B1
+	// ----------------------------------------------------------------------
+	//
+	// THE OWNER'S RULINGS OF 2026-11-24 (issue #51): a Rift is the Demonic Quest dungeon ("Rift = Quest dungeon
+	// (Recommended)"), and its four altars stand "One per floor, spread (Recommended)": altar i on floor
+	// ceil(i x floors / 4), the rest on the last floor of a Rift of fewer than four floors. "An altar does not attack,
+	// has the floor boss's health, and seals its floor's stairs while it stands, as the Heavenly Core does. The Rift is
+	// sealed when the last altar falls and the boss is dead." Sealing it is clearing it, which `ClearEmpireDungeon`
+	// already credits as one of Demonic's quest objectives. AND LATER THAT DAY: "A Rift is a Quest dungeon of exactly 4
+	// floors, one altar on each floor". Its depth is set on the empire side (slice B2), so this reads whatever depth the
+	// bound dungeon has and spreads the four by `FCataclysmDungeonFloorRules::RiftAltarFloor`: one a floor at four.
+
+	/**
+	 * Whether the dungeon being walked is a Rift: the empire dungeon bound to this level answers
+	 * `FCataclysmDungeon::IsARift`, a Quest dungeon Demonic sent. False with nothing bound, which is the sandbox.
+	 * Read off the bound dungeon and not copied onto the game mode, so nothing is left to reset when the walk ends.
+	 */
+	bool IsARift() const;
+
+	/**
+	 * How many of the Rift's altars this floor holds by the ruling, `FCataclysmDungeonFloorRules::RiftAltarsOnFloor`
+	 * for the bound dungeon's floors and the floor being walked; nought outside a Rift and on the dark floor a fall leads
+	 * to, which carries the number of the floor its stairs lead to and is not that floor.
+	 */
+	int32 RiftAltarsOnThisFloor() const;
+
+	/**
+	 * What `StairsSealedBy` names while an altar stands on this floor, and the key the floor panel lists the Rift's
+	 * line by (`UCataclysmFloorModifierPanelLayout::RiftAltarsKey` is the same text). Not a row of the modifier table.
+	 */
+	static constexpr const TCHAR* RiftAltarsSealKey = TEXT("Rift_Altars");
+
+	/** What `StairsSealedBy` names while the boss of a Rift's last floor stands. Not a row of the modifier table. */
+	static constexpr const TCHAR* RiftBossSealKey = TEXT("Rift_Boss");
+
+	/** Mixed into the floor's seed for where a Rift's altars stand, as the Heavenly Core's salt is. The letters "altr". */
+	static constexpr int32 RiftAltarCellsSalt = 0x616C7472;
+
+	/** The Rift's altars on this floor still standing, in the order they were placed. */
+	TArray<ACataclysmEnemyCharacter*> RiftAltarsStandingNow() const;
+
+	/** How many altars this floor placed: `RiftAltarsOnThisFloor`, or fewer when the floor had no room for them all. */
+	int32 RiftAltarsPlacedHere() const { return RiftAltarsHere.Num(); }
+
+	/**
+	 * How many of the Rift's four altars have fallen: every altar of the floors above this one, and those of this floor
+	 * that no longer stand. AN ALTAR THE FLOOR HAD NO ROOM FOR COUNTS AS FALLEN, as a floor whose Cataclysm Boss could
+	 * not be placed is not sealed: a seal nothing can lift would leave the Rift unbeatable. Nought outside a Rift.
+	 */
+	int32 RiftAltarsFallen() const;
+
+	/** Whether an altar stands on this floor, which seals its stairs: the last floor's too, whose stairs clear the Rift. */
+	bool RiftAltarsSealTheStairs() const;
+
+	/**
+	 * The boss of a Rift's last floor while it stands, or null: the Gatekeeper the population placed at that floor's
+	 * exit, while it is valid and not dead. Any death ends it, whoever dealt it, as the Cataclysm Boss's does. A creature
+	 * that rises from it afterwards (Dead Rising) is a new creature and is not it.
+	 */
+	class ACataclysmEnemyCharacter* RiftBossNow() const;
+
+	/**
+	 * Whether the boss of a Rift's last floor seals the stairs: on that floor, while it stands. "The Rift is sealed when
+	 * the last altar falls and the boss is dead" -- so the stairs that clear it wait for both. A floor whose boss could
+	 * not be placed is not sealed by it.
+	 */
+	bool RiftBossSealsTheStairs() const;
+
+	/**
+	 * The health a Rift's altar is given: the floor boss's, `ACataclysmGameMode::GatekeeperHealth`, at Common, as the
+	 * Heavenly Core's (`HeavenlyCoreHealth`), whose ruling of 2026-10-22 the owner's "has the floor boss's health" names.
+	 */
+	float RiftAltarHealth() const { return GatekeeperHealth; }
 
 	/**
 	 * The health a Heavenly Core is given: the floor boss's,
@@ -3766,6 +3847,18 @@ private:
 	 */
 	void NoteDeathForTheCataclysmBoss(const struct FCataclysmDeathNotice& Notice);
 
+	/** Records `Boss` as the boss of a Rift's last floor, the one `RiftBossNow` answers. Issue #51 slice B1. */
+	void NoteTheRiftBoss(ACataclysmEnemyCharacter* Boss);
+
+	/** Forgets the Rift's boss, as a floor is populated and as the dungeon is left. */
+	void ForgetTheRiftBoss();
+
+	/**
+	 * Any death of one of this floor's altars or of the Rift's boss, whoever dealt it: the panel is told at once. The
+	 * seals need no notice -- `RiftAltarsStandingNow` and `RiftBossNow` read the creatures -- so they open without one.
+	 */
+	void NoteDeathForTheRift(const struct FCataclysmDeathNotice& Notice);
+
 	/** The starvation curse, as a floor carrying it begins: one more stack of one kind. */
 	void AddAStarvationCurse();
 
@@ -3999,6 +4092,16 @@ private:
 
 	/** The Heavenly Core destroyed and forgotten. */
 	void ForgetTheHeavenlyCore();
+
+	/**
+	 * A Rift's altars for this floor, `RiftAltarsOnThisFloor` of them, placed where a new arena is populated, where a
+	 * floor source stands (`EternalChorusCells` on `RiftAltarCellsSalt`): each the floor boss's health, never attacking,
+	 * paying nothing, raised by the rule. Issue #51 slice B1.
+	 */
+	void PlaceTheRiftAltars();
+
+	/** This floor's altars destroyed and forgotten. */
+	void ForgetTheRiftAltars();
 
 	/** Pestilent Empowerment: this arena's beacons, placed where a new arena is populated. */
 	void PlaceTheBeacons();
@@ -6060,6 +6163,19 @@ private:
 	TWeakObjectPtr<ACataclysmEnemyCharacter> CataclysmBoss;
 	bool bCataclysmBossPlaced = false;
 
+	/**
+	 * A Rift's altars on this floor, in the order they were placed, which a rebuilt floor repeats: a save names a
+	 * destroyed one by its place here (`FCataclysmSavedFloorRuleState::RiftAltarsDestroyed`). Issue #51 slice B1.
+	 */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> RiftAltarsHere;
+
+	/**
+	 * The boss the population placed on a Rift's last floor, or nothing; and whether one was placed, so the panel can
+	 * tell a boss slain from a floor that could place none. Issue #51 slice B1, as the Cataclysm Boss's two above.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> RiftBoss;
+	bool bRiftBossPlaced = false;
+
 	/** Pestilent Empowerment: one beacon, and whether it has been counted, so a Horde arena's counts once. */
 	struct FPlagueBeacon
 	{
@@ -6269,6 +6385,12 @@ private:
 	TWeakObjectPtr<class ACataclysmGroundZone> DemonicGuideChain;
 	float DemonicGuideApplied = 0.0f;
 	int32 DemonicGuidePanelKey = -1;
+
+	/**
+	 * Demonic Guide: the yellow footprints the guide leaves, one actor holding a fixed pool of prints, made with the
+	 * guide and destroyed with it. Issue #2862. Stepped by `StepDemonicGuide`.
+	 */
+	TWeakObjectPtr<class ACataclysmGuideFootprints> DemonicGuideFootprints;
 
 	/**
 	 * The Plaguebearer, its stacks, and the floor they belong to. Issues #1820 and #41. THE FLOOR NUMBER IS WHAT STARTS

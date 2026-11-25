@@ -521,6 +521,9 @@ public:
 	 * slot's alone, which was true while a skill could only sit in the slot
 	 * it was designed for. A slot is now a key and any skill may go in any
 	 * slot, so the name would have become a lie. Issue #836.
+	 *
+	 * AND NOUGHT FOR AN AURA THAT STATES NONE, never its slot's figure. Ruled 2026-11-24, issue #2875: an aura deals
+	 * damage only if its description says so.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	float GetDamagePercent() const;

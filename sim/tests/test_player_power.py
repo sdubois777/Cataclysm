@@ -11,61 +11,136 @@ from cataclysm_sim import scoring
 
 
 # --------------------------------------------------------------------------
-# Calibration against the fixed anchors
+# The weights: five plain numbers, ruled by the owner on 2026-11-24 (#2853)
 # --------------------------------------------------------------------------
 
-def test_tier_8_reference_character_lands_exactly_on_the_anchor():
-    """The end of the game is the one anchor that has to be exact."""
-    score = pp.power_score(pp.reference_character(8))
-    assert score == scoring.PLAYER_MAX_SCORES[8] == 6327
+def test_the_weights_are_the_plain_numbers_the_owner_ruled():
+    """"Adopt, and look at drop supply (Recommended)", the owner, 2026-11-24.
 
-
-def test_tier_1_reference_character_is_within_one_point_of_the_anchor():
-    """Tier 1 is pinned in the arithmetic but loses a point to rounding.
-
-    The continuous curve wants level 12.5 and 5.625 filled sockets. A character
-    has whole levels and whole gems, so the reference character is level 12 with
-    6 gems and scores 384 rather than 385.
+    Written out rather than read back from the module, because the ruling is the
+    numbers: 10 a level, 2 a rarity step of a gear piece with an upgrade factor
+    of 1, 5 a gem rarity step and 1 a resistance percent.
     """
-    score = pp.power_score(pp.reference_character(1))
-    assert abs(score - scoring.PLAYER_MAX_SCORES[1]) <= 1
+    assert pp.WEIGHTS == {"level": 10.0, "gear": 2.0, "upgrade_factor": 1.0,
+                          "gem": 5.0, "resistance": 1.0}
+    assert (pp.LEVEL_WEIGHT, pp.GEAR_WEIGHT, pp.UPGRADE_FACTOR, pp.GEM_WEIGHT,
+            pp.RESISTANCE_WEIGHT) == (10.0, 2.0, 1.0, 5.0, 1.0)
 
 
-def test_every_tier_lands_within_six_percent_of_its_anchor():
+def test_every_weight_is_a_number_on_the_owners_list():
+    """The owner, 2026-11-24: "It would make sense as 1, 2, 5, 10, 25, 50, 100,
+    but 6.3 makes no sense at all." A weight a player cannot read is the fault
+    this change fixes, so a future re-tune that slips a 6.3 back in fails here."""
+    plain = {1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0}
+    for name, value in pp.WEIGHTS.items():
+        assert value in plain, f"{name} is {value}, not one of {sorted(plain)}"
+
+
+def test_a_level_six_character_scores_sixty_from_its_level():
+    """The owner's screen of 2026-11-24 read 38 for level 6 (6.327 a level),
+    and asked why. Under the ruled weights it is 60."""
+    c = pp.Character(level=6)
+    assert pp.level_term(c) == 60.0
+    assert pp.power_score(c) == 60
+
+
+@pytest.mark.parametrize("rarity, upgrade, points", [
+    (1, 0, 2),     # Everyday +0
+    (4, 0, 8),     # Masterful +0, a tier 1 drop: 2 x its rarity
+    (1, 3, 8),     # Everyday +3, the tier 1 reference's piece
+    (5, 4, 50),    # Legendary +4, at its gate
+    (6, 6, 84),    # Mythical +6
+    (8, 10, 176),  # Cataclysmic +10
+])
+def test_a_piece_scores_two_times_its_rarity_times_one_plus_its_upgrade(
+        rarity, upgrade, points):
+    """The proposal's table of pieces, through `gear_term` rather than the
+    weights, so a change to how the term is built is seen."""
+    c = pp.Character(level=1, gear=(pp.GearPiece(rarity, upgrade),))
+    assert pp.gear_term(c) == pytest.approx(points)
+
+
+def test_a_fresh_masterful_piece_counts_the_same_as_the_tier_1_references():
+    """The point the recommendation was set to, and not past: a Masterful +0
+    drop and the tier 1 reference's Everyday +3 are both 8, so wearing the
+    rarer piece never lowers the score. The alternative the owner did not choose
+    (1 a rarity step, 2 an upgrade level each) put the Masterful piece below."""
+    masterful = pp.gear_term(pp.Character(1, gear=(pp.GearPiece(4, 0),)))
+    reference = pp.gear_term(pp.Character(
+        1, gear=(pp.reference_character(1).gear[0],)))
+    assert pp.reference_character(1).gear[0] == pp.GearPiece(1, 3)
+    assert masterful == reference == 8.0
+
+
+def test_a_gem_and_a_resistance_percent_are_five_and_one():
+    assert pp.gem_term(pp.Character(1, gems=(3,))) == 15.0
+    assert pp.resistance_term(pp.Character(
+        1, resistances=(10.0, 0, 0, 0, 0, 0, 0, 0))) == 10.0
+
+
+# --------------------------------------------------------------------------
+# Where the reference character lands against the fixed anchors
+# --------------------------------------------------------------------------
+
+#: What the reference character scores at each tier under the ruled weights:
+#: the proposal's "Recommended" column (section 1a), measured on branch
+#: proposal/power-score-shares-2853 before the owner ruled.
+PROPOSAL_REFERENCE_SCORES = {1: 364, 2: 860, 3: 1493, 4: 2228,
+                             5: 3110, 6: 4134, 7: 5255, 8: 6528}
+
+
+def test_the_reference_character_scores_the_proposals_figures():
+    for tier, expected in PROPOSAL_REFERENCE_SCORES.items():
+        assert pp.power_score(pp.reference_character(tier)) == expected, tier
+
+
+def test_every_tier_lands_within_the_proposals_band_of_its_anchor():
+    """From -5.5% (tier 1, 364 against 385) to +3.2% (tier 8, 6,528 against
+    6,327), the band the owner was shown and ruled on. The anchors are
+    `scoring.PLAYER_MAX_SCORES`, the DungeonSimulator ceilings, and did not
+    move; the weights are chosen rather than fitted, so the character lands near
+    them rather than on them."""
     for tier, predicted, anchor, pct in pp.anchor_report():
-        assert abs(pct) < 6.0, (
+        assert -5.5 <= round(pct, 1) <= 3.2, (
             f"tier {tier} predicted {predicted} against anchor {anchor}, "
             f"{pct:+.1f}% off")
-
-
-def test_the_model_now_hits_every_anchor_above_tier_one_exactly():
-    """This test used to record a defect. It now records that the defect is gone.
-
-    Until 2026-08-05 the anchors were not smooth: tier 5 was 1107 points wide
-    where the surrounding trend was about 790, and tier 6 was NARROWER than tier
-    5. A smoothly progressing character cannot pass through that kink, so this
-    file asserted the resulting residual signature instead -- largest positive
-    error at tier 4, largest negative at tier 5. That signature was one of the two
-    independent pieces of evidence on issue #7 that the anchors were wrong.
-
-    The anchors were then reset to what this model predicts, in DungeonSimulator
-    commit 6c9be8b. Tiers 2 to 7 moved; tiers 1 and 8 deliberately did not,
-    because `_curve_coefficients` pins the curve through those two and nothing
-    else, so moving either would re-pin the curve and shift every prediction.
-
-    What is left is a single residual at tier 1, where the reference character
-    scores 384 against an anchor of 385. Every other tier is exact.
-    """
+        assert abs(pct) < 6.0
     errors = {tier: pct for tier, _, _, pct in pp.anchor_report()}
-    for tier in range(2, 9):
-        assert errors[tier] == pytest.approx(0.0, abs=1e-9), (
-            f"tier {tier} is {errors[tier]:+.2f}% off its anchor. The anchors "
-            "were set to this model's own predictions on 2026-08-05, so every "
-            "tier above 1 should be exact. Issue #7.")
-    assert abs(errors[1]) < 1.0, (
-        f"tier 1 is {errors[1]:+.2f}% off. The reference character not landing "
-        "exactly on the curve at the bottom end is expected; a whole percent "
-        "is not.")
+    assert round(errors[1], 1) == -5.5
+    assert round(errors[8], 1) == 3.2
+
+
+def test_the_anchors_are_still_the_dungeon_simulator_ceilings():
+    """The ruling changed the weights and not the ceilings, which are
+    DungeonSimulator's and are never hand-edited here."""
+    assert [scoring.PLAYER_MAX_SCORES[t] for t in range(1, 9)] == [
+        385, 883, 1508, 2225, 3078, 4057, 5120, 6327]
+
+
+def test_the_shares_fall_out_at_fifteen_forty_nine_twenty_eight_and_nine():
+    """The shares are an outcome now. Until 2026-11-24 they were the input,
+    10/50/30/10, and the weights were derived from them."""
+    shares = pp.shares_of(pp.reference_character(8))
+    assert {name: round(100 * share) for name, share in shares.items()} == {
+        "level": 15, "gear": 49, "gems": 28, "resistances": 9}
+    assert sum(shares.values()) == pytest.approx(1.0)
+
+
+def test_the_finished_tier_1_character_draws_a_third_from_level():
+    """"maybe put more points on your level instead of gear", the owner,
+    2026-11-24. The proposal's figures for the finished tier 1 character: 33 /
+    40 / 8 / 19, against 20 / 51 / 8 / 21 under the old weights."""
+    shares = pp.shares_of(pp.reference_character(1))
+    assert {name: round(100 * share) for name, share in shares.items()} == {
+        "level": 33, "gear": 40, "gems": 8, "resistances": 19}
+
+
+def test_a_character_that_scores_nothing_has_no_shares():
+    """Not reachable through `Character`, whose level is at least 1, so the
+    guard is exercised with a stand-in at level 0 that wears nothing."""
+    with pytest.raises(ValueError):
+        pp.shares_of(type("Nothing", (), {"level": 0, "gear": (), "gems": (),
+                                          "resistances": ()})())
 
 
 def test_the_tier_widths_climb_at_every_tier():
@@ -179,11 +254,12 @@ def test_upgrade_level_multiplies_rarity_rather_than_adding_to_it():
     assert gain(8) / gain(1) == pytest.approx(8.0)
 
     # And a fully upgraded piece is worth the stated multiple of an unupgraded
-    # one, measured the same way.
+    # one, measured the same way: 11 times since 2026-11-24, 3.52 before.
     f = pp.WEIGHTS["upgrade_factor"]
     bare = pp.gear_term(pp.Character(1, gear=(pp.GearPiece(8, 0),)))
     upgraded = pp.gear_term(pp.Character(1, gear=(pp.GearPiece(8, 10),)))
     assert upgraded / bare == pytest.approx(1 + 10 * f)
+    assert upgraded / bare == pytest.approx(11.0)
 
 
 def test_an_empty_character_scores_only_its_level():
@@ -258,36 +334,15 @@ def test_gem_rarity_outside_one_to_eight_is_rejected():
 
 
 # --------------------------------------------------------------------------
-# The derivation refuses impossible share allocations
+# The shares are no longer an input
 # --------------------------------------------------------------------------
 
-def test_weight_derivation_rejects_a_gem_share_that_leaves_no_curvature(
-        monkeypatch):
-    """If gems are given so large a share that they alone over-supply the
-    curve's quadratic term, gear would need a negative weight. That must raise
-    rather than silently produce a nonsense model."""
-    monkeypatch.setattr(pp, "SHARE_GEMS", 0.90)
-    monkeypatch.setattr(pp, "SHARE_GEAR", 0.05)
-    monkeypatch.setattr(pp, "SHARE_LEVEL", 0.03)
-    monkeypatch.setattr(pp, "SHARE_RESISTANCES", 0.02)
-    with pytest.raises(ValueError, match="no curvature for gear"):
-        pp._derive_weights()
-
-
-def test_weight_derivation_rejects_a_gear_share_too_small_to_carry_the_curve(
-        monkeypatch):
-    monkeypatch.setattr(pp, "SHARE_GEMS", 0.10)
-    monkeypatch.setattr(pp, "SHARE_GEAR", 0.10)
-    monkeypatch.setattr(pp, "SHARE_LEVEL", 0.40)
-    monkeypatch.setattr(pp, "SHARE_RESISTANCES", 0.40)
-    with pytest.raises(ValueError, match="too small to carry"):
-        pp._derive_weights()
-
-
-def test_the_shares_in_the_module_sum_to_one():
-    total = (pp.SHARE_LEVEL + pp.SHARE_GEAR + pp.SHARE_GEMS
-             + pp.SHARE_RESISTANCES)
-    assert total == pytest.approx(1.0)
+def test_the_shares_and_their_derivation_are_gone():
+    """Until 2026-11-24 four SHARE_ constants were solved for the weights. A
+    copy left behind would read as still deciding something."""
+    for gone in ("SHARE_LEVEL", "SHARE_GEAR", "SHARE_GEMS", "SHARE_RESISTANCES",
+                 "_derive_weights", "_curve_coefficients"):
+        assert not hasattr(pp, gone), gone
 
 
 # --------------------------------------------------------------------------

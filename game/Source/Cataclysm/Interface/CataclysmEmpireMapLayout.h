@@ -199,6 +199,48 @@ public:
 	static FString CityLabel(const UCataclysmEmpireMap* Map, int32 CityId);
 
 	/**
+	 * Whether a city's box opens its city screen when pressed: EVERY CITY ON THE MAP'S DOES, A FALLEN ONE'S INCLUDED.
+	 * False only with no map or no such city.
+	 *
+	 * ISSUE #2866, the owner: "I'm unable to take it back, it won't let me attack it." A fallen city's box was made
+	 * unavailable on 2026-08-31, before a fall left a Fallen City dungeon on its city, and an unavailable choice button
+	 * cannot be pressed (`UCataclysmChoiceButton::Press`), so the city screen that lists that dungeon with its Walk
+	 * button never opened and the city could not be retaken. The design, `docs/Cataclysm_GDD_v2.md` section VIII:
+	 * "Dungeon Cities can be retaken." A fallen city is told apart by being dimmed instead (`IsCityDimmed`).
+	 */
+	static bool CityOpensItsScreen(const UCataclysmEmpireMap* Map, int32 CityId);
+
+	/**
+	 * Whether a city's box is drawn dimmed: a fallen city's, and no other. `UCataclysmChoiceButton::SetDimmed` draws it
+	 * as unavailable while it can still be pressed (`CityOpensItsScreen`). Issue #2866.
+	 */
+	static bool IsCityDimmed(const UCataclysmEmpireMap* Map, int32 CityId);
+
+	/**
+	 * The Fallen City dungeon standing on a city, or `INDEX_NONE`: the dungeon a fallen city is retaken by walking and
+	 * clearing (`UCataclysmEmpireRun::ClearDungeon` calls `UCataclysmEmpireMap::Retake`). Issue #2866.
+	 */
+	static int32 FallenCityDungeonOn(const UCataclysmEmpireRun* Run, int32 CityId);
+
+	/**
+	 * What the line under the map says of a fallen city after its name, when the cursor is on it: "fallen: walk its
+	 * Fallen City dungeon to retake it (press the city, then Walk)" while its Fallen City dungeon stands on it; "erased
+	 * by the Void, it can never be retaken" for an erased city; "fallen" for one with no such dungeon. Empty for a city
+	 * standing, and with no run or no such city. Issue #2866: until then the line said "fallen" and nothing said how a
+	 * city comes back.
+	 */
+	static FString FallenCityDetail(const UCataclysmEmpireRun* Run, int32 CityId);
+
+	/**
+	 * What a city's box adds when Rifts stand on it: ", Rift", or ", 2 Rifts"; nothing otherwise. The map widget puts
+	 * it after `CityLabel`, so "Bulwark 80%, Rift" says where each Rift is without hovering. Issue #51 slice B2, "the
+	 * map shows each Rift and its next spawn day": the next spawn day is on the city's detail line
+	 * (`CityDetailDungeonLine`). Nothing for a run that has not begun.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString RiftMark(const UCataclysmEmpireRun* Run, int32 CityId);
+
+	/**
 	 * What the PLAYER has done to the map: dungeons beaten, and Quest dungeons among them.
 	 *
 	 * "4 dungeons cleared, 1 Quest dungeon cleared". Everything else the empire screen
@@ -458,6 +500,22 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString DaysAwayLine(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * The warning a press that spends days in the capital adds to its question, before it is made: which dungeons' timers
+	 * run out within those days, the city each would hit and the day, from `UCataclysmEmpireRun::TimersRunningOutWithin`.
+	 * " Within 3 days, 1 dungeon's timer runs out: dungeon 13 (the dungeon on Outpost (-3,0)) hits Outpost (-3,0) on day
+	 * 99." Issue #2857, the owner's ruling of 2026-11-22: the owner spent 45 days at the forge in about a minute of
+	 * clicking, with no warning. The forge's crafts and the empire upgrade tree's respec say it.
+	 *
+	 * BEGINS WITH A SPACE, as the forge's other additions to a question do (`UCataclysmForge::OptionsQuestion`), and IS
+	 * EMPTY WHEN NO TIMER RUNS OUT, so a question with nothing to warn of reads as it did before. A forecast from the
+	 * timers as they stand: a surge or a fall inside the days can change what happens, which the account after the press
+	 * says (`UCataclysmGameInstance::CapitalDaysAccount`).
+	 *
+	 * @param Days the days the press would spend, after anything that changes them (the forge's Tainted Shards)
+	 */
+	static FString TimersRunningOutText(const UCataclysmEmpireRun* Run, int32 Days);
 
 	/**
 	 * The second line of the map's surge label, for as long as nothing replaces it: what the last walk's end did. The

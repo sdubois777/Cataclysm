@@ -30,6 +30,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/DataTable.h"
+#include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
@@ -113,6 +114,24 @@ void UCataclysmInventoryWidget::NativeTick(const FGeometry& MyGeometry,
 	// THE ITEM ON THE CURSOR FOLLOWS IT, after Refresh has said whether there is
 	// one. Issue #878.
 	PlaceHeldItem(MyGeometry);
+
+	// WHAT THE LAST PRESS SAID, for its seconds and then not. Issue #837, slice 3.
+	if (PressLineBacking)
+	{
+		const UWorld* World = GetWorld();
+		const bool bShown = World && FScreen::PressLineIsShown(PressLineText, PressLinePostedAt, World->GetTimeSeconds());
+		PressLineBacking->SetRenderOpacity(bShown ? 1.0f : 0.0f);
+	}
+}
+
+void UCataclysmInventoryWidget::ShowPressLine(const FString& Line, double Now)
+{
+	PressLineText = Line;
+	PressLinePostedAt = Now;
+	if (PressLine)
+	{
+		PressLine->SetText(FText::FromString(Line));
+	}
 }
 
 void UCataclysmInventoryWidget::NativeDestruct()
@@ -329,6 +348,33 @@ void UCataclysmInventoryWidget::BuildTree()
 	PagerSlot->SetHorizontalAlignment(HAlign_Center);
 	GemPager = Pager;
 	ShowTab(ECataclysmInventoryTab::Gear);
+
+	// WHAT A PRESS SAID, issue #837's slice 3 (the owner's Q6: the last weapon's
+	// refusal is shown on this screen). A line in the header's ink and size on
+	// the panel's colour, centred ABOVE the panel, which leaves at least 14% of
+	// the screen's height free over it (FScreen::PressLineTopPx). In the root
+	// rather than in the panel, so the panel stays the size CellSizeFor worked
+	// out. Drawn at no opacity until a press says something, as the item on the
+	// cursor is, and never hit-testable itself: nothing on this screen is
+	// collapsed or made wholly hit-test invisible, which would stop the cells'
+	// tool tips (test_the_inventory_screen_draws_the_designed_grid.py). NativeTick
+	// says when it shows.
+	PressLineBacking = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PressLineBacking"));
+	PressLineBacking->SetBrush(FSlateColorBrush(PanelColour()));
+	PressLineBacking->SetPadding(FMargin(FScreen::PanelPaddingPx * 0.5f));
+	PressLine = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("PressLine"));
+	PressLine->SetColorAndOpacity(FSlateColor(InkColour()));
+	PressLine->SetFontSize(static_cast<float>(FScreen::HeaderFontPx));
+	PressLine->SetJustification(ETextJustify::Center);
+	PressLine->SetText(FText::FromString(PressLineText));
+	PressLine->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	PressLineBacking->SetContent(PressLine);
+	PressLineBacking->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	PressLineBacking->SetRenderOpacity(0.0f);
+	UOverlaySlot* PressLineSlot = Root->AddChildToOverlay(PressLineBacking);
+	PressLineSlot->SetHorizontalAlignment(HAlign_Center);
+	PressLineSlot->SetVerticalAlignment(VAlign_Top);
+	PressLineSlot->SetPadding(FMargin(0.0f, FScreen::PressLineTopPx, 0.0f, 0.0f));
 
 	// THE ITEM ON THE CURSOR, issue #878: one more cell, the same widgets a grid
 	// cell is, added to the root LAST so it is drawn over the panel. Pinned to

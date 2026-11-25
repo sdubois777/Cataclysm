@@ -121,11 +121,19 @@ namespace
 	float FervourReserveFor(const AActor* Self,
 							const FCataclysmSkillShapeParams& Params,
 							const FGameplayTagContainer& SkillTags,
-							const UGameplayAbility* Skill)
+							const UGameplayAbility* Skill,
+							const AActor* Taken = nullptr)
 	{
 		// THE SKILL'S LEVEL FIRST, ON ITS STATED FIGURE, AND THE COMMANDER'S REDUCTIONS AFTER. Issue #2802.
+		//
+		// AND A THRALL'S FIGURE RISES WITH THE RARITY OF THE CREATURE TAKEN, ON THE STATED FIGURE TOO, before the
+		// reductions. The owner's ruling of 2026-11-24, "Reserve grows with rarity": the row's figure is a Common's, and
+		// `UCataclysmCommand::ThrallReserveScaleFor` scales it. One for anything else: no creature named, a row that does
+		// not possess, and a creature that is not a designed one.
+		const float ByRarity = Params.bPossess ? UCataclysmCommand::ThrallReserveScaleFor(Taken) : 1.0f;
 		return UCataclysmCommand::ReserveFor(
-			Self, Params.FervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(Skill)), SkillTags);
+			Self, Params.FervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(Skill)) * ByRarity,
+			SkillTags);
 	}
 }
 
@@ -2078,21 +2086,24 @@ int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
 		// finishes, after a skill trap that cast it is used up, and only the identity still names that trap (ruled
 		// 2026-10-21, #2462).
 		// AND THE SKILL'S ROW, read now, while the skill is there, for every later leap. Issue #2764, slice 2a.
-		if (UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
-										   GetDamagePercent(), SkillTags,
-										   Params.bBurns, FreeRepeatCastBy,
-										   UCataclysmSkillLevels::RowThatLevels(this)))
+		UCataclysmBuriedWeapon* Left = UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
+																	  GetDamagePercent(), SkillTags,
+																	  Params.bBurns, FreeRepeatCastBy,
+																	  UCataclysmSkillLevels::RowThatLevels(this));
+		if (!Left)
 		{
-			++Buried;
+			continue;
 		}
-	}
+		++Buried;
 
-	if (Buried > 0)
-	{
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' left its weapon in %d enemies, reaching %.0fcm for the "
-				 "next."),
-			*SkillName, Buried, Params.OnDeathRangeCm);
+		// AND THE SKILL'S NAME, FOR THE LINES EACH LEAP WRITES, AND THE WEAPON DRAWN IN WHAT IT STRUCK, its blade
+		// toward the creature from where the use was cast. Issue #2872: "nothing shows the axe leaping".
+		Left->SkillName = SkillName;
+		Left->DrawIn(CastOrigin());
+		UE_LOG(LogCataclysm, Display,
+			TEXT("%s%s's weapon is buried in %s; when that one dies it leaps to the nearest living enemy within %.1f m%s."),
+			UCataclysmBuriedWeapon::LogPrefix, *SkillName, *GetNameSafe(Target), Params.OnDeathRangeCm / 100.0f,
+			Left->DrawnWeapon ? TEXT(", drawn in it") : TEXT(" (no mesh loaded, so nothing is drawn)"));
 	}
 
 	return Buried;
@@ -4463,9 +4474,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 	return Minion;
 }
 
-float UCataclysmSummonSkill::FervourReserveOfOne(const AActor* Commander) const
+float UCataclysmSummonSkill::FervourReserveOfOne(const AActor* Commander, const AActor* Taken) const
 {
-	return FervourReserveFor(Commander ? Commander : Avatar(), Params, SkillTags, this);
+	return FervourReserveFor(Commander ? Commander : Avatar(), Params, SkillTags, this, Taken);
 }
 
 void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
@@ -4608,6 +4619,7 @@ bool UCataclysmSummonSkill::Possess()
 {
 	bTookIt = false;
 	bRefusedForRoom = false;
+	ReleasedToMakeRoom = 0;
 
 	AActor* Self = Avatar();
 	if (!Self)
@@ -4674,12 +4686,53 @@ bool UCataclysmSummonSkill::Possess()
 
 	AActor* Target = Targets[0];
 
+	// WHAT THIS THRALL WOULD RESERVE: THE ROW'S FIGURE FOR A COMMON, RAISED BY THE TARGET'S RARITY. The owner's ruling of
+	// 2026-11-24, "Reserve grows with rarity": "A Herald thrall takes most of your pool, so it is a choice between one
+	// monster and an army." Read once, for the target, before the blow, and used by every question below: whether room
+	// can be made, how much is released to make it, the refusal, and what the thrall holds back once taken.
+	const float ThrallReserve = FervourReserveFor(Self, Params, SkillTags, this, Target);
+
+	// AND A TARGET IT COULD TAKE IS NOT KILLED BY THE BLOW: IT IS TAKEN INSTEAD. Issue #2856, the owner's ruling of
+	// 2026-11-22: "ok, well it should still take them even if it would kill". Asked BEFORE the blow, of everything but
+	// the blow's own outcome -- each reason `UCataclysmCommand::Subjugate` refuses for, and the room in the pool, the
+	// same two questions asked again below -- and when nothing refuses, the target is held alive for the blow: a write
+	// that would empty its health leaves one point (`UCataclysmVitalAttributeSet::PreAttributeChange`, beside the
+	// Unholy Sigil's hold). One point is under the health threshold, so the judgement below takes it.
+	//
+	// A JUDGEMENT, OF HOW TO BUILD THE RULING: the blow stops at one health on such a target, rather than the take being
+	// decided before the damage. The blow's outcome is resolved inside the target's own attribute set -- evasion, block,
+	// armour, every shield -- and cannot be known before it lands, while a hold at one is the shape the sigil already
+	// uses. So the blow still lands in full on everything else: a boss, a creature already ours, a dead one, and every
+	// target when the pool has no room and releasing cannot make any, which the blow may kill as before.
+	//
+	// AROUND THE BLOW AND ONLY THE BLOW, and everything it sets off before it returns: a burn's first tick, a row's
+	// answer to the hit. A weak pointer, so a target something else removed during the blow is not written to.
+	//
+	// ROOM THAT RELEASING THE OLDEST CAN MAKE COUNTS AS ROOM, since the owner's ruling of 2026-11-24, "Replace the
+	// oldest": a pool with no room no longer refuses a take that releasing can make room for (below), so such a target
+	// is one it could take and is held too.
+	TWeakObjectPtr<ACataclysmCharacterBase> HeldForTheTake;
+	if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None
+		&& UCataclysmCommand::RoomCanBeMadeForAThrall(Self, ThrallReserve))
+	{
+		HeldForTheTake = Cast<ACataclysmCharacterBase>(Target);
+	}
+	if (ACataclysmCharacterBase* Held = HeldForTheTake.Get())
+	{
+		Held->bHeldAliveForATake = true;
+	}
+
 	// THE BLOW FIRST, AND EVERYTHING ABOUT WHETHER IT CAN BE TAKEN IS JUDGED
 	// AFTER IT. "If the BLOW LEAVES IT below half health you take it
 	// permanently": the health that matters is what is left when the damage has
 	// landed, not what it had when the skill was pressed. `HitTargets` also
 	// carries the row's `Burn=1`, so "setting it alight" comes with it.
 	HitTargets(Targets);
+
+	if (ACataclysmCharacterBase* Held = HeldForTheTake.Get())
+	{
+		Held->bHeldAliveForATake = false;
+	}
 
 	// THE THRESHOLD IS A SHARE OF MAXIMUM HEALTH, the same reading the stun's
 	// threshold takes and for the same reason: what matters is whether the blow
@@ -4771,16 +4824,28 @@ bool UCataclysmSummonSkill::Possess()
 	// your army is only as large as your pool." Asked before the taking rather
 	// than after, so a refusal leaves the creature exactly as the blow left it
 	// rather than taking it and giving it back.
+	//
+	// AND WHEN IT HAS NONE, THE OLDEST IS RELEASED TO MAKE IT. Issue #2856, the owner's ruling of 2026-11-24, "Replace
+	// the oldest": "the oldest minion (an Imp or thrall) is released to make room, and the take happens". Only once
+	// nothing else would refuse the take -- the threshold was judged above and the command's own reasons are asked here
+	// -- so nothing is released for a take that is then refused; and only when releasing can make room at all
+	// (`UCataclysmCommand::ReleaseOldestForAThrall` asks). Each release logs its own line in the command.
+	if (!UCataclysmCommand::HasRoomForAnotherThrall(Self, ThrallReserve)
+		&& UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None)
+	{
+		ReleasedToMakeRoom = UCataclysmCommand::ReleaseOldestForAThrall(
+			Self, ThrallReserve);
+	}
 	if (!UCataclysmCommand::HasRoomForAnotherThrall(
-			Self, FervourReserveFor(Self, Params, SkillTags, this)))
+			Self, ThrallReserve))
 	{
 		bRefusedForRoom = true;
 		const UCataclysmAbilitySystemComponent* Pool =
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
 		UE_LOG(LogCataclysm, Log,
-			TEXT("TAKE REFUSED: '%s' has no room for another thrall at %.0f reserved each, so "
+			TEXT("TAKE REFUSED: '%s' has no room for a thrall reserving %.0f after releasing %d, so "
 				 "'%s' was left where it was: %s, against a maximum of %.0f."),
-			*SkillName, FervourReserveFor(Self, Params, SkillTags, this),
+			*SkillName, ThrallReserve, ReleasedToMakeRoom,
 			*Target->GetName(), *UCataclysmSkillTemplate::ReservedFervourByKindText(Self),
 			Pool ? Pool->MaximumClassResource() : 0.0f);
 		return false;
@@ -4791,22 +4856,24 @@ bool UCataclysmSummonSkill::Possess()
 	{
 		// THE COMMAND'S OWN REFUSAL, NAMED BY WHICH OF ITS REASONS HOLDS. Issue #2801. Asked here rather than inside
 		// `UCataclysmCommand::Subjugate`, which answers only true or false; the health and the room were judged above.
-		const ACataclysmEnemyCharacter* AsEnemy = Cast<ACataclysmEnemyCharacter>(Target);
+		// EVERY REASON IT CAN REFUSE FOR, AND THE ONE IT DID, since issue #2856: this line named three of the six by
+		// asking them again for itself, so a creature the blow had killed printed "no" for all three and its real reason
+		// nowhere. Both now come from `UCataclysmCommand::WhySubjugateRefuses`'s list, which `Subjugate` refuses by.
 		UE_LOG(LogCataclysm, Log,
-			TEXT("TAKE REFUSED: '%s' could not take '%s': boss %s, cannot be hurt %s, already on its side %s."),
-			*SkillName, *Target->GetName(), AsEnemy && AsEnemy->IsBoss() ? TEXT("yes") : TEXT("no"),
-			AsEnemy && AsEnemy->bCannotBeHurt ? TEXT("yes") : TEXT("no"),
-			UCataclysmTargeting::IsFriendlyTo(Target, Self) ? TEXT("yes") : TEXT("no"));
+			TEXT("TAKE REFUSED: '%s' could not take '%s', refused as %s: %s."),
+			*SkillName, *Target->GetName(),
+			UCataclysmCommand::SubjugateRefusalName(UCataclysmCommand::WhySubjugateRefuses(Self, Target)),
+			*UCataclysmCommand::SubjugateRefusalsText(Self, Target));
 	}
 	if (bTookIt)
 	{
 		UE_LOG(LogCataclysm, Log, TEXT("TAKE: '%s' took '%s', reserving %.0f."), *SkillName, *Target->GetName(),
-			   FervourReserveFor(Self, Params, SkillTags, this));
+			   ThrallReserve);
 		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
 		// Fervour drops at once. Issue #1160.
 		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
 		{
-			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
+			Thrall->ReservedFervour = ThrallReserve;
 		}
 		// AND THIS SKILL'S ROW AND LEVEL FACTOR, READ ONCE, AT THE TAKE. Issue #2764, slice 2b, by judgement 3 ("Subjugate's
 		// thralls credit Subjugate") and the owner's ruling of 2026-11-19 ("Yes, they scale too"): while it is commanded,
@@ -5242,9 +5309,15 @@ int32 UCataclysmAuraSkill::Pulse()
 		}
 	}
 
-	// A ring around the caster, following them. The Aura slot's damage is 25%
-	// of weapon damage PER SECOND, which the Skill Slots sheet says explicitly,
-	// so a pulse is worth that much of a second.
+	// A ring around the caster, following them. An aura's damage is a figure
+	// PER SECOND, which the Skill Slots sheet says explicitly, so a pulse is
+	// worth that much of a second.
+	//
+	// THE FIGURE IS THE ROW'S OWN AND NOUGHT WHEN IT STATES NONE, ruled
+	// 2026-11-24 (issue #2875): Conflagration states 10% a second (#2869), and
+	// an aura whose sentence names no damage deals none. Such a pulse is still
+	// dealt, at nought, because the burn, the ailment, the shove and the pull a
+	// row states ride a landed blow in `HitTargets`, whether or not it hurt.
 	const TArray<AActor*> Inside = UCataclysmTargeting::FindEnemiesInSphere(
 		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
 

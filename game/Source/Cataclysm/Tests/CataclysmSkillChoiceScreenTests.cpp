@@ -499,4 +499,49 @@ bool FCataclysmSkillChoiceScreenRedrawTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillChoiceScreenNotBuiltTest,
+	"Cataclysm.SkillChoiceScreen.APlaceholderIsMarkedNotBuiltYet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #837 slice 2, the owner's Q2 of 2026-11-24: an Axe carrying War and Demonic pools the War Axe's skills, which
+ * do nothing when pressed, beside the Demonic Axe's. A War Axe skill's pool button reads ", not built yet" at its end.
+ * CONTROL: a Demonic Axe skill's does not.
+ */
+bool FCataclysmSkillChoiceScreenNotBuiltTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillChoiceScreenTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FSkillChoiceScreenCarrier Carrier = SpawnScreenCarrier(*this, World);
+	if (!Carrier.IsComplete())
+	{
+		return false;
+	}
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	const ECataclysmEquipResult Worn = Carrier.Equipment->EquipInto(
+		ScreenWeapon(TEXT("Weapon_Axe"), {FName(TEXT("War")), FName(TEXT("Demonic"))}), ECataclysmGearSlot::Weapon2,
+		Removed, AlsoRemoved);
+	if (!TestTrue(TEXT("set-up: the Axe goes on"),
+				  Worn == ECataclysmEquipResult::Equipped || Worn == ECataclysmEquipResult::Swapped))
+	{
+		return false;
+	}
+	Carrier.Screen->Refresh();
+	UCataclysmChoiceButton* NotBuilt = NewObject<UCataclysmChoiceButton>();
+	UCataclysmChoiceButton* Built = NewObject<UCataclysmChoiceButton>();
+	Carrier.Screen->DescribeButtonForTests(*NotBuilt, FName(TEXT("War_Axe_Heavy")), /*bIsSlot=*/false);
+	Carrier.Screen->DescribeButtonForTests(*Built, FName(TEXT("Demonic_Axe_Heavy")), /*bIsSlot=*/false);
+	const FString NotBuiltLabel = NotBuilt->GetLabel().ToString();
+	const FString BuiltLabel = Built->GetLabel().ToString();
+	AddInfo(FString::Printf(TEXT("NOT BUILT LABELS: '%s', '%s'"), *NotBuiltLabel, *BuiltLabel));
+	TestTrue(TEXT("**the War Axe's heavy attack is marked not built yet**"),
+			 NotBuiltLabel.EndsWith(UCataclysmSkillAssignmentWidget::NotBuiltYetMark));
+	TestFalse(TEXT("CONTROL: the Demonic Axe's is not"), BuiltLabel.Contains(UCataclysmSkillAssignmentWidget::NotBuiltYetMark));
+	TestFalse(TEXT("set-up: the Demonic Axe's button has a label"), BuiltLabel.IsEmpty());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

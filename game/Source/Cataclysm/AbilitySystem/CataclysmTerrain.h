@@ -114,9 +114,17 @@ public:
 	/**
 	 * Put terrain in the world along a segment.
 	 *
+	 * ON THE FLOOR, WHATEVER HEIGHT IT IS HANDED. Issue #2878. The actor is moved
+	 * straight down (or up) onto the walking surface under `Start`, found by
+	 * `CataclysmEffectPlacement::FloorSurfaceUnder`, and the far end keeps its
+	 * offset from it, so a wall's base is on the floor and its top a wall's
+	 * height above it. With no floor under `Start` -- a test world that builds
+	 * none, a point over the void -- it is left at `Start`.
+	 *
 	 * @param Owner      whose skill left it. It never affects that side
 	 * @param Kind       which of the four
-	 * @param Start      the near end; a round kind puts both ends here
+	 * @param Start      the near end; a round kind puts both ends here. Every
+	 *                   caller hands a capsule centre
 	 * @param End        the far end
 	 * @param SizeCm     radius for a pit, fissure or thicket; ignored for a wall,
 	 *                   whose length is the distance from Start to End

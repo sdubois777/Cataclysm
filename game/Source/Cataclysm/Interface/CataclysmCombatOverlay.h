@@ -171,8 +171,14 @@ public:
 	 * 2026-10-02 under the owner's delegation: the owner said it of a thrall, and the
 	 * reason he gave, "so you know it's yours", holds for a summoned minion too.
 	 *
-	 * ASKED BY `UCataclysmCommand::CommanderOf`, which answers a thrall's owner and a
-	 * minion's summoner.
+	 * ASKED BY `UCataclysmCommand::TopCommanderOf`, THE TOP OF ITS CHAIN OF COMMAND, since
+	 * issue #2867: a taken Gatekeeper's Imps follow the Gatekeeper and the player one step
+	 * further up, and asking `CommanderOf` alone, one step, left them red. Each step is
+	 * `CommanderOf`, which answers a thrall's owner and a minion's summoner.
+	 *
+	 * AND A CREATURE THAT ANSWERS TO NOBODY STILL HERE IS GREEN WHEN IT IS ON THE LOCAL
+	 * PLAYER'S SIDE, a judgement of issue #2867: a taken Gatekeeper's Imps once the
+	 * Gatekeeper is gone. Another commander's creatures stay red to this player.
 	 */
 	static const TCHAR* HealthFillHexFor(const AActor* Creature, const AActor* LocalPlayerPawn);
 
@@ -819,6 +825,13 @@ public:
 	 * words, for their reason: it says what the creature is.
 	 */
 	static FString RiftTextFor(const AActor* Actor);
+
+	/**
+	 * "Altar" under the health bar of a living altar of a Rift, the Demonic Quest dungeon, or empty. Issue #51 slice B1.
+	 * Beside the floor sources' words, for their reason: it says what the creature is, which here is what the player
+	 * must destroy to seal the Rift.
+	 */
+	static FString RiftAltarTextFor(const AActor* Actor);
 
 	/**
 	 * "Shrouded" under the health bar of a creature no damage reaches until light does, on a floor carrying Shadowy

@@ -3185,7 +3185,10 @@ public:
 	static bool ApplyUntargetable(AActor* Instigator, AActor* Target,
 								  float DurationSeconds);
 
-	/** Whether this actor cannot be hit right now. */
+	/**
+	 * Whether this actor cannot be hit right now: it carries the tag above, or it is nobody's target
+	 * (`UCataclysmTargeting::IsNeverATarget`, Demonic Guide's guide, issue #2860).
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsUntargetable(const AActor* Actor);
 
@@ -3302,8 +3305,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsDead(const AActor* Actor);
 
-	/** Mark this actor dead. Does nothing to one already marked. */
+	/**
+	 * Mark this actor dead. Does nothing to one already marked, AND NOTHING TO ONE WHOSE DEATH IS BEING MARKED NOW.
+	 *
+	 * THE SECOND HALF IS ISSUE #2871. The tag is added at the END of this function, after five hooks that can strike
+	 * other creatures, and the check that refuses a second death is at its TOP. A hook's blow can reach back to the
+	 * dying actor before the tag is on it: Harrower's axe leaps to a creature carrying Sacrificial Bond, the bond pays
+	 * a share of that blow to its allies by `ReduceHealthDirectly`, the dying creature is one of them, and the health
+	 * write calls its `HandleDeath` again. Each such call passed the top check, ran the hooks again (another leap) and
+	 * returned true, so the creature's `HandleDeath` ran once per leap, all in one frame with the same seed: the owner
+	 * saw at least 13 identical "Masterful Fetish of Venom" drops, and the log shows 31 leaps on one creature.
+	 */
 	static bool MarkDead(AActor* Actor);
+
+	/**
+	 * Whether this actor's death is being marked at this moment: `MarkDead` has begun for it and has not yet put the
+	 * tag on. FOR `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`, which refuses to start a second death for
+	 * such an actor, as it refuses one already dead. Issue #2871.
+	 *
+	 * NOT PART OF `IsDead`, deliberately: the hooks inside `MarkDead` run while the dying actor is still an ordinary
+	 * target, and each of them that searches excludes it by name. Making it read as dead there would change what every
+	 * one of them finds.
+	 */
+	static bool IsBeingMarkedDead(const AActor* Actor);
 
 	/**
 	 * Take the dead mark off again. Does nothing to one that is not marked.

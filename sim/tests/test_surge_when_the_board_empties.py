@@ -48,8 +48,19 @@ def do_nothing(sim, dungeons):
 
 def quiet(**kwargs) -> TuningConfig:
     """Defaults with the clock pushed out of the way, so only the board-empty
-    trigger can fire. `max_days` is left alone."""
-    return dataclasses.replace(TuningConfig(), **kwargs)
+    trigger can fire. `max_days` is left alone.
+
+    AT THE RULE OF 2026-09-07, WHICH IS WHAT THIS FILE HOLDS. The owner's rulings
+    of 2026-11-23 and 2026-11-24 on issue #2865 changed three parts of it -- only
+    ordinary dungeons count, no minimum gap, the wave 4 larger -- and each is a
+    switch on `TuningConfig` that ships on. They are set off here, so every test
+    below still holds the mechanism it was written for, and
+    `test_the_empty_board_ruling_of_2026_11_23.py` holds the three parts on.
+    """
+    rule = dict(empty_board_counts_ordinary_only=False, empty_board_surge_larger=False,
+                empty_board_surge_braked=True)
+    rule.update(kwargs)
+    return dataclasses.replace(TuningConfig(), **rule)
 
 
 def a_standing_city(sim: Simulation):

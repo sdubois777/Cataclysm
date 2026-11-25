@@ -55,8 +55,12 @@
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
+// For a creature that died while its swing was waiting to connect. Issue #2877.
+#include "Character/CataclysmEnemyCharacter.h"
 // For a ground zone's skill row and level factor, read when it is laid. Issue #2764, slice 2a.
 #include "Character/CataclysmSkillLevels.h"
+// For where the player's cursor points, an enemy under it before the floor. Issue #2870.
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 // For the Angelic Wardens a payment under the Edict of Abstinence wakes. 2026-10-23, G7c.
 #include "Dungeon/CataclysmDungeonGameMode.h"
@@ -141,6 +145,22 @@ float UCataclysmSkillTemplate::GetDamagePercent() const
 	if (DamagePercentOverride >= 0.0f)
 	{
 		return DamagePercentOverride;
+	}
+
+	// AN AURA DEALS ONLY THE DAMAGE ITS ROW STATES, AND NOTHING WHEN IT STATES NONE. Ruled by the owner on 2026-11-24,
+	// issue #2875, "No damage unless stated (Recommended)": an aura deals damage only if its description says so. Until
+	// then this fell through to the slot below, and five Aura-slot rows whose sentences mention no damage -- Exposing
+	// Light, Miasma, Pall of Ending, Unreason, Gnawing Want -- dealt the slot's 25% of weapon damage a second to
+	// everything in 10 metres, and Undertow its 150% every six seconds. Each is now its effect alone: the poison, the
+	// curse, the pull, the ally bonus. An aura that deals damage states it in its row's Damage Percent, as Conflagration
+	// states its 10% a second (#2869) and Living Pyre its 66.67% a pulse, the Ultimate's 400% spread over its six
+	// pulses (ruled 2026-11-24 on #2875).
+	//
+	// THE SHAPE AND NOT THE SLOT, so the rule holds for an aura on any key and for Living Pyre, an aura made for the
+	// Ultimate slot. A Support aura's slot figure was already nought, so nothing changes for those four.
+	if (Shape() == ECataclysmSkillShape::Aura)
+	{
+		return 0.0f;
 	}
 
 	// THE SLOT'S FIGURE WHEN THE SKILL STATES NONE, which is the ordinary case
@@ -717,9 +737,31 @@ void UCataclysmSkillTemplate::WhenTheSwingConnects(TFunction<void()> Blow)
 	// A WEAK LAMBDA, NOT A PLAIN ONE. It binds to this ability object, so a
 	// swing still travelling when the ability is destroyed is dropped rather
 	// than run against freed memory.
+	//
+	// AND A CREATURE THAT DIED DURING THE WAIT LANDS NOTHING. Issue #2877: the
+	// Corrupted Stalker and the Worn Residue double swing through these templates
+	// and wait on this timer, which nothing cleared at a creature's death, so one
+	// killed mid-swing still struck. Its blow is dropped and the skill ended as a
+	// cancelled one, which clears the timer and strikes nothing, as an interrupted
+	// skill does: what a creature's own ordinary swing already does since issue
+	// #783 (`ACataclysmEnemyCharacter::HandleDeath` forgets its waiting blow).
+	//
+	// A CREATURE ONLY. A player's waiting blow is left as it was: the owner
+	// answered issue #1549, a dead player's waiting blow, "not important" with no
+	// change planned.
 	World->GetTimerManager().SetTimer(
 		SwingTimer,
-		FTimerDelegate::CreateWeakLambda(this, [Blow]() { Blow(); }),
+		FTimerDelegate::CreateWeakLambda(this, [this, Blow]()
+		{
+			const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Avatar());
+			if (Creature && UCataclysmSkillEffects::IsDead(Creature))
+			{
+				EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+						   GetCurrentActivationInfo(), true, true);
+				return;
+			}
+			Blow();
+		}),
 		Delay, /*bLoop=*/false);
 }
 
@@ -2374,6 +2416,17 @@ FVector UCataclysmSkillTemplate::AimPoint() const
 		return Fallback;
 	}
 
+	// THE GAME'S OWN CONTROLLER SAYS WHERE ITS CURSOR POINTS, and an enemy under it is aimed at itself rather than at
+	// the floor behind it. Issue #2870: the visibility trace passes through every creature, so a cursor on a creature's
+	// body aimed at the ground beyond its feet, and a narrow swing at a creature beside the character went past it.
+	// See `ACataclysmPlayerController::AimPointUnderCursor`.
+	if (const ACataclysmPlayerController* Cataclysm = Cast<ACataclysmPlayerController>(Controller))
+	{
+		FVector UnderCursor;
+		return Cataclysm->AimPointUnderCursor(UnderCursor) ? UnderCursor : Fallback;
+	}
+
+	// ANY OTHER PLAYER CONTROLLER, which nothing in the game is: the floor trace alone, as before.
 	FHitResult Hit;
 	if (Controller->GetHitResultUnderCursor(ECollisionChannel::ECC_Visibility,
 											/*bTraceComplex=*/true, Hit))

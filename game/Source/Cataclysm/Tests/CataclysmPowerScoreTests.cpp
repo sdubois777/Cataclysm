@@ -10,9 +10,12 @@
  * Tests for the player's Power Score.
  *
  * Pinned to `sim/cataclysm_sim/player_power.py`, which is where the model was
- * argued out. The five weights are derived from two anchors and four shares
- * rather than copied, so the tests check the derivation lands on the same
- * numbers the Python model derives, not that two lists of constants match.
+ * argued out. SINCE THE OWNER'S RULING OF 2026-11-24 (issue #2853) the five
+ * weights are plain numbers written out on both sides -- 10 a level, 2 a gear
+ * rarity step, an upgrade factor of 1, 5 a gem rarity step and 1 a resistance
+ * percent -- and `tools/tests/test_power_score_port.py` holds the header's
+ * literals to the model's. Until then they were derived from two anchors and
+ * four shares, and these tests checked the derivation.
  */
 
 namespace CataclysmPowerTest
@@ -38,52 +41,86 @@ namespace CataclysmPowerTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerWeightsTest,
-	"Cataclysm.PowerScore.WeightsDeriveToTheModelsNumbers",
+	"Cataclysm.PowerScore.TheWeightsAreTheOwnersPlainNumbers",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+/**
+ * "Adopt, and look at drop supply (Recommended)", the owner, 2026-11-24 (issue
+ * #2853): 10 a level, 2 a gear rarity step, an upgrade factor of 1, 5 a gem
+ * rarity step, 1 a resistance percent. Written out here as the ruling states
+ * them, so a re-tune has to change this test as well as the header. Prints
+ * "POWER WEIGHTS".
+ */
 bool FCataclysmPowerWeightsTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmPowerTest;
 
-	// Printed by sim/cataclysm_sim/player_power.py. These are DERIVED here from
-	// the anchors and shares, not copied, so agreeing proves the derivation
-	// rather than the typing.
-	TestTrue(FString::Printf(TEXT("level weight is 6.327, got %.6f"),
-			 FScore::LevelWeight()),
-		FMath::IsNearlyEqual(FScore::LevelWeight(), 6.327f, 0.0005f));
-	TestTrue(FString::Printf(TEXT("gear weight is 6.23301, got %.6f"),
-			 FScore::GearWeight()),
-		FMath::IsNearlyEqual(FScore::GearWeight(), 6.2330109f, 0.0005f));
-	TestTrue(FString::Printf(TEXT("upgrade factor is 0.2524581, got %.7f"),
-			 FScore::UpgradeFactor()),
-		FMath::IsNearlyEqual(FScore::UpgradeFactor(), 0.25245807f, 0.0000005f));
-	TestTrue(FString::Printf(TEXT("gem weight is 5.2725, got %.6f"),
-			 FScore::GemWeight()),
-		FMath::IsNearlyEqual(FScore::GemWeight(), 5.2725f, 0.0005f));
-	TestTrue(FString::Printf(TEXT("resistance weight is 1.1298214, got %.7f"),
-			 FScore::ResistanceWeight()),
-		FMath::IsNearlyEqual(FScore::ResistanceWeight(), 1.1298214f, 0.0005f));
+	AddInfo(FString::Printf(TEXT("POWER WEIGHTS: level %.4f, gear %.4f, upgrade factor %.4f, gem %.4f, resistance %.4f"),
+							FScore::LevelWeight(), FScore::GearWeight(), FScore::UpgradeFactor(), FScore::GemWeight(),
+							FScore::ResistanceWeight()));
 
-	// The four shares must add to one, or the tier 8 anchor cannot be reached.
-	TestTrue(TEXT("the four shares add to one"),
-		FMath::IsNearlyEqual(FScore::ShareLevel + FScore::ShareGear
-							 + FScore::ShareGems + FScore::ShareResistances,
-							 1.0f, 0.000001f));
+	TestEqual(TEXT("**10 a level**"), FScore::LevelWeight(), 10.0f);
+	TestEqual(TEXT("**2 a gear rarity step**"), FScore::GearWeight(), 2.0f);
+	TestEqual(TEXT("**an upgrade factor of 1**"), FScore::UpgradeFactor(), 1.0f);
+	TestEqual(TEXT("**5 a gem rarity step**"), FScore::GemWeight(), 5.0f);
+	TestEqual(TEXT("**1 a resistance percent**"), FScore::ResistanceWeight(), 1.0f);
 
-	// The upgrade factor is the SAME constant gear upgrade level uses to
-	// multiply every affix on a piece. A second copy of it would let gear level
-	// mean two different things in two places.
-	TestTrue(TEXT("a +10 piece is worth 3.52 times a +0 piece"),
-		FMath::IsNearlyEqual(1.0f + FScore::UpgradeFactor() * FScore::MaxUpgrade,
-							 3.5245807f, 0.0001f));
+	// THE FUNCTIONS ARE THE CONSTANTS, not a second copy of them.
+	TestEqual(TEXT("LevelWeight is PointsPerLevel"), FScore::LevelWeight(), FScore::PointsPerLevel);
+	TestEqual(TEXT("GearWeight is PointsPerGearRarityStep"), FScore::GearWeight(), FScore::PointsPerGearRarityStep);
+	TestEqual(TEXT("UpgradeFactor is UpgradeFactorPerGearLevel"), FScore::UpgradeFactor(),
+			  FScore::UpgradeFactorPerGearLevel);
+	TestEqual(TEXT("GemWeight is PointsPerGemRarityStep"), FScore::GemWeight(), FScore::PointsPerGemRarityStep);
+	TestEqual(TEXT("ResistanceWeight is PointsPerResistancePercent"), FScore::ResistanceWeight(),
+			  FScore::PointsPerResistancePercent);
+
+	// A +10 piece against the same piece at +0: 11 times, where the derived factor made it 3.52 times.
+	TestEqual(TEXT("a +10 piece is worth 11 times a +0 piece"),
+			  1.0f + FScore::UpgradeFactor() * FScore::MaxUpgrade, 11.0f);
 
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerAnchorTest,
-	"Cataclysm.PowerScore.TheReferenceCharacterHitsBothEndAnchors",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerLevelSixTest,
+	"Cataclysm.PowerScore.ALevelSixCharacterScoresSixtyFromItsLevel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+/**
+ * The owner's screen of 2026-11-24 read 38 from level for a level 6 character
+ * (6.327 a level) and asked why. Under the ruled weights a level 6 character
+ * wearing nothing scores 60, all of it from its level. CONTROL: level 7 scores
+ * 70, so the 60 is ten a level and not a constant. Prints "POWER LEVEL SIX".
+ */
+bool FCataclysmPowerLevelSixTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmPowerTest;
+
+	FCataclysmScoredCharacter Six;
+	Six.Level = 6;
+	FCataclysmScoredCharacter Seven;
+	Seven.Level = 7;
+	const FCataclysmPowerBreakdown AtSix = FScore::Breakdown(Six);
+	const FCataclysmPowerBreakdown AtSeven = FScore::Breakdown(Seven);
+	AddInfo(FString::Printf(TEXT("POWER LEVEL SIX: level 6 from level %.4f, total %d; level 7 from level %.4f, total %d"),
+							AtSix.FromLevel, AtSix.Total, AtSeven.FromLevel, AtSeven.Total));
+
+	TestEqual(TEXT("**a level 6 character's level part is 60**"), AtSix.FromLevel, 60.0f);
+	TestEqual(TEXT("and with nothing worn that is its whole score"), AtSix.Total, 60);
+	TestEqual(TEXT("nothing from gear"), AtSix.FromGear, 0.0f);
+	TestEqual(TEXT("CONTROL: level 7 is 70"), AtSeven.Total, 70);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerAnchorTest,
+	"Cataclysm.PowerScore.TheReferenceCharacterLandsNearEveryTiersAnchor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The proposal's "Recommended" column, which the owner ruled on: the reference
+ * character scores 364 at tier 1 (-5.5% of 385) to 6,528 at tier 8 (+3.2% of
+ * 6,327), every tier within 6%. The anchors themselves did not move. Prints
+ * "POWER ANCHORS".
+ */
 bool FCataclysmPowerAnchorTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmPowerTest;
@@ -91,53 +128,43 @@ bool FCataclysmPowerAnchorTest::RunTest(const FString& Parameters)
 	// Every figure below is what sim/cataclysm_sim/player_power.py prints.
 	struct FCase { int32 Tier; int32 Expected; int32 Anchor; };
 	const FCase Cases[] = {
-		{ 1,  384,  385 },
-		{ 2,  883,  883 },
-		{ 3, 1508, 1508 },
-		{ 4, 2225, 2225 },
-		{ 5, 3078, 3078 },
-		{ 6, 4057, 4057 },
-		{ 7, 5120, 5120 },
-		{ 8, 6327, 6327 },
+		{ 1,  364,  385 },
+		{ 2,  860,  883 },
+		{ 3, 1493, 1508 },
+		{ 4, 2228, 2225 },
+		{ 5, 3110, 3078 },
+		{ 6, 4134, 4057 },
+		{ 7, 5255, 5120 },
+		{ 8, 6528, 6327 },
 	};
 
+	TArray<FString> Said;
 	for (const FCase& Case : Cases)
 	{
 		const FCataclysmScoredCharacter Reference =
 			FScore::ReferenceCharacter(Case.Tier);
 		const int32 Actual = FScore::Score(Reference);
+		const float Off = 100.0f * static_cast<float>(Actual - Case.Anchor) / static_cast<float>(Case.Anchor);
+		Said.Add(FString::Printf(TEXT("T%d %d against %d (%+.1f%%)"), Case.Tier, Actual, Case.Anchor, Off));
 		TestEqual(FString::Printf(TEXT("tier %d scores %d"), Case.Tier, Case.Expected),
 			Actual, Case.Expected);
 
 		TestEqual(FString::Printf(TEXT("tier %d anchor"), Case.Tier),
 			FScore::TierAnchors()[Case.Tier], Case.Anchor);
-	}
 
-	// The two ends are pinned in the arithmetic and have to be exact. Tier 1
-	// comes out one point low only because the reference character's level and
-	// filled socket count are whole numbers, so it rounds to level 12 and 6 gems
-	// rather than the 12.5 and 5.625 the continuous curve asks for.
-	TestEqual(TEXT("tier 8 lands exactly on its anchor"),
-		FScore::Score(FScore::ReferenceCharacter(8)), FScore::TierAnchors()[8]);
-	TestTrue(TEXT("tier 1 is within one point of its anchor"),
-		FMath::Abs(FScore::Score(FScore::ReferenceCharacter(1))
-				   - FScore::TierAnchors()[1]) <= 1);
-
-	// The six tiers in between land EXACTLY on their anchors.
-	//
-	// This block used to assert a residual instead: the middle tiers within
-	// 5.33%, worst at tier 5 at 5.3214%. That residual was the anchor curve
-	// rather than a defect in the formula -- tier 5 was 1,107 points wide where
-	// the surrounding trend was about 790, and tier 6 was NARROWER than tier 5,
-	// so no smoothly progressing character could pass through the kink. On
-	// 2026-08-05 the six middle anchors were reset to what this formula predicts,
-	// in DungeonSimulator commit 6c9be8b, and the residual went to zero. Issue #7.
-	for (int32 Tier = 2; Tier <= 7; ++Tier)
-	{
-		TestEqual(FString::Printf(TEXT("tier %d lands exactly on its anchor"), Tier),
-			FScore::Score(FScore::ReferenceCharacter(Tier)),
-			FScore::TierAnchors()[Tier]);
+		// THE BAND THE OWNER WAS SHOWN: -5.5% at tier 1 to +3.2% at tier 8.
+		TestTrue(FString::Printf(TEXT("tier %d is within -5.5%% to +3.2%% of its anchor, %+.2f%%"), Case.Tier, Off),
+			Off >= -5.5f && Off <= 3.2f);
 	}
+	AddInfo(FString::Printf(TEXT("POWER ANCHORS: %s"), *FString::Join(Said, TEXT(" | "))));
+
+	// THE WEIGHTS ARE CHOSEN, NOT FITTED, so no tier is pinned to its anchor. Until 2026-11-24 the weights were solved
+	// from the tier 1 and tier 8 anchors, tier 8 landed exactly on 6,327 and the six between were exact too, because on
+	// 2026-08-05 those six anchors were reset to what that formula predicted (DungeonSimulator commit 6c9be8b, issue #7).
+	TestTrue(TEXT("tier 8 is above its anchor, as the proposal measured"),
+		FScore::Score(FScore::ReferenceCharacter(8)) > FScore::TierAnchors()[8]);
+	TestTrue(TEXT("tier 1 is below its anchor, as the proposal measured"),
+		FScore::Score(FScore::ReferenceCharacter(1)) < FScore::TierAnchors()[1]);
 
 	// Tier width climbs at every tier. This is the defect issue #7 was filed for,
 	// asserted directly rather than through the residual it produced. Tier width
@@ -161,39 +188,49 @@ bool FCataclysmPowerAnchorTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerSharesTest,
-	"Cataclysm.PowerScore.EachSourceSuppliesItsShareAtTierEight",
+	"Cataclysm.PowerScore.TheSharesFallOutAtFifteenFortyNineTwentyEightAndNine",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+/**
+ * THE SHARES ARE AN OUTCOME OF THE WEIGHTS SINCE 2026-11-24, not an input: the
+ * finished tier 8 character draws 15% from level, 49% from gear, 28% from gems
+ * and 9% from resistances (10/50/30/10 before, when the weights were derived
+ * from those), and the finished tier 1 character 33/40/8/19, the owner's "more
+ * points on your level instead of gear". Whole percents of the four terms'
+ * sum. Prints "POWER SHARES".
+ */
 bool FCataclysmPowerSharesTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmPowerTest;
 
-	// The four shares are the only free choice in the model, so what they say a
-	// finished character draws from each source has to actually happen.
-	const FCataclysmPowerBreakdown Finished =
-		FScore::Breakdown(FScore::ReferenceCharacter(8));
-	const float Total = static_cast<float>(Finished.Total);
-
-	struct FCase { const TCHAR* Name; float Part; float Share; };
+	struct FCase { int32 Tier; int32 Level; int32 Gear; int32 Gems; int32 Resistances; };
 	const FCase Cases[] = {
-		{ TEXT("level"),       Finished.FromLevel,       FScore::ShareLevel },
-		{ TEXT("gear"),        Finished.FromGear,        FScore::ShareGear },
-		{ TEXT("gems"),        Finished.FromGems,        FScore::ShareGems },
-		{ TEXT("resistances"), Finished.FromResistances, FScore::ShareResistances },
+		{ 8, 15, 49, 28, 9 },
+		{ 1, 33, 40, 8, 19 },
 	};
 
+	TArray<FString> Said;
 	for (const FCase& Case : Cases)
 	{
-		const float Actual = Case.Part / Total;
-		TestTrue(FString::Printf(TEXT("%s supplies %.0f%%, got %.1f%%"),
-				 Case.Name, Case.Share * 100.0f, Actual * 100.0f),
-			FMath::IsNearlyEqual(Actual, Case.Share, 0.002f));
-	}
+		const FCataclysmPowerBreakdown Finished = FScore::Breakdown(FScore::ReferenceCharacter(Case.Tier));
+		const float Sum = Finished.FromLevel + Finished.FromGear + Finished.FromGems + Finished.FromResistances;
+		const auto Percent = [Sum](float Part) { return FMath::RoundToInt(100.0f * Part / Sum); };
+		Said.Add(FString::Printf(TEXT("T%d %d / %d / %d / %d"), Case.Tier, Percent(Finished.FromLevel),
+								 Percent(Finished.FromGear), Percent(Finished.FromGems),
+								 Percent(Finished.FromResistances)));
 
-	TestEqual(TEXT("and the four terms add to the total"),
-		FMath::RoundToInt(Finished.FromLevel + Finished.FromGear
-						  + Finished.FromGems + Finished.FromResistances),
-		Finished.Total);
+		TestEqual(FString::Printf(TEXT("**tier %d: level supplies %d%%**"), Case.Tier, Case.Level),
+				  Percent(Finished.FromLevel), Case.Level);
+		TestEqual(FString::Printf(TEXT("tier %d: gear supplies %d%%"), Case.Tier, Case.Gear),
+				  Percent(Finished.FromGear), Case.Gear);
+		TestEqual(FString::Printf(TEXT("tier %d: gems supply %d%%"), Case.Tier, Case.Gems),
+				  Percent(Finished.FromGems), Case.Gems);
+		TestEqual(FString::Printf(TEXT("tier %d: resistances supply %d%%"), Case.Tier, Case.Resistances),
+				  Percent(Finished.FromResistances), Case.Resistances);
+		TestEqual(FString::Printf(TEXT("tier %d: and the four terms add to the total"), Case.Tier),
+				  FMath::RoundToInt(Sum), Finished.Total);
+	}
+	AddInfo(FString::Printf(TEXT("POWER SHARES: %s"), *FString::Join(Said, TEXT(" | "))));
 
 	return true;
 }
@@ -231,8 +268,8 @@ bool FCataclysmPowerRulesTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("a +10 Cataclysmic piece is 8 times a +10 Everyday one"),
 		FMath::IsNearlyEqual(FromTopTen / FromLowTen, 8.0f, 0.01f));
-	TestTrue(TEXT("and 3.52 times the same piece at +0"),
-		FMath::IsNearlyEqual(FromTopTen / FromTopZero, 3.5245807f, 0.001f));
+	TestTrue(TEXT("and 11 times the same piece at +0"),
+		FMath::IsNearlyEqual(FromTopTen / FromTopZero, 11.0f, 0.001f));
 
 	// 3. RESISTANCE ABOVE THE CAP ADDS NO SCORE. Over-capping stays legal and
 	// useful, because enemy penetration eats into it, but it is headroom against

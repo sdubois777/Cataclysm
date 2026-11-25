@@ -347,7 +347,10 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// it rather than a timer".
 	//
 	// HEALTH ONLY. Mana and the energy shield have nothing to do with it, and
-	// the design's rule names health.
+	// the design's rule names health. AND IT STAYS HEALTH ONLY NOW THAT DAMAGE
+	// TO THE SHIELD FILLS FERVOUR: the coordinating session ruled on 2026-11-24,
+	// with issue #2873, that the shield recharging removes none, because the
+	// recharge is automatic and would empty the bar after every fight.
 	//
 	// WHAT FIT, NOT WHAT WAS OFFERED. Healing that overflowed a full health bar
 	// restored nothing, so it removes nothing. Without that a Masochist standing

@@ -14,8 +14,8 @@ THE FIGURES ARE THE CREATURE AS IT STANDS ON THE FLOOR, rarity included: the gam
 Starting figures multiplied by `UCataclysmEnemyRarity::ScalingFromCommon`.
 
 THE RING THE DUNGEON WAS ROLLED ON IS A COLUMN SINCE ISSUE #2749's RING SLICE, because
-at tier 1 it moves a creature's damage: 0.05 on an Outpost, 0.11 on a Bulwark, 0.13 on
-a Sanctuary and 0.10 on the Pillar. The grid above is every row an Outpost's, as every
+at tier 1 it moves a creature's damage: 0.05 on an Outpost, 0.10 on a Bulwark, 0.12 on
+a Sanctuary and 0.07 on the Pillar (since issue #2865; 0.11, 0.13 and 0.10 until then). The grid above is every row an Outpost's, as every
 floor was before; `RING_ROWS` adds tier 1 on the other three rings for every creature
 and rarity, and tier 2 on a Sanctuary for each creature's Common, which pins tiers 2 to
 8 as the same on every ring.
