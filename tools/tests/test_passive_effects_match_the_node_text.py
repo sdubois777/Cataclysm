@@ -653,7 +653,17 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: The rest are second clauses and "At N points:" bonuses, less the drawbacks
 #: removed from six Masochist keystones. Every node that changed already had a
 #: row, so `AUTHORED_NODES` does not move.
-AUTHORED_ROWS = 364
+#:
+#: AND TO 427 ON 2026-11-24, for the three Death trees' first rows beside the
+#: rework's: 63 rows on 49 nodes, every one a stat, condition and scale the game
+#: already had, written by `tools/reapply_death_trees_workbook.py`. Seventeen are
+#: the Soul Collector's (its starting node's damage half among them), nine the
+#: Necromancer's (its starting node's within-10-metres half among them) and 37
+#: the Shadow's (Counterstroke's first half among them, and Through and
+#: Through's four steps and Untouched's three). Six "damage" sentences are two
+#: rows each, one on attack damage and one on spell damage, and so is Restless
+#: Host, which raises minion damage and minion health.
+AUTHORED_ROWS = 427
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1066,7 +1076,12 @@ AUTHORED_ROWS = 364
 #: of the last six Demonic options whose node had no row. The other five are
 #: options on capstones that already had one, and move `AUTHORED_OPTIONS` alone.
 #: Issue #1515.
-AUTHORED_NODES = 226
+#:
+#: AND TO 275 ON 2026-11-24, for 49 nodes of the three Death trees: the Soul
+#: Collector 14 (three of them capstones, for one option each), the Necromancer
+#: 8 and the Shadow 27 (two capstones). Measured then: the Soul Collector is 14
+#: of its 73, the Necromancer 8 of its 72 and the Shadow 27 of its 74.
+AUTHORED_NODES = 275
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1156,13 +1171,19 @@ AUTHORED_NODES = 226
 #: AND TO 36 ON 2026-09-25: Nowhere to Run, Both Hands Full, Shoulder
 #: Through, A Second Self and Chorus. Follow Through is a keystone and moves
 #: `AUTHORED_NODES` instead. Issue #1515.
-AUTHORED_OPTIONS = 36
+#: AND TO 41 ON 2026-11-24: the five Death vow options whose sentence scales
+#: with Fervour held and is a row today. The Soul Collector's Swift Reaper,
+#: Death's Focus and Soul Haste, and the Shadow's Quickening and Honed Edge.
+#: Each is its capstone's only row, so each moves `AUTHORED_NODES` too.
+AUTHORED_OPTIONS = 41
 
 #: How many capstone options are named at all, across every tree.
 #:
 #: 36 UNTIL 2026-09-07, when the Ravager and Ritualist trees landed for issue
 #: #950 with twelve capstones between them, three options each.
-NAMED_OPTIONS = 60
+#: 60 UNTIL 2026-11-24, when the three Death trees landed with twelve vows
+#: between them, three options each.
+NAMED_OPTIONS = 96
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -1174,7 +1195,10 @@ NAMED_OPTIONS = 60
 #: design workbook's `Passive Effects` sheet and no rows were written for either
 #: new tree. So 78 of 441 nodes grant something where 78 of 293 did. Authoring
 #: them is issue #1463, opened with the trees rather than left implied.
-TOTAL_NODES = 441
+#:
+#: 441 UNTIL 2026-11-24, when the three Death trees landed: the Soul Collector
+#: 73 nodes, the Necromancer 72 and the Shadow 74.
+TOTAL_NODES = 660
 
 
 def rows_of(path: pathlib.Path) -> list[dict]:
@@ -1468,7 +1492,9 @@ CONDITION_WORDS = {
 
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
-    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full"), None),
+    # AND "IS AT ITS MAXIMUM", the Soul Collector's Full Measure of 2026-11-24.
+    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full",
+                                   "fervour is at its maximum"), None),
 
     # THE CONDITIONS THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW
     # FOR THE FIRST TIME. Each was already known to the generator and the game;
@@ -1483,7 +1509,9 @@ CONDITION_WORDS = {
     #     (Ritualist)                   the rework added to the game
     "seconds_after_hit_taken": ("after you are hit", "{value:g} second"),
     "out_of_combat": ("out of combat", None),
-    "seconds_after_movement_skill": ("after you use a movement skill",
+    # AND "YOUR MOVEMENT SKILL", the Shadow's Fresh Start and Tumble of 2026-11-24.
+    "seconds_after_movement_skill": (("after you use a movement skill",
+                                      "after you use your movement skill"),
                                      "{value:g} second"),
     "target_not_yet_struck_by_you": ("first hit against each enemy", None),
     "in_combat_for_seconds": ("in combat", "{value:g} second"),
@@ -1493,7 +1521,8 @@ CONDITION_WORDS = {
     # PassiveEffects.csv uses any of them yet, so these entries are not
     # exercised today; they are here because a name missing from this map is a
     # name whose row nothing compares against its node's own words.
-    "while_moving": ("while moving", None),
+    # AND THE SHADOW'S Moving Target, 2026-11-24, says "while you are moving".
+    "while_moving": (("while moving", "while you are moving"), None),
     # TWO WORDINGS OF ONE PREDICATE. Issue #1515. `Ritual Focus` says
     # "Skills you cast while standing still cost no mana", and standing
     # still is what this predicate is. Widening the entry is what this
@@ -1643,8 +1672,26 @@ CONDITION_WORDS = {
     # THE VALUE FORM IS A MAPPING, for the reason `enemies_in_reach_at_least`
     # below needs one: `Broken Will` writes its threshold as the word "half" and
     # contains no "50" anywhere, so a numeric form would fail a correct row.
+    #
+    # A COUNT MAY BE WRITTEN SEVERAL WAYS, and several means any of them. The
+    # Shadow's Open the Throat, 2026-11-24, says "below 50% health" where Broken
+    # Will says "half health"; its Last Breath and Executioner say 30%.
     "target_health_below": ("against enemies below",
-                            {35.0: "35%", 50.0: "half health"}),
+                            {30.0: "30%", 35.0: "35%",
+                             50.0: ("half health", "50%")}),
+
+    # THREE PREDICATES NO TREE USED BEFORE THE DEATH TREES OF 2026-11-24.
+    #
+    # The Soul Collector's Deathly Presence: "enemies within 6 metres deal 1%
+    # less damage", the predicate of the enchantment "Nearby enemies deal
+    # 10%-30% less damage to you".
+    "opponent_within_metres": ("enemies within", "{value:g} metres"),
+    # The Shadow's Slow Death, "Against a Boss, ...", and Read the Giant,
+    # "against Bosses".
+    "target_is_boss": (("against a boss", "against bosses"), None),
+    # The Shadow's Slipstream: "For 3 seconds after you evade a hit". The
+    # predicate reads `Outcome.bEvaded`, which is an evasion.
+    "seconds_after_dodge": ("after you evade a hit", "{value:g} second"),
 
     # THE SECOND POOL ASKED WHETHER IT IS FULL, AND THE FRAGMENT HAS TO KEEP IT
     # OFF THE OTHER TWELVE. Issue #1515. Thirteen nodes mention an energy shield
@@ -1791,6 +1838,10 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
             # otherwise pass unchecked, which is the one thing this file
             # exists to stop.
             printed = value_form.get(value)
+            if isinstance(printed, tuple):
+                # SEVERAL WRITINGS OF ONE COUNT, ANY OF WHICH WILL DO.
+                printed = next((one for one in printed if one.lower() in words),
+                               printed[0])
             assert printed is not None, (
                 f"{row['Node']} carries {condition!r} with a value of "
                 f"{value:g}, and this test has no words listed for that "
@@ -1862,8 +1913,11 @@ def test_a_condition_is_actually_used(effects):
 #: name no number anywhere.
 SCALE_WORDS = {
     "health_missing": (("for every", "missing"), "{value:g}%", None),
-    "class_resource_held": (("fervour you",), "{value:g} fervour",
-                            "each point of fervour"),
+    # "FERVOUR HELD" AS WELL, since the Death trees of 2026-11-24, whose vow
+    # options say "for every 10 Fervour held". A tuple inside the words means
+    # any of its phrases will do.
+    "class_resource_held": ((("fervour you", "fervour held"),),
+                            "{value:g} fervour", "each point of fervour"),
     "health_owed": (("for every", "owe"), "{value:g}%", None),
 
     # A READING OF A STAT RATHER THAN OF A STATE. Issue #1045. Glutton reads
@@ -2045,7 +2099,9 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
         described = words_of(row, nodes)
         words = described.lower()
         for phrase in expected_words:
-            assert phrase in words, (
+            # ONE PHRASE, OR A TUPLE OF PHRASES ANY OF WHICH WILL DO.
+            either = (phrase,) if isinstance(phrase, str) else tuple(phrase)
+            assert any(one in words for one in either), (
                 f"{row['Node']} carries the scale {scale!r} and its description "
                 f"does not say {phrase!r}:\n"
                 f"    {described}\n"
@@ -2302,7 +2358,10 @@ VALUE_FORMS = {
     # reason the two forms above give: the sentence holds a second "1" for the
     # rate per enemy in reach, and a bare "{value:g}" would be satisfied by
     # either.
-    "fervour_per_enemy_hit": "{value:g} for each enemy your attacks hit",
+    # AND THE SHADOW'S Through and Through, 2026-11-24: "Each enemy your movement
+    # skill hits generates 1 Fervour for every 2 points", one row per step.
+    "fervour_per_enemy_hit": ("{value:g} for each enemy your attacks hit",
+                              "{value:g} Fervour for every"),
 
     # THE TWO DEATH RULES THAT COST NOTHING. Issue #1515. Long Hold reads
     # "Killing an enemy restores 5% of your maximum health", so the form carries
@@ -2311,11 +2370,13 @@ VALUE_FORMS = {
     # sentence holds a second "10" for the radius, and a bare "{value:g}"
     # would be satisfied by either.
     "health_restored_on_kill_at_no_cost": "{value:g}% of your maximum health",
-    # TWO FORMS SINCE 2026-11-24, for the two approved sentences that grant it per
-    # point: the Masochist's Gorge, "1 Fervour whenever an enemy dies ..., per
-    # point", and the Ravager's Swing Through, "1 Fervour per point whenever".
+    # THREE FORMS SINCE 2026-11-24: the Masochist's Gorge, "1 Fervour whenever an enemy
+    # dies ..., per point", the Ravager's Swing Through, "1 Fervour per point whenever",
+    # and the Necromancer's starting node, "1 each time an enemy dies within 10 metres
+    # of you", whose sentence holds "10" for the radius as well.
     "fervour_on_enemy_death_nearby": ("{value:g} Fervour whenever",
-                                      "{value:g} Fervour per point whenever"),
+                                      "{value:g} Fervour per point whenever",
+                                      "{value:g} each time an enemy dies"),
 
     # THE RITUALIST'S TWO KEYSTONES THAT ADJUST A FIGURE A SKILL ROW STATES.
     # Issue #1718. Until the owner reworded both on 2026-09-16, each sentence
@@ -3217,9 +3278,15 @@ def test_no_node_is_worth_nothing_to_its_own_class(effects):
     #: What each class names on its own line, and the shared line all fall back
     #: to. `UCataclysmClassStats::BaseFor` reads the class row and then the
     #: `Default` row, and answers zero when neither names the stat.
+    #:
+    #: KEYED BY THE CLASS NAME WITH ITS SPACES REMOVED, which is how a node's
+    #: row name spells its tree: the Soul Collector's line is "Soul Collector"
+    #: and its nodes are `SoulCollector_...`. Without this the Soul Collector
+    #: would read as a class with no line and be skipped below.
     per_class: dict[str, set[str]] = {}
     for row in class_stats:
-        per_class.setdefault(row["ClassName"], set()).add(row["Stat"])
+        per_class.setdefault(row["ClassName"].replace(" ", ""),
+                             set()).add(row["Stat"])
     shared = per_class.get("Default", set())
 
     #: Everything that supplies a stat whatever class is holding it: the eight
@@ -3550,9 +3617,18 @@ def test_a_for_every_n_points_sentence_has_a_row_at_every_step(effects, nodes):
     and one with a row at 3 in a series of 2s grants a step a point early; both
     pass every other check here, because each row's value is right.
     """
+    #: THE DEMONIC TREES' NODES, AND ANY OTHER NODE ONCE IT HAS A ROW OF ITS OWN.
+    #: Since the Death trees of 2026-11-24, whose whole-number sentences say "for
+    #: every N points" on nodes most of which wait for code. An unwritten node is
+    #: not a series missing a step, and `test_every_demonic_at_n_points_clause_
+    #: has_a_row_from_n_points` below scopes its own check the same way.
+    demonic = {"Masochist", "Ravager", "Ritualist"}
+    authored = {row["Node"] for row in effects}
     wrong = []
     checked = 0
     for name, node in nodes.items():
+        if node.get("Tree") not in demonic and name not in authored:
+            continue
         for n in {int(x) for x in FOR_EVERY_N_POINTS.findall(node.get("Description", ""))}:
             checked += 1
             most = int(node["MaxPoints"])

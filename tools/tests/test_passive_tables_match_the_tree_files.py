@@ -30,18 +30,29 @@ import csv
 import json
 import pathlib
 import re
+import sys
 
 import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "tools"))
+
+import generate_datatables as gen  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCS = REPO_ROOT / "docs"
 NODES_CSV = REPO_ROOT / "game" / "Data" / "PassiveNodes.csv"
 EDGES_CSV = REPO_ROOT / "game" / "Data" / "PassiveEdges.csv"
 
-#: The six class trees that exist. The other eighteen are issue #24. The Ravager
-#: and the Ritualist were added on 2026-09-07 for issue #950.
-CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
-               "Ritualist")
+#: The nine class trees that exist. The other fifteen are issue #24. The Ravager
+#: and the Ritualist were added on 2026-09-07 for issue #950, and the three Death
+#: trees on 2026-11-24.
+#:
+#: THE GENERATOR'S OWN TUPLE AND NAMING, rather than a copy of them. "Soul
+#: Collector" is the first class whose name holds a space, which the file name
+#: (`Soul_Collector_Class_Tree_Final.json`) and the row names (`SoulCollector_`)
+#: cannot, so this file asks the generator how it spells both rather than
+#: spelling them a second time.
+CLASS_TREES = gen.CLASS_TREES
 
 #: The four capstone tiers, from the Passive Class Trees section of the design
 #: document.
@@ -49,7 +60,7 @@ CAPSTONE_THRESHOLDS = {25, 50, 100, 200}
 
 
 def load_tree(name: str) -> dict:
-    path = DOCS / f"{name}_Class_Tree_Final.json"
+    path = gen.tree_file(name)
     if not path.is_file():
         pytest.skip(f"{path.name} is not present")
     return json.loads(path.read_text(encoding="utf-8"))
@@ -100,7 +111,7 @@ def threshold_in_the_file(node: dict) -> int:
 def test_every_node_of_every_tree_has_a_row(trees, node_rows):
     for name, data in trees.items():
         for node in data["nodes"]:
-            key = f"{name}_{node['id']}"
+            key = f"{gen.tree_row_prefix(name)}_{node['id']}"
             assert key in node_rows, (
                 f"{name}: node {node['id']!r} has no row in {NODES_CSV.name}. "
                 "Run python tools/generate_datatables.py"
@@ -108,7 +119,7 @@ def test_every_node_of_every_tree_has_a_row(trees, node_rows):
 
     expected = sum(len(data["nodes"]) for data in trees.values())
     assert len(node_rows) == expected, (
-        f"{NODES_CSV.name} holds {len(node_rows)} rows and the four tree files "
+        f"{NODES_CSV.name} holds {len(node_rows)} rows and the tree files "
         f"hold {expected} nodes between them."
     )
 
@@ -138,7 +149,7 @@ def test_a_row_name_is_the_tree_and_the_node_together(trees):
 def test_every_node_carries_its_words_and_its_cap(trees, node_rows):
     for name, data in trees.items():
         for node in data["nodes"]:
-            row = node_rows[f"{name}_{node['id']}"]
+            row = node_rows[f"{gen.tree_row_prefix(name)}_{node['id']}"]
             body = node["data"]
 
             assert row["Tree"] == name
@@ -163,7 +174,7 @@ def test_a_capstone_carries_its_threshold_and_a_basic_node_carries_none(
         trees, node_rows):
     for name, data in trees.items():
         for node in data["nodes"]:
-            row = node_rows[f"{name}_{node['id']}"]
+            row = node_rows[f"{gen.tree_row_prefix(name)}_{node['id']}"]
             threshold = int(row["Threshold"])
 
             if node["type"] != "capstone":
@@ -198,7 +209,7 @@ def test_capstone_options_are_carried_across(trees, node_rows):
             if node["type"] != "capstone":
                 continue
 
-            row = node_rows[f"{name}_{node['id']}"]
+            row = node_rows[f"{gen.tree_row_prefix(name)}_{node['id']}"]
             options = node["data"].get("options", [])
 
             for index in range(3):
@@ -212,15 +223,16 @@ def test_capstone_options_are_carried_across(trees, node_rows):
                 if expected:
                     carried += 1
 
-    # NOT VACUOUS. Five trees carry three options on each of four capstones,
-    # which is 60. Without this the test above would pass just as happily if the
+    # NOT VACUOUS. Eight trees carry three options on each of four capstones,
+    # which is 96. Without this the test above would pass just as happily if the
     # generator wrote empty columns for every capstone in every tree.
     #
     # IT WAS 36 AND THREE TREES UNTIL 2026-09-07, when the Ravager and Ritualist
     # trees were added for issue #950 and brought twelve capstones between them,
-    # each offering three options.
-    assert carried == 60, (
-        f"{carried} capstone options were carried across, expected 60: five "
+    # each offering three options. IT WAS 60 AND FIVE TREES UNTIL 2026-11-24,
+    # when the three Death trees brought twelve vows each.
+    assert carried == 96, (
+        f"{carried} capstone options were carried across, expected 96: eight "
         "trees with three options on each of four capstones. The Saboteur's "
         "four have none, which is issue #935."
     )
@@ -234,14 +246,14 @@ def test_every_edge_is_carried_with_its_requirement(trees, edge_rows,
     for name, data in trees.items():
         for edge in data["edges"]:
             expected += 1
-            key = f"{name}_{edge['id']}"
+            key = f"{gen.tree_row_prefix(name)}_{edge['id']}"
             assert key in by_name, (
                 f"{name}: edge {edge['id']!r} has no row in {EDGES_CSV.name}"
             )
             row = by_name[key]
 
-            assert row["Source"] == f"{name}_{edge['source']}"
-            assert row["Target"] == f"{name}_{edge['target']}"
+            assert row["Source"] == f"{gen.tree_row_prefix(name)}_{edge['source']}"
+            assert row["Target"] == f"{gen.tree_row_prefix(name)}_{edge['target']}"
             assert int(row["RequiredPoints"]) == int(
                 edge.get("data", {}).get("requiredPoints", 0)), (
                 f"{name}/{edge['id']}: the row asks for "

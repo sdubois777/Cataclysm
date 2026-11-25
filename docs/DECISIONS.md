@@ -2,6 +2,264 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The three Death class trees enter the game as data: the Soul Collector, the Necromancer and the Shadow, their first 56 rows, three class stat lines and their emblem layouts (Death trees, slice A)
+
+**Affects:**
+- `docs/Soul_Collector_Class_Tree_Final.json`, `docs/Necromancer_Class_Tree_Final.json` and
+  `docs/Shadow_Class_Tree_Final.json`, new: the trees the project owner approved on 2026-11-24, with the text changes
+  under "Said first", the 34 whole-number sentences under "Whole numbers", and the emblem positions under "The
+  layouts".
+- `tools/generate_datatables.py`: `CLASS_TREES` lists nine trees; `tree_file` and `tree_row_prefix` spell a class name
+  holding a space.
+- `tools/reapply_death_trees_workbook.py`, new, and `tools/tests/test_reapply_death_trees_workbook.py`, new: the Death
+  rows of the workbook's Passive Effects and Class Stats sheets, added by node and class name.
+- `docs/All_Things_Cataclysm.xlsx`: Passive Effects 325 rows to 381, Class Stats 33 to 49.
+- `game/Data/PassiveNodes.csv` (660 rows), `game/Data/PassiveEdges.csv` (620), `game/Data/PassiveEffects.csv` (381)
+  and `game/Data/ClassStats.csv` (49), generated. **The editor step must rebuild `DT_PassiveNodes`, `DT_PassiveEdges`,
+  `DT_PassiveEffects` and `DT_ClassStats`** before any test reading the real tables can pass.
+- `sim/cataclysm_sim/classes.py`: `SOUL_COLLECTOR`, `NECROMANCER`, `SHADOW`, `DEATH_CLASSES` and `CLASSES`;
+  `sim/tests/test_death_classes.py`, new.
+- `docs/Cataclysm_GDD_v2.md`: three Death rows in the generator table, and "The Three Death Class Stat Lines".
+  `docs/README.md`: the two sheets' row counts.
+- `game/Source/Cataclysm/Tests/CataclysmDeathTreesTests.cpp`, new (6 tests);
+  `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (two tests);
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (four pinned row counts).
+- `tools/tests/test_class_passive_trees.py`, `tools/tests/test_passive_tables_match_the_tree_files.py`,
+  `tools/tests/test_passive_effects_match_the_node_text.py` and `tools/tests/test_class_sheets_match_the_model.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** One new test file and two edited ones were read as the compiler.
+  A window has to compile, run the editor step for the four tables above, and run the groups under "Unreal tests".
+- **NO DEATH CLASS FILLS FERVOUR FROM ITS OWN KILLS YET.** The Soul Collector's and the Shadow's starting nodes (Fervour
+  per kill by the slain creature's rarity, and the decay after the last kill) are the next slice, and with them every
+  node that reads Fervour held is worth nothing to those two classes in play. The Necromancer's starting node is half
+  built: 1 Fervour each time an enemy dies within 10 metres, through the Ritualist's existing
+  `fervour_on_enemy_death_nearby`. A minion's kill farther away than that is not built.
+- **47 OF THE 219 DEATH NODES GRANT SOMETHING**: the Soul Collector 14 of its 73, the Necromancer 8 of its 72 and the
+  Shadow 25 of its 74. The plan's survey counted 46 entries that are data today; 44 are written. **Untouched and
+  Through and Through are not**: their whole-number sentences say "for every 2 points", which is one row per step, and
+  the text checks on `development` accept a row from N points only on an "At N points:" sentence. The Demonic tree
+  rework (`feat/demonic-tree-rework`) adds the step support; they are written when this branch is rebased on it. Three
+  rows here are halves the survey did not count: the Soul Collector's starting node's damage, the Necromancer's
+  starting node's deaths within 10 metres and the Shadow's Counterstroke's flat evasion.
+- **A CHARACTER STANDS ON A DEATH CLASS LINE ONLY BY THE CONSOLE VARIABLE**, `Cataclysm.PlayerClass "Soul Collector"`,
+  as for every class: nothing chooses a line from the trees a character spends in (issue
+  [#932](https://github.com/sdubois777/Cataclysm/issues/932)).
+- **TEXT CHANGES TO THE APPROVED FILES**, each for a stated reason:
+  - "Attack and Cast Speed" becomes "Attack Speed" in Brimming, Empty Hands, Overflow and Soul Haste: there is no cast
+    speed in this game (issue [#1000](https://github.com/sdubois777/Cataclysm/issues/1000)). Swift Reaper and Soul
+    Haste now read "+2% increased Movement Speed" and "+3% increased Attack Speed", as the Shadow's Quickening already
+    did.
+  - Executioner: "Double damage against enemies below 30% health" becomes "You deal 100% more damage against enemies
+    below 30% health". A row in the more bucket must say so in its sentence (issue
+    [#977](https://github.com/sdubois777/Cataclysm/issues/977)); the value is the same.
+  - Held Close: "A stun stops your kills" becomes "Crowd control stops your kills". The node resists every crowd
+    control, and the stun check (issue [#271](https://github.com/sdubois777/Cataclysm/issues/271)) read the first
+    wording as a stun the node applies.
+  - The Horde Ascendant's "within 10 m" becomes "within 10 metres", as every other Death sentence writes it.
+  - **Lone Revenant**, by the owner's answer to the plan's question 18 ("Your recommendations work for all of those
+    death/war questions"): "You can have one permanent minion only; it has 400% more health and damage" becomes "Your
+    permanent minions reserve 300% more Fervour and have 400% more health and damage."
+  - **The Abomination's last sentence, the coordinating session's ruling of 2026-11-24** ("your clause is
+    accepted"): "With Lone Revenant, the Abomination is your one permanent minion and gains Lone Revenant's bonus"
+    becomes "With Lone Revenant, the Abomination has Lone Revenant's 400% more health and damage, and still reserves
+    100 Fervour." There is no "one permanent minion" any more, and four times 100 would leave no pool able to raise
+    it.
+- **"SOUL COLLECTOR" HOLDS A SPACE, AND THREE PLACES SPELL IT THREE WAYS ON PURPOSE.** The file is
+  `Soul_Collector_Class_Tree_Final.json`; every node and edge row is named `SoulCollector_...`, because the version 3
+  save step's `ClassOfNode` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`) reads a node's tree from its name
+  with the spaces taken out; and the `Tree` column says "Soul Collector", because
+  `UCataclysmPassiveTree::TreeIsReachable` compares it with `UCataclysmCharacterCreation::ClassesFor`, which spells it
+  so. The class line is "Soul Collector" as well. The coordinating session was told on 2026-11-24 before any of it was
+  written.
+
+### Whole numbers
+
+**The 34 fractional sentences are whole numbers**, by the owner's rule of 2026-11-24 (the Masochist audit's question
+4, "Steps": a per-point value below 1 is written as a whole number "for every N points"), applied as the coordinating
+session ruled the same day: "apply them (the owner's rule; no new owner ruling needed). Your proposal is accepted
+except where ruled below." Twenty are the Soul Collector's, five the Necromancer's and nine the Shadow's. Most keep
+their total at full points ("+0.02% increased damage per point" for each Fervour became "+1% increased damage per point
+for every 50 Fervour you hold"). The rulings, quoted:
+
+- **The Soul Collector's starting node keeps "more"**: "You deal 1% more damage for every 2 Fervour you hold." The
+  starting node is the class's own Fervour rule, an exception to the basic-node "increased" rule, as the Ritualist's
+  starting node is an exception to the keystone rule.
+- **Seconds per point**: "one rule for all: '1 second ... for every N points' with N = half the node's maximum, so each
+  pays 1 s at half investment and 2 s at full." Grave Patience (every 5 points), Unbroken Chain (4), Borrowed Time (3),
+  Find the Rhythm (4), Keep the Count (3) and Sidestep (5). **This raises their totals** (Grave Patience 1 s to 2 s,
+  Unbroken Chain 0.8 s to 2 s, Borrowed Time 0.6 s to 2 s, Find the Rhythm 0.8 s to 2 s, Keep the Count 1.2 s to 2 s,
+  Sidestep 1 s to 2 s): **six points to test in play.**
+- **Last Breath**: "Each kill restores 1% of your maximum health for every 2 points" (3% at 6, whatever Fervour the kill
+  gives). **Life Siphon**: "At 10 points: each enemy in your Siphon restores 1% of your maximum health each second, up
+  to 5 enemies." **Picked Clean**: "1% for every 3 points" (2% at 6 and 8). **Shared Leech**: "At 8 points: 1% of the
+  damage your minions deal is leeched to you as health."
+- **Turn of the Wheel** ("Every 10 Fervour you spend takes 1 second off ..."), **Pale Ward** and the Shadow's
+  **Relentless** ("for every 100 Fervour held") as proposed. Pale Ward and Relentless now grant nothing below 100
+  Fervour held, which is a full bar at the base pool.
+
+### The layouts
+
+The three trees are laid out as their emblems, which the owner accepted on 2026-11-24: the Soul Collector a hanging
+lantern, the Necromancer a skull over two crossed bones, the Shadow a dagger lying flat. Taken from
+`constellations/*_Class_Tree_Sigil.json` in the coordinating session's folder: **only node positions, the viewport,
+the title label's position and the layout sentence in `metadata`**; every id, name, sentence, point count and edge is
+as before, checked by comparing the files with those four fields removed. No save is affected: a save records nodes
+and points, never positions.
+
+### The rows
+
+Fifty-six rows on 47 nodes, written by `tools/reapply_death_trees_workbook.py`. Every stat, condition and scale is one the
+game already had, and the generator's validators accept every row (a deliberately wrong condition was seen refused
+first). Two readings are judgements:
+
+- **Deathly Presence**, "enemies within 6 metres deal 1% less damage" for every 10 Fervour held, is damage you take
+  from an enemy that near: the predicate of the enchantment "Nearby enemies deal 10%-30% less damage to you"
+  (`damage_taken`, more, `opponent_within_metres`). Damage those enemies deal to your minions is not reached.
+- **Cooldown reduction is a flat sum** (Quick Recovery, Raised in Haste, Fed Stride), as every authored source writes
+  it: the enchantment "Summon skills have 30%-60% reduced cooldown" is `flat` on `Keyword.Summon`.
+
+| Tree | Node | Rows |
+|---|---|---|
+| Soul Collector | Fervour | attack_damage, more, 1, scale=class_resource_held, step=2; spell_damage, more, 1, scale=class_resource_held, step=2 |
+| Soul Collector | Weight of Souls | attack_damage, increased, 1, scale=class_resource_held, step=50; spell_damage, increased, 1, scale=class_resource_held, step=50 |
+| Soul Collector | Pale Ward | damage_reduction, increased, 1, scale=class_resource_held, step=100 |
+| Soul Collector | Deep Urn | class_resource, increased, 2 |
+| Soul Collector | Held Close | crowd_control_resistance, increased, 3, cond=class_resource_points_at_least, cond_value=50 |
+| Soul Collector | Ossuary | class_resource, increased, 2 |
+| Soul Collector | Cold Precision | crit_multiplier, increased, 1, scale=class_resource_held, step=50 |
+| Soul Collector | Brimming | attack_speed, increased, 1, cond=class_resource_points_at_least, cond_value=50 |
+| Soul Collector | Full Measure | attack_damage, increased, 2, cond=class_resource_at_maximum; spell_damage, increased, 2, cond=class_resource_at_maximum |
+| Soul Collector | Hoarded Life | health_regen, increased, 1, scale=class_resource_held, step=20 |
+| Soul Collector | Deathly Presence | damage_taken, more, -1, cond=opponent_within_metres, cond_value=6, scale=class_resource_held, step=10 |
+| Soul Collector | Swift Reaper (option 3) | movement_speed, increased, 2, scale=class_resource_held, step=10 |
+| Soul Collector | Death's Focus (option 3) | crit_chance, flat, 1, scale=class_resource_held, step=20 |
+| Soul Collector | Soul Haste (option 3) | attack_speed, increased, 3, scale=class_resource_held, step=10 |
+| Necromancer | Fervour | fervour_on_enemy_death_nearby, flat, 1 |
+| Necromancer | Wider Grave | class_resource, increased, 2 |
+| Necromancer | Death Knell | fervour_on_enemy_death_nearby, increased, 3 |
+| Necromancer | Restless Host | minion_damage, increased, 1; minion_health, increased, 1 |
+| Necromancer | Raised in Haste | cooldown_reduction, flat, 3, tags=Keyword.Summon |
+| Necromancer | Grave Sense | class_resource_generation, increased, 2 |
+| Necromancer | Deeper Grave | class_resource, increased, 2 |
+| Necromancer | Toll of the Dead | fervour_on_enemy_death_nearby, increased, 3 |
+| Shadow | Quick Recovery | cooldown_reduction, flat, 3, tags=Slot.Movement |
+| Shadow | Held Breath | attack_damage, increased, 1, scale=class_resource_held, step=20; spell_damage, increased, 1, scale=class_resource_held, step=20 |
+| Shadow | Fresh Start | attack_speed, increased, 2, cond=seconds_after_movement_skill, cond_value=3 |
+| Shadow | Lingering | dot_damage, increased, 3 |
+| Shadow | Deep Venom | dot_damage, increased, 2, tags=Keyword.DoT.Poison |
+| Shadow | Open Veins | dot_damage, increased, 2, tags=Keyword.DoT.Bleed |
+| Shadow | Arterial | dot_frequency, increased, 3, tags=Keyword.DoT.Bleed |
+| Shadow | Slow Death | dot_damage, increased, 4, cond=target_is_boss |
+| Shadow | Keen Edge | crit_chance, increased, 3 |
+| Shadow | Find the Gap | crit_multiplier, increased, 4 |
+| Shadow | Read the Giant | attack_damage, increased, 3, cond=target_is_boss; spell_damage, increased, 3, cond=target_is_boss |
+| Shadow | Open the Throat | crit_multiplier, increased, 3, cond=target_health_below, cond_value=50 |
+| Shadow | Last Breath | attack_damage, increased, 3, cond=target_health_below, cond_value=30; spell_damage, increased, 3, cond=target_health_below, cond_value=30 |
+| Shadow | Executioner | attack_damage, more, 100, cond=target_health_below, cond_value=30; spell_damage, more, 100, cond=target_health_below, cond_value=30 |
+| Shadow | Cutting Path | attack_damage, increased, 4, tags=Slot.Movement; spell_damage, increased, 4, tags=Slot.Movement |
+| Shadow | Blade on Arrival | crit_chance, increased, 3, tags=Slot.Movement |
+| Shadow | Deep Cut | bleed_chance, flat, 5, tags=Slot.Movement |
+| Shadow | Fed Stride | cooldown_reduction, flat, 5, tags=Slot.Movement, cond=class_resource_points_at_least, cond_value=50 |
+| Shadow | Counterstroke | evasion, flat, 1 |
+| Shadow | Nimble | evasion, increased, 3 |
+| Shadow | Moving Target | evasion, increased, 3, cond=while_moving |
+| Shadow | Tumble | evasion, flat, 3, cond=seconds_after_movement_skill, cond_value=2 |
+| Shadow | Slipstream | movement_speed, increased, 2, cond=seconds_after_dodge, cond_value=3 |
+| Shadow | Quickening (option 3) | movement_speed, increased, 3, scale=class_resource_held, step=10 |
+| Shadow | Honed Edge (option 3) | crit_chance, flat, 1, scale=class_resource_held, step=10 |
+
+### The three Death class stat lines
+
+**Every stat a Death tree raises by an "increased" percentage has a base**: on its class's line, on the default line,
+or from a flat node every increasing node is reached through. The Demonic lines met this without it being written down;
+these were made to meet it, and `sim/tests/test_death_classes.py` holds each tree's increasing nodes to it by name.
+
+| Stat | Soul Collector | Necromancer | Shadow |
+|---|---|---|---|
+| Maximum Health | 115 + 17 a level (1,798 at 100) | 85 + 12 (1,273) | 90 + 13 (1,377) |
+| Maximum Mana | default | 70 + 9 (961) | default |
+| Health Regeneration | 2 + 0.25 (26.75) | default | default |
+| Mana Regeneration | default | 1.5 + 0.18 (19.32) | default |
+| Armor | none | 15 + 2 (213) | none |
+| Damage Reduction | 3 + 0.04 (6.96%) | 2 + 0.03 (4.97%) | none |
+| Crowd Control Resistance | 3 + 0.08 (10.92) | 5 + 0.1 (14.9) | none |
+| Critical Strike Multiplier | default (150) | default | 160 |
+| Area of Effect | default (100) | default | 90 |
+| Movement Speed | 4.2 | 3.8 | 4.4 |
+
+- **The Shadow has no base of evasion, as no class has.** The gem ruling of 2026-11-21 rests on that sentence, and the
+  Shadow's tree supplies its own: Counterstroke grants "+1% Evasion chance per point", and Nimble and Moving Target, the
+  two nodes that increase evasion, are reached only through it at 4 points or more. The tree's summary designed it so
+  ("the limb grants flat evasion chance ... and does not rely on gear"). A first version of this branch gave the Shadow
+  5 + 0.1 evasion; the suite's gem check named the conflict and it was taken out.
+- **The Shadow's area of effect, 90**, is its approved draft's "low area damage".
+- **Every figure is a judgement** under the owner's delegation of unstated numbers.
+
+### Research
+
+The shapes, not the numbers:
+- **Diablo II** (the Basin Wiki's class pages, read 2026-11-24, https://www.theamazonbasin.com/wiki/index.php/Necromancer
+  and its Assassin, Barbarian and Sorceress pages): the Necromancer gains 1.5 life and 2 mana a level, the Barbarian 2
+  and 1, the Assassin 2 and 1.5, the Sorceress 1 and 2. A summoner trades health for mana.
+- **Path of Exile** (poedb.tw's class pages, https://poedb.tw/us/Shadow and https://poedb.tw/us/Marauder): the Shadow
+  starts with 57 life against the Marauder's 66. An assassin starts with less health than a fighter.
+- Last Epoch's base classes were looked for and no page answered.
+
+### Unreal tests
+
+Registered with predicted counts. Static counts are not exact (CLAUDE.md), so the totals to quote are the run's.
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.DeathTrees.` | new: `ADeathWeaponReachesTheThreeDeathTreesAndNoOther`, `ADeathNodeIsNamedForItsTreeAndEachTreeStartsAtFervour`, `ADeathCharacterSpendsInOnlyOneOfTheThreeDeathTrees`, `ADeathNodesRowGrantsItsStatOnlyWhileADeathWeaponIsCarried`, `TheThreeDeathClassLinesAreReadUnderTheClassesOwnNames`, `ThePassiveScreenShowsTheSoulCollectorsWholeTree` | 6 |
+| `Cataclysm.Passives.` | `TheGeneratedTablesHoldEveryTreeTheDesignHas` asks for nine trees; `TheScreenSpendsThroughTheCharacterAndNotIntoItself` names the Plague Lord as a tree that does not exist, where it named the Necromancer | the base's count, unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: ClassStats 49, PassiveNodes 660, PassiveEdges 620, PassiveEffects 381 | the base's count, unchanged |
+
+Every new test has a control: a Demonic weapon reaching none of the three; "SoulCollector" being no class, no tree and
+no line; the Soul Collector's own tree not refused for its class; a Demonic tree refused for the weapon, not the class.
+
+**Two C++ guard proofs are registered for the window**, each with `test_prefix="Cataclysm.DeathTrees."`:
+1. `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`, in `TreeIsReachable`: `const FName AsClass(*Tree);`
+   becomes `const FName AsClass(*Tree.Replace(TEXT(" "), TEXT("")));`. Must fail
+   `ADeathWeaponReachesTheThreeDeathTreesAndNoOther` and `ADeathCharacterSpendsInOnlyOneOfTheThreeDeathTrees`.
+2. `game/Source/Cataclysm/Character/CataclysmClassStats.cpp`, in `FindClassStat`:
+   `if (Row->ClassName.Equals(ClassName, ESearchCase::IgnoreCase)` becomes
+   `if (Row->ClassName.Replace(TEXT(" "), TEXT("")).Equals(ClassName, ESearchCase::IgnoreCase)`. Must fail
+   `TheThreeDeathClassLinesAreReadUnderTheClassesOwnNames`.
+
+### What was run
+
+- **Full Python suite on `cd63c2a94`, the last code commit: "1 failed, 8345 passed, 9 skipped in 344.90s"; JUnit 8355
+  tests, 1 failure, 0 errors, 9 skipped.** The one failure is the expected
+  `test_every_csv_still_hashes_to_what_was_recorded`, naming `ClassStats.csv`, `PassiveEdges.csv`,
+  `PassiveEffects.csv` and `PassiveNodes.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the three changed C++ files: "3 files read, 0 with complaints".
+  `tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+  `tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it;
+  nothing written".
+- **The first suite run, on `ec209d331`, failed four tests, three of them real**: the docs README's sheet counts,
+  the gem check (a first Shadow line with an evasion base, taken out) and the stun check (Held Close's wording,
+  changed). All three were fixed in `01c24c6b4`, whose run gave the same figures as the last.
+
+**Five Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `01c24c6b4`**, failing with
+the break in and passing restored:
+
+| Guard | Break | Named failures |
+|---|---|---|
+| The dead-node check reads the Soul Collector's line under its space-free name | Held Close's row in `game/Data/PassiveEffects.csv` grants `life_leech` | `test_no_node_is_worth_nothing_to_its_own_class` (1 failed, 22 passed; restored 23 passed) |
+| No Death sentence promises cast speed | Brimming says "Attack and Cast Speed" again | `test_no_death_vow_promises_a_stat_this_game_does_not_have` (1 failed, 176 passed; restored 177 passed) |
+| The Shadow's evasion increases are reached only through Counterstroke | edge `e_72` leaves Slip instead of Counterstroke | `test_the_shadows_evasion_increases_are_reached_only_through_its_flat_evasion` (1 failed, 21 passed; restored 22 passed) |
+| Every stat a Death tree increases has a base | the Soul Collector's `damage_reduction` line deleted from the model | `test_every_stat_the_tree_increases_has_a_base_on_the_class_line[Soul Collector]` and `test_the_design_document_death_table_matches_the_model` (2 failed, 20 passed; restored 22 passed) |
+| The tables test keys the Death rows through the generator's spelling | `tree_row_prefix` keeps the space | five tests of `test_passive_tables_match_the_tree_files.py` (5 failed, 3 passed; restored 8 passed) |
+
+**And the gap the first one closes**: the same break with the check keyed on the class name as written gave "23
+passed". Before this change the dead-node check skipped the Soul Collector, because "SoulCollector", the tree its rows
+are named for, matched no class line.
+
+---
+
 ## 2026-11-24 — A passive node can act on an event: Passive Effects rows carry the enchantment row's action columns, a second condition, an offset on a scale, and a per-point count from a threshold (the passive row port)
 
 **Affects:**

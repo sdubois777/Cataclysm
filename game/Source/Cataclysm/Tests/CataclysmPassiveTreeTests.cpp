@@ -2582,14 +2582,21 @@ bool FCataclysmPassiveRealTablesLoadTest::RunTest(const FString&)
 	// characters that start on it -- the Ravager is the class every new character
 	// starts on -- would have no tree of their own. That is worth a deliberate
 	// failure whenever the count moves.
+	//
+	// NINE SINCE 2026-11-24, when the three Death trees were added. The Soul
+	// Collector's name holds a space, and the tree is named for the class as
+	// `UCataclysmCharacterCreation::ClassesFor` spells it, space included.
 	const TArray<FString> Trees = UCataclysmPassiveTree::TreeNames(NodeTable);
-	TestEqual(TEXT("every class tree the design has"), Trees.Num(), 6);
+	TestEqual(TEXT("every class tree the design has"), Trees.Num(), 9);
 	TestTrue(TEXT("Berserker"), Trees.Contains(TEXT("Berserker")));
 	TestTrue(TEXT("Bulwark"), Trees.Contains(TEXT("Bulwark")));
 	TestTrue(TEXT("Masochist"), Trees.Contains(TEXT("Masochist")));
 	TestTrue(TEXT("Saboteur"), Trees.Contains(TEXT("Saboteur")));
 	TestTrue(TEXT("Ravager"), Trees.Contains(TEXT("Ravager")));
 	TestTrue(TEXT("Ritualist"), Trees.Contains(TEXT("Ritualist")));
+	TestTrue(TEXT("Soul Collector"), Trees.Contains(TEXT("Soul Collector")));
+	TestTrue(TEXT("Necromancer"), Trees.Contains(TEXT("Necromancer")));
+	TestTrue(TEXT("Shadow"), Trees.Contains(TEXT("Shadow")));
 
 	// EVERY TREE HOLDS FAR MORE THAN A CHARACTER CAN SPEND, which is the point
 	// the design makes: "The per-character point budget is 230, meaning players
@@ -2732,8 +2739,10 @@ bool FCataclysmPassiveScreenSpendsThroughThePlayerStateTest::RunTest(const FStri
 
 	TestTrue(TEXT("the Masochist tree can be looked at"),
 			 Screen->ShowTree(TEXT("Masochist")));
+	// THE PLAGUE LORD, A PESTILENCE CLASS WITH NO TREE. This named the
+	// Necromancer until 2026-11-24, when the three Death trees were added.
 	TestFalse(TEXT("a tree that does not exist cannot"),
-			  Screen->ShowTree(TEXT("Necromancer")));
+			  Screen->ShowTree(TEXT("Plague Lord")));
 	TestEqual(TEXT("so the Masochist tree is still the one shown"),
 			  Screen->GetShownTree(), FString(TEXT("Masochist")));
 
