@@ -2,6 +2,161 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The Death classes' kill generator: Fervour for each kill by the slain creature's rarity, the decay after the last kill, and a window after a kill (Death trees, slice B)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp`:
+  `NoteOwnKill`, `GainOnOwnKill`, `KillDecayStep`, and the stats `fervour_per_kill`, `fervour_kill_decay_per_second` and
+  `fervour_kill_decay_grace_seconds`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: the kill clock (`NoteOwnKill`,
+  `SecondsSinceOwnKill`, `KillDecayIsHeld`) and the target's rarity rung in `WithTargetState`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp`: the conditions `target_rarity_at_least`,
+  `target_rarity_is` and `seconds_after_kill`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the kill handler),
+  `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the step) and
+  `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (three stats with no gameplay attribute).
+- `game/Source/Cataclysm/Tests/CataclysmClassKillFervourTests.cpp`, new (7 tests);
+  `game/Source/Cataclysm/Tests/CataclysmFervourTests.cpp` (1 test); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`
+  (3 probes); `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (PassiveEffects 459).
+- `tools/generate_datatables.py` (the conditions and the askers), `tools/reapply_death_trees_workbook.py` (32 rows),
+  `docs/All_Things_Cataclysm.xlsx` (Passive Effects 459 rows), `game/Data/PassiveEffects.csv`,
+  `game/Data/PassiveNodes.csv`, `docs/Soul_Collector_Class_Tree_Final.json`, `docs/Shadow_Class_Tree_Final.json`,
+  `docs/README.md`.
+- `tools/tests/test_death_kill_schedule_matches_the_sentence.py`, new;
+  `tools/tests/test_passive_effects_match_the_node_text.py`, `tools/tests/test_class_passive_trees.py` and
+  `tools/tests/test_every_conditioned_stat_has_an_asker.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile, rebuild
+  `DT_PassiveEffects` and `DT_PassiveNodes` in the editor step, and run the groups under "Unreal tests".
+- **THIS BRANCH SITS ON `feat/passive-row-port` (144bfbeb2), WHICH CARRIES THE DEMONIC TREE REWORK, with slice A
+  (`feat/death-trees-a`) merged in.** Both edit the condition lists this slice extends, and both land first; the
+  coordinating session's order of 2026-11-24 was to rebase after they land. A window for this branch builds the rework
+  and the port as well.
+- **NOT BUILT:** the Shadow's "2 for each critical strike you land" (the War trees' Berserker needs the same stat, so it
+  waits for that slice or a ruling on who builds it); and every Death node that needs more than a stat, a condition and a
+  scale: Kill Chain, Unbroken Chain, Claimed, Last Breath's healing, Reclaimed, Kindred Fires, Borrowed Time, Keep the
+  Count, Vigil Over the Strong, Miser's Grip, Soulbound, Death's Toll, Tear Loose, Telling Blows, Death's Patience, Quick
+  Kill, Patient Blade, Death by Inches and the rest.
+- **THE DECAY DOES NOT ASK `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`.** The coordinating session, 2026-11-24:
+  "Build the Soul Collector and Shadow decay after the last kill as its own function without the
+  ARunningBuffHoldsFervour call; whichever of your slice B and feat/death-skills-2885 merges second adds that one call
+  and its test (the War trees session has the same obligation for its decay)." **The obligation stands on whichever of
+  the two merges second:** one call in `UCataclysmFervour::KillDecayStep`, beside the one `DecayStep` gets, and a test.
+- **HUNTER'S EYE IS HALF BUILT**: its Elite and stronger half is a row; "and against the enemy Deathmark marked" waits
+  for the mark.
+
+### The rule: a class generator and a skill's own Fervour for a kill
+
+The coordinating session, 2026-11-24: "Build the class generator (Fervour per own kill by the slain creature's rarity)
+in the existing kill path the plan names (ACataclysmPlayerCharacter::OnSomethingDied's kill block, writing through
+UCataclysmFervour as GainOnEnemyDeathNearby does), as its own function. It is a different payment from a skill's
+KillFervour: the class generator pays on every kill, and a skill's KillFervour pays on top when that skill's blow made
+the kill." So **one death pays the class generator once, and pays a skill's `KillFervour` (the Death skills branch,
+#2885) once more when that skill's own blow made the kill.** Neither steps aside for the other.
+
+### What a kill does now
+
+- **Every kill credited to the character** (`Notice.Killer == this` in `OnSomethingDied`, its damage over time's
+  included by the ruling of 2026-09-14, and a kill a row made) stamps the kill clock and pays the generator.
+- **The stamp** (`UCataclysmFervour::NoteOwnKill`) is for every character: a row under `seconds_after_kill` reads it, and
+  it holds the decay off until the kill's grace has run, the grace asked against the slain creature.
+- **The payment** (`UCataclysmFervour::GainOnOwnKill`) asks `fervour_per_kill` against the slain creature, so its rows
+  are tiered by its rarity rung, then scales it by the generation rate and clamps it at the maximum, as every gain does.
+- **The decay** (`UCataclysmFervour::KillDecayStep`), on the character's step beside the Ravager's `DecayStep`, takes
+  `fervour_kill_decay_per_second` a second once the hold has run out.
+
+**Judgements, each with its reason:**
+- **A Cataclysm Boss pays as a Boss** (15 for the Soul Collector; the tree's summary asked). It is stronger than a Boss,
+  and the sentence's last figure is the top of its ladder.
+- **The rung read is the one the spawner set** (`ACataclysmEnemyCharacter::RarityStep`), as `target_is_boss` reads it,
+  and not `RarityStepItPaysAs`, which is what a kill is rewarded as. A Corrupted Stalker holding a build is paid as its
+  own rung.
+- **A hold never shortens.** "Holds off the decay for 8 seconds rather than 4" would be broken by the next ordinary kill
+  otherwise; the hold runs to the later of the two.
+- **A character that has never killed is not held**, so Fervour from another source decays at once. "Once 4 seconds have
+  passed since your last kill" has no last kill to count from, and holding for ever would make a multiclassed Soul
+  Collector's other generator a bar that never empties.
+- **The decay has its own stats, not the Ravager's.** A Soul Collector holding `fervour_decay_per_second` would also be
+  drained by `DecayStep` whenever it stood three seconds out of contact. Two rules, two stats; a multiclassed character
+  holding both loses Fervour to each when each says so.
+
+### Text changes
+
+Each so the row's number and bucket are in the sentence the checks read (issue
+[#977](https://github.com/sdubois777/Cataclysm/issues/977) for the bucket); the values are the same:
+- Hungry for the Strong: "Elite and stronger creatures give double Fervour" becomes "... give 100% more Fervour".
+- Hoarder: "Fervour decays half as fast" becomes "You lose 50% less Fervour to decay".
+- Momentum: "Fervour drains 6 seconds after your last kill instead of 4" becomes "Fervour begins to drain 2 seconds later
+  after your last kill: 6 seconds rather than 4".
+
+### The rows
+
+Thirty-two rows: the two starting nodes' kill halves and sixteen more nodes. Light Feet also has an unconditional row,
+"+1% increased Movement Speed per point", and its window row doubles it. The Soul Collector's grace is 4 seconds for a
+Common kill and 8 for an Elite or stronger one, as two rows, so each row's number is one the sentence states.
+
+| Tree | Node | Rows |
+|---|---|---|
+| Soul Collector | Fervour | fervour_per_kill, flat, 1, cond=target_rarity_is, cond_value=0; fervour_per_kill, flat, 3, cond=target_rarity_is, cond_value=1; fervour_per_kill, flat, 5, cond=target_rarity_is, cond_value=2; fervour_per_kill, flat, 8, cond=target_rarity_is, cond_value=3; fervour_per_kill, flat, 15, cond=target_rarity_at_least, cond_value=4; fervour_kill_decay_per_second, flat, 5; fervour_kill_decay_grace_seconds, flat, 4, cond=target_rarity_is, cond_value=0; fervour_kill_decay_grace_seconds, flat, 8, cond=target_rarity_at_least, cond_value=1 |
+| Soul Collector | Tithe of the Dead | fervour_per_kill, increased, 2 |
+| Soul Collector | Grave Patience | fervour_kill_decay_grace_seconds, flat, 1, min_points=5; fervour_kill_decay_grace_seconds, flat, 1, min_points=10 |
+| Soul Collector | Between the Dead | movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+| Soul Collector | Cold Storage | fervour_kill_decay_per_second, increased, -5 |
+| Soul Collector | Hoarder | fervour_kill_decay_per_second, more, -50 |
+| Soul Collector | Quarry | attack_damage, increased, 2, cond=target_rarity_at_least, cond_value=1; spell_damage, increased, 2, cond=target_rarity_at_least, cond_value=1 |
+| Soul Collector | Hungry for the Strong | fervour_per_kill, more, 100, cond=target_rarity_at_least, cond_value=1 |
+| Shadow | Fervour | fervour_per_kill, flat, 10, cond=target_rarity_is, cond_value=0; fervour_per_kill, flat, 25, cond=target_rarity_at_least, cond_value=1; fervour_kill_decay_per_second, flat, 10; fervour_kill_decay_grace_seconds, flat, 4 |
+| Shadow | Big Game | attack_damage, increased, 2, cond=target_rarity_at_least, cond_value=1; spell_damage, increased, 2, cond=target_rarity_at_least, cond_value=1 |
+| Shadow | Killing Pace | attack_speed, increased, 1, cond=seconds_after_kill, cond_value=4; movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+| Shadow | Reaper's Share | fervour_per_kill, increased, 2 |
+| Shadow | Slow Exhale | fervour_kill_decay_per_second, increased, -5 |
+| Shadow | Momentum | fervour_kill_decay_grace_seconds, flat, 2 |
+| Shadow | Hunter's Eye | crit_chance, increased, 2, cond=target_rarity_at_least, cond_value=1 |
+| Shadow | Siege of One | fervour_kill_decay_per_second, increased, -8, cond=seconds_after_striking_a_boss, cond_value=2 |
+| Shadow | Light Feet | movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+
+### Research
+
+The shape of the generator is one this game already uses: potion charges for a kill by the slain creature's rarity
+(`UCataclysmPotions::ChargesForKillOf`), whose own comment takes it from Path of Exile's flask charges for normal,
+magic, rare and unique monsters. The decay after a quiet spell is Path of Exile's Soul Eater (souls lost one every half
+second when none were eaten recently, poedb.tw), which the Soul Collector's tree summary cites. The figures are the
+owner's approved trees'. **Specific to this game, judgements:** the five above.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.ClassKillFervour.` | new: `AKillPaysTheSoulCollectorByTheSlainCreaturesRarity`, `TheShadowIsPaidTenOrTwentyFiveAndReapersShareRaisesBoth`, `TheDecayWaitsFourSecondsAfterAKillAndEightAfterAnElite`, `HoarderAndColdStorageSlowTheDecayAndMomentumDelaysTheDrain`, `ARowUnderSecondsAfterAKillHoldsForItsSecondsAfterTheKill`, `AnEliteOrStrongerRowReadsTheStruckCreaturesRarity`, `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock` | 7 |
+| `Cataclysm.Fervour.` | new: `GenerationRateScalesGainOnOwnKill` | the base's count plus 1 |
+| `Cataclysm.StatExemption.` | `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`'s count 25 to 28, and three probes in `EveryStatWithNoAttributeIsActuallyRead` | the base's count, unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 459 | unchanged |
+
+Every new test has a control: an actor that is not a creature, a character without the node, a kill somebody else made,
+a Demonic weapon, and the moment before a window opens or after it closes.
+
+**Three C++ guard proofs are registered for the window**, each with `test_prefix="Cataclysm.ClassKillFervour."`:
+1. `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp`, `ConditionHolds`, `TargetRarityIs`:
+   `&& State.TargetRarityStep == FMath::RoundToInt(Value);` becomes `&& State.TargetRarityStep >= FMath::RoundToInt(Value);`.
+   Must fail `AKillPaysTheSoulCollectorByTheSlainCreaturesRarity`, `TheShadowIsPaidTenOrTwentyFiveAndReapersShareRaisesBoth`
+   and `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock`.
+2. `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`, `NoteOwnKill`:
+   `KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Now + FMath::Max(0.0f, GraceSeconds));` becomes
+   `KillDecayHeldUntilSeconds = Now + FMath::Max(0.0f, GraceSeconds);`. Must fail
+   `TheDecayWaitsFourSecondsAfterAKillAndEightAfterAnElite`.
+3. `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: `UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);`
+   becomes `(void)Notice.Victim;`. Must fail `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock`.
+
+### What was run
+
+The Python suite and the guard proofs are recorded in the next commit, after they ran.
+
+---
+
 ## 2026-11-24 — The three Death class trees enter the game as data: the Soul Collector, the Necromancer and the Shadow, their first 56 rows, three class stat lines and their emblem layouts (Death trees, slice A)
 
 **Affects:**
