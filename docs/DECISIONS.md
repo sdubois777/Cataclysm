@@ -25,6 +25,7 @@ Decisions made outside the Google Drive documents, newest first.
   at 67% Basic, 29% Quest, 5% Fallen City, 10.77 a campaign, where it said 96,875 at 70 / 25 / 5 and 9.69;
   `sim/tests/test_a_fall_to_war_starts_the_next_siege.py`, new;
   `sim/tests/test_a_war_quest_siege_is_capped_and_bites_a_quarter.py`.
+- `docs/Cataclysm_GDD_v2.md`, World War: the cap a day's, the re-draw, and a fall to War starting the next Siege.
 - `tools/tests/test_war_quest_sieges_port.py`, new; `tools/tests/test_dungeon_subtype_port.py`;
   `tools/tests/test_demonic_rifts_port.py`: `Kind` is no longer `const` in `RollWave`.
 - The file of Python checks that held War's Quest sub-type as a gap in the game, deleted by its own restore text (it
