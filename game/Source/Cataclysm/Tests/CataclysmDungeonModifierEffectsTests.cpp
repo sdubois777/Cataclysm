@@ -49079,13 +49079,16 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 		Names.Add(Skill.Name);
 	}
 
-	// WAR TODAY: 54 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills.
+	// WAR TODAY: 53 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills. 54
+	// until 2026-11-25, when Blood and Iron was built as an Aura (the damage-type auras), which leaves it out.
 	TMap<EWhy, TArray<FString>> War;
 	Pin(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
-	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 54);
+	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 53);
+	Pin(TEXT("War: aura"), CountOf(War, EWhy::Aura), 1);
 	Pin(TEXT("War: movement"), CountOf(War, EWhy::Movement), 3);
 	Pin(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
 	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
+	TestTrue(TEXT("Blood and Iron is an aura"), Holds(War, EWhy::Aura, TEXT("Blood and Iron")));
 	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
 	// A TYPE NO ROW CARRIES, AND NO LONGER CELESTIAL: issue #2580 gave Celestial a Warhammer kit and every damage type
 	// but War and Demonic one kit each, so no damage type is without a shaped skill any more.

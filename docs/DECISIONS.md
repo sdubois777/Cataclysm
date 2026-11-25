@@ -121536,9 +121536,9 @@ problem. Counted from the table on 2026-10-04:
 
 | Reason a skill is left out | Demonic | War | A row that shows it |
 |---|---|---|---|
-| No shape: it does nothing | 0 | 54 | every undesigned War skill |
+| No shape: it does nothing | 0 | 53 | every undesigned War skill |
 | Movement shape: it moves the character somewhere the player did not choose | 13 | 3 | Flashpoint |
-| Aura: a toggle with an upkeep | 2 | 0 | Conflagration |
+| Aura: a toggle with an upkeep | 2 | 1 | Conflagration |
 | Summon or Deployable: it reserves Fervour and counts against a most-active figure | 2 | 3 | Summon Imp |
 | Tagged `Type.Channel`, or it has a charge time: it waits for a key release that never comes | 3 | 0 | Pyroclasm, Backswing, The Whole Weight |
 | It plants the character's weapon | 1 | 0 | Buried Fire |
@@ -121550,6 +121550,9 @@ problem. Counted from the table on 2026-10-04:
 The 31 are 13 Strikes, 8 Projectiles, 7 Self Buffs and 3 Debuffs. **War's pool is one skill, Shield Bash, because 54
 of War's 61 named skills have no shape yet. That is the state of the War skills and not a fault of the rule;** the
 floor panel says how many skills the pool holds, so a War player is told.
+
+**On 2026-11-25 War's "No shape" went from 54 to 53 and its "Aura" from 0 to 1**, when Blood and Iron was built as an
+Aura (the damage-type auras, bundle 1). The pool is unchanged, Shield Bash alone. The test and this table moved together.
 
 ### Rulings, each a labelled judgement of 2026-10-04
 
