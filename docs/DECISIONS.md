@@ -1552,17 +1552,17 @@ draw.
 
 ### Registered for the shared window, 2026-11-25: slices B1 and B2 on `feat/rift-altars-51-2`
 
-**Nothing here has run.** The coordinating session's plan of 2026-11-24: after #2865, ONE window for the altar slice
-(B1) and this slice, on `feat/rift-altars-51-2`, which is B1 rebuilt on development `0d9259653` with this slice's
-`feat/demonic-rifts-51-2` merged in, and development `4a961ce84` (the forge, #2895) merged in after them. It replaces
-this entry's registration above and B1's proof list, which were written before either was rebuilt. Base: the newest
-whole-suite log, the forge window's `forge_suite_engine_88c917b0.log` (5493 performed, 5493 succeeded, 0 failed, 58
-skipped halves, 874 saves written and deleted and 0 left behind, on `88c917b08`, whose tree differs from development
-`4a961ce84` only in `docs/DECISIONS.md`). Every count below was taken again from that log on 2026-11-25, after the
-merge, as this paragraph said would happen if another whole suite ran on development first. They were first taken from
-window 2865-w1's `2865_suite_engine_62612be6.log` (5474 performed on `62612be63`). Between the two logs, of the groups
-that run alone, only `Cataclysm.EmpireRun.` moved (71 to 72, the forge's timer forecast); the forge's merge adds two
-groups to the list, below.
+**Registered before it ran; window rifts-w1 ran it (the next section).** The coordinating session's plan of 2026-11-24:
+after #2865, ONE window for the altar slice (B1) and this slice, on `feat/rift-altars-51-2`, which is B1 rebuilt on
+development `0d9259653` with this slice's `feat/demonic-rifts-51-2` merged in, and development `4a961ce84` (the forge,
+#2895) merged in after them. It replaces this entry's registration above and B1's proof list, which were written before
+either was rebuilt. Base: the newest whole-suite log, the forge window's `forge_suite_engine_88c917b0.log` (5493
+performed, 5493 succeeded, 0 failed, 58 skipped halves, 874 saves written and deleted and 0 left behind, on `88c917b08`,
+whose tree differs from development `4a961ce84` only in `docs/DECISIONS.md`). Every count below was taken again from
+that log on 2026-11-25, after the merge, as this paragraph said would happen if another whole suite ran on development
+first. They were first taken from window 2865-w1's `2865_suite_engine_62612be6.log` (5474 performed on `62612be63`).
+Between the two logs, of the groups that run alone, only `Cataclysm.EmpireRun.` moved (71 to 72, the forge's timer
+forecast); the forge's merge adds two groups to the list, below.
 
 - **What the forge's merge changed for this window.** Three save tests conflicted, on fixture names only
   (`CataclysmEmpireTreeNineTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmSaveRecordTests.cpp`). Each now reads
@@ -1626,6 +1626,58 @@ for the six.
   skipped in 483.48s (0:08:03)`; the JUnit file agrees, 8,593 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff
   check .`: `All checks passed!`. The test files that read this log were run again on the head that carries this line.
 
+
+### Window rifts-w1, 2026-11-25: 34 of 35 groups and 5519 of 5520 passed; one fault in a test's control, and no proof run
+
+**Ran on `b80da905a`, lock `rifts-w1`.** The pre-checks all passed at 06:59 local, with the check for an open pull
+request that changes `game/` waived for #2896 by number (the coordinating session's ruling of 2026-11-25: its hold
+covers #2896). Development was `7a5adc23d` (#2894, tools and documents only, merged during the registration; the branch
+was left behind it for the window, by the same session's instruction).
+
+| Stage | Registered | Measured |
+| :-- | :-- | :-- |
+| Build | succeeds | "Succeeded - 77 actions, 70 files compiled" |
+| The 35 groups alone | each its count, 0 failed | 34 passed at their counts; `Cataclysm.Rifts.` "12 tests performed, 11 succeeded, 1 failed: ARiftCarriesEightDifferentModifiersWhateverTheTier"; 1307 performed in all |
+| The whole suite | 5520 performed, 5520 succeeded | "5520 tests performed, 5519 succeeded, 1 failed: ARiftCarriesEightDifferentModifiersWhateverTheTier"; "Declared: 5520 tests in the tree at b80da905a; 5520 performed, gap 0" |
+| Skipped halves | 58 | 58 |
+| Test saves | 881 written (printed), 0 left behind (a stop) | "881 written and deleted, 0 left behind" |
+| Python, alongside | passes | "8583 passed, 10 skipped in 451.24s"; JUnit 8,593 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!" |
+| Guard proofs | six | none run: the runner stops before the proofs when a group or the whole suite fails |
+
+**THE ONE FAILURE IS IN THE TEST'S CONTROL, NOT IN A RIFT.** Every error is the same assertion,
+`CataclysmRiftsTests.cpp` line 357: "Expected 'an ordinary dungeon carries one a tier' to be 1, but it was 2" four times
+(tier 1) and "... to be 4, but it was 8" four times (tier 4). The Rift half of the same test, "a Rift carries eight
+different modifiers", passed for all 20 dungeon ids at both tiers. The whole suite's engine log has this one failing
+test and no other. These tests had not run before this window: slice B2's own window was folded into this shared one.
+
+**THE DIAGNOSIS CAME FROM READING THE CODE, NOT FROM A RUN.** The control builds an ordinary Demonic dungeon with
+`MakeDungeon(Id + 100, ..., FRandomStream(Id), false, Basic, Demonic)` for ids 500 to 519 and expected one modifier a
+tier. `MakeDungeon` rolls the dungeon's sub-type from weights that include Sacrificial (`SpawnWeightSacrificial` in
+`CataclysmSurge.cpp`), and `UCataclysmDungeonModifierRules::CountFor` gives a Sacrificial dungeon twice the tier's count
+(`SacrificialMultiplier`, 2). Exactly twice, at both tiers, for 4 of the 20 ids at each (the same stream seeds at both),
+fits that and nothing else in `CountFor`. The coordinating session ruled the game right, since a Sacrificial dungeon
+carries twice the modifiers by design, and approved a change to the test only: the control compares with `CountFor(Tier,
+Basic.SubType)`, and prints each control dungeon's sub-type and count in a "RIFT CONTROL:" line, so window rifts-w2
+shows which ids rolled Sacrificial.
+
+**The new tests' own lines**, from this window's groups alone:
+
+- `Cataclysm.RiftMap.`: `RIFT LINE: "Infernal Rift of 4 floors, 12 days left, sends a dungeon in 5 days"`
+- `Cataclysm.RiftAltars.`: `RIFT ALTAR FLOORS: 1:1,1,1,1 2:1,2,2,2 3:1,2,3,3 4:1,2,3,4 5:2,3,4,5 6:2,3,5,6 7:2,4,6,7 8:2,4,6,8 9:3,5,7,9 10:3,5,8,10 11:3,6,9,11 12:3,6,9,12`
+- `Cataclysm.RiftAltars.`: `RIFT ALTARS FILES: Run_v18.json read, and migrated on the way in, fallen []; Run_v19.json read, fallen [0,2]`
+- `Cataclysm.DeathCost.`: `RIFT DEATH: surges fired 1 before, 2 after; days away counted 1 surges; the death was on day 2`
+- `Cataclysm.SaveLoad.`: `LOAD RIFT ALTAR: Loaded (character ... and run ... were put back: day 1, 166 creatures, placed where it was saved); a Rift yes, floor 1, 1 altar(s) placed, 0 standing; the stairs unsealed`
+- `Cataclysm.DungeonModifierEffects.`: `RIFT CHASMS: floor 1: 1 altar(s), 0 chasm(s); floor 2: 1 altar(s), 0 chasm(s); floor 3: 1 altar(s), 0 chasm(s); a fall from floor 3 of 30 lands on 13 in no Rift and on 8 in a Rift`
+
+**The include check, with no machine time**, at the coordinating session's request: `tools/check_includes.py` from
+`chore/check-includes` at `a1f63e435` (not yet merged), copied outside the repository and called through its `main()`
+with this worktree's `game/Source`, on the 34 `.cpp` files that differ from development `7a5adc23d`: "34 .cpp file(s)
+read: 0 type(s) used that the file cannot see, 0 note(s)", exit 0. Its control: a copy of `CataclysmRiftsTests.cpp` with
+its six project includes removed exits 1 and fails on 12 types, among them `FCataclysmDungeon` and
+`UCataclysmEmpireRun`.
+
+**Next: window rifts-w2**, by the narrowed re-run rule (only a test file changes after this window's whole suite, which
+stands for every other test): the build, `Cataclysm.Rifts.` alone, and the six proofs, registered in the next section.
 ---
 
 ## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)

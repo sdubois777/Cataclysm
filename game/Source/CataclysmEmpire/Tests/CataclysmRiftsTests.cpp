@@ -342,7 +342,11 @@ bool FCataclysmRiftsEightModifiersTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("a Rift carries eight different modifiers"), Slotted.Num(),
 					  UCataclysmDungeonModifierRules::RiftModifierCount);
 
-			// CONTROL: an ordinary Demonic dungeon of the same run carries one a tier.
+			// CONTROL: an ordinary Demonic dungeon of the same run carries what the ordinary rule gives its tier
+			// and sub-type, `UCataclysmDungeonModifierRules::CountFor`: one a tier, and twice that for a
+			// Sacrificial dungeon, whose sub-type the stream may roll. Window rifts-w1 (2026-11-25) failed this
+			// control while it said "one a tier": 4 of the 20 ids at each tier carried twice the tier (issue #51
+			// slice B2). Each control dungeon is printed, so a run shows which rolled Sacrificial.
 			FRandomStream Same(Id);
 			FCataclysmDungeon Basic = Run->Surges->MakeDungeon(Id + 100, FirstOf(*Run, ECataclysmCityTier::Outpost), 1,
 															   Same, false, ECataclysmDungeonType::Basic,
@@ -354,7 +358,13 @@ bool FCataclysmRiftsEightModifiersTest::RunTest(const FString& Parameters)
 			{
 				BasicSlotted += Key != UCataclysmDungeonModifierRules::CorruptedStalkerKey() ? 1 : 0;
 			}
-			TestEqual(TEXT("an ordinary dungeon carries one a tier"), BasicSlotted, Tier);
+			const int32 OrdinaryCount = UCataclysmDungeonModifierRules::CountFor(Tier, Basic.SubType);
+			const FString ControlSubType = UCataclysmSurgeScheduler::SubTypeName(Basic.SubType); // Empty for none.
+			AddInfo(FString::Printf(
+				TEXT("RIFT CONTROL: tier %d, dungeon %d, sub-type %s, %d modifiers, the ordinary rule %d"), Tier,
+				Id + 100, ControlSubType.IsEmpty() ? TEXT("none") : *ControlSubType, BasicSlotted, OrdinaryCount));
+			TestEqual(TEXT("an ordinary dungeon carries what the ordinary rule gives its tier and sub-type"),
+					  BasicSlotted, OrdinaryCount);
 		}
 	}
 	return true;
