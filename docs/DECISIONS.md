@@ -105,14 +105,16 @@ The one through the real kill handler builds the scene `Cataclysm.Swarm.` builds
 Common creature carrying a worn modifier, a character with no worn row, a modifier the creature does not carry, one with
 no place; a regeneration step before the kill; a Common creature's kill through the real handler.
 
-**Three C++ guard proofs are registered for the window:**
+**One C++ guard proof is registered for the window**, as the coordinating session chose under its bundling ruling (one
+per slice that changes engine code): the first below, the one guarding the slice's central rule. The second and third
+were offered and are DROPPED; they are kept here so a later window can run them if it wants to.
 1. `CataclysmStatPipeline.cpp`, `ConditionHolds`: `State.WornEnemyModifierPlaces.Contains(Place)` becomes `true`. Prefix
    `Cataclysm.WornModifiers.`; must fail `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn` (105 before
    the kill).
-2. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Wearer->RefreshLiveMaximumHealth();` removed. Prefix
+2. DROPPED. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Wearer->RefreshLiveMaximumHealth();` removed. Prefix
    `Cataclysm.WornModifiers.`; must fail `TitanicResolveRaisesMaximumHealthAtOnceAndTheStepAfterTwentySecondsLowersIt`
    (1,000 at the kill).
-3. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Creature->RarityStep < 1` becomes `Creature->RarityStep < 0`. Prefix
+3. DROPPED. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Creature->RarityStep < 1` becomes `Creature->RarityStep < 0`. Prefix
    `Cataclysm.WornModifiers.`; must fail `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn` (the Common
    creature lends).
 
