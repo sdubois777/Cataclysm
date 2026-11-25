@@ -126,7 +126,27 @@ not run in a test world, the test would fail at its second figure (15 left after
 
 ### What was run
 
-SUITE_FIGURES_C3D
+**The whole Python suite on `755900fc8`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8501 passed, 9 skipped in 359.85s
+(0:05:59)". The JUnit file agrees: tests 8511, failures 1, errors 0, skipped 9, so 8501 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`.
+
+**The run before, on the working tree, failed three more**: the check that every condition is named in this log, which
+this entry satisfies; and two pinned counts moved before `8fc787d28`, the conditioned probes (28 to 30, for
+`projectile_count` and `cooldowns_recover_faster_percent`) and the scale sources a row names (42 to 43, for
+`fervour_thresholds_reached`).
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 10 C++ files this slice changed: "10 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the four thresholds are in the named namespace `CataclysmFervourThresholds`, declared once in
+  `CataclysmStatPipeline.h` and defined once in its `.cpp`; the new tests' helpers are in
+  `namespace CataclysmFervourThresholdTest`, and each new test class, helper and probe is named in one file only. The
+  record of Long Shadow is a `TArray<float>`, not a fixed-size array member, which no reflected header here uses.
 
 **Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `8fc787d28`, and each `proved`:
