@@ -104,6 +104,20 @@ eight more probes.
 3. The decay's gate: in `CataclysmWarFervour.cpp`, `if (Cataclysm->SecondsOutOfCombat() < 0.0f)` becomes
    `if (Cataclysm->SecondsOutOfCombat() < -100.0f)`. Must fail `TheDecayWaitsThreeSecondsAfterTheLastBlowThenTakesItsRate`.
 
+### PYTHON
+
+`python -u -m pytest --junit-xml=<outside the repository>` on the branch before this section was written: "1 failed,
+8368 passed, 9 skipped in 380.67s"; the JUnit file: tests 8378, failures 1, errors 0, skipped 9. **The one failure is
+inherited**: `test_datatable_assets_are_current.py` names `PassiveEffects.csv` and `PassiveNodes.csv`, whose assets the
+editor step has not rebuilt, as it does on `feat/demonic-tree-rework` and `feat/passive-row-port`. `python -m ruff check
+.`: "All checks passed!". `python tools/check_resolved_cpp.py --changed`: "9 files read, 0 with complaints".
+`python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date".
+
+**A Python guard proof**, `tools/prove_guard.py` `break_and_run` in a `git archive` copy of `547c74f88`: the workbook
+script's refusal of a node somebody wrote since (`if current:` before its `raise ReapplyError(` made `if False:`).
+"PROVED: 1 failed, 8 passed | restored: 9 passed"; named:
+`tools/tests/test_war_fervour_sources_scripts.py::test_the_row_script_refuses_a_node_somebody_wrote_since`.
+
 ---
 
 ## 2026-11-24 — A passive node can act on an event: Passive Effects rows carry the enchantment row's action columns, a second condition, an offset on a scale, and a per-point count from a threshold (the passive row port)
