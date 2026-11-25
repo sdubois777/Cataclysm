@@ -2,6 +2,131 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Evasions and a full bar that speed the next thing, and four nodes that are data alone (Death trees, slice C6a)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `CooldownReduceMovementAction`,
+  `FervourHoldExtendedAction`; `ActOnEvent` grants the next-hit charge "until used" at a value of 0 and lengthens a
+  running hold; `ReduceCooldowns` takes the movement skill's cooldown; `CurrentConditions` fills the new state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `next_hit_is_critical`
+  (`NextHitIsCritical`) and its state field; `FCataclysmPoolAction::bExtendFervourHold`.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`: an action row granted from a point threshold is named
+  apart (`_From<N>`), so each step holds its own keys.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmEvadeAndFullTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (a
+  scaled probe for `projectile_count`), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and
+  `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two, the name
+  map, and the Chain Execution test widened), `test_generate_datatables.py` (a class of nine, and the C4d1 class's
+  limits moved), `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (an exception) and
+  `test_passive_effects_match_the_node_text.py` and `test_passive_rows_carry_the_action_columns.py` (one).
+- `tools/generate_datatables.py` (the two actions, the condition, `projectile_count` asked under a scale, and the
+  required tags and a stepped row's threshold in two duplicate keys), `tools/reapply_death_trees_workbook.py`,
+  `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (604 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **BRIM'S CHARGE LASTS UNTIL IT IS USED**, a judgement: its sentence, "your next hit is a critical strike", states no
+  time. A `next_hit_critical` value of 0 now means "until used"; every other row states its seconds. The generator
+  accepts 0 to 10 seconds where it accepted above 0.
+- **BRIM'S +5% DAMAGE HOLDS WHILE ANY NEXT-HIT CHARGE IS HELD**, Chain Execution's or Slip's included, a judgement: the
+  condition reads the one charge a character holds, which the three nodes share.
+- **THE MOVEMENT SKILL'S COOLDOWN CUT IS SHOWN BY READING THE CODE AND A PYTHON TEST, NOT IN UNREAL.** No Unreal test in
+  this slice grants a real movement skill and runs its cooldown, as with Relentless in slice C4d1. The Unreal tests show
+  the stepped rows each keyed apart and each worth 1 second.
+- **KEEP THE COUNT LENGTHENS A RUNNING HOLD ONLY**, as Borrowed Time's does (ruled for slice C4b1): an evasion after the
+  decay has begun adds nothing.
+- **A FAULT FOUND AND FIXED IN THIS SLICE, BEFORE IT WAS COMMITTED.** Widening the generator's "one row per node,
+  option, action and event" key to five columns left its error message unpacking four, so a real duplicate would have
+  raised `ValueError` rather than the check's own message. The whole suite caught it
+  (`test_passive_rows_carry_the_action_columns.py::test_two_rows_of_one_node_sharing_an_action_and_event_are_refused`);
+  the message now names the threshold too, and a new test holds that two steps at different thresholds are accepted
+  and the same two at one threshold are refused.
+- **TWO DUPLICATE CHECKS NOW READ MORE COLUMNS.** The generator's "same stat twice on one node" key, and the Python test
+  holding the same key, now include the required tags, because a row requires every tag it names: Lasting Wounds is
+  one `dot_duration` row for Poison and one for Bleed. The generator's "one row per node, option, action and event" key
+  now includes the point threshold, matching the engine's new naming.
+
+### What each reads
+
+- **SLIP AND BRIM:** `next_hit_critical`, Chain Execution's action of slice C4d1, now also on `dodge` (Slip, 3 seconds,
+  "After you evade a hit, your next hit within 3 seconds") and on `resource_full` (Brim, 0, until used). Brim's "+5%
+  increased damage per point" is attack and spell damage under the new no-value condition `next_hit_is_critical`,
+  which reads `HoldsNextHitCritical`.
+- **FIND THE RHYTHM AND SIDESTEP:** a new cooldown reduction, `cooldown_reduce_movement`, taking seconds off the movement
+  skill's running cooldown (`ReduceCooldowns`, beside the Heavy skill's). Find the Rhythm: 1 second on
+  `critical_strike` under `target_is_boss`, a row at 4 points and one at 8. Sidestep: 1 second on `dodge`, a row at 5
+  points and one at 10.
+- **KEEP THE COUNT:** a new action, `fervour_hold_extended`, on `dodge` only: a running hold before the decay lengthened
+  by its seconds, never past the hold's full length (`ExtendKillDecayHold`, Borrowed Time's). 1 second, a row at 3
+  points and one at 6.
+- **STEPPED ACTION ROWS:** "1 second for every 4 points" is a row at each step, as stat rows have been. An action row's
+  trigger, reset and charge keys begin with its enchantment name, so two steps of one node would have shared one key and
+  the second would never act; `EnchantmentRowsFor` now names an action row with a point threshold
+  `Passive_<node>_From<N>`. No existing action row had a threshold, so nothing already built is renamed; stat rows are
+  not renamed.
+- **THE FOUR DATA-ONLY NODES:** Soul Barrage (`projectile_count` flat 1 by `class_resource_held`, step 10, the Soul
+  Collector's 200 vow, option 3; `projectile_count` is now registered as asked under a scale, with a probe); Lasting
+  Wounds (`dot_duration` increased 4 for Poison and for Bleed); Twin Step (`skill_charges_bonus` flat 1 on
+  `Slot.Movement`; a reset already refills every charge); Riposte (`strike_target` 100 on `dodge`, melee only, the basic
+  attack's stand-in, as ruled).
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Brim (Shadow basic, max 6) | action next_hit_critical, 0, on resource_full; attack_damage and spell_damage, increased, 5, cond=next_hit_is_critical |
+| Slip (Shadow basic, max 1) | action next_hit_critical, 3, on dodge |
+| Find the Rhythm (Shadow basic, max 8) | action cooldown_reduce_movement, 1, on critical_strike, cond=target_is_boss, min_points 4; the same at 8 |
+| Sidestep (Shadow keystone, max 10) | action cooldown_reduce_movement, 1, on dodge, min_points 5; the same at 10 |
+| Keep the Count (Shadow basic, max 6) | action fervour_hold_extended, 1, on dodge, min_points 3; the same at 6 |
+| Soul Barrage (Soul Collector 200 vow, option 3) | projectile_count, flat, 1, scale class_resource_held, step 10 |
+| Lasting Wounds (Shadow basic, max 6) | dot_duration, increased, 4, tags Keyword.DoT.Poison; the same with Keyword.DoT.Bleed |
+| Twin Step (Shadow keystone) | skill_charges_bonus, flat, 1, tags Slot.Movement |
+| Riposte (Shadow keystone) | action strike_target, 100, on dodge, tags Type.Melee |
+
+`PassiveEffects.csv` 589 to 604; the Shadow 98 rows, the Soul Collector 123. The pins: rows 604, nodes 362, options 53.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C6 plan: C1, the order C6a to C6e now and C5, the Death-skills
+nodes (the Abomination included) and the Soul Fuel group after bundle 3; C2, nine of the fourteen new mechanisms in scope
+and five as backlog issues, filed as #2906 Afterimage, #2907 Shadow Clone, #2908 Spirit Volley, #2909 Shadow Step and
+#2910 Shared Flesh; C3, the vow headers need no rows; C4, Riposte as `strike_target` on `dodge`, melee only, 100% attack
+damage, the basic attack's stand-in; C5, a `points` Fraction Of base for flat Fervour (slice C6b); C6, whatever of C6a
+to C6e is pushed with a clean Python run before bundle 3 registers joins it.
+
+### Research
+
+None new. Each shape is the node's own sentence on pieces already built and researched: the next-hit charge (slice C4d1,
+Path of Exile's Ambush), the hold before decay (slice C4b1), the cooldown cut (issue #1833).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.EvadeAndFull.` | new: `SlipAndBrimGrantTheChargeOnAnEvasionAndAFullBar`, `BrimsDamageHoldsOnlyWhileTheChargeIsHeld`, `KeepTheCountLengthensARunningHoldOnAnEvasion`, `AStepAtEachThresholdIsItsOwnRowWithItsOwnName`, `TheNineNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.StatExemption.` | the scaled probe runs one new probe, `projectile_count` | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 604 | unchanged |
+
+Each new test has a control: a character with neither row; the damage before and after the charge; the same kill and
+evasion without Keep the Count's row; Brim's action keeping the node's name, and the step at 8 absent at 5 points.
+
+**One C++ guard proof is registered for the window**, as the coordinating session's bundling ruling sets (one per slice
+that changes engine code): `CataclysmPassiveTree.cpp`, `EnchantmentRowsFor`: the line
+`Row.Enchantment += FString::Printf(TEXT("_From%d"), Effect.MinPoints);` removed. Prefix `Cataclysm.EvadeAndFull.`;
+must fail `AStepAtEachThresholdIsItsOwnRowWithItsOwnName`.
+
+### What was run
+
+SUITE_FIGURES_C6A
+
+PYTHON_PROOFS_C6A
+
+---
+
 ## 2026-11-25 — Wearer of the Dead lends an Elite's modifiers for 20 seconds (Death trees, slice C4d3)
 
 **Affects:**
