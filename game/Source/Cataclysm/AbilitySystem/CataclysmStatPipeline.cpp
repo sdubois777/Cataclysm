@@ -180,6 +180,7 @@ namespace
 		{ TEXT("seconds_after_minion_death"), ECataclysmStatCondition::WithinSecondsOfMinionDeath },
 		{ TEXT("minion_death_in_reach_within_seconds"), ECataclysmStatCondition::MinionDeathInReachWithinSeconds },
 		{ TEXT("hit_took_at_least_percent_of_max_health"), ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth },
+		{ TEXT("minion_within_metres_of_you"), ECataclysmStatCondition::MinionWithinMetresOfYou },
 	};
 
 	struct FNamedStatScale
@@ -667,6 +668,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesYourPoison:
 	case C::TargetStruckFromBehind:
 	case C::TargetCarriesNecrosis:
+	case C::MinionWithinMetresOfYou:
 		return EOn::TheBlowOrSkill;
 
 	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
@@ -1561,6 +1563,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	// THE DEATH TREES' SLICE C6d2 (2026-11-25): a clock, as every clock is, never reads -1 and refuses, inclusive.
 	case ECataclysmStatCondition::WithinSecondsOfMinionDeath:
 		return State.SecondsSinceMinionDied >= 0.0f && State.SecondsSinceMinionDied <= Value;
+
+	// THE MINION BEING ASKED ABOUT STANDS WITHIN THIS MANY METRES OF ITS SUMMONER: Marshal. -1, no minion named, refuses.
+	case ECataclysmStatCondition::MinionWithinMetresOfYou:
+		return State.AskingMinionMetres >= 0.0f && State.AskingMinionMetres <= Value;
 
 	// THE HIT BEING ANNOUNCED TOOK AT LEAST THIS SHARE OF MAXIMUM HEALTH. -1, outside the announcement, refuses.
 	case ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth:

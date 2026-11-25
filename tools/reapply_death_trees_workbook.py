@@ -800,6 +800,20 @@ NODES: tuple[Node, ...] = (
     Node(NE + "basic_gr_stem2", "Avenging Dead",
          (R("minion_attack_speed", "increased", 3, cond="hit_took_at_least_percent_of_max_health", cond_value=5,
             scale="own_stacks", step=1, cap=1, event="hit_taken", stack_seconds=4),)),
+    # Marshal's minions within 10 metres of the summoner, measured at each blow.
+    Node(NE + "basic_gr_stem1", "Marshal",
+         (R("minion_damage", "increased", 2, cond="minion_within_metres_of_you", cond_value=10),)),
+    # Shared Leech's "At 8 points: 1%", one row from 8 points.
+    Node(NE + "basic_gr_b0", "Shared Leech",
+         (R("minion_damage_leeched_to_you_percent", "flat", 1, min_points=8),)),
+    # The Final Rite's Eternal Army (option 2): "Your minions cannot die while you
+    # are above 50% health".
+    Node(NE + "capstone_200", "Eternal Army",
+         (R("minion_cannot_die_above_health_percent", "flat", 50),), option=2),
+    # The Third Rite's Bound Bones (option 3): "Each minion gains 5% of your
+    # maximum health for every other minion alive", recounted each step (Q4).
+    Node(NE + "capstone_100", "Bound Bones",
+         (R("minion_health_percent_of_yours_per_other_minion", "flat", 5),), option=3),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

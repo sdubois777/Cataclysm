@@ -493,7 +493,7 @@ public:
 	 * nothing rather than negative damage.
 	 */
 	float MultiplierForStatAgainst(FName Stat, const FGameplayTagContainer& Tags,
-								   const AActor* Target) const;
+								   const AActor* Target, const AActor* AskingMinion = nullptr) const;
 
 	/**
 	 * A figure with only this character's modifiers on `Stat` that NAME
@@ -4982,6 +4982,13 @@ public:
 
 	/** Seconds since `NoteMinionDied` last ran, or -1 for never. */
 	float SecondsSinceMinionDied() const;
+
+	/**
+	 * What Bound Bones last added to this follower's maximum health, so `UCataclysmRegeneration::BoundBonesStep` writes
+	 * only the difference when the count of followers changes. The Death trees' slice C6d2 (2026-11-25). 0 on
+	 * everything that follows nobody.
+	 */
+	float BoundBonesHealthAdded = 0.0f;
 
 	/**
 	 * Record that this character has just used a skill carrying `Type.Spell`. Issue #1815, for the

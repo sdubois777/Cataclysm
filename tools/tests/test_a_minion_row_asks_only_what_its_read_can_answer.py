@@ -88,6 +88,18 @@ def target_answered_kinds() -> set[str]:
     return set(re.findall(r"case ECataclysmStatCondition::(\w+):", block))
 
 
+def asking_minion_kinds() -> set[str]:
+    """The kinds `MultiplierForStatAgainst` answers from the minion its caller
+    names, beside what `WithTargetState` fills: Marshal's distance, the Death
+    trees' slice C6d2 (2026-11-25). Read from the function's own body, so the
+    allowance lasts only while the line that fills it does."""
+    block = body_of(read(ABILITY_SYSTEM_CPP),
+                    "float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(",
+                    "the summoner's lookup a minion's damage is read through")
+    return {"MinionWithinMetresOfYou"} if re.search(
+        r"State\.AskingMinionMetres = \(AskingMinion && Self\)", block) else set()
+
+
 def minion_rows() -> list[tuple[str, str, str, str]]:
     """(sheet, row name, stat, condition) for every row on a minion stat."""
     rows = []
@@ -128,7 +140,7 @@ def test_no_minion_row_asks_what_its_read_cannot_answer(request) -> None:
     names = request.getfixturevalue("name_of_kind")
     kind_of_name = {name: kind for kind, name in names.items()}
     blow = blow_or_skill_kinds()
-    targeted = target_answered_kinds()
+    targeted = target_answered_kinds() | asking_minion_kinds()
 
     wrong = []
     for sheet, name, stat, condition in minion_rows():

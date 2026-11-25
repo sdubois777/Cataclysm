@@ -751,8 +751,9 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: Cold (two), Hasty Dead (two) and Grave Pact.
 #:
 #: AND TO 653 THE SAME DAY, for slice C6d2: Death Ward, Bone Knit, Marrow Feast
-#: and Avenging Dead.
-AUTHORED_ROWS = 653
+#: and Avenging Dead. AND TO 654 FOR ITS MARSHAL. AND TO 657 FOR ITS SHARED
+#: LEECH, ETERNAL ARMY AND BOUND BONES.
+AUTHORED_ROWS = 657
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1239,8 +1240,11 @@ AUTHORED_ROWS = 653
 #: Dead and Grave Pact.
 #:
 #: AND TO 390 THE SAME DAY, for slice C6d2's Death Ward, Bone Knit, Marrow Feast
-#: and Avenging Dead.
-AUTHORED_NODES = 390
+#: and Avenging Dead. AND TO 391 FOR ITS MARSHAL. AND TO 392 FOR ITS SHARED
+#: LEECH. Eternal Army and Bound Bones are options, counted in
+#: `AUTHORED_OPTIONS`; their capstones had no row before, so each moves this
+#: count too, to 394.
+AUTHORED_NODES = 394
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1364,7 +1368,10 @@ AUTHORED_NODES = 390
 #:
 #: AND TO 55 THE SAME DAY, for slice C6b3: Reaper's Due (the Soul Collector's
 #: 25 vow, option 2).
-AUTHORED_OPTIONS = 55
+#:
+#: AND TO 57 THE SAME DAY, for slice C6d2: Bound Bones (the Necromancer's 100
+#: vow, option 3) and Eternal Army (its 200 vow, option 2).
+AUTHORED_OPTIONS = 57
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1939,6 +1946,8 @@ CONDITION_WORDS = {
     "seconds_after_minion_death": ("has died in the last", "{value:g} second"),
     "minion_death_in_reach_within_seconds": ("after one of your minions dies within", "{value:g} second"),
     "hit_took_at_least_percent_of_max_health": ("when a hit takes more than", "{value:g}% of your maximum health"),
+    # AND MARSHAL'S "Your minions within 10 metres of you".
+    "minion_within_metres_of_you": ("your minions within", "{value:g} metres of you"),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"

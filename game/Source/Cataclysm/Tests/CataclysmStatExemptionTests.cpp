@@ -12575,6 +12575,122 @@ namespace CataclysmStatExemptionTest
 	 * Death trees' slice C6c (2026-11-25). A fighter that has never killed, holding 50 of 100, decaying 10 a second, given
 	 * a 10 second step. THE CONTROL: with no floor it decays to 0. With a floor of 20, to 20.
 	 */
+	void ProbeMinionDamageLeechedToYou(FAutomationTestBase& Test)
+	{
+		// `minion_damage_leeched_to_you_percent`, read by `UCataclysmLeech::NoteMinionHit`: the Necromancer's Shared
+		// Leech, the Death trees' slice C6d2 (2026-11-25). An Imp's blow takes 200. THE CONTROL: with no row its
+		// summoner is paid nothing. With 5, one health payment of 10.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner.Actor, FVector(3.0f * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+		UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+		if (!Test.TestNotNull(TEXT("minion_damage_leeched_to_you_percent: an Imp"), ImpSystem))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		UCataclysmLeech::NoteMinionHit(ImpSystem, 200.0f);
+		const int32 WithNoRow = Summoner.AbilitySystem->GetLeechPayments().Num();
+		GrantFlatLines(Summoner, {{UCataclysmLeech::MinionDamageLeechedStat, 5.0f}});
+		UCataclysmLeech::NoteMinionHit(ImpSystem, 200.0f);
+		const TArray<FCataclysmLeechPayment>& Paid = Summoner.AbilitySystem->GetLeechPayments();
+		Test.TestEqual(TEXT("control: with no row the summoner is paid nothing"), WithNoRow, 0);
+		if (Test.TestEqual(TEXT("with 5, one payment, so NoteMinionHit really reads it"), Paid.Num(), 1))
+		{
+			Test.TestTrue(TEXT("a health payment"), Paid[0].Pool == ECataclysmLeechPool::Health);
+			Test.TestEqual(TEXT("of 5% of 200"), Paid[0].Remaining, 10.0f, 0.001f);
+		}
+	}
+
+	void ProbeMinionCannotDieAboveHealthPercent(FAutomationTestBase& Test)
+	{
+		// `minion_cannot_die_above_health_percent`, read by `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`:
+		// the Necromancer's Eternal Army, the Death trees' slice C6d2 (2026-11-25). An Imp's health is written at
+		// nought. THE CONTROL: with no row it dies. With 50 and its summoner at full health, it is left at 1.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		Summoner.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), TargetHealthPool);
+		AtHealthShare(Summoner, 1.0f);
+		const auto WrittenAtNought = [&Summoner, &Test](bool bWithTheRow, bool& bOutDead) -> float
+		{
+			if (bWithTheRow)
+			{
+				GrantFlatLines(Summoner, {{UCataclysmVitalAttributeSet::MinionCannotDieAboveHealthPercentStat, 50.0f}});
+			}
+			ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+				Summoner.Actor, FVector(3.0f * M, bWithTheRow ? 3.0f * M : 0.0f, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+			if (!Test.TestNotNull(TEXT("minion_cannot_die_above_health_percent: an Imp"), ImpSystem))
+			{
+				bOutDead = false;
+				return -1.0f;
+			}
+			ImpSystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.0f);
+			bOutDead = UCataclysmSkillEffects::IsDead(Imp);
+			return ImpSystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		};
+		bool bDeadWithNoRow = false;
+		WrittenAtNought(false, bDeadWithNoRow);
+		bool bDeadWithTheRow = true;
+		const float LeftWithTheRow = WrittenAtNought(true, bDeadWithTheRow);
+		Test.TestTrue(TEXT("control: with no row the Imp dies"), bDeadWithNoRow);
+		Test.TestFalse(TEXT("with 50 and its summoner at full health it does not, so the notice really reads it"),
+					   bDeadWithTheRow);
+		Test.TestEqual(TEXT("and is left at 1 health"), LeftWithTheRow, 1.0f, 0.001f);
+	}
+
+	void ProbeMinionHealthPercentOfYoursPerOtherMinion(FAutomationTestBase& Test)
+	{
+		// `minion_health_percent_of_yours_per_other_minion`, read by `UCataclysmRegeneration::BoundBonesStep`: the
+		// Necromancer's Bound Bones, the Death trees' slice C6d2 (2026-11-25). A summoner of 10,000 maximum health with
+		// three Imps. THE CONTROL: with no row a step adds nothing. With 5, the first Imp gains 5% of 10,000 for each of
+		// the other two, 1,000, to its maximum and to its health.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		Summoner.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), TargetHealthPool);
+		AtHealthShare(Summoner, 1.0f);
+		TArray<ACataclysmMinion*> Imps;
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			Imps.Add(ACataclysmMinion::Spawn(Summoner.Actor, FVector(3.0f * M, (Index - 1) * 3.0f * M, 0),
+											 /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp")));
+		}
+		UAbilitySystemComponent* First = UCataclysmTargeting::AbilitySystemOf(Imps[0]);
+		if (!Test.TestNotNull(TEXT("minion_health_percent_of_yours_per_other_minion: three Imps"),
+							  Imps[1] && Imps[2] ? First : nullptr))
+		{
+			return;
+		}
+		const float MaximumBefore = First->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		const float HealthBefore = First->GetNumericAttribute(Vital::GetHealthAttribute());
+		UCataclysmRegeneration::BoundBonesStep(Imps[0]);
+		const float MaximumWithNoRow = First->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		GrantFlatLines(Summoner, {{UCataclysmRegeneration::BoundBonesStat, 5.0f}});
+		UCataclysmRegeneration::BoundBonesStep(Imps[0]);
+		Test.TestEqual(TEXT("control: with no row a step adds nothing"), MaximumWithNoRow, MaximumBefore, 0.01f);
+		Test.TestEqual(TEXT("with 5, 1,000 for the two others, so BoundBonesStep really reads it"),
+					   First->GetNumericAttribute(Vital::GetMaxHealthAttribute()), MaximumBefore + 1000.0f, 0.01f);
+		Test.TestEqual(TEXT("and gained as health"), First->GetNumericAttribute(Vital::GetHealthAttribute()),
+					   HealthBefore + 1000.0f, 0.01f);
+	}
+
 	void ProbeDecayFloorPercent(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -13344,6 +13460,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_hold_extended_on_gain_seconds"), &ProbeHoldExtendedOnGainSeconds},
 			// THE DEATH TREES' SLICE C6c (2026-11-25): Miser's Grip, Soulbound, Overflow and Unbroken Chain.
 			{TEXT("fervour_decay_floor_percent"), &ProbeDecayFloorPercent},
+			// AND THE DEATH TREES' SLICE C6d2's SHARED LEECH (2026-11-25).
+			{TEXT("minion_damage_leeched_to_you_percent"), &ProbeMinionDamageLeechedToYou},
+			{TEXT("minion_cannot_die_above_health_percent"), &ProbeMinionCannotDieAboveHealthPercent},
+			{TEXT("minion_health_percent_of_yours_per_other_minion"), &ProbeMinionHealthPercentOfYoursPerOtherMinion},
 			{TEXT("health_percent_lost_per_fervour_lost"), &ProbeHealthPercentLostPerFervourLost},
 			{TEXT("fervour_overflow_attack_speed_seconds"), &ProbeOverflowAttackSpeedSeconds},
 			{TEXT("kill_chain_seconds"), &ProbeKillChainSeconds},

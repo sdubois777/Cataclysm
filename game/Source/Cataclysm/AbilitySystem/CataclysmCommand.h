@@ -336,12 +336,14 @@ public:
 	 * definition carries the reasoning.
 	 */
 	static float SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
-									   const FGameplayTagContainer& MinionTags);
+									   const FGameplayTagContainer& MinionTags,
+									   const AActor* AskingMinion = nullptr);
 
 	/** `SummonerMultiplierFor` against the character a minion is striking. Moved with it. */
 	static float SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
 										   const AActor* Target,
-										   const FGameplayTagContainer& MinionTags);
+										   const FGameplayTagContainer& MinionTags,
+										   const AActor* AskingMinion = nullptr);
 
 	/**
 	 * What a blow from `Striker` is multiplied by because a thrall struck it: its commander's

@@ -5615,6 +5615,11 @@ CONDITIONS = {
     # refused anywhere else (`EVENT_CONDITIONS` below). The value is a share in
     # per cent.
     "hit_took_at_least_percent_of_max_health": (0.0, 100.0, "a share of maximum health in per cent"),
+    # AND MARSHAL'S "Your minions within 10 metres of you deal +2% increased
+    # damage", the Death trees' slice C6d2 (2026-11-25): how far the minion whose
+    # damage is asked stands from its summoner, which the summoner's lookup is
+    # handed for a minion's or a thrall's blow and explosion. The value is metres.
+    "minion_within_metres_of_you": (0.0, 100.0, "a number of metres"),
     # THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25). Read the Blow's
     # "attacks from Elite and stronger enemies" is `opponent_rarity_at_least`,
     # the attacker's rung on a blow taken, the value the rung. Vigil Over the

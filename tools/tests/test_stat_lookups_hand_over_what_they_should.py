@@ -639,6 +639,21 @@ INVENTORY = {
         "the share a projectile's later contact keeps (issue #1686), with "
         "the firing skill's tags; the count of contacts is the "
         "projectile's own, so no blow state is handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
+     'FName(MinionDamageLeechedStat), FGameplayTagContainer(), 0.0f'):
+        "the commander's share of its minion's damage leeched as health (the "
+        "Death trees' slice C6d2, Shared Leech), asked of the commander with its "
+        "own state; the blow is the minion's, not the commander's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
+     'FName(BoundBonesStat), FGameplayTagContainer(), 0.0f'):
+        "the commander's share of maximum health per other follower (the Death "
+        "trees' slice C6d2, Bound Bones), asked each regeneration step, which "
+        "is a clock rather than a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(MinionCannotDieAboveHealthPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the commander's health share above which a follower does not die (the "
+        "Death trees' slice C6d2, Eternal Army), asked where the follower's "
+        "health reaches nought; a flag of the commander's, not a blow's",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
      'FName(Stat), FGameplayTagContainer(), Stored'):
         'a regeneration tick, which is a clock rather than a blow',

@@ -855,7 +855,7 @@ bool UCataclysmAbilitySystemComponent::IsStatRemoved(
 }
 
 float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
-	FName Stat, const FGameplayTagContainer& Tags, const AActor* Target) const
+	FName Stat, const FGameplayTagContainer& Tags, const AActor* Target, const AActor* AskingMinion) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -868,11 +868,15 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// THE STATE `IncreasesForStat` BUILDS, WITH THE TARGET ADDED, nested the
 	// way `AttackDamageMoreForSkill` nests it. `WithTargetState` only adds the
 	// target's readings, so every other condition is judged as it is there.
+	FCataclysmStatConditions State = WithEnemiesInReach(
+		Inputs->Modifiers,
+		WithTargetState(Inputs->Modifiers, Target, CurrentConditions()));
+	// AND HOW FAR THE MINION ASKING STANDS FROM THIS CHARACTER, for Marshal's `minion_within_metres_of_you` (the Death
+	// trees' slice C6d2, 2026-11-25). -1, which refuses, when no minion is named.
+	const AActor* Self = GetAvatarActor();
+	State.AskingMinionMetres = (AskingMinion && Self) ? UCataclysmTargeting::MetresBetween(Self, AskingMinion) : -1.0f;
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
-		Inputs->Base, Inputs->Modifiers, Tags,
-		WithEnemiesInReach(
-			Inputs->Modifiers,
-			WithTargetState(Inputs->Modifiers, Target, CurrentConditions())));
+		Inputs->Base, Inputs->Modifiers, Tags, State);
 
 	// NOTHING IS FOLDED INTO AN ATTRIBUTE FOR A STAT THAT HAS NONE, so the
 	// "more" product is the whole of it and is divided by nothing, unlike

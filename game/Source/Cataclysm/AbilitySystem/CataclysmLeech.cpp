@@ -2,6 +2,7 @@
 
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCommand.h"
 // For the tag that says a health top-up came from leech. Issue #1006.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -61,6 +62,32 @@ float UCataclysmLeech::PaidInStep(const FCataclysmLeechPayment& Payment,
 	}
 
 	return Payment.Remaining * SecondsInStep / Payment.SecondsLeft;
+}
+
+void UCataclysmLeech::NoteMinionHit(UAbilitySystemComponent* Dealer, float DamageTaken)
+{
+	if (DamageTaken <= 0.0f || !Dealer)
+	{
+		return;
+	}
+	const AActor* Commander = UCataclysmCommand::CommanderOf(Dealer->GetAvatarActor());
+	UCataclysmAbilitySystemComponent* Theirs =
+		Commander ? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander)) : nullptr;
+	if (!Theirs)
+	{
+		return;
+	}
+	const float Amount = AmountFrom(
+		DamageTaken, Theirs->StatForSkill(FName(MinionDamageLeechedStat), FGameplayTagContainer(), 0.0f));
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+	FCataclysmLeechPayment Payment;
+	Payment.Pool = ECataclysmLeechPool::Health;
+	Payment.Remaining = Amount;
+	Payment.SecondsLeft = PayoutSecondsFor(Theirs);
+	Theirs->AddLeechPayment(Payment);
 }
 
 void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,

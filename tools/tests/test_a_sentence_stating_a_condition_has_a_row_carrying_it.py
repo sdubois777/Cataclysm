@@ -55,6 +55,10 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Necromancer_capstone_200", "2", "health_above"):
+        "Eternal Army's 'while you are above 50% health' is the commander's health share its stat "
+        "minion_cannot_die_above_health_percent 50 compares, read where a follower's health reaches nought "
+        "(the Death trees' slice C6d2)",
     ("SoulCollector_basic_b_a0", "0", "kill_chain_within_seconds"):
         "Kill Chain's 'within 2 seconds of each other' is its stacks' shared 2-second window (own_stacks, Stack "
         "Seconds 2), which Unbroken Chain lengthens at the grant (the Death trees' slice C6c)",

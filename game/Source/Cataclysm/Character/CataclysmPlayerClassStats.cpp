@@ -1160,6 +1160,15 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("health_percent_lost_per_fervour_lost"),
 		TEXT("fervour_overflow_attack_speed_seconds"),
 		TEXT("kill_chain_seconds"),
+		// And the Necromancer's Shared Leech, the Death trees' slice C6d2: the per cent of a minion's damage its
+		// commander leeches as health. Read by UCataclysmLeech::NoteMinionHit. No attribute and no base.
+		TEXT("minion_damage_leeched_to_you_percent"),
+		// And its Eternal Army: the per cent of the commander's health above which a follower does not die. Read by
+		// UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero. No attribute and no base.
+		TEXT("minion_cannot_die_above_health_percent"),
+		// And its Bound Bones: the per cent of the commander's maximum health each follower gains for every other one
+		// alive. Read by UCataclysmRegeneration::BoundBonesStep. No attribute and no base.
+		TEXT("minion_health_percent_of_yours_per_other_minion"),
 		// And the Shadow's starting node and Telling Blows, the Death trees' slice C4d1: the Fervour a landed critical
 		// strike pays, read by UCataclysmFervour::GainOnCriticalStrike against the character struck. No attribute and no
 		// base.

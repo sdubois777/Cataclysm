@@ -2097,6 +2097,16 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	HitTookAtLeastPercentOfMaxHealth
 		UMETA(DisplayName = "Hit Took At Least Percent Of Max Health"),
+
+	/**
+	 * The minion whose figure is being asked stands within `ConditionValue` metres of its summoner: Marshal, "Your
+	 * minions within 10 metres of you deal +2% increased damage per point". The Death trees' slice C6d2 (2026-11-25).
+	 * Read from `AskingMinionMetres`, which `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` fills when its
+	 * caller names the minion -- a minion's or a thrall's blow and its explosion -- and -1, which refuses, otherwise.
+	 * IT TAKES A VALUE: the metres.
+	 */
+	MinionWithinMetresOfYou
+		UMETA(DisplayName = "Minion Within Metres Of You"),
 };
 
 /**
@@ -3302,6 +3312,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float HitTakenPercentOfMaxHealth = -1.0f;
+
+	/**
+	 * How far the minion whose figure is being asked stands from its summoner, in metres; -1 when no minion is named.
+	 * The Death trees' slice C6d2 (2026-11-25). See `MinionWithinMetresOfYou`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float AskingMinionMetres = -1.0f;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
@@ -5809,7 +5826,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-fourth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-fifth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5826,7 +5843,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-SIX OF THE HUNDRED-AND-THREE COMPARE NOTHING. They are the case labels
+	 * FORTY-SIX OF THE HUNDRED-AND-FOUR COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

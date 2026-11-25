@@ -1866,6 +1866,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Outcome.DealtToHealth + Outcome.AbsorbedByShield
 							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary,
 						LeechTags);
+					// AND A MINION'S OR A THRALL'S BLOW PAYS ITS COMMANDER'S SHARED LEECH, the same figure (the Death
+					// trees' slice C6d2, 2026-11-25). The blow itself still leeches nothing for the minion.
+					UCataclysmLeech::NoteMinionHit(
+						const_cast<UAbilitySystemComponent*>(
+							Data.EffectSpec.GetContext()
+								.GetInstigatorAbilitySystemComponent()),
+						Outcome.DealtToHealth + Outcome.AbsorbedByShield
+							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary);
 				}
 
 				// AND A BLOW THAT GOT THROUGH TO A BOSS OPENS THE ATTACKER'S
@@ -3121,6 +3129,30 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		|| UCataclysmSkillEffects::IsBeingMarkedDead(Character))
 	{
 		return;
+	}
+
+	// A FOLLOWER WHOSE COMMANDER HOLDS ETERNAL ARMY DOES NOT DIE WHILE THE COMMANDER IS ABOVE ITS SHARE OF HEALTH: "Your
+	// minions cannot die while you are above 50% health", the Necromancer's Final Rite, the Death trees' slice C6d2
+	// (2026-11-25). It is left at 1 health instead. HERE, where every write of health at nought begins a death, so a hit
+	// and a tick are refused alike; a rule that ends a creature by calling `HandleDeath` outright does not pass here.
+	// Not a gadget or a trap, which are machines rather than minions. "Above" is strict.
+	if (const AActor* Commander = UCataclysmCommand::CommanderOf(Character))
+	{
+		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+		if (Theirs && AbilitySystem && (!AsMinion || !AsMinion->IsDeployable()))
+		{
+			const float AbovePercent =
+				Theirs->StatForSkill(FName(MinionCannotDieAboveHealthPercentStat), FGameplayTagContainer(), 0.0f);
+			const float TheirMaximum = Theirs->GetNumericAttribute(GetMaxHealthAttribute());
+			const float TheirHealth = Theirs->GetNumericAttribute(GetHealthAttribute());
+			if (AbovePercent > 0.0f && TheirMaximum > 0.0f && TheirHealth / TheirMaximum * 100.0f > AbovePercent)
+			{
+				const_cast<UAbilitySystemComponent*>(AbilitySystem)->SetNumericAttributeBase(GetHealthAttribute(), 1.0f);
+				return;
+			}
+		}
 	}
 
 	// WHOEVER WAS COMMANDING THIS THING GAINS FERVOUR FOR LOSING IT.

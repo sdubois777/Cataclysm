@@ -1689,7 +1689,8 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// summoner's stat lines, a different list, so nothing is counted twice.
 		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
 			UCataclysmTargeting::AbilitySystemOf(this),
-			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
+			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags,
+															   /*AskingMinion=*/this),
 			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
@@ -2070,7 +2071,7 @@ void ACataclysmMinion::Explode()
 	// thrall. `minion_explosion_damage`, Volatile's stat, is a separate
 	// multiplier below and is not read twice.
 	const float OwnBlow = OwnDamagePerHit
-		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags);
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags, /*AskingMinion=*/this);
 	const float Damage = OwnBlow * ExplosionPercentOfOwnDamage / 100.0f;
 
 	if (IsValid(Summoner) && ExplosionRadiusCm > 0.0f && Damage > 0.0f)
@@ -2271,7 +2272,8 @@ float ACataclysmMinion::ThrallExplosionDamage(const AActor* Lost, const AActor* 
 	// ruled 2026-11-02): its commander's Spirit reaches its explosion as it reaches its blow. Volatile's
 	// `minion_explosion_damage` is still asked with no tags; no row of it carries one.
 	const float OwnBlow = AttackDamage
-		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags());
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags(),
+												   /*AskingMinion=*/Lost);
 	return OwnBlow * ThrallExplosionPercentOfOwnDamage / 100.0f
 		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_explosion_damage"), FGameplayTagContainer());
 }

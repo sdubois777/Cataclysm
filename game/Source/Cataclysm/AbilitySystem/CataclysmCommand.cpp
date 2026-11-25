@@ -717,7 +717,8 @@ float UCataclysmCommand::AttackIntervalScaleFor(const AActor* Follower,
  * to `Type.Deployable` now reaches a machine and not an imp.
  */
 float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
-											 const FGameplayTagContainer& MinionTags)
+											 const FGameplayTagContainer& MinionTags,
+											 const AActor* AskingMinion)
 {
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(
@@ -738,8 +739,9 @@ float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCH
 	// scoped to `Type.Deployable` reaches a machine and not an imp.
 	// Measured 2026-09-25: no minion row in the enchantment or passive
 	// sheets carried required tags before, so none changes.
+	// AND THE MINION ASKING, WHEN THE CALLER NAMES IT, for Marshal's distance (the Death trees' slice C6d2).
 	return Theirs->MultiplierForStatAgainst(
-		FName(Stat), MinionTags, /*Target=*/nullptr);
+		FName(Stat), MinionTags, /*Target=*/nullptr, AskingMinion);
 }
 
 /**
@@ -761,7 +763,8 @@ float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCH
  */
 float UCataclysmCommand::SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
 												 const AActor* Target,
-												 const FGameplayTagContainer& MinionTags)
+												 const FGameplayTagContainer& MinionTags,
+												 const AActor* AskingMinion)
 {
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(
@@ -772,7 +775,7 @@ float UCataclysmCommand::SummonerMultiplierAgainst(const AActor* Summoner, const
 		return 1.0f;
 	}
 
-	return Theirs->MultiplierForStatAgainst(FName(Stat), MinionTags, Target);
+	return Theirs->MultiplierForStatAgainst(FName(Stat), MinionTags, Target, AskingMinion);
 }
 
 /**
@@ -805,7 +808,7 @@ float UCataclysmCommand::ThrallDamageMultiplierAgainst(const AActor* Striker, co
 	}
 	const AActor* Commander = CommanderOf(Striker);
 	return Commander
-		? SummonerMultiplierAgainst(Commander, TEXT("minion_damage"), Target, ThrallMinionTags())
+		? SummonerMultiplierAgainst(Commander, TEXT("minion_damage"), Target, ThrallMinionTags(), /*AskingMinion=*/Striker)
 		: 1.0f;
 }
 
