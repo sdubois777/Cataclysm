@@ -3154,6 +3154,19 @@ def minion_types(book) -> list[dict]:
                 raise DataError(
                     f"Minion Types row {index}: {name} is a {family} and also "
                     f"carries {tag}, so both families' scaling would reach it")
+        # `Type.Gadget` IS EVERY DEPLOYABLE MACHINE THAT IS NOT A TRAP, and
+        # nothing else: the coordinating session's ruling of 2026-11-25, so a row
+        # meaning gadgets alone can name it. `ACataclysmMinion::IsGadget` is the
+        # same test in the game.
+        is_gadget = "Type.Deployable" in tags and "Type.Trap" not in tags
+        if is_gadget != ("Type.Gadget" in tags):
+            raise DataError(
+                f"Minion Types row {index}: {name} "
+                + ("is a deployable machine that is not a trap and does not carry "
+                   "Type.Gadget, so a row meaning gadgets would not reach it"
+                   if is_gadget else
+                   "carries Type.Gadget and is not a deployable machine that is "
+                   "not a trap, so a row meaning gadgets would reach it"))
 
         mode = _cell(raw, headers, "Target Mode")
         if mode not in MINION_TARGET_MODES:
@@ -13972,7 +13985,11 @@ MINION_RESERVE_PERCENT_LESS_STAT = "minion_reserve_percent_less"
 #: minions"); `Type.Deployable`, a skill gadget and a skill trap ("Your
 #: deployables"); or `Type.Trap`, a skill trap alone ("Your traps"). Those are
 #: the tags `game/Data/MinionTypes.csv` gives the kinds that reserve.
-MINION_RESERVE_PERCENT_REQUIRED_TAGS = frozenset({"", "Type.Deployable", "Type.Trap"})
+#:
+#: AND `Type.Gadget` SINCE 2026-11-25, the tag for gadgets alone (the
+#: coordinating session's ruling): "Your gadgets reserve 10% reduced Fervour"
+#: reaches a skill gadget and not a skill trap.
+MINION_RESERVE_PERCENT_REQUIRED_TAGS = frozenset({"", "Type.Deployable", "Type.Trap", "Type.Gadget"})
 
 #: The most a row may state either way, in per cent. A bound for typing
 #: mistakes, as `MAX_STATUS_SIZE` is: the sentences say 5 to 30 less and 25 to

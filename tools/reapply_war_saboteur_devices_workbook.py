@@ -15,8 +15,10 @@ These four need no new code, only rows:
     row's own stack granted by `gadget_destroyed`, lasting 5 seconds, at most one. A stack's key is its node and stat
     (`UCataclysmItemModifiers::OwnStackKeyFor`), so the two stats keep a stack each.
   - Support Network (`Saboteur_basic_gadget_stem_005`): 3% increased attack and spell damage a point on
-    `Type.Deployable` for each active trap, the tag every "gadgets deal" row names; and from 4 points 10% increased
-    trap trigger radius while at least one gadget is active (the coordinating session's ruling: not 10% a gadget).
+    `Type.Gadget` for each active trap; and from 4 points 10% increased trap trigger radius while at least one gadget
+    is active (the coordinating session's ruling: not 10% a gadget). WRITTEN ON `Type.Deployable` UNTIL THE SAME DAY'S
+    RULING put `Type.Gadget` on every machine that is not a trap (`tools/apply_gadget_tag_2026_11_25.py` moved the two
+    rows), so a trap's blow no longer takes "gadget damage".
 
 These five stand on what the same branch adds to the engine, one event and four conditions:
 
@@ -44,7 +46,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import reapply_war_data_rows_workbook as base  # noqa: E402
 
 R = base.Row
-DEPLOYABLE = "Type.Deployable"
+GADGET = "Type.Gadget"
 TRAP = "Type.Trap"
 NO_ROOM = {"cond": "no_room_for_a_trap"}
 LABEL = "the Saboteur's device conditions"
@@ -62,8 +64,8 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("evasion", "flat", 5, scale="own_stacks", step=1, cap=1, action_event="gadget_destroyed",
           stack_seconds=5))),
     ("Saboteur_basic_gadget_stem_005", "Support Network", (
-        R("attack_damage", "increased", 3, tags=DEPLOYABLE, scale="traps_active", step=1),
-        R("spell_damage", "increased", 3, tags=DEPLOYABLE, scale="traps_active", step=1),
+        R("attack_damage", "increased", 3, tags=GADGET, scale="traps_active", step=1),
+        R("spell_damage", "increased", 3, tags=GADGET, scale="traps_active", step=1),
         R("trap_trigger_radius", "increased", 10, scale="gadgets_active", step=1, cap=1, min_points=4))),
     ("Saboteur_basic_trunk_012", "Razor Instincts", (
         R("evasion", "flat", 3, scale="own_stacks", step=1, cap=1, action_event="device_placed", stack_seconds=3),)),

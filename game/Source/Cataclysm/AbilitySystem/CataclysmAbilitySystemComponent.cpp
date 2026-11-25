@@ -809,15 +809,26 @@ float UCataclysmAbilitySystemComponent::StatNamingTagAppliedTo(
 	const FGameplayTagContainer& Tags, const AActor* Target,
 	float MinionSecondsActive) const
 {
+	return Named.IsValid()
+		? StatNamingTagAppliedTo(Stat, FGameplayTagContainer(Named), Figure, Tags, Target, MinionSecondsActive)
+		: Figure;
+}
+
+float UCataclysmAbilitySystemComponent::StatNamingTagAppliedTo(
+	FName Stat, const FGameplayTagContainer& Named, float Figure,
+	const FGameplayTagContainer& Tags, const AActor* Target,
+	float MinionSecondsActive) const
+{
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
-	if (!Inputs || !Named.IsValid())
+	if (!Inputs || Named.IsEmpty())
 	{
 		return Figure;
 	}
+	// A ROW NAMING ANY OF THEM, ONCE: `Type.Deployable` or `Type.Gadget` for a machine's blow since 2026-11-25.
 	TArray<FCataclysmStatModifier> Naming;
 	for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
 	{
-		if (Modifier.RequiredTags.HasTagExact(Named))
+		if (Modifier.RequiredTags.HasAnyExact(Named))
 		{
 			Naming.Add(Modifier);
 		}
@@ -8962,17 +8973,23 @@ void UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow::End()
 float UCataclysmAbilitySystemComponent::FlatOfStatNamingTag(
 	FName Stat, const FGameplayTag& Named, const FGameplayTagContainer& Tags, const AActor* Target) const
 {
+	return Named.IsValid() ? FlatOfStatNamingTag(Stat, FGameplayTagContainer(Named), Tags, Target) : 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::FlatOfStatNamingTag(
+	FName Stat, const FGameplayTagContainer& Named, const FGameplayTagContainer& Tags, const AActor* Target) const
+{
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
-	if (!Inputs || !Named.IsValid())
+	if (!Inputs || Named.IsEmpty())
 	{
 		return 0.0f;
 	}
-	// THE ROWS NAMING THE TAG, as `StatNamingTagAppliedTo` keeps them, on a base of nought, and only the Flat bucket
+	// THE ROWS NAMING ANY OF THE TAGS, as `StatNamingTagAppliedTo` keeps them, on a base of nought, and only the Flat bucket
 	// read back: the increases among them are the caller's to apply where it applies every other increase.
 	TArray<FCataclysmStatModifier> Naming;
 	for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
 	{
-		if (Modifier.RequiredTags.HasTagExact(Named))
+		if (Modifier.RequiredTags.HasAnyExact(Named))
 		{
 			Naming.Add(Modifier);
 		}
@@ -8989,6 +9006,13 @@ float UCataclysmAbilitySystemComponent::FlatOfStatNamingTag(
 float UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry(
 	FName Stat, const FGameplayTag& LeavingOut, const FGameplayTagContainer& Tags, const AActor* Target) const
 {
+	return FlatTheAttributeCannotCarry(
+		Stat, LeavingOut.IsValid() ? FGameplayTagContainer(LeavingOut) : FGameplayTagContainer(), Tags, Target);
+}
+
+float UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry(
+	FName Stat, const FGameplayTagContainer& LeavingOut, const FGameplayTagContainer& Tags, const AActor* Target) const
+{
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
 	{
@@ -9000,8 +9024,7 @@ float UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry(
 	TArray<FCataclysmStatModifier> Uncarried;
 	for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
 	{
-		if (Modifier.Bucket != ECataclysmStatBucket::Flat
-			|| (LeavingOut.IsValid() && Modifier.RequiredTags.HasTagExact(LeavingOut)))
+		if (Modifier.Bucket != ECataclysmStatBucket::Flat || Modifier.RequiredTags.HasAnyExact(LeavingOut))
 		{
 			continue;
 		}

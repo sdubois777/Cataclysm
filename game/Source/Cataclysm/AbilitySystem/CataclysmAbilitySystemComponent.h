@@ -500,6 +500,16 @@ public:
 								 float MinionSecondsActive = -1.0f) const;
 
 	/**
+	 * `StatNamingTagAppliedTo` over the rows that name ANY of `Named`, each row once. For a machine's own blow, which
+	 * reads the rows naming `Type.Deployable` or `Type.Gadget` (the coordinating session's ruling of 2026-11-25: `Type.Gadget` on every machine that is not a trap, so a row
+	 * meaning gadgets alone can say so; a row naming `Type.Deployable` still reaches gadgets and traps both).
+	 */
+	float StatNamingTagAppliedTo(FName Stat, const FGameplayTagContainer& Named, float Figure,
+								 const FGameplayTagContainer& Tags,
+								 const AActor* Target,
+								 float MinionSecondsActive = -1.0f) const;
+
+	/**
 	 * Whether a removal reaches this stat, for these tags, right now. Issue #1791.
 	 *
 	 * FOR A CONSUMER THAT DOES NOT GET THE STAT'S VALUE FROM THE PIPELINE. A
@@ -4785,6 +4795,10 @@ public:
 	float FlatOfStatNamingTag(FName Stat, const FGameplayTag& Named, const FGameplayTagContainer& Tags,
 							  const AActor* Target) const;
 
+	/** `FlatOfStatNamingTag` over the rows that name ANY of `Named`, each row once (`Type.Deployable` or `Type.Gadget`). */
+	float FlatOfStatNamingTag(FName Stat, const FGameplayTagContainer& Named, const FGameplayTagContainer& Tags,
+							  const AActor* Target) const;
+
 	/**
 	 * The flat rows of `Stat` that the attribute cannot carry, worked out with `Tags`, `Target` and the character's
 	 * conditions now: the Flat bucket over those rows alone, floored at nothing. Issue #2499, ruled 2026-10-25: "Your
@@ -4799,6 +4813,10 @@ public:
 	 */
 	float FlatTheAttributeCannotCarry(FName Stat, const FGameplayTag& LeavingOut, const FGameplayTagContainer& Tags,
 									  const AActor* Target) const;
+
+	/** `FlatTheAttributeCannotCarry` leaving out every row that names ANY of `LeavingOut` (`Type.Deployable`, `Type.Gadget`). */
+	float FlatTheAttributeCannotCarry(FName Stat, const FGameplayTagContainer& LeavingOut,
+									  const FGameplayTagContainer& Tags, const AActor* Target) const;
 
 	/** The gadget standing for each converted slot, by slot. Weak: a destroyed gadget is no gadget. */
 	TMap<ECataclysmAbilitySlot, TWeakObjectPtr<class ACataclysmMinion>> SkillGadgets;

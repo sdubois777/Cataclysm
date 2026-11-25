@@ -622,13 +622,36 @@ float UCataclysmSkillEffects::AttackDamageWithNoTarget(
 		   + ExtraIncreases);
 }
 
+namespace
+{
+	/**
+	 * The tags a row meaning gadgets names: `Type.Deployable`, and `Type.Gadget` since 2026-11-25 (the coordinating
+	 * session's ruling). A skill gadget's blow takes both out of its spell part, reads both for its flat rows, and leaves
+	 * both out of the rows the attribute cannot carry.
+	 */
+	FGameplayTagContainer SkillEffectsTagsNamingGadgets()
+	{
+		FGameplayTagContainer Named;
+		for (const TCHAR* Name : {TEXT("Type.Deployable"), TEXT("Type.Gadget")})
+		{
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Named.AddTag(Tag);
+			}
+		}
+		return Named;
+	}
+}
+
 float UCataclysmSkillEffects::SkillHitWithNoTarget(
 	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags, float DamagePercent,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow, float ExtraIncreases)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Source);
-	const FGameplayTag NamesGadgets =
-		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	// THE TAG FOR GADGETS ALONE, SINCE 2026-11-25 (the coordinating session's ruling): a row naming it is left out
+	// and taken out exactly where a row naming `Type.Deployable` is.
+	const FGameplayTagContainer NamingGadgets = SkillEffectsTagsNamingGadgets();
 
 	// A SKILL THAT IS NOT A SPELL ADDS NO SPELL DAMAGE, so its figure is the weapon part's at its percent, the
 	// expression each caller used before #2498. AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, as
@@ -637,7 +660,7 @@ float UCataclysmSkillEffects::SkillHitWithNoTarget(
 	if (!IsSpell(SkillTags))
 	{
 		const float LineFlat = Cataclysm
-			? Cataclysm->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags,
+			? Cataclysm->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamingGadgets, SkillTags,
 													 /*Target=*/nullptr)
 			: 0.0f;
 		if (LineFlat <= 0.0f)
@@ -659,9 +682,9 @@ float UCataclysmSkillEffects::SkillHitWithNoTarget(
 	// exactly then, by the scope `ApplyHit` and `LeaveZoneAlong` open for a gadget's cast, and `ApplyHit` asks the same
 	// question of its delivery to decide the same removal.
 	FGameplayTagContainer SpellTags = SkillTags;
-	if (Cataclysm && Cataclysm->SkillGadgetBeingPriced.Get() && NamesGadgets.IsValid())
+	if (Cataclysm && Cataclysm->SkillGadgetBeingPriced.Get())
 	{
-		SpellTags.RemoveTag(NamesGadgets);
+		SpellTags.RemoveTags(NamingGadgets);
 	}
 	const float SpellFlat = SpellDamageOf(Source, SpellTags, SkillHealthCostPercent,
 										  /*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false,
@@ -1009,11 +1032,14 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		SkillGadget ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
 	const FGameplayTag NamesGadgets =
 		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	// AND THE TAG FOR GADGETS ALONE, SINCE 2026-11-25: taken out of the spell part, read for the flat rows and left out
+	// of the rows the attribute cannot carry exactly as `Type.Deployable` is.
+	const FGameplayTagContainer NamingGadgets = SkillEffectsTagsNamingGadgets();
 	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow PricedForTheGadget(GadgetsPlayer, SkillGadget);
 	FGameplayTagContainer TagsForSpellDamage = SkillTags;
-	if (GadgetsPlayer && NamesGadgets.IsValid())
+	if (GadgetsPlayer)
 	{
-		TagsForSpellDamage.RemoveTag(NamesGadgets);
+		TagsForSpellDamage.RemoveTags(NamingGadgets);
 	}
 
 	// THE THREE-BUCKET PIPELINE, REOPENED. Issue #895.
@@ -1195,7 +1221,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// Beside the spell part and outside the skill's percent, because "per hit" states an amount; the increases below
 	// reach it, as the naming increases reach a gadget's own blow. Nought for every other blow.
 	const float GadgetFlat = GadgetsPlayer
-		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamingGadgets, SkillTags, AilmentTarget)
 		: 0.0f;
 
 	// AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, issue #2499, ruled 2026-10-25: "Your skills deal
@@ -1204,7 +1230,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// `SpellDamageOf` and the sentence counts once; and never a row naming gadgets (Q-F3), which `GadgetFlat` prices.
 	const UCataclysmAbilitySystemComponent* const LinesOwner = Cast<const UCataclysmAbilitySystemComponent>(Source);
 	const float LineFlat = LinesOwner && !IsSpell(SkillTags)
-		? LinesOwner->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		? LinesOwner->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamingGadgets, SkillTags, AilmentTarget)
 		: 0.0f;
 
 	// A SKILL TRAP'S CAST IS PRICED AS THE TRAP'S, BY ONE ADDED READ, ruled 2026-10-19 (T10) for "Scales off trap

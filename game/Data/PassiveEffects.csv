@@ -484,8 +484,8 @@ Saboteur_basic_trap_mid_006#1,Saboteur_basic_trap_mid_006,evasion,flat,4.0,,,0.0
 Saboteur_basic_trap_mid_002#1,Saboteur_basic_trap_mid_002,movement_speed,increased,3.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,trap_triggered,,3.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_gadget_mid_004#1,Saboteur_basic_gadget_mid_004,movement_speed,increased,5.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,gadget_destroyed,,5.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_gadget_mid_004#2,Saboteur_basic_gadget_mid_004,evasion,flat,5.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,gadget_destroyed,,5.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
-Saboteur_basic_gadget_stem_005#1,Saboteur_basic_gadget_stem_005,attack_damage,increased,3.0,Type.Deployable,,0.0,traps_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
-Saboteur_basic_gadget_stem_005#2,Saboteur_basic_gadget_stem_005,spell_damage,increased,3.0,Type.Deployable,,0.0,traps_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_gadget_stem_005#1,Saboteur_basic_gadget_stem_005,attack_damage,increased,3.0,Type.Gadget,,0.0,traps_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_gadget_stem_005#2,Saboteur_basic_gadget_stem_005,spell_damage,increased,3.0,Type.Gadget,,0.0,traps_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_gadget_stem_005#3,Saboteur_basic_gadget_stem_005,trap_trigger_radius,increased,10.0,,,0.0,gadgets_active,1.0,0,-1.0,4,1,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_trunk_012#1,Saboteur_basic_trunk_012,evasion,flat,3.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,device_placed,,3.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_gadget_mid_006#1,Saboteur_basic_gadget_mid_006,evasion,flat,2.0,,own_gadget_within_metres,15.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

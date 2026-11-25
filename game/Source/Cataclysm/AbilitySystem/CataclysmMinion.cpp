@@ -488,6 +488,31 @@ namespace
 		return FGameplayTag::RequestGameplayTag(
 			FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
 	}
+
+	/**
+	 * The tag every machine that is not a trap carries, so a row meaning gadgets alone can say so. The coordinating
+	 * session's ruling of 2026-11-25, for the Saboteur's "your gadgets" rows: carried by the type rows (BoltTurret,
+	 * Ballista, SkillGadget), which `tools/generate_datatables.py` holds to `IsGadget`.
+	 */
+	FGameplayTag TagOfAGadget()
+	{
+		return FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false);
+	}
+
+	/** The tags a machine's own blow reads its summoner's rows by: `Type.Deployable`, and `Type.Gadget` since 2026-11-25. */
+	FGameplayTagContainer TagsNamingMachines()
+	{
+		FGameplayTagContainer Named;
+		for (const FGameplayTag& Each : {DeployableTag(), TagOfAGadget()})
+		{
+			if (Each.IsValid())
+			{
+				Named.AddTag(Each);
+			}
+		}
+		return Named;
+	}
 }
 
 bool ACataclysmMinion::IsDeployable() const
@@ -1141,6 +1166,12 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 	// running copy (S13), the highest-health row and the nearest enemy (S4, S9), and the free start (S1) are there.
 	FCataclysmWeaponSkill AsTheGadgets = Skill;
 	AsTheGadgets.Tags.AddTag(DeployableTag());
+	// AND `Type.Gadget` SINCE 2026-11-25, so a row meaning gadgets alone reaches the gadget's cast as a row naming
+	// `Type.Deployable` does. A skill trap's cast carries neither (M5).
+	if (TagOfAGadget().IsValid())
+	{
+		AsTheGadgets.Tags.AddTag(TagOfAGadget());
+	}
 	// AND, FOR A SHOT A TRAP'S ROW ASKS (traps layer 6, J2, J3, J6), AT THE ENEMY IT NAMES AND AT ITS "MORE"; null and one
 	// for the clock's own cast and the death's.
 	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill), AimedAt, /*CastFromPlace=*/nullptr,
@@ -1677,8 +1708,10 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			{
 				// WITH THE MACHINE'S AGE, which the two age rows read. Issue
 				// #1833, deployable Part 2.
+				// THE ROWS NAMING `Type.Deployable` OR, SINCE 2026-11-25, `Type.Gadget`: a row naming the second still
+				// requires it, so it reaches this blow only when this machine's tags carry it, which a trap's do not.
 				Own = Theirs->StatNamingTagAppliedTo(
-					FName(TEXT("attack_damage")), DeployableTag(), Own, TypeTags, Target,
+					FName(TEXT("attack_damage")), TagsNamingMachines(), Own, TypeTags, Target,
 					GetGameTimeSinceCreation());
 			}
 		}
