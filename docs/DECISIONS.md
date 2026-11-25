@@ -1554,12 +1554,31 @@ draw.
 
 **Nothing here has run.** The coordinating session's plan of 2026-11-24: after #2865, ONE window for the altar slice
 (B1) and this slice, on `feat/rift-altars-51-2`, which is B1 rebuilt on development `0d9259653` with this slice's
-`feat/demonic-rifts-51-2` merged in. It replaces this entry's registration above and B1's proof list, which were
-written before either was rebuilt. Base: the newest whole-suite log, window 2865-w1's
-`2865_suite_engine_62612be6.log` (5474 performed on `62612be63`, whose tree differs from development `0d9259653` only
-in `docs/DECISIONS.md` and in two test files' assertions, which add no test). If another whole suite runs on development first, its log is the
-base and every count below is taken again from it.
+`feat/demonic-rifts-51-2` merged in, and development `4a961ce84` (the forge, #2895) merged in after them. It replaces
+this entry's registration above and B1's proof list, which were written before either was rebuilt. Base: the newest
+whole-suite log, the forge window's `forge_suite_engine_88c917b0.log` (5493 performed, 5493 succeeded, 0 failed, 58
+skipped halves, 874 saves written and deleted and 0 left behind, on `88c917b08`, whose tree differs from development
+`4a961ce84` only in `docs/DECISIONS.md`). Every count below was taken again from that log on 2026-11-25, after the
+merge, as this paragraph said would happen if another whole suite ran on development first. They were first taken from
+window 2865-w1's `2865_suite_engine_62612be6.log` (5474 performed on `62612be63`). Between the two logs, of the groups
+that run alone, only `Cataclysm.EmpireRun.` moved (71 to 72, the forge's timer forecast); the forge's merge adds two
+groups to the list, below.
 
+- **What the forge's merge changed for this window.** Three save tests conflicted, on fixture names only
+  (`CataclysmEmpireTreeNineTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmSaveRecordTests.cpp`). Each now reads
+  development's `Account_v8.json` and `Character_v18.json` and this branch's `Run_v19.json`, with both sides' comments
+  kept, and every file that calls a record's second-newest defaults step calls its newest as often (the run record's in
+  14 files, the character's in 10, the account's in 4, the fixtures header among them). The forge's new tests were swept
+  for Rifts by the seed each run begins with: the gold-node and milestone tests begin on seed 4706, which faces Demonic
+  at tier 1, so they run alone, although neither scene fires the opening surge and nothing they check reads the board.
+  The timer tests the forge added, `Forge.AnUpgradeWhoseDaysRunOutATimerSaysWhatResolvedAndTheCityItHit`,
+  `ForgeScreen.TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid`,
+  `EmpireTreeScreen.ARespecSaysWhichTimersItsDaysRunOutAndThenWhatTheyDid`,
+  `PlayLoop.DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead` and
+  `EmpireRun.TheTimersForecastToRunOutAreTheOnesTheDaysRunOut`, begin on seeds 2766, 2766, 2741, 4242 and 2857, none of
+  which faces Demonic at tier 1. The forecast they test, `UCataclysmEmpireRun::TimersRunningOutWithin`, lists a Quest
+  dungeon's timer, and a Rift's timer runs out and hits its host as any Quest dungeon's does, so it lists a Rift
+  correctly and needs no change.
 - **The build.** Both modules change (`CataclysmSurge.h`, `CataclysmEmpireRun.h`, `CataclysmDungeonModifier.h`,
   `CataclysmDungeonGameMode.h`, `CataclysmFloorBrief.h`, `CataclysmSaveRecords.h`), so most of both rebuild. Predicted:
   succeeds; read the "files compiled" line.
@@ -1574,18 +1593,19 @@ base and every count below is taken again from it.
 | `Cataclysm.RiftAltars.` | 9 | new (B1) |
 | `Cataclysm.DeathCost.` | 11 | 9 + 2 (B2: a death in a Rift, and its control) |
 | `Cataclysm.SaveLoad.` | 84 | 83 + 1 (B1: a fallen altar after a load) |
-| `Cataclysm.Surge.`, `Cataclysm.DungeonModifiers.`, `Cataclysm.FirstSurge.`, `Cataclysm.EmpireRun.`, `Cataclysm.Roster.`, `Cataclysm.EmpireScreen.` | 54, 31, 3, 71, 11, 16 | B2's sweep: tests that roll or keep a Demonic Quest dungeon |
+| `Cataclysm.Surge.`, `Cataclysm.DungeonModifiers.`, `Cataclysm.FirstSurge.`, `Cataclysm.EmpireRun.`, `Cataclysm.Roster.`, `Cataclysm.EmpireScreen.` | 54, 31, 3, 72, 11, 16 | B2's sweep: tests that roll or keep a Demonic Quest dungeon (`EmpireRun.` 71 + 1, the forge's timer forecast) |
 | `Cataclysm.DungeonMode.`, `Cataclysm.WalkFromTheScreen.` | 46, 6 | the dungeon game mode both slices change; the map layout merged by hand |
 | `Cataclysm.CityCleanseSave.`, `CityUpgradeBuildSave.`, `ConsumptionDouble.`, `Dismantle.`, `EarnedBossSave.`, `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `GemSave.`, `Gold.`, `SaveRecords.`, `Seeding.`, `ThrallSave.`, `Travel.`, `WalkSeed.`, `WinningTheRun.` | 1, 2, 15, 12, 3, 9, 13, 15, 1, 2, 13, 18, 3, 3, 10, 5, 11 | B1's run record step: each reads `Run_v19.json` or adds the step's write |
 | `Cataclysm.InventoryTabs.`, `Cataclysm.Merchant.` | 7, 7 | the rebuild's sweep: development's new tests whose runs face Demonic at tier 1 (seeds 2849 and 48) |
+| `Cataclysm.ForgeGoldNodes.`, `Cataclysm.ForgeMilestones.` | 8, 6 | the forge merge's sweep: the forge's new tests whose runs face Demonic at tier 1 (seed 4706) |
 | `Cataclysm.DungeonModifierEffects.` | 786 | 785 + 1 (B1: no chasm on an altar floor); the largest group, so last |
 
-- **The whole suite:** 5501 performed (5474 + 27), 5501 succeeded, 0 failed; 0 saves left behind. Saves written,
-  predicted 881: 874 + 3 for B1's `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` (its twin,
+- **The whole suite:** 5520 performed (the forge window's 5493 + 27), 5520 succeeded, 0 failed; 0 saves left behind. Saves written,
+  predicted 881: 874 (the forge window's count, and w1's) + 3 for B1's `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` (its twin,
   `AHeavenlyCoreDestroyedStaysDestroyedAfterALoad`, wrote 3 in w1) + 2 for each of B2's two death-cost tests (each dies
   once, as `ADeathThatFellsItsCityKeepsWhatEndingTheWalkComputed` does, which wrote 2). The count is printed against
   this and does not stop the window; a save left behind does (a rule the coordinating session accepted on 2026-11-25;
-  the runners before this one stopped on any mismatch of the count). Skipped halves 58, as in w1; none of the three new test
+  the runners before this one stopped on any mismatch of the count). Skipped halves 58, as in the forge window and in w1; none of the three new test
   files reports one. The Python suite runs alongside.
 - **C++ guard proofs, six, three a slice** (the coordinating session's limit of three a change), each with
   `prove_cpp_guard`, alone, after the suite and Python have ended:
@@ -1601,10 +1621,10 @@ base and every count below is taken again from it.
 
 P2's break keeps `Age` read, so the build cannot stop on an unreferenced variable. Four builds a proof, twenty-four
 for the six.
-- **Python, run on `70d646565`**, the merge of the two slices, which this head differs from only in
-  `docs/DECISIONS.md`, with `python -u -m pytest --junit-xml=<a file outside the repository>`: `8562 passed, 10
-  skipped in 465.65s`; the JUnit file agrees, 8,572 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`:
-  `All checks passed!`. The test files that read this log were run again on the head that carries this line.
+- **Python, run on `4dc3bfc0a`**, the merge of development `4a961ce84` into this branch, which this head differs from
+  only in `docs/DECISIONS.md`, with `python -u -m pytest --junit-xml=<a file outside the repository>`: `8583 passed, 10
+  skipped in 483.48s (0:08:03)`; the JUnit file agrees, 8,593 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff
+  check .`: `All checks passed!`. The test files that read this log were run again on the head that carries this line.
 
 ---
 
