@@ -121,9 +121,30 @@ must fail `AStepAtEachThresholdIsItsOwnRowWithItsOwnName`.
 
 ### What was run
 
-SUITE_FIGURES_C6A
+**The whole Python suite on `ea5597e56`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8563 passed, 9 skipped in 435.58s
+(0:07:15)". The JUnit file agrees: tests 8573, failures 1, errors 0, skipped 9, so 8563 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the
+refusal test whose `ValueError` is described under "Said first", fixed before the commit.
 
-PYTHON_PROOFS_C6A
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`f9b8f23c8`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A stepped action row keeping the node's own name | `test_charge_and_placed_action_names_match_the_engine.py::test_a_stepped_action_row_is_keyed_apart_in_the_engine_and_the_generator` |
+| The movement skill's cooldown left out of the cut | `test_charge_and_placed_action_names_match_the_engine.py::test_the_movement_cut_the_longer_hold_and_brims_condition_are_wired` |
+| An evasion no longer lengthening the hold | the same test |
+| The next-hit charge granted on a kill only again | `test_generate_datatables.py::TestDeathTreeC6aActions::test_the_next_hit_charge_on_an_evasion_or_a_full_bar_is_carried_through[dodge]`, `[resource_full]`, and `test_a_charge_of_nought_seconds_until_used_is_carried_through` |
+| Brim's condition never filled | `test_charge_and_placed_action_names_match_the_engine.py::test_the_movement_cut_the_longer_hold_and_brims_condition_are_wired` |
+| Slip's charge at 4 seconds rather than 3 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
