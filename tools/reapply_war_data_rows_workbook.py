@@ -60,6 +60,14 @@ WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 GENERATOR = REPO_ROOT / "tools" / "generate_datatables.py"
 SHEET = helpers.SHEET
 PER_POINT_FROM = "Per Point From"
+#: THE SECOND CONDITION, added to the workbook by the first War slice whose row states two: the Berserker's riders,
+#: 2026-11-25 (`tools/reapply_war_riders_workbook.py`), for "Two-handed weapons only ... against enemies below
+#: 25% HP" and the like.
+CONDITION_2 = "Condition 2"
+CONDITION_VALUE_2 = "Condition Value 2"
+#: The columns this script adds to the sheet when it lacks one an appended row uses, in the order they are added. The two
+#: condition columns go together, so a row's second condition never lands without its value's column.
+ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2)
 ReapplyError = helpers.ReapplyError
 
 @dataclasses.dataclass(frozen=True)
@@ -77,13 +85,16 @@ class Row:
     min_points: int | None = None
     cap: int | None = None
     per_point_from: int | None = None
+    cond2: str | None = None
+    cond_value2: float | None = None
 
     def key(self) -> tuple:
         def num(value):
             return None if value is None else float(value)
         return (self.stat, self.kind, float(self.value), self.tags or None, self.cond or None,
                 num(self.cond_value), self.scale or None, num(self.step), num(self.option),
-                num(self.min_points), num(self.cap), num(self.per_point_from))
+                num(self.min_points), num(self.cap), num(self.per_point_from), self.cond2 or None,
+                num(self.cond_value2) or None)
 
 
 R = Row
@@ -179,7 +190,8 @@ def row_from_cells(cells: dict[str, object]) -> Row:
                scale=text(cells.get("Scale")), step=number(cells.get("Scale Step")),
                option=number(cells.get("Option")) or None, min_points=number(cells.get("Min Points")) or None,
                cap=number(cells.get(helpers.CAP_COLUMN)) or None,
-               per_point_from=number(cells.get(PER_POINT_FROM)) or None)
+               per_point_from=number(cells.get(PER_POINT_FROM)) or None,
+               cond2=text(cells.get(CONDITION_2)), cond_value2=number(cells.get(CONDITION_VALUE_2)))
 
 
 def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
@@ -191,15 +203,16 @@ def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
             "Required Tags": row.tags, "Condition": row.cond, "Condition Value": out(row.cond_value),
             "Scale": row.scale, "Scale Step": out(row.step), "Option": out(row.option), "Node Name": label,
             "Reach Metres": None, "Min Points": out(row.min_points), helpers.CAP_COLUMN: out(row.cap),
-            PER_POINT_FROM: out(row.per_point_from)}
+            PER_POINT_FROM: out(row.per_point_from), CONDITION_2: row.cond2,
+            CONDITION_VALUE_2: out(row.cond_value2)}
 
 
 def _multiset(rows) -> collections.Counter:
     return collections.Counter(row.key() for row in rows)
 
 
-def plan(sheet, nodes=None, label: str = "slice D") -> tuple[list[str], bool, list[dict[str, object]], list[str]]:
-    """The header, whether `Per Point From` must be added, the rows to append, and the report.
+def plan(sheet, nodes=None, label: str = "slice D") -> tuple[list[str], list[str], list[dict[str, object]], list[str]]:
+    """The header, the columns of `ADDABLE_COLUMNS` that must be added, the rows to append, and the report.
 
     `nodes` is a list in the shape of `NODES`, which it defaults to; a later War slice's script passes its own
     (`tools/reapply_war_berserker_states_workbook.py`), and `label` names that slice in a refusal."""
@@ -237,8 +250,11 @@ def plan(sheet, nodes=None, label: str = "slice D") -> tuple[list[str], bool, li
             for row in rows:
                 append.append(cells_from_row(node, name_label, row))
                 report.append(f"{where}: + {row.stat} {row.kind} {row.value:g}")
-    add_column = PER_POINT_FROM not in header and any(cells.get(PER_POINT_FROM) for cells in append)
-    return header, add_column, append, report
+    used = {column for column in ADDABLE_COLUMNS if any(cells.get(column) is not None for cells in append)}
+    if CONDITION_2 in used:
+        used.add(CONDITION_VALUE_2)
+    add_columns = [column for column in ADDABLE_COLUMNS if column in used and column not in header]
+    return header, add_columns, append, report
 
 
 def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, label: str = "slice D") -> list[str]:
@@ -246,19 +262,20 @@ def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, l
     book = openpyxl.load_workbook(path)
     helpers.refuse_what_a_save_would_lose(book)
     sheet = book[SHEET]
-    header, add_column, append, report = plan(sheet, nodes, label)
+    header, add_columns, append, report = plan(sheet, nodes, label)
     if not append:
         return report + ["every row is already written; nothing written"]
-    if add_column:
-        report.append(f"added the column {PER_POINT_FROM!r} to {SHEET!r}")
+    for column in add_columns:
+        report.append(f"added the column {column!r} to {SHEET!r}")
     if check_only:
         return report + [f"{len(append)} row(s) to write; nothing written (--check)"]
 
     others = {s.title: helpers._snapshot(s) for s in book.worksheets if s.title != SHEET}
     before = helpers._snapshot(sheet)
-    if add_column:
-        header = header + [PER_POINT_FROM]
-        sheet.cell(1, len(header)).value = PER_POINT_FROM
+    width_before = len(header)
+    for column in add_columns:
+        header = header + [column]
+        sheet.cell(1, len(header)).value = column
     # THE LAST ROW HOLDING ANYTHING, so a blank row inside the sheet is not mistaken for its end.
     last = max((cell.row for row in sheet.iter_rows(min_row=2, max_col=len(header)) for cell in row
                 if cell.value is not None), default=1)
@@ -272,7 +289,7 @@ def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, l
         if helpers._snapshot(after[title]) != cells:
             raise ReapplyError(f"the sheet {title!r} changed on saving, and only {SHEET!r} was written")
     kept = {where: value for where, value in helpers._snapshot(after[SHEET]).items()
-            if where[0] <= last and not (where[0] == 1 and add_column and where[1] == len(header))}
+            if where[0] <= last and not (where[0] == 1 and where[1] > width_before)}
     if kept != before:
         raise ReapplyError(f"a row above the appended ones changed on saving in {SHEET!r}")
     _, _, still_missing, _ = plan(after[SHEET], nodes, label)

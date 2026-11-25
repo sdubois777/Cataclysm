@@ -166,11 +166,19 @@ def test_the_generated_csv_holds_the_rows():
 
 
 def _values(sheet) -> list[tuple]:
-    """The header, then every other row in sorted order. SORTED SINCE 2026-11-25: a later slice's rows (the Berserker's
-    states) now follow slice D's in the repository's sheet, and the script appends slice D's at the end, so the two
-    sheets hold the same rows in a different order. Every cell is still compared."""
-    rows = [tuple(cell.value for cell in row) for row in sheet.iter_rows()]
-    return [rows[0], *sorted(rows[1:], key=repr)]
+    """Every row as its cells keyed by the header, in sorted order. SORTED SINCE 2026-11-25: a later slice's rows (the
+    Berserker's states) now follow slice D's in the repository's sheet, and the script appends slice D's at the end.
+    KEYED BY THE HEADER since the same day: the War riders added `Condition 2` and `Condition Value 2` after `Per Point
+    From`, and the copy this test makes has `Per Point From` taken out and put back at the end. Every cell is still
+    compared, under its column's name, BUT A `Per Point From` THIS SCRIPT DID NOT WRITE: Razor Mind's, written by
+    `tools/reapply_war_riders_workbook.py`. The copy loses it with the column, and this script restores only its own."""
+    ours = {node for node, _, _ in rows.NODES}
+    header, *cells = [tuple(cell.value for cell in row) for row in sheet.iter_rows()]
+    keyed = [dict(zip(header, row, strict=False)) for row in cells]
+    for each in keyed:
+        if each.get("Node") not in ours:
+            each.pop(rows.PER_POINT_FROM, None)
+    return sorted((tuple(sorted(each.items(), key=repr)) for each in keyed), key=repr)
 
 
 def _workbook_without_the_rows(tmp_path) -> pathlib.Path:

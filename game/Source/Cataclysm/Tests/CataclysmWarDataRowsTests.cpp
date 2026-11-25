@@ -363,4 +363,100 @@ bool FCataclysmWarDataRowsOathsTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The War riders, 2026-11-25
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarDataRowsRidersTest,
+	"Cataclysm.WarDataRows.TheRidersCarryASecondConditionAndPayTheirDrainsOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The War riders (`tools/reapply_war_riders_workbook.py`): the first rows with a second condition, and two drains
+ * paid once rather than per point.
+ *
+ *   - DEATH BLOW: its crit chance is under an enemy below 25% health AND a two-handed weapon, both carried into the
+ *     modifier.
+ *   - HAIR-TRIGGER: two rows of 2 a point in Frenzy, the second also above 75% Fervour.
+ *   - TITAN'S GRIP: a drain of 4 at one point and at ten (THE CONTROL beside it is its melee damage, 10 a point).
+ *   - STEELED RESOLVE: a drain of 5 at five points, and 5 less 3 at six, which is the "2 Fervour per second" its
+ *     sentence states; its damage reduction, 3 a point, is the control.
+ *   - RAZOR MIND: 2 Fervour a point per critical strike; from 5 points another 2 a point above 75% Fervour, and none
+ *     at 4.
+ */
+bool FCataclysmWarDataRowsRidersTest::RunTest(const FString&)
+{
+	using namespace CataclysmWarDataRowsTest;
+	const UDataTable* Nodes = nullptr;
+	const UDataTable* Effects = nullptr;
+	if (!LoadTables(*this, Nodes, Effects))
+	{
+		return false;
+	}
+	if (UCataclysmPassiveTree::EffectsFor(Effects, FName(TEXT("Berserker_twoh_007"))).Num() == 0)
+	{
+		AddError(TEXT("Death Blow has no row in DT_PassiveEffects. If it has one in game/Data/PassiveEffects.csv, the "
+					  "asset is older than the CSV: run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TArray<FCataclysmStatModifier> DeathBlow =
+		OnStat(GrantedBy(Nodes, Effects, TEXT("Berserker_twoh_007"), 2), TEXT("crit_chance"), ECataclysmStatBucket::Flat);
+	if (TestEqual(TEXT("Death Blow: one crit chance row"), DeathBlow.Num(), 1))
+	{
+		TestEqual(TEXT("5 a point, 10 at 2 points"), DeathBlow[0].Value, 10.0f, 0.001f);
+		TestTrue(TEXT("against an enemy below"), DeathBlow[0].Condition == ECataclysmStatCondition::TargetHealthBelowPercent);
+		TestEqual(TEXT("25% health"), DeathBlow[0].ConditionValue, 25.0f, 0.001f);
+		TestTrue(TEXT("and, second, two-handed"),
+				 DeathBlow[0].Condition2 == ECataclysmStatCondition::WieldingTwoHandedWeapon);
+	}
+
+	const TArray<FCataclysmStatModifier> HairTrigger =
+		OnStat(GrantedBy(Nodes, Effects, TEXT("Berserker_dw_014"), 3), TEXT("crit_chance"), ECataclysmStatBucket::Flat);
+	if (TestEqual(TEXT("Hair-Trigger: two crit chance rows"), HairTrigger.Num(), 2))
+	{
+		int32 WithASecond = 0;
+		for (const FCataclysmStatModifier& Each : HairTrigger)
+		{
+			TestEqual(TEXT("each 2 a point, 6 at 3 points"), Each.Value, 6.0f, 0.001f);
+			TestTrue(TEXT("each in Frenzy"), Each.Condition == ECataclysmStatCondition::InFrenzy);
+			if (Each.Condition2 == ECataclysmStatCondition::ClassResourceAbovePercent)
+			{
+				++WithASecond;
+				TestEqual(TEXT("the second above 75% Fervour"), Each.ConditionValue2, 75.0f, 0.001f);
+			}
+		}
+		TestEqual(TEXT("exactly one of them carries the second condition"), WithASecond, 1);
+	}
+
+	for (const int32 Points : {1, 10})
+	{
+		const TMap<FName, TArray<FCataclysmStatModifier>> Grip = GrantedBy(Nodes, Effects, TEXT("Berserker_twoh_011"), Points);
+		TestEqual(*FString::Printf(TEXT("Titan's Grip at %d points drains 4, once"), Points),
+				  Summed(OnStat(Grip, TEXT("fervour_drain_per_second"), ECataclysmStatBucket::Flat)), 4.0f, 0.001f);
+		TestEqual(*FString::Printf(TEXT("and its melee damage is 10 a point (the control): %d"), Points * 10),
+				  Summed(OnStat(Grip, TEXT("attack_damage"), ECataclysmStatBucket::Increased)),
+				  10.0f * static_cast<float>(Points), 0.001f);
+	}
+
+	const TCHAR* SteeledResolve = TEXT("Bulwark_basic_trunk_009");
+	const TMap<FName, TArray<FCataclysmStatModifier>> AtFive = GrantedBy(Nodes, Effects, SteeledResolve, 5);
+	const TMap<FName, TArray<FCataclysmStatModifier>> AtSix = GrantedBy(Nodes, Effects, SteeledResolve, 6);
+	TestEqual(TEXT("Steeled Resolve at 5 points drains 5"),
+			  Summed(OnStat(AtFive, TEXT("fervour_drain_per_second"), ECataclysmStatBucket::Flat)), 5.0f, 0.001f);
+	TestEqual(TEXT("and at 6 points 2, its sentence's figure"),
+			  Summed(OnStat(AtSix, TEXT("fervour_drain_per_second"), ECataclysmStatBucket::Flat)), 2.0f, 0.001f);
+	TestEqual(TEXT("its damage reduction is 3 a point (the control)"),
+			  Summed(OnStat(AtSix, TEXT("damage_reduction"), ECataclysmStatBucket::Flat)), 18.0f, 0.001f);
+
+	TestEqual(TEXT("Razor Mind at 4 points: 8 Fervour per critical strike, none of the doubling"),
+			  Summed(OnStat(GrantedBy(Nodes, Effects, TEXT("Berserker_crit_001"), 4), TEXT("fervour_per_critical_strike"),
+							ECataclysmStatBucket::Flat)), 8.0f, 0.001f);
+	TestEqual(TEXT("at 5 points: 10, and another 10 above 75% Fervour"),
+			  Summed(OnStat(GrantedBy(Nodes, Effects, TEXT("Berserker_crit_001"), 5), TEXT("fervour_per_critical_strike"),
+							ECataclysmStatBucket::Flat)), 20.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

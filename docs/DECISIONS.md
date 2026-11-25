@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War riders: ten Berserker and Bulwark nodes written as rows on the Berserker's states and the War Fervour rates, and the workbook gains a second condition
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, Passive Effects: twenty rows on ten nodes, and the `Condition 2` and `Condition Value 2`
+  columns (`tools/reapply_war_riders_workbook.py`, new). `game/Data/PassiveEffects.csv` (449 rows). **The editor step
+  must rebuild `DT_PassiveEffects`.**
+- `tools/reapply_war_data_rows_workbook.py` (slice D's machinery): `Row` carries a second condition, and the script adds
+  any of `Per Point From`, `Condition 2` and `Condition Value 2` an appended row uses, the two condition columns together.
+- `tools/generate_datatables.py`: `Condition 2` and `Condition Value 2` leave `OPTIONAL_COLUMNS`, so the workbook must
+  carry them; `fervour_per_critical_strike` and `fervour_per_hit_taken` join `CONDITIONED_STATS_WITH_AN_ASKER` (both are
+  probed in the table of stats with no attribute since slice C).
+- `tools/tests/test_passive_effects_match_the_node_text.py`: **the condition-words check reads both of a row's
+  conditions**, and the duplicate-row key carries the second; the words and forms the new sentences use; `AUTHORED_ROWS`
+  449, `AUTHORED_NODES` 272.
+- `tools/tests/test_war_riders_scripts.py`, new. `test_passive_rows_carry_the_action_columns.py`,
+  `test_generate_datatables.py` and `test_war_data_rows_scripts.py`: the two columns are required, and slice D's
+  comparison leaves out a `Per Point From` it did not write (Razor Mind's).
+- `game/Source/Cataclysm/Tests/CataclysmWarDataRowsTests.cpp`: one more test. `CataclysmDataTableTests.cpp`: the pin, 449.
+  `docs/README.md`: 449 and the two columns. **No engine code changed.**
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN RUN IN UNREAL.** No engine code changed; one test was added, read as the compiler only. A window
+  has to rebuild `DT_PassiveEffects` and run `Cataclysm.WarDataRows.` (four tests now) and `Cataclysm.Data.` (the pin).
+- **WAITING, AND WHY:**
+  - **Warmonger and Cut and Run count enemies "within melee range"**, and nothing in the code or the data says what melee
+    range is in metres. A ruling is needed before their rows (an `enemies_in_reach` scale needs a reach).
+  - Crusher needs a stagger chance on hit, which no stat is.
+  - Relentless needs "a hit that does not crit" as a condition.
+  - Juggernaut, Wrecking Ball, Killing Blow, Skull Splitter, Momentum, Bloodied and the rest each still have one clause
+    with no mechanism. Their other clauses could be rows today; a node is written only when its whole sentence is, so the
+    coverage count never counts a node half-built.
+- The condition-words check never read a second condition before this; no row had one, so nothing was missed.
+
+### WHAT WAS RULED
+
+- The coordinating session, 2026-11-25: the state-dependent nodes and the `Condition 2` columns, stacked on the
+  Berserker's states. Plain "damage" is attack and spell damage (the owner, 2026-08-25): Brute Force is two rows.
+
+### THE ROWS, AND THE JUDGEMENTS
+
+| Node | Rows |
+|---|---|
+| Battle Lust | `fervour_per_critical_strike` 1 a point on `Type.Melee` |
+| Razor Mind | `crit_multiplier` 4 a point on melee; `fervour_per_critical_strike` 2 a point; from 5 points another 2 a point above 75% Fervour, on every point (`Per Point From` 1) |
+| Hair-Trigger | `crit_chance` 2 a point in Frenzy; another 2 a point in Frenzy above 75% Fervour (`Condition 2`) |
+| Death Blow | `crit_chance` 5 a point on melee against an enemy below 25% health, two-handed (`Condition 2`) |
+| Brute Force | `attack_damage` and `spell_damage` 10% a point against a staggered enemy, two-handed |
+| Titan's Grip | in Wrath, `fervour_drain_per_second` 4, once; melee `attack_damage` 10% a point |
+| Shield Mastery | `block_chance` 2 a point; from 5 points `fervour_per_block` 3 |
+| Resolve Under Fire | `fervour_per_hit_taken` 1 a point; from 5 points 10 more under `health_below` 30 |
+| Immovable | `damage_reduction` 2 a point after 2 s without moving; from 5 points `fervour_per_hit_taken` doubled (a More of 100) while stationary |
+| Steeled Resolve | at 50 Fervour or more, `damage_reduction` 3 a point and `fervour_drain_per_second` 5, once; from 6 points `fervour_drain_per_second` -3 with no condition |
+
+Judgements:
+1. **"+X% damage reduction" with no "(multiplicative)" is flat.** The tree writes "(multiplicative)" where it means a More
+   (Iron Wall, Dense Muscle, Barbed Skin), and the "Flat damage reduction" affix adds points of the same stat.
+2. **A drain stated beside a per-point bonus is one rate**: Titan's Grip's "drain 4 additional Fervour per second to
+   increase all melee damage by +10% per point", Steeled Resolve's "This bonus drains 5 Fervour per second". Each is
+   granted once from the first point.
+3. **Steeled Resolve's "Reduces the drain rate to 2" is -3 with no condition**: the drain row is under the 50 Fervour
+   condition, so the total is 2 while it holds and -3 below, and a drain that sums to nought or less takes nothing
+   (`FCataclysmBerserkerStates::DrainStep`). A More of -60 would say the same number and put a row in a bucket the
+   sentence does not describe.
+4. **"While above 50 Fervour" is `class_resource_points_at_least` 50**, the only points condition, which is inclusive. The
+   two readings differ at the single value 50.
+5. **Hair-Trigger's "This bonus is doubled while above 75% Fervour" is a second equal row** under both conditions: doubling
+   a flat 2 a point adds 2 a point, where a More would double every crit chance the character has. The bucket check
+   excuses the word "doubled" for that node only while it holds exactly that shape (`DOUBLES_ITS_OWN_FLAT_BONUS`).
+6. **Resolve Under Fire's "a hit that would reduce you below 30% HP"** is health below 30% when the gain is paid, which is
+   after the blow is written (`CataclysmVitalAttributeSet.cpp`, health at line 2253, the gain at 2556): the health the hit
+   left, whether or not it was above 30% before.
+7. **Titan's Grip, Death Blow and Brute Force need no Wrath or weapon condition beyond the one stated**: Titan's Grip's rows
+   are under `in_wrath`, and Wrath ends when its two-handed rule stops holding.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Both reported `proved` True: a named test failed
+with the break in, and all 25 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| Every second condition `wielding_two_handed_weapon` (Death Blow's row and Brute Force's two) to `dual_wielding` | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Hair-Trigger's second condition value, 75 to 50 | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+They show the condition-words check reads a second condition and its value; before this entry it read neither.
+
+### UNREAL TEST (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarDataRows.TheRidersCarryASecondConditionAndPayTheirDrainsOnce` | Death Blow's two conditions in the modifier; Hair-Trigger's two rows, one with a second condition; Titan's Grip's drain 4 at 1 and 10 points against its damage per point; Steeled Resolve's drain 5 at 5 points and 2 at 6 against its damage reduction; Razor Mind's 8 at 4 points and 20 at 5 |
+
+Predicted counts: `Cataclysm.WarDataRows.` 4. **No C++ guard proof is planned:** no engine code changed, and a broken
+row reaches the engine only through the editor step, which `prove_cpp_guard` does not run.
+
+---
+
 ## 2026-11-25 — The Berserker's states: Wrath and Frenzy begin at a full Fervour pool and end at an empty one, Berserking spends the whole pool on the next melee attack, and a War character's Fervour bar is drawn (slice B29, with R29's rename)
 
 **Affects:**

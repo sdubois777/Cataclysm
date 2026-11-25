@@ -2017,6 +2017,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: PER POINT FROM LEFT ON 2026-11-24 with slice D's rows
 #: (`tools/reapply_war_data_rows_workbook.py`), which added the column for Pain
 #: is Power's "At 5 points: This bonus also applies to retaliation damage".
+#: CONDITION 2 AND CONDITION VALUE 2 LEFT ON 2026-11-25 with the War riders
+#: (`tools/reapply_war_riders_workbook.py`), which added the two columns for
+#: Hair-Trigger's, Death Blow's and Brute Force's second conditions.
 _PASSIVE_PORT_COLUMN_REASON = (
     "the passive row port of 2026-11-24; added to the workbook by the first War "
     "or Death tree slice that authors a row using it")
@@ -2025,8 +2028,7 @@ OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
         column: _PASSIVE_PORT_COLUMN_REASON
         for column in ("Action", "Action Event", "Fraction Of", "Stack Seconds",
                        "Scale Offset", "Every Seconds", "Every Nth",
-                       "Condition 2", "Condition Value 2", "Trigger Cooldown",
-                       "Event Value", "Ailment", "Damage Share")},
+                       "Trigger Cooldown", "Event Value", "Ailment", "Damage Share")},
 }
 
 
@@ -10765,6 +10767,13 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "frenzy_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
     "fervour_drain_per_second": ASKER_PASSES_NOTHING_MORE,
     "fervour_per_hit_dealt": ASKER_PASSES_NOTHING_MORE,
+    # AND TWO OF SLICE C'S RATES, asked by `FCataclysmWarFervour::GainByRate`
+    # with the event's tags and the wearer's state, for the War riders of
+    # 2026-11-25: Razor Mind's "while above 75% Fervour", Resolve Under Fire's
+    # "below 30% HP" and Immovable's "while stationary". Probed in the same
+    # table by `ProbeWarFervourGain`.
+    "fervour_per_critical_strike": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_hit_taken": ASKER_PASSES_NOTHING_MORE,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
     # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
     # cannot move while channeling any skill". Its probe is `ProbeCannotWalk`,

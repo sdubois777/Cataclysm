@@ -668,7 +668,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #: AND TO 429 ON 2026-11-25, for the Berserker's states (slice B29): eight rows
 #: on Wrath, Frenzy and Berserking, which had none
 #: (`tools/reapply_war_berserker_states_workbook.py`).
-AUTHORED_ROWS = 429
+#:
+#: AND TO 449 ON 2026-11-25, the War riders: twenty rows on six Berserker and
+#: four Bulwark nodes that had none (`tools/reapply_war_riders_workbook.py`).
+AUTHORED_ROWS = 449
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1092,7 +1095,8 @@ AUTHORED_ROWS = 429
 #: Oaths) and seven Saboteur.
 #:
 #: AND TO 262 ON 2026-11-25: Wrath, Frenzy and Berserking, the Berserker's states.
-AUTHORED_NODES = 262
+#: AND TO 272 THE SAME DAY: the ten nodes of the War riders.
+AUTHORED_NODES = 272
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1382,9 +1386,14 @@ def test_no_node_grants_the_same_stat_twice(effects):
         # values below 1 (question 4 of the Masochist audit), and each step is
         # the same row at its own `MinPoints`. Without the threshold in the key
         # five steps of Brutal Determination read as one row written five times.
+        #
+        # AND THE SECOND CONDITION, since the War riders of 2026-11-25:
+        # Hair-Trigger's two crit chance rows are both under `in_frenzy`, the
+        # second also above 75% Fervour, and they are two rows.
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
-               row.get("Option", ""), row.get("MinPoints", ""))
+               row.get("Option", ""), row.get("MinPoints", ""),
+               row.get("Condition2", ""), row.get("ConditionValue2", ""))
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
@@ -1490,11 +1499,18 @@ CONDITION_WORDS = {
     # because the number is a count.
     #
     # NO ENTRY IN `CONDITION_WORDS_MUST_NOT_SAY` FOR IT. That guard exists for a
-    # predicate confusable with a neighbour's words, and the only neighbour
-    # reading this pool as a share, `class_resource_above`, is used by no
-    # passive row at all, so there is nothing yet to be confused with. Give it
-    # one on the day a node uses that condition.
-    "class_resource_points_at_least": ("or more fervour", "{value:g}"),
+    # predicate confusable with a neighbour's words. The neighbour reading this
+    # pool as a share, `class_resource_above`, is used by passive rows since
+    # slice D (Precision, Prepared, Vital Strikes, and Razor Mind and
+    # Hair-Trigger since the War riders), and the two are told apart by the
+    # number: a share is written "75%", a count "50 Fervour" -- which is why
+    # the second wording below carries the pool's name after the number.
+    #
+    # AND STEELED RESOLVE'S "While above 50 Fervour" (the War riders,
+    # 2026-11-25), read as at least 50: the only points condition is inclusive,
+    # and the two readings differ at the single value 50 of a pool that drains
+    # in quarter-second steps. A judgement, recorded in docs/DECISIONS.md.
+    "class_resource_points_at_least": (("or more fervour", "while above"), "{value:g}"),
 
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
@@ -1550,7 +1566,9 @@ CONDITION_WORDS = {
     # it is written the second way: "while you have not moved for 2 seconds".
     # The prose is good and says exactly what the condition means, so the entry
     # widened rather than the node being reworded to suit a test.
-    "stationary_for_seconds": (("stationary for", "not moved for"),
+    # AND IMMOVABLE'S "while you have not moved in the last 2 seconds" (the War
+    # riders, 2026-11-25).
+    "stationary_for_seconds": (("stationary for", "not moved for", "not moved in the last"),
                                "{value:g} second"),
 
     # "while you have not attacked in the last 3 seconds" is the only wording in
@@ -1655,6 +1673,10 @@ CONDITION_WORDS = {
     "in_wrath": ("while in wrath", None),
     "in_frenzy": ("while in frenzy", None),
 
+    # BRUTE FORCE, the War riders of 2026-11-25: "+10% damage per point against
+    # staggered enemies". The character struck is staggered.
+    "target_is_staggered": ("against staggered enemies", None),
+
     # SET UPON, `Ritualist_basic_a_b0`, and SET THE PACK ON, the first option of
     # `Ritualist_capstone_100`: "enemies you have damaged in the last 2
     # seconds". Issue #1515. The singular matches the plural, as elsewhere.
@@ -1687,7 +1709,7 @@ CONDITION_WORDS = {
     # below needs one: `Broken Will` writes its threshold as the word "half" and
     # contains no "50" anywhere, so a numeric form would fail a correct row.
     "target_health_below": ("against enemies below",
-                            {35.0: "35%", 50.0: "half health"}),
+                            {25.0: "25%", 35.0: "35%", 50.0: "half health"}),
 
     # THE SECOND POOL ASKED WHETHER IT IS FULL, AND THE FRAGMENT HAS TO KEEP IT
     # OFF THE OTHER TWELVE. Issue #1515. Thirteen nodes mention an energy shield
@@ -1750,8 +1772,15 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
     Both halves are checked: that the words the condition implies are in the
     description at all, and that the number is.
     """
-    for row in effects:
-        condition = row["Condition"].strip()
+    # BOTH CONDITIONS OF A ROW, since the War riders of 2026-11-25 wrote the
+    # first rows with a second: Death Blow's "Two-handed weapons only" beside
+    # "against enemies below 25% HP", Hair-Trigger's "above 75% Fervour" beside
+    # "While in Frenzy". Each is held to the node's words as the first is.
+    for row, condition, condition_value in (
+            (row, (row.get(column) or "").strip(), row.get(value_column) or 0)
+            for row in effects
+            for column, value_column in (("Condition", "ConditionValue"),
+                                         ("Condition2", "ConditionValue2"))):
         if not condition:
             continue
 
@@ -1807,7 +1836,7 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
                     f"different predicate or the node was reworded."
                 )
 
-        value = float(row["ConditionValue"])
+        value = float(condition_value)
 
         if value_form is None:
             # THE CONDITION COMPARES NOTHING, SO THE VALUE MUST BE NOTHING.
@@ -2467,10 +2496,17 @@ VALUE_FORMS = {
     # the whole phrase after its number, for the reason the Ravager's starting
     # node gives above: the Bulwark's and the Saboteur's sentences each hold
     # several 1s, and a bare "{value:g}" would let the rows satisfy each other.
-    "fervour_per_hit_taken": "{value:g} for each hit you take",
-    "fervour_per_block": "{value:g} for each block",
+    # AND RESOLVE UNDER FIRE'S "+1 Fervour generated from taking hits" and its
+    # "an additional 10 Fervour", and SHIELD MASTERY'S "generates 3 Fervour"
+    # (the War riders, 2026-11-25).
+    "fervour_per_hit_taken": ("{value:g} for each hit you take", "{value:g} Fervour generated from taking hits",
+                              "additional {value:g} Fervour"),
+    "fervour_per_block": ("{value:g} for each block", "generates {value:g} Fervour"),
     "fervour_decay_out_of_combat_per_second": "{value:g} per second after",
-    "fervour_per_critical_strike": "{value:g} Fervour per critical strike",
+    # AND BATTLE LUST'S "+1 Fervour gained per point" and RAZOR MIND'S "+2
+    # Fervour per point" (the War riders, 2026-11-25).
+    "fervour_per_critical_strike": ("{value:g} Fervour per critical strike", "{value:g} Fervour gained",
+                                    "{value:g} Fervour per point"),
     "fervour_per_trap_placed": "{value:g} for each trap placed",
     "fervour_per_gadget_placed": "{value:g} for each gadget placed",
     "fervour_per_trap_triggered": "{value:g} each time a trap triggers",
@@ -2478,7 +2514,10 @@ VALUE_FORMS = {
     # THE BERSERKER'S STATES, 2026-11-25. Wrath's and Frenzy's "Fervour drains
     # at 5 per second" and "at 8 per second"; Frenzy's "all melee hits generate
     # 2 additional Fervour"; Berserking's "+10% bonus damage per point".
-    "fervour_drain_per_second": "drains at {value:g} per second",
+    # AND TITAN'S GRIP'S "drain 4 additional Fervour per second" and STEELED
+    # RESOLVE'S "drains 5 Fervour per second" (the War riders, 2026-11-25).
+    "fervour_drain_per_second": ("drains at {value:g} per second", "drain {value:g} additional Fervour per second",
+                                 "drains {value:g} Fervour per second"),
     "fervour_per_hit_dealt": "generate {value:g} additional Fervour",
     "berserking_damage_per_fervour": "{value:g}% bonus damage",
 }
@@ -2513,6 +2552,12 @@ VALUE_IN_WORDS = {
     # state by, each 1, stated as "enter a state of Wrath" and "of Frenzy".
     ("Berserker_twoh_001", "wrath_on_full_fervour"): ("enter a state of wrath", 1.0),
     ("Berserker_dw_001", "frenzy_on_full_fervour"): ("enter a state of frenzy", 1.0),
+    # THE WAR RIDERS, 2026-11-25. Immovable's "your Fervour generation from
+    # taking hits is doubled", a More of 100; and Steeled Resolve's "At 6 points:
+    # Reduces the drain rate to 2 Fervour per second", 3 less than the 5, on a
+    # row with no condition (its other drain row is under the 50 Fervour one).
+    ("Bulwark_basic_jg_t1_001", "fervour_per_hit_taken"): ("is doubled", 100.0),
+    ("Bulwark_basic_trunk_009", "fervour_drain_per_second", "", "flat"): ("reduces the drain rate to 2", -3.0),
     # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%
     # of your Armor value" is 1 maximum health for every 10 armour, a share of
     # another stat. Its other max_health row, "+2% Maximum HP per point", is an
@@ -3194,6 +3239,10 @@ def test_a_node_that_takes_something_away_is_actually_tested(effects):
 FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent"})
 
 
+#: See `test_the_bucket_matches_the_nodes_own_wording`.
+DOUBLES_ITS_OWN_FLAT_BONUS = frozenset({"Berserker_dw_014"})
+
+
 def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     """A description that says its number multiplies is the more bucket, and
     one that does not is not.
@@ -3233,6 +3282,17 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
                          for row in effects
                          if row["ValueKind"].strip().lower() == "more"
                          or row["Stat"] in FLAT_STATS_THAT_MULTIPLY}
+
+    # A NODE THAT DOUBLES ITS OWN FLAT BONUS UNDER A FURTHER CONDITION, written
+    # as a second equal row under both conditions: Hair-Trigger's "This bonus is
+    # doubled while above 75% Fervour" (the War riders, 2026-11-25). Doubling a
+    # flat 2 a point adds 2 a point; a More would double every crit chance the
+    # character has. Excused only while the node really holds two equal flat
+    # rows of one stat, the second carrying a second condition.
+    for node in DOUBLES_ITS_OWN_FLAT_BONUS:
+        own = [row for row in effects if row["Node"] == node]
+        assert len(own) == 2 and own[0]["Stat"] == own[1]["Stat"] and own[0]["ValuePerPoint"] == own[1]["ValuePerPoint"]             and {row["ValueKind"] for row in own} == {"flat"} and sorted(bool(row.get("Condition2")) for row in own)             == [False, True], f"{node} no longer doubles its own flat bonus with a second equal row: {own}"
+        multiplying_nodes.add((node, 0))
 
     for row in effects:
         kind = row["ValueKind"].strip().lower()
@@ -3655,8 +3715,15 @@ FOR_EVERY_N_POINTS = re.compile(r"\bfor every (\d+) points\b")
 #: retaliation damage per point. Enemies within 3 meters take retaliation
 #: damage ..." -- the 3 metres is the aura's radius at any number of points, so
 #: it is granted once, where a per-point row would make it 24 metres at 8.
+#:
+#: AND TWO DRAINS, the War riders of 2026-11-25: Titan's Grip's "drain 4
+#: additional Fervour per second" and Steeled Resolve's "This bonus drains 5
+#: Fervour per second while active" are each one rate, whatever the points; the
+#: bonus beside each is the per-point figure.
 FIXED_FROM_THE_FIRST_POINT = frozenset({
     ("Bulwark_basic_tw_t3_001", "retaliation_radius_metres"),
+    ("Berserker_twoh_011", "fervour_drain_per_second"),
+    ("Bulwark_basic_trunk_009", "fervour_drain_per_second"),
 })
 
 
