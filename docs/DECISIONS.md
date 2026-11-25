@@ -92,9 +92,30 @@ removed, so only the mark counts. Prefix `Cataclysm.HitTargetFacts.`; must fail
 
 ### What was run
 
-SUITE_FIGURES_C6B1
+**The whole Python suite on `e6ac4eb7c`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8564 passed, 9 skipped in 500.20s
+(0:08:20)". The JUnit file agrees: tests 8574, failures 1, errors 0, skipped 9, so 8564 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the two
+checks described under "Said first", fixed before the commit.
 
-PYTHON_PROOFS_C6B1
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`a87eae3d0`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A `RearHits=1` strike no longer marking its striker | `test_charge_and_placed_action_names_match_the_engine.py::test_the_four_facts_of_a_hits_target_are_filled_and_judged` |
+| From behind judged by the striker's mark alone, no geometry | the same test |
+| Full health read as above half | the same test |
+| Beyond metres made inclusive | the same test |
+| Venomed Prey asking Poison or Bleed | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Hit and Run beyond 5 metres rather than 4 | the same test |
 
 ---
 
