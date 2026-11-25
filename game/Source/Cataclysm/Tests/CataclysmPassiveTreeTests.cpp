@@ -14138,7 +14138,7 @@ bool FCataclysmNoGroundGivenWidensTheRadiusTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------
-/ Wrung Out spends Fervour on a kill to restore health, and Grinding Halt
+// Wrung Out spends Fervour on a kill to restore health, and Grinding Halt
 // generates it from crippled enemies near the character. Issue #1515.
 // --------------------------------------------------------------------------
 
