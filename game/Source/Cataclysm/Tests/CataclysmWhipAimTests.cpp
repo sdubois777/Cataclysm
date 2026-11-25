@@ -103,8 +103,15 @@ namespace CataclysmWhipAimTest
 	{
 		FWhipAimRig(UWorld* World, const FVector& Where)
 		{
-			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+			// THE PLAYER STATE IS OWNED BY ITS CONTROLLER, as the engine's `AController::InitPlayerState` spawns it in
+			// the game. The abilities' actor info finds the player controller only through the player state's owner
+			// (`FGameplayAbilityActorInfo::InitFromActor`), and `SetPlayerState` sets none, so without it a skill's
+			// `AimPoint` has no controller and never reads the cursor: window bb12-w1 failed both cursor tests on it
+			// (2026-11-24).
 			Controller = World->SpawnActor<ACataclysmPlayerController>();
+			FActorSpawnParameters OwnedByTheController;
+			OwnedByTheController.Owner = Controller;
+			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>(OwnedByTheController);
 			Player = World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
 			if (!State || !Controller || !Player)
 			{
@@ -152,6 +159,14 @@ namespace CataclysmWhipAimTest
 				Test.AddError(TEXT("set-up: a possessed player with the game's controller, holding a Whip with a basic "
 								   "attack granted. If the row is missing, DT_ItemBases may be older than game/Data: run "
 								   "tools/generate_datatable_assets.py"));
+				return false;
+			}
+			// AND THE ABILITIES' ACTOR INFO HOLDS THIS CONTROLLER, the one a skill asks where the cursor points. Without
+			// it every cursor case fails for a reason the test itself made (window bb12-w1), so it is said here first.
+			if (!Test.TestTrue(TEXT("set-up: the abilities' actor info holds the player's controller, which a skill asks "
+									"where the cursor points"),
+					System->AbilityActorInfo.IsValid() && System->AbilityActorInfo->PlayerController.Get() == Controller))
+			{
 				return false;
 			}
 			return Test.TestTrue(*FString::Printf(TEXT("set-up: the whip's basic attack is a Strike of 3 m and 45 "
