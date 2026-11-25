@@ -741,7 +741,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsMigrationTest,
 
 /**
  * `Character_v16.json` is migrated to the current version with an empty `RememberedDefaults` (`Migrate_16_to_17`), and
- * its choice kept. CONTROL: the committed `Character_v17.json` is read, not migrated, and holds the one remembered
+ * its choice kept. CONTROL: the committed `Character_v18.json` (`Character_v17.json` until #47 slice F6a) is read, not
+ * migrated, and holds the one remembered
  * default it states, War_Greatsword_Special on the Special key.
  */
 bool FCataclysmSkillDefaultsMigrationTest::RunTest(const FString&)
@@ -770,8 +771,8 @@ bool FCataclysmSkillDefaultsMigrationTest::RunTest(const FString&)
 	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::Loaded;
 	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::Migrated;
 	const UCataclysmCharacterSave* Old = ReadFile(TEXT("Character_v16.json"), OldResult);
-	const UCataclysmCharacterSave* Committed = ReadFile(TEXT("Character_v17.json"), NewResult);
-	if (!TestNotNull(TEXT("Character_v16.json loads"), Old) || !TestNotNull(TEXT("Character_v17.json loads"), Committed))
+	const UCataclysmCharacterSave* Committed = ReadFile(TEXT("Character_v18.json"), NewResult);
+	if (!TestNotNull(TEXT("Character_v16.json loads"), Old) || !TestNotNull(TEXT("Character_v18.json loads"), Committed))
 	{
 		return false;
 	}
@@ -781,7 +782,7 @@ bool FCataclysmSkillDefaultsMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("and nothing remembered in its held build"), Old->ConsumptionBuild.RememberedDefaults.Num(), 0);
 	TestTrue(TEXT("and its choice kept"),
 			 Lists(Old->SkillAssignment, ECataclysmAbilitySlot::Ultimate, FName(TEXT("War_Greatsword_Heavy"))));
-	TestEqual(TEXT("CONTROL: Character_v17.json is read, not migrated"), static_cast<int32>(NewResult),
+	TestEqual(TEXT("CONTROL: Character_v18.json is read, not migrated"), static_cast<int32>(NewResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestTrue(TEXT("CONTROL: and holds War_Greatsword_Special remembered on the Special key"),
 			 Committed->RememberedDefaults.Num() == 1

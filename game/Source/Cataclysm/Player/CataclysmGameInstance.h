@@ -14,6 +14,7 @@ class ACataclysmPlayerState;
 class UCataclysmAccountSave;
 class UCataclysmEmpireRun;
 class UCataclysmSaveWriter;
+struct FCataclysmDayReport;
 struct FCataclysmEmpireTreePlayerBonuses;
 struct FCataclysmPassiveAllocation;
 
@@ -154,6 +155,16 @@ public:
 	 * a log line, lost with the session, like the game instance. Empty when no walk has just ended. Issue #2733 slice 4.
 	 */
 	FString PlayLoopAwayAccount;
+
+	/**
+	 * WHAT THE LAST DAYS SPENT IN THE CAPITAL DID, in the words the screen whose press spent them shows after it: "Meanwhile,
+	 * days 97 to 99: dungeons resolved: 13 (the dungeon on Outpost (-3,0)); cities hit: Outpost (-3,0) lost 750 defence
+	 * and 1200 people; cities fallen: none; no surge." Set by `KeepCapitalDays` each time a forge craft or the empire
+	 * upgrade tree's respec passes its days, and EMPTY WHEN THOSE DAYS DID NOTHING it names, or none passed, so a screen
+	 * shows it only when there is something to say. Issue #2857, the owner's ruling of 2026-11-22. NOT SAVED: a screen's
+	 * message, read straight after the press.
+	 */
+	FString CapitalDaysAccount;
 
 	/** The new character the new-character screen made, made by the level's start and cleared first. Step 4a. */
 	FCataclysmPendingCreation PendingCreation;
@@ -471,6 +482,24 @@ public:
 	static bool AddGoldSpentOnCityUpgradesFor(const UObject* WorldContext, double SpentAtTierOne);
 
 	/**
+	 * The tier 1 gold the character playing has spent at the forge across runs, which Treasury Synergy reads (#47 slice
+	 * F6a, Q5, as Reinvestment's V2): a Solo Self-Found character's own, on its player state and in its character
+	 * record, every other character's in its lethality mode's account record. Counted whether the node is held or not.
+	 *
+	 * @return false, with 0, where `GoldHeldBy` has no balance
+	 */
+	static bool GoldSpentAtTheForgeBy(const UObject* WorldContext, double& OutSpentAtTierOne);
+
+	/**
+	 * Adds a done craft's price, in tier 1 gold and unrounded (Q5, as V4 and V20), to that count. IT DOES NOT WRITE THE
+	 * RECORD: the craft raises the saves, as it does for the gold (`AccountChanged` when the account paid, the character's
+	 * own record otherwise).
+	 *
+	 * @return false where there is no count to add to
+	 */
+	static bool AddGoldSpentAtTheForgeFor(const UObject* WorldContext, double SpentAtTierOne);
+
+	/**
 	 * Takes a price the balance cannot cover on credit (D2): THE WHOLE BALANCE, AND THE REST OWED. Only while nothing is
 	 * owed, and only when the rest is no more than `Allowance`. With `bRepaidDaily` -- Sovereign Loans held at the
 	 * purchase (D4) -- a tenth of the debt, rounded up, is saved as the part taken each day. A price the balance covers
@@ -674,6 +703,22 @@ public:
 	 */
 	static bool RespecEmpireTree(const UObject* WorldContext, int32& OutPointsReturned, int32& OutDays,
 								 FString& OutReason);
+
+	/**
+	 * Keeps what days just spent in the capital did, for the screen whose press spent them: `CapitalDaysAccount`, the
+	 * days' account (`FCataclysmPlayLoopLog::AwayAccount`) after "Meanwhile" when they did something it names
+	 * (`FCataclysmPlayLoopLog::DaysDidSomething`), and empty when they did nothing or none passed. Called by every press
+	 * that spends days in the capital, after the days: a craft at the forge (`UCataclysmForgeCraft::DoItemCraft`) and
+	 * the respec (`RespecEmpireTree`). Nothing with no game instance of this project's. Issue #2857.
+	 *
+	 * @param NamesBefore `FCataclysmPlayLoopLog::NamesStanding`, read before the days ran
+	 */
+	static void KeepCapitalDays(const UObject* WorldContext, int32 FromDay, int32 ToDay,
+								const TArray<FCataclysmDayReport>& Days, const TMap<int32, FString>& NamesBefore,
+								const UCataclysmEmpireRun* Run);
+
+	/** `CapitalDaysAccount` of a world's game instance, or empty with none of this project's. Issue #2857. */
+	static FString CapitalDaysAccountIn(const UObject* WorldContext);
 
 	/**
 	 * The partition of the character being played in a world: the first player character's player state's. False,

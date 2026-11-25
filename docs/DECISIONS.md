@@ -70,6 +70,709 @@ second half; control: the source still holds the break) and
 
 ---
 
+## 2026-11-24 — The empire tree's five forge gold nodes act: Workshop Upgrades, Apprentice Oversight, Architectural Synergy and Treasury Synergy take a share off every forge price, held at 75%, and Forge Upgrades a tenth more on a draw (#47, slice F6a)
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: five
+  bonus fields, `CraftGoldFactorFor`, `CraftGoldFromSpendingFor`, four constants, five switch cases.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: five effect kinds.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgePricing`, Forge Upgrades' salt, seeds and draw, `DiscountText`, and a trailing pricing parameter on
+  the 14 plans with a price and on `OptionsOn`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `PricingFor`, `CombinePricingFor`, the count, and the pricing passed on every plan and options call.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the options calls and the eight priced questions.
+- `game/Source/Cataclysm/Player/CataclysmGameInstance.h`, `game/Source/Cataclysm/Player/CataclysmGameInstance.cpp` and
+  `game/Source/Cataclysm/Player/CataclysmPlayerState.h`: Treasury Synergy's count.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`,
+  `game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` and `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`: the
+  account record version 8, the character record version 18.
+- `game/Tests/SaveFixtures/Account_v8.json` and `game/Tests/SaveFixtures/Character_v18.json`, new, and
+  `game/Tests/SaveFixtures/README.md`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeGoldNodesTests.cpp`, new; `game/Source/Cataclysm/Tests/
+  CataclysmSaveFixtures.h`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`; seven test files that read the
+  committed account file; ten that read the committed character file and nine that run an older character file
+  through the chain (fourteen files in all, listed under "On skill selection").
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `tools/tests/test_forge_gold_nodes.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py` and `tools/tests/test_empire_tree_on_the_account_record.py`.
+- `docs/Play_Loop_Checklist.md` step 29.
+
+Issue [#47](https://github.com/sdubois777/Cataclysm/issues/47). Written on `feat/forge-gold-nodes-f6a`, on top of
+`feat/forge-w1` (#47 slice F6, the forge's two milestone options, and #2857, the capital's days, rebased onto
+development `5f302b0a7`). **Rebuilt on 2026-11-25 as `feat/forge-f6-f6a-2857`**, the three on development `eb34af972`
+(skill selection, #837, PR #2891), one branch for one window (#47 slice F6's entry, "One window").
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD, AND SINCE RUN AND PASSED** in window forge-f6-w1 (2026-11-25, recorded at the end of #47
+  slice F6's entry below): `Cataclysm.ForgeGoldNodes.` performed 8 of 8 alone, and the guard proofs CF1 to CF3 were
+  PROVED as predicted.
+- **THE CHARACTER RECORD STEP IS 17 TO 18, AFTER SKILL SELECTION'S 16 TO 17.** The coordinating session's direction of
+  2026-11-24: the skill selection slice (the level-1 session's, approved by the owner that day) takes 16 to 17 and lands
+  first, so this slice wrote `Migrate_17_to_18` and `SchemaVersionNow = 18` ahead of it. Skill selection merged on
+  2026-11-25 (PR #2891, development `eb34af972`), and the character's version 18 files were then made on it ("On skill
+  selection", below). Until then the record named version 18 with no step from 16, and the commit `a1cee5016` still
+  does; the branch's head does not. The account record step is 7 to 8, unchanged.
+- **THE PRICING IS A FACTOR FOR EACH MATERIAL TIER, AND THE CRAFT CODE DRAWS FORGE UPGRADES, NOT THE PLAN.** The plan of
+  2026-11-24 put the tree's bonuses, the walk-seed mask and the day in `FCataclysmForgePricing` and drew Forge Upgrades
+  inside `Apply`. As written, `UCataclysmForgeCraft::PricingFor` draws it once for the craft from the item and the day
+  and asks the tree for each tier's factor; the plan only multiplies. Two reasons: the forge's item code does not include
+  the empire tree (The Soul Forge's chance is passed in the same way), and one draw for the craft is exactly ruling B's
+  "one Forge Upgrades roll per craft", the options taking the same pricing.
+- **NO GENRE RESEARCH WAS DONE FOR THESE FIVE.** The F6 plan of 2026-11-22 said so before the rulings. Q1, Q5, Q7 and Q9
+  copy this project's own rulings (P1 and Reinvestment's V2 to V20, and Scaffolding's place after the cap); Q2, Q3, Q6,
+  Q8 and Q10 are judgements, as labelled below.
+
+### The rulings
+
+The coordinating session, 2026-11-22, Q1 to Q10 as the F6 plan recommended:
+
+| Q | Ruled | Kind |
+| :-- | :-- | :-- |
+| Q1 | the reductions add, held at 75% | copies P1 (a city upgrade's price) |
+| Q2 | combines count as "crafting actions", for gold | judgement |
+| Q3 | a craft's tier is its material's: Apprentice Oversight on tiers 1 and 2; a gem combine has no material | judgement |
+| Q4 | **OVERRULED BY THE OWNER**: Architectural Synergy's cap is 30%, not 10% (below) | the owner's |
+| Q5 | Treasury Synergy counts tier 1 gold spent at the forge across runs, on the account or a Solo Self-Found character's record, the price charged, a refused craft not, from the first craft whether the node is held or not | copies Reinvestment's V2, V4, V5, V20 |
+| Q6 | "projects" are every forge operation with a gold price | judgement |
+| Q7 | Treasury Synergy's 30% is its own, inside the 75% | copies V3 |
+| Q8 | Forge Upgrades' "cost" is gold only | judgement |
+| Q9 | Forge Upgrades is x0.9 after the 75% cap | copies Scaffolding's place in `UpgradePriceFactorFor` |
+| Q10 | Forge Upgrades is drawn in the plan, seeded by the item and the day (a combine by its rung and the day) | copies `AddedSocketSeed`; judgement |
+
+**Q4, the owner, 2026-11-22, verbatim.** The owner's question: "you changed architectural synergy from 310% to 10%?
+Feels a bit heavy handed doesn't it?" The option as put to the owner: "The same maximum as Treasury Synergy,
+Reinvestment and Veteran's Edge. At full points it is reached after 30 Treasury points, so Treasury investment matters
+for longer. With the other three Forge discounts maxed, the 75% total limit is what caps you." The owner's choice:
+"30% (Recommended)". Why 10% was wrong: at full node points (10) it was reached after 10 Treasury points, so the node's
+own scaling stopped mattering; keeping the total under 75% was never this cap's job, because P1 holds every forge gold
+discount together at 75%. The four discounts now total 12 + 20 + 30 + 30 = 92% before P1 holds them at 75%.
+
+**"Per point" confirmed as built, the owner, 2026-11-22, verbatim.** The owner's question: "doesn't it give -1% per 10
+points spent? So you'd need much more than 30 points to reach the cap". The two readings shown: A, as built in
+`TotalFor`, the bonus multiplied by the node's own points, then by the whole steps of the other branch, then capped; B,
+no multiplier by the node's points. The owner's answer: "Ooh I see, you need full points invested into it to get that.
+That's fine". So reading A stands: at 10 node points 30% is reached after 30 Treasury points; at 1 point it takes 300.
+
+**The coordinating session, 2026-11-24:**
+- **A, accepted:** the pricing struct is a trailing parameter with a default of no discount, with a Python check that
+  every call in `CataclysmForgeCraft.cpp` passes the character's pricing. This supersedes the plan's earlier "in place of
+  `DifficultyTier`". The reason: about 150 test calls to the plan functions stay unchanged. The check also covers the
+  forge screen's options calls.
+- **B, accepted as a JUDGEMENT:** F5's option gold (Chaos Stabilizer, Tainted Shards) is discounted at the tier of the
+  material it pays for (3 and 2), with one Forge Upgrades roll per craft.
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Workshop Upgrades (8 points) | "-1.5% Gold cost for all crafting actions per point." | `CraftGoldReduced`, 0.015 a point, up to 12% |
+| Apprentice Oversight (1) | "Reduces the Gold cost of all Tier 1 and Tier 2 crafts by 20%." | `LowTierCraftGoldReduced`, 0.20 on a tier 1 or 2 material |
+| Architectural Synergy (10) | "-1% crafting Gold cost per 10 points invested in the Treasury branch per point." | `CraftGoldReducedPerBranchStep`, 0.01, step 10 Treasury, cap 0.30, added to Workshop's |
+| Treasury Synergy (1) | "For every 50,000 Gold spent on crafting, gain a permanent 1% discount on all future projects (Cap 30%)." | `CraftGoldReducedPerSpendingStep`, 0.01 a step of 50,000 tier 1 gold, cap 0.30 |
+| Forge Upgrades (5) | "1% chance per point to reduce the cost of a craft in the forge by 10%." | `CraftGoldTenthOffChance`, 0.01 a point, x0.9 when drawn |
+
+- **The price:** `(1 - min(75%, Workshop + Architectural + Oversight if tier 1 or 2 + Treasury)) x 0.9 if Forge
+  Upgrades lands`, rounded, never below 1 gold. It is applied in each plan after the price is worked out and before the
+  gold refusal, so a character holding the discounted price is not refused.
+- **The options:** a Chaos Stabilizer's gold at tier 3's factor, a Tainted Shard's at tier 2's.
+- **The screen:** each of the eight priced questions names the discounted price and ends "The empire tree's forge nodes
+  take N% off its gold.", and "Forge Upgrades' tenth is in it." when the draw landed. The dismantle has no price.
+- **The count:** each done craft's gold over its run's gold scale, unrounded, after the craft is done and before its
+  save; `AccountChanged` saves the account's, the craft's own trigger a Solo Self-Found character's.
+
+### Tests
+
+`Cataclysm.ForgeGoldNodes.`, a new group of eight:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheFiveNodesGiveTheirFiguresAndArchitecturalSynergyStopsAtThirtyPercent` | through the generated tables: 12% + 30% at three Treasury steps, 20%, 1% a step with a 30% cap, 5%; Architectural Synergy 10% at one step, 30% at four, 3% at 1 point and three steps (reading A); CONTROL none held |
+| `TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth` | 0.88; Oversight 0.80 on tiers 1 and 2, nothing on 3 or no material; all four 0.25; with the tenth 0.225; tier 3 0.28; the tenth alone 0.90; CONTROL 1 |
+| `TreasurySynergyGivesOnePercentForEachFiftyThousandUpToThirty` | 49,999.99 nothing, 50,000 1%, 1,499,999 29%, 1,500,000 30%, 9,000,000 30%; CONTROL without the node |
+| `APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt` | a +0 to +1 upgrade (tier 1 stone) at four fifths, not refused holding exactly that; CONTROL refused without the pricing; a tier 3 stone's at full |
+| `AnOptionsGoldIsDiscountedAtItsOwnMaterialsTier` | the Stabilizer at tier 3's 0.8, the Shard at tier 2's 0.5; CONTROL at full |
+| `ForgeUpgradesDrawsOnceForAnItemOnADay` | same item and day, same seed; another day, another; 1 lands, 0 does not; at 0.5 some of 40 days land |
+| `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` | in a world: 4,500 at full, 3,060 with Workshop Upgrades and Apprentice Oversight, the count rising by the price paid; a refused upgrade counts and charges nothing; Forge Upgrades 4,050 when drawn, 4,500 when not |
+| `AnOlderRecordStartsTheForgeCountAtNothingAndTheCommittedOnesReadTheirs` | `Account_v7.json` migrates to 0 keeping its 75,000.5, and `Character_v17.json` to 0 keeping its 50,000.25; `Account_v8.json` is read with 62,500.25 and `Character_v18.json` with 41,250.75 |
+
+Python: `tools/tests/test_forge_gold_nodes.py`, eight checks (the list at its top). The two tree checks count 124 built
+nodes and two more caps and pin the 25 points built in slice 11; `test_empire_tree_on_the_account_record.py` reads
+`Account_v8.json` and `Character_v18.json`. Every test that read `Account_v7.json` as the committed file reads
+`Account_v8.json`, and the three chain tests add `AddTheAccountsVersion8Defaults`; every test that read
+`Character_v17.json` as the committed file reads `Character_v18.json`, and the nine chain tests add
+`AddTheCharactersVersion18Defaults`. The G8 test was named `AnOlderAccountStartsTheForgeCountAtNothingAndTheCommittedOneReadsIt`
+until it read the character files too.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `29c13a0ce`, each narrowed to
+`tools/tests/test_forge_gold_nodes.py` (eight checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| P1 | a plan's `Out.Gold = Pricing.Apply(Out.Gold, Out.Material);` removed (the first: `SocketGemOf`) | "PROVED: 1 failed, 7 passed in 1.08s \| restored: 8 passed in 1.00s" | `test_every_plan_applies_the_pricing_after_its_price_and_before_its_refusal` |
+| P2 | a forge screen options call without the pricing | "PROVED: 1 failed, 7 passed in 0.99s \| restored: 8 passed in 0.98s" | `test_every_plan_and_options_call_the_game_makes_passes_a_pricing` |
+| P3 | the stone combine's count removed | "PROVED: 1 failed, 7 passed in 0.99s \| restored: 8 passed in 0.95s" | `test_the_count_is_added_once_a_craft_is_done` |
+| P4 | the reductions held at 100%, not 75% | "PROVED: 1 failed, 7 passed in 0.97s \| restored: 8 passed in 0.96s" | `test_the_factor_holds_the_reductions_at_three_quarters_and_takes_the_tenth_after` |
+| P5 | a Tainted Shard's gold priced at the Chaos Stabilizer's tier | "PROVED: 1 failed, 7 passed in 1.02s \| restored: 8 passed in 0.96s" | `test_an_options_gold_is_discounted_at_its_own_material` |
+
+**The whole Python suite at `29c13a0ce`:** "4 failed, 8270 passed, 9 skipped in 458.98s"; JUnit 8283 tests, 4 failures,
+0 errors, 9 skipped; ruff "All checks passed!". **EVERY FAILURE IS EXPECTED, AND NONE IS A FIGURE OF THIS SLICE:**
+- `test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`: the two empire tree CSVs,
+  whose assets the window's editor step rebuilds (F6 alone already fails it the same way);
+- three that read the character record's version, which stays inconsistent until skill selection's 17 is here:
+  `test_empire_tree_on_the_account_record.py`'s `test_the_committed_character_file_holds_its_own_tree_at_the_records_version`
+  ("Character_v16.json is at version 16 and the character record at 18"), `test_inventory_tabs.py`'s
+  `test_the_record_is_at_sixteen_and_its_step_moves_and_blanks` (#2849's pin of 16), and
+  `test_save_migrations_are_single_steps.py`'s `test_every_schema_version_has_a_committed_example_file` ("there is no
+  Character_v17.json").
+
+**Those four failures were the state at `29c13a0ce`, before skill selection.** "On skill selection", below, has the
+suite on the rebuilt branch.
+
+**For the window**, as registered on 2026-11-24 and kept on the rebuilt branch (the window's registration is in #47 slice
+F6's entry, "One window"):
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`, which F6 already needs.
+- **`Cataclysm.ForgeGoldNodes.` alone: 8.** The whole suite gains 8.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeGoldNodes.`, each anchor once on the branch:
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| CF1 | `CataclysmEmpireTree.cpp` | `FMath::Clamp(Reduced, 0.0f, CraftGoldReductionCap)` read as `FMath::Clamp(Reduced, 0.0f, 1.0f)` | 7, 1: `TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth` |
+| CF2 | `CataclysmForge.cpp` | `UpgradeOf`'s `Out.Gold = Pricing.Apply(Out.Gold, Out.Stone);` removed | 6, 2: `APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt`, `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+| CF3 | `CataclysmForgeCraft.cpp` | `DoItemCraft`'s `CountTheForgeGold(WorldContext, Step.Gold);` removed | 7, 1: `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+
+### On skill selection (2026-11-25)
+
+By the coordinating session's instruction of 2026-11-25: skill selection merged (PR #2891, development `eb34af972`, the
+character record at 17), so this slice was rebuilt on it with #47 slice F6 and #2857 beneath it, as a new branch,
+`feat/forge-f6-f6a-2857`, with no force push. **It is one branch for one window**: `feat/forge-w1` (`dd214c07c`, F6 and
+#2857) and `feat/forge-gold-nodes-f6a` (`b426b7d60`, this slice on `feat/forge-w1`'s `31689adba`) are both replaced by
+it. `feat/forge-w1`'s registration commit `dd214c07c` was not carried; F6's entry has the new registration.
+
+**The rebase.** `git rebase --onto origin/development 5f302b0a7` of `b426b7d60`, eight commits. Development had moved by
+three merges since `5f302b0a7`: bug batches 1 and 2 (#2889), score-and-drops (#2890) and skill selection (#2891).
+- F6's code commit, F6's entry's second commit and #2857's four commits applied with no conflict but F6's entry's, which
+  `tools/resolve_decisions_log.py resolve --first Tinkerer` put on top.
+- **This slice's code commit conflicted in seven files**, each resolved keeping both sides:
+  `CataclysmSaveRecords.h` (the version comment: 18 above 17, and `SchemaVersionNow = 18`), `CataclysmSaveRecords.cpp`
+  (skill selection's `Migrate_16_to_17` then this slice's `Migrate_17_to_18`, both in the chain), and five readers of the
+  committed files, which skill selection had moved to `Character_v17.json` and this slice to `Account_v8.json`
+  (`CataclysmEmpireTreeCreditTests.cpp`, `CataclysmEmpireTreeNineTests.cpp`, `CataclysmEmpireTreeProwessTests.cpp`,
+  `CataclysmGoldTests.cpp`, `tools/tests/test_empire_tree_on_the_account_record.py`). This entry's commit applied with
+  no conflict. `tools/check_resolved_cpp.py --changed`: "25 files read, 0 with complaints".
+
+**The character record's version 18 files** (`8a0f71f44`):
+- `Character_v18.json` is `Character_v17.json` at version 18 with `"GoldSpentAtTheForge": 41250.75`, a figure and not the
+  default; the fixtures README says so in a paragraph and a table row.
+- `CataclysmSaveFixtures::AddTheCharactersVersion18Defaults` writes `GoldSpentAtTheForge` 0, and each of the nine tests
+  that calls `AddTheCharactersVersion17Defaults` calls it next: `CataclysmCataclysmDrawTests.cpp`,
+  `CataclysmConsumptionDoubleTests.cpp`, `CataclysmConsumptionMarkTests.cpp`, `CataclysmDismantleTests.cpp`,
+  `CataclysmEmpireTreeOwnTests.cpp`, `CataclysmGemSaveTests.cpp`, `CataclysmGoldTests.cpp`,
+  `CataclysmSaveRecordTests.cpp`, `CataclysmSkillLevelsTests.cpp`. Counted after: 9 calls each of versions 15, 16, 17 and
+  18.
+- Every test that read `Character_v17.json` as the committed file reads `Character_v18.json`, in ten files:
+  `CataclysmCataclysmDrawTests.cpp`, `CataclysmDismantleTests.cpp`, `CataclysmEmpireTreeCreditTests.cpp`,
+  `CataclysmEmpireTreeNineTests.cpp`, `CataclysmEmpireTreeProwessTests.cpp`, `CataclysmGemSaveTests.cpp`,
+  `CataclysmGoldTests.cpp`, `CataclysmSaveRecordTests.cpp`, `CataclysmSkillDefaultsTests.cpp` and
+  `tools/tests/test_empire_tree_on_the_account_record.py`. **Skill selection's own control is among them**:
+  `Cataclysm.SaveRecords.ACharacterFileFromBeforeRememberedDefaultsMigratesWithNone` checked that the committed
+  `Character_v17.json` is read, not migrated, which version 18 makes false; it reads `Character_v18.json`, which holds the
+  same remembered defaults. What still names `Character_v17.json` is a migration input or a comment saying which file
+  was committed before.
+- G8 reads the character files as it read the account files, and `test_forge_gold_nodes.py`'s
+  `test_both_records_save_the_count` checks `Character_v18.json` against `Character_v17.json`, its README row, and that
+  every test file stepping through version 7 of the account or 17 of the character steps through 8 or 18.
+
+**The sweep**, for what the three merges moved that this branch reads, and the reverse:
+- **The tests that step a character record to 17**: every `TEXT("Character_v17.json` literal and every
+  `AddTheCharactersVersion17Defaults` call, above. No C++ test pins a character version by number; the Python checks
+  that do (`test_the_keys_remember_their_defaults.py` and `test_inventory_tabs.py`) read "17 or later" and "16 or later".
+  `test_a_loaded_thrall_keeps_the_skill_that_took_it.py` already looks the run record's `Migrate_16_to_17` up inside the
+  run record's namespace (skill selection narrowed it), and no Python check looks up a `Migrate_17_to_18` outside its
+  record's namespace, the run record's included.
+- **Development changed none of the forge's or the empire tree's code**: `CataclysmForge`, `CataclysmForgeCraft`,
+  `CataclysmForgeWidget` and `CataclysmEmpireTree` are untouched since `5f302b0a7`. Score-and-drops changed the drop
+  tables (`EnemyDrops.csv`) and the gem and gear drop rolls, which these tests do not read; the crafting material table
+  and `GoldScaleFor`, which they do, are unchanged.
+- `.claude/windows/unity_name_check.py` against development: 0 findings. A script looking for a member one side added
+  hidden by a local or parameter the other side added in that class's `.cpp` (the C4458 of window inv-w1): 0 found, in
+  31 headers development added members to and 9 this branch did.
+- `docs/Play_Loop_Checklist.md`: steps 26 to 29, each number once.
+
+**Python guard proof P6, PROVED**, `tools/prove_guard.py` in an extracted copy of `8a0f71f44`: `CataclysmGoldTests.cpp`'s
+`AddTheCharactersVersion18Defaults` call removed, "PROVED: 1 failed, 7 passed in 2.47s | restored: 8 passed in 1.09s",
+the named failure `tools/tests/test_forge_gold_nodes.py::test_both_records_save_the_count`.
+
+**The whole Python suite at `2f673d420`**, this entry's commit: "1 failed, 8495 passed, 9 skipped in 351.73s";
+JUnit 8505 tests, 1 failure, 0 errors, 9 skipped. ruff: "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, "['EmpireTreeEffects.csv',
+'EmpireTreeNodes.csv'] changed since their DataTable assets were built", which the window's editor step clears. The
+three character-version failures of `29c13a0ce` are gone. Development `be7ffb06e` (#2892, one bullet in this log)
+was merged on top afterwards, in `d97b30307`.
+
+---
+
+## 2026-11-24 — Days spent in the capital say what they will do before they are spent and what they did after: the forge's crafts and the empire upgrade tree's respec keep their days' reports, say the walk's PLAY LOOP account of them, and warn which dungeons' timers run out (#2857)
+
+**Affects:** `UCataclysmForgeCraft::DoItemCraft` (`game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp` and `.h`);
+`UCataclysmGameInstance::RespecEmpireTree`, and `CapitalDaysAccount`, `KeepCapitalDays` and `CapitalDaysAccountIn`, new
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.h` and `.cpp`); `FCataclysmPlayLoopLog::AwayAccount`, which takes a
+lead, and `DaysDidSomething`, new (`game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `.cpp`);
+`UCataclysmEmpireRun::TimersRunningOutWithin` and `FCataclysmTimerForecast`, new
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); `UCataclysmEmpireMapLayout::TimersRunningOutText`,
+new (`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h` and `.cpp`); the forge screen's eight questions and
+eight done messages (`game/Source/Cataclysm/Interface/CataclysmForgeWidget.h` and `.cpp`); the empire tree screen's two
+Respec presses (`game/Source/Cataclysm/Interface/CataclysmEmpireTreeWidget.h` and `.cpp`); `docs/Play_Loop_Checklist.md`,
+steps 12 and 16; `docs/Cataclysm_GDD_v2.md`, Capital Services. Tests: five Unreal tests, new, one in each of
+`game/Source/Cataclysm/Tests/CataclysmForgeTests.cpp`, `CataclysmForgeScreenTests.cpp`, `CataclysmEmpireTreeScreenTests.cpp`
+and `CataclysmPlayLoopTests.cpp` and `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`; one existing Unreal
+test changed (below); `tools/tests/test_days_spent_in_the_capital_are_reported.py`, new;
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py`, two places added. Issue
+[#2857](https://github.com/sdubois777/Cataclysm/issues/2857).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND SINCE RUN AND PASSED** in window forge-f6-w1 (2026-11-25, recorded at the end of #47
+  slice F6's entry below): its five tests passed in their groups alone and in the whole suite, and the guard proofs D1
+  to D3 were PROVED as predicted. Its `DaysDidSomething` asks a day's `Surges` since the merge of #2865 (that entry).
+  Written on `fix/forge-days-2857`, cut from `feat/forge-milestones-47-f6` at `48e574d81` (the
+  forge's slice F6, not yet merged into development), because both change `CataclysmForgeCraft.cpp`. Its window comes
+  after F6's.
+- **ONE EXISTING UNREAL TEST CHANGED.** `Cataclysm.ForgeScreen.AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` held
+  the done message to exactly "Raised to +1. It cost 500 gold and 1 day of the run." That scene's run is begun with no
+  opening wave, so its one day can bring a surge, which the message now names. It holds the same words, followed by the
+  account the game instance kept when there is one.
+- **THE RESPEC IS FIXED TOO.** It kept its days' reports only to count them into a `Log` line the PLAY LOOP filter hides,
+  and its screen said nothing of them. It now does what the forge does.
+- **NO SAVE VERSION MOVES.** Nothing new is saved: the account is a screen's message, read straight after the press.
+- **NO GENRE RESEARCH**, because no formula, number or mechanic was chosen: this reports what the existing day loop
+  already does.
+
+### The ruling
+
+Issue #2857, the owner's comment of 2026-11-22, verbatim: "ah right, that makes sense. And yeah those are good calls".
+The owner accepted the three parts: (1) keep the forge's day reports and show them to the player -- the dungeons
+resolved, the cities hit and by how much, the cities fallen, any surge; (2) write the same PLAY LOOP lines the walk's
+summary writes; (3) before an upgrade, the forge screen says which dungeons will resolve within the days it costs.
+
+The cause, from the issue: `DoItemCraft` called `Run->AdvanceDays(Step.Days)` and threw away the
+`TArray<FCataclysmDayReport>` it returned. The days ran correctly -- dungeons resolved, hit their cities, and ordinary
+dungeons left the map -- and nothing said so. The owner, having spent 45 days at the forge, came back from the next walk
+to six dungeons gone and a "while away" summary that, rightly, named none of them.
+
+### What it does
+
+- **After every forge craft that costs a day**, the log says what the days did in the walk's own words, after the
+  craft's line: "PLAY LOOP: at the forge, days 25 to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0));
+  cities hit: Outpost (-3,0) lost 750 defence and 1200 people; cities fallen: none; no surge". The respec says the same
+  after its line, "for the respec, days 20 to 25: ...". Said whatever the days did.
+- **The screen whose press spent them ends its message with the same account** after "Meanwhile" when the days did
+  anything it names: "Raised to +1. It cost 1,500 gold and 3 days of the run. Meanwhile, days 25 to 28: dungeons
+  resolved: ...". The forge's message line; the empire tree screen's line under the branch.
+- **Before a press that spends days**, its question ends with the dungeons whose timers run out within them: "Press
+  again to upgrade to +1: ... Within 3 days, 1 dungeon's timer runs out: dungeon 13 (the Timed dungeon on Outpost
+  (-3,0)) hits Outpost (-3,0) on day 28." Every forge craft that costs days, and the respec's first press. Nothing is
+  added when no timer runs out.
+
+### Judgements
+
+| # | Question | Judgement | Why |
+| :-- | :-- | :-- | :-- |
+| J1 | Show the account on the forge screen, or add it to the capital's summary | **The forge screen**, in the message line its press already writes; the respec in the tree screen's line | The capital's summary -- the map's `ReturnLine` and the arrival's `CapitalLine` -- is the last walk's, replaced at each walk's end and read on returning from one; days spent at the forge are spent with the forge screen open, and a press's own message is where the player looks. It needs no new label and no generated asset |
+| J2 | When the screen shows it, and when the log says it | The screen **only when the days did something** the account names (`DaysDidSomething`); the log **whenever a day passed** | A screen that says "nothing happened" after every press is noise, and the forge is pressed often. The log is the owner's check: a line said every time means a missing line is a fault, not a quiet day |
+| J3 | The words | `FCataclysmPlayLoopLog::AwayAccount` itself, given a lead: "at the forge", "for the respec", and "Meanwhile" on screen. A walk's words are unchanged | The brief: reuse the summary's text function, not new wording. One builder means the screen, the log and the walk can never name a day's events differently |
+| J4 | The warning's place and words | Last in the first press's question, after the options' text and The Soul Forge's chance; "Within N days, K dungeon's timer runs out: dungeon 13 (name) hits City on day D"; empty when none | The question is where the cost is stated before the second press. The dungeon is named as the PLAY LOOP names it, so the warning, the account and the log agree |
+| J5 | What the forecast counts | The timers standing now: an ordinary dungeon's (hits its own city) and a Quest dungeon's (hits its host). Not a Fallen City's or the Cataclysm's, not a Scout Parties bonus dungeon's, not one on a fallen city, not the dungeon stood in. Each named once, on its first day. The days are the craft's after Tainted Shards; an enchantment craft forecasts its full days though a Master Tinkerer critical success would take none | Read from `ResolveDungeon`, `LetABonusDungeonLeave` and the clock. A surge or a fall inside the days can change what happens; the account after the press says what did. The critical success is a chance, stated in the same question, and the forecast is of what the press may cost |
+| J6 | The empire tree's respec | The same three things, through the same functions | It spends 5, 10 or 15 days in the capital, more than most forge crafts, and its screen said nothing of them |
+| J7 | `Cataclysm.WalkDungeon`'s one day on an empty board | Left as it is, and named in the Python check as the one allowed discard | A console command, and it passes the day only when no dungeon stands, so no timer can run out in it |
+
+### Every place the game spends days, checked
+
+| Where | Reported before | Now |
+| :-- | :-- | :-- |
+| A forge item craft, all eight through `DoItemCraft` | No: the reports were thrown away | Fixed |
+| A stone or gem combine | Costs no day | -- |
+| The empire upgrade tree's respec | Counted into a `Log` line only | Fixed |
+| A city upgrade bought, or rushed | Costs no day: it is built over days that pass anyway, and their finishing is in every account | -- |
+| Bribery, Economic Bailout | Cost no day | -- |
+| A walk's days, a death's days | Yes: the capital's arrival line and the map | -- |
+| `Cataclysm.EmpireAdvance` (console) | Yes, day by day | -- |
+| `Cataclysm.WalkDungeon` (console), on an empty board | No | J7 |
+
+**The class passive tree's reset costs no day in the code.** The design's Capital Services table says the Trainer's
+"Respec class passive skill points, and respec the empire upgrade tree. Both cost days."
+`ACataclysmPlayerState::ResetPassivePoints` passes none, so there is nothing for it to report. Not changed here.
+
+### Registered for the window
+
+| Group | Tests after this change | Added |
+| :-- | :-- | :-- |
+| `Cataclysm.Forge.` | 9 | `AnUpgradeWhoseDaysRunOutATimerSaysWhatResolvedAndTheCityItHit` |
+| `Cataclysm.ForgeScreen.` | 5 | `TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid` |
+| `Cataclysm.EmpireTreeScreen.` | 11 | `ARespecSaysWhichTimersItsDaysRunOutAndThenWhatTheyDid` |
+| `Cataclysm.PlayLoop.` | 13 | `DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead` |
+| `Cataclysm.EmpireRun.` | 72 | `TheTimersForecastToRunOutAreTheOnesTheDaysRunOut` |
+
+Counted by the registration's name string in the files on this branch; `Cataclysm.EmpireRun.` includes one test in
+`CataclysmEmpireRunTierTests.cpp` registered through `CATACLYSM_TEST`. No C++ guard proof was run: they are planned for
+the window.
+
+**Three Python guard proofs, 3 of 3 PROVED**, by `tools/prove_guard.py` against
+`tools/tests/test_days_spent_in_the_capital_are_reported.py`, each passing 5 of 5 restored:
+
+| Proof | The break | Failed with the break in |
+| :-- | :-- | :-- |
+| P1 | `DoItemCraft` throws its days' reports away again | `test_no_caller_throws_away_what_the_days_reported`, `test_the_forges_craft_and_the_respec_keep_and_tell_their_days` |
+| P2 | the upgrade's question without `TimersRunningOutIn` | `test_every_forge_question_warns_and_every_forge_craft_done_says_what_its_days_did` |
+| P3 | the upgrade's done message without `WhatTheDaysDid` | `test_every_forge_question_warns_and_every_forge_craft_done_says_what_its_days_did` |
+
+**The Python suite at `2525592c4`: 8,217 passed, 1 failed, 9 skipped in 368.02 s**; JUnit 8,227 tests, 1 failure, 0
+errors, 9 skipped. The one failure is slice F6's, inherited from the branch this was cut from:
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `EmpireTreeEffects.csv` and `EmpireTreeNodes.csv`, which F6's editor step clears. `ruff check .`: all checks
+passed.
+
+---
+
+## 2026-11-22 — The forge's two empire milestone options: The Soul Forge raises an upgrade two levels 15% of the time, and The Master Tinkerer makes 5% of enchantment crafts a critical success, its rolls drawn twice with the better kept and no days taken (#47, slice F6)
+
+**Affects:** `tools/generate_datatables.py` (the two options leave `EMPIRE_TREE_REFUSED`, join `EMPIRE_TREE_BUILT` as
+slice 10, and gain their effects) and the two tables it writes, `game/Data/EmpireTreeNodes.csv` and
+`EmpireTreeEffects.csv`; `ECataclysmEmpireTreeEffect::UpgradeExtraLevelChance` and `EnchantCriticalChance`, new
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `FCataclysmEmpireTreePlayerBonuses`'s two fields of the same names,
+new, and `UCataclysmEmpireTree::PlayerBonusesFor` (`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`);
+`UCataclysmForge::SoulForgeSalt`, `EnchantCriticalSalt`, `SoulForgeLevels`, `EnchantCritical`, `LuckyRolls` and
+`MilestoneChanceText`, new (`game/Source/Cataclysm/Items/CataclysmForge.h` and `.cpp`); `UCataclysmForgeCraft::Upgrade`
+and `DoEnchantmentWork` (`game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`); the forge screen's two first presses
+(`game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`); `FCataclysmPlayLoopLog::ForgeSoulForgeLine` and
+`ForgeCriticalLine`, new (`game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `.cpp`); `docs/Play_Loop_Checklist.md`,
+step 26. Tests: `Cataclysm.ForgeMilestones.`, six, new, in `game/Source/Cataclysm/Tests/CataclysmForgeMilestonesTests.cpp`;
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeTestTables.h`, new; two existing Unreal tests changed (below);
+`tools/tests/test_the_forge_milestones.py`, new; three existing Python checks changed (below). Issue
+[#47](https://github.com/sdubois777/Cataclysm/issues/47).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND SINCE RUN AND PASSED** in window forge-f6-w1 (2026-11-25, recorded at the end of this
+  entry), after one fault this slice wrote: the forge screen used the empire tree's bonuses without including their
+  header, which the build of each changed file alone found. `Cataclysm.ForgeMilestones.` performed 6 of 6 alone, and
+  the guard proofs M1, M4 and M5 were PROVED as predicted. Phase 1 was on `feat/forge-milestones-47-f6`, cut from
+  development `52b66e016`.
+- **AN EDITOR STEP MOVES TWO ASSETS.** `EmpireTreeNodes.csv` and `EmpireTreeEffects.csv` change, so
+  `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` are rebuilt by `tools/generate_datatable_assets.py` in the window, with
+  `game/Data/datatable_asset_sources.json`. Until that step,
+  `test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`
+  fails on this branch, as it must: the check is the reason the step exists.
+- **NO SAVE VERSION MOVES.** A chosen option is already saved on the allocation by its index, and no field is added.
+- **THE MIDAS TOUCH'S EFFECT ROW IS RENAMED**, `capstone_0000000o#2` to `capstone_0000000o#3`, because the generator
+  numbers a milestone's effect rows in option order and The Master Tinkerer's row now comes first. Nothing names the
+  row key (searched `game/Source`, `tools`, `sim` and `docs` outside this log, 2026-11-22), and a save holds the option,
+  not the row.
+- **NO CENTRE MILESTONE OPTION WAITS ON A SYSTEM ANY MORE.** These two were the last. The refusal for an option that
+  waits is still in the code (`UCataclysmEmpireTree::RefusalForChoosingOption`, and Imperial Prowess's J4), so the two
+  tests that showed it with The Soul Forge now show it on a copy of the node table in which The Soul Forge still waits
+  (`CataclysmEmpireTreeTestTables::WithAnOptionWaiting`), and each adds a control that the generated table lets it be
+  chosen.
+- **THE GENRE RESEARCH IS ONE SOURCE, READ BY A SUBAGENT AND NOT BY ME.** Path of Exile's "Lucky",
+  https://poedb.tw/us/Lucky: "Lucky things are rolled twice and the best result is used". Two Last Epoch crafting pages
+  that might have shown a crafting critical success could not be read (maxroll.gg 404, icy-veins 403).
+
+### The texts and the rulings
+
+`docs/Empire_Skill_Tree_Keystones.md`:
+
+- **The Soul Forge** (Edicts of Power, tier 2, `capstone_0000000n`, option 3): "When improving the level of an item, you
+  have a **15%** chance to increase its level by **2** instead of 1, up to the maximum of 10."
+- **The Master Tinkerer** (The Imperial Vanguard, tier 3, `capstone_0000000o`, option 2): "When enchanting, you have a
+  **5%** chance to hit a critical success, doubling the rolls of the enchantment and completing the craft instantly."
+
+The coordinating session's rulings of 2026-11-22, all as recommended:
+
+| # | Reading | Ruled | Kind |
+| :-- | :-- | :-- | :-- |
+| R1 | "Doubling the rolls of the enchantment" | **Lucky**: each roll drawn twice and the better kept, the higher positive and the lower negative, so every value stays inside its row's range. A change of drawback keeps its positive and applies the same to its new negative | Judgement; the shape is Path of Exile's "Lucky", read at poedb.tw |
+| R2 | What The Soul Forge's second level costs | Nothing more: the +1's stones, residue, days and gold | Judgement |
+| R3 | Which draws the options use | Each its own salted stream, so a craft without the option, and every existing test, draws exactly as before | Judgement, following slice F2's seed rule |
+| R4 | "Completing the craft instantly" | No day passes; the residue, the gold and the material are still taken | Judgement |
+| R5 | Which crafts are "enchanting" | Slice F3's two: imprinting an enchantment and changing its drawback | Judgement, read from the design's names |
+| R6 | Which craft is "improving the level of an item" | The upgrade only, not Upgrade Affix Tier | Read from the text |
+| R7 | At +9 | One level, to +10, and the draw is not made | Read from the text |
+| R8 | Shown in advance? | No: the first press states the chance, and the play log says what happened | Judgement |
+
+**The three readings of R1 not taken, and why:**
+- each roll doubled and capped at 1: every roll of 0.5 or more becomes 1, and the drawback's roll would be doubled too,
+  which nothing in the text asks;
+- two pairs added: an imprint adds one enchantment for one affix given up, and a second breaks the rarity's slot count;
+- the rolled magnitude doubled past the row's maximum: breaks the ranges the enchantment tables hold, which the hover
+  text and the item values read.
+
+**Why "better" is the same direction for every row.** A roll of 1 gives a benefit its best figure and a drawback its
+harshest, whichever way its range is written (`FCataclysmEnchantmentRow::RollsDown`, ruled 2026-10-05). So the higher of
+two positive rolls and the lower of two negative rolls are better for every row.
+
+### What it does
+
+- **The empire tree.** The two options can be chosen, and Imperial Prowess can take either as its extra pick. Each
+  holds one effect, `UpgradeExtraLevelChance` 0.15 and `EnchantCriticalChance` 0.05, carried as the larger held, as The
+  Warlord's chance is. The forge reads them through `UCataclysmGameInstance::EmpireTreePlayerBonusesFor`.
+- **The Soul Forge.** `UCataclysmForge::SoulForgeLevels` answers 2 when the chance is above nought, the upgrade reaches
+  below +10, and a draw on `AffixCraftSeed` with salt "SOUL" and the item's gear level is below the chance; otherwise 1.
+  `UCataclysmForgeCraft::Upgrade` asks it inside the change it hands `DoItemCraft`, from the item as it stood and the day
+  before the days pass, and sets the gear level to the level before plus that.
+- **The Master Tinkerer.** `UCataclysmForge::EnchantCritical` draws on salt "CRIT" with the craft's own index (an
+  imprint's is the pair count, a change's the pair), and hands back the stream after the draw.
+  `UCataclysmForgeCraft::DoEnchantmentWork` asks it BEFORE `DoItemCraft`, because the sequence passes the step's days,
+  and on a critical success sets the step's days to 0. Once the plain pair is drawn, `UCataclysmForge::LuckyRolls` draws
+  a second positive and a second negative from that stream and keeps the higher positive (an imprint only) and the lower
+  negative.
+- **The words.** An upgrade's first press, with The Soul Forge held, ends " The Soul Forge: a 15% chance it rises two
+  levels instead of one."; an enchantment craft's, with The Master Tinkerer, " The Master Tinkerer: a 5% chance of a
+  critical success, its rolls drawn twice with the better kept, taking no days." The play log, only when it happens:
+  `The Soul Forge raised Quality Helm two levels, +3 to +5` and `a critical success on Quality Helm: the rolls were drawn
+  twice with the better kept, and the craft took no days`.
+- **`docs/Play_Loop_Checklist.md` step 26**, numbered from the base's highest step, 25.
+
+### Tests
+
+`Cataclysm.ForgeMilestones.`, six, written before a build. Each test finds the item it needs by its kill count, which no
+cost reads, at the day of the craft, and works out what the draw gives from the seed rather than from the function under
+test.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| M1 | `TheSoulForgeRaisesTwoLevelsOnADrawBelowFifteenPercent` | a helm at +2, 250 residue: CONTROL without the option, a draw below 0.15 gives +3; with it, +4 at the +1's 5 days, 25 residue and 4,500 gold; a draw at or above 0.15 gives +3 |
+| M2 | `TheSoulForgeStopsAtTen` | a helm at +9 whose draw would be below 0.15: +10 |
+| M3 | `TheMasterTinkerersImprintKeepsTheBetterOfTwoRollsAndTakesNoDays` | slice F3's sword on a critical success that changes both rolls: the plain pair, the higher positive roll, the lower negative, no day, residue 150 to 155; CONTROL the same sword, the same day, without the option: the plain rolls and its days |
+| M4 | `TheMasterTinkerersChangeOfDrawbackKeepsTheMilderRoll` | slice F3's helm on a critical success: the positive and its 0.5 kept, the plain drawback at the lower roll, no day, residue 200 to 300 |
+| M5 | `BothOptionsCanBeChosenAndImperialProwessCanTakeEither` | neither waits; each gives its chance and not the other's; CONTROL The Collector's Decree gives neither; Imperial Prowess takes The Soul Forge, whose chance is then held |
+| M6 | `TheForgeSaysTheChanceAndTheLineSaysWhatHappened` | the two first-press sentences, none for nought, and the two play log lines, word for word |
+
+**Two existing Unreal tests changed, each keeping its subject:**
+- `Cataclysm.EmpireTree.AnOptionWhoseSystemIsMissingCannotBeChosen` refuses The Soul Forge on a copy of the node table
+  in which it still waits, with its old refusal word for word; CONTROL: in the generated table it can be chosen.
+- `Cataclysm.EmpireTreeProwess.EachRefusalComesInItsOrder` shows J4 the same way; CONTROL: in the generated table The
+  Soul Forge is open as the extra option.
+
+**Python.** `tools/tests/test_the_forge_milestones.py`, four checks: the two effects are the document's 15% and 5%;
+neither option waits, in the generator or the node table; the upgrade asks `SoulForgeLevels` inside its hand-over and the
+enchantment crafts decide the critical success and take the days away before theirs; every forge salt is its own. Three
+existing checks changed, each with the new slice named: `test_empire_tree_effects_match_their_texts.py` (115 nodes to
+117, `SLICE_F6`), `test_empire_tree_tables_match_the_tree_file.py` (slice 10 allowed; the options' count "crafting": 2
+becomes "slice 10": 2), and `test_the_play_loop_is_logged_at_each_step.py` (the two new lines and where each is said).
+
+### Registered for the window
+
+**The counts are taken at the turn**, from the newest measured whole-suite log once sd-w1 has merged, as the
+coordinating session ordered.
+
+- **The whole suite: the base + 6**, the six new tests; the two changed Unreal tests keep their names. Skipped halves
+  unchanged (no new test skips a half). Test saves unchanged: the new tests' scene is slice F5's, whose crafts wrote no
+  save in window ow-f5-w1 (its 861 differed from the base only by slice c's kill test).
+- **THE EDITOR STEP**: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`
+  and records them in `game/Data/datatable_asset_sources.json`; those three files only are committed alone, and the
+  tested head becomes that commit.
+- **No save record moves.**
+- **Groups alone, first**, name-literal counts on this branch, each prefix ending in a dot: `ForgeMilestones.` 6 (new);
+  `EmpireTree.` 24 and `EmpireTreeProwess.` 6 (the two changed tests); `EmpireTreeScreen.` 10 (the option labels);
+  `Data.` 7 (the pinned row count, 121 to 123); `Forge.` 8, `ForgeScreen.` 4, `ForgeEnchantments.` 12 and
+  `ForgeResidueTools.` 5 (the upgrade and the enchantment crafts); `PlayLoop.` 12.
+
+**Six C++ guard proofs**, one per new test, each narrowed to `Cataclysm.ForgeMilestones.` (6 performed), run by
+`.claude/windows/prove_f6.py <P>`; each anchor matches exactly once at `29edcf655`:
+
+| Proof | The break | Predicted to fail |
+| :-- | :-- | :-- |
+| M1 | `SoulForgeLevels`' draw compared with `>` instead of `<` | M1 |
+| M2 | the +10 cap removed from `SoulForgeLevels` | M2 |
+| M3 | `LuckyRolls` keeps the lower positive | M3 (a change keeps its positive, so M4 holds) |
+| M4 | a critical success's days not taken away | M3 and M4, the two that check the day |
+| M5 | The Soul Forge's effect written into `EnchantCriticalChance` | M1 and M5 (M2 reaches +10 with or without the chance) |
+| M6 | the Soul Forge's line in figures, "2 levels" | M6 |
+
+**Four Python guard proofs, 4 of 4 PROVED exactly as predicted**, run in a `git archive` copy of `29edcf655` by
+`.claude/windows/prove_f6_python.py`, each failing one named check of `test_the_forge_milestones.py` with the break in
+and passing 4 of 4 restored:
+
+| Proof | The break | Failed with the break in |
+| :-- | :-- | :-- |
+| PG1 | The Soul Forge's effect 0.16 | `test_the_two_effects_are_the_documents_figures` |
+| PG2 | The Soul Forge back in the waits-on table | `test_neither_option_waits_on_a_system` |
+| PG3 | the critical success's days set on the result, not the step | `test_the_crafts_ask_the_options_where_the_sequence_lets_them_act` |
+| PG4 | `SoulForgeSalt` given the imprint's salt | `test_each_draw_has_a_salt_of_its_own` |
+
+**The Python suite at `29edcf655`: 8,209 passed, 1 failed, 10 skipped in 377.9 s**; JUnit 8,220 tests, 1 failure, 0
+errors, 10 skipped. The one failure is `test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears. `ruff check .`: all checks passed. An earlier run, before the commit, also failed
+`test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`: `Cataclysm.Data.EveryGeneratedTableImports`
+pinned 121 effect rows. The commit pins 123 with the reason in its comment.
+
+### One window for this slice, #2857 and slice F6a, on `feat/forge-f6-f6a-2857` (2026-11-25)
+
+By the coordinating session's instructions of 2026-11-24 and 2026-11-25: one window for the forge's milestone options
+(this slice), the capital's days (#2857, `fix/forge-days-2857`, made from this slice) and the forge's gold nodes (#47
+slice F6a), on development `eb34af972`. Prepared only: nothing compiled, no editor, no pull request. The machine order of
+2026-11-25: the empty-board surge window (#2865), then this one. **It replaces the registration of 2026-11-24 on
+`feat/forge-w1` (`dd214c07c`, F6 and #2857 on `5f302b0a7`), which was not carried onto this branch.**
+
+**The branch, in two rebases.**
+- **2026-11-24, onto development `5f302b0a7`** (`feat/forge-w1`): `git rebase --onto origin/development 52b66e016` of
+  `fix/forge-days-2857`. This slice's code commit conflicted in nine files with #2848 slice S2, which had added two
+  empire tree nodes, a play log line and checklist steps 26 and 27; each was resolved keeping both:
+  `CataclysmDataRows.h` and `tools/generate_datatables.py` (S2's two effect kinds, then this slice's two);
+  `CataclysmPlayLoopLog.h/.cpp` (S2's `ForgeDismantleLine`, then this slice's two lines); `docs/Play_Loop_Checklist.md`
+  (S2's steps 26 and 27, then **this slice's step, renumbered 28**: the text above says 26, written on a base whose
+  highest step was 25); `CataclysmDataTableTests.cpp` (the effect rows pinned at 125, 121 + S2's 2 + this slice's 2);
+  `test_empire_tree_effects_match_their_texts.py` (119 built nodes, both sets kept); and
+  `test_empire_tree_tables_match_the_tree_file.py` (the built slices `{3, 4, 5, 6, 7, 8, 9, 10, 2848}`). Two commits of
+  the window's own followed: the effect-row check's comment says 125, and **#2857's check of the forge's questions did not
+  know the dismantle**, which S2 added after #2857 was written (`test_days_spent_in_the_capital_are_reported.py` lists it
+  as exempt, because it costs no gold and no days; proof FD1, "PROVED: 1 failed, 4 passed in 1.51s | restored: 5 passed
+  in 0.71s").
+- **2026-11-25, onto development `eb34af972`** (this branch): `git rebase --onto origin/development 5f302b0a7` of slice
+  F6a's `b426b7d60`, which sat on `feat/forge-w1`'s `31689adba`. This slice's and #2857's commits applied with no
+  conflict but this entry's, put back on top by `tools/resolve_decisions_log.py`; slice F6a's code commit conflicted in
+  seven files, and its character record's version 18 files were made then (its entry, "On skill selection").
+
+**The sweep** on `eb34af972`: development changed none of the forge's or the empire tree's code since `5f302b0a7`;
+`.claude/windows/unity_name_check.py` against development, 0 findings; no member either side added is hidden by a local
+or parameter the other side added in its class's `.cpp` (by script); every guard proof anchor below is once on the
+branch.
+
+**The whole Python suite at `2f673d420`**, this entry's commit: "1 failed, 8495 passed, 9 skipped in 351.73s";
+JUnit 8505 tests, 1 failure, 0 errors, 9 skipped. ruff: "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, "['EmpireTreeEffects.csv',
+'EmpireTreeNodes.csv'] changed since their DataTable assets were built", which the window's editor step clears. The
+three character-version failures of `29c13a0ce` are gone. Development `be7ffb06e` (#2892, one bullet in this log)
+was merged on top afterwards, in `d97b30307`.
+
+**On development `0d9259653` (2026-11-25): the empty-board surge (#2865, PR #2893) merged in, in `42bad349b`**, by the
+coordinating session's instruction of that day, with no conflict. #2865 changes the day loop: an empty board is one with
+no ordinary dungeon standing and brings a surge with no least gap, four dungeons larger; every city's fall brings a
+surge; and a day report counts its surges (`FCataclysmDayReport::Surges`), which `AwayAccount` and `NoteDaysAway` add
+up since then instead of counting a day with `bSurged`. It renames seven `Cataclysm.EmpireRun.` tests and adds none. The
+sweep for what it and #2857 both touch:
+- **`FCataclysmPlayLoopLog::DaysDidSomething` (#2857) asked `bSurged` while the account it guards counts `Surges`**; it
+  asks `Surges` now (`3b35f7151`), and its test's surge day is written as `FireSurge` writes it (`bSurged`, `Surges` 1,
+  six dungeons) and checks the account names "1 surge brought 6 dungeons". A day the game writes sets both, so no play
+  changes. **No guard proof**: the difference shows only on a day built by hand with the flag and no count, which the
+  game never writes.
+- **The day reports the tests build by hand** (2865-w1's lesson): a search of the game's tests for `bSurged =` finds
+  three, #2865's two (which set `Surges` too) and the one above.
+- **A surge on a day spent in the capital**: since #2865 a forge craft's or a respec's days on a board with no ordinary
+  dungeon bring a surge on their first day, and the account then names it. The tests that spend such days compare what
+  follows by its start or by what it contains (`Cataclysm.Forge.`'s, `ForgeScreen.`'s and `EmpireTreeScreen.`'s #2857
+  tests), allow for an account (`ForgeScreen.`'s upgrade test, whose board starts empty), or compare nothing a surge moves
+  (gold, levels, residue, days, the forge count: `ForgeMilestones.`, `ForgeGoldNodes.`). The forecast test's checks are
+  on named dungeons and the days their timers ran out. Every other forge screen test compares a done message by its
+  start or not at all, and its exact comparisons are refusals, which spend no day. No test counts the PLAY LOOP lines of
+  a craft.
+- **The `Cataclysm.EmpireRun.` count**: 71 on development and in 2865-w1's log, 72 on the branch (#2857's one).
+- `.claude/windows/unity_name_check.py` against `0d9259653`: 0 findings; the hidden-member script across the merge: 0;
+  D1's and D2's anchors, in the two game files both changed, once each.
+
+**THE REGISTRATION**, made again from 2865-w1's log, with the same figures. Base: window 2865-w1's whole-suite engine log,
+`2865_suite_engine_62612be6.log` in the worktree `interesting-snyder-dca273`'s `.claude/windows/` (#2865 on `62612be63`:
+"5474 tests performed", "58 skipped part of what they check", "Test saves: 874 written and deleted, 0 left behind"; its
+three failures were test faults, fixed in two test files without changing a count). Its game files are development
+`0d9259653`'s but for those two test files. It replaces the registration from ss2-w1's log (5474, 58, 874, the same
+figures). **If another window's whole suite lands on development first, this is re-registered from its log.**
+- **The editor step**, after the build: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes` and
+  `DT_EmpireTreeEffects` and records them in `game/Data/datatable_asset_sources.json`; those three files only are
+  committed alone, and the tested head becomes that commit. No other data file differs from development.
+- **The whole suite: 5493 performed** (5474 + 19 named, none removed: this slice's 6 in `Cataclysm.ForgeMilestones.`;
+  #2857's 5, one each in `Forge.`, `ForgeScreen.`, `EmpireTreeScreen.`, `PlayLoop.` and `EmpireRun.`; slice F6a's 8 in
+  `Cataclysm.ForgeGoldNodes.`). Counted by name, development 5392 and the branch 5411 (the name count is short of the
+  run's, as `CLAUDE.md` says; the difference is the figure). **58 skipped halves**: the branch adds no
+  `ReportSkippedHalf` call. **Test saves: 874 and whatever the 19 new tests write**; that is not settled by reading them,
+  and the run's line is recorded either way.
+- **The save records move**: the character record 17 to 18 and the account record 7 to 8 (slice F6a). The run record
+  stays at 18.
+- **Groups alone, 37, 361 tests**, each counted in the base log and checked against the name strings on development and
+  on the branch: `BossClearedWins.` 2, `CataclysmDraw.` 6, `ConsumptionDouble.` 15, `ConsumptionMark.` 6, `Data.` 7, `Dismantle.` 12, `EarnedBoss.` 4, `EmpirePoints.` 16, `EmpireRun.` 72 (+1), `EmpireTree.` 24, `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeCredit.` 8, `EmpireTreeNineSaves.` 1, `EmpireTreeProwess.` 6, `EmpireTreeRestores.` 4, `EmpireTreeScouts.` 3, `EmpireTreeScreen.` 11 (+1), `Forge.` 9 (+1), `ForgeAffixChange.` 5, `ForgeAffixes.` 6, `ForgeCosts.` 3, `ForgeDamageTypes.` 6, `ForgeEnchantments.` 12, `ForgeGems.` 4, `ForgeGoldNodes.` 8 (new), `ForgeMilestones.` 6 (new), `ForgeResidueTools.` 5, `ForgeScreen.` 5 (+1), `ForgeSockets.` 6, `GemSave.` 2, `Gold.` 13, `InventoryTabs.` 7, `PlayLoop.` 13 (+1), `SaveRecords.` 18, `SkillDefaults.` 18, `SkillLevels.` 13. Chosen as every group a test file the branch changes registers into, and every group whose
+  tests drive the forge's crafts, whose prices slice F6a changes.
+- **C++ guard proofs, three a change** (the owner's rule of 2026-09-14), nine, each anchor once on the branch, each
+  narrowed with its trailing dot:
+
+| Proof | Change | Break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| M1 | F6 | `SoulForgeLevels`' `return Stream.GetFraction() < Chance ? 2 : 1;` read with `>` | `Cataclysm.ForgeMilestones.` (6) | M1 |
+| M4 | F6 | a critical success's `Step.Days = 0;` removed from `DoEnchantmentWork` (the anchor is the three lines from `if (bCritical)`: the line alone is twice in the file) | `Cataclysm.ForgeMilestones.` | M3 and M4 |
+| M5 | F6 | The Soul Forge's effect written into `EnchantCriticalChance` (`Bonuses.UpgradeExtraLevelChance = FMath::Max(Bonuses.UpgradeExtraLevelChance, Row->PerPoint);`) | `Cataclysm.ForgeMilestones.` | M1 and M5 |
+| D1 | #2857 | `TimersRunningOutWithin`'s `if (DaysToRunOut > Days)` read as `>=` | `Cataclysm.EmpireRun.` (72) | `TheTimersForecastToRunOutAreTheOnesTheDaysRunOut` |
+| D2 | #2857 | `AwayAccount`'s `Lead, FromDay, ToDay,` read as `TEXT("while away"), FromDay, ToDay,` | `Cataclysm.PlayLoop.` (13) | `DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead` |
+| D3 | #2857 | the forge screen's `TimersRunningOutIn` returns `FString()` | `Cataclysm.ForgeScreen.` (5) | `TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid` |
+| CF1 | F6a | `FMath::Clamp(Reduced, 0.0f, CraftGoldReductionCap)` read as `FMath::Clamp(Reduced, 0.0f, 1.0f)` | `Cataclysm.ForgeGoldNodes.` (8) | `TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth` |
+| CF2 | F6a | `UpgradeOf`'s `Out.Gold = Pricing.Apply(Out.Gold, Out.Stone);` removed | `Cataclysm.ForgeGoldNodes.` | `APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt`, `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+| CF3 | F6a | `DoItemCraft`'s `CountTheForgeGold(WorldContext, Step.Gold);` removed | `Cataclysm.ForgeGoldNodes.` | `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+
+This slice registered six C++ proofs (above); M2, M3 and M6 are left out under the rule of three, and the coordinating
+session may restore them.
+
+### Window forge-f6-w1, 2026-11-25: PASSED, AFTER ONE BUILD FAILED AND ONE INCLUDE WAS ADDED
+
+**THE FIRST COMPILE FAILED.** On `bf8a2b7d1` (the registered head), under the lock `forge-f6-w1-compile`, from 05:07:
+- build 1, the branch: "Build: Succeeded - 92 actions, 82 files compiled", 0 compiler warning or error lines;
+- **build 2, each changed `.cpp` alone: "Build: Failed - 58 actions, 53 files compiled"**, its only errors
+  `CataclysmForgeWidget.cpp(952,30)`, `(952,56)`, `(1043,30)` and `(1043,56)`: "error C2027: use of undefined type
+  'FCataclysmEmpireTreePlayerBonuses'". This slice's milestone chance sentences read
+  `UCataclysmGameInstance::EmpireTreePlayerBonusesFor(...).EnchantCriticalChance` and `.UpgradeExtraLevelChance`, and the
+  forge screen had only the game instance header's forward declaration of the struct; the unity build compiled because
+  another file of its unity file includes `CataclysmEmpireTree.h`. Every other changed file compiled alone with no error
+  (the two empire run files in build 1, the other 35 in build 2);
+- build 3 did not run. The script restored the tree and released the lock. Its logs are kept in the worktree
+  `C:/forgew1`'s `.claude/windows/attempt1/`.
+
+**The fix, `c357bebbb`**, accepted by the coordinating session the same morning: `CataclysmForgeWidget.cpp` includes
+`Player/CataclysmEmpireTree.h`, with a comment line saying why. Nothing else changed. The scripts were made again with
+that head and every registered figure unchanged.
+
+**The second compile, on `c357bebbb`**, 05:24 to 05:31: build 1 "Build: Succeeded - 23 actions, 18 files compiled";
+build 2 "Build: Succeeded - 24 actions, 19 files compiled", its log holding "[1/24] Compile [x64]
+CataclysmForgeWidget.cpp"; build 3 "Build: Succeeded - 23 actions, 18 files compiled". 0 compiler warning or error lines
+in each.
+
+**THE WINDOW**, 05:32 to 06:12, under the lock `forge-f6-w1`; scripts and logs in `C:/forgew1`'s `.claude/windows/`
+(`run_forge.py`, `forge_run.out`).
+- Pre-checks at 05:31:49: ALL PASS. The recount: all 37 groups and the base's 5474 matched the base log. The record
+  version check: "records: run 18, character 18, account 8"; "30 lines stating a version; NO MISMATCH".
+- **The editor step**: `tools/generate_datatable_assets.py` changed exactly `DT_EmpireTreeEffects.uasset`,
+  `DT_EmpireTreeNodes.uasset` and `game/Data/datatable_asset_sources.json`; no other asset was re-saved. Committed alone
+  as `88c917b08` on `c357bebbb` and pushed. **THE TESTED HEAD IS `88c917b08`.**
+- **Groups alone: 37 of 37 passed**, each at its registered count, 361 tests, 0 failed: the new `ForgeGoldNodes.` 8 and
+  `ForgeMilestones.` 6, and `EmpireRun.` 72, `EmpireTreeScreen.` 11, `Forge.` 9, `ForgeScreen.` 5 and `PlayLoop.` 13
+  with #2857's one each.
+- **The whole suite**: "Tests: 5493 tests performed, 5493 succeeded, 0 failed. 58 skipped part of what they check";
+  "Test saves: 874 written and deleted, 0 left behind" (the 19 new tests wrote none); "Declared: 5493 tests in the tree
+  at 88c917b08; 5493 performed, gap 0; every declared test was reported by the run." Every figure the registered one.
+  The engine log is kept as `forge_suite_engine_88c917b0.log` (712 MB). Memory: "peak_used_virtual_mb=9252
+  final_used_virtual_mb=9032".
+- **Python, beside it, the run of record for this head**: "8523 passed, 10 skipped in 432.52s"; JUnit 8533 tests, 0
+  failures, 0 errors, 10 skipped. Against the run at `bf8a2b7d1`, two tests changed and no other:
+  `test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded` passed (failed before the
+  editor step), and `test_run_editor_python.py`'s `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`
+  was skipped, "This checkout has its modules built, so nothing is missing" (the window's builds made them).
+- ruff: "All checks passed!".
+
+**The nine C++ guard proofs, 9 of 9 PROVED**, each failing exactly its predicted tests with the break in and passing
+every test of its prefix restored; each anchor once, the source hash the same before and after:
+
+| Proof | Prefix | With the break in | Restored (performed, succeeded, failed) |
+| :-- | :-- | :-- | :-- |
+| M1 | `Cataclysm.ForgeMilestones.` | "6 tests performed, 5 succeeded, 1 failed: TheSoulForgeRaisesTwoLevelsOnADrawBelowFifteenPercent" | 6, 6, 0 |
+| M4 | `Cataclysm.ForgeMilestones.` | "6 tests performed, 4 succeeded, 2 failed: TheMasterTinkerersChangeOfDrawbackKeepsTheMilderRoll, TheMasterTinkerersImprintKeepsTheBetterOfTwoRollsAndTakesNoDays" | 6, 6, 0 |
+| M5 | `Cataclysm.ForgeMilestones.` | "6 tests performed, 4 succeeded, 2 failed: BothOptionsCanBeChosenAndImperialProwessCanTakeEither, TheSoulForgeRaisesTwoLevelsOnADrawBelowFifteenPercent" | 6, 6, 0 |
+| D1 | `Cataclysm.EmpireRun.` | "72 tests performed, 71 succeeded, 1 failed: TheTimersForecastToRunOutAreTheOnesTheDaysRunOut" | 72, 72, 0 |
+| D2 | `Cataclysm.PlayLoop.` | "13 tests performed, 12 succeeded, 1 failed: DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead" | 13, 13, 0 |
+| D3 | `Cataclysm.ForgeScreen.` | "5 tests performed, 4 succeeded, 1 failed: TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid" | 5, 5, 0 |
+| CF1 | `Cataclysm.ForgeGoldNodes.` | "8 tests performed, 7 succeeded, 1 failed: TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth" | 8, 8, 0 |
+| CF2 | `Cataclysm.ForgeGoldNodes.` | "8 tests performed, 6 succeeded, 2 failed: AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold, APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt" | 8, 8, 0 |
+| CF3 | `Cataclysm.ForgeGoldNodes.` | "8 tests performed, 7 succeeded, 1 failed: AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold" | 8, 8, 0 |
+
+---
+
 ## 2026-11-24 — Bug batches 1 and 2 and the creation skill count on development after the inventory tabs: the whole suite 5422 with three test faults corrected, and 42 of 42 guard proofs under the owner's budget of three a change
 
 **Said first:**

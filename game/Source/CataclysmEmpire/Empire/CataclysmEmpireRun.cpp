@@ -735,6 +735,53 @@ bool UCataclysmEmpireRun::IsAWalkUnderWay() const
 	return Clock != nullptr && Clock->CurrentDungeonId != INDEX_NONE;
 }
 
+TArray<FCataclysmTimerForecast> UCataclysmEmpireRun::TimersRunningOutWithin(int32 Days) const
+{
+	TArray<FCataclysmTimerForecast> Forecast;
+	if (Days <= 0 || Clock == nullptr || Map == nullptr)
+	{
+		return Forecast;
+	}
+
+	// IN THE CLOCK'S ORDER, the order `UCataclysmDayClock::AdvanceDay` resolves one day's timers in; sorted by day below,
+	// stably, so two on one day keep it.
+	for (const FCataclysmDungeonTimer& Timer : Clock->Timers)
+	{
+		// THE DUNGEON STOOD IN DOES NOT MOVE (`UCataclysmDayClock::bTimerTicksWhileRunning`).
+		if (Timer.DungeonId == Clock->CurrentDungeonId && !UCataclysmDayClock::bTimerTicksWhileRunning)
+		{
+			continue;
+		}
+		const FCataclysmDungeon* Dungeon = FindDungeon(Timer.DungeonId);
+		if (Dungeon == nullptr || Dungeon->bBonus
+			|| (Dungeon->Type != ECataclysmDungeonType::Basic && Dungeon->Type != ECataclysmDungeonType::Quest))
+		{
+			continue;
+		}
+		const FCataclysmCity* City = Map->Find(Dungeon->CityId);
+		if (City == nullptr || City->bFallen)
+		{
+			continue;
+		}
+
+		// THE FIRST DAY THAT TAKES IT TO NOUGHT: a day comes off, then the clock asks, so a timer already at nought runs
+		// out on the next day passed and never on none.
+		const int32 DaysToRunOut = FMath::Max(1, FMath::CeilToInt(Clock->DaysUntilResolveFor(Timer.DungeonId)));
+		if (DaysToRunOut > Days)
+		{
+			continue;
+		}
+
+		FCataclysmTimerForecast& Each = Forecast.AddDefaulted_GetRef();
+		Each.DungeonId = Timer.DungeonId;
+		Each.Day = Day() + DaysToRunOut;
+		Each.CityId = Dungeon->CityId;
+	}
+
+	Forecast.StableSort([](const FCataclysmTimerForecast& A, const FCataclysmTimerForecast& B) { return A.Day < B.Day; });
+	return Forecast;
+}
+
 // ---------------------------------------------------------------------------
 // A surge
 // ---------------------------------------------------------------------------

@@ -493,6 +493,22 @@ public:
 	static FString DaysAwayLine(const UCataclysmEmpireRun* Run);
 
 	/**
+	 * The warning a press that spends days in the capital adds to its question, before it is made: which dungeons' timers
+	 * run out within those days, the city each would hit and the day, from `UCataclysmEmpireRun::TimersRunningOutWithin`.
+	 * " Within 3 days, 1 dungeon's timer runs out: dungeon 13 (the dungeon on Outpost (-3,0)) hits Outpost (-3,0) on day
+	 * 99." Issue #2857, the owner's ruling of 2026-11-22: the owner spent 45 days at the forge in about a minute of
+	 * clicking, with no warning. The forge's crafts and the empire upgrade tree's respec say it.
+	 *
+	 * BEGINS WITH A SPACE, as the forge's other additions to a question do (`UCataclysmForge::OptionsQuestion`), and IS
+	 * EMPTY WHEN NO TIMER RUNS OUT, so a question with nothing to warn of reads as it did before. A forecast from the
+	 * timers as they stand: a surge or a fall inside the days can change what happens, which the account after the press
+	 * says (`UCataclysmGameInstance::CapitalDaysAccount`).
+	 *
+	 * @param Days the days the press would spend, after anything that changes them (the forge's Tainted Shards)
+	 */
+	static FString TimersRunningOutText(const UCataclysmEmpireRun* Run, int32 Days);
+
+	/**
 	 * The second line of the map's surge label, for as long as nothing replaces it: what the last walk's end did. The
 	 * clear's line (`LastClearLine`) when that walk ended in a clear, then `DaysAwayLine`. A walk that ended in a death
 	 * has its death's line on the first line already, `LatestEventLine`'s. Issue #2733 slice 3 (Q6).

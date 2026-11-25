@@ -121,6 +121,64 @@ int64 UCataclysmForge::GoldFor(int32 BaseGold, float Residue, int32 DifficultyTi
 	return FMath::Max<int64>(1, static_cast<int64>(FMath::RoundToDouble(Gold)));
 }
 
+// ---- #47 slice F6a: the forge's gold after the empire tree's forge gold nodes. ----
+
+int32 FCataclysmForgePricing::TierOf(FName Material) const
+{
+	return MaterialTable != nullptr && !Material.IsNone() ? UCataclysmDropRoll::MaterialTierOf(MaterialTable, Material) : 0;
+}
+
+float FCataclysmForgePricing::FactorFor(FName Material) const
+{
+	return Factors[FMath::Clamp(TierOf(Material), 0, MaxMaterialTier)];
+}
+
+int64 FCataclysmForgePricing::Apply(int64 Gold, FName Material) const
+{
+	const float Multiplier = FactorFor(Material);
+	if (Gold <= 0 || Multiplier == 1.0f)
+	{
+		return Gold;
+	}
+	return FMath::Max<int64>(1, static_cast<int64>(FMath::RoundToDouble(static_cast<double>(Gold) * Multiplier)));
+}
+
+int32 FCataclysmForgePricing::PercentOffFor(FName Material) const
+{
+	return FMath::RoundToInt((1.0f - FactorFor(Material)) * 100.0f);
+}
+
+int32 UCataclysmForge::ForgeUpgradesSeed(const FCataclysmItem& Item, int32 WalkSeedMask, int32 Day)
+{
+	return AffixCraftSeed(Item, ForgeUpgradesSalt, 0, WalkSeedMask, Day);
+}
+
+int32 UCataclysmForge::CombineForgeUpgradesSeed(int32 Rung, int32 WalkSeedMask, int32 Day)
+{
+	return CataclysmSeedMix::Mix(CataclysmSeedMix::Mix(WalkSeedMask, ForgeUpgradesSalt, Day), Rung, 0);
+}
+
+bool UCataclysmForge::ForgeUpgradesTenthOff(float Chance, int32 Seed)
+{
+	if (Chance <= 0.0f)
+	{
+		return false;
+	}
+	FRandomStream Stream(Seed);
+	return Stream.GetFraction() < Chance;
+}
+
+FString UCataclysmForge::DiscountText(const FCataclysmForgePricing& Pricing, FName Material)
+{
+	const int32 Off = Pricing.PercentOffFor(Material);
+	if (Off <= 0)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT(" The empire tree's forge nodes take %d%% off its gold.%s"), Off,
+						   Pricing.bTenthOff ? TEXT(" Forge Upgrades' tenth is in it.") : TEXT(""));
+}
+
 int64 UCataclysmForge::CombineGoldFor(int32 Rung, int32 DifficultyTier)
 {
 	// DOUBLED FOR EACH RUNG, as each rung is two of the one below; held inside the eight rarities and ten stones.
@@ -168,7 +226,8 @@ FString UCataclysmForge::GoldRefusal(const FString& What, int64 Gold, int64 Held
 }
 
 FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, int32 StonesOfTheNextLevelHeld,
-												  int32 DifficultyTier, int64 GoldHeld)
+												  int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeUpgrade Out;
 	Out.FromLevel = Item.GearLevel;
@@ -198,6 +257,7 @@ FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, in
 	Out.Days = DaysFor(Item.Residue, Out.ToLevel);
 	// THE SHEET'S BASE GOLD FOR A LEVEL, ONCE FOR EACH LEVEL REACHED, as its days are "per tier".
 	Out.Gold = GoldFor(BaseGoldOf(UpgradeOperationRow, GoldPerCraftDay) * Out.ToLevel, Item.Residue, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Stone); // #47 slice F6a: the empire tree's forge gold nodes.
 
 	if (Out.StonesHeld < Out.StonesNeeded)
 	{
@@ -216,7 +276,8 @@ FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, in
 }
 
 FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThisLevelHeld, int32 DifficultyTier,
-												  int64 GoldHeld)
+												  int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeCombine Out;
 	Out.FromLevel = Level;
@@ -237,6 +298,7 @@ FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThi
 	Out.Into = StoneFor(Level + 1);
 	// A +1 STONE IS THE LOWEST RUNG (#2830).
 	Out.Gold = CombineGoldFor(Level - 1, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.From); // #47 slice F6a: the empire tree's forge gold nodes.
 	if (Out.StonesHeld < Out.StonesNeeded)
 	{
 		Out.Refusal = FString::Printf(TEXT("Combining takes two +%d upgrade stones; %d held."), Level, Out.StonesHeld);
@@ -254,7 +316,8 @@ FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThi
 }
 
 FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis,
-														int32 DifficultyTier, int64 GoldHeld)
+														int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeGemCombine Out;
 	Out.Gem = Gem;
@@ -279,6 +342,7 @@ FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRar
 	Out.Into = static_cast<ECataclysmRarity>(static_cast<uint8>(Rarity) + 1);
 	// THE STONE COMBINE'S GOLD, AT THE RARITY'S RUNG: an Everyday gem is the lowest (#2830).
 	Out.Gold = CombineGoldFor(static_cast<int32>(Rarity), DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, NAME_None); // #47 slice F6a: the empire tree's forge gold nodes.
 	if (Out.GemsHeld < Out.GemsNeeded)
 	{
 		Out.Refusal = FString::Printf(TEXT("Combining takes two %s (%s); %d held."), *Name,
@@ -322,7 +386,8 @@ int32 UCataclysmForge::DaysFor(float Residue, int32 BaseDays)
 
 FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item, int32 Socket, FName Gem,
 													  ECataclysmRarity Rarity, const FString& GemType, int32 GemsHeld,
-													  int32 AgentsHeld, int32 DifficultyTier, int64 GoldHeld)
+													  int32 AgentsHeld, int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeSocketing Out;
 	Out.Socket = Socket;
@@ -334,6 +399,7 @@ FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item
 	Out.ResidueAfter = Item.Residue + SocketGemResidue;
 	Out.Days = DaysFor(Item.Residue, SocketGemBaseDays);
 	Out.Gold = GoldFor(BaseGoldOf(SocketGemOperationRow, BaseGoldFor(SocketGemBaseDays)), Item.Residue, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
@@ -396,7 +462,8 @@ FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item
 }
 
 FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(const FCataclysmItem& Item, int32 Socket, int32 DustHeld,
-														bool bRoomForTheGem, int32 DifficultyTier, int64 GoldHeld)
+														bool bRoomForTheGem, int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeSocketing Out;
 	Out.bUnsocket = true;
@@ -408,6 +475,7 @@ FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(const FCataclysmItem& It
 	Out.Days = DaysFor(Item.Residue, UnsocketGemBaseDays);
 	Out.Gold = GoldFor(BaseGoldOf(UnsocketGemOperationRow, BaseGoldFor(UnsocketGemBaseDays)), Item.Residue,
 					   DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
@@ -470,7 +538,8 @@ FString UCataclysmForge::SocketingQuestion(const FCataclysmForgeSocketing& Plan)
 }
 
 FCataclysmForgeSocketWork UCataclysmForge::AddSocketOf(const FCataclysmItem& Item, int32 MaxSockets, int32 CoresHeld,
-														int32 DifficultyTier, int64 GoldHeld)
+														int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeSocketWork Out;
 	Out.bAdd = true;
@@ -482,6 +551,7 @@ FCataclysmForgeSocketWork UCataclysmForge::AddSocketOf(const FCataclysmItem& Ite
 	Out.ResidueAfter = Item.Residue + AddSocketResidue;
 	Out.Days = DaysFor(Item.Residue, AddSocketBaseDays);
 	Out.Gold = GoldFor(BaseGoldOf(AddSocketOperationRow, BaseGoldFor(AddSocketBaseDays)), Item.Residue, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
@@ -516,7 +586,8 @@ FCataclysmForgeSocketWork UCataclysmForge::AddSocketOf(const FCataclysmItem& Ite
 
 FCataclysmForgeSocketWork UCataclysmForge::ChangeSocketTypeOf(const FCataclysmItem& Item, int32 Socket,
 															   ECataclysmSocketType NewType, int32 LensesHeld,
-															   int32 DifficultyTier, int64 GoldHeld)
+															   int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeSocketWork Out;
 	Out.Socket = Socket;
@@ -528,6 +599,7 @@ FCataclysmForgeSocketWork UCataclysmForge::ChangeSocketTypeOf(const FCataclysmIt
 	Out.Days = DaysFor(Item.Residue, ChangeSocketTypeBaseDays);
 	Out.Gold = GoldFor(BaseGoldOf(ChangeSocketTypeOperationRow, BaseGoldFor(ChangeSocketTypeBaseDays)), Item.Residue,
 					   DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
@@ -662,7 +734,8 @@ FName UCataclysmForge::MaterialFor(ECataclysmForgeAffixCraft Craft)
 
 FCataclysmForgeAffixWork UCataclysmForge::AffixWorkOf(const FCataclysmItem& Item, ECataclysmForgeAffixCraft Craft,
 													   int32 Affix, int32 MaterialHeld, int32 DifficultyTier,
-													   int64 GoldHeld)
+													   int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeAffixWork Out;
 	Out.Craft = Craft;
@@ -723,6 +796,7 @@ FCataclysmForgeAffixWork UCataclysmForge::AffixWorkOf(const FCataclysmItem& Item
 	Out.ResidueAfter = Item.Residue + Added;
 	Out.Days = DaysFor(Item.Residue, BaseDays);
 	Out.Gold = GoldFor(BaseGold, Item.Residue, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 
 	// A PERFECTING OF A ROLL AT THE TOP WOULD SPEND A PRIMAL SPARK FOR NOTHING. A JUDGEMENT of this slice, as a socket's
 	// change to its own type is refused.
@@ -875,7 +949,8 @@ int32 UCataclysmForge::AffixCraftSeed(const FCataclysmItem& Item, int32 Salt, in
 FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclysmItem& Item, FName AffixRow, int32 Tier,
 																  int32 Seed, const UDataTable* AffixTable,
 																  const UDataTable* BaseTable, int32 FragmentsHeld,
-																  int32 DifficultyTier, int64 GoldHeld)
+																  int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeAffixChange Out;
 	Out.Affix = Item.Affixes.Num();
@@ -923,6 +998,7 @@ FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclys
 	Out.ResidueAfter = Item.Residue + DeterministicAffixResiduePerTier * static_cast<float>(Tier);
 	Out.Days = DaysFor(Item.Residue, FMath::Min(Tier, DeterministicAffixMaxBaseDays));
 	Out.Gold = GoldFor(BaseGoldOf(DeterministicAffixOperationRow, GoldPerCraftDay), Item.Residue, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 
 	// THE DRAW: a resistance family's damage types among those the piece does not hold, as `CandidatesFor` draws them,
 	// then the roll in the tier, as a drop draws it (Q11).
@@ -957,7 +1033,8 @@ FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclys
 
 FCataclysmForgeAffixChange UCataclysmForge::AffixShiftOf(const FCataclysmItem& Item, int32 Affix, int32 Seed,
 														  const UDataTable* AffixTable, const UDataTable* BaseTable,
-														  int32 CrystalsHeld, int32 DifficultyTier, int64 GoldHeld)
+														  int32 CrystalsHeld, int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeAffixChange Out;
 	Out.bShift = true;
@@ -996,6 +1073,7 @@ FCataclysmForgeAffixChange UCataclysmForge::AffixShiftOf(const FCataclysmItem& I
 	Out.Days = DaysFor(Item.Residue, AffixShiftingBaseDays);
 	Out.Gold = GoldFor(BaseGoldOf(AffixShiftingOperationRow, BaseGoldFor(AffixShiftingBaseDays)), Item.Residue,
 					   DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 
 	const FCataclysmAffixRow* FromRow = AffixTable != nullptr
 		? AffixTable->FindRow<FCataclysmAffixRow>(Rolled.Affix, TEXT("UCataclysmForge::AffixShiftOf"),
@@ -1142,7 +1220,8 @@ FCataclysmForgeDamageTypeWork UCataclysmForge::DamageTypeWorkOf(const FCataclysm
 																 ECataclysmForgeDamageTypeCraft Craft, FName Chosen,
 																 int32 Seed, const UDataTable* WeaponSkillTable,
 																 const UDataTable* BaseTable, int32 MaterialHeld,
-																 int32 DifficultyTier, int64 GoldHeld)
+																 int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeDamageTypeWork Out;
 	Out.Craft = Craft;
@@ -1181,6 +1260,7 @@ FCataclysmForgeDamageTypeWork UCataclysmForge::DamageTypeWorkOf(const FCataclysm
 		Doing = TEXT("Infusing a random damage type");
 		break;
 	}
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.ResidueAfter = Item.Residue + Added;
 	Out.Days = DaysFor(Item.Residue, BaseDays);
 
@@ -1297,7 +1377,8 @@ FString UCataclysmForge::DamageTypeQuestion(const FCataclysmForgeDamageTypeWork&
 
 FCataclysmForgeEnchantmentWork UCataclysmForge::ImprintOf(const FCataclysmItem& Item, int32 Affix, int32 ShardsHeld,
 														  const UDataTable* GearRarityTable, int32 DifficultyTier,
-														  int64 GoldHeld)
+														  int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeEnchantmentWork Out;
 	Out.bImprint = true;
@@ -1309,6 +1390,7 @@ FCataclysmForgeEnchantmentWork UCataclysmForge::ImprintOf(const FCataclysmItem& 
 	Out.ResidueAfter = Item.Residue + ImprintResidue;
 	Out.Days = DaysFor(Item.Residue, ImprintBaseDays);
 	Out.Gold = GoldFor(BaseGoldOf(ImprintOperationRow, BaseGoldFor(ImprintBaseDays)), Item.Residue, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
@@ -1369,7 +1451,8 @@ FCataclysmForgeEnchantmentWork UCataclysmForge::ImprintOf(const FCataclysmItem& 
 
 FCataclysmForgeEnchantmentWork UCataclysmForge::ChangeNegativeOf(const FCataclysmItem& Item, int32 Pair,
 																 int32 EssencesHeld, const UDataTable* PositiveTable,
-																 int32 DifficultyTier, int64 GoldHeld)
+																 int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeEnchantmentWork Out;
 	Out.Pair = Pair;
@@ -1380,6 +1463,7 @@ FCataclysmForgeEnchantmentWork UCataclysmForge::ChangeNegativeOf(const FCataclys
 	Out.Days = DaysFor(Item.Residue, ChangeNegativeBaseDays);
 	Out.Gold = GoldFor(BaseGoldOf(ChangeNegativeOperationRow, BaseGoldFor(ChangeNegativeBaseDays)), Item.Residue,
 					   DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
@@ -1514,6 +1598,59 @@ FString UCataclysmForge::EnchantmentWorkQuestion(const FCataclysmForgeEnchantmen
 						   *Named, *Cost);
 }
 
+int32 UCataclysmForge::SoulForgeLevels(const FCataclysmItem& Item, int32 ToLevel, float Chance, int32 WalkSeedMask,
+									   int32 Day)
+{
+	// AT +9 THE DRAW IS NOT MADE (R7): "up to the maximum of 10".
+	if (Chance <= 0.0f || ToLevel >= UCataclysmItemValues::MaxGearLevel)
+	{
+		return 1;
+	}
+	FRandomStream Stream(AffixCraftSeed(Item, SoulForgeSalt, Item.GearLevel, WalkSeedMask, Day));
+	return Stream.GetFraction() < Chance ? 2 : 1;
+}
+
+bool UCataclysmForge::EnchantCritical(const FCataclysmItem& Item, int32 Index, float Chance, int32 WalkSeedMask,
+									  int32 Day, FRandomStream& OutStream)
+{
+	OutStream = FRandomStream(AffixCraftSeed(Item, EnchantCriticalSalt, Index, WalkSeedMask, Day));
+	if (Chance <= 0.0f)
+	{
+		return false;
+	}
+	return OutStream.GetFraction() < Chance;
+}
+
+FCataclysmRolledEnchantment UCataclysmForge::LuckyRolls(const FCataclysmRolledEnchantment& Drawn, bool bPositiveToo,
+														FRandomStream& Stream)
+{
+	// THE HIGHER POSITIVE AND THE LOWER NEGATIVE (R1). The two draws are made in that order whether or not the positive
+	// is kept, so a change's negative is drawn from the same place in the stream as an imprint's.
+	FCataclysmRolledEnchantment Out = Drawn;
+	const float SecondPositive = Stream.GetFraction();
+	const float SecondNegative = Stream.GetFraction();
+	if (bPositiveToo)
+	{
+		Out.PositiveRoll = FMath::Max(Drawn.PositiveRoll, SecondPositive);
+	}
+	Out.NegativeRoll = FMath::Min(Drawn.NegativeRoll, SecondNegative);
+	return Out;
+}
+
+FString UCataclysmForge::MilestoneChanceText(float Chance, bool bUpgrade)
+{
+	if (Chance <= 0.0f)
+	{
+		return FString();
+	}
+	const int32 Percent = FMath::RoundToInt(Chance * 100.0f);
+	return bUpgrade
+		? FString::Printf(TEXT(" The Soul Forge: a %d%% chance it rises two levels instead of one."), Percent)
+		: FString::Printf(TEXT(" The Master Tinkerer: a %d%% chance of a critical success, its rolls drawn twice with the "
+							   "better kept, taking no days."),
+						  Percent);
+}
+
 int32 UCataclysmForge::PenaltyDaysFor(float Residue)
 {
 	return FMath::FloorToInt(FMath::Max(0.0f, Residue) / ResiduePerPenaltyDay);
@@ -1521,7 +1658,8 @@ int32 UCataclysmForge::PenaltyDaysFor(float Residue)
 
 FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, float ResidueAfter, int32 Days, int64 CraftGold,
 													   const FCataclysmForgeCraftOptions& Options, int32 StabilizersHeld,
-													   int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld)
+													   int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeOptionEffect Out;
 	Out.ResidueAfter = ResidueAfter;
@@ -1548,7 +1686,11 @@ FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, floa
 		Out.ResidueAfter = ResidueBefore + Added * StabilizedResidueShare;
 		Out.ResidueSaved = ResidueAfter - Out.ResidueAfter;
 		// ITS ROW'S BASE GOLD THROUGH `GoldFor`, ONCE (G1).
+		const int64 GoldBeforeTheStabilizer = Out.Gold;
 		Out.Gold += GoldFor(BaseGoldOf(ReduceResidueGainOperationRow, BaseGoldFor(0)), ResidueBefore, DifficultyTier);
+		// #47 SLICE F6a, RULING B: discounted at the Chaos Stabilizer's own tier, with the craft's Forge Upgrades roll.
+		Out.Gold = GoldBeforeTheStabilizer
+			+ Pricing.Apply(Out.Gold - GoldBeforeTheStabilizer, FName(ChaosStabilizerRow));
 		Out.Materials.Add({FName(ChaosStabilizerRow), 1});
 	}
 
@@ -1583,7 +1725,10 @@ FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, floa
 		Out.DaysSaved = Shards * DaysPerTaintedShard;
 		Out.Days = Days - Out.DaysSaved;
 		// ITS ROW'S BASE GOLD THROUGH `GoldFor`, ONCE PER SHARD (G1).
+		const int64 GoldBeforeTheShards = Out.Gold;
 		Out.Gold += GoldFor(BaseGoldOf(AccelerateCraftOperationRow, BaseGoldFor(0)), ResidueBefore, DifficultyTier) * Shards;
+		// #47 SLICE F6a, RULING B: discounted at the Tainted Shard's own tier, with the craft's Forge Upgrades roll.
+		Out.Gold = GoldBeforeTheShards + Pricing.Apply(Out.Gold - GoldBeforeTheShards, FName(TaintedShardRow));
 		Out.Materials.Add({FName(TaintedShardRow), Shards});
 	}
 
@@ -1626,7 +1771,8 @@ FString UCataclysmForge::OptionsQuestion(const FCataclysmForgeOptionEffect& Effe
 }
 
 FCataclysmForgeCleanse UCataclysmForge::CleanseOf(const FCataclysmItem& Item, int32 EssenceHeld, int32 DifficultyTier,
-												  int64 GoldHeld)
+												  int64 GoldHeld,
+	const FCataclysmForgePricing& Pricing)
 {
 	FCataclysmForgeCleanse Out;
 	Out.Material = FName(PurifiedEssenceRow);
@@ -1636,6 +1782,7 @@ FCataclysmForgeCleanse UCataclysmForge::CleanseOf(const FCataclysmItem& Item, in
 	// "1 day per 500 CR", A PART COUNTING AS A DAY, AND AT LEAST ONE (Q25).
 	Out.Days = FMath::Max(1, FMath::CeilToInt(FMath::Max(0.0f, Item.Residue) / ResiduePerCleanseDay));
 	Out.Gold = GoldFor(BaseGoldOf(CleanseOperationRow, BaseGoldFor(1)), Item.Residue, DifficultyTier);
+	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())

@@ -226,6 +226,77 @@ bool FCataclysmPlayLoopAwayTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * Days spent in the capital are told in the walk's words after their own lead, issue #2857: a forge craft's "at the
+ * forge", the respec's "for the respec", the screen's "Meanwhile"; a walk's are still "while away" when no lead is given.
+ * `DaysDidSomething` is true for each thing the account names and false for days that did none of them, which is when a
+ * screen adds nothing. Prints "CAPITAL DAYS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopCapitalDaysTextTest,
+	"Cataclysm.PlayLoop.DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayLoopCapitalDaysTextTest::RunTest(const FString&)
+{
+	using Log = FCataclysmPlayLoopLog;
+
+	UCataclysmEmpireRun* Run = CataclysmPlayLoopTextTest::AnOpenedRun();
+	if (!TestTrue(TEXT("set-up: the opening wave stands"), Run && Run->Map && Run->Map->Cities.Num() > 0))
+	{
+		return false;
+	}
+
+	TArray<FCataclysmDayReport> Quiet;
+	Quiet.AddDefaulted();
+	Quiet[0].Day = 5;
+	const FString AtTheForge = Log::AwayAccount(4, 5, Quiet, {}, Run, TEXT("at the forge"));
+	AddInfo(FString::Printf(TEXT("CAPITAL DAYS: \"%s\""), *AtTheForge));
+
+	TestEqual(TEXT("a forge craft's quiet day"), AtTheForge,
+			  FString(TEXT("at the forge, days 4 to 5: dungeons resolved: none; cities hit: none; cities fallen: none; no "
+						   "surge")));
+	TestEqual(TEXT("the respec's lead"), Log::AwayAccount(4, 5, Quiet, {}, Run, TEXT("for the respec")),
+			  FString(TEXT("for the respec, days 4 to 5: dungeons resolved: none; cities hit: none; cities fallen: none; "
+						   "no surge")));
+	TestEqual(TEXT("no day passed, after a lead"), Log::AwayAccount(4, 4, {}, {}, Run, TEXT("at the forge")),
+			  FString(TEXT("at the forge: no day passed")));
+	TestTrue(TEXT("CONTROL: with no lead given, a walk's words"),
+			 Log::AwayAccount(4, 5, Quiet, {}, Run).StartsWith(TEXT("while away, days 4 to 5: ")));
+
+	// EACH THING THE ACCOUNT NAMES MAKES THE DAYS COUNT; NONE OF THEM, NOT.
+	TestFalse(TEXT("a day that did nothing did nothing"), Log::DaysDidSomething(Quiet));
+	TestFalse(TEXT("nor did no day"), Log::DaysDidSomething(TArray<FCataclysmDayReport>()));
+	const int32 CityId = Run->Map->Cities[0].CityId;
+	const auto OneDayWith = [&Quiet](const auto& Change)
+	{
+		TArray<FCataclysmDayReport> Days = Quiet;
+		Change(Days[0]);
+		return Days;
+	};
+	TestTrue(TEXT("a dungeon resolved"),
+			 Log::DaysDidSomething(OneDayWith([](FCataclysmDayReport& Day) { Day.Resolved.Add(3); })));
+	TestTrue(TEXT("a city hit"), Log::DaysDidSomething(OneDayWith([CityId](FCataclysmDayReport& Day)
+	{
+		FCataclysmCityHit& Hit = Day.Hits.AddDefaulted_GetRef();
+		Hit.CityId = CityId;
+	})));
+	TestTrue(TEXT("a city fallen"),
+			 Log::DaysDidSomething(OneDayWith([CityId](FCataclysmDayReport& Day) { Day.Fallen.Add(CityId); })));
+	// A SURGE AS `FireSurge` WRITES IT: the flag and the count, which `AwayAccount` reads since issue #2865.
+	const TArray<FCataclysmDayReport> SurgeDay = OneDayWith([](FCataclysmDayReport& Day)
+	{
+		Day.bSurged = true;
+		Day.Surges = 1;
+		Day.SurgeDungeons = 6;
+	});
+	TestTrue(TEXT("a surge"), Log::DaysDidSomething(SurgeDay));
+	TestTrue(TEXT("and the account names it"),
+			 Log::AwayAccount(4, 5, SurgeDay, {}, Run, TEXT("at the forge")).EndsWith(TEXT("1 surge brought 6 dungeons")));
+	TestTrue(TEXT("a city upgrade finished"),
+			 Log::DaysDidSomething(OneDayWith([CityId](FCataclysmDayReport& Day) { Day.UpgradesFinishedOn.Add(CityId); })));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopCapitalTextTest,
 	"Cataclysm.PlayLoop.TheCapitalLineSaysTheBoardTheCharacterAndTheDaysAway",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
