@@ -2,6 +2,132 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
+
+**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, from development `5f302b0a7`. Issue
+[#837](https://github.com/sdubois777/Cataclysm/issues/837), slice 1 of three on one branch. The plan is
+`plan_skill_selection.md` in the coordinating session's `.claude/windows` folder (nice-carson worktree).
+
+### Why
+
+**The owner, 2026-11-24, verbatim:** "At the moment when dual wielding you can only use the skills from weapon slot 2
+for some reason, and it's super annoying trying to switch them because it wont let you not have a weapon equipped."
+The plan found the cause in the default fill: with no choice made, each key took the first pool skill made for it, and
+the pool lists the creation damage type first and, within it, the weapon in Weapon 1 first, so the weapon put on second
+(which lands in Weapon 1) took every key. It also found that a choice whose weapon was off was dropped at load
+(against the owner's Q5 of 2026-10-25), and that a skill with no shape, which does nothing, took keys ahead of working
+ones (54 of the 61 War rows).
+
+### The rulings
+
+**The owner, 2026-11-24, issue #837 comment 7150408605, chosen option verbatim: "Approve all three (Recommended)"**,
+every recommendation of the plan. For this slice: Q1, the keys stay as they are when a second weapon goes on, its skills
+joining the pool; Q2, a skill that is not built yet does not take a key by default when a built skill made for that key
+is in the pool; Q7, a choice whose weapon is off survives a load; Q10, a skill chosen for another key stays refused,
+while one only remembered there moves.
+
+**The coordinating session, 2026-11-24:** the Consumption double copies the remembered defaults too, inside the same
+version step, "A double should hold the keys the player actually had".
+
+### What changed
+
+- **The fill** (`UCataclysmWeaponSkills::FillWithChoices`): after the player's choices, each other key takes its
+  REMEMBERED DEFAULT, the row it held by default after the last fill, while that row is in the pool and no key holds it;
+  only then the first pool entry made for it, a BUILT one first (`IsBuilt`: the row's shape has a template). The
+  default fill (`DefaultFillFrom`) prefers a built entry the same way, the slots in the order they came, so "with no
+  choice, element for element the default fill" still holds.
+- **The player state** keeps `RememberedDefaults` (replicated), replaced after every fill from worn weapons by the rows
+  on the keys that are not the player's choices (`RememberDefaults`), and forgotten when no weapon is worn
+  (`ForgetRememberedDefaults`). A separate list, so "chosen" still means the player chose it.
+- **The pawn** (`FillAbilitySlotsFromWornWeapon`) hands the defaults to the weapon slots before the fill and remembers
+  them after it.
+- **The save**: the character record goes to **version 17** with `RememberedDefaults`, in the record and in its held
+  build (`FCataclysmPlayerBuild`, which the double copies). `Migrate_16_to_17`, in the character record's own namespace
+  (the run record has a step of the same name), writes an empty list in both, keeping a list already there.
+  `FCataclysmSaveApply::CharacterInto` puts the choices and the defaults back AS DATA, through
+  `ACataclysmPlayerState::RestoreSkillChoices`, BEFORE its one announcement, so the one fill reads both; it no longer
+  calls `AssignSkill`, which checked each choice against the pool worn at loading and dropped one whose weapon was off.
+- **The double** (`ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`) fills from the build's choices and its
+  remembered defaults.
+- **The design document**, Skill Slots: "A CHANGE OF WEAPONS NEVER TAKES A SKILL OFF A KEY WHILE IT IS STILL IN THE
+  POOL."
+
+### Judgements of this change
+
+1. **No weapon worn forgets the remembered defaults only when a weapon was expected** (`ECataclysmWeaponExpected::Yes`).
+   The plan's R4 said "no weapon worn clears the remembered defaults". At possession, before the weapon goes on
+   (`NotYet`), the player state may be carrying a character's keys into a new pawn (it outlives a death), and the gear
+   put back next must find them.
+2. **Only a refused CHOICE is counted in a load's `SkillsRefused`**; a remembered default the table no longer has is
+   dropped and its key takes the next default, as in play.
+3. **A built skill is one whose shape has a template**, the same question the weapon slots ask when they grant a
+   placeholder (`TemplateFor`), so "built" cannot disagree with what is granted.
+
+### Tests
+
+**Unreal, registered** (none run; no window yet): a new group, `Cataclysm.SkillDefaults.`, 14 tests in
+`CataclysmSkillDefaultsTests.cpp`, and one in `Cataclysm.SaveRecords.`:
+
+| | Test | What it checks |
+| :-- | :-- | :-- |
+| SD1 | `ASecondWeaponLeavesEveryKeyAsItWas` | an Axe, then a Fist: the keys stay the Axe's; control, the default fill is the Fist's |
+| SD2 | `TheSecondWeaponsSkillsAreInThePoolAndOnNoKey` | the Fist's five in the pool, none on a key |
+| SD3 | `TakingAWeaponOffChangesOnlyTheKeysItsSkillsHeld` | the Fist off: only its chosen Heavy key changes; the choice kept |
+| SD4 | `ARememberedDefaultWhoseWeaponComesOffIsForgotten` | a Dagger over the Axe, the Axe back: the keys stay the Dagger's |
+| SD5 | `AChoiceWhoseWeaponComesOffStillReturnsWithIt` | SD4's control: a CHOSEN Axe skill returns with the Axe (Q5) |
+| SD6 | `AFreshBarIsTheCreationTypeFirstThenWeaponOne` | nothing remembered: Q11's order, Weapon 1 first |
+| SD7 | `NoWeaponWornForgetsTheRememberedDefaults` | R4, with judgement 1 |
+| SD8 | `ASkillRememberedOnAnotherKeyMovesWhenChosenAndThatKeyTakesTheNext` | O4 and Q10; control: a chosen one is still refused |
+| SD9 | `ClearTheSlotGivesTheDefaultAndRemembersIt` | O5 |
+| SD10 | `AWorkingSkillTakesAKeyBeforeAPlaceholder` | the owner's Wolf Axe and Whip: a built skill on every key one is made for; control: a key whose first pool entry is a placeholder. Prints "BUILT FIRST" |
+| SD11 | `APlaceholderStillTakesAKeyNothingWorkingIsMadeFor` | a War Axe alone keeps its five placeholders |
+| SD12 | `RememberedDefaultsAreWrittenAndPutBackBeforeTheFill` | gathered and loaded into a second player, the keys stay the Axe's; control, the default fill is the Fist's |
+| SD13 | `AChoiceWhoseWeaponIsOffSurvivesALoad` | Q7; control: `RefusalForSkillChoice` would refuse it |
+| SD15 | `ADoubleHoldsTheKeysThePlayerHad` | the coordinating session's ruling; control: the same build with nothing remembered holds the default fill |
+| SD14 | `Cataclysm.SaveRecords.ACharacterFileFromBeforeRememberedDefaultsMigratesWithNone` | `Character_v16.json` migrates with none, in the record and its held build; control: `Character_v17.json` read, not migrated |
+
+**Changed by the version step** (`Character_v16.json` to `Character_v17.json` as the committed file, and version 17's
+defaults after version 16's in each test that runs an older file through the chain): twelve test files, among them
+`Cataclysm.SaveRecords.`, `GemSave.`, `Gold.`, `Dismantle.`, `CataclysmDraw.`, `ConsumptionDouble.`, `ConsumptionMark.`,
+`SkillLevels.` and the empire tree's credit, nine-saves, own-tree and prowess tests.
+
+**Python**: `tools/tests/test_the_keys_remember_their_defaults.py`, five checks, new. Four checks follow the step:
+`test_a_build_change_is_saved.py` (the load restores through `RestoreSkillChoices`; it and `RememberDefaults` save
+nothing), `test_a_loaded_thrall_keeps_the_skill_that_took_it.py` (the run record's `Migrate_16_to_17`, looked up in its
+own namespace, the trap the coordinating session named), `test_empire_tree_on_the_account_record.py` (reads
+`Character_v17.json`) and `test_inventory_tabs.py` (16 or later).
+
+**The Python suite on `5e2b9cfd6`:** "8259 passed, 10 skipped in 363.57s"; JUnit 8269 tests, 0 failures, 0 errors.
+ruff: "All checks passed!".
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of `5e2b9cfd6`, each PROVED:
+
+| Proof | Break | Named failure |
+| :-- | :-- | :-- |
+| PS1 | an `AnnounceRestored` put before `RestoreSkillChoices` in `CharacterInto` | `test_a_load_puts_the_choices_back_before_its_one_fill` |
+| PS2 | `Character_v17.json`'s remembered default emptied | `test_the_committed_file_is_version_sixteens_with_one_remembered_default` |
+| PS3 | the double's fill without `HeldBuild.RememberedDefaults` | `test_a_double_holds_the_keys_the_player_had` |
+| PS4 | `TryGetObjectField(TEXT("ConsumptionBuild"), Build)` renamed (the text is in the file twice and both were renamed) | `test_the_record_holds_the_field_at_version_seventeen` |
+
+**C++ guard proofs registered, at most three:**
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| SP1 | `FillWithChoices(SkillPool, SkillChoices, RememberedDefaults)` read as `FillWithChoices(SkillPool, SkillChoices)` | `Cataclysm.SkillDefaults.` | SD1 and SD12 at least |
+| SP2 | the built-first pass, `\|\| (bBuiltOnly && !IsBuilt(Skill))` read as `\|\| (bBuiltOnly && false)` | `Cataclysm.SkillDefaults.` | SD10 only |
+| SP3 | `RestoreSkillChoices` moved after `AnnounceRestored` in `CharacterInto` | `Cataclysm.SkillDefaults.` | SD12, SD13 |
+
+**Registration** (for a window of its own or one shared with slices 2 and 3): the base is the newest whole-suite figure,
+window inv-w1's of #2887, 5354 performed, 57 skipped halves, 861 saves; this slice adds 15, so **5369 performed**, 57
+skipped halves and 861 saves (no test of this slice reports a skipped half or writes a save). Groups alone, counted in
+window rc-w1's log (`rc_suite_engine_5e8be468.log`; #2887's own groups changed after it, so `SaveRecords.` is to be
+re-counted from inv-w1's log): `Cataclysm.SkillDefaults.` 14, `SkillAssignment.` 16, `SkillPool.` 11,
+`SkillChoiceScreen.` 8, `SaveApply.` 24, `SaveRecords.` 17 + 1, `BuildSave.` 6, `ConsumptionDouble.` 15,
+`ConsumptionMark.` 6, `CataclysmDraw.` 6, `GemSave.` 2, `Gold.` 13, `Dismantle.` 12, `SkillLevels.` 13,
+`EmpireTreeCredit.` 8, `EmpireTreeNineSaves.` 1, `EmpireTreeProwess.` 6.
+
+---
+
 ## 2026-11-22 — The carried inventory has three tabs: the 48 slots hold gear, and crafting materials and gems each have a store of their own, one stack per kind, with no limit (#2849)
 
 **Affects:**
