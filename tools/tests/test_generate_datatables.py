@@ -1460,7 +1460,8 @@ class TestAPassiveNodeCanGrantSeveralStats:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
-                 "Scale Step", "Option", "Reach Metres", "Min Points"]] + rows
+                 "Scale Step", "Option", "Reach Metres", "Min Points",
+                 "Scale Max Steps"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1549,12 +1550,19 @@ class TestAPassiveNodeCanGrantSeveralStats:
         with pytest.raises(gen.DataError, match="whole number of steps"):
             self.capped(tmp_path, "minions_held", 1, cap)
 
-    def test_a_sheet_without_the_cap_column_reads_no_cap_while_it_is_optional(
+    def test_a_sheet_without_the_cap_column_is_refused_now_the_rows_have_it(
             self, tmp_path):
-        """Declared in `OPTIONAL_COLUMNS` until the workbook carries it, as
-        Min Points was until its rows came. When the column is in the workbook
-        the declaration goes, and this test goes with it."""
-        assert "Scale Max Steps" in gen.OPTIONAL_COLUMNS.get("Passive Effects", {})
+        """The column was optional until Wall of Servants' row came, as Min Points
+        was until its rows came.
+
+        It read "a sheet without the cap column reads no cap while it is
+        optional" until the same day, 2026-11-24, when
+        `tools/reapply_demonic_tree_rework_workbook.py` put the column in the
+        workbook with that row's 20 and the declaration left `OPTIONAL_COLUMNS`.
+        A sheet without it is now refused like any other column the generator
+        reads, so a column deleted from the workbook cannot drop the cap in
+        silence."""
+        assert "Scale Max Steps" not in gen.OPTIONAL_COLUMNS.get("Passive Effects", {})
         book = openpyxl.load_workbook(workbook_with(
             tmp_path / "without.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
@@ -1562,7 +1570,8 @@ class TestAPassiveNodeCanGrantSeveralStats:
                                   "Scale", "Scale Step", "Option", "Reach Metres",
                                   "Min Points"],
                                  ["A_node", "armor", "increased", 3]]}))
-        assert gen.passive_effects(book)[0]["ScaleMaxSteps"] == 0
+        with pytest.raises(gen.DataError, match="Scale Max Steps"):
+            gen.passive_effects(book)
 
     def test_a_node_name_containing_the_separator_is_refused(self, tmp_path):
         """Otherwise a row name would be ambiguous about where the node ends."""
@@ -5326,7 +5335,8 @@ class TestAnAtNPointsRowStatesItsThreshold:
     def sheet(rows: list[list]) -> list[list]:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Min Points", "Required Tags", "Condition", "Condition Value",
-                 "Scale", "Scale Step", "Option", "Reach Metres"]] + rows
+                 "Scale", "Scale Step", "Option", "Reach Metres",
+                 "Scale Max Steps"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5372,7 +5382,8 @@ class TestAnAtNPointsRowStatesItsThreshold:
             tmp_path / "without.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
-                                  "Scale", "Scale Step", "Option", "Reach Metres"],
+                                  "Scale", "Scale Step", "Option", "Reach Metres",
+                                  "Scale Max Steps"],
                                  ["A_node", "armor", "increased", 5]]}))
         with pytest.raises(gen.DataError, match="Min Points"):
             gen.passive_effects(book)

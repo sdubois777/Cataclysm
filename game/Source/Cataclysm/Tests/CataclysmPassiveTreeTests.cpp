@@ -11290,9 +11290,17 @@ namespace CataclysmPlainRowTest
 	// scale or a Min Points ("for every 2 points"), each of which this test
 	// skips by `IsPlain`. Counted from the reworked rows by the same rule: the
 	// Masochist's plain rows are 35. Those rows are checked by their own tests.
+	//
+	// AND THE RAVAGER'S TO 43 AND THE RITUALIST'S TO 59, THE SAME DAY AND FOR THE
+	// SAME REASON. Counted from the regenerated PassiveEffects.csv by `IsPlain`:
+	// the Ravager's crowd, Fervour-held and condition rows (Plated, Thick Blood,
+	// Slow to Fall, Braced, Reach, Onset, Hunter's Pace, Sustained Assault and
+	// others) and the Ritualist's "At N points:" bonuses and per-minion pacts left
+	// the plain set. No Ground Given's `removed` row joined it, which is why the
+	// removal branch below exists.
 	constexpr int32 FewestMasochist = 35;
-	constexpr int32 FewestRavager = 51;
-	constexpr int32 FewestRitualist = 63;
+	constexpr int32 FewestRavager = 43;
+	constexpr int32 FewestRitualist = 59;
 
 	/**
 	 * A row with no condition, no scale, no required tag, no capstone option and
@@ -11457,6 +11465,18 @@ bool FCataclysmEveryPlainDemonicRowTest::RunTest(const FString&)
 									  ? Now.MoreMultiplier / Was.MoreMultiplier
 									  : -1.0f,
 								  1.0f + Figure / 100.0f, 0.0001f);
+					}
+					// A REMOVAL TAKES THE STAT TO NOTHING, WHATEVER THE POINTS. Issue
+					// #1791. Its figure is not read, so "figure times the points" is
+					// not what it does: the line counts one more removal and reads
+					// nought. The first plain one is No Ground Given's, since the
+					// Demonic tree rework of 2026-11-24.
+					else if (Row->ValueKind.Equals(TEXT("removed"), ESearchCase::IgnoreCase))
+					{
+						TestTrue(*FString::Printf(TEXT("%s counts one more removal"), *Named),
+								 Now.RemovedCount > Was.RemovedCount);
+						TestEqual(*FString::Printf(TEXT("%s takes the stat to nothing"), *Named),
+								  Now.Final, 0.0f, 0.0001f);
 					}
 					else
 					{

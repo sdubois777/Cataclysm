@@ -2005,11 +2005,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: built ahead of the workbook column while the workbook is with the
 #: coordinating session. It leaves when the column is in the workbook, which
 #: `tools/tests/test_required_workbook_columns.py` then requires.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Passive Effects": {
-        "Scale Max Steps": "the demonic tree rework of 2026-11-24 (Wall of Servants' 20% ceiling)",
-    },
-}
+#: IT LEFT THE SAME DAY, when `tools/reapply_demonic_tree_rework_workbook.py`
+#: added the column with Wall of Servants' 20, and the table is empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):

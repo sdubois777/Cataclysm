@@ -783,6 +783,10 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 | Keystones | Single-point investments that fundamentally change how a mechanic works. Build-defining. Require full investment in a parent node. |
 | Capstones | One per tier (25/50/100/200 pts). Player chooses one of three options per tier. Escalating power from identity declaration to god-tier mechanics. |
 
+**A threshold or a step, never a fraction.** A basic node's bonus at mid-investment reads "At N points: ..." and is granted whole from that point. A per-point value below 1 is written instead as a whole number "for every N points", granted at every Nth point: Brutal Determination's "+1% Life Leech for every 2 points" is 5% at ten points. The project owner chose steps over fractional values on 2026-11-24.
+
+**Keystones are upgrades by default**, and a tree keeps at most one or two that convert one thing into another; the Masochist's are The Reckoning and Point of No Return. **Each tree names a core count, and one option at every capstone tier scales with it**: the Masochist's Fervour held, the Ravager's enemies within 4 metres, the Ritualist's minions held. A mechanic of the class's own belongs on a keystone or a capstone, with one recorded exception: the Ritualist's starting node keeps "cursed enemies rise as imps", because that is how a Ritualist with no summon skill fills Fervour at all. Ruled 2026-11-24; `docs/DECISIONS.md` has the entry.
+
   
 
 ### **Class Resource Systems**
@@ -1788,6 +1792,8 @@ Tier Width is the difference between the maximum Power Score of the current diff
   
 
 **Overwhelm strips every kind of mitigation, not only resistance.** Armor, block, evasion and resistance are all reduced. This is what stops a character sidestepping the mechanic by choosing a different defensive layer.
+
+**One exception: the Ravager's keystone Ironhide halves what Overwhelm takes from its holder's armour.** Resistance, block and evasion stay fully overwhelmed, so armour alone cannot be used to sidestep the rule, and a keystone named for its armour protects it. The project owner ruled it on 2026-11-24 ("Yes, but only halve it"); `docs/DECISIONS.md` has the entry.
 
   
 

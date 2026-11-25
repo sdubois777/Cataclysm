@@ -67,6 +67,17 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: TWO JOINED AND LEFT THE SAME DAY in one change, `enemies_hit_at_most` and
 #: `opponent_is_crowd_controlled` for issue #1686, with their rows.
 BUILT_AHEAD_OF_THEIR_ROWS = {
+    # NOT BUILT AHEAD BUT LEFT BEHIND, since the Demonic tree rework the project
+    # owner approved on 2026-11-24. Each was the condition of one Masochist node
+    # the rework gave a new job, and no other row names it: Cataclysmic
+    # Resonance's "for 5 seconds after you take damage of a Cataclysm type other
+    # than Demonic" (the node is now Gathered Pain, which counts Fervour held)
+    # and Thirst for Pain's "While you are Bleeding" (now a speed per stack of
+    # Bloodlust; the audit said in as many words that this leaves `while_bleeding`
+    # with no passive row). The engine still judges both, and a row may name
+    # either again.
+    "seconds_after_foreign_damage",
+    "while_bleeding",
     # Landed with the movement conditions for the dungeon-modifier work. The
     # row that wants it is a passive node, not an enchantment: Iron Aegis, an
     # option of the Bulwark tree's Second Oath, "Your Block Chance is doubled

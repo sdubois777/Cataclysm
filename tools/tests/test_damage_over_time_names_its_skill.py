@@ -69,6 +69,9 @@ CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
         _SPREAD,
     ("AbilitySystem/CataclysmDamageConversion.cpp", "UCataclysmDamageConversion::ConvertIfActive",
      "ApplyDamageOverTime", 0): "damage the player takes, converted into a bleed on the player: no skill of theirs deals it",
+    ("AbilitySystem/CataclysmStigmata.cpp", "UCataclysmStigmata::AfterSettingAlight", "ApplyDamageOverTime", 0):
+        "Stigmata's self-burn, a passive node's burn laid on its own holder (the Demonic tree rework of 2026-11-24): "
+        "damage a passive adds credits nothing, judgement 2, and no skill of the holder's deals it",
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyDamageOverTime",
      DAMAGE_OVER_TIME_DELIVERY, 0): _OWN_EFFECT,
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyShareOfHealthOverTime",
