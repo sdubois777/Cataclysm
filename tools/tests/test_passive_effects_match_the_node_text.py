@@ -711,7 +711,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 570 THE SAME DAY, for slice C4b2: Reclaimed, Claimed (four, one at each
 #: second point) and Death's Toll. The Soul Collector 110 rows.
-AUTHORED_ROWS = 570
+#:
+#: AND TO 573 THE SAME DAY, for slice C4c1: Passed On (two: the explosion and
+#: its radius) and The Ferryman (vow 200, option 2). The Soul Collector 113 rows.
+AUTHORED_ROWS = 573
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1164,7 +1167,10 @@ AUTHORED_ROWS = 570
 #: Fires.
 #:
 #: AND TO 347 THE SAME DAY, for slice C4b2's Reclaimed, Claimed and Death's Toll.
-AUTHORED_NODES = 347
+#:
+#: AND TO 348 THE SAME DAY, for slice C4c1's Passed On. The Ferryman is an option
+#: of a capstone already counted.
+AUTHORED_NODES = 348
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1269,7 +1275,10 @@ AUTHORED_NODES = 347
 #:
 #: AND TO 47 THE SAME DAY, for slice C4a: the Soul Collector's Soul Tide (25,
 #: option 1).
-AUTHORED_OPTIONS = 47
+#:
+#: AND TO 48 THE SAME DAY, for slice C4c1: the Soul Collector's The Ferryman (200,
+#: option 2).
+AUTHORED_OPTIONS = 48
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1600,7 +1609,13 @@ CONDITION_WORDS = {
     # Fervour is full". The same predicate, in the words the audit wrote.
     # AND "IS AT ITS MAXIMUM", the Soul Collector's Full Measure of 2026-11-24.
     "class_resource_at_maximum": (("fervour is at maximum", "fervour is full",
-                                   "fervour is at its maximum"), None),
+                                   "fervour is at its maximum",
+                                   # AND THE FERRYMAN'S "While your bar is full",
+                                   # the Death trees' slice C4c1 (2026-11-25).
+                                   "your bar is full"), None),
+    # PASSED ON, the Death trees' slice C4c1 (2026-11-25): "the damage your hit
+    # deals beyond what killing an enemy needed".
+    "killing_blow_was_a_hit": ("damage your hit deals", None),
 
     # THE CONDITIONS THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW
     # FOR THE FIRST TIME. Each was already known to the generator and the game;
@@ -2568,6 +2583,8 @@ VALUE_FORMS = {
     # Claimed's "if it dies within 1 second for every 2 points".
     "decay_given_back_on_kill_seconds": ("in the {value:g} seconds before it",),
     "fervour_claimed_within_seconds": ("within {value:g} second",),
+    # SLICE C4c1 (2026-11-25): Passed On's "within 3 metres of it".
+    "overkill_explosion_radius_metres": ("within {value:g} metres of it",),
     "fervour_kill_decay_per_second": ("decays at {value:g} per second",
                                       "drains at {value:g} per second"),
     # THE SIPHON'S RADIUS AND ITS LINGER, the Death trees' slice C2 (2026-11-25):
@@ -3106,6 +3123,9 @@ VALUE_IS_A_DIFFERENCE = {
 #: generator).
 ACTION_VALUE_FORMS = {
     "apply_status": ("{value:g}% chance",),
+    # THE FERRYMAN, the Death trees' slice C4c1 (2026-11-25): "bursts for 10% of
+    # its maximum health".
+    "burst_slain_for_share_of_maximum_health": ("bursts for {value:g}% of its maximum health",),
     # THE ROWS SIZED BY WHAT A SPEND CARRIED, the Death trees' slice C3b
     # (2026-11-25): a pool's share of its maximum (Feast, Spirit to Mana, Ashen
     # Ward), a smite's share of weapon damage (Soul Furnace) and a cut's seconds
@@ -3146,6 +3166,9 @@ ACTION_VALUE_IN_WORDS = {
     # FLICKER, the Death trees' slice C4a (2026-11-25): "Killing an enemy resets
     # your movement skill's cooldown", a chance of 100.
     ("Shadow_keystone_c_kA", "cooldown_reset_movement"): ("resets your movement skill's cooldown", 100.0),
+    # PASSED ON, the Death trees' slice C4c1 (2026-11-25): "Half the damage your
+    # hit deals beyond what killing an enemy needed", a share of 50.
+    ("SoulCollector_keystone_b_kA", "explode_victim_for_overkill"): ("half the damage your hit deals", 50.0),
 }
 
 

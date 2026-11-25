@@ -1466,8 +1466,12 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// NOT FOR A KILL A ROW MADE, so a row's kill does not fire rows again. See `bWhileTheKillersRowsActed`.
 			if (!Notice.bWhileTheKillersRowsActed)
 			{
+				// MARKED WHILE THE ROWS ACT, as made by a hit or by a tick: Passed On's `killing_blow_was_a_hit` reads
+				// it. The Death trees' slice C4c1 (2026-11-25).
+				Acting->SetActingOnAKillByAHit(!Notice.bByDamageOverTime);
 				Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
 								   /*bLanded=*/true, Notice.Victim);
+				Acting->SetActingOnAKillByAHit(false);
 			}
 
 			// AND A DEATH SENTENCE THIS KILL MAY LIFT, heard for exactly the kills that raise `kill` above. Ruled
@@ -1492,18 +1496,20 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// own, smaller overkill. And the dungeon's rules must hear this death before the one the explosion
 			// causes, whichever of the two listeners the engine calls first.
 			const float OverkillShare = Acting->TakePendingOverkillExplosionSharePercent();
+			// AND ITS RADIUS, the largest any row that asked gives (the Death trees' slice C4c1, as ruled for Passed On).
+			const float OverkillRadiusCm = Acting->TakePendingOverkillExplosionRadiusCm();
 			if (OverkillShare > 0.0f)
 			{
 				const TWeakObjectPtr<ACataclysmPlayerCharacter> Killer(this);
 				const TWeakObjectPtr<const AActor> SlainActor(Notice.Victim);
 				const FVector At = Notice.Location;
 				const float Overkill = Notice.Overkill;
-				TFunction<void()> Explode = [Killer, SlainActor, At, Overkill, OverkillShare]()
+				TFunction<void()> Explode = [Killer, SlainActor, At, Overkill, OverkillShare, OverkillRadiusCm]()
 				{
 					if (Killer.IsValid())
 					{
 						UCataclysmSkillEffects::ExplodeForOverkill(Killer.Get(), SlainActor.Get(), At, Overkill,
-																   OverkillShare);
+																   OverkillShare, OverkillRadiusCm);
 					}
 				};
 				if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
@@ -1515,6 +1521,15 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 					Explode();
 				}
 			}
+
+			// AND THE FERRYMAN'S BURST: "every enemy you kill bursts for 10% of its maximum health to enemies within 4
+			// metres, and a creature the burst kills bursts too". The Death trees' slice C4c1 (2026-11-25). Made the way
+			// the overkill explosion above is, and for its reasons: through `ExplodeForOverkill`, sized by the slain
+			// creature's maximum health and unscaled by the killer's increases (Q5), handed to the announcer so a
+			// creature the burst kills is a kill of its own, raises `kill`, and bursts in turn while the bar is full.
+			// THROUGH THE ONE FUNCTION A FOLLOWER'S KILL UNDER DEATH'S TOLL USES TOO (`UCataclysmFervour::BurstTheSlain`).
+			UCataclysmFervour::BurstTheSlain(this, Notice.Victim, Notice.Location, SlainMaximum,
+											 Acting->TakePendingSlainBurstSharePercent());
 
 			// AND THE EXPLOSION OF AN ENEMY A TRAP KILLED. Ruled 2026-10-21 (traps layer 4, F10 to F12): "Enemies killed
 			// by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters". A row on `kill`

@@ -575,6 +575,17 @@ NODES: tuple[Node, ...] = (
     Node(SC + "basic_spine_007", "Claimed",
          tuple(R("fervour_claimed_within_seconds", "flat", 1, min_points=points) for points in (2, 4, 6, 8))),
     Node(SC + "keystone_spine_001", "Death's Toll", (R("follower_kills_count_as_yours", "flat", 1),)),
+
+    # ---- SLICE C4c1 (2026-11-25): EXPLOSIONS AT A KILL. Passed On is the existing
+    # overkill explosion at half, only for a kill by a hit, with its own radius,
+    # the larger of its 3 metres and any other source's; The Ferryman is a burst
+    # of 10% of the slain creature's maximum health while the bar is full.
+    Node(SC + "keystone_b_kA", "Passed On",
+         (A("explode_victim_for_overkill", 50, event="kill", cond="killing_blow_was_a_hit"),
+          R("overkill_explosion_radius_metres", "flat", 3))),
+    Node(SC + "capstone_200", "The Ferryman",
+         (A("burst_slain_for_share_of_maximum_health", 10, event="kill", cond="class_resource_at_maximum"),),
+         option=2),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

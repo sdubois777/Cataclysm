@@ -569,3 +569,6 @@ SoulCollector_basic_spine_007#2,SoulCollector_basic_spine_007,fervour_claimed_wi
 SoulCollector_basic_spine_007#3,SoulCollector_basic_spine_007,fervour_claimed_within_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_spine_007#4,SoulCollector_basic_spine_007,fervour_claimed_within_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_keystone_spine_001#1,SoulCollector_keystone_spine_001,follower_kills_count_as_yours,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_b_kA#1,SoulCollector_keystone_b_kA,,,50.0,,killing_blow_was_a_hit,0.0,,0.0,0,-1.0,0,0,explode_victim_for_overkill,kill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_b_kA#2,SoulCollector_keystone_b_kA,overkill_explosion_radius_metres,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_200#2,SoulCollector_capstone_200,,,10.0,,class_resource_at_maximum,0.0,,0.0,2,-1.0,0,0,burst_slain_for_share_of_maximum_health,kill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

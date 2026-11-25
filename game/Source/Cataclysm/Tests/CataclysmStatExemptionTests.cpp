@@ -12342,6 +12342,40 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `overkill_explosion_radius_metres`, read by `UCataclysmAbilitySystemComponent::ActOnEvent` for a passive node's
+	 * overkill explosion row: the Soul Collector's Passed On, the Death trees' slice C4c1 (2026-11-25). ONE FIGHTER
+	 * holding a passive row that explodes a killed enemy for its overkill, raising `kill`. THE CONTROL IS THE SAME
+	 * FIGHTER BEFORE THE STAT IS GRANTED: the explosion reaches the old 5 metres. Granted at 3, it reaches 3.
+	 */
+	void ProbeOverkillExplosionRadiusMetres(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		FCataclysmPoolAction Explode;
+		Explode.Event = FName(TEXT("kill"));
+		Explode.Percent = 50.0f;
+		Explode.bExplodeVictimForOverkill = true;
+		Explode.TriggerKey = FName(TEXT("Passive_SoulCollector_keystone_b_kA:explode_victim_for_overkill:kill"));
+		Fighter.AbilitySystem->SetPoolActions({Explode});
+		const auto RadiusAfterAKill = [&Fighter]()
+		{
+			Fighter.AbilitySystem->ActOnEvent(FName(TEXT("kill")), nullptr, 0.0f, /*bLanded=*/true, nullptr);
+			Fighter.AbilitySystem->TakePendingOverkillExplosionSharePercent();
+			return Fighter.AbilitySystem->TakePendingOverkillExplosionRadiusCm();
+		};
+		Test.TestEqual(TEXT("control: with no overkill_explosion_radius_metres the explosion reaches 500 cm"),
+					   RadiusAfterAKill(), 500.0f, 0.001f);
+		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::OverkillExplosionRadiusMetresStat, 3.0f);
+		Test.TestEqual(TEXT("with it at 3, 300 cm, so ActOnEvent really reads it"), RadiusAfterAKill(), 300.0f,
+					   0.001f);
+	}
+
+	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
 	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
@@ -12849,6 +12883,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("decay_given_back_on_kill_seconds"), &ProbeDecayGivenBackOnKillSeconds},
 			{TEXT("fervour_claimed_within_seconds"), &ProbeFervourClaimedWithinSeconds},
 			{TEXT("follower_kills_count_as_yours"), &ProbeFollowerKillsCountAsYours},
+			// THE DEATH TREES' SLICE C4c1 (2026-11-25): Passed On's radius.
+			{TEXT("overkill_explosion_radius_metres"), &ProbeOverkillExplosionRadiusMetres},
 		};
 		return Made;
 	}

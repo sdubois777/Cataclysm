@@ -561,6 +561,13 @@ public:
 	static FString EnchantmentNameFor(FName Node, int32 Option);
 
 	/**
+	 * The start of every passive row's enchantment name, `Passive_`, and so of its action rows' trigger keys. No
+	 * enchantment begins so (see above). Read to tell a passive node's row from an item's: the overkill explosion's
+	 * radius, the Death trees' slice C4c1 (2026-11-25).
+	 */
+	static const TCHAR* PassiveEnchantmentPrefix;
+
+	/**
 	 * The passive rows `IsBuiltAsAnEnchantmentRow` names, for the nodes this allocation holds, each copied into an
 	 * enchantment row for `UCataclysmItemModifiers::AccumulateEnchantmentsInto`.
 	 *

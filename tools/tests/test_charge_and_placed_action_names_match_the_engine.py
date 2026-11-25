@@ -147,6 +147,9 @@ CONSTANTS = {
     # AND THE ONE OF TRAPS LAYER 4, ruled 2026-10-21: an enemy killed explodes
     # for a share of the blow that killed it.
     "ExplodeVictimForKillingBlowAction": "explode_victim_for_killing_blow",
+    # AND THE DEATH TREES' SLICE C4c1 (2026-11-25): an enemy killed bursts for a
+    # share of its maximum health, The Ferryman.
+    "BurstSlainForMaximumHealthAction": "burst_slain_for_share_of_maximum_health",
     # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
@@ -642,6 +645,57 @@ def test_the_killing_blow_explosion_of_traps_layer_four_is_recorded_and_made_at_
     events = code_without_comments(SOURCE.parent / "CataclysmCombatEvents.cpp")
     assert "Blow.KillingBlowDamage = Hit.Damage;" in events
     assert "Notice.KillingBlowDamage = Blow.KillingBlowDamage;" in events
+
+
+def test_the_ferrymans_burst_is_recorded_and_made_at_the_kill_by_the_same_explosion() -> None:
+    """The Death trees' slice C4c1 (2026-11-25). The generator's name is the
+    engine's; the item recognises the row by its constant; the event loop
+    records the share; and the kill site takes it and makes the burst through
+    `ExplodeForOverkill`, sized by the slain creature's maximum health, at
+    `SlainBurstRadiusCm`, handed to the announcer so a creature it kills bursts
+    too. Read from the code with comments taken out. THE CONTROL: the same
+    reading finds the overkill explosion's own call."""
+    names = engine_names()
+    assert gen.SLAIN_BURST_ACTION == names["BurstSlainForMaximumHealthAction"]
+    assert gen.SLAIN_BURST_EVENTS == ("kill",)
+    assert gen.SLAIN_BURST_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bBurstSlainForMaximumHealth = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"PendingSlainBurstSharePercent = FMath::Max\(PendingSlainBurstSharePercent, Action\.Percent\);",
+                     engine)
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"UCataclysmFervour::BurstTheSlain\(this, Notice\.Victim, Notice\.Location, SlainMaximum,\s*"
+                     r"Acting->TakePendingSlainBurstSharePercent\(\)\);", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"UCataclysmSkillEffects::ExplodeForOverkill\(Burster\.Get\(\), Body\.Get\(\), At, SlainMaximum, "
+                     r"SharePercent,\s*UCataclysmSkillEffects::SlainBurstRadiusCm\);", fervour)
+    assert re.search(r"Events->AfterThisDeathIsHeard\(MoveTemp\(Burst\)\);", fervour)
+    assert re.search(r"UCataclysmSkillEffects::ExplodeForOverkill\(Killer\.Get\(\), SlainActor\.Get\(\), At, "
+                     r"Overkill,", player)
+
+
+def test_passed_on_reads_the_hit_mark_and_takes_the_largest_radius_any_row_gives() -> None:
+    """The Death trees' slice C4c1 (2026-11-25), as ruled. The kill handler
+    marks its kill's rows as made by a hit or a tick around the event and clears
+    the mark after; the conditions fill reads the mark; the event loop gives a
+    passive node's overkill row the radius stat and every other row the old
+    radius, and keeps the largest; and the kill site hands that radius to the
+    explosion. Read from the code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"Acting->SetActingOnAKillByAHit\(!Notice\.bByDamageOverTime\);\s*"
+                     r"Acting->ActOnEvent\(FName\(TEXT\(\"kill\"\)\), Notice\.KillingSkillTags, SlainMaximum,\s*"
+                     r"\s*true, Notice\.Victim\);\s*"
+                     r"Acting->SetActingOnAKillByAHit\(false\);", player)
+    assert "const float OverkillRadiusCm = Acting->TakePendingOverkillExplosionRadiusCm();" in player
+    assert re.search(r"Overkill,\s*OverkillShare, OverkillRadiusCm\);", player)
+    engine = code_without_comments(SOURCE)
+    assert "State.bKillingBlowWasAHit = bActingOnAKillByAHit;" in engine
+    assert re.search(r"Action\.TriggerKey\.ToString\(\)\.StartsWith\(UCataclysmPassiveTree::PassiveEnchantmentPrefix\)",
+                     engine)
+    assert re.search(r"PendingOverkillExplosionRadiusCm = FMath::Max\(PendingOverkillExplosionRadiusCm, RowRadiusCm\);",
+                     engine)
 
 
 def test_the_two_trap_actions_of_traps_layer_five_set_off_a_recorded_trap_whole_once_a_chain() -> None:

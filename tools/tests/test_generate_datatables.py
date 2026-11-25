@@ -10035,6 +10035,20 @@ class TestTheSkillTrapMinionType:
         assert radius and float(radius.group(1)) == self.ROW[10] == self.ROW[11]
 
 
+def test_a_slain_burst_row_is_refused_where_the_game_would_burst_nothing() -> None:
+    """The Death trees' slice C4c1 (2026-11-25), The Ferryman's action. ON
+    `kill` ONLY, and a fraction, a value kind or a scale is refused. THE
+    CONTROL: the same row on `kill` with none of them passes."""
+    check = gen._check_slain_burst_action
+    check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "", "", (), {})
+    with pytest.raises(gen.DataError, match="Only a kill has a slain creature"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "hit_dealt", "", "", (), {})
+    with pytest.raises(gen.DataError, match="states Fraction Of 'maximum'"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "maximum", "", (), {})
+    with pytest.raises(gen.DataError, match="states Value Kind 'flat'"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "", "flat", (), {})
+
+
 def test_the_two_trap_events_are_clockless_events_a_row_may_hang_on():
     """Ruled 2026-10-19 (M2, M5): `trap_placed` and `trap_triggered` join
     `ACTION_ONLY_EVENTS`, and, because each is raised with a character (the

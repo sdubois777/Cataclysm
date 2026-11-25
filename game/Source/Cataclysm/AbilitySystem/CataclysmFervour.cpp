@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -118,7 +119,34 @@ float UCataclysmFervour::ClaimOnDeath(UAbilitySystemComponent* AbilitySystem, co
 	return GainOnOwnKill(AbilitySystem, Slain);
 }
 
-bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, const AActor* Commander,
+void UCataclysmFervour::BurstTheSlain(AActor* Killer, const AActor* Slain, const FVector& At, float SlainMaximum,
+									  float SharePercent)
+{
+	if (!Killer || SlainMaximum <= 0.0f || SharePercent <= 0.0f)
+	{
+		return;
+	}
+	const TWeakObjectPtr<AActor> Burster(Killer);
+	const TWeakObjectPtr<const AActor> Body(Slain);
+	TFunction<void()> Burst = [Burster, Body, At, SlainMaximum, SharePercent]()
+	{
+		if (Burster.IsValid())
+		{
+			UCataclysmSkillEffects::ExplodeForOverkill(Burster.Get(), Body.Get(), At, SlainMaximum, SharePercent,
+													   UCataclysmSkillEffects::SlainBurstRadiusCm);
+		}
+	};
+	if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(Killer->GetWorld()))
+	{
+		Events->AfterThisDeathIsHeard(MoveTemp(Burst));
+	}
+	else
+	{
+		Burst();
+	}
+}
+
+bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, AActor* Commander,
 											 const FCataclysmDeathNotice& Notice)
 {
 	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
@@ -144,6 +172,12 @@ bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySys
 		const FString Prefix = SoulCollectorRowKeyPrefix();
 		Cataclysm->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum, /*bLanded=*/true,
 							  Notice.Victim, *Prefix);
+
+		// AND THE FERRYMAN'S BURST, which a Soul Collector row on `kill` asked for: this kill is the character's for
+		// this tree, so the burst is the character's and its kills are too (the Death trees' slice C4c1). Passed On's
+		// explosion is not made: its row asks for the character's own hit, which this kill was not.
+		BurstTheSlain(Commander, Notice.Victim, Notice.Location, SlainMaximum,
+					  Cataclysm->TakePendingSlainBurstSharePercent());
 	}
 
 	// AND LAST BREATH, the Soul Collector's health on a kill at no cost.

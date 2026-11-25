@@ -5428,6 +5428,13 @@ CONDITIONS = {
     # fact of the gain in hand, read by `CurrentConditions`, so not one of
     # `CONDITIONS_OF_A_HIT_DEALT`.
     "fervour_gain_not_from_a_kill": None,
+    # "the damage your hit deals" is `killing_blow_was_a_hit`: the Soul
+    # Collector's Passed On, the Death trees' slice C4c1 (2026-11-25), as ruled.
+    # True while the player's kill handler acts on an own kill made by a hit and
+    # not by a tick (`FCataclysmDeathNotice::bByDamageOverTime`), and nowhere
+    # else. IT TAKES NO VALUE. Read by `CurrentConditions` from that mark, so
+    # not one of `CONDITIONS_OF_A_HIT_DEALT`.
+    "killing_blow_was_a_hit": None,
 
     # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
     # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
@@ -7844,6 +7851,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_killing_blow_explosion_action(index, who, action, event,
                                              fraction_of, kind, raw, headers)
         return
+    if action == SLAIN_BURST_ACTION:
+        _check_slain_burst_action(index, who, action, event, fraction_of,
+                                  kind, raw, headers)
+        return
     if action in TRAPS_NEARBY_ACTIONS:
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -7875,6 +7886,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {KILLING_BLOW_EXPLOSION_ACTION}; "
+            f"or {SLAIN_BURST_ACTION}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
@@ -8792,6 +8804,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != CLEANSE_ACTION \
                 and action != OVERKILL_EXPLOSION_ACTION \
                 and action != KILLING_BLOW_EXPLOSION_ACTION \
+                and action != SLAIN_BURST_ACTION \
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
@@ -9063,6 +9076,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"enemy for {low:g} to {high:g} per cent of the blow that "
                 f"killed it. The share is above 0 and up to "
                 f"{MAX_KILLING_BLOW_EXPLOSION_SHARE:g}.")
+
+    # AND A SLAIN CREATURE'S BURST IS A SHARE OF ITS MAXIMUM HEALTH, the same
+    # way. The Death trees' slice C4c1 (2026-11-25).
+    if action == SLAIN_BURST_ACTION:
+        if not (0 < low <= MAX_SLAIN_BURST_SHARE and 0 < high <= MAX_SLAIN_BURST_SHARE):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} bursts a killed enemy "
+                f"for {low:g} to {high:g} per cent of its maximum health. The "
+                f"share is above 0 and up to {MAX_SLAIN_BURST_SHARE:g}.")
 
     # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
     # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
@@ -14379,6 +14401,19 @@ def refuse_a_trap_blow_row_the_game_cannot_read(
 KILLING_BLOW_EXPLOSION_ACTION = "explode_victim_for_killing_blow"
 KILLING_BLOW_EXPLOSION_EVENTS = ("kill",)
 
+#: An enemy the wearer kills BURSTS FOR A SHARE OF ITS MAXIMUM HEALTH to the
+#: enemies near the body: the Soul Collector's The Ferryman, the Death trees'
+#: slice C4c1 (2026-11-25). The value is the share, in per cent.
+#: `UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction` holds
+#: the same name. ON `kill` AND NO OTHER EVENT, as the two explosions: the loop
+#: records the share and the kill handler makes the burst.
+SLAIN_BURST_ACTION = "burst_slain_for_share_of_maximum_health"
+SLAIN_BURST_EVENTS = ("kill",)
+
+#: The most its share may be, in per cent of the slain creature's maximum
+#: health. A bound for typing mistakes; the one sentence is 10.
+MAX_SLAIN_BURST_SHARE = 100.0
+
 #: The most its share may be, in per cent. A bound for typing mistakes, as
 #: `MAX_OVERKILL_EXPLOSION_SHARE` is; the one sentence is 50 to 100.
 MAX_KILLING_BLOW_EXPLOSION_SHARE = 1000.0
@@ -14407,6 +14442,31 @@ def _check_killing_blow_explosion_action(index: int, who: str, action: str,
             raise DataError(
                 f"Enchantment Effects row {index}: {who} explodes a killed enemy "
                 f"for a share of the blow that killed it and states {column} "
+                f"{written!r}. Its value is that share and nothing else, so the "
+                f"column must be empty.")
+
+
+def _check_slain_burst_action(index: int, who: str, action: str, event: str,
+                              fraction_of: str, kind: str, raw,
+                              headers: dict[str, int]) -> None:
+    """Everything a slain creature's burst row must say, and everything it
+    must not. The Death trees' slice C4c1 (2026-11-25). ON `kill` ONLY, for the
+    reason `_check_overkill_explosion_action` gives; the share is checked where
+    the value is read. A fraction, a value kind and a scale each mean nothing
+    here, so each is refused rather than dropped.
+    """
+    if event not in SLAIN_BURST_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} bursts a killed enemy for "
+            f"a share of its maximum health on the event {event or '(none)'!r}. "
+            f"Only a kill has a slain creature: {', '.join(SLAIN_BURST_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} bursts a killed enemy "
+                f"for a share of its maximum health and states {column} "
                 f"{written!r}. Its value is that share and nothing else, so the "
                 f"column must be empty.")
 

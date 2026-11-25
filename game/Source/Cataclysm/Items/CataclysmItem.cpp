@@ -1594,6 +1594,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// is the share of the overkill, in per cent.
 					Action.bExplodeVictimForOverkill = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT BURSTS FOR A SHARE OF ITS MAXIMUM HEALTH: The Ferryman, the Death trees' slice
+					// C4c1 (2026-11-25). The value is the share, in per cent.
+					Action.bBurstSlainForMaximumHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

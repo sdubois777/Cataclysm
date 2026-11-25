@@ -159,6 +159,7 @@ namespace
 		{ TEXT("class_resource_points_below"),  ECataclysmStatCondition::ClassResourcePointsBelow },
 		{ TEXT("target_carries_your_poison_or_bleed"), ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed },
 		{ TEXT("fervour_gain_not_from_a_kill"), ECataclysmStatCondition::FervourGainNotFromAKill },
+		{ TEXT("killing_blow_was_a_hit"), ECataclysmStatCondition::KillingBlowWasAHit },
 	};
 
 	struct FNamedStatScale
@@ -380,8 +381,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
 	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
 	case ECataclysmStatCondition::FervourGainNotFromAKill:
+	case ECataclysmStatCondition::KillingBlowWasAHit:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-eight says
+		// nothing for a number to be compared against. Each of the thirty-nine says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -611,6 +613,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// in hand, as a skill's kind is of the skill. It changes only while a kill is being paid for, and nothing outside
 	// a gain asks it.
 	case C::FervourGainNotFromAKill:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE KILL BEING ACTED ON WAS MADE BY A HIT, the Death trees' slice C4c1 (2026-11-25): a fact of the kill in
+	// hand, set only while the player's kill handler acts on it.
+	case C::KillingBlowWasAHit:
 		return EOn::TheBlowOrSkill;
 
 	// THE STRUCK OR SLAIN CREATURE'S RARITY RUNG, the Death trees of 2026-11-24: a fact of the target in hand, after
@@ -1369,6 +1376,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED BY `CurrentConditions` FROM THE KILL-PAYMENT MARKER, the Death trees' slice C4b1 (2026-11-25): true
 		// unless a kill's Fervour is being paid. A state with no asker in hand stays false and refuses.
 		return State.bFervourGainNotFromAKill;
+
+	case ECataclysmStatCondition::KillingBlowWasAHit:
+		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it acts on a kill made by a hit, the
+		// Death trees' slice C4c1 (2026-11-25). False outside such a kill, which refuses.
+		return State.bKillingBlowWasAHit;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

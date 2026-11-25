@@ -79,6 +79,9 @@ def test_a_followers_kill_raises_kill_to_the_soul_collectors_rows_only():
     assert re.search(
         r"if \( ?OnlyRowsWhoseKeyBegins && !Listed\.TriggerKey\.ToString\(\)\.StartsWith\( ?OnlyRowsWhoseKeyBegins ?\) ?\)"
         r" \{ continue; \}", act), "ActOnEvent must skip a row whose trigger key does not begin with the prefix asked"
+    assert re.search(r"BurstTheSlain\( ?Commander, Notice\.Victim, Notice\.Location, SlainMaximum, "
+                     r"Cataclysm->TakePendingSlainBurstSharePercent\(\) ?\);", credit), (
+        "a follower's kill Death's Toll makes the character's must make The Ferryman's burst its rows asked for")
     prefix = bodies(FERVOUR, keep_strings=True)["UCataclysmFervour::SoulCollectorRowKeyPrefix"]
     assert 'EnchantmentNameFor(FName(TEXT("SoulCollector_")), 0)' in prefix, (
         "the prefix must come from the one place that names a passive row's enchantment")

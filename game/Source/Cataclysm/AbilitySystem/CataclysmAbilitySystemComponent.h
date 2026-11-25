@@ -713,13 +713,10 @@ public:
 	 * in turn, so the explosion is made AFTER the loop has returned. The loop keeps the share here, the largest
 	 * of the rows that asked, and the caller takes it.
 	 *
-	 * WHAT THE SECOND PART MUST DO, at the one place the wearer raises `kill`. NOT BUILT YET.
-	 *   1. Raise the event as now: `ActOnEvent(FName(TEXT("kill")), ...)`.
-	 *   2. When that has returned, call this.
-	 *   3. If the answer is above nought, call `UCataclysmSkillEffects::ExplodeForOverkill` with the wearer as
-	 *      the killer, the death notice's victim and location, the overkill of the blow that killed, and this
-	 *      share. That overkill is `FCataclysmDamageResult::Overkill` of the lethal blow, which the death notice
-	 *      does not carry yet: it has to be kept on the last blow on record and copied to the notice.
+	 * THE SECOND PART IS BUILT, at the one place the wearer raises `kill`: `ACataclysmPlayerCharacter::OnSomethingDied`
+	 * raises the event, then takes this share and `TakePendingOverkillExplosionRadiusCm`, and hands
+	 * `UCataclysmSkillEffects::ExplodeForOverkill` the death notice's overkill. (This said "NOT BUILT YET" until the
+	 * Death trees' slice C4c1, 2026-11-25, long after it was built.)
 	 * Taken before the explosion and not after, so an enemy the explosion kills finds nothing left over from the
 	 * kill before it and records its own.
 	 *
@@ -739,6 +736,38 @@ public:
 		return Was;
 	}
 	float PendingOverkillExplosionShare() const { return PendingOverkillExplosionSharePercent; }
+
+	/**
+	 * The radius the overkill explosion of the kill in hand reaches, in centimetres: the largest any row that asked
+	 * gives (see `OverkillExplosionRadiusMetresStat`). Read once and cleared, with the share; the old
+	 * `UCataclysmSkillEffects::OverkillExplosionRadiusCm` when no row recorded one, and while the event loop runs. The
+	 * Death trees' slice C4c1 (2026-11-25).
+	 */
+	float TakePendingOverkillExplosionRadiusCm();
+
+	/**
+	 * The share of its maximum health the enemy just killed bursts for, in per cent, when a worn row says so: The
+	 * Ferryman. Read once and cleared; nought while the event loop runs. The Death trees' slice C4c1 (2026-11-25). See
+	 * `FCataclysmPoolAction::bBurstSlainForMaximumHealth`.
+	 */
+	float TakePendingSlainBurstSharePercent()
+	{
+		if (PoolActionDepth > 0)
+		{
+			return 0.0f;
+		}
+		const float Was = PendingSlainBurstSharePercent;
+		PendingSlainBurstSharePercent = 0.0f;
+		return Was;
+	}
+
+	/**
+	 * Mark, around the rows a kill raises, whether that kill was made by a hit: Passed On's
+	 * `ECataclysmStatCondition::KillingBlowWasAHit` reads it. Set by the player's kill handler from the death notice
+	 * (`!bByDamageOverTime`) and cleared when the rows have acted. The Death trees' slice C4c1 (2026-11-25).
+	 */
+	void SetActingOnAKillByAHit(bool bByAHit) { bActingOnAKillByAHit = bByAHit; }
+	bool IsActingOnAKillByAHit() const { return bActingOnAKillByAHit; }
 
 	/**
 	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
@@ -1799,6 +1828,21 @@ public:
 	 * `OVERKILL_EXPLOSION_ACTION`. See `FCataclysmPoolAction::bExplodeVictimForOverkill`.
 	 */
 	static const TCHAR* ExplodeVictimForOverkillAction;
+
+	/**
+	 * The action that makes an enemy the wearer kills burst for a share of its maximum health: The Ferryman. The Death
+	 * trees' slice C4c1 (2026-11-25). `tools/generate_datatables.py` holds the same name as `SLAIN_BURST_ACTION`. See
+	 * `FCataclysmPoolAction::bBurstSlainForMaximumHealth`.
+	 */
+	static const TCHAR* BurstSlainForMaximumHealthAction;
+
+	/**
+	 * The radius, in metres, a passive node's overkill explosion reaches: Passed On's "within 3 metres of it". The Death
+	 * trees' slice C4c1 (2026-11-25). Read only for a row whose trigger key begins `Passive_`; an item's row keeps
+	 * `UCataclysmSkillEffects::OverkillExplosionRadiusCm`, and the explosion takes the largest radius any row that asked
+	 * gives, as ruled. No attribute and no base.
+	 */
+	static const TCHAR* OverkillExplosionRadiusMetresStat;
 
 	/**
 	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
@@ -6287,6 +6331,15 @@ protected:
 
 	/** What the rows recorded for the kill in hand. See `TakePendingOverkillExplosionSharePercent`. */
 	float PendingOverkillExplosionSharePercent = 0.0f;
+
+	/** The radius the rows recorded for the kill in hand, in cm. See `TakePendingOverkillExplosionRadiusCm`. */
+	float PendingOverkillExplosionRadiusCm = 0.0f;
+
+	/** What The Ferryman's rows recorded for the kill in hand. See `TakePendingSlainBurstSharePercent`. */
+	float PendingSlainBurstSharePercent = 0.0f;
+
+	/** Whether the kill whose rows are acting was made by a hit. See `SetActingOnAKillByAHit`. */
+	bool bActingOnAKillByAHit = false;
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;

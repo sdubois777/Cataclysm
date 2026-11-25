@@ -6,6 +6,7 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "AbilitySystem/CataclysmSilence.h"
 #include "AbilitySystem/CataclysmVoidAura.h"
 // For the blast an action deals from an enemy that died.
@@ -1006,6 +1007,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND WHETHER A GAIN BEING SIZED NOW IS NOT A KILL'S PAYMENT, for Any Fuel's `fervour_gain_not_from_a_kill`. The
 	// Death trees' slice C4b1 (2026-11-25).
 	State.bFervourGainNotFromAKill = !IsPayingForAKill();
+
+	// AND WHETHER THE KILL WHOSE ROWS ARE ACTING WAS MADE BY A HIT, for Passed On's `killing_blow_was_a_hit`. The Death
+	// trees' slice C4c1 (2026-11-25).
+	State.bKillingBlowWasAHit = bActingOnAKillByAHit;
 
 	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
 	State.EnemiesInSiphon = EnemiesInSiphon();
@@ -3948,6 +3953,18 @@ void UCataclysmAbilitySystemComponent::ExtendKillDecayHold(float Seconds, float 
 	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Capped);
 }
 
+float UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionRadiusCm()
+{
+	// DEFINED HERE AND NOT IN THE HEADER, which does not include `CataclysmSkillEffects.h` for the old radius.
+	if (PoolActionDepth > 0 || PendingOverkillExplosionRadiusCm <= 0.0f)
+	{
+		return UCataclysmSkillEffects::OverkillExplosionRadiusCm;
+	}
+	const float Was = PendingOverkillExplosionRadiusCm;
+	PendingOverkillExplosionRadiusCm = 0.0f;
+	return Was;
+}
+
 void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
 {
 	const UWorld* World = GetWorld();
@@ -5206,6 +5223,10 @@ const TCHAR* UCataclysmAbilitySystemComponent::UseHitsItsUserAction = TEXT("use_
 const TCHAR* UCataclysmAbilitySystemComponent::UseBackfiresAction = TEXT("use_backfires");
 const TCHAR* UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction =
 	TEXT("explode_victim_for_overkill");
+const TCHAR* UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction =
+	TEXT("burst_slain_for_share_of_maximum_health");
+const TCHAR* UCataclysmAbilitySystemComponent::OverkillExplosionRadiusMetresStat =
+	TEXT("overkill_explosion_radius_metres");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
@@ -6979,6 +7000,9 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		PendingOverkillExplosionSharePercent = 0.0f;
 		// AND THE TRAP KILL'S EXPLOSION, for the same reason (traps layer 4, F10 to F12).
 		PendingKillingBlowExplosionSharePercent = 0.0f;
+		// AND THE OVERKILL EXPLOSION'S RADIUS AND THE FERRYMAN'S BURST, for the same reason (the Death trees' slice C4c1).
+		PendingOverkillExplosionRadiusCm = 0.0f;
+		PendingSlainBurstSharePercent = 0.0f;
 	}
 
 	// A COPY, because applying one writes an attribute, and an attribute write
@@ -7509,6 +7533,31 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				PendingOverkillExplosionSharePercent =
 					FMath::Max(PendingOverkillExplosionSharePercent, Action.Percent);
+				// AND ITS RADIUS, THE LARGEST ANY ROW THAT ASKED GIVES, as the coordinating session ruled for Passed On
+				// (the Death trees' slice C4c1, 2026-11-25). A passive node's row, whose trigger key begins `Passive_`,
+				// reaches `OverkillExplosionRadiusMetresStat` when the character holds it; an item's row, and a passive
+				// row without the stat, the old radius. So holding Passed On never shrinks an item's explosion.
+				const bool bPassiveRow =
+					Action.TriggerKey.ToString().StartsWith(UCataclysmPassiveTree::PassiveEnchantmentPrefix);
+				const float StatedMetres = bPassiveRow
+					? StatForSkill(FName(OverkillExplosionRadiusMetresStat), FGameplayTagContainer(), 0.0f)
+					: 0.0f;
+				const float RowRadiusCm = StatedMetres > 0.0f ? StatedMetres * 100.0f
+															  : UCataclysmSkillEffects::OverkillExplosionRadiusCm;
+				PendingOverkillExplosionRadiusCm = FMath::Max(PendingOverkillExplosionRadiusCm, RowRadiusCm);
+			}
+			continue;
+		}
+		// AN ENEMY KILLED BURSTS FOR A SHARE OF ITS MAXIMUM HEALTH: The Ferryman, the Death trees' slice C4c1
+		// (2026-11-25). ONLY RECORDED HERE, once per row per event, the largest share of the rows that asked, as the
+		// overkill explosion is above and for its reason; the kill handler takes it and makes the burst. See
+		// `TakePendingSlainBurstSharePercent`. No roll and no trigger cooldown: the sentence has neither.
+		if (Action.bBurstSlainForMaximumHealth)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				PendingSlainBurstSharePercent = FMath::Max(PendingSlainBurstSharePercent, Action.Percent);
 			}
 			continue;
 		}

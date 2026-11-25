@@ -809,8 +809,18 @@ public:
 	 * only. Not the run's kill count, not the weapon's, and no other tree's rows, as ruled. Answers whether it did. The
 	 * Death trees' slice C4b2 (2026-11-25).
 	 */
-	static bool CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, const AActor* Commander,
+	static bool CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, AActor* Commander,
 									 const FCataclysmDeathNotice& Notice);
+
+	/**
+	 * The Ferryman's burst: `SharePercent` of `SlainMaximum` dealt to every enemy of `Killer` within
+	 * `UCataclysmSkillEffects::SlainBurstRadiusCm` of `At`, through `UCataclysmSkillEffects::ExplodeForOverkill`, handed
+	 * to the announcer (`UCataclysmCombatEvents::AfterThisDeathIsHeard`) so a creature it kills is `Killer`'s kill,
+	 * raises `kill`, and bursts in turn. The one place both the character's own kill and a follower's kill Death's Toll
+	 * makes its own make the burst. The Death trees' slice C4c1 (2026-11-25). Nothing for a share or a maximum of nought.
+	 */
+	static void BurstTheSlain(AActor* Killer, const AActor* Slain, const FVector& At, float SlainMaximum,
+							  float SharePercent);
 
 	/** The start of every Soul Collector row's trigger key: `Passive_SoulCollector_`. See `CreditAFollowersKill`. */
 	static FString SoulCollectorRowKeyPrefix();

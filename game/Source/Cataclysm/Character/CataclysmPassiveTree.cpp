@@ -1004,11 +1004,13 @@ int32 UCataclysmPassiveTree::PointsPaid(const FCataclysmPassiveEffectRow& Effect
 	return Effect.PerPointFrom > 0 ? FMath::Max(0, Points - Effect.PerPointFrom + 1) : 1;
 }
 
+const TCHAR* UCataclysmPassiveTree::PassiveEnchantmentPrefix = TEXT("Passive_");
+
 FString UCataclysmPassiveTree::EnchantmentNameFor(FName Node, int32 Option)
 {
 	return Option > 0
-		? FString::Printf(TEXT("Passive_%s_Option%d"), *Node.ToString(), Option)
-		: FString::Printf(TEXT("Passive_%s"), *Node.ToString());
+		? FString::Printf(TEXT("%s%s_Option%d"), PassiveEnchantmentPrefix, *Node.ToString(), Option)
+		: FString::Printf(TEXT("%s%s"), PassiveEnchantmentPrefix, *Node.ToString());
 }
 
 TArray<FCataclysmEnchantmentEffectRow> UCataclysmPassiveTree::EnchantmentRowsFor(

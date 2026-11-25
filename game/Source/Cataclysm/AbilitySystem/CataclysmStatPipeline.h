@@ -1871,6 +1871,20 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	FervourGainNotFromAKill
 		UMETA(DisplayName = "Fervour Gain Not From A Kill"),
+
+	/**
+	 * The kill being acted on was made by a hit, not by a tick of damage over time: the Soul Collector's Passed On,
+	 * "Half the damage your hit deals beyond what killing an enemy needed". The Death trees' slice C4c1 (2026-11-25), as
+	 * the coordinating session ruled: "your hit" leaves out a tick, and the death notice already says which it was
+	 * (`FCataclysmDeathNotice::bByDamageOverTime`).
+	 *
+	 * READ FROM A MARK THE PLAYER'S KILL HANDLER SETS while its rows act on an own kill
+	 * (`UCataclysmAbilitySystemComponent::SetActingOnAKillByAHit`), so it holds on that kill's rows and nowhere else.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	KillingBlowWasAHit
+		UMETA(DisplayName = "Killing Blow Was A Hit"),
 };
 
 /**
@@ -3609,6 +3623,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bFervourGainNotFromAKill = false;
 
 	/**
+	 * Whether the kill being acted on was made by a hit. The Death trees' slice C4c1 (2026-11-25). Filled by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` from the kill handler's mark; false otherwise, which
+	 * refuses. See `ECataclysmStatCondition::KillingBlowWasAHit`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKillingBlowWasAHit = false;
+
+	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
 	 * trees of 2026-11-24. Filled by `WithTargetState` only when some modifier in the lookup asks; see
 	 * `ECataclysmStatCondition::TargetRarityAtLeast`.
@@ -4957,6 +4979,19 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bExplodeVictimForOverkill = false;
 
 	/**
+	 * Set, this action makes an enemy its wearer kills BURST FOR A SHARE OF ITS MAXIMUM HEALTH: `Percent` is the share,
+	 * dealt to every enemy near the body. The Soul Collector's The Ferryman, "every enemy you kill bursts for 10% of its
+	 * maximum health to enemies within 4 metres, and a creature the burst kills bursts too". The Death trees' slice C4c1
+	 * (2026-11-25). On `kill` and no other event.
+	 *
+	 * THE EVENT LOOP ONLY RECORDS THE SHARE, as it does for the overkill explosion and for its reason; the kill handler
+	 * takes it (`UCataclysmAbilitySystemComponent::TakePendingSlainBurstSharePercent`) and makes the burst once the
+	 * death has been heard, so a creature the burst kills is a kill of its own and bursts in turn.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bBurstSlainForMaximumHealth = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
@@ -5350,7 +5385,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-fourth, which is the drift that put the passive tree eight
+	 * adds an eighty-fifth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5367,7 +5402,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-EIGHT OF THE EIGHTY-THREE COMPARE NOTHING. They are the case labels
+	 * THIRTY-NINE OF THE EIGHTY-FOUR COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

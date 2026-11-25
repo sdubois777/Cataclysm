@@ -3555,7 +3555,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_carries_your_poison_or_bleed")
 			// THE DEATH TREES' SLICE C4b1 (2026-11-25), ANY FUEL'S "FERVOUR GAINED FROM SOURCES OTHER THAN KILLS": the
 			// gain being sized is not a kill's payment. It names a state, so it compares nothing.
-			|| Name == TEXT("fervour_gain_not_from_a_kill");
+			|| Name == TEXT("fervour_gain_not_from_a_kill")
+			// THE DEATH TREES' SLICE C4c1 (2026-11-25), PASSED ON'S "YOUR HIT": the kill being acted on was made by a hit.
+			// It names a state, so it compares nothing.
+			|| Name == TEXT("killing_blow_was_a_hit");
 	}
 }
 
