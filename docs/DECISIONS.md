@@ -166,7 +166,9 @@ struck; no Death's Toll, and a killer nobody owns; the character's own kill, whi
 (`feat/death-trees-kill-credit-end-to-end`): `Cataclysm.KillCredit.AMinionsKillPaysTheRealPlayerUnderDeathsToll`, on the
 scene `Cataclysm.Swarm.AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone` builds, a real player on a real player
 state whose real imp kills a creature, heard by `OnSomethingDied`. With Death's Toll the kill pays the player 5 and stamps
-its kill clock; without it, nothing. The group is then 6. No C++ guard proof is registered for it.
+its kill clock; without it, nothing. The group is then 6. ITS ONE C++ GUARD PROOF, registered at the coordinating
+session's request: in `CataclysmPlayerCharacter.cpp`, `!UCataclysmFervour::CreditAFollowersKill(Acting, this, Notice)`
+becomes `true`. Prefix `Cataclysm.KillCredit.`; must fail `AMinionsKillPaysTheRealPlayerUnderDeathsToll`.
 
 **Three C++ guard proofs are registered for the window:**
 1. `CataclysmAbilitySystemComponent.cpp`, `TakeFervourDecayedWithin`: `if (Entry.Key >= Since)` becomes `if (true)`.
