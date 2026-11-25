@@ -454,12 +454,13 @@ are not used: by its report they no longer fail anything, the two protections ea
 
 ## 2026-11-24 — Drop supply at tier 1: half the gear, gems scaled by tier, no all-resistances on a tier 1 drop, and the gap rule's cut starting at a per-tier width (#2853)
 
-**WRITTEN AND NOT COMPILED; NO WINDOW YET; THE WORKBOOK NOT YET WRITTEN.** On `feat/drop-supply-2853`, made from
-`feat/power-score-weights-2853` at `0799b7b27` (the rarity cap and the plain weights, both owner-ruled and not yet
-merged), so it carries those two changes too. Issue [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the
-drop supply half of the owner's "Adopt, and look at drop supply (Recommended)" (the entry below). **The design workbook
-was not edited**, because other branches held it: see "The workbook stage" below. Until that stage is run, two Python
-tests fail on this branch and say so, and a third until the editor rebuilds `DT_EnemyDrops`.
+**ONE WINDOW WITH THE ENTRY BELOW, ON `feat/score-and-drops-2853`; NOT COMPILED; THE WORKBOOK WRITTEN.** Written on
+`feat/drop-supply-2853`, made from `feat/power-score-weights-2853` at `0799b7b27`. Both branches' commits were replayed
+onto development `5cdd6bdc4` (the rarity cap, merged as #2886) as `feat/score-and-drops-2853`, which writes the workbook
+and holds the window's registration: "One window for both", at the end of this entry. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the drop supply half of the owner's "Adopt, and look at
+drop supply (Recommended)" (the entry below). Until the window's editor step rebuilds `DT_EnemyDrops`, one Python test
+fails and says so.
 
 ### Why
 
@@ -600,10 +601,14 @@ a judgement.
 
 ### Judgements of this change
 
-1. **The gem curve: three quarters a tier below 8.** The reasons are above.
+1. **The gem curve: three quarters a tier below 8.** The reasons are above. Accepted by the coordinating session on
+   2026-11-24 (issue comment 7148394456).
 2. **The Gem Drops column stays and the share of a gear drop doubles to 0.0136**, rather than the column halving with the
-   gear: "tier 8 keeps today's rate" is gems a kill, and the column is gems a kill.
-3. **The gold column stays, so a kill's gold piles are twice its gear drops.** G1 (2026-11-18) ruled gold "as gear and
+   gear: "tier 8 keeps today's rate" is gems a kill, and the column is gems a kill. Accepted by the coordinating
+   session the same day (the same comment).
+3. **The gold column stays, so a kill's gold piles are twice its gear drops. THE OWNER RULED IT after this was
+   written, 2026-11-24, the chosen option verbatim: "Keep gold as it is (Recommended)"** (issue comment
+   7148394456). G1 (2026-11-18) ruled gold "as gear and
    materials drop today", which the code and `tools/tests/test_gold_drops_and_the_balance.py` held as gold equal to
    gear. The owner halved the gear column and adopted the proposal that said the gold and material columns do not move;
    halving gold with it would have halved every kill's gold, an economy change nobody ruled. The test now pins G1's six
@@ -626,7 +631,7 @@ a judgement.
    (`sim/tests/test_measure_drop_supply.py`) hold its item roll to `loot.roll_item` at tiers 1, 2 and 8 and its kill to
    `loot`'s own.
 
-### The workbook stage (not done here)
+### The workbook stage (not done on this branch; done on `feat/score-and-drops-2853`, at the end of this entry)
 
 The Gear Drops column lives in `docs/All_Things_Cataclysm.xlsx`, which this branch was told not to edit. The exact cell
 changes, on the **Enemy Drops** sheet, found by the Enemy Rarity in column A:
@@ -714,8 +719,91 @@ Predicted counts, read from the files: `Cataclysm.Drop.` 32 (30 + 2), `Cataclysm
 | CG1 | in `RollItem`'s removal, `return Row != nullptr && !UCataclysmDropRoll::RollsOnADropAt(*Row, DifficultyTier);` read as `return false;` | `NoAllResistancesAffixRollsOnATierOneDrop` | `Cataclysm.Drop.` |
 | CG2 | in `GemDropShareAt`, `Share *= GemDropShareATierDown;` read as `Share *= 1.0f;` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | `Cataclysm.GemDrops.` |
 | CG3 | in `SpawnGemsFor`, `ExpectedGemDrops(Drops, EnemyRarity, LootQuantity, DifficultyTier)` read as `..., 8)` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | `Cataclysm.GemDrops.` |
-| CG4 | in `BandBelow`, `{ 1.4, 1.3,` read as `{ 0.6, 1.3,` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | `Cataclysm.PowerGapRewards.` | **Every `Cataclysm.GemDrops.`, `Cataclysm.Gold.` and kill-counting test reads
+| CG4 | in `BandBelow`, `{ 1.4, 1.3,` read as `{ 0.6, 1.3,` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | `Cataclysm.PowerGapRewards.` |
+
+**Every `Cataclysm.GemDrops.`, `Cataclysm.Gold.` and kill-counting test reads
 `DT_EnemyDrops`, so the asset must be rebuilt from the halved CSV before they run.**
+
+### One window for both, on `feat/score-and-drops-2853` (2026-11-24)
+
+By the coordinating session's instruction of 2026-11-24: one window for the rest of #2853, the plain Power Score weights
+(the entry below) and this drop supply. Prepared only: nothing compiled, no editor, no pull request.
+
+**The branch.** Made from development `5cdd6bdc4`. `git rebase --onto origin/development e36bbf4bb` replayed the eight
+commits above the old rarity cap (the two of `feat/power-score-weights-2853`, the six of `feat/drop-supply-2853`) with
+no conflict anywhere, this file included. No C++ was resolved by hand (`tools/check_resolved_cpp.py --changed`: "read no
+files, so nothing was checked").
+
+**The workbook stage, done.** `python tools/apply_halved_gear_drops.py` on development's workbook, committed alone as
+`0436874b3`. Compared cell by cell across all 28 sheets with the commit before it, exactly seven cells differ, all on
+Enemy Drops: C2 to C7 (0.16, 0.5, 1, 2, 5, 12 became 0.08, 0.25, 0.5, 1, 2.5, 6) and the Common row's note, H2. Every
+CSV the generator then wrote is the one committed ("All 34 DataTable CSVs are up to date"), and `--check` prints "The
+Enemy Drops sheet holds the halved Gear Drops column".
+
+**Checked against the rulings, on the branch's code:** the weights 10, 2, 1, 5 and 1 in `player_power.py` and in
+`CataclysmPowerScore.h`; the gem step 0.75 in both, and `GEM_DROPS_PER_GEAR_DROP` 0.0136; the all-resistances gate at
+tier 2 in both; the gap rule's starts, 1.4 down to 0.8, in both; the rarity cap as merged. Against development,
+`game/Data/EnemyDrops.csv` moves its GearDrops column only: GoldDrops and GemDrops are as they were.
+
+**The Python suite on `0436874b3`:** "1 failed, 8394 passed, 10 skipped in 384.24s"; JUnit 8405 tests, 1 failure, 0
+errors, 10 skipped. **The one failure is the expected one:** `test_datatable_assets_are_current.py`'s
+`test_every_csv_still_hashes_to_what_was_recorded`, "['EnemyDrops.csv'] changed since their DataTable assets were
+built", which the window's editor step clears. The two workbook failures `feat/drop-supply-2853` carried are gone. The
+unity-build name checks (`test_no_class_and_struct_share_an_engine_name.py`,
+`test_no_two_files_share_an_anonymous_helper.py`) ran in it and passed. ruff: "All checks passed!".
+
+**Python guard proofs for what this branch adds, each PROVED:**
+
+| Proof | Break | Failed with the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| PW1 | the workbook's Enemy Drops C2, Common gear, 0.08 read as 0.16 | `test_every_gear_drop_rate_matches_the_model`, `test_the_committed_csvs_are_current`: 2 failed, 1106 passed | 1108 passed |
+| PYG3 | `SpawnGemsFor`'s `ExpectedGemDrops(Drops, EnemyRarity, LootQuantity, DifficultyTier)` read as `..., 8)` | `test_the_tiers_share_of_the_gem_column_is_the_simulations` | 8 passed |
+
+PW1 was run by hand: `tools/prove_guard.py` reads the file it breaks as text and cannot break a workbook. The broken
+half was a `git archive` copy of `0436874b3` with the cell set by openpyxl, found by its Enemy Rarity; the restored half
+a second, untouched copy; each ran the six test files that read the Enemy Drops sheet. PYG3 is `prove_guard` in that
+untouched copy, and replaces the planned C++ proof CG3: a Python test reads that call as text.
+
+**THE WINDOW'S REGISTRATION** (`.claude/windows/register_score_and_drops.md` in the sharp-meitner worktree). Base:
+window rc-w1 on `5e8be4680`, whose game files are development `5cdd6bdc4`'s: 5347 performed, 57 skipped halves, 861
+saves. If inv-w1 lands first, it is re-registered from that window's log.
+
+- **The editor step**, after the build: `python tools/run_editor_python.py tools/generate_datatable_assets.py`, which
+  runs from a worktree once its own editor target is built. Kept: `game/Content/Data/DT_EnemyDrops.uasset` and
+  `game/Data/datatable_asset_sources.json` (EnemyDrops' hash); anything else it rewrites is restored. Committed alone;
+  the tested head becomes that commit.
+- **The whole suite: 5354 performed** (5347 + 7: eleven names added, four of them renames of names removed), 5354
+  succeeded; **57 skipped halves; 861 saves** written and deleted, 0 left behind. No test this branch adds or changes
+  reports a skipped half or writes a save.
+- **Groups alone**, counted in rc-w1's whole-suite log with a literal match, plus the tests added by name:
+  `Cataclysm.Drop.` 32, `DropPickup.` 20, `Item.` 13, `GemDrops.` 5, `Gold.` 13, `PowerGapRewards.` 6, `PowerScore.` 5,
+  `PowerScoreLive.` 10, `Overwhelm.` 8, `CharacterSheet.` 10, `Sandbox.` 8, `RarityCap.` 6, `Dismantle.` 12,
+  `EmpireTreeDrops.` 13, `CityDungeonRewards.` 5, `ConsumptionDouble.` 15, `SaveApply.` 24, `Data.` 7,
+  `ExtraDamageTypes.` 6, `Enchantments.` 366, and six `Cataclysm.DungeonModifierEffects.` tests by full name (the group
+  holds 777, and the branch changes two comments in its file): `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves`,
+  `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`,
+  `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce`,
+  `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber`,
+  `ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel` and
+  `ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear`. Chosen by searching every test body for the
+  functions and constants either change moves (the score's weights and terms, the kill drop and gem spawners, the gap
+  rule, `RollItem`), every group in a test file either branch changed, and the groups both entries registered.
+- **C++ guard proofs**, only if every group passes; at most three a change (the owner's rule of 2026-09-14). Each anchor
+  occurs once on the branch.
+
+| Proof | Change | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- | :-- |
+| PS1 | weights | `CataclysmPowerScore.cpp`: `FromGear += Rarity * (1.0 + UpgradePoints * Upgrade);` read as `... (1.0 + 0.25 * UpgradePoints * Upgrade);` | `Cataclysm.PowerScore.` and `Cataclysm.PowerScoreLive.` | `TheReferenceCharacterLandsNearEveryTiersAnchor`, `TheFourRulesTheFormulaImplies`, `GearBuiltToTheTierEightReferenceScoresTheReference` at least |
+| PS2 | weights | the level term's `FMath::Clamp(Character.Level, 0, MaxLevel)` read as `FMath::Clamp(Character.Level - 1, 0, MaxLevel)` | `Cataclysm.PowerScore.` and `Cataclysm.PowerScoreLive.` | `ALevelSixCharacterScoresSixtyFromItsLevel`, `TheSheetShowsEachTermBesideItsPlainWeight` at least |
+| PS3 | weights | `CataclysmCharacterSheetLayout.cpp`'s `Plain`: `return FMath::IsNearlyEqual(Value, static_cast<float>(Rounded)) ? FString::FromInt(Rounded)` read as `return false ? FString::FromInt(Rounded)` | `Cataclysm.PowerScoreLive.` | `TheSheetShowsEachTermBesideItsPlainWeight` |
+| CG1 | drops | as planned above | `Cataclysm.Drop.` | `NoAllResistancesAffixRollsOnATierOneDrop` |
+| CG2 | drops | as planned above | `Cataclysm.GemDrops.` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` |
+| CG4 | drops | as planned above | `Cataclysm.PowerGapRewards.` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` |
+
+PS1 to PS3 break lines no Python test reads, so only the C++ tests can see them. CG1's, CG2's and CG4's lines are each
+read as text by a Python port test (`test_all_resistances_drop_gate_port.py`, `test_gems_drop_from_kills.py`,
+`test_power_gap_rewards_port.py`); each is kept as the one proof that its new C++ behaviour test can fail. CG3 is
+dropped for PYG3 above.
 
 ---
 
@@ -832,8 +920,9 @@ the engine's compile-time format check may refuse.
 
 ## 2026-11-24 — The player's Power Score counts in plain numbers: 10 a level, 2 x rarity x (1 + gear level) a piece, 5 a gem rarity step, 1 a resistance percent (#2853)
 
-**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at
-`e36bbf4bb` (the rarity cap, owner-ruled and not yet merged), so it carries that change too. Issue
+**ONE WINDOW WITH THE DROP SUPPLY, ON `feat/score-and-drops-2853` (the entry above); NOT COMPILED.** Written on
+`feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at `e36bbf4bb`; the rarity cap has since merged as
+#2886. Issue
 [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), part 2. Part 1, the rarity cap, is the entry below.
 
 ### Why
