@@ -120,10 +120,15 @@ class Reword:
     `before` is the sentence the fix was approved against. A node reading
     anything other than `before` or `after` is refused, so a sentence somebody
     has changed since is never overwritten silently.
+
+    `later` holds sentences a LATER RULING put in place of `after`: a node
+    reading one of them is already past this fix and is left alone. Each is
+    named where it is given, with the ruling that wrote it.
     """
     node: str
     before: str
     after: str
+    later: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -285,6 +290,12 @@ SABOTEUR_CAPS = (
                 "trap limit is increased by 1."),
         after=("+10% trap placement speed per point. At 6 points: Your traps reserve 5% "
                "reduced Fervour."),
+        # THE SABOTEUR'S TRAP TIMING, the coordinating session's ruling of
+        # 2026-11-25 (the C1 plan): placing a trap takes no time, so "placement
+        # speed" became "arming speed"
+        # (`tools/apply_saboteur_rewordings_2026_11_25.py`).
+        later=("+10% trap arming speed per point. At 6 points: Your traps reserve 5% "
+               "reduced Fervour.",),
     ),
     Reword(
         node="Overwhelming Presence",
@@ -481,7 +492,7 @@ def swap_content(first: dict, second: dict, tree: str) -> str:
 def apply_reword(data: dict, fix: Reword, tree: str) -> list[str]:
     node = node_named(data, fix.node, tree)
     now = node["data"].get("description", "")
-    if now == fix.after:
+    if now == fix.after or now in fix.later:
         return []
     if now != fix.before:
         raise Refused(f"{tree}: {fix.node!r} reads {now!r}, which is neither the "

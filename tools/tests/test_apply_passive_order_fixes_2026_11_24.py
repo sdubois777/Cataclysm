@@ -345,6 +345,21 @@ def test_no_saboteur_node_states_a_count_cap_after_the_fix():
             assert cap not in sentence, f"{fix.node} still says {cap!r}: {sentence}"
 
 
+def test_a_sentence_a_later_ruling_wrote_is_left_alone_and_any_other_refused():
+    """2026-11-25: the trap timing ruling reworded Minefield past this fix's
+    sentence. A node reading a sentence in `later` is fixed already; a node
+    reading anything else that is neither `before` nor `after` is still refused."""
+    (minefield,) = [fix for fix in fixes.SABOTEUR_CAPS if fix.node == "Minefield"]
+    assert minefield.later, "Minefield names the trap timing ruling's sentence"
+    data = saboteur()
+    by_name(data, "Minefield")["data"]["description"] = minefield.later[0]
+    assert fixes.apply_reword(data, minefield, "Saboteur") == []
+    assert by_name(data, "Minefield")["data"]["description"] == minefield.later[0]
+    by_name(data, "Minefield")["data"]["description"] = "Somebody wrote this since."
+    with pytest.raises(fixes.Refused, match="Minefield"):
+        fixes.apply_reword(data, minefield, "Saboteur")
+
+
 def test_precision_placement_keeps_its_one_trap_rule():
     """A conversion, not a cap: the coordinating session said to keep it."""
     data = saboteur()

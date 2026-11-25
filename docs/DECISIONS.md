@@ -31,6 +31,8 @@ Decisions made outside the Google Drive documents, newest first.
   - Python: `tools/tests/test_war_saboteur_trap_timing_scripts.py` (new, thirteen),
     `test_war_saboteur_rows_scripts.py` (23 rows on 13 nodes), `test_passive_effects_match_the_node_text.py` (the new
     words, 540 rows, 311 nodes), `test_stat_lookups_hand_over_what_they_should.py` (one lookup).
+- `tools/apply_passive_order_fixes_2026_11_24.py`: a `Reword` may name `later` sentences, written by a later ruling,
+  which count as fixed; Minefield's names this slice's. Its test file gains one test.
 
 ### SAID FIRST
 
@@ -117,6 +119,19 @@ does not have: a trap triggers on the step it finds an enemy, with nothing betwe
    - Field Engineer's 12% `minion_attack_speed` a point on `Type.Gadget` (the stat "Gadgets fire faster" uses).
    - Delayed Fuse's three.
 
+### THE PYTHON SUITE
+
+**THE FIRST RUN FOUND A REAL FAILURE.** Run on `7e3f19dee55e4a8638b402fe339ca7f8c6d1abe5`:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **2 failed, 8496 passed, 9 skipped
+in 445.26s**, and the JUnit file `tests="8507" failures="2" errors="0" skipped="9"`, which agrees.
+- One failure was the asset check every CSV branch carries until the editor step.
+- The other was
+  `test_apply_passive_order_fixes_2026_11_24.py::test_a_real_tree_ends_fixed_with_its_graph_and_its_rules_intact[Saboteur_Class_Tree_Final.json]`.
+  The order fixes of 2026-11-24 reworded Minefield's count cap and refuse a sentence that is neither theirs nor the
+  one they replaced, so they refused this slice's Minefield sentence.
+- A narrowed run of the node-text and script tests had not covered that test file. The `later` field above is the
+  fix; the rerun's figures follow in the next commit.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
@@ -126,6 +141,7 @@ True: a named test failed with the break in, and the file passed with it restore
 |---|---|---|
 | `tools/reapply_war_data_rows_workbook.py`: the extending path no longer refuses a row held beside the wanted ones | `pytest tools/tests/test_war_saboteur_trap_timing_scripts.py` | `test_the_row_script_refuses_a_row_somebody_wrote_on_a_node_it_extends` |
 | `game/Data/PassiveEffects.csv`: Hair Wire's arming speed from 3 points, not 4 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| `tools/apply_passive_order_fixes_2026_11_24.py`: a `later` sentence no longer counts as fixed | `pytest tools/tests/test_apply_passive_order_fixes_2026_11_24.py` | `test_a_sentence_a_later_ruling_wrote_is_left_alone_and_any_other_refused`, `test_a_real_tree_ends_fixed_with_its_graph_and_its_rules_intact[Saboteur_Class_Tree_Final.json]` |
 | `docs/Saboteur_Class_Tree_Final.json`: Volatile Casing's sentence back to "trigger delay" | `pytest tools/tests/test_war_saboteur_trap_timing_scripts.py` | `test_the_tree_file_holds_the_reworded_sentences`, `test_the_reword_script_rewords_the_ruled_sentences_once` |
 
 **THE FIRST PROOF FAILED ONCE, AND THAT FOUND TWO FAULTS.** As first written, the refusal test passed with the break

@@ -150,6 +150,19 @@ def test_the_row_script_refuses_a_row_somebody_wrote_on_a_node_it_extends(tmp_pa
     assert copy.read_bytes() == before
 
 
+def test_a_sentence_reworded_here_that_an_earlier_fix_wrote_is_that_fixs_later_sentence():
+    """The order fixes of 2026-11-24 wrote Minefield's sentence before this script reworded it; the earlier script
+    must read the new one as fixed, or rerunning it over `docs/` refuses."""
+    import apply_passive_order_fixes_2026_11_24 as fixes
+
+    earlier_fixes = {fix.node: fix for fix in fixes.SABOTEUR_CAPS}
+    overlapping = [fix for fix in reword.REWORDS if fix.node in earlier_fixes]
+    assert [fix.node for fix in overlapping] == ["Minefield"]
+    for fix in overlapping:
+        assert fix.before == earlier_fixes[fix.node].after
+        assert fix.after in earlier_fixes[fix.node].later
+
+
 def test_the_tree_file_holds_the_reworded_sentences():
     data = json.loads(TREE.read_text(encoding="utf-8"))
     for fix in reword.REWORDS:
