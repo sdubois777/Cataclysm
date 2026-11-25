@@ -599,6 +599,33 @@ FString UCataclysmEmpireMapLayout::DaysAwayLine(const UCataclysmEmpireRun* Run)
 						   *FString::Join(Parts, TEXT("; ")));
 }
 
+FString UCataclysmEmpireMapLayout::TimersRunningOutText(const UCataclysmEmpireRun* Run, int32 Days)
+{
+	if (Run == nullptr || Days <= 0)
+	{
+		return FString();
+	}
+	const TArray<FCataclysmTimerForecast> Forecast = Run->TimersRunningOutWithin(Days);
+	if (Forecast.IsEmpty())
+	{
+		return FString();
+	}
+
+	// EACH DUNGEON BY ITS NUMBER AND THE NAME THE PLAY LOOP GIVES IT, "13 (the dungeon on Outpost (-3,0))", then the city
+	// it would hit and the day, soonest first.
+	TArray<FString> Parts;
+	for (const FCataclysmTimerForecast& Each : Forecast)
+	{
+		const FString Named = Run->NameOfDungeon(Each.DungeonId);
+		Parts.Add(FString::Printf(TEXT("dungeon %d (%s) hits %s on day %d"), Each.DungeonId,
+								  Named.IsEmpty() ? TEXT("a dungeon") : *Named, *CityNameIn(*Run, Each.CityId), Each.Day));
+	}
+	const int32 Count = Forecast.Num();
+	return FString::Printf(TEXT(" Within %d day%s, %d %s: %s."), Days, Days == 1 ? TEXT("") : TEXT("s"), Count,
+						   Count == 1 ? TEXT("dungeon's timer runs out") : TEXT("dungeons' timers run out"),
+						   *FString::Join(Parts, TEXT("; ")));
+}
+
 FString UCataclysmEmpireMapLayout::ReturnLine(const UCataclysmEmpireRun* Run)
 {
 	const FString Away = DaysAwayLine(Run);

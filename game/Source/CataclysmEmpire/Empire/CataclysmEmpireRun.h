@@ -125,6 +125,21 @@ struct CATACLYSMEMPIRE_API FCataclysmDaysAway
 };
 
 /**
+ * One dungeon whose timer runs out within days about to be spent, and the city it would hit:
+ * `UCataclysmEmpireRun::TimersRunningOutWithin`. Issue #2857. NOT SAVED: worked out when it is asked for.
+ */
+struct FCataclysmTimerForecast
+{
+	int32 DungeonId = INDEX_NONE;
+
+	/** The run's day its timer runs out on. */
+	int32 Day = INDEX_NONE;
+
+	/** The city it would hit: the one an ordinary dungeon stands on, or a Quest dungeon's host. */
+	int32 CityId = INDEX_NONE;
+};
+
+/**
  * What one day did to the empire.
  *
  * WHY A REPORT AND NOT A SET OF DELEGATES. Everything that reads this is above
@@ -1816,6 +1831,30 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsAWalkUnderWay() const;
+
+	/**
+	 * The dungeons whose timers run out within the next `Days` days, as the board stands now, and the city each would
+	 * hit: what a press that spends days in the capital -- a craft at the forge, the empire upgrade tree's respec --
+	 * says before it is made. Issue #2857, the owner's ruling of 2026-11-22. Soonest first, and on one day in the
+	 * clock's order, which is the order `UCataclysmDayClock::AdvanceDay` resolves a day's timers in.
+	 *
+	 * A TIMER RUNS OUT ON THE FIRST DAY THAT TAKES IT TO NOUGHT, with the empire upgrade tree's days on it
+	 * (`UCataclysmDayClock::DaysUntilResolveFor`): a day comes off before it is asked, so one at 3 runs out on the third
+	 * day passed, and one at nought or below on the next.
+	 *
+	 * ONLY A TIMER THAT COSTS A CITY SOMETHING: an ordinary dungeon's, which hits the city it stands on and leaves, and a
+	 * Quest dungeon's, which hits its host (`ResolveDungeon`). Not a Fallen City's or the Cataclysm's dungeon, which hit
+	 * nothing; not a Scout Parties bonus dungeon, which leaves with no consequence (`LetABonusDungeonLeave`); not one on
+	 * a city already fallen, which has nothing left to bite; and not the dungeon the player stands in, whose timer does
+	 * not move.
+	 *
+	 * A FORECAST FROM THE TIMERS AND NOTHING ELSE. The days themselves can change what happens: a surge inside them lands
+	 * dungeons, a fall takes the ordinary dungeons on its city and moves its Quest dungeons, and a Quest dungeon whose
+	 * timer runs out twice in them hits twice. Each dungeon is named once, on the first day its timer runs out.
+	 *
+	 * @param Days how many days. Zero or fewer forecasts nothing.
+	 */
+	TArray<FCataclysmTimerForecast> TimersRunningOutWithin(int32 Days) const;
 
 	// ----------------------------------------------------------------------
 	// The dungeons standing on the map

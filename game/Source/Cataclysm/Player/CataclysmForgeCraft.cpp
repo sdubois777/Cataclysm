@@ -86,6 +86,41 @@ namespace
 			UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
 		}
 	}
+
+	/**
+	 * Treasury Synergy's count (#47 slice F6a, Q5, as Reinvestment's V4 and V20): a done craft's gold in tier 1 gold, its
+	 * price over the run's `GoldScaleFor`, unrounded. Called once the craft is done, so a refused craft adds nothing, and
+	 * counted whether the node is held or not. The save is the gold's: `SaveWhereTheGoldCameFrom` for the account, the
+	 * craft's own trigger for a Solo Self-Found character's record.
+	 */
+	void CountTheForgeGold(const UObject* WorldContext, int64 Gold)
+	{
+		if (Gold <= 0)
+		{
+			return;
+		}
+		const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+		const int32 Tier = Run != nullptr ? Run->DifficultyTier : ACataclysmGameMode::LowestDifficultyTier;
+		const double Scale = FMath::Max(1.0e-6, static_cast<double>(UCataclysmDropRoll::GoldScaleFor(Tier)));
+		// UNROUNDED (V20, as Reinvestment's): the division loses nothing.
+		UCataclysmGameInstance::AddGoldSpentAtTheForgeFor(WorldContext, static_cast<double>(Gold) / Scale);
+	}
+
+	/** Every material tier's factor from the tree, for a craft whose Forge Upgrades roll is drawn on `Seed`. F6a. */
+	FCataclysmForgePricing ForgePricingOnSeed(const UObject* WorldContext, int32 Seed)
+	{
+		const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+		double Spent = 0.0;
+		UCataclysmGameInstance::GoldSpentAtTheForgeBy(WorldContext, Spent);
+		FCataclysmForgePricing Out;
+		Out.bTenthOff = UCataclysmForge::ForgeUpgradesTenthOff(Tree.CraftGoldTenthOffChance, Seed);
+		for (int32 Tier = 0; Tier <= FCataclysmForgePricing::MaxMaterialTier; ++Tier)
+		{
+			Out.Factors[Tier] = UCataclysmEmpireTree::CraftGoldFactorFor(Tree, Spent, Tier, Out.bTenthOff);
+		}
+		Out.MaterialTable = UCataclysmDropRoll::LoadCraftingMaterialTable();
+		return Out;
+	}
 }
 
 namespace
@@ -155,7 +190,7 @@ FCataclysmForgeUpgrade UCataclysmForgeCraft::PlanFor(const UObject* WorldContext
 		return UCataclysmForge::UpgradeOf(FCataclysmItem(), 0, GoldTierOf(WorldContext), 0);
 	}
 	const int32 Held = Character->GetInventory()->CountOfMaterial(UCataclysmForge::StoneFor(Item->GearLevel + 1));
-	return UCataclysmForge::UpgradeOf(*Item, Held, GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+	return UCataclysmForge::UpgradeOf(*Item, Held, GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -175,7 +210,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 		return ECataclysmForgeResult::Refused;
 	}
 	const FCataclysmForgeOptionEffect Effect =
-		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+				   PricingFor(WorldContext, Target));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -191,11 +227,18 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 	Done.Days = Step.Days;
 	Done.Gold = Step.Gold;
 	UCataclysmInventoryComponent* Inventory = CharacterIn(WorldContext)->GetInventory();
+	// THE SOUL FORGE (#47 slice F6): a chance the upgrade adds two levels, drawn from the item as it stood and the day
+	// before the days pass, on a stream of its own (R3). The second level costs nothing more (R2): the stones, residue,
+	// days and gold are the +1's.
+	const float SoulForgeChance = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext).UpgradeExtraLevelChance;
 	const ECataclysmForgeResult Result = DoItemCraft(
 		WorldContext, Step, bConfirmedPastThreshold,
-		[&Plan](const FCataclysmItem&, FCataclysmItem& Changed, const UCataclysmEmpireRun&, FString&)
+		[&Plan, &Done, SoulForgeChance](const FCataclysmItem& Before, FCataclysmItem& Changed,
+										const UCataclysmEmpireRun& Run, FString&)
 		{
-			Changed.GearLevel = Plan.ToLevel;
+			Done.ToLevel = Plan.FromLevel
+				+ UCataclysmForge::SoulForgeLevels(Before, Plan.ToLevel, SoulForgeChance, Run.WalkSeedMask, Run.Day());
+			Changed.GearLevel = Done.ToLevel;
 			return true;
 		},
 		[&](const FString& Name, int32 DayFrom, int32 DayTo)
@@ -203,11 +246,16 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 			const int32 StonesLeft = Inventory->CountOfMaterial(Plan.Stone);
 			UE_LOG(LogCataclysm, Log, TEXT("The forge raised %s from +%d to +%d with two %s (%d left); residue %.0f to %.0f; "
 										   "%d day(s), day %d to day %d."),
-				   *Name, Plan.FromLevel, Plan.ToLevel, *Plan.Stone.ToString(), StonesLeft, Plan.ResidueBefore,
+				   *Name, Plan.FromLevel, Done.ToLevel, *Plan.Stone.ToString(), StonesLeft, Plan.ResidueBefore,
 				   Done.ResidueAfter, Done.Days, DayFrom, DayTo);
 			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeUpgradeLine(
-				Name, Plan.FromLevel, Plan.ToLevel, StonesLeft, Done.Gold, FMath::RoundToInt(Plan.ResidueBefore),
+				Name, Plan.FromLevel, Done.ToLevel, StonesLeft, Done.Gold, FMath::RoundToInt(Plan.ResidueBefore),
 				FMath::RoundToInt(Done.ResidueAfter), Done.Days, DayFrom, DayTo));
+			// AND WHAT THE SOUL FORGE DID, only when it did (R8: the line says what happened).
+			if (Done.ToLevel - Plan.FromLevel == 2)
+			{
+				FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeSoulForgeLine(Name, Plan.FromLevel, Done.ToLevel));
+			}
 		},
 		FCataclysmForgeCraftHooks(), OutMessage);
 	if (Result == ECataclysmForgeResult::Done)
@@ -232,7 +280,7 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 
 	const FCataclysmForgeCombine Plan = UCataclysmForge::CombineOf(
 		Level, Inventory->CountOfMaterial(UCataclysmForge::StoneFor(Level)), GoldTierOf(WorldContext),
-		GoldHeldIn(WorldContext));
+		GoldHeldIn(WorldContext), CombinePricingFor(WorldContext, Level - 1));
 	if (!Plan.bPossible)
 	{
 		OutReason = Plan.Refusal;
@@ -271,6 +319,7 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 																	   IntoHeld, Plan.Gold));
 
 	// SAVED: the stones are in the character record; the gold in the account record when it paid.
+	CountTheForgeGold(WorldContext, Plan.Gold); // Treasury Synergy's count (#47 slice F6a).
 	SaveWhereTheGoldCameFrom(ForgeWorldOf(WorldContext), Plan.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(ForgeWorldOf(WorldContext), ECataclysmSaveTrigger::ForgeCrafted);
 
@@ -292,7 +341,7 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 
 	const FCataclysmForgeGemCombine Plan = UCataclysmForge::GemCombineOf(
-		Gem, Rarity, Inventory->CountOfGems(Gem, Rarity), GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+		Gem, Rarity, Inventory->CountOfGems(Gem, Rarity), GoldTierOf(WorldContext), GoldHeldIn(WorldContext), CombinePricingFor(WorldContext, static_cast<int32>(Rarity)));
 	if (!Plan.bPossible)
 	{
 		OutReason = Plan.Refusal;
@@ -331,6 +380,7 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 		FromHeld, IntoHeld, Plan.Gold));
 
 	// SAVED: the gems are in the character record; the gold in the account record when it paid.
+	CountTheForgeGold(WorldContext, Plan.Gold); // Treasury Synergy's count (#47 slice F6a).
 	SaveWhereTheGoldCameFrom(ForgeWorldOf(WorldContext), Plan.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(ForgeWorldOf(WorldContext), ECataclysmSaveTrigger::ForgeCrafted);
 
@@ -354,7 +404,7 @@ FCataclysmForgeSocketing UCataclysmForgeCraft::SocketPlanFor(const UObject* Worl
 	return UCataclysmForge::SocketGemOf(*Item, Socket, Gem, Rarity, Row ? Row->GemType : FString(),
 										Inventory->CountOfGems(Gem, Rarity),
 										Inventory->CountOfMaterial(FName(UCataclysmForge::SettingAgentRow)),
-										GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+										GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(const UObject* WorldContext,
@@ -373,7 +423,7 @@ FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(const UObject* Wo
 	// Dismantling Dust emptied, which stopped being true once the Dust and the gem were carried apart.
 	const FCataclysmSocket* From = Item->Sockets.IsValidIndex(Socket) ? &Item->Sockets[Socket] : nullptr;
 	const bool bRoom = From != nullptr;
-	return UCataclysmForge::UnsocketGemOf(*Item, Socket, Dust, bRoom, GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+	return UCataclysmForge::UnsocketGemOf(*Item, Socket, Dust, bRoom, GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::SocketGem(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -422,7 +472,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 														FCataclysmForgeSocketing& OutDone, FString& OutMessage, const FCataclysmForgeCraftOptions& Options)
 {
 	const FCataclysmForgeOptionEffect Effect =
-		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+				   PricingFor(WorldContext, Target));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -505,7 +556,7 @@ FCataclysmForgeSocketWork UCataclysmForgeCraft::AddSocketPlanFor(const UObject* 
 	return UCataclysmForge::AddSocketOf(
 		*Item, MaxSocketsOf(*Item),
 		Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::ShatteredCoreRow)), GoldTierOf(WorldContext),
-		GoldHeldIn(WorldContext));
+		GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 FCataclysmForgeSocketWork UCataclysmForgeCraft::ChangeSocketTypePlanFor(const UObject* WorldContext,
@@ -520,7 +571,7 @@ FCataclysmForgeSocketWork UCataclysmForgeCraft::ChangeSocketTypePlanFor(const UO
 	}
 	return UCataclysmForge::ChangeSocketTypeOf(
 		*Item, Socket, NewType, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::FocusingLensRow)),
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::AddSocket(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -568,7 +619,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketWork(const UObject* WorldCon
 														 FCataclysmForgeSocketWork& OutDone, FString& OutMessage, const FCataclysmForgeCraftOptions& Options)
 {
 	const FCataclysmForgeOptionEffect Effect =
-		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+				   PricingFor(WorldContext, Target));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -630,7 +682,7 @@ FCataclysmForgeAffixWork UCataclysmForgeCraft::AffixWorkPlanFor(const UObject* W
 	}
 	return UCataclysmForge::AffixWorkOf(*Item, Craft, Affix,
 										Character->GetInventory()->CountOfMaterial(UCataclysmForge::MaterialFor(Craft)),
-										GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+										GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -651,7 +703,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(const UObject* WorldConte
 		return ECataclysmForgeResult::Refused;
 	}
 	const FCataclysmForgeOptionEffect Effect =
-		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+				   PricingFor(WorldContext, Target));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -731,7 +784,7 @@ FCataclysmForgeAffixChange UCataclysmForgeCraft::AddAffixPlanFor(const UObject* 
 	return UCataclysmForge::DeterministicAffixOf(
 		*Item, AffixRow, Tier, Seed, AffixTable, BaseTable,
 		Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::SchematicFragmentsRow)), GoldTierOf(WorldContext),
-		GoldHeldIn(WorldContext));
+		GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 FCataclysmForgeAffixChange UCataclysmForgeCraft::ShiftAffixPlanFor(const UObject* WorldContext,
@@ -753,7 +806,7 @@ FCataclysmForgeAffixChange UCataclysmForgeCraft::ShiftAffixPlanFor(const UObject
 	return UCataclysmForge::AffixShiftOf(
 		*Item, Affix, Seed, AffixTable, BaseTable,
 		Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::CrystalOfInstabilityRow)),
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::AddAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -801,7 +854,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(const UObject* WorldCo
 														   FCataclysmForgeAffixChange& OutDone, FString& OutMessage, const FCataclysmForgeCraftOptions& Options)
 {
 	const FCataclysmForgeOptionEffect Effect =
-		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+				   PricingFor(WorldContext, Target));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -881,7 +935,7 @@ FCataclysmForgeDamageTypeWork UCataclysmForgeCraft::DamageTypeWorkPlanFor(const 
 	return UCataclysmForge::DamageTypeWorkOf(
 		*Item, Craft, Chosen, Seed, SkillTable, BaseTable,
 		Character->GetInventory()->CountOfMaterial(UCataclysmForge::MaterialFor(Craft)), GoldTierOf(WorldContext),
-		GoldHeldIn(WorldContext));
+		GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(const UObject* WorldContext,
@@ -903,7 +957,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(const UObject* World
 		return ECataclysmForgeResult::Refused;
 	}
 	const FCataclysmForgeOptionEffect Effect =
-		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+				   PricingFor(WorldContext, Target));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -983,7 +1038,7 @@ FCataclysmForgeEnchantmentWork UCataclysmForgeCraft::ImprintPlanFor(const UObjec
 	}
 	return UCataclysmForge::ImprintOf(
 		*Item, Affix, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::AetherialShardRow)),
-		UCataclysmDropRoll::LoadGearRarityTable(), GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+		UCataclysmDropRoll::LoadGearRarityTable(), GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 FCataclysmForgeEnchantmentWork UCataclysmForgeCraft::ChangeNegativePlanFor(const UObject* WorldContext,
@@ -1000,7 +1055,7 @@ FCataclysmForgeEnchantmentWork UCataclysmForgeCraft::ChangeNegativePlanFor(const
 	}
 	return UCataclysmForge::ChangeNegativeOf(
 		*Item, Pair, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::RegretEssenceRow)),
-		UCataclysmDropRoll::LoadPositiveEnchantmentTable(), GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+		UCataclysmDropRoll::LoadPositiveEnchantmentTable(), GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::Imprint(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -1049,7 +1104,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 															  FCataclysmForgeEnchantmentWork& OutDone, FString& OutMessage, const FCataclysmForgeCraftOptions& Options)
 {
 	const FCataclysmForgeOptionEffect Effect =
-		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+				   PricingFor(WorldContext, Target));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -1061,6 +1117,28 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 		Plan.bImprint ? TEXT("There is nothing there to imprint.") : TEXT("There is nothing there to change.");
 	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
 	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	// THE MASTER TINKERER (#47 slice F6): a chance of a critical success, decided BEFORE THE ONE SEQUENCE because it takes
+	// the craft's days away (R4: "instantly", no day passes; the residue, the gold and the material are still taken). Drawn
+	// from the item as it stands and the day now, which is the day the sequence draws the pair on, on a stream of its own
+	// (R3). Not shown before the press (R8). The doubled rolls are drawn from that stream after the pair is (R1).
+	bool bCritical = false;
+	FRandomStream CriticalStream;
+	{
+		const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+		const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+		const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+		if (Item != nullptr && Run != nullptr)
+		{
+			bCritical = UCataclysmForge::EnchantCritical(
+				*Item, Plan.bImprint ? Item->Enchantments.Num() : Plan.Pair,
+				UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext).EnchantCriticalChance, Run->WalkSeedMask,
+				Run->Day(), CriticalStream);
+		}
+	}
+	if (bCritical)
+	{
+		Step.Days = 0;
+	}
 	FCataclysmForgeEnchantmentWork Done = Plan;
 	Done.ResidueAfter = Step.ResidueAfter;
 	Done.Days = Step.Days;
@@ -1082,7 +1160,12 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 			{
 				FRandomStream AfterTheDraw;
 				bDrawn = UCataclysmForge::DrawImprint(Before, BaseTable, Positives, Negatives, Run.WalkSeedMask, Run.Day(),
-													  Done.Drawn, AfterTheDraw)
+													  Done.Drawn, AfterTheDraw);
+				if (bDrawn && bCritical)
+				{
+					Done.Drawn = UCataclysmForge::LuckyRolls(Done.Drawn, /*bPositiveToo=*/true, CriticalStream);
+				}
+				bDrawn = bDrawn
 					&& UCataclysmForge::ApplyImprint(Before, Plan.Affix, Done.Drawn, BaseTable,
 													 UCataclysmWeaponSkills::LoadGeneratedTable(),
 													 UCataclysmItemModifiers::LoadEnchantmentEffectTable(), AfterTheDraw,
@@ -1092,6 +1175,11 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 			{
 				bDrawn = UCataclysmForge::DrawChangedNegative(Before, Plan.Pair, BaseTable, Positives, Negatives,
 															  Run.WalkSeedMask, Run.Day(), Done.Drawn);
+				if (bDrawn && bCritical)
+				{
+					// A CHANGE KEEPS ITS POSITIVE AS IT STANDS and doubles only its new negative's roll (R1).
+					Done.Drawn = UCataclysmForge::LuckyRolls(Done.Drawn, /*bPositiveToo=*/false, CriticalStream);
+				}
 				if (bDrawn)
 				{
 					Changed.Enchantments[Plan.Pair] = Done.Drawn;
@@ -1119,6 +1207,11 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeEnchantmentWorkLine(
 				Plan.bImprint, Name, Drawn.Key, Drawn.Value, GivenUpOrReplaced, Done.Gold,
 				FMath::RoundToInt(Plan.ResidueBefore), FMath::RoundToInt(Done.ResidueAfter), Done.Days, DayFrom, DayTo));
+			// AND THE CRITICAL SUCCESS, only when there was one (R8).
+			if (bCritical)
+			{
+				FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeCriticalLine(Name));
+			}
 		},
 		FCataclysmForgeCraftHooks(), OutMessage);
 	if (Result == ECataclysmForgeResult::Done)
@@ -1318,9 +1411,12 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		return ECataclysmForgeResult::Refused;
 	}
 
-	// THE DAYS, through the run's own day loop, so a surge or a resolve inside them happens on its own day.
+	// THE DAYS, through the run's own day loop, so a surge or a resolve inside them happens on its own day; AND THEIR
+	// REPORTS KEPT, with the dungeons standing named before them, since a dungeon the days resolve is gone from the run
+	// after. Until issue #2857 the reports were thrown away here, and the owner saw dungeons gone with nothing saying why.
 	const int32 DayBefore = Run->Day();
-	Run->AdvanceDays(Step.Days);
+	const TMap<int32, FString> NamesBeforeTheDays = FCataclysmPlayLoopLog::NamesStanding(Run);
+	const TArray<FCataclysmDayReport> TheDays = Run->AdvanceDays(Step.Days);
 
 	// AND THE BUILD THE DOUBLE WEARS, CAPTURED AFTER THE CHANGE, so it holds the changed piece; only when none is held.
 	if (bCrosses && State != nullptr && !State->HoldsConsumptionBuild())
@@ -1337,8 +1433,20 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 			Step.Options.Gold));
 	}
 
+	// AND WHAT THE DAYS DID, in the walk's words after the forge's lead (`FCataclysmPlayLoopLog::AwayAccount`), said
+	// whenever a day passed, whatever it did, so a missing line means the days went unreported. A craft that took no
+	// day -- The Master Tinkerer's critical success -- says none. KEPT FOR THE SCREEN too, which shows it after the press
+	// when the days did something. Issue #2857, the owner's ruling of 2026-11-22.
+	if (Run->Day() > DayBefore)
+	{
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::AwayAccount(DayBefore, Run->Day(), TheDays, NamesBeforeTheDays,
+																	  Run, TEXT("at the forge")));
+	}
+	UCataclysmGameInstance::KeepCapitalDays(WorldContext, DayBefore, Run->Day(), TheDays, NamesBeforeTheDays, Run);
+
 	// SAVED: the character record holds the item and the materials, the run record the days, the account record the
 	// gold when it paid.
+	CountTheForgeGold(WorldContext, Step.Gold); // Treasury Synergy's count (#47 slice F6a).
 	SaveWhereTheGoldCameFrom(World, Step.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
 	return ECataclysmForgeResult::Done;
@@ -1346,7 +1454,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 
 FCataclysmForgeOptionEffect UCataclysmForgeCraft::OptionsFor(const UObject* WorldContext, float ResidueBefore,
 															 float ResidueAfter, int32 Days, int64 CraftGold,
-															 const FCataclysmForgeCraftOptions& Options)
+															 const FCataclysmForgeCraftOptions& Options,
+															 const FCataclysmForgePricing& Pricing)
 {
 	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
 	const UCataclysmInventoryComponent* Inventory = Character != nullptr ? Character->GetInventory() : nullptr;
@@ -1354,7 +1463,25 @@ FCataclysmForgeOptionEffect UCataclysmForgeCraft::OptionsFor(const UObject* Worl
 		ResidueBefore, ResidueAfter, Days, CraftGold, Options,
 		Inventory != nullptr ? Inventory->CountOfMaterial(FName(UCataclysmForge::ChaosStabilizerRow)) : 0,
 		Inventory != nullptr ? Inventory->CountOfMaterial(FName(UCataclysmForge::TaintedShardRow)) : 0,
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), Pricing);
+}
+
+FCataclysmForgePricing UCataclysmForgeCraft::PricingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	const int32 Seed = Item != nullptr && Run != nullptr
+		? UCataclysmForge::ForgeUpgradesSeed(*Item, Run->WalkSeedMask, Run->Day())
+		: 0;
+	return ForgePricingOnSeed(WorldContext, Seed);
+}
+
+FCataclysmForgePricing UCataclysmForgeCraft::CombinePricingFor(const UObject* WorldContext, int32 Rung)
+{
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	const int32 Seed = Run != nullptr ? UCataclysmForge::CombineForgeUpgradesSeed(Rung, Run->WalkSeedMask, Run->Day()) : 0;
+	return ForgePricingOnSeed(WorldContext, Seed);
 }
 
 FCataclysmForgeCleanse UCataclysmForgeCraft::CleansePlanFor(const UObject* WorldContext,
@@ -1368,7 +1495,7 @@ FCataclysmForgeCleanse UCataclysmForgeCraft::CleansePlanFor(const UObject* World
 	}
 	return UCataclysmForge::CleanseOf(
 		*Item, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::PurifiedEssenceRow)),
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::Cleanse(const UObject* WorldContext, const FCataclysmForgeTarget& Target,

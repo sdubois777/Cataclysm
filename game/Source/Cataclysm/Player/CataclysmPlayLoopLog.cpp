@@ -125,13 +125,20 @@ TMap<int32, FString> FCataclysmPlayLoopLog::NamesStanding(const UCataclysmEmpire
 }
 
 FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TArray<FCataclysmDayReport>& Days,
-										   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run)
+										   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run,
+										   const TCHAR* Lead)
 {
 	using namespace CataclysmPlayLoopLog;
 
+	// THE LEAD, "while away" for a walk's days, a craft's or a respec's for days spent in the capital. Issue #2857.
+	if (Lead == nullptr)
+	{
+		Lead = TEXT("while away");
+	}
+
 	if (ToDay <= FromDay && Days.IsEmpty())
 	{
-		return TEXT("while away: no day passed");
+		return FString::Printf(TEXT("%s: no day passed"), Lead);
 	}
 
 	// EACH DUNGEON ONCE, IN THE ORDER THE DAYS RESOLVED THEM.
@@ -200,11 +207,27 @@ FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TAr
 		? FString()
 		: FString::Printf(TEXT("; city upgrades finished: %s"), *FString::Join(FinishedParts, TEXT(", ")));
 
-	return FString::Printf(TEXT("while away, days %d to %d: dungeons resolved: %s; cities hit: %s; cities fallen: %s; %s%s"),
-						   FromDay, ToDay, ResolvedParts.IsEmpty() ? TEXT("none") : *FString::Join(ResolvedParts, TEXT(", ")),
+	return FString::Printf(TEXT("%s, days %d to %d: dungeons resolved: %s; cities hit: %s; cities fallen: %s; %s%s"),
+						   Lead, FromDay, ToDay,
+						   ResolvedParts.IsEmpty() ? TEXT("none") : *FString::Join(ResolvedParts, TEXT(", ")),
 						   HitParts.IsEmpty() ? TEXT("none") : *FString::Join(HitParts, TEXT(", ")),
 						   FallenParts.IsEmpty() ? TEXT("none") : *FString::Join(FallenParts, TEXT(", ")), *SurgeText,
 						   *FinishedText);
+}
+
+bool FCataclysmPlayLoopLog::DaysDidSomething(const TArray<FCataclysmDayReport>& Days)
+{
+	// WHAT `AwayAccount` NAMES, asked of the same fields it reads: a surge is `Surges`, which it counts since issue #2865
+	// (a day can hold several), and not `bSurged`.
+	for (const FCataclysmDayReport& Day : Days)
+	{
+		if (!Day.Resolved.IsEmpty() || !Day.Hits.IsEmpty() || !Day.Fallen.IsEmpty() || Day.Surges > 0
+			|| !Day.UpgradesFinishedOn.IsEmpty())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 FString FCataclysmPlayLoopLog::CapitalLine(const UCataclysmEmpireRun* Run, int32 Level, int64 ExperienceIntoLevel,
@@ -548,6 +571,19 @@ FString FCataclysmPlayLoopLog::ForgeCleanseLine(const FString& ItemName, int64 G
 FString FCataclysmPlayLoopLog::ForgeDismantleLine(const FString& ItemName, const FString& Given, int32 Day)
 {
 	return FString::Printf(TEXT("dismantled %s into %s; no gold and no days, day %d"), *ItemName, *Given, Day);
+}
+
+FString FCataclysmPlayLoopLog::ForgeSoulForgeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel)
+{
+	return FString::Printf(TEXT("The Soul Forge raised %s two levels, +%d to +%d"), *ItemName, FromLevel, ToLevel);
+}
+
+FString FCataclysmPlayLoopLog::ForgeCriticalLine(const FString& ItemName)
+{
+	// ONE STRING LITERAL, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` reads the whole line.
+	return FString::Printf(
+		TEXT("a critical success on %s: the rolls were drawn twice with the better kept, and the craft took no days"),
+		*ItemName);
 }
 
 FString FCataclysmPlayLoopLog::ForgeDamageTypeLine(ECataclysmForgeDamageTypeCraft Craft, const FString& ItemName,

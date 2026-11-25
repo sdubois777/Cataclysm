@@ -607,6 +607,7 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		Record.GoldOwed = State->GetOwnGoldOwed(); // A save's: its own debt (#2741 slice 6e), 0 for any other.
 		Record.GoldOwedEachDay = State->GetOwnGoldOwedEachDay(); // And the part taken each day.
 		Record.GoldSpentOnCityUpgrades = State->GetOwnGoldSpentOnCityUpgrades(); // Reinvestment's count (#2741 slice 9).
+		Record.GoldSpentAtTheForge = State->GetOwnGoldSpentAtTheForge(); // Treasury Synergy's count (#47 slice F6a).
 		// AND ITS OWN EMPIRE UPGRADE POINTS AND TREE, 0 and empty for any other character. Issue #2741 slice 1c.
 		Record.PrivateEmpireUpgradePoints = State->GetOwnEmpireUpgradePoints(); // A save's: its own bank.
 		Record.PrivateEmpireTree = State->GetOwnEmpireTree(); // A save's: its own tree.

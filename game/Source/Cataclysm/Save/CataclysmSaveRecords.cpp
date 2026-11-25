@@ -893,6 +893,24 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A record written before the forge's gold was counted (#47 slice F6a, Q5): `GoldSpentAtTheForge` is written 0, as
+	 * Reinvestment's count was; a number already there is kept, and anything else is refused.
+	 */
+	bool Migrate_17_to_18(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentAtTheForge"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentAtTheForge"), Held))
+		{
+			OutError = TEXT("GoldSpentAtTheForge holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentAtTheForge"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -916,6 +934,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
+		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
 	};
 }
 
@@ -1550,6 +1569,24 @@ namespace CataclysmAccountSaveMigration
 		return true;
 	}
 
+	/**
+	 * A record written before the forge's gold was counted (#47 slice F6a, Q5): `GoldSpentAtTheForge` is written 0, as
+	 * Reinvestment's count was; a number already there is kept, and anything else is refused.
+	 */
+	bool Migrate_7_to_8(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentAtTheForge"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentAtTheForge"), Held))
+		{
+			OutError = TEXT("GoldSpentAtTheForge holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentAtTheForge"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1558,6 +1595,7 @@ namespace CataclysmAccountSaveMigration
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
+		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 	};
 }
 
