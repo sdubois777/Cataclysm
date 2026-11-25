@@ -42,7 +42,10 @@ Issue [#2849](https://github.com/sdubois777/Cataclysm/issues/2849).
   `Character_v16.json` built from sd-w2's `Character_v15.json`. The five commits of `feat/inventory-tabs-2849` were
   applied as one change on `feat/inv-w1`. In every place both had added a line, sd-w2's version 15 line comes first
   and this change's 16 after it. Every reader of the committed character file reads `Character_v16.json`, sd-w2's
-  DM11 included.
+  DM11 included. **Then, the same day, onto the rarity cap merge** (#2853, PR #2886, development `5cdd6bdc4`) as
+  `feat/inv-w1-2`, with `git rebase --onto`: no conflict outside this log, no save record moved, and nothing the cap
+  changed is called by an inventory test or calls an inventory function (searched on the cap's added lines and on this
+  change's tests).
 - **NO WAY TO DROP A STACK, AND THAT IS A REVISED RULING (Q9).** Q9 first said a stack could still be dropped from its
   tab. It was revised the same day, derived, by the coordinating session. A dropped material or gem is collected
   straight back: `UCataclysmDropPickup::ComesAutomatically` takes every non-infested material and gem within 15 m, and
@@ -66,7 +69,7 @@ Issue [#2849](https://github.com/sdubois777/Cataclysm/issues/2849).
   rules after two failed loot filter builds): no file-local function, variable or type in the 34 changed .cpp files is
   also file-local in another .cpp of its module; no UCLASS U<X> and USTRUCT F<X> share <X> (155 and 108 in
   `Cataclysm`, 7 and 12 in `CataclysmEmpire`); no type is named `FScene`. **NOTHING TO RENAME**, run again on
-  `feat/inv-w1` against development 6dd62aba6. Its control: a planted
+  `feat/inv-w1` against development 6dd62aba6 and on `feat/inv-w1-2` against `5cdd6bdc4` (34 files, 0 findings). Its control: a planted
   file with a file-local `constexpr int InkColour` and a `struct FScene` was reported, 3 findings, and removed.
 - **Dismantling (#2848, slice S2) merged first, and this change adapted it**, as agreed with the empire tree session
   on 2026-11-22: its room check (`NewKindsADismantleNeeds`, D4) and its "Make room in the bag first." block are
@@ -161,11 +164,12 @@ Python:
 
 ### Registered for the window
 
-**The counts are read from the newest measured whole-suite engine log**: sd-w2's, `sdw2_suite_engine_45a0138d.log`
-("5341 tests performed, 5341 succeeded, 0 failed. 57 skipped part of what they check", 861 test saves). **They are
-taken again from the rarity cap window's log (#2853)**, which runs before this window, at the second rebase.
+**The counts are read from the newest measured whole-suite engine log**: the rarity cap window's (rc-w1, at
+`5e8be4680`), `rc_suite_engine_5e8be468.log` ("5347 tests performed, 5347 succeeded, 0 failed. 57 skipped part of
+what they check", "Test saves: 861 written and deleted, 0 left behind"). They were read first from sd-w2's
+`sdw2_suite_engine_45a0138d.log` (5341), before the rarity cap merged.
 
-- **The whole suite: 5348**, the base's 5341 + 7, the new group. No test was removed. Five were renamed (four here, and
+- **The whole suite: 5354**, the base's 5347 + 7, the new group. No test was removed. Five were renamed (four here, and
   DM6), and their old names will not appear in the log. **57 skipped halves and 861 test saves**, unchanged.
 - **The character record moves: 15 to 16.** No editor step. No asset.
 - **Groups alone, first:**
@@ -176,9 +180,11 @@ taken again from the rarity cap window's log (#2853)**, which runs before this w
     `ConsumptionMark.`, `SkillLevels.`;
   - and the forge's and the screen's (`Forge.`, `ForgeGems.`, `ForgeSockets.`, `ForgeCosts.`, `InventoryScreen.`);
   - and `SaveLoad.`, `Dismantle.` and `Merchant.`, and every `EmpireTree` group in the base's log;
-  - 45 groups, 469 tests, each count read from the base's log, the new group at 7.
+  - 44 groups, 469 tests, each count read from the base's log, the new group at 7. ("45 groups" was written here at
+    `1a0cb4a38`; it was miscounted from a printed list. The run script holds 44.)
   - Each with its trailing dot.
-- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on `feat/inv-w1` at
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on `feat/inv-w1-2` at
+  `11f6f44a9`: "8253 passed, 9 skipped in 359.49s", JUnit 8262 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!". On `feat/inv-w1` at
   `2035bb334`: "8241 passed, 9 skipped in 373.96s", JUnit 8250 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!". **The run before it, at `2997caea1`, FAILED ONE CHECK**:
   "1 failed, 8240 passed, 9 skipped in 373.96s", `test_the_cleanse_city_upgrade.py::test_the_run_record_step_and_field`.
   It found `bool Migrate_15_to_16(` by its first place in the file, which is now the character record's. It and this
@@ -186,7 +192,7 @@ taken again from the rarity cap window's log (#2853)**, which runs before this w
   `feat/inventory-tabs-2849` at `9e06377ec`, before the rebase: "8213 passed, 10 skipped in 396.48s", JUnit 8223 tests,
   0 failures, 0 errors.
 - **Six Python guard proofs, PROVED**, run with `tools/prove_guard.py` in an extracted copy of `2035bb334` on
-  2026-11-24: T1 to T5 narrowed to `tools/tests/test_inventory_tabs.py` (nine checks), T6 to
+  2026-11-24 (the rebase onto the rarity cap changed none of the files they break or the checks they run): T1 to T5 narrowed to `tools/tests/test_inventory_tabs.py` (nine checks), T6 to
   `tools/tests/test_the_cleanse_city_upgrade.py` (six). T1 to T4 had been PROVED before the rebase too, in copies of
   `7dc161444` and `9e06377ec`. T5 is new, for the chain check's wider count, and T6 for the run record check:
 
