@@ -1803,6 +1803,134 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 }
 
 // ==========================================================================
+// Detonating the caster's own minions, and ordering them -- issue #2885
+// ==========================================================================
+
+int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside)
+{
+	AActor* Self = Avatar();
+	if (!Params.bDetonates || !Self)
+	{
+		return 0;
+	}
+
+	// WHO THE CASTER COMMANDS, AND NOT WHICH SIDE IS FRIENDLY. "Every minion of yours" is a question about whose it is,
+	// which `UCataclysmCommand::ThingsCommandedBy` answers by walking the level (the living only); a side would leave
+	// out a minion of the caster's that Madness has turned, and would need the caster to have a team at all.
+	//
+	// GATHERED FIRST AND EXPLODED AFTER. An explosion strikes enemies, and a kill it makes may raise or destroy things
+	// in its turn; the list is settled before the first one goes off, and each is asked again as it comes up.
+	TArray<TWeakObjectPtr<ACataclysmMinion>> Caught;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
+	{
+		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (Minion && Minion->Summoner.Get() == Self && !Minion->bIsMachine && IsInside(*Minion))
+		{
+			Caught.Add(Minion);
+		}
+	}
+
+	int32 Exploded = 0;
+	for (const TWeakObjectPtr<ACataclysmMinion>& One : Caught)
+	{
+		ACataclysmMinion* Minion = One.Get();
+		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion))
+		{
+			Minion->Explode();
+			++Exploded;
+		}
+	}
+
+	MinionsDetonated = Exploded;
+	if (Exploded > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' exploded %d of its caster's minions."), *SkillName, Exploded);
+	}
+	return Exploded;
+}
+
+int32 UCataclysmSkillTemplate::DetonateOwnMinionsAround(const FVector& Centre, float RadiusCm)
+{
+	// THE BODY COUNTS, AS IT DOES FOR AN ENEMY: `FindEnemiesInSphere` overlaps the sphere with a body's capsule, so a
+	// minion is inside when its centre is within the radius and its own body's. Measured along the ground, as the cone
+	// and the line are, so a minion on a step is not left out.
+	if (RadiusCm <= 0.0f)
+	{
+		return 0;
+	}
+	return DetonateOwnMinionsWhere([&Centre, RadiusCm](const AActor& Minion)
+	{
+		const float Reach = RadiusCm + UCataclysmTargeting::BodyRadiusOf(&Minion);
+		return FVector::DistSquared2D(Minion.GetActorLocation(), Centre) <= Reach * Reach;
+	});
+}
+
+int32 UCataclysmSkillTemplate::DetonateOwnMinionsAlong(const FVector& Start, const FVector& End, float HalfWidthCm)
+{
+	// EACH BODY MEASURED AT ITS CENTRE, as `UCataclysmTargeting::FindEnemiesInLine` measures an enemy.
+	if (HalfWidthCm <= 0.0f)
+	{
+		return 0;
+	}
+	return DetonateOwnMinionsWhere([&Start, &End, HalfWidthCm](const AActor& Minion)
+	{
+		return UCataclysmTargeting::IsInLine(Start, End, Minion.GetActorLocation(), HalfWidthCm);
+	});
+}
+
+int32 UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn(AActor* Target)
+{
+	CommandedStrikes = 0;
+	AActor* Self = Avatar();
+	if (!Self || !IsValid(Target))
+	{
+		return 0;
+	}
+
+	// "WHEREVER IT HAPPENS TO BE STANDING" IS THE HALF THAT NEEDED SAYING, and it is why nothing here checks a
+	// distance. A creature ordered onto an enemy across the room strikes it from where it is; the row is explicit
+	// that reaching it is not the player's problem. That is what makes Compel worth a Heavy slot rather than being a
+	// slower Quarry. (Compel's own words, moved here from `UCataclysmProjectileSkill::Land` on 2026-11-24.)
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
+	{
+		if (ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower))
+		{
+			// A STUNNED, KNOCKED-DOWN OR FEARED CREATURE IS NOT ORDERED, ruled 2026-10-27 (#2560), as the echo
+			// strike asks since #2558: `CannotAct`, then the flee step, in the brain's order. Skipped before the
+			// order, so it is neither ordered nor counted, and `CommandedStrikes` still means "ordered".
+			const AActor* Striker = Body;
+			FVector FleeSource;
+			if (UCataclysmSkillEffects::CannotAct(Striker) || UCataclysmFear::FleeSourceOf(Striker, FleeSource))
+			{
+				continue;
+			}
+			// `AttackTarget` IS WHAT A BRAIN CALLS WHEN IT DECIDES TO SWING, so ordering one is the same act the
+			// creature would have taken itself. A minion swings; a subjugated enemy uses its own attack, which is
+			// what "keeps its own abilities" means for a thrall; the base class does nothing at all.
+			//
+			// A THRALL STRIKES AS A RULE ORDERS IT, issue #783: its blow waits for its swing and is not measured
+			// against reach when it lands, which is "wherever it happens to be standing" kept true.
+			if (ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Body))
+			{
+				Thrall->StrikeAsARuleOrders(Target);
+			}
+			else
+			{
+				Body->AttackTarget(Target);
+			}
+			++CommandedStrikes;
+		}
+	}
+
+	if (CommandedStrikes > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' ordered %d commanded creatures onto '%s'."), *SkillName,
+			   CommandedStrikes, *Target->GetName());
+	}
+	return CommandedStrikes;
+}
+
+// ==========================================================================
 // Consuming burn -- the Sword's verb
 // ==========================================================================
 

@@ -1522,4 +1522,114 @@ bool FCataclysmDeathSkillsHewingRaiseTest::RunTest(const FString&)
 				 FVector::Dist2D(Risen->GetActorLocation(), Hewn.Actor->GetActorLocation()) < 1.0f);
 	}
 
+// ==========================================================================
+// Slice DS2, change B. N3: the caster's minions in the skill's area explode. N4: a strike orders everything its caster
+// commands. N11: a summon's minions lay its effect with their blows.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsDetonatingSwingTest,
+	"Cataclysm.DeathSkills.ADetonatingSwingExplodesTheCastersMinionsInsideItsArcAndNoOthers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N3 through a strike (`Detonates=1`, `UCataclysmSkillTemplate::DetonateOwnMinionsWhere`): a 4 m, 90 degree swing along
+ * +X explodes the caster's minion 2 m ahead, and that minion's blast strikes the enemy 2.6 m from it, which stands
+ * outside the swing's arc, so only the explosion reached it. The caster's minion 2 m behind (outside the arc), its minion
+ * 6 m ahead (beyond the reach) and another summoner's minion 2 m ahead and half a metre aside (inside the arc, not the
+ * caster's) all stand. THE CONTROL: the same swing without `Detonates`, by a second caster 100 m along +Y, leaves its own
+ * minion 2 m ahead standing. Each caster is on the players' side, as a player is, so its minions are its allies.
+ */
+bool FCataclysmDeathSkillsDetonatingSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillFighter Blasted(World, FVector(1.5f * DeathSkillMetre, 2.5f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* Inside = DeathSkillMinionOf(Caster.Actor, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* Behind = DeathSkillMinionOf(Caster.Actor, FVector(-2.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* Beyond = DeathSkillMinionOf(Caster.Actor, FVector(6.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* NotTheCasters =
+		DeathSkillMinionOf(PlayersSide.Actor, FVector(2.0f * DeathSkillMetre, 0.5f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({Inside, Behind, Beyond, NotTheCasters}); };
+	if (!TestNotNull(TEXT("set-up: the minion inside the arc"), Inside) || !TestNotNull(TEXT("set-up: behind"), Behind)
+		|| !TestNotNull(TEXT("set-up: beyond"), Beyond) || !TestNotNull(TEXT("set-up: another's"), NotTheCasters)
+		|| !TestTrue(TEXT("set-up: the caster's minion is its ally"), UCataclysmTargeting::IsFriendlyTo(Inside, Caster.Actor))
+		|| !TestTrue(TEXT("set-up: and the enemy beside it is the minion's enemy"),
+					 UCataclysmTargeting::IsHostileTo(Blasted.Actor, Inside)))
+	{
+		return false;
+	}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsCommandingSwingTest,
+	"Cataclysm.DeathSkills.ASwingThatCommandsOrdersEveryCreatureItsCasterCommandsAndOneThatDoesNotOrdersNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N4 through a strike (`CommandStrike=1` on a Strike, `UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn`): a swing
+ * that strikes the enemy 2 m ahead orders the caster's minion 20 m away onto it, wherever it stands, so the minion swings
+ * once (`AttacksMade`) and the swing counts one creature ordered. THE CONTROL: the same swing without the key, by a
+ * second caster 100 m along +Y, orders nobody and its minion does not swing. Compel's own order, through a projectile, is
+ * `Cataclysm.Command.CompelOrdersEverythingCommandedOntoOneEnemy`, unchanged by the order's move to the base class.
+ */
+bool FCataclysmDeathSkillsCommandingSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillFighter Struck(World, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* Distant = DeathSkillMinionOf(Caster.Actor, FVector(0.0f, 20.0f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({Distant}); };
+	UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=120; CommandStrike=1"),
+		TEXT("A swing that commands"));
+	if (!TestNotNull(TEXT("set-up: the distant minion"), Distant) || !TestNotNull(TEXT("set-up: the swing"), Swing))
+	{
+		return false;
+	}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsMinionsLayEffectTest,
+	"Cataclysm.DeathSkills.AMinionTaughtTheRowsEffectLaysItWithItsBlowAndOneNotTaughtLaysNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N11 (`MinionsLayEffect=1`; `UCataclysmSummonSkill::RecordTheSkillOn` teaches it and `ACataclysmMinion::AttackTarget`
+ * lays it): a summon stating `Effect=Cripple; EffectMagnitude=20; EffectDuration=2; MinionsLayEffect=1` raises an imp
+ * taught the Cripple, for 2 seconds at 20, and the imp's blow on the enemy 1 m off Cripples it at 20 for 2 s. THE
+ * CONTROL: the same cell without the key raises an imp taught nothing, whose blow on its own enemy lays no Cripple.
+ */
+bool FCataclysmDeathSkillsMinionsLayEffectTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestTrue(TEXT("set-up: the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
 #endif // WITH_AUTOMATION_TESTS

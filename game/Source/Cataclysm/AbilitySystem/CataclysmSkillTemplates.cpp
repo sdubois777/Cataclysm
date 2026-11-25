@@ -482,6 +482,41 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 		}
 	}
 
+	// AND THE CASTER'S OWN MINIONS INSIDE THE SWING EXPLODE, IF THE ROW SAYS SO, AND THEN EVERYTHING ELSE IT COMMANDS
+	// STRIKES THE FIRST ENEMY THE SWING HIT. Issue #2885, the Death draft's N3 and N4: the Greatsword's Gravebell,
+	// "every minion of yours the arc passes through explodes, and every other creature you command strikes the first
+	// enemy the arc hit, wherever it is standing". In that order, the sentence's, so a minion the arc exploded is not
+	// also ordered.
+	//
+	// THE SAME AREA THE ENEMIES WERE FOUND IN, the cone at the apex, or every direction when a row rolled that this use
+	// hits all around (`ThisUseHitsAllWithinCm`); a cone of 360 degrees is a ring.
+	if (Params.bDetonates)
+	{
+		const bool bAllAround = ThisUseHitsAllWithinCm > 0.0f;
+		const float Reach = bAllAround ? FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()) : ScaledRadiusCm();
+		const float Arc = bAllAround ? 360.0f : ArcDegrees();
+		const FVector Facing = AimDirection();
+		DetonateOwnMinionsWhere([&Apex, &Facing, Reach, Arc](const AActor& Minion)
+		{
+			return UCataclysmTargeting::IsActorInCone(Apex, Facing, &Minion, Reach, Arc);
+		});
+	}
+
+	// THE FIRST ENEMY THE SWING STRUCK THAT IT LEFT STANDING, a judgement of slice DS2: the search answers nearest
+	// first, and a creature ordered onto one the swing has just killed would strike nothing. Nobody is ordered when the
+	// swing killed everything it struck.
+	if (Params.bCommandStrike)
+	{
+		for (AActor* Target : Targets)
+		{
+			if (IsValid(Target) && !UCataclysmSkillEffects::IsDead(Target))
+			{
+				OrderEveryCommandedStrikeOn(Target);
+				break;
+			}
+		}
+	}
+
 	// AND THE SWING IS DRAWN, WHICH UNTIL ISSUE #811 IT WAS NOT. This is the one
 	// place a Strike swings, so it is the one place the arc has to be spawned
 	// from; every repeating strike reaches here through Repeat and Finish as
@@ -1615,6 +1650,16 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		// finishes back at the caster and still burns the whole flight.
 		LeaveGroundForFlight(Projectile->StartedAt, Projectile->FurthestReached);
 
+		// AND THE CASTER'S OWN MINIONS ON THE LINE IT FLEW EXPLODE, IF THE ROW SAYS SO. Issue #2885, the Death draft's
+		// N3: the Staff's Marrow Lance, "every minion of yours on the line explodes". ONCE, AS IT FINISHES, ALONG THE
+		// WHOLE FLIGHT, a judgement of slice DS2: the line is known only now, as the ground's is above, and a lance
+		// stopped by a wall detonates nothing beyond it. Its own radius is the line's width, so the circle a shot that
+		// stops on its first enemy lands in is the line's far end.
+		if (Params.bDetonates)
+		{
+			DetonateOwnMinionsAlong(Projectile->StartedAt, Projectile->FurthestReached, ScaledRadiusCm());
+		}
+
 		// AND THE CURSES ON WHAT IT STRUCK ARE COPIED OUTWARD. The Wand's
 		// Malefice: "copying every curse it already carries onto the two nearest
 		// enemies". Nothing read `SpreadCurses` before 2026-09-01.
@@ -2191,16 +2236,27 @@ int32 UCataclysmProjectileSkill::Land()
 		EndAttack();
 	}
 
+	// AND THE CASTER'S OWN MINIONS IN THE BEAM'S AREA EXPLODE, IF THE ROW SAYS SO: its line when it pierces, the
+	// circle it lands in when it does not, the two searches above. Issue #2885, the Death draft's N3. A shot with a
+	// speed detonates when it finishes, along the line it flew (`OnProjectileFinished`).
+	if (Params.bDetonates)
+	{
+		if (Pierces > 0)
+		{
+			DetonateOwnMinionsAlong(Origin, Destination, ScaledRadiusCm());
+		}
+		else
+		{
+			DetonateOwnMinionsAround(Destination, ScaledRadiusCm());
+		}
+	}
+
 	// AND EVERYTHING THE CASTER COMMANDS STRIKES THE SAME ENEMY, IF THE ROW SAYS
 	// SO. The Staff's Compel: "everything you command strikes that same enemy at
 	// once, wherever it happens to be standing." Its `CommandStrike=1` was parsed
-	// and read by nothing until 2026-09-02.
-	//
-	// "WHEREVER IT HAPPENS TO BE STANDING" IS THE HALF THAT NEEDED SAYING, and it
-	// is why nothing here checks a distance. A creature ordered onto an enemy
-	// across the room strikes it from where it is; the row is explicit that
-	// reaching it is not the player's problem. That is what makes Compel worth a
-	// Heavy slot rather than being a slower Quarry.
+	// and read by nothing until 2026-09-02. The order itself is
+	// `UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn` since 2026-11-24, so a
+	// strike can give it too (issue #2885, the Greatsword's Gravebell).
 	//
 	// THE ENEMY THE BOLT ITSELF HIT, AND ONLY ONE. Compel states `MaxTargets=1`
 	// and `Pierce=0`, so the search above answers at most one creature and "that
@@ -2208,51 +2264,7 @@ int32 UCataclysmProjectileSkill::Land()
 	// allows.
 	if (Params.bCommandStrike && !Targets.IsEmpty())
 	{
-		CommandedStrikes = 0;
-		for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
-		{
-			if (ACataclysmCharacterBase* Body =
-					Cast<ACataclysmCharacterBase>(Follower))
-			{
-				// A STUNNED, KNOCKED-DOWN OR FEARED CREATURE IS NOT ORDERED, ruled
-				// 2026-10-27 (#2560), as the echo strike asks since #2558:
-				// `CannotAct`, then the flee step, in the brain's order. Skipped
-				// before the order, so it is neither ordered nor counted, and
-				// `CommandedStrikes` still means "ordered".
-				const AActor* Striker = Body;
-				FVector FleeSource;
-				if (UCataclysmSkillEffects::CannotAct(Striker)
-					|| UCataclysmFear::FleeSourceOf(Striker, FleeSource))
-				{
-					continue;
-				}
-				// `AttackTarget` IS WHAT A BRAIN CALLS WHEN IT DECIDES TO SWING,
-				// so ordering one is the same act the creature would have taken
-				// itself. A minion swings; a subjugated enemy uses its own
-				// attack, which is what "keeps its own abilities" means for a
-				// thrall; the base class does nothing at all.
-				//
-				// A THRALL STRIKES AS A RULE ORDERS IT, issue #783: its blow waits
-				// for its swing and is not measured against reach when it lands,
-				// which is "wherever it happens to be standing" kept true.
-				if (ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Body))
-				{
-					Thrall->StrikeAsARuleOrders(Targets[0]);
-				}
-				else
-				{
-					Body->AttackTarget(Targets[0]);
-				}
-				++CommandedStrikes;
-			}
-		}
-
-		if (CommandedStrikes > 0)
-		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("'%s' ordered %d commanded creatures onto '%s'."),
-				*SkillName, CommandedStrikes, *Targets[0]->GetName());
-		}
+		OrderEveryCommandedStrikeOn(Targets[0]);
 	}
 
 	++Landings;
@@ -3166,6 +3178,40 @@ void UCataclysmMovementSkill::LayTheRowsEffectsOn(const TArray<AActor*>& Struck)
 	}
 }
 
+void UCataclysmMovementSkill::DetonateWhereItArrived(const FVector& Start, const FVector& End)
+{
+	if (!Params.bDetonates)
+	{
+		return;
+	}
+
+	// MODE BY MODE, THE SEARCH `ActivateAbility` MADE FOR THE ENEMIES, so a minion is exploded exactly where an enemy
+	// standing in its place would have been struck.
+	const float Reach = ScaledRadiusCm();
+	switch (Params.MovementMode)
+	{
+	case ECataclysmMovementMode::Charge:
+		DetonateOwnMinionsAlong(Start, End, Reach);
+		break;
+
+	case ECataclysmMovementMode::Swap:
+	case ECataclysmMovementMode::Blink:
+	{
+		// BOTH ENDS, COUNTED ONCE: `MinionsDetonated` is the last call's, so it is added up here.
+		const int32 AtStart = DetonateOwnMinionsAround(Start, Reach);
+		const int32 AtEnd = DetonateOwnMinionsAround(End, Reach);
+		MinionsDetonated = AtStart + AtEnd;
+		break;
+	}
+
+	case ECataclysmMovementMode::Recall:
+	case ECataclysmMovementMode::Leap:
+	default:
+		DetonateOwnMinionsAround(End, Reach);
+		break;
+	}
+}
+
 void UCataclysmMovementSkill::HitScaledAsACharge(const TArray<AActor*>& Targets,
 												 const TArray<AActor*>& Consumed,
 												 float ChargedCm,
@@ -3762,6 +3808,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// Stride, "Crippling it so it moves and attacks 30% slower for 3 seconds", the Spear's Pale Vault and the Crossbow's
 	// Parting Shot. Until 2026-11-24 a Movement row's `Effect` was dropped here.
 	LayTheRowsEffectsOn(Targets);
+
+	// AND THE CASTER'S OWN MINIONS WHERE IT STRUCK EXPLODE, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N3:
+	// Barrow Leap, Open Grave and Grave Return. After the blow and its curse, as "land in a burst of grave-cold,
+	// Crippling every enemy within 4 meters ... Every minion of yours within it explodes as you land" orders them.
+	DetonateWhereItArrived(Start, End);
 
 	// AND THE COOLDOWN COMES BACK IF THE ARRIVAL KILLED. The Axe's Emberhaul:
 	// "if the arrival kills them, the axe comes back ready to throw again."
@@ -4481,6 +4532,22 @@ void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
 	if (Params.bPermanent)
 	{
 		Minion->SetLifeSpan(0.0f);
+	}
+
+	// AND ITS BLOWS LAY THE ROW'S EFFECT, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N11: Bone Choir's mages,
+	// "every bolt they throw Cripple what they hit, 20% slower for 2 seconds". Each effect the skill itself would lay,
+	// for the seconds it would lay it, read now, once; the generator refuses `MinionsLayEffect` with no `Effect`.
+	if (Params.bMinionsLayEffect)
+	{
+		Minion->EffectTagsItsBlowsLay.Reset();
+		Minion->EffectSecondsItsBlowsLay.Reset();
+		for (const FGameplayTag& EffectTag : NamedEffectTags())
+		{
+			Minion->EffectTagsItsBlowsLay.Add(EffectTag);
+			Minion->EffectSecondsItsBlowsLay.Add(AppliedEffectSeconds(EffectTag));
+		}
+		Minion->EffectMagnitudeItsBlowsLay = Params.EffectMagnitude;
+		Minion->EffectDamageTypeItsBlowsLay = DamageTypeName();
 	}
 }
 

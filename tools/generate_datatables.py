@@ -593,7 +593,13 @@ SHAPE_PARAMS = {
     "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval",
                # Buried Fire leaves the greatsword in the ground and the player
                # fights bare-handed until it is pulled free. Only it states this.
-               "DisarmsUntilRecalled"},
+               "DisarmsUntilRecalled",
+               # BOTH JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885,
+               # for the Greatsword's Gravebell: N3, `Detonates`, explodes every
+               # minion of the caster's inside the swing, and N4, `CommandStrike`,
+               # orders everything else it commands onto the first enemy the
+               # swing struck, as Compel orders them onto what its bolt hit.
+               "Detonates", "CommandStrike"},
     # A PROJECTILE MAY NOW REPEAT. Butcher's Bill throws thirty axes over ten
     # seconds, which needs the same Count, Duration and Interval a Summon has
     # always had; before this it could only be written as prose. `TargetMode`
@@ -603,7 +609,10 @@ SHAPE_PARAMS = {
                    "Count", "Duration", "Interval", "TargetMode",
                    "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
                    "CommandStrike",
-                   "TetherTargets", "TetherLength", "TetherDuration"},
+                   "TetherTargets", "TetherLength", "TetherDuration",
+                   # N3, issue #2885, for the Staff's Marrow Lance: the
+                   # caster's minions on the line it flew explode.
+                   "Detonates"},
     # `Interval` JOINED ON 2026-09-02 WITH THE SPEAR'S HELD FAST, whose
     # sentence has a per-second half: "any pinned enemy within 12 meters is
     # set alight again each second it is held". Until then a self buff was
@@ -625,8 +634,13 @@ SHAPE_PARAMS = {
     # enemy you reach" where the Whip's Reel takes "every enemy the line
     # crosses". The two are both charges and differ in nothing else, so without
     # this there is no way to write the difference down at all.
+    #
+    # `Detonates` JOINED ON 2026-11-24, issue #2885, N3: Barrow Leap, Open
+    # Grave and Grave Return explode the caster's minions where they arrive.
+    # `check_death_skill_keys` refuses it on a flicker and a walked charge,
+    # whose blows are struck elsewhere and do not detonate.
     "Movement": {"Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits"},
+                 "RearHits", "Detonates"},
     # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
     #
     # `Taunts` JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885: the
@@ -636,14 +650,16 @@ SHAPE_PARAMS = {
     # it as it rises and once a second after (`ACataclysmMinion::BeginTaunting`).
     # A threat figure could not say it: only Behind the Veil reads one.
     #
-    # `Permanent` JOINED ON 2026-11-24, issue #2885: the Death draft's N1, a
-    # raise that stands until it is destroyed (Barrow Guard, Exhume, Bone
-    # Choir). N2 needs no key: a Summon row that states a Damage Percent
-    # strikes as it raises, and lays its `Effect` with that blow
-    # (`check_a_summon_effect_has_a_carrier`).
+    # `Permanent` AND `MinionsLayEffect` JOINED ON 2026-11-24, issue #2885:
+    # the Death draft's N1, a raise that stands until it is destroyed (Barrow
+    # Guard, Exhume, Bone Choir), and N11, minions that lay the row's `Effect`
+    # with each blow (Bone Choir's mages). N2 needs no key: a Summon row that
+    # states a Damage Percent strikes as it raises, and lays its `Effect` with
+    # that blow (`check_a_summon_effect_has_a_carrier`).
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent", "Taunts", "Permanent"},
+               "HealthThresholdPercent", "Taunts", "Permanent",
+               "MinionsLayEffect"},
     # AN EIGHTH SHAPE, added with issue #338. A summon spawns things that walk to
     # the enemy; a deployable places things that stay where they are put. The
     # split is behavioural and the data already carried it as a tag -- Bolt
@@ -769,7 +785,8 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
 
     Issue #2885, slice DS2. EACH REFUSAL IS A ROW THAT WOULD RUN AND QUIETLY DO
     SOMETHING ELSE: a permanent raise that still has a lifespan, or that takes
-    rather than raises.
+    rather than raises; minions told to lay an effect the row does not name; a
+    detonation stated on a move whose blows are struck elsewhere.
     """
     if is_on(params, "Permanent"):
         for clash in ("Duration", "Interval", "Possess"):
@@ -780,17 +797,36 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
                     f"it is destroyed, so it has no Duration and no rift "
                     f"Interval, and a thrall Possess takes is already its "
                     f"commander's for good")
+    if is_on(params, "MinionsLayEffect"):
+        if not (params.get("Effect") or "").strip():
+            raise DataError(
+                f"{where}: states MinionsLayEffect={params['MinionsLayEffect']}"
+                f" and names no Effect, so its minions would lay nothing")
+        if is_on(params, "Possess"):
+            raise DataError(
+                f"{where}: states MinionsLayEffect on a summon that possesses. "
+                f"A thrall is taken, not raised, and keeps its own blows")
+    if is_on(params, "Detonates") and shape == "Movement":
+        mode = params.get("Mode", "")
+        walks = mode == "Charge" and float(params.get("Duration", "0")) > 0.0
+        if mode == "Flicker" or walks:
+            raise DataError(
+                f"{where}: states Detonates on a {'walked charge' if walks else 'flicker'}. "
+                f"A move detonates where its single arrival strikes, and this "
+                f"one's blows are struck step by step, so nothing would explode")
 
 
 def check_a_summon_effect_has_a_carrier(params: dict[str, str], shape: str,
                                         damage_percent: str,
                                         where: str) -> None:
-    """A Summon row naming an `Effect` says what lays it. Issue #2885, N2.
+    """A Summon row naming an `Effect` says what lays it. Issue #2885, N2 and N11.
 
-    A summon that states a Damage Percent strikes as it raises and lays its
-    effect with that blow (N2: Barrow Guard's Cripple). Without one, the summon
-    template reads the effect nowhere and the row's sentence would be false. A
-    possession lays nothing of its own either: Subjugate's burn is `Burn=1`.
+    TWO CARRIERS AND NO THIRD. A summon that states a Damage Percent strikes as
+    it raises and lays its effect with that blow (N2: Barrow Guard's Cripple);
+    one stating `MinionsLayEffect=1` has its minions lay it with their blows
+    (N11: Bone Choir's). With neither, the summon template reads the effect
+    nowhere and the row's sentence would be false. A possession lays nothing
+    of its own either: Subjugate's burn is `Burn=1`.
     """
     if shape != "Summon" or not (params.get("Effect") or "").strip():
         return
@@ -798,11 +834,11 @@ def check_a_summon_effect_has_a_carrier(params: dict[str, str], shape: str,
         strikes = bool(damage_percent) and float(damage_percent) > 0.0
     except ValueError:
         strikes = False  # `skill_number` names the unreadable cell
-    if is_on(params, "Possess") or not strikes:
+    if is_on(params, "Possess") or not (strikes or is_on(params, "MinionsLayEffect")):
         raise DataError(
             f"{where}: a Summon names Effect={params['Effect']} and nothing "
             f"lays it. It needs a Damage Percent, which makes the raise strike "
-            f"and lay it, and it may not possess")
+            f"and lay it, or MinionsLayEffect=1, and it may not possess")
 
 
 def check_taunt_keys(params: dict[str, str], where: str) -> None:

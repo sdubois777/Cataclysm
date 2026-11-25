@@ -588,12 +588,22 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bTaunts = Number != 0.0f;
 		}
-		// The Death draft's N1, issue #2885: a raise that stands until destroyed.
+		// The Death draft's N1 and N11, issue #2885: a raise that stands until destroyed, and minions that lay the
+		// row's effect with their blows.
 		else if (Key.Equals(TEXT("Permanent"), ESearchCase::IgnoreCase))
 		{
 			Params.bPermanent = Number != 0.0f;
 		}
+		else if (Key.Equals(TEXT("MinionsLayEffect"), ESearchCase::IgnoreCase))
+		{
+			Params.bMinionsLayEffect = Number != 0.0f;
+		}
 		// --- Other riders -----------------------------------------------
+		// The Death draft's N3, issue #2885: the caster's minions inside the skill's area explode.
+		else if (Key.Equals(TEXT("Detonates"), ESearchCase::IgnoreCase))
+		{
+			Params.bDetonates = Number != 0.0f;
+		}
 		else if (Key.Equals(TEXT("RefundsCooldown"), ESearchCase::IgnoreCase))
 		{
 			Params.RefundsCooldown = Value;

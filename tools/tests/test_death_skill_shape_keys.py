@@ -67,15 +67,79 @@ def test_permanent_is_a_summons_alone(shape, text):
 
 
 # --------------------------------------------------------------------------
+# N11 MinionsLayEffect
+
+
+def test_minions_that_lay_the_rows_effect_are_accepted_on_a_summon_that_names_one():
+    """Bone Choir's cell, word for word."""
+    assert parse("Range=12; Count=2; Radius=5; Minions=SkeletalMage:2; FervourReserve=10; Permanent=1; "
+                 "Effect=Cripple; EffectMagnitude=20; EffectDuration=2; MinionsLayEffect=1",
+                 "Summon")["MinionsLayEffect"] == "1"
+
+
+def test_minions_told_to_lay_an_effect_the_row_does_not_name_are_refused():
+    said = refused("Count=1; Radius=3; Minions=Imp:1; FervourReserve=3; MinionsLayEffect=1", "Summon")
+    assert "names no Effect" in said
+
+
+def test_minions_that_lay_an_effect_on_a_summon_that_possesses_are_refused():
+    said = refused("Range=15; MaxTargets=1; Possess=1; FervourReserve=30; HealthThresholdPercent=50; "
+                   "Effect=Cripple; MinionsLayEffect=1", "Summon")
+    assert "possesses" in said
+
+
+# --------------------------------------------------------------------------
+# N3 Detonates, and N4 CommandStrike on a strike
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Strike", "Radius=4.5; Angle=140; Ailment=Necrosis; Detonates=1; CommandStrike=1"),
+    ("Projectile", "Range=14; Radius=1.2; Pierce=99; Speed=2400; Ailment=Necrosis; Detonates=1"),
+    ("Movement", "Mode=Leap; Range=10; Radius=4; Effect=Cripple; EffectMagnitude=30; EffectDuration=3; Detonates=1"),
+    ("Movement", "Mode=Recall; Range=14; Radius=3; EffectDuration=8; Knockback=3; Detonates=1"),
+    ("Movement", "Mode=Charge; Range=12; Radius=2; Detonates=1"),
+])
+def test_a_detonation_is_accepted_where_a_single_blow_strikes_an_area(shape, text):
+    """Gravebell's, Marrow Lance's, Barrow Leap's and Grave Return's cells, word for word, and a charge that arrives at
+    once, whose line `UCataclysmMovementSkill::DetonateWhereItArrived` measures."""
+    assert parse(text, shape)["Detonates"] == "1"
+
+
+@pytest.mark.parametrize("text, what", [
+    ("Mode=Flicker; Range=10; Duration=4; Interval=0.33; Detonates=1", "flicker"),
+    ("Mode=Charge; Range=12; Duration=1; Radius=1.5; Detonates=1", "walked charge"),
+])
+def test_a_detonation_on_a_move_that_strikes_step_by_step_is_refused(text, what):
+    assert f"Detonates on a {what}" in refused(text, "Movement")
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Summon", "Count=1; Radius=3; Minions=Imp:1; FervourReserve=3; Detonates=1"),
+    ("Aura", "Radius=8; Duration=8; Interval=1; Detonates=1"),
+    ("SelfBuff", "Duration=6; Detonates=1"),
+    ("Debuff", "Range=12; Radius=5; Detonates=1"),
+])
+def test_a_detonation_on_a_shape_that_strikes_no_area_of_its_own_is_refused(shape, text):
+    assert "has no parameter 'Detonates'" in refused(text, shape)
+
+
+def test_a_command_strike_is_accepted_on_a_strike_and_still_on_compels_projectile():
+    assert parse("Radius=3; Angle=120; CommandStrike=1", "Strike")["CommandStrike"] == "1"
+    assert parse("Range=14; Radius=5; Pierce=0; Speed=0; Burn=1; CommandStrike=1", "Projectile")["CommandStrike"] == "1"
+
+
+# --------------------------------------------------------------------------
 # N2: a Summon's Effect needs something to lay it
 
 
 @pytest.mark.parametrize("params, damage", [
     ({"Effect": "Cripple"}, "300"),
+    ({"Effect": "Cripple", "MinionsLayEffect": "1"}, ""),
+    ({"Effect": "Cripple", "MinionsLayEffect": "1"}, "300"),
     ({}, ""),
 ])
 def test_a_summons_effect_is_laid_by_its_rising_blow_or_its_minions(params, damage):
-    """Barrow Guard (its 300% rising blow), and a summon naming no effect at all."""
+    """Barrow Guard (its 300% rising blow), Bone Choir (both), and a summon naming no effect at all."""
     gen.check_a_summon_effect_has_a_carrier(params, "Summon", damage, WHERE)
 
 

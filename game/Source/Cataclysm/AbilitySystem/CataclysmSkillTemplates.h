@@ -690,15 +690,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	TObjectPtr<class ACataclysmTether> Tethered;
 
-	/**
-	 * How many commanded creatures this use ordered onto its target.
-	 *
-	 * ONE ROW ORDERS ANY: the Staff's Compel, "everything you command strikes
-	 * that same enemy at once". Zero for every other projectile, and zero for
-	 * Compel cast by a character commanding nothing.
-	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
-	int32 CommandedStrikes = 0;
+	// `CommandedStrikes`, how many commanded creatures Compel's last use ordered onto its target, moved to
+	// `UCataclysmSkillTemplate` on 2026-11-24 with the order itself, so the Greatsword's Gravebell can give it from a
+	// strike (issue #2885, the Death draft's N4). Read the same way, off this class.
 
 	/**
 	 * Copy the curses on each of these enemies onto the nearest others.
@@ -1588,6 +1582,16 @@ private:
 	void LayTheRowsEffectsOn(const TArray<AActor*>& Struck);
 
 	/**
+	 * Explode every minion of the caster's inside the area the move's single arrival struck, when the row states
+	 * `Detonates=1`. Issue #2885, the Death draft's N3: Barrow Leap, Open Grave and Grave Return, "every minion of
+	 * yours within it explodes as you land". THE SAME AREA THE ENEMIES WERE SEARCHED IN, mode by mode: a charge's line
+	 * from `Start` to `End`, a blink's and a trade's circle at both ends, and a leap's and a return's circle at `End`.
+	 * After the blow and its effects, as the sentence orders them. A flicker and a walked charge never come here, and the
+	 * generator refuses `Detonates` on either.
+	 */
+	void DetonateWhereItArrived(const FVector& Start, const FVector& End);
+
+	/**
 	 * `HitScaled`, for a charge's own blow, told how far the charge has gone.
 	 * Ruled 2026-10-08, for "Charge skills deal 30%-60% bonus damage
 	 * proportional to distance traveled".
@@ -2002,8 +2006,10 @@ private:
 	 * `SummonReplacementAt`, the two places `SummonedBy` is set, so every minion this skill makes -- a replacement, a
 	 * re-summon and a spawn at a kill included -- credits it and grows with it. None and 1 for a skill no row levels.
 	 *
-	 * AND, SINCE 2026-11-24, WHETHER IT STANDS UNTIL IT IS DESTROYED, for the same two places and the same reason.
-	 * Issue #2885: `Permanent=1` (N1) takes its lifespan away.
+	 * AND, SINCE 2026-11-24, THE TWO THINGS ITS ROW SAYS OF EVERY MINION IT MAKES, for the same two places and the same
+	 * reason. Issue #2885: `Permanent=1` (N1) takes its lifespan away, so it stands until it is destroyed; and
+	 * `MinionsLayEffect=1` (N11) teaches it the row's named effects, each for the seconds the skill would lay it, the
+	 * row's magnitude and the skill's damage type, which its blows then lay (`ACataclysmMinion::AttackTarget`).
 	 */
 	void RecordTheSkillOn(ACataclysmMinion* Minion) const;
 

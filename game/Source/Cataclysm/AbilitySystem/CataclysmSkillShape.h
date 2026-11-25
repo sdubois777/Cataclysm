@@ -1087,7 +1087,24 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bPermanent = false;
 
+	/**
+	 * True when every minion the row raises lays the row's `Effect` with each blow it lands. `MinionsLayEffect=1`, on
+	 * a Summon. Issue #2885, the Death draft's N11, for Bone Choir: "the burst and every bolt they throw Cripple what
+	 * they hit". The way `Burn=1` makes Summon Imp's imps set alight what they strike, for a named effect.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bMinionsLayEffect = false;
+
 	// --- Other riders ------------------------------------------------------
+
+	/**
+	 * True when every minion of the caster's inside the skill's area explodes. `Detonates=1`, on a Strike, a
+	 * Projectile or a Movement. Issue #2885, the Death draft's N3, for Gravebell, Barrow Leap, Open Grave, Marrow Lance
+	 * and Grave Return. WHATEVER KIND IT IS, by the owner's ruling of 2026-11-24 that "pop minion" is a playstyle and
+	 * not a distinction; `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` says which minions count.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bDetonates = false;
 
 	/** Which cooldown the skill returns: Self or Movement. Empty returns none. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")

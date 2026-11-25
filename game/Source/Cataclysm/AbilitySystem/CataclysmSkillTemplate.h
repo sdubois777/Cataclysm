@@ -442,6 +442,24 @@ public:
 	float ThisUseHitsAllWithinCm = 0.0f;
 
 	/**
+	 * How many commanded creatures this skill's last order sent onto its target.
+	 *
+	 * TWO ROWS ORDER ANY: the Staff's Compel, "everything you command strikes that same enemy at once", a projectile,
+	 * and since 2026-11-24 the Greatsword's Gravebell, a strike (issue #2885, the Death draft's N4). Zero for every
+	 * other skill, and for one cast by a character commanding nothing. ON THE BASE CLASS SINCE THAT DAY, as the order
+	 * is (`OrderEveryCommandedStrikeOn`); it was the projectile template's alone.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 CommandedStrikes = 0;
+
+	/**
+	 * How many of the caster's minions this skill's last detonation exploded. Issue #2885, the Death draft's N3
+	 * (`Detonates=1`). Zero for every skill that states none. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 MinionsDetonated = 0;
+
+	/**
 	 * Set, the use now running was counted as a channelled skill on its
 	 * character's ability system, and `EndAbility` owes that system one
 	 * `NoteChannelEnded`. Ruled 2026-10-08.
@@ -1340,6 +1358,52 @@ protected:
 	 * @return how many effects were applied
 	 */
 	int32 ApplyNamedEffectsTo(AActor* Target, float DurationScale = 1.0f) const;
+
+	/**
+	 * Explode every minion of the caster's that `IsInside` accepts, when the row states `Detonates=1`; answers how
+	 * many, and records it in `MinionsDetonated`. Issue #2885, the Death draft's N3: Gravebell, Barrow Leap, Open
+	 * Grave, Marrow Lance and Grave Return.
+	 *
+	 * WHICH MINIONS. Every creature the caster raised -- an `ACataclysmMinion` it commands whose `Summoner` it is --
+	 * whatever kind it is: the owner ruled on 2026-11-24 that "pop minion" is a playstyle and not a distinction, so a
+	 * Barrow Guard in the area explodes as a shade does. NOT A MACHINE, a judgement of slice DS2: a turret, a gadget or
+	 * a trap is placed rather than raised, and no Death sentence names one. NOT A THRALL, the same judgement: a thrall
+	 * is an enemy taken, has no `Explode`, and bursts only through Every One Bursts. Found through
+	 * `UCataclysmCommand::ThingsCommandedBy`, whose it is, and not through a side, which Madness can turn.
+	 *
+	 * `IsInside` IS THE SKILL'S AREA, measured as its enemy search measures an enemy: the two wrappers below for a
+	 * sphere and a line, and a strike's cone at its call.
+	 *
+	 * AN EXPLOSION AND NOT A DEATH: `ACataclysmMinion::Explode`, which deals the minion's own blast with the radius
+	 * its summoning row told it and destroys it, freeing its reserve at once. So nothing a minion's death raises --
+	 * Press-Ganged, Rekindled, Shared Ruin, Fervour for a lost minion -- is raised by a detonation, a judgement of
+	 * slice DS2 recorded in `docs/DECISIONS.md`.
+	 */
+	int32 DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside);
+
+	/**
+	 * `DetonateOwnMinionsWhere` for a sphere: every minion of the caster's whose body reaches within `RadiusCm` of
+	 * `Centre` along the ground, as a sphere's overlap finds an enemy's capsule.
+	 */
+	int32 DetonateOwnMinionsAround(const FVector& Centre, float RadiusCm);
+
+	/**
+	 * `DetonateOwnMinionsWhere` for a line: every minion of the caster's within `HalfWidthCm` of the segment from
+	 * `Start` to `End`, measured as `UCataclysmTargeting::FindEnemiesInLine` measures an enemy.
+	 */
+	int32 DetonateOwnMinionsAlong(const FVector& Start, const FVector& End, float HalfWidthCm);
+
+	/**
+	 * Order everything the caster commands to strike `Target` at once, wherever each is standing; answers how many
+	 * were ordered, and records it in `CommandedStrikes`.
+	 *
+	 * THE STAFF'S COMPEL'S ORDER, MOVED HERE FROM `UCataclysmProjectileSkill::Land` ON 2026-11-24 so a strike can give
+	 * it too: issue #2885, the Death draft's N4, the Greatsword's Gravebell, "every other creature you command strikes
+	 * the first enemy the arc hit, wherever it is standing". The body is Compel's, unchanged: a stunned, knocked-down
+	 * or feared creature is not ordered (#2560), a thrall strikes as a rule orders it (#783), and nothing measures a
+	 * distance. Null or a target already gone orders nobody.
+	 */
+	int32 OrderEveryCommandedStrikeOn(AActor* Target);
 
 	/**
 	 * This skill's damage type as the name the resistance slots are keyed by,

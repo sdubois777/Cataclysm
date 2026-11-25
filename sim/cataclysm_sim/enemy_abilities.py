@@ -76,8 +76,11 @@ SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Deployable"
 #: chord, so an arc of `Arc * range` is in the air for
 #: `sqrt(8 * Arc * range / g)`.
 SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
+    # `Detonates` and `CommandStrike` joined on 2026-11-24 with the Death skills
+    # (issue #2885, the draft's N3 and N4), for the Greatsword's Gravebell; the
+    # caster's minions explode, so no enemy ability uses either.
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
-               "DisarmsUntilRecalled"),
+               "DisarmsUntilRecalled", "Detonates", "CommandStrike"),
     # A PROJECTILE MAY REPEAT since 2026-09-01. Butcher's Bill throws thirty
     # axes over ten seconds, which needs the Count, Duration and Interval a
     # Summon has always had. No enemy ability uses them on a projectile yet.
@@ -85,7 +88,9 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
                    "Count", "Duration", "Interval", "TargetMode",
                    "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
                    "CommandStrike",
-                   "TetherTargets", "TetherLength", "TetherDuration"),
+                   "TetherTargets", "TetherLength", "TetherDuration",
+                   # N3, issue #2885: the Staff's Marrow Lance.
+                   "Detonates"),
     # `Interval` joined on 2026-09-02 with the Spear's Held Fast, which is
     # the first self buff that repeats. No enemy ability states it yet.
     "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease"),
@@ -94,16 +99,19 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # search. The Spear's Nail Down impales "the first enemy you reach" where the
     # Whip's Reel takes "every enemy the line crosses", and without this the two
     # charges have no way to differ. No enemy ability states it yet.
+    # `Detonates` joined on 2026-11-24 (issue #2885, N3): Barrow Leap, Open Grave
+    # and Grave Return. No enemy ability uses it.
     "Movement": ("Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits"),
+                 "RearHits", "Detonates"),
     # `Taunts` joined on 2026-11-24 with the Death skills (issue #2885, the
     # Crossbow draft's C3) on Summon and Deployable: what a row raises or places
     # taunts the enemies within the row's Radius of it. No enemy ability uses it.
-    # `Permanent` joined the same day with slice DS2 (the draft's N1), for the
-    # permanent raises. No enemy ability uses it.
+    # `Permanent` and `MinionsLayEffect` joined the same day with slice DS2 (the
+    # draft's N1 and N11), for the permanent raises. No enemy ability uses them.
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent", "Taunts", "Permanent"),
+               "HealthThresholdPercent", "Taunts", "Permanent",
+               "MinionsLayEffect"),
     # `FervourReserve` joined on 2026-09-08, when the project owner ruled that
     # every minion and gadget skill reserves Fervour rather than only the one
     # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all

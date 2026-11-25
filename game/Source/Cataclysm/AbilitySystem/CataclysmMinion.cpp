@@ -1802,6 +1802,14 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		UCataclysmTaunt::ApplyTaunt(this, Target, SummonerStat(Summoner, WarhoundTauntSecondsStat));
 	}
 
+	// AND THE EFFECT ITS SUMMONING ROW GAVE ITS BLOWS, on a blow that landed. Issue #2885, the Death draft's N11: Bone
+	// Choir's mages, "every bolt they throw Cripple what they hit". As the burn above: not an evaded blow, and, as the
+	// Warhound's taunt, not one the enemy refused as immune to its attacker. Nothing for a minion its row taught none.
+	if (!EffectTagsItsBlowsLay.IsEmpty() && !Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)
+	{
+		LayTheEffectsItsBlowsLay(Target);
+	}
+
 	++AttacksMade;
 
 	// AND A GADGET WHOSE BLOW KILLED FIRES A BURST, WHERE ITS SUMMONER'S ROW SAYS SO. Ruled 2026-10-13 by the
@@ -1846,6 +1854,31 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 }
 
 const TCHAR* ACataclysmMinion::GadgetsBurstOnKillStat = TEXT("gadgets_burst_on_kill");
+
+int32 ACataclysmMinion::LayTheEffectsItsBlowsLay(AActor* Target)
+{
+	if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(this))
+	{
+		return 0;
+	}
+
+	// THROUGH `ApplyNamedEffect`, as a skill lays a named effect (`UCataclysmSkillTemplate::ApplyNamedEffectsTo`): the
+	// row's magnitude, held to the effect's cap, and the skill's damage type for a Shred. THE MINION IS THE INSTIGATOR,
+	// as it is of the blow; it carries no stat that lengthens or strengthens an effect, so the figures are the row's.
+	int32 Laid = 0;
+	const int32 Count = FMath::Min(EffectTagsItsBlowsLay.Num(), EffectSecondsItsBlowsLay.Num());
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		if (EffectSecondsItsBlowsLay[Index] > 0.0f
+			&& UCataclysmSkillEffects::ApplyNamedEffect(this, Target, EffectTagsItsBlowsLay[Index],
+														EffectSecondsItsBlowsLay[Index], EffectMagnitudeItsBlowsLay,
+														EffectDamageTypeItsBlowsLay))
+		{
+			++Laid;
+		}
+	}
+	return Laid;
+}
 
 void ACataclysmMinion::HandleDeath()
 {

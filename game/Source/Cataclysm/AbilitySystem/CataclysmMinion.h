@@ -1778,6 +1778,33 @@ public:
 	 * #2764, slice 2b, by judgement 4 (accepted 2026-11-19). 1 for a minion no levelling skill made.
 	 */
 	float LevelFactorOnCreatures = 1.0f;
+
+	/**
+	 * The named effects this minion's blows lay, told by the summon skill that made it when its row states
+	 * `MinionsLayEffect=1`, each beside the seconds it lasts (`EffectSecondsItsBlowsLay`, the same index). Issue #2885,
+	 * the Death draft's N11: Bone Choir's Skeletal Mages, "every bolt they throw Cripple what they hit, 20% slower for
+	 * 2 seconds". READ ONCE, WHEN IT WAS MADE, as `LevelFactorOnCreatures` is. Empty for every other minion.
+	 *
+	 * LAID BY A BLOW THAT LANDED, after it (`AttackTarget`): not an evaded one (#1156) and not one the enemy refused as
+	 * immune to its attacker, as the Warhound's taunt asks; THE MINION LAYS IT, as it sets the fire its row's `Burn=1`
+	 * gives it (ruled 2026-09-17). Its explosion lays none: the row names its bolts.
+	 */
+	TArray<FGameplayTag> EffectTagsItsBlowsLay;
+
+	/** The seconds each of `EffectTagsItsBlowsLay` lasts, by the same index. */
+	TArray<float> EffectSecondsItsBlowsLay;
+
+	/** The size the row states for those effects, `EffectMagnitude`, or nought for each effect's own. */
+	float EffectMagnitudeItsBlowsLay = 0.0f;
+
+	/** The summoning skill's damage type, which a Shred among those effects cuts the resistance of. */
+	FName EffectDamageTypeItsBlowsLay = NAME_None;
+
+	/**
+	 * Lay every effect in `EffectTagsItsBlowsLay` on `Target`; answers how many were laid. Called by `AttackTarget` for
+	 * a blow that landed. Public so a test can lay them without a swing.
+	 */
+	int32 LayTheEffectsItsBlowsLay(AActor* Target);
 	//~ End
 
 protected:
