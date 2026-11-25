@@ -84,8 +84,10 @@ The coordinating session, 2026-11-25, under the owner's delegation, on the surve
 6. **`no_room_for_a_trap`** (Overwhelming Presence): at least one slot converted into a skill trap, and none could reserve
    another. It compares nothing; **a character with no trap slot refuses it**, a judgement: there is no trap to place, so
    "no room for another" has nothing to be about. Filled only when a row asks, since it asks a stat of every slot.
-   Overwhelming Presence: 50% more trap damage and 100% more trap trigger radius under it. **The radius now reads "more"**:
-   `(1 + increases) x more`, the increases floored at nought as before.
+   Overwhelming Presence: 50% more trap damage and 100% more trap trigger radius under it. **The radius now reads "more"**,
+   through `MultiplierForStatAgainst`: `(1 + increases) x more`, with `1 + increases` floored at nought. **One difference
+   from the old read**, which floored the increases themselves at nought: a net reduction of the radius was ignored and
+   now shrinks it. No row reduces the radius today.
 
 ### PYTHON GUARD PROOFS
 

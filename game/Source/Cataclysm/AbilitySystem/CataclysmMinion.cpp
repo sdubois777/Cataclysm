@@ -2715,8 +2715,10 @@ float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const 
 	//
 	// AND BY ITS "MORE", since 2026-11-25: Overwhelming Presence's "trap trigger radius is doubled" is 100% more, the
 	// coordinating session's ruling, so it doubles whatever the increases make the radius, as its "50% more trap damage"
-	// beside it does. `MultiplierForStatAgainst` is `(1 + increases) * more`, the increases floored at nought as
-	// `SkillTrapIncreasesOf` floors them; with no "more" row it is the old figure.
+	// beside it does. `MultiplierForStatAgainst` is `(1 + increases) * more` with `1 + increases` floored at nought.
+	// ONE DIFFERENCE FROM THE OLD READ: `SkillTrapIncreasesOf` floored the increases themselves at nought, so a net
+	// reduction of the radius was ignored; now it shrinks the radius. No row reduces it (2026-11-25). With no "more" row
+	// and no net reduction, the figure is the old one.
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
 	return SkillTrapTriggerRadiusCm
