@@ -78,6 +78,18 @@ nearest is the Eternal Chorus floor modifier, a Less on `fervour_per_second`, a 
 2. **Calculated (`Saboteur_basic_trunk_003`):** `class_resource` 5 a point, as before; from 6 points `class_resource`
    increased 10.
 
+### THE PYTHON SUITE
+
+Run on `8a56fab382eb83d327084a463725316c1a64ebcd`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8508 passed, 9
+skipped in 451.83s**, and the JUnit file `tests="8518" failures="1" errors="0" skipped="9"`, which is
+8,508 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. The worktree was unchanged after the run.
+`python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed` before the commit: 7
+files read, 0 with complaints. The include audit of 2026-11-25 (`tools/check_includes.py`'s first form) over the
+branch's seven .cpp files: 0 unreachable.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
