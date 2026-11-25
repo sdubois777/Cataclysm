@@ -110,7 +110,41 @@ campaign. Objectives: 5.00 at tier 1 in every cell.
 
 ### Registered
 
-Nothing has run yet.
+**The whole Python suite at `3b554c098`:** "3 failed, 8634 passed, 9 skipped in 465.83s (0:07:45)"; JUnit 8646 tests,
+3 failures, 0 errors, 9 skipped; ruff "All checks passed!".
+- **One failure is the base branch's**: `test_datatable_assets_are_current.py` names `DungeonModifiers.csv`, which the
+  Abyssal Rifts branch changes and its window's editor step rebuilds. This slice changes no CSV.
+- **Two were this slice's**: `test_city_upgrade_dungeon_rewards.py`'s `test_a_kill_takes_the_city_rewards_before_it_
+  rolls_and_in_each_grant` and `test_empire_tree_treasurer_cities.py`'s `test_the_golden_touchs_materials_reach_the_
+  material_roll_and_draw_nothing` each read the kill's materials figure as the drop call's LAST argument, and the
+  Cursed Abomination's gear step now follows it. Both read it as an argument followed by others at `593599f6b`, which
+  changes only those two checks; the two files then gave "12 passed in 1.02s". **The whole suite was not run again.**
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `593599f6b`:
+
+| Proof | The break | Result | Named failures |
+| :-- | :-- | :-- | :-- |
+| LP1 | a fall adds a lair when Pestilence is active, not Death | "PROVED: 2 failed, 4 passed in 0.16s \| restored: 6 passed in 0.05s" | `test_a_fall_while_death_is_active_adds_a_lair_that_counts_it`, `test_every_fall_adds_one_with_no_cap` |
+| LP2 | a lair counts no fallen city | "PROVED: 3 failed, 3 passed in 0.12s \| restored: 6 passed in 0.05s" | `test_a_lair_counts_the_cities_fallen_as_it_appears` and the two above |
+| LP3 | the last wave's Gatekeeper is not made the Cursed Abomination | "PROVED: 1 failed, 5 passed in 2.37s \| restored: 6 passed in 0.18s" | `test_the_boss_is_the_cursed_abomination_at_the_boss_rung` |
+
+**For the window**, counted statically and to be recounted from the window's base log:
+- **The editor step:** none of this slice's.
+- **The whole suite:** the base's figure plus 10 (`Cataclysm.AbominationLairs.`), none removed.
+- **Save record:** the run record 21 to 22.
+- **Groups alone:** `AbominationLairs.` (new), `WarQuestSieges.`, and B4's list (`Surge.`, `EmpireRun.`, `Rifts.`,
+  `SaveLoad.`, `SaveRecords.`, `SaveWriter.` and every group with a chain test), with `Gatekeeper.`, `EmpireMapLayout.`
+  and `CombatOverlay.` for the boss, the map line and the bar's name, and the drop groups the spawner's new argument
+  reaches.
+- **One C++ guard proof**, the bundle's limit of one a slice:
+
+| Proof | File | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| LC1 | `CataclysmEmpireRun.cpp` | `if (ActiveCataclysms.Contains(ECataclysmType::Death))` read as `if (false && ActiveCataclysms.Contains(ECataclysmType::Death))` | `Cataclysm.AbominationLairs.` | `AFallWhileDeathIsActiveMakesALairThatCountsIt`, `EveryFallMakesOneWithNoCap` |
+
+  **Dropped, for the same limit:** the Boss rung (`PopulationRungFor`'s lair branch), guarded by
+  `ALairsLastWaveHoldsTheCursedAbominationAtTheBossRung`; and the strength (`MakeTheCursedAbomination`'s scaling),
+  guarded by `TheCursedAbominationGrowsByTheStepForEachFallenCity`.
 
 ---
 
