@@ -1673,8 +1673,10 @@ private:
 	 *
 	 * A PULSE EVERY `BloodAltarSecondsBetweenPulses` FROM THE FLOOR'S START. It takes
 	 * a share of the player's maximum health for each death the altar has counted,
-	 * nothing from an altar nobody has fed, and only from the player, only within
-	 * the altar's reach.
+	 * nothing from an altar nobody has fed, and only from the player, WHEREVER ON THE
+	 * FLOOR THE PLAYER STANDS since issue #2855: until then only within the ring at
+	 * the stairs, which no player in play was standing in when a pulse came. Each
+	 * pulse says one line in the log, "Blood Altar: pulse on floor ...".
 	 */
 	void StepBloodAltar(
 		class ACataclysmPlayerCharacter* Player,
@@ -2561,6 +2563,9 @@ public:
 
 	/** Demonic Guide, for the panel and tests: the floor's guide, or null. */
 	ACataclysmEnemyCharacter* DemonicGuideOnTheFloor() const { return DemonicGuide.Get(); }
+
+	/** Demonic Guide, for tests: the footprints the floor's guide leaves, or null. Issue #2862. */
+	class ACataclysmGuideFootprints* DemonicGuideFootprintsOnTheFloor() const { return DemonicGuideFootprints.Get(); }
 
 	/** The Plaguebearer on this floor, or null; and the stacks every other creature carries. Issues #1820 and #41. */
 	ACataclysmEnemyCharacter* PlaguebearerOnTheFloor() const { return Plaguebearer.Get(); }
@@ -6269,6 +6274,12 @@ private:
 	TWeakObjectPtr<class ACataclysmGroundZone> DemonicGuideChain;
 	float DemonicGuideApplied = 0.0f;
 	int32 DemonicGuidePanelKey = -1;
+
+	/**
+	 * Demonic Guide: the yellow footprints the guide leaves, one actor holding a fixed pool of prints, made with the
+	 * guide and destroyed with it. Issue #2862. Stepped by `StepDemonicGuide`.
+	 */
+	TWeakObjectPtr<class ACataclysmGuideFootprints> DemonicGuideFootprints;
 
 	/**
 	 * The Plaguebearer, its stacks, and the floor they belong to. Issues #1820 and #41. THE FLOOR NUMBER IS WHAT STARTS

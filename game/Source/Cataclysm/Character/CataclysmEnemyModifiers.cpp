@@ -700,6 +700,16 @@ float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 		return 0.0f;
 	}
 
+	// NOR IS A TARGET ALREADY DEAD BRANDED. Issue #2874. The attribute set calls this after the blow's health write, so
+	// for the blow that kills, after `HandleDeath` has marked the player dead: the owner's log of 2026-11-24 shows
+	// "Infernal Brand reached five stacks on CataclysmPlayerState_0 and dealt 367" two milliseconds after the player's
+	// death line. The brand was not part of the kill -- the swing alone took the health -- but it stacked and burst on a
+	// corpse. A dead target takes no stack, no visible tag and no explosion.
+	if (UCataclysmSkillEffects::IsDead(Target))
+	{
+		return 0.0f;
+	}
+
 	UCataclysmAbilitySystemComponent* Branded =
 		Cast<UCataclysmAbilitySystemComponent>(
 			UCataclysmTargeting::AbilitySystemOf(Target));
@@ -758,8 +768,15 @@ float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 	// AN ORDINARY DIRECT BLOW. The damage TYPE is not a parameter here: it is
 	// read off the instigator when the hit resolves, which is what makes the
 	// explosion count as this creature's own element without saying so twice.
-	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Target, Damage,
-											  FCataclysmHitDelivery());
+	//
+	// AND NEVER A CRITICAL STRIKE, ruled by the coordinating session on 2026-11-24 (issue #2874), as the overkill
+	// explosion and a minion's death blast were ruled on 2026-10-07: the owner chose five hits' worth, one banked per
+	// stack, "a figure a player can reason about", and a critical made it ten. The owner's Boss Brute's explosion sent
+	// 367, struck critically, and took the 396 health a level 6 character had left. Said here because a direct blow
+	// from a creature rolls its critical strike chance otherwise.
+	FCataclysmHitDelivery Explosion;
+	Explosion.bCannotCriticallyStrike = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Target, Damage, Explosion);
 
 	UE_LOG(LogCataclysm, Log,
 		   TEXT("%s's Infernal Brand reached five stacks on %s and dealt %.0f."),
@@ -772,6 +789,14 @@ bool UCataclysmEnemyModifiers::WitherOnHit(AActor* Attacker, AActor* Target)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
 	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, WitheringBlowsRow))
+	{
+		return false;
+	}
+
+	// NOR A TARGET ALREADY DEAD, as Infernal Brand refuses one (issue #2874): the blow that kills reaches this after the
+	// death. A judgement of the writing session, by the brand's reasoning: a stack on a corpse is cleared at the respawn
+	// and does nothing before it.
+	if (UCataclysmSkillEffects::IsDead(Target))
 	{
 		return false;
 	}
@@ -828,6 +853,12 @@ bool UCataclysmEnemyModifiers::TouchOfNothingOnHit(AActor* Attacker, AActor* Tar
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
 	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, TouchOfNothingRow))
+	{
+		return false;
+	}
+
+	// NOR A TARGET ALREADY DEAD, as Infernal Brand and Withering Blows refuse one (issue #2874). The same judgement.
+	if (UCataclysmSkillEffects::IsDead(Target))
 	{
 		return false;
 	}
@@ -1094,8 +1125,15 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 			{
 				ACataclysmEnemyCharacter* Victim =
 					Cast<ACataclysmEnemyCharacter>(Ally);
+				// NOR ONE THAT CANNOT BE HURT, NOR ONE WHOSE DEATH IS ALREADY BEING MARKED. The coordinating
+				// session, 2026-11-24: `HandleDeath` called directly skips the health hold that keeps such a
+				// creature standing (`UCataclysmVitalAttributeSet::PreAttributeChange`), so a creature a rule had made
+				// unhurtable (`bCannotBeHurt`) could be eaten by a carrier beside it. Passed over, as a dead ally is,
+				// and the next nearest is taken. Issue #2874's branch.
 				if (Victim == nullptr
-					|| UCataclysmSkillEffects::IsDead(Victim))
+					|| UCataclysmSkillEffects::IsDead(Victim)
+					|| UCataclysmSkillEffects::IsBeingMarkedDead(Victim)
+					|| Victim->bCannotBeHurt)
 				{
 					continue;
 				}
@@ -1120,10 +1158,11 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 						Max * SacrificeHealShareOfHealth);
 				}
 
-				// AND THE DAMAGE BUFF THE ROW PROMISES. Commander is the buff
-				// this game has for "nearby allies hit harder and move faster";
-				// granting it to the creature itself is the closest thing to a
-				// temporary damage buff without inventing a second one.
+				// AND COMMANDER, WHICH THE DESIGN CHOSE FOR THE ROW'S "temporary damage buffs": "The damage buff
+				// is Commander" (docs/DECISIONS.md, 2026-09-05), rather than inventing a second buff. Commander is
+				// 20% increased movement speed and attack speed (`Buff_Commander`, the owner's two stats of
+				// 2026-08-20), so it hits more often, not harder. The row's own text still says "damage buffs";
+				// issue #2876 is that wording, which lives in the design workbook and is changed there.
 				const FGameplayTag Buff =
 					UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
 				if (Buff.IsValid())

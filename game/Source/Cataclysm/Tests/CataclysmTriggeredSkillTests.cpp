@@ -660,6 +660,9 @@ bool FCataclysmTriggeredSkillStunnedAuraTest::RunTest(const FString& Parameters)
 	}
 	Aura->SkillName = TEXT("Test Aura");
 	Aura->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=4; Interval=1"));
+	// A FIGURE OF ITS OWN, Conflagration's 10% a second: an aura stating no damage deals none since issue #2875, and
+	// the strikes below are how this test sees a pulse happen.
+	Aura->DamagePercentOverride = 10.0f;
 	if (!TestTrue(TEXT("set-up: it is switched on"),
 				  Caster.AbilitySystem->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)))
 	{

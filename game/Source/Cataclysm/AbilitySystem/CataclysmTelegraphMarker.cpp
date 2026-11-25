@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "AbilitySystem/CataclysmEffectPlacement.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Components/StaticMeshComponent.h"
@@ -188,8 +189,23 @@ namespace
 		SpawnParams.SpawnCollisionHandlingOverride =
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
+		// ON THE FLOOR UNDER THE POINT IT WAS GIVEN, NOT AT THE POINT. Issue #2863.
+		// Every caller hands over `ACataclysmEnemyController::FloorUnder`. Until
+		// issue #2878 that was the CREATURE's capsule bottom under the target's X
+		// and Y, so where the target stood higher than the creature -- on the exit
+		// stairs -- it was inside the raised ground and the warning could not be
+		// seen at all. Since #2878 it is the surface under the point wherever there
+		// is one, and this only adds `LiftCm`; it still places a marker handed any
+		// other height.
+		//
+		// ONLY THE MARKER MOVES, AND ONLY UP OR DOWN. The point the attack is aimed
+		// at is the caller's and is not changed here. Wherever there is a floor the
+		// two now agree within `LiftCm`, raised ground included, which keeps issue
+		// #471's rule that a telegraphed attack arrives where it was marked. A
+		// judgement of the writing session; see `CataclysmEffectPlacement`.
 		ACataclysmTelegraphMarker* Marker =
-			World->SpawnActor<ACataclysmTelegraphMarker>(Location, Rotation, SpawnParams);
+			World->SpawnActor<ACataclysmTelegraphMarker>(
+				CataclysmEffectPlacement::OnTheFloor(World, Location), Rotation, SpawnParams);
 		if (!Marker)
 		{
 			return nullptr;

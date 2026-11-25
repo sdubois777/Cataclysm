@@ -1418,11 +1418,17 @@ public:
 	 *
 	 * ONE ALTAR A FLOOR, ON THE EXIT CELL, which is where the stairs are placed.
 	 * Nothing is drawn at the altar's centre, so "at" and "beside" the stairs are
-	 * the same place. Its reach is drawn as a ring lasting the floor, and the ring is
-	 * the only warning a pulse gets.
+	 * the same place. It is marked by a ring lasting the floor.
+	 *
+	 * A PULSE REACHES THE PLAYER ANYWHERE ON THE FLOOR, since issue #2855 ("The altar
+	 * sends out damaging pulses"). Until then it reached only the ring around the
+	 * stairs, and in play it never found the player.
 	 *
 	 * A PULSE HITS THE PLAYER'S PAWN AND NOTHING ELSE. A pulse that struck creatures
 	 * could kill them, and every death it caused would make the next pulse stronger.
+	 *
+	 * EVERY PULSE SAYS ONE LINE in the log, "Blood Altar: pulse on floor ...", with the
+	 * deaths counted and what it sent and took, an unfed altar's included.
 	 *
 	 * DEMONIC DAMAGE DEALT FROM THE FLOOR, the way Artillery Strike's shell is:
 	 * `ApplyDirectDamage` from the floor hazard source as an area hit. So the
@@ -4894,13 +4900,17 @@ public:
 		BloodAltarMostMaxHealthPercent / BloodAltarMaxHealthPercentPerDeath + 0.5f);
 
 	/**
-	 * How far a pulse reaches from the altar.
+	 * How wide the ring that marks the altar at the exit is drawn.
 	 *
-	 * A JUDGEMENT. The row gives no figure. The stairs stand at the altar's centre,
-	 * so no player leaves the floor without entering its reach; this figure decides
-	 * how far around the stairs a pulse can find them.
+	 * ONLY A MARK SINCE ISSUE #2855: A PULSE REACHES THE PLAYER ANYWHERE ON THE FLOOR.
+	 * Until then this was the pulse's reach, a judgement of 2026-09-16 ("The stairs
+	 * stand at the centre, so no player leaves the floor without entering it"), and
+	 * a player who walked onto the stairs and down was inside it for well under one
+	 * of the 30 second pulses: the owner played four Blood Altar floors on 2026-11-22
+	 * and took no pulse at all. The ring keeps its old width so the altar looks as it
+	 * did; nothing reads it to decide who a pulse hits.
 	 */
-	static constexpr float BloodAltarReachCm = 1000.0f;
+	static constexpr float BloodAltarRingRadiusCm = 1000.0f;
 
 	/**
 	 * How long after the floor's start, and after each pulse, the next pulse comes.
@@ -4930,8 +4940,8 @@ public:
 		"would stop at a different death from the damage.");
 
 	static_assert(
-		BloodAltarReachCm > 0.0f && BloodAltarSecondsBetweenPulses > 0.0f,
-		"An altar that reaches nowhere, or pulses on every beat, is not the row.");
+		BloodAltarRingRadiusCm > 0.0f && BloodAltarSecondsBetweenPulses > 0.0f,
+		"An altar drawn as nothing, or one that pulses on every beat, is not the row.");
 
 	/**
 	 * How much Necrotic Ground cuts the health a player standing in its fog restores,
@@ -6735,6 +6745,43 @@ public:
 
 	static_assert(DemonicGuideWalkShareOfPlayer > 0.0f && DemonicGuideWalkShareOfPlayer < 1.0f,
 		"A guide that walked at the player's own speed or faster could never be caught up with.");
+
+	/**
+	 * THE GUIDE'S FOOTPRINTS: yellow prints on the floor behind it, so a player who has lost sight of it can follow.
+	 * Issue #2862, the owner's request of 2026-11-23: "I also think we should show like yellow footsteps or something
+	 * pointing to where he's gone." The row states nothing; the yellow is the owner's and EVERY FIGURE BELOW IS A
+	 * JUDGEMENT, recorded with its reason in `docs/DECISIONS.md`. Drawn by `ACataclysmGuideFootprints`.
+	 *
+	 * - ONE PRINT EVERY `DemonicGuideFootprintSpacingCm` WALKED, left and right in turn, each
+	 *   `DemonicGuideFootprintSideCm` off the line it walked: 80 cm is one print a beat at the guide's default 320 cm/s.
+	 * - EACH PRINT `DemonicGuideFootprintLengthCm` BY `DemonicGuideFootprintWidthCm`, about a third of the player's
+	 *   width, which reads from the 8 m camera without standing out like a ground effect.
+	 * - `DemonicGuideFootprintColourHex` AT `DemonicGuideFootprintOpacity`, FADING EVENLY TO NOTHING over
+	 *   `DemonicGuideFootprintSeconds`, so the newest print is the brightest and the trail shows which way it went. A
+	 *   saturated yellow, so it is told from Celestial's pale gold ground and from the red of a telegraph.
+	 * - A PRINT AGES ONLY WHILE THE GUIDE IS NOT WAITING. The guide waits exactly when the player has fallen behind,
+	 *   which is when the trail is wanted; a trail that faded while it waited would be gone when it was needed.
+	 * - AT MOST `DemonicGuideFootprintsAtMost` PRINTS, a fixed pool: the oldest is taken for the next. 40 holds the
+	 *   whole lifetime's trail at the guide's default walk; a faster guide's trail is cut short instead of growing.
+	 * - A MOVE OF MORE THAN `DemonicGuideFootprintJumpCm` IN ONE BEAT IS NOT A WALK -- a guide put somewhere -- and the
+	 *   trail starts again where it stands rather than printing the gap. A guide at 640 cm/s covers 160 cm in a beat.
+	 */
+	static constexpr float DemonicGuideFootprintSpacingCm = 80.0f;
+	static constexpr float DemonicGuideFootprintSideCm = 14.0f;
+	static constexpr float DemonicGuideFootprintLengthCm = 32.0f;
+	static constexpr float DemonicGuideFootprintWidthCm = 16.0f;
+	static constexpr float DemonicGuideFootprintSeconds = 10.0f;
+	static constexpr float DemonicGuideFootprintOpacity = 0.9f;
+	static constexpr const TCHAR* DemonicGuideFootprintColourHex = TEXT("FFD800");
+	static constexpr int32 DemonicGuideFootprintsAtMost = 40;
+	static constexpr float DemonicGuideFootprintJumpCm = 600.0f;
+
+	static_assert(DemonicGuideFootprintsAtMost * DemonicGuideFootprintSpacingCm
+					  >= DemonicGuideFootprintSeconds * 400.0f * DemonicGuideWalkShareOfPlayer,
+		"The pool must hold a whole lifetime's trail at the guide's default walk, 0.8 of the player's 400 cm/s.");
+
+	static_assert(DemonicGuideFootprintJumpCm > DemonicGuideFootprintSpacingCm * 2.0f,
+		"A jump shorter than two prints would cut a fast guide's walk into separate trails.");
 
 	static_assert(
 		RawSewageRiversPerFloor > 0 && RawSewageRiversPerHordeArena > 0 && RawSewageSecondsPerStack > 0.0f

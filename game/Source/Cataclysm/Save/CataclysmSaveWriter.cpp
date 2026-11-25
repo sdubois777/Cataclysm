@@ -16,6 +16,34 @@
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 
+namespace
+{
+	/**
+	 * What a run record holds of the character's place, in words, for the line each write logs. Issue #2858: a resume
+	 * inside a dungeon put the character at the floor's entrance, and the log could not say whether the save had held
+	 * the entrance or the load had moved it. NAMED FOR THIS FILE, because two files' anonymous helpers of one name
+	 * collide in a unity build.
+	 */
+	FString SaveWriterPlaceWritten(const FCataclysmSavedFloor& Floor, const FGuid& CharacterId)
+	{
+		const FCataclysmSavedCharacterPlacement* Placement = Floor.Characters.FindByPredicate(
+			[&CharacterId](const FCataclysmSavedCharacterPlacement& Each) { return Each.CharacterId == CharacterId; });
+		if (!Placement)
+		{
+			return TEXT("no place for the character, which is dead or not in the world");
+		}
+		if (!Floor.IsOccupied())
+		{
+			return TEXT("no floor, so a load puts back the character's health and potions and not its place");
+		}
+		return FString::Printf(TEXT("the character at X=%.0f Y=%.0f Z=%.0f facing %.0f on floor %d of '%s'%s, with %d "
+									"creature(s) standing"),
+							   Placement->Location.X, Placement->Location.Y, Placement->Location.Z, Placement->Yaw,
+							   Floor.Floor, *Floor.Dungeon.ToString(),
+							   Floor.bOnTheDarkFloor ? TEXT(" (the dark floor)") : TEXT(""), Floor.Creatures.Num());
+	}
+}
+
 UCataclysmSaveWriter* UCataclysmSaveWriter::In(const UWorld* World)
 {
 	return World ? World->GetSubsystem<UCataclysmSaveWriter>() : nullptr;
@@ -346,7 +374,14 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 		}
 	}
 
-	return Write(LastRun, RunSlotName(), Trigger);
+	// AND WHAT IT HOLDS OF THE CHARACTER'S PLACE, AND WHY IT WAS WRITTEN: the clock, a floor change, the hand-over or
+	// another trigger. Issue #2858. EVERY RUN RECORD WRITE, at most one a frame by the rule above, because the last one
+	// before a quit is the one a resume reads, whatever raised it.
+	const bool bStarted = Write(LastRun, RunSlotName(), Trigger);
+	UE_LOG(LogCataclysm, Log, TEXT("The run record %s for %s: %s."),
+		   bStarted ? TEXT("was written") : TEXT("could NOT be written"), UCataclysmSaveTriggers::NameOf(Trigger),
+		   *SaveWriterPlaceWritten(LastRun->Floor, CharacterId));
+	return bStarted;
 }
 
 bool UCataclysmSaveWriter::WriteTheCharacterRecord(ECataclysmSaveTrigger Trigger)

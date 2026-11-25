@@ -4,6 +4,8 @@
 
 #if WITH_AUTOMATION_TESTS
 
+// For a Stalker killed while its swing waits. Issue #2877.
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
@@ -658,6 +660,84 @@ bool FCataclysmStalkersMovementSkillSwingsNothingTest::RunTest(const FString&)
 			 Abilities->GetNumericAttribute(Vital::GetManaAttribute()) < 1000.0f);
 	FName Slot;
 	TestEqual(TEXT("and its body plays no swing"), SwingPlaying(Stalker, Slot), FName());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStalkerKilledMidSwingTest,
+	"Cataclysm.PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2877. A Corrupted Stalker's blow waits for its swing on `UCataclysmSkillTemplate::SwingTimer`, and nothing
+ * cleared that timer when the creature died, so a Stalker killed mid-swing still struck. Famine's entry, Hesk the
+ * Starveling, strikes a target a quarter turn to its left, as `AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects`
+ * sets it up.
+ *
+ * THE CONTROL: its first blow waits for the swing and lands when the swing connects. THEN THE CASE: its second blow is
+ * ordered and waits, and the Stalker is killed in the gap. The clock runs past the swing's moment: nothing of it waits
+ * any more, the target is untouched, and the Stalker's body is still in the world, so it was the death that dropped
+ * the blow and not the body's removal. A player's waiting blow is not changed (the owner, #1549).
+ */
+bool FCataclysmStalkerKilledMidSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerCopiesTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const TArray<FCataclysmStalkerEntry> Entries = ACataclysmCorruptedStalkerCharacter::Entries();
+	const FCataclysmStalkerEntry* Famine = EntryOf(Entries, TEXT("Famine"));
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		SpawnCopy<ACataclysmCorruptedStalkerCharacter>(World, FVector(0.0f, 0.0f, 0.0f));
+	FRandomStream Stream(2877);
+	if (!TestNotNull(TEXT("set-up: Famine's entry"), Famine)
+		|| !TestNotNull(TEXT("set-up: a Corrupted Stalker was spawned"), Stalker)
+		|| !TestTrue(TEXT("set-up: it wears Famine's entry"), Stalker->WearTheBuild(*Famine, 1, Stream)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Target = ATarget(World, FVector(0.0f, Stalker->AttackReachCm() * 0.5f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a target to its left"), Target)
+		|| !TestTrue(TEXT("set-up: its AI is taken away, so only the test strikes"), CataclysmTestSwings::TakeTheAIFrom(Stalker)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: A LIVING STALKER'S BLOW WAITS, THEN LANDS.
+	const float Full = HealthOf(Target);
+	Stalker->AttackTarget(Target);
+	const bool bFirstWaited = CataclysmTestSwings::IsWaitingForASwing(Stalker);
+	const bool bFirstConnected = CataclysmTestSwings::FinishTheSwingsOf(World, Stalker);
+	const float AfterTheFirst = HealthOf(Target);
+
+	// THE CASE: THE SECOND BLOW WAITS, AND THE STALKER DIES IN THE GAP.
+	Stalker->AttackTarget(Target);
+	const bool bSecondWaited = CataclysmTestSwings::IsWaitingForASwing(Stalker);
+	Stalker->HandleDeath();
+	const bool bDied = UCataclysmSkillEffects::IsDead(Stalker);
+	const bool bNothingWaits = CataclysmTestSwings::FinishTheSwingsOf(World, Stalker);
+	const bool bBodyStands = IsValid(Stalker);
+	const float AfterTheDeath = HealthOf(Target);
+
+	AddInfo(FString::Printf(TEXT("STALKER KILLED MID-SWING: the first blow waited %s and took %.1f; the second waited %s, "
+								 "the Stalker died %s, nothing waited after %s, its body stood %s, and the target lost "
+								 "%.1f more"),
+							bFirstWaited ? TEXT("yes") : TEXT("no"), Full - AfterTheFirst,
+							bSecondWaited ? TEXT("yes") : TEXT("no"), bDied ? TEXT("yes") : TEXT("no"),
+							bNothingWaits ? TEXT("yes") : TEXT("no"), bBodyStands ? TEXT("yes") : TEXT("no"),
+							AfterTheFirst - AfterTheDeath));
+
+	TestTrue(TEXT("CONTROL: its first blow waited for the swing"), bFirstWaited);
+	TestTrue(TEXT("CONTROL: the swing connected"), bFirstConnected);
+	TestTrue(TEXT("CONTROL: and its blow landed then"), AfterTheFirst < Full);
+	TestTrue(TEXT("set-up: its second blow waited for the swing"), bSecondWaited);
+	TestTrue(TEXT("set-up: and it died in the gap"), bDied);
+	TestTrue(TEXT("set-up: its body was still in the world when the swing's moment had passed"), bBodyStands);
+	TestTrue(TEXT("NOTHING OF ITS WAITS ONCE THE SWING'S MOMENT HAS PASSED"), bNothingWaits);
+	TestEqual(TEXT("AND THE BLOW IT WAS SWINGING WHEN IT DIED DEALT NOTHING"), AfterTheDeath, AfterTheFirst, 0.01f);
 	return true;
 }
 

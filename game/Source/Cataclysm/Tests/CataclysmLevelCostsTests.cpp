@@ -252,6 +252,80 @@ bool FCataclysmLevelCostsRepriceTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+// LC3b. A Herald thrall is re-priced at a Herald's figure. The owner's ruling of 2026-11-24, "Reserve grows with
+// rarity": a thrall reserves its rung's figure, a Herald 90 to a Common's 30 at level 1. When Subjugate reaches level
+// 10 the Herald holds 90 x 0.72028, 64.8, and not a Common's 21.6, which a re-price that named no creature would cut it
+// to; the Common thrall beside it, the control, goes to 21.6.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLevelCostsHeraldRepriceTest,
+	"Cataclysm.LevelCosts.AHeraldThrallIsRepricedAtAHeraldsFigureWhenItsSkillLevels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLevelCostsHeraldRepriceTest::RunTest(const FString&)
+{
+	using namespace CataclysmLevelCostsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	FCostsPlayer Player = StaffPlayerIn(World);
+	UCataclysmSummonSkill* Take = Player.IsUsable() ? SummonSkillOfRow(Player.Abilities, Subjugate) : nullptr;
+	ACataclysmEnemyCharacter* Common = CreatureToTake(World, FVector(3.0f * M, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Subjugate, and a wounded Common creature"),
+				  Take && Common))
+	{
+		return false;
+	}
+	// NEVER A CRITICAL STRIKE, so the blow cannot take more than either creature has left; and a creature Subjugate
+	// could take is held at one health through its blow anyway (issue #2856).
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	if (!TestTrue(TEXT("set-up: Subjugate takes the Common at level 1"), Take->Possess()))
+	{
+		return false;
+	}
+
+	// A HERALD, FURTHER OFF, SO THE COMMON TAKEN FIRST IS NEVER IN THE WAY: wounded below half its maximum, which its
+	// rung multiplies, after the rung is set, because a rung writes the creature's starting figures again.
+	ACataclysmEnemyCharacter* Herald = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(5.0f * M, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a creature to make a Herald"), Herald))
+	{
+		return false;
+	}
+	Herald->SetRarityStep(3);
+	Herald->SetHealth(1'000.0f);
+	Herald->SetAttackDamage(100.0f);
+	UAbilitySystemComponent* Heralds = Herald->GetAbilitySystemComponent();
+	Heralds->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+		Heralds->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * 0.4f);
+	if (!TestTrue(TEXT("set-up: Subjugate takes the Herald at level 1"), Take->Possess())
+		|| !TestTrue(TEXT("set-up: the Herald is the player's"),
+					 UCataclysmCommand::CommanderOf(Herald) == Player.Character))
+	{
+		return false;
+	}
+	TestEqual(TEXT("taken at level 1, the Common holds the row's 30"), Common->ReservedFervour, 30.0f, 0.001f);
+	TestEqual(TEXT("and the Herald a Herald's 90"), Herald->ReservedFervour, 90.0f, 0.001f);
+	const float CeilingAtOne = CeilingOf(Player.Abilities);
+	TestEqual(TEXT("set-up: so the pool of 150 can fill to 30"), CeilingAtOne, 30.0f, 0.001f);
+
+	// SUBJUGATE'S OWN LEVEL RE-PRICES BOTH, EACH AT ITS OWN RUNG'S FIGURE.
+	Player.State->SetSkillExperience(Subjugate, Levels::ExperienceToReach(10));
+	TestEqual(TEXT("set-up: Subjugate is at level 10"), Player.State->SkillLevelOf(Subjugate), 10);
+	TestEqual(TEXT("CONTROL: the Common thrall holds 30 x 0.72028, 21.6"), Common->ReservedFervour, 30.0f * AtTen,
+			  0.01f);
+	TestEqual(TEXT("the Herald holds 90 x 0.72028, 64.8, and not a Common's 21.6"), Herald->ReservedFervour,
+			  90.0f * AtTen, 0.01f);
+	TestEqual(TEXT("and the ceiling rises by what the two no longer hold"), CeilingOf(Player.Abilities) - CeilingAtOne,
+			  (30.0f + 90.0f) * (1.0f - AtTen), 0.01f);
+	AddInfo(FString::Printf(TEXT("HERALD REPRICED: the Herald held 90 at level 1 and %.2f at level 10; the Common %.2f"),
+							Herald->ReservedFervour, Common->ReservedFervour));
+	return true;
+}
+
 
 // --------------------------------------------------------------------------------------------------------------------
 // LC4. A skill gadget and a skill trap reserve at the level of the skill in their slot: 15 and 5 at level 1, and when

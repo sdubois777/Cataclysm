@@ -4,6 +4,7 @@
 // For the owner-then-skill answer `DamageTypeFor` gives. Issue #818.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmEffectPlacement.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -29,6 +30,8 @@ int32 UCataclysmGroundEffect::LastEndCount = 0;
 
 FVector UCataclysmGroundEffect::LastStart = FVector::ZeroVector;
 FVector UCataclysmGroundEffect::LastFarEnd = FVector::ZeroVector;
+FVector UCataclysmGroundEffect::LastDrawnStart = FVector::ZeroVector;
+FVector UCataclysmGroundEffect::LastDrawnFarEnd = FVector::ZeroVector;
 float UCataclysmGroundEffect::LastRadiusCm = 0.0f;
 float UCataclysmGroundEffect::LastDuration = 0.0f;
 FName UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
@@ -147,6 +150,36 @@ TArray<TWeakObjectPtr<UNiagaraComponent>> UCataclysmGroundEffect::PlayFor(
 		return Drawn;
 	}
 
+	const FVector Along = FarEnd - Start;
+	const int32 HowMany = HowManyAlong(static_cast<float>(Along.Size()), RadiusCm);
+
+	// WHERE EACH COPY GOES, WORKED OUT BEFORE THE SYSTEM IS LOADED. Issue #2863.
+	// Evenly from one end to the other, both ends included; with one copy the
+	// fraction is zero and it lands on Start, which is the centre of a round zone.
+	//
+	// AND EACH ON THE FLOOR UNDER IT, rather than at the height it was asked for.
+	// A zone's location is whatever its caller handed over, and most of the calls
+	// that leave one hand over a capsule centre, or a stored copy of one: the patch
+	// was drawn at waist height. A few hand over a point under a raised surface --
+	// the exit stairs, or a creature's own floor under a target standing higher --
+	// and those were drawn inside the ground. ONE SEARCH PER COPY rather than one
+	// for the zone, so
+	// a long zone crossing the stairs follows them. Only the drawing moves: the
+	// zone, its sweep and `LastStart` and `LastFarEnd` above are where they were.
+	// See `CataclysmEffectPlacement`.
+	TArray<FVector> Places;
+	Places.Reserve(HowMany);
+	for (int32 Which = 0; Which < HowMany; ++Which)
+	{
+		const float Fraction = (HowMany > 1)
+			? static_cast<float>(Which) / static_cast<float>(HowMany - 1)
+			: 0.0f;
+		Places.Add(CataclysmEffectPlacement::OnTheFloor(World, Start + Along * Fraction));
+	}
+	// `HowManyAlong` answers one at least, so neither read is of an empty array.
+	LastDrawnStart = Places[0];
+	LastDrawnFarEnd = Places.Last();
+
 	UNiagaraSystem* System = CataclysmLoadGroundSystem();
 	if (!System)
 	{
@@ -162,19 +195,8 @@ TArray<TWeakObjectPtr<UNiagaraComponent>> UCataclysmGroundEffect::PlayFor(
 	// no designed row uses it. Every zone a player leaves takes this path today
 	// -- issue #803.
 
-	const FVector Along = FarEnd - Start;
-	const int32 HowMany = HowManyAlong(static_cast<float>(Along.Size()), RadiusCm);
-
-	for (int32 Which = 0; Which < HowMany; ++Which)
+	for (const FVector& Where : Places)
 	{
-		// EVENLY FROM ONE END TO THE OTHER, both ends included. With one copy
-		// the fraction is zero and it lands on Start, which is the centre of a
-		// round zone.
-		const float Fraction = (HowMany > 1)
-			? static_cast<float>(Which) / static_cast<float>(HowMany - 1)
-			: 0.0f;
-		const FVector Where = Start + Along * Fraction;
-
 		// SPAWNED INACTIVE AND ACTIVATED AFTERWARDS, AND THE ORDER IS THE POINT.
 		// Niagara runs an emitter's spawn script when the system activates, so a
 		// system that auto-activates has already coloured its first particles

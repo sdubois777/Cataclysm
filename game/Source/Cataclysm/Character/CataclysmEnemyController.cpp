@@ -7,6 +7,8 @@
 // For announcing a creature's ability as a skill used. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
+// For the walking surface under an aim point. Issue #2878.
+#include "AbilitySystem/CataclysmEffectPlacement.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSilence.h"
 // For the target a gadget takes when its summoner's row says the most health. Ruled 2026-10-13.
@@ -1075,15 +1077,37 @@ void ACataclysmEnemyController::FaceTravelDirection(
 FVector ACataclysmEnemyController::FloorUnder(
 	const ACataclysmCharacterBase* Driven, const FVector& Point)
 {
-	// AN ACTOR'S LOCATION IS ITS CAPSULE CENTRE, so dropping by the capsule's
-	// half height is what turns a point about a character into a point on the
-	// ground it is standing on.
+	// THE WALKING SURFACE UNDER THE POINT ITSELF, WHEN THERE IS ONE. Issue #2878.
+	// This used to be the creature's own capsule bottom moved under the point's
+	// X and Y, so wherever the point lay over ground higher than the creature's
+	// -- a target standing on the exit stairs, whose top tier is 60 cm up -- it
+	// was inside that ground: the lobbed shots (the Brute's rock, the Sentinel's
+	// mortar, the Gatekeeper's Soulfall) ended their flight there, and
+	// Soulfall's burning ground, the far end of Hellrush's burning lane and
+	// Inferno Charge's path were laid there. A flat shot and a charge read only
+	// its X and Y, so they are unchanged.
 	//
-	// FROM THE CREATURE'S OWN CAPSULE, not the target's, because everything that
-	// uses this has to agree with everything else that uses it and the creature
-	// is the one constant. On a floor that is not level this is the creature's
-	// floor rather than the target's, which is the same assumption the markers
-	// have always made.
+	// STILL ONE FUNCTION, SO EVERY CALLER STILL AGREES. The reason this answered
+	// from the creature's capsule was that every caller had to get the same
+	// answer, and the creature was the one constant. A search of the world is as
+	// constant: the same point gives the same surface to every caller that asks,
+	// and they all ask here.
+	//
+	// THE SURFACE, NOT THE CAPSULE'S 2 CM GAP ABOVE IT. A gameplay point, which
+	// a lob lands on and a zone is laid at; the marker drawn there adds its own
+	// lift (`ACataclysmTelegraphMarker`'s spawn asks `OnTheFloor`).
+	float SurfaceZ = 0.0f;
+	if (Driven
+		&& CataclysmEffectPlacement::FloorSurfaceUnder(Driven->GetWorld(), Point, SurfaceZ))
+	{
+		return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ));
+	}
+
+	// WITH NO SURFACE UNDER IT, THE CREATURE'S OWN FLOOR, as before. Every test
+	// world that builds no geometry lands here, and so does a point out over the
+	// void. An actor's location is its capsule centre, so dropping by the
+	// capsule's half height is what turns a point about a character into a point
+	// on the ground it is standing on.
 	float HalfHeightCm = 0.0f;
 	if (Driven)
 	{

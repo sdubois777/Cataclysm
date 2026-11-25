@@ -879,6 +879,19 @@ void UCataclysmGameInstance::RefreshEmpireTreeBonuses(const UObject* WorldContex
 {
 	if (UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false))
 	{
+		// A TREE CHANGED IN PLAY, so every city keeps its share of its maxima: "It should maintain the % they were at
+		// before buying the upgrades." Issue #2859.
+		Run->ChangeTreeBonuses(EmpireTreeBonusesFor(WorldContext));
+		WireTheRunToTheBalance(WorldContext, Run);
+	}
+}
+
+void UCataclysmGameInstance::HandEmpireTreeBonusesToALoadedRun(const UObject* WorldContext)
+{
+	if (UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false))
+	{
+		// NOTHING WRITTEN INTO THE CITIES: they were saved holding what they held under the tree, and keeping their
+		// shares from a run that has had no tree since it was rebuilt would scale them by the whole tree. Issue #2859.
 		Run->SetTreeBonuses(EmpireTreeBonusesFor(WorldContext));
 		WireTheRunToTheBalance(WorldContext, Run);
 	}

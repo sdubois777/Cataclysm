@@ -185,7 +185,7 @@
       "asset": "DT_SkillSlots",
       "csv": "SkillSlots.csv",
       "rows": 7,
-      "csv_sha256": "402fca60e960369b248fd3102cbc3f59fe43b3944c47295db18ac6a8aa1099fb"
+      "csv_sha256": "1d5956c42a9e824b66185b2405f36d2b077adeee9786a48661af998182cbc8f5"
     },
     {
       "asset": "DT_StatusEffects",
@@ -203,7 +203,7 @@
       "asset": "DT_WeaponSkills",
       "csv": "WeaponSkills.csv",
       "rows": 403,
-      "csv_sha256": "03d45a87672d730ce41035b946396429e15aaa4d699aa0927a7d35b2f1c85156"
+      "csv_sha256": "ac57038b8c0bea9c7d8adc0618ef5cdf6fb3b99c9adc6694f7875c90ad898c29"
     }
   ]
 }

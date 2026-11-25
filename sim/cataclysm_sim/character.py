@@ -780,9 +780,16 @@ SKILL_SLOTS: dict[str, SkillSlot] = {
                   "at all, which is why its typical value is zero.",
                   typical_cooldown=4.0, cooldown_lowest=2.0,
                   cooldown_highest=10.0, mana_cost=25.0),
-        SkillSlot("Aura", 25.0, 15.0, 40.0,
+        # THE BAND OPENS TO 10, the owner's ruling of 2026-11-24 on issue
+        # #2869: Conflagration states 10% of weapon damage a second. AND THE
+        # NOTE SAYS AN AURA STATING NO DAMAGE DEALS NONE, the ruling on #2875 the
+        # same day, so the 25% is what an aura that states damage is typically
+        # worth and never a figure an aura is given for saying nothing.
+        SkillSlot("Aura", 25.0, 10.0, 40.0,
                   "Persistent and toggled, draining resource per second. This "
-                  "is per second rather than per use.",
+                  "is per second rather than per use, and it is what an aura "
+                  "stating damage is typically worth: an aura whose row states "
+                  "none deals none.",
                   typical_cooldown=0.0, cooldown_lowest=0.0,
                   cooldown_highest=0.0, mana_cost=20.0),
         SkillSlot("Ultimate", 400.0, 300.0, 500.0,

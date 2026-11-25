@@ -137,3 +137,26 @@ def test_the_strike_back_waits_its_own_attack_interval():
     due = body_of(without_comments(read(CREATURE)), "bool ACataclysmEnemyCharacter::TakeAStrikeBackIfDue()")
     assert "SecondsBetweenAttacks()" in due, due
     assert re.search(r"LastStrikeBackSeconds\s*=\s*Now", due), due
+
+
+def test_a_tick_never_reaches_the_strike_back_or_its_clock():
+    """Issue #2854: the owner's Boss Brute was struck once a second by an aura that also set it alight, and the
+    question was whether the burn's ticks drew strike backs or used up the creature's interval. Neither may: the
+    strike back, and the clock it asks, sit inside the branch that a damage over time tick and a blow carrying the
+    no-retaliation mark never enter. A tick let into it would be struck back whenever the interval had passed, and
+    would use the interval up: on a Brute's 1.2 seconds, a burn tick 1.501 seconds after a strike back would draw one
+    and refuse the aura's next pulse at 2.002. `Cataclysm.ThornsOfGlass.AnAuraHittingEverySecondWithTicksBetweenIs
+    StruckBackOncePerABrutesInterval` measures that in Unreal, and this holds the shape where continuous integration
+    can see it.
+
+    THE FIRST ASSERTION SHOWS THE PARSE FOUND THE BRANCH, so the second cannot pass on an empty body; THE THIRD that
+    the clock is asked nowhere else in the file, so a second call outside the branch cannot hide beside the first."""
+    vital = without_comments(read(VITAL))
+    branch = re.search(r"if \(!Hit\.bIsDamageOverTime\s*&&\s*!AssetTags\.HasTag\(\s*"
+                       r"UCataclysmDamageCalculation::NoRetaliationTag\(\)\)\)", vital)
+    assert branch, "the retaliation branch that refuses a tick and a no-retaliation blow was not found"
+    body = body_of(vital, branch.group(0))
+    assert "UCataclysmRetaliation::StrikeBack(" in body and "TakeAStrikeBackIfDue()" in body, body[:600]
+    assert vital.count("TakeAStrikeBackIfDue()") == 1, (
+        "the strike back's clock is asked more than once in the attribute set, so one of the calls may be outside "
+        "the branch a tick never enters")
