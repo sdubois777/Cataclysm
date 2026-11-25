@@ -182,3 +182,38 @@ def test_every_node_named_is_a_node_of_its_tree_and_a_capstone_row_names_an_opti
         else:
             assert kind != "capstone", f"{node.key} is a capstone and names no option"
             assert nodes[node.key]["NodeName"] == node.label, node.key
+
+
+def test_the_port_columns_are_added_when_the_sheet_lacks_them(copy_of_the_workbook):
+    """The passive row port's fourteen columns, added after the sheet's last one by
+    the first run that writes an action row (the Death trees' slice C1,
+    2026-11-25). A sheet without them, and without the Death rows, comes back as
+    the committed one."""
+    take_the_death_rows_out(copy_of_the_workbook)
+    book = openpyxl.load_workbook(copy_of_the_workbook)
+    sheet = book[reapply.EFFECTS_SHEET]
+    header = [c.value for c in sheet[1]]
+    port = [column for column, _ in reapply.OPTIONAL_EFFECT_COLUMNS if column != "Scale Max Steps"]
+    assert header[-len(port):] == port, header
+    sheet.delete_cols(len(header) - len(port) + 1, len(port))
+    book.save(copy_of_the_workbook)
+    assert "Action" not in sheet_rows(copy_of_the_workbook, reapply.EFFECTS_SHEET)[0]
+
+    report = reapply.apply(copy_of_the_workbook)
+    assert any("added the column(s)" in line for line in report), report
+    for title in SHEETS:
+        assert sheet_rows(copy_of_the_workbook, title) == sheet_rows(WORKBOOK, title), title
+
+
+def test_an_action_row_reads_back_as_it_was_written():
+    """An action row has no stat and no value kind; every action column it states
+    comes back from its cells, so a second run finds it unchanged."""
+    node = reapply.Node("Shadow_basic_spine_008", "Envenom", ())
+    for row in (reapply.A("apply_status", 6, event="critical_strike", ailment="Poison",
+                          trigger_cooldown=0),
+                reapply.A("execute_target", 100, event="hit_dealt", cond="target_health_below",
+                          cond_value=15),
+                reapply.R("attack_damage", "increased", 1, scale="own_stacks", step=1, cap=10,
+                          event="kill", stack_seconds=2, min_points=2)):
+        cells = reapply.cells_from_row(node, row)
+        assert reapply.row_from_cells(cells).key() == row.key(), row

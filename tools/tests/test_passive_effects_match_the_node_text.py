@@ -672,7 +672,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: Momentum, Siege of One, Quarry, Big Game, Hunter's Eye, Between the Dead,
 #: Killing Pace (two), Light Feet (two). Measured then: the Soul Collector 34
 #: rows on 21 nodes, the Necromancer 9 on 8, the Shadow 52 on 36.
-AUTHORED_ROWS = 459
+#:
+#: AND TO 498 ON 2026-11-25, for the Death trees' slice C1: 39 rows on sixteen
+#: nodes and options that today's rows state whole, the first passive action
+#: rows among them. Measured then: the Soul Collector 48 rows on 24 nodes, the
+#: Necromancer 19 on 15, the Shadow 67 on 41.
+AUTHORED_ROWS = 498
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1094,7 +1099,11 @@ AUTHORED_ROWS = 459
 #: AND TO 291 THE SAME DAY, for the kill generator's sixteen nodes besides the
 #: two starting nodes, which already counted: the Soul Collector 21 of its 73,
 #: the Necromancer 8 of its 72 and the Shadow 36 of its 74.
-AUTHORED_NODES = 291
+#:
+#: AND TO 306 ON 2026-11-25, for the Death trees' slice C1's fifteen nodes not
+#: counted before (the Soul Collector's 50-point vow already was): the Soul
+#: Collector 24 of its 73, the Necromancer 15 of its 73 and the Shadow 41 of its 74.
+AUTHORED_NODES = 306
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1188,7 +1197,12 @@ AUTHORED_NODES = 291
 #: with Fervour held and is a row today. The Soul Collector's Swift Reaper,
 #: Death's Focus and Soul Haste, and the Shadow's Quickening and Honed Edge.
 #: Each is its capstone's only row, so each moves `AUTHORED_NODES` too.
-AUTHORED_OPTIONS = 41
+#:
+#: AND TO 45 ON 2026-11-25, for the Death trees' slice C1: the Soul Collector's
+#: Second Wind (50, option 1), the Necromancer's Strength in Numbers (25, option
+#: 3) and Gathering Dark (50, option 3), and the Shadow's Death Sentence (200,
+#: option 2).
+AUTHORED_OPTIONS = 45
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1393,7 +1407,11 @@ def test_no_node_grants_the_same_stat_twice(effects):
         # five steps of Brutal Determination read as one row written five times.
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
-               row.get("Option", ""), row.get("MinPoints", ""))
+               row.get("Option", ""), row.get("MinPoints", ""),
+               # AND THE ACTION AND ITS EVENT, since the passive row port of
+               # 2026-11-24, as the generator's key has them: an action row has
+               # no stat, and one node may restore health and mana on one event.
+               row.get("Action", ""), row.get("ActionEvent", ""))
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
@@ -1526,7 +1544,8 @@ CONDITION_WORDS = {
     "out_of_combat": ("out of combat", None),
     # AND "YOUR MOVEMENT SKILL", the Shadow's Fresh Start and Tumble of 2026-11-24.
     "seconds_after_movement_skill": (("after you use a movement skill",
-                                      "after you use your movement skill"),
+                                      "after you use your movement skill",
+                                      "of using your movement skill"),
                                      "{value:g} second"),
     "target_not_yet_struck_by_you": ("first hit against each enemy", None),
     "in_combat_for_seconds": ("in combat", "{value:g} second"),
@@ -1691,8 +1710,11 @@ CONDITION_WORDS = {
     # A COUNT MAY BE WRITTEN SEVERAL WAYS, and several means any of them. The
     # Shadow's Open the Throat, 2026-11-24, says "below 50% health" where Broken
     # Will says "half health"; its Last Breath and Executioner say 30%.
-    "target_health_below": ("against enemies below",
-                            {30.0: "30%", 35.0: "35%",
+    # "enemy below" SINCE THE DEATH TREES' SLICE C1 (2026-11-25): Death Sentence,
+    # "Your hits kill a non-Boss enemy below 15% health outright; Bosses take
+    # double damage from you below 15%".
+    "target_health_below": (("against enemies below", "enemy below"),
+                            {15.0: "15%", 30.0: "30%", 35.0: "35%",
                              50.0: ("half health", "50%")}),
 
     # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24 (slice B). The slain or
@@ -2013,7 +2035,22 @@ SCALE_WORDS = {
     # the sentence says "each minion" and names no step, so the step can only be
     # 1 and that is asserted instead. Looking for a "1" would find the rate's own
     # number -- "1 per second" -- and pass for the wrong reason.
-    "minions_held": (("minion", "you have"), None, None),
+    #
+    # AND A STEP OF MORE THAN ONE SINCE THE DEATH TREES' SLICE C1 (2026-11-25):
+    # "for every 5 minions you have" and "while you have 10 or more minions",
+    # the second a step of 10 capped at one step. A step of 1 is still written
+    # "each minion", and "alive" is said beside "you have".
+    "minions_held": (("minion", ("you have", "alive")),
+                     ("for every {value:g} minions", "{value:g} or more minions"),
+                     "each minion"),
+
+    # A ROW'S OWN STACKS AND ITS HITS IN A ROW ON ONE ENEMY, the two counts a
+    # passive row's event grants since the passive row port (2026-11-24), first
+    # written by the Death trees' slice C1 (2026-11-25): Kill Chain's "for each
+    # kill in your current chain" and Wearing Cut's "for each hit in a row".
+    # Each says "for each", so the step is 1.
+    "own_stacks": (("for each",), None, None),
+    "consecutive_hits": ((("hit in a row", "hits in a row"),), None, None),
 
     # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
     # nodes read it: "You deal 2% more damage for each enemy within 4 metres
@@ -2178,9 +2215,10 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
             )
             continue
 
-        printed = value_form.format(value=step)
-        assert printed.lower() in words, (
-            f"{row['Node']} scales in steps of {printed!r} and the node says:\n"
+        forms = (value_form,) if isinstance(value_form, str) else tuple(value_form)
+        printed = " or ".join(repr(form.format(value=step)) for form in forms)
+        assert any(form.format(value=step).lower() in words for form in forms), (
+            f"{row['Node']} scales in steps of {printed} and the node says:\n"
             f"    {described}\n"
             "The two have to agree. Either the workbook is stale or the tree "
             "file changed."
@@ -2414,7 +2452,8 @@ VALUE_FORMS = {
     # Boss", "decays at 5 per second once 4 seconds have passed", "for 8 seconds
     # rather than 4"; the Shadow's "drains at 10 per second"; Momentum's "2
     # seconds later" and Grave Patience's "1 second later".
-    "fervour_per_kill": (": {value:g} for", ", {value:g} for", "and {value:g} for"),
+    "fervour_per_kill": (": {value:g} for", ", {value:g} for", "and {value:g} for",
+                         "+{value:g} Fervour"),
     "fervour_kill_decay_per_second": ("decays at {value:g} per second",
                                       "drains at {value:g} per second"),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
@@ -2497,6 +2536,13 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # DEATH SENTENCE'S BOSS HALF, the Death trees' slice C1 (2026-11-25):
+    # "Bosses take double damage from you below 15%" is 100% more, in a word.
+    ("Shadow_capstone_200", "attack_damage", "target_health_below"):
+        ("double damage", 100.0),
+    ("Shadow_capstone_200", "spell_damage", "target_health_below"):
+        ("double damage", 100.0),
+
     # AND THE COUNT OF MINIONS BEHIND THE VEIL ASKS FOR. Issue #1515. The node
     # reads "while you have three or more minions", so the sheet's 3 has no
     # digit to match in the sentence. Its OTHER row needs no entry: the same
@@ -2897,6 +2943,29 @@ VALUE_IS_A_DIFFERENCE = {
 }
 
 
+#: AN ACTION ROW'S NUMBER, BY ITS ACTION. The passive row port (2026-11-24) lets
+#: a passive row act, and the Death trees' slice C1 (2026-11-25) wrote the first
+#: ones. An action row has no stat, so `VALUE_FORMS` cannot key it.
+#: `apply_status`'s value is a chance in per cent (`APPLY_STATUS_ACTIONS` in the
+#: generator).
+ACTION_VALUE_FORMS = {
+    "apply_status": ("{value:g}% chance",),
+}
+
+#: An action row's number stated in words, by node and action, as
+#: `VALUE_IN_WORDS` holds a stat's.
+ACTION_VALUE_IN_WORDS = {
+    # SECOND WIND: "Reaching a full bar refills your health and mana", 100% of
+    # each maximum.
+    ("SoulCollector_capstone_50", "health"): ("refills your health", 100.0),
+    ("SoulCollector_capstone_50", "mana"): ("refills your health and mana", 100.0),
+    # DEATH SENTENCE: "Your hits kill a non-Boss enemy below 15% health
+    # outright", a chance of 100. The execute never takes a Boss; the engine
+    # holds that inside the action.
+    ("Shadow_capstone_200", "execute_target"): ("outright", 100.0),
+}
+
+
 def test_every_value_appears_in_the_nodes_own_description(
         effects, nodes, skill_shape_params):
     """The number in the workbook is the number the design document states.
@@ -2910,6 +2979,29 @@ def test_every_value_appears_in_the_nodes_own_description(
         # says only "Choose one. The choice is permanent."
         described = words_of(row, nodes)
         value = float(row["ValuePerPoint"])
+
+        # AN ACTION ROW: its number by its action, or in words.
+        action = row.get("Action", "").strip()
+        if action:
+            spoken = ACTION_VALUE_IN_WORDS.get((row["Node"], action))
+            if spoken is not None:
+                phrase, means = spoken
+                assert phrase in described.lower(), (
+                    f"{row['Name']}: the workbook states {action}'s number in words, "
+                    f"as {phrase!r}, and the node says:\n    {described}")
+                assert value == pytest.approx(means), (
+                    f"{row['Name']}: {phrase!r} means {means:g} and the workbook "
+                    f"grants {value:g}.")
+                continue
+            assert action in ACTION_VALUE_FORMS, (
+                f"{row['Name']} acts with {action!r}, which this test has no value "
+                f"form for. Add it to ACTION_VALUE_FORMS, or the node's words to "
+                f"ACTION_VALUE_IN_WORDS.")
+            printed = [form.format(value=abs(value)) for form in ACTION_VALUE_FORMS[action]]
+            assert any(one in described for one in printed), (
+                f"{row['Name']}: the workbook's {action} is {' or '.join(printed)} "
+                f"per point, and the node says:\n    {described}")
+            continue
 
         # A VALUE THE SENTENCE STATES IN WORDS IS CHECKED AGAINST THOSE WORDS.
         # See `VALUE_IN_WORDS` for why two rows are written that way and what
@@ -3167,6 +3259,17 @@ def test_a_node_that_takes_something_away_is_actually_tested(effects):
 #: not a term in the pipeline's buckets, so `flat` is the only kind it can be.
 FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent"})
 
+#: A more-bucket row whose sentence says it multiplies in a word rather than as
+#: "N% more", by node and capstone option, with that word. NOT ADDED TO
+#: `MULTIPLIES`: "doubled" also describes increased rows (Light Feet, "doubled for
+#: 4 seconds after a kill", adds its own increase again), so the word alone does
+#: not mean the more bucket.
+MORE_STATED_IN_A_WORD = {
+    # DEATH SENTENCE, the Death trees' slice C1 (2026-11-25): "Bosses take double
+    # damage from you below 15%" is 100% more.
+    ("Shadow_capstone_200", 2): "double damage",
+}
+
 
 def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     """A description that says its number multiplies is the more bucket, and
@@ -3209,6 +3312,10 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
                          or row["Stat"] in FLAT_STATS_THAT_MULTIPLY}
 
     for row in effects:
+        # AN ACTION ROW HAS NO BUCKET (the passive row port, 2026-11-24): the
+        # generator judges its value by its action.
+        if row.get("Action", "").strip():
+            continue
         kind = row["ValueKind"].strip().lower()
         assert kind in KINDS, (
             f"{row['Name']}: {kind!r} is not one of {sorted(KINDS)}"
@@ -3216,6 +3323,12 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
 
         described = words_of(row, nodes)
         multiplies = MULTIPLIES.search(described)
+        spoken = MORE_STATED_IN_A_WORD.get((row["Node"], int(row.get("Option", 0) or 0)))
+        if kind == "more" and spoken is not None:
+            assert spoken in described.lower(), (
+                f"{row['Node']} is in the more bucket by the word {spoken!r}, which "
+                f"its description no longer says:\n    {described}")
+            continue
         if kind == "more":
             assert multiplies, (
                 f"{row['Node']} is in the more bucket and its description does "
@@ -3275,6 +3388,10 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
     """
     for row in effects:
         if row["ValueKind"].strip().lower() == "removed":
+            continue
+        # AN ACTION ROW HAS NO STAT (the passive row port, 2026-11-24): its pool
+        # or status is checked by the generator against the ones the game has.
+        if row.get("Action", "").strip():
             continue
         assert row["Stat"] in stats, (
             f"{row['Name']} grants {row['Stat']!r}, which is not a stat any "
