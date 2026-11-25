@@ -78,8 +78,20 @@ because the implicit is now a whole number. The simulation's tier 1 guards pass 
 
 ### Tests
 
-The whole Python suite is run once the remaining items stand; its line is added here then. Until window 1, the two
-Corrupted Stalker tests fail by design: their tables are re-fitted from the game's measured Stalker.
+The whole Python suite at `c6660b28a`, in the branch's worktree:
+
+```
+python -u -m pytest --junit-xml=<scratchpad>/junit_c6660b28a.xml
+3 failed, 8618 passed, 10 skipped in 638.75s (0:10:38)
+JUnit: tests 8631, failures 3, errors 0, skipped 10 -> 8618 passed
+python -m ruff check .   All checks passed!
+```
+
+**The three are expected and none is a fault.** The two Corrupted Stalker tests
+(`test_the_ruled_tables_are_the_model_fitted_to_the_games_measured_build`, `test_the_models_stalker_is_the_games_measured_one`)
+wait for window 1, whose measurement of the game's Stalker re-fits their tables. `test_datatable_assets_are_current`
+names `Affixes.csv`, `ItemBases.csv` and the three enchantment CSVs, whose assets the editor rebuilds in the window.
+No C++ has been compiled; window 1 builds it.
 
 ---
 
