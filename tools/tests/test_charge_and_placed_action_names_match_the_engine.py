@@ -1402,3 +1402,74 @@ def test_a_row_saying_nothing_may_slow_the_character_is_an_immunity_to_slow() ->
     assert re.search(r"const float Suppressed = Cataclysm->StatForSkill\(\s*FName\(MovementSpeedReductionSuppressedStat\)",
                      player)
     assert "if (Suppressed <= 0.0f && !bImmuneToSlow)" in player
+
+
+def test_a_followers_death_is_told_to_its_commander_and_eternal_army_comes_first() -> None:
+    """The Death trees' slice C6d2 (2026-11-25), as ruled (P1): where a
+    follower's health reaches nought, its commander is told `minion_death`
+    beside the Fervour for losing it, for a minion, an imp or a thrall and not a
+    gadget or a trap; `NoteMinionDied` records when and how far and raises the
+    event with the body. Eternal Army's refusal comes BEFORE all of it, so a
+    follower kept at 1 health raises nothing. Read from the code with comments
+    taken out."""
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    start = vitals.index("void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero(")
+    body = vitals[start:vitals.index("\n}\n", start)]
+    assert re.search(r"if \(AbovePercent > 0\.0f && TheirMaximum > 0\.0f && TheirHealth / TheirMaximum \* 100\.0f > "
+                     r"AbovePercent\)\s*\{\s*const_cast<UAbilitySystemComponent\*>\(AbilitySystem\)->"
+                     r"SetNumericAttributeBase\(GetHealthAttribute\(\), 1\.0f\);\s*return;", body)
+    assert body.index("MinionCannotDieAboveHealthPercentStat") < body.index("UCataclysmFervour::GainOnMinionDeath(")
+    assert re.search(r"if \(!AsMinion \|\| !AsMinion->IsDeployable\(\)\)\s*\{\s*if \(UCataclysmAbilitySystemComponent\* "
+                     r"Commanders =\s*Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\("
+                     r"Commander\)\)\)\s*\{\s*Commanders->NoteMinionDied\(Character, AsMinion \? AsMinion->TypeTags : "
+                     r"UCataclysmCommand::ThrallMinionTags\(\)\);", body)
+    assert body.index("NoteMinionDied(") < body.index("Character->HandleDeath();")
+    engine = code_without_comments(SOURCE)
+    start = engine.index("void UCataclysmAbilitySystemComponent::NoteMinionDied(")
+    died = engine[start:engine.index("\n}\n", start)]
+    assert re.search(r'ActOnEvent\(FName\(TEXT\("minion_death"\)\), &FollowerTags, 0\.0f,\s*true, Body\);', died)
+    assert "Death.Metres = (Self && Body) ? UCataclysmTargeting::MetresBetween(Self, Body) : -1.0f;" in died
+
+
+def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_still_carries_nought() -> None:
+    """The Death trees' slice C6d2 (2026-11-25), as ruled (Q2). `NoteHitTaken`
+    holds the share of maximum health the hit took only while it raises
+    `hit_taken`, which still carries an amount of nought; an own-stack row's
+    event condition goes on its grant and comes off its stat. Read from the code
+    with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"TGuardValue<float> SaysHowMuchItTook\(HitBeingAnnouncedPercentOfMaxHealth, "
+                     r"PercentOfMaxHealthLost\);\s*ActOnEvent\(FName\(TEXT\(\"hit_taken\"\)\), nullptr, 0\.0f, "
+                     r"bLanded\);", engine)
+    assert "State.HitTakenPercentOfMaxHealth = HitBeingAnnouncedPercentOfMaxHealth;" in engine
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"if \(UCataclysmStatPipeline::IsJudgedAtItsEvent\(Out\.Condition\)\)\s*\{\s*Out\.Condition = "
+                     r"ECataclysmStatCondition::Always;\s*Out\.ConditionValue = 0\.0f;", item)
+    assert re.search(r"&& UCataclysmStatPipeline::IsJudgedAtItsEvent\(AtTheEvent\)\)\s*\{\s*Stack\.Condition = "
+                     r"AtTheEvent;\s*Stack\.ConditionValue = Effect->ConditionValue;", item)
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert "MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);" in vitals
+
+
+def test_marshal_shared_leech_and_bound_bones_are_read_where_they_act() -> None:
+    """The Death trees' slice C6d2 (2026-11-25). Marshal: a minion's blow and
+    explosion and a thrall's blow and explosion name the minion to the
+    summoner's lookup, which fills its distance. Shared Leech: beside the leech
+    a blow pays its dealer, the same figure to the dealer's commander. Bound
+    Bones: every regeneration step, after Shared Blood's. Read from the code
+    with comments taken out."""
+    minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r'SummonerMultiplierAgainst\(Summoner, TEXT\("minion_damage"\), Target, TypeTags,\s*this\)', minion)
+    assert re.search(r'SummonerMultiplierFor\(Summoner, TEXT\("minion_damage"\), TypeTags, this\)', minion)
+    assert re.search(r'SummonerMultiplierFor\(Commander, TEXT\("minion_damage"\), '
+                     r'UCataclysmCommand::ThrallMinionTags\(\),\s*Lost\)', minion)
+    command = code_without_comments(SOURCE.parent / "CataclysmCommand.cpp")
+    assert re.search(r'SummonerMultiplierAgainst\(Commander, TEXT\("minion_damage"\), Target, ThrallMinionTags\(\), '
+                     r'Striker\)', command)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.AskingMinionMetres = \(AskingMinion && Self\) \? "
+                     r"UCataclysmTargeting::MetresBetween\(Self, AskingMinion\) : -1\.0f;", engine)
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert re.search(r"UCataclysmLeech::NoteHit\([^;]*;\s*UCataclysmLeech::NoteMinionHit\(", vitals)
+    regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
+    assert re.search(r"SharedBloodStep\(Character, SecondsInStep, false\);\s*BoundBonesStep\(Character\);", regeneration)
