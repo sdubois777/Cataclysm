@@ -166,7 +166,8 @@ def test_the_run_record_step_writes_the_two_fields_and_every_chain_test_adds_the
     the default, so a load that ignored the field could be seen."""
     version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", read(RECORDS_H).split(
         "class CATACLYSM_API UCataclysmRunSave")[1])
-    assert version and int(version.group(1)) == 21, version and version.group(1)
+    # 21 OR LATER: issue #51 slice B5 took the record to 22 on top of this step.
+    assert version and int(version.group(1)) >= 21, version and version.group(1)
 
     before = json.loads(read(FIXTURES / "Run_v20.json"))
     after = json.loads(read(FIXTURES / "Run_v21.json"))
@@ -189,7 +190,7 @@ def test_the_run_record_step_writes_the_two_fields_and_every_chain_test_adds_the
         twenty = len(re.findall(r"AddTheRunsVersion20Defaults\(", text))
         twenty_one = len(re.findall(r"AddTheRunsVersion21Defaults\(", text))
         assert twenty == twenty_one, f"{path.name}: {twenty} chain tests reach 20 and {twenty_one} reach 21"
-        assert "Run_v20.json" not in text or "Run_v21.json" in text, (
+        assert "Run_v20.json" not in text or re.search(r"Run_v2[1-9]\.json", text), (
             f"{path.name} reads Run_v20.json as the committed file")
         chain20 += twenty
         chain21 += twenty_one
