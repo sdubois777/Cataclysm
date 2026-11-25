@@ -125,7 +125,18 @@ outside Passed On's 3.
 
 ### What was run
 
-SUITE_FIGURES_C4C1
+**The whole Python suite on `ff9abf44e`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8523 passed, 9 skipped in 379.12s
+(0:06:19)". The JUnit file agrees: tests 8533, failures 1, errors 0, skipped 9, so 8523 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree and before `BurstTheSlain` was added, failed that one and the check that every condition is named in this
+log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
 
 **Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `cf4af7f21`, and each `proved`:
