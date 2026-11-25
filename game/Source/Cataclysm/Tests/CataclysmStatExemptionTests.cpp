@@ -11781,6 +11781,97 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `fervour_spent_returned_percent`, read by `UCataclysmAbilitySystemComponent::NoteFervourSpent`: Cinders Kept, the
+	 * Death trees' slice C3c (2026-11-25). ONE FIGHTER. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a
+	 * spend of 50 leaves nothing to return. Granted at a flat 18, the same spend leaves 9.
+	 *
+	 * WHAT THIS DOES NOT REACH. The return arriving and its clamp: `Cataclysm.FervourPaid.`.
+	 */
+	void ProbeFervourSpentReturned(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->NoteFervourSpent(50.0f);
+		Test.TestEqual(TEXT("control: with no fervour_spent_returned_percent nothing waits to return"),
+					   Fighter.AbilitySystem->FervourWaitingToReturn(), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::FervourSpentReturnedPercentStat, 18.0f);
+		Fighter.AbilitySystem->NoteFervourSpent(50.0f);
+		Test.TestEqual(TEXT("with it at 18 a spend of 50 leaves 9, so NoteFervourSpent really reads it"),
+					   Fighter.AbilitySystem->FervourWaitingToReturn(), 9.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_lethal_save_every_seconds`, read by `UCataclysmAbilitySystemComponent::MaySaveLethalBlowWithFervour`, which
+	 * the vital attribute set asks of a blow that would empty health: Phylactery, the Death trees' slice C3c. ONE FIGHTER,
+	 * given a Fervour pool holding 60. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: no save is ready.
+	 * Granted at a flat 60, one is.
+	 *
+	 * WHAT THIS DOES NOT REACH. The blow saved, the health left and the wait: `Cataclysm.FervourPaid.`.
+	 */
+	void ProbeFervourLethalSave(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 60.0f);
+		Test.TestFalse(TEXT("control: with no fervour_lethal_save_every_seconds no save is ready"),
+					   Fighter.AbilitySystem->MaySaveLethalBlowWithFervour());
+		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::FervourLethalSaveEverySecondsStat, 60.0f);
+		Test.TestTrue(TEXT("with it at 60 one is, so MaySaveLethalBlowWithFervour really reads it"),
+					  Fighter.AbilitySystem->MaySaveLethalBlowWithFervour());
+	}
+
+	/**
+	 * `movement_on_cooldown_fervour_cost`, read by `UCataclysmGameplayAbility::FervourToUseOnCooldown`, which a skill's
+	 * cooldown check and its cooldown ask: Borrowed Step, the Death trees' slice C3c. ONE FIGHTER, with a strike on the
+	 * movement key. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: nought. Granted at a flat 24, the skill
+	 * answers 24.
+	 *
+	 * WHAT THIS DOES NOT REACH. A use made on cooldown and what it takes: `Cataclysm.FervourPaid.`.
+	 */
+	void ProbeMovementOnCooldownFervourCost(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System = Fighter.AbilitySystem;
+		const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Movement, /*Level=*/100, Fighter.Actor);
+		const FGameplayAbilitySpec* Spec = System->FindAbilitySpecFromHandle(Handle);
+		const UCataclysmGameplayAbility* Step =
+			Spec ? Cast<UCataclysmGameplayAbility>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("a skill on the movement key"), Step))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: with no movement_on_cooldown_fervour_cost it costs nothing on cooldown"),
+					   Step->FervourToUseOnCooldown(System), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmGameplayAbility::MovementOnCooldownFervourCostStat, 24.0f);
+		Test.TestEqual(TEXT("with it at 24 it costs 24, so FervourToUseOnCooldown really reads it"),
+					   Step->FervourToUseOnCooldown(System), 24.0f, 0.001f);
+	}
+
+	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
 	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
@@ -12265,6 +12356,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("siphon_life_percent"), &ProbeSiphonLife},
 			{TEXT("siphon_fervour_per_second"), &ProbeSiphonFervour},
 			{TEXT("reserved_fervour_spent_percent"), &ProbeReservedFervourSpent},
+			{TEXT("fervour_spent_returned_percent"), &ProbeFervourSpentReturned},
+			{TEXT("fervour_lethal_save_every_seconds"), &ProbeFervourLethalSave},
+			{TEXT("movement_on_cooldown_fervour_cost"), &ProbeMovementOnCooldownFervourCost},
 		};
 		return Made;
 	}

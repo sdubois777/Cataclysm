@@ -532,8 +532,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Spent Breath, Quick Kindling and Burnt Offering, rows on the record of Fervour
 	// spent; the Soul Collector 79. AND 535 FOR SLICE C3b: Feast, Spirit to Mana, Ashen
 	// Ward, Soul Furnace and Turn of the Wheel, each a row sized by what a spend
-	// carried, and Bound Offering; the Soul Collector 85.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        535)
+	// carried, and Bound Offering; the Soul Collector 85. AND 539 FOR SLICE C3c:
+	// Cinders Kept, Phylactery and the Shadow's Borrowed Step (two rows).
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        539)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

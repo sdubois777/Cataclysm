@@ -270,6 +270,14 @@ void ACataclysmCharacterBase::RegenerationStep()
 		// those starting nodes, and its return value is dropped as every call above it is.
 		UCataclysmFervour::KillDecayStep(UCataclysmTargeting::AbilitySystemOf(this), UCataclysmRegeneration::StepSeconds);
 
+		// AND THE SHARES OF EARLIER SPENDS THAT CINDERS KEPT RETURNS, once due (the Death trees' slice C3c, 2026-11-25).
+		// Nothing for a character with none waiting. Its return value is dropped as every call above it is.
+		if (UCataclysmAbilitySystemComponent* Returning =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this)))
+		{
+			Returning->ReturnFervourDue();
+		}
+
 		// AND THE SOUL COLLECTOR'S SIPHON (the Death trees' slice C2, 2026-11-25): who is in it, what each member
 		// carries, and once a second what each second pays. Nothing for a character without the keystone, whose
 		// record is cleared. Its return value is dropped as every call above it is.

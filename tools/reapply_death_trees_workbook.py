@@ -494,6 +494,19 @@ NODES: tuple[Node, ...] = (
     Node(SC + "keystone_d_kC", "Turn of the Wheel",
          (A("cooldown_reduce_others", 1, event="fervour_spent", fraction_of="for_each_ten_of_event_amount"),)),
     Node(SC + "basic_d_c0", "Bound Offering", (R("reserved_fervour_spent_percent", "flat", 15),)),
+
+    # ---- SLICE C3c (2026-11-25): A SHARE OF A SPEND RETURNED, A LETHAL BLOW SAVED BY
+    # FERVOUR, AND A MOVEMENT SKILL USED ON COOLDOWN FOR FERVOUR. The 4 seconds of
+    # Cinders Kept and the 50 of Phylactery are the engine's
+    # (`FervourReturnedAfterSeconds`, `FervourLethalSaveLeast`); Phylactery's 60 is
+    # its row. Borrowed Step's "40 Fervour, reduced by 2 per point" is two rows on
+    # one stat: 40 once from the first point, and -2 a point.
+    Node(SC + "basic_d_c1", "Cinders Kept", (R("fervour_spent_returned_percent", "flat", 3),)),
+    Node(SC + "capstone_100", "Phylactery",
+         (R("fervour_lethal_save_every_seconds", "flat", 60),), option=1),
+    Node(SH + "basic_c_c0", "Borrowed Step",
+         (R("movement_on_cooldown_fervour_cost", "flat", 40, min_points=1),
+          R("movement_on_cooldown_fervour_cost", "flat", -2))),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

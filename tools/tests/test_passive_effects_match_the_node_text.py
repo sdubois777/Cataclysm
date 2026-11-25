@@ -689,7 +689,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 535 THE SAME DAY, for slice C3b's six: Feast, Spirit to Mana, Ashen
 #: Ward, Soul Furnace and Turn of the Wheel, each one action row sized by what a
 #: spend carried, and Bound Offering. The Soul Collector 85 rows on 45 nodes.
-AUTHORED_ROWS = 535
+#:
+#: AND TO 539 THE SAME DAY, for slice C3c: Cinders Kept, Phylactery (the third
+#: vow's first option) and the Shadow's Borrowed Step, whose "40 Fervour, reduced
+#: by 2 per point" is two rows. The Soul Collector 87 rows on 46 nodes, the
+#: Shadow 69 rows on 42.
+AUTHORED_ROWS = 539
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1122,7 +1127,11 @@ AUTHORED_ROWS = 535
 #: AND TO 321 THE SAME DAY, for slice C3a's three: the Soul Collector 39 of its 73.
 #:
 #: AND TO 327 THE SAME DAY, for slice C3b's six: the Soul Collector 45 of its 73.
-AUTHORED_NODES = 327
+#:
+#: AND TO 329 THE SAME DAY, for slice C3c's Cinders Kept and Borrowed Step:
+#: the Soul Collector 46 of its 73 and the Shadow 42 of its 74. Phylactery is
+#: an option of a capstone already counted.
+AUTHORED_NODES = 329
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1221,7 +1230,10 @@ AUTHORED_NODES = 327
 #: Second Wind (50, option 1), the Necromancer's Strength in Numbers (25, option
 #: 3) and Gathering Dark (50, option 3), and the Shadow's Death Sentence (200,
 #: option 2).
-AUTHORED_OPTIONS = 45
+#:
+#: AND TO 46 THE SAME DAY, for slice C3c: the Soul Collector's Phylactery (100,
+#: option 1).
+AUTHORED_OPTIONS = 46
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2498,6 +2510,12 @@ VALUE_FORMS = {
     # BOUND OFFERING, the Death trees' slice C3b (2026-11-25): "counts as
     # Fervour spent, at 15% per point of what is held back".
     "reserved_fervour_spent_percent": ("at {value:g}% per point",),
+    # SLICE C3c (2026-11-25): Cinders Kept's "3% per point of the Fervour you
+    # spend", Phylactery's "Once every 60 seconds", and Borrowed Step's two rows,
+    # "by spending 40 Fervour" and "reduced by 2 per point".
+    "fervour_spent_returned_percent": ("{value:g}% per point of the Fervour you spend",),
+    "fervour_lethal_save_every_seconds": ("Once every {value:g} seconds",),
+    "movement_on_cooldown_fervour_cost": ("by spending {value:g} Fervour", "reduced by {value:g} per point"),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
                                          "for {value:g} seconds rather than",
                                          "{value:g} second later",
@@ -3834,6 +3852,17 @@ AT_N_POINTS = re.compile(r"\bAt (\d+) points:")
 FOR_EVERY_N_POINTS = re.compile(r"\bfor every (\d+) points\b")
 
 
+#: THE ROWS THAT STATE A FIGURE ONCE, FROM THE FIRST POINT, BESIDE A ROW ON THE
+#: SAME STAT PAID PER POINT, by node and stat, with the words of the node that
+#: say so. The Death trees' slice C3c (2026-11-25): Borrowed Step's cost is 40
+#: once and -2 a point. A row paid once by mistake fails the check below; one
+#: named here passes only with these words in its sentence and its per-point
+#: partner in the sheet.
+STATED_ONCE_BESIDE_A_PER_POINT_ROW = {
+    ("Shadow_basic_c_c0", "movement_on_cooldown_fervour_cost"): "40 Fervour, reduced by 2 per point",
+}
+
+
 def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         effects, nodes):
     """A row with `MinPoints` belongs to a node that says "At N points:", with
@@ -3851,6 +3880,14 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         if not min_points:
             continue
         sentence = nodes.get(row["Node"], {}).get("Description", "")
+        # OR A FIGURE STATED ONCE BESIDE A PER-POINT ROW ON THE SAME STAT, from
+        # the first point: "40 Fervour, reduced by 2 per point". Named one by
+        # one with the words that make it so, and the per-point row must exist.
+        once = STATED_ONCE_BESIDE_A_PER_POINT_ROW.get((row["Node"], row["Stat"]))
+        if min_points == 1 and once and once in sentence and any(
+                other["Node"] == row["Node"] and other["Stat"] == row["Stat"]
+                and not int(float(other.get("MinPoints", 0) or 0)) for other in effects):
+            continue
         said = [int(n) for n in AT_N_POINTS.findall(sentence)]
         # OR A STEP OF A "FOR EVERY N POINTS" SERIES, at a multiple of its N.
         steps = [int(n) for n in FOR_EVERY_N_POINTS.findall(sentence)]

@@ -4029,6 +4029,51 @@ public:
 	float SecondsSinceFervourSpent() const;
 
 	/**
+	 * The stat holding the share of each spend of Fervour that returns `FervourReturnedAfterSeconds` later, in per
+	 * cent: Cinders Kept, "3% per point of the Fervour you spend returns to you 4 seconds later". The Death trees' slice
+	 * C3c (2026-11-25). Read by `NoteFervourSpent` with the spending skill's tags; no gameplay attribute and no base.
+	 */
+	static const TCHAR* FervourSpentReturnedPercentStat;
+
+	/** How long after a spend its returned share arrives: Cinders Kept's "4 seconds later". */
+	static constexpr float FervourReturnedAfterSeconds = 4.0f;
+
+	/**
+	 * Add to the pool every returned share of a spend that is due by now, as far as the Fervour that may be held
+	 * allows, and forget it. Run on the regeneration step, so a share lands up to one step after it is due. Not scaled
+	 * by how fast the class resource generates: it is Fervour coming back, not Fervour made. Returns what was added.
+	 */
+	float ReturnFervourDue();
+
+	/** The Fervour still waiting to return, every share due or not, for tests and the death that forgets it. */
+	float FervourWaitingToReturn() const;
+
+	/**
+	 * The stat holding the seconds between two lethal blows that Fervour saves: Phylactery, "A blow that would kill
+	 * you instead spends all your Fervour (at least 50) and leaves you at that many percent of your health. Once every
+	 * 60 seconds." The Death trees' slice C3c (2026-11-25). Above nought means the save is held. No gameplay attribute
+	 * and no base.
+	 */
+	static const TCHAR* FervourLethalSaveEverySecondsStat;
+
+	/** The least Fervour Phylactery's save needs held: "(at least 50)". */
+	static constexpr float FervourLethalSaveLeast = 50.0f;
+
+	/**
+	 * Whether a lethal blow is saved by spending Fervour now: the stat is held, its seconds have passed since the last
+	 * such save, and at least `FervourLethalSaveLeast` is held.
+	 */
+	bool MaySaveLethalBlowWithFervour() const;
+
+	/**
+	 * Take every Fervour held for Phylactery's save and start its wait, when `MaySaveLethalBlowWithFervour`; returns
+	 * what was taken, nought when nothing was. RAISES NOTHING: the caller sets health and then calls
+	 * `NoteFervourSpent`, so a row healing on the spend heals on top of the health the save leaves rather than being
+	 * written over by it. `UCataclysmVitalAttributeSet` is the caller.
+	 */
+	float TakeFervourForLethalSave();
+
+	/**
 	 * Whether the decay after the last kill is still held off: true until the time the last kill's grace ran to, and
 	 * false for a character that has never killed, whose Fervour came from somewhere else and decays at once.
 	 */
@@ -5738,6 +5783,12 @@ protected:
 
 	/** When this character last spent Fervour, in world seconds. Negative means never. See `NoteFervourSpent`. */
 	float LastFervourSpentAtSeconds = -1.0f;
+
+	/** Each returned share of a spend still to come: when it is due, in world seconds, and how much. Cinders Kept. */
+	TArray<TPair<float, float>> FervourToReturn;
+
+	/** When Phylactery's save may next be made, in world seconds. Negative means now. */
+	float FervourLethalSaveNextAllowedSeconds = -1.0f;
 
 	/**
 	 * Until when, in world seconds, the decay after the last kill is held off. Negative means never held, which is a

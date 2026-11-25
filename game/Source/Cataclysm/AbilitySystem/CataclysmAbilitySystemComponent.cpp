@@ -3118,6 +3118,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LastOwnKillAtSeconds = -1.0f;
 	KillDecayHeldUntilSeconds = -1.0f;
 	LastFervourSpentAtSeconds = -1.0f;
+	// AND CINDERS KEPT'S SHARES STILL TO RETURN, and Phylactery's wait, as Nothing Stops It's wait is cleared (slice
+	// C3c, 2026-11-25). A share spent before a death does not arrive after the revival.
+	FervourToReturn.Reset();
+	FervourLethalSaveNextAllowedSeconds = -1.0f;
 	// AND WHO HAS STRUCK IT, so a revived character is "not yet struck" by
 	// everyone again. Issue #1815.
 	StruckBy.Reset();
@@ -3899,8 +3903,98 @@ void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGam
 	if (const UWorld* World = GetWorld())
 	{
 		LastFervourSpentAtSeconds = World->GetTimeSeconds();
+
+		// CINDERS KEPT: a share of every spend comes back later, Bound Offering's and Phylactery's included, since
+		// each counts as Fervour spent. Asked with the spending skill's tags, as a stat about a skill's use is.
+		const FGameplayTagContainer& Tags = SpendingTags ? *SpendingTags : FGameplayTagContainer::EmptyContainer;
+		const float Returned = StatForSkill(FName(FervourSpentReturnedPercentStat), Tags, 0.0f);
+		if (Returned > 0.0f)
+		{
+			FervourToReturn.Emplace(World->GetTimeSeconds() + FervourReturnedAfterSeconds,
+									Amount * Returned / 100.0f);
+		}
 	}
 	ActOnEvent(FName(TEXT("fervour_spent")), SpendingTags, Amount);
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::FervourSpentReturnedPercentStat = TEXT("fervour_spent_returned_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourLethalSaveEverySecondsStat =
+	TEXT("fervour_lethal_save_every_seconds");
+
+float UCataclysmAbilitySystemComponent::ReturnFervourDue()
+{
+	const UWorld* World = GetWorld();
+	if (!World || FervourToReturn.IsEmpty())
+	{
+		return 0.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Due = 0.0f;
+	FervourToReturn.RemoveAll([Now, &Due](const TPair<float, float>& Share)
+	{
+		if (Share.Key <= Now)
+		{
+			Due += Share.Value;
+			return true;
+		}
+		return false;
+	});
+	const UCataclysmClassResourceAttributeSet* Resource = GetSet<UCataclysmClassResourceAttributeSet>();
+	if (Due <= 0.0f || !Resource)
+	{
+		return 0.0f;
+	}
+	// CLAMPED BEFORE IT IS WRITTEN to what may be held, the rule every write to the pool in `UCataclysmFervour`
+	// follows: a share returning to a full bar is lost, as a gain to a full bar is.
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = GetNumericAttribute(Pool);
+	const float Change = FMath::Clamp(Before + Due, 0.0f, Resource->MaximumClassResourceAsked()) - Before;
+	if (Change <= 0.0f)
+	{
+		return 0.0f;
+	}
+	ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmAbilitySystemComponent::FervourWaitingToReturn() const
+{
+	float Waiting = 0.0f;
+	for (const TPair<float, float>& Share : FervourToReturn)
+	{
+		Waiting += Share.Value;
+	}
+	return Waiting;
+}
+
+bool UCataclysmAbilitySystemComponent::MaySaveLethalBlowWithFervour() const
+{
+	const UWorld* World = GetWorld();
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	if (!World || !HasAttributeSetForAttribute(Pool)
+		|| StatForSkill(FName(FervourLethalSaveEverySecondsStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return false;
+	}
+	if (FervourLethalSaveNextAllowedSeconds >= 0.0f && World->GetTimeSeconds() < FervourLethalSaveNextAllowedSeconds)
+	{
+		return false;
+	}
+	return GetNumericAttribute(Pool) >= FervourLethalSaveLeast;
+}
+
+float UCataclysmAbilitySystemComponent::TakeFervourForLethalSave()
+{
+	if (!MaySaveLethalBlowWithFervour())
+	{
+		return 0.0f;
+	}
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Held = GetNumericAttribute(Pool);
+	ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Held);
+	FervourLethalSaveNextAllowedSeconds = GetWorld()->GetTimeSeconds()
+		+ StatForSkill(FName(FervourLethalSaveEverySecondsStat), FGameplayTagContainer(), 0.0f);
+	return Held;
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceFervourSpent() const
@@ -5042,9 +5136,10 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 		// off the cooldowns of your skills that did not spend it". The Death trees' slice C3b. Read off the event's
 		// `Slot.*` tag, as a reset of every other reads it.
 		//
-		// A SPEND NAMING NO SKILL LEAVES NOTHING OUT, a judgement of slice C3b: none of the skills spent it. Bound
-		// Offering's reserve held for a warhound or a risen imp is such a spend. A reset of every other clears nothing
-		// then (ruled 2026-09-25), because "reset all other skill cooldowns" is said of one skill's use.
+		// A SPEND NAMING NO SKILL LEAVES NOTHING OUT, ruled by the coordinating session on 2026-11-25: none of the
+		// skills spent it. Bound Offering's reserve held for a warhound or a risen imp is such a spend. A reset of every
+		// other clears nothing then (ruled 2026-09-25), and the two read differently ON PURPOSE: "reset all other skill
+		// cooldowns" is said of one skill's use, and "your skills that did not spend it" of every skill but a spender.
 		const ECataclysmAbilitySlot Spender = SlotOfTheEventsSkill(EventTags);
 		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
 		{

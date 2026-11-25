@@ -534,3 +534,7 @@ SoulCollector_basic_d_b2#1,SoulCollector_basic_d_b2,,,1.0,,,0.0,,0.0,0,-1.0,0,0,
 SoulCollector_keystone_d_kA#1,SoulCollector_keystone_d_kA,,,10.0,,,0.0,,0.0,0,-1.0,0,0,smite_nearby,fervour_spent,for_each_of_event_amount,0.0,0.0,0.0,0,,0.0,0.0,10.0,,0.0,0
 SoulCollector_keystone_d_kC#1,SoulCollector_keystone_d_kC,,,1.0,,,0.0,,0.0,0,-1.0,0,0,cooldown_reduce_others,fervour_spent,for_each_ten_of_event_amount,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_d_c0#1,SoulCollector_basic_d_c0,reserved_fervour_spent_percent,flat,15.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_d_c1#1,SoulCollector_basic_d_c1,fervour_spent_returned_percent,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_100#2,SoulCollector_capstone_100,fervour_lethal_save_every_seconds,flat,60.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_c0#1,Shadow_basic_c_c0,movement_on_cooldown_fervour_cost,flat,40.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_c0#2,Shadow_basic_c_c0,movement_on_cooldown_fervour_cost,flat,-2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

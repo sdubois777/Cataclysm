@@ -1118,6 +1118,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// The Death trees' slice C3b: Bound Offering's share of a reserve held that counts as Fervour spent, read by
 		// UCataclysmCommand::HoldReserve with the making skill's tags. No gameplay attribute and no base.
 		TEXT("reserved_fervour_spent_percent"),
+		// The Death trees' slice C3c: Cinders Kept's share of a spend returned later, read by
+		// UCataclysmAbilitySystemComponent::NoteFervourSpent; Phylactery's seconds between two saves, read by
+		// MaySaveLethalBlowWithFervour; and Borrowed Step's Fervour for a movement skill on cooldown, read by
+		// UCataclysmGameplayAbility::FervourToUseOnCooldown, whose second row is negative. No attribute and no base.
+		TEXT("fervour_spent_returned_percent"),
+		TEXT("fervour_lethal_save_every_seconds"),
+		TEXT("movement_on_cooldown_fervour_cost"),
 	};
 	return Stats;
 }

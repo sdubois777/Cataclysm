@@ -242,6 +242,20 @@ public:
 	static void ApplyCooldownEffect(UAbilitySystemComponent* AbilitySystem,
 									const FGameplayTag& Tag, float Seconds);
 
+	/**
+	 * The stat holding the Fervour a movement skill costs to use while its cooldown runs: the Shadow's Borrowed Step,
+	 * "Your movement skill can be used while it is on cooldown by spending 40 Fervour, reduced by 2 per point". The
+	 * Death trees' slice C3c (2026-11-25). Two rows make it, 40 once and -2 a point. No gameplay attribute and no base.
+	 */
+	static const TCHAR* MovementOnCooldownFervourCostStat;
+
+	/**
+	 * What this skill costs in Fervour to use while its cooldown runs: `MovementOnCooldownFervourCostStat` asked with
+	 * its tags for a skill made for the movement slot, on whichever key it sits, and nought for every other skill or
+	 * a character without the node. `CheckCooldown` lets a use through on it and `ApplyCooldown` takes it.
+	 */
+	float FervourToUseOnCooldown(const UAbilitySystemComponent* AbilitySystem) const;
+
 	/** Mana one use costs for the character holding it, at their level: see
 	 *  `LevelForCosts`. Before any stat row; `ManaCostFor` is what is charged. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")

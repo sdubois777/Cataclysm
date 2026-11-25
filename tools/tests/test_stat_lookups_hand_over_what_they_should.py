@@ -387,6 +387,23 @@ INVENTORY = {
         "spent, asked with the making skill's tags when a skill made the "
         'follower and none otherwise; no attribute, so nought is the '
         "fallback, and no blow is in hand. The Death trees' slice C3b",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(FervourSpentReturnedPercentStat), Tags, 0.0f'):
+        "Cinders Kept's share of a spend returned later, asked with the "
+        "spending skill's tags when a skill spent and none otherwise; no "
+        "attribute, so nought is the fallback, and no blow is in hand. The "
+        "Death trees' slice C3c",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(FervourLethalSaveEverySecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Phylactery's seconds between two saves, asked with no tags because "
+        'the save is for dying and not for a skill; no attribute, and the '
+        "blow it saves is not handed over: the save reads no blow's kind. The "
+        "Death trees' slice C3c",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(MovementOnCooldownFervourCostStat), SkillTagsForStats(), 0.0f'):
+        "Borrowed Step's Fervour for a movement skill used on cooldown, asked "
+        "with the skill's own tags; no attribute, so nought is the fallback, "
+        "and no blow is in hand. The Death trees' slice C3c",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "

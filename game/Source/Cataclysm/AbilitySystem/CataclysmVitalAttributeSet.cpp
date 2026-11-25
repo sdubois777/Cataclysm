@@ -1610,6 +1610,30 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					bSavedFromALethalBlow = true;
 					Resolved.DealtToHealth = GetHealth() - 1.0f;
 				}
+
+				// AND THE SOUL COLLECTOR'S PHYLACTERY, "A blow that would kill you instead spends all your Fervour (at
+				// least 50) and leaves you at that many percent of your health. Once every 60 seconds." The Death
+				// trees' slice C3c (2026-11-25). LAST OF THE SAVES, a judgement of that slice: it costs everything
+				// held, so a save that costs less is asked first. A TICK TOO, as the reprieve above reads "would be
+				// killed", a second judgement. The blow then takes nothing and health is SET to the share, so a
+				// character hurt below it is raised to it; the spend is raised after, so a row healing on it (Feast)
+				// heals on top. Nothing of a saved blow is delayed, as for the saves above.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& Guarded->MaySaveLethalBlowWithFervour() && EmptiesHealthLessTheDelayedShare())
+				{
+					const float Spent = Guarded->TakeFervourForLethalSave();
+					if (Spent > 0.0f)
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = 0.0f;
+						// THE WRITE IS NOTICED BY `PostAttributeBaseChange`, which every write to health reaches, so no
+						// call of its own is made here.
+						SetHealth(FMath::Clamp(GetMaxHealth() * Spent / 100.0f, 1.0f, GetMaxHealth()));
+						Guarded->NoteFervourSpent(Spent);
+					}
+				}
 			}
 
 			// AND A CREATURE NO DAMAGE REACHES: The Reaper. Issues #1820 and #41. The blow
