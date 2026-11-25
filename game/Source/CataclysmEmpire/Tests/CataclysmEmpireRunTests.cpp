@@ -1923,12 +1923,14 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 		// **QUEST DUNGEONS ARE NOT COUNTED**, since 2026-10-21. A fall moves a
 		// Quest dungeon rather than absorbing it, and the Dungeon City counts
 		// only what it absorbed. Until then every dungeon standing was counted.
-		TMap<int32, int32> StandingOn;
+		//
+		// BY ID, since issue #2865, so the ones that hit and left before the fall can be taken off below.
+		TMap<int32, TArray<int32>> StandingOn;
 		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 		{
 			if (Dungeon.Type != ECataclysmDungeonType::Quest)
 			{
-				++StandingOn.FindOrAdd(Dungeon.CityId);
+				StandingOn.FindOrAdd(Dungeon.CityId).Add(Dungeon.DungeonId);
 			}
 		}
 
@@ -1963,7 +1965,21 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 					Report.Day, Report.Fallen.Num(), ArrivedAndAbsorbed, *City->Name));
 			}
 
-			const int32 WasCarrying = StandingOn.FindRef(CityId) + (Report.Fallen.Num() == 1 ? ArrivedAndAbsorbed : 0);
+			// LESS WHAT HIT AND LEFT BEFORE THE FALL. An ordinary dungeon whose hit does not fell its city leaves the map
+			// (`ResolveDungeon`, "IT HIT ITS CITY, SO IT LEAVES THE MAP"), so when a second fells the city later the same
+			// day the first is not there to be absorbed: it resolved today and is not in the day's `Absorbed`. Window
+			// 2865-w1 failed here, expecting 2 bosses against 1: the surge rulings of issue #2865 bring more waves, and
+			// this run then reaches a day with two resolves on one city. Until then this counted every dungeon that
+			// stood on the city when the day began.
+			int32 StoodBefore = 0;
+			int32 HitAndLeft = 0;
+			for (const int32 StoodId : StandingOn.FindRef(CityId))
+			{
+				++StoodBefore;
+				HitAndLeft += (Report.Resolved.Contains(StoodId) && !Report.Absorbed.Contains(StoodId)) ? 1 : 0;
+			}
+			const int32 WasCarrying =
+				StoodBefore - HitAndLeft + (Report.Fallen.Num() == 1 ? ArrivedAndAbsorbed : 0);
 
 			// ONE DUNGEON CITY STANDS ON IT, AND NOTHING ELSE BUT A QUEST
 			// DUNGEON THAT FOUND NOWHERE TO GO. Until 2026-10-21 this asserted
@@ -2030,6 +2046,10 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 			// never nought while every dungeon on the city was absorbed.
 			if (bCountsReadable)
 			{
+				AddInfo(FString::Printf(TEXT("FALL: day %d, %s: %d stood when the day began, %d hit and left before the "
+											 "fall, %d arrived that day and were absorbed; %d bosses"),
+										Report.Day, *City->Name, StoodBefore, HitAndLeft,
+										Report.Fallen.Num() == 1 ? ArrivedAndAbsorbed : 0, Left->Bosses));
 				TestEqual(TEXT("and one boss per dungeon that was standing and was absorbed, and at least one"),
 						  Left->Bosses, FMath::Max(1, WasCarrying));
 			}
@@ -9588,6 +9608,7 @@ bool FCataclysmEmpireRunDaysAwayTest::RunTest(const FString& Parameters)
 	Second.Hits = {AHit(12, 50.0f, 75.0f, true), AHit(4, 25.0f, 30.0f, false)};
 	Second.Fallen = {12};
 	Second.bSurged = true;
+	Second.Surges = 1; // A day a surge fired on, as `FireSurge` writes it: the days away count this since issue #2865.
 	Second.SurgeDungeons = 6;
 	FCataclysmDayReport& Third = Reports.AddDefaulted_GetRef();
 	Third.Fallen = {12};

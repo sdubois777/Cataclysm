@@ -3723,11 +3723,13 @@ and `tools/tests/test_surge_port.py`. For the retune: `Cataclysm.EnemyStrength.`
 
 ### SAID FIRST
 
-- **WRITTEN AND NOT COMPILED.** On `fix/empty-board-surge-2865`, cut from development `4d33f5994`, and since
+- **COMPILED AND RUN IN WINDOW 2865-w1 ON 2026-11-25: THREE TESTS FAILED, EACH A TEST FAULT**, fixed in its test file;
+  window 2865-w2 is registered for them and the proofs (both at the end of this entry). On
+  `fix/empty-board-surge-2865`, cut from development `4d33f5994`, and since
   2026-11-25 on `fix/empty-board-surge-2865-2`, which merges development `eb34af972` and then `be7ffb06e` into it by
   the coordinating session's instructions of that day: the inventory tabs (#2887), bug batches 1 and 2 (#2889), the Power Score and drop
   supply of issue #2853 (#2890) and skill selection (#2891). A merge and not a rebase, so the pushed branch is untouched.
-- **THE MEASUREMENTS AND THE RETUNE ARE PROVISIONAL.** The gear drop rarity fix (issue #2853) was not in, so the
+- **THE MEASUREMENTS AND THE RETUNE WERE PROVISIONAL UNTIL 2026-11-25.** The gear drop rarity fix (issue #2853) was not in, so the
   simulated player's power is not yet what the game will give once drops are fixed. **When #2853 lands, run
   `sim/analyse_opening.py` section 5 again** (the commands are in the retune section below) and move the Bulwark,
   Sanctuary and Pillar figures to what it then finds; the coordinating session ruled the retune provisional on that condition.
@@ -3736,7 +3738,10 @@ and `tools/tests/test_surge_port.py`. For the retune: `Cataclysm.EnemyStrength.`
   the reason: the fit's character holds no gear but the gear-level-0 Greataxe and takes its level from the experience
   it banks, and neither the campaigns nor the walk that fights each clear again loads `sim/cataclysm_sim/player_power.py`,
   `loot.py` or `affixes.py`, the model files #2853 changed. **So this measurement cannot see gear drops**, and running
-  it again after #2853 could not have moved it. Whether the figures stay provisional is the coordinating session's call.
+  it again after #2853 could not have moved it. **The coordinating session ruled on 2026-11-25 that they are no longer
+  provisional: Bulwark 0.10, Sanctuary 0.12 and Pillar 0.07 stand as measured, as play-test points like every other
+  tuned figure**, since #2853 only lowered how much gear a tier 1 player finds, which moves a real character nearer the
+  fit's gearless one and not further from it.
 - **EVERY CITY'S FALL NOW BRINGS A SURGE, and it costs a player with no empire tree about 2.7 more cities and 5 points
   of win rate at tier 1** (below). The owner ruled it on 2026-11-24; the coordinating session passed the tier 4 figures
   to the owner as information the same day.
@@ -4083,6 +4088,52 @@ alone first, then the whole suite, with the Python suite in parallel.
 | P6 | `IsDueOnCityFall` asks the gap again: `return bSurgeOnCityFall;` becomes `return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;` | every fall fires a surge | `TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge`, `ACityFallingTwentyFourDaysAfterASurgeStillBringsAWave`, `ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`, `TwoCitiesFallingOnOneDayBringTwoWaves`, `ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind`, `AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest`; and `ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity` if any of its first three fall days is within 25 days of a surge, which cannot be read. |
 
 Four builds a proof, so twelve for P1, P5 and P6.
+
+### Window 2865-w1, 2026-11-25, on `62612be63`: THREE TESTS FAILED, EACH A TEST FAULT
+
+Run by `.claude/windows/run_2865_w1.py` in this branch's worktree (its output `2865_run.out`, the whole suite's engine
+log `2865_suite_engine_62612be6.log`), under lock 2865-w1, released when it ended.
+
+- **The build:** `Build: Succeeded - 76 actions, 69 files compiled`.
+- **The groups alone: 11 of 12 passed.** `Cataclysm.EmpireRun.`: 71 performed, 69 succeeded, 2 failed (the first and
+  third below). Each other group performed its registered count, every one succeeding: `Cataclysm.DungeonMode.` 46,
+  `Cataclysm.Surge.` 54, `Cataclysm.DeathCost.` 9, `Cataclysm.EmpireScreen.` 16, `Cataclysm.PlayLoop.` 12,
+  `Cataclysm.EnemyStrength.` 9, `Cataclysm.EnemyBurn.` 4, `Cataclysm.EmpireTreeCity.` 21, `Cataclysm.EmpireTreeEvents.`
+  15, `Cataclysm.WalkFromTheScreen.` 6 and `Cataclysm.DungeonModifierEffects.` 785.
+- **The whole suite:** `5474 tests performed, 5471 succeeded, 3 failed`, the three below; declared 5474 at `62612be63`,
+  gap 0; 58 skipped halves, as registered; `Test saves: 874 written and deleted, 0 left behind`, as registered.
+- **Python, alongside, on `62612be63`:** `8502 passed, 10 skipped in 433.85s`; the JUnit file agrees, 8,512 tests,
+  0 failures, 0 errors, 10 skipped. Ruff: `All checks passed!`.
+- **The proofs did not run:** the runner stops before them when anything has failed.
+- **The three tests the third sweep read** passed and printed: `RESPEC KEPT: 800.0 of 1000.0, "Outpost 80%"; after a
+  hit of 100.0, 700.0`; `ENDURING KEPT: with the node 2880.0 of 3600.0, then 2976.0 of 3720.0; without 2880.0 of
+  3600.0, then 2880.0 of 3600.0`; and `WALK FALLEN`, a fallen Outpost's Fallen City dungeon of 20 floors walked from
+  its screen on floor 1 with no refusal.
+
+**The three failures, each a test fault, each fixed in its test file only**, by the coordinating session's approval of
+2026-11-25. No game rule was found wrong.
+
+| Test | Failed with | Why | Fixed |
+| :-- | :-- | :-- | :-- |
+| `Cataclysm.EmpireRun.TheDaysAwayAreTotalledFromTheDaysOwnReports` | "Expected 'one surge' to be 1, but it was 0" | Its day report is built by hand and sets `bSurged` and not `Surges`, which `NoteDaysAway` counts since this branch, because a day can hold several surges. `FireSurge` sets both | `Second.Surges = 1;` |
+| `Cataclysm.Travel.TheMapsReturnLineSaysWhatTheWalksEndDid` | its return line without "; a surge brought 6 dungeons" | The same, in its own report built by hand | `Day.Surges = 1;` |
+| `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself` | "Expected 'and one boss per dungeon that was standing and was absorbed, and at least one' to be 2, but it was 1" | **Read from the code; the run printed nothing about that day.** The test counted every ordinary dungeon standing on the city when the day began. One whose hit does not fell its city leaves the map (`ResolveDungeon`), so when a second fells the city later the same day the first is not absorbed, and the Dungeon City's bosses are what was absorbed. With more waves this run reaches such a day | The count is less the dungeons that stood there and are in the day's `Resolved` and not in its `Absorbed`, by id. An AddInfo line, `FALL: day ..., ...: N stood when the day began, N hit and left before the fall, N arrived that day and were absorbed; N bosses`, is printed for every fall checked, so a run shows the case rather than this reading |
+
+**The sweeps missed the first two:** they searched for tests that advance a run, and these two call `NoteDaysAway` with
+reports built by hand. A search of the game's tests for `bSurged =` finds exactly these two.
+
+### Registered for window 2865-w2
+
+**Nothing here has run.** By the coordinating session's approval of 2026-11-25. Only test files changed after w1's whole
+suite, so by the narrowed re-run rule there is no second whole suite: w1's stands for every other test.
+
+- **The build.** Predicted: succeeds, compiling what includes `CataclysmEmpireRunTests.cpp` and
+  `CataclysmSaveLoadTests.cpp`, and nothing of the game's own code.
+- **`Cataclysm.EmpireRun.` alone:** 71 performed, 71 succeeded, 0 failed. Every `FALL:` line whose "hit and left" is
+  not 0 is quoted in the record; if no such fall occurs, the record says so, because the third fix is then unobserved.
+- **`Cataclysm.Travel.` alone:** 10 performed, 10 succeeded, 0 failed (10 in window ss2-w1's log; 9 of 10 passed in w1).
+- **Then the C++ proofs P1, P5 and P6**, as registered in the table above, with `test_prefix="Cataclysm.EmpireRun."`.
+- **Python, on the head with these fixes**, all but this line, with a JUnit file: PYTHON_LINE_W2.
 
 ---
 
