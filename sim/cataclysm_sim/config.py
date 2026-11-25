@@ -764,6 +764,33 @@ class TuningConfig:
         "Void": "Hollow",
     })
 
+    # --- Demonic's Infernal Rifts (Hell on Earth, issue #51) ------------
+    #
+    # THE OWNER'S RULINGS OF 2026-11-24, on issue #51 (comment 7149391315), each
+    # the option they chose, verbatim:
+    #   Q1 "Rift = Quest dungeon (Recommended)": a Rift IS a Demonic Quest
+    #      dungeon. Sealing one is one quest objective; it is Elite, hits its
+    #      city on its timer and moves when its city falls, as any Quest
+    #      dungeon does.
+    #   Q3/Q4 "Anywhere but the Pillar (Recommended)": it opens on any standing
+    #      city but the Pillar, behind the front included, by the surge's tier
+    #      weights (`SURGE_TARGET_WEIGHT`). Every 5 days from the day it opened,
+    #      not reset when it moves, an unsealed Rift sends an ordinary Basic
+    #      Demonic dungeon, made as a surge makes one, to an adjacent city a
+    #      surge could target; nothing when no neighbour qualifies.
+    #   Q5 "Every death, no gap (Recommended)": each death in a Rift brings an
+    #      ordinary surge at once, with no least-interval brake.
+    #
+    # OFF BY DEFAULT UNTIL THE MEASUREMENT IS ACCEPTED AND THE GAME HAS THEM
+    # (slice B2). Nothing else here reads these three while `demonic_rifts` is
+    # off, so every figure measured before them is unchanged.
+    demonic_rifts: bool = False
+    #: Days between an unsealed Rift's dungeons, counted from the day it opened.
+    #: The design's 5 (section XI). 0 sends none.
+    rift_spawn_every_days: int = 5
+    #: Whether a death in a Rift brings an ordinary surge at once.
+    rift_death_brings_surge: bool = True
+
     # --- the Siege sub-type ----------------------------------------------
     #
     # THE ONE PLACE IN THIS MODEL WHERE DAMAGE IS STILL A SHARE OF A CITY'S
