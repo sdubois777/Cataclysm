@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
