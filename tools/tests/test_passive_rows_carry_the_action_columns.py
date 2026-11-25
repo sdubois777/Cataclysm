@@ -301,8 +301,25 @@ def test_an_empty_chance_is_every_time_and_leaves_an_existing_row_as_it_was(tmp_
     {"Stat": "armor", "Value_Kind": "flat", "Value_Per_Point": 3},
 ])
 def test_a_chance_is_refused_on_a_row_that_does_not_move_the_class_resource(tmp_path, cells):
-    with pytest.raises(gen.DataError, match="A chance is read by a 'class_resource' row only"):
+    with pytest.raises(gen.DataError, match="A chance is read by a 'class_resource' row and the action"):
         read(tmp_path, [row(Node=BLOCK_NODE, Chance_Percent=2, **cells)])
+
+
+def test_a_chance_is_read_on_the_doubled_evasion_too(tmp_path):
+    """The Death trees' slice C6b4 (2026-11-25), as ruled: Twice Answered's `next_hit_critical_twice` on `dodge`,
+    its value the count, 2. THE CONTROL is the refusal above, on any other action."""
+    out = read(tmp_path, [row(Node=BLOCK_NODE, Action="next_hit_critical_twice", Action_Event="dodge",
+                              Value_Per_Point=2, Chance_Percent=5)])
+    assert (out[0]["Action"], out[0]["ValuePerPoint"], out[0]["ChancePercent"]) == ("next_hit_critical_twice", 2.0, 5.0)
+
+
+@pytest.mark.parametrize("cells, refused", [
+    ({"Action_Event": "kill", "Value_Per_Point": 2}, "Only an evasion does"),
+    ({"Action_Event": "dodge", "Value_Per_Point": 3}, "It holds 2 and no other number"),
+])
+def test_the_doubled_evasion_is_refused_off_an_evasion_and_at_any_count_but_two(tmp_path, cells, refused):
+    with pytest.raises(gen.DataError, match=refused):
+        read(tmp_path, [row(Node=BLOCK_NODE, Action="next_hit_critical_twice", Chance_Percent=5, **cells)])
 
 
 @pytest.mark.parametrize("chance", [0, -1, 101])

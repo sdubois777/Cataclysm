@@ -139,3 +139,26 @@ def test_no_shipped_row_is_refused_by_the_new_rule(sheet):
     assert not problems, (
         f"{len(problems)} shipped row(s) in {path.name} carry a Scale on a stat "
         f"nothing asks for:\n" + "\n".join(f"  {p}" for p in problems))
+
+
+def test_every_probe_a_table_names_is_declared_above_the_table() -> None:
+    """A probe named in a probe table must be declared or defined ABOVE the table, or the C++ does not compile.
+
+    THE DEATH TREES' SLICE C6b4 (2026-11-25) found slice C6a's `ProbeScaledProjectileCount` named in
+    `ScaledProbes()` about 1,300 lines before its definition. Continuous integration compiles no C++ and no window had
+    compiled C6a, so nothing reported it. Read as text: every `&ProbeName}` against the first line that declares
+    (`void ProbeName(FAutomationTestBase& Test);`) or defines it.
+    """
+    source = (REPO_ROOT / "game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp").read_text(
+        encoding="utf-8").split("\n")
+    first_seen: dict[str, int] = {}
+    for number, line in enumerate(source, 1):
+        match = re.match(r"\s*(?:static\s+)?void (Probe\w+)\(FAutomationTestBase& \w*\)\s*;?\s*$", line)
+        if match:
+            first_seen.setdefault(match.group(1), number)
+    used = [(name, number) for number, line in enumerate(source, 1)
+            for name in re.findall(r"&(Probe\w+)\}", line)]
+    assert len(used) > 50, f"the reader found only {len(used)} probes named in tables"
+    late = [(name, number, first_seen.get(name)) for name, number in used
+            if first_seen.get(name) is None or first_seen[name] > number]
+    assert not late, f"named in a table before any declaration (name, table line, first declaration): {late}"

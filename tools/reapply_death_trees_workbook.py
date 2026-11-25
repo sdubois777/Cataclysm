@@ -726,6 +726,17 @@ NODES: tuple[Node, ...] = (
          (R(DECAY, "removed", 1, cond="no_enemy_in_reach", reach=20),)),
     Node(SC + "basic_b_b2", "Vigil Over the Strong",
          (R(DECAY, "increased", -5, cond="enemy_of_rarity_in_reach", cond_value=1, reach=15),)),
+
+    # ---- SLICE C6b4 (2026-11-25): A POISON THAT LASTS, AND AN EVASION ANSWERED
+    # TWICE. Festering's Poison damage rises 1% for each second the enemy has
+    # stayed poisoned by you without a break, up to 10, at every 2nd point; Twice
+    # Answered rolls 5% a point on each evasion for the critical strike charge
+    # that evasion grants to hold two, as ruled.
+    Node(SH + "basic_a_a1", "Festering",
+         tuple(R("dot_damage", "increased", 1, tags="Keyword.DoT.Poison", scale="seconds_poisoned_by_you", step=1,
+                 cap=10, min_points=points) for points in (2, 4, 6, 8, 10))),
+    Node(SH + "basic_d_a1", "Twice Answered",
+         (A("next_hit_critical_twice", 2, event="dodge", chance_percent=5),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

@@ -739,7 +739,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 623 THE SAME DAY, for slice C6b3: Opening Found (two), Reaper's Due
 #: (two), Tear Loose, Read the Blow, Hunting Ground and Vigil Over the Strong.
-AUTHORED_ROWS = 623
+#:
+#: AND TO 629 THE SAME DAY, for slice C6b4: Festering (five, one at each 2nd
+#: point) and Twice Answered.
+AUTHORED_ROWS = 629
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1215,7 +1218,9 @@ AUTHORED_ROWS = 623
 #: AND TO 372 THE SAME DAY, for slice C6b3's Opening Found, Tear Loose, Read the
 #: Blow, Hunting Ground and Vigil Over the Strong. Reaper's Due is an option,
 #: counted in `AUTHORED_OPTIONS`.
-AUTHORED_NODES = 372
+#:
+#: AND TO 374 THE SAME DAY, for slice C6b4's Festering and Twice Answered.
+AUTHORED_NODES = 374
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2285,6 +2290,9 @@ SCALE_WORDS = {
     # Steady Count's "for each Fervour threshold you are at or above".
     "fervour_thresholds_reached": (("each fervour threshold",), None, None),
     "consecutive_hits": ((("hit in a row", "hits in a row"),), None, None),
+    # FESTERING, the Death trees' slice C6b4 (2026-11-25): "for each second the
+    # enemy has stayed poisoned by you without a break, up to 10 seconds".
+    "seconds_poisoned_by_you": (("for each second the enemy has stayed poisoned by you",), None, None),
 
     # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
     # nodes read it: "You deal 2% more damage for each enemy within 4 metres
@@ -3336,6 +3344,9 @@ ACTION_VALUE_IN_WORDS = {
     # outright", a chance of 100. The execute never takes a Boss; the engine
     # holds that inside the action.
     ("Shadow_capstone_200", "execute_target"): ("outright", 100.0),
+    # TWICE ANSWERED, the Death trees' slice C6b4 (2026-11-25): "to give you two
+    # critical strikes rather than one", a charge holding 2.
+    ("Shadow_basic_d_a1", "next_hit_critical_twice"): ("two critical strikes", 2.0),
     # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): the same words and
     # the same chance of 100.
     ("SoulCollector_capstone_100", "execute_target"): ("outright", 100.0),

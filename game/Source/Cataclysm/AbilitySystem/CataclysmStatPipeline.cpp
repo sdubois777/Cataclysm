@@ -207,6 +207,7 @@ namespace
 		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
 		{ TEXT("own_stacks"),          ECataclysmStatScale::PerOwnStack },
 		{ TEXT("consecutive_hits"),    ECataclysmStatScale::PerConsecutiveHit },
+		{ TEXT("seconds_poisoned_by_you"), ECataclysmStatScale::PerSecondPoisonedByYou },
 		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
 		{ TEXT("class_points_spent"),  ECataclysmStatScale::PerClassPointSpent },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
@@ -1964,6 +1965,15 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			? StackedValue(Modifier,
 						   Asking->ConsecutiveHitsOn(Modifier.StackKey, State.LookupTarget))
 			: 0.0f;
+	}
+
+	// AND THE WHOLE SECONDS THE TARGET OF THIS LOOKUP HAS CARRIED THE ASKER'S POISON WITHOUT A BREAK: Festering, the
+	// Death trees' slice C6b4 (2026-11-25). None for a lookup with no target or a creature not carrying it.
+	case ECataclysmStatScale::PerSecondPoisonedByYou:
+	{
+		const float Seconds =
+			UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker(State.AskingAbilitySystem, State.LookupTarget);
+		return Seconds > 0.0f ? StackedValue(Modifier, FMath::FloorToInt(Seconds)) : 0.0f;
 	}
 
 	// AND THE AURAS RUNNING, COUNTED THE SAME WAY. Issue #1686.

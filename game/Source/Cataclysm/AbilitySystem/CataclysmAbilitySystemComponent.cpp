@@ -4178,7 +4178,40 @@ int32 UCataclysmAbilitySystemComponent::CountBossHit(const AActor* Boss)
 bool UCataclysmAbilitySystemComponent::HoldsNextHitCritical() const
 {
 	const UWorld* World = GetWorld();
-	return World && NextHitCriticalUntilSeconds >= 0.0f && World->GetTimeSeconds() <= NextHitCriticalUntilSeconds;
+	return World && NextHitCriticalCharges > 0 && NextHitCriticalUntilSeconds >= 0.0f
+		&& World->GetTimeSeconds() <= NextHitCriticalUntilSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NotePoisonBeganBy(const AActor* Applier)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Applier)
+	{
+		return;
+	}
+	PoisonedByFrom.Add(Applier, World->GetTimeSeconds());
+}
+
+float UCataclysmAbilitySystemComponent::SecondsPoisonedBy(const AActor* Applier) const
+{
+	const UWorld* World = GetWorld();
+	const float* From = Applier ? PoisonedByFrom.Find(Applier) : nullptr;
+	// NOT CARRYING IT NOW IS NOT POISONED, whatever the record says: the record is restarted only when a Poison is next
+	// laid, so between a break and that it still holds the old time.
+	if (!World || !From || !UCataclysmDebuffs::CarriesPoisonLaidBy(GetAvatarActor(), Applier))
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *From);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker(const UAbilitySystemComponent* Asker,
+																 const AActor* Carrier)
+{
+	const UCataclysmAbilitySystemComponent* Carried =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Carrier));
+	const AActor* Applier = Asker ? Asker->GetAvatarActor() : nullptr;
+	return Carried && Applier ? Carried->SecondsPoisonedBy(Applier) : -1.0f;
 }
 
 float UCataclysmAbilitySystemComponent::TimesSizedByFervourHeld() const
@@ -5504,6 +5537,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction = 
 const TCHAR* UCataclysmAbilitySystemComponent::CriticalNextHitAction = TEXT("next_hit_critical");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceMovementAction = TEXT("cooldown_reduce_movement");
 const TCHAR* UCataclysmAbilitySystemComponent::FervourHoldExtendedAction = TEXT("fervour_hold_extended");
+const TCHAR* UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction = TEXT("next_hit_critical_twice");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
@@ -5830,16 +5864,22 @@ static TAutoConsoleVariable<float> CVarClassResourceChanceRoll(
  * is "always", the value every row written before the column carries. A chance of 100 is compared rather than rolled,
  * because `FRandRange` can return 100 itself, as every chance here is (issue #2201).
  */
-static bool PoolActionChanceComesUp(const FCataclysmPoolAction& Action)
+static bool ChancePercentComesUp(float ChancePercent)
 {
-	if (Action.Pool != ClassResourcePoolName || Action.ChancePercent <= 0.0f
-		|| Action.ChancePercent >= 100.0f)
+	if (ChancePercent <= 0.0f || ChancePercent >= 100.0f)
 	{
 		return true;
 	}
+	// THE SAME PINNED ROLL FOR EVERY ROW WITH A CHANCE PERCENT: a class resource row and, since the Death trees' slice
+	// C6b4 (2026-11-25), Twice Answered's doubled evasion. The console variable keeps the name it was given first.
 	const float Pinned = CVarClassResourceChanceRoll.GetValueOnAnyThread();
 	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
-	return Roll < Action.ChancePercent;
+	return Roll < ChancePercent;
+}
+
+static bool PoolActionChanceComesUp(const FCataclysmPoolAction& Action)
+{
+	return Action.Pool != ClassResourcePoolName || ChancePercentComesUp(Action.ChancePercent);
 }
 
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
@@ -7322,6 +7362,25 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	// Issue #1833: two copies share the row's count, and would otherwise each
 	// grant one and double the rate the sentence states.
 	TSet<FName> StackedThisEvent;
+	// WHETHER THIS EVASION'S CRITICAL STRIKE CHARGE HOLDS TWO: Twice Answered, the Death trees' slice C6b4
+	// (2026-11-25), as ruled. ROLLED HERE, BEFORE ANY ROW ACTS, so the charge granted below reads it whatever the
+	// table's order; once for each row that may roll, and the first success is enough. No wait of its own: it only
+	// changes the charge the same evasion grants, and an evasion granting none is given nothing.
+	bool bCriticalStrikesTwice = false;
+	if (bLanded)
+	{
+		for (const FCataclysmPoolAction& Listed : Firing)
+		{
+			if (Listed.bNextHitCriticalTwice && Listed.Event == Event
+				&& PoolActionAllowed(Listed, EventTags, EventTarget)
+				&& (!OnlyRowsWhoseKeyBegins || Listed.TriggerKey.ToString().StartsWith(OnlyRowsWhoseKeyBegins))
+				&& ChancePercentComesUp(Listed.ChancePercent))
+			{
+				bCriticalStrikesTwice = true;
+				break;
+			}
+		}
+	}
 	for (const FCataclysmPoolAction& Listed : Firing)
 	{
 		if (Listed.Event != Event || !PoolActionAllowed(Listed, EventTags, EventTarget)
@@ -7892,6 +7951,11 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// A KILL MAKES THE NEXT LANDED HIT WITHIN `Percent` SECONDS A CRITICAL STRIKE: Chain Execution, the Death trees'
 		// slice C4d1 (2026-11-25). Once per row per event, landed only; a grant inside the window sets it to the full
 		// window again rather than adding a second charge, as ruled.
+		// TWICE ANSWERED'S OWN ROW DOES NOTHING HERE: it was rolled before the loop.
+		if (Action.bNextHitCriticalTwice)
+		{
+			continue;
+		}
 		if (Action.bNextHitCritical)
 		{
 			const UWorld* World = GetWorld();
@@ -7902,6 +7966,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				NextHitCriticalUntilSeconds = Action.Percent > 0.0f ? World->GetTimeSeconds() + Action.Percent
 																	 : TNumericLimits<float>::Max();
+				// AND HOW MANY CRITICAL STRIKES IT HOLDS: the larger of what it held and this grant, two when this
+				// evasion was doubled above, never more (the Death trees' slice C6b4, as ruled). Only an evasion can be
+				// doubled: only `dodge` rolls the doubling.
+				NextHitCriticalCharges = FMath::Max(NextHitCriticalCharges, bCriticalStrikesTwice ? 2 : 1);
 			}
 			continue;
 		}

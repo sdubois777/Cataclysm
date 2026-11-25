@@ -161,6 +161,9 @@ CONSTANTS = {
     # cut, and the hold before decay lengthened on an evasion.
     "CooldownReduceMovementAction": "cooldown_reduce_movement",
     "FervourHoldExtendedAction": "fervour_hold_extended",
+    # AND THE DEATH TREES' SLICE C6b4 (2026-11-25): an evasion's critical
+    # strike charge doubled on a roll, Twice Answered.
+    "CriticalTwiceOnEvasionAction": "next_hit_critical_twice",
     # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
@@ -1082,9 +1085,10 @@ def test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is(
                      r"if \(Amount > 0\.0f && Action\.Pool == ClassResourcePoolName\)\s*\{\s*"
                      r"UCataclysmFervour::RaisePool\(this, Amount\);\s*return;\s*\}\s*if \(Amount > 0\.0f\)\s*\{\s*"
                      r"UCataclysmRegeneration::TopUp", engine, re.S)
-    assert re.search(r"if \(Action\.Pool != ClassResourcePoolName \|\| Action\.ChancePercent <= 0\.0f\s*"
-                     r"\|\| Action\.ChancePercent >= 100\.0f\)\s*\{\s*return true;\s*\}.*?return Roll < Action\.ChancePercent;",
-                     engine, re.S)
+    assert re.search(r"if \(ChancePercent <= 0\.0f \|\| ChancePercent >= 100\.0f\)\s*\{\s*return true;\s*\}"
+                     r".*?return Roll < ChancePercent;", engine, re.S)
+    assert re.search(r"return Action\.Pool != ClassResourcePoolName \|\| ChancePercentComesUp\(Action\.ChancePercent\);",
+                     engine)
     assert re.search(r"if \(!PoolActionChanceComesUp\(Action\)\)\s*\{\s*continue;\s*\}\s*"
                      r"ApplyPoolAction\(Action, EventTags, EventAmount\);\s*NoteTriggerFired\(Action\);", engine)
     assert re.search(r"else if \(PoolActionChanceComesUp\(Action\)\)\s*\{\s*ApplyPoolAction\(Action, nullptr, 0\.0f\);",
@@ -1124,6 +1128,40 @@ def test_the_attackers_rung_and_the_enemies_near_are_filled_and_judged() -> None
     assert re.search(r"State\.HostileRarityDistancesMetres\[Index\] <= ReachMetres\s*"
                      r"&& State\.HostileRarityRungs\.IsValidIndex\(Index\) && State\.HostileRarityRungs\[Index\] >= Rung",
                      pipeline)
+
+
+def test_a_doubled_evasion_and_an_unbroken_poison_are_recorded_and_read() -> None:
+    """The Death trees' slice C6b4 (2026-11-25), as ruled. Twice Answered: the doubling is rolled before the event's
+    rows act, its own row then does nothing, the charge grant takes the larger of what it held and 1 or 2, a use takes
+    one, and the charge is held only while it holds one. Festering: a Poison laid on a creature carrying none of the
+    applier's restarts the record, the record reads -1 when the creature carries none, and the scale reads whole
+    seconds of the lookup's target. Read from the code with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(Listed\.bNextHitCriticalTwice && Listed\.Event == Event\s*&& PoolActionAllowed\(Listed, "
+                     r"EventTags, EventTarget\).*?&& ChancePercentComesUp\(Listed\.ChancePercent\)\)\s*\{\s*"
+                     r"bCriticalStrikesTwice = true;", engine, re.S)
+    assert re.search(r"if \(Action\.bNextHitCriticalTwice\)\s*\{\s*continue;\s*\}\s*if \(Action\.bNextHitCritical\)",
+                     engine)
+    assert "NextHitCriticalCharges = FMath::Max(NextHitCriticalCharges, bCriticalStrikesTwice ? 2 : 1);" in engine
+    assert re.search(r"return World && NextHitCriticalCharges > 0 && NextHitCriticalUntilSeconds >= 0\.0f", engine)
+    assert re.search(r"if \(!World \|\| !From \|\| !UCataclysmDebuffs::CarriesPoisonLaidBy\(GetAvatarActor\(\), "
+                     r"Applier\)\)\s*\{\s*return -1\.0f;", engine)
+    header = code_without_comments(SOURCE.with_suffix(".h"))
+    assert re.search(r"NextHitCriticalCharges = FMath::Max\(0, NextHitCriticalCharges - 1\);\s*"
+                     r"if \(NextHitCriticalCharges == 0\)\s*\{\s*NextHitCriticalUntilSeconds = -1\.0f;", header)
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"EffectTag\.MatchesTag\(Poison\) && Instigator != Target\s*"
+                     r"&& !UCataclysmDebuffs::CarriesPoisonLaidBy\(Target, Instigator\)\)\s*\{\s*"
+                     r"if \(UCataclysmAbilitySystemComponent\* Poisoned = Cast<UCataclysmAbilitySystemComponent>"
+                     r"\(Defender\)\)\s*\{\s*Poisoned->NotePoisonBeganBy\(Instigator\);\s*\}\s*\}\s*"
+                     r"ApplyTypedSpec\(", effects)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatScale::PerSecondPoisonedByYou:\s*\{\s*const float Seconds =\s*"
+                     r"UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker\(State\.AskingAbilitySystem, "
+                     r"State\.LookupTarget\);\s*return Seconds > 0\.0f \? StackedValue\(Modifier, "
+                     r"FMath::FloorToInt\(Seconds\)\) : 0\.0f;", pipeline)
+    assert gen.NEXT_HIT_CRITICAL_TWICE_ACTION == "next_hit_critical_twice"
+    assert gen.NEXT_HIT_CRITICAL_TWICE_EVENTS == ("dodge",)
 
 
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:

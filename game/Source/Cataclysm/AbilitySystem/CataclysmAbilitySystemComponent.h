@@ -816,8 +816,42 @@ public:
 	 */
 	bool HoldsNextHitCritical() const;
 
-	/** Use up the Chain Execution charge, so the hit after is rolled as usual. */
-	void SpendNextHitCritical() { NextHitCriticalUntilSeconds = -1.0f; }
+	/**
+	 * Use up one critical strike of the charge, so the hit after is rolled as usual once none is left. The charge holds
+	 * two after an evasion Twice Answered doubled (the Death trees' slice C6b4, 2026-11-25), and one otherwise.
+	 */
+	void SpendNextHitCritical()
+	{
+		NextHitCriticalCharges = FMath::Max(0, NextHitCriticalCharges - 1);
+		if (NextHitCriticalCharges == 0)
+		{
+			NextHitCriticalUntilSeconds = -1.0f;
+		}
+	}
+
+	/** How many critical strikes the charge holds now: 0, 1 or 2. Read by tests. */
+	int32 NextHitCriticalChargesHeld() const { return HoldsNextHitCritical() ? NextHitCriticalCharges : 0; }
+
+	/**
+	 * Record, on THIS character, that `Applier`'s Poison has just begun on it after a time carrying none of it.
+	 * Festering's record, kept on the character poisoned and keyed by the applier, as Grim Wake's is. The Death trees'
+	 * slice C6b4 (2026-11-25). Written by `UCataclysmSkillEffects::ApplyDamageOverTime` when it lays a Poison of
+	 * `Applier`'s on a character carrying none: a Poison laid while one is running continues the time, so a break is
+	 * a time with none of the applier's Poison on the character.
+	 */
+	void NotePoisonBeganBy(const AActor* Applier);
+
+	/**
+	 * How long `Applier`'s Poison has run on this character without a break, in seconds, or -1 when it carries none of
+	 * it. See `NotePoisonBeganBy`.
+	 */
+	float SecondsPoisonedBy(const AActor* Applier) const;
+
+	/**
+	 * `SecondsPoisonedBy` of the character `Carrier`, for the Poison of the avatar of `Asker`: the reading
+	 * `ECataclysmStatScale::PerSecondPoisonedByYou` takes. -1 when either is missing.
+	 */
+	static float SecondsPoisonedByAsker(const UAbilitySystemComponent* Asker, const AActor* Carrier);
 
 	/**
 	 * How many times a row based on `ForEachHundredClassResourceHeld` acts: the whole hundreds of the class resource this
@@ -1966,6 +2000,14 @@ public:
 	 * slice C6a (2026-11-25). `tools/generate_datatables.py` holds the same name as `FERVOUR_HOLD_EXTENDED_ACTION`.
 	 */
 	static const TCHAR* FervourHoldExtendedAction;
+
+	/**
+	 * The action that makes the critical strike charge an evasion grants hold two, on a roll of its Chance Percent:
+	 * the Shadow's Twice Answered. The Death trees' slice C6b4 (2026-11-25). `tools/generate_datatables.py` holds the
+	 * same name as `NEXT_HIT_CRITICAL_TWICE_ACTION`. NOT NAMED WITH "Next" FIRST, because
+	 * `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` reads such names as next-use actions.
+	 */
+	static const TCHAR* CriticalTwiceOnEvasionAction;
 
 	/**
 	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
@@ -6492,6 +6534,13 @@ protected:
 
 	/** When the Chain Execution charge runs out, in world seconds; -1 for none. See `HoldsNextHitCritical`. */
 	float NextHitCriticalUntilSeconds = -1.0f;
+
+	/** How many critical strikes that charge holds: 1, or 2 after a doubled evasion. See `SpendNextHitCritical`. */
+	int32 NextHitCriticalCharges = 0;
+
+	/** When each applier's Poison began on this character without a break since, in world seconds. See
+	 *  `NotePoisonBeganBy`. */
+	TMap<TWeakObjectPtr<const AActor>, float> PoisonedByFrom;
 
 	/** Set only around a `RearHits=1` skill's hit. See `SetStrikingFromBehindByRule`. */
 	bool bStrikingFromBehindByRule = false;

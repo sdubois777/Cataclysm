@@ -6268,12 +6268,20 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and 2 with one in it, so it is asked with the count"), WithOne, 2.0f, 0.01f);
 	}
 
+	// DECLARED HERE, AHEAD OF THE TABLE, because they are defined further down. Found by the Death trees' slice C6b4
+	// (2026-11-25): slice C6a's `ProbeScaledProjectileCount` was named in the table before its definition, which no
+	// window had yet compiled.
+	void ProbeScaledProjectileCount(FAutomationTestBase& Test);
+	void ProbeScaledDotDamage(FAutomationTestBase& Test);
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
 			{TEXT("crowd_control_resistance"),   &ProbeScaledCrowdControlResistance},
 			// THE DEATH TREES' SLICE C6a (2026-11-25): Soul Barrage's projectiles by the Fervour held.
 			{TEXT("projectile_count"),           &ProbeScaledProjectileCount},
+			// AND SLICE C6b4: Festering's Poison damage by the seconds the creature has stayed poisoned.
+			{TEXT("dot_damage"),                 &ProbeScaledDotDamage},
 			{TEXT("skill_locked"),               &ProbeScaledSkillLocked},
 			{TEXT("attack_damage"),              &ProbeScaledAttackDamage},
 			{TEXT("spell_damage"),               &ProbeScaledSpellDamage},
@@ -7543,6 +7551,63 @@ namespace CataclysmStatExemptionTest
 		Holder.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 400.0f);
 		Test.TestEqual(TEXT("projectile_count is asked for, so below half health one is added"),
 					   Skill->ExtraProjectilesWithRows(), 1);
+	}
+
+	/**
+	 * `dot_damage`, scaled by the seconds the creature struck has stayed poisoned by the asker: the Shadow's Festering.
+	 * The Death trees' slice C6b4 (2026-11-25). Asked as a tick asks it in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`: once with the creature it lands on and once with no
+	 * target, the tick's figure taking the ratio. A real Poison of the holder's is laid on a real creature. At once the
+	 * ratio is 1 (no whole second yet); 3 seconds later, 1.03.
+	 */
+	void ProbeScaledDotDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		const FGameplayTag Poison = FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), false);
+		if (!Test.TestNotNull(TEXT("a creature"), Creature) || !Test.TestTrue(TEXT("the Poison tag"), Poison.IsValid()))
+		{
+			return;
+		}
+		Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Creature->SetHealth(1'000'000.0f);
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Increased;
+		Row.Source = ECataclysmModifierSource::PassiveKeystone;
+		Row.Value = 1.0f;
+		Row.Scale = ECataclysmStatScale::PerSecondPoisonedByYou;
+		Row.ScaleStep = 1.0f;
+		Row.ScaleMaxSteps = 10;
+		Row.RequiredTags.AddTag(Poison);
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("dot_damage")));
+		Line.Base = 100.0f;
+		Line.Modifiers = {Row};
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		if (!Test.TestTrue(TEXT("the holder's Poison is laid"),
+						   UCataclysmSkillEffects::ApplyDamageOverTime(Fighter.Actor, Creature, 1.0f, 30.0f, Poison,
+																	   /*bScalesWithInstigator=*/false)))
+		{
+			return;
+		}
+		const FGameplayTagContainer Tags(Poison);
+		const auto Ratio = [&Fighter, Creature, &Tags]()
+		{
+			const float OnThisTarget = Fighter.AbilitySystem->StatForSkill(
+				FName(TEXT("dot_damage")), Tags, 100.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Creature);
+			const float OnNoTarget = Fighter.AbilitySystem->StatForSkill(FName(TEXT("dot_damage")), Tags, 100.0f);
+			return OnNoTarget > 0.0f ? OnThisTarget / OnNoTarget : 0.0f;
+		};
+		Test.TestEqual(TEXT("dot_damage by the seconds poisoned: control, 1 at once"), Ratio(), 1.0f, 0.001f);
+		CataclysmTestWorld::RunClock(World, 3.05f);
+		Test.TestEqual(TEXT("and 1.03 after 3 seconds, so it is asked with the creature"), Ratio(), 1.03f, 0.001f);
 	}
 
 	/**

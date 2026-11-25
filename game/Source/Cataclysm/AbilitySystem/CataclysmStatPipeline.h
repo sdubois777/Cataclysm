@@ -2874,6 +2874,17 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerFervourThresholdReached
 		UMETA(DisplayName = "Per Fervour Threshold Reached"),
+
+	/**
+	 * Multiplied by the whole seconds the character asked about has carried the asker's Poison without a break: the
+	 * Shadow's Festering, "Poison you apply deals +1% increased damage for every 2 points for each second the enemy
+	 * has stayed poisoned by you without a break, up to 10 seconds". The Death trees' slice C6b4 (2026-11-25). Read
+	 * from the record `UCataclysmAbilitySystemComponent::NotePoisonBeganBy` keeps on the creature, through
+	 * `UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker`; a creature carrying none of the asker's Poison, and a
+	 * lookup with no target, count none. Capped by the row's `ScaleMaxSteps`.
+	 */
+	PerSecondPoisonedByYou
+		UMETA(DisplayName = "Per Second Poisoned By You"),
 };
 
 /**
@@ -5276,6 +5287,16 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bExtendFervourHold = false;
+
+	/**
+	 * Whether this row makes the critical strike charge an evasion grants hold TWO rather than one, on a roll of its
+	 * `ChancePercent`: the Shadow's Twice Answered, "Each evasion has a 5% chance per point to give you two critical
+	 * strikes rather than one". The Death trees' slice C6b4 (2026-11-25), as ruled. On `dodge`. ROLLED BEFORE THE
+	 * EVENT'S ROWS ACT, so the charge granted by the same evasion reads the result whatever the table's order. An
+	 * evasion that grants no charge is given nothing by it. See `UCataclysmAbilitySystemComponent::HoldsNextHitCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextHitCriticalTwice = false;
 
 	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the

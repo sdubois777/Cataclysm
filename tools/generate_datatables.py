@@ -5814,6 +5814,13 @@ SCALES = {
     # combat end it, so it takes no Stack Seconds.
     "consecutive_hits": (1.0, 1.0, "one hit"),
 
+    # "for each second the enemy has stayed poisoned by you without a break, up
+    # to 10 seconds" is `seconds_poisoned_by_you` with a step of 1 and a Scale
+    # Max Steps of 10: the Shadow's Festering, the Death trees' slice C6b4
+    # (2026-11-25). Whole seconds, read off the record kept on the creature
+    # asked about; none for one not carrying the asker's Poison.
+    "seconds_poisoned_by_you": (1.0, 1.0, "one second"),
+
     # "Take 5%-15% more damage per active aura" is `auras_held`, with a step of
     # 1. Issue #1686. Every aura skill running, however many can run at once;
     # two can today. The same 0 to 10 bound as the buff count above.
@@ -6164,11 +6171,14 @@ def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
     if not written:
         return 0.0
     value = number(written, "Chance Percent", index)
-    if action != CLASS_RESOURCE_POOL:
+    # AND TWICE ANSWERED'S ACTION, the Death trees' slice C6b4 (2026-11-25), as
+    # ruled. Nothing else reads a chance.
+    if action not in (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION):
         raise DataError(
             f"Passive Effects row {index}: {node} states a Chance Percent of "
             f"{written!r} on {'the action ' + repr(action) if action else 'a stat row'}. "
-            f"A chance is read by a {CLASS_RESOURCE_POOL!r} row only.")
+            f"A chance is read by a {CLASS_RESOURCE_POOL!r} row and the action "
+            f"{NEXT_HIT_CRITICAL_TWICE_ACTION!r} only.")
     if not 0.0 < value <= 100.0:
         raise DataError(
             f"Passive Effects row {index}: {node} has a Chance Percent of "
@@ -8001,6 +8011,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_fervour_hold_extended_action(index, who, action, event,
                                             fraction_of, kind, raw, headers)
         return
+    if action == NEXT_HIT_CRITICAL_TWICE_ACTION:
+        _check_next_hit_critical_twice_action(index, who, action, event,
+                                              fraction_of, kind, raw, headers)
+        return
     if action in TRAPS_NEARBY_ACTIONS:
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -8036,6 +8050,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {BLEED_LEFT_TO_STRONGEST_ACTION}; "
             f"or {NEXT_HIT_CRITICAL_ACTION}; "
             f"or {FERVOUR_HOLD_EXTENDED_ACTION}; "
+            f"or {NEXT_HIT_CRITICAL_TWICE_ACTION}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
@@ -8969,6 +8984,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != BLEED_LEFT_TO_STRONGEST_ACTION \
                 and action != NEXT_HIT_CRITICAL_ACTION \
                 and action != FERVOUR_HOLD_EXTENDED_ACTION \
+                and action != NEXT_HIT_CRITICAL_TWICE_ACTION \
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
@@ -9267,6 +9283,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} makes the next hit a "
                 f"critical strike for {low:g} to {high:g} seconds. The seconds "
                 f"are 0 (until used) up to {MAX_NEXT_HIT_CRITICAL_SECONDS:g}.")
+
+    # AND TWICE ANSWERED'S IS THE CRITICAL STRIKES THE CHARGE HOLDS, two and
+    # nothing else; its chance is the Chance Percent. The Death trees' slice C6b4.
+    if action == NEXT_HIT_CRITICAL_TWICE_ACTION:
+        if not (low == NEXT_HIT_CRITICAL_TWICE_COUNT and high == NEXT_HIT_CRITICAL_TWICE_COUNT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} doubles an evasion's "
+                f"critical strike charge to {low:g} to {high:g}. It holds "
+                f"{NEXT_HIT_CRITICAL_TWICE_COUNT:g} and no other number.")
 
     # AND KEEP THE COUNT'S IS THE SECONDS IT ADDS. The Death trees' slice C6a.
     if action == FERVOUR_HOLD_EXTENDED_ACTION:
@@ -10830,6 +10855,13 @@ STATS_WITH_AN_ASKER = frozenset({
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows`;
     # `ProbeScaledProjectileCount` measures it.
     "projectile_count",
+    # THE DEATH TREES' SLICE C6b4 (2026-11-25): Poison damage scaled by the
+    # seconds the creature struck has stayed poisoned by the asker, the Shadow's
+    # Festering. Asked by each tick in
+    # `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` with the creature
+    # it lands on and with no target, the tick taking the ratio;
+    # `ProbeScaledDotDamage` measures it.
+    "dot_damage",
     # THE DEATH TREES' SLICE C4a (2026-11-25): Fervour a kill pays, scaled by the
     # living enemies within 8 metres for the Soul Collector's Thinning the Herd.
     # Asked through the pipeline at the kill by `UCataclysmFervour::GainOnOwnKill`;
@@ -14679,6 +14711,15 @@ FERVOUR_HOLD_EXTENDED_EVENTS = ("dodge",)
 #: sentence is 1.
 MAX_FERVOUR_HOLD_EXTENDED_SECONDS = 10.0
 
+#: The critical strike charge an evasion grants holds two rather than one, on a
+#: roll of the row's Chance Percent: the Shadow's Twice Answered, the Death
+#: trees' slice C6b4 (2026-11-25), as ruled. Its value is the count, 2.
+#: `UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction` holds the
+#: same name. ON `dodge` AND NO OTHER EVENT: "each evasion".
+NEXT_HIT_CRITICAL_TWICE_ACTION = "next_hit_critical_twice"
+NEXT_HIT_CRITICAL_TWICE_EVENTS = ("dodge",)
+NEXT_HIT_CRITICAL_TWICE_COUNT = 2.0
+
 #: The enemy modifiers Wearer of the Dead can lend, in their fixed places,
 #: counted from 1: a `wearing_enemy_modifier` row's value names one. The Death
 #: trees' slice C4d3 (2026-11-25), as ruled (W1): the five built modifiers that
@@ -14816,6 +14857,30 @@ def _check_fervour_hold_extended_action(index: int, who: str, action: str,
                 f"Enchantment Effects row {index}: {who} lengthens the hold "
                 f"before decay and states {column} {written!r}. Its value is "
                 f"the seconds and nothing else, so the column must be empty.")
+
+
+def _check_next_hit_critical_twice_action(index: int, who: str, action: str,
+                                          event: str, fraction_of: str, kind: str,
+                                          raw, headers: dict[str, int]) -> None:
+    """Everything a Twice Answered row must say, and everything it must not.
+    The Death trees' slice C6b4 (2026-11-25). ON `dodge` ONLY; the count is
+    checked where the value is read, and the chance is the Chance Percent. A
+    fraction, a value kind and a scale each mean nothing here, so each is
+    refused rather than dropped.
+    """
+    if event not in NEXT_HIT_CRITICAL_TWICE_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} doubles a critical strike "
+            f"charge on the event {event or '(none)'!r}. Only an evasion does: "
+            f"{', '.join(NEXT_HIT_CRITICAL_TWICE_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} doubles a critical "
+                f"strike charge and states {column} {written!r}. Its value is "
+                f"the count and nothing else, so the column must be empty.")
 
 
 def _check_slain_burst_action(index: int, who: str, action: str, event: str,

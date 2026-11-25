@@ -622,3 +622,9 @@ SoulCollector_basic_b_b1#1,SoulCollector_basic_b_b1,,,1.0,,target_rarity_at_leas
 Shadow_basic_d_a0#1,Shadow_basic_d_a0,evasion,flat,1.0,,opponent_rarity_at_least,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_keystone_spine_002#1,Shadow_keystone_spine_002,fervour_kill_decay_per_second,removed,1.0,,no_enemy_in_reach,0.0,,0.0,0,20.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 SoulCollector_basic_b_b2#1,SoulCollector_basic_b_b2,fervour_kill_decay_per_second,increased,-5.0,,enemy_of_rarity_in_reach,1.0,,0.0,0,15.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_basic_a_a1#1,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poison,,0.0,seconds_poisoned_by_you,1.0,0,-1.0,2,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_basic_a_a1#2,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poison,,0.0,seconds_poisoned_by_you,1.0,0,-1.0,4,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_basic_a_a1#3,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poison,,0.0,seconds_poisoned_by_you,1.0,0,-1.0,6,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_basic_a_a1#4,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poison,,0.0,seconds_poisoned_by_you,1.0,0,-1.0,8,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_basic_a_a1#5,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poison,,0.0,seconds_poisoned_by_you,1.0,0,-1.0,10,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_basic_d_a1#1,Shadow_basic_d_a1,,,2.0,,,0.0,,0.0,0,-1.0,0,0,next_hit_critical_twice,dodge,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,5.0

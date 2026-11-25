@@ -3180,6 +3180,20 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// a spread copy, the trap's share, a minion's burn and converted damage. NOT ONE THE APPLIER LAYS ON ITSELF: the
 	// sentence is about "the enemy" and "them".
 	Delivery.bPricedFromItsAppliersStats = bScalesWithInstigator && Instigator != Target;
+
+	// A POISON BEGINNING ON A CHARACTER CARRYING NONE OF THE APPLIER'S STARTS FESTERING'S TIME AGAIN (the Death trees'
+	// slice C6b4, 2026-11-25): "each second the enemy has stayed poisoned by you without a break". Asked before the
+	// Poison is laid. One laid while another of the applier's runs continues the time; a refresh of a running one
+	// returned above. Not one a character lays on itself.
+	const FGameplayTag Poison = FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), false);
+	if (Poison.IsValid() && EffectTag.MatchesTag(Poison) && Instigator != Target
+		&& !UCataclysmDebuffs::CarriesPoisonLaidBy(Target, Instigator))
+	{
+		if (UCataclysmAbilitySystemComponent* Poisoned = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Poisoned->NotePoisonBeganBy(Instigator);
+		}
+	}
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	// AND A NECROSIS'S END IS LISTENED FOR, WHATEVER ENDS IT, because then it deals the healing it denied. Issue #920,

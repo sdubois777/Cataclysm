@@ -1617,6 +1617,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// slice C6a (2026-11-25). The value is the seconds.
 					Action.bExtendFervourHold = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::FervourHoldExtendedAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT DOUBLES AN EVASION'S CRITICAL STRIKE CHARGE ON A ROLL OF ITS CHANCE: Twice Answered,
+					// the Death trees' slice C6b4 (2026-11-25). The chance is the row's `ChancePercent`.
+					Action.bNextHitCriticalTwice = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
