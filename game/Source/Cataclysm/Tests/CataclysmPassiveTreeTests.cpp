@@ -22224,6 +22224,101 @@ bool FCataclysmStaunchRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThreadbareRowTest,
+	"Cataclysm.MasochistCostRows.ThreadbareReducesTheFervourARealMasochistsRegenerationRemovesAtOrBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_basic_ll_c1` Threadbare, as reworked by the project owner's
+ *  approval of 2026-11-24: "While you are at or below 50% health, Fervour removed
+ *  by your health regeneration is reduced by 10% per point." Six points, 60%.
+ *  Staunch's row with a condition: `fervour_lost_to_healing` increased -10 a
+ *  point, scoped to `Keyword.Regeneration`, under `health_at_or_below` 50. It
+ *  reaches play because `UCataclysmFervour::RateFor` asks the removal rate
+ *  through `StatForSkill` with the healing's tags and the character's state.
+ *  A short step of real regeneration from 45% health removes 0.4 as much Fervour
+ *  for each 1% restored; from three fifths, as much as without the node; and a
+ *  leech heal at 45%, which is not regeneration, is unchanged. */
+bool FCataclysmThreadbareRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmCostRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	/** Fervour removed for each 1% of maximum health the heal restored, from this share of health. */
+	const auto PerPercent = [&Player](float HealthShare, bool bLeech, float& OutPerPercent)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+													  MaxHealthOf(Player) * HealthShare);
+		Player.AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(), 50.0f);
+		const float Before = Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		if (bLeech)
+		{
+			FCataclysmLeechPayment Payment;
+			Payment.Pool = ECataclysmLeechPool::Health;
+			Payment.Remaining = MaxHealthOf(Player) * 0.01f;
+			Payment.SecondsLeft = 1.0f;
+			Player.AbilitySystem->AddLeechPayment(Payment);
+			UCataclysmLeech::PayOutStep(Player.Character, 1.0f);
+		}
+		else
+		{
+			// A SHORT STEP FROM 45%. `UCataclysmRegeneration::TopUp` raises health
+			// and then asks what the heal removes, so the condition is judged on the
+			// health AFTER the heal; a step from exactly half would be judged above
+			// it. A tenth of a second restores a small share and stays below half.
+			UCataclysmRegeneration::ApplyStep(Player.Character, 0.1f, 100.0f);
+		}
+		const float Healed =
+			Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()) - Before;
+		OutPerPercent = Healed > 0.0f
+			? (50.0f - FervourOf(Player)) / (Healed / MaxHealthOf(Player) * 100.0f)
+			: -1.0f;
+		return Healed > 0.0f;
+	};
+
+	const FName FervourNode(TEXT("Masochist_basic_spine_000"));
+	float RegenWithout = 0.0f;
+	float LeechWithout = 0.0f;
+	Hold(Player, {{FervourNode, 1}});
+	if (!TestTrue(TEXT("set-up: regeneration restored health"), PerPercent(0.45f, false, RegenWithout))
+		|| !TestTrue(TEXT("set-up: the leech restored health"), PerPercent(0.45f, true, LeechWithout))
+		|| !TestTrue(TEXT("set-up: regeneration removes Fervour without the node"),
+					 RegenWithout > 0.0f))
+	{
+		return false;
+	}
+
+	Hold(Player, {{FervourNode, 1}, {FName(TEXT("Masochist_basic_ll_c1")), 6}});
+	float RegenAtHalf = 0.0f;
+	float RegenAbove = 0.0f;
+	float LeechAtHalf = 0.0f;
+	if (!TestTrue(TEXT("set-up: regeneration at 45% restored health"),
+				  PerPercent(0.45f, false, RegenAtHalf))
+		|| !TestTrue(TEXT("set-up: regeneration at three fifths restored health"),
+					 PerPercent(0.6f, false, RegenAbove))
+		|| !TestTrue(TEXT("set-up: the leech restored health"), PerPercent(0.45f, true, LeechAtHalf)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 45% regeneration removes 60% less Fervour for the same health"),
+			  RegenAtHalf / RegenWithout, 0.4f, 0.0001f);
+	TestEqual(TEXT("above half health it removes as much as without the node"),
+			  RegenAbove / RegenWithout, 1.0f, 0.0001f);
+	TestEqual(TEXT("and a leech heal at 45% removes the same as before"), LeechAtHalf,
+			  LeechWithout, 0.0001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsCastFromWardTest,
 	"Cataclysm.DemonicRows.CastFromWardReachesARealRitualistFromItsRow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

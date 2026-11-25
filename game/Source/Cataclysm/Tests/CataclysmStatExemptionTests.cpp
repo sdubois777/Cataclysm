@@ -6962,7 +6962,7 @@ namespace CataclysmStatExemptionTest
 	/**
 	 * `cooldown_skip_chance`, read by `UCataclysmGameplayAbility::CooldownIsSkipped`.
 	 * Shipped under `health_at_or_below` 35 (`Masochist_basic_ll_a2`; 5 until the tree
- * rework of 2026-11-24). The roll is
+	 * rework of 2026-11-24). The roll is
 	 * pinned at 50, so a chance of 100 skips and a chance of nothing does not.
 	 */
 	void ProbeConditionedCooldownSkipChance(FAutomationTestBase& Test)
