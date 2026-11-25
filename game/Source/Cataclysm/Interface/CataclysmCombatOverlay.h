@@ -819,6 +819,13 @@ public:
 	static FString RiftTextFor(const AActor* Actor);
 
 	/**
+	 * "Altar" under the health bar of a living altar of a Rift, the Demonic Quest dungeon, or empty. Issue #51 slice B1.
+	 * Beside the floor sources' words, for their reason: it says what the creature is, which here is what the player
+	 * must destroy to seal the Rift.
+	 */
+	static FString RiftAltarTextFor(const AActor* Actor);
+
+	/**
 	 * "Shrouded" under the health bar of a creature no damage reaches until light does, on a floor carrying Shadowy
 	 * Enemies, or empty. Issues #1820 and #41. It says why a blow on it did nothing.
 	 */

@@ -492,6 +492,22 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	bool IsAscendant() const;
 
 	/**
+	 * Whether this is a Rift: the Demonic Cataclysm's Quest dungeon. Issue #51 slice B1, since 2026-11-24.
+	 *
+	 * THE OWNER, 2026-11-24, VERBATIM: "Rift = Quest dungeon (Recommended)". So a Rift is a Quest dungeon `Cataclysm`
+	 * says Demonic sent, and sealing one is clearing it: `UCataclysmEmpireRun::ClearDungeon` counts it as one of
+	 * Demonic's quest objectives, as it counts any Quest dungeon.
+	 *
+	 * BY ITS SENDER, NOT ITS SUB-TYPE, unlike `IsHollow` and `IsAscendant`, whose sub-types only their own Cataclysm's
+	 * Quest dungeons carry. A Rift's sub-type is Elite (`UCataclysmSurgeScheduler::QuestSubTypeFor`), and an ordinary
+	 * dungeon can roll Elite, so the sub-type cannot say which Elite dungeons are Rifts.
+	 *
+	 * ONE DEFINITION FOR BOTH HALVES OF HELL ON EARTH: `ACataclysmDungeonGameMode::IsARift` asks this of the dungeon
+	 * being walked (the four altars, slice B1), and the map's Rifts (slice B2) are the dungeons answering true here.
+	 */
+	bool IsARift() const;
+
+	/**
 	 * The seed a walk of this dungeon carves its floors from:
 	 * `max(1, (DungeonId + 1) XOR RunMask)`, where `RunMask` is its run's
 	 * `UCataclysmEmpireRun::WalkSeedMask`.

@@ -815,7 +815,8 @@ struct CATACLYSM_API FCataclysmSavedMoraleGroup
  * - The Labrynth's gates open, by the gate's index, and the stream its swaps are drawn on, as it stands, so the swaps
  *   after a load come in the order they would have without it (3c-2, Q2). The seconds to the next swap are a timer and
  *   are not saved (D1). Read only when `bLabrynthSaved`, so an older file keeps the rebuild's gates and stream (Q3);
- * - the voidlings the Void Parasite has attached to the player.
+ * - the voidlings the Void Parasite has attached to the player;
+ * - a Rift's altars on the floor that have fallen, by place (issue #51 slice B1, run record version 19).
  * Every default means not saved, which is what an older file reads as.
  */
 USTRUCT(BlueprintType)
@@ -986,6 +987,16 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FVector ConsumptionDoubleLocation = FVector::ZeroVector;
+
+	/**
+	 * A Rift's altars on this floor that have fallen, by their place in the order the floor placed them, which a rebuilt
+	 * floor repeats (`ACataclysmDungeonGameMode::PlaceTheRiftAltars`). A load destroys each again with `Destroy`, which
+	 * raises no death notice, so a fallen altar stays fallen and its seal stays open. The altars of the floors above are
+	 * not saved: a floor is rebuilt alone, and every one of them had fallen for the player to stand here. Issue #51 slice
+	 * B1. RUN RECORD VERSION 19: `Migrate_18_to_19` writes none fallen.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> RiftAltarsDestroyed;
 };
 
 /**
@@ -1977,12 +1988,16 @@ public:
 	 * "not known", on every ground item: nothing recorded it before. A version and not a default, ruled by the
 	 * coordinating session on 2026-11-24, as the character record's 15.
 	 *
+	 * 19 SINCE 2026-11-24. A Rift's altars that have fallen on the floor being fought on
+	 * (`FCataclysmSavedFloorRuleState::RiftAltarsDestroyed`, issue #51 slice B1), so a load does not stand them up
+	 * again. `Migrate_18_to_19` writes an empty list into the floor's rule state: no altar stood in any dungeon before.
+	 *
 	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
 	 */
-	static constexpr int32 SchemaVersionNow = 18;
+	static constexpr int32 SchemaVersionNow = 19;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

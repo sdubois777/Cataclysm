@@ -63,6 +63,8 @@
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmHeavenlyCoreCharacter.h"
+// For a Rift's altars, the Demonic Quest dungeon's. Issue #51 slice B1.
+#include "Character/CataclysmRiftAltarCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
@@ -2138,6 +2140,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// population places it, and a Horde wave records its own. Issue #1324 slice 6d.
 	ForgetTheCataclysmBoss();
 
+	// AND A RIFT'S BOSS, FOR THE SAME REASON: recorded below as the population places it on the Rift's last floor.
+	// Issue #51 slice B1.
+	ForgetTheRiftBoss();
+
 	// AND INFERNAL SEALS' BEARERS AND PIECES: each floor's stairs are sealed afresh. Issues #1820 and #41.
 	InfernalSealBearers.Reset();
 	InfernalSealBearerGave.Reset();
@@ -2260,6 +2266,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// AND AN ASCENDANT'S HEAVENLY CORE, ON ITS LAST FLOOR ONLY, FOR THE SAME REASON. Since 2026-10-22.
 		ForgetTheHeavenlyCore();
 		PlaceTheHeavenlyCore();
+
+		// AND A RIFT'S ALTARS, ON THE FLOORS THE RULING SPREADS THEM TO, FOR THE SAME REASON, and before the chasms
+		// below, which a floor holding one is not given. Issue #51 slice B1.
+		ForgetTheRiftAltars();
+		PlaceTheRiftAltars();
 
 		// AND PESTILENT EMPOWERMENT'S BEACONS, FOR THE SAME REASON. The last floor's were counted in
 		// `GoToFloor` before its creatures were cleared. Issues #1820 and #41.
@@ -2468,6 +2479,15 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 				if (PlacedRung == CataclysmBossRung)
 				{
 					NoteTheCataclysmBoss(Enemy);
+				}
+
+				// AND THE BOSS OF A RIFT'S LAST FLOOR, the one Gatekeeper the population places there (at the exit, at
+				// most one: `FCataclysmFloorPopulator`), which the Rift's seal waits for. At its drawn rung. Issue #51
+				// slice B1. NOT IN `ContinueTheWaveArriving`: a Rift is Elite, never a Horde, and a Horde floor has no
+				// stairs to seal.
+				if (Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsARift() && IsOnTheLastFloor())
+				{
+					NoteTheRiftBoss(Enemy);
 				}
 
 				// ON THE DARK FLOOR EACH CREATURE THE FLOOR PLACES IS ONE RUNG HIGHER THAN IT WAS DRAWN, held to Herald.
@@ -5466,6 +5486,170 @@ void ACataclysmDungeonGameMode::PlaceTheHeavenlyCore()
 		   HeavenlyCore.IsValid() ? TEXT("a") : TEXT("no room for a"), FloorNumber);
 }
 
+// ---------------------------------------------------------------------------
+// A Rift's four altars: the Demonic Quest dungeon, issue #51 slice B1
+// ---------------------------------------------------------------------------
+
+bool ACataclysmDungeonGameMode::IsARift() const
+{
+	// THE BOUND DUNGEON'S OWN ANSWER, READ LIVE: a Quest dungeon Demonic sent. Nothing bound, nothing a Rift.
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	return Dungeon != nullptr && Dungeon->IsARift();
+}
+
+int32 ACataclysmDungeonGameMode::RiftAltarsOnThisFloor() const
+{
+	// NONE ON THE DARK FLOOR, which carries the number of the floor its stairs lead to and is not that floor: the
+	// altars stand on the floor itself, and are placed when the stairs bring the player there.
+	if (bOnTheDarkFloor || !IsARift())
+	{
+		return 0;
+	}
+	return FCataclysmDungeonFloorRules::RiftAltarsOnFloor(EmpireDungeonFloors(), ChooseFloorNumber());
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::RiftAltarsStandingNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : RiftAltarsHere)
+	{
+		ACataclysmEnemyCharacter* Altar = One.Get();
+		if (IsValid(Altar) && !UCataclysmSkillEffects::IsDead(Altar))
+		{
+			Standing.Add(Altar);
+		}
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::RiftAltarsFallen() const
+{
+	if (!IsARift())
+	{
+		return 0;
+	}
+
+	// EVERY ALTAR OF THE FLOORS ABOVE THIS ONE: the player could not have come down past one standing, by the stairs it
+	// sealed or by a fall, which never lands past the next floor holding one. And THIS FLOOR'S that no longer stand,
+	// counting one the floor had no room for. On the dark floor, the floors above the one its stairs lead to.
+	const int32 Above =
+		FCataclysmDungeonFloorRules::RiftAltarsAboveFloor(EmpireDungeonFloors(), ChooseFloorNumber());
+	return FMath::Clamp(Above + RiftAltarsOnThisFloor() - RiftAltarsStandingNow().Num(), 0,
+						FCataclysmDungeonFloorRules::RiftAltars);
+}
+
+bool ACataclysmDungeonGameMode::RiftAltarsSealTheStairs() const
+{
+	// WHILE ONE STANDS, ON EVERY FLOOR THAT HOLDS ONE, THE LAST INCLUDED: its stairs are the way out that clears the
+	// Rift, so the seal holds back the clear and the quest objective with it, as the Heavenly Core's does.
+	return !RiftAltarsStandingNow().IsEmpty();
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::RiftBossNow() const
+{
+	ACataclysmEnemyCharacter* Boss = RiftBoss.Get();
+	return IsValid(Boss) && !UCataclysmSkillEffects::IsDead(Boss) ? Boss : nullptr;
+}
+
+bool ACataclysmDungeonGameMode::RiftBossSealsTheStairs() const
+{
+	// ON THE RIFT'S LAST FLOOR, WHILE ITS BOSS STANDS, AND ON NOTHING ELSE. "The Rift is sealed when the last altar
+	// falls and the boss is dead." A floor whose boss could not be placed is not sealed by it: a seal nothing can lift
+	// would leave the Rift unbeatable.
+	return IsARift() && IsOnTheLastFloor() && RiftBossNow() != nullptr;
+}
+
+void ACataclysmDungeonGameMode::NoteTheRiftBoss(ACataclysmEnemyCharacter* Boss)
+{
+	RiftBoss = Boss;
+	bRiftBossPlaced = Boss != nullptr;
+	UE_LOG(LogCataclysm, Log, TEXT("Rift: its boss %s stands on its last floor, %d; the Rift is not sealed until it dies"),
+		   Boss ? *Boss->GetName() : TEXT("(none)"), FloorNumber);
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRiftBoss()
+{
+	RiftBoss = nullptr;
+	bRiftBossPlaced = false;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForTheRift(const FCataclysmDeathNotice& Notice)
+{
+	// ANY DEATH, WHOEVER DEALT IT, as the Cataclysm Boss's: the owner's "when the last altar falls and the boss is dead"
+	// names no killer. The seals open by themselves; this tells the panel now rather than on its next refresh.
+	if (Notice.Victim == nullptr)
+	{
+		return;
+	}
+	const bool bAnAltar = RiftAltarsHere.ContainsByPredicate([&Notice](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One)
+	{
+		return One.Get() == Notice.Victim;
+	});
+	const bool bTheBoss = Notice.Victim == RiftBoss.Get();
+	if (!bAnAltar && !bTheBoss)
+	{
+		return;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Rift: %s fell on floor %d; %d of %d altars fallen"),
+		   bAnAltar ? TEXT("an altar") : TEXT("its boss"), FloorNumber, RiftAltarsFallen(),
+		   FCataclysmDungeonFloorRules::RiftAltars);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRiftAltars()
+{
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : RiftAltarsHere)
+	{
+		if (ACataclysmEnemyCharacter* Altar = One.Get())
+		{
+			Altar->Destroy();
+		}
+	}
+	RiftAltarsHere.Reset();
+}
+
+void ACataclysmDungeonGameMode::PlaceTheRiftAltars()
+{
+	UWorld* World = GetWorld();
+	const int32 Count = RiftAltarsOnThisFloor();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt() || Count <= 0)
+	{
+		return;
+	}
+
+	// WHERE A FLOOR SOURCE STANDS, AS THE HEAVENLY CORE DOES: floor cells well away from the entrance and from each
+	// other, on the floor's own stream, so a rebuilt floor puts the same altar on the same cell in the same order.
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmRiftAltarCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, RiftAltarCellsSalt))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Altar =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Altar)
+		{
+			continue;
+		}
+		// THE FLOOR BOSS'S HEALTH AT COMMON, as the Core's, ruled. It never attacks: a floor source has no brain. It
+		// pays nothing and is not one of the floor's creatures, as the other floor sources are not, so a save skips it
+		// and puts it back by `FCataclysmSavedFloorRuleState::RiftAltarsDestroyed`.
+		Altar->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Altar->SetHealth(RiftAltarHealth());
+		Altar->SetRarityStep(0);
+		Altar->bDiesUnpaid = true;
+		Altar->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Altar);
+		RiftAltarsHere.Add(Altar);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Rift: %d of the %d altar(s) of floor %d placed; %d of %d fallen above it"),
+		   RiftAltarsHere.Num(), Count, FloorNumber,
+		   FCataclysmDungeonFloorRules::RiftAltarsAboveFloor(EmpireDungeonFloors(), ChooseFloorNumber()),
+		   FCataclysmDungeonFloorRules::RiftAltars);
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepGoldenSpires(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -8161,6 +8345,17 @@ void ACataclysmDungeonGameMode::PlaceTheChasms()
 		return;
 	}
 
+	// AND NONE ON A FLOOR OF A RIFT THAT HOLDS AN ALTAR, as none on the last floor: a fall goes down without the stairs,
+	// and the altar sealing them would be left standing behind the player, and the Rift sealed with it unfallen. Issue
+	// #51 slice B1, a judgement by the writing session: "destroy the four altars" is the whole of the Rift's quest.
+	// `ThePlayerFellIntoAChasm` holds a fall from any other floor to the next floor holding one.
+	if (RiftAltarsOnThisFloor() > 0)
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Those in the Dark: no chasms on floor %d (a Rift's altar stands on it)"),
+			   FloorNumber);
+		return;
+	}
+
 	// THE DRAW IS MADE ONCE, WITH EVERY RULE, ruled 2026-10-09. What each rule cost is not counted in play; a test
 	// asks `ThoseInTheDarkCountsRuleByRule` for that.
 	int32 Walkable = 0;
@@ -8259,7 +8454,22 @@ void ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm(ACataclysmPlayerCharacte
 	// final floor when that is nearer. With no empire dungeon bound there is no final floor and the count of
 	// floors asked is nought, so the answer is ten deeper: a judgement by the writing session.
 	const int32 FellFrom = ChooseFloorNumber();
-	const int32 Destination = Effects::ThoseInTheDarkDestinationFloor(FellFrom, EmpireDungeonFloors());
+	int32 Destination = Effects::ThoseInTheDarkDestinationFloor(FellFrom, EmpireDungeonFloors());
+
+	// AND IN A RIFT NO DEEPER THAN THE NEXT FLOOR HOLDING AN ALTAR, so a fall never carries the player past one: its
+	// dark floor's stairs lead to that floor, where the altar stands. Issue #51 slice B1, the judgement `PlaceTheChasms`
+	// states. Every floor before a Rift's last has an altar at or below it -- the fourth stands on the last floor -- so
+	// the next one is always there and always deeper than the floor fallen from, which holds none. A RIFT FOUR FLOORS
+	// DEEP, THE OWNER'S, HAS NO CHASM TO FALL INTO: each of its floors holds an altar and the last has none. So this
+	// reaches only a Rift of another depth, one Demonic rolled before the empire made Rifts four floors deep.
+	if (IsARift())
+	{
+		const int32 NextAltar = FCataclysmDungeonFloorRules::NextRiftAltarFloorAfter(EmpireDungeonFloors(), FellFrom);
+		if (NextAltar > FellFrom)
+		{
+			Destination = FMath::Min(Destination, NextAltar);
+		}
+	}
 
 	// THE FLAG FIRST, THEN THE ORDINARY FLOOR CHANGE TO THE DESTINATION'S NUMBER. `GoToFloor` is not changed by this
 	// layer: with the flag set, the seed it builds from is the dark floor's own, the floor is not the last, it
@@ -15522,6 +15732,16 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	{
 		Sealing.Add(FName(CataclysmBossSealKey));
 	}
+	// AND A RIFT'S ALTARS, WHICH SEAL THEIR FLOOR'S STAIRS WHILE ONE STANDS, THE LAST FLOOR'S INCLUDED; AND THE BOSS OF A
+	// RIFT'S LAST FLOOR, WHICH SEALS ITS WAY OUT WHILE IT STANDS. Issue #51 slice B1, the owner's ruling of 2026-11-24.
+	if (RiftAltarsSealTheStairs())
+	{
+		Sealing.Add(FName(RiftAltarsSealKey));
+	}
+	if (RiftBossSealsTheStairs())
+	{
+		Sealing.Add(FName(RiftBossSealKey));
+	}
 	return Sealing;
 }
 
@@ -16333,6 +16553,18 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 		NoteTheCataclysmBoss(&Creature);
 	}
 
+	// AND THE BOSS OF A RIFT'S LAST FLOOR, FOR THE SAME REASON: the saved Gatekeeper that neither rose from the dead nor
+	// was raised by a rule, which only the population places, at most one and at the exit. Issue #51 slice B1. NO SAVED
+	// FIELD IS ADDED: the record's class, `bRisenFromTheDead` and `RaisedBy` say it. Its rung is drawn, so the rung
+	// cannot tell it apart as it tells the Cataclysm Boss; a creature a rule raised is saved only with a `RaisedBy` tag
+	// (`FCataclysmSaveGather::FloorFrom`), so one with none is the floor's own. A boss dead at the save has no record,
+	// and the seal it held stays open.
+	if (IsARift() && IsOnTheLastFloor() && Creature.IsA<ACataclysmGatekeeperCharacter>() && !Saved.bRisenFromTheDead
+		&& Saved.RaisedBy == NAME_None)
+	{
+		NoteTheRiftBoss(&Creature);
+	}
+
 	// AND A CLOSED SOUL CHAINS GATE'S BEARER, back on its gate, which then has bearers again. Issue #753, Group 3c-1.
 	if (Saved.SoulChainsGate != INDEX_NONE)
 	{
@@ -16711,6 +16943,15 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 	// THE CORE DESTROYED: on the floor that places one, and standing no more.
 	Out.bHeavenlyCoreDestroyed = ChooseSubType() == ECataclysmDungeonSubType::Ascendant && IsOnTheLastFloor()
 		&& !HeavenlyCoreStands();
+	// A RIFT'S ALTARS FALLEN ON THIS FLOOR, BY THEIR PLACE IN THE ORDER PLACED. Issue #51 slice B1.
+	for (int32 Index = 0; Index < RiftAltarsHere.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Altar = RiftAltarsHere[Index].Get();
+		if (!IsValid(Altar) || UCataclysmSkillEffects::IsDead(Altar))
+		{
+			Out.RiftAltarsDestroyed.Add(Index);
+		}
+	}
 	Out.bQuarantineBroken = bQuarantineBroken;
 	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : QuarantinePatches)
 	{
@@ -16902,6 +17143,20 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 		if (ACataclysmEnemyCharacter* Core = HeavenlyCore.Get())
 		{
 			Core->Destroy();
+		}
+	}
+
+	// A RIFT'S ALTARS FALLEN, EACH BY ITS PLACE: the rebuilt floor placed them again in the same order, and each named
+	// is destroyed without a death notice, so nothing is paid or said again and its seal opens. A place the rebuilt
+	// floor did not fill is passed over. Issue #51 slice B1.
+	for (const int32 Index : State.RiftAltarsDestroyed)
+	{
+		if (RiftAltarsHere.IsValidIndex(Index))
+		{
+			if (ACataclysmEnemyCharacter* Altar = RiftAltarsHere[Index].Get())
+			{
+				Altar->Destroy();
+			}
 		}
 	}
 
@@ -17366,6 +17621,9 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheHeavenlyCore();
 	// AND THE CATACLYSM BOSS'S RECORD, which belongs to the floor left. Issue #1324 slice 6d.
 	ForgetTheCataclysmBoss();
+	// AND A RIFT'S ALTARS AND ITS BOSS'S RECORD, which belong to the floor left. Issue #51 slice B1.
+	ForgetTheRiftAltars();
+	ForgetTheRiftBoss();
 
 	// AND PESTILENT EMPOWERMENT'S BEACONS AND THE COUNT CARRIED BETWEEN FLOORS, beside Echoes' reset:
 	// no beacon of this dungeon strengthens the next one. Issues #1820 and #41.
@@ -20133,6 +20391,8 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForTheConsumptionDouble(Notice);
 	// AND THE CATACLYSM BOSS, WHOEVER KILLED IT: the stairs it sealed are open. Issue #1324 slice 6d.
 	NoteDeathForTheCataclysmBoss(Notice);
+	// AND A RIFT'S ALTAR OR ITS BOSS, WHOEVER KILLED IT: the panel says so at once. Issue #51 slice B1.
+	NoteDeathForTheRift(Notice);
 	NoteDeathForBloodBond(Notice);
 	NoteDeathForPlagueConvergence(Notice);
 	NoteDeathForEchoesOfThePast(Notice);
@@ -21856,6 +22116,14 @@ TArray<FName> ACataclysmDungeonGameMode::RowsTheFloorPanelLists() const
 	{
 		Listed.AddUnique(FName(UCataclysmFloorModifierPanelLayout::CataclysmBossKey));
 	}
+
+	// AND A RIFT'S LINE, ON EVERY FLOOR OF A RIFT, LAST: not a row, named by its own line
+	// (`UCataclysmFloorModifierPanelLayout::RiftAltarsKey`) with how many of its four altars have fallen and what seals
+	// the way on. Issue #51 slice B1: every system has a basic screen, and this is the Rift's on the floor.
+	if (IsARift())
+	{
+		Listed.AddUnique(FName(UCataclysmFloorModifierPanelLayout::RiftAltarsKey));
+	}
 	return Listed;
 }
 
@@ -22669,6 +22937,47 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 				: bCataclysmBossPlaced
 				? FString(TEXT("slain; the way out is open"))
 				: FString(TEXT("none could be placed; the way out is open")));
+	}
+
+	// AND A RIFT: how many of its four altars have fallen, and what seals the way on -- this floor's altars, the next
+	// floor holding one, or on the last floor its boss. Issue #51 slice B1.
+	if (IsARift())
+	{
+		const int32 Fallen = RiftAltarsFallen();
+		const int32 StandingHere = RiftAltarsStandingNow().Num();
+		const int32 Floors = EmpireDungeonFloors();
+		// ON THE DARK FLOOR THE NEXT ALTAR MAY STAND ON THE FLOOR ITS STAIRS LEAD TO, whose number it carries.
+		const int32 NextAltar = FCataclysmDungeonFloorRules::NextRiftAltarFloorAfter(
+			Floors, ChooseFloorNumber() - (bOnTheDarkFloor ? 1 : 0));
+		const FString Count = FString::Printf(TEXT("altars %d of %d fallen"), Fallen,
+											  FCataclysmDungeonFloorRules::RiftAltars);
+		FString Line;
+		if (StandingHere == 1)
+		{
+			Line = Count + TEXT("; the altar on this floor seals the stairs");
+		}
+		else if (StandingHere > 1)
+		{
+			Line = Count + FString::Printf(TEXT("; the %d altars on this floor seal the stairs"), StandingHere);
+		}
+		else if (Fallen < FCataclysmDungeonFloorRules::RiftAltars && NextAltar > 0)
+		{
+			Line = Count + FString::Printf(TEXT("; the next stands on floor %d"), NextAltar);
+		}
+		else if (IsOnTheLastFloor() && RiftBossNow() != nullptr)
+		{
+			Line = Count + TEXT("; the boss stands, and the Rift is sealed when it dies");
+		}
+		else if (IsOnTheLastFloor())
+		{
+			Line = Count + (bRiftBossPlaced ? FString(TEXT(" and the boss slain; the stairs seal the Rift"))
+											: FString(TEXT(" and no boss could be placed; the stairs seal the Rift")));
+		}
+		else
+		{
+			Line = Count + TEXT("; the Rift is sealed when the boss of its last floor dies");
+		}
+		Counting.Add(FName(UCataclysmFloorModifierPanelLayout::RiftAltarsKey), Line);
 	}
 
 	// AND CHAOS TOUCHED: the stacks of all eight kinds. Issues #1820 and #41.

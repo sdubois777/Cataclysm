@@ -948,6 +948,21 @@ followed, ruled 2026-11-01:
   comparing a migrated or committed file field by field), and the coordinating
   session ruled the version on 2026-11-24 by the rule above. That sentence now
   points here.
+- **The run record went to version 19 on 2026-11-24**, for a Rift's altars
+  (issue #51 slice B1): the floor's rule state keeps the altars that have fallen
+  on the floor being fought on, by their place in the order the floor placed
+  them, `RiftAltarsDestroyed`, so a load does not stand them up again.
+  `Migrate_18_to_19` writes an empty list into `Floor.RuleState`: no dungeon
+  placed an altar before. `Run_v19.json` is `Run_v18.json` at version 19 with
+  `"RiftAltarsDestroyed": [0, 2]` added to its rule state and nothing else
+  changed: not the default, so the test that reads it shows the field is read.
+  `Run_v18.json` is now a migration input, not edited again:
+  `Cataclysm.RiftAltars.ARunFileFromVersion18MigratesWithNoAltarFallen` runs it
+  through the step, every test that read `Run_v18.json` as the committed run
+  file reads `Run_v19.json` now, and every test that runs an older run file
+  through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion19Defaults`. **No other record
+  moves.**
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -1003,6 +1018,7 @@ followed, ruled 2026-11-01:
 | `Run_v16.json` | The same run at version 16: version 15's contents, plus the cleanse bought this run |
 | `Run_v17.json` | The same run at version 17: version 16's contents, plus its thrall's taking skill, `Demonic_Staff_Ultimate`, at a level factor of 1.5, and the other creature None and 1 |
 | `Run_v18.json` | The same run at version 18: version 17's contents, plus where each ground item arrived -- the Circlet +0 at tier 4, the gold pile not known |
+| `Run_v19.json` | The same run at version 19: version 18's contents, plus a Rift's altars fallen on its floor, the first and the third |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

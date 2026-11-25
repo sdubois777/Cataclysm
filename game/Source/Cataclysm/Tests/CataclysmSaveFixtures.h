@@ -751,7 +751,7 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
-	 * What the run record's newest step writes into a run file written before it: every ground item as arrived at a
+	 * What the run record's step to 18 writes into a run file written before it: every ground item as arrived at a
 	 * place not known (`GearLevelAtDrop` -1, `TierAtDrop` 0). Issue #2848 slice S2. NAMED FOR THE VERSION IT REACHES,
 	 * 18. ONE COPY.
 	 */
@@ -760,6 +760,23 @@ namespace CataclysmSaveFixtures
 		for (const auto& Field : Expected.Values)
 		{
 			AddWhereEachItemArrived(Field.Value);
+		}
+	}
+
+	/**
+	 * What the run record's newest step, `Migrate_18_to_19`, writes into a run file written before it: no Rift altar
+	 * fallen, an empty `RiftAltarsDestroyed` in the floor's rule state, where the file has one. Issue #51 slice B1,
+	 * 2026-11-24. NAMED FOR THE VERSION IT REACHES, 19. ONE COPY, for every test that runs an older run file through the
+	 * whole chain.
+	 */
+	inline void AddTheRunsVersion19Defaults(FJsonObject& Expected)
+	{
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (Expected.TryGetObjectField(TEXT("Floor"), Floor) && Floor != nullptr && Floor->IsValid()
+			&& (*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) && RuleState != nullptr && RuleState->IsValid())
+		{
+			(*RuleState)->SetArrayField(TEXT("RiftAltarsDestroyed"), TArray<TSharedPtr<FJsonValue>>());
 		}
 	}
 

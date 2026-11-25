@@ -66,6 +66,13 @@ bool FCataclysmDungeon::IsAscendant() const
 		&& SubType == ECataclysmDungeonSubType::Ascendant;
 }
 
+bool FCataclysmDungeon::IsARift() const
+{
+	// A QUEST DUNGEON DEMONIC SENT, whatever its sub-type: the header says why the sub-type cannot answer. Issue #51.
+	return Type == ECataclysmDungeonType::Quest
+		&& Cataclysm == ECataclysmType::Demonic;
+}
+
 int32 FCataclysmDungeon::WalkSeed(int32 RunMask) const
 {
 	// THE IDENTIFIER PLUS ONE, XORED WITH THE RUN'S MASK, so two runs' dungeon N differ; a mask of 0 is the seed every

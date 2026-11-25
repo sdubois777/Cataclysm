@@ -970,6 +970,184 @@ every variable read, so none should stop the build on an unused variable.
 
 ---
 
+## 2026-11-24 — A Rift's four altars: each of a Rift's floors holds an altar that seals its stairs until it falls, and the Rift is sealed when the last altar and its boss have fallen (#51, slice B1)
+
+**Said first:**
+
+- **WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `feat/rift-altars-51`, made from `feat/bug-batch-2`
+  (`632a43022`) with `origin/development` (`5cdd6bdc4`) merged in, by an agent for the coordinating session; a later
+  window builds and runs it. Its commits are to be cherry-picked onto development after the bug batches squash-merge.
+  Issue [#51](https://github.com/sdubois777/Cataclysm/issues/51), slice B1 of the plan `plan_death_and_war.md`.
+  **REBUILT ON 2026-11-25** as `feat/rift-altars-51-2`, by the coordinating session's instruction: this commit
+  (`3945ec0dc`) cherry-picked onto development `0d9259653`, its merge of development left behind. Three save tests
+  conflicted, `CataclysmEmpireTreeNineTests.cpp`, `CataclysmGoldTests.cpp` and `CataclysmSaveRecordTests.cpp`: each
+  keeps development's newest character file, `Character_v17.json` (the inventory tabs and skill selection took the
+  character record to 17), and this slice's `Run_v19.json`. Every test that adds the run's version 18 defaults also
+  adds version 19's, and no test development added since names `Run_v18.json` as the newest file.
+- **AT THE REBUILD, DEVELOPMENT'S RUN RECORD WAS 18, SO THIS STEP STAYS 18 TO 19.** Slice B2 steps no record: the
+  coordinating session accepted on 2026-11-24 that a Rift's 5-day count reads the dungeon's `SpawnedDay`, which is
+  already saved. `feat/abyssal-rifts-2864` steps it and renumbers at its own rebase. The paragraph that follows is as
+  written before the rebuild.
+- **IT TAKES THE RUN RECORD FROM 18 TO 19, AND SO DO TWO OTHER BRANCHES.** `feat/abyssal-rifts-2864` (left out of
+  batch 2 for that reason) and slice B2 (`feat/demonic-rifts-51`, the Rift's clock) both step the run record. Whichever
+  merges second renumbers its step: `Migrate_18_to_19`, `Run_v19.json`, `AddTheRunsVersion19Defaults`, `SchemaVersionNow`,
+  the fixtures README and `tools/tests/test_a_rifts_four_altars.py`, all mechanical. The chain-test files conflict
+  line by line with the other branch's.
+- **THE OWNER RULED AGAIN WHILE THIS WAS WRITTEN: A RIFT IS FOUR FLOORS DEEP.** The coordinating session relayed it,
+  and the tests were rewritten around a Rift of four floors. **Nothing here sets a Rift's depth** (slice B2, the empire
+  side); a test needing a four-floor Rift builds one. **Nothing here makes a Rift's floors harder**, which the owner
+  wants and has not settled; the coordinating session said not to build it. **The owner settled it later that day**,
+  verbatim "(b) 8 modifiers only (Recommended)": a Rift carries eight dungeon modifiers and its floors are an ordinary
+  four-floor dungeon's (slice B2). The design document says so.
+- **The spread is kept general**, as the coordinating session asked: at four floors it gives one altar a floor; any
+  other depth spreads the four, the rest on the last floor of a Rift of fewer than four.
+
+### The rulings, verbatim
+
+The owner, 2026-11-24, on issue #51 (Q1 and Q2 of the plan; each the option chosen, with its text):
+
+- **Q1, "Rift = Quest dungeon (Recommended)"**: "A Rift is a Demonic Quest dungeon. Sealing one counts as one quest
+  objective, as clearing a Quest dungeon does now. The existing Quest dungeon rules hold: it is Elite, it hits its city
+  on its timer, and it moves when its city falls."
+- **Q2, "One per floor, spread (Recommended)"**: "Altar *i* on floor ceil(*i* x floors / 4), the spread ruled for a
+  Fallen City's bosses on 2026-10-29 (#1466); a Rift of fewer than four floors puts the rest on its last floor. An altar
+  does not attack, has the floor boss's health, and seals its floor's stairs while it stands, as the Heavenly Core
+  does. The Rift is sealed when the last altar falls and the boss is dead."
+
+And later the same evening, the owner's second comment on #51: "Rift are quest dungeons yes, but we determined they
+have 4 pillars the player needs to destroy. So... let's make them 4 floors? Is that reasonable? Their difficulty would
+need to be increased a decent amount, but that seems fair to me." And: "Keep the short timer for rifts. It's only
+fair, it has 4 floors. If you keep on top of them it wont matter." The comment's summary: "A Rift is a Quest dungeon of
+exactly 4 floors, one altar on each floor (this replaces the altar spread ceil(i x floors / 4), which now always gives
+one per floor)."
+
+### What a player sees in a Rift
+
+- **On each floor, an altar**: a still creature wearing the placeholder cylinder the Heavenly Core wears, with "Altar"
+  under its health bar and the floor boss's health (the Gatekeeper's 1,248). It never attacks and pays nothing.
+- **The stairs do not take the player down while it stands.** The floor panel lists "Infernal Rift" with a line:
+  "altars 0 of 4 fallen; the altar on this floor seals the stairs"; once it falls, "altars 1 of 4 fallen; the next
+  stands on floor 2", and the stairs work.
+- **On the last floor**, the fourth altar and the floor's boss (every floor of a Rift has a boss at its exit, as every
+  Elite dungeon's does). The way out stays sealed until both are dead; with the altar fallen and the boss standing the
+  line says "the boss stands, and the Rift is sealed when it dies". Then the stairs seal the Rift: it comes off the map
+  and counts as one of Demonic's 10 quest objectives, by the clear the game already makes.
+- **A save on a Rift's floor keeps its fallen altars fallen** after a load, and the boss of its last floor still
+  seals the way out if it stood at the save.
+
+### How the game knows a Rift (the choice the brief asked for)
+
+**`FCataclysmDungeon::IsARift()`, in the empire module: a Quest dungeon whose `Cataclysm` is Demonic.** The dungeon
+game mode asks it of the dungeon bound to the walk (`ACataclysmDungeonGameMode::IsARift`, read live, nothing copied, so
+nothing to reset). **A judgement**, for two reasons: the quest-objective count already reads `FCataclysmDungeon::Cataclysm`
+(`UCataclysmEmpireRun::ClearDungeon`), so the Rift is the dungeon that count credits to Demonic; and slice B2 needs the
+same definition on the empire side (a Rift on the map, a death in a Rift), so it lives where both can call it. **By
+sender and not by sub-type**, unlike `IsHollow` and `IsAscendant`: Elite is not Demonic's alone, since an ordinary dungeon
+rolls it. `FCataclysmDungeonIdentity` gains no Cataclysm field and no creature does: that is slice B3.
+
+### Judgements, each labelled
+
+1. **Fewer than four floors: one a floor, the rest on the last** (1 / 1,2,2,2 / 1,2,3,3). The bare formula gives
+   1,1,2,2 for two floors, two altars on the first and none "the rest" on the last; the ruling says "one per floor" and
+   "the rest on its last floor", so the spread is held to one a floor, as `BossAtTheExit` holds a Fallen City's bosses.
+   A reading, made visible in a test. Reachable only if something moves a Rift's depth below four.
+2. **The arithmetic is shared**, not copied: `FCataclysmDungeonFloorRules::SpreadFloorOf` is ceil(i x floors / count),
+   and `BossAtTheExit` calls it where it called `FMath::DivideAndRoundUp` itself. The two rules cannot drift.
+3. **An altar's health is the Gatekeeper's at Common** (`GatekeeperHealth`, 1,248), as the Heavenly Core's was ruled
+   on 2026-10-22; the owner's "the floor boss's health" names that ruling.
+4. **The altars seal every floor that holds one, the last included** (whose stairs clear the Rift), and **the boss
+   seals only the last floor**, while it stands: the ruling's "sealed when the last altar falls and the boss is dead" is
+   about the seal of the Rift, which is the last floor's way out. On the other floors the boss at the exit does not
+   seal, as on any Elite dungeon.
+5. **An altar a floor had no room for counts as fallen** and seals nothing, as a floor whose Cataclysm Boss could not
+   be placed is not sealed: a seal nothing can lift would make the Rift unbeatable. Altars stand where floor sources
+   stand (`EternalChorusCells`, 20 m from the entrance and from each other), so one altar a floor always has room.
+6. **Those in the Dark: no chasm on a floor holding an altar, and a fall in a Rift lands no deeper than the next floor
+   holding one.** A fall goes down without the stairs, and from up to ten floors above it would carry the player past
+   an altar, leaving the Rift sealable with an altar standing. A four-floor Rift therefore has no chasm at all; the fall
+   cap matters only for a Rift of another depth.
+7. **"The floor's own" altars-fallen count is worked out, not kept**: the altars of the floors above the one walked
+   (every one fell, for the stairs to open or by 6 above) and this floor's that no longer stand. No walk state is saved
+   for it.
+8. **On a load, the Rift's boss is the saved Gatekeeper that neither rose from the dead nor was raised by a rule**: the
+   population places one Gatekeeper, at the exit, and a creature a rule raised is saved only with a `RaisedBy` tag. Its
+   rung is drawn, so the rung cannot tell it apart as it tells the Cataclysm Boss. No field is added for it.
+9. **A floor's fallen altars are saved by their place in the order placed**, as the Infested Veins and the beacons are,
+   in the floor's rule state, `RiftAltarsDestroyed`. A field added to a save record takes a version, by
+   `game/Tests/SaveFixtures/README.md`, so **the run record goes to 19**: `Migrate_18_to_19` writes an empty list, and
+   `Run_v19.json` holds places 0 and 2.
+10. **The panel's words** -- "Infernal Rift", "altars N of 4 fallen", "Altar" under the health bar -- are the writing
+    session's; "Infernal Rifts" is the design's own name, section XI.
+
+**No genre research was done for this slice**, and none was needed for a formula: the spread and every rule are the
+owner's. The plan's Q2 cites Diablo II's Chaos Sanctuary (five seals and three seal bosses before the boss appears,
+Maxroll's guide) for the shape of the objective; this session did not re-read that source.
+
+### What changed, by file
+
+- `CataclysmEmpire/Empire/CataclysmSurge.h`, `.cpp`: `FCataclysmDungeon::IsARift`.
+- `Cataclysm/Dungeon/CataclysmFloorBrief.h`, `.cpp`: `SpreadFloorOf` (shared with `BossAtTheExit`), `RiftAltars` (4),
+  `RiftAltarFloor`, `RiftAltarsOnFloor`, `RiftAltarsAboveFloor`, `NextRiftAltarFloorAfter`.
+- `Cataclysm/Character/CataclysmRiftAltarCharacter.h` (new): the altar, a floor source as the Heavenly Core is.
+- `Cataclysm/Dungeon/CataclysmDungeonGameMode.h`, `.cpp`: `IsARift`, the altars placed beside the Heavenly Core and
+  forgotten on leaving, the two seals in `StairsSealedBy`, the Rift's boss recorded as the population places it and
+  found again on a load, the panel line, the death notice, the chasm rule and the fall cap, and the saved state.
+- `Cataclysm/Interface/CataclysmFloorModifierPanelLayout.h`, `.cpp`, `CataclysmFloorModifierPanel.cpp`: the Rift's line,
+  not a row, not dimmed, not counted as a modifier. `CataclysmCombatOverlay.h`, `.cpp`: "Altar".
+- `Cataclysm/Save/CataclysmSaveRecords.h`, `.cpp`: `RiftAltarsDestroyed`, version 19, `Migrate_18_to_19`.
+- `game/Tests/SaveFixtures/Run_v19.json` (new) and its README; `Tests/CataclysmSaveFixtures.h`:
+  `AddTheRunsVersion19Defaults`; every test running an older run file through the chain adds it, and every test that
+  read `Run_v18.json` as the committed file reads `Run_v19.json`.
+- `docs/Cataclysm_GDD_v2.md`, section XI, Hell on Earth: the rulings.
+
+### Tests
+
+Registered, not run. **Eleven new automation tests:**
+
+- **`Cataclysm.RiftAltars.`, a new group of 9** (`Tests/CataclysmRiftAltarsTests.cpp`):
+  `AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour` (the floors for 1 to 12 and 30 floors, the Fallen
+  City cross-check, the bare formula as a control), `ARiftIsAQuestDungeonDemonicSentAndNothingElseIs`,
+  `AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls`,
+  `AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen` (the objective counted),
+  `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor` (the fallback; the boss felled first),
+  `AQuestDungeonAnotherCataclysmSentAndAnOrdinaryDungeonHoldNoAltars` (controls, and a positive control),
+  `ALoadFindsTheRiftsBossAgainAndNotOneThatRoseOrARulesCreature`,
+  `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `ARunFileFromVersion18MigratesWithNoAltarFallen`.
+- **`Cataclysm.SaveLoad.` +1**: `ARiftsFallenAltarStaysFallenAfterALoad` (a real save and load of a four-floor Rift;
+  it writes and deletes a run slot and a character slot, as the Heavenly Core's twin does).
+- **`Cataclysm.DungeonModifierEffects.` +1**:
+  `ARiftsAltarFloorsHaveNoChasmsAndAFallLandsNoDeeperThanTheNextAltar`.
+- **Changed, to read `Run_v19.json` or add the step's write**: tests in `Cataclysm.CityCleanseSave.`,
+  `CityUpgradeBuildSave.`, `ConsumptionDouble.`, `DeathCost.`, `Dismantle.`, `EarnedBossSave.`, `EmpireTreeClearGold.`,
+  `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `GemSave.`, `Gold.`, `SaveLoad.`, `SaveRecords.`,
+  `Seeding.`, `ThrallSave.`, `Travel.`, `WalkSeed.` and `WinningTheRun.`. Run those groups alone first.
+- **Python**: `tools/tests/test_a_rifts_four_altars.py`, 9 checks, including the altar-floor table worked out again from
+  the ruling's sentence against the automation test's table.
+
+**Guard proofs registered for the window**, one a mechanism:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| RA1 | `const int32 Spread = FMath::Min(RiftAltars, TotalFloors);` to `const int32 Spread = RiftAltars;` (`CataclysmFloorBrief.cpp`, `RiftAltarFloor`) | `AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen` |
+| RA2 | `if (RiftAltarsSealTheStairs())` to `if (false && RiftAltarsSealTheStairs())` (`CataclysmDungeonGameMode.cpp`, `StairsSealedBy`) | `AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls`, `AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` |
+| RA3 | `if (RiftAltarsHere.IsValidIndex(Index))` to `if (false && RiftAltarsHere.IsValidIndex(Index))` (`CataclysmDungeonGameMode.cpp`, `RestoreFloorRuleState`) | `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` |
+
+**Not proved**: the boss's seal (its tests assert it, both orders), the chasm rule and the fall cap, and the boss found
+again on a load.
+
+### What slice B2 needs from this
+
+- **What a Rift is**: `FCataclysmDungeon::IsARift()`. A Rift on the map, a death in a Rift (the walk's dungeon,
+  `UCataclysmDayClock::CurrentDungeonId`) and a Rift's clock should all ask it.
+- **A sealed Rift is a cleared one**: `UCataclysmEmpireRun::ClearDungeon` takes it off the map and counts one Demonic
+  objective. "Unsealed" is "still in `Dungeons`"; B2's 5-day clock should key on the dungeon's identifier and drop
+  when it leaves the map.
+- **Its depth**: four floors, set where the empire makes the dungeon. The dungeon side reads whatever depth it has; at
+  four, one altar a floor. Whether a city's floor upgrades may move a Rift's depth is B2's call; the altars cope.
+- **Nothing else**: no field on the empire record, no new report. The run record's version is shared (above).
+
+---
+
 ## 2026-11-24 — The character creator's skill line counts the damage type's Aura and says how many skills work: "Demonic, Sword    6 of 6 skills work"
 
 On `fix/creation-skill-count`, from development `5cdd6bdc4`. No issue was filed: the owner's report came to the
