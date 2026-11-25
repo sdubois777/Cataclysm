@@ -816,6 +816,15 @@ public:
 	 */
 	float TimesSizedByFervourHeld() const;
 
+	/**
+	 * Mark, around a hit whose skill counts every hit as from behind (`RearHits=1`), that this character is striking from
+	 * behind by that rule, so `target_struck_from_behind` holds for it whatever the geometry says. Set and cleared by
+	 * `UCataclysmSkillTemplate` around the strike. The Death trees' slice C6b1 (2026-11-25), From Behind's "hits a skill
+	 * counts as struck from behind".
+	 */
+	void SetStrikingFromBehindByRule(bool bByRule) { bStrikingFromBehindByRule = bByRule; }
+	bool IsStrikingFromBehindByRule() const { return bStrikingFromBehindByRule; }
+
 	/** Patient Blade's clock: record a payment for a Boss tick now. The Death trees' slice C4d2 (2026-11-25). */
 	void NoteBossTickPaid();
 
@@ -6456,6 +6465,9 @@ protected:
 
 	/** When the Chain Execution charge runs out, in world seconds; -1 for none. See `HoldsNextHitCritical`. */
 	float NextHitCriticalUntilSeconds = -1.0f;
+
+	/** Set only around a `RearHits=1` skill's hit. See `SetStrikingFromBehindByRule`. */
+	bool bStrikingFromBehindByRule = false;
 
 	/** When the last Boss tick was paid for, in world seconds; -1 for never. See `NoteBossTickPaid`. */
 	float BossTickPaidAtSeconds = -1.0f;

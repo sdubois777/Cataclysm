@@ -1940,6 +1940,41 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	NextHitIsCritical
 		UMETA(DisplayName = "Next Hit Is Critical"),
+
+	/**
+	 * The character struck is struck from behind: the asker stands inside `UCataclysmSkillEffects::RearArcDegrees` about
+	 * its back (`IsBehind`), or the asker's skill counts every hit as from behind (`RearHits=1`, marked on the asker
+	 * around the hit: `UCataclysmAbilitySystemComponent::SetStrikingFromBehindByRule`). The Shadow's From Behind,
+	 * "hits that strike an enemy from behind, including hits a skill counts as struck from behind". The Death trees'
+	 * slice C6b1 (2026-11-25). IT TAKES NO VALUE.
+	 */
+	TargetStruckFromBehind
+		UMETA(DisplayName = "Target Struck From Behind"),
+
+	/**
+	 * The character struck is at full health: Opening Strike, "Your first hit on an enemy at full health". The Death
+	 * trees' slice C6b1 (2026-11-25). Read from the target's health share, as `TargetHealthBelowPercent` reads it; not
+	 * read refuses. IT TAKES NO VALUE.
+	 */
+	TargetAtFullHealth
+		UMETA(DisplayName = "Target At Full Health"),
+
+	/**
+	 * The character struck carries a Poison the asker applied, a Bleed alone not counting: Venomed Prey, "enemies
+	 * carrying your Poison". The Death trees' slice C6b1 (2026-11-25), beside `TargetCarriesYourPoisonOrBleed`. IT TAKES
+	 * NO VALUE.
+	 */
+	TargetCarriesYourPoison
+		UMETA(DisplayName = "Target Carries Your Poison"),
+
+	/**
+	 * The character struck is more than `ConditionValue` metres from the asker, strictly: Hit and Run, "enemies more
+	 * than 4 metres from you". The Death trees' slice C6b1 (2026-11-25). Reads `TargetDistanceMetres`, the field
+	 * `TargetWithinMetres` reads, which a damage over time tick fills from its applier; not known (-1) refuses. IT TAKES
+	 * A VALUE: the metres.
+	 */
+	TargetBeyondMetres
+		UMETA(DisplayName = "Target Beyond Metres"),
 };
 
 /**
@@ -3717,6 +3752,20 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bHoldsNextHitCritical = false;
+
+	/**
+	 * Whether the character struck is struck from behind. The Death trees' slice C6b1 (2026-11-25). Filled by
+	 * `UCataclysmAbilitySystemComponent::WithTargetState` when a row asks. See `TargetStruckFromBehind`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStruckFromBehind = false;
+
+	/**
+	 * Whether the character struck carries a Poison the asker applied. The Death trees' slice C6b1 (2026-11-25). Filled
+	 * by `WithTargetState` beside `bTargetCarriesYourPoisonOrBleed`. See `TargetCarriesYourPoison`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCarriesYourPoison = false;
 
 	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
@@ -5508,7 +5557,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-ninth, which is the drift that put the passive tree eight
+	 * adds a ninety-third, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5525,7 +5574,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-ONE OF THE EIGHTY-EIGHT COMPARE NOTHING. They are the case labels
+	 * FORTY-FOUR OF THE NINETY-TWO COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

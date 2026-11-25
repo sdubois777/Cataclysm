@@ -3564,7 +3564,12 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("kill_was_an_execute")
 			// THE DEATH TREES' SLICE C6a (2026-11-25), BRIM'S "YOUR NEXT HIT IS A CRITICAL STRIKE": the character holds a
 			// next-hit critical strike charge. It names a state, so it compares nothing.
-			|| Name == TEXT("next_hit_is_critical");
+			|| Name == TEXT("next_hit_is_critical")
+			// THE DEATH TREES' SLICE C6b1 (2026-11-25): a hit from behind, a target at full health, and your Poison alone.
+			// Each names a state, so each compares nothing.
+			|| Name == TEXT("target_struck_from_behind")
+			|| Name == TEXT("target_at_full_health")
+			|| Name == TEXT("target_carries_your_poison");
 	}
 }
 

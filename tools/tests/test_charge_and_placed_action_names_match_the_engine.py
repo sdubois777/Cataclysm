@@ -998,6 +998,35 @@ def test_the_movement_cut_the_longer_hold_and_brims_condition_are_wired() -> Non
     assert re.search(r"case ECataclysmStatCondition::NextHitIsCritical:\s*return State\.bHoldsNextHitCritical;", pipeline)
 
 
+def test_the_four_facts_of_a_hits_target_are_filled_and_judged() -> None:
+    """The Death trees' slice C6b1 (2026-11-25). From behind: the target-state
+    fill asks the geometry and the striker's mark, and a `RearHits=1` strike
+    sets that mark around its hit and clears it after. Full health reads the
+    health share already filled for `target_health_below`. Your Poison alone is
+    filled beside your Poison or Bleed. Beyond metres reads the distance
+    `target_within_metres` reads, strictly. Read from the code with comments
+    taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.bTargetStruckFromBehind = \(Asker && Asker->IsStrikingFromBehindByRule\(\)\)\s*"
+                     r"\|\| UCataclysmSkillEffects::IsBehind\(State\.AskingAbilitySystem->GetAvatarActor\(\), Target\);",
+                     engine)
+    assert re.search(r"State\.bTargetCarriesYourPoison =\s*UCataclysmDebuffs::CarriesPoisonLaidBy\(Target,", engine)
+    template = code_without_comments(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    assert re.search(r"RearStriker->SetStrikingFromBehindByRule\(true\);\s*\}\s*"
+                     r"const float Dealt = UCataclysmSkillEffects::ApplyHit\(\s*"
+                     r"Self, Target, PercentThisBlow, SkillTags, Delivery, &Resolved\);\s*"
+                     r"if \(RearStriker\)\s*\{\s*RearStriker->SetStrikingFromBehindByRule\(false\);", template)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::TargetAtFullHealth:\s*"
+                     r"return State\.TargetHealthPercent >= 0\.0f && State\.TargetHealthPercent >= 100\.0f - 1\.0e-3f;",
+                     pipeline)
+    assert re.search(r"case ECataclysmStatCondition::TargetBeyondMetres:\s*"
+                     r"return State\.TargetDistanceMetres >= 0\.0f && State\.TargetDistanceMetres > Value;", pipeline)
+    for condition in ("target_struck_from_behind", "target_at_full_health", "target_carries_your_poison",
+                      "target_beyond_metres"):
+        assert condition in gen.CONDITIONS_OF_A_HIT_DEALT, condition
+
+
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:
     """The Death trees' slice C4c2 (2026-11-25), as ruled (Q7). The generator's
     name is the engine's, on `afflicted_death` only; the item recognises the

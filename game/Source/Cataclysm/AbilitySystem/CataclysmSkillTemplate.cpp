@@ -2571,8 +2571,20 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// target's own attribute set. `Resolved.bEvaded` is the only way to learn
 		// that the blow never connected.
 		FCataclysmDamageResult Resolved;
+		// A SKILL THAT COUNTS EVERY HIT AS FROM BEHIND MARKS ITS STRIKER AROUND THE HIT, so From Behind's condition
+		// holds for it whatever the geometry says (the Death trees' slice C6b1, 2026-11-25).
+		UCataclysmAbilitySystemComponent* RearStriker =
+			Params.bRearHits ? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)) : nullptr;
+		if (RearStriker)
+		{
+			RearStriker->SetStrikingFromBehindByRule(true);
+		}
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(
 			Self, Target, PercentThisBlow, SkillTags, Delivery, &Resolved);
+		if (RearStriker)
+		{
+			RearStriker->SetStrikingFromBehindByRule(false);
+		}
 		Total += Dealt;
 
 		// AN EVADED BLOW LANDED ON NOTHING, SO IT LEAVES NOTHING BEHIND.

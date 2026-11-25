@@ -132,9 +132,14 @@ def conditions_named_by_a_row() -> set[str]:
     for table in EFFECT_TABLES:
         with table.open(newline="", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
-                name = (row.get("Condition") or "").strip().lower()
-                if name:
-                    used.add(name)
+                # AND THE SECOND CONDITION COLUMN, since the Death trees'
+                # slice C6b1 (2026-11-25): Opening Strike names
+                # `target_at_full_health` only as its second condition, which
+                # is as reachable in play as the first.
+                for column in ("Condition", "Condition2"):
+                    name = (row.get(column) or "").strip().lower()
+                    if name:
+                        used.add(name)
     return used
 
 

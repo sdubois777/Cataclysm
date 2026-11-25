@@ -5452,6 +5452,15 @@ CONDITIONS = {
     # (2026-11-25). The character holds a next-hit critical strike charge. It
     # names a state.
     "next_hit_is_critical": None,
+    # THE FOUR OF THE DEATH TREES' SLICE C6b1 (2026-11-25), each a fact of the
+    # target in hand, so each is one of `CONDITIONS_OF_A_HIT_DEALT`: From
+    # Behind's "struck from behind"; Opening Strike's "at full health"; Venomed
+    # Prey's "carrying your Poison", a Bleed alone not counting; and Hit and
+    # Run's "more than 4 metres from you", strictly, the value the metres.
+    "target_struck_from_behind": None,
+    "target_at_full_health": None,
+    "target_carries_your_poison": None,
+    "target_beyond_metres": (0.0, 100.0, "a distance in metres"),
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -10972,6 +10981,10 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_carries_void_splinter",
     "target_damaged_by_you_within_seconds",
     "target_near_your_kill_within_seconds",
+    "target_struck_from_behind",
+    "target_at_full_health",
+    "target_carries_your_poison",
+    "target_beyond_metres",
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",

@@ -730,7 +730,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 604 THE SAME DAY, for slice C6a: Brim (three), Slip, Find the Rhythm,
 #: Sidestep and Keep the Count (two each, one at each step), Soul Barrage,
 #: Lasting Wounds (two, Poison and Bleed), Twin Step and Riposte.
-AUTHORED_ROWS = 604
+#:
+#: AND TO 611 THE SAME DAY, for slice C6b1: From Behind, Opening Strike (three),
+#: Venomed Prey (two) and Hit and Run.
+AUTHORED_ROWS = 611
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1197,7 +1200,10 @@ AUTHORED_ROWS = 604
 #:
 #: AND TO 362 THE SAME DAY, for slice C6a's Brim, Slip, Find the Rhythm,
 #: Sidestep, Keep the Count, Lasting Wounds, Twin Step and Riposte.
-AUTHORED_NODES = 362
+#:
+#: AND TO 365 THE SAME DAY, for slice C6b1's From Behind, Venomed Prey and Hit
+#: and Run. Opening Strike is an option, counted in `AUTHORED_OPTIONS`.
+AUTHORED_NODES = 365
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1315,7 +1321,10 @@ AUTHORED_NODES = 362
 #:
 #: AND TO 53 THE SAME DAY, for slice C6a: Soul Barrage (the Soul Collector's
 #: 200 vow, option 3).
-AUTHORED_OPTIONS = 53
+#:
+#: AND TO 54 THE SAME DAY, for slice C6b1: Opening Strike (the Shadow's 25 vow,
+#: option 1).
+AUTHORED_OPTIONS = 54
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1677,7 +1686,9 @@ CONDITION_WORDS = {
                                       "after you use your movement skill",
                                       "of using your movement skill"),
                                      "{value:g} second"),
-    "target_not_yet_struck_by_you": ("first hit against each enemy", None),
+    # AND OPENING STRIKE'S WORDING, the Shadow's 25 vow, option 1: "Your first
+    # hit on an enemy at full health" (the Death trees' slice C6b1, 2026-11-25).
+    "target_not_yet_struck_by_you": (("first hit against each enemy", "your first hit on an enemy"), None),
     "in_combat_for_seconds": ("in combat", "{value:g} second"),
     "target_carries_your_curse": ("carrying your curse", None),
     # DEATH'S PATIENCE, the Death trees' slice C4a (2026-11-25): "an enemy that
@@ -1843,6 +1854,15 @@ CONDITION_WORDS = {
     # and deals +5% increased damage per point". The Death trees' slice C6a
     # (2026-11-25). It names a state.
     "next_hit_is_critical": ("your next hit is a critical strike", None),
+
+    # THE FOUR OF THE DEATH TREES' SLICE C6b1 (2026-11-25): From Behind's "hits
+    # that strike an enemy from behind"; Opening Strike's "an enemy at full
+    # health"; Venomed Prey's "enemies carrying your Poison"; Hit and Run's
+    # "more than 4 metres from you".
+    "target_struck_from_behind": ("from behind", None),
+    "target_at_full_health": ("at full health", None),
+    "target_carries_your_poison": ("carrying your poison", None),
+    "target_beyond_metres": ("metres from you", "more than {value:g} metres"),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"
@@ -2785,6 +2805,9 @@ VALUE_IN_WORDS = {
     ("SoulCollector_capstone_200", "life_leech"): ("gives you its modifiers", 10.0),
     ("SoulCollector_capstone_200", "crowd_control_resistance"): ("gives you its modifiers", 100.0),
     ("SoulCollector_capstone_200", "health_regen"): ("gives you its modifiers", 2.0),
+    # OPENING STRIKE, the Death trees' slice C6b1 (2026-11-25): "is a critical
+    # strike" is a crit chance of 100, held under the ceiling, as Overpowered's is.
+    ("Shadow_capstone_25", "crit_chance"): ("is a critical strike", 100.0),
     # AND THE THIRD VOW'S, "your skills cost no mana", a removal of one as the
     # Ritualist's Ritual Focus writes it.
     ("SoulCollector_capstone_100", "mana_cost"): ("cost no mana", 1.0),

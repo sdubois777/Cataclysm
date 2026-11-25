@@ -671,6 +671,21 @@ NODES: tuple[Node, ...] = (
           R("dot_duration", "increased", 4, tags="Keyword.DoT.Bleed"))),
     Node(SH + "keystone_c_kC", "Twin Step", (R("skill_charges_bonus", "flat", 1, tags="Slot.Movement"),)),
     Node(SH + "keystone_d_kA", "Riposte", (A("strike_target", 100, event="dodge", tags="Type.Melee"),)),
+
+    # ---- SLICE C6b1 (2026-11-25): FACTS OF THE TARGET OF A HIT. From Behind's
+    # crit chance on a hit from behind; Opening Strike's critical strike (a
+    # chance of 100, held under the ceiling, as Overpowered's is) and 50% more on
+    # a first hit at full health; Venomed Prey's damage on your Poison; Hit and
+    # Run's Bleed damage beyond 4 metres, judged at each tick.
+    Node(SH + "basic_b_b0", "From Behind",
+         (R("crit_chance", "increased", 3, cond="target_struck_from_behind"),)),
+    Node(SH + "capstone_25", "Opening Strike",
+         (R("crit_chance", "flat", 100, cond="target_not_yet_struck_by_you", cond2="target_at_full_health"),)
+         + damage("more", 50, cond="target_not_yet_struck_by_you", cond2="target_at_full_health"),
+         option=1),
+    Node(SH + "basic_a_a2", "Venomed Prey", damage("increased", 2, cond="target_carries_your_poison")),
+    Node(SH + "basic_a_b2", "Hit and Run",
+         (R("dot_damage", "increased", 3, tags="Keyword.DoT.Bleed", cond="target_beyond_metres", cond_value=4),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

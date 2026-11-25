@@ -291,6 +291,12 @@ public:
 	static bool CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier);
 
 	/**
+	 * Whether `Carrier` carries a Poison whose effect names `Applier` as its instigator, a Bleed not counting: the
+	 * condition `target_carries_your_poison`, the Shadow's Venomed Prey. The Death trees' slice C6b1 (2026-11-25).
+	 */
+	static bool CarriesPoisonLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
 	 * The damage `Applier`'s Bleeds on `Carrier` have left to deal, held to what a Bleed's movement still allows
 	 * (`UCataclysmSkillEffects::RemainingDamageOverTime`). Blood Debt's figure, the Death trees' slice C4c2 (2026-11-25).
 	 */

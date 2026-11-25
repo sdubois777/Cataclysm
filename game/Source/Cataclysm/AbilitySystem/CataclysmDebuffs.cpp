@@ -416,6 +416,27 @@ bool UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const 
 	return false;
 }
 
+bool UCataclysmDebuffs::CarriesPoisonLaidBy(const AActor* Carrier, const AActor* Applier)
+{
+	const UAbilitySystemComponent* Theirs = Carrier && Applier ? UCataclysmTargeting::AbilitySystemOf(Carrier) : nullptr;
+	const FGameplayTag Poison =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+	if (!Theirs || !Poison.IsValid())
+	{
+		return false;
+	}
+	for (const FActiveGameplayEffectHandle& Handle :
+		 Theirs->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Poison))))
+	{
+		const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+		if (Active && Active->Spec.GetContext().GetInstigator() == Applier)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 FGameplayTag UCataclysmDebuffs::BleedTag()
 {
 	return UGameplayTagsManager::Get().RequestGameplayTag(

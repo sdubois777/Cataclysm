@@ -1688,6 +1688,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsYourCurse = false;
 	bool bWantsYourPoisonOrBleed = false;
 	bool bWantsNearKill = false;
+	bool bWantsBehind = false;
 	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1712,7 +1713,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 				bWantsAilments = true;
 				break;
 			case ECataclysmStatCondition::TargetHealthBelowPercent:
+			// AND FULL HEALTH, the Death trees' slice C6b1: the same health share.
+			case ECataclysmStatCondition::TargetAtFullHealth:
 				bWantsHealth = true;
+				break;
+			// AND WHETHER IT IS STRUCK FROM BEHIND, the Death trees' slice C6b1.
+			case ECataclysmStatCondition::TargetStruckFromBehind:
+				bWantsBehind = true;
 				break;
 			// AND WHETHER THE TARGET IS A BOSS, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Issue #1815. A condition missing from
@@ -1759,6 +1766,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// AND WHETHER IT CARRIES THE ASKER'S POISON OR BLEED, the Death trees' slice C4a (2026-11-25): Death's
 			// Patience, asked at a kill against the slain creature.
 			case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
+			// AND YOUR POISON ALONE, the Death trees' slice C6b1, filled beside it.
+			case ECataclysmStatCondition::TargetCarriesYourPoison:
 				bWantsYourPoisonOrBleed = true;
 				break;
 			// AND THE TARGET'S RARITY RUNG, the Death trees of 2026-11-24: "Elite or stronger", and the Soul
@@ -1787,7 +1796,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		// condition refused. `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` holds the lists
 		// to the declarations.
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSiphon
-			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill
+			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill && bWantsBehind
 			&& bWantsRarity)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
@@ -1802,7 +1811,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// lookup with no row asking has no condition to answer.
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSiphon
-			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill
+			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill && !bWantsBehind
 			&& !bWantsRarity))
 	{
 		return State;
@@ -1832,6 +1841,19 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	{
 		State.bTargetCarriesYourPoisonOrBleed = UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy(
 			Target, State.AskingAbilitySystem->GetAvatarActor());
+		// AND A POISON ALONE, the Death trees' slice C6b1 (2026-11-25).
+		State.bTargetCarriesYourPoison =
+			UCataclysmDebuffs::CarriesPoisonLaidBy(Target, State.AskingAbilitySystem->GetAvatarActor());
+	}
+
+	// AND WHETHER IT IS STRUCK FROM BEHIND: the asker inside the rear arc of the target's facing, or the asker's skill
+	// counting every hit as from behind (`RearHits=1`, marked on the asker around the hit). The Death trees' slice C6b1.
+	if (bWantsBehind && State.AskingAbilitySystem)
+	{
+		const UCataclysmAbilitySystemComponent* Asker =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		State.bTargetStruckFromBehind = (Asker && Asker->IsStrikingFromBehindByRule())
+			|| UCataclysmSkillEffects::IsBehind(State.AskingAbilitySystem->GetAvatarActor(), Target);
 	}
 
 	// THE TARGET'S RARITY RUNG, the Death trees of 2026-11-24: the rung the spawner set, as `IsBoss` reads it below.

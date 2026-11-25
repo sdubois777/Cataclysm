@@ -164,6 +164,10 @@ namespace
 		{ TEXT("kill_was_an_execute"), ECataclysmStatCondition::KillWasAnExecute },
 		{ TEXT("wearing_enemy_modifier"), ECataclysmStatCondition::WearingEnemyModifier },
 		{ TEXT("next_hit_is_critical"), ECataclysmStatCondition::NextHitIsCritical },
+		{ TEXT("target_struck_from_behind"), ECataclysmStatCondition::TargetStruckFromBehind },
+		{ TEXT("target_at_full_health"), ECataclysmStatCondition::TargetAtFullHealth },
+		{ TEXT("target_carries_your_poison"), ECataclysmStatCondition::TargetCarriesYourPoison },
+		{ TEXT("target_beyond_metres"), ECataclysmStatCondition::TargetBeyondMetres },
 	};
 
 	struct FNamedStatScale
@@ -388,8 +392,11 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::KillingBlowWasAHit:
 	case ECataclysmStatCondition::KillWasAnExecute:
 	case ECataclysmStatCondition::NextHitIsCritical:
+	case ECataclysmStatCondition::TargetStruckFromBehind:
+	case ECataclysmStatCondition::TargetAtFullHealth:
+	case ECataclysmStatCondition::TargetCarriesYourPoison:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the forty-one says
+		// nothing for a number to be compared against. Each of the forty-four says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -573,6 +580,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::MetresMovedBeforeAttack:
 	case C::OpponentBeyondMetres:
 	case C::TargetWithinMetres:
+	case C::TargetBeyondMetres:
 	case C::OpponentIsStaggered:
 	case C::OpponentIsCrowdControlled:
 	case C::MeleeHitWhileMoving:
@@ -584,6 +592,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesVoidSplinter:
 	case C::OpponentCarriesWeaken:
 	case C::TargetHealthBelowPercent:
+	case C::TargetAtFullHealth:
 	case C::EnemiesStruckTogetherAtLeast:
 	case C::EnemiesStruckTogetherAtMost:
 	case C::OpponentWithinMetres:
@@ -619,7 +628,13 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 
 	// WHETHER THE STRUCK OR SLAIN CREATURE CARRIES THE ASKER'S POISON OR BLEED, the Death trees' slice C4a: a fact of the
 	// target in hand, as the curse above is.
+	// AND, AFTER IT, THE DEATH TREES' SLICE C6b1'S POISON ALONE AND HIT FROM BEHIND (2026-11-25), each a fact of the
+	// target in hand and the blow. (Its full health and its beyond metres sit with the health and distance labels.) NO
+	// COMMENT BETWEEN THE LABELS: `tools/tests/test_a_minion_row_asks_only_what_its_read_can_answer.py` reads each run
+	// of labels up to its `return`.
 	case C::TargetCarriesYourPoisonOrBleed:
+	case C::TargetCarriesYourPoison:
+	case C::TargetStruckFromBehind:
 		return EOn::TheBlowOrSkill;
 
 	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
@@ -1420,6 +1435,21 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::NextHitIsCritical:
 		// FILLED BY `CurrentConditions` FROM THE CHARGE, the Death trees' slice C6a (2026-11-25).
 		return State.bHoldsNextHitCritical;
+
+	// THE FOUR OF THE DEATH TREES' SLICE C6b1 (2026-11-25).
+	case ECataclysmStatCondition::TargetStruckFromBehind:
+		return State.bTargetStruckFromBehind;
+
+	case ECataclysmStatCondition::TargetAtFullHealth:
+		// NOT READ (negative) REFUSES; FULL IS THE WHOLE SHARE, a thousandth allowed for rounding.
+		return State.TargetHealthPercent >= 0.0f && State.TargetHealthPercent >= 100.0f - 1.0e-3f;
+
+	case ECataclysmStatCondition::TargetCarriesYourPoison:
+		return State.bTargetCarriesYourPoison;
+
+	case ECataclysmStatCondition::TargetBeyondMetres:
+		// STRICTLY MORE THAN, "more than 4 metres", the boundary `OpponentBeyondMetres` keeps; not known refuses.
+		return State.TargetDistanceMetres >= 0.0f && State.TargetDistanceMetres > Value;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",
