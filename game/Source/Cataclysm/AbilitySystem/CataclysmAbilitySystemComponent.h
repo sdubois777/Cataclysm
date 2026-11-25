@@ -615,10 +615,17 @@ public:
 	 *                   in a row on one enemy. Issue #1833, phase 2. Null when
 	 *                   the event names nobody, and such a row then counts
 	 *                   nothing.
+	 * @param OnlyRowsWhoseKeyBegins  null for every row; otherwise only the rows whose
+	 *                   trigger key begins with this, which is a row's enchantment
+	 *                   name (`Passive_<node>` for a passive row). The Death trees'
+	 *                   slice C4b2 (2026-11-25): Death's Toll raises `kill` for a
+	 *                   follower's kill to the Soul Collector's own rows alone, as
+	 *                   ruled, read from what each row already holds.
 	 */
 	void ActOnEvent(FName Event, const FGameplayTagContainer* EventTags = nullptr,
 					float EventAmount = 0.0f, bool bLanded = true,
-					const AActor* EventTarget = nullptr);
+					const AActor* EventTarget = nullptr,
+					const TCHAR* OnlyRowsWhoseKeyBegins = nullptr);
 
 	/** Whether this character's worn rows are acting on an event now. See `PoolActionDepth`. Issue #2482. */
 	bool IsActingOnAnEvent() const { return PoolActionDepth > 0; }
@@ -4187,6 +4194,20 @@ public:
 	bool IsPayingForAKill() const { return KillPaymentsOpen > 0; }
 
 	/**
+	 * Record Fervour a decay just took, with the time: the Death decay after a kill and the Ravager's decay out of
+	 * contact both call this. Reclaimed gives back what was taken shortly before a kill (`TakeFervourDecayedWithin`).
+	 * The Death trees' slice C4b2 (2026-11-25), as ruled: both decays count. Nothing for an amount of nought or less.
+	 */
+	void NoteFervourDecayed(float Amount);
+
+	/**
+	 * Answer the Fervour the decays took in the last `Seconds`, and forget every record, so a second kill a moment later
+	 * gives nothing back twice. Older records are forgotten too, because a later kill's window starts later still and
+	 * could never reach them. The Death trees' slice C4b2 (2026-11-25), for Reclaimed.
+	 */
+	float TakeFervourDecayedWithin(float Seconds);
+
+	/**
 	 * A stat as if asked against a creature of rarity rung `RarityStep` (0 common, 1 Elite ...) with no creature in
 	 * hand, so a row under `target_rarity_is` or `target_rarity_at_least` can be judged. The Death trees' slice C4b1
 	 * (2026-11-25): before any kill, the full length of the decay hold is a common kill's grace, as ruled, and the grace
@@ -5902,6 +5923,12 @@ protected:
 
 	/** Each returned share of a spend still to come: when it is due, in world seconds, and how much. Cinders Kept. */
 	TArray<TPair<float, float>> FervourToReturn;
+
+	/** What the decays took, and when, in world seconds. See `NoteFervourDecayed`. The Death trees' slice C4b2. */
+	TArray<TPair<float, float>> FervourDecayed;
+
+	/** How long a record of decay is kept with no kill to read it, so the list cannot grow without end. */
+	static constexpr float FervourDecayedKeptSeconds = 30.0f;
 
 	/** When Phylactery's save may next be made, in world seconds. Negative means now. */
 	float FervourLethalSaveNextAllowedSeconds = -1.0f;

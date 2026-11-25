@@ -1145,6 +1145,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmFervour::AfterPoolRose. No attribute and no base.
 		TEXT("fervour_hold_restarted_by_any_gain"),
 		TEXT("fervour_hold_extended_on_gain_seconds"),
+		// And the Soul Collector's Reclaimed, Claimed and Death's Toll, the Death trees' slice C4b2: the seconds of decay
+		// a kill gives back, the seconds after a hit within which a death pays its Fervour, and the switch that makes a
+		// follower's kill this character's. Read by UCataclysmFervour. No attribute and no base.
+		TEXT("decay_given_back_on_kill_seconds"),
+		TEXT("fervour_claimed_within_seconds"),
+		TEXT("follower_kills_count_as_yours"),
 	};
 	return Stats;
 }

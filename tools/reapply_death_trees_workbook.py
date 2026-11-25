@@ -565,6 +565,16 @@ NODES: tuple[Node, ...] = (
     Node(SC + "basic_b_c1", "Borrowed Time",
          tuple(R("fervour_hold_extended_on_gain_seconds", "flat", 1, min_points=points) for points in (3, 6))),
     Node(SC + "keystone_b_kC", "Kindred Fires", (R("fervour_hold_restarted_by_any_gain", "flat", 1),)),
+
+    # ---- SLICE C4b2 (2026-11-25): DEATHS THE SOUL COLLECTOR DID NOT MAKE, AND DECAY
+    # GIVEN BACK. Reclaimed gives back what either decay took in the 3 seconds
+    # before a kill; Claimed pays an enemy's Fervour when it dies within a second
+    # for every 2 points of your hit, a row at each second point; Death's Toll makes
+    # a follower's kill yours for this tree, its `kill` raised to this tree's rows.
+    Node(SC + "keystone_spine_002", "Reclaimed", (R("decay_given_back_on_kill_seconds", "flat", 3),)),
+    Node(SC + "basic_spine_007", "Claimed",
+         tuple(R("fervour_claimed_within_seconds", "flat", 1, min_points=points) for points in (2, 4, 6, 8))),
+    Node(SC + "keystone_spine_001", "Death's Toll", (R("follower_kills_count_as_yours", "flat", 1),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

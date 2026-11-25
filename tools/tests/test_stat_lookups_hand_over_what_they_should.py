@@ -431,6 +431,21 @@ INVENTORY = {
         "Borrowed Time's seconds, asked on a rise that is not a kill's payment, "
         "with no tags for the same reason; no attribute, so nought is the "
         "fallback. The Death trees' slice C4b1",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(DecayGivenBackOnKillSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Reclaimed's seconds, asked at a kill with no tags because it is for the "
+        "kill and not a skill; no attribute, so nought is the fallback. The Death "
+        "trees' slice C4b2",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(ClaimedWithinSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Claimed's seconds, asked at a death this character did not make, with no "
+        "tags for the same reason; no attribute, so nought is the fallback. The "
+        "Death trees' slice C4b2",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(FollowerKillsCountAsYoursStat), FGameplayTagContainer(), 0.0f'):
+        "Death's Toll's switch, asked at a follower's kill with no tags for the "
+        "same reason; no attribute, so nought is the fallback. The Death trees' "
+        "slice C4b2",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "

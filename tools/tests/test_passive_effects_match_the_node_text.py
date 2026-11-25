@@ -708,7 +708,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 564 THE SAME DAY, for slice C4b1: Any Fuel, Borrowed Time (two, one at
 #: each third point) and Kindred Fires. The Soul Collector 104 rows.
-AUTHORED_ROWS = 564
+#:
+#: AND TO 570 THE SAME DAY, for slice C4b2: Reclaimed, Claimed (four, one at each
+#: second point) and Death's Toll. The Soul Collector 110 rows.
+AUTHORED_ROWS = 570
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1159,7 +1162,9 @@ AUTHORED_ROWS = 564
 #:
 #: AND TO 344 THE SAME DAY, for slice C4b1's Any Fuel, Borrowed Time and Kindred
 #: Fires.
-AUTHORED_NODES = 344
+#:
+#: AND TO 347 THE SAME DAY, for slice C4b2's Reclaimed, Claimed and Death's Toll.
+AUTHORED_NODES = 347
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2559,6 +2564,10 @@ VALUE_FORMS = {
     # SLICE C4b1 (2026-11-25): Borrowed Time's "is extended by 1 second for every
     # 3 points".
     "fervour_hold_extended_on_gain_seconds": ("extended by {value:g} second",),
+    # SLICE C4b2 (2026-11-25): Reclaimed's "in the 3 seconds before it", and
+    # Claimed's "if it dies within 1 second for every 2 points".
+    "decay_given_back_on_kill_seconds": ("in the {value:g} seconds before it",),
+    "fervour_claimed_within_seconds": ("within {value:g} second",),
     "fervour_kill_decay_per_second": ("decays at {value:g} per second",
                                       "drains at {value:g} per second"),
     # THE SIPHON'S RADIUS AND ITS LINGER, the Death trees' slice C2 (2026-11-25):
@@ -2950,6 +2959,11 @@ VALUE_IN_WORDS = {
     # from any source ... holds off decay as a kill does", a switch of 1.
     ("SoulCollector_keystone_b_kC", "fervour_hold_restarted_by_any_gain"):
         ("holds off decay as a kill does", 1.0),
+
+    # DEATH'S TOLL, the Death trees' slice C4b2 (2026-11-25): "count as your kills
+    # for everything this tree asks", a switch of 1.
+    ("SoulCollector_keystone_spine_001", "follower_kills_count_as_yours"):
+        ("count as your kills", 1.0),
 
     # AND THE RITUALIST'S RISEN IMPS, a flag of one. Issue #1479. The death path
     # asks whether the stat stands above zero. The sentence's digits belong to

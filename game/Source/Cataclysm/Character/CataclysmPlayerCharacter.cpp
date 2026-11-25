@@ -1448,6 +1448,10 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// C). Asked after it, `seconds_after_kill` on a kill's own stat read nought at every kill and always held;
 			// asked before it, it reads the time since the PREVIOUS kill, which "kills within 2 seconds of each
 			// other" needs. The grace is asked inside the stamp before the clock moves, so it reads the same.
+			//
+			// AND RECLAIMED'S GIVE-BACK BEFORE BOTH: what decay took in the seconds before this kill comes back as part of
+			// it. The Death trees' slice C4b2 (2026-11-25).
+			UCataclysmFervour::GiveBackDecayOnKill(Acting);
 			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
 			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
@@ -1553,6 +1557,16 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// and not the killing skill's.
 			UCataclysmRisenImps::RiseOnNecrosisKill(
 				this, Notice.Victim, Notice.Location, Notice.KillingTags);
+		}
+
+		// THE SOUL COLLECTOR ON A DEATH THIS CHARACTER DID NOT MAKE, the Death trees' slice C4b2 (2026-11-25). Death's
+		// Toll first: a follower's kill made this character's for everything the Soul Collector tree asks. Otherwise
+		// Claimed: an enemy this character hit shortly before gives its Fervour whatever killed it. Never both, as
+		// ruled, and neither for a kill this character made, which the block above has paid.
+		if (Notice.Killer != this && Notice.Victim
+			&& !UCataclysmFervour::CreditAFollowersKill(Acting, this, Notice))
+		{
+			UCataclysmFervour::ClaimOnDeath(Acting, Notice.Victim);
 		}
 
 		// AND THE SWARM: A MINION WHERE AN ENEMY THIS CHARACTER OR ONE OF ITS MINIONS KILLED FELL. The demonic tree

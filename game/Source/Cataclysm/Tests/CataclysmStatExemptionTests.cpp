@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmGroundPound.h"
@@ -12248,6 +12249,99 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `decay_given_back_on_kill_seconds`, read by `UCataclysmFervour::GiveBackDecayOnKill`: the Soul Collector's
+	 * Reclaimed, the Death trees' slice C4b2 (2026-11-25). ONE FIGHTER holding 50 Fervour that has never killed, with a
+	 * decay of 5 a second; a step of one second takes 5. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a
+	 * kill gives nothing back. Granted at 3, the 5 comes back.
+	 */
+	void ProbeDecayGivenBackOnKillSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Fighter);
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayPerSecondStat), 5.0f}});
+		UCataclysmFervour::KillDecayStep(Fighter.AbilitySystem, 1.0f);
+		Test.TestEqual(TEXT("control: with no decay_given_back_on_kill_seconds a kill gives nothing back"),
+					   UCataclysmFervour::GiveBackDecayOnKill(Fighter.AbilitySystem), 0.0f, 0.001f);
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayPerSecondStat), 5.0f},
+								   {FName(UCataclysmFervour::DecayGivenBackOnKillSecondsStat), 3.0f}});
+		Test.TestEqual(TEXT("with it at 3, the 5 decay took comes back, so GiveBackDecayOnKill really reads it"),
+					   UCataclysmFervour::GiveBackDecayOnKill(Fighter.AbilitySystem), 5.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_claimed_within_seconds`, read by `UCataclysmFervour::ClaimOnDeath`: the Soul Collector's Claimed, the
+	 * Death trees' slice C4b2 (2026-11-25). ONE FIGHTER paying 1 Fervour a kill, and another it has just struck. THE
+	 * CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: the struck one's death pays nothing. Granted at 2, it pays 1.
+	 */
+	void ProbeFervourClaimedWithinSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Claimer(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Claimer);
+		FScopedFighter Struck(World, /*AttackDamage=*/0.0f);
+		Struck.AbilitySystem->NoteStruckBy(Claimer.AbilitySystem, /*bCritical=*/false);
+		GrantFlats(Claimer.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f}});
+		Test.TestEqual(TEXT("control: with no fervour_claimed_within_seconds the struck one's death pays nothing"),
+					   UCataclysmFervour::ClaimOnDeath(Claimer.AbilitySystem, Struck.Actor), 0.0f, 0.001f);
+		GrantFlats(Claimer.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f},
+								   {FName(UCataclysmFervour::ClaimedWithinSecondsStat), 2.0f}});
+		Test.TestEqual(TEXT("with it at 2, the death pays 1, so ClaimOnDeath really reads it"),
+					   UCataclysmFervour::ClaimOnDeath(Claimer.AbilitySystem, Struck.Actor), 1.0f, 0.001f);
+	}
+
+	/**
+	 * `follower_kills_count_as_yours`, read by `UCataclysmFervour::CreditAFollowersKill`: the Soul Collector's Death's
+	 * Toll, the Death trees' slice C4b2 (2026-11-25). ONE FIGHTER paying 1 Fervour a kill, and an actor it owns, which
+	 * `UCataclysmCommand::CommanderOf` reads as its follower, killing a third. THE CONTROL IS THE SAME FIGHTER BEFORE THE
+	 * STAT IS GRANTED: the kill is not its own. Granted, it is, and pays 1.
+	 */
+	void ProbeFollowerKillsCountAsYours(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Commander(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Commander);
+		AActor* Follower = World->SpawnActor<AActor>();
+		AActor* Slain = World->SpawnActor<AActor>();
+		if (!Test.TestNotNull(TEXT("a follower"), Follower) || !Test.TestNotNull(TEXT("a slain creature"), Slain))
+		{
+			return;
+		}
+		Follower->SetOwner(Commander.Actor);
+		FCataclysmDeathNotice Notice;
+		Notice.Killer = Follower;
+		Notice.Victim = Slain;
+		GrantFlats(Commander.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f}});
+		Test.TestFalse(TEXT("control: with no follower_kills_count_as_yours a follower's kill is not its commander's"),
+					   UCataclysmFervour::CreditAFollowersKill(Commander.AbilitySystem, Commander.Actor, Notice));
+		GrantFlats(Commander.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f},
+									 {FName(UCataclysmFervour::FollowerKillsCountAsYoursStat), 1.0f}});
+		Test.TestTrue(TEXT("with it, the follower's kill is its commander's, so CreditAFollowersKill really reads it"),
+					  UCataclysmFervour::CreditAFollowersKill(Commander.AbilitySystem, Commander.Actor, Notice));
+		Test.TestEqual(TEXT("and it paid 1"),
+					   Commander.AbilitySystem->GetNumericAttribute(
+						   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()),
+					   1.0f, 0.001f);
+	}
+
+	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
 	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
@@ -12751,6 +12845,10 @@ namespace CataclysmStatExemptionTest
 			// THE DEATH TREES' SLICE C4b1 (2026-11-25): Kindred Fires and Borrowed Time.
 			{TEXT("fervour_hold_restarted_by_any_gain"), &ProbeHoldRestartedByAnyGain},
 			{TEXT("fervour_hold_extended_on_gain_seconds"), &ProbeHoldExtendedOnGainSeconds},
+			// THE DEATH TREES' SLICE C4b2 (2026-11-25): Reclaimed, Claimed and Death's Toll.
+			{TEXT("decay_given_back_on_kill_seconds"), &ProbeDecayGivenBackOnKillSeconds},
+			{TEXT("fervour_claimed_within_seconds"), &ProbeFervourClaimedWithinSeconds},
+			{TEXT("follower_kills_count_as_yours"), &ProbeFollowerKillsCountAsYours},
 		};
 		return Made;
 	}

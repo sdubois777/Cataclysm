@@ -3948,6 +3948,41 @@ void UCataclysmAbilitySystemComponent::ExtendKillDecayHold(float Seconds, float 
 	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Capped);
 }
 
+void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Amount <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	FervourDecayed.RemoveAll([Now](const TPair<float, float>& Entry)
+	{
+		return Entry.Key < Now - FervourDecayedKeptSeconds;
+	});
+	FervourDecayed.Emplace(Now, Amount);
+}
+
+float UCataclysmAbilitySystemComponent::TakeFervourDecayedWithin(float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Since = World->GetTimeSeconds() - Seconds;
+	float Taken = 0.0f;
+	for (const TPair<float, float>& Entry : FervourDecayed)
+	{
+		if (Entry.Key >= Since)
+		{
+			Taken += Entry.Value;
+		}
+	}
+	FervourDecayed.Reset();
+	return Taken;
+}
+
 float UCataclysmAbilitySystemComponent::StatAsIfAgainstRarity(FName Stat, int32 RarityStep, float Fallback) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
@@ -6898,7 +6933,7 @@ void UCataclysmAbilitySystemComponent::DrainQueuedAfflictedDeaths()
 
 void UCataclysmAbilitySystemComponent::ActOnEvent(
 	FName Event, const FGameplayTagContainer* EventTags, float EventAmount,
-	bool bLanded, const AActor* EventTarget)
+	bool bLanded, const AActor* EventTarget, const TCHAR* OnlyRowsWhoseKeyBegins)
 {
 	// ANNOUNCED FIRST, before either early return below. Issue #1821: a
 	// listener asking again for a cached stat needs every event, and most
@@ -6957,6 +6992,13 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	{
 		if (Listed.Event != Event || !PoolActionAllowed(Listed, EventTags, EventTarget)
 			|| !EventThresholdCrossed(Listed, EventAmount))
+		{
+			continue;
+		}
+		// ONLY ONE TREE'S ROWS, WHEN THE CALLER NAMES IT: Death's Toll raises `kill` for a follower's kill to the Soul
+		// Collector's own rows alone. The Death trees' slice C4b2 (2026-11-25), as ruled, with no new column: a row's
+		// trigger key begins with its enchantment's name, `Passive_<node>` for a passive row.
+		if (OnlyRowsWhoseKeyBegins && !Listed.TriggerKey.ToString().StartsWith(OnlyRowsWhoseKeyBegins))
 		{
 			continue;
 		}

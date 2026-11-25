@@ -12,6 +12,7 @@
 class AActor;
 class UAbilitySystemComponent;
 class ACataclysmCharacterBase;
+struct FCataclysmDeathNotice;
 
 /**
  * What fills Fervour and what empties it.
@@ -762,6 +763,57 @@ public:
 	 * (2026-11-25). Nought for an ability system that is not this game's.
 	 */
 	static float KillDecayHoldFullSeconds(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The seconds before a kill whose decay a kill gives back: the Soul Collector's Reclaimed, "A kill made after your
+	 * Fervour has begun to decay gives back the Fervour that decay took from you in the 3 seconds before it". The Death
+	 * trees' slice C4b2 (2026-11-25). No attribute and no base.
+	 */
+	static const TCHAR* DecayGivenBackOnKillSecondsStat;
+
+	/**
+	 * The seconds after your hit within which an enemy's death pays you its Fervour, whatever kills it: the Soul
+	 * Collector's Claimed, "within 1 second for every 2 points of that hit", a row at each second point. The Death trees'
+	 * slice C4b2 (2026-11-25). No attribute and no base.
+	 */
+	static const TCHAR* ClaimedWithinSecondsStat;
+
+	/**
+	 * The switch that makes a follower's kill this character's for the Soul Collector tree: Death's Toll, "Enemies your
+	 * minions, gadgets and traps kill give you their Fervour, and count as your kills for everything this tree asks".
+	 * The Death trees' slice C4b2 (2026-11-25). No attribute and no base.
+	 */
+	static const TCHAR* FollowerKillsCountAsYoursStat;
+
+	/**
+	 * Reclaimed: give back, as a kill's payment and unscaled, what the decays took in the stat's seconds before now.
+	 * Called by the player's kill handler for a kill credited to the character, and for a follower's kill Death's Toll
+	 * makes its own, before the kill is paid. Answers what arrived. Nothing when nothing decayed in that time, which is
+	 * every kill made before decay began. The Death trees' slice C4b2 (2026-11-25), as ruled: both decays count.
+	 */
+	static float GiveBackDecayOnKill(UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Claimed: for a death not credited to this character, pay what this character's kill of `Slain` would pay
+	 * (`GainOnOwnKill`, Gleaning's roll included) when its last hit on `Slain` landed within the stat's seconds. As a
+	 * kill's payment, with no kill clock and no hold, as ruled. The player's kill handler does not call it for a kill
+	 * Death's Toll has made the character's. Answers what arrived. The Death trees' slice C4b2 (2026-11-25).
+	 */
+	static float ClaimOnDeath(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
+
+	/**
+	 * Death's Toll: when `Notice`'s killer is a follower of `Commander` (`UCataclysmCommand::CommanderOf`: a minion, a
+	 * gadget, a trap or a thrall) and the stat is held, treat the kill as `Commander`'s for everything the Soul Collector
+	 * tree asks: Reclaimed's give-back, the payment and every row inside it, the kill clock and the hold
+	 * (`NoteOwnKill`), Last Breath (`RestoreHealthOnKillAtNoCost`), and `kill` raised to the Soul Collector's own rows
+	 * only. Not the run's kill count, not the weapon's, and no other tree's rows, as ruled. Answers whether it did. The
+	 * Death trees' slice C4b2 (2026-11-25).
+	 */
+	static bool CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, const AActor* Commander,
+									 const FCataclysmDeathNotice& Notice);
+
+	/** The start of every Soul Collector row's trigger key: `Passive_SoulCollector_`. See `CreditAFollowersKill`. */
+	static FString SoulCollectorRowKeyPrefix();
 
 	/**
 	 * Take away the Fervour a step this long costs once the grace after the last kill has run out, and answer what left.

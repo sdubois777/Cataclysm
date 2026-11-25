@@ -563,3 +563,9 @@ SoulCollector_basic_b_c0#1,SoulCollector_basic_b_c0,class_resource_generation,in
 SoulCollector_basic_b_c1#1,SoulCollector_basic_b_c1,fervour_hold_extended_on_gain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,3,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_b_c1#2,SoulCollector_basic_b_c1,fervour_hold_extended_on_gain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_keystone_b_kC#1,SoulCollector_keystone_b_kC,fervour_hold_restarted_by_any_gain,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_spine_002#1,SoulCollector_keystone_spine_002,decay_given_back_on_kill_seconds,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_spine_007#1,SoulCollector_basic_spine_007,fervour_claimed_within_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,2,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_spine_007#2,SoulCollector_basic_spine_007,fervour_claimed_within_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_spine_007#3,SoulCollector_basic_spine_007,fervour_claimed_within_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_spine_007#4,SoulCollector_basic_spine_007,fervour_claimed_within_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_spine_001#1,SoulCollector_keystone_spine_001,follower_kills_count_as_yours,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

@@ -3,12 +3,15 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmTargetCandidates.h"
 #include "AbilitySystemComponent.h"
 #include "HAL/IConsoleManager.h"
@@ -54,6 +57,99 @@ const TCHAR* UCataclysmFervour::KillDecayPerSecondStat = TEXT("fervour_kill_deca
 const TCHAR* UCataclysmFervour::KillDecayGraceSecondsStat = TEXT("fervour_kill_decay_grace_seconds");
 const TCHAR* UCataclysmFervour::HoldRestartedByAnyGainStat = TEXT("fervour_hold_restarted_by_any_gain");
 const TCHAR* UCataclysmFervour::HoldExtendedOnGainSecondsStat = TEXT("fervour_hold_extended_on_gain_seconds");
+const TCHAR* UCataclysmFervour::DecayGivenBackOnKillSecondsStat = TEXT("decay_given_back_on_kill_seconds");
+const TCHAR* UCataclysmFervour::ClaimedWithinSecondsStat = TEXT("fervour_claimed_within_seconds");
+const TCHAR* UCataclysmFervour::FollowerKillsCountAsYoursStat = TEXT("follower_kills_count_as_yours");
+
+FString UCataclysmFervour::SoulCollectorRowKeyPrefix()
+{
+	// THE NAME A PASSIVE ROW'S ENCHANTMENT IS GIVEN, FOR A NODE NAMED ONLY BY ITS TREE, so the prefix follows the one
+	// place that names passive rows.
+	return UCataclysmPassiveTree::EnchantmentNameFor(FName(TEXT("SoulCollector_")), 0);
+}
+
+float UCataclysmFervour::GiveBackDecayOnKill(UAbilitySystemComponent* AbilitySystem)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	const float Seconds = Cataclysm->StatForSkill(FName(DecayGivenBackOnKillSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Taken = Cataclysm->TakeFervourDecayedWithin(Seconds);
+	if (Taken <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// A KILL'S PAYMENT, UNSCALED, as ruled: what decay took comes back as it was taken, and Kindred Fires and Borrowed
+	// Time leave the hold to the kill's own stamp.
+	Cataclysm->BeginKillPayment();
+	ON_SCOPE_EXIT
+	{
+		Cataclysm->EndKillPayment();
+	};
+	return RaisePool(AbilitySystem, Taken);
+}
+
+float UCataclysmFervour::ClaimOnDeath(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Slain)
+	{
+		return 0.0f;
+	}
+	const float Within = Cataclysm->StatForSkill(FName(ClaimedWithinSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Within <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// THE RECORD IS KEPT ON THE STRUCK, keyed by the striker: `NoteStruckBy`. -1 is never struck by this character.
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Slain));
+	const float Since = Theirs ? Theirs->SecondsSinceStruckBy(AbilitySystem) : -1.0f;
+	if (Since < 0.0f || Since > Within)
+	{
+		return 0.0f;
+	}
+	return GainOnOwnKill(AbilitySystem, Slain);
+}
+
+bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, const AActor* Commander,
+											 const FCataclysmDeathNotice& Notice)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Commander || !Notice.Killer || !Notice.Victim || Notice.Killer == Commander
+		|| UCataclysmCommand::CommanderOf(Notice.Killer) != Commander
+		|| Cataclysm->StatForSkill(FName(FollowerKillsCountAsYoursStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return false;
+	}
+
+	// IN THE ORDER THE CHARACTER'S OWN KILL TAKES: what decay took given back, the payment, then the stamp.
+	GiveBackDecayOnKill(AbilitySystem);
+	GainOnOwnKill(AbilitySystem, Notice.Victim);
+	NoteOwnKill(AbilitySystem, Notice.Victim);
+
+	// `kill`, RAISED TO THE SOUL COLLECTOR'S OWN ROWS ONLY (Kill Chain's stacks among them), carrying the slain creature
+	// and its maximum health as an own kill's does. Not for a kill a row made, for the reason the own kill gives.
+	if (!Notice.bWhileTheKillersRowsActed)
+	{
+		const UAbilitySystemComponent* Slain = UCataclysmTargeting::AbilitySystemOf(Notice.Victim);
+		const float SlainMaximum =
+			Slain ? Slain->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+		const FString Prefix = SoulCollectorRowKeyPrefix();
+		Cataclysm->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum, /*bLanded=*/true,
+							  Notice.Victim, *Prefix);
+	}
+
+	// AND LAST BREATH, the Soul Collector's health on a kill at no cost.
+	RestoreHealthOnKillAtNoCost(AbilitySystem);
+	return true;
+}
 
 float UCataclysmFervour::RaisePool(UAbilitySystemComponent* AbilitySystem, float Change)
 {
@@ -681,7 +777,10 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 	}
 
 	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
-	return Cataclysm->GetNumericAttribute(Pool) - Before;
+	const float Moved = Cataclysm->GetNumericAttribute(Pool) - Before;
+	// AND WHAT IT TOOK, KEPT FOR RECLAIMED (the Death trees' slice C4b2, as ruled: both decays count).
+	Cataclysm->NoteFervourDecayed(-Moved);
+	return Moved;
 }
 
 float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
@@ -1354,5 +1453,8 @@ float UCataclysmFervour::KillDecayStep(UAbilitySystemComponent* AbilitySystem, f
 	}
 
 	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
-	return Cataclysm->GetNumericAttribute(Pool) - Before;
+	const float Moved = Cataclysm->GetNumericAttribute(Pool) - Before;
+	// AND WHAT IT TOOK, KEPT FOR RECLAIMED (the Death trees' slice C4b2, as ruled: both decays count).
+	Cataclysm->NoteFervourDecayed(-Moved);
+	return Moved;
 }
