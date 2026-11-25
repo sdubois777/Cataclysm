@@ -1405,9 +1405,12 @@ No issue number: the owner's report of 2026-11-24, relayed by the coordinating s
 
 ### SAID FIRST
 
-- **WRITTEN WITHOUT A BUILD.** No Unreal build or test has run on this branch; the machine belongs to the window. Every
-  Unreal figure below is a prediction registered for the window. The changed and new C++ was read top to bottom as the
-  compiler would read it, and every engine call in the tests was checked against
+- **WRITTEN WITHOUT A BUILD, AND SINCE RUN AND PASSED.** When this entry was written no Unreal build or test had run on
+  this branch, and every Unreal figure below was a prediction registered for a window. It has since run and passed in
+  skill selection's windows ss2-w1 to ss2-w3 (2026-11-25, recorded at the end of the slice 3 entry above):
+  `Cataclysm.ItemComparison.` performed 11 of 11 alone in ss2-w1, and the guard proofs R1 to R3 were PROVED in ss2-w3.
+  The changed and new C++ was read top to bottom as the compiler would read it, and every engine call in the tests was
+  checked against
   `Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h` (`TestNotEqual(const TCHAR*, const FString&, const
   FString&)`, `TestEqual` and `TestTrue` taking an `FString`).
 - **WEAPONS CHANGED TOO, A JUDGEMENT THE BRIEF LEFT TO THE CODE.** The brief asked whether the two hands make the same
