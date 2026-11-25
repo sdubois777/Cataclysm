@@ -495,12 +495,15 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 		WeaponModifiers.Find(FName(TEXT("attack_damage")));
 	if (WeaponDamage && WeaponDamage->Num() == 2)
 	{
-		TestTrue(FString::Printf(TEXT("its 78 implicit doubles to 156, got %.2f"),
+		// SINCE ISSUE #2883, whole numbers doubled inside the rounding: the
+		// implicit's 31 at +0 is 155 two-handed at +10 (156 before), and the
+		// affix's tier 7 top of 15 at +0 is 75 (44 when it was 22 doubled).
+		TestTrue(FString::Printf(TEXT("its 78 implicit, 31 at +0, is 155, got %.2f"),
 				 (*WeaponDamage)[0].Value),
-			FMath::IsNearlyEqual((*WeaponDamage)[0].Value, 156.0f, 0.05f));
-		TestTrue(FString::Printf(TEXT("its 22 affix doubles to 44, got %.2f"),
+			FMath::IsNearlyEqual((*WeaponDamage)[0].Value, 155.0f, 0.05f));
+		TestTrue(FString::Printf(TEXT("its affix, 15 at +0, is 75, got %.2f"),
 				 (*WeaponDamage)[1].Value),
-			FMath::IsNearlyEqual((*WeaponDamage)[1].Value, 44.0f, 0.05f));
+			FMath::IsNearlyEqual((*WeaponDamage)[1].Value, 75.0f, 0.05f));
 	}
 	else
 	{
@@ -522,12 +525,14 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 		AxeModifiers.Find(FName(TEXT("attack_damage")));
 	if (AxeDamage && AxeDamage->Num() == 2)
 	{
-		TestTrue(FString::Printf(TEXT("its 46 implicit stays 46, got %.2f"),
+		// 18 at +0 is 45 at +10 (the stated 46 before issue #2883), and the
+		// affix's 15 at +0 is 38 (37.5, a half going up).
+		TestTrue(FString::Printf(TEXT("its implicit, 18 at +0, is 45, got %.2f"),
 				 (*AxeDamage)[0].Value),
-			FMath::IsNearlyEqual((*AxeDamage)[0].Value, 46.0f, 0.05f));
-		TestTrue(FString::Printf(TEXT("its affix stays 22, got %.2f"),
+			FMath::IsNearlyEqual((*AxeDamage)[0].Value, 45.0f, 0.05f));
+		TestTrue(FString::Printf(TEXT("its affix is 38, got %.2f"),
 				 (*AxeDamage)[1].Value),
-			FMath::IsNearlyEqual((*AxeDamage)[1].Value, 22.0f, 0.05f));
+			FMath::IsNearlyEqual((*AxeDamage)[1].Value, 38.0f, 0.05f));
 	}
 	else
 	{
@@ -584,13 +589,11 @@ bool FCataclysmItemResistanceTest::RunTest(const FString& Parameters)
 			Found != nullptr && Found->Num() == 1);
 		if (Found && Found->Num() == 1)
 		{
-			// 12% per resistance at tier 7 on +10 gear. It was 6 until issue
-			// #1229 doubled the three resistance affixes, because the
-			// difficulty tier now takes resistance off a player and a tier 8
-			// character needs 145 rather than 70 to sit at the cap.
-			TestTrue(FString::Printf(TEXT("%s is 12 points, got %.2f"),
+			// 40 per resistance at tier 7 on +10 gear, its T7 Max of 16 at +0,
+			// since issue #2883. It was 12 from #1229 and 6 before that.
+			TestTrue(FString::Printf(TEXT("%s is 40 points, got %.2f"),
 					 *Stat.ToString(), (*Found)[0].Value),
-				FMath::IsNearlyEqual((*Found)[0].Value, 12.0f, 0.05f));
+				FMath::IsNearlyEqual((*Found)[0].Value, 40.0f, 0.05f));
 		}
 	}
 
@@ -625,13 +628,15 @@ bool FCataclysmItemResistanceTest::RunTest(const FString& Parameters)
 		Demonic != nullptr && Demonic->Num() == 1);
 	if (Demonic && Demonic->Num() == 1)
 	{
-		// 40 points for a single resistance at tier 7 on +10 gear, against 12
-		// for the family covering all eight. Concentration is worth more per
-		// type, and the RATIO is what this line is really about: both doubled
-		// together for issue #1229, so it is unchanged at 3.33 to 1.
-		TestTrue(FString::Printf(TEXT("a single resistance is 40 points, got %.2f"),
+		// 58 points for a single resistance at tier 7 on +10 gear (its T7 Max
+		// of 23 at +0), against 40 for the family covering all eight, since
+		// issue #2883. Concentration is still worth more per type, now 1.45 to
+		// 1 rather than 3.33 to 1 (40 against 12): the approved proposal's row
+		// R2, seven whole tiers holding the all-resistances affix at 35 or more
+		// at +10.
+		TestTrue(FString::Printf(TEXT("a single resistance is 58 points, got %.2f"),
 				 (*Demonic)[0].Value),
-			FMath::IsNearlyEqual((*Demonic)[0].Value, 40.0f, 0.05f));
+			FMath::IsNearlyEqual((*Demonic)[0].Value, 58.0f, 0.05f));
 	}
 
 	return true;
@@ -716,19 +721,21 @@ bool FCataclysmWeaponDamageByTypeTest::RunTest(const FString& Parameters)
 	struct FCase
 	{
 		const TCHAR* Type;
-		float Stated;
-		bool bTwoHanded;
+		float Expected;
 	};
+	// SINCE ISSUE #2883 an implicit is its whole +0 value upgraded, so the stated
+	// +10 figure is no longer exactly the answer: the Greataxe's 72 is 29 at +0
+	// and 145 two-handed at +10, the Staff's 66 is 26 and 130, the Fist's 30 is
+	// 12 and 30. (144, 132 and 30 before.)
 	const FCase Cases[] = {
-		{ TEXT("Greataxe"), 72.0f, true  },
-		{ TEXT("Staff"),    66.0f, true  },
-		{ TEXT("Fist"),     30.0f, false },
+		{ TEXT("Greataxe"), 145.0f },
+		{ TEXT("Staff"),    130.0f },
+		{ TEXT("Fist"),      30.0f },
 	};
 
 	for (const FCase& Case : Cases)
 	{
-		// At gear level 10 the stated figure IS the answer, before doubling.
-		const float Expected = Case.Stated * (Case.bTwoHanded ? 2.0f : 1.0f);
+		const float Expected = Case.Expected;
 		const float Actual = UCataclysmItemModifiers::WeaponDamageForType(
 			Bases, Case.Type, /*GearLevel=*/10);
 
@@ -806,25 +813,26 @@ bool FCataclysmTwoWeaponsSumTheirDamage::RunTest(const FString& Parameters)
 	const FCataclysmItem Axe = At10(TEXT("Weapon_Axe"));
 	const FCataclysmItem Sword = At10(TEXT("Weapon_Sword"));
 
-	TestEqual(TEXT("an Axe alone carries the 46 the sheet states"),
-		UCataclysmItemModifiers::WeaponDamageForItem(Axe, Bases), 46.0f, 0.01f);
+	// 45, the stated 46 being 18 at +0 since issue #2883.
+	TestEqual(TEXT("an Axe alone carries 45"),
+		UCataclysmItemModifiers::WeaponDamageForItem(Axe, Bases), 45.0f, 0.01f);
 	TestEqual(TEXT("a Sword alone carries 40"),
 		UCataclysmItemModifiers::WeaponDamageForItem(Sword, Bases), 40.0f, 0.01f);
 
 	// THE TWO FIGURES THE DESIGN DOCUMENT STATES.
-	TestEqual(TEXT("an Axe with a Sword gives 86, as the design document says"),
+	TestEqual(TEXT("an Axe with a Sword gives 85, as the design document says"),
 		UCataclysmItemModifiers::BlendedWeaponDamage({Axe, Sword}, Bases),
-		86.0f, 0.01f);
-	TestEqual(TEXT("an Axe with an Axe gives 92, as the design document says"),
+		85.0f, 0.01f);
+	TestEqual(TEXT("an Axe with an Axe gives 90, as the design document says"),
 		UCataclysmItemModifiers::BlendedWeaponDamage({Axe, Axe}, Bases),
-		92.0f, 0.01f);
+		90.0f, 0.01f);
 
 	// A TWO-HANDED WEAPON IS WORTH DOUBLE ITS STATED FIGURE, and is one entry
 	// rather than two, because it is stored in the first weapon slot alone.
 	const FCataclysmItem Greatsword = At10(TEXT("Weapon_Greatsword"));
-	TestEqual(TEXT("a Greatsword's stated 78 doubles to 156"),
+	TestEqual(TEXT("a Greatsword's 31 at +0 doubles to 155"),
 		UCataclysmItemModifiers::BlendedWeaponDamage({Greatsword}, Bases),
-		156.0f, 0.01f);
+		155.0f, 0.01f);
 
 	// HOLDING NOTHING IS WORTH NOTHING, rather than being an error.
 	TestEqual(TEXT("no weapons at all are worth nothing"),
@@ -865,9 +873,10 @@ bool FCataclysmUpgradeLevelReachesWeaponDamage::RunTest(const FString& Parameter
 	const float AtZero = UCataclysmItemModifiers::WeaponDamageForItem(Fresh, Bases);
 	const float AtTen = UCataclysmItemModifiers::WeaponDamageForItem(Upgraded, Bases);
 
-	// The sheet states the +10 figure, and a Whip's is 32.
-	TestEqual(TEXT("a +10 Whip carries the 32 the sheet states"),
-		AtTen, 32.0f, 0.01f);
+	// The sheet states 32 at +10, which is 13 at +0 since issue #2883, so a
+	// +10 Whip carries 33 (32.5, a half going up).
+	TestEqual(TEXT("a +10 Whip carries 33"),
+		AtTen, 33.0f, 0.01f);
 
 	// ABOUT 2.5 TIMES, which is the upgrade curve stated on FCataclysmItem
 	// itself. It was 3.52 until 2026-09-03, when the gear level ladder was eased
@@ -1274,12 +1283,14 @@ bool FCataclysmAilmentAffixGrantsItsChance::RunTest(const FString& Parameters)
 		return Total;
 	};
 
-	TestEqual(TEXT("a top-tier Chance to bleed on a +10 ring grants 15"),
-		ChanceToBleedOn(TEXT("Ring_Band")), 15.0f, 0.01f);
+	// SINCE ISSUE #2883: tier 7's top is 15 at +0, so 38 at +10 on a ring
+	// (37.5, a half going up), and 75 on a two-handed weapon, doubled inside
+	// the rounding. 15 and 30 before.
+	TestEqual(TEXT("a top-tier Chance to bleed on a +10 ring grants 38"),
+		ChanceToBleedOn(TEXT("Ring_Band")), 38.0f, 0.01f);
 
-	TestEqual(TEXT("and on a +10 Greatsword, which is two-handed, 30"),
-		ChanceToBleedOn(TEXT("Weapon_Greatsword")),
-		15.0f * UCataclysmItemValues::TwoHandedMultiplier, 0.01f);
+	TestEqual(TEXT("and on a +10 Greatsword, which is two-handed, 75"),
+		ChanceToBleedOn(TEXT("Weapon_Greatsword")), 75.0f, 0.01f);
 
 	return true;
 }

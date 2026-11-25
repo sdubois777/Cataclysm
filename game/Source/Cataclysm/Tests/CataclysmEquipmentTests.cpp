@@ -1043,8 +1043,9 @@ bool FCataclysmUpgradeLevelReachesAttackDamage::RunTest(const FString& Parameter
 	const float Upgraded =
 		AttributeWearing(World, {Plain(TEXT("Weapon_Whip"), 10)}, Damage);
 
-	TestEqual(TEXT("a +10 Whip carries the 32 the sheet states"),
-		Upgraded, 32.0f, 0.05f);
+	// 32 at +10 in the sheet is 13 at +0 since issue #2883: 33 at +10.
+	TestEqual(TEXT("a +10 Whip carries 33"),
+		Upgraded, 33.0f, 0.05f);
 	if (TestTrue(TEXT("a +0 Whip is worth something"), Fresh > 0.0f))
 	{
 		// About 2.5 times, the upgrade curve stated on FCataclysmItem itself.
@@ -1131,8 +1132,11 @@ bool FCataclysmDamageAffixesReachTheCharacter::RunTest(const FString& Parameters
 	if (TestTrue(TEXT("the affix is worth something on a one-handed weapon"),
 			OnOneHand > 0.05f))
 	{
-		TestEqual(TEXT("and exactly twice that on a two-handed one"),
-			OnTwoHand, OnOneHand * 2.0f, 0.05f);
+		// DOUBLED INSIDE THE ROUNDING since issue #2883: 15 at +0 is 38 on a
+		// one-handed weapon at +10 and 75 on a two-handed one, so within one of
+		// twice, not exactly twice.
+		TestEqual(TEXT("and twice that, within the rounding, on a two-handed one"),
+			OnTwoHand, OnOneHand * 2.0f, 1.0f);
 	}
 
 	return true;

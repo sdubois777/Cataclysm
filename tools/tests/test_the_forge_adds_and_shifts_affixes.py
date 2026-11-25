@@ -246,7 +246,7 @@ def test_the_python_copy_gives_the_figures_fc2_asserts() -> None:
     salt = int(constant("DeterministicAffixSalt"))
     seed = craft_seed(HELM, salt, 2, 12345, 7)
     assert f"Seed, {seed});" in test, seed
-    types, roll = addition(HELM, "Stat_Flat_block_chance", seed)
+    types, roll = addition(HELM, "Stat_Flat_retaliation", seed)
     assert types == [] and f"{roll!r}f" in test, roll
     resistant_seed = craft_seed(RESISTANT, salt, 2, 12345, 7)
     assert f"ResistantSeed, {resistant_seed});" in test, resistant_seed

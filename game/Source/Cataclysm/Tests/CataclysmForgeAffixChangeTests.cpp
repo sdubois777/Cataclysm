@@ -42,7 +42,9 @@ namespace CataclysmForgeAffixChangeTest
 {
 	const FName Fragments(UCataclysmForge::SchematicFragmentsRow);
 	const FName Crystal(UCataclysmForge::CrystalOfInstabilityRow);
-	const FName BlockChance(TEXT("Stat_Flat_block_chance"));
+	// FLAT RETALIATION, A SUFFIX THE HEAD CAN TAKE. Flat block chance until issue #2883 narrowed that to belts and
+	// shoulders; the seeded roll it is drawn with does not depend on which affix is added.
+	const FName Retaliation(TEXT("Stat_Flat_retaliation"));
 	const FName FlatArmor(TEXT("Stat_Flat_armor"));
 	const FName FlatEvasion(TEXT("Stat_Flat_evasion"));
 	const FName TwoResistances(TEXT("Resistance_Two_resistances"));
@@ -169,8 +171,8 @@ bool FCataclysmForgeAffixChangeAddTest::RunTest(const FString&)
 	const FCataclysmItem Item = Helm();
 
 	const FCataclysmForgeAffixChange Plan =
-		UCataclysmForge::DeterministicAffixOf(Item, BlockChance, 3, 1655429928, Affixes, Bases, 1, 1, 1000000);
-	TestTrue(TEXT("flat block chance can be added to the helm at tier 3"), Plan.bPossible);
+		UCataclysmForge::DeterministicAffixOf(Item, Retaliation, 3, 1655429928, Affixes, Bases, 1, 1, 1000000);
+	TestTrue(TEXT("flat retaliation can be added to the helm at tier 3"), Plan.bPossible);
 	TestEqual(TEXT("as affix 3"), Plan.Affix, 2);
 	TestEqual(TEXT("with Schematic Fragments"), Plan.Material, Fragments);
 	TestEqual(TEXT("5 residue a tier: 40 becomes 55"), Plan.ResidueAfter, 55.0f, 0.001f);
@@ -179,17 +181,17 @@ bool FCataclysmForgeAffixChangeAddTest::RunTest(const FString&)
 	TestTrue(TEXT("the helm was Quality and becomes Superb"),
 			 Plan.bHadRarity && Plan.FromRarity == ECataclysmRarity::Quality && Plan.ToRarity == ECataclysmRarity::Superb);
 	TestEqual(TEXT("the first press's question"), UCataclysmForge::AffixChangeQuestion(Plan, Affixes),
-			  FString(TEXT("Press again to add Flat block chance at tier 3 as affix 3, making the piece Superb: Schematic "
+			  FString(TEXT("Press again to add Flat retaliation at tier 3 as affix 3, making the piece Superb: Schematic "
 						   "Fragments, 450 gold, residue 40 to 55, 3 days of the run; its roll is drawn in the tier.")));
 	TestEqual(TEXT("its tier 7 base days are 7"),
-			  UCataclysmForge::DeterministicAffixOf(Item, BlockChance, 7, 1, Affixes, Bases, 1, 1, 1000000).Days, 7);
+			  UCataclysmForge::DeterministicAffixOf(Item, Retaliation, 7, 1, Affixes, Bases, 1, 1, 1000000).Days, 7);
 
 	const auto Refusal = [&](const FCataclysmItem& On, FName Row, int32 Tier, int32 Held, int64 Gold)
 	{
 		return UCataclysmForge::DeterministicAffixOf(On, Row, Tier, 1, Affixes, Bases, Held, 1, Gold).Refusal;
 	};
-	TestEqual(TEXT("tier 0"), Refusal(Item, BlockChance, 0, 1, 1000000), FString(TEXT("An affix can be added at tier 1 to 7.")));
-	TestEqual(TEXT("tier 8"), Refusal(Item, BlockChance, 8, 1, 1000000), FString(TEXT("An affix can be added at tier 1 to 7.")));
+	TestEqual(TEXT("tier 0"), Refusal(Item, Retaliation, 0, 1, 1000000), FString(TEXT("An affix can be added at tier 1 to 7.")));
+	TestEqual(TEXT("tier 8"), Refusal(Item, Retaliation, 8, 1, 1000000), FString(TEXT("An affix can be added at tier 1 to 7.")));
 	TestEqual(TEXT("a stat group the helm holds"), Refusal(Item, FlatArmor, 3, 1, 1000000),
 			  FString(TEXT("Flat armor cannot be added to that piece.")));
 	TestEqual(TEXT("an affix no helm can roll"), Refusal(Item, FName(TEXT("Stat_Flat_damage")), 3, 1, 1000000),
@@ -197,18 +199,18 @@ bool FCataclysmForgeAffixChangeAddTest::RunTest(const FString&)
 	FCataclysmItem Full = Helm();
 	Full.Affixes.Add(MakeAffix(TEXT("Stat_Flat_maximum_health"), 1, 0.5f));
 	Full.Affixes.Add(MakeAffix(TEXT("Stat_Flat_retaliation"), 1, 0.5f));
-	TestEqual(TEXT("a Masterful piece's four slots"), Refusal(Full, BlockChance, 3, 1, 1000000),
+	TestEqual(TEXT("a Masterful piece's four slots"), Refusal(Full, Retaliation, 3, 1, 1000000),
 			  FString(TEXT("That piece's four slots are full.")));
 	FCataclysmItem Enchanted = Helm();
 	Enchanted.Affixes.Add(MakeAffix(TEXT("Stat_Flat_maximum_health"), 1, 0.5f));
 	Enchanted.EnchantmentCount = 1;
-	TestEqual(TEXT("a Legendary piece, its enchantment in the fourth"), Refusal(Enchanted, BlockChance, 3, 1, 1000000),
+	TestEqual(TEXT("a Legendary piece, its enchantment in the fourth"), Refusal(Enchanted, Retaliation, 3, 1, 1000000),
 			  FString(TEXT("That piece's four slots are full.")));
-	TestEqual(TEXT("no Schematic Fragments"), Refusal(Item, BlockChance, 3, 0, 1000000),
+	TestEqual(TEXT("no Schematic Fragments"), Refusal(Item, Retaliation, 3, 0, 1000000),
 			  FString(TEXT("Adding an affix takes Schematic Fragments; 0 held.")));
-	TestEqual(TEXT("too little gold"), Refusal(Item, BlockChance, 3, 1, 100),
+	TestEqual(TEXT("too little gold"), Refusal(Item, Retaliation, 3, 1, 100),
 			  FString(TEXT("Adding an affix takes 450 gold; 100 gold held.")));
-	TestEqual(TEXT("no piece"), Refusal(FCataclysmItem(), BlockChance, 3, 1, 1000000),
+	TestEqual(TEXT("no piece"), Refusal(FCataclysmItem(), Retaliation, 3, 1, 1000000),
 			  FString(TEXT("There is nothing there to craft.")));
 
 	FAffixChangeScene Scene = MakeScene();
@@ -228,14 +230,14 @@ bool FCataclysmForgeAffixChangeAddTest::RunTest(const FString&)
 	const int32 DayBefore = Scene.Run->Day();
 	const int64 GoldBefore = Scene.State->GetOwnGold();
 	const float Expected = UCataclysmForge::DeterministicAffixOf(
-		Before, BlockChance, 3,
+		Before, Retaliation, 3,
 		UCataclysmForge::AffixCraftSeed(Before, UCataclysmForge::DeterministicAffixSalt, 2, Scene.Run->WalkSeedMask, DayBefore),
 		Affixes, Bases, 1, 1, 1000000).Roll;
 
 	FCataclysmForgeAffixChange Done;
 	FString Message;
 	const ECataclysmForgeResult Result = UCataclysmForgeCraft::AddAffix(
-		Scene.World, FCataclysmForgeTarget::Carried(Cell), BlockChance, 3, false, Done, Message);
+		Scene.World, FCataclysmForgeTarget::Carried(Cell), Retaliation, 3, false, Done, Message);
 	const FCataclysmItem* After = Scene.Bag()->ItemAt(Cell);
 	TestEqual(TEXT("the affix is added"), static_cast<int32>(Result), static_cast<int32>(ECataclysmForgeResult::Done));
 	if (!TestNotNull(TEXT("the helm is still in its cell"), After) || !TestEqual(TEXT("with 3 affixes"), After->Affixes.Num(), 3))
@@ -245,7 +247,7 @@ bool FCataclysmForgeAffixChangeAddTest::RunTest(const FString&)
 	AddInfo(FString::Printf(TEXT("ADDED: %s tier %d roll %.6f (expected %.6f), residue %.0f, day %d to %d, gold %lld"),
 							*After->Affixes[2].Affix.ToString(), After->Affixes[2].Tier, After->Affixes[2].Roll, Expected,
 							After->Residue, DayBefore, Scene.Run->Day(), GoldBefore - Scene.State->GetOwnGold()));
-	TestTrue(TEXT("affix 3 is flat block chance at tier 3"), After->Affixes[2].Affix == BlockChance && After->Affixes[2].Tier == 3);
+	TestTrue(TEXT("affix 3 is flat retaliation at tier 3"), After->Affixes[2].Affix == Retaliation && After->Affixes[2].Tier == 3);
 	TestEqual(TEXT("its roll is the one drawn for this item, run and day"), After->Affixes[2].Roll, Expected, 0.000001f);
 	TestTrue(TEXT("affixes 1 and 2 are untouched"),
 			 After->Affixes[0].Affix == FlatEvasion && After->Affixes[0].Roll == 0.5f && After->Affixes[1].Affix == FlatArmor
@@ -299,11 +301,11 @@ bool FCataclysmForgeAffixChangeDrawTest::RunTest(const FString&)
 	const int32 Seed = UCataclysmForge::AffixCraftSeed(Item, UCataclysmForge::DeterministicAffixSalt, 2, Mask, Day);
 	TestEqual(TEXT("the addition's seed on day 7 of mask 12345"), Seed, 1655429928);
 	const FCataclysmForgeAffixChange Block =
-		UCataclysmForge::DeterministicAffixOf(Item, BlockChance, 3, Seed, Affixes, Bases, 1, 1, 1000000);
-	TestEqual(TEXT("flat block chance draws 0.209570"), Block.Roll, 0.209570050239563f, 0.000001f);
+		UCataclysmForge::DeterministicAffixOf(Item, Retaliation, 3, Seed, Affixes, Bases, 1, 1, 1000000);
+	TestEqual(TEXT("flat retaliation draws 0.209570"), Block.Roll, 0.209570050239563f, 0.000001f);
 	TestTrue(TEXT("and no damage types"), Block.ToDamageTypes.IsEmpty());
 	TestEqual(TEXT("again the same"),
-			  UCataclysmForge::DeterministicAffixOf(Item, BlockChance, 3, Seed, Affixes, Bases, 1, 1, 1000000).Roll,
+			  UCataclysmForge::DeterministicAffixOf(Item, Retaliation, 3, Seed, Affixes, Bases, 1, 1, 1000000).Roll,
 			  Block.Roll, 0.0f);
 
 	const int32 ResistantSeed =
@@ -494,7 +496,7 @@ bool FCataclysmForgeAffixChangeScreenTest::RunTest(const FString&)
 			  FString(TEXT("Shift affix 1 | Shift affix 2 | Previous affix | Next affix | Lower tier | Raise tier | Add Flat "
 						   "maximum health at tier 1")));
 	TestTrue(TEXT("the detail names the affix to add"),
-			 Screen->DetailText().Contains(TEXT("Affix to add: Flat maximum health (prefix), 1 of 27, at tier 1")));
+			 Screen->DetailText().Contains(TEXT("Affix to add: Flat maximum health (prefix), 1 of 23, at tier 1")));
 
 	Screen->ClickAffixChangeActionForTests(UCataclysmForgeLayout::AddAffixNextButtonName());
 	TestTrue(TEXT("next: increased maximum health"),
@@ -509,7 +511,7 @@ bool FCataclysmForgeAffixChangeScreenTest::RunTest(const FString&)
 	TestEqual(TEXT("lowered three times: tier 1, not 0"), Screen->AddAffixTierForTests(), 1);
 	Screen->ClickAffixChangeActionForTests(UCataclysmForgeLayout::AddAffixPreviousButtonName());
 	Screen->ClickAffixChangeActionForTests(UCataclysmForgeLayout::AddAffixPreviousButtonName());
-	TestEqual(TEXT("back twice from the second: the last of 27"), Screen->AddAffixChosenForTests(), 26);
+	TestEqual(TEXT("back twice from the second: the last of 23 (27 before issue #2883)"), Screen->AddAffixChosenForTests(), 22);
 	TestTrue(TEXT("flat energy shield regeneration"),
 			 Labels(Screen->AffixChangeActionsShown()).EndsWith(TEXT("Add Flat energy shield regeneration at tier 1")));
 
@@ -565,7 +567,7 @@ bool FCataclysmForgeAffixChangeThresholdTest::RunTest(const FString&)
 	FCataclysmForgeAffixChange Done;
 	FString Message;
 	const ECataclysmForgeResult Below = UCataclysmForgeCraft::AddAffix(Scene.World, FCataclysmForgeTarget::Worn(Head),
-																	   BlockChance, 1, false, Done, Message);
+																	   Retaliation, 1, false, Done, Message);
 	TestEqual(TEXT("CONTROL: a tier 1 addition that stays below is done at once"), static_cast<int32>(Below),
 			  static_cast<int32>(ECataclysmForgeResult::Done));
 	TestFalse(TEXT("CONTROL: and does not mark the character"), Scene.State->IsMarkedByConsumption());

@@ -304,8 +304,9 @@ bool FCataclysmForgeCarriedTest::RunTest(const FString&)
 }
 
 /**
- * A worn weapon is raised in its slot and the wearer's attack damage rises with it: a Greataxe's 72 is stated at +10
- * and a two-handed weapon doubles it, so +0 is 57.6 and +1 is 57.6 x 1.15 = 66.24, a rise of 8.64. Prints "WORN".
+ * A worn weapon is raised in its slot and the wearer's attack damage rises with it: a Greataxe's 72 is stated at +10,
+ * which is 29 at +0 since issue #2883, and a two-handed weapon doubles it inside the rounding, so +0 is 58 and +1 is
+ * 29 x 1.15 x 2 = 66.7, 67 with a half going up: a rise of 9 (57.6 to 66.24, 8.64, before). Prints "WORN".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeWornTest,
 	"Cataclysm.Forge.UpgradingAWornWeaponRaisesItInItsSlotAndTheAttackDamageWithIt",
@@ -350,7 +351,7 @@ bool FCataclysmForgeWornTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("raised to +1 in its slot"), Raised->GearLevel, 1);
-	TestEqual(TEXT("the attack damage rises by 57.6 x 0.15 = 8.64"), After - Before, 8.64f, 0.05f);
+	TestEqual(TEXT("the attack damage rises from 58 to 67, by 9"), After - Before, 9.0f, 0.05f);
 	return true;
 }
 
