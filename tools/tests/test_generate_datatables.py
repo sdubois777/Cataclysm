@@ -4421,7 +4421,7 @@ class TestEnchantmentEffects:
             "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
             "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
             "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0,
-            "Ailment": "", "DamageShare": 0.0}]
+            "Ailment": "", "DamageShare": 0.0, "ChancePercent": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.

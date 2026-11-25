@@ -33,7 +33,8 @@ HEADERS = ["Node", "Stat", "Value Kind", "Value Per Point", "Required Tags", "Co
            "Condition Value", "Scale", "Scale Step", "Option", "Reach Metres", "Min Points",
            "Scale Max Steps", "Action", "Action Event", "Fraction Of", "Stack Seconds",
            "Scale Offset", "Every Seconds", "Every Nth", "Condition 2", "Condition Value 2",
-           "Trigger Cooldown", "Event Value", "Ailment", "Damage Share", "Per Point From"]
+           "Trigger Cooldown", "Event Value", "Ailment", "Damage Share", "Per Point From",
+           "Chance Percent"]
 
 #: Real nodes, so a row's words can be read from the tree files. Their own sentences do not matter here.
 BLOCK_NODE = "Bulwark_basic_ic_t2_002"
@@ -148,13 +149,29 @@ def test_an_action_row_may_not_count_enemies_in_a_radius(tmp_path):
 
 
 def test_two_rows_of_one_node_sharing_an_action_and_event_are_refused(tmp_path):
-    """The game keys a row's cooldown and counts by node, option, action and event."""
+    """The game keys a row's cooldown and counts by node, option, action and event, and names a second row under a
+    different condition apart (the Death trees' slice C6b3). Two under the SAME conditions are refused: nothing would
+    tell them apart. The two differ in their base only, since two rows the same in every column are refused earlier, as a
+    duplicated row."""
     with pytest.raises(gen.DataError, match="same action on the same event"):
         read(tmp_path, [
-            row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3),
             row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3,
                 Condition="health_below", Condition_Value=50),
+            row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3,
+                Fraction_Of="current", Condition="health_below", Condition_Value=50),
         ])
+
+
+def test_two_rows_of_one_node_on_one_action_and_event_under_different_conditions_are_accepted(tmp_path):
+    """The Death trees' slice C6b3 (2026-11-25), Opening Found's shape: 1 always and 1 more under a condition, both
+    on one event. `UCataclysmPassiveTree::EnchantmentRowsFor` names the second `_Row2`. THE CONTROL is the refusal
+    above, the same two rows under one condition."""
+    out = read(tmp_path, [
+        row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3),
+        row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3,
+            Condition="health_below", Condition_Value=50),
+    ])
+    assert [got["Condition"] for got in out] == ["", "health_below"]
 
 
 def test_two_steps_of_one_node_at_different_thresholds_may_share_an_action_and_event(tmp_path):
@@ -171,7 +188,7 @@ def test_two_steps_of_one_node_at_different_thresholds_may_share_an_action_and_e
         read(tmp_path, [
             row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3, Min_Points=4),
             row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3, Min_Points=4,
-                Condition="health_below", Condition_Value=50),
+                Fraction_Of="current"),
         ])
 
 
@@ -249,13 +266,56 @@ def test_the_struct_carries_the_port_fields_in_the_csv_order():
     """`test_csv_columns_match_their_row_structs.py` holds the column NAMES to the struct; this holds the ORDER of
     the fourteen, so a reader of either file finds the port's fields after `ScaleMaxSteps`, as both say."""
     fields = _passive_row_struct_fields()
-    assert fields[fields.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom"]
+    assert fields[fields.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "ChancePercent"]
 
 
 def test_the_written_csv_has_the_port_columns_last():
     with open(REPO_ROOT / "game/Data/PassiveEffects.csv", encoding="utf-8", newline="") as handle:
         header = next(csv.reader(handle))
-    assert header[header.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom"]
+    assert header[header.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "ChancePercent"]
+
+
+# ---------------------------------------------------------------------------
+# The Death trees' slice C6b3 (2026-11-25): a flat amount of class resource,
+# and the chance a class resource row pays
+# ---------------------------------------------------------------------------
+
+def test_a_flat_amount_and_a_chance_are_read_on_a_class_resource_row(tmp_path):
+    """Tear Loose's shape: 1 Fervour, a flat amount, on a 2% chance a point."""
+    out = read(tmp_path, [row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block",
+                              Value_Per_Point=1, Fraction_Of="points", Chance_Percent=2)])
+    assert (out[0]["FractionOf"], out[0]["ValuePerPoint"], out[0]["ChancePercent"]) == ("points", 1.0, 2.0)
+
+
+def test_an_empty_chance_is_every_time_and_leaves_an_existing_row_as_it_was(tmp_path):
+    """Every row written before the column carries 0, which the game reads as every time; and a sheet without the
+    column reads the same."""
+    plain = row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3)
+    assert read(tmp_path, [plain])[0]["ChancePercent"] == 0.0
+    without = [header for header in HEADERS if header != "Chance Percent"]
+    assert read(tmp_path, [plain[:-1]], headers=without)[0]["ChancePercent"] == 0.0
+
+
+@pytest.mark.parametrize("cells", [
+    {"Action": "health", "Action_Event": "block", "Value_Per_Point": 3},
+    {"Stat": "armor", "Value_Kind": "flat", "Value_Per_Point": 3},
+])
+def test_a_chance_is_refused_on_a_row_that_does_not_move_the_class_resource(tmp_path, cells):
+    with pytest.raises(gen.DataError, match="A chance is read by a 'class_resource' row only"):
+        read(tmp_path, [row(Node=BLOCK_NODE, Chance_Percent=2, **cells)])
+
+
+@pytest.mark.parametrize("chance", [0, -1, 101])
+def test_a_chance_outside_above_0_to_100_is_refused(tmp_path, chance):
+    with pytest.raises(gen.DataError, match="a chance is above 0 and up to 100"):
+        read(tmp_path, [row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=1,
+                            Fraction_Of="points", Chance_Percent=chance)])
+
+
+def test_a_flat_amount_is_refused_on_any_pool_but_the_class_resource(tmp_path):
+    with pytest.raises(gen.DataError, match="A flat amount is of 'class_resource' only"):
+        read(tmp_path, [row(Node=BLOCK_NODE, Action="health", Action_Event="block", Value_Per_Point=50,
+                            Fraction_Of="points")])
 
 
 def test_the_engine_names_the_same_two_scales_an_action_grants():

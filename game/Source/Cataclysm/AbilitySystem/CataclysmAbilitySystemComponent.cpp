@@ -1526,6 +1526,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// crippled -- and a lookup asking only about crippled enemies must not pay
 	// for the distances-only walk, nor the reverse.
 	float WidestCrippled = -1.0f;
+	// AND THE WIDEST REACH AN `EnemyOfRarityInReach` ROW ASKS ABOUT, walked with the bodies so each can be asked its
+	// rung, as the crippled walk is. The Death trees' slice C6b3 (2026-11-25).
+	float WidestRarity = -1.0f;
 	// AND WHETHER A ROW SCALES BY INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless. Filled
 	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
 	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
@@ -1551,6 +1554,19 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		if (Modifier.Scale == ECataclysmStatScale::PerCrippledEnemyInReach)
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
+		}
+		// AND THE TWO OF THE DEATH TREES' SLICE C6b3 (2026-11-25), on either condition: no enemy within the reach reads
+		// the distances walk the other way, and an enemy of a rung within it walks the bodies.
+		for (const ECataclysmStatCondition Asked : {Modifier.Condition, Modifier.Condition2})
+		{
+			if (Asked == ECataclysmStatCondition::NoEnemyInReach)
+			{
+				Widest = FMath::Max(Widest, Modifier.ReachMetres);
+			}
+			else if (Asked == ECataclysmStatCondition::EnemyOfRarityInReach)
+			{
+				WidestRarity = FMath::Max(WidestRarity, Modifier.ReachMetres);
+			}
 		}
 	}
 
@@ -1592,7 +1608,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// character whose only nearby-enemy row is a crippled one would return
 	// here with the crippled list empty, and Grinding Halt would grant nothing
 	// with nothing reporting why.
-	if (Widest <= 0.0f && WidestCrippled <= 0.0f)
+	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestRarity <= 0.0f)
 	{
 		return State;
 	}
@@ -1620,6 +1636,24 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 			Candidates->HostileDistancesWithinMetres(
 				Character, Character->GetActorLocation(), Widest,
 				State.HostileDistancesMetres);
+			// THE WALK WAS MADE, so an empty list now means nobody is near. See `NoEnemyInReach`.
+			State.bHostileDistancesRead = true;
+		}
+
+		// AND EACH HOSTILE'S RARITY RUNG, WHILE ITS BODY IS IN HAND, for `EnemyOfRarityInReach`. The Death trees'
+		// slice C6b3 (2026-11-25). Only a creature has a rung; anything else is kept as -1, which no rung reaches.
+		if (WidestRarity > 0.0f)
+		{
+			TArray<ACataclysmCharacterBase*> Bodies;
+			Candidates->HostileActorsWithinMetres(
+				Character, Character->GetActorLocation(), WidestRarity,
+				State.HostileRarityDistancesMetres, Bodies);
+			State.HostileRarityRungs.Reset(Bodies.Num());
+			for (const ACataclysmCharacterBase* Body : Bodies)
+			{
+				const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Body);
+				State.HostileRarityRungs.Add(Creature ? Creature->RarityStep : -1);
+			}
 		}
 
 		// AND THE CRIPPLED ONES, ASKED WHILE EACH BODY IS IN HAND. Issue #1515.
@@ -5781,6 +5815,33 @@ static TAutoConsoleVariable<float> CVarExecuteRoll(
 	TEXT("Pins the 0-100 roll an execute enchantment makes against its chance. Negative rolls for real."),
 	ECVF_Default);
 
+/**
+ * Pins the roll a class resource row with a chance makes, 0 to 100, for tests. Negative, the default, rolls for real.
+ * The Death trees' slice C6b3 (2026-11-25), for Tear Loose; the same shape as `Cataclysm.ExecuteRoll` above.
+ */
+static TAutoConsoleVariable<float> CVarClassResourceChanceRoll(
+	TEXT("Cataclysm.ClassResourceChanceRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a class resource row with a chance makes. Negative rolls for real."),
+	ECVF_Default);
+
+/**
+ * Whether a pool action pays this time: always, unless it is a class resource row with a chance below 100, which
+ * pays on a roll under its chance. The Death trees' slice C6b3 (2026-11-25), as ruled for Tear Loose. A chance of 0
+ * is "always", the value every row written before the column carries. A chance of 100 is compared rather than rolled,
+ * because `FRandRange` can return 100 itself, as every chance here is (issue #2201).
+ */
+static bool PoolActionChanceComesUp(const FCataclysmPoolAction& Action)
+{
+	if (Action.Pool != ClassResourcePoolName || Action.ChancePercent <= 0.0f
+		|| Action.ChancePercent >= 100.0f)
+	{
+		return true;
+	}
+	const float Pinned = CVarClassResourceChanceRoll.GetValueOnAnyThread();
+	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	return Roll < Action.ChancePercent;
+}
+
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags,
 	bool* bOutRollSucceeded)
@@ -6284,7 +6345,8 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			{
 				ReduceCooldowns(Action);
 			}
-			else
+			// AND A ROW WITH A CHANCE PAYS ON ITS ROLL (the Death trees' slice C6b3).
+			else if (PoolActionChanceComesUp(Action))
 			{
 				ApplyPoolAction(Action, nullptr, 0.0f);
 			}
@@ -8114,6 +8176,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		{
 			continue;
 		}
+		// A ROW WITH A CHANCE ROLLS FIRST, so a failed roll pays nothing and starts no wait (the Death trees' slice
+		// C6b3, 2026-11-25, for Tear Loose).
+		if (!PoolActionChanceComesUp(Action))
+		{
+			continue;
+		}
 		ApplyPoolAction(Action, EventTags, EventAmount);
 		NoteTriggerFired(Action);
 	}
@@ -9403,6 +9471,17 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	(void)EventTags;
 	float Amount = Base * Action.Percent / 100.0f;
 
+	// A FLAT AMOUNT, THE CLASS RESOURCE ONLY: the value itself (the Death trees' slice C6b3, 2026-11-25). Any other
+	// pool pays nothing for it; the generator refuses one.
+	if (Action.Base == ECataclysmPoolActionBase::Points)
+	{
+		if (Action.Pool != ClassResourcePoolName)
+		{
+			return;
+		}
+		Amount = Action.Percent;
+	}
+
 	// A ROW THAT GRANTS CLASS RESOURCE IS GENERATION TOO. Ruled 2026-10-07: the
 	// eighth place the pool is filled, beside the seven in `UCataclysmFervour`.
 	// Only this pool, and only a positive amount -- the helper leaves a row that
@@ -9413,6 +9492,17 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	}
 	if (FMath::IsNearlyZero(Amount))
 	{
+		return;
+	}
+
+	// A GAIN OF CLASS RESOURCE GOES THROUGH `UCataclysmFervour::RaisePool`, as every other gain to that pool does:
+	// held to the full bar after reserves (`MaximumClassResourceAsked`) rather than to the maximum attribute, and seen
+	// by Kindred Fires and Borrowed Time. Ruled by the coordinating session in the Death trees' slice C6b3
+	// (2026-11-25), for a `points` row and for the three enchantment rows that already granted class resource here
+	// through `TopUp`, whose amounts are unchanged. Scaled by `class_resource_generation` above.
+	if (Amount > 0.0f && Action.Pool == ClassResourcePoolName)
+	{
+		UCataclysmFervour::RaisePool(this, Amount);
 		return;
 	}
 

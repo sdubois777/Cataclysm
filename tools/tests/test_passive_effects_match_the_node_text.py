@@ -736,7 +736,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 615 THE SAME DAY, for slice C6b2: Arrival and Glancing Cuts (two
 #: each, attack and spell damage).
-AUTHORED_ROWS = 615
+#:
+#: AND TO 623 THE SAME DAY, for slice C6b3: Opening Found (two), Reaper's Due
+#: (two), Tear Loose, Read the Blow, Hunting Ground and Vigil Over the Strong.
+AUTHORED_ROWS = 623
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1208,7 +1211,11 @@ AUTHORED_ROWS = 615
 #: and Run. Opening Strike is an option, counted in `AUTHORED_OPTIONS`.
 #:
 #: AND TO 367 THE SAME DAY, for slice C6b2's Arrival and Glancing Cuts.
-AUTHORED_NODES = 367
+#:
+#: AND TO 372 THE SAME DAY, for slice C6b3's Opening Found, Tear Loose, Read the
+#: Blow, Hunting Ground and Vigil Over the Strong. Reaper's Due is an option,
+#: counted in `AUTHORED_OPTIONS`.
+AUTHORED_NODES = 372
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1329,7 +1336,10 @@ AUTHORED_NODES = 367
 #:
 #: AND TO 54 THE SAME DAY, for slice C6b1: Opening Strike (the Shadow's 25 vow,
 #: option 1).
-AUTHORED_OPTIONS = 54
+#:
+#: AND TO 55 THE SAME DAY, for slice C6b3: Reaper's Due (the Soul Collector's
+#: 25 vow, option 2).
+AUTHORED_OPTIONS = 55
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1872,6 +1882,17 @@ CONDITION_WORDS = {
     # second after your movement skill ends"; Glancing Cuts' "Enemies your
     # movement skill hits take ... for 4 seconds".
     "seconds_after_movement_skill_ends": ("after your movement skill ends", "{value:g} second"),
+    # THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25): Read the Blow's
+    # "attacks from Elite and stronger enemies"; Vigil Over the Strong's "While
+    # an Elite or stronger creature is within 15 metres" and Reaper's Due's
+    # "while a Boss is within 15 metres", the value the rung; Hunting Ground's
+    # "While no enemy is within 20 metres".
+    "opponent_rarity_at_least": ("attacks from elite",
+                                 {1.0: "attacks from elite and stronger enemies"}),
+    "enemy_of_rarity_in_reach": (("stronger creature is within", "a boss is within"),
+                                 {1.0: "elite or stronger creature is within",
+                                  4.0: "a boss is within"}),
+    "no_enemy_in_reach": ("no enemy is within", None),
     "target_struck_by_your_movement_skill_within_seconds": ("your movement skill hits", "{value:g} second"),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
@@ -1944,7 +1965,8 @@ CONDITION_WORDS = {
     "opponent_within_metres": ("enemies within", "{value:g} metres"),
     # The Shadow's Slow Death, "Against a Boss, ...", and Read the Giant,
     # "against Bosses".
-    "target_is_boss": (("against a boss", "against bosses"), None),
+    # AND REAPER'S DUE'S "Each hit on a Boss", the Death trees' slice C6b3.
+    "target_is_boss": (("against a boss", "against bosses", "hit on a boss"), None),
     # The Shadow's Slipstream: "For 3 seconds after you evade a hit". The
     # predicate reads `Outcome.bEvaded`, which is an evasion.
     "seconds_after_dodge": ("after you evade a hit", "{value:g} second"),
@@ -2821,6 +2843,11 @@ VALUE_IN_WORDS = {
     # AND THE THIRD VOW'S, "your skills cost no mana", a removal of one as the
     # Ritualist's Ritual Focus writes it.
     ("SoulCollector_capstone_100", "mana_cost"): ("cost no mana", 1.0),
+    # REAPER'S DUE AND HUNTING GROUND, the Death trees' slice C6b3 (2026-11-25):
+    # "Fervour does not decay" and "your Fervour does not drain", each a removal
+    # of the kill decay while its condition holds.
+    ("SoulCollector_capstone_25", "fervour_kill_decay_per_second"): ("fervour does not decay", 1.0),
+    ("Shadow_keystone_spine_002", "fervour_kill_decay_per_second"): ("your fervour does not drain", 1.0),
     # LIVING HARVEST, the Death trees' slice C2 (2026-11-25): "Each enemy in your
     # Siphon gives you 1 Fervour every 2 seconds" is half a Fervour a second for
     # each, paid once a second.
@@ -3277,6 +3304,10 @@ ACTION_VALUE_FORMS = {
     # KEEP THE COUNT, the same slice: "adds 1 second for every 3 points to the
     # time before your Fervour begins to drain", one row at each step.
     "fervour_hold_extended": ("adds {value:g} second for every",),
+    # A FLAT AMOUNT OF FERVOUR, the Death trees' slice C6b3 (2026-11-25):
+    # Opening Found's "generates 1 Fervour per point", Reaper's Due's "gives 5
+    # Fervour" and Tear Loose's "to give you 1 Fervour".
+    "class_resource": ("{value:g} Fervour",),
 }
 
 #: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.

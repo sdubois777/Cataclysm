@@ -614,6 +614,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// damage from Boss enemies". Issue #666. The same creature and the
 				// same cast, so a blow from anything but an enemy is not a boss's.
 				Hit.bFromBoss = Striker->IsBoss();
+				// AND ITS RARITY RUNG, for Read the Blow (the Death trees' slice C6b3, 2026-11-25).
+				Hit.AttackerRarityStep = Striker->RarityStep;
 			}
 
 			// AND WHETHER THE BLOW ITSELF SAYS IT CANNOT BE EVADED. Ruled 2026-10-07.

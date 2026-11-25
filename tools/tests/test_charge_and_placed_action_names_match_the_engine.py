@@ -1067,6 +1067,65 @@ def test_the_movement_skills_end_and_its_struck_enemies_are_recorded_and_judged(
     assert "movement_skill_ends" in gen.action_events()
 
 
+def test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is() -> None:
+    """The Death trees' slice C6b3 (2026-11-25), as ruled. A `points` row pays its value itself, on the class
+    resource only. EVERY CLASS RESOURCE GAIN a pool action makes, the three enchantment rows that already granted it
+    included, goes through `UCataclysmFervour::RaisePool` after `ClassResourceGainScaled`, rather than `TopUp`. A row
+    with a chance rolls before it pays and before its wait starts, on the timed path as on an event; a chance of 0 or
+    100 is not rolled. The passive tree pays a chance per point and leaves the amount alone, and names a second action
+    row of one node on one action and event `_Row2`. Read from the code with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(Action\.Base == ECataclysmPoolActionBase::Points\)\s*\{\s*"
+                     r"if \(Action\.Pool != ClassResourcePoolName\)\s*\{\s*return;\s*\}\s*Amount = Action\.Percent;",
+                     engine)
+    assert re.search(r"Amount = ClassResourceGainScaled\(this, Amount\);.*?"
+                     r"if \(Amount > 0\.0f && Action\.Pool == ClassResourcePoolName\)\s*\{\s*"
+                     r"UCataclysmFervour::RaisePool\(this, Amount\);\s*return;\s*\}\s*if \(Amount > 0\.0f\)\s*\{\s*"
+                     r"UCataclysmRegeneration::TopUp", engine, re.S)
+    assert re.search(r"if \(Action\.Pool != ClassResourcePoolName \|\| Action\.ChancePercent <= 0\.0f\s*"
+                     r"\|\| Action\.ChancePercent >= 100\.0f\)\s*\{\s*return true;\s*\}.*?return Roll < Action\.ChancePercent;",
+                     engine, re.S)
+    assert re.search(r"if \(!PoolActionChanceComesUp\(Action\)\)\s*\{\s*continue;\s*\}\s*"
+                     r"ApplyPoolAction\(Action, EventTags, EventAmount\);\s*NoteTriggerFired\(Action\);", engine)
+    assert re.search(r"else if \(PoolActionChanceComesUp\(Action\)\)\s*\{\s*ApplyPoolAction\(Action, nullptr, 0\.0f\);",
+                     engine)
+    item = code_without_comments(SOURCE.parents[1] / "Items/CataclysmItem.cpp")
+    assert re.search(r'FractionOf\.Equals\(TEXT\("points"\), ESearchCase::IgnoreCase\)\)\s*\{\s*'
+                     r"Action\.Base = ECataclysmPoolActionBase::Points;\s*\}\s*Action\.ChancePercent = Effect->ChancePercent;",
+                     item)
+    tree = code_without_comments(SOURCE.parents[1] / "Character/CataclysmPassiveTree.cpp")
+    assert re.search(r"if \(Effect\.ChancePercent > 0\.0f\)\s*\{\s*Row\.ChancePercent = FMath::Min\(100\.0f, "
+                     r"Effect\.ChancePercent \* static_cast<float>\(Paid\)\);\s*Row\.ValueLow = Effect\.ValuePerPoint;",
+                     tree)
+    assert re.search(r'if \(Seen > 1\)\s*\{\s*Row\.Enchantment \+= FString::Printf\(TEXT\("_Row%d"\), Seen\);', tree)
+    assert "points" in gen.FRACTION_BASES
+
+
+def test_the_attackers_rung_and_the_enemies_near_are_filled_and_judged() -> None:
+    """The Death trees' slice C6b3 (2026-11-25). Read the Blow: the creature that threw a blow puts its rung on the
+    hit, and the blow context carries it. Vigil Over the Strong and Reaper's Due: the walk keeps each hostile's rung
+    beside its distance. Hunting Ground: the distances walk says it was made, and "no enemy in reach" holds only then.
+    Read from the code with comments taken out."""
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert re.search(r"Hit\.bFromBoss = Striker->IsBoss\(\);\s*Hit\.AttackerRarityStep = Striker->RarityStep;", vitals)
+    calc = code_without_comments(SOURCE.parent / "CataclysmDamageCalculation.cpp")
+    assert "Blow.OpponentRarityStep = Hit.AttackerRarityStep;" in calc
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.HostileDistancesMetres\);\s*State\.bHostileDistancesRead = true;", engine)
+    assert re.search(r"State\.HostileRarityRungs\.Add\(Creature \? Creature->RarityStep : -1\);", engine)
+    assert re.search(r"if \(Asked == ECataclysmStatCondition::NoEnemyInReach\)\s*\{\s*"
+                     r"Widest = FMath::Max\(Widest, Modifier\.ReachMetres\);", engine)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::OpponentRarityAtLeast:\s*"
+                     r"return State\.Blow\.OpponentRarityStep >= 0 && State\.Blow\.OpponentRarityStep >= "
+                     r"FMath::RoundToInt\(Value\);", pipeline)
+    assert re.search(r"case ECataclysmStatCondition::NoEnemyInReach:\s*return ReachMetres > 0\.0f && "
+                     r"State\.bHostileDistancesRead && EnemiesInReach\(State, ReachMetres\) == 0;", pipeline)
+    assert re.search(r"State\.HostileRarityDistancesMetres\[Index\] <= ReachMetres\s*"
+                     r"&& State\.HostileRarityRungs\.IsValidIndex\(Index\) && State\.HostileRarityRungs\[Index\] >= Rung",
+                     pipeline)
+
+
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:
     """The Death trees' slice C4c2 (2026-11-25), as ruled (Q7). The generator's
     name is the engine's, on `afflicted_death` only; the item recognises the

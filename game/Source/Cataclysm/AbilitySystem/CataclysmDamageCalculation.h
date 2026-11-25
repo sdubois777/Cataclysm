@@ -339,6 +339,12 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bFromBoss = false;
 
 	/**
+	 * The rarity rung of the creature that threw the blow, or -1 for anything that is not a creature. The Death trees'
+	 * slice C6b3 (2026-11-25), for `opponent_rarity_at_least` (Read the Blow). Filled where `bFromBoss` is.
+	 */
+	int32 AttackerRarityStep = -1;
+
+	/**
 	 * Metres from the character that dealt this blow to the one taking it, or
 	 * -1 when it is not known.
 	 *

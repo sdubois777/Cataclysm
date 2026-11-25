@@ -5471,6 +5471,17 @@ CONDITIONS = {
     # `CONDITIONS_OF_A_HIT_DEALT`.
     "seconds_after_movement_skill_ends": (0.0, 60.0, "a number of seconds"),
     "target_struck_by_your_movement_skill_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25). Read the Blow's
+    # "attacks from Elite and stronger enemies" is `opponent_rarity_at_least`,
+    # the attacker's rung on a blow taken, the value the rung. Vigil Over the
+    # Strong's "While an Elite or stronger creature is within 15 metres" and
+    # Reaper's Due's "while a Boss is within 15 metres" are
+    # `enemy_of_rarity_in_reach`, the value the rung, the radius the row's Reach
+    # Metres. Hunting Ground's "While no enemy is within 20 metres" is
+    # `no_enemy_in_reach`, which names a state; its radius is the Reach Metres.
+    "opponent_rarity_at_least": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+    "enemy_of_rarity_in_reach": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+    "no_enemy_in_reach": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -6132,7 +6143,38 @@ PASSIVE_PORT_FIELDS = tuple(field for field, _ in PASSIVE_PORT_DEFAULTS)
 #: The names the passive sheet's reach rule counts within a radius. Issue
 #: #1597, and the crippled-enemy scale of issue #1515.
 PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach",
-                                 "crippled_enemies_in_reach"})
+                                 "crippled_enemies_in_reach",
+                                 # AND THE DEATH TREES' SLICE C6b3'S TWO.
+                                 "enemy_of_rarity_in_reach", "no_enemy_in_reach"})
+
+
+def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
+    """The Chance Percent column: the chance per point that a class resource row pays, or 0 for every time.
+
+    THE DEATH TREES' SLICE C6b3 (2026-11-25), ruled for Tear Loose, "a 2% chance per point to give you 1 Fervour":
+    the whole-numbers rule ruled out paying the average, 0.02 a point. A ROW WITH A CHANCE IS PAID PER POINT IN ITS
+    CHANCE: `Value Per Point` is the amount each success pays, and the game multiplies the chance by the points. An
+    empty cell is every time, which is every row written before the column, and a sheet without the column reads as
+    empty. Refused on a row whose Action is not class_resource, and outside above 0 to 100: a 0 written would be read
+    as every time, the opposite of what it says.
+    """
+    if "Chance Percent" not in headers:
+        return 0.0
+    written = clean(_cell(raw, headers, "Chance Percent"))
+    if not written:
+        return 0.0
+    value = number(written, "Chance Percent", index)
+    if action != CLASS_RESOURCE_POOL:
+        raise DataError(
+            f"Passive Effects row {index}: {node} states a Chance Percent of "
+            f"{written!r} on {'the action ' + repr(action) if action else 'a stat row'}. "
+            f"A chance is read by a {CLASS_RESOURCE_POOL!r} row only.")
+    if not 0.0 < value <= 100.0:
+        raise DataError(
+            f"Passive Effects row {index}: {node} has a Chance Percent of "
+            f"{value}, and a chance is above 0 and up to 100. Leave the column "
+            f"empty for every time.")
+    return value
 
 
 def _passive_row_is_action_shaped(raw, headers) -> bool:
@@ -6442,6 +6484,8 @@ def passive_effects(book) -> list[dict]:
                 "ScaleMaxSteps": shared["ScaleMaxSteps"],
                 **{column: shared[column] for column in PASSIVE_PORT_FIELDS},
                 "PerPointFrom": per_point_from,
+                # AND THE CHANCE, LAST. The Death trees' slice C6b3 (2026-11-25).
+                "ChancePercent": _chance_percent(raw, headers, index, node, shared["Action"]),
             })
             continue
 
@@ -6531,7 +6575,9 @@ def passive_effects(book) -> list[dict]:
         # AND THE CRIPPLED-ENEMY SCALE, ISSUE #1515, which counts within a
         # radius exactly as the two above do and so needs one just as much.
         counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach",
-                          "crippled_enemies_in_reach"}
+                          "crippled_enemies_in_reach",
+                          # AND THE DEATH TREES' SLICE C6b3'S TWO (2026-11-25).
+                          "enemy_of_rarity_in_reach", "no_enemy_in_reach"}
         # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
         # rather than around the character, read at the kill from this column.
         # The Death trees' slice C4c2 (2026-11-25).
@@ -6588,6 +6634,8 @@ def passive_effects(book) -> list[dict]:
             # none of them, which is every row read here. Since 2026-11-24.
             **dict(PASSIVE_PORT_DEFAULTS),
             "PerPointFrom": per_point_from,
+            # AND THE CHANCE, which a stat row may not state: refused here.
+            "ChancePercent": _chance_percent(raw, headers, index, node, ""),
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -6646,22 +6694,35 @@ def passive_effects(book) -> list[dict]:
     # AN ACTION ROW FROM A POINT THRESHOLD HAS A KEY OF ITS OWN since the Death
     # trees' slice C6a (2026-11-25): `EnchantmentRowsFor` names it apart by its
     # `MinPoints`, so "1 second for every 4 points" is a row at 4 and a row at 8.
-    keyed: dict[tuple, int] = {}
+    #
+    # AND A SECOND ROW ON THE SAME ACTION AND EVENT UNDER A DIFFERENT CONDITION
+    # HAS ONE since the Death trees' slice C6b3 (2026-11-25): `EnchantmentRowsFor`
+    # names it apart as `_Row2`, so Opening Found's "1 Fervour per point, or 2 per
+    # point if the attacker is Elite or stronger" is 1 always and 1 more under
+    # `target_rarity_at_least` 1. Two rows under the SAME conditions are still
+    # refused: nothing would tell them apart but their order.
+    keyed: dict[tuple, set] = {}
     for row in out:
         if row["Action"]:
             key = (row["Node"], row["Option"], row["Action"], row["ActionEvent"],
                    row["MinPoints"])
-            keyed[key] = keyed.get(key, 0) + 1
-    shared_keys = sorted(key for key, count in keyed.items() if count > 1)
+            conditions = (row["Condition"], row["ConditionValue"],
+                          row["Condition2"], row["ConditionValue2"])
+            seen = keyed.setdefault(key, set())
+            if conditions in seen:
+                keyed[key] = None
+            elif seen is not None:
+                seen.add(conditions)
+    shared_keys = sorted(key for key, seen in keyed.items() if seen is None)
     if shared_keys:
         listed = ", ".join(f"{node} option {option} {action} on {event or '(none)'}"
                            + (f" from {points} points" if points else "")
                            for node, option, action, event, points in shared_keys)
         raise DataError(
             f"the Passive Effects sheet gives one node two rows of the same "
-            f"action on the same event: {listed}. The game keeps one cooldown "
-            f"and one count for each node, option, action and event, so the two "
-            f"would share them. Write the two as one row.")
+            f"action on the same event under the same conditions: {listed}. The "
+            f"game keeps one cooldown and one count for each such row, and nothing "
+            f"would tell the two apart. Write the two as one row.")
 
     if not out:
         raise DataError("the Passive Effects sheet is empty")
@@ -7524,9 +7585,21 @@ FRACTION_BASES = (
     "maximum",
     "current",
     "event_amount",
+    # THE VALUE ITSELF, A FLAT AMOUNT, ON THE CLASS RESOURCE ONLY. The Death
+    # trees' slice C6b3 (2026-11-25), as ruled by the coordinating session:
+    # Opening Found's "generates 1 Fervour per point", Reaper's Due's "gives 5
+    # Fervour" and Tear Loose's "1 Fervour" are action rows, scaled by
+    # `class_resource_generation` and paid through `UCataclysmFervour::RaisePool`
+    # as every class resource gain is. War's per-event Fervour stats are kept.
+    "points",
     "for_each_of_event_amount",
     "for_each_ten_of_event_amount",
 )
+
+#: The Fraction Of value that pays the row's value itself, and the one pool it
+#: may move. The Death trees' slice C6b3 (2026-11-25).
+FRACTION_OF_POINTS = "points"
+CLASS_RESOURCE_POOL = "class_resource"
 
 #: The two Fraction Of values that SIZE A ROW BY ITS EVENT'S AMOUNT rather than
 #: naming a base: the value acts once for each whole unit, or each whole ten, of
@@ -7997,6 +8070,13 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"Enchantment Effects row {index}: {who} moves a pool and also has "
             f"the value kind {kind!r}. The three buckets multiply a stat and an "
             f"action has no stat, so the column must be empty on an action row.")
+
+    if fraction_of == FRACTION_OF_POINTS and action != CLASS_RESOURCE_POOL:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} pays a flat amount "
+            f"({FRACTION_OF_POINTS!r}) of the pool {action!r}. A flat amount is "
+            f"of {CLASS_RESOURCE_POOL!r} only; every other pool is moved by a "
+            f"share of a base.")
 
     if (fraction_of in ("event_amount", *FRACTION_BASES_SIZED_BY_THE_AMOUNT)
             and event not in EVENTS_WITH_AN_AMOUNT):
@@ -10104,6 +10184,13 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
         "EventValue": event_value,
         "Ailment": ailment,
         "DamageShare": damage_share,
+        # EVERY TIME, ON EVERY ENCHANTMENT ROW. The Death trees' slice C6b3
+        # (2026-11-25): only a Passive Effects row states a chance (Tear Loose,
+        # `_chance_percent`), and the Enchantment Effects sheet has no such
+        # column. Written so `FCataclysmEnchantmentEffectRow::ChancePercent`,
+        # which a passive row's copy fills, is a column of this table as every
+        # property of its struct must be.
+        "ChancePercent": 0.0,
     }
 
 
@@ -10971,6 +11058,8 @@ CONDITIONS_OF_A_BLOW_TAKEN = frozenset({
     "opponent_carries_weaken",
     "opponent_first_struck_by_you_seconds_ago",
     "opponent_is_boss",
+    # AND READ THE BLOW'S ATTACKER RUNG, the Death trees' slice C6b3 (2026-11-25).
+    "opponent_rarity_at_least",
     "opponent_is_crowd_controlled",
     "opponent_is_staggered",
     "opponent_within_metres",

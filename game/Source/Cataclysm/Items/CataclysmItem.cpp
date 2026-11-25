@@ -1698,6 +1698,13 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Base = ECataclysmPoolActionBase::ForEachHundredClassResourceHeld;
 					}
+					// AND A FLAT AMOUNT OF THE CLASS RESOURCE, with the row's chance: Opening Found, Reaper's Due and Tear
+					// Loose, the Death trees' slice C6b3 (2026-11-25).
+					else if (Effect->FractionOf.Equals(TEXT("points"), ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::Points;
+					}
+					Action.ChancePercent = Effect->ChancePercent;
 
 					// THE SAME TAG PARSE THE STAT ROWS GET, so a scoped action row
 					// and a scoped stat row cannot disagree about what a tag list

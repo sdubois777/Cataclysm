@@ -80,7 +80,9 @@ OPTIONAL_EFFECT_COLUMNS = (
     ("Condition 2", "cond2"), ("Condition Value 2", "cond_value2"),
     ("Trigger Cooldown", "trigger_cooldown"), ("Event Value", "event_value"),
     ("Ailment", "ailment"), ("Damage Share", "damage_share"),
-    ("Per Point From", "per_point_from"))
+    ("Per Point From", "per_point_from"),
+    # AND THE DEATH TREES' SLICE C6b3'S CHANCE (2026-11-25), ruled for Tear Loose.
+    ("Chance Percent", "chance_percent"))
 
 #: Of those, the ones that hold words rather than numbers.
 TEXT_FIELDS = frozenset({"action", "event", "fraction_of", "cond2", "ailment"})
@@ -128,6 +130,7 @@ class Row:
     ailment: str | None = None
     damage_share: float | None = None
     per_point_from: int | None = None
+    chance_percent: float | None = None
 
     def key(self) -> tuple:
         def num(v):
@@ -695,6 +698,34 @@ NODES: tuple[Node, ...] = (
          damage("increased", 3, cond="seconds_after_movement_skill_ends", cond_value=1)),
     Node(SH + "basic_c_b0", "Glancing Cuts",
          damage("increased", 2, cond="target_struck_by_your_movement_skill_within_seconds", cond_value=4)),
+
+    # ---- SLICE C6b3 (2026-11-25): FERVOUR ON EVASIONS AND HITS ON THE STRONG, AND
+    # DECAY HELD BY WHO IS NEAR. A flat amount of Fervour is an action row on
+    # `class_resource` with Fraction Of `points`, as ruled. Opening Found pays 1 a
+    # point on an evasion and 1 more when the attacker is Elite or stronger; Reaper's
+    # Due 5 on a hit on a Boss, at most twice a second, and removes decay (the
+    # `removed` kind, since a Less multiplier stops at 99%) while a Boss is within 15
+    # metres; Tear Loose rolls 2% a point for 1 on a hit on an Elite or
+    # stronger. Read the Blow raises evasion against an Elite's attacks; Hunting
+    # Ground removes decay while no enemy is within 20 metres; Vigil Over the Strong
+    # slows it 5% a point while an Elite or stronger is within 15.
+    Node(SH + "basic_d_a2", "Opening Found",
+         (A("class_resource", 1, event="dodge", fraction_of="points"),
+          A("class_resource", 1, event="dodge", fraction_of="points", cond=RUNG_AT_LEAST, cond_value=1))),
+    Node(SC + "capstone_25", "Reaper's Due",
+         (A("class_resource", 5, event="hit_dealt", fraction_of="points", cond="target_is_boss",
+            trigger_cooldown=0.5),
+          R(DECAY, "removed", 1, cond="enemy_of_rarity_in_reach", cond_value=4, reach=15)),
+         option=2),
+    Node(SC + "basic_b_b1", "Tear Loose",
+         (A("class_resource", 1, event="hit_dealt", fraction_of="points", cond=RUNG_AT_LEAST, cond_value=1,
+            chance_percent=2),)),
+    Node(SH + "basic_d_a0", "Read the Blow",
+         (R("evasion", "flat", 1, cond="opponent_rarity_at_least", cond_value=1),)),
+    Node(SH + "keystone_spine_002", "Hunting Ground",
+         (R(DECAY, "removed", 1, cond="no_enemy_in_reach", reach=20),)),
+    Node(SC + "basic_b_b2", "Vigil Over the Strong",
+         (R(DECAY, "increased", -5, cond="enemy_of_rarity_in_reach", cond_value=1, reach=15),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

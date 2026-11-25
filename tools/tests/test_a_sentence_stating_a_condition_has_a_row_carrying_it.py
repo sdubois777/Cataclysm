@@ -55,6 +55,12 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Shadow_basic_d_a0", "0", "target_rarity_at_least"):
+        "Read the Blow's 'attacks from Elite and stronger enemies' is the attacker's rung on a blow taken, "
+        "opponent_rarity_at_least (the Death trees' slice C6b3)",
+    ("SoulCollector_basic_b_b2", "0", "target_rarity_at_least"):
+        "Vigil Over the Strong's 'an Elite or stronger creature is within 15 metres' is a creature near the "
+        "character, enemy_of_rarity_in_reach (the Death trees' slice C6b3)",
     ("Shadow_basic_c_b1", "0", "target_struck_by_your_movement_skill_within_seconds"):
         "Through and Through's 'Each enemy your movement skill hits' is its rows' required tag, Slot.Movement on "
         "fervour_per_enemy_hit, paid at the hit; it keeps no record over seconds (the Death trees' slice C6b2)",

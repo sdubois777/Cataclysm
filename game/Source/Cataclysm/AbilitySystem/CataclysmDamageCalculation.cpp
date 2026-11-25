@@ -416,6 +416,7 @@ FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
 	Blow.bIsRanged = Hit.bIsRanged;
 	Blow.bIsSpell = Hit.bIsSpell;
 	Blow.bOpponentIsBoss = Hit.bFromBoss;
+	Blow.OpponentRarityStep = Hit.AttackerRarityStep;
 	Blow.bOpponentIsStaggered = Hit.bFromStaggered;
 	Blow.bOpponentIsCrowdControlled = Hit.bFromCrowdControlled;
 

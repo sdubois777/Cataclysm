@@ -2003,6 +2003,35 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetStruckByYourMovementSkillWithinSeconds
 		UMETA(DisplayName = "Target Struck By Your Movement Skill Within Seconds"),
+
+	/**
+	 * Whoever is on the other side of the blow is of rarity rung `ConditionValue` or above: 0 Common, 1 Elite, 2
+	 * Legendary, 3 Herald, 4 Boss, 5 Cataclysm Boss. Read the Blow, "+1% Evasion chance per point against attacks from
+	 * Elite and stronger enemies". The Death trees' slice C6b3 (2026-11-25). FOR A BLOW BEING TAKEN, so the other side
+	 * is the attacker, as for `OpponentIsBoss`: `Blow.OpponentRarityStep`, which `BlowContextFor` fills from the hit's
+	 * `AttackerRarityStep`. -1 (not a creature, a tick, no blow in hand) refuses. IT TAKES A VALUE: the rung.
+	 */
+	OpponentRarityAtLeast
+		UMETA(DisplayName = "Opponent Rarity At Least"),
+
+	/**
+	 * An enemy of rarity rung `ConditionValue` or above stands within the row's own `ReachMetres` of the character:
+	 * Vigil Over the Strong, "While an Elite or stronger creature is within 15 metres of you", and Reaper's Due, "while
+	 * a Boss is within 15 metres". The Death trees' slice C6b3 (2026-11-25). Read from `HostileRarityDistancesMetres`
+	 * and `HostileRarityRungs`, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills only when a row asks,
+	 * as it fills the crippled enemies. Nobody read refuses, as an empty room does. IT TAKES A VALUE: the rung.
+	 */
+	EnemyOfRarityInReach
+		UMETA(DisplayName = "Enemy Of Rarity In Reach"),
+
+	/**
+	 * No enemy stands within the row's own `ReachMetres` of the character: Hunting Ground, "While no enemy is within 20
+	 * metres of you". The Death trees' slice C6b3 (2026-11-25). The distances `EnemiesInReachAtLeast` counts, read the
+	 * other way, AND ONLY WHEN THE WALK WAS MADE: an empty list is also what a lookup that walked nothing holds, and
+	 * read as "nobody near" it would grant everywhere, so `bHostileDistancesRead` must be set. IT TAKES NO VALUE.
+	 */
+	NoEnemyInReach
+		UMETA(DisplayName = "No Enemy In Reach"),
 };
 
 /**
@@ -2890,6 +2919,12 @@ struct CATACLYSM_API FCataclysmBlowContext
 	/** The character on the other side of the blow is a boss. See `IsBoss`. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bOpponentIsBoss = false;
+
+	/**
+	 * The rarity rung of whoever is on the other side of the blow, or -1 for not a creature. The Death trees' slice
+	 * C6b3 (2026-11-25), for `OpponentRarityAtLeast`. Filled by `BlowContextFor` from the hit's `AttackerRarityStep`.
+	 */
+	int32 OpponentRarityStep = -1;
 
 	/**
 	 * Metres from the character that dealt this blow to the one taking it, or
@@ -3998,6 +4033,25 @@ struct CATACLYSM_API FCataclysmStatConditions
 	TArray<float> HostileDistancesMetres;
 
 	/**
+	 * Whether `HostileDistancesMetres` was walked for this lookup. The Death trees' slice C6b3 (2026-11-25), for
+	 * `NoEnemyInReach`, which must tell "nobody is near" from "nobody looked": the list is empty in both.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bHostileDistancesRead = false;
+
+	/**
+	 * The distance, in metres, to each hostile creature within the widest reach an `EnemyOfRarityInReach` row asks
+	 * about, beside its rarity rung in `HostileRarityRungs` at the same index. The Death trees' slice C6b3
+	 * (2026-11-25). Filled only when such a row asks.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> HostileRarityDistancesMetres;
+
+	/** The rarity rung of each entry of `HostileRarityDistancesMetres`, -1 for a hostile that is not a creature. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<int32> HostileRarityRungs;
+
+	/**
 	 * How far away each hostile character carrying the Cripple debuff is, within
 	 * the widest reach any crippled-enemy row asks about. Issue #1515.
 	 *
@@ -4631,6 +4685,15 @@ enum class ECataclysmPoolActionBase : uint8
 	 * `UCataclysmAbilitySystemComponent::TimesSizedByFervourHeld`.
 	 */
 	ForEachHundredClassResourceHeld UMETA(DisplayName = "For each hundred of the class resource held"),
+
+	/**
+	 * THE VALUE ITSELF, A FLAT AMOUNT, ON THE CLASS RESOURCE ONLY: Opening Found's "generates 1 Fervour per point",
+	 * Reaper's Due's "gives 5 Fervour" and Tear Loose's "1 Fervour". The Death trees' slice C6b3 (2026-11-25), as
+	 * ruled by the coordinating session: an action row rather than War's per-event Fervour stats, paid as every class
+	 * resource gain is, scaled by `class_resource_generation` and through `UCataclysmFervour::RaisePool`. The generator
+	 * refuses it on any other pool, and `ApplyPoolAction` pays nothing for one that reaches the game anyway.
+	 */
+	Points UMETA(DisplayName = "A flat amount"),
 };
 
 /**
@@ -4678,6 +4741,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** What the percentage is a percentage OF. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmPoolActionBase Base = ECataclysmPoolActionBase::Maximum;
+
+	/**
+	 * The chance, in percent, that a class resource row pays when its event happens, or 0 for every time. The Death
+	 * trees' slice C6b3 (2026-11-25), ruled for Tear Loose: "a 2% chance per point to give you 1 Fervour". Rolled in
+	 * `ActOnEvent` BEFORE the row pays and before its trigger cooldown starts, so a failed roll pays nothing and makes
+	 * the row wait for nothing. Read for the class resource pool only; the generator refuses it on any other row.
+	 */
+	float ChancePercent = 0.0f;
 
 	/**
 	 * Tags the thing that caused the event must carry, or empty for any.
@@ -5600,7 +5671,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a ninety-fifth, which is the drift that put the passive tree eight
+	 * adds a ninety-eighth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5617,7 +5688,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-FOUR OF THE NINETY-FOUR COMPARE NOTHING. They are the case labels
+	 * FORTY-FIVE OF THE NINETY-SEVEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

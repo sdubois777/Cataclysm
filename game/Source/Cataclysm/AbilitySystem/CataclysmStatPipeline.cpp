@@ -171,6 +171,9 @@ namespace
 		{ TEXT("seconds_after_movement_skill_ends"), ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd },
 		{ TEXT("target_struck_by_your_movement_skill_within_seconds"),
 		  ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds },
+		{ TEXT("opponent_rarity_at_least"), ECataclysmStatCondition::OpponentRarityAtLeast },
+		{ TEXT("enemy_of_rarity_in_reach"), ECataclysmStatCondition::EnemyOfRarityInReach },
+		{ TEXT("no_enemy_in_reach"), ECataclysmStatCondition::NoEnemyInReach },
 	};
 
 	struct FNamedStatScale
@@ -398,8 +401,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetStruckFromBehind:
 	case ECataclysmStatCondition::TargetAtFullHealth:
 	case ECataclysmStatCondition::TargetCarriesYourPoison:
+	case ECataclysmStatCondition::NoEnemyInReach:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the forty-four says
+		// nothing for a number to be compared against. Each of the forty-five says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -567,6 +571,8 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 		return EOn::Motion;
 
 	case C::EnemiesInReachAtLeast:
+	case C::EnemyOfRarityInReach:
+	case C::NoEnemyInReach:
 		return EOn::Surroundings;
 
 	// THE LAST LABEL OF THIS GROUP, `OpponentFirstStruckByYouSecondsAgo`, IS A
@@ -581,6 +587,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::HitIsRangedAttack:
 	case C::HitIsSpell:
 	case C::OpponentIsBoss:
+	case C::OpponentRarityAtLeast:
 	case C::MetresMovedBeforeAttack:
 	case C::OpponentBeyondMetres:
 	case C::TargetWithinMetres:
@@ -1464,6 +1471,30 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:
 		return State.SecondsSinceStruckByYourMovementSkill >= 0.0f
 			&& State.SecondsSinceStruckByYourMovementSkill <= Value;
+
+	// THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25).
+	case ECataclysmStatCondition::OpponentRarityAtLeast:
+		// THE ATTACKER'S RUNG, -1 REFUSING, the rung compared a whole number, as `TargetRarityAtLeast` compares it.
+		return State.Blow.OpponentRarityStep >= 0 && State.Blow.OpponentRarityStep >= FMath::RoundToInt(Value);
+
+	case ECataclysmStatCondition::EnemyOfRarityInReach:
+	{
+		// ANY ONE ENEMY OF THE RUNG WITHIN THE ROW'S OWN REACH. A row with no reach counts nobody.
+		const int32 Rung = FMath::RoundToInt(Value);
+		for (int32 Index = 0; Index < State.HostileRarityDistancesMetres.Num(); ++Index)
+		{
+			if (ReachMetres > 0.0f && State.HostileRarityDistancesMetres[Index] <= ReachMetres
+				&& State.HostileRarityRungs.IsValidIndex(Index) && State.HostileRarityRungs[Index] >= Rung)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	case ECataclysmStatCondition::NoEnemyInReach:
+		// ONLY A WALK THAT WAS MADE CAN SAY NOBODY IS NEAR. A row with no reach refuses.
+		return ReachMetres > 0.0f && State.bHostileDistancesRead && EnemiesInReach(State, ReachMetres) == 0;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

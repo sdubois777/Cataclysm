@@ -3569,7 +3569,9 @@ namespace CataclysmPassiveConditionTest
 			// Each names a state, so each compares nothing.
 			|| Name == TEXT("target_struck_from_behind")
 			|| Name == TEXT("target_at_full_health")
-			|| Name == TEXT("target_carries_your_poison");
+			|| Name == TEXT("target_carries_your_poison")
+			// AND HUNTING GROUND'S "no enemy within", the Death trees' slice C6b3: a state, its radius the reach.
+			|| Name == TEXT("no_enemy_in_reach");
 	}
 }
 
