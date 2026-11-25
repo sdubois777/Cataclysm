@@ -60,8 +60,12 @@ Decisions made outside the Google Drive documents, newest first.
   - then the gadget's state and its summoner's;
   - then the target;
   - then `RepeatsFromARow`.
-  Before, the gadget's state was asked before the record. One refusal was widened: a skill gadget is accepted as well
-  as a gadget (`IsGadget() || IsSkillGadget()`), so Magnum Opus reaches skill gadgets.
+  Before, the gadget's state was asked before the record. The gadget test reads `IsGadget() || IsSkillGadget()`, and
+  **THAT CHANGES NOTHING IN PLAY**: `ACataclysmMinion::IsSkillGadget` is `SkillGadgetSlot != None && IsGadget()`, so
+  every skill gadget was already a gadget. A skill gadget, an enchantment's included, copied the last skill used before
+  this slice as it does after it. This entry said "one refusal was widened" when first written, which was wrong. The
+  coordinating session asked, on that wording, for the widening to be recorded as a change in play; reading
+  `IsSkillGadget` showed there is none.
 
 ### WHAT WAS RULED
 
