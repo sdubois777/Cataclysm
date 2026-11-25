@@ -174,26 +174,34 @@ def test_a_column_about_an_item_is_refused(tmp_path, column):
              headers=HEADERS + [column])
 
 
-def test_the_sheet_reads_with_no_port_column_at_all(tmp_path):
-    """The workbook has none of the thirteen action columns yet. `OPTIONAL_COLUMNS` lets the sheet read without
-    them, until the first slice that writes a row using one adds that column. `Per Point From` is no longer among
-    them: slice D's rows added it to the workbook on 2026-11-24 (Pain is Power), so it is required."""
-    old = HEADERS[:HEADERS.index("Action")] + ["Per Point From", "Condition 2", "Condition Value 2"]
+def test_the_sheet_reads_with_no_optional_port_column(tmp_path):
+    """`OPTIONAL_COLUMNS` lets the sheet read without the action columns the workbook does not have yet, until the
+    first slice that writes a row using one adds that column. `Per Point From` is no longer among them: slice D's rows
+    added it to the workbook on 2026-11-24 (Pain is Power), so it is required; so are `Condition 2` and its value (the
+    War riders, 2026-11-25) and `Action Event` and `Stack Seconds` (the Saboteur's device conditions, the same day).
+    UNTIL 2026-11-25 THIS WAS `test_the_sheet_reads_with_no_port_column_at_all`, which stopped being true when two of
+    the port's columns became required."""
+    required = ["Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds"]
+    old = HEADERS[:HEADERS.index("Action")] + required
     out = read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
     assert out[0]["Action"] == "" and out[0]["PerPointFrom"] == 0
     declared = set(gen.OPTIONAL_COLUMNS["Passive Effects"])
-    # CONDITION 2 AND ITS VALUE ARE REQUIRED SINCE 2026-11-25: the War riders' rows added them to the workbook.
-    assert declared == set(gen.PASSIVE_ACTION_COLUMNS) - {"Condition 2", "Condition Value 2"}
+    # CONDITION 2 AND ITS VALUE ARE REQUIRED SINCE 2026-11-25: the War riders' rows added them to the workbook. AND
+    # ACTION EVENT AND STACK SECONDS THE SAME DAY: the Saboteur's device conditions' own stacks added them.
+    assert declared == set(gen.PASSIVE_ACTION_COLUMNS) - {"Condition 2", "Condition Value 2", "Action Event",
+                                                           "Stack Seconds"}
 
 
 # ---------------------------------------------------------------------------
 # Per Point From
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("column", ["Per Point From", "Condition 2", "Condition Value 2"])
+@pytest.mark.parametrize("column", ["Per Point From", "Condition 2", "Condition Value 2", "Action Event",
+                                    "Stack Seconds"])
 def test_a_sheet_without_a_column_a_row_now_uses_is_refused(tmp_path, column):
-    """Slice D put `Per Point From` in the workbook on 2026-11-24 with Pain is Power's row, and the War riders put
-    `Condition 2` and `Condition Value 2` there on 2026-11-25 with Hair-Trigger's, Death Blow's and Brute Force's; each
+    """Slice D put `Per Point From` in the workbook on 2026-11-24 with Pain is Power's row, the War riders put
+    `Condition 2` and `Condition Value 2` there on 2026-11-25 with Hair-Trigger's, Death Blow's and Brute Force's, and
+    the Saboteur's device conditions put `Action Event` and `Stack Seconds` there the same day with Sprung's; each
     declaration left `OPTIONAL_COLUMNS`, as `Scale Max Steps` did with Wall of Servants'. A sheet without one is now
     refused like any other column the generator reads, so a column deleted from the workbook cannot drop a threshold
     or a second condition in silence."""

@@ -23,12 +23,15 @@ Decisions made outside the Google Drive documents, newest first.
   enemy's record; `SkillTrapTriggerRadiusCmFor` reads the radius's "more". `CataclysmSkillTemplates.cpp`: `device_placed`
   for every War machine. `CataclysmSkillEffects.cpp`: `ApplyHit` names the blow's trap.
 - `tools/generate_datatables.py`: the four conditions, `device_placed`, `trap_trigger_radius` in `STATS_WITH_AN_ASKER` and
-  `CONDITIONED_STATS_WITH_AN_ASKER`.
+  `CONDITIONED_STATS_WITH_AN_ASKER`; Action Event and Stack Seconds leave `OPTIONAL_COLUMNS`, required now the workbook
+  has them (issue #1882's rule).
 - Tests: `CataclysmSaboteurDeviceTests.cpp` (new, six), `CataclysmStatExemptionTests.cpp` (`ProbeScaledTrapTriggerRadius`),
   `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`), `CataclysmDataTableTests.cpp` (the pin, 494);
   `tools/tests/test_war_saboteur_devices_scripts.py` (new), `test_passive_effects_match_the_node_text.py` (the words, an
   own stack's event and seconds, 494 rows, 289 nodes), `test_the_condition_count_sentences_agree_with_the_code.py` ("adds
-  an").
+  an"), `test_passive_rows_carry_the_action_columns.py` and `test_generate_datatables.py` (the two columns required: the
+  test sheets carry them, and `test_the_sheet_reads_with_no_port_column_at_all` became
+  `test_the_sheet_reads_with_no_optional_port_column`).
 
 ### SAID FIRST
 

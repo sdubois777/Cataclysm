@@ -2020,13 +2020,17 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: CONDITION 2 AND CONDITION VALUE 2 LEFT ON 2026-11-25 with the War riders
 #: (`tools/reapply_war_riders_workbook.py`), which added the two columns for
 #: Hair-Trigger's, Death Blow's and Brute Force's second conditions.
+#:
+#: ACTION EVENT AND STACK SECONDS LEFT THE SAME DAY with the Saboteur's device
+#: conditions (`tools/reapply_war_saboteur_devices_workbook.py`), which added the
+#: two columns for Sprung's, Emergency Protocol's and Razor Instincts' own stacks.
 _PASSIVE_PORT_COLUMN_REASON = (
     "the passive row port of 2026-11-24; added to the workbook by the first War "
     "or Death tree slice that authors a row using it")
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
     "Passive Effects": {
         column: _PASSIVE_PORT_COLUMN_REASON
-        for column in ("Action", "Action Event", "Fraction Of", "Stack Seconds",
+        for column in ("Action", "Fraction Of",
                        "Scale Offset", "Every Seconds", "Every Nth",
                        "Trigger Cooldown", "Event Value", "Ailment", "Damage Share")},
 }
