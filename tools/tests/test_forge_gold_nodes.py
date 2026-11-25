@@ -13,7 +13,8 @@ leaves it at its default, and that the count is added only once a craft is done.
   4. an option's gold is discounted at its own material, the Chaos Stabilizer's and the Tainted Shard's;
   5. every plan call and every options call the game makes passes a pricing (ruling A);
   6. Treasury Synergy's count is added once a craft is done, never before a refusal, in tier 1 gold;
-  7. both records save the count: the account at version 8, the character at 18 (17 being skill selection's);
+  7. both records save the count: the account at version 8, the character at 18 (after skill selection's 17), each
+     with its committed file and every chain test stepping to it;
   8. the forge screen says what the tree took off a price.
 """
 
@@ -210,6 +211,21 @@ def test_both_records_save_the_count() -> None:
     assert new.pop("GoldSpentAtTheForge") == 62500.25, "the committed account's count is not a figure"
     assert new == old, "Account_v8.json is not Account_v7.json with the forge count"
     assert "| `Account_v8.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
+    old = json.loads((FIXTURES / "Character_v17.json").read_text(encoding="utf-8"))
+    new = json.loads((FIXTURES / "Character_v18.json").read_text(encoding="utf-8"))
+    assert new.pop("SchemaVersion") == 18 and old.pop("SchemaVersion") == 17
+    assert new.pop("GoldSpentAtTheForge") == 41250.75, "the committed character's count is not a figure"
+    assert new == old, "Character_v18.json is not Character_v17.json with the forge count"
+    assert "| `Character_v18.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
+    for older, newer in (("AddTheAccountsVersion7Defaults(", "AddTheAccountsVersion8Defaults("),
+                         ("AddTheCharactersVersion17Defaults(", "AddTheCharactersVersion18Defaults(")):
+        stepping = 0
+        for path in sorted((SOURCE / "Tests").glob("*.cpp")):
+            text = code(path)
+            if older in text:
+                stepping += 1
+                assert text.count(newer) >= text.count(older), f"{path.name} steps through {older} and not {newer}"
+        assert stepping >= 3, f"only {stepping} test files step through {older}"
     gather = flat(code(SOURCE / "Save" / "CataclysmSaveGather.cpp"))
     apply = flat(code(SOURCE / "Save" / "CataclysmSaveApply.cpp"))
     assert "Record.GoldSpentAtTheForge = State->GetOwnGoldSpentAtTheForge();" in gather

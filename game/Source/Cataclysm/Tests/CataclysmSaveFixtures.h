@@ -640,6 +640,17 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What the character record's `Migrate_17_to_18` writes into a character file written before version 18: no tier 1
+	 * gold spent at the forge, `GoldSpentAtTheForge` 0 (#47 slice F6a). THE CHARACTER RECORD'S 18. ONE COPY, for
+	 * every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion17Defaults`.
+	 */
+	inline void AddTheCharactersVersion18Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldSpentAtTheForge"), 0.0);
+	}
+
+	/**
 	 * What the run record's newest step writes into a run file written before it: no city bailed out, no dungeon a bonus
 	 * one, no bonus dungeon cleared and no bribe made (`bBailedOut`, `bBonus`, `BonusDungeonsCleared`,
 	 * `bBribedThisSurge`). Issue #2741 slice 9. NAMED FOR THE VERSION IT REACHES, 15, after the gems window's

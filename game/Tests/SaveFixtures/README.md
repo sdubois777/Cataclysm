@@ -676,8 +676,7 @@ followed, ruled 2026-11-01:
   test that runs an older account file through the chain adds what the step
   writes through `CataclysmSaveFixtures::AddTheAccountsVersion8Defaults`. A Solo
   Self-Found character's count is its own record's, from the character record's
-  version 18 (17 is the skill selection slice's), whose files are made when that
-  slice is on this branch.
+  version 18, below.
 - **The account record went to version 7, the character record to version 14
   and the run record to version 15 on 2026-11-22**, for the empire tree's ninth
   slice (issue #2741 slice 9). The account and a Solo Self-Found character count
@@ -729,6 +728,16 @@ followed, ruled 2026-11-01:
   as the committed file reads the new one, and every test that runs an older
   file through the chain adds what the step writes through
   `AddTheCharactersVersion17Defaults`.
+- **The character record went to version 18 on 2026-11-25**, for the empire
+  tree's forge gold nodes (#47 slice F6a), after the skill keys' 17. A Solo
+  Self-Found character counts the tier 1 gold it spends at the forge across
+  runs, `GoldSpentAtTheForge`, which Treasury Synergy reads, as the account
+  does at its version 8; `Migrate_17_to_18` writes 0. `Character_v18.json` is
+  `Character_v17.json` at version 18 with 41250.75 spent, a figure and not the
+  default, so the round trip proves the field is read. `Character_v17.json` is
+  now a migration input; every test that read it as the committed file reads the
+  new one, and every test that runs an older file through the chain adds what
+  the step writes through `AddTheCharactersVersion18Defaults`.
 - **The run record went to version 16 on 2026-11-22**, for the cleanse city
   upgrade (issue #2838): the run holds whether the cleanse has been bought in it,
   `bCleanseBoughtThisRun`, once a run. The step writes false: a run written before
@@ -999,6 +1008,7 @@ followed, ruled 2026-11-01:
 | `Character_v15.json` | The same character at version 15: version 14's contents, plus where each item arrived -- the creation greatsword +0 at tier 2, the carried Circlet +4 at tier 2, the empty slot not known, the worn ring +3 at tier 1 |
 | `Character_v16.json` | The same character at version 16: version 15's contents, with its 12 Whispering Ash in `CarriedMaterials` and its second carried slot blank, plus 3 Superb Of The Viper in `CarriedGems` |
 | `Character_v17.json` | The same character at version 17: version 16's contents, plus one remembered default, `War_Greatsword_Special` on the Special key, and one in its held build, `War_Greatsword_Support` on the Support key |
+| `Character_v18.json` | The same character at version 18: version 17's contents, plus 41250.75 tier 1 gold spent at the forge |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
