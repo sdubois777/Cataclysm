@@ -156,7 +156,11 @@ working tree, failed that one and the check that every condition is named in thi
 | Borrowed Time's rows at 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 | The new condition taken off `ConditionTakesAValue`'s list of conditions that compare nothing | `test_condition_lists_agree_with_the_code.py::test_the_three_value_less_lists_agree` |
 
-**AFTER THE RULING ON KINDRED FIRES**, KINDRED_FIGURES_C4B1
+**AFTER THE RULING ON KINDRED FIRES**, at `74b11168f`: the whole Python suite on that
+commit, "1 failed, 8513 passed, 9 skipped in 393.53s (0:06:33)"; the JUnit file agrees, tests 8523, failures 1, errors 0,
+skipped 9, the one failure the same asset check as above. And a sixth Python guard proof, `proved`, in a `git archive`
+copy of `74b11168f`: the return on a kill's payment moved back after Kindred Fires, as first built, fails
+`test_every_gain_to_the_pool_goes_through_raise_pool.py::test_a_kills_payment_reaches_neither_kindred_fires_nor_borrowed_time`.
 
 ---
 
