@@ -117,7 +117,19 @@ before any kill, 2.1 seconds after, and a skill that is not the movement skill.
 
 ### What was run
 
-SUITE_FIGURES_C4A
+**The whole Python suite on `6070ed9a8`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8508 passed, 9 skipped in 360.23s
+(0:06:00)". The JUnit file agrees: tests 8518, failures 1, errors 0, skipped 9, so 8508 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, failed that one, the check that every condition is named in this log, which this entry satisfies, and
+`test_condition_lists_agree_with_the_code.py::test_the_three_value_less_lists_agree`, because `ComparesNothing` in
+`CataclysmPassiveTreeTests.cpp` did not name the new condition; it was added before `43243fb9a` was committed.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
 
 **Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `43243fb9a`, and each `proved`:
