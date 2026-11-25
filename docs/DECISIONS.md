@@ -118,7 +118,16 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On `eab36da502ca534da30663db6d364a3f297c1fad`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8592 passed, 9 skipped in 615.67s**, and the JUnit file `tests="8602" failures="1"
+errors="0" skipped="9"`, which is 8,592 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**THE FIRST RUN, on the code commit `873894e5b520b3ad7007966ab518e896cedce115`, failed two more**, both in
+`test_generate_datatables.py::TestStrikeTarget`: one pinned the events a strike may hang on at eight, and one used
+`hit_taken` as an event naming nobody. Both were this slice's: it added `hit_taken` and `big_hit_taken` to that list.
+Corrected in `eab36da50`; that run read 3 failed, 8590 passed, 9 skipped.
 
 ### PYTHON GUARD PROOFS
 
