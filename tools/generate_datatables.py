@@ -5442,6 +5442,11 @@ CONDITIONS = {
     # within the row's `Reach Metres` of the body. The value is the seconds. A
     # fact of the target in hand, so one of `CONDITIONS_OF_A_HIT_DEALT`.
     "target_near_your_kill_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # "those kills give double Fervour" is `kill_was_an_execute`: the Soul
+    # Collector's Reaper's Edge, the Death trees' slice C4d1 (2026-11-25), as
+    # ruled. The kill handler marks a kill whose death notice says it was an
+    # execute while it pays for it and acts on it. It names a state.
+    "kill_was_an_execute": None,
 
     # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
     # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
@@ -7870,6 +7875,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_bleed_left_to_strongest_action(index, who, action, event,
                                               fraction_of, kind, raw, headers)
         return
+    if action == NEXT_HIT_CRITICAL_ACTION:
+        _check_next_hit_critical_action(index, who, action, event,
+                                        fraction_of, kind, raw, headers)
+        return
     if action in TRAPS_NEARBY_ACTIONS:
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -7903,6 +7912,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {KILLING_BLOW_EXPLOSION_ACTION}; "
             f"or {SLAIN_BURST_ACTION}; "
             f"or {BLEED_LEFT_TO_STRONGEST_ACTION}; "
+            f"or {NEXT_HIT_CRITICAL_ACTION}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
@@ -8636,6 +8646,11 @@ def _check_cooldown_reset_action(index: int, who: str, action: str,
     # reset's chance may not: a chance multiplied is not a chance.
     if action in COOLDOWN_REDUCE_ACTIONS:
         fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
+        # AND BY THE WHOLE HUNDREDS OF THE CLASS RESOURCE HELD, Relentless's
+        # "for every 100 Fervour held" (the Death trees' slice C4d1), on any
+        # event: it reads the character, not the event.
+        if fraction_of == FRACTION_OF_HUNDREDS_HELD:
+            fraction_of = ""
     for column, written in (("Fraction Of", fraction_of),
                             ("Value Kind", kind),
                             ("Scale", clean(_cell(raw, headers, "Scale")))):
@@ -8822,6 +8837,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != KILLING_BLOW_EXPLOSION_ACTION \
                 and action != SLAIN_BURST_ACTION \
                 and action != BLEED_LEFT_TO_STRONGEST_ACTION \
+                and action != NEXT_HIT_CRITICAL_ACTION \
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
@@ -9111,6 +9127,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} passes a Bleed's "
                 f"damage left over {low:g} to {high:g} seconds. The seconds are "
                 f"above 0 and up to {MAX_BLEED_LEFT_SECONDS:g}.")
+
+    # AND CHAIN EXECUTION'S IS THE SECONDS ITS CHARGE LASTS. The Death trees'
+    # slice C4d1 (2026-11-25).
+    if action == NEXT_HIT_CRITICAL_ACTION:
+        if not (0 < low <= MAX_NEXT_HIT_CRITICAL_SECONDS and 0 < high <= MAX_NEXT_HIT_CRITICAL_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} makes the next hit a "
+                f"critical strike for {low:g} to {high:g} seconds. The seconds "
+                f"are above 0 and up to {MAX_NEXT_HIT_CRITICAL_SECONDS:g}.")
 
     # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
     # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
@@ -10981,6 +11006,10 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # (`UCataclysmFervour::KillDecayStep`).
     "fervour_per_kill": ASKER_PASSES_A_HIT_DEALT,
     "fervour_kill_decay_grace_seconds": ASKER_PASSES_A_HIT_DEALT,
+    # AND THE FERVOUR A LANDED CRITICAL STRIKE PAYS, asked with the character
+    # struck as the target (`UCataclysmFervour::GainOnCriticalStrike`), so
+    # Telling Blows' rarity row is judged. The Death trees' slice C4d1.
+    "fervour_per_critical_strike": ASKER_PASSES_A_HIT_DEALT,
     "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
@@ -11096,7 +11125,10 @@ CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS: dict[str, frozenset[str]] = {
         "skill_health_cost_above",
         "target_within_metres",
         "target_is_staggered",
-    }) for stat in ("fervour_per_kill", "fervour_kill_decay_grace_seconds")},
+    }) for stat in ("fervour_per_kill", "fervour_kill_decay_grace_seconds",
+                    # AND THE FERVOUR A CRITICAL STRIKE PAYS, asked with the
+                    # character struck and nothing else (slice C4d1).
+                    "fervour_per_critical_strike")},
 }
 
 
@@ -14446,6 +14478,22 @@ SLAIN_BURST_EVENTS = ("kill",)
 BLEED_LEFT_TO_STRONGEST_ACTION = "pass_bleed_left_to_strongest"
 BLEED_LEFT_TO_STRONGEST_EVENTS = ("afflicted_death",)
 
+#: The wearer's next hit that lands within the value's seconds is a critical
+#: strike: the Shadow's Chain Execution, the Death trees' slice C4d1
+#: (2026-11-25). `UCataclysmAbilitySystemComponent::CriticalNextHitAction`
+#: holds the same name. ON `kill` AND NO OTHER EVENT.
+NEXT_HIT_CRITICAL_ACTION = "next_hit_critical"
+NEXT_HIT_CRITICAL_EVENTS = ("kill",)
+
+#: The most seconds the charge may last. A bound for typing mistakes; the one
+#: sentence is 2.
+MAX_NEXT_HIT_CRITICAL_SECONDS = 10.0
+
+#: A cooldown reduction's Fraction Of that acts once for each whole hundred of
+#: the class resource held when the row acts: Relentless, the Death trees'
+#: slice C4d1 (2026-11-25). Accepted on the cooldown reductions alone.
+FRACTION_OF_HUNDREDS_HELD = "for_each_hundred_class_resource_held"
+
 #: The most seconds the Bleed left may be dealt over. A bound for typing
 #: mistakes; the one sentence is 2.
 MAX_BLEED_LEFT_SECONDS = 10.0
@@ -14510,6 +14558,29 @@ def _check_bleed_left_to_strongest_action(index: int, who: str, action: str,
                 f"Enchantment Effects row {index}: {who} passes a dead enemy's "
                 f"Bleed left and states {column} {written!r}. Its value is the "
                 f"seconds and nothing else, so the column must be empty.")
+
+
+def _check_next_hit_critical_action(index: int, who: str, action: str,
+                                    event: str, fraction_of: str, kind: str,
+                                    raw, headers: dict[str, int]) -> None:
+    """Everything a Chain Execution row must say, and everything it must not.
+    The Death trees' slice C4d1 (2026-11-25). ON `kill` ONLY; the seconds are
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in NEXT_HIT_CRITICAL_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} makes the next hit a "
+            f"critical strike on the event {event or '(none)'!r}. Only a kill "
+            f"grants it: {', '.join(NEXT_HIT_CRITICAL_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} makes the next hit a "
+                f"critical strike and states {column} {written!r}. Its value is "
+                f"the seconds and nothing else, so the column must be empty.")
 
 
 def _check_slain_burst_action(index: int, who: str, action: str, event: str,

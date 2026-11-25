@@ -717,7 +717,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 576 THE SAME DAY, for slice C4c2: Grim Wake (two, attack and spell
 #: damage) and the Shadow's Blood Debt. The Soul Collector 115 rows.
-AUTHORED_ROWS = 576
+#:
+#: AND TO 582 THE SAME DAY, for slice C4d1: the Shadow's starting node's "2 for
+#: each critical strike you land", Telling Blows, Reaper's Edge (two: the
+#: execute and the doubled payment), Relentless and Chain Execution.
+AUTHORED_ROWS = 582
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1175,7 +1179,11 @@ AUTHORED_ROWS = 576
 #: of a capstone already counted.
 #:
 #: AND TO 350 THE SAME DAY, for slice C4c2's Grim Wake and Blood Debt.
-AUTHORED_NODES = 350
+#:
+#: AND TO 352 THE SAME DAY, for slice C4d1: Telling Blows, and the Shadow's
+#: 100 vow (`Shadow_capstone_100`), which had no row until Relentless and Chain
+#: Execution. Reaper's Edge is an option of a capstone already counted.
+AUTHORED_NODES = 352
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1283,7 +1291,11 @@ AUTHORED_NODES = 350
 #:
 #: AND TO 48 THE SAME DAY, for slice C4c1: the Soul Collector's The Ferryman (200,
 #: option 2).
-AUTHORED_OPTIONS = 48
+#:
+#: AND TO 51 ON 2026-11-25, for the Death trees' slice C4d1: Reaper's Edge (the
+#: Soul Collector's 100 vow, option 2), Chain Execution and Relentless (the
+#: Shadow's 100 vow, options 2 and 3).
+AUTHORED_OPTIONS = 51
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1790,6 +1802,11 @@ CONDITION_WORDS = {
     # you kill take 2% increased damage from you per point for 3 seconds." The
     # Death trees' slice C4c2 (2026-11-25). The row's reach is the 3 metres.
     "target_near_your_kill_within_seconds": ("of an enemy you kill", "{value:g} second"),
+
+    # REAPER'S EDGE, the Soul Collector's 100 vow, option 2: "Your hits kill a
+    # non-Boss enemy below 15% health outright, and those kills give double
+    # Fervour." The Death trees' slice C4d1 (2026-11-25).
+    "kill_was_an_execute": ("those kills give double", None),
 
     # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
     # REDUCTION, and which stat that row should use is with the project owner
@@ -2586,6 +2603,11 @@ VALUE_FORMS = {
     # Fervour", and Clean Kill's "restores 1% of your Maximum Health".
     "fervour_per_kill_extra_chance": ("{value:g}% chance per point to give 1 extra Fervour",),
     "health_restored_on_critical_kill": ("restores {value:g}% of your Maximum Health",),
+    # SLICE C4d1 (2026-11-25): the Shadow's starting node's "and 2 for each
+    # critical strike you land", and Telling Blows' "+1 Fervour per point for
+    # each critical strike".
+    "fervour_per_critical_strike": ("and {value:g} for each critical strike",
+                                    "+{value:g} Fervour per point for each critical strike"),
     # SLICE C4b1 (2026-11-25): Borrowed Time's "is extended by 1 second for every
     # 3 points".
     "fervour_hold_extended_on_gain_seconds": ("extended by {value:g} second",),
@@ -2701,6 +2723,9 @@ VALUE_IN_WORDS = {
     # cooldowns recover twice as fast" is 100 on the rate.
     ("SoulCollector_capstone_50", "projectile_count"): ("fire one extra projectile", 1.0),
     ("SoulCollector_capstone_200", "cooldowns_recover_faster_percent"): ("recover twice as fast", 100.0),
+    # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): "those kills give
+    # double Fervour" is 100% more on the kill's payment.
+    ("SoulCollector_capstone_100", "fervour_per_kill"): ("give double fervour", 100.0),
     # AND THE THIRD VOW'S, "your skills cost no mana", a removal of one as the
     # Ritualist's Ritual Focus writes it.
     ("SoulCollector_capstone_100", "mana_cost"): ("cost no mana", 1.0),
@@ -3148,6 +3173,11 @@ ACTION_VALUE_FORMS = {
     "energy_shield": ("{value:g}% of your Maximum Energy Shield",),
     "smite_nearby": ("{value:g}% of your weapon damage",),
     "cooldown_reduce_others": ("{value:g} second off",),
+    # RELENTLESS, the Death trees' slice C4d1 (2026-11-25): "takes 1 second off
+    # all your skill cooldowns for every 100 Fervour held".
+    "cooldown_reduce_all": ("{value:g} second off all",),
+    # CHAIN EXECUTION, the same slice: "your next hit within 2 seconds".
+    "next_hit_critical": ("within {value:g} seconds",),
 }
 
 #: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.
@@ -3176,6 +3206,9 @@ ACTION_VALUE_IN_WORDS = {
     # outright", a chance of 100. The execute never takes a Boss; the engine
     # holds that inside the action.
     ("Shadow_capstone_200", "execute_target"): ("outright", 100.0),
+    # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): the same words and
+    # the same chance of 100.
+    ("SoulCollector_capstone_100", "execute_target"): ("outright", 100.0),
     # FLICKER, the Death trees' slice C4a (2026-11-25): "Killing an enemy resets
     # your movement skill's cooldown", a chance of 100.
     ("Shadow_keystone_c_kA", "cooldown_reset_movement"): ("resets your movement skill's cooldown", 100.0),
@@ -3504,6 +3537,9 @@ MORE_STATED_IN_A_WORD = {
     # DEATH SENTENCE, the Death trees' slice C1 (2026-11-25): "Bosses take double
     # damage from you below 15%" is 100% more.
     ("Shadow_capstone_200", 2): "double damage",
+    # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): "those kills give
+    # double Fervour" is 100% more.
+    ("SoulCollector_capstone_100", 2): "double fervour",
 }
 
 

@@ -1602,6 +1602,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// Debt, the Death trees' slice C4c2 (2026-11-25). The value is the seconds.
 					Action.bPassBleedLeftToStrongest = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT MAKES THE NEXT LANDED HIT A CRITICAL STRIKE: Chain Execution, the Death trees' slice
+					// C4d1 (2026-11-25). The value is the seconds.
+					Action.bNextHitCritical = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CriticalNextHitAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
@@ -1676,6 +1680,12 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 													  ESearchCase::IgnoreCase))
 					{
 						Action.Base = ECataclysmPoolActionBase::ForEachTenOfEventAmount;
+					}
+					// AND FOR EACH WHOLE HUNDRED OF THE CLASS RESOURCE HELD: Relentless, the Death trees' slice C4d1.
+					else if (Effect->FractionOf.Equals(TEXT("for_each_hundred_class_resource_held"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachHundredClassResourceHeld;
 					}
 
 					// THE SAME TAG PARSE THE STAT ROWS GET, so a scoped action row

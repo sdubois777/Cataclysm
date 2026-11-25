@@ -1901,6 +1901,19 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetNearYourKillWithinSeconds
 		UMETA(DisplayName = "Target Near Your Kill Within Seconds"),
+
+	/**
+	 * The kill being acted on was an execute: the Soul Collector's Reaper's Edge, "Your hits kill a non-Boss enemy below
+	 * 15% health outright, and those kills give double Fervour". The Death trees' slice C4d1 (2026-11-25), as ruled.
+	 *
+	 * READ FROM A MARK THE PLAYER'S KILL HANDLER SETS while it pays for and acts on an own kill whose death notice says
+	 * it was an execute (`FCataclysmDeathNotice::bByAnExecute`, set while `ExecuteIfLeftBelow` kills; a set bonus's cull
+	 * is not one). `UCataclysmAbilitySystemComponent::SetActingOnAKillByAnExecute`. Nowhere else does it hold.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	KillWasAnExecute
+		UMETA(DisplayName = "Kill Was An Execute"),
 };
 
 /**
@@ -3654,6 +3667,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	float SecondsSinceNearYourKill = -1.0f;
 
 	/**
+	 * Whether the kill being acted on was an execute. The Death trees' slice C4d1 (2026-11-25). Filled by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` from the kill handler's mark; false otherwise, which
+	 * refuses. See `ECataclysmStatCondition::KillWasAnExecute`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKillWasAnExecute = false;
+
+	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
 	 * trees of 2026-11-24. Filled by `WithTargetState` only when some modifier in the lookup asks; see
 	 * `ECataclysmStatCondition::TargetRarityAtLeast`.
@@ -4465,6 +4486,15 @@ enum class ECataclysmPoolActionBase : uint8
 	 * Whole tens, so a spend of 19 pays once: the coordinating session's ruling 3 of 2026-11-25.
 	 */
 	ForEachTenOfEventAmount UMETA(DisplayName = "For each ten of the event's amount"),
+
+	/**
+	 * THE VALUE ONCE FOR EACH WHOLE HUNDRED OF THE CLASS RESOURCE HELD, read when the row acts: the Shadow's Relentless,
+	 * "Each kill takes 1 second off all your skill cooldowns for every 100 Fervour held". The Death trees' slice C4d1
+	 * (2026-11-25), as ruled: whole hundreds, so 99 held takes nothing off. Held as `class_resource_held` counts it
+	 * (`UCataclysmStatPipeline::FervourHeldCounted`). Multiplied in `ActOnEvent` beside the two bases above, by
+	 * `UCataclysmAbilitySystemComponent::TimesSizedByFervourHeld`.
+	 */
+	ForEachHundredClassResourceHeld UMETA(DisplayName = "For each hundred of the class resource held"),
 };
 
 /**
@@ -5024,6 +5054,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bPassBleedLeftToStrongest = false;
 
 	/**
+	 * Set, this action makes the wearer's next hit that lands within `Percent` seconds a critical strike: the Shadow's
+	 * Chain Execution, "A kill makes your next hit within 2 seconds a critical strike". The Death trees' slice C4d1
+	 * (2026-11-25), as ruled. On `kill` and no other event. A second grant inside the window refreshes it; it is never
+	 * two. See `UCataclysmAbilitySystemComponent::HoldsNextHitCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextHitCritical = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
@@ -5417,7 +5456,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-sixth, which is the drift that put the passive tree eight
+	 * adds an eighty-seventh, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5434,7 +5473,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-NINE OF THE EIGHTY-FIVE COMPARE NOTHING. They are the case labels
+	 * FORTY OF THE EIGHTY-SIX COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

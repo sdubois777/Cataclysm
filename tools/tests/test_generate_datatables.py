@@ -3498,9 +3498,10 @@ class TestDeathTreeActionBounds:
     ]
     HEADER = TestScaleStepHigh.HEADER
 
-    def row(self, tmp_path, action, event, value):
+    def row(self, tmp_path, action, event, value, fraction_of=None):
         values = {"Enchantment": self.NAME, "Effect": self.WORDS, "Action": action,
-                  "Action Event": event, "Value Low": value, "Value High": value}
+                  "Action Event": event, "Value Low": value, "Value High": value,
+                  "Fraction Of": fraction_of}
         row = [values.get(column) for column in self.HEADER]
         return openpyxl.load_workbook(workbook_with(
             tmp_path / "bounds.xlsx",
@@ -3527,6 +3528,52 @@ class TestDeathTreeActionBounds:
         with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
             gen.enchantment_effects(self.row(
                 tmp_path, gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", value))
+
+
+class TestDeathTreeC4d1Actions:
+    """The Death trees' slice C4d1 (2026-11-25): Chain Execution's action and
+    Relentless's sizing base, each driven through the whole Enchantment Effects
+    read. Chain Execution's row is on `kill` only, its seconds above 0 and up to
+    `MAX_NEXT_HIT_CRITICAL_SECONDS`. Relentless's base is accepted on a cooldown
+    reduction, on any event, and refused on a pool row and on a cooldown reset,
+    whose value is a chance. THE CONTROLS: the edge value and the accepted rows
+    are carried through."""
+
+    # THE ROW BUILDER OF THE CLASS ABOVE, taken rather than inherited, so its
+    # six tests are not run a second time under this class's name.
+    WORDS = TestDeathTreeActionBounds.WORDS
+    NAME = TestDeathTreeActionBounds.NAME
+    ENCHANTMENTS = TestDeathTreeActionBounds.ENCHANTMENTS
+    HEADER = TestDeathTreeActionBounds.HEADER
+    row = TestDeathTreeActionBounds.row
+
+    def test_chain_executions_row_at_its_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "kill", gen.MAX_NEXT_HIT_CRITICAL_SECONDS))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"]) == (
+            "next_hit_critical", "kill", 10.0)
+
+    @pytest.mark.parametrize("value", [0, 10.5])
+    def test_chain_executions_seconds_just_outside_are_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+            gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "kill", value))
+
+    @pytest.mark.parametrize("event", ["hit_dealt", "critical_strike", "afflicted_death"])
+    def test_chain_executions_row_on_another_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only a kill grants it"):
+            gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, event, 2))
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt"])
+    def test_relentless_base_on_a_cooldown_reduction_is_carried_through(self, tmp_path, event):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, "cooldown_reduce_all", event, 1, gen.FRACTION_OF_HUNDREDS_HELD))
+        assert (out[0]["Action"], out[0]["FractionOf"]) == (
+            "cooldown_reduce_all", "for_each_hundred_class_resource_held")
+
+    @pytest.mark.parametrize("action", ["class_resource", "cooldown_reset_movement"])
+    def test_relentless_base_anywhere_else_is_refused(self, tmp_path, action):
+        with pytest.raises(gen.DataError):
+            gen.enchantment_effects(self.row(tmp_path, action, "kill", 1, gen.FRACTION_OF_HUNDREDS_HELD))
 
 
 class TestStrikeTarget:

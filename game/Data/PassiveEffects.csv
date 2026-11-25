@@ -410,6 +410,7 @@ Shadow_basic_spine_000#1,Shadow_basic_spine_000,fervour_per_kill,flat,10.0,,targ
 Shadow_basic_spine_000#2,Shadow_basic_spine_000,fervour_per_kill,flat,25.0,,target_rarity_at_least,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_spine_000#3,Shadow_basic_spine_000,fervour_kill_decay_per_second,flat,10.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_spine_000#4,Shadow_basic_spine_000,fervour_kill_decay_grace_seconds,flat,4.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_spine_000#5,Shadow_basic_spine_000,fervour_per_critical_strike,flat,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_spine_001#1,Shadow_basic_spine_001,attack_damage,increased,2.0,,target_rarity_at_least,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_spine_001#2,Shadow_basic_spine_001,spell_damage,increased,2.0,,target_rarity_at_least,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_spine_003#1,Shadow_basic_spine_003,attack_speed,increased,1.0,,seconds_after_kill,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
@@ -575,3 +576,8 @@ SoulCollector_capstone_200#2,SoulCollector_capstone_200,,,10.0,,class_resource_a
 SoulCollector_basic_b_a2#1,SoulCollector_basic_b_a2,attack_damage,increased,2.0,,target_near_your_kill_within_seconds,3.0,,0.0,0,3.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_b_a2#2,SoulCollector_basic_b_a2,spell_damage,increased,2.0,,target_near_your_kill_within_seconds,3.0,,0.0,0,3.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_keystone_a_kB#1,Shadow_keystone_a_kB,,,2.0,Keyword.DoT.Bleed,,0.0,,0.0,0,-1.0,0,0,pass_bleed_left_to_strongest,afflicted_death,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_spine_007#1,Shadow_basic_spine_007,fervour_per_critical_strike,flat,1.0,,target_rarity_at_least,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_100#4,SoulCollector_capstone_100,,,100.0,,target_health_below,15.0,,0.0,2,-1.0,0,0,execute_target,hit_dealt,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_100#5,SoulCollector_capstone_100,fervour_per_kill,more,100.0,,kill_was_an_execute,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_capstone_100#1,Shadow_capstone_100,,,1.0,,,0.0,,0.0,3,-1.0,0,0,cooldown_reduce_all,kill,for_each_hundred_class_resource_held,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_capstone_100#2,Shadow_capstone_100,,,2.0,,,0.0,,0.0,2,-1.0,0,0,next_hit_critical,kill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

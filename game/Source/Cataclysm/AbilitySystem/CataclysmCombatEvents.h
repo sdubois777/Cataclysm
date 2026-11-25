@@ -298,6 +298,13 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 * character restores `UCataclysmFervour::HealthRestoredOnCriticalKillStat`'s share of health when this holds.
 	 */
 	bool bByACriticalStrike = false;
+
+	/**
+	 * Whether the death was an execute's: an `execute_target` row's kill below its share of health
+	 * (`UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow`). A set bonus's cull is not one. Reaper's Edge's double
+	 * Fervour reads it through the kill handler's mark. The Death trees' slice C4d1 (2026-11-25).
+	 */
+	bool bByAnExecute = false;
 };
 
 /**

@@ -153,6 +153,9 @@ CONSTANTS = {
     # AND THE DEATH TREES' SLICE C4c2 (2026-11-25): the wearer's Bleed left on an
     # enemy that died passed to the strongest enemy near it, Blood Debt.
     "PassBleedLeftToStrongestAction": "pass_bleed_left_to_strongest",
+    # AND THE DEATH TREES' SLICE C4d1 (2026-11-25): the next landed hit within
+    # the seconds made a critical strike, Chain Execution.
+    "CriticalNextHitAction": "next_hit_critical",
     # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
@@ -747,6 +750,100 @@ def test_every_target_question_reaches_both_lists_in_with_target_state() -> None
     assert stop_early and early_return
     assert set(re.findall(r"bWants\w+", stop_early.group(1))) == declared
     assert set(re.findall(r"bWants\w+", early_return.group(1))) == declared
+
+
+def test_a_critical_strike_pays_fervour_and_a_minions_does_not() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q2): the Shadow's
+    starting node's "2 for each critical strike you land" and Telling Blows.
+    The hit handler pays a landed critical strike of the character's own, not
+    a minion's, before the `critical_strike` rows act; the payment asks the new
+    stat against the character struck and goes through `RaisePool`. Read from
+    the code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"if \(Notice\.bCritical\)\s*\{\s*if \(!Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*\{\s*"
+                     r"UCataclysmFervour::GainOnCriticalStrike\(Acting, Notice\.Target\);\s*\}\s*"
+                     r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    start = fervour.index("float UCataclysmFervour::GainOnCriticalStrike(")
+    body = fervour[start:fervour.index("\n}\n", start)]
+    assert re.search(r"FName\(PerCriticalStrikeStat\), FGameplayTagContainer\(\), 0\.0f, -1\.0f, "
+                     r"FCataclysmBlowContext\(\), -1\.0f, -1\.0f, false,\s*Struck\);", body)
+    assert "RaisePool(AbilitySystem, Change);" in body
+    assert "ClassResourceGainScaled(AbilitySystem, PerCritical)" in body
+    assert "BeginKillPayment" not in body
+
+
+def test_reapers_edge_marks_an_executes_kill_for_its_payment_and_rows() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q3). The struck
+    character is marked as being executed only around `ExecuteIfLeftBelow`'s
+    kill, not around a cull's; the death notice copies the mark; the kill
+    handler marks its payment and rows from the notice and clears the mark
+    after; the conditions fill reads it; and the condition holds on it alone.
+    Read from the code with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"TGuardValue<bool> Executing\(bBeingExecuted, true\);\s*"
+                     r"bKilled = KillIfLeftBelow\(By, Asked\.BelowPercent\);", engine)
+    cull = engine[engine.index("bool UCataclysmAbilitySystemComponent::CullIfLeftBelow("):]
+    assert "bBeingExecuted" not in cull[:cull.index("\n}\n")]
+    assert "State.bKillWasAnExecute = bActingOnAKillByAnExecute;" in engine
+    events = code_without_comments(SOURCE.parent / "CataclysmCombatEvents.cpp")
+    assert re.search(r"if \(System\)\s*\{\s*Notice\.bByAnExecute = System->IsBeingExecuted\(\);", events)
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"Acting->SetActingOnAKillByAnExecute\(Notice\.bByAnExecute\);\s*"
+                     r"UCataclysmFervour::GiveBackDecayOnKill\(Acting\);\s*"
+                     r"UCataclysmFervour::GainOnOwnKill\(Acting, Notice\.Victim\);", player)
+    assert re.search(r"Acting->SetActingOnAKillByAHit\(false\);\s*\}\s*"
+                     r"Acting->SetActingOnAKillByAnExecute\(false\);", player)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::KillWasAnExecute:\s*return State\.bKillWasAnExecute;", pipeline)
+
+
+def test_relentless_is_sized_by_the_whole_hundreds_of_fervour_held() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q4): whole hundreds,
+    read when the row acts. The item maps the generator's Fraction Of to the new
+    base; the event loop multiplies a row on that base by the whole hundreds of
+    Fervour counted as held, as it does the two event-amount bases; and the
+    generator keeps the base off the pool rows' list. Read from the code with
+    comments taken out."""
+    assert gen.FRACTION_OF_HUNDREDS_HELD == "for_each_hundred_class_resource_held"
+    assert gen.FRACTION_OF_HUNDREDS_HELD not in gen.FRACTION_BASES
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Effect->FractionOf\.Equals\(TEXT\(\"for_each_hundred_class_resource_held\"\),\s*"
+                     r"ESearchCase::IgnoreCase\)\)\s*\{\s*"
+                     r"Action\.Base = ECataclysmPoolActionBase::ForEachHundredClassResourceHeld;", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"const float Times = Listed\.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld\s*"
+                     r"\? TimesSizedByFervourHeld\(\)\s*: TimesSizedByEventAmount\(Listed\.Base, EventAmount\);", engine)
+    assert re.search(r"\|\| Listed\.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld\)\s*\{\s*"
+                     r"Sized\.Emplace\(Listed\);", engine)
+    assert re.search(r"const float Held = UCataclysmStatPipeline::FervourHeldCounted\(CurrentConditions\(\)\);\s*"
+                     r"return FMath::Max\(0\.0f, FMath::FloorToFloat\(Held / 100\.0f \+ Allowance\)\);", engine)
+
+
+def test_chain_execution_makes_the_next_landed_hit_critical_and_is_used_by_it() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q5). The generator's
+    name is the engine's, on `kill` only; the item recognises the row; the event
+    loop sets the charge to the full window, once per row per event; the
+    defender's attribute set makes a hit certain to be critical while the
+    attacker holds the charge and uses it on the hit it made critical; and the
+    resolver honours the certainty after evasion, so an evaded hit is never
+    critical and uses nothing. Read from the code with comments taken out."""
+    names = engine_names()
+    assert gen.NEXT_HIT_CRITICAL_ACTION == names["CriticalNextHitAction"]
+    assert gen.NEXT_HIT_CRITICAL_EVENTS == ("kill",)
+    assert gen.NEXT_HIT_CRITICAL_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bNextHitCritical = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::CriticalNextHitAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert "NextHitCriticalUntilSeconds = World->GetTimeSeconds() + Action.Percent;" in engine
+    vital = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert "Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();" in vital
+    assert re.search(r"if \(Hit\.bCertainCritical && Resolved\.bWasCritical\)\s*\{[^}]*"
+                     r"Spending->SpendNextHitCritical\(\);", vital)
+    calc = code_without_comments(SOURCE.parent / "CataclysmDamageCalculation.cpp")
+    certain = calc.index("if (Hit.bCertainCritical || Roll < Hit.CritChance)")
+    assert calc.index("bEvaded = true") < certain
 
 
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:

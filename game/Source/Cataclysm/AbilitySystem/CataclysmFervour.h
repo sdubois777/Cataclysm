@@ -831,6 +831,20 @@ public:
 	 */
 	static void MarkNearAKill(UAbilitySystemComponent* Killer, const AActor* Slain, const FVector& At);
 
+	/**
+	 * Fervour gained for each critical strike the character lands, asked against the character struck: the Shadow's
+	 * starting node, "2 for each critical strike you land", and Telling Blows, "+1 Fervour per point for each critical
+	 * strike you land on an Elite or stronger enemy". The Death trees' slice C4d1 (2026-11-25), as ruled.
+	 */
+	static const TCHAR* PerCriticalStrikeStat;
+
+	/**
+	 * Pay the Fervour one landed critical strike on `Struck` earns, scaled by how fast the class resource generates and
+	 * held to the maximum, through `RaisePool`; answer what was added. Nought for a character without the stat. Called
+	 * by the player's hit handler for its own critical strikes, a minion's left out. Not a kill's payment.
+	 */
+	static float GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck);
+
 	/** The start of every Soul Collector row's trigger key: `Passive_SoulCollector_`. See `CreditAFollowersKill`. */
 	static FString SoulCollectorRowKeyPrefix();
 

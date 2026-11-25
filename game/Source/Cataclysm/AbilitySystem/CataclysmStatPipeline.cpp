@@ -161,6 +161,7 @@ namespace
 		{ TEXT("fervour_gain_not_from_a_kill"), ECataclysmStatCondition::FervourGainNotFromAKill },
 		{ TEXT("killing_blow_was_a_hit"), ECataclysmStatCondition::KillingBlowWasAHit },
 		{ TEXT("target_near_your_kill_within_seconds"), ECataclysmStatCondition::TargetNearYourKillWithinSeconds },
+		{ TEXT("kill_was_an_execute"), ECataclysmStatCondition::KillWasAnExecute },
 	};
 
 	struct FNamedStatScale
@@ -383,8 +384,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
 	case ECataclysmStatCondition::FervourGainNotFromAKill:
 	case ECataclysmStatCondition::KillingBlowWasAHit:
+	case ECataclysmStatCondition::KillWasAnExecute:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-nine says
+		// nothing for a number to be compared against. Each of the forty says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -620,6 +622,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE KILL BEING ACTED ON WAS MADE BY A HIT, the Death trees' slice C4c1 (2026-11-25): a fact of the kill in
 	// hand, set only while the player's kill handler acts on it.
 	case C::KillingBlowWasAHit:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE KILL BEING ACTED ON WAS AN EXECUTE, the Death trees' slice C4d1 (2026-11-25): a fact of the kill in
+	// hand, as the one above, set only while the player's kill handler pays for and acts on it.
+	case C::KillWasAnExecute:
 		return EOn::TheBlowOrSkill;
 
 	// THE STRUCK OR SLAIN CREATURE'S RARITY RUNG, the Death trees of 2026-11-24: a fact of the target in hand, after
@@ -1388,6 +1395,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it acts on a kill made by a hit, the
 		// Death trees' slice C4c1 (2026-11-25). False outside such a kill, which refuses.
 		return State.bKillingBlowWasAHit;
+
+	case ECataclysmStatCondition::KillWasAnExecute:
+		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it pays for and acts on a kill made by
+		// an execute, the Death trees' slice C4d1 (2026-11-25). False outside such a kill, which refuses.
+		return State.bKillWasAnExecute;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

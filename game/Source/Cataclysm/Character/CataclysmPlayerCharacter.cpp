@@ -1270,6 +1270,12 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// and none carries a condition on the target.
 	if (Notice.bCritical)
 	{
+		// AND THE FERVOUR A CRITICAL STRIKE PAYS, the Shadow's starting node and Telling Blows (the Death trees' slice
+		// C4d1, 2026-11-25): "each critical strike you land", so a minion's is left out, as the cull above leaves it.
+		if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+		{
+			UCataclysmFervour::GainOnCriticalStrike(Acting, Notice.Target);
+		}
 		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
 						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 						   Notice.Target);
@@ -1451,6 +1457,9 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			//
 			// AND RECLAIMED'S GIVE-BACK BEFORE BOTH: what decay took in the seconds before this kill comes back as part of
 			// it. The Death trees' slice C4b2 (2026-11-25).
+			// MARKED AS AN EXECUTE'S KILL, OR NOT, FOR THE PAYMENT AND THE ROWS BELOW: Reaper's Edge's
+			// `kill_was_an_execute` reads it. Cleared after the rows. The Death trees' slice C4d1 (2026-11-25).
+			Acting->SetActingOnAKillByAnExecute(Notice.bByAnExecute);
 			UCataclysmFervour::GiveBackDecayOnKill(Acting);
 			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
 			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
@@ -1475,6 +1484,7 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 								   /*bLanded=*/true, Notice.Victim);
 				Acting->SetActingOnAKillByAHit(false);
 			}
+			Acting->SetActingOnAKillByAnExecute(false);
 
 			// AND A DEATH SENTENCE THIS KILL MAY LIFT, heard for exactly the kills that raise `kill` above. Ruled
 			// 2026-10-18 (Q5) for the Demon King's Regalia's ten-piece. A call of its own rather than a row on

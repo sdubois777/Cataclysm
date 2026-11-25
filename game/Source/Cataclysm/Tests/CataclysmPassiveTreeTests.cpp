@@ -3558,7 +3558,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("fervour_gain_not_from_a_kill")
 			// THE DEATH TREES' SLICE C4c1 (2026-11-25), PASSED ON'S "YOUR HIT": the kill being acted on was made by a hit.
 			// It names a state, so it compares nothing.
-			|| Name == TEXT("killing_blow_was_a_hit");
+			|| Name == TEXT("killing_blow_was_a_hit")
+			// THE DEATH TREES' SLICE C4d1 (2026-11-25), REAPER'S EDGE'S "THOSE KILLS": the kill being paid for and acted
+			// on was an execute. It names a state, so it compares nothing.
+			|| Name == TEXT("kill_was_an_execute");
 	}
 }
 

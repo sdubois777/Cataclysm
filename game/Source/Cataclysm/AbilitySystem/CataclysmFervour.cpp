@@ -61,6 +61,7 @@ const TCHAR* UCataclysmFervour::HoldExtendedOnGainSecondsStat = TEXT("fervour_ho
 const TCHAR* UCataclysmFervour::DecayGivenBackOnKillSecondsStat = TEXT("decay_given_back_on_kill_seconds");
 const TCHAR* UCataclysmFervour::ClaimedWithinSecondsStat = TEXT("fervour_claimed_within_seconds");
 const TCHAR* UCataclysmFervour::FollowerKillsCountAsYoursStat = TEXT("follower_kills_count_as_yours");
+const TCHAR* UCataclysmFervour::PerCriticalStrikeStat = TEXT("fervour_per_critical_strike");
 
 FString UCataclysmFervour::SoulCollectorRowKeyPrefix()
 {
@@ -1462,6 +1463,41 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 		return 0.0f;
 	}
 
+	RaisePool(AbilitySystem, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck)
+{
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem ? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		return 0.0f;
+	}
+
+	// ASKED AGAINST THE CHARACTER STRUCK, so Telling Blows' rarity row is judged on it. NO TAGS: the generator pays for
+	// the critical strike, not for the skill. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
+	const float PerCritical = Cataclysm->StatForSkill(
+		FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false,
+		Struck);
+	if (PerCritical <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+	// SCALED AND CLAMPED BEFORE IT IS WRITTEN, the shape of `GainOnOwnKill` above.
+	const float Change =
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCritical),
+					 0.0f, Resource->MaximumClassResourceAsked())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
 	RaisePool(AbilitySystem, Change);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }

@@ -1139,6 +1139,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							: Offence->GetMaxCritChance();
 						Hit.CritChance = FMath::Min(
 							Stated >= 0.0f ? Stated : OwnCritChance, Ceiling);
+						// AND CERTAIN, WHATEVER THE CHANCE, CEILING OR SKILL'S STATED FIGURE, while the attacker holds a
+						// Chain Execution charge: "a critical strike" (the Death trees' slice C4d1, 2026-11-25).
+						Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();
 
 						// THE MULTIPLIER IS ASKED FOR TOO, AND FOR THE SAME
 						// REASON THE CHANCE IS. Issue #947 lists it among the
@@ -1345,6 +1348,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()),
 					/*EvasionRoll=*/-1.0f, CVarBlockRoll.GetValueOnAnyThread(),
 					CVarCritRoll.GetValueOnAnyThread());
+
+			// A CHAIN EXECUTION CHARGE IS USED BY THE HIT IT MADE CRITICAL, which is a hit that landed: an evaded one is
+			// never critical. The first of a skill's hits to resolve uses it, so the others are rolled as usual. The
+			// Death trees' slice C4d1 (2026-11-25), as ruled.
+			if (Hit.bCertainCritical && Resolved.bWasCritical)
+			{
+				if (UCataclysmAbilitySystemComponent* Spending = Cast<UCataclysmAbilitySystemComponent>(
+						Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent()))
+				{
+					Spending->SpendNextHitCritical();
+				}
+			}
 
 			// A CONTAGIOUS TOUCH KEEPS ONLY WHETHER IT WAS EVADED. Issues #1820 and #41. The row: "Enemies no longer
 			// deal damage on contact. Instead, they apply a stacking "Contagion" debuff." The blow came through the

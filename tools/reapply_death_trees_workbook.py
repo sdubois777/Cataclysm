@@ -151,11 +151,19 @@ def A(action: str, value: float, **more) -> Row:
 
 @dataclasses.dataclass(frozen=True)
 class Node:
-    """One node's rows (option 0), or one capstone option's."""
+    """One node's rows (option 0), or one capstone option's.
+
+    `before` holds each earlier state of the rows this script once wrote, as
+    tuples of rows: a node found holding exactly one of them is rewritten, and
+    anything else is still refused. The pattern of
+    `tools/reapply_demonic_tree_rework_workbook.py`'s `Change.before`, first
+    needed in slice C4d1 (2026-11-25) for the Shadow's starting node.
+    """
     key: str
     label: str
     rows: tuple
     option: int = 0
+    before: tuple = ()
 
 
 def damage(kind: str, value: float, **more) -> tuple:
@@ -284,12 +292,18 @@ NODES: tuple[Node, ...] = (
     # THE STARTING NODE'S KILL HALF (slice B): "10 for each enemy you kill, 25
     # for each Elite or stronger enemy you kill", "drains at 10 per second once 4
     # seconds have passed since your last kill". Its "2 for each critical strike
-    # you land" is not built: the War trees' Berserker needs the same stat.
+    # you land" is `fervour_per_critical_strike`, built in slice C4d1
+    # (2026-11-25) as ruled; the War trees' Berserker row is not written here.
     Node(SH + "basic_spine_000", "Fervour",
          (R(PER_KILL, "flat", 10, cond=RUNG_IS, cond_value=0),
           R(PER_KILL, "flat", 25, cond=RUNG_AT_LEAST, cond_value=1),
           R(DECAY, "flat", 10),
-          R(GRACE, "flat", 4))),
+          R(GRACE, "flat", 4),
+          R("fervour_per_critical_strike", "flat", 2)),
+         before=((R(PER_KILL, "flat", 10, cond=RUNG_IS, cond_value=0),
+                  R(PER_KILL, "flat", 25, cond=RUNG_AT_LEAST, cond_value=1),
+                  R(DECAY, "flat", 10),
+                  R(GRACE, "flat", 4)),)),
     Node(SH + "basic_spine_001", "Big Game", damage("increased", 2, cond=RUNG_AT_LEAST, cond_value=1)),
     Node(SH + "basic_spine_003", "Killing Pace",
          (R("attack_speed", "increased", 1, cond="seconds_after_kill", cond_value=4),
@@ -597,6 +611,23 @@ NODES: tuple[Node, ...] = (
          damage("increased", 2, cond="target_near_your_kill_within_seconds", cond_value=3, reach=3)),
     Node(SH + "keystone_a_kB", "Blood Debt",
          (A("pass_bleed_left_to_strongest", 2, event="afflicted_death", tags="Keyword.DoT.Bleed"),)),
+
+    # ---- SLICE C4d1 (2026-11-25): CRITICAL STRIKES, EXECUTES AND KILLS THAT SPEED
+    # THE NEXT ONE. Telling Blows pays Fervour for a critical strike on an Elite
+    # or stronger; Reaper's Edge executes a non-Boss below 15% and doubles that
+    # kill's Fervour; Relentless takes a second off every cooldown at a kill for
+    # each whole 100 Fervour held; Chain Execution makes the next landed hit
+    # within 2 seconds of a kill a critical strike.
+    Node(SH + "basic_spine_007", "Telling Blows",
+         (R("fervour_per_critical_strike", "flat", 1, cond=RUNG_AT_LEAST, cond_value=1),)),
+    Node(SC + "capstone_100", "Reaper's Edge",
+         (A("execute_target", 100, event="hit_dealt", cond="target_health_below", cond_value=15),
+          R(PER_KILL, "more", 100, cond="kill_was_an_execute")),
+         option=2),
+    Node(SH + "capstone_100", "Relentless",
+         (A("cooldown_reduce_all", 1, event="kill", fraction_of="for_each_hundred_class_resource_held"),),
+         option=3),
+    Node(SH + "capstone_100", "Chain Execution", (A("next_hit_critical", 2, event="kill"),), option=2),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).
@@ -741,6 +772,8 @@ def plan_effects(sheet, nodes: tuple[Node, ...] = NODES) -> SheetPlan:
         changed += 1
         report.append(f"{sheet.title!r}: added the column(s) {missing} after its last one")
     seen: set[tuple[str, int]] = set()
+    replace: dict[int, list[dict[str, object]]] = {}
+    drop: set[int] = set()
     for node in nodes:
         if not node.key.startswith(DEATH_PREFIXES):
             raise ReapplyError(f"{node.key} is not a Death node; this script writes Death rows only")
@@ -748,10 +781,23 @@ def plan_effects(sheet, nodes: tuple[Node, ...] = NODES) -> SheetPlan:
             raise ReapplyError(f"{node.key} option {node.option} is listed twice")
         seen.add((node.key, node.option))
         where = node.key + (f" option {node.option}" if node.option else "")
-        current = [row_from_cells(cells) for cells in old
+        indices = [index for index, cells in enumerate(old)
                    if _text(cells.get("Node")) == node.key
                    and (_number(cells.get("Option")) or 0) == node.option]
+        current = [row_from_cells(old[index]) for index in indices]
         if current and _multiset(current) == _multiset(node.rows):
+            continue
+        # AN EARLIER STATE THIS SCRIPT WROTE IS REWRITTEN IN PLACE, at the node's
+        # first row, the rest dropped. See `Node.before`.
+        if current and any(_multiset(current) == _multiset(state) for state in node.before):
+            changed += 1
+            replace[indices[0]] = [cells_from_row(node, row) for row in node.rows]
+            drop.update(indices[1:])
+            report.append(f"{where} ({node.label}): {len(current)} row(s) out, {len(node.rows)} in")
+            for row in current:
+                report.append(f"    - {_describe(row)}")
+            for row in node.rows:
+                report.append(f"    + {_describe(row)}")
             continue
         if current:
             raise ReapplyError(f"{where} already holds {[r.key() for r in current]}, which is "
@@ -762,7 +808,13 @@ def plan_effects(sheet, nodes: tuple[Node, ...] = NODES) -> SheetPlan:
         report.append(f"{where} ({node.label}): {len(node.rows)} row(s) added")
         for row in node.rows:
             report.append(f"    + {_describe(row)}")
-    return SheetPlan(header, old, old + added, report, changed)
+    new: list[dict[str, object]] = []
+    for index, cells in enumerate(old):
+        if index in replace:
+            new.extend(replace[index])
+        elif index not in drop:
+            new.append(cells)
+    return SheetPlan(header, old, new + added, report, changed)
 
 
 def plan_class_stats(sheet, lines=CLASS_STATS) -> SheetPlan:

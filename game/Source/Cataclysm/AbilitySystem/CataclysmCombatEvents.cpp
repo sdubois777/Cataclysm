@@ -337,6 +337,12 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 		// AND WHETHER IT WAS A CRITICAL STRIKE. A TICK IS NEVER ONE, as ruled on 2026-11-25 (the Death trees' slice C4a).
 		Notice.bByACriticalStrike = Blow.bKillingBlowWasCritical && !Blow.bDamageOverTime;
 	}
+	// AND WHETHER AN EXECUTE IS KILLING IT NOW, the Death trees' slice C4d1 (2026-11-25). Read while the execute's
+	// health loss is being written, which is when this notice is built.
+	if (System)
+	{
+		Notice.bByAnExecute = System->IsBeingExecuted();
+	}
 
 	++Events->Deaths;
 

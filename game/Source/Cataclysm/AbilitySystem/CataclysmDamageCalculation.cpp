@@ -881,11 +881,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// not change the number by a fraction. It sits after the evasion step's early
 	// return so that a hit which never landed is never reported as a critical
 	// strike, which would put an exclamation mark on the word "Evaded".
-	if (Hit.CritChance > 0.0f && Hit.CritMultiplier > 0.0f)
+	if ((Hit.CritChance > 0.0f || Hit.bCertainCritical) && Hit.CritMultiplier > 0.0f)
 	{
 		const float Roll = CritRoll >= 0.0f ? CritRoll
 											: CataclysmPercentDraw::Draw();
-		if (Roll < Hit.CritChance)
+		if (Hit.bCertainCritical || Roll < Hit.CritChance)
 		{
 			Result.bWasCritical = true;
 			Damage *= Hit.CritMultiplier / 100.0f;

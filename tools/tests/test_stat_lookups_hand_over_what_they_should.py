@@ -1285,6 +1285,12 @@ INVENTORY = {
         "2026-11-24), asked when the Fervour pool becomes full; a crossing "
         "of the pool is not a blow and no skill is in hand",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "the Fervour a landed critical strike pays (the Death trees' slice "
+        "C4d1, 2026-11-25), asked in GainOnCriticalStrike with the character "
+        "struck so Telling Blows' rarity row is judged; it pays for the "
+        "critical strike, not the skill, so no blow and no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
         "the Fervour a kill pays (the Death trees' kill generator, "
         "2026-11-24), asked in GainOnOwnKill with the slain creature so its "
@@ -1336,6 +1342,11 @@ INVENTORY = {
 #: in `tools/generate_datatables.py` says, so no such row can ship and grant
 #: nothing.
 TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "asked after a landed critical strike: the character struck is handed "
+        "over for its rarity rung, and the generator refuses a row on this "
+        "stat asking the distance or the stagger (slice C4d1)",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
         "asked at a kill: the slain creature is handed over for its rarity "

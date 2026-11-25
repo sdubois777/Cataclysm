@@ -1012,6 +1012,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// trees' slice C4c1 (2026-11-25).
 	State.bKillingBlowWasAHit = bActingOnAKillByAHit;
 
+	// AND WHETHER THAT KILL WAS AN EXECUTE, for Reaper's Edge's `kill_was_an_execute`. The Death trees' slice C4d1
+	// (2026-11-25).
+	State.bKillWasAnExecute = bActingOnAKillByAnExecute;
+
 	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
 	State.EnemiesInSiphon = EnemiesInSiphon();
 
@@ -3996,6 +4000,20 @@ float UCataclysmAbilitySystemComponent::SecondsSinceNearKillBy(const UAbilitySys
 	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
 }
 
+bool UCataclysmAbilitySystemComponent::HoldsNextHitCritical() const
+{
+	const UWorld* World = GetWorld();
+	return World && NextHitCriticalUntilSeconds >= 0.0f && World->GetTimeSeconds() <= NextHitCriticalUntilSeconds;
+}
+
+float UCataclysmAbilitySystemComponent::TimesSizedByFervourHeld() const
+{
+	// A TEN-THOUSANDTH ABOVE, as `TimesSizedByEventAmount` allows, so 199.99998 held is one hundred and not none.
+	constexpr float Allowance = 1.0e-4f;
+	const float Held = UCataclysmStatPipeline::FervourHeldCounted(CurrentConditions());
+	return FMath::Max(0.0f, FMath::FloorToFloat(Held / 100.0f + Allowance));
+}
+
 float UCataclysmAbilitySystemComponent::WidestReachOfCondition(ECataclysmStatCondition Condition) const
 {
 	float Widest = 0.0f;
@@ -5287,6 +5305,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction 
 const TCHAR* UCataclysmAbilitySystemComponent::OverkillExplosionRadiusMetresStat =
 	TEXT("overkill_explosion_radius_metres");
 const TCHAR* UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction = TEXT("pass_bleed_left_to_strongest");
+const TCHAR* UCataclysmAbilitySystemComponent::CriticalNextHitAction = TEXT("next_hit_critical");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
@@ -7090,14 +7109,18 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// the event carried, and whose base is the maximum again, so everything below reads an ordinary row: Feast's
 		// heal, Spirit to Mana's mana, Soul Furnace's smite and Turn of the Wheel's seconds. The Death trees' slice C3b.
 		// NONE TO MULTIPLY IS NOTHING DONE, and starts no wait: a spend of 9 against "every 10".
-		const float Times = TimesSizedByEventAmount(Listed.Base, EventAmount);
+		// AND RELENTLESS'S, BY THE WHOLE HUNDREDS OF FERVOUR HELD when the row acts (the Death trees' slice C4d1).
+		const float Times = Listed.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld
+			? TimesSizedByFervourHeld()
+			: TimesSizedByEventAmount(Listed.Base, EventAmount);
 		if (Times <= 0.0f)
 		{
 			continue;
 		}
 		TOptional<FCataclysmPoolAction> Sized;
 		if (Listed.Base == ECataclysmPoolActionBase::ForEachOfEventAmount
-			|| Listed.Base == ECataclysmPoolActionBase::ForEachTenOfEventAmount)
+			|| Listed.Base == ECataclysmPoolActionBase::ForEachTenOfEventAmount
+			|| Listed.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld)
 		{
 			Sized.Emplace(Listed);
 			Sized->Percent *= Times;
@@ -7635,6 +7658,19 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// A KILL MAKES THE NEXT LANDED HIT WITHIN `Percent` SECONDS A CRITICAL STRIKE: Chain Execution, the Death trees'
+		// slice C4d1 (2026-11-25). Once per row per event, landed only; a grant inside the window sets it to the full
+		// window again rather than adding a second charge, as ruled.
+		if (Action.bNextHitCritical)
+		{
+			const UWorld* World = GetWorld();
+			if (bLanded && World && Action.Percent > 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NextHitCriticalUntilSeconds = World->GetTimeSeconds() + Action.Percent;
+			}
+			continue;
+		}
 		// AN ENEMY KILLED EXPLODES FOR A SHARE OF THE BLOW THAT KILLED IT. Ruled 2026-10-21 (traps layer 4, F10 to F12), for
 		// "Enemies killed by traps explode", whose row requires `Type.Trap`. ONLY RECORDED HERE, once per row per event,
 		// the largest share of the rows that asked, as the overkill explosion is above and for its reason; the kill site
@@ -8142,7 +8178,18 @@ bool UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow(const FExecuteAsked& A
 	// ten-piece (C1), judging and killing exactly as before; what is left here is the request and the row's trigger
 	// cooldown.
 	AActor* By = Asked.By.Get();
-	if (!Asked.IsAsked() || !By || !KillIfLeftBelow(By, Asked.BelowPercent))
+	if (!Asked.IsAsked() || !By)
+	{
+		return false;
+	}
+	// MARKED AS AN EXECUTE WHILE IT KILLS, so the death notice built inside the kill says so: Reaper's Edge's double
+	// Fervour reads it (the Death trees' slice C4d1, 2026-11-25). A cull, which shares `KillIfLeftBelow`, is not marked.
+	bool bKilled = false;
+	{
+		TGuardValue<bool> Executing(bBeingExecuted, true);
+		bKilled = KillIfLeftBelow(By, Asked.BelowPercent);
+	}
+	if (!bKilled)
 	{
 		return false;
 	}

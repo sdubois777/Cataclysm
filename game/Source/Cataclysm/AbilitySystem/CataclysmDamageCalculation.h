@@ -166,6 +166,14 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	float CritMultiplier = 150.0f;
 
 	/**
+	 * Whether this hit is a critical strike whatever the roll, should it land: the attacker holds a Chain Execution
+	 * charge (`UCataclysmAbilitySystemComponent::HoldsNextHitCritical`). The Death trees' slice C4d1 (2026-11-25). An
+	 * evaded hit is never critical, as before: the critical step is after evasion's early return.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bCertainCritical = false;
+
+	/**
 	 * What share of itself this hit keeps if its critical roll fails, as a
 	 * percentage. Issue #1686. 100 changes nothing, which is every hit that
 	 * never asks: a creature's, a minion's, retaliation and a tick. See

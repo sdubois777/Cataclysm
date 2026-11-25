@@ -542,8 +542,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 564 FOR SLICE C4b1: Any Fuel, Borrowed Time (two) and Kindred Fires, the Soul Collector 104. AND 570
 	// FOR SLICE C4b2: Reclaimed, Claimed (four) and Death's Toll, the Soul Collector 110. AND 573 FOR SLICE
 	// C4c1: Passed On (two) and The Ferryman, the Soul Collector 113. AND 576 FOR SLICE C4c2: Grim Wake
-	// (two), the Soul Collector 115, and the Shadow's Blood Debt, the Shadow 78.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        576)
+	// (two), the Soul Collector 115, and the Shadow's Blood Debt, the Shadow 78. AND 582 FOR SLICE C4d1: the Shadow's
+	// "2 for each critical strike", Telling Blows, Relentless and Chain Execution, the Shadow 82; Reaper's Edge (two),
+	// the Soul Collector 117.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        582)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

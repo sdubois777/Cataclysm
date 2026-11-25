@@ -786,6 +786,37 @@ public:
 	float WidestReachOfCondition(ECataclysmStatCondition Condition) const;
 
 	/**
+	 * Mark, around the payment and the rows of a kill, whether that kill was an execute: Reaper's Edge's
+	 * `ECataclysmStatCondition::KillWasAnExecute` reads it. Set by the player's kill handler from the death notice
+	 * (`bByAnExecute`) and cleared when the rows have acted. The Death trees' slice C4d1 (2026-11-25).
+	 */
+	void SetActingOnAKillByAnExecute(bool bByAnExecute) { bActingOnAKillByAnExecute = bByAnExecute; }
+
+	/**
+	 * Whether THIS character is being killed by an execute right now: true only while `ExecuteIfLeftBelow` kills it, so
+	 * the death notice built inside that kill says so (`FCataclysmDeathNotice::bByAnExecute`). A set bonus's cull, which
+	 * shares `KillIfLeftBelow`, does not set it. The Death trees' slice C4d1 (2026-11-25).
+	 */
+	bool IsBeingExecuted() const { return bBeingExecuted; }
+
+	/**
+	 * Whether this character's next hit is to be a critical strike: a Chain Execution charge granted on a kill and not
+	 * yet run out or used. Read by the defender's attribute set when it builds the hit; a landed critical strike made
+	 * with it uses it (`SpendNextHitCritical`). The Death trees' slice C4d1 (2026-11-25).
+	 */
+	bool HoldsNextHitCritical() const;
+
+	/** Use up the Chain Execution charge, so the hit after is rolled as usual. */
+	void SpendNextHitCritical() { NextHitCriticalUntilSeconds = -1.0f; }
+
+	/**
+	 * How many times a row based on `ForEachHundredClassResourceHeld` acts: the whole hundreds of the class resource this
+	 * character holds now, as `class_resource_held` counts it, never below nought. Relentless, the Death trees' slice
+	 * C4d1 (2026-11-25).
+	 */
+	float TimesSizedByFervourHeld() const;
+
+	/**
 	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
 	 * of its maximum health. Ruled 2026-10-12 under the owner's delegation, for "Strike skills have a 10%-20% chance
 	 * to execute enemies below 15% HP". See `FCataclysmPoolAction::bExecuteTarget`.
@@ -1866,6 +1897,12 @@ public:
 	 * `BLEED_LEFT_TO_STRONGEST_ACTION`. See `FCataclysmPoolAction::bPassBleedLeftToStrongest`.
 	 */
 	static const TCHAR* PassBleedLeftToStrongestAction;
+
+	/**
+	 * The action that makes the wearer's next landed hit within its seconds a critical strike: Chain Execution. The Death
+	 * trees' slice C4d1 (2026-11-25). `tools/generate_datatables.py` holds the same name as `NEXT_HIT_CRITICAL_ACTION`.
+	 */
+	static const TCHAR* CriticalNextHitAction;
 
 	/**
 	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
@@ -6366,6 +6403,15 @@ protected:
 
 	/** When this character last stood near each killer's kill, in world seconds. See `NoteNearKillBy`. */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> NearKillBy;
+
+	/** Whether the kill whose payment and rows are acting was an execute. See `SetActingOnAKillByAnExecute`. */
+	bool bActingOnAKillByAnExecute = false;
+
+	/** Set only while `ExecuteIfLeftBelow` kills this character. See `IsBeingExecuted`. */
+	bool bBeingExecuted = false;
+
+	/** When the Chain Execution charge runs out, in world seconds; -1 for none. See `HoldsNextHitCritical`. */
+	float NextHitCriticalUntilSeconds = -1.0f;
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;

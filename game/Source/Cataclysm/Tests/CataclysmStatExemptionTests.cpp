@@ -8011,6 +8011,30 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `fervour_per_critical_strike`, read by `UCataclysmFervour::GainOnCriticalStrike`. The Death trees' slice C4d1
+	 * (2026-11-25), shipped under `target_rarity_at_least` (Telling Blows). A health condition stands for it here, as
+	 * for `fervour_per_kill` above: this measures the ask. With no character struck in hand.
+	 */
+	void ProbeConditionedFervourPerCriticalStrike(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		ConditionedBelowHalf(Fighter, UCataclysmFervour::PerCriticalStrikeStat, ECataclysmStatBucket::Flat, 10.0f,
+							 0.0f);
+		Test.TestEqual(TEXT("fervour_per_critical_strike at full health: a critical strike pays nothing"),
+					   UCataclysmFervour::GainOnCriticalStrike(Fighter.AbilitySystem, nullptr), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("fervour_per_critical_strike is asked for, so below half health one pays its 10"),
+					   UCataclysmFervour::GainOnCriticalStrike(Fighter.AbilitySystem, nullptr), 10.0f, 0.001f);
+	}
+
+	/**
 	 * `fervour_kill_decay_per_second`, read by `UCataclysmFervour::KillDecayStep`. The Death trees of 2026-11-24,
 	 * shipped under `seconds_after_striking_a_boss` (Siege of One). A character that has never killed is not held, so
 	 * the decay runs at once.
@@ -12595,6 +12619,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_cast"),         &ProbeConditionedFervourPerCast},
 			// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24.
 			{TEXT("fervour_per_kill"),         &ProbeConditionedFervourPerKill},
+			// AND THE SLICE C4d1's TELLING BLOWS (2026-11-25).
+			{TEXT("fervour_per_critical_strike"), &ProbeConditionedFervourPerCriticalStrike},
 			{TEXT("fervour_kill_decay_per_second"), &ProbeConditionedFervourKillDecayPerSecond},
 			{TEXT("fervour_kill_decay_grace_seconds"), &ProbeConditionedFervourKillDecayGraceSeconds},
 			{TEXT("health_cost_suppressed"),   &ProbeConditionedHealthCostSuppressed},
@@ -12676,6 +12702,8 @@ namespace CataclysmStatExemptionTest
 			// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24: each read only through the pipeline, so its conditioned
 			// probe is also the observation that its reader reads it.
 			{TEXT("fervour_per_kill"), &ProbeConditionedFervourPerKill},
+			// AND THE DEATH TREES' SLICE C4d1 (2026-11-25): the Fervour a critical strike pays, the same way.
+			{TEXT("fervour_per_critical_strike"), &ProbeConditionedFervourPerCriticalStrike},
 			{TEXT("fervour_kill_decay_per_second"), &ProbeConditionedFervourKillDecayPerSecond},
 			{TEXT("fervour_kill_decay_grace_seconds"), &ProbeConditionedFervourKillDecayGraceSeconds},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},
