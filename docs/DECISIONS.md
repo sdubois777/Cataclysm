@@ -37,7 +37,9 @@ development `5f302b0a7`). **Rebuilt on 2026-11-25 as `feat/forge-f6-f6a-2857`**,
 
 ### SAID FIRST
 
-- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **WRITTEN WITHOUT A BUILD, AND SINCE RUN AND PASSED** in window forge-f6-w1 (2026-11-25, recorded at the end of #47
+  slice F6's entry below): `Cataclysm.ForgeGoldNodes.` performed 8 of 8 alone, and the guard proofs CF1 to CF3 were
+  PROVED as predicted.
 - **THE CHARACTER RECORD STEP IS 17 TO 18, AFTER SKILL SELECTION'S 16 TO 17.** The coordinating session's direction of
   2026-11-24: the skill selection slice (the level-1 session's, approved by the owner that day) takes 16 to 17 and lands
   first, so this slice wrote `Migrate_17_to_18` and `SchemaVersionNow = 18` ahead of it. Skill selection merged on
@@ -265,7 +267,10 @@ test changed (below); `tools/tests/test_days_spent_in_the_capital_are_reported.p
 
 ### SAID FIRST
 
-- **WRITTEN AND NOT COMPILED.** On `fix/forge-days-2857`, cut from `feat/forge-milestones-47-f6` at `48e574d81` (the
+- **WRITTEN AND NOT COMPILED, AND SINCE RUN AND PASSED** in window forge-f6-w1 (2026-11-25, recorded at the end of #47
+  slice F6's entry below): its five tests passed in their groups alone and in the whole suite, and the guard proofs D1
+  to D3 were PROVED as predicted. Its `DaysDidSomething` asks a day's `Surges` since the merge of #2865 (that entry).
+  Written on `fix/forge-days-2857`, cut from `feat/forge-milestones-47-f6` at `48e574d81` (the
   forge's slice F6, not yet merged into development), because both change `CataclysmForgeCraft.cpp`. Its window comes
   after F6's.
 - **ONE EXISTING UNREAL TEST CHANGED.** `Cataclysm.ForgeScreen.AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` held
@@ -383,8 +388,11 @@ step 26. Tests: `Cataclysm.ForgeMilestones.`, six, new, in `game/Source/Cataclys
 
 ### SAID FIRST
 
-- **WRITTEN AND NOT COMPILED.** Phase 1 on `feat/forge-milestones-47-f6`, cut from development `52b66e016`. Its window
-  comes after sd-w1, by the coordinating session's order.
+- **WRITTEN AND NOT COMPILED, AND SINCE RUN AND PASSED** in window forge-f6-w1 (2026-11-25, recorded at the end of this
+  entry), after one fault this slice wrote: the forge screen used the empire tree's bonuses without including their
+  header, which the build of each changed file alone found. `Cataclysm.ForgeMilestones.` performed 6 of 6 alone, and
+  the guard proofs M1, M4 and M5 were PROVED as predicted. Phase 1 was on `feat/forge-milestones-47-f6`, cut from
+  development `52b66e016`.
 - **AN EDITOR STEP MOVES TWO ASSETS.** `EmpireTreeNodes.csv` and `EmpireTreeEffects.csv` change, so
   `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` are rebuilt by `tools/generate_datatable_assets.py` in the window, with
   `game/Data/datatable_asset_sources.json`. Until that step,
@@ -634,6 +642,66 @@ figures). **If another window's whole suite lands on development first, this is 
 
 This slice registered six C++ proofs (above); M2, M3 and M6 are left out under the rule of three, and the coordinating
 session may restore them.
+
+### Window forge-f6-w1, 2026-11-25: PASSED, AFTER ONE BUILD FAILED AND ONE INCLUDE WAS ADDED
+
+**THE FIRST COMPILE FAILED.** On `bf8a2b7d1` (the registered head), under the lock `forge-f6-w1-compile`, from 05:07:
+- build 1, the branch: "Build: Succeeded - 92 actions, 82 files compiled", 0 compiler warning or error lines;
+- **build 2, each changed `.cpp` alone: "Build: Failed - 58 actions, 53 files compiled"**, its only errors
+  `CataclysmForgeWidget.cpp(952,30)`, `(952,56)`, `(1043,30)` and `(1043,56)`: "error C2027: use of undefined type
+  'FCataclysmEmpireTreePlayerBonuses'". This slice's milestone chance sentences read
+  `UCataclysmGameInstance::EmpireTreePlayerBonusesFor(...).EnchantCriticalChance` and `.UpgradeExtraLevelChance`, and the
+  forge screen had only the game instance header's forward declaration of the struct; the unity build compiled because
+  another file of its unity file includes `CataclysmEmpireTree.h`. Every other changed file compiled alone with no error
+  (the two empire run files in build 1, the other 35 in build 2);
+- build 3 did not run. The script restored the tree and released the lock. Its logs are kept in the worktree
+  `C:/forgew1`'s `.claude/windows/attempt1/`.
+
+**The fix, `c357bebbb`**, accepted by the coordinating session the same morning: `CataclysmForgeWidget.cpp` includes
+`Player/CataclysmEmpireTree.h`, with a comment line saying why. Nothing else changed. The scripts were made again with
+that head and every registered figure unchanged.
+
+**The second compile, on `c357bebbb`**, 05:24 to 05:31: build 1 "Build: Succeeded - 23 actions, 18 files compiled";
+build 2 "Build: Succeeded - 24 actions, 19 files compiled", its log holding "[1/24] Compile [x64]
+CataclysmForgeWidget.cpp"; build 3 "Build: Succeeded - 23 actions, 18 files compiled". 0 compiler warning or error lines
+in each.
+
+**THE WINDOW**, 05:32 to 06:12, under the lock `forge-f6-w1`; scripts and logs in `C:/forgew1`'s `.claude/windows/`
+(`run_forge.py`, `forge_run.out`).
+- Pre-checks at 05:31:49: ALL PASS. The recount: all 37 groups and the base's 5474 matched the base log. The record
+  version check: "records: run 18, character 18, account 8"; "30 lines stating a version; NO MISMATCH".
+- **The editor step**: `tools/generate_datatable_assets.py` changed exactly `DT_EmpireTreeEffects.uasset`,
+  `DT_EmpireTreeNodes.uasset` and `game/Data/datatable_asset_sources.json`; no other asset was re-saved. Committed alone
+  as `88c917b08` on `c357bebbb` and pushed. **THE TESTED HEAD IS `88c917b08`.**
+- **Groups alone: 37 of 37 passed**, each at its registered count, 361 tests, 0 failed: the new `ForgeGoldNodes.` 8 and
+  `ForgeMilestones.` 6, and `EmpireRun.` 72, `EmpireTreeScreen.` 11, `Forge.` 9, `ForgeScreen.` 5 and `PlayLoop.` 13
+  with #2857's one each.
+- **The whole suite**: "Tests: 5493 tests performed, 5493 succeeded, 0 failed. 58 skipped part of what they check";
+  "Test saves: 874 written and deleted, 0 left behind" (the 19 new tests wrote none); "Declared: 5493 tests in the tree
+  at 88c917b08; 5493 performed, gap 0; every declared test was reported by the run." Every figure the registered one.
+  The engine log is kept as `forge_suite_engine_88c917b0.log` (712 MB). Memory: "peak_used_virtual_mb=9252
+  final_used_virtual_mb=9032".
+- **Python, beside it, the run of record for this head**: "8523 passed, 10 skipped in 432.52s"; JUnit 8533 tests, 0
+  failures, 0 errors, 10 skipped. Against the run at `bf8a2b7d1`, two tests changed and no other:
+  `test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded` passed (failed before the
+  editor step), and `test_run_editor_python.py`'s `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`
+  was skipped, "This checkout has its modules built, so nothing is missing" (the window's builds made them).
+- ruff: "All checks passed!".
+
+**The nine C++ guard proofs, 9 of 9 PROVED**, each failing exactly its predicted tests with the break in and passing
+every test of its prefix restored; each anchor once, the source hash the same before and after:
+
+| Proof | Prefix | With the break in | Restored (performed, succeeded, failed) |
+| :-- | :-- | :-- | :-- |
+| M1 | `Cataclysm.ForgeMilestones.` | "6 tests performed, 5 succeeded, 1 failed: TheSoulForgeRaisesTwoLevelsOnADrawBelowFifteenPercent" | 6, 6, 0 |
+| M4 | `Cataclysm.ForgeMilestones.` | "6 tests performed, 4 succeeded, 2 failed: TheMasterTinkerersChangeOfDrawbackKeepsTheMilderRoll, TheMasterTinkerersImprintKeepsTheBetterOfTwoRollsAndTakesNoDays" | 6, 6, 0 |
+| M5 | `Cataclysm.ForgeMilestones.` | "6 tests performed, 4 succeeded, 2 failed: BothOptionsCanBeChosenAndImperialProwessCanTakeEither, TheSoulForgeRaisesTwoLevelsOnADrawBelowFifteenPercent" | 6, 6, 0 |
+| D1 | `Cataclysm.EmpireRun.` | "72 tests performed, 71 succeeded, 1 failed: TheTimersForecastToRunOutAreTheOnesTheDaysRunOut" | 72, 72, 0 |
+| D2 | `Cataclysm.PlayLoop.` | "13 tests performed, 12 succeeded, 1 failed: DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead" | 13, 13, 0 |
+| D3 | `Cataclysm.ForgeScreen.` | "5 tests performed, 4 succeeded, 1 failed: TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid" | 5, 5, 0 |
+| CF1 | `Cataclysm.ForgeGoldNodes.` | "8 tests performed, 7 succeeded, 1 failed: TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth" | 8, 8, 0 |
+| CF2 | `Cataclysm.ForgeGoldNodes.` | "8 tests performed, 6 succeeded, 2 failed: AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold, APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt" | 8, 8, 0 |
+| CF3 | `Cataclysm.ForgeGoldNodes.` | "8 tests performed, 7 succeeded, 1 failed: AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold" | 8, 8, 0 |
 
 ---
 
