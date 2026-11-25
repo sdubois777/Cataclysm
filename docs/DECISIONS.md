@@ -117,6 +117,20 @@ whole-suite log at its turn.**
 | GF2 | `CataclysmForgeCraft.cpp` | `Item.Affixes.Num() >= UCataclysmForge::AncientTechniquesLowestAffixes` read as `>` | `Cataclysm.ForgeAncientProtocols.` | `AncientTechniquesTakesDaysOffACraftOnAFourAffixItem` |
 | GF3 | `CataclysmCharacterSheetLayout.cpp` | `return Ignored > 0 ?` read as `return Ignored < 0 ?` | `Cataclysm.ForgeAncientProtocols.` | `TheSheetLineNamesTheShareIgnoredOnlyWhenThereIsOne`, `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols` |
 
+**The window runs eight C++ guard proofs, two a slice, not all twelve** (the coordinating session, 2026-11-25: the War
+and Death trees wait behind this machine). Kept, each guarding its slice's central rule: MF1 and MF3 (#47 slice F6b:
+which tiers Material Conservation keeps, and that the kept materials go back in the bag), KF1 and KF2 (slices C1 and C2:
+the tree's residue factor, and a craft of a day keeping one), AF1 and AF3 (slices C3 and C4: Master's Workshop's floor,
+and Rough Draft's free slot), GF1 and GF2 (this slice: the share Residue Protocols ignores, and Ancient Techniques' four
+affixes). **Dropped, not run:**
+- **MF2**, Tempting Fate's "more than 500": a boundary of one node inside the slice's draws, not its central rule.
+- **KF3**, Heat Shielding's tier 3: one of three residue factors; KF1 already proves the factor reaches the craft.
+- **AF2**, Apprentice Smith's tier 7 bound: a bound inside one of the three draws; AF3 already proves a draw's
+  condition is read.
+- **GF3**, the sheet line's share words: wording; GF1 already proves the counted figure the line shows.
+Their Python and Unreal tests still run in the whole suite and the groups; only the break-and-run proof of each is not
+made.
+
 ---
 
 ## 2026-11-25 — The empire tree's five forge affix nodes act: Master's Workshop and Precision Crafting raise the rolls the forge draws, and Rough Draft, Apprentice Smith and Quality Materials add, raise and perfect an affix on a craft; the crafting rows still refused say what each waits on (#2741, crafting slices C3 and C4)
