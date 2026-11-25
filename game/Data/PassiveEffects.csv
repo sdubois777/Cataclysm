@@ -363,3 +363,12 @@ Ritualist_capstone_200#4,Ritualist_capstone_200,minion_held_longest_becomes_your
 Ritualist_capstone_200#5,Ritualist_capstone_200,minions_repeat_your_skills,flat,1.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Ritualist_basic_spine_000#3,Ritualist_basic_spine_000,curse_death_raises_imp,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Ravager_keystone_spine_002#2,Ravager_keystone_spine_002,melee_arc_full_circle,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Bulwark_basic_trunk_000#1,Bulwark_basic_trunk_000,fervour_per_hit_taken,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Bulwark_basic_trunk_000#2,Bulwark_basic_trunk_000,fervour_per_block,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Bulwark_basic_trunk_000#3,Bulwark_basic_trunk_000,fervour_decay_out_of_combat_per_second,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_trunk_000#1,Berserker_trunk_000,fervour_per_critical_strike,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_trunk_000#2,Berserker_trunk_000,fervour_decay_out_of_combat_per_second,flat,10.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_trunk_000#1,Saboteur_basic_trunk_000,fervour_per_trap_placed,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_trunk_000#2,Saboteur_basic_trunk_000,fervour_per_gadget_placed,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_trunk_000#3,Saboteur_basic_trunk_000,fervour_per_trap_triggered,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_trunk_000#4,Saboteur_basic_trunk_000,fervour_per_device_hit,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

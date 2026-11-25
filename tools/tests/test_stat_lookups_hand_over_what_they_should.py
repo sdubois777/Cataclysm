@@ -427,6 +427,16 @@ INVENTORY = {
      'FName(DoNotExpireStat), FGameplayTagContainer(), 0.0f'):
         'what a debuff this character carries is worth, with no blow in '
         'hand',
+    # THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        "a War class's Fervour rate, asked at its event with that event's "
+        'tags (a hit, a block, a critical strike, a trap or gadget placed, a '
+        'trap triggered, a device blow); the blow is not handed over',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(OutOfCombatDecayPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        'the War decay, asked on a timer with no blow, target or skill in '
+        'hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'Stat, Context, Plain'):
         'class resource generation, asked on a timer with no blow, '

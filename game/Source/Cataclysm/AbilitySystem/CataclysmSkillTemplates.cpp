@@ -55,6 +55,9 @@
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the Saboteur's Fervour on placing a War machine, and the gadget-placed event. Slice C of
+// plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -4232,6 +4235,27 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		// since issue #2787; it is `ACataclysmMinion::PlaceSkillGadget`, not this.) Their rows already state `FervourReserve`, so building
 		// it is this one line, with a fit check before the spawn like Summon
 		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
+
+		// AND THE SABOTEUR'S FERVOUR FOR PLACING IT, "Placing a trap or a gadget generates Fervour". Slice C, 2026-11-24.
+		// A MACHINE THAT IS A TRAP earns the trap-placed rate and raises no event: `trap_placed` is the skill traps'
+		// event (`ACataclysmMinion::PlaceSkillTrap`), and a War trap never raised it, so raising it here would reach
+		// rows written for skill traps. EVERY OTHER MACHINE IS A GADGET (`ACataclysmMinion::IsGadget`): it raises the new
+		// `gadget_placed`, with its tags and itself, as `PlaceSkillGadget` does, and earns the gadget-placed rate.
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)))
+		{
+			const FGameplayTagContainer MachineTags = Machine->TypeTags;
+			if (Machine->IsTrap())
+			{
+				FCataclysmWarFervour::GainOnTrapPlaced(Theirs, MachineTags);
+			}
+			else
+			{
+				Theirs->ActOnEvent(FName(TEXT("gadget_placed")), &MachineTags,
+								   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
+				FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, MachineTags);
+			}
+		}
 	}
 	return Machine;
 }

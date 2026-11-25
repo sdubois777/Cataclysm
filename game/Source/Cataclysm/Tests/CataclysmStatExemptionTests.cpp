@@ -16,6 +16,8 @@
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 #include "AbilitySystem/CataclysmFervour.h"
+// For the War classes' Fervour rates and decay. Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmPotions.h"
@@ -11546,6 +11548,69 @@ namespace CataclysmStatExemptionTest
 		return Made;
 	}
 
+	/**
+	 * A War Fervour rate, read by its own function in `FCataclysmWarFervour`. Slice C of plan_death_and_war.md,
+	 * 2026-11-24. A holder at 50 of 100 gains nothing without the rate and 3 with a rate of 3, so the function really
+	 * reads it.
+	 */
+	void ProbeWarFervourGain(FAutomationTestBase& Test, const TCHAR* Stat,
+							 const TFunctionRef<float(UAbilitySystemComponent*)>& Gain)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const float Plain = Gain(System);
+		GrantFlat(Holder, Stat, 3.0f);
+		const float Held = Gain(System);
+		Test.TestEqual(*FString::Printf(TEXT("%s: control, nothing is gained without it"), Stat), Plain, 0.0f);
+		Test.TestEqual(*FString::Printf(TEXT("%s: 3 is gained with 3 of it, so its reader really reads it"), Stat), Held,
+					   3.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_decay_out_of_combat_per_second`, read by `FCataclysmWarFervour::OutOfCombatDecayStep`. A holder out of
+	 * combat since it was made keeps 50 without it and loses 5 in a second with 5 of it.
+	 */
+	void ProbeWarFervourDecay(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		World->TimeSeconds += 4.0f;
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		FCataclysmWarFervour::OutOfCombatDecayStep(Holder, 1.0f);
+		const float Plain = System->GetNumericAttribute(Pool);
+		GrantFlat(Holder, FCataclysmWarFervour::OutOfCombatDecayPerSecondStat, 5.0f);
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		FCataclysmWarFervour::OutOfCombatDecayStep(Holder, 1.0f);
+		const float Held = System->GetNumericAttribute(Pool);
+		Test.TestEqual(TEXT("fervour_decay_out_of_combat_per_second: control, the bar keeps 50 without it"), Plain,
+					   50.0f, 0.001f);
+		Test.TestEqual(TEXT("and loses 5 in a second with 5 of it, so OutOfCombatDecayStep really reads it"), Held,
+					   45.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -11778,6 +11843,34 @@ namespace CataclysmStatExemptionTest
 			{TEXT("health_restored_on_fervour_full"), &ProbeHealthRestoredOnFervourFull},
 			{TEXT("attack_speed_reduction_suppressed"), &ProbeAttackSpeedReductionSuppressed},
 			{TEXT("cripple_and_weaken_spread_on_death_metres"), &ProbeCrippleAndWeakenSpreadOnDeath},
+			// THE WAR CLASSES' FERVOUR, slice C, 2026-11-24.
+			{TEXT("fervour_per_hit_taken"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerHitTakenStat,
+					[](UAbilitySystemComponent* System) { return FCataclysmWarFervour::GainOnHitTaken(System); }); }},
+			{TEXT("fervour_per_block"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerBlockStat,
+					[](UAbilitySystemComponent* System) { return FCataclysmWarFervour::GainOnBlock(System); }); }},
+			{TEXT("fervour_per_critical_strike"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerCriticalStrikeStat,
+					[](UAbilitySystemComponent* System)
+					{ return FCataclysmWarFervour::GainOnCriticalStrike(System, FGameplayTagContainer()); }); }},
+			{TEXT("fervour_per_trap_placed"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerTrapPlacedStat,
+					[](UAbilitySystemComponent* System)
+					{ return FCataclysmWarFervour::GainOnTrapPlaced(System, FGameplayTagContainer()); }); }},
+			{TEXT("fervour_per_gadget_placed"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerGadgetPlacedStat,
+					[](UAbilitySystemComponent* System)
+					{ return FCataclysmWarFervour::GainOnGadgetPlaced(System, FGameplayTagContainer()); }); }},
+			{TEXT("fervour_per_trap_triggered"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerTrapTriggeredStat,
+					[](UAbilitySystemComponent* System)
+					{ return FCataclysmWarFervour::GainOnTrapTriggered(System, FGameplayTagContainer()); }); }},
+			{TEXT("fervour_per_device_hit"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerDeviceHitStat,
+					[](UAbilitySystemComponent* System)
+					{ return FCataclysmWarFervour::GainOnDeviceHit(System, FGameplayTagContainer()); }); }},
+			{TEXT("fervour_decay_out_of_combat_per_second"), &ProbeWarFervourDecay},
 		};
 		return Made;
 	}

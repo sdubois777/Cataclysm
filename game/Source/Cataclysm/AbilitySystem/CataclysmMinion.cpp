@@ -20,6 +20,9 @@
 #include "AbilitySystem/CataclysmTeams.h"
 // For the copy of its summoner's last skill a gadget casts. Ruled 2026-10-14.
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
+// For the Saboteur's Fervour on placing, triggering and hitting with its devices, and the gadget-placed event.
+// Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For a skill gadget's clock, its skill and which skills it may cast. Ruled 2026-10-16.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
@@ -910,6 +913,19 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 	Placed->SkillGadgetSlot = Slot;
 	Placed->SkillGadgetPlacedAtSeconds = Placed->GetWorld()->GetTimeSeconds();
 	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
+
+	// AND THE PLAYER IS TOLD, with the gadget's tags and the gadget, as a trap's placing is told: the event a gadget's
+	// placing had none of until slice C (2026-11-24). Then the Saboteur's Fervour for it, after the reserve is held, so
+	// the gain is clamped to what the pool may hold with the new gadget's reserve taken out. A press that MOVES the
+	// slot's standing gadget never reaches this function, so a move is no placing and earns nothing.
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)))
+	{
+		const FGameplayTagContainer GadgetTags = Placed->TypeTags;
+		Theirs->ActOnEvent(FName(TEXT("gadget_placed")), &GadgetTags, /*EventAmount=*/0.0f,
+						   /*bLanded=*/true, Placed);
+		FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, GadgetTags);
+	}
 	return Placed;
 }
 
@@ -1758,6 +1774,13 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			Theirs->ActOnEvent(FName(TEXT("deployable_hit")), &TypeTags, 0.0f,
 							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker,
 							   Target);
+
+			// AND THE SABOTEUR'S FERVOUR FOR A MACHINE'S LANDED BLOW, "one of them dealing damage": landed as the
+			// event says it, so an evaded blow earns nothing. Slice C, 2026-11-24.
+			if (!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)
+			{
+				FCataclysmWarFervour::GainOnDeviceHit(Theirs, TypeTags);
+			}
 		}
 	}
 
@@ -2769,6 +2792,10 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 	{
 		const FGameplayTagContainer TrapTags = Placed->TypeTags;
 		Theirs->ActOnEvent(FName(TEXT("trap_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
+
+		// AND THE SABOTEUR'S FERVOUR FOR IT, after the reserve above is held. Nought for every character without
+		// `fervour_per_trap_placed`. Slice C, 2026-11-24.
+		FCataclysmWarFervour::GainOnTrapPlaced(Theirs, TrapTags);
 	}
 	return Placed;
 }
@@ -2897,6 +2924,10 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
 					   /*bLanded=*/true, Enemy);
 	Theirs->SkillTrapRaisingItsTrigger.Reset();
+
+	// AND THE SABOTEUR'S FERVOUR FOR THE TRIGGER, once per trigger as the event is. Nought for every character without
+	// `fervour_per_trap_triggered`. Slice C, 2026-11-24.
+	FCataclysmWarFervour::GainOnTrapTriggered(Theirs, TrapTags);
 
 	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
 	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes

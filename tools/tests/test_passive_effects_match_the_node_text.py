@@ -653,7 +653,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: The rest are second clauses and "At N points:" bonuses, less the drawbacks
 #: removed from six Masochist keystones. Every node that changed already had a
 #: row, so `AUTHORED_NODES` does not move.
-AUTHORED_ROWS = 364
+#:
+#: AND TO 373 ON 2026-11-24, for the War classes' Fervour (slice C of
+#: `plan_death_and_war.md`): nine rows on the three War starting nodes, which had
+#: none. The Bulwark's three (hit taken, block, decay), the Berserker's two
+#: (critical strike, decay) and the Saboteur's four (trap placed, gadget placed,
+#: trap triggered, device hit). Three new nodes, so `AUTHORED_NODES` moves too.
+AUTHORED_ROWS = 373
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1066,7 +1072,11 @@ AUTHORED_ROWS = 364
 #: of the last six Demonic options whose node had no row. The other five are
 #: options on capstones that already had one, and move `AUTHORED_OPTIONS` alone.
 #: Issue #1515.
-AUTHORED_NODES = 226
+#:
+#: AND TO 229 ON 2026-11-24: the three War starting nodes, `Bulwark_basic_trunk_000`,
+#: `Berserker_trunk_000` and `Saboteur_basic_trunk_000`, each given its Fervour rows
+#: by slice C of `plan_death_and_war.md`.
+AUTHORED_NODES = 229
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2370,6 +2380,18 @@ VALUE_FORMS = {
     "cripple_and_weaken_spread_on_death_metres": "{value:g} metre",
     "ultimate_fervour_cost_reduction": "{value:g} less Fervour",
     "minion_lifetime_renewed_every_seconds": "{value:g} second",
+    # THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24. Each
+    # the whole phrase after its number, for the reason the Ravager's starting
+    # node gives above: the Bulwark's and the Saboteur's sentences each hold
+    # several 1s, and a bare "{value:g}" would let the rows satisfy each other.
+    "fervour_per_hit_taken": "{value:g} for each hit you take",
+    "fervour_per_block": "{value:g} for each block",
+    "fervour_decay_out_of_combat_per_second": "{value:g} per second after",
+    "fervour_per_critical_strike": "{value:g} Fervour per critical strike",
+    "fervour_per_trap_placed": "{value:g} for each trap placed",
+    "fervour_per_gadget_placed": "{value:g} for each gadget placed",
+    "fervour_per_trap_triggered": "{value:g} each time a trap triggers",
+    "fervour_per_device_hit": "{value:g} for each blow one of them lands",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.

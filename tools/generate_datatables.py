@@ -7260,6 +7260,9 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # moves it to `STRIKE_TARGET_EVENTS`, whose eight a merged test pins.
     "trap_placed",
     "trap_triggered",
+    # Slice C of plan_death_and_war.md, 2026-11-24. `gadget_placed` carries the
+    # wearer's own gadget, as `trap_placed` carries its trap.
+    "gadget_placed",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -7521,6 +7524,14 @@ ACTION_ONLY_EVENTS = (
     # Ruled 2026-10-19 (M5, T13), for the rows of later layers on a trap's
     # trigger. Clockless, as the one above; in no narrower list yet.
     "trap_triggered",
+    # A GADGET PLACED, raised once per gadget on its player by
+    # `ACataclysmMinion::PlaceSkillGadget` and, for a War machine that is not
+    # a trap, `UCataclysmDeployableSkill::DeployOne`, with the gadget's type
+    # tags and the gadget as the character. Slice C of plan_death_and_war.md,
+    # 2026-11-24 (`FCataclysmWarFervour::GadgetPlacedEvent`): nothing raised one
+    # before, and Razor Instincts and Forward Operating Base are about it.
+    # Clockless, as the two above; in no narrower list yet.
+    "gadget_placed",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was

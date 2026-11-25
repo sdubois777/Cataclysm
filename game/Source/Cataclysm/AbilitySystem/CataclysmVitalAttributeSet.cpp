@@ -37,6 +37,8 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the Bulwark's Fervour on a hit taken and on a block. Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For the shield Warded Flesh gives a commander when one of its minions dies.
 // The demonic tree rework of 2026-11-24.
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -2466,6 +2468,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Cataclysm->NoteBlocked(
 						UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
 						Outcome.DamageBlocked);
+
+					// AND THE BULWARK'S FERVOUR FOR A BLOCK, "Taking hits, blocking and killing enemies generate
+					// Fervour". Nought for every character without `fervour_per_block`. Slice C, 2026-11-24.
+					FCataclysmWarFervour::GainOnBlock(Cataclysm);
 				}
 			}
 
@@ -2543,6 +2549,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				if (!Outcome.bEvaded && !Hit.bIsDamageOverTime)
 				{
 					Cataclysm->NoteNthEvent(ECataclysmEveryNth::HitTaken);
+
+					// AND THE BULWARK'S FERVOUR FOR A HIT TAKEN, counted as this count is: a landed hit, not a tick
+					// and not an evaded blow, and a blocked blow landed, so a block earns both its rates. Nought for
+					// every character without `fervour_per_hit_taken`. Slice C, 2026-11-24.
+					FCataclysmWarFervour::GainOnHitTaken(Cataclysm);
 				}
 
 				// AND A HIT THAT WAS TAKEN MAY MAKE ITS WEARER IMMUNE TO ITS DAMAGE TYPE FOR A TIME. Ruled

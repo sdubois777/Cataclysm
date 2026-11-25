@@ -12,6 +12,8 @@
 // For health owed falling due. Issue #991.
 // For the Fervour that arrives from the passage of time. Issue #1008.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the Bulwark's and the Berserker's Fervour decay out of combat. Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 // For Brute's Heart's Ground Pound, which fires by itself. Ruled 2026-10-17.
 #include "AbilitySystem/CataclysmGroundPound.h"
@@ -262,6 +264,13 @@ void ACataclysmCharacterBase::RegenerationStep()
 		// holding the starting node, with Fervour in hand, out of contact for
 		// three seconds, gets anything else.
 		UCataclysmFervour::DecayStep(this, UCataclysmRegeneration::StepSeconds);
+
+		// AND THE WAR CLASSES' DECAY, OUT OF COMBAT RATHER THAN OUT OF CONTACT. Slice C, 2026-11-24: the Bulwark's
+		// "your Fervour decays slowly out of combat" (5 a second, the owner's Q21) and the Berserker's "decays at 10 per
+		// second after 3 seconds out of combat". A separate stat from the Ravager's, so a character holding both rows
+		// meets both rules. After the gain and inside the same guard, for the reasons given above. Its return value is
+		// dropped too.
+		FCataclysmWarFervour::OutOfCombatDecayStep(this, UCataclysmRegeneration::StepSeconds);
 	}
 
 	// AND A CHARACTER LOW ENOUGH ON HEALTH MAY RELEASE A NOVA. Issue #1050.

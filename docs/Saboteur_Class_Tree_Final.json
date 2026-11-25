@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "Placing a trap or a gadget generates Fervour, and so does one of them dealing damage or triggering. It adds no rule about emptying, so your Fervour does not decay on its own.",
+        "description": "Placing a trap or a gadget generates Fervour, and so does one of them dealing damage or triggering: 1 for each trap placed, 1 for each gadget placed, 1 each time a trap triggers and 1 for each blow one of them lands. It adds no rule about emptying, so your Fervour does not decay on its own.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 1

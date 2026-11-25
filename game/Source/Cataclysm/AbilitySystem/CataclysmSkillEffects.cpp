@@ -45,6 +45,8 @@
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the Saboteur's Fervour on a skill gadget's or skill trap's landed blow. Slice C of plan_death_and_war.md.
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -1487,6 +1489,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	}
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
+
+	// AND THE SABOTEUR'S FERVOUR FOR A SKILL GADGET'S OR SKILL TRAP'S LANDED BLOW, "one of them dealing damage", landed
+	// as the event above says it, with the same tags. Slice C, 2026-11-24.
+	if (!Result->bEvaded && !Result->bRefusedByImmunityToAttacker)
+	{
+		FCataclysmWarFervour::GainOnDeviceHit(MachinesPlayer, GadgetsTags);
+	}
 	return bDealt ? Sent : 0.0f;
 }
 

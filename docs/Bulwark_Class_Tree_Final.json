@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "Taking hits, blocking and killing enemies generate Fervour. While you have this, your Fervour decays slowly out of combat.",
+        "description": "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit you take and 1 for each block. While you have this, your Fervour decays at 5 per second after 3 seconds out of combat.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

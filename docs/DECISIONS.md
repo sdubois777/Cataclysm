@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The War classes fill Fervour: the Bulwark on a hit taken and a block, the Berserker on a critical strike, the Saboteur on placing, triggering and landing its devices; the Bulwark and the Berserker decay out of combat (slice C)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`, new: `FCataclysmWarFervour`, seven gains and
+  one decay, each reading a flat rate through the stat pipeline.
+- The event sites, one call each: `CataclysmVitalAttributeSet.cpp` (a landed hit taken that is not a tick, and a block),
+  `CataclysmPlayerCharacter.cpp` (`OnSomethingWasHit`, a critical strike the character dealt), `CataclysmMinion.cpp`
+  (`PlaceSkillTrap`, `PlaceSkillGadget`, `TriggerSkillTrap`, `AttackTarget`'s `deployable_hit`),
+  `CataclysmSkillEffects.cpp` (`ApplyHit`'s `deployable_hit`), `CataclysmSkillTemplates.cpp`
+  (`UCataclysmDeployableSkill::DeployOne`), `CataclysmCharacterBase.cpp` (the decay, beside the Ravager's).
+- A new event, `gadget_placed`, raised by `PlaceSkillGadget` and, for a War machine that is not a trap, by `DeployOne`;
+  in `ACTION_ONLY_EVENTS` and `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK` in `tools/generate_datatables.py`.
+- Eight stats in `UCataclysmPlayerClassStats::StatsWithNoAttribute`, each with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (`CataclysmStatExemptionTests.cpp`).
+- `docs/Bulwark_Class_Tree_Final.json` and `docs/Saboteur_Class_Tree_Final.json`: the starting nodes' sentences state
+  their rates (`tools/apply_war_fervour_sources_2026_11_24.py`, new). `docs/All_Things_Cataclysm.xlsx`, Passive Effects:
+  nine rows (`tools/reapply_war_fervour_sources_workbook.py`, new). `game/Data/PassiveEffects.csv` (373 rows) and
+  `PassiveNodes.csv`, generated. **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `game/Source/Cataclysm/Tests/CataclysmWarFervourTests.cpp`, new: six tests in `Cataclysm.WarFervour.`.
+- `tools/tests/test_war_fervour_sources_scripts.py`, new; `tools/tests/test_passive_effects_match_the_node_text.py`
+  (the eight phrases, 373 rows, 229 nodes).
+- `CataclysmFervour.h`: its paragraph on the missing generators points here.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile it, rebuild
+  the two DataTable assets, and run `Cataclysm.WarFervour.` (six tests, trailing dot: `Cataclysm.Warden.` shares the
+  prefix without it) and `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **THE BULWARK'S FERVOUR FOR A KILL IS NOT BUILT.** Its sentence still says "killing enemies generate Fervour". The Death
+  trees session is building per-kill Fervour in `UCataclysmFervour` at the same time, and the coordinating session asked
+  that the two not collide; the Bulwark's kill gain should be built on that piece once it lands, not beside it.
+- **TWO SITES ARE NOT EXERCISED BY AN UNREAL TEST**: a skill trap triggering (`TriggerSkillTrap`) and a device's landed
+  blow (`AttackTarget`, `ApplyHit`'s `deployable_hit`). Each needs a weapon skill to cast or a War machine. Their gain
+  functions are exercised directly and by the probes; the call sites were checked by reading only.
+- **OBLIGATION FOR WHOEVER MERGES SECOND**, agreed with the coordinating session on 2026-11-24: the War decay
+  (`FCataclysmWarFervour::OutOfCombatDecayStep`) does not ask `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`,
+  which is on `feat/death-skills-2885` and not on this branch. Whichever of that branch and this one merges into
+  `development` second adds the one call, where the decay's comment marks it (after the pool is read and before the
+  out-of-combat test), and a test that a running buff holding Fervour stops the War decay.
+- **NOT PART OF THIS SLICE:** War class stat lines (issue #932; a War character still sits on the Ravager's line) and
+  the War machines' reserves (issue #1934; they reserve nothing and keep their count cap).
+
+### WHAT WAS RULED
+
+- The Bulwark's decay, `plan_death_and_war.md` Q21, the owner's answer of 2026-11-24 ("Your recommendations work for all
+  of those death/war questions"): 5 a second after 3 seconds out of combat.
+- The Berserker's, its own starting node: "Gain 1 Fervour per critical strike. While you have this, your Fervour decays at
+  10 per second after 3 seconds out of combat."
+- The coordinating session, 2026-11-24: the War generators in functions of their own, apart from `UCataclysmFervour`; the
+  War decay without the running-buff call, as above.
+
+### WHAT WAS BUILT
+
+1. **Seven gains of one shape** (`FCataclysmWarFervour::GainByRate`): the rate, read through the stat pipeline with the
+   event's tags and fallback nought; scaled by `class_resource_generation`; clamped to what the pool may hold after its
+   reserves; written; measured. `UCataclysmFervour::GainForEnemiesHit`'s shape, line for line.
+2. **Where each is called:** a hit taken where the "every Nth hit you take" count is made (landed, not a tick, not
+   evaded; a blocked blow landed, so a block earns both rates); a block after `NoteBlocked`; a critical strike after the
+   `critical_strike` event in `OnSomethingWasHit`, with the blow's skill tags, so Battle Lust's "on every critical melee
+   strike" reaches a melee one only; a skill trap placed, a skill gadget placed and a War machine placed after the
+   reserve is held; a skill trap's trigger once per trigger; a device's blow when it landed.
+3. **A War machine that is a trap earns the trap rate and raises no event.** `trap_placed` is the skill traps' event and a
+   War trap never raised it; raising it would reach rows written for skill traps. A judgement.
+4. **A press that moves a standing skill gadget is not a placing** and earns nothing: it never reaches `PlaceSkillGadget`.
+5. **The decay** (`OutOfCombatDecayStep`): the rate a second, once `SecondsOutOfCombat` is at or above nought, which is 3
+   seconds after the last blow dealt or taken (`CombatLapseSeconds`). **A judgement:** "after 3 seconds out of combat"
+   read as 3 seconds after the last blow, not 3 after the lapse; the clock's own comment counts the lapse as the 3
+   seconds and asks the Berserker's decay to read it. A separate stat from the Ravager's, so a character holding both
+   meets both rules. Not scaled by generation (a decay is not a gain). A Corrupted Stalker holding a War build does not
+   decay, as `DecayStep` refuses it.
+6. **The rates.** Every gain on a starting node is 1, the rate the Ravager's and the Masochist's starting nodes grant per
+   event. **A judgement** under the owner's delegation of unstated numbers; the constants are to be tuned in play. No
+   genre research was needed: the sources are the design's own sentences and only their sizes are chosen here.
+7. **The sentences** now say so. The Bulwark: "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit
+   you take and 1 for each block. While you have this, your Fervour decays at 5 per second after 3 seconds out of
+   combat." The Saboteur: "Placing a trap or a gadget generates Fervour, and so does one of them dealing damage or
+   triggering: 1 for each trap placed, 1 for each gadget placed, 1 each time a trap triggers and 1 for each blow one of
+   them lands. It adds no rule about emptying, so your Fervour does not decay on its own." The Berserker's is unchanged.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarFervour.EachGainIsItsRateScaledByGenerationAndClampedToWhatThePoolMayHold` | the seven gains: nothing without the rate, 2 at 150% is 3, clamped at the top |
+| `Cataclysm.WarFervour.TheDecayWaitsThreeSecondsAfterTheLastBlowThenTakesItsRate` | nothing at 1 and 2.9 s after a hit, 10 at 3.5 s, stopped by a blow dealt; a control |
+| `Cataclysm.WarFervour.ARealBlowTakenAndARealBlockFillABulwarksFervour` | a real blow 1, a real blocked blow 1 + 2; a control |
+| `Cataclysm.WarFervour.ACriticalStrikeARealPlayerDealtFillsItsFervourAndAMeleeRowAddsToAMeleeOne` | a hit notice on a real player: not critical 0, critical 1, melee critical 4 |
+| `Cataclysm.WarFervour.PlacingASkillTrapAndASkillGadgetFillsASaboteurAndTheGadgetIsAnnounced` | a trap 2, a gadget 3, and `gadget_placed` fires an action; a control |
+| `Cataclysm.WarFervour.TheThreeWarStartingNodesGrantTheirFervourRates` | the generated table's nine rows (after the editor step) |
+
+Predicted counts: `Cataclysm.WarFervour.` 6. `Cataclysm.StatExemption.` unchanged in number; its one keeper test runs
+eight more probes.
+
+**Planned guard proofs** (one per mechanism; not run):
+1. The hit-taken site: in `CataclysmVitalAttributeSet.cpp`, `FCataclysmWarFervour::GainOnHitTaken(Cataclysm);` becomes
+   `FCataclysmWarFervour::GainOnHitTaken(nullptr);`. Must fail `ARealBlowTakenAndARealBlockFillABulwarksFervour`.
+2. The critical-strike site: in `CataclysmPlayerCharacter.cpp`, `Acting, Notice.SkillTags ? *Notice.SkillTags :
+   FGameplayTagContainer());` becomes `nullptr, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());`. Must
+   fail `ACriticalStrikeARealPlayerDealtFillsItsFervourAndAMeleeRowAddsToAMeleeOne`.
+3. The decay's gate: in `CataclysmWarFervour.cpp`, `if (Cataclysm->SecondsOutOfCombat() < 0.0f)` becomes
+   `if (Cataclysm->SecondsOutOfCombat() < -100.0f)`. Must fail `TheDecayWaitsThreeSecondsAfterTheLastBlowThenTakesItsRate`.
+
+---
+
 ## 2026-11-24 — A passive node can act on an event: Passive Effects rows carry the enchantment row's action columns, a second condition, an offset on a scale, and a per-point count from a threshold (the passive row port)
 
 **Affects:**

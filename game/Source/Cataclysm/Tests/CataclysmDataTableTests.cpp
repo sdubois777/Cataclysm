@@ -509,7 +509,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// approved that day: the Masochist 126 to 150, the Ravager 103 to 113 and the
 	// Ritualist 92 to 97, most of the 39 the "for every N points" steps that
 	// replaced per-point values below 1, one row per step.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        364)
+	// AND 373 SINCE 2026-11-24, for the War classes' Fervour (slice C of
+	// plan_death_and_war.md): nine rows on the three War starting nodes.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        373)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

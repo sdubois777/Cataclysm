@@ -19,6 +19,8 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the Cataclysm.ShowFervour console command. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the Berserker's Fervour on a critical strike. Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For the Cataclysm.ShowDebt console command. Issue #1100.
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmLowHealthRelief.h"
@@ -1262,6 +1264,13 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
 						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 						   Notice.Target);
+
+		// AND THE BERSERKER'S FERVOUR FOR IT, "Gain 1 Fervour per critical strike", read with the blow's skill tags so
+		// Battle Lust's "on every critical melee strike" adds to a melee one only. Here and not at the blow, because
+		// this is where a critical strike the character dealt is known, past every refusal above. Nought for every
+		// character without `fervour_per_critical_strike`. Slice C, 2026-11-24.
+		FCataclysmWarFervour::GainOnCriticalStrike(
+			Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
 	}
 }
 

@@ -1091,6 +1091,25 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// applied passes on when its carrier dies, read by
 		// UCataclysmDebuffs::PassCrippleAndWeakenOnDeath from the enemy's death.
 		TEXT("cripple_and_weaken_spread_on_death_metres"),
+		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
+		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
+		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.
+		TEXT("fervour_per_hit_taken"),
+		TEXT("fervour_per_block"),
+		// The Berserker's: Fervour per critical strike, read with the blow's skill tags in
+		// ACataclysmPlayerCharacter::OnSomethingWasHit.
+		TEXT("fervour_per_critical_strike"),
+		// The Saboteur's: Fervour per skill trap placed (ACataclysmMinion::PlaceSkillTrap, and a War machine that is a
+		// trap), per gadget placed (ACataclysmMinion::PlaceSkillGadget, and every other War machine), per skill trap
+		// triggered (ACataclysmMinion::TriggerSkillTrap) and per landed blow of one of its devices
+		// (ACataclysmMinion::AttackTarget and UCataclysmSkillEffects::ApplyHit, at their deployable_hit).
+		TEXT("fervour_per_trap_placed"),
+		TEXT("fervour_per_gadget_placed"),
+		TEXT("fervour_per_trap_triggered"),
+		TEXT("fervour_per_device_hit"),
+		// The Bulwark's and the Berserker's decay, Fervour a second once out of combat, read by
+		// FCataclysmWarFervour::OutOfCombatDecayStep from ACataclysmCharacterBase::RegenerationStep.
+		TEXT("fervour_decay_out_of_combat_per_second"),
 	};
 	return Stats;
 }
