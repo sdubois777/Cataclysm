@@ -1027,6 +1027,46 @@ def test_the_four_facts_of_a_hits_target_are_filled_and_judged() -> None:
         assert condition in gen.CONDITIONS_OF_A_HIT_DEALT, condition
 
 
+def test_the_movement_skills_end_and_its_struck_enemies_are_recorded_and_judged() -> None:
+    """The Death trees' slice C6b2 (2026-11-25). Arrival: a movement skill's
+    use that was paid for is marked once `CommitAndBegin` succeeds, and its end
+    notes the clock and clears the mark; the state fill reads the clock, and the
+    condition is inclusive. Glancing Cuts: `ApplyHit` marks the creature struck,
+    keyed by the striker, for a landed blow of a skill made for the Movement slot
+    and not for a share, a tick, an evaded or an immune blow; the target-state
+    fill reads that record when a row asks. Read from the code with comments
+    taken out."""
+    moves = code_without_comments(SOURCE.parent / "CataclysmSkillTemplates.cpp")
+    assert re.search(r"if \(!CommitAndBegin\(Handle, ActorInfo, ActivationInfo\)\)\s*\{\s*return;\s*\}\s*"
+                     r"bPaidForThisUse = true;", moves)
+    assert re.search(r"const bool bAPaidMovementSkillUse = bPaidForThisUse "
+                     r"&& GetDesignedSlot\(\) == ECataclysmAbilitySlot::Movement;\s*"
+                     r"bPaidForThisUse = false;\s*if \(bAPaidMovementSkillUse\)\s*\{\s*"
+                     r"if \(UCataclysmAbilitySystemComponent\* Mover =\s*"
+                     r"Cast<UCataclysmAbilitySystemComponent>\(GetAbilitySystemComponentFromActorInfo\(\)\)\)\s*"
+                     r"\{\s*Mover->NoteMovementSkillEnded\(\);", moves)
+    engine = code_without_comments(SOURCE)
+    assert "State.SecondsSinceMovementSkillEnded = SecondsSinceMovementSkillEnded();" in engine
+    assert re.search(r"State\.SecondsSinceStruckByYourMovementSkill =\s*"
+                     r"Struck->SecondsSinceStruckByMovementSkillOf\(State\.AskingAbilitySystem\);", engine)
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"if \(!bAShareOnAnAlly && !Arrived\.bIsDamageOverTime && !Landed->bEvaded "
+                     r"&& !Landed->bRefusedByImmunityToAttacker\s*"
+                     r"&& DeliveredBy && DeliveredBy->GetDesignedSlot\(\) == ECataclysmAbilitySlot::Movement\)\s*"
+                     r"\{\s*if \(UCataclysmAbilitySystemComponent\* Struck =\s*"
+                     r"Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\(Target\)\)\)\s*"
+                     r"\{\s*Struck->NoteStruckByMovementSkillOf\(Source\);", effects)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd:\s*"
+                     r"return State\.SecondsSinceMovementSkillEnded >= 0\.0f "
+                     r"&& State\.SecondsSinceMovementSkillEnded <= Value;", pipeline)
+    assert re.search(r"case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:\s*"
+                     r"return State\.SecondsSinceStruckByYourMovementSkill >= 0\.0f\s*"
+                     r"&& State\.SecondsSinceStruckByYourMovementSkill <= Value;", pipeline)
+    assert "target_struck_by_your_movement_skill_within_seconds" in gen.CONDITIONS_OF_A_HIT_DEALT
+    assert "movement_skill_ends" in gen.action_events()
+
+
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:
     """The Death trees' slice C4c2 (2026-11-25), as ruled (Q7). The generator's
     name is the engine's, on `afflicted_death` only; the item recognises the

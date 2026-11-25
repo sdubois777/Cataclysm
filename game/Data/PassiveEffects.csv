@@ -610,3 +610,7 @@ Shadow_capstone_25#4,Shadow_capstone_25,spell_damage,more,50.0,,target_not_yet_s
 Shadow_basic_a_a2#1,Shadow_basic_a_a2,attack_damage,increased,2.0,,target_carries_your_poison,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_a_a2#2,Shadow_basic_a_a2,spell_damage,increased,2.0,,target_carries_your_poison,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_a_b2#1,Shadow_basic_a_b2,dot_damage,increased,3.0,Keyword.DoT.Bleed,target_beyond_metres,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_stem1#1,Shadow_basic_c_stem1,attack_damage,increased,3.0,,seconds_after_movement_skill_ends,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_stem1#2,Shadow_basic_c_stem1,spell_damage,increased,3.0,,seconds_after_movement_skill_ends,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_b0#1,Shadow_basic_c_b0,attack_damage,increased,2.0,,target_struck_by_your_movement_skill_within_seconds,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_b0#2,Shadow_basic_c_b0,spell_damage,increased,2.0,,target_struck_by_your_movement_skill_within_seconds,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

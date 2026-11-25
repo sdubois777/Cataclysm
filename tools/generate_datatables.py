@@ -5461,6 +5461,16 @@ CONDITIONS = {
     "target_at_full_health": None,
     "target_carries_your_poison": None,
     "target_beyond_metres": (0.0, 100.0, "a distance in metres"),
+    # THE TWO OF THE DEATH TREES' SLICE C6b2 (2026-11-25), each a clock whose
+    # value is the seconds. Arrival's "within 1 second after your movement
+    # skill ends" counts from the END of a use that was paid for, where
+    # `seconds_after_movement_skill` counts from the use; its event,
+    # `movement_skill_ends`, is raised there. Glancing Cuts' "Enemies your
+    # movement skill hits ... for 4 seconds" is a record kept on the character
+    # struck, keyed by the striker, so a fact of the target in hand and one of
+    # `CONDITIONS_OF_A_HIT_DEALT`.
+    "seconds_after_movement_skill_ends": (0.0, 60.0, "a number of seconds"),
+    "target_struck_by_your_movement_skill_within_seconds": (0.0, 60.0, "a number of seconds"),
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -10985,6 +10995,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_at_full_health",
     "target_carries_your_poison",
     "target_beyond_metres",
+    "target_struck_by_your_movement_skill_within_seconds",
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",

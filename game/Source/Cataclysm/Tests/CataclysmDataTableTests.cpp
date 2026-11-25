@@ -548,8 +548,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// SLICE C4d3: Wearer of the Dead's five worn modifiers, the Soul Collector 122. AND 604 FOR SLICE C6a: Brim (three),
 	// Slip, Find the Rhythm, Sidestep and Keep the Count (two each), Lasting Wounds (two), Twin Step and Riposte, the
 	// Shadow 98; Soul Barrage, the Soul Collector 123. AND 611 FOR SLICE C6b1: From Behind, Opening Strike (three),
-	// Venomed Prey (two) and Hit and Run, the Shadow 105.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        611)
+	// Venomed Prey (two) and Hit and Run, the Shadow 105. AND 615 FOR SLICE C6b2: Arrival and Glancing Cuts (two each),
+	// the Shadow 109.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        615)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

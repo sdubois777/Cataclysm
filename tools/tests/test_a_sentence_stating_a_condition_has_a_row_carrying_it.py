@@ -55,6 +55,9 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Shadow_basic_c_b1", "0", "target_struck_by_your_movement_skill_within_seconds"):
+        "Through and Through's 'Each enemy your movement skill hits' is its rows' required tag, Slot.Movement on "
+        "fervour_per_enemy_hit, paid at the hit; it keeps no record over seconds (the Death trees' slice C6b2)",
     ("Shadow_basic_d_stem0", "0", "seconds_after_dodge"):
         "Slip's 'after you evade a hit' is its row's event, `dodge`, and its 'within 3 seconds' the charge's seconds "
         "(next_hit_critical), the Death trees' slice C6a",

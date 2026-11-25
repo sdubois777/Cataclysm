@@ -168,6 +168,9 @@ namespace
 		{ TEXT("target_at_full_health"), ECataclysmStatCondition::TargetAtFullHealth },
 		{ TEXT("target_carries_your_poison"), ECataclysmStatCondition::TargetCarriesYourPoison },
 		{ TEXT("target_beyond_metres"), ECataclysmStatCondition::TargetBeyondMetres },
+		{ TEXT("seconds_after_movement_skill_ends"), ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd },
+		{ TEXT("target_struck_by_your_movement_skill_within_seconds"),
+		  ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds },
 	};
 
 	struct FNamedStatScale
@@ -520,6 +523,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfStrikingABoss:
 	case C::WithinSecondsOfSupportSkill:
 	case C::WithinSecondsOfMovementSkill:
+	case C::WithinSecondsOfMovementSkillEnd:
 	case C::WithinSecondsOfSpell:
 	case C::WithinSecondsOfMeleeHitTaken:
 	case C::WithinSecondsOfCrowdControl:
@@ -602,6 +606,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesADot:
 	case C::TargetDamagedByYouWithinSeconds:
 	case C::TargetNearYourKillWithinSeconds:
+	case C::TargetStruckByYourMovementSkillWithinSeconds:
 	case C::TargetStandsInYourZone:
 	case C::TargetInYourSiphon:
 	case C::OpponentFirstStruckByYouSecondsAgo:
@@ -1450,6 +1455,15 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::TargetBeyondMetres:
 		// STRICTLY MORE THAN, "more than 4 metres", the boundary `OpponentBeyondMetres` keeps; not known refuses.
 		return State.TargetDistanceMetres >= 0.0f && State.TargetDistanceMetres > Value;
+
+	// THE TWO OF THE DEATH TREES' SLICE C6b2 (2026-11-25), each a clock: never reads -1 and refuses, and the window is
+	// inclusive, as every clock's is.
+	case ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd:
+		return State.SecondsSinceMovementSkillEnded >= 0.0f && State.SecondsSinceMovementSkillEnded <= Value;
+
+	case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:
+		return State.SecondsSinceStruckByYourMovementSkill >= 0.0f
+			&& State.SecondsSinceStruckByYourMovementSkill <= Value;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

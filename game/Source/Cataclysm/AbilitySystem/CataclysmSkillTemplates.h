@@ -1690,6 +1690,13 @@ private:
 	 * clears it by name now, beside the two above.
 	 */
 	FTimerHandle StopTimer;
+
+	/**
+	 * Whether this use was paid for, so its end is a movement skill's end: set once `CommitAndBegin` succeeds in
+	 * `ActivateAbility`, read and cleared by `EndAbility`. The Death trees' slice C6b2 (2026-11-25), for Arrival. A
+	 * Recall's first press and a use refused before it was paid end without it.
+	 */
+	bool bPaidForThisUse = false;
 };
 
 /**

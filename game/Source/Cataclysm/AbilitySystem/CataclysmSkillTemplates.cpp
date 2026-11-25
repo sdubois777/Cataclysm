@@ -3389,6 +3389,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 		return;
 	}
 
+	// PAID FOR, SO ITS END WILL BE A MOVEMENT SKILL'S END (the Death trees' slice C6b2, 2026-11-25). See `EndAbility`.
+	bPaidForThisUse = true;
+
 	AActor* Self = Avatar();
 	if (!Self)
 	{
@@ -4047,6 +4050,21 @@ void UCataclysmMovementSkill::EndAbility(
 		World->GetTimerManager().ClearTimer(AdvanceTimer);
 		World->GetTimerManager().ClearTimer(FlickerTimer);
 		World->GetTimerManager().ClearTimer(StopTimer);
+	}
+
+	// A USE THAT WAS PAID FOR HAS ENDED, which Arrival's clock counts from (the Death trees' slice C6b2, 2026-11-25).
+	// A move cut short counts as well: it has ended. ONLY FOR A SKILL MADE FOR THE MOVEMENT SLOT, the slot the use's
+	// clock (`NoteMovementSkillUsed`) and Glancing Cuts' record ask. Cleared first, so the event the note raises
+	// cannot see it again.
+	const bool bAPaidMovementSkillUse = bPaidForThisUse && GetDesignedSlot() == ECataclysmAbilitySlot::Movement;
+	bPaidForThisUse = false;
+	if (bAPaidMovementSkillUse)
+	{
+		if (UCataclysmAbilitySystemComponent* Mover =
+				Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+		{
+			Mover->NoteMovementSkillEnded();
+		}
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,

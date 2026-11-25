@@ -1031,6 +1031,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceFervourSpent = SecondsSinceFervourSpent();
 	State.SecondsSinceSupportSkill = SecondsSinceSupportSkillUsed();
 	State.SecondsSinceMovementSkill = SecondsSinceMovementSkillUsed();
+	// AND SINCE IT ENDED, for Arrival. The Death trees' slice C6b2 (2026-11-25).
+	State.SecondsSinceMovementSkillEnded = SecondsSinceMovementSkillEnded();
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
 	State.SecondsSinceMeleeHitTaken = SecondsSinceMeleeHitTaken();
 	State.SecondsSinceCrowdControl = SecondsSinceCrowdControlApplied();
@@ -1689,6 +1691,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsYourPoisonOrBleed = false;
 	bool bWantsNearKill = false;
 	bool bWantsBehind = false;
+	bool bWantsMovementSkillHit = false;
 	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1738,6 +1741,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// AND WHETHER THE TARGET STOOD NEAR A KILL OF THE ASKER'S, Grim Wake, the Death trees' slice C4c2.
 			case ECataclysmStatCondition::TargetNearYourKillWithinSeconds:
 				bWantsNearKill = true;
+				break;
+			// AND WHETHER THE ASKER'S MOVEMENT SKILL STRUCK THE TARGET, Glancing Cuts, the Death trees' slice C6b2.
+			case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:
+				bWantsMovementSkillHit = true;
 				break;
 			// AND WHETHER THE TARGET STANDS IN ONE OF THE ASKER'S ZONES, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
@@ -1796,7 +1803,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		// condition refused. `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` holds the lists
 		// to the declarations.
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSiphon
-			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill && bWantsBehind
+			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill && bWantsBehind && bWantsMovementSkillHit
 			&& bWantsRarity)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
@@ -1811,7 +1818,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// lookup with no row asking has no condition to answer.
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSiphon
-			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill && !bWantsBehind
+			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill && !bWantsBehind && !bWantsMovementSkillHit
 			&& !bWantsRarity))
 	{
 		return State;
@@ -1833,6 +1840,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 				Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
 		{
 			State.SecondsSinceNearYourKill = Marked->SecondsSinceNearKillBy(State.AskingAbilitySystem);
+		}
+	}
+
+	// AND HOW LONG AGO THE ASKER'S MOVEMENT SKILL STRUCK IT, from the record kept on it (the Death trees' slice C6b2).
+	if (bWantsMovementSkillHit && State.AskingAbilitySystem)
+	{
+		if (const UCataclysmAbilitySystemComponent* Struck =
+				Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			State.SecondsSinceStruckByYourMovementSkill =
+				Struck->SecondsSinceStruckByMovementSkillOf(State.AskingAbilitySystem);
 		}
 	}
 
@@ -3232,6 +3250,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	LastSupportSkillAtSeconds = -1.0f;
 	LastMovementSkillAtSeconds = -1.0f;
+	LastMovementSkillEndedAtSeconds = -1.0f;
 	LastSpellAtSeconds = -1.0f;
 	LastMeleeHitTakenAtSeconds = -1.0f;
 	LastCrowdControlAtSeconds = -1.0f;
@@ -4023,6 +4042,27 @@ float UCataclysmAbilitySystemComponent::SecondsSinceNearKillBy(const UAbilitySys
 {
 	const UWorld* World = GetWorld();
 	const float* At = Killer ? NearKillBy.Find(Killer) : nullptr;
+	if (!World || !At || *At < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
+}
+
+void UCataclysmAbilitySystemComponent::NoteStruckByMovementSkillOf(const UAbilitySystemComponent* Striker)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Striker)
+	{
+		return;
+	}
+	StruckByMovementSkillOf.Add(Striker, World->GetTimeSeconds());
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceStruckByMovementSkillOf(const UAbilitySystemComponent* Striker) const
+{
+	const UWorld* World = GetWorld();
+	const float* At = Striker ? StruckByMovementSkillOf.Find(Striker) : nullptr;
 	if (!World || !At || *At < 0.0f)
 	{
 		return -1.0f;
@@ -4880,6 +4920,27 @@ float UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillUsed() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMovementSkillAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteMovementSkillEnded()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastMovementSkillEndedAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("movement_skill_ends")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillEnded() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastMovementSkillEndedAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMovementSkillEndedAtSeconds);
 }
 
 void UCataclysmAbilitySystemComponent::NoteSpellCast()

@@ -733,7 +733,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 611 THE SAME DAY, for slice C6b1: From Behind, Opening Strike (three),
 #: Venomed Prey (two) and Hit and Run.
-AUTHORED_ROWS = 611
+#:
+#: AND TO 615 THE SAME DAY, for slice C6b2: Arrival and Glancing Cuts (two
+#: each, attack and spell damage).
+AUTHORED_ROWS = 615
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1203,7 +1206,9 @@ AUTHORED_ROWS = 611
 #:
 #: AND TO 365 THE SAME DAY, for slice C6b1's From Behind, Venomed Prey and Hit
 #: and Run. Opening Strike is an option, counted in `AUTHORED_OPTIONS`.
-AUTHORED_NODES = 365
+#:
+#: AND TO 367 THE SAME DAY, for slice C6b2's Arrival and Glancing Cuts.
+AUTHORED_NODES = 367
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1863,6 +1868,11 @@ CONDITION_WORDS = {
     "target_at_full_health": ("at full health", None),
     "target_carries_your_poison": ("carrying your poison", None),
     "target_beyond_metres": ("metres from you", "more than {value:g} metres"),
+    # THE TWO OF THE DEATH TREES' SLICE C6b2 (2026-11-25): Arrival's "within 1
+    # second after your movement skill ends"; Glancing Cuts' "Enemies your
+    # movement skill hits take ... for 4 seconds".
+    "seconds_after_movement_skill_ends": ("after your movement skill ends", "{value:g} second"),
+    "target_struck_by_your_movement_skill_within_seconds": ("your movement skill hits", "{value:g} second"),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"

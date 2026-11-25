@@ -686,6 +686,15 @@ NODES: tuple[Node, ...] = (
     Node(SH + "basic_a_a2", "Venomed Prey", damage("increased", 2, cond="target_carries_your_poison")),
     Node(SH + "basic_a_b2", "Hit and Run",
          (R("dot_damage", "increased", 3, tags="Keyword.DoT.Bleed", cond="target_beyond_metres", cond_value=4),)),
+
+    # ---- SLICE C6b2 (2026-11-25): THE MOVEMENT SKILL'S TWO CLOCKS. Arrival's
+    # damage for 1 second after a movement skill that was paid for ENDS; Glancing
+    # Cuts' damage against an enemy your movement skill's landed blow struck in
+    # the last 4 seconds, a record kept on that enemy.
+    Node(SH + "basic_c_stem1", "Arrival",
+         damage("increased", 3, cond="seconds_after_movement_skill_ends", cond_value=1)),
+    Node(SH + "basic_c_b0", "Glancing Cuts",
+         damage("increased", 2, cond="target_struck_by_your_movement_skill_within_seconds", cond_value=4)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

@@ -779,6 +779,16 @@ public:
 	float SecondsSinceNearKillBy(const UAbilitySystemComponent* Killer) const;
 
 	/**
+	 * Record, on THIS character, that `Striker`'s movement skill has just struck it. Glancing Cuts' record, kept on the
+	 * character struck and keyed by the striker, as `NoteNearKillBy`'s is. The Death trees' slice C6b2 (2026-11-25).
+	 * Written by `UCataclysmSkillEffects::ApplyHit`.
+	 */
+	void NoteStruckByMovementSkillOf(const UAbilitySystemComponent* Striker);
+
+	/** How long ago `Striker`'s movement skill struck this character, in seconds, or -1 if it never has. */
+	float SecondsSinceStruckByMovementSkillOf(const UAbilitySystemComponent* Striker) const;
+
+	/**
 	 * The widest `ReachMetres` of this character's stat rows under `Condition` (in either condition column), or nought
 	 * when none carries one. Grim Wake's marking reads it at the kill, as ruled: the 3 metres are the rows' own. The
 	 * Death trees' slice C4c2 (2026-11-25).
@@ -4820,6 +4830,17 @@ public:
 	float SecondsSinceMovementSkillUsed() const;
 
 	/**
+	 * Record that this character's movement skill has just ENDED, a use that was paid for. The Death trees' slice C6b2
+	 * (2026-11-25), for Arrival's `seconds_after_movement_skill_ends`. Called by `UCataclysmMovementSkill::EndAbility`.
+	 * Raises the action event `movement_skill_ends`, which `action_events()` in `tools/generate_datatables.py` derives
+	 * from that condition.
+	 */
+	void NoteMovementSkillEnded();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceMovementSkillEnded() const;
+
+	/**
 	 * Record that this character has just used a skill carrying `Type.Spell`. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -6179,6 +6200,9 @@ protected:
 	/** When this character last used the skill in its Movement slot, in world seconds; negative means never. */
 	float LastMovementSkillAtSeconds = -1.0f;
 
+	/** When this character's movement skill last ended, in world seconds; negative means never. See `NoteMovementSkillEnded`. */
+	float LastMovementSkillEndedAtSeconds = -1.0f;
+
 	/** When this character last used a skill carrying `Type.Spell`, in world seconds; negative means never. */
 	float LastSpellAtSeconds = -1.0f;
 
@@ -6456,6 +6480,9 @@ protected:
 
 	/** When this character last stood near each killer's kill, in world seconds. See `NoteNearKillBy`. */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> NearKillBy;
+
+	/** When each striker's movement skill last struck this character, in world seconds. See `NoteStruckByMovementSkillOf`. */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> StruckByMovementSkillOf;
 
 	/** Whether the kill whose payment and rows are acting was an execute. See `SetActingOnAKillByAnExecute`. */
 	bool bActingOnAKillByAnExecute = false;

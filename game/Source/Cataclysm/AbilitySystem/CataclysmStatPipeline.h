@@ -1975,6 +1975,34 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetBeyondMetres
 		UMETA(DisplayName = "Target Beyond Metres"),
+
+	/**
+	 * The character's movement skill ENDED at most `ConditionValue` seconds ago: Arrival, "Hits you land within 1 second
+	 * after your movement skill ends". The Death trees' slice C6b2 (2026-11-25). Beside `WithinSecondsOfMovementSkill`,
+	 * which counts from the USE. Written by `UCataclysmMovementSkill::EndAbility` through
+	 * `UCataclysmAbilitySystemComponent::NoteMovementSkillEnded`, only for a use that was paid for: a Recall's first
+	 * press, which leaves a mark and moves nobody, and a use refused before it was paid, end without writing it, and so
+	 * does a movement-shaped skill made for another slot, as for the use's clock. A move cut short does write it,
+	 * because it has ended. At or within, and never reads -1 and refuses, as for every clock.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	WithinSecondsOfMovementSkillEnd
+		UMETA(DisplayName = "Within Seconds Of Movement Skill End"),
+
+	/**
+	 * The character struck was hit by the asker's movement skill at most `ConditionValue` seconds ago: Glancing Cuts,
+	 * "Enemies your movement skill hits take +2% increased damage per point from you for 4 seconds". The Death trees'
+	 * slice C6b2 (2026-11-25). A record kept on the character struck and keyed by the striker, as Grim Wake's is
+	 * (`UCataclysmAbilitySystemComponent::NoteStruckByMovementSkillOf`), written by `UCataclysmSkillEffects::ApplyHit`
+	 * for a blow that landed whose skill was made for the Movement slot: the skill's own blow, its path damage and its
+	 * end explosions. Not for an evaded blow, a share struck at an ally, or a tick. Read by `WithTargetState` only when a
+	 * row asks; never struck reads -1 and refuses.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	TargetStruckByYourMovementSkillWithinSeconds
+		UMETA(DisplayName = "Target Struck By Your Movement Skill Within Seconds"),
 };
 
 /**
@@ -3106,6 +3134,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	float SecondsSinceMovementSkill = -1.0f;
 
 	/**
+	 * Seconds since the character's movement skill last ENDED, a use that was paid for. Negative means neither known
+	 * nor ever, as above. The Death trees' slice C6b2 (2026-11-25). See `WithinSecondsOfMovementSkillEnd`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMovementSkillEnded = -1.0f;
+
+	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
 	 * nor ever, as above.
 	 */
@@ -3766,6 +3801,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetCarriesYourPoison = false;
+
+	/**
+	 * How long ago the asker's movement skill struck the character struck, in seconds; -1 for never, and for a target
+	 * nobody read. The Death trees' slice C6b2 (2026-11-25). See
+	 * `ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceStruckByYourMovementSkill = -1.0f;
 
 	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
@@ -5557,7 +5600,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a ninety-third, which is the drift that put the passive tree eight
+	 * adds a ninety-fifth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5574,7 +5617,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-FOUR OF THE NINETY-TWO COMPARE NOTHING. They are the case labels
+	 * FORTY-FOUR OF THE NINETY-FOUR COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

@@ -1419,6 +1419,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		FCataclysmDamageResult ThrallsOwnResult;
 		FCataclysmDamageResult* const Landed = OutResolved ? OutResolved : &ThrallsOwnResult;
 		const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Landed);
+		// AND A LANDED BLOW OF A SKILL MADE FOR THE MOVEMENT SLOT MARKS WHAT IT STRUCK, for Glancing Cuts (the Death
+		// trees' slice C6b2, 2026-11-25): "Enemies your movement skill hits". The skill's own blow, its path damage and
+		// its end explosions all come through here naming it. Not an evaded blow, not one refused as immune to its
+		// attacker, not a share struck at an ally and not a tick.
+		if (!bAShareOnAnAlly && !Arrived.bIsDamageOverTime && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker
+			&& DeliveredBy && DeliveredBy->GetDesignedSlot() == ECataclysmAbilitySlot::Movement)
+		{
+			if (UCataclysmAbilitySystemComponent* Struck =
+					Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+			{
+				Struck->NoteStruckByMovementSkillOf(Source);
+			}
+		}
 		// AND A THRALL SETS ALIGHT WHAT IT STRIKES. Issue #2784, Subjugate's row: "...fights for you until it dies, keeps
 		// its own abilities, and sets alight what it strikes." Ruled 2026-11-22, the summoned imp's swing burn's shape
 		// (Q3): DESIGNED, so it lands whatever the blow did (#917); the flat `DoT_Burn`, SET BY THE THRALL, neither side's
