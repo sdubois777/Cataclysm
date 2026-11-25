@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Bug batch 2: five more fix branches, stacked on bug batch 1, with a guard proof registered for every new test (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Assembled on `feat/bug-batch-2`, stacked on `feat/bug-batch-1` so it moves
+  with it, as the coordinating session asked on 2026-11-24. **At its turn it is rebased with batch 1 onto the
+  then-current development, on a new branch name, every proof anchor re-checked, and re-registered from the newest
+  measured engine log**; the figures below are relative to batch 1's registration.
+- **It needs an editor step**: `fix/auras-2869` edits the design workbook, and `SkillSlots.csv` and `WeaponSkills.csv`
+  change with it, so `DT_SkillSlots` and `DT_WeaponSkills` are rebuilt.
+- **`feat/abyssal-rifts-2864` is left out**, as ruled: it also edits the workbook and takes the run record from 18 to
+  19; it goes in batch 3 after auras merges.
+- **A RISK, A READING AND NOT A RUN.** `fix/weapon-skills-2870` (#2872) makes an axe whose leap kills its new host tear
+  free and leap on, inside the dying creature's hooks; it was written against the `MarkDead` before batch 1's
+  `fix/drops-and-death-2871`, which refuses a death already being marked. That branch's test
+  `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` has a bonded ally 3 m away and no
+  "catcher", where weapon-skills added one to its own changed test for this chaining. The chain starts only when a leap
+  kills, and that test's leap leaves the ally alive, so it should hold; `BuriedWeaponKills.` runs alone to show it.
+
+### What it holds
+
+| Merge | Branch | Issues |
+| :-- | :-- | :-- |
+| `cc5b1826e` | `fix/thralls-2856` at `eb15b7a30` | #2856, #2867, #2868 |
+| `9ca0a2641` | `fix/resume-position-2858` at `82666c31a` | #2858 |
+| `7855f9a01` | `fix/weapon-skills-2870` at `32cb4c3ed` | #2870, #2872 |
+| `8b57235e0` | `fix/auras-2869` at `516446450` | #2869 |
+| `22a890c3d` | `fix/upthrust-wall-2878` at `fd4669be5` (built on `fix/masochist-shield-2873`, which batch 1 carries) | #2878 |
+
+- **Conflicts: this log at every merge, and `docs/Cataclysm_GDD_v2.md` at auras.** The design document's conflict was
+  two neighbouring rows of the skills table: thralls changed Subjugate's and auras Conflagration's. Each branch's row
+  was kept, after asserting each side left the other row as the base had it. No code file conflicted.
+- `778041f06` puts the seven new entries first, newest first, above batch 1's, each one's text equal to its branch's.
+- **Every file arrived as written**: each of the 68 changed files but this log differs from batch 1 by exactly the
+  union of the five branches' changed lines. The workbook, `SkillSlots.csv` and `WeaponSkills.csv` are byte for byte
+  `fix/auras-2869`'s.
+- `tools/check_resolved_cpp.py` on the 56 changed C++ files: "56 files read, 0 with complaints". No branch names a save
+  version or a committed save file. The engine-name and anonymous-helper checks: "7 passed".
+- **Full Python suite: "1 failed, 8268 passed, 10 skipped"; JUnit 8279 tests, 1 failure, 0 errors, 10 skipped.** The
+  one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming `SkillSlots.csv` and
+  `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+
+### Registered for its window
+
+**28 new test names, none removed** (read from the name literals in the diff). **The whole suite is registered as
+5406**, batch 1's 5378 plus 28, all succeeded; 57 skipped halves; **test saves 0 left behind, the number written not
+predicted**: the two new resume tests write the run slot through the game's own save, which a reading cannot count.
+
+| Branch | New tests |
+| :-- | --: |
+| thralls | 8 |
+| resume-position | 3 |
+| weapon-skills | 7 |
+| auras | 5 |
+| upthrust-wall | 5 |
+
+**Editor step**: `tools/run_editor_python.py tools/generate_datatable_assets.py`, committing `DT_SkillSlots`,
+`DT_WeaponSkills` and `datatable_asset_sources.json` only.
+
+**Groups alone, first**, at batch 1's head count plus what this batch adds: `Command.` 31 (25 + 6), `LevelCosts.` 5,
+`Gatekeeper.` 15, `Terrain.` 12, `Telegraph.` 16, `AuraDamage.` 4 (new), `SkillNumbers.` 4, `Targeting.` 7, `WhipAim.`
+3 (new), `HarrowerLeaps.` 2 (new), `SaveLoad.` 83, `Travel.` 10; and with nothing added, `BuriedWeaponKills.` 4 (the
+risk above), and the groups the thralls entries name to read: `Overlay.` 34, `SkillLevelSources.` 19,
+`MinionFollowSpeed.` 11, `SkillCost.` 3, `DungeonModifierEffects.` 785.
+
+**30 C++ guard proofs** (`.claude/windows/prove_bb2_table.py.txt`), every anchor matching once on `778041f06`, each
+narrowed to the full names of the tests it is for. Every selected test must fail with the break in, except RP1's, and
+pass restored:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| TR1 | the take prices the reserve with no target | `Command.AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| TR2 | every thrall at scale 1 | the same |
+| TR3 | a Herald's scale 1 | the same |
+| TR4 | the re-price forgets the thrall's rarity | `LevelCosts.AHeraldThrallIsRepricedAtAHeraldsFigureWhenItsSkillLevels` |
+| O1 | the oldest never released | `Command.AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O2 | the newest released first | the same |
+| O3 | a machine released | the same |
+| O4 | the take asks for room now, not room that can be made (re-anchored: the call passes `ThrallReserve`) | the same |
+| L1 | a taken creature keeps its health | `Command.ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+| L2 | built at level 1 | the same |
+| L3 | its kind's share ignored | the same |
+| H1 | the blow's target never held alive | `Command.SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H2 | the hold never read | the same |
+| H3 | every target held, a boss too | `Command.SubjugatesBlowStillKillsABossItCannotTake` |
+| TF1 | "dead" never a reason | `Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem` |
+| GB1 | the bar asks the near commander | `Gatekeeper.ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` |
+| GB2 | no creature on the player's side | the same |
+| UW1 | the wall's near end at its start's height | the three new `Terrain.` tests |
+| UW2 | a point brought to the creature's feet | the two new `Telegraph.` tests |
+| AU1 | the Aura rule never applies | `AuraDamage.MiasmasRow...`, `AuraDamage.EveryAuraRow...`, `SkillNumbers.AnAuraStatingNoDamage...` |
+| AU2 | the pulse reaches 2.5 times as far | `AuraDamage.ConflagrationsRow...`, `AuraDamage.LivingPyresRow...` |
+| W1 | a cone ignores a body's radius | `WhipAim.TheWhipStrikesAnEnemyOneMetreAhead...`, `Targeting.AConeSearchFindsABodyBesideItsAim...` |
+| W2 | a body never overlaps a cone's side | both new `Targeting.` tests |
+| W3 | an enemy under the cursor ignored (re-anchored: `if (Enemy)` is twice in its file) | `WhipAim.ACursorOnAnEnemyAims...` |
+| W4 | the cursor's point never used | `WhipAim.ASwingGoesTowardTheCursor...`, `WhipAim.ACursorOnAnEnemyAims...` |
+| W5 | an axe always tears free | `HarrowerLeaps.ALeapThatKillsItsNewHostTearsFreeAgainAndGoesOn` |
+| W6 | the leap's line reworded | both `HarrowerLeaps.` tests |
+| RP1 | the floor's start told it reached nobody | `Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce` only; it selects the two resume tests too, which pass |
+| RP2 | the floor started again on a resume | all three new resume-position tests |
+| RP3 | every load reports the character put back | `Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` |
+
+Thralls' proofs are renamed from their entries (R to TR, its second R to TF, B to GB) because batch 1 has a B1 and B2;
+the resume-position agent's R1 to R3 are RP here. Its two earlier proofs, which set the flag false or its read false,
+are not used: by its report they no longer fail anything, the two protections each covering the other.
+
+---
+
 ## 2026-11-24 — A thrall's Fervour reserve rises with the rarity of the creature taken: Common 30, Elite 45, Legendary 60, Herald 90 (#2856, #2868)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A third commit on `fix/thralls-2856`, by the coordinating
