@@ -2,6 +2,150 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Critical strikes, executes and kills that speed the next: Telling Blows, Reaper's Edge, Relentless and Chain Execution (Death trees, slice C4d1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `PerCriticalStrikeStat`, `GainOnCriticalStrike`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `CriticalNextHitAction`,
+  `SetActingOnAKillByAnExecute`, `IsBeingExecuted`, `HoldsNextHitCritical`, `SpendNextHitCritical`,
+  `TimesSizedByFervourHeld`; `ExecuteIfLeftBelow` marks the character it kills; `ActOnEvent` sizes a row by the whole
+  hundreds of Fervour held and grants Chain Execution's charge; `CurrentConditions` fills the new state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `kill_was_an_execute`
+  (`KillWasAnExecute`) and its state field; `FCataclysmPoolAction::bNextHitCritical`; the base
+  `ECataclysmPoolActionBase::ForEachHundredClassResourceHeld`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp`: `FCataclysmDeathNotice::bByAnExecute`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`: `FCataclysmIncomingHit::bCertainCritical`,
+  honoured where the critical strike is rolled.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: a hit is certain to be critical while its
+  attacker holds the charge, and the charge is used by the hit it made critical.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the hit handler pays a critical strike's Fervour; the
+  kill handler marks an execute's kill.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` and `Items/CataclysmItem.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmCritsAndExecutesTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
+  (a probe in two tables), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (four, and the name map),
+  `test_generate_datatables.py` (a class of ten), `test_passive_effects_match_the_node_text.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (582 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **CHAIN EXECUTION'S CRITICAL STRIKE OVERRIDES THE CEILING ON CRITICAL STRIKE CHANCE.** "Your critical strike chance
+  cannot exceed 30%-50%" (`max_crit_chance`) holds the chance, and the charge does not use the chance at all: the hit is
+  marked certain. A judgement, from the sentence's "a critical strike", not asked; say so if it should be held to the
+  ceiling instead.
+- **THAT AN EVADED HIT DOES NOT USE THE CHARGE IS PROVEN BY READING THE CODE, NOT BY AN UNREAL TEST.** The critical
+  step in `UCataclysmDamageCalculation::Resolve` is after evasion's early return, and a Python test holds that order;
+  no Unreal test pins an evasion roll.
+- **RELENTLESS'S COOLDOWN CUT IS SHOWN IN UNREAL THROUGH A HEAL ON THE SAME BASE**, not through a skill's cooldown: the
+  event loop sizes every row on `ForEachHundredClassResourceHeld` in one place before any action reads it, and the
+  Python test holds that the cooldown reduction is one of those rows. The cut on a real cooldown is not run.
+- **THE WORKBOOK SCRIPT CAN NOW REWRITE A NODE IT WROTE BEFORE.** The Shadow's starting node gained its fifth row, and
+  `tools/reapply_death_trees_workbook.py` refused any node already holding rows. `Node.before` lists a node's earlier
+  states, the pattern of the Demonic tree rework's script; a node found in one of them is rewritten in place, and
+  anything else is still refused.
+- **THE ENGINE CONSTANT IS `CriticalNextHitAction`, NOT `NextHitCriticalAction`,** because
+  `test_the_generator_accepts_exactly_the_next_use_names_the_engine_has` reads every constant whose name begins `Next`
+  as a next-use action. The data name is `next_hit_critical`.
+
+### What each reads
+
+- **THE SHADOW'S "2 FOR EACH CRITICAL STRIKE YOU LAND" AND TELLING BLOWS (Q2):** a new stat, `fervour_per_critical_strike`,
+  asked against the character struck by `UCataclysmFervour::GainOnCriticalStrike`, scaled by the generation rate,
+  clamped to the maximum and paid through `RaisePool`. The player's hit handler calls it for each landed critical strike
+  of the character's own, a minion's left out as the cull leaves it, before the `critical_strike` rows act. It is not a
+  kill's payment. Telling Blows is the same stat at 1 a point under `target_rarity_at_least` 1. No War row is written.
+- **REAPER'S EDGE (Q3):** the existing `execute_target` at 100 under `target_health_below` 15 on `hit_dealt`, whose
+  refusal of Boss and Cataclysm Boss is its own rule, a Herald allowed; and `fervour_per_kill` "more" 100 under the new
+  condition `kill_was_an_execute`, so the whole kill payment, rarity rows included, doubles. `ExecuteIfLeftBelow` marks
+  the character it kills while the kill is written; the death notice built inside that kill copies the mark as
+  `bByAnExecute`; the kill handler marks the payment and the kill's rows from it and clears the mark after. A set
+  bonus's cull shares `KillIfLeftBelow` and is not marked.
+- **RELENTLESS (Q4):** `cooldown_reduce_all` at 1 on `kill`, Fraction Of `for_each_hundred_class_resource_held`: the
+  value once for each whole hundred of Fervour held as `class_resource_held` counts it, read when the kill's rows act,
+  after the kill's own payment. 99 held takes nothing off; 200 takes 2 seconds. The base is accepted on the cooldown
+  reductions alone and kept off the pool rows' list.
+- **CHAIN EXECUTION (Q5):** a new action, `next_hit_critical`, at 2 (the seconds) on `kill`. The charge lasts until the
+  seconds have passed or a hit uses it; a second kill inside the window sets it to the full window again, never two. The
+  defender's attribute set marks a hit certain to be critical while the attacker holds the charge, after the chance and
+  the skill's stated figure are read; `Resolve` makes it critical after evasion; and the attribute set uses the charge
+  on the hit it made critical, so the first of a skill's hits to resolve uses it and the rest are rolled as usual.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Fervour (the Shadow's starting node) | adds fervour_per_critical_strike, flat, 2 |
+| Telling Blows (basic, max 8) | fervour_per_critical_strike, flat, 1, cond=target_rarity_at_least 1 |
+| Reaper's Edge (the Soul Collector's 100 vow, option 2) | action execute_target, 100, on hit_dealt, cond=target_health_below 15; fervour_per_kill, more, 100, cond=kill_was_an_execute |
+| Relentless (the Shadow's 100 vow, option 3) | action cooldown_reduce_all, 1, on kill, fraction_of=for_each_hundred_class_resource_held |
+| Chain Execution (the Shadow's 100 vow, option 2) | action next_hit_critical, 2, on kill |
+
+`PassiveEffects.csv` 576 to 582; the Soul Collector 117 rows, the Shadow 82. The pins: rows 582, nodes 352 (Telling
+Blows, and the Shadow's 100 vow, which had no row before), options 51.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4d plan: Q1, the split into C4d1 (Telling Blows, Reaper's Edge,
+Relentless, Chain Execution), C4d2 (Patient Blade, Death by Inches) and C4d3 (Wearer of the Dead, a classification table
+first); Q2, the stat through `RaisePool`, and the Shadow's starting node's half with it, no Berserker row; Q3 (a) to (d),
+"non-Boss" being `execute_target`'s existing rule; Q4, whole hundreds read after the kill's own payment; Q5, the charge
+as written above; Q6 to Q8 for the later slices.
+
+### Research
+
+Read on 2026-11-25 through the web-fetch agent:
+
+| Game | Page read | What it says |
+|---|---|---|
+| Path of Exile 2 | `poe2db.tw/us/Culling_Strike` | "Culling Strikes kill Normal enemies if their life is at 35% or below", lower thresholds for higher rarities, Unique at 5% |
+| Path of Exile | `poedb.tw/us/Assassin` | "10% chance to gain a Power Charge on Critical Strike" |
+| Path of Exile | `poedb.tw/us/Ambush` | Its buff "is removed to Exert the next Melee Attack you perform"; "Base duration is 1.5 seconds" |
+
+What it settles: killing outright below a share of health, a class resource gained on a critical strike, and a short
+effect used up by the next attack are each the genre's shape. Not settled by it: whether a boss is refused (the page
+read says nothing of bosses; the refusal is `execute_target`'s own rule), a guaranteed critical strike (Ambush raises
+the chance), and cooldowns cut on a kill (no readable page was found; `poewiki.net` refuses automated reading and the
+Last Epoch forum search returned nothing). Those come from the nodes' sentences and the rulings.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.CritsAndExecutes.` | new: `ACriticalStrikePaysTwoAndTellingBlowsOneMoreOnAnEliteOrStronger`, `ThePlayersCriticalStrikePaysFervourThroughTheRealHitHandler`, `ReapersEdgeDoublesTheFervourOfAnExecutesKillThroughTheRealHandlers`, `RelentlessIsSizedByTheWholeHundredsOfFervourHeld`, `ChainExecutionMakesTheNextLandedHitCriticalAndOnlyThatOne`, `TheFiveNodesRowsAreTheirSentences` | 6 |
+| `Cataclysm.StatExemption.` | the conditioned probe and the read probe each run one new probe | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 582 | unchanged |
+
+The three through the real handlers build the scene `Cataclysm.Swarm.` builds. The execute test measures what one blow
+takes first and holds each creature relative to it, as `Cataclysm.Skills.`'s execute test does, so it does not depend
+on the creature's mitigation. Each new test has a control: a character without the stat; a blow that is not critical;
+a kill by the blow itself; 99 Fervour held; the blow after the charged one, and the charge at 2.5 seconds.
+
+A figure that may be wrong: the Chain Execution test asks that the charged blow take more than 1.2 times a plain one,
+which assumes the player's critical strike multiplier is above 120%.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmVitalAttributeSet.cpp`: `Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();` becomes
+   `Hit.bCertainCritical = false;`. Prefix `Cataclysm.CritsAndExecutes.`; must fail
+   `ChainExecutionMakesTheNextLandedHitCriticalAndOnlyThatOne`.
+2. `CataclysmCombatEvents.cpp`: `Notice.bByAnExecute = System->IsBeingExecuted();` becomes
+   `Notice.bByAnExecute = false;`. Prefix `Cataclysm.CritsAndExecutes.`; must fail
+   `ReapersEdgeDoublesTheFervourOfAnExecutesKillThroughTheRealHandlers` (10 rather than 20).
+3. `CataclysmAbilitySystemComponent.cpp`, `TimesSizedByFervourHeld`: `Held / 100.0f` becomes `Held / 10.0f`. Prefix
+   `Cataclysm.CritsAndExecutes.`; must fail `RelentlessIsSizedByTheWholeHundredsOfFervourHeld`.
+
+### What was run
+
+SUITE_FIGURES_C4D1
+
+PYTHON_PROOFS_C4D1
+
+---
+
 ## 2026-11-25 — Marks left by a death: Grim Wake and Blood Debt (Death trees, slice C4c2)
 
 **Affects:**
