@@ -87,6 +87,52 @@ below where it applies.
 **MERGE OBLIGATION:** `feat/death-skills-2885` carries the three old rows in its copy of the workbook. Whichever
 lands second re-applies the other's cells; for this change that is `tools/reapply_damage_type_auras_workbook_edit.py`.
 
+### Registered, 2026-11-25: for BUNDLE 1, with the forge window
+
+**Nothing here has run in Unreal.** The owner asked on 2026-11-25 to bundle windows to save the build machine's time,
+and the coordinating session put this branch in BUNDLE 1 with the forge window: one branch, one window and one pull
+request, assembled by the forge session from `feat/damage-type-auras` at the commit that carries this section. The
+window's results for the auras are written there, into this entry, by the forge session (the coordinating session's
+ruling: one branch, one writer).
+
+- **Base:** counted from window rifts-w1's `rifts_suite_engine_b80da905.log` (5520 performed). Development `db7427d7a`
+  adds two Rift tests to it, and this branch six, all in `Cataclysm.DamageTypeAuras.`, none removed: 5528. **The bundle
+  is made after the trees base merges, so every count below is taken again from that window's whole-suite log**;
+  `Creation.` and `Player.` are groups it also changes.
+- **The build**, then **the editor step**: `DT_WeaponSkills` only (`python tools/run_editor_python.py
+  tools/generate_datatable_assets.py`), since three rows of `WeaponSkills.csv` changed. Until it runs,
+  `tools/tests/test_datatable_assets_are_current.py` fails, which is the one Python failure below. No save record
+  changes.
+- **The groups alone**, each with a trailing dot, 32 groups and 632 tests, each predicted all succeeded and 0 failed:
+  `DamageTypeAuras.` 6 (new), `AuraDamage.` 4 (the Aura row count, 12 to 13), `AuraEffect.` 7, `AuraImmunity.` 5,
+  `BuffPotency.` 6, `GenericBuffs.` 3, `AllyBuffsRefused.` 5, `SkillShape.` 10 (row parsing), `SkillNumbers.` 4,
+  `WeaponSlots.` 17 (rows that had no shape), `Creation.` 17 (rows that had no shape), `Teams.` 6, `Player.` 20 (the
+  player's speed), `GroundDown.` 3 (a creature's walk), `Brute.` 23 (the Brute's walk), `Imp.` 6, `Hellhound.` 11,
+  `Gatekeeper.` 15, `Sentinel.` 6, `Succubus.` 10, `Warden.` 20, `Enemy.` 19, `Command.` 31 (a commander's pace),
+  `MinionFollowSpeed.` 11 (a minion's walk), `Withering.` 3 (Wither), `ClickToMove.` 2, `RenderingBlows.` 3 (armour
+  removed), `ImmuneAfterFifteenSeconds.` 8 (immunities), `CrowdControlCeiling.` 5 (immunities), `SufferingAuraImmunity.`
+  3 (immunities), `Traps.` 60 (armour removed), `Skills.` 283 (the aura template; the largest, so last).
+- **The whole suite**: the base's total + 6, every test succeeding; skipped halves and saves as the base log; none of
+  the six writes a save.
+- **ONE C++ guard proof**, the bundle's limit of one a branch. **AW1**: in
+  `ACataclysmPlayerCharacter::RefreshMovementSpeed`, `const bool bImmuneToSlow =
+  UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));` becomes `const bool bImmuneToSlow = false &&
+  UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));`, `test_prefix` `Cataclysm.DamageTypeAuras.`, predicted to
+  fail `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest` and nothing else. Kept as the most central rule: an
+  immunity to Slow working changes play beyond the three auras, for Grave Shroud, Fevered Blood and Living Pyre and for
+  every player's speed.
+- **Dropped, by the bundle's limit:** AD1 (Pall of Ending's More bucket made Increased; it would fail
+  `PallOfEndingGivesItsCasterAndAMinionInsideTenPercentMoreAndOneOutsideNothing`) and AC1 (the burn copy never applied;
+  it would fail `ABurningEnemyDyingInConflagrationPassesItsBurnToTheNearestOtherWithinFourMetres`). Each guards one
+  figure inside one aura, and each keeps its own new test with a control.
+- **Python, run on `6375111e0`**, which this head differs from only in `docs/DECISIONS.md`, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `1 failed, 8608 passed, 10 skipped in 533.01s (0:08:53)`; the JUnit file
+  agrees, 8,619 tests, 1 failure, 0 errors, 10 skipped. **The one failure is the expected one**:
+  `test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  because `WeaponSkills.csv` changed and its asset is rebuilt only by the window's editor step. (On `4f72f30f8` it was 4
+  failed; the other three were tests this change moved, corrected in `6375111e0`.) `python -m ruff check .`: `All checks
+  passed!`.
+
 ---
 
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
