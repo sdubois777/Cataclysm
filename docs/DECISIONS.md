@@ -88,7 +88,8 @@ while all 25 tests in `test_passive_effects_match_the_node_text.py` still pass; 
   and run the groups under "Unreal tests".
 - **THE KILL HANDLER'S ORDER IS CHECKED ONLY BY READING THE SOURCE.** The Unreal tests call `GiveBackDecayOnKill`,
   `ClaimOnDeath` and `CreditAFollowersKill` directly. None drives `ACataclysmPlayerCharacter::OnSomethingDied`, which
-  needs a whole player; `test_kill_credit_reaches_the_soul_collector.py` reads the order from the source.
+  needs a whole player; `test_kill_credit_reaches_the_soul_collector.py` reads the order from the source. (One Death's
+  Toll case through the whole player was added after the slice was accepted; see "Unreal tests".)
 - **THE PLAN'S RESEARCH WAS WIDER THAN WHAT A READABLE PAGE SUPPORTS.** The plan said Path of Exile and Last Epoch both
   leave a minion's kill out of the player's "on kill" effects. Re-read before this entry: the Last Epoch forum supports it
   for Last Epoch, from a community member, not a developer; no readable Path of Exile page says it either way. See
@@ -160,6 +161,12 @@ trees'.
 
 Each new test has a control: no Reclaimed, and a second kill straight after; a hit too long before, and an enemy never
 struck; no Death's Toll, and a killer nobody owns; the character's own kill, which raises `kill` to every row.
+
+**AND ONE CASE THROUGH THE WHOLE PLAYER, added after the slice was accepted, as the coordinating session asked**
+(`feat/death-trees-kill-credit-end-to-end`): `Cataclysm.KillCredit.AMinionsKillPaysTheRealPlayerUnderDeathsToll`, on the
+scene `Cataclysm.Swarm.AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone` builds, a real player on a real player
+state whose real imp kills a creature, heard by `OnSomethingDied`. With Death's Toll the kill pays the player 5 and stamps
+its kill clock; without it, nothing. The group is then 6. No C++ guard proof is registered for it.
 
 **Three C++ guard proofs are registered for the window:**
 1. `CataclysmAbilitySystemComponent.cpp`, `TakeFervourDecayedWithin`: `if (Entry.Key >= Since)` becomes `if (true)`.

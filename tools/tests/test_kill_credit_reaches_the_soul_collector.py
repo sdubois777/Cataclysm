@@ -1,9 +1,9 @@
 """The player's kill handler reaches Reclaimed, Claimed and Death's Toll in the order ruled.
 
 WHY THIS EXISTS. The Soul Collector's Reclaimed, Claimed and Death's Toll (the Death trees' slice C4b2, 2026-11-25) are
-called from `ACataclysmPlayerCharacter::OnSomethingDied`, which the Unreal tests in `Cataclysm.KillCredit.` cannot drive
-without a whole player character. Continuous integration compiles no C++, so this reads the order from the source with
-comments and strings removed.
+called from `ACataclysmPlayerCharacter::OnSomethingDied`. One Unreal test drives it with a whole player
+(`Cataclysm.KillCredit.AMinionsKillPaysTheRealPlayerUnderDeathsToll`); the others call the three directly. Continuous
+integration compiles no C++, so this reads the order from the source with comments and strings removed.
 
 WHAT IS ASSERTED. An own kill gives back decay before it is paid; Claimed is asked only for a death this character did
 not make and that Death's Toll did not make its own, so the two never both pay; both decays record what they took, as

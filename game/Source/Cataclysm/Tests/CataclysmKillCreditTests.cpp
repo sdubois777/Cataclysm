@@ -6,11 +6,19 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Data/CataclysmDataRows.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "Engine/DataTable.h"
@@ -22,7 +30,9 @@
  * Deaths the Soul Collector did not make, and decay given back (the Death trees' slice C4b2, 2026-11-25): Reclaimed,
  * Claimed and Death's Toll. The mechanism of each is read with stats given by hand, so each figure is exact; one test
  * reads the three nodes' real rows. `tools/tests/test_kill_credit_reaches_the_soul_collector.py` checks the order the
- * player's kill handler calls them in, which these tests cannot reach without a whole player.
+ * player's kill handler calls them in. ONE CASE GOES THROUGH THE WHOLE PLAYER, as the coordinating session asked:
+ * `AMinionsKillPaysTheRealPlayerUnderDeathsToll`, on the scene `Cataclysm.Swarm.` builds, a real player on a real player
+ * state whose real imp kills a creature, heard by `ACataclysmPlayerCharacter::OnSomethingDied` as the game hears it.
  */
 
 namespace CataclysmKillCreditTest
@@ -312,6 +322,147 @@ bool FCataclysmKillCreditSoulCollectorRowsTest::RunTest(const FString&)
 	System->SetNumericAttributeBase(Health, 500.0f);
 	System->ActOnEvent(FName(TEXT("kill")), nullptr, 0.0f, /*bLanded=*/true, Slain);
 	TestEqual(TEXT("control: the character's own kill raises it to both: 800"), Commander.Health(), 800.0f, 0.01f);
+	return true;
+}
+
+namespace CataclysmKillCreditEndToEndTest
+{
+	constexpr float CreditMetre = 100.0f;
+
+	/** A real player on a real player state, as `Cataclysm.Swarm.` builds one. */
+	struct FKillCreditScene
+	{
+		ACataclysmPlayerCharacter* Player = nullptr;
+		ACataclysmPlayerState* State = nullptr;
+		UCataclysmAbilitySystemComponent* System = nullptr;
+	};
+
+	/** The damage lines a blow needs, 5 Fervour a kill, and Death's Toll when `bDeathsToll`. Replaces the stat lines. */
+	void WearDeathsToll(const FKillCreditScene& Scene, bool bDeathsToll)
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.Add(FName(TEXT("attack_damage"))).Base = 100.0f;
+		Lines.Add(FName(TEXT("spell_damage"))).Base = 100.0f;
+		FCataclysmStatModifier Five;
+		Five.Bucket = ECataclysmStatBucket::Flat;
+		Five.Source = ECataclysmModifierSource::PassiveKeystone;
+		Five.Value = 5.0f;
+		Lines.Add(FName(UCataclysmFervour::PerKillStat)).Modifiers = {Five};
+		if (bDeathsToll)
+		{
+			FCataclysmStatModifier Flag = Five;
+			Flag.Value = 1.0f;
+			Lines.Add(FName(UCataclysmFervour::FollowerKillsCountAsYoursStat)).Modifiers = {Flag};
+		}
+		Scene.System->SetStatInputs(MoveTemp(Lines));
+	}
+
+	/** The scene `Cataclysm.Swarm.`'s `BuildSwarmScene` builds, with a Fervour pool of 100. */
+	bool BuildCreditScene(FAutomationTestBase& Test, UWorld* World, FKillCreditScene& Out)
+	{
+		Out.State = World->SpawnActor<ACataclysmPlayerState>();
+		Out.Player = World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: a player state"), Out.State)
+			|| !Test.TestNotNull(TEXT("set-up: a player"), Out.Player))
+		{
+			return false;
+		}
+		Out.Player->SetPlayerState(Out.State);
+		Out.Player->OnRep_PlayerState();
+		Out.System = Out.State->GetCataclysmAbilitySystemComponent();
+		if (!Test.TestNotNull(TEXT("set-up: the player's ability system"), Out.System))
+		{
+			return false;
+		}
+		Out.System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		Out.System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		Out.System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+		Out.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		WearDeathsToll(Out, /*bDeathsToll=*/false);
+		return true;
+	}
+
+	/** A creature of the monsters' side with one health left, so any blow kills it. */
+	ACataclysmEnemyCharacter* OneHealthCreature(UWorld* World, const FVector& At)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(At, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(1000.0f);
+			if (UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Made))
+			{
+				Theirs->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+			}
+		}
+		return Made;
+	}
+
+	float PlayersFervour(const FKillCreditScene& Scene)
+	{
+		return Scene.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillCreditEndToEndTest,
+	"Cataclysm.KillCredit.AMinionsKillPaysTheRealPlayerUnderDeathsToll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The whole path, as the coordinating session asked: a real player on a real player state paying 5 Fervour a kill, and
+ * a real imp of its, which kills a creature with one health left. The death's killer is the imp (no Conduit), and
+ * `ACataclysmPlayerCharacter::OnSomethingDied` hears it. With Death's Toll the kill pays the player 5 and stamps its kill
+ * clock. THE CONTROL: the same kill without Death's Toll pays the player nothing and stamps nothing.
+ */
+bool FCataclysmKillCreditEndToEndTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCreditEndToEndTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	FKillCreditScene Scene;
+	if (!BuildCreditScene(*this, World, Scene))
+	{
+		return false;
+	}
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Scene.Player, FVector(2 * CreditMetre, 2 * CreditMetre, 0),
+													/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+	ACataclysmEnemyCharacter* First = OneHealthCreature(World, FVector(6 * CreditMetre, 2 * CreditMetre, 0));
+	ACataclysmEnemyCharacter* Second = OneHealthCreature(World, FVector(6 * CreditMetre, -2 * CreditMetre, 0));
+	if (!TestNotNull(TEXT("set-up: the player's imp"), Imp) || !TestNotNull(TEXT("set-up: a creature"), First)
+		|| !TestNotNull(TEXT("set-up: a second creature"), Second))
+	{
+		return false;
+	}
+
+	const float BeforeTheControl = PlayersFervour(Scene);
+	Imp->AttackTarget(First);
+	if (!TestTrue(TEXT("set-up: the imp's blow killed the first creature"),
+				  !IsValid(First) || UCataclysmSkillEffects::IsDead(First)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: without Death's Toll the imp's kill pays the player nothing"),
+			  PlayersFervour(Scene) - BeforeTheControl, 0.0f, 0.001f);
+	TestTrue(TEXT("control: and stamps no kill clock"), Scene.System->SecondsSinceOwnKill() < 0.0f);
+
+	WearDeathsToll(Scene, /*bDeathsToll=*/true);
+	const float BeforeTheToll = PlayersFervour(Scene);
+	Imp->AttackTarget(Second);
+	if (!TestTrue(TEXT("set-up: the imp's blow killed the second creature"),
+				  !IsValid(Second) || UCataclysmSkillEffects::IsDead(Second)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with Death's Toll the imp's kill pays the player 5"), PlayersFervour(Scene) - BeforeTheToll, 5.0f,
+			  0.001f);
+	TestTrue(TEXT("and stamps the player's kill clock"), Scene.System->SecondsSinceOwnKill() >= 0.0f);
 	return true;
 }
 
