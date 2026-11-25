@@ -123,7 +123,56 @@ and `sim/tests/test_a_fall_to_war_starts_the_next_siege.py`, four. `test_dungeon
 
 ### Registered
 
-Nothing has run yet. The Python suite and ruff, the Python guard proofs and the sweeps are added here after they run.
+**The whole Python suite at `73499bed9`:** "1 failed, 8624 passed, 9 skipped in 627.61s (0:10:27)"; JUnit 8634 tests,
+1 failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is the base branch's**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded` names
+`DungeonModifiers.csv`, which `feat/abyssal-rifts-2864-2` changes and its window's editor step rebuilds. This slice
+changes no CSV. **The first run, at `ebacd1c52`, had 7 failures; six were this slice's**, each fixed at `73499bed9`:
+
+| Check | Why it failed | Fixed by |
+| :-- | :-- | :-- |
+| `test_the_siege_prose_in_policies_is_true.py` | the Siege mix moved: 62.8% Basic over its 320 campaigns, against 70% stated | re-measuring it over 10,000 campaigns (Affects) |
+| `test_cpp_comments_cite_real_python_tests.py` | a header comment named the deleted file | rewording the comment |
+| `test_the_decisions_log_names_real_files.py` | this entry's Affects named the deleted file | describing it instead |
+| `test_demonic_rifts_port.py` | it reads `const ... Kind = RollKind(Stream);` | reading it without `const` |
+| `test_empire_tree_event_counts_are_saved.py` | `HitBy` sat between `ArmTheLastStandFor` and the hit | setting `HitBy` first |
+| `test_war_quest_sieges_port.py` | it counted the step's own migration test as a chain test | skipping that file |
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `73499bed9`:
+
+| Proof | The break | Result | Named failures |
+| :-- | :-- | :-- | :-- |
+| WP1 | `_fall` makes the Siege on a fall to Death, not War | "PROVED: 3 failed, 1 passed in 0.18s \| restored: 4 passed in 0.05s" | the three fall tests in `test_a_fall_to_war_starts_the_next_siege.py` that expect a Siege |
+| WP2 | `quest_sieges_made_today` counts nothing | "PROVED: 2 failed, 9 passed in 0.13s \| restored: 11 passed in 0.07s" | `test_the_day_s_two_count_the_falls_and_the_waves_together`, `test_the_cap_is_per_day` |
+| WP3 | the move on a fall sets no `ArrivedDay` | "PROVED: 1 failed, 5 passed in 2.30s \| restored: 6 passed in 0.19s" | `test_growth_counts_from_arrival_and_the_quest_share_bites_in_both` |
+
+WP3 was first sent with an anchor holding a carriage return and a line feed, which `prove_guard` reads
+converted, so it refused the break as changing nothing and ran no test; it was sent again with an anchor on one
+line.
+
+**For the window** (bundle 4, the coordinating session, 2026-11-25), counted statically and to be recounted from the
+window's base log:
+- **The editor step:** none of this slice's; the base branch's rebuilds `DT_DungeonModifiers`.
+- **The whole suite:** the base's figure plus 11 (`Cataclysm.WarQuestSieges.`), none removed; two `Cataclysm.Surge.`
+  tests renamed.
+- **Save record:** the run record 20 to 21.
+- **Groups alone**, every group with a test that reads what this slice moved: `WarQuestSieges.` (new), `Surge.`,
+  `EmpireRun.`, `Rifts.`, `SaveLoad.`, `SaveRecords.`, `SaveWriter.`, `CityCleanseSave.`, `CityUpgradeBuildSave.`,
+  `ConsumptionDouble.`, `DeathCost.`, `Dismantle.`, `EarnedBoss.`, `EarnedBossSave.`, `EmpireTreeCity.`,
+  `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `EmpireTreeWalk.`,
+  `GemSave.`, `Gold.`, `RiftAltars.`, `Seeding.`, `ThrallSave.`, `WalkSeed.`, `WinningTheRun.`.
+- **One C++ guard proof**, the bundle's limit of one a slice:
+
+| Proof | File | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| WC1 | `CataclysmEmpireRun.cpp` | `if (FelledBy == ECataclysmType::War)` read as `if (false && FelledBy == ECataclysmType::War)` | `Cataclysm.WarQuestSieges.` | `AFallToWarMakesAWarQuestSiegeOnANeighbour`, `AFallToWarMakesNoneWhenTheDayHasItsTwoOrEveryNeighbourIsBesieged` |
+
+  **Dropped, for the same limit:** the quarter (`* Host.Share *` read as `*`), guarded by
+  `AQuestSiegeBitesAQuarterOfWhatAnOrdinarySiegeBites`; and the day's cap (`QuestSiegesToday >= QuestSiegesPerDay`
+  read as `false`), guarded by `AWaveMakesNoMoreWarQuestSiegesThanTheDayHasLeft`. Each keeps its own test with a
+  control. WC1 is kept because the fall rule is the one rule new to both halves.
+- **The sweeps** (`sim/experiments.py`, W5): not run yet. They run when no Unreal window is running, and their War
+  rows are added here.
 
 ---
 
