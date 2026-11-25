@@ -833,6 +833,8 @@ public:
 	static constexpr const TCHAR* SoulHarvestDamageSource = TEXT("SoulHarvest");
 	static constexpr const TCHAR* NothingIsForgottenDamageSource = TEXT("NothingIsForgotten");
 	static constexpr const TCHAR* VengefulWraithsDamageSource = TEXT("VengefulWraiths");
+	/** Undying Will's "increased damage output", on a creature it brought back. 2026-11-24. */
+	static constexpr const TCHAR* UndyingWillDamageSource = TEXT("UndyingWill");
 
 	/**
 	 * Writes one rule's part, replacing what that rule gave before, and rewrites the attack damage. A part that gives
@@ -1125,6 +1127,25 @@ public:
 	 * while the answer matters.
 	 */
 	bool bInfernalBrandExploding = false;
+
+	/**
+	 * What the Death modifiers keep on the creature, written 2026-11-24 ahead of their window. PUBLIC FOR THE REASON
+	 * THE TIMERS ABOVE ARE: the rules that read them are statics on `UCataclysmEnemyModifiers`, so a test can drive
+	 * them a step at a time. NONE IS SAVED: a floor restored from a save starts each clock again.
+	 *
+	 * Spectral Shift's clock and the seconds it has left out of existence; Shadow Step's seconds left seen and whether
+	 * it is Shadow Step that hid the creature (so it never shows one the vision system hid); Lingering Decay's clock;
+	 * when Funeral Pyre last placed a pyre, negative until the first; and the two marks the dungeon game mode gives a
+	 * creature it brought back for Haunting or Undying Will.
+	 */
+	float SecondsSinceSpectralShift = 0.0f;
+	float SpectralShiftSecondsLeft = 0.0f;
+	float ShadowStepSeenSecondsLeft = 0.0f;
+	bool bHiddenByShadowStep = false;
+	float SecondsSinceDecayZone = 0.0f;
+	float FuneralPyreLastAt = -1.0f;
+	bool bIsASpectralCopy = false;
+	bool bRisenByUndyingWill = false;
 
 	/**
 	 * Writes the attribute changes this creature's modifiers ask for.
@@ -1890,11 +1911,12 @@ public:
 	bool bShrouded = false;
 
 	/**
-	 * Whether no damage reaches this creature now: it cannot be hurt, or it is shrouded. What
-	 * `UCataclysmVitalAttributeSet` reads where it empties a resolved blow. Its health clamp asks the
-	 * two fields apart, because the Reaper is held at its maximum and a shrouded creature where it is.
+	 * Whether no damage reaches this creature now: it cannot be hurt, or it is shrouded, or Death's Spectral
+	 * Shift has it out of existence (2026-11-24). What `UCataclysmVitalAttributeSet` reads where it empties a
+	 * resolved blow. Its health clamp asks the fields apart, because the Reaper is held at its maximum and a
+	 * shrouded or phased creature where it is.
 	 */
-	bool TakesNoDamage() const { return bCannotBeHurt || bShrouded; }
+	bool TakesNoDamage() const { return bCannotBeHurt || bShrouded || SpectralShiftSecondsLeft > 0.0f; }
 
 	/**
 	 * Whether this creature's death is to pay nothing: a Blood Bond's elite, which dies because

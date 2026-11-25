@@ -30,6 +30,10 @@
 #include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
+// For the words Death's enemy modifiers put on the status line. 2026-11-24.
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "Character/CataclysmBonePyreCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystemComponent.h"
@@ -977,6 +981,60 @@ FString UCataclysmCombatOverlay::ShroudedTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::DeathModifierTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+
+	TArray<FString> Words;
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor))
+	{
+		if (Enemy->IsA<ACataclysmBonePyreCharacter>())
+		{
+			Words.Add(TEXT("Bone Pyre"));
+		}
+		if (Enemy->bIsASpectralCopy)
+		{
+			Words.Add(TEXT("Spectral"));
+		}
+		if (Enemy->bRisenByUndyingWill)
+		{
+			Words.Add(TEXT("Undying"));
+		}
+		if (UCataclysmEnemyModifiers::IsPhasedOut(Enemy))
+		{
+			Words.Add(TEXT("Phased"));
+		}
+	}
+
+	// THE FOUR TAGGED ONES BY THEIR STATUS NAMES, and Mortal Reminder and Lingering Decay, which have no status row and
+	// so no tag, by what the character's ability system and the zones say.
+	const TCHAR* const StatusNames[] = {TEXT("Final Curse"), TEXT("Soul Tether"), TEXT("Haunting")};
+	const TCHAR* const StatusWords[] = {TEXT("Final Curse"), TEXT("Soul Tether"), TEXT("Haunted")};
+	for (int32 Index = 0; Index < static_cast<int32>(UE_ARRAY_COUNT(StatusNames)); ++Index)
+	{
+		const FGameplayTag Tag = UCataclysmSkillShapes::StatusTagFor(StatusNames[Index]);
+		if (Tag.IsValid() && UCataclysmSkillEffects::HasTag(Actor, Tag))
+		{
+			Words.Add(StatusWords[Index]);
+		}
+	}
+	if (const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor))
+	{
+		if (UCataclysmEnemyModifiers::RecoveryCeilingOn(*System) >= 0.0f)
+		{
+			Words.Add(TEXT("Recovery capped"));
+		}
+	}
+	if (UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(Actor) > 0.0f)
+	{
+		Words.Add(TEXT("Decaying"));
+	}
+	return FString::Join(Words, TEXT("  "));
+}
+
 FString UCataclysmCombatOverlay::PlaguebearerTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -1007,6 +1065,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
 		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor), TitheAngelTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
+		  // AND WHAT DEATH'S MODIFIERS HAVE DONE, beside the shroud, which is the other "a blow did nothing". 2026-11-24.
+		  DeathModifierTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
 		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.

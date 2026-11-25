@@ -2368,6 +2368,18 @@ private:
 	void NoteDeathForDeadRising(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Death's Undying Will and Haunting, two ENEMY modifiers rather than floor rules, on every death. 2026-11-24, ahead
+	 * of their window. Here because only the dungeon can place a creature: Undying Will puts the creature that carried
+	 * it back where it fell, at its kind and rung, with half its maximum health and 50% increased damage; Haunting
+	 * leaves a Common of its kind there at half health, whose hits cut the player's resistances. Each is asked of
+	 * `UCataclysmEnemyModifiers::UndyingWillRaises` and `HauntingLeavesACopy`, whose guard is the death paying, so a
+	 * creature either rule brought back never brings anything back itself. A creature that is none of the seven kinds
+	 * this dungeon places leaves nothing, the refusal Dead Rising and Vengeful Wraiths make. Neither asks who killed it.
+	 */
+	void NoteDeathForUndyingWill(const struct FCataclysmDeathNotice& Notice);
+	void NoteDeathForHaunting(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * Demonic Blood Gates, on every death. Issues #1820 and #41.
 	 *
 	 * COUNTS THE PLAYER'S KILLS OF UNMARKED CREATURES, and nothing else: a death to any

@@ -223,6 +223,11 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// what stops it rallying itself.
 	UCataclysmEnemyModifiers::RallyAlliesOnDeath(this);
 
+	// AND WHAT DEATH'S MODIFIERS DO AT A DEATH, 2026-11-24, ahead of their window: Final Curse curses the player, a
+	// creature Shadow Step hid is seen to fall, and one Spectral Shift had out of existence is back in it. After the
+	// mark, as the rally is, so it runs once.
+	UCataclysmEnemyModifiers::NoteDeathOfACarrier(this);
+
 	// A CREATURE DYING IS ONE OF THE FIVE EVENTS SECTION 6 WRITES ON, and it
 	// is the one that fires most: it is what stops a player killing a boss,
 	// quitting, and coming back to find it alive again.

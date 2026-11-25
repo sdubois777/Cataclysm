@@ -559,6 +559,19 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	float OwnersRegenerationScale = 1.0f;
 
+	/**
+	 * How much less of each heal reaches a character of the players' side standing in this patch, in percent. Death's
+	 * Lingering Decay: "Enemies leave behind necrotic zones that reduce healing to players standing in them". Written
+	 * 2026-11-24, ahead of its window; nought for every other patch.
+	 *
+	 * NOT APPLIED BY THE SWEEP. A heal asks for it when it arrives, through
+	 * `UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt`, which walks the patches as
+	 * `RegenerationScaleFor` above does. So the cut holds exactly while the character stands inside, needs no status
+	 * effect, and outlives the creature that left the patch for the patch's own life.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	float HealingLessPercentInside = 0.0f;
+
 	/** Whether this point falls inside this patch. Read by tests. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ground Zone")
 	bool Covers(const FVector& Point) const;
