@@ -203,6 +203,23 @@ permanent raises' Fervour costs beside Subjugate's; the undesigned count 54 of 1
 counts; the two anti-stun-lock checks above. **New:** `tools/tests/test_reapply_death_skills_workbook.py`, ten checks
 of the script against the generated tables, and on a copy of the workbook put back to before the edit.
 
+### What was run, on `c97415efd`
+
+- **Full Python suite: "1 failed, 8296 passed, 9 skipped in 458.97s"; JUnit 8306 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` (bug batch 2's, already registered for its editor step) and `WeaponSkills.csv`;
+  the editor step clears it. ruff: "All checks passed!". `tools/check_resolved_cpp.py --changed`: "10 files read, 0
+  with complaints". The engine-name, anonymous-helper, header-reach and shape-parameter checks: "14 passed".
+  `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date"; the script's `--check`: "0 cells to
+  write; nothing written".
+- **Five Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `c97415efd`**: the
+  script's refusal of a changed cell (`if not same(value, before[column])` made `if False and ...`: fails
+  `test_it_refuses_a_cell_somebody_else_changed`); the two `Taunts` refusals (each condition made `False and ...`:
+  fails `test_a_taunting_row_with_no_radius_is_refused`, `test_a_taunting_row_that_possesses_is_refused`); the waiting
+  rows' exemption (`BUILT` without C3: fails `test_a_minion_skill_waiting_on_code_states_no_half_of_a_shape`); and
+  the script against the table (Reaping Arc's `Radius=7` made 8 in the script: fails three checks of
+  `test_reapply_death_skills_workbook.py`). Each passed again restored.
+
 ---
 
 ## 2026-11-24 — Bug batch 2: five more fix branches, stacked on bug batch 1, with a guard proof registered for every new test (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878)
