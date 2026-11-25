@@ -2,6 +2,112 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — How Fervour is lost, and what fills past the bar: Miser's Grip, Soulbound, Overflow and Unbroken Chain (Death trees, slice C6c)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: four stats (`fervour_decay_floor_percent`,
+  `health_percent_lost_per_fervour_lost`, `fervour_overflow_attack_speed_seconds`, `kill_chain_seconds`);
+  `KillDecayStep` stops at the floor; `RaisePool` records what did not fit; `LoseFromDamage`, new.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `KillChainSecondsHeld`,
+  `NoteFervourOverflow`, `FervourOverflowStacksHeld`, `AccumulateHealthLostForFervour`; `CurrentConditions` fills the
+  chain's seconds; `ActOnEvent` lengthens a passive row's stack granted on a kill.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `kill_chain_within_seconds`,
+  the scale `fervour_overflow_stacks`, and a state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: health lost to damage asks Soulbound's loss
+  beside the Masochist's gain.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the four stats in the list of stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourLossAndChainTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
+  (four probes); `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (one), `test_passive_effects_match_the_node_text.py`, `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`
+  (two exceptions), `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`, and the inventories in
+  `test_every_gain_to_the_pool_goes_through_raise_pool.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (636 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **SOUL TIDE'S ROW CHANGED**, as ruled: from `seconds_after_kill` 2 to the new `kill_chain_within_seconds` 2, the same
+  clock with Unbroken Chain's extra seconds added, so "The same applies to Soul Tide" reaches it. The five "for N seconds
+  after a kill" rows stay on `seconds_after_kill`, which the chain does not lengthen. The new condition is not named
+  `seconds_after_...`, which would name an action event the game does not raise.
+- **UNBROKEN CHAIN LENGTHENS PASSIVE ROWS' KILL STACKS ONLY**, as ruled, told apart by the `Passive_` key prefix as
+  Death's Toll does: Kill Chain's stacks. The six enchantment rows that grant an own stack on a kill keep their windows;
+  `UnbrokenChainLengthensAPassiveKillStackAndNotAnEnchantments` checks one of them.
+- **MISER'S GRIP'S FLOOR STOPS THE KILL DECAY AND NOTHING ELSE**, as ruled: a share of the full bar after reserves. A
+  spend, a loss to healing and Soulbound's loss all go below it.
+- **SOULBOUND COUNTS HEALTH LOST TO DAMAGE**, as ruled: what reaches health, so an energy shield or mana that absorbs a
+  blow costs nothing, a tick of damage over time counts, and health paid as a skill's cost does not. The share of
+  maximum health lost is kept in a running total and each whole 2% costs 1 Fervour, the remainder kept for the next
+  blow. Its decay half is a removal of the kill decay.
+- **OVERFLOW COUNTS WHAT `RaisePool` COULD NOT FIT**, as ruled: above the full bar after reserves, after generation
+  scaling, from every gain to the pool. One stack for each whole Fervour, the fraction lost; one shared 5 second window
+  refreshed by each overflow; the stacks counted again from nought once the window has run out. The row's cap holds the
+  attack speed at 30%.
+- **TWO FAULTS FOUND BY THE WHOLE SUITE BEFORE THE COMMIT, AND FIXED.** `LoseFromDamage`'s write to the pool was not in
+  the inventory `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py` keeps (it is a loss, so it does not
+  go through `RaisePool`), and the three new lookups through `StatForSkill` were not in
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`'s. Each is now listed with why.
+- **`kill_chain_seconds` IS READ WITH NO CONDITION JUDGED**, because `CurrentConditions` fills it, and asking through
+  `StatForSkill` would ask `CurrentConditions` again. Its rows state none.
+
+### What each reads
+
+- **MISER'S GRIP (the Soul Collector, basic, 8 points):** `fervour_decay_floor_percent` flat 3 a point.
+- **SOULBOUND (the Soul Collector, keystone):** the kill decay removed; `health_percent_lost_per_fervour_lost` flat 2.
+- **OVERFLOW (the Soul Collector, keystone):** `fervour_overflow_attack_speed_seconds` flat 5; attack speed 1%
+  increased per `fervour_overflow_stacks` stack, at most 30.
+- **UNBROKEN CHAIN (the Soul Collector, basic, 8 points):** `kill_chain_seconds` flat 1 from 4 points and 1 more from 8.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Miser's Grip | fervour_decay_floor_percent, flat, 3 |
+| Soulbound | fervour_kill_decay_per_second, removed; health_percent_lost_per_fervour_lost, flat, 2 |
+| Overflow | fervour_overflow_attack_speed_seconds, flat, 5; attack_speed, increased, 1, scale fervour_overflow_stacks, step 1, at most 30 |
+| Unbroken Chain | kill_chain_seconds, flat, 1, from 4 points; the same from 8 |
+| Soul Tide (changed) | fervour_per_kill, flat, 1, cond=kill_chain_within_seconds 2 (was seconds_after_kill 2) |
+
+`PassiveEffects.csv` 629 to 636; the Soul Collector 134 rows. The pins: rows 636, nodes 378, options 55 (unchanged). The
+scale sources named by a row: 45.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25, on the C6c plan: all four as recommended, with Soulbound counting health lost
+only (not an energy shield or mana absorbing), Overflow's "above the maximum" being what `RaisePool` could not fit,
+Unbroken Chain reaching passive rows only, and a test that an enchantment kill stack keeps its window.
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: the kill decay (slice B), `RaisePool` (slice
+C4b1), own stacks (issue #1833), and the Masochist's Fervour from health lost to damage (issue #954).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourLossAndChain.` | new: `MisersGripStopsOnlyTheDecayAtItsFloor`, `SoulboundTakesAFervourForEachTwoPercentAndKeepsTheRest`, `OverflowGivesAStackForEachWholeFervourAboveTheBar`, `UnbrokenChainLengthensAPassiveKillStackAndNotAnEnchantments`, `SoulTidesWindowIsLengthenedAndAKillWindowIsNot`, `TheFourNodesRowsAndSoulTidesAreTheirSentences` | 6 |
+| `Cataclysm.StatExemption.` | the no-attribute probe table runs four new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 636 | unchanged |
+
+Each new test has a control: Soulbound's loss below the floor; half a step lost; the window run out; the chain at
+nought; a plain kill window.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`ActOnEvent`: `Action.StackKey.ToString().StartsWith(TEXT("Passive_"))` made `true`, so the chain lengthens every kill
+stack. Prefix `Cataclysm.FervourLossAndChain.`; must fail
+`UnbrokenChainLengthensAPassiveKillStackAndNotAnEnchantments`.
+
+### What was run
+
+SUITE_FIGURES_C6C
+
+PYTHON_PROOFS_C6C
+
+---
+
 ## 2026-11-25 — A Poison that lasts, and an evasion answered twice: Festering and Twice Answered (Death trees, slice C6b4)
 
 **Affects:**
