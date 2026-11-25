@@ -154,22 +154,28 @@ def test_the_forges_craft_and_the_respec_keep_and_tell_their_days() -> None:
 def test_every_forge_question_warns_and_every_forge_craft_done_says_what_its_days_did() -> None:
     text = body(code(FORGE_WIDGET), "void UCataclysmForgeWidget::HandleActionClicked(")
     questions = re.findall(r"Message = UCataclysmForge::(\w+Question)\(", text)
-    expected = ["SocketingQuestion", "SocketWorkQuestion", "AffixWorkQuestion", "AffixChangeQuestion", "CleanseQuestion",
-                "DamageTypeQuestion", "EnchantmentWorkQuestion", "UpgradeQuestion"]
+    expected = ["SocketingQuestion", "SocketWorkQuestion", "AffixWorkQuestion", "AffixChangeQuestion",
+                "DismantleQuestion", "CleanseQuestion", "DamageTypeQuestion", "EnchantmentWorkQuestion", "UpgradeQuestion"]
     assert questions == expected, f"the forge screen's questions changed: {questions}; update this check with them"
+    # A DISMANTLE TAKES NO DAYS (issue #2848, slice S2: "no gold and no days"), so it has no timers to warn of and no
+    # days to report. It merged on development after this check was written, beside #2857's rebase.
+    dayless = {"DismantleQuestion"}
     warned = 0
-    for match in re.finditer(r"Message = UCataclysmForge::\w+Question\(", text):
+    for match in re.finditer(r"Message = UCataclysmForge::(\w+Question)\(", text):
         statement = text[match.start() : text.find(";", match.start())]
+        if match.group(1) in dayless:
+            continue
         warned += 1 if "TimersRunningOutIn(" in statement else 0
-    assert warned == len(expected), (
-        f"{len(expected) - warned} of the forge screen's {len(expected)} questions do not end with the dungeons whose "
-        "timers the craft's days run out (TimersRunningOutIn)")
+    with_days = len(expected) - len(dayless)
+    assert warned == with_days, (
+        f"{with_days - warned} of the forge screen's {with_days} questions of a craft that takes days do not end with "
+        "the dungeons whose timers the craft's days run out (TimersRunningOutIn)")
     # EVERY CRAFT REPORTED DONE: seven in a `case ECataclysmForgeResult::Done:` and the cleanse, which asks `== Done`.
     cases = [text[match.end() : text.find("break;", match.end())]
              for match in re.finditer(r"case ECataclysmForgeResult::Done:", text)]
     cleanse = text[text.find("UCataclysmForgeCraft::Cleanse(") :]
     cases.append(cleanse[: cleanse.find(";")])
-    assert len(cases) == len(expected), f"expected {len(expected)} crafts reported done, read {len(cases)}"
+    assert len(cases) == with_days, f"expected {with_days} crafts reported done, read {len(cases)}"
     untold = [case[:80] for case in cases if "WhatTheDaysDid()" not in case]
     assert not untold, (
         "these crafts are reported done without what their days did (WhatTheDaysDid), so a dungeon those days resolved "
