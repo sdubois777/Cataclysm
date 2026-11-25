@@ -315,7 +315,7 @@ CATACLYSM_SABOTEUR_DEVICE_TEST(FCataclysmSaboteurDeviceSharedKeyTest,
 		Grant.TriggerKey = FName(*FString::Printf(TEXT("%s:%s"), *Key.ToString(), Event));
 		Grants.Add(Grant);
 	}
-	Player.System->SetPoolActions(Grants);
+	Player.System->SetPoolActions(MoveTemp(Grants));
 	const float Before = Player.Evasion();
 
 	ACataclysmMinion* Trap = ACataclysmMinion::PlaceSkillTrap(Player.Character, ECataclysmAbilitySlot::Heavy,
