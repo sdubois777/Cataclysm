@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Fervour counted as held: Chained Souls' share of what followers hold back, and Empty Hands' "fewer than 20" (Death trees, slice C3e)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `class_resource_points_below`
+  (`ClassResourcePointsBelow`), `FCataclysmStatConditions::ClassResourceCountedAsHeld`, and
+  `UCataclysmStatPipeline::FervourHeldCounted`, which the percent-of-bar condition, the points condition, the new
+  condition and the held scale now read.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`:
+  `ReservedFervourCountsAsHeldPercentStat`, `ReservedFervourCountedAsHeld`; `CurrentConditions` fills the share and
+  works the Fervour thresholds out on the counted figure; `NoteFervourThresholdsHeld` counts the share too.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the new stat has no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourCountedTests.cpp`, new (4); `CataclysmStatExemptionTests.cpp`
+  (a probe) and `CataclysmDataTableTests.cpp`; `tools/tests/test_chained_souls_counts_as_held.py`, new (3);
+  `test_passive_effects_match_the_node_text.py` and `test_fervour_thresholds_are_the_vows.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (549 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **THE SHARE IS READ FROM THE RESERVE THE CONDITIONS FILL ALREADY KNOWS** (`ClassResourceReserved`, what the
+  character's minions, gadgets and traps hold back, from slice C1). No Unreal test here builds real followers: the share
+  is tested from a reserve given by hand, the fill line by a Python check of the source, and the reserve's own sum by
+  slice C1's `Cataclysm.KindReserves.` tests.
+- **LONG SHADOW'S RECORD COUNTS THE SHARE** so it counts what the thresholds count; for a character without Chained
+  Souls it asks for no followers at all.
+- **COUNTED, AS RULED:** the percent-of-bar condition, the points condition, Empty Hands' new condition, the held scale
+  (Pall of Souls, Soul Haste and the rest) and the four Fervour thresholds. **NOT COUNTED, AS RULED:** whether the bar is
+  full (`ClassResourceAtMaximum`, the bar against the maximum less what is held back), and Phylactery's spend, which
+  reads the pool.
+- **NOTHING OF THE SOUL COLLECTOR'S FERVOUR LIMBS IS LEFT FOR THIS LINE** but the Soul Fuel group, after
+  `feat/death-skills-2885` merges.
+
+### What counted as held means now
+
+`FCataclysmStatConditions::ClassResourceCountedAsHeld` is `reserved_fervour_counts_as_held_percent` (Chained Souls, 8 a
+point) of `ClassResourceReserved`, worked out once a conditions fill by
+`UCataclysmAbilitySystemComponent::ReservedFervourCountedAsHeld`, with no reading, because it is asked while the
+conditions are filled. `UCataclysmStatPipeline::FervourHeldCounted` is the pool plus it, and an unknown pool stays
+unknown, so no enemy gains a bonus written for a bar.
+
+**Empty Hands' condition** `class_resource_points_below` is strictly below, the opposite of
+`class_resource_points_at_least`: at exactly 20 it refuses and "20 or more" holds. An unknown reading refuses, or every
+creature without a bar would hold "fewer than 20".
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Empty Hands | attack_speed, increased, 2, cond=class_resource_points_below 20 |
+| Chained Souls | reserved_fervour_counts_as_held_percent, flat, 8 |
+
+`PassiveEffects.csv` 547 to 549; the Soul Collector 97 rows on 52 of its 73 nodes, and 109 of the 220 Death nodes grant
+something.
+
+### Rulings recorded here
+
+The coordinating session's answer of 2026-11-25 to question 5 of slice C3d's plan: Chained Souls counts for every
+reading of the amount held, and not for whether the bar is full, and not for what Phylactery spends. And the split of
+that plan, which put Empty Hands and Chained Souls in this slice.
+
+### Research
+
+None new. The figures are the owner's approved trees'; the machinery is this game's own conditions fill.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourCounted.` | new: `EmptyHandsHoldsBelowTwentyAndNotAtIt`, `ChainedSoulsCountsForEveryReadingOfTheAmountButNotTheFullBar`, `ChainedSoulsShareIsItsPercentOfWhatIsHeldBack`, `TheRealRowsGiveTwelveBelowTwentyAndFortyEight` | 4 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs one new probe | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 549 | unchanged |
+
+Each new test has a control: exactly 20, and an unknown holding; the same holding with nothing counted, and a bar that
+is full; the stat not granted, and nothing held back.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmStatPipeline.cpp`, `ClassResourcePointsBelow`: `&& UCataclysmStatPipeline::FervourHeldCounted(State) <
+   Value;` becomes `&& State.ClassResourceHeld < Value;`. Prefix `Cataclysm.FervourCounted.`; must fail
+   `EmptyHandsHoldsBelowTwentyAndNotAtIt` and `ChainedSoulsCountsForEveryReadingOfTheAmountButNotTheFullBar`.
+2. `CataclysmStatPipeline.cpp`, `FervourHeldCounted`: `: State.ClassResourceHeld + FMath::Max(0.0f,
+   State.ClassResourceCountedAsHeld);` becomes `: State.ClassResourceHeld;`. Prefix `Cataclysm.FervourCounted.`; must
+   fail `ChainedSoulsCountsForEveryReadingOfTheAmountButNotTheFullBar` and `EmptyHandsHoldsBelowTwentyAndNotAtIt`.
+3. `CataclysmAbilitySystemComponent.cpp`, `ReservedFervourCountedAsHeld`: `return Reserved > 0.0f && Percent > 0.0f ?
+   Reserved * Percent / 100.0f : 0.0f;` becomes `return 0.0f;`. Prefix `Cataclysm.FervourCounted.`; must fail
+   `ChainedSoulsShareIsItsPercentOfWhatIsHeldBack`.
+
+### What was run
+
+SUITE_FIGURES_C3E
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`b8dad9079`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The points condition reading the pool alone | `test_chained_souls_counts_as_held.py::test_every_reading_of_the_amount_held_counts_the_share` |
+| The full bar counting the share | `test_chained_souls_counts_as_held.py::test_the_full_bar_and_phylactery_read_the_pool_alone` |
+| The conditions fill no longer working the share out | `test_chained_souls_counts_as_held.py::test_the_share_is_filled_from_the_reserve_and_long_shadow_counts_it` |
+| Phylactery counting the share | `test_chained_souls_counts_as_held.py::test_the_full_bar_and_phylactery_read_the_pool_alone` |
+| Empty Hands' row under 25 rather than 20 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+---
+
 ## 2026-11-25 — The Soul Collector's four Fervour thresholds, the vows' clauses on them, Generous Count, Long Shadow and Steady Count (Death trees, slice C3d)
 
 **Affects:**
@@ -121,7 +226,10 @@ not run in a test world, the test would fail at its second figure (15 left after
 is still there three seconds later. It passed in two windows on 2026-11-25: "Test Completed. Result={Success}" in the
 engine logs `Cataclysm-before-tests-2026.11.25-04.07.32.log` of the worktree `interesting-snyder-dca273` (log time
 10.45.14) and `Cataclysm-before-tests-2026.11.25-01.59.06.log` of `sharp-meitner-246682` (log time 08.44.53). Its
-control, the same Cripple gone three seconds later without the option, shows the clock ran at all.
+control, the same Cripple gone three seconds later without the option, shows the clock ran at all. The coordinating
+session identified the two runs afterwards: the whole-suite runs of window 2865-w1 (the empty-board surge), on
+`62612be63`, in `interesting-snyder-dca273`, and of window ss2-w1 (skill selection), on `56360b4d6`, in
+`sharp-meitner-246682`.
 
 **Three C++ guard proofs are registered for the window:**
 1. `CataclysmStatPipeline.cpp`, the condition's case: `return State.FervourThresholdsReached >= 0 && Index >= 0` and
