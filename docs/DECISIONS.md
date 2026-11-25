@@ -112,7 +112,17 @@ struck; no Death's Toll, and a killer nobody owns; the character's own kill, whi
 
 ### What was run
 
-SUITE_FIGURES_C4B2
+**The whole Python suite on `e60345711`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8517 passed, 9 skipped in 383.40s
+(0:06:23)". The JUnit file agrees: tests 8527, failures 1, errors 0, skipped 9, so 8517 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, gave the same figures.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
 
 **Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `c5fb408b3`, and each `proved`:
