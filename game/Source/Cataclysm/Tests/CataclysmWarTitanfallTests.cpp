@@ -152,7 +152,6 @@ CATACLYSM_WAR_TITANFALL_TEST(FCataclysmWarTitanfallFiresTest,
 	World->TimeSeconds += 1.0f;
 	UCataclysmSkillEffects::ApplyDirectDamage(Striker, Wearer.Actor, 200000.0f);
 	TestEqual(TEXT("in the window a blow of 200,000 leaves 1 health"), Wearer.Health(), 1.0f, 0.01f);
-	TestFalse(TEXT("and the wearer lives"), UCataclysmSkillEffects::IsDead(Wearer.Actor));
 	TestEqual(TEXT("and the store is not replaced: the clock has not passed"), Wearer.System->TitanfallStoredDamage(),
 			  25000.0f, 0.5f);
 
@@ -164,8 +163,10 @@ CATACLYSM_WAR_TITANFALL_TEST(FCataclysmWarTitanfallFiresTest,
 	Wearer.Heals();
 	World->TimeSeconds += 1.0f;
 	UCataclysmSkillEffects::ApplyDirectDamage(Striker, Wearer.Actor, 200000.0f);
-	TestTrue(TEXT("control: 4 seconds after firing, its 30 not passed, a blow of 200,000 kills"),
-			 UCataclysmSkillEffects::IsDead(Wearer.Actor));
+	// HEALTH AT NOUGHT, NOT A DEATH (window war2-w1): this wearer is a bare actor, and only a character's death marks
+	// one dead.
+	TestEqual(TEXT("control: 4 seconds after firing, its 30 not passed, a blow of 200,000 takes every point of health"),
+			  Wearer.Health(), 0.0f, 0.01f);
 	return true;
 }
 
@@ -190,11 +191,11 @@ CATACLYSM_WAR_TITANFALL_TEST(FCataclysmWarTitanfallLethalTest,
 	}
 	Plain.System->SetPoolActions(TArray<FCataclysmPoolAction>());
 	UCataclysmSkillEffects::ApplyDirectDamage(Striker, Plain.Actor, 200000.0f);
-	TestTrue(TEXT("control: with no Titanfall row the blow kills"), UCataclysmSkillEffects::IsDead(Plain.Actor));
+	TestEqual(TEXT("control: with no Titanfall row the blow takes every point of health"), TitanfallHealthOf(Plain.Actor),
+			  0.0f, 0.01f);
 
 	UCataclysmSkillEffects::ApplyDirectDamage(Striker, Wearer.Actor, 200000.0f);
 	TestEqual(TEXT("with it, the blow leaves 1 health"), Wearer.Health(), 1.0f, 0.01f);
-	TestFalse(TEXT("and the wearer lives"), UCataclysmSkillEffects::IsDead(Wearer.Actor));
 	TestTrue(TEXT("and the window is open"), Wearer.System->IsTitanfallUnkillable());
 	TestEqual(TEXT("and the whole blow is stored, its overkill included"), Wearer.System->TitanfallStoredDamage(),
 			  200000.0f, 1.0f);

@@ -229,10 +229,18 @@ CATACLYSM_WAR_VOWS_V3B_TEST(FCataclysmWarVowsV3bCurrentHealthScaleTest,
 		return UCataclysmStatPipeline::Evaluate(0.0f, Modifiers, FGameplayTagContainer(), State).Flat;
 	};
 
+	// THE MAXIMUM SET AS `CurrentConditions` SETS IT (window war2-w1): `FromHealth` fills the share alone, and the scale
+	// refuses an unknown maximum.
+	const auto AtHealth = [](float Health, float Maximum)
+	{
+		FCataclysmStatConditions State = FCataclysmStatConditions::FromHealth(Health, Maximum);
+		State.MaximumHealth = Maximum;
+		return State;
+	};
 	TestEqual(TEXT("at 8,000 of 10,000 health, 2 for every 100: 160"),
-			  Flat(FCataclysmStatConditions::FromHealth(8000.0f, 10000.0f)), 160.0f, 0.001f);
+			  Flat(AtHealth(8000.0f, 10000.0f)), 160.0f, 0.001f);
 	TestEqual(TEXT("control: at 7,000 of 10,000 the condition fails: 0"),
-			  Flat(FCataclysmStatConditions::FromHealth(7000.0f, 10000.0f)), 0.0f, 0.001f);
+			  Flat(AtHealth(7000.0f, 10000.0f)), 0.0f, 0.001f);
 	TestEqual(TEXT("control: with health unknown, 0"), Flat(FCataclysmStatConditions()), 0.0f, 0.001f);
 	return true;
 }

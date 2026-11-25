@@ -227,7 +227,9 @@ CATACLYSM_TRAP_TIMING_TEST(FCataclysmTrapTimingVolatileCasingTest,
 	// FOUR TRAPS STANDING. THE CONTROL: a fifth placed with no row arms at 1 s, whatever stands. With 0.2 s less for each
 	// other trap, a sixth (five others) arms at 1 - 1.0, held at the floor of 0.1 s; with 0.15 s less, a seventh (six
 	// others) arms at 1 - 0.9 = 0.1 s by the sum; with 0.1 s less, an eighth (seven others) at 0.3 s. On the clock: the
-	// floored trap is armed 0.15 s in, well before the first quarter-second step, and the 0.3 s one is not.
+	// floored trap is armed 0.2 s in, well before the first quarter-second step, and the 0.3 s one is not. 0.2 AND NOT
+	// 0.15 (window war2-w1): a timer set before the manager first ticks is pending until that tick, so the 0.1 s timer
+	// falls due at exactly 0.15 s, and a timer fires only once the clock is past its time, not at it.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -263,8 +265,8 @@ CATACLYSM_TRAP_TIMING_TEST(FCataclysmTrapTimingVolatileCasingTest,
 	TestEqual(TEXT("0.15 s less for each of six others: 0.1 s"), AtTheFloor->SkillTrapArmsAtAgeSeconds, 0.1f, 0.001f);
 	TestEqual(TEXT("0.1 s less for each of seven others: 0.3 s"), Shortened->SkillTrapArmsAtAgeSeconds, 0.3f, 0.001f);
 
-	CataclysmTestWorld::RunClock(World, 0.15f);
-	TestTrue(TEXT("0.15 s in, the floored trap is armed"), Floored->bSkillTrapArmed);
+	CataclysmTestWorld::RunClock(World, 0.2f);
+	TestTrue(TEXT("0.2 s in, the floored trap is armed"), Floored->bSkillTrapArmed);
 	TestFalse(TEXT("and the 0.3 s one is not"), Shortened->bSkillTrapArmed);
 	TestFalse(TEXT("control: nor the plain one"), Plain->bSkillTrapArmed);
 	return true;

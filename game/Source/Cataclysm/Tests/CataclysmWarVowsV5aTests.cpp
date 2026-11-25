@@ -251,12 +251,14 @@ CATACLYSM_WAR_VOWS_V5A_TEST(FCataclysmWarVowsV5aWhereTheyFallTest,
 	}
 
 	Player.System->ActOnEvent(FName(TEXT("kill")), nullptr, /*EventAmount=*/0.0f, /*bLanded=*/true, FarAway);
+	++GFrameCounter;  // a hand-made tick in a new frame (RunClock)
 	World->GetTimerManager().Tick(0.1f);
 	TestEqual(TEXT("control: a kill 30 m from every device leaves nothing"),
 			  ACataclysmMinion::SkillTrapsOf(Player.Character).Num(), 1);
 
 	World->TimeSeconds += 1.0f;
 	Player.System->ActOnEvent(FName(TEXT("kill")), nullptr, /*EventAmount=*/0.0f, /*bLanded=*/true, Beside);
+	++GFrameCounter;  // a hand-made tick in a new frame (RunClock)
 	World->GetTimerManager().Tick(0.1f);
 	const TArray<ACataclysmMinion*> Traps = ACataclysmMinion::SkillTrapsOf(Player.Character);
 	if (TestEqual(TEXT("a kill 8 m from the trap leaves a copy"), Traps.Num(), 2))
@@ -336,7 +338,10 @@ CATACLYSM_WAR_VOWS_V5A_TEST(FCataclysmWarVowsV5aCrossfireTest,
 	};
 	TestEqual(TEXT("control: a hit that sent nothing is repeated by none"), Hit(0.0f, nullptr), 0.0f, 0.01f);
 	double Took = 0.0;
-	TestEqual(TEXT("a hit that sent 1,000 is repeated 15 times at 100"), Hit(1000.0f, &Took), 1500.0f, 1.0f);
+	// EACH REPEAT OF 100 LANDS 110 (window war2-w1): a repeat is the player's own blow (ruled X1), and the test player's
+	// starting Greataxe is Slashing, whose sub-type adds 10% more to a player's blow.
+	TestEqual(TEXT("a hit that sent 1,000 is repeated 15 times at 100, each 10% more for the Greataxe's slashing"),
+			  Hit(1000.0f, &Took), 1650.0f, 1.0f);
 	AddInfo(FString::Printf(TEXT("Crossfire: one hit's 15 repeats took %.3f ms in this test world"), Took * 1000.0));
 	return true;
 }

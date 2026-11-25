@@ -249,6 +249,7 @@ CATACLYSM_WAR_VOWS_V4B_TEST(FCataclysmWarVowsV4bMagnumOpusTest,
 		const FVector Aim = ByTheElder->GetActorLocation();
 		UCataclysmCombatEvents::NoteSkillUsed(Player.Character, Gathering.Name, Gathering.Tags, Slot, &Aim,
 											  /*bHasCooldown=*/true);
+		++GFrameCounter;  // a hand-made tick in a new frame (RunClock)
 		World->GetTimerManager().Tick(0.1f);
 	};
 

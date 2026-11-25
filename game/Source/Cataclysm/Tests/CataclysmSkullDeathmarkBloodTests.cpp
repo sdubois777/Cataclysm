@@ -351,7 +351,10 @@ CATACLYSM_SKULL_DEATHMARK_BLOOD_TEST(FCataclysmSkullSplitterTest,
 		{FCataclysmWarFervour::CritArmorRemovedInWrathStat, 10.0f, ECataclysmStatCondition::InWrath},
 		{FCataclysmWarFervour::CritArmorFervourCostStat, 3.0f, ECataclysmStatCondition::InWrath},
 		{FCataclysmWarFervour::CritArmorStackCapStat, 4.0f},
-		{FCataclysmWarFervour::CritArmorSecondsStat, 2.0f}});
+		{FCataclysmWarFervour::CritArmorSecondsStat, 2.0f},
+		// AND WRATH'S OWN FLAG (window war2-w1): without it the first paid strike's spend makes
+		// `FCataclysmBerserkerStates::Judge` end Wrath, a judgement of that file, and no later strike pays.
+		{FCataclysmBerserkerStates::WrathOnFullFervourStat, 1.0f}});
 	Player.Pool(100.0f, 50.0f);
 
 	SkullDeathmarkBloodAnnounce(Events, Player, Enemy, /*bCritical=*/true);

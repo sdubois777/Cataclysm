@@ -127,6 +127,20 @@ namespace CataclysmWarVowsV5gTest
 		/** A War deployable granted in `Slot` with these shape parameters, free of cooldown. */
 		UCataclysmDeployableSkill* Grants(ECataclysmAbilitySlot Slot, const TCHAR* ParamText, const TCHAR* Name) const
 		{
+			// THE STARTING GREATAXE'S SKILL LEAVES THE SLOT FIRST (window war2-w1): the bar and the key read the first spec
+			// holding the slot's tag, and BeginPlay granted one.
+			TArray<FGameplayAbilitySpecHandle> Held;
+			for (const FGameplayAbilitySpec& Each : System->GetActivatableAbilities())
+			{
+				if (Each.GetDynamicSpecSourceTags().HasTagExact(CataclysmAbilitySlots::Tag(Slot)))
+				{
+					Held.Add(Each.Handle);
+				}
+			}
+			for (const FGameplayAbilitySpecHandle& Each : Held)
+			{
+				System->ClearAbility(Each);
+			}
 			const FGameplayAbilitySpecHandle Handle =
 				System->GiveAbilityInSlot(UCataclysmDeployableSkill::StaticClass(), Slot, /*Level=*/1, Character);
 			FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
@@ -137,6 +151,9 @@ namespace CataclysmWarVowsV5gTest
 				Skill->Params = UCataclysmSkillShapes::ParseParams(ParamText);
 				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Deployable, Type.Minion"));
 				Skill->CooldownOverride = 0.0f;
+				// AND NO FERVOUR COST (window war2-w1): the room rule is what these tests hold, and an Ultimate's 50
+				// Fervour cannot be paid from their small pools.
+				Skill->FervourCostOverride = 0.0f;
 			}
 			return Skill;
 		}

@@ -1915,8 +1915,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			bWantsAilments = true;
 		}
 
+		// AND THE TRAP HISTORY, which both tests left out until window war2-w1 found Ambush's row refused: a row whose only
+		// condition is `TargetNotYetTriggeredYourTrap` returned below before the history was read.
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence
-			&& bWantsMoving && bWantsYourCurse)
+			&& bWantsMoving && bWantsYourCurse && bWantsTrapHistory)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1930,7 +1932,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// lookup with no row asking has no condition to answer.
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence
-			&& !bWantsMoving && !bWantsYourCurse))
+			&& !bWantsMoving && !bWantsYourCurse && !bWantsTrapHistory))
 	{
 		return State;
 	}

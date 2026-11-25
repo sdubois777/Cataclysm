@@ -213,7 +213,9 @@ CATACLYSM_WAR_VOWS_V5B1_TEST(FCataclysmWarVowsV5b1ExpiredTest,
 	}
 	Turret->SetLifeSpan(0.1f);
 	TestEqual(TEXT("control: before its life runs out, no scrap trap"), Player.ScrapTraps().Num(), 0);
-	World->GetTimerManager().Tick(0.5f);
+	// THE CLOCK RUN IN STEPS (window war2-w1): the life-span timer was set before the manager first ticked, so it is
+	// pending until a tick, and one tick of 0.5 s would only make it active, due 0.6 s on.
+	CataclysmTestWorld::RunClock(World, 0.5f);
 	TestEqual(TEXT("when it runs out, a scrap trap stands"), Player.ScrapTraps().Num(), 1);
 	return true;
 }

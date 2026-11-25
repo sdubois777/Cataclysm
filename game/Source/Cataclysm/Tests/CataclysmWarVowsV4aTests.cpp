@@ -214,6 +214,7 @@ CATACLYSM_WAR_VOWS_V4A_TEST(FCataclysmWarVowsV4aTrailOfWireTest,
 	Player.System->SetPoolActions({Trail});
 
 	Player.System->NoteMovementSkillUsed();
+	++GFrameCounter;  // a hand-made tick in a new frame (RunClock)
 	World->GetTimerManager().Tick(0.1f);
 	TestEqual(TEXT("control: before any trap is placed, the movement skill places none"),
 			  ACataclysmMinion::SkillTrapsOf(Player.Character).Num(), 0);
@@ -230,6 +231,7 @@ CATACLYSM_WAR_VOWS_V4A_TEST(FCataclysmWarVowsV4aTrailOfWireTest,
 	Player.System->NoteMovementSkillUsed();
 	Player.Character->SetActorLocation(FVector(20.0f * WarVowsV4aMetre, 0.0f, 0.0f));
 	TestEqual(TEXT("nothing is placed inside the press"), ACataclysmMinion::SkillTrapsOf(Player.Character).Num(), 1);
+	++GFrameCounter;  // a hand-made tick in a new frame (RunClock)
 	World->GetTimerManager().Tick(0.1f);
 	const TArray<ACataclysmMinion*> Traps = ACataclysmMinion::SkillTrapsOf(Player.Character);
 	if (TestEqual(TEXT("on the next tick a second trap stands"), Traps.Num(), 2))

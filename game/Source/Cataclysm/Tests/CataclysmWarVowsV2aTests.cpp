@@ -289,8 +289,11 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aMaximumNowTest,
 	TestEqual(TEXT("and the maximum health 2,000: the scale reads the doubled maximum"),
 			  Titan.System->StatForSkill(FName(TEXT("max_health")), FGameplayTagContainer(), 0.0f), 2000.0f, 0.01f);
 
+	// THE ATTRIBUTE ITSELF (window war2-w1): `CurrentConditions().ClassResourceMaximum` folds the conditioned rows in since
+	// V2b, so it reads 200 here by design.
 	TestEqual(TEXT("control: the attribute stays 100"),
-			  Titan.System->CurrentConditions().ClassResourceMaximum, 100.0f, 0.001f);
+			  Titan.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute()),
+			  100.0f, 0.001f);
 	TestTrue(TEXT("control: a lookup asking no row for the scale leaves the reading unknown"),
 			 Titan.System->WithEnemiesInReach(TArray<FCataclysmStatModifier>(), Titan.System->CurrentConditions())
 				 .ClassResourceMaximumNow < 0.0f);
