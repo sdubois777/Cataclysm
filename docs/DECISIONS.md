@@ -2,6 +2,107 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The character creator's skill line counts the damage type's Aura and says how many skills work: "Demonic, Sword    6 of 6 skills work"
+
+On `fix/creation-skill-count`, from development `5cdd6bdc4`. No issue was filed: the owner's report came to the
+coordinating session, which assigned the fix.
+
+### Why
+
+**The owner, 2026-11-24:** "in game when you make a character, no matter what weapon you select if you pick demonic it
+says there's one skill not built for all of them."
+
+`UCataclysmCharacterCreation::SummaryFor` printed `"%s, %s    %d of 6 skills designed"` from `DesignedSkillCount`, which
+counted the rows of `game/Data/WeaponSkills.csv` whose WeaponType is the chosen weapon. **The sixth skill of every
+pairing is its damage type's Aura, on a row whose WeaponType is `All`** (`Demonic_All_Aura`, Conflagration), so every
+Demonic weapon read "5 of 6" while the character is given all six: `UCataclysmWeaponSkills::SkillsFor` collects the
+`All` rows after the weapon's own.
+
+**A second fault in the same line: "designed" counted a row with a skill name, not a skill that runs.** A row with no
+Shape is granted `UCataclysmUndesignedSkill`, the placeholder that fills the slot and does nothing
+(`UCataclysmWeaponSlotsComponent`, where `UCataclysmWeaponSkills::TemplateFor` answering null means the placeholder).
+Measured on the matrix at `5cdd6bdc4`: Demonic has a shape on 56 of its 56 rows; War on 7 of 61; each of the other six
+damage types on 6 (one weapon's five rows and its Aura). So every War weapon read "5 of 6 skills designed", and no War
+character can use more than two of its skills.
+
+### What changed
+
+- **`DesignedSkillCount` counts `UCataclysmWeaponSkills::SkillsFor(weapon, type)`**, the function the weapon slots grant
+  from (one weapon type with one damage type is `PoolFor` exactly, and a created character wears one weapon carrying the
+  one chosen type), rather than matching rows. The Aura is counted; and, as `SkillsFor` gives it, not for a weapon with
+  no written skill of its own.
+- **New `WorkingSkillCount`**: of those, the ones whose shape `UCataclysmWeaponSkills::TemplateFor` answers a class for,
+  which is the weapon slots' own test.
+- **`SummaryFor` leads with how many work**, then the skills designed and doing nothing, then the slots with nothing
+  designed, each only when there are some. "Of 6" is counted off the slot list (`CataclysmAbilitySlots::All` and
+  `UCataclysmWeaponSkills::IsChoosableSlot`) rather than written. The "no skills are designed for this pairing yet" line
+  is kept for a pairing given nothing.
+
+What the line says, on the matrix at `5cdd6bdc4`. **Predicted from the CSV by a Python copy of `SkillsFor` and
+`SummaryFor` written for this change and not committed; the C++ has not run.** The new test
+`EveryDemonicWeaponSaysAllSixOfItsSkillsWork` prints the real lines under "CREATION LINES".
+
+| Pairing | Before | Now |
+| :-- | :-- | :-- |
+| Demonic, Sword, and each of the 11 Demonic weapons | 5 of 6 skills designed | 6 of 6 skills work |
+| War, Crossbow | 5 of 6 skills designed | 1 of 6 skills work; 5 more are designed and do nothing yet |
+| War, Greataxe | 5 of 6 skills designed | 0 of 6 skills work; 6 are designed and do nothing yet |
+| War, Spear | 5 of 6 skills designed | 2 of 6 skills work; 4 more are designed and do nothing yet |
+| Death, Dagger | 5 of 6 skills designed | 6 of 6 skills work |
+| Death, Sword | no skills are designed for this pairing yet | unchanged |
+
+Across the 76 pairings the creator offers: 48 have no skills designed, 17 read "6 of 6 skills work" (the 11 Demonic
+weapons and one weapon of each of the other six types), 6 read "0 of 6", 4 read "1 of 6" and 1 reads "2 of 6", all War.
+
+**Death and a Sword is not "1 of 6", as the brief guessed.** Death designs the Dagger alone, so a Death Sword is given
+no skill, and judgement 1 below keeps its Aura out of the count.
+
+### Judgements
+
+1. **A pairing with no written weapon skill does not count its damage type's Aura, though the Aura is written. A
+   judgement:** the line says what the character is given, and `SkillsFor` gives the Aura only beside a weapon skill
+   ("THE WEAPON-INDEPENDENT ROWS SUPPLEMENT A WEAPON, THEY DO NOT STAND ALONE"). Counting it would have a Death Sword
+   read "1 of 6 skills work" for a character given no skill at all.
+2. **The wording. A judgement, on the coordinating session's suggestion** of "6 of 6 skills work" and "1 of 6 skills
+   work; 5 more are designed and do nothing yet": "more" is said only when at least one skill works ("0 of 6 skills
+   work; 6 are designed and do nothing yet"), and one skill takes "is" and "does". **The third clause, "K are not designed
+   yet", is not in the suggestion**: it keeps a partly written pairing literally true, where "2 of 6 skills work" alone
+   would leave four slots unexplained. No pairing on today's matrix shows it, because each has 0 or 6 skills written.
+3. **"Works" means the slot is granted a template rather than the placeholder**, as the brief asked. It does not say a
+   template's numbers are finished.
+4. **The test fixture's War Aura moved from a `Sword` row to an `All` row**, which is where the real matrix has every
+   Aura. A weapon-specific Aura row is why counting only the weapon's rows passed its test.
+
+No genre research: this is a status line on a screen, not a formula, an affix or a mechanic.
+
+### Tests
+
+**Unreal, registered and not yet run: group `Cataclysm.Creation.` goes from 14 tests to 17.** The fixture
+`CataclysmCreationTest::MakeWeaponSkillTable` gains a Greataxe carrying all five Demonic skills, a Greataxe War row
+with no shape, and `All` Aura rows for War (no shape), Demonic and Death; War's Special and Support on the Sword lose
+their shape. No other test in the file reads the counts or the rows changed.
+
+| | Test | What it checks |
+| :-- | :-- | :-- |
+| changed | `TheDesignedSkillCountIsCountedFromTheMatrix` | Sword and War counts 4 with War's Aura; Sword and Death counts 0 though Death's Aura is written; `All` counts 0; the Sword and Death line, whole |
+| new | `TheDamageTypesAuraIsCountedAsTheSixthSkill` | Greataxe and Demonic: 6 written, 6 working, "Demonic, Greataxe    6 of 6 skills work"; Staff and Demonic: 2 and 2, "2 of 6 skills work; 4 are not designed yet". Prints "DEMONIC LINES" |
+| new | `AWrittenSkillWithNoShapeIsSaidToDoNothingYet` | Sword and War: 4 written, 1 working, "1 of 6 skills work; 3 more are designed and do nothing yet; 2 are not designed yet"; Greataxe and War: 2 and 0, "0 of 6 skills work; 2 are designed and do nothing yet; 4 are not designed yet". Prints "PLACEHOLDER LINES" |
+| new | `EveryDemonicWeaponSaysAllSixOfItsSkillsWork` | the real matrix: every weapon the creator offers with Demonic reads "Demonic, <weapon>    6 of 6 skills work", and at least one does. Prints "CREATION LINES" with Death and a Sword and War and a Crossbow, not asserted |
+
+**C++ guard proofs, planned and not run** (`prove_cpp_guard`, prefix `Cataclysm.Creation.`), in
+`game/Source/Cataclysm/Character/CataclysmCharacterCreation.cpp`:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| G1, the Aura left out | `return Given;` in `CreationSkillsOf` read as `return Given.FilterByPredicate([](const FCataclysmWeaponSkill& Skill) { return Skill.Slot != ECataclysmAbilitySlot::Aura; });` | `TheDesignedSkillCountIsCountedFromTheMatrix`, `TheDamageTypesAuraIsCountedAsTheSixthSkill`, `AWrittenSkillWithNoShapeIsSaidToDoNothingYet`, `EveryDemonicWeaponSaysAllSixOfItsSkillsWork` |
+| G2, a placeholder counted as working | `if (UCataclysmWeaponSkills::TemplateFor(Skill.Shape).Get() != nullptr)` read as `if (UCataclysmWeaponSkills::TemplateFor(Skill.Shape).Get() != nullptr \|\| !Skill.Name.IsEmpty())` | `AWrittenSkillWithNoShapeIsSaidToDoNothingYet` alone |
+
+**Python.** No Python check reads this line or these functions (searched `tools/tests/` and `sim/` for the strings and
+the function names), and none was added: the Demonic rows' shapes are already held by
+`tools/tests/test_demonic_skills.py`.
+
+---
+
 ## 2026-11-24 — A hard cap on how rare a drop can roll: rarity number tier + 3, so tier 1 drops nothing above Masterful (#2853)
 
 **WINDOW rc-w1 PASSED, 2026-11-24**, on `fix/rarity-cap-2853-2` at `5e8be4680`, rebased onto development `6dd62aba6`;

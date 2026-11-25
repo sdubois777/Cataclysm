@@ -176,19 +176,45 @@ public:
 							  const FCataclysmCreationChoice& Choice);
 
 	/**
-	 * How many of this pairing's six skills have actually been written.
+	 * How many of this pairing's six skills have been written: the skills a
+	 * character choosing it is given.
 	 *
 	 * WHY A SCREEN SHOWS THIS. A pairing the design allows is not the same as a
 	 * pairing that has been designed: `game/Data/WeaponSkills.csv` carries a row
-	 * for all 390 legal combinations and only 58 of them have a skill name on
-	 * them, because writing the other 332 is issues #62 and #836. A player who
-	 * picks Sword and Celestial today gets a character with no skills at all,
-	 * and the creator should say so before they choose rather than after.
+	 * for every legal combination, and most of them have no skill name yet,
+	 * because writing them is issues #62 and #836. A player who picks Sword and
+	 * Celestial today gets a character with no skills at all, and the creator
+	 * should say so before they choose rather than after.
 	 *
-	 * @return 0 to 6, counting only rows whose SkillName is not empty
+	 * COUNTED BY `UCataclysmWeaponSkills::SkillsFor`, THE FUNCTION THE WEAPON
+	 * SLOTS GRANT FROM, and not by matching rows here. The sixth skill is the
+	 * damage type's Aura, which sits on a row whose weapon type is `All`
+	 * (`WeaponIndependent`) rather than the weapon's. Counting only rows that
+	 * name the weapon left it out, so every Demonic weapon read "5 of 6" while
+	 * the character was given all six -- the owner's report of 2026-11-24. And
+	 * `SkillsFor` gives the Aura only to a weapon that has a written skill of
+	 * its own, so a pairing with none still counts 0 although its damage type's
+	 * Aura is written.
+	 *
+	 * @return 0 to 6, one per slot the character is given a written skill in
 	 */
 	static int32 DesignedSkillCount(const UDataTable* WeaponSkillTable,
 									FName WeaponType, FName DamageType);
+
+	/**
+	 * How many of the skills `DesignedSkillCount` counts DO something.
+	 *
+	 * A WRITTEN SKILL IS NOT A WORKING ONE. A row whose Shape is empty is
+	 * granted `UCataclysmUndesignedSkill`, a placeholder that fills the slot and
+	 * does nothing, because no template runs it. This asks the question the
+	 * weapon slots ask when they grant (`UCataclysmWeaponSlotsComponent`, where
+	 * `UCataclysmWeaponSkills::TemplateFor` answering null means the
+	 * placeholder): a skill works when its shape has a template.
+	 *
+	 * @return 0 to `DesignedSkillCount`
+	 */
+	static int32 WorkingSkillCount(const UDataTable* WeaponSkillTable,
+								   FName WeaponType, FName DamageType);
 
 	/**
 	 * The three classes a damage type unlocks, in the design document's order.
@@ -232,6 +258,22 @@ public:
 
 	/**
 	 * The line the screen prints once both halves are chosen.
+	 *
+	 * HOW MANY SKILLS WORK, FIRST, and then what the rest are, each only when
+	 * there are some. Four spaces follow the pairing; on the real matrix of
+	 * 2026-11-24:
+	 *
+	 *   "Demonic, Sword    6 of 6 skills work"
+	 *   "War, Crossbow    1 of 6 skills work; 5 more are designed and do
+	 *    nothing yet"
+	 *   "War, Greataxe    0 of 6 skills work; 6 are designed and do nothing
+	 *    yet"
+	 *   "Death, Sword    no skills are designed for this pairing yet"
+	 *
+	 * and, for a pairing written in part, "...; 2 are not designed yet".
+	 * "Designed and do nothing" is `DesignedSkillCount` less
+	 * `WorkingSkillCount`: the skills granted as the placeholder. "Not
+	 * designed" is the slots the character is given no skill in.
 	 *
 	 * @return empty when the choice is incomplete, which says nothing rather
 	 *         than saying "you have chosen nothing"
