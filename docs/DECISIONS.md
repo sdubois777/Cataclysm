@@ -52,6 +52,8 @@ Decisions made outside the Google Drive documents, newest first.
     - `test_pool_action_names_match_the_engine.py`: `hit_taken` now carries a character; the control that carries none
       is `health_cost`.
     - `test_damage_over_time_names_its_skill.py`: Vengeful Discharge's Bleed is laid in `PayPulseFor`.
+    - `test_generate_datatables.py`: the events a strike may hang on are ten, and the example of an event naming
+      nobody is `spell` in `hit_taken`'s place.
     - `test_passive_effects_match_the_node_text.py`: 570 rows, 318 authored nodes, 59 authored options.
     - `test_stat_lookups_hand_over_what_they_should.py`: the three new stat lookups.
 

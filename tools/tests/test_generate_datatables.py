@@ -3564,16 +3564,20 @@ class TestStrikeTarget:
 
     # `kill` AND `afflicted_death` NAME AN ENEMY THAT HAS DIED, and
     # `gadget_destroyed` the wearer's own machine. The others name nobody.
+    # `hit_taken` WAS AMONG THEM UNTIL THE WAR VOW OPTIONS' THIRD SLICE, V3a,
+    # 2026-11-25, when it began to name the attacker; `spell` names nobody.
     @pytest.mark.parametrize("event", ["kill", "afflicted_death", "gadget_destroyed",
-                                       "hit_taken", "skill_use", "timed", None])
+                                       "spell", "skill_use", "timed", None])
     def test_the_row_on_an_event_with_nobody_to_strike_is_refused(self, tmp_path, event):
         with pytest.raises(gen.DataError, match="names a living character other than"):
             gen.enchantment_effects(self.strike(tmp_path, {"Action Event": event}))
 
-    def test_the_list_of_events_is_exactly_the_eight(self):
+    def test_the_list_of_events_is_exactly_the_ten(self):
+        # TEN SINCE V3a, 2026-11-25: `hit_taken` and `big_hit_taken` name the attacker.
         assert set(gen.STRIKE_TARGET_EVENTS) == {
             "hit_dealt", "first_hit_dealt", "critical_strike", "deployable_hit",
-            "retaliation_dealt", "block", "melee_hit_taken", "dodge"}
+            "retaliation_dealt", "block", "melee_hit_taken", "dodge",
+            "hit_taken", "big_hit_taken"}
         assert set(gen.STRIKE_TARGET_EVENTS) <= gen.granting_events()
 
     def test_a_size_at_the_bound_is_carried_through(self, tmp_path):
