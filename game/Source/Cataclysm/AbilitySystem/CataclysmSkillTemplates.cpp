@@ -2414,6 +2414,7 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	CooldownsReturned = 0;
 	AttackersLit = 0;
 	SecondsHeld = 0;
+	BlowsLaidOn = 0;
 
 	// AND THE STORE STARTS EMPTY, for the same reason. Martyr's Ember holds "40%
 	// of all damage you take WHILE IT LASTS", so what was held during the last
@@ -2464,9 +2465,16 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	// magnitude but never names the buff, so there is no status in the Buffs
 	// sheet for either and no tag to grant. The magnitude no longer depends on
 	// this: it is a stat modifier on the caster, not a tag anything reads.
-	UCataclysmSkillEffects::ApplyTagForDuration(
-		Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
-		Lasts);
+	//
+	// AND NOT TO ITS HOLDER WHEN THE ROW LAYS IT WITH EVERY BLOW. Issue #2885, the Death draft's N17, slice DS4: the
+	// Spear's Grim Reach names `Effect=Cripple` for what its holder's hits lay, and granted here it would Cripple the
+	// player, as the draft and slice DS2's entry both warned. `NoteBlowLanded` lays it on what each blow hits instead.
+	if (!Params.bEveryBlow)
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
+			Lasts);
+	}
 
 	// AND A ROW WRITING `Effect=RandomBuff` DRAWS ONE BUFF FROM THE GAME'S OWN POOL, for as long as this buff lasts.
 	// Issue #2580, [N5], the Chaos Whip's Loaded Dice: "gain one buff drawn at random from every buff there is, for 8
@@ -3108,6 +3116,27 @@ void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
 		&& RefundCooldown())
 	{
 		++CooldownsReturned;
+	}
+
+	// AND A ROW LAYING ITS RIDERS WITH EVERY BLOW LAYS THEM ON WHAT THIS ONE HIT. Issue #2885, the Death draft's N17,
+	// slice DS4: the Fist's Hemlock, "every blow you land while it lasts Poisons what it hits"; the Whip's Death Grip,
+	// "every blow you land drags what it hits 1 meter toward you. Each drag within 5 seconds of the last on the same
+	// enemy goes half as far"; and the Spear's Grim Reach, "every hit you land Cripples what it hits". Groundbreaker's
+	// verb, with the buff's own riders in the order a strike lays its own: the stated ailment (`ApplyStatedAilmentTo`),
+	// the forced movement (`ApplyForcedMovementTo`, whose pull is halved within five seconds on the same target by the
+	// displacement rule every pull meets, so Death Grip's second sentence is that rule and needs no key), then the named
+	// effects (`ApplyNamedEffectsTo`). ON WHAT THE BLOW HIT AND NOT ON THE HOLDER, which `ActivateAbility` therefore
+	// grants no effect to. NOT ON A BLOW THAT KILLED, a judgement: a body is neither poisoned nor dragged.
+	if (Params.bEveryBlow && IsValid(Target))
+	{
+		AActor* Holder = Avatar();
+		if (Holder && Holder != Target && !UCataclysmSkillEffects::IsDead(Target) && !AtNoHealth(Target))
+		{
+			ApplyStatedAilmentTo(Holder, Target);
+			ApplyForcedMovementTo(Holder, Target, /*DamageDealt=*/0.0f);
+			ApplyNamedEffectsTo(Target);
+			++BlowsLaidOn;
+		}
 	}
 
 	if (Params.Terrain.IsEmpty())
@@ -5395,6 +5424,7 @@ void UCataclysmSummonSkill::Collapse()
 	}
 
 	AActor* Self = Avatar();
+	BurstAtCollapse = 0;
 
 	// "When the rift closes it collapses, dealing 400% weapon damage in its
 	// radius and destroying the imps it spawned."
@@ -5406,6 +5436,36 @@ void UCataclysmSummonSkill::Collapse()
 		// THE COLLAPSE COMES AFTER THE CAST, so Chorus does not repeat it.
 		TGuardValue<bool> AfterTheCast(bHitsAfterTheCast, true);
 		HitTargets(Caught, Params.FinalHitPercent);
+	}
+
+	// AND WHAT THE RIFT MADE BURSTS, WHEN THE ROW SAYS SO, BEFORE WHAT IS LEFT IS DESTROYED. Issue #2885, the Death
+	// draft's N12, slice DS4: the Staff's Grave Mouth, "when the grave closes, every wisp still out bursts at once".
+	// Each living one explodes as `ACataclysmMinion::Explode` explodes, for its own blow in the row's radius, which
+	// destroys it and frees its reserve; a minion already dead bursts nothing and is destroyed below with the rest.
+	//
+	// GATHERED FIRST AND BURST AFTER, as `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` gathers: a burst strikes
+	// enemies, and a kill it makes may raise a minion into this skill's list (`SpawnOneAtAKill`), so the list is read
+	// once, before the first goes off, and each is asked again as it comes up.
+	if (Params.bCollapseBursts)
+	{
+		TArray<TWeakObjectPtr<ACataclysmMinion>> StillOut;
+		for (const TObjectPtr<ACataclysmMinion>& Made : Minions)
+		{
+			if (IsValid(Made) && !UCataclysmSkillEffects::IsDead(Made))
+			{
+				StillOut.Add(Made.Get());
+			}
+		}
+		for (const TWeakObjectPtr<ACataclysmMinion>& One : StillOut)
+		{
+			ACataclysmMinion* Bursting = One.Get();
+			if (IsValid(Bursting) && !UCataclysmSkillEffects::IsDead(Bursting))
+			{
+				Bursting->Explode();
+				++BurstAtCollapse;
+			}
+		}
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' closed and %d of what it raised burst."), *SkillName, BurstAtCollapse);
 	}
 
 	for (const TObjectPtr<ACataclysmMinion>& Minion : Minions)

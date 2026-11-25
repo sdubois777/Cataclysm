@@ -105,8 +105,10 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # the first self buff that repeats. No enemy ability states it yet.
     # `HoldsFervour` joined on 2026-11-24 with slice DS3 (the Death draft's N8,
     # Cold Blood). No enemy ability uses it.
+    # `MeleeReachMetres` and `EveryBlow` joined with slice DS4 (N21 and N17,
+    # Grim Reach, Hemlock and Death Grip). No enemy ability uses either.
     "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease",
-                 "HoldsFervour"),
+                 "HoldsFervour", "MeleeReachMetres", "EveryBlow"),
     # `MaxTargets` JOINED ON 2026-09-01, and the engine had always read it: all
     # three movement modes that hit anything hand it straight to the targeting
     # search. The Spear's Nail Down impales "the first enemy you reach" where the
@@ -123,10 +125,12 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # taunts the enemies within the row's Radius of it. No enemy ability uses it.
     # `Permanent` and `MinionsLayEffect` joined the same day with slice DS2 (the
     # draft's N1 and N11), for the permanent raises. No enemy ability uses them.
+    # `CollapseBursts` joined with slice DS4 (N12, Grave Mouth). No enemy ability
+    # uses it.
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
                "HealthThresholdPercent", "Taunts", "Permanent",
-               "MinionsLayEffect"),
+               "MinionsLayEffect", "CollapseBursts"),
     # `FervourReserve` joined on 2026-09-08, when the project owner ruled that
     # every minion and gadget skill reserves Fervour rather than only the one
     # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all

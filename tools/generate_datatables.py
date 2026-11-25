@@ -667,8 +667,16 @@ SHAPE_PARAMS = {
     # `HoldsFervour` JOINED ON 2026-11-24, issue #2885 slice DS3: the Death
     # draft's N8, the Sword's Cold Blood, "while it lasts your Fervour does not
     # decay". `UCataclysmFervour::DecayStep` asks whether a running buff holds it.
+    #
+    # `MeleeReachMetres` AND `EveryBlow` JOINED THE SAME DAY WITH SLICE DS4:
+    # the Death draft's N21, flat metres a running buff adds to its holder's
+    # melee reach (the Spear's Grim Reach), and N17, a buff whose `Ailment`,
+    # `Effect` and `ForcedMovement` are laid by every blow its holder lands
+    # (Hemlock, Death Grip, Grim Reach). `UCataclysmSelfBuffSkill::
+    # NoteBlowLanded` lays them; `check_a_bursting_rift_and_a_buff_on_every_blow`
+    # refuses either where it would do nothing.
     "SelfBuff": {"Duration", "Interval", "Radius", "RangeIncrease",
-                 "HoldsFervour"},
+                 "HoldsFervour", "MeleeReachMetres", "EveryBlow"},
     # Inexorable walks for three seconds and Everywhere at Once flickers for
     # four, so a movement can now last and repeat. `RearHits` says every blow it
     # lands counts as struck from behind.
@@ -710,10 +718,14 @@ SHAPE_PARAMS = {
     # with each blow (Bone Choir's mages). N2 needs no key: a Summon row that
     # states a Damage Percent strikes as it raises, and lays its `Effect` with
     # that blow (`check_a_summon_effect_has_a_carrier`).
+    #
+    # `CollapseBursts` JOINED WITH SLICE DS4: the Death draft's N12, what a rift
+    # raised bursts as the rift closes rather than being destroyed (the Staff's
+    # Grave Mouth); refused on a summon that is not a rift, which never closes.
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
                "HealthThresholdPercent", "Taunts", "Permanent",
-               "MinionsLayEffect"},
+               "MinionsLayEffect", "CollapseBursts"},
     # AN EIGHTH SHAPE, added with issue #338. A summon spawns things that walk to
     # the enemy; a deployable places things that stay where they are put. The
     # split is behavioural and the data already carried it as a tag -- Bolt
@@ -878,6 +890,40 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
     check_a_lengthened_flicker(params, shape, where)
     check_a_rising_curse(params, shape, where)
     check_a_spending_or_cashing_strike(params, where)
+    check_a_bursting_rift_and_a_buff_on_every_blow(params, where)
+
+
+def check_a_bursting_rift_and_a_buff_on_every_blow(params: dict[str, str],
+                                                   where: str) -> None:
+    """Refuse N12's `CollapseBursts`, N17's `EveryBlow` and N21's `MeleeReachMetres` where they would do nothing.
+
+    Issue #2885, slice DS4. `SHAPE_PARAMS` keeps the first to a Summon and the
+    other two to a SelfBuff. Only a rift closes -- a summon spawning one every
+    `Interval` over its `Duration`, Open the Rift's pattern -- so a summon that
+    is not one would never burst what it raised. A buff laying its riders with
+    every blow lays its `Ailment`, `Effect` and `ForcedMovement`, so one naming
+    none of them lays nothing. And a buff adding nought or less to its holder's
+    melee reach lengthens nothing, which no row means.
+    """
+    if is_on(params, "CollapseBursts"):
+        rift = float(params.get("Interval", "0")) > 0.0 and float(params.get("Duration", "0")) > 0.0
+        if not rift:
+            raise DataError(
+                f"{where}: states CollapseBursts={params['CollapseBursts']} "
+                f"and is not a rift (an Interval and a Duration above "
+                f"nought), so it never closes and nothing would burst")
+    if is_on(params, "EveryBlow"):
+        lays = [key for key in ("Ailment", "Effect", "ForcedMovement") if (params.get(key) or "").strip()]
+        if not lays:
+            raise DataError(
+                f"{where}: states EveryBlow={params['EveryBlow']} and no "
+                f"Ailment, Effect or ForcedMovement, so its holder's blows "
+                f"would lay nothing")
+    if "MeleeReachMetres" in params and float(params["MeleeReachMetres"]) <= 0.0:
+        raise DataError(
+            f"{where}: states MeleeReachMetres={params['MeleeReachMetres']}, "
+            f"which lengthens nothing. A buff's added reach has to be more "
+            f"than nought")
 
 
 def check_a_spending_or_cashing_strike(params: dict[str, str],

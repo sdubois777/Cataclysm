@@ -4050,4 +4050,247 @@ bool FCataclysmDeathSkillsStrikeCashesInAilmentsTest::RunTest(const FString&)
 	return true;
 }
 
+// ==========================================================================
+// Slice DS4, change B. N12: what a rift raised bursts as it closes. N17: a self buff lays its riders with every blow
+// its holder lands. N21: a self buff lengthens its holder's melee reach.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsRiftBurstsAsItClosesTest,
+	"Cataclysm.DeathSkills.ARiftThatBurstsAsItClosesExplodesWhatItRaisedAndOneThatDoesNotDestroysItQuietly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N12 (`UCataclysmSummonSkill::Collapse`): a rift stating `Duration=4; Interval=0.5; MaxActive=8; CollapseBursts=1` --
+ * Grave Mouth's pattern, raising Imps -- is opened 12 m ahead, and two of its spawns are driven by hand, since no clock
+ * runs. As it closes both burst: the creature a metre past the rift takes their blasts, the one 7 m past it takes
+ * nothing, and neither imp is left. THE CONTROL, 100 m along +Y: the same rift stating no `CollapseBursts` destroys its
+ * two imps, and the creature a metre past its rift takes nothing. The casters are on the players' side, so the imps are
+ * each other's allies and a blast strikes the monsters alone.
+ */
+bool FCataclysmDeathSkillsRiftBurstsAsItClosesTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillCreature PastTheRift(World, FVector(13.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature FarPast(World, FVector(19.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Rift = GrantDeathSkill<UCataclysmSummonSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Count=1; Duration=4; Interval=0.5; MaxActive=8; Minions=Imp:1; FervourReserve=2; "
+			 "CollapseBursts=1"),
+		TEXT("A bursting rift"));
+	TArray<ACataclysmMinion*> Raised;
+	ON_SCOPE_EXIT { DeathSkillClear(Raised); };
+	if (!TestNotNull(TEXT("set-up: the rift is granted"), Rift)
+		|| !TestTrue(TEXT("the rift is opened"), ActivateDeathSkill(Caster.AbilitySystem, Rift)))
+	{
+		return false;
+	}
+	Rift->SpawnTick();
+	Rift->SpawnTick();
+	for (ACataclysmMinion* Made : Rift->Minions)
+	{
+		Raised.Add(Made);
+	}
+	if (!TestEqual(TEXT("set-up: two of its spawns raised two imps"), Raised.Num(), 2))
+	{
+		return false;
+	}
+
+	Rift->Collapse();
+	TestEqual(TEXT("as it closed both burst"), Rift->BurstAtCollapse, 2);
+	TestTrue(TEXT("the creature a metre past the rift took their blasts"), DeathSkillHealthLost(PastTheRift) > 0.0f);
+	TestEqual(TEXT("the creature 7 m past it took nothing, beyond the 3 m"), DeathSkillHealthLost(FarPast), 0.0f,
+			  DeathSkillAllowance);
+	TestFalse(TEXT("and neither imp is left: the first"), IsValid(Raised[0]));
+	TestFalse(TEXT("nor the second"), IsValid(Raised[1]));
+
+	// THE CONTROL: the same rift stating no CollapseBursts.
+	FDeathSkillFighter Quiet(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSideWithThePlayers(Quiet, PlayersSide);
+	FDeathSkillCreature PastTheQuietRift(World, FVector(13.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+										 ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* QuietRift = GrantDeathSkill<UCataclysmSummonSkill>(
+		Quiet.AbilitySystem, Quiet.Actor, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Count=1; Duration=4; Interval=0.5; MaxActive=8; Minions=Imp:1; FervourReserve=2"),
+		TEXT("A quiet rift"));
+	TArray<ACataclysmMinion*> QuietlyRaised;
+	ON_SCOPE_EXIT { DeathSkillClear(QuietlyRaised); };
+	if (!TestNotNull(TEXT("set-up: the control rift is granted"), QuietRift)
+		|| !TestTrue(TEXT("set-up: the control rift is opened"), ActivateDeathSkill(Quiet.AbilitySystem, QuietRift)))
+	{
+		return false;
+	}
+	QuietRift->SpawnTick();
+	QuietRift->SpawnTick();
+	for (ACataclysmMinion* Made : QuietRift->Minions)
+	{
+		QuietlyRaised.Add(Made);
+	}
+	if (!TestEqual(TEXT("set-up: the control rift raised two imps"), QuietlyRaised.Num(), 2))
+	{
+		return false;
+	}
+	QuietRift->Collapse();
+	TestEqual(TEXT("control: as it closed nothing burst"), QuietRift->BurstAtCollapse, 0);
+	TestEqual(TEXT("control: the creature a metre past it took nothing"), DeathSkillHealthLost(PastTheQuietRift), 0.0f,
+			  DeathSkillAllowance);
+	TestFalse(TEXT("control: and its imps were destroyed all the same"), IsValid(QuietlyRaised[0]));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBuffOnEveryBlowTest,
+	"Cataclysm.DeathSkills.ABuffOnEveryBlowLaysItsAilmentEffectAndPullOnWhatItsHolderHitsAndNothingOnItsHolder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N17 (`UCataclysmSelfBuffSkill::NoteBlowLanded`): THE CONTROL first, a ring swing at a creature 3 m off with no buff
+ * running, which leaves it unpoisoned, uncrippled and where it stood. Then a buff stating `Ailment=Poison; Effect=
+ * Cripple; EffectMagnitude=30; EffectDuration=4; ForcedMovement=Pull; ForcedMovementDistance=1; EveryBlow=1` --
+ * Hemlock's, Grim Reach's and Death Grip's riders in one cell -- goes up and its holder is NOT Crippled; the same swing
+ * then Poisons the creature, Cripples it at 30 for 4 s and drags it about a metre nearer, one blow laid on.
+ */
+bool FCataclysmDeathSkillsBuffOnEveryBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestTrue(TEXT("set-up: the Cripple curse and the Poison"),
+				  Cripple.IsValid() && DeathSkillAilmentTag(TEXT("Poison")).IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	FDeathSkillCreature Struck(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("A plain swing"));
+	UCataclysmSelfBuffSkill* Riders = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=6; Ailment=Poison; Effect=Cripple; EffectMagnitude=30; EffectDuration=4; ForcedMovement=Pull; "
+			 "ForcedMovementDistance=1; EveryBlow=1"),
+		TEXT("A buff on every blow"));
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Swing)
+		|| !TestNotNull(TEXT("set-up: the buff is granted"), Riders))
+	{
+		return false;
+	}
+	Swing->DamagePercentOverride = 100.0f;
+
+	// THE CONTROL: the swing with no buff running.
+	TestEqual(TEXT("control: the swing strikes the creature 3 m off"), Swing->SwingOnce(), 1);
+	TestFalse(TEXT("control: with no buff running it is not Poisoned"),
+			  DeathSkillCarriesAilment(Struck.Actor, TEXT("Poison")));
+	TestFalse(TEXT("control: nor Crippled"), Struck.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestEqual(TEXT("control: nor moved"),
+			  static_cast<float>(FVector::Dist2D(Struck.Actor->GetActorLocation(), FVector::ZeroVector)),
+			  3.0f * DeathSkillMetre, 1.0f);
+
+	if (!TestTrue(TEXT("the buff goes up"), ActivateDeathSkill(Holder.AbilitySystem, Riders)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and its holder is not Crippled: the effect is for what its blows hit"), Holder.Carries(Cripple));
+
+	TestEqual(TEXT("the same swing strikes it again"), Swing->SwingOnce(), 1);
+	TestEqual(TEXT("and the buff laid its riders on that one blow"), Riders->BlowsLaidOn, 1);
+	TestTrue(TEXT("it is Poisoned"), DeathSkillCarriesAilment(Struck.Actor, TEXT("Poison")));
+	TestTrue(TEXT("and Crippled"), Struck.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestEqual(TEXT("at the row's 30"), UCataclysmSkillEffects::StatedStrengthOn(Struck.Actor, Cripple), 30.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("for its 4 seconds"), DeathSkillSecondsLeft(Struck.Actor, Cripple), 4.0f, DeathSkillAllowance);
+	const float Nearer = static_cast<float>(FVector::Dist2D(Struck.Actor->GetActorLocation(), FVector::ZeroVector));
+	TestTrue(TEXT("and dragged about a metre nearer, from 3 m"),
+			 Nearer < 2.5f * DeathSkillMetre && Nearer > 1.5f * DeathSkillMetre);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBuffLengthensMeleeReachTest,
+	"Cataclysm.DeathSkills.ABuffLengtheningMeleeReachMakesAMeleeStrikeReachItsMetresFartherAndARangedOneNoFarther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N21 (`UCataclysmSkillTemplate::HeldMeleeReachCm`, read by `MeleeReachBonusCm`): THE CONTROL first, a melee ring swing
+ * of 2 m, which reaches its 2 m and misses a creature 4 m off. Its holder's buff stating `MeleeReachMetres=3` -- Grim
+ * Reach's reach -- goes up: the melee swing reaches 5 m and strikes that creature, while a strike tagged `Type.Ranged`
+ * stays at its 2 m. Cancelled, the melee swing is back to 2 m.
+ */
+bool FCataclysmDeathSkillsBuffLengthensMeleeReachTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Melee = DeathSkillTagNamed(TEXT("Type.Melee"));
+	const FGameplayTag Ranged = DeathSkillTagNamed(TEXT("Type.Ranged"));
+	if (!TestTrue(TEXT("set-up: the vocabulary has Type.Melee and Type.Ranged"), Melee.IsValid() && Ranged.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	FDeathSkillCreature Far(World, FVector(4.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* MeleeSwing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=2; Angle=360"),
+		TEXT("A melee swing"));
+	UCataclysmStrikeSkill* RangedStrike = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Special, TEXT("Radius=2; Angle=360"),
+		TEXT("A ranged strike"));
+	UCataclysmSelfBuffSkill* Reach = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Support, TEXT("Duration=10; MeleeReachMetres=3"),
+		TEXT("A lengthening grip"));
+	if (!TestNotNull(TEXT("set-up: the melee swing is granted"), MeleeSwing)
+		|| !TestNotNull(TEXT("set-up: the ranged strike is granted"), RangedStrike)
+		|| !TestNotNull(TEXT("set-up: the buff is granted"), Reach))
+	{
+		return false;
+	}
+	MeleeSwing->SkillTags = FGameplayTagContainer(Melee);
+	RangedStrike->SkillTags = FGameplayTagContainer(Ranged);
+	MeleeSwing->DamagePercentOverride = 100.0f;
+
+	// THE CONTROL: no buff running.
+	TestEqual(TEXT("control: the melee swing reaches its 2 m"), MeleeSwing->ScaledRadiusCm(), 2.0f * DeathSkillMetre,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("control: and misses the creature 4 m off"), MeleeSwing->SwingOnce(), 0);
+
+	if (!TestTrue(TEXT("the buff goes up"), ActivateDeathSkill(Holder.AbilitySystem, Reach)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("while it runs the melee swing reaches 3 m farther: 5 m"), MeleeSwing->ScaledRadiusCm(),
+			  5.0f * DeathSkillMetre, DeathSkillAllowance);
+	TestEqual(TEXT("and strikes the creature 4 m off"), MeleeSwing->SwingOnce(), 1);
+	TestTrue(TEXT("which takes its blow"), DeathSkillHealthLost(Far) > 0.0f);
+	TestEqual(TEXT("a ranged strike's 2 m stays 2 m"), RangedStrike->ScaledRadiusCm(), 2.0f * DeathSkillMetre,
+			  DeathSkillAllowance);
+
+	Holder.AbilitySystem->CancelAbilityHandle(Reach->GetCurrentAbilitySpecHandle());
+	TestEqual(TEXT("cancelled, the melee swing is back to its 2 m"), MeleeSwing->ScaledRadiusCm(),
+			  2.0f * DeathSkillMetre, DeathSkillAllowance);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -1043,6 +1043,13 @@ public:
 	int32 CooldownsReturned = 0;
 
 	/**
+	 * How many landed blows this buff has laid its ailment, its forced movement and its effect on, this activation, for
+	 * a row stating `EveryBlow=1`. Issue #2885, the Death draft's N17, slice DS4. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 BlowsLaidOn = 0;
+
+	/**
 	 * React to a blow landed ON this buff's holder, if its row says to.
 	 *
 	 * ONE ROW STATES IT: the Greataxe's Burning Wrath, "while it lasts, any enemy
@@ -2067,10 +2074,24 @@ public:
 	 */
 	static ACataclysmMinion* SpawnOneAtAKill(AActor* Killer, const FVector& Where);
 
-private:
+	/**
+	 * One spawn of an open rift, and the rift's closing: what `SpawnTimer` and `CollapseTimer` call. PUBLIC SINCE ISSUE
+	 * #2885 SLICE DS4, so a test can drive a rift without a clock, as `SummonOne` is public for.
+	 *
+	 * THE CLOSING DEALS THE ROW'S `FinalHitPercent` IN ITS RADIUS AND DESTROYS WHAT THE RIFT MADE -- Open the Rift --
+	 * OR, FOR A ROW STATING `CollapseBursts=1`, BURSTS IT FIRST. The Death draft's N12: the Staff's Grave Mouth, "when the
+	 * grave closes, every wisp still out bursts at once". Each living one explodes as `ACataclysmMinion::Explode`
+	 * explodes, for its own blow in the row's `Radius`, and is gone, its reserve freed with it; what is left is
+	 * destroyed as before.
+	 */
 	void SpawnTick();
 	void Collapse();
 
+	/** How many minions this rift's last closing burst. Issue #2885, N12 (`CollapseBursts`). Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 BurstAtCollapse = 0;
+
+private:
 	/**
 	 * Record this skill's row and its level factor on a minion it has just made (`ACataclysmMinion::SummoningSkillRow`
 	 * and `LevelFactorOnCreatures`), read now, once. Issue #2764, slice 2b. Called by `SummonOne` and

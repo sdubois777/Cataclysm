@@ -6,7 +6,8 @@ N11 (`MinionsLayEffect=1`, a summon's minions lay its `Effect` with their blows)
 Damage Percent of its own strikes as it rises, and lays its `Effect` with that blow. N16 widened `SKILL_ROW_AILMENTS`,
 which `test_stalker_kit_shape_keys.py` holds. Slice DS3 added N5, N6, N7, N8 and N10's keys, and slice DS4 N13's
 `SpendsAllFervour` with `ScalingSource=FervourSpent` and N15's `CashInRadius` on a Strike (N9, a strike's refund, is the
-`RefundsCooldown` rider and has no key of its own).
+`RefundsCooldown` rider and has no key of its own), N12's `CollapseBursts` on a Summon, and N17's `EveryBlow` and N21's
+`MeleeReachMetres` on a SelfBuff.
 
 EACH KEY IS SHOWN BOTH WAYS: accepted where the engine reads it, and refused where a row stating it would run and
 quietly do something else -- which is the failure `parse_shape_params` exists to prevent. The C++ parser reading each
@@ -378,3 +379,82 @@ def test_a_cash_in_that_reaches_nobody_is_refused(radius):
 ])
 def test_a_cash_in_is_a_strikes_alone(shape, text):
     assert "has no parameter 'CashInRadius'" in refused(text, shape)
+
+
+# --------------------------------------------------------------------------
+# Slice DS4: N12 CollapseBursts, N17 EveryBlow, N21 MeleeReachMetres
+
+GRAVE_MOUTH = ("Range=12; Radius=3; Count=1; Duration=4; Interval=0.5; MaxActive=8; Minions=Wisp:1; "
+               "FervourReserve=2; CollapseBursts=1")
+
+
+def test_a_rift_that_bursts_what_it_raised_as_it_closes_is_accepted():
+    """Grave Mouth's cell, word for word."""
+    assert parse(GRAVE_MOUTH, "Summon")["CollapseBursts"] == "1"
+
+
+@pytest.mark.parametrize("text", [
+    "Range=12; Radius=3; Count=1; Minions=Wisp:1; FervourReserve=2; CollapseBursts=1",
+    "Range=12; Radius=3; Count=1; Duration=4; Minions=Wisp:1; FervourReserve=2; CollapseBursts=1",
+    "Range=12; Radius=3; Count=1; Interval=0.5; Minions=Wisp:1; FervourReserve=2; CollapseBursts=1",
+    "Count=2; Radius=5; Minions=BarrowGuard:2; FervourReserve=10; Permanent=1; CollapseBursts=1",
+])
+def test_bursting_what_was_raised_on_a_summon_that_never_closes_is_refused(text):
+    """No rift: no Interval and Duration, one without the other, or a permanent raise, which stands until destroyed."""
+    assert "is not a rift" in refused(text, "Summon")
+
+
+def test_a_summon_that_is_no_rift_with_the_key_switched_off_passes():
+    """THE CONTROL for the refusal above: nought is the key switched off."""
+    assert parse("Range=10; Radius=3; Count=5; Duration=6; Minions=Shade:5; FervourReserve=3; CollapseBursts=0",
+                 "Summon")["CollapseBursts"] == "0"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Deployable", "Count=1; Duration=5; Interval=1; Minions=BoltTurret:1; FervourReserve=5; CollapseBursts=1"),
+    ("Strike", "Radius=3; Angle=90; CollapseBursts=1"),
+])
+def test_bursting_at_a_close_is_a_summons_alone(shape, text):
+    assert "has no parameter 'CollapseBursts'" in refused(text, shape)
+
+
+@pytest.mark.parametrize("text, laid", [
+    # Hemlock, Death Grip and Grim Reach, word for word.
+    ("Duration=6; Ailment=Poison; EveryBlow=1", "Ailment"),
+    ("Duration=6; ForcedMovement=Pull; ForcedMovementDistance=1; EveryBlow=1", "ForcedMovement"),
+    ("Duration=10; MeleeReachMetres=3; Effect=Cripple; EffectMagnitude=30; EffectDuration=4; EveryBlow=1", "Effect"),
+])
+def test_a_buff_laying_its_riders_with_every_blow_is_accepted(text, laid):
+    params = parse(text, "SelfBuff")
+    assert params["EveryBlow"] == "1" and params[laid]
+
+
+def test_a_buff_on_every_blow_that_lays_nothing_is_refused():
+    assert "would lay nothing" in refused("Duration=6; EveryBlow=1", "SelfBuff")
+
+
+def test_a_buff_laying_nothing_with_the_key_switched_off_passes():
+    """THE CONTROL for the refusal above: nought is the key switched off."""
+    assert parse("Duration=6; EveryBlow=0", "SelfBuff")["EveryBlow"] == "0"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Strike", "Radius=3; Angle=90; Ailment=Poison; EveryBlow=1"),
+    ("Aura", "Radius=8; Duration=8; Interval=1; Effect=Cripple; EveryBlow=1"),
+])
+def test_every_blow_is_a_self_buffs_alone(shape, text):
+    assert "has no parameter 'EveryBlow'" in refused(text, shape)
+
+
+def test_a_buff_lengthening_its_holders_melee_reach_is_accepted():
+    assert parse("Duration=10; MeleeReachMetres=3", "SelfBuff")["MeleeReachMetres"] == "3"
+
+
+@pytest.mark.parametrize("metres", ["0", "-1"])
+def test_a_buff_adding_no_reach_is_refused(metres):
+    assert "lengthens nothing" in refused(f"Duration=10; MeleeReachMetres={metres}", "SelfBuff")
+
+
+def test_added_melee_reach_is_a_self_buffs_alone():
+    """A strike's own reach is its `Radius`; the flat reach is what a running buff adds to it."""
+    assert "has no parameter 'MeleeReachMetres'" in refused("Radius=3; Angle=90; MeleeReachMetres=3", "Strike")

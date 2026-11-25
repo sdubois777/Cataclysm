@@ -422,6 +422,15 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.RangeIncrease = Number;
 		}
+		// The Death draft's N21 and N17, issue #2885 slice DS4: a buff's added melee reach, and its riders on every blow.
+		else if (Key.Equals(TEXT("MeleeReachMetres"), ESearchCase::IgnoreCase))
+		{
+			Params.MeleeReachCm = Number * ToCm;
+		}
+		else if (Key.Equals(TEXT("EveryBlow"), ESearchCase::IgnoreCase))
+		{
+			Params.bEveryBlow = Number != 0.0f;
+		}
 		// --- Applied effect detail --------------------------------------
 		else if (Key.Equals(TEXT("EffectDuration"), ESearchCase::IgnoreCase))
 		{
@@ -628,6 +637,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("MinionsLayEffect"), ESearchCase::IgnoreCase))
 		{
 			Params.bMinionsLayEffect = Number != 0.0f;
+		}
+		// The Death draft's N12, issue #2885 slice DS4: what a rift raised bursts as it closes.
+		else if (Key.Equals(TEXT("CollapseBursts"), ESearchCase::IgnoreCase))
+		{
+			Params.bCollapseBursts = Number != 0.0f;
 		}
 		// --- Other riders -----------------------------------------------
 		// The Death draft's N3, issue #2885: the caster's minions inside the skill's area explode.

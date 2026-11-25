@@ -434,6 +434,26 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float RangeIncrease = 0.0f;
 
+	/**
+	 * Centimetres a running self buff adds to its holder's melee reach; nought for none. `MeleeReachMetres=3`, on a
+	 * SelfBuff. Issue #2885, the Death draft's N21, slice DS4: the Spear's Grim Reach, "your attacks reach 3 meters
+	 * farther". NOT `RangeIncrease`, a percentage that lengthens no strike carrying an area tag: this is added beside
+	 * the flat `melee_reach_metres` stat in `UCataclysmSkillTemplate::MeleeReachBonusCm`, after area of effect and a
+	 * range increase, to every melee strike, the basic attack among them.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MeleeReachCm = 0.0f;
+
+	/**
+	 * True when a self buff's `Ailment`, `Effect` and `ForcedMovement` are laid by every blow its holder lands while it
+	 * runs, and its `Effect` is not granted to its holder. `EveryBlow=1`, on a SelfBuff. Issue #2885, the Death draft's
+	 * N17, slice DS4: the Fist's Hemlock ("every blow you land while it lasts Poisons what it hits"), the Whip's Death
+	 * Grip ("every blow you land drags what it hits 1 meter toward you") and the Spear's Grim Reach ("every hit you land
+	 * Cripples what it hits"). `UCataclysmSelfBuffSkill::NoteBlowLanded` lays them, as Groundbreaker's fissure is laid.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bEveryBlow = false;
+
 	// --- Riders every shape may carry -------------------------------------
 
 	/** True when the skill sets what it hits alight. Fifteen of sixteen do. */
@@ -1166,6 +1186,15 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bMinionsLayEffect = false;
+
+	/**
+	 * True when what a rift raised bursts as the rift closes, rather than being destroyed. `CollapseBursts=1`, on a
+	 * Summon that spawns over time (an `Interval` and a `Duration`). Issue #2885, the Death draft's N12, slice DS4: the
+	 * Staff's Grave Mouth, "when the grave closes, every wisp still out bursts at once". Each living one explodes as
+	 * `ACataclysmMinion::Explode` explodes, for its own blow in the row's `Radius` (`UCataclysmSummonSkill::Collapse`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bCollapseBursts = false;
 
 	// --- Other riders ------------------------------------------------------
 

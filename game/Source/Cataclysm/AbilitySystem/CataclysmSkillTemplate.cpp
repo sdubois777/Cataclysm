@@ -2297,6 +2297,36 @@ float UCataclysmSkillTemplate::HeldRangeIncreasePercent(const AActor* Self)
 	return Largest;
 }
 
+float UCataclysmSkillTemplate::HeldMeleeReachCm(const AActor* Self)
+{
+	// THE SAME SHAPE AS `HeldRangeIncreasePercent` DIRECTLY ABOVE. Issue #2885, the Death draft's N21, slice DS4: the
+	// Spear's Grim Reach. A lasting buff is an active ability while it lasts, so its own number is the answer and
+	// nothing is left behind when it ends, is cancelled, or its holder dies.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Self);
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	float Largest = 0.0f;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmSkillTemplate* Running =
+			Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+		if (Running && Running->Shape() == ECataclysmSkillShape::SelfBuff)
+		{
+			Largest = FMath::Max(Largest, Running->Params.MeleeReachCm);
+		}
+	}
+	return Largest;
+}
+
 // ==========================================================================
 // A skill's own damage scaling
 // ==========================================================================
@@ -3681,9 +3711,19 @@ float UCataclysmSkillTemplate::MeleeReachBonusCm() const
 
 	// METRES IN THE ROW, CENTIMETRES HERE, and never below nothing: a row that
 	// shortened a reach would be a different sentence from this one.
-	return FMath::Max(0.0f, Mine->StatForSkill(FName(MeleeReachMetresStat),
-											   SkillTags, 0.0f))
+	const float FromTheStat = FMath::Max(0.0f, Mine->StatForSkill(FName(MeleeReachMetresStat),
+																  SkillTags, 0.0f))
 		* 100.0f;
+
+	// AND WHAT A RUNNING SELF BUFF ADDS, BESIDE IT, TO A MELEE STRIKE. Issue #2885, the Death draft's N21, slice DS4: the
+	// Spear's Grim Reach, "your attacks reach 3 meters farther", so the spear's swing reaches 6.3 m and Reaping Arc 10.
+	// The stat's rows scope themselves to `Type.Melee`; a buff has no rows, so the same scope is asked here, of the
+	// skill's own tags: a strike made with a melee weapon carries it (issue #944), the basic attack among them, and a
+	// spell's strike does not. ASKED AFRESH RATHER THAN KEPT IN A STATIC, for the reason `CommitAndBegin` gives for its
+	// own tags: a static filled before the tag table loaded would hold an invalid tag for the life of the process.
+	const FGameplayTag MeleeTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
+	const float FromABuff = MeleeTag.IsValid() && SkillTags.HasTag(MeleeTag) ? HeldMeleeReachCm(Avatar()) : 0.0f;
+	return FromTheStat + FromABuff;
 }
 
 float UCataclysmSkillTemplate::ScaledRadiusCm() const

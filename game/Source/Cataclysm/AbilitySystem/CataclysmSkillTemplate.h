@@ -830,6 +830,14 @@ public:
 	static float HeldRangeIncreasePercent(const AActor* Self);
 
 	/**
+	 * The flat melee reach a self buff this character is holding adds, in centimetres: the largest `MeleeReachCm` of its
+	 * running self buffs, or nought. Issue #2885, the Death draft's N21, slice DS4: the Spear's Grim Reach, "your attacks
+	 * reach 3 meters farther". The same walk as `HeldRangeIncreasePercent` above, for the same reasons, and THE LARGEST
+	 * RATHER THAN THE SUM for its reason. Read by `MeleeReachBonusCm`, for a melee strike.
+	 */
+	static float HeldMeleeReachCm(const AActor* Self);
+
+	/**
 	 * Whether any skill this character is running makes it immune to an effect.
 	 *
 	 * SEVEN ROWS ACROSS FOUR WEAPONS STATE ONE and none had a parameter until
