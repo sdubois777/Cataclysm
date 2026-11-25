@@ -608,10 +608,10 @@ CATACLYSM_TEST(FCataclysmSkillGadgetOnePerSlotTest,
 	TestTrue(TEXT("a second Heavy press with no room keeps the Heavy gadget the newest of its slot"),
 		Rig.Taps(ECataclysmAbilitySlot::Heavy) == Heavy);
 	TestEqual(TEXT("and moves the Heavy gadget onto the ring around the player"),
-		FVector::Dist2D(Heavy->GetActorLocation(), Rig.Player->GetActorLocation()),
+		static_cast<float>(FVector::Dist2D(Heavy->GetActorLocation(), Rig.Player->GetActorLocation())),
 		ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
 	TestEqual(TEXT("and the Ultimate one with it"),
-		FVector::Dist2D(Ultimate->GetActorLocation(), Rig.Player->GetActorLocation()),
+		static_cast<float>(FVector::Dist2D(Ultimate->GetActorLocation(), Rig.Player->GetActorLocation())),
 		ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
 
 	// AND THE UNCONVERTED SPECIAL SLOT'S PRESS STILL CASTS ITS SKILL, which pays and starts its cooldown.

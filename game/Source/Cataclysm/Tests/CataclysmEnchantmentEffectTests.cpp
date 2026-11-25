@@ -27330,9 +27330,9 @@ bool FCataclysmBasicGadgetRowPlacedTwiceTest::RunTest(const FString&)
 	Press(&Aim);
 	TestEqual(TEXT("the third press, with no room, places nothing: the newest is still the second"),
 			  Worn.ASC()->SkillGadgetIn(Basic), Second);
-	TestEqual(TEXT("and moves the first onto the ring around the aim"), FVector::Dist2D(First->GetActorLocation(), Aim),
+	TestEqual(TEXT("and moves the first onto the ring around the aim"), static_cast<float>(FVector::Dist2D(First->GetActorLocation(), Aim)),
 			  ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
-	TestEqual(TEXT("and the second"), FVector::Dist2D(Second->GetActorLocation(), Aim),
+	TestEqual(TEXT("and the second"), static_cast<float>(FVector::Dist2D(Second->GetActorLocation(), Aim)),
 			  ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
 	return true;
 }

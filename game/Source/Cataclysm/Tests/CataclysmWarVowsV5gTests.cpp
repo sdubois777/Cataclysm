@@ -232,7 +232,7 @@ CATACLYSM_WAR_VOWS_V5G_TEST(FCataclysmWarVowsV5gPressTest,
 	for (const ACataclysmMinion* Each : Moved)
 	{
 		TestEqual(*FString::Printf(TEXT("%s is moved onto the 1.5 m ring around the aim"), *Each->GetName()),
-				  FVector::Dist2D(Each->GetActorLocation(), Aim), ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
+				  static_cast<float>(FVector::Dist2D(Each->GetActorLocation(), Aim)), ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
 	}
 	if (Moved.Num() == 4)
 	{
@@ -346,7 +346,7 @@ CATACLYSM_WAR_VOWS_V5G_TEST(FCataclysmWarVowsV5gFollowingTest,
 			 FVector::Dist2D(Gadget->GetActorLocation(), Aim) < 1.0f);
 	const float Walk = Player.Character->GetCharacterMovement()->MaxWalkSpeed;
 	ACataclysmMinion::GadgetStep(Gadget);
-	TestEqual(TEXT("and its next step follows from there"), FVector::Dist2D(Gadget->GetActorLocation(), FVector::ZeroVector),
+	TestEqual(TEXT("and its next step follows from there"), static_cast<float>(FVector::Dist2D(Gadget->GetActorLocation(), FVector::ZeroVector)),
 			  30.0f * WarVowsV5gMetre
 				  - Walk * UCataclysmCommand::CommandedWalkSpeedShareOfCommander * ACataclysmMinion::DeviceStepSeconds,
 			  0.5f);

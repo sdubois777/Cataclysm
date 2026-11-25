@@ -179,19 +179,19 @@ CATACLYSM_WAR_VOWS_V5A_TEST(FCataclysmWarVowsV5aCreepTest,
 	const FVector Start = Spike->GetActorLocation();
 	ACataclysmMinion::GadgetStep(Spike);
 	TestEqual(TEXT("control: without the stats a step moves nothing"),
-			  FVector::Dist2D(Spike->GetActorLocation(), Start), 0.0f, 0.01f);
+			  static_cast<float>(FVector::Dist2D(Spike->GetActorLocation(), Start)), 0.0f, 0.01f);
 
 	Player.Holds({{ACataclysmMinion::TrapCreepMetresPerSecondStat, 3.0f},
 				  {ACataclysmMinion::TrapCreepReachMetresStat, 10.0f}});
 	ACataclysmMinion::GadgetStep(Spike);
-	TestEqual(TEXT("with them, one step moves it 75 cm"), FVector::Dist2D(Spike->GetActorLocation(), Start), 75.0f, 0.5f);
+	TestEqual(TEXT("with them, one step moves it 75 cm"), static_cast<float>(FVector::Dist2D(Spike->GetActorLocation(), Start)), 75.0f, 0.5f);
 	TestTrue(TEXT("toward the creature"), Spike->GetActorLocation().X > Start.X);
 
 	Near->Destroy();
 	WarVowsV5aCreatureAt(World, Spike->GetActorLocation() + East * 12.0f);
 	const FVector Held = Spike->GetActorLocation();
 	ACataclysmMinion::GadgetStep(Spike);
-	TestEqual(TEXT("control: a creature 12 m away draws nothing"), FVector::Dist2D(Spike->GetActorLocation(), Held), 0.0f,
+	TestEqual(TEXT("control: a creature 12 m away draws nothing"), static_cast<float>(FVector::Dist2D(Spike->GetActorLocation(), Held)), 0.0f,
 			  0.01f);
 
 	ACataclysmMinion* Slow = ACataclysmMinion::PlaceSkillTrap(Player.Character, ECataclysmAbilitySlot::Heavy,
@@ -204,10 +204,10 @@ CATACLYSM_WAR_VOWS_V5A_TEST(FCataclysmWarVowsV5aCreepTest,
 	const FVector SlowStart = Slow->GetActorLocation();
 	ACataclysmMinion::GadgetStep(Slow);
 	TestEqual(TEXT("control: an unarmed skill trap does not creep"),
-			  FVector::Dist2D(Slow->GetActorLocation(), SlowStart), 0.0f, 0.01f);
+			  static_cast<float>(FVector::Dist2D(Slow->GetActorLocation(), SlowStart)), 0.0f, 0.01f);
 	Slow->BeginSkillTrapArming(0.0f);
 	ACataclysmMinion::GadgetStep(Slow);
-	TestEqual(TEXT("and armed, it creeps 75 cm"), FVector::Dist2D(Slow->GetActorLocation(), SlowStart), 75.0f, 0.5f);
+	TestEqual(TEXT("and armed, it creeps 75 cm"), static_cast<float>(FVector::Dist2D(Slow->GetActorLocation(), SlowStart)), 75.0f, 0.5f);
 	return true;
 }
 
