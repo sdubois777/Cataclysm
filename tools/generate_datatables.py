@@ -3855,7 +3855,6 @@ EMPIRE_TREE_SYSTEMS = {
     "double craft": "a double craft, which the game does not have (issue #2897)",
     "exalted item": "an Exalted item, which the game does not have (issue #2897)",
     "item tier": "an item tier, which item bases and their stats do not have (issue #2897)",
-    "later slice": "a later slice of issue #2741, which builds it as ruled on 2026-11-25",
     "crafted-affix mark": "a mark on each affix the forge crafted, which the game does not have (issue #2741)",
     "held-over residue": "residue held over between crafts, which the game does not have (issue #2741)",
     "loot chest": "a loot chest on a dungeon floor, which the game does not have",
@@ -3913,6 +3912,9 @@ EMPIRE_TREE_BUILT = {
     # by the coordinating session on 2026-11-25 (D1 to D4). Numbered 14.
     "Precision Crafting": 14, "Master's Workshop": 14, "Quality Materials": 14,
     "Apprentice Smith": 14, "Rough Draft": 14,
+    # #2741's crafting group, slice C6: Ancient Techniques and Residue Protocols,
+    # ruled by the coordinating session on 2026-11-25 (R1, R2). Numbered 15.
+    "Ancient Techniques": 15, "Residue Protocols": 15,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -4023,8 +4025,7 @@ EMPIRE_TREE_REFUSED = {
     "Expanded Station (Smith)": "crafting station",
     "Expanded Station (Enchantress)": "crafting station",
     "Flawless Production": "exalted item",
-    "Residue Protocols": "later slice", "Grand Forge": "item tier",
-    "Ancient Techniques": "later slice",
+    "Grand Forge": "item tier",
     "Residue Mastery": "exalted item", "The Hidden Stash": "crafting station",
     "Assembly Line": "crafting station",
     "The Alchemist's Transmutation": "crafted-affix mark", "Steady Hands": "held-over residue",
@@ -4282,6 +4283,8 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # #2741's crafting group, slices C3 and C4: a forge craft's affixes.
     "AffixRollTopQuarterChance", "AffixRollFloor", "AffixRollMaxedChance", "AffixTierRaisedChance",
     "AffixAddedChance",
+    # #2741's crafting group, slice C6.
+    "CraftDaysOffOnFullItems", "WornResidueIgnored",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4440,6 +4443,13 @@ EMPIRE_TREE_EFFECTS = {
     "Quality Materials": [("AffixRollMaxedChance", 0.05)],
     "Apprentice Smith": [("AffixTierRaisedChance", 0.01)],
     "Rough Draft": [("AffixAddedChance", 0.05)],
+    # #2741's crafting group, slice C6 (2026-11-25). "-1 Day crafting time per
+    # point for crafts with 4 or more affixes" (the owner's question 1, ruled:
+    # 4, a full item); "Ignore 5% of Worn Residue per point when it is measured
+    # against the Consumption Threshold" (question 3, ruled: the keystones
+    # document's figure, as the design document and the simulation use it).
+    "Ancient Techniques": [("CraftDaysOffOnFullItems", 1.0)],
+    "Residue Protocols": [("WornResidueIgnored", 0.05)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).

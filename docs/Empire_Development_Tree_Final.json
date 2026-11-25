@@ -3321,7 +3321,7 @@
       "data": {
         "kind": "basic",
         "name": "Residue Protocols",
-        "description": "Every 4th consecutive crafting action on the same item gains -2.5% CR reduction per point (multiplicative).",
+        "description": "Ignore 5% of Worn Residue per point when it is measured against the Consumption Threshold.",
         "currentPoints": 0,
         "color": "#f97316",
         "maxPoints": 10
@@ -3365,7 +3365,7 @@
       "data": {
         "kind": "basic",
         "name": "Ancient Techniques",
-        "description": "-1 Day crafting time per point for crafts with 5 or more affixes.",
+        "description": "-1 Day crafting time per point for crafts with 4 or more affixes.",
         "currentPoints": 0,
         "color": "#f97316",
         "maxPoints": 10

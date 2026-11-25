@@ -1382,6 +1382,10 @@ public:
 	/** Heat Shielding's "using T3+ materials": the craft's own material's tier must be at least this. */
 	static constexpr int32 HeatShieldingLowestTier = 3;
 
+	/** Ancient Techniques' "crafts with 4 or more affixes" (slice C6, R2): the item's affixes before the craft must be at
+	 *  least this; an enchantment is not an affix. */
+	static constexpr int32 AncientTechniquesLowestAffixes = 4;
+
 	/** Master's Touch's "per 100 CR": its chance counts each whole step of this much residue before the craft. */
 	static constexpr float MastersTouchResidueStep = 100.0f;
 

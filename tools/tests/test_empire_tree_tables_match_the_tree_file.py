@@ -276,13 +276,13 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_twelve_slices_or_the_dismantling_issue_that_make_it_act() -> None:
+def test_a_built_node_names_one_of_the_thirteen_slices_or_the_dismantling_issue_that_make_it_act() -> None:
     # 10 IS #47 SLICE F6's: The Soul Forge and The Master Tinkerer, the forge's two options (2026-11-22). 11 IS #47 SLICE
     # F6a's: the five forge gold nodes (2026-11-24). 12 IS #47 SLICE F6b's: the three forge material nodes (2026-11-25). 13
     # IS #2741's CRAFTING SLICES C1 AND C2: a forge craft's residue and days (2026-11-25). 14 IS ITS SLICES C3 AND C4: a
-    # forge craft's affixes (2026-11-25). AND ISSUE #2848, whose slice S2 built the two dismantle nodes outside #2741's
-    # slices (2026-11-22).
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 2848}
+    # forge craft's affixes (2026-11-25). 15 IS ITS SLICE C6: Ancient Techniques and Residue Protocols (2026-11-25). AND
+    # ISSUE #2848, whose slice S2 built the two dismantle nodes outside #2741's slices (2026-11-22).
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 2848}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -322,7 +322,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     made by the coordinating session the same day under the owner's
     delegation, moved Refining Techniques' 15 to an item tier, Ancient
     Techniques' and Residue Protocols' 20 to a later slice of #2741, and The
-    Alchemist's Transmutation's 1 to the mark a crafted affix needs."""
+    Alchemist's Transmutation's 1 to the mark a crafted affix needs. Its slice
+    C6 (2026-11-25) built those 20: Ancient Techniques' 10 and Residue
+    Protocols' 10."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -339,10 +341,10 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     assert dict(points) == {
         "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 214,
         "slice 7": 17, "slice 9": 21, "slice 2848": 11, "slice 11": 25, "slice 12": 31, "slice 13": 50,
-        "slice 14": 58,
+        "slice 14": 58, "slice 15": 20,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
         "crafting station": 11, "double craft": 10, "exalted item": 35, "item tier": 25,
-        "later slice": 20, "crafted-affix mark": 1, "held-over residue": 1, "loot chest": 8,
+        "crafted-affix mark": 1, "held-over residue": 1, "loot chest": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }

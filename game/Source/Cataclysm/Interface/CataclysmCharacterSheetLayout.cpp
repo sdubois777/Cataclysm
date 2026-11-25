@@ -237,11 +237,14 @@ FString UCataclysmCharacterSheetLayout::ConsumptionMarkLine(bool bMarked)
 	return bMarked ? FString(TEXT("Marked: crossed the Consumption Threshold")) : FString();
 }
 
-FString UCataclysmCharacterSheetLayout::WornResidueLine(float WornResidue, int32 DifficultyTier)
+FString UCataclysmCharacterSheetLayout::WornResidueLine(float WornResidue, int32 DifficultyTier, float IgnoredShare)
 {
 	const int32 Tier = FMath::Clamp(DifficultyTier, 1, 8);
-	return FString::Printf(TEXT("Worn Residue %d of %d (tier %d)"), FMath::RoundToInt(WornResidue),
-						   FMath::RoundToInt(UCataclysmEquipmentComponent::ConsumptionThresholdFor(Tier)), Tier);
+	const FString Line = FString::Printf(TEXT("Worn Residue %d of %d (tier %d)"), FMath::RoundToInt(WornResidue),
+										 FMath::RoundToInt(UCataclysmEquipmentComponent::ConsumptionThresholdFor(Tier)), Tier);
+	// RESIDUE PROTOCOLS (#2741's crafting slice C6): `WornResidue` is what the threshold counts, and the line says so.
+	const int32 Ignored = FMath::RoundToInt(FMath::Clamp(IgnoredShare, 0.0f, 1.0f) * 100.0f);
+	return Ignored > 0 ? FString::Printf(TEXT("%s, %d%% ignored by Residue Protocols"), *Line, Ignored) : Line;
 }
 
 int32 UCataclysmCharacterSheetLayout::SheetStatCount()

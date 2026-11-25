@@ -2595,6 +2595,13 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The chance a forge item craft adds one affix, 5% a point (Rough Draft). Slice C4. */
 	AffixAddedChance,
+
+	/** Days off a forge craft on an item with four affixes or more before it, 1 a point (Ancient Techniques). #2741's
+	 *  crafting group, slice C6. */
+	CraftDaysOffOnFullItems,
+
+	/** The share of Worn Residue the Consumption Threshold does not count, 0.05 a point (Residue Protocols). Slice C6. */
+	WornResidueIgnored,
 };
 
 /**

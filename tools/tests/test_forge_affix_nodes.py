@@ -44,7 +44,6 @@ SPLIT = {"crafting station": ({"Expanded Station (Jeweler)", "Expanded Station (
          "double craft": ({"Explorer Synergy"}, "#2897"),
          "exalted item": ({"Flawless Production", "Residue Mastery"}, "#2897"),
          "item tier": ({"Grand Forge", "Refining Techniques"}, "#2897"),
-         "later slice": ({"Ancient Techniques", "Residue Protocols"}, "#2741"),
          "crafted-affix mark": ({"The Alchemist's Transmutation"}, "#2741"),
          "held-over residue": ({"Steady Hands"}, "#2741")}
 

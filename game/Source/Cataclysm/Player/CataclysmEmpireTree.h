@@ -279,6 +279,12 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	float AffixRollMaxedChance = 0.0f;
 	float AffixTierRaisedChance = 0.0f;
 	float AffixAddedChance = 0.0f;
+
+	/** #2741's crafting group, slice C6 (the coordinating session's rulings of 2026-11-25). Ancient Techniques: days off
+	 *  a forge craft on an item that has four affixes or more before it, added to Master Craftsman's. Residue Protocols:
+	 *  the share of Worn Residue the Consumption Threshold does not count (`UCataclysmWearing::CountedWornResidue`). */
+	float CraftDaysOffOnFullItems = 0.0f;
+	float WornResidueIgnored = 0.0f;
 };
 
 /**

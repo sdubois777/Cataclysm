@@ -144,6 +144,12 @@ namespace
 			UCataclysmForge::ResidueResetLands(Item, Tree.ResidueResetChancePerHundred, Run.WalkSeedMask, Run.Day());
 		Out.DaysFactor = FMath::Max(0.0f, 1.0f - Tree.CraftDaysReduced) * FMath::Max(0.0f, 1.0f - Tree.CraftDaysReducedMore);
 		Out.DaysOff = Tree.CraftDaysOff;
+		// ANCIENT TECHNIQUES (slice C6): its days off join Master Craftsman's on an item with four affixes or more BEFORE
+		// the craft (R2), as Limited Knowledge reads the gear level before it.
+		if (Item.Affixes.Num() >= UCataclysmForge::AncientTechniquesLowestAffixes)
+		{
+			Out.DaysOff += Tree.CraftDaysOffOnFullItems;
+		}
 		return Out;
 	}
 
@@ -1343,8 +1349,9 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 	{
 		const float Threshold =
 			UCataclysmEquipmentComponent::ConsumptionThresholdFor(ACataclysmGameMode::DifficultyTierIn(World));
-		const float Now = Equipment->WornResidue();
-		const float After = Now + Added;
+		// AS THE THRESHOLD COUNTS IT (Residue Protocols, slice C6): the residue the craft adds is counted the same way.
+		const float Now = UCataclysmWearing::CountedWornResidue(WorldContext, Equipment->WornResidue());
+		const float After = UCataclysmWearing::CountedWornResidue(WorldContext, Equipment->WornResidue() + Added);
 		bCrosses = Now < Threshold && After >= Threshold;
 		if (bCrosses && !bConfirmedPastThreshold)
 		{

@@ -648,6 +648,13 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::AffixAddedChance:
 			Bonuses.AffixAddedChance += Total;
 			break;
+		// #2741's CRAFTING GROUP, SLICE C6: Ancient Techniques and Residue Protocols.
+		case ECataclysmEmpireTreeEffect::CraftDaysOffOnFullItems:
+			Bonuses.CraftDaysOffOnFullItems += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::WornResidueIgnored:
+			Bonuses.WornResidueIgnored += Total;
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:

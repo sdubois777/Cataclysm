@@ -762,6 +762,17 @@ The five affix nodes of the empire tree's Artisan branch (issue #2741, crafting 
 - **A dismantle** is never changed by them. The same piece on the same day always draws the same, so a reload does
   not change what happened.
 
+### 33. Take Ancient Techniques and Residue Protocols in the empire tree
+
+Two more crafting nodes of the empire tree's Artisan branch (issue #2741, crafting slice C6).
+
+- **Ancient Techniques** at 10 points: a craft on a piece that already has four affixes takes 10 days fewer, and still
+  at least one; the question's words name the days, as Master Craftsman's do. A piece with three affixes takes no fewer.
+- **Residue Protocols** at 10 points: the character sheet's line reads "Worn Residue 750 of 1950 (tier 1), 50% ignored
+  by Residue Protocols" for 1,500 worn. Putting on a piece is asked about the Consumption Threshold only when the counted
+  total crosses it, and so is a forge craft on a worn piece. Each piece still shows its own residue, and a craft's gold
+  and days are unchanged.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

@@ -80,6 +80,8 @@ basic_arts_t4f#1,basic_arts_t4f,0,AffixRollFloor,0.02,0,,0.0
 basic_arts_t2d#1,basic_arts_t2d,0,AffixRollMaxedChance,0.05,0,,0.0
 basic_0000004y#1,basic_0000004y,0,AffixTierRaisedChance,0.01,0,,0.0
 basic_arts_t1d#1,basic_arts_t1d,0,AffixAddedChance,0.05,0,,0.0
+basic_arts_t4e#1,basic_arts_t4e,0,CraftDaysOffOnFullItems,1.0,0,,0.0
+basic_0000005h#1,basic_0000005h,0,WornResidueIgnored,0.05,0,,0.0
 basic_expl_t1d#1,basic_expl_t1d,0,EmpirePointsFromClears,0.03,0,,0.0
 basic_0000002a#1,basic_0000002a,0,MagicFindAdded,0.05,0,,0.0
 basic_0000002e#1,basic_0000002e,0,LootQuantityIncreased,0.05,0,,0.0

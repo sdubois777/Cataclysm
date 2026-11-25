@@ -310,6 +310,23 @@ public:
 		ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
 
 	/**
+	 * Worn Residue as the Consumption Threshold counts it: `WornResidue` less the share Residue Protocols ignores,
+	 * `IgnoredShare` held inside 0 to 1. #2741's crafting group, slice C6, the coordinating session's R1 of 2026-11-25:
+	 * the design document and the simulation (`sim/cataclysm_sim/residue.py`) already use the node this way. The items
+	 * keep their residue; only the comparison with the threshold reads this.
+	 */
+	static float CountedWornResidueOf(float WornResidue, float IgnoredShare);
+
+	/** The share of Worn Residue the character playing in `WorldContext`'s world has Residue Protocols ignore. */
+	static float IgnoredWornResidueShare(const UObject* WorldContext);
+
+	/**
+	 * THE ONE FUNCTION every comparison of Worn Residue with the Consumption Threshold reads: the equip crossing
+	 * (`CrossingFor`), the forge's crossing (`UCataclysmForgeCraft::DoItemCraft`) and the character sheet's line.
+	 */
+	static float CountedWornResidue(const UObject* WorldContext, float WornResidue);
+
+	/**
 	 * What crossing the threshold does, in the design's words: `docs/Cataclysm_GDD_v2.md`, "What crossing it does",
 	 * its first two sentences word for word. Issue #2688 added it when the mark and the double became real.
 	 */
