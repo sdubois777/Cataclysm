@@ -358,6 +358,20 @@ const FCataclysmMinionTypeRow* ACataclysmMinion::FindType(
 	return Found;
 }
 
+int32 ACataclysmMinion::LevelOfSummonerFor(const AActor* Summoner)
+{
+	return LevelOfSummoner(Summoner);
+}
+
+void ACataclysmMinion::TypeFiguresAtLevel(const FCataclysmMinionTypeRow& Type, int32 Level, float& OutHealth,
+										  float& OutDamagePerHit)
+{
+	// THE SAME ARITHMETIC `Spawn` RAISES A MINION BY, so a thrall measured against an Imp is measured against the Imp
+	// `Spawn` makes. See `RaisedByLevel` for why it is `Base + PerLevel x Level`.
+	OutHealth = RaisedByLevel(Type.BaseHealth, Type.HealthPerLevel, Level);
+	OutDamagePerHit = RaisedByLevel(Type.BaseDamage, Type.DamagePerLevel, Level);
+}
+
 namespace
 {
 	/** A type row's comma-separated Tags column as tags, leaving out any name that is not a registered tag. */

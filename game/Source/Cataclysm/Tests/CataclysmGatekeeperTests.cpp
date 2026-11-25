@@ -24,6 +24,8 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+// For the health bar's colour, which a taken Gatekeeper's Imps wear. Issue #2867.
+#include "Interface/CataclysmCombatOverlay.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestSkip.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -1864,6 +1866,132 @@ bool FCataclysmGatekeeperTakenImpsServeItsCommander::RunTest(const FString&)
 	}
 	TestEqual(TEXT("the commander still commands the Gatekeeper alone: the Imps are not its followers"),
 			  UCataclysmCommand::ThingsCommandedBy(Commander).Num(), 1);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmGatekeeperTakenImpsAreGreenTest,
+	"Cataclysm.Gatekeeper.ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2867, from the owner's playtest of 2026-11-23: "The Gatekeeper's minions when subjugated appear with red
+ * healthbars, making it seem like they're enemies." A taken Gatekeeper's Imps follow the Gatekeeper (issue #2791), and
+ * the bar asked `UCataclysmCommand::CommanderOf` alone, one step, which answers the Gatekeeper and not the player. It
+ * now asks the top of the chain (`UCataclysmCommand::TopCommanderOf`).
+ *
+ * FOUR KINDS OF IMP, AND ONE BAR COLOUR EACH, as the local player is shown them (`UCataclysmCombatOverlay::
+ * HealthFillHexFor`, which both the overhead bar and the creature panel draw with):
+ *   - a free Gatekeeper's: red, the control;
+ *   - a Gatekeeper's this commander took: green, the fix;
+ *   - a Gatekeeper's another commander on the same side took: red to this commander and green to that one, so the
+ *     green is "yours" and not "on your side";
+ *   - this commander's taken Gatekeeper's, once the Gatekeeper is destroyed: still green, by the side, since their
+ *     chain stops at nobody (ruled for #2791: they stay on its commander's side after it dies).
+ * And the taken Gatekeeper itself, a thrall one step from its commander, green as it always was.
+ *
+ * THE COMMANDERS ARE CREATURES ON THE PLAYERS TEAM, as #2791's test makes its commander: the bar asks who commands a
+ * creature and what side it is on, not what class the player is. Each Gatekeeper stands 100 m from the others, so no
+ * Imp is near another Gatekeeper's.
+ */
+bool FCataclysmGatekeeperTakenImpsAreGreenTest::RunTest(const FString&)
+{
+	using namespace CataclysmGatekeeperTest;
+	using Gatekeeper_t = ACataclysmGatekeeperCharacter;
+	constexpr float Metre = 100.0f;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	const auto ImpsOf = [](const Gatekeeper_t* Gatekeeper)
+	{
+		TArray<ACataclysmImpCharacter*> Found;
+		for (const TWeakObjectPtr<ACataclysmImpCharacter>& Weak : Gatekeeper->CalledImps)
+		{
+			if (ACataclysmImpCharacter* Imp = Weak.Get())
+			{
+				Found.Add(Imp);
+			}
+		}
+		return Found;
+	};
+	const auto BarOf = [](const AActor* Creature, const AActor* LocalPlayer)
+	{
+		return FString(UCataclysmCombatOverlay::HealthFillHexFor(Creature, LocalPlayer));
+	};
+	const FString Green(UCataclysmCombatOverlay::FollowerHealthFillHex);
+	const FString Red(UCataclysmCombatOverlay::HealthFillHex);
+
+	ACataclysmEnemyCharacter* Commander = SpawnOn(World, ECataclysmTeam::Players, FVector(5.0f * Metre, 0, 0));
+	ACataclysmEnemyCharacter* Another = SpawnOn(World, ECataclysmTeam::Players, FVector(5.0f * Metre, 100.0f * Metre, 0));
+	Gatekeeper_t* Taken = SpawnGatekeeper(World, FVector::ZeroVector);
+	Gatekeeper_t* TakenByAnother = SpawnGatekeeper(World, FVector(0, 100.0f * Metre, 0));
+	Gatekeeper_t* Free = SpawnGatekeeper(World, FVector(0, 200.0f * Metre, 0));
+	if (!Commander || !Another || !Taken || !TakenByAnother || !Free)
+	{
+		AddError(TEXT("set-up: could not spawn the two commanders and the three Gatekeepers"));
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the commander takes its Gatekeeper"), UCataclysmCommand::Subjugate(Commander, Taken))
+		|| !TestTrue(TEXT("set-up: the other commander takes its own"),
+					 UCataclysmCommand::Subjugate(Another, TakenByAnother)))
+	{
+		return false;
+	}
+
+	Free->UseEnemyAbility(Gatekeeper_t::CallTheDamnedAbility, nullptr, Free->GetActorLocation());
+	Taken->UseEnemyAbility(Gatekeeper_t::CallTheDamnedAbility, nullptr, Taken->GetActorLocation());
+	TakenByAnother->UseEnemyAbility(Gatekeeper_t::CallTheDamnedAbility, nullptr, TakenByAnother->GetActorLocation());
+	const TArray<ACataclysmImpCharacter*> FreeImps = ImpsOf(Free);
+	const TArray<ACataclysmImpCharacter*> TakenImps = ImpsOf(Taken);
+	const TArray<ACataclysmImpCharacter*> AnothersImps = ImpsOf(TakenByAnother);
+	if (!TestEqual(TEXT("set-up: the free Gatekeeper called its Imps"), FreeImps.Num(), Gatekeeper_t::CallTheDamnedCount)
+		|| !TestEqual(TEXT("set-up: the commander's Gatekeeper called its Imps"), TakenImps.Num(),
+					  Gatekeeper_t::CallTheDamnedCount)
+		|| !TestEqual(TEXT("set-up: the other commander's Gatekeeper called its Imps"), AnothersImps.Num(),
+					  Gatekeeper_t::CallTheDamnedCount))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the taken Gatekeeper itself is green to its commander"), BarOf(Taken, Commander), Green);
+	for (const ACataclysmImpCharacter* Imp : FreeImps)
+	{
+		TestEqual(TEXT("control: a free Gatekeeper's Imp is red to the commander"), BarOf(Imp, Commander), Red);
+	}
+	for (const ACataclysmImpCharacter* Imp : TakenImps)
+	{
+		TestTrue(TEXT("set-up: the Imp's own commander is the Gatekeeper, not the player"),
+				 UCataclysmCommand::CommanderOf(Imp) == Taken);
+		TestEqual(TEXT("an Imp the commander's Gatekeeper called is green to the commander"), BarOf(Imp, Commander),
+				  Green);
+	}
+	for (const ACataclysmImpCharacter* Imp : AnothersImps)
+	{
+		TestEqual(TEXT("an Imp another commander's Gatekeeper called is red to this commander, though on its side"),
+				  BarOf(Imp, Commander), Red);
+		TestEqual(TEXT("and green to the commander whose Gatekeeper called it"), BarOf(Imp, Another), Green);
+	}
+
+	// AND ONCE THE GATEKEEPER IS GONE, ITS IMPS STAY THE COMMANDER'S: on its side, answering to nobody still here.
+	Taken->Destroy();
+	for (const ACataclysmImpCharacter* Imp : TakenImps)
+	{
+		if (!TestTrue(TEXT("set-up: the Imp outlives its Gatekeeper"), IsValid(Imp)))
+		{
+			continue;
+		}
+		TestNull(TEXT("set-up: and its chain stops at nobody still here"), UCataclysmCommand::TopCommanderOf(Imp));
+		TestEqual(TEXT("an Imp whose taken Gatekeeper is gone is still green to the commander"), BarOf(Imp, Commander),
+				  Green);
+	}
 	return true;
 }
 

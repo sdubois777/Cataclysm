@@ -1881,6 +1881,40 @@ def test_blood_altar_passes_its_rows_type_on_the_pulse():
         "the pulse is dealt untyped.")
 
 
+def test_blood_altar_pulses_the_player_anywhere_on_the_floor_and_says_each_pulse():
+    """A pulse finds the player wherever they stand, and every pulse says one line (#2855).
+
+    The owner walked four Blood Altar floors on 2026-11-22 and took no pulse, and the log said
+    nothing of the altar. Until issue #2855 `StepBloodAltar` asked whether the player's body was
+    inside the 10 metre ring at the stairs, through `FindEveryoneInLine`, and dealt nothing
+    otherwise; a player reaches the stairs and goes down well inside one 30 second pulse. The
+    coordinating session's brief of 2026-11-24 asks for a pulse that "damages the player anywhere
+    on the floor". `Cataclysm.DungeonModifierEffects.ABloodAltarPulseFindsThePlayerAtTheEntrance
+    OnItsClockAndSaysSo` measures it in Unreal; this holds the shape where continuous integration
+    can see it.
+
+    THE CODE, NOT THE COMMENTS, as in the checks above. The first assertion shows the function was
+    found and still deals its pulse, so the absences after it cannot pass on an empty body.
+    """
+    code = _game_mode_code_of("void ACataclysmDungeonGameMode::StepBloodAltar(")
+
+    assert "UCataclysmSkillEffects::ApplyDirectDamage(Source, Player," in code, (
+        "StepBloodAltar no longer deals its pulse to the player from the floor's source, so this "
+        "check cannot tell a pulse that reaches everywhere from one that is not dealt. " + code)
+    for reach in ("FindEveryoneInLine", "Contains(Player)", "BloodAltarReachCm"):
+        assert reach not in code, (
+            f"StepBloodAltar asks {reach!r} again, which is how it measured the player against the "
+            "ring at the stairs until issue #2855, when no pulse found the owner in four floors. A "
+            "pulse reaches the player anywhere on the floor.")
+    lines = re.findall(r'UE_LOG\(\s*LogCataclysm\s*,\s*Log\s*,\s*TEXT\(\s*"Blood Altar: pulse on floor %d after '
+                       r'%d death\(s\) counted: ', code)
+    assert len(lines) == 2, (
+        "StepBloodAltar no longer says both of its lines, 'Blood Altar: pulse on floor N after D "
+        "death(s) counted: ...', one for a pulse that sends nothing and one for a pulse that is "
+        f"dealt (found {len(lines)}). The owner's log of 2026-11-22 could not say whether the altar "
+        "pulsed at all.")
+
+
 def test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source():
     """A same-arena floor change destroys the rules' zones by their owner (#1925).
 

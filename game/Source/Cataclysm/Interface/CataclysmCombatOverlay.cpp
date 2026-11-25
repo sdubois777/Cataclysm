@@ -150,9 +150,29 @@ namespace
 const TCHAR* UCataclysmCombatOverlay::HealthFillHexFor(const AActor* Creature,
 														const AActor* LocalPlayerPawn)
 {
-	// THE LOCAL PLAYER'S AND NOBODY ELSE'S. With no local pawn, nothing is anybody's here.
-	return Creature && LocalPlayerPawn
-			&& UCataclysmCommand::CommanderOf(Creature) == LocalPlayerPawn
+	// THE LOCAL PLAYER'S AND NOBODY ELSE'S. With no local pawn, nothing is anybody's here, and the player's own pawn is
+	// not its own follower.
+	if (!Creature || !LocalPlayerPawn || Creature == LocalPlayerPawn)
+	{
+		return HealthFillHex;
+	}
+
+	// THE PLAYER AT THE TOP OF ITS CHAIN OF COMMAND, NOT ONLY ONE STEP UP. Issue #2867, from the owner's playtest of
+	// 2026-11-23: "The Gatekeeper's minions when subjugated appear with red healthbars, making it seem like they're
+	// enemies." A taken Gatekeeper's Imps follow the Gatekeeper, ruled for issue #2791, so `CommanderOf` answers the
+	// Gatekeeper and this asked only that: every Imp it called on the player's side wore the enemy red. A creature at the
+	// top of a chain that is somebody else stays red, as another commander's thrall always was.
+	if (const AActor* Top = UCataclysmCommand::TopCommanderOf(Creature))
+	{
+		return Top == LocalPlayerPawn ? FollowerHealthFillHex : HealthFillHex;
+	}
+
+	// AND ONE THAT ANSWERS TO NOBODY STILL HERE IS THE PLAYER'S WHEN IT IS ON THE PLAYER'S SIDE. A judgement of issue
+	// #2867: a taken Gatekeeper's Imps stay on its commander's side after it dies, until they are killed (#2791), and once
+	// its body is gone their chain stops at nobody, so the side is the only thing left that says whose they are. Every
+	// ordinary creature answers to nobody and is on the Monsters side, so it stays red. Madness changes whom a creature
+	// attacks and not whose it is, so it is not read: `UCataclysmTeams::ShareSideIgnoringMadness`.
+	return UCataclysmTeams::ShareSideIgnoringMadness(Creature, LocalPlayerPawn)
 		? FollowerHealthFillHex
 		: HealthFillHex;
 }

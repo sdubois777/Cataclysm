@@ -82,6 +82,14 @@ public:
 	FString FrontEndRequested() const { return FrontEndRequest; }
 
 	/**
+	 * Whether the last load `LoadThePendingCharacter` ran put the character where its record says it stood
+	 * (`FCataclysmLoadReport::bPutWhereSaved`); false until a load has. Issue #2858: a dungeon level's `StartPlay` reads
+	 * it after the parent's, where the arrival's load runs, and leaves such a character where it was put rather than
+	 * standing it at the floor's entrance.
+	 */
+	bool PendingLoadPutTheCharacterWhereSaved() const { return bPendingLoadPutTheCharacterWhereSaved; }
+
+	/**
 	 * Take the playing character to another level: the capital's Walk to `L_Dungeon`, and the end of a walk back to
 	 * `L_Capital`. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17.
 	 *
@@ -1277,4 +1285,7 @@ private:
 
 	/** See `TravelRequested`. */
 	FString TravelRequest;
+
+	/** See `PendingLoadPutTheCharacterWhereSaved`. */
+	bool bPendingLoadPutTheCharacterWhereSaved = false;
 };

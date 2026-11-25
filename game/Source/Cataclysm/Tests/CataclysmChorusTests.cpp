@@ -451,6 +451,9 @@ bool FCataclysmChorusAuraTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	// A FIGURE OF ITS OWN, Conflagration's 10% a second: an aura stating no damage deals none since issue #2875, and
+	// this test needs a pulse that hurts to show the imps do not repeat it.
+	Aura->DamagePercentOverride = 10.0f;
 
 	FHeardHits Heard(World);
 	TestTrue(TEXT("the aura activates"), Activate(Caster, Aura));

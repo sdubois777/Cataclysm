@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -12,6 +13,8 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -41,10 +44,13 @@
  *   ground beside it and for the same reason. Every sweep below is driven by
  *   calling `Sweep` directly, which is public for exactly this.
  *
- *   That a creature actually fails to walk through a raised wall. Walking is
- *   done by the character movement component against collision, and a test world
- *   has no navigation mesh, so what is checked is that the wall exists, is
- *   solid, and is the length and place its row asked for.
+ *   That a creature's walking finds no way through a raised wall. A test world is
+ *   never ticked and has no navigation mesh, so the walking physics and the
+ *   path a creature would choose are not run. What is checked, since issue
+ *   #2878, is the move the walking physics makes each frame: a creature moved
+ *   into the wall through its movement component's swept move
+ *   (`UCataclysmMovement::MoveWithoutSticking`) stops at it, on a floor the test
+ *   lays.
  *
  *   That a pit slows a creature climbing out. It does not, and issue #1152
  *   carries why: nothing in this project can change a character's movement speed.
@@ -682,6 +688,402 @@ bool FCataclysmTerrainSparesItsOwnSideTest::RunTest(const FString&)
 		UCataclysmSkillEffects::IsPinned(Ally.Actor));
 	TestEqual(TEXT("so the sweep held exactly one"),
 		Spears.Actor->LastSweepCount, 1);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// On the floor, whatever height it was handed -- issue #2878
+// --------------------------------------------------------------------------
+
+namespace CataclysmTerrainTest
+{
+	/**
+	 * The walking surface's height in the tests that lay a floor.
+	 *
+	 * NOT ZERO, so nothing that assumes the floor is at the world origin can pass
+	 * by accident. The figure `CataclysmEffectPlacementTests.cpp` builds at.
+	 */
+	constexpr float TerrainTestFloorTopZ = 500.0f;
+
+	/**
+	 * Where a player standing on that floor has its capsule centre: half its
+	 * 192 cm capsule and the 2 cm the engine's character movement keeps under a
+	 * capsule. Upthrust is cast from there -- `CastOrigin` is the caster's actor
+	 * location -- and it is where the wall's base stood until issue #2878.
+	 */
+	constexpr float TerrainTestCasterCentreZ = TerrainTestFloorTopZ + 98.0f;
+
+	/** How tall a raised wall is designed to stand: `WallHeightCm` in `CataclysmTerrain.cpp`. */
+	constexpr double TerrainTestWallHeightCm = 400.0;
+
+	/** How thick a raised wall is: `WallThicknessCm` in `CataclysmTerrain.cpp`. */
+	constexpr double TerrainTestWallThicknessCm = 100.0;
+
+	/** Out past the edge of the floor below, which is 40 metres square. */
+	constexpr float TerrainTestPastTheEdgeX = 5000.0f;
+
+	/**
+	 * How far above the floor a body is put down: clear of it, so the swept move
+	 * below does not begin touching the ground it walks on.
+	 */
+	constexpr float TerrainTestStandingGapCm = 3.0f;
+
+	/**
+	 * A solid floor 40 metres square and 40 cm thick with its top at
+	 * `TerrainTestFloorTopZ`.
+	 *
+	 * BUILT AS `CataclysmAbyssalWardenTests.cpp` BUILDS ITS GROUND: a box set to
+	 * the world-static object type and blocking every channel, because the search
+	 * for the floor asks for world-static objects and the dungeon's ground is one.
+	 */
+	static AActor* LayTheTerrainTestFloor(UWorld* World)
+	{
+		const FVector Middle(0.0f, 0.0f, TerrainTestFloorTopZ - 20.0f);
+		AActor* Floor = World->SpawnActor<AActor>(Middle, FRotator::ZeroRotator);
+		if (!Floor)
+		{
+			return nullptr;
+		}
+
+		UBoxComponent* Body = NewObject<UBoxComponent>(Floor);
+		Body->InitBoxExtent(FVector(2000.0f, 2000.0f, 20.0f));
+		Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Body->SetCollisionObjectType(ECC_WorldStatic);
+		Body->SetCollisionResponseToAllChannels(ECR_Block);
+		Floor->SetRootComponent(Body);
+		Body->RegisterComponent();
+		Floor->SetActorLocationAndRotation(Middle, FRotator::ZeroRotator);
+		return Floor;
+	}
+
+	/**
+	 * The bottom and top of a wall's one block, in world space, read off the
+	 * instance the collision is made of rather than off the actor.
+	 *
+	 * @return false when the wall is not exactly one block
+	 */
+	static bool TerrainTestWallSpan(ACataclysmTerrain* Wall, double& OutBottomZ, double& OutTopZ)
+	{
+		const UInstancedStaticMeshComponent* Blocks = Wall
+			? Wall->FindComponentByClass<UInstancedStaticMeshComponent>()
+			: nullptr;
+		if (!Blocks || Blocks->GetInstanceCount() != 1)
+		{
+			return false;
+		}
+
+		FTransform Placed;
+		if (!Blocks->GetInstanceTransform(0, Placed, /*bWorldSpace=*/true))
+		{
+			return false;
+		}
+
+		// THE ENGINE'S UNIT CUBE IS 100 CM A SIDE AND CENTRED ON ITS ORIGIN, so half
+		// its height is fifty times its Z scale.
+		const double HalfHeight = Placed.GetScale3D().Z * 50.0;
+		OutBottomZ = Placed.GetLocation().Z - HalfHeight;
+		OutTopZ = Placed.GetLocation().Z + HalfHeight;
+		return true;
+	}
+
+	/** Put a body down standing on that floor at X and Y, clear of it by the standing gap. */
+	static FVector TerrainTestStandingAt(const ACataclysmEnemyCharacter* Body, float X, float Y)
+	{
+		const UCapsuleComponent* Capsule = Body ? Body->GetCapsuleComponent() : nullptr;
+		const float HalfHeight = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 0.0f;
+		return FVector(X, Y, TerrainTestFloorTopZ + HalfHeight + TerrainTestStandingGapCm);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallStandsOnTheFloorTest,
+	"Cataclysm.Terrain.AWallRaisedFromACapsuleCentreStandsOnTheFloorUnderIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallStandsOnTheFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmTerrainTest;
+
+	// ISSUE #2878. Upthrust hands `ACataclysmTerrain::Spawn` its caster's capsule
+	// centre, and the wall used to be built up from there, so its base stood
+	// about 98 cm above the floor and its top about 498. It is collision, so that
+	// gap was something a short body or a low shot passed under.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestNotNull(TEXT("set-up: a floor to raise it on"), LayTheTerrainTestFloor(World)))
+	{
+		return false;
+	}
+
+	// THE CASTER STANDS AT THE NEAR END, as it does for Upthrust.
+	FScopedFighter Hammer(World, FVector(0.0f, 0.0f, TerrainTestCasterCentreZ),
+						  ECataclysmTeam::Players);
+
+	// UPTHRUST'S OWN TWO ENDS: the caster's capsule centre, and ten metres along
+	// its facing at the same height.
+	FScopedTerrain Ridge(Hammer.Actor, ECataclysmTerrainKind::Wall,
+						 FVector(0.0f, 0.0f, TerrainTestCasterCentreZ),
+						 FVector(10 * M, 0.0f, TerrainTestCasterCentreZ),
+						 /*SizeCm=*/10 * M, /*Duration=*/8.0f,
+						 /*HoldSeconds=*/0.0f);
+	if (!TestNotNull(TEXT("set-up: a wall is raised"), Ridge.Actor))
+	{
+		return false;
+	}
+
+	double BottomZ = 0.0;
+	double TopZ = 0.0;
+	if (!TestTrue(TEXT("set-up: the wall is one block"),
+				  TerrainTestWallSpan(Ridge.Actor, BottomZ, TopZ)))
+	{
+		return false;
+	}
+
+	const double BaseAboveFloor = BottomZ - TerrainTestFloorTopZ;
+	const double TopAboveFloor = TopZ - TerrainTestFloorTopZ;
+	AddInfo(FString::Printf(
+		TEXT("UPTHRUST ON A FLOOR AT %.0f CM, CAST FROM %.0f CM: the wall's base is %.1f cm above the floor and its "
+			 "top %.1f cm above it"),
+		TerrainTestFloorTopZ, TerrainTestCasterCentreZ, BaseAboveFloor, TopAboveFloor));
+
+	// THE ASSERTION THE ISSUE IS ABOUT.
+	TestTrue(FString::Printf(
+		TEXT("the wall's base is within 5 cm of the floor's surface, not at the caster's capsule centre: %.1f cm"),
+		BaseAboveFloor),
+		FMath::Abs(BaseAboveFloor) <= 5.0);
+
+	// AND IT IS STILL ITS DESIGNED HEIGHT, MEASURED FROM THE FLOOR. Moving the base
+	// down by shortening the wall would pass the line above and leave the top
+	// where it was.
+	TestTrue(FString::Printf(
+		TEXT("and its top is its designed %.0f cm above the floor, within 5 cm: %.1f cm"),
+		TerrainTestWallHeightCm, TopAboveFloor),
+		FMath::Abs(TopAboveFloor - TerrainTestWallHeightCm) <= 5.0);
+
+	// THE ACTOR IS WHERE THE WALL IS, so what the outliner reports, `IsStandingIn`
+	// and the far end all agree with the collision.
+	TestEqual(TEXT("the wall's actor is on the floor too"),
+		static_cast<float>(Ridge.Actor->GetActorLocation().Z), TerrainTestFloorTopZ, 0.5f);
+	TestEqual(TEXT("and so is its far end"),
+		static_cast<float>(Ridge.Actor->FarEnd.Z), TerrainTestFloorTopZ, 0.5f);
+
+	// ONLY THE HEIGHT MOVED. A wall moved sideways or shortened onto the floor
+	// would be in the wrong place however well it stood.
+	TestEqual(TEXT("it still starts where it was cast: X"),
+		static_cast<float>(Ridge.Actor->GetActorLocation().X), 0.0f, 0.01f);
+	TestEqual(TEXT("it still starts where it was cast: Y"),
+		static_cast<float>(Ridge.Actor->GetActorLocation().Y), 0.0f, 0.01f);
+	TestEqual(TEXT("and it is still ten metres long"),
+		static_cast<float>(FVector::Dist2D(Ridge.Actor->GetActorLocation(), Ridge.Actor->FarEnd)),
+		10 * M, 1.0f);
+
+	// THE CONTROL: with no floor under the near end it is left where it was asked,
+	// which is what every test world that builds no geometry relies on.
+	FScopedTerrain Unfloored(Hammer.Actor, ECataclysmTerrainKind::Wall,
+							 FVector(TerrainTestPastTheEdgeX, 0.0f, TerrainTestCasterCentreZ),
+							 FVector(TerrainTestPastTheEdgeX + 10 * M, 0.0f, TerrainTestCasterCentreZ),
+							 /*SizeCm=*/10 * M, /*Duration=*/8.0f,
+							 /*HoldSeconds=*/0.0f);
+	double UnflooredBottomZ = 0.0;
+	double UnflooredTopZ = 0.0;
+	if (TestNotNull(TEXT("CONTROL: set-up: a wall is raised past the floor's edge"), Unfloored.Actor)
+		&& TestTrue(TEXT("CONTROL: set-up: it is one block"),
+					TerrainTestWallSpan(Unfloored.Actor, UnflooredBottomZ, UnflooredTopZ)))
+	{
+		TestTrue(FString::Printf(
+			TEXT("CONTROL: a wall with no floor under it stands where it was asked: base at %.1f against %.0f"),
+			UnflooredBottomZ, TerrainTestCasterCentreZ),
+			FMath::Abs(UnflooredBottomZ - TerrainTestCasterCentreZ) <= 0.5);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWallStopsAWalkerTest,
+	"Cataclysm.Terrain.ARaisedWallStopsACreatureWalkingIntoIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWallStopsAWalkerTest::RunTest(const FString&)
+{
+	using namespace CataclysmTerrainTest;
+
+	// UPTHRUST'S RIDGE "BLOCKS MOVEMENT AND PROJECTILES". Two bodies walk into it:
+	// an ordinary creature, 160 cm tall, and one as short as a summoned minion
+	// (`CataclysmMinion.cpp`'s capsule, 30 cm by a 45 cm half height), the
+	// shortest body in the game. While the wall's base stood at the caster's
+	// capsule centre, 98 cm up, the short one walked underneath it. Issue #2878.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestNotNull(TEXT("set-up: a floor to walk on"), LayTheTerrainTestFloor(World)))
+	{
+		return false;
+	}
+
+	// THE CASTER, OFF TO ONE SIDE of both walkers' way.
+	FScopedFighter Hammer(World, FVector(0.0f, -8 * M, TerrainTestCasterCentreZ),
+						  ECataclysmTeam::Players);
+
+	FScopedFighter Walker(World, FVector(-3 * M, 0.0f, TerrainTestCasterCentreZ),
+						  ECataclysmTeam::Monsters);
+	FScopedFighter ShortOne(World, FVector(-3 * M, 3 * M, TerrainTestCasterCentreZ),
+						 ECataclysmTeam::Monsters);
+	UCapsuleComponent* WalkerCapsule = Walker.Actor->GetCapsuleComponent();
+	UCapsuleComponent* ShortCapsule = ShortOne.Actor->GetCapsuleComponent();
+	if (!TestNotNull(TEXT("set-up: the creature has a capsule"), WalkerCapsule)
+		|| !TestNotNull(TEXT("set-up: so does the short one"), ShortCapsule))
+	{
+		return false;
+	}
+	ShortCapsule->SetCapsuleSize(30.0f, 45.0f);
+
+	const FVector WalkerFrom = TerrainTestStandingAt(Walker.Actor, -3 * M, 0.0f);
+	const FVector ShortFrom = TerrainTestStandingAt(ShortOne.Actor, -3 * M, 3 * M);
+	Walker.Actor->SetActorLocation(WalkerFrom);
+	ShortOne.Actor->SetActorLocation(ShortFrom);
+
+	// SIX METRES STRAIGHT ON, through where the wall will be. Through the
+	// movement component's swept move, which is the move the walking physics
+	// makes each frame and stops at whatever blocks the capsule.
+	const FVector Walk(6 * M, 0.0f, 0.0f);
+
+	// THE CONTROL FIRST, WITH NO WALL. Without it, a body that failed to move for
+	// some other reason -- stuck on the floor it starts on -- would read as a
+	// wall that blocks.
+	UCataclysmMovement::MoveWithoutSticking(Walker.Actor, Walk);
+	UCataclysmMovement::MoveWithoutSticking(ShortOne.Actor, Walk);
+	TestEqual(TEXT("CONTROL: with no wall the creature walks the whole six metres"),
+		static_cast<float>(Walker.Actor->GetActorLocation().X), 3 * M, 1.0f);
+	TestEqual(TEXT("CONTROL: and so does the short one"),
+		static_cast<float>(ShortOne.Actor->GetActorLocation().X), 3 * M, 1.0f);
+	Walker.Actor->SetActorLocation(WalkerFrom);
+	ShortOne.Actor->SetActorLocation(ShortFrom);
+
+	// THE WALL, RAISED AS UPTHRUST RAISES IT: from a caster's capsule centre,
+	// across both walkers' way, along Y at X = 0.
+	FScopedTerrain Ridge(Hammer.Actor, ECataclysmTerrainKind::Wall,
+						 FVector(0.0f, -5 * M, TerrainTestCasterCentreZ),
+						 FVector(0.0f, 5 * M, TerrainTestCasterCentreZ),
+						 /*SizeCm=*/10 * M, /*Duration=*/8.0f,
+						 /*HoldSeconds=*/0.0f);
+	if (!TestNotNull(TEXT("set-up: a wall is raised across the way"), Ridge.Actor))
+	{
+		return false;
+	}
+
+	UCataclysmMovement::MoveWithoutSticking(Walker.Actor, Walk);
+	UCataclysmMovement::MoveWithoutSticking(ShortOne.Actor, Walk);
+
+	// MEASURED AT EACH BODY'S LEADING EDGE against the wall's near face, which is
+	// half the wall's thickness short of X = 0.
+	const double NearFaceX = -TerrainTestWallThicknessCm * 0.5;
+	const double WalkerFront =
+		Walker.Actor->GetActorLocation().X + WalkerCapsule->GetScaledCapsuleRadius();
+	const double ShortFront =
+		ShortOne.Actor->GetActorLocation().X + ShortCapsule->GetScaledCapsuleRadius();
+	AddInfo(FString::Printf(
+		TEXT("WALKING INTO A RAISED WALL: the creature's front stopped at X %.1f and the short one's at X %.1f; the "
+			 "wall's near face is at X %.0f"),
+		WalkerFront, ShortFront, NearFaceX));
+
+	// STOPPED AT THE WALL, NOT SHORT OF IT AND NOT THROUGH IT. Up to 10 cm short
+	// allows for the engine's pull-back from a blocking hit; any more would be a
+	// body stopped by something other than the wall.
+	TestTrue(FString::Printf(
+		TEXT("a creature walking into the wall is stopped at it: its front is %.1f cm short of the wall's near face"),
+		NearFaceX - WalkerFront),
+		WalkerFront <= NearFaceX + 1.0 && WalkerFront >= NearFaceX - 10.0);
+	TestTrue(FString::Printf(
+		TEXT("and so is one as short as a summoned minion, which passed under the wall while its base stood at the "
+			 "caster's capsule centre: its front is %.1f cm short of the near face"),
+		NearFaceX - ShortFront),
+		ShortFront <= NearFaceX + 1.0 && ShortFront >= NearFaceX - 10.0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPitOnTheFloorTest,
+	"Cataclysm.Terrain.APitLeftAtACapsuleCentreLiesOnTheFloorAndStillFloorsWhatFallsIn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPitOnTheFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmTerrainTest;
+
+	// EVERY KIND OF TERRAIN IS PUT ON THE FLOOR, not only the wall, so a pit's
+	// actor is no longer at its caster's capsule centre. The round kinds hold
+	// whoever is inside them by a flat test, so this says the move changed where
+	// the pit is and not who it holds -- at its middle and near its rim, for bodies
+	// standing on the floor. Issue #2878.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestNotNull(TEXT("set-up: a floor to break open"), LayTheTerrainTestFloor(World)))
+	{
+		return false;
+	}
+
+	FScopedFighter Hammer(World, FVector(0.0f, 0.0f, TerrainTestCasterCentreZ),
+						  ECataclysmTeam::Players);
+
+	// BREAK THE WORLD AND CRATER BOTH LEAVE THEIR PIT AT A CAPSULE CENTRE.
+	FScopedTerrain Hole(Hammer.Actor, ECataclysmTerrainKind::Pit,
+						FVector(0.0f, 0.0f, TerrainTestCasterCentreZ),
+						FVector(0.0f, 0.0f, TerrainTestCasterCentreZ),
+						/*SizeCm=*/5 * M, /*Duration=*/12.0f,
+						/*HoldSeconds=*/7.0f);
+	if (!TestNotNull(TEXT("set-up: a pit is left"), Hole.Actor))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the pit lies on the floor, not at its caster's capsule centre"),
+		static_cast<float>(Hole.Actor->GetActorLocation().Z), TerrainTestFloorTopZ, 0.5f);
+	TestEqual(TEXT("and it is still round: its far end is its own place"),
+		Hole.Actor->FarEnd, Hole.Actor->GetActorLocation());
+
+	// TWO CREATURES OUTSIDE, ON THE FLOOR, then both walk in: one near the middle
+	// and one 20 cm inside the five metre rim. The sweep gathers with a sphere
+	// centred on the pit's actor, now on the floor rather than at waist height,
+	// and the rim is where such a sphere would miss a standing body first if it
+	// missed any.
+	FScopedFighter NearTheMiddle(World, FVector(20 * M, 0.0f, TerrainTestCasterCentreZ),
+								 ECataclysmTeam::Monsters);
+	FScopedFighter Rim(World, FVector(-20 * M, 0.0f, TerrainTestCasterCentreZ),
+					   ECataclysmTeam::Monsters);
+	NearTheMiddle.MoveTo(TerrainTestStandingAt(NearTheMiddle.Actor, 20 * M, 0.0f));
+	Rim.MoveTo(TerrainTestStandingAt(Rim.Actor, -20 * M, 0.0f));
+
+	Hole.Actor->Sweep();
+	TestEqual(TEXT("standing outside on the floor, nobody is held"),
+		Hole.Actor->LastSweepCount, 0);
+
+	NearTheMiddle.MoveTo(TerrainTestStandingAt(NearTheMiddle.Actor, 1 * M, 0.0f));
+	Rim.MoveTo(TerrainTestStandingAt(Rim.Actor, -4.8f * M, 0.0f));
+	Hole.Actor->Sweep();
+
+	TestTrue(TEXT("a creature on the floor that walks into the middle is knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(NearTheMiddle.Actor));
+	TestTrue(TEXT("and so is one that walks in just inside the rim"),
+		UCataclysmSkillEffects::IsKnockedDown(Rim.Actor));
+	TestEqual(TEXT("so the sweep floored both"),
+		Hole.Actor->LastSweepCount, 2);
 
 	return true;
 }

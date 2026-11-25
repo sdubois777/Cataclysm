@@ -619,18 +619,34 @@ public:
 	 *
 	 * NOT SAVED, so the saved run holds the base of every number the tree changes: see `FCataclysmEmpireTreeBonuses`.
 	 * The game instance sets it through `SetTreeBonuses` when a run begins -- BEFORE `Begin`, so the map is built full at
-	 * the raised maxima -- after a run loads, and after every point bought, option chosen or respec. A run nobody hands a
-	 * tree to, which is every run a test makes by hand, has none.
+	 * the raised maxima -- and after a run loads; and through `ChangeTreeBonuses` after every point bought, option chosen
+	 * or respec, since issue #2859. A run nobody hands a tree to, which is every run a test makes by hand, has none.
 	 */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	FCataclysmEmpireTreeBonuses TreeBonuses;
 
 	/**
 	 * Hands the run the tree's bonuses, and its map and surge scheduler with it; the day clock asks
-	 * `ResolveBonusDaysFor`. A bought node acts at once and a respec takes it away at once; nothing is written into the
-	 * cities, the timers or the next surge day (S1).
+	 * `ResolveBonusDaysFor`. Nothing is written into the cities, the timers or the next surge day (S1).
+	 *
+	 * THE DOOR FOR A RUN BEING HANDED ITS TREE, NOT FOR A TREE CHANGED IN PLAY: a run about to begin, whose cities are
+	 * then built full at the raised maxima, and a run just loaded, whose cities were saved holding what they held under
+	 * the tree. A point bought, an option chosen or a respec goes through `ChangeTreeBonuses`, which keeps every city's
+	 * share. Issue #2859.
 	 */
 	void SetTreeBonuses(const FCataclysmEmpireTreeBonuses& Bonuses);
+
+	/**
+	 * Hands the run the tree's bonuses as `SetTreeBonuses` does, AND PUTS EVERY STANDING CITY BACK AT THE SHARE OF ITS
+	 * MAXIMA IT HELD UNDER THE TREE BEFORE (`UCataclysmEmpireMap::KeepShares`): the door for a tree changed in play -- a
+	 * point bought, an option chosen, a respec -- which `UCataclysmGameInstance::RefreshEmpireTreeBonuses` uses. Issue
+	 * #2859, the owner's ruling of 2026-11-23, verbatim: "When increasing city defenses through the empire tree, it
+	 * actually lowers the total % each city is at. It should maintain the % they were at before buying the upgrades."
+	 *
+	 * So an Outpost at 800 of 1000 holds 840 of 1050 after a point of Foundation, and 800 of 1000 again after a respec;
+	 * its people likewise under a population node. A fallen city is left as it is. With no map, it is `SetTreeBonuses`.
+	 */
+	void ChangeTreeBonuses(const FCataclysmEmpireTreeBonuses& Bonuses);
 
 	/**
 	 * What a hit by a dungeon `Sender` sent on this city is reduced to by the tree: at every place a dungeon damages a

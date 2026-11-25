@@ -919,6 +919,14 @@ def check_a_roll_states_no_damage_percent(params: dict[str, str],
 #: What the DamagePercent, Cooldown, ManaCost and FervourCost columns hold for a
 #: skill that states none of its own, and takes its slot's figure instead.
 #:
+#: EXCEPT AN AURA'S DAMAGE, which is nought when its row states none. Ruled by
+#: the owner on 2026-11-24, issue #2875: an aura deals damage only if its
+#: description says so. The game applies it in
+#: `UCataclysmSkillTemplate::GetDamagePercent`, so the cell is still written as
+#: this marker and the rule stays in one place;
+#: tools/tests/test_an_aura_deals_damage_only_where_its_row_states_it.py lists
+#: every aura row and what it deals.
+#:
 #: A SLOT IS A KEY AND A SKILL IS WORTH WHAT IT IS WORTH, decided by the project
 #: owner on 2026-08-22 and recorded in docs/DECISIONS.md. Any skill may go in any
 #: slot, so a skill taking its damage from whichever slot it happened to be put

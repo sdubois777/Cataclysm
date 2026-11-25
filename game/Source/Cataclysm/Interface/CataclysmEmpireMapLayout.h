@@ -199,6 +199,39 @@ public:
 	static FString CityLabel(const UCataclysmEmpireMap* Map, int32 CityId);
 
 	/**
+	 * Whether a city's box opens its city screen when pressed: EVERY CITY ON THE MAP'S DOES, A FALLEN ONE'S INCLUDED.
+	 * False only with no map or no such city.
+	 *
+	 * ISSUE #2866, the owner: "I'm unable to take it back, it won't let me attack it." A fallen city's box was made
+	 * unavailable on 2026-08-31, before a fall left a Fallen City dungeon on its city, and an unavailable choice button
+	 * cannot be pressed (`UCataclysmChoiceButton::Press`), so the city screen that lists that dungeon with its Walk
+	 * button never opened and the city could not be retaken. The design, `docs/Cataclysm_GDD_v2.md` section VIII:
+	 * "Dungeon Cities can be retaken." A fallen city is told apart by being dimmed instead (`IsCityDimmed`).
+	 */
+	static bool CityOpensItsScreen(const UCataclysmEmpireMap* Map, int32 CityId);
+
+	/**
+	 * Whether a city's box is drawn dimmed: a fallen city's, and no other. `UCataclysmChoiceButton::SetDimmed` draws it
+	 * as unavailable while it can still be pressed (`CityOpensItsScreen`). Issue #2866.
+	 */
+	static bool IsCityDimmed(const UCataclysmEmpireMap* Map, int32 CityId);
+
+	/**
+	 * The Fallen City dungeon standing on a city, or `INDEX_NONE`: the dungeon a fallen city is retaken by walking and
+	 * clearing (`UCataclysmEmpireRun::ClearDungeon` calls `UCataclysmEmpireMap::Retake`). Issue #2866.
+	 */
+	static int32 FallenCityDungeonOn(const UCataclysmEmpireRun* Run, int32 CityId);
+
+	/**
+	 * What the line under the map says of a fallen city after its name, when the cursor is on it: "fallen: walk its
+	 * Fallen City dungeon to retake it (press the city, then Walk)" while its Fallen City dungeon stands on it; "erased
+	 * by the Void, it can never be retaken" for an erased city; "fallen" for one with no such dungeon. Empty for a city
+	 * standing, and with no run or no such city. Issue #2866: until then the line said "fallen" and nothing said how a
+	 * city comes back.
+	 */
+	static FString FallenCityDetail(const UCataclysmEmpireRun* Run, int32 CityId);
+
+	/**
 	 * What the PLAYER has done to the map: dungeons beaten, and Quest dungeons among them.
 	 *
 	 * "4 dungeons cleared, 1 Quest dungeon cleared". Everything else the empire screen

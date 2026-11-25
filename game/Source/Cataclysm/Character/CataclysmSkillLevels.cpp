@@ -104,9 +104,12 @@ void UCataclysmSkillLevels::RepriceReservesOf(const ACataclysmPlayerState* Holde
 		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
 		const bool bMadeByIt =
 			(Thrall && Thrall->TakenBySkillRow == SkillRow) || (Minion && Minion->SummoningSkillRow == SkillRow);
-		if (Body && bMadeByIt && Now > 0.0f && Body->ReservedFervour > Now)
+		// A THRALL AT ITS OWN RARITY'S FIGURE, since the owner's ruling of 2026-11-24, "Reserve grows with rarity": the
+		// figure for a Common would cut a Herald's 90 to 30 at the skill's next level.
+		const float NowForIt = Thrall && Maker ? Maker->FervourReserveOfOne(nullptr, Thrall) : Now;
+		if (Body && bMadeByIt && NowForIt > 0.0f && Body->ReservedFervour > NowForIt)
 		{
-			Body->ReservedFervour = Now;
+			Body->ReservedFervour = NowForIt;
 		}
 
 		// A SKILL GADGET OR A SKILL TRAP STANDING FOR A SLOT THAT HOLDS THE SKILL, at what one placed now reserves.
