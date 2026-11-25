@@ -100,7 +100,11 @@ largest passing step is 0.05 on an Outpost, 0.10 on a Bulwark (3,188 clears), 0.
 on a Sanctuary (4,314) and 0.07 on the Pillar (85). Seeds 60 to 119, 15,376
 clears: 0.10 on a Bulwark, 0.12 on a Sanctuary and 0.11 on the Pillar. The
 coordinating session ruled 0.10, 0.12 and 0.07, each passing both, provisionally
-until the gear drop rarity fix (issue #2853) lands. Section 6 is the measurement tiers 2
+until the gear drop rarity fix (issue #2853) lands. RUN AGAIN ON 2026-11-25 with #2853's
+Power Score and drop supply merged in (development `eb34af972`): every clear count and
+every row the same on both seed sets, because neither the campaigns nor the walk loads
+`player_power.py`, `loot.py` or `affixes.py`, so gear drops cannot reach this measurement.
+Section 6 is the measurement tiers 2
 to 8 were left flat by ring on: a campaign gains a median 26 levels at tier 1,
 14 at tier 2 and 11 at tier 3, and the starting class's health at the median
 Sanctuary entry over the median Outpost entry is 1.55, 1.30 and 1.14 times.
