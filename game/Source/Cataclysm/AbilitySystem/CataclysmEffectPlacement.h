@@ -34,6 +34,12 @@ class UWorld;
  * hits what. On a flat floor the two now differ by at most `LiftCm` from a capsule
  * bottom, which is where the marker and the lob landing already were.
  *
+ * TWO GAMEPLAY POINTS ASK `FloorSurfaceUnder` AS WELL, since issue #2878, which
+ * decided them separately: `ACataclysmTerrain::Spawn` stands every kind of terrain,
+ * the Upthrust wall's collision included, on the surface under its near end, and
+ * `ACataclysmEnemyController::FloorUnder` answers the surface under its point, so a
+ * creature's aim point is no longer inside the exit stairs.
+ *
  * A NAMESPACE, NOT A CLASS, like `CataclysmMeshWidth`: there is no state and
  * nothing for the reflection system to see.
  */

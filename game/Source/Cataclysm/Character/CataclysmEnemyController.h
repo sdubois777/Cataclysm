@@ -896,7 +896,8 @@ public:
 	int32 AbilitiesUsed = 0;
 
 	/**
-	 * The same point, moved down to the floor the creature is standing on.
+	 * The same point, moved straight down (or up) onto the walking surface under
+	 * it.
 	 *
 	 * WHY EVERYTHING GOES THROUGH ONE FUNCTION. Issue #471. A character's actor
 	 * location is its capsule centre -- 96 cm up for the player, 110 for a Brute
@@ -906,8 +907,12 @@ public:
 	 * that had been drawn for it. Two expressions that have to agree will stop
 	 * agreeing; one expression cannot.
 	 *
-	 * FROM THE CREATURE'S CAPSULE rather than the target's, because every caller
-	 * has to get the same answer and the creature is the one constant.
+	 * THE SURFACE UNDER THE POINT, NOT THE CREATURE'S OWN FLOOR, since issue
+	 * #2878: `CataclysmEffectPlacement::FloorSurfaceUnder`. It was the creature's
+	 * capsule bottom, which put the point up to 60 cm inside the exit stairs
+	 * under a target standing on them. Where no surface is found -- a test world
+	 * with no geometry, a point over the void -- it is still the creature's
+	 * capsule bottom, as it always was.
 	 */
 	static FVector FloorUnder(const ACataclysmCharacterBase* Driven,
 							  const FVector& Point);
