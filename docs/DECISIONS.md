@@ -452,6 +452,252 @@ are not used: by its report they no longer fail anything, the two protections ea
 
 ---
 
+## 2026-11-24 — Drop supply at tier 1: half the gear, gems scaled by tier, no all-resistances on a tier 1 drop, and the gap rule's cut starting at a per-tier width (#2853)
+
+**WRITTEN AND NOT COMPILED; NO WINDOW YET; THE WORKBOOK NOT YET WRITTEN.** On `feat/drop-supply-2853`, made from
+`feat/power-score-weights-2853` at `0799b7b27` (the rarity cap and the plain weights, both owner-ruled and not yet
+merged), so it carries those two changes too. Issue [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the
+drop supply half of the owner's "Adopt, and look at drop supply (Recommended)" (the entry below). **The design workbook
+was not edited**, because other branches held it: see "The workbook stage" below. Until that stage is run, two Python
+tests fail on this branch and say so.
+
+### Why
+
+**The owner, 2026-11-23, verbatim:** "I've run one dungeon and I'm already almost double the dungeon score". After the
+plain weights, the drop supply proposal (branch `proposal/drop-supply-2853`, `ea7efabeb`; its write-up in the
+coordinating session's worktree) measured a fresh tier 1 character at 1.72, 2.19 and 2.83 times the dungeon's score after
+1, 2 and 4 Outpost dungeons, and found the cause in how much drops: about 123 gear pieces a tier 1 floor, every tier at
+tier 8's gem rate (seven gems after one Outpost dungeon, more than tier 1's whole reference character holds), the
+all-resistances family 58 to 65 per cent of the character's resistance points, and a gap rule that cut the character
+the experience curve produces in its own tier.
+
+### The rulings
+
+**RULINGS, the owner, 2026-11-24, chosen options quoted** (issue comment 7147403317, as the coordinating session
+recorded them):
+
+1. Gear quantity: "Halve gear drops (Recommended)": the whole gear drop column halves, about 61 pieces a tier 1 floor
+   instead of 123.
+2. Gems: "Milder: tier 1 gets 1/8 (Recommended)": the gem rate scales by tier, less steeply than halving per tier, so
+   tier 1 gets about 1/8 of today's rate (roughly one gem a dungeon); the exact curve to be measured before it ships.
+3. Resistance: "No all-resist at tier 1 (Recommended)": the all-resistances affix family cannot roll on a difficulty tier
+   1 drop; single resistances still can. (Path of Exile allows all-elemental resistance only from item level 12.)
+4. Gap rule: "Per-tier start (Recommended)": the experience-and-loot cut starts at 1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8, 0.8
+   tier widths above the dungeon at tiers 1 to 8 (was 0.6 everywhere), so a normally levelled player is not cut in its
+   own tier, while a character finished in the next tier is still cut to 5% (15% at tier 6).
+
+### What changed
+
+**1. Gear.** The Enemy Drops sheet's Gear Drops column halves, every enemy rarity alike:
+
+| Enemy rarity | Common | Elite | Legendary | Herald | Boss | Cataclysm Boss |
+| :-- | --: | --: | --: | --: | --: | --: |
+| Gear drops a kill, before | 0.16 | 0.5 | 1.0 | 2.0 | 5.0 | 12.0 |
+| **Now** | **0.08** | **0.25** | **0.5** | **1.0** | **2.5** | **6.0** |
+
+A tier 1 floor of 258 creatures drops 61.3 gear pieces (122.6 before), an Outpost dungeon 460 (919), a slot of it 41.8
+(83.6). `loot.ENEMY_GEAR_DROPS`, `game/Data/EnemyDrops.csv` (as the generator makes it from the halved column), the
+design document's What a Kill Drops table. **The material, gem and gold columns do not move.** So a kill now drops half
+as many materials as gear (a quarter until today), and **a kill's gold piles are twice its gear drops**: the gear ladder
+G1 ruled on 2026-11-18, its shape and its figures (a judgement, below).
+
+**2. Gems.** Tier 8 keeps the gem rate a kill had; each tier below drops three quarters of the tier above's:
+
+| Difficulty tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Share of tier 8's gem rate | 0.1335 | 0.1780 | 0.2373 | 0.3164 | 0.4219 | 0.5625 | 0.75 | 1 |
+| Over what a full clear needs to fill the tier's reference character | 41.4 | 20.2 | 11.5 | 6.9 | 4.1 | 2.5 | 1.6 | 1.01 |
+| Gems in an average 50-floor dungeon | 5.5 | 7.4 | 9.9 | 13.1 | 17.5 | 23.4 | 31.1 | 41.5 |
+
+`loot.GEM_DROP_SHARE_A_TIER_DOWN` (0.75), `loot.gem_drop_share(tier)`, and `loot.expected_gem_drops` and
+`roll_gem_drops_from_kill` read it; the game's `UCataclysmDropRoll::GemDropShareATierDown`, `GemDropShareAt(Tier)`, and
+`ExpectedGemDrops`, which takes the tier now (`SpawnGemsFor` passes the tier being played). **The Gem Drops column does
+not move**: the gear column halved, so `loot.GEM_DROPS_PER_GEAR_DROP` doubles from 0.0068 to 0.0136 and the column, gems
+a kill at tier 8, is exactly what it was. 0.0136 is still tier 8's need rounded up: that need against the halved column
+is 0.01343 (`sim/analyse_gem_drops.py`).
+
+**3. All resistances.** `affixes.ALL_RESISTANCES_LOWEST_DROP_TIER` (2) and `affixes.rolls_on_a_drop_at`; `loot.roll_item`
+takes the family out of the candidates after building them. The game's `UCataclysmDropRoll::AllResistancesLowestDropTier`
+and `RollsOnADropAt`; `RollItem` removes the family from the candidates `CandidatesFor` built, before the draw. Another
+affix takes the place. The forge is not gated: its affix change draws from `CandidatesFor` unfiltered. Measured, 3,000
+Chests at 300 magic find from one seed: tier 1 rolled 143 single, 163 two and 0 all-resistances affixes; tier 2 rolled
+139, 160 and 153.
+
+**4. The gap rule.** `analyse_power_gap_rewards.Rule` gains `band_down_by_tier`, and `RULED` is rule D with the cut
+beginning at 1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8 and 0.8 tier widths at tiers 1 to 8; its `multiplier` needs the tier.
+Rule D of 2026-11-22 stays in `RULES` as the candidate it was. The game's `FCataclysmPowerGapRule::BandBelow(Tier)`
+(the table in its definition) replaces the constant `BandBelow`, and `Multiplier` takes the tier; `RewardsFor` already
+had it. Measured on the shipped weights, the experience curve's character in its tier's reference gear sits 1.22, 1.12,
+0.97, 0.89, 0.79, 0.72, 0.67 and 0.65 tier widths above the shallowest dungeon each tier spawns, so no start cuts it, and
+the next tier's finished character is still cut to 5% in this tier's average dungeon (15% at tier 6), as ruled.
+
+### The gem curve, measured, and the judgement
+
+The ruling left the curve to be measured. `sim/measure_drop_supply.py` (rebuilt from the proposal's script on the model
+as shipped) measured four, each against what a full clear of a tier needs to fill its reference character:
+
+| Curve | Share at tier 1 | Steps from tier to tier | Any tier below its need | Gems dropped by a full clear of 1, 2, 4 Outposts at tier 1 | the same at tier 4 |
+| :-- | --: | :-- | :-- | :-- | :-- |
+| **Three quarters a tier (shipped)** | 0.1335 | 1.33 every step | none | 1.1, 2.1, 3.8 | 2.4, 4.8, 8.9 |
+| Eighths, tier / 8 | 0.125 | 2.00, 1.50, 1.33 ... 1.14 | none | 1.1, 2.0, 3.8 | 3.3, 6.8, 13.1 |
+| Halved a tier (the proposal) | 0.0078 | 2.00 every step | none | 0.1, 0.1, 0.2 | 0.6, 0.8, 1.7 |
+| Tier 8's at every tier (before) | 1 | 1.00 | none | 5.9, 12.2, 25.1 | 6.2, 13.5, 25.4 |
+
+(40 seeds, means; the gap rule off, so these are the drops alone. Tier 1's 10th to 90th percentile after one Outpost is 0
+to 3 gems.)
+
+**Three quarters a tier is a judgement.** It is one plain step, the same at every tier, the milder form of the proposal's
+"halved for each tier below 8", and 0.75 to the 7th is 13.3% at tier 1: "about 1/8", and about one gem an Outpost
+dungeon, as ruled. The even split into eighths is as plain to read and gives tier 1 the same, but it is as steep as
+halving between tiers 1 and 2 (an eighth to a quarter), which the ruling's "less steeply than halving per tier" rules
+out, and it gives tiers 2 to 6 more (half the rate at tier 4, against a third). Every tier stays above its need under
+either.
+
+### Measured: a fresh tier 1 character
+
+`sim/measure_drop_supply.py`, from `sim/`, about two minutes; two runs printed the same figures. Outpost dungeons (5 to 10
+floors), Basic, tier 1, 258 creatures a floor all killed, a Boss at the end, the equip rule of the proposal (a judgement,
+unchanged), each supply with its own gap rule on as the game has it. 40 seeds; mean and 10th to 90th percentile.
+
+| Supply | After | Score | Level / gear / gems / resistances | Dungeon Score | **Times the dungeon** | Gear dropped | Gems | Resistance points |
+| :-- | --: | --: | :-- | --: | --: | --: | --: | --: |
+| Before #2853 | 1 | 348 (291-416) | 54 / 126 / 55 / 114 | 203 | 1.72 | 951 | 7.0 | 113.8 |
+| Before #2853 | 2 | 448 (400-518) | 66 / 135 / 102 / 145 | 204 | 2.19 | 1,815 | 13.1 | 144.7 |
+| Before #2853 | 4 | 578 (523-643) | 82 / 141 / 169 / 186 | 204 | 2.83 | 3,362 | 24.1 | 186.4 |
+| **As shipped** | 1 | **229** (202-263) | 54 / 114 / 5 / 56 | 203 | **1.13** | 477 | 0.7 | 55.7 |
+| **As shipped** | 2 | **276** (249-304) | 68 / 128 / 10 / 70 | 203 | **1.36** | 983 | 1.4 | 70.0 |
+| **As shipped** | 4 | **342** (296-383) | 89 / 135 / 26 / 91 | 205 | **1.67** | 1,895 | 3.3 | 91.3 |
+
+The "before" rows reproduce the proposal's (348, 448, 578). Killing half the creatures: 186, 228 and 276 (0.92, 1.12 and
+1.35 times the dungeon) as shipped, against 278, 347 and 454 before. **The owner's "almost double the dungeon score after
+one dungeon" becomes about an eighth over it.** As shipped, the all-resistances family is 0% of the resistance points
+(60 to 70% before). The figures are higher than the proposal's "recommended" row (224, 266, 312) because the owner chose
+an eighth of the gem rate at tier 1 rather than the proposal's 1/128: the gem term after four Outposts is 26 against 1.
+
+**A whole tier 1 campaign** (26 dungeons of 50 floors, Dungeon Score 201, full clear, 4 seeds, the gap rule on): 1,072
+before (level 15.5, 5.33 times the dungeon, mean experience factor 0.09) and **1,066 as shipped (level 34.8, 5.31 times,
+mean factor 0.55)**, against the tier 1 ceiling of 385. As the proposal said, supply fixes the first dungeons and not the
+end of a 1,300-floor tier: over a whole campaign the walk still fills every socket (23.8 gems, 312 points) and piles up
+resistance (263 points) with the equip rule's pick of the most resistant of some 80,000 drops, an upper bound; and the
+character then out-scores its dungeons, so the gap rule cuts it to 55% of its experience on average. Reported, not
+retuned: nothing ruled covers it.
+
+### Genre research (re-fetched 2026-11-24 by this change)
+
+- **Path of Exile**, the official mod list (pathofexile.com/item-data/mods): the single-resistance suffixes "of the
+  Whelpling" and "of the Inuit" are item level 1, "(6-11)% to Fire Resistance" and Cold; the all-elemental-resistances
+  suffix "of the Crystal" is item level 12, "(3-5)% to all Elemental Resistances", and "of the Prism" 24.
+- **Diablo IV**, Season 4 "Loot Reborn" (news.blizzard.com, article 24077223): "we've significantly decreased the number
+  of items that drop when slaying Monsters" -- fewer items, each more likely to be valuable.
+- **Last Epoch**, the 1.0 patch notes (forum.lastepoch.com, 19 February 2024): "Overall we have reduced the base item
+  drop rate, especially in end-game", the item factions making up for it.
+
+The proposal's other sources (a Path of Exile 2 developer post on item quantity, a forum measurement of map monster
+counts) were not re-fetched and are not relied on here. **What the research settles:** the direction (fewer items, each
+worth more) and the gate on all resistances at the lowest drops. **What it does not:** the size of the cut, the gem
+curve and the per-tier start, which are this game's numbers; the owner ruled the half and the starts, and the gem step is
+a judgement.
+
+### Judgements of this change
+
+1. **The gem curve: three quarters a tier below 8.** The reasons are above.
+2. **The Gem Drops column stays and the share of a gear drop doubles to 0.0136**, rather than the column halving with the
+   gear: "tier 8 keeps today's rate" is gems a kill, and the column is gems a kill.
+3. **The gold column stays, so a kill's gold piles are twice its gear drops.** G1 (2026-11-18) ruled gold "as gear and
+   materials drop today", which the code and `tools/tests/test_gold_drops_and_the_balance.py` held as gold equal to
+   gear. The owner halved the gear column and adopted the proposal that said the gold and material columns do not move;
+   halving gold with it would have halved every kill's gold, an economy change nobody ruled. The test now pins G1's six
+   figures and the ladder's shape (twice the gear). `Cataclysm.Gold.AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem`
+   asserts twice.
+4. **The game finds the all-resistances family as the resistance row covering every damage type**, the convention
+   `CandidatesFor` already reads; `tools/tests/test_all_resistances_drop_gate_port.py` checks that row is the
+   simulation's family by name and breadth. **It is taken out after the candidates are built**, in both models, so a
+   drop at tier 2 or above draws exactly the stream it drew before (`sim/tests/test_all_resistances_drop_gate.py`
+   compares 120 seeded drops with a roll that never asks).
+5. **A tier outside 1 to 8 is held to the nearest in the game** (`BandBelow`, `GemDropShareAt`), as a console variable
+   can set any tier; the simulation refuses one.
+6. **Three Unreal tests kill more to keep their margins**, since a Boss now drops 2.5 gear and a Cataclysm Boss 6:
+   `Cataclysm.Drop.LootQuantityOnThePlayerChangesWhatAKillDrops` kills twelve Bosses a setting (six),
+   `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` sixteen Cataclysm Bosses (eight), so each still reads about the
+   number of drops it was sized on; and `Cataclysm.Drop.KillingAnEnemyIsWhatPutsLootOnTheFloor` five Bosses (three),
+   since a Boss now leaves nothing at all about 2 kills in a hundred and three kills would fail about one run in 77,000.
+7. **The measurement was rebuilt, not copied**: the proposal's script measured levers against the model before the
+   rulings; this one measures the model as shipped against the supply before, put back by levers. Its tests
+   (`sim/tests/test_measure_drop_supply.py`) hold its item roll to `loot.roll_item` at tiers 1, 2 and 8 and its kill to
+   `loot`'s own.
+
+### The workbook stage (not done here)
+
+The Gear Drops column lives in `docs/All_Things_Cataclysm.xlsx`, which this branch was told not to edit. The exact cell
+changes, on the **Enemy Drops** sheet, found by the Enemy Rarity in column A:
+
+| Cell | Row | Before | After |
+| :-- | :-- | --: | --: |
+| C2 | Common | 0.16 | 0.08 |
+| C3 | Elite | 0.5 | 0.25 |
+| C4 | Legendary | 1 | 0.5 |
+| C5 | Herald | 2 | 1 |
+| C6 | Boss | 5 | 2.5 |
+| C7 | Cataclysm Boss | 12 | 6 |
+| H2 | Common, Note | "Path of Exile's figure for a normal monster, taken as the starting point. One kill in six drops something, ..." | "Half of Path of Exile's figure for a normal monster, 0.16, which was the starting point; the whole column was halved on 2026-11-24 (issue #2853). About one kill in thirteen drops something, ..." |
+
+`python tools/apply_halved_gear_drops.py` writes them (keyed on the rarity, refusing a cell holding neither figure,
+reading the file back to prove only those seven changed) and regenerates the CSVs; `--check` only asks. Run on a copy
+of this branch's workbook, it wrote 7 cells and the generator then produced `game/Data/EnemyDrops.csv` byte-identical to
+the one this branch carries (`tools/tests/test_apply_halved_gear_drops.py` does both on every run). **Until it is run,
+`tools/tests/test_generate_datatables.py::TestAgainstTheRealWorkbook::test_the_committed_csvs_are_current` and
+`tools/tests/test_enemy_drop_sheet_matches_the_model.py::test_every_gear_drop_rate_matches_the_model` fail on this
+branch**, each naming the gear column. `DT_EnemyDrops.uasset` needs the editor step afterwards, as any CSV change does
+(`tools/tests/test_datatable_assets_are_current.py` fails until then).
+
+### Tests
+
+**Python.** New: `sim/tests/test_all_resistances_drop_gate.py` (5), `sim/tests/test_measure_drop_supply.py` (72),
+`tools/tests/test_all_resistances_drop_gate_port.py` (4), `tools/tests/test_apply_halved_gear_drops.py` (4). Changed:
+`sim/tests/test_loot.py` (the halved column pinned, the Common rate, materials half of gear), `sim/tests/test_gem_drops.py`
+(every tier's shipped rate against its need, tier 8's kill rate unchanged, the three-quarter step, a counted tier 1
+share), `sim/tests/test_power_gap_rewards.py` (the per-tier start, the curve's character never cut, the next tier's
+still cut), `tools/tests/test_power_gap_rewards_port.py`, `tools/tests/test_gems_drop_from_kills.py`,
+`tools/tests/test_gold_drops_and_the_balance.py`.
+
+**The Python suite** is recorded here once it has run on the committed tree.
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of `b3d1b9f81`, each PROVED (failed
+with the break in, passed restored):
+
+| Proof | Break | Named failures |
+| :-- | :-- | :-- |
+| PY1 | `GEM_DROP_SHARE_A_TIER_DOWN = 0.75` read as `0.5` | 3: the three-quarter step, the tier 1 rarity spread, the port's step |
+| PY2 | `ALL_RESISTANCES_LOWEST_DROP_TIER = 2` read as `1` | 3: the owner's rule, the 3,000-drop count, the port's tier |
+| PY3 | `RollItem`'s removal answers `return false;` | 1: the port's order of build, remove, draw |
+| PY4 | tier 1's start `1.4` read as `0.6` | 4: the curve's character at tier 1, the ruled rule, the port's table, the test's table |
+| PY5 | `ExpectedGemDrops` without `* GemDropShareAt(DifficultyTier)` | 1: the port's share check |
+| PY6 | `EnemyDrops.csv`'s Common gear `0.08` read as `0.16` | 3: the script's figures, the generator's output, gold twice gear |
+
+**Unreal, registered** (none run; no window yet):
+
+| Group | Test | |
+| :-- | :-- | :-- |
+| `Cataclysm.Drop.` | `EveryCreatureDropsHalfTheGearItDidAndTheSameGemsAndGold` | new |
+| | `NoAllResistancesAffixRollsOnATierOneDrop` | new |
+| | `AKillDropsAtTheRateItsRarityStates` | the halved column |
+| | `LootQuantityOnThePlayerChangesWhatAKillDrops` | twelve Bosses |
+| | `ADropIsRolledAtTheTierBeingPlayed` | sixteen Cataclysm Bosses |
+| | `KillingAnEnemyIsWhatPutsLootOnTheFloor` | five Bosses |
+| `Cataclysm.GemDrops.` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | new |
+| | `TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt` | 0.0136, at tier 8 |
+| `Cataclysm.PowerGapRewards.` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | new |
+| | `TheRuleIsTheSimulationsAtElevenGaps` | at tier 4, a tier per row |
+| | `TwoScoresGiveBothFactorsAndTheLineAndNoScoreChangesNothing` | 3,085 in place of 2,726 |
+| | `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` | three widths above |
+| `Cataclysm.Gold.` | `AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem` | twice the gear |
+
+Predicted counts, read from the files: `Cataclysm.Drop.` 32 (30 + 2), `Cataclysm.GemDrops.` 5, `Cataclysm.PowerGapRewards.`
+6, `Cataclysm.Gold.` 13 (unchanged). **Every `Cataclysm.GemDrops.`, `Cataclysm.Gold.` and kill-counting test reads
+`DT_EnemyDrops`, so the asset must be rebuilt from the halved CSV before they run.**
+
+---
+
 ## 2026-11-24 — Bug batch 1: five fix branches in one window, and a guard proof registered for every new test (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863)
 
 **Said first:**
