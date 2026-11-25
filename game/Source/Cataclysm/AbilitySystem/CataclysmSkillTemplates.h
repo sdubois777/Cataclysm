@@ -1764,6 +1764,38 @@ public:
 	ACataclysmMinion* SummonOne();
 
 	/**
+	 * Whether this row's raise strikes as it rises: it states a Damage Percent of its own above nought and does not
+	 * possess. Issue #2885, the Death draft's N2: Barrow Guard's "they rise in a burst of grave-cold: every enemy within
+	 * 5 meters takes 300% weapon damage", Bone Choir's burst and Exhume's "hew one enemy within 4 meters for 400%".
+	 *
+	 * NO KEY OF ITS OWN, the draft's design: a summon row's damage figure said nothing before this, since what a summon
+	 * deals is its creatures' blows, so a row stating one is a row whose raise strikes. A row stating none takes its
+	 * slot's figure for every other purpose and strikes nothing here, which is every summon written before slice DS2.
+	 */
+	bool StrikesAsItRises() const;
+
+	/**
+	 * The raise's own blow, when `StrikesAsItRises`: answers how many enemies it struck, and records it in
+	 * `StruckAsItRose`. Called by `ActivateAbility` before the first minion is made; public so a test can drive it.
+	 *
+	 * A RING, OR ONE ENEMY. With `MaxTargets=1` it hews one enemy: the one within the row's `Range` of the caster
+	 * nearest where the player points, Subjugate's rule (`Possess`), and the rift moves to that enemy's feet, so what
+	 * rises rises there ("drag a Bone Reaper up out of the ground at its feet"). With no enemy in reach nothing is
+	 * struck and the raise rises where it was aimed, a judgement of slice DS2: the Fervour is spent and the Reaper is
+	 * the larger half of the row. Otherwise it is every enemy within the row's `Radius` of the rift, which is the
+	 * caster's feet for a row with no `Range`.
+	 *
+	 * AND THE ROW'S `Effect` ON EVERY ENEMY THE BLOW LANDED ON, after it, as a Strike lays its curses: Barrow Guard's and
+	 * Bone Choir's Cripple. THE BLOW LANDS WHETHER OR NOT ANYTHING RISES, as Subjugate's does whether or not it takes.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	int32 StrikeAsItRises();
+
+	/** How many enemies the last raise's own blow struck. Issue #2885, N2. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 StruckAsItRose = 0;
+
+	/**
 	 * Minions this ability instance is holding, oldest first.
 	 *
 	 * ON THE ABILITY INSTANCE. The base class instances per actor, so one
@@ -1969,6 +2001,9 @@ private:
 	 * and `LevelFactorOnCreatures`), read now, once. Issue #2764, slice 2b. Called by `SummonOne` and
 	 * `SummonReplacementAt`, the two places `SummonedBy` is set, so every minion this skill makes -- a replacement, a
 	 * re-summon and a spawn at a kill included -- credits it and grows with it. None and 1 for a skill no row levels.
+	 *
+	 * AND, SINCE 2026-11-24, WHETHER IT STANDS UNTIL IT IS DESTROYED, for the same two places and the same reason.
+	 * Issue #2885: `Permanent=1` (N1) takes its lifespan away.
 	 */
 	void RecordTheSkillOn(ACataclysmMinion* Minion) const;
 

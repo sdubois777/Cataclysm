@@ -476,8 +476,16 @@ SPREAD_CONDITIONS = frozenset({"Burning"})
 #: BURN IS LEFT OUT ON PURPOSE, a judgement of 2026-11-17 recorded in
 #: docs/DECISIONS.md: `Burn=1` already applies it through `ApplyBurn`, which
 #: carries burn's own rules, and two keys for one ailment would let a row state
-#: it twice. BLEED IS LEFT OUT because the owner's set does not name it.
-SKILL_ROW_AILMENTS = frozenset({"Poison", "Disease", "Necrosis", "VoidSplinter"})
+#: it twice.
+#:
+#: BLEED JOINED ON 2026-11-24, issue #2885, the Death draft's N16: the owner
+#: accepted the Death and War plan's Q22 that day ("Your recommendations work
+#: for all of those death/war questions"), which widens the owner's four by
+#: Bleed for the Fist's Gravetouch and Severing Rush. `UCataclysmAilments`
+#: already lays one by name (`KindNamedInASkillRow`), with bleed's movement
+#: gate (issue #918), so this set is the whole of the change.
+SKILL_ROW_AILMENTS = frozenset({"Poison", "Disease", "Necrosis", "VoidSplinter",
+                                "Bleed"})
 
 #: How a row naming several effects lays them. Issue #2580, [N4]. Absent means
 #: every one, which is what Anathema's `Effect=Shred, Madness` does.
@@ -627,9 +635,15 @@ SHAPE_PARAMS = {
     # Each minion the row raises taunts every enemy within the row's `Radius` of
     # it as it rises and once a second after (`ACataclysmMinion::BeginTaunting`).
     # A threat figure could not say it: only Behind the Veil reads one.
+    #
+    # `Permanent` JOINED ON 2026-11-24, issue #2885: the Death draft's N1, a
+    # raise that stands until it is destroyed (Barrow Guard, Exhume, Bone
+    # Choir). N2 needs no key: a Summon row that states a Damage Percent
+    # strikes as it raises, and lays its `Effect` with that blow
+    # (`check_a_summon_effect_has_a_carrier`).
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent", "Taunts"},
+               "HealthThresholdPercent", "Taunts", "Permanent"},
     # AN EIGHTH SHAPE, added with issue #338. A summon spawns things that walk to
     # the enemy; a deployable places things that stay where they are put. The
     # split is behavioural and the data already carried it as a tag -- Bolt
@@ -740,7 +754,55 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
 
     check_stalker_kit_keys(params, shape, where)
     check_taunt_keys(params, where)
+    check_death_skill_keys(params, shape, where)
     return params
+
+
+def is_on(params: dict[str, str], key: str) -> bool:
+    """Whether a flag key is stated and not nought."""
+    return key in params and float(params[key]) != 0.0
+
+
+def check_death_skill_keys(params: dict[str, str], shape: str,
+                           where: str) -> None:
+    """Refuse the Death skills' keys where they could not do what they say.
+
+    Issue #2885, slice DS2. EACH REFUSAL IS A ROW THAT WOULD RUN AND QUIETLY DO
+    SOMETHING ELSE: a permanent raise that still has a lifespan, or that takes
+    rather than raises.
+    """
+    if is_on(params, "Permanent"):
+        for clash in ("Duration", "Interval", "Possess"):
+            if clash in params and float(params[clash]) != 0.0:
+                raise DataError(
+                    f"{where}: states Permanent={params['Permanent']} and "
+                    f"{clash}={params[clash]}. A permanent raise stands until "
+                    f"it is destroyed, so it has no Duration and no rift "
+                    f"Interval, and a thrall Possess takes is already its "
+                    f"commander's for good")
+
+
+def check_a_summon_effect_has_a_carrier(params: dict[str, str], shape: str,
+                                        damage_percent: str,
+                                        where: str) -> None:
+    """A Summon row naming an `Effect` says what lays it. Issue #2885, N2.
+
+    A summon that states a Damage Percent strikes as it raises and lays its
+    effect with that blow (N2: Barrow Guard's Cripple). Without one, the summon
+    template reads the effect nowhere and the row's sentence would be false. A
+    possession lays nothing of its own either: Subjugate's burn is `Burn=1`.
+    """
+    if shape != "Summon" or not (params.get("Effect") or "").strip():
+        return
+    try:
+        strikes = bool(damage_percent) and float(damage_percent) > 0.0
+    except ValueError:
+        strikes = False  # `skill_number` names the unreadable cell
+    if is_on(params, "Possess") or not strikes:
+        raise DataError(
+            f"{where}: a Summon names Effect={params['Effect']} and nothing "
+            f"lays it. It needs a Damage Percent, which makes the raise strike "
+            f"and lay it, and it may not possess")
 
 
 def check_taunt_keys(params: dict[str, str], where: str) -> None:
@@ -917,6 +979,8 @@ def weapon_skills(book) -> list[dict]:
         if shape:
             parsed = parse_shape_params(params, shape, where)
             check_a_roll_states_no_damage_percent(parsed, damage_percent, where)
+            check_a_summon_effect_has_a_carrier(parsed, shape, damage_percent,
+                                                where)
 
         out.append({"Name": row_name(damage, weapon, slot),
                     "WeaponType": weapon, "DamageType": damage, "Slot": slot,

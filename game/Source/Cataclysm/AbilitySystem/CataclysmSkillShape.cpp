@@ -588,6 +588,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bTaunts = Number != 0.0f;
 		}
+		// The Death draft's N1, issue #2885: a raise that stands until destroyed.
+		else if (Key.Equals(TEXT("Permanent"), ESearchCase::IgnoreCase))
+		{
+			Params.bPermanent = Number != 0.0f;
+		}
 		// --- Other riders -----------------------------------------------
 		else if (Key.Equals(TEXT("RefundsCooldown"), ESearchCase::IgnoreCase))
 		{

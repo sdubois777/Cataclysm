@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -307,6 +308,55 @@ namespace CataclysmDeathSkillsTest
 			{
 				Minion->Destroy();
 			}
+		}
+	}
+
+	/** Health now, of anything with an ability system; nought for anything without one. */
+	float DeathSkillHealthOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
+	/** A gameplay tag by its name, or an invalid one this build does not know. */
+	FGameplayTag DeathSkillTagNamed(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	/**
+	 * Put a bare fighter on the players' side, slice DS2: a creature on that side becomes its owner, and
+	 * `UCataclysmTeams::TeamOf` walks the owner chain, as burning ground takes the side of whoever left it. So the
+	 * minions it raises take the players' team (`ACataclysmMinion::Spawn`) and are its allies rather than its enemies,
+	 * which a teamless fighter's would be, and its skills strike a teamless fighter as an enemy.
+	 */
+	void DeathSkillSideWithThePlayers(const FDeathSkillFighter& Fighter, const FDeathSkillCreature& OnThePlayersSide)
+	{
+		Fighter.Actor->SetOwner(OnThePlayersSide.Actor);
+	}
+
+	/**
+	 * A minion of `Summoner`'s, an Imp, at `Where`, told the 3 m explosion radius Summon Imp states, as a summon skill
+	 * tells what it raises (`RecordExplosionRadius`). Slice DS2's detonation and command tests place one where they
+	 * need it rather than raising it through a skill.
+	 */
+	ACataclysmMinion* DeathSkillMinionOf(AActor* Summoner, const FVector& Where)
+	{
+		ACataclysmMinion* Minion =
+			ACataclysmMinion::Spawn(Summoner, Where, /*Lifetime=*/20.0f, /*bBurns=*/false, FString(TEXT("Imp")));
+		if (Minion)
+		{
+			Minion->RecordExplosionRadius(3.0f * DeathSkillMetre);
+		}
+		return Minion;
+	}
+
+	/** Step a projectile until it has finished, at sixty steps a second and for at most ten seconds. */
+	void DeathSkillFlyToTheEnd(ACataclysmProjectile* Shot)
+	{
+		for (int32 Steps = 0; IsValid(Shot) && Steps < 600 && !Shot->bFinished; ++Steps)
+		{
+			Shot->Step(1.0f / 60.0f);
 		}
 	}
 
@@ -1319,5 +1369,157 @@ bool FCataclysmDeathSkillsShallowGravesTest::RunTest(const FString&)
 	TestNull(TEXT("control: the enemy 6 m off is not taunted"), Far.TauntedBy());
 	return true;
 }
+
+// ==========================================================================
+// Slice DS2, change A. N1: a raise that stands until destroyed. N2: a raise that strikes as it rises. N16: Bleed on a
+// row, which is the generator's alone, so its test is the row that states it.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsPermanentRaiseTest,
+	"Cataclysm.DeathSkills.APermanentRaiseStandsWithNoLifespanAndARaiseWithoutTheKeyLastsItsDuration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N1 (`Permanent=1`, read in `UCataclysmSummonSkill::RecordTheSkillOn`): a summon stating it raises an imp with no
+ * lifespan, which the engine reads as one that never expires, and a replacement of it (`SummonReplacementAt`, the route
+ * Press-Ganged, a re-summon and a spawn at a kill take) has none either; the raise holds its reserve while it stands.
+ * THE CONTROL: the same cell stating `Duration=8` and no `Permanent` raises an imp with its 8 seconds to live.
+ */
+bool FCataclysmDeathSkillsPermanentRaiseTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	UCataclysmSummonSkill* Lasting = GrantDeathSkill<UCataclysmSummonSkill>(
+		Summoner.AbilitySystem, Summoner.Actor, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Count=1; Radius=3; Minions=Imp:1; FervourReserve=3; Permanent=1"), TEXT("A raise that stays"));
+	UCataclysmSummonSkill* Passing = GrantDeathSkill<UCataclysmSummonSkill>(
+		Summoner.AbilitySystem, Summoner.Actor, ECataclysmAbilitySlot::Special,
+		TEXT("Count=1; Duration=8; Radius=3; Minions=Imp:1; FervourReserve=3"), TEXT("A raise that passes"));
+	if (!TestNotNull(TEXT("set-up: the permanent raise is granted"), Lasting)
+		|| !TestNotNull(TEXT("set-up: the control raise is granted"), Passing)
+		|| !TestTrue(TEXT("set-up: the first cell reads Permanent"), Lasting->Params.bPermanent)
+		|| !TestFalse(TEXT("set-up: the control's does not"), Passing->Params.bPermanent))
+	{
+		return false;
+	}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsRisingBurstTest,
+	"Cataclysm.DeathSkills.ARaiseStatingItsDamageStrikesAndCripplesTheRingItRisesInAndOneStatingNoneStrikesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N2 as a ring (`UCataclysmSummonSkill::StrikeAsItRises`): a summon whose row states 300% of its own (stamped as a
+ * weapon stamps a row's figure, `DamagePercentOverride`) and `Effect=Cripple; EffectMagnitude=30; EffectDuration=4`
+ * strikes every enemy within its 5 m of where it rises -- a skill never pressed holds its rift at the origin, where its
+ * summoner stands -- so the enemy 3 m off loses health and is Crippled at 30 for 4 s, and the enemy 7 m off is neither.
+ * THE CONTROL, in a world of its own: the same cell with no damage of its own does not strike as it rises.
+ */
+bool FCataclysmDeathSkillsRisingBurstTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	UWorld* ControlWorld = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World) || !TestNotNull(TEXT("set-up: a control world"), ControlWorld))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		ControlWorld->DestroyWorld(/*bInformEngineOfWorld=*/false);
+	};
+
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestTrue(TEXT("set-up: the vocabulary has the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+	const TCHAR* const Cell =
+		TEXT("Count=1; Radius=5; Minions=Imp:1; FervourReserve=3; Effect=Cripple; EffectMagnitude=30; EffectDuration=4");
+
+	FDeathSkillCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	Summoner.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), DeathSkillWeaponDamage);
+	FDeathSkillCreature Near(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Far(World, FVector(0.0f, 7.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Rising = GrantDeathSkill<UCataclysmSummonSkill>(
+		Summoner.AbilitySystem, Summoner.Actor, ECataclysmAbilitySlot::Ultimate, Cell, TEXT("A raise that strikes"));
+	if (!TestNotNull(TEXT("set-up: the raise is granted"), Rising))
+	{
+		return false;
+	}
+	Rising->DamagePercentOverride = 300.0f;
+	if (!TestTrue(TEXT("set-up: a row stating its own damage strikes as it rises"), Rising->StrikesAsItRises()))
+	{
+		return false;
+	}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsHewingRaiseTest,
+	"Cataclysm.DeathSkills.ARaiseThatHewsOneEnemyStrikesTheNearestInReachAndRisesAtItsFeet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N2 as one blow (`MaxTargets=1`, Exhume's cell): of the enemies within the row's 4 m of the summoner, the one nearest
+ * where it points (with no cursor, its own place) is struck -- the enemy 3 m off, and not the one 3.5 m off on the other
+ * side -- and what rises rises at its feet. The enemy 6 m off, beyond the range, is not struck. THE CONTROL, in a world
+ * of its own with no enemy within reach: the blow strikes nobody and the raise rises where its rift was, a judgement of
+ * slice DS2 (a skill never pressed holds its rift at the origin).
+ */
+bool FCataclysmDeathSkillsHewingRaiseTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	UWorld* ControlWorld = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World) || !TestNotNull(TEXT("set-up: a control world"), ControlWorld))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		ControlWorld->DestroyWorld(/*bInformEngineOfWorld=*/false);
+	};
+
+	const TCHAR* const Cell = TEXT("Range=4; Radius=2.5; MaxTargets=1; Count=1; Minions=Imp:1; FervourReserve=3");
+
+	FDeathSkillCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	Summoner.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), DeathSkillWeaponDamage);
+	FDeathSkillCreature Hewn(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Other(World, FVector(-3.5f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beyond(World, FVector(0.0f, 6.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Hewing = GrantDeathSkill<UCataclysmSummonSkill>(
+		Summoner.AbilitySystem, Summoner.Actor, ECataclysmAbilitySlot::Ultimate, Cell, TEXT("A raise that hews"));
+	if (!TestNotNull(TEXT("set-up: the raise is granted"), Hewing))
+	{
+		return false;
+	}
+	Hewing->DamagePercentOverride = 400.0f;
+
+	const float HewnBefore = DeathSkillHealthOf(Hewn.Actor);
+	const float OtherBefore = DeathSkillHealthOf(Other.Actor);
+	const float BeyondBefore = DeathSkillHealthOf(Beyond.Actor);
+	TestEqual(TEXT("it hewed one enemy"), Hewing->StrikeAsItRises(), 1);
+	TestTrue(TEXT("the nearest within 4 m, 3 m off, lost health"), DeathSkillHealthOf(Hewn.Actor) < HewnBefore);
+	TestEqual(TEXT("the one 3.5 m off on the other side lost nothing: the row hews one"), DeathSkillHealthOf(Other.Actor),
+			  OtherBefore, DeathSkillAllowance);
+	TestEqual(TEXT("and the one 6 m off, beyond the range, nothing"), DeathSkillHealthOf(Beyond.Actor), BeyondBefore,
+			  DeathSkillAllowance);
+
+	ACataclysmMinion* Risen = Hewing->SummonOne();
+	ON_SCOPE_EXIT { DeathSkillClear({Risen}); };
+	if (TestNotNull(TEXT("something rose"), Risen))
+	{
+		TestTrue(TEXT("at the hewn enemy's feet"),
+				 FVector::Dist2D(Risen->GetActorLocation(), Hewn.Actor->GetActorLocation()) < 1.0f);
+	}
 
 #endif // WITH_AUTOMATION_TESTS

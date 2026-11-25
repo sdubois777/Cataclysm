@@ -99,9 +99,11 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # `Taunts` joined on 2026-11-24 with the Death skills (issue #2885, the
     # Crossbow draft's C3) on Summon and Deployable: what a row raises or places
     # taunts the enemies within the row's Radius of it. No enemy ability uses it.
+    # `Permanent` joined the same day with slice DS2 (the draft's N1), for the
+    # permanent raises. No enemy ability uses it.
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent", "Taunts"),
+               "HealthThresholdPercent", "Taunts", "Permanent"),
     # `FervourReserve` joined on 2026-09-08, when the project owner ruled that
     # every minion and gadget skill reserves Fervour rather than only the one
     # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all

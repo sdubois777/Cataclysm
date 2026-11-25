@@ -69,12 +69,28 @@ def test_an_ailment_is_a_rider_every_shape_that_strikes_may_carry(shape, text):
 
 def test_the_owners_four_are_exactly_the_closed_set():
     """The ruling's own list, and no more. THE CONTROL for the refusals
-    below: if this set held Burn, the first of them would pass."""
+    below: if this set held Burn, the first of them would pass.
+
+    AND BLEED SINCE 2026-11-24, issue #2885, the Death draft's N16: the owner
+    accepted the Death and War plan's Q22 that day, "Your recommendations work
+    for all of those death/war questions", which widens the four by Bleed for
+    the Fist's Gravetouch and Severing Rush. The name is kept because the
+    decisions log cites it."""
     assert gen.SKILL_ROW_AILMENTS == {"Poison", "Disease", "Necrosis",
-                                      "VoidSplinter"}
+                                      "VoidSplinter", "Bleed"}
 
 
-@pytest.mark.parametrize("value", ["Burn", "Bleed", "Void Splinter",
+@pytest.mark.parametrize("shape, text", [
+    ("Strike", "Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed"),
+    ("Movement", "Mode=Charge; Range=12; Radius=2; Knockback=2; Ailment=Bleed"),
+])
+def test_bleed_is_accepted_on_the_two_fist_rows_that_state_it(shape, text):
+    """Gravetouch's Strike and Severing Rush's charge, the two rows N16 was
+    widened for. Severing Rush's cell is its row's, word for word."""
+    assert parse(text, shape)["Ailment"] == "Bleed"
+
+
+@pytest.mark.parametrize("value", ["Burn", "Void Splinter", "bleed",
                                    "necrosis", "Shred", "Madness"])
 def test_an_ailment_outside_the_set_is_refused(value):
     said = refused(f"Radius=2.5; Angle=60; Ailment={value}")

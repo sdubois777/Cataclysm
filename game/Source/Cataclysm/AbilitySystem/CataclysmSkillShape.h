@@ -609,7 +609,9 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * The ailment a landed blow of this skill applies outright, at magnitude one, or empty. Issue #2580, [N1], ruled
 	 * by the owner 2026-11-17: `Poison`, `Disease`, `Necrosis` or `VoidSplinter`, through `UCataclysmAilments::Apply`,
 	 * the way `Burn=1` applies burn through `ApplyBurn`. A STATED AILMENT, so the damage threshold an incidental one
-	 * must clear is not asked (#917); an evaded blow applies nothing (#1156).
+	 * must clear is not asked (#917); an evaded blow applies nothing (#1156). AND `Bleed` SINCE 2026-11-24, issue #2885,
+	 * the Death draft's N16, for the Fist's Gravetouch and Severing Rush: the owner accepted the Death and War plan's Q22
+	 * that day. Nothing here changed for it; the generator's closed set did.
 	 *
 	 * NOT `Effect`, WHICH DROPS EVERY DAMAGE OVER TIME IT NAMES, and keeps doing so: `NamedEffectTags` would grant the
 	 * tag with no per-tick amount behind it, a target bleeding for nothing. This key is the route that prices one.
@@ -1075,6 +1077,15 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bTaunts = false;
+
+	/**
+	 * True when what the row raises stands until it is destroyed. `Permanent=1`, on a Summon. Issue #2885, the Death
+	 * draft's N1, for the three permanent raises: Barrow Guard, Exhume and Bone Choir. Without it a summon lasts its
+	 * `Duration`, or twenty seconds when the row states none (`UCataclysmSummonSkill::SummonOne`). Its reserve is what
+	 * limits the army, as a thrall's is; the generator refuses it beside a `Duration` or a possession.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bPermanent = false;
 
 	// --- Other riders ------------------------------------------------------
 

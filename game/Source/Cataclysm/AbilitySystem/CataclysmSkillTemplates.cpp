@@ -4473,6 +4473,74 @@ void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
 	// is multiplied by is its skill's level at its summoning, and a level the skill reaches later reaches the next one.
 	Minion->SummoningSkillRow = UCataclysmSkillLevels::RowThatLevels(this);
 	Minion->LevelFactorOnCreatures = static_cast<float>(UCataclysmSkillLevels::LevelFactorOf(this));
+
+	// A PERMANENT RAISE STANDS UNTIL IT IS DESTROYED. Issue #2885, the Death draft's N1: Barrow Guard, Exhume and Bone
+	// Choir, "fight beside you until they are destroyed". `Spawn` refuses a lifetime of nought, so it was given the
+	// summon's own and loses it here; the engine's `SetLifeSpan(0)` is "never expires", as a skill gadget's is
+	// (`PlaceSkillGadget`). Its reserve is held while it stands and is what limits the army, as a thrall's is.
+	if (Params.bPermanent)
+	{
+		Minion->SetLifeSpan(0.0f);
+	}
+}
+
+bool UCataclysmSummonSkill::StrikesAsItRises() const
+{
+	return !Params.bPossess && DamagePercentOverride > 0.0f;
+}
+
+int32 UCataclysmSummonSkill::StrikeAsItRises()
+{
+	StruckAsItRose = 0;
+	AActor* Self = Avatar();
+	if (!Self || !StrikesAsItRises())
+	{
+		return 0;
+	}
+
+	TArray<AActor*> Struck;
+	if (Params.MaxTargets == 1)
+	{
+		// ONE ENEMY, WITHIN THE ROW'S RANGE OF THE CASTER, THE ONE NEAREST WHERE THE PLAYER IS POINTING: Subjugate's rule
+		// (`Possess`), which gives its reasons. Exhume, "hew one enemy within 4 meters".
+		TArray<AActor*> InReach = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Self->GetActorLocation(), ScaledRangeCm());
+		const FVector Aim = AimPoint();
+		InReach.Sort([&Aim](const AActor& A, const AActor& B)
+		{
+			return FVector::DistSquared(A.GetActorLocation(), Aim) < FVector::DistSquared(B.GetActorLocation(), Aim);
+		});
+		if (!InReach.IsEmpty())
+		{
+			Struck.Add(InReach[0]);
+			// "AT ITS FEET": what this row raises rises where the enemy it hewed stands.
+			RiftLocation = InReach[0]->GetActorLocation();
+		}
+	}
+	else
+	{
+		// A RING ROUND WHERE IT RISES: Barrow Guard's "every enemy within 5 meters", at the caster's feet; Bone Choir's
+		// at the point it was aimed.
+		Struck = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, RiftLocation, ScaledRadiusCm(), Params.MaxTargets);
+	}
+
+	if (Struck.IsEmpty())
+	{
+		return 0;
+	}
+
+	// THE BLOW, THEN THE CURSE ON WHAT IT LANDED ON, as `UCataclysmStrikeSkill::SwingOnce` orders them.
+	HitTargets(Struck);
+	for (AActor* Target : Struck)
+	{
+		if (BlowLandedOn(Target))
+		{
+			ApplyNamedEffectsTo(Target);
+		}
+	}
+	StruckAsItRose = Struck.Num();
+	return StruckAsItRose;
 }
 
 ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
@@ -4945,6 +5013,11 @@ void UCataclysmSummonSkill::ActivateAbility(
 	RiftLocation = Params.RangeCm > 0.0f
 		? AimedPointWithin(ScaledRangeCm())
 		: Self->GetActorLocation();
+
+	// AND A ROW THAT STATES ITS OWN DAMAGE STRIKES AS IT RISES, BEFORE ANYTHING RISES. Issue #2885, the Death draft's
+	// N2: Barrow Guard's and Bone Choir's burst, Exhume's hewn enemy, at whose feet the Reaper then rises. Nothing for
+	// a row stating no damage of its own, which is every summon before slice DS2.
+	StrikeAsItRises();
 
 	UWorld* World = Self->GetWorld();
 
