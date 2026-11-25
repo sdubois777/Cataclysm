@@ -9,7 +9,7 @@ Decisions made outside the Google Drive documents, newest first.
 merged), so it carries those two changes too. Issue [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the
 drop supply half of the owner's "Adopt, and look at drop supply (Recommended)" (the entry below). **The design workbook
 was not edited**, because other branches held it: see "The workbook stage" below. Until that stage is run, two Python
-tests fail on this branch and say so.
+tests fail on this branch and say so, and a third until the editor rebuilds `DT_EnemyDrops`.
 
 ### Why
 
@@ -210,7 +210,15 @@ share), `sim/tests/test_power_gap_rewards.py` (the per-tier start, the curve's c
 still cut), `tools/tests/test_power_gap_rewards_port.py`, `tools/tests/test_gems_drop_from_kills.py`,
 `tools/tests/test_gold_drops_and_the_balance.py`.
 
-**The Python suite** is recorded here once it has run on the committed tree.
+**The Python suite, on `b433c33ca`** (nothing in the worktree edited while it ran): "3 failed, 8377 passed, 9 skipped
+in 367.09s (0:06:07)"; JUnit 8389 tests, 3 failures, 0 errors, 9 skipped, so 8,377 passed. 112 more than the 8,268 of
+the branch it starts from, which are the tests this change adds. **The three failures are the three expected, and no
+other**: `test_the_committed_csvs_are_current` and `test_every_gear_drop_rate_matches_the_model` (the workbook stage
+above) and `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded` (the editor
+step). **With the workbook stage run** on a `git archive` copy of `b433c33ca` (`python tools/apply_halved_gear_drops.py`:
+7 cells written, every CSV then "up to date"; a second run wrote nothing), `test_generate_datatables.py`,
+`test_enemy_drop_sheet_matches_the_model.py`, `test_apply_halved_gear_drops.py` and
+`test_docs_readme_sheet_table_is_true.py` gave "1082 passed". `python -m ruff check .`: "All checks passed!".
 
 **Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of `b3d1b9f81`, each PROVED (failed
 with the break in, passed restored):
@@ -243,7 +251,16 @@ with the break in, passed restored):
 | `Cataclysm.Gold.` | `AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem` | twice the gear |
 
 Predicted counts, read from the files: `Cataclysm.Drop.` 32 (30 + 2), `Cataclysm.GemDrops.` 5, `Cataclysm.PowerGapRewards.`
-6, `Cataclysm.Gold.` 13 (unchanged). **Every `Cataclysm.GemDrops.`, `Cataclysm.Gold.` and kill-counting test reads
+6, `Cataclysm.Gold.` 13 (unchanged).
+
+**C++ guard proofs planned for the window** (none run):
+
+| Proof | Break | Must fail | Prefix |
+| :-- | :-- | :-- | :-- |
+| CG1 | in `RollItem`'s removal, `return Row != nullptr && !UCataclysmDropRoll::RollsOnADropAt(*Row, DifficultyTier);` read as `return false;` | `NoAllResistancesAffixRollsOnATierOneDrop` | `Cataclysm.Drop.` |
+| CG2 | in `GemDropShareAt`, `Share *= GemDropShareATierDown;` read as `Share *= 1.0f;` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | `Cataclysm.GemDrops.` |
+| CG3 | in `SpawnGemsFor`, `ExpectedGemDrops(Drops, EnemyRarity, LootQuantity, DifficultyTier)` read as `..., 8)` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | `Cataclysm.GemDrops.` |
+| CG4 | in `BandBelow`, `{ 1.4, 1.3,` read as `{ 0.6, 1.3,` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | `Cataclysm.PowerGapRewards.` | **Every `Cataclysm.GemDrops.`, `Cataclysm.Gold.` and kill-counting test reads
 `DT_EnemyDrops`, so the asset must be rebuilt from the halved CSV before they run.**
 
 ---
