@@ -3724,8 +3724,8 @@ and `tools/tests/test_surge_port.py`. For the retune: `Cataclysm.EnemyStrength.`
 ### SAID FIRST
 
 - **WRITTEN AND NOT COMPILED.** On `fix/empty-board-surge-2865`, cut from development `4d33f5994`, and since
-  2026-11-25 on `fix/empty-board-surge-2865-2`, which merges development `eb34af972` into it by the coordinating
-  session's instruction of that day: the inventory tabs (#2887), bug batches 1 and 2 (#2889), the Power Score and drop
+  2026-11-25 on `fix/empty-board-surge-2865-2`, which merges development `eb34af972` and then `be7ffb06e` into it by
+  the coordinating session's instructions of that day: the inventory tabs (#2887), bug batches 1 and 2 (#2889), the Power Score and drop
   supply of issue #2853 (#2890) and skill selection (#2891). A merge and not a rebase, so the pushed branch is untouched.
 - **THE MEASUREMENTS AND THE RETUNE ARE PROVISIONAL.** The gear drop rarity fix (issue #2853) was not in, so the
   simulated player's power is not yet what the game will give once drops are fixed. **When #2853 lands, run
@@ -4045,9 +4045,12 @@ alone first, then the whole suite, with the Python suite in parallel.
   10 skipped in 427.01s`; the JUnit file agrees, 8,253 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`:
   `All checks passed!`. The run before it, on `d99df41ea`, failed one test, which is how the Stalker's derived figures
   were found (the retune section above).
-- **Python, run on the merge of development `eb34af972`**, all but this line, with `python -u -m pytest
-  --junit-xml=<a file outside the repository>`: PYTHON_LINE. A trial merge of development `cf760f169` (before skill
-  selection) gave `8485 passed, 10 skipped in 471.65s`, the JUnit file agreeing.
+- **Python, run on the merge of development `eb34af972`** (`2a346e335`), all but this line, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8502 passed, 10 skipped in 422.68s`; the JUnit file agrees, 8,512
+  tests, 0 failures, 0 errors, 10 skipped. Development `be7ffb06e` was merged after it, and changes one bullet of
+  another entry in this log and nothing else; the tests that read this log were run again on the final head. A trial
+  merge of development `cf760f169` (before skill selection) gave `8485 passed, 10 skipped in 471.65s`, the JUnit file
+  agreeing.
 - **Python guard proofs, run** with `tools/prove_guard.break_and_run` in `git archive` copies of the branch, before
   the merge of 2026-11-25, which changes none of the files they break and none of the tests they name; each `PROVED`
   (failed with the break in, passed with it out):
