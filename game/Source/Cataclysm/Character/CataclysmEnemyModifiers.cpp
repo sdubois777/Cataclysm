@@ -228,6 +228,44 @@ TArray<FName> UCataclysmEnemyModifiers::Draw(
 	return Drawn;
 }
 
+TArray<FName> UCataclysmEnemyModifiers::ClosedByInnateEffects(const UDataTable* EnemyModifierTable,
+																FName CataclysmType,
+																const TArray<FString>& InnateEffects)
+{
+	TArray<FName> Closed;
+	if (!EnemyModifierTable || InnateEffects.IsEmpty())
+	{
+		return Closed;
+	}
+
+	EnemyModifierTable->ForeachRow<FCataclysmEnemyModifierRow>(
+		TEXT("UCataclysmEnemyModifiers::ClosedByInnateEffects"),
+		[&Closed, &InnateEffects, CataclysmType](const FName& Key, const FCataclysmEnemyModifierRow& Row)
+		{
+			// ONLY A ROW THE CREATURE COULD DRAW: "a modifier belonging to a different Cataclysm is not a clash,
+			// because that enemy can never roll it" (the design's own words), so nothing else is closed.
+			if (!IsDrawableBy(Row, CataclysmType))
+			{
+				return;
+			}
+			for (const FString& Innate : InnateEffects)
+			{
+				if (Row.ModifierName.Equals(Innate, ESearchCase::IgnoreCase))
+				{
+					Closed.Add(Key);
+					return;
+				}
+			}
+		});
+
+	// SORTED, AS `PoolFor` IS, so what is closed does not depend on the order a map is walked in.
+	Closed.Sort([](const FName& A, const FName& B)
+	{
+		return A.LexicalLess(B);
+	});
+	return Closed;
+}
+
 const FCataclysmEnemyModifierRow* UCataclysmEnemyModifiers::FindRow(
 	const UDataTable* EnemyModifierTable, FName Key)
 {

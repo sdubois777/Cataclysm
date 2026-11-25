@@ -2162,9 +2162,16 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity(int32 FromTheFloor)
 		: CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), ModifierDrawSalt,
 			static_cast<int32>(Now * 1000.0f))); // Through the mix since #2749's seeding slice; it was their XOR.
 
+	// AND NONE THAT DUPLICATES AN EFFECT IT HAS INNATELY: "An innate ability must not duplicate a modifier its own
+	// Cataclysm can roll" (the design, the Succubus). Closed for whatever Cataclysm it belongs to now, since a creature
+	// takes its dungeon's: a War dungeon's Succubus never rolls `War_Commander`, which its Dominion already grants.
+	// Kept out of the pool beside what it carries, and never added to it. Nothing for a creature with no innate effect,
+	// whose draw is the one it always was. 2026-11-25. See `InnateEffectNames`.
+	const UDataTable* ModifierTable = UCataclysmEnemyModifiers::LoadEnemyModifierTable();
+	TArray<FName> NotToDraw = ModifierRows;
+	NotToDraw.Append(UCataclysmEnemyModifiers::ClosedByInnateEffects(ModifierTable, DamageType, InnateEffectNames()));
 	const TArray<FName> Drawn = UCataclysmEnemyModifiers::Draw(
-		UCataclysmEnemyModifiers::LoadEnemyModifierTable(), DamageType,
-		Shortfall, Stream, ModifierRows);
+		ModifierTable, DamageType, Shortfall, Stream, NotToDraw);
 
 	ModifierRows.Append(Drawn);
 

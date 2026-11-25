@@ -19,9 +19,10 @@ compiled and no Unreal test was run; every statement below about what the engine
   the Battle Cry row's stat list out of `DT_StatusEffects`.
 - **This branch carries an unmerged edit to `docs/All_Things_Cataclysm.xlsx`**, eight cells, recorded as
   `tools/reapply_death_war_enemy_modifiers_workbook_edit.py`; whichever branch lands second re-applies it.
-- **The design document's sentence on monster damage reduction says "Every one is conditional"** of five modifiers,
-  Armored Juggernaut and Battle Scarred among them. Neither is conditional as written in its row or as built here;
-  only the Shield Wall phrase of that sentence was changed (to the wording the owner accepted).
+- **The design document's sentence on monster damage reduction said "Every one is conditional"** of five modifiers,
+  Armored Juggernaut and Battle Scarred among them. Neither is conditional as written in its row or as built here.
+  Corrected on the coordinating session's instruction of 2026-11-25: it now says which three are conditional, and the
+  answer to each, and that the other two hold for the creature's whole life.
 - **The agent rules of 2026-11-24 say "No War Cataclysm work".** The coordinating session's brief for this branch
   assigned War's nine enemy modifiers by name, on the owner's rulings of 2026-11-24 (Q10 to Q12 below), and that is
   what was followed.
@@ -120,6 +121,41 @@ Researched 2026-11-25, each page fetched in this session:
 | Artillery Barrage's reach | 20 m | Inferno Charge's search. **A judgement** |
 | A barrage at its caller's death | called off | **A judgement**: killing the caller in the warning is an answer the player can choose |
 
+### An innate ability never duplicates a modifier, now at the draw
+
+**The coordinating session's instruction of 2026-11-25:** slice B3 (`feat/creature-cataclysm-b3`) makes every creature
+take its dungeon's Cataclysm, so a War dungeon's Succubus draws War modifiers while its Dominion already grants
+Commander; under the design's rule "An innate ability must not duplicate a modifier its own Cataclysm can roll", close
+`War_Commander` to any creature whose innate ability grants Commander, by extending the existing closure.
+
+**The existing closure was in the design data only**: `test_no_effect_duplicates_a_modifier_its_own_cataclysm_can_roll`
+in `tools/tests/test_enemy_abilities.py` refuses an innate effect its archetype's own Cataclysm names as a modifier,
+which is what closed Abyssal Aura and Infernal Brand to the Demonic creatures. That held while a creature's Cataclysm
+was its archetype's. **Extended to the draw, for whatever Cataclysm a creature belongs to:**
+
+- `ACataclysmEnemyCharacter::InnateEffectNames()`, virtual, empty; the Succubus answers its two, Withered Touch and
+  Commander, through the constants it applies them under.
+- `UCataclysmEnemyModifiers::ClosedByInnateEffects(Table, Cataclysm, Names)`: the rows of that creature's pool whose
+  modifier name is one of them.
+- `DrawModifiersForRarity` adds those rows to what it leaves out of the pool, beside what the creature carries. A War
+  Succubus never draws `War_Commander`; a Demonic Succubus's pool holds no row of either name, so its draws are the
+  ones they were; every creature with no innate effect is unchanged.
+- **The general rule, not a Commander special case. A judgement:** the instruction named Commander, and the only other
+  innate effect in the game, Withered Touch, is no modifier's name, so the two readings agree today.
+- `docs/Cataclysm_GDD_v2.md` says it in the Succubus's paragraph on the rule. **When B3 lands beside this**, its own
+  paragraph's last sentence ("how it is resolved is open ... for the War enemy modifier slice to settle") is answered
+  here and wants the past tense; the two edits are on different lines and merge without a conflict.
+
+**Tests.** `Cataclysm.WarModifiers.AWarSuccubusNeverDrawsTheCommanderItsDominionGrants`: the closed rows on the table
+(one, `War_Commander`, for a War creature granting Commander; none for a Demonic one; none with no innate effect), then
+a War Succubus and a plain War creature at the Boss rung on 200 seeds each. Its control: the plain creature draws
+`War_Commander` on some of them; the Succubus on none, while it still draws War's other rows. Python:
+`test_an_innate_effect_another_cataclysm_rolls_is_closed_at_the_draw` in `tools/tests/test_enemy_abilities.py` holds
+every innate effect that any column names as a modifier to the creature's `InnateEffectNames()`, and the draw to pass
+them. Proved with `tools/prove_guard.py`, two breaks, each PROVED, each failing that one test:
+`return {FString(WitherEffectName), FString(DominionEffectName)};` to `return {FString(WitherEffectName)};`, and the
+draw passing `TArray<FString>()` in place of `InnateEffectNames()`.
+
 ### 1 On 1, left
 
 "Summon an arena around you and a nearby player that lasts until one of you is defeated. All allies in the area of the
@@ -147,12 +183,12 @@ eleven proofs are carried as registered there, in four changes of at most three,
 moved.
 
 **War:** new file `game/Source/Cataclysm/Tests/CataclysmWarModifierTests.cpp`, group `Cataclysm.WarModifiers.`:
-**0 to 8**. `Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eight War rows too; that
+**0 to 9**, the ninth being the innate closure's test above. `Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eight War rows too; that
 group's count does not move. Two more tests changed and keep their counts:
 `Cataclysm.Enchantments.ShardOfAnarchysTwoPiecesLayAPinnedBuffOrTheMergedDrawsDebuffAfterThirtySecondsOfAFight`
 names the eighteen buffs of the table, and `Cataclysm.Data.EveryGeneratedTableImports` pins `StatusEffects.csv` at 55
 rows, not 52 (`tools/tests/test_unreal_pinned_row_counts.py` failed until it did). **Whole suite: the base's last
-measured total plus 19** (11 Death, 8 War).
+measured total plus 20** (11 Death, 9 War).
 
 One proof per War modifier, each a single-line break that still compiles, prefix `Cataclysm.WarModifiers.`, each to
 fail exactly the one test named:
@@ -167,6 +203,7 @@ fail exactly the one test named:
 | W2 | PH | `CataclysmEnemyModifiers.cpp`: `Braced->SetNumericAttributeBase(Reduction, Wanted);` to `Braced->SetNumericAttributeBase(Reduction, 0.0f);` | `PhalanxTakesTenPercentLessForEveryOtherCreatureWithinFiveMetres` |
 | W3, attacks on the player | BC | `CataclysmEnemyModifiers.h`: `BattleCryResistanceCut = 25.0f;` to `= 10.0f;` | `BattleCryCutsEveryResistanceByTwentyFiveForFiveSecondsEveryEightSeconds` |
 | W3 | AB | `CataclysmEnemyModifiers.cpp`: `* UCataclysmEnemyModifiers::ArtilleryBarrageShellHits` to `* 0.0f` | `ArtilleryBarrageDrawsThreeCirclesNearThePlayerThatLandInASecondAndAHalf` |
+| W4, the innate closure | IC | `CataclysmEnemyCharacter.cpp`: `NotToDraw.Append(UCataclysmEnemyModifiers::ClosedByInnateEffects(ModifierTable, DamageType, InnateEffectNames()));` to `NotToDraw.Append(TArray<FName>());` | `AWarSuccubusNeverDrawsTheCommanderItsDominionGrants` |
 
 No Unreal proof was run: this change has had no window. The Python guard `test_war_enemy_modifiers_match_their_rows.py`
 was proved with `tools/prove_guard.py`, two breaks, each PROVED (failed with the break in, passed with it out):
@@ -183,6 +220,10 @@ The whole suite, `python -u -m pytest --junit-xml=<scratch>`, on `56815da5a`: **
 found two more, `test_the_random_buff_table_names_buff_rows.py` and `test_unreal_pinned_row_counts.py`, both answered
 in `56815da5a` and described above. `python -m ruff check .`: "All checks passed!". `tools/check_resolved_cpp.py` on
 the 24 C++ files the branch changes against `9acbb3528`: "24 files read, 0 with complaints".
+
+**After the innate closure and the damage reduction sentence**, the coordinating session asked for the checks that read
+the design document: the 143 Python test files that name `Cataclysm_GDD_v2.md`, run together, "3177 passed, 3 skipped
+in 200.31s".
 
 ---
 

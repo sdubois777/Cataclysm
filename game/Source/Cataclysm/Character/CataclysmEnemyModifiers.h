@@ -117,6 +117,22 @@ public:
 							  FRandomStream& Stream,
 							  const TArray<FName>& Already);
 
+	/**
+	 * The rows of a `CataclysmType` creature's pool that duplicate an effect it has innately, sorted: every row it
+	 * may draw whose modifier name is one of `InnateEffects`, compared without case. What
+	 * `ACataclysmEnemyCharacter::DrawModifiersForRarity` adds to `Already` before it draws, so they are never drawn.
+	 *
+	 * THE DESIGN'S RULE, HELD AT THE DRAW: "An innate ability must not duplicate a modifier its own Cataclysm can
+	 * roll." It was held in the design data alone while a creature's Cataclysm was its archetype's (Abyssal Aura and
+	 * Infernal Brand are closed to Demonic creatures as innate abilities); a creature takes its dungeon's Cataclysm
+	 * now, so a War dungeon's Succubus would otherwise roll `War_Commander`, the Commander its Dominion grants.
+	 * 2026-11-25.
+	 *
+	 * @return empty for a creature with no innate effect, for a pool that names none of them, and for no table
+	 */
+	static TArray<FName> ClosedByInnateEffects(const UDataTable* EnemyModifierTable, FName CataclysmType,
+											   const TArray<FString>& InnateEffects);
+
 	/** One row by key, or null when the table or the key is missing. */
 	static const FCataclysmEnemyModifierRow* FindRow(
 		const UDataTable* EnemyModifierTable, FName Key);

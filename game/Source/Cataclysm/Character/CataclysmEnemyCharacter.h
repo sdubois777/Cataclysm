@@ -969,6 +969,21 @@ public:
 	void DrawModifiersForRarity(int32 FromTheFloor = 0);
 
 	/**
+	 * The names of the status effects this creature's own abilities apply or grant, as `game/Data/StatusEffects.csv`
+	 * names them. `DrawModifiersForRarity` draws no modifier of the same name: the design's rule "An innate ability
+	 * must not duplicate a modifier its own Cataclysm can roll" (`docs/Cataclysm_GDD_v2.md`, the Succubus).
+	 *
+	 * HELD AT THE DRAW AND NOT ONLY IN THE DESIGN DATA SINCE 2026-11-25. Until a creature took its dungeon's
+	 * Cataclysm (slice B3 of the Death and War plan) a creature's Cataclysm was its archetype's, and
+	 * `tools/tests/test_enemy_abilities.py` closed the clash in the data: an innate ability could not use an effect
+	 * its own Cataclysm's modifiers named, which closed Abyssal Aura and Infernal Brand to the Demonic creatures. A
+	 * Succubus in a War dungeon is a War creature, and its Dominion grants Commander, which `War_Commander` names. So
+	 * the draw now leaves out every modifier of the creature's pool whose name is one of these, for whatever
+	 * Cataclysm the creature belongs to. Empty for every creature with no innate effect, which draws as it always did.
+	 */
+	virtual TArray<FString> InnateEffectNames() const { return TArray<FString>(); }
+
+	/**
 	 * How long since an aura modifier on this creature last pulsed, in seconds.
 	 *
 	 * PUBLIC BECAUSE `UCataclysmEnemyModifiers::AuraStep` KEEPS IT, and that is

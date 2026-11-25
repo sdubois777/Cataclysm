@@ -19,6 +19,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCombatOverlay.h"
@@ -691,6 +692,96 @@ CATACLYSM_WAR_MODIFIER_TEST(FCataclysmWarModifierArtilleryBarrageTest,
 	const float BeforeDead = Player.Health();
 	WarSteps(Gunner, 6);
 	TestEqual(TEXT("and nothing lands"), Player.Health(), BeforeDead, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The closure: an innate ability must not duplicate a modifier its own Cataclysm can roll.
+// ---------------------------------------------------------------------------
+
+CATACLYSM_WAR_MODIFIER_TEST(FCataclysmWarModifierInnateClosureTest,
+	"Cataclysm.WarModifiers.AWarSuccubusNeverDrawsTheCommanderItsDominionGrants")
+{
+	using namespace CataclysmWarModifiersTest;
+
+	// THE RULE ON THE TABLE, WITHOUT A WORLD: Commander is closed to a War creature that grants it, and to nothing
+	// else. Withered Touch is no modifier of any column, so it closes nothing.
+	const UDataTable* Table = UCataclysmEnemyModifiers::LoadEnemyModifierTable();
+	if (!TestNotNull(TEXT("set-up: the enemy modifier table"), Table))
+	{
+		return false;
+	}
+	const TArray<FString> Innate = {TEXT("Withered Touch"), TEXT("Commander")};
+	const TArray<FName> ClosedToWar = UCataclysmEnemyModifiers::ClosedByInnateEffects(Table, FName(TEXT("War")), Innate);
+	TestEqual(TEXT("a War creature granting Commander has exactly one row closed"), ClosedToWar.Num(), 1);
+	TestTrue(TEXT("and it is War_Commander"), ClosedToWar.Contains(FName(UCataclysmEnemyModifiers::CommanderRow)));
+	TestEqual(TEXT("a Demonic one has none closed: Commander is not Demonic"),
+			  UCataclysmEnemyModifiers::ClosedByInnateEffects(Table, FName(TEXT("Demonic")), Innate).Num(), 0);
+	TestEqual(TEXT("and a creature with no innate effect has none closed"),
+			  UCataclysmEnemyModifiers::ClosedByInnateEffects(Table, FName(TEXT("War")), TArray<FString>()).Num(), 0);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Succubus = World->SpawnActor<ACataclysmSuccubusCharacter>(
+		ACataclysmSuccubusCharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, Spawn);
+	ACataclysmEnemyCharacter* Plain = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(1000.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("set-up: a Succubus"), Succubus) || !TestNotNull(TEXT("set-up: a plain creature"), Plain))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the Succubus names Commander among its innate effects"),
+			 Succubus->InnateEffectNames().Contains(FString(ACataclysmSuccubusCharacter::DominionEffectName)));
+	TestEqual(TEXT("and the plain creature names none"), Plain->InnateEffectNames().Num(), 0);
+
+	// BOTH OF WAR, AT THE BOSS RUNG, WHICH DRAWS FOUR OF WAR'S NINE AND GENERIC'S TEN, ON TWO HUNDRED SEEDS.
+	const FName Commander(UCataclysmEnemyModifiers::CommanderRow);
+	const auto DrawsCommander = [&Commander](ACataclysmEnemyCharacter* Creature, int32& OutOtherWarRows)
+	{
+		int32 Times = 0;
+		OutOtherWarRows = 0;
+		for (int32 Seed = 1; Seed <= 200; ++Seed)
+		{
+			Creature->ModifierRows.Reset();
+			Creature->SetModifierSeedForTests(Seed);
+			Creature->DrawModifiersForRarity();
+			if (Creature->ModifierRows.Contains(Commander))
+			{
+				++Times;
+			}
+			for (const FName& Row : Creature->ModifierRows)
+			{
+				if (Row != Commander && Row.ToString().StartsWith(TEXT("War_")))
+				{
+					++OutOtherWarRows;
+				}
+			}
+		}
+		return Times;
+	};
+	for (ACataclysmEnemyCharacter* Creature : {Succubus, Plain})
+	{
+		Creature->DamageType = FName(TEXT("War"));
+		Creature->SetRarityStep(4);
+	}
+
+	// THE CONTROL: a War creature with no innate effect draws Commander, and often.
+	int32 PlainOtherWar = 0;
+	const int32 PlainCommanders = DrawsCommander(Plain, PlainOtherWar);
+	TestTrue(*FString::Printf(TEXT("a plain War creature drew War_Commander on %d of 200 seeds"), PlainCommanders),
+			 PlainCommanders > 0);
+
+	int32 SuccubusOtherWar = 0;
+	TestEqual(TEXT("a War Succubus never draws War_Commander"), DrawsCommander(Succubus, SuccubusOtherWar), 0);
+	TestTrue(*FString::Printf(TEXT("and still draws War's other rows (%d of them)"), SuccubusOtherWar),
+			 SuccubusOtherWar > 0);
 	return true;
 }
 
