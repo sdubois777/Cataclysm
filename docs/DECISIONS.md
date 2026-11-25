@@ -101,6 +101,9 @@ their shape. No other test in the file reads the counts or the rows changed.
 the function names), and none was added: the Demonic rows' shapes are already held by
 `tools/tests/test_demonic_skills.py`.
 
+**The Python suite, on `9e9e5e73d`:** "8244 passed, 9 skipped in 343.41s (0:05:43)"; JUnit 8253 tests, 0 failures, 0
+errors, 9 skipped. ruff: "All checks passed!".
+
 ---
 
 ## 2026-11-24 — A hard cap on how rare a drop can roll: rarity number tier + 3, so tier 1 drops nothing above Masterful (#2853)
