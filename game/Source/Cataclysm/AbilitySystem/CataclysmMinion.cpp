@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "Misc/ScopeExit.h"
 // For the owner's rule of a tenth, asked of a trap's damage over time. Traps layer 4, 2026-10-21.
 #include "AbilitySystem/CataclysmAilments.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
@@ -1023,6 +1024,12 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 						   /*bLanded=*/true, Placed);
 		FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, GadgetTags);
 	}
+	// AND BOLTED ONTO THE NEAREST GADGET WITHIN REACH, AFTER IT IS PLACED AND TOLD (Bolted Together, V5c, BT2): the one
+	// it bolted onto is answered, because this one is gone.
+	if (ACataclysmMinion* Into = BoltOnPlacing(Placed))
+	{
+		return Into;
+	}
 	return Placed;
 }
 
@@ -1067,6 +1074,8 @@ int32 ACataclysmMinion::MoveEveryGadgetOf(AActor* Player, const FVector& Point)
 		}
 		Gadgets[Index]->MoveGadgetTo(At);
 	}
+	// AND WITH BOLTED TOGETHER HELD, WHAT LANDED WITHIN REACH BOLTS INTO THE FIRST PLACED (V5c, BT2).
+	BoltAfterMove(Player, Gadgets);
 	return Count;
 }
 
@@ -1240,22 +1249,49 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 		return false;
 	}
 
+	// THE CAST ITSELF, FOR THIS GADGET'S SLOT, AT ITS OWN "MORE" AND A BOLTED GADGET'S (V5c).
+	if (!CastSlotSkillFromHere(SkillGadgetSlot, bEvenForADeadPlayer, AimedAt,
+							   ShotDamageMultiplier * BoltedMoreMultiplier()))
+	{
+		return false;
+	}
+	++SkillGadgetCastsMade;
+	// AND EVERY ATTACK IT HOLDS FROM BOLTING, AT THE ENEMY THE CAST AIMED AT (ruled BT3).
+	FireBoltedAttacksAt(LastSkillStartedAt.Get());
+	return true;
+}
+
+bool ACataclysmMinion::CastSlotSkillFromHere(ECataclysmAbilitySlot Slot, bool bEvenForADeadPlayer, AActor* AimedAt,
+											 float ShotDamageMultiplier)
+{
+	AActor* const Player = Summoner.Get();
+	if (Slot == ECataclysmAbilitySlot::None || !IsValid(Player)
+		|| (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
+	{
+		return false;
+	}
+
 	// AND ONLY WHILE THE SLOT IS STILL CONVERTED. A judgement of the writing session: a player who takes the row off
 	// casts the skill again with its key, and a gadget casting it as well would be the skill twice. The gadget stands
 	// and casts nothing until the row is worn again; nothing destroys it, because nothing hears the gear change.
 	UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
-	if (!Theirs || !Theirs->SlotIsASkillGadget(SkillGadgetSlot))
+	if (!Theirs || !Theirs->SlotIsASkillGadget(Slot))
 	{
 		return false;
 	}
 
-	// A SHAPELESS SKILL CASTS NOTHING (S10), nor one no row may cast again. See `SkillGadgetMayCast`.
-	FCataclysmWeaponSkill Skill;
-	if (!SkillGadgetsSkill(Skill) || !SkillGadgetMayCast(Skill))
+	// A SHAPELESS SKILL CASTS NOTHING (S10), nor one no row may cast again. See `SkillGadgetMayCast`. WHAT THE PLAYER'S
+	// WEAPON SLOTS HOLD NOW for the slot, as `SkillGadgetsSkill` reads it for this gadget's own slot.
+	const UCataclysmWeaponSlotsComponent* Slots = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	const FCataclysmWeaponSkill* Held = Slots
+		? Slots->GetAvailableSkills().FindByPredicate([Slot](const FCataclysmWeaponSkill& Each) { return Each.Slot == Slot; })
+		: nullptr;
+	if (!Held || !SkillGadgetMayCast(*Held))
 	{
 		return false;
 	}
+	const FCataclysmWeaponSkill& Skill = *Held;
 
 	// THE PLAYER'S OWN ROW, WITH `Type.Deployable` ADDED TO ITS TAGS (S5), which `StampOnto` makes the one-use grant's
 	// skill tags inside `Trigger`. AIMED BY THE SKILL'S OWN REACH (S4) AND STARTED FROM HERE by the part a Tyrant's
@@ -1271,13 +1307,8 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 	}
 	// AND, FOR A SHOT A TRAP'S ROW ASKS (traps layer 6, J2, J3, J6), AT THE ENEMY IT NAMES AND AT ITS "MORE"; null and one
 	// for the clock's own cast and the death's.
-	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill), AimedAt, /*CastFromPlace=*/nullptr,
-								   ShotDamageMultiplier))
-	{
-		return false;
-	}
-	++SkillGadgetCastsMade;
-	return true;
+	return StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill), AimedAt, /*CastFromPlace=*/nullptr,
+									 ShotDamageMultiplier);
 }
 
 int32 ACataclysmMinion::FireEveryGadgetAtTheDeathOf(AActor* Dying)
@@ -1699,6 +1730,15 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	{
 		return;
 	}
+	// AND EVERY ATTACK A BOLTED GADGET HOLDS, AT THE SAME TARGET, after this blow (Bolted Together, V5c, ruled BT3). A
+	// skill gadget fires its list from its cast instead, so its brain's swing does not fire it a second time.
+	ON_SCOPE_EXIT
+	{
+		if (!IsSkillGadget())
+		{
+			FireBoltedAttacksAt(Target);
+		}
+	};
 
 	// ITS OWN DAMAGE, NOT A SHARE OF ITS SUMMONER'S WEAPON. Issue #340. This
 	// file dealt 30% of the summoner's weapon until the decision of 2026-08-06
@@ -1768,7 +1808,9 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// six-piece, ruled 2026-10-18 (Q5): "deals damage based on your armor", 20% a hit. Everything below that raises a
 	// minion's blow raises it as it raises any other.
 	// AND A SCRAP TRAP'S SHOT AT ITS MULTIPLIER, "at double damage" (V5b1).
-	const float OwnBlow = (bIsWarhound ? WarhoundBlow() : OwnDamagePerHit) * (bIsScrapTrap ? ScrapShotMultiplier : 1.0f);
+	// AND A BOLTED GADGET'S "MORE", 10% FOR EACH GADGET IN IT (V5c).
+	const float OwnBlow = (bIsWarhound ? WarhoundBlow() : OwnDamagePerHit) * (bIsScrapTrap ? ScrapShotMultiplier : 1.0f)
+		* BoltedMoreMultiplier();
 	if (OwnBlow > 0.0f)
 	{
 		// AND THE SUMMONER'S INCREASED MINION DAMAGE ON TOP, WHICH IS NEW. Issue
@@ -2077,6 +2119,9 @@ ACataclysmMinion* ACataclysmMinion::LeaveScrapTrapOf(const ACataclysmMinion* Gon
 	}
 	Scrap->bIsScrapTrap = true;
 	Scrap->SkillGadgetSlot = Gone->SkillGadgetSlot;
+	// AND WHAT A BOLTED GADGET HELD, so its scrap trap's shot fires the whole list (V5c, BT3).
+	Scrap->BoltedAttacks = Gone->BoltedAttacks;
+	Scrap->GadgetsBoltedIn = Gone->GadgetsBoltedIn;
 	Scrap->ScrapShotMultiplier = ShotMultiplier;
 	Scrap->ScrapTriggerRadiusCm = TriggerRadiusCm;
 	Scrap->ScrapArmsAtAgeSeconds = Scrap->GetGameTimeSinceCreation()
@@ -2832,6 +2877,8 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 	const FVector Here = GetActorLocation();
 	const FVector From = CastFromPlace ? *CastFromPlace : Here;
 	FVector Aim = From;
+	// THE ENEMY THIS CAST AIMS AT, for the bolted attacks after it (V5c): none for a self buff or a place.
+	LastSkillStartedAt = nullptr;
 	if (Skill.Shape == ECataclysmSkillShape::SelfBuff)
 	{
 		// THE SELF BUFF IS THE PLAYER'S, AND ONLY WITHIN 8 M OF THIS MINION (S13; T4 for a Tyrant's Minion). Its enemy
@@ -2853,6 +2900,7 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 	}
 	else if (IsValid(AimedAt))
 	{
+		LastSkillStartedAt = AimedAt;
 		// A SKILL TRAP'S TRIGGERING ENEMY (T13), aimed at whatever the skill's reach: the trap has chosen it.
 		Aim = AimedAt->GetActorLocation();
 	}
@@ -2883,6 +2931,7 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 		{
 			return false;
 		}
+		LastSkillStartedAt = Target;
 		Aim = Target->GetActorLocation();
 	}
 
@@ -3074,6 +3123,8 @@ const TCHAR* ACataclysmMinion::DeviceWireReachMetresStat = TEXT("device_wire_rea
 const TCHAR* ACataclysmMinion::DeviceWirePinSecondsStat = TEXT("device_wire_pin_seconds");
 const TCHAR* ACataclysmMinion::DeviceWireRepinSecondsStat = TEXT("device_wire_repin_seconds");
 const TCHAR* ACataclysmMinion::GadgetFollowWithinMetresStat = TEXT("gadget_follow_within_metres");
+const TCHAR* ACataclysmMinion::GadgetBoltReachMetresStat = TEXT("gadget_bolt_reach_metres");
+const TCHAR* ACataclysmMinion::BoltedMorePercentPerGadgetStat = TEXT("bolted_more_percent_per_gadget");
 
 namespace
 {
@@ -3115,6 +3166,178 @@ float ACataclysmMinion::DeviceWireRepinSecondsFor(const AActor* Player)
 float ACataclysmMinion::GadgetFollowWithinCmFor(const AActor* Player)
 {
 	return CataclysmTrapCreepFigure(Player, GadgetFollowWithinMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::GadgetBoltReachCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, GadgetBoltReachMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::BoltedMorePercentPerGadgetFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, BoltedMorePercentPerGadgetStat);
+}
+
+float ACataclysmMinion::BoltedMoreMultiplier() const
+{
+	return GadgetsBoltedIn > 1
+		? 1.0f + BoltedMorePercentPerGadgetFor(Summoner.Get()) / 100.0f * static_cast<float>(GadgetsBoltedIn)
+		: 1.0f;
+}
+
+void ACataclysmMinion::AbsorbGadget(ACataclysmMinion* Absorbed)
+{
+	if (!IsValid(Absorbed) || Absorbed == this || Absorbed->IsActorBeingDestroyed())
+	{
+		return;
+	}
+	// ITS OWN ATTACKS, KEYED BY WHAT IT DID (BT3): the slot it cast, and its brain's blow when it has a figure.
+	if (Absorbed->SkillGadgetSlot != ECataclysmAbilitySlot::None)
+	{
+		BoltedAttacks.Add({Absorbed->SkillGadgetSlot, 0.0f});
+	}
+	if (Absorbed->OwnDamagePerHit > 0.0f)
+	{
+		BoltedAttacks.Add({ECataclysmAbilitySlot::None, Absorbed->OwnDamagePerHit});
+	}
+	// AND WHAT IT HELD ALREADY, so a bolted gadget bolted onto another brings its whole list.
+	BoltedAttacks.Append(Absorbed->BoltedAttacks);
+	GadgetsBoltedIn += Absorbed->GadgetsBoltedIn;
+
+	// THE HEALTH ADDED TOGETHER (B1): the maximum first, so the current fits under it.
+	UAbilitySystemComponent* Mine = GetAbilitySystemComponent();
+	const UAbilitySystemComponent* Its = Absorbed->GetAbilitySystemComponent();
+	if (Mine && Its)
+	{
+		const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Mine->SetNumericAttributeBase(Maximum, Mine->GetNumericAttribute(Maximum) + Its->GetNumericAttribute(Maximum));
+		Mine->SetNumericAttributeBase(Health, Mine->GetNumericAttribute(Health) + Its->GetNumericAttribute(Health));
+	}
+
+	// BOTH RESERVES HELD HERE (BT4), released together when this one dies: a dead follower holds nothing.
+	ReservedFervour += Absorbed->ReservedFervour;
+	Absorbed->ReservedFervour = 0.0f;
+
+	// THE LATER OF THE TWO LIVES (BT4), so bolting never shortens one. Nought is "never expires".
+	const float MyLife = GetLifeSpan();
+	const float ItsLife = Absorbed->GetLifeSpan();
+	if (MyLife > 0.0f)
+	{
+		SetLifeSpan(ItsLife <= 0.0f ? 0.0f : FMath::Max(MyLife, ItsLife));
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("BOLTED TOGETHER: %s absorbed %s; %d gadgets in it, %d attacks held."), *GetName(),
+		*Absorbed->GetName(), GadgetsBoltedIn, BoltedAttacks.Num());
+	Absorbed->Destroy();
+}
+
+ACataclysmMinion* ACataclysmMinion::BoltOnPlacing(ACataclysmMinion* Placed)
+{
+	if (!IsValid(Placed) || !Placed->IsGadget())
+	{
+		return nullptr;
+	}
+	AActor* const Player = Placed->Summoner.Get();
+	const float Reach = GadgetBoltReachCmFor(Player);
+	if (Reach <= 0.0f)
+	{
+		return nullptr;
+	}
+	ACataclysmMinion* Nearest = nullptr;
+	float NearestCm = 0.0f;
+	const FVector At = Placed->GetActorLocation();
+	for (ACataclysmMinion* Each : DevicesOf(Player))
+	{
+		if (Each == Placed || !Each->IsGadget())
+		{
+			continue;
+		}
+		const float Cm = FVector::Dist2D(Each->GetActorLocation(), At);
+		if (Cm <= Reach && (!Nearest || Cm < NearestCm || (Cm == NearestCm && Each->SpawnOrder < Nearest->SpawnOrder)))
+		{
+			Nearest = Each;
+			NearestCm = Cm;
+		}
+	}
+	if (Nearest)
+	{
+		Nearest->AbsorbGadget(Placed);
+	}
+	return Nearest;
+}
+
+int32 ACataclysmMinion::BoltAfterMove(AActor* Player, const TArray<ACataclysmMinion*>& Moved)
+{
+	const float Reach = GadgetBoltReachCmFor(Player);
+	if (Reach <= 0.0f)
+	{
+		return 0;
+	}
+	TArray<ACataclysmMinion*> Standing;
+	int32 Absorbed = 0;
+	for (ACataclysmMinion* Each : Moved)
+	{
+		if (!IsValid(Each) || Each->IsActorBeingDestroyed() || !Each->IsGadget())
+		{
+			continue;
+		}
+		ACataclysmMinion* Nearest = nullptr;
+		float NearestCm = 0.0f;
+		for (ACataclysmMinion* Survivor : Standing)
+		{
+			const float Cm = FVector::Dist2D(Survivor->GetActorLocation(), Each->GetActorLocation());
+			if (Cm <= Reach && (!Nearest || Cm < NearestCm))
+			{
+				Nearest = Survivor;
+				NearestCm = Cm;
+			}
+		}
+		if (Nearest)
+		{
+			Nearest->AbsorbGadget(Each);
+			++Absorbed;
+		}
+		else
+		{
+			Standing.Add(Each);
+		}
+	}
+	return Absorbed;
+}
+
+int32 ACataclysmMinion::FireBoltedAttacksAt(AActor* Target)
+{
+	if (bFiringBoltedAttacks || BoltedAttacks.IsEmpty() || !IsValid(Target) || UCataclysmSkillEffects::IsDead(Target)
+		|| UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this))
+	{
+		return 0;
+	}
+	TGuardValue<bool> Firing(bFiringBoltedAttacks, true);
+	const float More = BoltedMoreMultiplier();
+	const TArray<FBoltedAttack> Held = BoltedAttacks;
+	int32 Fired = 0;
+	for (const FBoltedAttack& Each : Held)
+	{
+		if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(Target) || UCataclysmSkillEffects::IsDead(this))
+		{
+			break;
+		}
+		if (Each.Slot != ECataclysmAbilitySlot::None)
+		{
+			Fired += CastSlotSkillFromHere(Each.Slot, /*bEvenForADeadPlayer=*/false, Target, More) ? 1 : 0;
+		}
+		else if (Each.BlowFigure > 0.0f)
+		{
+			// THE BRAIN ATTACK, PRICED AS THIS GADGET'S OWN BLOW IS, WITH THE ABSORBED ONE'S FIGURE. `AttackTarget` applies
+			// `BoltedMoreMultiplier` itself.
+			TGuardValue<float> Blow(OwnDamagePerHit, Each.BlowFigure);
+			TGuardValue<bool> NotAHound(bIsWarhound, false);
+			AttackTarget(Target);
+			++Fired;
+		}
+	}
+	return Fired;
 }
 
 bool ACataclysmMinion::WalkAfterSummoner(float Seconds)

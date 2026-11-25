@@ -4289,6 +4289,13 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 			Theirs->ActOnEvent(FName(TEXT("device_placed")), &MachineTags,
 							   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
 		}
+		// AND BOLTED ONTO THE NEAREST GADGET WITHIN REACH, AFTER IT IS PLACED AND TOLD (Bolted Together, V5c, BT2). The
+		// one it bolted onto is answered; this one is gone, and leaves this skill's list.
+		if (ACataclysmMinion* Into = ACataclysmMinion::BoltOnPlacing(Machine))
+		{
+			Deployed.Remove(Machine);
+			Machine = Into;
+		}
 	}
 	return Machine;
 }

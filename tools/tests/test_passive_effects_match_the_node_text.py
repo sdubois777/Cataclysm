@@ -742,7 +742,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: AND TO 589 THE SAME DAY: Walking Arsenal's reach (`tools/reapply_war_vows_v5b3_workbook.py`, V5b3).
 #:
 #: AND TO 590 THE SAME DAY: Titanfall's action row (`tools/reapply_war_titanfall_workbook.py`).
-AUTHORED_ROWS = 590
+#:
+#: AND TO 592 THE SAME DAY: Bolted Together's reach and its "more" (`tools/reapply_war_vows_v5c_workbook.py`, V5c).
+AUTHORED_ROWS = 592
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1311,7 +1313,8 @@ AUTHORED_NODES = 323
 #: AND TO 69 THE SAME DAY: V5b1 -- Scrap Mines (Saboteur). Its capstone already had a row.
 #: AND TO 70 THE SAME DAY: V5b2 -- Cat's Cradle (Saboteur). Its capstone already had a row.
 #: AND TO 71 THE SAME DAY: V5b3 -- Walking Arsenal (Saboteur). Its capstone already had a row.
-AUTHORED_OPTIONS = 71
+#: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
+AUTHORED_OPTIONS = 72
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2949,6 +2952,9 @@ VALUE_IN_WORDS = {
     # TITANFALL (2026-11-25): an action row, keyed by its empty stat and condition; its value is the seconds it cannot
     # be killed.
     ("Bulwark_keystone_jg_final", "", ""): ("you cannot be killed for 2 seconds", 2.0),
+    # BOLTED TOGETHER (V5c, 2026-11-25): its reach and its "more" for each gadget.
+    ("Saboteur_capstone_100", "gadget_bolt_reach_metres"): ("within 4 metres of another of yours", 4.0),
+    ("Saboteur_capstone_100", "bolted_more_percent_per_gadget"): ("10% more damage for each gadget in it", 10.0),
     # WALKING ARSENAL (V5b3, 2026-11-25): how near the player its gadgets stay.
     ("Saboteur_capstone_25", "gadget_follow_within_metres"): ("staying within 8 metres of you", 8.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
@@ -3648,7 +3654,10 @@ def test_a_node_that_takes_something_away_is_actually_tested(effects):
 #: the Ritualist's Grip of the Pact grants it "At 4 points: ... deal 10% less
 #: damage" since the rework of 2026-11-24. The row is a figure the game reads,
 #: not a term in the pipeline's buckets, so `flat` is the only kind it can be.
-FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent"})
+#: AND `bolted_more_percent_per_gadget` SINCE V5c (2026-11-25): Bolted Together's "10% more damage for each gadget in
+#: it", which `ACataclysmMinion::BoltedMoreMultiplier` applies to a bolted gadget's every attack as a multiplier of its
+#: own (one plus the percent times the gadgets in it), for the same reason.
+FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent", "bolted_more_percent_per_gadget"})
 
 
 #: See `test_the_bucket_matches_the_nodes_own_wording`.

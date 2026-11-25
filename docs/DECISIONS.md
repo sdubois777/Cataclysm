@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' last slice (V5c): Bolted Together, gadgets within 4 metres join into one that fires all their attacks
+
+**Affects:**
+- `tools/reapply_war_vows_v5c_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (592 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - the two stats and their readers, `BoltedMoreMultiplier`, `AbsorbGadget`, `BoltOnPlacing`, `BoltAfterMove`,
+      `FireBoltedAttacksAt`, and `BoltedAttacks` and `GadgetsBoltedIn`;
+    - `CastSlotSkillFromHere`, the cast of `CastPlayersSkillFromHere` taken out for any slot;
+    - `StartPlayersSkillFromHere` records the enemy it aimed at;
+    - `AttackTarget` fires a bolted gadget's list after its own blow, and multiplies its own blow;
+    - `PlaceSkillGadget` and `MoveEveryGadgetOf` bolt; a scrap trap copies the list.
+  - `CataclysmSkillTemplates.cpp`: a War deployable's machine bolts after it is placed.
+  - `CataclysmCombatOverlay.h` and `.cpp`: `BoltedTextFor`, first on a gadget's status line.
+  - `CataclysmPlayerClassStats.cpp`: the two stats listed as having no gameplay attribute.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5cTests.cpp` (new, six tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe for each stat.
+    - `CataclysmDataTableTests.cpp`: the pin, 592.
+    - `CataclysmWarVowsV2aTests.cpp`: `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` used Bolted Together as its
+      option with no row. No option in any tree is left without one, so it now takes Bolted Together's rows out of a
+      copy of the effect table and asks the copy. A new control asks the loaded table, which holds them.
+  - Python:
+    - `tools/tests/test_war_vows_v5c_scripts.py` (new, six).
+    - `test_passive_effects_match_the_node_text.py`:
+      - 592 rows and 72 authored options, and Bolted Together's words;
+      - `bolted_more_percent_per_gadget` among `FLAT_STATS_THAT_MULTIPLY`, because the engine applies it as a
+        multiplier of its own.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's window (bundle 2):
+  - `Cataclysm.WarVowsV5c.`: six tests, new.
+  - `Cataclysm.StatExemption.` (two probes more), `Cataclysm.Data.` (592) and `Cataclysm.WarVowsV2a.`, counts
+    unchanged.
+  - The groups that cast from or strike with a gadget, counts unchanged: `Cataclysm.SkillGadgets.`,
+    `Cataclysm.GadgetCopiesSkill.`, `Cataclysm.WarVowsV4b.`, `Cataclysm.WarVowsV5a.`, `Cataclysm.WarVowsV5b1.`,
+    `Cataclysm.WarVowsV5g.`.
+- **A SKILL GADGET'S CAST WAS RESTRUCTURED.** `CastPlayersSkillFromHere` keeps its refusals and calls
+  `CastSlotSkillFromHere` for the cast. That function asks the same questions for any slot (still converted; the skill
+  the player holds; `SkillGadgetMayCast`) and starts the same cast. With nothing bolted, the cast is meant to be the
+  same as before. Only the window can show that it is.
+- **A BOLTED SLOT'S CAST IS NOT TESTED FIRING.** The tests show that a bolted gadget holds an absorbed slot's cast, and
+  that a bolted turret deals both blows. They do not watch a held slot's skill land.
+- **THE LABEL HAS NOT BEEN SEEN.** It is the gadget's type name, spaced ("Bolt Turret x2"), on the status line every
+  character with an overhead bar draws.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, first message, verbatim: "Well my thought was, players would probably want to build more than
+  one super turret for boss fights and such. So you'd need a way to do that."
+- The owner, second message, verbatim: "also, even without super turrets, you'd probably want to be able to put out
+  more than one at a time right? So I'd say no moving unless you don't have enough fervour to put out another? then they
+  all move to where you select? then you could build a few super turrets, and then press the move button, and they'd all
+  combine into some insane turret right? that sounds fun"
+- The coordinating session's B1, accepted 2026-11-25: the new gadget is absorbed into the nearest standing gadget
+  within 4 m; the survivor's maximum and current health each gain the new one's; it fires every attack it holds at 10%
+  more for each gadget in it; the absorbed actor is destroyed and the survivor holds both reserves.
+- BT1-BT4, accepted 2026-11-25, with the coordinating session's additions:
+  - **BT1: B1'S TWO BULLETS ABOUT SLOTS ARE DROPPED**, "a slot held in a bolted gadget, pressed again, moves the whole
+    bolted gadget" and "its death frees every slot it holds", because the gadget rule (V5g) replaced exclusive slots.
+    A press places another gadget while the reserve fits, and otherwise moves every gadget.
+  - BT2: a gadget bolts at its placing, and after a V5g move every gadget that lands within 4 m bolts into the first
+    placed. Traps never bolt.
+  - BT3: on each firing the survivor fires every attack it holds at the same target, each 10% more for each gadget in
+    it, the survivor counted. Answers through Counterfire's path (Counterfire, Cat's Cradle) and a scrap trap's shot
+    fire the whole list. **Volleys and Magnum Opus's copies stay single, a judgement.**
+  - BT4: health adds; the reserves are held together and released together when the survivor dies or expires; the
+    survivor's life becomes the later of the two; the absorbed gadget is destroyed raising no `gadget_destroyed`.
+  - The label "Name x3".
+
+### WHERE THE ATTACK LIST IS KEYED (BT3)
+
+An entry is an attack the absorbed gadget made: its slot's cast, when it had a slot (`SkillGadgetSlot`), and its
+brain's blow, when its own blow figure is above nought (`OwnDamagePerHit`). Both are read from the gadget itself, never
+from a machine class by name. A gadget absorbed with a list of its own brings that list. Whether a machine bolts at all
+is `IsGadget` (deployable and not a trap), whose gadgets `DevicesOf`, and the reach is the player's stat.
+
+### JUDGEMENTS
+
+- **A SKILL GADGET'S LIST FIRES FROM ITS CAST, NOT FROM ITS BRAIN'S SWING**, so a bolted skill gadget does not fire
+  the list twice. Every other gadget fires it from `AttackTarget`.
+- **THE CAST'S LIST FIRES AT THE ENEMY THE CAST AIMED AT.** A self buff and a cast at a place aim at no enemy, and then
+  the list fires nothing.
+- **A SCRAP TRAP OF A BOLTED GADGET** fires the whole list, at its own double, as one shot.
+- **THE MOVE'S BOLTING** takes the moved gadgets in placing order and puts each into the nearest one already kept
+  within 4 m. With the 1.5 m ring that is always the first placed.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 61
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5cTests.cpp` without `#include "Interface/CataclysmCombatOverlay.h"` failed.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: the reach's stat name misspelt (`gadget_bolt_reach_metre`) | `pytest tools/tests/test_war_vows_v5c_scripts.py` | `test_the_engine_reads_the_two_names` |
+| `CataclysmPlayerClassStats.cpp`: `bolted_more_percent_per_gadget` taken off the list of stats with no attribute | the same | `test_the_engine_reads_the_two_names` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5c.AGadgetPlacedWithinFourMetresIsBoltedOnAndOneBeyondIsNot` | a second skill gadget placed 3 m away is bolted onto the first (one stands, two in it, its attack held, its label "Skill Gadget x2"); a third 10 m away stands alone (the control); a player without the option keeps two 3 m apart (the control) |
+| `Cataclysm.WarVowsV5c.TwoClustersBuiltApartStayTwoUntilAMoveMakesThemOne` | four gadgets in two pairs 20 m apart stay two clusters of two (the control); a press with no room moves them and they become the first placed, four in it, three attacks held, all 60 reserved |
+| `Cataclysm.WarVowsV5c.ABoltedTurretFiresEveryAttackItHoldsAtTheSameTargetAtTenPercentMoreEach` | a lone turret's blow measured (the control); two turret casts at one place bolt; struck once, the bolted turret deals 2 x 1.2 of that blow |
+| `Cataclysm.WarVowsV5c.HealthAddsTheLaterLifeIsKeptAndTheReservesAreReleasedTogether` | a turret holding its own 5 and a running life (the controls) absorbs a skill gadget: maximum health up, still full, life never ending, 20 reserved; killed, 0 reserved |
+| `Cataclysm.WarVowsV5c.AGadgetTheBasicSlotConversionPlacesBoltsLikeAnyOther` | the basic slot converted by `skill_slot_is_a_gadget`: its gadget 10 m from a turret stands alone (the control); one 3 m away is bolted on, and the turret holds the basic slot's cast |
+| `Cataclysm.WarVowsV5c.ATrapIsNeverBolted` | a Spike Trap cast where a turret stands stays a trap of its own; a second turret there is bolted on (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: `BoltOnPlacing` answering null at once | `Cataclysm.WarVowsV5c.` | `AGadgetPlacedWithinFourMetresIsBoltedOnAndOneBeyondIsNot`, `HealthAddsTheLaterLifeIsKeptAndTheReservesAreReleasedTogether`, `AGadgetTheBasicSlotConversionPlacesBoltsLikeAnyOther`, `ATrapIsNeverBolted`, `ABoltedTurretFiresEveryAttackItHoldsAtTheSameTargetAtTenPercentMoreEach` |
+
+**Dropped under that ruling:** a proof that the move bolts (`BoltAfterMove`'s call taken out), which would fail
+`TwoClustersBuiltApartStayTwoUntilAMoveMakesThemOne`.
+
+---
+
 ## 2026-11-25 — Titanfall, the Bulwark's keystone: a hit taking more than a fifth of maximum health leaves its wearer unkillable for 2 seconds and adds the hit to the next attack
 
 **Affects:**

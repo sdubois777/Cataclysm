@@ -710,6 +710,12 @@ public:
 	static FString TitanfallTextFor(const AActor* Actor);
 
 	/**
+	 * A bolted gadget's name and how many gadgets it is, such as "Bolt Turret x3", or empty for anything else. Bolted
+	 * Together, V5c (accepted 2026-11-25). First on the gadget's status line, because it says what the gadget is.
+	 */
+	static FString BoltedTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.

@@ -792,6 +792,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Walking Arsenal's reach, read by ACataclysmMinion::GadgetFollowWithinCmFor at a gadget's step. V5b3,
 		// 2026-11-25. No gameplay attribute.
 		TEXT("gadget_follow_within_metres"),
+		// Bolted Together's reach and its "more" for each gadget, read by ACataclysmMinion::GadgetBoltReachCmFor at a
+		// gadget's placing and move and by BoltedMorePercentPerGadgetFor at its firing. V5c, 2026-11-25. No gameplay
+		// attribute.
+		TEXT("gadget_bolt_reach_metres"),
+		TEXT("bolted_more_percent_per_gadget"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on

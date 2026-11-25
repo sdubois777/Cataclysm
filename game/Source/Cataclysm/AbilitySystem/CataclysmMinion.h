@@ -630,6 +630,14 @@ public:
 								  float ShotDamageMultiplier = 1.0f);
 
 	/**
+	 * The part of `CastPlayersSkillFromHere` after its own refusals, for any `Slot`: the slot must still be converted
+	 * into a gadget, and it casts the skill the player holds in it, from here. Out of that function for Bolted Together
+	 * (V5c), whose bolted gadget casts every slot it holds. Counts nothing and fires no bolted attack.
+	 */
+	bool CastSlotSkillFromHere(ECataclysmAbilitySlot Slot, bool bEvenForADeadPlayer, AActor* AimedAt,
+							   float ShotDamageMultiplier);
+
+	/**
 	 * A PLAYER'S DEATH FIRES ITS GADGETS. Ruled 2026-10-19 by the coordinating session (C1-C5), for "When you die, all
 	 * your active traps and gadgets immediately trigger simultaneously": the gadget half, reached by the row action
 	 * `gadgets_cast_now` on `player_death` (`UCataclysmAbilitySystemComponent::GadgetsCastNowAction`). The trap half
@@ -1361,6 +1369,76 @@ public:
 	 */
 	static const TCHAR* GadgetFollowWithinMetresStat;
 	static float GadgetFollowWithinCmFor(const AActor* Player);
+
+	/**
+	 * BOLTED TOGETHER, V5c, 2026-11-25: "A gadget you place within 4 metres of another of yours is bolted onto it: one
+	 * gadget, with their health added together, that fires all their attacks with 10% more damage for each gadget in
+	 * it." The 4 and the 10 are flat stats of the player's, with no gameplay attribute; nought reach is no bolting.
+	 * Rulings B1 and BT1-BT4 of 2026-11-25. KEYED ON WHAT A MACHINE IS (`IsGadget`, `DevicesOf`, its slot and its own blow
+	 * figure), never on a machine by name.
+	 */
+	static const TCHAR* GadgetBoltReachMetresStat;
+	static const TCHAR* BoltedMorePercentPerGadgetStat;
+	static float GadgetBoltReachCmFor(const AActor* Player);
+	static float BoltedMorePercentPerGadgetFor(const AActor* Player);
+
+	/**
+	 * ONE ATTACK A BOLTED GADGET HOLDS, from a gadget it absorbed (ruled BT3): an attack that gadget made, keyed
+	 * generically -- a slot's cast (`Slot` set, the slot that gadget cast) or a brain attack with its own blow figure
+	 * (`BlowFigure` above nought, the absorbed gadget's `OwnDamagePerHit`). Never a machine class by name.
+	 */
+	struct FBoltedAttack
+	{
+		ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+		float BlowFigure = 0.0f;
+	};
+
+	/** The attacks this gadget holds from those bolted onto it, in the order they were absorbed. Empty for most. */
+	TArray<FBoltedAttack> BoltedAttacks;
+
+	/** How many gadgets this one is, itself counted: 1 until another is bolted onto it. */
+	int32 GadgetsBoltedIn = 1;
+
+	/**
+	 * The "more" on every attack this gadget fires: one plus the player's percent for each gadget in it, when it holds
+	 * two or more ("10% more damage for each gadget in it": two bolted deal 20% more); one otherwise.
+	 */
+	float BoltedMoreMultiplier() const;
+
+	/**
+	 * Bolt `Absorbed` onto this gadget (ruled B1, BT4): its attacks, and those it held, join this one's list; its count
+	 * joins this one's; this one's maximum and current health each gain its; its reserve moves here, so this one holds
+	 * both until it dies; this one's life becomes the later of the two, and one that never expires stays so; and
+	 * `Absorbed` is destroyed, which raises no `gadget_destroyed` (only a death does), so it leaves no scrap trap.
+	 */
+	void AbsorbGadget(ACataclysmMinion* Absorbed);
+
+	/**
+	 * At placing (ruled BT2): the nearest other gadget of `Placed`'s player within the bolt reach, the earlier placed of
+	 * two at one distance, absorbs `Placed`, and is returned; null, with nothing done, for a trap, for a player with no
+	 * reach, or with no gadget within it.
+	 */
+	static ACataclysmMinion* BoltOnPlacing(ACataclysmMinion* Placed);
+
+	/**
+	 * After a move (V5g; ruled BT2): `Moved`, in placing order, each absorbed into the nearest gadget already standing
+	 * from the same list within the bolt reach of `Player`. So the 1.5 m ring merges into the first placed. Returns how
+	 * many were absorbed.
+	 */
+	static int32 BoltAfterMove(AActor* Player, const TArray<ACataclysmMinion*>& Moved);
+
+	/**
+	 * Every attack this gadget holds from bolting, fired at `Target` (ruled BT3), each at `BoltedMoreMultiplier`: a slot
+	 * cast through `CastSlotSkillFromHere`, a brain attack through `AttackTarget` with its own blow figure. Nothing while
+	 * already firing them, so none of them fires the list again. Returns how many fired.
+	 */
+	int32 FireBoltedAttacksAt(AActor* Target);
+
+	/** Whether this gadget is firing its bolted attacks now. */
+	bool bFiringBoltedAttacks = false;
+
+	/** The enemy `StartPlayersSkillFromHere` last aimed at, or null: the target a cast's bolted attacks fire at. */
+	TWeakObjectPtr<AActor> LastSkillStartedAt;
 
 	/**
 	 * One step of Walking Arsenal for this gadget, `Seconds` long, on the coordinating session's rulings A1 and A2: a

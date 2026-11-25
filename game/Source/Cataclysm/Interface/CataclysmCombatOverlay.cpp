@@ -20,6 +20,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
@@ -766,6 +767,17 @@ FString UCataclysmCombatOverlay::OwedTextFor(const AActor* Actor)
 	return Owed > 0.0f ? FString::Printf(TEXT("Owed %d"), FMath::CeilToInt(Owed)) : FString();
 }
 
+FString UCataclysmCombatOverlay::BoltedTextFor(const AActor* Actor)
+{
+	const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Actor);
+	if (!Gadget || Gadget->GadgetsBoltedIn <= 1 || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("%s x%d"), *FName::NameToDisplayString(Gadget->TypeName, /*bIsBool=*/false),
+		Gadget->GadgetsBoltedIn);
+}
+
 FString UCataclysmCombatOverlay::TitanfallTextFor(const AActor* Actor)
 {
 	const UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -1045,7 +1057,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
+		 {BoltedTextFor(Actor), SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor), RiftAltarTextFor(Actor),

@@ -506,15 +506,17 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 {
 	using namespace CataclysmWarVowsV2aTest;
 	// THE WORDS THE FLOOR MODIFIER PANEL USES, "(not built yet: it does nothing)", on a node and an option with no row:
-	// Open Wounds (`Berserker_trunk_006`) and Bolted Together (the Saboteur's Third Oath, option 2, built last). The
-	// First Oath's Warlord was the option until V2b built it, Thousand Deaths until V3b, Magnum Opus until V4b and
-	// Crossfire until V5a, the same day.
+	// Open Wounds (`Berserker_trunk_006`) and Bolted Together (the Saboteur's Third Oath, option 2). The First Oath's
+	// Warlord was the option until V2b built it, Thousand Deaths until V3b, Magnum Opus until V4b and Crossfire until
+	// V5a, the same day. BOLTED TOGETHER WAS BUILT LAST, BY V5c, AND NO OPTION IN ANY TREE IS LEFT WITHOUT A ROW: so its
+	// rows are taken out of a copy of the effect table here, and the copy is what is asked. THE CONTROL for that: the
+	// table as loaded holds them.
 	// THE CONTROLS: Wrath (`Berserker_twoh_001`) and Thousand Deaths have rows and are not marked, and with no effect
 	// table nothing is.
 	const UDataTable* Nodes = UCataclysmPassiveTree::LoadNodeTable();
-	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* Loaded = UCataclysmPassiveTree::LoadEffectTable();
 	if (!TestNotNull(TEXT("set-up: the node table loads"), Nodes)
-		|| !TestNotNull(TEXT("set-up: the effect table loads"), Effects))
+		|| !TestNotNull(TEXT("set-up: the effect table loads"), Loaded))
 	{
 		return false;
 	}
@@ -522,6 +524,29 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	const FName Unbuilt(TEXT("Berserker_trunk_006"));
 	const FName Built(TEXT("Berserker_twoh_001"));
 	const FName FinalOath(TEXT("Saboteur_capstone_100"));
+	if (!TestTrue(TEXT("control: the table as loaded holds Bolted Together's rows"),
+				  FTree::HasEffectRows(Loaded, FinalOath, 2)))
+	{
+		return false;
+	}
+	UDataTable* Effects = DuplicateObject<UDataTable>(Loaded, GetTransientPackage());
+	if (!TestNotNull(TEXT("set-up: a copy of the effect table"), Effects))
+	{
+		return false;
+	}
+	TArray<FName> Removing;
+	for (const TPair<FName, uint8*>& Each : Effects->GetRowMap())
+	{
+		const FCataclysmPassiveEffectRow* Row = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Each.Value);
+		if (Row && Row->Node == FinalOath.ToString() && Row->Option == 2)
+		{
+			Removing.Add(Each.Key);
+		}
+	}
+	for (const FName& Name : Removing)
+	{
+		Effects->RemoveRow(Name);
+	}
 	const FName BuiltOath(TEXT("Berserker_capstone_200"));
 	const FCataclysmPassiveNodeRow* UnbuiltRow = FTree::FindNode(Nodes, Unbuilt);
 	const FCataclysmPassiveNodeRow* BuiltRow = FTree::FindNode(Nodes, Built);

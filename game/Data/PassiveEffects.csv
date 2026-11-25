@@ -589,3 +589,5 @@ Saboteur_capstone_50#5,Saboteur_capstone_50,device_wire_pin_seconds,flat,1.0,,,0
 Saboteur_capstone_50#6,Saboteur_capstone_50,device_wire_repin_seconds,flat,4.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_capstone_25#3,Saboteur_capstone_25,gadget_follow_within_metres,flat,8.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Bulwark_keystone_jg_final#1,Bulwark_keystone_jg_final,,,2.0,,,0.0,,0.0,0,-1.0,0,0,titanfall,big_hit_taken,,0.0,0.0,0.0,0,,0.0,30.0,20.0,,0.0,0,0
+Saboteur_capstone_100#4,Saboteur_capstone_100,gadget_bolt_reach_metres,flat,4.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_capstone_100#5,Saboteur_capstone_100,bolted_more_percent_per_gadget,flat,10.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

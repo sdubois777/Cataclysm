@@ -9558,6 +9558,37 @@ namespace CataclysmStatExemptionTest
 	 * gadget's step asks. The War vow options' fifth slice, second half, third part, V5b3, 2026-11-25. Two characters;
 	 * only the second holds 8, and only it is answered 800 centimetres.
 	 */
+	/**
+	 * Bolted Together's `gadget_bolt_reach_metres` and `bolted_more_percent_per_gadget`, read by
+	 * `ACataclysmMinion::GadgetBoltReachCmFor` and `BoltedMorePercentPerGadgetFor`. The War vow options' last slice, V5c,
+	 * 2026-11-25. Two characters; only the second holds 4 and 10, and only it is answered 400 centimetres and 10.
+	 */
+	void ProbeBoltedFigures(FAutomationTestBase& Test, bool bReach)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::GadgetBoltReachMetresStat), 4.0f},
+								   {FName(ACataclysmMinion::BoltedMorePercentPerGadgetStat), 10.0f}});
+		const auto Read = [bReach](const AActor* Who)
+		{
+			return bReach ? ACataclysmMinion::GadgetBoltReachCmFor(Who)
+						  : ACataclysmMinion::BoltedMorePercentPerGadgetFor(Who);
+		};
+		Test.TestEqual(TEXT("a character without the stat is answered nought"), Read(Plain.Actor), 0.0f);
+		Test.TestEqual(TEXT("and one holding it its figure, so a gadget really reads it"), Read(Holding.Actor),
+					   bReach ? 400.0f : 10.0f, 0.01f);
+	}
+
+	void ProbeBoltReach(FAutomationTestBase& Test) { ProbeBoltedFigures(Test, /*bReach=*/true); }
+	void ProbeBoltedMore(FAutomationTestBase& Test) { ProbeBoltedFigures(Test, /*bReach=*/false); }
+
 	void ProbeGadgetFollowWithin(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -12976,6 +13007,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("device_wire_pin_seconds"), &ProbeDeviceWirePin},
 			{TEXT("device_wire_repin_seconds"), &ProbeDeviceWireRepin},
 			{TEXT("gadget_follow_within_metres"), &ProbeGadgetFollowWithin},
+			{TEXT("gadget_bolt_reach_metres"), &ProbeBoltReach},
+			{TEXT("bolted_more_percent_per_gadget"), &ProbeBoltedMore},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
