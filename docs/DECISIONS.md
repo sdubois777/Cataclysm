@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Marks left by a death: Grim Wake and Blood Debt (Death trees, slice C4c2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteNearKillBy`,
+  `SecondsSinceNearKillBy`, `WidestReachOfCondition`, `PassBleedLeftToStrongestAction`; `WithTargetState` fills the new
+  state field and lists every target question in both its stop-early check and its early return; `ActOnEvent` passes
+  Blood Debt's Bleed.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition
+  `target_near_your_kill_within_seconds` (`TargetNearYourKillWithinSeconds`) and its state field;
+  `FCataclysmPoolAction::bPassBleedLeftToStrongest`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `MarkNearAKill`, called by the kill handler and
+  by `CreditAFollowersKill`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `BleedLeftLaidBy`, `StrongestEnemyNear`,
+  `BloodDebtReachCm`, `PassBleedLeftToStrongest`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, `Character/CataclysmPassiveTree.cpp` (a comment) and
+  `Items/CataclysmItem.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmKillMarksTests.cpp`, new (6); `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (three, and the name map),
+  `test_generate_datatables.py` (one) and `test_passive_effects_match_the_node_text.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (576 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **A BUG IN TWO EARLIER SLICES OF MINE, FIXED HERE.** `WithTargetState` returns before any fill when no row asks
+  about the target, and decides that from a list of flags. The Siphon's flag (slice C2) and the poison-or-bleed flag
+  (slice C4a) were declared and set but in neither that list nor the stop-early check beside it. So a stat line whose
+  only question about the target was one of them returned before the fill, and its condition refused.
+  `Cataclysm.KillHooks.DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain` gives `fervour_per_kill` only a plain row and
+  the poison-or-bleed row, so it would fail as written on `ebc9fb095`; with this fix it should pass. In play Death's
+  Patience was not lost, because the Shadow's starting node asks the rarity rung on the same stat. A Python check now
+  holds both lists to the declarations.
+- **BLOOD DEBT'S DEATHMARK HALF IS NOT BUILT.** "(the enemy Deathmark marked, if you have Deathmark)" needs Deathmark,
+  which no slice has built. Blood Debt always picks the strongest enemy.
+- **THE BOUND ON BLOOD DEBT'S SECONDS (0 to 10) IS NOT TESTED**, as The Ferryman's share bound of slice C4c1 is not.
+
+### What each reads
+
+- **GRIM WAKE (Q6):** at a kill, `UCataclysmFervour::MarkNearAKill` marks every enemy of the killer's within the widest
+  `ReachMetres` of its rows under the new condition, read at the kill, around the body, the slain creature left out. The
+  mark is a record on the creature marked, keyed by the killer, as the record `target_damaged_by_you_within_seconds`
+  reads is. The condition holds while the mark is at most its value, 3, seconds old, so only the killer's own damage
+  is raised. A follower's kill that Death's Toll makes the character's marks too: `CreditAFollowersKill` calls the same
+  function with the character as the killer. A character with no such row marks nothing.
+- **BLOOD DEBT (Q7):** a new action, `pass_bleed_left_to_strongest`, at 2 (the seconds) on `afflicted_death` under the
+  required tag `Keyword.DoT.Bleed`. When a creature carrying the wearer's Bleed dies, the damage the wearer's Bleeds on
+  it have left (`RemainingDamageOverTime`, held to a Bleed's movement) is laid on the strongest enemy within 10 metres
+  of the body as a Bleed of the wearer's, unscaled, over the 2 seconds at one tick a second. Laid as a Bleed, so the
+  stronger application wins (Q7 a). "Strongest" is the highest rarity rung, then the most current health, then the
+  nearest (Q7 b). A death inside another row's action raises no Blood Debt, because `afflicted_death` is dropped at
+  depth one (Q7 e).
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Grim Wake (basic, max 8) | attack_damage and spell_damage, increased, 2, cond=target_near_your_kill_within_seconds 3, reach=3 |
+| Blood Debt (keystone) | action pass_bleed_left_to_strongest, 2, on afflicted_death, tags=Keyword.DoT.Bleed |
+
+`PassiveEffects.csv` 573 to 576; the Soul Collector 115 rows, the Shadow 78.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4c plan, recorded in the slice C4c1 entry: Q6 and Q7 (a) to
+(e). Nothing new was asked for this slice.
+
+### Research
+
+None new. Both nodes' shapes come from their own sentences and the rulings; the slice C4c1 entry's reading of
+`poedb.tw/us/Explode` covers explosions at a kill, not marks or Bleeds passed on.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.KillMarks.` | new: `GrimWakeRaisesYourDamageAgainstTheEnemiesNearYourKill`, `GrimWakesMarkLastsItsThreeSeconds`, `GrimWakeMarksThroughTheRealKillHandlerAndForAFollowersKill`, `BloodDebtPassesTheBleedLeftToTheStrongestEnemyNear`, `TheStrongestIsRarityThenHealthThenNearness`, `TheTwoNodesRowsAreTheirSentences` | 6 |
+| `Cataclysm.KillHooks.` | `DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain` should pass where it would have failed | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 576 | unchanged |
+
+The one through the real kill handler builds the scene `Cataclysm.Swarm.` builds: a real player on a real player state,
+and its real imp. Each new test has a control: a creature 4 metres from the kill; the slain creature; a creature marked
+only by another killer's kill; the mark at 3.5 seconds; the imp's kill without Death's Toll; a nearer, weaker Common and
+a Boss beyond 10 metres; a death carrying only the holder's Poison; nothing within reach.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `WithTargetState`: `&& !bWantsSiphon` through `&& !bWantsNearKill` lose
+   `&& !bWantsNearKill` in the early return. Prefix `Cataclysm.KillMarks.`; must fail
+   `GrimWakeRaisesYourDamageAgainstTheEnemiesNearYourKill`.
+2. `CataclysmDebuffs.cpp`, `StrongestEnemyNear`: `if (Rung > BestRung || (Rung == BestRung && Health > BestHealth))`
+   becomes `if (Health > BestHealth)`. Prefix `Cataclysm.KillMarks.`; must fail
+   `BloodDebtPassesTheBleedLeftToTheStrongestEnemyNear` and `TheStrongestIsRarityThenHealthThenNearness`.
+3. `CataclysmPlayerCharacter.cpp`, the kill handler: `UCataclysmFervour::MarkNearAKill(Acting, Notice.Victim,
+   Notice.Location);` removed. Prefix `Cataclysm.KillMarks.`; must fail
+   `GrimWakeMarksThroughTheRealKillHandlerAndForAFollowersKill`.
+
+### What was run
+
+SUITE_FIGURES_C4C2
+
+PYTHON_PROOFS_C4C2
+
+---
+
 ## 2026-11-25 — Explosions at a kill: Passed On and The Ferryman (Death trees, slice C4c1)
 
 **Affects:**
