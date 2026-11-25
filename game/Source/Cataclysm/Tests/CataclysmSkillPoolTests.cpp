@@ -495,9 +495,12 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 		UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic"));
 	TArray<FCataclysmWeaponSkill> ByTheRule;
 	int32 WarAxeUnbuilt = 0;
+	// BUILT IS READ FROM THE TABLE'S OWN ROW, A SHAPE NAMED IN IT, and not from `UCataclysmWeaponSkills::IsBuilt`, the
+	// predicate the fill itself reads: an expectation worked out with the fill's own test would compare the fill with
+	// itself (the coordinating session, 2026-11-25).
 	for (const FCataclysmWeaponSkill& Skill : WarAxeSkills)
 	{
-		if (UCataclysmWeaponSkills::IsBuilt(Skill))
+		if (Skill.Shape != ECataclysmSkillShape::None)
 		{
 			ByTheRule.Add(Skill);
 			continue;
