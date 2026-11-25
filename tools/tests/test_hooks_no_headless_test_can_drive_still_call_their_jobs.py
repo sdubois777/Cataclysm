@@ -179,7 +179,10 @@ HOOKS = {
                 "item, any kill's one more material, a boss's Legendary or rarer item, "
                 "issue #2741 slice 5b",
             "UCataclysmDropSpawner::SpawnGemsFor":
-                "the gems the creature dropped, last, from a stream of their own, issue #46 slice G5",
+                "the gems the creature dropped, from a stream of their own, issue #46 slice G5",
+            "UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor":
+                "the Cataclysm Boss's one piece of the next tier's best rarity, last, after the gems, "
+                "and nothing for any other rung, issue #2853 (the owner's ruling of 2026-11-24)",
             "UCataclysmHealthDebt::ClearOnKill":
                 "a kill clearing what the killer owes, issue #997",
             "UCataclysmStacks::NoteEnemyKilled":

@@ -280,6 +280,13 @@ ECataclysmRarity UCataclysmDropRoll::HighestDroppableRarity(int32 DifficultyTier
 	return RarityAt(FMath::Min(RarityCount - 1, Reach + RaritiesAboveTheReachThatDrop));
 }
 
+ECataclysmRarity UCataclysmDropRoll::CataclysmBossPieceRarity(int32 DifficultyTier)
+{
+	// THE NEXT TIER'S CAP, the owner's own words for it, and the last tier's own at the last tier. Issue #2853.
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, DifficultyTiers);
+	return HighestDroppableRarity(FMath::Min(Tier + 1, DifficultyTiers));
+}
+
 float UCataclysmDropRoll::PenaltyAboveTheTier(ECataclysmRarity Rarity,
 											  int32 DifficultyTier)
 {

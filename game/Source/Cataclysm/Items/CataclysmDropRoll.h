@@ -399,6 +399,17 @@ public:
 	static ECataclysmRarity HighestDroppableRarity(int32 DifficultyTier);
 
 	/**
+	 * The rarity of the one piece the Cataclysm Boss always drops beside its ordinary drops: THE NEXT TIER'S BEST, the
+	 * rarest a drop can roll one tier up (`HighestDroppableRarity(DifficultyTier + 1)`), and Cataclysmic at the last
+	 * tier. Tier 1 Legendary, tier 2 Mythical, tier 3 Ascendant, tiers 4 to 8 Cataclysmic: rarity number tier + 4,
+	 * stopping at Cataclysmic, one rung above the tier's own cap. The owner's ruling of 2026-11-24 on issue #2853
+	 * (comment 7150904221), chosen option verbatim: "The next tier's best (Recommended)". The cap holds for every other
+	 * roll. Mirrors `cataclysm_boss_piece_rarity` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static ECataclysmRarity CataclysmBossPieceRarity(int32 DifficultyTier);
+
+	/**
 	 * What a rarity's weight is divided by at this difficulty tier.
 	 *
 	 * One at or below the tier's own reach, and RarityPenaltyAboveTheTier once

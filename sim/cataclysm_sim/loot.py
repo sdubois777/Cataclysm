@@ -632,6 +632,19 @@ def highest_droppable_rarity(tier: int) -> str:
                                reach + DROP_RARITIES_ABOVE_THE_REACH))
 
 
+def cataclysm_boss_piece_rarity(tier: int) -> str:
+    """The rarity of the one piece the Cataclysm Boss always drops beside its ordinary drops: the next tier's best.
+
+    The owner's ruling of 2026-11-24 (issue #2853, comment 7150904221), chosen option verbatim: "The next tier's best
+    (Recommended)". The rarest a drop can roll one tier up, `highest_droppable_rarity(tier + 1)`, and Cataclysmic at the
+    last tier: rarity number tier + 4, stopping at Cataclysmic. Tier 1 Legendary, tier 2 Mythical, tier 3 Ascendant,
+    tiers 4 to 8 Cataclysmic. Mirrors `UCataclysmDropRoll::CataclysmBossPieceRarity`.
+    """
+    if not 1 <= tier <= af.DIFFICULTY_TIERS:
+        raise ValueError(f"tier {tier} is outside 1 to {af.DIFFICULTY_TIERS}")
+    return highest_droppable_rarity(min(tier + 1, af.DIFFICULTY_TIERS))
+
+
 def rungs_above_the_tier(rarity: str, tier: int) -> int:
     """How far above this tier's own reach a rarity sits. Zero at or below it."""
     return max(0, rarity_index(rarity)
@@ -1034,7 +1047,7 @@ def roll_slot(rng) -> str:
     return rng.choice(SLOTS_A_DROP_CAN_BE)
 
 
-def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
+def roll_item(slot: str, tier: int, magic_find: float, rng, rarity: str | None = None) -> RolledItem:
     """Roll one whole item for a gear slot at a difficulty tier.
 
     THE SLOT IS AN ARGUMENT RATHER THAN A ROLL, on purpose. Which slot a drop is
@@ -1053,7 +1066,8 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
     which the design describes and nothing models, so it is left alone rather than
     guessed at.
     """
-    rarity = roll_rarity(tier, magic_find, rng)
+    # A RARITY GIVEN IS TAKEN AS IT IS (issue #2853): the Cataclysm Boss's one piece is the next tier's best exactly.
+    rarity = roll_rarity(tier, magic_find, rng) if rarity is None else rarity
 
     # EVERY BASE IN THE SLOT IS EQUALLY LIKELY, decided by the project owner on
     # 2026-08-18. The bases in a slot are alternatives rather than a ladder --
@@ -1288,6 +1302,20 @@ def roll_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
     together = magic_find + magic_find_from(enemy_rarity)
     return [roll_item(roll_slot(rng), tier, together, rng)
             for _ in range(count)]
+
+
+def roll_the_cataclysm_bosses_piece(enemy_rarity: str, tier: int, magic_find: float, rng) -> list[RolledItem]:
+    """The Cataclysm Boss's one piece of the next tier's best, BESIDE its ordinary drops; nothing for any other rarity.
+
+    Issue #2853, the owner's ruling of 2026-11-24. One piece whatever the loot quantity, at exactly
+    `cataclysm_boss_piece_rarity(tier)`, and at that rarity's gear level gate as every drop (`roll_item`). Mirrors
+    `UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor`, which the game's death site calls after everything else a
+    kill drops.
+    """
+    if _enemy_rarity(enemy_rarity) != "Cataclysm Boss":
+        return []
+    together = magic_find + magic_find_from(enemy_rarity)
+    return [roll_item(roll_slot(rng), tier, together, rng, rarity=cataclysm_boss_piece_rarity(tier))]
 
 
 # --------------------------------------------------------------------------

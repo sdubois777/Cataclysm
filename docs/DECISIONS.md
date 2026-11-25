@@ -240,6 +240,86 @@ runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
 
 ---
 
+## 2026-11-24 — The Cataclysm Boss always drops one piece of the next tier's best rarity, beside its ordinary drops (#2853)
+
+**WRITTEN AND NOT COMPILED; IN THE WINDOW OF THE TWO ENTRIES BELOW.** On `feat/score-and-drops-2853`, by the
+coordinating session's instruction of 2026-11-24, as one change before that branch's window. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853).
+
+### The ruling
+
+**The owner, 2026-11-24, issue #2853 comment 7150904221, verbatim:** "as far as loot is concerned, I know we just put a
+hard cap. However I think for Cataclysm bosses they should always drop a single piece of loot that is 3 tiers above the
+current tier when possible. This will kinda tease the player and show them what they have to look forward to getting in
+the next tier." Asked which rarity, **the chosen option verbatim: "The next tier's best (Recommended)"**: rarity number
+tier + 4, one rung above the tier's cap, so tier 1 Legendary, 2 Mythical, 3 Ascendant, 4 to 8 Cataclysmic. The cap of
+#2886 holds for every other roll. The precedents named when it was asked: Diablo III's Rift Guardians always drop a
+legendary; Path of Exile's pinnacle bosses have guaranteed drops.
+
+### What changed
+
+- `UCataclysmDropRoll::CataclysmBossPieceRarity(Tier)`: `HighestDroppableRarity(min(Tier + 1, 8))`, the next tier's
+  cap in the owner's own words, and Cataclysmic at tier 8. `loot.cataclysm_boss_piece_rarity` in the simulation.
+- `UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor`: at the Cataclysm Boss's rung (`CataclysmBossRarityStep`,
+  held to `ACataclysmDungeonGameMode::CataclysmBossRung` by a `static_assert` at the death site) one item through
+  `SpawnDropsFor`, with that rarity as the lowest; nothing for any other rung. The drop is marked
+  `ACataclysmDroppedItem::bTheCataclysmBossesPiece`, through a new last parameter of `SpawnDropsFor` that every other
+  caller leaves false. `loot.roll_the_cataclysm_bosses_piece`, and `roll_item` takes a rarity to give.
+- **The death site** (`ACataclysmEnemyCharacter`) calls it LAST, after the gems, so every other draw of a Cataclysm
+  Boss's kill is as it was.
+- **The design document**, the cap section: a paragraph and the table "The Cataclysm Boss's piece".
+
+### Judgements of this change
+
+1. **Its rarity is exact**, by the High Roller's path: a lowest rarity above the tier's cap gives that rarity and
+   nothing rarer (`RollRarityAtLeast`, the owner's exception of the same day), and from tier 4 the lowest is
+   Cataclysmic, the top. So the piece is the next tier's best and never more.
+2. **It arrives at its rarity's gear level gate**, as every drop does (`RollItem`): Legendary +4, Mythical +6,
+   Ascendant +8, Cataclysmic +10. The ruling named a rarity and no level.
+3. **One piece whatever the loot quantity or the Power Score gap's loot factor**: the owner said "always". It is given a
+   count of one and the baseline loot quantity.
+4. **A separate function beside the High Roller's extra drops, not a branch inside `SpawnDropsFor`**, so the tests that
+   count a Cataclysm Boss's ordinary drops through `SpawnDropsFor` (`Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed`,
+   `AKillDropsAtTheRateItsRarityStates`, `EveryCreatureDropsHalfTheGearItDidAndTheSameGemsAndGold`) count what they
+   counted. `Cataclysm.RarityCap.AKillAtTierOneDropsNothingAboveMasterful` calls it as the death site does and sets the
+   piece aside by `bTheCataclysmBossesPiece`.
+
+### Tests
+
+**Unreal, registered** (none run): `Cataclysm.RarityCap.` gains three, RC7
+`TheCataclysmBossesPieceIsTheNextTiersBest` (the rarity at every tier, written out), RC8
+`ACataclysmBossDropsOnePieceOfTheNextTiersBestAtItsGate` (tiers 1, 4 and 8: one item, marked, of that rarity, at its
+gate) and RC9 `OnlyTheCataclysmBossesRungDropsThePiece` (rungs 0 to 4 nothing, the Boss's included; the control: the
+Cataclysm Boss's one). RC6 `AKillAtTierOneDropsNothingAboveMasterful` drops the piece with each of its 20 kills, sets it
+aside by name, and asserts 20 pieces, each the next tier's best, at tiers 1 and 8; it prints them on its "RARITY CAP
+LIVE" line.
+
+**Python**: `sim/tests/test_loot.py` adds the piece's rarity at every tier (8), one piece at its rarity and gate at
+tiers 1, 4 and 8 for magic find 0 and 100,000 (3), and only a Cataclysm Boss (1);
+`tools/tests/test_gear_rarity_gate_is_stated_everywhere.py` adds the document's table against the model and the
+engine's function and death-site order.
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of the working tree (`git stash
+create` `5011d01f5`, which changes no stash), each PROVED (failed with the break in, passed restored):
+
+| Proof | Break | Named failures | Restored |
+| :-- | :-- | :-- | :-- |
+| PB1 | `loot.cataclysm_boss_piece_rarity`'s `min(tier + 1, ...)` read as `min(tier, ...)` | the piece at tiers 1 to 4 (4), the document's table (1); the one-piece test passes, as it asks the function for the rarity | 148 passed |
+| PB2 | the document's `\| 1 \| Legendary \|` read as `\| 1 \| Mythical \|` | the document's table | 11 passed |
+| PB3 | the death site's `SpawnTheCataclysmBossesPieceFor(` renamed | the engine's death-site order | 11 passed |
+
+**The window's registration moves by three**: `Cataclysm.RarityCap.` alone 9 (6 + 3), and `Cataclysm.BossFloor.` 5 and
+`Cataclysm.WinningTheRun.` 11 alone (each kills the Cataclysm Boss through the death site; neither counts drops),
+counted in rc-w1's log; the whole suite three more than the count registered below. **C++ guard proofs, at most three**:
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| CB1 | `return HighestDroppableRarity(FMath::Min(Tier + 1, DifficultyTiers));` read as `return HighestDroppableRarity(Tier);` | `Cataclysm.RarityCap.` | RC7 (RC6 and RC8 ask the function itself and pass) |
+| CB2 | in `SpawnTheCataclysmBossesPieceFor`, `EnemyRarityStep != CataclysmBossRarityStep` read as `EnemyRarityStep < FirstBossRarityStep` | `Cataclysm.RarityCap.` | RC9 |
+| CB3 | `Drop->bTheCataclysmBossesPiece = bTheCataclysmBossesPiece;` read as `Drop->bTheCataclysmBossesPiece = false;` | `Cataclysm.RarityCap.` | RC6, RC8 |
+
+---
+
 ## 2026-11-24 — The character creator's skill line counts the damage type's Aura and says how many skills work: "Demonic, Sword    6 of 6 skills work"
 
 On `fix/creation-skill-count`, from development `5cdd6bdc4`. No issue was filed: the owner's report came to the

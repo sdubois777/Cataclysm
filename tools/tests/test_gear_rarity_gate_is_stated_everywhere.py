@@ -256,3 +256,50 @@ def test_the_document_states_the_cap_the_model_applies(model) -> None:
              for tier in range(1, model.af.DIFFICULTY_TIERS + 1)
              if stated.get(tier) != model.highest_droppable_rarity(tier)]
     assert not wrong, "the cap table disagrees with the model: " + "; ".join(wrong)
+
+
+SOURCE = REPO_ROOT / "game" / "Source" / "Cataclysm"
+
+
+def _code(path: pathlib.Path) -> str:
+    """The file with its comments removed, so a comment naming a call cannot pass for one."""
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", text)
+
+
+def test_the_document_states_the_cataclysm_bosses_piece_the_model_drops(model) -> None:
+    """The design document's table "The Cataclysm Boss's piece" agrees with `loot.cataclysm_boss_piece_rarity`.
+
+    Issue #2853, the owner's ruling of 2026-11-24, "The next tier's best (Recommended)". Every tier covered once.
+    """
+    if not GDD.is_file():
+        pytest.skip("the design document is not present")
+    body = GDD.read_text(encoding="utf-8")
+    heading = "| Difficulty tier | The Cataclysm Boss's piece |"
+    assert heading in body, "the design document has no table headed 'The Cataclysm Boss's piece' (issue #2853)"
+    stated: dict[int, str] = {}
+    for line in body[body.index(heading):].splitlines()[2:]:
+        match = re.match(r"\|\s*(\d+)(?:\s+to\s+(\d+))?\s*\|\s*(\w+)\s*\|$", line.strip())
+        if not match:
+            break
+        for tier in range(int(match.group(1)), int(match.group(2) or match.group(1)) + 1):
+            assert tier not in stated, f"tier {tier} is in the Cataclysm Boss's piece table twice"
+            stated[tier] = match.group(3)
+    wanted = {tier: model.cataclysm_boss_piece_rarity(tier) for tier in range(1, 9)}
+    assert stated == wanted, f"the document states {stated}, the model drops {wanted}"
+
+
+def test_the_engine_drops_the_cataclysm_bosses_piece_as_the_model_does() -> None:
+    """The C++ gives the piece the next tier's cap, and the death site drops it last, after the gems. Issue #2853."""
+    roll = _code(SOURCE / "Items" / "CataclysmDropRoll.cpp")
+    start = roll.index("ECataclysmRarity UCataclysmDropRoll::CataclysmBossPieceRarity(")
+    body = re.sub(r"\s+", " ", roll[start:roll.index("}", start)])
+    assert "return HighestDroppableRarity(FMath::Min(Tier + 1, DifficultyTiers));" in body, (
+        "CataclysmBossPieceRarity no longer gives the next tier's cap, which loot.cataclysm_boss_piece_rarity gives")
+    death = re.sub(r"\s+", " ", _code(SOURCE / "Character" / "CataclysmEnemyCharacter.cpp"))
+    gems = death.find("UCataclysmDropSpawner::SpawnGemsFor(")
+    piece = death.find("UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(")
+    assert piece != -1, "the death site no longer drops the Cataclysm Boss's piece"
+    assert gems != -1 and gems < piece, (
+        "the Cataclysm Boss's piece is dropped before the gems, so it moves every draw after it")

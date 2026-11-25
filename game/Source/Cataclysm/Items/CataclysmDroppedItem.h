@@ -103,6 +103,15 @@ public:
 	bool bInfested = false;
 
 	/**
+	 * Whether this is the one piece the Cataclysm Boss always drops beside its ordinary drops, at the next tier's best
+	 * rarity (`UCataclysmDropRoll::CataclysmBossPieceRarity`). Issue #2853, the owner's ruling of 2026-11-24. Set by
+	 * `UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor` and nothing else, so a count of a kill's ordinary drops
+	 * can set it aside by name.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	bool bTheCataclysmBossesPiece = false;
+
+	/**
 	 * Which material tier this drop is, 1 to 5. Zero when the drop is gear.
 	 *
 	 * KEPT BESIDE THE MATERIAL for the reason Rarity is kept beside the item:
@@ -366,12 +375,33 @@ public:
 							   int32 GearCountGiven = -1, int32 MaterialCountGiven = -1,
 							   float LowTierMaterialExtraChance = 0.0f,
 							   ECataclysmRarity LowestRarity = ECataclysmRarity::Everyday,
-							   float MaterialsMore = 1.0f);
+							   float MaterialsMore = 1.0f, bool bTheCataclysmBossesPiece = false);
 
 	/** The rung named Elite, which Opportunistic Looting asks for; and the first boss rung, as
 	 *  `ACataclysmEnemyCharacter::IsBoss` reads it, which The High Roller asks for. Issue #2741 slice 5b. */
 	static constexpr int32 EliteRarityStep = 1;
 	static constexpr int32 FirstBossRarityStep = 4;
+
+	/** The Cataclysm Boss's rung, the Gatekeeper's (`ACataclysmDungeonGameMode::CataclysmBossRung`, which the death site
+	 *  holds this to). Issue #2853: the only rung `SpawnTheCataclysmBossesPieceFor` drops a piece for. */
+	static constexpr int32 CataclysmBossRarityStep = 5;
+
+	/**
+	 * The one piece the Cataclysm Boss always drops, BESIDE its ordinary drops and not instead of one: a single piece of
+	 * gear at the next tier's best rarity (`UCataclysmDropRoll::CataclysmBossPieceRarity`), tier 1 Legendary up to
+	 * Cataclysmic from tier 4. Issue #2853, the owner's ruling of 2026-11-24, chosen option verbatim: "The next tier's
+	 * best (Recommended)". Nothing for any other rung.
+	 *
+	 * ONE PIECE, WHATEVER THE LOOT QUANTITY: the owner said "always", so neither loot quantity nor the Power Score gap's
+	 * loot factor reaches it. ITS RARITY IS EXACT: rolled through `SpawnDropsFor` with that rarity as the lowest, which
+	 * above the tier's cap gives that rarity and nothing rarer (`RollRarityAtLeast`, the High Roller's path), and at tiers
+	 * 4 to 8 is Cataclysmic either way. IT ARRIVES AT ITS RARITY'S GEAR LEVEL GATE, as every drop does (`RollItem`).
+	 * Marked `bTheCataclysmBossesPiece`. Rolled after everything else the kill drops, so every other draw is as it was.
+	 *
+	 * @return how many actors were spawned: 1 at the Cataclysm Boss's rung, else 0
+	 */
+	static int32 SpawnTheCataclysmBossesPieceFor(UWorld* World, int32 EnemyRarityStep, float MagicFind, const FVector& At,
+												 FRandomStream& Stream, bool bMarked = false);
 
 	/** The highest crafting material tier Scavenger's "T3 and below" reaches, tiers counted 1 to 5, commonest first. */
 	static constexpr int32 ScavengerHighestTier = 3;

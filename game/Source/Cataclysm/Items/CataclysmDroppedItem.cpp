@@ -632,7 +632,8 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										   int32 MaterialCountGiven,
 										   float LowTierMaterialExtraChance,
 										   ECataclysmRarity LowestRarity,
-										   float MaterialsMore)
+										   float MaterialsMore,
+										   bool bTheCataclysmBossesPiece)
 {
 	if (!World)
 	{
@@ -763,6 +764,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 		Drop->Item = Item;
 		Drop->bDroppedByARaisedCreature = bMarked;
 		Drop->bInfested = bInfested;
+		Drop->bTheCataclysmBossesPiece = bTheCataclysmBossesPiece; // Issue #2853: the Cataclysm Boss's one piece.
 		Drop->DisplayName = UCataclysmItemName::NameOf(Item, Bases, Affixes);
 		if (bInfested)
 		{
@@ -855,6 +857,25 @@ int32 UCataclysmDropSpawner::SpawnTheTreesExtraDropsFor(UWorld* World, int32 Ene
 								 Rules.LowTierMaterialExtraChance, ECataclysmRarity::Legendary);
 	}
 	return Spawned;
+}
+
+int32 UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(UWorld* World, int32 EnemyRarityStep, float MagicFind,
+															 const FVector& At, FRandomStream& Stream, bool bMarked)
+{
+	// THE CATACLYSM BOSS'S RUNG ALONE, and nothing drawn for any other, so every other kill is as it was. Issue #2853.
+	if (!World || EnemyRarityStep != CataclysmBossRarityStep)
+	{
+		return 0;
+	}
+
+	// ONE PIECE, NO MATERIAL, AT THE NEXT TIER'S BEST: the lowest rarity given is above the tier's cap at tiers 1 to 3
+	// and is Cataclysmic from tier 4, so `RollRarityAtLeast` gives exactly it. At the baseline loot quantity, which a
+	// given count does not read. Marked, so a count of the kill's ordinary drops can set it aside.
+	const int32 Tier = ACataclysmGameMode::DifficultyTierIn(World);
+	return SpawnDropsFor(World, EnemyRarityStep, MagicFind, UCataclysmDropRoll::BaselineLootQuantity, At, Stream, bMarked,
+						 /*bInfested=*/false, /*GearCountGiven=*/1, /*MaterialCountGiven=*/0,
+						 /*LowTierMaterialExtraChance=*/0.0f, UCataclysmDropRoll::CataclysmBossPieceRarity(Tier),
+						 /*MaterialsMore=*/1.0f, /*bTheCataclysmBossesPiece=*/true);
 }
 
 bool UCataclysmDropSpawner::GoldDropsIn(const UWorld* World)

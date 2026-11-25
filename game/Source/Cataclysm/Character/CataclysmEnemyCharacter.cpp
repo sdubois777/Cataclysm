@@ -407,6 +407,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// slice G5.
 			UCataclysmDropSpawner::SpawnGemsFor(World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 												Stream, /*bMarked=*/bRaisedByARule);
+
+			// AND THE CATACLYSM BOSS'S ONE PIECE OF THE NEXT TIER'S BEST, LAST, so every draw above is as it was, and
+			// nothing for any other rung. Issue #2853, the owner's ruling of 2026-11-24: "The next tier's best
+			// (Recommended)". One piece whatever the loot quantity or the gap rule's loot factor: the owner said "always".
+			static_assert(UCataclysmDropSpawner::CataclysmBossRarityStep == ACataclysmDungeonGameMode::CataclysmBossRung,
+						  "The Cataclysm Boss's piece is no longer dropped at the rung the Gatekeeper is placed at");
+			UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(World, RarityStepItPaysAs(), MagicFind,
+																   GetActorLocation(), Stream,
+																   /*bMarked=*/bRaisedByARule);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.

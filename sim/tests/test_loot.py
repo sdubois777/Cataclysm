@@ -1587,3 +1587,39 @@ def test_the_material_reach_check_refuses_a_reach_that_inverts_the_ladder():
         loot._check_no_material_tier_overtakes_the_one_below_it()
     finally:
         loot.MATERIAL_MAGIC_FIND_REACH = original
+
+
+# --------------------------------------------------------------------------
+# The Cataclysm Boss's one piece of the next tier's best (issue #2853)
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("tier, rarity", [
+    (1, "Legendary"), (2, "Mythical"), (3, "Ascendant"), (4, "Cataclysmic"),
+    (5, "Cataclysmic"), (6, "Cataclysmic"), (7, "Cataclysmic"), (8, "Cataclysmic"),
+])
+def test_the_cataclysm_bosses_piece_is_the_next_tiers_best(tier, rarity):
+    """The owner's ruling of 2026-11-24, "The next tier's best (Recommended)": rarity number tier + 4, to Cataclysmic."""
+    assert loot.cataclysm_boss_piece_rarity(tier) == rarity
+    cap = loot.highest_droppable_rarity(tier)
+    if cap != "Cataclysmic":
+        assert loot.rarity_index(rarity) == loot.rarity_index(cap) + 1, "the piece is one rung above the tier's cap"
+
+
+@pytest.mark.parametrize("tier", [1, 4, 8])
+def test_a_cataclysm_boss_drops_one_piece_at_its_rarity_and_gate(tier):
+    """One piece, of exactly the next tier's best, at that rarity's gear level gate, for any magic find."""
+    rng = random.Random(2853 + tier)
+    for magic_find in (0.0, 100000.0):
+        pieces = loot.roll_the_cataclysm_bosses_piece("Cataclysm Boss", tier, magic_find, rng)
+        assert len(pieces) == 1
+        wanted = loot.cataclysm_boss_piece_rarity(tier)
+        assert pieces[0].rarity == wanted
+        assert pieces[0].gear_level == loot.gear_level_gate(wanted)
+
+
+def test_only_a_cataclysm_boss_drops_the_piece():
+    """Every other enemy rarity, a Boss included, drops no piece; the Cataclysm Boss drops one (the control)."""
+    rng = random.Random(2853)
+    for enemy in loot.ENEMY_GEAR_DROPS:
+        expected = 1 if enemy == "Cataclysm Boss" else 0
+        assert len(loot.roll_the_cataclysm_bosses_piece(enemy, 1, 0.0, rng)) == expected, enemy

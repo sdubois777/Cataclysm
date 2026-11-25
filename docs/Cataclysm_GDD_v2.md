@@ -3177,6 +3177,15 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 Everyday, Quality, Superb and Masterful keep their chances: no tier's cap is below Masterful, and the halving per rung still applies below the cap. Magic find cannot lift a drop past the cap. A gem's rarity is rolled the same way as gear's, so the same cap holds for gems. One exception, which the project owner ruled the same day: the High Roller's extra item, which its node promises at Legendary or rarer, is exactly Legendary at tiers 1 and 2, one rung above tier 1's cap; at tier 3 and up it rolls from Legendary to the cap.
 
+**THE CATACLYSM BOSS ALWAYS DROPS ONE PIECE OF THE NEXT TIER'S BEST, beside its ordinary drops.** Ruled by the project owner on 2026-11-24 (issue #2853): "always drop a single piece of loot that is 3 tiers above the current tier when possible ... show them what they have to look forward to getting in the next tier", and the chosen option "The next tier's best (Recommended)". The Gatekeeper, placed at the Cataclysm Boss rung on the last floor of the Cataclysm boss dungeon once a run, drops exactly one piece of gear at the rarest rarity the next tier can roll, rarity number tier + 4, stopping at Cataclysmic: one rung above the tier's own cap. It arrives at its rarity's upgrade gate, as every drop does, and it is one piece whatever the loot quantity. Every other roll keeps the cap.
+
+| Difficulty tier | The Cataclysm Boss's piece |
+| :-: | :-: |
+| 1 | Legendary |
+| 2 | Mythical |
+| 3 | Ascendant |
+| 4 to 8 | Cataclysmic |
+
 **Why the unpenalised reach is one above the tier rather than level with it.** The same reason the affix tier column gives: with it sitting exactly on the tier, the best thing a dungeon produces at full weight is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 are unpenalised the whole way up, exactly as affix tiers 6, 7 and 8 all reach T7.
 
 **What a drop *may* be is not what it is *likely* to be.** The likely answer also moves with the difficulty tier: the four ordinary rarities flatten toward Masterful as a player goes deeper, while Legendary and above keep the same share at every tier. A tier 8 player mostly finds Masterful and Superb; a tier 1 player mostly finds Everyday.
