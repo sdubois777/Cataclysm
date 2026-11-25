@@ -35502,7 +35502,14 @@ bool FCataclysmPallOfEndingMoreTest::RunTest(const FString&)
 {
 	using namespace CataclysmDamageTypeAurasTest;
 
-	UWorld* World = MakeWorld();
+	// A WORLD THAT HAS BEGUN PLAY, because the imps are spawned with their type and `ACataclysmMinion::Spawn` writes
+	// their health then: a world that never initialised its actors leaves an imp's ability system without its vital
+	// attribute set, and the engine ensures on MaxHealth. Window bun1-w1 found it on this file's Blood and Iron test.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
@@ -35722,7 +35729,14 @@ bool FCataclysmBloodAndIronAlliesTest::RunTest(const FString&)
 {
 	using namespace CataclysmDamageTypeAurasTest;
 
-	UWorld* World = MakeWorld();
+	// A WORLD THAT HAS BEGUN PLAY, because the imps are spawned with their type and `ACataclysmMinion::Spawn` writes
+	// their health then: a world that never initialised its actors leaves an imp's ability system without its vital
+	// attribute set, and the engine ensures on MaxHealth. Window bun1-w1 found it on this file's Blood and Iron test.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
