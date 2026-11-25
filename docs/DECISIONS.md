@@ -27,11 +27,21 @@ Decisions made outside the Google Drive documents, newest first.
 - `tools/tests/test_death_kill_schedule_matches_the_sentence.py`, new;
   `tools/tests/test_passive_effects_match_the_node_text.py`, `tools/tests/test_class_passive_trees.py` and
   `tools/tests/test_every_conditioned_stat_has_an_asker.py`.
+- Five checks the whole suite named: `tools/generate_datatables.py` (`ACTION_ONLY_EVENTS`),
+  `tools/tests/test_generate_datatables.py`, `tools/tests/test_dot_damage_on_a_moving_target_rows.py`,
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` and
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`.
+- The owner's order fixes on the Death trees: `tools/apply_passive_order_fixes_2026_11_24.py` (the Gathered Remains
+  sentences) and `tools/tests/test_apply_passive_order_fixes_2026_11_24.py`; `docs/Soul_Collector_Class_Tree_Final.json`,
+  `docs/Necromancer_Class_Tree_Final.json` and `docs/Shadow_Class_Tree_Final.json`; `game/Data/PassiveNodes.csv` (661
+  rows) and `game/Data/PassiveEdges.csv` (621 rows); `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+  `game/Source/Cataclysm/Tests/CataclysmDeathTreesTests.cpp` (their counts).
 
 ### SAID FIRST
 
 - **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile, rebuild
-  `DT_PassiveEffects` and `DT_PassiveNodes` in the editor step, and run the groups under "Unreal tests".
+  `DT_PassiveEffects`, `DT_PassiveNodes` and `DT_PassiveEdges` in the editor step, and run the groups under "Unreal
+  tests".
 - **THIS BRANCH SITS ON `feat/passive-row-port` (144bfbeb2), WHICH CARRIES THE DEMONIC TREE REWORK, with slice A
   (`feat/death-trees-a`) merged in.** Both edit the condition lists this slice extends, and both land first; the
   coordinating session's order of 2026-11-24 was to rebase after they land. A window for this branch builds the rework
@@ -48,6 +58,11 @@ Decisions made outside the Google Drive documents, newest first.
   the two merges second:** one call in `UCataclysmFervour::KillDecayStep`, beside the one `DecayStep` gets, and a test.
 - **HUNTER'S EYE IS HALF BUILT**: its Elite and stronger half is a row; "and against the enemy Deathmark marked" waits
   for the mark.
+- **THE OWNER'S ORDER FIXES OF 2026-11-24 ARE APPLIED TO THE THREE DEATH TREES HERE**, and the order script's Gathered
+  Remains sentences are changed to do it (see "The owner's order fixes"). **Whichever of this branch and
+  `feat/passive-row-port` merges second takes a conflict of one sentence in `tools/apply_passive_order_fixes_2026_11_24.py`**
+  and keeps this branch's, as the coordinating session ruled. Many Made One, a new Necromancer node, has no row: its
+  Abomination is not built.
 
 ### The rule: a class generator and a skill's own Fervour for a kill
 
@@ -95,9 +110,17 @@ Each so the row's number and bucket are in the sentence the checks read (issue
 
 ### The rows
 
-Thirty-two rows: the two starting nodes' kill halves and sixteen more nodes. Light Feet also has an unconditional row,
-"+1% increased Movement Speed per point", and its window row doubles it. The Soul Collector's grace is 4 seconds for a
-Common kill and 8 for an Elite or stronger one, as two rows, so each row's number is one the sentence states.
+Thirty-two rows in this slice's own commit (`PassiveEffects.csv` 427 to 459): the two starting nodes' kill halves and
+fifteen more nodes. Light Feet has an unconditional row, "+1% increased Movement Speed per point", and its window row
+doubles it. The Soul Collector's grace is 4 seconds for a Common kill and 8 for an Elite or stronger one, as two rows,
+so each row's number is one the sentence states.
+
+**Seven more rows came in with the merge of slice A onto the passive row port** (`0966a8e79`): Untouched and Through
+and Through, the two data-only entries slice A's entry says "are written when this branch is rebased on it". Each says
+"for every 2 points", and each step is one row granted whole from its `Min Points`, the Demonic tree rework's shape.
+They are in the table's last two lines. **With them, 65 of the 220 Death nodes grant something**: the Soul Collector 21
+of its 73, the Necromancer 8 of its 73 and the Shadow 36 of its 74 (slice A: 14 of 73, 8 of 72 and 25 of 74; the
+Necromancer's 73rd is Many Made One, below).
 
 | Tree | Node | Rows |
 |---|---|---|
@@ -117,7 +140,9 @@ Common kill and 8 for an Elite or stronger one, as two rows, so each row's numbe
 | Shadow | Momentum | fervour_kill_decay_grace_seconds, flat, 2 |
 | Shadow | Hunter's Eye | crit_chance, increased, 2, cond=target_rarity_at_least, cond_value=1 |
 | Shadow | Siege of One | fervour_kill_decay_per_second, increased, -8, cond=seconds_after_striking_a_boss, cond_value=2 |
-| Shadow | Light Feet | movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+| Shadow | Light Feet | movement_speed, increased, 1; movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+| Shadow | Through and Through (merge commit) | fervour_per_enemy_hit, flat, 1, tags=Slot.Movement, min_points=2; the same at min_points=4, 6 and 8 |
+| Shadow | Untouched (merge commit) | evasion, flat, 1, scale=class_resource_held, step=20, min_points=2; the same at min_points=4 and 6 |
 
 ### Research
 
@@ -134,7 +159,8 @@ owner's approved trees'. **Specific to this game, judgements:** the five above.
 | `Cataclysm.ClassKillFervour.` | new: `AKillPaysTheSoulCollectorByTheSlainCreaturesRarity`, `TheShadowIsPaidTenOrTwentyFiveAndReapersShareRaisesBoth`, `TheDecayWaitsFourSecondsAfterAKillAndEightAfterAnElite`, `HoarderAndColdStorageSlowTheDecayAndMomentumDelaysTheDrain`, `ARowUnderSecondsAfterAKillHoldsForItsSecondsAfterTheKill`, `AnEliteOrStrongerRowReadsTheStruckCreaturesRarity`, `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock` | 7 |
 | `Cataclysm.Fervour.` | new: `GenerationRateScalesGainOnOwnKill` | the base's count plus 1 |
 | `Cataclysm.StatExemption.` | `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`'s count 25 to 28, and three probes in `EveryStatWithNoAttributeIsActuallyRead` | the base's count, unchanged |
-| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 459 | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 459, PassiveNodes 661, PassiveEdges 621 | unchanged |
+| `Cataclysm.DeathTrees.` | `ADeathNodeIsNamedForItsTreeAndEachTreeStartsAtFervour`: the Necromancer's node count 72 to 73 | unchanged, 6 |
 
 Every new test has a control: an actor that is not a creature, a character without the node, a kill somebody else made,
 a Demonic weapon, and the moment before a window opens or after it closes.
@@ -151,9 +177,92 @@ a Demonic weapon, and the moment before a window opens or after it closes.
 3. `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: `UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);`
    becomes `(void)Notice.Victim;`. Must fail `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock`.
 
+### The owner's order fixes, applied to the Death trees
+
+The owner approved a set of passive order fixes on 2026-11-24 ("Apply all (Recommended)"), and
+`tools/apply_passive_order_fixes_2026_11_24.py` applies them by node name. Its Death parts had not reached the trees in
+`docs/`, and its test `test_a_real_tree_ends_fixed_with_its_graph_and_its_rules_intact[Necromancer_Class_Tree_Final.json]`
+failed from the merge of slice A onto the passive row port (`0966a8e79`) on: the script refused the Necromancer tree.
+
+**Why it refused.** Its Gathered Remains fix was written against the draft sentence "... Remains within 10 metres of you
+last 10% longer per point." The approved file has never held that sentence. It holds the one the 15-keystone merge of
+the same day wrote when it folded Unhallowed Ground into Gathered Remains: "... Remains last 25% longer per point, so at
+8 points they last three times as long: 30 seconds rather than 10." Slice A's whole-number rewrite did not touch this
+node.
+
+**The coordinating session's ruling, 2026-11-24, applying the owner's approved order fixes to the revised trees:**
+1. The fix's "before" is the sentence the tree holds, and its "after" is "Remains last 25% longer per point, so at 8
+   points they last three times as long: 30 seconds rather than 10." The keystone merge's figure stands, the order fix's
+   split stands, and "within 10 metres" goes.
+2. Many Made One is drawn at (-708.8, -222.2) on the emblem layout, 110 units from First Among the Dead. The script's
+   default place lands on Master's Edge there. The owner can move it in their builder app.
+3. All three Death fixes in one commit, on this branch.
+
+**What changed in the trees:**
+- Soul Collector: Spent Breath and Soul Fuel swap content (`basic_spine_009` holds Soul Fuel, 12 points;
+  `basic_d_stem0` holds Spent Breath, 6).
+- Shadow: Envenom and Death's Patience swap content (`basic_spine_008` holds Envenom; `basic_a_stem0` Death's Patience).
+- Necromancer: Gathered Remains keeps its remains half; Many Made One (`basic_lg_d0`, 8 points) holds the Abomination
+  half, after First Among the Dead, whose edge asks for all 10 of its points, so it opens at 40 points spent; Gravefinder
+  moves to directly after Bone Fuse (`basic_os_stem1` holds Gravefinder, `basic_os_a0` Mantle of Bone).
+
+A swap trades each node's content and keeps its identifier, position and edges. **No node these fixes move carries an
+effect row**, so `PassiveEffects.csv` is unchanged. `PassiveNodes.csv` goes from 660 to 661 rows and `PassiveEdges.csv`
+from 620 to 621. The Necromancer has 73 nodes and 448 points (440 before), inside the 390 to 460 that
+`test_the_spendable_total_is_about_four_hundred_and_forty` allows.
+
+### Five checks the first suite run named
+
+The whole suite on `2add3971f` failed five tests this slice caused. Each is brought up to the kill generator, and each
+failing on `2add3971f` and passing after is that check's own proof:
+- **`kill` moves off the generator's list of events with no clock** (`ACTION_ONLY_EVENTS`). `seconds_after_kill`
+  derives it as a clock, and `test_the_event_vocabulary_is_the_clocks_plus_the_five_with_none` refuses an event in both
+  halves. `striking_a_boss` and `movement_skill` are already derived the same way, so the list's comment no longer says
+  every clock is something done to the character. The set of events a row may use is unchanged.
+- **The table of blow conditions an asker does not pass names the two kill stats beside `dot_damage`**, and its control
+  in `tools/tests/test_dot_damage_on_a_moving_target_rows.py` says so.
+- **`UCataclysmFervour::KillDecayStep` is a job of `ACataclysmCharacterBase::RegenerationStep`** in
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`, so deleting the call fails a test.
+- **The three new stat lookups are in the inventory** of `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+  and the two that hand over the slain creature without its distance or stagger are listed in
+  `TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER`. The generator refuses `target_within_metres` and `target_is_staggered` on
+  both stats (asked of `refuse_a_condition_nothing_asks_for` directly), so no such row can ship and grant nothing.
+
 ### What was run
 
-The Python suite and the guard proofs are recorded in the next commit, after they ran.
+**The whole Python suite on `998ebb4c6`**, `python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed,
+8458 passed, 9 skipped in 349.76s (0:05:49)". The JUnit file agrees: tests 8468, failures 1, errors 0, skipped 9, so
+8458 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`, `DT_PassiveNodes` and `DT_PassiveEdges`. The first
+run, on `2add3971f`, failed seven: that one, the five under "Five checks the first suite run named" and the order fixes'
+test.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/apply_passive_order_fixes_2026_11_24.py --check` on the three Death trees: "0 of 3 file(s) would change."
+- `python tools/check_resolved_cpp.py` on the 13 C++ files this slice changed: "13 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace and no file-scope `static` or `FName` added; the new test file's helpers are
+  in `namespace CataclysmClassKillFervourTest`, which no other file names; each of the eight new test classes is named in
+  one file only.
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`998ebb4c6`, and each `proved`: a named test failed with the break in, and nothing failed with it out.
+
+| Break | Named failures |
+|---|---|
+| The Soul Collector's Elite row (`SoulCollector_basic_spine_000#4`, 3 Fervour) under rung 2 rather than 1, in `game/Data/PassiveEffects.csv` | `tools/tests/test_death_kill_schedule_matches_the_sentence.py::test_the_soul_collectors_rows_pay_each_rung_its_figure` |
+| Quarry's first row (`SoulCollector_basic_b_b0#1`) under `target_rarity_is` rather than `target_rarity_at_least` | `tools/tests/test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Through and Through's last step (`Shadow_basic_c_b1#4`) from 8 points to 6 | `tools/tests/test_passive_effects_match_the_node_text.py::test_no_node_grants_the_same_stat_twice` and `::test_a_for_every_n_points_sentence_has_a_row_at_every_step` |
+| `"fervour_per_kill": ASKER_PASSES_A_HIT_DEALT,` taken out of `tools/generate_datatables.py` | `tools/tests/test_every_conditioned_stat_has_an_asker.py::test_every_conditioned_probe_is_on_the_list` and `::test_no_shipped_row_is_refused[PassiveEffects]` |
+
+The five checks under "Five checks the first suite run named" each failed on `2add3971f` and pass with their entries, and
+the order fixes' test failed from `0966a8e79` and passes with the ruling applied: each is that check's own pair of
+halves, measured by the two suite runs.
+
+**No C++ was compiled, and the three C++ guard proofs registered above wait for a window.**
 
 ---
 
