@@ -88,9 +88,30 @@ skill's landed blow marks what it struck. Prefix `Cataclysm.MovementClocks.`; mu
 
 ### What was run
 
-SUITE_FIGURES_C6B2
+**The whole Python suite on `059b7d658`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8565 passed, 9 skipped in 471.99s
+(0:07:51)". The JUnit file agrees: tests 8575, failures 1, errors 0, skipped 9, so 8565 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the
+sentence check described under "Said first", fixed before the commit.
 
-PYTHON_PROOFS_C6B2
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`36e93c625`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A paid use no longer marked, so its end is never noted | `test_charge_and_placed_action_names_match_the_engine.py::test_the_movement_skills_end_and_its_struck_enemies_are_recorded_and_judged` |
+| Any skill's landed blow marks what it struck, not only a Movement slot skill's | the same test |
+| The end's clock made exclusive | the same test |
+| The event `movement_skill_ends` never raised | `test_pool_action_names_match_the_engine.py::test_every_event_a_row_may_hang_on_is_one_the_game_fires` |
+| Arrival's window 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Glancing Cuts on the use's clock rather than its own record | the same test |
 
 ---
 
