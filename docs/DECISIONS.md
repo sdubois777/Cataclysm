@@ -242,8 +242,8 @@ runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
 
 ## 2026-11-24 — The Cataclysm Boss always drops one piece of the next tier's best rarity, beside its ordinary drops (#2853)
 
-**WRITTEN AND NOT COMPILED; IN THE WINDOW OF THE DROP SUPPLY AND POWER SCORE ENTRIES BELOW.** On
-`feat/score-and-drops-2853`, by the
+**RUN AND PASSED IN WINDOW sd2-w1 (2026-11-25), WITH THE DROP SUPPLY AND POWER SCORE ENTRIES BELOW; THE WINDOW'S
+RECORD IS AT THE END OF THE DROP SUPPLY ENTRY.** Written on `feat/score-and-drops-2853`, by the
 coordinating session's instruction of 2026-11-24, as one change before that branch's window. Issue
 [#2853](https://github.com/sdubois777/Cataclysm/issues/2853).
 
@@ -287,7 +287,7 @@ legendary; Path of Exile's pinnacle bosses have guaranteed drops.
 
 ### Tests
 
-**Unreal, registered** (none run): `Cataclysm.RarityCap.` gains three, RC7
+**Unreal, registered** (run in window sd2-w1): `Cataclysm.RarityCap.` gains three, RC7
 `TheCataclysmBossesPieceIsTheNextTiersBest` (the rarity at every tier, written out), RC8
 `ACataclysmBossDropsOnePieceOfTheNextTiersBestAtItsGate` (tiers 1, 4 and 8: one item, marked, of that rarity, at its
 gate) and RC9 `OnlyTheCataclysmBossesRungDropsThePiece` (rungs 0 to 4 nothing, the Boss's included; the control: the
@@ -536,16 +536,17 @@ are not used: by its report they no longer fail anything, the two protections ea
 
 ## 2026-11-24 — Drop supply at tier 1: half the gear, gems scaled by tier, no all-resistances on a tier 1 drop, and the gap rule's cut starting at a per-tier width (#2853)
 
-**ONE WINDOW WITH THE POWER SCORE ENTRY BELOW, ON `feat/score-and-drops-2853-2`; NOT COMPILED; THE WORKBOOK
-WRITTEN.** Written on `feat/drop-supply-2853`, made from `feat/power-score-weights-2853` at `0799b7b27`. Both branches'
-commits were replayed onto development `5cdd6bdc4` (the rarity cap, merged as #2886) as `feat/score-and-drops-2853`,
-which writes the workbook and holds the window's registration: "One window for both", at the end of this entry. That
-branch was rebuilt on development `9acbb3528` (the bug batches, #2889) as `feat/score-and-drops-2853-2`, with the
-workbook written again on development's, and re-registered; the registration says how. Since that rebuild bug batch 1's
-entry stands between this entry and the Power Score entry, by the dates that order the log. Issue
-[#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the drop supply half of the owner's "Adopt, and look at
-drop supply (Recommended)" (the Power Score entry below). Until the window's editor step rebuilds `DT_EnemyDrops`, one
-Python test fails and says so.
+**ONE WINDOW WITH THE POWER SCORE ENTRY BELOW, ON `feat/score-and-drops-2853-2`; RUN AND PASSED IN WINDOW sd2-w1
+(2026-11-25), ITS RECORD AT THE END OF THIS ENTRY; THE WORKBOOK WRITTEN.** Written on `feat/drop-supply-2853`, made from
+`feat/power-score-weights-2853` at `0799b7b27`. Both branches' commits were replayed onto development `5cdd6bdc4` (the
+rarity cap, merged as #2886) as `feat/score-and-drops-2853`, which writes the workbook and holds the window's
+registration: "One window for both", at the end of this entry. That branch was rebuilt on development `9acbb3528` (the
+bug batches, #2889) as `feat/score-and-drops-2853-2`, with the workbook written again on development's, and
+re-registered; the registration says how. Since that rebuild bug batch 1's entry stands between this entry and the Power
+Score entry, by the dates that order the log. Issue [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the
+drop supply half of the owner's "Adopt, and look at drop supply (Recommended)" (the Power Score entry below). The
+window's editor step rebuilt `DT_EnemyDrops` as `9cef8126c`; until then one Python test failed and said so, and since
+then none fails.
 
 ### Why
 
@@ -776,7 +777,7 @@ with the break in, passed restored):
 | PY5 | `ExpectedGemDrops` without `* GemDropShareAt(DifficultyTier)` | 1: the port's share check |
 | PY6 | `EnemyDrops.csv`'s Common gear `0.08` read as `0.16` | 3: the script's figures, the generator's output, gold twice gear |
 
-**Unreal, registered** (none run; no window yet):
+**Unreal, registered** (run in window sd2-w1, recorded at the end of the drop supply entry):
 
 | Group | Test | |
 | :-- | :-- | :-- |
@@ -797,7 +798,7 @@ with the break in, passed restored):
 Predicted counts, read from the files: `Cataclysm.Drop.` 32 (30 + 2), `Cataclysm.GemDrops.` 5, `Cataclysm.PowerGapRewards.`
 6, `Cataclysm.Gold.` 13 (unchanged).
 
-**C++ guard proofs planned for the window** (none run):
+**C++ guard proofs planned for the window** (run in window sd2-w1):
 
 | Proof | Break | Must fail | Prefix |
 | :-- | :-- | :-- | :-- |
@@ -812,7 +813,7 @@ Predicted counts, read from the files: `Cataclysm.Drop.` 32 (30 + 2), `Cataclysm
 ### One window for both, on `feat/score-and-drops-2853` (2026-11-24)
 
 By the coordinating session's instruction of 2026-11-24: one window for the rest of #2853, the plain Power Score weights
-(the Power Score entry below) and this drop supply. Prepared only: nothing compiled, no editor, no pull request.
+(the Power Score entry below) and this drop supply. Prepared then with nothing compiled, no editor and no pull request.
 
 **The branch.** Made from development `5cdd6bdc4`. `git rebase --onto origin/development e36bbf4bb` replayed the eight
 commits above the old rarity cap (the two of `feat/power-score-weights-2853`, the six of `feat/drop-supply-2853`) with
@@ -921,6 +922,73 @@ PS1 to PS3 break lines no Python test reads, so only the C++ tests can see them.
 read as text by a Python port test (`test_all_resistances_drop_gate_port.py`, `test_gems_drop_from_kills.py`,
 `test_power_gap_rewards_port.py`); each is kept as the one proof that its new C++ behaviour test can fail. CG3 is
 dropped for PYG3 above.
+
+### Window sd2-w1, 2026-11-25, on `9cef8126c`: PASSED
+
+**RUN AND PASSED** on `feat/score-and-drops-2853-2`: the registration commit `61505def5` and, on it, the editor step's
+commit `9cef8126c57b12a4d2605233954a3b45decabb2a`, under the lock `sd2-w1`. Every count below is the one registered
+before the run. Scripts and logs: `.claude/windows/` in the sharp-meitner worktree (`run_sd2.py`, `sd2_run.out`).
+
+- **Builds**, under the lock `score-and-drops-compile`: the branch as committed, "Build: Succeeded - 74 actions, 67
+  files compiled"; each changed `.cpp` out of its unity file, "40 actions, 37 files compiled" (all 20 changed `.cpp`
+  files named in the build tool's "Excluded from Cataclysm unity file" line); the unity files again, "20 actions, 17
+  files compiled". 0 compiler warning or error lines in each build tool log.
+- **The editor step**: `tools/generate_datatable_assets.py` changed exactly `game/Content/Data/DT_EnemyDrops.uasset` and
+  `game/Data/datatable_asset_sources.json`, so nothing was restored. The record moved for `DT_EnemyDrops` alone (6 rows;
+  `csv_sha256` `bca9b368...` to `3d0a4f88...`), and `test_datatable_assets_are_current.py` then printed "18 passed".
+  Committed alone as `9cef8126c`, the package stored as a Git LFS object; pushed, with its LFS object.
+- **Groups alone**: 30 of 30 passed, each at its registered count with none failed: `RarityCap.` 9, `Drop.` 32,
+  `DropPickup.` 20, `Item.` 13, `GemDrops.` 5, `Gold.` 13, `PowerGapRewards.` 6, `PowerScore.` 5, `PowerScoreLive.` 10,
+  `Overwhelm.` 8, `CharacterSheet.` 10, `Sandbox.` 8, `Dismantle.` 12, `EmpireTreeDrops.` 13, `CityDungeonRewards.` 5,
+  `ConsumptionDouble.` 15, `SaveApply.` 24, `Data.` 7, `ExtraDamageTypes.` 6, `BossFloor.` 5, `WinningTheRun.` 11,
+  `BuriedWeaponKills.` 4, `EnemyStrength.` 9, the six `DungeonModifierEffects.` tests 1 each, `Enchantments.` 366.
+- **The whole suite**: "Tests: 5432 tests performed, 5432 succeeded, 0 failed. 58 skipped part of what they check";
+  "Test saves: 874 written and deleted, 0 left behind"; "Declared: 5432 tests in the tree at 9cef8126c; 5432
+  performed, gap 0; every declared test was reported by the run". Memory: "tests=6039 peak_used_virtual_mb=9226".
+- **Python**, alongside the whole suite: "8457 passed, 10 skipped in 358.13s"; JUnit 8467 tests, 0 failures, 0 errors,
+  10 skipped. ruff: "All checks passed!". Before the editor step, on `61505def5`: "1 failed, 8456 passed, 10 skipped";
+  JUnit 8467 tests, 1 failure, 0 errors; the one failure `test_every_csv_still_hashes_to_what_was_recorded`, as
+  registered.
+
+**What the new tests printed**, quoted from the run:
+
+| Test's line | Printed |
+| :-- | :-- |
+| GEAR HALVED | "Common 0.08 (was 0.16), Elite 0.25 (was 0.50), Legendary 0.50 (was 1.00), Herald 1.00 (was 2.00), Boss 2.50 (was 5.00), Cataclysm_Boss 6.00 (was 12.00); 40000 Common kills dropped 3166 gear, 0.0791 a kill" |
+| NO ALL RESIST | "3000 Chests a tier; tier 1 rolled 0 all-resistances and 141 single resistances (0 failed); tier 2 rolled 139 and 155 (0 failed)" |
+| GEM TIER SHARE | "tier 8 1.000000, tier 7 0.750000, [...] tier 1 0.133484; 20 Cataclysm Bosses placed 221 gems, 217.8 expected at tier 1's share and 1632.0 at tier 8's" |
+| GAP START | "tier 1 1.40 \| tier 2 1.30 \| tier 3 1.10 \| tier 4 1.00 \| tier 5 0.90 \| tier 6 0.90 \| tier 7 0.80 \| tier 8 0.80 [...]" |
+| LADDER | "Common 0.16 piles, 0.08 gear [...] Cataclysm_Boss 12 piles, 6 gear, 24 gear at 400%" |
+| POWER WEIGHTS | "level 10.0000, gear 2.0000, upgrade factor 1.0000, gem 5.0000, resistance 1.0000" |
+| POWER ANCHORS | "T1 364 against 385 (-5.5%) \| T2 860 against 883 (-2.6%) \| [...] \| T8 6528 against 6327 (+3.2%)" |
+| POWER SHARES | "T8 15 / 49 / 28 / 9 \| T1 33 / 40 / 8 / 19" |
+| LIVE SHEET WEIGHTS | "From level: 60 (10 a level) / From gear: 8 (2 a rarity step of each piece, times 1 + its gear level) / From gems: 15 (5 a rarity step of each socketed gem) / From resistances: 10 (1 a resistance percent, up to 70)" |
+| BOSS PIECE | "tier 1, 1 spawned, 1 on the floor, Legendary +4"; "tier 4, [...] Cataclysmic +10"; "tier 8, [...] Cataclysmic +10" |
+| RARITY CAP LIVE | "best at tier 1 3 (66 Masterful), best at tier 8 7; the Cataclysm Boss's pieces 20 at tier 1 (20 the next tier's best), 20 at tier 8 (20)" |
+
+**The two bug batch tests the registration named, as predicted**: `BuriedWeaponKills.` "LEAP INTO A BOND: [...] 9
+piece(s) of gear on the floor, 0 a copy of another" (8 in bb12-w1); `EnemyStrength.` "BOSS BRUTE MELEE CRITICAL:
+[...] Overwhelm 26.49 points; keeps 0.9675 of a hit; [...] landed 139.9402 [...] 60.8% of the character's health"
+(27.92 points and the same 139.9402 in bb12-w1).
+
+**C++ guard proofs**, each PROVED: named tests failed with the break in, and every test of the groups passed restored.
+CG1 and CB3 were written as `false && <the original expression>`, which returns or stores false as the registered
+`return false;` and `= false;` do while every name on the line is still read, so the build could not stop on an
+unreferenced variable.
+
+| Proof | Groups | With the break in | Restored | Against the prediction |
+| :-- | :-- | :-- | :-- | :-- |
+| PS1 | `PowerScore.`, `PowerScoreLive.` | 15 performed, 5 failed: `TheFourRulesTheFormulaImplies`, `TheReferenceCharacterLandsNearEveryTiersAnchor`, `TheSharesFallOutAtFifteenFortyNineTwentyEightAndNine`, `AMasterfulPieceAtPlusNoughtScoresTwiceItsRarity`, `GearBuiltToTheTierEightReferenceScoresTheReference` | 15 of 15 | the three predicted "at least", and two more |
+| PS2 | `PowerScore.`, `PowerScoreLive.` | 15 performed, 5 failed: `ALevelSixCharacterScoresSixtyFromItsLevel`, `TheReferenceCharacterLandsNearEveryTiersAnchor`, `TheSharesFallOutAtFifteenFortyNineTwentyEightAndNine`, `GearBuiltToTheTierEightReferenceScoresTheReference`, `TheSheetShowsEachTermBesideItsPlainWeight` | 15 of 15 | the two predicted "at least", and three more |
+| PS3 | `PowerScoreLive.` | 10 performed, 2 failed: `TheSheetShowsEachTermBesideItsPlainWeight`, `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` | 10 of 10 | **one more than predicted**: that test compares the whole hover text, which shows each weight; it read "10.0 a level" for "10 a level" |
+| CG1 | `Drop.` | 32 performed, 1 failed: `NoAllResistancesAffixRollsOnATierOneDrop` | 32 of 32 | as predicted |
+| CG2 | `GemDrops.` | 5 performed, 1 failed: `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | 5 of 5 | as predicted |
+| CG4 | `PowerGapRewards.` | 6 performed, 1 failed: `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | 6 of 6 | as predicted |
+| CB1 | `RarityCap.` | 9 performed, 1 failed: `TheCataclysmBossesPieceIsTheNextTiersBest` (RC7) | 9 of 9 | as predicted |
+| CB2 | `RarityCap.` | 9 performed, 1 failed: `OnlyTheCataclysmBossesRungDropsThePiece` (RC9) | 9 of 9 | as predicted |
+| CB3 | `RarityCap.` | 9 performed, 2 failed: `ACataclysmBossDropsOnePieceOfTheNextTiersBestAtItsGate` (RC8), `AKillAtTierOneDropsNothingAboveMasterful` (RC6) | 9 of 9 | as predicted |
+
+The source hash was the same before and after each proof, and the tested head was still `9cef8126c` after the last.
 
 ---
 
@@ -1037,9 +1105,10 @@ the engine's compile-time format check may refuse.
 
 ## 2026-11-24 — The player's Power Score counts in plain numbers: 10 a level, 2 x rarity x (1 + gear level) a piece, 5 a gem rarity step, 1 a resistance percent (#2853)
 
-**ONE WINDOW WITH THE DROP SUPPLY, ON `feat/score-and-drops-2853-2` (the drop supply entry above); NOT COMPILED.**
-Written on `feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at `e36bbf4bb`; the rarity cap has since
-merged as #2886. Issue
+**ONE WINDOW WITH THE DROP SUPPLY, ON `feat/score-and-drops-2853-2` (the drop supply entry above); RUN AND PASSED IN
+WINDOW sd2-w1 (2026-11-25), ITS RECORD AT THE END OF THE DROP SUPPLY ENTRY.** Written on
+`feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at `e36bbf4bb`; the rarity cap has since merged as
+#2886. Issue
 [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), part 2. Part 1, the rarity cap, is an entry further below.
 
 ### Why
@@ -1205,7 +1274,7 @@ errors, 9 skipped. ruff: "All checks passed!".
 | PY2 | `PointsPerGearRarityStep = 2.0f` read as `= 3.0f` in the header | 2: the header against the model, and the ruled numbers |
 | PY3 | the document's tier 8 shares sentence read as 10/50/30/10 | 1: the document's tier 8 shares |
 
-**Unreal, registered** (none run; no window yet):
+**Unreal, registered** (run in window sd2-w1, recorded at the end of the drop supply entry):
 
 | Group | Test | |
 | :-- | :-- | :-- |
