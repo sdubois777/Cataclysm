@@ -54,6 +54,10 @@ Decisions made outside the Google Drive documents, newest first.
   measures one. The share is also held on the character while the event is raised, because an action's condition is
   judged without the amount in hand. It is what reached health, as Soulbound counts. Avenging Dead's "more than 5%" is
   the ruled `at_least` 5.
+- **A FAULT FOUND BY THE WHOLE SUITE ON THIS ENTRY'S FIRST COMMIT, AND FIXED.** `tools/tests/test_pool_action_names_match_the_engine.py`
+  `::test_every_event_a_row_may_take_a_share_of_is_fired_with_an_amount` used `hit_taken`, fired with a literal nought,
+  as its example of an event carrying no amount. `melee_hit_taken` is that example now, and the test also requires
+  `hit_taken` to carry one.
 - **AN EVENT CONDITION IS NEW**: `hit_took_at_least_percent_of_max_health` reads a fact that exists only while
   `hit_taken` is raised, so on Avenging Dead's own-stack row it is put on the stack's grant and taken off the stat
   (`UCataclysmStatPipeline::IsJudgedAtItsEvent`, `CataclysmItem.cpp`). The generator allows it only as the Condition of
