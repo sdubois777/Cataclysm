@@ -39,6 +39,8 @@
 // A taunt is crowd control, as a silence is. Warlord's Will's six-piece, ruled 2026-10-18 (B).
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+// For Stigmata's self-burn, laid when its holder sets an enemy alight.
+#include "AbilitySystem/CataclysmStigmata.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -2857,6 +2859,18 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 			}
 			Applier->ActOnEvent(FName(TEXT("dot_applied")));
 		}
+	}
+
+	// AND A BURN SETS ITS APPLIER ALIGHT AS WELL, FOR A HOLDER OF STIGMATA.
+	// Approved by the project owner on 2026-11-24: "When you set an enemy
+	// alight, you are set alight as well for 4 seconds". Not for a copy a spread
+	// makes, which nobody applied, and not for converted damage, which is no
+	// burn; `UCataclysmStigmata` refuses everything that is not a burn laid on
+	// another character, which is also what keeps its own self-burn from
+	// asking again.
+	if (Instigator != Target && !bApplyingASpreadCopy && !bIsConvertedDamage)
+	{
+		UCataclysmStigmata::AfterSettingAlight(Instigator, Target, EffectTag);
 	}
 
 	// A ROW MAY PASS THIS APPLICATION ON TO ENEMIES NEAR THE TARGET. Ruled

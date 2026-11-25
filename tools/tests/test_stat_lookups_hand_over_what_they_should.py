@@ -436,6 +436,10 @@ INVENTORY = {
         'class resource generation, asked on a timer with no blow, '
         'target or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(FloorAgainstHealingStat), Healing, 0.0f'):
+        "Sanguine Ledger's floor, asked with the healing's tags when healing "
+        'removes Fervour, with no blow, target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(PerSecondStat), FGameplayTagContainer(), 0.0f'):
         'class resource generation, asked on a timer with no blow, '
         'target or skill in hand',
@@ -555,6 +559,9 @@ INVENTORY = {
         'container',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmNova.cpp',
      'FName(DamageStat), FGameplayTagContainer(), 0.0f'):
+        "a nova's own figures, asked before it strikes anything",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNova.cpp',
+     'FName(WeaponDamageStat), FGameplayTagContainer(), 0.0f'):
         "a nova's own figures, asked before it strikes anything",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp',
      'FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat), SkillTags, UCataclysmDamageCalculation::NormalProjectileLaterHitDamage'):
@@ -718,6 +725,14 @@ INVENTORY = {
      'FName(CarnageHasNoMaximumStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
         'how long a stack lasts and how many may be held, read off the '
         'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp',
+     'FName(CarnageStackSecondsStat), FGameplayTagContainer(), 0.0f'):
+        'how long a stack lasts and how many may be held, read off the '
+        'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmStigmata.cpp',
+     'FName(SelfBurnStat), FGameplayTagContainer(EffectTag), 0.0f'):
+        "a switch read off the character that laid a burn, with the burn's "
+        'own tag and no blow, target or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat), AssetTags, Swinging->GetNumericAttribute(Suppressed)'):
         'a defender reading with no blow in hand',

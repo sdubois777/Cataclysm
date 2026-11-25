@@ -108,6 +108,22 @@ public:
 	/** Whether healing stops removing Fervour at all. Zero for no. #1006. */
 	static const TCHAR* LossSuppressedStat;
 
+	/**
+	 * The Fervour healing can never take the pool below. Zero for no floor.
+	 *
+	 * THE MASOCHIST'S SANGUINE LEDGER, AS REWORKED BY THE PROJECT OWNER'S
+	 * APPROVAL OF 2026-11-24: "Healing never takes your Fervour below 50." Its
+	 * row is a flat 50. It replaced the keystone's old trade -- regeneration
+	 * removing no Fervour at the price of half the regeneration -- with an
+	 * upgrade: once a Masochist has banked the Ultimate's cost, healing cannot
+	 * take it back, and above the floor the class rule holds.
+	 *
+	 * A STAT WITH NO GAMEPLAY ATTRIBUTE, read only by `FloorAgainstHealing`
+	 * below, the way `LossSuppressedStat` above is read only by
+	 * `LossIsSuppressed`.
+	 */
+	static const TCHAR* FloorAgainstHealingStat;
+
 	/** How much Fervour arrives every second, from nothing happening. #1008. */
 	static const TCHAR* PerSecondStat;
 
@@ -427,6 +443,20 @@ public:
 	 */
 	static bool LossIsSuppressed(const UAbilitySystemComponent* AbilitySystem,
 								 const FGameplayTagContainer& Healing);
+
+	/**
+	 * The Fervour this character's healing may not take the pool below, or
+	 * zero for none. Sanguine Ledger, 2026-11-24. See `FloorAgainstHealingStat`.
+	 *
+	 * ASKED WITH THE HEALING'S OWN TAGS, as `LossIsSuppressed` is, so a later
+	 * row may scope a floor to one kind of healing. Sanguine Ledger's row names
+	 * no tag and covers every kind.
+	 *
+	 * Zero for an ability system with no class resource attribute set, which is
+	 * every enemy, and floored at zero, so no row can make healing ADD Fervour.
+	 */
+	static float FloorAgainstHealing(const UAbilitySystemComponent* AbilitySystem,
+									 const FGameplayTagContainer& Healing);
 
 	/**
 	 * Add the Fervour a step this long is worth, and answer what arrived.

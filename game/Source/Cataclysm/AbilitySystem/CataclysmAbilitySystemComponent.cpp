@@ -1212,7 +1212,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// one debuff may or may not be Bleeding, and a bleeding character may carry
 	// three debuffs; neither reading can be worked out from the other.
 	State.bIsBleeding = UCataclysmDebuffs::IsBleeding(this);
-	State.DebuffsCarried = UCataclysmDebuffs::CountOn(this);
+	// TWICE OVER FOR A HOLDER OF VESSEL OF PLAGUES, approved by the project
+	// owner on 2026-11-24: "each debuff on you counts twice for everything that
+	// counts the debuffs on you". This reading is what every node paying per
+	// debuff on you scales by, so doubling it here doubles each of them.
+	State.DebuffsCarried = UCataclysmDebuffs::CountCarriedOn(this);
 
 	// AND WHETHER IT IS UNDER ANY DAMAGE OVER TIME AT ALL. Ruled 2026-10-07. The
 	// parent of the bleed tag, asked of the same tag list, so a burn, a poison
@@ -2680,13 +2684,18 @@ int32 UCataclysmAbilitySystemComponent::StacksHeld(ECataclysmStackKind Kind,
 	// REPORTED RATHER THAN STORED, so asking does not reset anything. The count
 	// held in the field is only meaningful inside the window; outside it the
 	// answer is zero, and the field is corrected on the next grant.
+	//
+	// AND THE EXTRA THE LAST GRANT DECIDED ON, nought for every kind but
+	// Carnivore's Carnage. See `GrantStack`.
 	const float Since = World->GetTimeSeconds() - StackGrantedAtSeconds[Index];
-	return Since > FMath::Max(0.0f, WindowSeconds) ? 0 : StackCounts[Index];
+	return Since > FMath::Max(0.0f, WindowSeconds + StackExtraWindowSeconds[Index])
+		? 0 : StackCounts[Index];
 }
 
 void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
 												  float WindowSeconds,
-												  int32 Cap)
+												  int32 Cap,
+												  float ExtraWindowSeconds)
 {
 	const int32 Index = static_cast<int32>(Kind);
 	if (Index < 0 || Index >= UCataclysmStacks::KindCount)
@@ -2728,6 +2737,12 @@ void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
 	// AND THE WHOLE LOT'S EXPIRY MOVES WITH IT. See the header for why this is
 	// one timestamp per kind rather than one per stack.
 	StackGrantedAtSeconds[Index] = World->GetTimeSeconds();
+
+	// AND SO DOES HOW MUCH LONGER THAN ITS WINDOW IT LASTS, AFTER `Standing` WAS
+	// READ: whether the count had lapsed is judged on what the last grant
+	// decided, and this grant decides for the next. Floored at nought, so no
+	// grant shortens a kind's own window.
+	StackExtraWindowSeconds[Index] = FMath::Max(0.0f, ExtraWindowSeconds);
 }
 
 void UCataclysmAbilitySystemComponent::NoteBuffNegated()
@@ -2764,6 +2779,7 @@ void UCataclysmAbilitySystemComponent::ClearStacks(ECataclysmStackKind Kind)
 	// with nothing before it looks at the clock.
 	StackCounts[Index] = 0;
 	StackGrantedAtSeconds[Index] = 0.0f;
+	StackExtraWindowSeconds[Index] = 0.0f;
 }
 
 bool UCataclysmAbilitySystemComponent::SpendStack(ECataclysmStackKind Kind,

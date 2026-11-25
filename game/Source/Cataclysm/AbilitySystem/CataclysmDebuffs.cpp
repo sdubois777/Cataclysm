@@ -142,6 +142,41 @@ int32 UCataclysmDebuffs::CountOnActor(const AActor* Actor)
 	return CountOn(UCataclysmTargeting::AbilitySystemOf(Actor));
 }
 
+// WHAT VESSEL OF PLAGUES GRANTS SINCE THE PROJECT OWNER'S APPROVAL OF
+// 2026-11-24: "each debuff on you counts twice for everything that counts the
+// debuffs on you."
+const TCHAR* UCataclysmDebuffs::CountTwiceStat = TEXT("debuffs_carried_count_twice");
+
+bool UCataclysmDebuffs::CountsTwiceOn(const UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return false;
+	}
+
+	const FCataclysmStatInputs* Inputs = Cataclysm->GetStatInputs(FName(CountTwiceStat));
+	if (!Inputs)
+	{
+		// NOTHING RECORDED: every character without the keystone.
+		return false;
+	}
+
+	// THE LINE THROUGH THE PIPELINE WITH NO STATE AND NO TAGS, which is what the
+	// header promises and why this cannot recurse: the default state refuses
+	// every condition rather than asking `CurrentConditions` for one.
+	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+											FGameplayTagContainer(),
+											FCataclysmStatConditions()).Final > 0.0f;
+}
+
+int32 UCataclysmDebuffs::CountCarriedOn(const UAbilitySystemComponent* AbilitySystem)
+{
+	const int32 Distinct = CountOn(AbilitySystem);
+	return CountsTwiceOn(AbilitySystem) ? Distinct * 2 : Distinct;
+}
+
 int32 UCataclysmDebuffs::Cleanse(AActor* Character)
 {
 	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Character);

@@ -10,6 +10,18 @@
 #include "GameFramework/Actor.h"
 
 const TCHAR* UCataclysmNova::DamageStat = TEXT("nova_damage_of_missing_health");
+const TCHAR* UCataclysmNova::WeaponDamageStat = TEXT("nova_damage_of_weapon_damage");
+
+float UCataclysmNova::AmountFromWeaponDamage(float SharePercent, float WeaponDamage)
+{
+	// NOTHING FOR NO SHARE, AND NOTHING NEGATIVE. A weapon damage below nought
+	// is unreachable, and a negative nova would heal what it struck.
+	if (SharePercent <= 0.0f || WeaponDamage <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return WeaponDamage * SharePercent / 100.0f;
+}
 
 float UCataclysmNova::AmountFrom(float SharePercent, float Health,
 								 float MaxHealth)
@@ -73,11 +85,22 @@ float UCataclysmNova::Step(AActor* Character)
 	const float SharePercent = AbilitySystem->StatForSkill(
 		FName(DamageStat), FGameplayTagContainer(), 0.0f);
 
+	// AND THE SHARE OF WEAPON DAMAGE, Unstable Aura's figure since 2026-11-24,
+	// asked the same way and for the same reasons: no tags, a fallback of
+	// nought, and a row carrying a health condition. Its stat has no gameplay
+	// attribute at all.
+	const float WeaponSharePercent = AbilitySystem->StatForSkill(
+		FName(WeaponDamageStat), FGameplayTagContainer(), 0.0f);
+
 	// AND WITHERED TOUCH ON THE CHARACTER, ruled 2026-10-26 (#2541): the curse cuts a share of one of the player's own
 	// stats, and this is a share of its own missing health. `Character` is the one releasing it, which the curse lands
 	// on; a minion releases none and carries no curse. `AmountFrom` is the arithmetic and stays uncut.
-	const float Amount = AmountFrom(SharePercent, Vitals->GetHealth(),
-									Vitals->GetMaxHealth())
+	//
+	// ONE NOVA FOR THE TWO FIGURES, so a character holding both is not hit by two pulses on two clocks.
+	const float Amount = (AmountFrom(SharePercent, Vitals->GetHealth(),
+									 Vitals->GetMaxHealth())
+						  + AmountFromWeaponDamage(WeaponSharePercent,
+												   UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem)))
 		* UCataclysmSkillEffects::KeptUnderWitheredTouch(Character);
 	if (Amount <= 0.0f)
 	{
@@ -88,7 +111,7 @@ float UCataclysmNova::Step(AActor* Character)
 
 	if (!AbilitySystem->MayReleaseNova())
 	{
-		// RELEASED ONE LESS THAN FIVE SECONDS AGO. This step runs several times
+		// RELEASED ONE LESS THAN ITS INTERVAL AGO. This step runs several times
 		// a second, so this is the usual answer for a character standing at low
 		// health with the node.
 		return 0.0f;
@@ -118,9 +141,13 @@ float UCataclysmNova::Step(AActor* Character)
 	}
 
 	// AND THE INTERVAL RESTARTS WHETHER OR NOT ANYTHING WAS STANDING IN IT. See
-	// the header: "you release a nova every 5 seconds" does not make the release
-	// depend on there being a target.
-	AbilitySystem->NoteNovaReleased(IntervalSeconds);
+	// the header: "you release a nova every 3 seconds" does not make the release
+	// depend on there being a target. Three seconds while the weapon figure is
+	// held, which is Unstable Aura's since 2026-11-24; five for the
+	// missing-health figure alone.
+	AbilitySystem->NoteNovaReleased(WeaponSharePercent > 0.0f
+										? WeaponDamageIntervalSeconds
+										: IntervalSeconds);
 
 	return Amount;
 }

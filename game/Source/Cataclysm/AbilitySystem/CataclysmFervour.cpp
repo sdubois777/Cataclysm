@@ -18,6 +18,8 @@ const TCHAR* UCataclysmFervour::LostToHealingStat =
 	TEXT("fervour_lost_to_healing");
 const TCHAR* UCataclysmFervour::LossSuppressedStat =
 	TEXT("fervour_loss_suppressed");
+const TCHAR* UCataclysmFervour::FloorAgainstHealingStat =
+	TEXT("fervour_floor_against_healing");
 const TCHAR* UCataclysmFervour::PerSecondStat = TEXT("fervour_per_second");
 const TCHAR* UCataclysmFervour::PerCastStat = TEXT("fervour_per_cast");
 const TCHAR* UCataclysmFervour::OnDroppingLowStat =
@@ -213,6 +215,29 @@ bool UCataclysmFervour::LossIsSuppressed(
 		> 0.0f;
 }
 
+float UCataclysmFervour::FloorAgainstHealing(
+	const UAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& Healing)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm
+		|| !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO CLASS RESOURCE SET MEANS NO FERVOUR TO KEEP, for the reason
+		// `LossIsSuppressed` above gives.
+		return 0.0f;
+	}
+
+	// A FALLBACK OF ZERO, for the reason `LossIsSuppressed` gives: the stat has
+	// no gameplay attribute, so nothing recorded for it means no floor.
+	//
+	// FLOORED AT ZERO ITSELF, because a negative floor would be a floor below
+	// an empty pool, which is no floor; nothing states one.
+	return FMath::Max(
+		0.0f, Cataclysm->StatForSkill(FName(FloorAgainstHealingStat), Healing, 0.0f));
+}
+
 float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 							  FName Stat, float HealthChanged,
 							  const FGameplayTagContainer& Context, float Sign)
@@ -289,7 +314,18 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	// back by the helper exactly as it came.
 	const float Moved = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
 		AbilitySystem, Sign * Amount);
-	const float Wanted = FMath::Clamp(Before + Moved, 0.0f,
+
+	// AND HEALING STOPS AT A FLOOR A ROW STATES. Sanguine Ledger, reworked by
+	// the project owner's approval of 2026-11-24: "Healing never takes your
+	// Fervour below 50." Only the removing direction, for the reason the
+	// suppression above gives. A pool already at or below the floor keeps what
+	// it has -- the lowest healing may leave is the smaller of the floor and
+	// what was there -- and one above it loses no further than the floor. A
+	// character with no floor answers 0, which is the clamp this always had.
+	const float Lowest = Sign < 0.0f
+		? FMath::Min(Before, FloorAgainstHealing(AbilitySystem, Context))
+		: 0.0f;
+	const float Wanted = FMath::Clamp(Before + Moved, FMath::Max(0.0f, Lowest),
 									  Resource->MaximumClassResourceAsked());
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))

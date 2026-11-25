@@ -338,6 +338,24 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// 2026-10-09. Neither has a gameplay attribute or a base.
 		TEXT("healing_skill_health_restored"),
 		TEXT("healing_skill_health_as_energy_shield"),
+		// FIVE MASOCHIST FIGURES FROM THE TREE REWORK THE PROJECT OWNER APPROVED
+		// ON 2026-11-24, none with a gameplay attribute or a base:
+		// Sanguine Ledger's floor, read by UCataclysmFervour::FloorAgainstHealing
+		// when healing removes Fervour ("Healing never takes your Fervour below
+		// 50");
+		TEXT("fervour_floor_against_healing"),
+		// Vessel of Plagues' switch, read by UCataclysmDebuffs::CountsTwiceOn for
+		// the pipeline's count of debuffs carried ("each debuff on you counts
+		// twice");
+		TEXT("debuffs_carried_count_twice"),
+		// Stigmata's switch, read by UCataclysmStigmata::AfterSettingAlight when
+		// its holder sets an enemy alight ("you are set alight as well");
+		TEXT("burn_self_on_burning_an_enemy"),
+		// Unstable Aura's share of weapon damage, read by UCataclysmNova::Step;
+		TEXT("nova_damage_of_weapon_damage"),
+		// and Carnivore's extra seconds of Carnage, read by
+		// UCataclysmStacks::CarnageExtraSeconds when a Carnage stack is granted.
+		TEXT("carnage_stack_seconds"),
 		// Above nought, applying a damage over time effect refreshes the
 		// applier's others on that target, read by UCataclysmSkillEffects where
 		// one is applied. Ruled 2026-10-06: Plague Doctor's six-piece bonus.
