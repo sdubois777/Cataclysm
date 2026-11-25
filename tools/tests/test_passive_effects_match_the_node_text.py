@@ -729,7 +729,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: Wire.
 #:
 #: AND TO 578 THE SAME DAY: two rows of V4b (`tools/reapply_war_vows_v4b_workbook.py`): Counterfire and Magnum Opus.
-AUTHORED_ROWS = 578
+#:
+#: AND TO 583 THE SAME DAY: five rows of V5a (`tools/reapply_war_vows_v5a_workbook.py`): Lightning Rod, Creeping
+#: Mines' two, Where They Fall and Crossfire.
+AUTHORED_ROWS = 583
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1292,7 +1295,9 @@ AUTHORED_NODES = 322
 #: `AUTHORED_NODES` too.
 #: AND TO 64 THE SAME DAY: V4b -- Counterfire and Magnum Opus (Saboteur), the first rows on their capstones, which move
 #: `AUTHORED_NODES` too.
-AUTHORED_OPTIONS = 64
+#: AND TO 68 THE SAME DAY: V5a -- Lightning Rod, Creeping Mines, Where They Fall and Crossfire (Saboteur). Each
+#: capstone already had a row.
+AUTHORED_OPTIONS = 68
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2908,6 +2913,14 @@ VALUE_IN_WORDS = {
     # of a gadget's shot, which the sentence says as "a gadget fires at it"; Magnum Opus is a flag.
     ("Saboteur_capstone_100", "", ""): ("a gadget fires at it", 100.0),
     ("Saboteur_capstone_200", "eldest_gadget_casts_every_skill"): ("uses every skill you use", 1.0),
+    # THE FIFTH SLICE'S FIRST HALF (V5a, 2026-11-25): Creeping Mines' speed and reach, Lightning Rod's 3% for each
+    # device, and the Final Oath's two action rows, keyed by their option: Where They Fall's copy lasts 4 seconds, and
+    # Crossfire repeats at 10%.
+    ("Saboteur_capstone_100", "trap_creep_metres_per_second"): ("at 3 metres a second", 3.0),
+    ("Saboteur_capstone_100", "trap_creep_reach_metres"): ("within 10 metres of them", 10.0),
+    ("Saboteur_capstone_25", "blow_to_device_chance_per_device"): ("a 3% chance for each trap and gadget", 3.0),
+    ("Saboteur_capstone_200", "option 1", ""): ("lasts 4 seconds", 4.0),
+    ("Saboteur_capstone_200", "option 3", ""): ("at 10% of its damage", 10.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.
@@ -3292,6 +3305,12 @@ def in_words(row: dict):
     # stat differ only in it: Blood Tithe's "At 6 points" rows (the Fervour
     # spends, 2026-11-25).
     min_points = str(int(float(row.get("MinPoints") or 0)))
+    # AND BY THE OPTION, FIRST, for two action rows on one capstone that differ only in it: Where They Fall and
+    # Crossfire on the Saboteur's Final Oath (V5a, 2026-11-25), both with no stat and no condition. Keyed as
+    # (node, "option N", stat).
+    by_option = VALUE_IN_WORDS.get((row["Node"], f"option {row.get('Option') or '0'}", row["Stat"]))
+    if by_option:
+        return by_option
     return (VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip(),
                                 row["ValueKind"].strip().lower(), min_points))
             or VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip(),

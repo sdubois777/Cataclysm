@@ -9488,6 +9488,63 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * Creeping Mines's `trap_creep_metres_per_second` and `trap_creep_reach_metres`, read by
+	 * `ACataclysmMinion::TrapCreepCmPerSecondFor` and `TrapCreepReachCmFor`, which a trap's step asks. The War vow
+	 * options' fifth slice, first half, V5a, 2026-11-25. Two characters; only the second holds 3 and 10, and only it is
+	 * answered 300 and 1,000 centimetres.
+	 */
+	void ProbeTrapCreepFigures(FAutomationTestBase& Test, bool bSpeed)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::TrapCreepMetresPerSecondStat), 3.0f},
+								   {FName(ACataclysmMinion::TrapCreepReachMetresStat), 10.0f}});
+		const auto Read = [bSpeed](const AActor* Who)
+		{
+			return bSpeed ? ACataclysmMinion::TrapCreepCmPerSecondFor(Who) : ACataclysmMinion::TrapCreepReachCmFor(Who);
+		};
+		Test.TestEqual(TEXT("a character without the stat is answered nought"), Read(Plain.Actor), 0.0f);
+		Test.TestEqual(TEXT("and one holding it its figure in centimetres, so the trap's step really reads it"),
+					   Read(Holding.Actor), bSpeed ? 300.0f : 1000.0f, 0.01f);
+	}
+
+	void ProbeTrapCreepSpeed(FAutomationTestBase& Test) { ProbeTrapCreepFigures(Test, /*bSpeed=*/true); }
+	void ProbeTrapCreepReach(FAutomationTestBase& Test) { ProbeTrapCreepFigures(Test, /*bSpeed=*/false); }
+
+	/**
+	 * Lightning Rod's `blow_to_device_chance_per_device`, read by `UCataclysmAbilitySystemComponent::
+	 * BlowToDeviceChanceFor`. V5a, 2026-11-25. A character holding 3 is answered 12 with four devices and the cap of 30
+	 * with twenty; one without it is answered nought.
+	 */
+	void ProbeBlowToDeviceChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor,
+				   {{FName(UCataclysmAbilitySystemComponent::BlowToDeviceChancePerDeviceStat), 3.0f}});
+		Test.TestEqual(TEXT("a character without the stat has no chance with four devices"),
+					   UCataclysmAbilitySystemComponent::BlowToDeviceChanceFor(Plain.Actor, 4), 0.0f);
+		Test.TestEqual(TEXT("and one holding 3 has 12 with four, so BlowToDeviceChanceFor really reads it"),
+					   UCataclysmAbilitySystemComponent::BlowToDeviceChanceFor(Holding.Actor, 4), 12.0f, 0.01f);
+		Test.TestEqual(TEXT("and 30 with twenty, the cap"),
+					   UCataclysmAbilitySystemComponent::BlowToDeviceChanceFor(Holding.Actor, 20), 30.0f, 0.01f);
+	}
+
+	/**
 	 * `enemies_immune_to_you_after_seconds`, read by `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` where a
 	 * blow is resolved. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune
 	 * to your damage until you disengage for 3 seconds". Two attackers each strike the same enemy once and then stay
@@ -12854,6 +12911,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("lethal_hit_survived_above_health"), &ProbeLethalHitSurvivedAboveHealth},
 			{TEXT("max_health_increases_count_twice"), &ProbeMaxHealthIncreasesCountTwice},
 			{TEXT("eldest_gadget_casts_every_skill"), &ProbeEldestGadgetCastsEverySkill},
+			{TEXT("trap_creep_metres_per_second"), &ProbeTrapCreepSpeed},
+			{TEXT("trap_creep_reach_metres"), &ProbeTrapCreepReach},
+			{TEXT("blow_to_device_chance_per_device"), &ProbeBlowToDeviceChance},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},

@@ -90,6 +90,9 @@ CONSTANTS = {
     "PlaceLastTrapAgainAction": "place_last_trap_again",
     # AND COUNTERFIRE, V4b, 2026-11-25.
     "CounterfireAction": "counterfire",
+    # AND WHERE THEY FALL AND CROSSFIRE, V5a, 2026-11-25.
+    "CopyLastTrapAtKillAction": "copy_last_trap_at_kill",
+    "CrossfireAction": "crossfire",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -232,6 +235,12 @@ def test_the_generator_accepts_exactly_the_v4a_names_the_engine_has() -> None:
 def test_the_generator_accepts_exactly_the_counterfire_name_the_engine_has() -> None:
     """The War vow options' fourth slice, second half, V4b, 2026-11-25: Counterfire."""
     assert gen.COUNTERFIRE_ACTION == engine_names()["CounterfireAction"]
+
+
+def test_the_generator_accepts_exactly_the_v5a_names_the_engine_has() -> None:
+    """The War vow options' fifth slice, first half, V5a, 2026-11-25: Where They Fall and Crossfire."""
+    assert gen.COPY_LAST_TRAP_AT_KILL_ACTION == engine_names()["CopyLastTrapAtKillAction"]
+    assert gen.CROSSFIRE_ACTION == engine_names()["CrossfireAction"]
 
 
 def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:

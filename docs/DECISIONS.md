@@ -2,6 +2,151 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' fifth slice, first half (V5a): Creeping Mines, Where They Fall, Crossfire and Lightning Rod
+
+**Affects:**
+- `tools/reapply_war_vows_v5a_workbook.py` (new) writes five rows into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (583 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`: two actions.
+  - `copy_last_trap_at_kill`, on `kill` only. Its value is the copy's seconds (above 0, up to 30); its Event Value is
+    the metres from a device (above 0, up to 20).
+  - `crossfire`, on `hit_dealt` only. Its value is the share of the hit (above 0, up to 100); its Event Value is the
+    metres (above 0, up to 30).
+  - Neither takes a fraction, a value kind or a scale.
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - `DevicesOf`, out of Counterfire's search, which now calls it;
+    - Creeping Mines: `TrapCreepMetresPerSecondStat`, `TrapCreepReachMetresStat`, `TrapCreepCmPerSecondFor`,
+      `TrapCreepReachCmFor` and `CreepTowardNearestEnemy`, run first in `GadgetStep`. That is the first step a War
+      trap takes;
+    - `PlaceSkillTrapCopy`, the placement Where They Fall's copy uses.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - the two action names, and the two actions in `ActOnEvent`;
+    - `QueueLastTrapCopyAt`, `RepeatFromDevices` and `SetHitBeingAnnouncedSent`;
+    - Lightning Rod: `BlowToDeviceChancePerDeviceStat`, `BlowToDeviceChanceFor`, `DeviceToTakeABlow` (its roll pinned
+      by the console variable `Cataclysm.LightningRodRoll`) and `SendBlowToDevice`;
+    - a forward declaration of `ACataclysmMinion`.
+  - `CataclysmVitalAttributeSet.cpp`: Lightning Rod's roll beside the absorb and the reflect.
+  - `CataclysmPlayerCharacter.cpp`: what any hit of the player's own sent, spells included, held while `hit_dealt`'s
+    rows act.
+  - `CataclysmStatPipeline.h`: `bCopyLastTrapAtKill` and `bCrossfire`.
+  - `CataclysmItem.cpp`: the builder sets both.
+  - `CataclysmPlayerClassStats.cpp`: the three stats in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5aTests.cpp` (new, five tests).
+    - `CataclysmStatExemptionTests.cpp`: three probes.
+    - `CataclysmDataTableTests.cpp`: the pin, 583.
+    - `CataclysmWarVowsV2aTests.cpp`: the not-built-yet test takes Bolted Together (the Saboteur's Third Oath, option
+      2, built last), with Counterfire's capstone as its node, since Crossfire now has a row.
+  - Python:
+    - `tools/tests/test_war_vows_v5a_scripts.py` (new, fifteen).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the two names.
+    - `test_passive_effects_match_the_node_text.py`:
+      - 583 rows and 68 authored options;
+      - the rows' words, with a lookup by option for two action rows on one capstone.
+    - `test_stat_lookups_hand_over_what_they_should.py`: Lightning Rod's lookup.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5a.`: five tests, new.
+  - `Cataclysm.StatExemption.`: three more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins or examples moved: `Cataclysm.Data.` (583) and `Cataclysm.WarVowsV2a.`;
+    - the groups touching the device search, the skill trap's placement and step, and the blow on the player:
+      `Cataclysm.WarVowsV4b.`, `Cataclysm.Traps.`, `Cataclysm.SaboteurTrapTiming.`, `Cataclysm.SkillGadgets.` and
+      `Cataclysm.LethalHit.`.
+- **CROSSFIRE'S COST IS MEASURED, AS ASKED.** Its test writes the time one hit's fifteen repeats take to the log
+  ("Crossfire: one hit's 15 repeats took ... ms in this test world"). The figure is the window's to record; none is
+  claimed here.
+- **WHERE THEY FALL COPIES SKILL TRAPS ONLY**, from V4a's record of the last skill-trap slot placed, as Trail of Wire
+  does. With no skill trap placed, a kill leaves nothing.
+- **A COPY RAISES `trap_armed` BUT NOT `trap_placed` OR `device_placed`**, and earns no placement Fervour, as ruled
+  (W3). So Baited applies to a copy.
+- **CREEPING MINES MOVES IN STEPS**, a quarter second apart, by teleport, as ruled (CM2, a play-test point).
+- **A SKILL TRAP STRUCK BY LIGHTNING ROD IS NOT TESTED GOING OFF.** A skill trap struck by Lightning Rod goes off
+  through the existing forced set-off, which casts its slot's skill. No new test casts a skill from a trap. The Spike
+  Trap's answer is tested.
+
+### WHAT WAS RULED
+
+The coordinating session's rulings on V5, 2026-11-25, "every recommendation as written":
+- CM1: skill traps and War Spike Traps both creep, the Spike Traps given a step. CM2: quarter-second steps, a
+  play-test point.
+- W1: the player's own kills. W2: the last skill-trap slot placed from; a copy is never recorded as placed. W3: the
+  ordinary placement on the next tick, armed at once, reserving 1 Fervour, refused when the pool cannot hold it;
+  exactly 4 s; `trap_armed` raised; no `trap_placed`, `device_placed` or placement Fervour.
+- X1: every hit of the player's own skills and basic attack, spells included; not a tick, a retaliation payment, or a
+  minion's or device's own blow. A direct blow by the player of 10% of what the hit sent, from the device's place, from
+  the nearest 15 within 15 m; repeats are not repeated. X2: a play-test point, "and also measure, in its Unreal test,
+  how long one hit with 15 devices takes, and record it".
+- L1: any landed hit that is not a tick, rolled where the absorb and the reflect are, before the player's block and
+  defences; the device takes `Hit.Damage` from the attacker, meeting its own defences; the player takes nothing. L2: 3%
+  for each device at any distance, up to 30%; a roll only when a device stands within 10 m. L3: a skill trap struck
+  goes off; a War Spike Trap deals its ordinary blow at the attacker; a gadget only takes the blow.
+
+### JUDGEMENTS
+
+- **"No enemy within its trigger radius" stops a trap's creep**: it goes off instead. A War trap's radius is its reach.
+- **A creep stops at the enemy**, never past it.
+- **Crossfire's 15 nearest devices are counted by distance to the enemy struck**, ties to the earlier placed.
+- **Lightning Rod's blow on a device is dealt by the attacker**, so the device's defences take their share and the
+  attacker is the one a War trap answers.
+- **"Up to 30%" and "within 10 metres" are the engine's constants**, and the 3% is the row's, because the sentence
+  states one figure for each device. Where They Fall's 1 Fervour and Crossfire's 15 devices are the engine's constants
+  as well, and the 4 seconds and the 10% the rows'.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 82 files, **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5aTests.cpp` without `#include "AbilitySystem/CataclysmMinion.h"` failed, naming
+  `ACataclysmMinion`.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Where They Fall allowed on `afflicted_death` | `pytest tools/tests/test_war_vows_v5a_scripts.py` | `test_where_they_fall_on_an_event_other_than_a_kill_is_refused`, `test_the_names_are_the_generators` |
+| Crossfire's share bound raised to 1,000 | the same | `test_crossfire_above_a_whole_hit_is_refused` |
+| Crossfire given the default fraction of maximum | the same | `test_the_control_each_is_read_with_its_metres_and_no_fraction[crossfire]` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5a.AnArmedTrapCreepsTowardTheNearestEnemyWithinTenMetres` | a Spike Trap does not move without the stats (the control) and moves 75 cm toward a creature 8 m away with them; a creature 12 m away draws nothing (the control); an unarmed skill trap does not creep (the control), and armed it creeps 75 cm |
+| `Cataclysm.WarVowsV5a.AKillNearADeviceLeavesAnArmedFourSecondCopyOfTheLastTrap` | a kill 30 m from every device leaves nothing (the control); a kill 8 m from a trap leaves a copy where the creature stood, from the Heavy slot, armed, lasting 4 s, reserving 1 |
+| `Cataclysm.WarVowsV5a.AHitIsRepeatedFromUpToFifteenDevicesWithinFifteenMetresAtATenth` | a hit that sent nothing is repeated by none (the control); 1,000 sent is repeated 15 times at 100 though 16 turrets stand within 15 m and one beyond; the time taken is logged |
+| `Cataclysm.WarVowsV5a.AHitOnThePlayerCanStrikeTheNearestDeviceWithinTenMetresInstead` | at a roll of 50, above the 12%, the player takes the blow (the control); at 5, the Spike Trap takes it and goes off at the attacker; with no device within 10 m the player takes it at a roll of nought (the control) |
+| `Cataclysm.WarVowsV5a.AWarPlayerTakingTheOptionsIsHandedTheirStatsAndActions` | through `SetPassiveAllocation`: each option's stats and actions; the other options hand over none (the controls) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: Lightning Rod's device takes the blow but the player is not spared (`|| Rod` taken out of the condition that empties the blow) | `Cataclysm.WarVowsV5a.` | `AHitOnThePlayerCanStrikeTheNearestDeviceWithinTenMetresInstead` |
+
+**Dropped under that ruling:**
+- a proof that Crossfire's cap of 15 holds (the `CrossfireMostDevices` test taken out), which would fail
+  `AHitIsRepeatedFromUpToFifteenDevicesWithinFifteenMetresAtATenth`;
+- a proof that an unarmed skill trap does not creep, which would fail
+  `AnArmedTrapCreepsTowardTheNearestEnemyWithinTenMetres`;
+- a proof that Where They Fall's copy lasts its 4 s (the `SetLifeSpan` taken out), which would fail
+  `AKillNearADeviceLeavesAnArmedFourSecondCopyOfTheLastTrap`.
+
+---
+
 ## 2026-11-25 — The War vow options' fourth slice, second half (V4b): Counterfire answers an evaded blow with the player's traps and gadgets, and Magnum Opus's eldest gadget casts every skill used
 
 **Affects:**

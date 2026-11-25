@@ -664,6 +664,13 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 {
 	ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Character);
 
+	// CREEPING MINES FIRST, for a skill trap and a War trap alike (V5a, ruled CM1), so the trap's own check runs from
+	// where it has crept to. A War trap had no step before; this is its one.
+	if (Gadget && Gadget->IsTrap() && !UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		Gadget->CreepTowardNearestEnemy(DeviceStepSeconds);
+	}
+
 	// A SKILL TRAP'S STEP, BEFORE THE REFUSAL OF WHAT IS NOT A GADGET, because a trap is not one (ruled 2026-10-07) and
 	// takes nothing of a gadget's step. Ruled 2026-10-19 (M4). Nothing for any other minion, a Spike Trap included.
 	if (Gadget && Gadget->IsSkillTrap())
@@ -2923,6 +2930,115 @@ float ACataclysmMinion::SkillTrapReserveFor(const AActor* Player, ECataclysmAbil
 	const float Stated =
 		SkillTrapFervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOfSlot(Player, Slot));
 	return UCataclysmCommand::ReserveFor(Player, Stated, TagsOfType(SkillTrapTypeName));
+}
+
+const TCHAR* ACataclysmMinion::TrapCreepMetresPerSecondStat = TEXT("trap_creep_metres_per_second");
+const TCHAR* ACataclysmMinion::TrapCreepReachMetresStat = TEXT("trap_creep_reach_metres");
+
+namespace
+{
+	float CataclysmTrapCreepFigure(const AActor* Player, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? FMath::Max(0.0f, Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f)) : 0.0f;
+	}
+}
+
+float ACataclysmMinion::TrapCreepCmPerSecondFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, TrapCreepMetresPerSecondStat) * 100.0f;
+}
+
+float ACataclysmMinion::TrapCreepReachCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, TrapCreepReachMetresStat) * 100.0f;
+}
+
+bool ACataclysmMinion::CreepTowardNearestEnemy(float Seconds)
+{
+	if (!IsTrap() || IsActorBeingDestroyed() || Seconds <= 0.0f || (IsSkillTrap() && !bSkillTrapArmed))
+	{
+		return false;
+	}
+	AActor* const Player = Summoner.Get();
+	const float Speed = TrapCreepCmPerSecondFor(Player);
+	const float Reach = TrapCreepReachCmFor(Player);
+	if (Speed <= 0.0f || Reach <= 0.0f)
+	{
+		return false;
+	}
+	// NOT WHILE AN ENEMY IS ALREADY WITHIN ITS TRIGGER RADIUS: then it goes off rather than moves.
+	const float Trigger = IsSkillTrap() ? SkillTrapTriggerRadiusCmFor(Player, TypeTags) : ReachCm;
+	if (!HostilesWithin(Trigger).IsEmpty())
+	{
+		return false;
+	}
+	const TArray<AActor*> Near = HostilesWithin(Reach);
+	if (Near.IsEmpty())
+	{
+		return false;
+	}
+	const FVector Here = GetActorLocation();
+	const FVector Toward = Near[0]->GetActorLocation() - Here;
+	const float Distance = Toward.Size2D();
+	const float Step = FMath::Min(Speed * Seconds, Distance);
+	if (Step <= 0.0f)
+	{
+		return false;
+	}
+	SetActorLocation(Here + Toward.GetSafeNormal2D() * Step, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+	return true;
+}
+
+TArray<ACataclysmMinion*> ACataclysmMinion::DevicesOf(const AActor* Player)
+{
+	TArray<ACataclysmMinion*> Devices;
+	const auto Consider = [&Devices](AActor* Follower)
+	{
+		ACataclysmMinion* Each = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Each) && !Each->IsActorBeingDestroyed() && !UCataclysmSkillEffects::IsDead(Each)
+			&& (Each->IsTrap() || Each->IsGadget()))
+		{
+			Devices.AddUnique(Each);
+		}
+	};
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		Consider(Follower);
+	}
+	for (ACataclysmMinion* Trap : SkillTrapsOf(Player))
+	{
+		Consider(Trap);
+	}
+	return Devices;
+}
+
+ACataclysmMinion* ACataclysmMinion::PlaceSkillTrapCopy(AActor* Player, ECataclysmAbilitySlot Slot,
+													   const FVector& Location, float Reserve, float LifetimeSeconds)
+{
+	if (!IsValid(Player) || Slot == ECataclysmAbilitySlot::None || LifetimeSeconds <= 0.0f
+		|| !UCataclysmCommand::HasRoomToReserve(Player, Reserve))
+	{
+		return nullptr;
+	}
+	ACataclysmMinion* Placed =
+		Spawn(Player, Location, LifetimeSeconds, /*bBurns=*/false, FString(SkillTrapTypeName));
+	if (!Placed)
+	{
+		return nullptr;
+	}
+	if (Placed->TypeName != SkillTrapTypeName || !Placed->IsTrap())
+	{
+		Placed->Destroy();
+		return nullptr;
+	}
+	// EXACTLY ITS SECONDS, whatever `Spawn` made of them (ruled W3).
+	Placed->SetLifeSpan(LifetimeSeconds);
+	Placed->SkillTrapSlot = Slot;
+	Placed->BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, Placed->TypeTags, Placed));
+	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
+	return Placed;
 }
 
 ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location)

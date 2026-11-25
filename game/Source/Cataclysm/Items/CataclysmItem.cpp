@@ -1653,6 +1653,13 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bCounterfire = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::CounterfireAction,
 						ESearchCase::IgnoreCase);
+					// AND WHERE THEY FALL'S AND CROSSFIRE'S. V5a, 2026-11-25.
+					Action.bCopyLastTrapAtKill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CopyLastTrapAtKillAction,
+						ESearchCase::IgnoreCase);
+					Action.bCrossfire = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CrossfireAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

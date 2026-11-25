@@ -1248,9 +1248,15 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	const bool bAnAttackThatMayChain = !Notice.bIsSpell && !Notice.bDamageOverTime && !Notice.bRetaliation
 		&& !Cast<ACataclysmMinion>(Notice.DealtBy);
 	const float WasSent = Acting->SetAttackBeingAnnouncedSent(bAnAttackThatMayChain ? Notice.Sent : 0.0f);
+	// AND WHAT ANY HIT OF THIS CHARACTER'S OWN SENT, SPELLS INCLUDED, for Crossfire's repeats (V5a, ruled X1): nought for
+	// a tick, a retaliation payment and a minion's own blow.
+	const bool bAHitThatMayBeRepeated =
+		!Notice.bDamageOverTime && !Notice.bRetaliation && !Cast<ACataclysmMinion>(Notice.DealtBy);
+	const float WasHitSent = Acting->SetHitBeingAnnouncedSent(bAHitThatMayBeRepeated ? Notice.Sent : 0.0f);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
+	Acting->SetHitBeingAnnouncedSent(WasHitSent);
 	Acting->SetAttackBeingAnnouncedSent(WasSent);
 
 	// AND FERVOUR FOR A BLOW THIS CHARACTER LANDED ITSELF: the Berserker's Frenzy, "all melee hits generate 2 additional

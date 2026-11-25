@@ -1279,6 +1279,44 @@ public:
 	 */
 	static ACataclysmMinion* PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location);
 
+	/**
+	 * A skill trap placed as a copy, not by the player: Where They Fall's (the War vow options' fifth slice, first half,
+	 * V5a, 2026-11-25, ruled W3). The ordinary placement with three differences: it reserves `Reserve` Fervour (refused
+	 * when the pool cannot hold that), it lasts exactly `LifetimeSeconds` (neither stretched by `minion_duration` nor
+	 * made permanent by "Traps do not expire"), and it raises no `trap_placed` or `device_placed`, earns no placement
+	 * Fervour and is not recorded as the last trap placed. Armed at its ordinary time; the caller arms it at once.
+	 */
+	static ACataclysmMinion* PlaceSkillTrapCopy(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location,
+												float Reserve, float LifetimeSeconds);
+
+	/**
+	 * Every living trap and gadget `Player` commands, skill and War alike, each once: the machines the Saboteur's
+	 * device options count and answer with ("every machine carrying Type.Trap or Type.Gadget", ruled 2026-11-25).
+	 * V5a, 2026-11-25, out of Counterfire's search.
+	 */
+	static TArray<ACataclysmMinion*> DevicesOf(const AActor* Player);
+
+	/**
+	 * Creeping Mines, V5a, 2026-11-25: "Your armed traps creep toward the nearest enemy within 10 metres of them, at 3
+	 * metres a second." The speed and the reach are flat stats of the summoner's, with no gameplay attribute, read by
+	 * `TrapCreepCmPerSecondFor` and `TrapCreepReachCmFor`.
+	 */
+	static const TCHAR* TrapCreepMetresPerSecondStat;
+	static const TCHAR* TrapCreepReachMetresStat;
+	static float TrapCreepCmPerSecondFor(const AActor* Player);
+	static float TrapCreepReachCmFor(const AActor* Player);
+
+	/** The seconds between two device steps: `ACataclysmCharacterBase` steps every device every quarter second. */
+	static constexpr float DeviceStepSeconds = 0.25f;
+
+	/**
+	 * One step of Creeping Mines for this trap, `Seconds` long: an armed trap (a War trap is always armed) with no enemy
+	 * inside its trigger radius moves toward the nearest enemy within the reach, by the speed times `Seconds`, no
+	 * further than that enemy. Moved as a skill gadget is moved, in steps (ruled CM2, a play-test point). Returns
+	 * whether it moved. Nothing for a trap whose player holds no speed.
+	 */
+	bool CreepTowardNearestEnemy(float Seconds);
+
 	/** Every living skill trap `Player` commands, the oldest first by `SpawnOrder`. */
 	static TArray<ACataclysmMinion*> SkillTrapsOf(const AActor* Player);
 

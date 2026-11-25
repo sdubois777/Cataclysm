@@ -7653,6 +7653,27 @@ PLACE_LAST_TRAP_AGAIN_EVENTS = ("movement_skill",)
 #: same name.
 COUNTERFIRE_ACTION = "counterfire"
 COUNTERFIRE_EVENTS = ("dodge",)
+
+#: The action that LEAVES A COPY OF THE LAST SKILL TRAP PLACED where an enemy
+#: the wearer killed fell, when one of the wearer's devices stands within its
+#: Event Value in metres: armed at once, reserving 1 Fervour, lasting the row's
+#: value in seconds. The War vow options' fifth slice, first half, V5a,
+#: 2026-11-25: Where They Fall. ON `kill` ONLY.
+#: `UCataclysmAbilitySystemComponent::CopyLastTrapAtKillAction` holds the name.
+COPY_LAST_TRAP_AT_KILL_ACTION = "copy_last_trap_at_kill"
+COPY_LAST_TRAP_AT_KILL_EVENTS = ("kill",)
+MAX_COPY_LAST_TRAP_AT_KILL_METRES = 20.0
+MAX_COPY_LAST_TRAP_AT_KILL_SECONDS = 30.0
+
+#: The action that REPEATS THE HIT DEALT from each of the wearer's devices
+#: within its Event Value in metres of the enemy struck, the nearest 15, at the
+#: row's value in per cent of what the hit sent. V5a, 2026-11-25: Crossfire. ON
+#: `hit_dealt` ONLY. `UCataclysmAbilitySystemComponent::CrossfireAction` holds
+#: the name.
+CROSSFIRE_ACTION = "crossfire"
+CROSSFIRE_EVENTS = ("hit_dealt",)
+MAX_CROSSFIRE_METRES = 30.0
+MAX_CROSSFIRE_PERCENT = 100.0
 MAX_COUNTERFIRE_DEVICES_PER_ANSWER = 10.0
 MAX_COUNTERFIRE_PERCENT = 1000.0
 
@@ -8007,7 +8028,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
                                    kind, raw, headers)
         return
     if action in (TAUNT_NEAR_TRAP_ACTION, PLACE_LAST_TRAP_AGAIN_ACTION,
-                  COUNTERFIRE_ACTION):
+                  COUNTERFIRE_ACTION, COPY_LAST_TRAP_AT_KILL_ACTION,
+                  CROSSFIRE_ACTION):
         _check_v4a_action(index, who, action, event, fraction_of, kind, raw,
                           headers)
         return
@@ -8479,7 +8501,10 @@ def _check_v4a_action(index: int, who: str, action: str, event: str,
     # V4b, the same day.
     events = {TAUNT_NEAR_TRAP_ACTION: TAUNT_NEAR_TRAP_EVENTS,
               PLACE_LAST_TRAP_AGAIN_ACTION: PLACE_LAST_TRAP_AGAIN_EVENTS,
-              COUNTERFIRE_ACTION: COUNTERFIRE_EVENTS}[action]
+              COUNTERFIRE_ACTION: COUNTERFIRE_EVENTS,
+              # AND WHERE THEY FALL'S AND CROSSFIRE'S, V5a, the same day.
+              COPY_LAST_TRAP_AT_KILL_ACTION: COPY_LAST_TRAP_AT_KILL_EVENTS,
+              CROSSFIRE_ACTION: CROSSFIRE_EVENTS}[action]
     if event not in events:
         raise DataError(
             f"Enchantment Effects row {index}: {who} acts as {action} on the "
@@ -9042,6 +9067,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != TAUNT_NEAR_TRAP_ACTION \
                 and action != PLACE_LAST_TRAP_AGAIN_ACTION \
                 and action != COUNTERFIRE_ACTION \
+                and action != COPY_LAST_TRAP_AT_KILL_ACTION \
+                and action != CROSSFIRE_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9403,6 +9430,18 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} taunts for {low:g} to "
                 f"{high:g} seconds. It is above 0 and up to "
                 f"{MAX_TAUNT_NEAR_TRAP_SECONDS:g}.")
+    # WHERE THEY FALL'S VALUE IS THE COPY'S SECONDS, AND CROSSFIRE'S A SHARE OF
+    # THE HIT, each above 0 and up to its bound. V5a, 2026-11-25.
+    if action in (COPY_LAST_TRAP_AT_KILL_ACTION, CROSSFIRE_ACTION):
+        bound = (MAX_COPY_LAST_TRAP_AT_KILL_SECONDS
+                 if action == COPY_LAST_TRAP_AT_KILL_ACTION
+                 else MAX_CROSSFIRE_PERCENT)
+        if not (0 < low <= bound and 0 < high <= bound):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts as {action} with "
+                f"the value {low:g} to {high:g}. It is above 0 and up to "
+                f"{bound:g}.")
+
     # COUNTERFIRE'S VALUE IS A SHARE OF A GADGET'S SHOT, above 0 and up to the
     # bound. V4b, 2026-11-25.
     if action == COUNTERFIRE_ACTION:
@@ -10114,6 +10153,22 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action in (COPY_LAST_TRAP_AT_KILL_ACTION, CROSSFIRE_ACTION):
+        # OR THE METRES FROM A DEVICE, required: Where They Fall's to the one
+        # killed, Crossfire's to the enemy struck. V5a, 2026-11-25.
+        bound = (MAX_COPY_LAST_TRAP_AT_KILL_METRES
+                 if action == COPY_LAST_TRAP_AT_KILL_ACTION
+                 else MAX_CROSSFIRE_METRES)
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts as {action} and "
+                f"states no Event Value. It is the metres from a device.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= bound:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reaches "
+                f"{event_value:g} metres from a device. It is above 0 and up "
+                f"to {bound:g}.")
     elif action == COUNTERFIRE_ACTION:
         # OR COUNTERFIRE'S DEVICES FOR EACH ANSWER, required, a whole number
         # from 1 to the bound. V4b, 2026-11-25. See `COUNTERFIRE_ACTION`.

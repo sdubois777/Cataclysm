@@ -1555,6 +1555,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Guarded, CataclysmDefendingBody(*this), Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
 				}
+				// OR LIGHTNING ROD SENDS IT TO A DEVICE INSTEAD (the War vow options' fifth slice, first half, V5a, ruled
+				// 2026-11-25, L1): a landed hit that is not a tick, rolled where the absorb and the reflect are rolled,
+				// after evasion and before this character's block and defences. The device takes what the blow was
+				// worth before those defences, from the attacker, and this character takes nothing. Not a hit an absorb
+				// or a reflect has already turned, and not one with nobody to have dealt it.
+				AActor* const RodAttacker = Data.EffectSpec.GetContext().GetEffectCauser();
+				ACataclysmMinion* const Rod = bMayBeTurned && !bAbsorbed && !bReflected && !Hit.bIsDamageOverTime
+						&& IsValid(RodAttacker)
+					? Guarded->DeviceToTakeABlow()
+					: nullptr;
+				if (Rod)
+				{
+					Guarded->SendBlowToDevice(Rod, RodAttacker, Hit.Damage);
+				}
 				// AND AN ABSORBED SPELL IS STORED, for "Absorbed spell damage is
 				// converted to bonus damage on your next attack". Ruled
 				// 2026-10-07: what the spell would have dealt after the wearer's
@@ -1569,7 +1583,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							+ Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary);
 				}
 				if (Guarded->IsDamageImmune() || Guarded->IsImmuneToDamageType(Hit.DamageType)
-					|| bAbsorbed || bReflected)
+					|| bAbsorbed || bReflected || Rod)
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;

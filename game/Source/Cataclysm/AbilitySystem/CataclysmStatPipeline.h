@@ -5005,6 +5005,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bCounterfire = false;
 
+	/** Set, Where They Fall's copy on a kill (V5a, 2026-11-25). See `UCataclysmAbilitySystemComponent::QueueLastTrapCopyAt`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCopyLastTrapAtKill = false;
+
+	/** Set, Crossfire's repeats of a hit (V5a, 2026-11-25). See `UCataclysmAbilitySystemComponent::RepeatFromDevices`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCrossfire = false;
+
 	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's

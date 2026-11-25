@@ -577,3 +577,8 @@ Saboteur_capstone_25#1,Saboteur_capstone_25,,,4.0,,,0.0,,0.0,1,-1.0,0,0,taunt_en
 Saboteur_capstone_50#1,Saboteur_capstone_50,,,100.0,,,0.0,,0.0,1,-1.0,0,0,place_last_trap_again,movement_skill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_capstone_100#1,Saboteur_capstone_100,,,100.0,,,0.0,,0.0,3,-1.0,0,0,counterfire,dodge,,0.0,0.0,0.0,0,,0.0,1.0,2.0,,0.0,0,0
 Saboteur_capstone_200#1,Saboteur_capstone_200,eldest_gadget_casts_every_skill,flat,1.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_capstone_25#2,Saboteur_capstone_25,blow_to_device_chance_per_device,flat,3.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_capstone_100#2,Saboteur_capstone_100,trap_creep_metres_per_second,flat,3.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_capstone_100#3,Saboteur_capstone_100,trap_creep_reach_metres,flat,10.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_capstone_200#2,Saboteur_capstone_200,,,4.0,,,0.0,,0.0,1,-1.0,0,0,copy_last_trap_at_kill,kill,,0.0,0.0,0.0,0,,0.0,0.0,10.0,,0.0,0,0
+Saboteur_capstone_200#3,Saboteur_capstone_200,,,10.0,,,0.0,,0.0,3,-1.0,0,0,crossfire,hit_dealt,,0.0,0.0,0.0,0,,0.0,0.0,15.0,,0.0,0,0

@@ -27,6 +27,8 @@
 
 struct FGameplayTag;
 struct FCataclysmEnchantmentEffectRow;
+// LIGHTNING ROD'S DEVICE, V5a: a pointer only, so the minion's header is not included here.
+class ACataclysmMinion;
 
 /**
  * What `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` took away when a
@@ -1826,6 +1828,37 @@ public:
 	 * `QueueCounterfire`.
 	 */
 	static const TCHAR* CounterfireAction;
+
+	/**
+	 * Where They Fall. The War vow options' fifth slice, first half, V5a, 2026-11-25: "An enemy killed within 10 metres
+	 * of one of your traps or gadgets leaves an armed copy of the last trap you placed where it fell. The copy reserves 1
+	 * Fervour and lasts 4 seconds." On `kill` only, the player's own kills (ruled W1). The row's value is the copy's
+	 * seconds and its Event Value the metres from a device. See `QueueLastTrapCopyAt`.
+	 */
+	static const TCHAR* CopyLastTrapAtKillAction;
+
+	/** The Fervour Where They Fall's copy reserves: "The copy reserves 1 Fervour". */
+	static constexpr float WhereTheyFallReserve = 1.0f;
+
+	/**
+	 * Crossfire. V5a, 2026-11-25: "Every hit you land is repeated from each of your traps and gadgets within 15 metres
+	 * of the enemy, up to 15 of them, at 10% of its damage. A trap that repeats a hit does not go off." On `hit_dealt`
+	 * only. The row's value is the share and its Event Value the metres; the most devices is `CrossfireMostDevices`.
+	 * See `RepeatFromDevices`.
+	 */
+	static const TCHAR* CrossfireAction;
+
+	/** Crossfire's "up to 15 of them". */
+	static constexpr int32 CrossfireMostDevices = 15;
+
+	/**
+	 * Lightning Rod. V5a, 2026-11-25: "A hit that would strike you has a 3% chance for each trap and gadget you have on
+	 * the battlefield, up to 30%, to strike the nearest of them within 10 metres of you instead. A trap struck this way
+	 * goes off." A flat stat, the chance for each device, with no gameplay attribute. See `DeviceToTakeABlow`.
+	 */
+	static const TCHAR* BlowToDeviceChancePerDeviceStat;
+	static constexpr float BlowToDeviceMostChancePercent = 30.0f;
+	static constexpr float BlowToDeviceReachCm = 1000.0f;
 
 	/**
 	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
@@ -4263,6 +4296,51 @@ public:
 	 */
 	int32 QueueCounterfire(const FCataclysmPoolAction& Action, const AActor* Attacker);
 
+	/**
+	 * Where They Fall's copy for a kill of `Victim`: when a device of this character's stands within `Action.EventValue`
+	 * metres of it, the last skill-trap slot placed from (V4a's record; skill traps only) is placed as a copy where it
+	 * fell, ON THE NEXT TICK, reserving `WhereTheyFallReserve`, lasting `Action.Percent` seconds, armed at once
+	 * (`ACataclysmMinion::PlaceSkillTrapCopy`). Returns whether a copy was queued.
+	 */
+	bool QueueLastTrapCopyAt(const FCataclysmPoolAction& Action, const AActor* Victim);
+
+	/**
+	 * Crossfire's repeats of the hit being announced on `Struck`: a blow of `Action.Percent` per cent of what the hit sent
+	 * before defences, by this character, struck from each device's place (`FCataclysmHitDelivery::StruckFromPoint`), from
+	 * the nearest `CrossfireMostDevices` devices within `Action.EventValue` metres of `Struck`. A trap repeating a hit does
+	 * not go off. Act On Event is depth one, so a repeat is not repeated. Returns how many repeats were dealt.
+	 */
+	int32 RepeatFromDevices(const FCataclysmPoolAction& Action, const AActor* Struck);
+
+	/**
+	 * What the hit being announced as `hit_dealt` sent before defences, for Crossfire: every hit of this character's own,
+	 * spells included, and nought for a tick, a retaliation payment and a minion's own blow (ruled X1). Set by
+	 * `ACataclysmPlayerCharacter` while `hit_dealt` is raised; returns what it held before, for the caller to put back.
+	 */
+	float SetHitBeingAnnouncedSent(float Sent)
+	{
+		const float Was = HitBeingAnnouncedSent;
+		HitBeingAnnouncedSent = Sent;
+		return Was;
+	}
+
+	/**
+	 * Lightning Rod's device for a blow about to strike this character, or null: rolled against
+	 * `BlowToDeviceChancePerDeviceStat` times this character's devices, at most `BlowToDeviceMostChancePercent`, and
+	 * only when a device stands within `BlowToDeviceReachCm`, which is the nearest one (ruled L2). The console variable
+	 * `Cataclysm.LightningRodRoll` pins the 0-100 roll for a test.
+	 */
+	ACataclysmMinion* DeviceToTakeABlow() const;
+
+	/** Lightning Rod's chance for `Player` with `Devices` devices, in per cent: the stat times the count, at most 30. */
+	static float BlowToDeviceChanceFor(const AActor* Player, int32 Devices);
+
+	/**
+	 * Lightning Rod: `Device` takes a blow of `Damage` from `Attacker` in this character's place, meeting the device's own
+	 * defences; a skill trap struck goes off, and a War trap deals its ordinary blow at the attacker (ruled L3).
+	 */
+	void SendBlowToDevice(ACataclysmMinion* Device, AActor* Attacker, float Damage);
+
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
 
@@ -5847,6 +5925,9 @@ protected:
 
 	/** See `LastSkillTrapSlotPlacedFrom`. V4a, 2026-11-25. */
 	ECataclysmAbilitySlot LastSkillTrapSlotPlaced = ECataclysmAbilitySlot::None;
+
+	/** See `SetHitBeingAnnouncedSent`. V5a, 2026-11-25. */
+	float HitBeingAnnouncedSent = 0.0f;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

@@ -534,7 +534,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 574 THE SAME DAY, for V3b: Colossus Eternal's three and Thousand Deaths' chain.
 	// AND 576 THE SAME DAY, for V4a: Baited's taunt and Trail of Wire.
 	// AND 578 THE SAME DAY, for V4b: Counterfire and Magnum Opus.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        578)
+	// AND 583 THE SAME DAY, for V5a: Lightning Rod, Creeping Mines' two, Where They Fall and Crossfire.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        583)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

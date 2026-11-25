@@ -5120,6 +5120,17 @@ const TCHAR* UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction =
 	TEXT("place_last_trap_again");
 const TCHAR* UCataclysmAbilitySystemComponent::CounterfireAction =
 	TEXT("counterfire");
+const TCHAR* UCataclysmAbilitySystemComponent::CopyLastTrapAtKillAction =
+	TEXT("copy_last_trap_at_kill");
+const TCHAR* UCataclysmAbilitySystemComponent::CrossfireAction =
+	TEXT("crossfire");
+const TCHAR* UCataclysmAbilitySystemComponent::BlowToDeviceChancePerDeviceStat =
+	TEXT("blow_to_device_chance_per_device");
+
+static TAutoConsoleVariable<float> CVarLightningRodRoll(
+	TEXT("Cataclysm.LightningRodRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll Lightning Rod makes to send a blow to a device instead. Negative rolls for real."),
+	ECVF_Default);
 
 namespace
 {
@@ -6175,25 +6186,9 @@ int32 UCataclysmAbilitySystemComponent::QueueCounterfire(const FCataclysmPoolAct
 	{
 		return 0;
 	}
-	// EVERY LIVING TRAP AND GADGET THE WEARER COMMANDS, skill traps included, once each.
-	TArray<ACataclysmMinion*> Devices;
-	const auto Consider = [&Devices](AActor* Follower)
-	{
-		ACataclysmMinion* Each = Cast<ACataclysmMinion>(Follower);
-		if (IsValid(Each) && !Each->IsActorBeingDestroyed() && !UCataclysmSkillEffects::IsDead(Each)
-			&& (Each->IsTrap() || Each->IsGadget() || Each->IsSkillGadget()))
-		{
-			Devices.AddUnique(Each);
-		}
-	};
-	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Wearer))
-	{
-		Consider(Follower);
-	}
-	for (ACataclysmMinion* Trap : ACataclysmMinion::SkillTrapsOf(Wearer))
-	{
-		Consider(Trap);
-	}
+	// EVERY LIVING TRAP AND GADGET THE WEARER COMMANDS, skill traps included, once each (`DevicesOf`, out of this
+	// function since V5a).
+	TArray<ACataclysmMinion*> Devices = ACataclysmMinion::DevicesOf(Wearer);
 	// "ONE FOR EVERY 2", ROUNDED DOWN, THE NEAREST THE ATTACKER FIRST, the earlier placed of two at one distance.
 	const int32 Answers = FMath::FloorToInt(static_cast<float>(Devices.Num()) / Action.EventValue);
 	if (Answers <= 0)
@@ -6221,6 +6216,152 @@ int32 UCataclysmAbilitySystemComponent::QueueCounterfire(const FCataclysmPoolAct
 		Queued.DamageMultiplier = FMath::Max(0.0f, Action.Percent) / 100.0f;
 	}
 	return Answers;
+}
+
+bool UCataclysmAbilitySystemComponent::QueueLastTrapCopyAt(const FCataclysmPoolAction& Action, const AActor* Victim)
+{
+	AActor* const Avatar = GetAvatarActor();
+	UWorld* const World = GetWorld();
+	const ECataclysmAbilitySlot Slot = LastSkillTrapSlotPlaced;
+	if (!Avatar || !World || !IsValid(Victim) || Slot == ECataclysmAbilitySlot::None || Action.Percent <= 0.0f
+		|| Action.EventValue <= 0.0f)
+	{
+		return false;
+	}
+	// KILLED WITHIN THE ROW'S METRES OF ONE OF THE PLAYER'S DEVICES, measured along the floor.
+	const FVector Fell = Victim->GetActorLocation();
+	const float Within = Action.EventValue * 100.0f;
+	const bool bNearADevice = ACataclysmMinion::DevicesOf(Avatar).ContainsByPredicate(
+		[&Fell, Within](const ACataclysmMinion* Each) { return FVector::Dist2D(Each->GetActorLocation(), Fell) <= Within; });
+	if (!bNearADevice)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<AActor> Placer(Avatar);
+	const float Seconds = Action.Percent;
+	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [Placer, Slot, Fell, Seconds]()
+	{
+		AActor* const Player = Placer.Get();
+		if (!Player || UCataclysmSkillEffects::IsDead(Player))
+		{
+			return;
+		}
+		if (ACataclysmMinion* Copy = ACataclysmMinion::PlaceSkillTrapCopy(Player, Slot, Fell, WhereTheyFallReserve,
+																		  Seconds))
+		{
+			if (!Copy->bSkillTrapArmed)
+			{
+				Copy->BeginSkillTrapArming(0.0f);
+			}
+		}
+	}));
+	return true;
+}
+
+int32 UCataclysmAbilitySystemComponent::RepeatFromDevices(const FCataclysmPoolAction& Action, const AActor* Struck)
+{
+	AActor* Self = GetAvatarActor();
+	const float Share = HitBeingAnnouncedSent * Action.Percent / 100.0f;
+	if (!Self || !IsValid(Struck) || Share <= 0.0f || Action.EventValue <= 0.0f)
+	{
+		return 0;
+	}
+	const FVector At = Struck->GetActorLocation();
+	const float Within = Action.EventValue * 100.0f;
+	TArray<ACataclysmMinion*> Devices = ACataclysmMinion::DevicesOf(Self);
+	Devices.RemoveAll([&At, Within](const ACataclysmMinion* Each)
+	{
+		return FVector::Dist2D(Each->GetActorLocation(), At) > Within;
+	});
+	Devices.Sort([&At](const ACataclysmMinion& A, const ACataclysmMinion& B)
+	{
+		const float ToA = FVector::DistSquared(A.GetActorLocation(), At);
+		const float ToB = FVector::DistSquared(B.GetActorLocation(), At);
+		return ToA != ToB ? ToA < ToB : A.SpawnOrder < B.SpawnOrder;
+	});
+	int32 Repeated = 0;
+	for (const ACataclysmMinion* Device : Devices)
+	{
+		if (Repeated >= CrossfireMostDevices || UCataclysmSkillEffects::IsDead(Struck))
+		{
+			break;
+		}
+		// THE PLAYER'S BLOW, STRUCK FROM THE DEVICE'S PLACE. A trap repeating it does not go off: nothing here sets one.
+		FCataclysmHitDelivery Delivery;
+		Delivery.bStruckFromAPoint = true;
+		Delivery.StruckFromPoint = Device->GetActorLocation();
+		UCataclysmSkillEffects::ApplyDirectDamage(Self, const_cast<AActor*>(Struck), Share, Delivery);
+		++Repeated;
+	}
+	return Repeated;
+}
+
+float UCataclysmAbilitySystemComponent::BlowToDeviceChanceFor(const AActor* Player, int32 Devices)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	const float Each = Theirs
+		? FMath::Max(0.0f, Theirs->StatForSkill(FName(BlowToDeviceChancePerDeviceStat), FGameplayTagContainer(), 0.0f))
+		: 0.0f;
+	return FMath::Min(Each * FMath::Max(0, Devices), BlowToDeviceMostChancePercent);
+}
+
+ACataclysmMinion* UCataclysmAbilitySystemComponent::DeviceToTakeABlow() const
+{
+	const AActor* Body = GetAvatarActor();
+	if (!Body)
+	{
+		return nullptr;
+	}
+	const TArray<ACataclysmMinion*> Devices = ACataclysmMinion::DevicesOf(Body);
+	const float Chance = BlowToDeviceChanceFor(Body, Devices.Num());
+	if (Chance <= 0.0f)
+	{
+		return nullptr;
+	}
+	// THE NEAREST WITHIN 10 METRES, AND NO ROLL WITHOUT ONE (ruled L2).
+	const FVector Here = Body->GetActorLocation();
+	ACataclysmMinion* Nearest = nullptr;
+	for (ACataclysmMinion* Each : Devices)
+	{
+		const float Distance = FVector::Dist2D(Each->GetActorLocation(), Here);
+		if (Distance <= BlowToDeviceReachCm
+			&& (!Nearest || Distance < FVector::Dist2D(Nearest->GetActorLocation(), Here)))
+		{
+			Nearest = Each;
+		}
+	}
+	if (!Nearest)
+	{
+		return nullptr;
+	}
+	const float Pinned = CVarLightningRodRoll.GetValueOnAnyThread();
+	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	return Roll < Chance ? Nearest : nullptr;
+}
+
+void UCataclysmAbilitySystemComponent::SendBlowToDevice(ACataclysmMinion* Device, AActor* Attacker, float Damage)
+{
+	if (!IsValid(Device) || !IsValid(Attacker) || Damage <= 0.0f)
+	{
+		return;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Device, Damage);
+	// "A TRAP STRUCK THIS WAY GOES OFF" (ruled L3): a skill trap by the forced set-off, a War trap by its ordinary blow
+	// at the attacker. A gadget only takes the blow.
+	if (!IsValid(Device) || Device->IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(Device))
+	{
+		return;
+	}
+	if (Device->IsSkillTrap())
+	{
+		QueueSkillTrapSetOff(Device, /*bEvenForADeadPlayer=*/false);
+		DrainQueuedSkillTrapSetOffs();
+	}
+	else if (Device->IsTrap() && !UCataclysmSkillEffects::CannotAct(Device))
+	{
+		Device->AttackTarget(Attacker);
+	}
 }
 
 bool UCataclysmAbilitySystemComponent::QueueLastTrapPlacedAgain()
@@ -7826,6 +7967,24 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				{
 					NoteTriggerFired(Action);
 				}
+			}
+			continue;
+		}
+		// WHERE THEY FALL, V5a (2026-11-25): landed only, on an event naming the one killed.
+		if (Action.bCopyLastTrapAtKill)
+		{
+			if (bLanded && EventTarget && TriggerReady(Action) && QueueLastTrapCopyAt(Action, EventTarget))
+			{
+				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// CROSSFIRE, V5a (2026-11-25): landed only, on an event naming the enemy struck.
+		if (Action.bCrossfire)
+		{
+			if (bLanded && EventTarget && TriggerReady(Action) && RepeatFromDevices(Action, EventTarget) > 0)
+			{
+				NoteTriggerFired(Action);
 			}
 			continue;
 		}

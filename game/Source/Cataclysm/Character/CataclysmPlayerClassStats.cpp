@@ -777,6 +777,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Magnum Opus's flag, read by ACataclysmMinion::EldestGadgetCastsEverySkillFor at each skill use. V4b,
 		// 2026-11-25. No gameplay attribute.
 		TEXT("eldest_gadget_casts_every_skill"),
+		// Creeping Mines's speed and reach, read by ACataclysmMinion::TrapCreepCmPerSecondFor and TrapCreepReachCmFor;
+		// Lightning Rod's chance for each device, read by UCataclysmAbilitySystemComponent::BlowToDeviceChanceFor. V5a,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("trap_creep_metres_per_second"),
+		TEXT("trap_creep_reach_metres"),
+		TEXT("blow_to_device_chance_per_device"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on

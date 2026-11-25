@@ -757,6 +757,10 @@ INVENTORY = {
      'FName(EldestGadgetCastsEverySkillStat), FGameplayTagContainer(), 0.0f'):
         "Magnum Opus's flag (the War vow options' fourth slice, second half, V4b, 2026-11-25), asked of the player at "
         "each skill use; whether it holds, not a modifier of a blow, and stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(BlowToDeviceChancePerDeviceStat), FGameplayTagContainer(), 0.0f'):
+        "Lightning Rod's chance for each device (the War vow options' fifth slice, first half, V5a, 2026-11-25), asked "
+        "of the player as a blow arrives; the chance is the player's, stated under no condition",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp',
      'FName(BigHitShareStat), FGameplayTagContainer(), 0.0f'):
         "Absorb and Return's share (V3a, 2026-11-25), asked while retaliation for a big hit is priced; retaliation is "
