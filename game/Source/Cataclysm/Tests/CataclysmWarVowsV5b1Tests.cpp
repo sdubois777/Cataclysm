@@ -161,7 +161,7 @@ CATACLYSM_WAR_VOWS_V5B1_TEST(FCataclysmWarVowsV5b1DestroyedTest,
 	TestTrue(TEXT("where it stood"), FVector::Dist2D(Scrap->GetActorLocation(), Stood) < 1.0f);
 	TestTrue(TEXT("a trap"), Scrap->IsTrap());
 	TestFalse(TEXT("and not a gadget"), Scrap->IsGadget());
-	TestEqual(TEXT("at half size"), static_cast<float>(Scrap->GetActorScale3D().X), Turret->GetActorScale3D().X * 0.5f, 0.001f);
+	TestEqual(TEXT("at half size"), static_cast<float>(Scrap->GetActorScale3D().X), static_cast<float>(Turret->GetActorScale3D().X * 0.5f), 0.001f);
 	TestEqual(TEXT("reserving nothing"), Scrap->ReservedFervour, 0.0f, 0.001f);
 
 	ACataclysmEnemyCharacter* Comer = WarVowsV5b1CreatureAt(World, Stood + East * 2.0f);
