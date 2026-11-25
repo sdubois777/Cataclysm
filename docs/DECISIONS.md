@@ -89,7 +89,11 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On `df37ebc767bc569ba29ed130faaf33f84399e59e`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9052 passed, 9 skipped in 693.71s**, and the JUnit file `tests="9062" failures="1"
+errors="0" skipped="9"`, which is 9,052 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
 
 ### INCLUDE AUDIT
 
