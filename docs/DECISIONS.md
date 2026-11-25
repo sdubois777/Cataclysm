@@ -98,6 +98,21 @@ The coordinating session, 2026-11-25, under the owner's delegation, on the Sabot
 6. **The duplicate-row key gains Required Tags** (Bag of Tricks lowers traps' and gadgets' reserves, one stat twice)
    and Max Points.
 
+### THE PYTHON SUITE
+
+Run on `bce3d40d13e3b7032b8f966e2461a522a3b8194b`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8475 passed, 9 skipped in 421.40s**, and the JUnit file `tests="8485" failures="1" errors="0"
+skipped="9"`, which is 8,475 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py` on the C++ files this branch changes: 0 with complaints.
+
+**THE RUNS BEFORE IT.** On `b6dc9867e`: 2 failed, 8474 passed, 9 skipped, the asset check and
+`test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`, the PassiveEffects pin left at 517; the
+commit after it moved it to 520. One run before that, on `1f783e966`, was stopped part-way to add an include to a file
+the suite reads, and measured nothing.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
