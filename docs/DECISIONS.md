@@ -2147,6 +2147,102 @@ errors, 9 skipped. ruff: "All checks passed!".
 
 ---
 
+## 2026-11-24 — The passive tree screen draws each node as a mark sized by its kind, names the node hovered or selected beside its mark, and draws thicker edges, so a class tree's shape reads (the class-tree sigils)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/sigil-tree-screen` from development `6dd62aba6`, at the
+  coordinating session's request of 2026-11-24, while the bug batches waited for the machine. **No tree file changes**:
+  re-laying each class tree as a sigil is its own pull request, one tree each, after this, as the sigil README
+  recommends.
+- **No existing test pinned a node's size or its text.** The choice button had no label getter, so nothing read what a
+  node said; the layout tests read the fit, zoom and edge arithmetic, which is unchanged. So no existing test changes.
+  `UCataclysmChoiceButton::GetLabel` is added for the new tests.
+
+### Why
+
+The owner wants every class tree laid out as a heraldic emblem of its class (a "sigil": nine layouts are drafted, with
+previews, in `nice-carson-77a188/.claude/windows/constellations/`). Its README measured that the screen buried any shape:
+every node was the same 150 x 44 labelled button, and one close pair shrank every node of a tree (Bulwark's to 0.49).
+**Its recommendation, taken here: change the screen first, then re-lay one tree per pull request.**
+
+### What it does
+
+| | Until now | Now |
+| :-- | :-- | :-- |
+| An ordinary node | a 150 x 44 box holding "Name n/max" | a 28 x 28 mark |
+| A keystone | the same box | a 48 x 48 mark, larger both ways |
+| A vow (the files' "capstone") | the same box | a 72 x 40 mark, wider than tall |
+| What a node says on itself | its name and count | its spent count, "2/3", and nothing when unspent |
+| The name | on the box | beside the mark of the node hovered or last selected, "Shield Mastery  2/3", with "(N add nothing)" when it applies |
+| Edges | 3 px at zoom 1 | 10 px at zoom 1 |
+| Shrinking | `NodeScaleFor`, by the 150 x 44 box | `MarkScaleFor`, each pair by its own two marks |
+
+- **Every class tree and all nine sigil drafts draw at 1** under `MarkScaleFor`, measured on 2026-11-24 (Bulwark was
+  0.49 under the box rule). The rule stays so a tree laid out closer is drawn smaller, not overlapping.
+- **The empire tree is unchanged**: its screen reads `NodeWidthPx`, `NodeHeightPx` and `EdgeThicknessPx`, which keep
+  150, 44 and 3.
+- **Kept as they were:** spending, refusing, the class refusal and its tool tip, the "points add nothing" tool tip, the
+  vow's three options, the fit, the zoom and the drag.
+- **On screen it is still the passive tree, never a sigil**: "sigil" already names the Unholy Sigils modifier and the
+  Ritualist's Binding Sigils node (the README's warning); a Python check holds the screen's strings to it.
+- **A stale paragraph corrected**: the widget's class comment said it drew "a list", untrue since #937.
+
+**Judgements of this session, labelled as such:** the three sizes (28, 48 and 72 x 40), the 10 px edge (the README
+said 8 to 12), the count on the mark rather than beside it, and one name label that follows the hovered or selected
+node rather than names for keystones at all times. The README also suggests brightening a path once points are spent
+along it, and tinting the panel by the class's colours; neither is built here.
+
+### Tests
+
+**Unreal, a new group `Cataclysm.PassiveMarks.`, 4 tests**, in `CataclysmPassiveTreeMarksTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| PM1 | `AMarkIsSizedByItsNodesKindAndTheThreeKindsReadApart` | the kinds' marks and sizes; the Bulwark tree's 55, 15 and 4; edges 10 px; CONTROL the empire box 150 x 44 and 3 px |
+| PM2 | `MarksShrinkOnlyAsFarAsTheClosestPairNeedsAndNoRealTreeNeedsIt` | a made tree 20 / 28; one node 1; every real tree 1 with no overlapping pair |
+| PM3 | `HoveringANodeShowsItsNameAndCountBesideItsMark` | CONTROL no name; "Fervour  0/1" 8 px past its mark, level; a keystone's further by half its mark; no spend; another tree clears it |
+| PM4 | `ASpentNodeShowsItsCountOnItsMarkAndAnUnspentOneShowsNothing` | CONTROL nothing before; "1/1" after a spend; its child and a vow nothing; "Fervour  1/1" named |
+
+**Python, `tools/tests/test_passive_tree_marks.py`, 4 checks**: the sizes and the empire box; a mark chosen by the
+files' words; the screen sizes by mark, draws thick edges, says only the count, adds the name last and hit-test
+invisible; no string in the screen says "sigil".
+
+**Python guard proofs** (`.claude/windows/prove_marks_python.py`, in a `git archive` copy): **6 of 6 PROVED** -- a
+keystone the ordinary size, the empire box narrowed, a capstone read as ordinary, edges at 3 px, the name label added
+before the nodes, and "sigil" in the vow's opening line. **The last first failed to fail**: the check read only a whole
+`TEXT("...")`, and that line is two joined strings; it now reads every string, and the proof passes.
+
+**Python suite**: in a `git archive` copy of the head, "11 failed, 8219 passed, 15 skipped"; JUnit 8245 tests, 11 failures, 0
+errors, 15 skipped. **The 11 are the three files that ask git, which a copy is not** ("fatal: not a git
+repository"): `test_map_built_data_is_not_committed.py`, `test_only_one_session_can_hold_the_unreal_editor.py` and
+`test_stray_lfs_hook_directory_is_ignored.py`. In the worktree those three gave "31 passed". ruff: "All checks
+passed!".
+
+### Registered for its window
+
+**The whole suite: the base's last measured total plus 4**, all succeeded; skipped halves and test saves unchanged
+(no new test reports a skipped half or writes a save). No editor step: no CSV or asset changes. Groups alone, each at
+its count in the base's newest engine log (sd-w2's figures in brackets): `Cataclysm.PassiveMarks.` 4 (new),
+`Cataclysm.Passives.` (161), `Cataclysm.EmpireTreeScreen.` (10), `Cataclysm.EmpireScreen.` (16) and
+`Cataclysm.Creation.` (14), the last three for the shared layout constants and the choice button.
+
+**C++ guard proofs**, each narrowed to `Cataclysm.PassiveMarks.` (`.claude/windows/prove_marks_table.py.txt`), every
+anchor matching once. Predicted, not run:
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| PMK1 | a keystone's mark 28 | 4 performed, 2 failed: PM1, PM3 |
+| PMK2 | a capstone read as ordinary | 4, 1 failed: PM1 |
+| PMK3 | a pair needs its marks' whole sizes, not half | 4, 1: PM2 (every real tree still draws at 1) |
+| PMK4 | the mark says the name, as the box did | 4, 1: PM4 |
+| PMK5 | an unspent mark says "0/1" | 4, 1: PM4 |
+| PMK6 | the name at the mark's centre plus the gap | 4, 1: PM3 |
+| PMK7 | the name's count read as 0 | 4, 1: PM4 |
+| PMK8 | edges at 3 px | 4, 1: PM1 |
+
+---
+
 ## 2026-11-24 — Bug batch 2: five more fix branches, stacked on bug batch 1, with a guard proof registered for every new test (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878)
 
 **Said first:**
