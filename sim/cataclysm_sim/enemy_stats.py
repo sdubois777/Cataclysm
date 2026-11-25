@@ -306,6 +306,29 @@ ARMOR_PER_STEP = 1.35
 BODY_SCALE_AT_COMMON = 1.0
 BODY_SCALE_PER_STEP = 1.20
 
+#: ISSUE #2884, A PROPOSAL ON AN ANALYSIS BRANCH: what every creature's health and damage are multiplied by at each
+#: difficulty tier, tier 1 first, so the re-fitted reference character (`reference_build.py`, under the affix ranges
+#: of #2883) meets each tier as today's reference character met it.
+#:
+#: HEALTH: each tier's factor is the reference character's damage per non-critical hit under the new affixes over
+#: today's (`player_damage.damage_per_hit`), so an average Common takes as many hits as today at every tier, and the
+#: damage target of 2 non-critical hits at tier 8 ("The Damage Target") holds within its 5%.
+#: DAMAGE: each tier's factor is the tier's reference character's effective health (`fight.reference_player`: health
+#: over the share of a hit that lands) under the new affixes over today's, so every creature takes as many hits to
+#: kill it as today; at tier 8 that is the #108 fit re-solved (the Gatekeeper in 2, an average Common in 25).
+#: TIER 1 IS 1.00 IN BOTH, deliberately: tier 1's damage is fitted to the starting character (#2749: no affixes, a
+#: gear-level-0 Greataxe), which the affix change does not touch, so its ring scales and the opening guards stand.
+#: `sim/analyse_enemy_rebalance_2884.py` measures every figure; `.claude/windows/proposal_2884_enemy_rebalance.md`
+#: has the method and the owner's questions.
+HEALTH_SCALE_BY_TIER_2884: tuple[float, ...] = (1.00, 1.16, 1.28, 1.29, 1.31, 1.42, 1.42, 1.44)
+DAMAGE_SCALE_BY_TIER_2884: tuple[float, ...] = (1.00, 2.38, 3.79, 5.28, 8.34, 12.31, 13.65, 15.35)
+
+
+def rebalance_factors_2884(tier: int) -> tuple[float, float]:
+    """The health and damage factors of issue #2884's proposal at a difficulty tier, held to tiers 1 to 8."""
+    held = min(max(int(tier), 1), len(HEALTH_SCALE_BY_TIER_2884))
+    return HEALTH_SCALE_BY_TIER_2884[held - 1], DAMAGE_SCALE_BY_TIER_2884[held - 1]
+
 
 # --------------------------------------------------------------------------
 # Archetypes: what KIND of thing the enemy is
@@ -782,9 +805,10 @@ def stats_for(rarity: str, score: float,
     kind = archetype(kind) if isinstance(kind, str) else kind
     n = rarity_step(rarity)
     score = max(0.0, score)
+    health_factor, damage_factor = rebalance_factors_2884(tier)
 
     health = max(1.0, score * HEALTH_AT_COMMON * HEALTH_PER_STEP ** n
-                 * kind.health_share)
+                 * kind.health_share * health_factor)
 
     return EnemyStats(
         archetype=kind,
@@ -793,7 +817,7 @@ def stats_for(rarity: str, score: float,
         tier=tier,
         health=health,
         damage_per_hit=(score * DAMAGE_AT_COMMON * DAMAGE_PER_STEP ** n
-                        * kind.damage_share),
+                        * kind.damage_share * damage_factor),
         armor=(score * ARMOR_AT_COMMON * ARMOR_PER_STEP ** n
                * kind.armor_share),
         energy_shield=health * kind.energy_shield_fraction,

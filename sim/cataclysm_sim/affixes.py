@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import affix_ranges_2883 as ranges_2883
 from . import damage, enemy_stats, player_power
 from .character import (ALL_STATS, ATTRIBUTE_NAMES, RESISTANCE_STATS,
                         SKILL_SLOTS)
@@ -696,7 +697,11 @@ class AffixFamily:
         which multiplies the result. Both default to the best case, because the
         questions this module answers -- how many slots to reach the resistance
         cap -- are about what a finished, crafted character can achieve.
+
+        ANALYSIS BRANCH (#2884): the approved whole-number ranges of issue #2883, `affix_ranges_2883`.
         """
+        if ranges_2883.covers(self.name):
+            return float(ranges_2883.value(self.name, tier, roll, gear_level))
         return affix_value(self.top_value, tier, roll, gear_level,
                            self.floor)
 
@@ -777,6 +782,9 @@ class StatAffix:
     floor: float = 0.0
 
     def __post_init__(self) -> None:
+        # ANALYSIS BRANCH (#2884): the fourteen affixes issue #2883 moves to fewer kinds of piece.
+        if self.name in ranges_2883.SLOTS:
+            object.__setattr__(self, "allowed_slots", frozenset(ranges_2883.SLOTS[self.name]))
         if self.kind not in ("flat", "increased"):
             raise ValueError(
                 f"{self.name}: kind must be 'flat' or 'increased', "
@@ -811,7 +819,12 @@ class StatAffix:
         `two_handed` applies TWO_HANDED_MULTIPLIER, which is what balances four
         affix slots on a two-handed weapon against eight across two one-handed
         ones. It is only ever true for an affix rolled on a two-handed weapon.
+
+        ANALYSIS BRANCH (#2884): the approved whole-number ranges of issue #2883, `affix_ranges_2883`; a two-handed
+        weapon doubles inside the rounding there.
         """
+        if ranges_2883.covers(self.name):
+            return float(ranges_2883.value(self.name, tier, roll, gear_level, two_handed))
         value = affix_value(self.top_value, tier, roll, gear_level,
                             self.floor)
         return value * (TWO_HANDED_MULTIPLIER if two_handed else 1.0)
@@ -1617,10 +1630,11 @@ class Implicit:
         `two_handed` applies TWO_HANDED_MULTIPLIER. Pass a weapon base's
         `value_multiplier` rather than deciding here, so the rule lives in one
         place. An armour base is never two-handed.
+
+        ANALYSIS BRANCH (#2884): a whole +0 value, the stated figure over 2.5 rounded half up, upgraded as an affix
+        is (issue #2883, D9).
         """
-        at_zero = self.value / gear_level_multiplier(MAX_GEAR_LEVEL)
-        multiplier = TWO_HANDED_MULTIPLIER if two_handed else 1.0
-        return at_zero * gear_level_multiplier(gear_level) * multiplier
+        return float(ranges_2883.implicit_value(self.value, gear_level, two_handed))
 
 
 # --------------------------------------------------------------------------
@@ -2360,7 +2374,11 @@ class AilmentAffix:
         and the game's `UCataclysmItemValues::AffixValue` doubles an ailment
         chance on a two-handed weapon like every other affix. It is only ever
         true for an affix rolled on a two-handed weapon.
+
+        ANALYSIS BRANCH (#2884): the approved whole-number ranges of issue #2883, `affix_ranges_2883`.
         """
+        if ranges_2883.covers(self.name):
+            return float(ranges_2883.value(self.name, tier, roll, gear_level, two_handed))
         chance = affix_value(self.top_chance, tier, roll, gear_level)
         return chance * (TWO_HANDED_MULTIPLIER if two_handed else 1.0)
 
@@ -2545,6 +2563,9 @@ class HybridAffix:
                  gear_level: int = MAX_GEAR_LEVEL) -> float:
         if part not in self.parts:
             raise ValueError(f"{part.name} is not part of {self.name}")
+        # ANALYSIS BRANCH (#2884): a hybrid at tier N grants each half at that half's tier N - 2 (issue #2883, D6).
+        if ranges_2883.covers(part.name):
+            return float(ranges_2883.hybrid_half(part.name, tier, roll, gear_level))
         return part.value_at(tier, roll, gear_level) * HYBRID_FRACTION
 
     def values_at(self, tier: int = 7, roll: float = 1.0,
@@ -3225,6 +3246,23 @@ def _check_only_a_two_handed_weapon_multiplies_its_values() -> None:
                 f"{base.value_multiplier}, expected {expected}")
 
 
+def _check_the_2883_ranges_agree_with_this_module_and_cover_every_affix() -> None:
+    """ANALYSIS BRANCH (#2884). `affix_ranges_2883` restates three of this module's constants, because it cannot
+    import this module, and must name every non-hybrid affix, or an affix would quietly keep its old value."""
+    if (ranges_2883.LEVEL_STEP_HUNDREDTHS != round(GEAR_LEVEL_FACTOR * 100)
+            or ranges_2883.TWO_HANDED_FACTOR != TWO_HANDED_MULTIPLIER
+            or ranges_2883.MAX_GEAR_LEVEL != MAX_GEAR_LEVEL):
+        raise ValueError("affix_ranges_2883 disagrees with affixes.py on the upgrade step, the two-handed "
+                         "multiplier or the highest gear level")
+    names = ({a.name for a in AFFIX_POOL} | {f.name for f in RESISTANCE_FAMILIES}
+             | {a.name for a in AILMENT_AFFIXES})
+    if names != set(ranges_2883.TIER_RANGES):
+        raise ValueError(f"affix_ranges_2883 does not name exactly the affixes in the pool: missing "
+                         f"{sorted(names - set(ranges_2883.TIER_RANGES))}, extra "
+                         f"{sorted(set(ranges_2883.TIER_RANGES) - names)}")
+
+
+_check_the_2883_ranges_agree_with_this_module_and_cover_every_affix()
 _check_every_affix_tier_has_a_drop_weight()
 _check_a_higher_affix_tier_is_never_more_likely()
 _check_every_slot_can_fill_all_four_of_its_affixes()
