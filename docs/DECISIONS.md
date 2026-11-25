@@ -2,6 +2,261 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Death weapon skills, slice DS5: five more rows working; a walked charge nobody can touch, Fervour for each enemy a flying shot hits to a cap a cast, a wound that bursts as its bearer dies, nails that raise the chance to critically strike, and a buff whose holder's critical strikes strike again (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS4 (`ce993f239`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N18, N19, N14, `29e2cf809`), change B (C1, C2,
+  `476b5a386`) and change C (the rows, the data and the row tests, `2d0fae880`). Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **EVERY PIECE THE BRIEF NAMED IS BUILT, AND EVERY ROW IT NAMED IS WHOLE.** Gravetouch (N14), Wraithwalk (N18), Soul
+  Lance (N19), Coffin Nail (C1) and Carrion Crows (C2): 44 of the 45 Death rows work. **THE EFFIGY STILL WAITS**, on the
+  Soul Collector's Siphon keystone (C4) and on a Death deployable's reserve, which the brief said not to build. None of
+  the five pieces turned out large: N14, which slice DS2 judged large, became one hook in `MarkDead` and a small class,
+  once the wound was read off the running bleed rather than kept as a mark beside it (below).
+- **NOT BUILT, WORTH A LOOK: WRAITHWALK'S "STRAIGHT THROUGH ANYTHING IN THE WAY".** N18 makes the walker untargetable for
+  the walk. Whether its body passes through enemy bodies is the walked charge's existing movement (a root motion source,
+  `UCataclysmMovementSkill::BeginAdvance`), which this slice did not change and no test here measures; Pale Rider ("nothing
+  turns you aside") stands on the same behaviour since slice DS3. If the owner's play shows the drift stopped by a body,
+  that is a separate change to the walked charge.
+- **JUDGEMENTS, each worth a look:**
+  - *N14, the wound is the running ailment itself, not a mark beside it.* Slice DS2 sized N14 as a mark the strike leaves,
+    a component as `UCataclysmCurseSpread` is. The design gives every ailment one stack on a target, so the bleed the
+    strike laid is either the one still running -- perhaps refreshed by a weaker or equal application, which keeps it
+    running -- or gone: replaced by a stronger one of another source's, cleansed, or run out. The running effect already
+    names the skill that laid it (its context's ability) and its instigator, so "while the wound still bleeds" is read off
+    it (`UCataclysmWoundBurst::WoundThatBursts`). A bleed the caster laid with another skill (Severing Rush) that replaced
+    it names that skill, which states no burst. The one-stack rule `UCataclysmKillFervour::CarriesACurseLaidBy` reads for
+    a curse, read for an ailment. It is generic: the wound is whatever `Ailment` the row names.
+  - *N14, what the burst is.* The dying creature's own maximum health, read as it dies, times the row's share, sent as
+    it stands -- no increase of the caster's raises it and no skill level scales it, as Shared Ruin's death blast and the
+    overkill explosion send theirs; the struck creatures' defences meet it. In the caster's name, at every enemy of the
+    caster's within the row's own 4 m of where it fell, NOT WIDENED BY AREA OF EFFECT, as no death blast in the game is.
+    The consequence of a death (`bIsConsequenceOfADeath`), as the overkill explosion and Contagion's blast are: area,
+    never a critical strike, no weapon sub-type, no leech, not retaliated, and no on-hit row of the caster's fires.
+  - *N14, whether the burst credits Gravetouch* (slice DS2's "ruling-sized question"): **it names the skill**
+    (`FCataclysmHitDelivery::Skill`), so a death it causes is Gravetouch's kill in the hit and death notices -- "it bursts"
+    is the second half of Gravetouch's own sentence -- **and it credits no skill experience row of its own**, as the
+    overkill explosion and Contagion's blast credit none: the wound's ticks already earned the skill its share of the
+    creature they bled. A burst's kill can burst in turn when the creature it kills carries a wound of its own; that death
+    comes back through `MarkDead`, which refuses a death already being marked (issue #2871). The burst is a sixth hook in
+    `MarkDead`, after the death is recorded as being marked and before the dead tag (`test_a_wound_bursts_inside_the_record_
+    and_before_the_tag`).
+  - *N18, the walk's own seconds.* Untargetable for the walk's `Duration`, the time its stop timer ends it at -- the
+    flicker's call, and like the flicker's not lengthened by `skill_duration`. A walk cut short keeps what is left of it,
+    as a flicker cut short does. The generator now refuses `Untargetable=1` on anything but a flicker and a walked charge,
+    which would make a caster untouchable for no time at all (the two flickers that stated it, Everywhere at Once and
+    Danse Macabre, still pass).
+  - *N19, the cap counts the row's own figures*: what each contact offered, before the generation rate and whether a full
+    pool took it, so "at most 4 a throw" is four enemies' worth however the pool stood. Each contact is its own landing, as
+    `fervour_per_enemy_hit`'s are (ruled 2026-09-16), so a return pass would pay again under the same cap. Counted across
+    every projectile one use fires -- the draft's own judgement, "Soul Lance's cap stays 4 a cast however many lances
+    fly" -- through a record each use makes fresh and hands to every shot (`ACataclysmProjectile::HitFervourStatedInItsUse`),
+    a rack's axes included. Paid at a contact that landed and carried damage, the burn's test; a beam, whose landing is no
+    flying contact, is refused by the generator.
+  - *C1, every blow of the nailer's and no one else's*, added to whichever chance the blow has -- its skill's stated chance
+    or the character's own -- before the critical strike ceiling, the owner's "flat critical strike chance added to the
+    base"; so Mercy Stroke's 10 becomes 30 against four nails. The bolt that drives a nail was settled before it and gains
+    nothing from it. **One nailer's nails at a time**, the single-stack rule: another character's nail starts the count
+    again for that one, which nothing in a one-player game does. The nails lapse when the row's `EffectDuration` has
+    passed since the last one (not lengthened by `skill_duration`), every new nail renewing them all; the ceiling caps
+    how many count, so a fifth renews the four and adds nothing.
+  - *C2, told once the critical blow is wholly resolved.* The hit notice is heard before the struck creature's health is
+    written (`UCataclysmVitalAttributeSet`), so it cannot say whether the strike killed. The buffs are told from
+    `UCataclysmSkillEffects::ApplyHit` after `ApplyDirectDamage` returns -- the place every skill blow, basic attack,
+    flying shot's contact and path hit of a player is dealt -- and only for a strike the holder landed: not evaded, not
+    refused as immune, not a tick, not a share struck at an ally, and not a blow that is no strike of its (the consequence
+    of a death, a blow returned for one taken, the explosion at an ailment's end, a share of an ally's blow, or a worn row's
+    answer to an event, which would let a critical strike call a crow through a row's answer and that answer another). A
+    skill gadget's or trap's cast takes the machine's path and calls none, as a minion's blow is the minion's.
+  - *C2, where the crow goes when the strike killed*: the nearest enemy of the holder's within the row's own 10 m **of where
+    the struck enemy stood** -- the crow was diving there -- not of the holder; not widened by area of effect, as a
+    cash-in's and a taunt's reach are the row's own. None when nothing is there.
+  - *C2, the quarter second* is claimed before the crow strikes, so nothing the crow sets off finds the buff free in the
+    same instant; a critical strike inside it calls nothing and is not kept for later, as a row on cooldown keeps nothing.
+    `CrowCooldownSeconds` is held to the generator's `DEFAULT_TRIGGER_COOLDOWN` by a Python check, as the Warhound's is.
+    A crow's own critical strike calls no other twice over: it names the buff, and it lands while the buff is striking.
+  - *C2, what a crow is*: an ordinary hit of the holder's, `ApplyHit` at the row's Damage Percent with the row's tags and
+    its own critical strike chance (the holder's, the row stating none), which it may roll -- as a row's path hit is dealt.
+    It raises the hit notice every on-hit row hears; it is no skill swing through `HitTargets`, so it pays no
+    `fervour_per_enemy_hit` and tells no running buff it landed. At once, with nothing drawn in flight. The generator
+    refuses `StrikesOnCritical` on a row stating no Damage Percent, whose crows would take its slot's figure (nought for a
+    Support).
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming `MinionTypes.csv`, `SkillSlots.csv` and
+  `WeaponSkills.csv`, and every Unreal test reading the tables reads stale ones: the five row tests and the two counting
+  tests fail at their set-up lines, which say so. The six mechanism tests write their own cells, so they do not wait on
+  it.
+
+**Affects:** `tools/generate_datatables.py` (`ON_DEATHS`, `SHAPE_PARAMS`, `check_a_bursting_wound_a_paid_hit_and_an_escape`,
+`check_a_coffin_nail`, `check_a_buff_striking_on_a_critical_states_its_damage`, `flies`) and its copy in
+`sim/cataclysm_sim/enemy_abilities.py`; `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp`
+(`BurstPercentOfMaximumHealth`, `HitFervour`, `HitFervourPerCast`, `CritChanceAgainst`, `CritChanceAgainstMax`,
+`bStrikesOnCritical`); `CataclysmWoundBurst.h` and `.cpp` (new); `CataclysmCoffinNails.h` and `.cpp` (new);
+`CataclysmSkillEffects.h` and `.cpp` (`MarkDead`'s sixth hook, `ApplyHit` telling a critical strike);
+`CataclysmVitalAttributeSet.cpp` (the nails' chance); `CataclysmProjectile.h` and `.cpp` (`HitFervourStatedInItsUse`, the
+payment at a contact); `CataclysmSkillTemplate.h` and `.cpp` (`PayHitFervourFor`, `NoteCriticalStrikeLanded`, the nail in
+`LayWhatALandedShotCarries`); `CataclysmSkillTemplates.h` and `.cpp` (the walk's untargetability, the projectile skill's
+`HitFervourOfThisUse`, the self buff's `CriticalStrikeLanded`, `CrowCooldownSeconds`, `CrowsSent`); `CataclysmUndesignedSkill.h`
+(the counts); `tools/reapply_death_skills_workbook.py` and the workbook it edits; `game/Data/WeaponSkills.csv`; the Unreal
+tests in `CataclysmDeathSkillsTests.cpp`; and the Python checks named below.
+
+### The instruction, verbatim
+
+- The coordinating session's brief for slice DS5, 2026-11-24: "Build N14 (Gravetouch's mark; DS2 judged it large: a mark
+  component like the curse spread's, a death hook in MarkDead, which bleed counts as "the wound" under the one-stack rule,
+  whether the burst credits the skill; decide each and label it), N18 (Wraithwalk), N19 (Soul Lance: +1 Fervour per enemy
+  hit, at most 4 a cast), C1 (Coffin Nail) and C2 (Carrion Crows), and give each completed row its full Shape. Do NOT build
+  C4 or the Effigy (they wait on the Soul Collector's Siphon keystone and on deployable reserves)." Its summary of the
+  approved Crossbow rows: "C1 Coffin Nail: +5 flat critical strike chance per nail against that enemy, up to 4 nails, until
+  4 s pass without a new one; C2 Carrion Crows: for 8 s each critical strike sends a crow at the enemy struck for 40% weapon
+  damage, at most four a second, a crow's own crit calls no other; the owner approved both with the recommendations: None
+  Spared's crits certain, Coffin Nail's +5 is flat chance added to the base". No owner ruling is new to this slice; the
+  rows are the 45 the owner approved on 2026-11-24, quoted in DS1's entry below.
+
+### The rows
+
+**Five more written whole**, 44 of the 45 in all, each exactly as approved:
+
+| Row | Needs |
+| :-- | :-- |
+| Gravetouch (Fist Heavy) | N14 (N16 built in slice DS2) |
+| Wraithwalk (Staff Movement) | N18 (N22 built in slice DS1) |
+| Soul Lance (Spear Special) | N19 |
+| Coffin Nail (Crossbow Heavy) | C1 |
+| Carrion Crows (Crossbow Support) | C2 |
+
+**1 still waits, with no shape:** the Effigy (Crossbow Special), on C4 (the Siphon keystone) and a Death deployable's
+reserve. `tools/reapply_death_skills_workbook.py` holds its shape.
+
+**The workbook cells**, 10: on Weapon Skills, the Shape and Shape Params of the five rows. No Minion Types row is new. Run
+a second time the script writes nothing ("0 cells to write; nothing written"), and `generate_datatables.py --check` says
+"All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N18, `Untargetable=1` on a walked charge.** `UCataclysmMovementSkill::BeginAdvance` lays the untargetable tag on the
+  walker for the walk's `Duration` (`UCataclysmSkillEffects::ApplyUntargetable`, the flicker's call). No key: `Untargetable`
+  was a rider every shape may state, read only by the flicker. The generator refuses it on any other move or shape.
+- **N19, `HitFervour=N; HitFervourPerCast=M` on a flying Projectile.** `ACataclysmProjectile::HitOne`, at a contact that
+  landed and carried damage, calls `UCataclysmSkillTemplate::PayHitFervourFor`, which pays the row's figure through
+  `UCataclysmFervour::GainStated` (N6's write) to what is left under the cap, counted in the record the use shares
+  (`UCataclysmProjectileSkill::HitFervourOfThisUse`). The generator refuses nought or less, a beam, a cap with nothing to
+  cap and a cap of nought.
+- **N14, `OnDeath=Burst; BurstPercentOfMaximumHealth=N; OnDeathRange=M` beside a Strike's `Ailment`.**
+  `UCataclysmWoundBurst::BurstFromDying`, a sixth hook in `UCataclysmSkillEffects::MarkDead`: a creature dying while a
+  running effect grants the ailment a skill stating the burst laid, in that skill's caster's name, bursts at every enemy
+  of the caster's within M metres for N% of its maximum health. The generator refuses a burst with no `Ailment`, no
+  share or no reach, and a share without the burst.
+
+**Change B.**
+
+- **C1, `CritChanceAgainst=N; CritChanceAgainstMax=M; EffectDuration=S` on a flying Projectile.**
+  `UCataclysmSkillTemplate::LayWhatALandedShotCarries` drives a nail (`UCataclysmCoffinNails::DriveInto`, a component on
+  the creature, one per creature, refreshed); `UCataclysmVitalAttributeSet` adds `UCataclysmCoffinNails::CritChanceAgainst`
+  -- the nails' points, to M -- to the blow's chance before the ceiling. The generator refuses nought or less a nail, a
+  ceiling below one nail or with no nails, no `EffectDuration`, and a beam.
+- **C2, `StrikesOnCritical=1` on a SelfBuff.** `UCataclysmSkillEffects::ApplyHit` tells
+  `UCataclysmSkillTemplate::NoteCriticalStrikeLanded` of a critical strike its striker landed, once it is resolved; each
+  running buff stating the key answers in `UCataclysmSelfBuffSkill::CriticalStrikeLanded`. The generator refuses the key
+  on a row stating no Damage Percent.
+
+### Research
+
+No formula is new. Each shape is the approved drafts', with their sources -- Diablo IV's Heartseeker upgrade, "Critical
+Strike Chance against them is increased by 5% for 4 seconds", up to 20% (Coffin Nail, taken whole); Path of Exile's Cast On
+Critical Strike, "Trigger a Supported Spell when you Crit an Enemy", and Diablo III's Companion raven (Carrion Crows);
+Diablo III's Exploding Palm, unverified (Gravetouch); the Ravager's `fervour_per_enemy_hit` (Soul Lance) -- which were not
+fetched again for this slice. Each piece calls this game's own precedent rather than a copy: the flicker's
+`ApplyUntargetable` (N18), N6's `GainStated` and the projectile contact's Fervour (N19), the curse spread's place in
+`MarkDead` and the overkill explosion's delivery (N14), the curse spread's component (C1), and the engine's quarter-second
+trigger rate (C2). What the precedents do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Eleven new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **71 performed, 71 succeeded** (DS1's 14, DS2's
+14, DS3's 18, DS4's 14 and these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `AWalkedChargeStatingUntargetableCannotBeTouchedForItsWalkAndOneStatingNoneCan` | A, N18 | untargetable 1 s, a blow lands nothing; control: no key, the blow lands |
+| `AShotPayingFervourForEachEnemyItHitsPaysOneEachToItsCapACastAndAgainTheNextCast` | A, N19 | 5 struck, 4 paid; a second cast 4 more; controls: 2 struck pay 2, no key pays nothing |
+| `ACreatureDyingWhileItsWoundRunsBurstsForATenthOfItsMaximumHealthAndNoOtherDeathDoes` | A, N14 | 3 m off takes the reference tenth, named the skill's; 5 m off nothing; controls: a bleed no skill laid, a wound ended |
+| `AShotDrivingNailsRaisesItsFirersCriticalStrikeChanceAgainstWhatItNailsToItsCeilingUntilTheyLapse` | B, C1 | 1 nail 5, 4 nails 20; roll 18 crits; controls: another's blow, a clean creature; 3.9 s held, 4.1 s lapsed |
+| `ABuffStrikingOnCriticalsStrikesWhatEachCriticalStrikeLandsOnForItsDamageAtMostFourASecond` | B, C2 | control: none before the buff; one crow worth a 40% blow; none in the same instant, one 0.3 s later; none cancelled |
+| `ACriticalStrikeThatKillsSendsItsStrikeAtTheNearestWithinTheRadiusAndAStrikesOwnCriticalCallsNoOther` | B, C2 | a kill sends it 4 m on; control: 11 m off nothing; a critting crow calls no second |
+| `GravetouchBleedsOneEnemyAndItsDeathWhileItBleedsBurstsForATenthOfItsMaximumHealthWithinFourMetres` | C, row | one struck, bleeding; burst a tenth at 3 m and beside; control: 5 m |
+| `WraithwalkDriftsUntouchableForItsSecondAndCripplesWhatItPassesThroughByThirty` | C, row | untargetable 1 s; passed Crippled 30 for 3 s; control: 3 m off the line |
+| `SoulLancePiercesItsFourteenMetreLineAndPaysOneFervourAnEnemyToFourAThrow` | C, row | 5 struck, 4 paid; control: 17 m off untouched |
+| `CoffinNailNailsTheFirstEnemyInItsLineFivePointsANailToTwentyHeldFourSeconds` | C, row | 1 nail 5; control: the one behind neither struck nor nailed; 4 nails 20; roll 18 crits; 4.1 s lapsed |
+| `CarrionCrowsSendsACrowForFortyPercentAtWhatEachCriticalStrikeLandsOnForEightSeconds` | C, row | 8 s; control: none before; one crow worth a 40% blow of the row's tags |
+
+**Two Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 44 rows (from 39) and the five rows' DS5 keys (Wraithwalk's walk and untargetability, Gravetouch's burst, Soul
+Lance's payment and cap, Coffin Nail's nails, Carrion Crows' key, 8 s and cooldown of 10);
+`Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` reads 1 waiting (from 6) and 50 of 51
+shaped (from 45). No DataTable pin moves: no row is added to either table. **The whole suite is registered as 5483**:
+slice DS4's registered 5472 and these 11; a prediction, the run is the figure.
+
+**Five C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`, after the editor step.
+Change A has three, change B two; change C is data and has none:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N18 | `CataclysmSkillTemplates.cpp` | `UCataclysmSkillEffects::ApplyUntargetable(Self, Self, Params.Duration);` becomes `UCataclysmSkillEffects::ApplyUntargetable(Self, Self, 0.0f * Params.Duration);` | `AWalkedChargeStatingUntargetable...`, `WraithwalkDrifts...` |
+| G2, N19 | `CataclysmSkillTemplate.cpp` | `return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), Offered);` becomes `return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), 0.0f * Offered);` | `AShotPayingFervourForEachEnemy...`, `SoulLancePierces...` |
+| G3, N14 | `CataclysmWoundBurst.cpp` | `if (!Skill)` (in `BurstFromDying`; `WoundThatBursts` reads `if (!Skill \|\| ...` and is untouched) becomes `if (true \|\| !Skill)` | `ACreatureDyingWhileItsWoundRuns...`, `GravetouchBleeds...` |
+| G4, C1 | `CataclysmVitalAttributeSet.cpp` | `(Stated >= 0.0f ? Stated : OwnCritChance) + FromNails, Ceiling);` becomes `(Stated >= 0.0f ? Stated : OwnCritChance) + 0.0f * FromNails, Ceiling);` | `AShotDrivingNailsRaises...`, `CoffinNailNails...` (each at its critical strike line; the nail counts still pass) |
+| G5, C2 | `CataclysmSkillEffects.cpp` | `if (Landed->bWasCritical && !Landed->bEvaded && ...` becomes `if (false && Landed->bWasCritical && !Landed->bEvaded && ...` | `ABuffStrikingOnCriticals...`, `ACriticalStrikeThatKills...`, `CarrionCrowsSends...` |
+
+Each break line was confirmed to appear exactly once in its file.
+
+**Python checks moved with the rows:** the script's built rows 39 to 44 and the Effigy alone waiting
+(`test_reapply_death_skills_workbook.py`, its waiting-row check renamed for slice DS5 as DS4 renamed DS3's); the undesigned
+count 60 of 198 to 55 (`CataclysmUndesignedSkill.h`). **New:** in `test_death_skill_shape_keys.py`, each new key accepted
+on its row's cell and refused where it would do nothing, the crows' quarter second held to `DEFAULT_TRIGGER_COOLDOWN`;
+in `test_a_death_is_marked_once_from_inside_its_own_hooks.py`, the burst's place inside `MarkDead`.
+
+### What was run, on `2d0fae880`
+
+- **Full Python suite: "1 failed, 8448 passed, 9 skipped in 366.31s"; JUnit 8458 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` and `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the changed and new C++ files: "13 files read, 0 with complaints" (change A), "11 files
+  read, 0 with complaints" (change B), "2 files read, 0 with complaints" (change C). The engine-name, anonymous-helper,
+  header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0 cells to write; nothing written";
+  `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- **Eighteen Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `2d0fae880`**, each
+  failing with the break in and passing restored. Every break makes one condition `False and ...` (or `if False and`),
+  but P16, P17 and P18:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N14 | the no-`Ailment` refusal | its `test_a_wound_burst_that_could_burst_nothing_is_refused` case |
+| P2, N14 | the no-share refusal | its two `test_a_wound_burst_that_could_burst_nothing_is_refused` cases |
+| P3, N14 | the no-reach refusal | its `test_a_wound_burst_that_could_burst_nothing_is_refused` case |
+| P4, N14 | the share-without-the-burst refusal | `test_a_burst_share_without_the_burst_is_refused` |
+| P5, N19 | the nought-or-less refusal | its two `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` cases |
+| P6, N19 | the beam refusal | its `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` case |
+| P7, N19 | the cap-with-nothing-to-cap refusal | its `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` case |
+| P8, N19 | the cap-of-nought refusal | its `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` case |
+| P9, N18 | `if not lasts:` | the five `test_untargetable_on_a_move_or_shape_that_does_not_last_is_refused` |
+| P10, C1 | the nought-or-less refusal | its two `test_nails_that_would_raise_nothing_are_refused` cases |
+| P11, C1 | the ceiling-below-a-nail refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P12, C1 | the no-`EffectDuration` refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P13, C1 | the beam refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P14, C1 | the ceiling-with-no-nails refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P15, C2 | the no-Damage-Percent refusal | `test_a_buff_striking_on_a_critical_that_states_no_damage_is_refused` |
+| P16, the rows | `BUILT` without N14 in the script | five checks of `test_reapply_death_skills_workbook.py`, the committed workbook and table among them |
+| P17, N14's place | `MarkDead`'s burst call commented out | `test_a_wound_bursts_inside_the_record_and_before_the_tag` |
+| P18, C2's rate | `CrowCooldownSeconds = 0.25f` made `0.5f` | `test_the_crows_quarter_second_is_the_generators_trigger_cooldown` |
+
+---
+
 ## 2026-11-24 — The Death weapon skills, slice DS4: eight more rows working; a strike's refund on a kill, spending every Fervour held, cashing in its caster's ailments, a rift's minions bursting as it closes, a buff laid by every blow, and a buff lengthening melee reach (#2885)
 
 **Said first:**
