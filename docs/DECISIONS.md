@@ -1752,6 +1752,56 @@ pull request that changes `game/` finds none to waive: #2896 merged.
   8,604 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`: `All checks passed!`. The test files that
   read this log were run again on the head that carries this line.
 
+
+### Window rifts-w2, 2026-11-25: the build, 9 of 9 groups alone, and 7 of 7 proofs as registered
+
+**Ran on `efb1d1cb6`, lock `rifts-w2`**, the pre-checks all passing (development `e6cac7fca`, its CI and Unreal runs
+both succeeding; no open pull request). The tested head was still the branch's head at the end. **SEVEN GROUPS WERE
+ADDED TO THE REGISTRATION BEFORE THE WINDOW STARTED**, by the coordinating session's approval of 2026-11-25: `b82192d49`
+changes game code, so the groups whose runs face Demonic at tier 1 or read Rifts ran alone too, at w1's counts. The
+approval message registered them; this entry did not, because moving the registered commit would have meant another
+Python run for a list of counts.
+
+| Stage | Registered | Measured |
+| :-- | :-- | :-- |
+| Build | succeeds | "Succeeded - 68 actions, 63 files compiled" |
+| `Cataclysm.Rifts.` alone | 13 of 13 | 13 performed, 13 succeeded, 0 failed |
+| `Cataclysm.DungeonModifiers.` alone | 32 of 32 | 32, 32, 0 |
+| The seven added groups, at w1's counts | each all succeeded | `RiftMap.` 2, `RiftAltars.` 9, `DeathCost.` 11, `EmpireRun.` 72, `Surge.` 54, `InventoryTabs.` 7, `Merchant.` 7, each all succeeded, 0 failed |
+| Guard proofs | seven, each failing exactly its registered tests | seven PROVED, each failing exactly its registered tests and nothing else (below) |
+
+**THE DIAGNOSIS OF w1's FAILURE, SHOWN BY A RUN.** All 40 `RIFT CONTROL:` lines give equal counts, and exactly 4 at each
+tier say Sacrificial, the same 4 dungeon numbers at both tiers, with 2 and 8 modifiers, as registered:
+
+```
+RIFT CONTROL: tier 1, dungeon 600, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 1, dungeon 607, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 1, dungeon 610, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 1, dungeon 617, sub-type Sacrificial, 2 modifiers, the ordinary rule 2
+RIFT CONTROL: tier 4, dungeon 600, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+RIFT CONTROL: tier 4, dungeon 607, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+RIFT CONTROL: tier 4, dungeon 610, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+RIFT CONTROL: tier 4, dungeon 617, sub-type Sacrificial, 8 modifiers, the ordinary rule 8
+```
+
+**The Demonic Guide**: `RIFT GUIDE: of 200 Rifts at tier 1, 0 hold the Demonic Guide; at tier 2, 58; of 200 ordinary
+Demonic dungeons at tier 1, 16`.
+
+| Proof | With the break in | Failed, by name | Restored |
+| :-- | :-- | :-- | :-- |
+| G1 | "45 tests performed, 43 succeeded, 2 failed" | ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay, ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse | 45 of 45 |
+| P1 | "13 tests performed, 11 succeeded, 2 failed" | ARiftIsFourFloorsWithTheTimerOfFourFloorsWhateverTheTreeAdds, ARiftOpensOnAnyStandingCityButThePillarByTierWeight | 13 of 13 |
+| P2 | "13 tests performed, 10 succeeded, 3 failed" | ARiftSendsABasicDemonicDungeonOnItsFifthDayAndItsTenth, ARiftThatMovesKeepsItsCountAndSendsFromWhereItStands, ARiftWithNoNeighbourASurgeCouldTargetSendsNothingUntilALaneOpens | 13 of 13 |
+| P3 | "11 tests performed, 10 succeeded, 1 failed" | ADeathInARiftBringsASurgeOnTheDayOfTheDeath | 11 of 11 |
+| RA1 | "9 tests performed, 6 succeeded, 3 failed" | AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen, AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour, ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor | 9 of 9 |
+| RA2 | "93 tests performed, 88 succeeded, 5 failed" | AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen, AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen, AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls, ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor, ARiftsFallenAltarStaysFallenAfterALoad | 93 of 93 |
+| RA3 | "93 tests performed, 91 succeeded, 2 failed" | AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen, ARiftsFallenAltarStaysFallenAfterALoad | 93 of 93 |
+
+Each proof: not crashed, every anchor matched once, the source hash the same before and after. Both halves' engine logs
+are kept as `rifts_<proof>_run1_<group>.log` and `run2` in the worktree's `.claude/windows`. RA2's restored half is cut
+short in the runner's printed summary; its kept logs show `RiftAltars.` 9 succeeded and `SaveLoad.` 84 succeeded, 0
+failed each.
+
 ---
 
 ## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
