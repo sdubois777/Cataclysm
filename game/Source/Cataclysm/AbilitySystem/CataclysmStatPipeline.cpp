@@ -174,6 +174,7 @@ namespace
 		{ TEXT("opponent_rarity_at_least"), ECataclysmStatCondition::OpponentRarityAtLeast },
 		{ TEXT("enemy_of_rarity_in_reach"), ECataclysmStatCondition::EnemyOfRarityInReach },
 		{ TEXT("no_enemy_in_reach"), ECataclysmStatCondition::NoEnemyInReach },
+		{ TEXT("kill_chain_within_seconds"), ECataclysmStatCondition::KillChainWithinSeconds },
 	};
 
 	struct FNamedStatScale
@@ -208,6 +209,7 @@ namespace
 		{ TEXT("own_stacks"),          ECataclysmStatScale::PerOwnStack },
 		{ TEXT("consecutive_hits"),    ECataclysmStatScale::PerConsecutiveHit },
 		{ TEXT("seconds_poisoned_by_you"), ECataclysmStatScale::PerSecondPoisonedByYou },
+		{ TEXT("fervour_overflow_stacks"), ECataclysmStatScale::PerFervourOverflowStack },
 		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
 		{ TEXT("class_points_spent"),  ECataclysmStatScale::PerClassPointSpent },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
@@ -549,6 +551,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// AND THE WINDOW AFTER A KILL, the Death trees of 2026-11-24: it opens at a kill and closes when its seconds run
 	// out, which nothing announces.
 	case C::WithinSecondsOfKill:
+	case C::KillChainWithinSeconds:
 	case C::WithinSecondsOfFervourSpent:
 	// AND A WORN ENEMY MODIFIER, the Death trees' slice C4d3 (2026-11-25): it runs out after its seconds with nothing
 	// announcing it, as the kill's clock does.
@@ -1514,6 +1517,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		return State.SecondsSinceOwnKill >= 0.0f
 			&& State.SecondsSinceOwnKill <= Value;
 
+	case ECataclysmStatCondition::KillChainWithinSeconds:
+		// THE SAME CLOCK, ITS WINDOW LENGTHENED BY THE CHAIN'S EXTRA SECONDS (the Death trees' slice C6c, 2026-11-25).
+		return State.SecondsSinceOwnKill >= 0.0f
+			&& State.SecondsSinceOwnKill <= Value + FMath::Max(0.0f, State.KillChainSeconds);
+
 	case ECataclysmStatCondition::TargetInYourSiphon:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetStandsInYourZone` is. The Death trees' slice C2
 		// (2026-11-25). False is also "no target in hand" and "nothing asked".
@@ -1965,6 +1973,14 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			? StackedValue(Modifier,
 						   Asking->ConsecutiveHitsOn(Modifier.StackKey, State.LookupTarget))
 			: 0.0f;
+	}
+
+	// AND THE OVERFLOW STACKS THE ASKER HOLDS: Overflow, the Death trees' slice C6c (2026-11-25).
+	case ECataclysmStatScale::PerFervourOverflowStack:
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		return Asking ? StackedValue(Modifier, Asking->FervourOverflowStacksHeld()) : 0.0f;
 	}
 
 	// AND THE WHOLE SECONDS THE TARGET OF THIS LOOKUP HAS CARRIED THE ASKER'S POISON WITHOUT A BREAK: Festering, the

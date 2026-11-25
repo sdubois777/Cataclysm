@@ -202,7 +202,10 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 44 WHEN `seconds_poisoned_by_you` GAINED ITS FIVE ROWS, 2026-11-25, for
 #: the Shadow's Festering (the Death trees' slice C6b4).
-EXPECTED_NAMED_BY_A_ROW = 44
+#:
+#: AND 45 WHEN `fervour_overflow_stacks` GAINED ITS ROW, 2026-11-25, for the
+#: Soul Collector's Overflow (the Death trees' slice C6c).
+EXPECTED_NAMED_BY_A_ROW = 45
 
 
 def scales_named_by_a_row() -> set[str]:

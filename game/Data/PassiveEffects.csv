@@ -549,7 +549,7 @@ SoulCollector_basic_a_c1#2,SoulCollector_basic_a_c1,spell_damage,increased,1.0,,
 SoulCollector_keystone_a_kC#1,SoulCollector_keystone_a_kC,fervour_threshold_linger_seconds,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 SoulCollector_basic_b_stem1#1,SoulCollector_basic_b_stem1,attack_speed,increased,2.0,,class_resource_points_below,20.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 SoulCollector_basic_a_stem2#1,SoulCollector_basic_a_stem2,reserved_fervour_counts_as_held_percent,flat,8.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
-SoulCollector_capstone_25#3,SoulCollector_capstone_25,fervour_per_kill,flat,1.0,,seconds_after_kill,2.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+SoulCollector_capstone_25#3,SoulCollector_capstone_25,fervour_per_kill,flat,1.0,,kill_chain_within_seconds,2.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 SoulCollector_basic_b_stem0#1,SoulCollector_basic_b_stem0,fervour_per_kill_extra_chance,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 SoulCollector_basic_b_stem2#1,SoulCollector_basic_b_stem2,fervour_per_kill,increased,1.0,,,0.0,enemies_in_reach,1.0,0,8.0,0,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_basic_a_stem0#1,Shadow_basic_a_stem0,fervour_per_kill,flat,1.0,,target_carries_your_poison_or_bleed,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
@@ -628,3 +628,10 @@ Shadow_basic_a_a1#3,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poiso
 Shadow_basic_a_a1#4,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poison,,0.0,seconds_poisoned_by_you,1.0,0,-1.0,8,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_basic_a_a1#5,Shadow_basic_a_a1,dot_damage,increased,1.0,Keyword.DoT.Poison,,0.0,seconds_poisoned_by_you,1.0,0,-1.0,10,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_basic_d_a1#1,Shadow_basic_d_a1,,,2.0,,,0.0,,0.0,0,-1.0,0,0,next_hit_critical_twice,dodge,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,5.0
+SoulCollector_basic_a_b1#1,SoulCollector_basic_a_b1,fervour_decay_floor_percent,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+SoulCollector_keystone_spine_003#1,SoulCollector_keystone_spine_003,fervour_kill_decay_per_second,removed,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+SoulCollector_keystone_spine_003#2,SoulCollector_keystone_spine_003,health_percent_lost_per_fervour_lost,flat,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+SoulCollector_keystone_a_kA#1,SoulCollector_keystone_a_kA,fervour_overflow_attack_speed_seconds,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+SoulCollector_keystone_a_kA#2,SoulCollector_keystone_a_kA,attack_speed,increased,1.0,,,0.0,fervour_overflow_stacks,1.0,0,-1.0,0,30,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+SoulCollector_basic_b_a1#1,SoulCollector_basic_b_a1,kill_chain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+SoulCollector_basic_b_a1#2,SoulCollector_basic_b_a1,kill_chain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0

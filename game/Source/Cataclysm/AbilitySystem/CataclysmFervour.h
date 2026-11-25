@@ -759,6 +759,36 @@ public:
 	static const TCHAR* HoldExtendedOnGainSecondsStat;
 
 	/**
+	 * The share of the full bar after reserves, in percent, below which the kill decay does not take Fervour: the Soul
+	 * Collector's Miser's Grip, "Your Fervour never decays below 3% of your maximum Fervour per point". The Death trees'
+	 * slice C6c (2026-11-25), as ruled. Only the decay stops at it; a spend, a loss to healing and Soulbound's loss go
+	 * below it. No attribute and no base.
+	 */
+	static const TCHAR* DecayFloorPercentStat;
+
+	/**
+	 * Every how many percent of maximum health lost to damage costs 1 Fervour: the Soul Collector's Soulbound, "you lose 1
+	 * Fervour for every 2% of your maximum health that you lose to damage". The Death trees' slice C6c (2026-11-25), as
+	 * ruled. Health lost only: an energy shield or mana that absorbs the blow costs nothing, and health paid as a skill's
+	 * cost is not lost to damage; a tick of damage over time is. No attribute and no base.
+	 */
+	static const TCHAR* HealthPercentLostPerFervourLostStat;
+
+	/**
+	 * The seconds of the shared window Overflow's stacks last, and whether a character has Overflow at all: the Soul
+	 * Collector's Overflow, "Fervour gained above the maximum becomes 5 seconds of attack speed". The Death trees' slice
+	 * C6c (2026-11-25), as ruled. No attribute and no base.
+	 */
+	static const TCHAR* OverflowAttackSpeedSecondsStat;
+
+	/**
+	 * The seconds Unbroken Chain adds to a chain of kills: "A chain of kills allows 1 second more between kills for every
+	 * 4 points. The same applies to Soul Tide." The Death trees' slice C6c (2026-11-25), as ruled. No attribute and no
+	 * base. Read by `UCataclysmAbilitySystemComponent::KillChainSecondsHeld`.
+	 */
+	static const TCHAR* KillChainSecondsStat;
+
+	/**
 	 * The full length of the hold before decay, in seconds, as ruled: the grace the last kill set, and before any kill
 	 * a common kill's grace (`KillDecayGraceSecondsStat` asked as if against rung 0). The Death trees' slice C4b1
 	 * (2026-11-25). Nought for an ability system that is not this game's.
@@ -998,6 +1028,16 @@ public:
 	 */
 	static float GainFromHealthCost(UAbilitySystemComponent* AbilitySystem,
 									float HealthSpent);
+
+	/**
+	 * Take Fervour for health this character lost to damage, under Soulbound (`HealthPercentLostPerFervourLostStat`): 1
+	 * for each whole step of that share of maximum health, the remainder kept. The Death trees' slice C6c (2026-11-25).
+	 * Not stopped by Miser's Grip's floor, which is about decay.
+	 *
+	 * @param HealthLost  what reached HEALTH, as `GainFromDamage` takes it
+	 * @return how much Fervour was really taken, as a positive number
+	 */
+	static float LoseFromDamage(UAbilitySystemComponent* AbilitySystem, float HealthLost);
 
 	/**
 	 * Empty the bar because this character was healed.

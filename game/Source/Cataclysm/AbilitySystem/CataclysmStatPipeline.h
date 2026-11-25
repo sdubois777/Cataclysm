@@ -2032,6 +2032,18 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	NoEnemyInReach
 		UMETA(DisplayName = "No Enemy In Reach"),
+
+	/**
+	 * The character killed an enemy at most `ConditionValue` seconds ago PLUS the chain's extra seconds
+	 * (`kill_chain_seconds`, `FCataclysmStatConditions::KillChainSeconds`): Soul Tide's "Kills within 2 seconds of each
+	 * other", which Unbroken Chain lengthens, "The same applies to Soul Tide". The Death trees' slice C6c (2026-11-25), as
+	 * ruled. The kill clock `WithinSecondsOfKill` reads, and its rules: never killed reads -1 and refuses; inclusive. The
+	 * other "for N seconds after a kill" rows stay on `WithinSecondsOfKill`, which the chain does not lengthen.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	KillChainWithinSeconds
+		UMETA(DisplayName = "Kill Chain Within Seconds"),
 };
 
 /**
@@ -2885,6 +2897,16 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerSecondPoisonedByYou
 		UMETA(DisplayName = "Per Second Poisoned By You"),
+
+	/**
+	 * Multiplied by the overflow stacks the character holds: one for each whole Fervour a gain could not fit above the
+	 * full bar after reserves, while their shared window runs. The Soul Collector's Overflow, "Each Fervour above it
+	 * gives 1% increased Attack Speed for 5 seconds, up to 30%". The Death trees' slice C6c (2026-11-25), as ruled. Read
+	 * off the asking ability system (`UCataclysmAbilitySystemComponent::FervourOverflowStacksHeld`); capped by the row's
+	 * `ScaleMaxSteps`.
+	 */
+	PerFervourOverflowStack
+		UMETA(DisplayName = "Per Fervour Overflow Stack"),
 };
 
 /**
@@ -3137,6 +3159,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceOwnKill = -1.0f;
+
+	/**
+	 * The seconds Unbroken Chain adds to a chain of kills (`kill_chain_seconds`), or 0. The Death trees' slice C6c
+	 * (2026-11-25). Filled by `CurrentConditions`; read by `ECataclysmStatCondition::KillChainWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float KillChainSeconds = 0.0f;
 
 	/**
 	 * How many enemies are in this character's Siphon, for `ECataclysmStatScale::PerEnemyInSiphon`. The Death trees'
@@ -5692,7 +5721,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a ninety-eighth, which is the drift that put the passive tree eight
+	 * adds a ninety-ninth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5709,7 +5738,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-FIVE OF THE NINETY-SEVEN COMPARE NOTHING. They are the case labels
+	 * FORTY-FIVE OF THE NINETY-EIGHT COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

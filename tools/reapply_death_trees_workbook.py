@@ -557,8 +557,11 @@ NODES: tuple[Node, ...] = (
     # enemies within 8 metres, the slain one already dead; Clean Kill's "for every
     # 2 points" is a stat row at each second point, read on a kill whose killing
     # blow was a critical strike.
+    # SOUL TIDE MOVED TO `kill_chain_within_seconds` IN SLICE C6c (2026-11-25), as
+    # ruled, so Unbroken Chain's "The same applies to Soul Tide" lengthens it.
     Node(SC + "capstone_25", "Soul Tide",
-         (R("fervour_per_kill", "flat", 1, cond="seconds_after_kill", cond_value=2),), option=1),
+         (R("fervour_per_kill", "flat", 1, cond="kill_chain_within_seconds", cond_value=2),), option=1,
+         before=((R("fervour_per_kill", "flat", 1, cond="seconds_after_kill", cond_value=2),),)),
     Node(SC + "basic_b_stem0", "Gleaning", (R("fervour_per_kill_extra_chance", "flat", 5),)),
     Node(SC + "basic_b_stem2", "Thinning the Herd",
          (R("fervour_per_kill", "increased", 1, scale="enemies_in_reach", step=1, reach=8, cap=10),)),
@@ -737,6 +740,22 @@ NODES: tuple[Node, ...] = (
                  cap=10, min_points=points) for points in (2, 4, 6, 8, 10))),
     Node(SH + "basic_d_a1", "Twice Answered",
          (A("next_hit_critical_twice", 2, event="dodge", chance_percent=5),)),
+
+    # ---- SLICE C6c (2026-11-25): HOW FERVOUR IS LOST, AND WHAT FILLS PAST THE BAR,
+    # as ruled. Miser's Grip's floor stops the kill decay only; Soulbound removes the
+    # decay and takes 1 Fervour for every 2% of maximum health lost to damage;
+    # Overflow turns each whole Fervour above the full bar into a stack of 1%
+    # attack speed sharing one 5 second window, up to 30; Unbroken Chain adds 1
+    # second to a chain of kills at 4 and at 8 points, for Kill Chain's stacks and
+    # Soul Tide's window.
+    Node(SC + "basic_a_b1", "Miser's Grip", (R("fervour_decay_floor_percent", "flat", 3),)),
+    Node(SC + "keystone_spine_003", "Soulbound",
+         (R(DECAY, "removed", 1), R("health_percent_lost_per_fervour_lost", "flat", 2))),
+    Node(SC + "keystone_a_kA", "Overflow",
+         (R("fervour_overflow_attack_speed_seconds", "flat", 5),
+          R("attack_speed", "increased", 1, scale="fervour_overflow_stacks", step=1, cap=30))),
+    Node(SC + "basic_b_a1", "Unbroken Chain",
+         tuple(R("kill_chain_seconds", "flat", 1, min_points=points) for points in (4, 8))),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

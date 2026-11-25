@@ -2372,6 +2372,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					UCataclysmFervour::GainFromDamage(
 						GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
+					// AND SOULBOUND'S LOSS, by the same health lost (the Death trees' slice C6c, 2026-11-25, as ruled).
+					UCataclysmFervour::LoseFromDamage(GetOwningAbilitySystemComponent(), ToHealth);
 				}
 			}
 

@@ -551,8 +551,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Venomed Prey (two) and Hit and Run, the Shadow 105. AND 615 FOR SLICE C6b2: Arrival and Glancing Cuts (two each),
 	// the Shadow 109. AND 623 FOR SLICE C6b3: Opening Found (two), Read the Blow and Hunting Ground, the Shadow 113;
 	// Reaper's Due (two), Tear Loose and Vigil Over the Strong, the Soul Collector 127. AND 629 FOR SLICE C6b4:
-	// Festering (five) and Twice Answered, the Shadow 119.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        629)
+	// Festering (five) and Twice Answered, the Shadow 119. AND 636 FOR SLICE C6c: Miser's Grip, Soulbound (two),
+	// Overflow (two) and Unbroken Chain (two), the Soul Collector 134.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        636)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

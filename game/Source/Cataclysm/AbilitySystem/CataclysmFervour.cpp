@@ -58,6 +58,10 @@ const TCHAR* UCataclysmFervour::KillDecayPerSecondStat = TEXT("fervour_kill_deca
 const TCHAR* UCataclysmFervour::KillDecayGraceSecondsStat = TEXT("fervour_kill_decay_grace_seconds");
 const TCHAR* UCataclysmFervour::HoldRestartedByAnyGainStat = TEXT("fervour_hold_restarted_by_any_gain");
 const TCHAR* UCataclysmFervour::HoldExtendedOnGainSecondsStat = TEXT("fervour_hold_extended_on_gain_seconds");
+const TCHAR* UCataclysmFervour::DecayFloorPercentStat = TEXT("fervour_decay_floor_percent");
+const TCHAR* UCataclysmFervour::HealthPercentLostPerFervourLostStat = TEXT("health_percent_lost_per_fervour_lost");
+const TCHAR* UCataclysmFervour::OverflowAttackSpeedSecondsStat = TEXT("fervour_overflow_attack_speed_seconds");
+const TCHAR* UCataclysmFervour::KillChainSecondsStat = TEXT("kill_chain_seconds");
 const TCHAR* UCataclysmFervour::DecayGivenBackOnKillSecondsStat = TEXT("decay_given_back_on_kill_seconds");
 const TCHAR* UCataclysmFervour::ClaimedWithinSecondsStat = TEXT("fervour_claimed_within_seconds");
 const TCHAR* UCataclysmFervour::FollowerKillsCountAsYoursStat = TEXT("follower_kills_count_as_yours");
@@ -231,6 +235,19 @@ float UCataclysmFervour::RaisePool(UAbilitySystemComponent* AbilitySystem, float
 	// maximum, which `ApplyModToAttribute` would (issue #1036): what does not fit is lost, as a gain to a full bar is.
 	const float Before = AbilitySystem->GetNumericAttribute(Pool);
 	const float Added = FMath::Min(Change, Resource->MaximumClassResourceAsked() - Before);
+	// WHAT DID NOT FIT IS OVERFLOW'S, above the full bar after reserves (the Death trees' slice C6c, 2026-11-25, as
+	// ruled): every gain to the pool comes through here, so every gain can overflow.
+	if (UCataclysmAbilitySystemComponent* Overflowing = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const float Overflow = Change - FMath::Max(0.0f, Added);
+		const float Window = Overflow > 0.0f
+			? Overflowing->StatForSkill(FName(OverflowAttackSpeedSecondsStat), FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+		if (Window > 0.0f)
+		{
+			Overflowing->NoteFervourOverflow(Overflow, Window);
+		}
+	}
 	if (Added <= 0.0f)
 	{
 		return 0.0f;
@@ -374,6 +391,34 @@ float UCataclysmFervour::GainFromDamage(UAbilitySystemComponent* AbilitySystem,
 {
 	return Move(AbilitySystem, FName(FromDamageStat), HealthLost, HitTags,
 				/*Sign=*/1.0f);
+}
+
+float UCataclysmFervour::LoseFromDamage(UAbilitySystemComponent* AbilitySystem, float HealthLost)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || HealthLost <= 0.0f || !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return 0.0f;
+	}
+	const float PerFervour =
+		Cataclysm->StatForSkill(FName(HealthPercentLostPerFervourLostStat), FGameplayTagContainer(), 0.0f);
+	const float MaximumHealth = Cataclysm->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (PerFervour <= 0.0f || MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const int32 Whole =
+		Cataclysm->AccumulateHealthLostForFervour(HealthLost / MaximumHealth * 100.0f, PerFervour);
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = Cataclysm->GetNumericAttribute(Pool);
+	// NEVER BELOW NOUGHT, AND NOT STOPPED BY MISER'S GRIP'S FLOOR, which is about decay, as ruled.
+	const float Taken = FMath::Min(static_cast<float>(Whole), FMath::Max(0.0f, Before));
+	if (Taken <= 0.0f)
+	{
+		return 0.0f;
+	}
+	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
+	return Before - Cataclysm->GetNumericAttribute(Pool);
 }
 
 float UCataclysmFervour::GainFromHealthCost(
@@ -1694,9 +1739,19 @@ float UCataclysmFervour::KillDecayStep(UAbilitySystemComponent* AbilitySystem, f
 		return 0.0f;
 	}
 
+	// AND NEVER BELOW MISER'S GRIP'S FLOOR, a share of the full bar after reserves (the Death trees' slice C6c,
+	// 2026-11-25, as ruled): a pool at or under it loses nothing to decay.
+	const float FloorPercent = FMath::Clamp(
+		Cataclysm->StatForSkill(FName(DecayFloorPercentStat), FGameplayTagContainer(), 0.0f), 0.0f, 100.0f);
+	const float Floor = Resource->MaximumClassResourceAsked() * FloorPercent / 100.0f;
+	if (Before <= Floor)
+	{
+		return 0.0f;
+	}
+
 	// CLAMPED BEFORE IT IS WRITTEN, as `DecayStep` is and for its reason.
 	const float Change =
-		FMath::Clamp(Before - PerSecond * SecondsInStep, 0.0f, Resource->MaximumClassResourceAsked()) - Before;
+		FMath::Clamp(Before - PerSecond * SecondsInStep, Floor, Resource->MaximumClassResourceAsked()) - Before;
 	if (FMath::IsNearlyZero(Change))
 	{
 		return 0.0f;

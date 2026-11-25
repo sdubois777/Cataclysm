@@ -1313,6 +1313,20 @@ INVENTORY = {
         "creature, 4 for a Common kill and 8 for an Elite or stronger one; "
         "no blow and no skill",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(DecayFloorPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Miser's Grip's floor for the kill decay, a share of the full bar "
+        "(the Death trees' slice C6c, 2026-11-25), asked in KillDecayStep "
+        "with the character's own state; no tags: it is the character's.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HealthPercentLostPerFervourLostStat), FGameplayTagContainer(), 0.0f'):
+        "Soulbound's percent of maximum health lost per Fervour lost (the "
+        "Death trees' slice C6c), asked in LoseFromDamage; no tags: the loss "
+        "is the character's whatever struck it.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(OverflowAttackSpeedSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Overflow's window in seconds (the Death trees' slice C6c), asked in "
+        "RaisePool when a gain does not fit; no tags: any gain overflows.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(KillDecayPerSecondStat), FGameplayTagContainer(), 0.0f'):
         "the Fervour lost a second once a kill's hold has run out (the "
         "Death trees' kill generator, 2026-11-24), asked in KillDecayStep "

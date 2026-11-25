@@ -742,7 +742,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 629 THE SAME DAY, for slice C6b4: Festering (five, one at each 2nd
 #: point) and Twice Answered.
-AUTHORED_ROWS = 629
+#:
+#: AND TO 636 THE SAME DAY, for slice C6c: Miser's Grip, Soulbound (two),
+#: Overflow (two) and Unbroken Chain (two, at 4 and 8 points).
+AUTHORED_ROWS = 636
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1220,7 +1223,10 @@ AUTHORED_ROWS = 629
 #: counted in `AUTHORED_OPTIONS`.
 #:
 #: AND TO 374 THE SAME DAY, for slice C6b4's Festering and Twice Answered.
-AUTHORED_NODES = 374
+#:
+#: AND TO 378 THE SAME DAY, for slice C6c's Miser's Grip, Soulbound, Overflow
+#: and Unbroken Chain.
+AUTHORED_NODES = 378
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1898,6 +1904,9 @@ CONDITION_WORDS = {
                                  {1.0: "elite or stronger creature is within",
                                   4.0: "a boss is within"}),
     "no_enemy_in_reach": ("no enemy is within", None),
+    # SOUL TIDE'S "Kills within 2 seconds of each other", the kill clock that
+    # Unbroken Chain lengthens (the Death trees' slice C6c, 2026-11-25).
+    "kill_chain_within_seconds": ("of each other", "{value:g} second"),
     "target_struck_by_your_movement_skill_within_seconds": ("your movement skill hits", "{value:g} second"),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
@@ -2293,6 +2302,9 @@ SCALE_WORDS = {
     # FESTERING, the Death trees' slice C6b4 (2026-11-25): "for each second the
     # enemy has stayed poisoned by you without a break, up to 10 seconds".
     "seconds_poisoned_by_you": (("for each second the enemy has stayed poisoned by you",), None, None),
+    # OVERFLOW, the Death trees' slice C6c (2026-11-25): "Each Fervour above it
+    # gives 1% increased Attack Speed for 5 seconds, up to 30%".
+    "fervour_overflow_stacks": (("each fervour above it",), None, None),
 
     # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
     # nodes read it: "You deal 2% more damage for each enemy within 4 metres
@@ -2494,6 +2506,12 @@ def test_a_scale_is_actually_used(effects):
 #: that is a plain count, like Low Life's "10 Fervour per second", still has
 #: nowhere to say so.
 VALUE_FORMS = {
+    # OVERFLOW'S WINDOW, the Death trees' slice C6c (2026-11-25): "becomes 5
+    # seconds of attack speed".
+    "fervour_overflow_attack_speed_seconds": ("{value:g} seconds of attack speed",),
+    # UNBROKEN CHAIN, the same slice: "allows 1 second more between kills for
+    # every 4 points", a row at each step.
+    "kill_chain_seconds": ("{value:g} second more between kills",),
     # THE TWO DEBUFF CHANCES, WHICH ARE THE FIRST TWO FLAT ROWS ON ONE NODE.
     # The Ravager's `Wearing Blows` reads "+2% chance to Cripple and +2% chance
     # to Weaken on melee hit per point", so both its rows carry the same number
@@ -2856,6 +2874,9 @@ VALUE_IN_WORDS = {
     # of the kill decay while its condition holds.
     ("SoulCollector_capstone_25", "fervour_kill_decay_per_second"): ("fervour does not decay", 1.0),
     ("Shadow_keystone_spine_002", "fervour_kill_decay_per_second"): ("your fervour does not drain", 1.0),
+    # SOULBOUND, the Death trees' slice C6c (2026-11-25): "Your Fervour no longer
+    # decays with time", a removal of the kill decay.
+    ("SoulCollector_keystone_spine_003", "fervour_kill_decay_per_second"): ("no longer decays", 1.0),
     # LIVING HARVEST, the Death trees' slice C2 (2026-11-25): "Each enemy in your
     # Siphon gives you 1 Fervour every 2 seconds" is half a Fervour a second for
     # each, paid once a second.

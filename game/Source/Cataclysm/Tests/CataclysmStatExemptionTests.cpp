@@ -12479,6 +12479,150 @@ namespace CataclysmStatExemptionTest
 					  HeldAfterAGain());
 	}
 
+	/** One flat row on each named stat, and nothing else: for a probe needing two stats at once. */
+	void GrantFlatLines(FScopedFighter& Fighter, const TArray<TPair<const TCHAR*, float>>& Flats)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		for (const TPair<const TCHAR*, float>& Flat : Flats)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = Flat.Value;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Flat.Key));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Row};
+		}
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * `fervour_decay_floor_percent`, read by `UCataclysmFervour::KillDecayStep`: the Soul Collector's Miser's Grip, the
+	 * Death trees' slice C6c (2026-11-25). A fighter that has never killed, holding 50 of 100, decaying 10 a second, given
+	 * a 10 second step. THE CONTROL: with no floor it decays to 0. With a floor of 20, to 20.
+	 */
+	void ProbeDecayFloorPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Fighter);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		const auto AfterTenSeconds = [&Fighter, &Pool](float FloorPercent)
+		{
+			GrantFlatLines(Fighter, {{UCataclysmFervour::KillDecayPerSecondStat, 10.0f},
+									 {UCataclysmFervour::DecayFloorPercentStat, FloorPercent}});
+			Fighter.AbilitySystem->SetNumericAttributeBase(Pool, 50.0f);
+			UCataclysmFervour::KillDecayStep(Fighter.AbilitySystem, 10.0f);
+			return Fighter.AbilitySystem->GetNumericAttribute(Pool);
+		};
+		Test.TestEqual(TEXT("control: with no floor the decay takes it to 0"), AfterTenSeconds(0.0f), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("with a floor of 20%, it stops at 20, so KillDecayStep really reads it"),
+					   AfterTenSeconds(20.0f), 20.0f, 0.001f);
+	}
+
+	/**
+	 * `health_percent_lost_per_fervour_lost`, read by `UCataclysmFervour::LoseFromDamage`: the Soul Collector's Soulbound,
+	 * the Death trees' slice C6c (2026-11-25). A fighter with 1,000 maximum health holding 50 Fervour loses 100 health,
+	 * 10%. THE CONTROL: with no stat it keeps 50. At 2, it loses 5.
+	 */
+	void ProbeHealthPercentLostPerFervourLost(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Fighter);
+		Fighter.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Fighter.AbilitySystem->SetNumericAttributeBase(Pool, 50.0f);
+		UCataclysmFervour::LoseFromDamage(Fighter.AbilitySystem, 100.0f);
+		Test.TestEqual(TEXT("control: with no stat, 10% lost costs nothing"),
+					   Fighter.AbilitySystem->GetNumericAttribute(Pool), 50.0f, 0.001f);
+		GrantFlat(Fighter.Actor, UCataclysmFervour::HealthPercentLostPerFervourLostStat, 2.0f);
+		UCataclysmFervour::LoseFromDamage(Fighter.AbilitySystem, 100.0f);
+		Test.TestEqual(TEXT("at 2, 10% lost costs 5, so LoseFromDamage really reads it"),
+					   Fighter.AbilitySystem->GetNumericAttribute(Pool), 45.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_overflow_attack_speed_seconds`, read by `UCataclysmFervour::RaisePool` when a gain does not fit: the Soul
+	 * Collector's Overflow, the Death trees' slice C6c (2026-11-25). A fighter at a full bar of 100 gains 3. THE CONTROL:
+	 * with no stat no overflow stack is held. At 5, three are.
+	 */
+	void ProbeOverflowAttackSpeedSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Fighter);
+		Fighter.AbilitySystem->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+													   100.0f);
+		UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 3.0f);
+		Test.TestEqual(TEXT("control: with no stat, no overflow stack"),
+					   Fighter.AbilitySystem->FervourOverflowStacksHeld(), 0);
+		GrantFlat(Fighter.Actor, UCataclysmFervour::OverflowAttackSpeedSecondsStat, 5.0f);
+		UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 3.0f);
+		Test.TestEqual(TEXT("at 5, three stacks, so RaisePool really reads it"),
+					   Fighter.AbilitySystem->FervourOverflowStacksHeld(), 3);
+	}
+
+	/**
+	 * `kill_chain_seconds`, read by `UCataclysmAbilitySystemComponent::KillChainSecondsHeld` into the conditions: the
+	 * Soul Collector's Unbroken Chain, the Death trees' slice C6c (2026-11-25). A fighter that killed 2.5 seconds ago,
+	 * with an attack damage line of 100 and a row of 10 increased under `kill_chain_within_seconds` 2. THE CONTROL: with
+	 * no chain the window has passed, 100. With 1 second more, 110.
+	 */
+	void ProbeKillChainSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->NoteOwnKill(/*GraceSeconds=*/0.0f);
+		CataclysmTestWorld::RunClock(World, 2.5f);
+		const auto DamageWithChain = [&Fighter](float ChainSeconds)
+		{
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Increased;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = 10.0f;
+			Row.Condition = ECataclysmStatCondition::KillChainWithinSeconds;
+			Row.ConditionValue = 2.0f;
+			FCataclysmStatInputs& Damage = Inputs.FindOrAdd(FName(TEXT("attack_damage")));
+			Damage.Base = 100.0f;
+			Damage.Modifiers = {Row};
+			FCataclysmStatModifier Chain;
+			Chain.Bucket = ECataclysmStatBucket::Flat;
+			Chain.Source = ECataclysmModifierSource::PassiveKeystone;
+			Chain.Value = ChainSeconds;
+			FCataclysmStatInputs& Seconds = Inputs.FindOrAdd(FName(UCataclysmFervour::KillChainSecondsStat));
+			Seconds.Base = 0.0f;
+			Seconds.Modifiers = {Chain};
+			Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+			return Fighter.AbilitySystem->StatForSkill(FName(TEXT("attack_damage")), FGameplayTagContainer(), 0.0f);
+		};
+		Test.TestEqual(TEXT("control: with no chain, 2.5 seconds after a kill is outside 2"), DamageWithChain(0.0f),
+					   100.0f, 0.001f);
+		Test.TestEqual(TEXT("with 1 second more, it is inside 3, so the chain is really read"), DamageWithChain(1.0f),
+					   110.0f, 0.001f);
+	}
+
 	/**
 	 * `decay_given_back_on_kill_seconds`, read by `UCataclysmFervour::GiveBackDecayOnKill`: the Soul Collector's
 	 * Reclaimed, the Death trees' slice C4b2 (2026-11-25). ONE FIGHTER holding 50 Fervour that has never killed, with a
@@ -13122,6 +13266,11 @@ namespace CataclysmStatExemptionTest
 			// THE DEATH TREES' SLICE C4b1 (2026-11-25): Kindred Fires and Borrowed Time.
 			{TEXT("fervour_hold_restarted_by_any_gain"), &ProbeHoldRestartedByAnyGain},
 			{TEXT("fervour_hold_extended_on_gain_seconds"), &ProbeHoldExtendedOnGainSeconds},
+			// THE DEATH TREES' SLICE C6c (2026-11-25): Miser's Grip, Soulbound, Overflow and Unbroken Chain.
+			{TEXT("fervour_decay_floor_percent"), &ProbeDecayFloorPercent},
+			{TEXT("health_percent_lost_per_fervour_lost"), &ProbeHealthPercentLostPerFervourLost},
+			{TEXT("fervour_overflow_attack_speed_seconds"), &ProbeOverflowAttackSpeedSeconds},
+			{TEXT("kill_chain_seconds"), &ProbeKillChainSeconds},
 			// THE DEATH TREES' SLICE C4b2 (2026-11-25): Reclaimed, Claimed and Death's Toll.
 			{TEXT("decay_given_back_on_kill_seconds"), &ProbeDecayGivenBackOnKillSeconds},
 			{TEXT("fervour_claimed_within_seconds"), &ProbeFervourClaimedWithinSeconds},

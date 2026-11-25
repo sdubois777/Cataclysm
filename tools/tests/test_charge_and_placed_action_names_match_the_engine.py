@@ -1164,6 +1164,38 @@ def test_a_doubled_evasion_and_an_unbroken_poison_are_recorded_and_read() -> Non
     assert gen.NEXT_HIT_CRITICAL_TWICE_EVENTS == ("dodge",)
 
 
+def test_how_fervour_is_lost_and_what_fills_past_the_bar_are_wired() -> None:
+    """The Death trees' slice C6c (2026-11-25), as ruled. Miser's Grip: the kill decay stops at a share of the full bar
+    after reserves. Soulbound: health lost to damage takes Fervour beside the Masochist's gain from it, through an
+    accumulator that keeps the remainder, never below nought and not held by the floor. Overflow: RaisePool measures what
+    did not fit and records whole Fervour of it. Unbroken Chain: a passive row's stack granted on a kill lasts the
+    chain's extra seconds, and Soul Tide's condition adds them. Read from the code with comments taken out."""
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"const float Floor = Resource->MaximumClassResourceAsked\(\) \* FloorPercent / 100\.0f;\s*"
+                     r"if \(Before <= Floor\)\s*\{\s*return 0\.0f;\s*\}", fervour)
+    assert "FMath::Clamp(Before - PerSecond * SecondsInStep, Floor, Resource->MaximumClassResourceAsked())" in fervour
+    assert re.search(r"const float Overflow = Change - FMath::Max\(0\.0f, Added\);.*?"
+                     r"Overflowing->NoteFervourOverflow\(Overflow, Window\);.*?if \(Added <= 0\.0f\)", fervour, re.S)
+    assert re.search(r"Cataclysm->AccumulateHealthLostForFervour\(HealthLost / MaximumHealth \* 100\.0f, PerFervour\);",
+                     fervour)
+    assert "FMath::Min(static_cast<float>(Whole), FMath::Max(0.0f, Before))" in fervour
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert re.search(r"UCataclysmFervour::GainFromDamage\(\s*GetOwningAbilitySystemComponent\(\), ToHealth, AssetTags\);\s*"
+                     r"UCataclysmFervour::LoseFromDamage\(GetOwningAbilitySystemComponent\(\), ToHealth\);", vitals)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r'const float ChainSeconds = Event == FName\(TEXT\("kill"\)\)\s*'
+                     r'&& Action\.StackKey\.ToString\(\)\.StartsWith\(TEXT\("Passive_"\)\)\s*\? KillChainSecondsHeld\(\)\s*'
+                     r": 0\.0f;\s*GrantOwnStack\(Action\.StackKey, Action\.StackSeconds \+ ChainSeconds, Action\.StackCap\);",
+                     engine)
+    assert re.search(r"HealthPercentLostTowardsFervour = FMath::Max\(0\.0f, HealthPercentLostTowardsFervour - Whole \* "
+                     r"PercentPerFervour\);", engine)
+    assert "State.KillChainSeconds = KillChainSecondsHeld();" in engine
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::KillChainWithinSeconds:\s*return State\.SecondsSinceOwnKill >= 0\.0f\s*"
+                     r"&& State\.SecondsSinceOwnKill <= Value \+ FMath::Max\(0\.0f, State\.KillChainSeconds\);", pipeline)
+    assert not any(name.startswith(gen.ACTION_EVENT_PREFIX) for name in ("kill_chain_within_seconds",))
+
+
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:
     """The Death trees' slice C4c2 (2026-11-25), as ruled (Q7). The generator's
     name is the engine's, on `afflicted_death` only; the item recognises the

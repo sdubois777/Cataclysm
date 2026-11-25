@@ -4367,6 +4367,29 @@ public:
 	bool KillDecayIsHeld() const;
 
 	/**
+	 * The seconds Unbroken Chain adds to a chain of kills: the `kill_chain_seconds` line, worked out with no condition
+	 * judged (its rows state none, and asking through `StatForSkill` would ask `CurrentConditions`, which asks this).
+	 * 0 for a character without the node. The Death trees' slice C6c (2026-11-25).
+	 */
+	float KillChainSecondsHeld() const;
+
+	/**
+	 * Record that a gain could not fit `Overflow` Fervour above the full bar: one overflow stack for each whole Fervour,
+	 * and the shared window restarted at `WindowSeconds`. The fraction is lost. Overflow, the Death trees' slice C6c
+	 * (2026-11-25), as ruled. Called by `UCataclysmFervour::RaisePool`.
+	 */
+	void NoteFervourOverflow(float Overflow, float WindowSeconds);
+
+	/** The overflow stacks held now, 0 once their window has run out. See `NoteFervourOverflow`. */
+	int32 FervourOverflowStacksHeld() const;
+
+	/**
+	 * Add `PercentLost` of maximum health lost to damage towards Soulbound's loss, and answer how many whole Fervour it
+	 * now costs at `PercentPerFervour` each, keeping the remainder. The Death trees' slice C6c (2026-11-25), as ruled.
+	 */
+	int32 AccumulateHealthLostForFervour(float PercentLost, float PercentPerFervour);
+
+	/**
 	 * The grace the last kill set, in seconds: the full length of the hold it began. -1 for a character that has never
 	 * killed. Recorded by `NoteOwnKill`. The Death trees' slice C4b1 (2026-11-25), for Kindred Fires and Borrowed Time,
 	 * whose "full length" it is, as ruled.
@@ -6537,6 +6560,14 @@ protected:
 
 	/** How many critical strikes that charge holds: 1, or 2 after a doubled evasion. See `SpendNextHitCritical`. */
 	int32 NextHitCriticalCharges = 0;
+
+	/** Overflow's stacks and when their shared window runs out, in world seconds. See `NoteFervourOverflow`. */
+	int32 FervourOverflowStacks = 0;
+	float FervourOverflowUntilSeconds = -1.0f;
+
+	/** The share of maximum health lost to damage not yet paid for in Fervour, in percent. See
+	 *  `AccumulateHealthLostForFervour`. */
+	float HealthPercentLostTowardsFervour = 0.0f;
 
 	/** When each applier's Poison began on this character without a break since, in world seconds. See
 	 *  `NotePoisonBeganBy`. */

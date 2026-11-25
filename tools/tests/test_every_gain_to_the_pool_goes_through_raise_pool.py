@@ -37,6 +37,7 @@ INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
     (FERVOUR, "UCataclysmFervour::Move"): (1, "the loss branch only; its gain branch calls RaisePool"),
     (FERVOUR, "UCataclysmFervour::DecayStep"): (1, "the Ravager's decay out of contact, a negative change"),
     (FERVOUR, "UCataclysmFervour::KillDecayStep"): (1, "the Death classes' decay after a kill, a negative change"),
+    (FERVOUR, "UCataclysmFervour::LoseFromDamage"): (1, "Soulbound's loss on health lost to damage, a negative change"),
     (FERVOUR, "UCataclysmFervour::RestoreHealthOnKill"): (1, "Wrung Out's spend of Fervour, a negative change"),
     (FERVOUR, "UCataclysmFervour::BuyDamageForEnemiesStruckTogether"): (1, "a spend of Fervour, a negative change"),
     (ASC, "UCataclysmAbilitySystemComponent::TakeFervourForLethalSave"): (1, "Phylactery's spend, a negative change"),

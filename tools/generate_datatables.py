@@ -5482,6 +5482,12 @@ CONDITIONS = {
     "opponent_rarity_at_least": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
     "enemy_of_rarity_in_reach": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
     "no_enemy_in_reach": None,
+    # "Kills within 2 seconds of each other ... The same applies to Soul Tide"
+    # is `kill_chain_within_seconds`: the kill clock, its value lengthened by
+    # Unbroken Chain's `kill_chain_seconds`. The Death trees' slice C6c
+    # (2026-11-25), as ruled. NOT NAMED `seconds_after_...`, which would name an
+    # action event the game does not raise. The value is the seconds.
+    "kill_chain_within_seconds": (0.0, 60.0, "a number of seconds"),
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -5820,6 +5826,13 @@ SCALES = {
     # (2026-11-25). Whole seconds, read off the record kept on the creature
     # asked about; none for one not carrying the asker's Poison.
     "seconds_poisoned_by_you": (1.0, 1.0, "one second"),
+
+    # "Each Fervour above it gives 1% increased Attack Speed for 5 seconds, up to
+    # 30%" is `fervour_overflow_stacks` with a step of 1 and a Scale Max Steps of
+    # 30: the Soul Collector's Overflow, the Death trees' slice C6c (2026-11-25).
+    # One stack for each whole Fervour a gain could not fit above the full bar,
+    # their shared window `fervour_overflow_attack_speed_seconds` long.
+    "fervour_overflow_stacks": (1.0, 1.0, "one Fervour above the bar"),
 
     # "Take 5%-15% more damage per active aura" is `auras_held`, with a step of
     # 1. Issue #1686. Every aura skill running, however many can run at once;

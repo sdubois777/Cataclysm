@@ -55,6 +55,12 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("SoulCollector_basic_b_a0", "0", "kill_chain_within_seconds"):
+        "Kill Chain's 'within 2 seconds of each other' is its stacks' shared 2-second window (own_stacks, Stack "
+        "Seconds 2), which Unbroken Chain lengthens at the grant (the Death trees' slice C6c)",
+    ("SoulCollector_capstone_25", "1", "seconds_after_kill"):
+        "Soul Tide's 'within 2 seconds of each other' is the kill clock as kill_chain_within_seconds, which Unbroken "
+        "Chain lengthens (the Death trees' slice C6c)",
     ("Shadow_basic_d_a0", "0", "target_rarity_at_least"):
         "Read the Blow's 'attacks from Elite and stronger enemies' is the attacker's rung on a blow taken, "
         "opponent_rarity_at_least (the Death trees' slice C6b3)",

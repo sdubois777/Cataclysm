@@ -1003,6 +1003,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
 	State.SecondsSinceOwnKill = SecondsSinceOwnKill();
+	// AND THE SECONDS UNBROKEN CHAIN ADDS TO A CHAIN OF KILLS (the Death trees' slice C6c, 2026-11-25).
+	State.KillChainSeconds = KillChainSecondsHeld();
 
 	// AND WHETHER A GAIN BEING SIZED NOW IS NOT A KILL'S PAYMENT, for Any Fuel's `fervour_gain_not_from_a_kill`. The
 	// Death trees' slice C4b1 (2026-11-25).
@@ -4180,6 +4182,51 @@ bool UCataclysmAbilitySystemComponent::HoldsNextHitCritical() const
 	const UWorld* World = GetWorld();
 	return World && NextHitCriticalCharges > 0 && NextHitCriticalUntilSeconds >= 0.0f
 		&& World->GetTimeSeconds() <= NextHitCriticalUntilSeconds;
+}
+
+float UCataclysmAbilitySystemComponent::KillChainSecondsHeld() const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(FName(UCataclysmFervour::KillChainSecondsStat));
+	return Inputs ? FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+		FGameplayTagContainer(), FCataclysmStatConditions()).Final) : 0.0f;
+}
+
+void UCataclysmAbilitySystemComponent::NoteFervourOverflow(float Overflow, float WindowSeconds)
+{
+	const UWorld* World = GetWorld();
+	const int32 Whole = FMath::FloorToInt(Overflow + 1.0e-4f);
+	if (!World || Whole <= 0 || WindowSeconds <= 0.0f)
+	{
+		return;
+	}
+	// A WINDOW THAT HAS RUN OUT HOLDS NONE, so the count starts again rather than adding to stacks already gone.
+	if (FervourOverflowStacksHeld() == 0)
+	{
+		FervourOverflowStacks = 0;
+	}
+	FervourOverflowStacks += Whole;
+	FervourOverflowUntilSeconds = World->GetTimeSeconds() + WindowSeconds;
+}
+
+int32 UCataclysmAbilitySystemComponent::FervourOverflowStacksHeld() const
+{
+	const UWorld* World = GetWorld();
+	return World && FervourOverflowStacks > 0 && World->GetTimeSeconds() <= FervourOverflowUntilSeconds
+		? FervourOverflowStacks
+		: 0;
+}
+
+int32 UCataclysmAbilitySystemComponent::AccumulateHealthLostForFervour(float PercentLost, float PercentPerFervour)
+{
+	if (PercentLost <= 0.0f || PercentPerFervour <= 0.0f)
+	{
+		return 0;
+	}
+	HealthPercentLostTowardsFervour += PercentLost;
+	// A TEN-THOUSANDTH ABOVE, so 1.9999998 of 2 pays, as `TimesSizedByEventAmount` allows.
+	const int32 Whole = FMath::FloorToInt(HealthPercentLostTowardsFervour / PercentPerFervour + 1.0e-4f);
+	HealthPercentLostTowardsFervour = FMath::Max(0.0f, HealthPercentLostTowardsFervour - Whole * PercentPerFervour);
+	return Whole;
 }
 
 void UCataclysmAbilitySystemComponent::NotePoisonBeganBy(const AActor* Applier)
@@ -7529,7 +7576,15 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				{
 					if (!RefusedByTouchOfNothing(Action))
 					{
-						GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+						// A PASSIVE ROW'S STACK GRANTED BY A KILL LASTS THE CHAIN'S EXTRA SECONDS LONGER: Unbroken Chain,
+						// "A chain of kills allows 1 second more between kills", the Death trees' slice C6c (2026-11-25),
+						// as ruled. Passive rows only, told apart by the "Passive_" key prefix as Death's Toll does; an
+						// enchantment's kill stack keeps its window.
+						const float ChainSeconds = Event == FName(TEXT("kill"))
+								&& Action.StackKey.ToString().StartsWith(TEXT("Passive_"))
+							? KillChainSecondsHeld()
+							: 0.0f;
+						GrantOwnStack(Action.StackKey, Action.StackSeconds + ChainSeconds, Action.StackCap);
 					}
 				}
 				NoteTriggerFired(Action);

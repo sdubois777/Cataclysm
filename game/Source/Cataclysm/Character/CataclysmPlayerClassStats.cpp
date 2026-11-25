@@ -1145,6 +1145,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmFervour::AfterPoolRose. No attribute and no base.
 		TEXT("fervour_hold_restarted_by_any_gain"),
 		TEXT("fervour_hold_extended_on_gain_seconds"),
+		// And the Soul Collector's Miser's Grip, Soulbound, Overflow and Unbroken Chain, the Death trees' slice C6c: the
+		// floor the kill decay stops at, every how many percent of health lost to damage costs 1 Fervour, the seconds of
+		// Overflow's window, and the seconds a chain of kills is lengthened by. Read by UCataclysmFervour and
+		// UCataclysmAbilitySystemComponent. No attribute and no base.
+		TEXT("fervour_decay_floor_percent"),
+		TEXT("health_percent_lost_per_fervour_lost"),
+		TEXT("fervour_overflow_attack_speed_seconds"),
+		TEXT("kill_chain_seconds"),
 		// And the Shadow's starting node and Telling Blows, the Death trees' slice C4d1: the Fervour a landed critical
 		// strike pays, read by UCataclysmFervour::GainOnCriticalStrike against the character struck. No attribute and no
 		// base.
