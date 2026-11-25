@@ -244,7 +244,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 158: every edge of that tree. One fewer than the nodes, though twenty nodes have no edge into them and nineteen
 	// have two: the counts are the file's, and the generator carries each edge as it is.
 	CHECK_TABLE(FCataclysmEmpireTreeEdgeRow,    "EmpireTreeEdges.csv",       158)
-	// 123: the effects of the 31 city nodes and options that act in issue #2741 slice 3a, Imperial Decree having two (32),
+	// 125: the effects of the 31 city nodes and options that act in issue #2741 slice 3a, Imperial Decree having two (32),
 	// of slice 3b's seven event rules, The Mason's Guild having two (8), of slice 4's nineteen walk, depth and clear
 	// nodes (19), of slice 5a's fifteen player nodes, The Hoarder and The Cartographer's Blessing having two (17), of
 	// slice 5b's five (5), of slice 6a's eleven gold and price nodes (11), of slice 6b's five (5), of slice 6c's five
