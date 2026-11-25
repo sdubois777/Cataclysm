@@ -55,6 +55,7 @@ Decisions made outside the Google Drive documents, newest first.
         points is the percentage the sentence states);
       - the flag's words.
     - `test_stat_lookups_hand_over_what_they_should.py`: the save's lookup.
+    - `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`: 44 scale sources named by a row.
 
 ### SAID FIRST
 
@@ -73,7 +74,11 @@ Decisions made outside the Google Drive documents, newest first.
   (`NoteLethalHitSurvived`) raises no event at all; `lethal_hit_reprieved` is raised only by the Demon King's Regalia's
   reprieve (`NoteLethalHitReprieved`), and rows act on it. Raising it here would have handed that set's rows to every
   Colossus Eternal save. Built as the Final Onslaught's is, raising nothing, and reported to the coordinating session
-  for a ruling.
+  for a ruling. **Ruled the same day: kept raising nothing.** The coordinating session: "keep Colossus Eternal's save
+  raising nothing, as you built it. lethal_hit_reprieved belongs to the Demon King's Regalia reprieve, and raising it
+  here would hand that set's critical strike rows to every Colossus save, which no sentence says." Q9's "as the Final
+  Onslaught's save does" was wrong: `NoteLethalHitSurvived`, the Final Onslaught's save, starts its cooldown and its
+  window of immunity and raises no event.
 - **EVERY BERSERKER AND BULWARK OPTION HAS A ROW FROM HERE**; Titanfall, a keystone, is still not built and is
   deferred to after V5, as ruled.
 - **A CHAINED BLOW IS DEALT AS DIRECT DAMAGE BY THE PLAYER**, so it is announced as the player's hit like any blow.
