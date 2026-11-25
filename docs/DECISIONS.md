@@ -329,6 +329,40 @@ ruling: one branch, one writer).
   failed; the other three were tests this change moved, corrected in `6375111e0`.) `python -m ruff check .`: `All checks
   passed!`.
 
+### The window, bun1-w1 and bun1-w2 (bundle 1), 2026-11-25
+
+Bundle 1 (`feat/bundle-auras-forge`) holds the damage-type auras and the forge's #47 slice F6b and #2741 slices C1 to C6
+on `development` `551381d2b`. The merges, the rulings on them and both windows' scripts are the bundle's.
+
+- **bun1-w1, tested head `3ae1572bc` (the three tables rebuilt and committed): FAILED.** The three builds and the editor
+  step passed. The whole suite: "5621 tests performed, 5618 succeeded, 3 failed". The three failures:
+  - Two older tests pinned Blood and Iron unbuilt: the Wild Magic pool count ("War: no shape ... 54, but it was 53") and
+    the skill pool's default fill.
+  - The Blood and Iron test spawned its imps in a world that had not initialised its actors, which set off an engine
+    ensure on `MaxHealth`.
+  - The `ForgeGoldNodes.` group alone stopped on its eighth test with no error; it passed in the whole suite.
+  - Python "8715 passed, 10 skipped"; ruff clean; test saves 881 written and deleted, 0 left behind. No proof ran.
+- **The fixes:**
+  - `d8d49b3fb`: the Wild Magic pin at 53, War's aura at 1, and the 2026-10-04 table.
+  - `3327607cd`: the skill pool's expectation worked out from the fill rule slot by slot, reading built from each row's
+    Shape (since Blood and Iron is every weapon's War aura, no War kit is unbuilt).
+  - The opening session's `a11a64219`, merged at `a6e04a369`: the two aura tests' worlds begin play; no game code moved.
+- **bun1-w2, tested head `a6e04a369`: PASSED.**
+  - Three builds: 0 compiler warnings or errors.
+  - Groups alone: "4 of 4 passed" (`DamageTypeAuras.` 6, `SkillPool.` 11, `ForgeGoldNodes.` 8, `DungeonModifierEffects.` 786).
+  - The whole suite: "5621 tests performed, 5621 succeeded, 0 failed. 58 skipped part of what they check"; declared 5621,
+    gap 0; "Test saves: 881 written and deleted, 0 left behind".
+  - Python "8717 passed, 10 skipped in 468.51s"; JUnit 8727 tests, 0 failures; ruff "All checks passed!".
+  - The five C++ guard proofs, one a slice, all PROVED, each restored to all passing:
+
+| Proof | Slice | Named failures with the break in |
+| :-- | :-- | :-- |
+| MF1 | #47 F6b | `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo`, `EachNodeKeepsItsOwnTiersAndTheWordsNameIt` |
+| KF1 | #2741 C1/C2 | `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays`, `TheResidueTakesTheTreesFactorTheStabilizersShareAndTheReset` |
+| AF1 | #2741 C3/C4 | `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays`, `ARollIsDrawnFromTheFloorUpAndOnPrecisionCraftingsDrawFromThreeQuartersUp`, `TheDeterministicAffixDrawsItsRollWithTheRolls` |
+| GF1 | #2741 C6 | `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols`, `WornResidueIsCountedLessTheShareIgnored` |
+| AW1 | the auras | `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest` |
+
 ---
 
 ## 2026-11-25 — Ancient Techniques takes a day a point off a forge craft on a four-affix item, and Residue Protocols ignores 5% a point of the Worn Residue the Consumption Threshold counts (#2741, crafting slice C6)
@@ -459,6 +493,40 @@ affixes). **Dropped, not run:**
 - **GF3**, the sheet line's share words: wording; GF1 already proves the counted figure the line shows.
 Their Python and Unreal tests still run in the whole suite and the groups; only the break-and-run proof of each is not
 made.
+
+### The window, bun1-w1 and bun1-w2 (bundle 1), 2026-11-25
+
+Bundle 1 (`feat/bundle-auras-forge`) holds the damage-type auras and the forge's #47 slice F6b and #2741 slices C1 to C6
+on `development` `551381d2b`. The merges, the rulings on them and both windows' scripts are the bundle's.
+
+- **bun1-w1, tested head `3ae1572bc` (the three tables rebuilt and committed): FAILED.** The three builds and the editor
+  step passed. The whole suite: "5621 tests performed, 5618 succeeded, 3 failed". The three failures:
+  - Two older tests pinned Blood and Iron unbuilt: the Wild Magic pool count ("War: no shape ... 54, but it was 53") and
+    the skill pool's default fill.
+  - The Blood and Iron test spawned its imps in a world that had not initialised its actors, which set off an engine
+    ensure on `MaxHealth`.
+  - The `ForgeGoldNodes.` group alone stopped on its eighth test with no error; it passed in the whole suite.
+  - Python "8715 passed, 10 skipped"; ruff clean; test saves 881 written and deleted, 0 left behind. No proof ran.
+- **The fixes:**
+  - `d8d49b3fb`: the Wild Magic pin at 53, War's aura at 1, and the 2026-10-04 table.
+  - `3327607cd`: the skill pool's expectation worked out from the fill rule slot by slot, reading built from each row's
+    Shape (since Blood and Iron is every weapon's War aura, no War kit is unbuilt).
+  - The opening session's `a11a64219`, merged at `a6e04a369`: the two aura tests' worlds begin play; no game code moved.
+- **bun1-w2, tested head `a6e04a369`: PASSED.**
+  - Three builds: 0 compiler warnings or errors.
+  - Groups alone: "4 of 4 passed" (`DamageTypeAuras.` 6, `SkillPool.` 11, `ForgeGoldNodes.` 8, `DungeonModifierEffects.` 786).
+  - The whole suite: "5621 tests performed, 5621 succeeded, 0 failed. 58 skipped part of what they check"; declared 5621,
+    gap 0; "Test saves: 881 written and deleted, 0 left behind".
+  - Python "8717 passed, 10 skipped in 468.51s"; JUnit 8727 tests, 0 failures; ruff "All checks passed!".
+  - The five C++ guard proofs, one a slice, all PROVED, each restored to all passing:
+
+| Proof | Slice | Named failures with the break in |
+| :-- | :-- | :-- |
+| MF1 | #47 F6b | `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo`, `EachNodeKeepsItsOwnTiersAndTheWordsNameIt` |
+| KF1 | #2741 C1/C2 | `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays`, `TheResidueTakesTheTreesFactorTheStabilizersShareAndTheReset` |
+| AF1 | #2741 C3/C4 | `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays`, `ARollIsDrawnFromTheFloorUpAndOnPrecisionCraftingsDrawFromThreeQuartersUp`, `TheDeterministicAffixDrawsItsRollWithTheRolls` |
+| GF1 | #2741 C6 | `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols`, `WornResidueIsCountedLessTheShareIgnored` |
+| AW1 | the auras | `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest` |
 
 ---
 
@@ -637,6 +705,12 @@ done and its Python run clean before that window registers; it carries their reg
 | AF2 | Apprentice Smith's `Tier < UCataclysmItemValues::MaxAffixTier` read as `<=` | `ApprenticeSmithRaisesATierAndQualityMaterialsMakesARollItsBest`; `TheThreeActInOrderEachOnTheAffixesAsTheyStand` only if its draw picks the tier 7 affix |
 | AF3 | Rough Draft's free-slot `>= UCataclysmItemValues::SlotsPerPiece` read as `>` | `RoughDraftAddsOneAffixOnAFreeSlotAtTheDropsBestTier` (the helm with three affixes and an enchantment gains one) |
 
+### The window
+
+Run in bundle 1's windows bun1-w1 and bun1-w2: see "The window, bun1-w1 and bun1-w2 (bundle 1)" in the entry headed
+"Ancient Techniques takes a day a point off a forge craft...". This slice's one proof passed there; the others it
+registered were dropped by the bundle's limit of one a slice.
+
 ---
 
 ## 2026-11-25 — The empire tree's eight forge residue and day nodes act: three take residue off a craft, Stable Compounds strengthens the Chaos Stabilizer, Master's Touch can leave an item at 0, and three take days off (#2741, crafting slices C1 and C2)
@@ -779,6 +853,12 @@ suite 5500; **re-registered from the newest whole-suite log at its turn.**
 | KF1 | `CataclysmForge.cpp` | `OptionsOn`'s `Out.ResidueAfter = ResidueBefore + (Out.ResidueAfter - ResidueBefore) * TreeShare;` removed | `TheResidueTakesTheTreesFactorTheStabilizersShareAndTheReset`, `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays` |
 | KF2 | `CataclysmForge.cpp` | `TreeDaysFor`'s `return FMath::Max(1, FMath::RoundToInt(Taken));` read as `return FMath::RoundToInt(Taken);` | `TheDaysTakeTheMultipliersThenTheDaysOffThenRoundAfterTheShards`, `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays`, `TheCleanseTakesTheDayNodesAndMastersTouch` |
 | KF3 | `CataclysmForgeCraft.cpp` | Heat Shielding's `>= UCataclysmForge::HeatShieldingLowestTier` read as `>` | `LimitedKnowledgeIsBelowSixAndHeatShieldingIsTheCraftsOwnMaterial` |
+
+### The window
+
+Run in bundle 1's windows bun1-w1 and bun1-w2: see "The window, bun1-w1 and bun1-w2 (bundle 1)" in the entry headed
+"Ancient Techniques takes a day a point off a forge craft...". This slice's one proof passed there; the others it
+registered were dropped by the bundle's limit of one a slice.
 
 ---
 
@@ -926,6 +1006,12 @@ window runs first; this is registered again from the newest whole-suite log at i
 | MF1 | `CataclysmForge.cpp` | `NodeFor`'s `Tier <= UCataclysmForge::MaterialConservationHighestTier` read as `<` | `EachNodeKeepsItsOwnTiersAndTheWordsNameIt`, `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo` |
 | MF2 | `CataclysmForge.cpp` | `Item.Residue > TemptingFateResidueAbove` read as `>=` | `TheDrawsAreTheItemsAndTheDaysAndEachIsItsOwn` |
 | MF3 | `CataclysmForgeCraft.cpp` | `DoItemCraft`'s `GiveMaterialsBack(Inventory, Kept);` removed | `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo`, `TemptingFateReturnsEveryMaterialAboveFiveHundredTheOptionsToo`, `TheCleanseWithResourceManagementKeepsItsEssence` |
+
+### The window
+
+Run in bundle 1's windows bun1-w1 and bun1-w2: see "The window, bun1-w1 and bun1-w2 (bundle 1)" in the entry headed
+"Ancient Techniques takes a day a point off a forge craft...". This slice's one proof passed there; the others it
+registered were dropped by the bundle's limit of one a slice.
 
 ---
 
