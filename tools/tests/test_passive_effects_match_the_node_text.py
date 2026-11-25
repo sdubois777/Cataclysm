@@ -685,7 +685,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 529 THE SAME DAY, for slice C3a's three nodes that are rows on the
 #: record of Fervour spent: Spent Breath (two), Quick Kindling and Burnt
 #: Offering. The Soul Collector 79 rows on 39 nodes.
-AUTHORED_ROWS = 529
+#:
+#: AND TO 535 THE SAME DAY, for slice C3b's six: Feast, Spirit to Mana, Ashen
+#: Ward, Soul Furnace and Turn of the Wheel, each one action row sized by what a
+#: spend carried, and Bound Offering. The Soul Collector 85 rows on 45 nodes.
+AUTHORED_ROWS = 535
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1116,7 +1120,9 @@ AUTHORED_ROWS = 529
 #: the Soul Collector 36 of its 73.
 #:
 #: AND TO 321 THE SAME DAY, for slice C3a's three: the Soul Collector 39 of its 73.
-AUTHORED_NODES = 321
+#:
+#: AND TO 327 THE SAME DAY, for slice C3b's six: the Soul Collector 45 of its 73.
+AUTHORED_NODES = 327
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2489,6 +2495,9 @@ VALUE_FORMS = {
     # "within 6 metres of you" and "for 1 second for every 4 points".
     "siphon_radius_metres": ("within {value:g} metres",),
     "siphon_linger_seconds": ("{value:g} second",),
+    # BOUND OFFERING, the Death trees' slice C3b (2026-11-25): "counts as
+    # Fervour spent, at 15% per point of what is held back".
+    "reserved_fervour_spent_percent": ("at {value:g}% per point",),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
                                          "for {value:g} seconds rather than",
                                          "{value:g} second later",
@@ -2988,7 +2997,31 @@ VALUE_IS_A_DIFFERENCE = {
 #: generator).
 ACTION_VALUE_FORMS = {
     "apply_status": ("{value:g}% chance",),
+    # THE ROWS SIZED BY WHAT A SPEND CARRIED, the Death trees' slice C3b
+    # (2026-11-25): a pool's share of its maximum (Feast, Spirit to Mana, Ashen
+    # Ward), a smite's share of weapon damage (Soul Furnace) and a cut's seconds
+    # (Turn of the Wheel). Each is the figure for ONE Fervour, or one ten.
+    "health": ("{value:g}% of maximum health",),
+    "mana": ("{value:g}% of your maximum mana",),
+    "energy_shield": ("{value:g}% of your Maximum Energy Shield",),
+    "smite_nearby": ("{value:g}% of your weapon damage",),
+    "cooldown_reduce_others": ("{value:g} second off",),
 }
+
+#: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.
+#: The Death trees' slice C3b (2026-11-25). "For each Fervour spent" multiplies
+#: by the whole units and "for every 10" by the whole tens, and the two values
+#: differ by one word in the sheet: swapped, Spirit to Mana would pay ten times
+#: what its sentence says, and nothing at run time would report it.
+SIZED_BY_THE_AMOUNT_WORDS = {
+    "for_each_of_event_amount": ("for each fervour spent",),
+    "for_each_ten_of_event_amount": ("for every 10 fervour spent", "every 10 fervour you spend"),
+}
+
+#: How many rows are sized by their event's amount: Feast, Soul Furnace, Spirit
+#: to Mana, Ashen Ward and Turn of the Wheel. Pinned, so a check that finds none
+#: cannot pass.
+SIZED_BY_THE_AMOUNT_ROWS = 5
 
 #: An action row's number stated in words, by node and action, as
 #: `VALUE_IN_WORDS` holds a stat's.
@@ -3002,6 +3035,23 @@ ACTION_VALUE_IN_WORDS = {
     # holds that inside the action.
     ("Shadow_capstone_200", "execute_target"): ("outright", 100.0),
 }
+
+
+def test_a_row_sized_by_a_spend_says_each_or_every_ten(effects, nodes):
+    """A row sized by the whole units of a spend says "for each", and one sized
+    by its whole tens says "every 10". See `SIZED_BY_THE_AMOUNT_WORDS`."""
+    sized = [row for row in effects if row["FractionOf"] in SIZED_BY_THE_AMOUNT_WORDS]
+    assert len(sized) == SIZED_BY_THE_AMOUNT_ROWS, [row["Name"] for row in sized]
+    for row in sized:
+        words = words_of(row, nodes).lower()
+        mine = SIZED_BY_THE_AMOUNT_WORDS[row["FractionOf"]]
+        assert any(said in words for said in mine), (
+            f"{row['Name']} is sized {row['FractionOf']!r}, and its node says none of {mine}: {words!r}")
+        # THE CONTROL: the other value's words are not there, so a row could not
+        # pass on a sentence that says both.
+        theirs = next(said for value, said in SIZED_BY_THE_AMOUNT_WORDS.items() if value != row["FractionOf"])
+        assert not any(said in words for said in theirs), (
+            f"{row['Name']} is sized {row['FractionOf']!r} and its node also says one of {theirs}")
 
 
 def test_every_value_appears_in_the_nodes_own_description(

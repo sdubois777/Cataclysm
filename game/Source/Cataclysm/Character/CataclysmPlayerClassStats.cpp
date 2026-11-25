@@ -1115,6 +1115,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("siphon_necrosis_chance"),
 		TEXT("siphon_life_percent"),
 		TEXT("siphon_fervour_per_second"),
+		// The Death trees' slice C3b: Bound Offering's share of a reserve held that counts as Fervour spent, read by
+		// UCataclysmCommand::HoldReserve with the making skill's tags. No gameplay attribute and no base.
+		TEXT("reserved_fervour_spent_percent"),
 	};
 	return Stats;
 }

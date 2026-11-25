@@ -381,6 +381,12 @@ INVENTORY = {
         'no attribute, so nought is the fallback, and no blow is in hand. '
         "Issue #2787, branch B. The call it replaced, the skill templates' "
         "PassiveStatFor for The Swarm's minion cap, went with the cap",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(ReservedFervourSpentPercentStat), Tags, 0.0f'):
+        "Bound Offering's share of a reserve held that counts as Fervour "
+        "spent, asked with the making skill's tags when a skill made the "
+        'follower and none otherwise; no attribute, so nought is the '
+        "fallback, and no blow is in hand. The Death trees' slice C3b",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "

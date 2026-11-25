@@ -4400,8 +4400,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		Minion->SummonedBy = this;
 		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
-		Minion->ReservedFervour = Reserve;
-		UCataclysmCommand::ClampFervourToSpendable(Self);
+		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
 	}
 	return Minion;
 }
@@ -4747,9 +4746,10 @@ bool UCataclysmSummonSkill::Possess()
 			   FervourReserveFor(Self, Params, SkillTags, this));
 		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
 		// Fervour drops at once. Issue #1160.
+		// Held through `HoldReserve`, which raises Bound Offering's spend (the Death trees' slice C3b).
 		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
 		{
-			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
+			UCataclysmCommand::HoldReserve(Self, Thrall, FervourReserveFor(Self, Params, SkillTags, this), &SkillTags);
 		}
 		// AND THIS SKILL'S ROW AND LEVEL FACTOR, READ ONCE, AT THE TAKE. Issue #2764, slice 2b, by judgement 3 ("Subjugate's
 		// thralls credit Subjugate") and the owner's ruling of 2026-11-19 ("Yes, they scale too"): while it is commanded,
@@ -4815,9 +4815,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
 
-		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934.
-		Minion->ReservedFervour = Reserve;
-		UCataclysmCommand::ClampFervourToSpendable(Self);
+		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934. Held through `HoldReserve`, which raises Bound
+		// Offering's spend (the Death trees' slice C3b).
+		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
 	}
 	return Minion;
 }

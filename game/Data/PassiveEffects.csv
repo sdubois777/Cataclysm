@@ -528,3 +528,9 @@ SoulCollector_basic_d_stem0#1,SoulCollector_basic_d_stem0,attack_damage,increase
 SoulCollector_basic_d_stem0#2,SoulCollector_basic_d_stem0,spell_damage,increased,3.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,fervour_spent,,4.0,0.0,0.0,0,,0.0,0.0,10.0,,0.0,0
 SoulCollector_basic_d_stem2#1,SoulCollector_basic_d_stem2,cooldown_reduction,flat,1.0,,seconds_after_fervour_spent,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_d_b0#1,SoulCollector_basic_d_b0,damage_taken,increased,-1.0,,seconds_after_fervour_spent,4.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_d_kB#1,SoulCollector_keystone_d_kB,,,1.0,,,0.0,,0.0,0,-1.0,0,0,health,fervour_spent,for_each_of_event_amount,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_d_b1#1,SoulCollector_basic_d_b1,,,1.0,,,0.0,,0.0,0,-1.0,0,0,mana,fervour_spent,for_each_ten_of_event_amount,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_d_b2#1,SoulCollector_basic_d_b2,,,1.0,,,0.0,,0.0,0,-1.0,0,0,energy_shield,fervour_spent,for_each_ten_of_event_amount,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_d_kA#1,SoulCollector_keystone_d_kA,,,10.0,,,0.0,,0.0,0,-1.0,0,0,smite_nearby,fervour_spent,for_each_of_event_amount,0.0,0.0,0.0,0,,0.0,0.0,10.0,,0.0,0
+SoulCollector_keystone_d_kC#1,SoulCollector_keystone_d_kC,,,1.0,,,0.0,,0.0,0,-1.0,0,0,cooldown_reduce_others,fervour_spent,for_each_ten_of_event_amount,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_d_c0#1,SoulCollector_basic_d_c0,reserved_fervour_spent_percent,flat,15.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

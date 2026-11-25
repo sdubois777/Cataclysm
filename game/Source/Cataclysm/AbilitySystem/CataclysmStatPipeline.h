@@ -4282,6 +4282,24 @@ enum class ECataclysmPoolActionBase : uint8
 	 * amount may be named by such a row, and the generator refuses the rest.
 	 */
 	EventAmount UMETA(DisplayName = "The amount the event carried"),
+
+	/**
+	 * THE MAXIMUM, ONCE FOR EACH WHOLE UNIT OF THE AMOUNT THE EVENT CARRIED: "Spending Fervour heals 1% of maximum
+	 * health for each Fervour spent" (Feast), and, on a smite, "10% of your weapon damage for each Fervour spent" (Soul
+	 * Furnace). The Death trees' slice C3b (2026-11-25).
+	 *
+	 * NOT READ WHERE AN ACTION IS APPLIED. `UCataclysmAbilitySystemComponent::ActOnEvent` multiplies the row's
+	 * `Percent` by `TimesSizedByEventAmount` and hands on a copy whose base is `Maximum`, so a pool, a smite and a
+	 * cooldown cut are all sized in one place. Rounded down: a spend of 3.75 is three.
+	 */
+	ForEachOfEventAmount UMETA(DisplayName = "For each of the event's amount"),
+
+	/**
+	 * THE SAME, FOR EACH WHOLE TEN of the amount: "1% of your maximum mana per point for every 10 Fervour spent" (Spirit
+	 * to Mana, and Ashen Ward's energy shield) and "Every 10 Fervour you spend takes 1 second off" (Turn of the Wheel).
+	 * Whole tens, so a spend of 19 pays once: the coordinating session's ruling 3 of 2026-11-25.
+	 */
+	ForEachTenOfEventAmount UMETA(DisplayName = "For each ten of the event's amount"),
 };
 
 /**
@@ -4442,8 +4460,9 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/**
 	 * Set, this action TAKES SECONDS OFF RUNNING SKILL COOLDOWNS instead of
 	 * moving a pool. Issue #1833, the cooldown reduction action. `Percent` is
-	 * the seconds, and only `All` and `Heavy` are used: the two targets a row
-	 * asks for.
+	 * the seconds, and only `All`, `Heavy` and `Others` are used: the three
+	 * targets a row asks for. `Others` is every skill but the event's own, read
+	 * off the event's `Slot.*` tag (Turn of the Wheel, the Death trees' slice C3b).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmCooldownReset CooldownReduce = ECataclysmCooldownReset::None;

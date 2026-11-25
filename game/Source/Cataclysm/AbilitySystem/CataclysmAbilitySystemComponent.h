@@ -1270,13 +1270,15 @@ public:
 								bool* bOutRollSucceeded = nullptr);
 
 	/**
-	 * The two cooldown reduction action names and the next-spell cooldown
-	 * charge. Issue #1833, the cooldown reduction action.
-	 * `tools/generate_datatables.py` holds the first two in
-	 * `COOLDOWN_REDUCE_ACTIONS` and the third in `NEXT_USE_ACTIONS`.
+	 * The three cooldown reduction action names and the next-spell cooldown
+	 * charge. Issue #1833, the cooldown reduction action; `others` is the Death
+	 * trees' slice C3b, for Turn of the Wheel.
+	 * `tools/generate_datatables.py` holds the first three in
+	 * `COOLDOWN_REDUCE_ACTIONS` and the fourth in `NEXT_USE_ACTIONS`.
 	 */
 	static const TCHAR* CooldownReduceAllAction;
 	static const TCHAR* CooldownReduceHeavyAction;
+	static const TCHAR* CooldownReduceOthersAction;
 	static const TCHAR* NextSpellCooldownReducedAction;
 
 	/**
@@ -1904,9 +1906,31 @@ public:
 	 * more than that left is removed: an overflow ends it and nothing carries
 	 * over, ruled 2026-09-25. A slot not cooling down is untouched.
 	 *
+	 * @param EventTags the event's tags, which name the slot of the skill that
+	 *        raised it; read only by a reduction of every other skill's cooldown
 	 * @return how many cooldowns were shortened or ended
 	 */
-	int32 ReduceCooldowns(const FCataclysmPoolAction& Action);
+	int32 ReduceCooldowns(const FCataclysmPoolAction& Action,
+						  const FGameplayTagContainer* EventTags = nullptr);
+
+	/**
+	 * How many times an action row acts for one event: the whole units of the
+	 * event's amount for `ForEachOfEventAmount`, its whole tens for
+	 * `ForEachTenOfEventAmount`, and once for every other base. The Death trees'
+	 * slice C3b. `ActOnEvent` multiplies the row's value by it.
+	 *
+	 * ROUNDED DOWN, with a ten-thousandth's allowance so a figure the arithmetic
+	 * left at 2.9999998 is the three it was meant to be: 19 is one ten, 3.75 is
+	 * three, 9 is no ten and the row does nothing.
+	 */
+	static float TimesSizedByEventAmount(ECataclysmPoolActionBase Base, float EventAmount);
+
+	/**
+	 * The slot of the skill an event names, read off its `Slot.*` tag, or None
+	 * when it names none. What a reset of every other cooldown and a reduction
+	 * of every other cooldown leave out.
+	 */
+	static ECataclysmAbilitySlot SlotOfTheEventsSkill(const FGameplayTagContainer* EventTags);
 
 	/**
 	 * Spend every held next-spell cooldown charge and answer the seconds they

@@ -42,6 +42,8 @@ CONSTANTS = {
     # AND THE COOLDOWN REDUCTION NAMES, since the cooldown reduction action.
     "CooldownReduceAllAction": "cooldown_reduce_all",
     "CooldownReduceHeavyAction": "cooldown_reduce_heavy",
+    # AND EVERY SKILL BUT THE EVENT'S OWN, since the Death trees' slice C3b (Turn of the Wheel).
+    "CooldownReduceOthersAction": "cooldown_reduce_others",
     "NextSpellCooldownReducedAction": "next_spell_cooldown_reduced",
     # AND THE RANDOM DAMAGE OVER TIME, since issue #1833 group D.
     "ApplyRandomDotAction": "apply_random_dot",

@@ -1336,6 +1336,13 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.CooldownReduce = ECataclysmCooldownReset::Heavy;
 					}
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceOthersAction,
+								 ESearchCase::IgnoreCase))
+					{
+						// EVERY SKILL BUT THE EVENT'S OWN: Turn of the Wheel, the Death trees' slice C3b.
+						Action.CooldownReduce = ECataclysmCooldownReset::Others;
+					}
 					if (Action.CooldownReduce != ECataclysmCooldownReset::None)
 					{
 						Action.ResetKey = FName(*FString::Printf(
@@ -1649,6 +1656,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 													  ESearchCase::IgnoreCase))
 					{
 						Action.Base = ECataclysmPoolActionBase::EventAmount;
+					}
+					// FOR EACH OF THE EVENT'S AMOUNT, OR EACH TEN OF IT: the Death trees' slice C3b. `ActOnEvent`
+					// multiplies the value and puts the base back to the maximum before anything reads it.
+					else if (Effect->FractionOf.Equals(TEXT("for_each_of_event_amount"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachOfEventAmount;
+					}
+					else if (Effect->FractionOf.Equals(TEXT("for_each_ten_of_event_amount"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachTenOfEventAmount;
 					}
 
 					// THE SAME TAG PARSE THE STAT ROWS GET, so a scoped action row

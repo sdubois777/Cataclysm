@@ -6631,12 +6631,17 @@ COOLDOWN_RESET_ACTIONS = (
 #: The actions that TAKE SECONDS OFF RUNNING SKILL COOLDOWNS, each naming
 #: which. Issue #1833, the cooldown reduction action, ruled 2026-09-25. The value
 #: is seconds, above 0 and up to `MAX_COOLDOWN_REDUCE_SECONDS`. A cooldown with
-#: no more than that left ends, and nothing carries over. Only the two targets a
-#: row asks for. `UCataclysmAbilitySystemComponent::CooldownReduceAllAction` and
-#: `CooldownReduceHeavyAction` hold the same two names.
+#: no more than that left ends, and nothing carries over. Only the three targets
+#: a row asks for. `UCataclysmAbilitySystemComponent::CooldownReduceAllAction`
+#: and its two siblings hold the same three names.
 COOLDOWN_REDUCE_ACTIONS = (
     "cooldown_reduce_all",
     "cooldown_reduce_heavy",
+    # EVERY SKILL BUT THE ONE THAT RAISED THE EVENT, read off its `Slot.*` tag as
+    # `cooldown_reset_others` reads it: Turn of the Wheel, "Every 10 Fervour you
+    # spend takes 1 second off the cooldowns of your skills that did not spend
+    # it". The Death trees' slice C3b (2026-11-25).
+    "cooldown_reduce_others",
 )
 
 #: The most seconds a reduction may take off, the same sanity bound the clocks use.
@@ -7387,6 +7392,24 @@ FRACTION_BASES = (
     "maximum",
     "current",
     "event_amount",
+    "for_each_of_event_amount",
+    "for_each_ten_of_event_amount",
+)
+
+#: The two Fraction Of values that SIZE A ROW BY ITS EVENT'S AMOUNT rather than
+#: naming a base: the value acts once for each whole unit, or each whole ten, of
+#: what the event carried, on the pool's maximum. The Death trees' slice C3b
+#: (2026-11-25): Feast, "heals 1% of maximum health for each Fervour spent";
+#: Spirit to Mana and Ashen Ward, "1% ... per point for every 10 Fervour spent";
+#: Soul Furnace, "10% of your weapon damage for each Fervour spent"; and Turn of
+#: the Wheel, "Every 10 Fervour you spend takes 1 second off". Whole tens, so a
+#: spend of 19 pays once: the coordinating session's ruling 3 of 2026-11-25.
+#: `UCataclysmAbilitySystemComponent::ActOnEvent` multiplies the value before
+#: any action reads it, so they are accepted on a pool, a nearby action and a
+#: cooldown reduction, each on an event that carries an amount, and nowhere else.
+FRACTION_BASES_SIZED_BY_THE_AMOUNT = (
+    "for_each_of_event_amount",
+    "for_each_ten_of_event_amount",
 )
 
 #: The events an action may hang on, DERIVED FROM THE CLOCK CONDITIONS rather
@@ -7823,7 +7846,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"the value kind {kind!r}. The three buckets multiply a stat and an "
             f"action has no stat, so the column must be empty on an action row.")
 
-    if fraction_of == "event_amount" and event not in EVENTS_WITH_AN_AMOUNT:
+    if (fraction_of in ("event_amount", *FRACTION_BASES_SIZED_BY_THE_AMOUNT)
+            and event not in EVENTS_WITH_AN_AMOUNT):
         raise DataError(
             f"Enchantment Effects row {index}: {who} takes a fraction of the "
             f"amount its event carried, and {event!r} carries no amount. The "
@@ -7918,6 +7942,23 @@ def _check_health_cap_action(index: int, who: str, action: str, event: str,
                 f"empty.")
 
 
+def _sized_by_the_amount(index: int, who: str, event: str, fraction_of: str) -> str:
+    """The Fraction Of a row has left to refuse, once one that sizes it by its
+    event's amount has been judged: empty for either of
+    `FRACTION_BASES_SIZED_BY_THE_AMOUNT` on an event that carries an amount, and
+    unchanged for anything else, so the caller's own refusal still sees it. The
+    Death trees' slice C3b.
+    """
+    if fraction_of not in FRACTION_BASES_SIZED_BY_THE_AMOUNT:
+        return fraction_of
+    if event not in EVENTS_WITH_AN_AMOUNT:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} is sized {fraction_of!r}, "
+            f"and {event or '(none)'!r} carries no amount. The events that do: "
+            f"{', '.join(EVENTS_WITH_AN_AMOUNT)}.")
+    return ""
+
+
 def _check_nearby_action(index: int, who: str, action: str, event: str,
                          fraction_of: str, kind: str, raw,
                          headers: dict[str, int]) -> None:
@@ -7925,7 +7966,8 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
     Issue #1833 group D part 3. An event is required, because the smite or the
     heal happens AT something; the share is checked where the value is read. A
     fraction, a value kind and a scale each mean nothing here, so each is
-    refused rather than dropped.
+    refused rather than dropped -- but for a share sized by the event's amount,
+    Soul Furnace's "for each Fervour spent" (the Death trees' slice C3b).
     """
     known = action_events()
     if event not in known:
@@ -7933,6 +7975,7 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
             f"Enchantment Effects row {index}: {who} acts on the characters "
             f"nearby on the event {event or '(none)'!r}, which the game does "
             f"not fire. Known: {', '.join(sorted(known))}.")
+    fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
     for column, written in (("Fraction Of", fraction_of),
                             ("Value Kind", kind),
                             ("Scale", clean(_cell(raw, headers, "Scale")))):
@@ -8496,6 +8539,11 @@ def _check_cooldown_reset_action(index: int, who: str, action: str,
             f"Enchantment Effects row {index}: {who} resets cooldowns on the "
             f"event {event!r}, which the game does not record. Known: "
             f"{', '.join(sorted(known))}.")
+    # A REDUCTION'S SECONDS MAY BE SIZED BY THE EVENT'S AMOUNT, Turn of the
+    # Wheel's "Every 10 Fervour you spend" (the Death trees' slice C3b). A
+    # reset's chance may not: a chance multiplied is not a chance.
+    if action in COOLDOWN_REDUCE_ACTIONS:
+        fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
     for column, written in (("Fraction Of", fraction_of),
                             ("Value Kind", kind),
                             ("Scale", clean(_cell(raw, headers, "Scale")))):

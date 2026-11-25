@@ -4537,6 +4537,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceAllAction =
 	TEXT("cooldown_reduce_all");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction =
 	TEXT("cooldown_reduce_heavy");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceOthersAction =
+	TEXT("cooldown_reduce_others");
 const TCHAR* UCataclysmAbilitySystemComponent::NextSpellCooldownReducedAction =
 	TEXT("next_spell_cooldown_reduced");
 const TCHAR* UCataclysmAbilitySystemComponent::CleanseAction = TEXT("cleanse");
@@ -5004,7 +5006,8 @@ void UCataclysmAbilitySystemComponent::NoteTriggerFired(const FCataclysmPoolActi
 	}
 }
 
-int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolAction& Action)
+int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolAction& Action,
+													   const FGameplayTagContainer* EventTags)
 {
 	const UWorld* World = GetWorld();
 	if (!World || Action.Percent <= 0.0f)
@@ -5032,6 +5035,30 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 	{
 		// THE SKILL MADE FOR THE HEAVY SLOT, ON WHICHEVER KEY IT SITS (O1, issue #837 layer 3).
 		Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Heavy));
+	}
+	else if (Action.CooldownReduce == ECataclysmCooldownReset::Others)
+	{
+		// EVERY SKILL BUT THE ONE THAT RAISED THE EVENT, ON WHICHEVER KEY EACH SITS: Turn of the Wheel, "takes 1 second
+		// off the cooldowns of your skills that did not spend it". The Death trees' slice C3b. Read off the event's
+		// `Slot.*` tag, as a reset of every other reads it.
+		//
+		// A SPEND NAMING NO SKILL LEAVES NOTHING OUT, a judgement of slice C3b: none of the skills spent it. Bound
+		// Offering's reserve held for a warhound or a risen imp is such a spend. A reset of every other clears nothing
+		// then (ruled 2026-09-25), because "reset all other skill cooldowns" is said of one skill's use.
+		const ECataclysmAbilitySlot Spender = SlotOfTheEventsSkill(EventTags);
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			if (Slot != Spender)
+			{
+				Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(Slot));
+			}
+		}
+		if (Spender != ECataclysmAbilitySlot::None)
+		{
+			Reducing.RemoveTags(CooldownTagsOfSkillsDesignedFor(Spender));
+		}
+		// AND THE KEPT COOLDOWN OF EVERY SKILL OFF THE KEYS, none of which spent it. Issue #2528.
+		ShortenCooldownsOffTheKeys(Action.Percent);
 	}
 	if (Reducing.IsEmpty())
 	{
@@ -5216,19 +5243,7 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 
 	// THE SLOT THE EVENT'S SKILL IS IN, read off its `Slot.*` tag, for the two
 	// kinds that ask. None when the event names no slot.
-	ECataclysmAbilitySlot EventSlot = ECataclysmAbilitySlot::None;
-	if (EventTags)
-	{
-		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
-		{
-			const FGameplayTag Named = CataclysmAbilitySlots::Tag(Slot);
-			if (Named.IsValid() && EventTags->HasTagExact(Named))
-			{
-				EventSlot = Slot;
-				break;
-			}
-		}
-	}
+	const ECataclysmAbilitySlot EventSlot = SlotOfTheEventsSkill(EventTags);
 
 	// A SLOT NAMED BY A ROW OR BY THE EVENT'S SKILL IS THE SLOT A SKILL WAS MADE FOR, and its cooldown is kept on the
 	// key that skill sits on: `CooldownTagsOfSkillsDesignedFor`. Issue #837 layer 3 (O1, and the owner's "Each skill
@@ -5295,6 +5310,37 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 		ForgetCooldownsOffTheKeys();
 	}
 	return RemoveActiveEffectsWithGrantedTags(Clearing);
+}
+
+ECataclysmAbilitySlot UCataclysmAbilitySystemComponent::SlotOfTheEventsSkill(const FGameplayTagContainer* EventTags)
+{
+	if (EventTags)
+	{
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Named = CataclysmAbilitySlots::Tag(Slot);
+			if (Named.IsValid() && EventTags->HasTagExact(Named))
+			{
+				return Slot;
+			}
+		}
+	}
+	return ECataclysmAbilitySlot::None;
+}
+
+float UCataclysmAbilitySystemComponent::TimesSizedByEventAmount(ECataclysmPoolActionBase Base, float EventAmount)
+{
+	// A TEN-THOUSANDTH ABOVE, so 2.9999998 is three. See the declaration.
+	constexpr float Allowance = 1.0e-4f;
+	switch (Base)
+	{
+	case ECataclysmPoolActionBase::ForEachOfEventAmount:
+		return FMath::Max(0.0f, FMath::FloorToFloat(EventAmount + Allowance));
+	case ECataclysmPoolActionBase::ForEachTenOfEventAmount:
+		return FMath::Max(0.0f, FMath::FloorToFloat(EventAmount / 10.0f + Allowance));
+	default:
+		return 1.0f;
+	}
 }
 
 void UCataclysmAbilitySystemComponent::ForgetCooldownsOffTheKeys()
@@ -6637,13 +6683,31 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	// Issue #1833: two copies share the row's count, and would otherwise each
 	// grant one and double the rate the sentence states.
 	TSet<FName> StackedThisEvent;
-	for (const FCataclysmPoolAction& Action : Firing)
+	for (const FCataclysmPoolAction& Listed : Firing)
 	{
-		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags, EventTarget)
-			|| !EventThresholdCrossed(Action, EventAmount))
+		if (Listed.Event != Event || !PoolActionAllowed(Listed, EventTags, EventTarget)
+			|| !EventThresholdCrossed(Listed, EventAmount))
 		{
 			continue;
 		}
+		// A ROW SIZED BY ITS EVENT'S AMOUNT acts as a copy whose value is multiplied by the whole units, or whole tens,
+		// the event carried, and whose base is the maximum again, so everything below reads an ordinary row: Feast's
+		// heal, Spirit to Mana's mana, Soul Furnace's smite and Turn of the Wheel's seconds. The Death trees' slice C3b.
+		// NONE TO MULTIPLY IS NOTHING DONE, and starts no wait: a spend of 9 against "every 10".
+		const float Times = TimesSizedByEventAmount(Listed.Base, EventAmount);
+		if (Times <= 0.0f)
+		{
+			continue;
+		}
+		TOptional<FCataclysmPoolAction> Sized;
+		if (Listed.Base == ECataclysmPoolActionBase::ForEachOfEventAmount
+			|| Listed.Base == ECataclysmPoolActionBase::ForEachTenOfEventAmount)
+		{
+			Sized.Emplace(Listed);
+			Sized->Percent *= Times;
+			Sized->Base = ECataclysmPoolActionBase::Maximum;
+		}
+		const FCataclysmPoolAction& Action = Sized.IsSet() ? Sized.GetValue() : Listed;
 		// A COOLDOWN REDUCTION, once per row per event, on an event that landed.
 		// Issue #1833, the cooldown reduction action.
 		if (Action.CooldownReduce != ECataclysmCooldownReset::None)
@@ -6652,7 +6716,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.ResetKey);
-				ReduceCooldowns(Action);
+				ReduceCooldowns(Action, EventTags);
 				NoteTriggerFired(Action);
 			}
 			continue;

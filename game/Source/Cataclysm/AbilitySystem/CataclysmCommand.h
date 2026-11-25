@@ -401,9 +401,24 @@ public:
 	 * Record `Reserve` on a follower just made or taken, and cut its commander's
 	 * Fervour to what is left spendable. Issue #2787. The two steps every maker
 	 * takes once the follower exists, after it has asked `HasRoomToReserve`.
+	 *
+	 * AND, WHEN THE COMMANDER HOLDS `ReservedFervourSpentPercentStat`, A SPEND OF
+	 * THAT SHARE OF THE RESERVE: Bound Offering, "Fervour you hold back for a
+	 * minion, gadget or trap counts as Fervour spent, at 15% per point of what is
+	 * held back". The Death trees' slice C3b. Raised through
+	 * `UCataclysmAbilitySystemComponent::NoteFervourSpent`, so it stamps the clock
+	 * and every row on `fervour_spent` reads it; nothing is taken from the pool,
+	 * since what is held back is already out of it.
+	 *
+	 * EVERY NEW HOLD IS ONE, a summon, a replacement, a thrall taken, an imp risen,
+	 * a skill gadget or trap placed. A level that lowers a reserve already held
+	 * (`UCataclysmSkillLevels`) is not a hold and raises nothing.
+	 *
+	 * @param SpendingTags the making skill's tags, which name the slot Turn of the
+	 *        Wheel leaves out; none when no skill made it (a warhound, a risen imp)
 	 */
 	static void HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,
-							float Reserve);
+							float Reserve, const FGameplayTagContainer* SpendingTags = nullptr);
 
 	/**
 	 * The stat holding percentage points ADDED to the health threshold a blow
@@ -478,6 +493,14 @@ public:
 	 * figure would be floored at nought in the combat attribute set.
 	 */
 	static const TCHAR* MinionReservePercentLessStat;
+
+	/**
+	 * The stat holding the share of a reserve held that counts as Fervour spent,
+	 * in per cent: Bound Offering, 15 a point. The Death trees' slice C3b. Read by
+	 * `HoldReserve` with the making skill's tags. No gameplay attribute and no
+	 * base: it is listed in `UCataclysmPlayerClassStats::StatsWithNoAttribute`.
+	 */
+	static const TCHAR* ReservedFervourSpentPercentStat;
 
 	/**
 	 * Take an enemy permanently into this character's command.

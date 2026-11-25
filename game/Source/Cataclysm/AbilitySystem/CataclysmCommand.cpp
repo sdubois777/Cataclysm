@@ -49,6 +49,9 @@ const TCHAR* UCataclysmCommand::MinionReserveReductionStat =
 // 12% reduced Fervour", and four enchantments, one of them negative.
 const TCHAR* UCataclysmCommand::MinionReservePercentLessStat = TEXT("minion_reserve_percent_less");
 
+// AND THE SHARE OF A RESERVE HELD THAT COUNTS AS SPENT: Bound Offering, the Death trees' slice C3b.
+const TCHAR* UCataclysmCommand::ReservedFervourSpentPercentStat = TEXT("reserved_fervour_spent_percent");
+
 namespace
 {
 	/** Whether this creature follows that commander, either way it can. */
@@ -927,7 +930,7 @@ float UCataclysmCommand::ReserveFor(const AActor* Commander, float Stated,
 }
 
 void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,
-									float Reserve)
+									float Reserve, const FGameplayTagContainer* SpendingTags)
 {
 	if (!IsValid(Follower))
 	{
@@ -935,6 +938,21 @@ void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacter
 	}
 	Follower->ReservedFervour = Reserve;
 	ClampFervourToSpendable(Commander);
+
+	// BOUND OFFERING: the share of what is held back that counts as spent, raised after the hold so a row reading the
+	// pool sees it as it now is. See the declaration.
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs || Reserve <= 0.0f)
+	{
+		return;
+	}
+	const FGameplayTagContainer& Tags = SpendingTags ? *SpendingTags : FGameplayTagContainer::EmptyContainer;
+	const float Percent = Theirs->StatForSkill(FName(ReservedFervourSpentPercentStat), Tags, 0.0f);
+	if (Percent > 0.0f)
+	{
+		Theirs->NoteFervourSpent(Reserve * Percent / 100.0f, SpendingTags);
+	}
 }
 
 bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)

@@ -11748,6 +11748,39 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `reserved_fervour_spent_percent`, read by `UCataclysmCommand::HoldReserve`, which every minion, thrall, gadget and
+	 * trap holds its reserve through: Bound Offering, the Death trees' slice C3b (2026-11-25). ONE FIGHTER. THE CONTROL IS
+	 * THE SAME FIGHTER BEFORE THE STAT IS GRANTED: holding back 20 raises no spend. Granted at a flat 90, the same hold
+	 * raises one, and the spend clock reads nought.
+	 *
+	 * WHAT THIS DOES NOT REACH. The amount of the spend and what reads it: `Cataclysm.SpendSized.`.
+	 */
+	void ProbeReservedFervourSpent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ACataclysmEnemyCharacter* Follower =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("a follower"), Follower))
+		{
+			return;
+		}
+		UCataclysmCommand::HoldReserve(Fighter.Actor, Follower, 20.0f);
+		Test.TestEqual(TEXT("control: with no reserved_fervour_spent_percent a hold raises no spend"),
+					   Fighter.AbilitySystem->SecondsSinceFervourSpent(), -1.0f);
+		GrantFlat(Fighter.Actor, UCataclysmCommand::ReservedFervourSpentPercentStat, 90.0f);
+		UCataclysmCommand::HoldReserve(Fighter.Actor, Follower, 20.0f);
+		Test.TestEqual(TEXT("with it at 90 the same hold is a spend, so HoldReserve really reads it"),
+					   Fighter.AbilitySystem->SecondsSinceFervourSpent(), 0.0f, 0.001f);
+	}
+
+	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
 	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
@@ -12231,6 +12264,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("siphon_necrosis_chance"), &ProbeSiphonNecrosisChance},
 			{TEXT("siphon_life_percent"), &ProbeSiphonLife},
 			{TEXT("siphon_fervour_per_second"), &ProbeSiphonFervour},
+			{TEXT("reserved_fervour_spent_percent"), &ProbeReservedFervourSpent},
 		};
 		return Made;
 	}

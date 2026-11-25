@@ -473,6 +473,27 @@ NODES: tuple[Node, ...] = (
          (R("cooldown_reduction", "flat", 1, cond="seconds_after_fervour_spent", cond_value=4),)),
     Node(SC + "basic_d_b0", "Burnt Offering",
          (R("damage_taken", "increased", -1, cond="seconds_after_fervour_spent", cond_value=4),)),
+
+    # ---- SLICE C3b (2026-11-25): THE NODES SIZED BY WHAT ONE SPEND CARRIED, and
+    # Bound Offering. "For each Fervour spent" and "for every 10 Fervour spent"
+    # are the two Fraction Of values that multiply a row's value by the whole
+    # units, or whole tens, of the spend; whole tens, so a spend of 19 pays once.
+    Node(SC + "keystone_d_kB", "Feast",
+         (A("health", 1, event="fervour_spent", fraction_of="for_each_of_event_amount"),)),
+    Node(SC + "basic_d_b1", "Spirit to Mana",
+         (A("mana", 1, event="fervour_spent", fraction_of="for_each_ten_of_event_amount"),)),
+    Node(SC + "basic_d_b2", "Ashen Ward",
+         (A("energy_shield", 1, event="fervour_spent", fraction_of="for_each_ten_of_event_amount"),)),
+    # SOUL FURNACE: "Spending 10 or more Fervour at once releases a blast ... 10%
+    # of your weapon damage for each Fervour spent to every enemy within 5
+    # metres": a smite on everything within the five metres every nearby action
+    # reaches, its Event Value the ten.
+    Node(SC + "keystone_d_kA", "Soul Furnace",
+         (A("smite_nearby", 10, event="fervour_spent", fraction_of="for_each_of_event_amount",
+            event_value=10),)),
+    Node(SC + "keystone_d_kC", "Turn of the Wheel",
+         (A("cooldown_reduce_others", 1, event="fervour_spent", fraction_of="for_each_ten_of_event_amount"),)),
+    Node(SC + "basic_d_c0", "Bound Offering", (R("reserved_fervour_spent_percent", "flat", 15),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).
