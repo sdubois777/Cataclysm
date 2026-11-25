@@ -67,8 +67,11 @@ DAMAGE_TYPE = "Death"
 #: same day: N16 (Bleed on a skill row, the owner's set widened), N1 (`Permanent=1`, a raise that stands until it is
 #: destroyed), N2 (a summon that states its own damage strikes as it raises), N3 (`Detonates=1`, the caster's minions
 #: in the skill's area explode), N4 (`CommandStrike=1` on a strike) and N11 (`MinionsLayEffect=1`, minions that lay the
-#: row's effect with their blows).
-BUILT = frozenset({"N22", "C3", "N16", "N1", "N2", "N3", "N4", "N11"})
+#: row's effect with their blows). Slice DS3, the same day: N6 (`KillFervour`, Fervour for a kill or a death under the
+#: skill's mark), N7 (`ScalingSource=Fervour`, the Fervour held), N8 (`HoldsFervour=1`, a buff holding Fervour from
+#: decay), N10 (a flicker its deaths lengthen, re-gathering its circle) and N5 (`OnDeath=Rise; RisesAs=<kind>`, a curse
+#: under which the dying rise).
+BUILT = frozenset({"N22", "C3", "N16", "N1", "N2", "N3", "N4", "N11", "N6", "N7", "N8", "N10", "N5"})
 
 #: Every code piece a row may need, so a misspelt one in `needs` is refused rather than read as never built.
 #: N1-N22 are `death_weapon_skills_draft.md`'s (N20 was dropped on 2026-11-24 and is not one), C1-C4 the Death Crossbow
@@ -287,8 +290,11 @@ ROWS: tuple[DeathRow, ...] = (
         ('Item.Weapon.Greataxe, Element.Death, Type.Debuff, Type.Minion, Keyword.Summon, Trigger.OnDeath, '
          'Type.Ranged'),
         'Debuff',
+        # `RisesAs=Husk` IS SLICE DS3'S, a judgement recorded in docs/DECISIONS.md: the approved cell stated
+        # `OnDeath=Rise` alone and named the husk in its sentence; the key names it in the data, so the engine reads the
+        # husk from the one Death Summon row raising it (Shallow Graves) and the generator can refuse a kind none raises.
         ('Range=12; Radius=5; MaxTargets=8; EffectDuration=8; Effect=Cripple; EffectMagnitude=20; '
-         'OnDeath=Rise'),
+         'OnDeath=Rise; RisesAs=Husk'),
         needs=('N5', 'C3')),
     DeathRow(
         'Greataxe', 'Heavy', 'Grim Swath',
@@ -390,9 +396,12 @@ ROWS: tuple[DeathRow, ...] = (
         ('Item.Weapon.Wand, Element.Death, Type.Spell, Type.Debuff, Stat.Defense.Resist, Type.Minion, '
          'Keyword.Summon, Trigger.OnDeath, Type.Ranged'),
         'Debuff',
+        # `RisesAs=Wisp` as Death Rattle's `RisesAs=Husk`. AND IT WAITS ON N12 AS WELL AS N5, found in slice DS3: its wisp
+        # is read from Grave Mouth's row, which has no shape (and the Wisp no Minion Types row) until N12 is built, and
+        # the generator refuses a `RisesAs` no Death Summon row raises.
         ('Range=14; Radius=4; MaxTargets=6; EffectDuration=10; Effect=Shred; EffectMagnitude=15; '
-         'OnDeath=Rise'),
-        needs=('N5',)),
+         'OnDeath=Rise; RisesAs=Wisp'),
+        needs=('N5', 'N12')),
     DeathRow(
         'Wand', 'Heavy', 'Hungering Soul',
         ('Loose a hungering soul at an enemy up to 14 meters away. It lodges in it, giving it Necrosis, '

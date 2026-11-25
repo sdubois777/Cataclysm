@@ -92,11 +92,27 @@ def possesses(row) -> bool:
     return params_of(row).get("Possess") == "1"
 
 
+#: A CURSE UNDER WHICH THE DYING RISE PRODUCES A MINION AND IS NO SUMMON. Issue #2885, the Death draft's N5, slice
+#: DS3: the Greataxe's Death Rattle is a Debuff tagged `Type.Minion`, whose rattled dead rise as husks. It names the
+#: kind in `RisesAs` beside `OnDeath=Rise`, not in `Minions`, because it raises one per death rather than a count per
+#: cast; every figure of what rises is read from the Summon row raising that kind (`validate_risen_kinds`).
+def rises(row) -> bool:
+    return params_of(row).get("OnDeath") == "Rise"
+
+
+def produced_by(row) -> dict[str, int]:
+    """What a minion skill produces: its `Minions`, or the one kind a rising curse's `RisesAs` names."""
+    params = params_of(row)
+    if rises(row):
+        return {params["RisesAs"]: 1}
+    return gen.parse_minions(params["Minions"], row["Name"])
+
+
 def test_every_minion_skill_names_what_it_produces():
     for row in minion_skills():
         if possesses(row):
             continue
-        produced = params_of(row).get("Minions")
+        produced = params_of(row).get("RisesAs" if rises(row) else "Minions")
         assert produced, (
             f"{row['SkillName']} does not say which minion type it produces, "
             "so nothing can find its stat block")
@@ -107,7 +123,7 @@ def test_every_type_a_skill_names_has_a_stat_block():
     for row in minion_skills():
         if possesses(row):
             continue
-        for name in gen.parse_minions(params_of(row)["Minions"], row["Name"]):
+        for name in produced_by(row):
             assert name in known, (
                 f"{row['SkillName']} produces {name!r} and no such row exists "
                 "in the minion type table")
@@ -115,14 +131,24 @@ def test_every_type_a_skill_names_has_a_stat_block():
 
 def test_the_shape_agrees_with_the_tag_the_skill_already_carried():
     """The summon-versus-deployable split was already in the data as a tag
-    before issue #338 gave it a Shape. The two must not disagree."""
+    before issue #338 gave it a Shape. The two must not disagree. A rising
+    curse (N5) is a Debuff, and carries that tag."""
     for row in minion_skills():
         if row["Shape"] == "Deployable":
             assert "Type.Deployable" in row["Tags"], row["SkillName"]
         elif row["Shape"] == "Summon":
             assert "Type.Summon" in row["Tags"], row["SkillName"]
+        elif row["Shape"] == "Debuff" and rises(row):
+            assert "Type.Debuff" in row["Tags"], row["SkillName"]
         else:
             pytest.fail(f"{row['SkillName']} has shape {row['Shape']!r}")
+
+
+def test_the_one_rising_curse_is_death_rattles_and_its_husk_has_a_stat_block():
+    """THE CONTROL that the branch above is reached: one written row rises, Death Rattle, and it raises a husk."""
+    rising = [r for r in minion_skills() if r["Shape"] == "Debuff" and rises(r)]
+    assert [r["SkillName"] for r in rising] == ["Death Rattle"]
+    assert produced_by(rising[0]) == {"Husk": 1}
 
 
 def test_the_three_deployables_are_the_three_that_were_empty():
