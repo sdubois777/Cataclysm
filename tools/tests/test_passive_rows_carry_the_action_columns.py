@@ -157,6 +157,24 @@ def test_two_rows_of_one_node_sharing_an_action_and_event_are_refused(tmp_path):
         ])
 
 
+def test_two_steps_of_one_node_at_different_thresholds_may_share_an_action_and_event(tmp_path):
+    """The Death trees' slice C6a (2026-11-25): "1 second for every 4 points" is
+    a row at 4 and a row at 8, and the engine names each step apart by its
+    threshold, so the two carry two keys. THE CONTROL beside the refusal above:
+    the same two rows at one threshold are refused."""
+    out = read(tmp_path, [
+        row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3, Min_Points=4),
+        row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3, Min_Points=8),
+    ])
+    assert [got["MinPoints"] for got in out] == [4, 8]
+    with pytest.raises(gen.DataError, match="same action on the same event"):
+        read(tmp_path, [
+            row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3, Min_Points=4),
+            row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3, Min_Points=4,
+                Condition="health_below", Condition_Value=50),
+        ])
+
+
 def test_two_options_of_one_oath_may_share_an_action_and_event(tmp_path):
     """The control: two options of one capstone carry two keys, and only one is ever taken."""
     out = read(tmp_path, [

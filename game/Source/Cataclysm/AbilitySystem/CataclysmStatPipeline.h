@@ -1929,6 +1929,17 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WearingEnemyModifier
 		UMETA(DisplayName = "Wearing Enemy Modifier"),
+
+	/**
+	 * The character holds a charge that makes its next landed hit a critical strike (Chain Execution's, Slip's or
+	 * Brim's): the Shadow's Brim, "your next hit is a critical strike and deals +5% increased damage per point". The
+	 * Death trees' slice C6a (2026-11-25). Read from the charge
+	 * (`UCataclysmAbilitySystemComponent::HoldsNextHitCritical`), which the hit it makes critical uses up.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	NextHitIsCritical
+		UMETA(DisplayName = "Next Hit Is Critical"),
 };
 
 /**
@@ -3700,6 +3711,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	TArray<int32> WornEnemyModifierPlaces;
 
 	/**
+	 * Whether the character holds a next-hit critical strike charge now. The Death trees' slice C6a (2026-11-25). Filled
+	 * by `UCataclysmAbilitySystemComponent::CurrentConditions`; false otherwise, which refuses. See
+	 * `ECataclysmStatCondition::NextHitIsCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bHoldsNextHitCritical = false;
+
+	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
 	 * trees of 2026-11-24. Filled by `WithTargetState` only when some modifier in the lookup asks; see
 	 * `ECataclysmStatCondition::TargetRarityAtLeast`.
@@ -5088,6 +5107,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bNextHitCritical = false;
 
 	/**
+	 * Set, this action lengthens a running hold before the Fervour decay by `Percent` seconds, never past the hold's full
+	 * length, as Borrowed Time's does: the Shadow's Keep the Count, "Evading a hit adds 1 second for every 3 points to
+	 * the time before your Fervour begins to drain". The Death trees' slice C6a (2026-11-25). On `dodge`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bExtendFervourHold = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
@@ -5481,7 +5508,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-eighth, which is the drift that put the passive tree eight
+	 * adds an eighty-ninth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5498,7 +5525,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY OF THE EIGHTY-SEVEN COMPARE NOTHING. They are the case labels
+	 * FORTY-ONE OF THE EIGHTY-EIGHT COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

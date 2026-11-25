@@ -5447,6 +5447,11 @@ CONDITIONS = {
     # ruled. The kill handler marks a kill whose death notice says it was an
     # execute while it pays for it and acts on it. It names a state.
     "kill_was_an_execute": None,
+    # "your next hit is a critical strike and deals +5% increased damage" is
+    # `next_hit_is_critical`: the Shadow's Brim, the Death trees' slice C6a
+    # (2026-11-25). The character holds a next-hit critical strike charge. It
+    # names a state.
+    "next_hit_is_critical": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -6590,13 +6595,17 @@ def passive_effects(book) -> list[dict]:
     # AND SO ARE THE ACTION COLUMNS AND A SECOND CONDITION, since the passive
     # row port of 2026-11-24, as the Enchantment Effects sheet's key has them:
     # one node may restore health and generate Fervour on the same event.
+    #
+    # AND SO ARE THE REQUIRED TAGS, since the Death trees' slice C6a
+    # (2026-11-25): a row requires every tag it names, so "Poison and Bleed you
+    # apply" is one row for each, the same stat under two tags (Lasting Wounds).
     pairs: dict[tuple, int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row["Option"], row["MinPoints"], row["Action"],
                row["ActionEvent"], row["FractionOf"], row["Condition2"],
-               row["ConditionValue2"])
+               row["ConditionValue2"], row["RequiredTags"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:
@@ -6614,15 +6623,21 @@ def passive_effects(book) -> list[dict]:
     # event (`UCataclysmPassiveTree::EnchantmentRowsFor`), as an enchantment's
     # are keyed by its name, action and event. Two rows sharing all four would
     # share one cooldown and one count. The passive row port of 2026-11-24.
+    #
+    # AN ACTION ROW FROM A POINT THRESHOLD HAS A KEY OF ITS OWN since the Death
+    # trees' slice C6a (2026-11-25): `EnchantmentRowsFor` names it apart by its
+    # `MinPoints`, so "1 second for every 4 points" is a row at 4 and a row at 8.
     keyed: dict[tuple, int] = {}
     for row in out:
         if row["Action"]:
-            key = (row["Node"], row["Option"], row["Action"], row["ActionEvent"])
+            key = (row["Node"], row["Option"], row["Action"], row["ActionEvent"],
+                   row["MinPoints"])
             keyed[key] = keyed.get(key, 0) + 1
     shared_keys = sorted(key for key, count in keyed.items() if count > 1)
     if shared_keys:
         listed = ", ".join(f"{node} option {option} {action} on {event or '(none)'}"
-                           for node, option, action, event in shared_keys)
+                           + (f" from {points} points" if points else "")
+                           for node, option, action, event, points in shared_keys)
         raise DataError(
             f"the Passive Effects sheet gives one node two rows of the same "
             f"action on the same event: {listed}. The game keeps one cooldown "
@@ -6736,6 +6751,10 @@ COOLDOWN_REDUCE_ACTIONS = (
     # spend takes 1 second off the cooldowns of your skills that did not spend
     # it". The Death trees' slice C3b (2026-11-25).
     "cooldown_reduce_others",
+    # THE MOVEMENT SKILL'S: the Shadow's Find the Rhythm and Sidestep, "takes 1
+    # second ... off your movement skill's remaining cooldown". The Death trees'
+    # slice C6a (2026-11-25).
+    "cooldown_reduce_movement",
 )
 
 #: The most seconds a reduction may take off, the same sanity bound the clocks use.
@@ -7886,6 +7905,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_next_hit_critical_action(index, who, action, event,
                                         fraction_of, kind, raw, headers)
         return
+    if action == FERVOUR_HOLD_EXTENDED_ACTION:
+        _check_fervour_hold_extended_action(index, who, action, event,
+                                            fraction_of, kind, raw, headers)
+        return
     if action in TRAPS_NEARBY_ACTIONS:
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -7920,6 +7943,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {SLAIN_BURST_ACTION}; "
             f"or {BLEED_LEFT_TO_STRONGEST_ACTION}; "
             f"or {NEXT_HIT_CRITICAL_ACTION}; "
+            f"or {FERVOUR_HOLD_EXTENDED_ACTION}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
@@ -8845,6 +8869,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != SLAIN_BURST_ACTION \
                 and action != BLEED_LEFT_TO_STRONGEST_ACTION \
                 and action != NEXT_HIT_CRITICAL_ACTION \
+                and action != FERVOUR_HOLD_EXTENDED_ACTION \
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
@@ -9138,11 +9163,19 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
     # AND CHAIN EXECUTION'S IS THE SECONDS ITS CHARGE LASTS. The Death trees'
     # slice C4d1 (2026-11-25).
     if action == NEXT_HIT_CRITICAL_ACTION:
-        if not (0 < low <= MAX_NEXT_HIT_CRITICAL_SECONDS and 0 < high <= MAX_NEXT_HIT_CRITICAL_SECONDS):
+        if not (0 <= low <= MAX_NEXT_HIT_CRITICAL_SECONDS and 0 <= high <= MAX_NEXT_HIT_CRITICAL_SECONDS):
             raise DataError(
                 f"Enchantment Effects row {index}: {name} makes the next hit a "
                 f"critical strike for {low:g} to {high:g} seconds. The seconds "
-                f"are above 0 and up to {MAX_NEXT_HIT_CRITICAL_SECONDS:g}.")
+                f"are 0 (until used) up to {MAX_NEXT_HIT_CRITICAL_SECONDS:g}.")
+
+    # AND KEEP THE COUNT'S IS THE SECONDS IT ADDS. The Death trees' slice C6a.
+    if action == FERVOUR_HOLD_EXTENDED_ACTION:
+        if not (0 < low <= MAX_FERVOUR_HOLD_EXTENDED_SECONDS and 0 < high <= MAX_FERVOUR_HOLD_EXTENDED_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} lengthens the hold "
+                f"before decay by {low:g} to {high:g} seconds. The seconds are "
+                f"above 0 and up to {MAX_FERVOUR_HOLD_EXTENDED_SECONDS:g}.")
 
     # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
     # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
@@ -10685,6 +10718,12 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE DEATH TREES' SLICE C6a (2026-11-25): extra projectiles scaled by the
+    # Fervour held, the Soul Collector's Soul Barrage. Asked through the
+    # pipeline with the character's state by
+    # `UCataclysmProjectileSkill::ExtraProjectilesWithRows`;
+    # `ProbeScaledProjectileCount` measures it.
+    "projectile_count",
     # THE DEATH TREES' SLICE C4a (2026-11-25): Fervour a kill pays, scaled by the
     # living enemies within 8 metres for the Soul Collector's Thinning the Herd.
     # Asked through the pipeline at the kill by `UCataclysmFervour::GainOnOwnKill`;
@@ -14506,11 +14545,26 @@ BLEED_LEFT_TO_STRONGEST_EVENTS = ("afflicted_death",)
 #: (2026-11-25). `UCataclysmAbilitySystemComponent::CriticalNextHitAction`
 #: holds the same name. ON `kill` AND NO OTHER EVENT.
 NEXT_HIT_CRITICAL_ACTION = "next_hit_critical"
-NEXT_HIT_CRITICAL_EVENTS = ("kill",)
+#: ON A KILL, AN EVASION OR A FULL BAR: Chain Execution's `kill`, and since the
+#: Death trees' slice C6a (2026-11-25) Slip's `dodge` ("After you evade a hit")
+#: and Brim's `resource_full` ("Each time your Fervour reaches its maximum").
+NEXT_HIT_CRITICAL_EVENTS = ("kill", "dodge", "resource_full")
 
-#: The most seconds the charge may last. A bound for typing mistakes; the one
-#: sentence is 2.
+#: The most seconds the charge may last. A bound for typing mistakes; the
+#: sentences are 2 and 3. NOUGHT IS "UNTIL USED", for Brim's "your next hit",
+#: which states no time (slice C6a, a judgement).
 MAX_NEXT_HIT_CRITICAL_SECONDS = 10.0
+
+#: A running hold before the Fervour decay lengthened by the value's seconds,
+#: never past its full length: the Shadow's Keep the Count, the Death trees'
+#: slice C6a (2026-11-25). `UCataclysmAbilitySystemComponent::FervourHoldExtendedAction`
+#: holds the same name. ON `dodge` AND NO OTHER EVENT.
+FERVOUR_HOLD_EXTENDED_ACTION = "fervour_hold_extended"
+FERVOUR_HOLD_EXTENDED_EVENTS = ("dodge",)
+
+#: The most seconds one row may add. A bound for typing mistakes; the one
+#: sentence is 1.
+MAX_FERVOUR_HOLD_EXTENDED_SECONDS = 10.0
 
 #: The enemy modifiers Wearer of the Dead can lend, in their fixed places,
 #: counted from 1: a `wearing_enemy_modifier` row's value names one. The Death
@@ -14615,8 +14669,9 @@ def _check_next_hit_critical_action(index: int, who: str, action: str,
     if event not in NEXT_HIT_CRITICAL_EVENTS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} makes the next hit a "
-            f"critical strike on the event {event or '(none)'!r}. Only a kill "
-            f"grants it: {', '.join(NEXT_HIT_CRITICAL_EVENTS)}.")
+            f"critical strike on the event {event or '(none)'!r}. Only a kill, "
+            f"an evasion or a full bar grants it: "
+            f"{', '.join(NEXT_HIT_CRITICAL_EVENTS)}.")
     for column, written in (("Fraction Of", fraction_of),
                             ("Value Kind", kind),
                             ("Scale", clean(_cell(raw, headers, "Scale")))):
@@ -14624,6 +14679,29 @@ def _check_next_hit_critical_action(index: int, who: str, action: str,
             raise DataError(
                 f"Enchantment Effects row {index}: {who} makes the next hit a "
                 f"critical strike and states {column} {written!r}. Its value is "
+                f"the seconds and nothing else, so the column must be empty.")
+
+
+def _check_fervour_hold_extended_action(index: int, who: str, action: str,
+                                        event: str, fraction_of: str, kind: str,
+                                        raw, headers: dict[str, int]) -> None:
+    """Everything a Keep the Count row must say, and everything it must not.
+    The Death trees' slice C6a (2026-11-25). ON `dodge` ONLY; the seconds are
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in FERVOUR_HOLD_EXTENDED_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} lengthens the hold before "
+            f"decay on the event {event or '(none)'!r}. Only an evasion does: "
+            f"{', '.join(FERVOUR_HOLD_EXTENDED_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} lengthens the hold "
+                f"before decay and states {column} {written!r}. Its value is "
                 f"the seconds and nothing else, so the column must be empty.")
 
 

@@ -163,6 +163,7 @@ namespace
 		{ TEXT("target_near_your_kill_within_seconds"), ECataclysmStatCondition::TargetNearYourKillWithinSeconds },
 		{ TEXT("kill_was_an_execute"), ECataclysmStatCondition::KillWasAnExecute },
 		{ TEXT("wearing_enemy_modifier"), ECataclysmStatCondition::WearingEnemyModifier },
+		{ TEXT("next_hit_is_critical"), ECataclysmStatCondition::NextHitIsCritical },
 	};
 
 	struct FNamedStatScale
@@ -386,8 +387,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::FervourGainNotFromAKill:
 	case ECataclysmStatCondition::KillingBlowWasAHit:
 	case ECataclysmStatCondition::KillWasAnExecute:
+	case ECataclysmStatCondition::NextHitIsCritical:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the forty says
+		// nothing for a number to be compared against. Each of the forty-one says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -535,6 +537,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// AND A WORN ENEMY MODIFIER, the Death trees' slice C4d3 (2026-11-25): it runs out after its seconds with nothing
 	// announcing it, as the kill's clock does.
 	case C::WearingEnemyModifier:
+	// AND A NEXT-HIT CRITICAL CHARGE, the Death trees' slice C6a (2026-11-25): it runs out after its seconds with nothing
+	// announcing it, as the two above do.
+	case C::NextHitIsCritical:
 	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held, and Long Shadow's
 	// seconds after a fall run out with nothing announcing it, which is what puts it here rather than with the class
 	// resource's conditions.
@@ -1411,6 +1416,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		const int32 Place = FMath::RoundToInt(Value);
 		return Place >= 1 && State.WornEnemyModifierPlaces.Contains(Place);
 	}
+
+	case ECataclysmStatCondition::NextHitIsCritical:
+		// FILLED BY `CurrentConditions` FROM THE CHARGE, the Death trees' slice C6a (2026-11-25).
+		return State.bHoldsNextHitCritical;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

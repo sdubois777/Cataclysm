@@ -726,7 +726,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 589 THE SAME DAY, for slice C4d3: Wearer of the Dead's five worn
 #: modifiers. The Soul Collector 122 rows.
-AUTHORED_ROWS = 589
+#:
+#: AND TO 604 THE SAME DAY, for slice C6a: Brim (three), Slip, Find the Rhythm,
+#: Sidestep and Keep the Count (two each, one at each step), Soul Barrage,
+#: Lasting Wounds (two, Poison and Bleed), Twin Step and Riposte.
+AUTHORED_ROWS = 604
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1190,7 +1194,10 @@ AUTHORED_ROWS = 589
 #: Execution. Reaper's Edge is an option of a capstone already counted.
 #:
 #: AND TO 354 THE SAME DAY, for slice C4d2's Patient Blade and Death by Inches.
-AUTHORED_NODES = 354
+#:
+#: AND TO 362 THE SAME DAY, for slice C6a's Brim, Slip, Find the Rhythm,
+#: Sidestep, Keep the Count, Lasting Wounds, Twin Step and Riposte.
+AUTHORED_NODES = 362
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1305,7 +1312,10 @@ AUTHORED_NODES = 354
 #:
 #: AND TO 52 THE SAME DAY, for slice C4d3: Wearer of the Dead (the Soul
 #: Collector's 200 vow, option 1).
-AUTHORED_OPTIONS = 52
+#:
+#: AND TO 53 THE SAME DAY, for slice C6a: Soul Barrage (the Soul Collector's
+#: 200 vow, option 3).
+AUTHORED_OPTIONS = 53
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1511,6 +1521,11 @@ def test_no_node_grants_the_same_stat_twice(effects):
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row.get("Option", ""), row.get("MinPoints", ""),
+               # AND THE REQUIRED TAGS, since the Death trees' slice C6a
+               # (2026-11-25), as the generator's key has them: a row requires
+               # every tag it names, so "Poison and Bleed you apply" is one row
+               # for each (Lasting Wounds).
+               row.get("RequiredTags", ""),
                # AND THE ACTION AND ITS EVENT, since the passive row port of
                # 2026-11-24, as the generator's key has them: an action row has
                # no stat, and one node may restore health and mana on one event.
@@ -1824,6 +1839,11 @@ CONDITION_WORDS = {
     # WORN_ENEMY_MODIFIERS, one row a modifier: each place is "its modifiers",
     # so the words are listed against the places, as counts written in words
     # are. A place added to the list is refused here until it is listed too.
+    # BRIM, the Shadow's `basic_spine_010`: "your next hit is a critical strike
+    # and deals +5% increased damage per point". The Death trees' slice C6a
+    # (2026-11-25). It names a state.
+    "next_hit_is_critical": ("your next hit is a critical strike", None),
+
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"
                                 for place in range(1, len(gen.WORN_ENEMY_MODIFIERS) + 1)}),
@@ -2746,6 +2766,11 @@ VALUE_IN_WORDS = {
     # C3d (2026-11-25): "fire one extra projectile" is 1, and "your skill
     # cooldowns recover twice as fast" is 100 on the rate.
     ("SoulCollector_capstone_50", "projectile_count"): ("fire one extra projectile", 1.0),
+    # SOUL BARRAGE AND TWIN STEP, the Death trees' slice C6a (2026-11-25): "+1
+    # projectile for every 10 Fervour held" is 1, scaled by every 10 held; "Your
+    # movement skill has one more charge" is 1.
+    ("SoulCollector_capstone_200", "projectile_count"): ("+1 projectile for every 10 fervour held", 1.0),
+    ("Shadow_keystone_c_kC", "skill_charges_bonus"): ("one more charge", 1.0),
     ("SoulCollector_capstone_200", "cooldowns_recover_faster_percent"): ("recover twice as fast", 100.0),
     # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): "those kills give
     # double Fervour" is 100% more on the kill's payment.
@@ -3212,6 +3237,13 @@ ACTION_VALUE_FORMS = {
     "cooldown_reduce_all": ("{value:g} second off all",),
     # CHAIN EXECUTION, the same slice: "your next hit within 2 seconds".
     "next_hit_critical": ("within {value:g} seconds",),
+    # FIND THE RHYTHM AND SIDESTEP, the Death trees' slice C6a (2026-11-25):
+    # "takes 1 second for every 4 points off your movement skill's remaining
+    # cooldown", one row at each step.
+    "cooldown_reduce_movement": ("takes {value:g} second for every",),
+    # KEEP THE COUNT, the same slice: "adds 1 second for every 3 points to the
+    # time before your Fervour begins to drain", one row at each step.
+    "fervour_hold_extended": ("adds {value:g} second for every",),
 }
 
 #: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.
@@ -3243,6 +3275,14 @@ ACTION_VALUE_IN_WORDS = {
     # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): the same words and
     # the same chance of 100.
     ("SoulCollector_capstone_100", "execute_target"): ("outright", 100.0),
+    # BRIM, the Death trees' slice C6a (2026-11-25): "your next hit is a
+    # critical strike", with no time stated, so the charge's seconds are 0,
+    # "until used".
+    ("Shadow_basic_spine_010", "next_hit_critical"): ("your next hit is a critical strike", 0.0),
+    # RIPOSTE, the same slice: "you strike the attacker back at once with your
+    # basic attack", a strike of 100% attack damage standing in for the basic
+    # attack, as ruled (C6 question C4).
+    ("Shadow_keystone_d_kA", "strike_target"): ("strike the attacker back at once with your basic attack", 100.0),
     # FLICKER, the Death trees' slice C4a (2026-11-25): "Killing an enemy resets
     # your movement skill's cooldown", a chance of 100.
     ("Shadow_keystone_c_kA", "cooldown_reset_movement"): ("resets your movement skill's cooldown", 100.0),

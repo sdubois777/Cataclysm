@@ -3561,7 +3561,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("killing_blow_was_a_hit")
 			// THE DEATH TREES' SLICE C4d1 (2026-11-25), REAPER'S EDGE'S "THOSE KILLS": the kill being paid for and acted
 			// on was an execute. It names a state, so it compares nothing.
-			|| Name == TEXT("kill_was_an_execute");
+			|| Name == TEXT("kill_was_an_execute")
+			// THE DEATH TREES' SLICE C6a (2026-11-25), BRIM'S "YOUR NEXT HIT IS A CRITICAL STRIKE": the character holds a
+			// next-hit critical strike charge. It names a state, so it compares nothing.
+			|| Name == TEXT("next_hit_is_critical");
 	}
 }
 

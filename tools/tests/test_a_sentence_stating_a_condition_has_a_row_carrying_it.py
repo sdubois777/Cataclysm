@@ -55,6 +55,9 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Shadow_basic_d_stem0", "0", "seconds_after_dodge"):
+        "Slip's 'after you evade a hit' is its row's event, `dodge`, and its 'within 3 seconds' the charge's seconds "
+        "(next_hit_critical), the Death trees' slice C6a",
     ("SoulCollector_capstone_200", "1", "target_rarity_at_least"):
         "Wearer of the Dead's 'an Elite or stronger creature' is read off the slain creature at the kill "
         "(RarityStep of 1 or more, in UCataclysmFervour::WearTheModifiersOf), as ruled (W4) in the Death trees' "

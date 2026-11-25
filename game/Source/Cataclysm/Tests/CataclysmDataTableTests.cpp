@@ -545,8 +545,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// (two), the Soul Collector 115, and the Shadow's Blood Debt, the Shadow 78. AND 582 FOR SLICE C4d1: the Shadow's
 	// "2 for each critical strike", Telling Blows, Relentless and Chain Execution, the Shadow 82; Reaper's Edge (two),
 	// the Soul Collector 117. AND 584 FOR SLICE C4d2: Patient Blade and Death by Inches, the Shadow 84. AND 589 FOR
-	// SLICE C4d3: Wearer of the Dead's five worn modifiers, the Soul Collector 122.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        589)
+	// SLICE C4d3: Wearer of the Dead's five worn modifiers, the Soul Collector 122. AND 604 FOR SLICE C6a: Brim (three),
+	// Slip, Find the Rhythm, Sidestep and Keep the Count (two each), Lasting Wounds (two), Twin Step and Riposte, the
+	// Shadow 98; Soul Barrage, the Soul Collector 123.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        604)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

@@ -1343,6 +1343,13 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						// EVERY SKILL BUT THE EVENT'S OWN: Turn of the Wheel, the Death trees' slice C3b.
 						Action.CooldownReduce = ECataclysmCooldownReset::Others;
 					}
+					// AND THE MOVEMENT SKILL'S, the Death trees' slice C6a (2026-11-25).
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceMovementAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.CooldownReduce = ECataclysmCooldownReset::Movement;
+					}
 					if (Action.CooldownReduce != ECataclysmCooldownReset::None)
 					{
 						Action.ResetKey = FName(*FString::Printf(
@@ -1606,6 +1613,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// C4d1 (2026-11-25). The value is the seconds.
 					Action.bNextHitCritical = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::CriticalNextHitAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT LENGTHENS A RUNNING HOLD BEFORE THE FERVOUR DECAY: Keep the Count, the Death trees'
+					// slice C6a (2026-11-25). The value is the seconds.
+					Action.bExtendFervourHold = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FervourHoldExtendedAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.

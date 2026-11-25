@@ -157,6 +157,10 @@ CONSTANTS = {
     # AND THE DEATH TREES' SLICE C4d1 (2026-11-25): the next landed hit within
     # the seconds made a critical strike, Chain Execution.
     "CriticalNextHitAction": "next_hit_critical",
+    # AND THE DEATH TREES' SLICE C6a (2026-11-25): the movement skill's cooldown
+    # cut, and the hold before decay lengthened on an evasion.
+    "CooldownReduceMovementAction": "cooldown_reduce_movement",
+    "FervourHoldExtendedAction": "fervour_hold_extended",
     # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
@@ -831,13 +835,17 @@ def test_chain_execution_makes_the_next_landed_hit_critical_and_is_used_by_it() 
     critical and uses nothing. Read from the code with comments taken out."""
     names = engine_names()
     assert gen.NEXT_HIT_CRITICAL_ACTION == names["CriticalNextHitAction"]
-    assert gen.NEXT_HIT_CRITICAL_EVENTS == ("kill",)
+    # WIDENED IN THE DEATH TREES' SLICE C6a (2026-11-25) to Slip's `dodge` and
+    # Brim's `resource_full`.
+    assert gen.NEXT_HIT_CRITICAL_EVENTS == ("kill", "dodge", "resource_full")
     assert gen.NEXT_HIT_CRITICAL_ACTION not in gen.POOL_ACTIONS
     item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
     assert re.search(r"Action\.bNextHitCritical = Effect->Action\.Equals\(\s*"
                      r"UCataclysmAbilitySystemComponent::CriticalNextHitAction,", item)
     engine = code_without_comments(SOURCE)
-    assert "NextHitCriticalUntilSeconds = World->GetTimeSeconds() + Action.Percent;" in engine
+    # NOUGHT SECONDS IS "UNTIL USED", Brim's, since the Death trees' slice C6a.
+    assert re.search(r"NextHitCriticalUntilSeconds = Action\.Percent > 0\.0f \? World->GetTimeSeconds\(\) \+ "
+                     r"Action\.Percent\s*: TNumericLimits<float>::Max\(\);", engine)
     vital = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
     assert "Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();" in vital
     assert re.search(r"if \(Hit\.bCertainCritical && Resolved\.bWasCritical\)\s*\{[^}]*"
@@ -946,6 +954,48 @@ def test_wearer_of_the_dead_records_an_elite_or_strongers_modifiers_at_every_kin
     assert "WornEnemyModifierUntil.Add(Place, World->GetTimeSeconds() + Seconds);" in engine
     header = code_without_comments(SOURCE.parent / "CataclysmFervour.h")
     assert "static constexpr float WornEnemyModifierSeconds = 20.0f;" in header
+
+
+def test_a_stepped_action_row_is_keyed_apart_in_the_engine_and_the_generator() -> None:
+    """The Death trees' slice C6a (2026-11-25). "1 second for every 4 points" is
+    an action row at 4 points and another at 8. An action row's trigger, reset
+    and charge keys begin with its enchantment name, so the passive tree names a
+    stepped action row apart by its threshold, and the generator's one-row-per-
+    action check keys it the same way. A stat row is not renamed. Read from the
+    code with comments taken out."""
+    tree = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPassiveTree.cpp")
+    assert re.search(r"if \(!Effect\.Action\.IsEmpty\(\) && Effect\.MinPoints > 0\)\s*\{\s*"
+                     r"Row\.Enchantment \+= FString::Printf\(TEXT\(\"_From%d\"\), Effect\.MinPoints\);", tree)
+    generator = (ROOT / "tools" / "generate_datatables.py").read_text(encoding="utf-8")
+    assert re.search(r'key = \(row\["Node"\], row\["Option"\], row\["Action"\], row\["ActionEvent"\],\s*'
+                     r'row\["MinPoints"\]\)', generator)
+
+
+def test_the_movement_cut_the_longer_hold_and_brims_condition_are_wired() -> None:
+    """The Death trees' slice C6a (2026-11-25). The generator's two new action
+    names are the engine's; the item maps the movement cut to its kind and the
+    hold to its flag; the cooldown cut takes the movement skill's cooldown tags;
+    the event loop lengthens a running hold, never past its full length; and
+    Brim's condition reads the next-hit charge. Read from the code with comments
+    taken out."""
+    names = engine_names()
+    assert "cooldown_reduce_movement" in gen.COOLDOWN_REDUCE_ACTIONS
+    assert names["CooldownReduceMovementAction"] == "cooldown_reduce_movement"
+    assert gen.FERVOUR_HOLD_EXTENDED_ACTION == names["FervourHoldExtendedAction"]
+    assert gen.FERVOUR_HOLD_EXTENDED_EVENTS == ("dodge",)
+    assert gen.FERVOUR_HOLD_EXTENDED_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"UCataclysmAbilitySystemComponent::CooldownReduceMovementAction,\s*ESearchCase::IgnoreCase\)\)\s*"
+                     r"\{\s*Action\.CooldownReduce = ECataclysmCooldownReset::Movement;", item)
+    assert re.search(r"Action\.bExtendFervourHold = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::FervourHoldExtendedAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"else if \(Action\.CooldownReduce == ECataclysmCooldownReset::Movement\)\s*\{\s*"
+                     r"Reducing\.AppendTags\(CooldownTagsOfSkillsDesignedFor\(ECataclysmAbilitySlot::Movement\)\);", engine)
+    assert "ExtendKillDecayHold(Action.Percent, UCataclysmFervour::KillDecayHoldFullSeconds(this));" in engine
+    assert "State.bHoldsNextHitCritical = HoldsNextHitCritical();" in engine
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::NextHitIsCritical:\s*return State\.bHoldsNextHitCritical;", pipeline)
 
 
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:

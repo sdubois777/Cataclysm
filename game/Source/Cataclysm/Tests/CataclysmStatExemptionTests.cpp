@@ -6272,6 +6272,8 @@ namespace CataclysmStatExemptionTest
 	{
 		static const TMap<FString, FProbe> Made = {
 			{TEXT("crowd_control_resistance"),   &ProbeScaledCrowdControlResistance},
+			// THE DEATH TREES' SLICE C6a (2026-11-25): Soul Barrage's projectiles by the Fervour held.
+			{TEXT("projectile_count"),           &ProbeScaledProjectileCount},
 			{TEXT("skill_locked"),               &ProbeScaledSkillLocked},
 			{TEXT("attack_damage"),              &ProbeScaledAttackDamage},
 			{TEXT("spell_damage"),               &ProbeScaledSpellDamage},
@@ -7541,6 +7543,48 @@ namespace CataclysmStatExemptionTest
 		Holder.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 400.0f);
 		Test.TestEqual(TEXT("projectile_count is asked for, so below half health one is added"),
 					   Skill->ExtraProjectilesWithRows(), 1);
+	}
+
+	/**
+	 * `projectile_count`, read by `UCataclysmProjectileSkill::ExtraProjectilesWithRows` through the pipeline, scaled by
+	 * the class resource held: the Soul Collector's Soul Barrage, "+1 projectile for every 10 Fervour held". The Death
+	 * trees' slice C6a (2026-11-25). The holder is given a Fervour pool: at 0 held no projectile is added, at 20 two.
+	 */
+	void ProbeScaledProjectileCount(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Holder(World, FVector::ZeroVector);
+		const UCataclysmProjectileSkill* Skill = ProjectileSkillOn(Holder);
+		if (!Test.TestNotNull(TEXT("a projectile skill"), Skill))
+		{
+			return;
+		}
+		Holder.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Holder.Actor));
+		Holder.AbilitySystem->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+													  100.0f);
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 1.0f;
+		Row.Scale = ECataclysmStatScale::PerPointOfClassResourceHeld;
+		Row.ScaleStep = 10.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmProjectileSkill::ProjectileCountStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Row};
+		Holder.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Holder.AbilitySystem->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+													  0.0f);
+		Test.TestEqual(TEXT("projectile_count at 0 Fervour held: none added"), Skill->ExtraProjectilesWithRows(), 0);
+		Holder.AbilitySystem->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+													  20.0f);
+		Test.TestEqual(TEXT("projectile_count is asked for with its scale, so at 20 held two are added"),
+					   Skill->ExtraProjectilesWithRows(), 2);
 	}
 
 	/**

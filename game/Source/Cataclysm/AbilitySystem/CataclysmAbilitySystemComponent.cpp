@@ -1020,6 +1020,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// (2026-11-25).
 	State.WornEnemyModifierPlaces = WornEnemyModifierPlacesNow();
 
+	// AND WHETHER IT HOLDS A NEXT-HIT CRITICAL CHARGE, for Brim's `next_hit_is_critical`. The Death trees' slice C6a
+	// (2026-11-25).
+	State.bHoldsNextHitCritical = HoldsNextHitCritical();
+
 	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
 	State.EnemiesInSiphon = EnemiesInSiphon();
 
@@ -5381,6 +5385,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::OverkillExplosionRadiusMetresStat
 	TEXT("overkill_explosion_radius_metres");
 const TCHAR* UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction = TEXT("pass_bleed_left_to_strongest");
 const TCHAR* UCataclysmAbilitySystemComponent::CriticalNextHitAction = TEXT("next_hit_critical");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceMovementAction = TEXT("cooldown_reduce_movement");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourHoldExtendedAction = TEXT("fervour_hold_extended");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
@@ -5514,6 +5520,11 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 	{
 		// THE SKILL MADE FOR THE HEAVY SLOT, ON WHICHEVER KEY IT SITS (O1, issue #837 layer 3).
 		Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Heavy));
+	}
+	// AND THE MOVEMENT SKILL'S, the Death trees' slice C6a (2026-11-25): Find the Rhythm and Sidestep.
+	else if (Action.CooldownReduce == ECataclysmCooldownReset::Movement)
+	{
+		Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Movement));
 	}
 	else if (Action.CooldownReduce == ECataclysmCooldownReset::Others)
 	{
@@ -7739,10 +7750,24 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		if (Action.bNextHitCritical)
 		{
 			const UWorld* World = GetWorld();
-			if (bLanded && World && Action.Percent > 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
+			// A VALUE OF NOUGHT IS "UNTIL USED": Brim's "your next hit", which states no time. The Death trees' slice C6a
+			// (2026-11-25), a judgement recorded there.
+			if (bLanded && World && Action.Percent >= 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
-				NextHitCriticalUntilSeconds = World->GetTimeSeconds() + Action.Percent;
+				NextHitCriticalUntilSeconds = Action.Percent > 0.0f ? World->GetTimeSeconds() + Action.Percent
+																	 : TNumericLimits<float>::Max();
+			}
+			continue;
+		}
+		// A RUNNING HOLD BEFORE THE FERVOUR DECAY LENGTHENED BY `Percent` SECONDS, never past its full length: Keep the
+		// Count, the Death trees' slice C6a (2026-11-25). Once per row per event, landed only.
+		if (Action.bExtendFervourHold)
+		{
+			if (bLanded && Action.Percent > 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				ExtendKillDecayHold(Action.Percent, UCataclysmFervour::KillDecayHoldFullSeconds(this));
 			}
 			continue;
 		}

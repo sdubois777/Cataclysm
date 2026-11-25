@@ -1936,6 +1936,19 @@ public:
 	static const TCHAR* CriticalNextHitAction;
 
 	/**
+	 * The action that takes seconds off the movement skill's running cooldown: the Shadow's Find the Rhythm and Sidestep.
+	 * The Death trees' slice C6a (2026-11-25). `tools/generate_datatables.py` holds the same name in
+	 * `COOLDOWN_REDUCE_ACTIONS`.
+	 */
+	static const TCHAR* CooldownReduceMovementAction;
+
+	/**
+	 * The action that lengthens a running hold before the Fervour decay: the Shadow's Keep the Count. The Death trees'
+	 * slice C6a (2026-11-25). `tools/generate_datatables.py` holds the same name as `FERVOUR_HOLD_EXTENDED_ACTION`.
+	 */
+	static const TCHAR* FervourHoldExtendedAction;
+
+	/**
 	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
 	 * the wearer's attack damage. Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name as
 	 * `STRIKE_TARGET_ACTION`. See `FCataclysmPoolAction::bStrikeTarget`.

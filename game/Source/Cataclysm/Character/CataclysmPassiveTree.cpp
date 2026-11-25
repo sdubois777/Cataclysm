@@ -1029,6 +1029,14 @@ TArray<FCataclysmEnchantmentEffectRow> UCataclysmPassiveTree::EnchantmentRowsFor
 
 			FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
 			Row.Enchantment = UCataclysmPassiveTree::EnchantmentNameFor(Node, Effect.Option);
+			// AN ACTION ROW GRANTED FROM A POINT THRESHOLD IS KEYED APART, so "1 second for every 4 points" can be one row
+			// at 4 points and another at 8 that each act: an action row's trigger, reset and charge keys begin with this
+			// name, and two rows sharing one would share one key. The Death trees' slice C6a (2026-11-25): Find the
+			// Rhythm, Sidestep and Keep the Count. Stat rows sum and need no such key; no stat row is renamed.
+			if (!Effect.Action.IsEmpty() && Effect.MinPoints > 0)
+			{
+				Row.Enchantment += FString::Printf(TEXT("_From%d"), Effect.MinPoints);
+			}
 			Row.Stat = Effect.Stat;
 			Row.ValueKind = Effect.ValueKind;
 

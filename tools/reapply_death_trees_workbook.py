@@ -645,6 +645,32 @@ NODES: tuple[Node, ...] = (
           R("crowd_control_resistance", "flat", 100, cond="wearing_enemy_modifier", cond_value=4),
           R("health_regen", "flat", 2, cond="wearing_enemy_modifier", cond_value=5)),
          option=1),
+
+    # ---- SLICE C6a (2026-11-25): EVASIONS AND A FULL BAR THAT SPEED THE NEXT
+    # THING, AND FOUR NODES THAT ARE DATA ALONE. Slip and Brim's next-hit critical
+    # strike on `dodge` and `resource_full` (Brim's until used, a judgement);
+    # Find the Rhythm's and Sidestep's movement cooldown cut and Keep the Count's
+    # longer hold, each a row at each step of "for every N points"; Soul Barrage,
+    # Lasting Wounds, Twin Step, and Riposte as a melee strike on `dodge`, the
+    # basic attack's stand-in, as ruled.
+    Node(SH + "basic_spine_010", "Brim",
+         (A("next_hit_critical", 0, event="resource_full"),)
+         + damage("increased", 5, cond="next_hit_is_critical")),
+    Node(SH + "basic_d_stem0", "Slip", (A("next_hit_critical", 3, event="dodge"),)),
+    Node(SH + "basic_b_c0", "Find the Rhythm",
+         tuple(A("cooldown_reduce_movement", 1, event="critical_strike", cond="target_is_boss", min_points=points)
+               for points in (4, 8))),
+    Node(SH + "keystone_d_kC", "Sidestep",
+         tuple(A("cooldown_reduce_movement", 1, event="dodge", min_points=points) for points in (5, 10))),
+    Node(SH + "basic_d_c1", "Keep the Count",
+         tuple(A("fervour_hold_extended", 1, event="dodge", min_points=points) for points in (3, 6))),
+    Node(SC + "capstone_200", "Soul Barrage",
+         (R("projectile_count", "flat", 1, scale=HELD, step=10),), option=3),
+    Node(SH + "basic_a_stem2", "Lasting Wounds",
+         (R("dot_duration", "increased", 4, tags="Keyword.DoT.Poison"),
+          R("dot_duration", "increased", 4, tags="Keyword.DoT.Bleed"))),
+    Node(SH + "keystone_c_kC", "Twin Step", (R("skill_charges_bonus", "flat", 1, tags="Slot.Movement"),)),
+    Node(SH + "keystone_d_kA", "Riposte", (A("strike_target", 100, event="dodge", tags="Type.Melee"),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

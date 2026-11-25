@@ -3553,14 +3553,16 @@ class TestDeathTreeC4d1Actions:
         assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"]) == (
             "next_hit_critical", "kill", 10.0)
 
-    @pytest.mark.parametrize("value", [0, 10.5])
+    # NOUGHT IS "UNTIL USED" SINCE THE DEATH TREES' SLICE C6a (Brim), so the
+    # value just outside at the bottom is below nought.
+    @pytest.mark.parametrize("value", [-1, 10.5])
     def test_chain_executions_seconds_just_outside_are_refused(self, tmp_path, value):
-        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+        with pytest.raises(gen.DataError, match=r"The seconds are 0 \(until used\) up to 10"):
             gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "kill", value))
 
     @pytest.mark.parametrize("event", ["hit_dealt", "critical_strike", "afflicted_death"])
     def test_chain_executions_row_on_another_event_is_refused(self, tmp_path, event):
-        with pytest.raises(gen.DataError, match="Only a kill grants it"):
+        with pytest.raises(gen.DataError, match="Only a kill, an evasion or a full bar grants it"):
             gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, event, 2))
 
     @pytest.mark.parametrize("event", ["kill", "hit_dealt"])
@@ -3574,6 +3576,48 @@ class TestDeathTreeC4d1Actions:
     def test_relentless_base_anywhere_else_is_refused(self, tmp_path, action):
         with pytest.raises(gen.DataError):
             gen.enchantment_effects(self.row(tmp_path, action, "kill", 1, gen.FRACTION_OF_HUNDREDS_HELD))
+
+
+class TestDeathTreeC6aActions:
+    """The Death trees' slice C6a (2026-11-25), each through the whole
+    Enchantment Effects read. Chain Execution's charge is now granted on an
+    evasion and a full bar too, and 0 seconds is "until used"; the movement
+    cooldown cut is a cooldown reduction like the others; Keep the Count's
+    longer hold is on `dodge` only, its seconds above 0 and up to the bound.
+    THE CONTROLS: the rows accepted are carried through."""
+
+    WORDS = TestDeathTreeActionBounds.WORDS
+    NAME = TestDeathTreeActionBounds.NAME
+    ENCHANTMENTS = TestDeathTreeActionBounds.ENCHANTMENTS
+    HEADER = TestDeathTreeActionBounds.HEADER
+    row = TestDeathTreeActionBounds.row
+
+    @pytest.mark.parametrize("event", ["dodge", "resource_full"])
+    def test_the_next_hit_charge_on_an_evasion_or_a_full_bar_is_carried_through(self, tmp_path, event):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, event, 3))
+        assert (out[0]["Action"], out[0]["ActionEvent"]) == ("next_hit_critical", event)
+
+    def test_a_charge_of_nought_seconds_until_used_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "resource_full", 0))
+        assert out[0]["ValueLow"] == 0.0
+
+    def test_the_movement_cut_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, "cooldown_reduce_movement", "dodge", 1))
+        assert (out[0]["Action"], out[0]["ValueLow"]) == ("cooldown_reduce_movement", 1.0)
+
+    def test_the_longer_hold_on_an_evasion_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, "dodge", 1))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"]) == ("fervour_hold_extended", "dodge", 1.0)
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt"])
+    def test_the_longer_hold_on_another_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only an evasion does"):
+            gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, event, 1))
+
+    @pytest.mark.parametrize("value", [0, 10.5])
+    def test_the_longer_hold_just_outside_its_bound_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+            gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, "dodge", value))
 
 
 class TestStrikeTarget:
