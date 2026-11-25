@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The movement skill's two clocks: Arrival and Glancing Cuts (Death trees, slice C6b2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions
+  `seconds_after_movement_skill_ends` and `target_struck_by_your_movement_skill_within_seconds`, and two state fields.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteMovementSkillEnded` (which
+  raises the action event `movement_skill_ends`), `SecondsSinceMovementSkillEnded`, `NoteStruckByMovementSkillOf` and
+  `SecondsSinceStruckByMovementSkillOf`; `CurrentConditions` and `WithTargetState` fill the new fields, with a new flag
+  in both of `WithTargetState`'s flag lists.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`: `UCataclysmMovementSkill` marks a use
+  that was paid for, and its `EndAbility` notes the end.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`: `ApplyHit` records a landed blow of a skill made
+  for the Movement slot on the creature struck.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmMovementClocksTests.cpp`, new (5); `CataclysmDataTableTests.cpp`; `tools/tests/test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (one exception);
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one) and
+  `test_passive_effects_match_the_node_text.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (615 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **THE END IS COUNTED ONLY FOR A USE THAT WAS PAID FOR, AND ONLY FOR A SKILL MADE FOR THE MOVEMENT SLOT**, a judgement:
+  a Recall's first press leaves a mark and moves nobody, and a use refused before it was paid moved nobody, so neither
+  "ends" as a movement; and the slot is the one the use's clock (`NoteMovementSkillUsed`) already asks. **A MOVE CUT
+  SHORT DOES COUNT**, a judgement from "after your movement skill ends": it has ended, even though it does none of its
+  arrival effects.
+- **GLANCING CUTS' RECORD IS WRITTEN IN `ApplyHit`, SO EVERY BLOW OF THE MOVEMENT SKILL COUNTS**: its own blow, the path
+  damage a row gives a charge, and the explosions at both ends. Only a blow that landed: not an evaded blow, not one
+  refused as immune to its attacker, not a share struck at an ally, not a tick. **THE BLOW THAT MAKES THE RECORD DOES NOT
+  READ IT**, because the record is written after the blow's damage: "take ... for 4 seconds" is read as what follows the
+  hit, a judgement.
+- **A NEW ACTION EVENT, `movement_skill_ends`**, because every `seconds_after_<event>` clock names an event a row may
+  hang on, and `tools/tests/test_pool_action_names_match_the_engine.py` holds the generator's events to the ones the
+  game raises. No row uses it yet.
+- **ONE FAULT FOUND BY THE WHOLE SUITE BEFORE THE COMMIT, AND FIXED.** Glancing Cuts' words, "your movement skill hits",
+  are also in Through and Through's sentence ("Each enemy your movement skill hits generates 1 Fervour"), so
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` asked its rows for the new condition. Its rows carry
+  those words another way, the required tag `Slot.Movement` on `fervour_per_enemy_hit`, paid at the hit, and that test's
+  `EXPRESSED_ANOTHER_WAY` now says so.
+
+### What each reads
+
+- **ARRIVAL (the Shadow, basic):** attack and spell damage increased 3 a point under
+  `seconds_after_movement_skill_ends` 1: the movement skill ended at most 1 second ago, inclusive, as every clock is.
+- **GLANCING CUTS (the Shadow, basic):** attack and spell damage increased 2 a point under
+  `target_struck_by_your_movement_skill_within_seconds` 4: the asker's movement skill landed a blow on the creature
+  asked about at most 4 seconds ago. A record kept on the creature and keyed by the striker, as Grim Wake's is.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Arrival (Shadow basic) | attack_damage and spell_damage, increased, 3, cond=seconds_after_movement_skill_ends 1 |
+| Glancing Cuts (Shadow basic) | attack_damage and spell_damage, increased, 2, cond=target_struck_by_your_movement_skill_within_seconds 4 |
+
+`PassiveEffects.csv` 611 to 615; the Shadow 109 rows. The pins: rows 615, nodes 367, options 54 (unchanged).
+
+### Rulings recorded here
+
+None new: the C6 plan's rulings are recorded in the slice C6a entry.
+
+### Research
+
+None new. Both clocks copy shapes already in the game: the use's clock (`seconds_after_movement_skill`) and Grim Wake's
+record kept on the creature marked.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.MovementClocks.` | new: `ArrivalCountsFromTheEndOfTheMoveAndNotItsUse`, `ARealBlinkInTheMovementSlotNotesItsEnd`, `AMovementSkillsLandedBlowMarksWhatItStruck`, `GlancingCutsHoldsForFourSecondsAgainstWhatYourMoveStruck`, `TheTwoNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 615 | unchanged |
+
+Each new test has a control: a use alone, and 1.5 seconds after; the same blink granted in the Special slot; a blow of a
+Special slot skill, and another striker's record; a creature never struck, one struck by another's movement skill, and
+4.5 seconds after.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmSkillEffects.cpp`, `ApplyHit`:
+`&& DeliveredBy && DeliveredBy->GetDesignedSlot() == ECataclysmAbilitySlot::Movement)` made `&& DeliveredBy)`, so any
+skill's landed blow marks what it struck. Prefix `Cataclysm.MovementClocks.`; must fail
+`AMovementSkillsLandedBlowMarksWhatItStruck` (the Special slot's blow then marks its creature).
+
+### What was run
+
+SUITE_FIGURES_C6B2
+
+PYTHON_PROOFS_C6B2
+
+---
+
 ## 2026-11-25 — Facts of the target of a hit: From Behind, Opening Strike, Venomed Prey and Hit and Run (Death trees, slice C6b1)
 
 **Affects:**
