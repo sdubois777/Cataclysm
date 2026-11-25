@@ -164,6 +164,10 @@ CONSTANTS = {
     # AND THE DEATH TREES' SLICE C6b4 (2026-11-25): an evasion's critical
     # strike charge doubled on a roll, Twice Answered.
     "CriticalTwiceOnEvasionAction": "next_hit_critical_twice",
+    # AND THE DEATH TREES' SLICE C6e (2026-11-25): Blade Echo's and Thousand
+    # Cuts' strikes on the strongest enemy near a kill.
+    "StrikeStrongestNearAction": "strike_strongest_near",
+    "DashToStrongestAndStrikeAction": "dash_to_strongest_and_strike",
     # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
@@ -1524,3 +1528,31 @@ def test_hollow_step_passes_through_for_the_move_only_and_hits_the_line_once() -
     line = templates[start:templates.index("\n}\n", start)]
     assert "if (!AlreadyStruck.Contains(OnTheLine))" in line
     assert "HitWhatThePathCrossed(Crossed, PercentHitScaledGivesAnAlly(TArray<AActor*>()));" in line
+
+
+def test_the_last_five_shadow_and_necromancer_nodes_are_wired() -> None:
+    """The Death trees' slice C6e (2026-11-25), as ruled (Q6, Q8, Q9). The two
+    kill actions are converted from their rows and strike the mark or the
+    strongest near, Thousand Cuts moving beside it first; a critical strike's
+    flag reaches the ailment roll, which lends Lethal Dose's share for that
+    application alone; Interpose re-deals the hit to the minion and takes it off
+    the defender; and Guard the Master's choice comes after a Quarry order.
+    Read from the code with comments taken out."""
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert "Action.bStrikeStrongestNear = Effect->Action.Equals(" in item
+    assert "Action.bDashToStrongestAndStrike = Effect->Action.Equals(" in item
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(Action\.bDashToStrongestAndStrike\)\s*\{\s*UCataclysmMovement::PlaceBeside\(Self, Struck\);"
+                     r"\s*\}", engine)
+    assert "? MarkedOrStrongestNear(StrongestNearReachCm) : nullptr;" in engine
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert re.search(r"Hit\.bIsBlunt && !bAreaSkillShareOnAnAlly,\s*Outcome\.bWasCritical\);", vitals)
+    assert re.search(r"UCataclysmSkillEffects::ApplyDirectDamage\(Interposer, Guard, Hit\.Damage, Taken\);\s*"
+                     r"Hit\.Damage = 0\.0f;", vitals)
+    ailments = code_without_comments(SOURCE.parent / "CataclysmAilments.cpp")
+    assert "TGuardValue<float> LendsIt(LentSlot, Lent);" in ailments
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"Numbers\.DamagePerTick \*= \(1\.0f \+ Increases \+ "
+                     r"Lender->AilmentIncreasePercentLentByCritical / 100\.0f\)\s*/ \(1\.0f \+ Increases\);", effects)
+    controller = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmEnemyController.cpp")
+    assert controller.index("UCataclysmCommand::OrderedTargetFor(Driven)")         < controller.index("UCataclysmCommand::CommandersLastAttackerFor(Driven)")         < controller.index("Gadget->MostHealthWithinReach()")
