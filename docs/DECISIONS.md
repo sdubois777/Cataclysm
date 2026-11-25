@@ -454,6 +454,14 @@ game code changed.
 **FOR A THIRD WINDOW**, at the coordinating session's word: as ss2-w2, the build, `Cataclysm.SkillPool.` alone (11,
 all succeeding), then the twelve guard proofs, with Python off the machine first.
 
+**THE SAME TEST'S OTHER LIST COMPARISONS, BEFORE THE THIRD WINDOW** (the coordinating session's word: fix any other
+check in that test that compares a joined list whose order is not a rule, in the same change, before the proofs). Four
+more compared the keys' six with a weapon's six as joined lists and passed only because those fills hand the skills
+back in `SkillsFor`'s order: the character created Demonic, the War Sword with the War Axe, the two swapped, and the
+War Axe alone. All six-skill comparisons in the test now go through one helper, `SkillNamesInAnyOrder` (names sorted,
+then joined), which replaces the control's own copy of it. The four that compare damage types (two of `InFillOrder`,
+two of the slots' types) keep their order, which is the rule under test (Q11). No game code changed.
+
 ---
 
 ## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)

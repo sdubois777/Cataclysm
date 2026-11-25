@@ -141,6 +141,22 @@ namespace CataclysmSkillPoolTest
 		return FString::JoinBy(Skills, TEXT(", "), [](const FCataclysmWeaponSkill& Skill) { return Skill.Name; });
 	}
 
+	/**
+	 * Every skill's name, sorted, then joined: two lists compare AS SETS with one TestEqual of FString. For what the
+	 * keys hold, where each skill carries its own key and the order the slots hand them back in is not a rule; window
+	 * ss2-w2 (2026-11-25) failed a list comparison of the same six skills in two orders.
+	 */
+	FString SkillNamesInAnyOrder(const TArray<FCataclysmWeaponSkill>& Skills)
+	{
+		TArray<FString> Names;
+		for (const FCataclysmWeaponSkill& Skill : Skills)
+		{
+			Names.Add(Skill.Name);
+		}
+		Names.Sort();
+		return FString::Join(Names, TEXT(", "));
+	}
+
 	/** The skills of a list without the basic attack: what the matrix filled. */
 	TArray<FCataclysmWeaponSkill> WithoutTheBasic(const TArray<FCataclysmWeaponSkill>& Skills)
 	{
@@ -447,8 +463,14 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const auto HeldSix = [&Carrier]() { return SkillNamesOf(WithoutTheBasic(Carrier.Slots->GetAvailableSkills())); };
-	const FString DemonicAxe = SkillNamesOf(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic")));
+	// EVERY SIX-SKILL COMPARISON BELOW IS AS SETS (`SkillNamesInAnyOrder`): each skill carries its own key, so the
+	// order the slots hand them back in is not a rule. Lists until window ss2-w3 (2026-11-25); see the control.
+	const auto HeldSix = [&Carrier]()
+	{
+		return SkillNamesInAnyOrder(WithoutTheBasic(Carrier.Slots->GetAvailableSkills()));
+	};
+	const FString DemonicAxe =
+		SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic")));
 
 	// THE CONTROL: CREATED WAR, and the weapon lists War first, so either order gives War first.
 	Carrier.State->SetCreationChoice(FName(TEXT("Greataxe")), War);
@@ -469,25 +491,13 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 		bAnyWarAxeSkillBuilt = bAnyWarAxeSkillBuilt || UCataclysmWeaponSkills::IsBuilt(Skill);
 	}
 	TestFalse(TEXT("set-up: none of the War Greataxe's six is built yet"), bAnyWarAxeSkillBuilt);
-	// AS A SET, NOT A LIST: each skill carries its own key, and the order the slots hand them back in is not a rule.
-	// Here they came back as "Molten Cleave, Infernal Plunge, Emberhurl, Burning Wrath, Pyroclasm, Conflagration"
-	// (window ss2-w2), and `SkillsFor` lists the same six in another order; ss2-w2 failed on comparing them as lists.
-	const auto NamesInAnyOrder = [](const TArray<FCataclysmWeaponSkill>& Skills)
-	{
-		TArray<FString> Names;
-		for (const FCataclysmWeaponSkill& Skill : Skills)
-		{
-			Names.Add(Skill.Name);
-		}
-		Names.Sort();
-		return FString::Join(Names, TEXT(", "));
-	};
-	const FString HeldInAnyOrder = NamesInAnyOrder(WithoutTheBasic(Carrier.Slots->GetAvailableSkills()));
-	TestEqual(TEXT("control: so the keys hold the Demonic Greataxe's built six (Q2)"), HeldInAnyOrder,
-			  NamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic"))));
-	const FString WarAxeInAnyOrder =
-		NamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")));
-	TestTrue(TEXT("control: and not the War Greataxe's six"), HeldInAnyOrder != WarAxeInAnyOrder);
+	// AS SETS, NOT LISTS: here the keys came back as "Molten Cleave, Infernal Plunge, Emberhurl, Burning Wrath,
+	// Pyroclasm, Conflagration" (window ss2-w2), and `SkillsFor` lists the same six in another order; ss2-w2 failed on
+	// comparing them as lists.
+	TestEqual(TEXT("control: so the keys hold the Demonic Greataxe's built six (Q2)"), HeldSix(), DemonicAxe);
+	const FString WarAxe =
+		SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")));
+	TestTrue(TEXT("control: and not the War Greataxe's six"), HeldSix() != WarAxe);
 
 	// CREATED DEMONIC, the same weapon put on again: it lists War first and the creation type still goes first.
 	Carrier.State->SetCreationChoice(FName(TEXT("Greataxe")), Demonic);
@@ -502,8 +512,9 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	TestEqual(TEXT("and fill the Demonic Greataxe's six"), HeldSix(), DemonicAxe);
 
 	// WITHIN A TYPE, THE WORN WEAPONS IN SLOT ORDER.
-	const FString WarSword = SkillNamesOf(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Sword"), TEXT("War")));
-	const FString WarAxeOneHanded = SkillNamesOf(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Axe"), TEXT("War")));
+	const FString WarSword = SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Sword"), TEXT("War")));
+	const FString WarAxeOneHanded =
+		SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Axe"), TEXT("War")));
 	Carrier.Equipment->UnequipEverything();
 	if (!TestEqual(TEXT("set-up: nothing is worn"), Carrier.Equipment->NumEquipped(), 0)
 		|| !Wear(*this, Carrier, Weapon(TEXT("Weapon_Sword"), {War}), ECataclysmGearSlot::Weapon1)
