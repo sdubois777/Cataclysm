@@ -123,7 +123,44 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On `52be835fd63d03e11269694735e58ef8a8a81b56`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8609 passed, 9 skipped in 544.60s**, and the JUnit file `tests="8619" failures="1"
+errors="0" skipped="9"`, which is 8,609 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**THE FIRST RUN, on the code commit `e1785f735ea048eb36496085d0ec344aeb2e93c9`, failed one more**:
+`test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py::test_the_reader_finds_the_measured_number_of_used_names`,
+which pins the scale sources a row names at 43. This slice's `current_health` made it 44. Corrected in `52be835fd`.
+That run read 2 failed, 8608 passed, 9 skipped.
+
+### A MERGE OBLIGATION THIS LINE CARRIES, recorded here at the coordinating session's request (2026-11-25)
+
+**`fervour_per_critical_strike` is built twice, once on each line, and both landing unchanged would pay twice per
+critical strike.**
+- The War line's slice C (`feat/war-fervour-sources`): `FCataclysmWarFervour::PerCriticalStrikeStat`, paid by
+  `FCataclysmWarFervour::GainOnCriticalStrike` from `ACataclysmPlayerCharacter`'s hit handler (`CataclysmPlayerCharacter.cpp`,
+  the `critical_strike` block), with its class-stats entry and probe.
+- The Death line's C4d1: a stat of the same name, paid from the same handler and judged against the enemy struck.
+- Ruled: this line lands first, and the Death line reconciles at its merge. There is one payment, the Death line's,
+  judged against the target, and this line's constant names that payment. No further caller of this line's path is
+  added meanwhile.
+
+**What this line's path does besides paying**, so the Death line can carry it over. `GainOnCriticalStrike` calls
+`FCataclysmWarFervour::GainByRate` (`CataclysmWarFervour.cpp`), which:
+1. reads the rate through `StatForSkill` with the blow's skill tags. That is what lets Battle Lust's "on every critical
+   melee strike" row, scoped to melee, add to a melee critical strike only;
+2. pays nothing to a character with no class resource set or no `UCataclysmAbilitySystemComponent`, which is every
+   enemy, and nothing for a rate of nought or less;
+3. scales the rate by the class resource's generation (`UCataclysmAbilitySystemComponent::ClassResourceGainScaled`,
+   `class_resource_generation`, ruled 2026-10-07);
+4. clamps the result to `UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked`, the most the pool may hold
+   after its reserves (the War machines' and the Death line's);
+5. writes it with `ApplyModToAttribute` and returns what was gained. It raises no event.
+
+The call site is reached for every critical strike the hit handler announces, past the handler's refusals. Unlike
+`GainOnHitDealt` beside it, it does not leave out a minion's own blow that Conduit credits to the player. That was read
+from the code and not measured.
 
 ### INCLUDE AUDIT
 
