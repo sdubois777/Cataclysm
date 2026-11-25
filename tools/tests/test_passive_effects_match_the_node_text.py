@@ -686,7 +686,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #: AND TO 494 THE SAME DAY: six rows on Razor Instincts, Sentry Network, Ambush,
 #: Overcautious and Overwhelming Presence, on the event and the four conditions
 #: the same branch adds.
-AUTHORED_ROWS = 494
+#:
+#: AND TO 517 THE SAME DAY: twenty-three rows on fifteen Saboteur nodes, the
+#: survey's groups A and B (`tools/reapply_war_saboteur_rows_workbook.py`).
+AUTHORED_ROWS = 517
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1118,7 +1121,8 @@ AUTHORED_ROWS = 494
 #: Network, the Saboteur's device conditions that need no code.
 #: AND TO 289 THE SAME DAY: Razor Instincts, Sentry Network, Ambush, Overcautious
 #: and Overwhelming Presence.
-AUTHORED_NODES = 289
+#: AND TO 304 THE SAME DAY: fifteen Saboteur nodes, the survey's groups A and B.
+AUTHORED_NODES = 304
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1414,10 +1418,15 @@ def test_no_node_grants_the_same_stat_twice(effects):
         # AND THE SECOND CONDITION, since the War riders of 2026-11-25:
         # Hair-Trigger's two crit chance rows are both under `in_frenzy`, the
         # second also above 75% Fervour, and they are two rows.
+        #
+        # AND THE REQUIRED TAGS, since the Saboteur's rows of 2026-11-25: Bag of
+        # Tricks lowers what traps reserve and what gadgets reserve, one stat on
+        # `Type.Trap` and on `Type.Gadget`. The generator's key has them too.
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row.get("Option", ""), row.get("MinPoints", ""),
-               row.get("Condition2", ""), row.get("ConditionValue2", ""))
+               row.get("Condition2", ""), row.get("ConditionValue2", ""),
+               row.get("RequiredTags", ""))
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
@@ -1690,8 +1699,11 @@ CONDITION_WORDS = {
     # Crippled enemies"; both are the same promise, and widening the entry
     # is what this table's own comment says to do rather than wording the
     # design prose around the test.
+    # AND PRESSURE SENSITIVE'S "Enemies slowed by your traps also take +15%"
+    # (2026-11-25): a trap's slow is a Cripple; the row asks any Cripple, a
+    # judgement recorded in `tools/reapply_war_saboteur_rows_workbook.py`.
     "target_carries_cripple": (("against crippled enemies",
-                                "damage to crippled enemies"), None),
+                                "damage to crippled enemies", "enemies slowed by your traps"), None),
     "target_carries_cripple_and_weaken": ("both crippled and weakened", None),
 
     # AND THE ONE THAT ASKS ABOUT THE ATTACKER RATHER THAN THE TARGET. Spreading
@@ -1978,7 +1990,9 @@ SCALE_WORDS = {
     "health_missing": (("for every", "missing"), "{value:g}%", None),
     # AND Endless Spite's "for every 10 Fervour currently held" (slice D,
     # 2026-11-24), a second word set beside the first.
-    "class_resource_held": ([("fervour you",), ("fervour currently held",)], "{value:g} fervour",
+    # AND Mechanical Familiar's "+1% bonus damage and +5% bonus HP per 10
+    # Fervour" (the Saboteur's rows, 2026-11-25).
+    "class_resource_held": ([("fervour you",), ("fervour currently held",), ("per 10 fervour",)], "{value:g} fervour",
                             "each point of fervour"),
     "health_owed": (("for every", "owe"), "{value:g}%", None),
 
@@ -2596,7 +2610,9 @@ VALUE_FORMS = {
                                     "{value:g} Fervour per point"),
     "fervour_per_trap_placed": "{value:g} for each trap placed",
     "fervour_per_gadget_placed": "{value:g} for each gadget placed",
-    "fervour_per_trap_triggered": "{value:g} each time a trap triggers",
+    # AND TRIPWIRE NETWORK'S "+1 Fervour per point when a trap is triggered"
+    # (the Saboteur's rows, 2026-11-25).
+    "fervour_per_trap_triggered": ("{value:g} each time a trap triggers", "+{value:g} Fervour per point when a trap"),
     "fervour_per_device_hit": "{value:g} for each blow one of them lands",
     # THE BERSERKER'S STATES, 2026-11-25. Wrath's and Frenzy's "Fervour drains
     # at 5 per second" and "at 8 per second"; Frenzy's "all melee hits generate
@@ -3430,6 +3446,11 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
         multiplying_nodes.add((node, 0))
 
     for row in effects:
+        # AN ACTION ROW STATES NO VALUE KIND: its value is the action's
+        # (Pressure Sensitive's slow, 2026-11-25), checked by the generator by
+        # the Enchantment Effects sheet's own rules.
+        if row.get("Action", "").strip():
+            continue
         kind = row["ValueKind"].strip().lower()
         assert kind in KINDS, (
             f"{row['Name']}: {kind!r} is not one of {sorted(KINDS)}"
@@ -3496,6 +3517,10 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
     """
     for row in effects:
         if row["ValueKind"].strip().lower() == "removed":
+            continue
+        # NOR AN ACTION ROW, which states no stat (Pressure Sensitive's slow,
+        # 2026-11-25).
+        if row.get("Action", "").strip():
             continue
         assert row["Stat"] in stats, (
             f"{row['Name']} grants {row['Stat']!r}, which is not a stat any "
@@ -3903,6 +3928,10 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
             continue
         sentence = nodes.get(row["Node"], {}).get("Description", "")
         said = [int(n) for n in AT_N_POINTS.findall(sentence)]
+        # AND "per point invested beyond N", whose first paid point is N + 1:
+        # Tinkerer, Min Points 7 and Per Point From 7, as the generator's
+        # `_per_point_from` describes it (the Saboteur's rows, 2026-11-25).
+        said += [int(n) + 1 for n in re.findall(r"per point invested beyond (\d+)", sentence)]
         # OR A STEP OF A "FOR EVERY N POINTS" SERIES, at a multiple of its N.
         steps = [int(n) for n in FOR_EVERY_N_POINTS.findall(sentence)]
         if min_points not in said and not any(min_points % n == 0 for n in steps):

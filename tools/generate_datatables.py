@@ -2024,13 +2024,15 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: ACTION EVENT AND STACK SECONDS LEFT THE SAME DAY with the Saboteur's device
 #: conditions (`tools/reapply_war_saboteur_devices_workbook.py`), which added the
 #: two columns for Sprung's, Emergency Protocol's and Razor Instincts' own stacks.
+#: AND ACTION THE SAME DAY with the Saboteur's rows
+#: (`tools/reapply_war_saboteur_rows_workbook.py`): Pressure Sensitive's slow.
 _PASSIVE_PORT_COLUMN_REASON = (
     "the passive row port of 2026-11-24; added to the workbook by the first War "
     "or Death tree slice that authors a row using it")
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
     "Passive Effects": {
         column: _PASSIVE_PORT_COLUMN_REASON
-        for column in ("Action", "Fraction Of",
+        for column in ("Fraction Of",
                        "Scale Offset", "Every Seconds", "Every Nth",
                        "Trigger Cooldown", "Event Value", "Ailment", "Damage Share")},
 }
@@ -6513,13 +6515,17 @@ def passive_effects(book) -> list[dict]:
     # AND SO ARE THE ACTION COLUMNS AND A SECOND CONDITION, since the passive
     # row port of 2026-11-24, as the Enchantment Effects sheet's key has them:
     # one node may restore health and generate Fervour on the same event.
+    #
+    # AND SO ARE THE REQUIRED TAGS, since the Saboteur's rows of 2026-11-25: Bag
+    # of Tricks lowers what traps reserve and what gadgets reserve, one stat on
+    # `Type.Trap` and on `Type.Gadget`, two things a player gets.
     pairs: dict[tuple, int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row["Option"], row["MinPoints"], row["Action"],
                row["ActionEvent"], row["FractionOf"], row["Condition2"],
-               row["ConditionValue2"])
+               row["ConditionValue2"], row["RequiredTags"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:

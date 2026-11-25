@@ -55,6 +55,14 @@ def test_support_networks_gadget_damage_names_gadgets_alone():
     assert not any(required == "Type.Deployable" for _, required in tags)
 
 
+def test_no_passive_row_names_deployables():
+    """THE RULING HELD: a passive row meaning gadgets names `Type.Gadget` and one meaning traps `Type.Trap`; none names
+    `Type.Deployable`, which would reach both. THE CONTROL is that passive rows naming the two tags exist."""
+    named = {row["RequiredTags"] for row in _rows("PassiveEffects")}
+    assert {"Type.Gadget", "Type.Trap"} <= named
+    assert not [row["Name"] for row in _rows("PassiveEffects") if "Type.Deployable" in _tags(row["RequiredTags"])]
+
+
 def test_unreal_is_given_the_tag():
     assert 'Tag="Type.Gadget"' in TAGS_INI.read_text(encoding="utf-8")
 

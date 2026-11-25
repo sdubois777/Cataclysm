@@ -181,15 +181,16 @@ def test_the_sheet_reads_with_no_optional_port_column(tmp_path):
     War riders, 2026-11-25) and `Action Event` and `Stack Seconds` (the Saboteur's device conditions, the same day).
     UNTIL 2026-11-25 THIS WAS `test_the_sheet_reads_with_no_port_column_at_all`, which stopped being true when two of
     the port's columns became required."""
-    required = ["Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds"]
+    required = ["Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action"]
     old = HEADERS[:HEADERS.index("Action")] + required
     out = read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
     assert out[0]["Action"] == "" and out[0]["PerPointFrom"] == 0
     declared = set(gen.OPTIONAL_COLUMNS["Passive Effects"])
     # CONDITION 2 AND ITS VALUE ARE REQUIRED SINCE 2026-11-25: the War riders' rows added them to the workbook. AND
-    # ACTION EVENT AND STACK SECONDS THE SAME DAY: the Saboteur's device conditions' own stacks added them.
+    # ACTION EVENT AND STACK SECONDS THE SAME DAY: the Saboteur's device conditions' own stacks added them. AND ACTION
+    # THE SAME DAY: Pressure Sensitive's slow, the Saboteur's rows.
     assert declared == set(gen.PASSIVE_ACTION_COLUMNS) - {"Condition 2", "Condition Value 2", "Action Event",
-                                                           "Stack Seconds"}
+                                                           "Stack Seconds", "Action"}
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +198,7 @@ def test_the_sheet_reads_with_no_optional_port_column(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("column", ["Per Point From", "Condition 2", "Condition Value 2", "Action Event",
-                                    "Stack Seconds"])
+                                    "Stack Seconds", "Action"])
 def test_a_sheet_without_a_column_a_row_now_uses_is_refused(tmp_path, column):
     """Slice D put `Per Point From` in the workbook on 2026-11-24 with Pain is Power's row, the War riders put
     `Condition 2` and `Condition Value 2` there on 2026-11-25 with Hair-Trigger's, Death Blow's and Brute Force's, and

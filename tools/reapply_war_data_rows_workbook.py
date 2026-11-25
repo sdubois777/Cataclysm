@@ -72,9 +72,13 @@ CONDITION_VALUE_2 = "Condition Value 2"
 #: #1833; the passive row port of 2026-11-24 made the Passive Effects sheet read the same columns.
 ACTION_EVENT = "Action Event"
 STACK_SECONDS = "Stack Seconds"
+#: AND THE ACTION ITSELF, added by the Saboteur's rows the same day for Pressure Sensitive's "Traps apply a 20% slow per
+#: point to triggered enemies for 2 seconds": `slow_for_seconds` on `trap_triggered`, as the trap enchantment writes it
+#: (`tools/reapply_war_saboteur_rows_workbook.py`). An action row states no stat and no value kind.
+ACTION = "Action"
 #: The columns this script adds to the sheet when it lacks one an appended row uses, in the order they are added. The two
 #: condition columns go together, so a row's second condition never lands without its value's column.
-ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS)
+ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS, ACTION)
 ReapplyError = helpers.ReapplyError
 
 @dataclasses.dataclass(frozen=True)
@@ -97,6 +101,7 @@ class Row:
     reach: float | None = None
     action_event: str | None = None
     stack_seconds: float | None = None
+    action: str | None = None
 
     def key(self) -> tuple:
         def num(value):
@@ -105,7 +110,7 @@ class Row:
                 num(self.cond_value), self.scale or None, num(self.step), num(self.option),
                 num(self.min_points), num(self.cap), num(self.per_point_from), self.cond2 or None,
                 num(self.cond_value2) or None, num(self.reach) if self.reach and self.reach > 0 else None,
-                self.action_event or None, num(self.stack_seconds) or None)
+                self.action_event or None, num(self.stack_seconds) or None, self.action or None)
 
 
 R = Row
@@ -204,7 +209,7 @@ def row_from_cells(cells: dict[str, object]) -> Row:
                per_point_from=number(cells.get(PER_POINT_FROM)) or None,
                cond2=text(cells.get(CONDITION_2)), cond_value2=number(cells.get(CONDITION_VALUE_2)),
                reach=number(cells.get("Reach Metres")), action_event=text(cells.get(ACTION_EVENT)),
-               stack_seconds=number(cells.get(STACK_SECONDS)))
+               stack_seconds=number(cells.get(STACK_SECONDS)), action=text(cells.get(ACTION)))
 
 
 def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
@@ -218,7 +223,7 @@ def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
             "Reach Metres": out(row.reach), "Min Points": out(row.min_points), helpers.CAP_COLUMN: out(row.cap),
             PER_POINT_FROM: out(row.per_point_from), CONDITION_2: row.cond2,
             CONDITION_VALUE_2: out(row.cond_value2), ACTION_EVENT: row.action_event,
-            STACK_SECONDS: out(row.stack_seconds)}
+            STACK_SECONDS: out(row.stack_seconds), ACTION: row.action}
 
 
 def _multiset(rows) -> collections.Counter:
@@ -306,9 +311,15 @@ def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, l
             if where[0] <= last and not (where[0] == 1 and where[1] > width_before)}
     if kept != before:
         raise ReapplyError(f"a row above the appended ones changed on saving in {SHEET!r}")
-    _, _, still_missing, _ = plan(after[SHEET], nodes, label)
+    # THE READ-BACK SAYS THE WORKBOOK WAS SAVED. `plan`'s own refusal ends "Nothing was written", which is false by
+    # now; until 2026-11-25 it reached the caller as it was, after a save, and read as a refusal before writing.
+    try:
+        _, _, still_missing, _ = plan(after[SHEET], nodes, label)
+    except ReapplyError as error:
+        raise ReapplyError(f"the workbook WAS SAVED with {len(append)} row(s) appended, and {SHEET!r} did not read "
+                           f"back as written: {error}") from error
     if still_missing:
-        raise ReapplyError(f"{SHEET!r} did not read back with the rows written")
+        raise ReapplyError(f"the workbook WAS SAVED, and {SHEET!r} did not read back with the rows written")
     return report + [f"wrote {len(append)} row(s) after sheet row {last}; no other row or sheet changed"]
 
 

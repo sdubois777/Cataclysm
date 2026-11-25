@@ -520,7 +520,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 481 THE SAME DAY, for Riposte, Vengeful Discharge and Crimson Tide.
 	// AND 494 THE SAME DAY, for Snap Back, Sprung, Emergency Protocol and Support Network, and Razor Instincts, Sentry
 	// Network, Ambush, Overcautious and Overwhelming Presence.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        494)
+	// AND 517 THE SAME DAY, for fifteen Saboteur nodes, the survey's groups A and B.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        517)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
