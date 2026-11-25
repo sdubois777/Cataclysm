@@ -125,7 +125,15 @@ No sentence is reworded by this branch.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+Run on `8f6653cc38c1debccfe964e613192bd1cc83b594`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8541 passed, 9 skipped in
+476.11s**, and the JUnit file `tests="8551" failures="1" errors="0" skipped="9"`, which is 8,541 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `MinionTypes.csv`, `PassiveEffects.csv` and `PassiveNodes.csv`, which this stack of branches carries until the
+editor step. `python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed` before the
+commit: 15 files read, 0 with complaints. The include audit over the branch's eleven changed .cpp files: 0 names
+unreachable.
 
 ### PYTHON GUARD PROOFS
 
