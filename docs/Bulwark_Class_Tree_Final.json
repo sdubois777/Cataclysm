@@ -1321,7 +1321,7 @@
       "data": {
         "kind": "basic",
         "name": "Serrated Edge",
-        "description": "+10% bleed duration per point applied by your retaliation damage.",
+        "description": "+10% duration of bleeds you apply, per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6

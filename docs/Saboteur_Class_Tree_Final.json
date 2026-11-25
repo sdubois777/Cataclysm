@@ -155,7 +155,7 @@
       "data": {
         "kind": "basic",
         "name": "Bag of Tricks",
-        "description": "+1 to maximum active traps and gadgets per point.",
+        "description": "Your traps reserve 4% reduced Fervour and your gadgets reserve 10% reduced Fervour, per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 3
@@ -375,7 +375,7 @@
       "data": {
         "kind": "basic",
         "name": "Minefield",
-        "description": "+10% trap placement speed per point. At 6 points: Your maximum active trap limit is increased by 1.",
+        "description": "+10% trap placement speed per point. At 6 points: Your traps reserve 5% reduced Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -463,7 +463,7 @@
       "data": {
         "kind": "keystone",
         "name": "Overwhelming Presence",
-        "description": "While at maximum active traps, you deal 50% more trap damage and trap trigger radius is doubled.",
+        "description": "While your Fervour has no room to reserve another trap, you deal 50% more trap damage and trap trigger radius is doubled.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -573,7 +573,7 @@
       "data": {
         "kind": "keystone",
         "name": "Precision Placement",
-        "description": "You may only have one active trap at a time. That trap gains +10% damage and +25% area of effect for each point of your maximum trap limit. Your maximum trap limit still benefits from all other sources.",
+        "description": "You may only have one active trap at a time. That trap gains +10% damage and +25% area of effect for every 4 traps your maximum Fervour could hold. Anything that lowers what your traps reserve, or raises your maximum Fervour, still counts toward it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -661,7 +661,7 @@
       "data": {
         "kind": "keystone",
         "name": "Calculated Chaos",
-        "description": "Your traps no longer have a maximum active limit. Instead each active trap beyond your normal maximum drains 5 Fervour per second. When you reach 0 Fervour all excess traps are immediately triggered simultaneously.",
+        "description": "Your traps can be placed even when your Fervour has no room to reserve them. Each trap placed that way reserves nothing and drains 5 Fervour per second instead. When you reach 0 Fervour, all of those traps are immediately triggered simultaneously.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1123,7 +1123,7 @@
       "data": {
         "kind": "keystone",
         "name": "Mechanical Familiar",
-        "description": "Your maximum active gadget limit is increased by 1. Your gadgets gain +1% bonus damage and +5% bonus HP per 10 Fervour.",
+        "description": "Your gadgets reserve 15% reduced Fervour. Your gadgets gain +1% bonus damage and +5% bonus HP per 10 Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1172,7 +1172,10 @@
         "color": "#cbd5e1",
         "maxPoints": 1,
         "options": [],
-        "pointThreshold": 25
+        "pointThreshold": 25,
+        "isDecision": true,
+        "threshold": 25,
+        "selectedOption": null
       },
       "measured": {
         "width": 16,
@@ -1196,7 +1199,10 @@
         "color": "#cbd5e1",
         "maxPoints": 1,
         "options": [],
-        "pointThreshold": 50
+        "pointThreshold": 50,
+        "isDecision": true,
+        "threshold": 50,
+        "selectedOption": null
       },
       "measured": {
         "width": 16,
@@ -1220,7 +1226,10 @@
         "color": "#cbd5e1",
         "maxPoints": 1,
         "options": [],
-        "pointThreshold": 100
+        "pointThreshold": 100,
+        "isDecision": true,
+        "threshold": 100,
+        "selectedOption": null
       },
       "measured": {
         "width": 16,
@@ -1244,7 +1253,10 @@
         "color": "#cbd5e1",
         "maxPoints": 1,
         "options": [],
-        "pointThreshold": 200
+        "pointThreshold": 200,
+        "isDecision": true,
+        "threshold": 200,
+        "selectedOption": null
       },
       "measured": {
         "width": 16,
