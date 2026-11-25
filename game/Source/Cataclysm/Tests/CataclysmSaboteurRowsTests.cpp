@@ -15,6 +15,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
