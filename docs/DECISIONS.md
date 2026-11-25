@@ -3723,8 +3723,10 @@ and `tools/tests/test_surge_port.py`. For the retune: `Cataclysm.EnemyStrength.`
 
 ### SAID FIRST
 
-- **COMPILED AND RUN IN WINDOW 2865-w1 ON 2026-11-25: THREE TESTS FAILED, EACH A TEST FAULT**, fixed in its test file;
-  window 2865-w2 is registered for them and the proofs (both at the end of this entry). On
+- **RUN AND PASSED IN THREE WINDOWS, 2865-w1 TO 2865-w3 (2026-11-25)**, recorded at the end of this entry. w1's whole
+  suite performed 5474 and failed three, each a test fault fixed in its test file; w2 ran the two groups those are in,
+  71 of 71 and 10 of 10, and observed the fallen-city case the third fix counts; w3 PROVED P1, P5 and P6 on the same
+  head after P1's restored half in w2 ended with no result. On
   `fix/empty-board-surge-2865`, cut from development `4d33f5994`, and since
   2026-11-25 on `fix/empty-board-surge-2865-2`, which merges development `eb34af972` and then `be7ffb06e` into it by
   the coordinating session's instructions of that day: the inventory tabs (#2887), bug batches 1 and 2 (#2889), the Power Score and drop
@@ -4136,6 +4138,47 @@ suite, so by the narrowed re-run rule there is no second whole suite: w1's stand
 - **Python, run on the head with these fixes** (`0620eb673`), all but this line, with `python -u -m pytest
   --junit-xml=<a file outside the repository>`: `8502 passed, 10 skipped in 419.39s`; the JUnit file agrees, 8,512
   tests, 0 failures, 0 errors, 10 skipped. Ruff: `All checks passed!`.
+
+### Window 2865-w2, 2026-11-25, on `033314a80`: the three tests pass; P1's restored half ended with no result
+
+Run by `.claude/windows/run_2865_w2.py` (its output `2865w2_run.out`), under lock 2865-w2, released when it ended.
+
+- **The build:** `Build: Succeeded - 7 actions, 2 files compiled: CataclysmEmpireRunTests.cpp, Module.Cataclysm.51.cpp`
+  (the unity file that holds `CataclysmSaveLoadTests.cpp`).
+- **`Cataclysm.EmpireRun.` alone:** 71 performed, 71 succeeded, 0 failed. **The fallen-city case is observed**, not only
+  read: `FALL: day 52, Outpost (-1,2): 2 stood when the day began, 1 hit and left before the fall, 0 arrived that day
+  and were absorbed; 1 bosses`. Its other two falls checked show none hit and left: day 235, Outpost (-1,-2), 0 stood,
+  1 boss; day 238, Bulwark (0,2), 2 stood, 2 bosses.
+- **`Cataclysm.Travel.` alone:** 10 performed, 10 succeeded, 0 failed.
+- **P1, NO MEASUREMENT.** With the break in: 71 performed, 66 succeeded, 5 failed, exactly the five registered. With it
+  restored, the editor process stopped after 69 tests, every one a success, at 11:09:20 UTC: no `Sending RunTest`
+  line for the next test, no `Engine exit requested`, no error or fatal line, no crash folder in `game/Saved/Crashes`
+  and no Windows Application or System event between 04:08:30 and 04:10:30 local. The two tests it did not reach,
+  `TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge` and `TwoCitiesFallingOnOneDayBringTwoWaves`,
+  passed in P1's broken half, in the group alone and in w1's whole suite. Why the process ended was not established.
+  The runner stops at a proof that gives no verdict, so P5 and P6 did not run. Logs: `2865w2_P1_033314a8.log`,
+  `2865w2_P1_run1_EmpireRun.log`, `2865w2_P1_run2_EmpireRun.log`.
+- **The coordinating session's ruling of 2026-11-25:** run P1 again whole, and not accept its broken half alone. The
+  precedent is in the bug batches entry above: in window bb12-w3b proof EP3's restored half "ends inside the fourth
+  test with no completion line, no error and no crash report", and window bb12-w3c, on the same head, proved it.
+
+### Window 2865-w3, 2026-11-25, on `033314a80`, nothing changed: P1, P5 AND P6 PROVED
+
+Run by `.claude/windows/run_2865_w3.py` (its output `2865w3_run.out`), under lock 2865-w3, released when it ended. The
+build: `Succeeded - target already up to date, 0 actions, nothing compiled`. Each proof `prove_cpp_guard` with
+`test_prefix="Cataclysm.EmpireRun."`; the source hash and tree the same before and after each; neither half crashed.
+Each failed exactly the tests registered for it, and restored, 71 performed and 71 succeeded:
+
+| # | With the break in | Failed, `named_failures` |
+| :-- | :-- | :-- |
+| P1 | 71 performed, 66 succeeded, 5 failed | `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, `AnEmptyBoardFiresNothingOnceThePillarCanBeReached`, `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`, `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty`, `TheSchedulerAnswersAnEmptyBoardWithNoLeastIntervalAndFourMoreDungeons` |
+| P5 | 71 performed, 67 succeeded, 4 failed | `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`, `ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`, `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty` |
+| P6 | 71 performed, 64 succeeded, 7 failed | `ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity`, `ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`, `ACityFallingTwentyFourDaysAfterASurgeStillBringsAWave`, `ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind`, `AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest`, `TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge`, `TwoCitiesFallingOnOneDayBringTwoWaves` |
+
+P6's seventh, `ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity`, was registered as failing only if
+one of its first three fall days is within 25 days of a surge, which could not be read; it failed, so one is. P2, P3
+and P4 were registered and not run, by the coordinating session's limit of three a change. Logs: `2865w3_P1_033314a8.log`,
+`2865w3_P5_033314a8.log`, `2865w3_P6_033314a8.log` and each half's engine log, `2865_P<n>_run<half>_EmpireRun.log`.
 
 ---
 
