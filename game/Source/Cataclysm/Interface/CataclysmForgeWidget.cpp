@@ -21,6 +21,8 @@
 // A gem's name in the screen's message, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
+// The empire tree's player bonuses, whole, for The Soul Forge's and The Master Tinkerer's chances, #47 slice F6.
+#include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmForgeCraft.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
