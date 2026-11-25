@@ -118,7 +118,11 @@ which is neither a War machine nor a skill gadget, alongside the others.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On `c2ad05ebd849d90311d17c32229da0bd8657b34a`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9037 passed, 9 skipped in 687.16s**, and the JUnit file `tests="9047" failures="1"
+errors="0" skipped="9"`, which is 9,037 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
 
 ### INCLUDE AUDIT
 
