@@ -2,6 +2,144 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Fervour gained from other sources and the hold before decay: Any Fuel, Borrowed Time, Kindred Fires, and one way for every gain to reach the pool (Death trees, slice C4b1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `UCataclysmFervour::RaisePool`, the one way a
+  gain reaches the pool; `AfterPoolRose`; `KillDecayHoldFullSeconds`; the stats `HoldRestartedByAnyGainStat`
+  (`fervour_hold_restarted_by_any_gain`) and `HoldExtendedOnGainSecondsStat` (`fervour_hold_extended_on_gain_seconds`);
+  the kill-payment marker opened by `GainOnOwnKill`; every gain function's write swapped onto the helper.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `BeginKillPayment`,
+  `EndKillPayment`, `IsPayingForAKill`, `RestartKillDecayHold`, `ExtendKillDecayHold`, `LastKillGraceSeconds` (recorded
+  by `NoteOwnKill`), `StatAsIfAgainstRarity`; `CurrentConditions` fills the new state field; Cinders Kept's return
+  (`ReturnFervourDue`) goes through the helper.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `fervour_gain_not_from_a_kill`
+  (`FervourGainNotFromAKill`) and `FCataclysmStatConditions::bFervourGainNotFromAKill`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp` (a class resource top-up) and `CataclysmSiphon.cpp`
+  (the Siphon's Fervour) go through the helper.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the two new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourGainsTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (three
+  probes), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`, new (4);
+  `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
+  `test_every_conditioned_stat_has_an_asker.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (564 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **THE C4b PLAN SAID SOMETHING FALSE, AND THIS SLICE IS BUILT ON THE CORRECTION.** The plan said the class resource
+  attribute set's `PostGameplayEffectExecute` sees every write through `ApplyModToAttribute`. It does not. In the UE 5.8
+  source, `UAbilitySystemComponent::ApplyModToAttribute` calls `ApplyModToAttributeUnsafe`, which calls
+  `FActiveGameplayEffectsContainer::ApplyModToAttribute` with no callback data, and that only calls
+  `SetAttributeBaseValue`. `PostGameplayEffectExecute` runs for an instant gameplay effect and not for these writes. The
+  hooks that do run (`PreAttributeBaseChange`, `PostAttributeBaseChange`, the value-change delegate) are also reached by
+  `SetNumericAttributeBase`, which a loaded save and a creature raised holding Fervour use and which was ruled no gain
+  (Q2), so no hook can tell the two apart. The claim came from reading where `ApplyModToAttribute` is called and
+  assuming what it reaches, without reading the engine function. The coordinating session accepted the replacement: one
+  helper, `RaisePool`, that every gain calls, and a Python check that fails on any other positive write.
+- **A MERGE OBLIGATION, logged by the coordinating session.** `feat/war-fervour-sources` and `feat/death-skills-2885`
+  add gain paths. Whichever merges after this must route them through `RaisePool`, and a skill's own kill Fervour must
+  open the kill-payment marker; `test_every_gain_to_the_pool_goes_through_raise_pool.py` fails until the gains do.
+- **`RaisePool` CLAMPS AT THE MAXIMUM ITSELF**, as well as every caller doing so as before. A change that does not fit is
+  lost rather than left in the stored base above the maximum, the fault of issue #1036. No caller's result changes.
+- **KINDRED FIRES ACTS ON EVERY RISE, A KILL'S PAYMENT INCLUDED**, as the sentence says "any source". A kill's own stamp
+  follows its payment and never shortens the hold, so a kill gives the longer of the two. One consequence: a common
+  kill made inside an Elite kill's 8-second hold restarts at 8, the full length the last kill set, before its own
+  stamp records 4.
+
+### What each reads
+
+- **A GAIN** is any rise of the pool through `RaisePool` (Q2). That covers every gain function in `UCataclysmFervour`,
+  Cinders Kept's returned share, the Siphon, and a class resource top-up through `UCataclysmRegeneration::TopUp`, which
+  is how a `class_resource` action row gains. It does not cover `SetNumericAttributeBase` writes. Only an actual rise
+  counts (Q6): a gain to a full bar changes nothing.
+- **A KILL'S PAYMENT** is a gain made while the kill-payment marker is open: `GainOnOwnKill` opens it for its whole
+  length. Counted rather than a flag, so a payment inside another stays marked.
+- **ANY FUEL** is a row on `class_resource_generation`, the rate every gain is scaled by, under the new condition
+  `fervour_gain_not_from_a_kill`, so its increase adds to the rate's other increases (Q3). THE CONDITION asks whether
+  the gain being sized is not a kill's payment: true unless the marker is open. A state nobody filled leaves it false,
+  which refuses. It takes no value and compares no number. `class_resource_generation` joins the conditioned-asker list.
+- **THE FULL LENGTH OF THE HOLD** is the grace the last kill set, recorded by `NoteOwnKill`, and before any kill a
+  common kill's grace (Q5): the grace stat asked as if against rarity rung 0 (`StatAsIfAgainstRarity`), because the
+  starting node's grace rows are written against the slain creature's rung.
+- **KINDRED FIRES** restarts the hold at its full length on any rise; the hold never shortens.
+- **BORROWED TIME** lengthens a hold that is still running (Q4) by its seconds, on a rise that is not a kill's payment,
+  never past now plus the full length. "1 second for every 3 points" is a row of 1 at 3 points and one at 6.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Any Fuel | class_resource_generation, increased, 2, cond=fervour_gain_not_from_a_kill |
+| Borrowed Time | fervour_hold_extended_on_gain_seconds, flat, 1, at 3 and 6 points |
+| Kindred Fires (keystone) | fervour_hold_restarted_by_any_gain, flat, 1 |
+
+`PassiveEffects.csv` 560 to 564; the Soul Collector 104 rows.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4b plan:
+- Q1: C4b1 (Any Fuel, Kindred Fires, Borrowed Time, the gain hook) before C4b2 (Reclaimed, Claimed, Death's Toll).
+- Q2: a gain is any rise through `ApplyModToAttribute`, Cinders Kept's return included; `SetNumericAttributeBase`
+  writes are not gains.
+- Q3: Any Fuel adds into `class_resource_generation`'s increased bucket under the new condition.
+- Q4: Borrowed Time extends only a running hold.
+- Q5: the full length is the grace the last kill set; before any kill, a common kill's grace.
+- Q6: an actual rise only.
+- For C4b2: Q7 (both decays count, given back unscaled as a kill payment), Q8 (Death's Toll raises the kill event for
+  followers' kills only to Soul Collector rows, read from what a row already holds, with no new column, or else not at
+  all) and Q9 (Claimed pays as a kill payment, Gleaning included, no clock and no hold, never on top of a kill Death's
+  Toll made yours).
+- And the helper in place of the hook, accepted after the correction above, with a guard proof of its check.
+
+### Research
+
+None new for this slice. Any Fuel's increase joining the rate's other increases is this game's three-bucket pipeline,
+already settled. The figures are the owner's approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourGains.` | new: `AnyFuelRaisesAGainThatIsNotAKillsAndLeavesAKillsAlone`, `KindredFiresRestartsTheHoldAtTheLastKillsFullLength`, `BorrowedTimeLengthensARunningHoldUpToItsFullLength`, `RaisePoolClampsAtTheMaximumAndAFullBarRestartsNothing`, `TheThreeNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs two new probes and `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` one | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 564 | unchanged |
+
+Each new test has a control: no Any Fuel, and a kill's payment; no Kindred Fires; a cast once decay has begun, and a
+kill's payment inside a running hold; the same gain on a full bar.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmFervour.cpp`, `AfterPoolRose`: the lines `if (Cataclysm->IsPayingForAKill())`, `{`, `return;`, `}` are
+   removed. Prefix `Cataclysm.FervourGains.`; must fail `BorrowedTimeLengthensARunningHoldUpToItsFullLength`.
+2. `CataclysmAbilitySystemComponent.cpp`, `ExtendKillDecayHold`: `const float Capped =
+   FMath::Min(KillDecayHeldUntilSeconds + Seconds,` and the line after become `const float Capped =
+   KillDecayHeldUntilSeconds + Seconds;`. Prefix `Cataclysm.FervourGains.`; must fail
+   `BorrowedTimeLengthensARunningHoldUpToItsFullLength`.
+3. `CataclysmAbilitySystemComponent.cpp`, `CurrentConditions`: `State.bFervourGainNotFromAKill = !IsPayingForAKill();`
+   becomes `State.bFervourGainNotFromAKill = true;`. Prefix `Cataclysm.FervourGains.`; must fail
+   `AnyFuelRaisesAGainThatIsNotAKillsAndLeavesAKillsAlone`.
+
+### What was run
+
+SUITE_FIGURES_C4B1
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`9b7c3fb51`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| `GainForCast` writing the pool with `ApplyModToAttribute` again, as the coordinating session asked | `test_every_gain_to_the_pool_goes_through_raise_pool.py::test_every_call_site_is_in_the_inventory` and `::test_every_gain_to_the_pool_calls_the_helper` |
+| `GainOnOwnKill` no longer opening the kill-payment marker | `test_every_gain_to_the_pool_goes_through_raise_pool.py::test_the_kill_payment_is_marked_for_its_whole_length` |
+| Any Fuel's row under `target_carries_your_curse` instead of its own condition | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Borrowed Time's rows at 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| The new condition taken off `ConditionTakesAValue`'s list of conditions that compare nothing | `test_condition_lists_agree_with_the_code.py::test_the_three_value_less_lists_agree` |
+
+---
+
 ## 2026-11-25 — The first Death nodes that act on a kill: Soul Tide, Gleaning, Thinning the Herd, Death's Patience, Flicker, Clean Kill and Hunting Leap (Death trees, slice C4a)
 
 **Affects:**
