@@ -205,7 +205,8 @@ No other Python check was added: the slice changes no data and nothing in `sim/`
 
 **The Python suite.** On `2c78f9b30`, before the guard was amended: "1 failed, 8290 passed, 9 skipped in 367.26s
 (0:06:07)", the one failure being the check above. On `fc196cce9`: "8291 passed, 9 skipped in 333.24s (0:05:33)"; JUnit
-8300 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks passed!".
+8300 tests, 0 failures, 0 errors, 9 skipped. After the rulings of 2026-11-25, on `acae24ae5`: "8291 passed, 9 skipped in
+352.67s (0:05:52)"; JUnit 8300 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks passed!".
 
 ---
 
