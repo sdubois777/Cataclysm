@@ -286,14 +286,15 @@ bool FCataclysmForgeAffixChangeDrawTest::RunTest(const FString&)
 							Addable.IsEmpty() ? TEXT("none") : *Addable[0].ToString(),
 							Addable.IsEmpty() ? TEXT("none") : *Addable.Last().ToString(),
 							UCataclysmForge::AddableAffixesFor(Resistant, Affixes, Bases).Num()));
-	TestEqual(TEXT("the helm can take 27 affixes, as computed"), Addable.Num(), 27);
+	// 23 SINCE ISSUE #2883, which narrowed fourteen affixes to fewer kinds of piece; four of them left the head. 27 before.
+	TestEqual(TEXT("the helm can take 23 affixes, as computed"), Addable.Num(), 23);
 	TestFalse(TEXT("never flat armor, which it holds"), Addable.Contains(FlatArmor));
 	TestFalse(TEXT("nor a hybrid with flat armor"), Addable.Contains(FName(TEXT("Hybrid_Health_and_armor"))));
 	TestTrue(TEXT("first flat maximum health"), Addable.Num() > 0 && Addable[0] == FName(TEXT("Stat_Flat_maximum_health")));
 	TestTrue(TEXT("last flat energy shield regeneration"),
 			 Addable.Num() > 0 && Addable.Last() == FName(TEXT("Stat_Flat_energy_shield_regeneration")));
-	TestEqual(TEXT("with a War resistance in place of flat armor, 28"),
-			  UCataclysmForge::AddableAffixesFor(Resistant, Affixes, Bases).Num(), 28);
+	TestEqual(TEXT("with a War resistance in place of flat armor, 24"),
+			  UCataclysmForge::AddableAffixesFor(Resistant, Affixes, Bases).Num(), 24);
 
 	const int32 Seed = UCataclysmForge::AffixCraftSeed(Item, UCataclysmForge::DeterministicAffixSalt, 2, Mask, Day);
 	TestEqual(TEXT("the addition's seed on day 7 of mask 12345"), Seed, 1655429928);

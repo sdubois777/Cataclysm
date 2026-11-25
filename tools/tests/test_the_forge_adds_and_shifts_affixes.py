@@ -240,9 +240,9 @@ def test_a_shift_keeps_tier_and_roll_and_draws_neither_itself_nor_a_held_group()
 def test_the_python_copy_gives_the_figures_fc2_asserts() -> None:
     test = TEST_CPP.read_text(encoding="utf-8")
     pool = addable(HELM, "Head")
-    assert len(pool) == 27 and "TEXT(\"the helm can take 27 affixes, as computed\"), Addable.Num(), 27);" in test, len(pool)
+    assert len(pool) == 23 and "TEXT(\"the helm can take 23 affixes, as computed\"), Addable.Num(), 23);" in test, len(pool)
     assert pool[0] == "Stat_Flat_maximum_health" and pool[-1] == "Stat_Flat_energy_shield_regeneration", (pool[0], pool[-1])
-    assert len(addable(RESISTANT, "Head")) == 28 and "Bases).Num(), 28);" in test
+    assert len(addable(RESISTANT, "Head")) == 24 and "Bases).Num(), 24);" in test
     salt = int(constant("DeterministicAffixSalt"))
     seed = craft_seed(HELM, salt, 2, 12345, 7)
     assert f"Seed, {seed});" in test, seed

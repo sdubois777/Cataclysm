@@ -167,8 +167,11 @@ def covers(name: str) -> bool:
 
 def range_at(name: str, tier: int, gear_level: int = MAX_GEAR_LEVEL,
              two_handed: bool = False) -> tuple[int, int]:
-    """A tier's range at an upgrade level: both ends of its +0 range upgraded. Tier held to 1..7."""
-    low, high = TIER_RANGES[name][min(max(int(tier), 1), MAX_TIER) - 1]
+    """A tier's range at an upgrade level: both ends of its +0 range upgraded. A tier outside 1..7 is
+    refused rather than held: the game clamps a saved one, and a caller here asking for tier 8 is a mistake."""
+    if not 1 <= tier <= MAX_TIER:
+        raise ValueError(f"{name}: affix tier {tier} is outside 1 to {MAX_TIER}")
+    low, high = TIER_RANGES[name][tier - 1]
     return upgraded(low, gear_level, two_handed), upgraded(high, gear_level, two_handed)
 
 
