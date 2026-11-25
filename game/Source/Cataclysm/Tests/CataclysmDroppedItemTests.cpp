@@ -509,27 +509,29 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
 	}
 	Victim->SetHealth(1000.0f);
 
-	// A BOSS, BECAUSE ITS DROP RATE IS A WHOLE NUMBER. Five items are certain,
-	// so this does not depend on a fractional roll landing one way. A Common
-	// enemy drops nothing five times in six, which would make the test flap.
+	// A BOSS, BECAUSE ITS DROP RATE IS THE HIGHEST BUT ONE: 2.5 gear and 1.25
+	// materials on average since issue #2853. A Common enemy drops nothing about
+	// twelve times in thirteen, which would make the test flap.
 	constexpr int32 BossStep = 4;
 	Victim->SetRarityStep(BossStep);
 
 	Victim->HandleDeath();
 
-	// TWO MORE KILLS, AND THE TEST IS ABOUT ALL THREE TOGETHER.
+	// FOUR MORE KILLS, AND THE TEST IS ABOUT ALL FIVE TOGETHER.
 	//
 	// ONE KILL IS NOT ENOUGH ANY MORE. Since issue #725 the count is a Poisson
-	// draw, so a Boss drops nothing about 7 kills in a thousand, and
-	// ACataclysmEnemyCharacter::HandleDeath seeds its stream from the creature's
-	// unique id and the world's clock -- which this test cannot control. A
-	// single kill would therefore fail roughly once in every 150 runs, and a
-	// test that fails at random is worse than no test. Three kills bring that to
-	// about one run in three million.
+	// draw, and ACataclysmEnemyCharacter::HandleDeath seeds its stream from the
+	// creature's unique id and the world's clock -- which this test cannot
+	// control. Since the owner halved the gear column (issue #2853) a Boss drops
+	// 2.5 gear and 1.25 materials on average, so nothing at all about 2 kills in
+	// a hundred; a single kill would fail about once in every 40 runs, and a
+	// test that fails at random is worse than no test. Five kills bring that to
+	// about one run in a hundred million. It was three kills, and one run in
+	// three million, while a Boss dropped five.
 	//
 	// THE FIRST TIME THIS RAN IT FAILED EXACTLY THAT WAY, reporting
 	// "killing a Boss left items on the floor (0)".
-	for (int32 More = 0; More < 2; ++More)
+	for (int32 More = 0; More < 4; ++More)
 	{
 		ACataclysmEnemyCharacter* Another =
 			World->SpawnActor<ACataclysmEnemyCharacter>(
@@ -556,9 +558,9 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
 	}
 
 	// HOW MANY IS NOT ASSERTED, only that killing things is what put loot on the
-	// floor. Three Boss kills average fifteen items.
+	// floor. Five Boss kills average about nineteen items, gear and materials.
 	TestTrue(*FString::Printf(
-			TEXT("killing three Bosses left items on the floor (%d)"), After),
+			TEXT("killing five Bosses left items on the floor (%d)"), After),
 		After > 0);
 	TestFalse(TEXT("and they have names a player could read"),
 			  AnyName.IsEmpty());
@@ -589,8 +591,9 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
  * WHAT THIS GUARDS. Issue #717: the material roll ran on every kill and its
  * result was thrown away, so a player got the gear half of what a kill is
  * designed to give and silently lost the other half. Materials came at twice the
- * gear rate then, so the half that was missing was the larger one. They come at
- * a quarter of it since issue #2829.
+ * gear rate then, so the half that was missing was the larger one. They came at
+ * a quarter of it from issue #2829, and at half of it since the gear column
+ * halved (issue #2853).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialDropsReachTheFloorTest,
 	"Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo",
