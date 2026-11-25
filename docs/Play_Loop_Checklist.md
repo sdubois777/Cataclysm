@@ -738,7 +738,7 @@ none held, note an upgrade's question at the forge: for a +2 helm carrying 250 r
 - **Master's Touch**: on a piece carrying residue, 1% for each whole 100 of it that a craft leaves it at 0; when it will,
   the question says "Master's Touch and the empire tree's crafting nodes: residue 640 to 0, not 690." The same piece on
   the same day always draws the same.
-- **Industrial Speed** (1% a point) and **Sovereign's Assembly** (half) take a share of a craft's days. A craft that took
+- **Industrial Speed** (10% a point, half at 5) and **Sovereign's Assembly** (half) take a share of a craft's days. A craft that took
   at least one day still takes one; a reroll that took none still takes none. The cleanse's days come down the same way.
 
 ## If a step does not show what it should

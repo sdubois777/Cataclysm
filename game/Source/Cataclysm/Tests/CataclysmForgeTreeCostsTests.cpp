@@ -164,7 +164,7 @@ namespace CataclysmForgeTreeCostsTest
 /**
  * Read through the generated tables, each node at its full points: Tool Maintenance 0.95 to the 8th (0.663), Limited
  * Knowledge 0.975 to the 10th (0.776), Heat Shielding 0.975 to the 5th (0.881), Stable Compounds 0.25, Master's Touch
- * 0.01, Master Craftsman 10 days, Industrial Speed 0.05, Sovereign's Assembly 0.5. CONTROL: none held gives the factors
+ * 0.01, Master Craftsman 10 days, Industrial Speed 0.5, Sovereign's Assembly 0.5. CONTROL: none held gives the factors
  * at 1 and the rest at nought. Prints "TREE COSTS".
  */
 CATACLYSM_TREE_COSTS_TEST(FCataclysmForgeTreeCostsTreeTest, "Cataclysm.ForgeTreeCosts.TheEightNodesGiveTheirFigures")
@@ -206,7 +206,8 @@ CATACLYSM_TREE_COSTS_TEST(FCataclysmForgeTreeCostsTreeTest, "Cataclysm.ForgeTree
 	TestEqual(TEXT("Stable Compounds: 0.25 off the Stabilizer's share"), All.StabilizerShareReduced, 0.25f, 0.0001f);
 	TestEqual(TEXT("Master's Touch: 1% a hundred"), All.ResidueResetChancePerHundred, 0.01f, 0.0001f);
 	TestEqual(TEXT("Master Craftsman: 10 days"), All.CraftDaysOff, 10.0f, 0.0001f);
-	TestEqual(TEXT("Industrial Speed: 5% (the tree file's 1% a point)"), All.CraftDaysReduced, 0.05f, 0.0001f);
+	TestEqual(TEXT("**Industrial Speed: 50% (10% a point, the ruling of 2026-11-25)**"), All.CraftDaysReduced, 0.5f,
+			  0.0001f);
 	TestEqual(TEXT("Sovereign's Assembly: 50%"), All.CraftDaysReducedMore, 0.5f, 0.0001f);
 	TestTrue(TEXT("CONTROL: none held changes nothing"),
 			 None.CraftResidueFactor == 1.0f && None.LowLevelCraftResidueFactor == 1.0f
@@ -261,7 +262,7 @@ CATACLYSM_TREE_COSTS_TEST(FCataclysmForgeTreeCostsResidueTest,
 // K3. The days: the multipliers, then the days off, then rounded; at least one, and none stays none; after the shards.
 // --------------------------------------------------------------------------------------------------------------------
 /**
- * 10 days times 0.475 (Industrial Speed's 0.95 and Sovereign's Assembly's 0.5) is 4.75, rounded 5; less 2 days off,
+ * 10 days times 0.475 (a multiplier of 0.95, then Sovereign's Assembly's 0.5) is 4.75, rounded 5; less 2 days off,
  * 2.75, rounded 3. 1 day less 10 keeps 1; 0 days stay 0; the default leaves 3 at 3. A craft of 6 days with a residue of
  * 250 (2 days of penalty) and 1 Tainted Shard has 5 with the options alone, and 2 days off then make 3. Prints "DAYS".
  */

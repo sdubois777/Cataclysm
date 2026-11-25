@@ -38,7 +38,7 @@ EIGHT = {"Tool Maintenance": [("CraftResidueKept", 0.05)],
          "Stable Compounds": [("StabilizerShareReduced", 0.025)],
          "Master's Touch": [("ResidueResetChancePerHundred", 0.01)],
          "Master Craftsman": [("CraftDaysOff", 1.0)],
-         "Industrial Speed": [("CraftDaysReduced", 0.01)],
+         "Industrial Speed": [("CraftDaysReduced", 0.10)],
          "Sovereign's Assembly": [("CraftDaysReducedMore", 0.5)]}
 
 
