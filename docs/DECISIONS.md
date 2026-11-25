@@ -2,6 +2,177 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — With every ring slot full, a ring replaces and is compared with the worn ring of its own rarity, else the lowest rarity worn; the two hands by the same rule (the owner's report)
+
+**Affects:**
+- `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp`: `UCataclysmGearSlots::SlotToReplace`, new;
+  `UCataclysmEquipmentComponent::Equip` calls it when no candidate slot is free; the comments on `Equip` and
+  `PreviewEquip`.
+- `game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`: `UCataclysmPowerScore::WornPieceScoreOf`, new.
+- `game/Source/Cataclysm/Interface/CataclysmItemComparison.h`: the class comment.
+- `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp`: one test rewritten, three new.
+- `docs/Cataclysm_GDD_v2.md`, Item Slots.
+
+No issue number: the owner's report of 2026-11-24, relayed by the coordinating session with its ruling.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** No Unreal build or test has run on this branch; the machine belongs to the window. Every
+  Unreal figure below is a prediction registered for the window. The changed and new C++ was read top to bottom as the
+  compiler would read it, and every engine call in the tests was checked against
+  `Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h` (`TestNotEqual(const TCHAR*, const FString&, const
+  FString&)`, `TestEqual` and `TestTrue` taking an `FString`).
+- **WEAPONS CHANGED TOO, A JUDGEMENT THE BRIEF LEFT TO THE CODE.** The brief asked whether the two hands make the same
+  mistake and said to change them only if they do. They do: with both hands full and a weapon that may stand beside
+  either, `Equip` took Weapon 1 whatever the two held, so a Quality sword in Weapon 1 and a Masterful dagger in Weapon 2
+  compared a Masterful axe with the sword. The loot filter's own entry (#2846, LF1) says "weapons work as rings do".
+  The hands now take the same rule through the same function. A loadout where both hands come off -- a two-handed
+  weapon without Both Hands Full, or a weapon of the other kind beside two held -- is unchanged, and so is the hand it
+  lands in. If the owner wants weapons left as they were, the change is the `IsWeaponSlot` clause in `Equip`'s new
+  condition and test 2d.
+- **ONE BEHAVIOUR A PLAYER CAN SEE BESIDE THE TOOLTIP: WHICH HAND SWINGS THE BASIC ATTACK.** The basic attack belongs to
+  the first occupied weapon slot (`UCataclysmEquipmentComponent::WornWeaponTypes`). A one-handed weapon that now
+  replaces Weapon 2 leaves Weapon 1's basic attack in place, where before it always became the basic attack's weapon.
+  The design says there is no primary hand; this is noted so it is not a surprise.
+- **PIECES WITH NO RARITY CHANGE NOTHING.** A piece with no affix and no enchantment ranks below Everyday and scores
+  nothing, so among pieces that all have none -- what most older equipment tests wear -- the first candidate is still
+  chosen, exactly as before. The sweep of the Unreal tests that put a ninth ring or a third weapon on through `Equip`
+  (below) found none that wears pieces of differing rarity or score.
+
+### The owner's report and the ruling
+
+The owner, 2026-11-24, verbatim: "when a ring drops on the ground and actually shows through the filter, it's
+supposed to compare against whatever ring is of equal tier. At the moment, it just compares with ring 1 no matter what,
+so you're looking at a quality ring comparing it against a masterwork when hovering the ring."
+
+"Tier" there is rarity (Quality, Masterful and so on). The coordinating session's ruling under the report: when every
+ring slot is full, a ring from the bag or the ground
+
+1. is compared with, and on equip replaces, the worn ring of the SAME rarity; if several share it, the one with the
+   lowest Power Score (ties: the lowest slot number);
+2. if no worn ring has that rarity, the LOWEST-rarity worn ring (the filter's reference), with the same tie rule.
+
+A free ring slot still takes the ring first. The comparison must always show the ring the equip action would replace,
+so the equip choice and the comparison change together, through one shared function.
+
+### What was wrong
+
+`UCataclysmEquipmentComponent::Equip` (`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`, the loop under
+"THE FIRST FREE ONE, AND THE FIRST ONE WHEN NONE IS FREE", lines 416 to 428 on `development` at `5f302b0a7`) set
+`Chosen = Candidates[0]` and changed it only for a free slot. With all eight rings worn that is Ring 1, and the
+tooltip's comparison asks `Equip` through `PreviewEquip` (ruling (a) of 2026-11-02), so it compared with Ring 1 too.
+The comparison was faithful to `Equip`; `Equip`'s choice was the fault.
+
+### What changes
+
+- **`UCataclysmGearSlots::SlotToReplace`, THE ONE RULE.** Static and handed the slots, so a test can ask it of plain
+  values. Of the full candidates it finds the rank to replace -- the incoming piece's own rarity when one is worn, else
+  the lowest worn -- and of those the lowest Power Score, the first candidate among equals.
+- **`Equip` CALLS IT, AND THE COMPARISON FOLLOWS.** When no candidate is free and there are several, `Equip` takes
+  `SlotToReplace`'s answer; a weapon only when `WeaponsComingOffFor` says one weapon comes off. `PreviewEquip` runs
+  `Equip`, so the comparison, the Worn Residue question before an equip (`WornResidueIfEquipped`) and the real equip
+  read one choice. Nothing else chooses a slot.
+- **`UCataclysmPowerScore::WornPieceScoreOf`, A PIECE'S POWER SCORE.** The ruling's "lowest Power Score" needs one per
+  ring, and the score had only a character's. This is `Breakdown`'s gear and gem terms of a character wearing that
+  piece alone, through `ScoredCharacterFrom`, so it is the character score's own arithmetic and not a copy of it.
+
+### Judgements of this change, each labelled
+
+- **A PIECE WITH NO RARITY RANKS BELOW EVERYDAY.** The loot filter reads such a piece as nothing worn, and nothing is the
+  lowest there is. So a ring of no rarity worn is what a ring of a rarity nobody wears replaces first.
+- **A RING'S POWER SCORE COUNTS ITS GEMS.** The score reads a worn piece's rarity, gear level and socketed gems, and
+  taking the ring off takes all three away, so all three are what "its Power Score" means. Within one rarity that is
+  the gear level and the gems.
+- **WEAPONS BY THE SAME RULE**, said first above.
+
+### Genre sources, read 2026-11-24
+
+Each page was fetched for this entry. None of the posters quoted is identified as the developer's staff.
+
+- **Diablo IV**, Blizzard's forum, "Equipped ring comparison"
+  (https://us.forums.blizzard.com/en/d4/t/equipped-ring-comparison/242377): a player, Djarell-1710, says the equipped
+  ring "the system picks to compare to isn't the one you want to compare against"; others answer that Alt (Y on a
+  controller) swaps the comparison between the two worn rings.
+- **Last Epoch**, its forum, "Ring comparison" (https://forum.lastepoch.com/t/ring-comparison/34054): the opening post
+  says the comparison "is only done against the left hand ring, not the right", and a reply calls it a known issue.
+- **No Rest for the Wicked**, its forum (https://forum.norestforthewicked.com/t/ring-comparison-always-shows-stats-difference-against-the-first-equipped-ring/13851):
+  a bug report, "Ring Comparison always shows stats difference compared against the first equipped ring", answered
+  "sent along to the design team" by a poster the page does not mark as staff.
+- **Path of Exile**, its forum (https://www.pathofexile.com/forum/view-thread/3451112): in controller mode, equipping
+  a ring "always equips it to the left slot"; holding L3 changes "Equip" to "Equip Offhand".
+
+### What the research settles, and what it does not
+
+- **Settled, as a fault:** comparing with, or replacing, a fixed first ring slot is reported as wrong by players of three
+  games, which is the owner's report in other words. The shipped remedies are a key that cycles the comparison (Diablo
+  IV) or a way to name the other slot (Path of Exile).
+- **Not settled by any of them, the coordinating session's ruling:** which of EIGHT rings to choose automatically. None
+  of these games has more than two ring slots. Same rarity first, then the lowest rarity, then the lowest Power Score,
+  is specific to this game: it matches the loot filter's "lowest ring worn" and the owner's "of equal tier".
+
+### Tests
+
+All in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp`, group `Cataclysm.ItemComparison.`, each in a
+world that has begun play with a spawned stand-in, each against a real `Equip` on a second character as its CONTROL.
+The rings carry one to four real flat affixes allowed on a ring (`game/Data/Affixes.csv`) and no enchantment, which
+makes them Everyday to Masterful; each is marked by its residue, so a test names the ring that came off.
+
+1. `Cataclysm.ItemComparison.ARingIsComparedWithTheRingTheEquipActionWouldReplace`, REWRITTEN. Three worn, Masterful,
+   Quality and Everyday, and a Quality ring hovered: Ring 4, nothing off, "Compared with nothing: Ring 4 is empty." --
+   a free slot first, though a Quality ring is worn. Eight worn, the owner's case: Masterful in Ring 1, the one Quality
+   ring in Ring 3, an Everyday ring in Ring 6: compared with Ring 3 (not Ring 1, and not the lowest ring), the real
+   equip takes off the ring marked 3, the heading names the Quality ring, and the tooltip both hovers draw
+   (`TooltipColumnsFor`, issue #2807) has the Quality ring's own lines as its worn column. It said "Eight worn: Ring 1,
+   as a real equip chooses" until this.
+2. `Cataclysm.ItemComparison.ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity`, new ("RING LOWEST SCORE"). Three
+   Quality rings among eight: Ring 2 at +6, Ring 4 and Ring 6 at +2. Compared with Ring 4, the lowest score and the
+   lower slot of the two that tie. CONTROLS: `WornPieceScoreOf` ranks the three as the set-up says, a socketed gem
+   raises a ring's score, and a ring of no rarity scores nothing.
+3. `Cataclysm.ItemComparison.ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn`, new ("RING LOWEST RARITY"). No
+   Quality ring among eight; the two Everyday rings, Ring 3 at +3 and Ring 6 at +1, are the lowest. A Quality ring is
+   compared with Ring 6.
+4. `Cataclysm.ItemComparison.AWeaponIsComparedWithTheHandOfItsOwnRarityElseTheLowerHand`, new ("WEAPON HANDS"). A
+   Quality sword in Weapon 1, a Masterful dagger in Weapon 2: a Masterful axe is compared with Weapon 2, a Superb axe
+   with Weapon 1, the lower hand.
+
+THE SWEEP FOR WHAT ELSE THE CHANGE REACHES, read and not run: every Unreal test that puts a ninth ring or a third weapon
+on through `Equip` or `UCataclysmWearing::WearFromCarried`. `Cataclysm.Equipment.EightRingsFillEightSlotsAndTheNinthReplacesOne`
+wears nine plain rings, all of no rarity, so Ring 1 is still chosen, and it does not ask which. The weapon tests that
+put a third weapon on (`Cataclysm.BothHandsFull.`, `Cataclysm.Wearing.`, `Cataclysm.Equipment.AttackSpeedAveragesAcrossWeaponsAndAffixesRaiseIt`,
+`Cataclysm.Equipment.EveryChangeToWhatIsWornIsAnnounced`) wear plain weapons, or put a weapon where a hand is free,
+or put on one that takes both off. `Cataclysm.ReferenceBuild.` fills eight free ring slots and puts on no ninth.
+
+### Registered before the run
+
+Counted by reading the test files (each test name a literal in `IMPLEMENT_SIMPLE_AUTOMATION_TEST`, no wrapper macro in
+those files). The base is `development` at `5f302b0a7`.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.ItemComparison.` alone | 11 / 11: 8 before, + 3 |
+| `Cataclysm.Equipment.` alone | 30 / 30, unchanged |
+| `Cataclysm.PowerScoreLive.` alone | 8 / 8, unchanged (`WornPieceScoreOf` is new and none of them calls it) |
+| `Cataclysm.Wearing.` alone | 19 / 19, unchanged |
+| `Cataclysm.BothHandsFull.` alone | 7 / 7, unchanged |
+| `Cataclysm.ThresholdQuestion.` alone | 4 / 4, unchanged |
+| `Cataclysm.LootFilter.` alone | 8 / 8, unchanged |
+| `Cataclysm.GroundItemHover.` alone | 7 / 7, unchanged |
+| Whole Unreal suite | the base's last measured total + 3, 0 failed; a "Test saves:" line with 0 left behind |
+
+THREE GUARD PROOFS, ONE PER MECHANISM, each a one-line break in
+`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`, prefix `Cataclysm.ItemComparison.` (11 performed in each
+half). Each anchor occurs once in the file.
+
+| Proof | Break | Must fail, and nothing else |
+|---|---|---|
+| R1, the ring of its own rarity | `bOwnRarityWorn = bOwnRarityWorn \|\| Rank == IncomingRank;` to `bOwnRarityWorn = bOwnRarityWorn && Rank == IncomingRank;` (never true, so always the lowest rarity) | `ARingIsComparedWithTheRingTheEquipActionWouldReplace` (Ring 6, the Everyday ring: "CONTROL: a real equip replaces Ring 3, the Quality ring", "CONTROL: and takes off the ring marked 3" to be 3.000000 but 6.000000, the heading, the worn column -- 4); `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity` (Ring 5, the Everyday ring: the control's slot, its mark 4 but 5, and the bold Ring 4 line -- 3); `AWeaponIsComparedWithTheHandOfItsOwnRarityElseTheLowerHand` (the Masterful axe to Weapon 1: its control's hand, its mark 2 but 1, and its bold hand line -- 3) |
+| R2, the lowest Power Score | `if (!bChosen \|\| Score < ChosenScore)` to `if (!bChosen \|\| Score > ChosenScore)` (the highest) | `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity` (Ring 2, the +6 ring: the control's slot, its mark 4 but 2, the bold Ring 4 line -- 3); `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` (Ring 3, the +3 Everyday ring: the control's slot, its mark 6 but 3, the bold Ring 6 line -- 3) |
+| R3, the lowest rarity when its own is not worn | `const int32 ReplacedRank = bOwnRarityWorn ? IncomingRank : LowestRank;` to `const int32 ReplacedRank = bOwnRarityWorn ? IncomingRank : -2;` (no rank matches, so the first candidate, the old behaviour) | `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` (Ring 1: the control's slot, its mark 6 but 1, the bold Ring 6 line -- 3). The weapon test's Superb case expects Weapon 1, which the break also gives, so it passes |
+
+The breaks were not compiled. Each leaves every variable read, so none should stop the build on an unused variable.
+
+---
+
 ## 2026-11-22 — The carried inventory has three tabs: the 48 slots hold gear, and crafting materials and gems each have a store of their own, one stack per kind, with no limit (#2849)
 
 **Affects:**
