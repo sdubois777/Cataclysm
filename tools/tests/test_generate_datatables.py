@@ -2847,12 +2847,29 @@ class TestAStatusLaidOnTheWearer:
         with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
             gen.enchantment_effects(self.hit(tmp_path, {"Ailment": "Stun"}))
 
-    def test_a_stun_is_refused_on_the_action_that_lays_a_status_on_another(self, tmp_path):
+    def test_a_stun_for_stated_seconds_is_laid_on_another(self, tmp_path):
+        """SINCE 2026-11-25, the coordinating session's ruling for Riposte's
+        "stuns the target for 1 second" and the Saboteur's Concealed (R20), made
+        general: `apply_status_seconds` may name Stun, a designed stun on the
+        event's other character for the row's seconds. Until then this test held
+        the refusal, as `test_a_stun_is_refused_on_the_action_that_lays_a_status_on_another`."""
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.STUN, "Effect": self.STUN_WORDS,
+            "Action": "apply_status_seconds", "Action Event": "hit_dealt",
+            "Ailment": "Stun", "Value Low": 0.5, "Value High": 1}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["Ailment"],
+                out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "apply_status_seconds", "hit_dealt", "Stun", 0.5, 1.0)
+
+    def test_a_stun_is_still_refused_on_the_plain_action_that_lays_a_status_on_another(self, tmp_path):
+        """THE CONTROL of the test above: a stun has no length of its own to fall
+        back on, so `apply_status`, which states none, may not name it."""
+        assert "Stun" not in gen.APPLY_STATUSES
         with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
             gen.enchantment_effects(self.book(tmp_path, {
                 "Enchantment": self.STUN, "Effect": self.STUN_WORDS,
-                "Action": "apply_status_seconds", "Action Event": "hit_dealt",
-                "Ailment": "Stun", "Value Low": 0.5, "Value High": 1}))
+                "Action": "apply_status", "Action Event": "hit_dealt",
+                "Ailment": "Stun", "Value Low": 50, "Value High": 50}))
 
     def test_the_sized_action_is_refused_off_dot_applied(self, tmp_path):
         with pytest.raises(gen.DataError, match="written on dot_applied"):

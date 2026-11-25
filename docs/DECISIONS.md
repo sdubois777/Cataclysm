@@ -23,7 +23,10 @@ Decisions made outside the Google Drive documents, newest first.
 - Tests: `CataclysmWarFervourTests.cpp` (three), `CataclysmApplyStatusTests.cpp` (one), `CataclysmStatExemptionTests.cpp`
   (seven probes), `CataclysmDataTableTests.cpp` (the pin, 481); `tools/tests/test_war_riposte_discharge_tide_scripts.py`,
   new; `test_passive_effects_match_the_node_text.py` (words, 481 rows, 280 nodes), `test_stat_lookups_hand_over_what_they_should.py`,
-  `test_charge_and_placed_action_names_match_the_engine.py` (Stun is the one seconds-status not in `APPLY_STATUSES`).
+  `test_charge_and_placed_action_names_match_the_engine.py` (Stun is the one seconds-status not in `APPLY_STATUSES`),
+  `test_generate_datatables.py` (the Stun refusal on `apply_status_seconds` became its acceptance, with the plain
+  action's refusal as its control), `test_damage_over_time_names_its_skill.py` (`PayPulse`'s Bleed, which credits no
+  skill), `test_stun_durations_are_stated.py` (a passive row that is a stun's length, read against its node's sentence).
 
 ### SAID FIRST
 
@@ -64,6 +67,11 @@ The coordinating session, 2026-11-25, under the owner's delegation:
    of maximum health for every 2 points for each whole 10 Fervour spent or drained (`NoteFervourSpent`, the rest carried).
 4. **The Stun branch** (`ApplyStatusOf`): a designed stun on the event's other character for the row's seconds, on
    `apply_status_seconds` only; a plain row naming Stun lays nothing.
+5. **The rule that every stun states how long** (issue #271) now reads a passive row. Riposte's is the first passive row
+   to apply a stun, and a passive row holds no sentence, as an enchantment's effect row holds none, so a row whose stat
+   names `stun_seconds` is excused when its value is above nought and its node's sentence states that same number as
+   "for N seconds". **A judgement**, in the shape of the Time-Lock rift's excuse of 2026-10-19; a sentence that says
+   only "briefly", another length, or a row with no length is still reported.
 
 ### PYTHON GUARD PROOFS
 
@@ -75,6 +83,13 @@ with the break in, and all 26 passed with it restored. Each break is to `game/Da
 |---|---|
 | Riposte's share row, `Bulwark_keystone_ic_t1#1`, its condition value 25 to 20 | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
 | Crimson Tide's leech payout row, 1,100 to 1,000 | `test_every_value_appears_in_the_nodes_own_description` |
+
+And one against `python -m pytest tools/tests/test_stun_durations_are_stated.py`, which reported `proved` True: two named
+tests failed with the break in, and all 28 passed with it restored.
+
+| Break | Named failures |
+|---|---|
+| Riposte's stun row, `Bulwark_keystone_ic_t1#3`, 1 second to 2, which its node's sentence does not state | `test_everything_that_applies_a_stun_states_how_long`, `test_a_passive_stun_length_is_excused_only_when_its_value_and_its_nodes_sentence_agree` |
 
 ### UNREAL TESTS (predicted, not run)
 
