@@ -18,9 +18,9 @@ Decisions made outside the Google Drive documents, newest first.
 - `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp` (a class resource top-up) and `CataclysmSiphon.cpp`
   (the Siphon's Fervour) go through the helper.
 - `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the two new stats have no attribute.
-- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourGainsTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (three
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourGainsTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp` (three
   probes), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and `CataclysmDataTableTests.cpp`;
-  `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`, new (4);
+  `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`, new (5);
   `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
   `test_every_conditioned_stat_has_an_asker.py`.
 - `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
@@ -45,10 +45,11 @@ Decisions made outside the Google Drive documents, newest first.
   open the kill-payment marker; `test_every_gain_to_the_pool_goes_through_raise_pool.py` fails until the gains do.
 - **`RaisePool` CLAMPS AT THE MAXIMUM ITSELF**, as well as every caller doing so as before. A change that does not fit is
   lost rather than left in the stored base above the maximum, the fault of issue #1036. No caller's result changes.
-- **KINDRED FIRES ACTS ON EVERY RISE, A KILL'S PAYMENT INCLUDED**, as the sentence says "any source". A kill's own stamp
-  follows its payment and never shortens the hold, so a kill gives the longer of the two. One consequence: a common
-  kill made inside an Elite kill's 8-second hold restarts at 8, the full length the last kill set, before its own
-  stamp records 4.
+- **KINDRED FIRES LEAVES A KILL'S PAYMENT OUT, AS RULED AFTER THIS SLICE WAS FIRST REPORTED.** As first built
+  (`9b7c3fb51`) it acted on every rise, a kill's payment included, so a common kill made inside an Elite kill's
+  8-second hold restarted it at 8 before the common kill's own stamp recorded 4. The coordinating session ruled that
+  more than the sentence grants: "holds off decay as a kill does" is about Fervour from other sources, and a kill
+  already holds off decay by its own grace. A kill's payment now sets the hold only through the kill's own stamp.
 
 ### What each reads
 
@@ -65,7 +66,9 @@ Decisions made outside the Google Drive documents, newest first.
 - **THE FULL LENGTH OF THE HOLD** is the grace the last kill set, recorded by `NoteOwnKill`, and before any kill a
   common kill's grace (Q5): the grace stat asked as if against rarity rung 0 (`StatAsIfAgainstRarity`), because the
   starting node's grace rows are written against the slain creature's rung.
-- **KINDRED FIRES** restarts the hold at its full length on any rise; the hold never shortens.
+- **KINDRED FIRES** restarts the hold at its full length on any rise that is not a kill's payment; the hold never
+  shortens. A kill's payment reaches neither Kindred Fires nor Borrowed Time: the rise handler returns on the marker
+  before asking either.
 - **BORROWED TIME** lengthens a hold that is still running (Q4) by its seconds, on a rise that is not a kill's payment,
   never past now plus the full length. "1 second for every 3 points" is a row of 1 at 3 points and one at 6.
 
@@ -94,6 +97,10 @@ The coordinating session's answers of 2026-11-25 to the C4b plan:
   all) and Q9 (Claimed pays as a kill payment, Gleaning included, no clock and no hold, never on top of a kill Death's
   Toll made yours).
 - And the helper in place of the hook, accepted after the correction above, with a guard proof of its check.
+- And, after the slice was first reported, two choices put to the coordinating session: `RaisePool` clamping at the
+  maximum itself, accepted; and Kindred Fires acting on a kill's payment, ruled against: "leave kill payments OUT of
+  Kindred Fires ... a kill's payment should set the hold only through its own stamp", with a test whose control is a
+  gain that is not a kill's.
 
 ### Research
 
@@ -104,17 +111,18 @@ already settled. The figures are the owner's approved trees'.
 
 | Group | Change | Predicted |
 |---|---|---|
-| `Cataclysm.FervourGains.` | new: `AnyFuelRaisesAGainThatIsNotAKillsAndLeavesAKillsAlone`, `KindredFiresRestartsTheHoldAtTheLastKillsFullLength`, `BorrowedTimeLengthensARunningHoldUpToItsFullLength`, `RaisePoolClampsAtTheMaximumAndAFullBarRestartsNothing`, `TheThreeNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.FervourGains.` | new: `AnyFuelRaisesAGainThatIsNotAKillsAndLeavesAKillsAlone`, `KindredFiresRestartsTheHoldAtTheLastKillsFullLength`, `KindredFiresLeavesAKillsHoldToTheKillsOwnStamp`, `BorrowedTimeLengthensARunningHoldUpToItsFullLength`, `RaisePoolClampsAtTheMaximumAndAFullBarRestartsNothing`, `TheThreeNodesRowsAreTheirSentences` | 6 |
 | `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs two new probes and `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` one | unchanged |
 | `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
 | `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 564 | unchanged |
 
-Each new test has a control: no Any Fuel, and a kill's payment; no Kindred Fires; a cast once decay has begun, and a
-kill's payment inside a running hold; the same gain on a full bar.
+Each new test has a control: no Any Fuel, and a kill's payment; no Kindred Fires; a cast after a kill's payment left
+the hold alone; a cast once decay has begun, and a kill's payment inside a running hold; the same gain on a full bar.
 
 **Three C++ guard proofs are registered for the window:**
 1. `CataclysmFervour.cpp`, `AfterPoolRose`: the lines `if (Cataclysm->IsPayingForAKill())`, `{`, `return;`, `}` are
-   removed. Prefix `Cataclysm.FervourGains.`; must fail `BorrowedTimeLengthensARunningHoldUpToItsFullLength`.
+   removed. Prefix `Cataclysm.FervourGains.`; must fail `BorrowedTimeLengthensARunningHoldUpToItsFullLength` and
+   `KindredFiresLeavesAKillsHoldToTheKillsOwnStamp`.
 2. `CataclysmAbilitySystemComponent.cpp`, `ExtendKillDecayHold`: `const float Capped =
    FMath::Min(KillDecayHeldUntilSeconds + Seconds,` and the line after become `const float Capped =
    KillDecayHeldUntilSeconds + Seconds;`. Prefix `Cataclysm.FervourGains.`; must fail
@@ -147,6 +155,8 @@ working tree, failed that one and the check that every condition is named in thi
 | Any Fuel's row under `target_carries_your_curse` instead of its own condition | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
 | Borrowed Time's rows at 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 | The new condition taken off `ConditionTakesAValue`'s list of conditions that compare nothing | `test_condition_lists_agree_with_the_code.py::test_the_three_value_less_lists_agree` |
+
+**AFTER THE RULING ON KINDRED FIRES**, KINDRED_FIGURES_C4B1
 
 ---
 

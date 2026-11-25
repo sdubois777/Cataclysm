@@ -4175,7 +4175,8 @@ public:
 	/**
 	 * Mark the start and the end of paying a kill's Fervour (`UCataclysmFervour::GainOnOwnKill`). The Death trees' slice
 	 * C4b1 (2026-11-25). While one is open, a gain is a kill's payment: Any Fuel's condition
-	 * (`ECataclysmStatCondition::FervourGainNotFromAKill`) refuses and Borrowed Time does not extend the hold. COUNTED
+	 * (`ECataclysmStatCondition::FervourGainNotFromAKill`) refuses, and neither Kindred Fires nor Borrowed Time touches
+	 * the hold, which the kill's own stamp sets. COUNTED
 	 * RATHER THAN A FLAG, so a payment made inside another leaves the outer one marked. A skill's own kill Fervour must
 	 * open one too when it lands, as the coordinating session ruled.
 	 */

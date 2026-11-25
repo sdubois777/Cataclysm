@@ -105,19 +105,23 @@ void UCataclysmFervour::AfterPoolRose(UAbilitySystemComponent* AbilitySystem, fl
 		return;
 	}
 
-	// KINDRED FIRES: ANY RISE, A KILL'S PAYMENT INCLUDED, restarts the hold at its full length. A kill's own stamp
-	// follows its payment and never shortens the hold, so a kill gives the longer of the two.
+	// A KILL'S PAYMENT SETS THE HOLD ONLY THROUGH THE KILL'S OWN STAMP, which follows it: ruled by the coordinating
+	// session on 2026-11-25. Kindred Fires' "holds off decay as a kill does" is about Fervour from other sources; a kill
+	// already holds off decay by its own grace, and a restart here would give a common kill inside an Elite kill's hold
+	// the Elite's 8 seconds.
+	if (Cataclysm->IsPayingForAKill())
+	{
+		return;
+	}
+
+	// KINDRED FIRES: ANY OTHER RISE restarts the hold at its full length.
 	if (Cataclysm->StatForSkill(FName(HoldRestartedByAnyGainStat), FGameplayTagContainer(), 0.0f) > 0.0f)
 	{
 		Cataclysm->RestartKillDecayHold(KillDecayHoldFullSeconds(AbilitySystem));
 		return;
 	}
 
-	// BORROWED TIME: A RISE THAT IS NOT A KILL'S PAYMENT lengthens a hold still running, capped at its full length.
-	if (Cataclysm->IsPayingForAKill())
-	{
-		return;
-	}
+	// BORROWED TIME: otherwise a rise lengthens a hold still running, capped at its full length.
 	const float Extension =
 		Cataclysm->StatForSkill(FName(HoldExtendedOnGainSecondsStat), FGameplayTagContainer(), 0.0f);
 	if (Extension > 0.0f)

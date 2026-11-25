@@ -743,8 +743,9 @@ public:
 	/**
 	 * The stat that makes every gain hold off decay as a kill does: the Soul Collector's Kindred Fires, "Fervour you gain
 	 * from any source, not only a kill, holds off decay as a kill does: the time before your Fervour begins to decay
-	 * starts again". Above nought, a rise of the pool restarts the hold at its full length (`KillDecayHoldFullSeconds`).
-	 * The Death trees' slice C4b1 (2026-11-25). No attribute and no base.
+	 * starts again". Above nought, a rise of the pool that is not a kill's payment restarts the hold at its full length
+	 * (`KillDecayHoldFullSeconds`); a kill sets the hold only through its own stamp, as ruled. The Death trees' slice
+	 * C4b1 (2026-11-25). No attribute and no base.
 	 */
 	static const TCHAR* HoldRestartedByAnyGainStat;
 
@@ -865,8 +866,9 @@ public:
 
 private:
 	/**
-	 * What a rise of the pool does to the hold before decay: Kindred Fires restarts it for any rise; otherwise Borrowed
-	 * Time lengthens a running hold for a rise that is not a kill's payment. Called by `RaisePool` only.
+	 * What a rise of the pool does to the hold before decay. A kill's payment does nothing here: the kill's own stamp
+	 * sets its hold. Any other rise: Kindred Fires restarts the hold; otherwise Borrowed Time lengthens a running one.
+	 * Called by `RaisePool` only.
 	 */
 	static void AfterPoolRose(UAbilitySystemComponent* AbilitySystem, float Rise);
 

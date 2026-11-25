@@ -197,6 +197,52 @@ bool FCataclysmFervourGainsKindredFiresTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourGainsKillPaymentTest,
+	"Cataclysm.FervourGains.KindredFiresLeavesAKillsHoldToTheKillsOwnStamp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Kindred Fires and 1 Fervour a kill, as the coordinating session ruled on 2026-11-25: a kill's payment does not
+ * restart the hold; the kill's own stamp sets it. An Elite kill holds 8 seconds; a common kill 6 seconds in is paid and
+ * then stamped with its own 4 seconds, in the order the player's kill handler uses. The hold is then 4 seconds from the
+ * common kill: held 3.7 seconds after it, not 4.3. A restart at the Elite's 8 on the payment would still hold. THE
+ * CONTROL: a cast once that hold has run out restarts it at its full length, now the common kill's 4: held 3.7 seconds
+ * later, not 4.3.
+ */
+bool FCataclysmFervourGainsKillPaymentTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourGainsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FFervourGainsHolder Holder(World);
+	UCataclysmAbilitySystemComponent* System = Holder.AbilitySystem;
+
+	TMap<FName, FCataclysmStatInputs> Lines;
+	FlatLine(Lines, UCataclysmFervour::PerCastStat, 10.0f);
+	FlatLine(Lines, UCataclysmFervour::PerKillStat, 1.0f);
+	FlatLine(Lines, UCataclysmFervour::HoldRestartedByAnyGainStat, 1.0f);
+	System->SetStatInputs(MoveTemp(Lines));
+
+	System->NoteOwnKill(/*GraceSeconds=*/8.0f);
+	RunClock(World, 6.0f);
+	TestEqual(TEXT("set-up: the common kill pays 1"), UCataclysmFervour::GainOnOwnKill(System, nullptr), 1.0f, 0.001f);
+	System->NoteOwnKill(/*GraceSeconds=*/4.0f);
+	RunClock(World, 3.7f);
+	TestTrue(TEXT("a common kill inside an Elite kill's hold: held 3.7 seconds after it"), System->KillDecayIsHeld());
+	RunClock(World, 0.6f);
+	TestFalse(TEXT("and not 4.3 seconds after: its payment did not restart the hold at the Elite's 8"),
+			  System->KillDecayIsHeld());
+
+	UCataclysmFervour::GainForCast(System);
+	RunClock(World, 3.7f);
+	TestTrue(TEXT("control: a cast restarts the hold at its full length, the common kill's 4: held 3.7 seconds later"),
+			 System->KillDecayIsHeld());
+	RunClock(World, 0.6f);
+	TestFalse(TEXT("and not 4.3 seconds later"), System->KillDecayIsHeld());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourGainsBorrowedTimeTest,
 	"Cataclysm.FervourGains.BorrowedTimeLengthensARunningHoldUpToItsFullLength",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

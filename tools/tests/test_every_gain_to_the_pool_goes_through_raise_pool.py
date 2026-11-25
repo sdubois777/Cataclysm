@@ -10,8 +10,8 @@ this check is what keeps a new one from skipping it: the War session's Fervour s
 Fervour add gain paths when they merge.
 
 WHAT IS ASSERTED. Every `ApplyModToAttribute` call outside the tests, counted by file and the function it sits in, is
-in `INVENTORY` with the reason it is not a gain to the pool, and nothing listed has gone; and each function that gains
-the pool calls `RaisePool`. A new call fails until it is listed, which is the point: listing it means saying why it is
+in `INVENTORY` with the reason it is not a gain to the pool, and nothing listed has gone; each function that gains
+the pool calls `RaisePool`; and a kill's payment reaches neither Kindred Fires nor Borrowed Time, as ruled. A new call fails until it is listed, which is the point: listing it means saying why it is
 not a gain. Read from the source with comments and strings removed, because continuous integration compiles no C++.
 """
 
@@ -136,6 +136,19 @@ def test_every_gain_to_the_pool_calls_the_helper():
     assert not missing, f"these gain functions were not found by name: {missing}"
     skipping = [key for key in GAINS if "RaisePool(" not in every[key]]
     assert not skipping, f"these functions gain the pool without UCataclysmFervour::RaisePool: {skipping}"
+
+
+def test_a_kills_payment_reaches_neither_kindred_fires_nor_borrowed_time():
+    """Ruled by the coordinating session on 2026-11-25: a kill's payment sets the hold only through the kill's own
+    stamp, so the rise handler returns on the marker before either node is asked."""
+    body = bodies()[(FERVOUR, "UCataclysmFervour::AfterPoolRose")]
+    guard = re.search(r"if\s*\(\s*Cataclysm->IsPayingForAKill\(\)\s*\)\s*\{\s*return;\s*\}", body)
+    kindred = body.find("HoldRestartedByAnyGainStat")
+    borrowed = body.find("HoldExtendedOnGainSecondsStat")
+    assert guard and 0 <= kindred and 0 <= borrowed, "AfterPoolRose must return on a kill's payment and ask both nodes"
+    assert guard.start() < kindred and guard.start() < borrowed, (
+        "AfterPoolRose asks Kindred Fires or Borrowed Time before it returns on a kill's payment, so a kill's payment "
+        "restarts or lengthens the hold, which the coordinating session ruled it must not")
 
 
 def test_the_kill_payment_is_marked_for_its_whole_length():
