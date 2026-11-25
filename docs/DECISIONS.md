@@ -73,6 +73,21 @@ The coordinating session, 2026-11-25, under the owner's delegation:
    "for N seconds". **A judgement**, in the shape of the Time-Lock rift's excuse of 2026-10-19; a sentence that says
    only "briefly", another length, or a row with no length is still reported.
 
+### THE PYTHON SUITE
+
+Run on `5273e90e6e379243449ff59096d1367a39b9a48b`, the commit after the one that brought this entry, which updated the
+three checks named last under Affects, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8437 passed, 9 skipped in 403.59s**, and the JUnit file `tests="8447" failures="1" errors="0"
+skipped="9"`, which is 8,437 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py` on the fifteen C++ files this branch changes: 15 files read, 0 with complaints.
+
+**THE RUN BEFORE IT**, on `12f1f1e22`, read 4 failed, 8432 passed, 9 skipped: the asset check, and the three checks
+the commit after it updated (the Stun refusal on `apply_status_seconds`, `PayPulse`'s Bleed unlisted, and Riposte's
+stun row unread by the rule that every stun states how long).
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
