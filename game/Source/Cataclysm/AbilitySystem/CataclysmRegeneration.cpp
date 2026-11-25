@@ -31,6 +31,8 @@ const TCHAR* UCataclysmRegeneration::HealingSkillHealthRestoredStat =
 	TEXT("healing_skill_health_restored");
 const TCHAR* UCataclysmRegeneration::HealingSkillHealthAsEnergyShieldStat =
 	TEXT("healing_skill_health_as_energy_shield");
+const TCHAR* UCataclysmRegeneration::ShieldOnMinionDeathStat =
+	TEXT("energy_shield_on_minion_death_percent");
 const TCHAR* UCataclysmRegeneration::ManaRegenStat = TEXT("mana_regen");
 const TCHAR* UCataclysmRegeneration::EnergyShieldRegenStat =
 	TEXT("energy_shield_regen");
@@ -404,6 +406,40 @@ float UCataclysmRegeneration::GiveHealingSkillShield(UAbilitySystemComponent& Ab
 	TopUp(AbilitySystem, Shield, UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
 		  HealthArrived * Percent / 100.0f);
 	return FMath::Max(0.0f, AbilitySystem.GetNumericAttribute(Shield) - ShieldBefore);
+}
+
+float UCataclysmRegeneration::GiveShieldOnMinionDeath(AActor* Commander)
+{
+	UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs || !Theirs->GetSet<UCataclysmVitalAttributeSet>()
+		|| UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return 0.0f;
+	}
+
+	// A PERCENTAGE ON A BASE OF NOUGHT, so a commander with no row answers nought and is given nothing. Never below
+	// nought: the row gives shield and takes none away.
+	const float Percent = FMath::Max(
+		0.0f, Theirs->StatAppliedTo(FName(ShieldOnMinionDeathStat), FGameplayTagContainer(), 0.0f));
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Maximum = Theirs->MaximumEnergyShield();
+	if (Maximum <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THROUGH `TopUp`, so the shield stops at its maximum, and what was added is read off the shield because `TopUp`
+	// does not return it.
+	const FGameplayAttribute Shield = UCataclysmVitalAttributeSet::GetEnergyShieldAttribute();
+	const float ShieldBefore = Theirs->GetNumericAttribute(Shield);
+	TopUp(*Theirs, Shield, UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
+		  Maximum * Percent / 100.0f);
+	return FMath::Max(0.0f, Theirs->GetNumericAttribute(Shield) - ShieldBefore);
 }
 
 float UCataclysmRegeneration::GainPerStep(float RatePerSecond,

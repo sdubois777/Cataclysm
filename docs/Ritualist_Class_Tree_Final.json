@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds and reserves 10 Fervour while it is out, if you have the Fervour to reserve. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",
+        "description": "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds and reserves 10 Fervour while it is out, if your maximum Fervour has room for it. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -67,7 +67,7 @@
       "data": {
         "kind": "basic",
         "name": "Whispered Word",
-        "description": "+2% increased Spell Damage per point.",
+        "description": "+2% increased Spell Damage per point. At 3 points: curses and burns you lay last 25% longer.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -89,7 +89,7 @@
       "data": {
         "kind": "basic",
         "name": "Binding Sigils",
-        "description": "+2% increased Fervour gained from your minions per point.",
+        "description": "+1% increased Spell Damage per point for every 25 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -309,7 +309,7 @@
       "data": {
         "kind": "keystone",
         "name": "Conduit",
-        "description": "Damage dealt by your minions counts as damage you dealt, for every effect of yours that asks.",
+        "description": "Your minions' hits and kills count as yours: they set off your on-hit and on-kill effects, and an enemy a minion hits counts as one you have damaged.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -331,7 +331,7 @@
       "data": {
         "kind": "basic",
         "name": "Grip of the Pact",
-        "description": "+2% increased Spell Damage per point.",
+        "description": "+2% increased Spell Damage per point. At 4 points: enemies carrying a curse or a burn you laid deal 10% less damage.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -353,7 +353,7 @@
       "data": {
         "kind": "basic",
         "name": "Broken Will",
-        "description": "+2% increased Spell Damage per point against enemies below half health.",
+        "description": "+2% increased Spell Damage per point against enemies below half health. At 4 points: when an enemy dies, each debuff it carries has a 50% chance to pass to a random enemy within 6 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -397,7 +397,7 @@
       "data": {
         "kind": "basic",
         "name": "Subjugator",
-        "description": "+2% increased Spell Damage per point.",
+        "description": "+2% increased Spell Damage per point. At 6 points: +20% increased Spell Damage against enemies carrying your curse.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -441,7 +441,7 @@
       "data": {
         "kind": "basic",
         "name": "Long Servitude",
-        "description": "+2% increased Minion Damage per point.",
+        "description": "+2% increased Minion Damage per point. At 4 points: your minions deal 20% increased damage to enemies carrying your curse.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Short Leash",
-        "description": "+3% increased Area of Effect per point.",
+        "description": "+3% increased Minion Damage per point against enemies below half health.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -748,8 +748,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Volatile",
-        "description": "+3% increased damage of the explosion a minion leaves per point.",
+        "name": "Legion",
+        "description": "+1% increased Minion Damage per point for each minion you have.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -814,8 +814,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Spiteful Ash",
-        "description": "+3% increased damage over time damage per point.",
+        "name": "Volatile",
+        "description": "+3% increased damage of the explosion a minion leaves per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -881,7 +881,7 @@
       "data": {
         "kind": "keystone",
         "name": "The Swarm",
-        "description": "Your minions reserve 12% reduced Fervour.",
+        "description": "When you or one of your minions kills an enemy, a new minion is summoned where it fell, if your Fervour has room for it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -925,7 +925,7 @@
       "data": {
         "kind": "keystone",
         "name": "Rekindled",
-        "description": "When a minion explodes a new minion is summoned where it stood, no more than once every 5 seconds.",
+        "description": "When one of your minions reaches the end of its time, it stays for that long again, no more than once every 5 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -991,7 +991,7 @@
       "data": {
         "kind": "basic",
         "name": "Distance",
-        "description": "+1% increased Movement Speed per point.",
+        "description": "+1% increased Spell Damage per point for every 2 metres between you and the enemy your spell hits.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "basic",
         "name": "Steady Hand",
-        "description": "+2% increased Spell Damage per point.",
+        "description": "+2% increased Spell Damage per point. At 4 points: 2% of the damage your spells deal is leeched as Energy Shield.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1145,7 +1145,7 @@
       "data": {
         "kind": "basic",
         "name": "Unhurried",
-        "description": "+2% increased Crowd Control Resistance per point.",
+        "description": "+2 Crowd Control Resistance per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1263,15 +1263,15 @@
         "options": [
           {
             "name": "Bound Servants",
-            "description": "Your minions deal 25% increased damage and have 25% increased health."
+            "description": "Your minions deal 5% increased damage and have 5% increased health for each minion you have."
           },
           {
             "name": "Warded Flesh",
-            "description": "+40% increased Maximum Energy Shield and +20% increased Energy Shield Regeneration."
+            "description": "Each time one of your minions dies, you regain 10% of your Maximum Energy Shield."
           },
           {
             "name": "Open Channel",
-            "description": "+20% increased maximum Fervour and +20% increased Mana Regeneration."
+            "description": "An enemy that dies carrying your curse raises two imps rather than one."
           }
         ],
         "selectedOption": null,
@@ -1305,8 +1305,8 @@
             "description": "Your minions each have 20% of your Maximum Energy Shield as their own, and it recharges when yours does."
           },
           {
-            "name": "Fed by the Fallen",
-            "description": "You gain 10 Fervour whenever an enemy dies within 10 metres of you."
+            "name": "Wall of Servants",
+            "description": "You take 1% less damage for each minion you have, up to 20% less."
           },
           {
             "name": "Cast from Ward",
@@ -1341,7 +1341,7 @@
         "options": [
           {
             "name": "Set the Pack On",
-            "description": "Enemies you have damaged in the last 2 seconds take 25% more damage from your minions."
+            "description": "Enemies you have damaged in the last 2 seconds take 3% more damage from your minions for each minion you have."
           },
           {
             "name": "Shared Ruin",
@@ -1565,7 +1565,7 @@
       "data": {
         "kind": "basic",
         "name": "Measured Words",
-        "description": "+2% increased Spell Damage per point.",
+        "description": "+2% increased Spell Damage per point. At 4 points: while you have not moved for 2 seconds, your minions deal 20% increased damage.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1631,7 +1631,7 @@
       "data": {
         "kind": "keystone",
         "name": "Ritual Focus",
-        "description": "Skills you cast while standing still cost no mana.",
+        "description": "Skills you cast while standing still cost no mana and have 30% increased Area of Effect.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

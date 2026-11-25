@@ -643,7 +643,17 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 325 ON 2026-09-30, for Every Swing Lands' arc: a second row on
 #: `Ravager_keystone_spine_002`, `melee_arc_full_circle` flat 1. The node
 #: already counted, so `AUTHORED_NODES` does not move. Issue #1515.
-AUTHORED_ROWS = 325
+#:
+#: AND TO 364 ON 2026-11-24, for the Demonic tree rework the project owner
+#: approved that day: the Masochist 126 to 150, the Ravager 103 to 113 and the
+#: Ritualist 92 to 97. Most of the 39 are the "for every N points" steps that
+#: replaced per-point values below 1 (question 4 of the Masochist audit), one
+#: row per step: Brutal Determination and Deeper Cuts five each, Battle-Scarred,
+#: Bloodletting, Blood Coin and The Breaking Point four each, Rolling Debt three.
+#: The rest are second clauses and "At N points:" bonuses, less the drawbacks
+#: removed from six Masochist keystones. Every node that changed already had a
+#: row, so `AUTHORED_NODES` does not move.
+AUTHORED_ROWS = 364
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1325,7 +1335,7 @@ def test_no_node_grants_the_same_stat_twice(effects):
     spreadsheet row and forgetting to change the stat produces. Both would apply
     and the node would be worth double what it says.
     """
-    seen: dict[tuple[str, str, str, str], int] = {}
+    seen: dict[tuple[str, ...], int] = {}
     for row in effects:
         # THE CONDITION IS PART OF WHAT MAKES A ROW DISTINCT since issue #959.
         # A node giving one amount always and more of it below a threshold is a
@@ -1334,8 +1344,17 @@ def test_no_node_grants_the_same_stat_twice(effects):
         # AND SO IS THE SCALE, since issue #968, for the same reason: a node
         # could give a fixed amount and a further amount that grows with a
         # state. `tools/generate_datatables.py` keys its own check the same way.
+        #
+        # AND THE CAPSTONE OPTION AND THE POINT THRESHOLD, since 2026-11-24, which
+        # is the key `passive_effects` in the generator has used since issues
+        # #1029 and #1755. The Demonic tree rework made it matter: the project
+        # owner chose whole-number "for every 2 points" steps over per-point
+        # values below 1 (question 4 of the Masochist audit), and each step is
+        # the same row at its own `MinPoints`. Without the threshold in the key
+        # five steps of Brutal Determination read as one row written five times.
         key = (row["Node"], row["Stat"], row["Condition"],
-               row["ConditionValue"], row["Scale"], row["ScaleStep"])
+               row["ConditionValue"], row["Scale"], row["ScaleStep"],
+               row.get("Option", ""), row.get("MinPoints", ""))
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
@@ -1407,7 +1426,15 @@ CONDITION_WORDS = {
     # threshold, and a node reworded to "at or below" while the row kept saying
     # `skill_health_cost_above` would be worth the opposite of what a player
     # reads. Requiring the word here is what notices.
-    "skill_health_cost_above": ("health cost is above", "{value:g}%"),
+    #
+    # AND "COSTS HEALTH" FOR A THRESHOLD OF NOUGHT, since the Demonic tree rework
+    # of 2026-11-24. Exsanguinate became "A skill that costs health deals 30% more
+    # damage": strictly above 0% is any cost at all, and the sentence says so in
+    # those words rather than as "above 0%". The value form is a table so that the
+    # 0 can only ever be written that way, and Grand Tithe's 2 (the order fix of
+    # the same day) only as "2%"; a third threshold needs its own entry here.
+    "skill_health_cost_above": (("health cost is above", "costs health"),
+                                {0.0: "costs health", 2.0: "2%"}),
 
     # THE WORDS NAME THE EFFECT, BECAUSE THE NAME IS ALL THAT SAYS WHICH ONE.
     # Issue #962. A row reading `while_bleeding` on a node that says "While you
@@ -1439,7 +1466,28 @@ CONDITION_WORDS = {
     # one on the day a node uses that condition.
     "class_resource_points_at_least": ("or more fervour", "{value:g}"),
 
-    "class_resource_at_maximum": ("fervour is at maximum", None),
+    # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
+    # Fervour is full". The same predicate, in the words the audit wrote.
+    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full"), None),
+
+    # THE CONDITIONS THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW
+    # FOR THE FIRST TIME. Each was already known to the generator and the game;
+    # none had a passive row, so none had words here. The words are the clause
+    # of the approved sentence that states the condition.
+    #   Provoked (Masochist)            "for 4 seconds after you are hit"
+    #   Never Still (Ravager)           "while out of combat"
+    #   Hunter's Pace (Ravager)         "For 4 seconds after you use a Movement skill"
+    #   Onset (Ravager)                 "Your first hit against each enemy"
+    #   Sustained Assault (Ravager)     "After 5 seconds in combat"
+    #   Subjugator, Long Servitude      "enemies carrying your curse", a condition
+    #     (Ritualist)                   the rework added to the game
+    "seconds_after_hit_taken": ("after you are hit", "{value:g} second"),
+    "out_of_combat": ("out of combat", None),
+    "seconds_after_movement_skill": ("after you use a movement skill",
+                                     "{value:g} second"),
+    "target_not_yet_struck_by_you": ("first hit against each enemy", None),
+    "in_combat_for_seconds": ("in combat", "{value:g} second"),
+    "target_carries_your_curse": ("carrying your curse", None),
 
     # THE FIVE MOVEMENT CONDITIONS. Issue #41, slice 2. No row in
     # PassiveEffects.csv uses any of them yet, so these entries are not
@@ -1951,6 +1999,18 @@ SCALE_WORDS = {
     # so naming the pool is what keeps this row off a node about missing health.
     "max_health": (("for every", "maximum health"), "{value:g} maximum health",
                    None),
+
+    # THE SCALES THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW FOR
+    # THE FIRST TIME. Beacon of Despair counts the debuffs on the enemy struck
+    # ("for each debuff they carry"), Distance the metres to it ("for every 2
+    # metres between you and the enemy"), and Relentless the character's own
+    # increased movement speed, a scale the rework added ("for every 2% increased
+    # Movement Speed you have").
+    "target_debuffs": (("for each debuff", "they carry"), None, None),
+    "metres_to_target": (("for every", "metres between you and"), "{value:g} metres",
+                         None),
+    "increased_movement_speed": (("for every", "increased movement speed"),
+                                 "{value:g}%", None),
 }
 
 
@@ -2251,7 +2311,11 @@ VALUE_FORMS = {
     # sentence holds a second "10" for the radius, and a bare "{value:g}"
     # would be satisfied by either.
     "health_restored_on_kill_at_no_cost": "{value:g}% of your maximum health",
-    "fervour_on_enemy_death_nearby": "{value:g} Fervour whenever",
+    # TWO FORMS SINCE 2026-11-24, for the two approved sentences that grant it per
+    # point: the Masochist's Gorge, "1 Fervour whenever an enemy dies ..., per
+    # point", and the Ravager's Swing Through, "1 Fervour per point whenever".
+    "fervour_on_enemy_death_nearby": ("{value:g} Fervour whenever",
+                                      "{value:g} Fervour per point whenever"),
 
     # THE RITUALIST'S TWO KEYSTONES THAT ADJUST A FIGURE A SKILL ROW STATES.
     # Issue #1718. Until the owner reworded both on 2026-09-16, each sentence
@@ -2287,6 +2351,25 @@ VALUE_FORMS = {
     # Through).
     "enemies_cannot_move_away_within_metres": "{value:g} metres",
     "melee_kill_repeats_attack_every_seconds": "{value:g} second",
+
+    # THE DEMONIC TREE REWORK OF 2026-11-24. Each flat row's number is followed
+    # in its sentence by these words, so it is checked against them rather than
+    # against a bare "N%" that another figure in the sentence could satisfy.
+    #
+    # CROWD CONTROL RESISTANCE IN BOTH SPELLINGS, BECAUSE THE APPROVED SENTENCES
+    # USE BOTH. The Masochist and Ritualist audits wrote "+4 Crowd Control
+    # Resistance" and "+2 Crowd Control Resistance", the Ravager audit "+5% Crowd
+    # Control Resistance" and "+10% Crowd Control Resistance". The stat is one
+    # number, a duration cut of that many hundredths, so both mean the same.
+    "crowd_control_resistance": ("{value:g} Crowd Control Resistance",
+                                 "{value:g}% Crowd Control Resistance"),
+    "fervour_floor_against_healing": "below {value:g}",
+    "damage_to_bleeding_window": "{value:g} second",
+    "carnage_stack_seconds": "{value:g} second",
+    "fervour_decay_grace_seconds": "{value:g} second",
+    "cripple_and_weaken_spread_on_death_metres": "{value:g} metre",
+    "ultimate_fervour_cost_reduction": "{value:g} less Fervour",
+    "minion_lifetime_renewed_every_seconds": "{value:g} second",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2347,8 +2430,6 @@ VALUE_IN_WORDS = {
     # instead by `Cataclysm.Passives.NoGroundGivenWidensTheRadiusToEight`, which
     # reads the total off a real Ravager holding both nodes. Neither check alone
     # is enough and the pair is why the increment is authorable at all.
-    ("Ravager_keystone_d_kC", "fervour_decay_grace_metres"):
-        ("within 8 metres of you, rather than 4", 4.0),
 
     # AND GRINDING HALT, WHICH IS NOT STRICTLY A VALUE IN WORDS AND IS HERE
     # ANYWAY. Issue #1515. Its sentence has the digit -- "grants you 1 Fervour
@@ -2572,7 +2653,7 @@ VALUE_IN_WORDS = {
     # it they are the minion's own. The phrase is the clause that says so, and
     # it names no number because the rule is not a quantity.
     ("Ritualist_keystone_spine_003", "minion_hits_count_as_yours"):
-        ("counts as damage you dealt", 1.0),
+        ("count as yours", 1.0),
 
     # AND THE RITUALIST'S RISEN IMPS, a flag of one. Issue #1479. The death path
     # asks whether the stat stands above zero. The sentence's digits belong to
@@ -2631,7 +2712,50 @@ VALUE_IN_WORDS = {
         ("the minion you have held longest becomes your equal", 1.0),
     ("Ritualist_capstone_200", "minions_repeat_your_skills"):
         ("your minions repeat each skill you cast", 1.0),
+
+    # THE SWITCHES THE DEMONIC TREE REWORK OF 2026-11-24 ADDED, each a flag the
+    # engine reads as on above zero, so its sentence states the rule and no
+    # number. The phrase is the clause that states it.
+    ("Masochist_basic_fl_stem0", "burn_self_on_burning_an_enemy"):
+        ("you are set alight as well", 1.0),
+    ("Masochist_keystone_fl_kA", "debuffs_carried_count_twice"):
+        ("counts twice", 1.0),
+    ("Ravager_keystone_spine_001", "armor_overwhelm_halved"):
+        ("overwhelm takes only half as much", 1.0),
+    ("Ravager_keystone_d_kA", "attack_speed_reduction_suppressed"):
+        ("attack speed cannot be reduced", 1.0),
+    ("Ravager_basic_b_c1", "strike_arc_at_least_degrees"):
+        ("at least a half circle", 180.0),
+    ("Ravager_keystone_d_kC", "fervour_decay_per_second"):
+        ("your fervour does not decay", 1.0),
+    ("Ritualist_keystone_b_kA", "kill_summons_minion_where_it_fell"):
+        ("a new minion is summoned where it fell", 1.0),
+    ("Ritualist_capstone_25", "curse_death_extra_imps"):
+        ("two imps rather than one", 1.0),
+    # AND SET STANCE'S KNOCKBACK CLAUSE, a switch since issue #1755 that needed no
+    # entry while the node's other row was an increase. Its other row is now a
+    # flat "+1% Damage Reduction" and both would look for "1%".
+    ("Ravager_basic_spine_006", "knockback_suppressed"):
+        ("cannot be knocked back", 1.0),
+
+    # AND NOTHING MOVES YOU'S SECOND CLAUSE, keyed by its condition as well,
+    # because the keystone's first clause already holds the (node, stat) key for
+    # its flat 50: one stat, two rows, two phrases. See `in_words` below.
+    ("Ravager_keystone_a_kB", "crowd_control_resistance",
+     "class_resource_points_at_least"):
+        ("no crowd control can be applied", 100.0),
+    ("Ravager_keystone_a_kB", "movement_speed_reduction_suppressed",
+     "class_resource_points_at_least"):
+        ("no crowd control can be applied", 1.0),
 }
+
+
+def in_words(row: dict):
+    """The `VALUE_IN_WORDS` entry for a row: by node, stat and condition first,
+    then by node and stat. The three-part key is for a node granting one stat
+    twice under different conditions, each stated in its own words (2026-11-24)."""
+    return (VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip()))
+            or VALUE_IN_WORDS.get((row["Node"], row["Stat"])))
 
 
 #: Rows whose value is the DIFFERENCE between the figure the node states and the
@@ -2682,7 +2806,7 @@ def test_every_value_appears_in_the_nodes_own_description(
         # A VALUE THE SENTENCE STATES IN WORDS IS CHECKED AGAINST THOSE WORDS.
         # See `VALUE_IN_WORDS` for why two rows are written that way and what
         # this still catches.
-        stated = VALUE_IN_WORDS.get((row["Node"], row["Stat"]))
+        stated = in_words(row)
         if stated is not None:
             phrase, means = stated
             assert phrase in described.lower(), (
@@ -2837,10 +2961,16 @@ def test_no_two_flat_rows_on_one_node_look_for_the_same_text(effects):
     for row in effects:
         if row["ValueKind"] != "flat":
             continue
-        if (row["Node"], row["Stat"]) in VALUE_IN_WORDS:
+        if in_words(row) is not None:
             continue
         for printed in text_the_check_looks_for(row):
-            by_node[row["Node"]].append((printed, row["Stat"]))
+            # A SET, SO A "FOR EVERY N POINTS" SERIES IS ONE ENTRY. Since
+            # 2026-11-24 a node may carry the same flat row at 2, 4, 6 points
+            # and so on, each granted whole from its `MinPoints`; those are one
+            # quantity stated once, not several rows satisfying each other.
+            # What this check is for is DIFFERENT stats sharing words.
+            if (printed, row["Stat"]) not in by_node[row["Node"]]:
+                by_node[row["Node"]].append((printed, row["Stat"]))
 
     assert by_node, (
         "no flat row reaches this check at all, so it compares nothing. Either "
@@ -2920,6 +3050,16 @@ def test_a_node_that_takes_something_away_is_actually_tested(effects):
     )
 
 
+#: Flat stats whose figure the game applies as a multiplier of its own, so a
+#: sentence stating them as "N% less" is right while the row is `flat`.
+#: `debuffed_enemies_deal_less_percent` is the share by which an enemy carrying
+#: one of the character's curses or burns has its damage cut, ruled 2026-10-13;
+#: the Ritualist's Grip of the Pact grants it "At 4 points: ... deal 10% less
+#: damage" since the rework of 2026-11-24. The row is a figure the game reads,
+#: not a term in the pipeline's buckets, so `flat` is the only kind it can be.
+FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent"})
+
+
 def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     """A description that says its number multiplies is the more bucket, and
     one that does not is not.
@@ -2957,7 +3097,8 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     #: the check below.
     multiplying_nodes = {(row["Node"], int(row.get("Option", 0) or 0))
                          for row in effects
-                         if row["ValueKind"].strip().lower() == "more"}
+                         if row["ValueKind"].strip().lower() == "more"
+                         or row["Stat"] in FLAT_STATS_THAT_MULTIPLY}
 
     for row in effects:
         kind = row["ValueKind"].strip().lower()
@@ -3367,6 +3508,12 @@ def test_at_least_one_effect_is_scoped_by_a_tag(effects):
 #: A NODE SENTENCE'S THRESHOLD CLAUSE, "At 4 points: ...". Issue #1755.
 AT_N_POINTS = re.compile(r"\bAt (\d+) points:")
 
+#: A NODE SENTENCE'S STEP CLAUSE, "... for every 2 points". The project owner's
+#: answer of 2026-11-24 to question 4 of the Masochist audit: a per-point value
+#: below 1 becomes a whole number granted at every Nth point, one row per step,
+#: each from its own `MinPoints`.
+FOR_EVERY_N_POINTS = re.compile(r"\bfor every (\d+) points\b")
+
 
 def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         effects, nodes):
@@ -3384,11 +3531,42 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         min_points = int(float(row.get("MinPoints", 0) or 0))
         if not min_points:
             continue
-        said = [int(n) for n in AT_N_POINTS.findall(
-            nodes.get(row["Node"], {}).get("Description", ""))]
-        if min_points not in said:
+        sentence = nodes.get(row["Node"], {}).get("Description", "")
+        said = [int(n) for n in AT_N_POINTS.findall(sentence)]
+        # OR A STEP OF A "FOR EVERY N POINTS" SERIES, at a multiple of its N.
+        steps = [int(n) for n in FOR_EVERY_N_POINTS.findall(sentence)]
+        if min_points not in said and not any(min_points % n == 0 for n in steps):
             wrong.append(f"{row['Name']} applies from {min_points} points and "
                          f"its node's sentence says {said or 'no threshold'}")
+    assert not wrong, wrong
+
+
+def test_a_for_every_n_points_sentence_has_a_row_at_every_step(effects, nodes):
+    """A node saying "for every N points" carries one row at each multiple of N
+    up to its maximum, and none at any other point. 2026-11-24.
+
+    THE STEPS ARE THE ONLY PLACE THE NUMBER OF STEPS IS WRITTEN. A series
+    missing its last row grants a fifth less than the sentence at full points,
+    and one with a row at 3 in a series of 2s grants a step a point early; both
+    pass every other check here, because each row's value is right.
+    """
+    wrong = []
+    checked = 0
+    for name, node in nodes.items():
+        for n in {int(x) for x in FOR_EVERY_N_POINTS.findall(node.get("Description", ""))}:
+            checked += 1
+            most = int(node["MaxPoints"])
+            wanted = list(range(n, most + 1, n))
+            by_stat: dict[str, list[int]] = {}
+            for row in effects:
+                points = int(float(row.get("MinPoints", 0) or 0))
+                if row["Node"] == name and points:
+                    by_stat.setdefault(row["Stat"], []).append(points)
+            series = [sorted(p) for p in by_stat.values() if all(x % n == 0 for x in p)]
+            if sorted(wanted) not in series:
+                wrong.append(f"{name} says 'for every {n} points' over {most} points, "
+                             f"so rows from {wanted}; its stepped rows are {by_stat}")
+    assert checked, "no node says 'for every N points', so this checks nothing"
     assert not wrong, wrong
 
 

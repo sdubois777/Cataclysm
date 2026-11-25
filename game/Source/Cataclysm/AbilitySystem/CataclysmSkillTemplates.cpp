@@ -11,6 +11,8 @@
 #include "Components/PrimitiveComponent.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
+// For the one attack speed every rack is paced by, after slows. The Ravager tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
@@ -30,6 +32,12 @@
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
+// For Summon Imp's kind, made for a commander that holds no summon skill: a Wand
+// Ritualist's Press-Ganged replacement and The Swarm's minion at a kill. The
+// demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRisenImps.h"
+// For whether a kill's victim was an enemy of the commander's. The same rework.
+#include "AbilitySystem/CataclysmTeams.h"
 // For what a rack's spawn-less throw resolved to, and the Fervour it earns.
 // Issue #1515. `CataclysmSkillEffects.h` only declares the result.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1760,8 +1768,14 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 	const float Attribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
 	const UCataclysmAbilitySystemComponent* Asking = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+
+	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273. AND WHAT WITHER
+	// LEAVES, multiplied with it as a separate slow. Issue #1722. Both through the one helper the basic attack's swing
+	// uses, `UCataclysmBasicAttack::AttackSpeedAfterSlows`, which also honours Relentless's "Your Movement Speed and
+	// Attack Speed cannot be reduced by any effect" (the Ravager tree rework of 2026-11-24). An ability system this
+	// project did not make carries no stat line and no flag, so it gets the attribute.
 	const float PerSecond = Asking
-		? Asking->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute)
+		? UCataclysmBasicAttack::AttackSpeedAfterSlows(Asking, SkillTags, Attribute, Avatar())
 		: Attribute;
 	if (PerSecond <= 0.0f)
 	{
@@ -1774,14 +1788,7 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 		return Stated;
 	}
 
-	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273.
-	const AActor* Thrower = Avatar();
-	// AND WHAT WITHER LEAVES, multiplied with it as a separate slow. Issue #1722.
-	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Thrower)
-		? UCataclysmSkillEffects::CrippleMultiplierOn(Thrower) * UCataclysmSkillEffects::WitherMultiplierOn(Thrower)
-		: 1.0f;
-
-	return Stated / (PerSecond * Crippled);
+	return Stated / PerSecond;
 }
 
 AActor* UCataclysmProjectileSkill::NextThrowTarget()
@@ -4442,8 +4449,8 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 	}
 
 	// WHICH SUMMON SKILL'S KIND. The one that made the lost minion; failing
-	// that -- a thrall, or a skill since taken away -- the first the commander
-	// holds that summons anything.
+	// that -- a thrall, a risen imp, or a skill since taken away -- the first the
+	// commander holds that summons anything.
 	UCataclysmSummonSkill* Skill = nullptr;
 	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Lost))
 	{
@@ -4453,10 +4460,12 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 	{
 		Skill = FirstHeldSummonSkill(Commander);
 	}
-	if (!Skill)
-	{
-		return nullptr;
-	}
+
+	// AND WITH NO SUMMON SKILL HELD AT ALL, SUMMON IMP'S KIND, read from its row as a risen imp is. The demonic tree
+	// rework of 2026-11-24 and the owner's answer that day: "Press-Ganged, Rekindled and the new The Swarm work for a
+	// Wand Ritualist (Dominion stays Staff-only)". A Wand holds no summon skill, so its only minions are risen imps
+	// and this used to replace none of them. It reserves what a risen imp reserves, and is refused when the pool has
+	// no room, as every replacement is.
 
 	// PRESS-GANGED FIRST, THEN REKINDLED FOR AN EXPLOSION, AND ONE AT MOST.
 	const auto Try = [&](bool bForExplosion) -> ACataclysmMinion*
@@ -4468,7 +4477,9 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 		{
 			return nullptr;
 		}
-		ACataclysmMinion* Made = Skill->SummonReplacementAt(Where);
+		ACataclysmMinion* Made = Skill
+			? Skill->SummonReplacementAt(Where)
+			: UCataclysmRisenImps::SummonImpKindFor(Commander, Where, /*bRisen=*/false);
 		if (Made)
 		{
 			Theirs->NoteMinionReplaced(bForExplosion, Every);
@@ -4516,6 +4527,35 @@ ACataclysmMinion* UCataclysmSummonSkill::SpawnOneAtAKill(AActor* Killer, const F
 	}
 	UCataclysmSummonSkill* Skill = FirstHeldSummonSkill(Killer);
 	return Skill ? Skill->SummonReplacementAt(Where) : nullptr;
+}
+
+const TCHAR* UCataclysmSummonSkill::KillSummonsMinionStat = TEXT("kill_summons_minion_where_it_fell");
+
+ACataclysmMinion* UCataclysmSummonSkill::SummonAtAKillFor(AActor* Commander, const AActor* Victim,
+														  const FVector& Where)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	// ASKED FIRST AND CHEAPLY: every death in the game reaches the caller, and a character without the keystone pays
+	// one stat read. NOTHING FOR A DEAD COMMANDER, as `SpawnOneAtAKill` makes nothing for a dead killer.
+	if (!Theirs || !IsValid(Commander) || UCataclysmSkillEffects::IsDead(Commander)
+		|| Theirs->StatForSkill(FName(KillSummonsMinionStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// "KILLS AN ENEMY": the victim must have been an enemy of the commander's. ASKED OF THE TEAMS AND NOT OF
+	// `UCataclysmTargeting::IsHostileTo`, which answers no for anything dead, and the victim is dead by now -- the
+	// reading `UCataclysmRisenImps::RiseOnNecrosisKill` takes for the same reason.
+	if (!Victim || UCataclysmTeams::AttitudeBetween(Commander, Victim) != ETeamAttitude::Hostile)
+	{
+		return nullptr;
+	}
+
+	UCataclysmSummonSkill* Skill = FirstHeldSummonSkill(Commander);
+	return Skill
+		? Skill->SummonReplacementAt(Where)
+		: UCataclysmRisenImps::SummonImpKindFor(Commander, Where, /*bRisen=*/false);
 }
 
 bool UCataclysmSummonSkill::Possess()

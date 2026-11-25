@@ -199,6 +199,10 @@ HOOKS = {
             "UCataclysmContagion::SpreadFromTheDying":
                 "this creature's Disease passing to the two nearest enemies, "
                 "and whatever a row adds to that, issue #919",
+            "UCataclysmDebuffs::PassCrippleAndWeakenOnDeath":
+                "a Cripple and a Weaken on this creature passing to the "
+                "nearest enemy of whoever applied them, for the Ravager's "
+                "Deeper Hurt, the Demonic tree rework of 2026-11-24",
             "UCataclysmEnemyModifiers::RallyAlliesOnDeath":
                 "a creature carrying the Horde Leader enemy modifier buffing "
                 "the rest of its pack as it dies, issue #742",

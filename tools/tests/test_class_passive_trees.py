@@ -219,8 +219,22 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: "reduced" rather than "less" because the percentages reaching a kind add.
 #: The Fervour node's sentence changed the same day and uses neither word,
 #: before or after.
-STRINGS_CONTAINING_THE_WORD = 45
-STRINGS_USING_IT_AS_A_MAGNITUDE = 26
+#:
+#: CONTAINING ROSE BY FOURTEEN AND MAGNITUDES BY SIX ON 2026-11-24, with the
+#: Demonic tree rework the project owner approved that day. Magnitudes: seven
+#: sentences gained one -- the Ravager's Wade In, Never Lets Go, Headlong and
+#: Nowhere to Run (the owner's answer to question 5, "more" for the vows'
+#: damage), the Masochist's Glutton ("1% more damage for every 10 Fervour"),
+#: and the Ritualist's Grip of the Pact ("10% less damage") and Wall of
+#: Servants ("1% less damage") -- and one lost it, Vessel of Plagues, whose "50%
+#: more damage to you" drawback is gone. Seven more rewritten sentences still
+#: carry one (Communion of Pain, Flesh Craver, Blood Tithe, Exsanguinate,
+#: Doctrine Made Flesh, Carnivore, Set the Pack On). The other eight new
+#: containing strings use the word as ordinary English: "50 or more Fervour"
+#: (Unflinching, Ceaseless, Deep Reserves, Nothing Moves You), "three or more
+#: enemies" (Plated, Thick Blood, Slow to Fall) and Thronged's "5 less Fervour".
+STRINGS_CONTAINING_THE_WORD = 59
+STRINGS_USING_IT_AS_A_MAGNITUDE = 32
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -278,7 +292,15 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #: retreating and states none either. No Ravager node outside a keystone now
 #: uses the wording at all, so the remaining nine are the empire tree's four,
 #: the Masochist's two, the Ritualist's two and the Saboteur's one.
-NODES_RELYING_ON_THE_WIDENED_RULE = 9
+#:
+#: THIRTEEN SINCE 2026-11-24, with the Demonic tree rework. Four joined, each
+#: wanting a separate multiplier by the owner's answers that day: the Ravager's
+#: The First Onslaught and The Final Onslaught (question 5: the vows' damage
+#: clauses use "more"), and the Ritualist's Grip of the Pact ("enemies ... deal
+#: 10% less damage", a cut the game applies as its own multiplier) and The
+#: Second Pact, whose new Wall of Servants takes "1% less damage for each
+#: minion you have, up to 20% less" (question 3).
+NODES_RELYING_ON_THE_WIDENED_RULE = 13
 
 
 def load(tree_name: str) -> dict:

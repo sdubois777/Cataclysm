@@ -1859,9 +1859,13 @@ public:
 	 * Press-Ganged made nothing. A cap eviction never comes here, so it never
 	 * triggers Rekindled.
 	 *
-	 * THE KIND IS THE SUMMON SKILL THAT MADE THE LOST MINION; for a thrall, which
-	 * no summon skill made, the first summon skill the commander holds that
-	 * summons anything. A commander with no summon skill gets nothing.
+	 * THE KIND IS THE SUMMON SKILL THAT MADE THE LOST MINION; for a thrall or a
+	 * risen imp, which no summon skill made, the first summon skill the commander
+	 * holds that summons anything. A COMMANDER WITH NO SUMMON SKILL GETS SUMMON
+	 * IMP'S KIND, read from its row as a risen imp is
+	 * (`UCataclysmRisenImps::SummonImpKindFor`), since the demonic tree rework of
+	 * 2026-11-24: the owner answered that day that Press-Ganged and Rekindled work
+	 * for a Wand Ritualist, which holds no summon skill. Until then it got nothing.
 	 *
 	 * @param Commander  who commanded what was lost
 	 * @param Lost       the minion or thrall, possibly already destroyed
@@ -1941,6 +1945,33 @@ public:
 	 * @return the minion spawned, or null
 	 */
 	static ACataclysmMinion* SpawnOneAtAKill(AActor* Killer, const FVector& Where);
+
+	/**
+	 * The Swarm, the Ritualist keystone, since the demonic tree rework of 2026-11-24: "When you or one of your minions
+	 * kills an enemy, a new minion is summoned where it fell, if your Fervour has room for it." A flag, flat 1, read
+	 * off the commander with no tags. No gameplay attribute.
+	 *
+	 * A STAT OF ITS OWN AND NOT `KillSpawnsMinionStat`, a judgement. That one is Reaper's Embrace's ten-piece, ruled
+	 * 2026-10-19 (C5-C7) to fire on the wearer's own kills only and to give nothing to a wearer holding no summon
+	 * skill; The Swarm's sentence answers both differently, so sharing the stat would have changed a set bonus
+	 * nobody re-ruled.
+	 */
+	static const TCHAR* KillSummonsMinionStat;
+
+	/**
+	 * Summon one minion for `Commander` at `Where`, for an enemy it or one of its minions killed there, when it holds
+	 * `KillSummonsMinionStat`. Called by `ACataclysmPlayerCharacter::OnSomethingDied` for a death whose killer is the
+	 * character or something it commands (`UCataclysmCommand::CommanderOf`), a thrall included.
+	 *
+	 * ITS FIRST SUMMON SKILL'S KIND, THROUGH `SummonReplacementAt`, so free and never by evicting; with NO SUMMON SKILL
+	 * HELD, SUMMON IMP'S KIND (`UCataclysmRisenImps::SummonImpKindFor`), so it works for a Wand Ritualist, the owner's
+	 * answer of 2026-11-24. LIMITED ONLY BY THE POOL'S ROOM: no interval, as the sentence states none. Nothing for a
+	 * commander that is dead or does not hold the flag, or for a victim that was no enemy of its.
+	 *
+	 * @param Victim  what died, asked whether it was an enemy of the commander's; null is refused
+	 * @return the minion summoned, or null
+	 */
+	static ACataclysmMinion* SummonAtAKillFor(AActor* Commander, const AActor* Victim, const FVector& Where);
 
 private:
 	void SpawnTick();

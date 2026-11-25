@@ -1054,6 +1054,13 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 													   Modifier.Scale))
 				{
 					Modifier.ScaleStep = Effect->ScaleStep;
+
+					// AND ITS CAP, IF THE ROW STATES ONE. The demonic tree
+					// rework of 2026-11-24: Wall of Servants' "up to 20%
+					// less" is 20 steps. Only on a scale this build knows, so
+					// a cap never lands on a modifier left at nothing below;
+					// never below nought, which means no cap.
+					Modifier.ScaleMaxSteps = FMath::Max(0, Effect->ScaleMaxSteps);
 				}
 				else
 				{

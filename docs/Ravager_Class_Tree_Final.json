@@ -45,7 +45,7 @@
       "data": {
         "kind": "basic",
         "name": "Thick Hide",
-        "description": "+1% increased Armor and +0.5% increased Maximum Health per point.",
+        "description": "+1% increased Armor and +1% increased Maximum Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -155,7 +155,7 @@
       "data": {
         "kind": "basic",
         "name": "Set Stance",
-        "description": "+1% increased Damage Reduction per point. At 4 points: you cannot be knocked back while an enemy is within 4 metres.",
+        "description": "+1% Damage Reduction per point. At 4 points: you cannot be knocked back while an enemy is within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -199,7 +199,7 @@
       "data": {
         "kind": "basic",
         "name": "Scarred Plate",
-        "description": "+1.5% increased Armor per point. At 4 points: +5% increased Crowd Control Resistance.",
+        "description": "+2% increased Armor per point. At 4 points: +10% Crowd Control Resistance.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -221,7 +221,7 @@
       "data": {
         "kind": "basic",
         "name": "Stoked",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "Your Fervour starts to decay 1 second later per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -265,7 +265,7 @@
       "data": {
         "kind": "keystone",
         "name": "Ironhide",
-        "description": "Your Armor cannot be ignored: armor penetration and piercing weapons remove none of it.",
+        "description": "Your Armor cannot be ignored, and Overwhelm takes only half as much from it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -375,7 +375,7 @@
       "data": {
         "kind": "basic",
         "name": "Rooted",
-        "description": "+3% increased Crowd Control Resistance per point.",
+        "description": "+3% increased Maximum Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -397,7 +397,7 @@
       "data": {
         "kind": "basic",
         "name": "Plated",
-        "description": "+1.5% increased Armor per point.",
+        "description": "+1% increased Armor per point, and another +1% per point while three or more enemies are within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -419,7 +419,7 @@
       "data": {
         "kind": "basic",
         "name": "Thick Blood",
-        "description": "+1% increased Life Leech per point.",
+        "description": "+1% Life Leech per point while three or more enemies are within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -441,7 +441,7 @@
       "data": {
         "kind": "basic",
         "name": "Slow to Fall",
-        "description": "+2% increased Health Regeneration per point.",
+        "description": "+1% Damage Reduction per point while three or more enemies are within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -463,7 +463,7 @@
       "data": {
         "kind": "basic",
         "name": "Braced",
-        "description": "+1% increased Damage Reduction per point.",
+        "description": "+1% increased Armor per point for every full 20 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -485,7 +485,7 @@
       "data": {
         "kind": "basic",
         "name": "Set Against It",
-        "description": "While you have 50 or more Fervour, you gain +2% increased Damage Reduction and +3% increased Attack Damage per point.",
+        "description": "While you have 50 or more Fervour, you gain +1% Damage Reduction and +3% increased Attack Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -507,7 +507,7 @@
       "data": {
         "kind": "basic",
         "name": "Second Wind",
-        "description": "+2% increased Health Regeneration per point.",
+        "description": "Each time your Fervour becomes full, restore 2% of your maximum health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -529,7 +529,7 @@
       "data": {
         "kind": "basic",
         "name": "Stubborn",
-        "description": "+3% increased Crowd Control Resistance per point.",
+        "description": "+5% Crowd Control Resistance per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -551,7 +551,7 @@
       "data": {
         "kind": "basic",
         "name": "Deep Wells",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "+2% increased Maximum Health and +2% increased Armor per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -595,7 +595,7 @@
       "data": {
         "kind": "keystone",
         "name": "Nothing Moves You",
-        "description": "Crowd control effects on you last half as long, and one ends entirely when you kill the enemy that applied it.",
+        "description": "Crowd control effects on you last half as long, and one ends entirely when you kill the enemy that applied it. While you have 50 or more Fervour, no crowd control can be applied to you.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -617,7 +617,7 @@
       "data": {
         "kind": "keystone",
         "name": "Weight Bearing",
-        "description": "Your Maximum Health also grants Armor: 1 Armor for every 10 maximum health you have.",
+        "description": "Your Maximum Health also grants Armor: 1 Armor for every 4 maximum health you have.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -705,7 +705,7 @@
       "data": {
         "kind": "basic",
         "name": "Reach",
-        "description": "+2% increased Area of Effect per point.",
+        "description": "+1% increased Area of Effect per point for each enemy within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Crushing Weight",
-        "description": "+2% increased Attack Damage per point.",
+        "description": "Your melee hits ignore 2% of enemy Armor per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -793,7 +793,7 @@
       "data": {
         "kind": "basic",
         "name": "Swing Through",
-        "description": "+2% increased Area of Effect per point.",
+        "description": "You gain 1 Fervour per point whenever an enemy dies within 10 metres of you.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -837,7 +837,7 @@
       "data": {
         "kind": "basic",
         "name": "Wind Up",
-        "description": "+2% increased Attack Damage per point.",
+        "description": "+3% Cooldown Reduction per point for Heavy skills.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -859,7 +859,7 @@
       "data": {
         "kind": "basic",
         "name": "Whirl",
-        "description": "+2% increased Attack Speed per point.",
+        "description": "+3% increased Area of Effect per point for Heavy skills. At 6 points: your Heavy skills sweep at least a half circle.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -991,7 +991,7 @@
       "data": {
         "kind": "basic",
         "name": "Deeper Hurt",
-        "description": "+3% increased duration of Cripple and Weaken you apply per point.",
+        "description": "When an enemy you have Crippled or Weakened dies, its Cripple and Weaken pass to the nearest enemy within 1 metre per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1035,7 +1035,7 @@
       "data": {
         "kind": "basic",
         "name": "Dragging Weight",
-        "description": "+3% increased magnitude of Cripple you apply per point.",
+        "description": "+5% increased magnitude of Cripple you apply per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "basic",
         "name": "Sapped",
-        "description": "+3% increased magnitude of Weaken you apply per point.",
+        "description": "+5% increased magnitude of Weaken you apply per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1123,7 +1123,7 @@
       "data": {
         "kind": "basic",
         "name": "Wearing Them Down",
-        "description": "+2% increased Damage Reduction per point against enemies you have Weakened.",
+        "description": "+1% Damage Reduction per point against enemies you have Weakened.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1263,15 +1263,15 @@
         "options": [
           {
             "name": "Wade In",
-            "description": "Each enemy within 4 metres of you grants 3% increased Armor and 3% increased Attack Damage."
+            "description": "Each enemy within 4 metres of you grants 2% more Attack Damage and 3% increased Armor."
           },
           {
             "name": "Never Lets Go",
-            "description": "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20% increased damage to Crippled enemies."
+            "description": "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20% more damage to Crippled enemies."
           },
           {
             "name": "Headlong",
-            "description": "+25% increased Movement Speed, and your first melee attack after moving 5 metres deals 50% increased damage."
+            "description": "+25% increased Movement Speed. Your first melee attack after moving 5 metres deals 50% more damage."
           }
         ],
         "selectedOption": null,
@@ -1310,7 +1310,7 @@
           },
           {
             "name": "Long Hold",
-            "description": "Killing an enemy restores 5% of your maximum health."
+            "description": "Killing an enemy restores 1% of your maximum health for each enemy within 4 metres of you."
           }
         ],
         "selectedOption": null,
@@ -1344,8 +1344,8 @@
             "description": "Enemies within 4 metres of you have 15% reduced Movement Speed and 15% reduced Attack Speed."
           },
           {
-            "name": "Weight Against Them",
-            "description": "Your Armor is also offence: +1% increased Attack Damage for every 2% of Damage Reduction you have."
+            "name": "Thronged",
+            "description": "Your Ultimate costs 5 less Fervour for each enemy within 4 metres of you when you use it."
           },
           {
             "name": "Shoulder Through",
@@ -1380,7 +1380,7 @@
         "options": [
           {
             "name": "Nowhere to Run",
-            "description": "Enemies within 8 metres of you cannot move away from you. They may move toward you or around you, but not further away. Your Fervour does not decay while any enemy is held this way."
+            "description": "Enemies within 8 metres of you cannot move away from you. They may move toward you or around you, but not further away. Your Fervour does not decay while any enemy is held this way, and you deal 2% more damage for each enemy within 8 metres of you."
           },
           {
             "name": "Both Hands Full",
@@ -1411,7 +1411,7 @@
       "data": {
         "kind": "basic",
         "name": "Never Still",
-        "description": "+1% increased Movement Speed per point.",
+        "description": "+1% increased Movement Speed per point, and another +1% per point while out of combat.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -1433,7 +1433,7 @@
       "data": {
         "kind": "basic",
         "name": "Hunter's Pace",
-        "description": "+1% increased Movement Speed and +1% increased Attack Speed per point.",
+        "description": "For 4 seconds after you use a Movement skill, +2% increased Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1455,7 +1455,7 @@
       "data": {
         "kind": "basic",
         "name": "Blood Drinker",
-        "description": "+1% increased Life Leech per point.",
+        "description": "+1% Life Leech per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1477,7 +1477,7 @@
       "data": {
         "kind": "basic",
         "name": "Onset",
-        "description": "+2% increased Attack Damage per point while an enemy is within 4 metres.",
+        "description": "Your first hit against each enemy ignores 5% of its Armor per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1499,7 +1499,7 @@
       "data": {
         "kind": "basic",
         "name": "Pressing",
-        "description": "+1% increased Movement Speed per point.",
+        "description": "While your Fervour is full, +3% increased Movement Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1543,7 +1543,7 @@
       "data": {
         "kind": "keystone",
         "name": "Relentless",
-        "description": "Your Movement Speed cannot be reduced by any effect.",
+        "description": "Your Movement Speed and Attack Speed cannot be reduced by any effect, and you gain 1% increased Attack Speed for every 2% increased Movement Speed you have.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1565,7 +1565,7 @@
       "data": {
         "kind": "basic",
         "name": "Held Ground",
-        "description": "+2% increased Fervour gained from enemies near you per point.",
+        "description": "+5% increased Fervour gained per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1587,7 +1587,7 @@
       "data": {
         "kind": "basic",
         "name": "Stoked Further",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "+5 maximum Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1609,7 +1609,7 @@
       "data": {
         "kind": "basic",
         "name": "Banked Ruin",
-        "description": "+1% increased Damage Reduction per point for every full 25 Fervour you currently hold.",
+        "description": "+1% increased Attack Speed per point for every full 20 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1653,7 +1653,7 @@
       "data": {
         "kind": "basic",
         "name": "Sustained Assault",
-        "description": "+1% increased Life Leech per point.",
+        "description": "After 5 seconds in combat, +3% increased Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1697,7 +1697,7 @@
       "data": {
         "kind": "keystone",
         "name": "No Ground Given",
-        "description": "Your Fervour does not decay while an enemy is within 8 metres of you, rather than 4.",
+        "description": "Your Fervour does not decay.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

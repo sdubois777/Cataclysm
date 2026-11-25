@@ -45,7 +45,7 @@
       "data": {
         "kind": "basic",
         "name": "Pain Tolerance",
-        "description": "+1% increased Maximum Health and +0.5% increased Armor per point.",
+        "description": "+1% increased Maximum Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -67,7 +67,7 @@
       "data": {
         "kind": "basic",
         "name": "Willing Flesh",
-        "description": "+2% increased Health Regeneration per point.",
+        "description": "+1% increased Health Regeneration per point for every 10% of your maximum health missing.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -88,8 +88,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Cataclysmic Resonance",
-        "description": "+1% increased damage per point for 5 seconds after you take damage of a Cataclysm type other than Demonic.",
+        "name": "Gathered Pain",
+        "description": "+1% increased damage per point for every full 25 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -111,7 +111,7 @@
       "data": {
         "kind": "basic",
         "name": "Brutal Determination",
-        "description": "+0.4% Life Leech per point. The Masochist has no Life Leech of its own, so this is what the tree's other Life Leech nodes increase.",
+        "description": "+1% Life Leech for every 2 points. The Masochist has no Life Leech of its own, so this is what the tree's other Life Leech nodes increase.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -133,7 +133,7 @@
       "data": {
         "kind": "basic",
         "name": "Echoes of Agony",
-        "description": "Damage taken from damage over time effects is reduced by 1% per point.",
+        "description": "Damage taken from damage over time effects is reduced by 2% per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -155,7 +155,7 @@
       "data": {
         "kind": "basic",
         "name": "Open Wounds",
-        "description": "+2% increased Fervour gained from health lost to damage per point.",
+        "description": "+5% increased Fervour gained from health lost to damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -176,11 +176,11 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Blood Price",
-        "description": "+2% increased Fervour gained from health spent as an ability cost per point.",
+        "name": "Deeper Cuts",
+        "description": "Your skills also cost 1% of your current health for every 2 points, in addition to any other cost. This cost generates Fervour like any other.",
         "currentPoints": 0,
         "color": "#94a3b8",
-        "maxPoints": 8
+        "maxPoints": 10
       },
       "measured": {
         "width": 16,
@@ -199,7 +199,7 @@
       "data": {
         "kind": "basic",
         "name": "Scar Tissue",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "+5 maximum Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -221,7 +221,7 @@
       "data": {
         "kind": "basic",
         "name": "Hardened Nerves",
-        "description": "+2% increased Crowd Control Resistance per point.",
+        "description": "+4 Crowd Control Resistance per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -243,7 +243,7 @@
       "data": {
         "kind": "basic",
         "name": "Retributive Instinct",
-        "description": "+3% increased Retaliation per point.",
+        "description": "+2% Retaliation per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -265,7 +265,7 @@
       "data": {
         "kind": "keystone",
         "name": "Communion of Pain",
-        "description": "While your Fervour is at maximum you deal 20% more damage and take 20% more damage.",
+        "description": "While you have 100 or more Fervour, you deal 20% more damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -287,7 +287,7 @@
       "data": {
         "kind": "keystone",
         "name": "Sanguine Ledger",
-        "description": "Health regeneration no longer removes Fervour, but your Health Regeneration is reduced by 50% (multiplicative).",
+        "description": "Healing never takes your Fervour below 50.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -330,8 +330,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Iron Hide",
-        "description": "+3% increased Armor per point.",
+        "name": "Provoked",
+        "description": "+2% increased melee damage per point for 4 seconds after you are hit.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -353,7 +353,7 @@
       "data": {
         "kind": "basic",
         "name": "Bulk",
-        "description": "+1% increased Maximum Health per point.",
+        "description": "+1% increased Maximum Health per point. At 6 points: +1% Life Leech.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -375,7 +375,7 @@
       "data": {
         "kind": "basic",
         "name": "Reprisal",
-        "description": "+3% increased Retaliation per point.",
+        "description": "Your Retaliation is increased by 1% per point for each enemy within 4 metres of you.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -441,7 +441,7 @@
       "data": {
         "kind": "basic",
         "name": "Thirst for Pain",
-        "description": "While you are Bleeding, +2% increased Attack Speed per point.",
+        "description": "+1% increased Attack Speed per point for each stack of Bloodlust you have.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -463,7 +463,7 @@
       "data": {
         "kind": "basic",
         "name": "Battle-Scarred",
-        "description": "+2% increased Armor per point for each unique debuff on you.",
+        "description": "While you are at or below 50% health, +1% Life Leech for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -485,7 +485,7 @@
       "data": {
         "kind": "basic",
         "name": "Undying Hunger",
-        "description": "+3% increased Life Leech per point.",
+        "description": "+5% increased Life Leech per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -506,8 +506,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Mutilation Mastery",
-        "description": "Your melee critical strikes have a 5% chance per point to apply Bleeding.",
+        "name": "Ravenous",
+        "description": "+1% increased melee damage per point for every 2% of Life Leech you have.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -529,7 +529,7 @@
       "data": {
         "kind": "basic",
         "name": "Gorge",
-        "description": "+2% increased Fervour gained from health lost to damage per point.",
+        "description": "You gain 1 Fervour whenever an enemy dies within 10 metres of you, per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -551,7 +551,7 @@
       "data": {
         "kind": "basic",
         "name": "Unflinching",
-        "description": "+2% increased Crowd Control Resistance per point.",
+        "description": "While you have 50 or more Fervour, +3% increased Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -617,7 +617,7 @@
       "data": {
         "kind": "keystone",
         "name": "Flesh Craver",
-        "description": "You gain 30% more Fervour from health lost to damage, and 50% less Fervour from health spent as an ability cost.",
+        "description": "30% more Fervour gained from health lost to damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -639,7 +639,7 @@
       "data": {
         "kind": "basic",
         "name": "Stigmata",
-        "description": "+2% increased damage over time damage per point.",
+        "description": "When you set an enemy alight, you are set alight as well for 4 seconds, taking 1% of your maximum health per second. +3% increased damage over time per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -661,7 +661,7 @@
       "data": {
         "kind": "basic",
         "name": "Lingering Hurt",
-        "description": "+2% increased damage over time duration per point.",
+        "description": "+4% increased damage over time duration per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -683,7 +683,7 @@
       "data": {
         "kind": "basic",
         "name": "Penitent",
-        "description": "+1% increased Maximum Health per point.",
+        "description": "+2% increased Health Regeneration per point for each debuff on you.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -705,7 +705,7 @@
       "data": {
         "kind": "basic",
         "name": "Endurance in Suffering",
-        "description": "For each unique debuff on you, +1% increased damage and +0.5% increased Damage Reduction per point.",
+        "description": "+2% increased damage per point for each debuff on you.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Wound Channeling",
-        "description": "Damage from debuffs on you is increased by 1% per point, and you deal 1% increased damage per point to enemies carrying a debuff you also carry.",
+        "description": "You deal 3% increased damage per point to enemies carrying a debuff you also carry.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -749,7 +749,7 @@
       "data": {
         "kind": "basic",
         "name": "Symphony of Pain",
-        "description": "Debuffs on you last 2% longer per point, and their effect on you is reduced by 1% per point.",
+        "description": "Debuffs on you last 5% longer per point, and the damage they deal you is reduced by 2% per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -771,7 +771,7 @@
       "data": {
         "kind": "basic",
         "name": "Contagious Torment",
-        "description": "When a debuff on you deals damage, enemies within 6 metres have a 1% chance per point to receive a random debuff you carry.",
+        "description": "When a debuff on you deals damage, enemies within 6 metres have a 5% chance per point to receive a random debuff you carry.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -793,7 +793,7 @@
       "data": {
         "kind": "basic",
         "name": "Empathic Link",
-        "description": "When an enemy dies, its debuffs have a 2% chance per point to pass to a random enemy within 6 metres.",
+        "description": "When an enemy dies, its debuffs have a 10% chance per point to pass to a random enemy within 6 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -815,7 +815,7 @@
       "data": {
         "kind": "basic",
         "name": "Beacon of Despair",
-        "description": "You radiate an aura that applies a random debuff to enemies within 6 metres every 3 seconds. The duration of those debuffs is increased by 4% per point.",
+        "description": "You radiate an aura that applies a random debuff to enemies within 6 metres every 3 seconds, lasting 4% longer per point. You deal 1% increased damage per point to enemies for each debuff they carry.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -837,7 +837,7 @@
       "data": {
         "kind": "basic",
         "name": "Shared Agony",
-        "description": "+2% increased Fervour gained from health lost to damage over time per point.",
+        "description": "+5% increased Fervour gained from health lost to damage over time per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -859,7 +859,7 @@
       "data": {
         "kind": "basic",
         "name": "Ceaseless",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "While you have 50 or more Fervour, +3% increased damage over time per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -881,7 +881,7 @@
       "data": {
         "kind": "keystone",
         "name": "Vessel of Plagues",
-        "description": "Debuffs on you last 50% longer, and debuffs on you deal 50% more damage to you.",
+        "description": "Debuffs on you last 50% longer, and each debuff on you counts twice for everything that counts the debuffs on you.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -947,7 +947,7 @@
       "data": {
         "kind": "basic",
         "name": "Quickened",
-        "description": "+1% increased Movement Speed per point.",
+        "description": "+1% increased Movement Speed per point for every 10% of your maximum health missing.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -969,7 +969,7 @@
       "data": {
         "kind": "basic",
         "name": "Razor's Edge",
-        "description": "+3% increased Critical Strike Multiplier per point.",
+        "description": "While you are at or below 50% health, +2% increased damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -991,7 +991,7 @@
       "data": {
         "kind": "basic",
         "name": "Defiance",
-        "description": "+2% increased Retaliation per point.",
+        "description": "+1% Retaliation per point for every 25% of your maximum health missing.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1035,7 +1035,7 @@
       "data": {
         "kind": "basic",
         "name": "Last Stand",
-        "description": "While at or below 20% health, +3% increased Critical Strike Chance per point.",
+        "description": "While you are at or below 35% health, +1% Damage Reduction per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1057,7 +1057,7 @@
       "data": {
         "kind": "basic",
         "name": "The Catalyst",
-        "description": "While at or below 5% health, your skills have a 5% chance per point not to go on cooldown.",
+        "description": "While you are at or below 35% health, your skills have a 4% chance per point not to go on cooldown.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1079,7 +1079,7 @@
       "data": {
         "kind": "basic",
         "name": "Desperate Measures",
-        "description": "While at or below 50% health, +1% increased Movement Speed per point.",
+        "description": "While you are at or below 50% health, +3% increased Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "basic",
         "name": "The Breaking Point",
-        "description": "Dropping below 50% health converts all damage you take into Bleeding over 5 seconds. The conversion lasts 3 seconds, increased by 5% per point, and cannot happen more than once every 10 seconds.",
+        "description": "Dropping below 50% health converts all damage you take into Bleeding over 5 seconds. The conversion lasts 3 seconds, and 1 second longer for every 2 points, and cannot happen more than once every 10 seconds.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1123,7 +1123,7 @@
       "data": {
         "kind": "basic",
         "name": "Unstable Aura",
-        "description": "While at or below 10% health, you release a nova every 5 seconds dealing damage equal to 1% of your missing health per point to enemies within 6 metres.",
+        "description": "While you are at or below 50% health, you release a nova every 3 seconds dealing 10% of your weapon damage per point to enemies within 6 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1145,7 +1145,7 @@
       "data": {
         "kind": "basic",
         "name": "Bloodletting",
-        "description": "+2% increased Fervour gained from health spent as an ability cost per point.",
+        "description": "While you are at or below 50% health, you gain 1 Fervour per second for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1167,7 +1167,7 @@
       "data": {
         "kind": "basic",
         "name": "Threadbare",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "While you are at or below 50% health, Fervour removed by your health regeneration is reduced by 10% per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1267,7 +1267,7 @@
           },
           {
             "name": "Reprisal Wave",
-            "description": "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you."
+            "description": "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you, and 1 metre further for every 25 Fervour you hold."
           },
           {
             "name": "Stigmatic",
@@ -1306,7 +1306,7 @@
           },
           {
             "name": "Feeding Wound",
-            "description": "Your life leech applies to your retaliation damage as well as to your attacks."
+            "description": "Your life leech applies to your retaliation damage as well as to your attacks, and your Life Leech is increased by 1% for every 2 Fervour you hold."
           },
           {
             "name": "Ceaseless Penance",
@@ -1345,11 +1345,11 @@
           },
           {
             "name": "Glutton",
-            "description": "Your retaliation damage is increased by 1% for every 1% of life leech you have."
+            "description": "You deal 1% more damage for every 10 Fervour you hold."
           },
           {
             "name": "Doctrine Made Flesh",
-            "description": "Each debuff on you grants 1% more damage and reduces the damage that debuff deals to you by 10%."
+            "description": "Each debuff on you grants 3% more damage and reduces the damage that debuff deals to you by 10%."
           }
         ],
         "selectedOption": null,
@@ -1384,7 +1384,7 @@
           },
           {
             "name": "Carnivore",
-            "description": "Every hit you take grants a stack of Carnage. Carnage has no maximum, and each stack grants 2% more damage."
+            "description": "Every hit you take grants a stack of Carnage. Carnage has no maximum, each stack grants 2% more damage, and each stack lasts 1 second longer for every 10 Fervour you hold."
           },
           {
             "name": "Vessel Unbroken",
@@ -1411,7 +1411,7 @@
       "data": {
         "kind": "basic",
         "name": "Blood Coin",
-        "description": "+2% increased Fervour gained from health spent as an ability cost per point.",
+        "description": "Each skill you cast grants 1 Fervour for every 3 points.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 12
@@ -1432,11 +1432,11 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Deeper Cuts",
-        "description": "Your skills also cost 0.25% of your maximum health per point, in addition to any other cost. This cost generates Fervour like any other.",
+        "name": "Blood Price",
+        "description": "+5% increased Fervour gained from health spent as an ability cost per point.",
         "currentPoints": 0,
         "color": "#cbd5e1",
-        "maxPoints": 10
+        "maxPoints": 8
       },
       "measured": {
         "width": 16,
@@ -1521,7 +1521,7 @@
       "data": {
         "kind": "basic",
         "name": "Rolling Debt",
-        "description": "Paying a health cost while one is still owed extends the delay on what is owed by 0.5 seconds per point, to a maximum of 3 seconds.",
+        "description": "Paying a health cost while one is still owed extends the delay on what is owed by 1 second for every 2 points, to a maximum of 3 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 6
@@ -1609,7 +1609,7 @@
       "data": {
         "kind": "basic",
         "name": "Grand Tithe",
-        "description": "A skill whose health cost is above 10% of your maximum health deals 4% increased damage per point.",
+        "description": "A skill whose health cost is above 2% of your maximum health deals 4% increased damage per point.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 6
@@ -1631,7 +1631,7 @@
       "data": {
         "kind": "keystone",
         "name": "Exsanguinate",
-        "description": "Every skill costs an additional 15% of your current health, and every skill deals 40% more damage. A cost taken from current health cannot reduce it below 1.",
+        "description": "A skill that costs health deals 30% more damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1675,7 +1675,7 @@
       "data": {
         "kind": "basic",
         "name": "Deep Reserves",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "While you have 50 or more Fervour, +3% increased damage per point.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 6
@@ -1697,7 +1697,7 @@
       "data": {
         "kind": "keystone",
         "name": "Blood Tithe",
-        "description": "You gain 30% more Fervour from health spent as an ability cost, and 50% less Fervour from health lost to damage.",
+        "description": "30% more Fervour gained from health spent as an ability cost.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

@@ -94,7 +94,9 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     DIFFER, which is what shows `Probes` did not match another table's tail."""
     sizes = {accessor: len(table(accessor)) for accessor in TABLES}
 
-    assert sizes["ConditionedProbes"] == 24, sizes
+    # 25 SINCE 2026-11-24, when the Masochist tree rework stated
+    # `fervour_lost_to_healing` under a condition (Threadbare).
+    assert sizes["ConditionedProbes"] == 25, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes

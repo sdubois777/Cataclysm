@@ -397,12 +397,31 @@ float UCataclysmGameplayAbility::FervourCostFor(
 	// refused press's line -- so they cannot disagree.
 	// AND THE SKILL'S LEVEL LOWERS EITHER, here and nowhere else. Issue #2802: Subjugate's 30 is level 1's figure.
 	const float LevelCost = static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this));
+	float Cost = 0.0f;
 	if (FervourCostOverride >= 0.0f)
 	{
-		return FervourCostOverride * LevelCost;
+		Cost = FervourCostOverride * LevelCost;
 	}
-	EnsureSlotNumbersLoaded();
-	return FMath::Max(0.0f, SlotFervourCost) * LevelCost;
+	else
+	{
+		EnsureSlotNumbersLoaded();
+		Cost = FMath::Max(0.0f, SlotFervourCost) * LevelCost;
+	}
+
+	// AND WHAT A ROW TAKES OFF IT, LAST, FLOORED AT NOUGHT. The Ravager tree rework of 2026-11-24, Thronged: "Your
+	// Ultimate costs 5 less Fervour for each enemy within 4 metres of you when you use it". ASKED, with this skill's
+	// tags and the character's state, because the row is scaled by the enemies standing near and a scaled row is never
+	// folded into an attribute; the count is taken at the moment the cost is read, which is when it is checked and
+	// when it is paid. A fallback of nought, so a character with no such row pays exactly what it paid before. Taken
+	// off AFTER the level's factor, because the sentence states Fervour and not a share of the cost. A cost of nought
+	// is not reduced, so nothing is asked for a skill with no Fervour cost.
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (Cataclysm && Cost > 0.0f)
+	{
+		const float Less = Cataclysm->StatForSkill(FName(UltimateFervourCostReductionStat), SkillTagsForStats(), 0.0f);
+		Cost = FMath::Max(0.0f, Cost - FMath::Max(0.0f, Less));
+	}
+	return Cost;
 }
 
 bool UCataclysmGameplayAbility::FervourCovers(
@@ -421,6 +440,8 @@ const TCHAR* UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat =
 	TEXT("mana_cost_as_current_health_percent");
 const TCHAR* UCataclysmGameplayAbility::ManaCostAsMaximumManaPercentStat =
 	TEXT("mana_cost_as_maximum_mana_percent");
+const TCHAR* UCataclysmGameplayAbility::UltimateFervourCostReductionStat =
+	TEXT("ultimate_fervour_cost_reduction");
 const TCHAR* UCataclysmGameplayAbility::ManaCostAlsoTakenFromHealthPercentStat =
 	TEXT("mana_cost_also_taken_from_health_percent");
 

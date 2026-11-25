@@ -143,6 +143,37 @@ public:
 	static int32 CountOnActor(const AActor* Actor);
 
 	/**
+	 * Above nought, each debuff on its holder counts twice for everything that
+	 * counts the debuffs on it. The Masochist's Vessel of Plagues, reworked by
+	 * the project owner's approval of 2026-11-24: "Debuffs on you last 50%
+	 * longer, and each debuff on you counts twice for everything that counts the
+	 * debuffs on you." A yes or a no, with no gameplay attribute.
+	 */
+	static const TCHAR* CountTwiceStat;
+
+	/**
+	 * Whether this character holds `CountTwiceStat`. Vessel of Plagues.
+	 *
+	 * READ FROM THE RECORDED LINE WITH NO STATE IN HAND, AND NOT THROUGH
+	 * `StatForSkill`, because its one caller is
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions`, which is what
+	 * `StatForSkill` calls: asking the pipeline here would re-enter it. The
+	 * cost is that a row stating the switch under a condition would be refused,
+	 * since no state is handed over; the one row that states it carries none.
+	 */
+	static bool CountsTwiceOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The debuffs this character is carrying AS THE NODES THAT COUNT THEM SEE
+	 * THEM: `CountOn`, twice over for a holder of Vessel of Plagues. Read by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` for the pipeline's
+	 * `debuffs_carried` scale, which is how every node paying per debuff on you
+	 * counts them. `CountOn` stays the plain count of distinct debuffs, which
+	 * the spreading nodes choose from and the console prints.
+	 */
+	static int32 CountCarriedOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Cleanse a character: every timed effect on it that grants a tag under `DebuffRoots` and that somebody else put
 	 * there is removed, and the cleanse is announced on `UCataclysmCombatEvents::OnCleansed` so the dungeon game mode
 	 * can clear the stacks whose rows say they are cleansed. Ruled by the coordinating session under the owner's
@@ -461,6 +492,48 @@ public:
 	 *         keystone
 	 */
 	static int32 HoldAppliedNearbyStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * `cripple_and_weaken_spread_on_death_metres`: the radius, in metres, within
+	 * which a Cripple or a Weaken this character applied passes on when its
+	 * carrier dies. The Ravager tree rework of 2026-11-24, Deeper Hurt: "When an
+	 * enemy you have Crippled or Weakened dies, its Cripple and Weaken pass to
+	 * the nearest enemy within 1 metre per point." Flat, a metre a point; above
+	 * nought is held. No gameplay attribute, so
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* SpreadOnDeathMetresStat;
+
+	/**
+	 * Pass each Cripple and Weaken `Dying` carries to the enemy nearest its body,
+	 * for every applier holding `SpreadOnDeathMetresStat`, within that applier's
+	 * radius. The Ravager tree rework of 2026-11-24, Deeper Hurt.
+	 *
+	 * ONLY WHAT A HOLDER APPLIED: an effect is matched by its instigator, the
+	 * rule `HoldAppliedNearbyStep` keeps, so a Cripple from anyone without the
+	 * node dies with its carrier.
+	 *
+	 * THE NEAREST ENEMY OF THE APPLIER, measured from the body, never the body
+	 * itself and never one already carrying that effect: a pass is spent on an
+	 * enemy it is new to, the ruling of 2026-10-06 for an ailment that spreads
+	 * from the dying. Cripple and Weaken are passed separately, so they may land
+	 * on two different enemies only when the nearer one already carries one of
+	 * them.
+	 *
+	 * AT THE FIGURE THE APPLICATION STATED, so a Cripple strengthened by chance
+	 * past certainty passes as strong as it was, and FOR THE EFFECT'S OWN
+	 * DESIGNED DURATION, the rule `UCataclysmSkillEffects::CopyDebuffsTo` keeps
+	 * for a copy; the applier's duration rows are not read again, as
+	 * `UCataclysmAilments` says of every spread. CREDITED TO THE APPLIER, so the
+	 * passed effect is still "yours" and passes on again when its new carrier
+	 * dies.
+	 *
+	 * CALLED FROM THE ENEMY'S DEATH, outside the killer's block, because the
+	 * sentence asks who applied the effect and not who landed the last blow.
+	 *
+	 * @return how many effects were passed
+	 */
+	static int32 PassCrippleAndWeakenOnDeath(AActor* Dying);
 
 	/**
 	 * Ground Down's radius in metres and its share of both speeds, the

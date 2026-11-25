@@ -70,13 +70,55 @@ public:
 	static AActor* CurserOf(const AActor* Dying);
 
 	/**
+	 * Whether `Carrier` has a `Status.Debuff.*` effect running that `Curser` laid: its instigator is `Curser`. The
+	 * question `target_carries_your_curse` asks, for the demonic tree rework of 2026-11-24 (Subjugator, Long
+	 * Servitude).
+	 *
+	 * THE SAME DEFINITION OF A CURSE AS `CurserOf`, every `Status.Debuff.*` (ruled 2026-09-27), and THE SAME RECORD OF
+	 * WHO LAID IT, the effect's instigator. It does NOT ask the rule `curse_death_raises_imp`: "your curse" is about
+	 * who laid it, and a curse is yours whether or not its carrier will rise. False for either actor null, a carrier
+	 * with no ability system, or one carrying only other people's curses.
+	 */
+	static bool CarriesCurseLaidBy(const AActor* Carrier, const AActor* Curser);
+
+	/**
 	 * Raise the imp for a creature that has just died, if a curse and the
 	 * curser's pool allow it. Called once per death from
 	 * `ACataclysmEnemyCharacter::HandleDeath`.
 	 *
-	 * @return the imp, or null when nothing rose
+	 * AND MORE THAN ONE WHEN THE CURSER HOLDS `ExtraImpsStat`: Open Channel, the First Pact's third option since the
+	 * demonic tree rework of 2026-11-24, "An enemy that dies carrying your curse raises two imps rather than one". Each
+	 * imp reserves its own Fervour and is refused on its own when the pool has no room, so a pool with room for one
+	 * raises one.
+	 *
+	 * @return the first imp, or null when nothing rose
 	 */
 	static ACataclysmMinion* RiseOnDeath(AActor* Dying);
+
+	/**
+	 * How many imps a cursed death raises beyond the first, on the curser. Open Channel's row is a flat 1. Whole imps,
+	 * rounded down; nought or less raises the one the starting node raises. No gameplay attribute and no base. The
+	 * demonic tree rework of 2026-11-24.
+	 */
+	static const TCHAR* ExtraImpsStat;
+
+	/** How far from the first an extra imp from one death stands, so two are not made in one place. */
+	static constexpr float ExtraImpSpacingCm = 100.0f;
+
+	/**
+	 * Make one of Summon Imp's kind for `Commander` at `Where`, read from Summon Imp's row as a risen imp is: its type,
+	 * lifetime, burning and explosion radius, reserving Summon Imp's Fervour after Crowned and every other reduction.
+	 * Null, and nothing made, when the pool has no room for that reserve, when the row cannot be found, or when the
+	 * commander is gone.
+	 *
+	 * WHAT EVERY RITUALIST RULE THAT MAKES A MINION WITH NO SUMMON SKILL IN HAND USES, the demonic tree rework of
+	 * 2026-11-24 and the owner's answer that day: "Press-Ganged, Rekindled and the new The Swarm work for a Wand
+	 * Ritualist (Dominion stays Staff-only)". A risen imp (`RiseOnDeath`), Press-Ganged's replacement and The Swarm's
+	 * kill when no summon skill is held (`UCataclysmSummonSkill::ReplaceLost`, `SummonAtAKillFor`).
+	 *
+	 * @param bRisen  whether it rose from a cursed death, which shows "Risen" over it (`RisenAtSeconds`)
+	 */
+	static ACataclysmMinion* SummonImpKindFor(AActor* Commander, const FVector& Where, bool bRisen);
 
 	/** Whether this actor is a risen imp still inside its "Risen" label time. */
 	static bool ShowsRisen(const AActor* Actor);

@@ -18,6 +18,8 @@ const TCHAR* UCataclysmFervour::LostToHealingStat =
 	TEXT("fervour_lost_to_healing");
 const TCHAR* UCataclysmFervour::LossSuppressedStat =
 	TEXT("fervour_loss_suppressed");
+const TCHAR* UCataclysmFervour::FloorAgainstHealingStat =
+	TEXT("fervour_floor_against_healing");
 const TCHAR* UCataclysmFervour::PerSecondStat = TEXT("fervour_per_second");
 const TCHAR* UCataclysmFervour::PerCastStat = TEXT("fervour_per_cast");
 const TCHAR* UCataclysmFervour::OnDroppingLowStat =
@@ -39,6 +41,10 @@ const TCHAR* UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat =
 const TCHAR* UCataclysmFervour::PerEnemyHitStat = TEXT("fervour_per_enemy_hit");
 const TCHAR* UCataclysmFervour::HealthRestoredOnKillAtNoCostStat =
 	TEXT("health_restored_on_kill_at_no_cost");
+const TCHAR* UCataclysmFervour::DecayGraceSecondsStat =
+	TEXT("fervour_decay_grace_seconds");
+const TCHAR* UCataclysmFervour::HealthRestoredOnFullStat =
+	TEXT("health_restored_on_fervour_full");
 const TCHAR* UCataclysmFervour::OnEnemyDeathNearbyStat =
 	TEXT("fervour_on_enemy_death_nearby");
 
@@ -209,6 +215,29 @@ bool UCataclysmFervour::LossIsSuppressed(
 		> 0.0f;
 }
 
+float UCataclysmFervour::FloorAgainstHealing(
+	const UAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& Healing)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm
+		|| !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO CLASS RESOURCE SET MEANS NO FERVOUR TO KEEP, for the reason
+		// `LossIsSuppressed` above gives.
+		return 0.0f;
+	}
+
+	// A FALLBACK OF ZERO, for the reason `LossIsSuppressed` gives: the stat has
+	// no gameplay attribute, so nothing recorded for it means no floor.
+	//
+	// FLOORED AT ZERO ITSELF, because a negative floor would be a floor below
+	// an empty pool, which is no floor; nothing states one.
+	return FMath::Max(
+		0.0f, Cataclysm->StatForSkill(FName(FloorAgainstHealingStat), Healing, 0.0f));
+}
+
 float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 							  FName Stat, float HealthChanged,
 							  const FGameplayTagContainer& Context, float Sign)
@@ -285,7 +314,18 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	// back by the helper exactly as it came.
 	const float Moved = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
 		AbilitySystem, Sign * Amount);
-	const float Wanted = FMath::Clamp(Before + Moved, 0.0f,
+
+	// AND HEALING STOPS AT A FLOOR A ROW STATES. Sanguine Ledger, reworked by
+	// the project owner's approval of 2026-11-24: "Healing never takes your
+	// Fervour below 50." Only the removing direction, for the reason the
+	// suppression above gives. A pool already at or below the floor keeps what
+	// it has -- the lowest healing may leave is the smaller of the floor and
+	// what was there -- and one above it loses no further than the floor. A
+	// character with no floor answers 0, which is the clamp this always had.
+	const float Lowest = Sign < 0.0f
+		? FMath::Min(Before, FloorAgainstHealing(AbilitySystem, Context))
+		: 0.0f;
+	const float Wanted = FMath::Clamp(Before + Moved, FMath::Max(0.0f, Lowest),
 									  Resource->MaximumClassResourceAsked());
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))
@@ -522,9 +562,17 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 		}
 	}
 
-	if (!Cataclysm->OutOfContactFor(DecayGraceSeconds))
+	// THE THREE SECONDS AND WHAT A ROW ADDS TO THEM. The Ravager tree rework of
+	// 2026-11-24, Stoked: "Your Fervour starts to decay 1 second later per
+	// point." Asked here, after the cheaper refusals above, so a character with
+	// no decay rate never asks; a fallback of nought, and a negative row is
+	// floored so nothing can make the grace shorter than the starting node's.
+	const float Grace = DecayGraceSeconds
+		+ FMath::Max(0.0f, Cataclysm->StatForSkill(FName(DecayGraceSecondsStat),
+												   FGameplayTagContainer(), 0.0f));
+	if (!Cataclysm->OutOfContactFor(Grace))
 	{
-		// INSIDE THE THREE SECONDS. The node grants the grace so that stepping
+		// INSIDE THE GRACE. The node grants the grace so that stepping
 		// behind a pillar does not empty a bar the character spent a fight
 		// filling.
 		return 0.0f;
@@ -777,6 +825,45 @@ float UCataclysmFervour::RestoreHealthOnKillAtNoCost(
 	const float Before = AbilitySystem->GetNumericAttribute(Health);
 	if (Maximum <= 0.0f || Before >= Maximum)
 	{
+		return 0.0f;
+	}
+
+	// `TopUp`, FOR THE REASON `RestoreHealthOnKill` GIVES: the same ceiling and
+	// the same received-healing reductions as every other restoration.
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, MaxHealth,
+								  Maximum * Percent / 100.0f);
+
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
+float UCataclysmFervour::RestoreHealthOnFervourFull(UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !AbilitySystem->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		// No vital set means no health to restore.
+		return 0.0f;
+	}
+
+	// THE NODE FIRST, BECAUSE IT REFUSES ALMOST EVERYONE. Nought for every
+	// character without Second Wind, so nobody else reads their health when
+	// their pool fills.
+	const float Percent = Cataclysm->StatForSkill(
+		FName(HealthRestoredOnFullStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+	if (Maximum <= 0.0f || Before <= 0.0f || Before >= Maximum)
+	{
+		// FULL ALREADY, OR DEAD: a corpse whose pool fills is not restored.
 		return 0.0f;
 	}
 

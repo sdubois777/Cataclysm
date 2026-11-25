@@ -2007,6 +2007,14 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: AILMENT JOINED ON 2026-10-01 for issue #1833 group D part 4, built ahead of
 #: its rows while the design workbook is with another session.
 #: IT LEFT with the remaining damage rows, and the table is empty again.
+#: SCALE MAX STEPS ON THE PASSIVE EFFECTS SHEET JOINED ON 2026-11-24, for the
+#: Ritualist's Wall of Servants ("You take 1% less damage for each minion you
+#: have, up to 20% less"), the demonic tree rework the owner approved that day,
+#: built ahead of the workbook column while the workbook is with the
+#: coordinating session. It leaves when the column is in the workbook, which
+#: `tools/tests/test_required_workbook_columns.py` then requires.
+#: IT LEFT THE SAME DAY, when `tools/reapply_demonic_tree_rework_workbook.py`
+#: added the column with Wall of Servants' 20, and the table is empty again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -5390,6 +5398,17 @@ CONDITIONS = {
     # as `target_is_silenced` is, so it is one of `CONDITIONS_OF_A_HIT_DEALT`.
     # NOT `while_moving`, which reads the wearer's own movement.
     "target_is_moving": None,
+
+    # "+20% increased Spell Damage against enemies carrying your curse" and
+    # "your minions deal 20% increased damage to enemies carrying your curse",
+    # Subjugator and Long Servitude in the Ritualist tree since the demonic tree
+    # rework of 2026-11-24. The character struck carries a `Status.Debuff.*` the
+    # asker laid (`UCataclysmRisenImps::CarriesCurseLaidBy`); for a minion's blow
+    # the asker is its summoner. IT TAKES NO VALUE. A fact of the target in hand,
+    # read by `WithTargetState` as `target_is_moving` is, so it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`. NOT `target_carries_any_debuff`, which a burn
+    # satisfies.
+    "target_carries_your_curse": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -5764,6 +5783,15 @@ SCALES = {
     # and `passive_effects` refuses the scale outright: a passive node has no
     # own stacks.
     "enemies_in_reach_while_own_stack": (1.0, 1.0, "one enemy"),
+
+    # "you gain 1% increased Attack Speed for every 2% increased Movement Speed
+    # you have" is `increased_movement_speed` with a step of 2. The Ravager tree
+    # rework of 2026-11-24, Relentless. The INCREASES bucket of the character's
+    # own `movement_speed` line, in percentage points, judged with its state;
+    # `ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed` says how it is
+    # read. Whole steps, rounded down. Bounded at 1,000, the bound the other
+    # percentage-of-a-stat scales take.
+    "increased_movement_speed": (0.0, 1000.0, "a percentage of increased movement speed"),
 }
 
 
@@ -5845,8 +5873,9 @@ MAX_SCALE_OFFSET = 230
 #: its sentence, "While leeching, reduce your max resistances by 1%-3% per
 #: second", states no end. The ruling caps it at 10 seconds; the engine's
 #: scale holds no cap of its own, so a row written without one would be
-#: UNCAPPED. The row is refused instead. The Passive Effects sheet has no
-#: such column, so a row there naming one of these is refused outright.
+#: UNCAPPED. The row is refused instead. The Passive Effects sheet has carried
+#: the column since 2026-11-24, so a row there naming one of these is refused
+#: unless it states a cap, as an enchantment's is.
 SCALES_THAT_NEED_A_CAP = frozenset({"seconds_leeching"})
 
 #: The scales whose count is a FRACTION and not a number of whole steps. Ruled
@@ -5969,15 +5998,18 @@ def passive_effects(book) -> list[dict]:
     rows = list(book["Passive Effects"].iter_rows(values_only=True))
     headers = _header_index(rows, "Passive Effects")
 
-    # NO CAP ON THIS SHEET. Issue #1815. `ScaleMaxSteps` is read from an
-    # enchantment's row only; a passive node's modifier never carries one, so a
-    # cap written here would be dropped with no error.
-    if "Scale Max Steps" in headers:
-        raise DataError(
-            "the Passive Effects sheet has a 'Scale Max Steps' column, and the "
-            "game reads a cap from the Enchantment Effects sheet only. Remove it.")
+    # A CAP ON THIS SHEET SINCE 2026-11-24. Issue #1815 refused the column
+    # because a passive node's modifier carried no cap, so a cap written here
+    # was dropped with no error. The demonic tree rework the owner approved
+    # that day needs one: the Ritualist's Wall of Servants reads "You take 1%
+    # less damage for each minion you have, up to 20% less", and the owner
+    # answered that the per-minion damage reduction is capped at 20%. So the
+    # row struct carries `ScaleMaxSteps` and `UCataclysmPassiveTree::
+    # AccumulateInto` copies it onto the modifier, which `ScaledValue` caps by,
+    # as an enchantment's is. It is read below, by the same rules the
+    # Enchantment Effects sheet keeps.
 
-    # NOR STACK SECONDS, FOR THE SAME REASON. Issue #1833.
+    # NO STACK SECONDS ON THIS SHEET. Issue #1833.
     if "Stack Seconds" in headers:
         raise DataError(
             "the Passive Effects sheet has a 'Stack Seconds' column, and the "
@@ -6021,11 +6053,38 @@ def passive_effects(book) -> list[dict]:
         # #1593; one copy means the wording and the rules cannot drift apart.
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Passive Effects", index, node)
-        if scale in SCALES_THAT_NEED_A_CAP:
+
+        # "UP TO 20% LESS" IS A CAP OF 20 WHOLE STEPS, since 2026-11-24 (see
+        # above). THE ENCHANTMENT SHEET'S RULES, KEPT THE SAME: empty is no
+        # cap; a cap needs a scale to cap; it is a whole number of steps from 1
+        # to MAX_SCALE_STEPS; a scale counting a fraction takes none; and a
+        # scale that needs one must state one.
+        cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
+        scale_max_steps = 0
+        if cap_text:
+            if scale in SCALES_THAT_COUNT_A_FRACTION:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} scales by {scale!r} "
+                    f"and states Scale Max Steps {cap_text!r}. That scale counts "
+                    f"a fraction and not whole steps, and is capped at the row's "
+                    f"whole value by itself. Leave the column empty.")
+            cap = number(cap_text, "Scale Max Steps", index)
+            if not scale:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a cap of {cap:g} "
+                    f"steps and no scale. A cap limits how many steps a scale "
+                    f"counts, so with no scale it caps nothing.")
+            if cap != int(cap) or not 1 <= cap <= MAX_SCALE_STEPS:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a cap of {cap:g} "
+                    f"steps. A cap is a whole number of steps from 1 to "
+                    f"{MAX_SCALE_STEPS}; leave the column empty for none.")
+            scale_max_steps = int(cap)
+        if scale in SCALES_THAT_NEED_A_CAP and scale_max_steps < 1:
             raise DataError(
-                f"Passive Effects row {index}: {node} scales by {scale!r}, which "
-                f"needs a cap in Scale Max Steps, and this sheet has no such "
-                f"column. The row would be uncapped.")
+                f"Passive Effects row {index}: {node} scales by {scale!r} and "
+                f"states no Scale Max Steps. That scale has no cap of its own, "
+                f"so the row would be uncapped. State the cap.")
         # AND THE SCALE THAT COUNTS ENEMIES ONLY WHILE AN OWN STACK IS HELD.
         # Ruled by the project owner on 2026-10-17. A passive node holds no own
         # stacks, so its modifier would have no window to read.
@@ -6142,6 +6201,9 @@ def passive_effects(book) -> list[dict]:
             "Option": option,
             "ReachMetres": reach_metres,
             "MinPoints": min_points,
+            # LAST, AFTER MIN POINTS, so every column before it keeps its
+            # place. 0 is no cap. Since 2026-11-24; see above.
+            "ScaleMaxSteps": scale_max_steps,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -8449,8 +8511,8 @@ def enchantment_effects(book) -> list[dict]:
                 f"{', '.join(EVENTS_CARRYING_A_HIT_DEALTS_TAGS)}.")
 
         # "UP TO 10 STACKS" IS A CAP OF 10 WHOLE STEPS. Issue #1815. This sheet
-        # alone carries the column, because only an enchantment's modifier reads
-        # it (`UCataclysmItemModifiers`); `passive_effects` refuses the column.
+        # carried the column alone until 2026-11-24, when `passive_effects`
+        # began reading it by these same rules for the demonic tree rework.
         # Empty is no cap. A cap needs a scale to cap, and is a whole number of
         # steps, from 1 up to the largest a sentence states.
         cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
@@ -10186,6 +10248,16 @@ STATS_WITH_AN_ASKER = frozenset({
     # measures it on a trap's blow with the scale and the offset the first of
     # those rows carries.
     "minion_damage",
+    # ADDED 2026-11-24 FOR BOUND SERVANTS, the Ritualist's First Pact's first
+    # option in the demonic tree rework the owner approved that day: "Your
+    # minions deal 5% increased damage and have 5% increased health for each
+    # minion you have", two rows scaled by `minions_held`. A minion's health is
+    # asked when it is made, in `ACataclysmMinion::Spawn`, through
+    # `UCataclysmCommand::SummonerMultiplierFor`, which runs the summoner's line
+    # through the pipeline with `CurrentConditions` -- so the scaled row is read
+    # with the summoner's count, the minion being made included. The list is
+    # brought up to the code; `ProbeScaledMinionHealth` measures it.
+    "minion_health",
     # ADDED 2026-10-17 FOR SPELLSLINGER, Spellblade's Will's six-piece bonus,
     # "makes your spells cost 10% less mana per stack", a row scaled by
     # its own stacks; ruled that day (R1). `UCataclysmGameplayAbility::ManaCostFor`
@@ -10206,6 +10278,34 @@ STATS_WITH_AN_ASKER = frozenset({
     # `StatForSkill` when a blow or a tick would kill;
     # `ProbeScaledLethalHitReprieveEvery` measures that.
     "lethal_hit_reprieve_every_seconds",
+    # ADDED 2026-11-24 FOR THE MASOCHIST TREE REWORK THE PROJECT OWNER APPROVED
+    # THAT DAY, two vow clauses scaled by the Fervour held. Reprisal Wave's
+    # "and 1 metre further for every 25 Fervour you hold": `retaliation_radius_metres`
+    # has been asked through `StatForSkill` by `UCataclysmRetaliation::RadiusMetresFor`
+    # since issue #1047, and `ProbeScaledRetaliationRadius` measures it with the
+    # scale the row carries. Carnivore's "each stack lasts 1 second longer for
+    # every 10 Fervour you hold": `carnage_stack_seconds` is asked by
+    # `UCataclysmStacks::CarnageExtraSeconds` when a Carnage stack is granted, and
+    # `ProbeCarnageStackSeconds` measures it.
+    "retaliation_radius_metres",
+    "carnage_stack_seconds",
+    # ADDED 2026-11-24 FOR THE RAVAGER TREE REWORK, three rows scaled by the
+    # enemies within 4 metres. `area_of_effect` for Reach, "+1% increased Area
+    # of Effect per point for each enemy within 4 metres":
+    # `UCataclysmSkillEffects::AsMultiplierForSkill` has asked it through
+    # `StatForSkill` with the skill's tags since issue #943, so nothing was
+    # built; `ProbeScaledAreaOfEffect` measures the scaled row.
+    # `health_restored_on_kill_at_no_cost` for Long Hold, "Killing an enemy
+    # restores 1% of your maximum health for each enemy within 4 metres of
+    # you": `UCataclysmFervour::RestoreHealthOnKillAtNoCost` asks it through
+    # `StatForSkill`; `ProbeScaledHealthRestoredOnKill` measures it.
+    # `ultimate_fervour_cost_reduction` for Thronged, "Your Ultimate costs 5
+    # less Fervour for each enemy within 4 metres of you when you use it":
+    # `UCataclysmGameplayAbility::FervourCostFor` asks it, built for it;
+    # `ProbeScaledUltimateFervourCostReduction` measures it.
+    "area_of_effect",
+    "health_restored_on_kill_at_no_cost",
+    "ultimate_fervour_cost_reduction",
 })
 
 
@@ -10291,6 +10391,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_within_metres",
     "target_is_silenced",
     "target_is_moving",
+    "target_carries_your_curse",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for
@@ -10389,6 +10490,15 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "movement_speed": ASKER_PASSES_NOTHING_MORE,
     "movement_speed_reduction_suppressed": ASKER_PASSES_NOTHING_MORE,
     "nova_damage_of_missing_health": ASKER_PASSES_NOTHING_MORE,
+    # ADDED 2026-11-24 FOR THE MASOCHIST TREE REWORK. Unstable Aura's share of
+    # weapon damage, under `health_at_or_below` 50, asked by `UCataclysmNova::Step`
+    # with the wearer's state and no tags (its probe is in `Probes`). And
+    # Threadbare's "Fervour removed by your health regeneration is reduced",
+    # under the same condition: `UCataclysmFervour::RateFor` asks the removal
+    # rate through `StatForSkill` with the healing's tags on every heal
+    # (`ProbeConditionedFervourLostToHealing`).
+    "nova_damage_of_weapon_damage": ASKER_PASSES_NOTHING_MORE,
+    "fervour_lost_to_healing": ASKER_PASSES_NOTHING_MORE,
     "retaliation": ASKER_PASSES_NOTHING_MORE,
     "skill_charges_bonus": ASKER_PASSES_NOTHING_MORE,
     "skill_cost_paid_from_health": ASKER_PASSES_NOTHING_MORE,

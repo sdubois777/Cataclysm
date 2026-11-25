@@ -506,7 +506,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// starting node, curse_death_raises_imp. Issue #1479.
 	// AND 325 SINCE 2026-09-30, for Every Swing Lands' arc: a second row on
 	// the Ravager keystone, melee_arc_full_circle. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        325)
+	// AND 364 SINCE 2026-11-24, for the Demonic tree rework the project owner
+	// approved that day: the Masochist 126 to 150, the Ravager 103 to 113 and the
+	// Ritualist 92 to 97, most of the 39 the "for every N points" steps that
+	// replaced per-point values below 1, one row per step.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        364)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

@@ -806,6 +806,12 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 | Keystones | Single-point investments that fundamentally change how a mechanic works. Build-defining. Require full investment in a parent node. |
 | Capstones | One per tier (25/50/100/200 pts). Player chooses one of three options per tier. Escalating power from identity declaration to god-tier mechanics. |
 
+**A threshold or a step, never a fraction.** A basic node's bonus at mid-investment reads "At N points: ..." and is granted whole from that point. A per-point value below 1 is written instead as a whole number "for every N points", granted at every Nth point: Brutal Determination's "+1% Life Leech for every 2 points" is 5% at ten points. The project owner chose steps over fractional values on 2026-11-24.
+
+**Keystones are upgrades by default**, and a tree keeps at most one or two that convert one thing into another; the Masochist's are The Reckoning and Point of No Return. **Each tree names a core count, and one option at every capstone tier scales with it**: the Masochist's Fervour held, the Ravager's enemies within 4 metres, the Ritualist's minions held. A mechanic of the class's own belongs on a keystone or a capstone, with one recorded exception: the Ritualist's starting node keeps "cursed enemies rise as imps", because that is how a Ritualist with no summon skill fills Fervour at all. Ruled 2026-11-24; `docs/DECISIONS.md` has the entry.
+
+**"Cannot be reduced" drops each reducing effect on its own and keeps every bonus.** The Ravager's Relentless reads "Your Movement Speed and Attack Speed cannot be reduced by any effect": every row that would lower either speed is ignored, one by one, and every increase still counts, so +12% beside -40% gives +12% for both speeds, and Cripple and Wither do not slow the holder at all. It is not a floor at the character's own speed, which would take the earned 12% away with the slow. Unstoppable's "cannot be slowed while an enemy is within 4 metres" and Nothing Moves You's clause at 50 or more Fervour share the movement half of the rule. A character without any of them sums its speed rows as every character does. Ruled by the coordinating session on 2026-11-24.
+
   
 
 ### **Class Resource Systems**
@@ -1323,6 +1329,8 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 
 **But it is still not itself a hit.** It cannot critically strike, cannot apply an ailment, does not carry the weapon's sub-type, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.
+
+**Its own payment rolls no ailment; a row that acts on the retaliation event may apply one**, as the enchantment "Your retaliation damage also applies a bleed stack to the attacker" does (built 2026-10-01, `apply_status` Bleed on `retaliation_dealt`). The project owner accepted this reading on 2026-11-24 with the War trees' rulings pass (R7), which `docs/DECISIONS.md` records.
 
 
 
@@ -1842,6 +1850,8 @@ Tier Width is the difference between the maximum Power Score of the current diff
   
 
 **Overwhelm strips every kind of mitigation, not only resistance.** Armor, block, evasion and resistance are all reduced. This is what stops a character sidestepping the mechanic by choosing a different defensive layer.
+
+**One exception: the Ravager's keystone Ironhide halves what Overwhelm takes from its holder's armour.** Resistance, block and evasion stay fully overwhelmed, so armour alone cannot be used to sidestep the rule, and a keystone named for its armour protects it. The project owner ruled it on 2026-11-24 ("Yes, but only halve it"); `docs/DECISIONS.md` has the entry.
 
   
 

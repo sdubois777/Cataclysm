@@ -29,6 +29,8 @@
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
+// For Stigmata's self-burn, the Masochist tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmStigmata.h"
 // For the Warhound's taunt. Warlord's Will's six-piece, ruled 2026-10-18.
 #include "AbilitySystem/CataclysmTaunt.h"
 // For Brute's Heart's taunt aura. Its six-piece, ruled 2026-10-18.
@@ -5183,6 +5185,58 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `minion_health`, scaled by the minions held, asked by `ACataclysmMinion::Spawn` through
+	 * `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state. The demonic tree rework of 2026-11-24, for
+	 * Bound Servants: "Your minions deal 5% increased damage and have 5% increased health for each minion you have".
+	 *
+	 * ONE SUMMONER WITH A ROW OF 50% INCREASED PER MINION HELD. The minion being made is already commanded when its
+	 * health is asked (`Spawn` sets its summoner first), so the first imp is read with one minion held and the fourth
+	 * with four: 1.5 and 3.0 times the Imp row's health, a ratio of 2. Read the attribute instead and the ratio is 1.
+	 */
+	void ProbeScaledMinionHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		FCataclysmStatModifier PerMinion;
+		PerMinion.Bucket = ECataclysmStatBucket::Increased;
+		PerMinion.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerMinion.Value = 50.0f;
+		PerMinion.Scale = ECataclysmStatScale::PerMinionHeld;
+		PerMinion.ScaleStep = 1.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("minion_health")));
+		Line.Base = 0.0f;
+		Line.Modifiers = {PerMinion};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		const auto Summon = [&](float Metres)
+		{
+			return ACataclysmMinion::Spawn(Summoner.Actor, FVector(Metres * M, 0, 0), /*Lifetime=*/60.0f,
+										   /*bBurns=*/false, TEXT("Imp"));
+		};
+		ACataclysmMinion* First = Summon(4.0f);
+		Summon(8.0f);
+		Summon(12.0f);
+		ACataclysmMinion* Fourth = Summon(16.0f);
+		if (!Test.TestNotNull(TEXT("minion_health: the first imp"), First)
+			|| !Test.TestNotNull(TEXT("minion_health: the fourth imp"), Fourth)
+			|| !Test.TestTrue(TEXT("minion_health: the first imp has health"), MaxHealthOf(First) > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(
+			TEXT("minion_health is asked for with the summoner's count of minions, so the fourth imp, made with four "
+				 "held, has twice the health of the first, made with one: ACataclysmMinion::Spawn really reads it"),
+			MaxHealthOf(Fourth) / MaxHealthOf(First), 2.0f, 0.001f);
+	}
+
+	/**
 	 * `mana_cost`, scaled by the row's own stacks, asked by `UCataclysmGameplayAbility::ManaCostFor` through
 	 * `StatAppliedTo` with the skill's tags. Ruled 2026-10-17 (R1) for Spellslinger, Spellblade's Will's six-piece
 	 * bonus: "makes your spells cost 10% less mana per stack", a `more` of -10 scoped `Type.Spell`.
@@ -5365,6 +5419,479 @@ namespace CataclysmStatExemptionTest
 					  Raised.DealtToHealth > Clean.DealtToHealth * 1.2f);
 	}
 
+	// ------------------------------------------------------------------------------------------------------------------
+	// THE RAVAGER TREE REWORK OF 2026-11-24: the six stats its rows grant that code reads by name, and the three stats
+	// its rows scale by the enemies within reach. Each probe grants the stat and asserts the reading code's answer
+	// changes; the control is the same reading without it.
+	// ------------------------------------------------------------------------------------------------------------------
+
+	/** A flat row scaled by the enemies within `ReachMetres`, the shape Thronged and Long Hold carry. */
+	FCataclysmStatModifier RavagerReworkFlatPerEnemy(float Value, float ReachMetres)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::PassiveKeystone;
+		Row.Value = Value;
+		Row.Scale = ECataclysmStatScale::PerEnemyInReach;
+		Row.ScaleStep = 1.0f;
+		Row.ReachMetres = ReachMetres;
+		return Row;
+	}
+
+	/**
+	 * A creature on the players' side, for a probe whose reading counts the enemies near it: the walk measures from an
+	 * `ACataclysmCharacterBase` avatar and refuses a bare actor, which `ProbeScaledFervourPerEnemyInReach` says. With a
+	 * Fervour pool of a hundred, half full, and ten thousand health, half of it.
+	 */
+	ACataclysmEnemyCharacter* RavagerReworkHolder(FAutomationTestBase& Test, UWorld* World)
+	{
+		ACataclysmEnemyCharacter* Holder =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("a character to hold the line"), Holder))
+		{
+			return nullptr;
+		}
+		Holder->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Holder->SetAttackDamage(0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent());
+		if (!Test.TestNotNull(TEXT("with an ability system"), System))
+		{
+			return nullptr;
+		}
+		System->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Holder));
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+		System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 10000.0f);
+		System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 5000.0f);
+		return Holder;
+	}
+
+	/** A hostile creature a metre from the origin, to stand near a holder. */
+	ACataclysmEnemyCharacter* RavagerReworkCreatureNear(FAutomationTestBase& Test, UWorld* World)
+	{
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(1 * M, 0, 0), FRotator::ZeroRotator);
+		if (Test.TestNotNull(TEXT("a hostile creature to stand near"), Creature))
+		{
+			Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		}
+		return Creature;
+	}
+
+	/** A self buff granted in the Ultimate slot, which states the slot's Fervour cost. */
+	UCataclysmSelfBuffSkill* RavagerReworkUltimateOn(UCataclysmAbilitySystemComponent* System, AActor* Owner)
+	{
+		const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+			UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Ultimate, /*Level=*/100, Owner);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
+		return Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	}
+
+	/**
+	 * `armor_overwhelm_halved`, read by `UCataclysmDamageCalculation::Resolve` at the armour step. Ironhide's second
+	 * row. 800 armour at tier 1 removes half a 1,000 blow; 10 points of Overwhelm leave 40% (600) without the flag and
+	 * 45% (550) with it.
+	 */
+	void ProbeArmorOverwhelmHalved(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 800.0f);
+		const auto Landed = [&Defender]()
+		{
+			FCataclysmIncomingHit Hit;
+			Hit.Damage = 1000.0f;
+			Hit.DamageType = FName(TEXT("Demonic"));
+			Hit.OverwhelmPoints = 10.0f;
+			return UCataclysmDamageCalculation::Resolve(Hit, Defender.AbilitySystem, /*Tier=*/1, 100.0f, 100.0f)
+				.DealtToHealth;
+		};
+		const float Plain = Landed();
+		GrantFlat(Defender.Actor, UCataclysmDamageCalculation::ArmorOverwhelmHalvedStat, 1.0f);
+		const float Held = Landed();
+		Test.TestEqual(TEXT("armor_overwhelm_halved: control, 10 points of Overwhelm leave 600"), Plain, 600.0f, 0.01f);
+		Test.TestEqual(TEXT("and with it they take half as many points, 550, so Resolve really reads it"), Held, 550.0f,
+					   0.01f);
+	}
+
+	/**
+	 * `ultimate_fervour_cost_reduction`, read by `UCataclysmGameplayAbility::FervourCostFor`. Thronged's row, UNSCALED
+	 * here: the exemption is about the reader, and `ProbeScaledUltimateFervourCostReduction` measures the scale.
+	 */
+	void ProbeUltimateFervourCostReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Caster(World, FVector::ZeroVector);
+		Caster.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		UCataclysmSelfBuffSkill* Ultimate = RavagerReworkUltimateOn(Caster.AbilitySystem, Caster.Actor);
+		if (!Test.TestNotNull(TEXT("ultimate_fervour_cost_reduction: an Ultimate"), Ultimate))
+		{
+			return;
+		}
+		const float Plain = Ultimate->FervourCostFor(Caster.AbilitySystem);
+		GrantFlat(Caster.Actor, UCataclysmGameplayAbility::UltimateFervourCostReductionStat, 5.0f);
+		const float Held = Ultimate->FervourCostFor(Caster.AbilitySystem);
+		if (!Test.TestTrue(TEXT("ultimate_fervour_cost_reduction: the Ultimate costs Fervour"), Plain > 5.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("and five less with the stat, so FervourCostFor really reads it"), Held, Plain - 5.0f,
+					   0.001f);
+	}
+
+	/**
+	 * The same, SCALED BY THE ENEMIES WITHIN FOUR METRES, as Thronged's row is. A creature on the players' side holds
+	 * the line; a hostile one a metre off takes five off the cost.
+	 */
+	void ProbeScaledUltimateFervourCostReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		UCataclysmSelfBuffSkill* Ultimate = System ? RavagerReworkUltimateOn(System, Holder) : nullptr;
+		if (!Test.TestNotNull(TEXT("ultimate_fervour_cost_reduction by the enemies near: an Ultimate"), Ultimate))
+		{
+			return;
+		}
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmGameplayAbility::UltimateFervourCostReductionStat)).Modifiers =
+			{RavagerReworkFlatPerEnemy(5.0f, 4.0f)};
+		System->SetStatInputs(MoveTemp(Inputs));
+		const float Alone = Ultimate->FervourCostFor(System);
+		if (!RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		const float Crowded = Ultimate->FervourCostFor(System);
+		Test.TestEqual(FString::Printf(TEXT("ultimate_fervour_cost_reduction is asked with the enemies near, so one "
+											"enemy takes five off: %.2f against %.2f"), Crowded, Alone),
+					   Crowded, Alone - 5.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_decay_grace_seconds`, read by `UCataclysmFervour::DecayStep`. Stoked. Four seconds after contact, past
+	 * the starting node's three, the bar decays without it and holds with six seconds added.
+	 */
+	void ProbeFervourDecayGraceSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		const auto AfterFourSeconds = [&](float GraceSeconds)
+		{
+			TMap<FName, float> Stats = {{FName(UCataclysmFervour::DecayPerSecondStat), 5.0f},
+										{FName(UCataclysmFervour::DecayGraceMetresStat), 4.0f}};
+			if (GraceSeconds > 0.0f)
+			{
+				Stats.Add(FName(UCataclysmFervour::DecayGraceSecondsStat), GraceSeconds);
+			}
+			GrantFlats(Holder, Stats);
+			System->SetNumericAttributeBase(Pool, 50.0f);
+			System->NoteEnemyInReach();
+			World->TimeSeconds += 4.0f;
+			UCataclysmFervour::DecayStep(Holder, 1.0f);
+			return System->GetNumericAttribute(Pool);
+		};
+		const float Plain = AfterFourSeconds(0.0f);
+		const float Held = AfterFourSeconds(6.0f);
+		Test.TestEqual(TEXT("fervour_decay_grace_seconds: control, four seconds out the bar decays by five"), Plain,
+					   45.0f, 0.001f);
+		Test.TestEqual(TEXT("and with six seconds added it holds, so DecayStep really reads it"), Held, 50.0f, 0.001f);
+	}
+
+	/**
+	 * `health_restored_on_fervour_full`, read by `UCataclysmFervour::RestoreHealthOnFervourFull`. Second Wind. A
+	 * fighter at half of ten thousand is restored 1,600 by 16%, and nothing without it.
+	 */
+	void ProbeHealthRestoredOnFervourFull(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), TargetHealthPool * 0.5f);
+		const float Plain = UCataclysmFervour::RestoreHealthOnFervourFull(Fighter.AbilitySystem);
+		GrantFlat(Fighter.Actor, UCataclysmFervour::HealthRestoredOnFullStat, 16.0f);
+		const float Held = UCataclysmFervour::RestoreHealthOnFervourFull(Fighter.AbilitySystem);
+		Test.TestEqual(TEXT("health_restored_on_fervour_full: control, nothing is restored without it"), Plain, 0.0f);
+		Test.TestEqual(TEXT("and 16% of ten thousand with it, so RestoreHealthOnFervourFull really reads it"), Held,
+					   1600.0f, 0.01f);
+	}
+
+	/**
+	 * `attack_speed_reduction_suppressed`, read by `UCataclysmBasicAttack::AttackSpeedAfterSlows`. Relentless. A line
+	 * of one a second carrying -50% swings every two seconds without it and every one with it.
+	 */
+	void ProbeAttackSpeedReductionSuppressed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Swinger(World, /*AttackDamage=*/100.0f);
+		Swinger.AbilitySystem->SetNumericAttributeBase(Combat::GetAttackSpeedAttribute(), 1.0f);
+		const auto Gap = [&Swinger](bool bHeld)
+		{
+			FCataclysmStatModifier Slower;
+			Slower.Bucket = ECataclysmStatBucket::Increased;
+			Slower.Source = ECataclysmModifierSource::Enchantment;
+			Slower.Value = -50.0f;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Speed = Inputs.FindOrAdd(FName(TEXT("attack_speed")));
+			Speed.Base = 1.0f;
+			Speed.Modifiers = {Slower};
+			if (bHeld)
+			{
+				FCataclysmStatModifier Flag;
+				Flag.Bucket = ECataclysmStatBucket::Flat;
+				Flag.Source = ECataclysmModifierSource::PassiveKeystone;
+				Flag.Value = 1.0f;
+				Inputs.FindOrAdd(FName(UCataclysmBasicAttack::AttackSpeedReductionSuppressedStat)).Modifiers = {Flag};
+			}
+			Swinger.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+			return UCataclysmBasicAttack::SecondsBetweenSwingsFor(Swinger.AbilitySystem);
+		};
+		const float Plain = Gap(false);
+		const float Held = Gap(true);
+		Test.TestEqual(TEXT("attack_speed_reduction_suppressed: control, -50% swings every two seconds"), Plain, 2.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("and with it every second, so AttackSpeedAfterSlows really reads it"), Held, 1.0f, 0.001f);
+	}
+
+	/**
+	 * `cripple_and_weaken_spread_on_death_metres`, read by `UCataclysmDebuffs::PassCrippleAndWeakenOnDeath`. Deeper
+	 * Hurt. A Cripple the holder laid on a body passes to the creature two metres off only with the stat.
+	 */
+	void ProbeCrippleAndWeakenSpreadOnDeath(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Holder(World, FVector(0, 0, 40 * M));
+		FScopedSwinger Dying(World, FVector::ZeroVector);
+		FScopedSwinger Beside(World, FVector(2 * M, 0, 0));
+		const FCataclysmAilmentKind* Cripple = UCataclysmAilments::KindNamed(TEXT("Cripple"));
+		if (!Test.TestTrue(TEXT("cripple_and_weaken_spread_on_death_metres: the body carries the holder's Cripple"),
+						   Cripple && UCataclysmAilments::Apply(Holder.Actor, Dying.Actor, *Cripple, 1.0f)))
+		{
+			return;
+		}
+		UCataclysmSkillEffects::MarkDead(Dying.Actor);
+		const int32 Plain = UCataclysmDebuffs::PassCrippleAndWeakenOnDeath(Dying.Actor);
+		GrantFlat(Holder.Actor, UCataclysmDebuffs::SpreadOnDeathMetresStat, 6.0f);
+		const int32 Held = UCataclysmDebuffs::PassCrippleAndWeakenOnDeath(Dying.Actor);
+		Test.TestEqual(TEXT("cripple_and_weaken_spread_on_death_metres: control, nothing passes without it"), Plain, 0);
+		Test.TestEqual(TEXT("and the Cripple passes with it, so PassCrippleAndWeakenOnDeath really reads it"), Held, 1);
+	}
+
+	/**
+	 * `area_of_effect`, SCALED BY THE ENEMIES WITHIN FOUR METRES, asked by
+	 * `UCataclysmSkillEffects::AsMultiplierForSkill` through `StatForSkill`. Reach: "+1% increased Area of Effect per
+	 * point for each enemy within 4 metres". A self buff on a creature of the players' side reads 1 alone and 1.5 with
+	 * one hostile creature a metre off, at 50% increased an enemy.
+	 */
+	void ProbeScaledAreaOfEffect(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+			UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support, /*Level=*/1, Holder);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSelfBuffSkill* Skill = Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("area_of_effect by the enemies near: a skill"), Skill))
+		{
+			return;
+		}
+		ScaledBy(Holder, TEXT("area_of_effect"), 50.0f, ECataclysmStatScale::PerEnemyInReach, /*Base=*/100.0f,
+				 /*ReachMetres=*/4.0f);
+		const float Alone = Skill->AreaOfEffectMultiplier();
+		if (!RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		const float Crowded = Skill->AreaOfEffectMultiplier();
+		Test.TestEqual(TEXT("area_of_effect by the enemies near: control, alone the skill's area is unchanged"), Alone,
+					   1.0f, 0.001f);
+		Test.TestEqual(TEXT("and one enemy within four metres widens it by half, so it is asked with the count"),
+					   Crowded, 1.5f, 0.001f);
+	}
+
+	/**
+	 * `health_restored_on_kill_at_no_cost`, SCALED BY THE ENEMIES WITHIN FOUR METRES, asked by
+	 * `UCataclysmFervour::RestoreHealthOnKillAtNoCost` through `StatForSkill`. Long Hold: "Killing an enemy restores 1%
+	 * of your maximum health for each enemy within 4 metres of you." Alone a kill restores nothing; with one enemy near,
+	 * 1% of ten thousand.
+	 */
+	void ProbeScaledHealthRestoredOnKill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmFervour::HealthRestoredOnKillAtNoCostStat)).Modifiers =
+			{RavagerReworkFlatPerEnemy(1.0f, 4.0f)};
+		System->SetStatInputs(MoveTemp(Inputs));
+		const float Alone = UCataclysmFervour::RestoreHealthOnKillAtNoCost(System);
+		if (!RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		const float Crowded = UCataclysmFervour::RestoreHealthOnKillAtNoCost(System);
+		Test.TestEqual(TEXT("health_restored_on_kill_at_no_cost by the enemies near: control, alone nothing"), Alone,
+					   0.0f, 0.001f);
+		Test.TestEqual(TEXT("and with one enemy near, 1% of ten thousand, so it is asked with the count"), Crowded,
+					   100.0f, 0.01f);
+	}
+
+	// ------------------------------------------------------------------------
+	// THE MASOCHIST TREE REWORK'S TWO SCALED VOW CLAUSES, approved by the project
+	// owner on 2026-11-24. Each grants a flat row scaled by the Fervour held, the
+	// shape the shipped rows carry, and moves the pool.
+	// ------------------------------------------------------------------------
+
+	/** A flat row on one stat, scaled by the Fervour held in steps of `Step`. */
+	void FlatPerFervourHeld(FScopedFighter& Who, const TCHAR* Stat, float Value, float Step, float Base)
+	{
+		FCataclysmStatModifier PerFervour;
+		PerFervour.Bucket = ECataclysmStatBucket::Flat;
+		PerFervour.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerFervour.Value = Value;
+		PerFervour.Scale = ECataclysmStatScale::PerPointOfClassResourceHeld;
+		PerFervour.ScaleStep = Step;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = Base;
+		Line.Modifiers = {PerFervour};
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * `retaliation_radius_metres`, scaled by the Fervour held, asked by
+	 * `UCataclysmRetaliation::RadiusMetresFor`. Reprisal Wave: "Your retaliation
+	 * damage strikes every enemy within 4 metres, not only the one that hit you,
+	 * and 1 metre further for every 25 Fervour you hold." The option's 4 metres
+	 * as the base and a flat 1 per 25: 4 on an empty pool, 8 on a full 100.
+	 */
+	void ProbeScaledRetaliationRadius(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Defender);
+		FlatPerFervourHeld(Defender, UCataclysmRetaliation::RadiusMetresStat, 1.0f, 25.0f, /*Base=*/4.0f);
+
+		Test.TestEqual(TEXT("retaliation_radius_metres on an empty pool: the 4 metres alone"),
+					   UCataclysmRetaliation::RadiusMetresFor(Defender.AbilitySystem), 4.0f, 0.001f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
+		Test.TestEqual(TEXT("retaliation_radius_metres is asked for, so 100 Fervour held adds 4 metres: 8"),
+					   UCataclysmRetaliation::RadiusMetresFor(Defender.AbilitySystem), 8.0f, 0.001f);
+	}
+
+	/**
+	 * `carnage_stack_seconds`, scaled by the Fervour held, asked by
+	 * `UCataclysmStacks::CarnageExtraSeconds` when a Carnage stack is granted.
+	 * Carnivore: "each stack lasts 1 second longer for every 10 Fervour you
+	 * hold". A flat 1 per 10 on a pool holding 80: 8 seconds longer, so a kill's
+	 * stack -- granted above 75 Fervour -- is still held 15.9 seconds on and gone
+	 * at 16.1, where Carnage's own 8 seconds would have ended it.
+	 */
+	void ProbeCarnageStackSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Killer(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Killer);
+		Killer.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 80.0f);
+		Test.TestEqual(TEXT("carnage_stack_seconds with nothing recorded: no extra seconds"),
+					   UCataclysmStacks::CarnageExtraSeconds(Killer.AbilitySystem), 0.0f, 0.001f);
+
+		FlatPerFervourHeld(Killer, UCataclysmStacks::CarnageStackSecondsStat, 1.0f, 10.0f, /*Base=*/0.0f);
+		Test.TestEqual(TEXT("carnage_stack_seconds is asked for, so 80 Fervour held is 8 seconds more"),
+					   UCataclysmStacks::CarnageExtraSeconds(Killer.AbilitySystem), 8.0f, 0.001f);
+
+		if (!Test.TestTrue(TEXT("set-up: a kill above 75 Fervour grants a stack of Carnage"),
+						   UCataclysmStacks::NoteEnemyKilled(Killer.Actor)))
+		{
+			return;
+		}
+		const float Window = UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::Carnage);
+		World->TimeSeconds += Window + 7.9f;
+		Test.TestEqual(TEXT("carnage_stack_seconds reaches the stack: it is held 15.9 seconds on"),
+					   UCataclysmStacks::Held(Killer.AbilitySystem, ECataclysmStackKind::Carnage), 1);
+		World->TimeSeconds += 0.2f;
+		Test.TestEqual(TEXT("and gone at 16.1"),
+					   UCataclysmStacks::Held(Killer.AbilitySystem, ECataclysmStackKind::Carnage), 0);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5395,9 +5922,15 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
 			{TEXT("energy_shield_leech"),        &ProbeScaledEnergyShieldLeech},
 			{TEXT("minion_damage"),              &ProbeScaledMinionDamage},
+			{TEXT("minion_health"),              &ProbeScaledMinionHealth},
 			{TEXT("mana_cost"),                  &ProbeScaledManaCost},
 			{TEXT("crit_multiplier"),            &ProbeScaledCritMultiplier},
 			{TEXT("lethal_hit_reprieve_every_seconds"), &ProbeScaledLethalHitReprieveEvery},
+			{TEXT("retaliation_radius_metres"),  &ProbeScaledRetaliationRadius},
+			{TEXT("carnage_stack_seconds"),      &ProbeCarnageStackSeconds},
+			{TEXT("area_of_effect"),             &ProbeScaledAreaOfEffect},
+			{TEXT("health_restored_on_kill_at_no_cost"), &ProbeScaledHealthRestoredOnKill},
+			{TEXT("ultimate_fervour_cost_reduction"), &ProbeScaledUltimateFervourCostReduction},
 		};
 		return Made;
 	}
@@ -6865,7 +7398,8 @@ namespace CataclysmStatExemptionTest
 
 	/**
 	 * `cooldown_skip_chance`, read by `UCataclysmGameplayAbility::CooldownIsSkipped`.
-	 * Shipped under `health_at_or_below` 5 (`Masochist_basic_ll_a2`). The roll is
+	 * Shipped under `health_at_or_below` 35 (`Masochist_basic_ll_a2`; 5 until the tree
+	 * rework of 2026-11-24). The roll is
 	 * pinned at 50, so a chance of 100 skips and a chance of nothing does not.
 	 */
 	void ProbeConditionedCooldownSkipChance(FAutomationTestBase& Test)
@@ -7051,7 +7585,9 @@ namespace CataclysmStatExemptionTest
 
 	/**
 	 * `nova_damage_of_missing_health`, read by `UCataclysmNova::Step`. Shipped
-	 * under `health_at_or_below` 10 (`Masochist_basic_ll_b2`).
+	 * under `health_at_or_below` 10 (`Masochist_basic_ll_b2`) until the tree rework of
+	 * 2026-11-24 moved Unstable Aura to `nova_damage_of_weapon_damage`; no shipped row
+	 * states it now, and the nova still reads it.
 	 *
 	 * READ AT THREE FIFTHS AND NOT AT FULL HEALTH, because at full health
 	 * nothing is missing and the nova is worth nothing whatever the stat says.
@@ -7078,6 +7614,208 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("nova_damage_of_missing_health is asked for, so below half health a nova of 20% of the "
 							"6,000 missing"),
 					   UCataclysmNova::Step(Fighter.Actor), 1200.0f, 0.01f);
+	}
+
+	// ------------------------------------------------------------------------
+	// THE MASOCHIST TREE REWORK'S STATS, approved by the project owner on
+	// 2026-11-24. Five with no gameplay attribute, each granted and observed
+	// where the game reads it, and one attribute stat newly stated under a
+	// condition.
+	// ------------------------------------------------------------------------
+
+	/**
+	 * `nova_damage_of_weapon_damage`, read by `UCataclysmNova::Step`. Shipped
+	 * under `health_at_or_below` 50 (`Masochist_basic_ll_b2` Unstable Aura, "10%
+	 * of your weapon damage per point"). A fighter whose weapon damage is 1,000
+	 * and a row of 80 below half health: no nova at three fifths, 800 at two
+	 * fifths. Nothing stands in the world, so `Step` returns what it was worth.
+	 */
+	void ProbeNovaDamageOfWeaponDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/1000.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmNova::WeaponDamageStat, ECataclysmStatBucket::Flat, 80.0f, 0.0f);
+		AtHealthShare(Fighter, 0.6f);
+		Test.TestEqual(TEXT("nova_damage_of_weapon_damage above half health: no nova"),
+					   UCataclysmNova::Step(Fighter.Actor), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("nova_damage_of_weapon_damage is asked for, so below half health a nova of 80% of the "
+							"1,000 weapon damage"),
+					   UCataclysmNova::Step(Fighter.Actor), 800.0f, 0.01f);
+	}
+
+	/**
+	 * `fervour_floor_against_healing`, read by `UCataclysmFervour::FloorAgainstHealing`
+	 * when healing removes Fervour. Sanguine Ledger: "Healing never takes your
+	 * Fervour below 50." A pool holding 80, a removal rate of 1 per 1% healed,
+	 * and a heal of 40% of the fighter's 10,000: 40 removed with no floor, 30
+	 * with one, which stops the pool at 50.
+	 */
+	void ProbeFervourFloorAgainstHealing(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Healed(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Healed);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Healed.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(), 1.0f);
+		Healed.AbilitySystem->SetNumericAttributeBase(Pool, 80.0f);
+
+		Test.TestEqual(TEXT("fervour_floor_against_healing with nothing recorded: healing 40% removes 40 of 80"),
+					   UCataclysmFervour::RemoveForHealing(Healed.AbilitySystem, 4000.0f, FGameplayTagContainer()),
+					   -40.0f, 0.01f);
+
+		Healed.AbilitySystem->SetNumericAttributeBase(Pool, 80.0f);
+		FCataclysmStatModifier Floor;
+		Floor.Bucket = ECataclysmStatBucket::Flat;
+		Floor.Source = ECataclysmModifierSource::PassiveKeystone;
+		Floor.Value = 50.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmFervour::FloorAgainstHealingStat)).Modifiers = {Floor};
+		Healed.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Test.TestEqual(TEXT("fervour_floor_against_healing is read, so the same heal stops the pool at 50: 30 removed"),
+					   UCataclysmFervour::RemoveForHealing(Healed.AbilitySystem, 4000.0f, FGameplayTagContainer()),
+					   -30.0f, 0.01f);
+		Test.TestEqual(TEXT("and a second heal, at the floor, removes nothing"),
+					   UCataclysmFervour::RemoveForHealing(Healed.AbilitySystem, 4000.0f, FGameplayTagContainer()),
+					   0.0f, 0.01f);
+	}
+
+	/**
+	 * `debuffs_carried_count_twice`, read by `UCataclysmDebuffs::CountsTwiceOn`
+	 * for the pipeline's count of debuffs carried. Vessel of Plagues: "each
+	 * debuff on you counts twice for everything that counts the debuffs on
+	 * you." A fighter carrying one bleed and an attack damage line of 100 with
+	 * 10% increased per debuff carried: 110 without the switch, 120 with it.
+	 */
+	void ProbeDebuffsCountTwice(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Carrier(World, /*AttackDamage=*/0.0f);
+		UCataclysmSkillEffects::ApplyTagForDuration(Carrier.Actor, Carrier.Actor, UCataclysmDebuffs::BleedTag(),
+													30.0f);
+		if (!Test.TestEqual(TEXT("set-up: the fighter carries one distinct debuff"),
+							UCataclysmDebuffs::CountOn(Carrier.AbilitySystem), 1))
+		{
+			return;
+		}
+
+		FCataclysmStatModifier PerDebuff;
+		PerDebuff.Bucket = ECataclysmStatBucket::Increased;
+		PerDebuff.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerDebuff.Value = 10.0f;
+		PerDebuff.Scale = ECataclysmStatScale::PerDebuffCarried;
+		PerDebuff.ScaleStep = 1.0f;
+		const FName Damage(TEXT("attack_damage"));
+		{
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(Damage);
+			Line.Base = 100.0f;
+			Line.Modifiers = {PerDebuff};
+			Carrier.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+		Test.TestEqual(TEXT("debuffs_carried_count_twice with nothing recorded: one debuff is counted once"),
+					   Carrier.AbilitySystem->StatForSkill(Damage, FGameplayTagContainer(), 0.0f), 110.0f, 0.01f);
+
+		FCataclysmStatModifier Twice;
+		Twice.Bucket = ECataclysmStatBucket::Flat;
+		Twice.Source = ECataclysmModifierSource::PassiveKeystone;
+		Twice.Value = 1.0f;
+		{
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(Damage);
+			Line.Base = 100.0f;
+			Line.Modifiers = {PerDebuff};
+			Inputs.FindOrAdd(FName(UCataclysmDebuffs::CountTwiceStat)).Modifiers = {Twice};
+			Carrier.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+		Test.TestEqual(TEXT("debuffs_carried_count_twice is read, so the one debuff is counted twice"),
+					   Carrier.AbilitySystem->StatForSkill(Damage, FGameplayTagContainer(), 0.0f), 120.0f, 0.01f);
+		Test.TestEqual(TEXT("and the plain count of distinct debuffs is still one"),
+					   UCataclysmDebuffs::CountOn(Carrier.AbilitySystem), 1);
+	}
+
+	/**
+	 * `burn_self_on_burning_an_enemy`, read by `UCataclysmStigmata::AfterSettingAlight`.
+	 * Stigmata: "When you set an enemy alight, you are set alight as well for 4
+	 * seconds, taking 1% of your maximum health per second." Asked directly, with
+	 * a burn on another fighter: no burn on the holder without the switch, a
+	 * burn with it.
+	 */
+	void ProbeBurnSelfOnBurningAnEnemy(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Victim(World, /*AttackDamage=*/0.0f);
+		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+		if (!Test.TestTrue(TEXT("set-up: the burn tag exists"), Burn.IsValid()))
+		{
+			return;
+		}
+
+		Test.TestFalse(TEXT("burn_self_on_burning_an_enemy with nothing recorded: no burn on the holder"),
+					   UCataclysmStigmata::AfterSettingAlight(Holder.Actor, Victim.Actor, Burn));
+		Test.TestFalse(TEXT("and the holder carries none"), Holder.AbilitySystem->HasMatchingGameplayTag(Burn));
+
+		FCataclysmStatModifier Switch;
+		Switch.Bucket = ECataclysmStatBucket::Flat;
+		Switch.Source = ECataclysmModifierSource::PassiveKeystone;
+		Switch.Value = 1.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmStigmata::SelfBurnStat)).Modifiers = {Switch};
+		Holder.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Test.TestTrue(TEXT("burn_self_on_burning_an_enemy is read, so setting the other alight sets the holder alight"),
+					  UCataclysmStigmata::AfterSettingAlight(Holder.Actor, Victim.Actor, Burn));
+		Test.TestTrue(TEXT("and the holder carries a burn"), Holder.AbilitySystem->HasMatchingGameplayTag(Burn));
+	}
+
+	/**
+	 * `fervour_lost_to_healing` under a condition, read by `UCataclysmFervour::RateFor`
+	 * on every heal. Shipped under `health_at_or_below` 50
+	 * (`Masochist_basic_ll_c1` Threadbare). A removal rate of 1 per 1% healed,
+	 * stated only below half health: a heal of 10% removes nothing at full
+	 * health and 10 at two fifths.
+	 */
+	void ProbeConditionedFervourLostToHealing(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		ConditionedBelowHalf(Fighter, UCataclysmFervour::LostToHealingStat, ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(Pool, 50.0f);
+		Test.TestEqual(TEXT("fervour_lost_to_healing at full health: a heal of 10% removes nothing"),
+					   UCataclysmFervour::RemoveForHealing(Fighter.AbilitySystem, 1000.0f, FGameplayTagContainer()),
+					   0.0f, 0.01f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("fervour_lost_to_healing is asked for, so below half health the same heal removes 10"),
+					   UCataclysmFervour::RemoveForHealing(Fighter.AbilitySystem, 1000.0f, FGameplayTagContainer()),
+					   -10.0f, 0.01f);
 	}
 
 	/**
@@ -10074,6 +10812,162 @@ namespace CataclysmStatExemptionTest
 					  IsValid(Spawned) && Skill->LivingMinionCount() == 1);
 	}
 
+	/** A curser with room in its pool for many imps, for the two Ritualist probes below. */
+	void GiveRoomForImps(FScopedSwinger& Who)
+	{
+		Who.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		Who.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 150.0f);
+	}
+
+	/**
+	 * `curse_death_extra_imps`, read off the curser with no tags by `UCataclysmRisenImps::RiseOnDeath`. Open Channel,
+	 * the demonic tree rework of 2026-11-24. ONE CURSER HOLDING THE RISEN-IMP RULE, laying Shred on two victims. THE
+	 * CONTROL IS THE FIRST DEATH, BEFORE THE STAT IS GRANTED: one imp rises. Granted at a flat 1, the second death raises
+	 * two.
+	 *
+	 * WHAT THIS DOES NOT REACH. Where they stand and the pool refusing the second: `Cataclysm.OpenChannel.`.
+	 */
+	void ProbeCurseDeathExtraImps(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Curser(World, FVector::ZeroVector);
+		GiveRoomForImps(Curser);
+		FScopedFighter First(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Second(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Curser.Actor, {{FName(UCataclysmRisenImps::RisesStat), 1.0f}});
+
+		const FGameplayTag Shred = FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Status.Debuff.Shred")), /*ErrorIfNotFound=*/false);
+		if (!Test.TestTrue(TEXT("curse_death_extra_imps: set-up, Shred on the first"),
+				UCataclysmSkillEffects::ApplyTagForDuration(Curser.Actor, First.Actor, Shred, 10.0f))
+			|| !Test.TestTrue(TEXT("curse_death_extra_imps: set-up, and on the second"),
+				UCataclysmSkillEffects::ApplyTagForDuration(Curser.Actor, Second.Actor, Shred, 10.0f)))
+		{
+			return;
+		}
+
+		UCataclysmRisenImps::RiseOnDeath(First.Actor);
+		const int32 AfterOne = UCataclysmCommand::MinionsOfTypeCommandedBy(Curser.Actor, TEXT("Imp")).Num();
+		Test.TestEqual(TEXT("control: with no curse_death_extra_imps a cursed death raises one imp"), AfterOne, 1);
+
+		GrantFlats(Curser.Actor, {{FName(UCataclysmRisenImps::RisesStat), 1.0f},
+								  {FName(UCataclysmRisenImps::ExtraImpsStat), 1.0f}});
+		UCataclysmRisenImps::RiseOnDeath(Second.Actor);
+		Test.TestEqual(TEXT("with curse_death_extra_imps at 1 the next cursed death raises two, so "
+							"UCataclysmRisenImps::RiseOnDeath really reads it"),
+					   UCataclysmCommand::MinionsOfTypeCommandedBy(Curser.Actor, TEXT("Imp")).Num() - AfterOne, 2);
+	}
+
+	/**
+	 * `energy_shield_on_minion_death_percent`, read off the commander with no tags by
+	 * `UCataclysmRegeneration::GiveShieldOnMinionDeath`. Warded Flesh, the demonic tree rework of 2026-11-24. ONE
+	 * COMMANDER WITH 1000 MAXIMUM ENERGY SHIELD AND NONE HELD. THE CONTROL IS THE CALL BEFORE THE STAT IS GRANTED: no
+	 * shield. Granted at a flat 10, the same call gives 100.
+	 *
+	 * WHAT THIS DOES NOT REACH. That a real death of a real minion calls it: `Cataclysm.WardedFlesh.`.
+	 */
+	void ProbeShieldOnMinionDeath(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Commander(World, FVector::ZeroVector);
+		Commander.Set(Vital::GetMaxEnergyShieldAttribute(), 1000.0f);
+		Commander.Set(Vital::GetEnergyShieldAttribute(), 0.0f);
+
+		Test.TestEqual(TEXT("control: with no energy_shield_on_minion_death_percent a minion's death gives no shield"),
+					   UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander.Actor), 0.0f, 0.001f);
+		GrantFlat(Commander.Actor, UCataclysmRegeneration::ShieldOnMinionDeathStat, 10.0f);
+		Test.TestEqual(TEXT("with energy_shield_on_minion_death_percent at 10 a minion's death gives a tenth of 1000, "
+							"so UCataclysmRegeneration::GiveShieldOnMinionDeath really reads it"),
+					   UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander.Actor), 100.0f, 0.01f);
+	}
+
+	/**
+	 * `minion_lifetime_renewed_every_seconds`, read off the summoner with no tags by
+	 * `ACataclysmMinion::RenewLifetimeIfRekindled`. Rekindled, the demonic tree rework of 2026-11-24. ONE SUMMONER AND
+	 * ONE IMP OF A 20 SECOND LIFETIME. THE CONTROL IS THE ASK BEFORE THE STAT IS GRANTED: the imp is not kept. Granted at
+	 * a flat 5, the same ask keeps it for its 20 seconds again.
+	 *
+	 * WHAT THIS DOES NOT REACH. The timer's own expiry, the five-second clock and the risen imp: `Cataclysm.Rekindled.`.
+	 */
+	void ProbeLifetimeRenewed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Summoner(World, FVector::ZeroVector);
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Summoner.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/20.0f,
+														/*bBurns=*/false, TEXT("Imp"));
+		if (!Test.TestNotNull(TEXT("minion_lifetime_renewed_every_seconds: an imp"), Imp))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+		Test.TestFalse(TEXT("control: with no minion_lifetime_renewed_every_seconds a minion whose time ran out is "
+							"not kept"),
+					   Imp->RenewLifetimeIfRekindled());
+		GrantFlat(Summoner.Actor, ACataclysmMinion::LifetimeRenewedEverySecondsStat, 5.0f);
+		Test.TestTrue(TEXT("with minion_lifetime_renewed_every_seconds at 5 it is kept, so "
+						   "ACataclysmMinion::RenewLifetimeIfRekindled really reads it"),
+					  Imp->RenewLifetimeIfRekindled());
+		Test.TestEqual(TEXT("minion_lifetime_renewed_every_seconds: for its whole 20 seconds again"),
+					   Imp->GetLifeSpan(), 20.0f, 0.01f);
+	}
+
+	/**
+	 * `kill_summons_minion_where_it_fell`, read off the commander with no tags by
+	 * `UCataclysmSummonSkill::SummonAtAKillFor`. The Swarm, the demonic tree rework of 2026-11-24. ONE COMMANDER HOLDING
+	 * NO SUMMON SKILL, AND A DEAD ENEMY. THE CONTROL IS THE CALL BEFORE THE STAT IS GRANTED: nothing is summoned.
+	 * Granted at a flat 1, the same call summons Summon Imp's kind where the enemy fell.
+	 *
+	 * WHAT THIS DOES NOT REACH. A minion's kill and a summon skill's kind: `Cataclysm.Swarm.`.
+	 */
+	void ProbeKillSummonsMinion(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Commander(World, FVector::ZeroVector);
+		GiveRoomForImps(Commander);
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(5 * M, 0, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("kill_summons_minion_where_it_fell: an enemy"), Enemy))
+		{
+			return;
+		}
+		Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		ON_SCOPE_EXIT { if (IsValid(Enemy)) { Enemy->Destroy(); } };
+
+		Test.TestNull(TEXT("control: with no kill_summons_minion_where_it_fell a kill summons nothing"),
+					  UCataclysmSummonSkill::SummonAtAKillFor(Commander.Actor, Enemy, FVector(5 * M, 0, 0)));
+		GrantFlat(Commander.Actor, UCataclysmSummonSkill::KillSummonsMinionStat, 1.0f);
+		ACataclysmMinion* Summoned =
+			UCataclysmSummonSkill::SummonAtAKillFor(Commander.Actor, Enemy, FVector(5 * M, 0, 0));
+		Test.TestTrue(TEXT("with kill_summons_minion_where_it_fell at 1 the same kill summons an imp, so "
+						   "UCataclysmSummonSkill::SummonAtAKillFor really reads it"),
+					  IsValid(Summoned) && Summoned->TypeName == TEXT("Imp"));
+	}
+
 	/** What one temporal rift did, for the seven probes below. */
 	struct FTimeLockRiftProbeOutcome
 	{
@@ -10631,6 +11525,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("health_cost_suppressed"),   &ProbeConditionedHealthCostSuppressed},
 			{TEXT("movement_speed_reduction_suppressed"), &ProbeConditionedMovementSpeedReductionSuppressed},
 			{TEXT("nova_damage_of_missing_health"), &ProbeConditionedNovaDamageOfMissingHealth},
+			{TEXT("fervour_lost_to_healing"),  &ProbeConditionedFervourLostToHealing},
 			{TEXT("armor_penetration"),        &ProbeConditionedArmorPenetration},
 			{TEXT("block_chance"),             &ProbeConditionedBlockChance},
 			{TEXT("cooldown_reduction"),       &ProbeConditionedCooldownReduction},
@@ -10696,6 +11591,12 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_resummoned_after_seconds"), &ProbeResummonedAfterSeconds},
 			{TEXT("aura_shares_immunities_with_allies"), &ProbeAuraSharesImmunities},
 			{TEXT("potions_forbidden"), &ProbePotionsForbidden},
+			// THE MASOCHIST TREE REWORK OF 2026-11-24.
+			{TEXT("fervour_floor_against_healing"), &ProbeFervourFloorAgainstHealing},
+			{TEXT("debuffs_carried_count_twice"), &ProbeDebuffsCountTwice},
+			{TEXT("burn_self_on_burning_an_enemy"), &ProbeBurnSelfOnBurningAnEnemy},
+			{TEXT("nova_damage_of_weapon_damage"), &ProbeNovaDamageOfWeaponDamage},
+			{TEXT("carnage_stack_seconds"), &ProbeCarnageStackSeconds},
 			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},
 			{TEXT("potion_kill_charges_less_percent"), &ProbePotionKillChargesLess},
@@ -10867,6 +11768,16 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_types_carried"), &ProbeDamageTypesCarried},
 			{TEXT("socket_fits_any_gem"), &ProbeSocketFitsAnyGem},
 			{TEXT("socketed_gem_effect"), &ProbeSocketedGemEffect},
+			{TEXT("curse_death_extra_imps"), &ProbeCurseDeathExtraImps},
+			{TEXT("energy_shield_on_minion_death_percent"), &ProbeShieldOnMinionDeath},
+			{TEXT("minion_lifetime_renewed_every_seconds"), &ProbeLifetimeRenewed},
+			{TEXT("kill_summons_minion_where_it_fell"), &ProbeKillSummonsMinion},
+			{TEXT("armor_overwhelm_halved"), &ProbeArmorOverwhelmHalved},
+			{TEXT("ultimate_fervour_cost_reduction"), &ProbeUltimateFervourCostReduction},
+			{TEXT("fervour_decay_grace_seconds"), &ProbeFervourDecayGraceSeconds},
+			{TEXT("health_restored_on_fervour_full"), &ProbeHealthRestoredOnFervourFull},
+			{TEXT("attack_speed_reduction_suppressed"), &ProbeAttackSpeedReductionSuppressed},
+			{TEXT("cripple_and_weaken_spread_on_death_metres"), &ProbeCrippleAndWeakenSpreadOnDeath},
 		};
 		return Made;
 	}
@@ -11073,7 +11984,9 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 {
 	using namespace CataclysmStatExemptionTest;
 
-	if (!TestEqual(TEXT("the twenty-four probes are all here"), ConditionedProbes().Num(), 24))
+	// TWENTY-FIVE SINCE 2026-11-24, when the Masochist tree rework stated
+	// `fervour_lost_to_healing` under a condition (Threadbare).
+	if (!TestEqual(TEXT("the twenty-five probes are all here"), ConditionedProbes().Num(), 25))
 	{
 		return false;
 	}
