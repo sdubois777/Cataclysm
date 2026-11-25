@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Ancient Techniques takes a day a point off a forge craft on a four-affix item, and Residue Protocols ignores 5% a point of the Worn Residue the Consumption Threshold counts (#2741, crafting slice C6)
+
+**Affects:**
+- `docs/Empire_Development_Tree_Final.json`: the two nodes' sentences, reworded to the rulings.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: two effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: two
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h`: `AncientTechniquesLowestAffixes`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`: `ForgeCostsOf` adds Ancient Techniques' days off;
+  `DoItemCraft`'s crossing counts Worn Residue through the one function.
+- `game/Source/Cataclysm/Items/CataclysmWearing.h` and `game/Source/Cataclysm/Items/CataclysmWearing.cpp`:
+  `CountedWornResidueOf`, `IgnoredWornResidueShare`, `CountedWornResidue`; `CrossingFor` reads them.
+- `game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.h`,
+  `game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.cpp` and
+  `game/Source/Cataclysm/Interface/CataclysmCharacterSheetWidget.cpp`: the Worn Residue line.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeAncientProtocolsTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
+- `tools/tests/test_forge_ancient_protocols.py`, new; `tools/tests/test_forge_affix_nodes.py`,
+  `tools/tests/test_empire_tree_effects_match_their_texts.py` and
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py`.
+- `docs/Play_Loop_Checklist.md` step 33.
+
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), its crafting group, slice C6. On
+`feat/forge-ancient-protocols-c6`, written on top of slices C3 and C4 (`feat/forge-affix-nodes-c3c4`, which holds #47
+slice F6b and slices C1 and C2). It joins their window.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **NO NEW GENRE RESEARCH.** Both nodes copy this project's own: Ancient Techniques is Master Craftsman's days off with a
+  condition; Residue Protocols is the design document's and the simulation's own use of the node.
+- **NO SAVE VERSION MOVES.** Both read the tree and the items as they stand.
+
+### The rulings, the coordinating session, 2026-11-25
+
+The owner left the six forge node questions to the coordinating session: "I'll let you decide on those questions". Its
+rulings for these two (the table in slices C3 and C4's entry has all six), and the plan for this slice, accepted with:
+
+- **Ancient Techniques (question 1)**: "for crafts with 4 or more affixes", a full item; an enchantment is not an affix.
+  **R2**: the item's affixes **before** the craft, as Limited Knowledge reads the gear level before it.
+- **Residue Protocols (question 3)**: the keystones document's "Ignore 5% of Cataclysmic Residue per point when crafting",
+  which the design document, the simulation and the Consumption Threshold's derivation already use. **R1**: it acts on
+  the Worn Residue measured against the Consumption Threshold, through one function the three places read. The design
+  document says "Three or four points in Residue Protocols, at 5% ignored per point, does the same" as one Purified
+  Essence, and `sim/cataclysm_sim/residue.py`'s `points_of_residue_protocols_needed` multiplies the whole residue by
+  `1 - 0.05 x points`; the craft-gain reading would make both false.
+
+### What it does
+
+| Node | Sentence, reworded | Built as |
+| :-- | :-- | :-- |
+| Ancient Techniques (10) | "-1 Day crafting time per point for crafts with 4 or more affixes." | `CraftDaysOffOnFullItems` 1: 10 days at 10, added to `FCataclysmForgeCosts::DaysOff` when the item had 4 affixes or more before the craft |
+| Residue Protocols (10) | "Ignore 5% of Worn Residue per point when it is measured against the Consumption Threshold." | `WornResidueIgnored` 0.05: 50% at 10 |
+
+- **Ancient Techniques' days** are taken as Master Craftsman's are (`TreeDaysFor`: after the multipliers, before the
+  rounding; a craft of a day keeps one) and said by the question's words for the tree's crafting costs.
+- **Worn Residue as the threshold counts it** is `UCataclysmWearing::CountedWornResidue`: the sum times
+  `1 - share`, the share held inside 0 to 1. The equip crossing (`CrossingFor`), the forge's crossing (`DoItemCraft`,
+  the residue the craft adds counted the same way) and the character sheet's line read it. The items keep their residue,
+  so a craft's gold and days, the cleanse and an item's tooltip are unchanged.
+- **The sheet's line** names the share: "Worn Residue 750 of 1950 (tier 1), 50% ignored by Residue Protocols"; with
+  none ignored it is as before.
+
+### Tests
+
+`Cataclysm.ForgeAncientProtocols.`, a new group of five:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheTwoNodesGiveTheirFigures` | 10 days and 0.5 at full points; CONTROL none held |
+| `AncientTechniquesTakesDaysOffACraftOnAFourAffixItem` | in a world: four affixes 10 days off, three none; with Master Craftsman 20, a craft of 5 days keeping 1 |
+| `WornResidueIsCountedLessTheShareIgnored` | 1,000 at a half 500, at none exactly 1,000, the share held inside 0 to 1 |
+| `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols` | in a world, a cuirass worn at 1,500 and a helm carried at 600 on tier 1: no node, 1,500 to 2,100, crossing; at 10, 750 to 1,050, not crossing; the sheet's line; the items keep their residue |
+| `TheSheetLineNamesTheShareIgnoredOnlyWhenThereIsOne` | none ignored, the line as before; a quarter named |
+
+Python: `tools/tests/test_forge_ancient_protocols.py`, three checks (the list at its top), one of which counts every
+`->WornResidue()` outside the equipment component, so a new raw comparison with the threshold fails it. The tree checks
+count 142 built nodes and slice 15's 20 points, and the "later slice" reason is gone; `CataclysmDataTableTests.cpp`
+pins 148 effect rows; checklist step 33.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `6ff5f9f48`, each narrowed to
+`tools/tests/test_forge_ancient_protocols.py` (three checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| CP1 | the equip crossing's `After` reads the raw sum | "PROVED: 1 failed, 2 passed in 1.03s \| restored: 3 passed in 1.72s" | `test_every_comparison_with_the_threshold_reads_the_one_function` |
+| CP2 | `AncientTechniquesLowestAffixes` 5 | "PROVED: 1 failed, 2 passed in 1.04s \| restored: 3 passed in 1.05s" | `test_ancient_techniques_reads_the_item_before_the_craft_at_four_affixes` |
+| CP3 | the sheet's line reads the raw sum | "PROVED: 1 failed, 2 passed in 1.03s \| restored: 3 passed in 1.01s" | `test_every_comparison_with_the_threshold_reads_the_one_function` |
+
+**The whole Python suite at `6ff5f9f48`:** "1 failed, 8544 passed, 9 skipped in 590.25s (0:09:50)"; JUnit 8554 tests, 1
+failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree CSVs,
+whose assets the window's editor step rebuilds.
+
+**For the window**: this slice joins #47 slice F6b's and #2741's slices C1 to C4's (the coordinating session,
+2026-11-25), and the window runs from this branch, which holds all of them. **Re-registered from the trees base window's
+whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`, as theirs does.
+- **The whole suite: 5521** (their 5516 + this slice's 5 in `Cataclysm.ForgeAncientProtocols.`, none removed).
+- **No save record moves.**
+- **Groups alone, 31**: theirs (21), `ForgeAncientProtocols.` 5 (new), and every group that reads Worn Residue against
+  the threshold, since all three readers changed: `Wearing.` (34 name literals), `Equipment.` (30), `ConsumptionDouble.`
+  (15), `ItemComparison.` (11), `CharacterSheet.` (10), `BothHandsFull.` (7), `ConsumptionMark.` (6), `HeldItem.` (5) and
+  `ThresholdQuestion.` (4). Static counts of name literals; the run's counts are the ones quoted.
+- **Three C++ guard proofs**, each anchor once at `6ff5f9f48`:
+
+| Proof | File | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| GF1 | `CataclysmWearing.cpp` | `CountedWornResidueOf`'s `return WornResidue * (1.0f - FMath::Clamp(IgnoredShare, 0.0f, 1.0f));` read as `return WornResidue;` | `Cataclysm.ForgeAncientProtocols.` | `WornResidueIsCountedLessTheShareIgnored`, `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols` |
+| GF2 | `CataclysmForgeCraft.cpp` | `Item.Affixes.Num() >= UCataclysmForge::AncientTechniquesLowestAffixes` read as `>` | `Cataclysm.ForgeAncientProtocols.` | `AncientTechniquesTakesDaysOffACraftOnAFourAffixItem` |
+| GF3 | `CataclysmCharacterSheetLayout.cpp` | `return Ignored > 0 ?` read as `return Ignored < 0 ?` | `Cataclysm.ForgeAncientProtocols.` | `TheSheetLineNamesTheShareIgnoredOnlyWhenThereIsOne`, `TheEquipCrossingAndTheSheetCountWornResidueWithResidueProtocols` |
+
+---
+
 ## 2026-11-25 — The empire tree's five forge affix nodes act: Master's Workshop and Precision Crafting raise the rolls the forge draws, and Rough Draft, Apprentice Smith and Quality Materials add, raise and perfect an affix on a craft; the crafting rows still refused say what each waits on (#2741, crafting slices C3 and C4)
 
 **Affects:**
