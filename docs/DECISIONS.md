@@ -92,7 +92,75 @@ python -m ruff check .   All checks passed!
 (`test_the_ruled_tables_are_the_model_fitted_to_the_games_measured_build`, `test_the_models_stalker_is_the_games_measured_one`)
 wait for window 1, whose measurement of the game's Stalker re-fits their tables. `test_datatable_assets_are_current`
 names `Affixes.csv`, `ItemBases.csv` and the three enchantment CSVs, whose assets the editor rebuilds in the window.
-No C++ has been compiled; window 1 builds it.
+That was before window 1. **Window ar-w1** below is the first build of this branch's C++.
+
+### Window ar-w1 (window 1 of 2: it measures)
+
+**On `8e457b3f8` to `207c8523c`, 2026-11-25, holding the editor lock as ar-w1.** Base: bundle 1's whole-suite log
+(bun1-w2, `bun1_suite_engine_a6e04a36.log`): 5,621 performed, 5,621 succeeded. Predicted 5,620 (4 tests added by name,
+5 removed).
+
+- **Build:** Succeeded, 60 actions, 55 files compiled. One compile error during the window, a test missing
+  `#include "Data/CataclysmDataRows.h"` for `FindRow<FCataclysmAffixRow>`; `tools/check_includes.py` does not see a type
+  used only as a template argument.
+- **Assets:** `DT_Affixes`, `DT_ItemBases`, `DT_EnchantmentEffects`, `DT_EnchantmentsPositive` and
+  `DT_EnchantmentsNegative` rebuilt, and nothing else.
+- **Groups alone, 45 prefixes:** 38 passed first time; 16 tests failed in 7 groups. One was the Stalker measurement. The
+  other 15 pinned the old figures and are restated in `17f79489a`. Re-run alone, EnemyStrength 9/9, Equipment 30/30,
+  Forge 103/103, Item 12/12, ItemComparison 11/11, Items 6/6, Regeneration 12/12, SaveWriter 25/25; every run "0 left
+  behind".
+- **Whole suite on `17f79489a`**, Python alongside:
+
+```
+Tests: 5620 tests performed, 5617 succeeded, 3 failed: WhatACorruptedStalkerIsBuiltWithAtEachTier,
+  AWornEnergyShieldRefillsInFiveSeconds, TheTestsWaitForAWriteToFinishNotOnlyForItsFile. 58 skipped part of what they check
+Test saves: 881 written and deleted, 0 left behind
+python -u -m pytest: 2 failed, 8727 passed, 10 skipped in 668.61s (JUnit: tests 8739, failures 2)
+```
+
+  The 5,620 is the prediction. The Stalker test is the measurement below. The shield test is the ruling below; it passes
+  after it. The save writer test passed alone (25/25) and is issue #2921, left out of this branch.
+- **C++ proof**, `prove_cpp_guard`, prefix `Cataclysm.Item.`, rule 3 rounding down rather than a half up
+  (`(Scaled + 50) / 100` to `(Scaled + 0) / 100`): **PROVED**, 5 failed with the break in
+  (`AHybridHalfIsItsOwnAffixTwoTiersDownAndATierBelowThreeReadsAsThree`, `AnImplicitIsItsWholeValueAtNoughtUpgraded`,
+  `AResistanceFamilyBecomesOneModifierPerDamageType`, `ContributesTheRightModifiers`, `ValueCurvesMatchTheModel`),
+  12/12 restored. The three registered all failed, and two more.
+
+**Measured for window 2.** The Corrupted Stalker (`WhatACorruptedStalkerIsBuiltWithAtEachTier`), tiers 1 to 8: built
+health before its multiplier 1,684.8, 2,961.9, 4,725.7, 6,866.4, 9,840.8, 13,982.5, 16,460.1, 19,068.6; armour 1,530.2,
+1,934.6, 2,471.3, 3,042.0, 3,831.5, 4,831.4, 5,416.5, 6,052.2; blow before its multiplier 366.7, 505.2, 733.7, 1,038.8,
+1,433.3, 2,119.9, 2,354.6, 2,658.6. The reference build: `Cataclysm.ReferenceBuild.` 2/2, so the game reaches the
+simulation's 20,309.5 health, 12,549.88 armour, 98 block, 42.95 damage reduction and 160 resistance at tier 8.
+
+**A shield refills in about five seconds, 4.8 to 5.5, since implicits became whole.** Ruled by the coordinating
+session on 2026-11-25, option (a). The design gives each source a refill of a fifth of its shield; rounding each
+implicit on its own breaks the fifth:
+
+| Base | Shield, refill at +0 | Seconds at +0 | Seconds at +10 |
+| :-- | :-- | --: | --: |
+| Circlet | 22, 4 | 5.5 | 5.5 |
+| Vestment | 48, 10 | 4.8 | 4.8 |
+| Trousers | 26, 5 | 5.2 | 5.0 |
+| Locket | 22, 4 | 5.5 | 5.5 |
+
+Keeping exactly five would have moved the approved shield figures, to 50, 125, 62.5 and 50 stated at +10. No data
+changed; the C++ test holds 5 s within 0.6 s.
+
+**The flat shield and flat shield regeneration affixes are not held to a fifth.** Ruled by the coordinating session on
+2026-11-25, option (a): the five-second rule covers item bases and classes; the two affixes are separate choices and
+refill as they roll. A character taking both:
+
+| Where | Shield | Refill a second | Seconds |
+| :-- | --: | --: | --: |
+| Tier 1, worst roll, +0 | 5 | 1 | 5.0 |
+| Tier 1, best roll, +0 | 6 | 2 | 3.0 |
+| Tier 4, middle roll, +5 | 20 | 13 | 1.54 |
+| Tier 7, best roll, +10 | 50 | 35 | 1.43 |
+
+**A character stacking flat shield regeneration refills well under five seconds.** The approved proposal allowed it,
+raising that affix's top from 10 to 35, and did not state it. The test that held the pair to five seconds called the
+retired `affixes.affix_value` and was passing against a curve the game no longer used; it is replaced by one pinning
+the figures above. The design sentence no longer quotes the pair.
 
 ---
 
