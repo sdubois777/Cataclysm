@@ -95,6 +95,8 @@ CONSTANTS = {
     "CrossfireAction": "crossfire",
     # AND SCRAP MINES, V5b1, 2026-11-25.
     "ScrapMineAction": "scrap_mine",
+    # AND TITANFALL, the Bulwark's keystone, 2026-11-25.
+    "TitanfallAction": "titanfall",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -248,6 +250,11 @@ def test_the_generator_accepts_exactly_the_v5a_names_the_engine_has() -> None:
 def test_the_generator_accepts_exactly_the_scrap_mine_name_the_engine_has() -> None:
     """The War vow options' fifth slice, second half, first part, V5b1, 2026-11-25: Scrap Mines."""
     assert gen.SCRAP_MINE_ACTION == engine_names()["ScrapMineAction"]
+
+
+def test_the_generator_accepts_exactly_the_titanfall_name_the_engine_has() -> None:
+    """Titanfall, the Bulwark's keystone, 2026-11-25."""
+    assert gen.TITANFALL_ACTION == engine_names()["TitanfallAction"]
 
 
 def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:

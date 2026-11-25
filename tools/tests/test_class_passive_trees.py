@@ -242,7 +242,12 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: second" are ordinary English. The same slice's five rewordings moved
 #: neither count: Wrath Incarnate's R18 sentence still says "more than 10%", as
 #: the sentence it replaced did, and the other four use neither word.
-STRINGS_CONTAINING_THE_WORD = 62
+#:
+#: CONTAINING ROSE BY ONE AND MAGNITUDES BY NONE ON 2026-11-25, when Titanfall's
+#: ruled sentence R6 replaced its old one (`tools/apply_titanfall_sentence_2026_11_25.py`):
+#: "more than 20% of your Maximum HP" is ordinary English. The old sentence used
+#: neither word.
+STRINGS_CONTAINING_THE_WORD = 63
 STRINGS_USING_IT_AS_A_MAGNITUDE = 33
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%

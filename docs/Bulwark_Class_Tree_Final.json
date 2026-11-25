@@ -1123,7 +1123,7 @@
       "data": {
         "kind": "keystone",
         "name": "Titanfall",
-        "description": "When you absorb a single hit exceeding 5,000 flat damage, you become unkillable for 2 seconds and your next attack deals damage equal to the full amount of that hit. Requires 25,000 Maximum HP to activate. Can only trigger once every 30 seconds.",
+        "description": "When a single hit takes more than 20% of your Maximum HP, you cannot be killed for 2 seconds and your next attack deals bonus damage equal to that hit. Can only happen once every 30 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

@@ -740,7 +740,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: (`tools/reapply_war_vows_v5b2_workbook.py`, V5b2).
 #:
 #: AND TO 589 THE SAME DAY: Walking Arsenal's reach (`tools/reapply_war_vows_v5b3_workbook.py`, V5b3).
-AUTHORED_ROWS = 589
+#:
+#: AND TO 590 THE SAME DAY: Titanfall's action row (`tools/reapply_war_titanfall_workbook.py`).
+AUTHORED_ROWS = 590
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1187,7 +1189,8 @@ AUTHORED_ROWS = 589
 #: Baited and Trail of Wire, the first rows on either capstone.
 #: AND TO 322 THE SAME DAY: the Saboteur's Third and Final Oaths, with V4b's
 #: Counterfire and Magnum Opus, the first rows on either capstone.
-AUTHORED_NODES = 322
+#: AND TO 323 THE SAME DAY: the Bulwark's keystone Titanfall, its first row.
+AUTHORED_NODES = 323
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2943,6 +2946,9 @@ VALUE_IN_WORDS = {
     ("Saboteur_capstone_50", "device_wire_reach_metres"): ("every other one within 10 metres", 10.0),
     ("Saboteur_capstone_50", "device_wire_pin_seconds"): ("pinned for 1 second", 1.0),
     ("Saboteur_capstone_50", "device_wire_repin_seconds"): ("no more than once every 4 seconds", 4.0),
+    # TITANFALL (2026-11-25): an action row, keyed by its empty stat and condition; its value is the seconds it cannot
+    # be killed.
+    ("Bulwark_keystone_jg_final", "", ""): ("you cannot be killed for 2 seconds", 2.0),
     # WALKING ARSENAL (V5b3, 2026-11-25): how near the player its gadgets stay.
     ("Saboteur_capstone_25", "gadget_follow_within_metres"): ("staying within 8 metres of you", 8.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),

@@ -301,6 +301,8 @@ TArray<FCataclysmPlayerEffect> UCataclysmPlayerEffects::EntriesFor(const AActor*
 	// and Berserking waits for the next melee attack. The Berserker's states, 2026-11-25; the owner's rule of 2026-08-24
 	// that a system must be seen in game.
 	AddText(Buffs, FCataclysmBerserkerStates::StateTextFor(Actor), false, AbilitySystem, nullptr);
+	// AND TITANFALL'S WINDOW AND STORE, the Bulwark's keystone (ruled T6, 2026-11-25).
+	AddText(Buffs, Overlay::TitanfallTextFor(Actor), false, AbilitySystem, nullptr);
 	// AND BLOOD PRICE'S DAMAGE WHILE IT WAITS FOR THE NEXT MELEE BLOW THAT LANDS, with its seconds. The Berserker's Blood
 	// Price, 2026-11-25.
 	if (const UCataclysmAbilitySystemComponent* BloodPriceHolder =

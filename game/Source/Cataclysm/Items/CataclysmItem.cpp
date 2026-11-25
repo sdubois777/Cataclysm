@@ -1664,6 +1664,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bScrapMine = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::ScrapMineAction,
 						ESearchCase::IgnoreCase);
+					// AND TITANFALL'S. 2026-11-25.
+					Action.bTitanfall = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TitanfallAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

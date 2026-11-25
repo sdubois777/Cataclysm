@@ -3165,6 +3165,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	StoredShieldAbsorbedDamage = 0.0f;
 	StoredSpellAbsorbedDamage = 0.0f;
 
+	// AND TITANFALL'S STORE AND WINDOW (ruled T4: death clears the store). Its clock is left running.
+	TitanfallStore = 0.0f;
+	TitanfallUnkillableUntilSeconds = -1.0f;
+
 	// AND SPITEFUL GUARD'S STORE OF BLOCKED DAMAGE, which waits for the next retaliation payment (V2b, 2026-11-25).
 	StoredBlockedDamage = 0.0f;
 
@@ -5127,6 +5131,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::CrossfireAction =
 	TEXT("crossfire");
 const TCHAR* UCataclysmAbilitySystemComponent::ScrapMineAction =
 	TEXT("scrap_mine");
+const TCHAR* UCataclysmAbilitySystemComponent::TitanfallAction =
+	TEXT("titanfall");
 const TCHAR* UCataclysmAbilitySystemComponent::BlowToDeviceChancePerDeviceStat =
 	TEXT("blow_to_device_chance_per_device");
 
@@ -6580,7 +6586,53 @@ float UCataclysmAbilitySystemComponent::SpendStoredAbsorbedDamage(float HitDamag
 			StoredSpellAbsorbedDamage = 0.0f;
 		}
 	}
+	// AND TITANFALL'S, WHOLE AND WITH NO CAP (ruled T4), on the same next attack.
+	if (TitanfallStore > 0.0f)
+	{
+		Added += TitanfallStore;
+		TitanfallStore = 0.0f;
+	}
 	return Added;
+}
+
+bool UCataclysmAbilitySystemComponent::TryTitanfall(float GotThrough)
+{
+	const UWorld* World = GetWorld();
+	const FCataclysmPoolAction* Row =
+		PoolActions.FindByPredicate([](const FCataclysmPoolAction& Each) { return Each.bTitanfall; });
+	if (!World || !Row || GotThrough <= 0.0f)
+	{
+		return false;
+	}
+	const float Maximum = GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (Maximum <= 0.0f || GotThrough <= Maximum * Row->EventValue / 100.0f)
+	{
+		return false;
+	}
+	// ITS OWN CLOCK, the row's Trigger Cooldown, so the lethal-blow branch and the event after it fire it once.
+	const float Now = World->GetTimeSeconds();
+	if (bTitanfallHasFired && Now < TitanfallReadyAtSeconds)
+	{
+		return false;
+	}
+	bTitanfallHasFired = true;
+	TitanfallReadyAtSeconds = Now + Row->TriggerCooldownSeconds;
+	TitanfallUnkillableUntilSeconds = Now + Row->Percent;
+	TitanfallStore = GotThrough;
+	UE_LOG(LogCataclysm, Log, TEXT("TITANFALL: a hit took %.0f of %.0f maximum health; unkillable for %.1f s, and the next "
+								   "attack deals %.0f more."), GotThrough, Maximum, Row->Percent, GotThrough);
+	return true;
+}
+
+bool UCataclysmAbilitySystemComponent::IsTitanfallUnkillable() const
+{
+	return TitanfallUnkillableSecondsLeft() > 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::TitanfallUnkillableSecondsLeft() const
+{
+	const UWorld* World = GetWorld();
+	return World ? FMath::Max(0.0f, TitanfallUnkillableUntilSeconds - World->GetTimeSeconds()) : 0.0f;
 }
 
 float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell,
@@ -8074,6 +8126,16 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				{
 					NoteTriggerFired(Action);
 				}
+			}
+			continue;
+		}
+		// TITANFALL (2026-11-25): on a landed big hit, with what got through. Its own clock (`TryTitanfall`), not the
+		// trigger's, because the lethal-blow branch may already have fired it for this hit.
+		if (Action.bTitanfall)
+		{
+			if (bLanded)
+			{
+				TryTitanfall(EventAmount);
 			}
 			continue;
 		}

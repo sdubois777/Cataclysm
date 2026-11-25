@@ -1857,6 +1857,13 @@ public:
 	 */
 	static const TCHAR* ScrapMineAction;
 
+	/**
+	 * The Bulwark's Titanfall, 2026-11-25, the sentence R6: "When a single hit takes more than 20% of your Maximum HP,
+	 * you cannot be killed for 2 seconds and your next attack deals bonus damage equal to that hit. Can only happen once
+	 * every 30 seconds." On `big_hit_taken` only. See `TryTitanfall`.
+	 */
+	static const TCHAR* TitanfallAction;
+
 	/** Crossfire's "up to 15 of them". */
 	static constexpr int32 CrossfireMostDevices = 15;
 
@@ -4351,6 +4358,28 @@ public:
 	void SendBlowToDevice(ACataclysmMinion* Device, AActor* Attacker, float Damage);
 
 	/**
+	 * Titanfall, on the coordinating session's rulings T1-T4 of 2026-11-25. When this character wears a `titanfall` row
+	 * and `GotThrough` (what a hit took after defences, of health, energy shield, mana and the temporary absorb) is
+	 * above the row's Event Value in per cent of its maximum health, and the row's own Trigger Cooldown has passed since
+	 * it last fired: this character cannot be killed for the row's value in seconds, and `GotThrough` is stored for its
+	 * next attack, replacing what was stored. Returns whether it fired.
+	 *
+	 * CALLED FROM TWO PLACES, and its own clock stops the second firing for one hit: from the lethal-blow branch of
+	 * `UCataclysmVitalAttributeSet` with the whole blow, overkill included, so a hit that would kill is survived (T2);
+	 * and from `ActOnEvent` on `big_hit_taken` for every other big hit (T1).
+	 */
+	bool TryTitanfall(float GotThrough);
+
+	/** Whether Titanfall's window is open now: every blow and tick leaves at least 1 health (T3). */
+	bool IsTitanfallUnkillable() const;
+
+	/** The seconds Titanfall's window has left, or nought when it is shut. */
+	float TitanfallUnkillableSecondsLeft() const;
+
+	/** What Titanfall stored for the next attack, or nought (T4). */
+	float TitanfallStoredDamage() const { return TitanfallStore; }
+
+	/**
 	 * How a device of this character's answers `Enemy`, queued and made at depth nought as Counterfire's answers are: a
 	 * skill trap goes off through the forced set-off; a skill gadget fires its shot at `Enemy` at `DamageMultiplier`; a
 	 * War gadget, a War trap or a scrap trap deals its own blow at `Enemy` (the scrap trap its one shot). Counterfire's
@@ -5952,6 +5981,12 @@ protected:
 
 	/** What absorbed spells would have dealt, kept for the next attack. See `SpellAbsorbedAddedCapStat`. */
 	float StoredSpellAbsorbedDamage = 0.0f;
+
+	/** Titanfall's store for the next attack, its window's end and its clock. See `TryTitanfall`. */
+	float TitanfallStore = 0.0f;
+	float TitanfallUnkillableUntilSeconds = -1.0f;
+	float TitanfallReadyAtSeconds = 0.0f;
+	bool bTitanfallHasFired = false;
 
 	/** The temporary absorb, separate from the energy shield. See `GrantTemporaryAbsorb`. */
 	float TemporaryAbsorb = 0.0f;

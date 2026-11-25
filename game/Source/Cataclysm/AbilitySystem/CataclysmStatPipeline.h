@@ -5017,6 +5017,10 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bScrapMine = false;
 
+	/** Set, the Bulwark's Titanfall (2026-11-25). See `UCataclysmAbilitySystemComponent::TryTitanfall`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTitanfall = false;
+
 	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's

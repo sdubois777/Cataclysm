@@ -7561,6 +7561,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
             # a second" is its Trigger Cooldown (V4b, 2026-11-25).
             or action == COUNTERFIRE_ACTION
+            # AND TITANFALL'S "once every 30 seconds" IS ITS OWN (2026-11-25).
+            or action == TITANFALL_ACTION
             # AN EXECUTE MAY STATE ONE, AND TAKES NONE BY DEFAULT: see
             # `ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN`. The engine starts a
             # stated wait when an enemy is executed, and not when the roll
@@ -7724,6 +7726,18 @@ SCRAP_MINE_ACTION = "scrap_mine"
 SCRAP_MINE_EVENTS = ("gadget_destroyed", "gadget_expired")
 MAX_SCRAP_MINE_METRES = 10.0
 MAX_SCRAP_MINE_PERCENT = 1000.0
+
+#: The action that, when a big hit took more than its Event Value in per cent of
+#: the wearer's maximum health (the figure `big_hit_taken` carries: what got
+#: through, of all four pools, after defences), leaves the wearer unkillable for
+#: the row's value in seconds and stores that figure for the next attack. Its
+#: own 30 seconds between firings are the row's Trigger Cooldown. The Bulwark's
+#: Titanfall, ruled 2026-11-25 (T1-T6) on the sentence R6. ON `big_hit_taken`
+#: ONLY. `UCataclysmAbilitySystemComponent::TitanfallAction` holds the name.
+TITANFALL_ACTION = "titanfall"
+TITANFALL_EVENTS = ("big_hit_taken",)
+MAX_TITANFALL_SECONDS = 10.0
+MAX_TITANFALL_SHARE_PERCENT = 100.0
 MAX_COUNTERFIRE_DEVICES_PER_ANSWER = 10.0
 MAX_COUNTERFIRE_PERCENT = 1000.0
 
@@ -8084,7 +8098,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         return
     if action in (TAUNT_NEAR_TRAP_ACTION, PLACE_LAST_TRAP_AGAIN_ACTION,
                   COUNTERFIRE_ACTION, COPY_LAST_TRAP_AT_KILL_ACTION,
-                  CROSSFIRE_ACTION, SCRAP_MINE_ACTION):
+                  CROSSFIRE_ACTION, SCRAP_MINE_ACTION, TITANFALL_ACTION):
         _check_v4a_action(index, who, action, event, fraction_of, kind, raw,
                           headers)
         return
@@ -8561,7 +8575,9 @@ def _check_v4a_action(index: int, who: str, action: str, event: str,
               COPY_LAST_TRAP_AT_KILL_ACTION: COPY_LAST_TRAP_AT_KILL_EVENTS,
               CROSSFIRE_ACTION: CROSSFIRE_EVENTS,
               # AND SCRAP MINES', V5b1, the same day.
-              SCRAP_MINE_ACTION: SCRAP_MINE_EVENTS}[action]
+              SCRAP_MINE_ACTION: SCRAP_MINE_EVENTS,
+              # AND TITANFALL'S, the same day.
+              TITANFALL_ACTION: TITANFALL_EVENTS}[action]
     if event not in events:
         raise DataError(
             f"Enchantment Effects row {index}: {who} acts as {action} on the "
@@ -9127,6 +9143,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != COPY_LAST_TRAP_AT_KILL_ACTION \
                 and action != CROSSFIRE_ACTION \
                 and action != SCRAP_MINE_ACTION \
+                and action != TITANFALL_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9490,6 +9507,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"{MAX_TAUNT_NEAR_TRAP_SECONDS:g}.")
     # WHERE THEY FALL'S VALUE IS THE COPY'S SECONDS, AND CROSSFIRE'S A SHARE OF
     # THE HIT, each above 0 and up to its bound. V5a, 2026-11-25.
+    # TITANFALL'S VALUE IS ITS SECONDS UNKILLABLE, above 0 and up to the bound.
+    # 2026-11-25.
+    if action == TITANFALL_ACTION:
+        if not (0 < low <= MAX_TITANFALL_SECONDS
+                and 0 < high <= MAX_TITANFALL_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves its wearer "
+                f"unkillable for {low:g} to {high:g} seconds. It is above 0 and "
+                f"up to {MAX_TITANFALL_SECONDS:g}.")
     # A SCRAP TRAP'S VALUE IS ITS SHOT'S PER CENT. V5b1, 2026-11-25.
     if action == SCRAP_MINE_ACTION:
         if not (0 < low <= MAX_SCRAP_MINE_PERCENT
@@ -10219,6 +10245,20 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == TITANFALL_ACTION:
+        # OR TITANFALL'S SHARE OF MAXIMUM HEALTH A BIG HIT MUST TAKE, in per
+        # cent, required. 2026-11-25. See `TITANFALL_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts on a big hit and "
+                f"states no Event Value. It is the share of maximum health, in "
+                f"per cent, the hit must take.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_TITANFALL_SHARE_PERCENT:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} asks a big hit for "
+                f"{event_value:g} per cent of maximum health. It is above 0 and "
+                f"up to {MAX_TITANFALL_SHARE_PERCENT:g}.")
     elif action == SCRAP_MINE_ACTION:
         # OR A SCRAP TRAP'S TRIGGER RADIUS, in metres, required. V5b1,
         # 2026-11-25. See `SCRAP_MINE_ACTION`.

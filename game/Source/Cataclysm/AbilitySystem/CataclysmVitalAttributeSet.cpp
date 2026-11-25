@@ -1621,6 +1621,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						bSavedFromALethalBlow = true;
 						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 					}
+					// TITANFALL'S WINDOW, OR TITANFALL FIRED BY THIS BLOW (ruled T2, 2026-11-25): after Colossus Eternal's
+					// save, which costs nothing, and before the Final Onslaught's, so this does not spend that save's
+					// cooldown. FIRED WITH THE WHOLE BLOW, its overkill included, because the cut below shrinks the
+					// figure `big_hit_taken` later carries; `TryTitanfall`'s own clock stops that event firing it twice.
+					// LAST OF ITS CONDITIONS, because firing has effects.
+					else if (EmptiesHealthLessTheDelayedShare()
+						&& (Guarded->IsTitanfallUnkillable()
+							|| Guarded->TryTitanfall(Resolved.DealtToHealth + Resolved.Overkill
+								+ Resolved.AbsorbedByShield + Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary)))
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+					}
 					else if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
 					{
 						bSavedFromALethalBlow = true;
@@ -1628,6 +1641,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Guarded->NoteLethalHitSurvived(Every, Guarded->StatForSkill(
 							ImmuneForStat, FGameplayTagContainer(), 0.0f));
 					}
+				}
+
+				// AND A TICK IN TITANFALL'S WINDOW (ruled T3, 2026-11-25): "cannot be killed" is about dying, so a tick
+				// leaves the one point too. A blow in the window was saved above.
+				if (!bSavedFromALethalBlow && Hit.bIsDamageOverTime && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& Guarded->IsTitanfallUnkillable() && EmptiesHealthLessTheDelayedShare())
+				{
+					bSavedFromALethalBlow = true;
+					Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 				}
 
 				// AND A REPRIEVE THAT ENDS IN DEATH UNLESS A KILL IS MADE, FOR A BLOW OR A TICK NOTHING STOPS IT DID

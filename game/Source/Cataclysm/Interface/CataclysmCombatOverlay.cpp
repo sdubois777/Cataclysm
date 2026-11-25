@@ -766,6 +766,29 @@ FString UCataclysmCombatOverlay::OwedTextFor(const AActor* Actor)
 	return Owed > 0.0f ? FString::Printf(TEXT("Owed %d"), FMath::CeilToInt(Owed)) : FString();
 }
 
+FString UCataclysmCombatOverlay::TitanfallTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	const float Seconds = AbilitySystem->TitanfallUnkillableSecondsLeft();
+	if (Seconds > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("cannot die %ds"), FMath::CeilToInt(Seconds)));
+	}
+	const float Stored = AbilitySystem->TitanfallStoredDamage();
+	if (Stored > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("next attack +%d"), FMath::CeilToInt(Stored)));
+	}
+	return Parts.IsEmpty() ? FString() : FString::Printf(TEXT("Titanfall: %s"), *FString::Join(Parts, TEXT(", ")));
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();

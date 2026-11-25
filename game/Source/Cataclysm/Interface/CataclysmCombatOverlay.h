@@ -702,6 +702,14 @@ public:
 	static FString OwedTextFor(const AActor* Actor);
 
 	/**
+	 * Titanfall's window and store on a living actor, such as "Titanfall: cannot die 2s, next attack +3200", either part
+	 * alone while only it is held, or empty. Ruled 2026-11-25 (T6) under the owner's rule that every system has a basic
+	 * display. THE SECONDS ARE ROUNDED UP, as the held buff's are; THE AMOUNT TOO, as "Owed" is. Shown among the
+	 * player's buffs (`UCataclysmPlayerEffects`).
+	 */
+	static FString TitanfallTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.

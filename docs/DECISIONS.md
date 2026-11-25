@@ -2,6 +2,138 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Titanfall, the Bulwark's keystone: a hit taking more than a fifth of maximum health leaves its wearer unkillable for 2 seconds and adds the hit to the next attack
+
+**Affects:**
+- `docs/Bulwark_Class_Tree_Final.json`: Titanfall's sentence is now R6's, written by
+  `tools/apply_titanfall_sentence_2026_11_25.py` (new), which finds the node by its id. `game/Data/PassiveNodes.csv`
+  carries it.
+- `tools/reapply_war_titanfall_workbook.py` (new) writes one row into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (590 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/generate_datatables.py`: the action `titanfall`, on `big_hit_taken` only:
+  - its value is the seconds the wearer cannot be killed, above 0 and up to 10;
+  - its Event Value is the share of maximum health the hit must take, in per cent, above 0 and up to 100;
+  - it takes a Trigger Cooldown, and no fraction, value kind or scale.
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `TitanfallAction`, `TryTitanfall`, `IsTitanfallUnkillable`, `TitanfallUnkillableSecondsLeft` and
+      `TitanfallStoredDamage`;
+    - the action in `ActOnEvent`;
+    - the store spent in `SpendStoredAbsorbedDamage`;
+    - the store and the window cleared in `ClearWhatDeathEnds`.
+  - `CataclysmVitalAttributeSet.cpp`:
+    - in the lethal-blow branch, Titanfall's window, or Titanfall fired by the blow, between Colossus Eternal's save
+      and the Final Onslaught's;
+    - a tick in the window leaves one point.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bTitanfall`. `CataclysmItem.cpp`: the builder sets it.
+  - `CataclysmCombatOverlay.h` and `.cpp`: `TitanfallTextFor`. `CataclysmPlayerEffects.cpp`: it is listed among the
+    player's buffs.
+- Tests:
+  - Unreal:
+    - `CataclysmWarTitanfallTests.cpp` (new, four tests).
+    - `CataclysmDataTableTests.cpp`: the pin, 590.
+  - Python:
+    - `tools/tests/test_war_titanfall_scripts.py` (new, fourteen).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the name.
+    - `test_passive_effects_match_the_node_text.py`: 590 rows, 323 authored nodes, and Titanfall's words.
+    - `test_class_passive_trees.py`: 63 tree strings containing "more" or "less". R6's "more than 20%" is ordinary
+      English, not a magnitude.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's window (bundle 2):
+  - `Cataclysm.WarTitanfall.`: four tests, new.
+  - `Cataclysm.Data.` (590), its count unchanged.
+  - The groups that read a lethal blow's saves, the next-attack stores and the player's buffs, counts unchanged:
+    `Cataclysm.WarVowsV3a.`, `Cataclysm.WarVowsV3b.`, `Cataclysm.AbsorbedDamageStored.`, `Cataclysm.LethalHit.`,
+    `Cataclysm.PlayerEffects.`.
+- **A TICK IN THE WINDOW IS NOT TESTED.** The tick save (T3) is a separate block from the blow's, and no test drives a
+  damage-over-time tick into it.
+- **THE STORE IS PREDICTED AT 200,000 FOR A BLOW OF 200,000 ON 100,000 HEALTH**, because the figure fired with is what
+  reached health plus the overkill plus the three absorbing pools. If the calculation does not fill the overkill for
+  such a blow, `AHitThatWouldKillFiresItAndIsSurvived` fails on that one figure, and the store holds what reached health
+  (100,000).
+- **ITS OWN CLOCK, NOT THE ROW'S TRIGGER.** `TryTitanfall` keeps the 30 seconds itself, taken from the row's Trigger
+  Cooldown. It is fired from the lethal-blow branch before the blow is cut to leave one point, because the cut shrinks
+  the figure `big_hit_taken` later carries. When that event then arrives, the clock refuses a second firing. A death
+  does not reset the clock.
+- **THE OLD "(not built yet: it does nothing)" MARK GOES BY ITSELF.** The passive tree adds it to a node with no rows,
+  and Titanfall now has one. No script removes it.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-24, accepting R1-R29 verbatim: "I'll go with your recommendations on the war rulings." R6:
+  "When a single hit takes more than 20% of your Maximum HP, you cannot be killed for 2 seconds and your next attack
+  deals bonus damage equal to that hit. Can only happen once every 30 seconds."
+- The coordinating session, 2026-11-25:
+  - T1: "trigger on the got-through figure big_hit_taken already measures, above 20% of maximum health. New action
+    titanfall, Event Value 20, Value 2, trigger cooldown 30, one row, no new event."
+  - T2: "a triggering hit that would kill is survived at 1 health. It is judged after Colossus Eternal's save and
+    before the Final Onslaught's."
+  - T3: "every blow and tick in the 2 seconds leaves at least 1 health. Damage is still taken."
+  - T4: "the store is spent whole, with no cap, on the next non-spell, non-tick hit, before the target's defences. A
+    second Titanfall replaces it. Death clears it. No time limit."
+  - T5: "write R6's sentence into docs/Bulwark_Class_Tree_Final.json with a by-name script".
+  - T6: "the window and the store need something visible on screen ... If there is a display there, show Titanfall's
+    2 seconds and the stored bonus amount through it." There is one, the player's buffs (`UCataclysmPlayerEffects`),
+    and Titanfall is shown through it: "Titanfall: cannot die 2s, next attack +25000", either part alone while only
+    it is held.
+
+### JUDGEMENTS
+
+- **A LETHAL BLOW FIRES TITANFALL WITH ITS WHOLE FIGURE**, its overkill included. "That hit" is the hit, not the part
+  of it health could hold.
+- **THE SECONDS AND THE AMOUNT ARE ROUNDED UP ON SCREEN**, as the held buff's seconds and "Owed" are.
+- **THE WINDOW AND THE STORE GO AT DEATH; THE CLOCK DOES NOT.** A respawn does not make Titanfall ready again sooner.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 60
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarTitanfallTests.cpp` without `#include "Interface/CataclysmCombatOverlay.h"` failed.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break | Command | Named failures |
+|---|---|---|
+| Titanfall allowed on `hit_taken` | `pytest tools/tests/test_war_titanfall_scripts.py` | `test_a_titanfall_row_on_another_event_is_refused`, `test_the_names_are_the_generators` |
+| Titanfall given the default fraction of maximum | the same | `test_the_control_a_titanfall_row_is_read_with_its_share_its_wait_and_no_fraction` |
+| Titanfall's seconds bound set to nought | the same | `test_the_control_a_titanfall_row_is_read_with_its_share_its_wait_and_no_fraction`, `test_a_titanfall_row_with_no_share_is_refused` |
+| The sentence script's R6 with "2 seconds" written as "3 seconds" | the same | `test_the_tree_file_and_the_node_table_carry_r6`, `test_the_sentence_script_has_nothing_left_to_do`, `test_the_sentence_script_writes_r6_once_byte_for_byte`, `test_the_sentence_script_refuses_a_sentence_somebody_changed_since` |
+
+The third break's second named failure is not the guard it targets: with no seconds allowed, the row with no share
+is refused for its seconds before its missing share is reached, so the refusal's words differ from the ones the test
+expects.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarTitanfall.AHitAboveAFifthOfMaximumHealthOpensTheWindowAndStoresTheHit` | a hit of 15% does nothing (the control); a hit of 25% opens 2 s and stores 25,000, shown on the buffs; in the window a lethal blow leaves 1 health and the store is not replaced; 3 s on, the window is shut and the store shown alone; 4 s after firing, a lethal blow kills (the control for the clock) |
+| `Cataclysm.WarTitanfall.AHitThatWouldKillFiresItAndIsSurvived` | a wearer with no row dies of a blow of 200,000 (the control); with the row the blow leaves 1 health, opens the window and stores 200,000 |
+| `Cataclysm.WarTitanfall.TheNextAttackDealsTheStoredHitWholeAndOnlyOnce` | after a hit of 25,000, the next attack deals 25,000 more than the one after it (the control), and the store is empty |
+| `Cataclysm.WarTitanfall.ABulwarkTakingTitanfallIsHandedItsAction` | through `SetPassiveAllocation`: one action on `big_hit_taken`, 2 s, 20%, 30 s; none before it is taken (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: the Titanfall save in the lethal-blow branch taken out | `Cataclysm.WarTitanfall.` | `AHitThatWouldKillFiresItAndIsSurvived`, `AHitAboveAFifthOfMaximumHealthOpensTheWindowAndStoresTheHit` |
+
+**Dropped under that ruling:** a proof that the store is spent (its lines in `SpendStoredAbsorbedDamage` taken out),
+which would fail `TheNextAttackDealsTheStoredHitWholeAndOnlyOnce`.
+
+---
+
 ## 2026-11-25 — The gadget rule (V5g): a gadget press places another while the pool holds it, and otherwise moves every gadget to where the player aims
 
 **Affects:**
