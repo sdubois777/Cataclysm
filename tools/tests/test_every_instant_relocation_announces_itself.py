@@ -35,7 +35,8 @@ SITES = (
     ("Dungeon/CataclysmDungeonGameMode.cpp", "void ACataclysmDungeonGameMode::StepTheRealityChamber(", 1),
     ("Character/CataclysmPlayerCharacter.cpp", "void ACataclysmPlayerCharacter::Revive(", 1),
     ("Save/CataclysmSaveApply.cpp", "bool FCataclysmSaveApply::PlacementInto(", 1),
-    ("AbilitySystem/CataclysmMinion.cpp", "void ACataclysmMinion::MoveSkillGadgetTo(", 1),
+    # Renamed from MoveSkillGadgetTo by V5g (2026-11-25), which moves any gadget with it.
+    ("AbilitySystem/CataclysmMinion.cpp", "void ACataclysmMinion::MoveGadgetTo(", 1),
 )
 
 #: The random teleport when hit calls the component's own function, not the library's.

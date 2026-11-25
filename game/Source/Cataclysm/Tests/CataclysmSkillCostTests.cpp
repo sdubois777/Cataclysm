@@ -269,8 +269,11 @@ bool FCataclysmSkillCostPopupLineTest::RunTest(const FString&)
 	TestEqual(TEXT("a cost paid from the health pool names health"), UCataclysmSkillBar::CostLineFor(Box),
 			  FString(TEXT("Costs 30 Fervour and 14 health. 12.5 s cooldown.")));
 	Box.bIsASkillGadget = true;
-	TestEqual(TEXT("a skill gadget, whose placing costs nothing, has no line"), UCataclysmSkillBar::CostLineFor(Box),
-			  FString());
+	Box.ReserveEach = 15.0f;
+	TestEqual(TEXT("a skill gadget, whose placing costs nothing, says what each gadget reserves and the gadget rule (V5g)"),
+			  UCataclysmSkillBar::CostLineFor(Box),
+			  FString(TEXT("Each gadget reserves 15 Fervour. Press again to place another while your Fervour can hold it; "
+						   "with no room, every gadget moves to where you aim.")));
 
 	// THE LINE SITS UNDER THE NAME AND ABOVE THE DESCRIPTION.
 	FCataclysmSkillBarSlot Described;

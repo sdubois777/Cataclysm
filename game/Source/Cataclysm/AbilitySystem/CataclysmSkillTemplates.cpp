@@ -4194,6 +4194,18 @@ void UCataclysmMovementSkill::FinishFlicker()
 // Deployable -- Bolt Turret, Ballista, Iron Fortress
 // ==========================================================================
 
+float UCataclysmDeployableSkill::FervourReserveOfOne() const
+{
+	const AActor* Self = Avatar();
+	return Self ? FervourReserveFor(Self, Params, SkillTags, this) : 0.0f;
+}
+
+bool UCataclysmDeployableSkill::PlacesAGadget() const
+{
+	return Params.Minions.ContainsByPredicate(
+		[](const FCataclysmMinionSpawn& Kind) { return Kind.Count > 0 && ACataclysmMinion::TypeIsAGadget(Kind.Type); });
+}
+
 int32 UCataclysmDeployableSkill::LivingDeployedCount()
 {
 	// DESTROYED OR DEAD, as `LivingMinionCount` below has counted since issue
@@ -4303,6 +4315,7 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	// machines in one cast, "so the set reserves 25", and a fortress placed in part is a press that half-works. Asked
 	// before anything is placed; the press is spent, as a refused Summon Imp's is.
 	bRefusedForRoom = false;
+	GadgetsMovedForWantOfRoom = 0;
 	int32 Machines = 0;
 	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
 	{
@@ -4312,6 +4325,15 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	if (!UCataclysmCommand::HasRoomToReserve(Self, Each * static_cast<float>(Machines)))
 	{
 		bRefusedForRoom = true;
+		// THE GADGET RULE (V5g, G3): a set holding a gadget that cannot fit MOVES EVERY GADGET to the aimed point
+		// instead, at the caster's height and with no range limit (G1). The cost and the cooldown were spent by
+		// `CommitAndBegin` above. Iron Fortress's traps, and every trap, stay where they are.
+		if (PlacesAGadget())
+		{
+			const FVector Aim = AimPoint();
+			GadgetsMovedForWantOfRoom = ACataclysmMinion::MoveEveryGadgetOf(
+				Self, FVector(Aim.X, Aim.Y, Self->GetActorLocation().Z));
+		}
 		const UCataclysmAbilitySystemComponent* Pool =
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
 		UE_LOG(LogCataclysm, Log,

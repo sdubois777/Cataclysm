@@ -2,6 +2,161 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The gadget rule (V5g): a gadget press places another while the pool holds it, and otherwise moves every gadget to where the player aims
+
+**Affects:**
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `PressOfASkillGadgetSlot` takes the aimed point and applies the rule;
+    - `SkillGadgetIn` answers the newest gadget of the slot, out of `DevicesOf`;
+    - the map of one gadget per slot is removed.
+  - `CataclysmMinion.h` and `.cpp`:
+    - `MoveSkillGadgetTo` is renamed `MoveGadgetTo`, for any gadget;
+    - `MoveEveryGadgetOf` and `TypeIsAGadget` are new;
+    - four comments that stated the old rule now say it changed.
+  - `CataclysmSkillTemplates.h` and `.cpp`: `UCataclysmDeployableSkill`:
+    - with no room for its set, a use whose set holds a gadget moves every gadget instead;
+    - `FervourReserveOfOne`, `PlacesAGadget` and `GadgetsMovedForWantOfRoom` are new.
+  - `CataclysmPlayerController.cpp`: the slot key and the converted basic attack's click hand over the point under the
+    cursor.
+  - `CataclysmSkillBar.h` and `.cpp`:
+    - `GadgetPressRule`, the rule's sentence;
+    - `bPressPlacesAGadget`;
+    - the cost line of a skill gadget box and of a War deployable box.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5gTests.cpp` (new, four tests).
+    - `CataclysmEnchantmentEffectTests.cpp`: one new test.
+    - Rewritten for the new rule, each with a control:
+      - `Cataclysm.SkillGadgets.ASecondPressMovesTheSameGadgetKeepsItsHealthAndDoesNotCastAtOnce`, renamed
+        `...ASecondPressWithNoRoomMovesTheSameGadget...`;
+      - `Cataclysm.SkillGadgets.TwoConvertedSlotsGiveTwoGadgetsAndAnUnconvertedSlotStillCasts` (its move assertion);
+      - `Cataclysm.SkillGadgets.AClickOnAnEnemyPlacesTheBasicGadgetSwingsNothingAndTheNextClickMovesIt` (a pool of 15);
+      - `Cataclysm.KindReserves.ASkillGadgetReserves15AndASecondPressMovesItAndHoldsNothingMore`, renamed
+        `...AndASecondPressPlacesAnotherReserving15More`;
+      - `Cataclysm.SkillCost.ThePopupSaysWhatAPressCosts` (a skill gadget's line).
+  - Python: `test_every_instant_relocation_announces_itself.py` names `MoveGadgetTo`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's window (bundle 2):
+  - `Cataclysm.WarVowsV5g.`: four tests, new.
+  - `Cataclysm.Enchantments.`: one test more.
+  - The five rewritten tests: two renamed, so their groups' counts are unchanged.
+  - The groups that place or press a gadget, counts unchanged:
+    - `Cataclysm.SkillGadgets.` (all of it, since its rig's pool decides now what a press does);
+    - `Cataclysm.KindReserves.`, `Cataclysm.FervourReserve.`, `Cataclysm.SkillCost.`, `Cataclysm.SkillBar.`;
+    - `Cataclysm.WarVowsV4b.`, `Cataclysm.WarVowsV5b3.`.
+- **EVERY OTHER SKILL GADGET TEST NOW DEPENDS ON ITS RIG'S POOL.** A rig whose pool holds more than one gadget used to
+  move its gadget on a second press, and now places another. Only the five tests above press twice; I found no other by
+  sweeping for `PressOfASkillGadgetSlot`, `Taps(`, `SkillGadgetIn` and `MoveSkillGadgetTo`. A failure in
+  `Cataclysm.SkillGadgets.` in the window is most likely one I missed.
+- **THE MOVE KEEPS THE PLAYER'S HEIGHT.** The point under the cursor is a floor point. Each gadget is put at its X and Y
+  and at the player's own Z, as a gadget is placed at the player's feet. On a floor that is not level, a gadget lands at
+  the wrong height. A judgement.
+- **WITH NO CURSOR**, as in every automation test and for a press the controller does not route, gadgets move to the
+  player's feet. A War cast with no cursor uses the avatar's location, as `AimPoint` already did.
+- **PLAY-TEST POINTS, as ruled:**
+  - G3: a War cast with no room spends its cost and its cooldown on moving the gadgets.
+  - G5: the converted basic attack, with no room, moves every gadget on every click, so clicking quickly moves them
+    again and again.
+- **WHERE THE TEXT APPEARS (G6):** the second line of a skill box's pop-up, its cost line
+  (`UCataclysmSkillBar::CostLineFor`).
+  - On a slot converted into a gadget: "Each gadget reserves 15 Fervour. Press again to place another while your
+    Fervour can hold it; with no room, every gadget moves to where you aim." (15 before levels and reductions).
+  - On a War deployable whose set holds a gadget: after its costs, "Each gadget reserves 5 Fervour." (Iron Fortress:
+    "Each machine reserves 5 Fervour.") and the same rule.
+  - A War deployable's reserve was not named in the pop-up before.
+- **WALKING ARSENAL (V5b3):** a following gadget moves to the cursor with the rest and follows from there on its next
+  step. `AFollowingGadgetMovesWithTheRestAndFollowsFromThere` holds it, as the coordinating session asked.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, first message, verbatim: "Well my thought was, players would probably want to build more than
+  one super turret for boss fights and such. So you'd need a way to do that." (It produced a detach rule, which the
+  second message replaced.)
+- The owner, second message, verbatim: "also, even without super turrets, you'd probably want to be able to put out
+  more than one at a time right? So I'd say no moving unless you don't have enough fervour to put out another? then they
+  all move to where you select? then you could build a few super turrets, and then press the move button, and they'd all
+  combine into some insane turret right? that sounds fun". Asked which gadgets move, the owner chose every gadget the
+  player has, War machines included.
+- The owner, third message, verbatim: "I know, other classes in other damage types will also have turrets and gadgets,
+  not just these two." So the rule is generic.
+- The coordinating session, G1-G9, every recommendation as written:
+  - G1: place at the feet; move to the point under the cursor; no range limit.
+  - G2: a 1.5 m ring in placing order.
+  - G3: a War cast that cannot fit moves every gadget, at its cost and cooldown; Iron Fortress's traps never move.
+  - G4: each gadget on a slot casts on its own clock, and `SkillGadgetIn` answers the newest.
+  - G5: the basic gadget moves on every click with no room.
+  - G6: the sentence in `CostLineFor`, and the War deployable's reserve there.
+  - G7: through `MoveSkillGadgetTo` generalised.
+  - G8: test with a slotless machine of the `SkillGadget` type.
+  - G9: rewrite the tests of the old rule.
+- The coordinating session, on enchantments: the place-or-move rule covers a skill gadget an enchantment places; test
+  one. **TRAPS KEEP TODAY'S BEHAVIOUR: each press places one while the reserve fits, and traps never move.**
+
+### WHERE EVERY RULE IS KEYED (G8)
+
+- What moves: `ACataclysmMinion::IsGadget`, which means deployable and not a trap, read from the machine's own type
+  tags.
+- Whose: `ACataclysmMinion::DevicesOf`, which means the player commands it.
+- Whether there is room: `UCataclysmCommand::HasRoomToReserve`, with the gadget's own reserve.
+- Whether a War cast moves: `ACataclysmMinion::TypeIsAGadget` of each kind its row places.
+
+No rule names a Bolt Turret, a Ballista or any War class. The test moves a slotless machine of the `SkillGadget` type,
+which is neither a War machine nor a skill gadget, alongside the others.
+
+### JUDGEMENTS
+
+- **ONE GADGET LANDS ON THE POINT ITSELF**; two or more land on the ring, the first due east and the rest at equal angles.
+- **A WAR DEPLOYABLE'S NOUN** in the pop-up is "gadget" for a set of gadgets, "trap" for a set of traps, and "machine"
+  for a set of both.
+- **`bRefusedForRoom` STILL READS TRUE** for a War cast that moved the gadgets instead of placing, because it placed
+  nothing. `GadgetsMovedForWantOfRoom` says how many it moved.
+- **BOLTED TOGETHER (V5c) IS NOT BUILT.** "Clusters whole" in G2 has nothing to keep whole until it is: each gadget is
+  one actor today.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 59
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5gTests.cpp` without `#include "AbilitySystem/CataclysmSkillTemplates.h"`
+  failed.
+
+### PYTHON GUARD PROOF
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; `proved` True.
+
+| Break | Command | Named failures |
+|---|---|---|
+| `CataclysmMinion.cpp`: `MoveGadgetTo` without its `NoteRelocatedInstantly` call | `pytest tools/tests/test_every_instant_relocation_announces_itself.py` | `test_each_instant_relocation_announces_itself[void ACataclysmMinion::MoveGadgetTo(]`, `test_twelve_calls_in_all_and_none_elsewhere` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5g.APressPlacesAnotherGadgetWhileThePoolHoldsItAndOtherwiseMovesEveryGadget` | a pool of 35: two presses place two gadgets, the slot answering the newest, reserving 30; the third places nothing and moves the turret, the slotless machine and both gadgets onto the 1.5 m ring around the aim in placing order, health kept; the Spike Trap stays (the control) |
+| `Cataclysm.WarVowsV5g.AWarGadgetCastWithNoRoomMovesEveryGadgetAndTrapsStay` | a pool of 5: a Bolt Turret cast places one (the control); a second cast places nothing and moves it to the player; Iron Fortress with no room moves it again; a Spike Trap stays (the control) |
+| `Cataclysm.WarVowsV5g.AFollowingGadgetMovesWithTheRestAndFollowsFromThere` | Walking Arsenal held: a press with no room moves the gadget to the aim 30 m away, and its next step follows from there |
+| `Cataclysm.WarVowsV5g.ThePopupSaysTheGadgetRuleForAGadgetAndAWarDeployable` | Bolt Turret's box: "Each gadget reserves 5 Fervour." and the rule; Iron Fortress's: "Each machine reserves 5 Fervour." and the rule; a box with no gadget says no rule (the control) |
+| `Cataclysm.Enchantments.TheWornBasicGadgetRowPlacesASecondGadgetWithRoomAndMovesBothWithout` | the worn enchantment, a pool of 30: two presses place two basic gadgets; the third moves both onto the ring around the aim |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: the press always places, never moves (the room check replaced by `true`) | `Cataclysm.WarVowsV5g.` | `APressPlacesAnotherGadgetWhileThePoolHoldsItAndOtherwiseMovesEveryGadget`, `AFollowingGadgetMovesWithTheRestAndFollowsFromThere` |
+
+**Dropped under that ruling:** a proof that a War cast with no room moves the gadgets (the `PlacesAGadget` branch taken
+out), which would fail `AWarGadgetCastWithNoRoomMovesEveryGadgetAndTrapsStay`.
+
+---
+
 ## 2026-11-25 — The War vow options' fifth slice, second half, third part (V5b3): Walking Arsenal
 
 **Affects:**

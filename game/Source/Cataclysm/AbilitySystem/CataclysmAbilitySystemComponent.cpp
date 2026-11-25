@@ -9728,7 +9728,7 @@ bool UCataclysmAbilitySystemComponent::SlotIsASkillGadget(ECataclysmAbilitySlot 
 		&& StatForSkill(FName(SkillSlotIsAGadgetStat), SkillGadgetSlotTags(Slot), 0.0f) > 0.0f;
 }
 
-bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTag& SlotTag)
+bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTag& SlotTag, const FVector* AimAt)
 {
 	const ECataclysmAbilitySlot Slot = SkillGadgetSlotNamedBy(SlotTag);
 	// A SLOT CONVERTED INTO A TRAP AS WELL MAKES A TRAP (ruled 2026-10-19, T17), so it is left to the trap's press: the
@@ -9755,17 +9755,18 @@ bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTa
 	// AT THE CHARACTER'S FEET, as a deployable with no range is put down: its own location.
 	const FVector At = Player->GetActorLocation();
 
-	// ONE PER SLOT: A NEW PRESS MOVES THE ONE STANDING, keeping its health and its clock (S6). One that has died,
-	// and is only a body for half a second, is no gadget, and a new one is placed with its clock not yet started.
-	if (ACataclysmMinion* Standing = SkillGadgetIn(Slot))
+	// THE GADGET RULE (V5g, the owner's second message, 2026-11-25): "no moving unless you don't have enough fervour to
+	// put out another ... then they all move to where you select". ANOTHER GADGET WHENEVER THE POOL CAN HOLD ITS RESERVE;
+	// there is no longer one per slot.
+	if (UCataclysmCommand::HasRoomToReserve(Player, ACataclysmMinion::SkillGadgetReserveFor(Player, Slot)))
 	{
-		Standing->MoveSkillGadgetTo(At);
+		ACataclysmMinion::PlaceSkillGadget(Player, Slot, At);
 		return true;
 	}
-	if (ACataclysmMinion* Placed = ACataclysmMinion::PlaceSkillGadget(Player, Slot, At))
-	{
-		SkillGadgets.Add(Slot, Placed);
-	}
+	// AND WITH NO ROOM, EVERY GADGET MOVES TO WHERE THE PLAYER AIMS (G1), keeping each one's health and clock, at the
+	// player's own height. Nothing is placed.
+	const FVector MoveTo = AimAt ? FVector(AimAt->X, AimAt->Y, At.Z) : At;
+	ACataclysmMinion::MoveEveryGadgetOf(Player, MoveTo);
 	return true;
 }
 
@@ -9776,9 +9777,20 @@ void UCataclysmAbilitySystemComponent::ReleaseOfASkillGadgetSlot(const FGameplay
 
 ACataclysmMinion* UCataclysmAbilitySystemComponent::SkillGadgetIn(ECataclysmAbilitySlot Slot) const
 {
-	const TWeakObjectPtr<ACataclysmMinion>* Recorded = SkillGadgets.Find(Slot);
-	ACataclysmMinion* Gadget = Recorded ? Recorded->Get() : nullptr;
-	return IsValid(Gadget) && !UCataclysmSkillEffects::IsDead(Gadget) ? Gadget : nullptr;
+	// THE NEWEST LIVING ONE (G4), out of every device the character commands. `DevicesOf` leaves out the dead.
+	ACataclysmMinion* Newest = nullptr;
+	if (Slot == ECataclysmAbilitySlot::None)
+	{
+		return nullptr;
+	}
+	for (ACataclysmMinion* Each : ACataclysmMinion::DevicesOf(GetAvatarActor()))
+	{
+		if (Each->IsSkillGadget() && Each->SkillGadgetSlot == Slot && (!Newest || Each->SpawnOrder > Newest->SpawnOrder))
+		{
+			Newest = Each;
+		}
+	}
+	return Newest;
 }
 
 UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow::FPricingASkillGadgetsBlow(

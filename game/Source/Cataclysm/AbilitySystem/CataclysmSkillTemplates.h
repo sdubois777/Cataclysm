@@ -2051,6 +2051,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	ACataclysmMinion* DeployOne(const FString& InTypeName);
 
+	/** What one machine of this skill reserves for the caster now: the row's figure, levelled and reduced. Issue #2802. */
+	float FervourReserveOfOne() const;
+
+	/**
+	 * Whether any machine this skill places is a gadget (`ACataclysmMinion::TypeIsAGadget`). A use that cannot fit its
+	 * whole set's reserve then moves every gadget the caster commands to the aimed point instead, at the use's cost and
+	 * cooldown (V5g, ruled G3). A set of traps alone is refused as before, and traps never move.
+	 */
+	bool PlacesAGadget() const;
+
+	/** How many gadgets the last use moved instead of placing anything. Read by tests. */
+	int32 GadgetsMovedForWantOfRoom = 0;
+
 	/**
 	 * Whether the last use, or the last `DeployOne`, was refused for want of room in the pool. Issue #1934, ruled
 	 * 2026-11-25 (Q3): a refusal writes a log line saying why and sets this, which a test asserts, as the thrall's

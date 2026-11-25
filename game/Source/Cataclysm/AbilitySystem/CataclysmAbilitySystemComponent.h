@@ -5167,8 +5167,10 @@ public:
 	/**
 	 * SKILL GADGETS. Ruled 2026-10-16 by the coordinating session (S1-S14), for the rows "Your heavy attack / special
 	 * ability / support ability / ultimate ability is converted into a deployable gadget ...". The owner: pressing a
-	 * converted slot's key PLACES its gadget where the player stands; one gadget per converted slot; a new press moves
-	 * it; the player no longer casts that skill. The gadget is `ACataclysmMinion`'s; this is the press and the record.
+	 * converted slot's key PLACES its gadget where the player stands; the player no longer casts that skill. The gadget
+	 * is `ACataclysmMinion`'s; this is the press. ONE GADGET PER SLOT, A NEW PRESS MOVING IT, WAS THE RULE UNTIL V5g
+	 * (2026-11-25): a press now places another while the pool can hold it, and with no room moves every gadget
+	 * (`PressOfASkillGadgetSlot`).
 	 *
 	 * THE FLAG, `skill_slot_is_a_gadget` (S12): a flat 1 whose Required Tags is the slot's tag, asked with the slot's
 	 * skill tags the way `UCataclysmSkillSlots::LockedStat` is, and read as above nought. No gameplay attribute and no
@@ -5187,21 +5189,26 @@ public:
 
 	/**
 	 * A press of a slot key, before anything is queued (S7). FALSE, AND NOTHING DONE, for a slot that is not
-	 * converted. TRUE for one that is: on the first frame of the press its gadget is placed at the character's feet,
-	 * or moved there if it stands (S6), and every later frame of the same press does nothing, because the binding
-	 * fires every frame the key is held. Placing is free: no mana, no cooldown, no skill-used notice, and no lock,
-	 * stun or cooldown refuses it. Called by `AbilityInputTagPressed`, and by the player controller BEFORE its stun
-	 * check, so a stunned player still places.
+	 * converted. TRUE for one that is: on the first frame of the press, THE GADGET RULE (V5g, 2026-11-25): another
+	 * gadget is placed at the character's feet whenever the pool can hold its reserve (G1), and only when it cannot,
+	 * every gadget the character commands moves to `AimAt` (`ACataclysmMinion::MoveEveryGadgetOf`), at the character's
+	 * own height, or to its feet when no aim is given. Every later frame of the same press does nothing, because the
+	 * binding fires every frame the key is held. Placing is free: no mana, no cooldown, no skill-used notice, and no
+	 * lock, stun or cooldown refuses it. Called by `AbilityInputTagPressed`, and by the player controller BEFORE its stun
+	 * check, so a stunned player still places; the controller hands over the point under the cursor.
 	 *
 	 * ON THE AUTHORITY ONLY: a gadget is a spawned actor, and in a client and server game the press would need a
 	 * call to the server, which nothing makes yet. In standalone play the two are one machine.
 	 */
-	bool PressOfASkillGadgetSlot(const FGameplayTag& SlotTag);
+	bool PressOfASkillGadgetSlot(const FGameplayTag& SlotTag, const FVector* AimAt = nullptr);
 
 	/** The key of a slot is up: its next press may place or move its gadget again. Called by `AbilityInputTagReleased`. */
 	void ReleaseOfASkillGadgetSlot(const FGameplayTag& SlotTag);
 
-	/** The skill gadget standing for `Slot`, or null when none stands or the one placed has died. */
+	/**
+	 * The newest skill gadget standing for `Slot`, or null when none stands (V5g, ruled G4: each gadget on a slot casts on
+	 * its own clock, and this answers the newest).
+	 */
 	class ACataclysmMinion* SkillGadgetIn(ECataclysmAbilitySlot Slot) const;
 
 	/**
@@ -5253,9 +5260,6 @@ public:
 	/** `FlatTheAttributeCannotCarry` leaving out every row that names ANY of `LeavingOut` (`Type.Deployable`, `Type.Gadget`). */
 	float FlatTheAttributeCannotCarry(FName Stat, const FGameplayTagContainer& LeavingOut,
 									  const FGameplayTagContainer& Tags, const AActor* Target) const;
-
-	/** The gadget standing for each converted slot, by slot. Weak: a destroyed gadget is no gadget. */
-	TMap<ECataclysmAbilitySlot, TWeakObjectPtr<class ACataclysmMinion>> SkillGadgets;
 
 	/** The converted slots whose key is down and has already placed or moved its gadget in this press. */
 	TSet<ECataclysmAbilitySlot> SkillGadgetSlotsHeldDown;

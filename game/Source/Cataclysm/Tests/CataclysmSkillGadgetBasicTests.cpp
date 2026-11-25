@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -400,6 +401,10 @@ CATACLYSM_TEST(FCataclysmSkillGadgetBasicClickTest,
 	BasicGadgetPass(World, 2.0f);
 	Rig.Holds({BasicGadgetConverts(TEXT("Slot.Basic"))});
 	Rig.Set(Mana, 500.0f);
+	// A POOL OF 15, WHICH HOLDS ONE GADGET AND NOT A SECOND, so the next click moves it (the gadget rule, V5g: a click
+	// places another while the pool holds it, and only with no room moves every gadget; with no cursor, to the feet).
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 15.0f);
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 15.0f);
 	TestTrue(TEXT("set-up: the basic slot is converted"),
 		Rig.System->SlotIsASkillGadget(ECataclysmAbilitySlot::BasicAttack));
 
@@ -435,7 +440,7 @@ CATACLYSM_TEST(FCataclysmSkillGadgetBasicClickTest,
 		FVector::Dist(Gadget->GetActorLocation(), Feet) < 1.0f);
 	TestEqual(TEXT("and swings nothing"), Rig.Controller->LastSwingSecondsForTest(), SwungAt, 0.0001f);
 
-	// RELEASED, THE NEXT CLICK MOVES THE SAME GADGET.
+	// RELEASED, THE NEXT CLICK, WITH NO ROOM FOR ANOTHER, MOVES THE SAME GADGET.
 	Rig.Controller->ReleaseTheButtonForTest();
 	Rig.Controller->PressOnAnEnemyForTest(Enemy);
 	Rig.Controller->ReleaseTheButtonForTest();

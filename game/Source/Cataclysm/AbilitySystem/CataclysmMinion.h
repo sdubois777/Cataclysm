@@ -483,10 +483,11 @@ public:
 	 * THE SKILL GADGET. Ruled 2026-10-16 by the coordinating session (S1-S14), for the four rows "Your heavy attack /
 	 * special ability / support ability / ultimate ability is converted into a deployable gadget that fires (or
 	 * activates) your ... once per ... cooldown ... Scales off gadget damage." The owner's words: pressing a converted
-	 * slot's key PLACES its gadget where the player stands, one gadget per converted slot, a new press moves it, and
-	 * the player no longer casts that skill.
+	 * slot's key PLACES its gadget where the player stands, and the player no longer casts that skill. One gadget per
+	 * slot, a new press moving it, was the rule until V5g (2026-11-25): a press now places another while the pool can
+	 * hold it, and with no room moves every gadget (`UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot`).
 	 *
-	 * A GADGET OF ITS OWN TYPE ROW, `SkillGadgetTypeName`, one per converted slot. It has no lifespan: the floor
+	 * A GADGET OF ITS OWN TYPE ROW, `SkillGadgetTypeName`, as many to a slot as the pool holds. It has no lifespan: the floor
 	 * being cleared destroys it as every deployable is destroyed (`UCataclysmFloorContents::ClearTheFloor`), and it
 	 * can be struck and killed as any gadget can. EVERY OTHER GADGET ROW REACHES IT, because it is a gadget (S9).
 	 *
@@ -504,8 +505,8 @@ public:
 	/**
 	 * The Fervour one skill gadget reserves while it stands, before Crowned. Issue #2787, a number under the owner's
 	 * delegation of unstated numbers: half a thrall's 30, because it stands as long as a thrall does (until the floor
-	 * is cleared or it is killed) but stays where it was put and casts one skill. A new press MOVES the slot's gadget
-	 * (S6) and reserves nothing more.
+	 * is cleared or it is killed) but stays where it was put and casts one skill. Each gadget placed reserves it; a press
+	 * with no room for another moves every gadget (V5g) and reserves nothing more.
 	 */
 	static constexpr float SkillGadgetFervourReserve = 15.0f;
 
@@ -533,10 +534,28 @@ public:
 	bool IsSkillGadget() const;
 
 	/**
-	 * Move this skill gadget to `Location`, as a new press does (S6). ITS HEALTH AND ITS CLOCK ARE KEPT, so pressing
-	 * again and again cannot force a cast; nothing is destroyed and no `gadget_destroyed` is raised.
+	 * Move this gadget to `Location`, as a press with no room for another does (V5g, ruled G7: the old skill-gadget move,
+	 * generalised to any gadget). ITS HEALTH AND ITS CLOCK ARE KEPT, so pressing again and again cannot force a cast;
+	 * nothing is destroyed and no `gadget_destroyed` is raised. A skill gadget's standing-still clock starts again.
 	 */
-	void MoveSkillGadgetTo(const FVector& Location);
+	void MoveGadgetTo(const FVector& Location);
+
+	/**
+	 * THE GADGET RULE, V5g, 2026-11-25 (the owner's second message and rulings G1, G2, G7): when a gadget press has no room
+	 * for another gadget's reserve, EVERY gadget `Player` commands moves to `Point`, skill gadgets and War machines alike,
+	 * and nothing new is placed. Traps never move. Keyed on what a machine is (`IsGadget`, `DevicesOf`), never on a
+	 * machine by name, so a gadget of any damage type moves the same way.
+	 *
+	 * WHERE THEY LAND (G2): one gadget on `Point`; two or more on a ring of `GadgetMoveRingRadiusCm` around it, in placing
+	 * order, the first due east of the point and the rest at equal angles. Returns how many moved.
+	 */
+	static int32 MoveEveryGadgetOf(AActor* Player, const FVector& Point);
+
+	/** The ring moved gadgets land on, in centimetres from the point. Ruled G2. */
+	static constexpr float GadgetMoveRingRadiusCm = 150.0f;
+
+	/** Whether a machine of the minion type `TypeName` is a gadget: deployable and not a trap, read off its type's tags. */
+	static bool TypeIsAGadget(const FString& TypeName);
 
 	/** Seconds since this skill gadget was placed or last moved; its own measure of standing still. */
 	float SecondsSinceSkillGadgetPlaced() const;

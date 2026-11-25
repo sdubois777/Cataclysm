@@ -973,8 +973,8 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 		return nullptr;
 	}
 
-	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, the press places nothing. Asked only for a new
-	// gadget; a press that MOVES the slot's standing one never reaches this function.
+	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, nothing is placed. The press asks the same question
+	// first, and with no room moves every gadget instead (V5g), so a move never reaches this function.
 	const float Reserve = SkillGadgetReserveFor(Player, Slot);
 	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
@@ -1040,7 +1040,7 @@ bool ACataclysmMinion::IsSkillGadget() const
 	return SkillGadgetSlot != ECataclysmAbilitySlot::None && IsGadget();
 }
 
-void ACataclysmMinion::MoveSkillGadgetTo(const FVector& Location)
+void ACataclysmMinion::MoveGadgetTo(const FVector& Location)
 {
 	// MOVED, NOT REPLACED: its health, its clock and its age are its own and stay. S6.
 	const FVector Was = GetActorLocation();
@@ -1049,6 +1049,33 @@ void ACataclysmMinion::MoveSkillGadgetTo(const FVector& Location)
 	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
 	UCataclysmMovement::NoteRelocatedInstantly(this, Was);
 	SkillGadgetPlacedAtSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+}
+
+int32 ACataclysmMinion::MoveEveryGadgetOf(AActor* Player, const FVector& Point)
+{
+	TArray<ACataclysmMinion*> Gadgets = DevicesOf(Player);
+	Gadgets.RemoveAll([](const ACataclysmMinion* Each) { return !Each->IsGadget(); });
+	Gadgets.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B) { return A.SpawnOrder < B.SpawnOrder; });
+	const int32 Count = Gadgets.Num();
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		FVector At = Point;
+		if (Count > 1)
+		{
+			const float Radians = 2.0f * UE_PI * static_cast<float>(Index) / static_cast<float>(Count);
+			At += FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f) * GadgetMoveRingRadiusCm;
+		}
+		Gadgets[Index]->MoveGadgetTo(At);
+	}
+	return Count;
+}
+
+bool ACataclysmMinion::TypeIsAGadget(const FString& InTypeName)
+{
+	const FGameplayTagContainer Tags = TagsOfType(InTypeName);
+	const FGameplayTag Deployable = DeployableTag();
+	const FGameplayTag Trap = TagOfATrap();
+	return Deployable.IsValid() && Tags.HasTagExact(Deployable) && !(Trap.IsValid() && Tags.HasTagExact(Trap));
 }
 
 float ACataclysmMinion::SecondsSinceSkillGadgetPlaced() const

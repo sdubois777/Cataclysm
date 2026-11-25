@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
@@ -474,15 +475,18 @@ CATACLYSM_TEST(FCataclysmSkillGadgetPressPlacesTest,
 }
 
 // ==========================================================================
-// 2. A second press moves it (S6)
+// 2. A second press with no room moves it (S6, and the gadget rule of V5g, 2026-11-25)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmSkillGadgetSecondPressMovesTest,
-	"Cataclysm.SkillGadgets.ASecondPressMovesTheSameGadgetKeepsItsHealthAndDoesNotCastAtOnce")
+	"Cataclysm.SkillGadgets.ASecondPressWithNoRoomMovesTheSameGadgetKeepsItsHealthAndDoesNotCastAtOnce")
 {
 	using namespace CataclysmSkillGadgetTest;
 
 	// THE PLAYER AT THE ORIGIN WITH AN ENEMY 3 M ALONG X, AND A SECOND ENEMY 3 M ALONG X FROM THE PLACE 10 M ALONG Y.
+	// A POOL OF 15, WHICH HOLDS ONE GADGET AND NOT A SECOND: under the gadget rule (V5g) a press places another while the
+	// pool can hold it, and only with no room moves every gadget. With no aim given, they move to the player's feet. THE
+	// CONTROL, at the end: with room for a second, the next press places another.
 	FGadgetTestWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -502,6 +506,8 @@ CATACLYSM_TEST(FCataclysmSkillGadgetSecondPressMovesTest,
 		return false;
 	}
 	Rig.Holds({ConvertsSlot(TEXT("Slot.Heavy"))});
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 15.0f);
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 15.0f);
 	ACataclysmMinion* Gadget = Rig.Taps(ECataclysmAbilitySlot::Heavy);
 	if (!GadgetTestPlaced(*this, Gadget))
 	{
@@ -538,6 +544,14 @@ CATACLYSM_TEST(FCataclysmSkillGadgetSecondPressMovesTest,
 	GadgetTestStep(Gadget);
 	TestEqual(TEXT("its clock run, the next step casts from the new place"), Gadget->SkillGadgetCastsMade, 2);
 	TestTrue(TEXT("and strikes the enemy there"), GadgetTestHealthOf(Later) < 50000.0f);
+
+	// THE CONTROL: with room for a second gadget, the next press places another, and the slot answers the newest.
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 30.0f);
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 30.0f);
+	Rig.StandsAt(FVector(0.0f, 20.0f * M, 0.0f));
+	ACataclysmMinion* Another = Rig.Taps(ECataclysmAbilitySlot::Heavy);
+	TestTrue(TEXT("control: with room, the next press places another gadget"), Another && Another != Gadget);
+	TestTrue(TEXT("control: and leaves the first where it was"), FVector::Dist(Gadget->GetActorLocation(), Second) < 1.0f);
 	return true;
 }
 
@@ -570,6 +584,9 @@ CATACLYSM_TEST(FCataclysmSkillGadgetOnePerSlotTest,
 		Rig.System->SlotIsASkillGadget(ECataclysmAbilitySlot::Heavy));
 
 	Rig.Holds({ConvertsSlot(TEXT("Slot.Heavy")), ConvertsSlot(TEXT("Slot.Ultimate"))});
+	// A POOL OF 30, WHICH HOLDS TWO GADGETS AND NOT A THIRD (the gadget rule, V5g).
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 30.0f);
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 30.0f);
 	TestFalse(TEXT("the Special slot, which no row names, is not converted"),
 		Rig.System->SlotIsASkillGadget(ECataclysmAbilitySlot::Special));
 	ACataclysmMinion* Heavy = Rig.Taps(ECataclysmAbilitySlot::Heavy);
@@ -586,10 +603,16 @@ CATACLYSM_TEST(FCataclysmSkillGadgetOnePerSlotTest,
 		&& Rig.System->SkillGadgetIn(ECataclysmAbilitySlot::Ultimate) == Ultimate
 		&& Heavy->SkillGadgetSlot == ECataclysmAbilitySlot::Heavy
 		&& Ultimate->SkillGadgetSlot == ECataclysmAbilitySlot::Ultimate);
-	TestTrue(TEXT("a second Heavy press moves the Heavy gadget and leaves the Ultimate one where it was"),
-		Rig.Taps(ECataclysmAbilitySlot::Heavy) == Heavy
-		&& FVector::Dist(Heavy->GetActorLocation(), Rig.Player->GetActorLocation()) < 1.0f
-		&& FVector::Dist(Ultimate->GetActorLocation(), FVector(3.0f * M, 0.0f, 0.0f)) < 1.0f);
+	// WITH NO ROOM FOR A THIRD, A SECOND HEAVY PRESS PLACES NOTHING AND MOVES BOTH GADGETS, the Heavy one and the
+	// Ultimate one, onto the 1.5 m ring around the player's feet (V5g: every gadget moves, not the slot's alone).
+	TestTrue(TEXT("a second Heavy press with no room keeps the Heavy gadget the newest of its slot"),
+		Rig.Taps(ECataclysmAbilitySlot::Heavy) == Heavy);
+	TestEqual(TEXT("and moves the Heavy gadget onto the ring around the player"),
+		FVector::Dist2D(Heavy->GetActorLocation(), Rig.Player->GetActorLocation()),
+		ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
+	TestEqual(TEXT("and the Ultimate one with it"),
+		FVector::Dist2D(Ultimate->GetActorLocation(), Rig.Player->GetActorLocation()),
+		ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
 
 	// AND THE UNCONVERTED SPECIAL SLOT'S PRESS STILL CASTS ITS SKILL, which pays and starts its cooldown.
 	const float ManaBefore = Rig.Get(UCataclysmVitalAttributeSet::GetManaAttribute());

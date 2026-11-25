@@ -27286,6 +27286,57 @@ bool FCataclysmBasicGadgetRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicGadgetRowPlacedTwiceTest,
+	"Cataclysm.Enchantments.TheWornBasicGadgetRowPlacesASecondGadgetWithRoomAndMovesBothWithout",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE GADGET RULE (V5g, 2026-11-25) on a gadget an enchantment makes, as the coordinating session asked: the worn row
+ * "Your basic attack is converted into a deployable gadget ...", a pool of 30. Two basic presses place two gadgets; the
+ * third has no room, places nothing, and moves both onto the 1.5 m ring around the aimed point. THE CONTROL: after the
+ * second press, both stand where they were placed, which the third press then changes.
+ */
+bool FCataclysmBasicGadgetRowPlacedTwiceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	const ECataclysmAbilitySlot Basic = ECataclysmAbilitySlot::BasicAttack;
+	const FGameplayTag BasicTag = CataclysmAbilitySlots::Tag(Basic);
+	FSummoner Worn(Scope.World, TEXT("Positive_Your_basic_attack_is_converted_into_a_deployable"));
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 30.0f);
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 30.0f);
+	const auto Press = [&Worn, &BasicTag](const FVector* Aim)
+	{
+		Worn.ASC()->PressOfASkillGadgetSlot(BasicTag, Aim);
+		Worn.ASC()->ReleaseOfASkillGadgetSlot(BasicTag);
+	};
+	Press(nullptr);
+	ACataclysmMinion* First = Worn.ASC()->SkillGadgetIn(Basic);
+	Press(nullptr);
+	ACataclysmMinion* Second = Worn.ASC()->SkillGadgetIn(Basic);
+	if (!TestTrue(TEXT("two presses of the worn row place two basic gadgets (fails on assets built before the row)"),
+				  First && Second && First != Second))
+	{
+		return false;
+	}
+	const FVector Stood = First->GetActorLocation();
+	const FVector Aim = Stood + FVector(4000.0f, 0.0f, 0.0f);
+	TestTrue(TEXT("control: before the third press, the first stands where it was placed"),
+			 FVector::Dist2D(First->GetActorLocation(), Stood) < 1.0f);
+	Press(&Aim);
+	TestEqual(TEXT("the third press, with no room, places nothing: the newest is still the second"),
+			  Worn.ASC()->SkillGadgetIn(Basic), Second);
+	TestEqual(TEXT("and moves the first onto the ring around the aim"), FVector::Dist2D(First->GetActorLocation(), Aim),
+			  ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
+	TestEqual(TEXT("and the second"), FVector::Dist2D(Second->GetActorLocation(), Aim),
+			  ACataclysmMinion::GadgetMoveRingRadiusCm, 1.0f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNullEmperorSilenceRowTest,
 	"Cataclysm.Enchantments.TheWornNullEmperorTwoPieceSilencesWhatABlowThatIsNotASpellStrikes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
