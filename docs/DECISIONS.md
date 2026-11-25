@@ -1626,7 +1626,6 @@ for the six.
   skipped in 483.48s (0:08:03)`; the JUnit file agrees, 8,593 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff
   check .`: `All checks passed!`. The test files that read this log were run again on the head that carries this line.
 
-
 ### Window rifts-w1, 2026-11-25: 34 of 35 groups and 5519 of 5520 passed; one fault in a test's control, and no proof run
 
 **Ran on `b80da905a`, lock `rifts-w1`.** The pre-checks all passed at 06:59 local, with the check for an open pull
@@ -1678,6 +1677,81 @@ its six project includes removed exits 1 and fails on 12 types, among them `FCat
 
 **Next: window rifts-w2**, by the narrowed re-run rule (only a test file changes after this window's whole suite, which
 stands for every other test): the build, `Cataclysm.Rifts.` alone, and the six proofs, registered in the next section.
+
+### A Rift at difficulty tier 1 never draws the Demonic Guide, 2026-11-25
+
+**The owner, 2026-11-25, verbatim:** "Make demonic guide not spawn on the Rifts. It would be really annoying if you're
+trying to destroy a pillar and you can't because that guy will kill you if you let him get out of range.", and a moment
+later, "at least not on t1". A pillar here is a Rift's altar. So a Rift at difficulty tier 1 never draws the Demonic
+Guide (`Demonic_Demonic_Guide`) among its eight modifiers, and at tier 2 and above it draws it as it draws any row.
+
+- **Built in `b82192d49`.** `UCataclysmDungeonModifierRules::RiftPoolFor` leaves the Guide's row out of the pool at
+  `RiftWithoutTheGuideUpToTier` (1) and below, and `UCataclysmEmpireRun::GiveModifiersFrom` draws a Rift's eight from
+  it. The empire module names the row itself (`DemonicGuideKey`), because it may not include the Cataclysm module's
+  `UCataclysmDungeonModifierEffects::DemonicGuideKey`;
+  `tools/tests/test_a_tier_one_rift_never_draws_the_demonic_guide.py` holds the two names, the table's row and the
+  model's tier together.
+- **No other route reaches a tier 1 Rift**, by reading every write to a dungeon's modifiers: a Rift's sub-type is fixed
+  as Elite, so the Volatile per-floor redraw never applies; Reality Twister, which adds a row from any Cataclysm, is
+  `Chaos_Reality_Twister`, which a tier 1 pool (Demonic alone) cannot hold; Unstable Dimensions gives an enemy modifier,
+  not a dungeon row; the only other addition is a Celestial Edict; and the console's override is a debugging tool. No
+  city upgrade or empire tree effect adds a dungeon modifier.
+- **The model changes too**, by the coordinating session's ruling of 2026-11-25 (option (a), so the model and the game
+  agree): `TuningConfig.rift_without_the_guide_up_to_tier` = 1, and `_make_dungeon` draws a tier 1 Rift's eight without
+  `'Demonic Guide'` (`modifiers.DEMONIC_GUIDE`, checked against Demonic's column when the module loads).
+- **Tests, each with a control.** `Cataclysm.Rifts.ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay`: 200 Rifts
+  at tier 1 from Demonic's 14 rows and the Guide hold it 0 times and eight different modifiers each; 200 at tier 2 and
+  200 ordinary Demonic dungeons at tier 1 hold it at least once ("RIFT GUIDE:" prints the three counts).
+  `Cataclysm.DungeonModifiers.ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse`: tiers 0 and 1 lose that row
+  alone, in order; tiers 2 and 8 keep the pool as given; a pool without it loses nothing.
+  `sim/tests/test_a_tier_one_rift_never_draws_the_demonic_guide.py`, 6, and the five in `tools/tests/` named above;
+  `test_demonic_rifts_port.py` pins the new draw in both halves.
+- **The model's guard, proved** with `tools/prove_guard.py` in a `git archive` copy of `b82192d49`: the exclusion in
+  `engine.py` broken to `if False and ...`, "PROVED: 1 failed, 5 passed | restored: 6 passed", named failure
+  `test_no_tier_one_rift_holds_the_guide_and_each_still_holds_eight_different`. The game's guard is proof G1 below.
+- **The Rift figures, measured again on the same seeds** (`.claude/windows/measure_rifts_guide_51.py` in this worktree,
+  not committed: the ruled Rift, variant (b), on today's model with the switch at 0 and at 1, 2,000 Demonic campaigns a
+  cell in two blocks of 1,000). With the switch at 0 today's model gives exactly the ruled row above (14.99 cities,
+  42.4% won, 99.9% boss, 46.9% Last Stand, 132.0 sent, 99.8 peak), so the difference is this change alone. With it at 1:
+  14.90 cities, 42.6% won, 100% boss, 46.8% Last Stand, 132.3 sent, 100.1 peak, death 9.0% a Rift walk against 8.8%. The
+  Architect tree at tier 1: 44.0% won against 44.5%, no city lost either way. One walk at 0.3 of the tier's width: 8.9%
+  to 9.0% against 8.9%; the modifier score 87.1 to 87.4 against 86.1; the Guide in 56% of Rifts before and in none
+  after. Every figure is inside the block-to-block variation the figures were ruled with (the win rate's blocks differ
+  by up to 4.7 points here), so they stand as ruled. Tier 4 does not change: the switch reads nothing above tier 1.
+
+### Registered for window rifts-w2, 2026-11-25: the build, two groups alone, and seven proofs
+
+**Nothing here has run.** By the narrowed re-run rule (the coordinating session's approval of 2026-11-25), extended by
+its instruction of the same day to take in the Demonic Guide change before w2: after rifts-w1, `CataclysmRiftsTests.cpp`
+changed (the control, `d21d1fb4a`) and the Guide change touched `CataclysmDungeonModifier.h` and `.cpp`,
+`CataclysmEmpireRun.cpp` and `CataclysmDungeonModifierTests.cpp` (`b82192d49`). w1's whole suite stands for every other
+test, so no second whole suite runs. Lock `rifts-w2`, on the commit that carries this section. The pre-check for an open
+pull request that changes `game/` finds none to waive: #2896 merged.
+
+- **The build.** Predicted: succeeds, compiling the CataclysmEmpire module's changed files and what includes
+  `CataclysmDungeonModifier.h`; read the "files compiled" line.
+- **`Cataclysm.Rifts.` alone: 13 performed, 13 succeeded** (12 + the Guide test), 0 failed, 0 saves left behind. Each of
+  the 40 control dungeons prints a `RIFT CONTROL:` line, and in every line the two counts are equal. From w1's errors,
+  predicted: at each tier exactly 4 lines say `sub-type Sacrificial`, for the same 4 dungeon numbers at both tiers, with
+  2 modifiers at tier 1 and 8 at tier 4; the other 16 at each tier carry 1 and 4. If the lines show anything else, the
+  diagnosis recorded above was wrong, and that is said first. `RIFT GUIDE:` prints 0 at tier 1 and more than 0 at tier 2
+  and for the ordinary dungeons.
+- **`Cataclysm.DungeonModifiers.` alone: 32 performed, 32 succeeded** (31 in the forge window's log and in w1, + 1), 0
+  failed.
+- **Seven guard proofs**, each with `prove_cpp_guard`, alone, one at a time. **G1** first: in `RiftPoolFor`, `if
+  (DifficultyTier > RiftWithoutTheGuideUpToTier)` becomes `if (true || DifficultyTier > RiftWithoutTheGuideUpToTier)`,
+  `test_prefix` `Cataclysm.Rifts.` and `Cataclysm.DungeonModifiers.`, predicted to fail
+  `ATierOneRiftNeverDrawsTheDemonicGuideAndATierTwoRiftMay` and
+  `ATierOneRiftsPoolLeavesOutTheDemonicGuideAndNothingElse` and nothing else. Then P1 to P3 and RA1 to RA3 exactly as
+  registered for the shared window above: the same breaks, `test_prefix` values and predicted failures. Neither later
+  change touches the predicted tests' assertions; P1's break changes a Rift's floors, which the modifier tests do not
+  read. G1 is the Guide change's one proof (the limit is three a change); if it is counted in slice B2's three instead,
+  P1 is the one to drop, since the four floors are also read by the `RIFT LINE` and altar tests.
+- **Python, run on `b82192d49`**, which this head differs from only in `docs/DECISIONS.md`, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8594 passed, 10 skipped in 477.01s (0:07:57)`; the JUnit file agrees,
+  8,604 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`: `All checks passed!`. The test files that
+  read this log were run again on the head that carries this line.
+
 ---
 
 ## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
