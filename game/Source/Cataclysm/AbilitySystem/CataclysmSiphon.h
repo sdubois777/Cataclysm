@@ -33,8 +33,10 @@ class UCataclysmAbilitySystemComponent;
  * (`UCataclysmSkillEffects::AsMultiplierForSkill` on the area attribute). The character's own Area of Effect, which is
  * its skills', does not reach the Siphon, which is no skill (a judgement).
  *
- * NOT BUILT: the Crossbow's Effigy, "If you have the Siphon keystone, the effigy siphons the enemies around it too", is
- * a skill on the Death weapon skills branch.
+ * AND AROUND THE EFFIGY: the Crossbow's Effigy, "If you have the Siphon keystone, the effigy siphons the enemies around it
+ * too", is a machine placed by a row stating `SiphonsAround=1` (`ACataclysmMinion::bWidensSummonersSiphon`); while it
+ * stands, `Step` takes in every enemy within the holder's own radius of it as well. Built by the Death finish slice A
+ * (2026-11-26). Without the keystone the radius is nought and the Effigy is a decoy alone.
  */
 class CATACLYSM_API FCataclysmSiphon
 {

@@ -44,7 +44,8 @@ def test_every_gadget_type_carries_the_tag_and_no_trap_type_does():
     """THE CONTROL is the trap types: both are deployable and neither carries it."""
     carrying = {row["Name"] for row in _rows("MinionTypes") if "Type.Gadget" in _tags(row["Tags"])}
     deployable = {row["Name"]: _tags(row["Tags"]) for row in _rows("MinionTypes") if "Type.Deployable" in _tags(row["Tags"])}
-    assert carrying == {"BoltTurret", "Ballista", "SkillGadget"}
+    # AND THE EFFIGY, the Death Crossbow's decoy, a machine that is not a trap (the Death finish slice A, 2026-11-26).
+    assert carrying == {"BoltTurret", "Ballista", "SkillGadget", "Effigy"}
     assert {name for name, tags in deployable.items() if "Type.Trap" in tags} == {"SpikeTrap", "SkillTrap"}
 
 

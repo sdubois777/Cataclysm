@@ -858,12 +858,14 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: AND TO 899 ON 2026-11-26: the Bulwark's Fervour for a kill, on its starting node
 #: (`tools/reapply_war_bulwark_kill_fervour_workbook.py`, the final bundle).
 #:
-#: AND TO 959 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows
+#: AND TO 969 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows
 #: (`tools/reapply_death_finish_c_workbook.py`: the Charnel limb, Living Bombs and The Horde Ascendant), slice E's
 #: six (`tools/reapply_death_finish_e_shadow_workbook.py`: Afterimage, Shadow Clone, Shadow Step, Flurry of the Dead
-#: and Ever Moving) and slice D's 32 (`tools/reapply_death_remains_workbook.py`: the Ossuary, Many Made One, the
-#: Abomination and the Bone Colossus), on 899. Moved again as each slice joins the bundle.
-AUTHORED_ROWS = 959
+#: and Ever Moving), slice D's 32 (`tools/reapply_death_remains_workbook.py`: the Ossuary, Many Made One, the
+#: Abomination and the Bone Colossus) and slice A's ten (`tools/reapply_death_finish_soul_collector_workbook.py`:
+#: Soul Fuel, Deeper Draw, Pyre, Soul Shatter, Final Rites and Spirit Volley), on 899. Moved again as each slice
+#: joins the bundle.
+AUTHORED_ROWS = 969
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1397,10 +1399,10 @@ AUTHORED_ROWS = 959
 #:
 #: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
 #: the War line's 323 less the 226 both had.
-#: AND TO 522 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's ten Charnel nodes, slice E's Ever
-#: Moving and slice D's thirteen Ossuary nodes and Many Made One, on 497. Their vow options are on capstones already
-#: counted.
-AUTHORED_NODES = 522
+#: AND TO 527 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's ten Charnel nodes, slice E's Ever
+#: Moving, slice D's thirteen Ossuary nodes and Many Made One, and slice A's five Soul Collector nodes, on 497.
+#: Their vow options are on capstones already counted.
+AUTHORED_NODES = 527
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1564,10 +1566,10 @@ AUTHORED_NODES = 522
 #: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
 #: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
 #: War line's 72 less the 36 both had.
-#: AND TO 103 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's Living Bombs and The Horde Ascendant,
-#: slice E's Afterimage, Shadow Clone, Shadow Step and Flurry of the Dead, and slice D's Abomination and Bone
-#: Colossus, on 95.
-AUTHORED_OPTIONS = 103
+#: AND TO 104 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's Living Bombs and The Horde Ascendant,
+#: slice E's Afterimage, Shadow Clone, Shadow Step and Flurry of the Dead, slice D's Abomination and Bone Colossus,
+#: and slice A's one, on 95.
+AUTHORED_OPTIONS = 104
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -3281,6 +3283,15 @@ VALUE_FORMS = {
     # CHAINED SOULS, slice C3e: "8% per point of the Fervour your minions ...".
     "reserved_fervour_counts_as_held_percent": ("{value:g}% per point of the Fervour your minions",),
     "movement_on_cooldown_fervour_cost": ("by spending {value:g} Fervour", "reduced by {value:g} per point"),
+    # THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel's "spend up to 10 Fervour" and
+    # Deeper Draw's "spend 1 more Fervour per point"; Soul Fuel's "+1% increased
+    # damage for every 4 points for each Fervour they spend"; Pyre's "+1% increased
+    # Area of Effect per point for every 5 Fervour"; Spirit Volley's "for 30% of
+    # weapon damage".
+    "skill_fervour_spend": ("spend up to {value:g} Fervour", "spend {value:g} more Fervour per point"),
+    "damage_per_skill_fervour_spent": ("+{value:g}% increased damage for every 4 points for each Fervour",),
+    "area_of_effect_per_five_fervour_spent": ("+{value:g}% increased Area of Effect per point for every 5 Fervour",),
+    "spirit_volley_weapon_percent": ("for {value:g}% of weapon damage",),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
                                          "for {value:g} seconds rather than",
                                          "{value:g} second later",
@@ -5078,6 +5089,9 @@ FIXED_FROM_THE_FIRST_POINT = frozenset({
     # that is released to make room for another detonates as it goes" is one switch whatever the points; the two
     # increases beside it are the per-point figures.
     ("Necromancer_basic_ch_stem1", "minion_detonates_when_released"),
+    # SOUL FUEL'S "spend up to 10 Fervour", one figure whatever the points; its
+    # damage is the "for every 4 points" series (the Death finish slice A, 2026-11-26).
+    ("SoulCollector_basic_spine_009", "skill_fervour_spend"),
     # THE SABOTEUR'S TRAP TIMING, 2026-11-25: Delayed Fuse's extra second and its
     # flag are one figure whatever the points.
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"),

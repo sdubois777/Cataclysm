@@ -1218,6 +1218,15 @@ public:
 	/** World time of this minion's last beat, or a negative number before its first. */
 	float LastTauntBeatAtSeconds = -1.0f;
 
+	/**
+	 * True when this machine's placer's Siphon reaches the enemies around it too: set by
+	 * `UCataclysmDeployableSkill::DeployOne` for a row stating `SiphonsAround=1` (the Effigy), and read by
+	 * `FCataclysmSiphon::Step`, which takes in every enemy within the placer's Siphon radius of each of its living
+	 * machines marked so. The Death finish slice A (2026-11-26).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	bool bWidensSummonersSiphon = false;
+
 	/** How many taunts this minion's beats have landed, placed or restarted. Read by tests. */
 	int32 TauntsLanded = 0;
 

@@ -21,6 +21,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import reapply_death_remains_workbook as remains  # noqa: E402
+import reapply_death_finish_soul_collector_workbook as finish_a  # noqa: E402
 import reapply_death_trees_workbook as reapply  # noqa: E402
 import reapply_death_finish_c_workbook as finish_c  # noqa: E402
 import reapply_death_finish_e_shadow_workbook as finish_e  # noqa: E402
@@ -37,7 +38,9 @@ FOLLOWING = (
     ("C", finish_c.apply),
     ("E", finish_e.apply),
     ("D", lambda path: remains.base.apply(path, nodes=remains.NODES, label=remains.LABEL)),
+    ("A", finish_a.apply),
 )
+
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 SHEETS = (reapply.EFFECTS_SHEET, reapply.CLASS_SHEET)

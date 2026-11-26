@@ -180,6 +180,11 @@ void UCataclysmStrikeSkill::ActivateAbility(
 		const float Rest = UCataclysmFervour::SpendAll(Spender);
 		FervourSpentThisUse = FervourCostFor(Spender) + Rest;
 
+		// AND THE REST IS PART OF WHAT THIS USE SPENT IN ALL, beside the cost `CommitAndBegin` counted: Pyre sizes the wave
+		// by every Fervour it spent (the Death finish slice A, 2026-11-26).
+		FervourSpentByThisUse += Rest;
+		MarkTheUseAsSpendingFervour();
+
 		// AND THE REST IS A SPEND, recorded as `ApplyCost` records the cost: the clock, `fervour_spent` with the
 		// amount and this skill's tags, Cinders Kept's share, and the War classes' count of Fervour spent. The Death
 		// skills merge, obligation 1 ("Requiem calls NoteFervourSpent"). TWO RECORDS FOR ONE PRESS, the cost's and the
@@ -4895,6 +4900,11 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		{
 			Machine->BeginTaunting(Params.RadiusCm, Params.Interval);
 		}
+
+		// AND IT WIDENS ITS PLACER'S SIPHON, WHEN THE ROW SAYS SO: the Effigy, "If you have the Siphon keystone, the effigy
+		// siphons the enemies around it too" (the Crossbow draft's C4, the Death finish slice A, 2026-11-26). Marked here
+		// whatever the placer holds; `FCataclysmSiphon::Step` reads it only for a placer with a Siphon.
+		Machine->bWidensSummonersSiphon = Params.bSiphonsAround;
 
 		// AND THE SABOTEUR'S FERVOUR FOR PLACING IT, "Placing a trap or a gadget generates Fervour". Slice C, 2026-11-24.
 		// A MACHINE THAT IS A TRAP earns the trap-placed rate and raises no event: `trap_placed` is the skill traps'

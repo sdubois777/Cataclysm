@@ -90,13 +90,13 @@ def test_a_row_is_written_whole_exactly_when_what_it_needs_is_built():
     """`works` is the rule the whole script turns on, so it is checked against `BUILT` directly. Twelve rows needed only
     N22, C3 or nothing after slice DS1; slice DS2 built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled,
     and ten more are whole; slice DS3 built N5, N6, N7, N8 and N10, and nine more are; slice DS4 built N9, N12, N13,
-    N15, N17 and N21, and eight more are; slice DS5 built N14, N18, N19, C1 and C2, and five more are. The last one
-    waits, and says on what."""
+    N15, N17 and N21, and eight more are; slice DS5 built N14, N18, N19, C1 and C2, and five more are. The Death finish
+    slice A (2026-11-26) built C4, and issue #1934 had built the deployable reserve, so the Effigy, the last, is whole."""
     assert script.BUILT <= script.KNOWN_PIECES
     for row in script.ROWS:
         assert row.works == (set(row.needs) <= script.BUILT), row.csv_name
         assert row.waits_on == tuple(piece for piece in row.needs if piece not in script.BUILT), row.csv_name
-    assert sum(row.works for row in script.ROWS) == 44
+    assert sum(row.works for row in script.ROWS) == 45
     assert {row.name for row in script.ROWS if row.works} == {
         "Grave Muster", "Wailing Host", "Shallow Graves", "Grasping Dead", "Nightshade", "Soul Lash",
         "Gallows Chain", "Soul Herd", "Reaping Arc", "Pale Stride", "Pale Vault", "Parting Shot",
@@ -109,16 +109,22 @@ def test_a_row_is_written_whole_exactly_when_what_it_needs_is_built():
         # SLICE DS4.
         "Mercy Stroke", "Grave Mouth", "Soul Snare", "Requiem", "Quietus", "Hemlock", "Death Grip", "Grim Reach",
         # SLICE DS5.
-        "Wraithwalk", "Gravetouch", "Soul Lance", "Carrion Crows", "Coffin Nail"}
+        "Wraithwalk", "Gravetouch", "Soul Lance", "Carrion Crows", "Coffin Nail",
+        # THE DEATH FINISH SLICE A.
+        "Effigy"}
 
 
-def test_what_each_waiting_row_waits_on_after_slice_ds5():
+def test_no_row_waits_after_the_death_finish_slice_a():
     """The rows still waiting and the pieces they wait on, so a slice that builds one sees exactly which rows move.
-    Slice DS5 built N14, N18, N19, C1 and C2, and Gravetouch, Wraithwalk, Soul Lance, Coffin Nail and Carrion Crows are
-    whole. The Effigy waits on the Soul Collector's Siphon keystone (C4) and on a Death deployable's reserve, which the
-    coordinating session's brief for slice DS5 left unbuilt."""
+    Slice DS5 left the Effigy waiting on the Soul Collector's Siphon keystone (C4) and on a Death deployable's reserve.
+    The Death finish slice A (2026-11-26) built C4, and issue #1934 made a placed machine hold its reserve on
+    2026-11-25, so nothing waits. THE CONTROL is the Effigy's own `needs`, which still names both pieces: a `BUILT`
+    without either would leave it waiting again."""
     waiting = {row.name: row.waits_on for row in script.ROWS if not row.works}
-    assert waiting == {"Effigy": ("C4", "DeployableReserve")}
+    assert waiting == {}
+    effigy = next(row for row in script.ROWS if row.name == "Effigy")
+    assert {"C4", "DeployableReserve"} <= set(effigy.needs)
+    assert "SiphonsAround=1" in effigy.params and "MaxActive" not in effigy.params
 
 
 def test_a_rising_curse_waits_with_the_summon_row_its_kind_is_read_from():

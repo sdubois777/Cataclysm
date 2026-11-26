@@ -181,6 +181,155 @@ shipped rows, and read expected figures from `DT_PassiveEffects`. Changed:
 
 ---
 
+## 2026-11-26 — The Soul Collector's Fervour spenders, Spirit Volley and the Effigy: Soul Fuel and the four nodes after it, the vow's second option, and the last Death skill with no shape (the Death finish slice A, #2937, #2908)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp`: `SoulFuelReaches`, `SpendSoulFuel`,
+  `SoulFuelIncreasePercent`, `MarkTheUseAsSpendingFervour`, `SpentFervourTag`, the members `FervourSpentByThisUse` and
+  `SoulFuelSpentThisUse`, three stat names; `CommitAndBegin` spends Soul Fuel and marks the use;
+  `AreaOfEffectMultiplier` adds Pyre. `CataclysmGameplayAbility.h` and `.cpp`: `FervourPaidThisCommit`, added to by
+  `ApplyCost` and `ApplyCooldown`. `CataclysmSkillTemplates.cpp`: Requiem adds its rest to what the use spent;
+  `DeployOne` marks a machine whose row states `SiphonsAround=1`. `CataclysmFervour.h` and `.cpp`:
+  `LooseSpiritVolley` (called by `GainOnOwnKill`) and `FlySpirits`. `CataclysmSiphon.h` and `.cpp`: `Step` takes in the
+  enemies round each machine that widens the Siphon. `CataclysmSkillShape.h` and `.cpp`: the `SiphonsAround` key.
+  `CataclysmMinion.h`: `bWidensSummonersSiphon`. `CataclysmPlayerClassStats.cpp`: four stats with no attribute.
+- Data: `tools/reapply_death_finish_soul_collector_workbook.py` (new; ten Passive Effects rows and the `Use.SpentFervour`
+  tag), `tools/reapply_death_skills_workbook.py` (C4 and `DeployableReserve` built, the Effigy's row whole without
+  `MaxActive`, the Effigy minion row), `tools/generate_datatables.py` (`SiphonsAround` on a Deployable,
+  `check_siphons_around`). `PassiveEffects.csv` 899 to 909, `MinionTypes.csv` 15 to 16, `WeaponSkills.csv` (the
+  Effigy's shape), `game/Config/Tags/CataclysmTags.ini` (`Use.SpentFervour`).
+- Tests: a new group, `Cataclysm.DeathFinishSoulCollector.`, nine tests; four new probes in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`; `Cataclysm.DeathSkills.
+  EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` (no row waits now); `Cataclysm.Data.
+  EveryGeneratedTableImports` (PassiveEffects 909, MinionTypes 16). Python: the new script's test file, and the pins and
+  inventories the change moves.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN COMPILED OR RUN IN UNREAL.** The coordinating session runs the window. Every Unreal figure
+  below is reasoned from the code.
+- **THE PINNED COUNTS WILL CONFLICT WITH THE OTHER DEATH FINISH SLICES**: `AUTHORED_ROWS` 909, `AUTHORED_NODES` 502,
+  `AUTHORED_OPTIONS` 96, PassiveEffects 909 in `Cataclysm.Data.`, and `docs/README.md`'s sheet table (Passive Effects
+  909, Minion Types 16, Tags 147), each this branch's own figure. The coordinating
+  session reconciles them at assembly, and `FOLLOWERS` in `tools/tests/test_reapply_death_trees_workbook.py` lists the
+  scripts that write Death rows after the trees' script, in the order they run.
+- **ISSUE [#2937](https://github.com/sdubois777/Cataclysm/issues/2937) IS DONE**: Soul Fuel is built and skips Cold Blood and Requiem by the keys their rows carry
+  (`HoldsFervour`, `SpendsAllFervour`), read from the generated rows in Python and in Unreal. **ISSUE [#2908](https://github.com/sdubois777/Cataclysm/issues/2908) IS DONE**:
+  Spirit Volley is built.
+- **ONE LARGE NUMBER TO LOOK AT IN PLAY**: Pyre counts every Fervour a use spent, an Ultimate's 50 among it, so at its
+  10 points an Ultimate's area is doubled, and Requiem's more. The sentence says it; whether it is too much is a
+  play-test question.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Soul Fuel (`basic_spine_009`) | `skill_fervour_spend` flat 10 from point 1; `damage_per_skill_fervour_spent` flat 1 at each of 4, 8 and 12 points |
+| Deeper Draw (`basic_d_stem1`) | `skill_fervour_spend` flat 1 a point, so 20 at its 10 points with Soul Fuel's 10 |
+| Pyre (`basic_d_a0`) | `area_of_effect_per_five_fervour_spent` flat 1 a point |
+| Soul Shatter (`basic_d_a1`) | `crit_chance` increased 4 a point, Required Tags `Use.SpentFervour` |
+| Final Rites (`basic_d_a2`) | attack and spell damage increased 3 a point, Required Tags `Use.SpentFervour`, `target_rarity_at_least` 1 |
+| Spirit Volley (`capstone_50`, option 2) | `spirit_volley_weapon_percent` flat 30 |
+
+### How a use spends Fervour, and what "skills that spend Fervour" means
+
+Every use starts having spent nothing. The commit adds what a cost takes (`FervourPaidThisCommit`: an Ultimate's 50,
+Borrowed Step's Fervour for a use on cooldown); Soul Fuel then spends its figure; Requiem adds the rest it spends. The
+sum is `FervourSpentByThisUse`, and a use whose sum is above nought carries the tag `Use.SpentFervour` on its skill's
+tags until the next use. A projectile copies its firing skill's tags, so a shot carries it to where it lands.
+
+- **A JUDGEMENT: "skills that spend Fervour" is the use and not the skill.** A Heavy that spent 10 through Soul Fuel is
+  a skill that spends Fervour for that swing; a Heavy pressed on an empty pool spent none and gets nothing. The tag on
+  the use is what lets the pipeline's own Required Tags scope Soul Shatter and Final Rites, with no new condition.
+- **A JUDGEMENT: Pyre counts every Fervour the use spent**, its cost included, in whole fives ("for every 5", as ruling
+  3 made "for every 10" whole tens). Soul Fuel's damage counts only Soul Fuel's own spend, in whole Fervour: Soul Fuel
+  reaches no Ultimate (ruling 1), so "each Fervour they spend" is its spend.
+- **A JUDGEMENT: Soul Fuel's damage reaches what the use deals itself**, its hits, its shots and its ground, through
+  `LastNextUseIncreasePercent`, the way a next-use charge's increase does (ruled 2026-09-24). A buff, a summon or a
+  deployable still spends and buys nothing with it.
+- **A JUDGEMENT: "spend up to 10" takes what is held when less**, so an empty pool never refuses the press.
+- **Deeper Draw** raises Soul Fuel's spend only. An Ultimate costs 50, which "up to 20 Fervour a skill" cannot mean.
+- **Soul Fuel's spend is a spend like a cost**: `resource_consumed`, `fervour_spent` with the skill's tags (so Spent
+  Breath, Feast, Soul Furnace and the rest of the limb hear it), Cinders Kept's share and the War count.
+- **The skip (issue #2937, ruling 2)** is written on the two keys, not the two names: any row stating `HoldsFervour=1`
+  or `SpendsAllFervour=1` is skipped, Cold Blood and Requiem among them.
+
+### Spirit Volley
+
+"Each Fervour you gain from a kill flies to you as a spirit that strikes the nearest enemy on its way for 30% of weapon
+damage. Kills make spirits, spirits make kills." At every kill `GainOnOwnKill` pays, one spirit for each whole Fervour
+the kill paid, handed to the death announcer as the overkill explosion is, so a kill a spirit makes is the character's
+own kill, heard after this one, which pays and looses spirits in turn. Each spirit strikes, as the character's hit for
+30% of weapon damage as Death damage, the living enemy nearest the body within 3 m of the line from the body to the
+character; one that finds none reaches the character and strikes nothing.
+
+- **A JUDGEMENT: the Fervour arrives with the kill, as before; the spirits are its blows.** The issue asked which.
+  Making the Fervour wait for each spirit would delay every Soul Collector node that reads the pool.
+- **A JUDGEMENT: one spirit for each Fervour the kill PAID, before the full bar clamps it.** A full bar is where a Soul
+  Collector stands in a fight, and "kills make spirits" would stop there.
+- **A JUDGEMENT: at most 10 spirits a kill** (`SpiritVolleyMostAKill`). A spirit lives only for its one blow, so this is
+  the cap on how many exist at once the issue asked for.
+- **A JUDGEMENT: "on its way" is a corridor 3 m either side of the line**, and the spirit takes the enemy nearest the
+  body, the first it meets. The blow is instant, as the Carrion Crows' crow's and the Harrower's leap's are; nothing is
+  drawn in flight. The log says `SPIRIT VOLLEY:` with each flight.
+
+### The Effigy
+
+Its row is written whole: `Deployable; Range=14; Radius=8; Count=1; Duration=5; Interval=1; Minions=Effigy:1;
+FervourReserve=5; Taunts=1; SiphonsAround=1`, and its minion row as the Crossbow draft wrote it (300 health, 135 a level,
+no damage, threat 100).
+
+- **The reserve was already built**: issue #1934 made `DeployOne` hold every placed machine's `FervourReserve` on
+  2026-11-25, so the inventory's "reserves no Fervour" was out of date and nothing new was needed. The taunt was C3.
+- **The siphon is new (C4)**: while it stands, the placer's Siphon takes in every enemy within the placer's own Siphon
+  radius of it, as the draft says ("within its radius of the effigy"). Without the keystone the radius is nought and the
+  Effigy is a decoy alone.
+- **A JUDGEMENT: no `MaxActive=1`**, which the draft wrote from Bolt Turret's old cap. Issue #1934 took the count cap off
+  every machine that reserves Fervour ("the reserve is the limit"), and the generator refuses it.
+- **A JUDGEMENT: the Effigy carries `Type.Gadget`**, by the coordinating session's ruling of 2026-11-25 that every machine
+  that is not a trap carries it; the draft predates the ruling. It is therefore moved by a press with no room, as every
+  gadget is.
+
+### Research
+
+Read for this slice (WebFetch; poewiki.net and the Fandom wikis refused, so poedb.tw, Fextralife and gamepressure):
+- **Spending more of a resource for damage**: Diablo IV's Bone Spirit spends all remaining Essence for damage per point
+  spent (diablo4.wiki.fextralife.com/Bone+Spirit); Path of Exile's Archmage Support adds a mana cost and damage from it
+  (poedb.tw/us/Archmage_Support). Soul Fuel's shape, a capped extra spend and damage per point, is theirs.
+- **Area from a resource spent**: Path of Exile's Rage Vortex grows its radius with the Rage it sacrifices
+  (poedb.tw/us/Rage_Vortex). Pyre's shape is that.
+- **Critical strike chance for a skill that spends a resource**: no shipped precedent found; Diablo IV's are per Fury or
+  Essence HELD, not spent. Soul Shatter's scope is this game's own.
+- **Spirits from a kill that seek and chain**: Diablo III's Haunt jumps to another enemy when its host dies
+  (gamepressure.com, wikiwiki.jp); Path of Exile caps kill-made summons (Herald of Purity at 4, Summon Phantasm at 5 to
+  10; poedb.tw). The cap of 10 is from those; the corridor is this game's own.
+- **A decoy that taunts**: Path of Exile's Decoy Totem (poedb.tw/us/Decoy_Totem). A decoy that carries the player's own
+  drain has no precedent found; the second centre of the Siphon is this game's own, as the Crossbow draft said.
+
+### Unreal tests
+
+| Group | Test | Change |
+|---|---|---|
+| `Cataclysm.DeathFinishSoulCollector.` (new) | `SoulFuelSpendsOnACooldownSkillAndItsDamageRidesThatUse` | new |
+| | `SoulFuelSkipsColdBloodAndRequiemReadFromTheirGeneratedRows` | new |
+| | `TheSixNodesRowsAreTheirSentences` | new |
+| | `SoulShatterAndFinalRitesReachOnlyAUseThatSpentFervourThroughARealCharacter` | new |
+| | `PyreWidensAUseForEveryFiveFervourItSpent` | new |
+| | `ASpiritStrikesTheNearestEnemyOnItsWayAndNoOther` | new |
+| | `SpiritVolleysKillsLooseSpiritsThroughTheRealKillHandler` | new |
+| | `AMachineThatSiphonsAroundWidensItsPlacersSiphonWhileItStands` | new |
+| | `TheEffigysRowPlacesADecoyThatTauntsReservesItsFervourAndSiphonsAround` | new |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` | four new probes |
+| `Cataclysm.DeathSkills.` | `EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` | none waits; 51 of 51 shaped |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports` | PassiveEffects 909, MinionTypes 16 |
+
+Each new test has a control: a movement skill and an Ultimate for Soul Fuel; Carrion Crows and stand-ins without the
+key for the skip; a Common creature and the starting node alone for the tagged rows; 4 spent and no Pyre for the area;
+enemies off the line and a flight with nothing on it for the spirits; the scene without Spirit Volley for the chain; a
+row without `SiphonsAround` and a fallen machine for the Siphon; a Boss for the Effigy's taunt.
+
+---
+
 ## 2026-11-26 — The Necromancer's detonations: the Charnel limb's ten nodes, Living Bombs and The Horde Ascendant (the finishing of the Death Cataclysm, slice C)
 
 **Affects:**

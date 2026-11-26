@@ -1600,6 +1600,23 @@ INVENTORY = {
         "the same dot_damage on the same tick with no target, the denominator "
         "of the ratio (#2235, Q2 (a)): every row that holds without a target "
         "cancels, so what the application baked in is not counted twice",
+    # THE DEATH FINISH SLICE A (2026-11-26).
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(SpiritVolleyWeaponPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Spirit Volley's percent at a kill: one figure, no row on it asks "
+        "about the slain creature or the skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(SkillFervourSpendStat), SkillTags, 0.0f'):
+        "Soul Fuel's most spent on a use, with the skill's tags; no blow "
+        "exists yet when the use is paid for",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(DamagePerSoulFuelFervourStat), SkillTags, 0.0f'):
+        "Soul Fuel's damage for each Fervour, asked when the use is paid for, "
+        "with the skill's tags, as a next-use charge is",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(AreaPerFiveFervourSpentStat), SkillTags, 0.0f'):
+        "Pyre's area beside the area of effect it widens, with the skill's "
+        "tags, as that is asked",
 }
 
 #: EMPTY FROM ISSUE #1992 TO THE DEATH TREES' KILL GENERATOR (2026-11-24). The

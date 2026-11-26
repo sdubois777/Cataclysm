@@ -958,3 +958,13 @@ Necromancer_basic_lg_d0#1,Necromancer_basic_lg_d0,abomination_kill_percent_less,
 Necromancer_capstone_200#4,Necromancer_capstone_200,abomination_rises,flat,1.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_capstone_25#4,Necromancer_capstone_25,bone_colossus,flat,1.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_capstone_25#5,Necromancer_capstone_25,remains_left,flat,1.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_spine_009#1,SoulCollector_basic_spine_009,skill_fervour_spend,flat,10.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_spine_009#2,SoulCollector_basic_spine_009,damage_per_skill_fervour_spent,flat,1.0,,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_spine_009#3,SoulCollector_basic_spine_009,damage_per_skill_fervour_spent,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_spine_009#4,SoulCollector_basic_spine_009,damage_per_skill_fervour_spent,flat,1.0,,,0.0,,0.0,0,-1.0,12,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_d_stem1#1,SoulCollector_basic_d_stem1,skill_fervour_spend,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_d_a0#1,SoulCollector_basic_d_a0,area_of_effect_per_five_fervour_spent,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_d_a1#1,SoulCollector_basic_d_a1,crit_chance,increased,4.0,Use.SpentFervour,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_d_a2#1,SoulCollector_basic_d_a2,attack_damage,increased,3.0,Use.SpentFervour,target_rarity_at_least,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_basic_d_a2#2,SoulCollector_basic_d_a2,spell_damage,increased,3.0,Use.SpentFervour,target_rarity_at_least,1.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+SoulCollector_capstone_50#5,SoulCollector_capstone_50,spirit_volley_weapon_percent,flat,30.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

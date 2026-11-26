@@ -80,15 +80,20 @@ DAMAGE_TYPE = "Death"
 #: flying shot lands on, to a cap a cast), N14 (`OnDeath=Burst` with `BurstPercentOfMaximumHealth`, a creature dying
 #: while the skill's wound still runs bursts), and the Crossbow draft's C1 (`CritChanceAgainst`, a shot's nails raising
 #: its firer's critical strike chance against what they are in) and C2 (`StrikesOnCritical=1`, a buff's holder's
-#: critical strikes each striking again).
+#: critical strikes each striking again). The Death finish slice A, 2026-11-26: the Crossbow draft's C4
+#: (`SiphonsAround=1`, a placed machine widening its placer's Siphon), and `DeployableReserve`, which the War line's issue
+#: #1934 built on 2026-11-25 (`UCataclysmDeployableSkill::DeployOne` holds every placed machine's `FervourReserve` through
+#: `UCataclysmCommand::HoldReserve`). The Effigy, the last row waiting, is written whole.
 BUILT = frozenset({"N22", "C3", "N16", "N1", "N2", "N3", "N4", "N11", "N6", "N7", "N8", "N10", "N5",
                    "N9", "N13", "N15", "N12", "N17", "N21",
-                   "N18", "N19", "N14", "C1", "C2"})
+                   "N18", "N19", "N14", "C1", "C2",
+                   "C4", "DeployableReserve"})
 
 #: Every code piece a row may need, so a misspelt one in `needs` is refused rather than read as never built.
 #: N1-N22 are `death_weapon_skills_draft.md`'s (N20 was dropped on 2026-11-24 and is not one), C1-C4 the Death Crossbow
 #: draft's. `DeployableReserve` was found while entering the Effigy on 2026-11-24: `UCataclysmDeployableSkill::DeployOne`
-#: reserves no Fervour (the no-War rule, issue #1934), so a Death deployable stating `FervourReserve` would not hold it.
+#: reserved no Fervour then (the no-War rule, issue #1934), so a Death deployable stating `FervourReserve` would not have
+#: held it. Issue #1934 made it hold every placed machine's reserve on 2026-11-25, and it is built.
 #:
 #: `SentinelReach` WAS A RULING AND NOT CODE, AND IS RULED: the coordinating session's ruling of 2026-11-24, "Range:
 #: 14 m", keeps the Corrupted Sentinel's reach the longest range any player attack has
@@ -643,7 +648,10 @@ ROWS: tuple[DeathRow, ...] = (
          'siphons the enemies around it too. It reserves 5 Fervour while it stands.'),
         ('Item.Weapon.Crossbow, Element.Death, Type.Deployable, Type.Minion, Keyword.CC, Type.Ranged'),
         'Deployable',
-        ('Range=14; Radius=8; Count=1; Duration=5; Interval=1; MaxActive=1; Minions=Effigy:1; '
+        # NO `MaxActive=1`, which the draft wrote (Bolt Turret's cap of 2026-11-24): issue #1934 took the count cap off
+        # every machine that reserves Fervour on 2026-11-25, "the reserve is the limit", and the generator refuses one.
+        # The Death finish slice A, 2026-11-26.
+        ('Range=14; Radius=8; Count=1; Duration=5; Interval=1; Minions=Effigy:1; '
          'FervourReserve=5; Taunts=1; SiphonsAround=1'),
         needs=('C3', 'C4', 'DeployableReserve')),
 )
@@ -660,8 +668,10 @@ MINION_COLUMNS = ("Minion Type", "Family", "Base Health", "Health Per Level", "B
 #: ordinary choice while nought is what makes the nearest-enemy search pass a minion over.
 #: Slice DS2 added BarrowGuard, BoneReaper and SkeletalMage with the three permanent raises, as drafted. Slice DS4 added
 #: the draft's Wisp with Grave Mouth (N12) and Soul Snare, as drafted: its threat of 10 is kept, a judgement, since
-#: neither sentence says the enemies pass it over as Wailing Host's says of the Shade. The Crossbow draft's Effigy is
-#: added by the slice that builds its row.
+#: neither sentence says the enemies pass it over as Wailing Host's says of the Shade. The Death finish slice A added the
+#: Crossbow draft's Effigy with its row (2026-11-26), as drafted but for one judgement: `Type.Gadget` after
+#: `Type.Deployable`, by the coordinating session's ruling of 2026-11-25 that every machine that is not a trap carries
+#: it, which the draft predates.
 MINION_ROWS: dict[str, tuple[object, ...]] = {
     "Shade": ("Shade", "Creature", 100, 45, 5.25, 4.725, 0.8, 5.5, 0, 350, 1500, "Nearest",
               "Type.Minion, Type.Summon, Minion.Creature, Minion.Spell", 300),
@@ -677,6 +687,10 @@ MINION_ROWS: dict[str, tuple[object, ...]] = {
     # SLICE DS4, 2026-11-24: Grave Mouth's wisp, which Soul Snare's dying rise as; the draft's figures unchanged.
     "Wisp": ("Wisp", "Creature", 60, 27, 3.5, 3.15, 0.8, 5.5, 10, 300, 1500, "Nearest",
              "Type.Minion, Type.Summon, Minion.Creature, Minion.Spell", 300),
+    # THE DEATH FINISH SLICE A, 2026-11-26: the Effigy, the Crossbow draft's machine row. Health one and a half times a
+    # Ballista's, because its job is to be hit; no damage; a threat above nought so the nearest search still seeks it.
+    "Effigy": ("Effigy", "Machine", 300, 135, 0, 0, 1.0, 0, 100, 1500, 1500, "Nearest",
+               "Type.Minion, Type.Deployable, Type.Gadget, Minion.Machine", 300),
 }
 
 

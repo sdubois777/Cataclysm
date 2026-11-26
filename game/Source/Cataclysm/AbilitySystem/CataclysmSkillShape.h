@@ -1289,6 +1289,15 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	bool bTaunts = false;
 
 	/**
+	 * True when what the row places widens its placer's Siphon: `SiphonsAround=1`, on a Deployable. The Death Crossbow
+	 * draft's C4, built by the Death finish slice A (2026-11-26) for the Effigy, "If you have the Siphon keystone, the
+	 * effigy siphons the enemies around it too": while the machine stands, every enemy within the placer's Siphon radius
+	 * of it is in the placer's Siphon (`FCataclysmSiphon::Step`). A placer with no Siphon has nothing widened.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bSiphonsAround = false;
+
+	/**
 	 * True when what the row raises stands until it is destroyed. `Permanent=1`, on a Summon. Issue #2885, the Death
 	 * draft's N1, for the three permanent raises: Barrow Guard, Exhume and Bone Choir. Without it a summon lasts its
 	 * `Duration`, or twenty seconds when the row states none (`UCataclysmSummonSkill::SummonOne`). Its reserve is what

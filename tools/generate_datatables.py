@@ -787,10 +787,16 @@ SHAPE_PARAMS = {
     # `Taunts` JOINED ON 2026-11-24, as on Summon above: a placed machine
     # taunts every enemy within the row's `Radius` of it each `Interval`, or
     # each second when the row states none. The Death Crossbow's Effigy is the
-    # row it was drafted for (issue #2885); it waits on the Siphon (C4).
+    # row it was drafted for (issue #2885).
+    #
+    # `SiphonsAround` JOINED ON 2026-11-26, the Death finish slice A: the
+    # Crossbow draft's C4, "If you have the Siphon keystone, the effigy siphons
+    # the enemies around it too". What the row places widens its placer's
+    # Siphon (`FCataclysmSiphon::Step`); `check_siphons_around` refuses it on
+    # a row that places nothing.
     "Deployable": {"Range", "Radius", "Count", "MaxActive", "Duration",
                    "Interval", "Minions", "HealthPercent", "FervourReserve",
-                   "Taunts"},
+                   "Taunts", "SiphonsAround"},
     "Aura": {"Radius", "Duration", "Interval"},
     # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: the Sword's Death
     # Warrant, "if it dies while the warrant holds, you gain 10 Fervour". A
@@ -884,6 +890,7 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
 
     check_stalker_kit_keys(params, shape, where)
     check_taunt_keys(params, where)
+    check_siphons_around(params, where)
     check_death_skill_keys(params, shape, where)
     return params
 
@@ -1256,6 +1263,22 @@ def check_a_summon_effect_has_a_carrier(params: dict[str, str], shape: str,
             f"{where}: a Summon names Effect={params['Effect']} and nothing "
             f"lays it. It needs a Damage Percent, which makes the raise strike "
             f"and lay it, or MinionsLayEffect=1, and it may not possess")
+
+
+def check_siphons_around(params: dict[str, str], where: str) -> None:
+    """Refuse a `SiphonsAround` on a row that places nothing. The Death finish slice A, 2026-11-26.
+
+    The Siphon is widened round each machine the row places, so a row naming no
+    `Minions` would widen nothing and say nothing. A value of nought is the key
+    switched off and passes.
+    """
+    if "SiphonsAround" not in params or float(params["SiphonsAround"]) == 0.0:
+        return
+    if not str(params.get("Minions", "")).strip():
+        raise DataError(
+            f"{where}: states SiphonsAround={params['SiphonsAround']} and "
+            f"places nothing. The Siphon is widened round each machine the "
+            f"row's Minions names, so this one would widen nothing")
 
 
 def check_taunt_keys(params: dict[str, str], where: str) -> None:

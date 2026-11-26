@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmFervour.h"
+#include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
@@ -1602,7 +1603,120 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 		return 0.0f;
 	}
 	RaisePool(AbilitySystem, Gain);
+
+	// AND SPIRIT VOLLEY'S SPIRITS, one for each whole Fervour the kill paid (the Death finish slice A, 2026-11-26, #2908).
+	LooseSpiritVolley(AbilitySystem, Slain, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+const TCHAR* UCataclysmFervour::SpiritVolleyWeaponPercentStat = TEXT("spirit_volley_weapon_percent");
+const TCHAR* const UCataclysmFervour::SpiritVolleyLogPrefix = TEXT("SPIRIT VOLLEY: ");
+
+int32 UCataclysmFervour::LooseSpiritVolley(UAbilitySystemComponent* AbilitySystem, const AActor* Slain, float Paid)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	AActor* Character = Cataclysm ? Cataclysm->GetAvatarActor() : nullptr;
+	if (!Character || !Slain)
+	{
+		return 0;
+	}
+	const float Percent =
+		Cataclysm->StatForSkill(FName(SpiritVolleyWeaponPercentStat), FGameplayTagContainer(), 0.0f);
+	const int32 Spirits =
+		FMath::Min(SpiritVolleyMostAKill, FMath::FloorToInt32(FMath::Max(0.0f, Paid) + KINDA_SMALL_NUMBER));
+	if (Percent <= 0.0f || Spirits <= 0)
+	{
+		return 0;
+	}
+
+	// FROM WHERE THE BODY LIES NOW, and handed to the announcer, as `BurstTheSlain` hands its burst.
+	const TWeakObjectPtr<AActor> Caller(Character);
+	const TWeakObjectPtr<const AActor> Body(Slain);
+	const FVector From = Slain->GetActorLocation();
+	TFunction<void()> Fly = [Caller, Body, From, Spirits, Percent]()
+	{
+		if (Caller.IsValid())
+		{
+			FlySpirits(Caller.Get(), Body.Get(), From, Spirits, Percent);
+		}
+	};
+	if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(Character->GetWorld()))
+	{
+		Events->AfterThisDeathIsHeard(MoveTemp(Fly));
+	}
+	else
+	{
+		Fly();
+	}
+	return Spirits;
+}
+
+int32 UCataclysmFervour::FlySpirits(AActor* Character, const AActor* Slain, const FVector& From, int32 Spirits,
+									float Percent)
+{
+	const UWorld* World = Character ? Character->GetWorld() : nullptr;
+	if (!World || Spirits <= 0 || Percent <= 0.0f)
+	{
+		return 0;
+	}
+	const FVector To = Character->GetActorLocation();
+	const auto Living = [](const AActor* Each)
+	{
+		if (!Each || UCataclysmSkillEffects::IsDead(Each))
+		{
+			return false;
+		}
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Each);
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		return !Its || !Its->HasAttributeSetForAttribute(Health) || Its->GetNumericAttribute(Health) > 0.0f;
+	};
+
+	int32 Struck = 0;
+	for (int32 Index = 0; Index < Spirits; ++Index)
+	{
+		// "THE NEAREST ENEMY ON ITS WAY": within the corridor round the line from the body to the character, the one
+		// nearest the body, which is the first the spirit meets. Searched within a sphere round the line's middle that
+		// holds the whole corridor, then held to the corridor.
+		const FVector Middle = 0.5f * (From + To);
+		const float Reach = 0.5f * FVector::Dist(From, To) + SpiritPathHalfWidthCm;
+		AActor* Nearest = nullptr;
+		float NearestCm = TNumericLimits<float>::Max();
+		for (AActor* Each : UCataclysmTargeting::FindEnemiesInSphere(World, Character, Middle, Reach))
+		{
+			if (Each == Slain || !Living(Each))
+			{
+				continue;
+			}
+			const FVector At = Each->GetActorLocation();
+			if (FMath::PointDistToSegment(At, From, To) > SpiritPathHalfWidthCm)
+			{
+				continue;
+			}
+			const float Cm = FVector::Dist(At, From);
+			if (Cm < NearestCm)
+			{
+				NearestCm = Cm;
+				Nearest = Each;
+			}
+		}
+		if (!Nearest)
+		{
+			// NOTHING ON ITS WAY: this spirit and every one after it reach the character and strike nothing.
+			break;
+		}
+
+		// THE CHARACTER'S OWN HIT, at the vow's percent of weapon damage, as Death damage (the Siphon's Drain is typed the
+		// same way), with no skill's tags: it is no skill's blow. Its kill is the character's, so it pays and looses
+		// spirits in turn.
+		FCataclysmHitDelivery Delivery;
+		Delivery.DamageType = FName(TEXT("Death"));
+		UCataclysmSkillEffects::ApplyHit(Character, Nearest, Percent, FGameplayTagContainer(), Delivery);
+		++Struck;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("%s%d of %d spirits from %s struck an enemy on their way to %s, each for %.0f%% of "
+								   "weapon damage."),
+		   SpiritVolleyLogPrefix, Struck, Spirits, *GetNameSafe(Slain), *GetNameSafe(Character), Percent);
+	return Struck;
 }
 
 float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck,
