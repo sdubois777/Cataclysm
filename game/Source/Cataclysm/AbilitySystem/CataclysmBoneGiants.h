@@ -56,7 +56,8 @@ struct FCataclysmGiantsOfAPlayer
  *     Revenant's included; the player's followers are released oldest first (`UCataclysmCommand::ReleasableOldestFirst`)
  *     until it fits. When it could not fit with all of them gone, nothing is released and it does not rise; it is asked
  *     again at the next kill.
- *   - LONE REVENANT (`LoneRevenantHeldStat`, slice B's flag): 400% more health and damage.
+ *   - LONE REVENANT (slice B's flag, read through `UCataclysmNecromancerArmy::LoneRevenantHeld`): 400% more health and
+ *     damage.
  *   - GONE WHEN THE FLOOR CHANGES (`EndTheFloor`); it stays through a kept Horde arena's waves. Killed, it does not rise
  *     again on that floor.
  *
@@ -83,8 +84,6 @@ public:
 	static const TCHAR* AbominationRisesStat;
 	static const TCHAR* AbominationKillPercentLessStat;
 	static const TCHAR* BoneColossusStat;
-	/** Slice B's flag for Lone Revenant, named by the coordinating session on 2026-11-26. */
-	static const TCHAR* LoneRevenantHeldStat;
 
 	/** The sentence's numbers. */
 	static constexpr float AbominationKillPercent = 50.0f;

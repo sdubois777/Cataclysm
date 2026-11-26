@@ -6,8 +6,10 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmBoneGiants.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -468,6 +470,95 @@ bool FCataclysmArmyLoneRevenantTest::RunTest(const FString&)
 														   Husk->TypeTags, Husk),
 			  1.0f, 0.001f);
 	ClearArmy(Commander.Actor);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArmyLoneRevenantAbominationTest,
+	"Cataclysm.NecromancerArmy.LoneRevenantGivesTheAbominationFiveTimesNotTwentyFive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Lone Revenant's 400% reaches the Abomination exactly once: the coordinating session's ruling at the bundle's assembly
+ * (2026-11-26), "Abomination with Lone Revenant = base x 5, not x 25". Two paths could each apply it: slice B's
+ * `minion_health` and `minion_damage` rows, which require `Minion.Permanent`, and slice D's multiplier on
+ * `lone_revenant_held`. The Abomination carries no `Minion.Permanent`, so only slice D's applies.
+ *
+ * Two commanders, each killing a creature of the same kind, each raising an Abomination from that kill. One holds Lone
+ * Revenant's real rows at full points, the other nothing. CONTROL: the same rows give a minion carrying
+ * `Minion.Permanent` five times its health and blow, so they are live and would have made it 25 had they reached.
+ */
+bool FCataclysmArmyLoneRevenantAbominationTest::RunTest(const FString&)
+{
+	using namespace CataclysmNecromancerArmyTest;
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	FArmyCommander Plain(World, FVector(0.0f, -20.0f * M, 0.0f));
+	FArmyCommander Revenant(World, FVector(0.0f, 20.0f * M, 0.0f));
+	FArmyMonster ForPlain(World, FVector(5.0f * M, -20.0f * M, 0.0f));
+	FArmyMonster ForRevenant(World, FVector(5.0f * M, 20.0f * M, 0.0f));
+	GiveNodes(Revenant, {TEXT("Necromancer_keystone_lg_kA")});
+	TestTrue(TEXT("set-up: Lone Revenant is held"), UCataclysmNecromancerArmy::LoneRevenantHeld(Revenant.Actor));
+	TestFalse(TEXT("CONTROL: and not by the other"), UCataclysmNecromancerArmy::LoneRevenantHeld(Plain.Actor));
+
+	const auto RaiseFor = [](const FArmyCommander& Commander, const FArmyMonster& Victim)
+	{
+		FCataclysmDeathNotice Notice;
+		Notice.Victim = Victim.Actor;
+		Notice.Killer = Commander.Actor;
+		Notice.Location = Victim.Actor->GetActorLocation();
+		UCataclysmBoneGiants::NoteDeath(Commander.Actor, Notice);
+		return UCataclysmBoneGiants::RaiseAbomination(Commander.Actor, Notice.Location);
+	};
+	ACataclysmMinion* PlainOne = RaiseFor(Plain, ForPlain);
+	ACataclysmMinion* RevenantOne = RaiseFor(Revenant, ForRevenant);
+	if (!TestNotNull(TEXT("CONTROL: the commander without Lone Revenant raises one"), PlainOne)
+		|| !TestNotNull(TEXT("the commander with it raises one"), RevenantOne))
+	{
+		return false;
+	}
+	const FGameplayTag Permanent = UCataclysmNecromancerArmy::PermanentTag();
+	TestFalse(TEXT("the Abomination carries no Minion.Permanent"), RevenantOne->TypeTags.HasTagExact(Permanent));
+
+	// EACH AGAINST ITS OWN VICTIM, so a difference between the two creatures cannot read as Lone Revenant's.
+	const float Five = 1.0f + UCataclysmBoneGiants::LoneRevenantMorePercent / 100.0f;
+	const float HealthShare = UCataclysmBoneGiants::AbominationHealthSharePercent / 100.0f;
+	const float BlowShare = UCataclysmBoneGiants::AbominationDamageSharePercent / 100.0f;
+	const auto BlowAtASwing = [](const FArmyCommander& Commander, const ACataclysmMinion* Giant)
+	{
+		return Giant->OwnDamagePerHit
+			* UCataclysmCommand::SummonerMultiplierAgainst(Commander.Actor, TEXT("minion_damage"), nullptr,
+														   Giant->TypeTags, Giant);
+	};
+	const float PlainHealth = HealthOf(PlainOne, true);
+	const float RevenantHealth = HealthOf(RevenantOne, true);
+	const float PlainBlow = BlowAtASwing(Plain, PlainOne);
+	const float RevenantBlow = BlowAtASwing(Revenant, RevenantOne);
+	AddInfo(FString::Printf(TEXT("LONE REVENANT'S ABOMINATION: health %.1f -> %.1f, blow %.3f -> %.3f"), PlainHealth,
+							RevenantHealth, PlainBlow, RevenantBlow));
+	TestEqual(TEXT("CONTROL: without it, 10% of its creature's health"), PlainHealth,
+			  HealthOf(ForPlain.Actor, true) * HealthShare, 0.5f);
+	TestEqual(TEXT("CONTROL: and 5% of its blow"), PlainBlow, ForPlain.Actor->OwnAttackDamage() * BlowShare, 0.01f);
+	TestEqual(TEXT("with it, five times that health, not 25"), RevenantHealth,
+			  HealthOf(ForRevenant.Actor, true) * HealthShare * Five, 0.5f);
+	TestEqual(TEXT("and five times that blow at a swing, not 25"), RevenantBlow,
+			  ForRevenant.Actor->OwnAttackDamage() * BlowShare * Five, 0.01f);
+
+	// CONTROL: THE ROWS ARE LIVE. A minion carrying `Minion.Permanent` is given five times by them.
+	FGameplayTagContainer AsAPermanentMinion = RevenantOne->TypeTags;
+	AsAPermanentMinion.AddTag(Permanent);
+	TestEqual(TEXT("CONTROL: Lone Revenant's health row gives a permanent minion five times"),
+			  UCataclysmCommand::SummonerMultiplierFor(Revenant.Actor, TEXT("minion_health"), AsAPermanentMinion), Five,
+			  0.001f);
+	TestEqual(TEXT("CONTROL: and its damage row five times"),
+			  UCataclysmCommand::SummonerMultiplierAgainst(Revenant.Actor, TEXT("minion_damage"), nullptr,
+														   AsAPermanentMinion, RevenantOne),
+			  Five, 0.001f);
+	ClearArmy(Plain.Actor);
+	ClearArmy(Revenant.Actor);
 	return true;
 }
 
@@ -1268,6 +1359,79 @@ bool FCataclysmArmyRiseTogetherTest::RunTest(const FString&)
 					 <= UCataclysmNecromancerArmy::SecondRisesBesideCm + 1.0f);
 	}
 	ClearArmy(Commander.Actor);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArmyRiseTogetherUseTest,
+	"Cataclysm.NecromancerArmy.RiseTogetherRollsForEachGuardAUseRaisesWhileTheReserveFits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Rise Together's chance, `permanent_minion_raises_a_second_chance`, ROLLED FOR EACH PERMANENT MINION A USE RAISES, the
+ * second only when the reserve fits: the coordinating session's ruling at the bundle's assembly (2026-11-26), "a Barrow
+ * Guard use at 100% raises 4; at 0 raises 2; with no room, no second". Each case USES the Greatsword's Barrow Guard,
+ * which raises two, on a commander of its own. At 100%, four; with room for three and a half guards' reserve, three:
+ * the second guard's second has no room. THE CONTROL: at nought, two. The roll is pinned at 99, under 100, so the 100%
+ * case cannot miss on a roll of exactly 100.
+ */
+bool FCataclysmArmyRiseTogetherUseTest::RunTest(const FString&)
+{
+	using namespace CataclysmNecromancerArmyTest;
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	FPinnedArmyRoll Pinned(99.0f);
+
+	// A USE AT `ChancePercent`, with a pool of `ReservesOfRoom` guards' reserve when it is above nought; the guards
+	// standing after it.
+	const auto Use = [this, World](float ChancePercent, float ReservesOfRoom, float AcrossMetres) -> int32
+	{
+		FArmyCommander Commander(World, FVector(0.0f, AcrossMetres * M, 0.0f));
+		UCataclysmSummonSkill* Guards = BarrowGuardSkill(Commander);
+		if (!TestNotNull(TEXT("set-up: Barrow Guard"), Guards))
+		{
+			return -1;
+		}
+		if (ChancePercent > 0.0f)
+		{
+			FCataclysmStatModifier Chance;
+			Chance.Bucket = ECataclysmStatBucket::Flat;
+			Chance.Source = ECataclysmModifierSource::PassiveKeystone;
+			Chance.Value = ChancePercent;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(UCataclysmNecromancerArmy::RaisesASecondChanceStat)).Modifiers = {Chance};
+			Commander.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+		TestEqual(TEXT("set-up: the chance is what the case gives"),
+				  UCataclysmNecromancerArmy::ChanceToRaiseASecond(Commander.Actor, Guards), ChancePercent, 0.001f);
+		if (ReservesOfRoom > 0.0f)
+		{
+			const float Pool = Guards->FervourReserveOfOne(Commander.Actor) * ReservesOfRoom;
+			Commander.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Pool);
+			Commander.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Pool);
+		}
+		if (!TestTrue(TEXT("set-up: the use is made"),
+					  Commander.AbilitySystem->TryActivateAbility(Guards->GetCurrentAbilitySpecHandle(),
+																  /*bAllowRemoteActivation=*/false)))
+		{
+			return -1;
+		}
+		const int32 Standing = CountOf(Commander.Actor, TEXT("BarrowGuard"));
+		ClearArmy(Commander.Actor);
+		return Standing;
+	};
+
+	const int32 AtAHundred = Use(100.0f, 0.0f, 0.0f);
+	const int32 AtNought = Use(0.0f, 0.0f, 40.0f);
+	const int32 ShortOfRoom = Use(100.0f, 3.5f, 80.0f);
+	AddInfo(FString::Printf(TEXT("RISE TOGETHER, A USE: %d guard(s) at 100%%, %d at 0%%, %d at 100%% with room for 3.5"),
+							AtAHundred, AtNought, ShortOfRoom));
+	TestEqual(TEXT("at 100%, a use raising two raises four: each guard rolled"), AtAHundred, 4);
+	TestEqual(TEXT("CONTROL: at nought, two"), AtNought, 2);
+	TestEqual(TEXT("with room for three, three: no second without room"), ShortOfRoom, 3);
 	return true;
 }
 

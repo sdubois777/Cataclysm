@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -18,7 +19,6 @@
 const TCHAR* UCataclysmBoneGiants::AbominationRisesStat = TEXT("abomination_rises");
 const TCHAR* UCataclysmBoneGiants::AbominationKillPercentLessStat = TEXT("abomination_kill_percent_less");
 const TCHAR* UCataclysmBoneGiants::BoneColossusStat = TEXT("bone_colossus");
-const TCHAR* UCataclysmBoneGiants::LoneRevenantHeldStat = TEXT("lone_revenant_held");
 const TCHAR* UCataclysmBoneGiants::GiantTypeName = TEXT("BarrowGuard");
 
 namespace
@@ -73,10 +73,16 @@ namespace
 		return IsValid(Giant) && !UCataclysmSkillEffects::IsDead(Giant);
 	}
 
-	/** Lone Revenant's "400% more", as a multiplier: five with the flag, one without. */
+	/**
+	 * Lone Revenant's "400% more", as a multiplier: five with the flag, one without. Read through slice B's
+	 * `UCataclysmNecromancerArmy::LoneRevenantHeld`, the flag's one reader, by the coordinating session's ruling at the
+	 * bundle's assembly (2026-11-26). THE ONLY PATH BY WHICH THE 400% REACHES A GIANT: Lone Revenant's `minion_health`
+	 * and `minion_damage` rows require `Minion.Permanent`, which a giant does not carry, so they do not apply a second
+	 * time. `Cataclysm.NecromancerArmy.LoneRevenantGivesTheAbominationFiveTimesNotTwentyFive` holds the two apart.
+	 */
 	float BoneGiantsLoneRevenantMultiplier(const AActor* Player)
 	{
-		return UCataclysmRemains::StatOf(Player, UCataclysmBoneGiants::LoneRevenantHeldStat) > 0.0f
+		return UCataclysmNecromancerArmy::LoneRevenantHeld(Player)
 			? 1.0f + UCataclysmBoneGiants::LoneRevenantMorePercent / 100.0f
 			: 1.0f;
 	}

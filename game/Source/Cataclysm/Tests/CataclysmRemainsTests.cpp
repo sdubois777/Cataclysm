@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -989,7 +990,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsLoneRevenantTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Lone Revenant's flag (slice B's `lone_revenant_held`, granted by hand, since it is not on this branch) gives the
+ * Lone Revenant's flag (slice B's `lone_revenant_held`, granted by hand, alone, without the node's other rows) gives the
  * Abomination 400% more health and damage, and it still reserves 100. Two bare holders, each with a pool of 200, each
  * killing the same kind of creature, one with the flag. CONTROL: the one without it.
  */
@@ -1027,7 +1028,7 @@ bool FCataclysmRemainsLoneRevenantTest::RunTest(const FString&)
 		Flag(UCataclysmBoneGiants::AbominationRisesStat);
 		if (bRevenant)
 		{
-			Flag(UCataclysmBoneGiants::LoneRevenantHeldStat);
+			Flag(UCataclysmNecromancerArmy::LoneRevenantHeldStat);
 		}
 		System->SetStatInputs(MoveTemp(Inputs));
 		return Holder;
