@@ -1276,6 +1276,7 @@ bool FCataclysmWinningTheRunMigrationTest::RunTest(const FString& Parameters)
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1307,7 +1308,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v20.json` reads into the four values it states, none of them a default, so each is read and not re-defaulted. It
+ * `Run_v21.json` reads into the four values it states, none of them a default, so each is read and not re-defaulted. It
  * read `Run_v5.json` until the run record went to version 6 on 2026-11-17 (issue #2733 slice 3), `Run_v6.json` until it
  * went to version 7 on 2026-11-18 (issue #2742), `Run_v7.json` until it went to version 8 the same day (issue #2749,
  * B10), `Run_v8.json` until it went to version 9 on 2026-11-19 (issue #2741 slice 3b), and `Run_v9.json` until it
@@ -1318,14 +1319,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunCommittedFileTest,
  * to version 16 the same day (issue #2838), and `Run_v16.json` until it went to version 17 the same day (issue
  * #2840), and `Run_v17.json` until it went to version 18 on 2026-11-24 (issue #2848), and `Run_v18.json` until it
  * went to version 19 the same day (issue #51), and `Run_v19.json` until it went to version 20 on 2026-11-25 (issue
- * #2864).
+ * #2864), and `Run_v20.json` until it went to version 21 the same day (issue #51 slice B4).
  * Prints "WIN FILE".
  */
 bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v20.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v21.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1336,7 +1337,7 @@ bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v20.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v21.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

@@ -1458,6 +1458,42 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * Version 20 to 21, issue #51 slice B4, the War quest. Every dungeon gets `ArrivedDay` -1 (`INDEX_NONE`): no
+	 * version 20 run recorded a day of arrival, so a Siege's growth counts from `SpawnedDay`, as it did. Every city
+	 * gets `FellTo` "None": no version 20 run recorded what felled a city. Written out, for `Migrate_1_to_2`'s reason.
+	 * A run with no `Dungeons` or no `Cities` array is left as it is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_20_to_21(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Record->TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("ArrivedDay"), INDEX_NONE); // A migration's: it has not moved.
+				}
+			}
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Record->TryGetArrayField(TEXT("Cities"), Cities) && Cities != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(City) && City != nullptr && City->IsValid())
+				{
+					(*City)->SetStringField(TEXT("FellTo"), TEXT("None")); // A migration's: not recorded before.
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1479,6 +1515,7 @@ namespace CataclysmRunSaveMigration
 		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
 		{ 18, TEXT("Migrate_18_to_19"), &Migrate_18_to_19 },
 		{ 19, TEXT("Migrate_19_to_20"), &Migrate_19_to_20 },
+		{ 20, TEXT("Migrate_20_to_21"), &Migrate_20_to_21 },
 	};
 }
 

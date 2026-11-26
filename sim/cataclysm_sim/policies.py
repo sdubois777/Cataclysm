@@ -167,15 +167,20 @@ def siege_daily_damage(sim, d, city) -> float:
     `_roll_subtype` runs for every `_make_dungeon` but a surge's Quest
     dungeon, and since 2026-10-16 that one takes its Cataclysm's fixed
     sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`), which for War is the
-    Siege, at most two a wave. Measured on 2026-11-24 over 10,000 campaigns
-    (seeds 0 to 9999, 1,215,787 dungeons, each recorded when it was made) at the
+    Siege, at most two made a day. Measured on 2026-11-25 over 10,000 campaigns
+    (seeds 0 to 9999, 1,343,372 dungeons, each recorded when it was made) at the
     settings `siege_urgency` names below, by the method of
     `sim/tests/test_the_siege_prose_in_policies_is_true.py`, with an ordinary
     dungeon leaving after it hits its city (`dungeon_persists_after_resolve`
-    False), the 96,875 Sieges that reached the map were 70% Basic, 25% Quest,
-    5% Fallen City and 0% Cataclysm, about 9.69 a campaign. That is why the
+    False), the 107,735 Sieges that reached the map were 67% Basic, 29% Quest,
+    5% Fallen City and 0% Cataclysm, about 10.77 a campaign. That is why the
     callers below apply this in all three scoring branches instead of only the
     ordinary one.
+    UNTIL 2026-11-25 THIS SAID 96,875 Sieges at 70 / 25 / 5 / 0 and 9.69 a
+    campaign, measured on 2026-11-24 over 1,215,787 dungeons. THE QUEST SHARE
+    ROSE with issue #51 slice B4: a city's fall to War makes a War Quest Siege
+    on a neighbour, and the cap of two is a day's rather than a wave's. The
+    shares before rounding are 66.65 / 28.75 / 4.60 / 0.00.
     UNTIL 2026-11-24 THIS SAID 64,191 Sieges at 70 / 24 / 5 / 1 and 6.42 a
     campaign, measured on 2026-10-18 over 756,907 dungeons. THE RATE ROSE with
     the surge rulings of issue #2865: an empty board brings the next surge at

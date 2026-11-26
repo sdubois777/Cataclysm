@@ -830,6 +830,39 @@ namespace CataclysmSaveFixtures
 		(*RuleState)->SetArrayField(TEXT("AbyssalRiftSecondsAlive"), Seconds);
 	}
 
+	/**
+	 * What the run record's newest step, `Migrate_20_to_21`, writes into a run file written before it: `ArrivedDay` -1
+	 * on every dungeon and `FellTo` "None" on every city. Issue #51 slice B4, the War quest. NAMED FOR THE VERSION IT
+	 * REACHES, 21. ONE COPY. A file with no `Dungeons` or no `Cities` is left as it is, as the step leaves it.
+	 */
+	inline void AddTheRunsVersion21Defaults(FJsonObject& Expected)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Expected.TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("ArrivedDay"), -1.0);
+				}
+			}
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Expected.TryGetArrayField(TEXT("Cities"), Cities) && Cities != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(City) && City != nullptr && City->IsValid())
+				{
+					(*City)->SetStringField(TEXT("FellTo"), TEXT("None"));
+				}
+			}
+		}
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

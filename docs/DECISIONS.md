@@ -2,6 +2,204 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — War's Quest dungeons are Sieges in the game: at most two are made a day, each bites a quarter of a Siege, grows from the day it reached its city and is re-drawn off a besieged city, and a city's fall to War makes the next one (#51, slice B4)
+
+**Affects:**
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`:
+  `QuestSubTypeFor(War)`, `QuestSiegesPerDay`, `QuestSiegeBiteShare`, `FCataclysmDungeon::ArrivedDay`,
+  `DaysOnItsCity`, `SiegeBiteShare`, `WarSiegeSeedFor`, `PickCityWithoutASiege`, `PickWarSiegeCity`, `RollWave`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h` and `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp`:
+  `FCataclysmCity::FellTo`, cleared by `Retake`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`:
+  `HitBy`, `CityFell`, `MakeWarQuestSiegeOnAFall`, `QuestSiegesMadeOn`, `ApplySiegeDamage`, the forecast, both moves,
+  `FireSurge`, `FCataclysmDayReport::WarSiegeOnAFall`.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`: run
+  record version 21, `Migrate_20_to_21`.
+- `game/Tests/SaveFixtures/Run_v21.json`, new; `game/Tests/SaveFixtures/README.md`;
+  `game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h`: `AddTheRunsVersion21Defaults`; the 19 test files that read
+  the committed run file or run the chain.
+- `game/Source/Cataclysm/Tests/CataclysmWarQuestSiegesTests.cpp`, new;
+  `game/Source/CataclysmEmpire/Tests/CataclysmSurgeTests.cpp`: two tests at eight sub-types.
+- `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py` and `sim/cataclysm_sim/world.py`;
+  `sim/cataclysm_sim/policies.py`: `siege_daily_damage`'s Siege mix re-measured over 10,000 campaigns, 107,735 Sieges
+  at 67% Basic, 29% Quest, 5% Fallen City, 10.77 a campaign, where it said 96,875 at 70 / 25 / 5 and 9.69;
+  `sim/tests/test_a_fall_to_war_starts_the_next_siege.py`, new;
+  `sim/tests/test_a_war_quest_siege_is_capped_and_bites_a_quarter.py`.
+- `docs/Cataclysm_GDD_v2.md`, World War: the cap a day's, the re-draw, and a fall to War starting the next Siege.
+- `tools/tests/test_war_quest_sieges_port.py`, new; `tools/tests/test_dungeon_subtype_port.py`;
+  `tools/tests/test_demonic_rifts_port.py`: `Kind` is no longer `const` in `RollWave`.
+- The file of Python checks that held War's Quest sub-type as a gap in the game, deleted by its own restore text (it
+  is named in the 2026-10-21 entry's dated sentences).
+
+Issue [#51](https://github.com/sdubois777/Cataclysm/issues/51), slice B4 of the plan for the Demonic, Death and War
+Cataclysms (2026-11-24), the War quest. On `feat/war-quest-sieges`, **stacked on `feat/abyssal-rifts-2864-2`**, which
+takes the run record from 19 to 20 (the coordinating session, 2026-11-25, W4).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled or run in Unreal.
+- **WHAT A PLAYER MEETS.** A Quest dungeon War sends is always a Siege. It bites its city every day at a quarter of
+  an ordinary Siege, and its growth starts again when it moves. At most two are made on one day. When a hit War sent
+  fells a city, a new War Quest Siege appears on a neighbour. Clearing either kind counts toward War's 10 objectives.
+- **A RUN THAT FACES WAR PLAYS DIFFERENTLY FROM THE FIRST WAR QUEST DUNGEON ON.** No shared random stream takes more
+  or fewer numbers: the re-draw and the fall's Siege draw from streams of their own (`WarSiegeSeedFor`), and a
+  Quest dungeon's sub-type draw is still taken and thrown away. What moves is downstream: a War Quest dungeon that
+  would have rolled another sub-type is a Siege, so cities, falls and every later draw a different city history causes
+  move with it. A run that does not face War is unchanged.
+- **THE RUN RECORD GOES FROM 20 TO 21.** Each dungeon saves the day it reached its city and each city the Cataclysm
+  whose hit felled it.
+- **THE CAP IS PER DAY IN THE SIMULATION TOO NOW, NOT PER WAVE.** `quest_sieges_per_wave_max` is renamed
+  `quest_sieges_per_day_max`. Two waves on one day were already possible, a fall's and the clock's, and could make
+  four; they now make two between them.
+
+### The rulings
+
+- **The owner, 2026-10-16**, verbatim: "War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one
+  specific type."
+- **The owner, 2026-10-17**, verbatim, quoted at `TuningConfig.quest_sieges_per_day_max`: "the first option, but make
+  it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." That is a
+  cap, a quarter of the bite, and growth from arrival.
+- **The coordinating session, 2026-10-16**: one drawn onto a besieged city re-draws among those holding none.
+- **The plan's reading of section XI** ("Player cities become aggressive and begin attacking each other"): the War
+  Quest Sieges are those attacks, and a city's fall to War starts the next one. The owner accepted every
+  recommendation on 2026-11-24: "Your recommendations work for all of those death/war questions."
+- **The coordinating session, 2026-11-25**, on this slice's questions:
+  - **W1:** "falls to War" means the felling hit was sent by War.
+  - **W2:** at most two War Quest Sieges are made on one day, waves and falls together.
+  - **W3:** the fall makes a Quest dungeon that counts toward War's objectives.
+  - **W4:** build on the Abyssal Rifts branch and take the run record from 20 to 21.
+  - **W5:** run the sweeps when no Unreal window is running, and quote the War rows.
+- **The link to slice B3** (the coordinating session): the Fallen City dungeon takes the run's newest active
+  Cataclysm, because recording which Cataclysm felled a city needed a save step. **`FCataclysmCity::FellTo` is that
+  fact, saved here.** The Fallen City can now read it; it does not yet. That is B3's change, on its own branch.
+
+### What it does
+
+| Rule | Game | Simulation |
+| :-- | :-- | :-- |
+| War's Quest dungeons are Sieges | `QuestSubTypeFor` answers Siege for War | `QUEST_SUBTYPE_BY_CATACLYSM`, unchanged |
+| At most two made on one day | `RollWave` counts from `QuestSiegesAlreadyToday` (`FireSurge` passes `QuestSiegesMadeOn(Today)`); a further roll is made Basic before the depth is rolled | `trigger_surge` starts from `quest_sieges_made_today()` |
+| Re-drawn off a besieged city | `PickCityWithoutASiege`, by tier weights, from its own stream; none free, it lands where drawn | the same, by the pattern's weights |
+| A quarter of the bite | `SiegeBiteShare()` on the flat share and the growth, in the day's share and the forecast | `siege_bite_share`, unchanged |
+| Growth from arrival | `DaysOnItsCity` from `ArrivedDay`, set by the timer's move and the move on a fall | `days_on_its_city`, unchanged |
+| A fall to War makes the next | `CityFell` reads `HitBy` (set by the three felling hits), records `FellTo`, and calls `MakeWarQuestSiegeOnAFall` after the Fallen City and before the fall's surge | `_fall` reads `hit_by`, records `fell_to`, and calls `_war_siege_on_a_fall` in the same place |
+
+**`HitBy` and `hit_by` are a member and an attribute, not parameters**, so every call keeps the one shape the port
+tests read: `CityFell(X, OutReport);` and `self._fall(city)`. That is the shape `ArmTheLastStandFor` already takes.
+**The fall's Siege goes to an adjacent exposed city that is not the Pillar, has room and holds no Siege**, by the
+surge's tier weights. The neighbours are read after the fall, so a city the fallen one shielded qualifies.
+
+### The save, run record version 21
+
+`Migrate_20_to_21` writes `ArrivedDay` -1 into every dungeon and `FellTo` "None" into every city. `Run_v21.json` is
+`Run_v20.json` at version 21 with the two fields; the fallen city records Demonic, a figure and not the default.
+Every test that read `Run_v20.json` as the committed file reads `Run_v21.json`, and each of the 15 chain tests adds
+`AddTheRunsVersion21Defaults`. **No other record moves.**
+
+### Tests
+
+`Cataclysm.WarQuestSieges.`, a new group of 11:
+
+| Test | What it checks |
+| :-- | :-- |
+| `WarsQuestDungeonsAreSiegesWithTheModelsTwoNumbers` | Siege, 2, 0.25; CONTROL an ordinary Siege's share is 1, Death's Horde |
+| `AWaveMakesNoMoreWarQuestSiegesThanTheDayHasLeft` | 400 waves: two made, none; one made, at most one; CONTROL some waves make two, Death uncapped |
+| `AWarQuestDungeonDrawnOntoABesiegedCityLandsOnOneWithout` | every one on the free city; CONTROL none free, on a besieged one |
+| `AQuestSiegeBitesAQuarterOfWhatAnOrdinarySiegeBites` | a quarter of the ordinary Siege's day; CONTROL the whole, six days grown |
+| `ASiegesGrowthCountsFromTheDayItArrived` | `DaysOnItsCity`; forecast and day's share from arrival; CONTROL from the spawn |
+| `AQuestDungeonMovedByAFallArrivesThatDay` | `ArrivedDay` the day of the fall; CONTROL `INDEX_NONE` |
+| `AFallToWarMakesAWarQuestSiegeOnANeighbour` | `FellTo` War, one on an exposed neighbour; CONTROL Demonic, none |
+| `AFallToWarMakesNoneWhenTheDayHasItsTwoOrEveryNeighbourIsBesieged` | none, none; CONTROL one |
+| `ARetakenCityWasFelledByNobody` | `None` after `Retake`; CONTROL War before |
+| `AGatheredRunRecordCarriesArrivalAndFeller` | 57 and War read back; CONTROL `INDEX_NONE` and `None` |
+| `ARunFileFromVersion20GainsNoArrivalAndNoFeller` | migrated, every other field kept; CONTROL `Run_v21.json` loaded, Demonic |
+
+**Two existing tests renamed.** `Cataclysm.Surge.SevenCataclysmsNameTheirQuestSubTypeAndTheRestRoll` is now
+`...EightCataclysmsNameTheirQuestSubTypeAndNobodyRolls`, and
+`Cataclysm.Surge.InARunSevenCataclysmsQuestDungeonsAreTheirOneSubType` is now `...InARunEight...`. Each expects War's
+Siege, and the second's control that War's Quest dungeons still roll is gone with the rule.
+
+Python: `tools/tests/test_war_quest_sieges_port.py`, six checks holding the two halves to the same numbers and shapes,
+and `sim/tests/test_a_fall_to_war_starts_the_next_siege.py`, four. `test_dungeon_subtype_port.py` compares eight pairs.
+
+### Registered
+
+**The whole Python suite at `73499bed9`:** "1 failed, 8624 passed, 9 skipped in 627.61s (0:10:27)"; JUnit 8634 tests,
+1 failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is the base branch's**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded` names
+`DungeonModifiers.csv`, which `feat/abyssal-rifts-2864-2` changes and its window's editor step rebuilds. This slice
+changes no CSV. **The first run, at `ebacd1c52`, had 7 failures; six were this slice's**, each fixed at `73499bed9`:
+
+| Check | Why it failed | Fixed by |
+| :-- | :-- | :-- |
+| `test_the_siege_prose_in_policies_is_true.py` | the Siege mix moved: 62.8% Basic over its 320 campaigns, against 70% stated | re-measuring it over 10,000 campaigns (Affects) |
+| `test_cpp_comments_cite_real_python_tests.py` | a header comment named the deleted file | rewording the comment |
+| `test_the_decisions_log_names_real_files.py` | this entry's Affects named the deleted file | describing it instead |
+| `test_demonic_rifts_port.py` | it reads `const ... Kind = RollKind(Stream);` | reading it without `const` |
+| `test_empire_tree_event_counts_are_saved.py` | `HitBy` sat between `ArmTheLastStandFor` and the hit | setting `HitBy` first |
+| `test_war_quest_sieges_port.py` | it counted the step's own migration test as a chain test | skipping that file |
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `73499bed9`:
+
+| Proof | The break | Result | Named failures |
+| :-- | :-- | :-- | :-- |
+| WP1 | `_fall` makes the Siege on a fall to Death, not War | "PROVED: 3 failed, 1 passed in 0.18s \| restored: 4 passed in 0.05s" | the three fall tests in `test_a_fall_to_war_starts_the_next_siege.py` that expect a Siege |
+| WP2 | `quest_sieges_made_today` counts nothing | "PROVED: 2 failed, 9 passed in 0.13s \| restored: 11 passed in 0.07s" | `test_the_day_s_two_count_the_falls_and_the_waves_together`, `test_the_cap_is_per_day` |
+| WP3 | the move on a fall sets no `ArrivedDay` | "PROVED: 1 failed, 5 passed in 2.30s \| restored: 6 passed in 0.19s" | `test_growth_counts_from_arrival_and_the_quest_share_bites_in_both` |
+
+WP3 was first sent with an anchor holding a carriage return and a line feed, which `prove_guard` reads
+converted, so it refused the break as changing nothing and ran no test; it was sent again with an anchor on one
+line.
+
+**For the window** (bundle 4, the coordinating session, 2026-11-25), counted statically and to be recounted from the
+window's base log:
+- **The editor step:** none of this slice's; the base branch's rebuilds `DT_DungeonModifiers`.
+- **The whole suite:** the base's figure plus 11 (`Cataclysm.WarQuestSieges.`), none removed; two `Cataclysm.Surge.`
+  tests renamed.
+- **Save record:** the run record 20 to 21.
+- **Groups alone**, every group with a test that reads what this slice moved: `WarQuestSieges.` (new), `Surge.`,
+  `EmpireRun.`, `Rifts.`, `SaveLoad.`, `SaveRecords.`, `SaveWriter.`, `CityCleanseSave.`, `CityUpgradeBuildSave.`,
+  `ConsumptionDouble.`, `DeathCost.`, `Dismantle.`, `EarnedBoss.`, `EarnedBossSave.`, `EmpireTreeCity.`,
+  `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `EmpireTreeWalk.`,
+  `GemSave.`, `Gold.`, `RiftAltars.`, `Seeding.`, `ThrallSave.`, `WalkSeed.`, `WinningTheRun.`.
+- **One C++ guard proof**, the bundle's limit of one a slice:
+
+| Proof | File | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| WC1 | `CataclysmEmpireRun.cpp` | `if (FelledBy == ECataclysmType::War)` read as `if (false && FelledBy == ECataclysmType::War)` | `Cataclysm.WarQuestSieges.` | `AFallToWarMakesAWarQuestSiegeOnANeighbour`, `AFallToWarMakesNoneWhenTheDayHasItsTwoOrEveryNeighbourIsBesieged` |
+
+  **Dropped, for the same limit:** the quarter (`* Host.Share *` read as `*`), guarded by
+  `AQuestSiegeBitesAQuarterOfWhatAnOrdinarySiegeBites`; and the day's cap (`QuestSiegesToday >= QuestSiegesPerDay`
+  read as `false`), guarded by `AWaveMakesNoMoreWarQuestSiegesThanTheDayHasLeft`. Each keeps its own test with a
+  control. WC1 is kept because the fall rule is the one rule new to both halves.
+- **The sweeps** (`sim/experiments.py`, W5) ran on `c37b947ca`: "Done. 39,240 campaigns run." **Their report has no row
+  per Cataclysm**, so it has no War rows to quote: each campaign draws its Cataclysms from its seed and the report
+  averages over them. So W5 was met by a focused measurement instead, approved by the coordinating session the same
+  day: campaigns whose drawn Cataclysms include War, 1000 per cell, `policies.triage`, the report settings, with the
+  fall rule (`war_fall_makes_a_quest_siege`) on and off. The noise between two cells is 2.2 points.
+
+| Tier | Fall rule | Won | Lost | Cities lost | War Quest Sieges a fall made |
+| :-- | :-- | --: | --: | --: | --: |
+| 1 | off | 6.8% | 93.2% | 23.86 | 0.00 |
+| 1 | on | 2.6% | 97.4% | 23.98 | 6.82 |
+| 2 | off | 35.1% | 64.9% | 23.57 | 0.00 |
+| 2 | on | 32.3% | 67.7% | 23.75 | 5.00 |
+| 3 | off | 21.7% | 78.3% | 23.96 | 0.00 |
+| 3 | on | 22.3% | 77.7% | 23.99 | 3.88 |
+
+- **The fall rule costs tier 1 4.2 points and tier 2 2.8**, each more than the noise; tier 3's 0.6 is within it.
+- **THE LOW TIER 1 BASE PREDATES THIS SLICE.** War-only tier 1 campaigns win 6.8% with the fall rule off. The same 1000
+  seeds give **7.5% on `development` (`551381d2b`) and 7.5% on this slice's parent (`75200dd18`)**, each in its own
+  extracted copy in one session. The 0.7-point gap to this slice, with its fall rule off, is within the noise; it holds the
+  per-day cap and the re-draw together. Opened as [#2916](https://github.com/sdubois777/Cataclysm/issues/2916), "War-only tier 1
+  campaigns win about 7% in the simulation"; the coordinating session ruled the slice is not held for it.
+- **THE PER-DAY CAP WAS NOT MEASURED ON ITS OWN, AND WHY:** it has no switch, so both cells above hold it. Telling it
+  apart from the re-draw would need a run with the re-draw removed. The coordinating session ruled it not measured
+  unless the fall rule's figures looked wrong; against the 10-point condition it set, they did not. The comparison with
+  the parent bounds the cap and the re-draw together at 0.7 points at tier 1, within the noise.
+
+---
+
 ## 2026-11-25 — The War vow options' last slice (V5c): Bolted Together, gadgets within 4 metres join into one that fires all their attacks
 
 **Affects:**
@@ -76138,6 +76336,7 @@ on `development` at `cd5c85e82` (written on `b7980dc48` as `feat/game-quest-subt
   are Ascendant and the Void's Hollow in the simulation, and neither sub-type exists in the game.
   Since the entry headed "In the game the Void's Quest dungeon is a Hollow…" (2026-10-22) the Void's are Hollows in the game as well, and the file that holds the rest is `tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`.
   Since the entry headed "In the game the Celestial's Quest dungeon is an Ascendant…" (2026-10-22) Celestial's are Ascendants in the game too, and War's alone are held, in `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`.
+  Since the entry headed "War's Quest dungeons are Sieges in the game…" (2026-11-25, issue #51 slice B4) War's are Sieges in the game as well, so all eight are fixed, and that file was deleted, as its restore text said: it held nothing more.
 - **THE CITY SCREEN NAMES EACH DUNGEON'S SUB-TYPE**: "Horde, 12 floors, 9 days until it bites". A dungeon with no
   sub-type reads as before, "30 floors, 40 days until it bites".
 - **A SEED STILL LANDS THE SAME WAVES ON THE SAME CITIES AT THE SAME DEPTHS, AND SENDS THEM FROM THE SAME

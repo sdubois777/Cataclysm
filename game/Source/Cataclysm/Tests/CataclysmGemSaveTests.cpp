@@ -172,7 +172,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemSaveRunMigrationTest,
 /**
  * `Run_v13.json`, written before version 14, migrates and loads: each ground item's socket count of 0 becomes an empty
  * list -- a count left as a number would refuse the whole record, since the list cannot be read from one -- and both
- * ground items hold no gem, every other field kept. CONTROL: the committed run file, `Run_v20.json` since issue #2864 (`Run_v19.json` from issue #51, `Run_v18.json` from issue #2848, `Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json` from issue #2741 slice 9), reads its two
+ * ground items hold no gem, every other field kept. CONTROL: the committed run file, `Run_v21.json` since issue #51 slice B4 (`Run_v20.json` from issue #2864, `Run_v19.json` from issue #51, `Run_v18.json` from issue #2848, `Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json` from issue #2741 slice 9), reads its two
  * ground items the same. Prints "GEM RUN MIGRATED".
  */
 bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
@@ -183,7 +183,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v20.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v21.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -191,10 +191,10 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	const UCataclysmRunSave* Migrated = Cast<UCataclysmRunSave>(
 		ReadRecordText(*this, Text, UCataclysmRunSave::StaticClass(), TEXT("Run_v13.json")));
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(
-		ReadRecordText(*this, CurrentText, UCataclysmRunSave::StaticClass(), TEXT("Run_v20.json")));
+		ReadRecordText(*this, CurrentText, UCataclysmRunSave::StaticClass(), TEXT("Run_v21.json")));
 	if (!Migrated || !Current
 		|| !TestEqual(TEXT("set-up: Run_v13.json has two ground items"), Migrated->Floor.GroundItems.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Run_v20.json has two ground items"), Current->Floor.GroundItems.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Run_v21.json has two ground items"), Current->Floor.GroundItems.Num(), 2))
 	{
 		return false;
 	}
@@ -208,6 +208,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -228,7 +229,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	}
 
 	AddInfo(FString::Printf(TEXT("GEM RUN MIGRATED: version %d; %d ground item(s), %d socket(s), %d holding gems; the "
-								 "rest %s; Run_v20.json %d holding gems"),
+								 "rest %s; Run_v21.json %d holding gems"),
 							Migrated->SchemaVersion, Migrated->Floor.GroundItems.Num(), Sockets, GemDrops,
 							bSame ? TEXT("kept") : *Where, CurrentGemDrops));
 
@@ -236,7 +237,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("its ground items' counts of 0 are no sockets"), Sockets, 0);
 	TestEqual(TEXT("no ground item holds gems"), GemDrops, 0);
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: nor does Run_v20.json's"), CurrentGemDrops, 0);
+	TestEqual(TEXT("CONTROL: nor does Run_v21.json's"), CurrentGemDrops, 0);
 	return true;
 }
 

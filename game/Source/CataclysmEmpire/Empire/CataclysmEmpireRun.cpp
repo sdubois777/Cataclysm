@@ -874,7 +874,8 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
 						 SiegesStanding,
 						 [this]() { return RollCataclysm(); }, bFromEmptyBoard,
-						 /* RiftSeed: a Rift's own draws, issue #51 slice B2 */ CorruptedStalkerSeed);
+						 /* RiftSeed: a Rift's own draws, issue #51 slice B2 */ CorruptedStalkerSeed,
+						 /* the day's War Quest Sieges so far, slice B4 */ QuestSiegesMadeOn(Today));
 
 	for (FCataclysmDungeon& Dungeon : Wave)
 	{
@@ -1064,6 +1065,7 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				const FHitRecordedOnLeaving RecordTheHit(OutReport, Map.Get(), HostId, ECataclysmCityHitKind::QuestTimer);
 				// LAST STAND PROTOCOLS, armed for this one call: a Quest dungeon's timer is a dungeon's resolution (Q3).
 				// Issue #2741 slice 3b.
+				HitBy = Dungeon->Cataclysm; // Who fells it, if this does. Issue #51 slice B4.
 				ArmTheLastStandFor(HostId);
 				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))
 				{
@@ -1156,6 +1158,7 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// WHAT THE HIT TAKES, RECORDED: the city read before it and after. Issue #2733 slice 3; changes nothing.
 	const FCityBeforeAHit BeforeTheHit = BeforeAHit(Map.Get(), CityId);
 	// LAST STAND PROTOCOLS, armed for this one call, an ordinary dungeon's resolution (Q3). Issue #2741 slice 3b.
+	HitBy = Dungeon->Cataclysm; // Who fells it, if this does. Issue #51 slice B4.
 	ArmTheLastStandFor(CityId);
 	if (Map->Damage(CityId, Defence, Population) || (bVoid && Map->AddVoidStacks(CityId, Stacks)))
 	{
@@ -1377,6 +1380,7 @@ void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
 	// sub-type, and `docs/Cataclysm_GDD_v2.md` section VIII now states all
 	// three. None of them is touched here, which is what says so.
 	Dungeon->CityId = MovingTo;
+	Dungeon->ArrivedDay = OutReport.Day; // A Siege's growth counts from here. Issue #51 slice B4.
 
 	// AND `CityTier` DOES NOT MOVE WITH IT, WHICH IS THE OTHER HALF OF THAT
 	// RULING. This line used to read `Dungeon->CityTier = To->Tier;`.
@@ -1501,6 +1505,7 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 		int32 CityId = INDEX_NONE;
 		int32 DaysStood = 0;
 		ECataclysmType Sender = ECataclysmType::None;
+		float Share = 1.0f; // A Quest Siege's quarter (`SiegeBiteShare`). Issue #51 slice B4.
 	};
 	TArray<FSiegeHost> Hosts;
 
@@ -1508,13 +1513,11 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 	{
 		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 		{
-			// NEVER NEGATIVE. A dungeon built by hand in a test may carry a
-			// spawn day later than the clock, and a negative age would heal the
-			// city rather than hurt it.
-			const int32 DaysStood =
-				FMath::Max(0, Clock->Day - Dungeon.SpawnedDay);
+			// THE DAYS ON THE CITY IT STANDS ON NOW, NEVER NEGATIVE (`DaysOnItsCity`), and a Quest Siege's share: the
+			// owner's choice of 2026-10-17, issue #51 slice B4. Until then the days were counted from `SpawnedDay`.
+			const int32 DaysStood = Dungeon.DaysOnItsCity(Clock->Day);
 
-			Hosts.Add({ Dungeon.CityId, DaysStood, Dungeon.Cataclysm });
+			Hosts.Add({ Dungeon.CityId, DaysStood, Dungeon.Cataclysm, Dungeon.SiegeBiteShare() });
 		}
 	}
 
@@ -1564,15 +1567,16 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 		const FCataclysmTreeDamageFactors Taken = TreeDamageFactorsFor(CityId, Host.Sender);
 
 		const float Defence =
-			(Map->EffectiveMaxDefence(*City) * SiegeDefenceBitePerDay + Grown) * Taken.Defence;
+			(Map->EffectiveMaxDefence(*City) * SiegeDefenceBitePerDay + Grown) * Host.Share * Taken.Defence;
 
 		const float Population =
-			(Map->EffectiveMaxPopulation(*City) * SiegePopulationBitePerDay + Grown) * Taken.Population;
+			(Map->EffectiveMaxPopulation(*City) * SiegePopulationBitePerDay + Grown) * Host.Share * Taken.Population;
 
 		OutReport.Besieged.Add(CityId);
 
 		// WHAT THE SHARE TAKES, RECORDED: the city read before it and after. Issue #2733 slice 3; changes nothing.
 		const FCityBeforeAHit BeforeTheHit = BeforeAHit(Map.Get(), CityId);
+		HitBy = Host.Sender; // Who fells it, if this does. Issue #51 slice B4.
 		if (Map->Damage(CityId, Defence, Population))
 		{
 			CityFell(CityId, OutReport);
@@ -1585,6 +1589,15 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 {
 	OutReport.Fallen.Add(CityId);
+
+	// WHO FELLED IT, read and cleared: the hit that fell it set it (`HitBy`). Recorded on the city, saved, so a Fallen
+	// City can read it and a fall to War starts the next Siege below. Issue #51 slice B4.
+	const ECataclysmType FelledBy = HitBy;
+	HitBy = ECataclysmType::None;
+	if (FCataclysmCity* Felled = Map != nullptr ? Map->FindMutable(CityId) : nullptr)
+	{
+		Felled->FellTo = FelledBy;
+	}
 
 	// THE CITY THAT FELL, READ AFTER THE FALL. `UCataclysmEmpireMap::Fall` has
 	// already marked it, so the cities it shielded read as exposed when a
@@ -1680,6 +1693,7 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 			}
 
 			Dungeon->CityId = Refuge;
+			Dungeon->ArrivedDay = OutReport.Day; // A Siege's growth counts from here. Issue #51 slice B4.
 
 			OutReport.Relocated.Add(DungeonId);
 			OutReport.MovedByAFall.Add(DungeonId);
@@ -1717,6 +1731,14 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 	//
 	// AFTER THE MOVES ABOVE, SO THEIR DRAWS COME FIRST, as in `Simulation._fall`.
 	AddFallenCityDungeon(CityId, DungeonsAbsorbed, OutReport);
+
+	// A CITY'S FALL TO WAR STARTS THE NEXT ONE: a War Quest Siege on a neighbour. After the Dungeon City, as
+	// `Simulation._fall` makes it, and before the fall's surge, whose wave then counts it toward the day's two.
+	// Issue #51 slice B4.
+	if (FelledBy == ECataclysmType::War)
+	{
+		MakeWarQuestSiegeOnAFall(CityId, OutReport);
+	}
 
 	// AND THE FALL FIRES A SURGE OF ITS OWN. The design document says a city
 	// falling triggers one; `UCataclysmSurgeScheduler::bCityFallAdvancesEscalation`
@@ -2316,6 +2338,82 @@ void UCataclysmEmpireRun::SendFromRifts(int32 Today, FCataclysmDayReport& OutRep
 	}
 }
 
+void UCataclysmEmpireRun::MakeWarQuestSiegeOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport)
+{
+	const FCataclysmCity* Fallen = Map != nullptr ? Map->Find(FallenCityId) : nullptr;
+	if (Fallen == nullptr || Surges == nullptr || Clock == nullptr)
+	{
+		return;
+	}
+
+	// AT MOST `QuestSiegesPerDay` MADE ON ONE DAY, waves and falls together (W2).
+	const int32 Today = OutReport.Day;
+	if (QuestSiegesMadeOn(Today) >= UCataclysmSurgeScheduler::QuestSiegesPerDay)
+	{
+		return;
+	}
+
+	// WHAT STANDS ON EACH CITY NOW, counted as `FireSurge` counts it, a bonus dungeon left out.
+	TArray<int32> DungeonsPerCity;
+	DungeonsPerCity.AddZeroed(Map->Cities.Num());
+	TArray<int32> SiegesStanding;
+	SiegesStanding.AddZeroed(Map->Cities.Num());
+	for (const FCataclysmDungeon& Standing : Dungeons)
+	{
+		if (Standing.bBonus || !DungeonsPerCity.IsValidIndex(Standing.CityId))
+		{
+			continue;
+		}
+		++DungeonsPerCity[Standing.CityId];
+		if (Standing.SubType == ECataclysmDungeonSubType::Siege)
+		{
+			++SiegesStanding[Standing.CityId];
+		}
+	}
+
+	// ITS OWN STREAM, from the run's seed and the identifier it will take, so no shared stream moves.
+	FRandomStream Draws(UCataclysmSurgeScheduler::WarSiegeSeedFor(
+		CorruptedStalkerSeed, NextDungeonId, UCataclysmSurgeScheduler::WarSiegeFallDraw));
+
+	const FCataclysmCity* To = Map->Find(
+		UCataclysmSurgeScheduler::PickWarSiegeCity(*Map, *Fallen, Draws, DungeonsPerCity, SiegesStanding));
+	if (To == nullptr)
+	{
+		return;
+	}
+
+	// A QUEST DUNGEON WAR SENDS, MADE AS A SURGE MAKES ONE FOR THAT CITY, so `QuestSubTypeFor` makes it a Siege, and
+	// it counts toward War's objectives when cleared (W3). The steps `SendFromRifts` takes.
+	FCataclysmDungeon Made = Surges->MakeDungeon(NextDungeonId, *To, Today, Draws, /* bSiegeAllowed */ true,
+												 ECataclysmDungeonType::Quest, ECataclysmType::War);
+	Made.Cataclysm = ECataclysmType::War;
+	GiveModifiersFrom(Made, Draws);
+
+	if (!Clock->AddDungeon(Made.DungeonId, Made.Floors))
+	{
+		return;
+	}
+	Clock->SetResolveDays(Made.DungeonId, Made.ResolveDays);
+	Dungeons.Add(Made);
+	OutReport.Spawned.Add(Made.DungeonId);
+	OutReport.WarSiegeOnAFall.Add(Made.DungeonId);
+	NextDungeonId = FMath::Max(NextDungeonId, Made.DungeonId + 1);
+}
+
+int32 UCataclysmEmpireRun::QuestSiegesMadeOn(int32 Day) const
+{
+	int32 Made = 0;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		if (Dungeon.Type == ECataclysmDungeonType::Quest && Dungeon.SubType == ECataclysmDungeonSubType::Siege
+			&& Dungeon.SpawnedDay == Day)
+		{
+			++Made;
+		}
+	}
+	return Made;
+}
+
 FCataclysmDayReport UCataclysmEmpireRun::SurgeForADeathInARift()
 {
 	FCataclysmDayReport Report;
@@ -2644,9 +2742,9 @@ float UCataclysmEmpireRun::ScheduledDefenceLossOn(int32 CityId, int32 Days) cons
 		{
 			for (int32 Ahead = 1; Ahead <= Days; ++Ahead)
 			{
-				const int32 DaysStood = FMath::Max(0, Clock->Day + Ahead - Dungeon.SpawnedDay);
+				const int32 DaysStood = Dungeon.DaysOnItsCity(Clock->Day + Ahead);
 				Loss += (Map->EffectiveMaxDefence(*City) * SiegeDefenceBitePerDay
-						 + SiegeDamageGrowthPerDay * DaysStood) * Taken;
+						 + SiegeDamageGrowthPerDay * DaysStood) * Dungeon.SiegeBiteShare() * Taken;
 			}
 		}
 	}

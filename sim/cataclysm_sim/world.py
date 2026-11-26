@@ -83,6 +83,11 @@ class City:
     population: float = 0.0
 
     fallen: bool = False
+    # THE CATACLYSM WHOSE HIT FELLED IT, "" while it stands, when it was retaken
+    # and for a fall nothing sent. Set by `Simulation._fall`, which reads it to
+    # decide whether the fall was to War. The game's `FCataclysmCity::FellTo`.
+    # Issue #51 slice B4.
+    fell_to: str = ""
     # VOID STACKS, since 2026-10-18: each ordinary Void dungeon whose timer runs
     # out on this city adds 1 to 3 (`Simulation._void_stacks_for`), and at
     # `TuningConfig.void_stacks_to_erase` the city is erased. A city that falls

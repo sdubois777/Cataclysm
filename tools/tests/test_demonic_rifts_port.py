@@ -144,7 +144,8 @@ def test_a_rift_is_exactly_its_floors_with_the_timer_of_those_floors_in_both() -
 def test_a_rift_opens_on_any_standing_city_but_the_pillar_by_tier_weight_in_both() -> None:
     source = read(SURGE_CPP)
     wave = body_of(source, "TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(")
-    in_order(wave, ["const ECataclysmDungeonType Kind = RollKind(Stream);",
+    # NOT `const` SINCE ISSUE #51 SLICE B4: a third War Quest roll on a day is made Basic after it is drawn.
+    in_order(wave, ["ECataclysmDungeonType Kind = RollKind(Stream);",
                     "if (Kind == ECataclysmDungeonType::Quest && Sender == ECataclysmType::Demonic)",
                     "PickRiftCity(Map, RiftDraws, Standing)",
                     "FCataclysmDungeon Dungeon = MakeDungeon("], "RollWave")
