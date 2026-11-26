@@ -133,6 +133,14 @@ public:
 	static ACataclysmMinion* AbominationOf(const AActor* Player);
 	static ACataclysmMinion* ColossusOf(const AActor* Player);
 
+	/**
+	 * Whether `Minion` is its summoner's Abomination or Bone Colossus, as this floor holds them. Read by
+	 * `UCataclysmDetonation`, which detonates neither: the coordinating session's ruling of 2026-11-26 at the bundle's
+	 * assembly, "They are vow giants, and a skill landing on them must not destroy them". ASKED OF THE STORED GIANTS, not
+	 * the minion's type: both are drawn as `GiantTypeName`, which an ordinary Barrow Guard also is.
+	 */
+	static bool IsAGiant(const ACataclysmMinion* Minion);
+
 	/** The Colossus's blow and size from its health, now. Called on the step, and by tests. */
 	static void StepColossusOf(const AActor* Player);
 

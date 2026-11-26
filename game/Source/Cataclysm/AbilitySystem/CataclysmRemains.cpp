@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmBoneGiants.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -534,8 +535,9 @@ int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemainsMarker* Remai
 	}
 
 	// AND BURSTING RANKS COUNTS IT: "for each detonation of yours in the last 2 seconds, of a minion or of remains".
-	// SLICE C'S `NoteDetonation(Caster)` IS CALLED HERE AT ASSEMBLY: this branch is built without slice C's, so the call
-	// is wired when the two meet (the coordinating session's instruction of 2026-11-26).
+	// Slice C's `NoteDetonation`, wired at the bundle's assembly (2026-11-26): the caster's `minion_detonated` event, with
+	// no tags, as a remains has none.
+	UCataclysmDetonation::NoteDetonation(Caster);
 
 	UE_LOG(LogCataclysm, Log, TEXT("REMAINS DETONATION: %s detonated the remains of %s for %.1f, %d enemy(ies) struck."),
 		   *Caster->GetName(), *Remains->Kind.ToString(), Damage, Sent);

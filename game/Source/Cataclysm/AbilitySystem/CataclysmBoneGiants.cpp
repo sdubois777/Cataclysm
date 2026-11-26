@@ -126,6 +126,17 @@ int32 UCataclysmBoneGiants::StartedWithCount(const UWorld* World)
 	return Giants ? Giants->StartedCount : 0;
 }
 
+bool UCataclysmBoneGiants::IsAGiant(const ACataclysmMinion* Minion)
+{
+	if (!IsValid(Minion))
+	{
+		return false;
+	}
+	const UCataclysmBoneGiants* Giants = In(Minion->GetWorld());
+	const FCataclysmGiantsOfAPlayer* Tally = Giants ? Giants->FindTallyOf(Minion->Summoner.Get()) : nullptr;
+	return Tally && (Tally->Abomination.Get() == Minion || Tally->Colossus.Get() == Minion);
+}
+
 int32 UCataclysmBoneGiants::KilledOfStartBy(const AActor* Player)
 {
 	const UCataclysmBoneGiants* Giants = Player ? In(Player->GetWorld()) : nullptr;

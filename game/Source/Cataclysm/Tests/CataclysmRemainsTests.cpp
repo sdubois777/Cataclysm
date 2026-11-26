@@ -14,6 +14,9 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -167,6 +170,21 @@ namespace CataclysmRemainsTest
 		UCataclysmAbilitySystemComponent* System = nullptr;
 		UCataclysmCombatEvents* Events = nullptr;
 	};
+
+	/** A skill of the Heavy slot granted to `Player`'s character with these shape parameters, at level 1. */
+	UCataclysmStrikeSkill* GrantRemainsSwing(const FRemainsNecromancer& Player, const TCHAR* Shape)
+	{
+		const FGameplayAbilitySpecHandle Handle = Player.System->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/1, Player.Character);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? Player.System->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmStrikeSkill* Swing = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Swing)
+		{
+			Swing->SkillName = TEXT("A remains test swing");
+			Swing->Params = UCataclysmSkillShapes::ParseParams(Shape);
+		}
+		return Swing;
+	}
 
 	ACataclysmEnemyCharacter* RemainsCreatureAt(UWorld* World, const FVector& Where)
 	{
@@ -1172,6 +1190,142 @@ bool FCataclysmRemainsFloorEndTest::RunTest(const FString&)
 	TestFalse(TEXT("the Abomination is gone"), IsValid(Abomination));
 	TestEqual(TEXT("and the floor's tally is forgotten"), UCataclysmBoneGiants::StartedWithCount(World), 0);
 	TestTrue(TEXT("CONTROL: an Imp, a follower, is carried"), IsValid(Imp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsMantleFromAnyWeaponSkillTest,
+	"Cataclysm.Remains.MantleOfBoneDetonatesRemainsFromAWeaponSkillWithNoDetonatesKeyAndBurstingRanksHearsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The bundle's assembly (2026-11-26): slice C removed the `Detonates` gate from every weapon skill's landing, so Mantle
+ * of Bone ("Your weapon skills that land on remains detonate them") reaches remains from a skill whose row states no
+ * `Detonates=1`; and slice C's `NoteDetonation` is wired into a remains detonation, for Bursting Ranks. A 4 m, 90 degree
+ * swing stating neither key, with the character's own remains 2 m ahead and its own Imp beside them: with Mantle of Bone
+ * held, the remains are consumed, the caster's `minion_detonated` event is raised once, and the Imp STANDS (no
+ * `Detonates=1`, no Lit Fuse). THE CONTROL: the starting node alone, the same swing, and the remains stay.
+ */
+bool FCataclysmRemainsMantleFromAnyWeaponSkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainsTest;
+
+	bool bConsumed[2] = {false, false};
+	int32 Heard[2] = {-1, -1};
+	bool bImpStands = false;
+	for (int32 WithMantle = 0; WithMantle < 2; ++WithMantle)
+	{
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FRemainsNecromancer Player;
+		if (!Player.Make(*this, World))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Dead = RemainsCreatureAt(World, FVector(-8 * M, 8 * M, 0));
+		ACataclysmRemainsMarker* Own =
+			Dead ? UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(2 * M, 0, 0), true) : nullptr;
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player.Character, FVector(2 * M, 0.5f * M, 0), /*Lifetime=*/20.0f,
+														/*bBurns=*/false, TEXT("Imp"));
+		if (!TestNotNull(TEXT("set-up: the remains"), Own) || !TestNotNull(TEXT("set-up: the Imp"), Imp))
+		{
+			return false;
+		}
+		Imp->RecordExplosionRadius(3 * M);
+		Player.Hold(WithMantle == 1 ? TMap<FName, int32>{{MantleOfBone, 12}} : TMap<FName, int32>());
+		UCataclysmStrikeSkill* Swing = GrantRemainsSwing(Player, TEXT("Radius=4; Angle=90"));
+		if (!TestNotNull(TEXT("set-up: the swing"), Swing))
+		{
+			return false;
+		}
+		FRemainsEventCount Detonations(Player.System, TEXT("minion_detonated"));
+		Swing->SwingOnce();
+		bConsumed[WithMantle] = !IsValid(Own);
+		Heard[WithMantle] = Detonations.Count;
+		if (WithMantle == 1)
+		{
+			bImpStands = IsValid(Imp) && !UCataclysmSkillEffects::IsDead(Imp);
+		}
+		if (IsValid(Imp))
+		{
+			Imp->Destroy();
+		}
+	}
+
+	TestFalse(TEXT("CONTROL: without Mantle of Bone the swing leaves the remains"), bConsumed[0]);
+	TestEqual(TEXT("CONTROL: and no detonation is heard"), Heard[0], 0);
+	TestTrue(TEXT("WITH MANTLE OF BONE A SWING WITH NO DETONATES KEY DETONATES THE REMAINS"), bConsumed[1]);
+	TestEqual(TEXT("AND BURSTING RANKS' EVENT IS RAISED ONCE, for the remains"), Heard[1], 1);
+	TestTrue(TEXT("and the caster's Imp in the same arc stands: no Detonates key and no Lit Fuse"), bImpStands);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsGiantsAreNotDetonatedTest,
+	"Cataclysm.Remains.NeitherGiantIsDetonatedByALitFuseSwingWhileAnOrdinaryMinionBesideItIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The coordinating session's ruling of 2026-11-26 at the bundle's assembly: the Abomination and the Bone Colossus are
+ * exempt from every detonation of their summoner's own minions (`UCataclysmBoneGiants::IsAGiant`, asked by
+ * `UCataclysmDetonation`'s one filter). For each giant a character holding Lit Fuse (every weapon skill detonates its
+ * own minions in the area) and the giant's vow swings a 4 m, 90 degree skill over the giant with an ordinary Imp of its
+ * beside it: THE IMP EXPLODES (the control that the swing detonates), THE GIANT STANDS.
+ */
+bool FCataclysmRemainsGiantsAreNotDetonatedTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainsTest;
+	const FName LitFuse(TEXT("Necromancer_basic_ch_stem0"));
+
+	for (int32 Which = 0; Which < 2; ++Which)
+	{
+		const TCHAR* Name = Which == 0 ? TEXT("the Abomination") : TEXT("the Bone Colossus");
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FRemainsNecromancer Player;
+		if (!Player.Make(*this, World))
+		{
+			return false;
+		}
+		ACataclysmMinion* Giant = nullptr;
+		if (Which == 0)
+		{
+			Player.Hold({{LitFuse, 1}}, FinalRite, 1);
+			// ONE KILL FIRST, far from the swing: the Abomination's health is a share of the floor's summed kills.
+			if (ACataclysmEnemyCharacter* Fed = RemainsCreatureAt(World, FVector(-30 * M, 30 * M, 0)))
+			{
+				Player.Kill(Fed);
+			}
+			Giant = UCataclysmBoneGiants::RaiseAbomination(Player.Character, FVector(3 * M, 0, 0));
+		}
+		else
+		{
+			Player.Hold({{LitFuse, 1}}, FirstRite, 2);
+			ACataclysmEnemyCharacter* First = RemainsCreatureAt(World, FVector(3 * M, 0, 0));
+			if (First)
+			{
+				Player.Kill(First);
+			}
+			Giant = UCataclysmBoneGiants::ColossusOf(Player.Character);
+		}
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player.Character, FVector(2 * M, 0.5f * M, 0), /*Lifetime=*/20.0f,
+														/*bBurns=*/false, TEXT("Imp"));
+		if (!TestNotNull(*FString::Printf(TEXT("set-up: %s rises"), Name), Giant)
+			|| !TestNotNull(TEXT("set-up: the Imp"), Imp))
+		{
+			return false;
+		}
+		Imp->RecordExplosionRadius(3 * M);
+		TestTrue(*FString::Printf(TEXT("set-up: %s is known as a giant"), Name), UCataclysmBoneGiants::IsAGiant(Giant));
+		TestFalse(TEXT("set-up: the Imp is not"), UCataclysmBoneGiants::IsAGiant(Imp));
+		UCataclysmStrikeSkill* Swing = GrantRemainsSwing(Player, TEXT("Radius=4; Angle=90"));
+		if (!TestNotNull(TEXT("set-up: the swing"), Swing))
+		{
+			return false;
+		}
+		Swing->SwingOnce();
+		TestFalse(*FString::Printf(TEXT("with %s: the Imp beside it explodes"), Name), IsValid(Imp));
+		TestTrue(*FString::Printf(TEXT("%s STANDS"), Name),
+				 IsValid(Giant) && !UCataclysmSkillEffects::IsDead(Giant));
+	}
 	return true;
 }
 

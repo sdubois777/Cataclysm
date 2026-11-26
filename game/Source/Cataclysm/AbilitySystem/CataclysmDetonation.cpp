@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmDetonation.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBoneGiants.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -47,11 +48,16 @@ namespace
 		return ChancePercent >= 100.0f || FMath::FRand() * 100.0f < ChancePercent;
 	}
 
-	/** Whether `Minion` is one a detonation takes: raised, no machine, standing. */
+	/**
+	 * Whether `Minion` is one a detonation takes: raised, no machine, standing, and NO VOW GIANT. Every detonation of a
+	 * summoner's own minions asks this first -- a skill's (`Detonates=1` or Lit Fuse, through `Detonate`), Made Room's
+	 * release, Living Bombs' contact and Mass Grave's spread -- so the Abomination and the Bone Colossus are exempt from
+	 * all of them in this one place (the coordinating session's ruling of 2026-11-26 at the bundle's assembly).
+	 */
 	bool MayDetonate(const ACataclysmMinion* Minion)
 	{
 		return IsValid(Minion) && !Minion->IsActorBeingDestroyed() && !Minion->bIsMachine
-			&& !UCataclysmSkillEffects::IsDead(Minion);
+			&& !UCataclysmSkillEffects::IsDead(Minion) && !UCataclysmBoneGiants::IsAGiant(Minion);
 	}
 }
 
