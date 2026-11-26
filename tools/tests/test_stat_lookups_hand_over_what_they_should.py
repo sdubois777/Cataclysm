@@ -321,6 +321,34 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26).
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDetonation.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        'a summoner\'s detonation stat read with the detonated minion\'s type tags at the detonation, the release, '
+        'the lifespan\'s end or the blow it names; no blow or target in hand, the minion asking being named through '
+        'SummonerMultiplierFor where a row reads it',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmHordeAscendant.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        'the Horde Ascendant\'s reach and share, read on the player as a skill use is answered; no blow or target '
+        'in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(UCataclysmDetonation::ExtraRaiseChanceStat), Asked, 0.0f'):
+        'Teeming Grave\'s chance of one more minion, read on the caster with the summon skill\'s tags and the raised '
+        'minion\'s as it is raised; no blow or target in hand',
+    # THE DEATH LINE'S FINISHING SLICE E (2026-11-26): `UCataclysmShadowImages::StatOf`, one asker for the Shadow's
+    # last vows' six stats -- Afterimage's flag and Shadow Step's metres with the movement skill's tags, Shadow Clone's
+    # count and seconds with none, Flurry of the Dead's extra strikes with the hit's skill tags, after the hit has
+    # landed. Each is about the wearer and its own state (the Fervour held); none is a blow's or a target's.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmShadowImages.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        "the Shadow's last vows' own stats (the Death line's finishing slice E), asked of the wearer with the "
+        "skill's tags or none; each is about the wearer, and Flurry of the Dead's is asked after the hit has landed",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRemains.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "every remains stat, read off the player with no tags by UCataclysmRemains::StatOf: whether remains are left, "
+        "a raise's reach, reserve and chance, a detonation's flag, share, increase and ailments, a follower's chance, "
+        "and the two vows' flags and Many Made One's reduction (the Death finish's slice D, 2026-11-26); none has a "
+        "blow, a skill or a target in hand",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
      'FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat), FGameplayTagContainer(), 0.0f'):
         'a flag read on an aura\'s caster at each pulse, saying whether the allies '
@@ -774,6 +802,22 @@ INVENTORY = {
         "the commander's share of its minion's damage leeched as health (the "
         "Death trees' slice C6d2, Shared Leech), asked of the commander with its "
         "own state; the blow is the minion's, not the commander's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        "one of the Necromancer's army stats (the Death line's finishing slice "
+        "B), asked of the commander with the follower's own tags or the raising "
+        "skill's: at a summon, a death, a step or a minion's blow, never with a "
+        "blow of the commander's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.cpp',
+     'FName(SkillsRaiseHusksSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Lich Form's window (the Death line's finishing slice B), asked of the "
+        "player at each skill it uses, with its own state; the clock is the "
+        "bar's, not the skill's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.cpp',
+     'FName(DamageSplitWithMinionsStat), FGameplayTagContainer(), 0.0f'):
+        "Shared Flesh's flag (the Death line's finishing slice B), asked of the "
+        "defender before the hit resolves, as Interpose's chance is; a flag of "
+        "the defender's, not the blow's",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
      'FName(BoundBonesStat), FGameplayTagContainer(), 0.0f'):
         "the commander's share of maximum health per other follower (the Death "
@@ -1572,6 +1616,23 @@ INVENTORY = {
         "the same dot_damage on the same tick with no target, the denominator "
         "of the ratio (#2235, Q2 (a)): every row that holds without a target "
         "cancels, so what the application baked in is not counted twice",
+    # THE DEATH FINISH SLICE A (2026-11-26).
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(SpiritVolleyWeaponPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Spirit Volley's percent at a kill: one figure, no row on it asks "
+        "about the slain creature or the skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(SkillFervourSpendStat), SkillTags, 0.0f'):
+        "Soul Fuel's most spent on a use, with the skill's tags; no blow "
+        "exists yet when the use is paid for",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(DamagePerSoulFuelFervourStat), SkillTags, 0.0f'):
+        "Soul Fuel's damage for each Fervour, asked when the use is paid for, "
+        "with the skill's tags, as a next-use charge is",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(AreaPerFiveFervourSpentStat), SkillTags, 0.0f'):
+        "Pyre's area beside the area of effect it widens, with the skill's "
+        "tags, as that is asked",
 }
 
 #: EMPTY FROM ISSUE #1992 TO THE DEATH TREES' KILL GENERATOR (2026-11-24). The

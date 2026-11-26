@@ -787,10 +787,16 @@ SHAPE_PARAMS = {
     # `Taunts` JOINED ON 2026-11-24, as on Summon above: a placed machine
     # taunts every enemy within the row's `Radius` of it each `Interval`, or
     # each second when the row states none. The Death Crossbow's Effigy is the
-    # row it was drafted for (issue #2885); it waits on the Siphon (C4).
+    # row it was drafted for (issue #2885).
+    #
+    # `SiphonsAround` JOINED ON 2026-11-26, the Death finish slice A: the
+    # Crossbow draft's C4, "If you have the Siphon keystone, the effigy siphons
+    # the enemies around it too". What the row places widens its placer's
+    # Siphon (`FCataclysmSiphon::Step`); `check_siphons_around` refuses it on
+    # a row that places nothing.
     "Deployable": {"Range", "Radius", "Count", "MaxActive", "Duration",
                    "Interval", "Minions", "HealthPercent", "FervourReserve",
-                   "Taunts"},
+                   "Taunts", "SiphonsAround"},
     "Aura": {"Radius", "Duration", "Interval"},
     # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: the Sword's Death
     # Warrant, "if it dies while the warrant holds, you gain 10 Fervour". A
@@ -884,6 +890,7 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
 
     check_stalker_kit_keys(params, shape, where)
     check_taunt_keys(params, where)
+    check_siphons_around(params, where)
     check_death_skill_keys(params, shape, where)
     return params
 
@@ -1256,6 +1263,22 @@ def check_a_summon_effect_has_a_carrier(params: dict[str, str], shape: str,
             f"{where}: a Summon names Effect={params['Effect']} and nothing "
             f"lays it. It needs a Damage Percent, which makes the raise strike "
             f"and lay it, or MinionsLayEffect=1, and it may not possess")
+
+
+def check_siphons_around(params: dict[str, str], where: str) -> None:
+    """Refuse a `SiphonsAround` on a row that places nothing. The Death finish slice A, 2026-11-26.
+
+    The Siphon is widened round each machine the row places, so a row naming no
+    `Minions` would widen nothing and say nothing. A value of nought is the key
+    switched off and passes.
+    """
+    if "SiphonsAround" not in params or float(params["SiphonsAround"]) == 0.0:
+        return
+    if not str(params.get("Minions", "")).strip():
+        raise DataError(
+            f"{where}: states SiphonsAround={params['SiphonsAround']} and "
+            f"places nothing. The Siphon is widened round each machine the "
+            f"row's Minions names, so this one would widen nothing")
 
 
 def check_taunt_keys(params: dict[str, str], where: str) -> None:
@@ -6318,6 +6341,12 @@ CONDITIONS = {
     # summoner. The Death trees' slice C6e (2026-11-25). A fact of the target in
     # hand.
     "target_is_your_last_attacker": None,
+    # AND FIRST AMONG THE DEAD'S "Your permanent minion with the most maximum
+    # health", the Death line's finishing slice B (2026-11-26): the minion whose
+    # figure is asked is its commander's permanent minion with the most maximum
+    # health, which the summoner's lookup is handed for that minion's blow, its
+    # explosion, the damage it takes and its live health. Names a state.
+    "minion_has_your_most_maximum_health": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -6523,6 +6552,10 @@ SCALES = {
     # reserves 30 and an imp 10 against the Ritualist's 150. A step of ten
     # minions stays a sanity limit on what a row may state.
     "minions_held": (0.0, 10.0, "a number of minions"),
+    # MOTLEY HOST'S "for each kind of minion you have beyond the first", the
+    # Death line's finishing slice B (2026-11-26): counted from the same list
+    # as `minions_held`, each type row a kind and every thrall one kind.
+    "minion_kinds_beyond_the_first": (0.0, 10.0, "a number of kinds of minion"),
     # THE ENEMIES IN THE CHARACTER'S SIPHON. The Death trees' slice C2
     # (2026-11-25): Sapping Cold's and Stolen Strength's "for each of them, up
     # to 10 enemies", and Life Siphon's and Living Harvest's "each enemy in your
@@ -6564,6 +6597,11 @@ SCALES = {
     # that the count is uncapped is untouched. It cannot exceed the unfiltered
     # count, which is itself uncapped.
     "crippled_enemies_in_reach": (0.0, 10.0, "a number of crippled enemies"),
+
+    # "For each creature's remains within 6 metres of you" is `remains_in_reach`
+    # with a step of 1: Mantle of Bone, slice D of the Death finish
+    # (2026-11-26). Counted within the row's own Reach Metres, as the two above.
+    "remains_in_reach": (0.0, 10.0, "a number of remains"),
 
     # "For each enemy your attack hits beyond the first" is
     # `enemies_hit_beyond_the_first` with a step of 1. Issue #1515, for
@@ -6837,6 +6875,17 @@ SCALES = {
     # the share of maximum health held times the maximum, as the character's
     # state reads them. Whole steps, rounded down. Bounded as `max_health` is.
     "current_health": (0.0, 5000.0, "an amount of current health"),
+
+    # THE FINISHING OF THE DEATH CATACLYSM, SLICE C, 2026-11-26. Close Packed's
+    # "for each other minion of yours within 3 metres of it, up to 5" is
+    # `minions_near_the_minion` with a step of 1, a `Reach Metres` of 3 and a cap
+    # of 5: the summoner's OTHER followers (raised minions and thralls, not
+    # machines) within the row's reach of the minion whose figure is asked,
+    # which `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` measures
+    # when a minion is named. With no minion named it counts nothing, so only a
+    # minion stat read with the minion asking can use it: today
+    # `minion_detonation_damage`. Bounded as `minions_held` is.
+    "minions_near_the_minion": (0.0, 10.0, "a number of other minions"),
 }
 
 #: The scale that reads the class resource's maximum with its rows counted, which
@@ -7062,7 +7111,9 @@ PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach"
                                  # AND THE DEATH TREES' SLICE C6b3'S TWO.
                                  "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                                  # AND SLICE C6d1'S OWN MINIONS.
-                                 "minions_in_reach_at_least"})
+                                 "minions_in_reach_at_least",
+                                 # AND THE DEATH FINISH'S REMAINS (slice D).
+                                 "remains_in_reach"})
 
 
 def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
@@ -7539,7 +7590,13 @@ def passive_effects(book) -> list[dict]:
                           # AND THE DEATH TREES' SLICE C6b3'S TWO (2026-11-25).
                           "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                           # AND SLICE C6d1'S OWN MINIONS.
-                          "minions_in_reach_at_least"}
+                          "minions_in_reach_at_least",
+                          # AND CLOSE PACKED'S OTHER MINIONS NEAR THE MINION
+                          # ASKING, the finishing of the Death Cataclysm, slice C
+                          # (2026-11-26).
+                          "minions_near_the_minion",
+                          # AND THE DEATH FINISH'S REMAINS (slice D).
+                          "remains_in_reach"}
         # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
         # rather than around the character, read at the kill from this column.
         # The Death trees' slice C4c2 (2026-11-25).
@@ -8062,6 +8119,9 @@ APPLY_STATUS_EVENTS = (
     "retaliation_dealt",
     "deployable_hit",
     "minion_hit",
+    # AN ENEMY YOUR DETONATED REMAINS STRUCK: Grave Spores, the Death finish's
+    # slice D (2026-11-26).
+    "remains_detonation_hit",
 )
 
 #: The statuses `apply_status` may name: every ailment
@@ -8558,6 +8618,12 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     "trap_armed",
     # V5b1, 2026-11-25. `gadget_expired` carries the wearer's own gadget.
     "gadget_expired",
+    # The Death finish's slice D, 2026-11-26. `minion_raised_on_remains` carries
+    # the wearer's own minion. `remains_detonation_hit` carries the enemy the
+    # blast of the wearer's detonated remains struck; Grave Spores applies
+    # Necrosis to it, and NO STRIKE ON IT IS RULED, as for `minion_hit` above.
+    "minion_raised_on_remains",
+    "remains_detonation_hit",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -9018,6 +9084,30 @@ ACTION_ONLY_EVENTS = (
     # before it goes. Ruled in the vow survey of 2026-11-25 ("a gadget expiring
     # raises an event") and built for Scrap Mines, V5b1. Clockless.
     "gadget_expired",
+    # A DETONATION OF THE WEARER'S, raised by
+    # `UCataclysmDetonation::NoteDetonation` after the blast, with the detonated
+    # minion's tags and NO CHARACTER: a minion a skill, a release, a contact or
+    # Mass Grave set off, and slice D's remains when they are detonated. The
+    # finishing of the Death Cataclysm, slice C (2026-11-26), for Bursting
+    # Ranks' "for each detonation of yours in the last 2 seconds, of a minion or
+    # of remains". Clockless.
+    "minion_detonated",
+    # A MINION A SUMMON SKILL RAISED ON THE WEARER'S REMAINS, raised once per
+    # minion on its summoner by `UCataclysmRemains::RaiseOn`, with the minion's
+    # tags and the minion as the character. The Death finish's slice D
+    # (2026-11-26): Bone Fuse's 3 Fervour and Grave Robber's 5 are
+    # `class_resource` rows on it. Clockless.
+    "minion_raised_on_remains",
+    # REMAINS OF THE WEARER'S CONSUMED, by a raise on them or by a detonation,
+    # raised once per remains by `UCataclysmRemains` with no tags, amount or
+    # character. The same slice: Picked Clean's health is `health` rows on it.
+    # Clockless.
+    "remains_consumed",
+    # AN ENEMY STRUCK BY THE BLAST OF THE WEARER'S DETONATED REMAINS, raised
+    # once per enemy by `UCataclysmRemains::Detonate`, naming that enemy. The
+    # same slice: Grave Spores' Necrosis is an `apply_status` row on it.
+    # Clockless.
+    "remains_detonation_hit",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -12379,6 +12469,14 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's
+    # damage scaled by the other minions near the one going off (Close Packed),
+    # by the summoner's own stacks (Bursting Ranks) and by the minion's age
+    # (Swollen). Asked through `UCataclysmAbilitySystemComponent::
+    # MultiplierForStatAgainst` on the summoner with the minion named, by
+    # `UCataclysmDetonation::DamageMultiplierFor`;
+    # `ProbeScaledMinionDetonationDamage` measures it.
+    "minion_detonation_damage",
     # THE DEATH TREES' SLICE C6d2 (2026-11-25): a minion's attack speed scaled by
     # the summoner's own stacks, the Necromancer's Avenging Dead. Asked through
     # `UCataclysmAbilitySystemComponent::IncreasesForStat` on the summoner, with
@@ -12581,6 +12679,11 @@ STATS_WITH_AN_ASKER = frozenset({
     "siphon_radius_metres",
     "siphon_life_percent",
     "siphon_fervour_per_second",
+    # THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Flurry of the Dead's extra
+    # strikes, 1 for every 10 Fervour held. `UCataclysmShadowImages::StrikeAgain`
+    # asks it through `StatForSkill` after each landed hit; `ProbeHitsStrikeAgain`
+    # measures the scaled row.
+    "hits_strike_again",
 })
 
 
@@ -12736,6 +12839,9 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "damage_reduction": ASKER_PASSES_A_BLOW_TAKEN,
     "damage_taken": ASKER_PASSES_A_BLOW_TAKEN,
     "evasion": ASKER_PASSES_A_BLOW_TAKEN,
+    # Ever Moving's share of evasion against area damage, the Death line's finishing
+    # slice E (2026-11-26): asked at the evasion step with the blow, as evasion is.
+    "evasion_against_area_percent": ASKER_PASSES_A_BLOW_TAKEN,
     # Asked for while a hit is priced, with the character struck.
     "armor_penetration": ASKER_PASSES_A_HIT_DEALT,
     "attack_damage": ASKER_PASSES_A_HIT_DEALT,
@@ -12761,6 +12867,17 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "boss_ticks_pay_a_kill_every_seconds": ASKER_PASSES_A_HIT_DEALT,
     "boss_hits_counted_as_a_kill_every": ASKER_PASSES_A_HIT_DEALT,
     "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
+    # THE DEATH LINE'S FINISHING SLICE B (2026-11-26). A minion's health and the
+    # damage it takes, each asked for that minion by the summoner's lookup with
+    # the minion named, so First Among the Dead's and Called to Heel's conditions
+    # about the minion asking are judged: health by
+    # `UCataclysmNecromancerArmy::HealthStep`, and the damage taken by
+    # `MinionDamageTakenFactor` in CataclysmDamageCalculation.cpp. Each stat is
+    # probed in the table of stats with no attribute (`ProbeHealth`,
+    # `ProbeMinionDamageTaken`); the two conditions, First Among the Dead's and
+    # Called to Heel's, are measured by `CataclysmNecromancerArmyTests.cpp`.
+    "minion_health": ASKER_PASSES_NOTHING_MORE,
+    "minion_damage_taken": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
     # AND MAXIMUM HEALTH, the Death trees' slice C4d3 (2026-11-25), for Wearer of
@@ -16927,6 +17044,13 @@ def refuse_a_gem_enchantment_row_the_game_cannot_read(
 SCALES_THAT_COUNT_ENEMIES_IN_A_RADIUS = frozenset({
     "enemies_in_reach",
     "crippled_enemies_in_reach",
+    # AND THE SUMMONER'S OTHER MINIONS NEAR THE MINION ASKING, the finishing of
+    # the Death Cataclysm, slice C (2026-11-26): bodies inside the row's radius,
+    # counted from a minion rather than from the character, and needing the
+    # radius for the same reason.
+    "minions_near_the_minion",
+    # AND THE CHARACTER'S OWN REMAINS, Mantle of Bone (the Death finish, slice D).
+    "remains_in_reach",
 })
 
 

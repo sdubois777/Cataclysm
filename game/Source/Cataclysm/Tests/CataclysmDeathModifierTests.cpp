@@ -20,7 +20,9 @@
 #include "Character/CataclysmBonePyreCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
+#include "Character/CataclysmLichCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Engine/World.h"
@@ -28,6 +30,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Items/CataclysmItem.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
@@ -94,6 +97,13 @@ namespace CataclysmDeathModifiersTest
 			SetCurrent(Vital::GetEnergyShieldAttribute(), 0.0f);
 			SetCurrent(Vital::GetEnergyShieldRegenAttribute(), 0.0f);
 			SetCurrent(Vital::GetHealthRegenAttribute(), 0.0f);
+			// AND NO LEECH, issue #2933. The player's own blows on the creatures leeched, and leech is paid over the
+			// seconds after a hit, so it healed the player inside Soul Tether's measured four seconds: window b4-w6 read
+			// 57.00 taken of 65 owed, and 8.00 is 0.92% of the 870 the player's set-up blows took from the creatures;
+			// the dead-source control read 64.08, and 0.92 is 0.92% of the doomed creature's 100.
+			SetCurrent(Vital::GetLifeLeechAttribute(), 0.0f);
+			SetCurrent(Vital::GetManaLeechAttribute(), 0.0f);
+			SetCurrent(Vital::GetEnergyShieldLeechAttribute(), 0.0f);
 			SetCurrent(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
 			SetCurrent(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 			SetCurrent(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
@@ -152,11 +162,13 @@ namespace CataclysmDeathModifiersTest
 			Check(Vital::GetEnergyShieldAttribute(), 0.0f);
 			Check(Vital::GetEnergyShieldRegenAttribute(), 0.0f);
 			Check(Vital::GetHealthRegenAttribute(), 0.0f);
+			Check(Vital::GetLifeLeechAttribute(), 0.0f);
 			Check(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
 			Check(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
 			Check(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(), 0.0f);
-			// AND AS THE DAMAGE CALCULATION READS THEM, through the stat line: nought where nothing is recorded.
-			for (const FName Stat : {FName(TEXT("armor")), FName(TEXT("damage_reduction")),
+			// AND AS THE DAMAGE CALCULATION AND THE LEECH READ THEM, through the stat line: nought where nothing is
+			// recorded. `life_leech` since issue #2933, as `UCataclysmLeech` asks it.
+			for (const FName Stat : {FName(TEXT("armor")), FName(TEXT("damage_reduction")), FName(TEXT("life_leech")),
 									 UCataclysmItemModifiers::ResistanceStatFor(FName(TEXT("Death")))})
 			{
 				const float Asked = System->StatForSkill(Stat, FGameplayTagContainer(), 0.0f);
@@ -320,7 +332,11 @@ namespace CataclysmDeathModifiersTest
 	bool DeathPlayerKills(FAutomationTestBase& Test, const FDeathModifiersPlayer& Player,
 						  ACataclysmEnemyCharacter* Victim)
 	{
-		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		// A BLOW THAT CANNOT BE EVADED: the Imp's evasion attribute is set to nought, and still one evaded the kill in
+		// window dfb-w1's proof (Cataclysm.Lich.RaiseTheFallen..., "sent 58000, evaded"). The kill is the set-up here.
+		FCataclysmHitDelivery Certain;
+		Certain.bCannotBeEvaded = true;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f, FGameplayTagContainer(), Certain);
 		return Test.TestTrue(TEXT("the player's blow killed it"), UCataclysmSkillEffects::IsDead(Victim));
 	}
 
@@ -757,16 +773,18 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	{
 		return false;
 	}
-	// A STATED BAND, NOT THE EXACT FIGURE, UNTIL ISSUE #2933 IS FIXED: the tether's re-lay delivers less than owed. Window
-	// b4-w6 read 57.00 of 65 owed, where both controls (from a living and from a dead source) delivered about 65; as far
-	// as read, half a tick is lost on each re-lay. Ruled by the coordinating session on 2026-11-26 so bundle 4 could
-	// merge. Restore the exact comparison with `FromTheDead` (2%) when #2933 is fixed.
+	// THE EXACT FIGURE AGAIN, ISSUE #2933. Bundle 4 held this to a band (at least 85% of what was owed) while the
+	// shortfall was read as the tether's re-lay losing half a tick. It was not the tether: window b4-w6's 8.00 missing of
+	// 65 owed is about 0.92% of the 870 the player's own set-up blows took from the creatures, and the dead-source
+	// control's 0.92 missing is the same share of the doomed creature's 100 -- the player's life leech, paid over the
+	// seconds after each blow, healing inside the measured four. `Expose` now sets the leech to nought and `Unexposed`
+	// names it, so the tether is compared with what was owed and with the control from its own last source, the dead one.
 	AddInfo(FString::Printf(TEXT("SOUL TETHER: the tether delivered %.1f%% of what was owed"),
 							Owed > 0.0f ? 100.0f * TetherTook / Owed : 0.0f));
-	TestTrue(*FString::Printf(TEXT("four seconds later the player has lost at least 85%% of what was owed (%.2f of %.2f; "
-								   "the exact figure waits on issue #2933)"),
-							  TetherTook, Owed),
-			 TetherTook >= 0.85f * Owed);
+	TestEqual(TEXT("four seconds later the player has lost all that was owed"), TetherTook, Owed, Owed * 0.02f);
+	TestEqual(TEXT("as the same damage over time from its dead last source took"), TetherTook, FromTheDead,
+			  Owed * 0.02f);
+	TestEqual(TEXT("CONTROL: and the living source's took what was owed too"), FromTheLiving, Owed, Owed * 0.02f);
 	return true;
 }
 
@@ -818,14 +836,21 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierFinalCurseTest,
 	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
 
 	// THE FIGURE A SKILL COSTS, FROM THE GAME: a hit of 5% of maximum health, dealt as the curse deals it (the user's own
-	// area blow of Death on itself), meets the player's defences as any hit does. Windows b4-w1 to b4-w3 (bundle 4)
-	// compared against 50 itself and read 49.36, then 55.00, while the set-up changed under them; this compares with
-	// the same blow dealt directly.
+	// area blow of Death on itself, carrying no weapon sub-type), meets the player's defences as any hit does. Windows
+	// b4-w1 to b4-w3 (bundle 4) compared against 50 itself and read 49.36, then 55.00, while the set-up changed under
+	// them. THE 55.00 WAS THE PLAYER'S SLASHING WEAPON, issue #2931: the curse's blow carried the sub-type of the weapon
+	// in the player's hand, whose bonus is 10% more to health. The curse carries none since 2026-11-26, so a skill costs
+	// the 50 itself on a laid-bare player, and the same blow dealt directly is kept as the control.
+	const FString HeldSubType = UCataclysmWeaponSlotsComponent::SubTypeOf(Player.Character);
+	AddInfo(FString::Printf(TEXT("FINAL CURSE: the player's weapon is of the sub-type '%s'"), *HeldSubType));
+	TestTrue(TEXT("set-up: the player holds a slashing weapon, whose 10% the curse once carried"),
+			 HeldSubType.Equals(TEXT("Slashing"), ESearchCase::IgnoreCase));
 	FCataclysmHitDelivery AsTheCurse;
 	AsTheCurse.bIsArea = true;
 	AsTheCurse.bCannotCriticallyStrike = true;
 	AsTheCurse.bCannotLeech = true;
 	AsTheCurse.bCannotBeRetaliatedAgainst = true;
+	AsTheCurse.bCarriesNoWeaponSubType = true;
 	AsTheCurse.DamageType = FName(TEXT("Death"));
 	const float FivePercent =
 		Player.Read(Vital::GetMaxHealthAttribute()) * UCataclysmEnemyModifiers::FinalCurseMaximumHealthPercentPerUse / 100.0f;
@@ -836,6 +861,13 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierFinalCurseTest,
 	AddInfo(FString::Printf(TEXT("FINAL CURSE: 5%% of maximum health is %.2f; dealt directly as the curse deals it, it "
 								 "cost %.2f"), FivePercent, ControlCost));
 	TestTrue(TEXT("CONTROL: the same blow dealt directly costs something"), ControlCost > 1.0f);
+	TestEqual(TEXT("CONTROL: and on a laid-bare player it costs the 5% itself (issue #2931)"), ControlCost, FivePercent,
+			  0.05f);
+	const float SpecialCost = SkillCost(ECataclysmAbilitySlot::Special);
+	AddInfo(FString::Printf(TEXT("FINAL CURSE: a skill cost %.2f"), SpecialCost));
+	TestEqual(TEXT("a skill costs 5% of maximum health, no more (issue #2931: 55 where 50 with a slashing weapon)"),
+			  SpecialCost, FivePercent, 0.05f);
+	Player.SetHealth(DeathModifiersMostHealth);
 	TestEqual(TEXT("a skill costs what a 5% Death blow on oneself costs"), SkillCost(ECataclysmAbilitySlot::Special),
 			  ControlCost, 0.5f);
 	TestEqual(TEXT("so does a movement skill"), SkillCost(ECataclysmAbilitySlot::Movement), ControlCost, 0.5f);
@@ -1163,6 +1195,264 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierFuneralPyreTest,
 	DeathSteps(Broken, 12);
 	TestFalse(TEXT("a broken pyre does not go off"), Broken->bPyreSpent);
 	TestEqual(TEXT("and the player loses nothing"), Player.Health(), BeforeBroken, 0.01f);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The Lich's Raise the Fallen, 2026-11-26. In this file for its floor rig: only the dungeon game mode keeps the record of
+// a floor's deaths and can place what it raises. The creature's own tests are in CataclysmLichTests.cpp, same group.
+// ---------------------------------------------------------------------------------------------------------------------
+
+namespace CataclysmDeathModifiersTest
+{
+	/** The creatures on the floor's list a Lich raised: marked risen, and neither a spectral copy nor Undying Will's. */
+	TArray<ACataclysmEnemyCharacter*> LichRaised(ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			if (IsValid(Creature) && Creature->bRisenFromTheDead && !Creature->bIsASpectralCopy
+				&& !Creature->bRisenByUndyingWill && !UCataclysmSkillEffects::IsDead(Creature))
+			{
+				Found.Add(Creature);
+			}
+		}
+		return Found;
+	}
+
+	ACataclysmLichCharacter* LichOnTheFloor(UWorld* World, ACataclysmDungeonGameMode* Mode, const FVector& Where)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmLichCharacter* Lich = World->SpawnActor<ACataclysmLichCharacter>(
+			ACataclysmLichCharacter::StaticClass(), Where, FRotator::ZeroRotator, Spawn);
+		if (Lich)
+		{
+			Mode->FloorEnemies.Add(Lich);
+		}
+		return Lich;
+	}
+}
+
+CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmLichRaiseTest,
+	"Cataclysm.Lich.RaiseTheFallenRaisesTheThreeLatestDeathsNearAsCommonsAtHalfHealthAndEachOnlyOnce")
+{
+	using namespace CataclysmDeathModifiersTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FDeathModifiersPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = DeathModifiersFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmLichCharacter* Lich = LichOnTheFloor(World, Mode, FVector(0.0f, 300.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a Lich on the floor"), Lich))
+	{
+		return false;
+	}
+
+	// THE CONTROL HALF OF J3: nothing has died, so the raise cannot be chosen.
+	TestEqual(TEXT("before any death, its raise has no range"),
+			  Lich->EnemyAbilities()[ACataclysmLichCharacter::RaiseTheFallenAbility].MaxRangeCm, 0.0f);
+
+	// FOUR ELITES DIE NEAR IT, ONE AFTER ANOTHER.
+	// ALONG THE LINE THE HAUNTING TEST'S CREATURES STAND ON, which this floor is known to hold.
+	const FVector Spots[] = {FVector(400.0f, 0.0f, 0.0f), FVector(-400.0f, 0.0f, 0.0f), FVector(500.0f, 0.0f, 0.0f),
+							 FVector(-500.0f, 0.0f, 0.0f)};
+	TArray<FVector> FellAt;
+	for (const FVector& Spot : Spots)
+	{
+		ACataclysmEnemyCharacter* Imp = DeathImpAtRung(World, Mode, Spot, 1, nullptr);
+		if (!TestNotNull(TEXT("set-up: an Elite Imp"), Imp))
+		{
+			return false;
+		}
+		FellAt.Add(Imp->GetActorLocation());
+		if (!DeathPlayerKills(*this, Player, Imp))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("the floor recorded the four deaths"), Mode->FallenRecordedThisFloor(), 4);
+	TestEqual(TEXT("all four lie within its 10 m"), Mode->FallenToRaiseNear(Lich->GetActorLocation(), 1000.0f), 4);
+	TestEqual(TEXT("CONTROL: none lies within 10 m of a spot 30 m off"),
+			  Mode->FallenToRaiseNear(Lich->GetActorLocation() + FVector(3000.0f, 0.0f, 0.0f), 1000.0f), 0);
+	TestTrue(TEXT("now its raise can be chosen"),
+			 Lich->EnemyAbilities()[ACataclysmLichCharacter::RaiseTheFallenAbility].MaxRangeCm > 0.0f);
+
+	// THE RAISE: three, the most at once.
+	Lich->UseEnemyAbility(ACataclysmLichCharacter::RaiseTheFallenAbility, Player.Character,
+						  Player.Character->GetActorLocation());
+	TestEqual(TEXT("three stood up"), Lich->LastRaised, 3);
+	const TArray<ACataclysmEnemyCharacter*> Raised = LichRaised(Mode);
+	if (!TestEqual(TEXT("and three risen creatures are on the floor's list"), Raised.Num(), 3))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Risen : Raised)
+	{
+		TestTrue(TEXT("each of its own kind, an Imp"), Risen->IsA<ACataclysmImpCharacter>());
+		TestEqual(TEXT("each a Common, though it died an Elite"), Risen->RarityStep, 0);
+		TestFalse(TEXT("each worth nothing"), Risen->PaysForItsDeath());
+		if (UAbilitySystemComponent* System = Risen->GetAbilitySystemComponent())
+		{
+			const float Maximum = System->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+			TestEqual(TEXT("each at half its health"), System->GetNumericAttribute(Vital::GetHealthAttribute()),
+					  Maximum * ACataclysmLichCharacter::RaisedHealthShare, 0.5f);
+		}
+	}
+	// THE MOST RECENT FIRST (J2): the first to die is the one left.
+	TestEqual(TEXT("the first death is the one not raised"), Mode->FallenToRaiseNear(FellAt[0], 10.0f), 1);
+	TestEqual(TEXT("and the last was raised"), Mode->FallenToRaiseNear(FellAt[3], 10.0f), 0);
+
+	// A DEATH IS RAISED AT MOST ONCE.
+	Lich->UseEnemyAbility(ACataclysmLichCharacter::RaiseTheFallenAbility, Player.Character,
+						  Player.Character->GetActorLocation());
+	TestEqual(TEXT("a second raise brings back only the one left"), Lich->LastRaised, 1);
+	Lich->UseEnemyAbility(ACataclysmLichCharacter::RaiseTheFallenAbility, Player.Character,
+						  Player.Character->GetActorLocation());
+	TestEqual(TEXT("and a third brings back nothing"), Lich->LastRaised, 0);
+	TestEqual(TEXT("so its raise has no range again"),
+			  Lich->EnemyAbilities()[ACataclysmLichCharacter::RaiseTheFallenAbility].MaxRangeCm, 0.0f);
+
+	// AND WHAT IT RAISED, KILLED AGAIN, IS NOT RECORDED: it is worth nothing, so it cannot loop.
+	if (!DeathPlayerKills(*this, Player, Raised[0]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a raised creature's death is not recorded"), Mode->FallenRecordedThisFloor(), 4);
+	return true;
+}
+
+CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmLichRefusalsTest,
+	"Cataclysm.Lich.ItNeverRaisesALichAGatekeeperSomethingWorthNothingOrADeathAnotherRuleRaised")
+{
+	using namespace CataclysmDeathModifiersTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FDeathModifiersPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = DeathModifiersFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE CONTROL: a plain Imp's death is recorded.
+	ACataclysmEnemyCharacter* Plain = DeathImpAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 1, nullptr);
+	if (!TestNotNull(TEXT("set-up: a plain Imp"), Plain) || !DeathPlayerKills(*this, Player, Plain))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("CONTROL: a plain death is recorded"), Mode->FallenRecordedThisFloor(), 1))
+	{
+		return false;
+	}
+
+	// A LICH.
+	ACataclysmLichCharacter* Lich = LichOnTheFloor(World, Mode, FVector(-400.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a Lich"), Lich) || !DeathPlayerKills(*this, Player, Lich))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Lich's death is not recorded"), Mode->FallenRecordedThisFloor(), 1);
+
+	// A GATEKEEPER, whatever rung it stands on.
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Keeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(), FVector(0.0f, 400.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("set-up: a Gatekeeper"), Keeper))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Keeper);
+	// READIED TO DIE, as the boss floor's tests ready the Cataclysm Boss: nothing that could turn the blow aside.
+	Keeper->ModifierRows.Reset();
+	if (UAbilitySystemComponent* KeeperSystem = Keeper->GetAbilitySystemComponent())
+	{
+		KeeperSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		KeeperSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		KeeperSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 0.0f);
+		KeeperSystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 0.0f);
+		KeeperSystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1.0f);
+	}
+	if (!DeathPlayerKills(*this, Player, Keeper))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Gatekeeper's death is not recorded"), Mode->FallenRecordedThisFloor(), 1);
+
+	// SOMETHING WORTH NOTHING: a creature a rule already brought back.
+	ACataclysmEnemyCharacter* Risen = DeathImpAtRung(World, Mode, FVector(0.0f, -400.0f, 0.0f), 0, nullptr);
+	if (!TestNotNull(TEXT("set-up: a risen Imp"), Risen))
+	{
+		return false;
+	}
+	Risen->bRisenFromTheDead = true;
+	if (!DeathPlayerKills(*this, Player, Risen))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a death worth nothing is not recorded"), Mode->FallenRecordedThisFloor(), 1);
+
+	// A DEATH ANOTHER RULE GOT BACK UP: Haunting left a copy of it, so it has had its second life.
+	ACataclysmEnemyCharacter* Haunter =
+		DeathImpAtRung(World, Mode, FVector(500.0f, 0.0f, 0.0f), 1, UCataclysmEnemyModifiers::HauntingRow);
+	if (!TestNotNull(TEXT("set-up: an Elite carrying Haunting"), Haunter) || !DeathPlayerKills(*this, Player, Haunter))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: Haunting left its copy"), DeathBroughtBack(Mode, true).Num(), 1);
+	TestEqual(TEXT("and that death is not recorded for a Lich"), Mode->FallenRecordedThisFloor(), 1);
+	return true;
+}
+
+CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmLichRecordEmptiedTest,
+	"Cataclysm.Lich.TheRecordOfTheFallenIsEmptiedWhenTheNextFloorBegins")
+{
+	using namespace CataclysmDeathModifiersTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FDeathModifiersPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = DeathModifiersFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Imp = DeathImpAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 1, nullptr);
+	if (!TestNotNull(TEXT("set-up: an Imp"), Imp) || !DeathPlayerKills(*this, Player, Imp))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("CONTROL: its death is recorded"), Mode->FallenRecordedThisFloor(), 1))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("on the next floor the record is empty"), Mode->FallenRecordedThisFloor(), 0);
 	return true;
 }
 

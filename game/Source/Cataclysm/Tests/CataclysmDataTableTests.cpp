@@ -193,7 +193,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// raises' kinds (Barrow Guard, Exhume, Bone Choir).
 	// AND 15 SINCE SLICE DS4 THE SAME DAY: the Wisp, which the Death Staff's Grave Mouth raises and the Wand's Soul
 	// Snare's snared dead rise as.
-	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",            15)
+	// AND 16 SINCE THE DEATH FINISH SLICE A, 2026-11-26: the Effigy, which the Death Crossbow's Effigy places.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",            16)
 	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
 	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
 	// per point. Health is expressible in the same table and no figure has been
@@ -210,7 +211,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// the abstract average the rarity ladder is read against. It rises to 15
 	// when the second Cataclysm's enemies are designed, so this pin is what
 	// notices an archetype silently going missing in the meantime.
-	CHECK_TABLE(FCataclysmEnemyArchetypeRow,    "EnemyArchetypes.csv",         8)
+	// AND 10 SINCE 2026-11-26: Death's Wraith and Lich, the second Cataclysm's own creatures.
+	CHECK_TABLE(FCataclysmEnemyArchetypeRow,    "EnemyArchetypes.csv",         10)
 	// 6, not 7. The ladder is Common, Elite, Legendary, Herald, Boss and
 	// Cataclysm Boss, matching scoring.RARITY_WEIGHTS. There is no "Rare": the
 	// design document's older list is superseded, which is issue #30.
@@ -609,7 +611,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// line's 592, less the 364 both had.
 	// AND 898 THE SAME DAY, for Slippery's Fervour on an evasion (window death3-w1's second pass).
 	// AND 899 ON 2026-11-26, for the Bulwark's Fervour for a kill (the final bundle).
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        899)
+	// AND 998 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows (the Necromancer's detonations),
+	// slice E's six (the Shadow's vows and Ever Moving), slice D's 32 (the Necromancer's remains), slice A's ten (the
+	// Soul Collector's spenders and Spirit Volley) and slice B's 29 (the Necromancer's army), on top of 899.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        998)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

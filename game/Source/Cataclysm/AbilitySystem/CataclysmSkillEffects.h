@@ -188,6 +188,16 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsAnExplosionAtAnAilmentsEnd = false;
 
 	/**
+	 * Whether this blow is one of Flurry of the Dead's extra strikes (`UCataclysmShadowImages::StrikeAgain`). A full hit
+	 * for damage, critical strike, ailments AND ON-HIT EFFECTS: the project owner's ruling of 2026-11-26 ("yes"), so
+	 * `ACataclysmPlayerCharacter::OnSomethingWasHit` raises `hit_dealt` and `critical_strike` for it and pays the critical
+	 * strike's Fervour as for any hit. Stamped with `UCataclysmSkillEffects::ExtraStrikeDataName`; the hit announcement
+	 * carries it as `FCataclysmHitNotice::bExtraStrike`, so a listener can tell it from the hit it repeats. WHAT STOPS
+	 * AN EXTRA STRIKE STRIKING AGAIN is not this mark but `bIsARowsAnswerToAnEvent`, which `StrikeAgain` also sets.
+	 */
+	bool bIsAnExtraStrike = false;
+
+	/**
 	 * The blow was struck in melee. Issue #1032.
 	 *
 	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, the same way and in the same
@@ -1242,6 +1252,9 @@ public:
 	 * records who struck the target. See `FCataclysmHitDelivery::bIsAnExplosionAtAnAilmentsEnd`.
 	 */
 	static const TCHAR* ExplosionAtAnAilmentsEndDataName;
+
+	/** The stamp `FCataclysmHitDelivery::bIsAnExtraStrike` leaves on the effect (Flurry of the Dead). */
+	static const TCHAR* ExtraStrikeDataName;
 
 	/**
 	 * The stamp of where a blow was struck from, when that was not its instigator's place: three set-by-caller

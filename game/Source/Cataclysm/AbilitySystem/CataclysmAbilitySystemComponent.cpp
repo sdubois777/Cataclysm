@@ -5,6 +5,7 @@
 // For ON_SCOPE_EXIT, which drains the queued deaths after the depth guard ends.
 #include "Misc/ScopeExit.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmDeviceWire.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -48,6 +49,7 @@
 // healing reach it and the Masochist's rule that healing removes Fervour
 // applies to it. Issue #1815.
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 // For whether the character being hit carries a curse the asker laid, which
 // `target_carries_your_curse` reads. The demonic tree rework of 2026-11-24.
@@ -881,6 +883,39 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// trees' slice C6d2, 2026-11-25). -1, which refuses, when no minion is named.
 	const AActor* Self = GetAvatarActor();
 	State.AskingMinionMetres = (AskingMinion && Self) ? UCataclysmTargeting::MetresBetween(Self, AskingMinion) : -1.0f;
+	// AND, FOR THE MINION ASKING, ITS AGE AND WHERE ITS FELLOWS STAND. The finishing of the Death Cataclysm, slice C
+	// (2026-11-26): Swollen reads `minion_seconds_active` ("for each full second it has stood") and Close Packed
+	// `minions_near_the_minion` ("for each other minion of yours within 3 metres of it") off the minion being detonated.
+	// The fellows are walked only when a row on this stat asks, as `WithEnemiesInReach` walks only for a row that asks.
+	if (AskingMinion)
+	{
+		const bool bAsksForFellows = Inputs->Modifiers.ContainsByPredicate([](const FCataclysmStatModifier& Row)
+		{
+			return Row.Scale == ECataclysmStatScale::PerOtherMinionNearTheMinion;
+		});
+		if (bAsksForFellows && Self)
+		{
+			for (AActor* Fellow : UCataclysmCommand::ThingsCommandedBy(Self))
+			{
+				const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Fellow);
+				if (Fellow != AskingMinion && !(Machine && Machine->bIsMachine))
+				{
+					State.OtherMinionMetresFromAskingMinion.Add(UCataclysmTargeting::MetresBetween(AskingMinion, Fellow));
+				}
+			}
+		}
+	}
+	// AND HOW LONG IT HAS STOOD AND WHETHER IT IS THE COMMANDER'S BIGGEST PERMANENT MINION, for Old Bones and First Among
+	// the Dead (the Death line's finishing slice B, 2026-11-26).
+	UCataclysmNecromancerArmy::FillAskingMinionState(State, Self, AskingMinion);
+	// AND, FOR A MINION SLICE B'S FILL GAVE NO AGE, ITS TIME SINCE IT WAS MADE: slice C's figure for Swollen, AFTER the
+	// fill, which writes the age from when the minion came under command only while the age is still unset. Before the
+	// bundle (window dfb-w1) slice C's line ran first and always won, so Old Bones never read a back-dated command time.
+	// For a summoned minion the two agree: `ACataclysmMinion::Spawn` sets the command time to the moment it is made.
+	if (AskingMinion && State.MinionSecondsActive < 0.0f)
+	{
+		State.MinionSecondsActive = AskingMinion->GetGameTimeSinceCreation();
+	}
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
 		Inputs->Base, Inputs->Modifiers, Tags, State);
 
@@ -1418,6 +1453,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// player in the game.
 	const TArray<AActor*> Commanded = UCataclysmCommand::ThingsCommandedBy(GetAvatarActor());
 	State.MinionsHeld = Commanded.Num();
+	// AND HOW MANY KINDS BEYOND THE FIRST, for Motley Host (the Death line's finishing slice B, 2026-11-26).
+	State.MinionKindsBeyondTheFirst = UCataclysmNecromancerArmy::KindsBeyondTheFirst(Commanded);
 
 	// AND WHAT THEY HOLD BACK OF THE CLASS RESOURCE, from the same list, for
 	// the full bar `ClassResourceAtMaximum` judges against the maximum less it.
@@ -1717,6 +1754,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// AND THE WIDEST REACH A `MinionsInReachAtLeast` ROW ASKS ABOUT, walked over the character's own followers. The Death
 	// trees' slice C6d1 (2026-11-25).
 	float WidestMinions = -1.0f;
+	// AND THE WIDEST REACH A `PerOwnRemainsInReach` ROW ASKS ABOUT, walked over the character's own remains. The Death
+	// finish's slice D (2026-11-26), Mantle of Bone.
+	float WidestRemains = -1.0f;
 	// AND WHETHER A ROW SCALES BY INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless. Filled
 	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
 	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
@@ -1758,6 +1798,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		if (Modifier.Scale == ECataclysmStatScale::PerCrippledEnemyInReach)
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
+		}
+		if (Modifier.Scale == ECataclysmStatScale::PerOwnRemainsInReach)
+		{
+			WidestRemains = FMath::Max(WidestRemains, Modifier.ReachMetres);
 		}
 		// AND THE TWO OF THE DEATH TREES' SLICE C6b3 (2026-11-25), on either condition: no enemy within the reach reads
 		// the distances walk the other way, and an enemy of a rung within it walks the bodies.
@@ -1833,6 +1877,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// character whose only nearby-enemy row is a crippled one would return
 	// here with the crippled list empty, and Grinding Halt would grant nothing
 	// with nothing reporting why.
+	// AND THE CHARACTER'S OWN REMAINS WITHIN THE WIDEST REACH A ROW ASKS ABOUT, BEFORE THE RETURN BELOW, for the reason the
+	// followers' walk is: Mantle of Bone, the Death finish's slice D (2026-11-26). Measured from the avatar along the floor.
+	if (WidestRemains > 0.0f)
+	{
+		UCataclysmRemains::DistancesOfOwnRemains(GetAvatarActor(), WidestRemains * 100.0f,
+												 State.OwnRemainsDistancesMetres);
+	}
+
 	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestRarity <= 0.0f && WidestMinions <= 0.0f)
 	{
 		return State;
@@ -4661,6 +4713,39 @@ TArray<int32> UCataclysmAbilitySystemComponent::WornEnemyModifierPlacesNow() con
 		}
 	}
 	return Places;
+}
+
+void UCataclysmAbilitySystemComponent::NoteLentModifier(FName Row, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Row.IsNone() || Seconds <= 0.0f)
+	{
+		return;
+	}
+	LentModifierUntil.Add(Row, World->GetTimeSeconds() + Seconds);
+}
+
+float UCataclysmAbilitySystemComponent::LentModifierSecondsLeft(FName Row) const
+{
+	const UWorld* World = GetWorld();
+	const float* Until = LentModifierUntil.Find(Row);
+	return World && Until ? FMath::Max(0.0f, *Until - World->GetTimeSeconds()) : 0.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsAnyRowWearing() const
+{
+	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
+	{
+		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
+		{
+			if (Row.Condition == ECataclysmStatCondition::WearingEnemyModifier
+				|| Row.Condition2 == ECataclysmStatCondition::WearingEnemyModifier)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 bool UCataclysmAbilitySystemComponent::HoldsARowWearing(int32 Place) const
@@ -8526,6 +8611,9 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 	SkillInHandName = SkillName;
 	SkillInHandAim = Aim;
 	bSkillInHandHasCooldown = bHasCooldown;
+	// LICH FORM: a skill used within its seconds of the bar filling raises a husk where it lands (the Death line's
+	// finishing slice B, 2026-11-26). Nothing for the basic attack, which is no skill (ruled 2026-09-14).
+	UCataclysmNecromancerArmy::RaiseLichHusk(GetAvatarActor(), Aim, bBasicAttack);
 	// NOT `skill_use` FOR THE BASIC ATTACK, as ruled 2026-09-14. `attack_use` is for every paid use.
 	if (!bBasicAttack)
 	{
@@ -11136,16 +11224,14 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 		return;
 	}
 
-	// A GAIN OF CLASS RESOURCE GOES THROUGH `UCataclysmFervour::RaisePool`, as every other gain to that pool does:
-	// held to the full bar after reserves (`MaximumClassResourceAsked`) rather than to the maximum attribute, and seen
-	// by Kindred Fires and Borrowed Time. Ruled by the coordinating session in the Death trees' slice C6b3
-	// (2026-11-25), for a `points` row and for the three enchantment rows that already granted class resource here
-	// through `TopUp`, whose amounts are unchanged. Scaled by `class_resource_generation` above.
-	if (Amount > 0.0f && Action.Pool == ClassResourcePoolName)
-	{
-		UCataclysmFervour::RaisePool(this, Amount);
-		return;
-	}
+	// A GAIN OF CLASS RESOURCE REACHES `UCataclysmFervour::RaisePool` THROUGH `TopUp` BELOW, as every other gain to that
+	// pool does: `TopUp` hands the whole gain of that pool to `RaisePool` (since commit 61a254cbe, Overflow hears every
+	// gain), which holds it to the full bar after reserves (`MaximumClassResourceAsked`) and lets Kindred Fires and
+	// Borrowed Time see it. As ruled by the coordinating session in the Death trees' slice C6b3 (2026-11-25), for a
+	// `points` row and the three enchantment rows that grant class resource; scaled by `class_resource_generation` above.
+	// THIS FUNCTION HAD A BRANCH OF ITS OWN THAT CALLED `RaisePool` until issue #2936: it did what `TopUp` does, so a
+	// guard break on it changed nothing any test could see. The one difference its removal makes is `TopUp`'s own first
+	// refusal, a held swing that forbids healing (The Whole Weight), which refuses every pool, Fervour included.
 
 	if (Amount > 0.0f)
 	{

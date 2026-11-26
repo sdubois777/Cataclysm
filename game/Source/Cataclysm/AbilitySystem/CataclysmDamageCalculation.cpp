@@ -108,6 +108,8 @@ const TCHAR* UCataclysmDamageCalculation::CriticalArmorPenetrationStat =
 	TEXT("critical_armor_penetration");
 const TCHAR* UCataclysmDamageCalculation::MeleeEvasionSuppressedStat =
 	TEXT("melee_evasion_suppressed");
+const TCHAR* UCataclysmDamageCalculation::EvasionAgainstAreaPercentStat =
+	TEXT("evasion_against_area_percent");
 
 namespace
 {
@@ -357,8 +359,11 @@ namespace
 			return 1.0f;
 		}
 		const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Body);
+		// AS THE FOLLOWER ASKING, since the Death line's finishing slice B (2026-11-26), so Called to Heel's "while they are
+		// within 8 metres of you" is judged for the follower taking the blow.
 		return FMath::Max(0.0f, UCataclysmCommand::SummonerMultiplierFor(
-			Commander, TEXT("minion_damage_taken"), Minion ? Minion->TypeTags : UCataclysmCommand::ThrallMinionTags()));
+			Commander, TEXT("minion_damage_taken"), Minion ? Minion->TypeTags : UCataclysmCommand::ThrallMinionTags(),
+			/*AskingMinion=*/Body));
 	}
 
 	/**
@@ -858,7 +863,17 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// attacker". See `FCataclysmIncomingHit::bCannotBeMitigated`, which lists the
 	// six and what is not among them. Each of the six reads the flag where it
 	// stands; no roll is made for a step that is skipped.
-	if (!Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && !Hit.bCannotBeMitigated && Combat)
+	//
+	// AND AREA DAMAGE IS EVADED BY A DEFENDER WHOSE ROW SAYS SO, at the row's share of the chance a direct attack meets:
+	// Ever Moving, "While you are moving, your Evasion chance also applies to area damage, at half its value" (the Death
+	// line's finishing slice E, 2026-11-26). Its row is `evasion_against_area_percent` 50 under `while_moving`, asked of
+	// the defender with the blow as evasion is, so the condition is the row's. Asked only for an area hit the step would
+	// otherwise refuse, so no roll is drawn for one without the row, and every other blow is as it was.
+	const float AreaShare = Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && !Hit.bCannotBeMitigated && Combat
+		? FMath::Clamp(DefenderStat(Defender, EvasionAgainstAreaPercentStat, 0.0f, BlowOf(Hit)), 0.0f, 100.0f)
+		: 0.0f;
+	if ((!Hit.bIsArea || AreaShare > 0.0f) && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && !Hit.bCannotBeMitigated
+		&& Combat)
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
 											   : CataclysmPercentDraw::Draw();
@@ -873,8 +888,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// changes, so every test that pins a roll is unaffected.
 		//
 		// LESS THE OVERWHELM, held at nought. Issue #2824, slice b, ruling Q7.
-		if (Roll < FMath::Max(0.0f, DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(), BlowOf(Hit))
-										 - Hit.OverwhelmPoints))
+		// AN AREA HIT MEETS THE ROW'S SHARE OF THE WHOLE CHANCE, after the overwhelm: half of what a direct attack meets.
+		const float AreaFraction = Hit.bIsArea ? AreaShare / 100.0f : 1.0f;
+		if (Roll < AreaFraction * FMath::Max(0.0f, DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(), BlowOf(Hit))
+														- Hit.OverwhelmPoints))
 		{
 			Result.bEvaded = true;
 			return Result;

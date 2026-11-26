@@ -2798,6 +2798,21 @@ public:
 	bool IsARift() const;
 
 	/**
+	 * THE LICH'S RAISE THE FALLEN, 2026-11-26: how many of this floor's deaths it could raise lie within `RadiusCm` of
+	 * `At`, and raising up to `Most` of them, the most recent first. Each comes back where it fell as a Common of its own
+	 * kind at `ACataclysmLichCharacter::RaisedHealthShare` of its health, marked risen so it pays nothing, and its
+	 * record is spent so a death is raised at most once, whichever Lich raises it. Returns how many stood up.
+	 *
+	 * THE RECORD IS ITS OWN, kept apart from Echoes of the Past (which holds no positions and keeps the LAST floor's
+	 * dead) and from the Necromancer's player-owned remains. See `NoteDeathForRaiseTheFallen`.
+	 */
+	int32 FallenToRaiseNear(const FVector& At, float RadiusCm) const;
+	int32 RaiseTheFallenNear(ACataclysmEnemyCharacter* Raiser, const FVector& At, float RadiusCm, int32 Most);
+
+	/** How many deaths this floor's record holds, spent or not. For the tests. */
+	int32 FallenRecordedThisFloor() const { return FallenThisFloor.Num(); }
+
+	/**
 	 * Whether the dungeon being walked is an Abomination lair: `FCataclysmDungeon::IsALair`, a Quest dungeon Death sent.
 	 * False with nothing bound. Read off the bound dungeon, as `IsARift` is. Issue #51 slice B5.
 	 */
@@ -4002,7 +4017,8 @@ private:
 	/** The Reaper, on the beat: counts the floor's seconds and raises it when due. */
 	void StepTheReaper();
 
-	/** The Reaper itself: an Abyssal Warden at the entrance that cannot be hurt. */
+	/** The Reaper itself: a Wraith at the entrance that cannot be hurt, walking slowly (an Abyssal Warden until
+	 *  2026-11-26). */
 	void RaiseTheReaper();
 
 	/** The Reaper, on every blow: one of its that lands on the player kills them. */
@@ -4135,6 +4151,12 @@ private:
 	/** Divine Wrath, on the beat: a beam when one is due, aimed at the player, killing creatures. */
 	/** Echoes of the Past, on every death: a creature's kind, rung and last attack are kept. */
 	void NoteDeathForEchoesOfThePast(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Records a death for the Lich's Raise the Fallen (`FallenThisFloor`). `bAnotherRuleRaisedIt` is true when Undying
+	 * Will, Haunting or Dead Rising already got this death back up, so it is not raised a second time.
+	 */
+	void NoteDeathForRaiseTheFallen(const struct FCataclysmDeathNotice& Notice, bool bAnotherRuleRaisedIt);
 
 	/**
 	 * Echoes of the Past, on the beat: on the floor's first, the last floor's dead stand across it; on every beat
@@ -6192,6 +6214,21 @@ private:
 	 */
 	TArray<FEchoOfTheDead> EchoesThisFloor;
 	TArray<FEchoOfTheDead> EchoesFromLastFloor;
+
+	/**
+	 * THE LICH'S RECORD OF THIS FLOOR'S DEATHS, 2026-11-26: its kind, where it fell, when, and whether a Lich has raised
+	 * it. Every death that pays, that no other rule got back up, and that is not a Lich, a Gatekeeper or the Cataclysm
+	 * Boss. Emptied as each floor begins and when the walk ends. NOT SAVED, a judgement (J1): a load mid-floor
+	 * forgets which deaths a Lich could raise, which costs the player nothing.
+	 */
+	struct FFallenToRaise
+	{
+		ECataclysmDungeonCreature Kind = ECataclysmDungeonCreature::Count;
+		FVector Where = FVector::ZeroVector;
+		float DiedAtSeconds = 0.0f;
+		bool bRaised = false;
+	};
+	TArray<FFallenToRaise> FallenThisFloor;
 	TArray<FEchoStanding> EchoesStanding;
 	int32 EchoesStage = 0;
 

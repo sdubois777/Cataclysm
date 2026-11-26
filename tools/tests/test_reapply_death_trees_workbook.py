@@ -20,7 +20,29 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
+import reapply_death_remains_workbook as remains  # noqa: E402
+import reapply_death_finish_soul_collector_workbook as finish_a  # noqa: E402
+import reapply_death_finish_b_workbook as finish_b  # noqa: E402
 import reapply_death_trees_workbook as reapply  # noqa: E402
+import reapply_death_finish_c_workbook as finish_c  # noqa: E402
+import reapply_death_finish_e_shadow_workbook as finish_e  # noqa: E402
+
+#: THE SCRIPTS THAT WRITE MORE DEATH ROWS AFTER THIS ONE, in the order the bundle ran them on the committed workbook.
+#: Taking every Death row out takes theirs out too, so rebuilding the committed sheets runs each after this script. The
+#: finishing of the Death Cataclysm (2026-11-26): each slice owns its own script. AN EXPLICIT LIST IN RUN ORDER, not the
+#: scripts' names sorted, which slice E proposed: slice D's script is `reapply_death_remains_workbook.py` and would not
+#: match a `reapply_death_finish_*` search, and the order a workbook holds rows in is the order they were written.
+#: Each entry is the slice and the call that writes its rows. Slice D's is `base.apply` with its nodes, as slice D's
+#: own test called it: its script's `apply` also writes the tag `Minion.RaisedOnRemains` to the Tags sheet, which is
+#: not among the sheets compared here and is not taken out with the Death rows.
+FOLLOWING = (
+    ("C", finish_c.apply),
+    ("E", finish_e.apply),
+    ("D", lambda path: remains.base.apply(path, nodes=remains.NODES, label=remains.LABEL)),
+    ("A", finish_a.apply),
+    ("B", finish_b.apply),
+)
+
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 SHEETS = (reapply.EFFECTS_SHEET, reapply.CLASS_SHEET)
@@ -52,6 +74,11 @@ def take_the_death_rows_out(path: pathlib.Path) -> None:
     book.save(path)
 
 
+def apply_the_finishing_slices(path: pathlib.Path) -> list[list[str]]:
+    """Each finishing slice's script, in `FOLLOWING`'s order, after the Death trees script; their reports."""
+    return [write(path) for _, write in FOLLOWING]
+
+
 @pytest.fixture
 def copy_of_the_workbook(tmp_path) -> pathlib.Path:
     target = tmp_path / "workbook.xlsx"
@@ -78,6 +105,8 @@ def test_the_rows_taken_out_are_put_back_as_the_committed_sheets(copy_of_the_wor
     report = reapply.apply(copy_of_the_workbook)
     changes = len(reapply.NODES) + len(reapply.CLASS_STATS)
     assert report[-1].startswith(f"wrote {changes} change(s)"), report
+    for (name, _), report in zip(FOLLOWING, apply_the_finishing_slices(copy_of_the_workbook), strict=True):
+        assert report[-1].startswith("wrote"), (name, report)
     for title in SHEETS:
         assert sheet_rows(copy_of_the_workbook, title) == sheet_rows(WORKBOOK, title), title
 
@@ -217,6 +246,7 @@ def test_the_port_columns_are_added_when_the_sheet_lacks_them(copy_of_the_workbo
 
     report = reapply.apply(copy_of_the_workbook)
     assert any("added the column(s)" in line for line in report), report
+    apply_the_finishing_slices(copy_of_the_workbook)
     for title in SHEETS:
         assert rows_by_name(copy_of_the_workbook, title) == rows_by_name(WORKBOOK, title), title
 

@@ -969,8 +969,14 @@ public:
 	 * `minion_explosion_damage` multiplier, as every explosion takes; to every enemy within this minion's explosion
 	 * radius, centred on it. Not this minion's own blow, and no rider of this minion's (an imp's burn): the blast is the
 	 * skill's. With no skill, or no caster, it is `Explode`.
+	 *
+	 * AND A DETONATION'S OWN TWO, since the finishing of the Death Cataclysm, slice C (2026-11-26): the summoner's
+	 * `minion_detonation_damage` and `minion_detonation_area` (`UCataclysmDetonation`), and `ShareOfFigure` of the whole,
+	 * which Mass Grave's chain passes as 0.4. Answers the figure the blast was worth before any defender, for Lingering
+	 * Rot's share: the largest it sent, or with nothing caught what it would have sent. Nought when it fell back to
+	 * `Explode`. Every detonation goes through `UCataclysmDetonation::Detonate`, which calls this.
 	 */
-	void ExplodeSetOffBy(class UCataclysmSkillTemplate* SetOffBy);
+	float ExplodeSetOffBy(class UCataclysmSkillTemplate* SetOffBy, float ShareOfFigure = 1.0f);
 
 	/**
 	 * What a skill's detonation of a minion deals, as a percentage of the caster's weapon damage, before the skill's
@@ -1211,6 +1217,15 @@ public:
 
 	/** World time of this minion's last beat, or a negative number before its first. */
 	float LastTauntBeatAtSeconds = -1.0f;
+
+	/**
+	 * True when this machine's placer's Siphon reaches the enemies around it too: set by
+	 * `UCataclysmDeployableSkill::DeployOne` for a row stating `SiphonsAround=1` (the Effigy), and read by
+	 * `FCataclysmSiphon::Step`, which takes in every enemy within the placer's Siphon radius of each of its living
+	 * machines marked so. The Death finish slice A (2026-11-26).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	bool bWidensSummonersSiphon = false;
 
 	/** How many taunts this minion's beats have landed, placed or restarted. Read by tests. */
 	int32 TauntsLanded = 0;
@@ -1977,7 +1992,12 @@ public:
 	bool bStaysWhereItIsPut = false;
 
 	//~ Driven by ACataclysmEnemyController
-	virtual float AttackReachCm() const override { return ReachCm; }
+	/**
+	 * `ReachCm`, CUT TO CONTACT FOR A LIVING BOMB (the Second Rite's option 2, slice C of the Death Cataclysm's finishing,
+	 * 2026-11-26): "Your minions run at the nearest enemy and detonate on contact". See
+	 * `UCataclysmDetonation::AttackReachCmFor`.
+	 */
+	virtual float AttackReachCm() const override;
 	virtual float SightRadiusCm() const override { return NoticeRadiusCm; }
 	virtual float SecondsBetweenAttacks() const override { return AttackIntervalSeconds; }
 

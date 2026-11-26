@@ -406,25 +406,37 @@ def test_every_creature_names_a_row_the_archetype_table_holds() -> None:
             f"UCataclysmCreaturePanel::UnnamedCreature instead.")
 
 
-def test_the_enemy_class_says_a_modifier_grants_no_effect_yet() -> None:
-    """The gap is written beside the field rather than found in play.
+def test_the_modifier_list_says_which_effects_are_built_and_how_any_wearer_reads_it() -> None:
+    """The state of the work is written beside the field rather than found in play.
 
-    NOTHING GRANTS AN ENEMY A MODIFIER. `ModifierRows` is a list of names the
-    panel prints, and a creature given Hellfire Aura by hand does not burn
-    anybody, because the aura does not exist. Saying so on the field is what
-    stops the next person reading the list as a working feature.
+    `ModifierRows` began as a list of names the panel printed and nothing more
+    (issue #740); this check used to hold the comment to "NOTHING GRANTS THE
+    EFFECT YET". Effects have been built since, and since issue #2899 the list
+    is on `ACataclysmCharacterBase`, so a player can carry one, and every effect
+    that works on any wearer reads it through `UCataclysmEnemyModifiers::
+    CarriedBy`, which adds what Wearer of the Dead lent. The comment says both,
+    and that a name whose effect is not built still does nothing, which is what
+    stops the next person reading every name as working.
     """
-    text = flat(ENEMY_H)
+    text = flat(CHARACTERS / "CataclysmCharacterBase.h")
 
     assert "TArray<FName> ModifierRows;" in text, (
-        "ACataclysmEnemyCharacter has no ModifierRows, so nothing can give a "
-        "creature a modifier even by hand and the panel's modifier lines can "
-        "never be seen. Issue #740.")
+        "ACataclysmCharacterBase has no ModifierRows, so nothing can give a "
+        "character a modifier even by hand and the panel's modifier lines can "
+        "never be seen. Issues #740 and #2899.")
+    assert "TArray<FName> ModifierRows;" not in flat(ENEMY_H), (
+        "ACataclysmEnemyCharacter declares ModifierRows again; the list is the "
+        "character base's since issue #2899, and the header tool refuses a "
+        "UPROPERTY declared twice in one class chain.")
 
-    assert "NOTHING GRANTS THE EFFECT YET" in text, (
-        "The comment on ACataclysmEnemyCharacter::ModifierRows no longer says "
-        "that a modifier grants no mechanical effect. It does not: the list is "
-        "names the panel prints. Somebody will otherwise read it as working.")
+    assert "UCataclysmEnemyModifiers::CarriedBy" in text, (
+        "The comment on ACataclysmCharacterBase::ModifierRows no longer names "
+        "CarriedBy, which is how an effect reads a wearer's own rows and the "
+        "ones lent to it.")
+    assert "a name whose effect is not built still does nothing" in text, (
+        "The comment on ACataclysmCharacterBase::ModifierRows no longer says "
+        "that a name whose effect is not built does nothing. Somebody will "
+        "otherwise read every name as working.")
 
 
 # ---------------------------------------------------------------------------

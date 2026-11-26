@@ -21,6 +21,7 @@
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 // For the share of a blow on an ally that each wearer beside it takes. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 // For the share of a point-blank skill's blow struck at an ally inside its area. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
@@ -63,6 +64,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 // For the Soul a minion's death leaves, Reaper's Embrace's six-piece.
 #include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmRemains.h"
 // For the stack that taking damage builds. Issue #1003.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -669,6 +671,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					UCataclysmSkillEffects::ApplyDirectDamage(Interposer, Guard, Hit.Damage, Taken);
 					Hit.Damage = 0.0f;
 				}
+
+				// SHARED FLESH, the Necromancer's Third Rite's second option: "Damage you take is split evenly between you
+				// and your minions." After Interpose, which takes a whole hit or none; each minion's part is sent to it
+				// and meets its own defences, and the defender keeps its own part (the Death line's finishing slice B,
+				// 2026-11-26). The hit as sent, before the defender's evasion and mitigation, as Interpose's is.
+				Hit.Damage = UCataclysmNecromancerArmy::SplitWithMinions(
+					GetOwningAbilitySystemComponent(), Interposer, Hit.Damage, Hit.bIsDamageOverTime);
 			}
 
 			// AND WHETHER THE ATTACKER'S MODIFIERS SAY IT CANNOT BE DODGED. The
@@ -694,23 +703,35 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Hit.bFromBoss = Striker->IsBoss();
 				// AND ITS RARITY RUNG, for Read the Blow (the Death trees' slice C6b3, 2026-11-25).
 				Hit.AttackerRarityStep = Striker->RarityStep;
+			}
 
-				// AND DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect
-				// Aim's does, because the shield is the defender's and only the blow can refuse it. Every blow whose
-				// causer carries it, its ticks included. 2026-11-24, ahead of its window.
+			// AND THREE OF DEATH'S MODIFIERS ON THE CAUSER, WHOEVER IT IS: a creature carrying its own, or a player one
+			// Wearer of the Dead lent (issue #2899, 2026-11-26; until then they were asked inside the creature's cast
+			// above, so only a creature's blows carried them). `RowsCarriedBy` reads both.
+			if (const AActor* DeathCauser = Data.EffectSpec.GetContext().GetEffectCauser())
+			{
+				const TArray<FName> CauserRows = UCataclysmEnemyModifiers::RowsCarriedBy(DeathCauser);
+
+				// DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect Aim's
+				// does, because the shield is the defender's and only the blow can refuse it. Every blow whose causer
+				// carries it, its ticks included. 2026-11-24.
 				// ADDED TO, not set: a Void Splinter tick already ignores the shield whatever struck (2026-11-26).
 				Hit.bIgnoresEnergyShield =
-					Hit.bIgnoresEnergyShield || UCataclysmEnemyModifiers::IgnoresEnergyShield(Striker->ModifierRows);
+					Hit.bIgnoresEnergyShield || UCataclysmEnemyModifiers::IgnoresEnergyShield(CauserRows);
 
 				// AND DEATH'S GRAVE TOUCH, "Deal more damage to players with less than 50% health": half again, on a
 				// HIT and never a tick, judged on the health this character holds as the blow arrives. The same
 				// "more" every bucket multiplies, so it is applied to the blow before the defences, as a stronger
-				// creature's figure would be. 2026-11-24, ahead of its window.
+				// creature's figure would be. 2026-11-24.
 				if (!Hit.bIsDamageOverTime)
 				{
-					Hit.Damage *= UCataclysmEnemyModifiers::GraveTouchMultiplier(
-						Striker->ModifierRows, GetHealth(), GetMaxHealth());
+					Hit.Damage *= UCataclysmEnemyModifiers::GraveTouchMultiplier(CauserRows, GetHealth(), GetMaxHealth());
 				}
+
+				// AND DEATH'S UNDYING WILL ON A WEARER THAT IS NOT A CREATURE AND HAS RISEN THROUGH IT: its blows deal
+				// half again, the owner's "more damage" (2026-11-26). A tick too, as a risen creature's raised attack
+				// damage reaches its ticks. One for every other causer. See `UndyingWillDamageMultiplierFor`.
+				Hit.Damage *= UCataclysmEnemyModifiers::UndyingWillDamageMultiplierFor(DeathCauser);
 			}
 
 			// AND WHETHER THE BLOW ITSELF SAYS IT CANNOT BE EVADED. Ruled 2026-10-07.
@@ -1700,8 +1721,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Resolved.DealtToHealth + Resolved.AbsorbedByShield
 							+ Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary);
 				}
+				// AND A CHARACTER DEATH'S SPECTRAL SHIFT HAS OUT OF EXISTENCE, any wearer since issue #2899 (a player one
+				// Wearer of the Dead lent it): "becoming immune to damage", emptied here, BEFORE THE SAVES BELOW, so no
+				// save is spent on a blow that deals nothing. A creature's is emptied again further down with the Reaper's.
 				if (Guarded->IsDamageImmune() || Guarded->IsImmuneToDamageType(Hit.DamageType)
-					|| bAbsorbed || bReflected || Rod)
+					|| bAbsorbed || bReflected || Rod
+					|| UCataclysmEnemyModifiers::IsPhasedOut(CataclysmDefendingBody(*this)))
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;
@@ -1837,6 +1862,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						SetHealth(FMath::Clamp(GetMaxHealth() * Spent / 100.0f, 1.0f, GetMaxHealth()));
 						Guarded->NoteFervourSpent(Spent);
 					}
+				}
+
+				// AND DEATH'S UNDYING WILL ON A WEARER THAT IS NOT A CREATURE, the player one Wearer of the Dead lent it:
+				// the owner's ruling of 2026-11-26, "you come back once with less health and more damage". Issue #2899.
+				// AFTER EVERY SAVE ABOVE, a judgement: it is the rising after a death each of them would have prevented,
+				// so none of them is left unspent beside it. A TICK TOO, as the reprieve reads "would be killed". As the
+				// Phylactery's: the blow takes nothing and health is SET to the creature's half of the maximum. A creature
+				// answers no here and rises as a new one the dungeon places.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& EmptiesHealthLessTheDelayedShare()
+					&& UCataclysmEnemyModifiers::RiseThroughUndyingWill(CataclysmDefendingBody(*this)))
+				{
+					bSavedFromALethalBlow = true;
+					Resolved.DealtToHealth = 0.0f;
+					// THE WRITE IS NOTICED BY `PostAttributeBaseChange`, as the Phylactery's is.
+					SetHealth(FMath::Clamp(GetMaxHealth() * UCataclysmEnemyModifiers::UndyingWillHealthShare, 1.0f,
+										   GetMaxHealth()));
 				}
 			}
 
@@ -3070,13 +3114,16 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// THIS character was hit, so it is asked whether this character raises a pyre at whoever struck.
 					UCataclysmEnemyModifiers::MortalReminderOnHit(Striker, GetOwningActor());
 					UCataclysmEnemyModifiers::HauntOnHit(Striker, GetOwningActor());
-					UCataclysmEnemyModifiers::PyreWhenStruck(GetOwningActor(), Striker);
+					// THE BODY STRUCK AND NOT THE SET'S OWNER, since issue #2899: a player wearing Funeral Pyre or Soul
+					// Tether is struck as its pawn, and its set is owned by its player state. For a creature the two are
+					// the same actor.
+					UCataclysmEnemyModifiers::PyreWhenStruck(CataclysmDefendingBody(*this), Striker);
 				}
 
 				// AND DEATH'S SOUL TETHER, ON A TICK AS WELL AS A HIT: "Transfer a portion damage taken". What the
 				// write above really took from this character's health, measured across it, so an overkill, a
 				// sigil's hold and a delayed share are all left out. 2026-11-24, ahead of its window.
-				UCataclysmEnemyModifiers::TetherOnHealthLost(GetOwningActor(), Striker, TakenFromHealth);
+				UCataclysmEnemyModifiers::TetherOnHealthLost(CataclysmDefendingBody(*this), Striker, TakenFromHealth);
 			}
 
 			// EVERY CHANCE TO APPLY AN AILMENT THE BLOW CARRIED IS ROLLED HERE,
@@ -3486,6 +3533,10 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 			{
 				Commanders->NoteMinionDied(Character, AsMinion ? AsMinion->TypeTags : UCataclysmCommand::ThrallMinionTags());
 			}
+
+			// AND THE NECROMANCER'S RISES FROM A FOLLOWER'S DEATH: Second Death's husk and Will Not Stay Down's return,
+			// while the body still stands where it fell (the Death line's finishing slice B, 2026-11-26).
+			UCataclysmNecromancerArmy::FollowerDied(Character, Commander);
 		}
 	}
 
@@ -3523,6 +3574,11 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		// AND A THRALL'S OWN EXPLOSION UNDER EVERY ONE BURSTS, for the same reason and in the same place. Issue #2540:
 		// a minion explodes inside `HandleDeath`, which a thrall's death never reaches. Nothing for a minion.
 		ACataclysmMinion::ThrallBurst(Character, Commander);
+
+		// AND FALLEN AGAIN'S REMAINS, read off the body while it stands: "Each of your minions that dies without being
+		// detonated has a 6% chance per point to leave remains." The Death finish's slice D (2026-11-26). A detonation
+		// is an explosion and never reaches this hook.
+		UCataclysmRemains::LeaveForAFollower(Commander, Character, Where);
 	}
 
 	Character->HandleDeath();

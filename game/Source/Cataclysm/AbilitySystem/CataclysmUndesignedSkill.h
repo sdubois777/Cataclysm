@@ -16,22 +16,24 @@
  * reaches something, and swapping weapons visibly changes what is granted, which
  * is the part of issue #36 that can be built and tested today.
  *
- * UNDESIGNED SKILLS: 54. NAMED SKILLS: 198. Those are how many rows of
+ * UNDESIGNED SKILLS: 53. NAMED SKILLS: 198. Those are how many rows of
  * `game/Data/WeaponSkills.csv` carry a skill name and no shape, and how many
- * carry a name at all. The other 144 do have a shape and its parameters -- 56
+ * carry a name at all. The other 145 do have a shape and its parameters -- 56
  * Demonic, 8 War (War's Aura, Blood and Iron, since 2026-11-25), and since issue #2580 the Corrupted Stalker's six kits, one
  * weapon's five rows and the Aura for each of Death, Pestilence, Famine,
- * Celestial, Chaos and Void, and since issue #2885 forty-four more Death rows
+ * Celestial, Chaos and Void, and since issue #2885 forty-five more Death rows
  * -- and are built as real abilities rather than by this class. (This said "the
  * other 58 ... 51 Demonic" until #2580, when 63 were already shaped, 54 of 153
  * until #2885, 87 of 198 after its first slice, 77 after its second, 68 after
- * its third, and 60 after its fourth.)
+ * its third, 60 after its fourth, and 54 after its fifth, until the Death
+ * finish slice A wrote the Effigy whole on 2026-11-26.)
  *
  * ISSUE #2885 MADE THIS CLASS A DESIGNED SKILL'S WAITING ROOM AS WELL AS AN
  * UNDESIGNED ONE'S. The 45 Death skills the owner approved on 2026-11-24 were
  * entered with their names, descriptions and numbers, and those whose code is
  * not built yet with no shape: 33 after the first slice, 23 after the second,
- * 14 after the third, 6 after the fourth, 1 after the fifth (the Effigy);
+ * 14 after the third, 6 after the fourth, 1 after the fifth (the Effigy), and
+ * none since the Death finish slice A (2026-11-26) wrote the Effigy whole;
  * `tools/reapply_death_skills_workbook.py` holds each one's shape and the piece
  * it waits on, and writes the shape when that piece is built.
  *

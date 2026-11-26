@@ -840,6 +840,17 @@ bool FCataclysmPopulationVarietyTest::RunTest(const FString& Parameters)
 			{
 				EverSeen.Add(Enemy.Creature);
 			}
+
+			// AND THE SAME FLOOR AS A DEATH DUNGEON'S, so a kind only Death places counts as placed: its escort, the
+			// Lich, and the Wraith in its packs, since 2026-11-26. Its floors are held to the same variety.
+			FCataclysmFloorBrief ByDeath;
+			ByDeath.Cataclysm = ECataclysmType::Death;
+			const FCataclysmFloorPopulation DeathPopulation = FCataclysmFloorPopulator::Populate(Plan, 1.0f, ByDeath);
+			WorstKinds = FMath::Min(WorstKinds, DeathPopulation.KindsPresent());
+			for (const FCataclysmEnemyPlacement& Enemy : DeathPopulation.Enemies)
+			{
+				EverSeen.Add(Enemy.Creature);
+			}
 		}
 	}
 

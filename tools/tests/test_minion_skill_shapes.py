@@ -47,10 +47,13 @@ def test_a_minion_skill_waiting_on_code_states_no_half_of_a_shape():
     """THE EXEMPTION ABOVE IS NARROW, and this is what keeps it so. A waiting row is
     left out of every check below only while it has neither a Shape nor Shape Params,
     which is how the re-apply script enters it; a row given half a shape by hand, or a
-    row the script now writes whole, is checked like any other."""
+    row the script now writes whole, is checked like any other.
+
+    SINCE THE DEATH FINISH SLICE A (2026-11-26) NO DEATH MINION ROW WAITS: the
+    Effigy, the last, is written whole, so the exemption is empty and every minion
+    row is checked below. A row that waits again is checked here."""
     waiting = waiting_on_code()
     tagged = [r for r in skills() if "Type.Minion" in r["Tags"] and r["Name"] in waiting]
-    assert tagged, "no Death minion row waits on code, so the exemption guards nothing and can go"
     for row in tagged:
         assert not row["Shape"] and not row["ShapeParams"], (
             f"{row['Name']} ({row['SkillName']}) is listed as waiting on "
@@ -153,9 +156,10 @@ def test_the_two_rising_curses_are_death_rattles_and_soul_snares_and_each_kind_h
 
 
 def test_the_three_deployables_are_the_three_that_were_empty():
+    """And the Death Crossbow's Effigy, written whole by the Death finish slice A (2026-11-26)."""
     deployables = sorted(r["SkillName"] for r in minion_skills()
                          if r["Shape"] == "Deployable")
-    assert deployables == ["Ballista", "Bolt Turret", "Iron Fortress"]
+    assert deployables == ["Ballista", "Bolt Turret", "Effigy", "Iron Fortress"]
 
 
 def test_one_skill_produces_two_kinds_and_that_is_why_counts_are_in_the_list():

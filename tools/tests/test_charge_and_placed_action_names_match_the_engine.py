@@ -1019,6 +1019,41 @@ def test_the_worn_enemy_modifiers_are_one_list_in_the_generator_and_the_engine()
     assert set(gen.WORN_ENEMY_MODIFIERS) <= modifiers
 
 
+#: The Death modifiers that act at their wearer's death and that the owner
+#: ruled on 2026-11-26 are never lent to the player. Undying Will, the third
+#: that acts at a death, is lent ("you come back once with less health and more
+#: damage").
+NEVER_LENT_TO_THE_PLAYER = ("Death_Haunting", "Death_Final_Curse")
+
+
+def test_wearer_of_the_dead_lends_every_death_modifier_but_the_two_ruled_out() -> None:
+    """Issue #2899 (2026-11-26). `UCataclysmFervour::LentEnemyModifierRows` is
+    the modifiers the vow lends as themselves rather than as a figure on a
+    stat: every Death row of `game/Data/EnemyModifiers.csv` but Haunting and
+    Final Curse, which the owner ruled are never lent to the player. A Death
+    modifier added to the table and not to the list fails here, and so does
+    either ruled-out one put in. The wearing lends them only to a character
+    holding the vow at all, and records them by their row. THE CONTROL: the
+    list is found and is not empty, and the table's Death rows are found."""
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    start = fervour.index("const TArray<FName>& UCataclysmFervour::LentEnemyModifierRows()")
+    body = fervour[start:fervour.index("\n}\n", start)]
+    lent = re.findall(r'FName\(TEXT\("([A-Za-z_]+)"\)\)', body)
+    assert lent, "no names found in LentEnemyModifierRows"
+    assert len(lent) == len(set(lent)), lent
+    rows = [r for r in csv.DictReader((ROOT / "game" / "Data" / "EnemyModifiers.csv").open(encoding="utf-8"))]
+    death = {r["Name"] for r in rows if r["Name"].startswith("Death_")}
+    assert len(death) == 11, sorted(death)
+    assert set(NEVER_LENT_TO_THE_PLAYER) <= death
+    assert set(lent) == death - set(NEVER_LENT_TO_THE_PLAYER), sorted(set(lent) ^ (death - set(NEVER_LENT_TO_THE_PLAYER)))
+    assert not set(lent) & set(gen.WORN_ENEMY_MODIFIERS)
+    wear = fervour[fervour.index("int32 UCataclysmFervour::WearTheModifiersOf("):]
+    wear = wear[:wear.index("\n}\n")]
+    assert "const bool bHoldsTheVow = Wearer->HoldsAnyRowWearing();" in wear
+    assert re.search(r"else if \(bHoldsTheVow && LentEnemyModifierRows\(\)\.Contains\(Row\)\)\s*\{\s*"
+                     r"Wearer->NoteLentModifier\(Row, WornEnemyModifierSeconds\);", wear)
+
+
 def test_wearer_of_the_dead_records_an_elite_or_strongers_modifiers_at_every_kind_of_kill() -> None:
     """The Death trees' slice C4d3 (2026-11-25), as ruled (W3 to W6). The kill
     handler, a follower's kill under Death's Toll and a kill without a death
@@ -1162,7 +1197,8 @@ def test_the_movement_skills_end_and_its_struck_enemies_are_recorded_and_judged(
 def test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is() -> None:
     """The Death trees' slice C6b3 (2026-11-25), as ruled. A `points` row pays its value itself, on the class
     resource only. EVERY CLASS RESOURCE GAIN a pool action makes, the three enchantment rows that already granted it
-    included, goes through `UCataclysmFervour::RaisePool` after `ClassResourceGainScaled`, rather than `TopUp`. A row
+    included, reaches `UCataclysmFervour::RaisePool` after `ClassResourceGainScaled`: through `TopUp`, which hands a
+    gain of that pool to `RaisePool`, since issue #2936 took out the branch that did the same here. A row
     with a chance rolls before it pays and before its wait starts, on the timed path as on an event; a chance of 0 or
     100 is not rolled. The passive tree pays a chance per point and leaves the amount alone, and names a second action
     row of one node on one action and event `_Row2`. Read from the code with comments taken out."""
@@ -1170,10 +1206,16 @@ def test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is(
     assert re.search(r"if \(Action\.Base == ECataclysmPoolActionBase::Points\)\s*\{\s*"
                      r"if \(Action\.Pool != ClassResourcePoolName\)\s*\{\s*return;\s*\}\s*Amount = Action\.Percent;",
                      engine)
-    assert re.search(r"Amount = ClassResourceGainScaled\(this, Amount\);.*?"
-                     r"if \(Amount > 0\.0f && Action\.Pool == ClassResourcePoolName\)\s*\{\s*"
-                     r"UCataclysmFervour::RaisePool\(this, Amount\);\s*return;\s*\}\s*if \(Amount > 0\.0f\)\s*\{\s*"
+    assert re.search(r"Amount = ClassResourceGainScaled\(this, Amount\);\s*\}\s*"
+                     r"if \(FMath::IsNearlyZero\(Amount\)\)\s*\{\s*return;\s*\}\s*if \(Amount > 0\.0f\)\s*\{\s*"
                      r"UCataclysmRegeneration::TopUp", engine, re.S)
+    regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
+    assert re.search(r"if \(Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute\(\)\)\s*\{\s*"
+                     r"if \(Gain > 0\.0f\)\s*\{\s*UCataclysmFervour::RaisePool\(&AbilitySystem, Gain\);", regeneration)
+    # AND A HELD SWING THAT FORBIDS HEALING NEVER STOPS THAT GAIN: Fervour is not healing (ruled by the coordinating
+    # session, 2026-11-26).
+    assert re.search(r"if \(Pool != UCataclysmClassResourceAttributeSet::GetClassResourceAttribute\(\)\s*"
+                     r"&& UCataclysmStrikeSkill::AHeldSwingForbids\(", regeneration)
     assert re.search(r"if \(ChancePercent <= 0\.0f \|\| ChancePercent >= 100\.0f\)\s*\{\s*return true;\s*\}"
                      r".*?return Roll < ChancePercent;", engine, re.S)
     assert re.search(r"return Action\.Pool != ClassResourcePoolName \|\| ChancePercentComesUp\(Action\.ChancePercent\);",

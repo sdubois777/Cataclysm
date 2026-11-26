@@ -679,6 +679,7 @@ void UCataclysmGameplayAbility::ApplyCost(
 		AbilitySystem->ApplyModToAttribute(
 			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
 			EGameplayModOp::Additive, -Fervour);
+		FervourPaidThisCommit += Fervour;
 
 		// A CLASS-RESOURCE COST PAID IS A RESOURCE CONSUMED, once per payment
 		// whatever its size. Issue #1833 group D part 5, ruled 2026-10-01. The mana
@@ -983,6 +984,7 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 			&& Borrowing->HasAttributeSetForAttribute(Pool) && Borrowing->GetNumericAttribute(Pool) >= Borrowed)
 		{
 			Borrowing->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Borrowed);
+			FervourPaidThisCommit += Borrowed;
 			Borrowing->NoteResourceConsumed(Borrowed, &SkillTagsForStats());
 			Borrowing->NoteFervourSpent(Borrowed, &SkillTagsForStats());
 			return;

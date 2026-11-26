@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from cataclysm_sim.config import TuningConfig
+from cataclysm_sim.config import DungeonType, TuningConfig
 from cataclysm_sim.engine import Simulation
 
 
@@ -38,6 +38,10 @@ def a_standing_city(sim: Simulation):
         if not city.fallen and city.cid != sim.empire.pillar_id:
             return city
     raise AssertionError("the whole empire has already fallen")
+
+
+def fallen_city_dungeons(sim: Simulation) -> int:
+    return sum(1 for d in sim.dungeons.values() if d.dtype is DungeonType.FALLEN_CITY)
 
 
 def with_a_surge(since: float, **overrides) -> Simulation:
@@ -77,12 +81,15 @@ def test_the_fall_itself_still_stands_when_the_surge_is_withheld():
     dungeon exists, and the lane is open, exactly as before."""
     sim = with_a_surge(since=1.0, surge_interval_min=25.0)
     city = a_standing_city(sim)
-    before = len(sim.dungeons)
+    before = fallen_city_dungeons(sim)
 
     sim._fall(city)
 
+    # FALLEN CITY DUNGEONS ARE COUNTED, NOT EVERY DUNGEON. A fall while Death is active also adds an Abomination lair
+    # (issue #51 slice B5), and since the owner's ruling of 2026-11-26 seed 1's character faces a built Cataclysm,
+    # Death, so a count of every dungeon read two.
     assert city.fallen
-    assert len(sim.dungeons) == before + 1, "the Fallen City dungeon was not made"
+    assert fallen_city_dungeons(sim) == before + 1, "the Fallen City dungeon was not made"
     assert len(sim.surge_log) == 1
 
 
