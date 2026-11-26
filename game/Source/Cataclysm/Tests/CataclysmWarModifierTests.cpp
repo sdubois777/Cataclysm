@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -89,6 +90,11 @@ namespace CataclysmWarModifiersTest
 			{
 				return;
 			}
+			// AND NO STAT LINE, so every stat the damage calculation asks for (`DefenderStat`, through `StatForSkill`) is the
+			// attribute set here. The class's and the starting weapon's rows sit in the stat line and not on the
+			// attributes, so with only the attributes at nought the player kept a little armour: window b4-w2 (bundle 4)
+			// read Final Curse's 50 as 49.36, Soul Tether's 65 as 37.8 and three Artillery Barrage shells as 2.988.
+			System->SetStatInputs(TMap<FName, FCataclysmStatInputs>());
 			System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), WarModifiersMostHealth);
 			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), WarModifiersMostHealth);
 			System->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 0.0f);

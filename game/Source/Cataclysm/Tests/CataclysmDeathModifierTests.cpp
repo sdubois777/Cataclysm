@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmBonePyreCharacter.h"
@@ -26,6 +27,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCombatOverlay.h"
+#include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
@@ -81,6 +83,11 @@ namespace CataclysmDeathModifiersTest
 			{
 				return;
 			}
+			// AND NO STAT LINE, so every stat the damage calculation asks for (`DefenderStat`, through `StatForSkill`) is the
+			// attribute set here. The class's and the starting weapon's rows sit in the stat line and not on the
+			// attributes, so with only the attributes at nought the player kept a little armour: window b4-w2 (bundle 4)
+			// read Final Curse's 50 as 49.36, Soul Tether's 65 as 37.8 and three Artillery Barrage shells as 2.988.
+			System->SetStatInputs(TMap<FName, FCataclysmStatInputs>());
 			SetCurrent(Vital::GetMaxHealthAttribute(), DeathModifiersMostHealth);
 			SetCurrent(Vital::GetHealthAttribute(), DeathModifiersMostHealth);
 			SetCurrent(Vital::GetMaxEnergyShieldAttribute(), 0.0f);
@@ -148,6 +155,16 @@ namespace CataclysmDeathModifiersTest
 			Check(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
 			Check(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
 			Check(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(), 0.0f);
+			// AND AS THE DAMAGE CALCULATION READS THEM, through the stat line: nought where nothing is recorded.
+			for (const FName Stat : {FName(TEXT("armor")), FName(TEXT("damage_reduction")),
+									 UCataclysmItemModifiers::ResistanceStatFor(FName(TEXT("Death")))})
+			{
+				const float Asked = System->StatForSkill(Stat, FGameplayTagContainer(), 0.0f);
+				if (!FMath::IsNearlyZero(Asked, 0.001f))
+				{
+					Out += FString::Printf(TEXT("the stat %s read %.3f, not 0; "), *Stat.ToString(), Asked);
+				}
+			}
 			return Out;
 		}
 
