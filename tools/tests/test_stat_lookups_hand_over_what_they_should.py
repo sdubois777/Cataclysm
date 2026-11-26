@@ -321,6 +321,20 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26).
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDetonation.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        'a summoner\'s detonation stat read with the detonated minion\'s type tags at the detonation, the release, '
+        'the lifespan\'s end or the blow it names; no blow or target in hand, the minion asking being named through '
+        'SummonerMultiplierFor where a row reads it',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmHordeAscendant.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        'the Horde Ascendant\'s reach and share, read on the player as a skill use is answered; no blow or target '
+        'in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(UCataclysmDetonation::ExtraRaiseChanceStat), Asked, 0.0f'):
+        'Teeming Grave\'s chance of one more minion, read on the caster with the summon skill\'s tags and the raised '
+        'minion\'s as it is raised; no blow or target in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
      'FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat), FGameplayTagContainer(), 0.0f'):
         'a flag read on an aura\'s caster at each pulse, saying whether the allies '

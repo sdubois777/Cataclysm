@@ -3123,6 +3123,16 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPointOfCurrentHealth
 		UMETA(DisplayName = "Per Point Of Current Health"),
+
+	/**
+	 * `Value` per `ScaleStep` OTHER minions of the summoner's within the row's `ReachMetres` of the minion whose figure is
+	 * asked. The finishing of the Death Cataclysm, slice C (2026-11-26): Close Packed, "A minion's detonation deals +1%
+	 * increased damage per point for each other minion of yours within 3 metres of it, up to 5", a step of 1, a reach of
+	 * 3 and a cap of 5. Read from `FCataclysmStatConditions::OtherMinionMetresFromAskingMinion`, which
+	 * `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` fills when a minion is named; with none named, nothing.
+	 */
+	PerOtherMinionNearTheMinion
+		UMETA(DisplayName = "Per Other Minion Near The Minion"),
 };
 
 /**
@@ -3480,6 +3490,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float AskingMinionMetres = -1.0f;
+
+	/**
+	 * How far each OTHER raised minion or thrall of the summoner's stands from the minion whose figure is being asked, in
+	 * metres; empty when no minion is named. The finishing of the Death Cataclysm, slice C (2026-11-26). See
+	 * `PerOtherMinionNearTheMinion`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> OtherMinionMetresFromAskingMinion;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known

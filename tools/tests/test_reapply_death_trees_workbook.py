@@ -21,6 +21,13 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import reapply_death_trees_workbook as reapply  # noqa: E402
+import reapply_death_finish_c_workbook as finish_c  # noqa: E402
+
+#: THE SCRIPTS THAT WRITE MORE DEATH ROWS AFTER THIS ONE, in the order they were run on the committed workbook. Taking
+#: every Death row out takes theirs out too, so rebuilding the committed sheets runs each after this script. The finishing
+#: of the Death Cataclysm (2026-11-26): each slice owns its own script, and the coordinating session's assembly lists them
+#: here in the order it ran them.
+FOLLOWING = (finish_c,)
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 SHEETS = (reapply.EFFECTS_SHEET, reapply.CLASS_SHEET)
@@ -78,6 +85,9 @@ def test_the_rows_taken_out_are_put_back_as_the_committed_sheets(copy_of_the_wor
     report = reapply.apply(copy_of_the_workbook)
     changes = len(reapply.NODES) + len(reapply.CLASS_STATS)
     assert report[-1].startswith(f"wrote {changes} change(s)"), report
+    for script in FOLLOWING:
+        report = script.apply(copy_of_the_workbook)
+        assert report[-1].startswith(f"wrote {len(script.NODES)} change(s)"), report
     for title in SHEETS:
         assert sheet_rows(copy_of_the_workbook, title) == sheet_rows(WORKBOOK, title), title
 
@@ -217,6 +227,8 @@ def test_the_port_columns_are_added_when_the_sheet_lacks_them(copy_of_the_workbo
 
     report = reapply.apply(copy_of_the_workbook)
     assert any("added the column(s)" in line for line in report), report
+    for script in FOLLOWING:
+        script.apply(copy_of_the_workbook)
     for title in SHEETS:
         assert rows_by_name(copy_of_the_workbook, title) == rows_by_name(WORKBOOK, title), title
 

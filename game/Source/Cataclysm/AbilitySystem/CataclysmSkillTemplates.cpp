@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 // For a buried axe's row, captured when it is thrown. Issue #2764, slice 2a.
 #include "Character/CataclysmSkillLevels.h"
@@ -550,7 +551,8 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	//
 	// THE SAME AREA THE ENEMIES WERE FOUND IN, the cone at the apex, or every direction when a row rolled that this use
 	// hits all around (`ThisUseHitsAllWithinCm`); a cone of 360 degrees is a ring.
-	if (Params.bDetonates)
+	// ASKED OF EVERY SWING since the finishing of the Death Cataclysm (2026-11-26): whether its minions go off is asked
+	// inside `DetonateOwnMinionsWhere` (the row's key, or Lit Fuse).
 	{
 		const bool bAllAround = ThisUseHitsAllWithinCm > 0.0f;
 		const float Reach = bAllAround ? FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()) : ScaledRadiusCm();
@@ -1742,11 +1744,9 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		// N3: the Staff's Marrow Lance, "every minion of yours on the line explodes". ONCE, AS IT FINISHES, ALONG THE
 		// WHOLE FLIGHT, a judgement of slice DS2: the line is known only now, as the ground's is above, and a lance
 		// stopped by a wall detonates nothing beyond it. Its own radius is the line's width, so the circle a shot that
-		// stops on its first enemy lands in is the line's far end.
-		if (Params.bDetonates)
-		{
-			DetonateOwnMinionsAlong(Projectile->StartedAt, Projectile->FurthestReached, ScaledRadiusCm());
-		}
+		// stops on its first enemy lands in is the line's far end. ASKED OF EVERY SHOT since the finishing of the Death
+		// Cataclysm (2026-11-26); `DetonateOwnMinionsWhere` asks the key, or Lit Fuse.
+		DetonateOwnMinionsAlong(Projectile->StartedAt, Projectile->FurthestReached, ScaledRadiusCm());
 
 		// AND THE CURSES ON WHAT IT STRUCK ARE COPIED OUTWARD. The Wand's
 		// Malefice: "copying every curse it already carries onto the two nearest
@@ -2333,17 +2333,15 @@ int32 UCataclysmProjectileSkill::Land()
 
 	// AND THE CASTER'S OWN MINIONS IN THE BEAM'S AREA EXPLODE, IF THE ROW SAYS SO: its line when it pierces, the
 	// circle it lands in when it does not, the two searches above. Issue #2885, the Death draft's N3. A shot with a
-	// speed detonates when it finishes, along the line it flew (`OnProjectileFinished`).
-	if (Params.bDetonates)
+	// speed detonates when it finishes, along the line it flew (`OnProjectileFinished`). ASKED OF EVERY SHOT since the
+	// finishing of the Death Cataclysm (2026-11-26); `DetonateOwnMinionsWhere` asks the key, or Lit Fuse.
+	if (Pierces > 0)
 	{
-		if (Pierces > 0)
-		{
-			DetonateOwnMinionsAlong(Origin, Destination, ScaledRadiusCm());
-		}
-		else
-		{
-			DetonateOwnMinionsAround(Destination, ScaledRadiusCm());
-		}
+		DetonateOwnMinionsAlong(Origin, Destination, ScaledRadiusCm());
+	}
+	else
+	{
+		DetonateOwnMinionsAround(Destination, ScaledRadiusCm());
 	}
 
 	// AND EVERYTHING THE CASTER COMMANDS STRIKES THE SAME ENEMY, IF THE ROW SAYS
@@ -3495,11 +3493,8 @@ void UCataclysmMovementSkill::LayTheRowsEffectsOn(const TArray<AActor*>& Struck)
 
 void UCataclysmMovementSkill::DetonateWhereItArrived(const FVector& Start, const FVector& End)
 {
-	if (!Params.bDetonates)
-	{
-		return;
-	}
-
+	// ASKED OF EVERY MOVE since the finishing of the Death Cataclysm (2026-11-26): `DetonateOwnMinionsWhere` asks the
+	// row's key, or Lit Fuse, around the minions.
 	// MODE BY MODE, THE SEARCH `ActivateAbility` MADE FOR THE ENEMIES, so a minion is exploded exactly where an enemy
 	// standing in its place would have been struck.
 	const float Reach = ScaledRadiusCm();
@@ -5696,8 +5691,50 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		{
 			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
 		}
+
+		// AND IT MAY RAISE ONE MORE: Teeming Grave and Rise Together, one stat (the finishing of the Death Cataclysm).
+		RaiseOneMoreIfRolled(Minion);
 	}
 	return Minion;
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::RaiseOneMoreIfRolled(const ACataclysmMinion* Raised)
+{
+	// ONE MORE AND NO CHAIN: the one this raises does not roll again, or a high chance would raise without end.
+	if (bRaisingOneMore || !IsValid(Raised))
+	{
+		return nullptr;
+	}
+	AActor* Self = Avatar();
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	if (!Mine)
+	{
+		return nullptr;
+	}
+
+	// THE SKILL'S TAGS AND THE RAISED MINION'S, so a row naming a kind of minion -- Rise Together's "permanent" ones --
+	// reaches only it. The coordinating session's ruling of 2026-11-26: Teeming Grave ("Each time a summon skill raises
+	// minions, it has an 8% chance per point to raise one more") and slice B's Rise Together share this one stat and this
+	// one reader. ROLLED FOR EACH MINION RAISED, the ruling's words; see `docs/DECISIONS.md`.
+	FGameplayTagContainer Asked = SkillTags;
+	Asked.AppendTags(Raised->TypeTags);
+	const float Chance = Mine->StatForSkill(FName(UCataclysmDetonation::ExtraRaiseChanceStat), Asked, 0.0f);
+	if (Chance <= 0.0f || (Chance < 100.0f && FMath::FRand() * 100.0f >= Chance))
+	{
+		return nullptr;
+	}
+
+	// RAISED AS THE FIRST WAS, so the pool must hold its reserve too; a refusal raises nothing.
+	TGuardValue<bool> Guard(bRaisingOneMore, true);
+	ACataclysmMinion* More = SummonOne();
+	if (More)
+	{
+		++ExtraMinionsRaised;
+		UE_LOG(LogCataclysm, Display, TEXT("'%s' raised one more %s (a %.0f%% chance)."), *SkillName, *More->TypeName,
+			   Chance);
+	}
+	return More;
 }
 
 void UCataclysmSummonSkill::ActivateAbility(

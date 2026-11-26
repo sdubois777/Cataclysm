@@ -881,6 +881,29 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// trees' slice C6d2, 2026-11-25). -1, which refuses, when no minion is named.
 	const AActor* Self = GetAvatarActor();
 	State.AskingMinionMetres = (AskingMinion && Self) ? UCataclysmTargeting::MetresBetween(Self, AskingMinion) : -1.0f;
+	// AND, FOR THE MINION ASKING, ITS AGE AND WHERE ITS FELLOWS STAND. The finishing of the Death Cataclysm, slice C
+	// (2026-11-26): Swollen reads `minion_seconds_active` ("for each full second it has stood") and Close Packed
+	// `minions_near_the_minion` ("for each other minion of yours within 3 metres of it") off the minion being detonated.
+	// The fellows are walked only when a row on this stat asks, as `WithEnemiesInReach` walks only for a row that asks.
+	if (AskingMinion)
+	{
+		State.MinionSecondsActive = AskingMinion->GetGameTimeSinceCreation();
+		const bool bAsksForFellows = Inputs->Modifiers.ContainsByPredicate([](const FCataclysmStatModifier& Row)
+		{
+			return Row.Scale == ECataclysmStatScale::PerOtherMinionNearTheMinion;
+		});
+		if (bAsksForFellows && Self)
+		{
+			for (AActor* Fellow : UCataclysmCommand::ThingsCommandedBy(Self))
+			{
+				const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Fellow);
+				if (Fellow != AskingMinion && !(Machine && Machine->bIsMachine))
+				{
+					State.OtherMinionMetresFromAskingMinion.Add(UCataclysmTargeting::MetresBetween(AskingMinion, Fellow));
+				}
+			}
+		}
+	}
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
 		Inputs->Base, Inputs->Modifiers, Tags, State);
 

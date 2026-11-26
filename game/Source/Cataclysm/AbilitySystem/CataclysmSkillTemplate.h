@@ -1467,9 +1467,14 @@ protected:
 	int32 ApplyNamedEffectsTo(AActor* Target, float DurationScale = 1.0f) const;
 
 	/**
-	 * Explode every minion of the caster's that `IsInside` accepts, when the row states `Detonates=1`; answers how
-	 * many, and records it in `MinionsDetonated`. Issue #2885, the Death draft's N3: Gravebell, Barrow Leap, Open
-	 * Grave, Marrow Lance and Grave Return.
+	 * Explode every minion of the caster's that `IsInside` accepts, when the row states `Detonates=1` or the caster
+	 * holds Lit Fuse (`DetonatesOwnMinions`); answers how many, and records it in `MinionsDetonated`. Issue #2885, the
+	 * Death draft's N3: Gravebell, Barrow Leap, Open Grave, Marrow Lance and Grave Return.
+	 *
+	 * CALLED BY EVERY LANDING THAT HAS AN AREA, since the finishing of the Death Cataclysm (2026-11-26): a strike's cone,
+	 * a shot's line or landing circle, a movement skill's path or ends. The key is asked here, around the minions, and
+	 * not at those call sites, so a landing reaches this whatever its row says (slice D's remains are detonated here
+	 * too). EACH MINION GOES THROUGH `UCataclysmDetonation::Detonate`.
 	 *
 	 * WHICH MINIONS. Every creature the caster raised -- an `ACataclysmMinion` it commands whose `Summoner` it is --
 	 * whatever kind it is: the owner ruled on 2026-11-24 that "pop minion" is a playstyle and not a distinction, so a
@@ -1487,6 +1492,14 @@ protected:
 	 * slice DS2 recorded in `docs/DECISIONS.md`.
 	 */
 	int32 DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside);
+
+	/**
+	 * Whether this use detonates the caster's minions in its area: its row states `Detonates=1`, or it is a weapon skill
+	 * the caster uses itself while holding Lit Fuse (`Necromancer_basic_ch_stem0`, the finishing of the Death Cataclysm,
+	 * slice C, 2026-11-26). NOT THE BASIC ATTACK AND NOT A COPY ANOTHER ACTOR CASTS (`FreeRepeatCastBy`): two judgements,
+	 * which the definition gives.
+	 */
+	bool DetonatesOwnMinions() const;
 
 	/**
 	 * `DetonateOwnMinionsWhere` for a sphere: every minion of the caster's whose body reaches within `RadiusCm` of

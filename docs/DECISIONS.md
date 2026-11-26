@@ -2,6 +2,199 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Necromancer's detonations: the Charnel limb's ten nodes, Living Bombs and The Horde Ascendant (the finishing of the Death Cataclysm, slice C)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDetonation.h` and `.cpp` (new): `UCataclysmDetonation`, the one place a
+  minion is detonated (`Detonate`) and what the Charnel limb and Living Bombs add to it: `NoteDetonation` (public, for
+  slice D's remains), `DetonateOnRelease`, `RipenAtLifespanEnd`, `DetonateOnContact`, `RaiseHuskAt`,
+  `DamageMultiplierFor`, `AreaMultiplierFor`, `IsALivingBomb`, `AttackReachCmFor`, and the sixteen stat names.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmHordeAscendant.h` and `.cpp` (new): `UCataclysmHordeAscendant`,
+  `EveryFollowerNearCasts` and `Holds`.
+- `CataclysmMinion.h` and `.cpp`, **four functions changed**: `ExplodeSetOffBy` (now answers its figure, takes a share,
+  and applies the two detonation stats), `LifeSpanExpired` (Ripened, after Rekindled), `AttackTarget` (Living Bombs, at
+  its top), and `AttackReachCm` (moved out of the header, cut to contact for a Living Bomb).
+- `CataclysmSkillTemplate.h` and `.cpp`: `DetonatesOwnMinions` (new); `DetonateOwnMinionsWhere` asks it around the
+  minions and detonates each through `UCataclysmDetonation::Detonate`.
+- `CataclysmSkillTemplates.h` and `.cpp`: **the four call sites no longer ask `Params.bDetonates`** -- the strike's cone
+  in `UCataclysmStrikeSkill::SwingOnce`, the flying shot's line in
+  `UCataclysmProjectileSkill::OnProjectileFinished`, the beam's line or circle in `UCataclysmProjectileSkill::Land`, and
+  `UCataclysmMovementSkill::DetonateWhereItArrived`. `UCataclysmSummonSkill::RaiseOneMoreIfRolled` (new) and its call in
+  `SummonOne`.
+- `CataclysmCommand.cpp`: `ReleaseOldestForAThrall` detonates a released minion under Made Room.
+- `CataclysmAbilitySystemComponent.cpp`: `MultiplierForStatAgainst` fills the asking minion's age and its fellows'
+  distances. `CataclysmStatPipeline.h` and `.cpp`: the scale `minions_near_the_minion`
+  (`PerOtherMinionNearTheMinion`) and `FCataclysmStatConditions::OtherMinionMetresFromAskingMinion`.
+- `Character/CataclysmPlayerCharacter.cpp`: `OnSkillWasUsed` has The Horde Ascendant's followers cast on the next tick.
+  `Character/CataclysmPlayerClassStats.cpp`: the eighteen stats with no attribute.
+- `tools/reapply_death_finish_c_workbook.py` (new), `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv`
+  (921 rows, 22 more), `docs/README.md`; `tools/generate_datatables.py` (the scale, its reach, the event
+  `minion_detonated`, and `minion_detonation_damage` among the stats with an asker).
+- Tests: `game/Source/Cataclysm/Tests/CataclysmNecromancerDetonationTests.cpp` (new, ten);
+  `CataclysmStatExemptionTests.cpp` (fifteen probes with no attribute and one scaled); `CataclysmDataTableTests.cpp` (the
+  pin); `tools/tests/test_reapply_death_finish_c_workbook.py` (new, seven), `test_necromancer_detonations_are_wired.py`
+  (new, nine), `test_reapply_death_trees_workbook.py` (runs this slice's script after its own), and the vocabularies and
+  pins of `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
+  `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The coordinating session's window compiles it,
+  rebuilds `DT_PassiveEffects`, and runs `Cataclysm.NecromancerDetonation.` and the groups below.
+- **BONE COLOSSUS IS NOT HERE.** The coordinating session moved it to slice D on 2026-11-26: its sentence feeds it
+  remains, which slice D builds.
+- **TEEMING GRAVE ROLLS FOR EACH MINION RAISED, NOT ONCE PER RAISE.** Its sentence says "Each time a summon skill raises
+  minions, it has an 8% chance per point to raise one more"; the coordinating session ruled that it and slice B's Rise
+  Together ("Each permanent minion you raise has a 4% chance per point to raise a second one") share one stat,
+  `minion_extra_raise_chance`, read in the summon path when a minion is raised, which is Rise Together's shape. For
+  every summon row raising one minion a press the two readings are the same; a row raising two (`Count=2`) rolls twice.
+  Worth a look by the owner if a multi-minion summon ships.
+- **EVERY WEAPON SKILL'S LANDING NOW CALLS `DetonateOwnMinionsWhere`**, as the coordinating session asked, so slice D
+  can detonate remains there. A skill with neither `Detonates=1` nor Lit Fuse still detonates no minion: tested.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-26: Bone Colossus to slice D; Bursting Ranks counts this slice's detonations and
+exposes `NoteDetonation(Character)` for slice D's remains; Teeming Grave and Rise Together share
+`minion_extra_raise_chance` and one reader; the `Detonates` key asked inside `DetonateOwnMinionsWhere`, around the
+minions only; The Horde Ascendant built as written, any minion, thralls included.
+
+### What each does, and the judgements
+
+- **A DETONATION** is `UCataclysmDetonation::Detonate`: told to the summoner as a minion's death first (Marrow Feast's
+  judgement, kept), the blast (`ExplodeSetOffBy`, 200% of the caster's weapon as the skill's area hit, as ruled that
+  day), then Last Breath, Lingering Rot, Living Bombs' husk, `minion_detonated`, and Mass Grave's ring. Only a raised
+  minion that is no machine, as `DetonateOwnMinionsWhere` always took. **Not a detonation**: a minion's death explosion
+  and Ripened's explosion (judgement: Ripened's own words set "explode anyway" against "being detonated").
+- **LIT FUSE** makes every weapon skill detonate the minions in the area its detonation search already covers (a
+  strike's cone, a shot's line or landing circle, a move's path or ends), as if its row stated `Detonates=1`. Two
+  judgements: **not the basic attack**, the one slot the design calls automatic and no skill use (ruled 2026-09-14); and
+  **not a copy another actor casts from where it stands** (a gadget's copy, The Horde Ascendant's), which stands at the
+  heart of its own area and would detonate itself.
+- **MADE ROOM** detonates a raised minion released for a thrall (`ReleaseOldestForAThrall`, the only release there is
+  since issue #2787) "with the radius and damage of the skill that raised it": the minion's explosion radius, which its
+  summon row told it, and the detonation's figure as the raising skill's hit (`SummonedBy`). A judgement: a minion no
+  skill raised (a risen husk) explodes for its own figure instead; a thrall released has nothing to detonate. Its 2% a
+  point of area and damage are `minion_detonation_area` and `minion_detonation_damage`, a detonation's own two, taken
+  ON TOP OF `minion_explosion_damage` as `Explode` takes that on top of `minion_damage` (a judgement following that
+  precedent; Path of Exile adds every "increased" in one sum).
+- **CLOSE PACKED, BURSTING RANKS AND SWOLLEN** are `minion_detonation_damage` rows scaled, read with the minion named:
+  the summoner's other followers within 3 m of it (new scale, raised minions and thralls, not machines), the summoner's
+  own stacks granted by `minion_detonated`, and the minion's whole seconds stood. Each capped at 5. A judgement on
+  Bursting Ranks: its stacks are the ordinary own stacks, each detonation renewing a 2 second window for all, so a chain
+  of detonations less than 2 s apart is counted whole; the cap is what bounds it. A detonation counts the ones before it
+  and not itself (the event is raised after the blast).
+- **LINGERING ROT** leaves a ground zone of the detonation's radius, credited to its skill, for 1 second every 2 points,
+  dealing 10% of "the detonation's damage" each second. A judgement: that damage is the largest the blast sent before
+  any defender, or with nothing caught what it would have sent; a detonation with no skill leaves none.
+- **RIPENED** rolls when a minion's lifespan ends and Rekindled did not keep it; the minion explodes for its own full
+  figure (`Explode`).
+- **MASS GRAVE** detonates every other raised minion within 3 m at 40% of the whole figure. **ONE RING, a judgement**:
+  a minion the chain sets off does not set off its own neighbours, or one detonation in a packed army would take the
+  whole army. Path of Exile's Detonate Dead chains only at a 0-15% quality chance (poedb, below).
+- **LAST BREATH** gains twice what the detonated minion held back, through `GainStated` (scaled by generation, as every
+  gain is), after the blast so the freed reserve has room. Not a kill's payment. DS3's note -- "Last Breath must count
+  explosions explicitly" -- is met: it counts detonations, and nothing else.
+- **LIVING BOMBS**: a Living Bomb's attack reach is cut to half a metre beyond the two bodies (`ContactAllowanceCm`, a
+  judgement), so a ranged minion runs in; its attack at contact is its detonation, as its raising skill's hit. "Run at
+  the nearest enemy" is the brain's ordinary choice (a judgement: no new movement). Each detonation of the vow's holder,
+  whatever set it off, has 50% to raise a husk for 8 seconds where it went off: the husk the Death Summon row that
+  raises one makes (its reserve, radius and taunt), refused when the pool cannot hold its reserve.
+- **THE HORDE ASCENDANT**, as written: after each skill use, on the next tick, every follower within 10 m of the player
+  -- raised minions and thralls, not machines -- casts the skill from where it stands, free, at its own chosen target
+  or else at the player's aim, at 10% of its damage (`UCataclysmTriggeredSkill::Trigger`, as Magnum Opus's copy). Which
+  skills: those a row may cast again (`RepeatsFromARow`), Magnum Opus's rule -- not the basic attack, a movement skill,
+  a summon, an aura or a self buff (a judgement).
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Lit Fuse (keystone) | weapon_skills_detonate_own_minions, flat, 1 |
+| Made Room (10 points) | minion_detonates_when_released, flat, 1, from 1 point; minion_detonation_area, increased, 2; minion_detonation_damage, increased, 2 |
+| Teeming Grave (6) | minion_extra_raise_chance, flat, 8 |
+| Close Packed (8) | minion_detonation_damage, increased, 1, scale=minions_near_the_minion, step 1, reach 3, cap 5 |
+| Lingering Rot (8) | minion_detonation_rot_seconds, flat, 1, from 2, 4, 6 and 8 points; minion_detonation_rot_percent, flat, 10, from 2 points |
+| Bursting Ranks (8) | minion_detonation_damage, increased, 1, scale=own_stacks, step 1, cap 5, on minion_detonated, 2 seconds |
+| Swollen (8) | minion_detonation_damage, increased, 1, scale=minion_seconds_active, step 1, cap 5 |
+| Ripened (10) | minion_explodes_at_lifespan_end_chance, flat, 10 |
+| Mass Grave (keystone) | minion_detonation_spreads_percent, flat, 40; minion_detonation_spread_radius_metres, flat, 3 |
+| Last Breath (keystone) | fervour_on_minion_detonated_reserve_multiple, flat, 2 |
+| Living Bombs (the Second Rite, option 2) | minions_detonate_on_contact, flat, 1; minion_detonation_raises_husk_chance, flat, 50; minion_detonation_husk_seconds, flat, 8 |
+| The Horde Ascendant (the Final Rite, option 3) | minions_cast_your_skills_within_metres, flat, 10; minion_skill_copy_damage_percent, flat, 10 |
+
+`PassiveEffects.csv` 899 to 921. The pins, THIS BRANCH'S FIGURES, which the coordinating session reconciles with the
+other slices: rows 921, nodes 507, options 97, and `Cataclysm.Data.`'s PassiveEffects 921.
+
+### Research
+
+Read on 2026-11-26 at `poedb.tw` (`poewiki.net` refused the fetch; `lastepoch.fandom.com` answered 402 and the maxroll
+Sacrifice page 404, so Last Epoch was not read):
+
+| Game | Page | What it says |
+|---|---|---|
+| Path of Exile | `poedb.tw/us/Detonate_Dead` | a corpse's explosion deals "base Fire Damage equal to (6—7.9)% of the corpse's Maximum Life", radius "(2.2—2.6) metres"; its quality gives "(0—15)% chance to detonate an additional corpse" |
+| Path of Exile | `poedb.tw/us/Volatile_Dead` | "Consumes up to 3 corpses"; each corpse's explosion 3-4% of its maximum life; the page says nothing of corpses setting each other off |
+| Path of Exile | `poedb.tw/us/Desecrate` | ground that "Deals ... Base Chaos Damage per second", "Base duration is 4 seconds" |
+
+What it settles: a detonation that sets off another does so as a small, bounded extra, not as an unbounded chain (Mass
+Grave's one ring); lingering damaging ground for a few seconds is the genre's shape (Lingering Rot, up to 4 s). Not
+settled by it, and judgements of this slice: the 40% and the 10% are the node's own words; the half-metre contact; the
+husk's row; The Horde Ascendant's skill list.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.NecromancerDetonation.` | new group: `LitFuseMakesAWeaponSkillDetonateItsMinionsAndASkillWithNeitherLeavesThemStanding`, `ADetonationTakesItsIncreasesAndItsAreaAndEachCountedIncreaseStopsAtFive`, `ADetonationsIncreaseRaisesItsBlastAndItsAreaWidensItsReach`, `MadeRoomDetonatesAMinionReleasedForAThrallAsTheSkillThatRaisedIt`, `LingeringRotMassGraveAndLastBreathFollowADetonationAndNothingFollowsWithoutThem`, `RipenedExplodesAMinionWhoseTimeEndsAtItsChanceForItsOwnFullFigure`, `ALivingBombRunsInAndDetonatesAtContactAndMayRaiseAHuskForEightSeconds`, `TeemingGraveRaisesOneMoreAtItsChanceAndTheOneMoreRaisesNoOther`, `TheHordeAscendantHasEveryFollowerWithinTenMetresCastTheSkillAtItsShare`, `TheTwelveNodesRowsAreTheirSentences` | 10 |
+| `Cataclysm.StatExemption.` | the no-attribute table runs fifteen more probes, the scaled table one (`minion_detonation_damage`) | unchanged count |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 921 | unchanged count |
+| `Cataclysm.DeathSkills.` | unchanged, and must still pass: the detonation tests now go through `UCataclysmDetonation::Detonate` | unchanged |
+
+Every new test has a control: a skill with neither the key nor Lit Fuse, and the basic attack; nothing held; an enemy
+outside the radius; a release without the node; a caster holding none of the three; a chance of nought; an enemy 2.5 m
+away and a summoner without the vow; a chance of nought; an Imp 15 m away, a turret and a player without the vow.
+`TheTwelveNodesRowsAreTheirSentences` and the husk halves read the generated tables, so they need the editor step.
+
+**Three C++ guard breaks are registered for the window**, prefix `Cataclysm.NecromancerDetonation.`:
+1. `CataclysmSkillTemplate.cpp`, `DetonatesOwnMinions`: `return Slot != ECataclysmAbilitySlot::BasicAttack` becomes
+   `return Slot == ECataclysmAbilitySlot::BasicAttack`. Must fail
+   `LitFuseMakesAWeaponSkillDetonateItsMinionsAndASkillWithNeitherLeavesThemStanding`.
+2. `CataclysmDetonation.cpp`, `Detonate`: `Detonate(Each.Get(), Skill, SpreadPercent, /*bMaySpread=*/false);` becomes
+   `Detonate(Each.Get(), Skill, SpreadPercent, /*bMaySpread=*/true);`. Must fail
+   `LingeringRotMassGraveAndLastBreathFollowADetonationAndNothingFollowsWithoutThem` (C taken: the ring is not one deep).
+3. `CataclysmStatPipeline.cpp`, the `PerOtherMinionNearTheMinion` case:
+   `CountWithin(State.OtherMinionMetresFromAskingMinion, Modifier.ReachMetres)` becomes
+   `CountWithin(State.OtherMinionMetresFromAskingMinion, Modifier.ReachMetres + 2.0f)`. Must fail
+   `ADetonationTakesItsIncreasesAndItsAreaAndEachCountedIncreaseStopsAtFive` (the fellow at 4 m counted).
+
+**AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing
+`DT_PassiveEffects.uasset` and `datatable_asset_sources.json`. Until it runs,
+`test_every_csv_still_hashes_to_what_was_recorded` fails naming `PassiveEffects.csv`.
+
+### What was run
+
+**The whole Python suite on `7f4fe622d`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 9582 passed, 9 skipped in 1133.58s
+(0:18:53)". The JUnit file agrees: tests 9592, failures 1, errors 0, skipped 9, so 9582 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/reapply_death_finish_c_workbook.py --check`: nothing to write.
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`7f4fe622d`, and each `proved` (failed with the break in, passed with it out):
+
+| Break | Named failure |
+|---|---|
+| `DetonateOwnMinionsWhere`'s `if (!DetonatesOwnMinions())` made `if (false && ...)` | `test_necromancer_detonations_are_wired.py::test_the_key_is_asked_around_the_minions_and_no_call_site_asks_it` |
+| `ReleaseOldestForAThrall` handing `DetonateOnRelease` a null minion | `test_necromancer_detonations_are_wired.py::test_made_room_detonates_a_released_minion_instead_of_destroying_it` |
+| `LifeSpanExpired` asking Ripened before Rekindled | `test_necromancer_detonations_are_wired.py::test_ripened_is_asked_after_rekindled_and_before_the_actor_goes` |
+| Mass Grave's share written as 30 in `PassiveEffects.csv` | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
 ## 2026-11-26 — A character draws the built Cataclysms, Demonic, Death and War, before any other
 
 **Affects:**

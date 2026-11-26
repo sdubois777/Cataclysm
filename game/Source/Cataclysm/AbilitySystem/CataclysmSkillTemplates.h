@@ -1957,6 +1957,18 @@ public:
 	ACataclysmMinion* SummonOne();
 
 	/**
+	 * Raise one more beside `Raised`, at the caster's `minion_extra_raise_chance` (`UCataclysmDetonation::
+	 * ExtraRaiseChanceStat`), asked with this skill's tags and the minion's. Teeming Grave's reader, and slice B's Rise
+	 * Together's, by the coordinating session's ruling of 2026-11-26 (one mechanism for both). Called by `SummonOne` for
+	 * every minion it raises; the one this raises does not roll again. Null when nothing more rose. Public so a test can
+	 * roll it without a summon.
+	 */
+	ACataclysmMinion* RaiseOneMoreIfRolled(const ACataclysmMinion* Raised);
+
+	/** How many minions `RaiseOneMoreIfRolled` has raised on this instance. Read by tests. */
+	int32 ExtraMinionsRaised = 0;
+
+	/**
 	 * Whether this row's raise strikes as it rises: it states a Damage Percent of its own above nought and does not
 	 * possess. Issue #2885, the Death draft's N2: Barrow Guard's "they rise in a burst of grave-cold: every enemy within
 	 * 5 meters takes 300% weapon damage", Bone Choir's burst and Exhume's "hew one enemy within 4 meters for 400%".
@@ -2249,6 +2261,9 @@ private:
 
 	/** Fixed at activation: a rift does not follow the cursor. */
 	FVector RiftLocation = FVector::ZeroVector;
+
+	/** Set while `RaiseOneMoreIfRolled` raises its one, so that one does not roll again. */
+	bool bRaisingOneMore = false;
 
 	FTimerHandle SpawnTimer;
 	FTimerHandle CollapseTimer;

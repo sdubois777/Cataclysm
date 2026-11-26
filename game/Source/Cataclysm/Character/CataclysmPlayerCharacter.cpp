@@ -101,6 +101,7 @@
 #include "Save/CataclysmSaveWriter.h"
 // For Reaper's Embrace's ten-piece: a minion's own blow does not cull, and a kill spawns a minion. Ruled 2026-10-19.
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmHordeAscendant.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "Empire/CataclysmSeedMix.h"
 
@@ -1423,6 +1424,18 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 					{
 						Eldest->CastSkillCopy(Used);
 					}
+				}));
+			}
+
+			// AND THE HORDE ASCENDANT: every follower within 10 metres casts it too, at 10% of its damage (the
+			// Necromancer's Final Rite, option 3, built as written by the coordinating session's ruling of 2026-11-26).
+			// Magnum Opus's skills, and ON THE NEXT TICK for its reason; who is near is asked then.
+			if (UCataclysmHordeAscendant::Holds(this))
+			{
+				const FVector Aimed = Notice.Aim;
+				GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, Used, Aimed]()
+				{
+					UCataclysmHordeAscendant::EveryFollowerNearCasts(this, Used, Aimed);
 				}));
 			}
 		}

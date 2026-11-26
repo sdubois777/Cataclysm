@@ -857,7 +857,11 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 899 ON 2026-11-26: the Bulwark's Fervour for a kill, on its starting node
 #: (`tools/reapply_war_bulwark_kill_fervour_workbook.py`, the final bundle).
-AUTHORED_ROWS = 899
+#:
+#: AND TO 921 THE SAME DAY: the Necromancer's Charnel limb, Living Bombs and The Horde Ascendant, 22 rows
+#: (`tools/reapply_death_finish_c_workbook.py`, slice C of the Death Cataclysm's finishing). THIS BRANCH'S FIGURE: the
+#: other slices of that finishing move it too, and the coordinating session reconciles it at assembly.
+AUTHORED_ROWS = 921
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1391,7 +1395,9 @@ AUTHORED_ROWS = 899
 #:
 #: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
 #: the War line's 323 less the 226 both had.
-AUTHORED_NODES = 497
+#: AND TO 507 ON 2026-11-26: the Charnel limb's ten nodes that had no row (slice C of the Death Cataclysm's finishing);
+#: Living Bombs and The Horde Ascendant are on capstones already counted. This branch's figure, reconciled at assembly.
+AUTHORED_NODES = 507
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1555,7 +1561,9 @@ AUTHORED_NODES = 497
 #: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
 #: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
 #: War line's 72 less the 36 both had.
-AUTHORED_OPTIONS = 95
+#: AND TO 97 ON 2026-11-26: Living Bombs and The Horde Ascendant (slice C of the Death Cataclysm's finishing). This
+#: branch's figure, reconciled at assembly.
+AUTHORED_OPTIONS = 97
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2755,6 +2763,14 @@ SCALE_WORDS = {
     # current HP", 2 for every 100 points. The sentence states a SHARE, not a
     # step, so the step is checked with the value in `SCALES_STATED_AS_A_SHARE`.
     "current_health": (("of your current hp",), "{value:g}", None),
+
+    # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's
+    # damage by the minion going off. Close Packed's "for each other minion of
+    # yours within 3 metres of it" (the reach is the row's Reach Metres) and
+    # Swollen's "for each full second it has stood". Each says "for each", so the
+    # step is 1; each cap is the row's Scale Max Steps ("up to 5").
+    "minions_near_the_minion": (("for each other minion of yours within",), None, None),
+    "minion_seconds_active": (("for each full second it has stood",), None, None),
 }
 
 
@@ -2802,12 +2818,18 @@ OWN_STACK_EVENT_WORDS = {
     "kill": ("kills within",),
     "fervour_spent": ("after you spend",),
     "hit_taken": ("when a hit takes",),
+    # AND BURSTING RANKS' "for each detonation of yours in the last 2 seconds" (the finishing of the Death Cataclysm,
+    # slice C, 2026-11-26), on `minion_detonated`.
+    "minion_detonated": ("for each detonation of yours",),
 }
 
 #: A stack's seconds written in other words than "for N seconds", by node. Kill Chain (the Death trees' slice C1): "Kills
 #: within 2 seconds of each other form a chain" is the 2-second window each kill renews.
 STACK_SECONDS_IN_OTHER_WORDS = {
     "SoulCollector_basic_b_a0": "within {seconds:g} seconds of each other",
+    # Bursting Ranks (the finishing of the Death Cataclysm, slice C): "in the last 2 seconds" is the 2-second window each
+    # detonation renews.
+    "Necromancer_basic_ch_a2": "in the last {seconds:g} seconds",
 }
 
 
@@ -2965,6 +2987,18 @@ def test_a_scale_is_actually_used(effects):
 #: that is a plain count, like Low Life's "10 Fervour per second", still has
 #: nowhere to say so.
 VALUE_FORMS = {
+    # THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26): two or three flat rows on
+    # one node each, told apart by the words after each number. Lingering Rot's "1 second for every 2 points" and "10% of
+    # the detonation's damage"; Mass Grave's "within 3 metres" and "each for 40% damage"; Living Bombs' "a 50% chance to
+    # raise a husk" and "lasts 8 seconds"; The Horde Ascendant's "within 10 metres" and "at 10% of its damage".
+    "minion_detonation_rot_seconds": ("{value:g} second for every",),
+    "minion_detonation_rot_percent": ("{value:g}% of the detonation",),
+    "minion_detonation_spreads_percent": ("each for {value:g}% damage",),
+    "minion_detonation_spread_radius_metres": ("within {value:g} metres",),
+    "minion_detonation_raises_husk_chance": ("{value:g}% chance to raise a husk",),
+    "minion_detonation_husk_seconds": ("lasts {value:g} seconds",),
+    "minions_cast_your_skills_within_metres": ("within {value:g} metres",),
+    "minion_skill_copy_damage_percent": ("at {value:g}% of its damage",),
     # OVERFLOW'S WINDOW, the Death trees' slice C6c (2026-11-25): "becomes 5
     # seconds of attack speed".
     "fervour_overflow_attack_speed_seconds": ("{value:g} seconds of attack speed",),
@@ -3859,6 +3893,12 @@ VALUE_IN_WORDS = {
     ("Shadow_keystone_b_kB", "fervour_per_critical_strike"): ("each critical strike on it gives 5 fervour", 5.0),
     ("Necromancer_keystone_gr_kC", "immune_to_slow"):
         ("slowed", 1.0),
+    # THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26). Lit Fuse's and Made
+    # Room's flags and Living Bombs' are each a switch of one; Last Breath's "twice what it reserved" is 2.
+    ("Necromancer_basic_ch_stem0", "weapon_skills_detonate_own_minions"): ("minions detonate it", 1.0),
+    ("Necromancer_basic_ch_stem1", "minion_detonates_when_released"): ("detonates as it goes", 1.0),
+    ("Necromancer_capstone_50", "minions_detonate_on_contact"): ("detonate on contact", 1.0),
+    ("Necromancer_keystone_ch_kC", "fervour_on_minion_detonated_reserve_multiple"): ("equal to twice what it reserved", 2.0),
 
     # FIFTY IS "HALF", by the arithmetic the resistance already uses:
     # Amount x (1 - Resisted / 100). Its second clause, about an effect ending
@@ -4982,6 +5022,10 @@ STATED_ONCE_BESIDE_A_PER_POINT_ROW = {
 #: Fervour per second while active" are each one rate, whatever the points; the
 #: bonus beside each is the per-point figure.
 FIXED_FROM_THE_FIRST_POINT = frozenset({
+    # MADE ROOM'S DETONATION ON RELEASE (the finishing of the Death Cataclysm, slice C, 2026-11-26): "A minion of yours
+    # that is released to make room for another detonates as it goes" is one switch whatever the points; the two
+    # increases beside it are the per-point figures.
+    ("Necromancer_basic_ch_stem1", "minion_detonates_when_released"),
     # THE SABOTEUR'S TRAP TIMING, 2026-11-25: Delayed Fuse's extra second and its
     # flag are one figure whatever the points.
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"),

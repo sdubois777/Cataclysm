@@ -15,6 +15,9 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+#include "AbilitySystem/CataclysmDetonation.h"
+#include "AbilitySystem/CataclysmHordeAscendant.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmFervour.h"
 // For the War classes' Fervour rates and decay. Slice C of plan_death_and_war.md, 2026-11-24.
@@ -6317,6 +6320,8 @@ namespace CataclysmStatExemptionTest
 	void ProbeScaledProjectileCount(FAutomationTestBase& Test);
 	void ProbeScaledDotDamage(FAutomationTestBase& Test);
 	void ProbeScaledMinionAttackSpeed(FAutomationTestBase& Test);
+	// AND THE FINISHING OF THE DEATH CATACLYSM'S SLICE C (2026-11-26), defined beside the detonation probes.
+	void ProbeScaledMinionDetonationDamage(FAutomationTestBase& Test);
 
 	/**
 	 * `fervour_drain_per_second`, scaled by debuffs carried, asked by `FCataclysmBerserkerStates::DrainStep`. Added
@@ -6391,6 +6396,8 @@ namespace CataclysmStatExemptionTest
 		static const TMap<FString, FProbe> Made = {
 			// THE DEATH TREES' SLICE C6d2 (2026-11-25): Avenging Dead's minion attack speed by the summoner's own stacks.
 			{TEXT("minion_attack_speed"),        &ProbeScaledMinionAttackSpeed},
+			// THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's damage, scaled three ways.
+			{TEXT("minion_detonation_damage"),   &ProbeScaledMinionDetonationDamage},
 			{TEXT("crowd_control_resistance"),   &ProbeScaledCrowdControlResistance},
 			// THE DEATH TREES' SLICE C6a (2026-11-25): Soul Barrage's projectiles by the Fervour held.
 			{TEXT("projectile_count"),           &ProbeScaledProjectileCount},
@@ -14781,6 +14788,462 @@ namespace CataclysmStatExemptionTest
 					  bHeld);
 	}
 
+	// ======================================================================
+	// THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26): every stat with no
+	// attribute `UCataclysmDetonation` and `UCataclysmHordeAscendant` read, each probed against the reader, with a control.
+	// ======================================================================
+
+	/** An Imp of `Summoner`'s `AlongX` along +X, told Summon Imp's 3 m explosion radius. */
+	ACataclysmMinion* DetonationProbeImp(AActor* Summoner, float AlongX)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Summoner, FVector(AlongX, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+														/*bBurns=*/false, TEXT("Imp"));
+		if (Imp)
+		{
+			Imp->RecordExplosionRadius(3.0f * M);
+		}
+		return Imp;
+	}
+
+	/** A 4 m swing granted to `Fighter`, for a detonation to be the hit of. */
+	UCataclysmStrikeSkill* DetonationProbeSkill(FScopedFighter& Fighter)
+	{
+		const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/1, Fighter.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmStrikeSkill* Strike = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Strike)
+		{
+			Strike->SkillName = TEXT("A probing swing");
+			Strike->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=4; Angle=90"));
+		}
+		return Strike;
+	}
+
+	/** A class resource pool of 150 for `Fighter`, holding `Held`. */
+	void DetonationProbePool(FScopedFighter& Fighter, float Held)
+	{
+		if (!Fighter.AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+		{
+			Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		}
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+													   Held);
+	}
+
+	/** How many ground zones `Owner` has left. */
+	int32 DetonationProbeZonesOf(UWorld* World, const AActor* Owner)
+	{
+		int32 Found = 0;
+		for (TActorIterator<ACataclysmGroundZone> Zone(World); Zone; ++Zone)
+		{
+			Found += IsValid(*Zone) && Zone->GetOwner() == Owner ? 1 : 0;
+		}
+		return Found;
+	}
+
+	/** One increased row on `Stat`, and nothing else. */
+	void GrantIncreasedLine(FScopedFighter& Fighter, const TCHAR* Stat, float Value)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Increased;
+		Row.Source = ECataclysmModifierSource::PassiveKeystone;
+		Row.Value = Value;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(Stat)).Modifiers = {Row};
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * A probe of a flag `Read` answers: false with no row (THE CONTROL), true with the row at `Value`. `Read` is handed the
+	 * fighter and a fresh Imp of its, 3 m along +X.
+	 */
+	void ProbeDetonationFlag(FAutomationTestBase& Test, const TCHAR* Stat, float Value,
+							 TFunction<bool(FScopedFighter&, ACataclysmMinion*)> Read)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+		DetonationProbePool(Fighter, 150.0f);
+		GrantFlatLines(Fighter, {});
+		ACataclysmMinion* First = DetonationProbeImp(Fighter.Actor, 3.0f * M);
+		const bool bPlain = First && Read(Fighter, First);
+		GrantFlatLines(Fighter, {{Stat, Value}});
+		ACataclysmMinion* Second = DetonationProbeImp(Fighter.Actor, 6.0f * M);
+		const bool bHeld = Second && Read(Fighter, Second);
+		for (ACataclysmMinion* Each : {First, Second})
+		{
+			if (IsValid(Each))
+			{
+				Each->Destroy();
+			}
+		}
+		Test.TestFalse(*FString::Printf(TEXT("%s: control, with no row the reader answers no"), Stat), bPlain);
+		Test.TestTrue(*FString::Printf(TEXT("%s: and with %.0f it answers yes, so it is really read"), Stat, Value), bHeld);
+	}
+
+	/**
+	 * A probe of a stat that acts only beside `Partner`, held at `PartnerValue` in both halves: a detonation of an Imp as
+	 * a swing's hit, and `Count` what came of it. THE CONTROL is the partner alone.
+	 */
+	void ProbeDetonationPair(FAutomationTestBase& Test, const TCHAR* Stat, float Value, const TCHAR* Partner,
+							 float PartnerValue, TFunction<int32(UWorld*, FScopedFighter&)> Count)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheStat, float AlongY) -> int32
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			DetonationProbePool(Fighter, 150.0f);
+			if (bWithTheStat)
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}, {Stat, Value}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}});
+			}
+			UCataclysmStrikeSkill* Strike = DetonationProbeSkill(Fighter);
+			ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Fighter.Actor, FVector(3.0f * M, AlongY, 0.0f), 20.0f, false,
+															TEXT("Imp"));
+			if (!Strike || !Imp)
+			{
+				return -1;
+			}
+			Imp->RecordExplosionRadius(3.0f * M);
+			UCataclysmDetonation::Detonate(Imp, Strike);
+			return Count(World, Fighter);
+		};
+		const int32 Plain = Once(false, 0.0f);
+		const int32 Held = Once(true, 200.0f * M);
+		Test.TestEqual(*FString::Printf(TEXT("%s: control, %s alone makes nothing"), Stat, Partner), Plain, 0);
+		Test.TestEqual(*FString::Printf(TEXT("%s: and with it, one, so the detonation really reads it"), Stat), Held, 1);
+	}
+
+	void ProbeWeaponSkillsDetonateOwnMinions(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::WeaponSkillsDetonateOwnMinionsStat, 1.0f,
+			[](FScopedFighter& Fighter, ACataclysmMinion*) {
+				return UCataclysmDetonation::WeaponSkillsDetonateOwnMinions(Fighter.Actor); });
+	}
+
+	void ProbeDetonatesWhenReleased(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::DetonatesWhenReleasedStat, 1.0f,
+			[](FScopedFighter&, ACataclysmMinion* Imp) { return UCataclysmDetonation::DetonateOnRelease(Imp); });
+	}
+
+	void ProbeExplodesAtLifespanEndChance(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::ExplodesAtLifespanEndChanceStat, 100.0f,
+			[](FScopedFighter&, ACataclysmMinion* Imp) { return UCataclysmDetonation::RipenAtLifespanEnd(Imp); });
+	}
+
+	void ProbeDetonateOnContact(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::DetonateOnContactStat, 1.0f,
+			[](FScopedFighter&, ACataclysmMinion* Imp) { return UCataclysmDetonation::IsALivingBomb(Imp); });
+	}
+
+	void ProbeMinionsCastYourSkillsWithinMetres(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmHordeAscendant::ReachMetresStat, 10.0f,
+			[](FScopedFighter& Fighter, ACataclysmMinion*) { return UCataclysmHordeAscendant::Holds(Fighter.Actor); });
+	}
+
+	void ProbeDetonationArea(FAutomationTestBase& Test)
+	{
+		// `minion_detonation_area`, read by `UCataclysmDetonation::AreaMultiplierFor` (Made Room). 1 with no row, 1.5
+		// with 50% increased.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+		ACataclysmMinion* Imp = DetonationProbeImp(Fighter.Actor, 3.0f * M);
+		if (!Test.TestNotNull(TEXT("minion_detonation_area: an Imp"), Imp))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Plain = UCataclysmDetonation::AreaMultiplierFor(Imp);
+		GrantIncreasedLine(Fighter, UCataclysmDetonation::DetonationAreaStat, 50.0f);
+		const float Held = UCataclysmDetonation::AreaMultiplierFor(Imp);
+		Test.TestEqual(TEXT("minion_detonation_area: control, 1 with no row"), Plain, 1.0f, 0.0001f);
+		Test.TestEqual(TEXT("and 1.5 with 50% increased, so it is really read"), Held, 1.5f, 0.0001f);
+	}
+
+	void ProbeDetonationRotSeconds(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::RotSecondsStat, 4.0f, UCataclysmDetonation::RotPercentStat, 10.0f,
+			[](UWorld* World, FScopedFighter& Fighter) { return DetonationProbeZonesOf(World, Fighter.Actor); });
+	}
+
+	void ProbeDetonationRotPercent(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::RotPercentStat, 10.0f, UCataclysmDetonation::RotSecondsStat, 4.0f,
+			[](UWorld* World, FScopedFighter& Fighter) { return DetonationProbeZonesOf(World, Fighter.Actor); });
+	}
+
+	void ProbeDetonationRaisesHuskChance(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::RaisesHuskChanceStat, 100.0f, UCataclysmDetonation::HuskSecondsStat,
+			8.0f, [](UWorld*, FScopedFighter& Fighter)
+			{ return UCataclysmCommand::MinionsOfTypeCommandedBy(Fighter.Actor, TEXT("Husk")).Num(); });
+	}
+
+	void ProbeDetonationHuskSeconds(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::HuskSecondsStat, 8.0f, UCataclysmDetonation::RaisesHuskChanceStat,
+			100.0f, [](UWorld*, FScopedFighter& Fighter)
+			{ return UCataclysmCommand::MinionsOfTypeCommandedBy(Fighter.Actor, TEXT("Husk")).Num(); });
+	}
+
+	void ProbeDetonationSpread(FAutomationTestBase& Test, const TCHAR* Stat, float Value, const TCHAR* Partner,
+							   float PartnerValue)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheStat, float AlongY) -> bool
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			if (bWithTheStat)
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}, {Stat, Value}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}});
+			}
+			UCataclysmStrikeSkill* Strike = DetonationProbeSkill(Fighter);
+			ACataclysmMinion* First =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(3.0f * M, AlongY, 0.0f), 20.0f, false, TEXT("Imp"));
+			ACataclysmMinion* Beyond =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(4.0f * M, AlongY, 0.0f), 20.0f, false, TEXT("Imp"));
+			if (!Strike || !First || !Beyond)
+			{
+				return false;
+			}
+			First->RecordExplosionRadius(3.0f * M);
+			Beyond->RecordExplosionRadius(3.0f * M);
+			UCataclysmDetonation::Detonate(First, Strike);
+			const bool bTaken = !IsValid(Beyond) || Beyond->IsActorBeingDestroyed();
+			if (IsValid(Beyond))
+			{
+				Beyond->Destroy();
+			}
+			return bTaken;
+		};
+		const bool bPlain = Once(false, 0.0f);
+		const bool bHeld = Once(true, 200.0f * M);
+		Test.TestFalse(*FString::Printf(TEXT("%s: control, %s alone takes no Imp beside the one detonated"), Stat, Partner),
+					   bPlain);
+		Test.TestTrue(*FString::Printf(TEXT("%s: and with it the chain takes it, so it is really read"), Stat), bHeld);
+	}
+
+	void ProbeDetonationSpreadsPercent(FAutomationTestBase& Test)
+	{
+		ProbeDetonationSpread(Test, UCataclysmDetonation::SpreadPercentStat, 40.0f,
+							  UCataclysmDetonation::SpreadRadiusMetresStat, 3.0f);
+	}
+
+	void ProbeDetonationSpreadRadiusMetres(FAutomationTestBase& Test)
+	{
+		ProbeDetonationSpread(Test, UCataclysmDetonation::SpreadRadiusMetresStat, 3.0f,
+							  UCataclysmDetonation::SpreadPercentStat, 40.0f);
+	}
+
+	void ProbeFervourOnMinionDetonatedReserveMultiple(FAutomationTestBase& Test)
+	{
+		// `fervour_on_minion_detonated_reserve_multiple`, read by `UCataclysmDetonation::Detonate` (Last Breath). An Imp
+		// holding 20 back is detonated with the pool emptied first. THE CONTROL: with no row the pool stays at nought.
+		// With 2, it holds 40.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheRow, float AlongY) -> float
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			DetonationProbePool(Fighter, 150.0f);
+			if (bWithTheRow)
+			{
+				GrantFlatLines(Fighter, {{UCataclysmDetonation::FervourPerReserveMultipleStat, 2.0f}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {});
+			}
+			UCataclysmStrikeSkill* Strike = DetonationProbeSkill(Fighter);
+			ACataclysmMinion* Imp =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(3.0f * M, AlongY, 0.0f), 20.0f, false, TEXT("Imp"));
+			if (!Strike || !Imp)
+			{
+				return -1.0f;
+			}
+			Imp->RecordExplosionRadius(3.0f * M);
+			UCataclysmCommand::HoldReserve(Fighter.Actor, Imp, 20.0f);
+			Fighter.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+			UCataclysmDetonation::Detonate(Imp, Strike);
+			return Fighter.AbilitySystem->GetNumericAttribute(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		};
+		const float Plain = Once(false, 0.0f);
+		const float Held = Once(true, 200.0f * M);
+		Test.TestEqual(TEXT("fervour_on_minion_detonated_reserve_multiple: control, nothing with no row"), Plain, 0.0f,
+					   0.01f);
+		Test.TestEqual(TEXT("and twice the 20 held back with 2, so the detonation really reads it"), Held, 40.0f, 0.01f);
+	}
+
+	void ProbeMinionExtraRaiseChance(FAutomationTestBase& Test)
+	{
+		// `minion_extra_raise_chance`, read by `UCataclysmSummonSkill::RaiseOneMoreIfRolled` (Teeming Grave, and Rise
+		// Together). One summon of an Imp: one Imp with no row (THE CONTROL), two at 100.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheRow) -> int32
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			DetonationProbePool(Fighter, 150.0f);
+			if (bWithTheRow)
+			{
+				GrantFlatLines(Fighter, {{UCataclysmDetonation::ExtraRaiseChanceStat, 100.0f}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {});
+			}
+			const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Fighter.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid() ? Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmSummonSkill* Summon = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Summon)
+			{
+				return -1;
+			}
+			Summon->SkillName = TEXT("A probing summon");
+			Summon->Params = UCataclysmSkillShapes::ParseParams(TEXT("Minions=Imp:1; Duration=20"));
+			Summon->SummonOne();
+			const TArray<ACataclysmMinion*> Imps = UCataclysmCommand::MinionsOfTypeCommandedBy(Fighter.Actor, TEXT("Imp"));
+			for (ACataclysmMinion* Each : Imps)
+			{
+				Each->Destroy();
+			}
+			return Imps.Num();
+		};
+		const int32 Plain = Once(false);
+		const int32 Held = Once(true);
+		Test.TestEqual(TEXT("minion_extra_raise_chance: control, one Imp with no row"), Plain, 1);
+		Test.TestEqual(TEXT("and two at 100, so the summon really reads it"), Held, 2);
+	}
+
+	void ProbeMinionSkillCopyDamagePercent(FAutomationTestBase& Test)
+	{
+		// `minion_skill_copy_damage_percent`, read by `UCataclysmHordeAscendant::EveryFollowerNearCasts`. The reach held at
+		// 10 m, an Imp 5 m away, an all-round strike: no cast with no share (THE CONTROL), one at 10.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FCataclysmWeaponSkill Skill;
+		Skill.Name = TEXT("A probing strike");
+		Skill.Slot = ECataclysmAbilitySlot::Heavy;
+		Skill.Shape = ECataclysmSkillShape::Strike;
+		Skill.Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=360"));
+		Skill.DamagePercent = 100.0f;
+		const auto Once = [&](bool bWithTheRow, float /*AlongY*/) -> int32
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			if (bWithTheRow)
+			{
+				GrantFlatLines(Fighter, {{UCataclysmHordeAscendant::ReachMetresStat, 10.0f},
+										 {UCataclysmHordeAscendant::DamagePercentStat, 10.0f}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {{UCataclysmHordeAscendant::ReachMetresStat, 10.0f}});
+			}
+			// THE FIGHTER STANDS AT THE ORIGIN, having no body to move: the Imp 5 m from it in both halves.
+			ACataclysmMinion* Imp =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(5.0f * M, 0.0f, 0.0f), 20.0f, false, TEXT("Imp"));
+			if (!Imp)
+			{
+				return -1;
+			}
+			ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+			return UCataclysmHordeAscendant::EveryFollowerNearCasts(Fighter.Actor, Skill, FVector(6.0f * M, 0.0f, 0.0f));
+		};
+		const int32 Plain = Once(false, 0.0f);
+		const int32 Held = Once(true, 200.0f * M);
+		Test.TestEqual(TEXT("minion_skill_copy_damage_percent: control, no cast with no share"), Plain, 0);
+		Test.TestEqual(TEXT("and one at 10, so the vow really reads it"), Held, 1);
+	}
+
+	/**
+	 * `minion_detonation_damage`, read by `UCataclysmDetonation::DamageMultiplierFor` through the summoner's
+	 * `MultiplierForStatAgainst` with the minion named. Shipped scaled by the minion's fellows (Close Packed), the
+	 * summoner's own stacks (Bursting Ranks) and the minion's age (Swollen); own stacks prove the ask. 50% increased for
+	 * one stack: 1 before it is granted (THE CONTROL), 1.5 after.
+	 */
+	void ProbeScaledMinionDetonationDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		const FName Key(TEXT("Probe_minion_detonation_damage"));
+		FCataclysmStatModifier PerStack;
+		PerStack.Bucket = ECataclysmStatBucket::Increased;
+		PerStack.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerStack.Value = 50.0f;
+		PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+		PerStack.ScaleStep = 1.0f;
+		PerStack.ScaleMaxSteps = 1;
+		PerStack.StackKey = Key;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmDetonation::DetonationDamageStat)).Modifiers = {PerStack};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		ACataclysmMinion* Imp = DetonationProbeImp(Summoner.Actor, 3.0f * M);
+		if (!Test.TestNotNull(TEXT("minion_detonation_damage: an Imp"), Imp))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Before = UCataclysmDetonation::DamageMultiplierFor(Imp);
+		Summoner.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/60.0f, /*Cap=*/1);
+		const float After = UCataclysmDetonation::DamageMultiplierFor(Imp);
+		Test.TestEqual(TEXT("minion_detonation_damage: control, 1 before the stack"), Before, 1.0f, 0.0001f);
+		Test.TestEqual(TEXT("and 1.5 with one stack, so it is asked with the summoner's state"), After, 1.5f, 0.0001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -15089,6 +15552,22 @@ namespace CataclysmStatExemptionTest
 			{TEXT("interpose_chance"), &ProbeInterposeChance},
 			{TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"), &ProbeLethalDose},
 			{TEXT("movement_passes_through_enemies"), &ProbeMovementPassesThroughEnemies},
+			// THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26).
+			{TEXT("weapon_skills_detonate_own_minions"), &ProbeWeaponSkillsDetonateOwnMinions},
+			{TEXT("minion_detonates_when_released"), &ProbeDetonatesWhenReleased},
+			{TEXT("minion_detonation_area"), &ProbeDetonationArea},
+			{TEXT("minion_detonation_rot_seconds"), &ProbeDetonationRotSeconds},
+			{TEXT("minion_detonation_rot_percent"), &ProbeDetonationRotPercent},
+			{TEXT("minion_explodes_at_lifespan_end_chance"), &ProbeExplodesAtLifespanEndChance},
+			{TEXT("minion_detonation_spreads_percent"), &ProbeDetonationSpreadsPercent},
+			{TEXT("minion_detonation_spread_radius_metres"), &ProbeDetonationSpreadRadiusMetres},
+			{TEXT("fervour_on_minion_detonated_reserve_multiple"), &ProbeFervourOnMinionDetonatedReserveMultiple},
+			{TEXT("minions_detonate_on_contact"), &ProbeDetonateOnContact},
+			{TEXT("minion_detonation_raises_husk_chance"), &ProbeDetonationRaisesHuskChance},
+			{TEXT("minion_detonation_husk_seconds"), &ProbeDetonationHuskSeconds},
+			{TEXT("minion_extra_raise_chance"), &ProbeMinionExtraRaiseChance},
+			{TEXT("minions_cast_your_skills_within_metres"), &ProbeMinionsCastYourSkillsWithinMetres},
+			{TEXT("minion_skill_copy_damage_percent"), &ProbeMinionSkillCopyDamagePercent},
 			// THE WAR CLASSES' FERVOUR, slice C, 2026-11-24.
 			{TEXT("fervour_per_hit_taken"), [](FAutomationTestBase& Test)
 				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerHitTakenStat,

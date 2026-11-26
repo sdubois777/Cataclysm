@@ -251,6 +251,7 @@ namespace
 		{ TEXT("max_class_resource"),  ECataclysmStatScale::PerPointOfMaximumClassResource },
 		{ TEXT("block_chance"),        ECataclysmStatScale::PerPercentOfBlockChance },
 		{ TEXT("current_health"),      ECataclysmStatScale::PerPointOfCurrentHealth },
+		{ TEXT("minions_near_the_minion"), ECataclysmStatScale::PerOtherMinionNearTheMinion },
 	};
 
 	/**
@@ -2309,6 +2310,12 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	// design's existing rule that multiplicative sources need no cap.
 	case ECataclysmStatScale::PerEnemyInReach:
 		return StackedValue(Modifier, EnemiesInReach(State, Modifier.ReachMetres));
+
+	// AND PER OTHER MINION NEAR THE MINION ASKING: Close Packed (the finishing of the Death Cataclysm, slice C). The same
+	// count `EnemiesInReach` makes, on the list of the summoner's other minions measured from the one asking; empty, so
+	// nothing, when no minion is named.
+	case ECataclysmStatScale::PerOtherMinionNearTheMinion:
+		return StackedValue(Modifier, CountWithin(State.OtherMinionMetresFromAskingMinion, Modifier.ReachMetres));
 
 	// AND PER CRIPPLED ENEMY, THE SAME ARITHMETIC ON THE FILTERED LIST. Issue
 	// #1515. A character near nobody crippled gets nothing by the same
