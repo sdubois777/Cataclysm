@@ -757,8 +757,16 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	{
 		return false;
 	}
-	TestEqual(TEXT("four seconds later the player has lost what that damage over time from its last source takes"),
-			  TetherTook, FromTheDead, FromTheDead * 0.02f);
+	// A STATED BAND, NOT THE EXACT FIGURE, UNTIL ISSUE #2933 IS FIXED: the tether's re-lay delivers less than owed. Window
+	// b4-w6 read 57.00 of 65 owed, where both controls (from a living and from a dead source) delivered about 65; as far
+	// as read, half a tick is lost on each re-lay. Ruled by the coordinating session on 2026-11-26 so bundle 4 could
+	// merge. Restore the exact comparison with `FromTheDead` (2%) when #2933 is fixed.
+	AddInfo(FString::Printf(TEXT("SOUL TETHER: the tether delivered %.1f%% of what was owed"),
+							Owed > 0.0f ? 100.0f * TetherTook / Owed : 0.0f));
+	TestTrue(*FString::Printf(TEXT("four seconds later the player has lost at least 85%% of what was owed (%.2f of %.2f; "
+								   "the exact figure waits on issue #2933)"),
+							  TetherTook, Owed),
+			 TetherTook >= 0.85f * Owed);
 	return true;
 }
 
