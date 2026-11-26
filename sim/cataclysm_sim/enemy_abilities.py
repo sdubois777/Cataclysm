@@ -230,6 +230,9 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "SpreadWhen", "SpreadRadius",
           "MaxDamagePercent", "MinDamagePercent",
           "ChargeTime", "ChargeBreaksOn", "RefundsCooldown", "Untargetable",
+          # PassesThroughEnemies joined on 2026-11-26 with the Death skills merge:
+          # the Staff's Wraithwalk walks through enemy bodies. No enemy ability does.
+          "PassesThroughEnemies",
           # Four joined on 2026-11-17 for the Corrupted Stalker's weapon kits,
           # issue #2580: a stated ailment, a damage roll's two ends, and a
           # random pick among named effects. No enemy ability states any yet.
