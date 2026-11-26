@@ -243,21 +243,17 @@ void UCataclysmPassiveTreeWidget::NativeConstruct()
 		TitleLabel->SetText(Title);
 	}
 
-	// THE FIRST TREE THE CHARACTER CAN ACTUALLY REACH, rather than the first
-	// alphabetically. A Demonic character opening this screen wants the
-	// Masochist tree, not the Berserker one they cannot spend in.
+	// THE CLASS THE CHARACTER CHOSE, OR ELSE THE FIRST TREE IT CAN ACTUALLY REACH, rather than the first
+	// alphabetically. A Demonic character opening this screen wants the Masochist tree, not the Berserker one they
+	// cannot spend in; and since 2026-11-26 a Soul Collector wants the Soul Collector tree, not the Necromancer one
+	// sorted before it, whose starting node is also "Fervour" and read 0 of 1 (the owner's play-test).
+	// `UCataclysmPassiveTree::TreeToOpenOn`.
 	if (ShownTree.IsEmpty())
 	{
-		const TArray<FString> Reachable = ReachableTrees();
-		const TArray<FString> Every = AllTrees();
-		if (Reachable.Num() > 0)
-		{
-			ShownTree = Reachable[0];
-		}
-		else if (Every.Num() > 0)
-		{
-			ShownTree = Every[0];
-		}
+		static const FCataclysmPassiveAllocation Nothing;
+		const ACataclysmPlayerState* Player = State();
+		ShownTree = UCataclysmPassiveTree::TreeToOpenOn(NodeTable(), Player ? Player->GetPassiveAllocation() : Nothing,
+														Player ? Player->CarriedDamageTypes() : TArray<FName>());
 	}
 
 	RefreshDisplay();

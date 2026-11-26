@@ -2304,6 +2304,131 @@ bool FCataclysmDeathSkillsDetonationFeedsMarrowFeastTest::RunTest(const FString&
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsDetonationIsTheSkillsHitTest,
+	"Cataclysm.DeathSkills.ADetonatedMinionExplodesForTwiceTheCastersWeaponAsTheSkillsHitAndAnUnsetExplosionKeepsItsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's play-test of 2026-11-26 ("the minion pop from open grave seems to be doing barely any damage") and the
+ * coordinating session's ruling that day: a minion a skill detonates (`ACataclysmMinion::ExplodeSetOffBy`) explodes for
+ * `DetonatedPercentOfWeaponDamage` (200%) of the CASTER'S weapon damage, as the skill's area hit, times the summoner's
+ * `minion_explosion_damage`. Each scene: a caster on the players' side, critical strikes off, its Imp 2 m ahead, an
+ * enemy 1.5 m ahead and 2.5 m aside (inside the Imp's 3 m, outside the 4 m, 90 degree swing), and the swing
+ * `Radius=4; Angle=90; Detonates=1`.
+ *
+ * THE FIGURE FROM THE FORMULA, NOT A LITERAL: a twin enemy far away is struck by the same caster through
+ * `UCataclysmSkillEffects::ApplyHit` at 200% with the swing named, and the blasted enemy must lose what the twin lost.
+ * A caster with twice the weapon makes twice the figure; one holding 50% increased `minion_explosion_damage` makes one
+ * and a half times. THE CONTROL: an explosion no skill sets off (`Explode`) keeps the Imp's own blow times its type's
+ * 300%, read off the Imp.
+ */
+bool FCataclysmDeathSkillsDetonationIsTheSkillsHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -500.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	TArray<ACataclysmMinion*> Made;
+	ON_SCOPE_EXIT { DeathSkillClear(Made); };
+
+	struct FDetonationScene
+	{
+		float Lost = -1.0f;
+		float TwinLost = -1.0f;
+		int32 Detonated = -1;
+	};
+	const auto Detonate = [&](float Weapon, float ExplosionIncreasePercent, float AcrossMetres) -> FDetonationScene
+	{
+		FDetonationScene Out;
+		const float Y = AcrossMetres * DeathSkillMetre;
+		FDeathSkillFighter Caster(World, FVector(0.0f, Y, 0.0f));
+		DeathSkillSideWithThePlayers(Caster, PlayersSide);
+		Caster.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), Weapon);
+		Caster.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 0.0f);
+		if (ExplosionIncreasePercent > 0.0f)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Increased;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = ExplosionIncreasePercent;
+			TMap<FName, FCataclysmStatInputs> Lines;
+			Lines.FindOrAdd(FName(TEXT("minion_explosion_damage"))).Modifiers.Add(Row);
+			Caster.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+		}
+		FDeathSkillFighter Blasted(World, FVector(1.5f * DeathSkillMetre, Y + 2.5f * DeathSkillMetre, 0.0f));
+		FDeathSkillFighter Twin(World, FVector(0.0f, Y + 40.0f * DeathSkillMetre, 0.0f));
+		ACataclysmMinion* Imp = DeathSkillMinionOf(Caster.Actor, FVector(2.0f * DeathSkillMetre, Y, 0.0f));
+		Made.Add(Imp);
+		UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+			Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=90; Detonates=1"),
+			TEXT("A detonating swing"));
+		if (!Imp || !Swing)
+		{
+			return Out;
+		}
+
+		// THE TWIN, struck as the formula says a detonation strikes.
+		FCataclysmHitDelivery AsTheSkill;
+		AsTheSkill.bIsArea = true;
+		AsTheSkill.Skill = Swing;
+		const float Multiplier = 1.0f + ExplosionIncreasePercent / 100.0f;
+		const float TwinBefore = Twin.Health();
+		UCataclysmSkillEffects::ApplyHit(Caster.Actor, Twin.Actor,
+										 ACataclysmMinion::DetonatedPercentOfWeaponDamage * Multiplier,
+										 Swing->SkillTagsForStats(), AsTheSkill);
+		Out.TwinLost = TwinBefore - Twin.Health();
+
+		const float Before = Blasted.Health();
+		Swing->SwingOnce();
+		Out.Detonated = Swing->MinionsDetonated;
+		Out.Lost = Before - Blasted.Health();
+		return Out;
+	};
+
+	const FDetonationScene Plain = Detonate(DeathSkillWeaponDamage, 0.0f, 0.0f);
+	if (!TestEqual(TEXT("set-up: the swing explodes the Imp"), Plain.Detonated, 1)
+		|| !TestTrue(TEXT("set-up: the twin was struck"), Plain.TwinLost > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("THE DETONATION IS 200% OF THE CASTER'S WEAPON AS THE SKILL'S HIT: the enemy loses what the twin lost"),
+			  Plain.Lost, Plain.TwinLost, Plain.TwinLost * 0.01f);
+
+	const FDetonationScene Doubled = Detonate(DeathSkillWeaponDamage * 2.0f, 0.0f, 100.0f);
+	TestEqual(TEXT("a caster with twice the weapon: the enemy loses what its twin lost"), Doubled.Lost, Doubled.TwinLost,
+			  Doubled.TwinLost * 0.01f);
+	TestEqual(TEXT("AND TWICE THE FIRST FIGURE: the detonation follows the weapon"), Doubled.Lost, Plain.Lost * 2.0f,
+			  Plain.Lost * 0.02f);
+
+	const FDetonationScene Volatile = Detonate(DeathSkillWeaponDamage, 50.0f, 200.0f);
+	TestEqual(TEXT("50% increased minion_explosion_damage: the enemy loses what its twin lost"), Volatile.Lost,
+			  Volatile.TwinLost, Volatile.TwinLost * 0.01f);
+	TestEqual(TEXT("AND ONE AND A HALF TIMES THE FIRST FIGURE"), Volatile.Lost, Plain.Lost * 1.5f, Plain.Lost * 0.02f);
+
+	// THE CONTROL: AN EXPLOSION NO SKILL SETS OFF KEEPS THE IMP'S OWN FIGURE.
+	FDeathSkillFighter Summoner(World, FVector(0.0f, 300.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSideWithThePlayers(Summoner, PlayersSide);
+	FDeathSkillFighter Near(World, FVector(1.5f * DeathSkillMetre, 300.0f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* Unset = DeathSkillMinionOf(Summoner.Actor, FVector(0.0f, 300.0f * DeathSkillMetre, 0.0f));
+	Made.Add(Unset);
+	if (!TestNotNull(TEXT("set-up: the control Imp"), Unset))
+	{
+		return false;
+	}
+	const float OwnFigure = Unset->OwnDamagePerHit * Unset->ExplosionPercentOfOwnDamage / 100.0f;
+	const float NearBefore = Near.Health();
+	Unset->Explode();
+	TestEqual(TEXT("control: an explosion no skill set off deals the Imp's own blow times its type's share"),
+			  NearBefore - Near.Health(), OwnFigure, OwnFigure * 0.01f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsCommandingSwingTest,
 	"Cataclysm.DeathSkills.ASwingThatCommandsOrdersEveryCreatureItsCasterCommandsAndOneThatDoesNotOrdersNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

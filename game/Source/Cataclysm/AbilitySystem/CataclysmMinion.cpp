@@ -2355,6 +2355,42 @@ void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)
 	ExplosionRadiusCm = RadiusCm;
 }
 
+void ACataclysmMinion::ExplodeSetOffBy(UCataclysmSkillTemplate* SetOffBy)
+{
+	AActor* Caster = SetOffBy ? SetOffBy->GetAvatarActorFromActorInfo() : nullptr;
+	if (!IsValid(Caster) || ExplosionRadiusCm <= 0.0f)
+	{
+		Explode();
+		return;
+	}
+
+	// THE SKILL'S AREA HIT, CENTRED ON THIS MINION: 200% of the caster's weapon damage, the skill named so its level
+	// factor and its tags apply, times the summoner's `minion_explosion_damage` (Volatile, `Ritualist_basic_b_b2`, the
+	// one row stating it on 2026-11-26), which every explosion takes.
+	const float Percent = DetonatedPercentOfWeaponDamage
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags);
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), this, GetActorLocation(), ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this));
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.Skill = SetOffBy;
+	float Sent = 0.0f;
+	for (AActor* Target : Caught)
+	{
+		if (IsValid(Target) && !UCataclysmSkillEffects::IsDead(Target))
+		{
+			Sent = FMath::Max(Sent, UCataclysmSkillEffects::ApplyHit(Caster, Target, Percent, SetOffBy->SkillTagsForStats(),
+																	 Delivery));
+		}
+	}
+	UE_LOG(LogCataclysm, Display,
+		TEXT("MINION BLAST: %s (%s) on %d enem%s at %.0f%% of its caster's weapon damage, set off by %s; the largest "
+			 "landed %.1f"),
+		*TypeName, *GetName(), Caught.Num(), Caught.Num() == 1 ? TEXT("y") : TEXT("ies"), Percent,
+		*SetOffBy->SkillName, Sent);
+	Destroy();
+}
+
 void ACataclysmMinion::Explode()
 {
 	// WHAT IT IS WORTH IS ITS OWN BLOW, NOT ITS SUMMONER'S WEAPON. Issue
@@ -2405,6 +2441,10 @@ void ACataclysmMinion::Explode()
 		// IT CREDITS NO SKILL. Every explosion is one a passive sets off -- `minion_explodes_on_death`, a death blast --
 		// and damage a passive adds on top credits nothing (issue #2764, judgement 2). Summon Imp's cap explosion, the one
 		// that credited the skill (slice 2b, Q-B), went with the cap: issue #2787, the owner's "Drop it with the cap".
+		// A SKILL'S DETONATION IS `ExplodeSetOffBy`, which does credit its skill, since 2026-11-26.
+		UE_LOG(LogCataclysm, Display, TEXT("MINION BLAST: %s (%s) on %d enem%s: sent %.1f each, its own blow's %.0f%%"),
+			*TypeName, *GetName(), Caught.Num(), Caught.Num() == 1 ? TEXT("y") : TEXT("ies"), Scaled,
+			ExplosionPercentOfOwnDamage);
 
 		for (AActor* Target : Caught)
 		{

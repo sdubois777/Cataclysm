@@ -960,6 +960,26 @@ public:
 	void Explode();
 
 	/**
+	 * Blow up as `SetOffBy`'s area hit, then be destroyed: what a skill stating `Detonates=1` does to its caster's
+	 * minions (`UCataclysmSkillTemplate::DetonateOwnMinionsWhere`). Ruled by the coordinating session on 2026-11-26,
+	 * after the owner's play-test ("the minion pop from open grave seems to be doing barely any damage").
+	 *
+	 * `DetonatedPercentOfWeaponDamage` of the CASTER'S weapon damage, through `UCataclysmSkillEffects::ApplyHit` with the
+	 * skill named, so the skill's tags, its level factor and the caster's damage modifiers apply; times the summoner's
+	 * `minion_explosion_damage` multiplier, as every explosion takes; to every enemy within this minion's explosion
+	 * radius, centred on it. Not this minion's own blow, and no rider of this minion's (an imp's burn): the blast is the
+	 * skill's. With no skill, or no caster, it is `Explode`.
+	 */
+	void ExplodeSetOffBy(class UCataclysmSkillTemplate* SetOffBy);
+
+	/**
+	 * What a skill's detonation of a minion deals, as a percentage of the caster's weapon damage, before the skill's
+	 * level factor and the caster's modifiers. A judgement of 2026-11-26: Last Epoch's Sacrifice, a player skill, is
+	 * reported by players at 200% added damage effectiveness; Path of Exile's Detonate Dead is a player spell too.
+	 */
+	static constexpr float DetonatedPercentOfWeaponDamage = 200.0f;
+
+	/**
 	 * The share of the dying creature's own maximum health its death deals,
 	 * and the radius in metres it reaches. Issue #1515, the Third Pact's option
 	 * Shared Ruin: "When a minion of yours dies, everything within 4 metres

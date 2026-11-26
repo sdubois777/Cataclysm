@@ -2,6 +2,75 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The owner's first play test: the passive screen opens on the class chosen, every class's starting node draws the Fervour bar, and a minion a skill detonates explodes for twice the caster's weapon (window dfix-w1)
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp`: `UCataclysmPassiveTree::TreeToOpenOn`.
+  `game/Source/Cataclysm/Interface/CataclysmPassiveTreeWidget.cpp`: the screen opens on it.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `UCataclysmFervour::GainStats`, and
+  `HasAGenerator` reading them.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`: `ACataclysmMinion::ExplodeSetOffBy`, and a
+  logged line for every minion explosion. `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`:
+  `DetonateOwnMinionsWhere` passes the skill and logs how many it exploded.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmStartingNodeDisplayTests.cpp` (new, 2 tests), one new test in
+  `game/Source/Cataclysm/Tests/CataclysmDeathSkillsTests.cpp`,
+  `tools/tests/test_every_class_starting_node_draws_the_fervour_bar.py` (new).
+
+### SAID FIRST
+
+- **WINDOW dfix-w1 PASSED IN UNREAL ON `ea27c6c2f`.** The whole Unreal suite: "6039 tests performed, 6039 succeeded,
+  0 failed", 58 skipped halves, "Test saves: 892 written and deleted, 0 left behind". Python beside it: "9566 passed,
+  10 skipped"; JUnit 9,576 tests, 0 failures. ruff: all checks passed. Proof E proved.
+- **The decisions entry was written after the window by the coordinating session**, because the session that built
+  these fixes stopped before it could commit its draft.
+
+### What the owner found, verbatim
+
+- "I put a point into the fervour generator, it says it's spent, but the fervour node reads 0/1 and I don't have a
+  fervour bar"
+- "the minion pop from open grave seems to be doing barely any damage. Can probably be buffed"
+
+### The causes, and what changed
+
+1. **The node at 0/1: the screen opened on the wrong tree.** The point was spent and kept (the character's save
+   holds `SoulCollector_basic_spine_000` at 1 point). A new screen opened on the first reachable tree by name, and for
+   Death that is the Necromancer, whose starting node is also called "Fervour". `TreeToOpenOn` now opens on the class
+   chosen for a carried damage type; with none chosen it opens as before. The same rule had opened a Ravager or a
+   Ritualist on the Masochist, and a Bulwark or a Saboteur on the Berserker.
+2. **No Fervour bar: the bar's check could not see the Death classes' gain stats.** `HasAGenerator` asked only the
+   Masochist's and the Ritualist's rate attributes, so the Soul Collector's `fervour_per_kill`, the Necromancer's
+   `fervour_on_enemy_death_nearby` and the Ravager's two gain stats drew no bar. `GainStats` lists every non-War gain
+   stat, and the check returns true for any of them with a row above 0. `fervour_lost_to_healing` is a loss and is
+   left out.
+3. **A minion a skill detonates explodes for 200% of the caster's weapon damage**, dealt as that skill's area hit (its
+   tags, its level factor, the caster's damage modifiers), centred on the minion within its explosion radius, times
+   the summoner's `minion_explosion_damage` (stated today only by the Ritualist's Volatile, 3% a point). An explosion
+   no skill sets off keeps the minion's own 300% of its blow. Before this, every detonation dealt the minion's own
+   figure, which follows only the character's level and never the weapon or the skill: at level 4 about 157.5 an
+   enemy, against Open Grave's own 126.
+   - **Research.** Path of Exile's Detonate Dead is the player's spell, scaling with the player's modifiers
+     (poewiki.net/wiki/Detonate_Dead, poedb.tw/us/Detonate_Dead). Last Epoch's Sacrifice is a player skill, at 200%
+     added damage effectiveness by player reports, not an official figure (forum.lastepoch.com,
+     icy-veins.com/last-epoch/necromancer-overview). Neither scales a detonation by the minion's own blow.
+   - **Judgements.** The 200% is a judgement, ruled by the coordinating session. The blast carries no rider of the
+     minion's own, such as an imp's burn, because it is the skill's hit.
+4. **Every minion explosion is logged** at Display: the skill's "exploded N of its caster's M minions within its
+   reach", and a "MINION BLAST" line per explosion. Until this, the owner's log could not show whether a Husk exploded.
+
+### Evidence
+
+- Window dfix-w1 on `ea27c6c2f`: build succeeded (98 actions, 88 files compiled); `Cataclysm.StartingNodeDisplay.`
+  alone, 2 of 2; the whole suite and Python as above; the declared count 5,988 and 6,039 performed, every declared
+  test reported.
+- Proof E, three breaks in one call: "PROVED: with the break in: 79 tests performed, 76 succeeded, 3 failed:
+  ADetonatedMinionExplodesForTwiceTheCastersWeaponAsTheSkillsHitAndAnUnsetExplosionKeepsItsOwn,
+  EveryClasssStartingNodeDrawsTheFervourBar, ThePassiveScreenOpensOnTheClassChosenNotTheFirstByName | restored: 79
+  tests performed, 79 succeeded, 0 failed".
+- Before the window: the new Python check failed with the gain lists as they were (2 failed) and passed after (2
+  passed); a Python guard proof of it proved.
+
+---
+
 ## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
 
 **Affects:**

@@ -824,6 +824,28 @@ FString UCataclysmPassiveTree::RefusalForClassChoice(
 	return FString();
 }
 
+FString UCataclysmPassiveTree::TreeToOpenOn(const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+										   const TArray<FName>& DamageTypes)
+{
+	const TArray<FString> Reachable = ReachableTrees(NodeTable, DamageTypes);
+	for (const FString& Tree : Reachable)
+	{
+		for (const FName& DamageType : DamageTypes)
+		{
+			if (ClassChosenFor(NodeTable, Allocation, DamageType) == Tree)
+			{
+				return Tree;
+			}
+		}
+	}
+	if (Reachable.Num() > 0)
+	{
+		return Reachable[0];
+	}
+	const TArray<FString> Every = TreeNames(NodeTable);
+	return Every.Num() > 0 ? Every[0] : FString();
+}
+
 TArray<FString> UCataclysmPassiveTree::ReachableTrees(
 	const UDataTable* NodeTable, const TArray<FName>& DamageTypes)
 {
