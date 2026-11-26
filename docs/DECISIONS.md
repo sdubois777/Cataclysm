@@ -128,6 +128,8 @@ belongs to the simulation's own older energy shield model, in which no tick reac
 and that model was already behind the game before this change (the game has let every tick but bleed in since
 2026-09-18). Bringing the simulation's shield up to the game is a change of its own.
 
+---
+
 ## 2026-11-26 — The owner's first play test: the passive screen opens on the class chosen, every class's starting node draws the Fervour bar, and a minion a skill detonates explodes for twice the caster's weapon (window dfix-w1)
 
 **Affects:**
