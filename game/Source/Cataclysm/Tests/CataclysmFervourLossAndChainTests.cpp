@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -327,6 +328,43 @@ bool FCataclysmFervourLossRealRowsTest::RunTest(const FString&)
 		}
 		TestEqual(*FString::Printf(TEXT("%s %s: rows"), Want.Node, Want.Stat), Found, Want.Count);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourLossOverflowRealGainsTest,
+	"Cataclysm.FervourLossAndChain.AGainPastTheBarThroughARealPathGivesOverflowItsExcess",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Window death3-w1's second pass (2026-11-25), as ruled: every gain used to stop itself at the bar before it reached
+ * `RaisePool`, so Overflow, which counts what did not fit, heard nothing from a real gain. A cast paying 10 Fervour
+ * (`UCataclysmFervour::GainForCast`) at 98 of 100 fills 2 and gives 8 stacks; a War block paying 5 at the full bar
+ * (`FCataclysmWarFervour::GainOnBlock`) gives 5 more inside the same window: 13. THE CONTROL: the same cast at 80 fits
+ * and gives none.
+ */
+bool FCataclysmFervourLossOverflowRealGainsTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourLossAndChainTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FLossHolder Holder(World, 80.0f);
+	TMap<FName, FCataclysmStatInputs> Lines;
+	AddLine(Lines, UCataclysmFervour::OverflowAttackSpeedSecondsStat, 0.0f, LossRow(ECataclysmStatBucket::Flat, 5.0f));
+	AddLine(Lines, UCataclysmFervour::PerCastStat, 0.0f, LossRow(ECataclysmStatBucket::Flat, 10.0f));
+	AddLine(Lines, FCataclysmWarFervour::PerBlockStat, 0.0f, LossRow(ECataclysmStatBucket::Flat, 5.0f));
+	Holder.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+
+	TestEqual(TEXT("control: a cast at 80 pays its 10"), UCataclysmFervour::GainForCast(Holder.AbilitySystem), 10.0f,
+			  0.001f);
+	TestEqual(TEXT("control: and, fitting, gives no stack"), Holder.AbilitySystem->FervourOverflowStacksHeld(), 0);
+
+	Holder.SetFervour(98.0f);
+	TestEqual(TEXT("a cast at 98 fills 2"), UCataclysmFervour::GainForCast(Holder.AbilitySystem), 2.0f, 0.001f);
+	TestEqual(TEXT("and its other 8 are Overflow's: 8 stacks"), Holder.AbilitySystem->FervourOverflowStacksHeld(), 8);
+	TestEqual(TEXT("a War block at the full bar fills nothing"), FCataclysmWarFervour::GainOnBlock(Holder.AbilitySystem),
+			  0.0f, 0.001f);
+	TestEqual(TEXT("and its 5 are Overflow's too: 13 stacks"), Holder.AbilitySystem->FervourOverflowStacksHeld(), 13);
 	return true;
 }
 

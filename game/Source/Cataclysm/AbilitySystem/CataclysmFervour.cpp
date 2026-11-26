@@ -617,6 +617,15 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 		: 0.0f;
 	const float Wanted = FMath::Clamp(Before + Moved, FMath::Max(0.0f, Lowest),
 									  Resource->MaximumClassResourceAsked());
+	// A GAIN: the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's. Before the
+	// full-bar return below, so a hit taken at a full bar still reaches it.
+	if (Moved > 0.0f)
+	{
+		RaisePool(AbilitySystem, Moved);
+		return AbilitySystem->GetNumericAttribute(Pool) - Before;
+	}
+
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -626,14 +635,8 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 		return 0.0f;
 	}
 
-	if (Change > 0.0f)
-	{
-		RaisePool(AbilitySystem, Change);
-	}
-	else
-	{
-		AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
-	}
+	// A LOSS, written as it was.
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 
 	// MEASURED RATHER THAN ASSUMED, so a caller reporting what it did says what
 	// really happened rather than what it asked for.
@@ -747,17 +750,14 @@ float UCataclysmFervour::GainPerSecondStep(
 	// the reason it gives: `ApplyModToAttribute` writes a base value and whether
 	// that reaches `PreAttributeChange` depends on whether an aggregator happens
 	// to exist for the attribute.
-	const float Change =
-		FMath::Clamp(Before + Wanted, 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = Wanted;
+	if (Gain <= 0.0f)
 	{
-		// A FULL BAR IS THE ORDINARY CASE for a character standing at low health
-		// with this keystone, because ten a second fills it in ten seconds.
 		return 0.0f;
 	}
-
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -940,16 +940,14 @@ float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
 	// `PreAttributeChange` depends on whether an aggregator happens to exist.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCast),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCast);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -1000,16 +998,14 @@ float UCataclysmFervour::GainOnDroppingLow(UAbilitySystemComponent* AbilitySyste
 	// this file follows and for the reason they give.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDropping),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDropping);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -1292,17 +1288,14 @@ float UCataclysmFervour::GainForEnemiesHit(UAbilitySystemComponent* AbilitySyste
 	// follows; `GainForCast` gives the reason.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
-								  AbilitySystem, PerEnemy * static_cast<float>(EnemiesHit)),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerEnemy * static_cast<float>(EnemiesHit));
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -1356,16 +1349,14 @@ float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySyste
 	// this file follows and for the reason they give.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -1408,16 +1399,14 @@ float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* Ability
 	// file follows.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -1504,16 +1493,14 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 
 	// SCALED BY HOW FAST THE CLASS RESOURCE GENERATES, AND CLAMPED BEFORE IT IS WRITTEN, the shape of
 	// `GainOnEnemyDeathNearby` above.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerKill),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerKill);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -1541,15 +1528,14 @@ float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySy
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
 	const float Before = AbilitySystem->GetNumericAttribute(Pool);
 	// SCALED AND CLAMPED BEFORE IT IS WRITTEN, the shape of `GainOnOwnKill` above.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCritical),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCritical);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-	RaisePool(AbilitySystem, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 

@@ -267,16 +267,15 @@ float FCataclysmSiphon::FervourOnce(UAbilitySystemComponent* Holder)
 	// stamps no kill clock, so "on its own it does not hold off decay", as Living Harvest says.
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
 	const float Before = Holder->GetNumericAttribute(Pool);
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(Holder, Amount), 0.0f,
-					 Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(Holder, Amount);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
 	// THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES (the Death trees' slice C4b1, 2026-11-25).
-	UCataclysmFervour::RaisePool(Holder, Change);
+	UCataclysmFervour::RaisePool(Holder, Gain);
 	return Holder->GetNumericAttribute(Pool) - Before;
 }
 

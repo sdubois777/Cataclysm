@@ -335,22 +335,27 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		}
 	}
 
+	// THE CLASS RESOURCE THROUGH THE ONE HELPER EVERY GAIN TO IT TAKES, so Kindred Fires and Borrowed Time see a row's
+	// gain (the Death trees' slice C4b1, 2026-11-25), AND the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	// Before the ceiling's refusal below, so a gain to a full bar still reaches it. Nothing below this is about it.
+	if (Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+	{
+		if (Gain > 0.0f)
+		{
+			UCataclysmFervour::RaisePool(&AbilitySystem, Gain);
+		}
+		return;
+	}
+
 	if (Ceiling <= 0.0f || Current >= Ceiling)
 	{
 		return;
 	}
 
+	// EVERY OTHER POOL AS BEFORE.
 	const float Restored = FMath::Min(Gain, Ceiling - Current);
-	// THE CLASS RESOURCE THROUGH THE ONE HELPER EVERY GAIN TO IT TAKES, so Kindred Fires and Borrowed Time see a row's
-	// gain (the Death trees' slice C4b1, 2026-11-25); every other pool as before.
-	if (Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
-	{
-		UCataclysmFervour::RaisePool(&AbilitySystem, Restored);
-	}
-	else
-	{
-		AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive, Restored);
-	}
+	AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive, Restored);
 
 	// AND HEALTH COMING BACK EMPTIES FERVOUR. Issue #954. The Masochist's
 	// starting node states it: "healing removes Fervour at the same rate, 1 per

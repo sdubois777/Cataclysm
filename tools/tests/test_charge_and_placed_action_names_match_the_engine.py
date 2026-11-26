@@ -856,7 +856,8 @@ def test_a_critical_strike_pays_fervour_and_a_minions_does_not() -> None:
     body = fervour[start:fervour.index("\n}\n", start)]
     assert re.search(r"FName\(PerCriticalStrikeStat\), SkillTags, 0\.0f, -1\.0f, "
                      r"FCataclysmBlowContext\(\), -1\.0f, -1\.0f, false, Struck\);", body)
-    assert "RaisePool(AbilitySystem, Change);" in body
+    # THE WHOLE GAIN, since window death3-w1's second pass: `RaisePool` holds it to the bar and Overflow takes the rest.
+    assert "RaisePool(AbilitySystem, Gain);" in body
     assert "ClassResourceGainScaled(AbilitySystem, PerCritical)" in body
     assert "BeginKillPayment" not in body
 

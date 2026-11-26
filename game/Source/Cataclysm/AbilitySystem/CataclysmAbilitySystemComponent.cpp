@@ -5018,18 +5018,18 @@ float UCataclysmAbilitySystemComponent::ReturnFervourDue()
 	{
 		return 0.0f;
 	}
-	// CLAMPED BEFORE IT IS WRITTEN to what may be held, the rule every write to the pool in `UCataclysmFervour`
-	// follows: a share returning to a full bar is lost, as a gain to a full bar is.
+	// HELD TO WHAT MAY BE HELD BY `RaisePool`: a share returning to a full bar is lost, as a gain to a full bar is, and
+	// the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
 	const float Before = GetNumericAttribute(Pool);
-	const float Change = FMath::Clamp(Before + Due, 0.0f, Resource->MaximumClassResourceAsked()) - Before;
-	if (Change <= 0.0f)
+	if (Due <= 0.0f)
 	{
 		return 0.0f;
 	}
 	// A GAIN, THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES, so Kindred Fires and Borrowed Time see it (the Death
 	// trees' slice C4b1, as ruled: Cinders Kept's return is a gain).
-	UCataclysmFervour::RaisePool(this, Change);
+	UCataclysmFervour::RaisePool(this, Due);
 	return GetNumericAttribute(Pool) - Before;
 }
 

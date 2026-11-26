@@ -354,23 +354,18 @@ float FCataclysmWarFervour::GainByRate(UAbilitySystemComponent* AbilitySystem, c
 		return 0.0f;
 	}
 
-	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
-	const float Before = AbilitySystem->GetNumericAttribute(Pool);
-
-	// SCALED BY HOW FAST THE CLASS RESOURCE GENERATES (ruled 2026-10-07), AND CLAMPED BEFORE IT IS WRITTEN, to the most
-	// the pool may hold after its reserves: `UCataclysmFervour::GainForEnemiesHit`'s shape, line for line.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, Rate),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// SCALED BY HOW FAST THE CLASS RESOURCE GENERATES (ruled 2026-10-07), and held by `RaisePool` to the most the pool
+	// may hold after its reserves: `UCataclysmFervour::GainForEnemiesHit`'s shape, line for line.
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, Rate);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
 	// THROUGH `UCataclysmFervour::RaisePool`, the one way a gain reaches the pool, since the Death trees' bundle 3 merge
 	// (obligations 14 and 17): a War gain is a gain that Kindred Fires and Borrowed Time act on, as any other is.
-	return UCataclysmFervour::RaisePool(AbilitySystem, Change);
+	return UCataclysmFervour::RaisePool(AbilitySystem, Gain);
 }
 
 float FCataclysmWarFervour::GainOnHitTaken(UAbilitySystemComponent* AbilitySystem)
