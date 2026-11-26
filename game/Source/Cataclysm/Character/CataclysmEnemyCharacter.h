@@ -2509,7 +2509,8 @@ public:
 	 * modifiers are drawn, so a Death dungeon's Demonic bodies deal Death and draw
 	 * Death and Generic modifiers, as the owner accepted on 2026-11-24 (Q16). A
 	 * dungeon nobody sent, and every place outside a dungeon, leaves this default,
-	 * but a Fallen City's creatures take the run's newest active Cataclysm. The
+	 * but a Fallen City's creatures take the Cataclysm that felled its city (the
+	 * run's newest active one when the city records nobody, bundle 4). The
 	 * Gatekeeper's called Imps copy their Gatekeeper's; the Corrupted Stalker and
 	 * the corrupted double take their build's (ruled 2026-11-25).
 	 *

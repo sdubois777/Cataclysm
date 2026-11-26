@@ -577,8 +577,8 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * The Cataclysm that sent the hit that felled it: a dungeon's timer, a Quest dungeon's timer or a Siege's daily
 	 * share. `None` while it stands, when it was retaken, and for a city felled by something no Cataclysm sent. Set by
 	 * `UCataclysmEmpireRun::CityFell`, which reads it to decide whether the fall was to War. Saved: run record version
-	 * 21, issue #51 slice B4. A Fallen City dungeon can read it; until it does it takes the run's newest active
-	 * Cataclysm (issue #51 slice B3).
+	 * 21, issue #51 slice B4. A Fallen City dungeon's creatures take it (`ACataclysmDungeonGameMode::BindEmpireDungeon`,
+	 * bundle 4), and the run's newest active Cataclysm when it is `None` (issue #51 slice B3).
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmType FellTo = ECataclysmType::None;

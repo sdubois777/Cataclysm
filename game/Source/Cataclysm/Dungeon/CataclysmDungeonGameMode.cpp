@@ -16456,16 +16456,24 @@ void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCatacl
 	// of the Death and War plan, 2026-11-25; the owner accepted it on 2026-11-24 (Q16).
 	//
 	// A FALLEN CITY WAS SENT BY NOBODY, so its record names none (`UCataclysmEmpireRun::AddFallenCityDungeon`), and its
-	// creatures take THE RUN'S NEWEST ACTIVE CATACLYSM, the last the character's draw added: ruled by the coordinating
-	// session on 2026-11-25, which asked first for the Cataclysm of the dungeon whose hit felled the city. Nothing records
-	// that, and recording it is a saved field and a run record version step, so it is left; `docs/DECISIONS.md`,
-	// 2026-11-25. Read from the run at every bind, so a load finds the same one. Any other dungeon nobody sent -- one
+	// creatures take THE CATACLYSM WHOSE HIT FELLED ITS CITY, which the city records (`FCataclysmCity::FellTo`, saved
+	// since run record version 21, issue #51 slice B4): the coordinating session's first ruling of 2026-11-25, wired in
+	// bundle 4 once that field existed. A city that records nobody -- one a version 20 run felled, which the migration
+	// gives `None` -- takes THE RUN'S NEWEST ACTIVE CATACLYSM, the last the character's draw added, the fallback ruled
+	// the same day. Read from the run at every bind, so a load finds the same one. Any other dungeon nobody sent -- one
 	// built by hand in a test -- stays Demonic.
 	DungeonCataclysm = Dungeon.Cataclysm;
-	if (DungeonCataclysm == ECataclysmType::None && Dungeon.Type == ECataclysmDungeonType::FallenCity
-		&& Run.ActiveCataclysms.Num() > 0)
+	if (DungeonCataclysm == ECataclysmType::None && Dungeon.Type == ECataclysmDungeonType::FallenCity)
 	{
-		DungeonCataclysm = Run.ActiveCataclysms.Last();
+		const FCataclysmCity* Felled = Run.Map != nullptr ? Run.Map->Find(Dungeon.CityId) : nullptr;
+		if (Felled != nullptr && Felled->FellTo != ECataclysmType::None)
+		{
+			DungeonCataclysm = Felled->FellTo;
+		}
+		else if (Run.ActiveCataclysms.Num() > 0)
+		{
+			DungeonCataclysm = Run.ActiveCataclysms.Last();
+		}
 	}
 
 	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the

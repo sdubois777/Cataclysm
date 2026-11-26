@@ -834,16 +834,18 @@ bool FCataclysmCreatureCataclysmSoulHarvestTest::RunTest(const FString& Paramete
 }
 
 /**
- * A FALLEN CITY'S CREATURES TAKE THE RUN'S NEWEST ACTIVE CATACLYSM, the last the character's draw added. Ruled by the
- * coordinating session on 2026-11-25, as the fallback for the Cataclysm of the dungeon whose hit felled the city, which
- * nothing records. A Fallen City placed by hand, sent by nobody as the empire makes every one, with the run facing
- * Demonic and then Death: its creatures deal Death.
+ * A FALLEN CITY'S CREATURES TAKE THE CATACLYSM THAT FELLED ITS CITY, which the city records (`FCataclysmCity::FellTo`,
+ * saved since run record version 21). The coordinating session's first ruling of 2026-11-25, wired in bundle 4 once
+ * slice B4 recorded the faller. A Fallen City placed by hand, sent by nobody as the empire makes every one, on a city
+ * that records War, with the run facing Demonic and then Death: its creatures deal War, the faller, and not Death, the
+ * newest active Cataclysm.
  *
- * THE CONTROLS: an ordinary dungeon nobody sent, on the same run, stays Demonic; and the same Fallen City entered again
- * with the run facing Death and then War takes War, the last of the list and not the first.
+ * THE CONTROLS: the same Fallen City with its city recording nobody, as a city felled in a version 20 run does, takes
+ * the run's newest active Cataclysm (Death), the ruled fallback; facing Death and then War it takes War, the last of
+ * the list and not the first; and an ordinary dungeon nobody sent, on the same run, stays Demonic.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreatureCataclysmFallenCityTest,
-	"Cataclysm.CreatureCataclysm.AFallenCitysCreaturesTakeTheRunsNewestActiveCataclysm",
+	"Cataclysm.CreatureCataclysm.AFallenCitysCreaturesTakeTheCataclysmThatFelledItsCity",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCreatureCataclysmFallenCityTest::RunTest(const FString& Parameters)
@@ -873,6 +875,20 @@ bool FCataclysmCreatureCataclysmFallenCityTest::RunTest(const FString& Parameter
 		return false;
 	}
 
+	// THE FALLEN CITY'S OWN CITY, whose record says who felled it.
+	FCataclysmCity* FelledCity = nullptr;
+	for (const FCataclysmDungeon& Standing : Scene.Run->Dungeons)
+	{
+		if (Standing.DungeonId == FallenId)
+		{
+			FelledCity = Scene.Run->Map->FindMutable(Standing.CityId);
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: the Fallen City stands on a city"), FelledCity))
+	{
+		return false;
+	}
+
 	const auto WalkIn = [this, &Scene](int32 DungeonId, FName ReadAs, FCreatureCataclysmFloor& OutFloor,
 									  ECataclysmType& OutSender) -> bool
 	{
@@ -886,20 +902,34 @@ bool FCataclysmCreatureCataclysmFallenCityTest::RunTest(const FString& Parameter
 		return true;
 	};
 
+	// THE FALLER, WAR, WHICH IS NOT THE NEWEST ACTIVE CATACLYSM.
+	FelledCity->FellTo = ECataclysmType::War;
 	FCreatureCataclysmFloor FallenFloor;
 	ECataclysmType FallenSender = ECataclysmType::None;
-	if (!WalkIn(FallenId, FName(TEXT("Death")), FallenFloor, FallenSender))
+	if (!WalkIn(FallenId, FName(TEXT("War")), FallenFloor, FallenSender))
 	{
 		return false;
 	}
-	AddInfo(DescribeCreatureFloor(TEXT("A FALLEN CITY, THE RUN FACING DEMONIC THEN DEATH"), FallenFloor));
-	TestEqual(TEXT("a Fallen City's creatures belong to the run's newest active Cataclysm, Death"),
-			  static_cast<int32>(FallenSender), static_cast<int32>(ECataclysmType::Death));
+	AddInfo(DescribeCreatureFloor(TEXT("A FALLEN CITY FELLED BY WAR, THE RUN FACING DEMONIC THEN DEATH"), FallenFloor));
+	TestEqual(TEXT("a Fallen City's creatures belong to the Cataclysm that felled its city, War"),
+			  static_cast<int32>(FallenSender), static_cast<int32>(ECataclysmType::War));
 	if (!TestTrue(TEXT("CONTROL: the Fallen City's floor holds creatures"), FallenFloor.Creatures > 0))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and every one of them deals Death"), FallenFloor.OfTheType, FallenFloor.Creatures);
+	TestEqual(TEXT("and every one of them deals War"), FallenFloor.OfTheType, FallenFloor.Creatures);
+
+	// A CITY THAT RECORDS NOBODY TAKES THE RUN'S NEWEST ACTIVE CATACLYSM.
+	FelledCity->FellTo = ECataclysmType::None;
+	FCreatureCataclysmFloor UnrecordedFloor;
+	ECataclysmType UnrecordedSender = ECataclysmType::None;
+	if (!WalkIn(FallenId, FName(TEXT("Death")), UnrecordedFloor, UnrecordedSender))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: its city recording nobody, the Fallen City takes the newest active Cataclysm, Death"),
+			  static_cast<int32>(UnrecordedSender), static_cast<int32>(ECataclysmType::Death));
+	TestEqual(TEXT("CONTROL: every one of them deals Death"), UnrecordedFloor.OfTheType, UnrecordedFloor.Creatures);
 
 	// AN ORDINARY DUNGEON NOBODY SENT STAYS DEMONIC.
 	FCreatureCataclysmFloor PlainFloor;
@@ -912,7 +942,7 @@ bool FCataclysmCreatureCataclysmFallenCityTest::RunTest(const FString& Parameter
 			  static_cast<int32>(ECataclysmType::None));
 	TestEqual(TEXT("CONTROL: and its creatures are Demonic"), PlainFloor.OfTheType, PlainFloor.Creatures);
 
-	// THE NEWEST, NOT THE FIRST.
+	// THE NEWEST, NOT THE FIRST, WHEN THE CITY RECORDS NOBODY.
 	Scene.Run->ActiveCataclysms = {ECataclysmType::Death, ECataclysmType::War};
 	FCreatureCataclysmFloor AgainFloor;
 	ECataclysmType AgainSender = ECataclysmType::None;
@@ -920,7 +950,7 @@ bool FCataclysmCreatureCataclysmFallenCityTest::RunTest(const FString& Parameter
 	{
 		return false;
 	}
-	TestEqual(TEXT("CONTROL: facing Death then War, the Fallen City's creatures are War's, the newest"),
+	TestEqual(TEXT("CONTROL: facing Death then War, an unrecorded Fallen City's creatures are War's, the newest"),
 			  static_cast<int32>(AgainSender), static_cast<int32>(ECataclysmType::War));
 	TestEqual(TEXT("CONTROL: every one of them"), AgainFloor.OfTheType, AgainFloor.Creatures);
 	return true;

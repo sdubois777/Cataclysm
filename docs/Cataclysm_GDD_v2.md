@@ -6275,7 +6275,7 @@ The ring behaviour is not scripted. It is what crowd avoidance produces when twe
 
 **A modifier belonging to a different Cataclysm is not a clash**, because that enemy can never roll it. Two Demonic modifiers, Abyssal Aura and Infernal Brand, are also named in the effect table and are therefore closed to Demonic enemies as innate abilities. Nothing else is.
 
-**Since 2026-11-25 the seven Demonic creatures stand in for every Cataclysm's in that Cataclysm's dungeons and draw its column there** (Enemy Modifiers, above), **so a stand-in can roll a modifier of another column, and one clash exists: the Succubus's Dominion grants Commander, and Commander is also War's enemy modifier `War_Commander`.** A War dungeon's Succubus can therefore roll the effect it already gives innately. It does nothing yet, because `War_Commander` is not built; how it is resolved is open and is recorded in `docs/DECISIONS.md` (2026-11-25) for the War enemy modifier slice to settle.
+**Since 2026-11-25 the seven Demonic creatures stand in for every Cataclysm's in that Cataclysm's dungeons and draw its column there** (Enemy Modifiers, above), **so a stand-in can roll a modifier of another column, and one clash exists: the Succubus's Dominion grants Commander, and Commander is also War's enemy modifier `War_Commander`.** A War dungeon's Succubus could therefore have rolled the effect it already gives innately. The War enemy modifier slice closed it in bundle 4, by this subsection's own rule: a creature cannot draw a modifier its innate ability already grants (`UCataclysmEnemyModifiers::ClosedByInnateEffects`), so a War dungeon's Succubus never rolls `War_Commander`.
 
   
 

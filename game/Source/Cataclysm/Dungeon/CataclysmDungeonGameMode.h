@@ -312,8 +312,9 @@ public:
 	 * Death and draw Death and Generic modifiers. `None`, which every floor with no empire dungeon behind it carries,
 	 * leaves each creature Demonic, its class's own type.
 	 *
-	 * A FALLEN CITY, WHICH NOBODY SENT, TAKES THE RUN'S NEWEST ACTIVE CATACLYSM HERE (`BindEmpireDungeon`), ruled by the
-	 * coordinating session on 2026-11-25; its empire record still names nobody.
+	 * A FALLEN CITY, WHICH NOBODY SENT, TAKES THE CATACLYSM THAT FELLED ITS CITY HERE (`BindEmpireDungeon`, reading
+	 * `FCataclysmCity::FellTo`), and the run's newest active Cataclysm when the city records nobody, as a city felled in
+	 * a version 20 run does. Ruled by the coordinating session on 2026-11-25; its empire record still names nobody.
 	 *
 	 * EDITABLE HERE for the reason `DungeonSubType` is: pressing Play in `L_Dungeon` builds a floor with no empire behind
 	 * it, and a floor should be able to be told what it is standing in.

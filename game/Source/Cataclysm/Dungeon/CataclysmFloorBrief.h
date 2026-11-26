@@ -138,8 +138,9 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 *
 	 * `None` LEAVES EVERY CREATURE ITS CLASS'S OWN TYPE, which is Demonic: a dungeon built by hand in a test, and pressing
 	 * Play in `L_Dungeon`. That is every creature the game placed before this field existed. A FALLEN CITY IS SENT BY
-	 * NOBODY (`UCataclysmSurgeScheduler::MakeFallenCityDungeon`) and still carries one here: the run's newest active
-	 * Cataclysm, which `ACataclysmDungeonGameMode::BindEmpireDungeon` gives it, ruled on 2026-11-25.
+	 * NOBODY (`UCataclysmSurgeScheduler::MakeFallenCityDungeon`) and still carries one here: the Cataclysm that felled
+	 * its city (`FCataclysmCity::FellTo`), or the run's newest active one when the city records nobody, which
+	 * `ACataclysmDungeonGameMode::BindEmpireDungeon` gives it, ruled on 2026-11-25 and wired in bundle 4.
 	 *
 	 * NOT SAVED HERE OR ANYWHERE NEW: a resumed walk binds the saved empire dungeon again, and its `Cataclysm` is saved,
 	 * the way `ACataclysmDungeonGameMode::DungeonCityTier` comes back.
