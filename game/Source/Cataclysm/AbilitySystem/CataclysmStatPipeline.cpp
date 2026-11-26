@@ -181,6 +181,7 @@ namespace
 		{ TEXT("minion_death_in_reach_within_seconds"), ECataclysmStatCondition::MinionDeathInReachWithinSeconds },
 		{ TEXT("hit_took_at_least_percent_of_max_health"), ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth },
 		{ TEXT("minion_within_metres_of_you"), ECataclysmStatCondition::MinionWithinMetresOfYou },
+		{ TEXT("minion_has_your_most_maximum_health"), ECataclysmStatCondition::MinionHasYourMostMaximumHealth },
 		{ TEXT("target_marked_by_you"), ECataclysmStatCondition::TargetMarkedByYou },
 		{ TEXT("target_is_your_last_attacker"), ECataclysmStatCondition::TargetIsYourLastAttacker },
 		{ TEXT("dual_wielding"),                ECataclysmStatCondition::DualWielding },
@@ -211,6 +212,7 @@ namespace
 		{ TEXT("carnage_stacks"),      ECataclysmStatScale::PerStackOfCarnage },
 		{ TEXT("debuffs_carried"),     ECataclysmStatScale::PerDebuffCarried },
 		{ TEXT("minions_held"),        ECataclysmStatScale::PerMinionHeld },
+		{ TEXT("minion_kinds_beyond_the_first"), ECataclysmStatScale::PerMinionKindBeyondTheFirst },
 		{ TEXT("enemies_in_siphon"),   ECataclysmStatScale::PerEnemyInSiphon },
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
@@ -436,13 +438,14 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesNecrosis:
 	case ECataclysmStatCondition::TargetMarkedByYou:
 	case ECataclysmStatCondition::TargetIsYourLastAttacker:
+	case ECataclysmStatCondition::MinionHasYourMostMaximumHealth:
 	case ECataclysmStatCondition::DualWielding:
 	case ECataclysmStatCondition::InWrath:
 	case ECataclysmStatCondition::InFrenzy:
 	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
 	case ECataclysmStatCondition::NoRoomForATrap:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the fifty-three says
+		// nothing for a number to be compared against. Each of the fifty-four says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -714,6 +717,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetStruckFromBehind:
 	case C::TargetCarriesNecrosis:
 	case C::MinionWithinMetresOfYou:
+	case C::MinionHasYourMostMaximumHealth:
 	case C::TargetMarkedByYou:
 	case C::TargetIsYourLastAttacker:
 		return EOn::TheBlowOrSkill;
@@ -1652,6 +1656,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::MinionWithinMetresOfYou:
 		return State.AskingMinionMetres >= 0.0f && State.AskingMinionMetres <= Value;
 
+	// FIRST AMONG THE DEAD, the Death line's finishing slice B (2026-11-26): filled only when the caller names the minion.
+	case ECataclysmStatCondition::MinionHasYourMostMaximumHealth:
+		return State.bAskingMinionHasTheMostMaximumHealth;
+
 	// THE HIT BEING ANNOUNCED TOOK AT LEAST THIS SHARE OF MAXIMUM HEALTH. -1, outside the announcement, refuses.
 	case ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth:
 		return State.HitTakenPercentOfMaxHealth >= 0.0f && State.HitTakenPercentOfMaxHealth >= Value;
@@ -2290,6 +2298,10 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	// a Ritualist standing alone.
 	case ECataclysmStatScale::PerMinionHeld:
 		return StackedValue(Modifier, State.MinionsHeld);
+
+	// MOTLEY HOST'S KINDS BEYOND THE FIRST, the Death line's finishing slice B (2026-11-26): a count, as minions held is.
+	case ECataclysmStatScale::PerMinionKindBeyondTheFirst:
+		return StackedValue(Modifier, State.MinionKindsBeyondTheFirst);
 
 	// THE ENEMIES IN THE CHARACTER'S SIPHON. The Death trees' slice C2 (2026-11-25).
 	case ECataclysmStatScale::PerEnemyInSiphon:

@@ -21,6 +21,7 @@
 // For the potion charges a kill adds. Issue #806.
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmRisingCurse.h"
 // For the stack a kill may build. Issue #1004.
 #include "AbilitySystem/CataclysmStacks.h"
@@ -578,6 +579,11 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// and for the same reason, outside the killer's block: the sentence asks who laid the curse. Inert for every
 	// creature no such curse was laid on: a component lookup.
 	UCataclysmRisingCurse::RiseFromDying(this);
+
+	// AND AN ENEMY KILLED BY A NECROMANCER'S ARMY MAY RISE FOR IT: Carrion Host and Harvest of the Host for a permanent
+	// minion's kill, The Restless Dead for any kill of its commander's side (the Death line's finishing slice B,
+	// 2026-11-26). Beside the curses' rises, outside the killer's block, reading the last blow itself.
+	UCataclysmNecromancerArmy::EnemyDied(this);
 
 	// WHAT DYING LOOKS LIKE, AND HOW LONG THE BODY IS KEPT FOR IT. Before
 	// issue #522 a creature played nothing and was gone within a frame.

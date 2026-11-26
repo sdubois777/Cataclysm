@@ -21,6 +21,7 @@
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 // For the share of a blow on an ally that each wearer beside it takes. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 // For the share of a point-blank skill's blow struck at an ally inside its area. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
@@ -663,6 +664,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					UCataclysmSkillEffects::ApplyDirectDamage(Interposer, Guard, Hit.Damage, Taken);
 					Hit.Damage = 0.0f;
 				}
+
+				// SHARED FLESH, the Necromancer's Third Rite's second option: "Damage you take is split evenly between you
+				// and your minions." After Interpose, which takes a whole hit or none; each minion's part is sent to it
+				// and meets its own defences, and the defender keeps its own part (the Death line's finishing slice B,
+				// 2026-11-26). The hit as sent, before the defender's evasion and mitigation, as Interpose's is.
+				Hit.Damage = UCataclysmNecromancerArmy::SplitWithMinions(
+					GetOwningAbilitySystemComponent(), Interposer, Hit.Damage, Hit.bIsDamageOverTime);
 			}
 
 			// AND WHETHER THE ATTACKER'S MODIFIERS SAY IT CANNOT BE DODGED. The
@@ -3517,6 +3525,10 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 			{
 				Commanders->NoteMinionDied(Character, AsMinion ? AsMinion->TypeTags : UCataclysmCommand::ThrallMinionTags());
 			}
+
+			// AND THE NECROMANCER'S RISES FROM A FOLLOWER'S DEATH: Second Death's husk and Will Not Stay Down's return,
+			// while the body still stands where it fell (the Death line's finishing slice B, 2026-11-26).
+			UCataclysmNecromancerArmy::FollowerDied(Character, Commander);
 		}
 	}
 

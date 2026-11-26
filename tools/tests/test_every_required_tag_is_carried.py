@@ -63,6 +63,10 @@ ENGINE_GRANTED = {
     "Use.SpentFervour": (
         "AbilitySystem/CataclysmSkillTemplate.cpp",
         "UCataclysmSkillTemplate::SpentFervourTag, put on a use's tags by MarkTheUseAsSpendingFervour"),
+    "Minion.Permanent": (
+        "AbilitySystem/CataclysmNecromancerArmy.cpp",
+        "a permanent minion's tag, added by UCataclysmNecromancerArmy::MakePermanent and to every thrall's tags by "
+        "UCataclysmCommand::ThrallMinionTags (the Death line's finishing slice B, 2026-11-26)"),
 }
 
 

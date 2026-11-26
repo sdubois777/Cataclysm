@@ -857,15 +857,11 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 899 ON 2026-11-26: the Bulwark's Fervour for a kill, on its starting node
 #: (`tools/reapply_war_bulwark_kill_fervour_workbook.py`, the final bundle).
-#:
-#: AND TO 969 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows
-#: (`tools/reapply_death_finish_c_workbook.py`: the Charnel limb, Living Bombs and The Horde Ascendant), slice E's
-#: six (`tools/reapply_death_finish_e_shadow_workbook.py`: Afterimage, Shadow Clone, Shadow Step, Flurry of the Dead
-#: and Ever Moving), slice D's 32 (`tools/reapply_death_remains_workbook.py`: the Ossuary, Many Made One, the
-#: Abomination and the Bone Colossus) and slice A's ten (`tools/reapply_death_finish_soul_collector_workbook.py`:
-#: Soul Fuel, Deeper Draw, Pyre, Soul Shatter, Final Rites and Spirit Volley), on 899. Moved again as each slice
-#: joins the bundle.
-AUTHORED_ROWS = 969
+#: AND TO 998 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE, every slice: C's 22 rows
+#: (`tools/reapply_death_finish_c_workbook.py`), E's six (`tools/reapply_death_finish_e_shadow_workbook.py`), D's 32
+#: (`tools/reapply_death_remains_workbook.py`), A's ten (`tools/reapply_death_finish_soul_collector_workbook.py`) and
+#: B's 29 (`tools/reapply_death_finish_b_workbook.py`), on 899.
+AUTHORED_ROWS = 998
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1399,10 +1395,9 @@ AUTHORED_ROWS = 969
 #:
 #: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
 #: the War line's 323 less the 226 both had.
-#: AND TO 527 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's ten Charnel nodes, slice E's Ever
-#: Moving, slice D's thirteen Ossuary nodes and Many Made One, and slice A's five Soul Collector nodes, on 497.
-#: Their vow options are on capstones already counted.
-AUTHORED_NODES = 527
+#: AND TO 543 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE, every slice: C's ten Charnel nodes, E's Ever
+#: Moving, D's thirteen Ossuary nodes and Many Made One, A's five Soul Collector nodes and B's sixteen, on 497.
+AUTHORED_NODES = 543
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1566,10 +1561,9 @@ AUTHORED_NODES = 527
 #: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
 #: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
 #: War line's 72 less the 36 both had.
-#: AND TO 104 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's Living Bombs and The Horde Ascendant,
-#: slice E's Afterimage, Shadow Clone, Shadow Step and Flurry of the Dead, slice D's Abomination and Bone Colossus,
-#: and slice A's one, on 95.
-AUTHORED_OPTIONS = 104
+#: AND TO 108 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE, every slice: C's two, E's four, D's two, A's
+#: one and B's four, on 95.
+AUTHORED_OPTIONS = 108
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2208,12 +2202,20 @@ CONDITION_WORDS = {
     "minion_death_in_reach_within_seconds": ("after one of your minions dies within", "{value:g} second"),
     "hit_took_at_least_percent_of_max_health": ("when a hit takes more than", "{value:g}% of your maximum health"),
     # AND MARSHAL'S "Your minions within 10 metres of you".
-    "minion_within_metres_of_you": ("your minions within", "{value:g} metres of you"),
+    # AND CALLED TO HEEL'S "while they are within 8 metres of you" (the Death
+    # line's finishing slice B, 2026-11-26).
+    "minion_within_metres_of_you": (("your minions within", "while they are within"), "{value:g} metres of you"),
     # AND THE SHADOW'S DEATHMARK'S "The strongest enemy within 15 metres is
     # marked. It takes 30% more damage from you" (the Death trees' slice C6e).
     "target_marked_by_you": ("is marked", None),
     # AND GUARD THE MASTER'S "the last enemy that hit you ... to it".
     "target_is_your_last_attacker": ("the last enemy that hit you", None),
+    # AND FIRST AMONG THE DEAD'S "Your permanent minion with the most maximum
+    # health" (the Death line's finishing slice B, 2026-11-26).
+    "minion_has_your_most_maximum_health": ("your permanent minion with the most maximum health", None),
+    # AND LICH FORM'S "Each time your Fervour reaches its maximum, for 10 seconds"
+    # (the same slice), the first passive row on the clock the enchantments read.
+    "seconds_after_resource_full": ("reaches its maximum", "for {value:g} seconds"),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"
@@ -2612,6 +2614,16 @@ SCALE_WORDS = {
     # "for every 5 minions you have" and "while you have 10 or more minions",
     # the second a step of 10 capped at one step. A step of 1 is still written
     # "each minion", and "alive" is said beside "you have".
+    # MOTLEY HOST'S "for each kind of minion you have beyond the first" (the
+    # Death line's finishing slice B, 2026-11-26): "each", so a step of 1.
+    "minion_kinds_beyond_the_first": (("for each kind of minion you have beyond the first",), None, None),
+    # AND OLD BONES' "for every full 30 seconds it has stood, up to 4 times", the
+    # first passive row on `minion_seconds_active` (the same slice). AND SLICE C'S
+    # SWOLLEN, "for each full second it has stood": the bundle (2026-11-26) gave
+    # both slices' entries one key, since a later duplicate replaced the earlier
+    # and failed Old Bones. A step of 30 is stated in digits, a step of 1 in words.
+    "minion_seconds_active": ((("seconds it has stood", "second it has stood"),),
+                              "every full {value:g} seconds", "for each full second"),
     "minions_held": (("minion", ("you have", "alive")),
                      ("for every {value:g} minions", "{value:g} or more minions"),
                      "each minion"),
@@ -2777,10 +2789,10 @@ SCALE_WORDS = {
     # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's
     # damage by the minion going off. Close Packed's "for each other minion of
     # yours within 3 metres of it" (the reach is the row's Reach Metres) and
-    # Swollen's "for each full second it has stood". Each says "for each", so the
-    # step is 1; each cap is the row's Scale Max Steps ("up to 5").
+    # Swollen's "for each full second it has stood", whose entry is slice B's
+    # `minion_seconds_active` above. Each says "for each", so the step is 1; each
+    # cap is the row's Scale Max Steps ("up to 5").
     "minions_near_the_minion": (("for each other minion of yours within",), None, None),
-    "minion_seconds_active": (("for each full second it has stood",), None, None),
 }
 
 
@@ -3016,6 +3028,10 @@ VALUE_FORMS = {
     "remains_raise_reach_metres": ("{value:g} metre per point",),
     # AND MANY MADE ONE, the same slice: "each point takes 2 off the percentage".
     "abomination_kill_percent_less": ("takes {value:g} off the percentage",),
+    # THE NECROMANCER'S ARMY, the Death line's finishing slice B (2026-11-26): Bone
+    # Lord's "raise 2 more permanent minions" and Lich Form's husks "for 10 seconds".
+    "summon_raises_more_permanent_minions": ("raise {value:g} more permanent minions",),
+    "skills_raise_husks_seconds_after_resource_full": ("for {value:g} seconds",),
     # OVERFLOW'S WINDOW, the Death trees' slice C6c (2026-11-25): "becomes 5
     # seconds of attack speed".
     "fervour_overflow_attack_speed_seconds": ("{value:g} seconds of attack speed",),
@@ -3940,6 +3956,22 @@ VALUE_IN_WORDS = {
     # you", a flag of one a point.
     ("Shadow_keystone_a_kA", "crit_multiplier_increases_to_poison_and_bleed_percent"): ("at half their value", 50.0),
     ("Necromancer_basic_gr_c1", "minions_turn_on_your_last_attacker"): ("your minions turn on the last enemy", 1.0),
+    # THE NECROMANCER'S ARMY, the Death line's finishing slice B (2026-11-26): four
+    # flags of one, each by the clause that carries its rule; Harvest of the Host's
+    # "Every enemy" is a chance of 100; and Lone Revenant's flag for the Abomination,
+    # by the clause the Abomination's own sentence reads ("400% more health and damage").
+    ("Necromancer_keystone_spine_001", "minion_death_rises_as_husk"): ("it rises where it fell as a husk", 1.0),
+    ("Necromancer_keystone_spine_003", "permanent_minion_kill_rises_as_husk_chance"):
+        ("every enemy your permanent minions kill rises", 100.0),
+    ("Necromancer_capstone_50", "movement_swaps_with_minion"): ("can swap places with any of your minions", 1.0),
+    ("Necromancer_capstone_100", "damage_taken_split_with_minions"):
+        ("split evenly between you and your minions", 1.0),
+    ("Necromancer_keystone_lg_kA", "lone_revenant_held"): ("400% more health and damage", 1.0),
+    # AND THE RESTLESS DEAD'S "have a chance", WHICH STATES NO FIGURE: 20, a
+    # judgement of the same slice, recorded in its DECISIONS entry and its re-apply
+    # script (`RESTLESS_DEAD_CHANCE`). This entry holds the clause and the figure
+    # together so a change to either is seen.
+    ("Necromancer_capstone_25", "kill_rises_as_skeleton_chance"): ("have a chance to rise on their own", 20.0),
     # AND DEATHMARK'S "each critical strike on it gives 5 Fervour", worded
     # differently from the forms `fervour_per_critical_strike` takes.
     ("Shadow_keystone_b_kB", "fervour_per_critical_strike"): ("each critical strike on it gives 5 fervour", 5.0),

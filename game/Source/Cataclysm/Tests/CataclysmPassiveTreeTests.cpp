@@ -3605,6 +3605,9 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_marked_by_you")
 			// AND GUARD THE MASTER'S "the last enemy that hit you", the same slice: a state.
 			|| Name == TEXT("target_is_your_last_attacker")
+			// AND FIRST AMONG THE DEAD'S "your permanent minion with the most maximum health", the Death line's finishing
+			// slice B (2026-11-26): a state of the minion asking.
+			|| Name == TEXT("minion_has_your_most_maximum_health")
 			// THE BERSERKER'S STATES, 2026-11-25: "DUAL WIELD ONLY", "WHILE IN WRATH" AND "WHILE IN FRENZY". Each names
 			// a state, so each compares nothing.
 			|| Name == TEXT("dual_wielding")

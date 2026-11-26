@@ -26,7 +26,8 @@ CALL = "UCataclysmMovement::NoteRelocatedInstantly("
 
 #: (file under game/Source/Cataclysm, the function's signature as it opens, how many calls it makes)
 SITES = (
-    ("AbilitySystem/CataclysmSkillTemplates.cpp", "void UCataclysmMovementSkill::ActivateAbility(", 2),
+    # AND A THIRD SINCE GRAVE SWAP (the Death line's finishing slice B, 2026-11-26): the minion it trades with.
+    ("AbilitySystem/CataclysmSkillTemplates.cpp", "void UCataclysmMovementSkill::ActivateAbility(", 3),
     ("AbilitySystem/CataclysmSkillTemplates.cpp", "void UCataclysmMovementSkill::FlickerOnce(", 1),
     ("Character/CataclysmEnemyModifiers.cpp", "bool UCataclysmEnemyModifiers::PhaseStep(", 1),
     ("Dungeon/CataclysmDungeonGameMode.cpp", "int32 ACataclysmDungeonGameMode::BringFollowersTo(", 1),
@@ -111,7 +112,7 @@ def test_twelve_calls_in_all_and_none_elsewhere():
     """THE CONTROL ON THE LIST: every library call in the game is one of the twelve, so a new relocation that
     announces itself is added here, and the count above is not satisfied by calls this file does not name."""
     listed = sum(expected for _, _, expected in SITES)
-    assert listed == 11
+    assert listed == 12
     found = 0
     for path in SOURCE.rglob("*.cpp"):
         if "Tests" in path.parts or path.name == "CataclysmMovement.cpp":

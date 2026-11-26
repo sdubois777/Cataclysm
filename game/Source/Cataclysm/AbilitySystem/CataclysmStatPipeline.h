@@ -2228,6 +2228,17 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	ClassResourceAtOrBelowPercent
 		UMETA(DisplayName = "Class Resource At Or Below Percent"),
+
+	/**
+	 * The minion whose figure is being asked is its commander's permanent minion with the most maximum health: First
+	 * Among the Dead, "Your permanent minion with the most maximum health has +4% increased damage and +4% increased
+	 * health per point". The Death line's finishing slice B (2026-11-26). Read from
+	 * `bAskingMinionHasTheMostMaximumHealth`, which `UCataclysmNecromancerArmy::FillAskingMinionState` fills when the
+	 * caller names the minion -- its blow, its explosion, the damage it takes and its live health -- and false, which
+	 * refuses, otherwise. IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	MinionHasYourMostMaximumHealth
+		UMETA(DisplayName = "Minion Has Your Most Maximum Health"),
 };
 
 /**
@@ -3144,6 +3155,15 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerOwnRemainsInReach
 		UMETA(DisplayName = "Per Own Remains In Reach"),
+
+	/**
+	 * `Value` per kind of minion the character commands beyond the first: Motley Host, "+2% increased Minion Damage per
+	 * point for each kind of minion you have beyond the first". The Death line's finishing slice B (2026-11-26). Read from
+	 * `FCataclysmStatConditions::MinionKindsBeyondTheFirst`, which `CurrentConditions` counts from the same list as
+	 * `MinionsHeld` through `UCataclysmNecromancerArmy::KindsBeyondTheFirst`.
+	 */
+	PerMinionKindBeyondTheFirst
+		UMETA(DisplayName = "Per Minion Kind Beyond The First"),
 };
 
 /**
@@ -3509,6 +3529,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> OtherMinionMetresFromAskingMinion;
+
+	/**
+	 * Whether the minion whose figure is being asked is its commander's permanent minion with the most maximum health.
+	 * The Death line's finishing slice B (2026-11-26). See `MinionHasYourMostMaximumHealth`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bAskingMinionHasTheMostMaximumHealth = false;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
@@ -3884,6 +3911,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * default is 0 and not the -1 the readings above use to mean "not asked".
 	 */
 	int32 MinionsHeld = 0;
+
+	/**
+	 * How many kinds of minion those are, beyond the first. The Death line's finishing slice B (2026-11-26). See
+	 * `PerMinionKindBeyondTheFirst`. A count, so nought for a character commanding one kind or none.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 MinionKindsBeyondTheFirst = 0;
 
 	/**
 	 * How many of those are deployable machines. Issue #1833, deployable Part 3.
@@ -6192,7 +6226,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-fifteenth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-sixteenth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -6209,7 +6243,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FIFTY-THREE OF THE HUNDRED-AND-FOURTEEN COMPARE NOTHING. They are the case labels
+	 * FIFTY-FOUR OF THE HUNDRED-AND-FIFTEEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

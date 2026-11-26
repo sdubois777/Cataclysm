@@ -234,6 +234,10 @@ HOOKS = {
                 "a creature dying under a rising curse -- Death Rattle's -- "
                 "rising as the kind its row names for whoever laid it, issue "
                 "#2885 (the Death draft's N5)",
+            "UCataclysmNecromancerArmy::EnemyDied":
+                "an enemy a Necromancer's army killed rising as a husk (Carrion "
+                "Host, Harvest of the Host) or a weak skeleton (The Restless "
+                "Dead) for it, the Death line's finishing slice B, 2026-11-26",
             "FCataclysmHitLog::CreatureDeathLine":
                 "the log line saying the creature died, with its health and who "
                 "struck it last, so a play session's log shows a death among the "

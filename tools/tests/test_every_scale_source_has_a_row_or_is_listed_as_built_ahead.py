@@ -218,7 +218,10 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 50 WHEN SLICE D JOINED THE DEATH FINISH BUNDLE (2026-11-26): `remains_in_reach`, Mantle of Bone's armour for each
 #: of your own remains within 6 metres.
-EXPECTED_NAMED_BY_A_ROW = 50
+#:
+#: AND 51 WHEN SLICE B JOINED THE DEATH FINISH BUNDLE (2026-11-26): `minion_kinds_beyond_the_first`, the
+#: Necromancer's Motley Host.
+EXPECTED_NAMED_BY_A_ROW = 51
 
 
 def scales_named_by_a_row() -> set[str]:
