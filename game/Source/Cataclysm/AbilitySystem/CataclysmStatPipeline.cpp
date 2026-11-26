@@ -214,6 +214,7 @@ namespace
 		{ TEXT("enemies_in_siphon"),   ECataclysmStatScale::PerEnemyInSiphon },
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
+		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
 		{ TEXT("damage_reduction"),    ECataclysmStatScale::PerPercentOfDamageReduction },
 		{ TEXT("max_mana"),            ECataclysmStatScale::PerPointOfMaximumMana },
@@ -2323,6 +2324,11 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerCrippledEnemyInReach:
 		return StackedValue(Modifier,
 							CrippledEnemiesInReach(State, Modifier.ReachMetres));
+
+	// AND PER REMAINS OF THE CHARACTER'S OWN, THE SAME ARITHMETIC ON ITS OWN LIST: Mantle of Bone, the Death finish's
+	// slice D (2026-11-26). `StackedValue` holds the row's "up to 10" through `ScaleMaxSteps`.
+	case ECataclysmStatScale::PerOwnRemainsInReach:
+		return StackedValue(Modifier, CountWithin(State.OwnRemainsDistancesMetres, Modifier.ReachMetres));
 
 	// AND PER ENEMY STRUCK BEYOND THE FIRST. Issue #1515. One enemy struck is
 	// worth nothing, and an unknown count of -1 is worth nothing too: both

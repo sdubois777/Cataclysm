@@ -28,6 +28,8 @@
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmBoneGiants.h"
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
@@ -15429,6 +15431,268 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and 1.5 with one stack, so it is asked with the summoner's state"), After, 1.5f, 0.0001f);
 	}
 
+	/**
+	 * THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26): each of its thirteen stats, read by
+	 * `UCataclysmRemains` or `UCataclysmBoneGiants` off a swinger with no tags. EACH CONTROL IS THE SAME CALL BEFORE THE
+	 * STAT IS GRANTED. A dead Imp of the swinger's stands in for a dead creature where only its figures are read; the
+	 * Abomination's two and Plague Pit's need a Common creature of the monsters' side. Rolls are pinned at nought, so a
+	 * chance above nought succeeds. What each does in play is `Cataclysm.Remains.`'s.
+	 */
+	void ProbeRemains(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT
+		{
+			UCataclysmRemains::PinnedRollForTests = -1.0f;
+			World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		};
+		UCataclysmRemains::PinnedRollForTests = 0.0f;
+
+		FScopedSwinger Holder(World, FVector::ZeroVector);
+		Holder.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 200.0f);
+		ACataclysmMinion* Dead = ImpToldItsExplosion(Test, Holder.Actor, FVector(0.5f * M, 0, 0));
+		if (!Dead)
+		{
+			return;
+		}
+		const FVector Near(0.5f * M, 0, 0);
+		const auto Remains = [&Holder, Dead, &Near]()
+		{
+			return UCataclysmRemains::LeaveFor(Holder.Actor, Dead, Near, /*bEvenWithoutTheFlag=*/true);
+		};
+		const auto RemainsIn = [World]()
+		{
+			int32 Count = 0;
+			for (TActorIterator<ACataclysmRemainsMarker> It(World); It; ++It)
+			{
+				Count += IsValid(*It) ? 1 : 0;
+			}
+			return Count;
+		};
+
+		switch (Which)
+		{
+		case 0:
+		{
+			const bool bPlain = UCataclysmRemains::LeaveFor(Holder.Actor, Dead, Near) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmRemains::RemainsLeftStat, 1.0f);
+			const bool bWith = UCataclysmRemains::LeaveFor(Holder.Actor, Dead, Near) != nullptr;
+			Test.TestFalse(TEXT("remains_left: control, without it no remains are left"), bPlain);
+			Test.TestTrue(TEXT("and with it remains are left, so UCataclysmRemains::LeaveFor really reads it"), bWith);
+			return;
+		}
+		case 1:
+		{
+			Remains();
+			const bool bPlain = UCataclysmRemains::ChooseToRaiseOn(Holder.Actor, FVector::ZeroVector) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmRemains::RaiseReachMetresStat, 1.0f);
+			const bool bWith = UCataclysmRemains::ChooseToRaiseOn(Holder.Actor, FVector::ZeroVector) != nullptr;
+			Test.TestFalse(TEXT("remains_raise_reach_metres: control, without it nothing is raised on remains"), bPlain);
+			Test.TestTrue(TEXT("and with 1 metre the remains half a metre off are chosen, so ChooseToRaiseOn reads it"),
+						  bWith);
+			return;
+		}
+		case 2:
+		{
+			const float Plain = UCataclysmRemains::ReserveOnRemains(Holder.Actor, 10.0f);
+			GrantFlat(Holder.Actor, UCataclysmRemains::ReservePercentLessStat, 40.0f);
+			const float With = UCataclysmRemains::ReserveOnRemains(Holder.Actor, 10.0f);
+			Test.TestEqual(TEXT("minion_on_remains_reserve_percent_less: control, 10 stays 10"), Plain, 10.0f, 0.001f);
+			Test.TestEqual(TEXT("and 40 less makes it 6, so ReserveOnRemains really reads it"), With, 6.0f, 0.001f);
+			return;
+		}
+		case 3:
+		{
+			ACataclysmMinion* Raised = ImpToldItsExplosion(Test, Holder.Actor, FVector(0, 2 * M, 0));
+			ACataclysmMinion* Again = ImpToldItsExplosion(Test, Holder.Actor, FVector(0, -2 * M, 0));
+			ACataclysmRemainsMarker* First = Remains();
+			if (!Raised || !Again || !Test.TestNotNull(TEXT("set-up: remains"), First))
+			{
+				return;
+			}
+			const bool bPlainConsumed = UCataclysmRemains::RaiseOn(Holder.Actor, Raised, First);
+			ACataclysmRemainsMarker* Second = Remains();
+			GrantFlat(Holder.Actor, UCataclysmRemains::KeptOnRaiseChanceStat, 50.0f);
+			const bool bWithConsumed = UCataclysmRemains::RaiseOn(Holder.Actor, Again, Second);
+			Test.TestTrue(TEXT("remains_kept_on_raise_chance: control, without it a raise consumes the remains"),
+						  bPlainConsumed);
+			Test.TestFalse(TEXT("and with it (roll pinned at nought) they are kept, so RaiseOn really reads it"),
+						   bWithConsumed);
+			return;
+		}
+		case 4:
+		{
+			Remains();
+			const int32 Plain = UCataclysmRemains::DetonateWhere(Holder.Actor, [](const AActor&) { return true; });
+			GrantFlat(Holder.Actor, UCataclysmRemains::DetonateStat, 1.0f);
+			const int32 With = UCataclysmRemains::DetonateWhere(Holder.Actor, [](const AActor&) { return true; });
+			Test.TestEqual(TEXT("weapon_skills_detonate_remains: control, without it nothing is detonated"), Plain, 0);
+			Test.TestEqual(TEXT("and with it the remains are, so DetonateWhere really reads it"), With, 1);
+			return;
+		}
+		case 5:
+		case 6:
+		{
+			ACataclysmRemainsMarker* Left = Remains();
+			if (!Test.TestNotNull(TEXT("set-up: remains"), Left))
+			{
+				return;
+			}
+			Left->MaximumHealth = 1000.0f;
+			Left->Ailments.AddDefaulted(2);
+			if (Which == 5)
+			{
+				const float Plain = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+				GrantFlat(Holder.Actor, UCataclysmRemains::DetonationPercentStat, 3.0f);
+				const float With = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+				Test.TestEqual(TEXT("remains_detonation_percent_of_maximum_health: control, nought"), Plain, 0.0f, 0.001f);
+				Test.TestEqual(TEXT("and 3% of 1,000 with it, so DetonationDamage really reads it"), With, 30.0f, 0.001f);
+				return;
+			}
+			GrantFlat(Holder.Actor, UCataclysmRemains::DetonationPercentStat, 3.0f);
+			const float Plain = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+			GrantFlats(Holder.Actor, {{FName(UCataclysmRemains::DetonationPercentStat), 3.0f},
+									  {FName(UCataclysmRemains::IncreasedPerAilmentStat), 10.0f}});
+			const float With = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+			Test.TestEqual(TEXT("remains_detonation_increased_per_ailment: control, 30"), Plain, 30.0f, 0.001f);
+			Test.TestEqual(TEXT("and 20% more for two ailments at 10 each, 36, so DetonationDamage really reads it"),
+						   With, 36.0f, 0.001f);
+			return;
+		}
+		case 7:
+		{
+			ACataclysmEnemyCharacter* Enemy =
+				World->SpawnActor<ACataclysmEnemyCharacter>(FVector(1.5f * M, 0, 0), FRotator::ZeroRotator);
+			const FGameplayTag Necrosis =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false);
+			if (!Test.TestNotNull(TEXT("set-up: a creature"), Enemy) || !Test.TestTrue(TEXT("set-up: the tag"),
+																					  Necrosis.IsValid()))
+			{
+				return;
+			}
+			const auto Carries = [Enemy, &Necrosis]()
+			{
+				const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Enemy);
+				return Its && Its->HasMatchingGameplayTag(Necrosis);
+			};
+			const auto WithNecrosis = [&Remains, &Necrosis]()
+			{
+				ACataclysmRemainsMarker* Left = Remains();
+				if (Left)
+				{
+					Left->MaximumHealth = 100.0f;
+					FCataclysmRemainsAilment& Held = Left->Ailments.AddDefaulted_GetRef();
+					Held.Ailment = TEXT("Necrosis");
+					Held.Tag = Necrosis;
+					Held.DamagePerSecond = 1.0f;
+					Held.SecondsLeft = 5.0f;
+				}
+				return Left;
+			};
+			GrantFlat(Holder.Actor, UCataclysmRemains::DetonationPercentStat, 1.0f);
+			UCataclysmRemains::Detonate(Holder.Actor, WithNecrosis());
+			const bool bPlain = Carries();
+			GrantFlats(Holder.Actor, {{FName(UCataclysmRemains::DetonationPercentStat), 1.0f},
+									  {FName(UCataclysmRemains::PassAilmentsStat), 1.0f}});
+			UCataclysmRemains::Detonate(Holder.Actor, WithNecrosis());
+			Test.TestFalse(TEXT("detonated_remains_pass_ailments: control, without it the creature takes no Necrosis"),
+						   bPlain);
+			Test.TestTrue(TEXT("and with it the Necrosis the remains held is passed on, so Detonate really reads it"),
+						  Carries());
+			return;
+		}
+		case 8:
+		{
+			ACataclysmRemainsMarker* Plain = Remains();
+			UCataclysmAbilitySystemComponent* System = Holder.AbilitySystem;
+			FCataclysmStatModifier Longer;
+			Longer.Bucket = ECataclysmStatBucket::Increased;
+			Longer.Source = ECataclysmModifierSource::PassiveKeystone;
+			Longer.Value = 100.0f;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(UCataclysmRemains::RemainsDurationStat)).Modifiers = {Longer};
+			System->SetStatInputs(MoveTemp(Inputs));
+			ACataclysmRemainsMarker* With = Remains();
+			if (!Test.TestNotNull(TEXT("set-up: remains"), Plain) || !Test.TestNotNull(TEXT("set-up: remains"), With))
+			{
+				return;
+			}
+			Test.TestEqual(TEXT("remains_duration: control, 10 seconds"), Plain->GetLifeSpan(), 10.0f, 0.01f);
+			Test.TestEqual(TEXT("and 100% increased makes 20, so LeaveFor really reads it"), With->GetLifeSpan(), 20.0f,
+						   0.01f);
+			return;
+		}
+		case 9:
+		{
+			const bool bPlain = UCataclysmRemains::LeaveForAFollower(Holder.Actor, Dead, Near) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmRemains::FollowerLeavesChanceStat, 6.0f);
+			const bool bWith = UCataclysmRemains::LeaveForAFollower(Holder.Actor, Dead, Near) != nullptr;
+			Test.TestFalse(TEXT("minion_leaves_remains_chance: control, without it a follower leaves none"), bPlain);
+			Test.TestTrue(TEXT("and with it (roll pinned at nought) one is left, so LeaveForAFollower reads it"), bWith);
+			return;
+		}
+		case 10:
+		case 11:
+		{
+			TArray<ACataclysmEnemyCharacter*> Started;
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+					FVector(3 * M, (Index - 2) * 2 * M, 0), FRotator::ZeroRotator);
+				if (!Test.TestNotNull(TEXT("set-up: a creature"), Creature))
+				{
+					return;
+				}
+				UCataclysmBoneGiants::NoteStartedWith(Creature);
+				Started.Add(Creature);
+			}
+			if (Which == 11)
+			{
+				const int32 Plain = UCataclysmBoneGiants::KillsNeededFor(Holder.Actor);
+				GrantFlat(Holder.Actor, UCataclysmBoneGiants::AbominationKillPercentLessStat, 25.0f);
+				const int32 With = UCataclysmBoneGiants::KillsNeededFor(Holder.Actor);
+				Test.TestEqual(TEXT("abomination_kill_percent_less: control, half of 4 is 2"), Plain, 2);
+				Test.TestEqual(TEXT("and 25% of 4 is 1 with 25 less, so KillsNeededFor really reads it"), With, 1);
+				return;
+			}
+			const auto Kill = [&Holder](AActor* Victim)
+			{
+				FCataclysmDeathNotice Notice;
+				Notice.Victim = Victim;
+				Notice.Killer = Holder.Actor;
+				Notice.Location = Victim->GetActorLocation();
+				UCataclysmBoneGiants::NoteDeath(Holder.Actor, Notice);
+			};
+			Kill(Started[0]);
+			Kill(Started[1]);
+			const bool bPlain = UCataclysmBoneGiants::AbominationOf(Holder.Actor) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmBoneGiants::AbominationRisesStat, 1.0f);
+			Kill(Started[2]);
+			Test.TestFalse(TEXT("abomination_rises: control, without it half the floor killed raises nothing"), bPlain);
+			Test.TestNotNull(TEXT("and with it the next kill raises the Abomination, so NoteDeath really reads it"),
+							 UCataclysmBoneGiants::AbominationOf(Holder.Actor));
+			return;
+		}
+		default:
+		{
+			UCataclysmBoneGiants::RemainsLanded(Holder.Actor, Remains());
+			const bool bPlain = UCataclysmBoneGiants::ColossusOf(Holder.Actor) != nullptr;
+			const int32 LeftPlain = RemainsIn();
+			GrantFlat(Holder.Actor, UCataclysmBoneGiants::BoneColossusStat, 1.0f);
+			UCataclysmBoneGiants::RemainsLanded(Holder.Actor, Remains());
+			Test.TestFalse(TEXT("bone_colossus: control, without it remains raise no Colossus"), bPlain);
+			Test.TestEqual(TEXT("control: and the remains stay"), LeftPlain, 1);
+			Test.TestNotNull(TEXT("and with it the remains raise one, so RemainsLanded really reads it"),
+							 UCataclysmBoneGiants::ColossusOf(Holder.Actor));
+			return;
+		}
+		}
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -15833,6 +16097,21 @@ namespace CataclysmStatExemptionTest
 			{TEXT("movement_targets_an_enemy_within_metres"), &ProbeShadowStep},
 			{TEXT("hits_strike_again"), [](FAutomationTestBase& Test) { ProbeHitsStrikeAgain(Test, false); }},
 			{TEXT("evasion_against_area_percent"), &ProbeEvasionAgainstArea},
+			// THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26).
+			{TEXT("remains_left"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 0); }},
+			{TEXT("remains_raise_reach_metres"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 1); }},
+			{TEXT("minion_on_remains_reserve_percent_less"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 2); }},
+			{TEXT("remains_kept_on_raise_chance"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 3); }},
+			{TEXT("weapon_skills_detonate_remains"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 4); }},
+			{TEXT("remains_detonation_percent_of_maximum_health"),
+			 [](FAutomationTestBase& Test) { ProbeRemains(Test, 5); }},
+			{TEXT("remains_detonation_increased_per_ailment"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 6); }},
+			{TEXT("detonated_remains_pass_ailments"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 7); }},
+			{TEXT("remains_duration"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 8); }},
+			{TEXT("minion_leaves_remains_chance"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 9); }},
+			{TEXT("abomination_rises"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 10); }},
+			{TEXT("abomination_kill_percent_less"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 11); }},
+			{TEXT("bone_colossus"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 12); }},
 		};
 		return Made;
 	}

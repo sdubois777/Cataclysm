@@ -215,7 +215,10 @@ KNOWN_USED = "debuffs_carried"
 #: AND 49 WHEN `minions_near_the_minion` WAS ADDED WITH ITS ROW, 2026-11-26, for
 #: the Necromancer's Close Packed (the finishing of the Death Cataclysm, slice
 #: C). Swollen's `minion_seconds_active` was already named by two enchantment rows.
-EXPECTED_NAMED_BY_A_ROW = 49
+#:
+#: AND 50 WHEN SLICE D JOINED THE DEATH FINISH BUNDLE (2026-11-26): `remains_in_reach`, Mantle of Bone's armour for each
+#: of your own remains within 6 metres.
+EXPECTED_NAMED_BY_A_ROW = 50
 
 
 def scales_named_by_a_row() -> set[str]:

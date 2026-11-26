@@ -65,7 +65,7 @@ heading row describe their layout instead. Issue #1884.
 | Gems | 28 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type, Stat, Value Kind |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3, Tier 1 Gold, Tier 2 Gold, Tier 3 Gold, Gold Note |
 | Enchantments | 380 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down, Positive Set, Negative Set |
-| **Tags** | **146** | **Tag Name, Description** |
+| **Tags** | **147** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
 | Weapon Skills | 408 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost, Fervour Cost |
 | Buffs | 18 | one description per row, no heading row |
@@ -86,7 +86,7 @@ heading row describe their layout instead. Issue #1884.
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Gold Drops, Gem Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Gold | 8 | Difficulty Tier, Gold Per Pile, More Per Floor, Note |
-| Passive Effects | 927 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points, Scale Max Steps, Per Point From, Condition 2, Condition Value 2, Action Event, Stack Seconds, Action, Max Points, Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment, Damage Share, Chance Percent |
+| Passive Effects | 959 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points, Scale Max Steps, Per Point From, Condition 2, Condition Value 2, Action Event, Stack Seconds, Action, Max Points, Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment, Damage Share, Chance Percent |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
 | Enchantment Effects | 709 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |
 

@@ -63,6 +63,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 // For the Soul a minion's death leaves, Reaper's Embrace's six-piece.
 #include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmRemains.h"
 // For the stack that taking damage builds. Issue #1003.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -3553,6 +3554,11 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		// AND A THRALL'S OWN EXPLOSION UNDER EVERY ONE BURSTS, for the same reason and in the same place. Issue #2540:
 		// a minion explodes inside `HandleDeath`, which a thrall's death never reaches. Nothing for a minion.
 		ACataclysmMinion::ThrallBurst(Character, Commander);
+
+		// AND FALLEN AGAIN'S REMAINS, read off the body while it stands: "Each of your minions that dies without being
+		// detonated has a 6% chance per point to leave remains." The Death finish's slice D (2026-11-26). A detonation
+		// is an explosion and never reaches this hook.
+		UCataclysmRemains::LeaveForAFollower(Commander, Character, Where);
 	}
 
 	Character->HandleDeath();

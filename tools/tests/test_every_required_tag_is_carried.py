@@ -39,6 +39,10 @@ REQUIRING = ("EnchantmentEffects.csv", "PassiveEffects.csv")
 #: TAGS THE GAME CODE GRANTS, each with the file that grants it and how. Read in
 #: the code on 2026-10-28 for issue #1785.
 ENGINE_GRANTED = {
+    "Minion.RaisedOnRemains": (
+        "AbilitySystem/CataclysmRemains.cpp",
+        "UCataclysmRemains::RaiseOn adds it to a minion a summon skill raised on its summoner's remains (the Death "
+        "finish's slice D, 2026-11-26)"),
     "Keyword.DoT.Poison": (
         "AbilitySystem/CataclysmAilments.cpp",
         "the Poison ailment's own tag in the ailment table, requested by name for its effect"),

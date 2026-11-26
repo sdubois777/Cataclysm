@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmSiphon.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -113,6 +114,7 @@ void ACataclysmHUD::DrawHUD()
 	DrawDropNames();
 	DrawFloorObjectNames();
 	DrawReaperSoulNames();
+	DrawRemainsNames();
 	DrawHarvestedSoulNames();
 
 	// WHAT THE LAST DEATH COST, for a few seconds after standing back up. Issue #41, 2026-11-02.
@@ -1726,6 +1728,28 @@ void ACataclysmHUD::DrawReaperSoulNames()
 	}
 	DrawPlainTags(Over, ACataclysmReaperSoul::NameHeightCm, FString(ACataclysmReaperSoul::NameText),
 				  ACataclysmReaperSoul::NameColour());
+}
+
+void ACataclysmHUD::DrawRemainsNames()
+{
+	UWorld* World = GetWorld();
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!World || !LocalPawn)
+	{
+		return;
+	}
+
+	// AS FAR AS A DROP'S NAME IS SHOWN, and only the viewer's own: "which only you see".
+	TArray<ACataclysmRemainsMarker*> Nearby;
+	UCataclysmRemains::RemainsToName(LocalPawn, LocalPawn->GetActorLocation(), UCataclysmDropPickup::NameShownRangeCm,
+									 Nearby);
+	TArray<FVector> Over;
+	for (const ACataclysmRemainsMarker* Remains : Nearby)
+	{
+		Over.Add(Remains->GetActorLocation());
+	}
+	DrawPlainTags(Over, ACataclysmRemainsMarker::NameHeightCm, FString(ACataclysmRemainsMarker::NameText),
+				  ACataclysmRemainsMarker::NameColour());
 }
 
 void ACataclysmHUD::DrawHarvestedSoulNames()

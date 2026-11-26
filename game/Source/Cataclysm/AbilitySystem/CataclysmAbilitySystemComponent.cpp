@@ -48,6 +48,7 @@
 // healing reach it and the Masochist's rule that healing removes Fervour
 // applies to it. Issue #1815.
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 // For whether the character being hit carries a curse the asker laid, which
 // `target_carries_your_curse` reads. The demonic tree rework of 2026-11-24.
@@ -1740,6 +1741,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// AND THE WIDEST REACH A `MinionsInReachAtLeast` ROW ASKS ABOUT, walked over the character's own followers. The Death
 	// trees' slice C6d1 (2026-11-25).
 	float WidestMinions = -1.0f;
+	// AND THE WIDEST REACH A `PerOwnRemainsInReach` ROW ASKS ABOUT, walked over the character's own remains. The Death
+	// finish's slice D (2026-11-26), Mantle of Bone.
+	float WidestRemains = -1.0f;
 	// AND WHETHER A ROW SCALES BY INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless. Filled
 	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
 	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
@@ -1781,6 +1785,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		if (Modifier.Scale == ECataclysmStatScale::PerCrippledEnemyInReach)
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
+		}
+		if (Modifier.Scale == ECataclysmStatScale::PerOwnRemainsInReach)
+		{
+			WidestRemains = FMath::Max(WidestRemains, Modifier.ReachMetres);
 		}
 		// AND THE TWO OF THE DEATH TREES' SLICE C6b3 (2026-11-25), on either condition: no enemy within the reach reads
 		// the distances walk the other way, and an enemy of a rung within it walks the bodies.
@@ -1856,6 +1864,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// character whose only nearby-enemy row is a crippled one would return
 	// here with the crippled list empty, and Grinding Halt would grant nothing
 	// with nothing reporting why.
+	// AND THE CHARACTER'S OWN REMAINS WITHIN THE WIDEST REACH A ROW ASKS ABOUT, BEFORE THE RETURN BELOW, for the reason the
+	// followers' walk is: Mantle of Bone, the Death finish's slice D (2026-11-26). Measured from the avatar along the floor.
+	if (WidestRemains > 0.0f)
+	{
+		UCataclysmRemains::DistancesOfOwnRemains(GetAvatarActor(), WidestRemains * 100.0f,
+												 State.OwnRemainsDistancesMetres);
+	}
+
 	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestRarity <= 0.0f && WidestMinions <= 0.0f)
 	{
 		return State;

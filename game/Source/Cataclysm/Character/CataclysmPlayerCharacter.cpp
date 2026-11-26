@@ -31,6 +31,7 @@
 // For the potion heal paid on each step, and its step length. Issue #806.
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 // For who commands a killer, so The Swarm hears a kill by one of this
 // character's minions. The demonic tree rework of 2026-11-24.
@@ -1816,6 +1817,11 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				Acting, FVector::Dist(GetActorLocation(), Notice.Location) / 100.0f);
 		}
 	}
+
+	// AND THE NECROMANCER'S REMAINS, FOR ANY ENEMY'S DEATH, WHOEVER KILLED IT, and the Abomination's tally of this
+	// character's kills and its followers': the Death finish's slice D (2026-11-26). Before the killer test below, which
+	// returns for a death this character did not cause. `UCataclysmRemains::HearDeath` asks the team itself.
+	UCataclysmRemains::HearDeath(this, Notice);
 
 	// THIS CHARACTER HAS TO BE THE KILLER. The node says "when YOU kill the
 	// enemy that applied it", so a creature dying to anything else changes

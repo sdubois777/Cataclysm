@@ -609,10 +609,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// line's 592, less the 364 both had.
 	// AND 898 THE SAME DAY, for Slippery's Fervour on an evasion (window death3-w1's second pass).
 	// AND 899 ON 2026-11-26, for the Bulwark's Fervour for a kill (the final bundle).
-	// AND 927 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows (the Necromancer's detonations) and
-	// slice E's six (the Shadow's vows and Ever Moving), on top of 899. The coordinating session's bundle moves it
-	// again as each slice joins.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        927)
+	// AND 959 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows (the Necromancer's detonations),
+	// slice E's six (the Shadow's vows and Ever Moving) and slice D's 32 (the Necromancer's remains), on top of 899.
+	// The coordinating session's bundle moves it again as each slice joins.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        959)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

@@ -6565,6 +6565,11 @@ SCALES = {
     # count, which is itself uncapped.
     "crippled_enemies_in_reach": (0.0, 10.0, "a number of crippled enemies"),
 
+    # "For each creature's remains within 6 metres of you" is `remains_in_reach`
+    # with a step of 1: Mantle of Bone, slice D of the Death finish
+    # (2026-11-26). Counted within the row's own Reach Metres, as the two above.
+    "remains_in_reach": (0.0, 10.0, "a number of remains"),
+
     # "For each enemy your attack hits beyond the first" is
     # `enemies_hit_beyond_the_first` with a step of 1. Issue #1515, for
     # `Ravager_basic_b_a2` Cleaving Arc.
@@ -7073,7 +7078,9 @@ PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach"
                                  # AND THE DEATH TREES' SLICE C6b3'S TWO.
                                  "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                                  # AND SLICE C6d1'S OWN MINIONS.
-                                 "minions_in_reach_at_least"})
+                                 "minions_in_reach_at_least",
+                                 # AND THE DEATH FINISH'S REMAINS (slice D).
+                                 "remains_in_reach"})
 
 
 def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
@@ -7554,7 +7561,9 @@ def passive_effects(book) -> list[dict]:
                           # AND CLOSE PACKED'S OTHER MINIONS NEAR THE MINION
                           # ASKING, the finishing of the Death Cataclysm, slice C
                           # (2026-11-26).
-                          "minions_near_the_minion"}
+                          "minions_near_the_minion",
+                          # AND THE DEATH FINISH'S REMAINS (slice D).
+                          "remains_in_reach"}
         # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
         # rather than around the character, read at the kill from this column.
         # The Death trees' slice C4c2 (2026-11-25).
@@ -8075,6 +8084,9 @@ APPLY_STATUS_EVENTS = (
     "retaliation_dealt",
     "deployable_hit",
     "minion_hit",
+    # AN ENEMY YOUR DETONATED REMAINS STRUCK: Grave Spores, the Death finish's
+    # slice D (2026-11-26).
+    "remains_detonation_hit",
 )
 
 #: The statuses `apply_status` may name: every ailment
@@ -8570,6 +8582,12 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     "trap_armed",
     # V5b1, 2026-11-25. `gadget_expired` carries the wearer's own gadget.
     "gadget_expired",
+    # The Death finish's slice D, 2026-11-26. `minion_raised_on_remains` carries
+    # the wearer's own minion. `remains_detonation_hit` carries the enemy the
+    # blast of the wearer's detonated remains struck; Grave Spores applies
+    # Necrosis to it, and NO STRIKE ON IT IS RULED, as for `minion_hit` above.
+    "minion_raised_on_remains",
+    "remains_detonation_hit",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -9038,6 +9056,22 @@ ACTION_ONLY_EVENTS = (
     # Ranks' "for each detonation of yours in the last 2 seconds, of a minion or
     # of remains". Clockless.
     "minion_detonated",
+    # A MINION A SUMMON SKILL RAISED ON THE WEARER'S REMAINS, raised once per
+    # minion on its summoner by `UCataclysmRemains::RaiseOn`, with the minion's
+    # tags and the minion as the character. The Death finish's slice D
+    # (2026-11-26): Bone Fuse's 3 Fervour and Grave Robber's 5 are
+    # `class_resource` rows on it. Clockless.
+    "minion_raised_on_remains",
+    # REMAINS OF THE WEARER'S CONSUMED, by a raise on them or by a detonation,
+    # raised once per remains by `UCataclysmRemains` with no tags, amount or
+    # character. The same slice: Picked Clean's health is `health` rows on it.
+    # Clockless.
+    "remains_consumed",
+    # AN ENEMY STRUCK BY THE BLAST OF THE WEARER'S DETONATED REMAINS, raised
+    # once per enemy by `UCataclysmRemains::Detonate`, naming that enemy. The
+    # same slice: Grave Spores' Necrosis is an `apply_status` row on it.
+    # Clockless.
+    "remains_detonation_hit",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -16966,6 +17000,8 @@ SCALES_THAT_COUNT_ENEMIES_IN_A_RADIUS = frozenset({
     # counted from a minion rather than from the character, and needing the
     # radius for the same reason.
     "minions_near_the_minion",
+    # AND THE CHARACTER'S OWN REMAINS, Mantle of Bone (the Death finish, slice D).
+    "remains_in_reach",
 })
 
 

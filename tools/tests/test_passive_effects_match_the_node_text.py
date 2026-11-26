@@ -858,11 +858,12 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: AND TO 899 ON 2026-11-26: the Bulwark's Fervour for a kill, on its starting node
 #: (`tools/reapply_war_bulwark_kill_fervour_workbook.py`, the final bundle).
 #:
-#: AND TO 927 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows
-#: (`tools/reapply_death_finish_c_workbook.py`: the Charnel limb, Living Bombs and The Horde Ascendant) and slice E's
+#: AND TO 959 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's 22 rows
+#: (`tools/reapply_death_finish_c_workbook.py`: the Charnel limb, Living Bombs and The Horde Ascendant), slice E's
 #: six (`tools/reapply_death_finish_e_shadow_workbook.py`: Afterimage, Shadow Clone, Shadow Step, Flurry of the Dead
-#: and Ever Moving), on 899. Moved again as each slice joins the bundle.
-AUTHORED_ROWS = 927
+#: and Ever Moving) and slice D's 32 (`tools/reapply_death_remains_workbook.py`: the Ossuary, Many Made One, the
+#: Abomination and the Bone Colossus), on 899. Moved again as each slice joins the bundle.
+AUTHORED_ROWS = 959
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1396,9 +1397,10 @@ AUTHORED_ROWS = 927
 #:
 #: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
 #: the War line's 323 less the 226 both had.
-#: AND TO 508 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's ten Charnel nodes and slice E's Ever
-#: Moving, on 497. Their vow options are on capstones already counted.
-AUTHORED_NODES = 508
+#: AND TO 522 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's ten Charnel nodes, slice E's Ever
+#: Moving and slice D's thirteen Ossuary nodes and Many Made One, on 497. Their vow options are on capstones already
+#: counted.
+AUTHORED_NODES = 522
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1562,9 +1564,10 @@ AUTHORED_NODES = 508
 #: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
 #: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
 #: War line's 72 less the 36 both had.
-#: AND TO 101 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's Living Bombs and The Horde Ascendant and
-#: slice E's Afterimage, Shadow Clone, Shadow Step and Flurry of the Dead, on 95.
-AUTHORED_OPTIONS = 101
+#: AND TO 103 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE: slice C's Living Bombs and The Horde Ascendant,
+#: slice E's Afterimage, Shadow Clone, Shadow Step and Flurry of the Dead, and slice D's Abomination and Bone
+#: Colossus, on 95.
+AUTHORED_OPTIONS = 103
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2676,6 +2679,10 @@ SCALE_WORDS = {
     # says "each" and names no step.
     "crippled_enemies_in_reach": (("each", "crippled enemy within"), None, None),
 
+    # PER REMAINS OF THE CHARACTER'S OWN WITHIN A REACH: Mantle of Bone, the Death finish's slice D (2026-11-26),
+    # "for each creature's remains within 6 metres of you, up to 10". A step form of `None`, as above.
+    "remains_in_reach": (("each", "remains within"), None, None),
+
     # PER ENEMY ONE ATTACK STRUCK BEYOND THE FIRST. Issue #1515. Cleaving Arc
     # reads "+1% increased Attack Damage per point for each enemy your attack
     # hits beyond the first".
@@ -3000,6 +3007,13 @@ VALUE_FORMS = {
     "minion_detonation_husk_seconds": ("lasts {value:g} seconds",),
     "minions_cast_your_skills_within_metres": ("within {value:g} metres",),
     "minion_skill_copy_damage_percent": ("at {value:g}% of its damage",),
+    # MANTLE OF BONE'S DETONATION, the Death finish's slice D (2026-11-26): "dealing 1% for every 2 points of the dead
+    # creature's maximum health", a row at each step, beside its flag's 1.
+    "remains_detonation_percent_of_maximum_health": ("{value:g}% for every 2 points of the dead creature's maximum",),
+    # AND GRAVEFINDER'S REACH, the same slice: "within 1 metre per point of remains".
+    "remains_raise_reach_metres": ("{value:g} metre per point",),
+    # AND MANY MADE ONE, the same slice: "each point takes 2 off the percentage".
+    "abomination_kill_percent_less": ("takes {value:g} off the percentage",),
     # OVERFLOW'S WINDOW, the Death trees' slice C6c (2026-11-25): "becomes 5
     # seconds of attack speed".
     "fervour_overflow_attack_speed_seconds": ("{value:g} seconds of attack speed",),
@@ -3431,6 +3445,16 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26): six flags at 1, each a clause that switches a
+    # mechanism on. Bone Fuse's "Dead creatures leave remains"; Mantle of Bone's "Your weapon skills that land on remains
+    # detonate them"; Plague Pit's "pass every ailment"; the Abomination's "their remains combine into an Abomination";
+    # and the Bone Colossus's two, the giant and the remains it is fed (which Bone Fuse says the vow makes appear).
+    ("Necromancer_basic_os_stem0", "remains_left"): ("dead creatures leave remains", 1.0),
+    ("Necromancer_basic_os_a0", "weapon_skills_detonate_remains"): ("land on remains detonate them", 1.0),
+    ("Necromancer_keystone_os_kC", "detonated_remains_pass_ailments"): ("pass every ailment", 1.0),
+    ("Necromancer_capstone_200", "abomination_rises"): ("combine into an abomination", 1.0),
+    ("Necromancer_capstone_25", "bone_colossus"): ("one giant", 1.0),
+    ("Necromancer_capstone_25", "remains_left"): ("feed remains to over a floor", 1.0),
     # THE SECOND AND FOURTH SOUL COLLECTOR VOWS' CLAUSES, the Death trees' slice
     # C3d (2026-11-25): "fire one extra projectile" is 1, and "your skill
     # cooldowns recover twice as fast" is 100 on the rate.
@@ -4092,7 +4116,10 @@ ACTION_VALUE_FORMS = {
     "health": ("{value:g}% of maximum health", "recover {value:g}% of your maximum health",
                # AND THE WAR LINE'S SHIELD OATH, since the bundle 3 merge: "restores 2% of your Maximum HP" and
                # "Regenerate 1% of your current HP per second".
-               "{value:g}% of your Maximum HP", "{value:g}% of your current HP"),
+               "{value:g}% of your Maximum HP", "{value:g}% of your current HP",
+               # AND PICKED CLEAN'S "restores 1% of your maximum health for every 3 points" (the Death finish's
+               # slice D, 2026-11-26).
+               "restores {value:g}% of your maximum health"),
     "mana": ("{value:g}% of your maximum mana",),
     "energy_shield": ("{value:g}% of your Maximum Energy Shield",),
     "smite_nearby": ("{value:g}% of your weapon damage",),
@@ -4502,6 +4529,12 @@ MULTIPLIER_WAITS_FOR_A_LATER_SLICE: frozenset[tuple[str, int]] = frozenset()
 
 DOUBLES_ITS_OWN_FLAT_BONUS = frozenset({"Berserker_dw_014"})
 
+#: An option whose sentence's "more" the engine applies, with no row carrying it: the Abomination's "With Lone
+#: Revenant, the Abomination has Lone Revenant's 400% more health and damage" (the Death finish's slice D,
+#: 2026-11-26), which `UCataclysmBoneGiants` multiplies by when the player holds slice B's `lone_revenant_held`. Its
+#: one row is the flag `abomination_rises`.
+MULTIPLIED_BY_THE_ENGINE = frozenset({("Necromancer_capstone_200", 1)})
+
 #: A more-bucket row whose sentence says it multiplies in a word rather than as
 #: "N% more", by node and capstone option, with that word. NOT ADDED TO
 #: `MULTIPLIES`: "doubled" also describes increased rows (Light Feet, "doubled for
@@ -4575,6 +4608,8 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
         assert (node, option) not in multiplying_nodes, (
             f"{node} option {option} now holds its multiplying row: take it out of MULTIPLIER_WAITS_FOR_A_LATER_SLICE")
         multiplying_nodes.add((node, option))
+
+    multiplying_nodes |= MULTIPLIED_BY_THE_ENGINE
 
     for node in DOUBLES_ITS_OWN_FLAT_BONUS:
         own = [row for row in effects if row["Node"] == node]
