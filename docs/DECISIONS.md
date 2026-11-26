@@ -146,7 +146,7 @@ The nine failures, game or test:
   - That Python run read the WC1 break and failed one test (`test_a_fall_to_war_makes_the_next_siege_in_the_same_place_in_both`).
     It is void and is quoted nowhere as evidence.
   - The proof reads only Unreal test results, so it is unaffected.
-  - Python was run again on the final head, with nothing running beside it: PYTHON_FIGURE_PENDING (written by the commit after this one, from the run's own output).
+  - Python was run again on the final head, with nothing running beside it: on `aa490c834`, the commit holding this entry, with nothing running beside it: "9136 passed, 10 skipped"; JUnit 9,146 tests, 0 failures, 0 errors. ruff: "All checks passed!"
 
 ### Issues this bundle opened or closed
 
