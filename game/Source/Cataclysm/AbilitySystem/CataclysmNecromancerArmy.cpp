@@ -499,7 +499,7 @@ int32 UCataclysmNecromancerArmy::AfterASummon(AActor* Commander, UCataclysmSummo
 	int32 More = 0;
 	if (Raised > 0)
 	{
-		const int32 Extra = FMath::FloorToInt32(CommanderStat(Commander, MorePermanentRaisedStat, Tags) + 0.001f);
+		const int32 Extra = MorePermanentToRaise(Commander, Skill);
 		for (int32 Index = 0; Index < Extra; ++Index)
 		{
 			if (Skill->SummonOne())
@@ -532,6 +532,17 @@ int32 UCataclysmNecromancerArmy::AfterASummon(AActor* Commander, UCataclysmSummo
 		}
 	}
 	return 0;
+}
+
+int32 UCataclysmNecromancerArmy::MorePermanentToRaise(const AActor* Commander, const UCataclysmSummonSkill* Skill)
+{
+	if (!Commander || !Skill || !Skill->Params.bPermanent || Skill->Params.bPossess)
+	{
+		return 0;
+	}
+	const float More = CommanderStat(Commander, MorePermanentRaisedStat,
+									 TagsOfARaise(Skill->SkillTags, /*bRaisesPermanent=*/true));
+	return FMath::Max(0, FMath::FloorToInt32(More + 0.001f));
 }
 
 // ==========================================================================
@@ -605,11 +616,11 @@ ACataclysmMinion* UCataclysmNecromancerArmy::RaiseHusk(AActor* Commander, const 
 	return Risen;
 }
 
-void UCataclysmNecromancerArmy::FollowerDied(AActor* Follower, AActor* Commander)
+int32 UCataclysmNecromancerArmy::FollowerDied(AActor* Follower, AActor* Commander)
 {
 	if (!IsValid(Follower) || !IsValid(Commander) || IsAMachine(Follower))
 	{
-		return;
+		return NothingRose;
 	}
 	const FVector Where = Follower->GetActorLocation();
 	const FGameplayTagContainer Tags = TagsOfFollower(Follower);
@@ -642,8 +653,9 @@ void UCataclysmNecromancerArmy::FollowerDied(AActor* Follower, AActor* Commander
 				Husk->OwnDamagePerHit = Blow;
 			}
 			Husk->SetActorScale3D(Follower->GetActorScale3D());
+			return RoseAsAHusk;
 		}
-		return;
+		return NothingRose;
 	}
 
 	// WILL NOT STAY DOWN: "Each of your permanent minions that dies has a 4% chance per point to rise again where it fell 3
@@ -652,17 +664,17 @@ void UCataclysmNecromancerArmy::FollowerDied(AActor* Follower, AActor* Commander
 	const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
 	if (!Minion || !Minion->TypeTags.HasTagExact(PermanentTag()) || !Minion->SummonedBy.IsValid())
 	{
-		return;
+		return NothingRose;
 	}
 	const float Chance = CommanderStat(Commander, RisesAgainChanceStat, Tags);
 	if (Chance <= 0.0f || Roll() >= Chance)
 	{
-		return;
+		return NothingRose;
 	}
 	UWorld* World = Follower->GetWorld();
 	if (!World)
 	{
-		return;
+		return NothingRose;
 	}
 	const TWeakObjectPtr<UCataclysmSummonSkill> Skill = Minion->SummonedBy;
 	const TWeakObjectPtr<AActor> WeakCommander(Commander);
@@ -679,6 +691,7 @@ void UCataclysmNecromancerArmy::FollowerDied(AActor* Follower, AActor* Commander
 			}
 		}
 	}), RisesAgainAfterSeconds, /*bLoop=*/false);
+	return RisesAgainSoon;
 }
 
 ACataclysmMinion* UCataclysmNecromancerArmy::EnemyDied(AActor* Dying)

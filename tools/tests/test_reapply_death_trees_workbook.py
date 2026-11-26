@@ -20,6 +20,7 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
+import reapply_death_finish_b_workbook as finish_b  # noqa: E402
 import reapply_death_trees_workbook as reapply  # noqa: E402
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
@@ -52,6 +53,17 @@ def take_the_death_rows_out(path: pathlib.Path) -> None:
     book.save(path)
 
 
+#: THE LATER DEATH SLICES' OWN SCRIPTS, in the order their rows were appended: each writes Death rows after this
+#: script's, so a sheet with every Death row taken out comes back as the committed one only when they run after it.
+#: The Death line's finishing slice B (2026-11-26) is the first; its rows are the sheet's last.
+LATER_DEATH_SCRIPTS = (finish_b,)
+
+
+def put_back_the_later_death_slices(path: pathlib.Path) -> None:
+    for script in LATER_DEATH_SCRIPTS:
+        script.apply(path)
+
+
 @pytest.fixture
 def copy_of_the_workbook(tmp_path) -> pathlib.Path:
     target = tmp_path / "workbook.xlsx"
@@ -78,6 +90,7 @@ def test_the_rows_taken_out_are_put_back_as_the_committed_sheets(copy_of_the_wor
     report = reapply.apply(copy_of_the_workbook)
     changes = len(reapply.NODES) + len(reapply.CLASS_STATS)
     assert report[-1].startswith(f"wrote {changes} change(s)"), report
+    put_back_the_later_death_slices(copy_of_the_workbook)
     for title in SHEETS:
         assert sheet_rows(copy_of_the_workbook, title) == sheet_rows(WORKBOOK, title), title
 
@@ -217,6 +230,7 @@ def test_the_port_columns_are_added_when_the_sheet_lacks_them(copy_of_the_workbo
 
     report = reapply.apply(copy_of_the_workbook)
     assert any("added the column(s)" in line for line in report), report
+    put_back_the_later_death_slices(copy_of_the_workbook)
     for title in SHEETS:
         assert rows_by_name(copy_of_the_workbook, title) == rows_by_name(WORKBOOK, title), title
 

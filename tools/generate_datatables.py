@@ -12773,8 +12773,10 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # the minion named, so First Among the Dead's and Called to Heel's conditions
     # about the minion asking are judged: health by
     # `UCataclysmNecromancerArmy::HealthStep`, and the damage taken by
-    # `MinionDamageTakenFactor` in CataclysmDamageCalculation.cpp. Probed by
-    # `ProbeConditionedMinionHealth` and `ProbeConditionedMinionDamageTaken`.
+    # `MinionDamageTakenFactor` in CataclysmDamageCalculation.cpp. Each stat is
+    # probed in the table of stats with no attribute (`ProbeHealth`,
+    # `ProbeMinionDamageTaken`); the two conditions, First Among the Dead's and
+    # Called to Heel's, are measured by `CataclysmNecromancerArmyTests.cpp`.
     "minion_health": ASKER_PASSES_NOTHING_MORE,
     "minion_damage_taken": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.

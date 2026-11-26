@@ -774,6 +774,17 @@ INVENTORY = {
         "the commander's share of its minion's damage leeched as health (the "
         "Death trees' slice C6d2, Shared Leech), asked of the commander with its "
         "own state; the blow is the minion's, not the commander's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        "one of the Necromancer's army stats (the Death line's finishing slice "
+        "B), asked of the commander with the follower's own tags or the raising "
+        "skill's: at a summon, a death, a step or a minion's blow, never with a "
+        "blow of the commander's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.cpp',
+     'FName(DamageSplitWithMinionsStat), FGameplayTagContainer(), 0.0f'):
+        "Shared Flesh's flag (the Death line's finishing slice B), asked of the "
+        "defender before the hit resolves, as Interpose's chance is; a flag of "
+        "the defender's, not the blow's",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
      'FName(BoundBonesStat), FGameplayTagContainer(), 0.0f'):
         "the commander's share of maximum health per other follower (the Death "

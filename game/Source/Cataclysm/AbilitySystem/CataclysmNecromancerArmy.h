@@ -200,16 +200,27 @@ public:
 	 */
 	static int32 AfterASummon(AActor* Commander, UCataclysmSummonSkill* Skill, int32 Raised, bool bRefusedForRoom);
 
+	/** Bone Lord's figure: how many more permanent minions `Skill`'s press raises for `Commander` when it raises any. */
+	static int32 MorePermanentToRaise(const AActor* Commander, const UCataclysmSummonSkill* Skill);
+
 	/** The permanent minion of `Commander` missing the largest share of its maximum health, or null. */
 	static AActor* MostWoundedPermanentMinion(const AActor* Commander);
 
 	// ------------------------------------------------------------------ deaths
 
+	/** What `FollowerDied` did. */
+	static constexpr int32 NothingRose = 0;
+	static constexpr int32 RoseAsAHusk = 1;
+	static constexpr int32 RisesAgainSoon = 2;
+
 	/**
 	 * A follower of `Commander` died: Second Death and Will Not Stay Down. Called by `UCataclysmVitalAttributeSet` where
 	 * the commander is told one of its minions died, while the body still stands.
+	 *
+	 * @return `RoseAsAHusk` when Second Death raised one, `RisesAgainSoon` when Will Not Stay Down's return is waiting,
+	 *         else `NothingRose`
 	 */
-	static void FollowerDied(AActor* Follower, AActor* Commander);
+	static int32 FollowerDied(AActor* Follower, AActor* Commander);
 
 	/**
 	 * An enemy died: Carrion Host and Harvest of the Host for a kill by a permanent minion, and The Restless Dead for a

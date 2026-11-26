@@ -58,6 +58,7 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmNova.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -14781,6 +14782,182 @@ namespace CataclysmStatExemptionTest
 					  bHeld);
 	}
 
+	/**
+	 * The Necromancer's army's thirteen stats with no attribute, the Death line's finishing slice B (2026-11-26), each
+	 * read by `UCataclysmNecromancerArmy`: `Which` picks one. A commander with a pool of 150 and an Imp of its own, the
+	 * army's rolls pinned at 0. THE CONTROL in each: the same reading with no row answers otherwise. What each does in
+	 * play is `CataclysmNecromancerArmyTests.cpp`'s.
+	 */
+	void ProbeNecromancerArmy(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.NecromancerArmyRoll"));
+		if (Roll)
+		{
+			Roll->Set(0.0f, ECVF_SetByCode);
+		}
+		ON_SCOPE_EXIT
+		{
+			if (Roll)
+			{
+				Roll->Set(-1.0f, ECVF_SetByCode);
+			}
+		};
+
+		FScopedFighter Commander(World, /*AttackDamage=*/0.0f);
+		USphereComponent* Body = NewObject<USphereComponent>(Commander.Actor);
+		Body->InitSphereRadius(34.0f);
+		Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Body->SetCollisionObjectType(ECC_Pawn);
+		Body->SetCollisionResponseToAllChannels(ECR_Overlap);
+		Commander.Actor->SetRootComponent(Body);
+		Body->RegisterComponent();
+		Commander.AbilitySystem->AddAttributeSetSubobject(
+			NewObject<UCataclysmClassResourceAttributeSet>(Commander.Actor));
+		Commander.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		FScopedFighter Other(World, /*AttackDamage=*/0.0f);
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Commander.Actor, FVector(3.0f * M, 0, 0), 60.0f, false,
+														TEXT("Imp"));
+		UCataclysmSummonSkill* Skill = NewObject<UCataclysmSummonSkill>(GetTransientPackage());
+		if (!Test.TestNotNull(TEXT("an Imp of the commander's"), Imp) || !Skill)
+		{
+			return;
+		}
+		Skill->Params.bPermanent = true;
+		Imp->SummonedBy = Skill;
+		using Army = UCataclysmNecromancerArmy;
+
+		auto HalfThen = [Imp](const TFunction<void()>& Act)
+		{
+			UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Imp);
+			const float Maximum = System->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum * 0.5f);
+			Act();
+			return System->GetNumericAttribute(Vital::GetHealthAttribute());
+		};
+		auto KilledBy = [World, &Other](AActor* Killer)
+		{
+			FCataclysmLastBlow Blow;
+			Blow.Attacker = Killer;
+			Blow.DealtBy = Killer;
+			Blow.WorldSeconds = World->GetTimeSeconds();
+			Other.AbilitySystem->RecordLastBlow(MoveTemp(Blow));
+			return Army::EnemyDied(Other.Actor) ? 1.0f : 0.0f;
+		};
+		auto Swaps = [&Commander, Imp]()
+		{
+			AActor* Partner = nullptr;
+			FVector SelfTo;
+			FVector PartnerTo;
+			return Army::ChooseGraveSwapPartner(Commander.Actor, Imp->GetActorLocation(), 10.0f * M, Partner, SelfTo,
+												PartnerTo) ? 1.0f : 0.0f;
+		};
+
+		const TCHAR* Stat = nullptr;
+		float Value = 0.0f;
+		TFunction<float()> Read;
+		switch (Which)
+		{
+		case 0:
+			Stat = Army::ReforgedHealPercentStat;
+			Value = 10.0f;
+			Army::MakePermanent(Imp);
+			Read = [&]() { return HalfThen([&]() { Army::AfterASummon(Commander.Actor, Skill, 0, true); }); };
+			break;
+		case 1:
+			Stat = Army::CritShareOfYoursPercentStat;
+			Value = 4.0f;
+			Read = [&]() { float Chance = 0.0f; float Multiplier = 0.0f;
+						   Army::CriticalFiguresFor(Imp, Chance, Multiplier); return Multiplier; };
+			break;
+		case 2:
+			Stat = Army::RisesAgainChanceStat;
+			Value = 4.0f;
+			Army::MakePermanent(Imp);
+			Read = [&]() { return static_cast<float>(Army::FollowerDied(Imp, Commander.Actor)); };
+			break;
+		case 3:
+			Stat = Army::RegenPercentPerSecondStat;
+			Value = 1.0f;
+			Read = [&]() { return HalfThen([&]() { Army::Step(Imp, 1.0f); }); };
+			break;
+		case 4:
+			Stat = Army::MorePermanentRaisedStat;
+			Value = 2.0f;
+			Read = [&]() { return static_cast<float>(Army::MorePermanentToRaise(Commander.Actor, Skill)); };
+			break;
+		case 5:
+			Stat = Army::PermanentKillRisesAsHuskChanceStat;
+			Value = 100.0f;
+			Army::MakePermanent(Imp);
+			Read = [&]() { return KilledBy(Imp); };
+			break;
+		case 6:
+			Stat = Army::DeathRisesAsHuskStat;
+			Value = 1.0f;
+			Read = [&]() { return static_cast<float>(Army::FollowerDied(Imp, Commander.Actor)); };
+			break;
+		case 7:
+			Stat = Army::KillRisesAsSkeletonChanceStat;
+			Value = 20.0f;
+			Read = [&]() { return KilledBy(Commander.Actor); };
+			break;
+		case 8:
+			Stat = Army::MovementSwapsWithMinionStat;
+			Value = 1.0f;
+			Read = Swaps;
+			break;
+		case 9:
+			Stat = Army::SkillsRaiseHusksSecondsStat;
+			Value = 10.0f;
+			Commander.AbilitySystem->NoteClassResourceFull();
+			Read = [&]() { return Army::RaiseLichHusk(Commander.Actor, FVector(5.0f * M, 0, 0), false) ? 1.0f : 0.0f; };
+			break;
+		case 10:
+			Stat = Army::DamageSplitWithMinionsStat;
+			Value = 1.0f;
+			Read = [&]() { return Army::SplitWithMinions(Commander.AbilitySystem, Other.Actor, 300.0f, false); };
+			break;
+		case 11:
+			Stat = Army::LoneRevenantHeldStat;
+			Value = 1.0f;
+			Read = [&]() { return Army::LoneRevenantHeld(Commander.Actor) ? 1.0f : 0.0f; };
+			break;
+		default:
+			Stat = Army::ReserveStat;
+			Value = 300.0f;
+			Read = [&]() { return UCataclysmCommand::ReserveFor(Commander.Actor, 10.0f, FGameplayTagContainer()); };
+			break;
+		}
+
+		const float Without = Read();
+		if (Which == 12)
+		{
+			// THE RESERVE'S "MORE" BUCKET, which a flat row does not fill.
+			FCataclysmStatModifier More;
+			More.Bucket = ECataclysmStatBucket::More;
+			More.Source = ECataclysmModifierSource::PassiveKeystone;
+			More.Value = Value;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(Stat)).Modifiers = {More};
+			Commander.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+		else
+		{
+			GrantFlatLines(Commander, {{Stat, Value}});
+		}
+		const float With = Read();
+		Test.TestNotEqual(*FString::Printf(TEXT("%s: %.2f with no row and %.2f with %.0f, so UCataclysmNecromancerArmy "
+												"really reads it"), Stat, Without, With, Value),
+						  With, Without);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -15162,6 +15339,20 @@ namespace CataclysmStatExemptionTest
 			// THIN AIR, 2026-11-25 (the C5 plan).
 			{TEXT("cannot_be_targeted_while_moving"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, false); }},
 			{TEXT("cannot_be_targeted_broken_seconds"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, true); }},
+			// THE NECROMANCER'S ARMY, the Death line's finishing slice B (2026-11-26).
+			{TEXT("summon_without_room_heals_permanent_percent"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 0); }},
+			{TEXT("minion_crit_share_of_yours_percent"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 1); }},
+			{TEXT("minion_rises_again_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 2); }},
+			{TEXT("minion_health_regen_percent_per_second"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 3); }},
+			{TEXT("summon_raises_more_permanent_minions"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 4); }},
+			{TEXT("permanent_minion_kill_rises_as_husk_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 5); }},
+			{TEXT("minion_death_rises_as_husk"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 6); }},
+			{TEXT("kill_rises_as_skeleton_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 7); }},
+			{TEXT("movement_swaps_with_minion"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 8); }},
+			{TEXT("skills_raise_husks_seconds_after_resource_full"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 9); }},
+			{TEXT("damage_taken_split_with_minions"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 10); }},
+			{TEXT("lone_revenant_held"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 11); }},
+			{TEXT("minion_reserve"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 12); }},
 		};
 		return Made;
 	}

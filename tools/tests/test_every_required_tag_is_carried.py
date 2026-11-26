@@ -54,6 +54,10 @@ ENGINE_GRANTED = {
     "Keyword.DoT.Generic": (
         "AbilitySystem/CataclysmMinion.cpp",
         "the skill trap's own damage over time, ACataclysmMinion::LaySkillTrapsDamageOverTime (F9)"),
+    "Minion.Permanent": (
+        "AbilitySystem/CataclysmNecromancerArmy.cpp",
+        "a permanent minion's tag, added by UCataclysmNecromancerArmy::MakePermanent and to every thrall's tags by "
+        "UCataclysmCommand::ThrallMinionTags (the Death line's finishing slice B, 2026-11-26)"),
 }
 
 
