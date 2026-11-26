@@ -1108,14 +1108,24 @@ public:
 	/**
 	 * Whether this character has any way of moving Fervour at all.
 	 *
-	 * TRUE WHEN ANY OF THE THREE RATES IS ABOVE ZERO. Read by the heads-up
-	 * display, which draws the bar for a character that can move it and leaves
-	 * it out for one that cannot -- the same rule the energy shield bar follows,
-	 * and for the same reason: a bar that can only ever read zero says the
-	 * opposite of what is true.
+	 * TRUE WHEN ANY RATE ATTRIBUTE IS ABOVE ZERO, OR ANY ROW ON A STAT IN `GainStats` IS. Read by the heads-up display,
+	 * which draws the bar for a character that can move it and leaves it out for one that cannot -- the same rule the
+	 * energy shield bar follows, and for the same reason: a bar that can only ever read zero says the opposite of what
+	 * is true.
+	 *
+	 * THE STAT LINES AS WELL AS THE ATTRIBUTES since 2026-11-26: the owner's play-test found no bar for a Soul Collector
+	 * holding its starting node. `fervour_per_kill` has no attribute, and the attributes the Necromancer's and the
+	 * Ravager's starting nodes fill were never among the rate attributes, so only the Masochist's, the Ritualist's and
+	 * (through `FCataclysmWarFervour::HasARate`) the War classes' and the Shadow's starting nodes drew one.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Fervour")
 	static bool HasAGenerator(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Every stat a row adds Fervour through, other than the War classes' rates (`FCataclysmWarFervour::GainStats`),
+	 * which `HasAGenerator` asks of the stat lines. `fervour_lost_to_healing`, a loss, is not one.
+	 */
+	static const TArray<const TCHAR*>& GainStats();
 
 private:
 	/**

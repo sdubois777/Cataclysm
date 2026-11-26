@@ -456,6 +456,18 @@ public:
 										 const FString& Tree,
 										 const TArray<FName>& DamageTypes);
 
+	/**
+	 * The tree the passive screen opens on: the first reachable tree that is the class chosen for one of these damage
+	 * types (the one holding points), or else the first reachable tree, or else the first tree of all; empty for an
+	 * empty table.
+	 *
+	 * THE CHOSEN CLASS FIRST since 2026-11-26. The trees are sorted by name, so a Soul Collector opened on the
+	 * Necromancer tree, whose starting node is also called "Fervour" and held 0 of 1: the owner read it as the point
+	 * they had just spent being lost.
+	 */
+	static FString TreeToOpenOn(const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+								const TArray<FName>& DamageTypes);
+
 	/** Every tree in the table those damage types reach, in the table's order. */
 	static TArray<FString> ReachableTrees(const UDataTable* NodeTable,
 										  const TArray<FName>& DamageTypes);

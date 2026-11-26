@@ -460,7 +460,37 @@ bool UCataclysmFervour::HasAGenerator(
 			return true;
 		}
 	}
+
+	// AND ANY ROW ON A GAIN STAT, as `FCataclysmWarFervour::HasARate` asks its own: a stat with no attribute
+	// (`fervour_per_kill`, the Soul Collector's starting node), one whose attribute is not a rate attribute
+	// (`fervour_on_enemy_death_nearby`, the Necromancer's; `fervour_per_enemy_hit`, the Ravager's), and a row a condition
+	// or a scale keeps out of its attribute. Any row at all, for the reason given above. 2026-11-26.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		for (const TCHAR* Stat : GainStats())
+		{
+			if (const FCataclysmStatInputs* Inputs = Cataclysm->GetStatInputs(FName(Stat)))
+			{
+				for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+				{
+					if (Modifier.Value > 0.0f)
+					{
+						return true;
+					}
+				}
+			}
+		}
+	}
 	return false;
+}
+
+const TArray<const TCHAR*>& UCataclysmFervour::GainStats()
+{
+	static const TArray<const TCHAR*> Stats = {FromDamageStat,	  FromCostStat,		 PerSecondStat,
+											   PerCastStat,		  OnDroppingLowStat, FromMinionsStat,
+											   OnMinionDeathStat, PerEnemyInReachStat, PerEnemyHitStat,
+											   OnEnemyDeathNearbyStat, PerKillStat};
+	return Stats;
 }
 
 const TMap<FString, FGameplayAttribute>& UCataclysmFervour::RateAttributes()
