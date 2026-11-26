@@ -5549,13 +5549,15 @@ void ACataclysmDungeonGameMode::MakeTheCursedAbomination(ACataclysmEnemyCharacte
 	const float Stronger = Dungeon->AbominationMultiplier();
 	Boss->bIsTheCursedAbomination = true;
 	Boss->AbominationGearMore = Stronger;
-	// ITS HEALTH AND DAMAGE, the Abyssal Rift hunter's way: the starting health and the placed multiplier, which a save
-	// keeps (`FCataclysmSavedCreature`). Nought fallen, a step of one: nothing to multiply.
+	// ITS HEALTH, the starting health, which a save keeps (`FCataclysmSavedCreature`), so only when it is first made.
+	// ITS DAMAGE ON A KEY OF ITS OWN (`SetAbominationDamageMultiplier`), set on a load too, because the floor's rules
+	// reset the placed multiplier after `GoToFloor` has populated the floor: on the placed key the Abomination lost its
+	// damage on the floor it was made on (window b4-w1, bundle 4). Nought fallen, a step of one: nothing to multiply.
 	if (bScale && Stronger > 1.0f)
 	{
 		Boss->SetHealth(Boss->GetStartingMaxHealth() * Stronger);
-		Boss->SetPlacedDamageMultiplier(Stronger);
 	}
+	Boss->SetAbominationDamageMultiplier(Stronger);
 	UE_LOG(LogCataclysm, Log, TEXT("Abomination lair: the Cursed Abomination %s stands on floor %d, %d cities fallen "
 								   "when the lair appeared, %.3f times as strong"),
 		   *Boss->GetName(), FloorNumber, Dungeon->CitiesFallenBefore, Stronger);
@@ -16813,8 +16815,8 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 	}
 
 	// AND A LAIR'S CURSED ABOMINATION, FOUND THE SAME WAY: the floor's own Gatekeeper on its last floor. NO SAVED FIELD
-	// IS ADDED and it is not scaled again: the record's starting health and placed multiplier carry its strength, and
-	// the flag and the gear's step are read off the bound dungeon. Issue #51 slice B5.
+	// IS ADDED and its health is not scaled again: the record's starting health carries it, and the flag, the gear's step
+	// and its damage multiplier (a key of its own since bundle 4) are read off the bound dungeon. Issue #51 slice B5.
 	if (IsALair() && IsOnTheLastFloor() && Creature.IsA<ACataclysmGatekeeperCharacter>() && !Saved.bRisenFromTheDead
 		&& Saved.RaisedBy == NAME_None)
 	{

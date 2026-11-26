@@ -1905,6 +1905,11 @@ void ACataclysmEnemyCharacter::SetPactOfTemptationDamageMultiplier(float NewMult
 	SetDamageMultiplierFrom(PactOfTemptationDamageSource, NewMultiplier);
 }
 
+void ACataclysmEnemyCharacter::SetAbominationDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(AbominationDamageSource, NewMultiplier);
+}
+
 void ACataclysmEnemyCharacter::SetTrialOfEnduranceDamageMultiplier(float NewMultiplier)
 {
 	SetDamageMultiplierFrom(TrialOfEnduranceDamageSource, NewMultiplier);

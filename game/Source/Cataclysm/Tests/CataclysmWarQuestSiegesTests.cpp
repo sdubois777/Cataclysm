@@ -268,6 +268,7 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 	int32 OnTheFree = 0;
 	int32 ControlLanded = 0;
 	int32 ControlOnABesieged = 0;
+	FString Missed;
 	for (int32 Seed = 1; Seed <= 400; ++Seed)
 	{
 		FRandomStream Draws(Seed);
@@ -280,6 +281,15 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 			{
 				++Landed;
 				OnTheFree += Dungeon.CityId == Free ? 1 : 0;
+				// EACH ONE THAT MISSED THE FREE CITY, NAMED: window b4-w1 counted 10 of 313 elsewhere and reading the
+				// re-draw did not say why. Its city, whether that city is exposed and holds a Siege here, its sub-type.
+				if (Dungeon.CityId != Free && Missed.Len() < 1500)
+				{
+					Missed += FString::Printf(TEXT("seed %d: dungeon %d on city %d (exposed %d, sieges %d, free %d), sub-type %d; "),
+											  Seed, Dungeon.DungeonId, Dungeon.CityId, Map->IsExposed(Dungeon.CityId) ? 1 : 0,
+											  AllButOne.IsValidIndex(Dungeon.CityId) ? AllButOne[Dungeon.CityId] : -1, Free,
+											  static_cast<int32>(Dungeon.SubType));
+				}
 			}
 		}
 		for (const FCataclysmDungeon& Dungeon : Scheduler->RollWave(*Map, 1, 0, ControlDraws, NoCaps, All, War, false,
@@ -296,6 +306,10 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("WAR RE-DRAW: %d landed, %d on the free city; CONTROL %d landed, %d on a besieged one"),
 							Landed, OnTheFree, ControlLanded, ControlOnABesieged));
 
+	if (!Missed.IsEmpty())
+	{
+		AddInfo(FString::Printf(TEXT("WAR RE-DRAW MISSED: %s"), *Missed));
+	}
 	TestTrue(TEXT("set-up: War Quest dungeons were made"), Landed > 0 && ControlLanded > 0);
 	TestEqual(TEXT("every one landed on the city with no Siege"), OnTheFree, Landed);
 	TestEqual(TEXT("CONTROL: with none free, each lands where it was drawn, on a besieged city"), ControlOnABesieged,

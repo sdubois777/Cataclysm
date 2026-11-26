@@ -657,16 +657,19 @@ bool FCataclysmCreatureCataclysmCalledImpsTest::RunTest(const FString& Parameter
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	// THE BOSS AND NOTHING ELSE: a one-floor dungeon's only floor is its last, and a density of nought places the boss
-	// alone (`FCataclysmFloorPopulator::Populate` places it before it asks the density for anything).
+	// THE BOSS AND NOTHING ELSE: a two-floor dungeon walked to its second floor, its last, and a density of nought
+	// places the boss alone (`FCataclysmFloorPopulator::Populate` places it before it asks the density for anything).
+	// NOT A ONE-FLOOR DUNGEON: one floor or fewer has no bottom to put a boss on
+	// (`FCataclysmDungeonFloorRules::BossAtTheExit`, since issue #1465), which window b4-w1 found this test assuming.
 	const FCreatureCataclysmScene Scene = MakeCreatureCataclysmScene(World, /*bStartPlay=*/false, /*Density=*/0.0f);
 	if (!TestTrue(TEXT("set-up: a dungeon game mode and a run"), Scene.IsUsable()))
 	{
 		return false;
 	}
-	const int32 DungeonId = PlaceADungeonSentBy(*Scene.Run, ECataclysmType::War, /*Floors=*/1);
+	const int32 DungeonId = PlaceADungeonSentBy(*Scene.Run, ECataclysmType::War, /*Floors=*/2);
 	if (!TestTrue(TEXT("set-up: a dungeon War sent was placed"), DungeonId != INDEX_NONE)
-		|| !TestTrue(TEXT("set-up: it was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+		|| !TestTrue(TEXT("set-up: it was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+		|| !TestTrue(TEXT("set-up: its last floor was reached"), Scene.Mode->GoToFloor(2)))
 	{
 		return false;
 	}

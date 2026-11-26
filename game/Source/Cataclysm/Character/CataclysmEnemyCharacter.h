@@ -780,6 +780,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetPactOfTemptationDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies a lair's Cursed Abomination's attack damage: the lair's `AbominationMultiplier`, the step to the power
+	 * of the cities fallen when it appeared. Issue #51 slice B5, moved off the placed multiplier in bundle 4.
+	 *
+	 * A KEY OF `DamageMultipliersBySource` OF ITS OWN, AND NOT THE PLACED ONE, BECAUSE THE FLOOR'S RULES RESET THE PLACED
+	 * ONE. `GoToFloor` populates the lair's last floor, which makes the Abomination, and then applies the floor's rules,
+	 * which put every creature's placed multiplier back to 1 (`ApplyFloorRulesToPlayer`, for a Horde's next wave). On
+	 * the placed key the Abomination lost its damage on the floor it was made on, and kept its health. Window b4-w1
+	 * found it. NOT SAVED: a load makes the Abomination again from the bound dungeon and sets this again.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetAbominationDamageMultiplier(float NewMultiplier);
+
+	/** What `SetAbominationDamageMultiplier` set, 1 when nothing did. */
+	float GetAbominationDamageMultiplier() const { return DamageMultiplierFrom(AbominationDamageSource); }
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -796,6 +814,7 @@ public:
 	static constexpr const TCHAR* PlaguebearerDamageSource = TEXT("Plaguebearer");
 	static constexpr const TCHAR* FamishedBeastsDamageSource = TEXT("FamishedBeasts");
 	static constexpr const TCHAR* PactOfTemptationDamageSource = TEXT("PactOfTemptation");
+	static constexpr const TCHAR* AbominationDamageSource = TEXT("CursedAbomination");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;

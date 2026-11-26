@@ -344,6 +344,8 @@ bool FCataclysmAbominationLairsNoCapTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireRun* Run = MakeEmptyRun(ECataclysmType::Death);
 	HoldTheBoard(*Run);
 	TArray<int32> Counts;
+	TArray<int32> FallLairs;
+	TArray<int32> SurgeLairs;
 	for (int32 Fall = 0; Fall < 2; ++Fall)
 	{
 		const int32 Front = AFrontCity(*Run);
@@ -356,9 +358,30 @@ bool FCataclysmAbominationLairsNoCapTest::RunTest(const FString& Parameters)
 		{
 			return false;
 		}
+		FallLairs.Add(Report.LairOnAFall[0]);
 		Counts.Add(Run->FindDungeon(Report.LairOnAFall[0])->CitiesFallenBefore);
+		// A SURGE THAT DAY LANDS A LAIR OF ITS OWN while Death is active: Death's Quest dungeon is a lair. Window
+		// b4-w1 counted three lairs after two falls; this says where any lair beyond the falls' came from.
+		for (const int32 Spawned : Report.Spawned)
+		{
+			const FCataclysmDungeon* Dungeon = Run->FindDungeon(Spawned);
+			if (Dungeon != nullptr && Dungeon->IsALair() && !Report.LairOnAFall.Contains(Spawned))
+			{
+				SurgeLairs.Add(Spawned);
+			}
+		}
 	}
-	TestEqual(TEXT("two lairs"), Lairs(*Run).Num(), 2);
+	AddInfo(FString::Printf(TEXT("LAIRS: %d on the map, %d from the falls, %d a surge landed"), Lairs(*Run).Num(),
+							FallLairs.Num(), SurgeLairs.Num()));
+	int32 FallLairsStanding = 0;
+	for (const int32 Id : FallLairs)
+	{
+		const FCataclysmDungeon* Dungeon = Run->FindDungeon(Id);
+		FallLairsStanding += Dungeon != nullptr && Dungeon->IsALair() ? 1 : 0;
+	}
+	TestEqual(TEXT("two lairs, one from each fall, both on the map"), FallLairsStanding, 2);
+	TestNotEqual(TEXT("and they are two lairs, not one counted twice"), FallLairs[0], FallLairs[1]);
+	TestEqual(TEXT("every other lair on the map is one a surge landed"), Lairs(*Run).Num(), 2 + SurgeLairs.Num());
 	TestEqual(TEXT("the second counts one more than the first"), Counts[1], Counts[0] + 1);
 	return true;
 }
@@ -441,19 +464,29 @@ bool FCataclysmAbominationLairsStrengthTest::RunTest(const FString& Parameters)
 	ACataclysmDungeonGameMode* Mode = nullptr;
 	ACataclysmDungeonGameMode* BaseMode = nullptr;
 	ACataclysmEnemyCharacter* Grown = TheLastWavesGatekeeper(*this, World, ECataclysmType::Death, 4, Mode);
-	ACataclysmEnemyCharacter* Base = TheLastWavesGatekeeper(*this, World, ECataclysmType::Death, 0, BaseMode);
-	if (!TestNotNull(TEXT("the grown lair's boss"), Grown) || !TestNotNull(TEXT("and the base lair's"), Base))
+	if (!TestNotNull(TEXT("the grown lair's boss"), Grown))
 	{
 		return false;
 	}
 	const float Step4 = FMath::Pow(UCataclysmSurgeScheduler::AbominationStep, 4.0f);
+	// READ AS THE FLOOR LEAVES IT, BEFORE A SECOND GAME MODE IS MADE IN THIS WORLD: `GoToFloor` populates the floor and
+	// then applies its rules, and until window b4-w1 that reset the Abomination's damage (it was on the placed key).
+	const float GrownDamage = Grown->GetAbominationDamageMultiplier();
+	ACataclysmEnemyCharacter* Base = TheLastWavesGatekeeper(*this, World, ECataclysmType::Death, 0, BaseMode);
+	if (!TestNotNull(TEXT("and the base lair's"), Base))
+	{
+		return false;
+	}
 	AddInfo(FString::Printf(TEXT("ABOMINATION STRENGTH: step %.3f, x%.3f; health %.1f against %.1f; damage x%.3f"),
 							UCataclysmSurgeScheduler::AbominationStep, Step4, Grown->GetStartingMaxHealth(),
-							Base->GetStartingMaxHealth(), Grown->GetPlacedDamageMultiplier()));
+							Base->GetStartingMaxHealth(), GrownDamage));
 	TestEqual(TEXT("its health is the step to the fourth times the base boss's"), Grown->GetStartingMaxHealth(),
 			  Base->GetStartingMaxHealth() * Step4, Base->GetStartingMaxHealth() * 1e-4f);
-	TestEqual(TEXT("its damage multiplier is the same"), Grown->GetPlacedDamageMultiplier(), Step4, 1e-4f);
-	TestEqual(TEXT("CONTROL: the base boss's damage multiplier is one"), Base->GetPlacedDamageMultiplier(), 1.0f);
+	TestEqual(TEXT("its damage multiplier is the same, once its floor's rules have been applied"), GrownDamage, Step4,
+			  1e-4f);
+	TestEqual(TEXT("and still is after another floor in the world applied its rules"),
+			  Grown->GetAbominationDamageMultiplier(), Step4, 1e-4f);
+	TestEqual(TEXT("CONTROL: the base boss's damage multiplier is one"), Base->GetAbominationDamageMultiplier(), 1.0f);
 	return true;
 }
 

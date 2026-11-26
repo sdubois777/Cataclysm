@@ -101,7 +101,7 @@ def test_the_boss_is_the_cursed_abomination_at_the_boss_rung() -> None:
     assert "MakeTheCursedAbomination(Enemy, /*bScale=*/true);" in wave
     assert mode.count("MakeTheCursedAbomination(&Creature, /*bScale=*/false);") == 1, "a load does not find it again"
     make = body(mode, "void ACataclysmDungeonGameMode::MakeTheCursedAbomination(")
-    for mark in ("Boss->SetHealth(Boss->GetStartingMaxHealth() * Stronger);", "Boss->SetPlacedDamageMultiplier(Stronger);",
+    for mark in ("Boss->SetHealth(Boss->GetStartingMaxHealth() * Stronger);", "Boss->SetAbominationDamageMultiplier(Stronger);",
                  "Boss->AbominationGearMore = Stronger;", "Dungeon->AbominationMultiplier()"):
         assert mark in make, mark
     drops = read(SOURCE / "Cataclysm" / "Items" / "CataclysmDroppedItem.cpp")

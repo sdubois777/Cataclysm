@@ -69,6 +69,11 @@ namespace CataclysmDeathModifiersTest
 		 * 1000 health of 1000 and nothing that could turn a blow aside or shrink it: no energy shield, armour, evasion,
 		 * block, damage reduction or resistance, and no regeneration. Again after anything that refreshes the player's
 		 * stats, which the dungeon floor's set-up does.
+		 *
+		 * THE CURRENT VALUE, NOT ONLY THE BASE (window b4-w1, bundle 4). The class and the starting weapon add
+		 * modifiers on top of a base, so a base of nought left a little armour and an energy shield that refilled:
+		 * Final Curse's 50 read 49.36 and Soul Tether's 65 owed read 37.8. `SetCurrent` moves the base by however far
+		 * the current value is from the figure wanted, and `Unexposed` names anything still off it.
 		 */
 		void Expose() const
 		{
@@ -76,15 +81,16 @@ namespace CataclysmDeathModifiersTest
 			{
 				return;
 			}
-			System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), DeathModifiersMostHealth);
-			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), DeathModifiersMostHealth);
-			System->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 0.0f);
-			System->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 0.0f);
-			System->SetNumericAttributeBase(Vital::GetHealthRegenAttribute(), 0.0f);
-			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
-			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
-			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
-			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
+			SetCurrent(Vital::GetMaxHealthAttribute(), DeathModifiersMostHealth);
+			SetCurrent(Vital::GetHealthAttribute(), DeathModifiersMostHealth);
+			SetCurrent(Vital::GetMaxEnergyShieldAttribute(), 0.0f);
+			SetCurrent(Vital::GetEnergyShieldAttribute(), 0.0f);
+			SetCurrent(Vital::GetEnergyShieldRegenAttribute(), 0.0f);
+			SetCurrent(Vital::GetHealthRegenAttribute(), 0.0f);
+			SetCurrent(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+			SetCurrent(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			SetCurrent(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+			SetCurrent(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
 			const FGameplayAttribute Resistances[] = {
 				UCataclysmResistanceAttributeSet::GetWarResistanceAttribute(),
 				UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
@@ -99,9 +105,50 @@ namespace CataclysmDeathModifiersTest
 			{
 				if (System->HasAttributeSetForAttribute(Resistance))
 				{
-					System->SetNumericAttributeBase(Resistance, 0.0f);
+					SetCurrent(Resistance, 0.0f);
 				}
 			}
+		}
+
+		/**
+		 * Moves `Attribute`'s base so its current value, modifiers included, reads `Wanted`. FOUR TIMES, because an
+		 * increase multiplies the base, so one move by the gap leaves a smaller gap; a clamp the base cannot pass is
+		 * left for `Unexposed` to name.
+		 */
+		void SetCurrent(const FGameplayAttribute& Attribute, float Wanted) const
+		{
+			for (int32 Try = 0; Try < 4; ++Try)
+			{
+				const float Gap = Wanted - System->GetNumericAttribute(Attribute);
+				if (FMath::IsNearlyZero(Gap, 0.0001f))
+				{
+					return;
+				}
+				System->SetNumericAttributeBase(Attribute, System->GetNumericAttributeBase(Attribute) + Gap);
+			}
+		}
+
+		/** Every attribute `Expose` set that does not read its figure now, as "Name read X", or empty when none. */
+		FString Unexposed() const
+		{
+			FString Out;
+			const auto Check = [this, &Out](const FGameplayAttribute& Attribute, float Wanted)
+			{
+				const float Now = System->GetNumericAttribute(Attribute);
+				if (!FMath::IsNearlyEqual(Now, Wanted, 0.001f))
+				{
+					Out += FString::Printf(TEXT("%s read %.3f, not %.3f; "), *Attribute.GetName(), Now, Wanted);
+				}
+			};
+			Check(Vital::GetMaxHealthAttribute(), DeathModifiersMostHealth);
+			Check(Vital::GetMaxEnergyShieldAttribute(), 0.0f);
+			Check(Vital::GetEnergyShieldAttribute(), 0.0f);
+			Check(Vital::GetEnergyShieldRegenAttribute(), 0.0f);
+			Check(Vital::GetHealthRegenAttribute(), 0.0f);
+			Check(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+			Check(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
+			Check(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(), 0.0f);
+			return Out;
 		}
 
 		bool IsUsable() const { return Character && System; }
@@ -621,6 +668,7 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	// AND IT ARRIVES: over four seconds the player loses all of it.
 	const float Owed = StillToCome();
 	const float HealthBefore = Player.Health();
+	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
 	CataclysmTestWorld::RunClock(World, 4.5f);
 	TestEqual(TEXT("four seconds later the player has lost what was owed"), HealthBefore - Player.Health(), Owed,
 			  Owed * 0.02f);
@@ -672,6 +720,7 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierFinalCurseTest,
 	TestTrue(TEXT("its death curses the player"), UCataclysmSkillEffects::HasTag(Player.Character, Curse));
 	TestTrue(TEXT("and the status line says so"),
 			 UCataclysmCombatOverlay::DeathModifierTextFor(Player.Character).Contains(TEXT("Final Curse")));
+	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
 	TestEqual(TEXT("a skill costs 5% of 1000 health"), SkillCost(ECataclysmAbilitySlot::Special), 50.0f, 0.5f);
 	TestEqual(TEXT("so does a movement skill"), SkillCost(ECataclysmAbilitySlot::Movement), 50.0f, 0.5f);
 	TestEqual(TEXT("the basic attack costs nothing"), SkillCost(ECataclysmAbilitySlot::BasicAttack), 0.0f, 0.01f);

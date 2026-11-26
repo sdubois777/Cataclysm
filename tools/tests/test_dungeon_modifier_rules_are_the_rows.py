@@ -3105,7 +3105,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource"),
                         ("SetFamishedBeastsDamageMultiplier", "FamishedBeastsDamageSource"),
                         ("SetInfernalBeaconsDamageMultiplier", "InfernalBeaconsDamageSource"),
-                        ("SetPactOfTemptationDamageMultiplier", "PactOfTemptationDamageSource")):
+                        ("SetPactOfTemptationDamageMultiplier", "PactOfTemptationDamageSource"),
+                        ("SetAbominationDamageMultiplier", "AbominationDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
