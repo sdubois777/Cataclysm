@@ -44,7 +44,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeBuildSaveMigrationTest,
 
 /**
  * `Run_v12.json`, written before version 13, migrates with neither city building anything and both its upgrades
- * finished, every other field kept. CONTROL: the committed run file, `Run_v19.json` since issue #51 (`Run_v18.json` from issue #2848, `Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json` from issue #2741 slice 9), reads its first city building
+ * finished, every other field kept. CONTROL: the committed run file, `Run_v22.json` since issue #51 slice B5 (`Run_v21.json` from issue #51 slice B4, `Run_v20.json` from issue #2864, `Run_v19.json` from issue #51, `Run_v18.json` from issue #2848, `Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json` from issue #2741 slice 9), reads its first city building
  * `Architect_Increase_max_defense_by_20` with 4 days left and its second building nothing. Prints "BUILD MIGRATED".
  */
 bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
@@ -55,15 +55,15 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v12.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v22.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
 	}
 	const UCataclysmRunSave* Migrated = ReadRunText(*this, Text, TEXT("Run_v12.json"));
-	const UCataclysmRunSave* Current = ReadRunText(*this, CurrentText, TEXT("Run_v19.json"));
+	const UCataclysmRunSave* Current = ReadRunText(*this, CurrentText, TEXT("Run_v22.json"));
 	if (!Migrated || !Current || !TestEqual(TEXT("set-up: Run_v12.json has two cities"), Migrated->Cities.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Run_v19.json has two cities"), Current->Cities.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Run_v22.json has two cities"), Current->Cities.Num(), 2))
 	{
 		return false;
 	}
@@ -79,6 +79,9 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
+	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
+	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -98,7 +101,7 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	const TArray<FCataclysmCityUpgrade>& CurrentBuild = Current->Cities[0].Building;
 
 	AddInfo(FString::Printf(TEXT("BUILD MIGRATED: version %d; building %d and %d; %d upgrade(s) with %d day(s) left in "
-								 "all; the rest %s; Run_v19.json building %d (%s, %d left) and %d"),
+								 "all; the rest %s; Run_v22.json building %d (%s, %d left) and %d"),
 							Migrated->SchemaVersion, Migrated->Cities[0].Building.Num(),
 							Migrated->Cities[1].Building.Num(), MigratedUpgrades, MigratedDaysLeft,
 							bSame ? TEXT("kept") : *Where, CurrentBuild.Num(),
@@ -112,7 +115,7 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("set-up: it holds two upgrades"), MigratedUpgrades, 2);
 	TestEqual(TEXT("both finished"), MigratedDaysLeft, 0);
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v19.json's first city builds one upgrade"), CurrentBuild.Num(), 1);
+	TestEqual(TEXT("CONTROL: Run_v22.json's first city builds one upgrade"), CurrentBuild.Num(), 1);
 	TestTrue(TEXT("CONTROL: the raised maximum, with 4 days left"),
 			 CurrentBuild.Num() == 1 && CurrentBuild[0].RowName == FName(TEXT("Architect_Increase_max_defense_by_20"))
 				 && CurrentBuild[0].BuildDaysLeft == 4);

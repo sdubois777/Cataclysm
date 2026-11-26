@@ -74,6 +74,30 @@ bool FCataclysmDungeon::IsARift() const
 		&& Cataclysm == ECataclysmType::Demonic;
 }
 
+int32 FCataclysmDungeon::DaysOnItsCity(int32 Day) const
+{
+	const int32 Since = ArrivedDay == INDEX_NONE ? SpawnedDay : ArrivedDay;
+	return FMath::Max(0, Day - Since);
+}
+
+float FCataclysmDungeon::SiegeBiteShare() const
+{
+	return Type == ECataclysmDungeonType::Quest ? UCataclysmSurgeScheduler::QuestSiegeBiteShare : 1.0f;
+}
+
+bool FCataclysmDungeon::IsALair() const
+{
+	// A QUEST DUNGEON DEATH SENT, as `IsARift` asks of Demonic. Issue #51 slice B5.
+	return Type == ECataclysmDungeonType::Quest
+		&& Cataclysm == ECataclysmType::Death;
+}
+
+float FCataclysmDungeon::AbominationMultiplier() const
+{
+	return IsALair() ? FMath::Pow(UCataclysmSurgeScheduler::AbominationStep, static_cast<float>(CitiesFallenBefore))
+					 : 1.0f;
+}
+
 int32 FCataclysmDungeon::WalkSeed(int32 RunMask) const
 {
 	// THE IDENTIFIER PLUS ONE, XORED WITH THE RUN'S MASK, so two runs' dungeon N differ; a mask of 0 is the seed every
@@ -427,11 +451,12 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor(
 	ECataclysmType Cataclysm)
 {
-	// SEVEN OF THE MODEL'S EIGHT, BY NAME. `config.QUEST_SUBTYPE_BY_CATACLYSM` is
+	// ALL EIGHT OF THE MODEL'S, BY NAME. `config.QUEST_SUBTYPE_BY_CATACLYSM` is
 	// the original; `tools/tests/test_dungeon_subtype_port.py` reads this switch
-	// and compares the seven pairs with it. The Void's is the sixth and
-	// Celestial's the seventh, both since 2026-10-22. War falls to `default`
-	// with `None`, which means "roll"; the header says why.
+	// and compares the pairs with it. The Void's is the sixth and Celestial's
+	// the seventh, both since 2026-10-22, and War's the eighth since 2026-11-25
+	// (issue #51 slice B4, the War quest). `default` answers `None`, which means
+	// "roll", for a Cataclysm nobody named.
 	switch (Cataclysm)
 	{
 	case ECataclysmType::Death:			return ECataclysmDungeonSubType::Horde;
@@ -441,6 +466,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor(
 	case ECataclysmType::Chaos:			return ECataclysmDungeonSubType::Volatile;
 	case ECataclysmType::Void:			return ECataclysmDungeonSubType::Hollow;
 	case ECataclysmType::Celestial:		return ECataclysmDungeonSubType::Ascendant;
+	case ECataclysmType::War:			return ECataclysmDungeonSubType::Siege;
 	default:							return ECataclysmDungeonSubType::None;
 	}
 }
@@ -1286,6 +1312,61 @@ int32 UCataclysmSurgeScheduler::PickRiftTarget(const UCataclysmEmpireMap& Map, c
 	return CataclysmRiftPick::ByWeight(Cities, Weights, Draws);
 }
 
+int32 UCataclysmSurgeScheduler::WarSiegeSeedFor(int32 RunSeed, int32 DungeonId, int32 Draw)
+{
+	// THE DUNGEON'S OWN SEED, THEN THE DRAW'S, as `RiftSeedFor` mixes a Rift's.
+	return CataclysmSeedMix::Mix(CataclysmSeedMix::Mix(RunSeed, WarSiegeSalt, DungeonId), WarSiegeSalt, Draw);
+}
+
+int32 UCataclysmSurgeScheduler::LairSeedFor(int32 RunSeed, int32 DungeonId)
+{
+	return CataclysmSeedMix::Mix(CataclysmSeedMix::Mix(RunSeed, LairSalt, DungeonId), LairSalt, 0);
+}
+
+int32 UCataclysmSurgeScheduler::PickCityWithoutASiege(const UCataclysmEmpireMap& Map, FRandomStream& Draws,
+													  const TArray<int32>& DungeonsPerCity,
+													  const TArray<int32>& SiegesPerCityNow)
+{
+	// THE FRONT A WAVE DRAWS FROM (`ExposedCities`, which leaves the Pillar out, asked again), AND ONLY A CITY WITH NO
+	// SIEGE. An empty count means the caller did not say, the convention `RollWave` uses.
+	TArray<int32> Cities;
+	TArray<float> Weights;
+	for (const int32 CityId : Map.ExposedCities())
+	{
+		const FCataclysmCity* City = Map.Find(CityId);
+		if (City == nullptr || CityId == Map.PillarId || RoomLeftOn(*City, DungeonsPerCity) <= 0
+			|| (SiegesPerCityNow.IsValidIndex(CityId) && SiegesPerCityNow[CityId] >= SiegesPerCity))
+		{
+			continue;
+		}
+		Cities.Add(CityId);
+		Weights.Add(TargetWeightFor(City->Tier));
+	}
+	return CataclysmRiftPick::ByWeight(Cities, Weights, Draws);
+}
+
+int32 UCataclysmSurgeScheduler::PickWarSiegeCity(const UCataclysmEmpireMap& Map, const FCataclysmCity& From,
+												 FRandomStream& Draws, const TArray<int32>& DungeonsPerCity,
+												 const TArray<int32>& SiegesPerCityNow)
+{
+	// `PickRiftTarget`'S FILTER, AND A CITY WITH NO SIEGE.
+	TArray<int32> Cities;
+	TArray<float> Weights;
+	for (const int32 CityId : AdjacentCities(From))
+	{
+		const FCataclysmCity* City = Map.Find(CityId);
+		if (City == nullptr || CityId == Map.PillarId || !Map.IsExposed(CityId)
+			|| RoomLeftOn(*City, DungeonsPerCity) <= 0
+			|| (SiegesPerCityNow.IsValidIndex(CityId) && SiegesPerCityNow[CityId] >= SiegesPerCity))
+		{
+			continue;
+		}
+		Cities.Add(CityId);
+		Weights.Add(TargetWeightFor(City->Tier));
+	}
+	return CataclysmRiftPick::ByWeight(Cities, Weights, Draws);
+}
+
 int32 UCataclysmSurgeScheduler::PickRefuge(
 	const UCataclysmEmpireMap& Map,
 	const FCataclysmCity& Fallen,
@@ -1596,9 +1677,13 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
 	FRandomStream& Stream, const TArray<int32>& DungeonsPerCity,
 	const TArray<int32>& SiegesPerCityNow,
-	const TFunction<ECataclysmType()>& DrawCataclysm, bool bFromEmptyBoard, int32 RiftSeed) const
+	const TFunction<ECataclysmType()>& DrawCataclysm, bool bFromEmptyBoard, int32 RiftSeed,
+	int32 QuestSiegesAlreadyToday) const
 {
 	TArray<FCataclysmDungeon> Wave;
+
+	// WAR'S QUEST SIEGES MADE TODAY, this wave's counted as it makes them. See `QuestSiegesPerDay`. Issue #51 slice B4.
+	int32 QuestSiegesToday = QuestSiegesAlreadyToday;
 
 	// THE SENDERS COME BACK WITH THE TARGETS, one per city landed on, because
 	// `PickTargets` draws each before rolling its slot; see there.
@@ -1636,7 +1721,7 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 		// AN EMPTY LIST MEANS THE CALLER DID NOT SAY, and then nothing is
 		// refused on account of what was already standing. Sieges this wave
 		// makes are still counted, because `Sieges` is grown to fit below.
-		const bool bSiegeAllowed =
+		bool bSiegeAllowed =
 			!Sieges.IsValidIndex(City->CityId)
 			|| Sieges[City->CityId] < SiegesPerCity;
 
@@ -1650,7 +1735,7 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 		// receive a Quest dungeon as any other; the design gives no rule saying
 		// otherwise and the model reads only the chance. What the city DOES
 		// affect is how deep it is, through the tier's Quest row.
-		const ECataclysmDungeonType Kind = RollKind(Stream);
+		ECataclysmDungeonType Kind = RollKind(Stream);
 
 		// AND WHICH CATACLYSM SENDS IT, BEFORE IT IS MADE, because a Quest
 		// dungeon's sub-type depends on it. Since 2026-10-21; until then the run
@@ -1666,6 +1751,34 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 		// exposed cities.
 		const ECataclysmType Sender =
 			Senders.IsValidIndex(Index) ? Senders[Index] : ECataclysmType::None;
+
+		// **WAR'S QUEST DUNGEONS ARE SIEGES, AT MOST `QuestSiegesPerDay` MADE ON ONE DAY**, and one drawn onto a city
+		// that already holds a Siege re-draws its city among the front's cities that hold none. The model's two rules
+		// in `Simulation.trigger_surge`, issue #51 slice B4. A FURTHER QUEST ROLL THAT DAY MAKES A BASIC DUNGEON, decided
+		// here, before the depth is rolled, as the model decides it before `_make_dungeon`. THE RE-DRAW FROM A STREAM OF
+		// ITS OWN (`WarSiegeSeedFor`), so `Stream` moves exactly as it did; none free, it lands where it was drawn, the
+		// only way a city holds two, as in the model. Read by sub-type rather than by name, so a Cataclysm given Siege
+		// later takes the same rules.
+		if (Kind == ECataclysmDungeonType::Quest && QuestSubTypeFor(Sender) == ECataclysmDungeonSubType::Siege)
+		{
+			if (QuestSiegesToday >= QuestSiegesPerDay)
+			{
+				Kind = ECataclysmDungeonType::Basic;
+			}
+			else
+			{
+				++QuestSiegesToday;
+				if (!bSiegeAllowed)
+				{
+					FRandomStream Draws(WarSiegeSeedFor(RiftSeed, FirstDungeonId + Index, WarSiegeWaveDraw));
+					if (const FCataclysmCity* Free = Map.Find(PickCityWithoutASiege(Map, Draws, Standing, Sieges)))
+					{
+						City = Free;
+						bSiegeAllowed = true;
+					}
+				}
+			}
+		}
 
 		// A DEMONIC QUEST DUNGEON IS A RIFT, AND IT OPENS ANYWHERE BUT THE PILLAR, behind the front included: the
 		// owner, 2026-11-24, "Rift = Quest dungeon (Recommended)" and "Anywhere but the Pillar (Recommended)". Its
@@ -1685,6 +1798,12 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 												Day, Stream, bSiegeAllowed,
 												Kind, Sender);
 		Dungeon.Cataclysm = Sender;
+
+		// AN ABOMINATION LAIR COUNTS THE CITIES FALLEN AS IT LANDS. No draw. Issue #51 slice B5.
+		if (Dungeon.IsALair())
+		{
+			Dungeon.CitiesFallenBefore = Map.FallenCityCount();
+		}
 
 		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 		{

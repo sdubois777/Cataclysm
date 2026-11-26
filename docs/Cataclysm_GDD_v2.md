@@ -272,6 +272,36 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 
   
 
+### **Pausing**
+
+**The game can always be paused, offline and online.** The project owner, 2026-11-24: "Offline and online, pause is a must". Offline is built; online play is not built, and the rule for it is below.
+
+**Esc closes what is open first, and only Esc with nothing open pauses.** It is the same in both control schemes, and it is not in the two tables above, which list the bindings `tools/generate_input_assets.py` makes: Esc is read by the player controller itself, so that it reaches the game while the game is paused.
+
+- **A screen open:** Esc closes every open screen -- the inventory, the character sheet, the passive tree, the skill choice screen, the loot filter screen, the empire map, a city, the empire upgrade tree, the forge and the merchant -- and the floor object's choice panel, which it closes as its leave button does, choosing nothing. The game does not pause. The floor map on Tab is not a screen; it stays.
+- **Nothing open:** Esc pauses the game and shows the pause screen: "Paused", a Resume button, and "Esc resumes as well".
+- **Paused:** Esc, or Resume, lets the game run again.
+
+**Everything in play stops while paused**, because the pause is the engine's own: the world stops ticking its actors and its timers, and its clock stands still. Combat, creature brains, cooldowns, damage over time, ground zones, projectiles, buffs and debuffs, and every dungeon timer (The Reaper's ten seconds, the floor's clocks) stop together, and go on from where they were. Nothing in play runs on the real clock. The player's own frame takes nothing while paused: no material is swept up and no attack is swung. The interface does not pause, so the pause screen works.
+
+**The empire does not run in real time, so there is nothing more to stop there.** Days pass only by what the player does: a floor walked, a death, a craft at the forge, a respec of the empire upgrade tree. On the empire map Esc closes the map, and a second Esc pauses as anywhere else.
+
+**A pause is never saved.** The game saves itself on a clock and on events (Save System Design, section 6). The clock stops with the game, and play, which raises the events, has stopped too, so the game writes nothing during a pause (a console command that changes the character still writes it, as it is); nothing a record holds says whether the game was paused, and a game loaded or continued always starts running. Quitting from a pause keeps what the last save held, as quitting at any other moment does.
+
+**Other screens do not pause.** The skill choice screen's ruling (Q2, 2026-10-25) is that it does not, and the same holds for every screen but the pause screen. A recommendation, kept as it is: Diablo III's players report that its menu pauses a solo game, and Last Epoch offline pauses on Esc; Path of Exile also pauses on its full-screen interfaces such as the passive tree, which is the alternative if the owner wants it.
+
+**In Play In Editor, Shift+Esc stops Play.** The editor binds Esc to its Stop command and reads it before the game, so `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc for this project. `Cataclysm.PauseGame` pauses and resumes from the console as well.
+
+**Online, when it exists.** The party's rule is the owner's ruling of 2026-11-24; how long a paused instance is held, and boss fights, are recommendations.
+
+- **Solo online: Esc pauses the instance, as offline does.** The instance is the player's alone and the empire clock is moved only by what the player does, so stopping the instance stops everything the player can lose. The server holds a paused instance for a time and then saves and closes it, as Diablo III's solo game is reported by its players to unpause itself and log an idle player out "after a while"; the length is a judgement for the owner. Diablo IV and Last Epoch online cannot pause at all, even alone, and Diablo IV's players go to town to stop; the owner's rule rules that out here.
+- **A party: only the host can pause, and the host's pause stops the game for the whole party.** The owner's ruling, 2026-11-24: "Host pauses everyone". A player who is not the host cannot pause the party. Considered and not chosen: the instance pausing only while every player in it has paused, which is how Path of Exile 2's party pause is reported to work (a player's account of an interview with its director; Grinding Gear Games has not published it), and no pause in a party at all.
+- **Boss fights:** Path of Exile refuses to pause during its pinnacle boss fights ("Temporal Interference"). The save design's section 6 asks every way out of a fight to answer its rule, and a pause is not a way out, so nothing here refuses one; if the owner wants such fights unpausable, it is a per-fight flag, and a separate decision.
+
+`docs/DECISIONS.md`, 2026-11-24, has the sources.
+
+  
+
 ## **Core Gameplay Loop**
 
 ### **Game Start**
@@ -3063,7 +3093,7 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** Some dungeon modifiers place things on a floor for the player to act on: a totem to embrace or cleanse, and in time altars, chests and relics. Each shows its name over it as a drop does, and clicking the name within three metres opens a panel of what it offers, with a button for each choice and one to leave; a click from further off walks the character there first, as it does for a drop. The panel does not pause the game, like every other screen, so creatures go on while the player decides. Choosing is final: the modifier that placed the object answers it, and the object usually goes. No new key is needed, because the left mouse button already picks up what is named under the cursor.
+**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** Some dungeon modifiers place things on a floor for the player to act on: a totem to embrace or cleanse, and in time altars, chests and relics. Each shows its name over it as a drop does, and clicking the name within three metres opens a panel of what it offers, with a button for each choice and one to leave; a click from further off walks the character there first, as it does for a drop. The panel does not pause the game, like every other screen but the pause screen (Pausing, under Controls and Key Bindings), so creatures go on while the player decides; Esc closes it as its leave button does. Choosing is final: the modifier that placed the object answers it, and the object usually goes. No new key is needed, because the left mouse button already picks up what is named under the cursor.
 
   
 
@@ -4624,6 +4654,32 @@ The over-corruption mechanic in section VII works offline in full, because the d
 
   
 
+## **Abyssal Rifts (Dungeon Modifier)**
+
+Abyssal Rifts is a Demonic dungeon modifier of weight 10. Its row reads: "Portals to the Abyss tear open across the dungeon, several to a floor. From the moment you enter, each rift sends a demonic creature every 3 seconds to hunt you down, leaving a trail back to its source. A rift is a boss with great health that must be destroyed to stop it, and the creatures it sends grow stronger the longer it stays open. The rewards increase with each rift destroyed." It is the project owner's redesign of 2026-11-23 (issue #2864), which replaced a single rift that opened near the player and closed when its three waves were killed in time. `docs/DECISIONS.md` records the owner's words and why each figure below was chosen; every figure but the three seconds is a judgement.
+
+  
+
+**Two rifts on a floor, three on a large one.** A floor whose plan is 40 by 40 cells or more holds a third, so the hunters stay about as thick on the ground on a large floor as on a small one. They stand where the other floor sources stand, at least 20 metres from the entrance and from each other. A Horde arena has none, because its waves already come to the player.
+
+  
+
+**A rift is a Boss the player can target and kill.** It is placed at the Boss rung, with twice the health the floor's enemy score gives an average creature at that rung, because it neither moves nor strikes back and so takes every blow aimed at it. It has no brain and no attack, and says "Rift" under its health bar.
+
+  
+
+**From the moment the player enters, each rift sends a hunter every 3 seconds.** A hunter is one of the floor's own kinds that can walk, at Common, placed beside its rift. It notices the player from anywhere on the floor and walks to them, so the line of arriving hunters leads back to the rift. A rift keeps at most six of its own hunters standing; one killed is replaced on the next beat. Hunters pay nothing and are not counted among the floor's creatures, because a rift left standing never stops and would otherwise be a limitless source of loot and experience.
+
+  
+
+**The longer a rift stands, the stronger its hunters.** Each 15 seconds it has stood gives the hunters it sends 10% more health and damage, to at most twice their own figures after two and a half minutes. A floor left alone for a long time is therefore harder, and never harder than that.
+
+  
+
+**Killing a rift stops its hunters**, and the ones it already sent stay and keep hunting. Each rift killed is a success, worth +10 magic find, to at most +100. Successes count across the dungeon, and end on leaving the dungeon or at the player's death.
+
+  
+
 ## **Dungeon Score Formula**
 
 A dungeon's score is **its middle floor**, with that floor's six rarity scores collapsed into one number by how common each rarity is.
@@ -5395,7 +5451,7 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
 **Why an enemy does not get the other two.** An enemy carries one untyped resistance rather than eight typed ones, so the resistance step already multiplies every hit it takes by one minus that figure. A flat damage reduction step would do the same arithmetic again with one difference: the player's penetration cuts into resistance and cuts into nothing else, so the second copy would be the same mitigation with the counterplay removed. Where a creature should stop more, it is given more resistance or a larger share of armor, which are the same arithmetic with an answer attached. Block is a different objection: a block applies to area damage, and area damage is the answer this design names for enemy evasion, so an enemy block chance would be the only enemy layer a player has no way to reduce. Block is also a shield's stat here, and no creature in the vertical slice carries a shield.
 
-**Where a creature stops more only sometimes, that is a modifier.** The Enemy Modifiers sheet already carries five that reduce damage taken — Shield Wall from the front, Phalanx per nearby ally, Divine Aegis below half health, Battle Scarred and Armored Juggernaut. Every one is conditional and every one names something the player can do about it. That is where this design puts the layer, and it is where Path of Exile puts monster damage reduction too.
+**Where a creature stops more only sometimes, that is a modifier.** The Enemy Modifiers sheet carries five that reduce damage taken. Three of them are conditional, and each names something the player can do about it: Shield Wall takes less only from projectiles (the wording the owner accepted on 2026-11-24; it said "from the front" until then), so the answer is any other kind of attack; Phalanx takes less only for each ally beside it, so the answer is to pull the pack apart or hit them all at once; and Divine Aegis takes less only below half health, so the answer is to land the heaviest blows before it falls to half. The other two are not conditional: Battle Scarred's extra resistance and Armored Juggernaut's extra armour hold for the creature's whole life, and nothing the player does takes them away. That is where this design puts the layer, and it is where Path of Exile puts monster damage reduction too.
 
   
 
@@ -5685,6 +5741,10 @@ An enemy carries **one modifier per rarity above Common**:
   
 
 **Common enemies carry no modifiers at all.**
+
+  
+
+**An enemy draws its modifiers from its own Cataclysm's column and the Generic one, and an enemy belongs to the Cataclysm that sent its dungeon.** A dungeon Death sent fills with Death's creatures: each deals Death damage, meets the player's Death resistance, is struck by "damage against Death", and draws from the Death and Generic columns. This holds while the seven Demonic creatures stand in for Death's and War's own, which are not yet designed: the project owner accepted on 2026-11-24 that "a Death or War dungeon's Demonic bodies belong to that Cataclysm (deal its damage type, draw its modifiers)". It holds for all eight Cataclysms, and for every creature the dungeon places: its floors, a Horde dungeon's waves, the creatures its dungeon modifiers raise (The Reaper in a dungeon War sent is War's, though the row is Death's), and the Cataclysm Boss in the Cataclysm's own dungeon. The Gatekeeper's called Imps are the Gatekeeper's Cataclysm. A Fallen City is sent by nobody, and its creatures belong to the run's newest active Cataclysm (the Cataclysm of the dungeon whose hit felled the city is not recorded). The Corrupted Stalker and the corrupted double are not the Cataclysm's creatures: each deals its own build's damage type, the Stalker its entry's and the double the one its character chose at creation. The things a dungeon modifier stands on a floor to be destroyed are not creatures and keep their own type. **Soul Harvest's "demons" are the dungeon's own creatures**, whichever Cataclysm sent it, so the row works in a Death or War dungeon as in a Demonic one. `docs/DECISIONS.md`, 2026-11-25.
 
   
 
@@ -6209,11 +6269,13 @@ The ring behaviour is not scripted. It is what crowd avoidance produces when twe
 
   
 
-**An innate ability must not duplicate a modifier its own Cataclysm can roll.** Several names in `game/Data/StatusEffects.csv` are also enemy modifiers in `game/Data/EnemyModifiers.csv`, and an enemy carries one modifier per rarity above Common, drawn from its own Cataclysm's column and the Generic one. An ability that duplicated a modifier the same creature could roll would let it hold the effect twice with nothing saying what that means. Withered Touch is in neither the Demonic nor the Generic column, so the Succubus may have it innately.
+**An innate ability must not duplicate a modifier its own Cataclysm can roll.** Several names in `game/Data/StatusEffects.csv` are also enemy modifiers in `game/Data/EnemyModifiers.csv`, and an enemy carries one modifier per rarity above Common, drawn from its own Cataclysm's column and the Generic one. An ability that duplicated a modifier the same creature could roll would let it hold the effect twice with nothing saying what that means. Withered Touch is in neither the Demonic nor the Generic column, so the Succubus may have it innately. **The draw holds the rule too, since 2026-11-25, for whichever Cataclysm the creature belongs to:** a creature never draws a modifier whose name is an effect one of its own abilities applies or grants. A creature takes the Cataclysm of the dungeon it stands in, so a Succubus in a dungeon War sent is a War creature; its Dominion grants Commander, and it never rolls War's Commander modifier. `docs/DECISIONS.md`, 2026-11-25.
 
   
 
 **A modifier belonging to a different Cataclysm is not a clash**, because that enemy can never roll it. Two Demonic modifiers, Abyssal Aura and Infernal Brand, are also named in the effect table and are therefore closed to Demonic enemies as innate abilities. Nothing else is.
+
+**Since 2026-11-25 the seven Demonic creatures stand in for every Cataclysm's in that Cataclysm's dungeons and draw its column there** (Enemy Modifiers, above), **so a stand-in can roll a modifier of another column, and one clash exists: the Succubus's Dominion grants Commander, and Commander is also War's enemy modifier `War_Commander`.** A War dungeon's Succubus could therefore have rolled the effect it already gives innately. The War enemy modifier slice closed it in bundle 4, by this subsection's own rule: a creature cannot draw a modifier its innate ability already grants (`UCataclysmEnemyModifiers::ClosedByInnateEffects`), so a War dungeon's Succubus never rolls `War_Commander`.
 
   
 
@@ -6972,7 +7034,7 @@ Cursed Abominations spawn as cities fall, growing stronger with each subsequent 
 
 ## **World War (War)**
 
-Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. A wave brings at most two of them, each does a quarter of an ordinary Siege's daily damage, and its growth counts only the days it has stood on the city it stands on now; the owner, 2026-10-17, verbatim: "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." War is not built yet.
+Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. At most two of them are made on one day, by waves and by falls together, each does a quarter of an ordinary Siege's daily damage, and its growth counts only the days it has stood on the city it stands on now; the owner, 2026-10-17, verbatim: "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." One drawn onto a city that already holds a Siege goes to a city that holds none. **A city's fall to War starts the next one**: when the hit that felled a city was sent by War, a War quest Siege is made on a neighbouring city that holds no Siege, inside the day's two. This is the reading of "Player cities become aggressive and begin attacking each other" the owner accepted on 2026-11-24 ("Your recommendations work for all of those death/war questions"), with the details ruled by the coordinating session on 2026-11-25. Written for the game and not yet built or run (issue #51 slice B4); the rest of War is not built.
 
 The owner, 2026-10-16, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap." And, the same day: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
 

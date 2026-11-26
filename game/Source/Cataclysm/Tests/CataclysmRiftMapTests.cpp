@@ -88,7 +88,9 @@ bool FCataclysmRiftMapLineTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireRun* Run = MakeEmptyRun();
 	HoldTheBoard(*Run);
 	PlaceQuest(*Run, 1, ECataclysmType::Demonic, FirstOutpost(*Run));
-	PlaceQuest(*Run, 2, ECataclysmType::Death, FirstOutpost(*Run, 1));
+	// PESTILENCE AND NOT DEATH: since slice B5 (bundle 4) a Death Quest dungeon is an Abomination lair, with a line of
+	// its own, and this control wants a Quest dungeon read as one always was. Window b4-w1 found it.
+	PlaceQuest(*Run, 2, ECataclysmType::Pestilence, FirstOutpost(*Run, 1));
 
 	const auto Expected = [Run](int32 Sends)
 	{
@@ -106,7 +108,7 @@ bool FCataclysmRiftMapLineTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the day it sent, in five again"), UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 1),
 			  Expected(5));
 
-	// CONTROL: a Quest dungeon Death sent reads as a Quest dungeon always did, with no send.
+	// CONTROL: a Quest dungeon Pestilence sent reads as a Quest dungeon always did, with no send.
 	const FString Horde = UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 2);
 	TestTrue(TEXT("a Quest dungeon that is no Rift is not called one"), !Horde.Contains(TEXT("Rift"))
 		&& !Horde.Contains(TEXT("sends")) && Horde.Contains(TEXT("Quest dungeon of 4 floors")));

@@ -63,6 +63,13 @@ const TArray<FCataclysmFloorPopulator::FPackKind>& FCataclysmFloorPopulator::Pac
 	return Kinds;
 }
 
+const TArray<FCataclysmFloorPopulator::FPackKind>& FCataclysmFloorPopulator::PackKindsFor(ECataclysmType /*Cataclysm*/)
+{
+	// EVERY CATACLYSM POINTS AT THE DEMONIC SEVEN UNTIL ITS OWN ROSTER EXISTS: the same array, so no floor changes. See
+	// the header. Slice B37 gives Death and War theirs.
+	return PackKinds();
+}
+
 namespace
 {
 	/**
@@ -84,12 +91,10 @@ namespace
 		"A Succubus that cannot reach the next cell cannot buff anything, and "
 		"the escort rule below would have nowhere legal to stand.");
 
-	/** Draws one kind of group, by weight. */
-	const FCataclysmFloorPopulator::FPackKind& CataclysmDrawPackKind(FRandomStream& Stream)
+	/** Draws one kind of group, by weight, from the roster of the dungeon's Cataclysm. */
+	const FCataclysmFloorPopulator::FPackKind& CataclysmDrawPackKind(
+		const TArray<FCataclysmFloorPopulator::FPackKind>& Kinds, FRandomStream& Stream)
 	{
-		const TArray<FCataclysmFloorPopulator::FPackKind>& Kinds =
-			FCataclysmFloorPopulator::PackKinds();
-
 		float Total = 0.0f;
 		for (const FCataclysmFloorPopulator::FPackKind& Kind : Kinds)
 		{
@@ -434,7 +439,9 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 			}
 		}
 
-		const FPackKind& Kind = CataclysmDrawPackKind(Stream);
+		// FROM THE ROSTER OF THE CATACLYSM THAT SENT THE DUNGEON, which is the Demonic seven for every one of them
+		// until slice B37: `PackKindsFor`. Slice B3, 2026-11-25.
+		const FPackKind& Kind = CataclysmDrawPackKind(PackKindsFor(Brief.Cataclysm), Stream);
 
 		const TArray<TPair<int32, int32>> Nearby = CataclysmCellsNear(
 			FromSite, FromEntrance, Occupied,

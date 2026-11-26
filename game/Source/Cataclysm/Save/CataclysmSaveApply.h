@@ -135,9 +135,11 @@ public:
 	 * Put a saved floor's creatures and drops back onto a dungeon floor the dungeon has just rebuilt. Issue #753, the
 	 * dungeon step, ruled 2026-10-30.
 	 *
-	 * NOT `FloorInto`, IN TWO WAYS. The creatures the floor's rules raised are kept, because the rebuild placed them
-	 * and the save holds none; and each creature put back is added to the dungeon's `FloorEnemies`, which the stairs
-	 * and a kill's payout count. NO CHARACTER IS PLACED: `PlacementInto` does that, last.
+	 * NOT `FloorInto`, IN THREE WAYS. The creatures the floor's rules raised are kept, because the rebuild placed them
+	 * and the save holds none; each creature put back is added to the dungeon's `FloorEnemies`, which the stairs
+	 * and a kill's payout count; and each is made the bound dungeon's sender's again
+	 * (`ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`, slice B3, 2026-11-25), which the creature's record does
+	 * not hold. NO CHARACTER IS PLACED: `PlacementInto` does that, last.
 	 */
 	static FCataclysmFloorRestored DungeonFloorInto(ACataclysmDungeonGameMode& Dungeon,
 													const FCataclysmSavedFloor& Saved);

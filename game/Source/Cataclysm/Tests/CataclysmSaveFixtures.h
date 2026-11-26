@@ -801,6 +801,89 @@ namespace CataclysmSaveFixtures
 		}
 	}
 
+	/**
+	 * What the run record's newest step writes into a run file written before it: the floor's one Abyssal Rift state
+	 * removed, and each rift's health left and seconds stood written in its place -- three of 0 each when the state was
+	 * not 0, a rift the player had met, and two empty lists when it was 0 (`Migrate_19_to_20`). Issue #2864. NAMED FOR
+	 * THE VERSION IT REACHES, 20. ONE COPY. A file with no floor rule state is left as it is, as the step leaves it.
+	 */
+	inline void AddTheRunsVersion20Defaults(FJsonObject& Expected)
+	{
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (!Expected.TryGetObjectField(TEXT("Floor"), Floor) || Floor == nullptr || !Floor->IsValid()
+			|| !(*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) || RuleState == nullptr || !RuleState->IsValid())
+		{
+			return;
+		}
+		double State = 0.0;
+		(*RuleState)->TryGetNumberField(TEXT("AbyssalRiftState"), State);
+		(*RuleState)->RemoveField(TEXT("AbyssalRiftState"));
+		TArray<TSharedPtr<FJsonValue>> Health;
+		TArray<TSharedPtr<FJsonValue>> Seconds;
+		for (int32 Rift = 0; State != 0.0 && Rift < 3; ++Rift)
+		{
+			Health.Add(MakeShared<FJsonValueNumber>(0.0));
+			Seconds.Add(MakeShared<FJsonValueNumber>(0.0));
+		}
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftHealthLeft"), Health);
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftSecondsAlive"), Seconds);
+	}
+
+	/**
+	 * What the run record's newest step, `Migrate_20_to_21`, writes into a run file written before it: `ArrivedDay` -1
+	 * on every dungeon and `FellTo` "None" on every city. Issue #51 slice B4, the War quest. NAMED FOR THE VERSION IT
+	 * REACHES, 21. ONE COPY. A file with no `Dungeons` or no `Cities` is left as it is, as the step leaves it.
+	 */
+	inline void AddTheRunsVersion21Defaults(FJsonObject& Expected)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Expected.TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("ArrivedDay"), -1.0);
+				}
+			}
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Expected.TryGetArrayField(TEXT("Cities"), Cities) && Cities != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(City) && City != nullptr && City->IsValid())
+				{
+					(*City)->SetStringField(TEXT("FellTo"), TEXT("None"));
+				}
+			}
+		}
+	}
+
+	/**
+	 * What the run record's newest step, `Migrate_21_to_22`, writes into a run file written before it:
+	 * `CitiesFallenBefore` 0 on every dungeon. Issue #51 slice B5, the Death quest. NAMED FOR THE VERSION IT REACHES, 22.
+	 * ONE COPY. A file with no `Dungeons` is left as it is, as the step leaves it.
+	 */
+	inline void AddTheRunsVersion22Defaults(FJsonObject& Expected)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Expected.TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("CitiesFallenBefore"), 0.0);
+				}
+			}
+		}
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

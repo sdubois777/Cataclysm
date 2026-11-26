@@ -780,6 +780,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetPactOfTemptationDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies a lair's Cursed Abomination's attack damage: the lair's `AbominationMultiplier`, the step to the power
+	 * of the cities fallen when it appeared. Issue #51 slice B5, moved off the placed multiplier in bundle 4.
+	 *
+	 * A KEY OF `DamageMultipliersBySource` OF ITS OWN, AND NOT THE PLACED ONE, BECAUSE THE FLOOR'S RULES RESET THE PLACED
+	 * ONE. `GoToFloor` populates the lair's last floor, which makes the Abomination, and then applies the floor's rules,
+	 * which put every creature's placed multiplier back to 1 (`ApplyFloorRulesToPlayer`, for a Horde's next wave). On
+	 * the placed key the Abomination lost its damage on the floor it was made on, and kept its health. Window b4-w1
+	 * found it. NOT SAVED: a load makes the Abomination again from the bound dungeon and sets this again.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetAbominationDamageMultiplier(float NewMultiplier);
+
+	/** What `SetAbominationDamageMultiplier` set, 1 when nothing did. */
+	float GetAbominationDamageMultiplier() const { return DamageMultiplierFrom(AbominationDamageSource); }
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -796,6 +814,7 @@ public:
 	static constexpr const TCHAR* PlaguebearerDamageSource = TEXT("Plaguebearer");
 	static constexpr const TCHAR* FamishedBeastsDamageSource = TEXT("FamishedBeasts");
 	static constexpr const TCHAR* PactOfTemptationDamageSource = TEXT("PactOfTemptation");
+	static constexpr const TCHAR* AbominationDamageSource = TEXT("CursedAbomination");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -833,6 +852,8 @@ public:
 	static constexpr const TCHAR* SoulHarvestDamageSource = TEXT("SoulHarvest");
 	static constexpr const TCHAR* NothingIsForgottenDamageSource = TEXT("NothingIsForgotten");
 	static constexpr const TCHAR* VengefulWraithsDamageSource = TEXT("VengefulWraiths");
+	/** Undying Will's "increased damage output", on a creature it brought back. 2026-11-24. */
+	static constexpr const TCHAR* UndyingWillDamageSource = TEXT("UndyingWill");
 
 	/**
 	 * Writes one rule's part, replacing what that rule gave before, and rewrites the attack damage. A part that gives
@@ -965,6 +986,21 @@ public:
 	 *                      `SetModifierSeedForTests` wins over both.
 	 */
 	void DrawModifiersForRarity(int32 FromTheFloor = 0);
+
+	/**
+	 * The names of the status effects this creature's own abilities apply or grant, as `game/Data/StatusEffects.csv`
+	 * names them. `DrawModifiersForRarity` draws no modifier of the same name: the design's rule "An innate ability
+	 * must not duplicate a modifier its own Cataclysm can roll" (`docs/Cataclysm_GDD_v2.md`, the Succubus).
+	 *
+	 * HELD AT THE DRAW AND NOT ONLY IN THE DESIGN DATA SINCE 2026-11-25. Until a creature took its dungeon's
+	 * Cataclysm (slice B3 of the Death and War plan) a creature's Cataclysm was its archetype's, and
+	 * `tools/tests/test_enemy_abilities.py` closed the clash in the data: an innate ability could not use an effect
+	 * its own Cataclysm's modifiers named, which closed Abyssal Aura and Infernal Brand to the Demonic creatures. A
+	 * Succubus in a War dungeon is a War creature, and its Dominion grants Commander, which `War_Commander` names. So
+	 * the draw now leaves out every modifier of the creature's pool whose name is one of these, for whatever
+	 * Cataclysm the creature belongs to. Empty for every creature with no innate effect, which draws as it always did.
+	 */
+	virtual TArray<FString> InnateEffectNames() const { return TArray<FString>(); }
 
 	/**
 	 * How long since an aura modifier on this creature last pulsed, in seconds.
@@ -1125,6 +1161,40 @@ public:
 	 * while the answer matters.
 	 */
 	bool bInfernalBrandExploding = false;
+
+	/**
+	 * What the Death modifiers keep on the creature, written 2026-11-24 ahead of their window. PUBLIC FOR THE REASON
+	 * THE TIMERS ABOVE ARE: the rules that read them are statics on `UCataclysmEnemyModifiers`, so a test can drive
+	 * them a step at a time. NONE IS SAVED: a floor restored from a save starts each clock again.
+	 *
+	 * Spectral Shift's clock and the seconds it has left out of existence; Shadow Step's seconds left seen and whether
+	 * it is Shadow Step that hid the creature (so it never shows one the vision system hid); Lingering Decay's clock;
+	 * when Funeral Pyre last placed a pyre, negative until the first; and the two marks the dungeon game mode gives a
+	 * creature it brought back for Haunting or Undying Will.
+	 */
+	float SecondsSinceSpectralShift = 0.0f;
+	float SpectralShiftSecondsLeft = 0.0f;
+	float ShadowStepSeenSecondsLeft = 0.0f;
+	bool bHiddenByShadowStep = false;
+	float SecondsSinceDecayZone = 0.0f;
+	float FuneralPyreLastAt = -1.0f;
+	bool bIsASpectralCopy = false;
+	bool bRisenByUndyingWill = false;
+
+	/**
+	 * What the War modifiers keep on the creature, written 2026-11-25 ahead of their window, public and unsaved for
+	 * the reasons the Death modifiers' fields above give.
+	 *
+	 * Battle Cry's clock; Artillery Barrage's clock, the seconds a volley in the air has left (nought when none is),
+	 * where its shells will land and the circles drawn for them (held weakly: each marker removes itself when its time
+	 * is up); and how many allies Phalanx counted on its last step, which its damage reduction is written from.
+	 */
+	float SecondsSinceBattleCry = 0.0f;
+	float SecondsSinceArtilleryBarrage = 0.0f;
+	float ArtilleryShellsSecondsLeft = 0.0f;
+	TArray<FVector> ArtilleryShellsAt;
+	TArray<TWeakObjectPtr<class ACataclysmTelegraphMarker>> ArtilleryShellMarkers;
+	int32 PhalanxAlliesCounted = 0;
 
 	/**
 	 * Writes the attribute changes this creature's modifiers ask for.
@@ -1420,6 +1490,13 @@ public:
 	// The Succubus takes the tag off again when an ally leaves its aura or when
 	// it dies. The other three grant it for a stated time and let it expire.
 	// This is what the tag DOES.
+	//
+	// THE LIST ABOVE IS DATED 2026-09-14 AND IS NOT THE LIST NOW. The dungeon
+	// rule War_Commander_s_Aura grants it too, and since 2026-11-25 so does War's
+	// Commander enemy modifier, from `UCataclysmEnemyModifiers::AuraStep`, for a
+	// stated time. AND COMMANDER IS NO LONGER THE ONLY THING THAT MAKES A
+	// CREATURE BETTER: War's Drums of War grants a buff of its own, read beside
+	// this one by `DrumsOfWarMultiplier` below.
 	// ----------------------------------------------------------------------
 
 	/**
@@ -1443,6 +1520,22 @@ public:
 	 * help it.
 	 */
 	float CommanderMultiplier() const;
+
+	/**
+	 * How much a creature holding Drums of War gains, as a percentage: War's Drums of War enemy modifier, "Increases
+	 * nearby allies move speed and attack speed by 50%", the row's figure and the `Buff_Drums_of_War` row's. Written
+	 * 2026-11-25 ahead of its window.
+	 */
+	static constexpr float DrumsOfWarIncreasePercent = 50.0f;
+
+	/**
+	 * What Drums of War multiplies, or 1.0 when this creature does not hold it. THE SAME SHAPE AS COMMANDER'S: the tag
+	 * is the truth, granted for a stated time by `UCataclysmEnemyModifiers::AuraStep`, and it names both speeds, so it
+	 * is a factor of `SpeedMultiplierWithWraithFactor` by that function's rule. A SEPARATE FACTOR FROM COMMANDER AND
+	 * MULTIPLIED WITH IT, as Commander and the Vengeful Wraiths rule's increase already are: a creature holding both
+	 * is 1.2 x 1.5 faster. A judgement, recorded.
+	 */
+	float DrumsOfWarMultiplier() const;
 
 	/**
 	 * What Cripple multiplies, or 1.0 when this creature is not crippled.
@@ -1553,7 +1646,7 @@ public:
 	/** `SpeedMultiplier`'s factors, with the wraith's given, so the list is written once. Issue #2793. */
 	float SpeedMultiplierWithWraithFactor(float WraithFactor) const
 	{
-		return CommanderMultiplier() * CrippleMultiplier() * WraithFactor
+		return CommanderMultiplier() * DrumsOfWarMultiplier() * CrippleMultiplier() * WraithFactor
 			* GroundDownMultiplier() * AilmentSlowMultiplier();
 	}
 
@@ -1711,6 +1804,23 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsAnAbomination = false;
+
+	/**
+	 * Whether this creature is an Abomination lair's Cursed Abomination: the Gatekeeper on the last wave of a Quest
+	 * dungeon Death sent. Issue #51 slice B5. It puts "Cursed Abomination" under the health bar, which tells it apart
+	 * from Portal Unleashing's "Abomination" (`bIsAnAbomination`) and the Necromancer's vow (L5, the coordinating
+	 * session, 2026-11-25). A STAND-IN on the Gatekeeper until a Death creature exists (L4; issue #29). Set by
+	 * `ACataclysmDungeonGameMode::MakeTheCursedAbomination`, again on a load. Permanent.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsTheCursedAbomination = false;
+
+	/**
+	 * What the Cursed Abomination's random gear drops are multiplied by: its lair's `AbominationMultiplier`, the step
+	 * its health and damage took (L6). 1 for every other creature. Gold is not multiplied. Set with the flag, again on
+	 * a load from the bound dungeon, so it is not saved. Issue #51 slice B5.
+	 */
+	float AbominationGearMore = 1.0f;
 
 	/**
 	 * Whether a Carrion Feast carcass became this creature. Issues #1820 and #41. It puts "Feeder" under the health
@@ -1899,11 +2009,12 @@ public:
 	bool bShrouded = false;
 
 	/**
-	 * Whether no damage reaches this creature now: it cannot be hurt, or it is shrouded. What
-	 * `UCataclysmVitalAttributeSet` reads where it empties a resolved blow. Its health clamp asks the
-	 * two fields apart, because the Reaper is held at its maximum and a shrouded creature where it is.
+	 * Whether no damage reaches this creature now: it cannot be hurt, or it is shrouded, or Death's Spectral
+	 * Shift has it out of existence (2026-11-24). What `UCataclysmVitalAttributeSet` reads where it empties a
+	 * resolved blow. Its health clamp asks the fields apart, because the Reaper is held at its maximum and a
+	 * shrouded or phased creature where it is.
 	 */
-	bool TakesNoDamage() const { return bCannotBeHurt || bShrouded; }
+	bool TakesNoDamage() const { return bCannotBeHurt || bShrouded || SpectralShiftSecondsLeft > 0.0f; }
 
 	/**
 	 * Whether this creature's death is to pay nothing: a Blood Bond's elite, which dies because
@@ -2404,12 +2515,23 @@ public:
 	/**
 	 * Which of the player's eight resistances this creature's attacks are met by.
 	 *
-	 * DEMONIC, BECAUSE THE WHOLE VERTICAL SLICE IS. The design gives each
+	 * DEMONIC BY DEFAULT, BECAUSE THE WHOLE VERTICAL SLICE IS. The design gives each
 	 * Cataclysm one damage type and says its enemies deal it; all seven Demonic
 	 * creatures therefore share this. `Archetype.cataclysm` in
 	 * `sim/cataclysm_sim/enemy_stats.py` is the same field with the same default,
 	 * and `EnemyArchetypes.csv` carries it per archetype for when this is read
 	 * from data rather than declared.
+	 *
+	 * AND THE DUNGEON'S SENDER ON A DUNGEON FLOOR, since slice B3 of the Death and
+	 * War plan (2026-11-25): `ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`
+	 * writes the Cataclysm that sent the dungeon here before the creature's
+	 * modifiers are drawn, so a Death dungeon's Demonic bodies deal Death and draw
+	 * Death and Generic modifiers, as the owner accepted on 2026-11-24 (Q16). A
+	 * dungeon nobody sent, and every place outside a dungeon, leaves this default,
+	 * but a Fallen City's creatures take the Cataclysm that felled its city (the
+	 * run's newest active one when the city records nobody, bundle 4). The
+	 * Gatekeeper's called Imps copy their Gatekeeper's; the Corrupted Stalker and
+	 * the corrupted double take their build's (ruled 2026-11-25).
 	 *
 	 * A CREATURE AND A FLOOR HAZARD ARE THE ONLY TWO THINGS IN THE GAME WHOSE
 	 * DAMAGE CARRIES A TYPE. This said "the only damage in the game" until a

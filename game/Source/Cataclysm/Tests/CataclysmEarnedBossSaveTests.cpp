@@ -252,6 +252,9 @@ bool FCataclysmEarnedBossSaveMigrationTest::RunTest(const FString& Parameters)
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
+	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
+	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -282,7 +285,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossSaveCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v19.json` reads into the three values it states, none of them a default, so
+ * `Run_v22.json` reads into the three values it states, none of them a default, so
  * each is read and not re-defaulted. Prints "BOSS FILE". It read `Run_v4.json`
  * until the run record went to version 5 on 2026-11-03 (issue #1324 slice 6e),
  * `Run_v5.json` until it went to version 6 on 2026-11-17 (issue #2733 slice 3),
@@ -299,14 +302,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossSaveCommittedFileTest,
  * `Run_v16.json` until it went to version 17 the same day (issue #2840);
  * `Run_v17.json` until it went to version 18 on 2026-11-24 (issue #2848);
  * `Run_v18.json` until it went to version 19 the same day (issue #51);
- * `Run_v19.json` holds the same three values, and the older files are migration
+ * `Run_v19.json` until it went to version 20 on 2026-11-25 (issue #2864), `Run_v20.json`
+ * until it went to version 21 the same day (issue #51 slice B4), `Run_v21.json` until it went to version 22 the same day (issue #51 slice B5); `Run_v22.json` holds the same three values, and the older files are migration
  * inputs now.
  */
 bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v22.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -317,7 +321,7 @@ bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameter
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v19.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v22.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

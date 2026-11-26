@@ -13,6 +13,8 @@
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the firing skill's row, captured when the shot is fired. Issue #2764, slice 2a.
 #include "Character/CataclysmSkillLevels.h"
+// For War's Shield Wall, which a projectile's damage asks of what it lands on. 2026-11-25.
+#include "Character/CataclysmEnemyModifiers.h"
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -716,6 +718,12 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 			: UCataclysmDamageCalculation::NormalProjectileLaterHitDamage;
 		Percent *= FMath::Max(0.0f, LaterHitShare) / 100.0f;
 	}
+
+	// AND A QUARTER OF IT INTO A CREATURE CARRYING WAR'S SHIELD WALL, "Take 75% less damage from projectiles", the
+	// wording the owner accepted on 2026-11-24 (no positional weak points). HERE, WHERE EVERY PROJECTILE'S CONTACT
+	// AND EVERY BLAST LANDS, and a "less" on the whole figure, so it multiplies with everything else as any "less"
+	// does; one for every other target. 2026-11-25, ahead of its window.
+	Percent *= UCataclysmEnemyModifiers::ShareOfProjectileDamageTaken(Target);
 
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(

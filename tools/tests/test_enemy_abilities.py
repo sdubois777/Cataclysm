@@ -783,6 +783,12 @@ def test_no_effect_duplicates_a_modifier_its_own_cataclysm_can_roll(
     A modifier belonging to a DIFFERENT Cataclysm is not a clash, because that
     enemy can never roll it. Commander is a War modifier and the Succubus is
     Demonic, so its ally aura is free to use the effect of that name.
+
+    THAT WAS TRUE WHILE A CREATURE'S CATACLYSM WAS ITS ARCHETYPE'S. Since slice
+    B3 of the Death and War plan a creature takes its dungeon's Cataclysm, so a
+    War dungeon's Succubus is a War creature and could roll `War_Commander`. The
+    clash is closed at the draw for that case, and the test after this one holds
+    the closure (2026-11-25).
     """
     import csv
 
@@ -816,6 +822,76 @@ def test_no_effect_duplicates_a_modifier_its_own_cataclysm_can_roll(
         "the Succubus subsection no longer states the rule that an innate "
         "ability must not duplicate a modifier its own Cataclysm can roll. "
         "Issue #349.")
+
+
+def test_an_innate_effect_another_cataclysm_rolls_is_closed_at_the_draw() -> None:
+    """The rule above, for every Cataclysm a creature may belong to. 2026-11-25.
+
+    WHY. A creature takes its dungeon's Cataclysm since slice B3 of the Death and
+    War plan, so the archetype's own Cataclysm is no longer the only pool it
+    draws from. The Succubus's Dominion grants Commander and `War_Commander` is a
+    War modifier: a War dungeon's Succubus would hold Commander twice. The
+    coordinating session ruled on 2026-11-25 that the design's rule closes it.
+
+    HOW IT IS CLOSED. `ACataclysmEnemyCharacter::DrawModifiersForRarity` leaves
+    out of the pool every row `UCataclysmEnemyModifiers::ClosedByInnateEffects`
+    names for the creature's `InnateEffectNames()`. So every innate effect that
+    ANY Cataclysm's column names as a modifier must be in that creature's list,
+    and the draw must pass the list. Both are read here, in the C++.
+    """
+    import csv
+
+    from cataclysm_sim.enemy_abilities import ABILITIES
+
+    character_dir = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+    with (REPO_ROOT / "game" / "Data" / "EnemyModifiers.csv").open(
+            encoding="utf-8-sig", newline="") as handle:
+        modifier_names = {row["ModifierName"] for row in csv.DictReader(handle)}
+    assert "Commander" in modifier_names, (
+        "War_Commander is no longer a modifier, so this closure checks nothing.")
+
+    def declared(name: str) -> set[str]:
+        """The names `InnateEffectNames()` returns, resolved through the class's
+        own `TEXT(...)` definitions of the constants it names."""
+        class_name = "Cataclysm" + name.replace(" ", "") + "Character"
+        source = (character_dir / f"{class_name}.cpp").read_text(encoding="utf-8")
+        body = re.search(
+            rf"TArray<FString> A{class_name}::InnateEffectNames\(\) const\s*\{{(.*?)\n\}}",
+            source.replace("\r\n", "\n"), re.DOTALL)
+        if body is None:
+            return set()
+        names = set(re.findall(r'TEXT\("([^"]+)"\)', body.group(1)))
+        for constant in re.findall(r"FString\((\w+)\)", body.group(1)):
+            value = re.search(
+                rf"A{class_name}::{constant}\s*=\s*TEXT\(\"([^\"]+)\"\)\s*;", source)
+            assert value is not None, f"{class_name}::{constant} has no TEXT definition"
+            names.add(value.group(1))
+        return names
+
+    checked = 0
+    for name, entries in ABILITIES.items():
+        innate = {ability.params["Effect"] for ability in entries
+                  if ability.params.get("Effect")}
+        clashing = innate & modifier_names
+        if not clashing:
+            continue
+        checked += 1
+        missing = clashing - declared(name)
+        assert not missing, (
+            f"the {name} applies {sorted(missing)} innately and a Cataclysm's column "
+            f"names a modifier of that name. A creature takes its dungeon's "
+            f"Cataclysm, so it could roll it; name each in the {name}'s "
+            f"InnateEffectNames() so the draw closes it.")
+    assert checked >= 1, (
+        "no creature's innate effect is a modifier's name, so the closure is "
+        "checked on nothing; the Succubus's Commander was the case it was made for.")
+
+    draw = (character_dir / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
+    assert re.search(
+        r"UCataclysmEnemyModifiers::ClosedByInnateEffects\(\s*ModifierTable,\s*DamageType,"
+        r"\s*InnateEffectNames\(\)\)", draw), (
+        "DrawModifiersForRarity no longer asks ClosedByInnateEffects with the "
+        "creature's own Cataclysm and innate effects, so nothing closes the clash.")
 
 
 def test_the_ally_aura_is_held_on_rather_than_cast(succubus_abilities,

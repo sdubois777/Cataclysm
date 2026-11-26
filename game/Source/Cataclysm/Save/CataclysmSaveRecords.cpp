@@ -1413,6 +1413,110 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * The most rifts a floor could hold when the run record went to version 20, `UCataclysmDungeonModifierEffects::
+	 * AbyssalRiftsPerLargeFloor` on that day. WRITTEN HERE AS A NUMBER AND NOT READ FROM THE RULE, so what an older
+	 * file migrates to does not move if the rule's figure does; the load reads only the rifts its floor placed.
+	 */
+	constexpr int32 RiftsAFloorAtVersion20 = 3;
+
+	/**
+	 * Version 19 to 20, issue #2864, the owner's redesign of Abyssal Rifts (2026-11-23): a floor holds several rifts the
+	 * player can kill, and the floor's rule state saves each rift's health left and seconds stood where it saved one
+	 * rift's state. `AbyssalRiftState` is read and removed. A STATE OTHER THAN 0 WAS A RIFT THE PLAYER HAD MET, open or
+	 * closed, and the version 19 load closed it and counted it failed (U2), so the floor's rifts are written as killed:
+	 * `RiftsAFloorAtVersion20` entries of 0 health and 0 seconds. A state of 0, or none, is written as no rift saved,
+	 * two empty lists, which the load reads as the rifts standing as the floor rebuilds them. Written out, for
+	 * `Migrate_1_to_2`'s reason. A run with no `Floor` or no `RuleState` object is left as it is, for `Migrate_6_to_7`'s
+	 * reason.
+	 */
+	bool Migrate_19_to_20(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (!Record->TryGetObjectField(TEXT("Floor"), Floor) || !Floor || !Floor->IsValid()
+			|| !(*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) || !RuleState || !RuleState->IsValid())
+		{
+			return true;
+		}
+		double State = 0.0;
+		(*RuleState)->TryGetNumberField(TEXT("AbyssalRiftState"), State);
+		(*RuleState)->RemoveField(TEXT("AbyssalRiftState")); // A migration's: the one rift's state is gone.
+		TArray<TSharedPtr<FJsonValue>> Health;
+		TArray<TSharedPtr<FJsonValue>> Seconds;
+		if (State != 0.0)
+		{
+			for (int32 Rift = 0; Rift < RiftsAFloorAtVersion20; ++Rift)
+			{
+				Health.Add(MakeShared<FJsonValueNumber>(0.0)); // A migration's: a met rift loads killed, as U2 closed it.
+				Seconds.Add(MakeShared<FJsonValueNumber>(0.0));
+			}
+		}
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftHealthLeft"), Health);
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftSecondsAlive"), Seconds);
+		return true;
+	}
+
+	/**
+	 * Version 20 to 21, issue #51 slice B4, the War quest. Every dungeon gets `ArrivedDay` -1 (`INDEX_NONE`): no
+	 * version 20 run recorded a day of arrival, so a Siege's growth counts from `SpawnedDay`, as it did. Every city
+	 * gets `FellTo` "None": no version 20 run recorded what felled a city. Written out, for `Migrate_1_to_2`'s reason.
+	 * A run with no `Dungeons` or no `Cities` array is left as it is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_20_to_21(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Record->TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("ArrivedDay"), INDEX_NONE); // A migration's: it has not moved.
+				}
+			}
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Record->TryGetArrayField(TEXT("Cities"), Cities) && Cities != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(City) && City != nullptr && City->IsValid())
+				{
+					(*City)->SetStringField(TEXT("FellTo"), TEXT("None")); // A migration's: not recorded before.
+				}
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Version 21 to 22, issue #51 slice B5, the Death quest. Every dungeon gets `CitiesFallenBefore` 0: no version 21
+	 * run recorded it. Written out, for `Migrate_1_to_2`'s reason. A run with no `Dungeons` array is left as it is, for
+	 * `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_21_to_22(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Record->TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("CitiesFallenBefore"), 0); // A migration's: not recorded before.
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1433,6 +1537,9 @@ namespace CataclysmRunSaveMigration
 		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
 		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
 		{ 18, TEXT("Migrate_18_to_19"), &Migrate_18_to_19 },
+		{ 19, TEXT("Migrate_19_to_20"), &Migrate_19_to_20 },
+		{ 20, TEXT("Migrate_20_to_21"), &Migrate_20_to_21 },
+		{ 21, TEXT("Migrate_21_to_22"), &Migrate_21_to_22 },
 	};
 }
 

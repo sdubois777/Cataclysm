@@ -417,6 +417,12 @@ FCataclysmFloorRestored FCataclysmSaveApply::DungeonFloorInto(
 	{
 		if (ACataclysmEnemyCharacter* Back = CreatureInto(*World, Creature))
 		{
+			// OF THE CATACLYSM THAT SENT THE DUNGEON, as it was when it was saved: the record holds no damage type, and
+			// the dungeon bound again before this (`ResumeEmpireDungeon`) holds the saved sender. Its modifiers came
+			// back as drawn. Slice B3, 2026-11-25. A THRALL TOO: one is taken in the dungeon it fights in, save for one
+			// carried into another dungeon entered from inside a walk, which comes back as the dungeon's.
+			Dungeon.GiveTheDungeonsCataclysm(Back);
+
 			// A THRALL IS THE PLAYER'S, not one of the floor's own: kept out of the list the stairs count.
 			if (!Creature.bCommandedByThePlayer)
 			{

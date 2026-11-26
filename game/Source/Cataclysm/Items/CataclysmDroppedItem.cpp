@@ -633,7 +633,8 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										   float LowTierMaterialExtraChance,
 										   ECataclysmRarity LowestRarity,
 										   float MaterialsMore,
-										   bool bTheCataclysmBossesPiece)
+										   bool bTheCataclysmBossesPiece,
+										   float GearMore)
 {
 	if (!World)
 	{
@@ -685,7 +686,9 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	const int32 Count = GearCountGiven >= 0
 		? GearCountGiven
 		: UCataclysmDropRoll::RollDropCount(
-			  UCataclysmDropRoll::ExpectedGearDrops(Drops, EnemyRarity, LootQuantity),
+			  // `GearMore` ON THE EXPECTED GEAR ONLY: a lair's Cursed Abomination's step (issue #51 slice B5, L6). 1 for
+			  // every other caller, which leaves the roll exactly as it was.
+			  UCataclysmDropRoll::ExpectedGearDrops(Drops, EnemyRarity, LootQuantity) * FMath::Max(0.0f, GearMore),
 			  Stream);
 	// A CITY'S "MORE CRAFTING MATERIALS" (issue #2781, X2) is the material roll's alone, given as a loot quantity, which
 	// the expected count is in proportion to. Exactly 1 leaves the figure as it was.

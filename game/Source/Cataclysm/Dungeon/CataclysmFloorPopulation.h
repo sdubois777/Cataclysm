@@ -328,9 +328,28 @@ public:
 	 * WHAT IS DELIBERATELY NOT DECIDED HERE: which creature belongs to which
 	 * Cataclysm. All seven designed creatures are Demonic, there is one
 	 * Cataclysm's worth of roster, and per-Cataclysm theming is still open on
-	 * issue #40.
+	 * issue #40. `PackKindsFor` is where a dungeon's Cataclysm chooses among
+	 * rosters once there is more than one.
 	 */
 	static const TArray<FPackKind>& PackKinds();
+
+	/**
+	 * The kinds of group a floor of a dungeon sent by this Cataclysm draws from. Slice B3 of the Death and War plan,
+	 * 2026-11-25; `FCataclysmFloorBrief::Cataclysm` is what `Populate` passes.
+	 *
+	 * EVERY CATACLYSM'S IS THE DEMONIC SEVEN FOR NOW: `PackKinds()` itself, for Death and War as stand-ins until their
+	 * own rosters exist (the plan's slices B35 and B36; the owner accepted the stand-ins on 2026-11-24, Q16), for the
+	 * other five likewise, and for `None`. Slice B37 is what re-casts this.
+	 *
+	 * THE SAME ARRAY AND NOT A COPY OF IT, so a floor draws exactly the groups it drew before a dungeon carried a
+	 * Cataclysm: the same seed builds the same floor whoever sent the dungeon.
+	 * `Cataclysm.CreatureCataclysm.TheBriefCarriesTheSenderAndEveryRosterIsTheDemonicSevenForNow` holds both. What the
+	 * Cataclysm does change is what each creature IS once placed: see `FCataclysmDungeonIdentity::Cataclysm`.
+	 *
+	 * THE BOSS AND THE SUCCUBUS ESCORT ARE NOT IN IT, as they are not in `PackKinds()`: `Populate` places them by their
+	 * own rules, and they are the Demonic Gatekeeper and Succubus for every Cataclysm until B37 too.
+	 */
+	static const TArray<FPackKind>& PackKindsFor(ECataclysmType Cataclysm);
 
 	// ----------------------------------------------------------------------
 

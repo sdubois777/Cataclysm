@@ -235,6 +235,23 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfestedHoardKey =
 const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsKey =
 	TEXT("Demonic_Abyssal_Rifts");
 
+const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsHealthArchetypeRow =
+	TEXT("Baseline");
+
+// THE THIRD RIFT IS REACHABLE AND IS NOT EVERY FLOOR'S: the threshold lies inside the range of plans the floor generator
+// draws, above the smallest and no higher than the largest. Issue #2864.
+static_assert(FCataclysmFloorGenerator::LeastFloorSide * FCataclysmFloorGenerator::LeastFloorSide
+					  < UCataclysmDungeonModifierEffects::AbyssalRiftsLargeFloorCells
+				  && UCataclysmDungeonModifierEffects::AbyssalRiftsLargeFloorCells
+					  <= FCataclysmFloorGenerator::MostFloorSide * FCataclysmFloorGenerator::MostFloorSide,
+	"Abyssal Rifts' large floor must be a plan the generator can draw and not every plan it draws, or every floor "
+	"would hold the same number of rifts.");
+
+// THE RIFTS' MAGIC FIND STOPS WHERE THE INFERNAL BEACONS' DOES, the same Cataclysm's reward of the same kind. Issue #2864.
+static_assert(UCataclysmDungeonModifierEffects::AbyssalRiftsMostMagicFind
+				  == UCataclysmDungeonModifierEffects::InfernalBeaconsMostMagicFind,
+	"Abyssal Rifts' magic find cap is Infernal Beacons' figure; change both or say why they part.");
+
 const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
 	TEXT("Famine_Swarm_of_Locusts");
 
@@ -2206,7 +2223,7 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	}
 	if (Effects.RiftMagicFindAdded > 0.0f)
 	{
-		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts closed in time"),
+		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts destroyed"),
 									Effects.RiftMagicFindAdded));
 	}
 	if (Effects.BeaconMagicFindAdded > 0.0f)
@@ -2707,24 +2724,33 @@ float UCataclysmDungeonModifierEffects::SwarmOfLocustsBurn(float MaximumHealth)
 	return MaximumHealth > 0.0f ? MaximumHealth * SwarmOfLocustsPercentPerSecond / 100.0f : 0.0f;
 }
 
-bool UCataclysmDungeonModifierEffects::AbyssalRiftsWaveIsDue(float SecondsOpen, int32 WavesSent)
+int32 UCataclysmDungeonModifierEffects::AbyssalRiftsFor(int32 PlanCells)
 {
-	return WavesSent < AbyssalRiftsWaves && SecondsOpen >= WavesSent * AbyssalRiftsSecondsBetweenWaves;
+	return PlanCells >= AbyssalRiftsLargeFloorCells ? AbyssalRiftsPerLargeFloor : AbyssalRiftsPerFloor;
 }
 
-bool UCataclysmDungeonModifierEffects::AbyssalRiftsHasRunOut(float SecondsOpen)
+bool UCataclysmDungeonModifierEffects::AbyssalRiftsHunterIsDue(float SecondsSinceLastSent, int32 OwnStanding)
 {
-	return SecondsOpen >= AbyssalRiftsSecondsToClose;
+	return SecondsSinceLastSent >= AbyssalRiftsSecondsBetweenHunters && OwnStanding < AbyssalRiftsMostHuntersPerRift;
 }
 
-int32 UCataclysmDungeonModifierEffects::AbyssalRiftsRungFor(int32 Successes)
+int32 UCataclysmDungeonModifierEffects::AbyssalRiftsStrengthStepsFor(float SecondsAlive)
 {
-	return FMath::Clamp(Successes, 0, AbyssalRiftsHighestRung);
+	// A HAIR UNDER THE STEP COUNTS AS THE STEP, so a beat count that lands on fifteen seconds through a sum of quarter
+	// seconds is the step it reads as. A quarter second is exact in a float, so the sum is too; this is a guard.
+	const int32 Steps = FMath::FloorToInt((FMath::Max(0.0f, SecondsAlive) + KINDA_SMALL_NUMBER)
+										  / AbyssalRiftsSecondsPerStrengthStep);
+	return FMath::Clamp(Steps, 0, AbyssalRiftsMostStrengthSteps);
+}
+
+float UCataclysmDungeonModifierEffects::AbyssalRiftsHunterMultiplierFor(float SecondsAlive)
+{
+	return 1.0f + AbyssalRiftsStrengthStepsFor(SecondsAlive) * AbyssalRiftsStrengthPercentPerStep / 100.0f;
 }
 
 float UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(int32 Successes)
 {
-	return FMath::Max(0, Successes) * AbyssalRiftsMagicFindPerSuccess;
+	return FMath::Min(FMath::Max(0, Successes) * AbyssalRiftsMagicFindPerSuccess, AbyssalRiftsMostMagicFind);
 }
 
 float UCataclysmDungeonModifierEffects::InfestedHoardChancePercentFor(int32 Stacks)
@@ -3537,11 +3563,13 @@ float UCataclysmDungeonModifierEffects::SoulHarvestResistanceAdded(int32 Souls)
 	return SoulHarvestResistancePerSoul * static_cast<float>(FMath::Max(0, Souls));
 }
 
-bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType)
+bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType, FName DungeonsOwnDamageType)
 {
 	// THE CREATURE'S CATACLYSM, read as the damage type it deals: the design gives each Cataclysm one, and its
-	// creatures deal it. Issue #1671.
-	return CreatureDamageType == FName(TEXT("Demonic"));
+	// creatures deal it. Issue #1671. AGAINST THE DUNGEON'S OWN CREATURES' TYPE since slice B3 (2026-11-25), Demonic for
+	// a dungeon nobody sent. See the header.
+	const FName OwnType = DungeonsOwnDamageType.IsNone() ? FName(TEXT("Demonic")) : DungeonsOwnDamageType;
+	return !CreatureDamageType.IsNone() && CreatureDamageType == OwnType;
 }
 
 bool UCataclysmDungeonModifierEffects::SoulHarvestSoulArrivesAfter(const FVector& From, const FVector& To,

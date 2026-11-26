@@ -385,6 +385,22 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	TArray<int32> RiftSent;
 
 	/**
+	 * The War Quest Sieges a city's fall to War made today, in the order they were made; `Spawned` lists them too, and
+	 * `SurgeDungeons` does not, because no surge brought them. `UCataclysmEmpireRun::MakeWarQuestSiegeOnAFall` fills
+	 * it. Additive only. Issue #51 slice B4.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> WarSiegeOnAFall;
+
+	/**
+	 * The Abomination lairs a city's fall made today while Death was active, in the order they were made; `Spawned`
+	 * lists them too, and `SurgeDungeons` does not. `UCataclysmEmpireRun::MakeLairOnAFall` fills it. Additive only.
+	 * Issue #51 slice B5.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> LairOnAFall;
+
+	/**
 	 * Whether a death in a Rift brought a surge in this report. `bSurged` and `Surges` say so too. Issue #51 slice B2:
 	 * the owner, 2026-11-24, "Every death, no gap (Recommended)". Only the report
 	 * `UCataclysmEmpireRun::SurgeForADeathInARift` answers sets it.
@@ -2300,6 +2316,43 @@ private:
 	 * @param OutReport the day's report: each sent dungeon goes into `Spawned` and `RiftSent`
 	 */
 	void SendFromRifts(int32 Today, FCataclysmDayReport& OutReport);
+
+	/**
+	 * A city's fall to War starts the next Siege: one War Quest Siege, a Quest dungeon that counts toward War's
+	 * objectives when cleared, made as a surge makes one for an adjacent city a surge could target that holds no Siege
+	 * (`UCataclysmSurgeScheduler::PickWarSiegeCity`), unless `QuestSiegesPerDay` are already made today or no
+	 * neighbour qualifies. Its draws come from a stream of its own (`WarSiegeSeedFor`), so no shared stream moves.
+	 * The plan's reading of section XI, accepted by the owner on 2026-11-24; W1 to W3 ruled by the coordinating session
+	 * on 2026-11-25. `CityFell` calls it after the Dungeon City is made and before the fall's own surge, which then
+	 * counts it toward the day's two. The model's `Simulation._war_siege_on_a_fall`. Issue #51 slice B4.
+	 */
+	void MakeWarQuestSiegeOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * A city's fall while Death is active makes one Abomination lair: a Quest dungeon Death sends, made as a surge
+	 * makes one for the city `UCataclysmSurgeScheduler::PickRefuge` answers from the fallen city -- an adjacent exposed
+	 * city first, else the nearest that qualifies -- with no cap (L2). It counts the cities fallen, this one included
+	 * (L1), and toward Death's 5 objectives when cleared. Its draws come from a stream of its own (`LairSeedFor`).
+	 * `CityFell` calls it after War's Siege and before the fall's own surge. The owner, 2026-11-24, Q6; the
+	 * coordinating session, 2026-11-25, L1 and L2. The model's `Simulation._lair_on_a_fall`. Issue #51 slice B5.
+	 */
+	void MakeLairOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * The War Quest Sieges made on `Day` that still stand: the Quest dungeons on the map whose sub-type is Siege and
+	 * whose `SpawnedDay` is `Day`. What `QuestSiegesPerDay` counts against. One cleared the day it was made is not
+	 * counted, as in the model, which counts the same way.
+	 */
+	int32 QuestSiegesMadeOn(int32 Day) const;
+
+	/**
+	 * The Cataclysm whose hit is being dealt, set by each of the three hits that can fell a city just before its
+	 * `Map->Damage` and read and cleared by `CityFell`, which records it on the city (`FCataclysmCity::FellTo`).
+	 * Not saved: it lives only across one hit. A MEMBER AND NOT A PARAMETER of `CityFell`, so every call keeps the one
+	 * shape the port tests read (`CityFell(X, OutReport);`), the way `ArmTheLastStandFor` arms Last Stand Protocols
+	 * for the next hit. Issue #51 slice B4.
+	 */
+	ECataclysmType HitBy = ECataclysmType::None;
 
 	/**
 	 * Which active Cataclysm sent one dungeon of a wave.
