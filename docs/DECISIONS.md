@@ -163,10 +163,16 @@ Changed: `Cataclysm.DungeonEnemies.AFloorHoldsMoreThanOneKindOfCreature` and `Ca
 
 ### Evidence
 
-Python, before the decisions entry was added, on the branch's working tree: "4 failed, 9578 passed, 9 skipped"; JUnit
-9,591 tests, 4 failures. Three of the four were this branch's own and are fixed above (the held cells, and the ini key
-named twice); the fourth is the DataTable hash in "SAID FIRST". The final figures are in the report to the
-coordinating session and the pull request.
+Python, run in full with `python -u -m pytest --junit-xml=<outside the repository>`:
+
+- First run, before this entry: "4 failed, 9578 passed, 9 skipped"; JUnit 9,591 tests, 4 failures. Three were this
+  branch's own and are fixed above (the held cells, and the ini key named by two checks).
+- Second run, on `78b3d0186`: "2 failed, 9580 passed, 9 skipped"; JUnit 9,591 tests, 2 failures. One was the missing
+  rule above the entry below this one, fixed in the next commit; the other is the DataTable hash in "SAID FIRST".
+
+`python -m ruff check .`: all checks passed.
+
+---
 
 ## 2026-11-26 — The owner's first play test: the passive screen opens on the class chosen, every class's starting node draws the Fervour bar, and a minion a skill detonates explodes for twice the caster's weapon (window dfix-w1)
 
