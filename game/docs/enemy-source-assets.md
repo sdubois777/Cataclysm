@@ -16,6 +16,8 @@ tags through the editor. It is not an estimate.
 
 Six free Paragon packs, imported 2026-08-07, 17.31 GB total.
 
+Four creature packs bought on Fab were added on 2026-11-26 (Wraith, Alien5Remake, Lich, PsykerEpic), measured the same day as .uasset counts and folder sizes on disk; the owner chose to keep them out of git as the Paragon packs are. A fifth, `AbsorbtionFX/` (10 visual effects, 70 assets, 0.16 GB), is an effects pack, not an enemy, and is excluded from git without a row here.
+
 | Folder under `game/Content/` | Size | Assets |
 |---|:-:|:-:|
 | `ParagonMinions/` | 4.76 GB | 2,105 |
@@ -24,6 +26,10 @@ Six free Paragon packs, imported 2026-08-07, 17.31 GB total.
 | `ParagonGrux/` | 2.90 GB | 1,402 |
 | `ParagonCountess/` | 1.78 GB | 2,727 |
 | `ParagonSevarog/` | 1.35 GB | 1,067 |
+| `Wraith/` | 1.17 GB | 317 |
+| `Alien5Remake/` | 0.35 GB | 61 |
+| `Lich/` | 0.24 GB | 79 |
+| `PsykerEpic/` | 0.21 GB | 82 |
 
 ## Which asset plays which enemy
 
