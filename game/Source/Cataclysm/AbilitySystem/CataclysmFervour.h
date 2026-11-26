@@ -978,6 +978,18 @@ public:
 	/** The place of `Row` in `WornEnemyModifierRows`, counted from 1, or nought when it is not there. */
 	static int32 WornEnemyModifierPlace(FName Row);
 
+	/**
+	 * The enemy modifiers Wearer of the Dead lends AS THEMSELVES rather than as a figure on a stat: each is no number on
+	 * a player stat, so the vow holds no row for it, and a character holding the vow at all (`UCataclysmAbilitySystem
+	 * Component::HoldsAnyRowWearing`) is lent it, recorded by its row (`NoteLentModifier`) and read wherever its effect
+	 * asks `UCataclysmEnemyModifiers::CarriedBy`. Issue #2899 (2026-11-26): the Death modifiers, converted to work on any
+	 * wearer. NINE OF DEATH'S ELEVEN: the owner ruled on 2026-11-26 that of the three that act at their wearer's death
+	 * only Undying Will is lent to the player ("you come back once with less health and more damage"), and Haunting and
+	 * Final Curse never are. `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` holds this list to
+	 * the Death rows of `game/Data/EnemyModifiers.csv` less those two.
+	 */
+	static const TArray<FName>& LentEnemyModifierRows();
+
 	/** How long a lent modifier is worn: "for 20 seconds". */
 	static constexpr float WornEnemyModifierSeconds = 20.0f;
 

@@ -28,6 +28,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Items/CataclysmItem.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
@@ -94,6 +95,13 @@ namespace CataclysmDeathModifiersTest
 			SetCurrent(Vital::GetEnergyShieldAttribute(), 0.0f);
 			SetCurrent(Vital::GetEnergyShieldRegenAttribute(), 0.0f);
 			SetCurrent(Vital::GetHealthRegenAttribute(), 0.0f);
+			// AND NO LEECH, issue #2933. The player's own blows on the creatures leeched, and leech is paid over the
+			// seconds after a hit, so it healed the player inside Soul Tether's measured four seconds: window b4-w6 read
+			// 57.00 taken of 65 owed, and 8.00 is 0.92% of the 870 the player's set-up blows took from the creatures;
+			// the dead-source control read 64.08, and 0.92 is 0.92% of the doomed creature's 100.
+			SetCurrent(Vital::GetLifeLeechAttribute(), 0.0f);
+			SetCurrent(Vital::GetManaLeechAttribute(), 0.0f);
+			SetCurrent(Vital::GetEnergyShieldLeechAttribute(), 0.0f);
 			SetCurrent(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
 			SetCurrent(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 			SetCurrent(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
@@ -152,11 +160,13 @@ namespace CataclysmDeathModifiersTest
 			Check(Vital::GetEnergyShieldAttribute(), 0.0f);
 			Check(Vital::GetEnergyShieldRegenAttribute(), 0.0f);
 			Check(Vital::GetHealthRegenAttribute(), 0.0f);
+			Check(Vital::GetLifeLeechAttribute(), 0.0f);
 			Check(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
 			Check(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
 			Check(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(), 0.0f);
-			// AND AS THE DAMAGE CALCULATION READS THEM, through the stat line: nought where nothing is recorded.
-			for (const FName Stat : {FName(TEXT("armor")), FName(TEXT("damage_reduction")),
+			// AND AS THE DAMAGE CALCULATION AND THE LEECH READ THEM, through the stat line: nought where nothing is
+			// recorded. `life_leech` since issue #2933, as `UCataclysmLeech` asks it.
+			for (const FName Stat : {FName(TEXT("armor")), FName(TEXT("damage_reduction")), FName(TEXT("life_leech")),
 									 UCataclysmItemModifiers::ResistanceStatFor(FName(TEXT("Death")))})
 			{
 				const float Asked = System->StatForSkill(Stat, FGameplayTagContainer(), 0.0f);
@@ -757,16 +767,18 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	{
 		return false;
 	}
-	// A STATED BAND, NOT THE EXACT FIGURE, UNTIL ISSUE #2933 IS FIXED: the tether's re-lay delivers less than owed. Window
-	// b4-w6 read 57.00 of 65 owed, where both controls (from a living and from a dead source) delivered about 65; as far
-	// as read, half a tick is lost on each re-lay. Ruled by the coordinating session on 2026-11-26 so bundle 4 could
-	// merge. Restore the exact comparison with `FromTheDead` (2%) when #2933 is fixed.
+	// THE EXACT FIGURE AGAIN, ISSUE #2933. Bundle 4 held this to a band (at least 85% of what was owed) while the
+	// shortfall was read as the tether's re-lay losing half a tick. It was not the tether: window b4-w6's 8.00 missing of
+	// 65 owed is about 0.92% of the 870 the player's own set-up blows took from the creatures, and the dead-source
+	// control's 0.92 missing is the same share of the doomed creature's 100 -- the player's life leech, paid over the
+	// seconds after each blow, healing inside the measured four. `Expose` now sets the leech to nought and `Unexposed`
+	// names it, so the tether is compared with what was owed and with the control from its own last source, the dead one.
 	AddInfo(FString::Printf(TEXT("SOUL TETHER: the tether delivered %.1f%% of what was owed"),
 							Owed > 0.0f ? 100.0f * TetherTook / Owed : 0.0f));
-	TestTrue(*FString::Printf(TEXT("four seconds later the player has lost at least 85%% of what was owed (%.2f of %.2f; "
-								   "the exact figure waits on issue #2933)"),
-							  TetherTook, Owed),
-			 TetherTook >= 0.85f * Owed);
+	TestEqual(TEXT("four seconds later the player has lost all that was owed"), TetherTook, Owed, Owed * 0.02f);
+	TestEqual(TEXT("as the same damage over time from its dead last source took"), TetherTook, FromTheDead,
+			  Owed * 0.02f);
+	TestEqual(TEXT("CONTROL: and the living source's took what was owed too"), FromTheLiving, Owed, Owed * 0.02f);
 	return true;
 }
 
@@ -818,14 +830,21 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierFinalCurseTest,
 	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
 
 	// THE FIGURE A SKILL COSTS, FROM THE GAME: a hit of 5% of maximum health, dealt as the curse deals it (the user's own
-	// area blow of Death on itself), meets the player's defences as any hit does. Windows b4-w1 to b4-w3 (bundle 4)
-	// compared against 50 itself and read 49.36, then 55.00, while the set-up changed under them; this compares with
-	// the same blow dealt directly.
+	// area blow of Death on itself, carrying no weapon sub-type), meets the player's defences as any hit does. Windows
+	// b4-w1 to b4-w3 (bundle 4) compared against 50 itself and read 49.36, then 55.00, while the set-up changed under
+	// them. THE 55.00 WAS THE PLAYER'S SLASHING WEAPON, issue #2931: the curse's blow carried the sub-type of the weapon
+	// in the player's hand, whose bonus is 10% more to health. The curse carries none since 2026-11-26, so a skill costs
+	// the 50 itself on a laid-bare player, and the same blow dealt directly is kept as the control.
+	const FString HeldSubType = UCataclysmWeaponSlotsComponent::SubTypeOf(Player.Character);
+	AddInfo(FString::Printf(TEXT("FINAL CURSE: the player's weapon is of the sub-type '%s'"), *HeldSubType));
+	TestTrue(TEXT("set-up: the player holds a slashing weapon, whose 10% the curse once carried"),
+			 HeldSubType.Equals(TEXT("Slashing"), ESearchCase::IgnoreCase));
 	FCataclysmHitDelivery AsTheCurse;
 	AsTheCurse.bIsArea = true;
 	AsTheCurse.bCannotCriticallyStrike = true;
 	AsTheCurse.bCannotLeech = true;
 	AsTheCurse.bCannotBeRetaliatedAgainst = true;
+	AsTheCurse.bCarriesNoWeaponSubType = true;
 	AsTheCurse.DamageType = FName(TEXT("Death"));
 	const float FivePercent =
 		Player.Read(Vital::GetMaxHealthAttribute()) * UCataclysmEnemyModifiers::FinalCurseMaximumHealthPercentPerUse / 100.0f;
@@ -836,6 +855,13 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierFinalCurseTest,
 	AddInfo(FString::Printf(TEXT("FINAL CURSE: 5%% of maximum health is %.2f; dealt directly as the curse deals it, it "
 								 "cost %.2f"), FivePercent, ControlCost));
 	TestTrue(TEXT("CONTROL: the same blow dealt directly costs something"), ControlCost > 1.0f);
+	TestEqual(TEXT("CONTROL: and on a laid-bare player it costs the 5% itself (issue #2931)"), ControlCost, FivePercent,
+			  0.05f);
+	const float SpecialCost = SkillCost(ECataclysmAbilitySlot::Special);
+	AddInfo(FString::Printf(TEXT("FINAL CURSE: a skill cost %.2f"), SpecialCost));
+	TestEqual(TEXT("a skill costs 5% of maximum health, no more (issue #2931: 55 where 50 with a slashing weapon)"),
+			  SpecialCost, FivePercent, 0.05f);
+	Player.SetHealth(DeathModifiersMostHealth);
 	TestEqual(TEXT("a skill costs what a 5% Death blow on oneself costs"), SkillCost(ECataclysmAbilitySlot::Special),
 			  ControlCost, 0.5f);
 	TestEqual(TEXT("so does a movement skill"), SkillCost(ECataclysmAbilitySlot::Movement), ControlCost, 0.5f);

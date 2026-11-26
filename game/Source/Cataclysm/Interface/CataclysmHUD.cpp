@@ -1469,7 +1469,7 @@ void ACataclysmHUD::DrawCreaturePanel()
 
 	// THE LINES UNDER THE BAR LAST: "this floor's Commander" when this creature is
 	// it (issue #1997), then the modifiers, which are the reason this panel exists.
-	// See ACataclysmEnemyCharacter::ModifierRows for how a creature is given
+	// See ACataclysmCharacterBase::ModifierRows for how a creature is given
 	// modifiers (issue #742).
 	for (int32 Index = 0; Index < ModifierBoxes.Num(); ++Index)
 	{

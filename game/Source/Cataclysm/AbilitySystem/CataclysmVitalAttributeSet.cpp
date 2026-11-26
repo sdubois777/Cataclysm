@@ -687,21 +687,33 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Hit.bFromBoss = Striker->IsBoss();
 				// AND ITS RARITY RUNG, for Read the Blow (the Death trees' slice C6b3, 2026-11-25).
 				Hit.AttackerRarityStep = Striker->RarityStep;
+			}
 
-				// AND DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect
-				// Aim's does, because the shield is the defender's and only the blow can refuse it. Every blow whose
-				// causer carries it, its ticks included. 2026-11-24, ahead of its window.
-				Hit.bIgnoresEnergyShield = UCataclysmEnemyModifiers::IgnoresEnergyShield(Striker->ModifierRows);
+			// AND THREE OF DEATH'S MODIFIERS ON THE CAUSER, WHOEVER IT IS: a creature carrying its own, or a player one
+			// Wearer of the Dead lent (issue #2899, 2026-11-26; until then they were asked inside the creature's cast
+			// above, so only a creature's blows carried them). `RowsCarriedBy` reads both.
+			if (const AActor* DeathCauser = Data.EffectSpec.GetContext().GetEffectCauser())
+			{
+				const TArray<FName> CauserRows = UCataclysmEnemyModifiers::RowsCarriedBy(DeathCauser);
+
+				// DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect Aim's
+				// does, because the shield is the defender's and only the blow can refuse it. Every blow whose causer
+				// carries it, its ticks included. 2026-11-24.
+				Hit.bIgnoresEnergyShield = UCataclysmEnemyModifiers::IgnoresEnergyShield(CauserRows);
 
 				// AND DEATH'S GRAVE TOUCH, "Deal more damage to players with less than 50% health": half again, on a
 				// HIT and never a tick, judged on the health this character holds as the blow arrives. The same
 				// "more" every bucket multiplies, so it is applied to the blow before the defences, as a stronger
-				// creature's figure would be. 2026-11-24, ahead of its window.
+				// creature's figure would be. 2026-11-24.
 				if (!Hit.bIsDamageOverTime)
 				{
-					Hit.Damage *= UCataclysmEnemyModifiers::GraveTouchMultiplier(
-						Striker->ModifierRows, GetHealth(), GetMaxHealth());
+					Hit.Damage *= UCataclysmEnemyModifiers::GraveTouchMultiplier(CauserRows, GetHealth(), GetMaxHealth());
 				}
+
+				// AND DEATH'S UNDYING WILL ON A WEARER THAT IS NOT A CREATURE AND HAS RISEN THROUGH IT: its blows deal
+				// half again, the owner's "more damage" (2026-11-26). A tick too, as a risen creature's raised attack
+				// damage reaches its ticks. One for every other causer. See `UndyingWillDamageMultiplierFor`.
+				Hit.Damage *= UCataclysmEnemyModifiers::UndyingWillDamageMultiplierFor(DeathCauser);
 			}
 
 			// AND WHETHER THE BLOW ITSELF SAYS IT CANNOT BE EVADED. Ruled 2026-10-07.
@@ -1691,8 +1703,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Resolved.DealtToHealth + Resolved.AbsorbedByShield
 							+ Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary);
 				}
+				// AND A CHARACTER DEATH'S SPECTRAL SHIFT HAS OUT OF EXISTENCE, any wearer since issue #2899 (a player one
+				// Wearer of the Dead lent it): "becoming immune to damage", emptied here, BEFORE THE SAVES BELOW, so no
+				// save is spent on a blow that deals nothing. A creature's is emptied again further down with the Reaper's.
 				if (Guarded->IsDamageImmune() || Guarded->IsImmuneToDamageType(Hit.DamageType)
-					|| bAbsorbed || bReflected || Rod)
+					|| bAbsorbed || bReflected || Rod
+					|| UCataclysmEnemyModifiers::IsPhasedOut(CataclysmDefendingBody(*this)))
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;
@@ -1828,6 +1844,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						SetHealth(FMath::Clamp(GetMaxHealth() * Spent / 100.0f, 1.0f, GetMaxHealth()));
 						Guarded->NoteFervourSpent(Spent);
 					}
+				}
+
+				// AND DEATH'S UNDYING WILL ON A WEARER THAT IS NOT A CREATURE, the player one Wearer of the Dead lent it:
+				// the owner's ruling of 2026-11-26, "you come back once with less health and more damage". Issue #2899.
+				// AFTER EVERY SAVE ABOVE, a judgement: it is the rising after a death each of them would have prevented,
+				// so none of them is left unspent beside it. A TICK TOO, as the reprieve reads "would be killed". As the
+				// Phylactery's: the blow takes nothing and health is SET to the creature's half of the maximum. A creature
+				// answers no here and rises as a new one the dungeon places.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& EmptiesHealthLessTheDelayedShare()
+					&& UCataclysmEnemyModifiers::RiseThroughUndyingWill(CataclysmDefendingBody(*this)))
+				{
+					bSavedFromALethalBlow = true;
+					Resolved.DealtToHealth = 0.0f;
+					// THE WRITE IS NOTICED BY `PostAttributeBaseChange`, as the Phylactery's is.
+					SetHealth(FMath::Clamp(GetMaxHealth() * UCataclysmEnemyModifiers::UndyingWillHealthShare, 1.0f,
+										   GetMaxHealth()));
 				}
 			}
 
@@ -3061,13 +3096,16 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// THIS character was hit, so it is asked whether this character raises a pyre at whoever struck.
 					UCataclysmEnemyModifiers::MortalReminderOnHit(Striker, GetOwningActor());
 					UCataclysmEnemyModifiers::HauntOnHit(Striker, GetOwningActor());
-					UCataclysmEnemyModifiers::PyreWhenStruck(GetOwningActor(), Striker);
+					// THE BODY STRUCK AND NOT THE SET'S OWNER, since issue #2899: a player wearing Funeral Pyre or Soul
+					// Tether is struck as its pawn, and its set is owned by its player state. For a creature the two are
+					// the same actor.
+					UCataclysmEnemyModifiers::PyreWhenStruck(CataclysmDefendingBody(*this), Striker);
 				}
 
 				// AND DEATH'S SOUL TETHER, ON A TICK AS WELL AS A HIT: "Transfer a portion damage taken". What the
 				// write above really took from this character's health, measured across it, so an overkill, a
 				// sigil's hold and a delayed share are all left out. 2026-11-24, ahead of its window.
-				UCataclysmEnemyModifiers::TetherOnHealthLost(GetOwningActor(), Striker, TakenFromHealth);
+				UCataclysmEnemyModifiers::TetherOnHealthLost(CataclysmDefendingBody(*this), Striker, TakenFromHealth);
 			}
 
 			// EVERY CHANCE TO APPLY AN AILMENT THE BLOW CARRIED IS ROLLED HERE,

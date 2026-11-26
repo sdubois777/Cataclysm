@@ -1076,9 +1076,22 @@ FString UCataclysmCombatOverlay::DeathModifierTextFor(const AActor* Actor)
 		{
 			Words.Add(TEXT("Undying"));
 		}
-		if (UCataclysmEnemyModifiers::IsPhasedOut(Enemy))
+	}
+	// AND ON ANY WEARER, since issue #2899: a player wearing a Death modifier Wearer of the Dead lent it is phased out,
+	// hidden from creatures' sight, or risen, as a creature is.
+	if (UCataclysmEnemyModifiers::IsPhasedOut(Actor))
+	{
+		Words.Add(TEXT("Phased"));
+	}
+	if (const ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Actor))
+	{
+		if (!Wearer->IsA<ACataclysmEnemyCharacter>() && UCataclysmEnemyModifiers::IsHiddenByShadowStep(Wearer))
 		{
-			Words.Add(TEXT("Phased"));
+			Words.Add(TEXT("Hidden"));
+		}
+		if (Wearer->bRoseThroughUndyingWill)
+		{
+			Words.Add(TEXT("Undying"));
 		}
 	}
 

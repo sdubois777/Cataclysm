@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — Death's enemy modifiers on any wearer, Wearer of the Dead lending them, and three Death faults (issues #2899, #2931, #2933, #2936; Death finish slice F)
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`: `ModifierRows` moved here from
+  `ACataclysmEnemyCharacter`, and the Death modifiers' clocks with it; `bUndyingWillSpent` and
+  `bRoseThroughUndyingWill`, new. `CataclysmEnemyCharacter.h`: the moved members removed.
+- `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp`: `CarriedBy` and `RowsCarriedBy`, new; every
+  Death modifier reads its wearer through them; `TimedStep` runs the Death clocks on any living character
+  (`EnemyModifiersDeathClocksFor`, `EnemyModifiersShadowStepForAWearer`); `RiseThroughUndyingWill` and
+  `UndyingWillDamageMultiplierFor`, new; Lingering Decay's zones name the side they reach; Final Curse's blow carries
+  no weapon sub-type.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `HoldsAnyRowWearing`,
+  `NoteLentModifier`, `LentModifierSecondsLeft`, new; `ApplyPoolAction`'s class resource branch removed.
+- `CataclysmFervour.h` and `.cpp`: `LentEnemyModifierRows`, new; `WearTheModifiersOf` and `WornModifiersLine` lend and
+  show them. `CataclysmVitalAttributeSet.cpp`: Grave Touch, Soul Eater and the risen wearer's blows read the causer
+  whoever it is; a phased-out wearer's blow is emptied before the saves; Undying Will's rising, last of the saves; Funeral
+  Pyre and Soul Tether are asked of the body struck. `CataclysmGroundZone.h`: `HealingLessReachesTeamId`, new.
+  `CataclysmCombatEvents.cpp`: a skill used reveals its Shadow Step wearer. `CataclysmTargetCandidates.cpp`: a creature's
+  search passes over a wearer Shadow Step hides. `CataclysmCombatOverlay.cpp`: "Phased", "Hidden" and "Undying" on any
+  wearer.
+- Tests: `CataclysmDeathOnAnyWearerTests.cpp`, new (10, group `Cataclysm.DeathOnAnyWearer.`);
+  `CataclysmDeathModifierTests.cpp` (Soul Tether's exact figure, Final Curse's 50); `CataclysmFervourGainsTests.cpp`
+  (a kill's payment alone); `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (the lent list, the
+  pool action's gain) and `tools/tests/test_the_creature_under_the_cursor_is_described.py` (the list's new home).
+
+### SAID FIRST
+
+- **NONE OF THIS C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The coordinating session's window compiles it and runs the
+  groups registered with it.
+- **THE EIGHT WAR MODIFIERS ARE NOT CONVERTED.** They stay enemy-only; issue #2899 keeps them.
+- **ISSUE #2933 WAS NOT THE TETHER.** The shortfall was the test player's own life leech, below. The tether's code is
+  unchanged; the test's band is gone and the exact comparison is back.
+- **ONE BEHAVIOUR CHANGE OUTSIDE THE DEATH MODIFIERS:** a pool action's class resource gain now goes through `TopUp`,
+  whose first refusal is a held swing that forbids healing (The Whole Weight). Such a gain was paid during that swing
+  before. Issue #2936's proposal, followed; the coordinating session may want to confirm it.
+
+### The rule and the ruling
+
+The owner, 2026-11-25 (issue #2899): "Everything that isn't a new ability that would require a button push should work
+for a player." The owner, 2026-11-26, on Wearer of the Dead: of the three Death modifiers that act on their wearer's
+death, only Undying Will is lent to the player, "you come back once with less health and more damage"; Haunting and
+Final Curse are never lent to the player.
+
+### Research
+
+Path of Exile's Headhunter is the shape of Wearer of the Dead: "When you Kill a Rare monster, you gain its Modifiers"
+(20 seconds until patch 3.18.0e, 60 since; poedb.tw/us/Headhunter). Since 3.18.0 a character holds "one instance of
+each modifier at any given time", so a second kill refreshes rather than stacks, which this game's vow already did
+(W3). Some monster modifiers are never granted to the player there either (Fractured, Inner Treasure, Soul Conduit), and
+the granted ones "will always have a positive effect" -- the same kind of exclusion the owner ruled for Haunting and
+Final Curse. That settles the shape; the per-modifier readings below are this game's and are judgements.
+
+### What each Death modifier does on a player (judgements, recorded)
+
+- **The list and the lending.** `ModifierRows` is on every character; a player's is empty. Wearer of the Dead lends the
+  nine Death modifiers that are no figure on a stat AS THEMSELVES, recorded by row on the ability system for 20 seconds,
+  to a character holding the vow at all (any row under `wearing_enemy_modifier`), since the vow holds no row for a
+  behaviour. A separate list from `WornEnemyModifierRows`, which stays the plain-number ones, so no data row, workbook
+  cell or generator bound changes. Every effect asks `CarriedBy`, which reads the list and the lending.
+- **Grave Touch, Soul Eater:** the player's blows on a creature below half health deal half again; the player's blows
+  pass a creature's energy shield. Read off the blow's causer, as before, but whoever it is.
+- **Mortal Reminder:** a creature the player hits cannot be healed above the health the hit left, for 4 seconds. Never
+  on the player's own blow on itself.
+- **Soul Tether:** a tenth of the health a creature's blow took from the player is laid on that creature as damage over
+  time over 4 seconds, in the player's name.
+- **Funeral Pyre:** a pyre at the feet of the creature that struck the player, on the player's side, exploding on
+  creatures for three of the player's hits (its attack damage). A player's pyre keeps the pyre's own damage type: a
+  player's damage is untyped, and a creature meets every type with its one resistance.
+- **Spectral Shift:** the player is out of existence for 5 seconds in every 15, every blow on it emptied, BEFORE the
+  lethal saves so none is spent on a blow that deals nothing. A health cost the player pays is not damage and is still
+  paid. Its clock starts from nought whenever the row is not carried, so a 20-second lending shifts out from 15 to 20.
+- **Shadow Step:** the player is never hidden from its own screen. It is hidden from creatures' sight, the path Thin Air
+  already uses (`NearestHostile` passes it over), until it attacks; an attack is any skill used, the basic attack
+  included, and it is seen for 1 second after.
+- **Lingering Decay:** the player leaves a zone every 5 seconds that cuts the healing of creatures standing in it by half.
+  Each zone names the side it reaches: a creature's the players', a player's the creatures'.
+- **Undying Will (lent, as ruled):** a blow or tick that would empty the player's health instead leaves it at half its
+  maximum, the creature's figure, and the player's blows then deal 50% MORE while it still wears the row: a multiplier on
+  the blow, because a player's increased bucket is rebuilt from gear and rows and holds no part for a rule, and the
+  owner's word is "more damage". ONCE FOR EACH TIME IT IS WORN: spent while the row is carried, ready again only after it
+  has run out, so a lending refreshed by a second Elite's kill does not give a second life. Last of the lethal saves.
+- **Haunting, Final Curse:** never lent. Both work on any creature that wears them; a Final Curse wearer on the
+  player's own side (a thrall) curses nobody at its death, the player being its ally.
+
+### The three faults
+
+- **#2931, Final Curse's 10% (55 where 50).** The curse's self-blow carried the weapon sub-type of the weapon in the
+  player's hand; a slashing weapon's bonus is 10% more to health (`UCataclysmDamageCalculation`, step 9). Window b4-w3's
+  55.00 is 50 x 1.10 exactly. The curse is no swing, so it carries none now, as retaliation and the overkill explosion
+  do; the test compares with 50 again and reads the player's sub-type.
+- **#2933, Soul Tether's 57 of 65.** Not the re-lay. Read from the window's own figures: the player's set-up blows took
+  about 870 from the creatures (220, 220 and 330 with the slashing bonus, and the frail creature's 100), and 8.00 is
+  0.92% of that; the dead-source control lost 0.92, the same share of its doomed creature's 100. That is the player's life
+  leech, paid over the seconds after each blow, healing inside the measured four. The rig now sets the leech to nought and
+  names it if it is not; the 85% band is replaced by the exact comparison (2%) with what was owed and with both
+  controls. The issue's GAS reading (a stacked application keeping the old period) cannot happen here: every
+  application is its own effect object since #1501, and stacking matches by definition.
+- **#2936, two guard breaks no test saw.** C6b3: `ApplyPoolAction`'s class resource branch did exactly what `TopUp`
+  does since `61a254cbe`, so it is removed. C4b1-1: the proof applied it together with B-2, which makes a kill's stamp
+  overwrite the hold; the common kill's stamp then hid the payment's restart. `Cataclysm.FervourGains.
+  KindredFiresLeavesAKillsHoldToTheKillsOwnStamp` now also reads a kill's payment with no stamp after it, which fails
+  under C4b1-1 whatever B-2 does.
+
 ## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
 
 **Affects:**

@@ -424,6 +424,12 @@ void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillNam
 	// basic attack is told apart by its slot. It does nothing for a user who is not cursed.
 	UCataclysmEnemyModifiers::FinalCurseOnSkillUse(User, Slot == ECataclysmAbilitySlot::BasicAttack);
 
+	// AND DEATH'S SHADOW STEP ON A USER WEARING IT: an attack has begun, so it is seen now and for a second after.
+	// Issue #2899 (2026-11-26), a player wearing it: every skill used is an attack here, the basic attack included,
+	// because the row's "when not attacking" names none. A creature is also revealed by its brain, as before. Nothing for
+	// a user not wearing it.
+	UCataclysmEnemyModifiers::RevealForShadowStep(User);
+
 	UCataclysmCombatEvents* Events = User ? In(User->GetWorld()) : nullptr;
 	if (!Events || !Events->OnSkillUsed.IsBound())
 	{
