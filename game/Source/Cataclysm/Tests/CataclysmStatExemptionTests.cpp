@@ -14819,7 +14819,7 @@ namespace CataclysmStatExemptionTest
 		const auto RemainsIn = [World]()
 		{
 			int32 Count = 0;
-			for (TActorIterator<ACataclysmRemains> It(World); It; ++It)
+			for (TActorIterator<ACataclysmRemainsMarker> It(World); It; ++It)
 			{
 				Count += IsValid(*It) ? 1 : 0;
 			}
@@ -14861,13 +14861,13 @@ namespace CataclysmStatExemptionTest
 		{
 			ACataclysmMinion* Raised = ImpToldItsExplosion(Test, Holder.Actor, FVector(0, 2 * M, 0));
 			ACataclysmMinion* Again = ImpToldItsExplosion(Test, Holder.Actor, FVector(0, -2 * M, 0));
-			ACataclysmRemains* First = Remains();
+			ACataclysmRemainsMarker* First = Remains();
 			if (!Raised || !Again || !Test.TestNotNull(TEXT("set-up: remains"), First))
 			{
 				return;
 			}
 			const bool bPlainConsumed = UCataclysmRemains::RaiseOn(Holder.Actor, Raised, First);
-			ACataclysmRemains* Second = Remains();
+			ACataclysmRemainsMarker* Second = Remains();
 			GrantFlat(Holder.Actor, UCataclysmRemains::KeptOnRaiseChanceStat, 50.0f);
 			const bool bWithConsumed = UCataclysmRemains::RaiseOn(Holder.Actor, Again, Second);
 			Test.TestTrue(TEXT("remains_kept_on_raise_chance: control, without it a raise consumes the remains"),
@@ -14889,7 +14889,7 @@ namespace CataclysmStatExemptionTest
 		case 5:
 		case 6:
 		{
-			ACataclysmRemains* Left = Remains();
+			ACataclysmRemainsMarker* Left = Remains();
 			if (!Test.TestNotNull(TEXT("set-up: remains"), Left))
 			{
 				return;
@@ -14933,7 +14933,7 @@ namespace CataclysmStatExemptionTest
 			};
 			const auto WithNecrosis = [&Remains, &Necrosis]()
 			{
-				ACataclysmRemains* Left = Remains();
+				ACataclysmRemainsMarker* Left = Remains();
 				if (Left)
 				{
 					Left->MaximumHealth = 100.0f;
@@ -14959,7 +14959,7 @@ namespace CataclysmStatExemptionTest
 		}
 		case 8:
 		{
-			ACataclysmRemains* Plain = Remains();
+			ACataclysmRemainsMarker* Plain = Remains();
 			UCataclysmAbilitySystemComponent* System = Holder.AbilitySystem;
 			FCataclysmStatModifier Longer;
 			Longer.Bucket = ECataclysmStatBucket::Increased;
@@ -14968,7 +14968,7 @@ namespace CataclysmStatExemptionTest
 			TMap<FName, FCataclysmStatInputs> Inputs;
 			Inputs.FindOrAdd(FName(UCataclysmRemains::RemainsDurationStat)).Modifiers = {Longer};
 			System->SetStatInputs(MoveTemp(Inputs));
-			ACataclysmRemains* With = Remains();
+			ACataclysmRemainsMarker* With = Remains();
 			if (!Test.TestNotNull(TEXT("set-up: remains"), Plain) || !Test.TestNotNull(TEXT("set-up: remains"), With))
 			{
 				return;

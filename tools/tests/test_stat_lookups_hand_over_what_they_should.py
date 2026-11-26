@@ -321,6 +321,12 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRemains.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "every remains stat, read off the player with no tags by UCataclysmRemains::StatOf: whether remains are left, "
+        "a raise's reach, reserve and chance, a detonation's flag, share, increase and ailments, a follower's chance, "
+        "and the two vows' flags and Many Made One's reduction (the Death finish's slice D, 2026-11-26); none has a "
+        "blow, a skill or a target in hand",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
      'FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat), FGameplayTagContainer(), 0.0f'):
         'a flag read on an aura\'s caster at each pulse, saying whether the allies '

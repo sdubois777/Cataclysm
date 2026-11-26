@@ -138,7 +138,7 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 	// (2026-11-26). Remains lie on the floor as a Soul does; the Abomination "fights for you until you leave the floor"
 	// and the Bone Colossus is fed "over a floor", so neither follows the player down the stairs as a follower does.
 	// In both branches, and the floor's tally of what it started with is forgotten with them.
-	Destroyed += FloorContentsDestroyEvery<ACataclysmRemains>(World);
+	Destroyed += FloorContentsDestroyEvery<ACataclysmRemainsMarker>(World);
 	Destroyed += UCataclysmBoneGiants::EndTheFloor(World);
 	// AND EVERY SOUL SOUL HARVEST RELEASED THAT IS STILL FLOATING, giving nothing, in both branches: its demon was the
 	// floor's, and a save already counted it as arrived (`ACataclysmDungeonGameMode::SoulHarvestHeldBy`), so a load that

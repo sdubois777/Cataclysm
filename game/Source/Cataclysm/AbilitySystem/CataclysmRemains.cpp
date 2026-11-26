@@ -28,7 +28,7 @@
 #include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
 
-const TCHAR* ACataclysmRemains::NameText = TEXT("Remains");
+const TCHAR* ACataclysmRemainsMarker::NameText = TEXT("Remains");
 
 const TCHAR* UCataclysmRemains::RemainsLeftStat = TEXT("remains_left");
 const TCHAR* UCataclysmRemains::RemainsDurationStat = TEXT("remains_duration");
@@ -59,7 +59,7 @@ namespace
 	}
 
 	/** What a dead creature or follower is, read into `Remains` while its body still stands. */
-	void RemainsRecordTheDead(ACataclysmRemains& Remains, AActor* Dead)
+	void RemainsRecordTheDead(ACataclysmRemainsMarker& Remains, AActor* Dead)
 	{
 		const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Dead);
 		if (Theirs)
@@ -124,12 +124,12 @@ namespace
 // The actor
 // ==========================================================================
 
-FLinearColor ACataclysmRemains::NameColour()
+FLinearColor ACataclysmRemainsMarker::NameColour()
 {
 	return FLinearColor(0.93f, 0.89f, 0.78f, 1.0f);
 }
 
-ACataclysmRemains::ACataclysmRemains()
+ACataclysmRemainsMarker::ACataclysmRemainsMarker()
 {
 	// NOTHING TICKS AND NOTHING COLLIDES: it lies there until it is used or its lifespan ends.
 	PrimaryActorTick.bCanEverTick = false;
@@ -158,7 +158,7 @@ ACataclysmRemains::ACataclysmRemains()
 									 DiscHeightCm / ACataclysmCharacterBase::BasicShapeSize));
 }
 
-void ACataclysmRemains::ShowDisc(float FloorBelowCm)
+void ACataclysmRemainsMarker::ShowDisc(float FloorBelowCm)
 {
 	if (!Disc)
 	{
@@ -195,7 +195,7 @@ float UCataclysmRemains::Roll()
 	return PinnedRollForTests >= 0.0f ? PinnedRollForTests : FMath::FRandRange(0.0f, 100.0f);
 }
 
-ACataclysmRemains* UCataclysmRemains::LeaveFor(AActor* Player, AActor* Dead, const FVector& Where,
+ACataclysmRemainsMarker* UCataclysmRemains::LeaveFor(AActor* Player, AActor* Dead, const FVector& Where,
 											   bool bEvenWithoutTheFlag)
 {
 	if (!IsValid(Player) || !Dead)
@@ -213,7 +213,7 @@ ACataclysmRemains* UCataclysmRemains::LeaveFor(AActor* Player, AActor* Dead, con
 	Parameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	// OWNED BY THE PLAYER, which is what `SetOnlyOwnerSee` reads.
 	Parameters.Owner = Player;
-	ACataclysmRemains* Left = Into->SpawnActor<ACataclysmRemains>(Where, FRotator::ZeroRotator, Parameters);
+	ACataclysmRemainsMarker* Left = Into->SpawnActor<ACataclysmRemainsMarker>(Where, FRotator::ZeroRotator, Parameters);
 	if (!Left)
 	{
 		return nullptr;
@@ -231,7 +231,7 @@ ACataclysmRemains* UCataclysmRemains::LeaveFor(AActor* Player, AActor* Dead, con
 	// GATHERED REMAINS: "Remains last 25% longer per point". Increased, on a base of `BaseSeconds`.
 	const float Lengthened = Theirs->MultiplierForStatAgainst(FName(RemainsDurationStat), FGameplayTagContainer(),
 															   /*Target=*/nullptr);
-	Left->SetLifeSpan(ACataclysmRemains::BaseSeconds * FMath::Max(1.0f, Lengthened));
+	Left->SetLifeSpan(ACataclysmRemainsMarker::BaseSeconds * FMath::Max(1.0f, Lengthened));
 
 	UE_LOG(LogCataclysm, Verbose, TEXT("REMAINS: %s left for %s, %.0f maximum health, %d ailment(s), %.1f s."),
 		   *Left->Kind.ToString(), *Player->GetName(), Left->MaximumHealth, Left->Ailments.Num(), Left->GetLifeSpan());
@@ -250,7 +250,7 @@ void UCataclysmRemains::HearDeath(AActor* Player, const FCataclysmDeathNotice& N
 	}
 
 	// THE REMAINS FIRST, so the Bone Colossus below can be raised on them or fed them as they land.
-	ACataclysmRemains* Left = LeaveFor(Player, Notice.Victim, Notice.Location);
+	ACataclysmRemainsMarker* Left = LeaveFor(Player, Notice.Victim, Notice.Location);
 	if (Left)
 	{
 		UCataclysmBoneGiants::RemainsLanded(Player, Left);
@@ -260,7 +260,7 @@ void UCataclysmRemains::HearDeath(AActor* Player, const FCataclysmDeathNotice& N
 	UCataclysmBoneGiants::NoteDeath(Player, Notice);
 }
 
-ACataclysmRemains* UCataclysmRemains::LeaveForAFollower(AActor* Commander, AActor* Follower, const FVector& Where)
+ACataclysmRemainsMarker* UCataclysmRemains::LeaveForAFollower(AActor* Commander, AActor* Follower, const FVector& Where)
 {
 	if (!IsValid(Commander) || !Follower)
 	{
@@ -276,7 +276,7 @@ ACataclysmRemains* UCataclysmRemains::LeaveForAFollower(AActor* Commander, AActo
 	{
 		return nullptr;
 	}
-	ACataclysmRemains* Left = LeaveFor(Commander, Follower, Where, /*bEvenWithoutTheFlag=*/true);
+	ACataclysmRemainsMarker* Left = LeaveFor(Commander, Follower, Where, /*bEvenWithoutTheFlag=*/true);
 	if (Left)
 	{
 		UCataclysmBoneGiants::RemainsLanded(Commander, Left);
@@ -288,24 +288,24 @@ ACataclysmRemains* UCataclysmRemains::LeaveForAFollower(AActor* Commander, AActo
 // Finding them
 // ==========================================================================
 
-TArray<ACataclysmRemains*> UCataclysmRemains::OwnRemainsNear(const AActor* Player, const FVector& Place, float RadiusCm)
+TArray<ACataclysmRemainsMarker*> UCataclysmRemains::OwnRemainsNear(const AActor* Player, const FVector& Place, float RadiusCm)
 {
-	TArray<ACataclysmRemains*> Found;
+	TArray<ACataclysmRemainsMarker*> Found;
 	const UWorld* World = Player ? Player->GetWorld() : nullptr;
 	if (!World || RadiusCm < 0.0f)
 	{
 		return Found;
 	}
-	for (TActorIterator<ACataclysmRemains> It(World); It; ++It)
+	for (TActorIterator<ACataclysmRemainsMarker> It(World); It; ++It)
 	{
-		ACataclysmRemains* Remains = *It;
+		ACataclysmRemainsMarker* Remains = *It;
 		if (IsValid(Remains) && Remains->LeftFor.Get() == Player
 			&& FVector::Dist2D(Remains->GetActorLocation(), Place) <= RadiusCm)
 		{
 			Found.Add(Remains);
 		}
 	}
-	Found.Sort([&Place](const ACataclysmRemains& A, const ACataclysmRemains& B)
+	Found.Sort([&Place](const ACataclysmRemainsMarker& A, const ACataclysmRemainsMarker& B)
 	{
 		return FVector::DistSquared2D(A.GetActorLocation(), Place) < FVector::DistSquared2D(B.GetActorLocation(), Place);
 	});
@@ -320,14 +320,14 @@ void UCataclysmRemains::DistancesOfOwnRemains(const AActor* Player, float Within
 		return;
 	}
 	const FVector From = Player->GetActorLocation();
-	for (const ACataclysmRemains* Remains : OwnRemainsNear(Player, From, WithinCm))
+	for (const ACataclysmRemainsMarker* Remains : OwnRemainsNear(Player, From, WithinCm))
 	{
 		OutMetres.Add(FVector::Dist2D(Remains->GetActorLocation(), From) / 100.0f);
 	}
 }
 
 void UCataclysmRemains::RemainsToName(const AActor* Viewer, const FVector& Standing, float Range,
-									  TArray<ACataclysmRemains*>& Out)
+									  TArray<ACataclysmRemainsMarker*>& Out)
 {
 	Out = OwnRemainsNear(Viewer, Standing, Range);
 }
@@ -336,14 +336,14 @@ void UCataclysmRemains::RemainsToName(const AActor* Viewer, const FVector& Stand
 // Raising on them
 // ==========================================================================
 
-ACataclysmRemains* UCataclysmRemains::ChooseToRaiseOn(const AActor* Summoner, const FVector& RisePoint)
+ACataclysmRemainsMarker* UCataclysmRemains::ChooseToRaiseOn(const AActor* Summoner, const FVector& RisePoint)
 {
 	const float Metres = StatOf(Summoner, RaiseReachMetresStat);
 	if (Metres <= 0.0f)
 	{
 		return nullptr;
 	}
-	const TArray<ACataclysmRemains*> Near = OwnRemainsNear(Summoner, RisePoint, Metres * 100.0f);
+	const TArray<ACataclysmRemainsMarker*> Near = OwnRemainsNear(Summoner, RisePoint, Metres * 100.0f);
 	return Near.IsEmpty() ? nullptr : Near[0];
 }
 
@@ -353,7 +353,7 @@ float UCataclysmRemains::ReserveOnRemains(const AActor* Summoner, float Reserve)
 	return FMath::Max(0.0f, Reserve * (1.0f - Less / 100.0f));
 }
 
-bool UCataclysmRemains::RaiseOn(AActor* Summoner, ACataclysmMinion* Minion, ACataclysmRemains* Remains)
+bool UCataclysmRemains::RaiseOn(AActor* Summoner, ACataclysmMinion* Minion, ACataclysmRemainsMarker* Remains)
 {
 	if (!IsValid(Summoner) || !IsValid(Minion) || !IsValid(Remains) || Remains->LeftFor.Get() != Summoner)
 	{
@@ -400,7 +400,7 @@ bool UCataclysmRemains::RaiseOn(AActor* Summoner, ACataclysmMinion* Minion, ACat
 	return true;
 }
 
-void UCataclysmRemains::Consume(AActor* Player, ACataclysmRemains* Remains)
+void UCataclysmRemains::Consume(AActor* Player, ACataclysmRemainsMarker* Remains)
 {
 	if (!IsValid(Remains))
 	{
@@ -430,19 +430,19 @@ int32 UCataclysmRemains::DetonateWhere(AActor* Caster, TFunctionRef<bool(const A
 	{
 		return 0;
 	}
-	TArray<TWeakObjectPtr<ACataclysmRemains>> Caught;
-	for (TActorIterator<ACataclysmRemains> It(World); It; ++It)
+	TArray<TWeakObjectPtr<ACataclysmRemainsMarker>> Caught;
+	for (TActorIterator<ACataclysmRemainsMarker> It(World); It; ++It)
 	{
-		ACataclysmRemains* Remains = *It;
+		ACataclysmRemainsMarker* Remains = *It;
 		if (IsValid(Remains) && Remains->LeftFor.Get() == Caster && IsInside(*Remains))
 		{
 			Caught.Add(Remains);
 		}
 	}
 	int32 Detonated = 0;
-	for (const TWeakObjectPtr<ACataclysmRemains>& One : Caught)
+	for (const TWeakObjectPtr<ACataclysmRemainsMarker>& One : Caught)
 	{
-		if (ACataclysmRemains* Remains = One.Get(); IsValid(Remains))
+		if (ACataclysmRemainsMarker* Remains = One.Get(); IsValid(Remains))
 		{
 			Detonate(Caster, Remains);
 			++Detonated;
@@ -456,7 +456,7 @@ int32 UCataclysmRemains::DetonateWhere(AActor* Caster, TFunctionRef<bool(const A
 	return Detonated;
 }
 
-float UCataclysmRemains::DetonationDamage(const AActor* Caster, const ACataclysmRemains* Remains)
+float UCataclysmRemains::DetonationDamage(const AActor* Caster, const ACataclysmRemainsMarker* Remains)
 {
 	if (!Remains)
 	{
@@ -468,7 +468,7 @@ float UCataclysmRemains::DetonationDamage(const AActor* Caster, const ACataclysm
 	return Remains->MaximumHealth * Percent / 100.0f * (1.0f + Increased / 100.0f);
 }
 
-int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemains* Remains)
+int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemainsMarker* Remains)
 {
 	if (!IsValid(Caster) || !IsValid(Remains) || Remains->LeftFor.Get() != Caster)
 	{

@@ -289,7 +289,7 @@ ACataclysmMinion* UCataclysmBoneGiants::ColossusOf(const AActor* Player)
 	return BoneGiantsIsAlive(Standing) ? Standing : nullptr;
 }
 
-void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemains* Remains)
+void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker* Remains)
 {
 	UCataclysmBoneGiants* Giants = Player ? In(Player->GetWorld()) : nullptr;
 	if (!Giants || !IsValid(Remains) || Remains->LeftFor.Get() != Player

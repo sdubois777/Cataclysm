@@ -225,7 +225,7 @@ def test_the_floor_population_notes_what_the_floor_started_with_on_a_carved_aren
     noted = [match.start() for match in re.finditer(r"UCataclysmBoneGiants::NoteStartedWith\(Enemy\);", text)]
     added = [match.start() for match in re.finditer(r"CurrentWave\.Add\(Enemy\);", text)]
     assert len(noted) == len(added) == 2
-    for note, add in zip(sorted(noted), sorted(added)):
+    for note, add in zip(sorted(noted), sorted(added), strict=True):
         between = text[add:note]
         assert 0 < note - add < 400 and "if (!bKeptTheArena)" in between
     begin = _code(_function_body(SOURCE / "Dungeon" / "CataclysmDungeonGameMode.cpp",
@@ -236,7 +236,7 @@ def test_the_floor_population_notes_what_the_floor_started_with_on_a_carved_aren
 def test_leaving_the_floor_clears_remains_and_ends_the_giants():
     body = _code(_function_body(SOURCE / "Dungeon" / "CataclysmFloorContents.cpp",
                                 "int32 UCataclysmFloorContents::ClearTheFloor("))
-    assert "FloorContentsDestroyEvery<ACataclysmRemains>(World);" in body
+    assert "FloorContentsDestroyEvery<ACataclysmRemainsMarker>(World);" in body
     assert "UCataclysmBoneGiants::EndTheFloor(World);" in body
 
 

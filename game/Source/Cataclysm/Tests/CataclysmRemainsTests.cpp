@@ -185,10 +185,10 @@ namespace CataclysmRemainsTest
 		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
 	}
 
-	TArray<ACataclysmRemains*> RemainsInWorld(UWorld* World)
+	TArray<ACataclysmRemainsMarker*> RemainsInWorld(UWorld* World)
 	{
-		TArray<ACataclysmRemains*> Found;
-		for (TActorIterator<ACataclysmRemains> It(World); It; ++It)
+		TArray<ACataclysmRemainsMarker*> Found;
+		for (TActorIterator<ACataclysmRemainsMarker> It(World); It; ++It)
 		{
 			if (IsValid(*It))
 			{
@@ -292,7 +292,7 @@ bool FCataclysmRemainsBoneFuseTest::RunTest(const FString&)
 	Player.Kill(Own);
 	const int32 AfterOwnMinion = RemainsInWorld(World).Num();
 	Player.Kill(Second);
-	const TArray<ACataclysmRemains*> Left = RemainsInWorld(World);
+	const TArray<ACataclysmRemainsMarker*> Left = RemainsInWorld(World);
 
 	TestEqual(TEXT("CONTROL: with the starting node alone an enemy's death leaves no remains"), WithoutBoneFuse, 0);
 	TestEqual(TEXT("CONTROL: with Bone Fuse a minion of the character's own leaves none here"), AfterOwnMinion, 0);
@@ -300,7 +300,7 @@ bool FCataclysmRemainsBoneFuseTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const ACataclysmRemains* Remains = Left[0];
+	const ACataclysmRemainsMarker* Remains = Left[0];
 	TestEqual(TEXT("left for the character"), Remains->LeftFor.Get(), static_cast<AActor*>(Player.Character));
 	TestEqual(TEXT("owned by it"), Remains->GetOwner(), static_cast<AActor*>(Player.Character));
 	TestTrue(TEXT("its disc is seen by its owner only"), Remains->Disc && Remains->Disc->bOnlyOwnerSee);
@@ -309,9 +309,9 @@ bool FCataclysmRemainsBoneFuseTest::RunTest(const FString&)
 	TestEqual(TEXT("recording its maximum health"), Remains->MaximumHealth, RemainsMaximumHealthOf(Second), 0.01f);
 	TestEqual(TEXT("its rarity"), Remains->RarityStep, Second->RarityStep);
 	TestEqual(TEXT("and its kind"), Remains->Kind, Second->ArchetypeRow);
-	TestEqual(TEXT("lasting Bone Fuse's 10 seconds"), Remains->GetLifeSpan(), ACataclysmRemains::BaseSeconds, 0.01f);
+	TestEqual(TEXT("lasting Bone Fuse's 10 seconds"), Remains->GetLifeSpan(), ACataclysmRemainsMarker::BaseSeconds, 0.01f);
 
-	TArray<ACataclysmRemains*> Named;
+	TArray<ACataclysmRemainsMarker*> Named;
 	UCataclysmRemains::RemainsToName(Player.Character, FVector::ZeroVector, 20 * M, Named);
 	TestEqual(TEXT("the HUD names it for its owner"), Named.Num(), 1);
 	UCataclysmRemains::RemainsToName(Second, FVector::ZeroVector, 20 * M, Named);
@@ -349,9 +349,9 @@ bool FCataclysmRemainsGatheredTest::RunTest(const FString&)
 
 	Player.Hold({{BoneFuse, 1}});
 	Player.Kill(First);
-	TArray<ACataclysmRemains*> Left = RemainsInWorld(World);
+	TArray<ACataclysmRemainsMarker*> Left = RemainsInWorld(World);
 	const float Plain = Left.Num() == 1 ? Left[0]->GetLifeSpan() : -1.0f;
-	for (ACataclysmRemains* One : Left)
+	for (ACataclysmRemainsMarker* One : Left)
 	{
 		One->Destroy();
 	}
@@ -363,8 +363,8 @@ bool FCataclysmRemainsGatheredTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const float Expected = ACataclysmRemains::BaseSeconds * (1.0f + PerPoint * 8.0f / 100.0f);
-	TestEqual(TEXT("CONTROL: with Bone Fuse alone they last 10 seconds"), Plain, ACataclysmRemains::BaseSeconds, 0.01f);
+	const float Expected = ACataclysmRemainsMarker::BaseSeconds * (1.0f + PerPoint * 8.0f / 100.0f);
+	TestEqual(TEXT("CONTROL: with Bone Fuse alone they last 10 seconds"), Plain, ACataclysmRemainsMarker::BaseSeconds, 0.01f);
 	TestEqual(TEXT("with 8 points of Gathered Remains, three times as long (30)"), Left[0]->GetLifeSpan(), Expected, 0.01f);
 	TestEqual(TEXT("which is the sentence's 30 seconds"), Expected, 30.0f, 0.01f);
 
@@ -413,9 +413,9 @@ bool FCataclysmRemainsRaiseTest::RunTest(const FString&)
 	}
 
 	const FVector Rise(0, 5 * M, 0);
-	ACataclysmRemains* Near = UCataclysmRemains::LeaveFor(Player.Character, Dead, Rise + FVector(1.5f * M, 0, 0));
-	ACataclysmRemains* Far = UCataclysmRemains::LeaveFor(Player.Character, Dead, Rise + FVector(-2.5f * M, 0, 0));
-	ACataclysmRemains* Foreign = UCataclysmRemains::LeaveFor(Player.Character, Dead, Rise + FVector(0, 0.5f * M, 0));
+	ACataclysmRemainsMarker* Near = UCataclysmRemains::LeaveFor(Player.Character, Dead, Rise + FVector(1.5f * M, 0, 0));
+	ACataclysmRemainsMarker* Far = UCataclysmRemains::LeaveFor(Player.Character, Dead, Rise + FVector(-2.5f * M, 0, 0));
+	ACataclysmRemainsMarker* Foreign = UCataclysmRemains::LeaveFor(Player.Character, Dead, Rise + FVector(0, 0.5f * M, 0));
 	if (!TestNotNull(TEXT("set-up: near"), Near) || !TestNotNull(TEXT("set-up: far"), Far)
 		|| !TestNotNull(TEXT("set-up: foreign"), Foreign))
 	{
@@ -481,7 +481,7 @@ bool FCataclysmRemainsTwoFromOneTest::RunTest(const FString&)
 	}
 	const auto RaiseOne = [&Player, Dead]()
 	{
-		ACataclysmRemains* Remains = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(0, 3 * M, 0), true);
+		ACataclysmRemainsMarker* Remains = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(0, 3 * M, 0), true);
 		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player.Character, FVector(0, 3 * M, 0), 60.0f, false,
 														TEXT("Imp"));
 		return UCataclysmRemains::RaiseOn(Player.Character, Imp, Remains);
@@ -553,8 +553,8 @@ bool FCataclysmRemainsMantleTest::RunTest(const FString&)
 	}
 	const auto Everything = [](const AActor&) { return true; };
 
-	ACataclysmRemains* Own = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(10 * M, 0, 0), true);
-	ACataclysmRemains* Foreign = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(12 * M, 0, 0), true);
+	ACataclysmRemainsMarker* Own = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(10 * M, 0, 0), true);
+	ACataclysmRemainsMarker* Foreign = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(12 * M, 0, 0), true);
 	if (!TestNotNull(TEXT("set-up: own"), Own) || !TestNotNull(TEXT("set-up: foreign"), Foreign))
 	{
 		return false;
@@ -619,7 +619,7 @@ bool FCataclysmRemainsArmourTest::RunTest(const FString&)
 
 	const float None = Armour();
 	UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(7 * M, 0, 0), true);
-	ACataclysmRemains* Foreign = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(0, 1 * M, 0), true);
+	ACataclysmRemainsMarker* Foreign = UCataclysmRemains::LeaveFor(Player.Character, Dead, FVector(0, 1 * M, 0), true);
 	if (!TestNotNull(TEXT("set-up: foreign"), Foreign))
 	{
 		return false;
@@ -676,7 +676,7 @@ bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 	{
 		return UCataclysmRemains::LeaveFor(Player.Character, Dying, Where, true);
 	};
-	ACataclysmRemains* Recorded = LeaveAt(FVector(0, 30 * M, 0));
+	ACataclysmRemainsMarker* Recorded = LeaveAt(FVector(0, 30 * M, 0));
 	if (!TestNotNull(TEXT("set-up: remains"), Recorded))
 	{
 		return false;
@@ -692,7 +692,7 @@ bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 	const auto StruckCarriesNecrosis = [&](const FVector& Where)
 	{
 		ACataclysmEnemyCharacter* Struck = RemainsCreatureAt(World, Where + FVector(1.5f * M, 0, 0));
-		ACataclysmRemains* Remains = LeaveAt(Where);
+		ACataclysmRemainsMarker* Remains = LeaveAt(Where);
 		UCataclysmRemains::Detonate(Player.Character, Remains);
 		return RemainsCarries(Struck, TEXT("Keyword.DoT.Necrosis"));
 	};
@@ -708,7 +708,7 @@ bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 	{
 		FRemainsPinnedStatusRoll Pinned(Roll);
 		ACataclysmEnemyCharacter* Struck = RemainsCreatureAt(World, Where + FVector(1.5f * M, 0, 0));
-		ACataclysmRemains* Remains = UCataclysmRemains::LeaveFor(Player.Character, Clean, Where, true);
+		ACataclysmRemainsMarker* Remains = UCataclysmRemains::LeaveFor(Player.Character, Clean, Where, true);
 		UCataclysmRemains::Detonate(Player.Character, Remains);
 		return RemainsCarries(Struck, TEXT("Keyword.DoT.Necrosis"));
 	};
@@ -821,7 +821,7 @@ bool FCataclysmRemainsFallenAgainTest::RunTest(const FString&)
 		AfterMachine = RemainsInWorld(World).Num();
 		KillIt(Lucky);
 	}
-	const TArray<ACataclysmRemains*> Left = RemainsInWorld(World);
+	const TArray<ACataclysmRemainsMarker*> Left = RemainsInWorld(World);
 
 	TestEqual(TEXT("CONTROL: a roll at the 48% chance leaves no remains"), AfterUnlucky, 0);
 	TestEqual(TEXT("CONTROL: a machine killed leaves none"), AfterMachine, 0);

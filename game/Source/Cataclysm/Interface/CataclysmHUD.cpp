@@ -1740,16 +1740,16 @@ void ACataclysmHUD::DrawRemainsNames()
 	}
 
 	// AS FAR AS A DROP'S NAME IS SHOWN, and only the viewer's own: "which only you see".
-	TArray<ACataclysmRemains*> Nearby;
+	TArray<ACataclysmRemainsMarker*> Nearby;
 	UCataclysmRemains::RemainsToName(LocalPawn, LocalPawn->GetActorLocation(), UCataclysmDropPickup::NameShownRangeCm,
 									 Nearby);
 	TArray<FVector> Over;
-	for (const ACataclysmRemains* Remains : Nearby)
+	for (const ACataclysmRemainsMarker* Remains : Nearby)
 	{
 		Over.Add(Remains->GetActorLocation());
 	}
-	DrawPlainTags(Over, ACataclysmRemains::NameHeightCm, FString(ACataclysmRemains::NameText),
-				  ACataclysmRemains::NameColour());
+	DrawPlainTags(Over, ACataclysmRemainsMarker::NameHeightCm, FString(ACataclysmRemainsMarker::NameText),
+				  ACataclysmRemainsMarker::NameColour());
 }
 
 void ACataclysmHUD::DrawHarvestedSoulNames()

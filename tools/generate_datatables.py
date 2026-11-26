@@ -8567,6 +8567,12 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     "trap_armed",
     # V5b1, 2026-11-25. `gadget_expired` carries the wearer's own gadget.
     "gadget_expired",
+    # The Death finish's slice D, 2026-11-26. `minion_raised_on_remains` carries
+    # the wearer's own minion. `remains_detonation_hit` carries the enemy the
+    # blast of the wearer's detonated remains struck; Grave Spores applies
+    # Necrosis to it, and NO STRIKE ON IT IS RULED, as for `minion_hit` above.
+    "minion_raised_on_remains",
+    "remains_detonation_hit",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing

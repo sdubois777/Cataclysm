@@ -63,12 +63,12 @@ struct FCataclysmRemainsAilment
  * NOT SAVED, as a Soul is not.
  */
 UCLASS()
-class CATACLYSM_API ACataclysmRemains : public AActor
+class CATACLYSM_API ACataclysmRemainsMarker : public AActor
 {
 	GENERATED_BODY()
 
 public:
-	ACataclysmRemains();
+	ACataclysmRemainsMarker();
 
 	/** How long remains last with nothing lengthening them: Bone Fuse's "lasting 10 seconds". */
 	static constexpr float BaseSeconds = 10.0f;
@@ -173,7 +173,7 @@ public:
 	 *
 	 * @return the remains left, or null
 	 */
-	static ACataclysmRemains* LeaveFor(AActor* Player, AActor* Dead, const FVector& Where, bool bEvenWithoutTheFlag = false);
+	static ACataclysmRemainsMarker* LeaveFor(AActor* Player, AActor* Dead, const FVector& Where, bool bEvenWithoutTheFlag = false);
 
 	/**
 	 * A death `Player`'s character heard: remains for a hostile creature's death when the player holds the flag, then
@@ -189,23 +189,23 @@ public:
 	 * a death there, so it never reaches this. A machine leaves none: it is placed and not raised, as
 	 * `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` reads a minion.
 	 */
-	static ACataclysmRemains* LeaveForAFollower(AActor* Commander, AActor* Follower, const FVector& Where);
+	static ACataclysmRemainsMarker* LeaveForAFollower(AActor* Commander, AActor* Follower, const FVector& Where);
 
 	/** Every remains of `Player`'s, nearest to `Place` first, within `RadiusCm` along the floor. */
-	static TArray<ACataclysmRemains*> OwnRemainsNear(const AActor* Player, const FVector& Place, float RadiusCm);
+	static TArray<ACataclysmRemainsMarker*> OwnRemainsNear(const AActor* Player, const FVector& Place, float RadiusCm);
 
 	/** How far each of `Player`'s own remains within `WithinCm` lies from it, in metres along the floor. */
 	static void DistancesOfOwnRemains(const AActor* Player, float WithinCm, TArray<float>& OutMetres);
 
 	/** The remains whose tags `Viewer`'s HUD draws: its own, within `Range` of `Standing`, nearest first. */
 	static void RemainsToName(const AActor* Viewer, const FVector& Standing, float Range,
-							  TArray<ACataclysmRemains*>& Out);
+							  TArray<ACataclysmRemainsMarker*>& Out);
 
 	/**
 	 * Gravefinder: the remains a minion `Summoner`'s summon skill raises at `RisePoint` is raised on, the nearest of
 	 * its own within `RaiseReachMetresStat` metres; null with none, or with no Gravefinder.
 	 */
-	static ACataclysmRemains* ChooseToRaiseOn(const AActor* Summoner, const FVector& RisePoint);
+	static ACataclysmRemainsMarker* ChooseToRaiseOn(const AActor* Summoner, const FVector& RisePoint);
 
 	/** Bone-Bound: `Reserve` less `ReservePercentLessStat` per cent, never below nought. */
 	static float ReserveOnRemains(const AActor* Summoner, float Reserve);
@@ -217,7 +217,7 @@ public:
 	 *
 	 * @return whether the remains were consumed
 	 */
-	static bool RaiseOn(AActor* Summoner, ACataclysmMinion* Minion, ACataclysmRemains* Remains);
+	static bool RaiseOn(AActor* Summoner, ACataclysmMinion* Minion, ACataclysmRemainsMarker* Remains);
 
 	/**
 	 * Mantle of Bone, at a weapon skill's landing: every remains of `Caster`'s that `IsInside` accepts is detonated, when
@@ -240,13 +240,13 @@ public:
 	 *
 	 * @return how many enemies a blow was sent at
 	 */
-	static int32 Detonate(AActor* Caster, ACataclysmRemains* Remains);
+	static int32 Detonate(AActor* Caster, ACataclysmRemainsMarker* Remains);
 
 	/** What a detonation of `Remains` by `Caster` deals each enemy, before the enemy's defences. */
-	static float DetonationDamage(const AActor* Caster, const ACataclysmRemains* Remains);
+	static float DetonationDamage(const AActor* Caster, const ACataclysmRemainsMarker* Remains);
 
 	/** Consume `Remains` for `Player`: `remains_consumed` raised on the player, and the remains destroyed. */
-	static void Consume(AActor* Player, ACataclysmRemains* Remains);
+	static void Consume(AActor* Player, ACataclysmRemainsMarker* Remains);
 
 	/** A roll in per cent: `PinnedRollForTests` when pinned, otherwise drawn. */
 	static float Roll();

@@ -2,6 +2,185 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Necromancer's remains: a marker where a creature fell, the Ossuary limb, the Abomination, the Bone Colossus and Many Made One (the Death finish, slice D)
+
+**Affects:**
+- New: `game/Source/Cataclysm/AbilitySystem/CataclysmRemains.h` and `.cpp` (`ACataclysmRemainsMarker`, the marker, and
+  `UCataclysmRemains`, everything remains do; the actor is not `ACataclysmRemains` because a `U` and an `A` class
+  sharing the name past the prefix share one engine name, which the header tool refuses, and
+  `tools/tests/test_no_class_and_struct_share_an_engine_name.py` said so on the first whole-suite run);
+  `CataclysmBoneGiants.h` and `.cpp` (`UCataclysmBoneGiants`, a world subsystem: the floor's tally, the Abomination
+  and the Bone Colossus).
+- One call each in shared files: `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` (`DetonateWhere`, before the
+  minions' own `Detonates=1` rule); `UCataclysmSummonSkill::SummonOne` (Gravefinder's choice before the reserve,
+  Bone-Bound's lower reserve, `RaiseOn` after `HoldReserve`); `ACataclysmPlayerCharacter::OnSomethingDied`
+  (`HearDeath`); `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` (`LeaveForAFollower`, before
+  `HandleDeath`); `ACataclysmDungeonGameMode::PopulateFloor` (`BeginFloor` on a carved arena, and `NoteStartedWith`
+  where a creature joins the wave) and `ContinueTheWaveArriving` (`NoteStartedWith` where a creature joins the
+  wave, on a carved arena); `UCataclysmFloorContents::ClearTheFloor` (every remains destroyed, `EndTheFloor`); `ACataclysmHUD::DrawHUD`
+  and the new `DrawRemainsNames`; `UCataclysmAbilitySystemComponent::WithEnemiesInReach` (the remains' distances,
+  when a row asks).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the scale `remains_in_reach`
+  (`PerOwnRemainsInReach`) and `FCataclysmStatConditions::OwnRemainsDistancesMetres`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: thirteen stats with no attribute.
+- `tools/reapply_death_remains_workbook.py` (new): 32 Passive Effects rows on 14 nodes and two vow options, and the tag
+  `Minion.RaisedOnRemains` on the Tags sheet; `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (931
+  rows on this branch), `game/Config/Tags/CataclysmTags.ini`.
+- `tools/generate_datatables.py`: the three events in `ACTION_ONLY_EVENTS`, `remains_detonation_hit` in
+  `APPLY_STATUS_EVENTS`, two in `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`, and the scale `remains_in_reach` in the four
+  lists of scales that count within a reach. `docs/README.md`: the Passive Effects (931) and Tags (147) counts.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmRemainsTests.cpp`, new (14, `Cataclysm.Remains.`);
+  `CataclysmStatExemptionTests.cpp` (thirteen probes); `CataclysmDataTableTests.cpp` (931);
+  `tools/tests/test_death_remains_rows.py`, new; and the pinned figures and word tables the new rows move:
+  `test_passive_effects_match_the_node_text.py` (`AUTHORED_ROWS` 931, `AUTHORED_NODES` 511, `AUTHORED_OPTIONS` 97,
+  the scale's words, six flags' words, three value forms, Picked Clean's health form, and
+  `MULTIPLIED_BY_THE_ENGINE` for the Abomination's "400% more", which the engine applies with no row),
+  `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` (49), `test_every_required_tag_is_carried.py`
+  (the tag, granted by `RaiseOn`), `test_damage_over_time_names_its_skill.py` (Plague Pit's ailment credits no
+  skill), `test_stat_lookups_hand_over_what_they_should.py` (`StatOf`), and `test_reapply_death_trees_workbook.py`,
+  which takes every Death row out of a copy and now puts this slice's back after its own.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The coordinating session's window compiles it,
+  rebuilds `DT_PassiveEffects`, and runs `Cataclysm.Remains.` and `Cataclysm.StatExemption.`.
+- **TWO WIRES ARE LEFT FOR THE ASSEMBLY, AS THE COORDINATING SESSION INSTRUCTED.** (1) Bursting Ranks counts "a
+  detonation of a minion or of remains": slice C's `NoteDetonation(Character)` is not on this branch, so
+  `UCataclysmRemains::Detonate` carries a marked comment where the call goes. (2) Mantle of Bone needs every weapon
+  skill's landing to reach `DetonateOwnMinionsWhere`; on this branch the call sites still run only for rows with
+  `Detonates=1` (for example the line skill's landing in `CataclysmSkillTemplates.cpp`), so until slice C's change to
+  those sites is merged, only the detonating skills detonate remains in play. The tests call `DetonateWhere` itself.
+- **LONE REVENANT'S FLAG IS SLICE B'S.** The Abomination reads `lone_revenant_held` (the name the coordinating session
+  gave both slices); it is not on this branch's exemption list, and its test grants it by hand.
+- **THE NUMBERS THE SENTENCES LEAVE OPEN ARE THE COORDINATING SESSION'S ANSWERS OF 2026-11-26 OR JUDGEMENTS, AND THE
+  ABOMINATION'S TWO ARE PLAY-TEST FIGURES:** its health 10% and its damage 5% of what the floor's kills summed (Q1;
+  at tier 8, 150 kills at 10% damage would give about three times a geared player's hit, and 5% about one and a
+  half times); the Bone Colossus starts with a Barrow Guard's figures (Q3) and reserves 20 Fervour (Q4).
+- **AN INTERACTION FOR THE OWNER:** Lit Fuse (slice C) detonates "one of your own minions ... whatever kind it is",
+  and both giants are minions, so with Lit Fuse a weapon skill landing on the Abomination or the Colossus explodes it,
+  and the Abomination does not rise again that floor. Neither sentence decides it; nothing here exempts them.
+
+### What a remains is
+
+The design the coordinating session approved on 2026-11-26, before it was built.
+
+- **LEFT** where any hostile creature dies, whoever killed it, for every player holding `remains_left` (Bone Fuse,
+  and the Bone Colossus vow, which Bone Fuse's own sentence names). Each player gets their own; only they see it and
+  use it. A thrall or minion is not hostile and leaves none that way; Fallen Again's chance leaves one for a follower
+  killed (not a machine, which is placed and not raised; a detonation is an explosion, not a death, and never reaches
+  the death hook).
+- **IT RECORDS** the creature's maximum health, its blow (`OwnAttackDamage`), its rarity rung, its kind (archetype row,
+  or a minion's type), and every one of the eleven ailments (`UCataclysmAilments::Kinds`) it died carrying, with the
+  seconds each had left and, for a damage over time ailment, what it dealt a second.
+- **IT LASTS** 10 seconds, longer by Gathered Remains (increased), as the engine's lifespan, and the floor's change
+  clears it with the Souls.
+- **IT IS SEEN** as a small bone-white disc on the floor (the engine's cylinder in the telegraph marker's material,
+  `SetOnlyOwnerSee`), and the HUD's tag "Remains" over it, drawn for its owner only. The owner asked for "a pile of
+  meat or a gravestone or something for less clutter" (2026-11-24).
+- **IT IS CONSUMED** by a raise on it (`RaiseOn`), a detonation (`Detonate`) or the Bone Colossus's feeding.
+
+### Each node and option
+
+| Node | Rows | Read by |
+|---|---|---|
+| Bone Fuse (keystone) | `remains_left` 1; 3 Fervour (`class_resource`) on `minion_raised_on_remains` | `LeaveFor`; the event, raised by `RaiseOn` |
+| Gravefinder (10) | `remains_raise_reach_metres` 1 a point | `ChooseToRaiseOn`, from where the minion rises |
+| Raised on Bones (6) | `minion_damage` and `minion_health` 5% increased a point, requiring `Minion.RaisedOnRemains` | the tag `RaiseOn` adds; its health taken again with the tag |
+| Mantle of Bone (12) | `weapon_skills_detonate_remains` 1 a point; `remains_detonation_percent_of_maximum_health` 1 at each of 2, 4 ... 12; `armor` 1% increased at each of 2, 4 ... 12 on `remains_in_reach`, reach 6, at most 10 | `DetonateWhere`, `DetonationDamage`; the pipeline's scale |
+| Gathered Remains (8) | `remains_duration` 25% increased a point | `LeaveFor` |
+| Fallen Again (8) | `minion_leaves_remains_chance` 6 a point | `LeaveForAFollower` |
+| Bone-Bound (8) | `minion_on_remains_reserve_percent_less` 4 a point | `ReserveOnRemains`, in `SummonOne` before the room is asked |
+| Picked Clean (8) | 1% of maximum health (`health`) on `remains_consumed`, at 3 and at 6 | `Consume`, from a raise or a detonation |
+| Two From One (8) | `remains_kept_on_raise_chance` 4 a point | `RaiseOn` |
+| Festering (8) | `remains_detonation_increased_per_ailment` 2 a point | `DetonationDamage` |
+| Grave Spores (6) | Necrosis (`apply_status`) at 6% a point on `remains_detonation_hit` | the event, once per enemy the blast strikes |
+| Grave Robber (keystone) | 5 Fervour (`class_resource`) on `minion_raised_on_remains` | the event |
+| Plague Pit (keystone) | `detonated_remains_pass_ailments` 1 | `Detonate` |
+| Many Made One (8) | `abomination_kill_percent_less` 2 a point | `KillsNeededFor` |
+| The Final Rite, option 1, Abomination | `abomination_rises` 1 | `UCataclysmBoneGiants::NoteDeath` |
+| The First Rite, option 2, Bone Colossus | `bone_colossus` 1, `remains_left` 1 | `RemainsLanded`; `LeaveFor` |
+
+### Judgements
+
+1. **ANY HOSTILE CREATURE'S DEATH LEAVES REMAINS, WHOEVER KILLED IT.** Bone Fuse says "Dead creatures", not "creatures
+   you kill". A rule's creature (a rift hunter) leaves them too: it is a creature.
+2. **A RAISE ON REMAINS IS ONLY A SUMMON SKILL'S CAST** (`SummonOne`, so Open the Rift's timed spawns as well), as
+   Gravefinder says "your summon skill raises". A replacement, a re-summon or a minion raised at a kill is not one.
+   The minion rises where the remains lie.
+3. **RAISED ON BONES IS A TAG, NOT A FIGURE ON THE MINION**, so its two rows are plain rows a reader can see; the
+   minion's health is taken again once with the tag (the ratio of the minion health multipliers with and without it),
+   since health is set once, at the summoning.
+4. **A DETONATION IS ONE BLOW OF THE CASTER'S, SIZED BY THE DEAD CREATURE'S HEALTH AND UNSCALED BY THE CASTER'S
+   INCREASES**, through `ExplodeForOverkill`, the shape The Ferryman's burst already takes: area damage, never a
+   critical strike, within 3 metres of the remains. Festering is its one increase. At Mantle of Bone's first point
+   the share is nought (its rows begin at 2 points, a whole number per point): the remains still go off and are
+   consumed, and strike nobody.
+5. **"AILMENT" IS ONE OF THE ELEVEN `UCataclysmAilments::Kinds`**: Bleed, Poison, Disease, Void Splinter, Necrosis,
+   Burn, Madness, Cripple, Weaken, Shred and Stun. Festering counts each carried. Plague Pit passes a damage over time
+   ailment as a spread copy (`ApplySpreadCopy`), the detonating player its applier, for the seconds it had left at the
+   death; any other through its own application at its normal strength, which takes the seconds left only for
+   Cripple; the other four take their own designed seconds.
+6. **PICKED CLEAN READS ONLY ITS SENTENCE'S TWO WAYS**, a raise and a detonation. Feeding the Bone Colossus consumes
+   remains and raises nothing, as the coordinating session ruled for Bone Fuse's Fervour (Q4).
+7. **THE FLOOR STARTED WITH** what the game mode's population puts down on an arena it carved, the first wave of a
+   Horde arena included; a kept arena's later waves, and every rule's arrival (rift hunters, which never join the
+   wave), are not counted. "You have killed" counts the player's kills and its followers'.
+8. **THE ABOMINATION RISES WHERE THE KILL THAT REACHED THE COUNT FELL**, needs neither Bone Fuse nor remains on the
+   floor, and consumes none: "their remains combine" is read as what it is made of, not as markers it needs. It rises
+   once a floor; killed, it does not rise again there. It is a Barrow Guard's body drawn 1.8 times larger (the
+   coordinating session: it may reuse a creature's body; no new art).
+9. **"RELEASES WHATEVER ELSE YOU HAVE OUT"** releases the player's followers oldest first
+   (`UCataclysmCommand::ReleasableOldestFirst`, as a take does) until the 100 fit, and only when they can be made to;
+   a machine is not released. When the pool could not hold it with all of them gone, it does not rise and is asked
+   again at the next kill.
+10. **ITS HEALTH TAKES THE PLAYER'S MINION HEALTH ROWS, AND ITS BLOW THE MINION DAMAGE ROWS AT EACH SWING**, as any
+    minion's do. Lone Revenant multiplies both by five and leaves the reserve at 100. The kills it sums are every
+    creature the player or its followers killed on the floor, a rule's creatures included.
+11. **THE BONE COLOSSUS RISES ON THE FIRST REMAINS OF THE PLAYER'S ON A FLOOR** and is fed every remains of the
+    player's that lands within 6 metres of it, consuming them: nothing is pressed, as a class tree adds no button. Each
+    adds 10% of that creature's maximum health to its maximum and its health. ITS HEALTH IS ITS MASS: its blow is its
+    starting blow times its health over the health it rose with, and its drawn size the cube root of that, held
+    between 0.6 and 3, stepped every quarter second, so a hurt Colossus is smaller and weaker and feeding grows it
+    back. Killed, the next remains raise a new one. Remains landing beyond 6 metres stay for the player's other uses.
+12. **BOTH GIANTS END WHEN THE FLOOR CHANGES** (`ClearTheFloor`, which a floor change calls with followers carried),
+    and stay through a kept Horde arena's waves, which are not a new floor.
+
+### Research
+
+Path of Exile: Detonate Dead's explosion "deals base Fire Damage equal to (6—7.9)% of the corpse's Maximum Life" in
+2.2 to 2.6 metres and destroys the corpse (poedb.tw/us/Detonate_Dead); Path of Exile 2's corpses record the
+creature's life, and Meat Recycling (15%) and Enezun's Charge (25%) give a chance not to consume one
+(poe2db.tw/Corpses), the shape of Two From One. Diablo IV: Raise Skeleton and Corpse Explosion each consume a corpse
+(primagames.com, "How to Consume a Corpse in Diablo 4"; pcgamer.com on Corpse Explosion). Last Epoch has no corpses;
+its Summon Abomination consumes twenty of the player's minions into one (maxroll.gg, Abomination Necromancer guide),
+the nearest shipped shape to this vow. **WHAT THE RESEARCH SETTLES:** remains record what died and are consumed by
+what uses them; an explosion is sized by the dead creature's maximum life; a chance not to consume is an accepted
+shape. **WHAT IS THIS GAME'S OWN:** the numbers, which the nodes state; the Abomination's shares and the Colossus's
+growth, which are the coordinating session's figures and play-test points.
+
+### Unreal tests
+
+New group `Cataclysm.Remains.`, fourteen tests, each with a control:
+`BoneFuseLeavesRemainsOfAnEnemysDeathThatOnlyItsHolderOwnsAndSees`,
+`GatheredRemainsLengthensTheirLifeByItsRowsAndTheyAreGoneWhenItEnds`,
+`AMinionRaisedOnOwnRemainsWithinGravefindersReachGainsRaisedOnBonesAndFervour`,
+`TwoFromOneKeepsTheRemainsOnItsRollAndBoneBoundLowersTheReserve`,
+`MantleOfBoneDetonatesOwnRemainsInsideASkillsAreaForAShareOfTheirCreaturesHealth`,
+`MantleOfBonesArmourCountsOwnRemainsWithinSixMetresUpToTen`,
+`PlaguePitPassesTheAilmentsTheirCreatureDiedWithAndGraveSporesInflictsNecrosis`,
+`PickedCleanRestoresHealthForEveryThreePointsWhenRemainsAreConsumed`,
+`FallenAgainLeavesRemainsForAMinionKilledOnItsRollAndNoneForAMachine`,
+`TheAbominationRisesAtHalfTheFloorsStartingCreaturesFromAShareOfEveryKill`,
+`ManyMadeOneTakesTwoOffTheAbominationsShareForEachPoint`,
+`LoneRevenantsFlagGivesTheAbominationFourHundredPercentMoreAndNoMoreReserve`,
+`TheBoneColossusRisesOnTheFirstRemainsIsFedWithinSixMetresAndShrinksWhenHurt`,
+`LeavingTheFloorEndsTheRemainsTheGiantsAndTheTally`. All but Lone Revenant's use a real Death character holding the
+shipped rows, and read expected figures from `DT_PassiveEffects`. Changed:
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (thirteen probes) and the PassiveEffects count in
+`Cataclysm.Data.`.
+
+---
+
 ## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
 
 **Affects:**

@@ -3130,7 +3130,7 @@ enum class ECataclysmStatScale : uint8
 	 * every 2 points for each creature's remains within 6 metres of you, up to 10". Read from
 	 * `FCataclysmStatConditions::OwnRemainsDistancesMetres`, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach`
 	 * fills only when a row asks. Another player's remains are not counted: remains belong to the player they were left
-	 * for (`ACataclysmRemains::LeftFor`).
+	 * for (`ACataclysmRemainsMarker::LeftFor`).
 	 */
 	PerOwnRemainsInReach
 		UMETA(DisplayName = "Per Own Remains In Reach"),

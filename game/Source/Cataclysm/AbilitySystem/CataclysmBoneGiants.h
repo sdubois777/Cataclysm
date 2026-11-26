@@ -8,7 +8,7 @@
 #include "CataclysmBoneGiants.generated.h"
 
 class ACataclysmMinion;
-class ACataclysmRemains;
+class ACataclysmRemainsMarker;
 class UWorld;
 struct FCataclysmDeathNotice;
 
@@ -127,7 +127,7 @@ public:
 	static ACataclysmMinion* RaiseAbomination(AActor* Player, const FVector& Where);
 
 	/** Remains of `Player`'s just landed: the Bone Colossus rises on them or is fed them. */
-	static void RemainsLanded(AActor* Player, ACataclysmRemains* Remains);
+	static void RemainsLanded(AActor* Player, ACataclysmRemainsMarker* Remains);
 
 	/** `Player`'s Abomination or Bone Colossus while it stands, or null. */
 	static ACataclysmMinion* AbominationOf(const AActor* Player);

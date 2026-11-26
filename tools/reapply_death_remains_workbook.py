@@ -4,7 +4,7 @@
     python tools/reapply_death_remains_workbook.py --check
 
 SLICE D OF THE DEATH FINISH (2026-11-26), on the remains design the coordinating session approved that day: one actor,
-`ACataclysmRemains`, left where a hostile creature dies for each player holding `remains_left`, seen only by that
+`ACataclysmRemainsMarker`, left where a hostile creature dies for each player holding `remains_left`, seen only by that
 player, raised on by a summon skill, detonated by a weapon skill's landing, and fed to the Bone Colossus. Every
 number below is the node's own sentence:
 
@@ -99,7 +99,7 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("minion_damage", "increased", RAISED_ON_BONES_PERCENT, tags=RAISED_ON_REMAINS_TAG),
         R("minion_health", "increased", RAISED_ON_BONES_PERCENT, tags=RAISED_ON_REMAINS_TAG))),
     ("Necromancer_basic_os_a0", "Mantle of Bone", (
-        R("weapon_skills_detonate_remains", "flat", 1, min_points=1),
+        R("weapon_skills_detonate_remains", "flat", 1),
         *(R("remains_detonation_percent_of_maximum_health", "flat", 1, min_points=step) for step in MANTLE_STEPS),
         *(R("armor", "increased", 1, scale="remains_in_reach", step=1, cap=MANTLE_MOST_REMAINS,
             reach=MANTLE_REACH_METRES, min_points=step) for step in MANTLE_STEPS))),

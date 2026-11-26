@@ -903,7 +903,7 @@ Necromancer_basic_os_stem0#2,Necromancer_basic_os_stem0,,,3.0,,,0.0,,0.0,0,-1.0,
 Necromancer_basic_os_stem1#1,Necromancer_basic_os_stem1,remains_raise_reach_metres,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_os_stem2#1,Necromancer_basic_os_stem2,minion_damage,increased,5.0,Minion.RaisedOnRemains,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_os_stem2#2,Necromancer_basic_os_stem2,minion_health,increased,5.0,Minion.RaisedOnRemains,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
-Necromancer_basic_os_a0#1,Necromancer_basic_os_a0,weapon_skills_detonate_remains,flat,1.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Necromancer_basic_os_a0#1,Necromancer_basic_os_a0,weapon_skills_detonate_remains,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_os_a0#2,Necromancer_basic_os_a0,remains_detonation_percent_of_maximum_health,flat,1.0,,,0.0,,0.0,0,-1.0,2,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_os_a0#3,Necromancer_basic_os_a0,remains_detonation_percent_of_maximum_health,flat,1.0,,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_os_a0#4,Necromancer_basic_os_a0,remains_detonation_percent_of_maximum_health,flat,1.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

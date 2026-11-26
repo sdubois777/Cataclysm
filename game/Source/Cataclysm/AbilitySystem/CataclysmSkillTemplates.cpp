@@ -5653,7 +5653,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	// AND GRAVEFINDER'S REMAINS, CHOSEN BEFORE THE RESERVE IS ASKED: the Death finish's slice D (2026-11-26). The nearest
 	// of the caster's own remains within its reach of where this rises; the minion rises on them, and Bone-Bound lowers
 	// what it reserves, so a raise on remains can fit where one off them would not.
-	ACataclysmRemains* RisesOn = UCataclysmRemains::ChooseToRaiseOn(Self, RiftLocation);
+	ACataclysmRemainsMarker* RisesOn = UCataclysmRemains::ChooseToRaiseOn(Self, RiftLocation);
 	float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
 	if (RisesOn)
 	{
