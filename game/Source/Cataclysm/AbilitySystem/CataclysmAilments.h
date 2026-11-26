@@ -274,7 +274,7 @@ public:
 	 * @return how many ailments were applied
 	 */
 	static int32 RollOnLandedBlow(const FGameplayEffectSpec& Spec, AActor* Defender,
-								  float DealtToHealth, bool bIsBlunt);
+								  float DealtToHealth, bool bIsBlunt, bool bCritical = false);
 
 	/**
 	 * Whether a blow that took this much health from this defender may leave an

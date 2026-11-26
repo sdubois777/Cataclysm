@@ -658,6 +658,110 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: removed from six Masochist keystones. Every node that changed already had a
 #: row, so `AUTHORED_NODES` does not move.
 #:
+#: AND TO 427 ON 2026-11-24, for the three Death trees' first rows beside the
+#: rework's: 63 rows on 49 nodes, every one a stat, condition and scale the game
+#: already had, written by `tools/reapply_death_trees_workbook.py`. Seventeen are
+#: the Soul Collector's (its starting node's damage half among them), nine the
+#: Necromancer's (its starting node's within-10-metres half among them) and 37
+#: the Shadow's (Counterstroke's first half among them, and Through and
+#: Through's four steps and Untouched's three). Six "damage" sentences are two
+#: rows each, one on attack damage and one on spell damage, and so is Restless
+#: Host, which raises minion damage and minion health.
+#:
+#: AND TO 459 THE SAME DAY, for the Death classes' kill generator (slice B): 32
+#: rows on 16 more nodes and on the two starting nodes. The Soul Collector's
+#: starting node gains eight (five rungs of Fervour a kill, the decay, two
+#: graces) and the Shadow's four; Tithe of the Dead, Reaper's Share, Hungry for
+#: the Strong, Grave Patience (two steps), Cold Storage, Hoarder, Slow Exhale,
+#: Momentum, Siege of One, Quarry, Big Game, Hunter's Eye, Between the Dead,
+#: Killing Pace (two), Light Feet (two). Measured then: the Soul Collector 34
+#: rows on 21 nodes, the Necromancer 9 on 8, the Shadow 52 on 36.
+#:
+#: AND TO 498 ON 2026-11-25, for the Death trees' slice C1: 39 rows on sixteen
+#: nodes and options that today's rows state whole, the first passive action
+#: rows among them. Measured then: the Soul Collector 48 rows on 24 nodes, the
+#: Necromancer 19 on 15, the Shadow 67 on 41.
+#:
+#: AND TO 525 ON 2026-11-25, for the Death trees' slice C2: the Soul Collector's
+#: Siphon and the eleven nodes of its limb, 27 rows. Measured then: the Soul
+#: Collector 75 rows on 36 nodes.
+#:
+#: AND TO 529 THE SAME DAY, for slice C3a's three nodes that are rows on the
+#: record of Fervour spent: Spent Breath (two), Quick Kindling and Burnt
+#: Offering. The Soul Collector 79 rows on 39 nodes.
+#:
+#: AND TO 535 THE SAME DAY, for slice C3b's six: Feast, Spirit to Mana, Ashen
+#: Ward, Soul Furnace and Turn of the Wheel, each one action row sized by what a
+#: spend carried, and Bound Offering. The Soul Collector 85 rows on 45 nodes.
+#:
+#: AND TO 539 THE SAME DAY, for slice C3c: Cinders Kept, Phylactery (the third
+#: vow's first option) and the Shadow's Borrowed Step, whose "40 Fervour, reduced
+#: by 2 per point" is two rows. The Soul Collector 87 rows on 46 nodes, the
+#: Shadow 69 rows on 42.
+#:
+#: AND TO 547 THE SAME DAY, for slice C3d: the four Soul Collector vows'
+#: threshold clauses, Generous Count, Steady Count (two) and Long Shadow. The
+#: Soul Collector 95 rows on 50 nodes.
+#:
+#: AND TO 549 THE SAME DAY, for slice C3e: Empty Hands and Chained Souls. The
+#: Soul Collector 97 rows on 52 nodes.
+#:
+#: AND TO 560 THE SAME DAY, for slice C4a: Soul Tide, Gleaning, Thinning the
+#: Herd, and the Shadow's Death's Patience, Flicker, Clean Kill (four, one at each
+#: second point) and Hunting Leap (two).
+#:
+#: AND TO 564 THE SAME DAY, for slice C4b1: Any Fuel, Borrowed Time (two, one at
+#: each third point) and Kindred Fires. The Soul Collector 104 rows.
+#:
+#: AND TO 570 THE SAME DAY, for slice C4b2: Reclaimed, Claimed (four, one at each
+#: second point) and Death's Toll. The Soul Collector 110 rows.
+#:
+#: AND TO 573 THE SAME DAY, for slice C4c1: Passed On (two: the explosion and
+#: its radius) and The Ferryman (vow 200, option 2). The Soul Collector 113 rows.
+#:
+#: AND TO 576 THE SAME DAY, for slice C4c2: Grim Wake (two, attack and spell
+#: damage) and the Shadow's Blood Debt. The Soul Collector 115 rows.
+#:
+#: AND TO 582 THE SAME DAY, for slice C4d1: the Shadow's starting node's "2 for
+#: each critical strike you land", Telling Blows, Reaper's Edge (two: the
+#: execute and the doubled payment), Relentless and Chain Execution.
+#:
+#: AND TO 584 THE SAME DAY, for slice C4d2: Patient Blade and Death by Inches.
+#:
+#: AND TO 589 THE SAME DAY, for slice C4d3: Wearer of the Dead's five worn
+#: modifiers. The Soul Collector 122 rows.
+#:
+#: AND TO 604 THE SAME DAY, for slice C6a: Brim (three), Slip, Find the Rhythm,
+#: Sidestep and Keep the Count (two each, one at each step), Soul Barrage,
+#: Lasting Wounds (two, Poison and Bleed), Twin Step and Riposte.
+#:
+#: AND TO 611 THE SAME DAY, for slice C6b1: From Behind, Opening Strike (three),
+#: Venomed Prey (two) and Hit and Run.
+#:
+#: AND TO 615 THE SAME DAY, for slice C6b2: Arrival and Glancing Cuts (two
+#: each, attack and spell damage).
+#:
+#: AND TO 623 THE SAME DAY, for slice C6b3: Opening Found (two), Reaper's Due
+#: (two), Tear Loose, Read the Blow, Hunting Ground and Vigil Over the Strong.
+#:
+#: AND TO 629 THE SAME DAY, for slice C6b4: Festering (five, one at each 2nd
+#: point) and Twice Answered.
+#:
+#: AND TO 636 THE SAME DAY, for slice C6c: Miser's Grip, Soulbound (two),
+#: Overflow (two) and Unbroken Chain (two, at 4 and 8 points).
+#:
+#: AND TO 649 THE SAME DAY, for slice C6d1: Gravekeeper's Hide (two), Shielding
+#: Ranks, Steadfast Among Them (two), Ringed in Bone (two), Cold Hands, Grave
+#: Cold (two), Hasty Dead (two) and Grave Pact.
+#:
+#: AND TO 653 THE SAME DAY, for slice C6d2: Death Ward, Bone Knit, Marrow Feast
+#: and Avenging Dead. AND TO 654 FOR ITS MARSHAL. AND TO 657 FOR ITS SHARED
+#: LEECH, ETERNAL ARMY AND BOUND BONES.
+#:
+#: AND TO 662 THE SAME DAY, for slice C6e: Deathmark (four) and Two Marks. AND
+#: TO 663 FOR ITS HOLLOW STEP. AND TO 669 FOR ITS LETHAL DOSE, BLADE ECHO,
+#: THOUSAND CUTS, INTERPOSE AND GUARD THE MASTER (TWO).
+#:
 #: AND TO 373 ON 2026-11-24, for the War classes' Fervour (slice C of
 #: `plan_death_and_war.md`): nine rows on the three War starting nodes, which had
 #: none. The Bulwark's three (hit taken, block, decay), the Berserker's two
@@ -744,7 +848,13 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: AND TO 590 THE SAME DAY: Titanfall's action row (`tools/reapply_war_titanfall_workbook.py`).
 #:
 #: AND TO 592 THE SAME DAY: Bolted Together's reach and its "more" (`tools/reapply_war_vows_v5c_workbook.py`, V5c).
-AUTHORED_ROWS = 592
+#:
+#: AND TO 897 ON 2026-11-25, when the Death line met the War line (the Death trees'
+#: bundle 3 merge): the Death line's 669 and the War line's 592 less the 364 both had.
+#:
+#: AND TO 898 THE SAME DAY: Slippery's "After successfully evading, gain 3 Fervour"
+#: (`tools/reapply_saboteur_slippery_workbook.py`), window death3-w1's second pass. Its node already had a row.
+AUTHORED_ROWS = 898
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1158,6 +1268,89 @@ AUTHORED_ROWS = 592
 #: options on capstones that already had one, and move `AUTHORED_OPTIONS` alone.
 #: Issue #1515.
 #:
+#: AND TO 275 ON 2026-11-24, for 49 nodes of the three Death trees: the Soul
+#: Collector 14 (three of them capstones, for one option each), the Necromancer
+#: 8 and the Shadow 27 (two capstones). Measured then: the Soul Collector is 14
+#: of its 73, the Necromancer 8 of its 72 and the Shadow 27 of its 74.
+#:
+#: AND TO 291 THE SAME DAY, for the kill generator's sixteen nodes besides the
+#: two starting nodes, which already counted: the Soul Collector 21 of its 73,
+#: the Necromancer 8 of its 72 and the Shadow 36 of its 74.
+#:
+#: AND TO 306 ON 2026-11-25, for the Death trees' slice C1's fifteen nodes not
+#: counted before (the Soul Collector's 50-point vow already was): the Soul
+#: Collector 24 of its 73, the Necromancer 15 of its 73 and the Shadow 41 of its 74.
+#:
+#: AND TO 318 ON 2026-11-25, for the Death trees' slice C2's twelve Siphon nodes:
+#: the Soul Collector 36 of its 73.
+#:
+#: AND TO 321 THE SAME DAY, for slice C3a's three: the Soul Collector 39 of its 73.
+#:
+#: AND TO 327 THE SAME DAY, for slice C3b's six: the Soul Collector 45 of its 73.
+#:
+#: AND TO 329 THE SAME DAY, for slice C3c's Cinders Kept and Borrowed Step:
+#: the Soul Collector 46 of its 73 and the Shadow 42 of its 74. Phylactery is
+#: an option of a capstone already counted.
+#:
+#: AND TO 333 THE SAME DAY, for slice C3d: Generous Count, Steady Count, Long
+#: Shadow and The Final Vow, whose threshold clause is its first row. The other
+#: three vows were counted for an option already. The Soul Collector 50 of its 73.
+#:
+#: AND TO 335 THE SAME DAY, for slice C3e's Empty Hands and Chained Souls: the
+#: Soul Collector 52 of its 73.
+#:
+#: AND TO 341 THE SAME DAY, for slice C4a's Gleaning, Thinning the Herd, Death's
+#: Patience, Flicker, Clean Kill and Hunting Leap. Soul Tide is an option of a
+#: capstone already counted.
+#:
+#: AND TO 344 THE SAME DAY, for slice C4b1's Any Fuel, Borrowed Time and Kindred
+#: Fires.
+#:
+#: AND TO 347 THE SAME DAY, for slice C4b2's Reclaimed, Claimed and Death's Toll.
+#:
+#: AND TO 348 THE SAME DAY, for slice C4c1's Passed On. The Ferryman is an option
+#: of a capstone already counted.
+#:
+#: AND TO 350 THE SAME DAY, for slice C4c2's Grim Wake and Blood Debt.
+#:
+#: AND TO 352 THE SAME DAY, for slice C4d1: Telling Blows, and the Shadow's
+#: 100 vow (`Shadow_capstone_100`), which had no row until Relentless and Chain
+#: Execution. Reaper's Edge is an option of a capstone already counted.
+#:
+#: AND TO 354 THE SAME DAY, for slice C4d2's Patient Blade and Death by Inches.
+#:
+#: AND TO 362 THE SAME DAY, for slice C6a's Brim, Slip, Find the Rhythm,
+#: Sidestep, Keep the Count, Lasting Wounds, Twin Step and Riposte.
+#:
+#: AND TO 365 THE SAME DAY, for slice C6b1's From Behind, Venomed Prey and Hit
+#: and Run. Opening Strike is an option, counted in `AUTHORED_OPTIONS`.
+#:
+#: AND TO 367 THE SAME DAY, for slice C6b2's Arrival and Glancing Cuts.
+#:
+#: AND TO 372 THE SAME DAY, for slice C6b3's Opening Found, Tear Loose, Read the
+#: Blow, Hunting Ground and Vigil Over the Strong. Reaper's Due is an option,
+#: counted in `AUTHORED_OPTIONS`.
+#:
+#: AND TO 374 THE SAME DAY, for slice C6b4's Festering and Twice Answered.
+#:
+#: AND TO 378 THE SAME DAY, for slice C6c's Miser's Grip, Soulbound, Overflow
+#: and Unbroken Chain.
+#:
+#: AND TO 386 THE SAME DAY, for slice C6d1's Gravekeeper's Hide, Shielding
+#: Ranks, Steadfast Among Them, Ringed in Bone, Cold Hands, Grave Cold, Hasty
+#: Dead and Grave Pact.
+#:
+#: AND TO 390 THE SAME DAY, for slice C6d2's Death Ward, Bone Knit, Marrow Feast
+#: and Avenging Dead. AND TO 391 FOR ITS MARSHAL. AND TO 392 FOR ITS SHARED
+#: LEECH. Eternal Army and Bound Bones are options, counted in
+#: `AUTHORED_OPTIONS`; their capstones had no row before, so each moves this
+#: count too, to 394.
+#:
+#: AND TO 396 THE SAME DAY, for slice C6e's Deathmark and Two Marks. AND TO 397
+#: FOR ITS HOLLOW STEP. AND TO 400 FOR ITS LETHAL DOSE, INTERPOSE AND GUARD THE
+#: MASTER; Blade Echo and Thousand Cuts are options, counted in
+#: `AUTHORED_OPTIONS`, on capstones already counted.
+#:
 #: AND TO 229 ON 2026-11-24: the three War starting nodes, `Bulwark_basic_trunk_000`,
 #: `Berserker_trunk_000` and `Saboteur_basic_trunk_000`, each given its Fervour rows
 #: by slice C of `plan_death_and_war.md`.
@@ -1192,7 +1385,10 @@ AUTHORED_ROWS = 592
 #: AND TO 322 THE SAME DAY: the Saboteur's Third and Final Oaths, with V4b's
 #: Counterfire and Magnum Opus, the first rows on either capstone.
 #: AND TO 323 THE SAME DAY: the Bulwark's keystone Titanfall, its first row.
-AUTHORED_NODES = 323
+#:
+#: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
+#: the War line's 323 less the 226 both had.
+AUTHORED_NODES = 497
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1283,6 +1479,46 @@ AUTHORED_NODES = 323
 #: AND TO 36 ON 2026-09-25: Nowhere to Run, Both Hands Full, Shoulder
 #: Through, A Second Self and Chorus. Follow Through is a keystone and moves
 #: `AUTHORED_NODES` instead. Issue #1515.
+#: AND TO 41 ON 2026-11-24: the five Death vow options whose sentence scales
+#: with Fervour held and is a row today. The Soul Collector's Swift Reaper,
+#: Death's Focus and Soul Haste, and the Shadow's Quickening and Honed Edge.
+#: Each is its capstone's only row, so each moves `AUTHORED_NODES` too.
+#:
+#: AND TO 45 ON 2026-11-25, for the Death trees' slice C1: the Soul Collector's
+#: Second Wind (50, option 1), the Necromancer's Strength in Numbers (25, option
+#: 3) and Gathering Dark (50, option 3), and the Shadow's Death Sentence (200,
+#: option 2).
+#:
+#: AND TO 46 THE SAME DAY, for slice C3c: the Soul Collector's Phylactery (100,
+#: option 1).
+#:
+#: AND TO 47 THE SAME DAY, for slice C4a: the Soul Collector's Soul Tide (25,
+#: option 1).
+#:
+#: AND TO 48 THE SAME DAY, for slice C4c1: the Soul Collector's The Ferryman (200,
+#: option 2).
+#:
+#: AND TO 51 ON 2026-11-25, for the Death trees' slice C4d1: Reaper's Edge (the
+#: Soul Collector's 100 vow, option 2), Chain Execution and Relentless (the
+#: Shadow's 100 vow, options 2 and 3).
+#:
+#: AND TO 52 THE SAME DAY, for slice C4d3: Wearer of the Dead (the Soul
+#: Collector's 200 vow, option 1).
+#:
+#: AND TO 53 THE SAME DAY, for slice C6a: Soul Barrage (the Soul Collector's
+#: 200 vow, option 3).
+#:
+#: AND TO 54 THE SAME DAY, for slice C6b1: Opening Strike (the Shadow's 25 vow,
+#: option 1).
+#:
+#: AND TO 55 THE SAME DAY, for slice C6b3: Reaper's Due (the Soul Collector's
+#: 25 vow, option 2).
+#:
+#: AND TO 57 THE SAME DAY, for slice C6d2: Bound Bones (the Necromancer's 100
+#: vow, option 3) and Eternal Army (its 200 vow, option 2).
+#:
+#: AND TO 59 THE SAME DAY, for slice C6e: Blade Echo (the Shadow's 50 vow,
+#: option 1) and Thousand Cuts (its 200 vow, option 1).
 #: AND TO 41 ON 2026-11-24, slice D of `plan_death_and_war.md`: the Bulwark's
 #: Iron Aegis and Titan's Blood (its Second Oath), and the Berserker's Vital
 #: Strikes, Thrill of the Hunt and Crimson Pact (the third option of each Oath).
@@ -1314,15 +1550,19 @@ AUTHORED_NODES = 323
 #: AND TO 70 THE SAME DAY: V5b2 -- Cat's Cradle (Saboteur). Its capstone already had a row.
 #: AND TO 71 THE SAME DAY: V5b3 -- Walking Arsenal (Saboteur). Its capstone already had a row.
 #: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
-AUTHORED_OPTIONS = 72
+#: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
+#: War line's 72 less the 36 both had.
+AUTHORED_OPTIONS = 95
 
 #: How many capstone options are named at all, across every tree.
 #:
 #: 36 UNTIL 2026-09-07, when the Ravager and Ritualist trees landed for issue
 #: #950 with twelve capstones between them, three options each.
+#: 60 UNTIL 2026-11-24, when the three Death trees landed with twelve vows
+#: between them, three options each.
 #: AND TO 72 ON 2026-11-25, when the Saboteur's twelve options, approved on
 #: 2026-11-24, were written into its four oaths (`tools/apply_war_vow_sentences_2026_11_25.py`).
-NAMED_OPTIONS = 72
+NAMED_OPTIONS = 108
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -1334,7 +1574,12 @@ NAMED_OPTIONS = 72
 #: design workbook's `Passive Effects` sheet and no rows were written for either
 #: new tree. So 78 of 441 nodes grant something where 78 of 293 did. Authoring
 #: them is issue #1463, opened with the trees rather than left implied.
-TOTAL_NODES = 441
+#:
+#: 441 UNTIL 2026-11-24, when the three Death trees landed: the Soul Collector
+#: 73 nodes, the Necromancer 72 and the Shadow 74. 660 until the owner's order
+#: fixes of the same day reached them and gave the Necromancer Many Made One,
+#: the Abomination half moved off Gathered Remains: 73.
+TOTAL_NODES = 661
 
 
 def rows_of(path: pathlib.Path) -> list[dict]:
@@ -1655,13 +1900,27 @@ CONDITION_WORDS = {
     # AND UNDYING'S "if you have at least 50 Fervour" (the Fervour spends,
     # 2026-11-25), the inclusive reading in so many words.
     "class_resource_points_at_least": (("or more fervour", "while above", "have at least"), "{value:g}"),
+    # A SOUL COLLECTOR VOW'S FERVOUR THRESHOLD, the Death trees' slice C3d
+    # (2026-11-25): "while you hold 20 or more Fervour", the same words.
+    "fervour_threshold_reached": ("or more fervour", "{value:g}"),
+    # EMPTY HANDS, the Death trees' slice C3e (2026-11-25): "while you hold
+    # fewer than 20 Fervour".
+    "class_resource_points_below": ("fewer than", "{value:g} fervour"),
 
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
+    # AND "IS AT ITS MAXIMUM", the Soul Collector's Full Measure of 2026-11-24.
     # AND RIPOSTE'S "While at maximum Fervour this counter-attack also stuns"
     # (2026-11-25): a state held while the event happens, which "while" says,
     # unlike the seventeen "when you attack at maximum Fervour".
-    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full", "while at maximum fervour"), None),
+    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full",
+                                   "fervour is at its maximum",
+                                   # AND THE FERRYMAN'S "While your bar is full",
+                                   # the Death trees' slice C4c1 (2026-11-25).
+                                   "your bar is full", "while at maximum fervour"), None),
+    # PASSED ON, the Death trees' slice C4c1 (2026-11-25): "the damage your hit
+    # deals beyond what killing an enemy needed".
+    "killing_blow_was_a_hit": ("damage your hit deals", None),
     # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Sentry Network's "while
     # within 15 meters of at least one active gadget"; Ambush's "enemies that
     # have not yet triggered one of your traps"; Overcautious's "while any of your
@@ -1692,23 +1951,42 @@ CONDITION_WORDS = {
     # successfully evading", and "while above 50% Fervour" (Precision, Vital
     # Strikes) and "while above 50% of your maximum Fervour" (Prepared).
     "seconds_after_block": ("after a successful block", "{value:g} second"),
-    "seconds_after_dodge": ("after successfully evading", "{value:g} second"),
+    "seconds_after_dodge": (("after successfully evading", "after you evade a hit"), "{value:g} second"),
     "class_resource_above": ("while above", "{value:g}%"),
     # ITS COMPLEMENT, the Saboteur's rows of 2026-11-25. A node may state it only
     # as the other side of a "while above": see `STATED_AS_ITS_COMPLEMENT`.
     "class_resource_at_or_below": ("at or below", "{value:g}%"),
     "out_of_combat": ("out of combat", None),
-    "seconds_after_movement_skill": ("after you use a movement skill",
+    # AND "YOUR MOVEMENT SKILL", the Shadow's Fresh Start and Tumble of 2026-11-24.
+    "seconds_after_movement_skill": (("after you use a movement skill",
+                                      "after you use your movement skill",
+                                      "of using your movement skill"),
                                      "{value:g} second"),
-    "target_not_yet_struck_by_you": ("first hit against each enemy", None),
+    # AND OPENING STRIKE'S WORDING, the Shadow's 25 vow, option 1: "Your first
+    # hit on an enemy at full health" (the Death trees' slice C6b1, 2026-11-25).
+    "target_not_yet_struck_by_you": (("first hit against each enemy", "your first hit on an enemy"), None),
     "in_combat_for_seconds": ("in combat", "{value:g} second"),
     "target_carries_your_curse": ("carrying your curse", None),
+    # DEATH'S PATIENCE, the Death trees' slice C4a (2026-11-25): "an enemy that
+    # carries your Poison or Bleed".
+    "target_carries_your_poison_or_bleed": ("carries your poison or bleed", None),
+    # ANY FUEL, the Death trees' slice C4b1 (2026-11-25): "Fervour gained from
+    # sources other than kills".
+    "fervour_gain_not_from_a_kill": ("from sources other than kills", None),
+    # THE CHARACTER STRUCK IS IN THE ASKER'S SIPHON, the Death trees' slice C2
+    # (2026-11-25): Soul-Heavy Air, "Enemies in your Siphon take 1% increased
+    # damage from you". No value.
+    "target_in_your_siphon": ("enemies in your siphon", None),
+    # "for 4 seconds after you spend Fervour": Quick Kindling and Burnt Offering,
+    # the Death trees' slice C3a (2026-11-25).
+    "seconds_after_fervour_spent": ("after you spend", "{value:g} second"),
 
     # THE FIVE MOVEMENT CONDITIONS. Issue #41, slice 2. No row in
     # PassiveEffects.csv uses any of them yet, so these entries are not
     # exercised today; they are here because a name missing from this map is a
     # name whose row nothing compares against its node's own words.
-    "while_moving": ("while moving", None),
+    # AND THE SHADOW'S Moving Target, 2026-11-24, says "while you are moving".
+    "while_moving": (("while moving", "while you are moving"), None),
     # TWO WORDINGS OF ONE PREDICATE. Issue #1515. `Ritual Focus` says
     # "Skills you cast while standing still cost no mana", and standing
     # still is what this predicate is. Widening the entry is what this
@@ -1847,6 +2125,83 @@ CONDITION_WORDS = {
     # seconds". Issue #1515. The singular matches the plural, as elsewhere.
     "target_damaged_by_you_within_seconds": ("damaged in the last", "{value:g} second"),
 
+    # GRIM WAKE, `SoulCollector_basic_b_a2`: "Enemies within 3 metres of an enemy
+    # you kill take 2% increased damage from you per point for 3 seconds." The
+    # Death trees' slice C4c2 (2026-11-25). The row's reach is the 3 metres.
+    "target_near_your_kill_within_seconds": ("of an enemy you kill", "{value:g} second"),
+
+    # REAPER'S EDGE, the Soul Collector's 100 vow, option 2: "Your hits kill a
+    # non-Boss enemy below 15% health outright, and those kills give double
+    # Fervour." The Death trees' slice C4d1 (2026-11-25).
+    "kill_was_an_execute": ("those kills give double", None),
+
+    # WEARER OF THE DEAD, the Soul Collector's 200 vow, option 1: "Killing an
+    # Elite or stronger creature gives you its modifiers for 20 seconds." The
+    # Death trees' slice C4d3 (2026-11-25). The value is a place in
+    # WORN_ENEMY_MODIFIERS, one row a modifier: each place is "its modifiers",
+    # so the words are listed against the places, as counts written in words
+    # are. A place added to the list is refused here until it is listed too.
+    # BRIM, the Shadow's `basic_spine_010`: "your next hit is a critical strike
+    # and deals +5% increased damage per point". The Death trees' slice C6a
+    # (2026-11-25). It names a state.
+    "next_hit_is_critical": ("your next hit is a critical strike", None),
+
+    # THE FOUR OF THE DEATH TREES' SLICE C6b1 (2026-11-25): From Behind's "hits
+    # that strike an enemy from behind"; Opening Strike's "an enemy at full
+    # health"; Venomed Prey's "enemies carrying your Poison"; Hit and Run's
+    # "more than 4 metres from you".
+    "target_struck_from_behind": ("from behind", None),
+    "target_at_full_health": ("at full health", None),
+    "target_carries_your_poison": ("carrying your poison", None),
+    "target_beyond_metres": ("metres from you", "more than {value:g} metres"),
+    # THE TWO OF THE DEATH TREES' SLICE C6b2 (2026-11-25): Arrival's "within 1
+    # second after your movement skill ends"; Glancing Cuts' "Enemies your
+    # movement skill hits take ... for 4 seconds".
+    "seconds_after_movement_skill_ends": ("after your movement skill ends", "{value:g} second"),
+    # THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25): Read the Blow's
+    # "attacks from Elite and stronger enemies"; Vigil Over the Strong's "While
+    # an Elite or stronger creature is within 15 metres" and Reaper's Due's
+    # "while a Boss is within 15 metres", the value the rung; Hunting Ground's
+    # "While no enemy is within 20 metres".
+    "opponent_rarity_at_least": ("attacks from elite",
+                                 {1.0: "attacks from elite and stronger enemies"}),
+    "enemy_of_rarity_in_reach": (("stronger creature is within", "a boss is within"),
+                                 {1.0: "elite or stronger creature is within",
+                                  4.0: "a boss is within"}),
+    "no_enemy_in_reach": ("no enemy is within", None),
+    # SOUL TIDE'S "Kills within 2 seconds of each other", the kill clock that
+    # Unbroken Chain lengthens (the Death trees' slice C6c, 2026-11-25).
+    "kill_chain_within_seconds": ("of each other", "{value:g} second"),
+    "target_struck_by_your_movement_skill_within_seconds": ("your movement skill hits", "{value:g} second"),
+    # THE TWO OF THE DEATH TREES' SLICE C6d1 (2026-11-25): Gravekeeper's Hide's
+    # "while three or more of your minions are within 6 metres of you", and
+    # Shielding Ranks', Steadfast Among Them's and Ringed in Bone's "five or
+    # more", the count written in words as for `enemies_in_reach_at_least`
+    # above; Grave Cold's "enemies that have Necrosis".
+    "minions_in_reach_at_least": ("of your minions are within",
+                                  {3.0: "three or more of your minions",
+                                   5.0: "five or more of your minions"}),
+    "target_carries_necrosis": ("that have necrosis", None),
+    # THE THREE OF THE DEATH TREES' SLICE C6d2 (2026-11-25): Bone Knit's "while
+    # one of your minions has died in the last 3 seconds"; Death Ward's "for 3
+    # seconds after one of your minions dies within 6 metres of you", its reach
+    # the row's Reach Metres; Avenging Dead's "When a hit takes more than 5% of
+    # your maximum health", an event condition judged at the stack's grant.
+    "seconds_after_minion_death": ("has died in the last", "{value:g} second"),
+    "minion_death_in_reach_within_seconds": ("after one of your minions dies within", "{value:g} second"),
+    "hit_took_at_least_percent_of_max_health": ("when a hit takes more than", "{value:g}% of your maximum health"),
+    # AND MARSHAL'S "Your minions within 10 metres of you".
+    "minion_within_metres_of_you": ("your minions within", "{value:g} metres of you"),
+    # AND THE SHADOW'S DEATHMARK'S "The strongest enemy within 15 metres is
+    # marked. It takes 30% more damage from you" (the Death trees' slice C6e).
+    "target_marked_by_you": ("is marked", None),
+    # AND GUARD THE MASTER'S "the last enemy that hit you ... to it".
+    "target_is_your_last_attacker": ("the last enemy that hit you", None),
+
+    "wearing_enemy_modifier": ("gives you its modifiers",
+                               {float(place): "its modifiers"
+                                for place in range(1, len(gen.WORN_ENEMY_MODIFIERS) + 1)}),
+
     # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
     # REDUCTION, and which stat that row should use is with the project owner
     # on issue #1748. The entry is here because a name missing from this map is
@@ -1873,8 +2228,53 @@ CONDITION_WORDS = {
     # THE VALUE FORM IS A MAPPING, for the reason `enemies_in_reach_at_least`
     # below needs one: `Broken Will` writes its threshold as the word "half" and
     # contains no "50" anywhere, so a numeric form would fail a correct row.
-    "target_health_below": ("against enemies below",
-                            {25.0: "25%", 35.0: "35%", 50.0: "half health"}),
+    #
+    # A COUNT MAY BE WRITTEN SEVERAL WAYS, and several means any of them. The
+    # Shadow's Open the Throat, 2026-11-24, says "below 50% health" where Broken
+    # Will says "half health"; its Last Breath and Executioner say 30%.
+    # "enemy below" SINCE THE DEATH TREES' SLICE C1 (2026-11-25): Death Sentence,
+    # "Your hits kill a non-Boss enemy below 15% health outright; Bosses take
+    # double damage from you below 15%".
+    "target_health_below": (("against enemies below", "enemy below"),
+                            {15.0: "15%", 25.0: "25%", 30.0: "30%", 35.0: "35%",
+                             50.0: ("half health", "50%")}),
+
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24 (slice B). The slain or
+    # struck creature's rarity rung, written as words: the Soul Collector's
+    # schedule "1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8
+    # for a Herald and 15 for a Boss", one row a rung, and "Elite or stronger" or
+    # "Elite and stronger" for rung 1 and up.
+    "target_rarity_is": (("each enemy you kill", "for an elite", "for a legendary",
+                          "for a herald"),
+                         {0.0: "each enemy you kill", 1.0: "for an elite",
+                          2.0: "for a legendary", 3.0: "for a herald"}),
+    # AND DEATH SENTENCE'S "Bosses take double damage from you", its second condition, which this check reads since
+    # the War line's riders (the bundle 3 merge, 2026-11-25).
+    "target_rarity_at_least": (("elite or stronger", "elite and stronger", "for a boss", "bosses take"),
+                               {1.0: ("elite or stronger", "elite and stronger"),
+                                4.0: ("for a boss", "bosses take")}),
+    # And the Shadow's Siege of One, "While you have hit a Boss in the last 2
+    # seconds", the first passive row on this predicate.
+    "seconds_after_striking_a_boss": ("hit a boss in the last", "{value:g} second"),
+    # And the window after a kill: Between the Dead and Killing Pace, "for 4
+    # seconds after you kill", and Light Feet, "for 4 seconds after a kill".
+    # AND SOUL TIDE'S "Kills within 2 seconds of each other", the Death trees'
+    # slice C4a (2026-11-25): the clock reads the time since the previous kill.
+    "seconds_after_kill": (("after you kill", "after a kill", "of each other"), "{value:g} second"),
+
+    # THREE PREDICATES NO TREE USED BEFORE THE DEATH TREES OF 2026-11-24.
+    #
+    # The Soul Collector's Deathly Presence: "enemies within 6 metres deal 1%
+    # less damage", the predicate of the enchantment "Nearby enemies deal
+    # 10%-30% less damage to you".
+    "opponent_within_metres": ("enemies within", "{value:g} metres"),
+    # The Shadow's Slow Death, "Against a Boss, ...", and Read the Giant,
+    # "against Bosses".
+    # AND REAPER'S DUE'S "Each hit on a Boss", the Death trees' slice C6b3.
+    "target_is_boss": (("against a boss", "against bosses", "hit on a boss"), None),
+    # The Shadow's Slipstream: "For 3 seconds after you evade a hit". The
+    # predicate reads `Outcome.bEvaded`, which is an evasion. (Its words are on
+    # `seconds_after_dodge` above, beside the War line's, since the bundle 3 merge.)
 
     # THE SECOND POOL ASKED WHETHER IT IS FULL, AND THE FRAGMENT HAS TO KEEP IT
     # OFF THE OTHER TWELVE. Issue #1515. Thirteen nodes mention an energy shield
@@ -2041,6 +2441,10 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
             # otherwise pass unchecked, which is the one thing this file
             # exists to stop.
             printed = value_form.get(value)
+            if isinstance(printed, tuple):
+                # SEVERAL WRITINGS OF ONE COUNT, ANY OF WHICH WILL DO.
+                printed = next((one for one in printed if one.lower() in words),
+                               printed[0])
             assert printed is not None, (
                 f"{row['Node']} carries {condition!r} with a value of "
                 f"{value:g}, and this test has no words listed for that "
@@ -2112,12 +2516,15 @@ def test_a_condition_is_actually_used(effects):
 #: name no number anywhere.
 SCALE_WORDS = {
     "health_missing": (("for every", "missing"), "{value:g}%", None),
+    # "FERVOUR HELD" AS WELL, since the Death trees of 2026-11-24, whose vow
+    # options say "for every 10 Fervour held". A tuple inside a word set means
+    # any of its phrases will do.
     # AND Endless Spite's "for every 10 Fervour currently held" (slice D,
     # 2026-11-24), a second word set beside the first.
     # AND Mechanical Familiar's "+1% bonus damage and +5% bonus HP per 10
     # Fervour" (the Saboteur's rows, 2026-11-25).
-    "class_resource_held": ([("fervour you",), ("fervour currently held",), ("per 10 fervour",)], "{value:g} fervour",
-                            "each point of fervour"),
+    "class_resource_held": ([(("fervour you", "fervour held"),), ("fervour currently held",), ("per 10 fervour",)],
+                            "{value:g} fervour", "each point of fervour"),
     "health_owed": (("for every", "owe"), "{value:g}%", None),
 
     # A READING OF A STAT RATHER THAN OF A STATE. Issue #1045. Glutton reads
@@ -2183,7 +2590,43 @@ SCALE_WORDS = {
     # the sentence says "each minion" and names no step, so the step can only be
     # 1 and that is asserted instead. Looking for a "1" would find the rate's own
     # number -- "1 per second" -- and pass for the wrong reason.
-    "minions_held": (("minion", "you have"), None, None),
+    #
+    # AND A STEP OF MORE THAN ONE SINCE THE DEATH TREES' SLICE C1 (2026-11-25):
+    # "for every 5 minions you have" and "while you have 10 or more minions",
+    # the second a step of 10 capped at one step. A step of 1 is still written
+    # "each minion", and "alive" is said beside "you have".
+    "minions_held": (("minion", ("you have", "alive")),
+                     ("for every {value:g} minions", "{value:g} or more minions"),
+                     "each minion"),
+
+    # A ROW'S OWN STACKS AND ITS HITS IN A ROW ON ONE ENEMY, the two counts a
+    # passive row's event grants since the passive row port (2026-11-24), first
+    # written by the Death trees' slice C1 (2026-11-25): Kill Chain's "for each
+    # kill in your current chain" and Wearing Cut's "for each hit in a row".
+    # Each says "for each", so the step is 1.
+    # AND "after you spend" SINCE THE DEATH TREES' SLICE C3a (2026-11-25): Spent
+    # Breath's own stack, granted by `fervour_spent` with a cap of one, is a
+    # window renewed by each spend and counts nothing.
+    # AND "your minions gain" SINCE SLICE C6d2: Avenging Dead's own stack, granted
+    # by `hit_taken` with a cap of one, is a window renewed by each hit that took
+    # enough, and counts nothing, as Spent Breath's does.
+    "own_stacks": ([(("for each", "after you spend", "your minions gain"),), ("for", "second")], None, None),
+
+    # THE ENEMIES IN THE CHARACTER'S SIPHON, the Death trees' slice C2
+    # (2026-11-25): Sapping Cold, Stolen Strength, Life Siphon and Living Harvest
+    # each say "each enemy in your Siphon", and count single enemies, so the
+    # step is 1. Their caps ("up to 10 enemies") are the rows' Scale Max Steps.
+    "enemies_in_siphon": (("each enemy in your siphon",), None, None),
+    # THE FERVOUR THRESHOLDS REACHED, the Death trees' slice C3d (2026-11-25):
+    # Steady Count's "for each Fervour threshold you are at or above".
+    "fervour_thresholds_reached": (("each fervour threshold",), None, None),
+    "consecutive_hits": ((("hit in a row", "hits in a row"),), None, None),
+    # FESTERING, the Death trees' slice C6b4 (2026-11-25): "for each second the
+    # enemy has stayed poisoned by you without a break, up to 10 seconds".
+    "seconds_poisoned_by_you": (("for each second the enemy has stayed poisoned by you",), None, None),
+    # OVERFLOW, the Death trees' slice C6c (2026-11-25): "Each Fervour above it
+    # gives 1% increased Attack Speed for 5 seconds, up to 30%".
+    "fervour_overflow_stacks": (("each fervour above it",), None, None),
 
     # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
     # nodes read it: "You deal 2% more damage for each enemy within 4 metres
@@ -2280,8 +2723,8 @@ SCALE_WORDS = {
     # traps is triggered" and Emergency Protocol's "for 5 seconds when a gadget is
     # destroyed". One stack at a time, so the step is one.
     # `test_an_own_stack_states_its_event_and_its_seconds` holds the event and
-    # the seconds to the sentence.
-    "own_stacks": (("for", "second"), None, None),
+    # the seconds to the sentence. (Its words are on `own_stacks` above, a second
+    # word set beside the Death line's, since the bundle 3 merge.)
 
     # THE SCALES THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW FOR
     # THE FIRST TIME. Beacon of Despair counts the debuffs on the enemy struck
@@ -2351,6 +2794,17 @@ OWN_STACK_EVENT_WORDS = {
     "gadget_destroyed": ("gadget is destroyed",),
     # Razor Instincts' "after placing a trap or gadget", one event for either.
     "device_placed": ("placing a trap or gadget",),
+    # AND THE DEATH LINE'S THREE, since the bundle 3 merge (2026-11-25): Kill Chain's kills, Burnt Offering's "after you
+    # spend 10 or more Fervour at once", and Avenging Dead's "When a hit takes more than 5% of your maximum health".
+    "kill": ("kills within",),
+    "fervour_spent": ("after you spend",),
+    "hit_taken": ("when a hit takes",),
+}
+
+#: A stack's seconds written in other words than "for N seconds", by node. Kill Chain (the Death trees' slice C1): "Kills
+#: within 2 seconds of each other form a chain" is the 2-second window each kill renews.
+STACK_SECONDS_IN_OTHER_WORDS = {
+    "SoulCollector_basic_b_a0": "within {seconds:g} seconds of each other",
 }
 
 
@@ -2373,7 +2827,8 @@ def test_an_own_stack_states_its_event_and_its_seconds(effects, nodes):
             f"{row['Name']} grants its own stack on {event!r} and its node does not say "
             f"{OWN_STACK_EVENT_WORDS[event]}: {words_of(row, nodes)}")
         seconds = float(row["StackSeconds"] or 0)
-        assert seconds > 0 and f"for {seconds:g} second" in words, (
+        said = STACK_SECONDS_IN_OTHER_WORDS.get(row["Node"], "for {seconds:g} second").format(seconds=seconds)
+        assert seconds > 0 and said in words, (
             f"{row['Name']}'s stack lasts {seconds:g} seconds and its node does not say "
             f"\"for {seconds:g} second(s)\": {words_of(row, nodes)}")
 
@@ -2409,9 +2864,15 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
         described = words_of(row, nodes)
         words = described.lower()
         # A LIST OF WORD SETS IS ANY ONE OF THEM, WHOLLY (slice D, 2026-11-24); a
-        # tuple is one set, every word of it.
+        # tuple is one set, every word of it. AND A TUPLE INSIDE A SET IS ANY ONE
+        # OF ITS PHRASES (the Death trees, 2026-11-24).
         word_sets = expected_words if isinstance(expected_words, list) else [expected_words]
-        assert any(all(phrase in words for phrase in each) for each in word_sets), (
+
+        def says(phrase, words=words) -> bool:
+            either = (phrase,) if isinstance(phrase, str) else tuple(phrase)
+            return any(one in words for one in either)
+
+        assert any(all(says(phrase) for phrase in each) for each in word_sets), (
             f"{row['Node']} carries the scale {scale!r} and its description "
             f"says none of these sets in full: {word_sets}: {described}"
         )
@@ -2464,7 +2925,7 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
             )
             continue
 
-        forms = value_form if isinstance(value_form, tuple) else (value_form,)
+        forms = (value_form,) if isinstance(value_form, str) else tuple(value_form)
         printed = " or ".join(repr(form.format(value=step)) for form in forms)
         assert any(form.format(value=step).lower() in words for form in forms), (
             f"{row['Node']} scales in steps of {printed} and the node says:\n"
@@ -2501,6 +2962,12 @@ def test_a_scale_is_actually_used(effects):
 #: that is a plain count, like Low Life's "10 Fervour per second", still has
 #: nowhere to say so.
 VALUE_FORMS = {
+    # OVERFLOW'S WINDOW, the Death trees' slice C6c (2026-11-25): "becomes 5
+    # seconds of attack speed".
+    "fervour_overflow_attack_speed_seconds": ("{value:g} seconds of attack speed",),
+    # UNBROKEN CHAIN, the same slice: "allows 1 second more between kills for
+    # every 4 points", a row at each step.
+    "kill_chain_seconds": ("{value:g} second more between kills",),
     # THE TWO DEBUFF CHANCES, WHICH ARE THE FIRST TWO FLAT ROWS ON ONE NODE.
     # The Ravager's `Wearing Blows` reads "+2% chance to Cripple and +2% chance
     # to Weaken on melee hit per point", so both its rows carry the same number
@@ -2684,7 +3151,10 @@ VALUE_FORMS = {
     # reason the two forms above give: the sentence holds a second "1" for the
     # rate per enemy in reach, and a bare "{value:g}" would be satisfied by
     # either.
-    "fervour_per_enemy_hit": "{value:g} for each enemy your attacks hit",
+    # AND THE SHADOW'S Through and Through, 2026-11-24: "Each enemy your movement
+    # skill hits generates 1 Fervour for every 2 points", one row per step.
+    "fervour_per_enemy_hit": ("{value:g} for each enemy your attacks hit",
+                              "{value:g} Fervour for every"),
 
     # THE TWO DEATH RULES THAT COST NOTHING. Issue #1515. Long Hold reads
     # "Killing an enemy restores 5% of your maximum health", so the form carries
@@ -2693,11 +3163,74 @@ VALUE_FORMS = {
     # sentence holds a second "10" for the radius, and a bare "{value:g}"
     # would be satisfied by either.
     "health_restored_on_kill_at_no_cost": "{value:g}% of your maximum health",
-    # TWO FORMS SINCE 2026-11-24, for the two approved sentences that grant it per
-    # point: the Masochist's Gorge, "1 Fervour whenever an enemy dies ..., per
-    # point", and the Ravager's Swing Through, "1 Fervour per point whenever".
+    # THREE FORMS SINCE 2026-11-24: the Masochist's Gorge, "1 Fervour whenever an enemy
+    # dies ..., per point", the Ravager's Swing Through, "1 Fervour per point whenever",
+    # and the Necromancer's starting node, "1 each time an enemy dies within 10 metres
+    # of you", whose sentence holds "10" for the radius as well.
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24 (slice B). Each with the
+    # words around its number, because one sentence holds all of them: the Soul
+    # Collector's "...: 1 for each enemy you kill, 3 for an Elite, ... and 15 for a
+    # Boss", "decays at 5 per second once 4 seconds have passed", "for 8 seconds
+    # rather than 4"; the Shadow's "drains at 10 per second"; Momentum's "2
+    # seconds later" and Grave Patience's "1 second later".
+    "fervour_per_kill": (": {value:g} for", ", {value:g} for", "and {value:g} for",
+                         "+{value:g} Fervour",
+                         # SOUL TIDE, the Death trees' slice C4a (2026-11-25):
+                         # "give 1 extra Fervour each".
+                         "give {value:g} extra Fervour"),
+    # SLICE C4a (2026-11-25): Gleaning's "5% chance per point to give 1 extra
+    # Fervour", and Clean Kill's "restores 1% of your Maximum Health".
+    "fervour_per_kill_extra_chance": ("{value:g}% chance per point to give 1 extra Fervour",),
+    "health_restored_on_critical_kill": ("restores {value:g}% of your Maximum Health",),
+    # SLICE C4d1 (2026-11-25): the Shadow's starting node's "and 2 for each
+    # critical strike you land", and Telling Blows' "+1 Fervour per point for
+    # each critical strike".
+    "fervour_per_critical_strike": ("and {value:g} for each critical strike",
+                                    "+{value:g} Fervour per point for each critical strike",
+                                    # AND THE WAR LINE'S, since the bundle 3 merge: see below.
+                                    "{value:g} Fervour per critical strike", "{value:g} Fervour gained",
+                                    "{value:g} Fervour per point"),
+    # SLICE C4d2 (2026-11-25): Patient Blade's "once every 2 seconds", and Death
+    # by Inches' "every 10th hit you land".
+    "boss_ticks_pay_a_kill_every_seconds": ("once every {value:g} seconds",),
+    "boss_hits_counted_as_a_kill_every": ("every {value:g}th hit",),
+    # SLICE C4b1 (2026-11-25): Borrowed Time's "is extended by 1 second for every
+    # 3 points".
+    "fervour_hold_extended_on_gain_seconds": ("extended by {value:g} second",),
+    # SLICE C4b2 (2026-11-25): Reclaimed's "in the 3 seconds before it", and
+    # Claimed's "if it dies within 1 second for every 2 points".
+    "decay_given_back_on_kill_seconds": ("in the {value:g} seconds before it",),
+    "fervour_claimed_within_seconds": ("within {value:g} second",),
+    # SLICE C4c1 (2026-11-25): Passed On's "within 3 metres of it".
+    "overkill_explosion_radius_metres": ("within {value:g} metres of it",),
+    "fervour_kill_decay_per_second": ("decays at {value:g} per second",
+                                      "drains at {value:g} per second"),
+    # THE SIPHON'S RADIUS AND ITS LINGER, the Death trees' slice C2 (2026-11-25):
+    # "within 6 metres of you" and "for 1 second for every 4 points".
+    "siphon_radius_metres": ("within {value:g} metres",),
+    "siphon_linger_seconds": ("{value:g} second",),
+    # BOUND OFFERING, the Death trees' slice C3b (2026-11-25): "counts as
+    # Fervour spent, at 15% per point of what is held back".
+    "reserved_fervour_spent_percent": ("at {value:g}% per point",),
+    # SLICE C3c (2026-11-25): Cinders Kept's "3% per point of the Fervour you
+    # spend", Phylactery's "Once every 60 seconds", and Borrowed Step's two rows,
+    # "by spending 40 Fervour" and "reduced by 2 per point".
+    "fervour_spent_returned_percent": ("{value:g}% per point of the Fervour you spend",),
+    "fervour_lethal_save_every_seconds": ("Once every {value:g} seconds",),
+    # SLICE C3d (2026-11-25): Generous Count's "reached 1 Fervour sooner per
+    # point" and Long Shadow's "stays in effect for 5 seconds".
+    "fervour_threshold_reduction": ("reached {value:g} Fervour sooner per point",),
+    "fervour_threshold_linger_seconds": ("stays in effect for {value:g} seconds",),
+    # CHAINED SOULS, slice C3e: "8% per point of the Fervour your minions ...".
+    "reserved_fervour_counts_as_held_percent": ("{value:g}% per point of the Fervour your minions",),
+    "movement_on_cooldown_fervour_cost": ("by spending {value:g} Fervour", "reduced by {value:g} per point"),
+    "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
+                                         "for {value:g} seconds rather than",
+                                         "{value:g} second later",
+                                         "{value:g} seconds later"),
     "fervour_on_enemy_death_nearby": ("{value:g} Fervour whenever",
-                                      "{value:g} Fervour per point whenever"),
+                                      "{value:g} Fervour per point whenever",
+                                      "{value:g} each time an enemy dies"),
 
     # THE RITUALIST'S TWO KEYSTONES THAT ADJUST A FIGURE A SKILL ROW STATES.
     # Issue #1718. Until the owner reworded both on 2026-09-16, each sentence
@@ -2775,9 +3308,8 @@ VALUE_FORMS = {
     "fervour_per_block": ("{value:g} for each block", "generates {value:g} Fervour"),
     "fervour_decay_out_of_combat_per_second": "{value:g} per second after",
     # AND BATTLE LUST'S "+1 Fervour gained per point" and RAZOR MIND'S "+2
-    # Fervour per point" (the War riders, 2026-11-25).
-    "fervour_per_critical_strike": ("{value:g} Fervour per critical strike", "{value:g} Fervour gained",
-                                    "{value:g} Fervour per point"),
+    # Fervour per point" (the War riders, 2026-11-25): their forms are on
+    # `fervour_per_critical_strike` above since the bundle 3 merge.
     "fervour_per_trap_placed": "{value:g} for each trap placed",
     "fervour_per_gadget_placed": "{value:g} for each gadget placed",
     # AND TRIPWIRE NETWORK'S "+1 Fervour per point when a trap is triggered"
@@ -2856,6 +3388,55 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # THE SECOND AND FOURTH SOUL COLLECTOR VOWS' CLAUSES, the Death trees' slice
+    # C3d (2026-11-25): "fire one extra projectile" is 1, and "your skill
+    # cooldowns recover twice as fast" is 100 on the rate.
+    ("SoulCollector_capstone_50", "projectile_count"): ("fire one extra projectile", 1.0),
+    # SOUL BARRAGE AND TWIN STEP, the Death trees' slice C6a (2026-11-25): "+1
+    # projectile for every 10 Fervour held" is 1, scaled by every 10 held; "Your
+    # movement skill has one more charge" is 1.
+    ("SoulCollector_capstone_200", "projectile_count"): ("+1 projectile for every 10 fervour held", 1.0),
+    ("Shadow_keystone_c_kC", "skill_charges_bonus"): ("one more charge", 1.0),
+    ("SoulCollector_capstone_200", "cooldowns_recover_faster_percent"): ("recover twice as fast", 100.0),
+    # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): "those kills give
+    # double Fervour" is 100% more on the kill's payment.
+    ("SoulCollector_capstone_100", "fervour_per_kill"): ("give double fervour", 100.0),
+    # WEARER OF THE DEAD, the Death trees' slice C4d3 (2026-11-25): "gives you its
+    # modifiers" states each worn modifier's own figure, read off the enemy
+    # modifier it copies: Titanic Resolve's 50% more health, Overpowered's crit
+    # chance of 100, Bloodthirsty's 10% leech, Unyielding's 100 crowd control
+    # resistance and Relentless's 2% of maximum health a second.
+    ("SoulCollector_capstone_200", "max_health"): ("gives you its modifiers", 50.0),
+    ("SoulCollector_capstone_200", "crit_chance"): ("gives you its modifiers", 100.0),
+    ("SoulCollector_capstone_200", "life_leech"): ("gives you its modifiers", 10.0),
+    ("SoulCollector_capstone_200", "crowd_control_resistance"): ("gives you its modifiers", 100.0),
+    ("SoulCollector_capstone_200", "health_regen"): ("gives you its modifiers", 2.0),
+    # OPENING STRIKE, the Death trees' slice C6b1 (2026-11-25): "is a critical
+    # strike" is a crit chance of 100, held under the ceiling, as Overpowered's is.
+    ("Shadow_capstone_25", "crit_chance"): ("is a critical strike", 100.0),
+    # AND THE THIRD VOW'S, "your skills cost no mana", a removal of one as the
+    # Ritualist's Ritual Focus writes it.
+    ("SoulCollector_capstone_100", "mana_cost"): ("cost no mana", 1.0),
+    # REAPER'S DUE AND HUNTING GROUND, the Death trees' slice C6b3 (2026-11-25):
+    # "Fervour does not decay" and "your Fervour does not drain", each a removal
+    # of the kill decay while its condition holds.
+    ("SoulCollector_capstone_25", "fervour_kill_decay_per_second"): ("fervour does not decay", 1.0),
+    ("Shadow_keystone_spine_002", "fervour_kill_decay_per_second"): ("your fervour does not drain", 1.0),
+    # SOULBOUND, the Death trees' slice C6c (2026-11-25): "Your Fervour no longer
+    # decays with time", a removal of the kill decay.
+    ("SoulCollector_keystone_spine_003", "fervour_kill_decay_per_second"): ("no longer decays", 1.0),
+    # LIVING HARVEST, the Death trees' slice C2 (2026-11-25): "Each enemy in your
+    # Siphon gives you 1 Fervour every 2 seconds" is half a Fervour a second for
+    # each, paid once a second.
+    ("SoulCollector_keystone_c_kA", "siphon_fervour_per_second"):
+        ("1 fervour every 2 seconds", 0.5),
+    # DEATH SENTENCE'S BOSS HALF, the Death trees' slice C1 (2026-11-25):
+    # "Bosses take double damage from you below 15%" is 100% more, in a word.
+    ("Shadow_capstone_200", "attack_damage", "target_health_below"):
+        ("double damage", 100.0),
+    ("Shadow_capstone_200", "spell_damage", "target_health_below"):
+        ("double damage", 100.0),
+
     # THE BULWARK'S SECOND OATH, slice D, 2026-11-24: Iron Aegis' "Your Block
     # Chance is doubled ..." and Titan's Blood's "Your HP regeneration is
     # doubled", each a More of 100 stated as "doubled".
@@ -3198,6 +3779,11 @@ VALUE_IN_WORDS = {
     # resistance and is resolved somewhere else entirely.
     ("Ravager_keystone_spine_003", "crowd_control_resistance"):
         ("cannot be stunned", 100.0),
+    # AND RINGED IN BONE'S, the same words under five or more minions within 6
+    # metres (the Death trees' slice C6d1, 2026-11-25). Its slow is the flag
+    # `immune_to_slow`, read by `UCataclysmSkillTemplate::IsImmuneTo`.
+    ("Necromancer_keystone_gr_kC", "crowd_control_resistance"):
+        ("cannot be stunned", 100.0),
 
     # AND THE FIRST ONSLAUGHT'S SECOND OPTION, NEVER LETS GO. Issue #1515.
     # "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20%
@@ -3234,6 +3820,16 @@ VALUE_IN_WORDS = {
     ("Ritualist_keystone_spine_003", "minion_hits_count_as_yours"):
         ("count as yours", 1.0),
 
+    # KINDRED FIRES, the Death trees' slice C4b1 (2026-11-25): "Fervour you gain
+    # from any source ... holds off decay as a kill does", a switch of 1.
+    ("SoulCollector_keystone_b_kC", "fervour_hold_restarted_by_any_gain"):
+        ("holds off decay as a kill does", 1.0),
+
+    # DEATH'S TOLL, the Death trees' slice C4b2 (2026-11-25): "count as your kills
+    # for everything this tree asks", a switch of 1.
+    ("SoulCollector_keystone_spine_001", "follower_kills_count_as_yours"):
+        ("count as your kills", 1.0),
+
     # AND THE RITUALIST'S RISEN IMPS, a flag of one. Issue #1479. The death path
     # asks whether the stat stands above zero. The sentence's digits belong to
     # other things -- the 1 and the 5 to the two Fervour rows on this node, the
@@ -3243,6 +3839,22 @@ VALUE_IN_WORDS = {
     ("Ritualist_basic_spine_000", "curse_death_raises_imp"):
         ("rises as a lesser imp that fights for you", 1.0),
     ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
+        ("slowed", 1.0),
+    # THE SHADOW'S MARKS, the Death trees' slice C6e (2026-11-25): a count of
+    # one each, Deathmark's "is marked" and Two Marks' "You mark two enemies".
+    ("Shadow_keystone_b_kB", "death_marks_held"): ("the strongest enemy within 15 metres is marked", 1.0),
+    ("Shadow_keystone_b_kD", "death_marks_held"): ("you mark two enemies", 1.0),
+    # AND HOLLOW STEP'S FLAG, "passes through enemies and hits each one".
+    ("Shadow_keystone_c_kB", "movement_passes_through_enemies"): ("passes through enemies and hits each one", 1.0),
+    # AND THE REST OF SLICE C6e: Lethal Dose's "at half their value", 50 per
+    # cent; Guard the Master's "Your minions turn on the last enemy that hit
+    # you", a flag of one a point.
+    ("Shadow_keystone_a_kA", "crit_multiplier_increases_to_poison_and_bleed_percent"): ("at half their value", 50.0),
+    ("Necromancer_basic_gr_c1", "minions_turn_on_your_last_attacker"): ("your minions turn on the last enemy", 1.0),
+    # AND DEATHMARK'S "each critical strike on it gives 5 Fervour", worded
+    # differently from the forms `fervour_per_critical_strike` takes.
+    ("Shadow_keystone_b_kB", "fervour_per_critical_strike"): ("each critical strike on it gives 5 fervour", 5.0),
+    ("Necromancer_keystone_gr_kC", "immune_to_slow"):
         ("slowed", 1.0),
 
     # FIFTY IS "HALF", by the arithmetic the resistance already uses:
@@ -3386,6 +3998,145 @@ VALUE_IS_A_DIFFERENCE = {
 }
 
 
+#: AN ACTION ROW'S NUMBER, BY ITS ACTION. The passive row port (2026-11-24) lets
+#: a passive row act, and the Death trees' slice C1 (2026-11-25) wrote the first
+#: ones. An action row has no stat, so `VALUE_FORMS` cannot key it.
+#: `apply_status`'s value is a chance in per cent (`APPLY_STATUS_ACTIONS` in the
+#: generator).
+ACTION_VALUE_FORMS = {
+    # THE WAR LINE'S ACTIONS, read by this check since the bundle 3 merge (2026-11-25): the War line's copy of this
+    # file skipped every action row, so each form below is the number as its node's sentence writes it.
+    "slow_for_seconds": ("{value:g}% slow",),
+    "enemy_armor_removed_nearby": ("by {value:g}% for",),
+    "smite_nearby_by_hit": ("{value:g}% of the hit's damage",),
+    "attacker_retaliation_taken": ("by {value:g}%",),
+    "retaliation_pulse": ("for {value:g}% of",),
+    "frenzy_chain": ("for {value:g}% damage",),
+    "taunt_enemies_near_trap": ("for {value:g} seconds",),
+    "copy_last_trap_at_kill": ("lasts {value:g} seconds",),
+    "crossfire": ("at {value:g}% of its damage",),
+    "titanfall": ("for {value:g} seconds",),
+    "apply_status": ("{value:g}% chance",),
+    # THE FERRYMAN, the Death trees' slice C4c1 (2026-11-25): "bursts for 10% of
+    # its maximum health".
+    "burst_slain_for_share_of_maximum_health": ("bursts for {value:g}% of its maximum health",),
+    # BLOOD DEBT, the Death trees' slice C4c2 (2026-11-25): "is dealt over 2
+    # seconds to the strongest enemy within 10 metres". The value is the seconds.
+    "pass_bleed_left_to_strongest": ("dealt over {value:g} seconds",),
+    # THE ROWS SIZED BY WHAT A SPEND CARRIED, the Death trees' slice C3b
+    # (2026-11-25): a pool's share of its maximum (Feast, Spirit to Mana, Ashen
+    # Ward), a smite's share of weapon damage (Soul Furnace) and a cut's seconds
+    # (Turn of the Wheel). Each is the figure for ONE Fervour, or one ten.
+    # AND MARROW FEAST'S "you recover 1% of your maximum health" (the Death trees'
+    # slice C6d2, 2026-11-25).
+    "health": ("{value:g}% of maximum health", "recover {value:g}% of your maximum health",
+               # AND THE WAR LINE'S SHIELD OATH, since the bundle 3 merge: "restores 2% of your Maximum HP" and
+               # "Regenerate 1% of your current HP per second".
+               "{value:g}% of your Maximum HP", "{value:g}% of your current HP"),
+    "mana": ("{value:g}% of your maximum mana",),
+    "energy_shield": ("{value:g}% of your Maximum Energy Shield",),
+    "smite_nearby": ("{value:g}% of your weapon damage",),
+    "cooldown_reduce_others": ("{value:g} second off",),
+    # RELENTLESS, the Death trees' slice C4d1 (2026-11-25): "takes 1 second off
+    # all your skill cooldowns for every 100 Fervour held".
+    "cooldown_reduce_all": ("{value:g} second off all",),
+    # CHAIN EXECUTION, the same slice: "your next hit within 2 seconds".
+    "next_hit_critical": ("within {value:g} seconds",),
+    # FIND THE RHYTHM AND SIDESTEP, the Death trees' slice C6a (2026-11-25):
+    # "takes 1 second for every 4 points off your movement skill's remaining
+    # cooldown", one row at each step.
+    "cooldown_reduce_movement": ("takes {value:g} second for every",),
+    # KEEP THE COUNT, the same slice: "adds 1 second for every 3 points to the
+    # time before your Fervour begins to drain", one row at each step.
+    "fervour_hold_extended": ("adds {value:g} second for every",),
+    # A FLAT AMOUNT OF FERVOUR, the Death trees' slice C6b3 (2026-11-25):
+    # Opening Found's "generates 1 Fervour per point", Reaper's Due's "gives 5
+    # Fervour" and Tear Loose's "to give you 1 Fervour".
+    "class_resource": ("{value:g} Fervour",),
+    # BLADE ECHO'S "for 100% weapon damage" (the Death trees' slice C6e).
+    "strike_strongest_near": ("{value:g}% weapon damage",),
+}
+
+#: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.
+#: The Death trees' slice C3b (2026-11-25). "For each Fervour spent" multiplies
+#: by the whole units and "for every 10" by the whole tens, and the two values
+#: differ by one word in the sheet: swapped, Spirit to Mana would pay ten times
+#: what its sentence says, and nothing at run time would report it.
+SIZED_BY_THE_AMOUNT_WORDS = {
+    "for_each_of_event_amount": ("for each fervour spent",),
+    "for_each_ten_of_event_amount": ("for every 10 fervour spent", "every 10 fervour you spend"),
+}
+
+#: How many rows are sized by their event's amount: Feast, Soul Furnace, Spirit
+#: to Mana, Ashen Ward and Turn of the Wheel. Pinned, so a check that finds none
+#: cannot pass.
+SIZED_BY_THE_AMOUNT_ROWS = 5
+
+#: An action row's number stated in words, by node and action, as
+#: `VALUE_IN_WORDS` holds a stat's.
+ACTION_VALUE_IN_WORDS = {
+    # THE WAR LINE'S ACTIONS WHOSE NUMBER IS WORDS, since the bundle 3 merge (2026-11-25): Frenzy's reset of the
+    # movement skill (100, the whole cooldown), the Saboteur's trap placed again and Counterfire's answer (100, always),
+    # and Scrap Mines' "at double damage" (200).
+    ("Berserker_capstone_25", "cooldown_reset_movement"): ("immediately resets the cooldown", 100.0),
+    ("Saboteur_capstone_50", "place_last_trap_again"): ("is placed again", 100.0),
+    ("Saboteur_capstone_100", "counterfire"): ("is answered by one of your traps", 100.0),
+    ("Saboteur_capstone_50", "scrap_mine"): ("at double damage", 200.0),
+    # THOUSAND CUTS, the Death trees' slice C6e (2026-11-25): "moves you straight
+    # to the strongest enemy within 10 metres ... and strikes it", a hit of 100%
+    # of weapon damage, as ruled (Q6).
+    ("Shadow_capstone_200", "dash_to_strongest_and_strike"): ("and strikes it", 100.0),
+    # GRAVE COLD, the Death trees' slice C6d1 (2026-11-25): "Every hit your
+    # minions land inflicts Necrosis", a 100% chance on `minion_hit`.
+    ("Necromancer_keystone_spine_002", "apply_status"): ("every hit your minions land inflicts necrosis", 100.0),
+    # SECOND WIND: "Reaching a full bar refills your health and mana", 100% of
+    # each maximum.
+    ("SoulCollector_capstone_50", "health"): ("refills your health", 100.0),
+    ("SoulCollector_capstone_50", "mana"): ("refills your health and mana", 100.0),
+    # DEATH SENTENCE: "Your hits kill a non-Boss enemy below 15% health
+    # outright", a chance of 100. The execute never takes a Boss; the engine
+    # holds that inside the action.
+    ("Shadow_capstone_200", "execute_target"): ("outright", 100.0),
+    # TWICE ANSWERED, the Death trees' slice C6b4 (2026-11-25): "to give you two
+    # critical strikes rather than one", a charge holding 2.
+    ("Shadow_basic_d_a1", "next_hit_critical_twice"): ("two critical strikes", 2.0),
+    # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): the same words and
+    # the same chance of 100.
+    ("SoulCollector_capstone_100", "execute_target"): ("outright", 100.0),
+    # BRIM, the Death trees' slice C6a (2026-11-25): "your next hit is a
+    # critical strike", with no time stated, so the charge's seconds are 0,
+    # "until used".
+    ("Shadow_basic_spine_010", "next_hit_critical"): ("your next hit is a critical strike", 0.0),
+    # RIPOSTE, the same slice: "you strike the attacker back at once with your
+    # basic attack", a strike of 100% attack damage standing in for the basic
+    # attack, as ruled (C6 question C4).
+    ("Shadow_keystone_d_kA", "strike_target"): ("strike the attacker back at once with your basic attack", 100.0),
+    # FLICKER, the Death trees' slice C4a (2026-11-25): "Killing an enemy resets
+    # your movement skill's cooldown", a chance of 100.
+    ("Shadow_keystone_c_kA", "cooldown_reset_movement"): ("resets your movement skill's cooldown", 100.0),
+    # PASSED ON, the Death trees' slice C4c1 (2026-11-25): "Half the damage your
+    # hit deals beyond what killing an enemy needed", a share of 50.
+    ("SoulCollector_keystone_b_kA", "explode_victim_for_overkill"): ("half the damage your hit deals", 50.0),
+}
+
+
+def test_a_row_sized_by_a_spend_says_each_or_every_ten(effects, nodes):
+    """A row sized by the whole units of a spend says "for each", and one sized
+    by its whole tens says "every 10". See `SIZED_BY_THE_AMOUNT_WORDS`."""
+    sized = [row for row in effects if row["FractionOf"] in SIZED_BY_THE_AMOUNT_WORDS]
+    assert len(sized) == SIZED_BY_THE_AMOUNT_ROWS, [row["Name"] for row in sized]
+    for row in sized:
+        words = words_of(row, nodes).lower()
+        mine = SIZED_BY_THE_AMOUNT_WORDS[row["FractionOf"]]
+        assert any(said in words for said in mine), (
+            f"{row['Name']} is sized {row['FractionOf']!r}, and its node says none of {mine}: {words!r}")
+        # THE CONTROL: the other value's words are not there, so a row could not
+        # pass on a sentence that says both.
+        theirs = next(said for value, said in SIZED_BY_THE_AMOUNT_WORDS.items() if value != row["FractionOf"])
+        assert not any(said in words for said in theirs), (
+            f"{row['Name']} is sized {row['FractionOf']!r} and its node also says one of {theirs}")
+
+
 def test_every_value_appears_in_the_nodes_own_description(
         effects, nodes, skill_shape_params):
     """The number in the workbook is the number the design document states.
@@ -3399,6 +4150,29 @@ def test_every_value_appears_in_the_nodes_own_description(
         # says only "Choose one. The choice is permanent."
         described = words_of(row, nodes)
         value = float(row["ValuePerPoint"])
+
+        # AN ACTION ROW: its number by its action, or in words.
+        action = row.get("Action", "").strip()
+        if action:
+            spoken = ACTION_VALUE_IN_WORDS.get((row["Node"], action))
+            if spoken is not None:
+                phrase, means = spoken
+                assert phrase in described.lower(), (
+                    f"{row['Name']}: the workbook states {action}'s number in words, "
+                    f"as {phrase!r}, and the node says:\n    {described}")
+                assert value == pytest.approx(means), (
+                    f"{row['Name']}: {phrase!r} means {means:g} and the workbook "
+                    f"grants {value:g}.")
+                continue
+            assert action in ACTION_VALUE_FORMS, (
+                f"{row['Name']} acts with {action!r}, which this test has no value "
+                f"form for. Add it to ACTION_VALUE_FORMS, or the node's words to "
+                f"ACTION_VALUE_IN_WORDS.")
+            printed = [form.format(value=abs(value)) for form in ACTION_VALUE_FORMS[action]]
+            assert any(one in described for one in printed), (
+                f"{row['Name']}: the workbook's {action} is {' or '.join(printed)} "
+                f"per point, and the node says:\n    {described}")
+            continue
 
         # A VALUE THE SENTENCE STATES IN WORDS IS CHECKED AGAINST THOSE WORDS.
         # See `VALUE_IN_WORDS` for why two rows are written that way and what
@@ -3668,6 +4442,24 @@ MULTIPLIER_WAITS_FOR_A_LATER_SLICE: frozenset[tuple[str, int]] = frozenset()
 
 DOUBLES_ITS_OWN_FLAT_BONUS = frozenset({"Berserker_dw_014"})
 
+#: A more-bucket row whose sentence says it multiplies in a word rather than as
+#: "N% more", by node and capstone option, with that word. NOT ADDED TO
+#: `MULTIPLIES`: "doubled" also describes increased rows (Light Feet, "doubled for
+#: 4 seconds after a kill", adds its own increase again), so the word alone does
+#: not mean the more bucket.
+MORE_STATED_IN_A_WORD = {
+    # DEATH SENTENCE, the Death trees' slice C1 (2026-11-25): "Bosses take double
+    # damage from you below 15%" is 100% more.
+    ("Shadow_capstone_200", 2): "double damage",
+    # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): "those kills give
+    # double Fervour" is 100% more.
+    ("SoulCollector_capstone_100", 2): "double fervour",
+    # WEARER OF THE DEAD, the Death trees' slice C4d3 (2026-11-25): Titanic
+    # Resolve's "50% more health" is the modifier it copies, named by "its
+    # modifiers".
+    ("SoulCollector_capstone_200", 1): "its modifiers",
+}
+
 
 def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     """A description that says its number multiplies is the more bucket, and
@@ -3730,9 +4522,8 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
         multiplying_nodes.add((node, 0))
 
     for row in effects:
-        # AN ACTION ROW STATES NO VALUE KIND: its value is the action's
-        # (Pressure Sensitive's slow, 2026-11-25), checked by the generator by
-        # the Enchantment Effects sheet's own rules.
+        # AN ACTION ROW HAS NO BUCKET (the passive row port, 2026-11-24): the
+        # generator judges its value by its action.
         if row.get("Action", "").strip():
             continue
         kind = row["ValueKind"].strip().lower()
@@ -3742,6 +4533,12 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
 
         described = words_of(row, nodes)
         multiplies = MULTIPLIES.search(described)
+        spoken = MORE_STATED_IN_A_WORD.get((row["Node"], int(row.get("Option", 0) or 0)))
+        if kind == "more" and spoken is not None:
+            assert spoken in described.lower(), (
+                f"{row['Node']} is in the more bucket by the word {spoken!r}, which "
+                f"its description no longer says:\n    {described}")
+            continue
         if kind == "more":
             assert multiplies, (
                 f"{row['Node']} is in the more bucket and its description does "
@@ -3802,8 +4599,8 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
     for row in effects:
         if row["ValueKind"].strip().lower() == "removed":
             continue
-        # NOR AN ACTION ROW, which states no stat (Pressure Sensitive's slow,
-        # 2026-11-25).
+        # AN ACTION ROW HAS NO STAT (the passive row port, 2026-11-24): its pool
+        # or status is checked by the generator against the ones the game has.
         if row.get("Action", "").strip():
             continue
         assert row["Stat"] in stats, (
@@ -3855,9 +4652,15 @@ def test_no_node_is_worth_nothing_to_its_own_class(effects):
     #: What each class names on its own line, and the shared line all fall back
     #: to. `UCataclysmClassStats::BaseFor` reads the class row and then the
     #: `Default` row, and answers zero when neither names the stat.
+    #:
+    #: KEYED BY THE CLASS NAME WITH ITS SPACES REMOVED, which is how a node's
+    #: row name spells its tree: the Soul Collector's line is "Soul Collector"
+    #: and its nodes are `SoulCollector_...`. Without this the Soul Collector
+    #: would read as a class with no line and be skipped below.
     per_class: dict[str, set[str]] = {}
     for row in class_stats:
-        per_class.setdefault(row["ClassName"], set()).add(row["Stat"])
+        per_class.setdefault(row["ClassName"].replace(" ", ""),
+                             set()).add(row["Stat"])
     shared = per_class.get("Default", set())
 
     #: Everything that supplies a stat whatever class is holding it: the eight
@@ -4153,6 +4956,17 @@ AT_N_POINTS = re.compile(r"\bAt (\d+) points:")
 FOR_EVERY_N_POINTS = re.compile(r"\bfor every (\d+) points\b")
 
 
+#: THE ROWS THAT STATE A FIGURE ONCE, FROM THE FIRST POINT, BESIDE A ROW ON THE
+#: SAME STAT PAID PER POINT, by node and stat, with the words of the node that
+#: say so. The Death trees' slice C3c (2026-11-25): Borrowed Step's cost is 40
+#: once and -2 a point. A row paid once by mistake fails the check below; one
+#: named here passes only with these words in its sentence and its per-point
+#: partner in the sheet.
+STATED_ONCE_BESIDE_A_PER_POINT_ROW = {
+    ("Shadow_basic_c_c0", "movement_on_cooldown_fervour_cost"): "40 Fervour, reduced by 2 per point",
+}
+
+
 #: Rows granting a fixed figure once from a node's first point: `MinPoints` 1,
 #: on a node of several points whose sentence states the figure with no "per
 #: point" and no "At N points". Aura of Pain, slice D, 2026-11-24: "+5% aura
@@ -4224,6 +5038,14 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         if min_points == 1 and (row["Node"], row["Stat"]) in FIXED_FROM_THE_FIRST_POINT:
             continue
         sentence = nodes.get(row["Node"], {}).get("Description", "")
+        # OR A FIGURE STATED ONCE BESIDE A PER-POINT ROW ON THE SAME STAT, from
+        # the first point: "40 Fervour, reduced by 2 per point". Named one by
+        # one with the words that make it so, and the per-point row must exist.
+        once = STATED_ONCE_BESIDE_A_PER_POINT_ROW.get((row["Node"], row["Stat"]))
+        if min_points == 1 and once and once in sentence and any(
+                other["Node"] == row["Node"] and other["Stat"] == row["Stat"]
+                and not int(float(other.get("MinPoints", 0) or 0)) for other in effects):
+            continue
         said = [int(n) for n in AT_N_POINTS.findall(sentence)]
         # AND "per point invested beyond N", whose first paid point is N + 1:
         # Tinkerer, Min Points 7 and Per Point From 7, as the generator's
@@ -4262,9 +5084,18 @@ def test_a_for_every_n_points_sentence_has_a_row_at_every_step(effects, nodes):
     and one with a row at 3 in a series of 2s grants a step a point early; both
     pass every other check here, because each row's value is right.
     """
+    #: THE DEMONIC TREES' NODES, AND ANY OTHER NODE ONCE IT HAS A ROW OF ITS OWN.
+    #: Since the Death trees of 2026-11-24, whose whole-number sentences say "for
+    #: every N points" on nodes most of which wait for code. An unwritten node is
+    #: not a series missing a step, and `test_every_demonic_at_n_points_clause_
+    #: has_a_row_from_n_points` below scopes its own check the same way.
+    demonic = {"Masochist", "Ravager", "Ritualist"}
+    authored = {row["Node"] for row in effects}
     wrong = []
     checked = 0
     for name, node in nodes.items():
+        if node.get("Tree") not in demonic and name not in authored:
+            continue
         for n in {int(x) for x in FOR_EVERY_N_POINTS.findall(node.get("Description", ""))}:
             checked += 1
             most = int(node["MaxPoints"])

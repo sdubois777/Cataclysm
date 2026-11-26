@@ -205,6 +205,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 				Blow.Overkill = Outcome.Overkill;
 				// AND ITS FIGURE BEFORE THE VICTIM'S MITIGATION, for the same blow only. Ruled 2026-10-21 (traps layer 4).
 				Blow.KillingBlowDamage = Hit.Damage;
+				// AND WHETHER IT WAS A CRITICAL STRIKE, for the same blow only (the Death trees' slice C4a).
+				Blow.bKillingBlowWasCritical = Outcome.bWasCritical;
 			}
 
 			Cataclysm->RecordLastBlow(MoveTemp(Blow));
@@ -334,6 +336,14 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 		Notice.bByAnAreaSkillShareOnAnAlly = Blow.bAreaSkillShareOnAnAlly;
 		// AND THE KILLING BLOW'S FIGURE BEFORE MITIGATION. Ruled 2026-10-21 (traps layer 4, F10).
 		Notice.KillingBlowDamage = Blow.KillingBlowDamage;
+		// AND WHETHER IT WAS A CRITICAL STRIKE. A TICK IS NEVER ONE, as ruled on 2026-11-25 (the Death trees' slice C4a).
+		Notice.bByACriticalStrike = Blow.bKillingBlowWasCritical && !Blow.bDamageOverTime;
+	}
+	// AND WHETHER AN EXECUTE IS KILLING IT NOW, the Death trees' slice C4d1 (2026-11-25). Read while the execute's
+	// health loss is being written, which is when this notice is built.
+	if (System)
+	{
+		Notice.bByAnExecute = System->IsBeingExecuted();
 	}
 
 	++Events->Deaths;

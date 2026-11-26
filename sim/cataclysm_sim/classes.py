@@ -188,6 +188,112 @@ DEMONIC_CLASSES: dict[str, ClassDefinition] = {
     c.name: c for c in (RAVAGER, RITUALIST, MASOCHIST)
 }
 
+# --------------------------------------------------------------------------
+# The three Death classes, added 2026-11-24 with their passive trees
+# --------------------------------------------------------------------------
+#
+# THE SAME METHOD AS THE DEMONIC THREE ABOVE: each commits to a handful of stats
+# and leaves the rest at the default. One more rule, which the Demonic lines met
+# by accident and which these meet on purpose: EVERY STAT THE CLASS'S OWN TREE
+# RAISES BY AN "INCREASED" PERCENTAGE HAS A BASE HERE OR ON THE DEFAULT LINE.
+# An increase multiplies a base, so a node increasing a stat its class has no
+# base for is worth nothing to that class -- the fault issue #1105 found in the
+# Masochist tree and `test_no_node_is_worth_nothing_to_its_own_class` guards.
+#
+# THE SHAPES ARE FROM SHIPPED GAMES, THE NUMBERS ARE JUDGEMENTS. Diablo II's
+# Necromancer gains 1.5 life and 2 mana a level against the Barbarian's 2 and 1
+# (the Basin Wiki's class pages); Path of Exile's Shadow starts with 57 life
+# against the Marauder's 66 (poedb.tw's class pages). So a summoner trades health
+# for mana, and an assassin starts with less health than a fighter.
+# `docs/DECISIONS.md`, 2026-11-24, has the sources.
+
+# "Siphons life essence from enemies, weakening foes while strengthening self."
+#
+# It fights inside its own 6 metre Siphon, so it stands among enemies: more
+# health than the default, a little flat damage reduction and crowd control
+# resistance (its tree's Pale Ward, Stolen Strength and Held Close increase
+# both), and twice the default health regeneration, because "strengthening self"
+# is what the class is. It refuses armor, evasion, energy shield and leech:
+# what keeps it alive is taken from the dead and the Siphon, not worn.
+SOUL_COLLECTOR = ClassDefinition(
+    name="Soul Collector",
+    overrides={
+        # Between the default and the Ravager.
+        "max_health": Scaling(base=115.0, per_level=17.0),      # L100: 1,798
+        # Twice the default's rate at every level, short of the Masochist's.
+        "health_regen": Scaling(base=2.0, per_level=0.25),      # L100: 26.75/s
+        # Pale Ward and Stolen Strength increase it; the Ravager's is 3 + 0.05.
+        "damage_reduction": Scaling(base=3.0, per_level=0.04),  # L100: 6.96%
+        # Held Close increases it: "A stun stops your kills".
+        "crowd_control_resistance": Scaling(base=3.0, per_level=0.08),  # L100: 10.92
+        # Kills fill its bar, so it walks to the next pack a little faster.
+        "movement_speed": Scaling(base=4.2),
+    },
+)
+
+# "Summons and commands the restless dead."
+#
+# The summoner of the Death three, and not a second Ritualist: the Ritualist
+# survives at range behind an energy shield, the Necromancer behind bone. So it
+# takes armor, a little flat damage reduction and crowd control resistance (its
+# Grave limb's Gravekeeper's Hide, Among the Dead, Mantle of Bone, Shielding
+# Ranks, Death Ward and Steadfast Among Them increase all three), the summoner's
+# larger mana pool, and less health than the default. It refuses evasion, energy
+# shield and leech.
+NECROMANCER = ClassDefinition(
+    name="Necromancer",
+    overrides={
+        # Diablo II's Necromancer gains three quarters of the Barbarian's life a
+        # level; this is between the Ritualist's 10 and the default's 15.
+        "max_health": Scaling(base=85.0, per_level=12.0),       # L100: 1,273
+        # Half again the default, short of the Ritualist's 90 + 12.
+        "max_mana": Scaling(base=70.0, per_level=9.0),          # L100: 961
+        "mana_regen": Scaling(base=1.5, per_level=0.18),        # L100: 19.32/s
+        # Bone, not plate: well under the Ravager's 25 + 3.5.
+        "armor": Scaling(base=15.0, per_level=2.0),             # L100: 213
+        "damage_reduction": Scaling(base=2.0, per_level=0.03),  # L100: 4.97%
+        "crowd_control_resistance": Scaling(base=5.0, per_level=0.1),  # L100: 14.9
+        # It walks behind its army.
+        "movement_speed": Scaling(base=3.8),
+    },
+)
+
+# "High single-target damage and critical hits, low area damage" (the approved
+# draft of 2026-11-24), moving from kill to kill.
+#
+# A larger critical strike multiplier than the default, which its Blade limb
+# scales; a smaller area of effect, which is the draft's "low area damage"; less
+# health than the default; and faster on foot. It refuses armor, energy shield,
+# damage reduction and leech: it is not there when the blow lands.
+#
+# NO BASE OF EVASION, AND THAT IS DELIBERATE. No class has one -- the gem
+# ruling of 2026-11-21 rests on it -- and the Shadow's tree supplies its own:
+# Counterstroke grants flat evasion chance, and every other Evasion node is
+# reached through it, so Nimble's and Moving Target's increases always have a
+# base under them. The tree's summary designed it that way: "the limb grants
+# flat evasion chance ... and does not rely on gear".
+SHADOW = ClassDefinition(
+    name="Shadow",
+    overrides={
+        # Path of Exile's Shadow starts with 86% of the Marauder's life.
+        "max_health": Scaling(base=90.0, per_level=13.0),       # L100: 1,377
+        # A tenth more than the default's 150.
+        "crit_multiplier": Scaling(base=160.0),
+        # A tenth less than the default's 100: "low area damage".
+        "area_of_effect": Scaling(base=90.0),
+        # Between the default and the Ravager.
+        "movement_speed": Scaling(base=4.4),
+    },
+)
+
+DEATH_CLASSES: dict[str, ClassDefinition] = {
+    c.name: c for c in (SOUL_COLLECTOR, NECROMANCER, SHADOW)
+}
+
+#: Every class that has a stat line, which is every class `Class Stats` in the
+#: design workbook names besides `Default`.
+CLASSES: dict[str, ClassDefinition] = {**DEMONIC_CLASSES, **DEATH_CLASSES}
+
 
 if __name__ == "__main__":
     from .character import Attributes, Character

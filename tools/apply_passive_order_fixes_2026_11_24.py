@@ -351,13 +351,21 @@ FIXES: dict[str, tuple] = {
         Order(first="Soul Fuel", then="Spent Breath"),
     ),
     "Necromancer": (
+        # THE SENTENCE THE TREE HOLDS SINCE THE 15-KEYSTONE MERGE OF 2026-11-24,
+        # which folded Unhallowed Ground into Gathered Remains' remains half
+        # ("25% longer per point ... 30 seconds rather than 10") and dropped
+        # "within 10 metres". This fix was first written against the sentence
+        # before that merge and refused the approved file. The coordinating
+        # session ruled 2026-11-24 (the Death trees' slice B): the merge's figure
+        # stands and this fix's split stands.
         Reword(
             node="Gathered Remains",
             before=("Your Abomination rises sooner: each point takes 2 off the percentage "
                     "of a floor's starting creatures you must kill, from 50% down to 34% "
-                    "at 8 points. Remains within 10 metres of you last 10% longer per "
-                    "point."),
-            after="Remains within 10 metres of you last 10% longer per point.",
+                    "at 8 points. Remains last 25% longer per point, so at 8 points they "
+                    "last three times as long: 30 seconds rather than 10."),
+            after=("Remains last 25% longer per point, so at 8 points they last three "
+                   "times as long: 30 seconds rather than 10."),
         ),
         MANY_MADE_ONE,
         DirectlyAfter(node="Gravefinder", after="Bone Fuse", partner="Mantle of Bone"),

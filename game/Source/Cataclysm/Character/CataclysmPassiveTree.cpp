@@ -1049,11 +1049,13 @@ int32 UCataclysmPassiveTree::PointsPaid(const FCataclysmPassiveEffectRow& Effect
 	return Effect.PerPointFrom > 0 ? FMath::Max(0, Points - Effect.PerPointFrom + 1) : 1;
 }
 
+const TCHAR* UCataclysmPassiveTree::PassiveEnchantmentPrefix = TEXT("Passive_");
+
 FString UCataclysmPassiveTree::EnchantmentNameFor(FName Node, int32 Option)
 {
 	return Option > 0
-		? FString::Printf(TEXT("Passive_%s_Option%d"), *Node.ToString(), Option)
-		: FString::Printf(TEXT("Passive_%s"), *Node.ToString());
+		? FString::Printf(TEXT("%s%s_Option%d"), PassiveEnchantmentPrefix, *Node.ToString(), Option)
+		: FString::Printf(TEXT("%s%s"), PassiveEnchantmentPrefix, *Node.ToString());
 }
 
 TArray<FCataclysmEnchantmentEffectRow> UCataclysmPassiveTree::EnchantmentRowsFor(
@@ -1061,9 +1063,11 @@ TArray<FCataclysmEnchantmentEffectRow> UCataclysmPassiveTree::EnchantmentRowsFor
 	const UDataTable* EffectTable, const TArray<FName>& DamageTypes)
 {
 	TArray<FCataclysmEnchantmentEffectRow> Rows;
+	// HOW MANY ACTION ROWS OF ONE NODE, OPTION, ACTION, EVENT AND THRESHOLD HAVE BEEN COPIED, for the name below.
+	TMap<FString, int32> ActionRowsSeen;
 	ForEachCountedPassiveEffectRow(
 		Allocation, NodeTable, EffectTable, DamageTypes,
-		[&Rows](const FCataclysmPassiveEffectRow& Effect, FName Node, int32 Paid)
+		[&Rows, &ActionRowsSeen](const FCataclysmPassiveEffectRow& Effect, FName Node, int32 Paid)
 		{
 			if (!UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(Effect))
 			{
@@ -1072,6 +1076,28 @@ TArray<FCataclysmEnchantmentEffectRow> UCataclysmPassiveTree::EnchantmentRowsFor
 
 			FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
 			Row.Enchantment = UCataclysmPassiveTree::EnchantmentNameFor(Node, Effect.Option);
+			// AN ACTION ROW GRANTED FROM A POINT THRESHOLD IS KEYED APART, so "1 second for every 4 points" can be one row
+			// at 4 points and another at 8 that each act: an action row's trigger, reset and charge keys begin with this
+			// name, and two rows sharing one would share one key. The Death trees' slice C6a (2026-11-25): Find the
+			// Rhythm, Sidestep and Keep the Count. Stat rows sum and need no such key; no stat row is renamed.
+			if (!Effect.Action.IsEmpty() && Effect.MinPoints > 0)
+			{
+				Row.Enchantment += FString::Printf(TEXT("_From%d"), Effect.MinPoints);
+			}
+			// AND A SECOND ACTION ROW OF ONE NODE ON THE SAME ACTION AND EVENT IS KEYED APART TOO, as `_Row2`, so it keeps
+			// its own trigger cooldown and count. The Death trees' slice C6b3 (2026-11-25): Opening Found's "1 Fervour
+			// per point, or 2 per point if the attacker is Elite or stronger" is 1 always and 1 more for an Elite's
+			// attack, both on `dodge`. The generator accepts two such rows only under different conditions, and they come
+			// in the table's order, so the name is the same at every allocation.
+			if (!Effect.Action.IsEmpty())
+			{
+				const int32 Seen = ++ActionRowsSeen.FindOrAdd(Row.Enchantment + TEXT(":") + Effect.Action + TEXT(":")
+															   + Effect.ActionEvent);
+				if (Seen > 1)
+				{
+					Row.Enchantment += FString::Printf(TEXT("_Row%d"), Seen);
+				}
+			}
 			Row.Stat = Effect.Stat;
 			Row.ValueKind = Effect.ValueKind;
 
@@ -1099,6 +1125,16 @@ TArray<FCataclysmEnchantmentEffectRow> UCataclysmPassiveTree::EnchantmentRowsFor
 			Row.EventValue = Effect.EventValue;
 			Row.Ailment = Effect.Ailment;
 			Row.DamageShare = Effect.DamageShare;
+
+			// A ROW WITH A CHANCE IS PAID PER POINT IN ITS CHANCE AND NOT IN ITS AMOUNT. The Death trees' slice C6b3
+			// (2026-11-25), Tear Loose: "a 2% chance per point to give you 1 Fervour" pays 1 on a chance of 2 for each
+			// point. Held at 100, a chance that cannot be exceeded.
+			if (Effect.ChancePercent > 0.0f)
+			{
+				Row.ChancePercent = FMath::Min(100.0f, Effect.ChancePercent * static_cast<float>(Paid));
+				Row.ValueLow = Effect.ValuePerPoint;
+				Row.ValueHigh = Row.ValueLow;
+			}
 		});
 	return Rows;
 }
@@ -1300,6 +1336,11 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			// A ROW THAT COUNTS NOTHING CARRIES -1 AND IS LEFT AT -1, which is
 			// what `FCataclysmStatModifier` already defaults to, so this line
 			// changes nothing for the rows that do not count enemies.
+			//
+			// AND A THIRD READER SINCE THE DEATH TREES' SLICE C4c2 (2026-11-25):
+			// Grim Wake's rows under `target_near_your_kill_within_seconds`
+			// carry the radius around a kill's body that
+			// `UCataclysmFervour::MarkNearAKill` marks within.
 			Modifier.ReachMetres = Effect->ReachMetres;
 
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);

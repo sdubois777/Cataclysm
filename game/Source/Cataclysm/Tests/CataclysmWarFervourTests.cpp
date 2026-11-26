@@ -888,6 +888,59 @@ CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourCrimsonTideTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The decay meets Miser's Grip's floor (the Death trees' bundle 3 merge)
+// ---------------------------------------------------------------------------
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourDecayFloorTest,
+	"Cataclysm.WarFervour.TheDecayOutOfCombatStopsAtMisersGripsFloor")
+{
+	using namespace CataclysmWarFervourTest;
+	// OBLIGATION 17 OF THE BUNDLE 3 MERGE (2026-11-25): Miser's Grip, "Your Fervour never decays below 3% of your
+	// maximum Fervour per point", stops the War classes' decay as it stops the Death classes'. A floor of 40 on a bar of
+	// 100: from 45, a step of a second at 10 takes 5, and the next takes nothing. THE CONTROL: without the floor, the
+	// same step takes the whole 10.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmEnemyCharacter* Holder = World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+																					 FRotator::ZeroRotator);
+	UCataclysmAbilitySystemComponent* System =
+		Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a character with an ability system"), System))
+	{
+		return false;
+	}
+	Holder->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	System->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Holder));
+	System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+
+	// OUT OF COMBAT: a hit taken, then 5 seconds, past the 3 the decay waits.
+	System->NoteHitTaken();
+	World->TimeSeconds += 5.0f;
+
+	// THE CONTROL.
+	HoldWarFervourStats(System, {{FCataclysmWarFervour::OutOfCombatDecayPerSecondStat, 10.0f}});
+	System->SetNumericAttributeBase(Pool, 45.0f);
+	FCataclysmWarFervour::OutOfCombatDecayStep(Holder, 1.0f);
+	TestEqual(TEXT("control: without the floor a step of a second takes 10"), System->GetNumericAttribute(Pool), 35.0f,
+			  0.001f);
+
+	HoldWarFervourStats(System, {{FCataclysmWarFervour::OutOfCombatDecayPerSecondStat, 10.0f},
+								 {UCataclysmFervour::DecayFloorPercentStat, 40.0f}});
+	System->SetNumericAttributeBase(Pool, 45.0f);
+	FCataclysmWarFervour::OutOfCombatDecayStep(Holder, 1.0f);
+	TestEqual(TEXT("with a floor of 40%, the step stops at 40"), System->GetNumericAttribute(Pool), 40.0f, 0.001f);
+	FCataclysmWarFervour::OutOfCombatDecayStep(Holder, 1.0f);
+	TestEqual(TEXT("and the next takes nothing"), System->GetNumericAttribute(Pool), 40.0f, 0.001f);
+	return true;
+}
+
 #undef CATACLYSM_WAR_FERVOUR_TEST
 
 #endif // WITH_AUTOMATION_TESTS

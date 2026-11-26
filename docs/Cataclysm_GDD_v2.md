@@ -879,7 +879,7 @@ Those six figures are judgements under the owner's delegation of unstated number
 
 **The generator's rates are not the only way Fervour arrives.** A rate is tied to health moving, and individual nodes may grant Fervour for something else entirely. Two do. The Masochist's Low Life keystone grants a flat amount per second while the character is at or below 35% health, from nothing having happened at all; and the first option of its 200 point capstone, The Last Drop, grants a flat amount for every skill cast while the character is below 20% health. Both are separate stats from the three rates and neither is part of any generator, which is why a node can add one without changing what a class's starting node grants.
 
-The six generators designed so far, one per class, each granted by that class's starting node:
+The nine generators designed so far, one per class, each granted by that class's starting node. The three Death classes' rows were added on 2026-11-24 with their trees, and none of the three is built in code yet:
 
   
 
@@ -891,6 +891,9 @@ The six generators designed so far, one per class, each granted by that class's 
 | Masochist (Demonic) | 1 per 1% of maximum health lost to damage, counting damage its energy shield absorbs as health lost, and 1 per 1% spent as an ability cost | Healing removes Fervour at the same rate, so health regeneration empties it. The energy shield recharging removes none |
 | Ravager (Demonic) | 1 for each enemy an attack hits, and 1 per second for every enemy within 4 metres | Fervour decays at 5 per second after 3 seconds with no enemy within 4 metres, so losing contact empties it |
 | Ritualist (Demonic) | 1 per second for each minion held, and 5 when one of them dies | Nothing. Fervour keeps its default of not decaying, which is what lets a thrall reserve it |
+| Soul Collector (Death) | 1 for each enemy it kills, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss | Fervour decays at 5 per second once 4 seconds have passed since its last kill, or 8 seconds after it kills an Elite or stronger creature, so a pause between kills empties it |
+| Necromancer (Death) | 1 each time an enemy dies within 10 metres of it or to one of its minions | Nothing. Fervour keeps its default of not decaying, which is what lets its minions reserve it |
+| Shadow (Death) | 10 for each enemy it kills, 25 for an Elite or stronger, and 2 for each critical strike | Fervour drains at 10 per second once 4 seconds have passed since its last kill, so a full bar means a run of quick kills |
 
   
 
@@ -1483,6 +1486,50 @@ The Masochist keeps a normal mana pool. "Uses HP instead of mana" is delivered b
 Class resource **behaviour** is not set here, only the pool size. What each resource does, how it builds and how it decays belongs with the passive trees.
 
   
+
+### **The Three Death Class Stat Lines**
+
+The Soul Collector, the Necromancer and the Shadow, added on 2026-11-24 with their passive trees. Values are at level 100 with no gear and no attribute points spent. Only the stats any of the three overrides are listed, with energy shield, which none of them takes.
+
+
+
+| Stat | Soul Collector | Necromancer | Shadow |
+| :-- | :-: | :-: | :-: |
+| Maximum Health | 1,798 | 1,273 | 1,377 |
+| Maximum Mana | 644 | 961 | 644 |
+| Maximum Energy Shield | 0 | 0 | 0 |
+| Health Regeneration | 26.75 | 15.85 | 15.85 |
+| Mana Regeneration | 10.9 | 19.32 | 10.9 |
+| Armor | 0 | 213 | 0 |
+| Evasion | 0 | 0 | 0 |
+| Damage Reduction | 6.96% | 4.97% | 0 |
+| Crowd Control Resistance | 10.92 | 14.9 | 0 |
+| Critical Strike Multiplier | 150% | 150% | 160% |
+| Area of Effect | 100% | 100% | 90% |
+| Movement Speed | 4.2 | 3.8 | 4.4 |
+| Class Resource | 100 | 100 | 100 |
+
+
+
+**Every stat a Death tree raises by an "increased" percentage has a base, on its class's line, on the default line, or from a flat node the increasing nodes are reached through.** An increase multiplies a base, so a node raising a stat its class has none of is worth nothing to the only class that can take it, which is what happened to two Masochist nodes until 2026-08-31. The Demonic lines met this without it being a rule; the Death lines were made to meet it.
+
+
+
+**Soul Collector.** It fights inside its own Siphon, among enemies, and takes power from the dead rather than from what it wears. More health than the default line, twice its health regeneration, and a little flat damage reduction and crowd control resistance, which its tree's Pale Ward, Stolen Strength and Held Close increase. It refuses armor, evasion, energy shield and leech.
+
+
+
+**Necromancer.** The summoner of the Death three, and not a second Ritualist: the Ritualist survives at range behind an energy shield, the Necromancer behind bone. It takes armor, a little flat damage reduction and crowd control resistance, which its Grave limb increases, a mana pool half again the default's, and less health than the default. It walks behind its army. It refuses evasion, energy shield and leech.
+
+
+
+**Shadow.** High single-target damage and critical strikes, low area damage, as its approved draft describes it: a larger critical strike multiplier than the default, which its Blade limb scales, and a tenth less area of effect; less health than the default; and faster on foot. It refuses armor, energy shield, damage reduction and leech: it is not there when the blow lands. **It has no base of evasion, as no class has**: its tree supplies its own. Counterstroke grants flat evasion chance, and every other Evasion node is reached through it, so the limb's increases always have a base under them.
+
+
+
+**Where the shapes come from.** In Diablo II the Necromancer gains 1.5 life and 2 mana a level against the Barbarian's 2 and 1. In Path of Exile the Shadow starts with 57 life against the Marauder's 66. So a summoner trades health for mana, and an assassin starts with less health than a fighter. Every number is a judgement under the owner's delegation of unstated numbers, and `docs/DECISIONS.md` has the sources.
+
+
 
 ### **Stat Calculation**
 

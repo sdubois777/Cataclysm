@@ -363,6 +363,13 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 		return Ordered;
 	}
 
+	// AND, WHERE THE COMMANDER HOLDS GUARD THE MASTER, THE LAST ENEMY THAT HIT THE COMMANDER: the Death trees' slice
+	// C6e (2026-11-25), as planned, after a Quarry order and before everything below. Null for everything else.
+	if (AActor* LastAttacker = UCataclysmCommand::CommandersLastAttackerFor(Driven))
+	{
+		return LastAttacker;
+	}
+
 	// AND A GADGET WHOSE SUMMONER'S ROW SAYS SO TAKES THE ENEMY WITH THE MOST HEALTH WITHIN ITS REACH. Ruled
 	// 2026-10-13 by the coordinating session under the owner's delegation, for "Your gadgets prioritize the highest
 	// HP enemy within their range instead of the nearest".

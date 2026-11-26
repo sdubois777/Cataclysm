@@ -343,6 +343,21 @@ public:
 	static void SharedBloodStep(AActor* Character, float SecondsInStep, bool bFill);
 
 	/**
+	 * Bound Bones, the Necromancer's Third Rite (option 3): "Each minion gains 5% of your maximum health for every other
+	 * minion alive." The Death trees' slice C6d2 (2026-11-25), on Shared Blood's pattern, as ruled (Q4). Each step, a
+	 * follower of a commander holding `BoundBonesStat` is given that share of the commander's maximum health for each
+	 * OTHER follower alive -- a minion, an imp or a thrall, not a gadget or a trap -- recounted as they come and go.
+	 * What it last added is kept on the follower (`UCataclysmAbilitySystemComponent::BoundBonesHealthAdded`), so only
+	 * the difference is written: a rise is added to its maximum and to its health, a fall comes off the maximum and
+	 * health is held at the new maximum. Nothing for anything that follows nobody, or a commander with no such row.
+	 * Called at the end of every character's regeneration step, beside `SharedBloodStep`.
+	 */
+	static void BoundBonesStep(AActor* Character);
+
+	/** The stat Bound Bones states on the commander: the per cent of its maximum health per other follower alive. */
+	static const TCHAR* BoundBonesStat;
+
+	/**
 	 * The most health healing may bring this character to. Issue #1607: maximum
 	 * health times `CeilingShare`, less the healing ceiling's reduction (Point of
 	 * No Return, and the enchantments that say "cannot be healed above"), and

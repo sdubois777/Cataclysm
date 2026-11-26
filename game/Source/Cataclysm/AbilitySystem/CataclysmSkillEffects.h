@@ -1181,6 +1181,13 @@ public:
 	static constexpr float OverkillExplosionRadiusCm = 500.0f;
 
 	/**
+	 * How far The Ferryman's burst reaches from the body: "to enemies within 4 metres". The Death trees' slice C4c1
+	 * (2026-11-25). The same 400 as `KillingBlowExplosionRadiusCm` and a constant of its own, because the two are two
+	 * sentences.
+	 */
+	static constexpr float SlainBurstRadiusCm = 400.0f;
+
+	/**
 	 * "Enemies killed by you explode for the overkill amount." Ruled 2026-10-07.
 	 *
 	 * Every enemy OF THE KILLER within `OverkillExplosionRadiusCm` of `At`, the victim itself left out, takes
@@ -1191,8 +1198,10 @@ public:
 	 *
 	 * IT DOES NOT HIT THE KILLER OR THE KILLER'S SIDE: the search is the one every skill uses for enemies.
 	 *
-	 * NOTHING CALLS THIS AT A KILL YET. That is the second part; see
-	 * `UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`.
+	 * THE PLAYER'S KILL HANDLER CALLS THIS AT A KILL, with the share and radius the rows recorded; see
+	 * `UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`. And for The Ferryman's burst, with the
+	 * slain creature's maximum health as `Overkill` and `SlainBurstRadiusCm`. (This said "NOTHING CALLS THIS AT A KILL
+	 * YET" until the Death trees' slice C4c1, 2026-11-25, long after the kill handler did.)
 	 *
 	 * A CHAIN BOUNDS ITSELF. An enemy this kills has its own overkill, which is less than what this dealt it,
 	 * and when the second part is wired it explodes in turn. So a target is asked again whether it is still

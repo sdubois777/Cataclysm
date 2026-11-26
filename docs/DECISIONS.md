@@ -2,6 +2,143 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Death line meets the War line and runs in Unreal: the bundle 3 merge, its obligations, and four windows (death3-w1 to w4)
+
+**Affects:**
+- The merge of development at `9bd6ed996` (the War line, #2925) into the Death trees branch, commit `0bec3c68c`.
+  Every conflict kept both lines' work; the workbook is development's with `tools/reapply_death_trees_workbook.py` run on
+  it again, and every CSV was regenerated from the merged workbook and generator rather than resolved by hand.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `GainOnCriticalStrike` takes the blow's skill
+  tags. `CataclysmWarFervour.h` and `.cpp`: its `GainOnCriticalStrike` hands on to the Death line's; its
+  `PerCriticalStrikeStat` is a reference to the Death line's; `GainByRate` and Cleave's net gain go through
+  `UCataclysmFervour::RaisePool`; its decay out of combat stops at Miser's Grip's floor.
+  `Character/CataclysmPlayerCharacter.cpp`: one payment of a critical strike's Fervour, with the blow's tags.
+  `Character/CataclysmPlayerClassStats.cpp`: the stat listed once.
+- Tests: `CataclysmFervourGainsTests.cpp` (one new), `CataclysmWarFervourTests.cpp` (one new),
+  `CataclysmStatExemptionTests.cpp` (the War line's second probe of the stat removed);
+  `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`, `test_stat_lookups_hand_over_what_they_should.py`,
+  `test_charge_and_placed_action_names_match_the_engine.py`, and the merged pins named under "The merge".
+- What the four windows found, fixed in commits `a568ab43c`, `61a254cbe`, `cfcabc9b2`, `469386286`, `08c93f562` and
+  `c10e1ab3f`, each named under "The four windows" with what it changed; and bundle 4 merged in, `dd04be38b`.
+
+### SAID FIRST
+
+- **WINDOW death3-w4 PASSED ON `dd04be38b`, WITH ONE PROOF ACCEPTED ON ITS ENGINE RESULT.** The whole Unreal suite:
+  5,959 performed, 5,959 succeeded. Python: 9,379 passed, 10 skipped. Proofs B and C proved. Proof A is recorded NOT
+  PROVED by the window's runner and accepted by the coordinating session on its engine result (2026-11-26): 80 tests
+  failed with its 59 breaks in and every test passed with them restored, but 2 of the 66 tests it predicted did not
+  fail. Both are named under "Window death3-w4" below, and issue [#2936](https://github.com/sdubois777/Cataclysm/issues/2936) holds them.
+- **IT TOOK FOUR WINDOWS.** death3-w1 did not compile (two errors); death3-w2 ended in a stack overflow and showed five more
+  faults; death3-w3 had 53 failures from three causes; death3-w4 passed. Each is under "The four windows" below.
+- **THE WAR LINE'S GAINS NOW REACH KINDRED FIRES, BORROWED TIME AND OVERFLOW.** Until this merge they wrote the pool
+  directly, which `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py` refuses. This changes play only
+  for a character holding both a War rate and one of those Soul Collector nodes.
+- **A FAULT IN SLICE C6c, FOUND IN THIS MERGE AND FIXED IN THE SECOND PASS (`61a254cbe`).** Every gain clamped itself to
+  the full bar before it called `RaisePool`, so Overflow, which counts what did not fit, heard almost nothing from a
+  real gain; its test called `RaisePool` directly. Every gain now hands `RaisePool` its whole amount, which holds the
+  pool to the bar as before. New test `Cataclysm.FervourLossAndChain.AGainPastTheBarThroughARealPathGivesOverflowItsExcess`
+  and Python guard `test_every_gain_hands_raise_pool_the_whole_gain.py`, proved.
+- **SLIPPERY HAS ITS ROW (`cfcabc9b2`).** The War Saboteur's `Saboteur_basic_trunk_004`, "At 5 points: After
+  successfully evading, gain 3 Fervour", had no row; the Death line's sentence-and-condition check found it. One
+  `class_resource` action row on `dodge`, 3 Fervour, from 5 points, written by the new
+  `tools/reapply_saboteur_slippery_workbook.py`. Ruled by the coordinating session.
+- **OBLIGATIONS 1 TO 4 AND 10 GO WITH `feat/death-skills-2885` TO THE FINAL BUNDLE.** Obligation 10 is about
+  `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`, which only that branch has.
+
+### The merge
+
+Twenty-nine files conflicted. The rules, so the next merge can follow them:
+
+- **Where both lines added beside one place, both are kept**: condition labels and their switch cases, stat names,
+  probes, enum members, word tables, event lists. The count sentences then say 114 conditions, 53 of them comparing
+  nothing, and "adds a hundred-and-fifteenth".
+- **Where both lines extended one entry, the two are joined into one**: `hit_taken` carries the share of maximum health
+  (Avenging Dead) AND the attacker (Thornwall); the passive row's `ChancePercent` and `MaxPoints` follow `PerPointFrom`
+  in that order, in the struct, the generator and the tests; `class_resource_at_maximum`'s words, `seconds_after_dodge`'s,
+  `own_stacks`' and `fervour_per_critical_strike`'s forms in the node-text test. Four of those were duplicate keys in a
+  Python dictionary, where the later silently wins; each is now one entry.
+- **The passive row port both lines carried** (slice B28) was merged against its own commit, `cb92ec18d`, as the base,
+  since the true merge base has neither copy; the result was checked for lines one side had deleted and the other kept.
+- **No class member is declared twice** in the nine headers both lines changed (issue #2900), checked by name.
+- **The data**: 897 Passive Effects rows (the Death line's 669 and the War line's 592, less the 364 both had), 497
+  authored nodes, 95 authored options, 108 named options; the enchantment table unchanged cell for cell from
+  development's, with a `ChancePercent` of 0 on every row.
+
+### The four windows
+
+| Window | Head | What it found | What was done |
+|---|---|---|---|
+| death3-w1 | `16a358e7c` | Two compile errors: `UCataclysmMovementSkill::PassesThroughEnemiesStat` was private (C2248), and `CataclysmBossFervourTests.cpp` built its expected rows from nested brace lists (C2440) | `a568ab43c`; then the second pass, ruled by the coordinating session: the Overflow fix and Slippery's row (`61a254cbe`, `cfcabc9b2`) |
+| death3-w2 | `cfcabc9b2`; its editor step committed the rebuilt tables (`acd9eb3e0`) | A stack overflow ended the whole suite: the full-bar reserve count asked the Second Self's flag, a stat, which read the conditions again. And five faults: `minions_in_reach_at_least` counted nothing for a commander that is not a character; Grave Pact never reached an Imp; `minion_hit` carried 0, so no Necrosis on it passed the tenth-of-health rule (#917); four tests built a player whose weapon could not reach a Death tree; Soul Tide's test expected the old condition | `469386286`: a guard (`bCountingFervourReserve`) breaks the cycle; each fault fixed. A diagnostic run on that head: 63 of 66 passed; `08c93f562` fixed the last three (Shared Leech sat inside the no-leech check; two tests used a victim or an ailment their rule refuses) |
+| death3-w3 | `08c93f562` | 53 whole-suite failures from three causes: 50 from `FCataclysmEnchantmentEffectRow::ChancePercent` not marked `DataTableImportOptional`, so every test-built enchantment table was refused; 2 from Hollow Step's hostile bit, which two body tests still expected to read `0/0`; 1 test naming seven Death stats with no exemption probe. The 27 new groups all passed alone | `c10e1ab3f`: the column marked optional, the two tests expect `8/0`, seven probes added. A diagnostic run on that head: 504 of 504 passed |
+| death3-w4 | `dd04be38b` (`c10e1ab3f` with bundle 4 merged in) | Passed; proof A accepted on its engine result | Below |
+
+### Window death3-w4
+
+On `dd04be38b`, the groups-alone step skipped as ruled (all 27 passed alone in death3-w3 and nothing since changes
+them), registered against bundle 4's window b4-w2 (5,794 performed) plus this line's tests:
+
+| Step | Result |
+|---|---|
+| Build | Succeeded, 80 actions, 73 files compiled |
+| Whole Unreal suite | 5,959 performed, 5,959 succeeded, 0 failed (registered 5,959). 58 skipped part of what they check (registered 58). Test saves: 892 written and deleted, 0 left behind (registered 892) |
+| Python | 9,379 passed, 10 skipped; JUnit `tests=9389`, `failures=0`, `errors=0`, `skipped=10`. Ruff: no problems |
+| Proof A, 59 breaks across the line's slices | With the breaks in, 168 tests performed and 80 failed; restored, every test passed. NOT PROVED by the runner, because 2 of its 66 predicted tests passed with the breaks in; accepted on the engine result by the coordinating session, 2026-11-26 |
+| Proof B, 2 breaks, `Cataclysm.KindReserves.` | Proved: 2 failed with the breaks in, 14 of 14 passed restored |
+| Proof C, 1 break, `Cataclysm.Death.` | Proved: 1 failed with the break in, 30 of 30 passed restored |
+
+**THE TWO PREDICTED TESTS PROOF A DID NOT FAIL**, opened as issue [#2936](https://github.com/sdubois777/Cataclysm/issues/2936):
+
+1. **Break C6b3** sends `ApplyPoolAction`'s class-resource branch to no pool, and was to fail
+   `Cataclysm.FervourOnEvents.AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt`. It passed. Since the Overflow fix
+   (`61a254cbe`), `UCataclysmRegeneration::TopUp` also sends the class resource through `RaisePool`, so the branch the
+   break removes and the path it then falls through to do the same thing, and no test can see the break. The branch
+   duplicates the TopUp path.
+2. **Break C4b1-1** deletes `AfterPoolRose`'s return on a kill's payment, and was to fail
+   `Cataclysm.FervourGains.KindredFiresLeavesAKillsHoldToTheKillsOwnStamp` as well as Borrowed Time's test. Borrowed
+   Time's failed; the Kindred Fires test passed. The cause is not confirmed.
+
+### The obligations
+
+| # | What | Done |
+|---|---|---|
+| 5 | `fervour_per_critical_strike` paid twice | One payment, the Death line's, before the `critical_strike` rows act, with the blow's skill tags (Battle Lust's melee row), a minion's left out. War's call removed from the hit handler; War's function hands on; War's constant is a reference to the Death one; War's class-stats line and probe removed; the generator's second asker entry removed. Held by `Cataclysm.WarFervour.ACriticalStrikeARealPlayerDealtFillsItsFervourAndAMeleeRowAddsToAMeleeOne` and `Cataclysm.CritsAndExecutes.ThePlayersCriticalStrikePaysFervourThroughTheRealHitHandler`, each of which fails on a double payment |
+| 6 | The condition-count sentences | Joined: 114, 53 |
+| 7 | Required columns on test-built sheets | `Max Points` added to `PASSIVE_PORT_HEADERS` |
+| 8 | The full bar with War's conditioned maximum | By reading: War's conditioned maximum adjusts `ClassResourceMaximum`, the field `ClassResourceAtMaximum` reads, less `ClassResourceReserved`. War's comment anticipated this merge and now says it is done. No new test |
+| 9 | The passive order script's sentence | Both lines' sentences kept in the merge; the order script's tests pass in the whole Python suite on `dd04be38b` (9,379 passed, 0 failed) |
+| 11 | Threshold action rows renamed `_From<N>` | No War action row has a Min Points threshold, and no War node has two action rows on one action and event, so no War key changes |
+| 13 | `points` in `FRACTION_BASES` | Present beside War's three |
+| 14, 17 | War's gains through `RaisePool` | `GainByRate` and Cleave's net gain; War's six losses listed in the guard's inventory with their reasons. New test `Cataclysm.FervourGains.AWarRateAndCleavesNetGainAreGainsKindredFiresHears` |
+| 16 | War's crit rows and the next-hit charge | By reading: War's crit code acts on the announced critical strike, which the charge decides; nothing in it reads the count |
+| 17 | War's decay and Miser's Grip | The decay out of combat stops at the floor. New test `Cataclysm.WarFervour.TheDecayOutOfCombatStopsAtMisersGripsFloor`. A JUDGEMENT: the sentence, "Your Fervour never decays below 3% of your maximum Fervour per point", names no one decay. The Ravager's decay does not read the floor, as before; nobody ruled it should |
+| 19 | Unstoppable, Nothing Moves You, Relentless | Merged as built in C6d2 |
+| 20 | Hollow Step's hostile bit | Merged as built in C6e |
+
+### PLAY-TEST POINT FOR THE OWNER: TIMED GAINS KEEP OVERFLOW'S STACKS UP
+
+Since the Overflow fix every gain hands `RaisePool` its whole amount, so a gain on a timer feeds Overflow at a full
+bar too: Living Harvest (`SoulCollector_keystone_c_kA`, 0.5 Fervour a second for each enemy in the Siphon) with 2 or
+more enemies in the Siphon, and the Masochist's Fervour-per-second rows (`UCataclysmFervour::GainPerSecondStep`), keep
+Overflow's stacks up at a full bar for as long as that lasts. Each gain counts whole Fervour only, so one enemy's 0.5 a
+second gives none. No timed gain reaches the pool through `UCataclysmRegeneration::TopUp`: its timed callers fill
+health, mana and the energy shield.
+
+RULED BY THE COORDINATING SESSION, 2026-11-25: keep it as built (option a). "Fervour gained above the maximum" has no
+exception; keeping the stacks costs the player a full bar they are not spending; the owner likes two pieces that
+combine into something strong. IF IT PROVES TOO STRONG IN PLAY, the change to make is option (b): `GainPerSecondStep`
+and `FCataclysmSiphon::FervourOnce` cut themselves to what fits, so only gains from events reach Overflow.
+
+### PLAY-TEST POINT FOR THE OWNER: NECROSIS FROM MINIONS FOLLOWS THE TENTH-OF-HEALTH RULE
+
+`minion_hit` carries what the minion's blow dealt to health, and an ailment a row applies on it is refused when that is
+under a tenth of the target's maximum health (#917, `UCataclysmAilments::BlowCanCarryAnAilment`), exactly as a player's
+own `apply_status` row on `hit_dealt` is: that event carries `Notice.DealtToHealth` into the same check. RULED BY THE
+COORDINATING SESSION, 2026-11-25: consistency, so no exemption. Cold Hands (`Necromancer_basic_spine_004`) and Grave Cold
+(`Necromancer_keystone_spine_002`) therefore rarely apply Necrosis from a weak minion against a strong enemy.
+
+---
+
 ## 2026-11-26 — Bundle 4: six branches merged (creatures belong to their Cataclysm, pause, Abyssal Rifts, War's Quest Sieges, Abomination lairs, the Death and War enemy modifiers), a Fallen City takes the Cataclysm that felled it, and seven windows
 
 **Branch `feat/bundle-4-creatures-pause-rifts-sieges-lairs-modifiers`, cut from development `9bd6ed996`**, which held
@@ -1166,6 +1303,4122 @@ window's base log:
   apart from the re-draw would need a run with the re-draw removed. The coordinating session ruled it not measured
   unless the fall rule's figures looked wrong; against the 10-point condition it set, they did not. The comparison with
   the parent bounds the cap and the re-draw together at 0.7 points at tier 1, within the noise.
+
+---
+
+## 2026-11-25 — The Shadow's marks, Hollow Step, the kill strikes and Lethal Dose, and the Necromancer's Interpose and Guard the Master (Death trees, slice C6e)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: the Shadow's marks
+  (`MaintainShadowMarks`, `MoveShadowMarkFrom`, `MoveShadowMarksOff`, `HoldsShadowMarkOn`, `IsShadowMarked`,
+  `MarkedOrStrongestNear`); the kill actions `strike_strongest_near` and `dash_to_strongest_and_strike` in `ActOnEvent`;
+  `WithTargetState` asks the two new target questions; Lethal Dose's and Interpose's stat names.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions `target_marked_by_you` and
+  `target_is_your_last_attacker`; two action flags. The count sentences: forty-eight of the hundred-and-six compare
+  nothing, and the hundred-and-seventh.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.h` and `.cpp`: `HostileBodyMaskBit` (8) on a hostile
+  creature's capsule filter; `SetMovesThroughHostiles`, `MovesThroughHostiles`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`: Hollow Step in the movement skill
+  (`PassesThroughEnemies`, `PassThroughEnemies`, `StepOutOfEnemies`, `HitTheLineOnce`; `HitWhatThePathCrossed` takes a
+  percent; `EndAbility` restores). `CataclysmMovement.h` and `.cpp`: `StepOutOfEnemies` and `PlaceBeside`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `StrongestEnemyNear` can leave creatures out.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp`: `RollOnLandedBlow` is told whether the blow was
+  a critical strike, and lends Lethal Dose's share. `CataclysmSkillEffects.cpp`: `DamageOverTimeNumbers` adds it.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: a dying creature's marks move; the critical flag
+  passed to the ailment roll; Interpose. `CataclysmRegeneration.cpp`: the marks kept up each step.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`, `Character/CataclysmEnemyController.cpp`:
+  `CommandersLastAttackerFor`, asked after a Quarry order. `Items/CataclysmItem.cpp`: the two action flags from rows.
+- `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`: "Marked" under a marked creature's bar.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: five stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmShadowMarksAndStepTests.cpp`, new (7);
+  `CataclysmShadowStrikesTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (one probe);
+  `CataclysmPassiveTreeTests.cpp`; `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (three, and two names),
+  `test_demonic_guide_is_no_target_and_no_obstacle.py`, `test_passive_effects_match_the_node_text.py`,
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (one exception), and the inventory in
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (669 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **A FAULT FOUND BY THE WHOLE SUITE, AND FIXED.** `CataclysmShadowStrikesTests.cpp` pinned Interpose's roll at code
+  priority, which `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py` refuses: such a write
+  is dropped once an earlier test wrote the variable at console priority (issue #1470). It is written at console
+  priority since `efdacb9c7`.
+- **THE SHADOW'S DEATHMARK IS NOT WAR'S**, as ruled (Q5): a mark kept on the marker, keyed by it, chosen only while it
+  holds fewer than its count, kept until its creature dies, then moved to the strongest enemy within 10 metres of the
+  body; with none that near it is lifted and the next regeneration step chooses within 15 metres of the marker. Its
+  label is "Marked". War's Deathmark (`Berserker_crit_004`) is not touched.
+- **HOLLOW STEP, AS RULED (H1, H2), AND ITS THREE CONDITIONS.**
+  1. *Every reader of the body mask bits was checked.* `ACataclysmCharacterBase::RefreshPassThroughBody` is the only code
+     that writes or reads them; the floor guide's refresh in `ACataclysmDungeonGameMode` calls it. Nothing treats a
+     creature's mask of nought as meaning hostile. The check that a creature's own pass-through bit is nought
+     (`CataclysmPassThroughBodiesTests.cpp`) is unchanged, because the hostile bit is put on the capsule's FILTER
+     only and `PassThroughBodyMaskBit` still answers nought for a creature. TWO OTHER CHECKS THERE READ THE FILTER and
+     expected "0/0" for a hostile creature and a thrall given back; THIS ENTRY SAID THEY WERE UNCHANGED, AND THAT WAS
+     WRONG: window death3-w3 failed both, and they expect "8/0" since. The obvious shape -- giving a creature bit 8
+     as its own bit -- would have made `MovesThroughMaskFor` let every creature walk through the player and its
+     minions; the filter-only shape keeps a creature's own move-ignore mask at nought. One text check in
+     `tools/tests/test_demonic_guide_is_no_target_and_no_obstacle.py` read the old line and reads the new one.
+  2. *A move never ends inside an enemy*: the mover is put back along its line toward where it began, in steps of 10
+     centimetres, to the first point where its capsule overlaps no living hostile creature.
+     `HollowStepEndingInsideAnEnemyEndsBesideItAlongTheLine` aims a Leap at a creature's centre.
+  3. *The mask is restored on every way out*: right after an instant move, and in `EndAbility` for a walked Charge,
+     which every end reaches, a cancel and an interruption included.
+     `AnInterruptedWalkedChargeLeavesTheMoverBlockedByEnemiesAgain` cancels one part way.
+  Every mode hits the line from where it began to where it arrived once, at the skill's own percent, skipping what its
+  own hit struck in that use (H2). A walked Charge already hits its line each step and gains no extra hit; a Swap
+  gains only the line hit; a Flicker counts each arrival's line.
+- **BLADE ECHO AND THOUSAND CUTS**, as ruled (Q6): on a kill, an instant hit of 100% of weapon damage, no projectile
+  drawn, on the wearer's own mark if it lives within 10 metres of the wearer, else the strongest enemy within 10
+  metres of the wearer, the one just slain left out. JUDGEMENT: "within 10 metres" is measured from the wearer.
+  Thousand Cuts first puts the wearer at the creature's feet, unswept, and steps it out along the line back toward
+  where it stood. Each is dealt inside the action loop, so its own kill acts on none of the wearer's rows and cannot
+  chain.
+- **LETHAL DOSE**, as ruled (Q8): a landed critical strike's Poison or Bleed takes half of the critical strike
+  multiplier's INCREASED bucket, summed into `dot_damage`'s increases for that application alone, so with 100%
+  increased damage over time and 50 points lent a tick is 2.5 / 2 of what it was. The ailment roll is now told whether
+  the blow was a critical strike. The increases are read with no skill tags.
+- **INTERPOSE**, as ruled (Q9): on a roll of its chance, a hit aimed at the character -- not a tick -- is taken by its
+  nearest follower within 3 metres that is not a gadget or a trap. JUDGEMENT: the figure handed over is the hit as
+  sent, before the defender's evasion, block and mitigation, re-dealt from the attacker as direct damage that cannot
+  be evaded or retaliated against, through the follower's own defences, so no critical strike is rolled on it; the
+  defender takes nothing; overkill is not passed back. A hit with no attacker on record is not interposed.
+- **GUARD THE MASTER**: a follower turns on the last character whose blow reached its commander's health, after a
+  Quarry order and before every other choice, while that character lives, is hostile to it and is within what it
+  notices; never a gadget or a trap. Its damage row reads the same record.
+
+### What each reads
+
+- **DEATHMARK (the Shadow, keystone):** `death_marks_held` 1; `attack_damage` and `spell_damage` 30% more, and
+  `fervour_per_critical_strike` 5, each under `target_marked_by_you`.
+- **TWO MARKS (keystone):** `death_marks_held` 1 more.
+- **HOLLOW STEP (keystone):** `movement_passes_through_enemies` 1.
+- **LETHAL DOSE (keystone):** `crit_multiplier_increases_to_poison_and_bleed_percent` 50.
+- **BLADE ECHO (the 50 vow, option 1):** `strike_strongest_near` 100 on `kill`.
+- **THOUSAND CUTS (the 200 vow, option 1):** `dash_to_strongest_and_strike` 100 on `kill`.
+- **INTERPOSE (the Necromancer, basic, 8 points):** `interpose_chance` 3 a point.
+- **GUARD THE MASTER (basic, 6 points):** `minions_turn_on_your_last_attacker` 1 a point; `minion_damage` 3%
+  increased a point under `target_is_your_last_attacker`.
+
+`PassiveEffects.csv` 657 to 669; the Shadow 119 to 128 rows, the Necromancer 40 to 43. The pins: rows 669, nodes 400,
+options 59.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25: Q5 (the mark, sticky, its own label), Q6 (an instant 100% hit, Thousand Cuts
+moving first), Q8 (half of the increased bucket), Q9 (the nearest minion within 3 metres takes the whole hit, overkill
+not passed back); and, on the collision report, H1 (Hollow Step on issue #2861's masks, with its three conditions) and
+H2 (once a use).
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: the strongest-enemy search (Blood Debt, slice
+C4c2), issue #2861's body masks, the strike action (issue #1833), the ailment roll (issue #41), and the last blow
+record (issue #1755).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.ShadowMarks.` | new: `DeathmarkMarksTheStrongestWithinFifteenMetresAndSaysMarked`, `AMarkIsKeptUntilItsCreatureDiesThenMovesWithinTenMetresOfIt`, `TwoMarksMarkTwoDifferentCreaturesAndTheMarkedTakeThirtyMore`, `HollowStepPassesThroughAnEnemyAndHitsItOnce`, `HollowStepEndingInsideAnEnemyEndsBesideItAlongTheLine`, `AnInterruptedWalkedChargeLeavesTheMoverBlockedByEnemiesAgain`, `HollowStepsLineHitDoesNotStrikeWhatTheSkillsOwnHitStruck` | 7 |
+| `Cataclysm.ShadowStrikes.` | new: `BladeEchoStrikesTheStrongestWithinTenMetresAndTheMarkFirst`, `ThousandCutsMovesBesideTheStrongestAndStrikesIt`, `LethalDoseAddsItsShareToTheDamageOverTimeIncreases`, `InterposeHandsAHitToTheNearestMinionWithinThreeMetres`, `GuardTheMastersMinionsTurnOnTheLastAttackerAndDealMoreToIt` | 5 |
+| `Cataclysm.StatExemption.` | the no-attribute probe table runs `death_marks_held` | unchanged |
+| `Cataclysm.PassThroughBodies.` | unchanged; a creature's own bit is still nought | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 669 | unchanged |
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmSkillTemplates.cpp`,
+`EndAbility`: the `PassThroughEnemies(false);` inside `if (bPassingThrough)` removed, so a cancelled walked Charge
+keeps passing through. Prefix `Cataclysm.ShadowMarks.`; must fail
+`AnInterruptedWalkedChargeLeavesTheMoverBlockedByEnemiesAgain`.
+
+### What was run
+
+**The whole Python suite on `9edbb414a`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8976 passed, 9 skipped in 535.57s
+(0:08:55)". The JUnit file agrees: tests 8986, failures 1, errors 0, skipped 9, so 8976 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run on
+`8fb0875e9`, before this entry, also failed the check that every condition is named in this log, which this entry
+satisfies, and the console-priority check described under "Said first", fixed in `efdacb9c7`.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Thirteen Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`8fb0875e9`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The mark question never filled | `test_charge_and_placed_action_names_match_the_engine.py::test_the_shadows_marks_are_kept_moved_and_asked` |
+| A dying creature's mark never moved | the same test |
+| The pass-through not restored when the ability ends | `test_charge_and_placed_action_names_match_the_engine.py::test_hollow_step_passes_through_for_the_move_only_and_hits_the_line_once` |
+| An instant move no longer stepping out of an enemy | the same test |
+| The line hit no longer skipping the skill's own targets | the same test |
+| Hostile creatures given no body bit | `test_demonic_guide_is_no_target_and_no_obstacle.py::test_a_body_is_written_at_begin_play_and_with_its_side` |
+| Thousand Cuts no longer moving beside its target | `test_charge_and_placed_action_names_match_the_engine.py::test_the_last_five_shadow_and_necromancer_nodes_are_wired` |
+| A critical strike's flag no longer reaching the ailment roll | the same test |
+| Lethal Dose's share multiplying the increases rather than summing with them | the same test |
+| Interpose leaving the hit on the defender | the same test |
+| Guard the Master's choice no longer asked | the same test |
+| The condition count sentence left at forty-seven | `test_the_condition_count_sentences_agree_with_the_code.py::test_the_header_count_sentence_states_the_two_counts_the_code_holds` |
+| Lethal Dose at 40 rather than half | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — When the Necromancer's minions die, and when he is hurt: the minion death event, eight nodes, and a War node's slow (Death trees, slice C6d2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`: `IsImmuneTo` answers true for Slow while
+  `movement_speed_reduction_suppressed` stands above nought, as well as for `immune_to_slow`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h` and `.cpp`: where a follower's health reaches
+  nought, Eternal Army's refusal first, then `NoteMinionDied` beside the Fervour for losing it; the share of maximum
+  health a hit took handed to `NoteHitTaken`; Shared Leech's payment beside the leech a blow pays.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteMinionDied` (the event
+  `minion_death`, and a minute of deaths with their distances); `NoteHitTaken` holds the share while it raises
+  `hit_taken`; `MultiplierForStatAgainst` takes the minion asking; `BoundBonesHealthAdded`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: four conditions, `seconds_after_minion_death`,
+  `minion_death_in_reach_within_seconds`, `hit_took_at_least_percent_of_max_health` and `minion_within_metres_of_you`;
+  `IsJudgedAtItsEvent`. The count sentences: forty-six of the hundred-and-four compare nothing, and the
+  hundred-and-fifth.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: an own-stack row's event condition goes on its grant and comes off
+  its stat.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`, `CataclysmMinion.cpp`: the summoner's minion
+  lookups take the minion asking, named at a minion's and a thrall's blow and explosion.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmLeech.h` and `.cpp`: `NoteMinionHit`. `CataclysmRegeneration.h` and
+  `.cpp`: `BoundBonesStep`, after `SharedBloodStep` each step.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: three stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmMinionLossTests.cpp`, new (10); `CataclysmSuppressedSlowTests.cpp`,
+  new (2); `CataclysmStatExemptionTests.cpp` (a scaled probe and three no-attribute probes);
+  `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (four),
+  `test_a_minion_row_asks_only_what_its_read_can_answer.py`, `test_passive_effects_match_the_node_text.py`,
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (one exception), and the inventory in
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py` (`EVENT_CONDITIONS`), `tools/reapply_death_trees_workbook.py`,
+  `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (657 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **THIS CHANGES THREE WAR NODES' BEHAVIOUR**, as ruled by the coordinating session on the C6d1 report, as a fix to
+  bundle 1's ruling that an immunity to Slow works everywhere. Unstoppable, Nothing Moves You and Relentless state
+  `movement_speed_reduction_suppressed`, which dropped the reducing rows of `movement_speed` in
+  `RefreshMovementSpeed` but not a War aura's movement reduction, which only `IsImmuneTo`'s answer drops. They now
+  answer `IsImmuneTo(..., "Slow")` too, so Blood and Iron's reduction no longer slows them. The stat's reader in
+  `RefreshMovementSpeed` is unchanged. A character holding Relentless now answers immune at every regeneration step,
+  so its speed is worked out again on each step, as for any immunity to Slow.
+- **`minion_death` IS A FOLLOWER KILLED**, as ruled (P1): a minion, an imp or a thrall whose health reached nought, told
+  to its commander where the Fervour for losing it is granted, while the body still stands. NOT a gadget or a trap,
+  which raise `gadget_destroyed` or nothing; NOT a lifespan running out or a release to make room, which never reach
+  that place. Marrow Feast's "or is detonated" waits for the Death skills, where detonation lives.
+- **`hit_taken` CARRIES THE SHARE OF MAXIMUM HEALTH THE HIT TOOK** as its amount, as ruled (Q2), nought when it is not
+  known; it carried nought before. No row on `hit_taken` read the amount: its pool actions take a share of the maximum,
+  its own stacks count, and its status lands on the wearer. `AnExistingHitTakenHealthRowIsUnchangedByTheShareTheHitCarries`
+  measures one. The share is also held on the character while the event is raised, because an action's condition is
+  judged without the amount in hand. It is what reached health, as Soulbound counts. Avenging Dead's "more than 5%" is
+  the ruled `at_least` 5.
+- **A FAULT FOUND BY THE WHOLE SUITE ON THIS ENTRY'S FIRST COMMIT, AND FIXED.** `tools/tests/test_pool_action_names_match_the_engine.py`
+  `::test_every_event_a_row_may_take_a_share_of_is_fired_with_an_amount` used `hit_taken`, fired with a literal nought,
+  as its example of an event carrying no amount. `melee_hit_taken` is that example now, and the test also requires
+  `hit_taken` to carry one.
+- **AN EVENT CONDITION IS NEW**: `hit_took_at_least_percent_of_max_health` reads a fact that exists only while
+  `hit_taken` is raised, so on Avenging Dead's own-stack row it is put on the stack's grant and taken off the stat
+  (`UCataclysmStatPipeline::IsJudgedAtItsEvent`, `CataclysmItem.cpp`). The generator allows it only as the Condition of
+  an action row or of an own-stack row on `hit_taken` (`EVENT_CONDITIONS`), and refuses it anywhere else.
+- **DEATH WARD READS A SECOND CLOCK, NOT `target_within_metres` ON ITS GRANT.** The plan put the distance on the
+  stack's grant; an own-stack row's condition is the stat's, not the grant's, so the death is recorded with its
+  distance instead and `minion_death_in_reach_within_seconds` counts only deaths within the row's reach.
+- **ETERNAL ARMY REFUSES EVERY WRITE OF HEALTH AT NOUGHT** while the commander is strictly above 50%, leaving the
+  follower at 1, before the Fervour, the event and the death. A rule that ends a creature by calling `HandleDeath`
+  outright (Epidemic's chain ending, Infernal Sacrifice eating an ally) does not pass there.
+- **BOUND BONES REACHES MINIONS AND THRALLS**, as the owner's ruling of 2026-09-16 makes "minion" mean in these trees,
+  not only summoned minions as Shared Blood does. Each step it writes only the difference from what it last added, a
+  rise to the maximum and to health, a fall to the maximum with health held within it. Anything else that rewrote a
+  follower's maximum health from nothing would leave that record wrong; nothing found does.
+- **SHARED LEECH PAYS AS A LIFE LEECH DOES**: the commander's share of what the blow took, shield and mana absorbed
+  included, paid over the commander's own leech time. The blow still leeches nothing for the minion.
+- **MARSHAL MEASURES THE MINION AT EACH BLOW**, and at its death for an explosion. A lookup that names no minion -- the
+  trap damage a trap's blow is priced with by tag -- grants nothing from it.
+
+### What each reads
+
+- **DEATH WARD (basic, 6 points):** `damage_reduction` 2% increased a point while a minion died in the last 3 seconds
+  within 6 metres.
+- **BONE KNIT (basic, 6 points):** `health_regen` 3% increased a point while a minion died in the last 3 seconds.
+- **MARROW FEAST (keystone):** 1% of maximum health on each `minion_death`, with a 0.1 second wait (Q3).
+- **AVENGING DEAD (basic, 8 points):** `minion_attack_speed` 3% increased a point for 4 seconds, an own stack granted
+  by a landed hit that took at least 5% of maximum health.
+- **MARSHAL (basic, 10 points):** `minion_damage` 2% increased a point for a minion within 10 metres.
+- **SHARED LEECH (basic, 8 points):** `minion_damage_leeched_to_you_percent` 1, from 8 points.
+- **ETERNAL ARMY (the Final Rite, option 2):** `minion_cannot_die_above_health_percent` 50.
+- **BOUND BONES (the Third Rite, option 3):** `minion_health_percent_of_yours_per_other_minion` 5.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Death Ward | damage_reduction, increased, 2, cond=minion_death_in_reach_within_seconds 3, reach 6 |
+| Bone Knit | health_regen, increased, 3, cond=seconds_after_minion_death 3 |
+| Marrow Feast | health 1 on minion_death, fraction of maximum, trigger cooldown 0.1 |
+| Avenging Dead | minion_attack_speed, increased, 3, cond=hit_took_at_least_percent_of_max_health 5, scale own_stacks, step 1, at most 1, on hit_taken, 4 seconds |
+| Marshal | minion_damage, increased, 2, cond=minion_within_metres_of_you 10 |
+| Shared Leech | minion_damage_leeched_to_you_percent, flat, 1, from 8 points |
+| Eternal Army (option 2) | minion_cannot_die_above_health_percent, flat, 50 |
+| Bound Bones (option 3) | minion_health_percent_of_yours_per_other_minion, flat, 5 |
+
+`PassiveEffects.csv` 649 to 657; the Necromancer 32 to 40 rows. The pins: rows 657, nodes 394, options 57.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25. On the C6d/C6e plan: P1, a minion death event and
+`seconds_after_minion_death`; Q2, Avenging Dead on a share of maximum health a hit took, with an existing `hit_taken`
+row tested unchanged; Q3, Marrow Feast's cap as a 0.1 second wait; Q4, Bound Bones on Shared Blood's pattern. On the
+C6d1 report: `IsImmuneTo` also answers `movement_speed_reduction_suppressed`, as one small change, saying here that it
+changes a War node's behaviour.
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: a follower's death (issue #1518), own stacks (issue
+#1833), the leech payments (issue #895), Shared Blood (the Ritualist's 50 vow), and bundle 1's slow immunity.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.MinionLoss.` | new: `AMinionKilledRaisesMinionDeathOnceAndStartsBoneKnitsClock`, `DeathWardHoldsForADeathWithinSixMetresAndNotForOneFurther`, `MarrowFeastHealsOnePercentForEachDeathAtMostTenTimesASecond`, `AvengingDeadsStackIsGrantedOnlyByAHitThatTookFivePercent`, `AnExistingHitTakenHealthRowIsUnchangedByTheShareTheHitCarries`, `MarshalRaisesTheDamageOfAMinionWithinTenMetresOnly`, `SharedLeechPaysTheSummonerAShareOfAMinionsLandedBlow`, `EternalArmyKeepsAMinionAtOneHealthOnlyWhileTheSummonerIsAboveHalf`, `BoundBonesRecountsTheHealthAsMinionsComeAndGo`, `TheEightNodesRowsAreTheirSentences` | 10 |
+| `Cataclysm.SuppressedSlow.` | new: `UnstoppablesRowIsNotSlowedByAWarAurasMovementReduction` (fails before the change), `RelentlessFoldedIntoTheAttributeIsNotSlowedByAWarAurasMovementReduction` | 2 |
+| `Cataclysm.StatExemption.` | the scaled probe table runs `minion_attack_speed`, the no-attribute table three more | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 657 | unchanged |
+
+Each new test has a control: the row worth nothing before a death; a death beyond the reach; a second death in the
+same instant; a hit that took 4% and a tick; a hit that took 1%; a minion 15 metres away and none named; a blow with no
+row; the summoner at exactly 50% and at 40%; a step with the same count; a player holding nothing.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmVitalAttributeSet.cpp`,
+`NotifyIfHealthReachedZero`: Eternal Army's `> AbovePercent` made `< AbovePercent`. Prefix `Cataclysm.MinionLoss.`;
+must fail `EternalArmyKeepsAMinionAtOneHealthOnlyWhileTheSummonerIsAboveHalf`.
+
+### What was run
+
+**The whole Python suite on `960470122`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8973 passed, 9 skipped in 603.67s
+(0:10:03)". The JUnit file agrees: tests 8983, failures 1, errors 0, skipped 9, so 8973 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run on
+`ae642777a`, before this entry, also failed the check that every condition is named in this log, which this entry
+satisfies; the run on `e89cc8bb8` failed the check described under "Said first", fixed in `506da5798`.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Twelve Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy, and each
+`proved`: eleven on `ae642777a`, and the hit's amount on `7d115a743`, after `hit_taken` began to carry it. A twelfth on
+`ae642777a` proved the earlier form, an amount of nought, and is replaced by that one.
+
+| Break | Named failures |
+|---|---|
+| A follower's death raising `kill` rather than `minion_death` | `test_charge_and_placed_action_names_match_the_engine.py::test_a_followers_death_is_told_to_its_commander_and_eternal_army_comes_first` |
+| Eternal Army comparing below rather than above | the same test |
+| An own stack's event condition no longer put on its grant | `test_charge_and_placed_action_names_match_the_engine.py::test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_still_carries_nought` (its name on `ae642777a`) |
+| `hit_taken` back to an amount of nought (on `7d115a743`) | `test_charge_and_placed_action_names_match_the_engine.py::test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_carries_the_share` |
+| A thrall's blow no longer naming itself to Marshal | `test_charge_and_placed_action_names_match_the_engine.py::test_marshal_shared_leech_and_bound_bones_are_read_where_they_act` |
+| Shared Leech no longer paid beside the leech | the same test |
+| Bound Bones no longer recounted each step | the same test |
+| The slow suppression no longer an immunity to Slow | `test_charge_and_placed_action_names_match_the_engine.py::test_a_row_saying_nothing_may_slow_the_character_is_an_immunity_to_slow` |
+| Death Ward's window at 4 seconds rather than 3 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| `minion_death` taken out of the events whose character cannot be struck | `test_pool_action_names_match_the_engine.py::test_every_event_a_strike_may_hang_on_is_fired_with_a_character` |
+| The condition count sentence left at a hundred and three | `test_the_condition_count_sentences_agree_with_the_code.py::test_the_header_count_sentence_states_the_two_counts_the_code_holds` |
+| The summoner's lookup no longer filling the asking minion's distance | `test_a_minion_row_asks_only_what_its_read_can_answer.py::test_no_minion_row_asks_what_its_read_cannot_answer` |
+
+---
+
+## 2026-11-25 — The Necromancer's ranks: rows held by minions within reach, Ringed in Bone's slow immunity, and a minion's blow announced to its summoner (Death trees, slice C6d1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions `minions_in_reach_at_least`
+  (`MinionsInReachAtLeast`, a count, judged against `OwnMinionDistancesMetres` within the row's `ReachMetres`) and
+  `target_carries_necrosis` (`TargetCarriesNecrosis`, no value, judged against `bTargetCarriesNecrosis`). The count
+  sentences: forty-six of the hundred compare nothing, and the hundred-and-first.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: `WithEnemiesInReach` walks the
+  character's own followers through `UCataclysmCommand::ThingsCommandedBy` within the widest reach a
+  `MinionsInReachAtLeast` row asks; `WithTargetState` asks whether the target carries Necrosis (`bWantsNecrosis`, in
+  both the stop-early and the early-return lists).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`: any minion's blow that is not a machine's raises
+  `minion_hit` on its summoner, once. `CataclysmSkillEffects.cpp`: a thrall's landed blow raises it on its commander.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`: `IsImmuneTo` answers true for Slow when the
+  character's `immune_to_slow` stands above nought, asked with its conditions judged.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp`: a follower's walk is multiplied by its commander's
+  `minion_movement_speed`. `CataclysmDamageCalculation.cpp`: a commanded defender's damage taken by its commander's
+  `minion_damage_taken`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: `minion_movement_speed`, `minion_damage_taken` and
+  `immune_to_slow` in the list of stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmMinionRanksTests.cpp`, new (7); `CataclysmStatExemptionTests.cpp` (a
+  conditioned probe for `immune_to_slow`, and the table's pin, which had been left at 28); `CataclysmPassiveTreeTests.cpp`
+  (`ComparesNothing`); `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (two), `test_every_conditioned_stat_has_an_asker.py` (one, and the pin), `test_passive_effects_match_the_node_text.py`,
+  `test_the_condition_count_sentences_agree_with_the_code.py`, and the inventory in
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (649 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **THE ENGINE'S CONDITIONED PROBE PIN WAS WRONG BEFORE THIS SLICE, AND IS FIXED HERE.** `FCataclysmEveryConditionedProbeTest`
+  stopped at `TestEqual(..., ConditionedProbes().Num(), 28)` while the table held 36: slices C3d to C4d3 each added a
+  probe and moved only the Python pin in `tools/tests/test_every_conditioned_stat_has_an_asker.py`. In the window that
+  test would have failed and run no probe. It is 37 now, with `immune_to_slow`, and
+  `test_the_engine_pins_the_conditioned_table_at_the_size_it_has` holds the two pins equal.
+- **RINGED IN BONE'S SLOW IS `immune_to_slow`, READ IN `UCataclysmSkillTemplate::IsImmuneTo`**, as ruled (a): the one
+  function every slow check goes through, bundle 1's player movement refresh included, so a slow is dropped, a War
+  aura's movement reduction is dropped, and a haste is kept. Asked with its conditions judged; nothing that lookup
+  reaches calls `IsImmuneTo`, so it cannot recurse. **A CORRECTION TO THE QUESTION THAT RULING ANSWERED:** it said no
+  stat for slow immunity existed. `movement_speed_reduction_suppressed` does, and Unstoppable's same clause uses it. It
+  drops movement reductions in `RefreshMovementSpeed` but not a War aura's share, which only `IsImmuneTo` drops, so the
+  ruled path is the wider one. Its stun and knockback are `crowd_control_resistance` flat 100, as Unstoppable's are.
+- **`minion_hit` IS RAISED ONCE FOR EACH BLOW**, as ruled (P2): a summoned minion's in `ACataclysmMinion::AttackTarget`,
+  landed only when not evaded and not refused as immune to its attacker, whatever Conduit does with `hit_dealt`; a
+  thrall's landed blow in `ApplyHit`, once for each target an ability of its strikes. It carries the enemy struck, and
+  no strike on that enemy is ruled, so it is listed in `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`.
+- **A FAULT FOUND BEFORE THE COMMIT, AND FIXED.** `bWantsNecrosis` was declared and set but in neither of
+  `WithTargetState`'s two lists, so Grave Cold's condition would have refused; `test_every_target_question_reaches_both_lists_in_with_target_state`
+  found it.
+
+### What each reads
+
+- **GRAVEKEEPER'S HIDE (basic, 10 points):** `max_health` 1% increased a point; `armor` 1% increased a point while
+  three or more minions are within 6 metres.
+- **SHIELDING RANKS (basic, 10 points):** `damage_reduction` 1% increased a point while five or more are within 6 metres.
+- **STEADFAST AMONG THEM (basic, 6 points):** `crowd_control_resistance` 2% increased a point, and 2% more a point
+  while five or more are within 6 metres ("doubled").
+- **RINGED IN BONE (keystone):** `crowd_control_resistance` flat 100 and `immune_to_slow` flat 1, both while five or
+  more are within 6 metres.
+- **COLD HANDS (basic, 10 points):** an `apply_status` of Necrosis on `minion_hit`, 4% chance a point.
+- **GRAVE COLD (keystone):** the same at 100%; `minion_damage` 15% more against a target carrying Necrosis, from anyone.
+- **HASTY DEAD (basic, 8 points):** `minion_attack_speed` and `minion_movement_speed`, each 2% increased a point.
+- **GRAVE PACT (keystone):** `minion_damage_taken` 30% less.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Gravekeeper's Hide | max_health, increased, 1; armor, increased, 1, cond=minions_in_reach_at_least 3, reach 6 |
+| Shielding Ranks | damage_reduction, increased, 1, cond=minions_in_reach_at_least 5, reach 6 |
+| Steadfast Among Them | crowd_control_resistance, increased, 2; the same under minions_in_reach_at_least 5, reach 6 |
+| Ringed in Bone | crowd_control_resistance, flat, 100; immune_to_slow, flat, 1; both under minions_in_reach_at_least 5, reach 6 |
+| Cold Hands | apply_status 4 on minion_hit, Necrosis |
+| Grave Cold | apply_status 100 on minion_hit, Necrosis; minion_damage, more, 15, cond=target_carries_necrosis |
+| Hasty Dead | minion_attack_speed, increased, 2; minion_movement_speed, increased, 2 |
+| Grave Pact | minion_damage_taken, more, -30 |
+
+`PassiveEffects.csv` 636 to 649; the Necromancer 19 to 32 rows. The pins: rows 649, nodes 386, options 55 (unchanged).
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25, on the C6d/C6e plan: P2, `minion_hit` raised once for each landed blow; P3,
+the minion count read over the character's own followers within the row's reach. On Ringed in Bone's slow: option (a),
+`immune_to_slow` read inside `IsImmuneTo` with its conditions judged, with the tests named under "Unreal tests". P1,
+`minion_death`, moved to slice C6d2.
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: own followers (`ThingsCommandedBy`, issue #1715),
+the summoner's minion stat lines (`SummonerMultiplierFor`), `apply_status` (issue #1833 group E), and bundle 1's slow
+immunity.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.MinionRanks.` | new: `RingedInBoneHoldsOffASlowWithFiveMinionsWithinSixMetresAndNotWithFour`, `TheMinionCountComparesAtLeastAndCountsOnlyTheCharactersOwnFollowers`, `AMinionsBlowRaisesMinionHitOnceAndGraveColdsNecrosisRaisesItsDamage`, `WithNoRowOnMinionHitAMinionsBlowAppliesNoNecrosis`, `HastyDeadRaisesAFollowersWalkByTheSummonersMinionMovementSpeed`, `GravePactMakesTheSummonersMinionsTakeThirtyPercentLess`, `TheEightNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.StatExemption.` | the conditioned probe table runs `immune_to_slow`, and its pin is 37 | unchanged |
+| `Cataclysm.DamageTypeAuras.` | `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest`, bundle 1's, unchanged and still passing | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 649 | unchanged |
+
+Each new test has a control: four minions and one beyond reach; another summoner's three; two of the character's own;
+an enemy with no Necrosis; a summoner with no row; the walk and the loss before the row.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmSkillTemplate.cpp`,
+`IsImmuneTo`: the `immune_to_slow` clause's `> 0.0f` made `> 1.0f`, so the flag of 1 never answers. Prefix
+`Cataclysm.MinionRanks.`; must fail `RingedInBoneHoldsOffASlowWithFiveMinionsWithinSixMetresAndNotWithFour`.
+
+### What was run
+
+**The whole Python suite on `111bd5979`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8969 passed, 9 skipped in 613.64s
+(0:10:13)". The JUnit file agrees: tests 8979, failures 1, errors 0, skipped 9, so 8969 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on
+`a7b372ca3`'s working tree, also failed the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Ten Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`a7b372ca3`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A minion's blow raising `hit_dealt` rather than `minion_hit` | `test_charge_and_placed_action_names_match_the_engine.py::test_a_minions_and_a_thralls_blow_raise_minion_hit_on_the_commander` |
+| A thrall's blow raising `hit_dealt` rather than `minion_hit` | the same test |
+| `immune_to_slow` read as more than 1 rather than above nought | `test_charge_and_placed_action_names_match_the_engine.py::test_the_minion_stats_of_the_slice_are_read_where_they_act` |
+| Grave Pact's factor no longer multiplying the damage taken | the same test |
+| Hasty Dead's walk reading `minion_attack_speed` | the same test |
+| The Necrosis question missing from the stop-early list | `test_charge_and_placed_action_names_match_the_engine.py::test_every_target_question_reaches_both_lists_in_with_target_state` |
+| Ringed in Bone's slow row asking four minions rather than five | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Grave Pact at 20% less rather than 30% | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| The engine's conditioned probe pin left at 36 | `test_every_conditioned_stat_has_an_asker.py::test_the_engine_pins_the_conditioned_table_at_the_size_it_has` |
+| `minion_hit` taken out of the events whose character cannot be struck | `test_pool_action_names_match_the_engine.py::test_every_event_a_strike_may_hang_on_is_fired_with_a_character` and `::test_every_event_a_row_may_hang_on_is_one_the_game_fires` |
+
+---
+
+## 2026-11-25 — How Fervour is lost, and what fills past the bar: Miser's Grip, Soulbound, Overflow and Unbroken Chain (Death trees, slice C6c)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: four stats (`fervour_decay_floor_percent`,
+  `health_percent_lost_per_fervour_lost`, `fervour_overflow_attack_speed_seconds`, `kill_chain_seconds`);
+  `KillDecayStep` stops at the floor; `RaisePool` records what did not fit; `LoseFromDamage`, new.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `KillChainSecondsHeld`,
+  `NoteFervourOverflow`, `FervourOverflowStacksHeld`, `AccumulateHealthLostForFervour`; `CurrentConditions` fills the
+  chain's seconds; `ActOnEvent` lengthens a passive row's stack granted on a kill.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `kill_chain_within_seconds`,
+  the scale `fervour_overflow_stacks`, and a state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: health lost to damage asks Soulbound's loss
+  beside the Masochist's gain.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the four stats in the list of stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourLossAndChainTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
+  (four probes); `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (one), `test_passive_effects_match_the_node_text.py`, `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`
+  (two exceptions), `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`, and the inventories in
+  `test_every_gain_to_the_pool_goes_through_raise_pool.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (636 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **SOUL TIDE'S ROW CHANGED**, as ruled: from `seconds_after_kill` 2 to the new `kill_chain_within_seconds` 2, the same
+  clock with Unbroken Chain's extra seconds added, so "The same applies to Soul Tide" reaches it. The five "for N seconds
+  after a kill" rows stay on `seconds_after_kill`, which the chain does not lengthen. The new condition is not named
+  `seconds_after_...`, which would name an action event the game does not raise.
+- **UNBROKEN CHAIN LENGTHENS PASSIVE ROWS' KILL STACKS ONLY**, as ruled, told apart by the `Passive_` key prefix as
+  Death's Toll does: Kill Chain's stacks. The six enchantment rows that grant an own stack on a kill keep their windows;
+  `UnbrokenChainLengthensAPassiveKillStackAndNotAnEnchantments` checks one of them.
+- **MISER'S GRIP'S FLOOR STOPS THE KILL DECAY AND NOTHING ELSE**, as ruled: a share of the full bar after reserves. A
+  spend, a loss to healing and Soulbound's loss all go below it.
+- **SOULBOUND COUNTS HEALTH LOST TO DAMAGE**, as ruled: what reaches health, so an energy shield or mana that absorbs a
+  blow costs nothing, a tick of damage over time counts, and health paid as a skill's cost does not. The share of
+  maximum health lost is kept in a running total and each whole 2% costs 1 Fervour, the remainder kept for the next
+  blow. Its decay half is a removal of the kill decay.
+- **OVERFLOW COUNTS WHAT `RaisePool` COULD NOT FIT**, as ruled: above the full bar after reserves, after generation
+  scaling, from every gain to the pool. One stack for each whole Fervour, the fraction lost; one shared 5 second window
+  refreshed by each overflow; the stacks counted again from nought once the window has run out. The row's cap holds the
+  attack speed at 30%.
+- **TWO FAULTS FOUND BY THE WHOLE SUITE BEFORE THE COMMIT, AND FIXED.** `LoseFromDamage`'s write to the pool was not in
+  the inventory `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py` keeps (it is a loss, so it does not
+  go through `RaisePool`), and the three new lookups through `StatForSkill` were not in
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`'s. Each is now listed with why.
+- **`kill_chain_seconds` IS READ WITH NO CONDITION JUDGED**, because `CurrentConditions` fills it, and asking through
+  `StatForSkill` would ask `CurrentConditions` again. Its rows state none.
+
+### What each reads
+
+- **MISER'S GRIP (the Soul Collector, basic, 8 points):** `fervour_decay_floor_percent` flat 3 a point.
+- **SOULBOUND (the Soul Collector, keystone):** the kill decay removed; `health_percent_lost_per_fervour_lost` flat 2.
+- **OVERFLOW (the Soul Collector, keystone):** `fervour_overflow_attack_speed_seconds` flat 5; attack speed 1%
+  increased per `fervour_overflow_stacks` stack, at most 30.
+- **UNBROKEN CHAIN (the Soul Collector, basic, 8 points):** `kill_chain_seconds` flat 1 from 4 points and 1 more from 8.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Miser's Grip | fervour_decay_floor_percent, flat, 3 |
+| Soulbound | fervour_kill_decay_per_second, removed; health_percent_lost_per_fervour_lost, flat, 2 |
+| Overflow | fervour_overflow_attack_speed_seconds, flat, 5; attack_speed, increased, 1, scale fervour_overflow_stacks, step 1, at most 30 |
+| Unbroken Chain | kill_chain_seconds, flat, 1, from 4 points; the same from 8 |
+| Soul Tide (changed) | fervour_per_kill, flat, 1, cond=kill_chain_within_seconds 2 (was seconds_after_kill 2) |
+
+`PassiveEffects.csv` 629 to 636; the Soul Collector 134 rows. The pins: rows 636, nodes 378, options 55 (unchanged). The
+scale sources named by a row: 45.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25, on the C6c plan: all four as recommended, with Soulbound counting health lost
+only (not an energy shield or mana absorbing), Overflow's "above the maximum" being what `RaisePool` could not fit,
+Unbroken Chain reaching passive rows only, and a test that an enchantment kill stack keeps its window.
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: the kill decay (slice B), `RaisePool` (slice
+C4b1), own stacks (issue #1833), and the Masochist's Fervour from health lost to damage (issue #954).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourLossAndChain.` | new: `MisersGripStopsOnlyTheDecayAtItsFloor`, `SoulboundTakesAFervourForEachTwoPercentAndKeepsTheRest`, `OverflowGivesAStackForEachWholeFervourAboveTheBar`, `UnbrokenChainLengthensAPassiveKillStackAndNotAnEnchantments`, `SoulTidesWindowIsLengthenedAndAKillWindowIsNot`, `TheFourNodesRowsAndSoulTidesAreTheirSentences` | 6 |
+| `Cataclysm.StatExemption.` | the no-attribute probe table runs four new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 636 | unchanged |
+
+Each new test has a control: Soulbound's loss below the floor; half a step lost; the window run out; the chain at
+nought; a plain kill window.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`ActOnEvent`: `Action.StackKey.ToString().StartsWith(TEXT("Passive_"))` made `true`, so the chain lengthens every kill
+stack. Prefix `Cataclysm.FervourLossAndChain.`; must fail
+`UnbrokenChainLengthensAPassiveKillStackAndNotAnEnchantments`.
+
+### What was run
+
+**The whole Python suite on `29965375f`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8582 passed, 9 skipped in 383.68s
+(0:06:23)". The JUnit file agrees: tests 8592, failures 1, errors 0, skipped 9, so 8582 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the two
+inventory checks described under "Said first", fixed before the commit.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Seven Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`f07956c6c`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The decay taken below Miser's Grip's floor | `test_charge_and_placed_action_names_match_the_engine.py::test_how_fervour_is_lost_and_what_fills_past_the_bar_are_wired` |
+| Soulbound's loss never asked on health lost | the same test |
+| Soulbound's remainder thrown away | the same test |
+| Overflow measured as the whole gain rather than what did not fit | the same test |
+| Unbroken Chain lengthening an enchantment's kill stack too | the same test |
+| Soul Tide back on the plain kill clock | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` and `::test_every_exception_is_still_needed` |
+| Miser's Grip at 4% a point rather than 3% | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — A Poison that lasts, and an evasion answered twice: Festering and Twice Answered (Death trees, slice C6b4)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the scale `seconds_poisoned_by_you`
+  (`PerSecondPoisonedByYou`) and `FCataclysmPoolAction::bNextHitCriticalTwice`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: the critical strike charge holds
+  a count (`NextHitCriticalCharges`, `NextHitCriticalChargesHeld`); `ActOnEvent` rolls a doubled evasion before the
+  event's rows act; the Poison record (`NotePoisonBeganBy`, `SecondsPoisonedBy`, `SecondsPoisonedByAsker`); the roll of
+  every Chance Percent row shared (`ChancePercentComesUp`); the action name `CriticalTwiceOnEvasionAction`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`: `ApplyDamageOverTime` starts the record when a Poison
+  begins on a creature carrying none of the applier's.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: the new action onto a pool action.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmPoisonAndCritsTests.cpp`, new (8); `CataclysmStatExemptionTests.cpp`
+  (`ProbeScaledDotDamage`, and two declarations ahead of the scaled probe table); `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one, and the action name),
+  `test_every_scaled_stat_has_an_asker.py` (one), `test_passive_rows_carry_the_action_columns.py` (three new, two
+  changed), `test_passive_effects_match_the_node_text.py` and
+  `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (629 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **A FAULT IN SLICE C6a, FOUND HERE AND FIXED: ITS C++ WOULD NOT HAVE COMPILED.** `ProbeScaledProjectileCount` was named
+  in `ScaledProbes()` in `CataclysmStatExemptionTests.cpp` about 1,300 lines before its definition, with no declaration
+  above. Continuous integration compiles no C++ and no window had compiled C6a. Both it and this slice's
+  `ProbeScaledDotDamage` are now declared ahead of the table, and
+  `tools/tests/test_every_scaled_stat_has_an_asker.py::test_every_probe_a_table_names_is_declared_above_the_table`
+  holds every probe table to that, as text.
+- **TWICE ANSWERED, AS RULED (a).** "Each evasion has a 5% chance per point to give you two critical strikes rather than
+  one" is a new action, `next_hit_critical_twice`, on `dodge`, its value the count 2, its chance the Chance Percent
+  column at 5 a point. The generator now accepts Chance Percent on class resource rows and this action, and refuses it
+  everywhere else. The critical strike charge holds a count: a grant sets it to the larger of what it held and 1, or 2
+  when this evasion was doubled, and refreshes the time as before, never reaching 3; a use takes one, and the time is
+  cleared only when none is left. Only an evasion's charge is doubled, so Brim's full bar charge stays at 1. An
+  evasion that grants no charge is given nothing.
+- **THE DOUBLING IS ROLLED BEFORE THE EVENT'S ROWS ACT**, as ruled, so the result is the same whichever of the charge
+  row and the doubling row comes first in the table. The doubling row starts no wait of its own, a judgement: it only
+  changes the charge the same evasion grants, and that charge row keeps its own wait.
+- **THE ROLL IS THE ONE EVERY CHANCE PERCENT ROW MAKES**, pinned by the console variable `Cataclysm.ClassResourceChanceRoll`,
+  which keeps the name slice C6b3 gave it.
+- **FESTERING'S "WITHOUT A BREAK" IS A RECORD ON THE CREATURE**, a judgement on how the sentence is measured: when a
+  Poison of an applier's begins on a creature carrying none of that applier's, the time starts again; a Poison laid while
+  another of the applier's runs continues it; and a creature carrying none of it reads as not poisoned, so a break
+  followed by nothing reads 0 until the next Poison starts the time again. Whole seconds, up to 10, at every 2nd point as
+  the owner's rule for "for every 2 points" writes it: five rows from 2, 4, 6, 8 and 10 points.
+- **`dot_damage` IS NOW A STAT ASKED WITH A SCALE.** Each tick asks it with the creature it lands on and with no target
+  and takes the ratio (`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`); with no target the scale counts none,
+  so the ratio carries the seconds. `ProbeScaledDotDamage` measures that with a real Poison on a real creature.
+
+### What each reads
+
+- **FESTERING (the Shadow, basic, 10 points):** Poison damage (`dot_damage` on `Keyword.DoT.Poison`) 1% increased for
+  each whole second the creature has stayed poisoned by you, at most 10, from each of 2, 4, 6, 8 and 10 points.
+- **TWICE ANSWERED (the Shadow, basic, 8 points):** on each evasion, a 5% chance a point that the critical strike charge
+  the evasion grants holds two.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Festering (Shadow basic) | dot_damage, increased, 1, tags Keyword.DoT.Poison, scale seconds_poisoned_by_you, step 1, at most 10; one from each of 2, 4, 6, 8 and 10 points |
+| Twice Answered (Shadow basic) | next_hit_critical_twice, 2, on dodge, chance 5 |
+
+`PassiveEffects.csv` 623 to 629; the Shadow 119 rows. The pins: rows 629, nodes 374, options 55 (unchanged). The scale
+sources named by a row: 44.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25, on Twice Answered: (a), the new action with the Chance Percent column; the charge
+a count of at most 2, a grant taking the larger, a use taking one; only an evasion doubled; the roll before the rows act;
+and the three tests asked for (two critical strikes then none, a full bar's charge at 1, the table's order reversed).
+
+### Research
+
+None new. The count extends slice C4d1's Chain Execution charge, used up by the hit it makes critical; the Poison
+record copies the shape of Grim Wake's record kept on the creature.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.PoisonAndCrits.` | new: `ADoubledEvasionGivesTwoCriticalStrikesThenNoMore`, `AFullBarsChargeIsNeverDoubled`, `TheTablesOrderDoesNotChangeADoubledEvasion`, `AnEvasionThatGrantsNoChargeIsGivenNothing`, `FesteringTimesAPoisonWithoutABreak`, `FesteringRaisesPoisonDamageBySecondsUpToTen`, `TwiceAnsweredsChanceFollowsThePoints`, `TheTwoNodesRowsAreTheirSentences` | 8 |
+| `Cataclysm.StatExemption.` | the scaled probe runs one new probe, `dot_damage` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 629 | unchanged |
+
+Each new test has a control: the roll failing; an evasion's charge beside the full bar's; a later evasion not doubled; a
+charge granted by nothing; another applier's record; a creature never poisoned; Twice Answered at 1 point.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`ActOnEvent`: `bCriticalStrikesTwice ? 2 : 1` made `bCriticalStrikesTwice ? 1 : 1`. Prefix `Cataclysm.PoisonAndCrits.`;
+must fail `ADoubledEvasionGivesTwoCriticalStrikesThenNoMore`, `AFullBarsChargeIsNeverDoubled` (its control) and
+`TheTablesOrderDoesNotChangeADoubledEvasion`.
+
+### What was run
+
+**The whole Python suite on `7ce475f1a`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8581 passed, 9 skipped in 388.15s
+(0:06:28)". The JUnit file agrees: tests 8591, failures 1, errors 0, skipped 9, so 8581 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run on the working
+tree before the code commit gave the same one failure and nothing else.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+
+**Seven Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`d1a5e818e`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A doubled evasion granting one | `test_charge_and_placed_action_names_match_the_engine.py::test_a_doubled_evasion_and_an_unbroken_poison_are_recorded_and_read` |
+| A grant adding to what is held rather than taking the larger | the same test |
+| Every Poison laid restarting Festering's time | the same test |
+| The record read on a creature no longer carrying the Poison | the same test |
+| Soul Barrage's probe named in the table before any declaration | `test_every_scaled_stat_has_an_asker.py::test_every_probe_a_table_names_is_declared_above_the_table` |
+| A chance accepted on any action | `test_passive_rows_carry_the_action_columns.py::test_a_chance_is_refused_on_a_row_that_does_not_move_the_class_resource`, both cases |
+| Twice Answered's charge holding 3 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — Fervour on evasions and on hits on the strong, a chance on a class resource row, and decay held by who is near (Death trees, slice C6b3)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the base `ECataclysmPoolActionBase::Points`
+  and `FCataclysmPoolAction::ChancePercent`; the conditions `opponent_rarity_at_least`, `enemy_of_rarity_in_reach` and
+  `no_enemy_in_reach`; `FCataclysmBlowContext::OpponentRarityStep`; three state fields.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: `ApplyPoolAction` pays a `points` row's
+  value and sends EVERY class resource gain through `UCataclysmFervour::RaisePool`; `ActOnEvent` and the timed path roll
+  a row's chance first (`PoolActionChanceComesUp`, `Cataclysm.ClassResourceChanceRoll`); `WithEnemiesInReach` keeps
+  each hostile's rung and says when the distances walk was made.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`, `CataclysmVitalAttributeSet.cpp`: the
+  attacker's rung on an incoming hit and its blow context.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: `ChancePercent` on the passive and the enchantment effect rows.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: Fraction Of `points` and the chance onto a pool action.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`: `EnchantmentRowsFor` pays a chance per point, and names a
+  second action row of one node on one action and event `_Row2`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourOnEventsTests.cpp`, new (7); `CataclysmPassiveTreeTests.cpp`
+  (`ComparesNothing`) and `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (two), `test_passive_rows_carry_the_action_columns.py` (seven new, three changed),
+  `test_passive_effects_match_the_node_text.py`, `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` and `test_generate_datatables.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx` (the Passive
+  Effects sheet gains a Chance Percent column), `game/Data/PassiveEffects.csv` (623 rows),
+  `game/Data/EnchantmentEffects.csv` (a ChancePercent column of 0 on every row), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects` and `DT_EnchantmentEffects`, and run the groups under "Unreal tests".
+- **A CHANGE TO ROWS THAT ALREADY SHIP, AS RULED.** The three enchantment rows that grant class resource ("Blocking an
+  attack generates 5-10% of your class resource", "Each skill use generates 1-3% of your maximum class resource", "Strike
+  skills generate 5-10% of your class resource") were paid through `UCataclysmRegeneration::TopUp`, which stops at the
+  maximum ATTRIBUTE and tells nothing that the pool rose. They are now paid as every other class resource gain is:
+  scaled by `class_resource_generation` (unchanged), then `UCataclysmFervour::RaisePool`, which stops at the full bar
+  after reserves (`MaximumClassResourceAsked`) and tells Kindred Fires and Borrowed Time. Their amounts are unchanged.
+  The coordinating session's reason: the War and Death lines bring reserves and the rule that the full bar is the
+  maximum less the reserve, and a gain that filled the reserved share would contradict it.
+- **WAR'S FERVOUR STATS ARE NOT USED, AS RULED (a).** War grants flat Fervour with one stat per event
+  (`fervour_per_hit_dealt` and the rest, in `CataclysmWarFervour.cpp`), read with the event's tags and no target. These
+  three nodes need the target or the attacker, a wait between gains and a chance, which an action row already has. So a
+  flat amount is an action row on `class_resource` with Fraction Of `points`. At the bundle 3 merge the only shared change
+  is the value `points` in `FRACTION_BASES`; nothing here edits `CataclysmWarFervour.cpp`.
+- **TEAR LOOSE IS ROLLED, A NEW COLUMN, AS RULED (b).** "Your hits on an Elite or stronger creature have a 2% chance per
+  point to give you 1 Fervour" is a Chance Percent of 2 a point on a row paying 1. Nothing could roll a chance on a class
+  resource row: `FCataclysmPoolAction` had no chance, and a chance existed only on actions whose value IS the chance. Not
+  (a), paying the average, 0.02 Fervour a point on every hit: the owner's whole-numbers rule outranks it. Not (c), 1
+  Fervour on every 50th hit with a row at each point: whole numbers, but paid in lumps the sentence does not describe, and
+  the Every Nth column does not reach a pool action. An empty cell is every time, so every row written before the column
+  is unchanged, and a test shows one still pays on a roll of 99.
+- **A ROW WITH A CHANCE IS PAID PER POINT IN ITS CHANCE, NOT ITS AMOUNT**, a judgement from the sentence: "a 2% chance
+  per point to give you 1 Fervour" gives 1 at any points. `EnchantmentRowsFor` multiplies the chance by the points and
+  leaves the value alone.
+- **THE ROLL COMES BEFORE THE ROW PAYS AND BEFORE ITS WAIT STARTS.** A failed roll pays nothing and starts no wait. Tear
+  Loose's row keeps the quarter second wait every hit-fired action row gets (`DEFAULT_TRIGGER_COOLDOWN`), after a roll
+  that succeeds.
+- **A SECOND ACTION ROW OF ONE NODE ON ONE ACTION AND EVENT IS NOW ALLOWED UNDER A DIFFERENT CONDITION**, a judgement
+  needed by Opening Found, "generates 1 Fervour per point, or 2 per point if the attacker is Elite or stronger": 1
+  always, and 1 more under `target_rarity_at_least` 1, both on `dodge`. The generator refused it, because the game kept
+  one wait for each node, option, action and event; both rows wait a quarter second after paying, so the second would
+  never have paid. `EnchantmentRowsFor` names the second `_Row2`, as slice C6a named a stepped row `_From<N>`. Two rows
+  under the same conditions are still refused.
+- **"DOES NOT DECAY" AND "DOES NOT DRAIN" ARE REMOVALS OF THE KILL DECAY**, `removed` while the condition holds, as
+  the Ritualist's mana cost is removed while stationary. A Less multiplier stops at 99%, so it would leave a hundredth.
+- **FOUR FAULTS FOUND BEFORE THE COMMIT, AND FIXED.**
+  (1) Opening Found's two rows were refused, as described above.
+  (2) `tools/tests/test_csv_columns_match_their_row_structs.py` refused a property of the enchantment row struct that
+  its table did not write. So the generator writes the column, 0 on every enchantment row, rather than marking the
+  property optional and leaving the check without anything to check.
+  (3) The whole suite: `opponent_rarity_at_least` was not in `CONDITIONS_OF_A_BLOW_TAKEN`, which
+  `tools/tests/test_every_conditioned_stat_has_an_asker.py` requires of every condition about a blow taken.
+  (4) The whole suite: `tools/tests/test_generate_datatables.py`'s expected enchantment row lacked the new column.
+
+### What each reads
+
+- **OPENING FOUND (the Shadow, basic):** on `dodge`, 1 Fervour a point, and a second row paying 1 more a point when the
+  attacker (the event's character) is Elite or stronger.
+- **REAPER'S DUE (the Soul Collector's 25 vow, option 2):** on `hit_dealt`, 5 Fervour on a hit on a Boss, waiting 0.5
+  seconds after each ("at most twice a second"); and the kill decay removed while a creature of rung 4 (Boss) or above is
+  within 15 metres.
+- **TEAR LOOSE (the Soul Collector, basic):** on `hit_dealt`, 1 Fervour on a 2% chance a point, on a hit on an Elite or
+  stronger creature.
+- **READ THE BLOW (the Shadow, basic):** evasion flat 1 a point under `opponent_rarity_at_least` 1: the attacker of the
+  blow being evaded, which the evasion roll's lookup already hands over as its blow.
+- **HUNTING GROUND (the Shadow, keystone):** the kill decay removed under `no_enemy_in_reach`, reach 20 metres. "No
+  enemy" holds only when the distances walk was made, since an empty list is also what a lookup that walked nothing
+  holds.
+- **VIGIL OVER THE STRONG (the Soul Collector, basic):** the kill decay 5% slower a point (increased, -5) under
+  `enemy_of_rarity_in_reach` 1, reach 15 metres.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Opening Found (Shadow basic) | class_resource, points, 1, on dodge; the same under target_rarity_at_least 1 |
+| Reaper's Due (Soul Collector 25 vow, option 2) | class_resource, points, 5, on hit_dealt, cond=target_is_boss, trigger cooldown 0.5; fervour_kill_decay_per_second, removed, cond=enemy_of_rarity_in_reach 4, reach 15 |
+| Tear Loose (Soul Collector basic) | class_resource, points, 1, on hit_dealt, cond=target_rarity_at_least 1, chance 2 |
+| Read the Blow (Shadow basic) | evasion, flat, 1, cond=opponent_rarity_at_least 1 |
+| Hunting Ground (Shadow keystone) | fervour_kill_decay_per_second, removed, cond=no_enemy_in_reach, reach 20 |
+| Vigil Over the Strong (Soul Collector basic) | fervour_kill_decay_per_second, increased, -5, cond=enemy_of_rarity_in_reach 1, reach 15 |
+
+`PassiveEffects.csv` 615 to 623; the Shadow 113 rows, the Soul Collector 127. The pins: rows 623, nodes 372, options 55.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25: (1) the flat Fervour form, (a) action rows with Fraction Of `points`, War
+keeping its stats and nothing from the Death line editing `CataclysmWarFervour.cpp`, on the condition that a `points`
+gain is scaled by `class_resource_generation` and stops at the full bar after reserves; (2) Tear Loose, (b) the Chance
+Percent column, read by class resource rows only, refused elsewhere and outside 0 to 100, rolled on a pinnable roll;
+(3) the three enchantment rows that grant class resource moved onto the same path, amounts unchanged.
+
+### Research
+
+None new. The roll copies the shape every chance in `ActOnEvent` has (issue #2201); the rung walk copies the crippled
+walk (issue #1515).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourOnEvents.` | new: `APointsRowPaysItsValueScaledByGeneration`, `AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt`, `AChanceRowPaysOnARollUnderItAndWaitsOnlyAfterItPays`, `TheRungAndReachConditionsJudgeTheirState`, `VigilAndHuntingGroundReadARealWalk`, `OpeningFoundsSecondRowAndTearLoosesChanceAreCopiedApart`, `TheSixNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.Passives.` | `ComparesNothing` names `no_enemy_in_reach` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 623 | unchanged |
+
+Each new test has a control: the normal generation; the hold before the row; a roll equal to the chance, and a row with
+no chance; a Common, a far Elite and nobody walked; a Common creature near; Tear Loose at 1 point.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`ApplyPoolAction`: `if (Amount > 0.0f && Action.Pool == ClassResourcePoolName)` made
+`if (Amount > 0.0f && Action.Pool == NAME_None)`, so a class resource gain goes through `TopUp` again. Prefix
+`Cataclysm.FervourOnEvents.`; must fail `AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt` (stored 100, and decay
+not held).
+
+### What was run
+
+**The whole Python suite on `069552203`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8576 passed, 9 skipped in 390.37s
+(0:06:30)". The JUnit file agrees: tests 8586, failures 1, errors 0, skipped 9, so 8576 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`, `DT_EnchantmentEffects` and the other tables it names.
+The run before, on the working tree, also failed the check that every condition is named in this log, which this entry
+satisfies, and faults (3) and (4) under "Said first", fixed before the commit.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Eight Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`596ffc027`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A `points` row paying a share of a base rather than its value | `test_charge_and_placed_action_names_match_the_engine.py::test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is` |
+| A class resource gain paid through `TopUp` again | the same test |
+| A roll equal to the chance passing | the same test |
+| A chance row's amount multiplied by the points as well | the same test |
+| No enemy in reach holding when nobody walked | `test_charge_and_placed_action_names_match_the_engine.py::test_the_attackers_rung_and_the_enemies_near_are_filled_and_judged` |
+| A chance accepted on a row that does not move the class resource | `test_passive_rows_carry_the_action_columns.py::test_a_chance_is_refused_on_a_row_that_does_not_move_the_class_resource`, both cases (an action, a stat row) |
+| Two action rows of one node under the same conditions accepted | `test_passive_rows_carry_the_action_columns.py::test_two_rows_of_one_node_sharing_an_action_and_event_are_refused` and `::test_two_steps_of_one_node_at_different_thresholds_may_share_an_action_and_event` |
+| Read the Blow against every attacker, rung 0 rather than 1 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+---
+
+## 2026-11-25 — The movement skill's two clocks: Arrival and Glancing Cuts (Death trees, slice C6b2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions
+  `seconds_after_movement_skill_ends` and `target_struck_by_your_movement_skill_within_seconds`, and two state fields.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteMovementSkillEnded` (which
+  raises the action event `movement_skill_ends`), `SecondsSinceMovementSkillEnded`, `NoteStruckByMovementSkillOf` and
+  `SecondsSinceStruckByMovementSkillOf`; `CurrentConditions` and `WithTargetState` fill the new fields, with a new flag
+  in both of `WithTargetState`'s flag lists.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`: `UCataclysmMovementSkill` marks a use
+  that was paid for, and its `EndAbility` notes the end.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`: `ApplyHit` records a landed blow of a skill made
+  for the Movement slot on the creature struck.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmMovementClocksTests.cpp`, new (5); `CataclysmDataTableTests.cpp`; `tools/tests/test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (one exception);
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one) and
+  `test_passive_effects_match_the_node_text.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (615 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **THE END IS COUNTED ONLY FOR A USE THAT WAS PAID FOR, AND ONLY FOR A SKILL MADE FOR THE MOVEMENT SLOT**, a judgement:
+  a Recall's first press leaves a mark and moves nobody, and a use refused before it was paid moved nobody, so neither
+  "ends" as a movement; and the slot is the one the use's clock (`NoteMovementSkillUsed`) already asks. **A MOVE CUT
+  SHORT DOES COUNT**, a judgement from "after your movement skill ends": it has ended, even though it does none of its
+  arrival effects.
+- **GLANCING CUTS' RECORD IS WRITTEN IN `ApplyHit`, SO EVERY BLOW OF THE MOVEMENT SKILL COUNTS**: its own blow, the path
+  damage a row gives a charge, and the explosions at both ends. Only a blow that landed: not an evaded blow, not one
+  refused as immune to its attacker, not a share struck at an ally, not a tick. **THE BLOW THAT MAKES THE RECORD DOES NOT
+  READ IT**, because the record is written after the blow's damage: "take ... for 4 seconds" is read as what follows the
+  hit, a judgement.
+- **A NEW ACTION EVENT, `movement_skill_ends`**, because every `seconds_after_<event>` clock names an event a row may
+  hang on, and `tools/tests/test_pool_action_names_match_the_engine.py` holds the generator's events to the ones the
+  game raises. No row uses it yet.
+- **ONE FAULT FOUND BY THE WHOLE SUITE BEFORE THE COMMIT, AND FIXED.** Glancing Cuts' words, "your movement skill hits",
+  are also in Through and Through's sentence ("Each enemy your movement skill hits generates 1 Fervour"), so
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` asked its rows for the new condition. Its rows carry
+  those words another way, the required tag `Slot.Movement` on `fervour_per_enemy_hit`, paid at the hit, and that test's
+  `EXPRESSED_ANOTHER_WAY` now says so.
+
+### What each reads
+
+- **ARRIVAL (the Shadow, basic):** attack and spell damage increased 3 a point under
+  `seconds_after_movement_skill_ends` 1: the movement skill ended at most 1 second ago, inclusive, as every clock is.
+- **GLANCING CUTS (the Shadow, basic):** attack and spell damage increased 2 a point under
+  `target_struck_by_your_movement_skill_within_seconds` 4: the asker's movement skill landed a blow on the creature
+  asked about at most 4 seconds ago. A record kept on the creature and keyed by the striker, as Grim Wake's is.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Arrival (Shadow basic) | attack_damage and spell_damage, increased, 3, cond=seconds_after_movement_skill_ends 1 |
+| Glancing Cuts (Shadow basic) | attack_damage and spell_damage, increased, 2, cond=target_struck_by_your_movement_skill_within_seconds 4 |
+
+`PassiveEffects.csv` 611 to 615; the Shadow 109 rows. The pins: rows 615, nodes 367, options 54 (unchanged).
+
+### Rulings recorded here
+
+None new: the C6 plan's rulings are recorded in the slice C6a entry.
+
+### Research
+
+None new. Both clocks copy shapes already in the game: the use's clock (`seconds_after_movement_skill`) and Grim Wake's
+record kept on the creature marked.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.MovementClocks.` | new: `ArrivalCountsFromTheEndOfTheMoveAndNotItsUse`, `ARealBlinkInTheMovementSlotNotesItsEnd`, `AMovementSkillsLandedBlowMarksWhatItStruck`, `GlancingCutsHoldsForFourSecondsAgainstWhatYourMoveStruck`, `TheTwoNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 615 | unchanged |
+
+Each new test has a control: a use alone, and 1.5 seconds after; the same blink granted in the Special slot; a blow of a
+Special slot skill, and another striker's record; a creature never struck, one struck by another's movement skill, and
+4.5 seconds after.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmSkillEffects.cpp`, `ApplyHit`:
+`&& DeliveredBy && DeliveredBy->GetDesignedSlot() == ECataclysmAbilitySlot::Movement)` made `&& DeliveredBy)`, so any
+skill's landed blow marks what it struck. Prefix `Cataclysm.MovementClocks.`; must fail
+`AMovementSkillsLandedBlowMarksWhatItStruck` (the Special slot's blow then marks its creature).
+
+### What was run
+
+**The whole Python suite on `059b7d658`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8565 passed, 9 skipped in 471.99s
+(0:07:51)". The JUnit file agrees: tests 8575, failures 1, errors 0, skipped 9, so 8565 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the
+sentence check described under "Said first", fixed before the commit.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`36e93c625`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A paid use no longer marked, so its end is never noted | `test_charge_and_placed_action_names_match_the_engine.py::test_the_movement_skills_end_and_its_struck_enemies_are_recorded_and_judged` |
+| Any skill's landed blow marks what it struck, not only a Movement slot skill's | the same test |
+| The end's clock made exclusive | the same test |
+| The event `movement_skill_ends` never raised | `test_pool_action_names_match_the_engine.py::test_every_event_a_row_may_hang_on_is_one_the_game_fires` |
+| Arrival's window 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Glancing Cuts on the use's clock rather than its own record | the same test |
+
+---
+
+## 2026-11-25 — Facts of the target of a hit: From Behind, Opening Strike, Venomed Prey and Hit and Run (Death trees, slice C6b1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions `target_struck_from_behind`,
+  `target_at_full_health`, `target_carries_your_poison` and `target_beyond_metres`, and two state fields.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `SetStrikingFromBehindByRule`,
+  `IsStrikingFromBehindByRule`; `WithTargetState` fills the new fields, with a new flag in both of its flag lists.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `CarriesPoisonLaidBy`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`: a `RearHits=1` strike marks its striker around the
+  hit.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmHitTargetFactsTests.cpp`, new (5); `CataclysmPassiveTreeTests.cpp`
+  (`ComparesNothing`) and `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (one), `test_passive_effects_match_the_node_text.py` and
+  `test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (reads the second condition column).
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (611 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **SLICE C6b IS BUILT IN THREE PARTS**, this being the first: the facts of a hit's target. C6b2 is the movement skill's
+  clocks (Arrival, Glancing Cuts); C6b3 the Fervour from evasions and Bosses with the `points` base (Opening Found,
+  Reaper's Due, Tear Loose, Read the Blow, Hunting Ground, Vigil Over the Strong). Festering's per-second scale and
+  Twice Answered's two charges go where their pieces fit.
+- **OPENING STRIKE'S "IS A CRITICAL STRIKE" IS A CHANCE OF 100, HELD UNDER THE CEILING**, as Overpowered's was ruled
+  (C4d3, W2), a judgement: unlike Chain Execution's charge, which the coordinating session ruled certain, its sentence
+  names a hit by its state rather than a charge.
+- **"FROM BEHIND" IS JUDGED WHERE THE STAT IS ASKED**, by `UCataclysmSkillEffects::IsBehind` (the target's facing, the
+  same 90 degree arc every rear-hit skill uses), or by a mark a `RearHits=1` skill sets on its striker around its hit in
+  `UCataclysmSkillTemplate`. A projectile or a buried weapon has no `RearHits` rule today, so only the geometry
+  applies to them.
+- **TWO FAULTS FOUND BY THE WHOLE SUITE BEFORE THE COMMIT, AND FIXED.** (1) Comment lines I had put between `case`
+  labels in `WhatConditionDependsOn` split three label groups; `test_a_minion_row_asks_only_what_its_read_can_answer.py`
+  reads each run of labels up to its `return`, so it read them as shorter. The comments are moved above the groups,
+  with a note saying why. (2) `test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` read only the first
+  condition column, so `target_at_full_health`, which Opening Strike names as its second condition, read as unreached.
+  The check now reads both columns, which is what play reaches.
+- **HIT AND RUN IS JUDGED AT EACH TICK**, a judgement from "which a bleeding enemy is while it chases you": a Bleed tick
+  carries its distance from its applier, which the per-tick `dot_damage` lookup already hands over.
+
+### What each reads
+
+- **FROM BEHIND:** crit chance increased 3 a point under `target_struck_from_behind`.
+- **OPENING STRIKE (the Shadow's 25 vow, option 1):** crit chance flat 100 and attack and spell damage 50% more, each
+  under `target_not_yet_struck_by_you` and, as its second condition, `target_at_full_health`, which reads the health
+  share `target_health_below` reads.
+- **VENOMED PREY:** attack and spell damage increased 2 a point under `target_carries_your_poison`, a Poison the asker
+  laid (`UCataclysmDebuffs::CarriesPoisonLaidBy`), a Bleed alone not counting.
+- **HIT AND RUN:** `dot_damage` increased 3 a point on `Keyword.DoT.Bleed` under `target_beyond_metres` 4, strictly more
+  than, reading the distance `target_within_metres` reads.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| From Behind (Shadow basic, max 8) | crit_chance, increased, 3, cond=target_struck_from_behind |
+| Opening Strike (Shadow 25 vow, option 1) | crit_chance, flat, 100; attack_damage and spell_damage, more, 50; each cond=target_not_yet_struck_by_you, cond2=target_at_full_health |
+| Venomed Prey (Shadow basic) | attack_damage and spell_damage, increased, 2, cond=target_carries_your_poison |
+| Hit and Run (Shadow basic) | dot_damage, increased, 3, tags Keyword.DoT.Bleed, cond=target_beyond_metres 4 |
+
+`PassiveEffects.csv` 604 to 611; the Shadow 105 rows. The pins: rows 611, nodes 365, options 54. The node-text test's
+words for `target_not_yet_struck_by_you` now also accept "your first hit on an enemy".
+
+### Rulings recorded here
+
+None new: the C6 plan's rulings are recorded in the slice C6a entry.
+
+### Research
+
+None new. From Behind reuses the rear arc the dagger skills' `RearHits` and `IsBehind` already use.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.HitTargetFacts.` | new: `FromBehindHoldsInTheRearArcAndForARearHitsSkill`, `OpeningStrikeHoldsOnAFirstHitOnACreatureAtFullHealth`, `VenomedPreyCountsYourPoisonAndNotYourBleed`, `HitAndRunHoldsStrictlyBeyondFourMetres`, `TheFourNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.Passives.` | `ComparesNothing` names the three new no-value conditions | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 611 | unchanged |
+
+Each new test has a control: an asker in front, and the mark cleared; a creature at 999 of 1,000 and one already struck;
+your Bleed and another character's Poison; exactly 4 metres, 3 metres and an unknown distance.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`WithTargetState`: the line `|| UCataclysmSkillEffects::IsBehind(State.AskingAbilitySystem->GetAvatarActor(), Target);`
+removed, so only the mark counts. Prefix `Cataclysm.HitTargetFacts.`; must fail
+`FromBehindHoldsInTheRearArcAndForARearHitsSkill` (10 behind).
+
+### What was run
+
+**The whole Python suite on `e6ac4eb7c`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8564 passed, 9 skipped in 500.20s
+(0:08:20)". The JUnit file agrees: tests 8574, failures 1, errors 0, skipped 9, so 8564 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the two
+checks described under "Said first", fixed before the commit.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`a87eae3d0`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A `RearHits=1` strike no longer marking its striker | `test_charge_and_placed_action_names_match_the_engine.py::test_the_four_facts_of_a_hits_target_are_filled_and_judged` |
+| From behind judged by the striker's mark alone, no geometry | the same test |
+| Full health read as above half | the same test |
+| Beyond metres made inclusive | the same test |
+| Venomed Prey asking Poison or Bleed | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Hit and Run beyond 5 metres rather than 4 | the same test |
+
+---
+
+## 2026-11-25 — Evasions and a full bar that speed the next thing, and four nodes that are data alone (Death trees, slice C6a)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `CooldownReduceMovementAction`,
+  `FervourHoldExtendedAction`; `ActOnEvent` grants the next-hit charge "until used" at a value of 0 and lengthens a
+  running hold; `ReduceCooldowns` takes the movement skill's cooldown; `CurrentConditions` fills the new state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `next_hit_is_critical`
+  (`NextHitIsCritical`) and its state field; `FCataclysmPoolAction::bExtendFervourHold`.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`: an action row granted from a point threshold is named
+  apart (`_From<N>`), so each step holds its own keys.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmEvadeAndFullTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (a
+  scaled probe for `projectile_count`), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and
+  `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two, the name
+  map, and the Chain Execution test widened), `test_generate_datatables.py` (a class of nine, and the C4d1 class's
+  limits moved), `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (an exception) and
+  `test_passive_effects_match_the_node_text.py` and `test_passive_rows_carry_the_action_columns.py` (one).
+- `tools/generate_datatables.py` (the two actions, the condition, `projectile_count` asked under a scale, and the
+  required tags and a stepped row's threshold in two duplicate keys), `tools/reapply_death_trees_workbook.py`,
+  `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (604 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **BRIM'S CHARGE LASTS UNTIL IT IS USED**, a judgement: its sentence, "your next hit is a critical strike", states no
+  time. A `next_hit_critical` value of 0 now means "until used"; every other row states its seconds. The generator
+  accepts 0 to 10 seconds where it accepted above 0.
+- **BRIM'S +5% DAMAGE HOLDS WHILE ANY NEXT-HIT CHARGE IS HELD**, Chain Execution's or Slip's included, a judgement: the
+  condition reads the one charge a character holds, which the three nodes share.
+- **THE MOVEMENT SKILL'S COOLDOWN CUT IS SHOWN BY READING THE CODE AND A PYTHON TEST, NOT IN UNREAL.** No Unreal test in
+  this slice grants a real movement skill and runs its cooldown, as with Relentless in slice C4d1. The Unreal tests show
+  the stepped rows each keyed apart and each worth 1 second.
+- **KEEP THE COUNT LENGTHENS A RUNNING HOLD ONLY**, as Borrowed Time's does (ruled for slice C4b1): an evasion after the
+  decay has begun adds nothing.
+- **A FAULT FOUND AND FIXED IN THIS SLICE, BEFORE IT WAS COMMITTED.** Widening the generator's "one row per node,
+  option, action and event" key to five columns left its error message unpacking four, so a real duplicate would have
+  raised `ValueError` rather than the check's own message. The whole suite caught it
+  (`test_passive_rows_carry_the_action_columns.py::test_two_rows_of_one_node_sharing_an_action_and_event_are_refused`);
+  the message now names the threshold too, and a new test holds that two steps at different thresholds are accepted
+  and the same two at one threshold are refused.
+- **TWO DUPLICATE CHECKS NOW READ MORE COLUMNS.** The generator's "same stat twice on one node" key, and the Python test
+  holding the same key, now include the required tags, because a row requires every tag it names: Lasting Wounds is
+  one `dot_duration` row for Poison and one for Bleed. The generator's "one row per node, option, action and event" key
+  now includes the point threshold, matching the engine's new naming.
+
+### What each reads
+
+- **SLIP AND BRIM:** `next_hit_critical`, Chain Execution's action of slice C4d1, now also on `dodge` (Slip, 3 seconds,
+  "After you evade a hit, your next hit within 3 seconds") and on `resource_full` (Brim, 0, until used). Brim's "+5%
+  increased damage per point" is attack and spell damage under the new no-value condition `next_hit_is_critical`,
+  which reads `HoldsNextHitCritical`.
+- **FIND THE RHYTHM AND SIDESTEP:** a new cooldown reduction, `cooldown_reduce_movement`, taking seconds off the movement
+  skill's running cooldown (`ReduceCooldowns`, beside the Heavy skill's). Find the Rhythm: 1 second on
+  `critical_strike` under `target_is_boss`, a row at 4 points and one at 8. Sidestep: 1 second on `dodge`, a row at 5
+  points and one at 10.
+- **KEEP THE COUNT:** a new action, `fervour_hold_extended`, on `dodge` only: a running hold before the decay lengthened
+  by its seconds, never past the hold's full length (`ExtendKillDecayHold`, Borrowed Time's). 1 second, a row at 3
+  points and one at 6.
+- **STEPPED ACTION ROWS:** "1 second for every 4 points" is a row at each step, as stat rows have been. An action row's
+  trigger, reset and charge keys begin with its enchantment name, so two steps of one node would have shared one key and
+  the second would never act; `EnchantmentRowsFor` now names an action row with a point threshold
+  `Passive_<node>_From<N>`. No existing action row had a threshold, so nothing already built is renamed; stat rows are
+  not renamed.
+- **THE FOUR DATA-ONLY NODES:** Soul Barrage (`projectile_count` flat 1 by `class_resource_held`, step 10, the Soul
+  Collector's 200 vow, option 3; `projectile_count` is now registered as asked under a scale, with a probe); Lasting
+  Wounds (`dot_duration` increased 4 for Poison and for Bleed); Twin Step (`skill_charges_bonus` flat 1 on
+  `Slot.Movement`; a reset already refills every charge); Riposte (`strike_target` 100 on `dodge`, melee only, the basic
+  attack's stand-in, as ruled).
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Brim (Shadow basic, max 6) | action next_hit_critical, 0, on resource_full; attack_damage and spell_damage, increased, 5, cond=next_hit_is_critical |
+| Slip (Shadow basic, max 1) | action next_hit_critical, 3, on dodge |
+| Find the Rhythm (Shadow basic, max 8) | action cooldown_reduce_movement, 1, on critical_strike, cond=target_is_boss, min_points 4; the same at 8 |
+| Sidestep (Shadow keystone, max 10) | action cooldown_reduce_movement, 1, on dodge, min_points 5; the same at 10 |
+| Keep the Count (Shadow basic, max 6) | action fervour_hold_extended, 1, on dodge, min_points 3; the same at 6 |
+| Soul Barrage (Soul Collector 200 vow, option 3) | projectile_count, flat, 1, scale class_resource_held, step 10 |
+| Lasting Wounds (Shadow basic, max 6) | dot_duration, increased, 4, tags Keyword.DoT.Poison; the same with Keyword.DoT.Bleed |
+| Twin Step (Shadow keystone) | skill_charges_bonus, flat, 1, tags Slot.Movement |
+| Riposte (Shadow keystone) | action strike_target, 100, on dodge, tags Type.Melee |
+
+`PassiveEffects.csv` 589 to 604; the Shadow 98 rows, the Soul Collector 123. The pins: rows 604, nodes 362, options 53.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C6 plan: C1, the order C6a to C6e now and C5, the Death-skills
+nodes (the Abomination included) and the Soul Fuel group after bundle 3; C2, nine of the fourteen new mechanisms in scope
+and five as backlog issues, filed as #2906 Afterimage, #2907 Shadow Clone, #2908 Spirit Volley, #2909 Shadow Step and
+#2910 Shared Flesh; C3, the vow headers need no rows; C4, Riposte as `strike_target` on `dodge`, melee only, 100% attack
+damage, the basic attack's stand-in; C5, a `points` Fraction Of base for flat Fervour (slice C6b); C6, whatever of C6a
+to C6e is pushed with a clean Python run before bundle 3 registers joins it.
+
+### Research
+
+None new. Each shape is the node's own sentence on pieces already built and researched: the next-hit charge (slice C4d1,
+Path of Exile's Ambush), the hold before decay (slice C4b1), the cooldown cut (issue #1833).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.EvadeAndFull.` | new: `SlipAndBrimGrantTheChargeOnAnEvasionAndAFullBar`, `BrimsDamageHoldsOnlyWhileTheChargeIsHeld`, `KeepTheCountLengthensARunningHoldOnAnEvasion`, `AStepAtEachThresholdIsItsOwnRowWithItsOwnName`, `TheNineNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.StatExemption.` | the scaled probe runs one new probe, `projectile_count` | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 604 | unchanged |
+
+Each new test has a control: a character with neither row; the damage before and after the charge; the same kill and
+evasion without Keep the Count's row; Brim's action keeping the node's name, and the step at 8 absent at 5 points.
+
+**One C++ guard proof is registered for the window**, as the coordinating session's bundling ruling sets (one per slice
+that changes engine code): `CataclysmPassiveTree.cpp`, `EnchantmentRowsFor`: the line
+`Row.Enchantment += FString::Printf(TEXT("_From%d"), Effect.MinPoints);` removed. Prefix `Cataclysm.EvadeAndFull.`;
+must fail `AStepAtEachThresholdIsItsOwnRowWithItsOwnName`.
+
+### What was run
+
+**The whole Python suite on `ea5597e56`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8563 passed, 9 skipped in 435.58s
+(0:07:15)". The JUnit file agrees: tests 8573, failures 1, errors 0, skipped 9, so 8563 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the
+refusal test whose `ValueError` is described under "Said first", fixed before the commit.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`f9b8f23c8`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A stepped action row keeping the node's own name | `test_charge_and_placed_action_names_match_the_engine.py::test_a_stepped_action_row_is_keyed_apart_in_the_engine_and_the_generator` |
+| The movement skill's cooldown left out of the cut | `test_charge_and_placed_action_names_match_the_engine.py::test_the_movement_cut_the_longer_hold_and_brims_condition_are_wired` |
+| An evasion no longer lengthening the hold | the same test |
+| The next-hit charge granted on a kill only again | `test_generate_datatables.py::TestDeathTreeC6aActions::test_the_next_hit_charge_on_an_evasion_or_a_full_bar_is_carried_through[dodge]`, `[resource_full]`, and `test_a_charge_of_nought_seconds_until_used_is_carried_through` |
+| Brim's condition never filled | `test_charge_and_placed_action_names_match_the_engine.py::test_the_movement_cut_the_longer_hold_and_brims_condition_are_wired` |
+| Slip's charge at 4 seconds rather than 3 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — Wearer of the Dead lends an Elite's modifiers for 20 seconds (Death trees, slice C4d3)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `WornEnemyModifierRows`,
+  `WornEnemyModifierPlace`, `WornEnemyModifierSeconds`, `WearTheModifiersOf`, `WornModifiersLine`; `CreditAFollowersKill`
+  and `CreditAKillWithoutADeath` call the wearing.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteWornEnemyModifier`,
+  `WornEnemyModifierSecondsLeft`, `WornEnemyModifierPlacesNow`, `HoldsARowWearing`; `CurrentConditions` fills the new
+  state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `wearing_enemy_modifier`
+  (`WearingEnemyModifier`) and its state field, `WornEnemyModifierPlaces`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler calls the wearing.
+- `game/Source/Cataclysm/Interface/CataclysmHUD.cpp`: the worn modifiers' line above the skill bar.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmWornModifiersTests.cpp`, new (4); `CataclysmStatExemptionTests.cpp` (a
+  conditioned probe for `max_health`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two),
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (an exception),
+  `test_every_conditioned_stat_has_an_asker.py` and `test_passive_effects_match_the_node_text.py`.
+- `tools/generate_datatables.py` (`WORN_ENEMY_MODIFIERS`, the condition, `max_health` asked under a condition),
+  `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (589 rows),
+  `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **FIVE OF THE 80 ENEMY MODIFIERS ARE WORN TODAY.** The rest are issue #2899's, below.
+- **A WORN MAXIMUM HEALTH ENDS AT THE NEXT REGENERATION STEP**, not on the exact second: maximum health is an attribute,
+  written by `RefreshLiveMaximumHealth`, which runs when a modifier is worn and on each regeneration step for a line
+  whose rows move with state. Every other worn stat is asked through the pipeline when it is used, and ends on the
+  second.
+- **`max_health` IS NOW A STAT THE GENERATOR ACCEPTS UNDER A CONDITION**, with a probe, because `RefreshLiveMaximumHealth`
+  asks its whole line with the character's state. Before this slice it was refused under any condition.
+
+### The owner's ruling, verbatim (2026-11-25, relayed by the coordinating session)
+
+"yeah go with your recommendation. Everything that isn't a new ability that would require a button push should work for
+a player. Even the random teleport, poe does this as well and it's fine."
+
+So this slice builds the recommendation, and issue #2899 carries the rest: every enemy modifier is to be built so that
+it works on any wearer, the existing enemy-only ones converted (Phasewalker's random teleport included), with only
+Inferno Charge, a button ability, left out; each joins the worn list as it is built.
+
+### What it reads
+
+- **THE WORN LIST (W1):** `UCataclysmFervour::WornEnemyModifierRows` in the engine and `WORN_ENEMY_MODIFIERS` in the
+  generator, the same five names in the same order, which a Python test holds equal: Titanic Resolve, Overpowered,
+  Bloodthirsty, Unyielding, Relentless. These are the five built modifiers that are a plain number on a player stat.
+- **TO ADD ONE**, for issue #2899 and for each modifier built after: append its row name to both lists, and give the vow
+  a row under `wearing_enemy_modifier` at the new place. The condition's upper bound is set from the list's length, the
+  state holds a list of places rather than bits (so the list may grow past 31), and the node-text test lists the places
+  from the generator's list. Never reorder: a row's place is written in the data. The first expected source is the
+  branch `feat/death-war-enemy-modifiers`, which builds 11 Death and 8 War enemy modifiers; its plain-number ones join
+  when it lands.
+- **THE CONDITION (W6):** `wearing_enemy_modifier`, whose value is a place in the list, counted from 1, holds while the
+  character's record of that place is live. It runs out with time and nothing announces it, so it is classed with the
+  kill's clock.
+- **THE RECORD (W3 to W5):** at a kill of a creature at rarity rung 1 or more, bosses included (W4), the kill handler,
+  `CreditAFollowersKill` (a follower's kill Death's Toll makes the character's, W5) and `CreditAKillWithoutADeath` each
+  call `WearTheModifiersOf`, which records each of the slain creature's modifiers that has a place and that the character
+  holds a row for, worn for 20 seconds. A second record of the same place sets it to the full 20 again and never stacks
+  (W3). A character without the vow holds no such row, so records nothing and shows nothing.
+- **OVERPOWERED (W2):** `crit_chance` flat 100, a chance held under the player's ceiling, unlike Chain Execution's
+  certain critical strike.
+- **THE LINE ABOVE THE SKILL BAR (W6):** "Worn: Overpowered 20s", each worn modifier by its row's name less its
+  Cataclysm, with its whole seconds left; empty when none is worn.
+
+### The rows
+
+| Place | Modifier | Row on the Soul Collector's 200 vow, option 1 |
+|---|---|---|
+| 1 | Generic_Titanic_Resolve, 50% more health | max_health, more, 50 |
+| 2 | Generic_Overpowered, always crits | crit_chance, flat, 100 |
+| 3 | Generic_Bloodthirsty, heals 10% of damage dealt | life_leech, flat, 10 |
+| 4 | Generic_Unyielding, immune to crowd control | crowd_control_resistance, flat, 100 |
+| 5 | Generic_Relentless, 2% of maximum health a second | health_regen, flat, 2 |
+
+Each row is under `wearing_enemy_modifier` at its place. `PassiveEffects.csv` 584 to 589; the Soul Collector 122 rows.
+The pins: rows 589, options 52.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the classification table: W1, the five; W2, a chance under the
+ceiling; W3, a fresh 20 seconds and no stacking; W4, rung 1 and up, bosses included; W5, a follower's kill under Death's
+Toll lends too; W6, the condition, the record and the line as described. The owner's ruling above, and issue #2899.
+
+### Research
+
+None new. The shape comes from the node's sentence, the rulings and the owner's ruling, which names Path of Exile as
+doing the same for the random teleport; no page was read for this slice.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.WornModifiers.` | new: `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn`, `TitanicResolveRaisesMaximumHealthAtOnceAndTheStepAfterTwentySecondsLowersIt`, `ARealPlayersKillOfAnEliteLendsItsModifierThroughTheKillHandler`, `TheVowsFiveRowsAreTheModifiersTheyCopy` | 4 |
+| `Cataclysm.StatExemption.` | the conditioned probe runs one new probe, `max_health` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 589 | unchanged |
+
+The one through the real kill handler builds the scene `Cataclysm.Swarm.` builds. Each new test has a control: a
+Common creature carrying a worn modifier, a character with no worn row, a modifier the creature does not carry, one with
+no place; a regeneration step before the kill; a Common creature's kill through the real handler.
+
+**One C++ guard proof is registered for the window**, as the coordinating session chose under its bundling ruling (one
+per slice that changes engine code): the first below, the one guarding the slice's central rule. The second and third
+were offered and are DROPPED; they are kept here so a later window can run them if it wants to.
+1. `CataclysmStatPipeline.cpp`, `ConditionHolds`: `State.WornEnemyModifierPlaces.Contains(Place)` becomes `true`. Prefix
+   `Cataclysm.WornModifiers.`; must fail `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn` (105 before
+   the kill).
+2. DROPPED. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Wearer->RefreshLiveMaximumHealth();` removed. Prefix
+   `Cataclysm.WornModifiers.`; must fail `TitanicResolveRaisesMaximumHealthAtOnceAndTheStepAfterTwentySecondsLowersIt`
+   (1,000 at the kill).
+3. DROPPED. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Creature->RarityStep < 1` becomes `Creature->RarityStep < 0`. Prefix
+   `Cataclysm.WornModifiers.`; must fail `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn` (the Common
+   creature lends).
+
+### What was run
+
+**The whole Python suite on `4a17b306c`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8551 passed, 9 skipped in 498.80s
+(0:08:18)". The JUnit file agrees: tests 8561, failures 1, errors 0, skipped 9, so 8551 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`25e02a4e8`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The engine's worn list in another order than the generator's | `test_charge_and_placed_action_names_match_the_engine.py::test_the_worn_enemy_modifiers_are_one_list_in_the_generator_and_the_engine` |
+| A Common creature lending its modifiers | `test_charge_and_placed_action_names_match_the_engine.py::test_wearer_of_the_dead_records_an_elite_or_strongers_modifiers_at_every_kind_of_kill` |
+| A follower's kill under Death's Toll lending nothing | the same test |
+| The condition's upper bound no longer following the list | `test_charge_and_placed_action_names_match_the_engine.py::test_the_worn_enemy_modifiers_are_one_list_in_the_generator_and_the_engine` |
+| Overpowered's row at Bloodthirsty's place | the same test |
+| Relentless worn at 3% rather than 2% | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — A Boss fight fills the bar without kills: Patient Blade and Death by Inches (Death trees, slice C4d2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `BossTicksPayAKillEverySecondsStat`,
+  `BossHitsCountedAsAKillEveryStat`, `PayForABossTick`, `CountAHitOnABoss`, `CreditAKillWithoutADeath`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteBossTickPaid`,
+  `SecondsSinceBossTickPaid`, `CountBossHit`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the hit handler pays for a Boss tick before ticks are
+  dropped, and counts a landed hit on a Boss after the hit's rows.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmBossFervourTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (two
+  probes, each in two tables) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two),
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (an exception), `test_dot_damage_on_a_moving_target_rows.py`,
+  `test_every_conditioned_stat_has_an_asker.py`, `test_passive_effects_match_the_node_text.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (584 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **PATIENT BLADE'S CLOCK ALLOWS A THOUSANDTH OF A SECOND.** A payment is refused while the last was less than its seconds
+  less 0.001 ago, so a tick a frame's rounding puts a hair early, at 1.9999 seconds, still pays. A judgement; the ruling
+  says "once every 2 seconds".
+- **PATIENT BLADE'S CLOCK MOVES ON A PAYMENT OF NOTHING.** A tick on a Boss while the bar is full pays nothing and still
+  starts the 2 seconds. A judgement, the simpler reading of "once every 2 seconds".
+- **A KILL CREDITED BY DEATH BY INCHES RAISES `kill` WITH NO KILLING SKILL'S TAGS**, so a `kill` row scoped to a skill tag
+  does not act on it. A judgement: the kill was made by a count of hits, not by one skill.
+
+### What each reads
+
+- **PATIENT BLADE (Q6):** a stat, `boss_ticks_pay_a_kill_every_seconds`, at 2 under `target_is_boss`, asked against the
+  creature ticked. For each tick of the character's own damage over time, a minion's left out, the hit handler calls
+  `UCataclysmFervour::PayForABossTick` before ticks are dropped. It pays one own kill's Fervour of that creature
+  (`GainOnOwnKill`, so the Shadow's 25 for Elite or stronger) unless the character's last such payment was under 2
+  seconds ago. Fervour only: no kill is raised, no stamp is set. One clock per character, as ruled.
+- **DEATH BY INCHES (Q7):** a stat, `boss_hits_counted_as_a_kill_every`, at 10 under `target_is_boss`, asked against the
+  creature struck. After a landed hit's rows, a minion's hit left out, the hit handler calls
+  `UCataclysmFervour::CountAHitOnABoss`: the count is kept per creature on the character and never reset (a), and at
+  every 10th, a creature not already dead, `CreditAKillWithoutADeath` credits a kill of it (b). That gives back what
+  decay took (Reclaimed), pays the kill's Fervour, sets the stamp (the hold before decay and `seconds_after_kill`), marks
+  Grim Wake's enemies, and raises `kill` to every row with the Boss as its target and its maximum health as its amount
+  (c). It leaves out everything that needs a body (c): the overkill explosion, The Ferryman's burst and Passed On, whose
+  shares the rows record are taken and dropped; `afflicted_death`; risen imps; the corpse; and the player state's and
+  weapon's kill tallies, because nothing died. The Boss is the slain creature, so "an Elite or stronger enemy" is met by
+  its own rung.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Patient Blade (Shadow keystone) | boss_ticks_pay_a_kill_every_seconds, flat, 2, cond=target_is_boss |
+| Death by Inches (Shadow keystone) | boss_hits_counted_as_a_kill_every, flat, 10, cond=target_is_boss |
+
+`PassiveEffects.csv` 582 to 584; the Shadow 84 rows. The pins: rows 584, nodes 354.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4d plan, Q6 and Q7 (a) to (d), recorded in the slice C4d1
+entry. Nothing new was asked for this slice.
+
+### Research
+
+None new. Both shapes come from the nodes' sentences and the rulings; the slice C4d1 entry's reading covers critical
+strikes and executes, not ticks or hits counted as kills.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.BossFervour.` | new: `PatientBladePaysAKillForABossTickOnceEveryTwoSeconds`, `PatientBladePaysThroughTheRealTicksOfAPlayersDamageOverTime`, `DeathByInchesCountsEveryTenthHitOnOneBossAsAKill`, `DeathByInchesCountsThroughTheRealHitHandler`, `TheTwoNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.StatExemption.` | the conditioned probe and the read probe each run two new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 584 | unchanged |
+
+The two through the real hit handler build the scene `Cataclysm.Swarm.` builds. Each new test has a control: a tick on a
+Common creature, and a second tick inside the 2 seconds; ten hits on a Common creature, and a hit on a second Boss whose
+count is its own; nine blows that credit nothing.
+
+A figure that may be wrong: the real-tick test expects the first tick of a one-second damage over time at 1.05 seconds
+and none between 1.05 and 2.05 that pays, which assumes the ticks fall at 1, 2 and 3 seconds after it is laid.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmFervour.cpp`, `PayForABossTick`: `if (Since >= 0.0f && Since + 1.0e-3f < Every)` becomes `if (false)`.
+   Prefix `Cataclysm.BossFervour.`; must fail `PatientBladePaysAKillForABossTickOnceEveryTwoSeconds` (a second tick at
+   once pays 5).
+2. `CataclysmFervour.cpp`, `CountAHitOnABoss`: `CountBossHit(Struck) % Nth != 0` becomes `CountBossHit(Struck) % 1 != 0`.
+   Prefix `Cataclysm.BossFervour.`; must fail `DeathByInchesCountsEveryTenthHitOnOneBossAsAKill`.
+3. `CataclysmPlayerCharacter.cpp`: `UCataclysmFervour::PayForABossTick(GetAbilitySystemComponent(), Notice.Target);`
+   removed. Prefix `Cataclysm.BossFervour.`; must fail `PatientBladePaysThroughTheRealTicksOfAPlayersDamageOverTime`.
+
+### What was run
+
+**The whole Python suite on `de420ab62`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8549 passed, 9 skipped in 473.34s
+(0:07:53)". The JUnit file agrees: tests 8559, failures 1, errors 0, skipped 9, so 8549 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, failed that one and nothing else.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`cf5209ce0`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The hit handler no longer paying for a Boss tick | `test_charge_and_placed_action_names_match_the_engine.py::test_patient_blade_pays_a_kill_for_a_boss_tick_once_every_its_seconds` |
+| Patient Blade's clock never refusing | the same test |
+| A kill without a death keeping The Ferryman's share | `test_charge_and_placed_action_names_match_the_engine.py::test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_death` |
+| Every hit on a Boss counted as a kill | the same test |
+| Patient Blade's row losing its condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` |
+| Death by Inches every 5th hit rather than every 10th | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — Critical strikes, executes and kills that speed the next: Telling Blows, Reaper's Edge, Relentless and Chain Execution (Death trees, slice C4d1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `PerCriticalStrikeStat`, `GainOnCriticalStrike`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `CriticalNextHitAction`,
+  `SetActingOnAKillByAnExecute`, `IsBeingExecuted`, `HoldsNextHitCritical`, `SpendNextHitCritical`,
+  `TimesSizedByFervourHeld`; `ExecuteIfLeftBelow` marks the character it kills; `ActOnEvent` sizes a row by the whole
+  hundreds of Fervour held and grants Chain Execution's charge; `CurrentConditions` fills the new state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `kill_was_an_execute`
+  (`KillWasAnExecute`) and its state field; `FCataclysmPoolAction::bNextHitCritical`; the base
+  `ECataclysmPoolActionBase::ForEachHundredClassResourceHeld`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp`: `FCataclysmDeathNotice::bByAnExecute`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`: `FCataclysmIncomingHit::bCertainCritical`,
+  honoured where the critical strike is rolled.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: a hit is certain to be critical while its
+  attacker holds the charge, and the charge is used by the hit it made critical.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the hit handler pays a critical strike's Fervour; the
+  kill handler marks an execute's kill.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` and `Items/CataclysmItem.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmCritsAndExecutesTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
+  (a probe in two tables), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (four, and the name map),
+  `test_generate_datatables.py` (a class of ten), `test_passive_effects_match_the_node_text.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (582 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **CHAIN EXECUTION'S CRITICAL STRIKE OVERRIDES THE CEILING ON CRITICAL STRIKE CHANCE.** "Your critical strike chance
+  cannot exceed 30%-50%" (`max_crit_chance`) holds the chance, and the charge does not use the chance at all: the hit is
+  marked certain. A judgement, from the sentence's "a critical strike", not asked; say so if it should be held to the
+  ceiling instead.
+- **THAT AN EVADED HIT DOES NOT USE THE CHARGE IS PROVEN BY READING THE CODE, NOT BY AN UNREAL TEST.** The critical
+  step in `UCataclysmDamageCalculation::Resolve` is after evasion's early return, and a Python test holds that order;
+  no Unreal test pins an evasion roll.
+- **RELENTLESS'S COOLDOWN CUT IS SHOWN IN UNREAL THROUGH A HEAL ON THE SAME BASE**, not through a skill's cooldown: the
+  event loop sizes every row on `ForEachHundredClassResourceHeld` in one place before any action reads it, and the
+  Python test holds that the cooldown reduction is one of those rows. The cut on a real cooldown is not run.
+- **THE WORKBOOK SCRIPT CAN NOW REWRITE A NODE IT WROTE BEFORE.** The Shadow's starting node gained its fifth row, and
+  `tools/reapply_death_trees_workbook.py` refused any node already holding rows. `Node.before` lists a node's earlier
+  states, the pattern of the Demonic tree rework's script; a node found in one of them is rewritten in place, and
+  anything else is still refused.
+- **THE ENGINE CONSTANT IS `CriticalNextHitAction`, NOT `NextHitCriticalAction`,** because
+  `test_the_generator_accepts_exactly_the_next_use_names_the_engine_has` reads every constant whose name begins `Next`
+  as a next-use action. The data name is `next_hit_critical`.
+- **A MERGE OBLIGATION, NAMED (recorded 2026-11-25 at the coordinating session's direction): `fervour_per_critical_strike`
+  IS BUILT TWICE.** `feat/war-fervour-sources` (`c1f33f5c4`, not on `development` when this was written) builds the same
+  stat name as `FCataclysmWarFervour::PerCriticalStrikeStat`, paid by `FCataclysmWarFervour::GainOnCriticalStrike`
+  through `GainByRate`, for the Berserker's starting node (`Berserker_trunk_000`, flat 1) and Battle Lust. If both land
+  unchanged, a critical strike pays twice for a character holding the stat, the stat is registered twice, and on War's
+  path Telling Blows' "Elite or stronger" is not judged, because no target is handed over. This slice's own plan said the
+  Shadow's half would go on War's stat when the lines met; building it here without reconciling was the miss. **The War
+  line lands first, so the obligation falls to the Death line when it merges after it:**
+  1. Keep ONE payment, this slice's `UCataclysmFervour::GainOnCriticalStrike`: read against the struck enemy, once per
+     landed critical strike of the character's own, paid through `RaisePool` (War's `GainByRate` writes the pool with
+     `ApplyModToAttribute` directly, which every gain stopped doing in slice C4b1).
+  2. **Carry over what War's path does that this one does not:** it asks the stat with the blow's skill tags
+     (`Notice.SkillTags`), so Battle Lust's "on every critical melee strike" adds to a melee one only. This slice's path
+     asks with no tags; it has to take and pass the skill tags.
+  3. Make `FCataclysmWarFervour::PerCriticalStrikeStat` name this slice's constant (`UCataclysmFervour::PerCriticalStrikeStat`),
+     and drop War's second call in `CataclysmPlayerCharacter.cpp` (after the `critical_strike` rows), its second entry
+     in `CataclysmPlayerClassStats.cpp`'s list, its second probe in `CataclysmStatExemptionTests.cpp`, and any second
+     entry in the generator's stat lists.
+  4. What War's path does besides paying, as the War session read it (its V3b entry, `feat/war-vows-v3b` `f1a395dbc`):
+     the skill-tag scope above; nothing paid to a character with no class resource set; scaled by
+     `class_resource_generation`; clamped to `MaximumClassResourceAsked` (the maximum after reserves); no event raised.
+     This slice's path already pays nothing without a class resource set, scales by the same rate and clamps to the same
+     maximum. KEEP the skill-tag scope and the clamp after reserves.
+  5. A MINION'S BLOW THAT CONDUIT CREDITS TO THE PLAYER: War's critical-strike call pays for it, unlike its own
+     `GainOnHitDealt`, which leaves it out. Decided as the coordinating session directed, to match `GainOnHitDealt`:
+     left out. This slice's call already leaves it out (`!Cast<ACataclysmMinion>(Notice.DealtBy)`).
+  6. WHERE THE ONE PAYMENT IS MADE, ruled by the coordinating session on 2026-11-25: at this slice's position, before the
+     `critical_strike` rows act, so any row that reads Fervour on a critical strike sees it already paid. War pays
+     after the rows; that call is the one dropped.
+  7. Test each: a Berserker's critical strike paying its 1 once; a melee-scoped row paying on a melee critical strike
+     and not on a spell's; the clamp after reserves; a minion's critical strike credited by Conduit paying nothing.
+
+### What each reads
+
+- **THE SHADOW'S "2 FOR EACH CRITICAL STRIKE YOU LAND" AND TELLING BLOWS (Q2):** a new stat, `fervour_per_critical_strike`,
+  asked against the character struck by `UCataclysmFervour::GainOnCriticalStrike`, scaled by the generation rate,
+  clamped to the maximum and paid through `RaisePool`. The player's hit handler calls it for each landed critical strike
+  of the character's own, a minion's left out as the cull leaves it, before the `critical_strike` rows act. It is not a
+  kill's payment. Telling Blows is the same stat at 1 a point under `target_rarity_at_least` 1. No War row is written.
+- **REAPER'S EDGE (Q3):** the existing `execute_target` at 100 under `target_health_below` 15 on `hit_dealt`, whose
+  refusal of Boss and Cataclysm Boss is its own rule, a Herald allowed; and `fervour_per_kill` "more" 100 under the new
+  condition `kill_was_an_execute`, so the whole kill payment, rarity rows included, doubles. `ExecuteIfLeftBelow` marks
+  the character it kills while the kill is written; the death notice built inside that kill copies the mark as
+  `bByAnExecute`; the kill handler marks the payment and the kill's rows from it and clears the mark after. A set
+  bonus's cull shares `KillIfLeftBelow` and is not marked.
+- **RELENTLESS (Q4):** `cooldown_reduce_all` at 1 on `kill`, Fraction Of `for_each_hundred_class_resource_held`: the
+  value once for each whole hundred of Fervour held as `class_resource_held` counts it, read when the kill's rows act,
+  after the kill's own payment. 99 held takes nothing off; 200 takes 2 seconds. The base is accepted on the cooldown
+  reductions alone and kept off the pool rows' list.
+- **CHAIN EXECUTION (Q5):** a new action, `next_hit_critical`, at 2 (the seconds) on `kill`. The charge lasts until the
+  seconds have passed or a hit uses it; a second kill inside the window sets it to the full window again, never two. The
+  defender's attribute set marks a hit certain to be critical while the attacker holds the charge, after the chance and
+  the skill's stated figure are read; `Resolve` makes it critical after evasion; and the attribute set uses the charge
+  on the hit it made critical, so the first of a skill's hits to resolve uses it and the rest are rolled as usual.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Fervour (the Shadow's starting node) | adds fervour_per_critical_strike, flat, 2 |
+| Telling Blows (basic, max 8) | fervour_per_critical_strike, flat, 1, cond=target_rarity_at_least 1 |
+| Reaper's Edge (the Soul Collector's 100 vow, option 2) | action execute_target, 100, on hit_dealt, cond=target_health_below 15; fervour_per_kill, more, 100, cond=kill_was_an_execute |
+| Relentless (the Shadow's 100 vow, option 3) | action cooldown_reduce_all, 1, on kill, fraction_of=for_each_hundred_class_resource_held |
+| Chain Execution (the Shadow's 100 vow, option 2) | action next_hit_critical, 2, on kill |
+
+`PassiveEffects.csv` 576 to 582; the Soul Collector 117 rows, the Shadow 82. The pins: rows 582, nodes 352 (Telling
+Blows, and the Shadow's 100 vow, which had no row before), options 51.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4d plan: Q1, the split into C4d1 (Telling Blows, Reaper's Edge,
+Relentless, Chain Execution), C4d2 (Patient Blade, Death by Inches) and C4d3 (Wearer of the Dead, a classification table
+first); Q2, the stat through `RaisePool`, and the Shadow's starting node's half with it, no Berserker row; Q3 (a) to (d),
+"non-Boss" being `execute_target`'s existing rule; Q4, whole hundreds read after the kill's own payment; Q5, the charge
+as written above; Q6 to Q8 for the later slices.
+
+### Research
+
+Read on 2026-11-25 through the web-fetch agent:
+
+| Game | Page read | What it says |
+|---|---|---|
+| Path of Exile 2 | `poe2db.tw/us/Culling_Strike` | "Culling Strikes kill Normal enemies if their life is at 35% or below", lower thresholds for higher rarities, Unique at 5% |
+| Path of Exile | `poedb.tw/us/Assassin` | "10% chance to gain a Power Charge on Critical Strike" |
+| Path of Exile | `poedb.tw/us/Ambush` | Its buff "is removed to Exert the next Melee Attack you perform"; "Base duration is 1.5 seconds" |
+
+What it settles: killing outright below a share of health, a class resource gained on a critical strike, and a short
+effect used up by the next attack are each the genre's shape. Not settled by it: whether a boss is refused (the page
+read says nothing of bosses; the refusal is `execute_target`'s own rule), a guaranteed critical strike (Ambush raises
+the chance), and cooldowns cut on a kill (no readable page was found; `poewiki.net` refuses automated reading and the
+Last Epoch forum search returned nothing). Those come from the nodes' sentences and the rulings.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.CritsAndExecutes.` | new: `ACriticalStrikePaysTwoAndTellingBlowsOneMoreOnAnEliteOrStronger`, `ThePlayersCriticalStrikePaysFervourThroughTheRealHitHandler`, `ReapersEdgeDoublesTheFervourOfAnExecutesKillThroughTheRealHandlers`, `RelentlessIsSizedByTheWholeHundredsOfFervourHeld`, `ChainExecutionMakesTheNextLandedHitCriticalAndOnlyThatOne`, `TheFiveNodesRowsAreTheirSentences` | 6 |
+| `Cataclysm.StatExemption.` | the conditioned probe and the read probe each run one new probe | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 582 | unchanged |
+
+The three through the real handlers build the scene `Cataclysm.Swarm.` builds. The execute test measures what one blow
+takes first and holds each creature relative to it, as `Cataclysm.Skills.`'s execute test does, so it does not depend
+on the creature's mitigation. Each new test has a control: a character without the stat; a blow that is not critical;
+a kill by the blow itself; 99 Fervour held; the blow after the charged one, and the charge at 2.5 seconds.
+
+A figure that may be wrong: the Chain Execution test asks that the charged blow take more than 1.2 times a plain one,
+which assumes the player's critical strike multiplier is above 120%.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmVitalAttributeSet.cpp`: `Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();` becomes
+   `Hit.bCertainCritical = false;`. Prefix `Cataclysm.CritsAndExecutes.`; must fail
+   `ChainExecutionMakesTheNextLandedHitCriticalAndOnlyThatOne`.
+2. `CataclysmCombatEvents.cpp`: `Notice.bByAnExecute = System->IsBeingExecuted();` becomes
+   `Notice.bByAnExecute = false;`. Prefix `Cataclysm.CritsAndExecutes.`; must fail
+   `ReapersEdgeDoublesTheFervourOfAnExecutesKillThroughTheRealHandlers` (10 rather than 20).
+3. `CataclysmAbilitySystemComponent.cpp`, `TimesSizedByFervourHeld`: `Held / 100.0f` becomes `Held / 10.0f`. Prefix
+   `Cataclysm.CritsAndExecutes.`; must fail `RelentlessIsSizedByTheWholeHundredsOfFervourHeld`.
+
+### What was run
+
+**The whole Python suite on `b3c979664`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8547 passed, 9 skipped in 481.18s
+(0:08:01)". The JUnit file agrees: tests 8557, failures 1, errors 0, skipped 9, so 8547 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and two
+pins that list the conditioned stats (`test_dot_damage_on_a_moving_target_rows.py` and
+`test_every_conditioned_stat_has_an_asker.py`), each moved by one for `fervour_per_critical_strike` before the commit.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Seven Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`da9767032`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The hit handler no longer paying Fervour for a critical strike | `test_charge_and_placed_action_names_match_the_engine.py::test_a_critical_strike_pays_fervour_and_a_minions_does_not` |
+| The execute no longer marking the character it kills | `test_charge_and_placed_action_names_match_the_engine.py::test_reapers_edge_marks_an_executes_kill_for_its_payment_and_rows` |
+| Relentless sized by tens rather than hundreds | `test_charge_and_placed_action_names_match_the_engine.py::test_relentless_is_sized_by_the_whole_hundreds_of_fervour_held` |
+| A Chain Execution charge never used | `test_charge_and_placed_action_names_match_the_engine.py::test_chain_execution_makes_the_next_landed_hit_critical_and_is_used_by_it` |
+| Chain Execution's row accepted on a hit | `test_generate_datatables.py::TestDeathTreeC4d1Actions::test_chain_executions_row_on_another_event_is_refused[hit_dealt]` |
+| Telling Blows' row losing its condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` |
+| Relentless taking 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — Marks left by a death: Grim Wake and Blood Debt (Death trees, slice C4c2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteNearKillBy`,
+  `SecondsSinceNearKillBy`, `WidestReachOfCondition`, `PassBleedLeftToStrongestAction`; `WithTargetState` fills the new
+  state field and lists every target question in both its stop-early check and its early return; `ActOnEvent` passes
+  Blood Debt's Bleed.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition
+  `target_near_your_kill_within_seconds` (`TargetNearYourKillWithinSeconds`) and its state field;
+  `FCataclysmPoolAction::bPassBleedLeftToStrongest`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `MarkNearAKill`, called by the kill handler and
+  by `CreditAFollowersKill`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `BleedLeftLaidBy`, `StrongestEnemyNear`,
+  `BloodDebtReachCm`, `PassBleedLeftToStrongest`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, `Character/CataclysmPassiveTree.cpp` (a comment) and
+  `Items/CataclysmItem.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmKillMarksTests.cpp`, new (6); `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (three, and the name map),
+  `test_generate_datatables.py` (one) and `test_passive_effects_match_the_node_text.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (576 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **A BUG IN TWO EARLIER SLICES OF MINE, FIXED HERE.** `WithTargetState` returns before any fill when no row asks
+  about the target, and decides that from a list of flags. The Siphon's flag (slice C2) and the poison-or-bleed flag
+  (slice C4a) were declared and set but in neither that list nor the stop-early check beside it. So a stat line whose
+  only question about the target was one of them returned before the fill, and its condition refused.
+  `Cataclysm.KillHooks.DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain` gives `fervour_per_kill` only a plain row and
+  the poison-or-bleed row, so it would fail as written on `ebc9fb095`; with this fix it should pass. In play Death's
+  Patience was not lost, because the Shadow's starting node asks the rarity rung on the same stat. A Python check now
+  holds both lists to the declarations.
+- **A KNOWN FAULT IN PLAY, NOW FIXED: SOUL-HEAVY AIR DID NOTHING FROM SLICE C2 TO SLICE C4c1** for a character whose
+  attack and spell damage carried no other row asking about the target. Soul-Heavy Air (`SoulCollector_basic_c_b2`) is
+  the one node under `target_in_your_siphon`. In the Soul Collector tree the other rows that ask are Quarry's
+  (`target_rarity_at_least`) and, from this slice, Grim Wake's; an equipped item's row with a target condition on
+  those stats would also have filled the state. `Cataclysm.Siphon.SoulHeavyAirsRealRowRaisesTheDamageAMemberTakesAndNotAnOutsiders`
+  gives the real rows of only The Siphon (whose one row is `siphon_radius_metres`) and Soul-Heavy Air, so it would
+  have read 100 against a member where it expects 116; its control would have passed. From this slice it should pass.
+  Recorded at the coordinating session's request.
+- **BLOOD DEBT'S DEATHMARK HALF IS NOT BUILT.** "(the enemy Deathmark marked, if you have Deathmark)" needs Deathmark,
+  which no slice has built. Blood Debt always picks the strongest enemy.
+- **THE BOUND ON BLOOD DEBT'S SECONDS (0 to 10) IS NOT TESTED**, as The Ferryman's share bound of slice C4c1 is not.
+
+### What each reads
+
+- **GRIM WAKE (Q6):** at a kill, `UCataclysmFervour::MarkNearAKill` marks every enemy of the killer's within the widest
+  `ReachMetres` of its rows under the new condition, read at the kill, around the body, the slain creature left out. The
+  mark is a record on the creature marked, keyed by the killer, as the record `target_damaged_by_you_within_seconds`
+  reads is. The condition holds while the mark is at most its value, 3, seconds old, so only the killer's own damage
+  is raised. A follower's kill that Death's Toll makes the character's marks too: `CreditAFollowersKill` calls the same
+  function with the character as the killer. A character with no such row marks nothing.
+- **BLOOD DEBT (Q7):** a new action, `pass_bleed_left_to_strongest`, at 2 (the seconds) on `afflicted_death` under the
+  required tag `Keyword.DoT.Bleed`. When a creature carrying the wearer's Bleed dies, the damage the wearer's Bleeds on
+  it have left (`RemainingDamageOverTime`, held to a Bleed's movement) is laid on the strongest enemy within 10 metres
+  of the body as a Bleed of the wearer's, unscaled, over the 2 seconds at one tick a second. Laid as a Bleed, so the
+  stronger application wins (Q7 a). "Strongest" is the highest rarity rung, then the most current health, then the
+  nearest (Q7 b). A death inside another row's action raises no Blood Debt, because `afflicted_death` is dropped at
+  depth one (Q7 e).
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Grim Wake (basic, max 8) | attack_damage and spell_damage, increased, 2, cond=target_near_your_kill_within_seconds 3, reach=3 |
+| Blood Debt (keystone) | action pass_bleed_left_to_strongest, 2, on afflicted_death, tags=Keyword.DoT.Bleed |
+
+`PassiveEffects.csv` 573 to 576; the Soul Collector 115 rows, the Shadow 78.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4c plan, recorded in the slice C4c1 entry: Q6 and Q7 (a) to
+(e). Nothing new was asked for this slice.
+
+### Research
+
+None new. Both nodes' shapes come from their own sentences and the rulings; the slice C4c1 entry's reading of
+`poedb.tw/us/Explode` covers explosions at a kill, not marks or Bleeds passed on.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.KillMarks.` | new: `GrimWakeRaisesYourDamageAgainstTheEnemiesNearYourKill`, `GrimWakesMarkLastsItsThreeSeconds`, `GrimWakeMarksThroughTheRealKillHandlerAndForAFollowersKill`, `BloodDebtPassesTheBleedLeftToTheStrongestEnemyNear`, `TheStrongestIsRarityThenHealthThenNearness`, `TheTwoNodesRowsAreTheirSentences` | 6 |
+| `Cataclysm.KillHooks.` | `DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain` should pass where it would have failed | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 576 | unchanged |
+
+The one through the real kill handler builds the scene `Cataclysm.Swarm.` builds: a real player on a real player state,
+and its real imp. Each new test has a control: a creature 4 metres from the kill; the slain creature; a creature marked
+only by another killer's kill; the mark at 3.5 seconds; the imp's kill without Death's Toll; a nearer, weaker Common and
+a Boss beyond 10 metres; a death carrying only the holder's Poison; nothing within reach.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `WithTargetState`: `&& !bWantsSiphon` through `&& !bWantsNearKill` lose
+   `&& !bWantsNearKill` in the early return. Prefix `Cataclysm.KillMarks.`; must fail
+   `GrimWakeRaisesYourDamageAgainstTheEnemiesNearYourKill`.
+2. `CataclysmDebuffs.cpp`, `StrongestEnemyNear`: `if (Rung > BestRung || (Rung == BestRung && Health > BestHealth))`
+   becomes `if (Health > BestHealth)`. Prefix `Cataclysm.KillMarks.`; must fail
+   `BloodDebtPassesTheBleedLeftToTheStrongestEnemyNear` and `TheStrongestIsRarityThenHealthThenNearness`.
+3. `CataclysmPlayerCharacter.cpp`, the kill handler: `UCataclysmFervour::MarkNearAKill(Acting, Notice.Victim,
+   Notice.Location);` removed. Prefix `Cataclysm.KillMarks.`; must fail
+   `GrimWakeMarksThroughTheRealKillHandlerAndForAFollowersKill`.
+
+### What was run
+
+**The whole Python suite on `ef27e95ce`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8527 passed, 9 skipped in 378.14s
+(0:06:18)". The JUnit file agrees: tests 8537, failures 1, errors 0, skipped 9, so 8527 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies, and the
+check that every damage over time names its skill, which Blood Debt's call now satisfies by being listed with the rule
+that a passive's damage credits no skill.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`96f2b9aae`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The early return in `WithTargetState` losing the near-kill flag | `test_charge_and_placed_action_names_match_the_engine.py::test_every_target_question_reaches_both_lists_in_with_target_state` |
+| The kill handler no longer marking the enemies near its kill | `test_charge_and_placed_action_names_match_the_engine.py::test_grim_wake_marks_the_enemies_near_a_kill_and_the_condition_reads_the_mark` |
+| The strongest chosen by health alone | `test_charge_and_placed_action_names_match_the_engine.py::test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body` |
+| Blood Debt's row accepted on a kill | `test_generate_datatables.py::test_a_bleed_left_row_is_refused_where_the_game_would_pass_nothing` |
+| Grim Wake's two rows losing their condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` |
+| Blood Debt over 3 seconds rather than 2 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — Explosions at a kill: Passed On and The Ferryman (Death trees, slice C4c1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `BurstSlainForMaximumHealthAction`,
+  `OverkillExplosionRadiusMetresStat`, `TakePendingOverkillExplosionRadiusCm`, `TakePendingSlainBurstSharePercent`,
+  `SetActingOnAKillByAHit`; `ActOnEvent` records the overkill explosion's radius and The Ferryman's share;
+  `CurrentConditions` fills the new state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `killing_blow_was_a_hit`
+  (`KillingBlowWasAHit`) and its state field; `FCataclysmPoolAction::bBurstSlainForMaximumHealth`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h`: `SlainBurstRadiusCm`.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp`: `PassiveEnchantmentPrefix`, which
+  `EnchantmentNameFor` now builds with.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `BurstTheSlain`, the one place The Ferryman's
+  burst is made; `CreditAFollowersKill` calls it for a follower's kill Death's Toll makes the character's, and now takes
+  its commander as `AActor*`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler marks its kill's rows as made by a hit
+  or a tick, hands the explosion its radius, and calls `BurstTheSlain`.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp` and `Character/CataclysmPlayerClassStats.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmDeathBurstsTests.cpp`, new (7); `CataclysmStatExemptionTests.cpp` (a
+  probe), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two), `test_kill_credit_reaches_the_soul_collector.py`,
+  `test_generate_datatables.py` (one), `test_passive_effects_match_the_node_text.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (573 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **TWO COMMENTS WERE FALSE AND ARE CORRECTED.** `UCataclysmSkillEffects::ExplodeForOverkill` said "NOTHING CALLS THIS AT
+  A KILL YET" and `TakePendingOverkillExplosionSharePercent` said "NOT BUILT YET"; the player's kill handler has called
+  both since the overkill explosion was finished.
+- **A ROW'S RADIUS IS READ FROM ITS TRIGGER KEY.** A passive node's row has an enchantment name beginning `Passive_`, and
+  no item enchantment does (`UCataclysmPassiveTree::EnchantmentNameFor`); the same reading as Death's Toll's filter in
+  slice C4b2. No new column.
+
+### What each reads
+
+- **PASSED ON** is the existing `explode_victim_for_overkill` at 50, under the new condition, with a second row,
+  `overkill_explosion_radius_metres` flat 3. The chain already existed: a creature the explosion kills is a kill of its
+  own, announced after this death (`AfterThisDeathIsHeard`), and explodes for its own, smaller overkill.
+- **THE RADIUS, AS RULED (Q2):** each overkill row that acts gives a radius: a passive node's row, the stat when the
+  character holds it; an item's row, and a passive row without the stat, the old 5 metres
+  (`OverkillExplosionRadiusCm`). The explosion reaches the largest, kept beside the largest share. Passed On alone: 3
+  metres. The item enchantment "Enemies killed by you explode for the overkill amount" alone: 5. Both: the larger share
+  at 5, so holding Passed On never shrinks an item's explosion.
+- **"YOUR HIT", AS RULED (Q3):** the death notice already says whether the killing blow was a tick
+  (`FCataclysmDeathNotice::bByDamageOverTime`), so the new condition `killing_blow_was_a_hit` reads a mark the kill
+  handler sets around its kill's rows from it, and clears after. It holds on an own kill made by a hit and nowhere else;
+  a state nobody marked refuses. It takes no value and compares no number. A follower's kill that Death's Toll makes the
+  character's is not marked, so it explodes nothing: it was not the character's hit.
+- **THE FERRYMAN** is a new action, `burst_slain_for_share_of_maximum_health`, at 10 on `kill` under
+  `class_resource_at_maximum`. It is recorded as the two explosions are and made by the kill handler through
+  `ExplodeForOverkill`, with the slain creature's maximum health as the figure, unscaled by the killer's increases, at 4
+  metres (`SlainBurstRadiusCm`, Q5), handed to the announcer. So a creature the burst kills raises `kill`, and bursts in
+  turn while the bar is full (Q4); the bar is judged when the kill's rows act, after the kill's own payment.
+- **THE FERRYMAN AND DEATH'S TOLL.** A follower's kill Death's Toll makes the character's raises `kill` to the Soul
+  Collector's rows (slice C4b2), The Ferryman's among them, so it bursts too: `CreditAFollowersKill` takes the share its
+  rows recorded and calls the same `BurstTheSlain`, with the character as the killer, so the burst's kills are the
+  character's own and burst in turn. Found while this entry was written; until then the row recorded a share for a
+  follower's kill that nothing made. Passed On's explosion is not made for a follower's kill: its row asks for the
+  character's own hit.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Passed On (keystone) | action explode_victim_for_overkill, 50, on kill, cond=killing_blow_was_a_hit; overkill_explosion_radius_metres, flat, 3 |
+| The Ferryman (vow 200, option 2) | action burst_slain_for_share_of_maximum_health, 10, on kill, cond=class_resource_at_maximum |
+
+`PassiveEffects.csv` 570 to 573; the Soul Collector 113 rows.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4c plan: Q1, C4c1 (Passed On, The Ferryman) then C4c2 (Grim
+Wake, Blood Debt); Q2, the radius stat, the explosion reaching the largest radius any source gives, all three cases
+tested; Q3, a value-less kill-side condition for "your hit", the notice telling a hit from a tick; Q4, The Ferryman's
+full bar judged when the kill's rows act, each link of the chain judged again; Q5, the burst unscaled, at 4 metres. And
+for slice C4c2: Q6, Grim Wake's record, condition and rows, followers' kills under Death's Toll marking too, "from you"
+the character's own hits; Q7 (a) to (e), Blood Debt laid as a Bleed, the strongest enemy by rarity then current health
+then nearness, 10 metres, `RemainingDamageOverTime`, and no Blood Debt for a death inside another row's action.
+
+### Research
+
+Read on 2026-11-25 at `poedb.tw/us/Explode` (part of the page; `poedb.tw/us/Overkill` does not exist):
+
+| Game | What it says |
+|---|---|
+| Path of Exile | Explosions on a kill are sized by a share of the killed enemy's maximum Life, for example the Crusader's prefix "Enemies you Kill have a (11—20)% chance to Explode, dealing a tenth of their maximum Life as Physical Damage" |
+
+What it settles: The Ferryman's burst sized by the slain creature's maximum health is the genre's shape. Not settled by
+it: a radius (no line read states one) and whether an explosion's kills explode again (no line read says); both come
+from The Ferryman's own sentence. The overkill explosion's 5 metres was already a labelled judgement against the 2 metres
+a Path of Exile page gives (its comment, 2026-10-07).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.DeathBursts.` | new: `PassedOnsRadiusIsTheLargestAnySourceGives`, `PassedOnActsOnlyOnAKillByAHit`, `TheFerrymanBurstsOnlyWhileTheBarIsFull`, `TheFerrymansBurstChainsThroughTheRealKillHandler`, `TheFerrymanBurstsForAFollowersKillUnderDeathsToll`, `PassedOnExplodesWithinThreeMetresThroughTheRealKillHandler`, `TheTwoNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs one new probe | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 573 | unchanged |
+
+The three through the real kill handler build the scene `Cataclysm.Swarm.` builds: a real player on a real player state,
+and for the follower's kill its real imp.
+Each new test has a control: Passed On's row with no radius stat; a kill by a tick and a kill unmarked; a bar at 99; a
+creature 4.5 metres from the first burst; the imp's kill without Death's Toll; a creature inside the old 5 metres and
+outside Passed On's 3.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `ActOnEvent`: `const bool bPassiveRow =` and the `StartsWith` line after it
+   become `const bool bPassiveRow = true;`. Prefix `Cataclysm.DeathBursts.`; must fail
+   `PassedOnsRadiusIsTheLargestAnySourceGives` (the item alone at 300 rather than 500).
+2. `CataclysmAbilitySystemComponent.cpp`, `CurrentConditions`: `State.bKillingBlowWasAHit = bActingOnAKillByAHit;` becomes
+   `State.bKillingBlowWasAHit = true;`. Prefix `Cataclysm.DeathBursts.`; must fail `PassedOnActsOnlyOnAKillByAHit`.
+3. `CataclysmFervour.cpp`, `BurstTheSlain`: `UCataclysmSkillEffects::SlainBurstRadiusCm);` becomes
+   `UCataclysmSkillEffects::OverkillExplosionRadiusCm);`. Prefix `Cataclysm.DeathBursts.`; must fail
+   `TheFerrymansBurstChainsThroughTheRealKillHandler` (the creature 4.5 metres off killed).
+
+### What was run
+
+**The whole Python suite on `ff9abf44e`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8523 passed, 9 skipped in 379.12s
+(0:06:19)". The JUnit file agrees: tests 8533, failures 1, errors 0, skipped 9, so 8523 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree and before `BurstTheSlain` was added, failed that one and the check that every condition is named in this
+log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`cf4af7f21`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The kill handler marking every kill as made by a hit | `test_charge_and_placed_action_names_match_the_engine.py::test_passed_on_reads_the_hit_mark_and_takes_the_largest_radius_any_row_gives` |
+| Every overkill row treated as a passive node's for its radius | the same test |
+| The Ferryman's burst made at the overkill explosion's radius | `test_charge_and_placed_action_names_match_the_engine.py::test_the_ferrymans_burst_is_recorded_and_made_at_the_kill_by_the_same_explosion` |
+| Passed On's row losing its condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows`, the check of the slice before this one, catching a lost condition on a new row |
+| The Ferryman's burst at 20 rather than 10 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — A passive node whose sentence states a condition has a row carrying it (Death trees, the check after slice C4b)
+
+**Affects:** `tools/tests/test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`, new (3). No game code and no data.
+
+### SAID FIRST
+
+- **THE CHECK FOUND NO ROW IN ANY TREE THAT HAS LOST ITS CONDITION.** The coordinating session asked for any such rows to
+  be listed and not fixed; the list is empty. Every sentence the check flagged was read by hand, and each carries its
+  condition another way, listed below.
+- **THE SHAPE DIFFERS FROM THE RULING'S WORDS, AS A JUDGEMENT.** The ruling asked that "a row on a node whose sentence
+  states a condition ... carries a condition". The check asks instead that each condition a sentence states is carried
+  by at least one of that sentence's rows. It catches a lost condition as well, and it lets a node have an unconditioned
+  clause beside a conditioned one, as Hunting Leap does. Measured on 2026-11-25: asking every row on such a sentence to
+  carry some condition flagged 93 rows.
+
+### What it reads
+
+The phrase table `CONDITION_WORDS` in `test_passive_effects_match_the_node_text.py`, imported rather than copied, read
+from a sentence to its rows: a node's description, or a capstone option's for a row under that option. On 2026-11-25
+it read every condition in the table except six, and found 94 sentences that said a condition's words and carried no such
+condition. Every one was read by hand:
+
+- 86 came from six conditions whose words appear in sentences that state no such condition. These are not read this way
+  (`TOO_GENERAL_TO_READ_BACKWARDS`): `enemies_in_reach_at_least` ("within", 32: an area's size, "within 2 seconds", the
+  scale `enemies_in_reach`), `health_below` ("below", 24), `fervour_threshold_reached` and
+  `class_resource_points_at_least` (one phrase, "or more fervour", for both, 11 and 6), `attacker_beyond_metres` ("more
+  than", 7: "no more than once every N seconds") and `opponent_within_metres` ("enemies within", 6: an area's size).
+- 8 carry the condition another way and are named with how (`EXPRESSED_ANOTHER_WAY`): Kill Chain's stacks last 2
+  seconds; Grave Patience's stat is the grace after a kill; two Siphon nodes' stats are the Siphon's own; the Masochist
+  vow whose stat makes every cost a health cost; the Ritualist vow read on a cursed enemy's death; the Soul Collector
+  node whose stacks come from a spend of 10 or more Fervour; and Gleaning's "each enemy you kill".
+
+A new condition in `CONDITION_WORDS` is read this way unless it is added to the first list, and a new sentence that
+states a condition without a row carrying it fails unless it is added to the second with how it carries it.
+
+**A KNOWN LIMIT: THE SIX CONDITIONS ON THE FIRST LIST ARE NOT CHECKED AT ALL.** A row that loses `health_below`,
+`enemies_in_reach_at_least`, `fervour_threshold_reached`, `class_resource_points_at_least`, `attacker_beyond_metres` or
+`opponent_within_metres` is still not caught. The coordinating session named a later refinement, not made now: read
+those six by fuller phrases, such as "below N% health", rather than by single words.
+
+### Ruling recorded here
+
+The coordinating session's answer of 2026-11-25 to item 3 of slice C4a's report: not an issue, but a small slice of its
+own after C4b, with the Death's Patience break as its guard proof and a named list for any row that legitimately has
+none.
+
+### What was run
+
+**The whole Python suite on `3aa5e635f`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8520 passed, 9 skipped in 378.39s
+(0:06:18)". The JUnit file agrees: tests 8530, failures 1, errors 0, skipped 9, so 8520 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+the Death line's tables not yet rebuilt as assets, which the editor step clears. `python -m ruff check .`: "All checks
+passed!"
+
+**One Python guard proof**, `proved`, with `break_and_run` in a `git archive` copy of `02099f695`: Death's Patience's
+row with its condition removed, slice C4a's break, fails
+`test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows`
+while all 25 tests in `test_passive_effects_match_the_node_text.py` still pass; restored, all 28 pass.
+
+---
+
+## 2026-11-25 — Deaths the Soul Collector did not make, and decay given back: Reclaimed, Claimed and Death's Toll (Death trees, slice C4b2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: the stats `DecayGivenBackOnKillSecondsStat`
+  (`decay_given_back_on_kill_seconds`), `ClaimedWithinSecondsStat` (`fervour_claimed_within_seconds`) and
+  `FollowerKillsCountAsYoursStat` (`follower_kills_count_as_yours`); `GiveBackDecayOnKill`, `ClaimOnDeath`,
+  `CreditAFollowersKill` and `SoulCollectorRowKeyPrefix`; `DecayStep` and `KillDecayStep` record what they took.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteFervourDecayed`,
+  `TakeFervourDecayedWithin`, and `ActOnEvent`'s new last parameter, `OnlyRowsWhoseKeyBegins`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler gives back decay before an own kill's
+  payment, and for a death it did not make asks Death's Toll and otherwise Claimed.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the three new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmKillCreditTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (three
+  probes) and `CataclysmDataTableTests.cpp`; `tools/tests/test_kill_credit_reaches_the_soul_collector.py`, new (4);
+  `test_passive_effects_match_the_node_text.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (570 rows),
+  `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **THE KILL HANDLER'S ORDER IS CHECKED ONLY BY READING THE SOURCE.** The Unreal tests call `GiveBackDecayOnKill`,
+  `ClaimOnDeath` and `CreditAFollowersKill` directly. None drives `ACataclysmPlayerCharacter::OnSomethingDied`, which
+  needs a whole player; `test_kill_credit_reaches_the_soul_collector.py` reads the order from the source. (One Death's
+  Toll case through the whole player was added after the slice was accepted; see "Unreal tests".)
+- **THE PLAN'S RESEARCH WAS WIDER THAN WHAT A READABLE PAGE SUPPORTS.** The plan said Path of Exile and Last Epoch both
+  leave a minion's kill out of the player's "on kill" effects. Re-read before this entry: the Last Epoch forum supports it
+  for Last Epoch, from a community member, not a developer; no readable Path of Exile page says it either way. See
+  "Research".
+- **LAST BREATH'S STAT IS SHARED.** `health_restored_on_kill_at_no_cost` carries both the Soul Collector's Last Breath and
+  a Ravager capstone row. Death's Toll restores it for a follower's kill, so a character holding both trees' rows would
+  have the Ravager's share restored on such a kill too. It is recorded rather than prevented.
+
+### What each reads
+
+- **RECLAIMED.** `DecayStep` (the Ravager's out of contact) and `KillDecayStep` (the Death decay after a kill) each record
+  what they took, with the time. A kill gives back the sum taken in the stat's seconds before it, as a kill's payment
+  and unscaled, before the kill's own payment (Q7), and then forgets every record, so a second kill straight after gives
+  nothing twice. A JUDGEMENT: "a kill made after your Fervour has begun to decay" is read as "decay took something in
+  those seconds", which a kill made before any decay never satisfies, and which works for both decays alike. Records are
+  kept 30 seconds with no kill to read them.
+- **CLAIMED.** For a death not credited to the character and not made its own by Death's Toll, when the character's last
+  hit on the slain creature landed within the stat's seconds (`SecondsSinceStruckBy`, the record the struck character
+  keeps), the character is paid what its own kill of the creature would pay (`GainOnOwnKill`, Gleaning's roll included)
+  as a kill's payment, with no kill clock and no hold (Q9). "Within" includes the boundary.
+- **DEATH'S TOLL.** A kill whose killer `UCataclysmCommand::CommanderOf` reads as the character's follower (a minion, a
+  gadget or a trap, each a `ACataclysmMinion`; or a thrall, by its owner) is the character's for everything the Soul
+  Collector tree asks, in an own kill's order: Reclaimed's give-back, the payment and every row inside it, `NoteOwnKill`
+  (the kill clock and the hold), `kill` raised to the Soul Collector's own rows only, and Last Breath. Not the run's kill
+  count, not a worn weapon's, and no other tree's rows.
+- **THE SOUL COLLECTOR'S ROWS, READ FROM WHAT EACH ROW HOLDS (Q8).** A row's trigger key begins with its enchantment's
+  name: `<enchantment>:<action>:<event>` for an action row and `<enchantment>:<stat>:<event>` for a stack row
+  (`CataclysmItem.cpp`), and a passive row's enchantment is `Passive_<node>` (`UCataclysmPassiveTree::EnchantmentNameFor`).
+  So `ActOnEvent` skips a row whose trigger key does not begin with `Passive_SoulCollector_` when asked to. No new column.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Reclaimed (keystone) | decay_given_back_on_kill_seconds, flat, 3 |
+| Claimed | fervour_claimed_within_seconds, flat, 1, at 2, 4, 6 and 8 points |
+| Death's Toll (keystone) | follower_kills_count_as_yours, flat, 1 |
+
+`PassiveEffects.csv` 564 to 570; the Soul Collector 110 rows.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4b plan, recorded with slice C4b1 and applied here: Q7, both
+decays count and are given back unscaled as a kill payment; Q8, Death's Toll raises `kill` for a follower's kill only to
+rows whose node belongs to the Soul Collector tree, read from what the row already holds, with no new column; Q9, Claimed
+pays as a kill payment, Gleaning included, with no clock and no hold, and never on top of a kill Death's Toll made yours.
+
+### Research
+
+What a shipped game does with a minion's kill, for Death's Toll, read on 2026-11-25:
+
+| Game | Source | What it says |
+|---|---|---|
+| Last Epoch | `forum.lastepoch.com/t/how-the-on-kill-effect-works/46372`, a reply by the community member "Heavy", 15 December 2021, not marked as a developer | "Your minions do not trigger on kill effect for the players and vice versa." |
+| Path of Exile | `poedb.tw/us/Kill`, read in part | Lists minion modifiers that give the MINION an effect on its own kill, such as "Minions have 10% chance to gain Onslaught for 4 seconds on Kill"; says nothing about whether a minion's kill counts as the player's |
+
+What it settles: in Last Epoch, by a player's account, a minion's kill does not count as the player's by default, which
+is this game's default too (Conduit is the Ritualist's opt-in). Death's Toll is the Soul Collector's opt-in, scoped by
+its sentence to its own tree. Not settled by research and ruled: that scope (Q8). The figures are the owner's approved
+trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.KillCredit.` | new: `ReclaimedGivesBackWhatDecayTookInTheSecondsBeforeAKill`, `ClaimedPaysForAnEnemyYouHitWhateverKillsIt`, `DeathsTollMakesAFollowersKillYours`, `DeathsTollRaisesTheKillToTheSoulCollectorsRowsOnly`, `TheThreeNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs three new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 570 | unchanged |
+
+Each new test has a control: no Reclaimed, and a second kill straight after; a hit too long before, and an enemy never
+struck; no Death's Toll, and a killer nobody owns; the character's own kill, which raises `kill` to every row.
+
+**AND ONE CASE THROUGH THE WHOLE PLAYER, added after the slice was accepted, as the coordinating session asked**
+(`feat/death-trees-kill-credit-end-to-end`): `Cataclysm.KillCredit.AMinionsKillPaysTheRealPlayerUnderDeathsToll`, on the
+scene `Cataclysm.Swarm.AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone` builds, a real player on a real player
+state whose real imp kills a creature, heard by `OnSomethingDied`. With Death's Toll the kill pays the player 5 and stamps
+its kill clock; without it, nothing. The group is then 6. ITS ONE C++ GUARD PROOF, registered at the coordinating
+session's request: in `CataclysmPlayerCharacter.cpp`, `!UCataclysmFervour::CreditAFollowersKill(Acting, this, Notice)`
+becomes `true`. Prefix `Cataclysm.KillCredit.`; must fail `AMinionsKillPaysTheRealPlayerUnderDeathsToll`.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `TakeFervourDecayedWithin`: `if (Entry.Key >= Since)` becomes `if (true)`.
+   Prefix `Cataclysm.KillCredit.`; must fail `ReclaimedGivesBackWhatDecayTookInTheSecondsBeforeAKill` (20 rather than
+   15).
+2. `CataclysmAbilitySystemComponent.cpp`, `ActOnEvent`: `if (OnlyRowsWhoseKeyBegins &&
+   !Listed.TriggerKey.ToString().StartsWith(OnlyRowsWhoseKeyBegins))` becomes `if (false)`. Prefix
+   `Cataclysm.KillCredit.`; must fail `DeathsTollRaisesTheKillToTheSoulCollectorsRowsOnly` (800 rather than 600).
+3. `CataclysmFervour.cpp`, `ClaimOnDeath`: `if (Since < 0.0f || Since > Within)` becomes `if (Since < 0.0f)`. Prefix
+   `Cataclysm.KillCredit.`; must fail `ClaimedPaysForAnEnemyYouHitWhateverKillsIt` (the hit 1.5 seconds before the
+   death, within 1 second).
+
+### What was run
+
+**The whole Python suite on `e60345711`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8517 passed, 9 skipped in 383.40s
+(0:06:23)". The JUnit file agrees: tests 8527, failures 1, errors 0, skipped 9, so 8517 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, gave the same figures.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`c5fb408b3`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| An own kill paid before Reclaimed gives back decay | `test_kill_credit_reaches_the_soul_collector.py::test_an_own_kill_gives_back_decay_before_it_is_paid` |
+| Claimed asked even when Death's Toll credited the kill | `test_kill_credit_reaches_the_soul_collector.py::test_claimed_is_asked_only_when_no_kill_was_credited` |
+| `KillDecayStep` no longer recording what it took | `test_kill_credit_reaches_the_soul_collector.py::test_both_decays_record_what_they_took` |
+| `ActOnEvent` no longer filtering rows by the prefix | `test_kill_credit_reaches_the_soul_collector.py::test_a_followers_kill_raises_kill_to_the_soul_collectors_rows_only` |
+| Reclaimed's row at 4 seconds rather than 3 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
+## 2026-11-25 — Fervour gained from other sources and the hold before decay: Any Fuel, Borrowed Time, Kindred Fires, and one way for every gain to reach the pool (Death trees, slice C4b1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `UCataclysmFervour::RaisePool`, the one way a
+  gain reaches the pool; `AfterPoolRose`; `KillDecayHoldFullSeconds`; the stats `HoldRestartedByAnyGainStat`
+  (`fervour_hold_restarted_by_any_gain`) and `HoldExtendedOnGainSecondsStat` (`fervour_hold_extended_on_gain_seconds`);
+  the kill-payment marker opened by `GainOnOwnKill`; every gain function's write swapped onto the helper.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `BeginKillPayment`,
+  `EndKillPayment`, `IsPayingForAKill`, `RestartKillDecayHold`, `ExtendKillDecayHold`, `LastKillGraceSeconds` (recorded
+  by `NoteOwnKill`), `StatAsIfAgainstRarity`; `CurrentConditions` fills the new state field; Cinders Kept's return
+  (`ReturnFervourDue`) goes through the helper.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `fervour_gain_not_from_a_kill`
+  (`FervourGainNotFromAKill`) and `FCataclysmStatConditions::bFervourGainNotFromAKill`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp` (a class resource top-up) and `CataclysmSiphon.cpp`
+  (the Siphon's Fervour) go through the helper.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the two new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourGainsTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp` (three
+  probes), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`, new (5);
+  `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
+  `test_every_conditioned_stat_has_an_asker.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (564 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **THE C4b PLAN SAID SOMETHING FALSE, AND THIS SLICE IS BUILT ON THE CORRECTION.** The plan said the class resource
+  attribute set's `PostGameplayEffectExecute` sees every write through `ApplyModToAttribute`. It does not. In the UE 5.8
+  source, `UAbilitySystemComponent::ApplyModToAttribute` calls `ApplyModToAttributeUnsafe`, which calls
+  `FActiveGameplayEffectsContainer::ApplyModToAttribute` with no callback data, and that only calls
+  `SetAttributeBaseValue`. `PostGameplayEffectExecute` runs for an instant gameplay effect and not for these writes. The
+  hooks that do run (`PreAttributeBaseChange`, `PostAttributeBaseChange`, the value-change delegate) are also reached by
+  `SetNumericAttributeBase`, which a loaded save and a creature raised holding Fervour use and which was ruled no gain
+  (Q2), so no hook can tell the two apart. The claim came from reading where `ApplyModToAttribute` is called and
+  assuming what it reaches, without reading the engine function. The coordinating session accepted the replacement: one
+  helper, `RaisePool`, that every gain calls, and a Python check that fails on any other positive write.
+- **A MERGE OBLIGATION, logged by the coordinating session.** `feat/war-fervour-sources` and `feat/death-skills-2885`
+  add gain paths. Whichever merges after this must route them through `RaisePool`, and a skill's own kill Fervour must
+  open the kill-payment marker; `test_every_gain_to_the_pool_goes_through_raise_pool.py` fails until the gains do.
+- **`RaisePool` CLAMPS AT THE MAXIMUM ITSELF**, as well as every caller doing so as before. A change that does not fit is
+  lost rather than left in the stored base above the maximum, the fault of issue #1036. No caller's result changes.
+- **KINDRED FIRES LEAVES A KILL'S PAYMENT OUT, AS RULED AFTER THIS SLICE WAS FIRST REPORTED.** As first built
+  (`9b7c3fb51`) it acted on every rise, a kill's payment included, so a common kill made inside an Elite kill's
+  8-second hold restarted it at 8 before the common kill's own stamp recorded 4. The coordinating session ruled that
+  more than the sentence grants: "holds off decay as a kill does" is about Fervour from other sources, and a kill
+  already holds off decay by its own grace. A kill's payment now sets the hold only through the kill's own stamp.
+
+### What each reads
+
+- **A GAIN** is any rise of the pool through `RaisePool` (Q2). That covers every gain function in `UCataclysmFervour`,
+  Cinders Kept's returned share, the Siphon, and a class resource top-up through `UCataclysmRegeneration::TopUp`, which
+  is how a `class_resource` action row gains. It does not cover `SetNumericAttributeBase` writes. Only an actual rise
+  counts (Q6): a gain to a full bar changes nothing.
+- **A KILL'S PAYMENT** is a gain made while the kill-payment marker is open: `GainOnOwnKill` opens it for its whole
+  length. Counted rather than a flag, so a payment inside another stays marked.
+- **ANY FUEL** is a row on `class_resource_generation`, the rate every gain is scaled by, under the new condition
+  `fervour_gain_not_from_a_kill`, so its increase adds to the rate's other increases (Q3). THE CONDITION asks whether
+  the gain being sized is not a kill's payment: true unless the marker is open. A state nobody filled leaves it false,
+  which refuses. It takes no value and compares no number. `class_resource_generation` joins the conditioned-asker list.
+- **THE FULL LENGTH OF THE HOLD** is the grace the last kill set, recorded by `NoteOwnKill`, and before any kill a
+  common kill's grace (Q5): the grace stat asked as if against rarity rung 0 (`StatAsIfAgainstRarity`), because the
+  starting node's grace rows are written against the slain creature's rung.
+- **KINDRED FIRES** restarts the hold at its full length on any rise that is not a kill's payment; the hold never
+  shortens. A kill's payment reaches neither Kindred Fires nor Borrowed Time: the rise handler returns on the marker
+  before asking either.
+- **BORROWED TIME** lengthens a hold that is still running (Q4) by its seconds, on a rise that is not a kill's payment,
+  never past now plus the full length. "1 second for every 3 points" is a row of 1 at 3 points and one at 6.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Any Fuel | class_resource_generation, increased, 2, cond=fervour_gain_not_from_a_kill |
+| Borrowed Time | fervour_hold_extended_on_gain_seconds, flat, 1, at 3 and 6 points |
+| Kindred Fires (keystone) | fervour_hold_restarted_by_any_gain, flat, 1 |
+
+`PassiveEffects.csv` 560 to 564; the Soul Collector 104 rows.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4b plan:
+- Q1: C4b1 (Any Fuel, Kindred Fires, Borrowed Time, the gain hook) before C4b2 (Reclaimed, Claimed, Death's Toll).
+- Q2: a gain is any rise through `ApplyModToAttribute`, Cinders Kept's return included; `SetNumericAttributeBase`
+  writes are not gains.
+- Q3: Any Fuel adds into `class_resource_generation`'s increased bucket under the new condition.
+- Q4: Borrowed Time extends only a running hold.
+- Q5: the full length is the grace the last kill set; before any kill, a common kill's grace.
+- Q6: an actual rise only.
+- For C4b2: Q7 (both decays count, given back unscaled as a kill payment), Q8 (Death's Toll raises the kill event for
+  followers' kills only to Soul Collector rows, read from what a row already holds, with no new column, or else not at
+  all) and Q9 (Claimed pays as a kill payment, Gleaning included, no clock and no hold, never on top of a kill Death's
+  Toll made yours).
+- And the helper in place of the hook, accepted after the correction above, with a guard proof of its check.
+- And, after the slice was first reported, two choices put to the coordinating session: `RaisePool` clamping at the
+  maximum itself, accepted; and Kindred Fires acting on a kill's payment, ruled against: "leave kill payments OUT of
+  Kindred Fires ... a kill's payment should set the hold only through its own stamp", with a test whose control is a
+  gain that is not a kill's.
+
+### Research
+
+None new for this slice. Any Fuel's increase joining the rate's other increases is this game's three-bucket pipeline,
+already settled. The figures are the owner's approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourGains.` | new: `AnyFuelRaisesAGainThatIsNotAKillsAndLeavesAKillsAlone`, `KindredFiresRestartsTheHoldAtTheLastKillsFullLength`, `KindredFiresLeavesAKillsHoldToTheKillsOwnStamp`, `BorrowedTimeLengthensARunningHoldUpToItsFullLength`, `RaisePoolClampsAtTheMaximumAndAFullBarRestartsNothing`, `TheThreeNodesRowsAreTheirSentences` | 6 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs two new probes and `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` one | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 564 | unchanged |
+
+Each new test has a control: no Any Fuel, and a kill's payment; no Kindred Fires; a cast after a kill's payment left
+the hold alone; a cast once decay has begun, and a kill's payment inside a running hold; the same gain on a full bar.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmFervour.cpp`, `AfterPoolRose`: the lines `if (Cataclysm->IsPayingForAKill())`, `{`, `return;`, `}` are
+   removed. Prefix `Cataclysm.FervourGains.`; must fail `BorrowedTimeLengthensARunningHoldUpToItsFullLength` and
+   `KindredFiresLeavesAKillsHoldToTheKillsOwnStamp`.
+2. `CataclysmAbilitySystemComponent.cpp`, `ExtendKillDecayHold`: `const float Capped =
+   FMath::Min(KillDecayHeldUntilSeconds + Seconds,` and the line after become `const float Capped =
+   KillDecayHeldUntilSeconds + Seconds;`. Prefix `Cataclysm.FervourGains.`; must fail
+   `BorrowedTimeLengthensARunningHoldUpToItsFullLength`.
+3. `CataclysmAbilitySystemComponent.cpp`, `CurrentConditions`: `State.bFervourGainNotFromAKill = !IsPayingForAKill();`
+   becomes `State.bFervourGainNotFromAKill = true;`. Prefix `Cataclysm.FervourGains.`; must fail
+   `AnyFuelRaisesAGainThatIsNotAKillsAndLeavesAKillsAlone`.
+
+### What was run
+
+**The whole Python suite on `8eb68ed03`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8512 passed, 9 skipped in 394.70s
+(0:06:34)". The JUnit file agrees: tests 8522, failures 1, errors 0, skipped 9, so 8512 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, failed that one and the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`9b7c3fb51`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| `GainForCast` writing the pool with `ApplyModToAttribute` again, as the coordinating session asked | `test_every_gain_to_the_pool_goes_through_raise_pool.py::test_every_call_site_is_in_the_inventory` and `::test_every_gain_to_the_pool_calls_the_helper` |
+| `GainOnOwnKill` no longer opening the kill-payment marker | `test_every_gain_to_the_pool_goes_through_raise_pool.py::test_the_kill_payment_is_marked_for_its_whole_length` |
+| Any Fuel's row under `target_carries_your_curse` instead of its own condition | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Borrowed Time's rows at 2 seconds rather than 1 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| The new condition taken off `ConditionTakesAValue`'s list of conditions that compare nothing | `test_condition_lists_agree_with_the_code.py::test_the_three_value_less_lists_agree` |
+
+**AFTER THE RULING ON KINDRED FIRES**, at `74b11168f`: the whole Python suite on that
+commit, "1 failed, 8513 passed, 9 skipped in 393.53s (0:06:33)"; the JUnit file agrees, tests 8523, failures 1, errors 0,
+skipped 9, the one failure the same asset check as above. And a sixth Python guard proof, `proved`, in a `git archive`
+copy of `74b11168f`: the return on a kill's payment moved back after Kindred Fires, as first built, fails
+`test_every_gain_to_the_pool_goes_through_raise_pool.py::test_a_kills_payment_reaches_neither_kindred_fires_nor_borrowed_time`.
+
+---
+
+## 2026-11-25 — The first Death nodes that act on a kill: Soul Tide, Gleaning, Thinning the Herd, Death's Patience, Flicker, Clean Kill and Hunting Leap (Death trees, slice C4a)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `PerKillExtraChanceStat`
+  (`fervour_per_kill_extra_chance`) rolled in `GainOnOwnKill`, pinned in tests by `Cataclysm.KillFervourExtraRoll`;
+  `HealthRestoredOnCriticalKillStat` (`health_restored_on_critical_kill`) and `RestoreHealthOnCriticalKill`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp`: `FCataclysmLastBlow::bKillingBlowWasCritical`
+  and `FCataclysmDeathNotice::bByACriticalStrike`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition
+  `target_carries_your_poison_or_bleed` (`TargetCarriesYourPoisonOrBleed`) and its state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `CarriesPoisonOrBleedLaidBy`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: `WithTargetState` fills the new field.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler restores Clean Kill's share for a kill
+  whose notice says the killing blow was critical.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the two new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmKillHooksTests.cpp`, new (7); `CataclysmStatExemptionTests.cpp` (four
+  probes), `CataclysmDataTableTests.cpp`, and `CataclysmPassiveTreeTests.cpp` (`ComparesNothing` names the new
+  condition); `tools/tests/test_a_critical_killing_blow_reaches_clean_kill.py`, new (4);
+  `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
+  `test_every_conditioned_stat_has_an_asker.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (560 rows), `docs/README.md`.
+- And the branch's first commit, `c1e74bd5b`: two comment lines in `CataclysmPassiveTreeTests.cpp` that began with one
+  slash, from `d2cdaf5b1` on the stacked base, which stopped the compile-only build of slices A to C3e. The
+  coordinating session chose to fix them here; the rebuild at that commit printed `Build: Succeeded - 5 actions, 1 file
+  compiled: Module.Cataclysm.49.cpp`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The compile at `c1e74bd5b` is the stacked base
+  before any of it. A window has to compile, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **CLEAN KILL IS A STAT, NOT A CONDITION OR AN EVENT**, which differs from the plan's words (a new condition read at the
+  kill). The notice records the critical killing blow as ruled (Q5). But "1% of your Maximum Health for every 2 points"
+  is a row at each second point, and the generator keeps one action row per node and event, so four action rows on a
+  `critical_kill` event were refused. The rows are a stat the kill handler reads on a critical kill, through
+  `UCataclysmRegeneration::TopUp`, as the restoration on every kill beside it already is.
+- **FLICKER'S DEATHMARK HALF IS NOT BUILT.** Only "Killing an enemy resets your movement skill's cooldown" has a row;
+  Deathmark and what reads it are a later piece of their own.
+- **THINNING THE HERD NEEDED NO ENGINE CHANGE**, and an earlier message of mine said otherwise. I told the coordinating
+  session the reach count includes dead bodies, having searched where the count is used rather than where it is
+  defined. `UCataclysmTargeting::MatchesAttitude` refuses a dead character, which
+  `Cataclysm.EnemiesInReach.ADeadEnemyStandingNextToYouCountsForNothing` tests (#1693). The slain creature is marked dead
+  before its death is announced (`UCataclysmSkillEffects::MarkDead`), so it is never counted.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Soul Tide (Soul Collector vow 25, option 1) | fervour_per_kill, flat, 1, cond=seconds_after_kill 2 |
+| Gleaning | fervour_per_kill_extra_chance, flat, 5 |
+| Thinning the Herd | fervour_per_kill, increased, 1, scale=enemies_in_reach, step 1, reach 8, cap 10 |
+| Death's Patience (Shadow) | fervour_per_kill, flat, 1, cond=target_carries_your_poison_or_bleed |
+| Flicker (Shadow keystone) | action cooldown_reset_movement, 100, on kill |
+| Clean Kill (Shadow) | health_restored_on_critical_kill, flat, 1, at 2, 4, 6 and 8 points |
+| Hunting Leap (Shadow) | skill_range, increased, 3, tags Slot.Movement; and the same under seconds_after_kill 2 |
+
+`PassiveEffects.csv` 549 to 560; the Soul Collector 100 rows, the Shadow 77.
+
+### What each reads
+
+- **Soul Tide's "Kills within 2 seconds of each other"** is the kill clock read before this kill stamps it, so it is
+  the time since the previous kill (slice C's ruling, checked by `test_kill_clock_reads_the_previous_kill.py`).
+- **Gleaning** rolls once a kill, after the kill's own payment is known to be above nought, and adds 1 before the
+  payment is scaled by how fast the class resource generates, as the payment itself is. A chance of 100 or more is
+  compared rather than rolled. A roll equal to the chance fails.
+- **Death's Patience's "your" Poison or Bleed** is the new condition `target_carries_your_poison_or_bleed`. It asks
+  whether the target in hand carries a running Poison or Bleed whose effect names the asker's character as its
+  instigator, found by the tag as `RunningApplicationOf` finds one, the same test as `target_carries_your_curse`. WHEN
+  IT CANNOT READ ITS SUBJECT it refuses: no target, a target with no ability system, or a lookup with no asker. IT TAKES
+  NO VALUE and compares no number; it is one of the conditions of a hit dealt, judged on the target in hand, which at a
+  kill is the slain creature. That creature still carries its effects then, because `MarkDead` announces the death
+  before anything removes them. A JUDGEMENT: one laid by the character's minion is the minion's, not the character's.
+- **Clean Kill's critical strike** is the killing blow's own roll, recorded with the blow, and never a tick of damage
+  over time.
+- **Hunting Leap's "doubled"** is exact because `skill_range` is read as increases (`UCataclysmSkillTemplate`'s range is
+  multiplied by one plus the owner's increases), the condition the coordinating session put on Q6.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4 plan: Q1, the split and order, C4a first, then C4b (Fervour
+sources and decay), C4c (area effects on a kill), C4d (larger single mechanisms); Q2, Gleaning's chance is rolled on each
+kill with a console variable for tests; Q3, Thinning the Herd counts the living enemies within 8 metres at the kill, the
+slain one excluded, up to 10; Q4, a new condition for a Poison or Bleed this character applied; Q5, the kill notice
+records whether the killing blow was critical, and a tick of damage over time is not one; Q6, Hunting Leap as a second
+row under the kill clock, only if `skill_range` is an increased stat.
+
+### Research
+
+None new. The figures are the owner's approved trees'; the machinery is this game's own kill event, kill clock, reach
+count and stat pipeline.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.KillHooks.` | new: `GleaningRollsForOneExtraFervourOnAKill`, `ThinningTheHerdCountsTheLivingEnemiesNearAndNotTheDead`, `DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain`, `ADeathNoticeSaysWhetherTheKillingBlowWasCritical`, `CleanKillRestoresItsShareOfMaximumHealth`, `HuntingLeapDoublesForTwoSecondsAfterAKill`, `TheSevenNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs two new probes, `EveryStatTheDataScalesIsAskedForThroughThePipeline` one, `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` one | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 560 | unchanged |
+
+Each new test has a control: no Gleaning, and a roll equal to the chance; an enemy 12 metres off, and the near one dead;
+a creature carrying nothing, and one carrying another character's Poison; the same blow not critical; no Clean Kill;
+before any kill, 2.1 seconds after, and a skill that is not the movement skill.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmCombatEvents.cpp`, the lethal blow: `Blow.bKillingBlowWasCritical = Outcome.bWasCritical;` becomes
+   `Blow.bKillingBlowWasCritical = false;`. Prefix `Cataclysm.KillHooks.`; must fail
+   `ADeathNoticeSaysWhetherTheKillingBlowWasCritical`.
+2. `CataclysmDebuffs.cpp`, `CarriesPoisonOrBleedLaidBy`: `if (Active && Active->Spec.GetContext().GetInstigator() ==
+   Applier)` becomes `if (Active)`. Prefix `Cataclysm.KillHooks.`; must fail
+   `DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain`.
+3. `CataclysmFervour.cpp`, `GainOnOwnKill`: `if (ExtraChance >= 100.0f || Roll < ExtraChance)` becomes `if (ExtraChance
+   >= 100.0f || Roll <= ExtraChance)`. Prefix `Cataclysm.KillHooks.`; must fail `GleaningRollsForOneExtraFervourOnAKill`.
+
+### What was run
+
+**The whole Python suite on `6070ed9a8`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8508 passed, 9 skipped in 360.23s
+(0:06:00)". The JUnit file agrees: tests 8518, failures 1, errors 0, skipped 9, so 8508 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, failed that one, the check that every condition is named in this log, which this entry satisfies, and
+`test_condition_lists_agree_with_the_code.py::test_the_three_value_less_lists_agree`, because `ComparesNothing` in
+`CataclysmPassiveTreeTests.cpp` did not name the new condition; it was added before `43243fb9a` was committed.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`43243fb9a`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The death notice counting a tick of damage over time as a critical kill | `test_a_critical_killing_blow_reaches_clean_kill.py::test_the_death_notice_leaves_out_a_tick_of_damage_over_time` |
+| The kill handler restoring Clean Kill's share on every kill | `test_a_critical_killing_blow_reaches_clean_kill.py::test_the_kill_handler_restores_health_only_for_a_critical_kill` |
+| Gleaning's row at 6 a point rather than 5 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| Gleaning's chance asked without the slain creature | `test_stat_lookups_hand_over_what_they_should.py::test_every_call_site_is_in_the_inventory` and `::test_the_inventory_holds_no_call_site_that_has_gone` |
+| Death's Patience's row naming `target_carries_your_curse` instead of its own condition | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+**A sixth break was tried first and NOTHING FAILED:** Death's Patience's row with its condition removed passed all 25
+tests in `test_passive_effects_match_the_node_text.py`. That check confirms a condition a row states matches the
+node's words; it does not notice a row that has lost a condition its words call for, so a row granting Fervour on every
+kill would pass it. The Unreal test `TheSevenNodesRowsAreTheirSentences` reads Death's Patience's condition, which
+covers this row in a window; no Python check covers the class.
+
+---
+
+## 2026-11-25 — Fervour counted as held: Chained Souls' share of what followers hold back, and Empty Hands' "fewer than 20" (Death trees, slice C3e)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `class_resource_points_below`
+  (`ClassResourcePointsBelow`), `FCataclysmStatConditions::ClassResourceCountedAsHeld`, and
+  `UCataclysmStatPipeline::FervourHeldCounted`, which the percent-of-bar condition, the points condition, the new
+  condition and the held scale now read.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`:
+  `ReservedFervourCountsAsHeldPercentStat`, `ReservedFervourCountedAsHeld`; `CurrentConditions` fills the share and
+  works the Fervour thresholds out on the counted figure; `NoteFervourThresholdsHeld` counts the share too.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the new stat has no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourCountedTests.cpp`, new (4); `CataclysmStatExemptionTests.cpp`
+  (a probe) and `CataclysmDataTableTests.cpp`; `tools/tests/test_chained_souls_counts_as_held.py`, new (3);
+  `test_passive_effects_match_the_node_text.py` and `test_fervour_thresholds_are_the_vows.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (549 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **THE SHARE IS READ FROM THE RESERVE THE CONDITIONS FILL ALREADY KNOWS** (`ClassResourceReserved`, what the
+  character's minions, gadgets and traps hold back, from slice C1). No Unreal test here builds real followers: the share
+  is tested from a reserve given by hand, the fill line by a Python check of the source, and the reserve's own sum by
+  slice C1's `Cataclysm.KindReserves.` tests.
+- **LONG SHADOW'S RECORD COUNTS THE SHARE** so it counts what the thresholds count; for a character without Chained
+  Souls it asks for no followers at all.
+- **COUNTED, AS RULED:** the percent-of-bar condition, the points condition, Empty Hands' new condition, the held scale
+  (Pall of Souls, Soul Haste and the rest) and the four Fervour thresholds. **NOT COUNTED, AS RULED:** whether the bar is
+  full (`ClassResourceAtMaximum`, the bar against the maximum less what is held back), and Phylactery's spend, which
+  reads the pool.
+- **NOTHING OF THE SOUL COLLECTOR'S FERVOUR LIMBS IS LEFT FOR THIS LINE** but the Soul Fuel group, after
+  `feat/death-skills-2885` merges.
+
+### What counted as held means now
+
+`FCataclysmStatConditions::ClassResourceCountedAsHeld` is `reserved_fervour_counts_as_held_percent` (Chained Souls, 8 a
+point) of `ClassResourceReserved`, worked out once a conditions fill by
+`UCataclysmAbilitySystemComponent::ReservedFervourCountedAsHeld`, with no reading, because it is asked while the
+conditions are filled. `UCataclysmStatPipeline::FervourHeldCounted` is the pool plus it, and an unknown pool stays
+unknown, so no enemy gains a bonus written for a bar.
+
+**Empty Hands' condition** `class_resource_points_below` is strictly below, the opposite of
+`class_resource_points_at_least`: at exactly 20 it refuses and "20 or more" holds. An unknown reading refuses, or every
+creature without a bar would hold "fewer than 20".
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Empty Hands | attack_speed, increased, 2, cond=class_resource_points_below 20 |
+| Chained Souls | reserved_fervour_counts_as_held_percent, flat, 8 |
+
+`PassiveEffects.csv` 547 to 549; the Soul Collector 97 rows on 52 of its 73 nodes, and 109 of the 220 Death nodes grant
+something.
+
+### Rulings recorded here
+
+The coordinating session's answer of 2026-11-25 to question 5 of slice C3d's plan: Chained Souls counts for every
+reading of the amount held, and not for whether the bar is full, and not for what Phylactery spends. And the split of
+that plan, which put Empty Hands and Chained Souls in this slice.
+
+### Research
+
+None new. The figures are the owner's approved trees'; the machinery is this game's own conditions fill.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourCounted.` | new: `EmptyHandsHoldsBelowTwentyAndNotAtIt`, `ChainedSoulsCountsForEveryReadingOfTheAmountButNotTheFullBar`, `ChainedSoulsShareIsItsPercentOfWhatIsHeldBack`, `TheRealRowsGiveTwelveBelowTwentyAndFortyEight` | 4 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs one new probe | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 549 | unchanged |
+
+Each new test has a control: exactly 20, and an unknown holding; the same holding with nothing counted, and a bar that
+is full; the stat not granted, and nothing held back.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmStatPipeline.cpp`, `ClassResourcePointsBelow`: `&& UCataclysmStatPipeline::FervourHeldCounted(State) <
+   Value;` becomes `&& State.ClassResourceHeld < Value;`. Prefix `Cataclysm.FervourCounted.`; must fail
+   `EmptyHandsHoldsBelowTwentyAndNotAtIt` and `ChainedSoulsCountsForEveryReadingOfTheAmountButNotTheFullBar`.
+2. `CataclysmStatPipeline.cpp`, `FervourHeldCounted`: `: State.ClassResourceHeld + FMath::Max(0.0f,
+   State.ClassResourceCountedAsHeld);` becomes `: State.ClassResourceHeld;`. Prefix `Cataclysm.FervourCounted.`; must
+   fail `ChainedSoulsCountsForEveryReadingOfTheAmountButNotTheFullBar` and `EmptyHandsHoldsBelowTwentyAndNotAtIt`.
+3. `CataclysmAbilitySystemComponent.cpp`, `ReservedFervourCountedAsHeld`: `return Reserved > 0.0f && Percent > 0.0f ?
+   Reserved * Percent / 100.0f : 0.0f;` becomes `return 0.0f;`. Prefix `Cataclysm.FervourCounted.`; must fail
+   `ChainedSoulsShareIsItsPercentOfWhatIsHeldBack`.
+
+### What was run
+
+**The whole Python suite on `ffa1fcce9`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8504 passed, 9 skipped in 384.89s
+(0:06:24)". The JUnit file agrees: tests 8514, failures 1, errors 0, skipped 9, so 8504 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`. The run before, on the working tree, failed that one
+and the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 8 C++ files this slice changed: "8 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the new tests' helpers are in `namespace CataclysmFervourCountedTest`, the row helper renamed `RowUnderCondition`
+  rather than the plainer `Under`, and each new test class, helper and the probe is named in one file only.
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`b8dad9079`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The points condition reading the pool alone | `test_chained_souls_counts_as_held.py::test_every_reading_of_the_amount_held_counts_the_share` |
+| The full bar counting the share | `test_chained_souls_counts_as_held.py::test_the_full_bar_and_phylactery_read_the_pool_alone` |
+| The conditions fill no longer working the share out | `test_chained_souls_counts_as_held.py::test_the_share_is_filled_from_the_reserve_and_long_shadow_counts_it` |
+| Phylactery counting the share | `test_chained_souls_counts_as_held.py::test_the_full_bar_and_phylactery_read_the_pool_alone` |
+| Empty Hands' row under 25 rather than 20 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+---
+
+## 2026-11-25 — The Soul Collector's four Fervour thresholds, the vows' clauses on them, Generous Count, Long Shadow and Steady Count (Death trees, slice C3d)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `fervour_threshold_reached`
+  (`FervourThresholdReached`), the scale `fervour_thresholds_reached` (`PerFervourThresholdReached`),
+  `FCataclysmStatConditions::FervourThresholdsReached`, and the namespace `CataclysmFervourThresholds` holding the four
+  figures and the points that open them.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `FervourThresholdsReachedFor`,
+  `NoteFervourThresholdsHeld`, `FervourThresholdStep`, `StatWithNoReading`, three stat names, Long Shadow's record;
+  `CurrentConditions` fills the answer once; `ClearWhatDeathEnds` forgets the record.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.cpp`: the record kept just before a fall.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`: the regeneration step runs `FervourThresholdStep`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the three new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourThresholdTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
+  (three probes and two conditioned probes) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_fervour_thresholds_are_the_vows.py`, new (4); `test_passive_effects_match_the_node_text.py`,
+  `test_reapply_death_trees_workbook.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (547 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **NOT BUILT: the second vow's "or chain one extra time".** No skill chains today; the extra projectile is built, and
+  the coordinating session has the chain half in its backlog.
+- **THE FOURTH VOW'S "RECOVER TWICE AS FAST" IS A RATE**, as ruled: while the fourth threshold holds, each regeneration
+  step takes its own seconds off every running cooldown once more (`cooldowns_recover_faster_percent`, 100). It lands a
+  quarter second at a time, the regeneration step's length, so a cooldown ends up to a quarter second later than a
+  continuous rate would end it. It is built on `ReduceCooldowns`, the same reduction a row's `cooldown_reduce_all`
+  makes, so a cooldown kept for a skill off the keys recovers faster too.
+- **GENEROUS COUNT AND LONG SHADOW ARE READ WITH NO READING** (`StatWithNoReading`), because they are asked while the
+  conditions are being filled and asking them through the pipeline would fill the conditions again. A condition or
+  scale on either is refused by the generator already, as on any stat not on its asker lists, so a row cannot be
+  written that this reading would get wrong.
+- **LONG SHADOW'S RECORD** is the last time each threshold was seen held, stamped just before every fall of Fervour (the
+  class resource set's `PreAttributeChange`, with the amount falling from) and on every regeneration step. A threshold
+  lost without a fall (Generous Count taken off, points refunded) starts its seconds at the step before, up to a quarter
+  second early.
+- **A THRESHOLD OPENS BY PASSIVE POINTS SPENT** (`FCataclysmStatConditions::ClassPointsSpent`, every point the
+  allocation holds), as the sentences say; the vow's clause row is on its capstone, so it also needs the capstone's
+  point. Steady Count counts by points alone.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECE (C3e):** Empty Hands and Chained Souls.
+
+### What a Fervour threshold is now
+
+**The four.** `CataclysmFervourThresholds` holds them in order: 20 held, opened at 25 points spent; 40 at 50; 60 at 100;
+100 at 200. `FERVOUR_THRESHOLDS` in the generator holds the same figures, and a test holds both to the vows' sentences.
+
+**Reached.** `FervourThresholdsReachedFor(Held, PointsSpent)` gives one bit per threshold: open, and either the Fervour
+held reaches its figure less `fervour_threshold_reduction` (Generous Count), or fewer than
+`fervour_threshold_linger_seconds` (Long Shadow) have passed since it was last seen held. `CurrentConditions` asks it
+once a fill into `FervourThresholdsReached`, which the condition `fervour_threshold_reached` and the scale
+`fervour_thresholds_reached` both read, so the two cannot disagree. Unknown (no Fervour pool, or no player state) is -1
+and reaches none.
+
+**The generator** accepts `fervour_threshold_reached` only with one of the four figures, and accepts a capstone row with
+no option only where the capstone's own sentence states a clause beside its choice (`capstone_states_a_clause`): the
+coordinating session's ruling 4. `projectile_count` and `cooldowns_recover_faster_percent` join the stats a condition
+may be written on, each with a probe.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| The First Vow (capstone 25, no option) | area_of_effect, more, 20, cond=fervour_threshold_reached 20 |
+| The Second Vow (capstone 50, no option) | projectile_count, flat, 1, cond=fervour_threshold_reached 40 |
+| The Third Vow (capstone 100, no option) | mana_cost, removed, 1, cond=fervour_threshold_reached 60 |
+| The Final Vow (capstone 200, no option) | cooldowns_recover_faster_percent, flat, 100, cond=fervour_threshold_reached 100 |
+| Generous Count | fervour_threshold_reduction, flat, 1 |
+| Steady Count | attack_damage and spell_damage, increased, 1, scale=fervour_thresholds_reached, step=1 |
+| Long Shadow | fervour_threshold_linger_seconds, flat, 5 |
+
+"Cost no mana" is a removal of `mana_cost`, as the Ritualist's Ritual Focus writes it. `PassiveEffects.csv` 539 to 547;
+the Soul Collector 95 rows on 50 of its 73 nodes, and 107 of the 220 Death nodes grant something.
+
+### Rulings recorded here
+
+The coordinating session's rulings of 2026-11-25 on this slice's plan:
+1. Generous Count, Long Shadow and Steady Count reach only the four vow thresholds. Held Close, Brimming and the
+   Shadow's Fed Stride say "hold 50 or more", not "threshold", and stay as they are.
+2. A threshold opens by passive points spent (25, 50, 100, 200), as the sentences say; the clause rows also need the
+   capstone's point.
+3. The second vow's extra projectile is built now; the chain half waits for a skill that chains.
+4. The fourth vow's "recover twice as fast" is a rate: crossing 100 speeds a running cooldown and falling below slows it
+   again, built on the regeneration step and `ReduceCooldowns`.
+5. Chained Souls counts for every reading of the amount held, not for whether the bar is full and not for what
+   Phylactery spends (built in C3e).
+6. The slice is split: Empty Hands and Chained Souls are C3e, stacked on this one.
+
+### Research
+
+None new. The thresholds, their figures and their points are the owner's approved trees'; the machinery is this game's
+own (the conditions fill, the regeneration step, the cooldown reduction).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourThreshold.` | new: `AThresholdOpensByPointsSpentAndIsReachedByFervourHeld`, `GenerousCountReachesEachThresholdSooner`, `LongShadowKeepsAThresholdFiveSecondsAfterAFall`, `TheConditionAndSteadyCountReadOneAnswer`, `TheFinalVowSpeedsARunningCooldownAboveOneHundredAndNotBelow`, `TheFourVowClausesAreRowsWithNoOptionOnTheirCapstones` | 6 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs three new probes; `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` two | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 547 | unchanged |
+
+Each new test has a control: a threshold not yet open, and 19 held; the same holding without Generous Count; a holder
+without Long Shadow, and 5.1 seconds after the fall; nothing reached and the answer unknown; a second character that
+stays at 50; each capstone's option rows.
+
+**`TheFinalVowSpeedsARunningCooldownAboveOneHundredAndNotBelow` relies on the regeneration step running on the test
+clock**: two real Death characters' own steps, started at begin-play, with no step called by hand. If that timer did
+not run in a test world, the test would fail at its second figure (15 left after two seconds at 100), and the probe
+`ProbeCooldownsRecoverFaster`, which calls the step by hand, would still pass.
+
+**THE PRECEDENT, asked for by the coordinating session:**
+`Cataclysm.MasochistVowRows.CeaselessPenanceKeepsARealMasochistsDebuffsWhileAboveHalfHealth`
+(`CataclysmPassiveTreeTests.cpp`) holds a Cripple on a real Masochist by that character's own regeneration timer alone
+(`UCataclysmDebuffs::HoldStep`, called by the step), with `RunClock` and no step called by hand, and asserts the Cripple
+is still there three seconds later. It passed in two windows on 2026-11-25: "Test Completed. Result={Success}" in the
+engine logs `Cataclysm-before-tests-2026.11.25-04.07.32.log` of the worktree `interesting-snyder-dca273` (log time
+10.45.14) and `Cataclysm-before-tests-2026.11.25-01.59.06.log` of `sharp-meitner-246682` (log time 08.44.53). Its
+control, the same Cripple gone three seconds later without the option, shows the clock ran at all. The coordinating
+session identified the two runs afterwards: the whole-suite runs of window 2865-w1 (the empty-board surge), on
+`62612be63`, in `interesting-snyder-dca273`, and of window ss2-w1 (skill selection), on `56360b4d6`, in
+`sharp-meitner-246682`.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmStatPipeline.cpp`, the condition's case: `return State.FervourThresholdsReached >= 0 && Index >= 0` and
+   its next line `&& (State.FervourThresholdsReached & (1 << Index)) != 0;` become `return State.FervourThresholdsReached
+   >= 0 && Index >= 0;`. Prefix `Cataclysm.FervourThreshold.`; must fail `TheConditionAndSteadyCountReadOneAnswer`.
+2. `CataclysmAbilitySystemComponent.cpp`, `FervourThresholdsReachedFor`: `if (bHeld || bLingering)` becomes `if
+   (bHeld)`. Prefix `Cataclysm.FervourThreshold.`; must fail `LongShadowKeepsAThresholdFiveSecondsAfterAFall`.
+3. `CataclysmAbilitySystemComponent.cpp`, `FervourThresholdStep`: `Recovery.Percent = StepSeconds * Faster / 100.0f;`
+   becomes `Recovery.Percent = 0.0f;`. Prefix `Cataclysm.FervourThreshold.`; must fail
+   `TheFinalVowSpeedsARunningCooldownAboveOneHundredAndNotBelow`.
+
+### What was run
+
+**The whole Python suite on `755900fc8`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8501 passed, 9 skipped in 359.85s
+(0:05:59)". The JUnit file agrees: tests 8511, failures 1, errors 0, skipped 9, so 8501 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`.
+
+**The run before, on the working tree, failed three more**: the check that every condition is named in this log, which
+this entry satisfies; and two pinned counts moved before `8fc787d28`, the conditioned probes (28 to 30, for
+`projectile_count` and `cooldowns_recover_faster_percent`) and the scale sources a row names (42 to 43, for
+`fervour_thresholds_reached`).
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 10 C++ files this slice changed: "10 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the four thresholds are in the named namespace `CataclysmFervourThresholds`, declared once in
+  `CataclysmStatPipeline.h` and defined once in its `.cpp`; the new tests' helpers are in
+  `namespace CataclysmFervourThresholdTest`, and each new test class, helper and probe is named in one file only. The
+  record of Long Shadow is a `TArray<float>`, not a fixed-size array member, which no reflected header here uses.
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`8fc787d28`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The generator accepting a threshold figure that is none of the four | `test_fervour_thresholds_are_the_vows.py::test_a_figure_that_is_none_of_the_four_is_refused` |
+| Every capstone sentence read as stating a clause | `test_fervour_thresholds_are_the_vows.py::test_only_a_capstone_whose_sentence_states_a_clause_may_carry_a_row_with_no_option` |
+| The C++ fourth figure changed from 100 to 90 | `test_fervour_thresholds_are_the_vows.py::test_the_figures_and_their_points_are_the_four_vows` |
+| The conditions fill no longer working the thresholds out | `test_fervour_thresholds_are_the_vows.py::test_the_engine_works_the_answer_out_once_and_keeps_long_shadows_record` |
+| The First Vow's clause under 40 rather than 20 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+---
+
+## 2026-11-25 — A share of each spend of Fervour returned later, a lethal blow saved by spending all Fervour, and a movement skill used on cooldown for Fervour (Death trees, slice C3c)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteFervourSpent` queues
+  Cinders Kept's share; `ReturnFervourDue`, `FervourWaitingToReturn`, `MaySaveLethalBlowWithFervour`,
+  `TakeFervourForLethalSave`, the two stat names and two constants; `ClearWhatDeathEnds` forgets the shares and the
+  save's wait; the comment on Turn of the Wheel's cut records the ruling below.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: Phylactery's save, last of the saves.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`: the regeneration step returns what is due.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`: `MovementOnCooldownFervourCostStat`,
+  `FervourToUseOnCooldown`; `CheckCooldown` lets a borrowed use through and `ApplyCooldown` takes its Fervour.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the three new stats have no attribute.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`: `HoldReserve` records Bound Offering's share as
+  not taken from the pool (the ruling below).
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourPaidTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
+  (three probes) and `CataclysmDataTableTests.cpp`; `tools/tests/test_fervour_paid_where_the_engine_reads_it.py`, new
+  (9); `test_passive_effects_match_the_node_text.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (539
+  rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **THREE JUDGEMENTS ACCEPTED AND ONE RULED AGAINST, each labelled where it is made:**
+  1. **Phylactery is the last save asked**, after Nothing Stops It, the Demon King's reprieve and Archon's Aegis's
+     crossing: it costs everything held, so a save that costs less goes first.
+  2. **Phylactery saves a damage-over-time tick too**, as the reprieve reads "would be killed": the sentence's "a blow
+     that would kill you" is read as the death, not the kind of damage.
+  3. **Borrowed Step's use leaves the movement skill's cooldown running as it was.** A use borrowed on cooldown does not
+     start another cooldown. The test lets a second pass before the borrowed use, so a cooldown started again would
+     read longer than the one measured.
+  4. **RULED AGAINST: Cinders Kept returns a share only of Fervour taken from the pool.** As first written it returned a
+     share of every spend, Bound Offering's included, so with both at six points holding back 20 returned about 3.2
+     Fervour never taken. The coordinating session ruled on 2026-11-25 that it does not: see "Rulings recorded here".
+- **TWO FIGURES ARE THE ENGINE'S, NOT ROWS:** Cinders Kept's 4 seconds (`FervourReturnedAfterSeconds`) and Phylactery's
+  50 (`FervourLethalSaveLeast`), as the Siphon's fixed seconds are. Phylactery's 60 seconds and Borrowed Step's 40 and 2
+  are rows.
+- **A NEW EXCEPTION IN THE NODE-TEXT CHECK.** Borrowed Step's "40 Fervour, reduced by 2 per point" is a row of 40 paid
+  once from the first point and a row of -2 paid per point. The check that a Min Points row sits on an "At N points"
+  sentence now passes such a row only when it is named in `STATED_ONCE_BESIDE_A_PER_POINT_ROW` with the words that say
+  so and its per-point partner is in the sheet. Each of the three reasons is tested by taking it away.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECES:** the Fervour thresholds (C3d); Soul Fuel and Deeper Draw, Pyre, Soul
+  Shatter, Final Rites, after `feat/death-skills-2885` merges.
+
+### What each node does now
+
+**Cinders Kept.** `NoteFervourSpent` asks `fervour_spent_returned_percent` with the spending skill's tags and queues
+that share of a spend taken from the pool, due 4 seconds later. Its new argument `bTakenFromThePool` is false only from
+`UCataclysmCommand::HoldReserve`, for Bound Offering's share, which every other row reading a spend still reads. The regeneration step's `ReturnFervourDue` adds every share now due, as
+far as the Fervour that may be held allows (a share returning to a full bar is lost, as a gain is), and is not scaled by
+how fast the class resource generates: it is Fervour coming back, not Fervour made. A death forgets the shares.
+
+**Phylactery.** In `UCataclysmVitalAttributeSet`, a blow or tick that would empty health and that no other save took is
+saved when `fervour_lethal_save_every_seconds` is held, its seconds have passed since the last such save, and at least
+50 Fervour is held. Every Fervour held is taken, the blow takes nothing, health is SET to that many percent of maximum
+health (so a character hurt below it is raised to it), and only then is the spend raised, so a row healing on the spend
+(Feast) heals on top. A death clears the wait, as it clears Nothing Stops It's.
+
+**Borrowed Step.** For a skill made for the movement slot, on whichever key it sits, `movement_on_cooldown_fervour_cost`
+is what a use costs while the skill has no charge left. `CheckCooldown` lets the use through while that much Fervour is
+held; `ApplyCooldown`, where the use is known to be one, takes it, raises `resource_consumed` and `fervour_spent` as a
+skill's Fervour cost does, and returns without starting a cooldown.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Cinders Kept | fervour_spent_returned_percent, flat, 3 |
+| Phylactery (The Third Vow, option 1) | fervour_lethal_save_every_seconds, flat, 60 |
+| Borrowed Step | movement_on_cooldown_fervour_cost, flat, 40, min_points=1; movement_on_cooldown_fervour_cost, flat, -2 |
+
+`PassiveEffects.csv` 535 to 539; 103 of the 220 Death nodes grant something, and 46 of the 96 named capstone options.
+
+### Rulings recorded here
+
+**On this slice, 2026-11-25: Cinders Kept returns a share only of Fervour actually taken from the pool.** Bound
+Offering's share of a reserve is counted as spent for everything that reads a spend (Feast, Turn of the Wheel and the
+rest), but nothing was taken, so there is nothing to return; returning it would make every summon a source of Fervour,
+which no node says. Phylactery's spend is taken from the pool, so Cinders Kept returns its share. Built in a commit of
+its own after the slice was accepted, with a test whose control is a skill's cost.
+
+The coordinating session's rulings of 2026-11-25 on slice C3b:
+1. **Turn of the Wheel: a spend that names no skill takes the second off every skill's cooldown.** "Your skills that
+   did not spend it": when no skill spent it, none of them did. The 2026-09-25 ruling that a reset of every other
+   cooldown clears nothing in that case stands, and **the two read differently on purpose**: "reset all other skill
+   cooldowns" is said of one skill's use, so with no skill there is no "other"; "your skills that did not spend it" is
+   said of every skill but a spender, so with no spender it is every skill. The comment in `ReduceCooldowns` says so.
+2. "For each Fervour spent" counts whole Fervour.
+3. Bound Offering raising nothing from inside another event's action is a known limit (`ActOnEvent` drops events at
+   depth one).
+4. The three reserve writers in `CataclysmSkillTemplates.cpp` (`SummonReplacementAt`, `SummonOne`, `Possess`) hold
+   through `UCataclysmCommand::HoldReserve`; the coordinating session holds the merge note against
+   `feat/death-skills-2885`.
+
+### Research
+
+None new. Each mechanism is this game's own (the lethal-blow saves, the regeneration step, the skill's cooldown check),
+and the three nodes' figures are the owner's approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourPaid.` | new: `CindersKeptReturnsAShareOfEachSpendFourSecondsLater`, `CindersKeptReturnsNothingOfAReserveCountedAsSpent`, `PhylacterySavesALethalBlowBySpendingAllTheFervourHeld`, `PhylacteryWaitsItsSecondsAndNeedsFiftyHeld`, `BorrowedStepUsesTheMovementSkillOnCooldownForFervour`, `TheRealRowsGiveEighteenSixtyAndTwentyFour` | 6 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs three new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 539 | unchanged |
+
+Each new test has a control: a spend before the stat, a return not yet due, a death; a holder without the stat, a
+second save inside the wait, 49 held; a use refused without the stat and with too little Fervour; Borrowed Step at one
+point.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmVitalAttributeSet.cpp`, Phylactery's save: `&& Guarded->MaySaveLethalBlowWithFervour() &&
+   EmptiesHealthLessTheDelayedShare())` becomes `&& false && EmptiesHealthLessTheDelayedShare())`. Prefix
+   `Cataclysm.FervourPaid.`; must fail `PhylacterySavesALethalBlowBySpendingAllTheFervourHeld`.
+2. `CataclysmGameplayAbility.cpp`, `CheckCooldown`: `if (Borrowed > 0.0f && AbilitySystem->HasAttributeSetForAttribute(
+   Pool)` becomes `if (false && Borrowed > 0.0f && ...`. Prefix `Cataclysm.FervourPaid.`; must fail
+   `BorrowedStepUsesTheMovementSkillOnCooldownForFervour`.
+3. `CataclysmAbilitySystemComponent.cpp`, `NoteFervourSpent`: `FervourToReturn.Emplace(World->GetTimeSeconds() +
+   FervourReturnedAfterSeconds,` becomes `(void)(World->GetTimeSeconds() + FervourReturnedAfterSeconds,`. Prefix
+   `Cataclysm.FervourPaid.`; must fail `CindersKeptReturnsAShareOfEachSpendFourSecondsLater`.
+
+**SLICE C3b'S THIRD C++ GUARD PROOF NAMES A LINE THIS SLICE CHANGED.** It takes `Theirs->NoteFervourSpent(Reserve *
+Percent / 100.0f, SpendingTags);` out of `HoldReserve`; on this branch that line reads `Theirs->NoteFervourSpent(Reserve
+* Percent / 100.0f, SpendingTags, /*bTakenFromThePool=*/false);`. The break is the same, taking the line out, and must
+still fail `Cataclysm.SpendSized.BoundOfferingCountsAShareOfEachReserveHeldAsASpend`.
+
+### What was run
+
+**The ruling's commit, `527b26a23`** (Cinders Kept returns nothing of a reserve counted as spent; its figures not yet
+written in), the whole Python suite: "1 failed, 8497 passed, 9 skipped in 379.56s (0:06:19)". The JUnit file agrees:
+tests 8507, failures 1, errors 0, skipped 9, so 8497 passed; the one failure is the same asset check as below. ruff:
+"All checks passed!"; `check_resolved_cpp.py` on the 5 C++ files it changed: "5 files read, 0 with complaints". One
+Python guard proof, `break_and_run` in a `git archive` copy of `527b26a23`, `proved`: `HoldReserve` recording its spend
+as taken from the pool fails
+`test_fervour_paid_where_the_engine_reads_it.py::test_a_reserve_counted_as_spent_is_not_returned`.
+
+**The whole Python suite on `77558cc60`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8496 passed, 9 skipped in 376.62s
+(0:06:16)". The JUnit file agrees: tests 8506, failures 1, errors 0, skipped 9, so 8496 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`.
+
+**The run before, on the working tree, failed one more:**
+`tools/tests/test_phase_machine_matches_the_design.py::test_the_phase_is_noticed_on_the_hit_rather_than_on_a_frame`,
+which counts the calls that tell the game health changed. Phylactery's save made a fourth; it was not needed, because
+setting health reaches `PostAttributeBaseChange`, which already makes that call. It was taken out before `f30990b54`.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 10 C++ files this slice changed: "10 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the new tests' helpers are in `namespace CataclysmFervourPaidTest`, and each new test class, helper and probe is named
+  in one file only.
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`f30990b54`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| `NoteFervourSpent` no longer queuing Cinders Kept's share | `test_fervour_paid_where_the_engine_reads_it.py::test_a_spend_queues_its_returned_share_and_the_step_returns_it` |
+| `ClearWhatDeathEnds` no longer clearing Phylactery's wait | `test_fervour_paid_where_the_engine_reads_it.py::test_a_death_forgets_the_shares_and_the_save_wait` |
+| Phylactery raising the spend before it sets health | `test_fervour_paid_where_the_engine_reads_it.py::test_phylactery_is_the_last_save_and_raises_its_spend_after_setting_health` |
+| Borrowed Step's cost asked of every skill rather than a movement skill | `test_fervour_paid_where_the_engine_reads_it.py::test_borrowed_step_is_let_through_and_paid_where_the_cooldown_is_kept` |
+| The node-text exception no longer needing the per-point partner | `test_fervour_paid_where_the_engine_reads_it.py::test_a_figure_stated_once_without_its_reasons_is_still_refused[effects0-nodes0]` |
+
+---
+
+## 2026-11-25 — Rows sized by what a spend of Fervour carried, a cut to every other skill's cooldown, and a reserve held counting as a spend (Death trees, slice C3b)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`: `ECataclysmPoolActionBase::ForEachOfEventAmount` and
+  `ForEachTenOfEventAmount`; `CooldownReduce` may be `Others`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `TimesSizedByEventAmount`,
+  `SlotOfTheEventsSkill` (the read `RollAndResetCooldowns` made inline, now shared), `CooldownReduceOthersAction`,
+  `ReduceCooldowns(Action, EventTags)`, and `ActOnEvent` sizing a row before any action reads it.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`: `HoldReserve` takes the making skill's tags and
+  raises Bound Offering's spend; `ReservedFervourSpentPercentStat`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`: the two summons and Subjugate hold their reserve
+  through `HoldReserve` rather than writing it themselves.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: the two Fraction Of values and `cooldown_reduce_others`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: `reserved_fervour_spent_percent` has no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmSpendSizedTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp` (a
+  probe) and `CataclysmDataTableTests.cpp`; `tools/tests/test_a_spend_sizes_what_it_pays.py`, new (12);
+  `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
+  `test_charge_and_placed_action_names_match_the_engine.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (535 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **A JUDGEMENT: A SPEND NAMING NO SKILL CUTS EVERY COOLDOWN UNDER TURN OF THE WHEEL.** "The cooldowns of your skills
+  that did not spend it": when no skill spent it, none did. Bound Offering's reserve held for a warhound, a risen imp, a
+  replacement minion or a skill gadget or trap placed by an enchantment names no skill. A reset of every other cooldown
+  still clears nothing in that case (ruled 2026-09-25), because "reset all other skill cooldowns" is said of one
+  skill's use.
+- **A JUDGEMENT: "FOR EACH FERVOUR" IS WHOLE FERVOUR**, as ruling 3 made "for every 10" whole tens. Every cost the game
+  charges is whole, so this reaches only Bound Offering's share: 15% of a 25 reserve is 3.75, and Feast heals 3%.
+- **BOUND OFFERING CANNOT ACT INSIDE ANOTHER EVENT'S ACTION.** `ActOnEvent` drops an event raised from inside an action
+  (depth one), so a reserve held by a row's own action raises nothing there. No Death row holds a reserve from an
+  action today.
+- **THREE MAKERS WROTE THEIR RESERVE THEMSELVES** and now hold it through `HoldReserve`: `UCataclysmSummonSkill::
+  SummonReplacementAt`, `SummonOne` and `Possess` (Subjugate). Each did exactly `HoldReserve`'s two steps, so nothing
+  else changes for them; Subjugate's later clamp runs a second time and changes nothing.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECES:** Cinders Kept, Phylactery, the Shadow's Borrowed Step (C3c); the Fervour
+  thresholds (C3d); Soul Fuel and Deeper Draw, Pyre, Soul Shatter, Final Rites, after `feat/death-skills-2885` merges.
+
+### What a row sized by its spend is
+
+Two new Fraction Of values, `for_each_of_event_amount` and `for_each_ten_of_event_amount`, multiply a row's value by
+the whole units, or whole tens, of what its event carried (`UCataclysmAbilitySystemComponent::TimesSizedByEventAmount`,
+rounded down with a ten-thousandth's allowance). `ActOnEvent` does it once, before the first action is dispatched, and
+hands on a copy whose base is the maximum again, so a pool, a smite and a cooldown cut are all sized in one place. None
+to multiply is nothing done: a spend of 9 against "every 10" starts no wait.
+
+**The generator** accepts them on a pool, a nearby action and a cooldown reduction, each on an event that carries an
+amount, and refuses them anywhere else: on an event with no amount, on a cooldown reset (a chance multiplied is not a
+chance) and on every action that takes no fraction.
+
+**`cooldown_reduce_others`** takes its seconds off every skill's cooldown but the one whose `Slot.*` tag the event
+carries, on whichever key each sits, and off the cooldowns kept for skills off the keys, as `cooldown_reset_others`
+reads the slot.
+
+**Bound Offering.** `UCataclysmCommand::HoldReserve`, which every maker now holds a reserve through, raises
+`NoteFervourSpent(reserve x reserved_fervour_spent_percent / 100)` with the making skill's tags. Nothing is taken from
+the pool. A level lowering a reserve already held (`UCataclysmSkillLevels`) is not a hold.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Feast | action health, 1, event=fervour_spent, fraction_of=for_each_of_event_amount |
+| Spirit to Mana | action mana, 1, event=fervour_spent, fraction_of=for_each_ten_of_event_amount |
+| Ashen Ward | action energy_shield, 1, event=fervour_spent, fraction_of=for_each_ten_of_event_amount |
+| Soul Furnace | action smite_nearby, 10, event=fervour_spent, fraction_of=for_each_of_event_amount, event_value=10 |
+| Turn of the Wheel | action cooldown_reduce_others, 1, event=fervour_spent, fraction_of=for_each_ten_of_event_amount |
+| Bound Offering | reserved_fervour_spent_percent, flat, 15 |
+
+Soul Furnace's "within 5 metres" is the five metres every nearby action reaches (`NearbyActionRadiusCm`).
+`PassiveEffects.csv` 529 to 535; 101 of the 220 Death nodes grant something.
+
+### Rulings recorded here
+
+The coordinating session's rulings of 2026-11-25, given on slice C3a, apply from here on:
+1. Soul Fuel adds nothing to an Ultimate (every Ultimate costs 50, the owner's rule) and applies to the other skills
+   with a cooldown, movement skills excluded.
+2. Soul Fuel skips any skill whose own row already spends or holds Fervour, written as a rule naming Cold Blood and
+   Requiem in its comment and tested with a stand-in; the second of this line and `feat/death-skills-2885` to merge
+   confirms the two are caught.
+3. "For every 10 Fervour spent" is whole tens: a spend of 19 pays once. Built here.
+4. The generator accepts a vow-level row with no option only on a capstone whose own description states that clause.
+
+And the reorder, agreed the same day: Soul Fuel, Deeper Draw, Pyre, Soul Shatter and Final Rites are built after
+`feat/death-skills-2885` merges, on its `UCataclysmSkillTemplate::FervourSpentThisUse`, with no second record here.
+
+### Research
+
+None new. The sizing is this game's own action machinery, and the six nodes' figures are the owner's approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.SpendSized.` | new: `ARowActsForEachWholeFervourOrEachWholeTen`, `FeastSpiritToManaAndAshenWardRestoreWhatASpendSizes`, `SoulFurnaceSmitesForEachFervourFromTenSpentAtOnce`, `TurnOfTheWheelCutsEveryCooldownButTheSpendersASecondForEachTen`, `BoundOfferingCountsAShareOfEachReserveHeldAsASpend`, `TheFiveRealRowsReachASoulCollectorSizedAsTheirSentencesSay` | 6 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs a new probe for `reserved_fervour_spent_percent` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 535 | unchanged |
+
+Each new test has a control: other bases act once; a spend of 9 (no whole ten, and under Soul Furnace's ten); an
+unsized 400% smite beside the sized one; the spender's own cooldown, and a spend naming no skill; a hold before the
+stat and a hold of nothing; the starting node alone.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `ActOnEvent`: `Sized->Percent *= Times;` taken out. Prefix
+   `Cataclysm.SpendSized.`; must fail `FeastSpiritToManaAndAshenWardRestoreWhatASpendSizes`,
+   `SoulFurnaceSmitesForEachFervourFromTenSpentAtOnce` and
+   `TurnOfTheWheelCutsEveryCooldownButTheSpendersASecondForEachTen`.
+2. `CataclysmAbilitySystemComponent.cpp`, `ReduceCooldowns`: `const ECataclysmAbilitySlot Spender =
+   SlotOfTheEventsSkill(EventTags);` becomes `... = ECataclysmAbilitySlot::None;`. Prefix `Cataclysm.SpendSized.`; must
+   fail `TurnOfTheWheelCutsEveryCooldownButTheSpendersASecondForEachTen`.
+3. `CataclysmCommand.cpp`, `HoldReserve`: `Theirs->NoteFervourSpent(Reserve * Percent / 100.0f, SpendingTags);` taken
+   out. Prefix `Cataclysm.SpendSized.`; must fail `BoundOfferingCountsAShareOfEachReserveHeldAsASpend`.
+
+### What was run
+
+**The whole Python suite on `cfc4844fb`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8488 passed, 9 skipped in 389.38s
+(0:06:29)". The JUnit file agrees: tests 8498, failures 1, errors 0, skipped 9, so 8488 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`. The run before, on the working tree that became
+`c8b0e7b3d`, gave the same figures and the same one failure.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 11 C++ files this slice changed: "11 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the new tests' helpers are in `namespace CataclysmSpendSizedTest`, and each new test class, helper and the new probe
+  is named in one file only.
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`c8b0e7b3d`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The refusal of a sized row on an event with no amount taken out of `_sized_by_the_amount` | `test_a_spend_sizes_what_it_pays.py::test_a_sized_row_on_an_event_with_no_amount_is_refused[smite_nearby]` and `[cooldown_reduce_others]` |
+| `ActOnEvent` handing a reduction no event tags | `test_a_spend_sizes_what_it_pays.py::test_act_on_event_sizes_a_row_before_any_action_reads_it` |
+| `HoldReserve`'s call to `NoteFervourSpent` taken out | `test_a_spend_sizes_what_it_pays.py::test_a_reserve_held_raises_the_spend_and_every_maker_holds_through_it` |
+| Spirit to Mana's Fraction Of to `for_each_of_event_amount` | `test_passive_effects_match_the_node_text.py::test_a_row_sized_by_a_spend_says_each_or_every_ten` |
+
+The health row's refusal on an event with no amount is the pool check's, which the first break does not touch; the
+parametrised test's `health` case passed with the break in, as it should.
+
+---
+
+## 2026-11-25 — A record of Fervour spent, the clock after a spend, three Soul Collector nodes on it, and death resets the kill clock (Death trees, slice C3a)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteFervourSpent`,
+  `SecondsSinceFervourSpent`, `LastFervourSpentAtSeconds`; `EventThresholdCrossed` for `fervour_spent`; the clock in
+  `CurrentConditions`; and `ClearWhatDeathEnds` resets the new clock and the kill clock.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `seconds_after_fervour_spent`
+  (`WithinSecondsOfFervourSpent`).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp`: `ApplyCost` records the spend.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourSpentTests.cpp`, new (3); `CataclysmDeathTests.cpp` and
+  `CataclysmDataTableTests.cpp`; `tools/tests/test_fervour_spent_is_recorded_where_a_cost_is_paid.py`, new (6);
+  `test_passive_effects_match_the_node_text.py`, `test_generate_datatables.py` and
+  `test_the_condition_count_sentences_agree_with_the_code.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (529 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **ONLY A SKILL'S FERVOUR COST IS RECORDED AS A SPEND.** It is the one cost the game charges today (every Ultimate's
+  50, and Subjugate's 30). The Ravager's Wrung Out and Bought With Ruin also take Fervour and raise nothing, by the rule
+  `NoteResourceConsumed` states for the Fervour mechanics' own spends (a judgement kept, not made here). The Death
+  weapon skills' spends (Requiem, on `feat/death-skills-2885`) must call `NoteFervourSpent` when that branch meets
+  this one.
+- **A SLICE B GAP, CLOSED HERE: death did not reset the kill clock.** `ClearWhatDeathEnds` left `LastOwnKillAtSeconds`
+  and `KillDecayHeldUntilSeconds` as they were, so a kill before a death held the Death classes' decay and opened
+  `seconds_after_kill` after the revival. Both are reset now, with the new clock, and the respawn test opens and checks
+  all three.
+- **QUICK KINDLING DOES NOT REACH THE SKILL THAT SPENT.** Unreal Engine 5.8 commits a skill's cooldown before its cost
+  (`UGameplayAbility::CommitExecute`), so the skill whose cost opened the window has already had its cooldown set.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECES:** Soul Fuel and Deeper Draw, Pyre, Soul Shatter, Final Rites, Soul Furnace,
+  Feast, Spirit to Mana, Ashen Ward, Cinders Kept, Turn of the Wheel, Bound Offering, Phylactery, the Shadow's Borrowed
+  Step, and the Fervour thresholds.
+
+### What a spend is now
+
+`UCataclysmAbilitySystemComponent::NoteFervourSpent(Amount, SpendingTags)` stamps the clock
+`seconds_after_fervour_spent` and then raises `fervour_spent` with the amount and the spending skill's tags, the shape
+of `NoteHealthCostPaid`. `UCataclysmGameplayAbility::ApplyCost` calls it where it pays a Fervour cost, beside
+`resource_consumed`, which also fires with nothing for every next-use charge spent and so cannot stand for Fervour. A
+spend of nothing records nothing.
+
+**"N or more at once."** An action row on `fervour_spent` whose Event Value is N acts only on one payment of N or more
+(`EventThresholdCrossed`); with none it acts on every spend. The generator allows that Event Value from 0 to 1000,
+counts `fervour_spent` among the events that carry an amount, and refuses an action on it under its own clock, which is
+stamped first and would always hold, as it refuses one on `kill` under the kill clock.
+
+**The refusal's wording** for an Event Value on any other event now names all three readers: `health_falls_below`,
+`fervour_spent` and the gadget's shot at a trap's enemy, which read one already.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Spent Breath | attack_damage and spell_damage, increased, 3, scale=own_stacks, step=1, cap=1, event=fervour_spent, stack_seconds=4, event_value=10 |
+| Quick Kindling | cooldown_reduction, flat, 1, cond=seconds_after_fervour_spent, cond_value=4 |
+| Burnt Offering | damage_taken, increased, -1, cond=seconds_after_fervour_spent, cond_value=4 |
+
+Spent Breath is an own stack with a cap of one because a clock cannot carry a threshold: the stack's Event Value
+does, and each qualifying spend renews its window. Quick Kindling is flat, the bucket every "increased Cooldown
+Reduction" in the trees is written in (the Shadow's Quick Recovery). `PassiveEffects.csv` 525 to 529; 95 of the 220
+Death nodes grant something.
+
+### Research
+
+None new. The record is this game's own event and clock machinery, and the three nodes' figures are the owner's
+approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourSpent.` | new: `ASpendStampsTheClockAndAChargeSpentDoesNot`, `BurntOfferingAndQuickKindlingHoldForFourSecondsAfterASpend`, `SpentBreathsRealRowsWantTenOrMoreSpentAtOnce` | 3 |
+| `Cataclysm.Death.` | `ARespawnClosesEveryWindowAnEventOpened` opens and checks the kill clock, its decay hold and the spend clock | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 529 | unchanged |
+
+Each new test has a control: a charge spent and a spend of nothing; before a spend and after its 4 seconds; a spend of
+5 against Spent Breath's 10.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `EventThresholdCrossed`:
+   `return Action.EventValue <= 0.0f || EventAmount >= Action.EventValue;` becomes `return true;`. Prefix
+   `Cataclysm.FervourSpent.`; must fail `SpentBreathsRealRowsWantTenOrMoreSpentAtOnce`.
+2. `CataclysmAbilitySystemComponent.cpp`, `NoteFervourSpent`: `LastFervourSpentAtSeconds = World->GetTimeSeconds();`
+   taken out. Prefix `Cataclysm.FervourSpent.`; must fail `ASpendStampsTheClockAndAChargeSpentDoesNot` and
+   `BurntOfferingAndQuickKindlingHoldForFourSecondsAfterASpend`.
+3. `CataclysmAbilitySystemComponent.cpp`, `ClearWhatDeathEnds`: `LastFervourSpentAtSeconds = -1.0f;` taken out. Prefix
+   `Cataclysm.Death.ARespawnClosesEveryWindowAnEventOpened`; must fail it.
+
+### What was run
+
+**The whole Python suite on `7e79fb835`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8475 passed, 9 skipped in 357.27s
+(0:05:57)". The JUnit file agrees: tests 8485, failures 1, errors 0, skipped 9, so 8475 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`. The run before, on `018aac859`, failed that one and
+the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 8 C++ files this slice changed: "8 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the new tests' helpers are in `namespace CataclysmFervourSpentTest`, and each new test class and helper is named in
+  one file only.
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`018aac859`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| `ApplyCost`'s call to `NoteFervourSpent` taken out | `test_fervour_spent_is_recorded_where_a_cost_is_paid.py::test_the_cost_path_records_the_spend` |
+| The bound on a spend's Event Value taken off | `test_fervour_spent_is_recorded_where_a_cost_is_paid.py::test_an_event_value_past_its_bound_or_on_another_event_is_refused` |
+| `fervour_spent` taken off the events that stamp their clock first | `test_fervour_spent_is_recorded_where_a_cost_is_paid.py::test_an_action_on_a_spend_under_its_own_clock_is_refused` |
+| Burnt Offering's condition to `seconds_after_kill` | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+---
+
+## 2026-11-25 — The Soul Collector's Siphon and the eleven nodes that act on it, and an end-to-end test of a real passive action row (Death trees, slice C2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.h` and `.cpp`, new: `FCataclysmSiphon`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: the Siphon's record
+  (`SiphonMembers`, `EnemiesInSiphon`, `HasInSiphon`, `SiphonPulseSeconds`), the cut a member's damage takes
+  (`NoteSiphonDamageCut`, `SiphonDamageCutPercentNow`), the count in `CurrentConditions` and the target fact in
+  `WithTargetState`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the scale `enemies_in_siphon`
+  (`PerEnemyInSiphon`) and the condition `target_in_your_siphon` (`TargetInYourSiphon`).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `DealLessPercentOn` multiplies the Siphon's cut
+  with the debuff cut.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the step), `CataclysmPlayerClassStats.cpp` (eight stats
+  with no attribute), `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the line above the skill bar).
+- Tests: `game/Source/Cataclysm/Tests/CataclysmSiphonTests.cpp`, new (5); `CataclysmDeathTreesTests.cpp` (1);
+  `CataclysmStatExemptionTests.cpp` (11 probes); `CataclysmPassiveTreeTests.cpp` and `CataclysmDataTableTests.cpp`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (525 rows), `docs/README.md`, and the Python checks
+  `test_passive_effects_match_the_node_text.py`, `test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`,
+  `test_damage_over_time_names_its_skill.py`, `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects` in the editor
+  step, and run the groups under "Unreal tests".
+- **THE SIPHON REACHES ENEMIES THROUGH TWO RECORDS OTHER RULES ALSO WRITE.** Its cut multiplies with the debuff cut
+  inside `UCataclysmDebuffs::DealLessPercentOn`, which every enemy's weapon damage reads; and its slow is Ground Down's
+  record (`ACataclysmEnemyCharacter::NoteGroundDown`), where the strongest holds, so a Siphon's slow and a Ravager's
+  Ground Down on one creature do not add.
+- **THE SIPHON'S INTERFACE IS A LINE ABOVE THE SKILL BAR, "Siphon: 2 within 6.0 m", AND NOT A RING ON THE GROUND.** The
+  ring drawn on the ground in this game is an attack's warning, with a fill that grows; drawn round the player, it
+  would say an attack is coming.
+- **NOT BUILT:** the Crossbow's Effigy, "If you have the Siphon keystone, the effigy siphons the enemies around it too",
+  which is a skill on the Death weapon skills branch.
+- **THE END-TO-END TEST THE COORDINATING SESSION ASKED FOR AFTER C1** is
+  `Cataclysm.DeathTrees.KillChainsRealRowsCountASoulCollectorsKillsThroughThePortsBuilder`: a real level 10 Death
+  character, Kill Chain's real rows through the port's copy and builder and the equipment's refresh, and real kill
+  announcements, with a control holding only the starting node.
+
+### Rulings of the coordinating session, 2026-11-25
+
+From the slice C plan: the Siphon's effects are paid once a second, and "each enemy deals reduced damage" is a cut to
+what the enemy deals, through `UCataclysmDebuffs::DealLessPercentOn`. And after C1: at least one end-to-end Unreal
+test of a real Death action row, through the port's copy and builder, with a control.
+
+### What the Siphon is, in the code
+
+`FCataclysmSiphon::Step` runs on every character's regeneration step, a quarter of a second, after the kill decay:
+- **Who is in it:** every enemy within `siphon_radius_metres` (the keystone's 6), and one that left it for less than
+  `siphon_linger_seconds` (Lingering Pull). Without the keystone the radius is nought and the record is cleared.
+- **What a member carries while it is in**, renewed every step and held three steps past it, as Ground Down holds: a cut
+  to what it deals (`siphon_enemies_deal_less_percent`, Sapping Cold and Enfeeble) and a slow of movement and attack
+  speed (`siphon_enemy_slow_percent`, Sapping Cold).
+- **Once a second:** Drain's Death damage (`siphon_drain_weapon_percent`), Necrotic Siphon's chance of Necrosis for a
+  member in for 3 seconds (`siphon_necrosis_chance`), Life Siphon's health (`siphon_life_percent`) and Living Harvest's
+  Fervour (`siphon_fervour_per_second`). The last two are rows scaled by `enemies_in_siphon` with their caps.
+
+**Judgements**, each with its reason:
+- **"Increased area of your Siphon" is an increase on its radius**, because an area in this game multiplies its radius
+  (`UCataclysmSkillEffects::AsMultiplierForSkill` on the area attribute).
+- **The character's own Area of Effect does not reach the Siphon**, which is no skill.
+- **Drain is delivered as a damage over time's tick is:** Death damage, priced through the holder's damage rows with
+  the member as the target, no critical strike, no ailment chance, not retaliated against.
+- **Several Siphons on one creature do not add:** the largest cut holds while it runs, as several holders of Ground
+  Down do not (ruled 2026-09-24).
+- **Necrotic Siphon's 3 seconds count from entering**, and a member lingering after it left keeps its count.
+- **Living Harvest is half a Fervour a second for each member, up to 8**, which is "1 Fervour every 2 seconds, up to 4
+  Fervour a second" paid once a second; it stamps no kill clock, as the node says.
+- **A member that stepped out leaves at once without Lingering Pull**, however little time passed since it was in.
+
+### The rows
+
+Twenty-seven rows on the Siphon's twelve nodes:
+
+| Node | Rows |
+|---|---|
+| The Siphon | siphon_radius_metres, flat, 6 |
+| Sapping Cold | siphon_enemies_deal_less_percent, flat, 1; siphon_enemy_slow_percent, flat, 3, at 2, 4 and 6 points; attack_damage, spell_damage and movement_speed, increased, 1, scale=enemies_in_siphon, step=1, cap=10, at 2, 4 and 6 points |
+| Pall of Souls | siphon_radius_metres, increased, 1, scale=class_resource_held, step=20 |
+| Life Siphon | siphon_life_percent, flat, 1, scale=enemies_in_siphon, step=1, cap=5, from 10 points |
+| Drain | siphon_drain_weapon_percent, flat, 2 |
+| Necrotic Siphon | siphon_necrosis_chance, flat, 5 |
+| Enfeeble | siphon_enemies_deal_less_percent, flat, 1 |
+| Stolen Strength | damage_reduction, increased, 1, scale=enemies_in_siphon, step=1, cap=10, at 4 and 8 points |
+| Soul-Heavy Air | attack_damage and spell_damage, increased, 1, cond=target_in_your_siphon, scale=class_resource_held, step=50 |
+| Lingering Pull | siphon_linger_seconds, flat, 1, at 4 and 8 points |
+| Reaching Cold | siphon_radius_metres, increased, 4 |
+| Living Harvest | siphon_fervour_per_second, flat, 0.5, scale=enemies_in_siphon, step=1, cap=8 |
+
+**Coverage:** 92 of the 220 Death nodes grant something (the Soul Collector 36 of its 73, the Necromancer 15 of its 73,
+the Shadow 41 of its 74); `PassiveEffects.csv` 498 to 525.
+
+### Research
+
+Fetched again before this entry: Path of Exile 2's Presence, "By default this has a 4 metre radius"
+(poe2db.tw/us/Presence); and its passive Glorious Anticipation, "Skills gain 1 Glory every 2 seconds for each Rare or
+Unique monster in your Presence" (poe2db.tw/us/Glorious_Anticipation), the shape of Living Harvest. The plan's research
+also found Diablo III's Decrepify (Opportunist) and Leech (Cursed Ground) runes as the shapes of "for each of them, up
+to 10" and "1% of maximum health each second for each enemy"; both pages returned HTTP 502 when fetched again for this
+entry, so their figures are not recorded here. **Settled by the research:** an always-on radius around the player whose
+effects count the enemies in it, and a resource paid every 2 seconds for each. **Specific to this game:** the
+judgements above and the owner's approved figures.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.Siphon.` | new: `TheKeystonesRealRowTakesACreatureWithinSixMetresAndNotOneAtTen`, `SappingColdsRealRowsSlowAndCutEachMemberAndRaiseTheHoldersDamageForEach`, `LivingHarvestsRealRowPaysOnceASecondForEachMember`, `SoulHeavyAirsRealRowRaisesTheDamageAMemberTakesAndNotAnOutsiders`, `LingeringPullsRealRowsKeepALeaverInTheSiphonForTwoSeconds` | 5 |
+| `Cataclysm.DeathTrees.` | new: `KillChainsRealRowsCountASoulCollectorsKillsThroughThePortsBuilder` | 7 |
+| `Cataclysm.StatExemption.` | eight probes in `EveryStatWithNoAttributeIsActuallyRead` and three scaled probes | the base's count, unchanged |
+| `Cataclysm.PassiveTree.` | `target_in_your_siphon` in a list of conditions that compare nothing | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 525 | unchanged |
+
+Every new test has a control: no keystone, a creature outside, the steps before a second has passed, an outsider, no
+Lingering Pull, and a character with only the starting node.
+
+**Three C++ guard proofs are registered for the window**, each with `test_prefix="Cataclysm.Siphon."`:
+1. `CataclysmSiphon.cpp`, `Step`: `if (System->SiphonPulseSeconds >= 1.0f - KINDA_SMALL_NUMBER)` becomes
+   `if (System->SiphonPulseSeconds >= 0.25f - KINDA_SMALL_NUMBER)`. Must fail
+   `LivingHarvestsRealRowPaysOnceASecondForEachMember`.
+2. `CataclysmDebuffs.cpp`, `DealLessPercentOn`:
+   `const float Siphon = FMath::Clamp(Cataclysm->SiphonDamageCutPercentNow(), 0.0f, 100.0f);` becomes
+   `const float Siphon = 0.0f;`. Must fail `SappingColdsRealRowsSlowAndCutEachMemberAndRaiseTheHoldersDamageForEach`.
+3. `CataclysmAbilitySystemComponent.cpp`, `WithTargetState`: `State.bTargetInYourSiphon = Asker->HasInSiphon(Target);`
+   becomes `State.bTargetInYourSiphon = false;`. Must fail
+   `SoulHeavyAirsRealRowRaisesTheDamageAMemberTakesAndNotAnOutsiders`.
+
+### What was run
+
+**The whole Python suite on `b2b74d1b2`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8469 passed, 9 skipped in 382.06s
+(0:06:22)". The JUnit file agrees: tests 8479, failures 1, errors 0, skipped 9, so 8469 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`. The first run, on `ca9fcbb35`, failed six: that
+one and five checks that list what the code holds, each brought up to the Siphon in `fcf86b5d1` or by this entry.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 16 C++ files this slice changed: "16 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the Siphon's helpers are in `namespace CataclysmSiphonParts` and `CataclysmSiphonTest`, and each new test class and
+  helper is named in one file only.
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`ca9fcbb35`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| Living Harvest's row 0.5 to 1.0 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| Soul-Heavy Air's condition to `target_in_your_zone` | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Stolen Strength's second step from 8 points to 6 | `test_passive_effects_match_the_node_text.py::test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points` and `::test_a_for_every_n_points_sentence_has_a_row_at_every_step` |
+| The call to `FCataclysmSiphon::Step` taken out of the regeneration step | `test_hooks_no_headless_test_can_drive_still_call_their_jobs.py::test_the_hook_runs_this_job[ACataclysmCharacterBase::RegenerationStep-FCataclysmSiphon::Step-...]` |
+| `siphon_life_percent` taken off `STATS_WITH_AN_ASKER` | `test_every_scaled_stat_has_an_asker.py::test_the_generators_list_and_the_engines_probes_are_the_same_set` and `::test_no_shipped_row_is_refused_by_the_new_rule[PassiveEffects]` |
+
+---
+
+## 2026-11-25 — A kill's Fervour asked before the kill clock, a full bar judged less the reserve on every class, and sixteen Death nodes and options as rows with the passive row port's columns (Death trees, slice C1)
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill block asks `UCataclysmFervour::GainOnOwnKill`
+  before `NoteOwnKill`; the full-bar crossing in `OnClassResourceChanged` judges against the maximum less the reserve.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` (the order, in the two declarations' comments).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: `FCataclysmStatConditions::ClassResourceReserved`
+  and `ClassResourceAtMaximum`'s rule.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (`CurrentConditions` fills the reserve) and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp` (`ReservedFervourAmong`).
+- `game/Source/Cataclysm/Tests/CataclysmClassKillFervourTests.cpp` (1 test), `CataclysmKindReservesTests.cpp` (2 tests),
+  `CataclysmDataTableTests.cpp` (PassiveEffects 498).
+- `tools/generate_datatables.py`: `refuse_a_kill_clock_on_a_kill_action`, and `OPTIONAL_COLUMNS` emptied.
+- `tools/reapply_death_trees_workbook.py` (action rows, the cap, the port's columns), `docs/All_Things_Cataclysm.xlsx`
+  (Passive Effects 498 rows and 28 columns), `game/Data/PassiveEffects.csv`, `docs/README.md`.
+- Tests: `tools/tests/test_kill_clock_reads_the_previous_kill.py` and
+  `tools/tests/test_a_full_bar_is_the_maximum_less_the_reserve.py`, new; `test_passive_effects_match_the_node_text.py`,
+  `test_reapply_death_trees_workbook.py`, `test_generate_datatables.py`, `test_passive_rows_carry_the_action_columns.py`
+  and `test_reapply_demonic_tree_rework_workbook.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects` in the editor
+  step, and run the groups under "Unreal tests".
+- **THE FULL-BAR RULE CHANGES PLAY FOR EVERY CLASS THAT HOLDS FERVOUR BACK**, not only the Death classes: nine shipped
+  rows read a full bar (Ravager `basic_d_a1`, the Soul Collector's Full Measure and Second Wind, and four enchantments,
+  "When your class resource is full ..."), and so does the Ravager's Second Wind heal on the crossing. Each now holds
+  for a character with a minion, thrall or machine out once its Fervour reaches the maximum less what they hold back.
+  Until now none of them could, for such a character.
+- **NO UNREAL TEST RUNS A REAL DEATH ACTION ROW.** Second Wind, Envenom's Poison, Bide, Death Sentence's execute, Kill
+  Chain's stacks and Wearing Cut's hits in a row are built by the passive row port's copy and builder, whose tests
+  (`Cataclysm.PassiveRowPort.`) use tables of their own. The generator and the node-text checks hold these rows to
+  their sentences; the engine has not run them from `DT_PassiveEffects`.
+- **NOT BUILT HERE:** Burnt Offering (its event, `resource_consumed`, also fires for a next-use charge spent; it waits
+  for C3's record of Fervour spent), and the 28 items the inventory found partly writable today, each of which waits for
+  the slice that builds its other half rather than shipping half a node.
+- **THE WORKBOOK CANNOT BE MERGED.** It is one run of `tools/reapply_death_trees_workbook.py` on
+  `feat/passive-row-port`'s (144bfbeb2), which holds no Death rows; every other sheet is unchanged. A branch that
+  merges beside this one and edits the Passive Effects sheet rebuilds it with both re-apply scripts.
+- **THIS BRANCH SITS ON `feat/death-trees-b`** (d50c26c6b), which sits on the passive row port and the Demonic tree rework
+  and carries slices A and B.
+
+### Rulings of the coordinating session, 2026-11-25, under the owner's delegation
+
+On the slice C plan, accepted in the order C1 to C6, each its own stacked branch:
+1. **A full bar with a reserve**: fix it in C1 for every class. "Full" (the full-bar crossing and
+   `class_resource_at_maximum`) compares against the maximum less what minions and thralls hold back. Test it on a
+   Ritualist with imps and on a Death class, with a control without minions, and sweep the tests that pin "full".
+2. **The kill clock**: ask the payment before the stamp, so `seconds_after_kill` reads the time since the previous
+   kill; and refuse `seconds_after_kill` on an action row hung on the `kill` event.
+3. **The Siphon** (C2): once a second, and "deals reduced damage" through `UCataclysmDebuffs::DealLessPercentOn`.
+4. **The 40 Fervour threshold** (C3): build the extra projectile half; the chain half waits for the first chaining skill,
+   and the node's text check says so.
+5. **Soul Fuel** (C3): the owner did not answer the Death weapon skills draft's open question 4. Ruled: Soul Fuel skips
+   Cold Blood and Requiem. Cold Blood's purpose is holding Fervour, and Requiem already spends all of it.
+6. **Remains** go fifth, after `feat/death-skills-2885` merges; and `feat/war-fervour-sources` is not merged now: the
+   Shadow's "2 for each critical strike" is written on its `fervour_per_critical_strike` when the branches meet.
+
+### The kill clock
+
+Slice B stamped the kill clock before asking the kill's Fervour, so `seconds_after_kill` on `fervour_per_kill` read nought
+at every kill and always held: a row written as "kills within 2 seconds of each other" would have paid on every kill, and
+the generator accepted it. The payment is now asked first. The grace is asked inside the stamp before the clock moves,
+so a grace row under the condition reads the previous kill too. The first kill of all, with no previous one, matches no
+such row. An action row on the `kill` event acts after the stamp, where the window still always holds, so the generator
+refuses `seconds_after_kill` on one, in either condition column and on both sheets.
+
+### A full bar is the maximum less the reserve
+
+Every gain stops at the maximum less what minions, thralls and machines hold back
+(`UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked`), but `class_resource_at_maximum` and the crossing
+compared against the gross maximum, so a character with anything out was never full. Both now judge against the
+maximum less the reserve. **Judgements**, each with its reason:
+- **A reserve taking the whole pool refuses**, as a maximum of nothing does: a bar that can hold nothing is not full.
+- **The crossing reads the reserve once, now, for both sides.** A reservation starting cuts the pool to what is left
+  (`UCataclysmCommand::ClampFervourToSpendable`), and a bar full before it is full after it, so no crossing is reported.
+- **`class_resource_above` stays on the gross maximum**; the ruling covers "full" only.
+- **The reserve is summed from the list `CurrentConditions` already walks** to count minions
+  (`UCataclysmCommand::ReservedFervourAmong`, which `ReservedFervourOf` now answers from), so the world is not walked twice.
+The sweep found no existing Unreal test that holds a reserve and checks fullness.
+
+### The rows
+
+Thirty-nine rows on sixteen nodes and options, each put through the generator first:
+
+| Tree | Node | Rows |
+|---|---|---|
+| Soul Collector | Last Breath | health_restored_on_kill_at_no_cost, flat, 1, at 2, 4 and 6 points |
+| Soul Collector | Gathered Weight | area_of_effect, increased, 1, scale=class_resource_held, step=40 |
+| Soul Collector | Kill Chain | attack_damage and spell_damage, increased, 1, scale=own_stacks, step=1, cap=10, event=kill, stack_seconds=2, at 2, 4, 6 and 8 points |
+| Soul Collector | Second Wind (vow at 50, option 1) | action=health and action=mana, 100, fraction_of=maximum, event=resource_full, trigger_cooldown=60 |
+| Necromancer | Massed Dead | minion_damage, increased, 1, scale=minions_held, step=5, cap=5 |
+| Necromancer | Cheap Bones | minion_reserve_percent_less, flat, 4 |
+| Necromancer | Strength in Numbers (vow at 25, option 3) | attack_damage and spell_damage, more, 1; damage_taken, more, -1; each scale=minions_held, step=1, cap=20 |
+| Necromancer | Gathering Dark (vow at 50, option 3) | area_of_effect, increased, 2, scale=minions_held, step=1 |
+| Necromancer | Among the Dead | max_health, increased, 1; armor, increased, 1, scale=minions_held, step=5, cap=4 |
+| Necromancer | Carapace | max_health, increased, 2, scale=minions_held, step=10, cap=1 |
+| Necromancer | Bone Armour | damage_taken, more, -1, scale=minions_held, step=1, cap=20 |
+| Shadow | Envenom | bleed_on_crit_chance, flat, 6; action=apply_status, 6, event=critical_strike, ailment=Poison |
+| Shadow | Bide | action=apply_status, 3, event=hit_dealt, ailment=Poison, cond=target_is_boss |
+| Shadow | Wearing Cut | attack_damage and spell_damage, increased, 1, scale=consecutive_hits, step=1, cap=10, event=hit_dealt, at 2, 4, 6 and 8 points |
+| Shadow | Quick Kill | fervour_per_kill, flat, 1, cond=seconds_after_movement_skill, cond_value=2 |
+| Shadow | Death Sentence (vow at 200, option 2) | action=execute_target, 100, event=hit_dealt, cond=target_health_below 15; attack_damage and spell_damage, more, 100, cond=target_health_below 15, cond2=target_rarity_at_least 4 |
+
+**What the engine does with them, read from the code:** a kill grants Kill Chain one stack and restarts the one window
+all its stacks share (`GrantOwnStack`), so they lapse together 2 seconds after the last kill, which is the chain; the
+four rows of a stat share one stack, granted once an event (`StackedThisEvent`), and Wearing Cut's hits in a row the
+same way. `apply_status`'s value is a chance, and it applies Poison through `UCataclysmAilments::Apply` at its ordinary
+size. `execute_target`'s value is a chance, and it never takes a Boss or a Cataclysm Boss (`CanBeExecuted`).
+
+**Judgements:** Gathering Dark's "gain 2% area" is the increased bucket, as every other "+N% area" in the trees is;
+Carapace's "while you have 10 or more minions" is a count in steps of 10 capped at one step, because no condition counts
+minions held.
+
+**The workbook gains the port's fourteen columns** (the thirteen action columns and Per Point From) after its last one,
+added by the re-apply script, as the port's entry asked of the first slice writing such a row; they leave the generator's
+`OPTIONAL_COLUMNS`, which `test_required_workbook_columns.py` requires once the workbook has them, and every hand-built
+Passive Effects test sheet appends them. The Demonic rework's cap-column test now compares by column name and leaves the
+Death rows out: its put-back column lands after the port's, and deleting it takes the Death rows' caps, which that script
+does not write.
+
+**The node-text checks** now know an action row (no stat, no bucket; its number by its action or in words), the scales
+`own_stacks` and `consecutive_hits`, a minions step written "for every 5 minions" or "10 or more minions", and the words
+the rows use.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.ClassKillFervour.` | new: `AKillsFervourUnderSecondsAfterAKillReadsThePreviousKill` | slice B's 7 plus 1: 8 |
+| `Cataclysm.KindReserves.` | new: `AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve`, `FullMeasureCountsAFullBarForASoulCollectorWithAMinionOut` | the base's count plus 2 |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 498 | unchanged |
+
+Each new test has a control: the first kill of all and a kill 3 seconds later; a player with nothing held back at 95
+and at 100; the same Soul Collector below the top.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmPlayerCharacter.cpp`, the kill block: `GainOnOwnKill` and `NoteOwnKill` swapped back. Prefix
+   `Cataclysm.ClassKillFervour.`; must fail `AKillsFervourUnderSecondsAfterAKillReadsThePreviousKill`.
+2. `CataclysmStatPipeline.cpp`, `ConditionHolds`, `ClassResourceAtMaximum`:
+   `State.ClassResourceMaximum - FMath::Max(0.0f, State.ClassResourceReserved);` becomes `State.ClassResourceMaximum;`.
+   Prefix `Cataclysm.KindReserves.`; must fail `AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve` and
+   `FullMeasureCountsAFullBarForASoulCollectorWithAMinionOut`.
+3. `CataclysmPlayerCharacter.cpp`, `OnClassResourceChanged`:
+   `const float Reserved = FMath::Max(0.0f, UCataclysmCommand::ReservedFervourOf(this));` becomes
+   `const float Reserved = 0.0f;`. Prefix `Cataclysm.KindReserves.`; must fail
+   `AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve` ("and reaching it opened the window again").
+
+### What was run
+
+**The whole Python suite on `c34e294ff`**, `python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed,
+8468 passed, 9 skipped in 391.85s (0:06:31)". The JUnit file agrees: tests 8478, failures 1, errors 0, skipped 9, so
+8468 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 10 C++ files this slice changed: "10 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  each of the three new test classes is named in one file only.
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`c34e294ff`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The refusal's comparison with `KILL_CLOCK` changed to a clock that does not exist | `test_kill_clock_reads_the_previous_kill.py::test_an_action_on_a_kill_under_the_kill_clock_is_refused` and `::test_the_second_condition_column_is_refused_the_same_way` |
+| The kill block's two calls swapped back | `test_kill_clock_reads_the_previous_kill.py::test_the_kill_handler_asks_the_payment_before_the_stamp` |
+| `ClassResourceAtMaximum`'s `- FMath::Max(0.0f, State.ClassResourceReserved)` removed | `test_a_full_bar_is_the_maximum_less_the_reserve.py::test_the_condition_judges_a_full_bar_against_the_reserve` |
+| Second Wind's health row 100 to 50 in `PassiveEffects.csv` | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| The re-apply script's missing columns read as none | `test_reapply_death_trees_workbook.py::test_the_port_columns_are_added_when_the_sheet_lacks_them` |
+
+---
+
+## 2026-11-24 — The Death classes' kill generator: Fervour for each kill by the slain creature's rarity, the decay after the last kill, and a window after a kill (Death trees, slice B)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp`:
+  `NoteOwnKill`, `GainOnOwnKill`, `KillDecayStep`, and the stats `fervour_per_kill`, `fervour_kill_decay_per_second` and
+  `fervour_kill_decay_grace_seconds`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: the kill clock (`NoteOwnKill`,
+  `SecondsSinceOwnKill`, `KillDecayIsHeld`) and the target's rarity rung in `WithTargetState`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp`: the conditions `target_rarity_at_least`,
+  `target_rarity_is` and `seconds_after_kill`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the kill handler),
+  `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the step) and
+  `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (three stats with no gameplay attribute).
+- `game/Source/Cataclysm/Tests/CataclysmClassKillFervourTests.cpp`, new (7 tests);
+  `game/Source/Cataclysm/Tests/CataclysmFervourTests.cpp` (1 test); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`
+  (3 probes); `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (PassiveEffects 459).
+- `tools/generate_datatables.py` (the conditions and the askers), `tools/reapply_death_trees_workbook.py` (32 rows),
+  `docs/All_Things_Cataclysm.xlsx` (Passive Effects 459 rows), `game/Data/PassiveEffects.csv`,
+  `game/Data/PassiveNodes.csv`, `docs/Soul_Collector_Class_Tree_Final.json`, `docs/Shadow_Class_Tree_Final.json`,
+  `docs/README.md`.
+- `tools/tests/test_death_kill_schedule_matches_the_sentence.py`, new;
+  `tools/tests/test_passive_effects_match_the_node_text.py`, `tools/tests/test_class_passive_trees.py` and
+  `tools/tests/test_every_conditioned_stat_has_an_asker.py`.
+- Five checks the whole suite named: `tools/generate_datatables.py` (`ACTION_ONLY_EVENTS`),
+  `tools/tests/test_generate_datatables.py`, `tools/tests/test_dot_damage_on_a_moving_target_rows.py`,
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` and
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`.
+- The owner's order fixes on the Death trees: `tools/apply_passive_order_fixes_2026_11_24.py` (the Gathered Remains
+  sentences) and `tools/tests/test_apply_passive_order_fixes_2026_11_24.py`; `docs/Soul_Collector_Class_Tree_Final.json`,
+  `docs/Necromancer_Class_Tree_Final.json` and `docs/Shadow_Class_Tree_Final.json`; `game/Data/PassiveNodes.csv` (661
+  rows) and `game/Data/PassiveEdges.csv` (621 rows); `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+  `game/Source/Cataclysm/Tests/CataclysmDeathTreesTests.cpp` (their counts).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile, rebuild
+  `DT_PassiveEffects`, `DT_PassiveNodes` and `DT_PassiveEdges` in the editor step, and run the groups under "Unreal
+  tests".
+- **THIS BRANCH SITS ON `feat/passive-row-port` (144bfbeb2), WHICH CARRIES THE DEMONIC TREE REWORK, with slice A
+  (`feat/death-trees-a`) merged in.** Both edit the condition lists this slice extends, and both land first; the
+  coordinating session's order of 2026-11-24 was to rebase after they land. A window for this branch builds the rework
+  and the port as well.
+- **NOT BUILT:** the Shadow's "2 for each critical strike you land" (the War trees' Berserker needs the same stat, so it
+  waits for that slice or a ruling on who builds it); and every Death node that needs more than a stat, a condition and a
+  scale: Kill Chain, Unbroken Chain, Claimed, Last Breath's healing, Reclaimed, Kindred Fires, Borrowed Time, Keep the
+  Count, Vigil Over the Strong, Miser's Grip, Soulbound, Death's Toll, Tear Loose, Telling Blows, Death's Patience, Quick
+  Kill, Patient Blade, Death by Inches and the rest.
+- **THE DECAY DOES NOT ASK `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`.** The coordinating session, 2026-11-24:
+  "Build the Soul Collector and Shadow decay after the last kill as its own function without the
+  ARunningBuffHoldsFervour call; whichever of your slice B and feat/death-skills-2885 merges second adds that one call
+  and its test (the War trees session has the same obligation for its decay)." **The obligation stands on whichever of
+  the two merges second:** one call in `UCataclysmFervour::KillDecayStep`, beside the one `DecayStep` gets, and a test.
+- **HUNTER'S EYE IS HALF BUILT**: its Elite and stronger half is a row; "and against the enemy Deathmark marked" waits
+  for the mark.
+- **THE OWNER'S ORDER FIXES OF 2026-11-24 ARE APPLIED TO THE THREE DEATH TREES HERE**, and the order script's Gathered
+  Remains sentences are changed to do it (see "The owner's order fixes"). **Whichever of this branch and
+  `feat/passive-row-port` merges second takes a conflict of one sentence in `tools/apply_passive_order_fixes_2026_11_24.py`**
+  and keeps this branch's, as the coordinating session ruled. Many Made One, a new Necromancer node, has no row: its
+  Abomination is not built.
+
+### The rule: a class generator and a skill's own Fervour for a kill
+
+The coordinating session, 2026-11-24: "Build the class generator (Fervour per own kill by the slain creature's rarity)
+in the existing kill path the plan names (ACataclysmPlayerCharacter::OnSomethingDied's kill block, writing through
+UCataclysmFervour as GainOnEnemyDeathNearby does), as its own function. It is a different payment from a skill's
+KillFervour: the class generator pays on every kill, and a skill's KillFervour pays on top when that skill's blow made
+the kill." So **one death pays the class generator once, and pays a skill's `KillFervour` (the Death skills branch,
+#2885) once more when that skill's own blow made the kill.** Neither steps aside for the other.
+
+### What a kill does now
+
+- **Every kill credited to the character** (`Notice.Killer == this` in `OnSomethingDied`, its damage over time's
+  included by the ruling of 2026-09-14, and a kill a row made) stamps the kill clock and pays the generator.
+- **The stamp** (`UCataclysmFervour::NoteOwnKill`) is for every character: a row under `seconds_after_kill` reads it, and
+  it holds the decay off until the kill's grace has run, the grace asked against the slain creature.
+- **The payment** (`UCataclysmFervour::GainOnOwnKill`) asks `fervour_per_kill` against the slain creature, so its rows
+  are tiered by its rarity rung, then scales it by the generation rate and clamps it at the maximum, as every gain does.
+- **The decay** (`UCataclysmFervour::KillDecayStep`), on the character's step beside the Ravager's `DecayStep`, takes
+  `fervour_kill_decay_per_second` a second once the hold has run out.
+
+**Judgements, each with its reason:**
+- **A Cataclysm Boss pays as a Boss** (15 for the Soul Collector; the tree's summary asked). It is stronger than a Boss,
+  and the sentence's last figure is the top of its ladder.
+- **The rung read is the one the spawner set** (`ACataclysmEnemyCharacter::RarityStep`), as `target_is_boss` reads it,
+  and not `RarityStepItPaysAs`, which is what a kill is rewarded as. A Corrupted Stalker holding a build is paid as its
+  own rung.
+- **A hold never shortens.** "Holds off the decay for 8 seconds rather than 4" would be broken by the next ordinary kill
+  otherwise; the hold runs to the later of the two.
+- **A character that has never killed is not held**, so Fervour from another source decays at once. "Once 4 seconds have
+  passed since your last kill" has no last kill to count from, and holding for ever would make a multiclassed Soul
+  Collector's other generator a bar that never empties.
+- **The decay has its own stats, not the Ravager's.** A Soul Collector holding `fervour_decay_per_second` would also be
+  drained by `DecayStep` whenever it stood three seconds out of contact. Two rules, two stats; a multiclassed character
+  holding both loses Fervour to each when each says so.
+
+### Text changes
+
+Each so the row's number and bucket are in the sentence the checks read (issue
+[#977](https://github.com/sdubois777/Cataclysm/issues/977) for the bucket); the values are the same:
+- Hungry for the Strong: "Elite and stronger creatures give double Fervour" becomes "... give 100% more Fervour".
+- Hoarder: "Fervour decays half as fast" becomes "You lose 50% less Fervour to decay".
+- Momentum: "Fervour drains 6 seconds after your last kill instead of 4" becomes "Fervour begins to drain 2 seconds later
+  after your last kill: 6 seconds rather than 4".
+
+### The rows
+
+Thirty-two rows in this slice's own commit (`PassiveEffects.csv` 427 to 459): the two starting nodes' kill halves and
+fifteen more nodes. Light Feet has an unconditional row, "+1% increased Movement Speed per point", and its window row
+doubles it. The Soul Collector's grace is 4 seconds for a Common kill and 8 for an Elite or stronger one, as two rows,
+so each row's number is one the sentence states.
+
+**Seven more rows came in with the merge of slice A onto the passive row port** (`0966a8e79`): Untouched and Through
+and Through, the two data-only entries slice A's entry says "are written when this branch is rebased on it". Each says
+"for every 2 points", and each step is one row granted whole from its `Min Points`, the Demonic tree rework's shape.
+They are in the table's last two lines. **With them, 65 of the 220 Death nodes grant something**: the Soul Collector 21
+of its 73, the Necromancer 8 of its 73 and the Shadow 36 of its 74 (slice A: 14 of 73, 8 of 72 and 25 of 74; the
+Necromancer's 73rd is Many Made One, below).
+
+| Tree | Node | Rows |
+|---|---|---|
+| Soul Collector | Fervour | fervour_per_kill, flat, 1, cond=target_rarity_is, cond_value=0; fervour_per_kill, flat, 3, cond=target_rarity_is, cond_value=1; fervour_per_kill, flat, 5, cond=target_rarity_is, cond_value=2; fervour_per_kill, flat, 8, cond=target_rarity_is, cond_value=3; fervour_per_kill, flat, 15, cond=target_rarity_at_least, cond_value=4; fervour_kill_decay_per_second, flat, 5; fervour_kill_decay_grace_seconds, flat, 4, cond=target_rarity_is, cond_value=0; fervour_kill_decay_grace_seconds, flat, 8, cond=target_rarity_at_least, cond_value=1 |
+| Soul Collector | Tithe of the Dead | fervour_per_kill, increased, 2 |
+| Soul Collector | Grave Patience | fervour_kill_decay_grace_seconds, flat, 1, min_points=5; fervour_kill_decay_grace_seconds, flat, 1, min_points=10 |
+| Soul Collector | Between the Dead | movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+| Soul Collector | Cold Storage | fervour_kill_decay_per_second, increased, -5 |
+| Soul Collector | Hoarder | fervour_kill_decay_per_second, more, -50 |
+| Soul Collector | Quarry | attack_damage, increased, 2, cond=target_rarity_at_least, cond_value=1; spell_damage, increased, 2, cond=target_rarity_at_least, cond_value=1 |
+| Soul Collector | Hungry for the Strong | fervour_per_kill, more, 100, cond=target_rarity_at_least, cond_value=1 |
+| Shadow | Fervour | fervour_per_kill, flat, 10, cond=target_rarity_is, cond_value=0; fervour_per_kill, flat, 25, cond=target_rarity_at_least, cond_value=1; fervour_kill_decay_per_second, flat, 10; fervour_kill_decay_grace_seconds, flat, 4 |
+| Shadow | Big Game | attack_damage, increased, 2, cond=target_rarity_at_least, cond_value=1; spell_damage, increased, 2, cond=target_rarity_at_least, cond_value=1 |
+| Shadow | Killing Pace | attack_speed, increased, 1, cond=seconds_after_kill, cond_value=4; movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+| Shadow | Reaper's Share | fervour_per_kill, increased, 2 |
+| Shadow | Slow Exhale | fervour_kill_decay_per_second, increased, -5 |
+| Shadow | Momentum | fervour_kill_decay_grace_seconds, flat, 2 |
+| Shadow | Hunter's Eye | crit_chance, increased, 2, cond=target_rarity_at_least, cond_value=1 |
+| Shadow | Siege of One | fervour_kill_decay_per_second, increased, -8, cond=seconds_after_striking_a_boss, cond_value=2 |
+| Shadow | Light Feet | movement_speed, increased, 1; movement_speed, increased, 1, cond=seconds_after_kill, cond_value=4 |
+| Shadow | Through and Through (merge commit) | fervour_per_enemy_hit, flat, 1, tags=Slot.Movement, min_points=2; the same at min_points=4, 6 and 8 |
+| Shadow | Untouched (merge commit) | evasion, flat, 1, scale=class_resource_held, step=20, min_points=2; the same at min_points=4 and 6 |
+
+### Research
+
+The shape of the generator is one this game already uses: potion charges for a kill by the slain creature's rarity
+(`UCataclysmPotions::ChargesForKillOf`), whose own comment takes it from Path of Exile's flask charges for normal,
+magic, rare and unique monsters. The decay after a quiet spell is Path of Exile's Soul Eater (souls lost one every half
+second when none were eaten recently, poedb.tw), which the Soul Collector's tree summary cites. The figures are the
+owner's approved trees'. **Specific to this game, judgements:** the five above.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.ClassKillFervour.` | new: `AKillPaysTheSoulCollectorByTheSlainCreaturesRarity`, `TheShadowIsPaidTenOrTwentyFiveAndReapersShareRaisesBoth`, `TheDecayWaitsFourSecondsAfterAKillAndEightAfterAnElite`, `HoarderAndColdStorageSlowTheDecayAndMomentumDelaysTheDrain`, `ARowUnderSecondsAfterAKillHoldsForItsSecondsAfterTheKill`, `AnEliteOrStrongerRowReadsTheStruckCreaturesRarity`, `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock` | 7 |
+| `Cataclysm.Fervour.` | new: `GenerationRateScalesGainOnOwnKill` | the base's count plus 1 |
+| `Cataclysm.StatExemption.` | `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`'s count 25 to 28, and three probes in `EveryStatWithNoAttributeIsActuallyRead` | the base's count, unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 459, PassiveNodes 661, PassiveEdges 621 | unchanged |
+| `Cataclysm.DeathTrees.` | `ADeathNodeIsNamedForItsTreeAndEachTreeStartsAtFervour`: the Necromancer's node count 72 to 73 | unchanged, 6 |
+
+Every new test has a control: an actor that is not a creature, a character without the node, a kill somebody else made,
+a Demonic weapon, and the moment before a window opens or after it closes.
+
+**Three C++ guard proofs are registered for the window**, each with `test_prefix="Cataclysm.ClassKillFervour."`:
+1. `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp`, `ConditionHolds`, `TargetRarityIs`:
+   `&& State.TargetRarityStep == FMath::RoundToInt(Value);` becomes `&& State.TargetRarityStep >= FMath::RoundToInt(Value);`.
+   Must fail `AKillPaysTheSoulCollectorByTheSlainCreaturesRarity`, `TheShadowIsPaidTenOrTwentyFiveAndReapersShareRaisesBoth`
+   and `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock`.
+2. `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`, `NoteOwnKill`:
+   `KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Now + FMath::Max(0.0f, GraceSeconds));` becomes
+   `KillDecayHeldUntilSeconds = Now + FMath::Max(0.0f, GraceSeconds);`. Must fail
+   `TheDecayWaitsFourSecondsAfterAKillAndEightAfterAnElite`.
+3. `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: `UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);`
+   becomes `(void)Notice.Victim;`. Must fail `AKillAnnouncedForThePlayerPaysItsGeneratorAndStartsItsClock`.
+
+### The owner's order fixes, applied to the Death trees
+
+The owner approved a set of passive order fixes on 2026-11-24 ("Apply all (Recommended)"), and
+`tools/apply_passive_order_fixes_2026_11_24.py` applies them by node name. Its Death parts had not reached the trees in
+`docs/`, and its test `test_a_real_tree_ends_fixed_with_its_graph_and_its_rules_intact[Necromancer_Class_Tree_Final.json]`
+failed from the merge of slice A onto the passive row port (`0966a8e79`) on: the script refused the Necromancer tree.
+
+**Why it refused.** Its Gathered Remains fix was written against the draft sentence "... Remains within 10 metres of you
+last 10% longer per point." The approved file has never held that sentence. It holds the one the 15-keystone merge of
+the same day wrote when it folded Unhallowed Ground into Gathered Remains: "... Remains last 25% longer per point, so at
+8 points they last three times as long: 30 seconds rather than 10." Slice A's whole-number rewrite did not touch this
+node.
+
+**The coordinating session's ruling, 2026-11-24, applying the owner's approved order fixes to the revised trees:**
+1. The fix's "before" is the sentence the tree holds, and its "after" is "Remains last 25% longer per point, so at 8
+   points they last three times as long: 30 seconds rather than 10." The keystone merge's figure stands, the order fix's
+   split stands, and "within 10 metres" goes.
+2. Many Made One is drawn at (-708.8, -222.2) on the emblem layout, 110 units from First Among the Dead. The script's
+   default place lands on Master's Edge there. The owner can move it in their builder app.
+3. All three Death fixes in one commit, on this branch.
+
+**What changed in the trees:**
+- Soul Collector: Spent Breath and Soul Fuel swap content (`basic_spine_009` holds Soul Fuel, 12 points;
+  `basic_d_stem0` holds Spent Breath, 6).
+- Shadow: Envenom and Death's Patience swap content (`basic_spine_008` holds Envenom; `basic_a_stem0` Death's Patience).
+- Necromancer: Gathered Remains keeps its remains half; Many Made One (`basic_lg_d0`, 8 points) holds the Abomination
+  half, after First Among the Dead, whose edge asks for all 10 of its points, so it opens at 40 points spent; Gravefinder
+  moves to directly after Bone Fuse (`basic_os_stem1` holds Gravefinder, `basic_os_a0` Mantle of Bone).
+
+A swap trades each node's content and keeps its identifier, position and edges. **No node these fixes move carries an
+effect row**, so `PassiveEffects.csv` is unchanged. `PassiveNodes.csv` goes from 660 to 661 rows and `PassiveEdges.csv`
+from 620 to 621. The Necromancer has 73 nodes and 448 points (440 before), inside the 390 to 460 that
+`test_the_spendable_total_is_about_four_hundred_and_forty` allows.
+
+### Five checks the first suite run named
+
+The whole suite on `2add3971f` failed five tests this slice caused. Each is brought up to the kill generator, and each
+failing on `2add3971f` and passing after is that check's own proof:
+- **`kill` moves off the generator's list of events with no clock** (`ACTION_ONLY_EVENTS`). `seconds_after_kill`
+  derives it as a clock, and `test_the_event_vocabulary_is_the_clocks_plus_the_five_with_none` refuses an event in both
+  halves. `striking_a_boss` and `movement_skill` are already derived the same way, so the list's comment no longer says
+  every clock is something done to the character. The set of events a row may use is unchanged.
+- **The table of blow conditions an asker does not pass names the two kill stats beside `dot_damage`**, and its control
+  in `tools/tests/test_dot_damage_on_a_moving_target_rows.py` says so.
+- **`UCataclysmFervour::KillDecayStep` is a job of `ACataclysmCharacterBase::RegenerationStep`** in
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`, so deleting the call fails a test.
+- **The three new stat lookups are in the inventory** of `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+  and the two that hand over the slain creature without its distance or stagger are listed in
+  `TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER`. The generator refuses `target_within_metres` and `target_is_staggered` on
+  both stats (asked of `refuse_a_condition_nothing_asks_for` directly), so no such row can ship and grant nothing.
+
+### What was run
+
+**The whole Python suite on `998ebb4c6`**, `python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed,
+8458 passed, 9 skipped in 349.76s (0:05:49)". The JUnit file agrees: tests 8468, failures 1, errors 0, skipped 9, so
+8458 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`, `DT_PassiveNodes` and `DT_PassiveEdges`. The first
+run, on `2add3971f`, failed seven: that one, the five under "Five checks the first suite run named" and the order fixes'
+test.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/apply_passive_order_fixes_2026_11_24.py --check` on the three Death trees: "0 of 3 file(s) would change."
+- `python tools/check_resolved_cpp.py` on the 13 C++ files this slice changed: "13 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace and no file-scope `static` or `FName` added; the new test file's helpers are
+  in `namespace CataclysmClassKillFervourTest`, which no other file names; each of the eight new test classes is named in
+  one file only.
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`998ebb4c6`, and each `proved`: a named test failed with the break in, and nothing failed with it out.
+
+| Break | Named failures |
+|---|---|
+| The Soul Collector's Elite row (`SoulCollector_basic_spine_000#4`, 3 Fervour) under rung 2 rather than 1, in `game/Data/PassiveEffects.csv` | `tools/tests/test_death_kill_schedule_matches_the_sentence.py::test_the_soul_collectors_rows_pay_each_rung_its_figure` |
+| Quarry's first row (`SoulCollector_basic_b_b0#1`) under `target_rarity_is` rather than `target_rarity_at_least` | `tools/tests/test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Through and Through's last step (`Shadow_basic_c_b1#4`) from 8 points to 6 | `tools/tests/test_passive_effects_match_the_node_text.py::test_no_node_grants_the_same_stat_twice` and `::test_a_for_every_n_points_sentence_has_a_row_at_every_step` |
+| `"fervour_per_kill": ASKER_PASSES_A_HIT_DEALT,` taken out of `tools/generate_datatables.py` | `tools/tests/test_every_conditioned_stat_has_an_asker.py::test_every_conditioned_probe_is_on_the_list` and `::test_no_shipped_row_is_refused[PassiveEffects]` |
+
+The five checks under "Five checks the first suite run named" each failed on `2add3971f` and pass with their entries, and
+the order fixes' test failed from `0966a8e79` and passes with the ruling applied: each is that check's own pair of
+halves, measured by the two suite runs.
+
+**No C++ was compiled, and the three C++ guard proofs registered above wait for a window.**
+
+---
+
+## 2026-11-24 — The three Death class trees enter the game as data: the Soul Collector, the Necromancer and the Shadow, their first 56 rows, three class stat lines and their emblem layouts (Death trees, slice A)
+
+**Affects:**
+- `docs/Soul_Collector_Class_Tree_Final.json`, `docs/Necromancer_Class_Tree_Final.json` and
+  `docs/Shadow_Class_Tree_Final.json`, new: the trees the project owner approved on 2026-11-24, with the text changes
+  under "Said first", the 34 whole-number sentences under "Whole numbers", and the emblem positions under "The
+  layouts".
+- `tools/generate_datatables.py`: `CLASS_TREES` lists nine trees; `tree_file` and `tree_row_prefix` spell a class name
+  holding a space.
+- `tools/reapply_death_trees_workbook.py`, new, and `tools/tests/test_reapply_death_trees_workbook.py`, new: the Death
+  rows of the workbook's Passive Effects and Class Stats sheets, added by node and class name.
+- `docs/All_Things_Cataclysm.xlsx`: Passive Effects 325 rows to 381, Class Stats 33 to 49.
+- `game/Data/PassiveNodes.csv` (660 rows), `game/Data/PassiveEdges.csv` (620), `game/Data/PassiveEffects.csv` (381)
+  and `game/Data/ClassStats.csv` (49), generated. **The editor step must rebuild `DT_PassiveNodes`, `DT_PassiveEdges`,
+  `DT_PassiveEffects` and `DT_ClassStats`** before any test reading the real tables can pass.
+- `sim/cataclysm_sim/classes.py`: `SOUL_COLLECTOR`, `NECROMANCER`, `SHADOW`, `DEATH_CLASSES` and `CLASSES`;
+  `sim/tests/test_death_classes.py`, new.
+- `docs/Cataclysm_GDD_v2.md`: three Death rows in the generator table, and "The Three Death Class Stat Lines".
+  `docs/README.md`: the two sheets' row counts.
+- `game/Source/Cataclysm/Tests/CataclysmDeathTreesTests.cpp`, new (6 tests);
+  `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (two tests);
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (four pinned row counts).
+- `tools/tests/test_class_passive_trees.py`, `tools/tests/test_passive_tables_match_the_tree_files.py`,
+  `tools/tests/test_passive_effects_match_the_node_text.py` and `tools/tests/test_class_sheets_match_the_model.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** One new test file and two edited ones were read as the compiler.
+  A window has to compile, run the editor step for the four tables above, and run the groups under "Unreal tests".
+- **NO DEATH CLASS FILLS FERVOUR FROM ITS OWN KILLS YET.** The Soul Collector's and the Shadow's starting nodes (Fervour
+  per kill by the slain creature's rarity, and the decay after the last kill) are the next slice, and with them every
+  node that reads Fervour held is worth nothing to those two classes in play. The Necromancer's starting node is half
+  built: 1 Fervour each time an enemy dies within 10 metres, through the Ritualist's existing
+  `fervour_on_enemy_death_nearby`. A minion's kill farther away than that is not built.
+- **47 OF THE 219 DEATH NODES GRANT SOMETHING**: the Soul Collector 14 of its 73, the Necromancer 8 of its 72 and the
+  Shadow 25 of its 74. The plan's survey counted 46 entries that are data today; 44 are written. **Untouched and
+  Through and Through are not**: their whole-number sentences say "for every 2 points", which is one row per step, and
+  the text checks on `development` accept a row from N points only on an "At N points:" sentence. The Demonic tree
+  rework (`feat/demonic-tree-rework`) adds the step support; they are written when this branch is rebased on it. Three
+  rows here are halves the survey did not count: the Soul Collector's starting node's damage, the Necromancer's
+  starting node's deaths within 10 metres and the Shadow's Counterstroke's flat evasion.
+- **A CHARACTER STANDS ON A DEATH CLASS LINE ONLY BY THE CONSOLE VARIABLE**, `Cataclysm.PlayerClass "Soul Collector"`,
+  as for every class: nothing chooses a line from the trees a character spends in (issue
+  [#932](https://github.com/sdubois777/Cataclysm/issues/932)).
+- **TEXT CHANGES TO THE APPROVED FILES**, each for a stated reason:
+  - "Attack and Cast Speed" becomes "Attack Speed" in Brimming, Empty Hands, Overflow and Soul Haste: there is no cast
+    speed in this game (issue [#1000](https://github.com/sdubois777/Cataclysm/issues/1000)). Swift Reaper and Soul
+    Haste now read "+2% increased Movement Speed" and "+3% increased Attack Speed", as the Shadow's Quickening already
+    did.
+  - Executioner: "Double damage against enemies below 30% health" becomes "You deal 100% more damage against enemies
+    below 30% health". A row in the more bucket must say so in its sentence (issue
+    [#977](https://github.com/sdubois777/Cataclysm/issues/977)); the value is the same.
+  - Held Close: "A stun stops your kills" becomes "Crowd control stops your kills". The node resists every crowd
+    control, and the stun check (issue [#271](https://github.com/sdubois777/Cataclysm/issues/271)) read the first
+    wording as a stun the node applies.
+  - The Horde Ascendant's "within 10 m" becomes "within 10 metres", as every other Death sentence writes it.
+  - **Lone Revenant**, by the owner's answer to the plan's question 18 ("Your recommendations work for all of those
+    death/war questions"): "You can have one permanent minion only; it has 400% more health and damage" becomes "Your
+    permanent minions reserve 300% more Fervour and have 400% more health and damage."
+  - **The Abomination's last sentence, the coordinating session's ruling of 2026-11-24** ("your clause is
+    accepted"): "With Lone Revenant, the Abomination is your one permanent minion and gains Lone Revenant's bonus"
+    becomes "With Lone Revenant, the Abomination has Lone Revenant's 400% more health and damage, and still reserves
+    100 Fervour." There is no "one permanent minion" any more, and four times 100 would leave no pool able to raise
+    it.
+- **"SOUL COLLECTOR" HOLDS A SPACE, AND THREE PLACES SPELL IT THREE WAYS ON PURPOSE.** The file is
+  `Soul_Collector_Class_Tree_Final.json`; every node and edge row is named `SoulCollector_...`, because the version 3
+  save step's `ClassOfNode` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`) reads a node's tree from its name
+  with the spaces taken out; and the `Tree` column says "Soul Collector", because
+  `UCataclysmPassiveTree::TreeIsReachable` compares it with `UCataclysmCharacterCreation::ClassesFor`, which spells it
+  so. The class line is "Soul Collector" as well. The coordinating session was told on 2026-11-24 before any of it was
+  written.
+
+### Whole numbers
+
+**The 34 fractional sentences are whole numbers**, by the owner's rule of 2026-11-24 (the Masochist audit's question
+4, "Steps": a per-point value below 1 is written as a whole number "for every N points"), applied as the coordinating
+session ruled the same day: "apply them (the owner's rule; no new owner ruling needed). Your proposal is accepted
+except where ruled below." Twenty are the Soul Collector's, five the Necromancer's and nine the Shadow's. Most keep
+their total at full points ("+0.02% increased damage per point" for each Fervour became "+1% increased damage per point
+for every 50 Fervour you hold"). The rulings, quoted:
+
+- **The Soul Collector's starting node keeps "more"**: "You deal 1% more damage for every 2 Fervour you hold." The
+  starting node is the class's own Fervour rule, an exception to the basic-node "increased" rule, as the Ritualist's
+  starting node is an exception to the keystone rule.
+- **Seconds per point**: "one rule for all: '1 second ... for every N points' with N = half the node's maximum, so each
+  pays 1 s at half investment and 2 s at full." Grave Patience (every 5 points), Unbroken Chain (4), Borrowed Time (3),
+  Find the Rhythm (4), Keep the Count (3) and Sidestep (5). **This raises their totals** (Grave Patience 1 s to 2 s,
+  Unbroken Chain 0.8 s to 2 s, Borrowed Time 0.6 s to 2 s, Find the Rhythm 0.8 s to 2 s, Keep the Count 1.2 s to 2 s,
+  Sidestep 1 s to 2 s): **six points to test in play.**
+- **Last Breath**: "Each kill restores 1% of your maximum health for every 2 points" (3% at 6, whatever Fervour the kill
+  gives). **Life Siphon**: "At 10 points: each enemy in your Siphon restores 1% of your maximum health each second, up
+  to 5 enemies." **Picked Clean**: "1% for every 3 points" (2% at 6 and 8). **Shared Leech**: "At 8 points: 1% of the
+  damage your minions deal is leeched to you as health."
+- **Turn of the Wheel** ("Every 10 Fervour you spend takes 1 second off ..."), **Pale Ward** and the Shadow's
+  **Relentless** ("for every 100 Fervour held") as proposed. Pale Ward and Relentless now grant nothing below 100
+  Fervour held, which is a full bar at the base pool.
+
+### The layouts
+
+The three trees are laid out as their emblems, which the owner accepted on 2026-11-24: the Soul Collector a hanging
+lantern, the Necromancer a skull over two crossed bones, the Shadow a dagger lying flat. Taken from
+`constellations/*_Class_Tree_Sigil.json` in the coordinating session's folder: **only node positions, the viewport,
+the title label's position and the layout sentence in `metadata`**; every id, name, sentence, point count and edge is
+as before, checked by comparing the files with those four fields removed. No save is affected: a save records nodes
+and points, never positions.
+
+### The rows
+
+Fifty-six rows on 47 nodes, written by `tools/reapply_death_trees_workbook.py`. Every stat, condition and scale is one the
+game already had, and the generator's validators accept every row (a deliberately wrong condition was seen refused
+first). Two readings are judgements:
+
+- **Deathly Presence**, "enemies within 6 metres deal 1% less damage" for every 10 Fervour held, is damage you take
+  from an enemy that near: the predicate of the enchantment "Nearby enemies deal 10%-30% less damage to you"
+  (`damage_taken`, more, `opponent_within_metres`). Damage those enemies deal to your minions is not reached.
+- **Cooldown reduction is a flat sum** (Quick Recovery, Raised in Haste, Fed Stride), as every authored source writes
+  it: the enchantment "Summon skills have 30%-60% reduced cooldown" is `flat` on `Keyword.Summon`.
+
+| Tree | Node | Rows |
+|---|---|---|
+| Soul Collector | Fervour | attack_damage, more, 1, scale=class_resource_held, step=2; spell_damage, more, 1, scale=class_resource_held, step=2 |
+| Soul Collector | Weight of Souls | attack_damage, increased, 1, scale=class_resource_held, step=50; spell_damage, increased, 1, scale=class_resource_held, step=50 |
+| Soul Collector | Pale Ward | damage_reduction, increased, 1, scale=class_resource_held, step=100 |
+| Soul Collector | Deep Urn | class_resource, increased, 2 |
+| Soul Collector | Held Close | crowd_control_resistance, increased, 3, cond=class_resource_points_at_least, cond_value=50 |
+| Soul Collector | Ossuary | class_resource, increased, 2 |
+| Soul Collector | Cold Precision | crit_multiplier, increased, 1, scale=class_resource_held, step=50 |
+| Soul Collector | Brimming | attack_speed, increased, 1, cond=class_resource_points_at_least, cond_value=50 |
+| Soul Collector | Full Measure | attack_damage, increased, 2, cond=class_resource_at_maximum; spell_damage, increased, 2, cond=class_resource_at_maximum |
+| Soul Collector | Hoarded Life | health_regen, increased, 1, scale=class_resource_held, step=20 |
+| Soul Collector | Deathly Presence | damage_taken, more, -1, cond=opponent_within_metres, cond_value=6, scale=class_resource_held, step=10 |
+| Soul Collector | Swift Reaper (option 3) | movement_speed, increased, 2, scale=class_resource_held, step=10 |
+| Soul Collector | Death's Focus (option 3) | crit_chance, flat, 1, scale=class_resource_held, step=20 |
+| Soul Collector | Soul Haste (option 3) | attack_speed, increased, 3, scale=class_resource_held, step=10 |
+| Necromancer | Fervour | fervour_on_enemy_death_nearby, flat, 1 |
+| Necromancer | Wider Grave | class_resource, increased, 2 |
+| Necromancer | Death Knell | fervour_on_enemy_death_nearby, increased, 3 |
+| Necromancer | Restless Host | minion_damage, increased, 1; minion_health, increased, 1 |
+| Necromancer | Raised in Haste | cooldown_reduction, flat, 3, tags=Keyword.Summon |
+| Necromancer | Grave Sense | class_resource_generation, increased, 2 |
+| Necromancer | Deeper Grave | class_resource, increased, 2 |
+| Necromancer | Toll of the Dead | fervour_on_enemy_death_nearby, increased, 3 |
+| Shadow | Quick Recovery | cooldown_reduction, flat, 3, tags=Slot.Movement |
+| Shadow | Held Breath | attack_damage, increased, 1, scale=class_resource_held, step=20; spell_damage, increased, 1, scale=class_resource_held, step=20 |
+| Shadow | Fresh Start | attack_speed, increased, 2, cond=seconds_after_movement_skill, cond_value=3 |
+| Shadow | Lingering | dot_damage, increased, 3 |
+| Shadow | Deep Venom | dot_damage, increased, 2, tags=Keyword.DoT.Poison |
+| Shadow | Open Veins | dot_damage, increased, 2, tags=Keyword.DoT.Bleed |
+| Shadow | Arterial | dot_frequency, increased, 3, tags=Keyword.DoT.Bleed |
+| Shadow | Slow Death | dot_damage, increased, 4, cond=target_is_boss |
+| Shadow | Keen Edge | crit_chance, increased, 3 |
+| Shadow | Find the Gap | crit_multiplier, increased, 4 |
+| Shadow | Read the Giant | attack_damage, increased, 3, cond=target_is_boss; spell_damage, increased, 3, cond=target_is_boss |
+| Shadow | Open the Throat | crit_multiplier, increased, 3, cond=target_health_below, cond_value=50 |
+| Shadow | Last Breath | attack_damage, increased, 3, cond=target_health_below, cond_value=30; spell_damage, increased, 3, cond=target_health_below, cond_value=30 |
+| Shadow | Executioner | attack_damage, more, 100, cond=target_health_below, cond_value=30; spell_damage, more, 100, cond=target_health_below, cond_value=30 |
+| Shadow | Cutting Path | attack_damage, increased, 4, tags=Slot.Movement; spell_damage, increased, 4, tags=Slot.Movement |
+| Shadow | Blade on Arrival | crit_chance, increased, 3, tags=Slot.Movement |
+| Shadow | Deep Cut | bleed_chance, flat, 5, tags=Slot.Movement |
+| Shadow | Fed Stride | cooldown_reduction, flat, 5, tags=Slot.Movement, cond=class_resource_points_at_least, cond_value=50 |
+| Shadow | Counterstroke | evasion, flat, 1 |
+| Shadow | Nimble | evasion, increased, 3 |
+| Shadow | Moving Target | evasion, increased, 3, cond=while_moving |
+| Shadow | Tumble | evasion, flat, 3, cond=seconds_after_movement_skill, cond_value=2 |
+| Shadow | Slipstream | movement_speed, increased, 2, cond=seconds_after_dodge, cond_value=3 |
+| Shadow | Quickening (option 3) | movement_speed, increased, 3, scale=class_resource_held, step=10 |
+| Shadow | Honed Edge (option 3) | crit_chance, flat, 1, scale=class_resource_held, step=10 |
+
+### The three Death class stat lines
+
+**Every stat a Death tree raises by an "increased" percentage has a base**: on its class's line, on the default line,
+or from a flat node every increasing node is reached through. The Demonic lines met this without it being written down;
+these were made to meet it, and `sim/tests/test_death_classes.py` holds each tree's increasing nodes to it by name.
+
+| Stat | Soul Collector | Necromancer | Shadow |
+|---|---|---|---|
+| Maximum Health | 115 + 17 a level (1,798 at 100) | 85 + 12 (1,273) | 90 + 13 (1,377) |
+| Maximum Mana | default | 70 + 9 (961) | default |
+| Health Regeneration | 2 + 0.25 (26.75) | default | default |
+| Mana Regeneration | default | 1.5 + 0.18 (19.32) | default |
+| Armor | none | 15 + 2 (213) | none |
+| Damage Reduction | 3 + 0.04 (6.96%) | 2 + 0.03 (4.97%) | none |
+| Crowd Control Resistance | 3 + 0.08 (10.92) | 5 + 0.1 (14.9) | none |
+| Critical Strike Multiplier | default (150) | default | 160 |
+| Area of Effect | default (100) | default | 90 |
+| Movement Speed | 4.2 | 3.8 | 4.4 |
+
+- **The Shadow has no base of evasion, as no class has.** The gem ruling of 2026-11-21 rests on that sentence, and the
+  Shadow's tree supplies its own: Counterstroke grants "+1% Evasion chance per point", and Nimble and Moving Target, the
+  two nodes that increase evasion, are reached only through it at 4 points or more. The tree's summary designed it so
+  ("the limb grants flat evasion chance ... and does not rely on gear"). A first version of this branch gave the Shadow
+  5 + 0.1 evasion; the suite's gem check named the conflict and it was taken out.
+- **The Shadow's area of effect, 90**, is its approved draft's "low area damage".
+- **Every figure is a judgement** under the owner's delegation of unstated numbers.
+
+### Research
+
+The shapes, not the numbers:
+- **Diablo II** (the Basin Wiki's class pages, read 2026-11-24, https://www.theamazonbasin.com/wiki/index.php/Necromancer
+  and its Assassin, Barbarian and Sorceress pages): the Necromancer gains 1.5 life and 2 mana a level, the Barbarian 2
+  and 1, the Assassin 2 and 1.5, the Sorceress 1 and 2. A summoner trades health for mana.
+- **Path of Exile** (poedb.tw's class pages, https://poedb.tw/us/Shadow and https://poedb.tw/us/Marauder): the Shadow
+  starts with 57 life against the Marauder's 66. An assassin starts with less health than a fighter.
+- Last Epoch's base classes were looked for and no page answered.
+
+### Unreal tests
+
+Registered with predicted counts. Static counts are not exact (CLAUDE.md), so the totals to quote are the run's.
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.DeathTrees.` | new: `ADeathWeaponReachesTheThreeDeathTreesAndNoOther`, `ADeathNodeIsNamedForItsTreeAndEachTreeStartsAtFervour`, `ADeathCharacterSpendsInOnlyOneOfTheThreeDeathTrees`, `ADeathNodesRowGrantsItsStatOnlyWhileADeathWeaponIsCarried`, `TheThreeDeathClassLinesAreReadUnderTheClassesOwnNames`, `ThePassiveScreenShowsTheSoulCollectorsWholeTree` | 6 |
+| `Cataclysm.Passives.` | `TheGeneratedTablesHoldEveryTreeTheDesignHas` asks for nine trees; `TheScreenSpendsThroughTheCharacterAndNotIntoItself` names the Plague Lord as a tree that does not exist, where it named the Necromancer | the base's count, unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: ClassStats 49, PassiveNodes 660, PassiveEdges 620, PassiveEffects 381 | the base's count, unchanged |
+
+Every new test has a control: a Demonic weapon reaching none of the three; "SoulCollector" being no class, no tree and
+no line; the Soul Collector's own tree not refused for its class; a Demonic tree refused for the weapon, not the class.
+
+**Two C++ guard proofs are registered for the window**, each with `test_prefix="Cataclysm.DeathTrees."`:
+1. `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`, in `TreeIsReachable`: `const FName AsClass(*Tree);`
+   becomes `const FName AsClass(*Tree.Replace(TEXT(" "), TEXT("")));`. Must fail
+   `ADeathWeaponReachesTheThreeDeathTreesAndNoOther` and `ADeathCharacterSpendsInOnlyOneOfTheThreeDeathTrees`.
+2. `game/Source/Cataclysm/Character/CataclysmClassStats.cpp`, in `FindClassStat`:
+   `if (Row->ClassName.Equals(ClassName, ESearchCase::IgnoreCase)` becomes
+   `if (Row->ClassName.Replace(TEXT(" "), TEXT("")).Equals(ClassName, ESearchCase::IgnoreCase)`. Must fail
+   `TheThreeDeathClassLinesAreReadUnderTheClassesOwnNames`.
+
+### What was run
+
+- **Full Python suite on `cd63c2a94`, the last code commit: "1 failed, 8345 passed, 9 skipped in 344.90s"; JUnit 8355
+  tests, 1 failure, 0 errors, 9 skipped.** The one failure is the expected
+  `test_every_csv_still_hashes_to_what_was_recorded`, naming `ClassStats.csv`, `PassiveEdges.csv`,
+  `PassiveEffects.csv` and `PassiveNodes.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the three changed C++ files: "3 files read, 0 with complaints".
+  `tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+  `tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it;
+  nothing written".
+- **The first suite run, on `ec209d331`, failed four tests, three of them real**: the docs README's sheet counts,
+  the gem check (a first Shadow line with an evasion base, taken out) and the stun check (Held Close's wording,
+  changed). All three were fixed in `01c24c6b4`, whose run gave the same figures as the last.
+
+**Five Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `01c24c6b4`**, failing with
+the break in and passing restored:
+
+| Guard | Break | Named failures |
+|---|---|---|
+| The dead-node check reads the Soul Collector's line under its space-free name | Held Close's row in `game/Data/PassiveEffects.csv` grants `life_leech` | `test_no_node_is_worth_nothing_to_its_own_class` (1 failed, 22 passed; restored 23 passed) |
+| No Death sentence promises cast speed | Brimming says "Attack and Cast Speed" again | `test_no_death_vow_promises_a_stat_this_game_does_not_have` (1 failed, 176 passed; restored 177 passed) |
+| The Shadow's evasion increases are reached only through Counterstroke | edge `e_72` leaves Slip instead of Counterstroke | `test_the_shadows_evasion_increases_are_reached_only_through_its_flat_evasion` (1 failed, 21 passed; restored 22 passed) |
+| Every stat a Death tree increases has a base | the Soul Collector's `damage_reduction` line deleted from the model | `test_every_stat_the_tree_increases_has_a_base_on_the_class_line[Soul Collector]` and `test_the_design_document_death_table_matches_the_model` (2 failed, 20 passed; restored 22 passed) |
+| The tables test keys the Death rows through the generator's spelling | `tree_row_prefix` keeps the space | five tests of `test_passive_tables_match_the_tree_files.py` (5 failed, 3 passed; restored 8 passed) |
+
+**And the gap the first one closes**: the same break with the check keyed on the class name as written gave "23
+passed". Before this change the dead-node check skipped the Soul Collector, because "SoulCollector", the tree its rows
+are named for, matched no class line.
 
 ---
 

@@ -381,6 +381,77 @@ INVENTORY = {
         'no attribute, so nought is the fallback, and no blow is in hand. '
         "Issue #2787, branch B. The call it replaced, the skill templates' "
         "PassiveStatFor for The Swarm's minion cap, went with the cap",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(ReservedFervourSpentPercentStat), Tags, 0.0f'):
+        "Bound Offering's share of a reserve held that counts as Fervour "
+        "spent, asked with the making skill's tags when a skill made the "
+        'follower and none otherwise; no attribute, so nought is the '
+        "fallback, and no blow is in hand. The Death trees' slice C3b",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(FervourSpentReturnedPercentStat), Tags, 0.0f'):
+        "Cinders Kept's share of a spend returned later, asked with the "
+        "spending skill's tags when a skill spent and none otherwise; no "
+        "attribute, so nought is the fallback, and no blow is in hand. The "
+        "Death trees' slice C3c",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(FervourLethalSaveEverySecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Phylactery's seconds between two saves, asked with no tags because "
+        'the save is for dying and not for a skill; no attribute, and the '
+        "blow it saves is not handed over: the save reads no blow's kind. The "
+        "Death trees' slice C3c",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(MovementOnCooldownFervourCostStat), SkillTagsForStats(), 0.0f'):
+        "Borrowed Step's Fervour for a movement skill used on cooldown, asked "
+        "with the skill's own tags; no attribute, so nought is the fallback, "
+        "and no blow is in hand. The Death trees' slice C3c",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CooldownsRecoverFasterPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the fourth Soul Collector vow's faster cooldown recovery, asked on "
+        "the regeneration step with no tags because it reaches every skill's "
+        "cooldown; no attribute, so nought is the fallback, and no blow is in "
+        "hand. The Death trees' slice C3d",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, '
+     'false, Slain'):
+        "Gleaning's chance of one more Fervour, asked at the kill against the "
+        "slain creature as the payment beside it is, so a rarity row is judged; "
+        "no tags, no blow. The Death trees' slice C4a",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HealthRestoredOnCriticalKillStat), FGameplayTagContainer(), 0.0f'):
+        "Clean Kill's share of maximum health on a kill by a critical strike, "
+        "asked with no tags because it is for the kill and not a skill; no "
+        "attribute, so nought is the fallback. The Death trees' slice C4a",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HoldRestartedByAnyGainStat), FGameplayTagContainer(), 0.0f'):
+        "Kindred Fires' switch, asked on each rise of the pool with no tags "
+        "because it is for the gain and not a skill; no attribute, so nought is "
+        "the fallback. The Death trees' slice C4b1",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HoldExtendedOnGainSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Borrowed Time's seconds, asked on a rise that is not a kill's payment, "
+        "with no tags for the same reason; no attribute, so nought is the "
+        "fallback. The Death trees' slice C4b1",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(DecayGivenBackOnKillSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Reclaimed's seconds, asked at a kill with no tags because it is for the "
+        "kill and not a skill; no attribute, so nought is the fallback. The Death "
+        "trees' slice C4b2",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(ClaimedWithinSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Claimed's seconds, asked at a death this character did not make, with no "
+        "tags for the same reason; no attribute, so nought is the fallback. The "
+        "Death trees' slice C4b2",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(FollowerKillsCountAsYoursStat), FGameplayTagContainer(), 0.0f'):
+        "Death's Toll's switch, asked at a follower's kill with no tags for the "
+        "same reason; no attribute, so nought is the fallback. The Death trees' "
+        "slice C4b2",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(OverkillExplosionRadiusMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Passed On's radius, asked in the kill's event loop for a passive node's "
+        "overkill explosion row, with no tags because it is for the kill and not a "
+        "skill; no attribute, so nought, the old radius, is the fallback. The "
+        "Death trees' slice C4c1",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "
@@ -674,6 +745,45 @@ INVENTORY = {
         "the share a projectile's later contact keeps (issue #1686), with "
         "the firing skill's tags; the count of contacts is the "
         "projectile's own, so no blow state is handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ShadowMarksStat), FGameplayTagContainer(), 0.0f'):
+        "how many enemies the character marks (the Death trees' slice C6e, "
+        "Deathmark and Two Marks), asked each regeneration step, which is a "
+        "clock rather than a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CritIncreasesToAilmentsStat), FGameplayTagContainer(), 0.0f'):
+        "Lethal Dose's share of the critical strike multiplier's increases (the Death trees' slice C6e), asked in "
+        "LethalDoseLentBy for RollOnLandedBlow since window death3-w3 made it a reader of its own; no tags: it is "
+        "the applier's.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(PassesThroughEnemiesStat), SkillTags, 0.0f'):
+        "Hollow Step's flag (the Death trees' slice C6e), asked in PassesThroughEnemiesFor on the mover with the "
+        "movement skill's tags, as every worn-row rider of the skill is; a reader of its own since window death3-w3.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(TurnOnLastAttackerStat), FGameplayTagContainer(), 0.0f'):
+        "whether the commander's minions turn on its last attacker (the Death "
+        "trees' slice C6e, Guard the Master), asked as a follower chooses what to "
+        "attack; a flag of the commander's, not a blow's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmAbilitySystemComponent::InterposeChanceStat), FGameplayTagContainer(), 0.0f'):
+        "the chance a hit is taken by a minion instead (the Death trees' slice "
+        "C6e, Interpose), asked of the defender before the hit resolves; the "
+        "defender's own chance, not the blow's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
+     'FName(MinionDamageLeechedStat), FGameplayTagContainer(), 0.0f'):
+        "the commander's share of its minion's damage leeched as health (the "
+        "Death trees' slice C6d2, Shared Leech), asked of the commander with its "
+        "own state; the blow is the minion's, not the commander's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
+     'FName(BoundBonesStat), FGameplayTagContainer(), 0.0f'):
+        "the commander's share of maximum health per other follower (the Death "
+        "trees' slice C6d2, Bound Bones), asked each regeneration step, which "
+        "is a clock rather than a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(MinionCannotDieAboveHealthPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the commander's health share above which a follower does not die (the "
+        "Death trees' slice C6d2, Eternal Army), asked where the follower's "
+        "health reaches nought; a flag of the commander's, not a blow's",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
      'FName(Stat), FGameplayTagContainer(), Stored'):
         'a regeneration tick, which is a clock rather than a blow',
@@ -782,6 +892,17 @@ INVENTORY = {
      'FName(UCataclysmDamageCalculation::PersistentAreaDurationStat), SkillTags, UCataclysmDamageCalculation::NormalPersistentAreaDuration'):
         "the share of its stated time a ground zone or a terrain lasts (ruled "
         "2026-10-06), asked where the area is left; an area is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("movement_speed_reduction_suppressed")), FGameplayTagContainer(), Held'):
+        "whether nothing may lower the character's speed (the Death trees' "
+        "slice C6d2: Unstoppable, Nothing Moves You, Relentless), asked in "
+        "IsImmuneTo for Slow as the movement refresh asks it, the attribute "
+        "the answer when no row states it; a flag of the character's, so no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("immune_to_slow")), FGameplayTagContainer(), 0.0f'):
+        "whether the character cannot be slowed (the Death trees' slice C6d1, "
+        "Ringed in Bone), asked in IsImmuneTo for Slow with the character's "
+        "own state; a flag of the character's, so no tags",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::OnlyOnePersistentAreaStat), SkillTags, 0.0f'):
         "whether a character may hold only one persistent area (ruled "
@@ -1373,6 +1494,66 @@ INVENTORY = {
         "Second Wind's share of maximum health (the Ravager tree rework, "
         "2026-11-24), asked when the Fervour pool becomes full; a crossing "
         "of the pool is not a blow and no skill is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossTicksPayAKillEverySecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Ticked'):
+        "Patient Blade's seconds between Boss tick payments (the Death trees' "
+        "slice C4d2, 2026-11-25), asked in PayForABossTick with the creature "
+        "ticked so the row's target_is_boss is judged; a tick is no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossHitsCountedAsAKillEveryStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "Death by Inches' count of hits a kill (the Death trees' slice C4d2, "
+        "2026-11-25), asked in CountAHitOnABoss with the creature struck so the "
+        "row's target_is_boss is judged; it counts the hit, it does not price it",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerCriticalStrikeStat), SkillTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "the Fervour a landed critical strike pays (the Death trees' slice "
+        "C4d1, 2026-11-25), asked in GainOnCriticalStrike with the character "
+        "struck so Telling Blows' rarity row is judged, and with the blow's "
+        "skill tags since the bundle 3 merge, so Battle Lust's melee row is "
+        "scoped; it pays for the critical strike, so no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "the Fervour a kill pays (the Death trees' kill generator, "
+        "2026-11-24), asked in GainOnOwnKill with the slain creature so its "
+        "rows are tiered by its rarity rung; a kill is not a blow being "
+        "priced, so no blow and no skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "the seconds a kill holds the decay off (the Death trees' kill "
+        "generator, 2026-11-24), asked in NoteOwnKill with the slain "
+        "creature, 4 for a Common kill and 8 for an Elite or stronger one; "
+        "no blow and no skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(DecayFloorPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Miser's Grip's floor for the kill decay, a share of the full bar "
+        "(the Death trees' slice C6c, 2026-11-25), asked in KillDecayStep "
+        "with the character's own state; no tags: it is the character's.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(UCataclysmFervour::DecayFloorPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the same floor for the War classes' decay out of combat (the bundle "
+        "3 merge, obligation 17), asked in OutOfCombatDecayStep with the "
+        "character's own state; no tags: it is the character's.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HealthPercentLostPerFervourLostStat), FGameplayTagContainer(), 0.0f'):
+        "Soulbound's percent of maximum health lost per Fervour lost (the "
+        "Death trees' slice C6c), asked in LoseFromDamage; no tags: the loss "
+        "is the character's whatever struck it.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(OverflowAttackSpeedSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Overflow's window in seconds (the Death trees' slice C6c), asked in "
+        "RaisePool when a gain does not fit; no tags: any gain overflows.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(KillDecayPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        "the Fervour lost a second once a kill's hold has run out (the "
+        "Death trees' kill generator, 2026-11-24), asked in KillDecayStep "
+        "on the regeneration step; time passing is not a blow and no skill "
+        "is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "every stat of the Soul Collector's Siphon (the Death trees' slice C2, "
+        "2026-11-25), asked of its holder on the regeneration step and the "
+        "once-a-second pulse; a step is not a blow, so no blow, no target and "
+        "no skill",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(UltimateFervourCostReductionStat), SkillTagsForStats(), 0.0f'):
         "Thronged's Fervour off the Ultimate's cost (the Ravager tree "
@@ -1393,9 +1574,43 @@ INVENTORY = {
         "cancels, so what the application baked in is not counted twice",
 }
 
-#: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
-#: entries, and both now hand over the distance and the stagger.
-TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {}
+#: EMPTY FROM ISSUE #1992 TO THE DEATH TREES' KILL GENERATOR (2026-11-24). The
+#: two critical strike lookups were its first entries, and both hand over the
+#: distance and the stagger since #1992. The two below hand over the slain
+#: creature only, and a row asking either condition on their stats is refused
+#: by the generator, which `CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS`
+#: in `tools/generate_datatables.py` says, so no such row can ship and grant
+#: nothing.
+TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossTicksPayAKillEverySecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Ticked'):
+        "asked at a tick: the creature is handed over for whether it is a "
+        "Boss, and the generator refuses a row on this stat asking the distance "
+        "or the stagger (slice C4d2)",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossHitsCountedAsAKillEveryStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "asked after a landed hit to count it: the creature is handed over for "
+        "whether it is a Boss, and the generator refuses a row on this stat "
+        "asking the distance or the stagger (slice C4d2)",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerCriticalStrikeStat), SkillTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "asked after a landed critical strike: the character struck is handed "
+        "over for its rarity rung, and the generator refuses a row on this "
+        "stat asking the distance or the stagger (slice C4d1)",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "asked at a kill: the slain creature is handed over for its rarity "
+        "rung, and how far away or how staggered a dead creature is has no "
+        "row that asks it",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "asked at a kill, for the same reason as the Fervour the kill pays",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, '
+     'false, Slain'):
+        "asked at a kill beside the Fervour the kill pays, for the same reason "
+        "(Gleaning, the Death trees' slice C4a)",
+}
 
 
 def test_the_reader_finds_the_call_sites_it_is_meant_to() -> None:

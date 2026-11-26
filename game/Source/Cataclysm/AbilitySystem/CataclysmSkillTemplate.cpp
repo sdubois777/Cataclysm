@@ -1370,6 +1370,35 @@ bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
 		{
 			return true;
 		}
+		// AND A ROW THAT MAKES THE CHARACTER IMMUNE TO SLOWS, `immune_to_slow`: Ringed in Bone, "you cannot be ...
+		// slowed" while five or more of your minions are within 6 metres. The Death trees' slice C6d1 (2026-11-25), as
+		// ruled (a): read HERE, the one function every slow check goes through, bundle 1's player movement refresh
+		// included. With its conditions judged; nothing that lookup reaches asks this function, so it cannot recurse.
+		if (Effect.Equals(TEXT("Slow"), ESearchCase::IgnoreCase)
+			&& Cataclysm->StatForSkill(FName(TEXT("immune_to_slow")), FGameplayTagContainer(), 0.0f) > 0.0f)
+		{
+			return true;
+		}
+		// AND A ROW THAT SAYS NOTHING MAY LOWER THE CHARACTER'S SPEED, `movement_speed_reduction_suppressed`:
+		// Ravager's Unstoppable ("cannot be ... slowed" while an enemy is within 4 metres) and Relentless. The Death
+		// trees' slice C6d2 (2026-11-25), ruled by the coordinating session as a fix to bundle 1's ruling that an
+		// immunity to Slow works everywhere: until then a War aura's movement reduction, which only this function's
+		// answer drops, still slowed both. Asked as `ACataclysmPlayerCharacter::RefreshMovementSpeed` asks it, with
+		// its conditions judged and the attribute as the answer when no row states it, because Relentless's row has
+		// no condition and is folded into the attribute. That reader is unchanged.
+		if (Effect.Equals(TEXT("Slow"), ESearchCase::IgnoreCase))
+		{
+			const FGameplayAttribute Suppressed =
+				UCataclysmCombatAttributeSet::GetMovementSpeedReductionSuppressedAttribute();
+			const float Held = Cataclysm->HasAttributeSetForAttribute(Suppressed)
+				? Cataclysm->GetNumericAttribute(Suppressed)
+				: 0.0f;
+			if (Cataclysm->StatForSkill(FName(TEXT("movement_speed_reduction_suppressed")), FGameplayTagContainer(),
+										Held) > 0.0f)
+			{
+				return true;
+			}
+		}
 	}
 
 	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
@@ -2642,8 +2671,20 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// target's own attribute set. `Resolved.bEvaded` is the only way to learn
 		// that the blow never connected.
 		FCataclysmDamageResult Resolved;
+		// A SKILL THAT COUNTS EVERY HIT AS FROM BEHIND MARKS ITS STRIKER AROUND THE HIT, so From Behind's condition
+		// holds for it whatever the geometry says (the Death trees' slice C6b1, 2026-11-25).
+		UCataclysmAbilitySystemComponent* RearStriker =
+			Params.bRearHits ? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)) : nullptr;
+		if (RearStriker)
+		{
+			RearStriker->SetStrikingFromBehindByRule(true);
+		}
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(
 			Self, Target, PercentThisBlow, SkillTags, Delivery, &Resolved);
+		if (RearStriker)
+		{
+			RearStriker->SetStrikingFromBehindByRule(false);
+		}
 		Total += Dealt;
 
 		// AN EVADED BLOW LANDED ON NOTHING, SO IT LEAVES NOTHING BEHIND.

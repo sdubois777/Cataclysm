@@ -19,7 +19,9 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagContainer.h"
@@ -1137,6 +1139,134 @@ bool FCataclysmNoCapsFloorTest::RunTest(const FString&)
 	Player.Holds({PercentLess(150.0f)});
 	TestEqual(TEXT("150% less is 1, not a reserve below nothing"),
 		ReserveOfType(Player, 10.0f, TEXT("Imp")), UCataclysmCommand::SmallestMinionReserve, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// A full bar is the maximum less what minions hold back (ruled 2026-11-25, the Death trees' slice C)
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesFullWithAnImpTest,
+	"Cataclysm.KindReserves.AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Every gain stops at the maximum less the reserve, so before the ruling a character with an imp out never reached
+ * "full": `class_resource_at_maximum` never held for it and the full-bar crossing never opened its window. A pool of
+ * 100 with a necrosis imp reserving 5 is full at 95. THE CONTROL: a player with no imp is not full at 95, and is at 100.
+ */
+bool FCataclysmKindReservesFullWithAnImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmKindReservesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer WithImp(World, FVector::ZeroVector);
+	FKindPlayer Alone(World, FVector(0, 40 * KindM, 0));
+	if (!TestTrue(TEXT("set-up: two possessed players"), WithImp.IsUsable() && Alone.IsUsable()))
+	{
+		return false;
+	}
+	WithImp.Holds({KindRisesOnNecrosisKill});
+	WithImp.Pool(100.0f);
+	Alone.Holds({});
+	Alone.Pool(100.0f);
+
+	const auto IsFull = [](const FKindPlayer& Player)
+	{
+		return UCataclysmStatPipeline::ConditionHolds(
+			ECataclysmStatCondition::ClassResourceAtMaximum, 0.0f, Player.System->CurrentConditions());
+	};
+
+	if (!TestNotNull(TEXT("set-up: a necrosis kill raises an imp"),
+			KindNecrosisImp(World, WithImp, FVector(4 * KindM, 0, 0))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: it holds back 5"), WithImp.Reserved(), 5.0f, 0.001f);
+	TestEqual(TEXT("set-up: and the full pool is cut to 95"), WithImp.Held(), 95.0f, 0.001f);
+	TestTrue(TEXT("95 of 100 with 5 held back is a full bar"), IsFull(WithImp));
+
+	// THE CROSSING: below the top, then back to it, opens the window again.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	WithImp.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 90.0f);
+	TestFalse(TEXT("90 is not full"), IsFull(WithImp));
+	TestEqual(TEXT("and the window opened at the start has aged 2 seconds"),
+		WithImp.System->SecondsSinceClassResourceFull(), 2.0f, 0.1f);
+	WithImp.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 95.0f);
+	TestTrue(TEXT("back at 95 it is full again"), IsFull(WithImp));
+	TestEqual(TEXT("and reaching it opened the window again"),
+		WithImp.System->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+
+	// THE CONTROL: with nothing held back, 95 is not the top and 100 is.
+	Alone.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 95.0f);
+	TestFalse(TEXT("control: 95 of 100 with nothing held back is not full"), IsFull(Alone));
+	Alone.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
+	TestTrue(TEXT("control: and 100 is"), IsFull(Alone));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesFullMeasureTest,
+	"Cataclysm.KindReserves.FullMeasureCountsAFullBarForASoulCollectorWithAMinionOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A Death class reading a full bar through a real row. Full Measure, eight points: "+2% increased damage per point while
+ * your Fervour is at its maximum", read from `DT_PassiveEffects` as the game reads it. With a minion holding back 5 of
+ * a pool of 100, the row holds at 95. THE CONTROL: the same character below the top gets nothing.
+ */
+bool FCataclysmKindReservesFullMeasureTest::RunTest(const FString&)
+{
+	using namespace CataclysmKindReservesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("SoulCollector_basic_a_a2")), 8);
+	const TMap<FName, TArray<FCataclysmStatModifier>> Rows = UCataclysmPassiveTree::ModifiersFor(
+		Allocation, UCataclysmPassiveTree::LoadNodeTable(), UCataclysmPassiveTree::LoadEffectTable(),
+		{FName(TEXT("Death"))});
+	const FName Damage(TEXT("attack_damage"));
+	if (!TestTrue(TEXT("set-up: Full Measure's rows carry attack damage"), Rows.Contains(Damage)))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Lines;
+	FCataclysmStatInputs& DamageLine = Lines.FindOrAdd(Damage);
+	DamageLine.Base = 100.0f;
+	DamageLine.Modifiers = Rows[Damage];
+	FCataclysmStatModifier Rises;
+	Rises.Bucket = ECataclysmStatBucket::Flat;
+	Rises.Source = ECataclysmModifierSource::Enchantment;
+	Rises.Value = KindRisesOnNecrosisKill.Value;
+	FCataclysmStatInputs& RiseLine = Lines.FindOrAdd(FName(KindRisesOnNecrosisKill.Stat));
+	RiseLine.Base = 0.0f;
+	RiseLine.Modifiers = {Rises};
+	Player.System->SetStatInputs(MoveTemp(Lines));
+	Player.Pool(100.0f);
+
+	if (!TestNotNull(TEXT("set-up: a necrosis kill raises a minion"),
+			KindNecrosisImp(World, Player, FVector(4 * KindM, 0, 0))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: the pool is cut to 95"), Player.Held(), 95.0f, 0.001f);
+
+	const FGameplayTagContainer NoTags;
+	TestEqual(TEXT("at 95 with 5 held back, Full Measure's 16% increased applies"),
+		Player.System->StatForSkill(Damage, NoTags, 0.0f), 116.0f, 0.01f);
+
+	// THE CONTROL: below the top, nothing.
+	Player.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 90.0f);
+	TestEqual(TEXT("control: at 90 it does not"), Player.System->StatForSkill(Damage, NoTags, 0.0f), 100.0f, 0.01f);
 	return true;
 }
 

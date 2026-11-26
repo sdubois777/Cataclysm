@@ -14,6 +14,7 @@
 // For refusing a corpse, which `HoldStep` does. Issue #1070.
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -307,6 +308,136 @@ float UCataclysmDebuffs::DamageAgainstSharedDebuff(
 	// a sum of fractions. The stat holds a percentage because that is what the
 	// node's sentence states.
 	return Percent / 100.0f;
+}
+
+float UCataclysmDebuffs::BleedLeftLaidBy(const AActor* Carrier, const AActor* Applier)
+{
+	const UAbilitySystemComponent* Theirs = Carrier ? UCataclysmTargeting::AbilitySystemOf(Carrier) : nullptr;
+	if (!Theirs || !Applier || !BleedTag().IsValid())
+	{
+		return 0.0f;
+	}
+	float Left = 0.0f;
+	for (const FActiveGameplayEffectHandle& Handle :
+		 Theirs->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(BleedTag()))))
+	{
+		const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+		if (Active && Active->Spec.GetContext().GetInstigator() == Applier)
+		{
+			Left += UCataclysmSkillEffects::RemainingDamageOverTime(Theirs, Handle);
+		}
+	}
+	return Left;
+}
+
+AActor* UCataclysmDebuffs::StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm,
+											 const TArray<const AActor*>& Excluding)
+{
+	const UWorld* World = Of ? Of->GetWorld() : nullptr;
+	if (!World || !Asker)
+	{
+		return nullptr;
+	}
+	AActor* Strongest = nullptr;
+	int32 BestRung = -2;
+	float BestHealth = -1.0f;
+	// NEAREST FIRST, so a tie on rung and health keeps the nearer.
+	for (AActor* Candidate : UCataclysmTargeting::FindEnemiesInSphere(World, Asker, Of->GetActorLocation(), RadiusCm))
+	{
+		// AND ANY THE CALLER LEAVES OUT: a second Shadow mark is never put on the creature the first is on (the Death
+		// trees' slice C6e).
+		if (Candidate == Of || UCataclysmSkillEffects::IsDead(Candidate) || Excluding.Contains(Candidate))
+		{
+			continue;
+		}
+		const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Candidate);
+		const int32 Rung = Enemy ? Enemy->RarityStep : -1;
+		const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Candidate);
+		const float Health = Theirs ? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+		if (Rung > BestRung || (Rung == BestRung && Health > BestHealth))
+		{
+			Strongest = Candidate;
+			BestRung = Rung;
+			BestHealth = Health;
+		}
+	}
+	return Strongest;
+}
+
+bool UCataclysmDebuffs::PassBleedLeftToStrongest(AActor* Applier, AActor* Dead, float Seconds)
+{
+	if (!Applier || !Dead || Seconds <= 0.0f)
+	{
+		return false;
+	}
+	const float Left = BleedLeftLaidBy(Dead, Applier);
+	AActor* Strongest = Left > 0.0f ? StrongestEnemyNear(Dead, Applier, BloodDebtReachCm) : nullptr;
+	if (!Strongest)
+	{
+		return false;
+	}
+	// ONE TICK A SECOND, as an unscaled application is (`ApplySpreadCopy`), so the whole is dealt over the seconds.
+	return UCataclysmSkillEffects::ApplyDamageOverTime(Applier, Strongest, Left / Seconds, Seconds, BleedTag(),
+													   /*bScalesWithInstigator=*/false);
+}
+
+bool UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier)
+{
+	if (!Carrier || !Applier)
+	{
+		return false;
+	}
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Carrier);
+	if (!Theirs)
+	{
+		return false;
+	}
+	FGameplayTagContainer Kinds;
+	const FGameplayTag Poison =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+	if (Poison.IsValid())
+	{
+		Kinds.AddTag(Poison);
+	}
+	if (BleedTag().IsValid())
+	{
+		Kinds.AddTag(BleedTag());
+	}
+	if (Kinds.IsEmpty())
+	{
+		return false;
+	}
+	for (const FActiveGameplayEffectHandle& Handle :
+		 Theirs->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Kinds)))
+	{
+		const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+		if (Active && Active->Spec.GetContext().GetInstigator() == Applier)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UCataclysmDebuffs::CarriesPoisonLaidBy(const AActor* Carrier, const AActor* Applier)
+{
+	const UAbilitySystemComponent* Theirs = Carrier && Applier ? UCataclysmTargeting::AbilitySystemOf(Carrier) : nullptr;
+	const FGameplayTag Poison =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+	if (!Theirs || !Poison.IsValid())
+	{
+		return false;
+	}
+	for (const FActiveGameplayEffectHandle& Handle :
+		 Theirs->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Poison))))
+	{
+		const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+		if (Active && Active->Spec.GetContext().GetInstigator() == Applier)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 FGameplayTag UCataclysmDebuffs::BleedTag()
@@ -841,7 +972,16 @@ float UCataclysmDebuffs::DealLessPercentOn(const UAbilitySystemComponent* Carrie
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Carrier);
-	return Cataclysm ? Cataclysm->DebuffDamageCutPercentNow() : 0.0f;
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	// AND THE CUT OF THE SIPHONS IT IS IN, multiplied with the debuffs' rather than added: two "less" multipliers. The
+	// Death trees' slice C2 (2026-11-25), ruled by the coordinating session: "deals reduced damage" in the Siphon is
+	// what the enemy deals, through this.
+	const float Debuff = FMath::Clamp(Cataclysm->DebuffDamageCutPercentNow(), 0.0f, 100.0f);
+	const float Siphon = FMath::Clamp(Cataclysm->SiphonDamageCutPercentNow(), 0.0f, 100.0f);
+	return 100.0f * (1.0f - (1.0f - Debuff / 100.0f) * (1.0f - Siphon / 100.0f));
 }
 
 const TCHAR* UCataclysmDebuffs::ImmuneAndAppliesNoneStat = TEXT("immune_to_debuffs_and_applies_none");

@@ -182,7 +182,11 @@ def test_a_body_is_written_at_begin_play_and_with_its_side() -> None:
     assert team.find("TeamId = NewTeamId;") < team.find("RefreshPassThroughBody();"), (
         "a side set no longer writes the body after it, so a thrall keeps the monsters' body when it is taken")
     refresh = body(base, "void ACataclysmCharacterBase::RefreshPassThroughBody()", "CataclysmCharacterBase.cpp")
-    assert "Capsule->SetMaskFilterOnBodyInstance(OwnBit);" in refresh
+    # THE FILTER A BODY CARRIES: its own bit, or, for a creature on the monsters' side whose own bit is nought, the
+    # hostile body bit, which only Hollow Step's movement skill ignores (the Death trees' slice C6e, 2026-11-25). WHAT
+    # IT MOVES THROUGH is still read from its own bit alone, so a creature moves through nothing.
+    assert "const bool bHostile = OwnBit == 0 && TeamId == UCataclysmTeams::IdFor(ECataclysmTeam::Monsters);" in refresh
+    assert "Capsule->SetMaskFilterOnBodyInstance(bHostile ? HostileBodyMaskBit : OwnBit);" in refresh
     assert "Capsule->SetMoveIgnoreMask(MovesThroughMaskFor(OwnBit));" in refresh
     side = body(base, "uint8 ACataclysmCharacterBase::PassThroughBodyMaskBit()", "CataclysmCharacterBase.cpp")
     assert "TeamId == UCataclysmTeams::IdFor(ECataclysmTeam::Players) ? CommandedBodyMaskBit : 0" in side

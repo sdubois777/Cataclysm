@@ -3773,9 +3773,18 @@ def enemy_rarities(_book=None) -> list[dict]:
 # about the tree, and a screen that drew them would be drawing the editor.
 # --------------------------------------------------------------------------
 
-#: The four class trees that exist. The other twenty are issue #24.
+#: The nine class trees that exist: the three War, the three Demonic and, since
+#: 2026-11-24, the three Death. The other fifteen are issue #24.
+#:
+#: EACH IS THE CLASS'S NAME AS THE GAME SPELLS IT, space included.
+#: `UCataclysmCharacterCreation::ClassesByDamageType` names the Death classes
+#: "Soul Collector", "Necromancer" and "Shadow", and
+#: `UCataclysmPassiveTree::TreeIsReachable` compares a node's `Tree` column with
+#: that list as written, so the column must say "Soul Collector" and not
+#: "SoulCollector". The file name and the row names cannot hold the space; see
+#: `tree_file` and `tree_row_prefix`.
 CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
-               "Ritualist")
+               "Ritualist", "Soul Collector", "Necromancer", "Shadow")
 
 #: How many options a capstone offers, from the design document: "Player chooses
 #: one of three options per tier." Fixed at three, which is why the options are
@@ -3783,12 +3792,27 @@ CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
 CAPSTONE_OPTIONS = 3
 
 
-def _tree_file(name: str) -> pathlib.Path:
-    return REPO_ROOT / "docs" / f"{name}_Class_Tree_Final.json"
+def tree_file(name: str) -> pathlib.Path:
+    """The tree's file in docs/, with any space in the class name an underscore:
+    `docs/Soul_Collector_Class_Tree_Final.json`."""
+    return REPO_ROOT / "docs" / f"{name.replace(' ', '_')}_Class_Tree_Final.json"
+
+
+def tree_row_prefix(name: str) -> str:
+    """What every node and edge row of this tree is named with in front.
+
+    THE CLASS NAME WITH ITS SPACES REMOVED, `SoulCollector`, because that is how
+    the version 3 save step reads a node's tree back out of its name:
+    `ClassOfNode` in `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`
+    strips the spaces from each class name before it compares, and
+    `tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py` holds every
+    row to it. For the six one-word classes it is the name itself.
+    """
+    return name.replace(" ", "")
 
 
 def _load_tree(name: str) -> dict:
-    path = _tree_file(name)
+    path = tree_file(name)
     if not path.is_file():
         raise DataError(f"{path.name} is not present")
     try:
@@ -3840,7 +3864,7 @@ def _no_duplicates(rows: list[dict], table: str) -> list[dict]:
 
 
 def passive_nodes(_book=None) -> list[dict]:
-    """One row per node, across all four class trees.
+    """One row per node, across every class tree in `CLASS_TREES`.
 
     THE ROW KEY IS THE TREE AND THE NODE IDENTIFIER TOGETHER, because node
     identifiers are only unique within a tree. Fourteen are shared by more than
@@ -3862,7 +3886,7 @@ def passive_nodes(_book=None) -> list[dict]:
             options = body.get("options", []) if kind == "capstone" else []
 
             row = {
-                "Name": f"{tree}_{node['id']}",
+                "Name": f"{tree_row_prefix(tree)}_{node['id']}",
                 "Tree": tree,
                 "NodeId": node["id"],
                 "Kind": kind,
@@ -3896,7 +3920,7 @@ def passive_nodes(_book=None) -> list[dict]:
 
 
 def passive_edges(_book=None) -> list[dict]:
-    """One row per dependency edge, across all four class trees.
+    """One row per dependency edge, across every class tree in `CLASS_TREES`.
 
     AN EDGE IS A REQUIREMENT AND NOT A LINE. `requiredPoints` on an edge from A
     to B means B cannot be taken until A holds that many points. The positions
@@ -3915,11 +3939,12 @@ def passive_edges(_book=None) -> list[dict]:
                     f"{tree}: edge {edge.get('id')} joins {source} to {target} "
                     f"and one of them is not a node in that tree")
 
+            prefix = tree_row_prefix(tree)
             out.append({
-                "Name": f"{tree}_{edge['id']}",
+                "Name": f"{prefix}_{edge['id']}",
                 "Tree": tree,
-                "Source": f"{tree}_{source}",
-                "Target": f"{tree}_{target}",
+                "Source": f"{prefix}_{source}",
+                "Target": f"{prefix}_{target}",
                 "RequiredPoints": int(edge.get("data", {})
                                       .get("requiredPoints", 0)),
             })
@@ -5135,6 +5160,11 @@ CONDITIONS = {
     # VALUE. It does not reach the zone's own damage, which is priced with no
     # target.
     "target_in_your_zone": None,
+    # "Enemies in your Siphon take 1% increased damage from you per point for
+    # every 50 Fervour you hold" is `target_in_your_siphon`: the character struck
+    # is in the asker's Siphon (`FCataclysmSiphon` keeps who is). The Death
+    # trees' slice C2, 2026-11-25. IT TAKES NO VALUE.
+    "target_in_your_siphon": None,
 
     # "Deal 30%-50% more damage to Boss enemies" is `target_is_boss`, and it
     # takes no value. Issue #1815. It is the mirror of `opponent_is_boss` above:
@@ -5632,6 +5662,167 @@ CONDITIONS = {
     # `CONDITIONS_OF_A_HIT_DEALT`. NOT `target_carries_any_debuff`, which a burn
     # satisfies.
     "target_carries_your_curse": None,
+    # "Killing an enemy that carries your Poison or Bleed" is
+    # `target_carries_your_poison_or_bleed`: the Shadow's Death's Patience, the
+    # Death trees' slice C4a (2026-11-25). A Poison or a Bleed whose effect names
+    # the asker as its instigator (`UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy`),
+    # as the curse above. IT TAKES NO VALUE, and it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`, a fact of the target in hand.
+    "target_carries_your_poison_or_bleed": None,
+    # "Fervour gained from sources other than kills" is
+    # `fervour_gain_not_from_a_kill`: the Soul Collector's Any Fuel, the Death
+    # trees' slice C4b1 (2026-11-25), a row on `class_resource_generation`, the
+    # rate every gain is scaled by. It holds unless a kill's Fervour is being paid
+    # (`UCataclysmAbilitySystemComponent::IsPayingForAKill`). IT TAKES NO VALUE. A
+    # fact of the gain in hand, read by `CurrentConditions`, so not one of
+    # `CONDITIONS_OF_A_HIT_DEALT`.
+    "fervour_gain_not_from_a_kill": None,
+    # "the damage your hit deals" is `killing_blow_was_a_hit`: the Soul
+    # Collector's Passed On, the Death trees' slice C4c1 (2026-11-25), as ruled.
+    # True while the player's kill handler acts on an own kill made by a hit and
+    # not by a tick (`FCataclysmDeathNotice::bByDamageOverTime`), and nowhere
+    # else. IT TAKES NO VALUE. Read by `CurrentConditions` from that mark, so
+    # not one of `CONDITIONS_OF_A_HIT_DEALT`.
+    "killing_blow_was_a_hit": None,
+    # "Enemies within 3 metres of an enemy you kill ... for 3 seconds" is
+    # `target_near_your_kill_within_seconds`: the Soul Collector's Grim Wake,
+    # the Death trees' slice C4c2 (2026-11-25), as ruled. A record kept on the
+    # character marked, keyed by the killer, written at the kill for every enemy
+    # within the row's `Reach Metres` of the body. The value is the seconds. A
+    # fact of the target in hand, so one of `CONDITIONS_OF_A_HIT_DEALT`.
+    "target_near_your_kill_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # "those kills give double Fervour" is `kill_was_an_execute`: the Soul
+    # Collector's Reaper's Edge, the Death trees' slice C4d1 (2026-11-25), as
+    # ruled. The kill handler marks a kill whose death notice says it was an
+    # execute while it pays for it and acts on it. It names a state.
+    "kill_was_an_execute": None,
+    # "your next hit is a critical strike and deals +5% increased damage" is
+    # `next_hit_is_critical`: the Shadow's Brim, the Death trees' slice C6a
+    # (2026-11-25). The character holds a next-hit critical strike charge. It
+    # names a state.
+    "next_hit_is_critical": None,
+    # THE FOUR OF THE DEATH TREES' SLICE C6b1 (2026-11-25), each a fact of the
+    # target in hand, so each is one of `CONDITIONS_OF_A_HIT_DEALT`: From
+    # Behind's "struck from behind"; Opening Strike's "at full health"; Venomed
+    # Prey's "carrying your Poison", a Bleed alone not counting; and Hit and
+    # Run's "more than 4 metres from you", strictly, the value the metres.
+    "target_struck_from_behind": None,
+    "target_at_full_health": None,
+    "target_carries_your_poison": None,
+    "target_beyond_metres": (0.0, 100.0, "a distance in metres"),
+    # THE TWO OF THE DEATH TREES' SLICE C6b2 (2026-11-25), each a clock whose
+    # value is the seconds. Arrival's "within 1 second after your movement
+    # skill ends" counts from the END of a use that was paid for, where
+    # `seconds_after_movement_skill` counts from the use; its event,
+    # `movement_skill_ends`, is raised there. Glancing Cuts' "Enemies your
+    # movement skill hits ... for 4 seconds" is a record kept on the character
+    # struck, keyed by the striker, so a fact of the target in hand and one of
+    # `CONDITIONS_OF_A_HIT_DEALT`.
+    "seconds_after_movement_skill_ends": (0.0, 60.0, "a number of seconds"),
+    "target_struck_by_your_movement_skill_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # THE DEATH TREES' SLICE C6d2 (2026-11-25), as ruled (P1): Bone Knit's
+    # "while one of your minions has died in the last 3 seconds", a clock whose
+    # value is the seconds. Its event, `minion_death`, is raised by
+    # `UCataclysmAbilitySystemComponent::NoteMinionDied` for a minion, an imp or
+    # a thrall killed, and not for a gadget or a trap.
+    "seconds_after_minion_death": (0.0, 60.0, "a number of seconds"),
+    # AND DEATH WARD'S "for 3 seconds after one of your minions dies within 6
+    # metres of you", the same deaths with how far from the character each fell,
+    # read within the row's `Reach Metres`. The value is the seconds.
+    "minion_death_in_reach_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # AND AVENGING DEAD'S "When a hit takes more than 5% of your maximum health",
+    # as ruled (Q2): the share of maximum health the hit being announced as
+    # `hit_taken` took from health. AN EVENT CONDITION: it exists only while
+    # `hit_taken` is raised, so on a row scaled by its own stacks the game judges
+    # it at the grant and not at the stat (`IsJudgedAtItsEvent`), and it is
+    # refused anywhere else (`EVENT_CONDITIONS` below). The value is a share in
+    # per cent.
+    "hit_took_at_least_percent_of_max_health": (0.0, 100.0, "a share of maximum health in per cent"),
+    # AND MARSHAL'S "Your minions within 10 metres of you deal +2% increased
+    # damage", the Death trees' slice C6d2 (2026-11-25): how far the minion whose
+    # damage is asked stands from its summoner, which the summoner's lookup is
+    # handed for a minion's or a thrall's blow and explosion. The value is metres.
+    "minion_within_metres_of_you": (0.0, 100.0, "a number of metres"),
+    # THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25). Read the Blow's
+    # "attacks from Elite and stronger enemies" is `opponent_rarity_at_least`,
+    # the attacker's rung on a blow taken, the value the rung. Vigil Over the
+    # Strong's "While an Elite or stronger creature is within 15 metres" and
+    # Reaper's Due's "while a Boss is within 15 metres" are
+    # `enemy_of_rarity_in_reach`, the value the rung, the radius the row's Reach
+    # Metres. Hunting Ground's "While no enemy is within 20 metres" is
+    # `no_enemy_in_reach`, which names a state; its radius is the Reach Metres.
+    "opponent_rarity_at_least": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+    "enemy_of_rarity_in_reach": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+    "no_enemy_in_reach": None,
+    # "Kills within 2 seconds of each other ... The same applies to Soul Tide"
+    # is `kill_chain_within_seconds`: the kill clock, its value lengthened by
+    # Unbroken Chain's `kill_chain_seconds`. The Death trees' slice C6c
+    # (2026-11-25), as ruled. NOT NAMED `seconds_after_...`, which would name an
+    # action event the game does not raise. The value is the seconds.
+    "kill_chain_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # THE TWO OF THE DEATH TREES' SLICE C6d1 (2026-11-25), as ruled. "While
+    # three (or five) or more of your minions are within 6 metres of you" is
+    # `minions_in_reach_at_least`, the value the count, the radius the row's
+    # Reach Metres. "Enemies that have Necrosis" is `target_carries_necrosis`, a
+    # fact of the target in hand, so one of `CONDITIONS_OF_A_HIT_DEALT`.
+    "minions_in_reach_at_least": (1.0, 20.0, "a number of minions"),
+    "target_carries_necrosis": None,
+    # AND THE SHADOW'S DEATHMARK'S "It takes 30% more damage from you, and each
+    # critical strike on it gives 5 Fervour": the character struck carries one
+    # of the asker's own marks. The Death trees' slice C6e (2026-11-25), as ruled
+    # (Q5). It names a state. A fact of the target in hand.
+    "target_marked_by_you": None,
+    # AND GUARD THE MASTER'S "deal +3% increased damage per point to it": the
+    # character struck is the last that hit the asker, for a minion's blow its
+    # summoner. The Death trees' slice C6e (2026-11-25). A fact of the target in
+    # hand.
+    "target_is_your_last_attacker": None,
+    # "Killing an Elite or stronger creature gives you its modifiers for 20
+    # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
+    # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
+    # modifier's place in `WORN_ENEMY_MODIFIERS`, counted from 1, so the bounds
+    # are that list's ends: the upper one is set from the list's length below
+    # `WORN_ENEMY_MODIFIERS`, so adding to the list moves it.
+    "wearing_enemy_modifier": (1.0, 1.0, "a place in WORN_ENEMY_MODIFIERS, counted from 1"),
+
+    # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
+    # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
+    # "Elite or stronger" is `target_rarity_at_least` 1, and the Soul Collector's
+    # "1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a
+    # Herald" is one `target_rarity_is` row a rung, with "15 for a Boss" at least
+    # 4. The rung the spawner set (`ACataclysmEnemyCharacter::RarityStep`), read
+    # by `WithTargetState` as `target_is_boss` is, so both are
+    # `CONDITIONS_OF_A_HIT_DEALT`. Anything that is not a creature has no rung and
+    # refuses.
+    "target_rarity_at_least": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+    "target_rarity_is": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+
+    # "For 4 seconds after you kill" is `seconds_after_kill` with 4: Between the
+    # Dead, Killing Pace and Light Feet, the Death trees of 2026-11-24. Stamped
+    # at a kill credited to the character (`UCataclysmFervour::NoteOwnKill`), the
+    # stamp the Death classes' decay grace is measured from. The wearer's own
+    # clock, so any asker judges it.
+    "seconds_after_kill": (0.0, 60.0, "a number of seconds"),
+    # "for 4 seconds after you spend Fervour" is `seconds_after_fervour_spent`:
+    # Quick Kindling and Burnt Offering. The Death trees' slice C3a
+    # (2026-11-25). Stamped by `UCataclysmAbilitySystemComponent::
+    # NoteFervourSpent` where a skill pays its Fervour cost; it derives the event
+    # `fervour_spent`, which carries the amount.
+    "seconds_after_fervour_spent": (0.0, 60.0, "a number of seconds"),
+    # "while you hold 20 or more Fervour" in a Soul Collector vow is
+    # `fervour_threshold_reached` with 20: the Death trees' slice C3d
+    # (2026-11-25). Its value is the FIGURE of one of the four Fervour thresholds,
+    # and nothing else (`FERVOUR_THRESHOLDS`, refused otherwise below), because
+    # Generous Count, Long Shadow and Steady Count reach those four and no other
+    # "N or more Fervour". Worked out once a conditions fill by
+    # `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`.
+    "fervour_threshold_reached": (20.0, 100.0, "the figure of a Fervour threshold"),
+    # "while you hold fewer than 20 Fervour" is `class_resource_points_below`
+    # with 20: the Soul Collector's Empty Hands, the Death trees' slice C3e
+    # (2026-11-25). Strictly below, the opposite of
+    # `class_resource_points_at_least`, and on the same Fervour counted as held
+    # (Chained Souls' share included); the same wide bound, for its reason.
+    "class_resource_points_below": (0.0, 1000.0, "a count of class resource points"),
 
     # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25, on the coordinating
     # session's rulings of that day.
@@ -5658,6 +5849,13 @@ CONDITIONS = {
     # could reserve another. IT TAKES NO VALUE.
     "no_room_for_a_trap": None,
 }
+
+#: The figures of the Soul Collector's four Fervour thresholds, in order: "while
+#: you hold 20 or more Fervour" opened at 25 points spent, then 40 at 50, 60 at
+#: 100 and 100 at 200. The Death trees' slice C3d (2026-11-25).
+#: `CataclysmFervourThresholds::Figure` holds the same four, and
+#: `tools/tests/test_fervour_thresholds_are_the_vows.py` holds the two equal.
+FERVOUR_THRESHOLDS = (20.0, 40.0, 60.0, 100.0)
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
 #:
@@ -5784,6 +5982,17 @@ SCALES = {
     # reserves 30 and an imp 10 against the Ritualist's 150. A step of ten
     # minions stays a sanity limit on what a row may state.
     "minions_held": (0.0, 10.0, "a number of minions"),
+    # THE ENEMIES IN THE CHARACTER'S SIPHON. The Death trees' slice C2
+    # (2026-11-25): Sapping Cold's and Stolen Strength's "for each of them, up
+    # to 10 enemies", and Life Siphon's and Living Harvest's "each enemy in your
+    # Siphon". Read from the character's own record, as `minions_held` is.
+    "enemies_in_siphon": (0.0, 10.0, "a number of enemies"),
+
+    # "for each Fervour threshold you are at or above" is
+    # `fervour_thresholds_reached` with a step of 1: the Soul Collector's Steady
+    # Count, the Death trees' slice C3d (2026-11-25). A count of the four, read
+    # from the same answer `fervour_threshold_reached` reads.
+    "fervour_thresholds_reached": (0.0, 4.0, "a number of Fervour thresholds"),
 
     # "for each enemy within 4 metres of you" is `enemies_in_reach` with a
     # step of 1. Issue #1597, and the third scale that is a count of things
@@ -5934,6 +6143,20 @@ SCALES = {
     # damage with N-1. No timer: a hit on another enemy, death and leaving
     # combat end it, so it takes no Stack Seconds.
     "consecutive_hits": (1.0, 1.0, "one hit"),
+
+    # "for each second the enemy has stayed poisoned by you without a break, up
+    # to 10 seconds" is `seconds_poisoned_by_you` with a step of 1 and a Scale
+    # Max Steps of 10: the Shadow's Festering, the Death trees' slice C6b4
+    # (2026-11-25). Whole seconds, read off the record kept on the creature
+    # asked about; none for one not carrying the asker's Poison.
+    "seconds_poisoned_by_you": (1.0, 1.0, "one second"),
+
+    # "Each Fervour above it gives 1% increased Attack Speed for 5 seconds, up to
+    # 30%" is `fervour_overflow_stacks` with a step of 1 and a Scale Max Steps of
+    # 30: the Soul Collector's Overflow, the Death trees' slice C6c (2026-11-25).
+    # One stack for each whole Fervour a gain could not fit above the full bar,
+    # their shared window `fervour_overflow_attack_speed_seconds` long.
+    "fervour_overflow_stacks": (1.0, 1.0, "one Fervour above the bar"),
 
     # "Take 5%-15% more damage per active aura" is `auras_held`, with a step of
     # 1. Issue #1686. Every aura skill running, however many can run at once;
@@ -6294,7 +6517,43 @@ PASSIVE_PORT_FIELDS = tuple(field for field, _ in PASSIVE_PORT_DEFAULTS)
 #: The names the passive sheet's reach rule counts within a radius. Issue
 #: #1597, and the crippled-enemy scale of issue #1515.
 PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach",
-                                 "crippled_enemies_in_reach"})
+                                 "crippled_enemies_in_reach",
+                                 # AND THE DEATH TREES' SLICE C6b3'S TWO.
+                                 "enemy_of_rarity_in_reach", "no_enemy_in_reach",
+                                 # AND SLICE C6d1'S OWN MINIONS.
+                                 "minions_in_reach_at_least"})
+
+
+def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
+    """The Chance Percent column: the chance per point that a class resource row pays, or 0 for every time.
+
+    THE DEATH TREES' SLICE C6b3 (2026-11-25), ruled for Tear Loose, "a 2% chance per point to give you 1 Fervour":
+    the whole-numbers rule ruled out paying the average, 0.02 a point. A ROW WITH A CHANCE IS PAID PER POINT IN ITS
+    CHANCE: `Value Per Point` is the amount each success pays, and the game multiplies the chance by the points. An
+    empty cell is every time, which is every row written before the column, and a sheet without the column reads as
+    empty. Refused on a row whose Action is not class_resource, and outside above 0 to 100: a 0 written would be read
+    as every time, the opposite of what it says.
+    """
+    if "Chance Percent" not in headers:
+        return 0.0
+    written = clean(_cell(raw, headers, "Chance Percent"))
+    if not written:
+        return 0.0
+    value = number(written, "Chance Percent", index)
+    # AND TWICE ANSWERED'S ACTION, the Death trees' slice C6b4 (2026-11-25), as
+    # ruled. Nothing else reads a chance.
+    if action not in (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION):
+        raise DataError(
+            f"Passive Effects row {index}: {node} states a Chance Percent of "
+            f"{written!r} on {'the action ' + repr(action) if action else 'a stat row'}. "
+            f"A chance is read by a {CLASS_RESOURCE_POOL!r} row and the action "
+            f"{NEXT_HIT_CRITICAL_TWICE_ACTION!r} only.")
+    if not 0.0 < value <= 100.0:
+        raise DataError(
+            f"Passive Effects row {index}: {node} has a Chance Percent of "
+            f"{value}, and a chance is above 0 and up to 100. Leave the column "
+            f"empty for every time.")
+    return value
 
 
 def _passive_row_is_action_shaped(raw, headers) -> bool:
@@ -6352,6 +6611,28 @@ def _passive_node_sentences() -> dict[tuple[str, int], str]:
         for option in range(1, CAPSTONE_OPTIONS + 1):
             sentences[(row["Name"], option)] = row[f"Option{option}Description"]
     return sentences
+
+
+#: The words a capstone's own sentence opens with to offer its choice, and
+#: nothing more: "Unlocks at 25 points spent. Choose one. The choice is
+#: permanent." What follows them, if anything, is a clause the capstone grants
+#: whichever option is chosen.
+CAPSTONE_CHOICE_WORDS = re.compile(
+    r"^\s*Unlocks at \d+ points spent\.\s*Choose one\.\s*The choice is permanent\.\s*")
+
+
+def capstone_states_a_clause(sentence: str) -> bool:
+    """Whether a capstone's own sentence states a clause beside its choice.
+
+    THE COORDINATING SESSION'S RULING 4 OF 2026-11-25 (the Death trees): a row
+    with no option on a capstone applies whatever is chosen, and is accepted only
+    on a capstone whose own sentence states that clause -- the Soul Collector's
+    four vows, "Reaching 25 points also opens the first Fervour threshold: while
+    you hold 20 or more Fervour, all your skills have 20% more Area of Effect".
+    A capstone whose sentence says only its choice still refuses one.
+    """
+    return bool(CAPSTONE_CHOICE_WORDS.sub("", sentence, count=1).strip()) \
+        and bool(CAPSTONE_CHOICE_WORDS.match(sentence))
 
 
 def _passive_option(raw, headers, index: int, node: str) -> int:
@@ -6612,6 +6893,8 @@ def passive_effects(book) -> list[dict]:
                 "ScaleMaxSteps": shared["ScaleMaxSteps"],
                 **{column: shared[column] for column in PASSIVE_PORT_FIELDS},
                 "PerPointFrom": per_point_from,
+                # AND THE CHANCE, LAST. The Death trees' slice C6b3 (2026-11-25).
+                "ChancePercent": _chance_percent(raw, headers, index, node, shared["Action"]),
                 "MaxPoints": max_points,
             })
             continue
@@ -6711,8 +6994,20 @@ def passive_effects(book) -> list[dict]:
         # AND THE CRIPPLED-ENEMY SCALE, ISSUE #1515, which counts within a
         # radius exactly as the two above do and so needs one just as much.
         counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach",
-                          "crippled_enemies_in_reach"}
-        named = counts_enemies & {condition, scale}
+                          "crippled_enemies_in_reach",
+                          # AND THE DEATH TREES' SLICE C6b3'S TWO (2026-11-25).
+                          "enemy_of_rarity_in_reach", "no_enemy_in_reach",
+                          # AND SLICE C6d1'S OWN MINIONS.
+                          "minions_in_reach_at_least"}
+        # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
+        # rather than around the character, read at the kill from this column.
+        # The Death trees' slice C4c2 (2026-11-25).
+        reads_a_radius = counts_enemies | {"target_near_your_kill_within_seconds",
+                                           # AND DEATH WARD'S, the Death trees'
+                                           # slice C6d2: a minion's death within
+                                           # the radius of the character.
+                                           "minion_death_in_reach_within_seconds"}
+        named = reads_a_radius & {condition, scale}
         written_reach = clean(_cell(raw, headers, "Reach Metres"))
         reach_metres = -1.0
         if named and not written_reach:
@@ -6764,7 +7059,9 @@ def passive_effects(book) -> list[dict]:
             # none of them, which is every row read here. Since 2026-11-24.
             **dict(PASSIVE_PORT_DEFAULTS),
             "PerPointFrom": per_point_from,
-            # AND THE UPPER LIMIT, LAST, since the Saboteur's rows of 2026-11-25.
+            # AND THE CHANCE, which a stat row may not state: refused here.
+            "ChancePercent": _chance_percent(raw, headers, index, node, ""),
+            # AND THE UPPER LIMIT, since the Saboteur's rows of 2026-11-25.
             "MaxPoints": max_points,
         })
 
@@ -6793,9 +7090,12 @@ def passive_effects(book) -> list[dict]:
     # row port of 2026-11-24, as the Enchantment Effects sheet's key has them:
     # one node may restore health and generate Fervour on the same event.
     #
-    # AND SO ARE THE REQUIRED TAGS, since the Saboteur's rows of 2026-11-25: Bag
-    # of Tricks lowers what traps reserve and what gadgets reserve, one stat on
-    # `Type.Trap` and on `Type.Gadget`, two things a player gets.
+    # AND SO ARE THE REQUIRED TAGS, since the Death trees' slice C6a
+    # (2026-11-25): a row requires every tag it names, so "Poison and Bleed you
+    # apply" is one row for each, the same stat under two tags (Lasting Wounds).
+    # The Saboteur's rows of the same day need it too: Bag of Tricks lowers what
+    # traps reserve and what gadgets reserve, one stat on `Type.Trap` and on
+    # `Type.Gadget`, two things a player gets.
     pairs: dict[tuple, int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
@@ -6820,20 +7120,39 @@ def passive_effects(book) -> list[dict]:
     # event (`UCataclysmPassiveTree::EnchantmentRowsFor`), as an enchantment's
     # are keyed by its name, action and event. Two rows sharing all four would
     # share one cooldown and one count. The passive row port of 2026-11-24.
-    keyed: dict[tuple, int] = {}
+    #
+    # AN ACTION ROW FROM A POINT THRESHOLD HAS A KEY OF ITS OWN since the Death
+    # trees' slice C6a (2026-11-25): `EnchantmentRowsFor` names it apart by its
+    # `MinPoints`, so "1 second for every 4 points" is a row at 4 and a row at 8.
+    #
+    # AND A SECOND ROW ON THE SAME ACTION AND EVENT UNDER A DIFFERENT CONDITION
+    # HAS ONE since the Death trees' slice C6b3 (2026-11-25): `EnchantmentRowsFor`
+    # names it apart as `_Row2`, so Opening Found's "1 Fervour per point, or 2 per
+    # point if the attacker is Elite or stronger" is 1 always and 1 more under
+    # `target_rarity_at_least` 1. Two rows under the SAME conditions are still
+    # refused: nothing would tell them apart but their order.
+    keyed: dict[tuple, set] = {}
     for row in out:
         if row["Action"]:
-            key = (row["Node"], row["Option"], row["Action"], row["ActionEvent"])
-            keyed[key] = keyed.get(key, 0) + 1
-    shared_keys = sorted(key for key, count in keyed.items() if count > 1)
+            key = (row["Node"], row["Option"], row["Action"], row["ActionEvent"],
+                   row["MinPoints"])
+            conditions = (row["Condition"], row["ConditionValue"],
+                          row["Condition2"], row["ConditionValue2"])
+            seen = keyed.setdefault(key, set())
+            if conditions in seen:
+                keyed[key] = None
+            elif seen is not None:
+                seen.add(conditions)
+    shared_keys = sorted(key for key, seen in keyed.items() if seen is None)
     if shared_keys:
         listed = ", ".join(f"{node} option {option} {action} on {event or '(none)'}"
-                           for node, option, action, event in shared_keys)
+                           + (f" from {points} points" if points else "")
+                           for node, option, action, event, points in shared_keys)
         raise DataError(
             f"the Passive Effects sheet gives one node two rows of the same "
-            f"action on the same event: {listed}. The game keeps one cooldown "
-            f"and one count for each node, option, action and event, so the two "
-            f"would share them. Write the two as one row.")
+            f"action on the same event under the same conditions: {listed}. The "
+            f"game keeps one cooldown and one count for each such row, and nothing "
+            f"would tell the two apart. Write the two as one row.")
 
     if not out:
         raise DataError("the Passive Effects sheet is empty")
@@ -6950,12 +7269,21 @@ COOLDOWN_RESET_ACTIONS = (
 #: The actions that TAKE SECONDS OFF RUNNING SKILL COOLDOWNS, each naming
 #: which. Issue #1833, the cooldown reduction action, ruled 2026-09-25. The value
 #: is seconds, above 0 and up to `MAX_COOLDOWN_REDUCE_SECONDS`. A cooldown with
-#: no more than that left ends, and nothing carries over. Only the two targets a
-#: row asks for. `UCataclysmAbilitySystemComponent::CooldownReduceAllAction` and
-#: `CooldownReduceHeavyAction` hold the same two names.
+#: no more than that left ends, and nothing carries over. Only the three targets
+#: a row asks for. `UCataclysmAbilitySystemComponent::CooldownReduceAllAction`
+#: and its two siblings hold the same three names.
 COOLDOWN_REDUCE_ACTIONS = (
     "cooldown_reduce_all",
     "cooldown_reduce_heavy",
+    # EVERY SKILL BUT THE ONE THAT RAISED THE EVENT, read off its `Slot.*` tag as
+    # `cooldown_reset_others` reads it: Turn of the Wheel, "Every 10 Fervour you
+    # spend takes 1 second off the cooldowns of your skills that did not spend
+    # it". The Death trees' slice C3b (2026-11-25).
+    "cooldown_reduce_others",
+    # THE MOVEMENT SKILL'S: the Shadow's Find the Rhythm and Sidestep, "takes 1
+    # second ... off your movement skill's remaining cooldown". The Death trees'
+    # slice C6a (2026-11-25).
+    "cooldown_reduce_movement",
 )
 
 #: The most seconds a reduction may take off, the same sanity bound the clocks use.
@@ -6994,6 +7322,7 @@ HIT_FIRED_EVENTS = (
     "block",
     "dodge",
     "deployable_hit",
+    "minion_hit",
     "retaliation_dealt",
     # A BLOW BREAKING THE ENERGY SHIELD. Issue #1833 group D part 3, ruled
     # 2026-10-01: a hit causes it, so it takes the default.
@@ -7189,6 +7518,7 @@ APPLY_STATUS_EVENTS = (
     "critical_strike",
     "retaliation_dealt",
     "deployable_hit",
+    "minion_hit",
 )
 
 #: The statuses `apply_status` may name: every ailment
@@ -7667,6 +7997,13 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # moves it to `STRIKE_TARGET_EVENTS`, whose eight a merged test pins.
     "trap_placed",
     "trap_triggered",
+    # The Death trees' slice C6d1 (2026-11-25). `minion_hit` carries the enemy a
+    # minion's blow landed on; Cold Hands and Grave Cold apply Necrosis to it,
+    # and NO STRIKE ON IT IS RULED, as for `trap_triggered` above.
+    "minion_hit",
+    # AND `minion_death` (the Death trees' slice C6d2, 2026-11-25), which carries
+    # the commander's own follower as it dies: nothing a row may strike.
+    "minion_death",
     # Slice C of plan_death_and_war.md, 2026-11-24. `gadget_placed` carries the
     # wearer's own gadget, as `trap_placed` carries its trap.
     "gadget_placed",
@@ -7757,6 +8094,36 @@ FRACTION_BASES = (
     "maximum",
     "current",
     "event_amount",
+    # THE VALUE ITSELF, A FLAT AMOUNT, ON THE CLASS RESOURCE ONLY. The Death
+    # trees' slice C6b3 (2026-11-25), as ruled by the coordinating session:
+    # Opening Found's "generates 1 Fervour per point", Reaper's Due's "gives 5
+    # Fervour" and Tear Loose's "1 Fervour" are action rows, scaled by
+    # `class_resource_generation` and paid through `UCataclysmFervour::RaisePool`
+    # as every class resource gain is. War's per-event Fervour stats are kept.
+    "points",
+    "for_each_of_event_amount",
+    "for_each_ten_of_event_amount",
+)
+
+#: The Fraction Of value that pays the row's value itself, and the one pool it
+#: may move. The Death trees' slice C6b3 (2026-11-25).
+FRACTION_OF_POINTS = "points"
+CLASS_RESOURCE_POOL = "class_resource"
+
+#: The two Fraction Of values that SIZE A ROW BY ITS EVENT'S AMOUNT rather than
+#: naming a base: the value acts once for each whole unit, or each whole ten, of
+#: what the event carried, on the pool's maximum. The Death trees' slice C3b
+#: (2026-11-25): Feast, "heals 1% of maximum health for each Fervour spent";
+#: Spirit to Mana and Ashen Ward, "1% ... per point for every 10 Fervour spent";
+#: Soul Furnace, "10% of your weapon damage for each Fervour spent"; and Turn of
+#: the Wheel, "Every 10 Fervour you spend takes 1 second off". Whole tens, so a
+#: spend of 19 pays once: the coordinating session's ruling 3 of 2026-11-25.
+#: `UCataclysmAbilitySystemComponent::ActOnEvent` multiplies the value before
+#: any action reads it, so they are accepted on a pool, a nearby action and a
+#: cooldown reduction, each on an event that carries an amount, and nowhere else.
+FRACTION_BASES_SIZED_BY_THE_AMOUNT = (
+    "for_each_of_event_amount",
+    "for_each_ten_of_event_amount",
 )
 
 #: The events an action may hang on, DERIVED FROM THE CLOCK CONDITIONS rather
@@ -7921,15 +8288,18 @@ MAX_TEMPORARY_ABSORB_PERCENT = 100.0
 
 #: Events an action may hang on that have NO clock of their own.
 #:
-#: EVERY CLOCK IS SOMETHING DONE TO THE CHARACTER and these are things the
-#: character DID, which is why none of them is a clock: a clock is stamped on
-#: whoever the blow landed on, and these belong to whoever dealt it.
+#: HAVING NO CLOCK IS THE ONLY THING THAT PUTS AN EVENT HERE. An event with a
+#: clock is derived from the clock's name by `action_events`, and listing it
+#: here too is refused by a test. Most clocks are something done to the
+#: character, but not all: `striking_a_boss`, `movement_skill` and `kill` are
+#: things it did. `kill` was on this list until the Death trees' kill generator
+#: (2026-11-24) gave it the clock `seconds_after_kill`, and is derived since;
+#: the game raises the event as it did.
 #:
 #: `hit_dealt` IS NOT `hit_taken`. They are the same word at opposite ends of
 #: one blow. `seconds_after_hit_taken` is stamped on the character that was
 #: hit; `hit_dealt` fires on the character that hit.
 ACTION_ONLY_EVENTS = (
-    "kill",
     "critical_strike",
     "nearby_death",
     "skill_use",
@@ -8056,6 +8426,12 @@ ACTION_ONLY_EVENTS = (
     # Ruled 2026-10-19 (M5, T13), for the rows of later layers on a trap's
     # trigger. Clockless, as the one above; in no narrower list yet.
     "trap_triggered",
+    # A MINION'S LANDED BLOW, raised once on its summoner (an imp's in
+    # `ACataclysmMinion`, a thrall's in `UCataclysmSkillEffects::ApplyHit`), with
+    # the minion's tags and the enemy struck. The Death trees' slice C6d1
+    # (2026-11-25), as ruled, for Cold Hands and Grave Cold. Not a machine's,
+    # which is `deployable_hit`.
+    "minion_hit",
     # A GADGET PLACED, raised once per gadget on its player by
     # `ACataclysmMinion::PlaceSkillGadget` and, for a War machine that is not
     # a trap, `UCataclysmDeployableSkill::DeployOne`, with the gadget's type
@@ -8133,6 +8509,9 @@ EVENTS_WITH_AN_AMOUNT = (
     "retaliation_dealt",
     "kill",
     "afflicted_death",
+    # THE FERVOUR ONE PAYMENT SPENT. The Death trees' slice C3a (2026-11-25),
+    # raised by `UCataclysmAbilitySystemComponent::NoteFervourSpent`.
+    "fervour_spent",
     # What the big hit took, after defences. V3a, 2026-11-25.
     "big_hit_taken",
 )
@@ -8292,6 +8671,30 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_killing_blow_explosion_action(index, who, action, event,
                                              fraction_of, kind, raw, headers)
         return
+    if action == SLAIN_BURST_ACTION:
+        _check_slain_burst_action(index, who, action, event, fraction_of,
+                                  kind, raw, headers)
+        return
+    if action == BLEED_LEFT_TO_STRONGEST_ACTION:
+        _check_bleed_left_to_strongest_action(index, who, action, event,
+                                              fraction_of, kind, raw, headers)
+        return
+    if action == NEXT_HIT_CRITICAL_ACTION:
+        _check_next_hit_critical_action(index, who, action, event,
+                                        fraction_of, kind, raw, headers)
+        return
+    if action == FERVOUR_HOLD_EXTENDED_ACTION:
+        _check_fervour_hold_extended_action(index, who, action, event,
+                                            fraction_of, kind, raw, headers)
+        return
+    if action == NEXT_HIT_CRITICAL_TWICE_ACTION:
+        _check_next_hit_critical_twice_action(index, who, action, event,
+                                              fraction_of, kind, raw, headers)
+        return
+    if action in STRONGEST_NEAR_ACTIONS:
+        _check_strongest_near_action(index, who, action, event, fraction_of,
+                                     kind, raw, headers)
+        return
     if action in TRAPS_NEARBY_ACTIONS:
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -8323,6 +8726,12 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {KILLING_BLOW_EXPLOSION_ACTION}; "
+            f"or {SLAIN_BURST_ACTION}; "
+            f"or {BLEED_LEFT_TO_STRONGEST_ACTION}; "
+            f"or {NEXT_HIT_CRITICAL_ACTION}; "
+            f"or {FERVOUR_HOLD_EXTENDED_ACTION}; "
+            f"or {NEXT_HIT_CRITICAL_TWICE_ACTION}; "
+            f"or {', '.join(STRONGEST_NEAR_ACTIONS)}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
@@ -8358,7 +8767,15 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"the value kind {kind!r}. The three buckets multiply a stat and an "
             f"action has no stat, so the column must be empty on an action row.")
 
-    if fraction_of == "event_amount" and event not in EVENTS_WITH_AN_AMOUNT:
+    if fraction_of == FRACTION_OF_POINTS and action != CLASS_RESOURCE_POOL:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} pays a flat amount "
+            f"({FRACTION_OF_POINTS!r}) of the pool {action!r}. A flat amount is "
+            f"of {CLASS_RESOURCE_POOL!r} only; every other pool is moved by a "
+            f"share of a base.")
+
+    if (fraction_of in ("event_amount", *FRACTION_BASES_SIZED_BY_THE_AMOUNT)
+            and event not in EVENTS_WITH_AN_AMOUNT):
         raise DataError(
             f"Enchantment Effects row {index}: {who} takes a fraction of the "
             f"amount its event carried, and {event!r} carries no amount. The "
@@ -8453,6 +8870,23 @@ def _check_health_cap_action(index: int, who: str, action: str, event: str,
                 f"empty.")
 
 
+def _sized_by_the_amount(index: int, who: str, event: str, fraction_of: str) -> str:
+    """The Fraction Of a row has left to refuse, once one that sizes it by its
+    event's amount has been judged: empty for either of
+    `FRACTION_BASES_SIZED_BY_THE_AMOUNT` on an event that carries an amount, and
+    unchanged for anything else, so the caller's own refusal still sees it. The
+    Death trees' slice C3b.
+    """
+    if fraction_of not in FRACTION_BASES_SIZED_BY_THE_AMOUNT:
+        return fraction_of
+    if event not in EVENTS_WITH_AN_AMOUNT:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} is sized {fraction_of!r}, "
+            f"and {event or '(none)'!r} carries no amount. The events that do: "
+            f"{', '.join(EVENTS_WITH_AN_AMOUNT)}.")
+    return ""
+
+
 def _check_nearby_action(index: int, who: str, action: str, event: str,
                          fraction_of: str, kind: str, raw,
                          headers: dict[str, int]) -> None:
@@ -8460,7 +8894,8 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
     Issue #1833 group D part 3. An event is required, because the smite or the
     heal happens AT something; the share is checked where the value is read. A
     fraction, a value kind and a scale each mean nothing here, so each is
-    refused rather than dropped.
+    refused rather than dropped -- but for a share sized by the event's amount,
+    Soul Furnace's "for each Fervour spent" (the Death trees' slice C3b).
     """
     known = action_events()
     if event not in known:
@@ -8468,6 +8903,7 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
             f"Enchantment Effects row {index}: {who} acts on the characters "
             f"nearby on the event {event or '(none)'!r}, which the game does "
             f"not fire. Known: {', '.join(sorted(known))}.")
+    fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
     # A NOVA SIZED BY A HIT NEEDS AN EVENT CARRYING ONE. V2b, 2026-11-25.
     if action == SMITE_NEARBY_BY_HIT_ACTION and event not in SMITE_NEARBY_BY_HIT_EVENTS:
         raise DataError(
@@ -9123,6 +9559,16 @@ def _check_cooldown_reset_action(index: int, who: str, action: str,
             f"Enchantment Effects row {index}: {who} resets cooldowns on the "
             f"event {event!r}, which the game does not record. Known: "
             f"{', '.join(sorted(known))}.")
+    # A REDUCTION'S SECONDS MAY BE SIZED BY THE EVENT'S AMOUNT, Turn of the
+    # Wheel's "Every 10 Fervour you spend" (the Death trees' slice C3b). A
+    # reset's chance may not: a chance multiplied is not a chance.
+    if action in COOLDOWN_REDUCE_ACTIONS:
+        fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
+        # AND BY THE WHOLE HUNDREDS OF THE CLASS RESOURCE HELD, Relentless's
+        # "for every 100 Fervour held" (the Death trees' slice C4d1), on any
+        # event: it reads the character, not the event.
+        if fraction_of == FRACTION_OF_HUNDREDS_HELD:
+            fraction_of = ""
     for column, written in (("Fraction Of", fraction_of),
                             ("Value Kind", kind),
                             ("Scale", clean(_cell(raw, headers, "Scale")))):
@@ -9201,6 +9647,14 @@ def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
                 f"{sheet} row {index}: {who} has a condition value of "
                 f"{condition_value}, and {condition!r} takes {units} between "
                 f"{low:g} and {high:g}.")
+        # A FERVOUR THRESHOLD IS ONE OF FOUR FIGURES, not any number between
+        # them: the engine reaches none for another, so the row would be dead.
+        if (condition == "fervour_threshold_reached"
+                and condition_value not in FERVOUR_THRESHOLDS):
+            raise DataError(
+                f"{sheet} row {index}: {who} asks for the Fervour threshold "
+                f"{condition_value:g}, and the four are "
+                f"{', '.join(f'{t:g}' for t in FERVOUR_THRESHOLDS)}.")
 
     scale = clean(_cell(raw, headers, "Scale")).lower()
     if scale and scale not in SCALES:
@@ -9299,6 +9753,12 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != CLEANSE_ACTION \
                 and action != OVERKILL_EXPLOSION_ACTION \
                 and action != KILLING_BLOW_EXPLOSION_ACTION \
+                and action != SLAIN_BURST_ACTION \
+                and action != BLEED_LEFT_TO_STRONGEST_ACTION \
+                and action != NEXT_HIT_CRITICAL_ACTION \
+                and action != FERVOUR_HOLD_EXTENDED_ACTION \
+                and action != NEXT_HIT_CRITICAL_TWICE_ACTION \
+                and action not in STRONGEST_NEAR_ACTIONS \
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
@@ -9579,6 +10039,59 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"enemy for {low:g} to {high:g} per cent of the blow that "
                 f"killed it. The share is above 0 and up to "
                 f"{MAX_KILLING_BLOW_EXPLOSION_SHARE:g}.")
+
+    # AND A SLAIN CREATURE'S BURST IS A SHARE OF ITS MAXIMUM HEALTH, the same
+    # way. The Death trees' slice C4c1 (2026-11-25).
+    if action == SLAIN_BURST_ACTION:
+        if not (0 < low <= MAX_SLAIN_BURST_SHARE and 0 < high <= MAX_SLAIN_BURST_SHARE):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} bursts a killed enemy "
+                f"for {low:g} to {high:g} per cent of its maximum health. The "
+                f"share is above 0 and up to {MAX_SLAIN_BURST_SHARE:g}.")
+
+    # AND BLOOD DEBT'S IS THE SECONDS THE BLEED LEFT IS DEALT OVER. The Death
+    # trees' slice C4c2 (2026-11-25).
+    if action == BLEED_LEFT_TO_STRONGEST_ACTION:
+        if not (0 < low <= MAX_BLEED_LEFT_SECONDS and 0 < high <= MAX_BLEED_LEFT_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} passes a Bleed's "
+                f"damage left over {low:g} to {high:g} seconds. The seconds are "
+                f"above 0 and up to {MAX_BLEED_LEFT_SECONDS:g}.")
+
+    # AND CHAIN EXECUTION'S IS THE SECONDS ITS CHARGE LASTS. The Death trees'
+    # slice C4d1 (2026-11-25).
+    if action == NEXT_HIT_CRITICAL_ACTION:
+        if not (0 <= low <= MAX_NEXT_HIT_CRITICAL_SECONDS and 0 <= high <= MAX_NEXT_HIT_CRITICAL_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} makes the next hit a "
+                f"critical strike for {low:g} to {high:g} seconds. The seconds "
+                f"are 0 (until used) up to {MAX_NEXT_HIT_CRITICAL_SECONDS:g}.")
+
+    # AND BLADE ECHO'S AND THOUSAND CUTS' IS THE PER CENT OF WEAPON DAMAGE THEIR
+    # HIT DEALS. The Death trees' slice C6e.
+    if action in STRONGEST_NEAR_ACTIONS:
+        if not (0 < low <= MAX_STRIKE_TARGET_PERCENT and 0 < high <= MAX_STRIKE_TARGET_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} strikes the strongest "
+                f"enemy near for {low:g} to {high:g}% of weapon damage. The per "
+                f"cent is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
+
+    # AND TWICE ANSWERED'S IS THE CRITICAL STRIKES THE CHARGE HOLDS, two and
+    # nothing else; its chance is the Chance Percent. The Death trees' slice C6b4.
+    if action == NEXT_HIT_CRITICAL_TWICE_ACTION:
+        if not (low == NEXT_HIT_CRITICAL_TWICE_COUNT and high == NEXT_HIT_CRITICAL_TWICE_COUNT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} doubles an evasion's "
+                f"critical strike charge to {low:g} to {high:g}. It holds "
+                f"{NEXT_HIT_CRITICAL_TWICE_COUNT:g} and no other number.")
+
+    # AND KEEP THE COUNT'S IS THE SECONDS IT ADDS. The Death trees' slice C6a.
+    if action == FERVOUR_HOLD_EXTENDED_ACTION:
+        if not (0 < low <= MAX_FERVOUR_HOLD_EXTENDED_SECONDS and 0 < high <= MAX_FERVOUR_HOLD_EXTENDED_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} lengthens the hold "
+                f"before decay by {low:g} to {high:g} seconds. The seconds are "
+                f"above 0 and up to {MAX_FERVOUR_HOLD_EXTENDED_SECONDS:g}.")
 
     # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
     # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
@@ -10400,6 +10913,18 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"gadget within {event_value:g} metres of a trap. The "
                     f"radius is 0, any distance, up to "
                     f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:g}.")
+    elif action_event == SPENT_EVENT:
+        # OR THE FERVOUR ONE PAYMENT MUST SPEND, "after you spend 10 or more
+        # Fervour at once": empty or nought is any spend. The Death trees' slice
+        # C3a (2026-11-25); `UCataclysmAbilitySystemComponent::
+        # EventThresholdCrossed` reads it.
+        if event_value_text:
+            event_value = number(event_value_text, "Event Value", index)
+            if not 0 <= event_value <= MAX_FERVOUR_SPENT_AT_ONCE:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} wants "
+                    f"{event_value:g} Fervour spent at once. It is 0, any "
+                    f"spend, up to {MAX_FERVOUR_SPENT_AT_ONCE:g}.")
     elif action == SMITE_NEARBY_BY_HIT_ACTION:
         # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
         # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`.
@@ -10516,8 +11041,9 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
     elif event_value_text:
         raise DataError(
             f"Enchantment Effects row {index}: {name} states an Event Value on "
-            f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT} "
-            f"reads one, so it would be dropped.")
+            f"the event {action_event or '(none)'!r}. Only {THRESHOLD_EVENT}, "
+            f"{SPENT_EVENT} and {GADGET_FIRES_AT_TRAP_ENEMY_ACTION} read one, "
+            f"so it would be dropped.")
 
     # THE AILMENT A REMAINING DAMAGE ACTION IS LIMITED TO. Issue #1833 group D
     # part 4, ruled 2026-10-01: required on `dot_remaining_target`, allowed on
@@ -10669,6 +11195,13 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
         "EventValue": event_value,
         "Ailment": ailment,
         "DamageShare": damage_share,
+        # EVERY TIME, ON EVERY ENCHANTMENT ROW. The Death trees' slice C6b3
+        # (2026-11-25): only a Passive Effects row states a chance (Tear Loose,
+        # `_chance_percent`), and the Enchantment Effects sheet has no such
+        # column. Written so `FCataclysmEnchantmentEffectRow::ChancePercent`,
+        # which a passive row's copy fills, is a column of this table as every
+        # property of its struct must be.
+        "ChancePercent": 0.0,
     }
 
 
@@ -11302,6 +11835,30 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE DEATH TREES' SLICE C6d2 (2026-11-25): a minion's attack speed scaled by
+    # the summoner's own stacks, the Necromancer's Avenging Dead. Asked through
+    # `UCataclysmAbilitySystemComponent::IncreasesForStat` on the summoner, with
+    # the summoner's state, by `UCataclysmCommand::AttackIntervalScaleFor`;
+    # `ProbeScaledMinionAttackSpeed` measures it.
+    "minion_attack_speed",
+    # THE DEATH TREES' SLICE C6a (2026-11-25): extra projectiles scaled by the
+    # Fervour held, the Soul Collector's Soul Barrage. Asked through the
+    # pipeline with the character's state by
+    # `UCataclysmProjectileSkill::ExtraProjectilesWithRows`;
+    # `ProbeScaledProjectileCount` measures it.
+    "projectile_count",
+    # THE DEATH TREES' SLICE C6b4 (2026-11-25): Poison damage scaled by the
+    # seconds the creature struck has stayed poisoned by the asker, the Shadow's
+    # Festering. Asked by each tick in
+    # `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` with the creature
+    # it lands on and with no target, the tick taking the ratio;
+    # `ProbeScaledDotDamage` measures it.
+    "dot_damage",
+    # THE DEATH TREES' SLICE C4a (2026-11-25): Fervour a kill pays, scaled by the
+    # living enemies within 8 metres for the Soul Collector's Thinning the Herd.
+    # Asked through the pipeline at the kill by `UCataclysmFervour::GainOnOwnKill`;
+    # `ProbeScaledFervourPerKill` measures it.
+    "fervour_per_kill",
     # ADDED 2026-11-25 FOR SUPPORT NETWORK, "At 4 points: Active gadgets increase
     # trap trigger radius by 10%": `trap_trigger_radius` scaled by gadgets active,
     # one step at most. `ACataclysmMinion::SkillTrapTriggerRadiusCmFor` asks it
@@ -11471,6 +12028,15 @@ STATS_WITH_AN_ASKER = frozenset({
     "area_of_effect",
     "health_restored_on_kill_at_no_cost",
     "ultimate_fervour_cost_reduction",
+    # THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25). Its
+    # radius (Pall of Souls scales it by the Fervour held), Life Siphon's health
+    # and Living Harvest's Fervour (each scaled by the enemies in the Siphon):
+    # `FCataclysmSiphon` asks each through `StatForSkill` with the holder's
+    # state; `ProbeScaledSiphonRadius`, `ProbeScaledSiphonLife` and
+    # `ProbeScaledSiphonFervour` measure them.
+    "siphon_radius_metres",
+    "siphon_life_percent",
+    "siphon_fervour_per_second",
 })
 
 
@@ -11527,6 +12093,8 @@ CONDITIONS_OF_A_BLOW_TAKEN = frozenset({
     "opponent_carries_weaken",
     "opponent_first_struck_by_you_seconds_ago",
     "opponent_is_boss",
+    # AND READ THE BLOW'S ATTACKER RUNG, the Death trees' slice C6b3 (2026-11-25).
+    "opponent_rarity_at_least",
     "opponent_is_crowd_controlled",
     "opponent_is_staggered",
     "opponent_within_metres",
@@ -11546,10 +12114,20 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_carries_cripple_and_weaken",
     "target_carries_void_splinter",
     "target_damaged_by_you_within_seconds",
+    "target_near_your_kill_within_seconds",
+    "target_struck_from_behind",
+    "target_at_full_health",
+    "target_carries_your_poison",
+    "target_beyond_metres",
+    "target_struck_by_your_movement_skill_within_seconds",
+    "target_carries_necrosis",
+    "target_marked_by_you",
+    "target_is_your_last_attacker",
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",
     "target_in_your_zone",
+    "target_in_your_siphon",
     "target_is_staggered",
     "target_not_yet_crit_by_you",
     "target_not_yet_struck_by_you",
@@ -11557,6 +12135,9 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_is_silenced",
     "target_is_moving",
     "target_carries_your_curse",
+    "target_carries_your_poison_or_bleed",
+    "target_rarity_at_least",
+    "target_rarity_is",
     # The Saboteur's device conditions, 2026-11-25: Ambush. A fact of the target
     # in hand, read by `WithTargetState`; the trap rows that carry it are priced
     # by `TrapDamageNamingTrap` with the enemy struck.
@@ -11619,8 +12200,53 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "minion_damage": ASKER_PASSES_A_HIT_DEALT,
     "penetration": ASKER_PASSES_A_HIT_DEALT,
     "spell_damage": ASKER_PASSES_A_HIT_DEALT,
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. Fervour a kill pays and the
+    # decay's grace are asked at the kill with the slain creature as the target
+    # (`UCataclysmFervour::GainOnOwnKill` and `NoteOwnKill`), so a rarity row is
+    # judged; the decay's rate with the wearer's state alone
+    # (`UCataclysmFervour::KillDecayStep`).
+    "fervour_per_kill": ASKER_PASSES_A_HIT_DEALT,
+    "fervour_kill_decay_grace_seconds": ASKER_PASSES_A_HIT_DEALT,
+    # AND THE FERVOUR A LANDED CRITICAL STRIKE PAYS, asked with the character
+    # struck as the target (`UCataclysmFervour::GainOnCriticalStrike`), so
+    # Telling Blows' rarity row is judged. The Death trees' slice C4d1.
+    "fervour_per_critical_strike": ASKER_PASSES_A_HIT_DEALT,
+    # AND PATIENT BLADE'S AND DEATH BY INCHES', each asked with the Boss as the
+    # target (`UCataclysmFervour::PayForABossTick` and `CountAHitOnABoss`), so
+    # their `target_is_boss` is judged. The Death trees' slice C4d2.
+    "boss_ticks_pay_a_kill_every_seconds": ASKER_PASSES_A_HIT_DEALT,
+    "boss_hits_counted_as_a_kill_every": ASKER_PASSES_A_HIT_DEALT,
+    "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
+    # AND MAXIMUM HEALTH, the Death trees' slice C4d3 (2026-11-25), for Wearer of
+    # the Dead's Titanic Resolve. `RefreshLiveMaximumHealth` asks the whole line
+    # with the character's state and writes the attribute, from `ApplyTo`, from
+    # each regeneration step for a line whose rows move with state (a condition
+    # included), and when a modifier is worn; `ProbeConditionedMaxHealth`
+    # measures that.
+    "max_health": ASKER_PASSES_NOTHING_MORE,
+    # The Death trees' slice C6d1 (2026-11-25): Ringed in Bone. Read by UCataclysmSkillTemplate::IsImmuneTo.
+    "immune_to_slow": ASKER_PASSES_NOTHING_MORE,
+    # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
+    # clause under `fervour_threshold_reached`: the extra projectile, asked by
+    # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,
+    # and the faster cooldown recovery, asked on the regeneration step by
+    # `UCataclysmAbilitySystemComponent::FervourThresholdStep`. Probed by
+    # `ProbeConditionedProjectileCount` and `ProbeConditionedCooldownsRecoverFaster`.
+    "projectile_count": ASKER_PASSES_NOTHING_MORE,
+    # AND THE SKILL'S RANGE, the Death trees' slice C4a, for the Shadow's Hunting
+    # Leap under `seconds_after_kill`: asked as increases with the skill's tags by
+    # `UCataclysmAbilitySystemComponent::IncreasesForStat`, with the wearer's state.
+    # Probed by `ProbeConditionedSkillRange`.
+    "skill_range": ASKER_PASSES_NOTHING_MORE,
+    # AND THE RATE EVERY GAIN OF THE CLASS RESOURCE IS SCALED BY, the Death trees'
+    # slice C4b1, for the Soul Collector's Any Fuel under
+    # `fervour_gain_not_from_a_kill`: asked with no tags by
+    # `UCataclysmAbilitySystemComponent::ClassResourceGainScaled`, with the
+    # wearer's state. Probed by `ProbeConditionedClassResourceGeneration`.
+    "class_resource_generation": ASKER_PASSES_NOTHING_MORE,
+    "cooldowns_recover_faster_percent": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
     # THE BERSERKER'S STATES, 2026-11-25. The two flags `FCataclysmBerserkerStates::Judge`
     # asks with no tags, each stated under its weapon rule; the drain
@@ -11643,12 +12269,13 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "frenzy_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
     "fervour_drain_per_second": ASKER_PASSES_NOTHING_MORE,
     "fervour_per_hit_dealt": ASKER_PASSES_NOTHING_MORE,
-    # AND TWO OF SLICE C'S RATES, asked by `FCataclysmWarFervour::GainByRate`
+    # AND ONE OF SLICE C'S RATES, asked by `FCataclysmWarFervour::GainByRate`
     # with the event's tags and the wearer's state, for the War riders of
-    # 2026-11-25: Razor Mind's "while above 75% Fervour", Resolve Under Fire's
-    # "below 30% HP" and Immovable's "while stationary". Probed in the same
-    # table by `ProbeWarFervourGain`.
-    "fervour_per_critical_strike": ASKER_PASSES_NOTHING_MORE,
+    # 2026-11-25: Resolve Under Fire's "below 30% HP" and Immovable's "while
+    # stationary". Probed in the same table by `ProbeWarFervourGain`. ITS
+    # SIBLING `fervour_per_critical_strike` (Razor Mind's "while above 75%
+    # Fervour") is the Death line's since the bundle 3 merge, asked with the
+    # blow by `UCataclysmFervour::GainOnCriticalStrike`: listed above.
     "fervour_per_hit_taken": ASKER_PASSES_NOTHING_MORE,
     # THE FERVOUR SPENDS, 2026-11-25. Iron Will's cost, Undying's restore and
     # Cleave's cost and gain, each asked by `FCataclysmWarFervour` with the
@@ -11666,7 +12293,7 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "fervour_cost_per_extra_enemy_hit": ASKER_PASSES_NOTHING_MORE,
     "fervour_per_extra_enemy_hit_paid": ASKER_PASSES_NOTHING_MORE,
     "strike_arc_at_least_degrees": ASKER_PASSES_NOTHING_MORE,
-    "max_health": ASKER_PASSES_NOTHING_MORE,
+    # (`max_health` is listed above, with its probe.)
     "block_negation_chance": ASKER_PASSES_A_BLOW_TAKEN,
     # RIPOSTE, 2026-11-25: its share under at least 25 Fervour and its stun
     # under the pool at its maximum, each asked by
@@ -11765,6 +12392,26 @@ CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS: dict[str, frozenset[str]] = {
         "metres_moved_before_attack",
         "skill_health_cost_above",
     }),
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24: asked at a kill with the
+    # slain creature and nothing else (`UCataclysmFervour::GainOnOwnKill` and
+    # `NoteOwnKill`). A kill is no blow being priced, so the blow's own facts --
+    # how many it struck, how far its user moved, what its skill cost, the
+    # target's distance and its stagger -- are never handed over there.
+    **{stat: frozenset({
+        "enemies_hit_at_least",
+        "enemies_hit_at_most",
+        "metres_moved_before_attack",
+        "skill_health_cost_above",
+        "target_within_metres",
+        "target_is_staggered",
+    }) for stat in ("fervour_per_kill", "fervour_kill_decay_grace_seconds",
+                    # AND THE FERVOUR A CRITICAL STRIKE PAYS, asked with the
+                    # character struck and nothing else (slice C4d1).
+                    "fervour_per_critical_strike",
+                    # AND PATIENT BLADE'S AND DEATH BY INCHES', asked with the
+                    # Boss and nothing else (slice C4d2).
+                    "boss_ticks_pay_a_kill_every_seconds",
+                    "boss_hits_counted_as_a_kill_every")},
 }
 
 
@@ -11798,6 +12445,16 @@ def what_a_condition_needs(condition: str) -> str:
     return ""
 
 
+#: Conditions judged at their row's event rather than when a stat is read, each
+#: with the one event whose raising fills what it reads. The Death trees' slice
+#: C6d2 (2026-11-25): Avenging Dead's share of maximum health a hit took, held
+#: while `hit_taken` is raised. `UCataclysmStatPipeline::IsJudgedAtItsEvent`
+#: names the same. Allowed only as the Condition of an action row, or of a row
+#: scaled by its own stacks, on that event, where the game judges it at the
+#: grant; anywhere else it reads -1 and refuses every time.
+EVENT_CONDITIONS = {"hit_took_at_least_percent_of_max_health": "hit_taken"}
+
+
 def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[str]:
     """A row may only carry a Condition on a stat whose asker can judge it.
 
@@ -11805,10 +12462,33 @@ def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[st
     `refuse_a_scale_nothing_asks_for` makes for a scale. A row with no stat is
     an action, whose condition is judged where the action fires, and is skipped.
     Both of a row's conditions are checked.
+
+    AN EVENT CONDITION (`EVENT_CONDITIONS`) is checked first, on every row: it
+    is allowed only as the Condition of an action row or of an own-stack row on
+    its event, and it asks nothing of the stat's asker.
     """
     problems = []
     for row in rows:
         stat = str(row.get("Stat") or "").strip()
+        event_ok = True
+        for column in ("Condition", "Condition2"):
+            condition = str(row.get(column) or "").strip()
+            if condition not in EVENT_CONDITIONS:
+                continue
+            event = str(row.get("ActionEvent") or "").strip()
+            granted = not stat or str(row.get("Scale") or "").strip() == "own_stacks"
+            if column != "Condition" or event != EVENT_CONDITIONS[condition] or not granted:
+                event_ok = False
+                problems.append(
+                    f"{sheet}/{row['Name']}: names {condition!r}, which reads a "
+                    f"fact held only while {EVENT_CONDITIONS[condition]!r} is "
+                    f"raised. It may be only the Condition of an action row or of "
+                    f"a row scaled by own_stacks whose event is "
+                    f"{EVENT_CONDITIONS[condition]!r}; anywhere else it refuses "
+                    f"every time and the row grants nothing.")
+        if not event_ok or (str(row.get("Condition") or "").strip() in EVENT_CONDITIONS
+                            and not str(row.get("Condition2") or "").strip()):
+            continue
         if not stat:
             continue
         for column in ("Condition", "Condition2"):
@@ -13543,6 +14223,61 @@ def refuse_a_window_scale_with_no_own_stack_row(
     return problems
 
 
+#: The event a kill raises, and the clock a kill stamps.
+KILL_EVENT = "kill"
+KILL_CLOCK = "seconds_after_kill"
+
+#: The event a spend of Fervour raises, the clock it stamps, and the most an
+#: Event Value on it may ask to be spent at once. The Death trees' slice C3a.
+SPENT_EVENT = "fervour_spent"
+SPENT_CLOCK = "seconds_after_fervour_spent"
+MAX_FERVOUR_SPENT_AT_ONCE = 1000.0
+
+#: Each event whose own clock is stamped before its rows act, with that clock.
+EVENTS_STAMPING_THEIR_CLOCK_FIRST = {KILL_EVENT: KILL_CLOCK, SPENT_EVENT: SPENT_CLOCK}
+
+
+def refuse_a_kill_clock_on_a_kill_action(sheet: str,
+                                         rows: list[dict]) -> list[str]:
+    """No action hung on an event asks the clock that event stamps first:
+    `kill` and `seconds_after_kill`, and since the Death trees' slice C3a
+    (2026-11-25) `fervour_spent` and `seconds_after_fervour_spent`, whose stamp
+    `UCataclysmAbilitySystemComponent::NoteFervourSpent` writes before it raises
+    the event, for the same reason.
+
+    IT WOULD ALWAYS HOLD. The kill handler (`ACataclysmPlayerCharacter::
+    OnSomethingDied`) pays the kill's Fervour, then stamps the kill clock, then
+    raises `kill`, so every row acting on that event reads a clock stamped by
+    the same kill: nought seconds, inside any window. A row written as "within
+    2 seconds of your previous kill" would act on every kill. Ruled by the
+    coordinating session on 2026-11-25 (the Death trees' slice C), with the
+    order that makes the condition mean something on a kill's own STAT: the
+    payment is asked before the stamp, so `seconds_after_kill` on
+    `fervour_per_kill` reads the time since the previous kill.
+
+    EITHER CONDITION COLUMN, because a second condition is judged the same way.
+    """
+    problems = []
+    for row in rows:
+        if not str(row.get("Action") or "").strip():
+            continue
+        event = str(row.get("ActionEvent") or "").strip().lower()
+        clock = EVENTS_STAMPING_THEIR_CLOCK_FIRST.get(event)
+        if clock is None:
+            continue
+        for column in ("Condition", "Condition2"):
+            if str(row.get(column) or "").strip().lower() == clock:
+                problems.append(
+                    f"{sheet}/{row['Name']}: acts on {event!r} under "
+                    f"{clock!r} ({column}). The clock is stamped by the same "
+                    f"event before its rows act, so the window reads nought and "
+                    f"always holds: the row would act EVERY time. A kill's own "
+                    f"stat, such as fervour_per_kill, may ask the kill clock: "
+                    f"that is asked before the stamp and reads the time since "
+                    f"the previous kill.")
+    return problems
+
+
 #: Tyrant's Chains' six-piece bonus. Ruled 2026-10-17 by the project owner
 #: (#3: the Tyrant's Minion's own death explodes but summons none; at most one
 #: stands; a new summon refreshes the one standing) and 2026-10-18 by the
@@ -15049,6 +15784,104 @@ def refuse_a_trap_blow_row_the_game_cannot_read(
 KILLING_BLOW_EXPLOSION_ACTION = "explode_victim_for_killing_blow"
 KILLING_BLOW_EXPLOSION_EVENTS = ("kill",)
 
+#: An enemy the wearer kills BURSTS FOR A SHARE OF ITS MAXIMUM HEALTH to the
+#: enemies near the body: the Soul Collector's The Ferryman, the Death trees'
+#: slice C4c1 (2026-11-25). The value is the share, in per cent.
+#: `UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction` holds
+#: the same name. ON `kill` AND NO OTHER EVENT, as the two explosions: the loop
+#: records the share and the kill handler makes the burst.
+SLAIN_BURST_ACTION = "burst_slain_for_share_of_maximum_health"
+SLAIN_BURST_EVENTS = ("kill",)
+
+#: The wearer's Bleed left on an enemy that died, passed to the strongest
+#: enemy within 10 metres of the body over the value's seconds: the Shadow's
+#: Blood Debt, the Death trees' slice C4c2 (2026-11-25).
+#: `UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction` holds the
+#: same name. ON `afflicted_death` AND NO OTHER EVENT: the one event that names
+#: a body carrying the wearer's ailment, raised with that ailment's tags.
+BLEED_LEFT_TO_STRONGEST_ACTION = "pass_bleed_left_to_strongest"
+BLEED_LEFT_TO_STRONGEST_EVENTS = ("afflicted_death",)
+
+#: The wearer's next hit that lands within the value's seconds is a critical
+#: strike: the Shadow's Chain Execution, the Death trees' slice C4d1
+#: (2026-11-25). `UCataclysmAbilitySystemComponent::CriticalNextHitAction`
+#: holds the same name. ON `kill` AND NO OTHER EVENT.
+NEXT_HIT_CRITICAL_ACTION = "next_hit_critical"
+#: ON A KILL, AN EVASION OR A FULL BAR: Chain Execution's `kill`, and since the
+#: Death trees' slice C6a (2026-11-25) Slip's `dodge` ("After you evade a hit")
+#: and Brim's `resource_full` ("Each time your Fervour reaches its maximum").
+NEXT_HIT_CRITICAL_EVENTS = ("kill", "dodge", "resource_full")
+
+#: The most seconds the charge may last. A bound for typing mistakes; the
+#: sentences are 2 and 3. NOUGHT IS "UNTIL USED", for Brim's "your next hit",
+#: which states no time (slice C6a, a judgement).
+MAX_NEXT_HIT_CRITICAL_SECONDS = 10.0
+
+#: A running hold before the Fervour decay lengthened by the value's seconds,
+#: never past its full length: the Shadow's Keep the Count, the Death trees'
+#: slice C6a (2026-11-25). `UCataclysmAbilitySystemComponent::FervourHoldExtendedAction`
+#: holds the same name. ON `dodge` AND NO OTHER EVENT.
+FERVOUR_HOLD_EXTENDED_ACTION = "fervour_hold_extended"
+FERVOUR_HOLD_EXTENDED_EVENTS = ("dodge",)
+
+#: The most seconds one row may add. A bound for typing mistakes; the one
+#: sentence is 1.
+MAX_FERVOUR_HOLD_EXTENDED_SECONDS = 10.0
+
+#: The critical strike charge an evasion grants holds two rather than one, on a
+#: roll of the row's Chance Percent: the Shadow's Twice Answered, the Death
+#: trees' slice C6b4 (2026-11-25), as ruled. Its value is the count, 2.
+#: `UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction` holds the
+#: same name. ON `dodge` AND NO OTHER EVENT: "each evasion".
+#: Blade Echo and Thousand Cuts, the Shadow's 50 and 200 vows' first options,
+#: the Death trees' slice C6e (2026-11-25), as ruled (Q6): on a kill, an instant
+#: hit of the value's per cent of weapon damage on the wearer's own mark within
+#: 10 metres, else the strongest enemy that near; Thousand Cuts moves the wearer
+#: beside it first. On `kill` only. The value is the per cent, up to
+#: `MAX_STRIKE_TARGET_PERCENT`.
+STRIKE_STRONGEST_NEAR_ACTION = "strike_strongest_near"
+DASH_TO_STRONGEST_AND_STRIKE_ACTION = "dash_to_strongest_and_strike"
+STRONGEST_NEAR_ACTIONS = (STRIKE_STRONGEST_NEAR_ACTION, DASH_TO_STRONGEST_AND_STRIKE_ACTION)
+STRONGEST_NEAR_EVENTS = ("kill",)
+
+NEXT_HIT_CRITICAL_TWICE_ACTION = "next_hit_critical_twice"
+NEXT_HIT_CRITICAL_TWICE_EVENTS = ("dodge",)
+NEXT_HIT_CRITICAL_TWICE_COUNT = 2.0
+
+#: The enemy modifiers Wearer of the Dead can lend, in their fixed places,
+#: counted from 1: a `wearing_enemy_modifier` row's value names one. The Death
+#: trees' slice C4d3 (2026-11-25), as ruled (W1): the five built modifiers that
+#: are a plain number on a player stat. `UCataclysmFervour::WornEnemyModifierRows`
+#: holds the same list, and a test holds the two equal. Appended to when a
+#: modifier is built on enemies and is a plain number too, never reordered. TO
+#: ADD ONE: append it here and to the engine's list, and give the vow its row at
+#: the new place; the condition's upper bound follows from this list's length.
+#: Issue #2899 builds every enemy modifier but the one button ability to work on
+#: any wearer and adds each here; the first expected source is the branch
+#: `feat/death-war-enemy-modifiers`.
+WORN_ENEMY_MODIFIERS = (
+    "Generic_Titanic_Resolve",
+    "Generic_Overpowered",
+    "Generic_Bloodthirsty",
+    "Generic_Unyielding",
+    "Generic_Relentless",
+)
+CONDITIONS["wearing_enemy_modifier"] = (
+    1.0, float(len(WORN_ENEMY_MODIFIERS)), CONDITIONS["wearing_enemy_modifier"][2])
+
+#: A cooldown reduction's Fraction Of that acts once for each whole hundred of
+#: the class resource held when the row acts: Relentless, the Death trees'
+#: slice C4d1 (2026-11-25). Accepted on the cooldown reductions alone.
+FRACTION_OF_HUNDREDS_HELD = "for_each_hundred_class_resource_held"
+
+#: The most seconds the Bleed left may be dealt over. A bound for typing
+#: mistakes; the one sentence is 2.
+MAX_BLEED_LEFT_SECONDS = 10.0
+
+#: The most its share may be, in per cent of the slain creature's maximum
+#: health. A bound for typing mistakes; the one sentence is 10.
+MAX_SLAIN_BURST_SHARE = 100.0
+
 #: The most its share may be, in per cent. A bound for typing mistakes, as
 #: `MAX_OVERKILL_EXPLOSION_SHARE` is; the one sentence is 50 to 100.
 MAX_KILLING_BLOW_EXPLOSION_SHARE = 1000.0
@@ -15077,6 +15910,151 @@ def _check_killing_blow_explosion_action(index: int, who: str, action: str,
             raise DataError(
                 f"Enchantment Effects row {index}: {who} explodes a killed enemy "
                 f"for a share of the blow that killed it and states {column} "
+                f"{written!r}. Its value is that share and nothing else, so the "
+                f"column must be empty.")
+
+
+def _check_bleed_left_to_strongest_action(index: int, who: str, action: str,
+                                          event: str, fraction_of: str,
+                                          kind: str, raw,
+                                          headers: dict[str, int]) -> None:
+    """Everything a Blood Debt row must say, and everything it must not. The
+    Death trees' slice C4c2 (2026-11-25). ON `afflicted_death` ONLY, the one
+    event naming a body that carried the wearer's ailment; the seconds are
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in BLEED_LEFT_TO_STRONGEST_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} passes a dead enemy's "
+            f"Bleed left on the event {event or '(none)'!r}. Only the death of "
+            f"an enemy carrying the wearer's ailment names that body: "
+            f"{', '.join(BLEED_LEFT_TO_STRONGEST_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} passes a dead enemy's "
+                f"Bleed left and states {column} {written!r}. Its value is the "
+                f"seconds and nothing else, so the column must be empty.")
+
+
+def _check_next_hit_critical_action(index: int, who: str, action: str,
+                                    event: str, fraction_of: str, kind: str,
+                                    raw, headers: dict[str, int]) -> None:
+    """Everything a Chain Execution row must say, and everything it must not.
+    The Death trees' slice C4d1 (2026-11-25). ON `kill` ONLY; the seconds are
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in NEXT_HIT_CRITICAL_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} makes the next hit a "
+            f"critical strike on the event {event or '(none)'!r}. Only a kill, "
+            f"an evasion or a full bar grants it: "
+            f"{', '.join(NEXT_HIT_CRITICAL_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} makes the next hit a "
+                f"critical strike and states {column} {written!r}. Its value is "
+                f"the seconds and nothing else, so the column must be empty.")
+
+
+def _check_fervour_hold_extended_action(index: int, who: str, action: str,
+                                        event: str, fraction_of: str, kind: str,
+                                        raw, headers: dict[str, int]) -> None:
+    """Everything a Keep the Count row must say, and everything it must not.
+    The Death trees' slice C6a (2026-11-25). ON `dodge` ONLY; the seconds are
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in FERVOUR_HOLD_EXTENDED_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} lengthens the hold before "
+            f"decay on the event {event or '(none)'!r}. Only an evasion does: "
+            f"{', '.join(FERVOUR_HOLD_EXTENDED_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} lengthens the hold "
+                f"before decay and states {column} {written!r}. Its value is "
+                f"the seconds and nothing else, so the column must be empty.")
+
+
+def _check_strongest_near_action(index: int, who: str, action: str,
+                                 event: str, fraction_of: str, kind: str,
+                                 raw, headers: dict[str, int]) -> None:
+    """Everything a Blade Echo or Thousand Cuts row must say, and everything it
+    must not. The Death trees' slice C6e (2026-11-25). ON `kill` ONLY; the per
+    cent is checked where the value is read. A fraction, a value kind and a scale
+    each mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in STRONGEST_NEAR_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} strikes the strongest enemy "
+            f"near on the event {event or '(none)'!r}. Only a kill does: "
+            f"{', '.join(STRONGEST_NEAR_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} strikes the strongest "
+                f"enemy near and states {column} {written!r}. Its value is the "
+                f"per cent and nothing else, so the column must be empty.")
+
+
+def _check_next_hit_critical_twice_action(index: int, who: str, action: str,
+                                          event: str, fraction_of: str, kind: str,
+                                          raw, headers: dict[str, int]) -> None:
+    """Everything a Twice Answered row must say, and everything it must not.
+    The Death trees' slice C6b4 (2026-11-25). ON `dodge` ONLY; the count is
+    checked where the value is read, and the chance is the Chance Percent. A
+    fraction, a value kind and a scale each mean nothing here, so each is
+    refused rather than dropped.
+    """
+    if event not in NEXT_HIT_CRITICAL_TWICE_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} doubles a critical strike "
+            f"charge on the event {event or '(none)'!r}. Only an evasion does: "
+            f"{', '.join(NEXT_HIT_CRITICAL_TWICE_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} doubles a critical "
+                f"strike charge and states {column} {written!r}. Its value is "
+                f"the count and nothing else, so the column must be empty.")
+
+
+def _check_slain_burst_action(index: int, who: str, action: str, event: str,
+                              fraction_of: str, kind: str, raw,
+                              headers: dict[str, int]) -> None:
+    """Everything a slain creature's burst row must say, and everything it
+    must not. The Death trees' slice C4c1 (2026-11-25). ON `kill` ONLY, for the
+    reason `_check_overkill_explosion_action` gives; the share is checked where
+    the value is read. A fraction, a value kind and a scale each mean nothing
+    here, so each is refused rather than dropped.
+    """
+    if event not in SLAIN_BURST_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} bursts a killed enemy for "
+            f"a share of its maximum health on the event {event or '(none)'!r}. "
+            f"Only a kill has a slain creature: {', '.join(SLAIN_BURST_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} bursts a killed enemy "
+                f"for a share of its maximum health and states {column} "
                 f"{written!r}. Its value is that share and nothing else, so the "
                 f"column must be empty.")
 
@@ -15516,6 +16494,10 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     # against in the engine.
     capstones = {row["Name"] for row in nodes
                  if str(row.get("Kind", "")).strip().lower() == "capstone"}
+    # AND WHAT EACH CAPSTONE ITSELF SAYS, for the one row a capstone may carry
+    # with no option: a clause its own sentence states (`capstone_states_a_clause`).
+    capstone_sentences = {row["Name"]: str(row.get("Description", "")) for row in nodes
+                          if row["Name"] in capstones}
 
     stats = ({row["Stat"] for row in class_rows} if class_rows else set()) | \
             ({row["Stat"] for row in attribute_rows} if attribute_rows else set()) | \
@@ -15604,11 +16586,13 @@ def validate_passive_effects(tables: dict[str, list[dict]],
                 f"PassiveEffects/{row['Name']}: names capstone option {option} "
                 f"and {row['Node']} is not a capstone, so the row would be "
                 f"skipped every time and grant nothing")
-        elif is_capstone and not option:
+        elif is_capstone and not option and not capstone_states_a_clause(
+                capstone_sentences.get(row["Node"], "")):
             problems.append(
                 f"PassiveEffects/{row['Name']}: {row['Node']} is a capstone and "
                 f"the row names no option, so it would apply whichever of the "
-                f"three the player picked")
+                f"three the player picked. Only a capstone whose own sentence "
+                f"states a clause beside its choice may carry such a row.")
 
     # AND A SCALE ONLY WHERE SOMETHING ASKS FOR THE STAT. Issue #1973: a
     # scaled row on a stat nothing asks for is accepted, built, imported and
@@ -15619,6 +16603,10 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     # AND NO NODE GRANTS CLASS POINTS, which the game reads from worn rows only.
     problems.extend(
         refuse_a_class_point_row_the_game_cannot_count("PassiveEffects", effects))
+
+    # AND NO ACTION ON A KILL ASKS THE KILL'S OWN CLOCK, where it always holds.
+    # Ruled 2026-11-25 (the Death trees' slice C).
+    problems.extend(refuse_a_kill_clock_on_a_kill_action("PassiveEffects", effects))
 
     return problems
 
@@ -15832,6 +16820,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW COUNTING ENEMIES ONLY WHILE ANOTHER ROW'S STACK IS HELD HAS
     # THAT ROW BESIDE IT. Ruled by the project owner on 2026-10-17.
     problems.extend(refuse_a_window_scale_with_no_own_stack_row(
+        "EnchantmentEffects", effects))
+
+    # AND NO ACTION ON A KILL ASKS THE KILL'S OWN CLOCK, where it always holds.
+    # Ruled 2026-11-25 (the Death trees' slice C).
+    problems.extend(refuse_a_kill_clock_on_a_kill_action(
         "EnchantmentEffects", effects))
 
     # AND THE DEATH FLAG AND THE TYRANT'S MINION'S SECONDS ARE FLAT, WITH NO

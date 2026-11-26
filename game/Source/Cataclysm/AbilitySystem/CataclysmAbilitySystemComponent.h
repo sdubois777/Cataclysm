@@ -511,7 +511,7 @@ public:
 	 * nothing rather than negative damage.
 	 */
 	float MultiplierForStatAgainst(FName Stat, const FGameplayTagContainer& Tags,
-								   const AActor* Target) const;
+								   const AActor* Target, const AActor* AskingMinion = nullptr) const;
 
 	/**
 	 * A figure with only this character's modifiers on `Stat` that NAME
@@ -672,10 +672,17 @@ public:
 	 *                   in a row on one enemy. Issue #1833, phase 2. Null when
 	 *                   the event names nobody, and such a row then counts
 	 *                   nothing.
+	 * @param OnlyRowsWhoseKeyBegins  null for every row; otherwise only the rows whose
+	 *                   trigger key begins with this, which is a row's enchantment
+	 *                   name (`Passive_<node>` for a passive row). The Death trees'
+	 *                   slice C4b2 (2026-11-25): Death's Toll raises `kill` for a
+	 *                   follower's kill to the Soul Collector's own rows alone, as
+	 *                   ruled, read from what each row already holds.
 	 */
 	void ActOnEvent(FName Event, const FGameplayTagContainer* EventTags = nullptr,
 					float EventAmount = 0.0f, bool bLanded = true,
-					const AActor* EventTarget = nullptr);
+					const AActor* EventTarget = nullptr,
+					const TCHAR* OnlyRowsWhoseKeyBegins = nullptr);
 
 	/** Whether this character's worn rows are acting on an event now. See `PoolActionDepth`. Issue #2482. */
 	bool IsActingOnAnEvent() const { return PoolActionDepth > 0; }
@@ -763,13 +770,10 @@ public:
 	 * in turn, so the explosion is made AFTER the loop has returned. The loop keeps the share here, the largest
 	 * of the rows that asked, and the caller takes it.
 	 *
-	 * WHAT THE SECOND PART MUST DO, at the one place the wearer raises `kill`. NOT BUILT YET.
-	 *   1. Raise the event as now: `ActOnEvent(FName(TEXT("kill")), ...)`.
-	 *   2. When that has returned, call this.
-	 *   3. If the answer is above nought, call `UCataclysmSkillEffects::ExplodeForOverkill` with the wearer as
-	 *      the killer, the death notice's victim and location, the overkill of the blow that killed, and this
-	 *      share. That overkill is `FCataclysmDamageResult::Overkill` of the lethal blow, which the death notice
-	 *      does not carry yet: it has to be kept on the last blow on record and copied to the notice.
+	 * THE SECOND PART IS BUILT, at the one place the wearer raises `kill`: `ACataclysmPlayerCharacter::OnSomethingDied`
+	 * raises the event, then takes this share and `TakePendingOverkillExplosionRadiusCm`, and hands
+	 * `UCataclysmSkillEffects::ExplodeForOverkill` the death notice's overkill. (This said "NOT BUILT YET" until the
+	 * Death trees' slice C4c1, 2026-11-25, long after it was built.)
 	 * Taken before the explosion and not after, so an enemy the explosion kills finds nothing left over from the
 	 * kill before it and records its own.
 	 *
@@ -789,6 +793,169 @@ public:
 		return Was;
 	}
 	float PendingOverkillExplosionShare() const { return PendingOverkillExplosionSharePercent; }
+
+	/**
+	 * The radius the overkill explosion of the kill in hand reaches, in centimetres: the largest any row that asked
+	 * gives (see `OverkillExplosionRadiusMetresStat`). Read once and cleared, with the share; the old
+	 * `UCataclysmSkillEffects::OverkillExplosionRadiusCm` when no row recorded one, and while the event loop runs. The
+	 * Death trees' slice C4c1 (2026-11-25).
+	 */
+	float TakePendingOverkillExplosionRadiusCm();
+
+	/**
+	 * The share of its maximum health the enemy just killed bursts for, in per cent, when a worn row says so: The
+	 * Ferryman. Read once and cleared; nought while the event loop runs. The Death trees' slice C4c1 (2026-11-25). See
+	 * `FCataclysmPoolAction::bBurstSlainForMaximumHealth`.
+	 */
+	float TakePendingSlainBurstSharePercent()
+	{
+		if (PoolActionDepth > 0)
+		{
+			return 0.0f;
+		}
+		const float Was = PendingSlainBurstSharePercent;
+		PendingSlainBurstSharePercent = 0.0f;
+		return Was;
+	}
+
+	/**
+	 * Mark, around the rows a kill raises, whether that kill was made by a hit: Passed On's
+	 * `ECataclysmStatCondition::KillingBlowWasAHit` reads it. Set by the player's kill handler from the death notice
+	 * (`!bByDamageOverTime`) and cleared when the rows have acted. The Death trees' slice C4c1 (2026-11-25).
+	 */
+	void SetActingOnAKillByAHit(bool bByAHit) { bActingOnAKillByAHit = bByAHit; }
+	bool IsActingOnAKillByAHit() const { return bActingOnAKillByAHit; }
+
+	/**
+	 * Record, on THIS character, that it stood near an enemy `Killer` killed, now. Grim Wake's record, kept on the
+	 * character marked and keyed by the killer, as `NoteStruckBy`'s is. The Death trees' slice C4c2 (2026-11-25).
+	 */
+	void NoteNearKillBy(const UAbilitySystemComponent* Killer);
+
+	/** How long ago this character stood near a kill of `Killer`'s, in seconds, or -1 if it never has. */
+	float SecondsSinceNearKillBy(const UAbilitySystemComponent* Killer) const;
+
+	/**
+	 * Record, on THIS character, that `Striker`'s movement skill has just struck it. Glancing Cuts' record, kept on the
+	 * character struck and keyed by the striker, as `NoteNearKillBy`'s is. The Death trees' slice C6b2 (2026-11-25).
+	 * Written by `UCataclysmSkillEffects::ApplyHit`.
+	 */
+	void NoteStruckByMovementSkillOf(const UAbilitySystemComponent* Striker);
+
+	/** How long ago `Striker`'s movement skill struck this character, in seconds, or -1 if it never has. */
+	float SecondsSinceStruckByMovementSkillOf(const UAbilitySystemComponent* Striker) const;
+
+	/**
+	 * The widest `ReachMetres` of this character's stat rows under `Condition` (in either condition column), or nought
+	 * when none carries one. Grim Wake's marking reads it at the kill, as ruled: the 3 metres are the rows' own. The
+	 * Death trees' slice C4c2 (2026-11-25).
+	 */
+	float WidestReachOfCondition(ECataclysmStatCondition Condition) const;
+
+	/**
+	 * Mark, around the payment and the rows of a kill, whether that kill was an execute: Reaper's Edge's
+	 * `ECataclysmStatCondition::KillWasAnExecute` reads it. Set by the player's kill handler from the death notice
+	 * (`bByAnExecute`) and cleared when the rows have acted. The Death trees' slice C4d1 (2026-11-25).
+	 */
+	void SetActingOnAKillByAnExecute(bool bByAnExecute) { bActingOnAKillByAnExecute = bByAnExecute; }
+
+	/**
+	 * Whether THIS character is being killed by an execute right now: true only while `ExecuteIfLeftBelow` kills it, so
+	 * the death notice built inside that kill says so (`FCataclysmDeathNotice::bByAnExecute`). A set bonus's cull, which
+	 * shares `KillIfLeftBelow`, does not set it. The Death trees' slice C4d1 (2026-11-25).
+	 */
+	bool IsBeingExecuted() const { return bBeingExecuted; }
+
+	/**
+	 * Whether this character's next hit is to be a critical strike: a Chain Execution charge granted on a kill and not
+	 * yet run out or used. Read by the defender's attribute set when it builds the hit; a landed critical strike made
+	 * with it uses it (`SpendNextHitCritical`). The Death trees' slice C4d1 (2026-11-25).
+	 */
+	bool HoldsNextHitCritical() const;
+
+	/**
+	 * Use up one critical strike of the charge, so the hit after is rolled as usual once none is left. The charge holds
+	 * two after an evasion Twice Answered doubled (the Death trees' slice C6b4, 2026-11-25), and one otherwise.
+	 */
+	void SpendNextHitCritical()
+	{
+		NextHitCriticalCharges = FMath::Max(0, NextHitCriticalCharges - 1);
+		if (NextHitCriticalCharges == 0)
+		{
+			NextHitCriticalUntilSeconds = -1.0f;
+		}
+	}
+
+	/** How many critical strikes the charge holds now: 0, 1 or 2. Read by tests. */
+	int32 NextHitCriticalChargesHeld() const { return HoldsNextHitCritical() ? NextHitCriticalCharges : 0; }
+
+	/**
+	 * Record, on THIS character, that `Applier`'s Poison has just begun on it after a time carrying none of it.
+	 * Festering's record, kept on the character poisoned and keyed by the applier, as Grim Wake's is. The Death trees'
+	 * slice C6b4 (2026-11-25). Written by `UCataclysmSkillEffects::ApplyDamageOverTime` when it lays a Poison of
+	 * `Applier`'s on a character carrying none: a Poison laid while one is running continues the time, so a break is
+	 * a time with none of the applier's Poison on the character.
+	 */
+	void NotePoisonBeganBy(const AActor* Applier);
+
+	/**
+	 * How long `Applier`'s Poison has run on this character without a break, in seconds, or -1 when it carries none of
+	 * it. See `NotePoisonBeganBy`.
+	 */
+	float SecondsPoisonedBy(const AActor* Applier) const;
+
+	/**
+	 * `SecondsPoisonedBy` of the character `Carrier`, for the Poison of the avatar of `Asker`: the reading
+	 * `ECataclysmStatScale::PerSecondPoisonedByYou` takes. -1 when either is missing.
+	 */
+	static float SecondsPoisonedByAsker(const UAbilitySystemComponent* Asker, const AActor* Carrier);
+
+	/**
+	 * How many times a row based on `ForEachHundredClassResourceHeld` acts: the whole hundreds of the class resource this
+	 * character holds now, as `class_resource_held` counts it, never below nought. Relentless, the Death trees' slice
+	 * C4d1 (2026-11-25).
+	 */
+	float TimesSizedByFervourHeld() const;
+
+	/**
+	 * Mark, around a hit whose skill counts every hit as from behind (`RearHits=1`), that this character is striking from
+	 * behind by that rule, so `target_struck_from_behind` holds for it whatever the geometry says. Set and cleared by
+	 * `UCataclysmSkillTemplate` around the strike. The Death trees' slice C6b1 (2026-11-25), From Behind's "hits a skill
+	 * counts as struck from behind".
+	 */
+	void SetStrikingFromBehindByRule(bool bByRule) { bStrikingFromBehindByRule = bByRule; }
+	bool IsStrikingFromBehindByRule() const { return bStrikingFromBehindByRule; }
+
+	/** Patient Blade's clock: record a payment for a Boss tick now. The Death trees' slice C4d2 (2026-11-25). */
+	void NoteBossTickPaid();
+
+	/** How long ago the last payment for a Boss tick was made, in seconds, or -1 if none has been. */
+	float SecondsSinceBossTickPaid() const;
+
+	/**
+	 * Death by Inches' count: add one landed hit on `Boss` and answer the count, kept per creature and never reset, as
+	 * ruled. The Death trees' slice C4d2 (2026-11-25).
+	 */
+	int32 CountBossHit(const AActor* Boss);
+
+	/**
+	 * Wearer of the Dead's record: the enemy modifier at `Place` of `UCataclysmFervour::WornEnemyModifierRows` (counted
+	 * from 1) is worn for `Seconds` from now. A second record of the same place sets it to the full seconds again; it
+	 * never stacks, as ruled. The Death trees' slice C4d3 (2026-11-25).
+	 */
+	void NoteWornEnemyModifier(int32 Place, float Seconds);
+
+	/** The seconds the modifier at `Place` has left to be worn, or nought when it is not worn. */
+	float WornEnemyModifierSecondsLeft(int32 Place) const;
+
+	/** The places of the modifiers worn now, as `FCataclysmStatConditions::WornEnemyModifierPlaces` holds them. */
+	TArray<int32> WornEnemyModifierPlacesNow() const;
+
+	/**
+	 * Whether this character holds a stat row under `wearing_enemy_modifier` at `Place`, in either condition column:
+	 * only such a modifier is recorded, so a character without the vow wears nothing and shows nothing.
+	 */
+	bool HoldsARowWearing(int32 Place) const;
 
 	/**
 	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
@@ -1359,13 +1526,15 @@ public:
 								bool* bOutRollSucceeded = nullptr);
 
 	/**
-	 * The two cooldown reduction action names and the next-spell cooldown
-	 * charge. Issue #1833, the cooldown reduction action.
-	 * `tools/generate_datatables.py` holds the first two in
-	 * `COOLDOWN_REDUCE_ACTIONS` and the third in `NEXT_USE_ACTIONS`.
+	 * The three cooldown reduction action names and the next-spell cooldown
+	 * charge. Issue #1833, the cooldown reduction action; `others` is the Death
+	 * trees' slice C3b, for Turn of the Wheel.
+	 * `tools/generate_datatables.py` holds the first three in
+	 * `COOLDOWN_REDUCE_ACTIONS` and the fourth in `NEXT_USE_ACTIONS`.
 	 */
 	static const TCHAR* CooldownReduceAllAction;
 	static const TCHAR* CooldownReduceHeavyAction;
+	static const TCHAR* CooldownReduceOthersAction;
 	static const TCHAR* NextSpellCooldownReducedAction;
 
 	/**
@@ -1696,6 +1865,22 @@ public:
 	bool bHitBeingAnnouncedIsATick = false;
 
 	/**
+	 * The share of maximum health, in per cent, that the hit being announced as `hit_taken` took from health, for
+	 * `HitTookAtLeastPercentOfMaxHealth`; -1 at every other moment. The Death trees' slice C6d2 (2026-11-25). WRITTEN BY
+	 * `NoteHitTaken` ONLY, for the length of its announcement. `hit_taken` carries the same share as its amount, as
+	 * ruled; the condition reads this because an action's condition is judged without the amount in hand.
+	 */
+	float HitBeingAnnouncedPercentOfMaxHealth = -1.0f;
+
+	/**
+	 * True while `CurrentConditions` is counting what followers hold back of the class resource. Window death3-w2 found
+	 * the cycle: `UCataclysmCommand::ReservedFervourAmong` asks `UCataclysmSecondSelf::Chosen`, which asks a stat, which
+	 * asks `CurrentConditions` again, without end, and the editor stopped on a stack overflow. A reading made inside
+	 * that count leaves the reserve at nought; the Second Self's flag is no full-bar row, so nothing it reads changes.
+	 */
+	mutable bool bCountingFervourReserve = false;
+
+	/**
 	 * Move this character to a random reachable point within this many metres of where it stands, or leave it where
 	 * it stands. Ruled 2026-10-12, for "Teleport to a random location within 4 meters when hit".
 	 *
@@ -1975,6 +2160,69 @@ public:
 	static const TCHAR* ExplodeVictimForOverkillAction;
 
 	/**
+	 * The action that makes an enemy the wearer kills burst for a share of its maximum health: The Ferryman. The Death
+	 * trees' slice C4c1 (2026-11-25). `tools/generate_datatables.py` holds the same name as `SLAIN_BURST_ACTION`. See
+	 * `FCataclysmPoolAction::bBurstSlainForMaximumHealth`.
+	 */
+	static const TCHAR* BurstSlainForMaximumHealthAction;
+
+	/**
+	 * The radius, in metres, a passive node's overkill explosion reaches: Passed On's "within 3 metres of it". The Death
+	 * trees' slice C4c1 (2026-11-25). Read only for a row whose trigger key begins `Passive_`; an item's row keeps
+	 * `UCataclysmSkillEffects::OverkillExplosionRadiusCm`, and the explosion takes the largest radius any row that asked
+	 * gives, as ruled. No attribute and no base.
+	 */
+	static const TCHAR* OverkillExplosionRadiusMetresStat;
+
+	/**
+	 * The action that passes the wearer's Bleed left on an enemy that died to the strongest enemy near it: Blood Debt.
+	 * The Death trees' slice C4c2 (2026-11-25). `tools/generate_datatables.py` holds the same name as
+	 * `BLEED_LEFT_TO_STRONGEST_ACTION`. See `FCataclysmPoolAction::bPassBleedLeftToStrongest`.
+	 */
+	static const TCHAR* PassBleedLeftToStrongestAction;
+
+	/**
+	 * The action that makes the wearer's next landed hit within its seconds a critical strike: Chain Execution. The Death
+	 * trees' slice C4d1 (2026-11-25). `tools/generate_datatables.py` holds the same name as `NEXT_HIT_CRITICAL_ACTION`.
+	 */
+	static const TCHAR* CriticalNextHitAction;
+
+	/**
+	 * The action that takes seconds off the movement skill's running cooldown: the Shadow's Find the Rhythm and Sidestep.
+	 * The Death trees' slice C6a (2026-11-25). `tools/generate_datatables.py` holds the same name in
+	 * `COOLDOWN_REDUCE_ACTIONS`.
+	 */
+	static const TCHAR* CooldownReduceMovementAction;
+
+	/**
+	 * The action that lengthens a running hold before the Fervour decay: the Shadow's Keep the Count. The Death trees'
+	 * slice C6a (2026-11-25). `tools/generate_datatables.py` holds the same name as `FERVOUR_HOLD_EXTENDED_ACTION`.
+	 */
+	static const TCHAR* FervourHoldExtendedAction;
+
+	/**
+	 * The action that makes the critical strike charge an evasion grants hold two, on a roll of its Chance Percent:
+	 * the Shadow's Twice Answered. The Death trees' slice C6b4 (2026-11-25). `tools/generate_datatables.py` holds the
+	 * same name as `NEXT_HIT_CRITICAL_TWICE_ACTION`. NOT NAMED WITH "Next" FIRST, because
+	 * `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` reads such names as next-use actions.
+	 */
+	static const TCHAR* CriticalTwiceOnEvasionAction;
+
+	/**
+	 * The two kill actions of the Shadow's 50 and 200 vows, the Death trees' slice C6e (2026-11-25): Blade Echo's hit on
+	 * the strongest enemy near, and Thousand Cuts' move beside it and hit. The same names as
+	 * `STRIKE_STRONGEST_NEAR_ACTION` and `DASH_TO_STRONGEST_AND_STRIKE_ACTION` in `tools/generate_datatables.py`.
+	 */
+	static const TCHAR* StrikeStrongestNearAction;
+	static const TCHAR* DashToStrongestAndStrikeAction;
+
+	/** "The strongest enemy within 10 metres": Blade Echo's and Thousand Cuts' reach. */
+	static constexpr float StrongestNearReachCm = 1000.0f;
+
+	/** This character's own Shadow mark if it is alive and within `RadiusCm`, else the strongest enemy that near. */
+	AActor* MarkedOrStrongestNear(float RadiusCm) const;
+
+	/**
 	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
 	 * the wearer's attack damage. Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name as
 	 * `STRIKE_TARGET_ACTION`. See `FCataclysmPoolAction::bStrikeTarget`.
@@ -2131,9 +2379,31 @@ public:
 	 * more than that left is removed: an overflow ends it and nothing carries
 	 * over, ruled 2026-09-25. A slot not cooling down is untouched.
 	 *
+	 * @param EventTags the event's tags, which name the slot of the skill that
+	 *        raised it; read only by a reduction of every other skill's cooldown
 	 * @return how many cooldowns were shortened or ended
 	 */
-	int32 ReduceCooldowns(const FCataclysmPoolAction& Action);
+	int32 ReduceCooldowns(const FCataclysmPoolAction& Action,
+						  const FGameplayTagContainer* EventTags = nullptr);
+
+	/**
+	 * How many times an action row acts for one event: the whole units of the
+	 * event's amount for `ForEachOfEventAmount`, its whole tens for
+	 * `ForEachTenOfEventAmount`, and once for every other base. The Death trees'
+	 * slice C3b. `ActOnEvent` multiplies the row's value by it.
+	 *
+	 * ROUNDED DOWN, with a ten-thousandth's allowance so a figure the arithmetic
+	 * left at 2.9999998 is the three it was meant to be: 19 is one ten, 3.75 is
+	 * three, 9 is no ten and the row does nothing.
+	 */
+	static float TimesSizedByEventAmount(ECataclysmPoolActionBase Base, float EventAmount);
+
+	/**
+	 * The slot of the skill an event names, read off its `Slot.*` tag, or None
+	 * when it names none. What a reset of every other cooldown and a reduction
+	 * of every other cooldown leave out.
+	 */
+	static ECataclysmAbilitySlot SlotOfTheEventsSkill(const FGameplayTagContainer* EventTags);
 
 	/**
 	 * Spend every held next-spell cooldown charge and answer the seconds they
@@ -4265,7 +4535,8 @@ public:
 	 *                         not.
 	 * @param bDamageOverTime  whether the blow was a tick and not a hit
 	 */
-	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime);
+	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime,
+					  float PercentOfMaxHealthLost = -1.0f);
 
 	/**
 	 * The same, for a blow that landed. Kept as a form of its own rather than
@@ -4536,6 +4807,278 @@ public:
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceStruckABoss() const;
+
+	/**
+	 * Record that this character has just killed an enemy, and that the Death classes' decay after a kill waits
+	 * `GraceSeconds` from now. The Death trees of 2026-11-24.
+	 *
+	 * CALLED BY `UCataclysmFervour::NoteOwnKill`, from `ACataclysmPlayerCharacter::OnSomethingDied` for a death credited
+	 * to this character, so the clock `seconds_after_kill` reads and the decay's grace are stamped by the same kill.
+	 *
+	 * THE HOLD NEVER SHORTENS. A Soul Collector's Elite kill holds the decay off for 8 seconds; a common kill a second
+	 * later gives 4 from then, which ends sooner, so the hold stays where the Elite kill put it. A judgement: "holds off
+	 * the decay for 8 seconds rather than 4" would be broken by the next ordinary kill otherwise.
+	 */
+	void NoteOwnKill(float GraceSeconds);
+
+	/** How long ago this character last killed an enemy, in seconds, or -1 if it never has. */
+	float SecondsSinceOwnKill() const;
+
+	/**
+	 * Record that this character has just spent `Amount` Fervour, and raise `fervour_spent` with that amount and the
+	 * spending skill's tags. The Death trees' slice C3a (2026-11-25): the clock `seconds_after_fervour_spent` reads,
+	 * and an action row on `fervour_spent` whose `EventValue` is N acts only when N or more was spent at once ("after
+	 * you spend 10 or more Fervour at once").
+	 *
+	 * CALLED WHERE A SKILL PAYS ITS FERVOUR COST (`UCataclysmGameplayAbility::ApplyCost`), beside `resource_consumed`,
+	 * which also fires for a next-use charge spent and so cannot stand for Fervour. The Fervour mechanics' own spends
+	 * (Wrung Out, Bought With Ruin) raise nothing, by the rule `NoteResourceConsumed` states. Nothing for an amount
+	 * of nothing or less.
+	 *
+	 * @param bTakenFromThePool false for Fervour only COUNTED as spent, which nothing took from the pool: Bound
+	 *        Offering's share of a reserve held (`UCataclysmCommand::HoldReserve`). Every row reading a spend reads it
+	 *        alike; only Cinders Kept's return asks, because there is nothing to return of Fervour never taken. Ruled
+	 *        by the coordinating session on 2026-11-25 (the Death trees' slice C3c).
+	 */
+	void NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags = nullptr,
+						  bool bTakenFromThePool = true);
+
+	/** How long ago this character last spent Fervour, in seconds, or -1 if it never has. */
+	float SecondsSinceFervourSpent() const;
+
+	/**
+	 * The stat holding the share of each spend of Fervour that returns `FervourReturnedAfterSeconds` later, in per
+	 * cent: Cinders Kept, "3% per point of the Fervour you spend returns to you 4 seconds later". The Death trees' slice
+	 * C3c (2026-11-25). Read by `NoteFervourSpent` with the spending skill's tags; no gameplay attribute and no base.
+	 */
+	static const TCHAR* FervourSpentReturnedPercentStat;
+
+	/** How long after a spend its returned share arrives: Cinders Kept's "4 seconds later". */
+	static constexpr float FervourReturnedAfterSeconds = 4.0f;
+
+	/**
+	 * Add to the pool every returned share of a spend that is due by now, as far as the Fervour that may be held
+	 * allows, and forget it. Run on the regeneration step, so a share lands up to one step after it is due. Not scaled
+	 * by how fast the class resource generates: it is Fervour coming back, not Fervour made. Returns what was added.
+	 */
+	float ReturnFervourDue();
+
+	/** The Fervour still waiting to return, every share due or not, for tests and the death that forgets it. */
+	float FervourWaitingToReturn() const;
+
+	/**
+	 * The stat holding the seconds between two lethal blows that Fervour saves: Phylactery, "A blow that would kill
+	 * you instead spends all your Fervour (at least 50) and leaves you at that many percent of your health. Once every
+	 * 60 seconds." The Death trees' slice C3c (2026-11-25). Above nought means the save is held. No gameplay attribute
+	 * and no base.
+	 */
+	static const TCHAR* FervourLethalSaveEverySecondsStat;
+
+	/** The least Fervour Phylactery's save needs held: "(at least 50)". */
+	static constexpr float FervourLethalSaveLeast = 50.0f;
+
+	/**
+	 * The stat holding how much sooner every Fervour threshold is reached: Generous Count, "Each Fervour threshold is
+	 * reached 1 Fervour sooner per point". The Death trees' slice C3d (2026-11-25). No gameplay attribute and no base.
+	 * READ WITH NO READING (`StatWithNoReading`), because it is asked while the conditions are filled; so the generator
+	 * refuses a condition or a scale on it, as it does for any stat not on its asker lists.
+	 */
+	static const TCHAR* FervourThresholdReductionStat;
+
+	/**
+	 * The stat holding how many seconds a Fervour threshold stays reached after the Fervour held falls below it: Long
+	 * Shadow, "Each Fervour threshold you reach stays in effect for 5 seconds after you fall below it". The Death trees'
+	 * slice C3d. Read with no reading, as the reduction above is.
+	 */
+	static const TCHAR* FervourThresholdLingerSecondsStat;
+
+	/**
+	 * The stat holding how much faster running cooldowns recover, in per cent: the fourth vow's clause, "while you hold
+	 * 100 or more Fervour ... your skill cooldowns recover twice as fast", is 100. The Death trees' slice C3d. A RATE, as
+	 * the coordinating session ruled on 2026-11-25: `FervourThresholdStep` takes that share of each regeneration step's
+	 * seconds off every running cooldown, so crossing 100 speeds a cooldown already running and falling below slows it
+	 * again. Asked through the pipeline with the character's state, so its row's condition is judged. No attribute.
+	 */
+	static const TCHAR* CooldownsRecoverFasterPercentStat;
+
+	/**
+	 * The stat holding the share, in per cent, of what this character's minions, gadgets and traps hold back that counts
+	 * as Fervour held: Chained Souls, "8% per point". The Death trees' slice C3e (2026-11-25). Read with no reading
+	 * (`StatWithNoReading`), because it is asked while the conditions are filled. No attribute and no base.
+	 */
+	static const TCHAR* ReservedFervourCountsAsHeldPercentStat;
+
+	/** Chained Souls' share of `Reserved` Fervour held back, counted as held: nought without the node. */
+	float ReservedFervourCountedAsHeld(float Reserved) const;
+
+	/**
+	 * Which of the four Fervour thresholds are reached by a character holding `Held` Fervour with `PointsSpent` passive
+	 * points spent: one bit each, bit 0 the threshold at 20. A threshold is reached when it is OPEN (its points spent)
+	 * and either `Held` reaches its figure less `FervourThresholdReductionStat`, or `FervourThresholdLingerSecondsStat`
+	 * seconds have not passed since `NoteFervourThresholdsHeld` last saw it held. -1 when `Held` or `PointsSpent` is
+	 * unknown (negative). `CurrentConditions` asks it once a fill; public for tests.
+	 */
+	int32 FervourThresholdsReachedFor(float Held, int32 PointsSpent) const;
+
+	/**
+	 * Record now as the last time each threshold `Held` Fervour reaches was held, whether or not it is open, for Long
+	 * Shadow. Called JUST BEFORE THE FERVOUR HELD FALLS, by `UCataclysmClassResourceAttributeSet::PreAttributeChange`
+	 * with the amount it is falling from, and on every regeneration step with the amount held, which catches a threshold
+	 * lost without a fall. The Death trees' slice C3d.
+	 */
+	void NoteFervourThresholdsHeld(float Held);
+
+	/**
+	 * The regeneration step's work for the Fervour thresholds: record the thresholds held now (Long Shadow), and take
+	 * `CooldownsRecoverFasterPercentStat`'s share of `StepSeconds` off every running cooldown (the fourth vow). Returns
+	 * the seconds taken off, nought when none. The Death trees' slice C3d.
+	 */
+	float FervourThresholdStep(float StepSeconds);
+
+	/**
+	 * A stat evaluated from this character's recorded line with NO READING of its state: no skill tags and default
+	 * conditions, as `AttributePlusWhatWasNotFolded` evaluates what the refresh folded. For a stat asked while the
+	 * conditions themselves are being filled, which could not ask them without asking itself. Nought with no line.
+	 */
+	float StatWithNoReading(FName Stat) const;
+
+	/**
+	 * Whether a lethal blow is saved by spending Fervour now: the stat is held, its seconds have passed since the last
+	 * such save, and at least `FervourLethalSaveLeast` is held.
+	 */
+	bool MaySaveLethalBlowWithFervour() const;
+
+	/**
+	 * Take every Fervour held for Phylactery's save and start its wait, when `MaySaveLethalBlowWithFervour`; returns
+	 * what was taken, nought when nothing was. RAISES NOTHING: the caller sets health and then calls
+	 * `NoteFervourSpent`, so a row healing on the spend heals on top of the health the save leaves rather than being
+	 * written over by it. `UCataclysmVitalAttributeSet` is the caller.
+	 */
+	float TakeFervourForLethalSave();
+
+	/**
+	 * Whether the decay after the last kill is still held off: true until the time the last kill's grace ran to, and
+	 * false for a character that has never killed, whose Fervour came from somewhere else and decays at once.
+	 */
+	bool KillDecayIsHeld() const;
+
+	/**
+	 * The seconds Unbroken Chain adds to a chain of kills: the `kill_chain_seconds` line, worked out with no condition
+	 * judged (its rows state none, and asking through `StatForSkill` would ask `CurrentConditions`, which asks this).
+	 * 0 for a character without the node. The Death trees' slice C6c (2026-11-25).
+	 */
+	float KillChainSecondsHeld() const;
+
+	/**
+	 * Record that a gain could not fit `Overflow` Fervour above the full bar: one overflow stack for each whole Fervour,
+	 * and the shared window restarted at `WindowSeconds`. The fraction is lost. Overflow, the Death trees' slice C6c
+	 * (2026-11-25), as ruled. Called by `UCataclysmFervour::RaisePool`.
+	 */
+	void NoteFervourOverflow(float Overflow, float WindowSeconds);
+
+	/** The overflow stacks held now, 0 once their window has run out. See `NoteFervourOverflow`. */
+	int32 FervourOverflowStacksHeld() const;
+
+	/**
+	 * Add `PercentLost` of maximum health lost to damage towards Soulbound's loss, and answer how many whole Fervour it
+	 * now costs at `PercentPerFervour` each, keeping the remainder. The Death trees' slice C6c (2026-11-25), as ruled.
+	 */
+	int32 AccumulateHealthLostForFervour(float PercentLost, float PercentPerFervour);
+
+	/**
+	 * The grace the last kill set, in seconds: the full length of the hold it began. -1 for a character that has never
+	 * killed. Recorded by `NoteOwnKill`. The Death trees' slice C4b1 (2026-11-25), for Kindred Fires and Borrowed Time,
+	 * whose "full length" it is, as ruled.
+	 */
+	float LastKillGraceSeconds() const { return LastKillDecayGraceSeconds; }
+
+	/**
+	 * Hold the decay off from now for `Seconds`, as a kill does: Kindred Fires, "the time before your Fervour begins to
+	 * decay starts again". THE HOLD NEVER SHORTENS, as `NoteOwnKill` says: a hold already running longer is kept. The
+	 * Death trees' slice C4b1 (2026-11-25).
+	 */
+	void RestartKillDecayHold(float Seconds);
+
+	/**
+	 * Lengthen a hold that is still running by `Seconds`, never past now plus `FullLengthSeconds` and never shortening
+	 * it: Borrowed Time, "the time before your Fervour begins to decay is extended by 1 second for every 3 points, never
+	 * past its full length". A hold that has ended, or never began, is not extended, as ruled: once decay has begun
+	 * there is no time before it left to lengthen. The Death trees' slice C4b1 (2026-11-25).
+	 */
+	void ExtendKillDecayHold(float Seconds, float FullLengthSeconds);
+
+	/**
+	 * Mark the start and the end of paying a kill's Fervour (`UCataclysmFervour::GainOnOwnKill`). The Death trees' slice
+	 * C4b1 (2026-11-25). While one is open, a gain is a kill's payment: Any Fuel's condition
+	 * (`ECataclysmStatCondition::FervourGainNotFromAKill`) refuses, and neither Kindred Fires nor Borrowed Time touches
+	 * the hold, which the kill's own stamp sets. COUNTED
+	 * RATHER THAN A FLAG, so a payment made inside another leaves the outer one marked. A skill's own kill Fervour must
+	 * open one too when it lands, as the coordinating session ruled.
+	 */
+	void BeginKillPayment() { ++KillPaymentsOpen; }
+	void EndKillPayment() { KillPaymentsOpen = FMath::Max(0, KillPaymentsOpen - 1); }
+
+	/** Whether a kill's Fervour is being paid now. See `BeginKillPayment`. */
+	bool IsPayingForAKill() const { return KillPaymentsOpen > 0; }
+
+	/**
+	 * Record Fervour a decay just took, with the time: the Death decay after a kill and the Ravager's decay out of
+	 * contact both call this. Reclaimed gives back what was taken shortly before a kill (`TakeFervourDecayedWithin`).
+	 * The Death trees' slice C4b2 (2026-11-25), as ruled: both decays count. Nothing for an amount of nought or less.
+	 */
+	void NoteFervourDecayed(float Amount);
+
+	/**
+	 * Answer the Fervour the decays took in the last `Seconds`, and forget every record, so a second kill a moment later
+	 * gives nothing back twice. Older records are forgotten too, because a later kill's window starts later still and
+	 * could never reach them. The Death trees' slice C4b2 (2026-11-25), for Reclaimed.
+	 */
+	float TakeFervourDecayedWithin(float Seconds);
+
+	/**
+	 * A stat as if asked against a creature of rarity rung `RarityStep` (0 common, 1 Elite ...) with no creature in
+	 * hand, so a row under `target_rarity_is` or `target_rarity_at_least` can be judged. The Death trees' slice C4b1
+	 * (2026-11-25): before any kill, the full length of the decay hold is a common kill's grace, as ruled, and the grace
+	 * rows are written against the slain creature's rung. Everything else is read as `StatForSkill` reads it with no
+	 * tags and no target. `Fallback` when the stat has no line.
+	 */
+	float StatAsIfAgainstRarity(FName Stat, int32 RarityStep, float Fallback) const;
+
+	/**
+	 * One enemy in this character's Siphon (the Death trees' slice C2, 2026-11-25): when it entered, and when it was
+	 * last within the Siphon's radius, both in world seconds. Kept by `FCataclysmSiphon::Step`.
+	 */
+	struct FSiphonMember
+	{
+		float EnteredAtSeconds = 0.0f;
+		float LastInsideAtSeconds = 0.0f;
+	};
+
+	/** Who is in this character's Siphon now, kept by `FCataclysmSiphon::Step`. Empty for a character with none. */
+	TMap<TWeakObjectPtr<AActor>, FSiphonMember>& SiphonMembers() { return SiphonMemberRecord; }
+	const TMap<TWeakObjectPtr<AActor>, FSiphonMember>& SiphonMembers() const { return SiphonMemberRecord; }
+
+	/** How many enemies are in this character's Siphon: the ones in the record that are still in the world. */
+	int32 EnemiesInSiphon() const;
+
+	/** Whether `Target` is in this character's Siphon. */
+	bool HasInSiphon(const AActor* Target) const;
+
+	/**
+	 * The seconds counted toward this character's next Siphon pulse. Its effects that say "each second" are paid once
+	 * a second (ruled 2026-11-25), so `FCataclysmSiphon::Step` adds each step's seconds here and pays at one.
+	 */
+	float SiphonPulseSeconds = 0.0f;
+
+	/**
+	 * On a character in somebody's Siphon: record that it deals `Percent` less until `UntilSeconds` (the Death trees'
+	 * slice C2: Sapping Cold and Enfeeble). The largest of several Siphons holds, as one Siphon's effects do not stack
+	 * with another's. Read by `UCataclysmDebuffs::DealLessPercentOn` through `SiphonDamageCutPercentNow`.
+	 */
+	void NoteSiphonDamageCut(float Percent, float UntilSeconds);
+
+	/** The percent less this character deals now for the Siphons it is in, 0 to 100. */
+	float SiphonDamageCutPercentNow() const;
 
 	/**
 	 * Record that a blow of `Striker`'s got through to THIS character, and
@@ -4965,6 +5508,114 @@ public:
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceMovementSkillUsed() const;
+
+	/**
+	 * Record that this character's movement skill has just ENDED, a use that was paid for. The Death trees' slice C6b2
+	 * (2026-11-25), for Arrival's `seconds_after_movement_skill_ends`. Called by `UCataclysmMovementSkill::EndAbility`.
+	 * Raises the action event `movement_skill_ends`, which `action_events()` in `tools/generate_datatables.py` derives
+	 * from that condition.
+	 */
+	void NoteMovementSkillEnded();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceMovementSkillEnded() const;
+
+	/**
+	 * One of this character's own followers was killed: a minion, an imp or a thrall, not a gadget or a trap, which
+	 * raise `gadget_destroyed` or nothing. The Death trees' slice C6d2 (2026-11-25), as ruled (P1). Records when, for
+	 * `seconds_after_minion_death`, and raises the action event `minion_death` with the follower's tags and the body,
+	 * which is still standing, so a row may ask how far away it fell. Called by
+	 * `UCataclysmVitalAttributeSet` before the follower's own `HandleDeath`, beside the Fervour for losing it.
+	 */
+	void NoteMinionDied(const AActor* Body, const FGameplayTagContainer& FollowerTags);
+
+	/** Seconds since `NoteMinionDied` last ran, or -1 for never. */
+	float SecondsSinceMinionDied() const;
+
+	/**
+	 * What Bound Bones last added to this follower's maximum health, so `UCataclysmRegeneration::BoundBonesStep` writes
+	 * only the difference when the count of followers changes. The Death trees' slice C6d2 (2026-11-25). 0 on
+	 * everything that follows nobody.
+	 */
+	float BoundBonesHealthAdded = 0.0f;
+
+	/**
+	 * THE SHADOW'S DEATHMARK AND TWO MARKS, the Death trees' slice C6e (2026-11-25), as ruled (Q5): "The strongest enemy
+	 * within 15 metres is marked ... When it dies, the mark moves to the strongest enemy within 10 metres." A mark of
+	 * this character's own, kept on it, separate from War's Deathmark (which marks whatever War crits, for everyone).
+	 *
+	 * STICKY: a mark is chosen only while this character holds fewer than its count (`ShadowMarksStat`, 1 for Deathmark
+	 * and 1 more for Two Marks), and is kept until its creature dies. Called at every regeneration step: marks on the
+	 * dead or the gone are dropped, any over the count are dropped, and each empty one is given the strongest enemy
+	 * within 15 metres (`UCataclysmDebuffs::StrongestEnemyNear`) not already marked. With no count, every mark is lifted.
+	 */
+	void MaintainShadowMarks();
+
+	/** A creature this character marked is dying: its mark moves to the strongest unmarked enemy within 10 metres of it, or is lifted for the next step to fill. */
+	void MoveShadowMarkFrom(const AActor* Dying);
+
+	/** Every character that marked `Dying` moves its mark, as `MoveShadowMarkFrom` says. Called where a death begins. */
+	static void MoveShadowMarksOff(const AActor* Dying);
+
+	/** Whether this character holds a mark on `Creature`: the condition `target_marked_by_you`. */
+	bool HoldsShadowMarkOn(const AActor* Creature) const;
+
+	/** How many marks this character holds now. */
+	int32 ShadowMarksHeld() const;
+
+	/** Whether some character's Shadow mark is on this one: the "Marked" label under its health bar. */
+	bool IsShadowMarked() const;
+
+	/** The stat naming how many marks a character holds: Deathmark's 1, and Two Marks' 1 more. */
+	static const TCHAR* ShadowMarksStat;
+
+	/**
+	 * LETHAL DOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q8): the per cent of this character's critical
+	 * strike multiplier's INCREASED bucket a Poison or Bleed its critical strike applies takes as increased damage over
+	 * time (50, "at half their value"). Read by `UCataclysmAilments::RollOnLandedBlow`.
+	 */
+	static const TCHAR* CritIncreasesToAilmentsStat;
+
+	/**
+	 * While a Poison or Bleed of a critical strike of this character's is being applied: the increased damage over time,
+	 * in percentage points, Lethal Dose lends it. Nought at every other moment. Set by
+	 * `UCataclysmAilments::RollOnLandedBlow` around the application, read by
+	 * `UCataclysmSkillEffects::DamageOverTimeNumbers`, which adds it to `dot_damage`'s increased bucket.
+	 */
+	float AilmentIncreasePercentLentByCritical = 0.0f;
+
+	/**
+	 * The increased damage over time, in percentage points, Lethal Dose lends a Poison or Bleed of `Lender`'s critical
+	 * strike: `CritIncreasesToAilmentsStat`'s share of the critical strike multiplier's increases, nought without the
+	 * stat. `UCataclysmAilments::RollOnLandedBlow` asks this; public so the stat exemption probe reads the same answer
+	 * (window death3-w3).
+	 */
+	static float LethalDoseLentBy(const UCataclysmAbilitySystemComponent* Lender);
+
+	/**
+	 * INTERPOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q9): the chance in per cent that a hit aimed at
+	 * this character is taken instead by its nearest minion within 3 metres. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+	 */
+	static const TCHAR* InterposeChanceStat;
+	static constexpr float InterposeReachCm = 300.0f;
+
+	/** "The strongest enemy within 15 metres", and "the strongest enemy within 10 metres" of the one that died. */
+	static constexpr float ShadowMarkReachCm = 1500.0f;
+	static constexpr float ShadowMarkMoveCm = 1000.0f;
+
+protected:
+	/** The creatures this character has marked, in the order marked. */
+	TArray<TWeakObjectPtr<AActor>> ShadowMarks;
+
+	/** On a marked creature: every character whose mark is on it. */
+	TArray<TWeakObjectPtr<UCataclysmAbilitySystemComponent>> ShadowMarkedBy;
+
+	/** Put a mark on `Creature` and tell it who marked it, or lift it. */
+	void AddShadowMark(AActor* Creature);
+	void LiftShadowMark(AActor* Creature);
+
+public:
 
 	/**
 	 * Record that this character has just used a skill carrying `Type.Spell`. Issue #1815, for the
@@ -6400,6 +7051,49 @@ protected:
 	 */
 	float LastStruckABossAtSeconds = -1.0f;
 
+	/** When this character last killed an enemy, in world seconds. Negative means never. The Death trees, 2026-11-24. */
+	float LastOwnKillAtSeconds = -1.0f;
+
+	/** When this character last spent Fervour, in world seconds. Negative means never. See `NoteFervourSpent`. */
+	float LastFervourSpentAtSeconds = -1.0f;
+
+	/** Each returned share of a spend still to come: when it is due, in world seconds, and how much. Cinders Kept. */
+	TArray<TPair<float, float>> FervourToReturn;
+
+	/** What the decays took, and when, in world seconds. See `NoteFervourDecayed`. The Death trees' slice C4b2. */
+	TArray<TPair<float, float>> FervourDecayed;
+
+	/** How long a record of decay is kept with no kill to read it, so the list cannot grow without end. */
+	static constexpr float FervourDecayedKeptSeconds = 30.0f;
+
+	/** When Phylactery's save may next be made, in world seconds. Negative means now. */
+	float FervourLethalSaveNextAllowedSeconds = -1.0f;
+
+	/**
+	 * The last time each Fervour threshold was seen held, in world seconds, in the order of `CataclysmFervourThresholds`;
+	 * negative, or no entry yet, means never. Long Shadow reads it. See `NoteFervourThresholdsHeld`.
+	 */
+	TArray<float> FervourThresholdLastHeldAtSeconds;
+
+	/**
+	 * Until when, in world seconds, the decay after the last kill is held off. Negative means never held, which is a
+	 * character that has never killed. See `NoteOwnKill`.
+	 */
+	float KillDecayHeldUntilSeconds = -1.0f;
+
+	/** The grace the last kill set, in seconds; -1 before any kill. See `LastKillGraceSeconds`. */
+	float LastKillDecayGraceSeconds = -1.0f;
+
+	/** How many kill payments are open. See `BeginKillPayment`. */
+	int32 KillPaymentsOpen = 0;
+
+	/** Who is in this character's Siphon. See `SiphonMembers`. The Death trees' slice C2, 2026-11-25. */
+	TMap<TWeakObjectPtr<AActor>, FSiphonMember> SiphonMemberRecord;
+
+	/** The cut a Siphon puts on what this character deals, and until when. See `NoteSiphonDamageCut`. */
+	float SiphonDamageCutPercent = 0.0f;
+	float SiphonDamageCutUntilSeconds = -1.0f;
+
 	/**
 	 * The combat clock, in world seconds. Issue #1815. Negative means none since
 	 * spawn or revival. `CombatStartedAtSeconds` is the first event of the
@@ -6495,6 +7189,23 @@ protected:
 
 	/** When this character last used the skill in its Movement slot, in world seconds; negative means never. */
 	float LastMovementSkillAtSeconds = -1.0f;
+
+	/** When this character's movement skill last ended, in world seconds; negative means never. See `NoteMovementSkillEnded`. */
+	float LastMovementSkillEndedAtSeconds = -1.0f;
+
+	/** When one of this character's followers was last killed, in world seconds; -1 for never. The Death trees' slice C6d2. */
+	float LastMinionDiedAtSeconds = -1.0f;
+
+	/** Each follower killed in the last minute: when, in world seconds, and how far from this character it fell. */
+	struct FMinionDeathRecord
+	{
+		float AtSeconds = 0.0f;
+		float Metres = -1.0f;
+	};
+	TArray<FMinionDeathRecord> RecentMinionDeaths;
+
+	/** The longest a minion's death is kept for `MinionDeathInReachWithinSeconds`; the generator bounds the seconds at 60. */
+	static constexpr float MinionDeathKeptSeconds = 60.0f;
 
 	/** When this character last used a skill carrying `Type.Spell`, in world seconds; negative means never. */
 	float LastSpellAtSeconds = -1.0f;
@@ -6764,6 +7475,57 @@ protected:
 
 	/** What the rows recorded for the kill in hand. See `TakePendingOverkillExplosionSharePercent`. */
 	float PendingOverkillExplosionSharePercent = 0.0f;
+
+	/** The radius the rows recorded for the kill in hand, in cm. See `TakePendingOverkillExplosionRadiusCm`. */
+	float PendingOverkillExplosionRadiusCm = 0.0f;
+
+	/** What The Ferryman's rows recorded for the kill in hand. See `TakePendingSlainBurstSharePercent`. */
+	float PendingSlainBurstSharePercent = 0.0f;
+
+	/** Whether the kill whose rows are acting was made by a hit. See `SetActingOnAKillByAHit`. */
+	bool bActingOnAKillByAHit = false;
+
+	/** When this character last stood near each killer's kill, in world seconds. See `NoteNearKillBy`. */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> NearKillBy;
+
+	/** When each striker's movement skill last struck this character, in world seconds. See `NoteStruckByMovementSkillOf`. */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> StruckByMovementSkillOf;
+
+	/** Whether the kill whose payment and rows are acting was an execute. See `SetActingOnAKillByAnExecute`. */
+	bool bActingOnAKillByAnExecute = false;
+
+	/** Set only while `ExecuteIfLeftBelow` kills this character. See `IsBeingExecuted`. */
+	bool bBeingExecuted = false;
+
+	/** When the Chain Execution charge runs out, in world seconds; -1 for none. See `HoldsNextHitCritical`. */
+	float NextHitCriticalUntilSeconds = -1.0f;
+
+	/** How many critical strikes that charge holds: 1, or 2 after a doubled evasion. See `SpendNextHitCritical`. */
+	int32 NextHitCriticalCharges = 0;
+
+	/** Overflow's stacks and when their shared window runs out, in world seconds. See `NoteFervourOverflow`. */
+	int32 FervourOverflowStacks = 0;
+	float FervourOverflowUntilSeconds = -1.0f;
+
+	/** The share of maximum health lost to damage not yet paid for in Fervour, in percent. See
+	 *  `AccumulateHealthLostForFervour`. */
+	float HealthPercentLostTowardsFervour = 0.0f;
+
+	/** When each applier's Poison began on this character without a break since, in world seconds. See
+	 *  `NotePoisonBeganBy`. */
+	TMap<TWeakObjectPtr<const AActor>, float> PoisonedByFrom;
+
+	/** Set only around a `RearHits=1` skill's hit. See `SetStrikingFromBehindByRule`. */
+	bool bStrikingFromBehindByRule = false;
+
+	/** When the last Boss tick was paid for, in world seconds; -1 for never. See `NoteBossTickPaid`. */
+	float BossTickPaidAtSeconds = -1.0f;
+
+	/** Landed hits on each Boss, for Death by Inches. See `CountBossHit`. */
+	TMap<TWeakObjectPtr<const AActor>, int32> BossHitsCounted;
+
+	/** When each worn enemy modifier runs out, in world seconds, by its place. See `NoteWornEnemyModifier`. */
+	TMap<int32, float> WornEnemyModifierUntil;
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;

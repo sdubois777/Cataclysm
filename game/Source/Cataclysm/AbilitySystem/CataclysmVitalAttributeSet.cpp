@@ -125,6 +125,16 @@ static TAutoConsoleVariable<float> CVarBlockRoll(
 		 "is any chance to; 100 never blocks."),
 	ECVF_Default);
 
+/**
+ * Pins Interpose's roll, 0-100, for tests (the Death trees' slice C6e). -1 rolls for real. A hit is taken by a minion
+ * when the roll is below the chance, so 0 always interposes and 100 never does.
+ */
+static TAutoConsoleVariable<float> CVarInterposeRoll(
+	TEXT("Cataclysm.InterposeRoll"),
+	-1.0f,
+	TEXT("Pins Interpose's roll, 0-100. -1 rolls normally. 0 interposes whenever there is any chance to."),
+	ECVF_Default);
+
 namespace
 {
 	/**
@@ -609,6 +619,49 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// INTERPOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q9): "A hit aimed at you has a 3% chance per
+			// point to be taken instead by one of your minions within 3 metres of you." A hit, not a tick; the nearest
+			// of the defender's own followers within 3 metres, not a gadget or a trap, takes the whole of it from the
+			// attacker, through its own defences, and the defender takes nothing. Overkill is not passed back. The
+			// figure handed over is the hit as sent, before the defender's evasion, block and mitigation, so no
+			// critical strike is rolled on it twice.
+			if (!Hit.bIsDamageOverTime && Hit.Damage > 0.0f)
+			{
+				const UCataclysmAbilitySystemComponent* Guarded =
+					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+				AActor* Guard = nullptr;
+				const float Chance = Guarded
+					? Guarded->StatForSkill(FName(UCataclysmAbilitySystemComponent::InterposeChanceStat),
+											FGameplayTagContainer(), 0.0f)
+					: 0.0f;
+				if (Chance > 0.0f && Guarded->GetAvatarActor())
+				{
+					const float Pinned = CVarInterposeRoll.GetValueOnAnyThread();
+					if ((Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) < Chance)
+					{
+						for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(
+								 Guarded->GetAvatarActor(), UCataclysmAbilitySystemComponent::InterposeReachCm))
+						{
+							const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Follower);
+							if (!Machine || !Machine->IsDeployable())
+							{
+								Guard = Follower;
+								break;
+							}
+						}
+					}
+				}
+				AActor* Interposer = UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext());
+				if (Guard && Interposer)
+				{
+					FCataclysmHitDelivery Taken;
+					Taken.bCannotBeEvaded = true;
+					Taken.bCannotBeRetaliatedAgainst = true;
+					UCataclysmSkillEffects::ApplyDirectDamage(Interposer, Guard, Hit.Damage, Taken);
+					Hit.Damage = 0.0f;
+				}
+			}
+
 			// AND WHETHER THE ATTACKER'S MODIFIERS SAY IT CANNOT BE DODGED. The
 			// Perfect Aim enemy modifier reads "Attacks cannot be dodged", and
 			// evasion is rolled on the DEFENDER, so the only way an attacker can
@@ -630,6 +683,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// damage from Boss enemies". Issue #666. The same creature and the
 				// same cast, so a blow from anything but an enemy is not a boss's.
 				Hit.bFromBoss = Striker->IsBoss();
+				// AND ITS RARITY RUNG, for Read the Blow (the Death trees' slice C6b3, 2026-11-25).
+				Hit.AttackerRarityStep = Striker->RarityStep;
 
 				// AND DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect
 				// Aim's does, because the shield is the defender's and only the blow can refuse it. Every blow whose
@@ -1183,6 +1238,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							: Offence->GetMaxCritChance();
 						Hit.CritChance = FMath::Min(
 							Stated >= 0.0f ? Stated : OwnCritChance, Ceiling);
+						// AND CERTAIN, WHATEVER THE CHANCE, CEILING OR SKILL'S STATED FIGURE, while the attacker holds a
+						// Chain Execution charge: "a critical strike" (the Death trees' slice C4d1, 2026-11-25).
+						Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();
 
 						// THE MULTIPLIER IS ASKED FOR TOO, AND FOR THE SAME
 						// REASON THE CHANCE IS. Issue #947 lists it among the
@@ -1389,6 +1447,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()),
 					/*EvasionRoll=*/-1.0f, CVarBlockRoll.GetValueOnAnyThread(),
 					CVarCritRoll.GetValueOnAnyThread());
+
+			// A CHAIN EXECUTION CHARGE IS USED BY THE HIT IT MADE CRITICAL, which is a hit that landed: an evaded one is
+			// never critical. The first of a skill's hits to resolve uses it, so the others are rolled as usual. The
+			// Death trees' slice C4d1 (2026-11-25), as ruled.
+			if (Hit.bCertainCritical && Resolved.bWasCritical)
+			{
+				if (UCataclysmAbilitySystemComponent* Spending = Cast<UCataclysmAbilitySystemComponent>(
+						Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent()))
+				{
+					Spending->SpendNextHitCritical();
+				}
+			}
 
 			// A CONTAGIOUS TOUCH KEEPS ONLY WHETHER IT WAS EVADED. Issues #1820 and #41. The row: "Enemies no longer
 			// deal damage on contact. Instead, they apply a stacking "Contagion" debuff." The blow came through the
@@ -1725,6 +1795,30 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					bSavedFromALethalBlow = true;
 					Resolved.DealtToHealth = GetHealth() - 1.0f;
 				}
+
+				// AND THE SOUL COLLECTOR'S PHYLACTERY, "A blow that would kill you instead spends all your Fervour (at
+				// least 50) and leaves you at that many percent of your health. Once every 60 seconds." The Death
+				// trees' slice C3c (2026-11-25). LAST OF THE SAVES, a judgement of that slice: it costs everything
+				// held, so a save that costs less is asked first. A TICK TOO, as the reprieve above reads "would be
+				// killed", a second judgement. The blow then takes nothing and health is SET to the share, so a
+				// character hurt below it is raised to it; the spend is raised after, so a row healing on it (Feast)
+				// heals on top. Nothing of a saved blow is delayed, as for the saves above.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& Guarded->MaySaveLethalBlowWithFervour() && EmptiesHealthLessTheDelayedShare())
+				{
+					const float Spent = Guarded->TakeFervourForLethalSave();
+					if (Spent > 0.0f)
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = 0.0f;
+						// THE WRITE IS NOTICED BY `PostAttributeBaseChange`, which every write to health reaches, so no
+						// call of its own is made here.
+						SetHealth(FMath::Clamp(GetMaxHealth() * Spent / 100.0f, 1.0f, GetMaxHealth()));
+						Guarded->NoteFervourSpent(Spent);
+					}
+				}
 			}
 
 			// AND A CREATURE NO DAMAGE REACHES: The Reaper. Issues #1820 and #41. The blow
@@ -1928,6 +2022,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Outcome.DealtToHealth + Outcome.AbsorbedByShield
 							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary,
 						LeechTags);
+				}
+				// AND A MINION'S OR A THRALL'S BLOW PAYS ITS COMMANDER'S SHARED LEECH, the same figure (the Death trees'
+				// slice C6d2, 2026-11-25). OUTSIDE THE NO-LEECH CHECK ABOVE: every minion's blow carries that tag, so
+				// the minion leeches nothing from figures of its own (issue #895), and window death3-w2 found the share
+				// never paid while it sat inside. The share is the commander's leech, not the minion's.
+				if (!Hit.bIsConvertedDamage)
+				{
+					UCataclysmLeech::NoteMinionHit(
+						const_cast<UAbilitySystemComponent*>(
+							Data.EffectSpec.GetContext()
+								.GetInstigatorAbilitySystemComponent()),
+						Outcome.DealtToHealth + Outcome.AbsorbedByShield
+							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary);
 				}
 
 				// AND A BLOW THAT GOT THROUGH TO A BOSS OPENS THE ATTACKER'S
@@ -2478,6 +2585,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			{
 				UCataclysmFervour::GainFromDamage(
 					GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);
+				// AND SOULBOUND'S LOSS, by the HEALTH lost alone (the Death trees' slice C6c, 2026-11-25, as ruled: an
+				// energy shield or mana absorbing the blow costs nothing).
+				UCataclysmFervour::LoseFromDamage(GetOwningAbilitySystemComponent(), HealthLostToTheBlow);
 			}
 
 			// AND UNDYING'S RESTORE, NOW THAT THE BLOW HAS LEFT ONE POINT. Through `TopUp`, so every rule of a heal
@@ -2711,10 +2821,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// blow does. A TICK REACHES THIS LINE, as the count just below
 				// says by refusing one, so it is said here and not assumed. The
 				// same `AttackerOf` the evade above passes.
+				// AND THE SHARE OF MAXIMUM HEALTH IT TOOK FROM HEALTH, for Avenging Dead's "when a hit takes more than 5%
+				// of your maximum health" (the Death trees' slice C6d2, 2026-11-25), as ruled (Q2).
+				const float MaximumHealthNow = GetMaxHealth();
 				Cataclysm->NoteHitTaken(
 					!Outcome.bEvaded,
 					UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
-					Hit.bIsDamageOverTime);
+					Hit.bIsDamageOverTime,
+					MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);
 
 				// AND A BIG HIT IS ANNOUNCED, after the hit taken. The War vow options' third slice, V3a, ruled
 				// 2026-11-25: a landed hit, not a tick, that took more than 10% of maximum health after defences, counting
@@ -2967,7 +3081,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			if (!Hit.bIsDamageOverTime)
 			{
 				UCataclysmAilments::RollOnLandedBlow(Data.EffectSpec,
-					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly);
+					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly,
+					/*bCritical=*/Outcome.bWasCritical);
 			}
 
 			// A MELEE CRITICAL STRIKE MAY APPLY BLEEDING TO WHAT IT HIT.
@@ -3264,6 +3379,30 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		return;
 	}
 
+	// A FOLLOWER WHOSE COMMANDER HOLDS ETERNAL ARMY DOES NOT DIE WHILE THE COMMANDER IS ABOVE ITS SHARE OF HEALTH: "Your
+	// minions cannot die while you are above 50% health", the Necromancer's Final Rite, the Death trees' slice C6d2
+	// (2026-11-25). It is left at 1 health instead. HERE, where every write of health at nought begins a death, so a hit
+	// and a tick are refused alike; a rule that ends a creature by calling `HandleDeath` outright does not pass here.
+	// Not a gadget or a trap, which are machines rather than minions. "Above" is strict.
+	if (const AActor* Commander = UCataclysmCommand::CommanderOf(Character))
+	{
+		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+		if (Theirs && AbilitySystem && (!AsMinion || !AsMinion->IsDeployable()))
+		{
+			const float AbovePercent =
+				Theirs->StatForSkill(FName(MinionCannotDieAboveHealthPercentStat), FGameplayTagContainer(), 0.0f);
+			const float TheirMaximum = Theirs->GetNumericAttribute(GetMaxHealthAttribute());
+			const float TheirHealth = Theirs->GetNumericAttribute(GetHealthAttribute());
+			if (AbovePercent > 0.0f && TheirMaximum > 0.0f && TheirHealth / TheirMaximum * 100.0f > AbovePercent)
+			{
+				const_cast<UAbilitySystemComponent*>(AbilitySystem)->SetNumericAttributeBase(GetHealthAttribute(), 1.0f);
+				return;
+			}
+		}
+	}
+
 	// WHOEVER WAS COMMANDING THIS THING GAINS FERVOUR FOR LOSING IT.
 	// Issue #1518, the Ritualist's generator: "and 5 when one of them dies".
 	//
@@ -3316,7 +3455,25 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		// second option: "Each time one of your minions dies, you regain 10% of your Maximum Energy Shield". Here,
 		// beside the Fervour, so it answers exactly the deaths that grant it; nothing for a commander without the row.
 		UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander);
+
+		// AND THE COMMANDER IS TOLD ONE OF ITS MINIONS DIED, `minion_death`: Death Ward, Bone Knit and Marrow Feast, the
+		// Death trees' slice C6d2 (2026-11-25), as ruled (P1). HERE, beside the Fervour, so a minion, an imp and a thrall
+		// are told alike and once; while the body still stands, so a row may ask how far away it fell. NOT FOR A
+		// GADGET OR A TRAP, which is a machine rather than a minion and raises `gadget_destroyed` or nothing.
+		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+		if (!AsMinion || !AsMinion->IsDeployable())
+		{
+			if (UCataclysmAbilitySystemComponent* Commanders =
+					Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander)))
+			{
+				Commanders->NoteMinionDied(Character, AsMinion ? AsMinion->TypeTags : UCataclysmCommand::ThrallMinionTags());
+			}
+		}
 	}
+
+	// AND A SHADOW'S MARK ON IT MOVES, to the strongest enemy within 10 metres of it (the Death trees' slice C6e,
+	// 2026-11-25, as ruled), while the dying creature still stands where it fell.
+	UCataclysmAbilitySystemComponent::MoveShadowMarksOff(Character);
 
 	// WHAT A REPLACEMENT NEEDS, TAKEN BEFORE THE DEATH IS HANDLED. Issue #1515:
 	// Press-Ganged and Rekindled. A minion whose death is an explosion is

@@ -42,8 +42,11 @@ public:
 	/** Fervour for each block. The Bulwark's. */
 	static const TCHAR* PerBlockStat;
 
-	/** Fervour for each critical strike the character deals. The Berserker's. */
-	static const TCHAR* PerCriticalStrikeStat;
+	/** Fervour for each critical strike the character deals. The Berserker's, and the Shadow's: THE DEATH LINE'S NAME,
+	 *  `UCataclysmFervour::PerCriticalStrikeStat`, bound by reference since the bundle 3 merge (obligation 5), so the
+	 *  two cannot name two stats. A reference to a static is bound before any code runs, whatever order the two files
+	 *  are initialised in. */
+	static const TCHAR* const& PerCriticalStrikeStat;
 
 	/** Fervour for each skill trap the character places. The Saboteur's. */
 	static const TCHAR* PerTrapPlacedStat;
@@ -95,7 +98,9 @@ public:
 	static float GainOnBlock(UAbilitySystemComponent* AbilitySystem);
 
 	/** The Berserker's gain on a critical strike it dealt, read with the blow's skill tags, so a row scoped to melee
-	 *  ("on every critical melee strike") adds only to a melee critical strike. */
+	 *  ("on every critical melee strike") adds only to a melee critical strike. HANDS ON TO
+	 *  `UCataclysmFervour::GainOnCriticalStrike` with no character struck, since the Death trees' bundle 3 merge
+	 *  (obligation 5): the two lines read one stat, and the game pays it once, from the Death line's reader. */
 	static float GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const FGameplayTagContainer& SkillTags);
 
 	/** The Saboteur's gain on placing a trap, read with the trap's type tags. */
@@ -314,6 +319,7 @@ private:
 	/** Take up to `Amount` from the pool, clamped at nought, and return what was taken. */
 	static float TakeFromPool(UAbilitySystemComponent* AbilitySystem, float Amount);
 
-	/** The one gain every function above makes: the rate `Stat` grants, read with `Tags`, scaled, clamped, written. */
+	/** The one gain every function above makes: the rate `Stat` grants, read with `Tags`, scaled, clamped, and written
+	 *  through `UCataclysmFervour::RaisePool` since the Death trees' bundle 3 merge. */
 	static float GainByRate(UAbilitySystemComponent* AbilitySystem, const TCHAR* Stat, const FGameplayTagContainer& Tags);
 };

@@ -507,6 +507,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("cripple_and_weaken_duration"),
 		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
 		TEXT("minion_attack_speed"),
+		// And the Necromancer's Hasty Dead, Grave Pact and Ringed in Bone, the Death trees' slice C6d1: a commanded
+		// follower's walk speed (UCataclysmCommand), what a commanded defender takes of a blow
+		// (UCataclysmDamageCalculation), and whether the character is immune to slows
+		// (UCataclysmSkillTemplate::IsImmuneTo). No attribute and no base.
+		TEXT("minion_movement_speed"),
+		TEXT("minion_damage_taken"),
+		TEXT("immune_to_slow"),
 		// Whether a minion explodes when it dies, read by
 		// ACataclysmMinion::HandleDeath. A flag: a row sets it to one.
 		TEXT("minion_explodes_on_death"),
@@ -1158,14 +1165,114 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// applied passes on when its carrier dies, read by
 		// UCataclysmDebuffs::PassCrippleAndWeakenOnDeath from the enemy's death.
 		TEXT("cripple_and_weaken_spread_on_death_metres"),
+		// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. Fervour a kill pays, asked by
+		// UCataclysmFervour::GainOnOwnKill with the slain creature as the target, so
+		// a row can be tiered by its rarity rung; the decay after the last kill, a
+		// rate asked by UCataclysmFervour::KillDecayStep; and that decay's grace,
+		// asked at the kill by UCataclysmFervour::NoteOwnKill with the slain
+		// creature as the target. None has a gameplay attribute: each is read only
+		// through the pipeline, at the moment it is needed.
+		TEXT("fervour_per_kill"),
+		TEXT("fervour_kill_decay_per_second"),
+		TEXT("fervour_kill_decay_grace_seconds"),
+		// THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25):
+		// its radius, the cut to what a member deals, its slow, the linger after
+		// leaving, and the four paid once a second (Drain's damage, Necrotic
+		// Siphon's chance, Life Siphon's health, Living Harvest's Fervour). Each
+		// is asked by FCataclysmSiphon on the regeneration step, through the
+		// pipeline, and none has a gameplay attribute.
+		TEXT("siphon_radius_metres"),
+		TEXT("siphon_enemies_deal_less_percent"),
+		TEXT("siphon_enemy_slow_percent"),
+		TEXT("siphon_linger_seconds"),
+		TEXT("siphon_drain_weapon_percent"),
+		TEXT("siphon_necrosis_chance"),
+		TEXT("siphon_life_percent"),
+		TEXT("siphon_fervour_per_second"),
+		// The Death trees' slice C3b: Bound Offering's share of a reserve held that counts as Fervour spent, read by
+		// UCataclysmCommand::HoldReserve with the making skill's tags. No gameplay attribute and no base.
+		TEXT("reserved_fervour_spent_percent"),
+		// The Death trees' slice C3c: Cinders Kept's share of a spend returned later, read by
+		// UCataclysmAbilitySystemComponent::NoteFervourSpent; Phylactery's seconds between two saves, read by
+		// MaySaveLethalBlowWithFervour; and Borrowed Step's Fervour for a movement skill on cooldown, read by
+		// UCataclysmGameplayAbility::FervourToUseOnCooldown, whose second row is negative. No attribute and no base.
+		TEXT("fervour_spent_returned_percent"),
+		TEXT("fervour_lethal_save_every_seconds"),
+		TEXT("movement_on_cooldown_fervour_cost"),
+		// The Death trees' slice C3d: Generous Count's reduction of every Fervour threshold and Long Shadow's seconds
+		// after one, read with no reading while the conditions are filled; and the fourth vow's faster cooldown
+		// recovery, asked on the regeneration step. No attribute and no base.
+		TEXT("fervour_threshold_reduction"),
+		TEXT("fervour_threshold_linger_seconds"),
+		TEXT("cooldowns_recover_faster_percent"),
+		// The Death trees' slice C3e: Chained Souls' share of what followers hold back counted as Fervour held, read with
+		// no reading while the conditions are filled. No attribute and no base.
+		TEXT("reserved_fervour_counts_as_held_percent"),
+		// The Death trees' slice C4a: Gleaning's chance of 1 extra Fervour on a kill, read by
+		// UCataclysmFervour::GainOnOwnKill against the slain creature. No attribute and no base.
+		TEXT("fervour_per_kill_extra_chance"),
+		// And the Shadow's Clean Kill: the share of maximum health a kill by a critical strike restores, read by
+		// UCataclysmFervour::RestoreHealthOnCriticalKill. No attribute and no base.
+		TEXT("health_restored_on_critical_kill"),
+		// And the Soul Collector's Kindred Fires and Borrowed Time, the Death trees' slice C4b1: whether any gain
+		// restarts the hold before decay, and the seconds a gain that is not a kill's lengthens it by. Read by
+		// UCataclysmFervour::AfterPoolRose. No attribute and no base.
+		TEXT("fervour_hold_restarted_by_any_gain"),
+		TEXT("fervour_hold_extended_on_gain_seconds"),
+		// And the Soul Collector's Miser's Grip, Soulbound, Overflow and Unbroken Chain, the Death trees' slice C6c: the
+		// floor the kill decay stops at, every how many percent of health lost to damage costs 1 Fervour, the seconds of
+		// Overflow's window, and the seconds a chain of kills is lengthened by. Read by UCataclysmFervour and
+		// UCataclysmAbilitySystemComponent. No attribute and no base.
+		TEXT("fervour_decay_floor_percent"),
+		TEXT("health_percent_lost_per_fervour_lost"),
+		TEXT("fervour_overflow_attack_speed_seconds"),
+		TEXT("kill_chain_seconds"),
+		// And the Necromancer's Shared Leech, the Death trees' slice C6d2: the per cent of a minion's damage its
+		// commander leeches as health. Read by UCataclysmLeech::NoteMinionHit. No attribute and no base.
+		TEXT("minion_damage_leeched_to_you_percent"),
+		// And its Eternal Army: the per cent of the commander's health above which a follower does not die. Read by
+		// UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero. No attribute and no base.
+		TEXT("minion_cannot_die_above_health_percent"),
+		// And its Bound Bones: the per cent of the commander's maximum health each follower gains for every other one
+		// alive. Read by UCataclysmRegeneration::BoundBonesStep. No attribute and no base.
+		TEXT("minion_health_percent_of_yours_per_other_minion"),
+		// And the Shadow's Deathmark and Two Marks, the Death trees' slice C6e: how many enemies a character marks.
+		// Read by UCataclysmAbilitySystemComponent::MaintainShadowMarks. No attribute and no base.
+		TEXT("death_marks_held"),
+		// And its Hollow Step: a movement skill that passes through enemies and hits each one. Read by
+		// UCataclysmMovementSkill::PassesThroughEnemies. No attribute and no base.
+		TEXT("movement_passes_through_enemies"),
+		// And the slice's Guard the Master (minions turn on the commander's last attacker), Lethal Dose (the share of
+		// the critical strike multiplier's increases a crit's Poison or Bleed takes) and Interpose (the chance a hit
+		// is taken by a minion). Read by UCataclysmCommand, UCataclysmAilments and UCataclysmVitalAttributeSet. No
+		// attribute and no base.
+		TEXT("minions_turn_on_your_last_attacker"),
+		TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"),
+		TEXT("interpose_chance"),
 		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
 		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
 		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.
 		TEXT("fervour_per_hit_taken"),
 		TEXT("fervour_per_block"),
-		// The Berserker's: Fervour per critical strike, read with the blow's skill tags in
-		// ACataclysmPlayerCharacter::OnSomethingWasHit.
+		// The Fervour a landed critical strike pays: the Shadow's starting node and Telling Blows (the Death trees' slice
+		// C4d1) and the Berserker's (the War line), read once, by UCataclysmFervour::GainOnCriticalStrike, against the
+		// character struck and with the blow's skill tags (Battle Lust's rows are melee-only). One reader since the
+		// bundle 3 merge. No attribute and no base.
 		TEXT("fervour_per_critical_strike"),
+		// And the Shadow's Patient Blade and Death by Inches, the Death trees' slice C4d2: the seconds between Boss tick
+		// payments, and every how many hits on a Boss count as a kill. Read by UCataclysmFervour against the Boss. No
+		// attribute and no base.
+		TEXT("boss_ticks_pay_a_kill_every_seconds"),
+		TEXT("boss_hits_counted_as_a_kill_every"),
+		// And the Soul Collector's Reclaimed, Claimed and Death's Toll, the Death trees' slice C4b2: the seconds of decay
+		// a kill gives back, the seconds after a hit within which a death pays its Fervour, and the switch that makes a
+		// follower's kill this character's. Read by UCataclysmFervour. No attribute and no base.
+		TEXT("decay_given_back_on_kill_seconds"),
+		TEXT("fervour_claimed_within_seconds"),
+		TEXT("follower_kills_count_as_yours"),
+		// And the Soul Collector's Passed On, the Death trees' slice C4c1: the radius a passive node's overkill explosion
+		// reaches. Read by UCataclysmAbilitySystemComponent::ActOnEvent. No attribute and no base.
+		TEXT("overkill_explosion_radius_metres"),
 		// The Saboteur's: Fervour per skill trap placed (ACataclysmMinion::PlaceSkillTrap, and a War machine that is a
 		// trap), per gadget placed (ACataclysmMinion::PlaceSkillGadget, and every other War machine), per skill trap
 		// triggered (ACataclysmMinion::TriggerSkillTrap) and per landed blow of one of its devices

@@ -1567,7 +1567,47 @@ private:
 	bool RolledDirection(FVector& OutDirection) const;
 
 	/** `movement_path_damage_percent`: one hit of the row's per cent to each of `Crossed` still alive. */
-	void HitWhatThePathCrossed(const TArray<AActor*>& Crossed);
+	void HitWhatThePathCrossed(const TArray<AActor*>& Crossed, float PercentOverride = -1.0f);
+
+	/**
+	 * HOLLOW STEP, the Death trees' slice C6e (2026-11-25), as ruled (H1, H2): "Your movement skill passes through
+	 * enemies and hits each one." Whether this use carries `PassesThroughEnemiesStat`, asked with the skill's tags.
+	 */
+	bool PassesThroughEnemies() const;
+
+	/** Let the mover's moves pass through hostile creatures, or restore them. Restored again in `EndAbility`. */
+	void PassThroughEnemies(bool bThrough);
+
+	/**
+	 * A move that passed through enemies must not end inside one: if the mover's capsule overlaps a living hostile
+	 * creature, it is put back along the line toward `LineStart` to the first point where it overlaps none, in steps
+	 * of 10 centimetres, never past `LineStart`. As ruled (H1, condition 2).
+	 */
+	void StepOutOfEnemies(const FVector& LineStart);
+
+	/**
+	 * Every living enemy on the line from `From` to `To` that `AlreadyStruck` does not hold is hit once, at the skill's
+	 * own percent, through `HitWhatThePathCrossed`. As ruled (H2): once a use, so the skill's own hit is not doubled.
+	 */
+	void HitTheLineOnce(const FVector& From, const FVector& To, const TArray<AActor*>& AlreadyStruck);
+
+public:
+	/**
+	 * Whether a movement skill with `SkillTags` used by `Mover` carries `PassesThroughEnemiesStat` (Hollow Step), asked
+	 * as every worn-row rider of this skill is: on the mover's ability system, with the skill's tags. `PassesThroughEnemies`
+	 * asks this; public so the stat exemption probe reads the same answer (window death3-w3).
+	 */
+	static bool PassesThroughEnemiesFor(const AActor* Mover, const FGameplayTagContainer& SkillTags);
+
+	/** The stat Hollow Step states: a movement skill that carries it passes through enemies and hits each one. PUBLIC,
+	 *  so a test can grant it by name (window death3-w1 refused the private one). */
+	static const TCHAR* PassesThroughEnemiesStat;
+
+private:
+
+	/** Where a walked Charge passing through enemies began, for `StepOutOfEnemies` when it ends. */
+	FVector PassingThroughFrom = FVector::ZeroVector;
+	bool bPassingThrough = false;
 
 	/**
 	 * `HitScaled`, for a charge's own blow, told how far the charge has gone.
@@ -1694,6 +1734,13 @@ private:
 	 * clears it by name now, beside the two above.
 	 */
 	FTimerHandle StopTimer;
+
+	/**
+	 * Whether this use was paid for, so its end is a movement skill's end: set once `CommitAndBegin` succeeds in
+	 * `ActivateAbility`, read and cleared by `EndAbility`. The Death trees' slice C6b2 (2026-11-25), for Arrival. A
+	 * Recall's first press and a use refused before it was paid end without it.
+	 */
+	bool bPaidForThisUse = false;
 };
 
 /**

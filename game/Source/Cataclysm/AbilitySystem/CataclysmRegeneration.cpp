@@ -4,6 +4,8 @@
 // For asking the pipeline what a rate is worth, rather than reading the
 // gameplay attribute it was folded into. Issue #1038.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the Necrosis tag, whose carrier is healed by nothing. Issue #920.
 #include "AbilitySystem/CataclysmDebuffs.h"
@@ -351,11 +353,25 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		}
 	}
 
+	// THE CLASS RESOURCE THROUGH THE ONE HELPER EVERY GAIN TO IT TAKES, so Kindred Fires and Borrowed Time see a row's
+	// gain (the Death trees' slice C4b1, 2026-11-25), AND the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	// Before the ceiling's refusal below, so a gain to a full bar still reaches it. Nothing below this is about it.
+	if (Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+	{
+		if (Gain > 0.0f)
+		{
+			UCataclysmFervour::RaisePool(&AbilitySystem, Gain);
+		}
+		return;
+	}
+
 	if (Ceiling <= 0.0f || Current >= Ceiling)
 	{
 		return;
 	}
 
+	// EVERY OTHER POOL AS BEFORE.
 	const float Restored = FMath::Min(Gain, Ceiling - Current);
 	AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive, Restored);
 
@@ -782,10 +798,66 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 	}
 
 	SharedBloodStep(Character, SecondsInStep, /*bFill=*/false);
+	BoundBonesStep(Character);
+
+	// AND THE SHADOW'S MARKS ARE KEPT UP: the Death trees' slice C6e (2026-11-25).
+	if (UCataclysmAbilitySystemComponent* Marker = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Marker->MaintainShadowMarks();
+	}
 }
 
 const TCHAR* UCataclysmRegeneration::SharedBloodStat =
 	TEXT("minion_energy_shield_percent_of_yours");
+
+const TCHAR* UCataclysmRegeneration::BoundBonesStat =
+	TEXT("minion_health_percent_of_yours_per_other_minion");
+
+void UCataclysmRegeneration::BoundBonesStep(AActor* Character)
+{
+	const AActor* Commander = UCataclysmCommand::CommanderOf(Character);
+	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+	if (!Commander || (AsMinion && AsMinion->IsDeployable()) || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return;
+	}
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!Theirs || !Mine || !Mine->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		return;
+	}
+
+	// THE OTHER FOLLOWERS ALIVE, gadgets and traps left out; `ThingsCommandedBy` leaves out the dead and this one.
+	int32 Others = 0;
+	for (const AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
+	{
+		const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Follower);
+		Others += (Follower != Character && (!Machine || !Machine->IsDeployable())) ? 1 : 0;
+	}
+	const float Percent = Theirs->StatForSkill(FName(BoundBonesStat), FGameplayTagContainer(), 0.0f);
+	const float TheirMaximum = Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Added = FMath::Max(0.0f, TheirMaximum * FMath::Max(0.0f, Percent) / 100.0f * Others);
+	const float Change = Added - Mine->BoundBonesHealthAdded;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return;
+	}
+
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float NewMaximum = FMath::Max(1.0f, Mine->GetNumericAttribute(MaxHealth) + Change);
+	Mine->BoundBonesHealthAdded = Added;
+	Mine->SetNumericAttributeBase(MaxHealth, NewMaximum);
+	// A RISE IS GAINED AS HEALTH TOO, so "gains 5% of your maximum health" is health the minion has; a fall is held at
+	// the new maximum and never kills.
+	const float NewHealth = Change > 0.0f
+		? Mine->GetNumericAttribute(Health) + Change
+		: FMath::Min(Mine->GetNumericAttribute(Health), NewMaximum);
+	Mine->SetNumericAttributeBase(Health, FMath::Clamp(NewHealth, 1.0f, NewMaximum));
+}
 
 void UCataclysmRegeneration::SharedBloodStep(AActor* Character, float SecondsInStep,
 											  bool bFill)

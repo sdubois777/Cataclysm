@@ -168,7 +168,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	CHECK_TABLE(FCataclysmGearRarityRow,        "GearRarity.csv",              8)
 	// 30: nine stats on the shared default line, plus what the Ravager,
 	// Ritualist and Masochist each override.
-	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             33)
+	// 49 SINCE 2026-11-24: the three Death classes' lines, five rows for the
+	// Soul Collector, seven for the Necromancer and four for the Shadow.
+	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             49)
 	// 5. Two summoned creatures and three deployed machines. The Imp, which
 	// Summon Imp and Open the Rift both produce, and the Mote from Cinder Swarm
 	// landed with issue #336. The bolt turret, ballista and spike trap followed
@@ -234,12 +236,21 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// IT RISES A LOT AGAIN WHEN THE OTHER EIGHTEEN TREES ARRIVE, issue #24, and
 	// that is what a pin is for: a jump nobody meant is the same shape as a jump
 	// somebody did.
-	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          441)
+	//
+	// 660 SINCE 2026-11-24, when the three Death trees were added: the Soul
+	// Collector 73 nodes, the Necromancer 72 and the Shadow 74, which is 219.
+	// 661 SINCE THE OWNER'S ORDER FIXES OF THE SAME DAY reached them: the
+	// Necromancer's Many Made One, the Abomination half moved off Gathered
+	// Remains, makes its tree 73.
+	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          661)
 	// 416: every dependency edge of those six trees. Fewer than the nodes,
 	// because the four capstones of each tree deliberately have none -- a
 	// capstone tier is reached by total points spent rather than along a path.
 	// 278 until 2026-09-07, and the two new trees carry 69 edges each.
-	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          416)
+	// 620 SINCE 2026-11-24: the Soul Collector's 68 edges, the Necromancer's 67
+	// and the Shadow's 69. 621 since Many Made One's edge from First Among the
+	// Dead, which asks for all 10 of its points: the Necromancer's 68.
+	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          621)
 	// 159: every node of the empire upgrade tree, `docs/Empire_Development_Tree_Final.json` -- 110 basic, 41 keystones
 	// and 8 capstones, four in the middle and one at the end of each branch. Issue #2741.
 	CHECK_TABLE(FCataclysmEmpireTreeNodeRow,    "EmpireTreeNodes.csv",       159)
@@ -516,6 +527,45 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// approved that day: the Masochist 126 to 150, the Ravager 103 to 113 and the
 	// Ritualist 92 to 97, most of the 39 the "for every N points" steps that
 	// replaced per-point values below 1, one row per step.
+	// AND 427 SINCE 2026-11-24, for the three Death trees' first 63 rows on 49
+	// nodes beside the rework's: 17 the Soul Collector's, 9 the Necromancer's,
+	// 37 the Shadow's. AND 459 THE SAME DAY, for the Death classes' kill
+	// generator: 32 rows, the Soul Collector 34 in all and the Shadow 52.
+	// AND 498 SINCE 2026-11-25, for the Death trees' slice C1: 39 rows on sixteen
+	// nodes and options today's rows state whole, the first passive action rows
+	// among them; the Soul Collector 48 in all, the Necromancer 19, the Shadow 67.
+	// AND 525 THE SAME DAY, for slice C2: the Soul Collector's Siphon and its limb,
+	// 27 rows on twelve nodes; the Soul Collector 75 in all. AND 529 FOR SLICE C3a:
+	// Spent Breath, Quick Kindling and Burnt Offering, rows on the record of Fervour
+	// spent; the Soul Collector 79. AND 535 FOR SLICE C3b: Feast, Spirit to Mana, Ashen
+	// Ward, Soul Furnace and Turn of the Wheel, each a row sized by what a spend
+	// carried, and Bound Offering; the Soul Collector 85. AND 539 FOR SLICE C3c:
+	// Cinders Kept, Phylactery and the Shadow's Borrowed Step (two rows). AND 547 FOR
+	// SLICE C3d: the four vows' Fervour threshold clauses, Generous Count, Steady
+	// Count (two) and Long Shadow; the Soul Collector 95. AND 549 FOR SLICE C3e:
+	// Empty Hands and Chained Souls; the Soul Collector 97. AND 560 FOR SLICE C4a:
+	// Soul Tide, Gleaning and Thinning the Herd, the Soul Collector 100; the Shadow's
+	// Death's Patience, Flicker, Clean Kill (four) and Hunting Leap (two), the Shadow 77. AND
+	// 564 FOR SLICE C4b1: Any Fuel, Borrowed Time (two) and Kindred Fires, the Soul Collector 104. AND 570
+	// FOR SLICE C4b2: Reclaimed, Claimed (four) and Death's Toll, the Soul Collector 110. AND 573 FOR SLICE
+	// C4c1: Passed On (two) and The Ferryman, the Soul Collector 113. AND 576 FOR SLICE C4c2: Grim Wake
+	// (two), the Soul Collector 115, and the Shadow's Blood Debt, the Shadow 78. AND 582 FOR SLICE C4d1: the Shadow's
+	// "2 for each critical strike", Telling Blows, Relentless and Chain Execution, the Shadow 82; Reaper's Edge (two),
+	// the Soul Collector 117. AND 584 FOR SLICE C4d2: Patient Blade and Death by Inches, the Shadow 84. AND 589 FOR
+	// SLICE C4d3: Wearer of the Dead's five worn modifiers, the Soul Collector 122. AND 604 FOR SLICE C6a: Brim (three),
+	// Slip, Find the Rhythm, Sidestep and Keep the Count (two each), Lasting Wounds (two), Twin Step and Riposte, the
+	// Shadow 98; Soul Barrage, the Soul Collector 123. AND 611 FOR SLICE C6b1: From Behind, Opening Strike (three),
+	// Venomed Prey (two) and Hit and Run, the Shadow 105. AND 615 FOR SLICE C6b2: Arrival and Glancing Cuts (two each),
+	// the Shadow 109. AND 623 FOR SLICE C6b3: Opening Found (two), Read the Blow and Hunting Ground, the Shadow 113;
+	// Reaper's Due (two), Tear Loose and Vigil Over the Strong, the Soul Collector 127. AND 629 FOR SLICE C6b4:
+	// Festering (five) and Twice Answered, the Shadow 119. AND 636 FOR SLICE C6c: Miser's Grip, Soulbound (two),
+	// Overflow (two) and Unbroken Chain (two), the Soul Collector 134. AND 649 FOR SLICE C6d1: Gravekeeper's Hide (two),
+	// Shielding Ranks, Steadfast Among Them (two), Ringed in Bone (two), Cold Hands, Grave Cold (two), Hasty Dead
+	// (two) and Grave Pact, the Necromancer 32. AND 653 FOR SLICE C6d2: Death Ward, Bone Knit, Marrow Feast and Avenging
+	// Dead, the Necromancer 36; AND 654 FOR ITS MARSHAL, the Necromancer 37; AND 657 FOR ITS SHARED LEECH, ETERNAL ARMY
+	// AND BOUND BONES, the Necromancer 40. AND 662 FOR SLICE C6e: Deathmark (four) and Two Marks, the Shadow 124; AND 663
+	// FOR ITS HOLLOW STEP, the Shadow 125; AND 669 FOR ITS LETHAL DOSE, BLADE ECHO AND THOUSAND CUTS, the Shadow 128, AND
+	// INTERPOSE AND GUARD THE MASTER (TWO), the Necromancer 43.
 	// AND 373 SINCE 2026-11-24, for the War classes' Fervour (slice C of
 	// plan_death_and_war.md): nine rows on the three War starting nodes.
 	// AND 421 SINCE 2026-11-25, for slice D of plan_death_and_war.md: forty-eight
@@ -547,7 +597,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 589 THE SAME DAY, for V5b3: Walking Arsenal's reach.
 	// AND 590 THE SAME DAY, for Titanfall's action.
 	// AND 592 THE SAME DAY, for V5c: Bolted Together's two.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        592)
+	// AND 897 SINCE THE BUNDLE 3 MERGE, 2026-11-25: the Death line's 669 and the War
+	// line's 592, less the 364 both had.
+	// AND 898 THE SAME DAY, for Slippery's Fervour on an evasion (window death3-w1's second pass).
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        898)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

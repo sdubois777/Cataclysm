@@ -550,6 +550,9 @@ enum class ECataclysmStatCondition : uint8
 	 * NO CLASS RESOURCE MEANS NO, which is every enemy in the game. A bonus that
 	 * asks about a bar the character does not have is correctly worth nothing to
 	 * it, and that is the right answer rather than a fault.
+	 *
+	 * THE TOP IS THE MAXIMUM LESS WHAT MINIONS HOLD BACK (`FCataclysmStatConditions::ClassResourceReserved`), ruled
+	 * 2026-11-25 (the Death trees' slice C), because every gain stops there.
 	 */
 	ClassResourceAtMaximum
 		UMETA(DisplayName = "Class Resource At Maximum"),
@@ -1750,6 +1753,380 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Target Carries Your Curse"),
 
 	/**
+	 * The target is a creature whose rarity rung is `ConditionValue` or higher: 0 Common, 1 Elite, 2 Legendary,
+	 * 3 Herald, 4 Boss, 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`). The Death trees of 2026-11-24: "Elite or
+	 * stronger" is 1 (the Shadow's 25 Fervour a kill, Quarry, Big Game, Hungry for the Strong) and "a Boss" in the Soul
+	 * Collector's kill schedule is 4, a Cataclysm Boss included.
+	 *
+	 * THE RUNG THE SPAWNER SET, `ACataclysmEnemyCharacter::RarityStep`, the same reading `TargetIsBoss` takes through
+	 * `IsBoss`. Not `RarityStepItPaysAs`, which is what a kill is rewarded as rather than what the creature is.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`. ANYTHING THAT IS NOT A CREATURE HAS NO RUNG and refuses, as an
+	 * unread target does: `TargetRarityStep` stays -1.
+	 */
+	TargetRarityAtLeast
+		UMETA(DisplayName = "Target Rarity At Least"),
+
+	/**
+	 * The target is a creature whose rarity rung is exactly `ConditionValue`. The Death trees of 2026-11-24: the Soul
+	 * Collector's kill schedule pays "1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a Herald",
+	 * one row a rung, and "15 for a Boss" with `TargetRarityAtLeast` above. Read as that one is, and -1 refuses.
+	 */
+	TargetRarityIs
+		UMETA(DisplayName = "Target Rarity Is"),
+
+	/**
+	 * At or within `ConditionValue` seconds since this character last killed an enemy. The Death trees of 2026-11-24:
+	 * the Soul Collector's Between the Dead and the Shadow's Killing Pace and Light Feet, "for 4 seconds after you
+	 * kill".
+	 *
+	 * A KILL IS ONE `ACataclysmPlayerCharacter::OnSomethingDied` CREDITS TO THIS CHARACTER, its damage over time's
+	 * included (the ruling of 2026-09-14), stamped by `UCataclysmFervour::NoteOwnKill`. The same stamp starts the
+	 * Death classes' decay grace, so the two cannot disagree about when the last kill was.
+	 *
+	 * A CHARACTER THAT HAS NEVER KILLED READS -1 AND REFUSES, as every clock's "never" does.
+	 */
+	WithinSecondsOfKill
+		UMETA(DisplayName = "Within Seconds Of Kill"),
+
+	/**
+	 * The character struck is in the asker's Siphon. The Death trees' slice C2 (2026-11-25): the Soul Collector's
+	 * Soul-Heavy Air, "Enemies in your Siphon take 1% increased damage from you per point for every 50 Fervour you
+	 * hold".
+	 *
+	 * IN THE SIPHON IS WHAT `FCataclysmSiphon::Step` KEEPS: an enemy within the Siphon's radius, or one that left it
+	 * no longer ago than the Siphon's linger (Lingering Pull). Read from the asker's own record in
+	 * `UCataclysmAbilitySystemComponent::WithTargetState`, so a character with no Siphon never holds it.
+	 *
+	 * NO THRESHOLD, SO `Value` IS NOT READ.
+	 */
+	TargetInYourSiphon
+		UMETA(DisplayName = "Target In Your Siphon"),
+
+	/**
+	 * At or within `ConditionValue` seconds since this character last spent Fervour. The Death trees' slice C3a
+	 * (2026-11-25): the Soul Collector's Quick Kindling and Burnt Offering, "for 4 seconds after you spend Fervour".
+	 *
+	 * A SPEND IS WHAT `UCataclysmAbilitySystemComponent::NoteFervourSpent` RECORDS: a skill's Fervour cost paid
+	 * (`UCataclysmGameplayAbility::ApplyCost`). A next-use charge spent is no spend of Fervour and stamps nothing.
+	 *
+	 * A CHARACTER THAT HAS NEVER SPENT READS -1 AND REFUSES, as every clock's "never" does.
+	 */
+	WithinSecondsOfFervourSpent
+		UMETA(DisplayName = "Within Seconds Of Fervour Spent"),
+
+	/**
+	 * The Soul Collector's Fervour threshold whose figure is `ConditionValue` (20, 40, 60 or 100) is reached. The Death
+	 * trees' slice C3d (2026-11-25), for the four vows' clauses: "while you hold 20 or more Fervour, all your skills have
+	 * 20% more Area of Effect", and the three after it at 40, 60 and 100.
+	 *
+	 * WORKED OUT ONCE A CONDITIONS FILL, by `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`, into
+	 * `FCataclysmStatConditions::FervourThresholdsReached`: the threshold is OPEN (25, 50, 100 or 200 passive points
+	 * spent, as the vows' sentences say), and either the Fervour held reaches its figure less Generous Count's
+	 * reduction or Long Shadow's seconds have not passed since it last did. A figure that is none of the four is never
+	 * reached, and the generator refuses one. See `CataclysmFervourThresholds`.
+	 */
+	FervourThresholdReached
+		UMETA(DisplayName = "Fervour Threshold Reached"),
+
+	/**
+	 * Fewer than `ConditionValue` points of the class resource are held: the Soul Collector's Empty Hands, "+2%
+	 * increased Attack Speed per point while you hold fewer than 20 Fervour". The Death trees' slice C3e (2026-11-25).
+	 *
+	 * STRICTLY BELOW, the opposite of `ClassResourcePointsAtLeast`, so at exactly 20 this refuses and that holds.
+	 * READS THE FERVOUR COUNTED AS HELD (`UCataclysmStatPipeline::FervourHeldCounted`), Chained Souls' share of what
+	 * followers hold back included, as every reading of the amount held does. AN UNKNOWN READING (-1, every enemy)
+	 * REFUSES, or every creature without a bar would hold "fewer than 20".
+	 */
+	ClassResourcePointsBelow
+		UMETA(DisplayName = "Class Resource Points Below"),
+
+	/**
+	 * The character struck or slain carries a Poison or a Bleed THE ASKER applied: the Shadow's Death's Patience,
+	 * "Killing an enemy that carries your Poison or Bleed generates +1 Fervour per point". The Death trees' slice C4a
+	 * (2026-11-25), as ruled: anyone's damage over time is `TargetCarriesADot`, not this.
+	 *
+	 * "YOUR" IS THE ASKER'S AVATAR, the instigator an ailment's effect names, as `TargetCarriesYourCurse` reads a curse.
+	 * Read by `UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy`.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`. False is "none of yours", "no target in hand", "no asker" and
+	 * "nothing asked", and all refuse.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetCarriesYourPoisonOrBleed
+		UMETA(DisplayName = "Target Carries Your Poison Or Bleed"),
+
+	/**
+	 * The class resource being gained is not a kill's payment: the Soul Collector's Any Fuel, "+2% increased Fervour
+	 * gained from sources other than kills per point". The Death trees' slice C4b1 (2026-11-25), as ruled: Any Fuel is a
+	 * row on `class_resource_generation`, the rate every gain is scaled by, under this condition, so its increase adds
+	 * to the rate's other increases.
+	 *
+	 * READ FROM THE KILL-PAYMENT MARKER: `UCataclysmAbilitySystemComponent::IsPayingForAKill`, set while a kill's
+	 * Fervour is paid (`UCataclysmFervour::GainOnOwnKill`). It holds whenever no kill is being paid for, so it is
+	 * meaningful only on the rate a gain asks.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	FervourGainNotFromAKill
+		UMETA(DisplayName = "Fervour Gain Not From A Kill"),
+
+	/**
+	 * The kill being acted on was made by a hit, not by a tick of damage over time: the Soul Collector's Passed On,
+	 * "Half the damage your hit deals beyond what killing an enemy needed". The Death trees' slice C4c1 (2026-11-25), as
+	 * the coordinating session ruled: "your hit" leaves out a tick, and the death notice already says which it was
+	 * (`FCataclysmDeathNotice::bByDamageOverTime`).
+	 *
+	 * READ FROM A MARK THE PLAYER'S KILL HANDLER SETS while its rows act on an own kill
+	 * (`UCataclysmAbilitySystemComponent::SetActingOnAKillByAHit`), so it holds on that kill's rows and nowhere else.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	KillingBlowWasAHit
+		UMETA(DisplayName = "Killing Blow Was A Hit"),
+
+	/**
+	 * The character struck stood within reach of an enemy the asker killed, at most `ConditionValue` seconds ago: the
+	 * Soul Collector's Grim Wake, "Enemies within 3 metres of an enemy you kill take 2% increased damage from you per
+	 * point for 3 seconds". The Death trees' slice C4c2 (2026-11-25), as ruled.
+	 *
+	 * KEPT ON THE CHARACTER MARKED, keyed by the killer, as the record `TargetDamagedByYouWithinSeconds` reads is:
+	 * `UCataclysmAbilitySystemComponent::NoteNearKillBy`, written at the kill by `UCataclysmFervour::MarkNearAKill` for
+	 * every enemy within the widest `ReachMetres` of the asker's rows under this condition. A follower's kill Death's
+	 * Toll makes the character's marks too. Read by `WithTargetState` only when a row asks; never marked reads -1 and
+	 * refuses.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	TargetNearYourKillWithinSeconds
+		UMETA(DisplayName = "Target Near Your Kill Within Seconds"),
+
+	/**
+	 * The kill being acted on was an execute: the Soul Collector's Reaper's Edge, "Your hits kill a non-Boss enemy below
+	 * 15% health outright, and those kills give double Fervour". The Death trees' slice C4d1 (2026-11-25), as ruled.
+	 *
+	 * READ FROM A MARK THE PLAYER'S KILL HANDLER SETS while it pays for and acts on an own kill whose death notice says
+	 * it was an execute (`FCataclysmDeathNotice::bByAnExecute`, set while `ExecuteIfLeftBelow` kills; a set bonus's cull
+	 * is not one). `UCataclysmAbilitySystemComponent::SetActingOnAKillByAnExecute`. Nowhere else does it hold.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	KillWasAnExecute
+		UMETA(DisplayName = "Kill Was An Execute"),
+
+	/**
+	 * The character is wearing the enemy modifier whose place in `UCataclysmFervour::WornEnemyModifierRows` is
+	 * `ConditionValue` (counted from 1): the Soul Collector's Wearer of the Dead, "Killing an Elite or stronger creature
+	 * gives you its modifiers for 20 seconds". The Death trees' slice C4d3 (2026-11-25), as ruled. Each worn modifier
+	 * is a row on the vow under this condition, naming which modifier it waits on.
+	 *
+	 * READ FROM A RECORD ON THE CHARACTER (`UCataclysmAbilitySystemComponent::NoteWornEnemyModifier`), written at an
+	 * Elite or stronger kill for each of the slain creature's modifiers that has a row, and running out after its
+	 * seconds with nothing announcing it.
+	 *
+	 * IT TAKES A VALUE: the modifier's place in the list.
+	 */
+	WearingEnemyModifier
+		UMETA(DisplayName = "Wearing Enemy Modifier"),
+
+	/**
+	 * The character holds a charge that makes its next landed hit a critical strike (Chain Execution's, Slip's or
+	 * Brim's): the Shadow's Brim, "your next hit is a critical strike and deals +5% increased damage per point". The
+	 * Death trees' slice C6a (2026-11-25). Read from the charge
+	 * (`UCataclysmAbilitySystemComponent::HoldsNextHitCritical`), which the hit it makes critical uses up.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	NextHitIsCritical
+		UMETA(DisplayName = "Next Hit Is Critical"),
+
+	/**
+	 * The character struck is struck from behind: the asker stands inside `UCataclysmSkillEffects::RearArcDegrees` about
+	 * its back (`IsBehind`), or the asker's skill counts every hit as from behind (`RearHits=1`, marked on the asker
+	 * around the hit: `UCataclysmAbilitySystemComponent::SetStrikingFromBehindByRule`). The Shadow's From Behind,
+	 * "hits that strike an enemy from behind, including hits a skill counts as struck from behind". The Death trees'
+	 * slice C6b1 (2026-11-25). IT TAKES NO VALUE.
+	 */
+	TargetStruckFromBehind
+		UMETA(DisplayName = "Target Struck From Behind"),
+
+	/**
+	 * The character struck is at full health: Opening Strike, "Your first hit on an enemy at full health". The Death
+	 * trees' slice C6b1 (2026-11-25). Read from the target's health share, as `TargetHealthBelowPercent` reads it; not
+	 * read refuses. IT TAKES NO VALUE.
+	 */
+	TargetAtFullHealth
+		UMETA(DisplayName = "Target At Full Health"),
+
+	/**
+	 * The character struck carries a Poison the asker applied, a Bleed alone not counting: Venomed Prey, "enemies
+	 * carrying your Poison". The Death trees' slice C6b1 (2026-11-25), beside `TargetCarriesYourPoisonOrBleed`. IT TAKES
+	 * NO VALUE.
+	 */
+	TargetCarriesYourPoison
+		UMETA(DisplayName = "Target Carries Your Poison"),
+
+	/**
+	 * The character struck is more than `ConditionValue` metres from the asker, strictly: Hit and Run, "enemies more
+	 * than 4 metres from you". The Death trees' slice C6b1 (2026-11-25). Reads `TargetDistanceMetres`, the field
+	 * `TargetWithinMetres` reads, which a damage over time tick fills from its applier; not known (-1) refuses. IT TAKES
+	 * A VALUE: the metres.
+	 */
+	TargetBeyondMetres
+		UMETA(DisplayName = "Target Beyond Metres"),
+
+	/**
+	 * The character's movement skill ENDED at most `ConditionValue` seconds ago: Arrival, "Hits you land within 1 second
+	 * after your movement skill ends". The Death trees' slice C6b2 (2026-11-25). Beside `WithinSecondsOfMovementSkill`,
+	 * which counts from the USE. Written by `UCataclysmMovementSkill::EndAbility` through
+	 * `UCataclysmAbilitySystemComponent::NoteMovementSkillEnded`, only for a use that was paid for: a Recall's first
+	 * press, which leaves a mark and moves nobody, and a use refused before it was paid, end without writing it, and so
+	 * does a movement-shaped skill made for another slot, as for the use's clock. A move cut short does write it,
+	 * because it has ended. At or within, and never reads -1 and refuses, as for every clock.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	WithinSecondsOfMovementSkillEnd
+		UMETA(DisplayName = "Within Seconds Of Movement Skill End"),
+
+	/**
+	 * The character struck was hit by the asker's movement skill at most `ConditionValue` seconds ago: Glancing Cuts,
+	 * "Enemies your movement skill hits take +2% increased damage per point from you for 4 seconds". The Death trees'
+	 * slice C6b2 (2026-11-25). A record kept on the character struck and keyed by the striker, as Grim Wake's is
+	 * (`UCataclysmAbilitySystemComponent::NoteStruckByMovementSkillOf`), written by `UCataclysmSkillEffects::ApplyHit`
+	 * for a blow that landed whose skill was made for the Movement slot: the skill's own blow, its path damage and its
+	 * end explosions. Not for an evaded blow, a share struck at an ally, or a tick. Read by `WithTargetState` only when a
+	 * row asks; never struck reads -1 and refuses.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	TargetStruckByYourMovementSkillWithinSeconds
+		UMETA(DisplayName = "Target Struck By Your Movement Skill Within Seconds"),
+
+	/**
+	 * Whoever is on the other side of the blow is of rarity rung `ConditionValue` or above: 0 Common, 1 Elite, 2
+	 * Legendary, 3 Herald, 4 Boss, 5 Cataclysm Boss. Read the Blow, "+1% Evasion chance per point against attacks from
+	 * Elite and stronger enemies". The Death trees' slice C6b3 (2026-11-25). FOR A BLOW BEING TAKEN, so the other side
+	 * is the attacker, as for `OpponentIsBoss`: `Blow.OpponentRarityStep`, which `BlowContextFor` fills from the hit's
+	 * `AttackerRarityStep`. -1 (not a creature, a tick, no blow in hand) refuses. IT TAKES A VALUE: the rung.
+	 */
+	OpponentRarityAtLeast
+		UMETA(DisplayName = "Opponent Rarity At Least"),
+
+	/**
+	 * An enemy of rarity rung `ConditionValue` or above stands within the row's own `ReachMetres` of the character:
+	 * Vigil Over the Strong, "While an Elite or stronger creature is within 15 metres of you", and Reaper's Due, "while
+	 * a Boss is within 15 metres". The Death trees' slice C6b3 (2026-11-25). Read from `HostileRarityDistancesMetres`
+	 * and `HostileRarityRungs`, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills only when a row asks,
+	 * as it fills the crippled enemies. Nobody read refuses, as an empty room does. IT TAKES A VALUE: the rung.
+	 */
+	EnemyOfRarityInReach
+		UMETA(DisplayName = "Enemy Of Rarity In Reach"),
+
+	/**
+	 * No enemy stands within the row's own `ReachMetres` of the character: Hunting Ground, "While no enemy is within 20
+	 * metres of you". The Death trees' slice C6b3 (2026-11-25). The distances `EnemiesInReachAtLeast` counts, read the
+	 * other way, AND ONLY WHEN THE WALK WAS MADE: an empty list is also what a lookup that walked nothing holds, and
+	 * read as "nobody near" it would grant everywhere, so `bHostileDistancesRead` must be set. IT TAKES NO VALUE.
+	 */
+	NoEnemyInReach
+		UMETA(DisplayName = "No Enemy In Reach"),
+
+	/**
+	 * The character killed an enemy at most `ConditionValue` seconds ago PLUS the chain's extra seconds
+	 * (`kill_chain_seconds`, `FCataclysmStatConditions::KillChainSeconds`): Soul Tide's "Kills within 2 seconds of each
+	 * other", which Unbroken Chain lengthens, "The same applies to Soul Tide". The Death trees' slice C6c (2026-11-25), as
+	 * ruled. The kill clock `WithinSecondsOfKill` reads, and its rules: never killed reads -1 and refuses; inclusive. The
+	 * other "for N seconds after a kill" rows stay on `WithinSecondsOfKill`, which the chain does not lengthen.
+	 *
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	KillChainWithinSeconds
+		UMETA(DisplayName = "Kill Chain Within Seconds"),
+
+	/**
+	 * At least `ConditionValue` of the character's own followers stand within the row's own `ReachMetres` of it: its
+	 * minions, imps and thralls, whatever `UCataclysmCommand::ThingsCommandedBy` finds. The Necromancer's Gravekeeper's
+	 * Hide ("while three or more of your minions are within 6 metres of you"), Shielding Ranks, Steadfast Among Them
+	 * and Ringed in Bone ("five or more"). The Death trees' slice C6d1 (2026-11-25), as ruled. Read from
+	 * `OwnMinionDistancesMetres`, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills only when a row
+	 * asks; a value below one refuses, as `EnemiesInReachAtLeast`'s does. IT TAKES A VALUE: the count.
+	 */
+	MinionsInReachAtLeast
+		UMETA(DisplayName = "Minions In Reach At Least"),
+
+	/**
+	 * The character struck carries Necrosis: Grave Cold, "your minions deal 15% more damage to enemies that have
+	 * Necrosis". The Death trees' slice C6d1 (2026-11-25), as ruled. Necrosis from anyone, as the sentence says. Filled
+	 * by `WithTargetState` only when a row asks. IT TAKES NO VALUE.
+	 */
+	TargetCarriesNecrosis
+		UMETA(DisplayName = "Target Carries Necrosis"),
+
+	/**
+	 * One of the character's own followers -- a minion, an imp or a thrall, not a gadget or a trap -- was killed within
+	 * the last `ConditionValue` seconds: Bone Knit, "while one of your minions has died in the last 3 seconds". The
+	 * Death trees' slice C6d2 (2026-11-25), as ruled (P1). Read from `SecondsSinceMinionDied`, which
+	 * `UCataclysmAbilitySystemComponent::NoteMinionDied` keeps; its event, `minion_death`, is raised there. Negative
+	 * refuses, as every clock's does, and the window is inclusive. IT TAKES A VALUE: the seconds.
+	 */
+	WithinSecondsOfMinionDeath
+		UMETA(DisplayName = "Within Seconds Of Minion Death"),
+
+	/**
+	 * One of the character's own followers was killed within the last `ConditionValue` seconds AND within the row's
+	 * own `ReachMetres` of the character, measured as it fell: Death Ward, "for 3 seconds after one of your minions dies
+	 * within 6 metres of you". The Death trees' slice C6d2 (2026-11-25). Read from `RecentMinionDeathSecondsAgo` and
+	 * `RecentMinionDeathMetres`, which `CurrentConditions` copies from the deaths
+	 * `UCataclysmAbilitySystemComponent::NoteMinionDied` records. A row with no reach counts nothing, as every reach
+	 * condition does. NOT NAMED `seconds_after_...`, which would name an action event; `minion_death` is the one.
+	 * IT TAKES A VALUE: the seconds.
+	 */
+	MinionDeathInReachWithinSeconds
+		UMETA(DisplayName = "Minion Death In Reach Within Seconds"),
+
+	/**
+	 * The hit being announced as `hit_taken` took at least `ConditionValue` per cent of the character's maximum health:
+	 * Avenging Dead, "When a hit takes more than 5% of your maximum health, your minions gain ...". The Death trees'
+	 * slice C6d2 (2026-11-25), as ruled (Q2). Read from `HitTakenPercentOfMaxHealth`, which `CurrentConditions` copies
+	 * from the hit `UCataclysmAbilitySystemComponent::NoteHitTaken` is announcing, and -1, which refuses, at every
+	 * other moment. AN EVENT CONDITION (`IsJudgedAtItsEvent`): on a row scaled by its own stacks it is judged when the
+	 * stack is granted and not when the stat is read. What reached health, as Soulbound counts. IT TAKES A VALUE: the
+	 * share in per cent.
+	 */
+	HitTookAtLeastPercentOfMaxHealth
+		UMETA(DisplayName = "Hit Took At Least Percent Of Max Health"),
+
+	/**
+	 * The minion whose figure is being asked stands within `ConditionValue` metres of its summoner: Marshal, "Your
+	 * minions within 10 metres of you deal +2% increased damage per point". The Death trees' slice C6d2 (2026-11-25).
+	 * Read from `AskingMinionMetres`, which `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` fills when its
+	 * caller names the minion -- a minion's or a thrall's blow and its explosion -- and -1, which refuses, otherwise.
+	 * IT TAKES A VALUE: the metres.
+	 */
+	MinionWithinMetresOfYou
+		UMETA(DisplayName = "Minion Within Metres Of You"),
+
+	/**
+	 * The character struck carries one of the asker's own marks: the Shadow's Deathmark, "It takes 30% more damage from
+	 * you, and each critical strike on it gives 5 Fervour". The Death trees' slice C6e (2026-11-25), as ruled (Q5): a
+	 * mark of its own, keyed by the marker, separate from War's Deathmark. Filled by `WithTargetState` only when a row
+	 * asks, from `UCataclysmAbilitySystemComponent::HoldsShadowMarkOn`. IT TAKES NO VALUE.
+	 */
+	TargetMarkedByYou
+		UMETA(DisplayName = "Target Marked By You"),
+
+	/**
+	 * The character struck is the last that hit the asker: Guard the Master, "Your minions turn on the last enemy that
+	 * hit you, and deal +3% increased damage per point to it". The Death trees' slice C6e (2026-11-25). Read from the
+	 * asker's `GetLastBlow` by `WithTargetState`, only when a row asks; for a minion's blow the asker is its summoner.
+	 * IT TAKES NO VALUE.
+	 */
+	TargetIsYourLastAttacker
+		UMETA(DisplayName = "Target Is Your Last Attacker"),
+
+	/**
 	 * The character holds two items in its weapon slots. The Berserker's states, `plan_death_and_war.md` slice B29,
 	 * 2026-11-25: "Dual wield only", which sixteen Berserker nodes and options say, Frenzy first.
 	 *
@@ -1852,6 +2229,27 @@ enum class ECataclysmStatCondition : uint8
 	ClassResourceAtOrBelowPercent
 		UMETA(DisplayName = "Class Resource At Or Below Percent"),
 };
+
+/**
+ * The Soul Collector's four Fervour thresholds, in order: the figure of Fervour held each asks for, and the passive
+ * points spent that open it. The Death trees' slice C3d (2026-11-25), from the four vows' sentences: "Reaching 25 points
+ * also opens the first Fervour threshold: while you hold 20 or more Fervour", and 50 for 40, 100 for 60, 200 for 100.
+ * `tools/generate_datatables.py` holds the figures in `FERVOUR_THRESHOLDS`, and a test holds the two equal.
+ */
+namespace CataclysmFervourThresholds
+{
+	/** How many there are: four. */
+	CATACLYSM_API int32 Count();
+
+	/** The Fervour held the threshold at `Index` asks for (20, 40, 60, 100), or -1 past the end. */
+	CATACLYSM_API float Figure(int32 Index);
+
+	/** The passive points spent that open the threshold at `Index` (25, 50, 100, 200), or -1 past the end. */
+	CATACLYSM_API int32 OpensAtPoints(int32 Index);
+
+	/** The index of the threshold whose figure is `FigureAskedFor`, or -1 when it is none of the four. */
+	CATACLYSM_API int32 IndexOf(float FigureAskedFor);
+}
 
 /**
  * What a condition's answer depends on. Issue #1821.
@@ -2654,6 +3052,48 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Percent Of Increased Movement Speed"),
 
 	/**
+	 * `Value` per whole `ScaleStep` enemies in the character's Siphon. The Death trees' slice C2 (2026-11-25): the
+	 * Soul Collector's Sapping Cold and Stolen Strength, "for each of them, up to 10 enemies", and Life Siphon's and
+	 * Living Harvest's "each enemy in your Siphon".
+	 *
+	 * READ FROM `FCataclysmStatConditions::EnemiesInSiphon`, which `CurrentConditions` fills from the character's own
+	 * record (`FCataclysmSiphon::Step` keeps it), so a character with no Siphon counts nobody. A cap is the row's
+	 * `ScaleMaxSteps`.
+	 */
+	PerEnemyInSiphon
+		UMETA(DisplayName = "Per Enemy In Siphon"),
+
+	/**
+	 * `Value` per whole `ScaleStep` of the Soul Collector's four Fervour thresholds reached now. The Death trees' slice
+	 * C3d (2026-11-25): Steady Count, "+1% increased damage per point for each Fervour threshold you are at or above".
+	 * Read from `FCataclysmStatConditions::FervourThresholdsReached`, the same answer the condition
+	 * `FervourThresholdReached` reads, so the two cannot disagree.
+	 */
+	PerFervourThresholdReached
+		UMETA(DisplayName = "Per Fervour Threshold Reached"),
+
+	/**
+	 * Multiplied by the whole seconds the character asked about has carried the asker's Poison without a break: the
+	 * Shadow's Festering, "Poison you apply deals +1% increased damage for every 2 points for each second the enemy
+	 * has stayed poisoned by you without a break, up to 10 seconds". The Death trees' slice C6b4 (2026-11-25). Read
+	 * from the record `UCataclysmAbilitySystemComponent::NotePoisonBeganBy` keeps on the creature, through
+	 * `UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker`; a creature carrying none of the asker's Poison, and a
+	 * lookup with no target, count none. Capped by the row's `ScaleMaxSteps`.
+	 */
+	PerSecondPoisonedByYou
+		UMETA(DisplayName = "Per Second Poisoned By You"),
+
+	/**
+	 * Multiplied by the overflow stacks the character holds: one for each whole Fervour a gain could not fit above the
+	 * full bar after reserves, while their shared window runs. The Soul Collector's Overflow, "Each Fervour above it
+	 * gives 1% increased Attack Speed for 5 seconds, up to 30%". The Death trees' slice C6c (2026-11-25), as ruled. Read
+	 * off the asking ability system (`UCataclysmAbilitySystemComponent::FervourOverflowStacksHeld`); capped by the row's
+	 * `ScaleMaxSteps`.
+	 */
+	PerFervourOverflowStack
+		UMETA(DisplayName = "Per Fervour Overflow Stack"),
+
+	/**
 	 * `Value` per whole `ScaleStep` points of the class resource's maximum. The War vow options' second slice,
 	 * 2026-11-25: Titan's "Your maximum HP is increased by 1% for every 2 points of maximum Fervour you have" is a step
 	 * of 2, and Unbridled's "Every 20 points of maximum Fervour you have also grants 1% damage reduction" a step of 20.
@@ -2728,6 +3168,12 @@ struct CATACLYSM_API FCataclysmBlowContext
 	/** The character on the other side of the blow is a boss. See `IsBoss`. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bOpponentIsBoss = false;
+
+	/**
+	 * The rarity rung of whoever is on the other side of the blow, or -1 for not a creature. The Death trees' slice
+	 * C6b3 (2026-11-25), for `OpponentRarityAtLeast`. Filled by `BlowContextFor` from the hit's `AttackerRarityStep`.
+	 */
+	int32 OpponentRarityStep = -1;
 
 	/**
 	 * Metres from the character that dealt this blow to the one taking it, or
@@ -2923,6 +3369,67 @@ struct CATACLYSM_API FCataclysmStatConditions
 	float SecondsSinceStruckABoss = -1.0f;
 
 	/**
+	 * Seconds since the character last killed an enemy. The Death trees of 2026-11-24. Negative means neither known
+	 * nor ever, as above. Stamped by `UCataclysmFervour::NoteOwnKill`; see
+	 * `ECataclysmStatCondition::WithinSecondsOfKill`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceOwnKill = -1.0f;
+
+	/**
+	 * The seconds Unbroken Chain adds to a chain of kills (`kill_chain_seconds`), or 0. The Death trees' slice C6c
+	 * (2026-11-25). Filled by `CurrentConditions`; read by `ECataclysmStatCondition::KillChainWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float KillChainSeconds = 0.0f;
+
+	/**
+	 * The distance, in metres, to each of the character's own followers within the widest reach a
+	 * `MinionsInReachAtLeast` row asks about. The Death trees' slice C6d1 (2026-11-25). Filled only when such a row asks.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> OwnMinionDistancesMetres;
+
+	/** Whether the character struck carries Necrosis. The Death trees' slice C6d1. See `TargetCarriesNecrosis`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCarriesNecrosis = false;
+
+	/** Whether the character struck carries one of the asker's marks. The Death trees' slice C6e. See `TargetMarkedByYou`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetMarkedByYou = false;
+
+	/** Whether the character struck is the last that hit the asker. The Death trees' slice C6e. See `TargetIsYourLastAttacker`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsYourLastAttacker = false;
+
+	/**
+	 * How many enemies are in this character's Siphon, for `ECataclysmStatScale::PerEnemyInSiphon`. The Death trees'
+	 * slice C2 (2026-11-25). Filled by `UCataclysmAbilitySystemComponent::CurrentConditions` from the record
+	 * `FCataclysmSiphon::Step` keeps; nought for a character with no Siphon.
+	 */
+	int32 EnemiesInSiphon = 0;
+
+	/**
+	 * Seconds since this character last spent Fervour, or -1 if it never has, for
+	 * `ECataclysmStatCondition::WithinSecondsOfFervourSpent`. The Death trees' slice C3a (2026-11-25).
+	 */
+	float SecondsSinceFervourSpent = -1.0f;
+
+	/**
+	 * Which of the Soul Collector's four Fervour thresholds are reached now, one bit each in the order of
+	 * `CataclysmFervourThresholds` (bit 0 the threshold at 20), or -1 for a character with no Fervour or no player
+	 * state, which reaches none. For `ECataclysmStatCondition::FervourThresholdReached` and
+	 * `ECataclysmStatScale::PerFervourThresholdReached`. The Death trees' slice C3d (2026-11-25).
+	 */
+	int32 FervourThresholdsReached = -1;
+
+	/**
+	 * Whether the character struck is in the asker's Siphon, for `ECataclysmStatCondition::TargetInYourSiphon`. Filled
+	 * by `UCataclysmAbilitySystemComponent::WithTargetState` only when a row asks.
+	 */
+	bool bTargetInYourSiphon = false;
+
+	/**
 	 * Seconds since the character last used the skill in its Support slot. Negative means neither known
 	 * nor ever, as above.
 	 */
@@ -2935,6 +3442,44 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceMovementSkill = -1.0f;
+
+	/**
+	 * Seconds since the character's movement skill last ENDED, a use that was paid for. Negative means neither known
+	 * nor ever, as above. The Death trees' slice C6b2 (2026-11-25). See `WithinSecondsOfMovementSkillEnd`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMovementSkillEnded = -1.0f;
+
+	/**
+	 * Seconds since one of the character's own followers was last killed. Negative means neither known nor ever, as
+	 * above. The Death trees' slice C6d2 (2026-11-25). See `WithinSecondsOfMinionDeath`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMinionDied = -1.0f;
+
+	/**
+	 * The character's own followers killed in the last minute: how long ago each died, and, at the same index, how far
+	 * from the character it fell. The Death trees' slice C6d2 (2026-11-25). See `MinionDeathInReachWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> RecentMinionDeathSecondsAgo;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> RecentMinionDeathMetres;
+
+	/**
+	 * The share of maximum health, in per cent, that the hit being announced as `hit_taken` took from health; -1 at
+	 * every other moment. The Death trees' slice C6d2 (2026-11-25). See `HitTookAtLeastPercentOfMaxHealth`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float HitTakenPercentOfMaxHealth = -1.0f;
+
+	/**
+	 * How far the minion whose figure is being asked stands from its summoner, in metres; -1 when no minion is named.
+	 * The Death trees' slice C6d2 (2026-11-25). See `MinionWithinMetresOfYou`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float AskingMinionMetres = -1.0f;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
@@ -3001,6 +3546,30 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceMaximum = -1.0f;
+
+	/**
+	 * What the character's minions, thralls and machines hold back of that pool (`UCataclysmCommand::
+	 * ReservedFervourOf`). Ruled by the coordinating session on 2026-11-25 (the Death trees' slice C).
+	 *
+	 * WHAT A FULL BAR IS JUDGED AGAINST. Every gain stops at the maximum less this
+	 * (`UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked`), so a character with a minion out could never
+	 * reach the gross maximum, and `ClassResourceAtMaximum` and the full-bar crossing never held for it: a Ritualist
+	 * with an imp out, or a Necromancer with any minion, was never "full". Both now compare against the maximum less
+	 * this. `ClassResourceAbovePercent` is left on the gross maximum; the ruling covers "full" only.
+	 *
+	 * NOUGHT BY DEFAULT, which is a character holding nothing back.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ClassResourceReserved = 0.0f;
+
+	/**
+	 * Fervour COUNTED AS HELD beside the pool: Chained Souls' share of what this character's minions, gadgets and traps
+	 * hold back (`ClassResourceReserved`), "8% per point ... counts as Fervour you hold, for everything that counts
+	 * Fervour held". The Death trees' slice C3e (2026-11-25). Every reading of the amount held adds it, through
+	 * `UCataclysmStatPipeline::FervourHeldCounted`; whether the bar is FULL does not, nor what Phylactery spends, both
+	 * ruled by the coordinating session on 2026-11-25. NOUGHT BY DEFAULT.
+	 */
+	float ClassResourceCountedAsHeld = 0.0f;
 
 	/**
 	 * How much health the character owes, as a percentage of its maximum.
@@ -3574,6 +4143,93 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bTargetCarriesYourCurse = false;
 
 	/**
+	 * Whether the character struck or slain carries a Poison or a Bleed the asker applied. The Death trees' slice C4a
+	 * (2026-11-25). Filled by `WithTargetState` only when a modifier asks and an asker is in hand; false otherwise, which
+	 * refuses. See `ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCarriesYourPoisonOrBleed = false;
+
+	/**
+	 * Whether the class resource being gained is not a kill's payment. The Death trees' slice C4b1 (2026-11-25). Filled
+	 * by `UCataclysmAbilitySystemComponent::CurrentConditions` as the opposite of `IsPayingForAKill`; false in a state
+	 * nobody filled, which refuses. See `ECataclysmStatCondition::FervourGainNotFromAKill`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFervourGainNotFromAKill = false;
+
+	/**
+	 * Whether the kill being acted on was made by a hit. The Death trees' slice C4c1 (2026-11-25). Filled by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` from the kill handler's mark; false otherwise, which
+	 * refuses. See `ECataclysmStatCondition::KillingBlowWasAHit`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKillingBlowWasAHit = false;
+
+	/**
+	 * How long ago the character struck stood near a kill of the asker's, in seconds; -1 for never, and for a target
+	 * nobody read. The Death trees' slice C4c2 (2026-11-25). See `ECataclysmStatCondition::TargetNearYourKillWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceNearYourKill = -1.0f;
+
+	/**
+	 * Whether the kill being acted on was an execute. The Death trees' slice C4d1 (2026-11-25). Filled by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` from the kill handler's mark; false otherwise, which
+	 * refuses. See `ECataclysmStatCondition::KillWasAnExecute`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKillWasAnExecute = false;
+
+	/**
+	 * The places, in `UCataclysmFervour::WornEnemyModifierRows`, of the enemy modifiers the character is wearing now.
+	 * The Death trees' slice C4d3 (2026-11-25). A list rather than bits, because issue #2899 grows the worn list toward
+	 * every enemy modifier but the one button ability, past what a mask holds. Filled by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions`; empty, which refuses every place, otherwise. See
+	 * `ECataclysmStatCondition::WearingEnemyModifier`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<int32> WornEnemyModifierPlaces;
+
+	/**
+	 * Whether the character holds a next-hit critical strike charge now. The Death trees' slice C6a (2026-11-25). Filled
+	 * by `UCataclysmAbilitySystemComponent::CurrentConditions`; false otherwise, which refuses. See
+	 * `ECataclysmStatCondition::NextHitIsCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bHoldsNextHitCritical = false;
+
+	/**
+	 * Whether the character struck is struck from behind. The Death trees' slice C6b1 (2026-11-25). Filled by
+	 * `UCataclysmAbilitySystemComponent::WithTargetState` when a row asks. See `TargetStruckFromBehind`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStruckFromBehind = false;
+
+	/**
+	 * Whether the character struck carries a Poison the asker applied. The Death trees' slice C6b1 (2026-11-25). Filled
+	 * by `WithTargetState` beside `bTargetCarriesYourPoisonOrBleed`. See `TargetCarriesYourPoison`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCarriesYourPoison = false;
+
+	/**
+	 * How long ago the asker's movement skill struck the character struck, in seconds; -1 for never, and for a target
+	 * nobody read. The Death trees' slice C6b2 (2026-11-25). See
+	 * `ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceStruckByYourMovementSkill = -1.0f;
+
+	/**
+	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
+	 * trees of 2026-11-24. Filled by `WithTargetState` only when some modifier in the lookup asks; see
+	 * `ECataclysmStatCondition::TargetRarityAtLeast`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 TargetRarityStep = -1;
+
+	/**
 	 * Whether the character being hit is a boss. Issue #1815.
 	 *
 	 * FALSE MEANS NOT A BOSS OR NOT READ, and nothing distinguishes the two.
@@ -3751,6 +4407,25 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> HostileDistancesMetres;
+
+	/**
+	 * Whether `HostileDistancesMetres` was walked for this lookup. The Death trees' slice C6b3 (2026-11-25), for
+	 * `NoEnemyInReach`, which must tell "nobody is near" from "nobody looked": the list is empty in both.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bHostileDistancesRead = false;
+
+	/**
+	 * The distance, in metres, to each hostile creature within the widest reach an `EnemyOfRarityInReach` row asks
+	 * about, beside its rarity rung in `HostileRarityRungs` at the same index. The Death trees' slice C6b3
+	 * (2026-11-25). Filled only when such a row asks.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> HostileRarityDistancesMetres;
+
+	/** The rarity rung of each entry of `HostileRarityDistancesMetres`, -1 for a hostile that is not a creature. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<int32> HostileRarityRungs;
 
 	/**
 	 * How far away each hostile character carrying the Cripple debuff is, within
@@ -4372,6 +5047,42 @@ enum class ECataclysmPoolActionBase : uint8
 	 * amount may be named by such a row, and the generator refuses the rest.
 	 */
 	EventAmount UMETA(DisplayName = "The amount the event carried"),
+
+	/**
+	 * THE MAXIMUM, ONCE FOR EACH WHOLE UNIT OF THE AMOUNT THE EVENT CARRIED: "Spending Fervour heals 1% of maximum
+	 * health for each Fervour spent" (Feast), and, on a smite, "10% of your weapon damage for each Fervour spent" (Soul
+	 * Furnace). The Death trees' slice C3b (2026-11-25).
+	 *
+	 * NOT READ WHERE AN ACTION IS APPLIED. `UCataclysmAbilitySystemComponent::ActOnEvent` multiplies the row's
+	 * `Percent` by `TimesSizedByEventAmount` and hands on a copy whose base is `Maximum`, so a pool, a smite and a
+	 * cooldown cut are all sized in one place. Rounded down: a spend of 3.75 is three.
+	 */
+	ForEachOfEventAmount UMETA(DisplayName = "For each of the event's amount"),
+
+	/**
+	 * THE SAME, FOR EACH WHOLE TEN of the amount: "1% of your maximum mana per point for every 10 Fervour spent" (Spirit
+	 * to Mana, and Ashen Ward's energy shield) and "Every 10 Fervour you spend takes 1 second off" (Turn of the Wheel).
+	 * Whole tens, so a spend of 19 pays once: the coordinating session's ruling 3 of 2026-11-25.
+	 */
+	ForEachTenOfEventAmount UMETA(DisplayName = "For each ten of the event's amount"),
+
+	/**
+	 * THE VALUE ONCE FOR EACH WHOLE HUNDRED OF THE CLASS RESOURCE HELD, read when the row acts: the Shadow's Relentless,
+	 * "Each kill takes 1 second off all your skill cooldowns for every 100 Fervour held". The Death trees' slice C4d1
+	 * (2026-11-25), as ruled: whole hundreds, so 99 held takes nothing off. Held as `class_resource_held` counts it
+	 * (`UCataclysmStatPipeline::FervourHeldCounted`). Multiplied in `ActOnEvent` beside the two bases above, by
+	 * `UCataclysmAbilitySystemComponent::TimesSizedByFervourHeld`.
+	 */
+	ForEachHundredClassResourceHeld UMETA(DisplayName = "For each hundred of the class resource held"),
+
+	/**
+	 * THE VALUE ITSELF, A FLAT AMOUNT, ON THE CLASS RESOURCE ONLY: Opening Found's "generates 1 Fervour per point",
+	 * Reaper's Due's "gives 5 Fervour" and Tear Loose's "1 Fervour". The Death trees' slice C6b3 (2026-11-25), as
+	 * ruled by the coordinating session: an action row rather than War's per-event Fervour stats, paid as every class
+	 * resource gain is, scaled by `class_resource_generation` and through `UCataclysmFervour::RaisePool`. The generator
+	 * refuses it on any other pool, and `ApplyPoolAction` pays nothing for one that reaches the game anyway.
+	 */
+	Points UMETA(DisplayName = "A flat amount"),
 };
 
 /**
@@ -4419,6 +5130,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** What the percentage is a percentage OF. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmPoolActionBase Base = ECataclysmPoolActionBase::Maximum;
+
+	/**
+	 * The chance, in percent, that a class resource row pays when its event happens, or 0 for every time. The Death
+	 * trees' slice C6b3 (2026-11-25), ruled for Tear Loose: "a 2% chance per point to give you 1 Fervour". Rolled in
+	 * `ActOnEvent` BEFORE the row pays and before its trigger cooldown starts, so a failed roll pays nothing and makes
+	 * the row wait for nothing. Read for the class resource pool only; the generator refuses it on any other row.
+	 */
+	float ChancePercent = 0.0f;
 
 	/**
 	 * Tags the thing that caused the event must carry, or empty for any.
@@ -4552,8 +5271,9 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/**
 	 * Set, this action TAKES SECONDS OFF RUNNING SKILL COOLDOWNS instead of
 	 * moving a pool. Issue #1833, the cooldown reduction action. `Percent` is
-	 * the seconds, and only `All` and `Heavy` are used: the two targets a row
-	 * asks for.
+	 * the seconds, and only `All`, `Heavy` and `Others` are used: the three
+	 * targets a row asks for. `Others` is every skill but the event's own, read
+	 * off the event's `Slot.*` tag (Turn of the Wheel, the Death trees' slice C3b).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmCooldownReset CooldownReduce = ECataclysmCooldownReset::None;
@@ -4926,6 +5646,66 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bExplodeVictimForOverkill = false;
+
+	/**
+	 * Set, this action makes an enemy its wearer kills BURST FOR A SHARE OF ITS MAXIMUM HEALTH: `Percent` is the share,
+	 * dealt to every enemy near the body. The Soul Collector's The Ferryman, "every enemy you kill bursts for 10% of its
+	 * maximum health to enemies within 4 metres, and a creature the burst kills bursts too". The Death trees' slice C4c1
+	 * (2026-11-25). On `kill` and no other event.
+	 *
+	 * THE EVENT LOOP ONLY RECORDS THE SHARE, as it does for the overkill explosion and for its reason; the kill handler
+	 * takes it (`UCataclysmAbilitySystemComponent::TakePendingSlainBurstSharePercent`) and makes the burst once the
+	 * death has been heard, so a creature the burst kills is a kill of its own and bursts in turn.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bBurstSlainForMaximumHealth = false;
+
+	/**
+	 * Set, this action passes the damage the wearer's Bleed on an enemy that just died had left to deal to the strongest
+	 * enemy near the body, over `Percent` seconds: the Shadow's Blood Debt. The Death trees' slice C4c2 (2026-11-25). On
+	 * `afflicted_death` and no other event, under the required tag `Keyword.DoT.Bleed`. See
+	 * `UCataclysmDebuffs::PassBleedLeftToStrongest`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPassBleedLeftToStrongest = false;
+
+	/**
+	 * Set, this action makes the wearer's next hit that lands within `Percent` seconds a critical strike: the Shadow's
+	 * Chain Execution, "A kill makes your next hit within 2 seconds a critical strike". The Death trees' slice C4d1
+	 * (2026-11-25), as ruled. On `kill` and no other event. A second grant inside the window refreshes it; it is never
+	 * two. See `UCataclysmAbilitySystemComponent::HoldsNextHitCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextHitCritical = false;
+
+	/**
+	 * Set, this action lengthens a running hold before the Fervour decay by `Percent` seconds, never past the hold's full
+	 * length, as Borrowed Time's does: the Shadow's Keep the Count, "Evading a hit adds 1 second for every 3 points to
+	 * the time before your Fervour begins to drain". The Death trees' slice C6a (2026-11-25). On `dodge`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bExtendFervourHold = false;
+
+	/**
+	 * Whether this row makes the critical strike charge an evasion grants hold TWO rather than one, on a roll of its
+	 * `ChancePercent`: the Shadow's Twice Answered, "Each evasion has a 5% chance per point to give you two critical
+	 * strikes rather than one". The Death trees' slice C6b4 (2026-11-25), as ruled. On `dodge`. ROLLED BEFORE THE
+	 * EVENT'S ROWS ACT, so the charge granted by the same evasion reads the result whatever the table's order. An
+	 * evasion that grants no charge is given nothing by it. See `UCataclysmAbilitySystemComponent::HoldsNextHitCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextHitCriticalTwice = false;
+
+	/**
+	 * Blade Echo and Thousand Cuts, the Death trees' slice C6e (2026-11-25), as ruled (Q6): on a kill, an instant hit
+	 * of `Percent` of the wearer's weapon damage on the strongest enemy within 10 metres, the wearer's own Shadow mark
+	 * first if it is that near; Thousand Cuts moves the wearer beside it first. No projectile is drawn.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bStrikeStrongestNear = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bDashToStrongestAndStrike = false;
 
 	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
@@ -5374,16 +6154,24 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-third, which is the drift that put the passive tree eight
+	 * adds a hundred-and-fifteenth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
 
 	/**
+	 * The Fervour a reading of the amount held counts: the pool, and Chained Souls' share of what followers hold back
+	 * (`FCataclysmStatConditions::ClassResourceCountedAsHeld`). The Death trees' slice C3e (2026-11-25). An unknown
+	 * pool (-1) stays unknown. Read by every condition and scale on the amount held and by the Fervour thresholds; NOT
+	 * by `ClassResourceAtMaximum`, which asks whether the bar itself is full.
+	 */
+	static float FervourHeldCounted(const FCataclysmStatConditions& State);
+
+	/**
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY OF THE EIGHTY-TWO COMPARE NOTHING. They are the case labels
+	 * FIFTY-THREE OF THE HUNDRED-AND-FOURTEEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
@@ -5411,6 +6199,14 @@ public:
 	 * would make a predicate judge a number it was never meant to have.
 	 */
 	static bool ConditionTakesAValue(ECataclysmStatCondition Condition);
+
+	/**
+	 * Whether a condition is judged at its row's event rather than when the stat is read: true for
+	 * `HitTookAtLeastPercentOfMaxHealth` alone. The Death trees' slice C6d2 (2026-11-25). An own-stack row naming one
+	 * puts it on the stack's grant and leaves it off the stat (`CataclysmItem.cpp`), because the fact it reads exists
+	 * only while the event is raised.
+	 */
+	static bool IsJudgedAtItsEvent(ECataclysmStatCondition Condition);
 
 	/**
 	 * What a condition's answer depends on. Issue #1821. See

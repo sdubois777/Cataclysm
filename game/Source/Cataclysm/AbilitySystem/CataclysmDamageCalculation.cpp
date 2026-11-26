@@ -12,6 +12,8 @@
 // For the share of its summoner's armour and resistances a minion takes: who
 // the minion is, whose it is, and whether that character still lives.
 #include "AbilitySystem/CataclysmMinion.h"
+// For a commanded defender's damage taken from its commander, Grave Pact. The Death trees' slice C6d1.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -342,6 +344,24 @@ namespace
 	}
 
 	/**
+	 * What a commanded defender takes of a blow, from its commander's `minion_damage_taken`: Grave Pact, "Your minions
+	 * take 30% less damage", the Death trees' slice C6d1 (2026-11-25). One plus its increases, times its more rows, with
+	 * the follower's own tags, as every minion stat is read; 1 for anything nobody commands.
+	 */
+	float MinionDamageTakenFactor(const UAbilitySystemComponent* Defender)
+	{
+		const AActor* Body = Defender ? Defender->GetAvatarActor() : nullptr;
+		const AActor* Commander = Body ? UCataclysmCommand::CommanderOf(Body) : nullptr;
+		if (!IsValid(Commander))
+		{
+			return 1.0f;
+		}
+		const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Body);
+		return FMath::Max(0.0f, UCataclysmCommand::SummonerMultiplierFor(
+			Commander, TEXT("minion_damage_taken"), Minion ? Minion->TypeTags : UCataclysmCommand::ThrallMinionTags()));
+	}
+
+	/**
 	 * The armour a minion takes from its summoner for this blow: the summoner's
 	 * armour AS THIS FORMULA WOULD READ IT FOR THE SUMMONER AS DEFENDER OF THE
 	 * BLOW, times the share. So a row of the summoner's about the blow arriving,
@@ -417,6 +437,7 @@ FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
 	Blow.bIsRanged = Hit.bIsRanged;
 	Blow.bIsSpell = Hit.bIsSpell;
 	Blow.bOpponentIsBoss = Hit.bFromBoss;
+	Blow.OpponentRarityStep = Hit.AttackerRarityStep;
 	Blow.bOpponentIsStaggered = Hit.bFromStaggered;
 	Blow.bOpponentIsCrowdControlled = Hit.bFromCrowdControlled;
 
@@ -882,11 +903,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// not change the number by a fraction. It sits after the evasion step's early
 	// return so that a hit which never landed is never reported as a critical
 	// strike, which would put an exclamation mark on the word "Evaded".
-	if (Hit.CritChance > 0.0f && Hit.CritMultiplier > 0.0f)
+	if ((Hit.CritChance > 0.0f || Hit.bCertainCritical) && Hit.CritMultiplier > 0.0f)
 	{
 		const float Roll = CritRoll >= 0.0f ? CritRoll
 											: CataclysmPercentDraw::Draw();
-		if (Roll < Hit.CritChance)
+		if (Hit.bCertainCritical || Roll < Hit.CritChance)
 		{
 			Result.bWasCritical = true;
 			Damage *= Hit.CritMultiplier / 100.0f;
@@ -1315,6 +1336,19 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 				// tick but one its applier's stats priced; see `FCataclysmIncomingHit::TargetConditionedDotDamageMultiplier`.
 				Damage *= FMath::Max(0.0f, Hit.TargetConditionedDotDamageMultiplier);
 			}
+		}
+	}
+
+	// 6a. A COMMANDED DEFENDER'S SHARE FROM ITS COMMANDER, Grave Pact (the Death trees' slice C6d1): "Your minions take
+	// 30% less damage". A STEP OF ITS OWN AND NOT INSIDE STEP 6, which runs only for a defender with a combat set: an
+	// Imp has none, and window death3-w2 found the share never applied to one. The same two rules as step 6: only a blow
+	// that meets defences, and a blow that cannot be mitigated is not lowered by it (ruled 2026-10-12).
+	if (bMeetsDefences)
+	{
+		const float CommandersShare = MinionDamageTakenFactor(Defender);
+		if (!Hit.bCannotBeMitigated || CommandersShare > 1.0f)
+		{
+			Damage *= CommandersShare;
 		}
 	}
 

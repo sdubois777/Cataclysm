@@ -102,8 +102,13 @@ GDD = DOCS / "Cataclysm_GDD_v2.md"
 #: Demonic damage type from one designed class of three to all three, which is
 #: what the vertical slice needs, and they take the Ravager -- the class every
 #: new character starts on -- from having no tree to having one.
+#:
+#: THE THREE DEATH TREES JOINED ON 2026-11-24: the Soul Collector, the
+#: Necromancer and the Shadow, which the project owner approved that day. "Soul
+#: Collector" is the first class name holding a space; its file is
+#: `Soul_Collector_Class_Tree_Final.json`, which `tree_path` spells.
 CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
-               "Ritualist")
+               "Ritualist", "Soul Collector", "Necromancer", "Shadow")
 
 #: The tree issue #63 added, and the one the Phase 1 vertical slice needs.
 DEMONIC_TREE = "Masochist"
@@ -234,6 +239,21 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: (Unflinching, Ceaseless, Deep Reserves, Nothing Moves You), "three or more
 #: enemies" (Plated, Thick Blood, Slow to Fall) and Thronged's "5 less Fervour".
 #:
+#: AND ROSE BY 34 AND 13 MORE THE SAME DAY, TO 93 AND 45, when the three
+#: Death trees landed: 15 Necromancer strings contain the word and 7 are
+#: magnitudes, 12 Soul Collector strings and 3, 7 Shadow strings and 3. Every
+#: magnitude is on a keystone or a vow option except the Soul Collector's
+#: starting node, "You deal 1% more damage for every 2 Fervour you hold", which
+#: the coordinating session kept on "more" on 2026-11-24 as the class's own
+#: Fervour rule. The other 21 are ordinary English,
+#: "10 or more Fervour", "one more charge", "more than 4 metres".
+#:
+#: AND TO 95 AND 47 THE SAME DAY, for the Death classes' kill generator (slice
+#: B): two keystones were reworded so their rows' buckets are in their words,
+#: Hungry for the Strong ("100% more Fervour", which said "double") and Hoarder
+#: ("50% less Fervour to decay", which said "half as fast"). Both are keystones,
+#: so the count of nodes relying on the widened rule does not move.
+#:
 #: CONTAINING ROSE BY THREE AND MAGNITUDES BY ONE ON 2026-11-25, when the War vow
 #: options' first slice wrote the Saboteur's twelve approved options into its
 #: four oaths (`tools/apply_war_vow_sentences_2026_11_25.py`). Bolted Together's
@@ -247,8 +267,12 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: ruled sentence R6 replaced its old one (`tools/apply_titanfall_sentence_2026_11_25.py`):
 #: "more than 20% of your Maximum HP" is ordinary English. The old sentence used
 #: neither word.
-STRINGS_CONTAINING_THE_WORD = 63
-STRINGS_USING_IT_AS_A_MAGNITUDE = 33
+#:
+#: SO 99 AND 48 SINCE THE DEATH LINE MET THE WAR LINE (the Death trees' bundle 3
+#: merge, 2026-11-25): the four and the one the War line's sentences brought on
+#: top of the Death line's 95 and 47.
+STRINGS_CONTAINING_THE_WORD = 99
+STRINGS_USING_IT_AS_A_MAGNITUDE = 48
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -315,15 +339,27 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #: Second Pact, whose new Wall of Servants takes "1% less damage for each
 #: minion you have, up to 20% less" (question 3).
 #:
-#: FOURTEEN SINCE 2026-11-25: the Saboteur's Third Oath, for its option Bolted
+#: AND MORE SINCE 2026-11-24, when the three Death trees landed with six: the
+#: Necromancer's First, Third and Final Rites, the Shadow's First Cut, and the
+#: Soul Collector's First Vow (its third option's first threshold, "20% more
+#: Area of Effect") and starting node ("1% more damage for every 2 Fervour you
+#: hold"). The starting node is the only basic node among them.
+#:
+#: AND ONE MORE ON 2026-11-25: the Saboteur's Third Oath, for its option Bolted
 #: Together, "one gadget ... that fires all their attacks with 10% more damage
 #: for each gadget in it" (the twelve approved options, written that day). It
 #: wants a separate multiplier: the merged gadget's damage grows with its count.
-NODES_RELYING_ON_THE_WIDENED_RULE = 14
+NODES_RELYING_ON_THE_WIDENED_RULE = 20
+
+
+def tree_path(tree_name: str) -> pathlib.Path:
+    """The tree's file, with a space in the class name written as an underscore,
+    as `tools/generate_datatables.py`'s `tree_file` reads it."""
+    return DOCS / f"{tree_name.replace(' ', '_')}_Class_Tree_Final.json"
 
 
 def load(tree_name: str) -> dict:
-    path = DOCS / f"{tree_name}_Class_Tree_Final.json"
+    path = tree_path(tree_name)
     if not path.is_file():
         pytest.skip(f"{path.name} is not present")
     return json.loads(path.read_text(encoding="utf-8"))
@@ -577,7 +613,9 @@ def nodes_relying_on_the_widened_wording_rule() -> list[str]:
             texts += [o.get("description", "")
                       for o in body.get("options", []) or []]
             if any(MAGNITUDE_WORDING.search(t or "") for t in texts):
-                found.append(f"{path.stem.split('_')[0]}/{body['name']}")
+                tree = (path.stem.removesuffix("_Class_Tree_Final")
+                        .removesuffix("_Development_Tree_Final"))
+                found.append(f"{tree}/{body['name']}")
     return sorted(found)
 
 
@@ -1014,6 +1052,52 @@ def test_the_new_generators_say_both_how_they_fill_and_what_they_empty(tree_name
         f"nothing about it emptying. Every other generator states one or the "
         f"other -- the Saboteur's says 'Nothing. Fervour keeps its default of "
         f"not decaying' rather than staying silent. It reads: {text!r}")
+
+
+# ---------------------------------------------------------------------------
+# The three Death trees, added 2026-11-24
+# ---------------------------------------------------------------------------
+
+#: The three trees the project owner approved on 2026-11-24. Named rather than
+#: derived, for the reason `TREES_ADDED_BY_950` gives.
+TREES_ADDED_ON_2026_11_24 = ("Soul Collector", "Necromancer", "Shadow")
+
+
+@pytest.mark.parametrize("tree_name", TREES_ADDED_ON_2026_11_24)
+def test_the_three_death_trees_exist_under_their_class_names(tree_name):
+    """The metadata name is the class's name, space included, as
+    `UCataclysmCharacterCreation::ClassesByDamageType` spells it. The file name
+    is the one thing that writes the space as an underscore."""
+    data = load(tree_name)
+    assert data["metadata"]["name"] == f"{tree_name} Class Tree"
+    assert tree_path(tree_name).name == (
+        f"{tree_name.replace(' ', '_')}_Class_Tree_Final.json")
+
+
+@pytest.mark.parametrize("tree_name", TREES_ADDED_ON_2026_11_24)
+def test_the_death_generators_say_both_how_they_fill_and_what_they_empty(tree_name):
+    """The same two statements `test_the_new_generators_say_both_how_they_fill_
+    and_what_they_empty` asks of the Ravager and the Ritualist. Two of the three
+    Death classes add a decay; the Necromancer keeps the default and says so."""
+    text = [n["data"]["description"] for n in load(tree_name)["nodes"]
+            if n["data"]["name"] == "Fervour"][0].lower()
+    assert "generate" in text, f"{tree_name}: the Fervour node says nothing fills it"
+    assert any(word in text for word in ("decay", "does not decay", "empties", "drains")), (
+        f"{tree_name}: the Fervour node says nothing about emptying: {text!r}")
+
+
+def test_no_death_vow_promises_a_stat_this_game_does_not_have():
+    """There is no cast speed in this game (issue #1000). The approved Soul
+    Collector draft said "Attack and Cast Speed" four times, which were made
+    "Attack Speed" when the tree landed; this keeps a fifth from arriving."""
+    for tree_name in TREES_ADDED_ON_2026_11_24:
+        for node in load(tree_name)["nodes"]:
+            body = node["data"]
+            texts = [body["description"]] + [o["description"]
+                                            for o in body.get("options") or []]
+            for text in texts:
+                assert "cast speed" not in text.lower(), (
+                    f"{tree_name}/{body['name']} promises cast speed: {text!r}")
 
 
 def test_the_ritualist_tree_grows_the_army_by_growing_the_pool():

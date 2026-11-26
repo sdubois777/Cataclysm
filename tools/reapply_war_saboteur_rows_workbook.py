@@ -65,7 +65,6 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("attack_damage", "increased", 3, tags=GADGET),
         R("spell_damage", "increased", 3, tags=GADGET),
         R("minion_duration", "increased", 20, tags=GADGET, min_points=7, per_point_from=7))),
-    ("Saboteur_basic_trunk_004", "Slippery", (R("evasion", "flat", 1),)),
     ("Saboteur_basic_trunk_011", "Ghost Step", (
         R("movement_speed", "increased", 1),
         R("movement_speed", "increased", 2, cond="class_resource_above", cond_value=50, min_points=5,

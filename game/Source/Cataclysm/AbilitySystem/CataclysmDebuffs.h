@@ -283,6 +283,45 @@ public:
 	static FGameplayTag BleedTag();
 
 	/**
+	 * Whether `Carrier` carries a Poison or a Bleed whose effect names `Applier` as its instigator: the condition
+	 * `target_carries_your_poison_or_bleed`, the Shadow's Death's Patience. The Death trees' slice C4a (2026-11-25). The
+	 * same query and record `UCataclysmRisenImps::CarriesCurseLaidBy` reads for a curse: each running effect granting
+	 * `Keyword.DoT.Poison` or `Keyword.DoT.Bleed`, and its instigator. False with either missing.
+	 */
+	static bool CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
+	 * Whether `Carrier` carries a Poison whose effect names `Applier` as its instigator, a Bleed not counting: the
+	 * condition `target_carries_your_poison`, the Shadow's Venomed Prey. The Death trees' slice C6b1 (2026-11-25).
+	 */
+	static bool CarriesPoisonLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
+	 * The damage `Applier`'s Bleeds on `Carrier` have left to deal, held to what a Bleed's movement still allows
+	 * (`UCataclysmSkillEffects::RemainingDamageOverTime`). Blood Debt's figure, the Death trees' slice C4c2 (2026-11-25).
+	 */
+	static float BleedLeftLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
+	 * The strongest enemy of `Asker`'s within `RadiusCm` of `Of`, `Of` itself and the dead left out: the highest rarity
+	 * rung, then the most current health, then the nearest. As ruled for Blood Debt, the Death trees' slice C4c2
+	 * (2026-11-25). Null when there is none.
+	 */
+	static AActor* StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm,
+									  const TArray<const AActor*>& Excluding = TArray<const AActor*>());
+
+	/** How far Blood Debt looks from the body: "the strongest enemy within 10 metres". */
+	static constexpr float BloodDebtReachCm = 1000.0f;
+
+	/**
+	 * Blood Debt: the damage `Applier`'s Bleed on `Dead` had left, laid on the strongest enemy within
+	 * `BloodDebtReachCm` of it as a Bleed of `Applier`'s over `Seconds`, unscaled. As a Bleed, so "the stronger
+	 * application wins" holds: on an enemy already carrying a stronger Bleed of `Applier`'s it only refreshes, as ruled.
+	 * Answers whether a Bleed was laid. The Deathmark half is not built.
+	 */
+	static bool PassBleedLeftToStrongest(AActor* Applier, AActor* Dead, float Seconds);
+
+	/**
 	 * How many seconds of movement one bleed ticks through before it stops: "ticks only while the affected target is
 	 * moving, stopping after 4 seconds of movement" (the DoTs sheet, `DoT_Bleed`). Issue #918, ruled 2026-10-31.
 	 */
@@ -635,9 +674,11 @@ public:
 						 bool bIsASpreadCopy);
 
 	/**
-	 * The percent less this character deals now for the debuffs it carries, 0
-	 * to 100: nought for an ability system that is not this project's. Read by
-	 * `UCataclysmSkillEffects::WeaponDamageOf`.
+	 * The percent less this character deals now for the debuffs it carries and
+	 * the Siphons it is in, 0 to 100, the two multiplied: nought for an ability
+	 * system that is not this project's. Read by
+	 * `UCataclysmSkillEffects::WeaponDamageOf`. The Siphon's share since the
+	 * Death trees' slice C2 (2026-11-25).
 	 */
 	static float DealLessPercentOn(const UAbilitySystemComponent* Carrier);
 

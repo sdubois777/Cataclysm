@@ -479,6 +479,24 @@ public:
 	 */
 	void RefreshPassThroughBody();
 
+	/**
+	 * A HOSTILE CREATURE'S BODY, 8: the Shadow's Hollow Step, the Death trees' slice C6e (2026-11-25), as ruled (H1).
+	 * Put on the capsule's mask filter of a creature on the monsters' side whose own pass-through bit is nought, and
+	 * NOT one of `PassThroughBodyMaskBits`, so nothing moves through it unless `SetMovesThroughHostiles` says so, and
+	 * the creature itself still moves through nothing (`MovesThroughMaskFor(0)` is nought).
+	 */
+	static constexpr uint8 HostileBodyMaskBit = 8;
+
+	/**
+	 * While true, this character's moves pass through hostile creatures as well as through what its own bit already
+	 * passes through: Hollow Step's movement skill, for the length of the move only. False restores the mask
+	 * `RefreshPassThroughBody` writes.
+	 */
+	void SetMovesThroughHostiles(bool bThrough);
+
+	/** Whether this character's moves pass through hostile creatures now. */
+	bool MovesThroughHostiles() const;
+
 	/** Hit the given target once. Called by the controller when it is in reach. */
 	virtual void AttackTarget(AActor* Target) {}
 

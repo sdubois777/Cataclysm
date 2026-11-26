@@ -3029,6 +3029,16 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	int32 PerPointFrom = 0;
 
 	/**
+	 * The chance per point, in percent, that a class resource row pays when its event happens, or 0 for every time.
+	 * The Death trees' slice C6b3 (2026-11-25), ruled for Tear Loose: "a 2% chance per point to give you 1 Fervour".
+	 * A ROW WITH A CHANCE IS PAID PER POINT IN ITS CHANCE AND NOT IN ITS AMOUNT: `UCataclysmPassiveTree::
+	 * EnchantmentRowsFor` multiplies this by the points and leaves `ValuePerPoint` as the amount each success pays. The
+	 * generator refuses it on any row whose `Action` is not `class_resource`, and outside 0 to 100.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float ChancePercent = 0.0f;
+
+	/**
 	 * The number of points from which a row stops applying, or 0 for no upper limit. The Saboteur's rows of 2026-11-25,
 	 * on the coordinating session's ruling for Durable Modifications' "+3% damage reduction per point
 	 * (multiplicative). At 4 points: This damage reduction is doubled while above 50% maximum Fervour": its 3% a point
@@ -3308,4 +3318,18 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float DamageShare = 0.0f;
+
+	/**
+	 * The chance, in percent, that a class resource row pays, or 0 for every time. The Death trees' slice C6b3
+	 * (2026-11-25). NOT A COLUMN OF THE ENCHANTMENT EFFECTS SHEET: only a passive row states one, and
+	 * `UCataclysmPassiveTree::EnchantmentRowsFor` copies it here, sized by the points. `tools/generate_datatables.py`
+	 * writes 0, every time, on every row of `game/Data/EnchantmentEffects.csv`, so the table has the column as every
+	 * property of this struct must. See `FCataclysmPoolAction::ChancePercent`.
+	 *
+	 * MARKED `DataTableImportOptional`, as the passive row's copy is: the generated CSV always writes it, and a table a
+	 * test builds from a CSV naming only the columns it uses reads without it, at 0, every time. Window death3-w3 found 45
+	 * such tests refused with "Expected column 'ChancePercent' not found in input" while it was not.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect", meta = (DataTableImportOptional))
+	float ChancePercent = 0.0f;
 };

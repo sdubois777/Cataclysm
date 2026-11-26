@@ -163,8 +163,11 @@ bool FCataclysmPassThroughMasksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a creature is no such body"), static_cast<int32>(Creature->PassThroughBodyMaskBit()), 0);
 	TestEqual(TEXT("the player's capsule carries it"), PassThroughMasksOf(Player.Character), FString(TEXT("1/6")));
 	TestEqual(TEXT("the minion's capsule carries it"), PassThroughMasksOf(Minion), FString(TEXT("2/5")));
-	TestEqual(TEXT("the creature's capsule carries nothing and ignores nothing"), PassThroughMasksOf(Creature),
-			  FString(TEXT("0/0")));
+	// A HOSTILE CREATURE'S CAPSULE CARRIES THE HOSTILE BIT, 8, AND IGNORES NOTHING, since Hollow Step (the Death trees'
+	// slice C6e, ruled H1): a mover passing through enemies adds 8 to its own move-ignore mask for the move. The bit is on
+	// the filter only, so the creature's own body bit above stays nought. Window death3-w3 found this read "0/0" still.
+	TestEqual(TEXT("the creature's capsule carries the hostile bit and ignores nothing"), PassThroughMasksOf(Creature),
+			  FString(TEXT("8/0")));
 	TestEqual(TEXT("a body of no bit moves through nothing"), static_cast<int32>(Base::MovesThroughMaskFor(0)), 0);
 	return true;
 }
@@ -378,7 +381,8 @@ bool FCataclysmPassThroughThrallTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("taken, it carries a commanded body"), TakenMasks, FString(TEXT("2/5")));
 	TestTrue(TEXT("the player walks through the thrall"), PlayerMetTheThrall == nullptr && bPlayerArrived);
 	TestTrue(TEXT("and the thrall through the player"), ThrallMetThePlayer == nullptr && bThrallArrived);
-	TestEqual(TEXT("given back, it carries no such body"), GivenBackMasks, FString(TEXT("0/0")));
+	// GIVEN BACK IT IS HOSTILE AGAIN, SO IT CARRIES THE HOSTILE BIT, 8, and no commanded body: Hollow Step's mark (C6e).
+	TestEqual(TEXT("given back, it carries no commanded body and the hostile bit"), GivenBackMasks, FString(TEXT("8/0")));
 	TestTrue(TEXT("and stops the player again"), AfterMet == Imp && !bAfterArrived);
 	return true;
 }

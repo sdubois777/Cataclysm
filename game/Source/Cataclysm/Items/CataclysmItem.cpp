@@ -970,6 +970,14 @@ namespace
 			// ROLLED WITH THE VALUE WHEN THE ROW STATES TWO THRESHOLDS. Issue #1833,
 			// ruled 2026-09-30.
 			Out.ConditionValue = UCataclysmItemModifiers::RolledConditionValue(Effect, Roll);
+			// AN EVENT CONDITION IS THE GRANT'S, NOT THE STAT'S: Avenging Dead's "when a hit takes more than 5%", the
+			// Death trees' slice C6d2 (2026-11-25). The fact it reads exists only while the event is raised, so on the
+			// stat it would refuse at every read. The grant below takes it.
+			if (UCataclysmStatPipeline::IsJudgedAtItsEvent(Out.Condition))
+			{
+				Out.Condition = ECataclysmStatCondition::Always;
+				Out.ConditionValue = 0.0f;
+			}
 		}
 
 		// AND A SECOND CONDITION, WHICH MUST HOLD AS WELL. Issue #1833, ruled
@@ -1178,6 +1186,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				// and writes none by default.
 				Stack.EventValue = Effect->EventValue;
 				Stack.TriggerCooldownSeconds = Effect->TriggerCooldown;
+				// AND ITS CONDITION, WHEN THE ROW'S IS JUDGED AT ITS EVENT: Avenging Dead, the Death trees' slice C6d2.
+				// `PoolActionAllowed` judges it as the event is raised; the stat above was given none.
+				ECataclysmStatCondition AtTheEvent = ECataclysmStatCondition::Always;
+				if (!Effect->Condition.IsEmpty() && UCataclysmStatPipeline::ConditionNamed(Effect->Condition, AtTheEvent)
+					&& UCataclysmStatPipeline::IsJudgedAtItsEvent(AtTheEvent))
+				{
+					Stack.Condition = AtTheEvent;
+					Stack.ConditionValue = Effect->ConditionValue;
+				}
 				Stack.TriggerKey = FName(*FString::Printf(TEXT("%s:%s"),
 					*Stack.StackKey.ToString(), *Effect->ActionEvent));
 				// A COUNT OF HITS IN A ROW IS SCOPED BY THE ROW'S TAGS, ruled
@@ -1337,6 +1354,20 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								 ESearchCase::IgnoreCase))
 					{
 						Action.CooldownReduce = ECataclysmCooldownReset::Heavy;
+					}
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceOthersAction,
+								 ESearchCase::IgnoreCase))
+					{
+						// EVERY SKILL BUT THE EVENT'S OWN: Turn of the Wheel, the Death trees' slice C3b.
+						Action.CooldownReduce = ECataclysmCooldownReset::Others;
+					}
+					// AND THE MOVEMENT SKILL'S, the Death trees' slice C6a (2026-11-25).
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceMovementAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.CooldownReduce = ECataclysmCooldownReset::Movement;
 					}
 					if (Action.CooldownReduce != ECataclysmCooldownReset::None)
 					{
@@ -1589,6 +1620,32 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// is the share of the overkill, in per cent.
 					Action.bExplodeVictimForOverkill = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT BURSTS FOR A SHARE OF ITS MAXIMUM HEALTH: The Ferryman, the Death trees' slice
+					// C4c1 (2026-11-25). The value is the share, in per cent.
+					Action.bBurstSlainForMaximumHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT PASSES THE WEARER'S BLEED LEFT ON A DEAD ENEMY TO THE STRONGEST NEAR IT: Blood
+					// Debt, the Death trees' slice C4c2 (2026-11-25). The value is the seconds.
+					Action.bPassBleedLeftToStrongest = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT MAKES THE NEXT LANDED HIT A CRITICAL STRIKE: Chain Execution, the Death trees' slice
+					// C4d1 (2026-11-25). The value is the seconds.
+					Action.bNextHitCritical = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CriticalNextHitAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT LENGTHENS A RUNNING HOLD BEFORE THE FERVOUR DECAY: Keep the Count, the Death trees'
+					// slice C6a (2026-11-25). The value is the seconds.
+					Action.bExtendFervourHold = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FervourHoldExtendedAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT DOUBLES AN EVASION'S CRITICAL STRIKE CHARGE ON A ROLL OF ITS CHANCE: Twice Answered,
+					// the Death trees' slice C6b4 (2026-11-25). The chance is the row's `ChancePercent`.
+					Action.bNextHitCriticalTwice = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT STRIKES THE STRONGEST ENEMY NEAR ON A KILL, Blade Echo, or moves beside it and
+					// strikes, Thousand Cuts: the Death trees' slice C6e (2026-11-25).
+					Action.bStrikeStrongestNear = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeStrongestNearAction, ESearchCase::IgnoreCase);
+					Action.bDashToStrongestAndStrike = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
@@ -1699,6 +1756,31 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Base = ECataclysmPoolActionBase::EventAmount;
 					}
+					// FOR EACH OF THE EVENT'S AMOUNT, OR EACH TEN OF IT: the Death trees' slice C3b. `ActOnEvent`
+					// multiplies the value and puts the base back to the maximum before anything reads it.
+					else if (Effect->FractionOf.Equals(TEXT("for_each_of_event_amount"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachOfEventAmount;
+					}
+					else if (Effect->FractionOf.Equals(TEXT("for_each_ten_of_event_amount"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachTenOfEventAmount;
+					}
+					// AND FOR EACH WHOLE HUNDRED OF THE CLASS RESOURCE HELD: Relentless, the Death trees' slice C4d1.
+					else if (Effect->FractionOf.Equals(TEXT("for_each_hundred_class_resource_held"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachHundredClassResourceHeld;
+					}
+					// AND A FLAT AMOUNT OF THE CLASS RESOURCE, with the row's chance: Opening Found, Reaper's Due and Tear
+					// Loose, the Death trees' slice C6b3 (2026-11-25).
+					else if (Effect->FractionOf.Equals(TEXT("points"), ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::Points;
+					}
+					Action.ChancePercent = Effect->ChancePercent;
 
 					// THE SAME TAG PARSE THE STAT ROWS GET, so a scoped action row
 					// and a scoped stat row cannot disagree about what a tag list

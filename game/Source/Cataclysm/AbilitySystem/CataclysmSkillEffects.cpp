@@ -1472,6 +1472,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		FCataclysmDamageResult ThrallsOwnResult;
 		FCataclysmDamageResult* const Landed = OutResolved ? OutResolved : &ThrallsOwnResult;
 		const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Landed);
+		// AND A LANDED BLOW OF A SKILL MADE FOR THE MOVEMENT SLOT MARKS WHAT IT STRUCK, for Glancing Cuts (the Death
+		// trees' slice C6b2, 2026-11-25): "Enemies your movement skill hits". The skill's own blow, its path damage and
+		// its end explosions all come through here naming it. Not an evaded blow, not one refused as immune to its
+		// attacker, not a share struck at an ally and not a tick.
+		if (!bAShareOnAnAlly && !Arrived.bIsDamageOverTime && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker
+			&& DeliveredBy && DeliveredBy->GetDesignedSlot() == ECataclysmAbilitySlot::Movement)
+		{
+			if (UCataclysmAbilitySystemComponent* Struck =
+					Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+			{
+				Struck->NoteStruckByMovementSkillOf(Source);
+			}
+		}
 		// BLOOD PRICE IS SPENT BY THE BLOW THAT LANDS, and kept by one evaded or refused (question 5).
 		if (BloodPriceFlat > 0.0f && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker)
 		{
@@ -1492,6 +1505,15 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 						  /*DealtBy=*/Instigator, /*Skill=*/nullptr, /*SkillTagsWithNoSkill=*/nullptr,
 						  /*SkillRowWithNoSkill=*/Thrall->TakenBySkillRow,
 						  /*LevelFactor=*/CataclysmSkillEffectsLevels::ThrallsLevelFactor(Instigator, Target));
+				// AND A THRALL'S LANDED BLOW IS A MINION'S HIT TO ITS COMMANDER, `minion_hit`, once (the Death trees' slice
+				// C6d1, 2026-11-25), as an imp's is in `ACataclysmMinion`.
+				if (UCataclysmAbilitySystemComponent* Commanders = Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(UCataclysmCommand::CommanderOf(Instigator))))
+				{
+					// WITH WHAT REACHED HEALTH, as an imp's carries since window death3-w2 (the ailment rule, #917).
+					Commanders->ActOnEvent(FName(TEXT("minion_hit")), &SkillTags, Landed->DealtToHealth, /*bLanded=*/true,
+										   Target);
+				}
 			}
 		}
 		return bDealt ? Sent : 0.0f;
@@ -2717,6 +2739,19 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 	Numbers.DamagePerTick = DamagePerTick * AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute(),
 		FName(TEXT("dot_damage")), Tags);
+	// AND LETHAL DOSE'S SHARE OF A CRITICAL STRIKE'S INCREASES, added to `dot_damage`'s increased bucket while its
+	// Poison or Bleed is applied (the Death trees' slice C6e, 2026-11-25), as ruled (Q8): one plus the increases is
+	// replaced by one plus the increases and the share, so it sums with them and is multiplied by nothing else.
+	if (const UCataclysmAbilitySystemComponent* Lender = Cast<UCataclysmAbilitySystemComponent>(Source);
+		Lender && Lender->AilmentIncreasePercentLentByCritical > 0.0f)
+	{
+		const float Increases = Lender->IncreasesForStat(FName(TEXT("dot_damage")), Tags);
+		if (1.0f + Increases > 0.0f)
+		{
+			Numbers.DamagePerTick *= (1.0f + Increases + Lender->AilmentIncreasePercentLentByCritical / 100.0f)
+				/ (1.0f + Increases);
+		}
+	}
 	// AND `debuff_duration`'s INCREASES IN THE SAME BUCKET. Issue #1833, ruled
 	// 2026-09-30: a damage over time effect is a debuff the character applies.
 	// `dot_duration` carries only increased rows, so its multiplier is one
@@ -3232,6 +3267,20 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// a spread copy, the trap's share, a minion's burn and converted damage. NOT ONE THE APPLIER LAYS ON ITSELF: the
 	// sentence is about "the enemy" and "them".
 	Delivery.bPricedFromItsAppliersStats = bScalesWithInstigator && Instigator != Target;
+
+	// A POISON BEGINNING ON A CHARACTER CARRYING NONE OF THE APPLIER'S STARTS FESTERING'S TIME AGAIN (the Death trees'
+	// slice C6b4, 2026-11-25): "each second the enemy has stayed poisoned by you without a break". Asked before the
+	// Poison is laid. One laid while another of the applier's runs continues the time; a refresh of a running one
+	// returned above. Not one a character lays on itself.
+	const FGameplayTag Poison = FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), false);
+	if (Poison.IsValid() && EffectTag.MatchesTag(Poison) && Instigator != Target
+		&& !UCataclysmDebuffs::CarriesPoisonLaidBy(Target, Instigator))
+	{
+		if (UCataclysmAbilitySystemComponent* Poisoned = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Poisoned->NotePoisonBeganBy(Instigator);
+		}
+	}
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	// AND A NECROSIS'S END IS LISTENED FOR, WHATEVER ENDS IT, because then it deals the healing it denied. Issue #920,

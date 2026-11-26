@@ -146,8 +146,17 @@ def test_a_condition_about_the_blow_dealt_is_refused_on_dot_damage(condition):
 
 
 def test_the_same_blow_conditions_still_pass_where_a_blow_is_priced():
-    """The control on the table above: it names `dot_damage` and nothing else."""
-    assert set(gen.CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS) == {"dot_damage"}
+    """The control on the table above: it names `dot_damage` and the two stats
+    of the Death trees' kill generator (2026-11-24), which are asked at a kill
+    with the slain creature and no blow, and the Fervour a critical strike
+    pays (slice C4d1, 2026-11-25), asked with the character struck and no blow,
+    and nothing else."""
+    assert set(gen.CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS) == {
+        "dot_damage", "fervour_per_kill", "fervour_kill_decay_grace_seconds",
+        "fervour_per_critical_strike",
+        # AND PATIENT BLADE'S AND DEATH BY INCHES' (slice C4d2), asked with the
+        # Boss and no blow.
+        "boss_ticks_pay_a_kill_every_seconds", "boss_hits_counted_as_a_kill_every"}
     assert refused("attack_damage", "enemies_hit_at_least") == []
     assert refused("armor_penetration", "enemies_hit_at_least") == []
 

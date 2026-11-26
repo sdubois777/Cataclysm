@@ -1089,9 +1089,20 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	// stamp did not apply the same rule the window and the condition would
 	// disagree, and every character with no class resource would be handed a
 	// bonus written for a full one.
-	const auto IsFull = [](float Held, float Maximum)
+	//
+	// AND THE TOP IS THE MAXIMUM LESS WHAT MINIONS HOLD BACK, as that predicate
+	// now judges it. Ruled by the coordinating session on 2026-11-25 (the Death
+	// trees' slice C): every gain stops at the maximum less the reserve, so a
+	// character with a minion out never reached the gross maximum, never
+	// crossed into "full", and never opened this window. The reserve is read
+	// once, now, for both sides: a reservation starting cuts the pool to what
+	// is left (`UCataclysmCommand::ClampFervourToSpendable`), and a bar full
+	// before it is full after it, so no crossing is reported for that.
+	const float Reserved = FMath::Max(0.0f, UCataclysmCommand::ReservedFervourOf(this));
+	const auto IsFull = [Reserved](float Held, float Maximum)
 	{
-		return Maximum > 0.0f && Held >= Maximum;
+		const float Fillable = Maximum - Reserved;
+		return Maximum > 0.0f && Fillable > 0.0f && Held >= Fillable;
 	};
 
 	if (!IsFull(HeldBefore, MaximumBefore) && IsFull(HeldNow, MaximumNow))
@@ -1165,6 +1176,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// strike chance and an evaded blow is never reported critical, so nothing
 	// refused here carries `bCritical`. It is refused all the same, so that the
 	// rule does not rest on either of those staying true.
+	// A TICK OF THE CHARACTER'S OWN DAMAGE OVER TIME ON A BOSS PAYS A KILL'S FERVOUR, at most once every so many
+	// seconds: Patient Blade, the Death trees' slice C4d2 (2026-11-25). Here, before ticks are dropped below; a minion's
+	// tick is left out.
+	if (Notice.bDamageOverTime && !Notice.bEvaded && !Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		UCataclysmFervour::PayForABossTick(GetAbilitySystemComponent(), Notice.Target);
+	}
+
 	if (Notice.bDamageOverTime || Notice.bEvaded)
 	{
 		return;
@@ -1294,22 +1313,33 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// and none carries a condition on the target.
 	if (Notice.bCritical)
 	{
+		// AND THE FERVOUR A CRITICAL STRIKE PAYS, the Shadow's starting node and Telling Blows (the Death trees' slice
+		// C4d1, 2026-11-25): "each critical strike you land", so a minion's is left out, as the cull above leaves it.
+		// THE BERSERKER'S TOO, "Gain 1 Fervour per critical strike", one stat and one payment since the bundle 3 merge
+		// (obligation 5): read with the blow's skill tags, so Battle Lust's "on every critical melee strike" adds to a
+		// melee one only. Before the critical_strike rows act, as ruled.
+		if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+		{
+			UCataclysmFervour::GainOnCriticalStrike(Acting, Notice.Target,
+													Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+		}
 		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
 						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 						   Notice.Target);
-
-		// AND THE BERSERKER'S FERVOUR FOR IT, "Gain 1 Fervour per critical strike", read with the blow's skill tags so
-		// Battle Lust's "on every critical melee strike" adds to a melee one only. Here and not at the blow, because
-		// this is where a critical strike the character dealt is known, past every refusal above. Nought for every
-		// character without `fervour_per_critical_strike`. Slice C, 2026-11-24.
-		FCataclysmWarFervour::GainOnCriticalStrike(
-			Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
 
 		// AND SKULL SPLITTER'S ARMOR REDUCTION AND DEATHMARK'S MARK ON THE CREATURE STRUCK, each paying its own cost, the
 		// first first. The Berserker's nodes of 2026-11-25. Nought for every character without them.
 		const FGameplayTagContainer CritTags = Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer();
 		FCataclysmWarFervour::SkullSplitterOnCriticalStrike(Acting, Notice.Target, CritTags);
 		FCataclysmWarFervour::DeathmarkOnCriticalStrike(Acting, Notice.Target, CritTags);
+	}
+
+	// AND EVERY Nth LANDED HIT OF THE CHARACTER'S OWN ON A BOSS COUNTS AS A KILL OF IT: Death by Inches, the Death trees'
+	// slice C4d2 (2026-11-25). After the hit's own rows, so the kill's rows act on a hit already heard. A minion's hit is
+	// left out, as the cull leaves it.
+	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		UCataclysmFervour::CountAHitOnABoss(Acting, Notice.Target);
 	}
 }
 
@@ -1493,6 +1523,30 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			{
 				Gear->NoteKillOnWornWeapons(Acting);
 			}
+
+			// AND THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. The Fervour this kill pays by the slain creature's
+			// rarity rung first, nought for a character without a Death starting node; then the stamp, for every
+			// character: the clock a row under `seconds_after_kill` reads, and the grace before the decay after a
+			// kill, asked against the slain creature. ON EVERY KILL CREDITED HERE, its damage over time's and a row's
+			// included; a skill's own `KillFervour` (#2885) pays on top when that skill's blow made the kill.
+			//
+			// THE PAYMENT BEFORE THE STAMP, ruled by the coordinating session on 2026-11-25 (the Death trees' slice
+			// C). Asked after it, `seconds_after_kill` on a kill's own stat read nought at every kill and always held;
+			// asked before it, it reads the time since the PREVIOUS kill, which "kills within 2 seconds of each
+			// other" needs. The grace is asked inside the stamp before the clock moves, so it reads the same.
+			//
+			// AND RECLAIMED'S GIVE-BACK BEFORE BOTH: what decay took in the seconds before this kill comes back as part of
+			// it. The Death trees' slice C4b2 (2026-11-25).
+			// MARKED AS AN EXECUTE'S KILL, OR NOT, FOR THE PAYMENT AND THE ROWS BELOW: Reaper's Edge's
+			// `kill_was_an_execute` reads it. Cleared after the rows. The Death trees' slice C4d1 (2026-11-25).
+			Acting->SetActingOnAKillByAnExecute(Notice.bByAnExecute);
+			UCataclysmFervour::GiveBackDecayOnKill(Acting);
+			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
+			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
+			// AND GRIM WAKE'S MARK on the enemies near the body, the Death trees' slice C4c2 (2026-11-25).
+			UCataclysmFervour::MarkNearAKill(Acting, Notice.Victim, Notice.Location);
+			// AND WEARER OF THE DEAD'S MODIFIERS, from an Elite or stronger body, the Death trees' slice C4d3 (2026-11-25).
+			UCataclysmFervour::WearTheModifiersOf(Acting, Notice.Victim);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
 			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
 			// slain enemy. No row read either on this event before; a row that takes
@@ -1505,9 +1559,14 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// NOT FOR A KILL A ROW MADE, so a row's kill does not fire rows again. See `bWhileTheKillersRowsActed`.
 			if (!Notice.bWhileTheKillersRowsActed)
 			{
+				// MARKED WHILE THE ROWS ACT, as made by a hit or by a tick: Passed On's `killing_blow_was_a_hit` reads
+				// it. The Death trees' slice C4c1 (2026-11-25).
+				Acting->SetActingOnAKillByAHit(!Notice.bByDamageOverTime);
 				Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
 								   /*bLanded=*/true, Notice.Victim);
+				Acting->SetActingOnAKillByAHit(false);
 			}
+			Acting->SetActingOnAKillByAnExecute(false);
 
 			// AND A DEATH SENTENCE THIS KILL MAY LIFT, heard for exactly the kills that raise `kill` above. Ruled
 			// 2026-10-18 (Q5) for the Demon King's Regalia's ten-piece. A call of its own rather than a row on
@@ -1531,18 +1590,20 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// own, smaller overkill. And the dungeon's rules must hear this death before the one the explosion
 			// causes, whichever of the two listeners the engine calls first.
 			const float OverkillShare = Acting->TakePendingOverkillExplosionSharePercent();
+			// AND ITS RADIUS, the largest any row that asked gives (the Death trees' slice C4c1, as ruled for Passed On).
+			const float OverkillRadiusCm = Acting->TakePendingOverkillExplosionRadiusCm();
 			if (OverkillShare > 0.0f)
 			{
 				const TWeakObjectPtr<ACataclysmPlayerCharacter> Killer(this);
 				const TWeakObjectPtr<const AActor> SlainActor(Notice.Victim);
 				const FVector At = Notice.Location;
 				const float Overkill = Notice.Overkill;
-				TFunction<void()> Explode = [Killer, SlainActor, At, Overkill, OverkillShare]()
+				TFunction<void()> Explode = [Killer, SlainActor, At, Overkill, OverkillShare, OverkillRadiusCm]()
 				{
 					if (Killer.IsValid())
 					{
 						UCataclysmSkillEffects::ExplodeForOverkill(Killer.Get(), SlainActor.Get(), At, Overkill,
-																   OverkillShare);
+																   OverkillShare, OverkillRadiusCm);
 					}
 				};
 				if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
@@ -1554,6 +1615,15 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 					Explode();
 				}
 			}
+
+			// AND THE FERRYMAN'S BURST: "every enemy you kill bursts for 10% of its maximum health to enemies within 4
+			// metres, and a creature the burst kills bursts too". The Death trees' slice C4c1 (2026-11-25). Made the way
+			// the overkill explosion above is, and for its reasons: through `ExplodeForOverkill`, sized by the slain
+			// creature's maximum health and unscaled by the killer's increases (Q5), handed to the announcer so a
+			// creature the burst kills is a kill of its own, raises `kill`, and bursts in turn while the bar is full.
+			// THROUGH THE ONE FUNCTION A FOLLOWER'S KILL UNDER DEATH'S TOLL USES TOO (`UCataclysmFervour::BurstTheSlain`).
+			UCataclysmFervour::BurstTheSlain(this, Notice.Victim, Notice.Location, SlainMaximum,
+											 Acting->TakePendingSlainBurstSharePercent());
 
 			// AND THE EXPLOSION OF AN ENEMY A TRAP KILLED. Ruled 2026-10-21 (traps layer 4, F10 to F12): "Enemies killed
 			// by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters". A row on `kill`
@@ -1598,6 +1668,16 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				this, Notice.Victim, Notice.Location, Notice.KillingTags);
 		}
 
+		// THE SOUL COLLECTOR ON A DEATH THIS CHARACTER DID NOT MAKE, the Death trees' slice C4b2 (2026-11-25). Death's
+		// Toll first: a follower's kill made this character's for everything the Soul Collector tree asks. Otherwise
+		// Claimed: an enemy this character hit shortly before gives its Fervour whatever killed it. Never both, as
+		// ruled, and neither for a kill this character made, which the block above has paid.
+		if (Notice.Killer != this && Notice.Victim
+			&& !UCataclysmFervour::CreditAFollowersKill(Acting, this, Notice))
+		{
+			UCataclysmFervour::ClaimOnDeath(Acting, Notice.Victim);
+		}
+
 		// AND THE SWARM: A MINION WHERE AN ENEMY THIS CHARACTER OR ONE OF ITS MINIONS KILLED FELL. The demonic tree
 		// rework of 2026-11-24: "When you or one of your minions kills an enemy, a new minion is summoned where it fell,
 		// if your Fervour has room for it." OUTSIDE THE KILLER TEST ABOVE, because a minion's kill is the minion's own
@@ -1630,6 +1710,13 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		if (Notice.Killer == this && Notice.Victim)
 		{
 			UCataclysmFervour::RestoreHealthOnKillAtNoCost(Acting);
+
+			// AND THE SHADOW'S CLEAN KILL, FOR A KILL BY A CRITICAL STRIKE (a tick of damage over time is never one): the
+			// Death trees' slice C4a (2026-11-25). Beside the restoration above, which costs nothing as this does.
+			if (Notice.bByACriticalStrike)
+			{
+				UCataclysmFervour::RestoreHealthOnCriticalKill(Acting);
+			}
 		}
 
 		// AND FOLLOW THROUGH. Issue #1515, `Ravager_keystone_b_kB`: "Killing an

@@ -17,12 +17,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import generate_datatables as gen  # noqa: E402
 
-#: The passive row port's last eight columns, required on the Passive Effects sheet since the War vow options'
-#: first slice (2026-11-25, `tools/reapply_war_vows_v1_workbook.py`) put them in the workbook. A test sheet that leaves
-#: them empty appends them after its other columns, so the values its rows give by position stay where they were. The
-#: Death line names all fourteen `PASSIVE_PORT_HEADERS`, in another order; this is a different list.
-PORT_EIGHT_HEADERS = ["Fraction Of", "Scale Offset", "Every Seconds", "Every Nth", "Trigger Cooldown", "Event Value",
-                      "Ailment", "Damage Share"]
+#: The passive row port's fourteen columns, required on the Passive Effects sheet since the Death trees' slice
+#: C1 (2026-11-25) put them in the workbook. A test sheet that leaves them empty appends them, as each appended
+#: `Scale Max Steps` when that column became required. AND `Max Points` since the bundle 3 merge (2026-11-25): the
+#: Saboteur's rows of that day made it required on the War line.
+PASSIVE_PORT_HEADERS = list(gen.PASSIVE_ACTION_COLUMNS) + ["Per Point From", "Max Points"]
 
 
 def workbook_with(path: pathlib.Path, sheets: dict[str, list[list]]) -> pathlib.Path:
@@ -1477,7 +1476,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
                  "Scale Step", "Option", "Reach Metres", "Min Points",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS] + rows
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1539,8 +1538,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Min Points", "Scale Max Steps", "Per Point From", "Condition 2",
-                                  "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS,
+                                  "Min Points", "Scale Max Steps"] + PASSIVE_PORT_HEADERS,
                                  ["A_node", "damage_taken", "more", -1, None, None,
                                   None, scale, step, None, None, None, cap]]}))
         return gen.passive_effects(book)
@@ -1584,7 +1582,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Min Points", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS,
+                                  "Min Points"] + PASSIVE_PORT_HEADERS,
                                  ["A_node", "armor", "increased", 3]]}))
         with pytest.raises(gen.DataError, match="Scale Max Steps"):
             gen.passive_effects(book)
@@ -1703,7 +1701,7 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
                  "Reach Metres", "Required Tags", "Option", "Min Points",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS] + rows
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -2272,7 +2270,7 @@ class TestHealthThresholdAndFloorStart:
             gen.enchantment_effects(self.heal(tmp_path, {"Event Value": None}))
 
     def test_an_event_value_on_another_event_is_refused(self, tmp_path):
-        with pytest.raises(gen.DataError, match="Only health_falls_below reads one"):
+        with pytest.raises(gen.DataError, match="Only health_falls_below, fervour_spent and"):
             gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "block"}))
 
     def test_an_event_value_of_a_hundred_is_refused(self, tmp_path):
@@ -3511,6 +3509,147 @@ class TestOverkillExplosion:
             gen.enchantment_effects(self.explode(tmp_path, {"Trigger Cooldown": 1}))
 
 
+class TestDeathTreeActionBounds:
+    """The two value bounds the Death trees' slices C4c1 and C4c2 (2026-11-25)
+    added and left untested, as the coordinating session asked: The Ferryman's
+    burst is a share of the slain creature's maximum health above 0 and up to
+    `MAX_SLAIN_BURST_SHARE`; Blood Debt's value is the seconds its Bleed is
+    dealt over, above 0 and up to `MAX_BLEED_LEFT_SECONDS`. Each is driven
+    through the whole Enchantment Effects read. THE CONTROL for each: the edge
+    value itself is carried through."""
+
+    WORDS = "Enemies killed by you explode for the overkill amount"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnKill, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def row(self, tmp_path, action, event, value, fraction_of=None):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS, "Action": action,
+                  "Action Event": event, "Value Low": value, "Value High": value,
+                  "Fraction Of": fraction_of}
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "bounds.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_ferrymans_share_at_its_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.SLAIN_BURST_ACTION, "kill", gen.MAX_SLAIN_BURST_SHARE))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (100.0, 100.0)
+
+    @pytest.mark.parametrize("value", [0, 100.5])
+    def test_the_ferrymans_share_just_outside_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The share is above 0 and up to 100"):
+            gen.enchantment_effects(self.row(tmp_path, gen.SLAIN_BURST_ACTION, "kill", value))
+
+    def test_blood_debts_seconds_at_their_bound_are_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", gen.MAX_BLEED_LEFT_SECONDS))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (10.0, 10.0)
+
+    @pytest.mark.parametrize("value", [0, 10.5])
+    def test_blood_debts_seconds_just_outside_are_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+            gen.enchantment_effects(self.row(
+                tmp_path, gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", value))
+
+
+class TestDeathTreeC4d1Actions:
+    """The Death trees' slice C4d1 (2026-11-25): Chain Execution's action and
+    Relentless's sizing base, each driven through the whole Enchantment Effects
+    read. Chain Execution's row is on `kill` only, its seconds above 0 and up to
+    `MAX_NEXT_HIT_CRITICAL_SECONDS`. Relentless's base is accepted on a cooldown
+    reduction, on any event, and refused on a pool row and on a cooldown reset,
+    whose value is a chance. THE CONTROLS: the edge value and the accepted rows
+    are carried through."""
+
+    # THE ROW BUILDER OF THE CLASS ABOVE, taken rather than inherited, so its
+    # six tests are not run a second time under this class's name.
+    WORDS = TestDeathTreeActionBounds.WORDS
+    NAME = TestDeathTreeActionBounds.NAME
+    ENCHANTMENTS = TestDeathTreeActionBounds.ENCHANTMENTS
+    HEADER = TestDeathTreeActionBounds.HEADER
+    row = TestDeathTreeActionBounds.row
+
+    def test_chain_executions_row_at_its_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "kill", gen.MAX_NEXT_HIT_CRITICAL_SECONDS))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"]) == (
+            "next_hit_critical", "kill", 10.0)
+
+    # NOUGHT IS "UNTIL USED" SINCE THE DEATH TREES' SLICE C6a (Brim), so the
+    # value just outside at the bottom is below nought.
+    @pytest.mark.parametrize("value", [-1, 10.5])
+    def test_chain_executions_seconds_just_outside_are_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match=r"The seconds are 0 \(until used\) up to 10"):
+            gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "kill", value))
+
+    @pytest.mark.parametrize("event", ["hit_dealt", "critical_strike", "afflicted_death"])
+    def test_chain_executions_row_on_another_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only a kill, an evasion or a full bar grants it"):
+            gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, event, 2))
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt"])
+    def test_relentless_base_on_a_cooldown_reduction_is_carried_through(self, tmp_path, event):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, "cooldown_reduce_all", event, 1, gen.FRACTION_OF_HUNDREDS_HELD))
+        assert (out[0]["Action"], out[0]["FractionOf"]) == (
+            "cooldown_reduce_all", "for_each_hundred_class_resource_held")
+
+    @pytest.mark.parametrize("action", ["class_resource", "cooldown_reset_movement"])
+    def test_relentless_base_anywhere_else_is_refused(self, tmp_path, action):
+        with pytest.raises(gen.DataError):
+            gen.enchantment_effects(self.row(tmp_path, action, "kill", 1, gen.FRACTION_OF_HUNDREDS_HELD))
+
+
+class TestDeathTreeC6aActions:
+    """The Death trees' slice C6a (2026-11-25), each through the whole
+    Enchantment Effects read. Chain Execution's charge is now granted on an
+    evasion and a full bar too, and 0 seconds is "until used"; the movement
+    cooldown cut is a cooldown reduction like the others; Keep the Count's
+    longer hold is on `dodge` only, its seconds above 0 and up to the bound.
+    THE CONTROLS: the rows accepted are carried through."""
+
+    WORDS = TestDeathTreeActionBounds.WORDS
+    NAME = TestDeathTreeActionBounds.NAME
+    ENCHANTMENTS = TestDeathTreeActionBounds.ENCHANTMENTS
+    HEADER = TestDeathTreeActionBounds.HEADER
+    row = TestDeathTreeActionBounds.row
+
+    @pytest.mark.parametrize("event", ["dodge", "resource_full"])
+    def test_the_next_hit_charge_on_an_evasion_or_a_full_bar_is_carried_through(self, tmp_path, event):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, event, 3))
+        assert (out[0]["Action"], out[0]["ActionEvent"]) == ("next_hit_critical", event)
+
+    def test_a_charge_of_nought_seconds_until_used_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "resource_full", 0))
+        assert out[0]["ValueLow"] == 0.0
+
+    def test_the_movement_cut_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, "cooldown_reduce_movement", "dodge", 1))
+        assert (out[0]["Action"], out[0]["ValueLow"]) == ("cooldown_reduce_movement", 1.0)
+
+    def test_the_longer_hold_on_an_evasion_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, "dodge", 1))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"]) == ("fervour_hold_extended", "dodge", 1.0)
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt"])
+    def test_the_longer_hold_on_another_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only an evasion does"):
+            gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, event, 1))
+
+    @pytest.mark.parametrize("value", [0, 10.5])
+    def test_the_longer_hold_just_outside_its_bound_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+            gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, "dodge", value))
+
+
 class TestStrikeTarget:
     """A row that deals a direct hit to the other character of its event.
     Ruled 2026-10-07: "When you evade a ranged attack, throw an attack dealing
@@ -4318,7 +4457,7 @@ class TestEnchantmentEffects:
             "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
             "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
             "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0,
-            "Ailment": "", "DamageShare": 0.0}]
+            "Ailment": "", "DamageShare": 0.0, "ChancePercent": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
@@ -4731,8 +4870,8 @@ class TestEnchantmentEffects:
                 {"Action Event": "sneezes_twice"})]))
 
     def test_an_event_with_no_clock_of_its_own_is_accepted(self, tmp_path):
-        # FIVE EVENTS HAVE NO CLOCK, because every clock is something done TO
-        # the character and these are things the character DID.
+        # THESE EVENTS HAVE NO CLOCK, which is the only thing that puts an
+        # event on the list; an event with a clock is derived from it.
         # AND THE ONE THAT NEEDS A THRESHOLD IS GIVEN ONE: health_falls_below
         # requires an Event Value, issue #1833 group D part 2.
         for event in gen.ACTION_ONLY_EVENTS:
@@ -5375,7 +5514,7 @@ class TestAnAtNPointsRowStatesItsThreshold:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Min Points", "Required Tags", "Condition", "Condition Value",
                  "Scale", "Scale Step", "Option", "Reach Metres",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS] + rows
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5422,7 +5561,7 @@ class TestAnAtNPointsRowStatesItsThreshold:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Scale Max Steps"],
+                                  "Scale Max Steps"] + PASSIVE_PORT_HEADERS,
                                  ["A_node", "armor", "increased", 5]]}))
         with pytest.raises(gen.DataError, match="Min Points"):
             gen.passive_effects(book)
@@ -10072,6 +10211,34 @@ class TestTheSkillTrapMinionType:
         assert re.search(r'ACataclysmMinion::SkillTrapTypeName\s*=\s*TEXT\("SkillTrap"\)', cpp)
         radius = re.search(r"SkillTrapTriggerRadiusCm\s*=\s*([0-9.]+)f;", header)
         assert radius and float(radius.group(1)) == self.ROW[10] == self.ROW[11]
+
+
+def test_a_slain_burst_row_is_refused_where_the_game_would_burst_nothing() -> None:
+    """The Death trees' slice C4c1 (2026-11-25), The Ferryman's action. ON
+    `kill` ONLY, and a fraction, a value kind or a scale is refused. THE
+    CONTROL: the same row on `kill` with none of them passes."""
+    check = gen._check_slain_burst_action
+    check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "", "", (), {})
+    with pytest.raises(gen.DataError, match="Only a kill has a slain creature"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "hit_dealt", "", "", (), {})
+    with pytest.raises(gen.DataError, match="states Fraction Of 'maximum'"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "maximum", "", (), {})
+    with pytest.raises(gen.DataError, match="states Value Kind 'flat'"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "", "flat", (), {})
+
+
+def test_a_bleed_left_row_is_refused_where_the_game_would_pass_nothing() -> None:
+    """The Death trees' slice C4c2 (2026-11-25), Blood Debt's action. ON
+    `afflicted_death` ONLY, and a fraction, a value kind or a scale is refused.
+    THE CONTROL: the same row on `afflicted_death` with none of them passes."""
+    check = gen._check_bleed_left_to_strongest_action
+    check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "", "", (), {})
+    with pytest.raises(gen.DataError, match="Only the death of an enemy carrying the wearer's ailment"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "kill", "", "", (), {})
+    with pytest.raises(gen.DataError, match="states Fraction Of 'maximum'"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "maximum", "", (), {})
+    with pytest.raises(gen.DataError, match="states Value Kind 'flat'"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "", "flat", (), {})
 
 
 def test_the_two_trap_events_are_clockless_events_a_row_may_hang_on():

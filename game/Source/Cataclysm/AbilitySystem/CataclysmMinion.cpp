@@ -1874,7 +1874,8 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// summoner's stat lines, a different list, so nothing is counted twice.
 		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
 			UCataclysmTargeting::AbilitySystemOf(this),
-			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
+			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags,
+															   /*AskingMinion=*/this),
 			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
@@ -1970,6 +1971,21 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			{
 				FCataclysmWarFervour::GainOnDeviceHit(Theirs, TypeTags);
 			}
+		}
+	}
+	// ANY OTHER MINION'S BLOW IS ANNOUNCED TO ITS SUMMONER as `minion_hit`, ONCE, with the minion's tags and the enemy
+	// struck, landed only when it was not evaded and not refused as immune to its attacker: Cold Hands and Grave Cold,
+	// the Death trees' slice C6d1 (2026-11-25), as ruled. Once per landed blow whatever Conduit does with `hit_dealt`.
+	else if (OwnDamagePerHit > 0.0f)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			// WITH WHAT REACHED THE ENEMY'S HEALTH AS ITS AMOUNT, so an ailment a row applies on it meets the owner's
+			// rule of 2026-09-02 (#917, a tenth of the target's maximum health) as a hit's does. Window death3-w2 found
+			// it carried nought, which refused every ailment: Cold Hands' and Grave Cold's Necrosis never landed.
+			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, Resolved.DealtToHealth,
+							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker, Target);
 		}
 	}
 
@@ -2328,7 +2344,7 @@ void ACataclysmMinion::Explode()
 	// thrall. `minion_explosion_damage`, Volatile's stat, is a separate
 	// multiplier below and is not read twice.
 	const float OwnBlow = OwnDamagePerHit
-		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags);
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags, /*AskingMinion=*/this);
 	const float Damage = OwnBlow * ExplosionPercentOfOwnDamage / 100.0f;
 
 	if (IsValid(Summoner) && ExplosionRadiusCm > 0.0f && Damage > 0.0f)
@@ -2529,7 +2545,8 @@ float ACataclysmMinion::ThrallExplosionDamage(const AActor* Lost, const AActor* 
 	// ruled 2026-11-02): its commander's Spirit reaches its explosion as it reaches its blow. Volatile's
 	// `minion_explosion_damage` is still asked with no tags; no row of it carries one.
 	const float OwnBlow = AttackDamage
-		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags());
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags(),
+												   /*AskingMinion=*/Lost);
 	return OwnBlow * ThrallExplosionPercentOfOwnDamage / 100.0f
 		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_explosion_damage"), FGameplayTagContainer());
 }

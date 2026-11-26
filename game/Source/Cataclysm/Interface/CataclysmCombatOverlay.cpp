@@ -555,6 +555,13 @@ FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
 	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
 }
 
+FString UCataclysmCombatOverlay::MarkedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	return AbilitySystem && AbilitySystem->IsShadowMarked() ? FString(TEXT("Marked")) : FString();
+}
+
 FString UCataclysmCombatOverlay::DeathmarkTextFor(const AActor* Actor)
 {
 	const UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -1176,7 +1183,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  DeathModifierTextFor(Actor),
 		  // AND WHAT WAR'S DO, beside them. 2026-11-25.
 		  WarModifierTextFor(Actor),
-		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
+		  ArmourRemovedTextFor(Actor), MarkedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
 		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.
 		  CrippledTextFor(Actor), WeakenedTextFor(Actor), ShreddedTextFor(Actor), StunnedTextFor(Actor),

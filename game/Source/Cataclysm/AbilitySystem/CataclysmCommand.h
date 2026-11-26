@@ -227,6 +227,18 @@ public:
 	static AActor* OrderedTargetFor(const AActor* Follower);
 
 	/**
+	 * GUARD THE MASTER, the Death trees' slice C6e (2026-11-25): "Your minions turn on the last enemy that hit you". The
+	 * last character that hit `Follower`'s commander, when the commander holds `TurnOnLastAttackerStat` above nought and
+	 * that character is alive, hostile to the follower and within what the follower notices. Null otherwise, and for a
+	 * gadget or a trap, which are machines rather than minions. `ACataclysmEnemyController::ChooseTarget` asks it after
+	 * a Quarry order and before every other choice.
+	 */
+	static AActor* CommandersLastAttackerFor(const AActor* Follower);
+
+	/** The stat Guard the Master states on the commander: its minions turn on the last enemy that hit it. */
+	static const TCHAR* TurnOnLastAttackerStat;
+
+	/**
 	 * The minion that draws this creature off the character it would otherwise
 	 * attack, or null when nothing changes.
 	 *
@@ -336,12 +348,14 @@ public:
 	 * definition carries the reasoning.
 	 */
 	static float SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
-									   const FGameplayTagContainer& MinionTags);
+									   const FGameplayTagContainer& MinionTags,
+									   const AActor* AskingMinion = nullptr);
 
 	/** `SummonerMultiplierFor` against the character a minion is striking. Moved with it. */
 	static float SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
 										   const AActor* Target,
-										   const FGameplayTagContainer& MinionTags);
+										   const FGameplayTagContainer& MinionTags,
+										   const AActor* AskingMinion = nullptr);
 
 	/**
 	 * What a blow from `Striker` is multiplied by because a thrall struck it: its commander's
@@ -460,6 +474,16 @@ public:
 	static float ReservedFervourOf(const AActor* Commander);
 
 	/**
+	 * `ReservedFervourOf`, from a list of what `Commander` commands that the caller has already walked
+	 * (`ThingsCommandedBy(Commander)`). The one sum both answer from, so the two cannot disagree.
+	 *
+	 * FOR A CALLER THAT HAS THE LIST IN HAND: `UCataclysmAbilitySystemComponent::CurrentConditions` walks it on every
+	 * call to count minions, and asks this for the reserve a full bar is judged against (ruled 2026-11-25, the Death
+	 * trees' slice C), so the world is not walked twice.
+	 */
+	static float ReservedFervourAmong(const AActor* Commander, const TArray<AActor*>& Commanded);
+
+	/**
 	 * Whether a new follower reserving `NewReserve` fits in this character's
 	 * pool. Issue #1934, ruling R1, and since issue #2787 the only limit on how
 	 * many of a kind stand: the owner's ruling of 2026-11-20 removed every count
@@ -503,9 +527,25 @@ public:
 	 * Record `Reserve` on a follower just made or taken, and cut its commander's
 	 * Fervour to what is left spendable. Issue #2787. The two steps every maker
 	 * takes once the follower exists, after it has asked `HasRoomToReserve`.
+	 *
+	 * AND, WHEN THE COMMANDER HOLDS `ReservedFervourSpentPercentStat`, A SPEND OF
+	 * THAT SHARE OF THE RESERVE: Bound Offering, "Fervour you hold back for a
+	 * minion, gadget or trap counts as Fervour spent, at 15% per point of what is
+	 * held back". The Death trees' slice C3b. Raised through
+	 * `UCataclysmAbilitySystemComponent::NoteFervourSpent`, so it stamps the clock
+	 * and every row on `fervour_spent` reads it; nothing is taken from the pool,
+	 * since what is held back is already out of it. So Cinders Kept returns none
+	 * of it: ruled by the coordinating session on 2026-11-25 (slice C3c).
+	 *
+	 * EVERY NEW HOLD IS ONE, a summon, a replacement, a thrall taken, an imp risen,
+	 * a skill gadget or trap placed. A level that lowers a reserve already held
+	 * (`UCataclysmSkillLevels`) is not a hold and raises nothing.
+	 *
+	 * @param SpendingTags the making skill's tags, which name the slot Turn of the
+	 *        Wheel leaves out; none when no skill made it (a warhound, a risen imp)
 	 */
 	static void HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,
-							float Reserve);
+							float Reserve, const FGameplayTagContainer* SpendingTags = nullptr);
 
 	/**
 	 * The stat holding percentage points ADDED to the health threshold a blow
@@ -580,6 +620,14 @@ public:
 	 * figure would be floored at nought in the combat attribute set.
 	 */
 	static const TCHAR* MinionReservePercentLessStat;
+
+	/**
+	 * The stat holding the share of a reserve held that counts as Fervour spent,
+	 * in per cent: Bound Offering, 15 a point. The Death trees' slice C3b. Read by
+	 * `HoldReserve` with the making skill's tags. No gameplay attribute and no
+	 * base: it is listed in `UCataclysmPlayerClassStats::StatsWithNoAttribute`.
+	 */
+	static const TCHAR* ReservedFervourSpentPercentStat;
 
 	/**
 	 * Take an enemy permanently into this character's command.

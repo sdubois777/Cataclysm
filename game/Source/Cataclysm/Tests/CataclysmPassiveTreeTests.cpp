@@ -2609,14 +2609,21 @@ bool FCataclysmPassiveRealTablesLoadTest::RunTest(const FString&)
 	// characters that start on it -- the Ravager is the class every new character
 	// starts on -- would have no tree of their own. That is worth a deliberate
 	// failure whenever the count moves.
+	//
+	// NINE SINCE 2026-11-24, when the three Death trees were added. The Soul
+	// Collector's name holds a space, and the tree is named for the class as
+	// `UCataclysmCharacterCreation::ClassesFor` spells it, space included.
 	const TArray<FString> Trees = UCataclysmPassiveTree::TreeNames(NodeTable);
-	TestEqual(TEXT("every class tree the design has"), Trees.Num(), 6);
+	TestEqual(TEXT("every class tree the design has"), Trees.Num(), 9);
 	TestTrue(TEXT("Berserker"), Trees.Contains(TEXT("Berserker")));
 	TestTrue(TEXT("Bulwark"), Trees.Contains(TEXT("Bulwark")));
 	TestTrue(TEXT("Masochist"), Trees.Contains(TEXT("Masochist")));
 	TestTrue(TEXT("Saboteur"), Trees.Contains(TEXT("Saboteur")));
 	TestTrue(TEXT("Ravager"), Trees.Contains(TEXT("Ravager")));
 	TestTrue(TEXT("Ritualist"), Trees.Contains(TEXT("Ritualist")));
+	TestTrue(TEXT("Soul Collector"), Trees.Contains(TEXT("Soul Collector")));
+	TestTrue(TEXT("Necromancer"), Trees.Contains(TEXT("Necromancer")));
+	TestTrue(TEXT("Shadow"), Trees.Contains(TEXT("Shadow")));
 
 	// EVERY TREE HOLDS FAR MORE THAN A CHARACTER CAN SPEND, which is the point
 	// the design makes: "The per-character point budget is 230, meaning players
@@ -2759,8 +2766,10 @@ bool FCataclysmPassiveScreenSpendsThroughThePlayerStateTest::RunTest(const FStri
 
 	TestTrue(TEXT("the Masochist tree can be looked at"),
 			 Screen->ShowTree(TEXT("Masochist")));
+	// THE PLAGUE LORD, A PESTILENCE CLASS WITH NO TREE. This named the
+	// Necromancer until 2026-11-24, when the three Death trees were added.
 	TestFalse(TEXT("a tree that does not exist cannot"),
-			  Screen->ShowTree(TEXT("Necromancer")));
+			  Screen->ShowTree(TEXT("Plague Lord")));
 	TestEqual(TEXT("so the Masochist tree is still the one shown"),
 			  Screen->GetShownTree(), FString(TEXT("Masochist")));
 
@@ -3552,6 +3561,9 @@ namespace CataclysmPassiveConditionTest
 			// number, so it compares nothing.
 			|| Name == TEXT("wielding_two_handed_weapon")
 			|| Name == TEXT("target_in_your_zone")
+			// THE DEATH TREES' SLICE C2, 2026-11-25: the character struck is in the asker's Siphon. It names a place,
+			// so it compares nothing.
+			|| Name == TEXT("target_in_your_siphon")
 			// RULED 2026-10-17, THE NULL EMPEROR'S "YOUR ATTACKS": the hit an action row fires on is not a spell. It
 			// names a kind of hit, so it compares nothing.
 			|| Name == TEXT("hit_dealt_is_not_spell")
@@ -3564,6 +3576,35 @@ namespace CataclysmPassiveConditionTest
 			// THE DEMONIC TREE REWORK OF 2026-11-24, "ENEMIES CARRYING YOUR CURSE": the character struck carries a
 			// curse the asker laid. It names a state, so it compares nothing.
 			|| Name == TEXT("target_carries_your_curse")
+			// THE DEATH TREES' SLICE C4a (2026-11-25), DEATH'S PATIENCE'S "AN ENEMY THAT CARRIES YOUR POISON OR BLEED":
+			// the character struck carries a Poison or a Bleed the asker applied. It names a state, so it compares
+			// nothing.
+			|| Name == TEXT("target_carries_your_poison_or_bleed")
+			// THE DEATH TREES' SLICE C4b1 (2026-11-25), ANY FUEL'S "FERVOUR GAINED FROM SOURCES OTHER THAN KILLS": the
+			// gain being sized is not a kill's payment. It names a state, so it compares nothing.
+			|| Name == TEXT("fervour_gain_not_from_a_kill")
+			// THE DEATH TREES' SLICE C4c1 (2026-11-25), PASSED ON'S "YOUR HIT": the kill being acted on was made by a hit.
+			// It names a state, so it compares nothing.
+			|| Name == TEXT("killing_blow_was_a_hit")
+			// THE DEATH TREES' SLICE C4d1 (2026-11-25), REAPER'S EDGE'S "THOSE KILLS": the kill being paid for and acted
+			// on was an execute. It names a state, so it compares nothing.
+			|| Name == TEXT("kill_was_an_execute")
+			// THE DEATH TREES' SLICE C6a (2026-11-25), BRIM'S "YOUR NEXT HIT IS A CRITICAL STRIKE": the character holds a
+			// next-hit critical strike charge. It names a state, so it compares nothing.
+			|| Name == TEXT("next_hit_is_critical")
+			// THE DEATH TREES' SLICE C6b1 (2026-11-25): a hit from behind, a target at full health, and your Poison alone.
+			// Each names a state, so each compares nothing.
+			|| Name == TEXT("target_struck_from_behind")
+			|| Name == TEXT("target_at_full_health")
+			|| Name == TEXT("target_carries_your_poison")
+			// AND HUNTING GROUND'S "no enemy within", the Death trees' slice C6b3: a state, its radius the reach.
+			|| Name == TEXT("no_enemy_in_reach")
+			// AND GRAVE COLD'S "enemies that have Necrosis", the Death trees' slice C6d1: a state of the target.
+			|| Name == TEXT("target_carries_necrosis")
+			// AND THE SHADOW'S DEATHMARK'S "It takes 30% more damage from you", the Death trees' slice C6e: a state.
+			|| Name == TEXT("target_marked_by_you")
+			// AND GUARD THE MASTER'S "the last enemy that hit you", the same slice: a state.
+			|| Name == TEXT("target_is_your_last_attacker")
 			// THE BERSERKER'S STATES, 2026-11-25: "DUAL WIELD ONLY", "WHILE IN WRATH" AND "WHILE IN FRENZY". Each names
 			// a state, so each compares nothing.
 			|| Name == TEXT("dual_wielding")

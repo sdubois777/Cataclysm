@@ -689,6 +689,10 @@ void UCataclysmGameplayAbility::ApplyCost(
 		{
 			Paying->NoteResourceConsumed(Fervour, &SkillTagsForStats());
 
+			// AND FERVOUR SPENT, with the amount and the skill's tags: the Death trees' slice C3a (2026-11-25).
+			// `resource_consumed` also fires for a next-use charge spent, so it cannot stand for Fervour.
+			Paying->NoteFervourSpent(Fervour, &SkillTagsForStats());
+
 			// AND A SPEND, for Crimson Tide's heal for every 10 Fervour spent or drained (2026-11-25).
 			FCataclysmWarFervour::NoteFervourSpentOrDrained(Paying, Fervour);
 		}
@@ -794,6 +798,15 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 		: AbilitySystem->HasMatchingGameplayTag(Tag);
 	if (bRefused)
 	{
+		// BORROWED STEP: a movement skill with no charge left may still be used, while the Fervour it costs is held.
+		// The Death trees' slice C3c (2026-11-25). `ApplyCooldown` takes the Fervour and leaves the cooldown running.
+		const float Borrowed = FervourToUseOnCooldown(AbilitySystem);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		if (Borrowed > 0.0f && AbilitySystem->HasAttributeSetForAttribute(Pool)
+			&& AbilitySystem->GetNumericAttribute(Pool) >= Borrowed)
+		{
+			return true;
+		}
 		if (OptionalRelevantTags)
 		{
 			OptionalRelevantTags->AddTag(Tag);
@@ -801,6 +814,18 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 		return false;
 	}
 	return true;
+}
+
+const TCHAR* UCataclysmGameplayAbility::MovementOnCooldownFervourCostStat = TEXT("movement_on_cooldown_fervour_cost");
+
+float UCataclysmGameplayAbility::FervourToUseOnCooldown(const UAbilitySystemComponent* AbilitySystem) const
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || GetDesignedSlot() != ECataclysmAbilitySlot::Movement)
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, Cataclysm->StatForSkill(FName(MovementOnCooldownFervourCostStat), SkillTagsForStats(), 0.0f));
 }
 
 float UCataclysmGameplayAbility::CooldownAfterReduction(
@@ -943,6 +968,25 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	if (!AbilitySystem)
 	{
 		return;
+	}
+
+	// BORROWED STEP'S USE: a movement skill used with no charge left, which `CheckCooldown` let through on the Fervour
+	// held. The Death trees' slice C3c (2026-11-25). Its cooldown RUNS ON AS IT WAS, a judgement of that slice: the use
+	// borrowed is not a use that starts another. The Fervour is taken here, where the use is known to be one, and is a
+	// spend like any cost: `resource_consumed` and `fervour_spent`, as `ApplyCost` raises them. A skill with no such
+	// cost, or a use with a charge in hand, goes on below exactly as before.
+	if (UCataclysmAbilitySystemComponent* Borrowing = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const float Borrowed = FervourToUseOnCooldown(Borrowing);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		if (Borrowed > 0.0f && Borrowing->SkillChargesHeld(Slot, SkillTagsForStats()) <= 0
+			&& Borrowing->HasAttributeSetForAttribute(Pool) && Borrowing->GetNumericAttribute(Pool) >= Borrowed)
+		{
+			Borrowing->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Borrowed);
+			Borrowing->NoteResourceConsumed(Borrowed, &SkillTagsForStats());
+			Borrowing->NoteFervourSpent(Borrowed, &SkillTagsForStats());
+			return;
+		}
 	}
 
 	// AND THE CHANCE THE SKILL DOES NOT GO ON COOLDOWN AT ALL. Issue #973. The

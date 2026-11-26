@@ -3,8 +3,10 @@
 #include "Interface/CataclysmHUD.h"
 #include "Dungeon/CataclysmFloorObject.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmSiphon.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -779,7 +781,13 @@ void ACataclysmHUD::DrawSkillBar()
 			  // 2026-10-16, skill gadgets stack 2 (item 6).
 			  UCataclysmSkillBar::BasicGadgetTextOf(Pawn),
 			  // AND THE BASIC ATTACK'S TRAP, while that slot is converted into one. Ruled 2026-10-21, traps layer 2 (L2).
-			  UCataclysmSkillBar::BasicTrapTextOf(Pawn)})
+			  UCataclysmSkillBar::BasicTrapTextOf(Pawn),
+			  // AND THE SIPHON, for a character holding it: how many enemies are in it and its radius. The Death
+			  // trees' slice C2 (2026-11-25); every system has a basic interface.
+			  FCataclysmSiphon::DisplayLine(Cataclysm),
+			  // AND THE ENEMY MODIFIERS WORN, each with its seconds left. Wearer of the Dead, the Death trees' slice C4d3
+			  // (2026-11-25), as ruled (W6).
+			  UCataclysmFervour::WornModifiersLine(Cataclysm)})
 		{
 			if (!Part.IsEmpty())
 			{

@@ -9,6 +9,7 @@ a pool it has no case for, so the row does nothing and nothing says so.
 `test_pool_action_names_match_the_engine.py` guards the pool actions; these had
 no guard until this file.
 """
+import csv
 import re
 import sys
 from pathlib import Path
@@ -45,6 +46,8 @@ CONSTANTS = {
     # AND THE COOLDOWN REDUCTION NAMES, since the cooldown reduction action.
     "CooldownReduceAllAction": "cooldown_reduce_all",
     "CooldownReduceHeavyAction": "cooldown_reduce_heavy",
+    # AND EVERY SKILL BUT THE EVENT'S OWN, since the Death trees' slice C3b (Turn of the Wheel).
+    "CooldownReduceOthersAction": "cooldown_reduce_others",
     "NextSpellCooldownReducedAction": "next_spell_cooldown_reduced",
     # AND THE RANDOM DAMAGE OVER TIME, since issue #1833 group D.
     "ApplyRandomDotAction": "apply_random_dot",
@@ -165,6 +168,26 @@ CONSTANTS = {
     # AND THE ONE OF TRAPS LAYER 4, ruled 2026-10-21: an enemy killed explodes
     # for a share of the blow that killed it.
     "ExplodeVictimForKillingBlowAction": "explode_victim_for_killing_blow",
+    # AND THE DEATH TREES' SLICE C4c1 (2026-11-25): an enemy killed bursts for a
+    # share of its maximum health, The Ferryman.
+    "BurstSlainForMaximumHealthAction": "burst_slain_for_share_of_maximum_health",
+    # AND THE DEATH TREES' SLICE C4c2 (2026-11-25): the wearer's Bleed left on an
+    # enemy that died passed to the strongest enemy near it, Blood Debt.
+    "PassBleedLeftToStrongestAction": "pass_bleed_left_to_strongest",
+    # AND THE DEATH TREES' SLICE C4d1 (2026-11-25): the next landed hit within
+    # the seconds made a critical strike, Chain Execution.
+    "CriticalNextHitAction": "next_hit_critical",
+    # AND THE DEATH TREES' SLICE C6a (2026-11-25): the movement skill's cooldown
+    # cut, and the hold before decay lengthened on an evasion.
+    "CooldownReduceMovementAction": "cooldown_reduce_movement",
+    "FervourHoldExtendedAction": "fervour_hold_extended",
+    # AND THE DEATH TREES' SLICE C6b4 (2026-11-25): an evasion's critical
+    # strike charge doubled on a roll, Twice Answered.
+    "CriticalTwiceOnEvasionAction": "next_hit_critical_twice",
+    # AND THE DEATH TREES' SLICE C6e (2026-11-25): Blade Echo's and Thousand
+    # Cuts' strikes on the strongest enemy near a kill.
+    "StrikeStrongestNearAction": "strike_strongest_near",
+    "DashToStrongestAndStrikeAction": "dash_to_strongest_and_strike",
     # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
@@ -710,6 +733,583 @@ def test_the_killing_blow_explosion_of_traps_layer_four_is_recorded_and_made_at_
     assert "Notice.KillingBlowDamage = Blow.KillingBlowDamage;" in events
 
 
+def test_the_ferrymans_burst_is_recorded_and_made_at_the_kill_by_the_same_explosion() -> None:
+    """The Death trees' slice C4c1 (2026-11-25). The generator's name is the
+    engine's; the item recognises the row by its constant; the event loop
+    records the share; and the kill site takes it and makes the burst through
+    `ExplodeForOverkill`, sized by the slain creature's maximum health, at
+    `SlainBurstRadiusCm`, handed to the announcer so a creature it kills bursts
+    too. Read from the code with comments taken out. THE CONTROL: the same
+    reading finds the overkill explosion's own call."""
+    names = engine_names()
+    assert gen.SLAIN_BURST_ACTION == names["BurstSlainForMaximumHealthAction"]
+    assert gen.SLAIN_BURST_EVENTS == ("kill",)
+    assert gen.SLAIN_BURST_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bBurstSlainForMaximumHealth = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"PendingSlainBurstSharePercent = FMath::Max\(PendingSlainBurstSharePercent, Action\.Percent\);",
+                     engine)
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"UCataclysmFervour::BurstTheSlain\(this, Notice\.Victim, Notice\.Location, SlainMaximum,\s*"
+                     r"Acting->TakePendingSlainBurstSharePercent\(\)\);", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"UCataclysmSkillEffects::ExplodeForOverkill\(Burster\.Get\(\), Body\.Get\(\), At, SlainMaximum, "
+                     r"SharePercent,\s*UCataclysmSkillEffects::SlainBurstRadiusCm\);", fervour)
+    assert re.search(r"Events->AfterThisDeathIsHeard\(MoveTemp\(Burst\)\);", fervour)
+    assert re.search(r"UCataclysmSkillEffects::ExplodeForOverkill\(Killer\.Get\(\), SlainActor\.Get\(\), At, "
+                     r"Overkill,", player)
+
+
+def test_passed_on_reads_the_hit_mark_and_takes_the_largest_radius_any_row_gives() -> None:
+    """The Death trees' slice C4c1 (2026-11-25), as ruled. The kill handler
+    marks its kill's rows as made by a hit or a tick around the event and clears
+    the mark after; the conditions fill reads the mark; the event loop gives a
+    passive node's overkill row the radius stat and every other row the old
+    radius, and keeps the largest; and the kill site hands that radius to the
+    explosion. Read from the code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"Acting->SetActingOnAKillByAHit\(!Notice\.bByDamageOverTime\);\s*"
+                     r"Acting->ActOnEvent\(FName\(TEXT\(\"kill\"\)\), Notice\.KillingSkillTags, SlainMaximum,\s*"
+                     r"\s*true, Notice\.Victim\);\s*"
+                     r"Acting->SetActingOnAKillByAHit\(false\);", player)
+    assert "const float OverkillRadiusCm = Acting->TakePendingOverkillExplosionRadiusCm();" in player
+    assert re.search(r"Overkill,\s*OverkillShare, OverkillRadiusCm\);", player)
+    engine = code_without_comments(SOURCE)
+    assert "State.bKillingBlowWasAHit = bActingOnAKillByAHit;" in engine
+    assert re.search(r"Action\.TriggerKey\.ToString\(\)\.StartsWith\(UCataclysmPassiveTree::PassiveEnchantmentPrefix\)",
+                     engine)
+    assert re.search(r"PendingOverkillExplosionRadiusCm = FMath::Max\(PendingOverkillExplosionRadiusCm, RowRadiusCm\);",
+                     engine)
+
+
+def test_grim_wake_marks_the_enemies_near_a_kill_and_the_condition_reads_the_mark() -> None:
+    """The Death trees' slice C4c2 (2026-11-25), as ruled (Q6). The kill
+    handler and a follower's kill under Death's Toll both mark the enemies near
+    the body; the marking reads the rows' own reach, leaves the slain out and
+    writes the record keyed by the killer; the conditions fill reads that record
+    for the asker; and the condition holds within its seconds and never for -1.
+    Read from the code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"UCataclysmFervour::NoteOwnKill\(Acting, Notice\.Victim\);\s*"
+                     r"UCataclysmFervour::MarkNearAKill\(Acting, Notice\.Victim, Notice\.Location\);", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"NoteOwnKill\(AbilitySystem, Notice\.Victim\);\s*"
+                     r"MarkNearAKill\(AbilitySystem, Notice\.Victim, Notice\.Location\);", fervour)
+    assert re.search(r"WidestReachOfCondition\(ECataclysmStatCondition::TargetNearYourKillWithinSeconds\)", fervour)
+    assert re.search(r"FindEnemiesInSphere\(World, KillerActor, At, ReachMetres \* 100\.0f\)", fervour)
+    assert re.search(r"if \(Near == Slain\)\s*\{\s*continue;", fervour)
+    assert "Marked->NoteNearKillBy(Killer);" in fervour
+    engine = code_without_comments(SOURCE)
+    assert "State.SecondsSinceNearYourKill = Marked->SecondsSinceNearKillBy(State.AskingAbilitySystem);" in engine
+    assert re.search(r"Row\.Condition == Condition \|\| Row\.Condition2 == Condition", engine)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::TargetNearYourKillWithinSeconds:\s*"
+                     r"return State\.SecondsSinceNearYourKill >= 0\.0f && State\.SecondsSinceNearYourKill <= Value;",
+                     pipeline)
+
+
+def test_every_target_question_reaches_both_lists_in_with_target_state() -> None:
+    """The Death trees' slice C4c2 (2026-11-25). `WithTargetState` declares a
+    `bWants...` flag for each question a row may ask about the target, stops
+    walking the rows once every flag is set, and returns before any fill when
+    none is. A flag missing from the stop-early list can end the walk before
+    its row is seen; one missing from the early return makes a stat line whose
+    only question it is return before the fill, so its condition refuses. Three
+    were missing from both until this slice. THE CONTROL: the declarations are
+    found, and there are more than three, so an empty reading cannot pass."""
+    engine = code_without_comments(SOURCE)
+    start = engine.index("FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(")
+    body = engine[start:engine.index("\n}\n", start)]
+    declared = set(re.findall(r"bool (bWants\w+) = false;", body))
+    assert len(declared) >= 10, declared
+    stop_early = re.search(r"if \((bWants\w+(?:\s*&&\s*bWants\w+)+)\)\s*\{\s*break;", body)
+    early_return = re.search(r"if \(!Target\s*\|\|\s*\((!bWants\w+(?:\s*&&\s*!bWants\w+)+)\)\)\s*\{\s*return State;",
+                             body)
+    assert stop_early and early_return
+    assert set(re.findall(r"bWants\w+", stop_early.group(1))) == declared
+    assert set(re.findall(r"bWants\w+", early_return.group(1))) == declared
+
+
+def test_a_critical_strike_pays_fervour_and_a_minions_does_not() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q2): the Shadow's
+    starting node's "2 for each critical strike you land" and Telling Blows.
+    The hit handler pays a landed critical strike of the character's own, not
+    a minion's, before the `critical_strike` rows act; the payment asks the new
+    stat against the character struck and goes through `RaisePool`. Read from
+    the code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"if \(Notice\.bCritical\)\s*\{\s*if \(!Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*\{\s*"
+                     r"UCataclysmFervour::GainOnCriticalStrike\(Acting, Notice\.Target,\s*"
+                     r"Notice\.SkillTags \? \*Notice\.SkillTags : FGameplayTagContainer\(\)\);\s*\}\s*"
+                     r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)", player)
+    # ONE PAYMENT, since the bundle 3 merge (obligation 5): the War line's second reader of the same stat is not called
+    # from the hit handler, and its own function hands on to this one.
+    assert "FCataclysmWarFervour::GainOnCriticalStrike" not in player
+    war = code_without_comments(SOURCE.parent / "CataclysmWarFervour.cpp")
+    start = war.index("float FCataclysmWarFervour::GainOnCriticalStrike(")
+    assert "return UCataclysmFervour::GainOnCriticalStrike(AbilitySystem, nullptr, SkillTags);" in \
+        war[start:war.index("\n}\n", start)]
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    start = fervour.index("float UCataclysmFervour::GainOnCriticalStrike(")
+    body = fervour[start:fervour.index("\n}\n", start)]
+    assert re.search(r"FName\(PerCriticalStrikeStat\), SkillTags, 0\.0f, -1\.0f, "
+                     r"FCataclysmBlowContext\(\), -1\.0f, -1\.0f, false, Struck\);", body)
+    # THE WHOLE GAIN, since window death3-w1's second pass: `RaisePool` holds it to the bar and Overflow takes the rest.
+    assert "RaisePool(AbilitySystem, Gain);" in body
+    assert "ClassResourceGainScaled(AbilitySystem, PerCritical)" in body
+    assert "BeginKillPayment" not in body
+
+
+def test_reapers_edge_marks_an_executes_kill_for_its_payment_and_rows() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q3). The struck
+    character is marked as being executed only around `ExecuteIfLeftBelow`'s
+    kill, not around a cull's; the death notice copies the mark; the kill
+    handler marks its payment and rows from the notice and clears the mark
+    after; the conditions fill reads it; and the condition holds on it alone.
+    Read from the code with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"TGuardValue<bool> Executing\(bBeingExecuted, true\);\s*"
+                     r"bKilled = KillIfLeftBelow\(By, Asked\.BelowPercent\);", engine)
+    cull = engine[engine.index("bool UCataclysmAbilitySystemComponent::CullIfLeftBelow("):]
+    assert "bBeingExecuted" not in cull[:cull.index("\n}\n")]
+    assert "State.bKillWasAnExecute = bActingOnAKillByAnExecute;" in engine
+    events = code_without_comments(SOURCE.parent / "CataclysmCombatEvents.cpp")
+    assert re.search(r"if \(System\)\s*\{\s*Notice\.bByAnExecute = System->IsBeingExecuted\(\);", events)
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"Acting->SetActingOnAKillByAnExecute\(Notice\.bByAnExecute\);\s*"
+                     r"UCataclysmFervour::GiveBackDecayOnKill\(Acting\);\s*"
+                     r"UCataclysmFervour::GainOnOwnKill\(Acting, Notice\.Victim\);", player)
+    assert re.search(r"Acting->SetActingOnAKillByAHit\(false\);\s*\}\s*"
+                     r"Acting->SetActingOnAKillByAnExecute\(false\);", player)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::KillWasAnExecute:\s*return State\.bKillWasAnExecute;", pipeline)
+
+
+def test_relentless_is_sized_by_the_whole_hundreds_of_fervour_held() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q4): whole hundreds,
+    read when the row acts. The item maps the generator's Fraction Of to the new
+    base; the event loop multiplies a row on that base by the whole hundreds of
+    Fervour counted as held, as it does the two event-amount bases; and the
+    generator keeps the base off the pool rows' list. Read from the code with
+    comments taken out."""
+    assert gen.FRACTION_OF_HUNDREDS_HELD == "for_each_hundred_class_resource_held"
+    assert gen.FRACTION_OF_HUNDREDS_HELD not in gen.FRACTION_BASES
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Effect->FractionOf\.Equals\(TEXT\(\"for_each_hundred_class_resource_held\"\),\s*"
+                     r"ESearchCase::IgnoreCase\)\)\s*\{\s*"
+                     r"Action\.Base = ECataclysmPoolActionBase::ForEachHundredClassResourceHeld;", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"const float Times = Listed\.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld\s*"
+                     r"\? TimesSizedByFervourHeld\(\)\s*: TimesSizedByEventAmount\(Listed\.Base, EventAmount\);", engine)
+    assert re.search(r"\|\| Listed\.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld\)\s*\{\s*"
+                     r"Sized\.Emplace\(Listed\);", engine)
+    assert re.search(r"const float Held = UCataclysmStatPipeline::FervourHeldCounted\(CurrentConditions\(\)\);\s*"
+                     r"return FMath::Max\(0\.0f, FMath::FloorToFloat\(Held / 100\.0f \+ Allowance\)\);", engine)
+
+
+def test_chain_execution_makes_the_next_landed_hit_critical_and_is_used_by_it() -> None:
+    """The Death trees' slice C4d1 (2026-11-25), as ruled (Q5). The generator's
+    name is the engine's, on `kill` only; the item recognises the row; the event
+    loop sets the charge to the full window, once per row per event; the
+    defender's attribute set makes a hit certain to be critical while the
+    attacker holds the charge and uses it on the hit it made critical; and the
+    resolver honours the certainty after evasion, so an evaded hit is never
+    critical and uses nothing. Read from the code with comments taken out."""
+    names = engine_names()
+    assert gen.NEXT_HIT_CRITICAL_ACTION == names["CriticalNextHitAction"]
+    # WIDENED IN THE DEATH TREES' SLICE C6a (2026-11-25) to Slip's `dodge` and
+    # Brim's `resource_full`.
+    assert gen.NEXT_HIT_CRITICAL_EVENTS == ("kill", "dodge", "resource_full")
+    assert gen.NEXT_HIT_CRITICAL_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bNextHitCritical = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::CriticalNextHitAction,", item)
+    engine = code_without_comments(SOURCE)
+    # NOUGHT SECONDS IS "UNTIL USED", Brim's, since the Death trees' slice C6a.
+    assert re.search(r"NextHitCriticalUntilSeconds = Action\.Percent > 0\.0f \? World->GetTimeSeconds\(\) \+ "
+                     r"Action\.Percent\s*: TNumericLimits<float>::Max\(\);", engine)
+    vital = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert "Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();" in vital
+    assert re.search(r"if \(Hit\.bCertainCritical && Resolved\.bWasCritical\)\s*\{[^}]*"
+                     r"Spending->SpendNextHitCritical\(\);", vital)
+    calc = code_without_comments(SOURCE.parent / "CataclysmDamageCalculation.cpp")
+    certain = calc.index("if (Hit.bCertainCritical || Roll < Hit.CritChance)")
+    assert calc.index("bEvaded = true") < certain
+
+
+def test_patient_blade_pays_a_kill_for_a_boss_tick_once_every_its_seconds() -> None:
+    """The Death trees' slice C4d2 (2026-11-25), as ruled (Q6): Fervour only,
+    one clock per character. The hit handler pays a tick of the character's own
+    damage over time, not a minion's, before ticks are dropped; the payment asks
+    the stat against the creature ticked, refuses inside the seconds, notes the
+    clock and pays one own kill's Fervour, and raises no kill. Read from the
+    code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"if \(Notice\.bDamageOverTime && !Notice\.bEvaded && !Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*"
+                     r"\{\s*UCataclysmFervour::PayForABossTick\(GetAbilitySystemComponent\(\), Notice\.Target\);\s*\}\s*"
+                     r"if \(Notice\.bDamageOverTime \|\| Notice\.bEvaded\)", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    start = fervour.index("float UCataclysmFervour::PayForABossTick(")
+    body = fervour[start:fervour.index("\n}\n", start)]
+    assert re.search(r"FName\(BossTicksPayAKillEverySecondsStat\),[^;]*false, Ticked\);", body)
+    assert re.search(r"if \(Since >= 0\.0f && Since \+ 1\.0e-3f < Every\)\s*\{\s*return 0\.0f;", body)
+    assert re.search(r"Cataclysm->NoteBossTickPaid\(\);\s*return GainOnOwnKill\(AbilitySystem, Ticked\);", body)
+    assert "ActOnEvent" not in body and "NoteOwnKill" not in body
+
+
+def test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_death() -> None:
+    """The Death trees' slice C4d2 (2026-11-25), as ruled (Q7). The hit handler
+    counts each landed hit of the character's own, after the hit's rows; the
+    count is kept per creature; at every Nth a kill is credited without a
+    death, in the kill handler's order, with `kill` raised against the Boss;
+    and the shares that need a body are taken and dropped. Read from the code
+    with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    # AFTER THE CRITICAL STRIKE'S BLOCK, whatever else it holds (the War line's Skull Splitter and Deathmark since the
+    # bundle 3 merge): the block's own closing brace at one tab, then the count.
+    assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)[^;]*;[\s\S]*?\n\t\}\s*"
+                     r"if \(!Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*\{\s*"
+                     r"UCataclysmFervour::CountAHitOnABoss\(Acting, Notice\.Target\);", player)
+    engine = code_without_comments(SOURCE)
+    assert "return ++BossHitsCounted.FindOrAdd(Boss);" in engine
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    count = fervour[fervour.index("bool UCataclysmFervour::CountAHitOnABoss("):]
+    count = count[:count.index("\n}\n")]
+    assert "UCataclysmSkillEffects::IsDead(Struck)" in count
+    assert re.search(r"if \(Cataclysm->CountBossHit\(Struck\) % Nth != 0\)", count)
+    credit = fervour[fervour.index("void UCataclysmFervour::CreditAKillWithoutADeath("):]
+    credit = credit[:credit.index("\n}\n")]
+    assert re.search(r"GiveBackDecayOnKill\(AbilitySystem\);\s*GainOnOwnKill\(AbilitySystem, Slain\);\s*"
+                     r"NoteOwnKill\(AbilitySystem, Slain\);\s*MarkNearAKill\(AbilitySystem, Slain,", credit)
+    assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"kill\"\)\), nullptr, SlainMaximum, true, Slain\);", credit)
+    for taken in ("TakePendingOverkillExplosionSharePercent", "TakePendingOverkillExplosionRadiusCm",
+                  "TakePendingSlainBurstSharePercent", "TakePendingKillingBlowExplosionSharePercent"):
+        assert f"Acting->{taken}();" in credit, taken
+    for left_out in ("MarkDead", "ExplodeForOverkill", "BurstTheSlain", "AnnounceAfflictedDeath", "NoteDeath"):
+        assert left_out not in credit, left_out
+
+
+def test_the_worn_enemy_modifiers_are_one_list_in_the_generator_and_the_engine() -> None:
+    """The Death trees' slice C4d3 (2026-11-25), as ruled (W6). A row's
+    `wearing_enemy_modifier` value is a place in a list the generator and the
+    engine each hold, so the two must be the same list in the same order; the
+    condition's bounds are that list's ends; every place has its row on Wearer
+    of the Dead; and every name is a row of the enemy modifier table. THE
+    CONTROL: the engine list is found and has five names."""
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    start = fervour.index("const TArray<FName>& UCataclysmFervour::WornEnemyModifierRows()")
+    body = fervour[start:fervour.index("\n}\n", start)]
+    engine = tuple(re.findall(r'FName\(TEXT\("([A-Za-z_]+)"\)\)', body))
+    assert len(engine) == 5, engine
+    assert engine == gen.WORN_ENEMY_MODIFIERS
+    assert gen.CONDITIONS["wearing_enemy_modifier"][:2] == (1.0, float(len(gen.WORN_ENEMY_MODIFIERS)))
+    effects = list(csv.DictReader((ROOT / "game" / "Data" / "PassiveEffects.csv").open(encoding="utf-8")))
+    places = sorted(int(float(r["ConditionValue"])) for r in effects
+                    if r["Condition"] == "wearing_enemy_modifier")
+    assert places == list(range(1, len(gen.WORN_ENEMY_MODIFIERS) + 1)), places
+    modifiers = {r["Name"] for r in csv.DictReader((ROOT / "game" / "Data" / "EnemyModifiers.csv").open(encoding="utf-8"))}
+    assert set(gen.WORN_ENEMY_MODIFIERS) <= modifiers
+
+
+def test_wearer_of_the_dead_records_an_elite_or_strongers_modifiers_at_every_kind_of_kill() -> None:
+    """The Death trees' slice C4d3 (2026-11-25), as ruled (W3 to W6). The kill
+    handler, a follower's kill under Death's Toll and a kill without a death
+    each call the wearing; it reads the slain creature's rung of 1 or more,
+    records only a place the character holds a row for, refreshes maximum
+    health, and the conditions fill reads the record. A second record of the
+    same place sets its time again rather than adding. Read from the code with
+    comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"UCataclysmFervour::MarkNearAKill\(Acting, Notice\.Victim, Notice\.Location\);\s*"
+                     r"UCataclysmFervour::WearTheModifiersOf\(Acting, Notice\.Victim\);", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"MarkNearAKill\(AbilitySystem, Notice\.Victim, Notice\.Location\);\s*"
+                     r"WearTheModifiersOf\(AbilitySystem, Notice\.Victim\);", fervour)
+    assert re.search(r"MarkNearAKill\(AbilitySystem, Slain, Slain->GetActorLocation\(\)\);\s*"
+                     r"WearTheModifiersOf\(AbilitySystem, Slain\);", fervour)
+    wear = fervour[fervour.index("int32 UCataclysmFervour::WearTheModifiersOf("):]
+    wear = wear[:wear.index("\n}\n")]
+    assert "Creature->RarityStep < 1" in wear
+    assert re.search(r"if \(Place > 0 && Wearer->HoldsARowWearing\(Place\)\)", wear)
+    assert "Wearer->NoteWornEnemyModifier(Place, WornEnemyModifierSeconds);" in wear
+    assert "Wearer->RefreshLiveMaximumHealth();" in wear
+    engine = code_without_comments(SOURCE)
+    assert "State.WornEnemyModifierPlaces = WornEnemyModifierPlacesNow();" in engine
+    assert "WornEnemyModifierUntil.Add(Place, World->GetTimeSeconds() + Seconds);" in engine
+    header = code_without_comments(SOURCE.parent / "CataclysmFervour.h")
+    assert "static constexpr float WornEnemyModifierSeconds = 20.0f;" in header
+
+
+def test_a_stepped_action_row_is_keyed_apart_in_the_engine_and_the_generator() -> None:
+    """The Death trees' slice C6a (2026-11-25). "1 second for every 4 points" is
+    an action row at 4 points and another at 8. An action row's trigger, reset
+    and charge keys begin with its enchantment name, so the passive tree names a
+    stepped action row apart by its threshold, and the generator's one-row-per-
+    action check keys it the same way. A stat row is not renamed. Read from the
+    code with comments taken out."""
+    tree = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPassiveTree.cpp")
+    assert re.search(r"if \(!Effect\.Action\.IsEmpty\(\) && Effect\.MinPoints > 0\)\s*\{\s*"
+                     r"Row\.Enchantment \+= FString::Printf\(TEXT\(\"_From%d\"\), Effect\.MinPoints\);", tree)
+    generator = (ROOT / "tools" / "generate_datatables.py").read_text(encoding="utf-8")
+    assert re.search(r'key = \(row\["Node"\], row\["Option"\], row\["Action"\], row\["ActionEvent"\],\s*'
+                     r'row\["MinPoints"\]\)', generator)
+
+
+def test_the_movement_cut_the_longer_hold_and_brims_condition_are_wired() -> None:
+    """The Death trees' slice C6a (2026-11-25). The generator's two new action
+    names are the engine's; the item maps the movement cut to its kind and the
+    hold to its flag; the cooldown cut takes the movement skill's cooldown tags;
+    the event loop lengthens a running hold, never past its full length; and
+    Brim's condition reads the next-hit charge. Read from the code with comments
+    taken out."""
+    names = engine_names()
+    assert "cooldown_reduce_movement" in gen.COOLDOWN_REDUCE_ACTIONS
+    assert names["CooldownReduceMovementAction"] == "cooldown_reduce_movement"
+    assert gen.FERVOUR_HOLD_EXTENDED_ACTION == names["FervourHoldExtendedAction"]
+    assert gen.FERVOUR_HOLD_EXTENDED_EVENTS == ("dodge",)
+    assert gen.FERVOUR_HOLD_EXTENDED_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"UCataclysmAbilitySystemComponent::CooldownReduceMovementAction,\s*ESearchCase::IgnoreCase\)\)\s*"
+                     r"\{\s*Action\.CooldownReduce = ECataclysmCooldownReset::Movement;", item)
+    assert re.search(r"Action\.bExtendFervourHold = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::FervourHoldExtendedAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"else if \(Action\.CooldownReduce == ECataclysmCooldownReset::Movement\)\s*\{\s*"
+                     r"Reducing\.AppendTags\(CooldownTagsOfSkillsDesignedFor\(ECataclysmAbilitySlot::Movement\)\);", engine)
+    assert "ExtendKillDecayHold(Action.Percent, UCataclysmFervour::KillDecayHoldFullSeconds(this));" in engine
+    assert "State.bHoldsNextHitCritical = HoldsNextHitCritical();" in engine
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::NextHitIsCritical:\s*return State\.bHoldsNextHitCritical;", pipeline)
+
+
+def test_the_four_facts_of_a_hits_target_are_filled_and_judged() -> None:
+    """The Death trees' slice C6b1 (2026-11-25). From behind: the target-state
+    fill asks the geometry and the striker's mark, and a `RearHits=1` strike
+    sets that mark around its hit and clears it after. Full health reads the
+    health share already filled for `target_health_below`. Your Poison alone is
+    filled beside your Poison or Bleed. Beyond metres reads the distance
+    `target_within_metres` reads, strictly. Read from the code with comments
+    taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.bTargetStruckFromBehind = \(Asker && Asker->IsStrikingFromBehindByRule\(\)\)\s*"
+                     r"\|\| UCataclysmSkillEffects::IsBehind\(State\.AskingAbilitySystem->GetAvatarActor\(\), Target\);",
+                     engine)
+    assert re.search(r"State\.bTargetCarriesYourPoison =\s*UCataclysmDebuffs::CarriesPoisonLaidBy\(Target,", engine)
+    template = code_without_comments(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    assert re.search(r"RearStriker->SetStrikingFromBehindByRule\(true\);\s*\}\s*"
+                     r"const float Dealt = UCataclysmSkillEffects::ApplyHit\(\s*"
+                     r"Self, Target, PercentThisBlow, SkillTags, Delivery, &Resolved\);\s*"
+                     r"if \(RearStriker\)\s*\{\s*RearStriker->SetStrikingFromBehindByRule\(false\);", template)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::TargetAtFullHealth:\s*"
+                     r"return State\.TargetHealthPercent >= 0\.0f && State\.TargetHealthPercent >= 100\.0f - 1\.0e-3f;",
+                     pipeline)
+    assert re.search(r"case ECataclysmStatCondition::TargetBeyondMetres:\s*"
+                     r"return State\.TargetDistanceMetres >= 0\.0f && State\.TargetDistanceMetres > Value;", pipeline)
+    for condition in ("target_struck_from_behind", "target_at_full_health", "target_carries_your_poison",
+                      "target_beyond_metres"):
+        assert condition in gen.CONDITIONS_OF_A_HIT_DEALT, condition
+
+
+def test_the_movement_skills_end_and_its_struck_enemies_are_recorded_and_judged() -> None:
+    """The Death trees' slice C6b2 (2026-11-25). Arrival: a movement skill's
+    use that was paid for is marked once `CommitAndBegin` succeeds, and its end
+    notes the clock and clears the mark; the state fill reads the clock, and the
+    condition is inclusive. Glancing Cuts: `ApplyHit` marks the creature struck,
+    keyed by the striker, for a landed blow of a skill made for the Movement slot
+    and not for a share, a tick, an evaded or an immune blow; the target-state
+    fill reads that record when a row asks. Read from the code with comments
+    taken out."""
+    moves = code_without_comments(SOURCE.parent / "CataclysmSkillTemplates.cpp")
+    assert re.search(r"if \(!CommitAndBegin\(Handle, ActorInfo, ActivationInfo\)\)\s*\{\s*return;\s*\}\s*"
+                     r"bPaidForThisUse = true;", moves)
+    assert re.search(r"const bool bAPaidMovementSkillUse = bPaidForThisUse "
+                     r"&& GetDesignedSlot\(\) == ECataclysmAbilitySlot::Movement;\s*"
+                     r"bPaidForThisUse = false;\s*if \(bAPaidMovementSkillUse\)\s*\{\s*"
+                     r"if \(UCataclysmAbilitySystemComponent\* Mover =\s*"
+                     r"Cast<UCataclysmAbilitySystemComponent>\(GetAbilitySystemComponentFromActorInfo\(\)\)\)\s*"
+                     r"\{\s*Mover->NoteMovementSkillEnded\(\);", moves)
+    engine = code_without_comments(SOURCE)
+    assert "State.SecondsSinceMovementSkillEnded = SecondsSinceMovementSkillEnded();" in engine
+    assert re.search(r"State\.SecondsSinceStruckByYourMovementSkill =\s*"
+                     r"Struck->SecondsSinceStruckByMovementSkillOf\(State\.AskingAbilitySystem\);", engine)
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"if \(!bAShareOnAnAlly && !Arrived\.bIsDamageOverTime && !Landed->bEvaded "
+                     r"&& !Landed->bRefusedByImmunityToAttacker\s*"
+                     r"&& DeliveredBy && DeliveredBy->GetDesignedSlot\(\) == ECataclysmAbilitySlot::Movement\)\s*"
+                     r"\{\s*if \(UCataclysmAbilitySystemComponent\* Struck =\s*"
+                     r"Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\(Target\)\)\)\s*"
+                     r"\{\s*Struck->NoteStruckByMovementSkillOf\(Source\);", effects)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd:\s*"
+                     r"return State\.SecondsSinceMovementSkillEnded >= 0\.0f "
+                     r"&& State\.SecondsSinceMovementSkillEnded <= Value;", pipeline)
+    assert re.search(r"case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:\s*"
+                     r"return State\.SecondsSinceStruckByYourMovementSkill >= 0\.0f\s*"
+                     r"&& State\.SecondsSinceStruckByYourMovementSkill <= Value;", pipeline)
+    assert "target_struck_by_your_movement_skill_within_seconds" in gen.CONDITIONS_OF_A_HIT_DEALT
+    assert "movement_skill_ends" in gen.action_events()
+
+
+def test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is() -> None:
+    """The Death trees' slice C6b3 (2026-11-25), as ruled. A `points` row pays its value itself, on the class
+    resource only. EVERY CLASS RESOURCE GAIN a pool action makes, the three enchantment rows that already granted it
+    included, goes through `UCataclysmFervour::RaisePool` after `ClassResourceGainScaled`, rather than `TopUp`. A row
+    with a chance rolls before it pays and before its wait starts, on the timed path as on an event; a chance of 0 or
+    100 is not rolled. The passive tree pays a chance per point and leaves the amount alone, and names a second action
+    row of one node on one action and event `_Row2`. Read from the code with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(Action\.Base == ECataclysmPoolActionBase::Points\)\s*\{\s*"
+                     r"if \(Action\.Pool != ClassResourcePoolName\)\s*\{\s*return;\s*\}\s*Amount = Action\.Percent;",
+                     engine)
+    assert re.search(r"Amount = ClassResourceGainScaled\(this, Amount\);.*?"
+                     r"if \(Amount > 0\.0f && Action\.Pool == ClassResourcePoolName\)\s*\{\s*"
+                     r"UCataclysmFervour::RaisePool\(this, Amount\);\s*return;\s*\}\s*if \(Amount > 0\.0f\)\s*\{\s*"
+                     r"UCataclysmRegeneration::TopUp", engine, re.S)
+    assert re.search(r"if \(ChancePercent <= 0\.0f \|\| ChancePercent >= 100\.0f\)\s*\{\s*return true;\s*\}"
+                     r".*?return Roll < ChancePercent;", engine, re.S)
+    assert re.search(r"return Action\.Pool != ClassResourcePoolName \|\| ChancePercentComesUp\(Action\.ChancePercent\);",
+                     engine)
+    assert re.search(r"if \(!PoolActionChanceComesUp\(Action\)\)\s*\{\s*continue;\s*\}\s*"
+                     r"ApplyPoolAction\(Action, EventTags, EventAmount\);\s*NoteTriggerFired\(Action\);", engine)
+    assert re.search(r"else if \(PoolActionChanceComesUp\(Action\)\)\s*\{\s*ApplyPoolAction\(Action, nullptr, 0\.0f\);",
+                     engine)
+    item = code_without_comments(SOURCE.parents[1] / "Items/CataclysmItem.cpp")
+    assert re.search(r'FractionOf\.Equals\(TEXT\("points"\), ESearchCase::IgnoreCase\)\)\s*\{\s*'
+                     r"Action\.Base = ECataclysmPoolActionBase::Points;\s*\}\s*Action\.ChancePercent = Effect->ChancePercent;",
+                     item)
+    tree = code_without_comments(SOURCE.parents[1] / "Character/CataclysmPassiveTree.cpp")
+    assert re.search(r"if \(Effect\.ChancePercent > 0\.0f\)\s*\{\s*Row\.ChancePercent = FMath::Min\(100\.0f, "
+                     r"Effect\.ChancePercent \* static_cast<float>\(Paid\)\);\s*Row\.ValueLow = Effect\.ValuePerPoint;",
+                     tree)
+    assert re.search(r'if \(Seen > 1\)\s*\{\s*Row\.Enchantment \+= FString::Printf\(TEXT\("_Row%d"\), Seen\);', tree)
+    assert "points" in gen.FRACTION_BASES
+
+
+def test_the_attackers_rung_and_the_enemies_near_are_filled_and_judged() -> None:
+    """The Death trees' slice C6b3 (2026-11-25). Read the Blow: the creature that threw a blow puts its rung on the
+    hit, and the blow context carries it. Vigil Over the Strong and Reaper's Due: the walk keeps each hostile's rung
+    beside its distance. Hunting Ground: the distances walk says it was made, and "no enemy in reach" holds only then.
+    Read from the code with comments taken out."""
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert re.search(r"Hit\.bFromBoss = Striker->IsBoss\(\);\s*Hit\.AttackerRarityStep = Striker->RarityStep;", vitals)
+    calc = code_without_comments(SOURCE.parent / "CataclysmDamageCalculation.cpp")
+    assert "Blow.OpponentRarityStep = Hit.AttackerRarityStep;" in calc
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.HostileDistancesMetres\);\s*State\.bHostileDistancesRead = true;", engine)
+    assert re.search(r"State\.HostileRarityRungs\.Add\(Creature \? Creature->RarityStep : -1\);", engine)
+    assert re.search(r"if \(Asked == ECataclysmStatCondition::NoEnemyInReach\)\s*\{\s*"
+                     r"Widest = FMath::Max\(Widest, Modifier\.ReachMetres\);", engine)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::OpponentRarityAtLeast:\s*"
+                     r"return State\.Blow\.OpponentRarityStep >= 0 && State\.Blow\.OpponentRarityStep >= "
+                     r"FMath::RoundToInt\(Value\);", pipeline)
+    assert re.search(r"case ECataclysmStatCondition::NoEnemyInReach:\s*return ReachMetres > 0\.0f && "
+                     r"State\.bHostileDistancesRead && EnemiesInReach\(State, ReachMetres\) == 0;", pipeline)
+    assert re.search(r"State\.HostileRarityDistancesMetres\[Index\] <= ReachMetres\s*"
+                     r"&& State\.HostileRarityRungs\.IsValidIndex\(Index\) && State\.HostileRarityRungs\[Index\] >= Rung",
+                     pipeline)
+
+
+def test_a_doubled_evasion_and_an_unbroken_poison_are_recorded_and_read() -> None:
+    """The Death trees' slice C6b4 (2026-11-25), as ruled. Twice Answered: the doubling is rolled before the event's
+    rows act, its own row then does nothing, the charge grant takes the larger of what it held and 1 or 2, a use takes
+    one, and the charge is held only while it holds one. Festering: a Poison laid on a creature carrying none of the
+    applier's restarts the record, the record reads -1 when the creature carries none, and the scale reads whole
+    seconds of the lookup's target. Read from the code with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(Listed\.bNextHitCriticalTwice && Listed\.Event == Event\s*&& PoolActionAllowed\(Listed, "
+                     r"EventTags, EventTarget\).*?&& ChancePercentComesUp\(Listed\.ChancePercent\)\)\s*\{\s*"
+                     r"bCriticalStrikesTwice = true;", engine, re.S)
+    assert re.search(r"if \(Action\.bNextHitCriticalTwice\)\s*\{\s*continue;\s*\}\s*if \(Action\.bNextHitCritical\)",
+                     engine)
+    assert "NextHitCriticalCharges = FMath::Max(NextHitCriticalCharges, bCriticalStrikesTwice ? 2 : 1);" in engine
+    assert re.search(r"return World && NextHitCriticalCharges > 0 && NextHitCriticalUntilSeconds >= 0\.0f", engine)
+    assert re.search(r"if \(!World \|\| !From \|\| !UCataclysmDebuffs::CarriesPoisonLaidBy\(GetAvatarActor\(\), "
+                     r"Applier\)\)\s*\{\s*return -1\.0f;", engine)
+    header = code_without_comments(SOURCE.with_suffix(".h"))
+    assert re.search(r"NextHitCriticalCharges = FMath::Max\(0, NextHitCriticalCharges - 1\);\s*"
+                     r"if \(NextHitCriticalCharges == 0\)\s*\{\s*NextHitCriticalUntilSeconds = -1\.0f;", header)
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"EffectTag\.MatchesTag\(Poison\) && Instigator != Target\s*"
+                     r"&& !UCataclysmDebuffs::CarriesPoisonLaidBy\(Target, Instigator\)\)\s*\{\s*"
+                     r"if \(UCataclysmAbilitySystemComponent\* Poisoned = Cast<UCataclysmAbilitySystemComponent>"
+                     r"\(Defender\)\)\s*\{\s*Poisoned->NotePoisonBeganBy\(Instigator\);\s*\}\s*\}\s*"
+                     r"ApplyTypedSpec\(", effects)
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatScale::PerSecondPoisonedByYou:\s*\{\s*const float Seconds =\s*"
+                     r"UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker\(State\.AskingAbilitySystem, "
+                     r"State\.LookupTarget\);\s*return Seconds > 0\.0f \? StackedValue\(Modifier, "
+                     r"FMath::FloorToInt\(Seconds\)\) : 0\.0f;", pipeline)
+    assert gen.NEXT_HIT_CRITICAL_TWICE_ACTION == "next_hit_critical_twice"
+    assert gen.NEXT_HIT_CRITICAL_TWICE_EVENTS == ("dodge",)
+
+
+def test_how_fervour_is_lost_and_what_fills_past_the_bar_are_wired() -> None:
+    """The Death trees' slice C6c (2026-11-25), as ruled. Miser's Grip: the kill decay stops at a share of the full bar
+    after reserves. Soulbound: health lost to damage takes Fervour beside the Masochist's gain from it, through an
+    accumulator that keeps the remainder, never below nought and not held by the floor. Overflow: RaisePool measures what
+    did not fit and records whole Fervour of it. Unbroken Chain: a passive row's stack granted on a kill lasts the
+    chain's extra seconds, and Soul Tide's condition adds them. Read from the code with comments taken out."""
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"const float Floor = Resource->MaximumClassResourceAsked\(\) \* FloorPercent / 100\.0f;\s*"
+                     r"if \(Before <= Floor\)\s*\{\s*return 0\.0f;\s*\}", fervour)
+    assert "FMath::Clamp(Before - PerSecond * SecondsInStep, Floor, Resource->MaximumClassResourceAsked())" in fervour
+    assert re.search(r"const float Overflow = Change - FMath::Max\(0\.0f, Added\);.*?"
+                     r"Overflowing->NoteFervourOverflow\(Overflow, Window\);.*?if \(Added <= 0\.0f\)", fervour, re.S)
+    assert re.search(r"Cataclysm->AccumulateHealthLostForFervour\(HealthLost / MaximumHealth \* 100\.0f, PerFervour\);",
+                     fervour)
+    assert "FMath::Min(static_cast<float>(Whole), FMath::Max(0.0f, Before))" in fervour
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    # SINCE THE MERGE OF development (2026-11-25), the Masochist's gain reads the health AND the energy shield a blow
+    # took (#2873); Soulbound's loss reads the health alone, as ruled.
+    assert re.search(r"UCataclysmFervour::GainFromDamage\(\s*GetOwningAbilitySystemComponent\(\), "
+                     r"HealthLostToTheBlow \+ ShieldLostToTheBlow, AssetTags\);\s*"
+                     r"UCataclysmFervour::LoseFromDamage\(GetOwningAbilitySystemComponent\(\), HealthLostToTheBlow\);",
+                     vitals)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r'const float ChainSeconds = Event == FName\(TEXT\("kill"\)\)\s*'
+                     r'&& Action\.StackKey\.ToString\(\)\.StartsWith\(TEXT\("Passive_"\)\)\s*\? KillChainSecondsHeld\(\)\s*'
+                     r": 0\.0f;\s*GrantOwnStack\(Action\.StackKey, Action\.StackSeconds \+ ChainSeconds, Action\.StackCap\);",
+                     engine)
+    assert re.search(r"HealthPercentLostTowardsFervour = FMath::Max\(0\.0f, HealthPercentLostTowardsFervour - Whole \* "
+                     r"PercentPerFervour\);", engine)
+    assert "State.KillChainSeconds = KillChainSecondsHeld();" in engine
+    pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
+    assert re.search(r"case ECataclysmStatCondition::KillChainWithinSeconds:\s*return State\.SecondsSinceOwnKill >= 0\.0f\s*"
+                     r"&& State\.SecondsSinceOwnKill <= Value \+ FMath::Max\(0\.0f, State\.KillChainSeconds\);", pipeline)
+    assert not any(name.startswith(gen.ACTION_EVENT_PREFIX) for name in ("kill_chain_within_seconds",))
+
+
+def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:
+    """The Death trees' slice C4c2 (2026-11-25), as ruled (Q7). The generator's
+    name is the engine's, on `afflicted_death` only; the item recognises the
+    row by its constant; the event loop passes the Bleed left once per row per
+    event, landed only; and the pass lays a Bleed of the applier's on the
+    strongest enemy within 10 metres, the whole left over the row's seconds,
+    unscaled. Read from the code with comments taken out."""
+    names = engine_names()
+    assert gen.BLEED_LEFT_TO_STRONGEST_ACTION == names["PassBleedLeftToStrongestAction"]
+    assert gen.BLEED_LEFT_TO_STRONGEST_EVENTS == ("afflicted_death",)
+    assert gen.BLEED_LEFT_TO_STRONGEST_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bPassBleedLeftToStrongest = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(bLanded && Dead && Self && Action\.Percent > 0\.0f && "
+                     r"!StackedThisEvent\.Contains\(Action\.TriggerKey\)\)", engine)
+    assert "UCataclysmDebuffs::PassBleedLeftToStrongest(Self, Dead, Action.Percent);" in engine
+    debuffs = code_without_comments(SOURCE.parent / "CataclysmDebuffs.cpp")
+    assert "StrongestEnemyNear(Dead, Applier, BloodDebtReachCm)" in debuffs
+    assert re.search(r"ApplyDamageOverTime\(Applier, Strongest, Left / Seconds, Seconds, BleedTag\(\),\s*"
+                     r"false\)", debuffs)
+    assert re.search(r"if \(Rung > BestRung \|\| \(Rung == BestRung && Health > BestHealth\)\)", debuffs)
+    header = code_without_comments(SOURCE.parent / "CataclysmDebuffs.h")
+    assert "static constexpr float BloodDebtReachCm = 1000.0f;" in header
+
+
 def test_the_two_trap_actions_of_traps_layer_five_set_off_a_recorded_trap_whole_once_a_chain() -> None:
     """Ruled 2026-10-22 (traps layer 5, H1 to H11; H5 (b) by the owner; G-1
     (a): a trap set off by a row is a whole trigger). The generator's names
@@ -815,3 +1415,231 @@ def test_a_used_up_traps_shot_landing_and_held_back_swing_look_for_its_wearer_by
     minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
     assert re.search(r"WearerInSphere\(\s*GetWorld\(\), Summoner\.Get\(\), this, GetActorLocation\(\),\s*"
                      r"ExplosionRadiusCm \* UCataclysmSecondSelf::AreaMultiplierFor\(this\)\)\)", minion)
+
+
+def test_a_minions_and_a_thralls_blow_raise_minion_hit_on_the_commander() -> None:
+    """The Death trees' slice C6d1 (2026-11-25), as ruled (P2): Cold Hands and
+    Grave Cold act on `minion_hit`, raised ONCE for each blow on the summoner
+    with the enemy struck. A summoned minion's swing raises it in
+    `ACataclysmMinion::AttackTarget` beside a machine's `deployable_hit`, as the
+    branch for every other minion, landed only when not evaded and not refused;
+    a thrall's landed blow raises it on its commander in `ApplyHit`'s thrall
+    branch. Read from the code with comments taken out."""
+    minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r"else if \(OwnDamagePerHit > 0\.0f\)\s*\{\s*if \(UCataclysmAbilitySystemComponent\* Theirs =\s*"
+                     r"Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\(Summoner\)\)\)\s*"
+                     # WITH WHAT REACHED HEALTH AS ITS AMOUNT since window death3-w2, so an ailment a row applies
+                     # on it meets the owner's tenth-of-maximum-health rule (#917) as a hit's does.
+                     r"\{\s*Theirs->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &TypeTags, Resolved\.DealtToHealth,\s*"
+                     r"!Resolved\.bEvaded && !Resolved\.bRefusedByImmunityToAttacker, Target\);",
+                     minion)
+    assert minion.count('"minion_hit"') == 1
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"UCataclysmTargeting::AbilitySystemOf\(UCataclysmCommand::CommanderOf\(Instigator\)\)\)\)\s*\{\s*"
+                     r"Commanders->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &SkillTags, Landed->DealtToHealth,\s*"
+                     r"true,\s*Target\);", effects)
+    assert effects.count('"minion_hit"') == 1
+
+
+def test_the_minion_stats_of_the_slice_are_read_where_they_act() -> None:
+    """The Death trees' slice C6d1 (2026-11-25): Ringed in Bone's
+    `immune_to_slow` is read inside `UCataclysmSkillTemplate::IsImmuneTo` for
+    Slow, the one function every slow check goes through, with the character's
+    own state; Grave Pact's `minion_damage_taken` multiplies a commanded
+    defender's damage taken; Hasty Dead's `minion_movement_speed` multiplies a
+    follower's walk. Read from the code with comments taken out."""
+    template = code_without_comments(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    start = template.index("bool UCataclysmSkillTemplate::IsImmuneTo(")
+    body = template[start:template.index("\n}\n", start)]
+    assert re.search(r"Effect\.Equals\(TEXT\(\"Slow\"\), ESearchCase::IgnoreCase\)\s*&& Cataclysm->StatForSkill\("
+                     r"FName\(TEXT\(\"immune_to_slow\"\)\), FGameplayTagContainer\(\), 0\.0f\) > 0\.0f\)\s*\{\s*"
+                     r"return true;", body)
+    calculation = code_without_comments(SOURCE.parent / "CataclysmDamageCalculation.cpp")
+    # A STEP OF ITS OWN SINCE WINDOW death3-w2, outside step 6, which a defender with no combat set (an Imp) never
+    # reaches: under the defences rule, and never lowering a blow that cannot be mitigated.
+    assert re.search(r"if \(bMeetsDefences\)\s*\{\s*const float CommandersShare = MinionDamageTakenFactor\(Defender\);\s*"
+                     r"if \(!Hit\.bCannotBeMitigated \|\| CommandersShare > 1\.0f\)\s*\{\s*Damage \*= CommandersShare;",
+                     calculation)
+    assert 'SummonerMultiplierFor(\n\t\t\tCommander, TEXT("minion_damage_taken")' in calculation \
+        or re.search(r'SummonerMultiplierFor\(\s*Commander, TEXT\("minion_damage_taken"\)', calculation)
+    command = code_without_comments(SOURCE.parent / "CataclysmCommand.cpp")
+    assert re.search(r"return Movement->MaxWalkSpeed \* CommandedWalkSpeedShareOfCommander\s*\* SummonerMultiplierFor\("
+                     r"Commander, TEXT\(\"minion_movement_speed\"\),", command)
+
+
+def test_a_row_saying_nothing_may_slow_the_character_is_an_immunity_to_slow() -> None:
+    """The Death trees' slice C6d2 (2026-11-25), ruled by the coordinating
+    session as a fix to bundle 1's ruling that an immunity to Slow works
+    everywhere: `IsImmuneTo` answers true for Slow while
+    `movement_speed_reduction_suppressed` stands above nought, asked with its
+    conditions judged and the attribute as the answer when no row states it,
+    so Unstoppable, Nothing Moves You and Relentless drop a War aura's movement
+    reduction. And the movement refresh still reads the stat as it did. Read
+    from the code with comments taken out."""
+    template = code_without_comments(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    start = template.index("bool UCataclysmSkillTemplate::IsImmuneTo(")
+    body = template[start:template.index("\n}\n", start)]
+    assert re.search(r"UCataclysmCombatAttributeSet::GetMovementSpeedReductionSuppressedAttribute\(\);\s*"
+                     r"const float Held = Cataclysm->HasAttributeSetForAttribute\(Suppressed\)\s*"
+                     r"\? Cataclysm->GetNumericAttribute\(Suppressed\)\s*: 0\.0f;\s*"
+                     r"if \(Cataclysm->StatForSkill\(FName\(TEXT\(\"movement_speed_reduction_suppressed\"\)\), "
+                     r"FGameplayTagContainer\(\),\s*Held\) > 0\.0f\)\s*\{\s*return true;", body)
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"const float Suppressed = Cataclysm->StatForSkill\(\s*FName\(MovementSpeedReductionSuppressedStat\)",
+                     player)
+    assert "if (Suppressed <= 0.0f && !bImmuneToSlow)" in player
+
+
+def test_a_followers_death_is_told_to_its_commander_and_eternal_army_comes_first() -> None:
+    """The Death trees' slice C6d2 (2026-11-25), as ruled (P1): where a
+    follower's health reaches nought, its commander is told `minion_death`
+    beside the Fervour for losing it, for a minion, an imp or a thrall and not a
+    gadget or a trap; `NoteMinionDied` records when and how far and raises the
+    event with the body. Eternal Army's refusal comes BEFORE all of it, so a
+    follower kept at 1 health raises nothing. Read from the code with comments
+    taken out."""
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    start = vitals.index("void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero(")
+    body = vitals[start:vitals.index("\n}\n", start)]
+    assert re.search(r"if \(AbovePercent > 0\.0f && TheirMaximum > 0\.0f && TheirHealth / TheirMaximum \* 100\.0f > "
+                     r"AbovePercent\)\s*\{\s*const_cast<UAbilitySystemComponent\*>\(AbilitySystem\)->"
+                     r"SetNumericAttributeBase\(GetHealthAttribute\(\), 1\.0f\);\s*return;", body)
+    assert body.index("MinionCannotDieAboveHealthPercentStat") < body.index("UCataclysmFervour::GainOnMinionDeath(")
+    assert re.search(r"if \(!AsMinion \|\| !AsMinion->IsDeployable\(\)\)\s*\{\s*if \(UCataclysmAbilitySystemComponent\* "
+                     r"Commanders =\s*Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\("
+                     r"Commander\)\)\)\s*\{\s*Commanders->NoteMinionDied\(Character, AsMinion \? AsMinion->TypeTags : "
+                     r"UCataclysmCommand::ThrallMinionTags\(\)\);", body)
+    assert body.index("NoteMinionDied(") < body.index("Character->HandleDeath();")
+    engine = code_without_comments(SOURCE)
+    start = engine.index("void UCataclysmAbilitySystemComponent::NoteMinionDied(")
+    died = engine[start:engine.index("\n}\n", start)]
+    assert re.search(r'ActOnEvent\(FName\(TEXT\("minion_death"\)\), &FollowerTags, 0\.0f,\s*true, Body\);', died)
+    assert "Death.Metres = (Self && Body) ? UCataclysmTargeting::MetresBetween(Self, Body) : -1.0f;" in died
+
+
+def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_carries_the_share() -> None:
+    """The Death trees' slice C6d2 (2026-11-25), as ruled (Q2). `NoteHitTaken`
+    holds the share of maximum health the hit took while it raises `hit_taken`,
+    which carries the same share as its amount (nought when unknown); an
+    own-stack row's event condition goes on its grant and comes off its stat.
+    Read from the code with comments taken out."""
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"TGuardValue<float> SaysHowMuchItTook\(HitBeingAnnouncedPercentOfMaxHealth, "
+                     r"PercentOfMaxHealthLost\);\s*ActOnEvent\(FName\(TEXT\(\"hit_taken\"\)\), nullptr, "
+                     r"FMath::Max\(0\.0f, PercentOfMaxHealthLost\), bLanded,\s*"
+                     # AND WHO STRUCK, the War line's V3a, beside it since the bundle 3 merge.
+                     r"bDamageOverTime \|\| bOwnBlow \? nullptr : Attacker\);", engine)
+    assert "State.HitTakenPercentOfMaxHealth = HitBeingAnnouncedPercentOfMaxHealth;" in engine
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"if \(UCataclysmStatPipeline::IsJudgedAtItsEvent\(Out\.Condition\)\)\s*\{\s*Out\.Condition = "
+                     r"ECataclysmStatCondition::Always;\s*Out\.ConditionValue = 0\.0f;", item)
+    assert re.search(r"&& UCataclysmStatPipeline::IsJudgedAtItsEvent\(AtTheEvent\)\)\s*\{\s*Stack\.Condition = "
+                     r"AtTheEvent;\s*Stack\.ConditionValue = Effect->ConditionValue;", item)
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert "MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);" in vitals
+
+
+def test_marshal_shared_leech_and_bound_bones_are_read_where_they_act() -> None:
+    """The Death trees' slice C6d2 (2026-11-25). Marshal: a minion's blow and
+    explosion and a thrall's blow and explosion name the minion to the
+    summoner's lookup, which fills its distance. Shared Leech: beside the leech
+    a blow pays its dealer, the same figure to the dealer's commander. Bound
+    Bones: every regeneration step, after Shared Blood's. Read from the code
+    with comments taken out."""
+    minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r'SummonerMultiplierAgainst\(Summoner, TEXT\("minion_damage"\), Target, TypeTags,\s*this\)', minion)
+    assert re.search(r'SummonerMultiplierFor\(Summoner, TEXT\("minion_damage"\), TypeTags, this\)', minion)
+    assert re.search(r'SummonerMultiplierFor\(Commander, TEXT\("minion_damage"\), '
+                     r'UCataclysmCommand::ThrallMinionTags\(\),\s*Lost\)', minion)
+    command = code_without_comments(SOURCE.parent / "CataclysmCommand.cpp")
+    assert re.search(r'SummonerMultiplierAgainst\(Commander, TEXT\("minion_damage"\), Target, ThrallMinionTags\(\), '
+                     r'Striker\)', command)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.AskingMinionMetres = \(AskingMinion && Self\) \? "
+                     r"UCataclysmTargeting::MetresBetween\(Self, AskingMinion\) : -1\.0f;", engine)
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    # AFTER THE OWN LEECH AND OUTSIDE ITS NO-LEECH CHECK since window death3-w2: every minion's blow carries that tag
+    # (issue #895), so inside it the share never paid. Only converted damage is left out.
+    assert re.search(r"UCataclysmLeech::NoteHit\([^;]*;\s*\}\s*if \(!Hit\.bIsConvertedDamage\)\s*\{\s*"
+                     r"UCataclysmLeech::NoteMinionHit\(", vitals)
+    regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
+    assert re.search(r"SharedBloodStep\(Character, SecondsInStep, false\);\s*BoundBonesStep\(Character\);", regeneration)
+
+
+def test_the_shadows_marks_are_kept_moved_and_asked() -> None:
+    """The Death trees' slice C6e (2026-11-25), as ruled (Q5). The marks are
+    kept up each regeneration step, moved off a dying creature where its death
+    begins and before its own `HandleDeath`, and asked of the marker by
+    `WithTargetState`. Read from the code with comments taken out."""
+    regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
+    assert re.search(r"BoundBonesStep\(Character\);\s*if \(UCataclysmAbilitySystemComponent\* Marker = "
+                     r"Cast<UCataclysmAbilitySystemComponent>\(AbilitySystem\)\)\s*\{\s*Marker->MaintainShadowMarks\(\);",
+                     regeneration)
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    start = vitals.index("void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero(")
+    body = vitals[start:vitals.index("\n}\n", start)]
+    assert body.index("UCataclysmAbilitySystemComponent::MoveShadowMarksOff(Character);") \
+        < body.index("Character->HandleDeath();")
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"State\.bTargetMarkedByYou = Marker && Marker->HoldsShadowMarkOn\(Target\);", engine)
+    start = engine.index("void UCataclysmAbilitySystemComponent::MaintainShadowMarks(")
+    maintain = engine[start:engine.index("\n}\n", start)]
+    assert "UCataclysmDebuffs::StrongestEnemyNear(Self, Self, ShadowMarkReachCm, Marked)" in maintain
+    start = engine.index("void UCataclysmAbilitySystemComponent::MoveShadowMarkFrom(")
+    move = engine[start:engine.index("\n}\n", start)]
+    assert "UCataclysmDebuffs::StrongestEnemyNear(Dying, Self, ShadowMarkMoveCm, Marked)" in move
+
+
+def test_hollow_step_passes_through_for_the_move_only_and_hits_the_line_once() -> None:
+    """The Death trees' slice C6e (2026-11-25), as ruled (H1, H2). A creature
+    on the monsters' side carries the hostile bit on its filter only; an
+    instant move passes through it, is restored, and steps out of any body it
+    ended in; `EndAbility` restores and steps out on every way out; and the line
+    is hit once, skipping the skill's own targets. Read from the code with
+    comments taken out."""
+    base = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmCharacterBase.cpp")
+    assert "Capsule->SetMaskFilterOnBodyInstance(bHostile ? HostileBodyMaskBit : OwnBit);" in base
+    assert "Capsule->SetMoveIgnoreMask(MovesThroughMaskFor(OwnBit));" in base
+    templates = code_without_comments(SOURCE.parent / "CataclysmSkillTemplates.cpp")
+    assert re.search(r"if \(bThroughEnemies\)\s*\{\s*PassThroughEnemies\(true\);\s*\}\s*"
+                     r"UCataclysmMovement::MoveWithoutSticking\(Self, End - Self->GetActorLocation\(\)\);\s*"
+                     r"ArrivedAt = Self->GetActorLocation\(\);\s*if \(bThroughEnemies\)\s*\{\s*"
+                     r"PassThroughEnemies\(false\);\s*StepOutOfEnemies\(Start\);", templates)
+    assert re.search(r"if \(bThroughEnemies\)\s*\{\s*HitTheLineOnce\(Start, ArrivedAt, Targets\);", templates)
+    start = templates.index("void UCataclysmMovementSkill::EndAbility(")
+    end_ability = templates[start:templates.index("\n}\n", start)]
+    assert re.search(r"if \(bPassingThrough\)\s*\{\s*PassThroughEnemies\(false\);\s*"
+                     r"StepOutOfEnemies\(PassingThroughFrom\);", end_ability)
+    assert end_ability.index("PassThroughEnemies(false);") < end_ability.index("Super::EndAbility(")
+    start = templates.index("void UCataclysmMovementSkill::HitTheLineOnce(")
+    line = templates[start:templates.index("\n}\n", start)]
+    assert "if (!AlreadyStruck.Contains(OnTheLine))" in line
+    assert "HitWhatThePathCrossed(Crossed, PercentHitScaledGivesAnAlly(TArray<AActor*>()));" in line
+
+
+def test_the_last_five_shadow_and_necromancer_nodes_are_wired() -> None:
+    """The Death trees' slice C6e (2026-11-25), as ruled (Q6, Q8, Q9). The two
+    kill actions are converted from their rows and strike the mark or the
+    strongest near, Thousand Cuts moving beside it first; a critical strike's
+    flag reaches the ailment roll, which lends Lethal Dose's share for that
+    application alone; Interpose re-deals the hit to the minion and takes it off
+    the defender; and Guard the Master's choice comes after a Quarry order.
+    Read from the code with comments taken out."""
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert "Action.bStrikeStrongestNear = Effect->Action.Equals(" in item
+    assert "Action.bDashToStrongestAndStrike = Effect->Action.Equals(" in item
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"if \(Action\.bDashToStrongestAndStrike\)\s*\{\s*UCataclysmMovement::PlaceBeside\(Self, Struck\);"
+                     r"\s*\}", engine)
+    assert "? MarkedOrStrongestNear(StrongestNearReachCm) : nullptr;" in engine
+    vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
+    assert re.search(r"Hit\.bIsBlunt && !bAreaSkillShareOnAnAlly,\s*Outcome\.bWasCritical\);", vitals)
+    assert re.search(r"UCataclysmSkillEffects::ApplyDirectDamage\(Interposer, Guard, Hit\.Damage, Taken\);\s*"
+                     r"Hit\.Damage = 0\.0f;", vitals)
+    ailments = code_without_comments(SOURCE.parent / "CataclysmAilments.cpp")
+    assert "TGuardValue<float> LendsIt(LentSlot, Lent);" in ailments
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"Numbers\.DamagePerTick \*= \(1\.0f \+ Increases \+ "
+                     r"Lender->AilmentIncreasePercentLentByCritical / 100\.0f\)\s*/ \(1\.0f \+ Increases\);", effects)
+    controller = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmEnemyController.cpp")
+    assert controller.index("UCataclysmCommand::OrderedTargetFor(Driven)")         < controller.index("UCataclysmCommand::CommandersLastAttackerFor(Driven)")         < controller.index("Gadget->MostHealthWithinReach()")

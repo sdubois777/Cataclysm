@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmDeviceWire.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "AbilitySystem/CataclysmSilence.h"
 #include "AbilitySystem/CataclysmVoidAura.h"
 // For the blast an action deals from an enemy that died.
@@ -23,11 +24,14 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the minions a scaling bonus counts. Issue #1518.
 #include "AbilitySystem/CataclysmCommand.h"
+// For Thousand Cuts' move beside the enemy it strikes (the Death trees' slice C6e).
+#include "AbilitySystem/CataclysmMovement.h"
 // For the damage reduction cap, which a reading counted by a scaling bonus
 // stops at, the same cap a hit stops at. Issue #1515.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the debuffs a conditional or scaling bonus asks about. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmFervour.h"
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -857,7 +861,7 @@ bool UCataclysmAbilitySystemComponent::IsStatRemoved(
 }
 
 float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
-	FName Stat, const FGameplayTagContainer& Tags, const AActor* Target) const
+	FName Stat, const FGameplayTagContainer& Tags, const AActor* Target, const AActor* AskingMinion) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -870,11 +874,15 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// THE STATE `IncreasesForStat` BUILDS, WITH THE TARGET ADDED, nested the
 	// way `AttackDamageMoreForSkill` nests it. `WithTargetState` only adds the
 	// target's readings, so every other condition is judged as it is there.
+	FCataclysmStatConditions State = WithEnemiesInReach(
+		Inputs->Modifiers,
+		WithTargetState(Inputs->Modifiers, Target, CurrentConditions()));
+	// AND HOW FAR THE MINION ASKING STANDS FROM THIS CHARACTER, for Marshal's `minion_within_metres_of_you` (the Death
+	// trees' slice C6d2, 2026-11-25). -1, which refuses, when no minion is named.
+	const AActor* Self = GetAvatarActor();
+	State.AskingMinionMetres = (AskingMinion && Self) ? UCataclysmTargeting::MetresBetween(Self, AskingMinion) : -1.0f;
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
-		Inputs->Base, Inputs->Modifiers, Tags,
-		WithEnemiesInReach(
-			Inputs->Modifiers,
-			WithTargetState(Inputs->Modifiers, Target, CurrentConditions())));
+		Inputs->Base, Inputs->Modifiers, Tags, State);
 
 	// NOTHING IS FOLDED INTO AN ATTRIBUTE FOR A STAT THAT HAS NONE, so the
 	// "more" product is the whole of it and is divided by nothing, unlike
@@ -1094,8 +1102,49 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceClassResourceFull = SecondsSinceClassResourceFull();
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
+	State.SecondsSinceOwnKill = SecondsSinceOwnKill();
+	// AND THE SECONDS UNBROKEN CHAIN ADDS TO A CHAIN OF KILLS (the Death trees' slice C6c, 2026-11-25).
+	State.KillChainSeconds = KillChainSecondsHeld();
+
+	// AND WHETHER A GAIN BEING SIZED NOW IS NOT A KILL'S PAYMENT, for Any Fuel's `fervour_gain_not_from_a_kill`. The
+	// Death trees' slice C4b1 (2026-11-25).
+	State.bFervourGainNotFromAKill = !IsPayingForAKill();
+
+	// AND WHETHER THE KILL WHOSE ROWS ARE ACTING WAS MADE BY A HIT, for Passed On's `killing_blow_was_a_hit`. The Death
+	// trees' slice C4c1 (2026-11-25).
+	State.bKillingBlowWasAHit = bActingOnAKillByAHit;
+
+	// AND WHETHER THAT KILL WAS AN EXECUTE, for Reaper's Edge's `kill_was_an_execute`. The Death trees' slice C4d1
+	// (2026-11-25).
+	State.bKillWasAnExecute = bActingOnAKillByAnExecute;
+
+	// AND THE ENEMY MODIFIERS IT WEARS, for Wearer of the Dead's `wearing_enemy_modifier`. The Death trees' slice C4d3
+	// (2026-11-25).
+	State.WornEnemyModifierPlaces = WornEnemyModifierPlacesNow();
+
+	// AND WHETHER IT HOLDS A NEXT-HIT CRITICAL CHARGE, for Brim's `next_hit_is_critical`. The Death trees' slice C6a
+	// (2026-11-25).
+	State.bHoldsNextHitCritical = HoldsNextHitCritical();
+
+	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
+	State.EnemiesInSiphon = EnemiesInSiphon();
+
+	// AND HOW LONG AGO IT LAST SPENT FERVOUR, for `seconds_after_fervour_spent`. The Death trees' slice C3a.
+	State.SecondsSinceFervourSpent = SecondsSinceFervourSpent();
 	State.SecondsSinceSupportSkill = SecondsSinceSupportSkillUsed();
 	State.SecondsSinceMovementSkill = SecondsSinceMovementSkillUsed();
+	// AND SINCE IT ENDED, for Arrival. The Death trees' slice C6b2 (2026-11-25).
+	State.SecondsSinceMovementSkillEnded = SecondsSinceMovementSkillEnded();
+	State.SecondsSinceMinionDied = SecondsSinceMinionDied();
+	State.HitTakenPercentOfMaxHealth = HitBeingAnnouncedPercentOfMaxHealth;
+	if (const UWorld* World = GetWorld(); World && RecentMinionDeaths.Num() > 0)
+	{
+		for (const FMinionDeathRecord& Death : RecentMinionDeaths)
+		{
+			State.RecentMinionDeathSecondsAgo.Add(FMath::Max(0.0f, World->GetTimeSeconds() - Death.AtSeconds));
+			State.RecentMinionDeathMetres.Add(Death.Metres);
+		}
+	}
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
 	State.SecondsSinceMeleeHitTaken = SecondsSinceMeleeHitTaken();
 	State.SecondsSinceCrowdControl = SecondsSinceCrowdControlApplied();
@@ -1370,6 +1419,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	const TArray<AActor*> Commanded = UCataclysmCommand::ThingsCommandedBy(GetAvatarActor());
 	State.MinionsHeld = Commanded.Num();
 
+	// AND WHAT THEY HOLD BACK OF THE CLASS RESOURCE, from the same list, for
+	// the full bar `ClassResourceAtMaximum` judges against the maximum less it.
+	// Ruled 2026-11-25 (the Death trees' slice C).
+	// NOT FROM INSIDE THAT COUNT: it asks the Second Self's flag, a stat, which reads this function again. See
+	// `bCountingFervourReserve`.
+	if (!bCountingFervourReserve)
+	{
+		TGuardValue<bool> Counting(bCountingFervourReserve, true);
+		State.ClassResourceReserved = UCataclysmCommand::ReservedFervourAmong(GetAvatarActor(), Commanded);
+	}
+
 	// AND HOW MANY OF THEM ARE DEPLOYABLE MACHINES. Issue #1833, deployable
 	// Part 3: "Each active gadget increases your evasion chance by 5%-10%".
 	for (const AActor* Each : Commanded)
@@ -1590,9 +1650,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// ONE PASS, AND ITS LIMIT. A `class_resource` row that itself asks a Fervour share or a full bar is judged here
 	// against the attribute, not against this maximum. No row is written that way.
 	//
-	// THE FULL BAR AND WHAT MINIONS RESERVE. The Death line's slice C1 (`feat/death-trees-c1`) judges "full" against
-	// `ClassResourceMaximum` less what minions hold back. Whichever of the two merges second keeps both: this maximum,
-	// less that reserve.
+	// THE FULL BAR AND WHAT MINIONS RESERVE. The Death line's slice C1 judges "full" against `ClassResourceMaximum` less
+	// what minions hold back (`ClassResourceReserved`). Both are kept since the Death trees' bundle 3 merge (obligation
+	// 8): `ClassResourceAtMaximum` reads this maximum, less that reserve.
 	if (State.ClassResourceMaximum >= 0.0f)
 	{
 		if (const FCataclysmStatInputs* Line = StatInputs.Find(FName(TEXT("class_resource"))))
@@ -1625,6 +1685,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// strike-history fill in `WithTargetState` reads it.
 	State.AskingAbilitySystem = this;
 
+	// AND CHAINED SOULS' SHARE OF WHAT FOLLOWERS HOLD BACK, counted as held, from the reserve filled above (the Death
+	// trees' slice C3e, 2026-11-25).
+	State.ClassResourceCountedAsHeld = ReservedFervourCountedAsHeld(State.ClassResourceReserved);
+
+	// AND THE SOUL COLLECTOR'S FERVOUR THRESHOLDS REACHED, worked out once from the Fervour counted as held and the points
+	// spent, all filled above. The Death trees' slices C3d and C3e (2026-11-25).
+	State.FervourThresholdsReached =
+		FervourThresholdsReachedFor(UCataclysmStatPipeline::FervourHeldCounted(State), State.ClassPointsSpent);
+
 	return State;
 }
 
@@ -1642,6 +1711,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// crippled -- and a lookup asking only about crippled enemies must not pay
 	// for the distances-only walk, nor the reverse.
 	float WidestCrippled = -1.0f;
+	// AND THE WIDEST REACH AN `EnemyOfRarityInReach` ROW ASKS ABOUT, walked with the bodies so each can be asked its
+	// rung, as the crippled walk is. The Death trees' slice C6b3 (2026-11-25).
+	float WidestRarity = -1.0f;
+	// AND THE WIDEST REACH A `MinionsInReachAtLeast` ROW ASKS ABOUT, walked over the character's own followers. The Death
+	// trees' slice C6d1 (2026-11-25).
+	float WidestMinions = -1.0f;
 	// AND WHETHER A ROW SCALES BY INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless. Filled
 	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
 	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
@@ -1683,6 +1758,23 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		if (Modifier.Scale == ECataclysmStatScale::PerCrippledEnemyInReach)
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
+		}
+		// AND THE TWO OF THE DEATH TREES' SLICE C6b3 (2026-11-25), on either condition: no enemy within the reach reads
+		// the distances walk the other way, and an enemy of a rung within it walks the bodies.
+		for (const ECataclysmStatCondition Asked : {Modifier.Condition, Modifier.Condition2})
+		{
+			if (Asked == ECataclysmStatCondition::NoEnemyInReach)
+			{
+				Widest = FMath::Max(Widest, Modifier.ReachMetres);
+			}
+			else if (Asked == ECataclysmStatCondition::EnemyOfRarityInReach)
+			{
+				WidestRarity = FMath::Max(WidestRarity, Modifier.ReachMetres);
+			}
+			else if (Asked == ECataclysmStatCondition::MinionsInReachAtLeast)
+			{
+				WidestMinions = FMath::Max(WidestMinions, Modifier.ReachMetres);
+			}
 		}
 	}
 
@@ -1741,7 +1833,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// character whose only nearby-enemy row is a crippled one would return
 	// here with the crippled list empty, and Grinding Halt would grant nothing
 	// with nothing reporting why.
-	if (Widest <= 0.0f && WidestCrippled <= 0.0f)
+	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestRarity <= 0.0f && WidestMinions <= 0.0f)
 	{
 		return State;
 	}
@@ -1750,6 +1842,25 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// player's ability system lives on its player state, which stands
 	// nowhere; the avatar is the body the rows are about. An ability system
 	// with no avatar has no position, so there is nothing near it.
+	// AND THE COMMANDER'S OWN FOLLOWERS WITHIN THE WIDEST REACH A ROW ASKS ABOUT, for `MinionsInReachAtLeast`. The Death
+	// trees' slice C6d1 (2026-11-25). `UCataclysmCommand::ThingsCommandedBy` is the one list of a commander's minions,
+	// imps and thralls. FROM THE AVATAR, WHATEVER ITS CLASS, and before the character-only return below: a commander
+	// need not be a character, and window death3-w2 found this count never ran for one that was not.
+	if (WidestMinions > 0.0f)
+	{
+		if (const AActor* Commander = GetAvatarActor())
+		{
+			const FVector From = Commander->GetActorLocation();
+			for (const AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander, WidestMinions * 100.0f))
+			{
+				if (IsValid(Follower))
+				{
+					State.OwnMinionDistancesMetres.Add(FVector::Dist(From, Follower->GetActorLocation()) / 100.0f);
+				}
+			}
+		}
+	}
+
 	const ACataclysmCharacterBase* Character =
 		Cast<ACataclysmCharacterBase>(GetAvatarActor());
 	if (!Character)
@@ -1769,6 +1880,24 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 			Candidates->HostileDistancesWithinMetres(
 				Character, Character->GetActorLocation(), Widest,
 				State.HostileDistancesMetres);
+			// THE WALK WAS MADE, so an empty list now means nobody is near. See `NoEnemyInReach`.
+			State.bHostileDistancesRead = true;
+		}
+
+		// AND EACH HOSTILE'S RARITY RUNG, WHILE ITS BODY IS IN HAND, for `EnemyOfRarityInReach`. The Death trees'
+		// slice C6b3 (2026-11-25). Only a creature has a rung; anything else is kept as -1, which no rung reaches.
+		if (WidestRarity > 0.0f)
+		{
+			TArray<ACataclysmCharacterBase*> Bodies;
+			Candidates->HostileActorsWithinMetres(
+				Character, Character->GetActorLocation(), WidestRarity,
+				State.HostileRarityDistancesMetres, Bodies);
+			State.HostileRarityRungs.Reset(Bodies.Num());
+			for (const ACataclysmCharacterBase* Body : Bodies)
+			{
+				const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Body);
+				State.HostileRarityRungs.Add(Creature ? Creature->RarityStep : -1);
+			}
 		}
 
 		// AND THE CRIPPLED ONES, ASKED WHILE EACH BODY IS IN HAND. Issue #1515.
@@ -1833,9 +1962,18 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsBoss = false;
 	bool bWantsHistory = false;
 	bool bWantsZone = false;
+	bool bWantsSiphon = false;
 	bool bWantsSilence = false;
 	bool bWantsMoving = false;
 	bool bWantsYourCurse = false;
+	bool bWantsYourPoisonOrBleed = false;
+	bool bWantsNearKill = false;
+	bool bWantsBehind = false;
+	bool bWantsMovementSkillHit = false;
+	bool bWantsNecrosis = false;
+	bool bWantsShadowMark = false;
+	bool bWantsLastAttacker = false;
+	bool bWantsRarity = false;
 	bool bWantsTrapHistory = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1860,7 +1998,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 				bWantsAilments = true;
 				break;
 			case ECataclysmStatCondition::TargetHealthBelowPercent:
+			// AND FULL HEALTH, the Death trees' slice C6b1: the same health share.
+			case ECataclysmStatCondition::TargetAtFullHealth:
 				bWantsHealth = true;
+				break;
+			// AND WHETHER IT IS STRUCK FROM BEHIND, the Death trees' slice C6b1.
+			case ECataclysmStatCondition::TargetStruckFromBehind:
+				bWantsBehind = true;
 				break;
 			// AND WHETHER THE TARGET IS A BOSS, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Issue #1815. A condition missing from
@@ -1876,10 +2020,34 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 				bWantsHistory = true;
 				break;
+			// AND WHETHER THE TARGET STOOD NEAR A KILL OF THE ASKER'S, Grim Wake, the Death trees' slice C4c2.
+			case ECataclysmStatCondition::TargetNearYourKillWithinSeconds:
+				bWantsNearKill = true;
+				break;
+			// AND WHETHER THE ASKER'S MOVEMENT SKILL STRUCK THE TARGET, Glancing Cuts, the Death trees' slice C6b2.
+			case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:
+				bWantsMovementSkillHit = true;
+				break;
+			// AND WHETHER THE TARGET CARRIES NECROSIS, Grave Cold, the Death trees' slice C6d1.
+			case ECataclysmStatCondition::TargetCarriesNecrosis:
+				bWantsNecrosis = true;
+				break;
+			// AND WHETHER IT CARRIES THE ASKER'S OWN MARK, the Shadow's Deathmark (the Death trees' slice C6e).
+			case ECataclysmStatCondition::TargetMarkedByYou:
+				bWantsShadowMark = true;
+				break;
+			// AND WHETHER IT IS THE LAST THAT HIT THE ASKER, Guard the Master (the Death trees' slice C6e).
+			case ECataclysmStatCondition::TargetIsYourLastAttacker:
+				bWantsLastAttacker = true;
+				break;
 			// AND WHETHER THE TARGET STANDS IN ONE OF THE ASKER'S ZONES, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
 			case ECataclysmStatCondition::TargetStandsInYourZone:
 				bWantsZone = true;
+				break;
+			// AND WHETHER THE TARGET IS IN THE ASKER'S SIPHON. The Death trees' slice C2 (2026-11-25).
+			case ECataclysmStatCondition::TargetInYourSiphon:
+				bWantsSiphon = true;
 				break;
 			// AND WHETHER THE TARGET IS SILENCED, LISTED HERE FOR THE REASON THE AILMENT COMMENT ABOVE GIVES. Ruled
 			// 2026-10-17, for the Null Emperor 6-piece's gain of Void.
@@ -1895,6 +2063,19 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// ABOVE GIVES. The demonic tree rework of 2026-11-24: Subjugator and Long Servitude.
 			case ECataclysmStatCondition::TargetCarriesYourCurse:
 				bWantsYourCurse = true;
+				break;
+			// AND WHETHER IT CARRIES THE ASKER'S POISON OR BLEED, the Death trees' slice C4a (2026-11-25): Death's
+			// Patience, asked at a kill against the slain creature.
+			case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
+			// AND YOUR POISON ALONE, the Death trees' slice C6b1, filled beside it.
+			case ECataclysmStatCondition::TargetCarriesYourPoison:
+				bWantsYourPoisonOrBleed = true;
+				break;
+			// AND THE TARGET'S RARITY RUNG, the Death trees of 2026-11-24: "Elite or stronger", and the Soul
+			// Collector's Fervour a kill by the slain creature's rung.
+			case ECataclysmStatCondition::TargetRarityAtLeast:
+			case ECataclysmStatCondition::TargetRarityIs:
+				bWantsRarity = true;
 				break;
 			// AND WHETHER THE TARGET HAS SET OFF A TRAP OF THE ASKER'S, LISTED HERE FOR THE REASON THE AILMENT COMMENT
 			// ABOVE GIVES. The Saboteur's device conditions, 2026-11-25 (Ambush).
@@ -1915,10 +2096,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			bWantsAilments = true;
 		}
 
-		// AND THE TRAP HISTORY, which both tests left out until window war2-w1 found Ambush's row refused: a row whose only
-		// condition is `TargetNotYetTriggeredYourTrap` returned below before the history was read.
-		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence
-			&& bWantsMoving && bWantsYourCurse && bWantsTrapHistory)
+		// EVERY FLAG DECLARED ABOVE IS IN THIS LIST AND THE ONE BELOW. The Death trees' slice C4c2 (2026-11-25) found
+		// three that were in neither -- the Siphon's of slice C2, the poison-or-bleed of C4a and its own near kill -- so
+		// a stat line whose only question about the target was one of them returned below before the fill, and the
+		// condition refused. `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` holds the lists
+		// to the declarations. AND THE TRAP HISTORY, which both tests left out until window war2-w1 found Ambush's row
+		// refused: a row whose only condition is `TargetNotYetTriggeredYourTrap` returned below before the history was
+		// read.
+		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSiphon
+			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill
+			&& bWantsBehind && bWantsMovementSkillHit && bWantsRarity && bWantsNecrosis && bWantsShadowMark
+			&& bWantsLastAttacker && bWantsTrapHistory)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1931,8 +2119,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// because nothing could do anything differently with the distinction: a
 	// lookup with no row asking has no condition to answer.
 	if (!Target
-		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence
-			&& !bWantsMoving && !bWantsYourCurse && !bWantsTrapHistory))
+		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSiphon
+			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill
+			&& !bWantsBehind && !bWantsMovementSkillHit && !bWantsRarity && !bWantsNecrosis && !bWantsShadowMark
+			&& !bWantsLastAttacker && !bWantsTrapHistory))
 	{
 		return State;
 	}
@@ -1944,6 +2134,80 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	{
 		State.bTargetCarriesYourCurse = UCataclysmRisenImps::CarriesCurseLaidBy(
 			Target, State.AskingAbilitySystem->GetAvatarActor());
+	}
+
+	// AND HOW LONG AGO IT STOOD NEAR A KILL OF THE ASKER'S, from the record kept on it (the Death trees' slice C4c2).
+	if (bWantsNearKill && State.AskingAbilitySystem)
+	{
+		if (const UCataclysmAbilitySystemComponent* Marked =
+				Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			State.SecondsSinceNearYourKill = Marked->SecondsSinceNearKillBy(State.AskingAbilitySystem);
+		}
+	}
+
+	// AND WHETHER IT CARRIES NECROSIS, from anyone (the Death trees' slice C6d1, 2026-11-25).
+	if (bWantsNecrosis)
+	{
+		const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
+		const UAbilitySystemComponent* Carrier = UCataclysmTargeting::AbilitySystemOf(Target);
+		State.bTargetCarriesNecrosis = Necrosis.IsValid() && Carrier && Carrier->HasMatchingGameplayTag(Necrosis);
+	}
+
+	// AND WHETHER IT CARRIES THE ASKER'S OWN MARK (the Death trees' slice C6e, 2026-11-25).
+	if (bWantsShadowMark)
+	{
+		const UCataclysmAbilitySystemComponent* Marker =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		State.bTargetMarkedByYou = Marker && Marker->HoldsShadowMarkOn(Target);
+	}
+
+	// AND WHETHER IT IS THE LAST THAT HIT THE ASKER (the Death trees' slice C6e, 2026-11-25).
+	if (bWantsLastAttacker)
+	{
+		const UCataclysmAbilitySystemComponent* Hit = Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		State.bTargetIsYourLastAttacker = Hit && Hit->GetLastBlow().IsOnRecord() && Hit->GetLastBlow().Attacker.Get() == Target;
+	}
+
+	// AND HOW LONG AGO THE ASKER'S MOVEMENT SKILL STRUCK IT, from the record kept on it (the Death trees' slice C6b2).
+	if (bWantsMovementSkillHit && State.AskingAbilitySystem)
+	{
+		if (const UCataclysmAbilitySystemComponent* Struck =
+				Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			State.SecondsSinceStruckByYourMovementSkill =
+				Struck->SecondsSinceStruckByMovementSkillOf(State.AskingAbilitySystem);
+		}
+	}
+
+	// AND WHETHER IT CARRIES A POISON OR A BLEED THE ASKER APPLIED, the same way (the Death trees' slice C4a).
+	if (bWantsYourPoisonOrBleed && State.AskingAbilitySystem)
+	{
+		State.bTargetCarriesYourPoisonOrBleed = UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy(
+			Target, State.AskingAbilitySystem->GetAvatarActor());
+		// AND A POISON ALONE, the Death trees' slice C6b1 (2026-11-25).
+		State.bTargetCarriesYourPoison =
+			UCataclysmDebuffs::CarriesPoisonLaidBy(Target, State.AskingAbilitySystem->GetAvatarActor());
+	}
+
+	// AND WHETHER IT IS STRUCK FROM BEHIND: the asker inside the rear arc of the target's facing, or the asker's skill
+	// counting every hit as from behind (`RearHits=1`, marked on the asker around the hit). The Death trees' slice C6b1.
+	if (bWantsBehind && State.AskingAbilitySystem)
+	{
+		const UCataclysmAbilitySystemComponent* Asker =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		State.bTargetStruckFromBehind = (Asker && Asker->IsStrikingFromBehindByRule())
+			|| UCataclysmSkillEffects::IsBehind(State.AskingAbilitySystem->GetAvatarActor(), Target);
+	}
+
+	// THE TARGET'S RARITY RUNG, the Death trees of 2026-11-24: the rung the spawner set, as `IsBoss` reads it below.
+	// ANYTHING THAT IS NOT A CREATURE LEAVES -1, which both rarity conditions refuse.
+	if (bWantsRarity)
+	{
+		if (const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Target))
+		{
+			State.TargetRarityStep = Creature->RarityStep;
+		}
 	}
 
 	// WHETHER THE TARGET IS SILENCED NOW. Ruled 2026-10-17. Its tag, read through `UCataclysmSilence`, the one place
@@ -2023,6 +2287,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 				State.bTargetStandsInYourZone = true;
 				break;
 			}
+		}
+	}
+
+	// WHETHER IT IS IN THE ASKER'S SIPHON, from the asker's own record. The Death trees' slice C2 (2026-11-25). Only
+	// when a row asks, as the zone above.
+	if (bWantsSiphon && State.AskingAbilitySystem)
+	{
+		if (const UCataclysmAbilitySystemComponent* Asker =
+				Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem))
+		{
+			State.bTargetInYourSiphon = Asker->HasInSiphon(Target);
 		}
 	}
 
@@ -3311,6 +3586,18 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// window opened by striking a Boss survived the character's revival. Found
 	// while adding the five below; the respawn test now opens every window.
 	LastStruckABossAtSeconds = -1.0f;
+	// AND THE DEATH TREES' TWO CLOCKS: the last kill, with the decay's hold after it (slice B left both out of here,
+	// so a kill before a death held the decay and opened `seconds_after_kill` after the revival), and the last spend
+	// of Fervour (slice C3a, 2026-11-25).
+	LastOwnKillAtSeconds = -1.0f;
+	KillDecayHeldUntilSeconds = -1.0f;
+	LastFervourSpentAtSeconds = -1.0f;
+	// AND CINDERS KEPT'S SHARES STILL TO RETURN, and Phylactery's wait, as Nothing Stops It's wait is cleared (slice
+	// C3c, 2026-11-25). A share spent before a death does not arrive after the revival.
+	FervourToReturn.Reset();
+	FervourLethalSaveNextAllowedSeconds = -1.0f;
+	// AND LONG SHADOW'S RECORD, so a threshold held before a death does not linger after the revival (slice C3d).
+	FervourThresholdLastHeldAtSeconds.Reset();
 	// AND WHO HAS STRUCK IT, so a revived character is "not yet struck" by
 	// everyone again. Issue #1815.
 	StruckBy.Reset();
@@ -3331,6 +3618,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	LastSupportSkillAtSeconds = -1.0f;
 	LastMovementSkillAtSeconds = -1.0f;
+	LastMovementSkillEndedAtSeconds = -1.0f;
+	LastMinionDiedAtSeconds = -1.0f;
+	RecentMinionDeaths.Reset();
 	LastSpellAtSeconds = -1.0f;
 	LastMeleeHitTakenAtSeconds = -1.0f;
 	LastCrowdControlAtSeconds = -1.0f;
@@ -3814,7 +4104,8 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded)
 	NoteHitTaken(bLanded, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
 }
 
-void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime)
+void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime,
+												float PercentOfMaxHealthLost)
 {
 	if (const UWorld* World = GetWorld())
 	{
@@ -3895,13 +4186,18 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	// on a tick: `TeleportRandomlyAction`, 2026-10-12. The event itself carries no such fact. Put back when this
 	// call returns, so it reads false at every other time.
 	TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);
+	// AND HOW MUCH OF MAXIMUM HEALTH IT TOOK, for Avenging Dead (the Death trees' slice C6d2), as ruled (Q2): held while
+	// announced, for the condition, and carried as the event's amount, nought when unknown. No row on `hit_taken` read
+	// the amount before (it was nought): its pool actions take a share of the maximum, its own stacks count, and its
+	// status lands on the wearer, none of them sized by the amount.
+	TGuardValue<float> SaysHowMuchItTook(HitBeingAnnouncedPercentOfMaxHealth, PercentOfMaxHealthLost);
 	// AND WHO STRUCK, since the War vow options' third slice, V3a (2026-11-25), ruled "any hit: pass the attacker on
 	// hit taken" for Thornwall's stack. NOT FOR A TICK, which is not a hit (ruled the same day: "a landed hit only"),
 	// and not for the character's own blow, which has no other character to place anything on. A row that places a
 	// stack acts only on a landed event naming a character, so an evaded blow places nothing either. NO SHIPPED ROW
 	// ON `hit_taken` READ A TARGET BEFORE THIS: its three action rows (`health`, `apply_status_to_self`,
 	// `teleport_randomly`) and Feasting's own-stack row all act on the wearer, and none carries a target condition.
-	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded,
+	ActOnEvent(FName(TEXT("hit_taken")), nullptr, FMath::Max(0.0f, PercentOfMaxHealthLost), bLanded,
 			   bDamageOverTime || bOwnBlow ? nullptr : Attacker);
 
 	// AND A LANDED BLOW THAT IS NOT A TICK MAY SUMMON A WARHOUND, Warlord's Will's six-piece. Ruled 2026-10-18 (Q4):
@@ -4226,6 +4522,621 @@ float UCataclysmAbilitySystemComponent::SecondsSinceStruckABoss() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastStruckABossAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteOwnKill(float GraceSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK, NO STAMP, as every other clock on this component does.
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	LastOwnKillAtSeconds = Now;
+
+	// THE HOLD NEVER SHORTENS: see the header. A grace of nothing still holds until now, which is "decays from now".
+	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Now + FMath::Max(0.0f, GraceSeconds));
+
+	// AND THE LENGTH OF THE HOLD THIS KILL BEGAN, the full length Kindred Fires restarts and Borrowed Time is capped at.
+	// The Death trees' slice C4b1 (2026-11-25).
+	LastKillDecayGraceSeconds = FMath::Max(0.0f, GraceSeconds);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceOwnKill() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastOwnKillAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastOwnKillAtSeconds);
+}
+
+bool UCataclysmAbilitySystemComponent::KillDecayIsHeld() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK MEANS NO DECAY, the reading `OutOfContactFor` takes and for its reason: a character whose world is
+		// gone would otherwise be judged out of every grace for ever.
+		return true;
+	}
+
+	return KillDecayHeldUntilSeconds >= 0.0f && World->GetTimeSeconds() < KillDecayHeldUntilSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::RestartKillDecayHold(float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	KillDecayHeldUntilSeconds =
+		FMath::Max(KillDecayHeldUntilSeconds, World->GetTimeSeconds() + FMath::Max(0.0f, Seconds));
+}
+
+void UCataclysmAbilitySystemComponent::ExtendKillDecayHold(float Seconds, float FullLengthSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.0f || !KillDecayIsHeld())
+	{
+		return;
+	}
+	const float Capped = FMath::Min(KillDecayHeldUntilSeconds + Seconds,
+									World->GetTimeSeconds() + FMath::Max(0.0f, FullLengthSeconds));
+	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Capped);
+}
+
+void UCataclysmAbilitySystemComponent::NoteNearKillBy(const UAbilitySystemComponent* Killer)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Killer)
+	{
+		return;
+	}
+	NearKillBy.Add(Killer, World->GetTimeSeconds());
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceNearKillBy(const UAbilitySystemComponent* Killer) const
+{
+	const UWorld* World = GetWorld();
+	const float* At = Killer ? NearKillBy.Find(Killer) : nullptr;
+	if (!World || !At || *At < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
+}
+
+void UCataclysmAbilitySystemComponent::NoteStruckByMovementSkillOf(const UAbilitySystemComponent* Striker)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Striker)
+	{
+		return;
+	}
+	StruckByMovementSkillOf.Add(Striker, World->GetTimeSeconds());
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceStruckByMovementSkillOf(const UAbilitySystemComponent* Striker) const
+{
+	const UWorld* World = GetWorld();
+	const float* At = Striker ? StruckByMovementSkillOf.Find(Striker) : nullptr;
+	if (!World || !At || *At < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
+}
+
+void UCataclysmAbilitySystemComponent::NoteWornEnemyModifier(int32 Place, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Place < 1 || Seconds <= 0.0f)
+	{
+		return;
+	}
+	WornEnemyModifierUntil.Add(Place, World->GetTimeSeconds() + Seconds);
+}
+
+float UCataclysmAbilitySystemComponent::WornEnemyModifierSecondsLeft(int32 Place) const
+{
+	const UWorld* World = GetWorld();
+	const float* Until = WornEnemyModifierUntil.Find(Place);
+	return World && Until ? FMath::Max(0.0f, *Until - World->GetTimeSeconds()) : 0.0f;
+}
+
+TArray<int32> UCataclysmAbilitySystemComponent::WornEnemyModifierPlacesNow() const
+{
+	TArray<int32> Places;
+	for (const TPair<int32, float>& Worn : WornEnemyModifierUntil)
+	{
+		if (Worn.Key >= 1 && WornEnemyModifierSecondsLeft(Worn.Key) > 0.0f)
+		{
+			Places.Add(Worn.Key);
+		}
+	}
+	return Places;
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsARowWearing(int32 Place) const
+{
+	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
+	{
+		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
+		{
+			if ((Row.Condition == ECataclysmStatCondition::WearingEnemyModifier
+				 && FMath::RoundToInt(Row.ConditionValue) == Place)
+				|| (Row.Condition2 == ECataclysmStatCondition::WearingEnemyModifier
+					&& FMath::RoundToInt(Row.ConditionValue2) == Place))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void UCataclysmAbilitySystemComponent::NoteBossTickPaid()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		BossTickPaidAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceBossTickPaid() const
+{
+	const UWorld* World = GetWorld();
+	return World && BossTickPaidAtSeconds >= 0.0f ? World->GetTimeSeconds() - BossTickPaidAtSeconds : -1.0f;
+}
+
+int32 UCataclysmAbilitySystemComponent::CountBossHit(const AActor* Boss)
+{
+	if (!Boss)
+	{
+		return 0;
+	}
+	return ++BossHitsCounted.FindOrAdd(Boss);
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsNextHitCritical() const
+{
+	const UWorld* World = GetWorld();
+	return World && NextHitCriticalCharges > 0 && NextHitCriticalUntilSeconds >= 0.0f
+		&& World->GetTimeSeconds() <= NextHitCriticalUntilSeconds;
+}
+
+float UCataclysmAbilitySystemComponent::KillChainSecondsHeld() const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(FName(UCataclysmFervour::KillChainSecondsStat));
+	return Inputs ? FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+		FGameplayTagContainer(), FCataclysmStatConditions()).Final) : 0.0f;
+}
+
+void UCataclysmAbilitySystemComponent::NoteFervourOverflow(float Overflow, float WindowSeconds)
+{
+	const UWorld* World = GetWorld();
+	const int32 Whole = FMath::FloorToInt(Overflow + 1.0e-4f);
+	if (!World || Whole <= 0 || WindowSeconds <= 0.0f)
+	{
+		return;
+	}
+	// A WINDOW THAT HAS RUN OUT HOLDS NONE, so the count starts again rather than adding to stacks already gone.
+	if (FervourOverflowStacksHeld() == 0)
+	{
+		FervourOverflowStacks = 0;
+	}
+	FervourOverflowStacks += Whole;
+	FervourOverflowUntilSeconds = World->GetTimeSeconds() + WindowSeconds;
+}
+
+int32 UCataclysmAbilitySystemComponent::FervourOverflowStacksHeld() const
+{
+	const UWorld* World = GetWorld();
+	return World && FervourOverflowStacks > 0 && World->GetTimeSeconds() <= FervourOverflowUntilSeconds
+		? FervourOverflowStacks
+		: 0;
+}
+
+int32 UCataclysmAbilitySystemComponent::AccumulateHealthLostForFervour(float PercentLost, float PercentPerFervour)
+{
+	if (PercentLost <= 0.0f || PercentPerFervour <= 0.0f)
+	{
+		return 0;
+	}
+	HealthPercentLostTowardsFervour += PercentLost;
+	// A TEN-THOUSANDTH ABOVE, so 1.9999998 of 2 pays, as `TimesSizedByEventAmount` allows.
+	const int32 Whole = FMath::FloorToInt(HealthPercentLostTowardsFervour / PercentPerFervour + 1.0e-4f);
+	HealthPercentLostTowardsFervour = FMath::Max(0.0f, HealthPercentLostTowardsFervour - Whole * PercentPerFervour);
+	return Whole;
+}
+
+void UCataclysmAbilitySystemComponent::NotePoisonBeganBy(const AActor* Applier)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Applier)
+	{
+		return;
+	}
+	PoisonedByFrom.Add(Applier, World->GetTimeSeconds());
+}
+
+float UCataclysmAbilitySystemComponent::SecondsPoisonedBy(const AActor* Applier) const
+{
+	const UWorld* World = GetWorld();
+	const float* From = Applier ? PoisonedByFrom.Find(Applier) : nullptr;
+	// NOT CARRYING IT NOW IS NOT POISONED, whatever the record says: the record is restarted only when a Poison is next
+	// laid, so between a break and that it still holds the old time.
+	if (!World || !From || !UCataclysmDebuffs::CarriesPoisonLaidBy(GetAvatarActor(), Applier))
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *From);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker(const UAbilitySystemComponent* Asker,
+																 const AActor* Carrier)
+{
+	const UCataclysmAbilitySystemComponent* Carried =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Carrier));
+	const AActor* Applier = Asker ? Asker->GetAvatarActor() : nullptr;
+	return Carried && Applier ? Carried->SecondsPoisonedBy(Applier) : -1.0f;
+}
+
+float UCataclysmAbilitySystemComponent::TimesSizedByFervourHeld() const
+{
+	// A TEN-THOUSANDTH ABOVE, as `TimesSizedByEventAmount` allows, so 199.99998 held is one hundred and not none.
+	constexpr float Allowance = 1.0e-4f;
+	const float Held = UCataclysmStatPipeline::FervourHeldCounted(CurrentConditions());
+	return FMath::Max(0.0f, FMath::FloorToFloat(Held / 100.0f + Allowance));
+}
+
+float UCataclysmAbilitySystemComponent::WidestReachOfCondition(ECataclysmStatCondition Condition) const
+{
+	float Widest = 0.0f;
+	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
+	{
+		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
+		{
+			if (Row.Condition == Condition || Row.Condition2 == Condition)
+			{
+				Widest = FMath::Max(Widest, Row.ReachMetres);
+			}
+		}
+	}
+	return Widest;
+}
+
+float UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionRadiusCm()
+{
+	// DEFINED HERE AND NOT IN THE HEADER, which does not include `CataclysmSkillEffects.h` for the old radius.
+	if (PoolActionDepth > 0 || PendingOverkillExplosionRadiusCm <= 0.0f)
+	{
+		return UCataclysmSkillEffects::OverkillExplosionRadiusCm;
+	}
+	const float Was = PendingOverkillExplosionRadiusCm;
+	PendingOverkillExplosionRadiusCm = 0.0f;
+	return Was;
+}
+
+void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Amount <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	FervourDecayed.RemoveAll([Now](const TPair<float, float>& Entry)
+	{
+		return Entry.Key < Now - FervourDecayedKeptSeconds;
+	});
+	FervourDecayed.Emplace(Now, Amount);
+}
+
+float UCataclysmAbilitySystemComponent::TakeFervourDecayedWithin(float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Since = World->GetTimeSeconds() - Seconds;
+	float Taken = 0.0f;
+	for (const TPair<float, float>& Entry : FervourDecayed)
+	{
+		if (Entry.Key >= Since)
+		{
+			Taken += Entry.Value;
+		}
+	}
+	FervourDecayed.Reset();
+	return Taken;
+}
+
+float UCataclysmAbilitySystemComponent::StatAsIfAgainstRarity(FName Stat, int32 RarityStep, float Fallback) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		return Fallback;
+	}
+	FCataclysmStatConditions State = WithEnemiesInReach(
+		Inputs->Modifiers, WithTargetState(Inputs->Modifiers, /*Target=*/nullptr, CurrentConditions()));
+	State.TargetRarityStep = RarityStep;
+	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(), State).Final;
+}
+
+void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags,
+														 bool bTakenFromThePool)
+{
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+	// THE STAMP FIRST, then the event, as `NoteHealthCostPaid` does: a row on the event under the clock would read
+	// nought and always hold, which the generator refuses.
+	if (const UWorld* World = GetWorld())
+	{
+		LastFervourSpentAtSeconds = World->GetTimeSeconds();
+
+		// CINDERS KEPT: a share of every spend TAKEN FROM THE POOL comes back later, Phylactery's included. Not of
+		// Bound Offering's share of a reserve, which is only counted as spent: nothing was taken, so there is nothing
+		// to return, and returning it would make every summon a source of Fervour, which no node says. Ruled by the
+		// coordinating session on 2026-11-25. Asked with the spending skill's tags, as a stat about a skill's use is.
+		const FGameplayTagContainer& Tags = SpendingTags ? *SpendingTags : FGameplayTagContainer::EmptyContainer;
+		const float Returned =
+			bTakenFromThePool ? StatForSkill(FName(FervourSpentReturnedPercentStat), Tags, 0.0f) : 0.0f;
+		if (Returned > 0.0f)
+		{
+			FervourToReturn.Emplace(World->GetTimeSeconds() + FervourReturnedAfterSeconds,
+									Amount * Returned / 100.0f);
+		}
+	}
+	ActOnEvent(FName(TEXT("fervour_spent")), SpendingTags, Amount);
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::FervourSpentReturnedPercentStat = TEXT("fervour_spent_returned_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdReductionStat = TEXT("fervour_threshold_reduction");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdLingerSecondsStat =
+	TEXT("fervour_threshold_linger_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownsRecoverFasterPercentStat =
+	TEXT("cooldowns_recover_faster_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::ReservedFervourCountsAsHeldPercentStat =
+	TEXT("reserved_fervour_counts_as_held_percent");
+
+float UCataclysmAbilitySystemComponent::ReservedFervourCountedAsHeld(float Reserved) const
+{
+	const float Percent = StatWithNoReading(FName(ReservedFervourCountsAsHeldPercentStat));
+	return Reserved > 0.0f && Percent > 0.0f ? Reserved * Percent / 100.0f : 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::StatWithNoReading(FName Stat) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	return Inputs
+		? UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+										   FCataclysmStatConditions()).Final
+		: 0.0f;
+}
+
+int32 UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor(float Held, int32 PointsSpent) const
+{
+	const UWorld* World = GetWorld();
+	if (Held < 0.0f || PointsSpent < 0 || !World)
+	{
+		return -1;
+	}
+	const float Reduction = FMath::Max(0.0f, StatWithNoReading(FName(FervourThresholdReductionStat)));
+	const float Linger = StatWithNoReading(FName(FervourThresholdLingerSecondsStat));
+	const float Now = World->GetTimeSeconds();
+	int32 Reached = 0;
+	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
+	{
+		if (PointsSpent < CataclysmFervourThresholds::OpensAtPoints(Index))
+		{
+			continue;
+		}
+		const bool bHeld = Held >= CataclysmFervourThresholds::Figure(Index) - Reduction;
+		const float LastHeld = FervourThresholdLastHeldAtSeconds.IsValidIndex(Index)
+			? FervourThresholdLastHeldAtSeconds[Index]
+			: -1.0f;
+		const bool bLingering = Linger > 0.0f && LastHeld >= 0.0f && Now - LastHeld < Linger;
+		if (bHeld || bLingering)
+		{
+			Reached |= 1 << Index;
+		}
+	}
+	return Reached;
+}
+
+void UCataclysmAbilitySystemComponent::NoteFervourThresholdsHeld(float Held)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Held < 0.0f)
+	{
+		return;
+	}
+	const float Reduction = FMath::Max(0.0f, StatWithNoReading(FName(FervourThresholdReductionStat)));
+	if (FervourThresholdLastHeldAtSeconds.Num() < CataclysmFervourThresholds::Count())
+	{
+		FervourThresholdLastHeldAtSeconds.Init(-1.0f, CataclysmFervourThresholds::Count());
+	}
+	// AND CHAINED SOULS' SHARE, so the record counts what the thresholds count (the Death trees' slice C3e). Nought, and
+	// no search for followers, for a character without the node.
+	const float Counted = Held + (StatWithNoReading(FName(ReservedFervourCountsAsHeldPercentStat)) > 0.0f
+		? ReservedFervourCountedAsHeld(UCataclysmCommand::ReservedFervourOf(GetAvatarActor()))
+		: 0.0f);
+	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
+	{
+		if (Counted >= CataclysmFervourThresholds::Figure(Index) - Reduction)
+		{
+			FervourThresholdLastHeldAtSeconds[Index] = World->GetTimeSeconds();
+		}
+	}
+}
+
+float UCataclysmAbilitySystemComponent::FervourThresholdStep(float StepSeconds)
+{
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	if (HasAttributeSetForAttribute(Pool))
+	{
+		NoteFervourThresholdsHeld(GetNumericAttribute(Pool));
+	}
+
+	// THE FOURTH VOW'S RATE: each step, that share of the step's seconds off every running cooldown once more, through
+	// the same reduction a row's `cooldown_reduce_all` makes, so a cooldown kept off the keys recovers too.
+	const float Faster = StatForSkill(FName(CooldownsRecoverFasterPercentStat), FGameplayTagContainer(), 0.0f);
+	if (Faster <= 0.0f || StepSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	FCataclysmPoolAction Recovery;
+	Recovery.CooldownReduce = ECataclysmCooldownReset::All;
+	Recovery.Percent = StepSeconds * Faster / 100.0f;
+	ReduceCooldowns(Recovery);
+	return Recovery.Percent;
+}
+const TCHAR* UCataclysmAbilitySystemComponent::FervourLethalSaveEverySecondsStat =
+	TEXT("fervour_lethal_save_every_seconds");
+
+float UCataclysmAbilitySystemComponent::ReturnFervourDue()
+{
+	const UWorld* World = GetWorld();
+	if (!World || FervourToReturn.IsEmpty())
+	{
+		return 0.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Due = 0.0f;
+	FervourToReturn.RemoveAll([Now, &Due](const TPair<float, float>& Share)
+	{
+		if (Share.Key <= Now)
+		{
+			Due += Share.Value;
+			return true;
+		}
+		return false;
+	});
+	const UCataclysmClassResourceAttributeSet* Resource = GetSet<UCataclysmClassResourceAttributeSet>();
+	if (Due <= 0.0f || !Resource)
+	{
+		return 0.0f;
+	}
+	// HELD TO WHAT MAY BE HELD BY `RaisePool`: a share returning to a full bar is lost, as a gain to a full bar is, and
+	// the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = GetNumericAttribute(Pool);
+	if (Due <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// A GAIN, THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES, so Kindred Fires and Borrowed Time see it (the Death
+	// trees' slice C4b1, as ruled: Cinders Kept's return is a gain).
+	UCataclysmFervour::RaisePool(this, Due);
+	return GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmAbilitySystemComponent::FervourWaitingToReturn() const
+{
+	float Waiting = 0.0f;
+	for (const TPair<float, float>& Share : FervourToReturn)
+	{
+		Waiting += Share.Value;
+	}
+	return Waiting;
+}
+
+bool UCataclysmAbilitySystemComponent::MaySaveLethalBlowWithFervour() const
+{
+	const UWorld* World = GetWorld();
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	if (!World || !HasAttributeSetForAttribute(Pool)
+		|| StatForSkill(FName(FervourLethalSaveEverySecondsStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return false;
+	}
+	if (FervourLethalSaveNextAllowedSeconds >= 0.0f && World->GetTimeSeconds() < FervourLethalSaveNextAllowedSeconds)
+	{
+		return false;
+	}
+	return GetNumericAttribute(Pool) >= FervourLethalSaveLeast;
+}
+
+float UCataclysmAbilitySystemComponent::TakeFervourForLethalSave()
+{
+	if (!MaySaveLethalBlowWithFervour())
+	{
+		return 0.0f;
+	}
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Held = GetNumericAttribute(Pool);
+	ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Held);
+	FervourLethalSaveNextAllowedSeconds = GetWorld()->GetTimeSeconds()
+		+ StatForSkill(FName(FervourLethalSaveEverySecondsStat), FGameplayTagContainer(), 0.0f);
+	return Held;
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceFervourSpent() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastFervourSpentAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastFervourSpentAtSeconds);
+}
+
+int32 UCataclysmAbilitySystemComponent::EnemiesInSiphon() const
+{
+	// THE ONES STILL IN THE WORLD AND ALIVE. A creature killed or removed between two steps is still in the record
+	// until the next step clears it, and is no longer in anybody's Siphon.
+	int32 Count = 0;
+	for (const TPair<TWeakObjectPtr<AActor>, FSiphonMember>& Each : SiphonMemberRecord)
+	{
+		const AActor* Member = Each.Key.Get();
+		Count += Member && !UCataclysmSkillEffects::IsDead(Member) ? 1 : 0;
+	}
+	return Count;
+}
+
+bool UCataclysmAbilitySystemComponent::HasInSiphon(const AActor* Target) const
+{
+	if (!Target || UCataclysmSkillEffects::IsDead(Target))
+	{
+		return false;
+	}
+	return SiphonMemberRecord.Contains(TWeakObjectPtr<AActor>(const_cast<AActor*>(Target)));
+}
+
+void UCataclysmAbilitySystemComponent::NoteSiphonDamageCut(float Percent, float UntilSeconds)
+{
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	// THE LARGEST WHILE IT RUNS, THEN THE NEW ONE. Several Siphons do not stack, as several holders of Ground Down do
+	// not (ruled 2026-09-24): the strongest holds, and the later end time is kept.
+	if (SiphonDamageCutUntilSeconds < Now)
+	{
+		SiphonDamageCutPercent = 0.0f;
+	}
+	SiphonDamageCutPercent = FMath::Max(SiphonDamageCutPercent, FMath::Clamp(Percent, 0.0f, 100.0f));
+	SiphonDamageCutUntilSeconds = FMath::Max(SiphonDamageCutUntilSeconds, UntilSeconds);
+}
+
+float UCataclysmAbilitySystemComponent::SiphonDamageCutPercentNow() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || SiphonDamageCutUntilSeconds < World->GetTimeSeconds())
+	{
+		return 0.0f;
+	}
+	return SiphonDamageCutPercent;
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::RendPercentStat =
@@ -4667,6 +5578,206 @@ float UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillUsed() const
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMovementSkillAtSeconds);
 }
 
+void UCataclysmAbilitySystemComponent::NoteMovementSkillEnded()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastMovementSkillEndedAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("movement_skill_ends")));
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::ShadowMarksStat = TEXT("death_marks_held");
+
+void UCataclysmAbilitySystemComponent::AddShadowMark(AActor* Creature)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Creature));
+	if (!Creature || HoldsShadowMarkOn(Creature))
+	{
+		return;
+	}
+	ShadowMarks.Add(Creature);
+	if (Theirs)
+	{
+		Theirs->ShadowMarkedBy.AddUnique(this);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::LiftShadowMark(AActor* Creature)
+{
+	ShadowMarks.RemoveAll([Creature](const TWeakObjectPtr<AActor>& Held) { return Held.Get() == Creature; });
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Creature)))
+	{
+		Theirs->ShadowMarkedBy.RemoveAll(
+			[this](const TWeakObjectPtr<UCataclysmAbilitySystemComponent>& By) { return By.Get() == this; });
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsShadowMarkOn(const AActor* Creature) const
+{
+	return Creature && ShadowMarks.ContainsByPredicate(
+		[Creature](const TWeakObjectPtr<AActor>& Held) { return Held.Get() == Creature; });
+}
+
+int32 UCataclysmAbilitySystemComponent::ShadowMarksHeld() const
+{
+	int32 Held = 0;
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		Held += Mark.IsValid() ? 1 : 0;
+	}
+	return Held;
+}
+
+bool UCataclysmAbilitySystemComponent::IsShadowMarked() const
+{
+	return ShadowMarkedBy.ContainsByPredicate(
+		[](const TWeakObjectPtr<UCataclysmAbilitySystemComponent>& By) { return By.IsValid(); });
+}
+
+void UCataclysmAbilitySystemComponent::MaintainShadowMarks()
+{
+	// NOTHING TO DO FOR A CHARACTER WITH NO LINE FOR THE STAT AND NO MARK, which is every character but a Shadow
+	// holding Deathmark: one lookup of the line and no stat asked.
+	if (!GetStatInputs(FName(ShadowMarksStat)) && ShadowMarks.IsEmpty())
+	{
+		return;
+	}
+	const AActor* Self = GetAvatarActor();
+	const int32 Count = Self && !UCataclysmSkillEffects::IsDead(Self)
+		? FMath::Max(0, FMath::FloorToInt(StatForSkill(FName(ShadowMarksStat), FGameplayTagContainer(), 0.0f)))
+		: 0;
+
+	// THE DEAD AND THE GONE ARE DROPPED, then any over the count, last marked first.
+	TArray<AActor*> Lifted;
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		AActor* Held = Mark.Get();
+		if (!Held || UCataclysmSkillEffects::IsDead(Held))
+		{
+			Lifted.Add(Held);
+		}
+	}
+	for (AActor* Each : Lifted)
+	{
+		if (Each)
+		{
+			LiftShadowMark(Each);
+		}
+	}
+	ShadowMarks.RemoveAll([](const TWeakObjectPtr<AActor>& Held) { return !Held.IsValid(); });
+	while (ShadowMarks.Num() > Count)
+	{
+		LiftShadowMark(ShadowMarks.Last().Get());
+	}
+
+	// EACH EMPTY MARK IS GIVEN THE STRONGEST ENEMY WITHIN 15 METRES NOT ALREADY MARKED.
+	while (Self && ShadowMarks.Num() < Count)
+	{
+		TArray<const AActor*> Marked;
+		for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+		{
+			Marked.Add(Mark.Get());
+		}
+		AActor* Next = UCataclysmDebuffs::StrongestEnemyNear(Self, Self, ShadowMarkReachCm, Marked);
+		if (!Next)
+		{
+			break;
+		}
+		AddShadowMark(Next);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::MoveShadowMarkFrom(const AActor* Dying)
+{
+	if (!HoldsShadowMarkOn(Dying))
+	{
+		return;
+	}
+	LiftShadowMark(const_cast<AActor*>(Dying));
+	const AActor* Self = GetAvatarActor();
+	if (!Self)
+	{
+		return;
+	}
+	TArray<const AActor*> Marked = {Dying};
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		Marked.Add(Mark.Get());
+	}
+	// THE STRONGEST WITHIN 10 METRES OF THE ONE THAT DIED, as an enemy of this character's. None near: the next
+	// regeneration step chooses within 15 metres of this character.
+	if (AActor* Next = UCataclysmDebuffs::StrongestEnemyNear(Dying, Self, ShadowMarkMoveCm, Marked))
+	{
+		AddShadowMark(Next);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::MoveShadowMarksOff(const AActor* Dying)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Dying));
+	if (!Theirs || Theirs->ShadowMarkedBy.IsEmpty())
+	{
+		return;
+	}
+	// COPIED FIRST, because moving a mark changes the list being walked.
+	const TArray<TWeakObjectPtr<UCataclysmAbilitySystemComponent>> Markers = Theirs->ShadowMarkedBy;
+	for (const TWeakObjectPtr<UCataclysmAbilitySystemComponent>& Marker : Markers)
+	{
+		if (UCataclysmAbilitySystemComponent* By = Marker.Get())
+		{
+			By->MoveShadowMarkFrom(Dying);
+		}
+	}
+}
+
+void UCataclysmAbilitySystemComponent::NoteMinionDied(const AActor* Body, const FGameplayTagContainer& FollowerTags)
+{
+	if (const UWorld* World = GetWorld())
+	{
+		const float Now = World->GetTimeSeconds();
+		LastMinionDiedAtSeconds = Now;
+		// KEPT A MINUTE, with how far from this character it fell, for Death Ward's reach.
+		RecentMinionDeaths.RemoveAll([Now](const FMinionDeathRecord& Old)
+		{
+			return Now - Old.AtSeconds > MinionDeathKeptSeconds;
+		});
+		FMinionDeathRecord Death;
+		Death.AtSeconds = Now;
+		const AActor* Self = GetAvatarActor();
+		Death.Metres = (Self && Body) ? UCataclysmTargeting::MetresBetween(Self, Body) : -1.0f;
+		RecentMinionDeaths.Add(Death);
+	}
+
+	ActOnEvent(FName(TEXT("minion_death")), &FollowerTags, 0.0f, /*bLanded=*/true, Body);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceMinionDied() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastMinionDiedAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMinionDiedAtSeconds);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillEnded() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastMovementSkillEndedAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMovementSkillEndedAtSeconds);
+}
+
 void UCataclysmAbilitySystemComponent::NoteSpellCast()
 {
 	if (const UWorld* World = GetWorld())
@@ -4825,6 +5936,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceAllAction =
 	TEXT("cooldown_reduce_all");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction =
 	TEXT("cooldown_reduce_heavy");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceOthersAction =
+	TEXT("cooldown_reduce_others");
 const TCHAR* UCataclysmAbilitySystemComponent::NextSpellCooldownReducedAction =
 	TEXT("next_spell_cooldown_reduced");
 const TCHAR* UCataclysmAbilitySystemComponent::CleanseAction = TEXT("cleanse");
@@ -5188,7 +6301,53 @@ const TCHAR* UCataclysmAbilitySystemComponent::UseHitsItsUserAction = TEXT("use_
 const TCHAR* UCataclysmAbilitySystemComponent::UseBackfiresAction = TEXT("use_backfires");
 const TCHAR* UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction =
 	TEXT("explode_victim_for_overkill");
+const TCHAR* UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction =
+	TEXT("burst_slain_for_share_of_maximum_health");
+const TCHAR* UCataclysmAbilitySystemComponent::OverkillExplosionRadiusMetresStat =
+	TEXT("overkill_explosion_radius_metres");
+const TCHAR* UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction = TEXT("pass_bleed_left_to_strongest");
+const TCHAR* UCataclysmAbilitySystemComponent::CriticalNextHitAction = TEXT("next_hit_critical");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceMovementAction = TEXT("cooldown_reduce_movement");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourHoldExtendedAction = TEXT("fervour_hold_extended");
+const TCHAR* UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction = TEXT("next_hit_critical_twice");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
+const TCHAR* UCataclysmAbilitySystemComponent::StrikeStrongestNearAction = TEXT("strike_strongest_near");
+const TCHAR* UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction = TEXT("dash_to_strongest_and_strike");
+const TCHAR* UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat =
+	TEXT("crit_multiplier_increases_to_poison_and_bleed_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::InterposeChanceStat = TEXT("interpose_chance");
+
+float UCataclysmAbilitySystemComponent::LethalDoseLentBy(const UCataclysmAbilitySystemComponent* Lender)
+{
+	const float Share = Lender
+		? Lender->StatForSkill(FName(CritIncreasesToAilmentsStat), FGameplayTagContainer(), 0.0f)
+		: 0.0f;
+	return Share > 0.0f
+		? FMath::Max(0.0f, Lender->IncreasesForStat(FName(TEXT("crit_multiplier")), FGameplayTagContainer())) * 100.0f
+			* Share / 100.0f
+		: 0.0f;
+}
+
+AActor* UCataclysmAbilitySystemComponent::MarkedOrStrongestNear(float RadiusCm) const
+{
+	const AActor* Self = GetAvatarActor();
+	if (!Self)
+	{
+		return nullptr;
+	}
+	// THE WEARER'S OWN MARK FIRST, as Blade Echo's and Thousand Cuts' sentences say "(the enemy Deathmark marked, if
+	// you have Deathmark)", while it lives and is that near.
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		AActor* Marked = Mark.Get();
+		if (Marked && !UCataclysmSkillEffects::IsDead(Marked)
+			&& FVector::Dist(Self->GetActorLocation(), Marked->GetActorLocation()) <= RadiusCm)
+		{
+			return Marked;
+		}
+	}
+	return UCataclysmDebuffs::StrongestEnemyNear(Self, Self, RadiusCm);
+}
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
@@ -5237,6 +6396,12 @@ float UCataclysmAbilitySystemComponent::HealthPercentNow() const
 bool UCataclysmAbilitySystemComponent::EventThresholdCrossed(
 	const FCataclysmPoolAction& Action, float EventAmount) const
 {
+	// "10 OR MORE FERVOUR AT ONCE": a row on `fervour_spent` with an Event Value acts only when that much or more was
+	// spent by the one payment. With none it acts on every spend. The Death trees' slice C3a (2026-11-25).
+	if (Action.Event == FName(TEXT("fervour_spent")))
+	{
+		return Action.EventValue <= 0.0f || EventAmount >= Action.EventValue;
+	}
 	if (Action.Event != HealthFallsBelowEvent)
 	{
 		return true;
@@ -5313,7 +6478,8 @@ void UCataclysmAbilitySystemComponent::NoteTriggerFired(const FCataclysmPoolActi
 	}
 }
 
-int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolAction& Action)
+int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolAction& Action,
+													   const FGameplayTagContainer* EventTags)
 {
 	const UWorld* World = GetWorld();
 	if (!World || Action.Percent <= 0.0f)
@@ -5341,6 +6507,36 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 	{
 		// THE SKILL MADE FOR THE HEAVY SLOT, ON WHICHEVER KEY IT SITS (O1, issue #837 layer 3).
 		Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Heavy));
+	}
+	// AND THE MOVEMENT SKILL'S, the Death trees' slice C6a (2026-11-25): Find the Rhythm and Sidestep.
+	else if (Action.CooldownReduce == ECataclysmCooldownReset::Movement)
+	{
+		Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Movement));
+	}
+	else if (Action.CooldownReduce == ECataclysmCooldownReset::Others)
+	{
+		// EVERY SKILL BUT THE ONE THAT RAISED THE EVENT, ON WHICHEVER KEY EACH SITS: Turn of the Wheel, "takes 1 second
+		// off the cooldowns of your skills that did not spend it". The Death trees' slice C3b. Read off the event's
+		// `Slot.*` tag, as a reset of every other reads it.
+		//
+		// A SPEND NAMING NO SKILL LEAVES NOTHING OUT, ruled by the coordinating session on 2026-11-25: none of the
+		// skills spent it. Bound Offering's reserve held for a warhound or a risen imp is such a spend. A reset of every
+		// other clears nothing then (ruled 2026-09-25), and the two read differently ON PURPOSE: "reset all other skill
+		// cooldowns" is said of one skill's use, and "your skills that did not spend it" of every skill but a spender.
+		const ECataclysmAbilitySlot Spender = SlotOfTheEventsSkill(EventTags);
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			if (Slot != Spender)
+			{
+				Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(Slot));
+			}
+		}
+		if (Spender != ECataclysmAbilitySlot::None)
+		{
+			Reducing.RemoveTags(CooldownTagsOfSkillsDesignedFor(Spender));
+		}
+		// AND THE KEPT COOLDOWN OF EVERY SKILL OFF THE KEYS, none of which spent it. Issue #2528.
+		ShortenCooldownsOffTheKeys(Action.Percent);
 	}
 	if (Reducing.IsEmpty())
 	{
@@ -5489,6 +6685,39 @@ static TAutoConsoleVariable<float> CVarExecuteRoll(
 	TEXT("Pins the 0-100 roll an execute enchantment makes against its chance. Negative rolls for real."),
 	ECVF_Default);
 
+/**
+ * Pins the roll a class resource row with a chance makes, 0 to 100, for tests. Negative, the default, rolls for real.
+ * The Death trees' slice C6b3 (2026-11-25), for Tear Loose; the same shape as `Cataclysm.ExecuteRoll` above.
+ */
+static TAutoConsoleVariable<float> CVarClassResourceChanceRoll(
+	TEXT("Cataclysm.ClassResourceChanceRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a class resource row with a chance makes. Negative rolls for real."),
+	ECVF_Default);
+
+/**
+ * Whether a pool action pays this time: always, unless it is a class resource row with a chance below 100, which
+ * pays on a roll under its chance. The Death trees' slice C6b3 (2026-11-25), as ruled for Tear Loose. A chance of 0
+ * is "always", the value every row written before the column carries. A chance of 100 is compared rather than rolled,
+ * because `FRandRange` can return 100 itself, as every chance here is (issue #2201).
+ */
+static bool ChancePercentComesUp(float ChancePercent)
+{
+	if (ChancePercent <= 0.0f || ChancePercent >= 100.0f)
+	{
+		return true;
+	}
+	// THE SAME PINNED ROLL FOR EVERY ROW WITH A CHANCE PERCENT: a class resource row and, since the Death trees' slice
+	// C6b4 (2026-11-25), Twice Answered's doubled evasion. The console variable keeps the name it was given first.
+	const float Pinned = CVarClassResourceChanceRoll.GetValueOnAnyThread();
+	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	return Roll < ChancePercent;
+}
+
+static bool PoolActionChanceComesUp(const FCataclysmPoolAction& Action)
+{
+	return Action.Pool != ClassResourcePoolName || ChancePercentComesUp(Action.ChancePercent);
+}
+
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags,
 	bool* bOutRollSucceeded)
@@ -5525,19 +6754,7 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 
 	// THE SLOT THE EVENT'S SKILL IS IN, read off its `Slot.*` tag, for the two
 	// kinds that ask. None when the event names no slot.
-	ECataclysmAbilitySlot EventSlot = ECataclysmAbilitySlot::None;
-	if (EventTags)
-	{
-		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
-		{
-			const FGameplayTag Named = CataclysmAbilitySlots::Tag(Slot);
-			if (Named.IsValid() && EventTags->HasTagExact(Named))
-			{
-				EventSlot = Slot;
-				break;
-			}
-		}
-	}
+	const ECataclysmAbilitySlot EventSlot = SlotOfTheEventsSkill(EventTags);
 
 	// A SLOT NAMED BY A ROW OR BY THE EVENT'S SKILL IS THE SLOT A SKILL WAS MADE FOR, and its cooldown is kept on the
 	// key that skill sits on: `CooldownTagsOfSkillsDesignedFor`. Issue #837 layer 3 (O1, and the owner's "Each skill
@@ -5604,6 +6821,37 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 		ForgetCooldownsOffTheKeys();
 	}
 	return RemoveActiveEffectsWithGrantedTags(Clearing);
+}
+
+ECataclysmAbilitySlot UCataclysmAbilitySystemComponent::SlotOfTheEventsSkill(const FGameplayTagContainer* EventTags)
+{
+	if (EventTags)
+	{
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Named = CataclysmAbilitySlots::Tag(Slot);
+			if (Named.IsValid() && EventTags->HasTagExact(Named))
+			{
+				return Slot;
+			}
+		}
+	}
+	return ECataclysmAbilitySlot::None;
+}
+
+float UCataclysmAbilitySystemComponent::TimesSizedByEventAmount(ECataclysmPoolActionBase Base, float EventAmount)
+{
+	// A TEN-THOUSANDTH ABOVE, so 2.9999998 is three. See the declaration.
+	constexpr float Allowance = 1.0e-4f;
+	switch (Base)
+	{
+	case ECataclysmPoolActionBase::ForEachOfEventAmount:
+		return FMath::Max(0.0f, FMath::FloorToFloat(EventAmount + Allowance));
+	case ECataclysmPoolActionBase::ForEachTenOfEventAmount:
+		return FMath::Max(0.0f, FMath::FloorToFloat(EventAmount / 10.0f + Allowance));
+	default:
+		return 1.0f;
+	}
 }
 
 void UCataclysmAbilitySystemComponent::ForgetCooldownsOffTheKeys()
@@ -5973,7 +7221,8 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			{
 				ReduceCooldowns(Action);
 			}
-			else
+			// AND A ROW WITH A CHANCE PAYS ON ITS ROLL (the Death trees' slice C6b3).
+			else if (PoolActionChanceComesUp(Action))
 			{
 				ApplyPoolAction(Action, nullptr, 0.0f);
 			}
@@ -7401,7 +8650,7 @@ void UCataclysmAbilitySystemComponent::DrainQueuedAfflictedDeaths()
 
 void UCataclysmAbilitySystemComponent::ActOnEvent(
 	FName Event, const FGameplayTagContainer* EventTags, float EventAmount,
-	bool bLanded, const AActor* EventTarget)
+	bool bLanded, const AActor* EventTarget, const TCHAR* OnlyRowsWhoseKeyBegins)
 {
 	// ANNOUNCED FIRST, before either early return below. Issue #1821: a
 	// listener asking again for a cached stat needs every event, and most
@@ -7447,6 +8696,9 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		PendingOverkillExplosionSharePercent = 0.0f;
 		// AND THE TRAP KILL'S EXPLOSION, for the same reason (traps layer 4, F10 to F12).
 		PendingKillingBlowExplosionSharePercent = 0.0f;
+		// AND THE OVERKILL EXPLOSION'S RADIUS AND THE FERRYMAN'S BURST, for the same reason (the Death trees' slice C4c1).
+		PendingOverkillExplosionRadiusCm = 0.0f;
+		PendingSlainBurstSharePercent = 0.0f;
 	}
 
 	// A COPY, because applying one writes an attribute, and an attribute write
@@ -7456,13 +8708,61 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	// Issue #1833: two copies share the row's count, and would otherwise each
 	// grant one and double the rate the sentence states.
 	TSet<FName> StackedThisEvent;
-	for (const FCataclysmPoolAction& Action : Firing)
+	// WHETHER THIS EVASION'S CRITICAL STRIKE CHARGE HOLDS TWO: Twice Answered, the Death trees' slice C6b4
+	// (2026-11-25), as ruled. ROLLED HERE, BEFORE ANY ROW ACTS, so the charge granted below reads it whatever the
+	// table's order; once for each row that may roll, and the first success is enough. No wait of its own: it only
+	// changes the charge the same evasion grants, and an evasion granting none is given nothing.
+	bool bCriticalStrikesTwice = false;
+	if (bLanded)
 	{
-		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags, EventTarget)
-			|| !EventThresholdCrossed(Action, EventAmount))
+		for (const FCataclysmPoolAction& Listed : Firing)
+		{
+			if (Listed.bNextHitCriticalTwice && Listed.Event == Event
+				&& PoolActionAllowed(Listed, EventTags, EventTarget)
+				&& (!OnlyRowsWhoseKeyBegins || Listed.TriggerKey.ToString().StartsWith(OnlyRowsWhoseKeyBegins))
+				&& ChancePercentComesUp(Listed.ChancePercent))
+			{
+				bCriticalStrikesTwice = true;
+				break;
+			}
+		}
+	}
+	for (const FCataclysmPoolAction& Listed : Firing)
+	{
+		if (Listed.Event != Event || !PoolActionAllowed(Listed, EventTags, EventTarget)
+			|| !EventThresholdCrossed(Listed, EventAmount))
 		{
 			continue;
 		}
+		// ONLY ONE TREE'S ROWS, WHEN THE CALLER NAMES IT: Death's Toll raises `kill` for a follower's kill to the Soul
+		// Collector's own rows alone. The Death trees' slice C4b2 (2026-11-25), as ruled, with no new column: a row's
+		// trigger key begins with its enchantment's name, `Passive_<node>` for a passive row.
+		if (OnlyRowsWhoseKeyBegins && !Listed.TriggerKey.ToString().StartsWith(OnlyRowsWhoseKeyBegins))
+		{
+			continue;
+		}
+		// A ROW SIZED BY ITS EVENT'S AMOUNT acts as a copy whose value is multiplied by the whole units, or whole tens,
+		// the event carried, and whose base is the maximum again, so everything below reads an ordinary row: Feast's
+		// heal, Spirit to Mana's mana, Soul Furnace's smite and Turn of the Wheel's seconds. The Death trees' slice C3b.
+		// NONE TO MULTIPLY IS NOTHING DONE, and starts no wait: a spend of 9 against "every 10".
+		// AND RELENTLESS'S, BY THE WHOLE HUNDREDS OF FERVOUR HELD when the row acts (the Death trees' slice C4d1).
+		const float Times = Listed.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld
+			? TimesSizedByFervourHeld()
+			: TimesSizedByEventAmount(Listed.Base, EventAmount);
+		if (Times <= 0.0f)
+		{
+			continue;
+		}
+		TOptional<FCataclysmPoolAction> Sized;
+		if (Listed.Base == ECataclysmPoolActionBase::ForEachOfEventAmount
+			|| Listed.Base == ECataclysmPoolActionBase::ForEachTenOfEventAmount
+			|| Listed.Base == ECataclysmPoolActionBase::ForEachHundredClassResourceHeld)
+		{
+			Sized.Emplace(Listed);
+			Sized->Percent *= Times;
+			Sized->Base = ECataclysmPoolActionBase::Maximum;
+		}
+		const FCataclysmPoolAction& Action = Sized.IsSet() ? Sized.GetValue() : Listed;
 		// A COOLDOWN REDUCTION, once per row per event, on an event that landed.
 		// Issue #1833, the cooldown reduction action.
 		if (Action.CooldownReduce != ECataclysmCooldownReset::None)
@@ -7471,7 +8771,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.ResetKey);
-				ReduceCooldowns(Action);
+				ReduceCooldowns(Action, EventTags);
 				NoteTriggerFired(Action);
 			}
 			continue;
@@ -7581,7 +8881,15 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				{
 					if (!RefusedByTouchOfNothing(Action))
 					{
-						GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+						// A PASSIVE ROW'S STACK GRANTED BY A KILL LASTS THE CHAIN'S EXTRA SECONDS LONGER: Unbroken Chain,
+						// "A chain of kills allows 1 second more between kills", the Death trees' slice C6c (2026-11-25),
+						// as ruled. Passive rows only, told apart by the "Passive_" key prefix as Death's Toll does; an
+						// enchantment's kill stack keeps its window.
+						const float ChainSeconds = Event == FName(TEXT("kill"))
+								&& Action.StackKey.ToString().StartsWith(TEXT("Passive_"))
+							? KillChainSecondsHeld()
+							: 0.0f;
+						GrantOwnStack(Action.StackKey, Action.StackSeconds + ChainSeconds, Action.StackCap);
 					}
 				}
 				NoteTriggerFired(Action);
@@ -7754,6 +9062,30 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// DEALT INSIDE THIS LOOP, which runs one level deep. The hit's own announcements reach `ActOnEvent`
 		// while this call is running and are dropped: it acts on none of the wearer's `hit_dealt`,
 		// `first_hit_dealt`, `critical_strike` or `kill` rows.
+		// BLADE ECHO AND THOUSAND CUTS, the Death trees' slice C6e (2026-11-25), as ruled (Q6): on a kill, an instant hit
+		// of the row's per cent of weapon damage on the wearer's own mark within 10 metres, else the strongest enemy that
+		// near, the one just slain left out; Thousand Cuts puts the wearer beside it first. Dealt inside this loop, as
+		// the strike below is, so its own kill acts on none of the wearer's rows and cannot chain.
+		if (Action.bStrikeStrongestNear || Action.bDashToStrongestAndStrike)
+		{
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			AActor* Struck = (bLanded && Self && Action.Percent > 0.0f && !UCataclysmSkillEffects::IsDead(Self))
+				? MarkedOrStrongestNear(StrongestNearReachCm) : nullptr;
+			if (Struck && Struck != EventTarget && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				if (Action.bDashToStrongestAndStrike)
+				{
+					UCataclysmMovement::PlaceBeside(Self, Struck);
+				}
+				FCataclysmHitDelivery Delivery;
+				Delivery.bCannotBeEvaded = true;
+				Delivery.bIsARowsAnswerToAnEvent = true;
+				UCataclysmSkillEffects::ApplyHit(Self, Struck, Action.Percent, FGameplayTagContainer(), Delivery);
+			}
+			continue;
+		}
 		if (Action.bStrikeTarget)
 		{
 			AActor* Other = const_cast<AActor*>(EventTarget);
@@ -7958,6 +9290,81 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				PendingOverkillExplosionSharePercent =
 					FMath::Max(PendingOverkillExplosionSharePercent, Action.Percent);
+				// AND ITS RADIUS, THE LARGEST ANY ROW THAT ASKED GIVES, as the coordinating session ruled for Passed On
+				// (the Death trees' slice C4c1, 2026-11-25). A passive node's row, whose trigger key begins `Passive_`,
+				// reaches `OverkillExplosionRadiusMetresStat` when the character holds it; an item's row, and a passive
+				// row without the stat, the old radius. So holding Passed On never shrinks an item's explosion.
+				const bool bPassiveRow =
+					Action.TriggerKey.ToString().StartsWith(UCataclysmPassiveTree::PassiveEnchantmentPrefix);
+				const float StatedMetres = bPassiveRow
+					? StatForSkill(FName(OverkillExplosionRadiusMetresStat), FGameplayTagContainer(), 0.0f)
+					: 0.0f;
+				const float RowRadiusCm = StatedMetres > 0.0f ? StatedMetres * 100.0f
+															  : UCataclysmSkillEffects::OverkillExplosionRadiusCm;
+				PendingOverkillExplosionRadiusCm = FMath::Max(PendingOverkillExplosionRadiusCm, RowRadiusCm);
+			}
+			continue;
+		}
+		// AN ENEMY KILLED BURSTS FOR A SHARE OF ITS MAXIMUM HEALTH: The Ferryman, the Death trees' slice C4c1
+		// (2026-11-25). ONLY RECORDED HERE, once per row per event, the largest share of the rows that asked, as the
+		// overkill explosion is above and for its reason; the kill handler takes it and makes the burst. See
+		// `TakePendingSlainBurstSharePercent`. No roll and no trigger cooldown: the sentence has neither.
+		if (Action.bBurstSlainForMaximumHealth)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				PendingSlainBurstSharePercent = FMath::Max(PendingSlainBurstSharePercent, Action.Percent);
+			}
+			continue;
+		}
+		// THE WEARER'S BLEED LEFT ON AN ENEMY THAT DIED, PASSED TO THE STRONGEST ENEMY NEAR IT: Blood Debt, the Death
+		// trees' slice C4c2 (2026-11-25). Landed only, once per row per event, for an event naming who died; the row's
+		// required tag keeps it to a death carrying the wearer's Bleed. `Percent` is the seconds it is dealt over.
+		if (Action.bPassBleedLeftToStrongest)
+		{
+			AActor* Dead = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Dead && Self && Action.Percent > 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				UCataclysmDebuffs::PassBleedLeftToStrongest(Self, Dead, Action.Percent);
+			}
+			continue;
+		}
+		// A KILL MAKES THE NEXT LANDED HIT WITHIN `Percent` SECONDS A CRITICAL STRIKE: Chain Execution, the Death trees'
+		// slice C4d1 (2026-11-25). Once per row per event, landed only; a grant inside the window sets it to the full
+		// window again rather than adding a second charge, as ruled.
+		// TWICE ANSWERED'S OWN ROW DOES NOTHING HERE: it was rolled before the loop.
+		if (Action.bNextHitCriticalTwice)
+		{
+			continue;
+		}
+		if (Action.bNextHitCritical)
+		{
+			const UWorld* World = GetWorld();
+			// A VALUE OF NOUGHT IS "UNTIL USED": Brim's "your next hit", which states no time. The Death trees' slice C6a
+			// (2026-11-25), a judgement recorded there.
+			if (bLanded && World && Action.Percent >= 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NextHitCriticalUntilSeconds = Action.Percent > 0.0f ? World->GetTimeSeconds() + Action.Percent
+																	 : TNumericLimits<float>::Max();
+				// AND HOW MANY CRITICAL STRIKES IT HOLDS: the larger of what it held and this grant, two when this
+				// evasion was doubled above, never more (the Death trees' slice C6b4, as ruled). Only an evasion can be
+				// doubled: only `dodge` rolls the doubling.
+				NextHitCriticalCharges = FMath::Max(NextHitCriticalCharges, bCriticalStrikesTwice ? 2 : 1);
+			}
+			continue;
+		}
+		// A RUNNING HOLD BEFORE THE FERVOUR DECAY LENGTHENED BY `Percent` SECONDS, never past its full length: Keep the
+		// Count, the Death trees' slice C6a (2026-11-25). Once per row per event, landed only.
+		if (Action.bExtendFervourHold)
+		{
+			if (bLanded && Action.Percent > 0.0f && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				ExtendKillDecayHold(Action.Percent, UCataclysmFervour::KillDecayHoldFullSeconds(this));
 			}
 			continue;
 		}
@@ -8304,6 +9711,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		{
 			continue;
 		}
+		// A ROW WITH A CHANCE ROLLS FIRST, so a failed roll pays nothing and starts no wait (the Death trees' slice
+		// C6b3, 2026-11-25, for Tear Loose).
+		if (!PoolActionChanceComesUp(Action))
+		{
+			continue;
+		}
 		ApplyPoolAction(Action, EventTags, EventAmount);
 		NoteTriggerFired(Action);
 	}
@@ -8579,7 +9992,18 @@ bool UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow(const FExecuteAsked& A
 	// ten-piece (C1), judging and killing exactly as before; what is left here is the request and the row's trigger
 	// cooldown.
 	AActor* By = Asked.By.Get();
-	if (!Asked.IsAsked() || !By || !KillIfLeftBelow(By, Asked.BelowPercent))
+	if (!Asked.IsAsked() || !By)
+	{
+		return false;
+	}
+	// MARKED AS AN EXECUTE WHILE IT KILLS, so the death notice built inside the kill says so: Reaper's Edge's double
+	// Fervour reads it (the Death trees' slice C4d1, 2026-11-25). A cull, which shares `KillIfLeftBelow`, is not marked.
+	bool bKilled = false;
+	{
+		TGuardValue<bool> Executing(bBeingExecuted, true);
+		bKilled = KillIfLeftBelow(By, Asked.BelowPercent);
+	}
+	if (!bKilled)
 	{
 		return false;
 	}
@@ -9678,6 +11102,17 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	(void)EventTags;
 	float Amount = Base * Action.Percent / 100.0f;
 
+	// A FLAT AMOUNT, THE CLASS RESOURCE ONLY: the value itself (the Death trees' slice C6b3, 2026-11-25). Any other
+	// pool pays nothing for it; the generator refuses one.
+	if (Action.Base == ECataclysmPoolActionBase::Points)
+	{
+		if (Action.Pool != ClassResourcePoolName)
+		{
+			return;
+		}
+		Amount = Action.Percent;
+	}
+
 	// A ROW THAT GRANTS CLASS RESOURCE IS GENERATION TOO. Ruled 2026-10-07: the
 	// eighth place the pool is filled, beside the seven in `UCataclysmFervour`.
 	// Only this pool, and only a positive amount -- the helper leaves a row that
@@ -9688,6 +11123,17 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	}
 	if (FMath::IsNearlyZero(Amount))
 	{
+		return;
+	}
+
+	// A GAIN OF CLASS RESOURCE GOES THROUGH `UCataclysmFervour::RaisePool`, as every other gain to that pool does:
+	// held to the full bar after reserves (`MaximumClassResourceAsked`) rather than to the maximum attribute, and seen
+	// by Kindred Fires and Borrowed Time. Ruled by the coordinating session in the Death trees' slice C6b3
+	// (2026-11-25), for a `points` row and for the three enchantment rows that already granted class resource here
+	// through `TopUp`, whose amounts are unchanged. Scaled by `class_resource_generation` above.
+	if (Amount > 0.0f && Action.Pool == ClassResourcePoolName)
+	{
+		UCataclysmFervour::RaisePool(this, Amount);
 		return;
 	}
 

@@ -194,13 +194,24 @@ KNOWN_USED = "debuffs_carried"
 #: AND 41 WHEN `enemies_in_reach_while_own_stack` GAINED ITS TWO ROWS, 2026-10-18,
 #: for Warlord's Will's ten-piece bonus.
 #:
-#: AND 43 WHEN `max_class_resource` AND `block_chance` ARRIVED WITH THEIR ROWS,
-#: the War vow options' second slice, 2026-11-25: Unbridled and Titan, and
-#: Bastion.
+#: AND 42 WHEN `enemies_in_siphon` GAINED ITS ROWS, 2026-11-25, for the Soul
+#: Collector's Siphon (the Death trees' slice C2).
 #:
-#: AND 44 WHEN `current_health` ARRIVED WITH ITS ROW, the third slice's second
-#: half, V3b, 2026-11-25: Colossus Eternal.
-EXPECTED_NAMED_BY_A_ROW = 44
+#: AND 43 WHEN `fervour_thresholds_reached` GAINED ITS TWO ROWS, 2026-11-25, for
+#: the Soul Collector's Steady Count (the Death trees' slice C3d).
+#:
+#: AND 44 WHEN `seconds_poisoned_by_you` GAINED ITS FIVE ROWS, 2026-11-25, for
+#: the Shadow's Festering (the Death trees' slice C6b4).
+#:
+#: AND 45 WHEN `fervour_overflow_stacks` GAINED ITS ROW, 2026-11-25, for the
+#: Soul Collector's Overflow (the Death trees' slice C6c).
+#:
+#: AND 48 WHEN THE WAR LINE MET THE DEATH LINE (the Death trees' bundle 3 merge,
+#: 2026-11-25), whose three arrived on the War line the same day:
+#: `max_class_resource` and `block_chance` with the War vow options' second
+#: slice (Unbridled and Titan, and Bastion), and `current_health` with the
+#: third slice's second half, V3b (Colossus Eternal).
+EXPECTED_NAMED_BY_A_ROW = 48
 
 
 def scales_named_by_a_row() -> set[str]:

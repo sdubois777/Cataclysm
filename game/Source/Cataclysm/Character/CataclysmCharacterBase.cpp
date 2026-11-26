@@ -12,6 +12,7 @@
 // For health owed falling due. Issue #991.
 // For the Fervour that arrives from the passage of time. Issue #1008.
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmSiphon.h"
 // For the Bulwark's and the Berserker's Fervour decay out of combat. Slice C of plan_death_and_war.md, 2026-11-24.
 #include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmBerserkerStates.h"
@@ -283,6 +284,30 @@ void ACataclysmCharacterBase::RegenerationStep()
 		// holding the starting node, with Fervour in hand, out of contact for
 		// three seconds, gets anything else.
 		UCataclysmFervour::DecayStep(this, UCataclysmRegeneration::StepSeconds);
+
+		// AND THE DEATH CLASSES' DECAY AFTER THE LAST KILL, 2026-11-24: the Soul Collector's 5 a second and the
+		// Shadow's 10, once the grace after the last kill has run out. A rule of its own beside the Ravager's, for
+		// the reason `UCataclysmFervour::KillDecayPerSecondStat` gives. Nought for every character without one of
+		// those starting nodes, and its return value is dropped as every call above it is.
+		UCataclysmFervour::KillDecayStep(UCataclysmTargeting::AbilitySystemOf(this), UCataclysmRegeneration::StepSeconds);
+
+		// AND THE SHARES OF EARLIER SPENDS THAT CINDERS KEPT RETURNS, once due (the Death trees' slice C3c, 2026-11-25).
+		// Nothing for a character with none waiting. Its return value is dropped as every call above it is.
+		if (UCataclysmAbilitySystemComponent* Returning =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this)))
+		{
+			Returning->ReturnFervourDue();
+
+			// AND THE FERVOUR THRESHOLDS' STEP: Long Shadow's record of what is held now, and the fourth vow's faster
+			// recovery of running cooldowns (the Death trees' slice C3d). Its return value is dropped as every call
+			// above it is.
+			Returning->FervourThresholdStep(UCataclysmRegeneration::StepSeconds);
+		}
+
+		// AND THE SOUL COLLECTOR'S SIPHON (the Death trees' slice C2, 2026-11-25): who is in it, what each member
+		// carries, and once a second what each second pays. Nothing for a character without the keystone, whose
+		// record is cleared. Its return value is dropped as every call above it is.
+		FCataclysmSiphon::Step(this, UCataclysmRegeneration::StepSeconds);
 
 		// AND THE WAR CLASSES' DECAY, OUT OF COMBAT RATHER THAN OUT OF CONTACT. Slice C, 2026-11-24: the Bulwark's
 		// "your Fervour decays slowly out of combat" (5 a second, the owner's Q21) and the Berserker's "decays at 10 per
@@ -561,10 +586,30 @@ void ACataclysmCharacterBase::RefreshPassThroughBody()
 	}
 
 	// BOTH HALVES: what this body is when another moves into it, and what it moves through itself. A body whose bit is
-	// nought ignores nothing and is ignored by nothing, which is every creature.
+	// nought ignores nothing, which is every creature; and a creature on the monsters' side carries `HostileBodyMaskBit`
+	// as what it is, which only a character with Hollow Step ignores, and only while its movement skill moves it (the
+	// Death trees' slice C6e, 2026-11-25). Before that, no creature's filter carried a bit at all.
+	static_assert((HostileBodyMaskBit & PassThroughBodyMaskBits) == 0 && HostileBodyMaskBit < (1 << NumExtraFilterBits),
+				  "The hostile body bit must be its own, and inside the engine's extra filter bits.");
 	const uint8 OwnBit = PassThroughBodyMaskBit();
-	Capsule->SetMaskFilterOnBodyInstance(OwnBit);
+	const bool bHostile = OwnBit == 0 && TeamId == UCataclysmTeams::IdFor(ECataclysmTeam::Monsters);
+	Capsule->SetMaskFilterOnBodyInstance(bHostile ? HostileBodyMaskBit : OwnBit);
 	Capsule->SetMoveIgnoreMask(MovesThroughMaskFor(OwnBit));
+}
+
+void ACataclysmCharacterBase::SetMovesThroughHostiles(bool bThrough)
+{
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetMoveIgnoreMask(
+			MovesThroughMaskFor(PassThroughBodyMaskBit()) | (bThrough ? HostileBodyMaskBit : static_cast<uint8>(0)));
+	}
+}
+
+bool ACataclysmCharacterBase::MovesThroughHostiles() const
+{
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	return Capsule && (Capsule->GetMoveIgnoreMask() & HostileBodyMaskBit) != 0;
 }
 
 FGenericTeamId ACataclysmCharacterBase::GetGenericTeamId() const

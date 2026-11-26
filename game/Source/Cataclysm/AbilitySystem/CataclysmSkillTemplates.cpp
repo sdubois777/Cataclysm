@@ -49,6 +49,8 @@
 #include "Character/CataclysmPlayerCharacter.h"
 // For a thrall's Compel strike, ordered as a rule's. Issue #783.
 #include "Character/CataclysmEnemyCharacter.h"
+// For Hollow Step's step out of an enemy's body: the capsules' radii (the Death trees' slice C6e).
+#include "Components/CapsuleComponent.h"
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
 #include "AbilitySystem/CataclysmTerrain.h"
@@ -3131,10 +3133,61 @@ bool UCataclysmMovementSkill::RolledDirection(FVector& OutDirection) const
 	return true;
 }
 
-void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed)
+const TCHAR* UCataclysmMovementSkill::PassesThroughEnemiesStat = TEXT("movement_passes_through_enemies");
+
+bool UCataclysmMovementSkill::PassesThroughEnemies() const
+{
+	return PassesThroughEnemiesFor(Avatar(), SkillTags);
+}
+
+bool UCataclysmMovementSkill::PassesThroughEnemiesFor(const AActor* Mover, const FGameplayTagContainer& SkillTags)
+{
+	// THE SAME QUESTION `WornRowStat` ASKS, on the mover's own ability system with the skill's tags.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Mover ? Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Mover)) : nullptr;
+	return Asking && Asking->StatForSkill(FName(PassesThroughEnemiesStat), SkillTags, 0.0f) > 0.0f;
+}
+
+void UCataclysmMovementSkill::PassThroughEnemies(bool bThrough)
+{
+	if (ACataclysmCharacterBase* Mover = Cast<ACataclysmCharacterBase>(Avatar()))
+	{
+		Mover->SetMovesThroughHostiles(bThrough);
+	}
+	bPassingThrough = bThrough;
+}
+
+void UCataclysmMovementSkill::StepOutOfEnemies(const FVector& LineStart)
+{
+	// THE ONE STEP OUT, shared with Thousand Cuts' move (`UCataclysmMovement::StepOutOfEnemies`).
+	AActor* Mover = Avatar();
+	if (Mover && UCataclysmMovement::StepOutOfEnemies(Mover, LineStart))
+	{
+		ArrivedAt = Mover->GetActorLocation();
+	}
+}
+
+void UCataclysmMovementSkill::HitTheLineOnce(const FVector& From, const FVector& To,
+											 const TArray<AActor*>& AlreadyStruck)
+{
+	TArray<AActor*> Crossed;
+	for (AActor* OnTheLine : UCataclysmTargeting::FindEnemiesInLine(GetWorld(), Avatar(), From, To, ScaledRadiusCm()))
+	{
+		if (!AlreadyStruck.Contains(OnTheLine))
+		{
+			Crossed.Add(OnTheLine);
+		}
+	}
+	// AT THE SKILL'S OWN PERCENT: what its own hit gives a target, with nothing consumed.
+	HitWhatThePathCrossed(Crossed, PercentHitScaledGivesAnAlly(TArray<AActor*>()));
+}
+
+void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed, float PercentOverride)
 {
 	AActor* Self = Avatar();
-	const float Percent = (Self && !Crossed.IsEmpty()) ? WornRowStat(PathDamagePercentStat) : 0.0f;
+	const float Percent = (Self && !Crossed.IsEmpty())
+		? (PercentOverride >= 0.0f ? PercentOverride : WornRowStat(PathDamagePercentStat))
+		: 0.0f;
 	if (Percent <= 0.0f)
 	{
 		return;
@@ -3404,6 +3457,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 	{
 		return;
 	}
+
+	// PAID FOR, SO ITS END WILL BE A MOVEMENT SKILL'S END (the Death trees' slice C6b2, 2026-11-25). See `EndAbility`.
+	bPaidForThisUse = true;
 
 	AActor* Self = Avatar();
 	if (!Self)
@@ -3687,6 +3743,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// character inside it, AND NOT REFUSED FOR STARTING ON THE FLOOR, issues #2203
 	// and #2505: a blink in the frame the player is placed moved 0 cm.
 	const FVector SelfWas = Self->GetActorLocation();
+	// HOLLOW STEP: the move passes through enemies, for the move only, and never ends inside one (the Death trees'
+	// slice C6e). A Swap's teleport is not stopped by anything, so it only gains the line hit below.
+	const bool bThroughEnemies = PassesThroughEnemies();
 	if (Params.MovementMode == ECataclysmMovementMode::Swap)
 	{
 		// THE CASTER'S HALF OF THE EXCHANGE: unswept, and unchecked because `ChooseTradePartner` asked the fit.
@@ -3695,7 +3754,17 @@ void UCataclysmMovementSkill::ActivateAbility(
 	}
 	else
 	{
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(true);
+		}
 		UCataclysmMovement::MoveWithoutSticking(Self, End - Self->GetActorLocation());
+		ArrivedAt = Self->GetActorLocation();
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(false);
+			StepOutOfEnemies(Start);
+		}
 	}
 	ArrivedAt = Self->GetActorLocation();
 
@@ -3800,6 +3869,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// 2026-10-07. AFTER THE SKILL'S OWN BLOW AND WHAT FOLLOWS FROM IT, so a kill one of these makes is not counted
 	// as the arrival's. THE PULL IS LAST, so who the two hits reach does not depend on whether the pull is worn.
 	HitAlongThePath(Start, ArrivedAt);
+	// AND HOLLOW STEP'S "hits each one": every enemy on the line its own hit did not strike, once.
+	if (bThroughEnemies)
+	{
+		HitTheLineOnce(Start, ArrivedAt, Targets);
+	}
 	ExplodeAtBothEnds(Start, ArrivedAt);
 	PullNearbyToWhereItArrived();
 
@@ -3856,8 +3930,19 @@ void UCataclysmMovementSkill::FlickerOnce()
 						   Next->GetActorLocation().Y,
 						   Self->GetActorLocation().Z);
 		const FVector SelfWas = Self->GetActorLocation();
+		// HOLLOW STEP: each arrival passes through enemies and never ends inside one, the creature arrived at included.
+		const bool bThroughEnemies = PassesThroughEnemies();
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(true);
+		}
 		UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
 		ArrivedAt = Self->GetActorLocation();
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(false);
+			StepOutOfEnemies(SelfWas);
+		}
 
 		// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
 		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
@@ -3873,6 +3958,11 @@ void UCataclysmMovementSkill::FlickerOnce()
 		TArray<AActor*> One;
 		One.Add(Next);
 		HitScaled(One, TArray<AActor*>());
+		// AND EVERY OTHER ENEMY ON THIS ARRIVAL'S LINE, once.
+		if (bThroughEnemies)
+		{
+			HitTheLineOnce(SelfWas, ArrivedAt, One);
+		}
 
 		return;
 	}
@@ -3940,6 +4030,14 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	EnemiesHit = 0;
 	StruckAlready.Reset();
 	ArrivedAt = Start;
+
+	// HOLLOW STEP: a walked Charge passes through enemies until the ability ends, however it ends (`EndAbility`). It
+	// already hits each enemy on its line once, so it gains no line hit.
+	if (PassesThroughEnemies())
+	{
+		PassingThroughFrom = Start;
+		PassThroughEnemies(true);
+	}
 
 	// THE DIRECTION, TAKEN ONCE. `AimedPointWithin` is what every other movement
 	// mode uses to find where the player pointed, and taking it here rather than
@@ -4063,6 +4161,29 @@ void UCataclysmMovementSkill::EndAbility(
 		World->GetTimerManager().ClearTimer(AdvanceTimer);
 		World->GetTimerManager().ClearTimer(FlickerTimer);
 		World->GetTimerManager().ClearTimer(StopTimer);
+	}
+
+	// HOLLOW STEP'S MASK IS RESTORED ON EVERY WAY OUT, a cancelled or interrupted walked Charge included, and the mover
+	// is put outside any enemy it stopped inside (the Death trees' slice C6e, as ruled, H1 condition 3).
+	if (bPassingThrough)
+	{
+		PassThroughEnemies(false);
+		StepOutOfEnemies(PassingThroughFrom);
+	}
+
+	// A USE THAT WAS PAID FOR HAS ENDED, which Arrival's clock counts from (the Death trees' slice C6b2, 2026-11-25).
+	// A move cut short counts as well: it has ended. ONLY FOR A SKILL MADE FOR THE MOVEMENT SLOT, the slot the use's
+	// clock (`NoteMovementSkillUsed`) and Glancing Cuts' record ask. Cleared first, so the event the note raises
+	// cannot see it again.
+	const bool bAPaidMovementSkillUse = bPaidForThisUse && GetDesignedSlot() == ECataclysmAbilitySlot::Movement;
+	bPaidForThisUse = false;
+	if (bAPaidMovementSkillUse)
+	{
+		if (UCataclysmAbilitySystemComponent* Mover =
+				Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+		{
+			Mover->NoteMovementSkillEnded();
+		}
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
@@ -4549,8 +4670,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		Minion->SummonedBy = this;
 		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
-		Minion->ReservedFervour = Reserve;
-		UCataclysmCommand::ClampFervourToSpendable(Self);
+		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
 	}
 	return Minion;
 }
@@ -4952,9 +5072,10 @@ bool UCataclysmSummonSkill::Possess()
 			   ThrallReserve);
 		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
 		// Fervour drops at once. Issue #1160.
+		// Held through `HoldReserve`, which raises Bound Offering's spend (the Death trees' slice C3b).
 		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
 		{
-			Thrall->ReservedFervour = ThrallReserve;
+			UCataclysmCommand::HoldReserve(Self, Thrall, ThrallReserve, &SkillTags);
 		}
 		// AND THIS SKILL'S ROW AND LEVEL FACTOR, READ ONCE, AT THE TAKE. Issue #2764, slice 2b, by judgement 3 ("Subjugate's
 		// thralls credit Subjugate") and the owner's ruling of 2026-11-19 ("Yes, they scale too"): while it is commanded,
@@ -5020,9 +5141,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
 
-		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934.
-		Minion->ReservedFervour = Reserve;
-		UCataclysmCommand::ClampFervourToSpendable(Self);
+		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934. Held through `HoldReserve`, which raises Bound
+		// Offering's spend (the Death trees' slice C3b).
+		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
 	}
 	return Minion;
 }

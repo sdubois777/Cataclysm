@@ -1509,6 +1509,10 @@ bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
 
 		// OPENED ON THE CORPSE, for the reason the test above gives.
 		System->NoteHealthCostPaid();
+		// AND THE DEATH TREES' TWO CLOCKS, each taking an argument: a kill (slice B, which did not reset it here
+		// until slice C3a) and a spend of Fervour (slice C3a, 2026-11-25).
+		System->NoteOwnKill(/*GraceSeconds=*/4.0f);
+		System->NoteFervourSpent(/*Amount=*/10.0f);
 		for (const FWindow& Window : Windows)
 		{
 			(System->*Window.Open)();
@@ -1516,6 +1520,9 @@ bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
 
 		TestTrue(TEXT("a health cost counts as recent"),
 			System->SecondsSinceHealthCostPaid() >= 0.0f);
+		TestTrue(TEXT("a kill counts as recent"), System->SecondsSinceOwnKill() >= 0.0f);
+		TestTrue(TEXT("and holds the decay after it"), System->KillDecayIsHeld());
+		TestTrue(TEXT("a spend of Fervour counts as recent"), System->SecondsSinceFervourSpent() >= 0.0f);
 		for (const FWindow& Window : Windows)
 		{
 			TestTrue(FString::Printf(TEXT("before the respawn, %s counts as recent"),
@@ -1527,6 +1534,9 @@ bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
 
 		TestTrue(TEXT("after it, no health cost counts as recent"),
 			System->SecondsSinceHealthCostPaid() < 0.0f);
+		TestTrue(TEXT("after it, no kill counts as recent"), System->SecondsSinceOwnKill() < 0.0f);
+		TestFalse(TEXT("and the decay after a kill is no longer held"), System->KillDecayIsHeld());
+		TestTrue(TEXT("after it, no spend of Fervour counts as recent"), System->SecondsSinceFervourSpent() < 0.0f);
 		for (const FWindow& Window : Windows)
 		{
 			TestTrue(FString::Printf(TEXT("after the respawn, %s no longer counts"),
