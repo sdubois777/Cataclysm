@@ -67,7 +67,12 @@ def test_the_rows_taken_out_are_put_back_as_the_committed_sheet(copy_of_the_work
     assert sheet_rows(copy_of_the_workbook) != sheet_rows(WORKBOOK)
     report = reapply.apply(copy_of_the_workbook)
     assert report[-1].startswith(f"wrote {len(reapply.NODES)} change(s)"), report
-    assert sheet_rows(copy_of_the_workbook) == sheet_rows(WORKBOOK)
+    # THE SAME ROWS, IN ANY ORDER, since the Death finish bundle's assembly (2026-11-26): the script appends its rows,
+    # and the committed sheet holds the later slices' rows (E, D and A) after slice C's, so put back they land after
+    # those. The heading row is compared in place.
+    put_back, committed = sheet_rows(copy_of_the_workbook), sheet_rows(WORKBOOK)
+    assert put_back[0] == committed[0]
+    assert sorted(put_back[1:], key=repr) == sorted(committed[1:], key=repr)
 
 
 def test_a_second_run_writes_nothing(copy_of_the_workbook):
