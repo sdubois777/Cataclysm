@@ -67,6 +67,9 @@ EXPRESSED_ANOTHER_WAY = {
         "Kill Chain's 'within 2 seconds of each other' is its stacks' shared 2-second window (own_stacks, Stack "
         "Seconds 2), which Unbroken Chain lengthens at the grant (the Death trees' slice C6c)",
     # THE WAR LINE'S, since the bundle 3 merge (2026-11-25), when this check first read the War trees.
+    ("Bulwark_basic_trunk_000", "0", "target_rarity_is"):
+        "the Bulwark's '1 for each enemy you kill' names every kill, not a rarity: one fervour_per_kill row with no "
+        "condition (the final bundle's Bulwark kill Fervour, 2026-11-26)",
     ("Berserker_capstone_25", "2", "dual_wielding"):
         "entering Frenzy is the event; Frenzy begins only for a dual-wielding character (frenzy_on_full_fervour)",
     ("Berserker_capstone_50", "2", "dual_wielding"):

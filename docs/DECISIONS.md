@@ -25,6 +25,8 @@ Decisions made outside the Google Drive documents, newest first.
     - `tools/tests/test_war_bulwark_kill_fervour_scripts.py` (new, eleven).
     - `test_war_fervour_sources_scripts.py`: six rows, not nine, and its refusal test on the Saboteur's sentence.
     - `test_passive_effects_match_the_node_text.py`: 899.
+    - `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`: the Bulwark's sentence in
+      `EXPRESSED_ANOTHER_WAY`.
 
 ### SAID FIRST
 
@@ -56,6 +58,17 @@ Decisions made outside the Google Drive documents, newest first.
 - **BLOOD AND SWEAT IS NOT BUILT HERE.** That is the Bulwark keystone that says "Killing an enemy generates 1 Fervour,
   up to 5 per second" (`Bulwark_keystone_trunk_002`). It still has no row, because "up to 5 per second" needs a cap the
   kill generator does not have. Not in this task's scope.
+
+- **THE FIRST WHOLE PYTHON SUITE FAILED ON THREE TESTS THIS CHANGE MOVED**, beside the expected stale-asset test.
+  The three were in files I had not run. Both causes are corrected in the same change:
+  - `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` reads "each enemy you kill" as the Soul
+    Collector's rarity condition. The Bulwark's sentence now has an entry in `EXPRESSED_ANOTHER_WAY`, beside Gleaning's
+    for the same words: every kill, not a rarity.
+  - Two tests in `test_reapply_death_trees_workbook.py` expect every Death row to sit after every War row in
+    Passive Effects. The kill row was appended at the end of the sheet, after the Death rows. The Death rows were then
+    taken out and written back by `tools/reapply_death_trees_workbook.py`, the same steps those tests perform, which put
+    the kill row at sheet row 595, before them, where Slippery's row sits. A comparison of the workbook before and
+    after found all 28 sheets identical, the kill row's position aside.
 
 ### WHAT WAS RULED
 

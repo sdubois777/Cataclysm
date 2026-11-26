@@ -592,6 +592,7 @@ Bulwark_keystone_jg_final#1,Bulwark_keystone_jg_final,,,2.0,,,0.0,,0.0,0,-1.0,0,
 Saboteur_capstone_100#4,Saboteur_capstone_100,gadget_bolt_reach_metres,flat,4.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Saboteur_capstone_100#5,Saboteur_capstone_100,bolted_more_percent_per_gadget,flat,10.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Saboteur_basic_trunk_004#2,Saboteur_basic_trunk_004,,,3.0,,,0.0,,0.0,0,-1.0,5,0,class_resource,dodge,points,0.0,0.0,0.0,0,,0.0,0.25,0.0,,0.0,0,0.0,0
+Bulwark_basic_trunk_000#4,Bulwark_basic_trunk_000,fervour_per_kill,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 SoulCollector_basic_spine_000#1,SoulCollector_basic_spine_000,attack_damage,more,1.0,,,0.0,class_resource_held,2.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 SoulCollector_basic_spine_000#2,SoulCollector_basic_spine_000,spell_damage,more,1.0,,,0.0,class_resource_held,2.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 SoulCollector_basic_spine_000#3,SoulCollector_basic_spine_000,fervour_per_kill,flat,1.0,,target_rarity_is,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
@@ -897,4 +898,3 @@ Shadow_capstone_200#4,Shadow_capstone_200,,,100.0,,,0.0,,0.0,1,-1.0,0,0,dash_to_
 Necromancer_basic_gr_a1#1,Necromancer_basic_gr_a1,interpose_chance,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_gr_c1#1,Necromancer_basic_gr_c1,minions_turn_on_your_last_attacker,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_gr_c1#2,Necromancer_basic_gr_c1,minion_damage,increased,3.0,,target_is_your_last_attacker,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
-Bulwark_basic_trunk_000#4,Bulwark_basic_trunk_000,fervour_per_kill,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
