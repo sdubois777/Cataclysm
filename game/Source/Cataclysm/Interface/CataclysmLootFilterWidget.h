@@ -14,7 +14,8 @@ class UTextBlock;
 
 /**
  * The loot filter screen: the filters, the selected filter's rules, and an editor for the selected rule. Issue #2846,
- * slice LF2. Opened with L, or `Cataclysm.EditLootFilters`. It does not pause the game, as no screen in this game does.
+ * slice LF2. Opened with L, or `Cataclysm.EditLootFilters`. It does not pause the game, as no screen in this game does
+ * but the pause screen.
  *
  * WHAT A PLAYER DOES ON IT:
  *   - picks a filter in the list, and makes it the one in use ("Use this filter");
