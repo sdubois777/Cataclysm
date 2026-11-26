@@ -129,14 +129,14 @@ namespace CataclysmShadowStrikesTest
 			if (Variable)
 			{
 				Was = Variable->GetFloat();
-				Variable->Set(Value, ECVF_SetByCode);
+				Variable->Set(Value, ECVF_SetByConsole);
 			}
 		}
 		~FPinned()
 		{
 			if (Variable)
 			{
-				Variable->Set(Was, ECVF_SetByCode);
+				Variable->Set(Was, ECVF_SetByConsole);
 			}
 		}
 		IConsoleVariable* Variable = nullptr;
