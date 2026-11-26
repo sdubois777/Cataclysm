@@ -266,6 +266,7 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 	const TArray<int32> NoCaps;
 	int32 Landed = 0;
 	int32 OnTheFree = 0;
+	int32 FreeAlreadyTaken = 0;
 	int32 ControlLanded = 0;
 	int32 ControlOnABesieged = 0;
 	FString Missed;
@@ -273,7 +274,13 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 	{
 		FRandomStream Draws(Seed);
 		FRandomStream ControlDraws(Seed);
-		// ONE LEFT TODAY, so a wave makes at most one: the free city then has room for it.
+		// ONE LEFT TODAY, so a wave makes at most one: the free city then has room for it -- UNLESS AN EARLIER DUNGEON
+		// OF THE SAME WAVE TOOK IT. An ordinary dungeon's sub-type roll counts toward a city's one Siege too, and in
+		// this set-up only the free city can still take one, so an ordinary dungeon landing there first and rolling a
+		// Siege leaves no free city; the War Quest dungeon then lands where it was drawn, the ruled "none free" case
+		// (as `Simulation.trigger_surge` does). Window b4-w1 counted 10 of 313 off the free city with this test
+		// counting them as misses; they are counted apart here, and only a miss with the free city still free fails.
+		bool bFreeTaken = false;
 		for (const FCataclysmDungeon& Dungeon : Scheduler->RollWave(*Map, 1, 0, Draws, NoCaps, AllButOne, War, false,
 																	 Seed, 1))
 		{
@@ -281,9 +288,11 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 			{
 				++Landed;
 				OnTheFree += Dungeon.CityId == Free ? 1 : 0;
-				// EACH ONE THAT MISSED THE FREE CITY, NAMED: window b4-w1 counted 10 of 313 elsewhere and reading the
-				// re-draw did not say why. Its city, whether that city is exposed and holds a Siege here, its sub-type.
-				if (Dungeon.CityId != Free && Missed.Len() < 1500)
+				if (Dungeon.CityId != Free && bFreeTaken)
+				{
+					++FreeAlreadyTaken;
+				}
+				else if (Dungeon.CityId != Free && Missed.Len() < 1500)
 				{
 					Missed += FString::Printf(TEXT("seed %d: dungeon %d on city %d (exposed %d, sieges %d, free %d), sub-type %d; "),
 											  Seed, Dungeon.DungeonId, Dungeon.CityId, Map->IsExposed(Dungeon.CityId) ? 1 : 0,
@@ -291,6 +300,7 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 											  static_cast<int32>(Dungeon.SubType));
 				}
 			}
+			bFreeTaken |= Dungeon.CityId == Free && Dungeon.SubType == ECataclysmDungeonSubType::Siege;
 		}
 		for (const FCataclysmDungeon& Dungeon : Scheduler->RollWave(*Map, 1, 0, ControlDraws, NoCaps, All, War, false,
 																	 Seed, 1))
@@ -311,7 +321,10 @@ bool FCataclysmWarQuestSiegesReDrawTest::RunTest(const FString& Parameters)
 		AddInfo(FString::Printf(TEXT("WAR RE-DRAW MISSED: %s"), *Missed));
 	}
 	TestTrue(TEXT("set-up: War Quest dungeons were made"), Landed > 0 && ControlLanded > 0);
-	TestEqual(TEXT("every one landed on the city with no Siege"), OnTheFree, Landed);
+	AddInfo(FString::Printf(TEXT("WAR RE-DRAW: %d landed after an earlier dungeon of the wave took the free city's Siege"),
+							FreeAlreadyTaken));
+	TestEqual(TEXT("every one that landed while the free city was free landed on it"), OnTheFree,
+			  Landed - FreeAlreadyTaken);
 	TestEqual(TEXT("CONTROL: with none free, each lands where it was drawn, on a besieged city"), ControlOnABesieged,
 			  ControlLanded);
 	return true;
