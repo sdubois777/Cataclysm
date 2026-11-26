@@ -233,15 +233,17 @@ CATACLYSM_TEST(FCataclysmRandomDotPicksAmongTheFiveTest,
 	return true;
 }
 
-CATACLYSM_TEST(FCataclysmRandomDotNeedsATenthTest,
-	"Cataclysm.Triggers.ARandomDotNeedsALandedBlowThatTookATenthAndALivingTarget")
+CATACLYSM_TEST(FCataclysmRandomDotNeedsADealtBlowTest,
+	"Cataclysm.Triggers.ARandomDotNeedsALandedBlowThatDealtSomethingAndALivingTarget")
 {
 	using namespace CataclysmTriggerTest;
 
-	// THE OWNER'S RULE OF 2026-09-02 (#917): an ailment that does not come from
-	// the skill's own row lands only from a blow that took a tenth of the
-	// target's maximum health, and never on a corpse. And the action's own
-	// rules: an event that landed, naming who was struck.
+	// THE OWNER'S RULING OF 2026-11-26 ("I agree, fix it"): an ailment that does
+	// not come from the skill's own row lands from any blow that dealt more than
+	// nought, and never on a corpse. It replaced the tenth of the target's
+	// maximum health of 2026-09-02 (#917). And the action's own rules: an event
+	// that landed, naming who was struck. EACH "APPLIES NOTHING" IS ASKED BEFORE
+	// THE BLOW THAT APPLIES ONE, so the target carries nothing when it is asked.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -254,16 +256,16 @@ CATACLYSM_TEST(FCataclysmRandomDotNeedsATenthTest,
 		const FName Crit(TEXT("critical_strike"));
 
 		const FFighter Target(World);
-		Striker.AbilitySystem->ActOnEvent(Crit, nullptr, 99.0f, true, Target.Actor);
-		TestEqual(TEXT("99 of a thousand applies nothing"), Target.DamageOverTimeCarried(), 0);
+		Striker.AbilitySystem->ActOnEvent(Crit, nullptr, 0.0f, true, Target.Actor);
+		TestEqual(TEXT("an event that dealt nothing applies nothing"), Target.DamageOverTimeCarried(), 0);
 		Striker.AbilitySystem->ActOnEvent(Crit, nullptr, 500.0f, /*bLanded=*/false, Target.Actor);
 		TestEqual(TEXT("an event that did not land applies nothing"),
 			Target.DamageOverTimeCarried(), 0);
 		Striker.AbilitySystem->ActOnEvent(Crit, nullptr, 500.0f, true, nullptr);
 		TestEqual(TEXT("an event naming nobody applies nothing to anyone"),
 			Target.DamageOverTimeCarried(), 0);
-		Striker.AbilitySystem->ActOnEvent(Crit, nullptr, 100.0f, true, Target.Actor);
-		TestEqual(TEXT("100 of a thousand applies one"), Target.DamageOverTimeCarried(), 1);
+		Striker.AbilitySystem->ActOnEvent(Crit, nullptr, 99.0f, true, Target.Actor);
+		TestEqual(TEXT("99 of a thousand, under a tenth, applies one"), Target.DamageOverTimeCarried(), 1);
 
 		const FFighter Dead(World);
 		Dead.Vitals->SetHealth(0.0f);
@@ -388,28 +390,38 @@ CATACLYSM_TEST(FCataclysmRetaliationDealtTest,
 		const FPinnedInt Pinned(TEXT("Cataclysm.RandomDotPick"), 4);
 		const FFighter Defender(World);
 		const FFighter Attacker(World);
+		// A SECOND ATTACKER FOR THE LARGE BLOW, so it is asked of one carrying nothing.
+		const FFighter LargeAttacker(World);
 		Defender.AbilitySystem->SetPoolActions({RandomDotOn(TEXT("retaliation_dealt"))});
 		// RETALIATION OF A HUNDRED PER CENT, so a blow worth 50 pays 50 back,
 		// under a tenth of the attacker's thousand, and one worth 500 pays 500.
+		// Since the owner's ruling of 2026-11-26 ("I agree, fix it") anything that
+		// reached health carries the random damage over time; the tenth of #917 is
+		// gone.
 		Defender.AbilitySystem->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 100.0f);
+		const TArray<const FCataclysmAilmentKind*> Pool =
+			UCataclysmAilments::RandomDamageOverTimePool();
+		// NO EARLY RETURN, which would skip the world's destruction below: each use of the pool asks this instead.
+		const bool bPool = TestEqual(TEXT("set-up: five damage over time ailments to choose among"), Pool.Num(), 5);
+
+		// THE CONTROL: A BLOW WORTH NOTHING PAYS NOTHING BACK AND APPLIES NOTHING.
+		const float Nothing = UCataclysmRetaliation::Pay(
+			Defender.AbilitySystem, Defender.Actor, Attacker.Actor, 0.0f);
+		TestEqual(TEXT("control: a blow worth nothing paid nothing back"), Nothing, 0.0f, 0.01f);
+		TestEqual(TEXT("control: and applied nothing"), Attacker.DamageOverTimeCarried(), 0);
 
 		const float Small = UCataclysmRetaliation::Pay(
 			Defender.AbilitySystem, Defender.Actor, Attacker.Actor, 50.0f);
 		TestTrue(TEXT("a blow worth 50 paid something back"), Small > 0.0f);
-		TestEqual(TEXT("and under a tenth it applied nothing"),
-			Attacker.DamageOverTimeCarried(), 0);
+		TestTrue(TEXT("and under a tenth the attacker carries the pinned Burn"),
+			bPool && Attacker.Carries(*Pool[4]));
 
 		const float Large = UCataclysmRetaliation::Pay(
-			Defender.AbilitySystem, Defender.Actor, Attacker.Actor, 500.0f);
+			Defender.AbilitySystem, Defender.Actor, LargeAttacker.Actor, 500.0f);
 		TestTrue(TEXT("a blow worth 500 paid at least a tenth back"), Large >= 100.0f);
-		const TArray<const FCataclysmAilmentKind*> Pool =
-			UCataclysmAilments::RandomDamageOverTimePool();
-		if (Pool.Num() == 5)
-		{
-			TestTrue(TEXT("and the attacker carries the pinned Burn"),
-				Attacker.Carries(*Pool[4]));
-		}
+		TestTrue(TEXT("and the attacker carries the pinned Burn"),
+			bPool && LargeAttacker.Carries(*Pool[4]));
 	}
 	World->DestroyWorld(false);
 	return true;

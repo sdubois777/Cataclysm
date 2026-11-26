@@ -630,11 +630,11 @@ CATACLYSM_TEST(FCataclysmTrapRowArmingAndRadiusTest,
 }
 
 // ==========================================================================
-// 21. The slow: only the enemy that set the trap off, and only when the cast took a tenth of it (M3 (b), R1)
+// 21. The slow: only the enemy that set the trap off, when the cast dealt it anything (M3 (b), R1; the owner, 2026-11-26)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapRowSlowTest,
-	"Cataclysm.Traps.TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOffByItsStrengthForItsSecondsWhenTheCastTookATenth")
+	"Cataclysm.Traps.TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOffByItsStrengthForItsSecondsEvenWhenTheCastTookUnderATenth")
 {
 	using namespace CataclysmTrapRowTest;
 
@@ -643,8 +643,9 @@ CATACLYSM_TEST(FCataclysmTrapRowSlowTest,
 	// holds the Heavy flag alone; the other two also hold "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds"
 	// as the item builds it from its row (action `slow_for_seconds` on `trap_triggered`, requiring Type.Trap, the strength
 	// the value and the seconds Stack Seconds), rolled at 25 and 3. The control's and the second player's creatures hold
-	// 1,500 health, so the lash's blow takes more than a tenth of it; the third player's 100,000, so it takes far less (the
-	// owner, 2026-10-21: "Follow the tenth rule").
+	// 1,500 health, so the lash's blow takes more than a tenth of it; the third player's 100,000, so it takes far less.
+	// THE OWNER'S RULING OF 2026-11-26 ("I agree, fix it") replaced the tenth (the owner, 2026-10-21: "Follow the tenth
+	// rule") with a blow that dealt more than nought, so the third enemy is slowed too.
 	FTrapRowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -731,30 +732,36 @@ CATACLYSM_TEST(FCataclysmTrapRowSlowTest,
 				   "that set it off"),
 		TrapRowCarries(SlowOther, Cripple));
 
-	// AND ON A CAST THAT TOOK LESS THAN A TENTH: NO SLOW (the owner, 2026-10-21).
+	// AND ON A CAST THAT TOOK LESS THAN A TENTH: SLOWED AS WELL, since the owner's ruling of 2026-11-26 asks only that the
+	// blow dealt something.
 	TrapRowStep(GlancingTrap);
 	TestTrue(*FString::Printf(TEXT("set-up: the third cast struck its enemy for less than a tenth: %.2f of 100,000"),
 							  TrapRowTakenFrom(GlancingSetter, Sturdy)),
 		TrapRowTakenFrom(GlancingSetter, Sturdy) > 0.0f && TrapRowTakenFrom(GlancingSetter, Sturdy) < Sturdy / 10.0f);
-	TestFalse(TEXT("so the enemy that set it off is not slowed: the rule of a tenth"), TrapRowCarries(GlancingSetter, Cripple));
+	TestTrue(TEXT("so the enemy that set it off is slowed: a blow that dealt anything is enough"),
+		TrapRowCarries(GlancingSetter, Cripple));
+	TestEqual(TEXT("by the row's 25 per cent there too"),
+		UCataclysmSkillEffects::StatedStrengthOn(GlancingSetter, Cripple), 25.0f, 0.01f);
 	return true;
 }
 
 // ==========================================================================
-// 22. The bleed: every enemy the cast strikes, at its size, under the rule of a tenth (P215)
+// 22. The bleed: every enemy the cast strikes, at its size, when the blow reached health (P215; the owner, 2026-11-26)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapRowBleedTest,
-	"Cataclysm.Traps.TheBleedRowBleedsEveryEnemyATrapsCastStrikesAtItsSizeWhenTheBlowTookATenth")
+	"Cataclysm.Traps.TheBleedRowBleedsEveryEnemyATrapsCastStrikesAtItsSizeEvenWhenTheBlowTookUnderATenth")
 {
 	using namespace CataclysmTrapRowTest;
 
 	// FOUR PLAYERS 100 M APART, EACH WITH A HEAVY TRAP 20 M NORTH, THE ENEMY THAT SETS IT OFF 2.5 M EAST OF IT AND A
 	// SECOND 4 M EAST OF IT, OUTSIDE ITS 3 M AND INSIDE SEARING LASH'S 5 M CONE. The creatures hold 1,500 health, so the
-	// lash's blow takes more than a tenth of it (the owner's rule of #917). The control holds the Heavy flag alone;
+	// lash's blow takes more than a tenth of it. The control holds the Heavy flag alone;
 	// the next two also hold "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast" as the item builds it
 	// from its row (action `apply_status_sized` on `deployable_hit`, requiring Type.Trap, Ailment Bleed, no wait),
-	// rolled at 1 and at 2; the fourth holds it at 2 and its creatures 100,000 health, a blow far short of a tenth.
+	// rolled at 1 and at 2; the fourth holds it at 2 and its creatures 100,000 health, a blow far short of a tenth, which
+	// since the owner's ruling of 2026-11-26 ("I agree, fix it") bleeds as well: the tenth of #917 is gone, and a blow
+	// that reached health is enough.
 	FTrapRowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -863,11 +870,12 @@ CATACLYSM_TEST(FCataclysmTrapRowBleedTest,
 			AtTwo, AtOne * 2.0f, AtOne * 0.001f);
 	}
 
-	// AND THE OWNER'S RULE OF A TENTH STILL HOLDS: a blow far short of a tenth lays nothing.
-	TestTrue(*FString::Printf(TEXT("set-up: the sturdy case's cast struck its enemy: %.2f of 100,000"),
+	// AND THE TENTH OF #917 IS GONE (the owner's ruling of 2026-11-26): a blow far short of a tenth that reached health
+	// lays the bleed.
+	TestTrue(*FString::Printf(TEXT("set-up: the sturdy case's cast struck its enemy, under a tenth: %.2f of 100,000"),
 							  TrapRowTakenFrom(Cases[3].Setter, Sturdy)),
-		TrapRowTakenFrom(Cases[3].Setter, Sturdy) > 0.0f);
-	TestFalse(TEXT("a blow short of a tenth of the enemy's health lays no bleed (#917)"),
+		TrapRowTakenFrom(Cases[3].Setter, Sturdy) > 0.0f && TrapRowTakenFrom(Cases[3].Setter, Sturdy) < Sturdy / 10.0f);
+	TestTrue(TEXT("a blow short of a tenth of the enemy's health that reached it lays the bleed"),
 		TrapRowCarries(Cases[3].Setter, Bleed));
 	return true;
 }
@@ -1028,7 +1036,7 @@ CATACLYSM_TEST(FCataclysmTrapRowEvasionTest,
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapRowLateSlowTest,
-	"Cataclysm.Traps.AProjectileTrapsLateShotSlowsTheEnemyThatSetItOffWhenItTakesATenthAndTheSpentTrapCountsForNothing")
+	"Cataclysm.Traps.AProjectileTrapsLateShotSlowsTheEnemyThatSetItOffWhenItDealsAnythingAndTheSpentTrapCountsForNothing")
 {
 	using namespace CataclysmTrapRowTest;
 
@@ -1037,7 +1045,10 @@ CATACLYSM_TEST(FCataclysmTrapRowLateSlowTest,
 	// slow as the item builds it from its row (`slow_for_seconds` on `trap_triggered`, rolled at 25 and 3). The control's,
 	// the second's and the fourth's creatures hold 1,000 health, the third's 100,000. THE TRAP IS USED UP AS ITS CAST
 	// STARTS, so the shot lands after it is gone, and the slow is decided at that blow (ruled 2026-10-21, brief 60c). The
-	// fourth player's shot is landed 5.5 s after its trap triggered, past the slow's wait of 5 s.
+	// fourth player's shot is landed 5.5 s after its trap triggered, past the slow's wait of 5 s. THE THIRD'S SHOT TAKES
+	// UNDER A TENTH AND SLOWS ALL THE SAME: the owner's ruling of 2026-11-26 ("I agree, fix it") replaced the tenth with a
+	// blow that dealt more than nought. The trigger itself, which dealt nothing while the shot was in flight, slows
+	// nothing: that is the control for the new rule.
 	FTrapRowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -1118,7 +1129,9 @@ CATACLYSM_TEST(FCataclysmTrapRowLateSlowTest,
 	TestTrue(TEXT("set-up: the trap is used up as its cast starts"), TrapRowGone(SlowWatched));
 	TestEqual(TEXT("set-up: and its enemy is untouched: the shot is still in flight"), TrapRowTakenFrom(SlowSetter, Frail),
 		0.0f, 0.001f);
-	TestFalse(TEXT("so nothing is slowed yet"), TrapRowCarries(SlowSetter, Cripple));
+	TestFalse(TEXT("so nothing is slowed yet: a trigger that dealt nothing lays no slow"), TrapRowCarries(SlowSetter, Cripple));
+	TestEqual(TEXT("set-up: nor has the sturdy enemy been touched yet"), TrapRowTakenFrom(GlancingSetter, Sturdy), 0.0f, 0.001f);
+	TestFalse(TEXT("control: so it is not slowed yet either"), TrapRowCarries(GlancingSetter, Cripple));
 
 	// A SPENT TRAP IS NOT COUNTED AGAINST THE CAP (T6): with its shot in flight, none stands, and five more stand.
 	TestEqual(TEXT("with its shot in flight the used-up trap is not among the player's traps"),
@@ -1150,7 +1163,10 @@ CATACLYSM_TEST(FCataclysmTrapRowLateSlowTest,
 	TestTrue(*FString::Printf(TEXT("set-up: the third shot struck for less than a tenth: %.2f of 100,000"),
 							  TrapRowTakenFrom(GlancingSetter, Sturdy)),
 		TrapRowTakenFrom(GlancingSetter, Sturdy) > 0.0f && TrapRowTakenFrom(GlancingSetter, Sturdy) < Sturdy / 10.0f);
-	TestFalse(TEXT("so its enemy is not slowed: the rule of a tenth"), TrapRowCarries(GlancingSetter, Cripple));
+	TestTrue(TEXT("and its enemy is slowed all the same: a blow that dealt anything is enough"),
+		TrapRowCarries(GlancingSetter, Cripple));
+	TestEqual(TEXT("by the row's 25 per cent there too"),
+		UCataclysmSkillEffects::StatedStrengthOn(GlancingSetter, Cripple), 25.0f, 0.01f);
 
 	// THE FOURTH: ITS SHOT LANDS 5.5 S AFTER ITS TRAP TRIGGERED, PAST THE SLOW'S WAIT.
 	TrapRowStep(LateTrap);

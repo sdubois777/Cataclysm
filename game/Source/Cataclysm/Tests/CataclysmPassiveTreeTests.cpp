@@ -11594,11 +11594,12 @@ bool FCataclysmEveryPlainDemonicRowTest::RunTest(const FString&)
 // --- the three energy-shield keystones -------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWardedOnARealCharacterTest,
-	"Cataclysm.Passives.WardedLetsARealRitualistsShieldTakeDamageOverTime",
+	"Cataclysm.Passives.WardedLetsARealRitualistsShieldTakeWhatWouldBypassIt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Ritualist_keystone_c_kA` Warded: "Your Energy Shield absorbs damage over
- *  time as well as hits." A flag, so the row holds 1. */
+/** `Ritualist_keystone_c_kA` Warded: "Your Energy Shield absorbs damage that
+ *  would bypass it." (the owner's choice of 2026-11-26). A flag, so the row
+ *  holds 1. */
 bool FCataclysmPassiveWardedOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
@@ -11631,9 +11632,9 @@ bool FCataclysmPassiveWardedOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is whether the shield absorbs damage over time"),
+	TestEqual(TEXT("and it is whether the shield absorbs damage that would bypass it (the owner, 2026-11-26)"),
 			  Effects[0]->Stat,
-			  FString(UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat));
+			  FString(UCataclysmDamageCalculation::ShieldAbsorbsWhatBypassesItStat));
 	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
 	TestEqual(TEXT("of one, because a flag is on or off"),
@@ -11642,9 +11643,9 @@ bool FCataclysmPassiveWardedOnARealCharacterTest::RunTest(const FString&)
 			  FString());
 
 	const FGameplayAttribute Flag =
-		Combat::GetShieldAbsorbsDamageOverTimeAttribute();
+		Combat::GetShieldAbsorbsWhatBypassesItAttribute();
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("an unspent Ritualist's shield stops hits only"),
+	TestEqual(TEXT("an unspent Ritualist's shield lets past what would bypass it"),
 			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
 
 	FCataclysmPassiveAllocation Allocation;
@@ -17206,14 +17207,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveAttritionOnARealCharacterTest,
  * highest a draw from 0 to 100 can come, so only a chance of the whole range
  * passes. A node granting half would pass a roll pinned at nought.
  *
- * THE TENTH-OF-MAXIMUM-HEALTH RULE STILL APPLIES, settled by the documents and
- * not ruled here: the project owner's rule of 2026-09-02 (#917) covers every
- * ailment that does not come from the skill's own row, and the sentence removes
- * the roll, not the threshold. So a melee blow taking less than a tenth applies
- * neither.
+ * THE BLOW MUST STILL HAVE DEALT SOMETHING. The project owner's ruling of
+ * 2026-11-26 ("I agree, fix it") covers every ailment that does not come from
+ * the skill's own row: it applies from any blow that landed, dealt more than
+ * nought and left the target alive. It replaced the tenth of maximum health of
+ * 2026-09-02 (#917), so a melee blow taking less than a tenth now applies both,
+ * and the sentence removes the roll, not that rule.
  *
  * EVERY CLAIM HAS ITS CONTROL: the same blow without the point, the same blow
- * with a spell's tags, and a blow below the threshold, each applying neither.
+ * with a spell's tags, and a melee blow that dealt nothing, each applying
+ * neither.
  */
 bool FCataclysmPassiveAttritionOnARealCharacterTest::RunTest(const FString&)
 {
@@ -17395,9 +17398,23 @@ bool FCataclysmPassiveAttritionOnARealCharacterTest::RunTest(const FString&)
 	TestTrue(*FString::Printf(TEXT("a melee blow that takes under a tenth lands: "
 								   "%.1f of %.0f"), Small.Taken, DeepPool),
 			 Small.Taken > 0.0f && Small.Taken < DeepPool / 10.0f);
-	TestFalse(TEXT("and does not Cripple, the threshold still applying"),
-			  Small.bCrippled);
-	TestFalse(TEXT("or Weaken"), Small.bWeakened);
+	TestTrue(TEXT("and Cripples, a blow that dealt anything being enough"),
+			 Small.bCrippled);
+	TestTrue(TEXT("and Weakens"), Small.bWeakened);
+
+	// THE CONTROL FOR THE RULE THAT REPLACED THE TENTH: a melee blow that deals
+	// nothing applies neither, Attrition or not.
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetAttackDamageAttribute(), 0.0f);
+	const FStruck Nothing = Strike(Melee, SmallPool);
+	if (!TestEqual(TEXT("set-up: a melee blow with no attack damage takes nothing"),
+				   Nothing.Taken, 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("CONTROL: a melee blow that dealt nothing does not Cripple"),
+			  Nothing.bCrippled);
+	TestFalse(TEXT("CONTROL: or Weaken"), Nothing.bWeakened);
 
 	return true;
 }

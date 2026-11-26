@@ -8463,23 +8463,24 @@ bool FCataclysmZeroDamageSkillStillBurnsTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIncidentalBurnNeedsTheThresholdTest,
-	"Cataclysm.Skills.AnIncidentalBurnNeedsATenthOfMaximumHealth",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIncidentalBurnNeedsADealtBlowTest,
+	"Cataclysm.Skills.AnIncidentalBurnNeedsABlowThatDealtSomethingAndADesignedOneDoesNot",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmIncidentalBurnNeedsTheThresholdTest::RunTest(const FString&)
+bool FCataclysmIncidentalBurnNeedsADealtBlowTest::RunTest(const FString&)
 {
-	// THE OTHER HALF OF ISSUE #917. A skill that states the ailment applies it
-	// regardless; one that does not -- a gem, an affix, an enemy modifier --
-	// still has to clear the same tenth of maximum health that stunning does.
+	// THE OTHER HALF OF ISSUE #917, AS THE OWNER RULED IT AGAIN ON 2026-11-26
+	// ("I agree, fix it"). A skill that states the ailment applies it regardless;
+	// one that does not -- a gem, an affix, an enemy modifier -- needs a blow that
+	// dealt more than nought and left the target alive. It no longer has to clear
+	// the tenth of maximum health that stunning still does.
 	//
 	// NOTHING PASSES `bBurnIsDesigned=false` IN THE GAME TODAY, which is why
 	// this drives `ApplyBurn` directly. Every caller reads a row or a minion
-	// type, and all of them are designed. The ailment affixes of issue #899 did
-	// not take this branch when they arrived: `UCataclysmAilments` applies the
-	// same tenth-of-maximum-health threshold once for every ailment, before it
-	// knows which of them landed. A gem or an enemy modifier setting something
-	// alight is what would use it.
+	// type, and all of them are designed. The ailment affixes of issue #899 do
+	// not take this branch: `UCataclysmAilments` applies the same dealt-something
+	// rule once for every ailment, before it knows which of them landed. A gem or
+	// an enemy modifier setting something alight is what would use it.
 	using namespace CataclysmSkillTest;
 
 	UWorld* World = MakeWorld();
@@ -8488,25 +8489,28 @@ bool FCataclysmIncidentalBurnNeedsTheThresholdTest::RunTest(const FString&)
 	FScopedFighter Attacker(World, FVector::ZeroVector);
 	FScopedFighter Target(World, FVector(2 * M, 0, 0));
 
-	// A THOUSAND MAXIMUM HEALTH MAKES THE THRESHOLD A ROUND HUNDRED, which is
-	// the same arrangement `CataclysmStunTests.cpp` uses for the stun's identical
-	// rule. The harness sets 100,000 by default, so this is set deliberately.
+	// A THOUSAND MAXIMUM HEALTH MAKES THE OLD THRESHOLD A ROUND HUNDRED, which is
+	// the arrangement `CataclysmStunTests.cpp` uses for the stun's tenth, still in
+	// force there. The harness sets 100,000 by default, so this is set
+	// deliberately: a blow of 99 is under the tenth the incidental burn once asked.
 	Target.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
 	Target.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
 
 	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
 
-	TestFalse(TEXT("an incidental burn from a scratch is refused"),
+	// THE CONTROL, ASKED FIRST so the target carries nothing when it is asked: an
+	// incidental burn from a blow that dealt nothing is refused.
+	TestFalse(TEXT("CONTROL: an incidental burn from a blow that dealt nothing is refused"),
 		UCataclysmSkillEffects::ApplyBurn(Attacker.Actor, Target.Actor,
-										  /*HitDamage=*/99.0f,
+										  /*HitDamage=*/0.0f,
 										  /*bScalesWithInstigator=*/true,
 										  /*bBurnIsDesigned=*/false));
-	TestFalse(TEXT("so the target is not alight"),
+	TestFalse(TEXT("CONTROL: so the target is not alight"),
 		UCataclysmSkillEffects::HasTag(Target.Actor, Burn));
 
-	TestTrue(TEXT("and one taking a tenth of maximum health lands"),
+	TestTrue(TEXT("an incidental burn from a scratch, under a tenth of maximum health, lands"),
 		UCataclysmSkillEffects::ApplyBurn(Attacker.Actor, Target.Actor,
-										  /*HitDamage=*/100.0f,
+										  /*HitDamage=*/99.0f,
 										  /*bScalesWithInstigator=*/true,
 										  /*bBurnIsDesigned=*/false));
 	TestTrue(TEXT("so now it is alight"),
@@ -24127,16 +24131,22 @@ bool FCataclysmTemporaryAbsorbOrderTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbEveryKindTest,
-	"Cataclysm.TemporaryAbsorb.ItAbsorbsADamageOverTimeTickAndABleedTickTheEnergyShieldLetsThrough",
+	"Cataclysm.TemporaryAbsorb.ItAbsorbsADamageOverTimeTickAndABleedTickBeforeTheEnergyShieldIsAsked",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * Ruling 4 of 2026-10-07: it absorbs every kind of damage, a bleed included. The control's energy shield takes its
- * share of a tick with no ailment and none of a bleed tick; the holder's temporary absorb takes the whole of both,
- * and the holder's shield and health take none. Then one tick through the whole pipeline, so the write is seen.
+ * share of a tick with no ailment; the holder's temporary absorb takes the whole of it, and the holder's shield and
+ * health take none. Then one tick through the whole pipeline, so the write is seen.
  *
- * STANDING: the holder at the origin, the enemy 3 m along X, the control 20 m along Y. The first half calls
- * `Resolve` by hand and changes nobody's pools.
+ * AND A BLEED TICK, UNDER THE OWNER'S RULE OF 2026-11-26: "Bleed deals no damage while the target has energy
+ * shield." On the control's shield of 40 a bleed tick deals nothing to the shield or to health, so the bleed's own
+ * control is a third character with no shield, whose health takes the whole tick. The temporary absorb is step 6b of
+ * `UCataclysmDamageCalculation::Resolve`, before step 8 asks whether a shield stands, so the holder's absorb, beside
+ * a shield of 40, still takes the whole bleed tick the bare character's health took, and its shield and health none.
+ *
+ * STANDING: the holder at the origin, the enemy 3 m along X, the control 20 m along Y, the bare character 40 m along
+ * Y. The first half calls `Resolve` by hand and changes nobody's pools.
  */
 bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
 {
@@ -24149,11 +24159,14 @@ bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
 	FScopedFighter Holder(World, FVector::ZeroVector);
 	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
 	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter Bare(World, FVector(0, 40 * M, 0));
 	Defences(Holder, 0.0f, 0.0f);
 	Defences(Enemy, 0.0f, 0.0f);
 	Defences(Plain, 0.0f, 0.0f);
+	Defences(Bare, 0.0f, 0.0f);
 	SetShield(Holder, 40.0f);
 	SetShield(Plain, 40.0f);
+	SetShield(Bare, 0.0f);
 	HoldAbsorb(Holder, 500.0f);
 
 	FCataclysmIncomingHit Tick;
@@ -24162,14 +24175,19 @@ bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
 	FCataclysmIncomingHit BleedTick = Tick;
 	BleedTick.bIsBleed = true;
 
-	// THE CONTROLS: what a shield of 40 does with each tick.
+	// THE CONTROLS: what a shield of 40 does with each tick, and what health with no shield does with a bleed tick.
 	const FCataclysmDamageResult TickOnPlain = ResolvedOn(Tick, Plain);
 	const FCataclysmDamageResult BleedOnPlain = ResolvedOn(BleedTick, Plain);
+	const FCataclysmDamageResult BleedOnBare = ResolvedOn(BleedTick, Bare);
 	if (!TestTrue(TEXT("control: the shield absorbs part of a tick with no ailment and health takes the rest"),
 				  TickOnPlain.AbsorbedByShield > 1.0f && TickOnPlain.DealtToHealth > 1.0f)
 		|| !TestEqual(TEXT("control: the shield absorbs none of a bleed tick"), BleedOnPlain.AbsorbedByShield, 0.0f,
 					  0.001f)
-		|| !TestTrue(TEXT("control: so health takes the whole bleed tick"), BleedOnPlain.DealtToHealth > 1.0f))
+		|| !TestEqual(TEXT("control: and while the shield holds health takes none of it either (the owner, 2026-11-26)"),
+					  BleedOnPlain.DealtToHealth, 0.0f, 0.001f)
+		|| !TestEqual(TEXT("control: with no shield, the shield absorbs none of a bleed tick"),
+					  BleedOnBare.AbsorbedByShield, 0.0f, 0.001f)
+		|| !TestTrue(TEXT("control: so with no shield health takes the whole bleed tick"), BleedOnBare.DealtToHealth > 1.0f))
 	{
 		return false;
 	}
@@ -24182,9 +24200,11 @@ bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
 	TestEqual(TEXT("so the holder's shield takes none of it"), TickOnHolder.AbsorbedByShield, 0.0f, 0.001f);
 	TestEqual(TEXT("and its health takes none"), TickOnHolder.DealtToHealth, 0.0f, 0.001f);
 
+	// THE ABSORB IS ASKED BEFORE THE SHIELD, so a bleed tick on a holder whose shield stands is still taken by it.
 	const FCataclysmDamageResult BleedOnHolder = ResolvedOn(BleedTick, Holder);
-	TestEqual(TEXT("the absorb takes the whole bleed tick the control's health took"),
-			  BleedOnHolder.AbsorbedByTemporary, BleedOnPlain.DealtToHealth, 0.001f);
+	TestEqual(TEXT("the absorb takes the whole bleed tick the bare character's health took"),
+			  BleedOnHolder.AbsorbedByTemporary, BleedOnBare.DealtToHealth, 0.001f);
+	TestEqual(TEXT("so the holder's shield takes none of the bleed"), BleedOnHolder.AbsorbedByShield, 0.0f, 0.001f);
 	TestEqual(TEXT("so the holder's health takes none of the bleed"), BleedOnHolder.DealtToHealth, 0.0f, 0.001f);
 
 	// AND A TICK THROUGH THE WHOLE PIPELINE, so the amount held is seen to fall.
@@ -31750,17 +31770,19 @@ bool FCataclysmStatusActionsAllDotsOnAFirstHitTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsASmallFirstHitTest,
-	"Cataclysm.StatusActions.AFirstHitThatTakesUnderATenthLeavesNoneOfTheFive",
+	"Cataclysm.StatusActions.AFirstHitThatTakesUnderATenthLeavesAllFiveAndOneThatDealsNothingLeavesNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * S1, the owner's rule of 2026-09-02 (#917). The same player, the same row, the same blow: a creature the blow
- * takes under a tenth of carries none of the five afterwards. THE CONTROL IS A SECOND CREATURE IN THE SAME WORLD
- * the same blow takes more than a tenth of, which carries all five, so the size of the blow against the creature's
- * maximum is the one thing that differs.
+ * S1, the owner's ruling of 2026-11-26 ("I agree, fix it"), which replaced the tenth of #917 (2026-09-02) for every
+ * ailment that is not the skill's own. The same player, the same row, the same blow: a creature the blow takes under
+ * a tenth of carries all five afterwards, as does a second creature in the same world the blow takes more than a
+ * tenth of, so the size of the blow against the creature's maximum no longer decides it. THE CONTROL IS A THIRD
+ * CREATURE struck by a blow that deals nothing, which carries none.
  *
  * STANDING: the player at the origin; the large creature 2 m along +X with a maximum health of 100,000; the small
- * one 2 m along +Y with 500; the creature the blow is measured on 30 m along +Y.
+ * one 2 m along +Y with 500; the untouched one 2 m along -Y with 500; the creature the blow is measured on 30 m
+ * along +Y.
  */
 bool FCataclysmStatusActionsASmallFirstHitTest::RunTest(const FString&)
 {
@@ -31783,8 +31805,10 @@ bool FCataclysmStatusActionsASmallFirstHitTest::RunTest(const FString&)
 	const float Blow = StatusMeasuredBlow(World, Player.Character);
 	ACataclysmEnemyCharacter* Large = StatusCreature(World, FVector(2 * M, 0, 0), 100000.0f);
 	ACataclysmEnemyCharacter* Small = StatusCreature(World, FVector(0, 2 * M, 0), 500.0f);
+	ACataclysmEnemyCharacter* Untouched = StatusCreature(World, FVector(0, -2 * M, 0), 500.0f);
 	if (!TestNotNull(TEXT("set-up: the large creature"), Large)
-		|| !TestNotNull(TEXT("set-up: the small creature"), Small))
+		|| !TestNotNull(TEXT("set-up: the small creature"), Small)
+		|| !TestNotNull(TEXT("set-up: the creature struck for nothing"), Untouched))
 	{
 		return false;
 	}
@@ -31806,10 +31830,20 @@ bool FCataclysmStatusActionsASmallFirstHitTest::RunTest(const FString&)
 	}
 	UCataclysmSkillEffects::ApplyHit(Player.Character, Small, /*DamagePercent=*/100.0f);
 
-	TestEqual(TEXT("a first hit that takes under a tenth of the creature's maximum leaves none of the five"),
-			  StatusFiveCarried(Large), 0);
-	TestEqual(TEXT("control: the same blow as a first hit on a creature it takes over a tenth of leaves all five"),
+	const float UntouchedBefore = StatusHealthOf(Untouched);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Untouched, /*DamagePercent=*/0.0f);
+	if (!TestEqual(TEXT("set-up: the blow at nought percent took nothing from the third creature"),
+				   StatusHealthOf(Untouched), UntouchedBefore, 0.01f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a first hit that takes under a tenth of the creature's maximum leaves all five"),
+			  StatusFiveCarried(Large), 5);
+	TestEqual(TEXT("and the same blow as a first hit on a creature it takes over a tenth of leaves all five"),
 			  StatusFiveCarried(Small), 5);
+	TestEqual(TEXT("control: a first hit that deals nothing leaves none of the five"),
+			  StatusFiveCarried(Untouched), 0);
 	return true;
 }
 

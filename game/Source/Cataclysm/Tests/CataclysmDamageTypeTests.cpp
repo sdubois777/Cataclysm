@@ -726,12 +726,18 @@ CATACLYSM_TEST(FCataclysmAreaDamageIsStillMitigatedTest,
 }
 
 CATACLYSM_TEST(FCataclysmDamageOverTimeBypassesTheShieldTest,
-	"Cataclysm.DamageType.AnEnergyShieldAbsorbsEveryTickButABleed")
+	"Cataclysm.DamageType.AnEnergyShieldAbsorbsEveryTickAndABleedTickDealsNothingWhileItHolds")
 {
 	/**
 	 * The project owner, 2026-09-18: "every DoT except bleed reaches ES."
 	 * Issue #2014. Until then this case asserted the opposite, that every tick
 	 * went straight past a full shield.
+	 *
+	 * AND THE OWNER, 2026-11-26: "Bleed deals no damage while the target has
+	 * energy shield." Until then a bleed tick went straight past the shield to
+	 * health; now it deals nothing to either while the shield holds. THE CONTROL
+	 * is the same bleed tick on a defender with no shield, which reaches health
+	 * in full, so the bleed tick itself is not what deals nothing.
 	 *
 	 * THROUGH THE ROUTE PLAY USES, NOT A HAND-BUILT HIT. A real burn and a real
 	 * bleed are applied with `ApplyDamageOverTime` and one tick of each is run.
@@ -784,7 +790,8 @@ CATACLYSM_TEST(FCataclysmDamageOverTimeBypassesTheShieldTest,
 		TestEqual(TEXT("and the shield pays for the burn tick"),
 			ShieldBeforeBurn - Defender.Vitals->GetEnergyShield(), 1000.0f, 1.0f);
 
-		// A REAL BLEED, ONE TICK: straight past the shield to health.
+		// A REAL BLEED, ONE TICK: it deals nothing while the shield holds, neither to health nor to the shield (the
+		// owner, 2026-11-26).
 		//
 		// ON A DEFENDER THAT IS MOVING, because a bleed ticks only while its target moves (issue #918, ruled
 		// 2026-10-31). A plain actor, which no movement sample reads, and no clock runs, so one note holds.
@@ -797,10 +804,24 @@ CATACLYSM_TEST(FCataclysmDamageOverTimeBypassesTheShieldTest,
 				/*DurationSeconds=*/4.0f, Bleed, /*bScalesWithInstigator=*/false));
 		TestEqual(TEXT("and one bleed tick runs"),
 			Defender.AbilitySystem->ExecutePeriodicEffectsGrantingForTests(Bleed), 1);
-		TestEqual(TEXT("a bleed tick reaches health through a full shield"),
-			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+		TestEqual(TEXT("a bleed tick deals nothing to health while the shield holds"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
 		TestEqual(TEXT("and the shield pays nothing for it"),
 			ShieldBeforeBleed - Defender.Vitals->GetEnergyShield(), 0.0f, 1.0f);
+
+		// THE CONTROL: THE SAME BLEED TICK ON A DEFENDER WITH NO SHIELD REACHES HEALTH IN FULL.
+		CataclysmDamageTypeTest::FScopedCombatant Bare(World);
+		Bare.LastHealth = Bare.Vitals->GetHealth();
+		TestEqual(TEXT("control set-up: the bare defender holds no shield"), Bare.Vitals->GetEnergyShield(), 0.0f, 0.01f);
+		Bare.AbilitySystem->NoteMovedMetres(1.0f);
+		TestTrue(TEXT("control: a bleed is applied to the bare defender"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(
+				Attacker, Bare.Actor, /*DamagePerTick=*/1000.0f,
+				/*DurationSeconds=*/4.0f, Bleed, /*bScalesWithInstigator=*/false));
+		TestEqual(TEXT("control: and one bleed tick runs"),
+			Bare.AbilitySystem->ExecutePeriodicEffectsGrantingForTests(Bleed), 1);
+		TestEqual(TEXT("control: with no shield the bleed tick reaches health in full"),
+			Bare.TakeDamageReading(), 1000.0f, 1.0f);
 
 		Attacker->Destroy();
 	}
