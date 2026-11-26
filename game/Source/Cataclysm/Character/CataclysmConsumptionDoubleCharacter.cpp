@@ -59,14 +59,25 @@ bool ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild(const FCataclysmP
 	const TArray<FString> DamageTypes = UCataclysmWeaponSlotsComponent::InFillOrder(
 		UCataclysmEquipmentComponent::CarriedDamageTypesOf(Wardrobe->WornWeapons(), HeldBuild.CreationDamageType),
 		HeldBuild.CreationDamageType);
+
+	// AND THE KEYS THE PLAYER'S GAME FILLED BY ITSELF, since issue #837 slice 1 (ruled 2026-11-24: a double holds the
+	// keys the player actually had): the remembered defaults after the choices, as the player's own fill reads them.
 	Skills = UCataclysmWeaponSkills::FillWithChoices(
 		UCataclysmWeaponSkills::PoolFor(UCataclysmWeaponSkills::LoadGeneratedTable(), WeaponTypes, DamageTypes),
-		HeldBuild.SkillAssignment);
+		HeldBuild.SkillAssignment, HeldBuild.RememberedDefaults);
 
 	// ITS FIRST WEAPON'S BASIC ATTACK, the first OCCUPIED weapon slot's, as the player's basic attack is.
 	BasicAttack = WeaponTypes.IsEmpty()
 		? FCataclysmWeaponSkill()
 		: UCataclysmWeaponSkills::BasicAttackFor(UCataclysmItemModifiers::LoadBaseTable(), WeaponTypes[0]);
+
+	// AND IT DEALS THE BUILD'S DAMAGE TYPE, the one its character chose at creation, as the Stalker deals its entry's.
+	// Ruled by the coordinating session on 2026-11-25 for slice B3. A build captured before the choice was recorded
+	// holds none, and the double then keeps its class's type, Demonic.
+	if (!HeldBuild.CreationDamageType.IsNone())
+	{
+		DamageType = HeldBuild.CreationDamageType;
+	}
 	return true;
 }
 

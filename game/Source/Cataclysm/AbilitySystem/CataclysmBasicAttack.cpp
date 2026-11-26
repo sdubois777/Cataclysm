@@ -89,16 +89,72 @@ float UCataclysmBasicAttack::SecondsBetweenSwingsFor(
 	// a plain read of the attribute.
 	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER. Issue #2273. A creature's attack interval is
 	// divided by the same share in `ACataclysmEnemyCharacter::SecondsBetweenAttacks`, and a creature does not come
-	// through here: the two callers are the player character and the player controller. The cast keeps it so.
-	const AActor* Swinger = AbilitySystem->GetAvatarActor();
-	// AND WHAT WITHER LEAVES, multiplied with it as a separate slow. Issue #1722.
-	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Swinger)
+	// through here: the two callers are the player character and the player controller. `AttackSpeedAfterSlows`
+	// keeps it so, and applies Wither's share with it as a separate slow (issue #1722) -- unless the character holds
+	// the flag that nothing may lower its attack speed, the Ravager tree rework of 2026-11-24.
+	return SecondsBetweenSwings(AttackSpeedAfterSlows(
+		AbilitySystem, FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Speed),
+		AbilitySystem->GetAvatarActor()));
+}
+
+const TCHAR* UCataclysmBasicAttack::AttackSpeedReductionSuppressedStat =
+	TEXT("attack_speed_reduction_suppressed");
+
+float UCataclysmBasicAttack::AttackSpeedAfterSlows(
+	const UCataclysmAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& SkillTags, float Attribute, const AActor* Swinger)
+{
+	if (!AbilitySystem)
+	{
+		return Attribute;
+	}
+
+	const float Asked = AbilitySystem->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute);
+
+	// A PLAYER CHARACTER'S SLOWS, read off a player character only, as both readers did before this was shared.
+	const bool bIsAPlayer = Cast<const ACataclysmPlayerCharacter>(Swinger) != nullptr;
+	const float Slowed = bIsAPlayer
 		? UCataclysmSkillEffects::CrippleMultiplierOn(Swinger) * UCataclysmSkillEffects::WitherMultiplierOn(Swinger)
 		: 1.0f;
 
-	return SecondsBetweenSwings(Crippled * AbilitySystem->StatForSkill(
-		FName(TEXT("attack_speed")), FGameplayTagContainer(),
-		AbilitySystem->GetNumericAttribute(Speed)));
+	// NOTHING MAY LOWER IT, IF A ROW SAYS SO. Relentless: "Your Movement Speed and Attack Speed cannot be reduced by
+	// any effect." ASKED THROUGH THE PIPELINE, with the attribute's absence meaning nought, because a later row could
+	// carry a condition. A fallback of nought, so every character without the flag goes the way it always went.
+	const float Suppressed = AbilitySystem->StatForSkill(
+		FName(AttackSpeedReductionSuppressedStat), FGameplayTagContainer(), 0.0f);
+	if (Suppressed <= 0.0f)
+	{
+		return Asked * Slowed;
+	}
+
+	// THE REDUCING ROWS DROPPED, THE EARNED ONES KEPT, AND NO SLOW APPLIED. Each row is judged by its own sign, before
+	// any is summed: a flat, an increase or a "more" stating a figure below nought is a reduction, and so is a removal.
+	// `ACataclysmPlayerCharacter::RefreshMovementSpeed` drops movement speed's the same way, ruled 2026-11-24.
+	// Dropping rows rather than flooring the sums is what keeps an earned increase that a larger reduction would
+	// otherwise cancel: +40% and -50% leave +40%, not nought. A scaled row's sign is its value's, since every scale
+	// counts whole steps of nought or more. The pass is asked with the state `StatForSkill` builds, so a conditioned or
+	// scaled row is judged here exactly as it is there. No stat line means nothing to drop: the attribute is the
+	// answer, and a player character's slows are still not applied.
+	const FCataclysmStatInputs* Inputs = AbilitySystem->GetStatInputs(FName(TEXT("attack_speed")));
+	if (!Inputs)
+	{
+		return Attribute;
+	}
+	TArray<FCataclysmStatModifier> Earned;
+	Earned.Reserve(Inputs->Modifiers.Num());
+	for (const FCataclysmStatModifier& Row : Inputs->Modifiers)
+	{
+		if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= 0.0f)
+		{
+			Earned.Add(Row);
+		}
+	}
+	return FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Earned, SkillTags,
+		AbilitySystem->WithEnemiesInReach(
+			Earned,
+			UCataclysmAbilitySystemComponent::WithTargetState(
+				Earned, /*Target=*/nullptr, AbilitySystem->CurrentConditions()))).Final);
 }
 
 bool UCataclysmBasicAttack::MaySwing(const AActor* Character)

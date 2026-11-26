@@ -366,7 +366,8 @@ void UCataclysmEmpireMapWidget::PlaceCities()
 		Button->SetChoice(
 			ButtonNameFor(Index),
 			FText::FromString(
-				UCataclysmEmpireMapLayout::CityLabel(Run->Map, Index)),
+				UCataclysmEmpireMapLayout::CityLabel(Run->Map, Index)
+				+ UCataclysmEmpireMapLayout::RiftMark(Run, Index)), // ", Rift" (issue #51 slice B2).
 			/*bChosen*/ Mark == ECataclysmCityMark::Exposed,
 			/*bAvailable*/ UCataclysmEmpireMapLayout::CityOpensItsScreen(Run->Map, Index));
 		Button->SetDimmed(UCataclysmEmpireMapLayout::IsCityDimmed(Run->Map, Index));

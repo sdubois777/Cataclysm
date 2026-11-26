@@ -98,8 +98,8 @@ public:
 	 * coming from any of them already reads without being taught, and the
 	 * project has no reason to differ.
 	 *
-	 * A HYBRID READS AS ITS TWO HALVES, each at the seventy per cent share
-	 * `UCataclysmItemValues::HybridFraction` states, joined onto one line
+	 * A HYBRID READS AS ITS TWO HALVES, each its own affix two tiers down
+	 * (`UCataclysmItemValues::HybridHalfValue`, issue #2883), joined onto one line
 	 * because they came from one affix and occupy one of the item's four slots.
 	 * Until issue #1177 it read the hybrid row's own top value, which is 0.0 on
 	 * all thirteen of them, and printed `Health and armor: 0` on an item that
@@ -134,11 +134,13 @@ public:
 	 * printed "+4 to evasion" two lines above an affix reading
 	 * "+1.2% to evasion". Issue #1224.
 	 *
+	 * @param AtZero  the implicit's whole value at +0, the base row's
+	 *                ImplicitNAtZero (issue #2883), not its stated +10 figure
 	 * @return an empty string when the stat name is empty, which is how a base
 	 *         with only one implicit says so
 	 */
 	static FString ImplicitLine(const FString& Stat, const FString& Kind,
-								float StatedValue, int32 GearLevel,
+								int32 AtZero, int32 GearLevel,
 								bool bTwoHanded,
 								const UDataTable* AffixTable);
 

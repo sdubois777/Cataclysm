@@ -632,6 +632,19 @@ def highest_droppable_rarity(tier: int) -> str:
                                reach + DROP_RARITIES_ABOVE_THE_REACH))
 
 
+def cataclysm_boss_piece_rarity(tier: int) -> str:
+    """The rarity of the one piece the Cataclysm Boss always drops beside its ordinary drops: the next tier's best.
+
+    The owner's ruling of 2026-11-24 (issue #2853, comment 7150904221), chosen option verbatim: "The next tier's best
+    (Recommended)". The rarest a drop can roll one tier up, `highest_droppable_rarity(tier + 1)`, and Cataclysmic at the
+    last tier: rarity number tier + 4, stopping at Cataclysmic. Tier 1 Legendary, tier 2 Mythical, tier 3 Ascendant,
+    tiers 4 to 8 Cataclysmic. Mirrors `UCataclysmDropRoll::CataclysmBossPieceRarity`.
+    """
+    if not 1 <= tier <= af.DIFFICULTY_TIERS:
+        raise ValueError(f"tier {tier} is outside 1 to {af.DIFFICULTY_TIERS}")
+    return highest_droppable_rarity(min(tier + 1, af.DIFFICULTY_TIERS))
+
+
 def rungs_above_the_tier(rarity: str, tier: int) -> int:
     """How far above this tier's own reach a rarity sits. Zero at or below it."""
     return max(0, rarity_index(rarity)
@@ -1034,7 +1047,17 @@ def roll_slot(rng) -> str:
     return rng.choice(SLOTS_A_DROP_CAN_BE)
 
 
-def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
+def _a_hybrid_rolls_tier_three_at_the_least(affix, tier: int) -> int:
+    """A HYBRID ROLLS TIERS 3 TO 7 ONLY, since issue #2883 (D6 of the approved proposal): at tier N
+    it grants each half at that half's tier N - 2. Raised after the draw rather than drawn from a
+    smaller range, so no extra number is taken from the stream and every seeded drop keeps its base,
+    its affixes and their rolls. The game's `UCataclysmDropRoll::RollItem` does the same."""
+    if isinstance(affix, af.HybridAffix):
+        return max(tier, af.affix_ranges.LOWEST_HYBRID_TIER)
+    return tier
+
+
+def roll_item(slot: str, tier: int, magic_find: float, rng, rarity: str | None = None) -> RolledItem:
     """Roll one whole item for a gear slot at a difficulty tier.
 
     THE SLOT IS AN ARGUMENT RATHER THAN A ROLL, on purpose. Which slot a drop is
@@ -1053,7 +1076,8 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
     which the design describes and nothing models, so it is left alone rather than
     guessed at.
     """
-    rarity = roll_rarity(tier, magic_find, rng)
+    # A RARITY GIVEN IS TAKEN AS IT IS (issue #2853): the Cataclysm Boss's one piece is the next tier's best exactly.
+    rarity = roll_rarity(tier, magic_find, rng) if rarity is None else rarity
 
     # EVERY BASE IN THE SLOT IS EQUALLY LIKELY, decided by the project owner on
     # 2026-08-18. The bases in a slot are alternatives rather than a ladder --
@@ -1067,17 +1091,23 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
 
     prefixes, suffixes = split_for_a_drop(af.affix_slots_for(rarity), rng)
 
+    # THE ALL-RESISTANCES FAMILY DOES NOT ROLL ON A TIER 1 DROP, ruled by the
+    # project owner on 2026-11-24 (issue #2853); see
+    # `affixes.ALL_RESISTANCES_LOWEST_DROP_TIER`. Taken out AFTER the candidates
+    # are built, so their damage types are drawn from the stream as before.
     drawn: list[_Candidate] = []
     for position, count in (("prefix", prefixes), ("suffix", suffixes)):
         if count == 0:
             continue
+        candidates = [candidate for candidate in _candidates_for(slot, position, rng)
+                      if af.rolls_on_a_drop_at(candidate.affix, tier)]
         drawn.extend(af.draw_without_repeating_a_group(
-            _candidates_for(slot, position, rng), count, rng,
-            group_of=_groups_of_candidate))
+            candidates, count, rng, group_of=_groups_of_candidate))
 
     rolled = tuple(
         RolledAffix(affix=candidate.affix,
-                    tier=af.roll_affix_tier(tier, rng),
+                    tier=_a_hybrid_rolls_tier_three_at_the_least(
+                        candidate.affix, af.roll_affix_tier(tier, rng)),
                     roll=rng.random(),
                     covers=candidate.covers)
         for candidate in drawn)
@@ -1103,17 +1133,27 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
 #: disagree.
 #:
 #: AN EXPECTED COUNT RATHER THAN A CHANCE, which matters above Legendary. A
-#: chance cannot exceed one, and a Cataclysm Boss has to be able to drop twelve
+#: chance cannot exceed one, and a Cataclysm Boss has to be able to drop six
 #: things. It is a MEAN and not a fixed count: `roll_count` draws the actual
-#: number from a Poisson distribution with this as its mean, so 0.16 means a
-#: Common kill gives nothing about six times in seven and occasionally gives two.
+#: number from a Poisson distribution with this as its mean, so 0.08 means a
+#: Common kill gives nothing about twelve times in thirteen and occasionally
+#: gives two.
 #:
-#: 0.16 FOR A COMMON ENEMY is Path of Exile's own figure -- "the base chance for
-#: an item to drop from a normal monster is 16%" -- taken as a starting point
-#: because this design had none and that one has survived contact with players.
-#: It is not a measured equivalent: their figure covers currency and everything
-#: else a monster can drop, not gear alone, so the real gear-only rate there is
-#: lower. Treat this as the right order of magnitude and expect to tune it.
+#: HALVED ON 2026-11-24, every rarity alike, by the project owner (issue #2853,
+#: "Halve gear drops (Recommended)"): a tier 1 floor of 258 creatures dropped
+#: about 123 gear pieces and an Outpost dungeon about 919, and a fresh character
+#: wore a whole tier's best drops after one dungeon. Now about 61 a floor. The
+#: column keeps its shape, so the enemy ladder of 2026-08-18 stands. Path of
+#: Exile 2, Diablo IV's Season 4 and Last Epoch 1.0 each cut how many items drop
+#: in favour of what each is worth; none states a size, so the half is a
+#: judgement (`docs/DECISIONS.md`, 2026-11-24).
+#:
+#: 0.16 FOR A COMMON ENEMY UNTIL THEN was Path of Exile's own figure -- "the base
+#: chance for an item to drop from a normal monster is 16%" -- taken as a
+#: starting point because this design had none. It was not a measured
+#: equivalent: their figure covers currency and everything else a monster can
+#: drop, not gear alone, so the real gear-only rate there is lower. 0.08 is
+#: half of it.
 #:
 #: PER ENEMY RATHER THAN PER FLOOR, chosen by the project owner on 2026-08-18.
 #: A per-floor budget was proposed first and rejected: nothing in the design
@@ -1123,12 +1163,12 @@ def roll_item(slot: str, tier: int, magic_find: float, rng) -> RolledItem:
 #: enemies happen to be, which also means no second number has to be invented
 #: before the dungeon generator decides how many enemies a floor holds.
 ENEMY_GEAR_DROPS: dict[str, float] = {
-    "Common":          0.16,
-    "Elite":           0.5,
-    "Legendary":       1.0,
-    "Herald":          2.0,
-    "Boss":            5.0,
-    "Cataclysm Boss": 12.0,
+    "Common":          0.08,
+    "Elite":           0.25,
+    "Legendary":       0.5,
+    "Herald":          1.0,
+    "Boss":            2.5,
+    "Cataclysm Boss":  6.0,
 }
 
 #: How much magic find a kill of each enemy rarity adds to its own drops, as an
@@ -1275,6 +1315,20 @@ def roll_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
             for _ in range(count)]
 
 
+def roll_the_cataclysm_bosses_piece(enemy_rarity: str, tier: int, magic_find: float, rng) -> list[RolledItem]:
+    """The Cataclysm Boss's one piece of the next tier's best, BESIDE its ordinary drops; nothing for any other rarity.
+
+    Issue #2853, the owner's ruling of 2026-11-24. One piece whatever the loot quantity, at exactly
+    `cataclysm_boss_piece_rarity(tier)`, and at that rarity's gear level gate as every drop (`roll_item`). Mirrors
+    `UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor`, which the game's death site calls after everything else a
+    kill drops.
+    """
+    if _enemy_rarity(enemy_rarity) != "Cataclysm Boss":
+        return []
+    together = magic_find + magic_find_from(enemy_rarity)
+    return [roll_item(roll_slot(rng), tier, together, rng, rarity=cataclysm_boss_piece_rarity(tier))]
+
+
 # --------------------------------------------------------------------------
 # Crafting materials, which drop on their own roll
 # --------------------------------------------------------------------------
@@ -1296,6 +1350,12 @@ def roll_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
 #: again and called the material drops "way too high". The coordinating session
 #: ruled a quarter of the 2026-08-23 figures under the owner's delegation of
 #: numbers.
+#:
+#: HALF THE GEAR RATE SINCE 2026-11-24, WITHOUT THIS COLUMN MOVING. The owner
+#: halved the gear column (issue #2853) and not this one: the drop supply
+#: proposal measured gear quantity, and the material figures were ruled two days
+#: earlier on their own evidence. They are still a quarter of the 2026-08-23
+#: figures, which is what #2829 ruled.
 #:
 #: WHY A QUARTER IS SAFE FOR UPGRADES. Raising an item to level k takes k days
 #: of the run, plus one day for each 100 residue the item carries
@@ -1498,8 +1558,18 @@ def roll_material_drops_from_kill(enemy_rarity: str, magic_find: float,
 # --------------------------------------------------------------------------
 
 #: How many gems a kill drops for every gear item it drops: the gem column of
-#: the Enemy Drops sheet is the gear column times this. MEASURED by
-#: `sim/analyse_gem_drops.py` on 2026-11-21, rounded up from 0.00671:
+#: the Enemy Drops sheet is the gear column times this.
+#:
+#: 0.0136 SINCE 2026-11-24, TWICE WHAT IT WAS, AND NO KILL DROPS MORE GEMS FOR
+#: IT. The owner halved the gear column (issue #2853) and ruled that tier 8
+#: keeps today's gem rate, so the share of a gear drop doubles and the Gem Drops
+#: column, gems a KILL, stays exactly where it was. What a lower tier drops is
+#: `gem_drop_share`, below.
+#:
+#: IT WAS MEASURED, by `sim/analyse_gem_drops.py` on 2026-11-21, as the least
+#: that lets a full clear of tier 8 fill tier 8's reference character, rounded
+#: up from 0.00671 to 0.0068. Against the halved gear column that need is
+#: 0.01343, so 0.0136 is still that need rounded up and no more:
 #:
 #:   - THE TARGET, A JUDGEMENT: a full clear of a tier's dungeons drops enough
 #:     gems to fill the sockets the design's reference character fills at that
@@ -1516,15 +1586,15 @@ def roll_material_drops_from_kill(enemy_rarity: str, magic_find: float,
 #:     of a lower rarity is worth, half a rung per rung, since two combine into
 #:     one of the next (ruled 2026-11-21);
 #:   - TIER 8 SETS IT: the tier's own rarity is rarest there, so it needs the
-#:     most drops for each gear item, 0.00671. Every lower tier needs less, and
-#:     gets more than it needs.
-GEM_DROPS_PER_GEAR_DROP = 0.0068
+#:     most drops for each gear item. Every lower tier needs less.
+GEM_DROPS_PER_GEAR_DROP = 0.0136
 
-#: How many gems a kill of each enemy rarity is expected to drop, before loot
-#: quantity: the gear column times `GEM_DROPS_PER_GEAR_DROP`, so gems follow the
-#: gear column's shape across enemy rarities (a judgement, the shape magic find
-#: already follows). Mirrors the Gem Drops column of the Enemy Drops sheet, which
-#: is authoritative, as the gear and material columns are.
+#: How many gems a kill of each enemy rarity is expected to drop at difficulty
+#: tier 8, before loot quantity: the gear column times
+#: `GEM_DROPS_PER_GEAR_DROP`, so gems follow the gear column's shape across
+#: enemy rarities (a judgement, the shape magic find already follows). Mirrors
+#: the Gem Drops column of the Enemy Drops sheet, which is authoritative, as the
+#: gear and material columns are. A lower tier drops `gem_drop_share` of it.
 ENEMY_GEM_DROPS: dict[str, float] = {
     "Common":          0.001088,
     "Elite":           0.0034,
@@ -1534,28 +1604,68 @@ ENEMY_GEM_DROPS: dict[str, float] = {
     "Cataclysm Boss":  0.0816,
 }
 
+#: What each difficulty tier below 8 drops of the gem rate of the tier above it.
+#:
+#: RULED BY THE PROJECT OWNER ON 2026-11-24, issue #2853, the chosen option
+#: quoted: "Milder: tier 1 gets 1/8 (Recommended)": the gem rate scales by
+#: tier, less steeply than halving per tier, so tier 1 gets about an eighth of
+#: the rate it had (roughly one gem an Outpost dungeon) and tier 8 keeps it.
+#: Until then every tier dropped tier 8's rate, several hundred times what a
+#: tier 1 full clear needs: a fresh character held seven gems after one Outpost
+#: dungeon, more than tier 1's whole reference character holds.
+#:
+#: THREE QUARTERS A TIER, A JUDGEMENT, measured by `sim/measure_drop_supply.py`:
+#: one plain step, the same at every tier, gives tier 1 0.75 to the 7th, 13.3%
+#: (about an eighth, as ruled), and every tier stays above what a full clear of
+#: it needs to fill its reference character (`sim/tests/test_gem_drops.py`).
+#: Each step is less steep than halving, which an even split into eighths
+#: (1/8, 2/8 ... 8/8) is not between tiers 1 and 2.
+GEM_DROP_SHARE_A_TIER_DOWN = 0.75
 
-def expected_gem_drops(enemy_rarity: str,
+
+def gem_drop_share(tier: int) -> float:
+    """The share of the Gem Drops column a kill at this difficulty tier drops.
+
+    1 at tier 8 and three quarters of the tier above's below it, so 0.75 to the
+    power of (8 - tier). MULTIPLIED OUT rather than raised to a power, as the
+    game multiplies it, so the two hold the same figure: each is exactly
+    representable, 3 to the k over 4 to the k.
+    """
+    if not 1 <= tier <= af.DIFFICULTY_TIERS:
+        raise ValueError(f"tier {tier} is outside 1 to {af.DIFFICULTY_TIERS}")
+    share = 1.0
+    for _ in range(af.DIFFICULTY_TIERS - tier):
+        share *= GEM_DROP_SHARE_A_TIER_DOWN
+    return share
+
+
+def expected_gem_drops(enemy_rarity: str, tier: int,
                        loot_quantity: float = BASELINE_LOOT_QUANTITY) -> float:
-    """How many gems a kill of this rarity is expected to drop."""
+    """How many gems a kill of this rarity is expected to drop at this
+    difficulty tier: the Gem Drops column, times `gem_drop_share(tier)`, times
+    loot quantity over its baseline."""
     _enemy_rarity(enemy_rarity)
     if loot_quantity < 0.0:
         raise ValueError(
             f"loot quantity is {loot_quantity}; it is a percentage with a "
             "baseline of 100 and cannot be negative")
-    return ENEMY_GEM_DROPS[enemy_rarity] * loot_quantity / BASELINE_LOOT_QUANTITY
+    return (ENEMY_GEM_DROPS[enemy_rarity] * gem_drop_share(tier)
+            * loot_quantity / BASELINE_LOOT_QUANTITY)
 
 
 def roll_gem_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
                              loot_quantity: float, rng) -> list[str]:
     """The rarity of every gem one kill drops.
 
+    HOW MANY READS THE TIER since 2026-11-24 (`gem_drop_share`), as well as the
+    enemy's rung and loot quantity.
+
     THE GEAR'S RARITY ROLL, with the enemy's magic find added to the player's:
     "Gems ... have the same rarity tiers as gear", and the difficulty tier gates
     a gem's rarity as it gates gear's. Which of the 28 gems it is does not matter
     to anything modelled here, and the game draws it evenly.
     """
-    count = roll_count(expected_gem_drops(enemy_rarity, loot_quantity), rng)
+    count = roll_count(expected_gem_drops(enemy_rarity, tier, loot_quantity), rng)
     together = magic_find + magic_find_from(enemy_rarity)
     return [roll_rarity(tier, together, rng) for _ in range(count)]
 

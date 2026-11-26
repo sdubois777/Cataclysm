@@ -121,6 +121,13 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	FString ReserveNoun;
 
 	/**
+	 * Whether a press of this box places a gadget, so the gadget rule applies (V5g, 2026-11-25): a skill gadget's slot,
+	 * or a War deployable whose set holds a gadget. The pop-up then says the rule (`UCataclysmSkillBar::GadgetPressRule`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bPressPlacesAGadget = false;
+
+	/**
 	 * The skill's level, or 0 for a box whose skill does not level: an empty box, or a skill that is not the player's.
 	 * The bar has no box for the basic attack (`SlotsShown`), which does not level. Issue #2764: the box shows its level
 	 * in its corner, with a thin bar of the experience into it along its foot.
@@ -316,6 +323,21 @@ public:
 	 */
 	static int32 BoxUnder(const FVector2D& Point, int32 Count, float ViewportWidth, float ViewportHeight);
 
+	/**
+	 * The key of the box a point lies in, `BasicAttack` included, or `None` for a point in no box. Issue #837 slice 2,
+	 * the owner's Q3 of 2026-11-24: a click on a skill box opens the skill screen with that key selected, as Diablo II
+	 * and Last Epoch open their choice from the bar. `BoxUnder` decides which box.
+	 */
+	static ECataclysmAbilitySlot KeyUnder(const TArray<FCataclysmSkillBarSlot>& Slots, const FVector2D& Point,
+										  float ViewportWidth, float ViewportHeight);
+
+	/**
+	 * The line drawn beside the bar naming the key that opens the skill screen. Issue #837 slice 2 (the owner's Q3):
+	 * the plan found no on-screen text naming K, and the owner's logs held no skill chosen in five days. K is the key
+	 * `tools/generate_input_assets.py` binds to `IA_ToggleSkillAssignment`, which a Python check holds this to.
+	 */
+	static const TCHAR* OpenScreenHint;
+
 	/** How many characters a pop-up line holds before it wraps. Issue #1193, ruled 2026-11-01: a fixed width. */
 	static constexpr int32 PopupWrapChars = 48;
 
@@ -442,13 +464,21 @@ public:
 
 	/**
 	 * What a press of the box's skill costs, for its pop-up: "Costs 30 Fervour and 14 mana. 20 s cooldown." Empty for
-	 * an empty box and a skill gadget, whose placing costs nothing. Issue #2801: the owner, 2026-11-21, of Subjugate's
+	 * an empty box. A skill gadget's placing costs nothing, so its line is what each gadget reserves and the gadget rule
+	 * (V5g, ruled G6); a War deployable placing a gadget says the rule after its costs. Issue #2801: the owner, 2026-11-21, of Subjugate's
 	 * cost, "that's all the description tells you". Read from the box's own figures, which are the press checks'
 	 * (`FervourCostFor`, `ManaCostFor`, `CooldownAfterReduction`) after the character's reductions, so the words cannot
 	 * disagree with a refusal. Whole Fervour and mana are rounded up, as `FervourTextFor` does; seconds to one decimal,
 	 * a whole number without it. More than one charge is named.
 	 */
 	static FString CostLineFor(const FCataclysmSkillBarSlot& Slot);
+
+	/**
+	 * THE GADGET RULE IN THE GAME'S OWN WORDS, said once where the game describes a gadget press (V5g, ruled G6): "Press
+	 * again to place another while you can pay for it and your Fervour can hold it; otherwise every gadget moves to where
+	 * you aim, at no cost." The cost and "at no cost" since G3 was revised after window war2-w1.
+	 */
+	static const TCHAR* const GadgetPressRule;
 
 	/** What one thing `Skill` makes is called in a cost line: "thrall" for a skill that takes creatures, else its minion's
 	 *  type in lower case, else "minion". Issue #2802; shared with the skill-assignment tooltip (#2804). */

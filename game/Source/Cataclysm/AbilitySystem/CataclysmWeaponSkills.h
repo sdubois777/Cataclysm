@@ -212,10 +212,23 @@ public:
 												 const TArray<FString>& DamageTypes);
 
 	/**
+	 * Whether a skill DOES something when pressed: its row names a shape that has a template (`TemplateFor`). A row with
+	 * no shape is granted as `UCataclysmUndesignedSkill`, which does nothing, and the skill screen marks it "not built
+	 * yet". Issue #837, slice 1 of 2026-11-24 (the owner's Q2, "Approve all three (Recommended)"): a key's default is a
+	 * built skill before one that is not.
+	 */
+	static bool IsBuilt(const FCataclysmWeaponSkill& Skill) { return TemplateFor(Skill.Shape).Get() != nullptr; }
+
+	/**
 	 * THE DEFAULT FILL: for each slot, the first entry of the pool designed for it, in the pool's order. Issue #837
 	 * layer 2. "Keep the automatic filling as the starting point" (#837); the player cannot choose yet (layer 3).
 	 *
 	 * Each entry keeps the slot its row names, so a skill fills only its own designed slot here.
+	 *
+	 * A BUILT SKILL BEFORE ONE THAT IS NOT (`IsBuilt`), since issue #837 slice 1 (Q2): a slot takes the first BUILT
+	 * entry designed for it, and the first entry only when none designed for it is built. The slots come in the order
+	 * their first entry has in the pool, as before, so a pool whose first entry for each slot is built gives what it
+	 * gave before.
 	 */
 	static TArray<FCataclysmWeaponSkill> DefaultFillFrom(const TArray<FCataclysmWeaponSkill>& Pool);
 
@@ -229,9 +242,17 @@ public:
 	 * player state's and this only reads them. With no choice that applies, element for element `DefaultFillFrom`: the
 	 * keys in the order `DefaultFillFrom` gives them, then any key only a choice filled, in `CataclysmAbilitySlots::All`
 	 * order.
+	 *
+	 * AND THE REMEMBERED DEFAULTS, since issue #837 slice 1 (the owner's Q1, ruled 2026-11-24: "the keys stay as they
+	 * are" when a weapon goes on or off). `Remembered` is what each key held by default after the last fill
+	 * (`ACataclysmPlayerState::GetRememberedDefaults`): after the choices, each key with no choice on it takes its
+	 * remembered row while that row is in the pool and no key holds it yet. A remembered row out of the pool, or held
+	 * by a choice, is passed over and the key takes the next default. Only then does a key take the first pool entry
+	 * designed for it, A BUILT ONE FIRST (`IsBuilt`, Q2). An empty list is the fill as it was.
 	 */
 	static TArray<FCataclysmWeaponSkill> FillWithChoices(const TArray<FCataclysmWeaponSkill>& Pool,
-														 const TArray<FCataclysmSkillChoice>& Choices);
+														 const TArray<FCataclysmSkillChoice>& Choices,
+														 const TArray<FCataclysmSkillChoice>& Remembered = {});
 
 	/** The slot a skill was made for: `DesignedSlot`, or `Slot` when none is set. EVERY RULE reading a held skill asks this (O1). */
 	static ECataclysmAbilitySlot DesignedSlotOf(const FCataclysmWeaponSkill& Skill)

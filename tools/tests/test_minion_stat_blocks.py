@@ -370,15 +370,25 @@ def test_three_imps_out_damage_the_summoners_own_basic_attack_at_every_tier():
 
     Three imps are permanent in normal play: Summon Imp holds 3 for 20 seconds
     against a 5 second cooldown.
+
+    RE-PINNED ON 2026-11-25, AND IT NO LONGER HOLDS AT TIERS 6 TO 8. The
+    whole-number affix ranges of #2883 raised the summoner's own damage, and the
+    imps read the summoner's level only, so at tiers 6, 7 and 8 three imps deal
+    0.78 to 0.80 of the basic attack. The owner ruled on #2884 (2026-11-24) that
+    minion damage is re-fitted in its own later slice, issue #2903, and the
+    coordinating session ruled on 2026-11-25 that these pins hold what the game
+    does now until then. #2903 restores the owner's rule and removes this note.
     """
     imp = minion_rows()["Imp"]
+    holds_until_2903 = {1: True, 2: True, 3: True, 4: True, 5: True, 6: False, 7: False, 8: False}
     for tier in range(1, 9):
         level = pp.reference_character(tier).level
         squad = squad_per_second(imp, level, IMP_MAX_ACTIVE)
         player = pd.damage_per_second(tier, SUMMONER_WEAPON)
-        assert squad > player, (
+        assert (squad > player) == holds_until_2903[tier], (
             f"at difficulty tier {tier} three imps deal {squad:,.0f} a second "
-            f"and the summoner's own basic attack deals {player:,.0f}")
+            f"and the summoner's own basic attack deals {player:,.0f}; re-pinned "
+            f"for #2903, so a change here means minion damage or the affixes moved")
 
 
 def test_a_mote_is_the_weaker_body():
@@ -429,6 +439,12 @@ def test_a_minion_keeps_pace_with_its_summoner_rather_than_running_away():
     issue #337. The band below is wide because nothing here has been played yet;
     it is here to catch a change that breaks the relationship, not to pin a
     tuned number.
+
+    RE-PINNED ON 2026-11-25 for issue #2903, as the test above is: since the
+    whole-number affix ranges of #2883 the ratios are 1.05, 1.39, 1.34, 1.21,
+    1.02, 0.78, 0.80 and 0.80, so tiers 6 to 8 fall below the band. Until #2903
+    re-fits minion damage, those three tiers are held to the band 0.75 to 2.0
+    and the others to the band below; #2903 restores 1.0 everywhere.
     """
     imp = minion_rows()["Imp"]
     ratios = {}
@@ -438,7 +454,8 @@ def test_a_minion_keeps_pace_with_its_summoner_rather_than_running_away():
                         / pd.damage_per_second(tier, SUMMONER_WEAPON))
 
     for tier, ratio in ratios.items():
-        assert 1.0 < ratio < 2.0, (
+        floor = 0.75 if tier >= 6 else 1.0  # 0.75 until #2903
+        assert floor < ratio < 2.0, (
             f"at difficulty tier {tier} three imps are worth {ratio:.2f}x the "
             f"summoner's own basic attack, outside the band this test holds. "
             f"Below 1.0 there is no reason to summon; above 2.0 there is no "

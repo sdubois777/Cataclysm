@@ -672,6 +672,33 @@ CATACLYSM_TEST(FCataclysmStatusTriggerCooldownTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmStunStatusTest,
+	"Cataclysm.ApplyStatus.AStunWithStatedSecondsIsLaidOnTheOtherCharacterAndAPlainStunRowIsNot")
+{
+	using namespace CataclysmApplyStatusTest;
+	// THE GENERAL STUN BRANCH, the coordinating session's ruling of 2026-11-25 for Riposte and the Saboteur's Concealed: a
+	// seconds row naming Stun stuns the event's other character. THE CONTROL: a plain row naming Stun at 100 stuns nobody,
+	// since a stun has no length of its own to fall back on.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FFighter Wearer(World);
+	const FFighter ByChance(World);
+	const FFighter BySeconds(World);
+	Wearer.AbilitySystem->SetPoolActions({
+		Status(ECataclysmApplyStatus::Chance, TEXT("retaliation_dealt"), TEXT("Stun"), 100.0f),
+		Status(ECataclysmApplyStatus::Seconds, TEXT("deployable_hit"), TEXT("Stun"), 1.0f)});
+	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("retaliation_dealt")), nullptr, 0.0f, true, ByChance.Actor);
+	Wearer.AbilitySystem->ActOnEvent(FName(TEXT("deployable_hit")), nullptr, 0.0f, true, BySeconds.Actor);
+	TestFalse(TEXT("control: a plain row naming Stun stuns nobody"), UCataclysmSkillEffects::IsStunned(ByChance.Actor));
+	TestTrue(TEXT("a seconds row naming Stun stuns the other character"),
+			 UCataclysmSkillEffects::IsStunned(BySeconds.Actor));
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_DEV_AUTOMATION_TESTS

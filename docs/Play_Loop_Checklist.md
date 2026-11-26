@@ -15,6 +15,9 @@ capital with the days away shown, a second walk ended by a death, and a Continue
   creatures into the front end level and the screen was black. **If Play shows anything other than the character select
   screen, rebuild first.**
 - **Open the project in the editor.** It opens on `L_FrontEnd`, the character select level.
+- **Esc pauses the game; Shift+Esc stops Play.** Since 2026-11-24 the project moves the editor's Stop from Esc to
+  Shift+Esc (`game/Config/DefaultEditorSettings.ini`), so that Esc reaches the game's pause. The Stop button on the
+  toolbar still stops Play. Step 34 checks the pause.
 - **Open the log:** Window > Output Log, and type `PLAY LOOP` in its search box. Every step below writes one line that
   begins `PLAY LOOP:`, and the search box then shows those lines and nothing else. The same lines are in
   `game/Saved/Logs/Cataclysm.log`.
@@ -237,6 +240,14 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   `PLAY LOOP: respecced the empire upgrade tree: 1 point back, 1.0 points banked; it cost 5 days, day 20 to day 25`
 
+  **and then what those 5 days did** (issue #2857):
+
+  `PLAY LOOP: for the respec, days 20 to 25: dungeons resolved: none; cities hit: none; cities fallen: none; no surge`
+
+  When a dungeon's timer runs out within the respec's days, the first press says which, the city it hits and the
+  day, under the branch ("Within 5 days, 1 dungeon's timer runs out: ..."), and the second says what the days did
+  ("Meanwhile, days 20 to 25: dungeons resolved: ...").
+
 - **A centre capstone's choice is not reached in one session**: the first, Foundations of the Empire, opens at 25
   points spent in the tree. When it has, click it in the fifth list entry, "The centre", then one of the three options
   the list shows in its place:
@@ -293,6 +304,13 @@ until then they waited for the next item, death or trip to be written, and stopp
 
   `PLAY LOOP: forgot the Heavy slot's skill choice: it shows its default again`
 
+- **Put a second weapon on** from the bag beside the one worn, of a type not worn yet (since issue #837 slice 2). The
+  keys stay as they were; a notice says what the weapon added: "The Fist adds 5 skills to your pool. Press K, or click
+  a skill box, to choose." **Click a skill box** on the bar: the skill screen opens with that key selected.
+- **In the log:**
+
+  `PLAY LOOP: the Fist added 5 skills to the pool on no key, and 0 not built yet`
+
 - **A reset** gives the points back, and has a line of its own. Only the console resets, with
   `Cataclysm.ResetPassivePoints` and `Cataclysm.ResetAttributePoints`; **skip them here**, so step 15 has the points
   to show:
@@ -344,6 +362,22 @@ click like any other.
 - **In the log:**
 
   `PLAY LOOP: upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left, and 510 gold; residue 52 to 77; it cost 1 day, day 25 to day 26`
+
+  **and then what those days did**, in the words the capital uses for a walk's days away, after every craft that costs
+  a day (issue #2857):
+
+  `PLAY LOOP: at the forge, days 25 to 26: dungeons resolved: none; cities hit: none; cities fallen: none; no surge`
+
+- **When a craft's days run a dungeon's timer out**, its first press says so before you commit, after what it costs:
+  "Within 3 days, 1 dungeon's timer runs out: dungeon 13 (the Timed dungeon on Outpost (-3,0)) hits Outpost (-3,0) on
+  day 28." Nothing is added when no timer runs out. The second press ends with what the days did, "Meanwhile, days 25
+  to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0)); cities hit: Outpost (-3,0) lost 750 defence and
+  1200 people; cities fallen: none; no surge.", and the log says the same:
+
+  `PLAY LOOP: at the forge, days 25 to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0)); cities hit: Outpost (-3,0) lost 750 defence and 1200 people; cities fallen: none; no surge`
+
+  A dungeon that leaves the map while you are at the forge has resolved and hit its city in those days; clearing
+  another dungeon never takes it.
 
 - **Click "Combine two +1 stones into one +2".** Two +1 stones become one +2 for 50 gold, and no day passes. A
   combine costs 50 gold at the lowest rung and twice as much for each rung above it.
@@ -617,8 +651,6 @@ material, and it destroys the piece.
 - **A piece that dropped at +4** (a Legendary) refunds nothing for those four levels: no stone was spent on them.
 - **Salvage Protocol and Disassembly Expert** (the empire tree's Artisan branch) raise the drawn yields: 2.5% a point,
   and 20% more on Superb and above. They never raise the refund.
-- **A full bag** with no stack of something the piece gives back refuses first, "Make room in the bag first.", and
-  destroys nothing.
 
 ### 27. Sell a carried piece to the merchant
 
@@ -636,6 +668,128 @@ In the capital, between walks (issue #48, slice S1). Open the empire map (M) and
 - **In the log:**
 
   `PLAY LOOP: sold Masterful Handwraps of Warding, +3, for 7 gold; 107 gold held`
+
+### 28. Choose The Soul Forge or The Master Tinkerer in the empire tree, and craft until it fires
+
+The two crafting options of the empire tree's centre milestones (issue #47, slice F6). The Soul Forge is the third
+option of Edicts of Power, which opens at 50 points spent in the tree; The Master Tinkerer is the second of The Imperial
+Vanguard, which opens at 100. Neither is greyed any more. With Imperial Prowess, either can be the extra option.
+
+- **With The Soul Forge chosen and its point bought, upgrade a piece at the forge.** The first press ends: "The Soul
+  Forge: a 15% chance it rises two levels instead of one." It costs what one level costs. About one upgrade in seven
+  rises two, never past +10. When it does, after the upgrade's own line:
+
+  `PLAY LOOP: The Soul Forge raised Quality Helm two levels, +3 to +5`
+
+- **With The Master Tinkerer chosen and its point bought, imprint an enchantment or change a drawback.** The first press
+  ends: "The Master Tinkerer: a 5% chance of a critical success, its rolls drawn twice with the better kept, taking no
+  days." About one craft in twenty is a critical success: the enchantment's benefit is the better of two rolls and its
+  drawback the milder of two, no day of the run passes, and the residue, the gold and the material are still taken. After
+  the craft's own line:
+
+  `PLAY LOOP: a critical success on Quality Helm: the rolls were drawn twice with the better kept, and the craft took no days`
+
+- **The outcome is not shown before the press**, only the chance. The same piece on the same day draws the same, so a
+  reload does not change it.
+
+### 29. Take the forge's gold nodes in the empire tree, and see a forge price fall
+
+The five gold nodes of the empire tree's Artisan branch (issue #47, slice F6a). With none held, note the gold of an
+upgrade at the forge (step 16), say 4,500 for a +2 helm carrying 250 residue.
+
+- **Buy Workshop Upgrades to 8 points and Apprentice Oversight.** The same upgrade's question now names 3,060 gold and
+  ends: "The empire tree's forge nodes take 32% off its gold." Workshop Upgrades takes 1.5% a point from every forge
+  price; Apprentice Oversight 20% more when the craft's material is tier 1 or 2 (the +3 stone is tier 2). A +5 upgrade,
+  whose stone is tier 3, takes only Workshop Upgrades' 12%.
+- **Architectural Synergy** takes 1% a point for each 10 points spent in the Treasury branch, at most 30%. **Treasury
+  Synergy** takes 1% for each 50,000 gold (at tier 1) spent at the forge since the count began, at most 30%. All four
+  together are held at 75% off.
+- **Forge Upgrades** gives a 1% a point chance that a craft costs a tenth less. When it lands the question adds "Forge
+  Upgrades' tenth is in it." The same piece on the same day always draws the same, so a reload does not change it.
+- **The price named is the price paid**, and a character holding the discounted price is not refused.
+
+### 30. Take the forge's material nodes in the empire tree, and see a craft keep its materials
+
+The three material nodes of the empire tree's Artisan branch (issue #47, slice F6b).
+
+- **Buy Material Conservation to 10 points.** About one item craft in five then keeps its tier 1 and 2 materials:
+  upgrade stones up to +4, the Corrupted Mote, the Jeweler's Setting Agent, a Tainted Shard spent as an option. When it
+  will, the craft's question ends, for a +2 to +3 upgrade: "The empire tree keeps 2 Upgrade Stone +3 (Material
+  Conservation)." After the craft its stones are still in the bag, and after the craft's own line:
+
+  `PLAY LOOP: the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm`
+
+- **Resource Management** (1% a point, 20% at 20) keeps the tier 3 to 5 materials the same way: stones from +5, the
+  Chaos Stabilizer, the Primal Spark, the Purified Essence of a cleanse.
+- **Tempting Fate**: on a piece carrying more than 500 residue, about one craft in seven returns every material it used,
+  and the words name Tempting Fate alone.
+- **The combines never keep a stone**, and a gem socketed is not kept. The same piece on the same day always draws the
+  same, so a reload does not change it.
+
+### 31. Take the forge's residue and day nodes in the empire tree, and see a craft cost less of both
+
+The eight residue and day nodes of the empire tree's Artisan branch (#2741's crafting group, slices C1 and C2). With
+none held, note an upgrade's question at the forge: for a +2 helm carrying 250 residue to +3, "residue 250 to 275" and
+5 days.
+
+- **Buy Tool Maintenance to 8 points and Master Craftsman to 10.** The same question now ends: "The empire tree's
+  crafting nodes: residue 250 to 266.6, not 275; 1 day, not 5." After the upgrade the helm carries 266.6 residue and one
+  day of the run has passed.
+- **Limited Knowledge** takes 2.5% a point more off the residue of a craft on a piece below +6; **Heat Shielding** 2.5%
+  a point off a craft whose own material is tier 3 or above (an upgrade to +5 and higher); both multiply.
+- **Stable Compounds** makes a Chaos Stabilizer keep less of what a craft adds: a quarter at 10 points, not a half.
+- **Master's Touch**: on a piece carrying residue, 1% for each whole 100 of it that a craft leaves it at 0; when it will,
+  the question says "Master's Touch and the empire tree's crafting nodes: residue 640 to 0, not 690." The same piece on
+  the same day always draws the same.
+- **Industrial Speed** (10% a point, half at 5) and **Sovereign's Assembly** (half) take a share of a craft's days. A craft that took
+  at least one day still takes one; a reroll that took none still takes none. The cleanse's days come down the same way.
+
+### 32. Take the forge's affix nodes in the empire tree, and see a craft change more than it was asked to
+
+The five affix nodes of the empire tree's Artisan branch (issue #2741, crafting slices C3 and C4).
+
+- **Buy Rough Draft to 8 points and Quality Materials to 10.** Every priced question at the forge now ends: "The
+  empire tree's affix nodes: a 40% chance of one more affix; a 50% chance one affix's roll is made its best." Upgrade a
+  Quality Helm with a free slot. After the craft one of its affixes may read 100 percent of its tier's range, a new
+  affix may have joined it at the run's best drop tier (tier 2 on a tier 1 run), and after the craft's own line:
+
+  `PLAY LOOP: the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier 2; made Flat evasion's roll its best, 37 to 100 percent`
+
+- **A piece with no free slot**, or with an enchantment, gets no added affix, and a piece whose rolls are all at the
+  top has none made its best: the line names only what happened, and no line is said when nothing did.
+- **Apprentice Smith** (1% a point) raises one affix below tier 7 a tier and keeps its roll; the line says "raised
+  Flat armor from tier 2 to tier 3".
+- **Master's Workshop and Precision Crafting** act on a roll the forge draws: a reroll's and an added affix's. The
+  reroll's question says, at 15 points each, "Its roll is drawn from 30 percent up, with a 45% chance from 75 percent
+  up." A reroll then never falls below 30 percent of the range.
+- **A dismantle** is never changed by them. The same piece on the same day always draws the same, so a reload does
+  not change what happened.
+
+### 33. Take Ancient Techniques and Residue Protocols in the empire tree
+
+Two more crafting nodes of the empire tree's Artisan branch (issue #2741, crafting slice C6).
+
+- **Ancient Techniques** at 10 points: a craft on a piece that already has four affixes takes 10 days fewer, and still
+  at least one; the question's words name the days, as Master Craftsman's do. A piece with three affixes takes no fewer.
+- **Residue Protocols** at 10 points: the character sheet's line reads "Worn Residue 750 of 1950 (tier 1), 50% ignored
+  by Residue Protocols" for 1,500 worn. Putting on a piece is asked about the Consumption Threshold only when the counted
+  total crosses it, and so is a forge craft on a worn piece. Each piece still shows its own residue, and a craft's gold
+  and days are unchanged.
+
+### 34. Pause with Esc
+
+The project owner, 2026-11-24: "Offline and online, pause is a must". Anywhere in a level: the capital or a dungeon.
+
+- **Press Esc with no screen open.** The game dims, and a panel says "Paused", with a Resume button and "Esc resumes
+  as well". Everything stops: creatures, their attacks, projectiles, a burn's ticks, the cooldown sweeps on the skill
+  bar. The log says `The game is paused. Esc, or the pause screen's Resume, lets it run again.`
+- **Press Esc again,** or click Resume. Everything goes on from where it stopped, and the log says
+  `The game runs again.`
+- **Open a screen (I, C, P, K, L or M) and press Esc.** The screen closes and the game does **not** pause. A second Esc
+  pauses. With two screens open, one Esc closes both.
+- **In a dungeon, with a floor object's choice panel open,** Esc closes it as its leave button does, choosing nothing.
+- **Shift+Esc stops Play,** and plain Esc no longer does. If plain Esc still stops Play, the editor did not take the
+  project's setting: say so, and use `Cataclysm.PauseGame` in the console to pause meanwhile.
 
 ## If a step does not show what it should
 

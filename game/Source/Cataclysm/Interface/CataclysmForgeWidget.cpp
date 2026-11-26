@@ -9,6 +9,8 @@
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Interface/CataclysmChoiceButton.h"
+// The dungeons whose timers run out within a craft's days, issue #2857.
+#include "Interface/CataclysmEmpireMapLayout.h"
 // The enchantment pair an imprint or a drawback change drew, read as the tool tip reads it, issue #47 slice F3.
 #include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
@@ -19,7 +21,10 @@
 // A gem's name in the screen's message, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
+// The empire tree's player bonuses, whole, for The Soul Forge's and The Master Tinkerer's chances, #47 slice F6.
+#include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmForgeCraft.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 
 void UCataclysmForgeWidget::NativeConstruct()
@@ -40,6 +45,18 @@ void UCataclysmForgeWidget::NativeConstruct()
 const UObject* UCataclysmForgeWidget::Context() const
 {
 	return WorldContextForTests ? WorldContextForTests.Get() : static_cast<const UObject*>(this);
+}
+
+FString UCataclysmForgeWidget::TimersRunningOutIn(int32 Days) const
+{
+	return UCataclysmEmpireMapLayout::TimersRunningOutText(
+		UCataclysmGameInstance::EmpireRunFor(Context(), /*bStartIfNone*/ false), Days);
+}
+
+FString UCataclysmForgeWidget::WhatTheDaysDid() const
+{
+	const FString Account = UCataclysmGameInstance::CapitalDaysAccountIn(Context());
+	return Account.IsEmpty() ? FString() : TEXT(" ") + Account;
 }
 
 void UCataclysmForgeWidget::RefreshDisplay()
@@ -412,7 +429,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		}
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
-			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -427,7 +446,12 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::SocketingQuestion(Plan)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
+				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -449,7 +473,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			Message = FString::Printf(TEXT("%s %s. It cost %s and %d day%s of the run."),
 									  Done.bUnsocket ? TEXT("Unsocketed") : TEXT("Socketed"),
 									  *UCataclysmGems::NameOf(Done.Gem), *ACataclysmDroppedItem::GoldName(Done.Gold),
-									  Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
+									  Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"))
+				+ WhatTheDaysDid();
 			break;
 		case ECataclysmForgeResult::Refused:
 		default:
@@ -480,7 +505,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		}
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
-			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -495,7 +522,12 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::SocketWorkQuestion(Plan)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
+				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -514,13 +546,14 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			Message = Said + TEXT(" Press it again to go on.");
 			break;
 		case ECataclysmForgeResult::Done:
-			Message = Done.bAdd
+			Message = (Done.bAdd
 				? FString::Printf(TEXT("Added socket %d, a %s socket. It cost %s and %d day%s of the run."),
 								  Done.Socket + 1, *UCataclysmGems::SocketTypeName(Done.ToType),
 								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"))
 				: FString::Printf(TEXT("Socket %d is now a %s socket. It cost %s and %d day%s of the run."),
 								  Done.Socket + 1, *UCataclysmGems::SocketTypeName(Done.ToType),
-								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
+								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s")))
+				+ WhatTheDaysDid();
 			break;
 		case ECataclysmForgeResult::Refused:
 		default:
@@ -549,7 +582,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		}
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
-			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -564,7 +599,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::AffixWorkQuestion(Plan)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(
+					Context(), /*bDrawsARoll=*/Plan.Craft == ECataclysmForgeAffixCraft::RerollValue)
+				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -585,12 +626,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
 												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
 												 Done.Days == 1 ? TEXT("") : TEXT("s"));
-			Message = Done.Craft == ECataclysmForgeAffixCraft::UpgradeTier
+			Message = (Done.Craft == ECataclysmForgeAffixCraft::UpgradeTier
 				? FString::Printf(TEXT("Affix %d is tier %d now, its roll kept at %d percent. %s"), Done.Affix + 1,
 								  Done.ToTier, UCataclysmForge::RollPercent(Done.ToRoll), *Cost)
 				: FString::Printf(TEXT("Affix %d's roll is %d percent of tier %d's range now, from %d. %s"), Done.Affix + 1,
 								  UCataclysmForge::RollPercent(Done.ToRoll), Done.ToTier,
-								  UCataclysmForge::RollPercent(Done.FromRoll), *Cost);
+								  UCataclysmForge::RollPercent(Done.FromRoll), *Cost))
+				+ WhatTheDaysDid();
 			break;
 		}
 		case ECataclysmForgeResult::Refused:
@@ -652,7 +694,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		}
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
-			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -668,7 +712,12 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::AffixChangeQuestion(Plan, AffixTable)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/!Plan.bShift)
+				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -690,12 +739,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
 												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
 												 Done.Days == 1 ? TEXT("") : TEXT("s"));
-			Message = Done.bShift
+			Message = (Done.bShift
 				? FString::Printf(TEXT("Affix %d is %s now, tier %d kept. %s"), Done.Affix + 1,
 								  *UCataclysmForge::AffixNameOf(Done.ToRow, AffixTable), Done.Tier, *Cost)
 				: FString::Printf(TEXT("Added %s at tier %d as affix %d; the piece is %s now. %s"),
 								  *UCataclysmForge::AffixNameOf(Done.ToRow, AffixTable), Done.Tier, Done.Affix + 1,
-								  *UCataclysmGems::RarityName(Done.ToRarity), *Cost);
+								  *UCataclysmGems::RarityName(Done.ToRarity), *Cost))
+				+ WhatTheDaysDid();
 			break;
 		}
 		case ECataclysmForgeResult::Refused:
@@ -788,7 +838,12 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
-			Message = UCataclysmForge::CleanseQuestion(Plan);
+			Message = UCataclysmForge::CleanseQuestion(Plan)
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, {})
+				+ UCataclysmForge::CleanseCostsText(Plan)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
+				+ TimersRunningOutIn(Plan.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -798,6 +853,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			? FString::Printf(TEXT("The residue is %d now, from %d. It cost %s and %d day%s of the run."),
 							  FMath::RoundToInt(Done.ResidueAfter), FMath::RoundToInt(Done.ResidueBefore),
 							  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"))
+				+ WhatTheDaysDid()
 			: Said;
 		RefreshDisplay();
 		return;
@@ -821,7 +877,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		}
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
-			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -836,7 +894,12 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::DamageTypeQuestion(Plan)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
+				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -857,9 +920,10 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
 												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
 												 Done.Days == 1 ? TEXT("") : TEXT("s"));
-			Message = Done.Craft == ECataclysmForgeDamageTypeCraft::Change
+			Message = (Done.Craft == ECataclysmForgeDamageTypeCraft::Change
 				? FString::Printf(TEXT("%s is %s now. %s"), *Done.FromType.ToString(), *Done.ToType.ToString(), *Cost)
-				: FString::Printf(TEXT("The weapon carries %s now. %s"), *Done.ToType.ToString(), *Cost);
+				: FString::Printf(TEXT("The weapon carries %s now. %s"), *Done.ToType.ToString(), *Cost))
+				+ WhatTheDaysDid();
 			break;
 		}
 		case ECataclysmForgeResult::Refused:
@@ -891,7 +955,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		}
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
-			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -905,8 +971,16 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
+			// AND THE MASTER TINKERER'S CHANCE WHEN IT IS HELD, never the outcome (#47 slice F6, R8).
 			Message = UCataclysmForge::EnchantmentWorkQuestion(Plan, EnchantmentWork.Named)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
+				+ UCataclysmForge::MilestoneChanceText(
+					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).EnchantCriticalChance, /*bUpgrade=*/false)
+				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -935,10 +1009,11 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
 												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
 												 Done.Days == 1 ? TEXT("") : TEXT("s"));
-			Message = Done.bImprint
+			Message = (Done.bImprint
 				? FString::Printf(TEXT("Imprinted %s (%s). The piece is now %s. %s"), *Positive, *Drawback,
 								  *UCataclysmGems::RarityName(Done.RarityAfter), *Cost)
-				: FString::Printf(TEXT("%s now carries %s. %s"), *Positive, *Drawback, *Cost);
+				: FString::Printf(TEXT("%s now carries %s. %s"), *Positive, *Drawback, *Cost))
+				+ WhatTheDaysDid();
 			break;
 		}
 		case ECataclysmForgeResult::Refused:
@@ -971,7 +1046,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 	}
 	// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 	const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
-		Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Stone));
 	if (Refusal.IsEmpty() && !Effect.bPossible)
 	{
 		Refusal = Effect.Refusal;
@@ -988,8 +1065,17 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 	if (!bUpgradeAsked)
 	{
 		bUpgradeAsked = true;
+		// AND THE SOUL FORGE'S CHANCE WHEN IT IS HELD, never the outcome (#47 slice F6, R8).
+		// AND THE DUNGEONS WHOSE TIMERS RUN OUT WITHIN ITS DAYS, last, issue #2857.
 		Message = UCataclysmForge::UpgradeQuestion(Plan)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Stone)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Stone, Plan.StonesNeeded, Effect.Materials)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
+				+ UCataclysmForge::MilestoneChanceText(
+					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).UpgradeExtraLevelChance, /*bUpgrade=*/true)
+				+ TimersRunningOutIn(Effect.Days);
 		RefreshDisplay();
 		return;
 	}
@@ -1007,9 +1093,11 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		break;
 	case ECataclysmForgeResult::Done:
 		CancelThePendingUpgrade();
+		// AND WHAT ITS DAYS DID, when they did anything, issue #2857.
 		Message = FString::Printf(TEXT("Raised to +%d. It cost %s and %d day%s of the run."), Done.ToLevel,
 								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
-								  Done.Days == 1 ? TEXT("") : TEXT("s"));
+								  Done.Days == 1 ? TEXT("") : TEXT("s"))
+			+ WhatTheDaysDid();
 		break;
 	case ECataclysmForgeResult::Refused:
 	default:

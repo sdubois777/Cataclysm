@@ -49,10 +49,17 @@ _FLOOR = "a dungeon floor's own hazard, dealt in the floor's name: no skill deal
 _CREATURE = "a creature's or a dungeon rule's damage, not the player's: no skill deals it"
 _EXPLOSION = ("a minion's explosion's burn: every explosion is one a passive sets off, which credits nothing "
               "(judgement 2), since issue #2787 removed Summon Imp's cap explosion, the one that credited the skill")
+_SIPHON = ("the Soul Collector's Siphon, a passive tree's rule and no skill: damage a passive adds credits nothing "
+           "(judgement 2, 2026-11-19); the Death trees' slice C2, 2026-11-25")
 
 #: The calls that name neither a skill nor a row, by rule, each with its reason.
 CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
     ("AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::Explode", "ApplyBurn", 0): _EXPLOSION,
+    # BLOOD DEBT, the Shadow's keystone, a passive tree's rule and no skill: the
+    # Bleed left on a dead enemy laid again on the strongest near it. The Death
+    # trees' slice C4c2, 2026-11-25.
+    ("AbilitySystem/CataclysmDebuffs.cpp", "UCataclysmDebuffs::PassBleedLeftToStrongest", "ApplyDamageOverTime", 0):
+        _WORN_ROW + "; Blood Debt, the Death trees' slice C4c2, 2026-11-25",
     ("AbilitySystem/CataclysmAbilitySystemComponent.cpp", "UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer",
      "UCataclysmAilments::Apply", 0): _WORN_ROW + "; laid on its own wearer",
     ("AbilitySystem/CataclysmAbilitySystemComponent.cpp", "UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer",
@@ -69,16 +76,28 @@ CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
         _SPREAD,
     ("AbilitySystem/CataclysmDamageConversion.cpp", "UCataclysmDamageConversion::ConvertIfActive",
      "ApplyDamageOverTime", 0): "damage the player takes, converted into a bleed on the player: no skill of theirs deals it",
+    ("AbilitySystem/CataclysmStigmata.cpp", "UCataclysmStigmata::AfterSettingAlight", "ApplyDamageOverTime", 0):
+        "Stigmata's self-burn, a passive node's burn laid on its own holder (the Demonic tree rework of 2026-11-24): "
+        "damage a passive adds credits nothing, judgement 2, and no skill of the holder's deals it",
+    # `PayPulseFor` SINCE THE WAR VOW OPTIONS' THIRD SLICE, V3a, 2026-11-25: `PayPulse` became the form of it that
+    # sizes the pulse by the last blow, and the Bleed is laid where every pulse is paid.
+    ("AbilitySystem/CataclysmRetaliation.cpp", "UCataclysmRetaliation::PayPulseFor", "UCataclysmAilments::Apply", 0):
+        "Vengeful Discharge's Bleed, a passive node's, laid by its retaliation pulse (2026-11-25): retaliation is no "
+        "skill's, and damage a passive adds credits nothing, judgement 2",
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyDamageOverTime",
      DAMAGE_OVER_TIME_DELIVERY, 0): _OWN_EFFECT,
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyShareOfHealthOverTime",
      DAMAGE_OVER_TIME_DELIVERY, 0): _OWN_EFFECT,
     ("Character/CataclysmEnemyModifiers.cpp", "UCataclysmEnemyModifiers::AuraStep", "ApplyDamageOverTime", 0):
         _CREATURE + "; a creature modifier's aura",
+    ("Character/CataclysmEnemyModifiers.cpp", "UCataclysmEnemyModifiers::TetherOnHealthLost", "ApplyDamageOverTime", 0):
+        _CREATURE + "; Death's Soul Tether, a share of the health a creature lost laid on whoever struck it",
     ("Dungeon/CataclysmDungeonGameMode.cpp", "ACataclysmDungeonGameMode::NoteDeathForPlagueHarbingers",
      "UCataclysmAilments::Apply", 0): _CREATURE + "; a dungeon modifier at a creature's death",
     ("Dungeon/CataclysmDungeonGameMode.cpp", "ACataclysmDungeonGameMode::NoteDeathForSporeClouds",
      "UCataclysmAilments::Apply", 0): _CREATURE + "; a dungeon modifier at a creature's death",
+    ("AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::DrainOnce", DAMAGE_OVER_TIME_DELIVERY, 0): _SIPHON,
+    ("AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::NecrosisOnce", "UCataclysmAilments::Apply", 0): _SIPHON,
     **{("Dungeon/CataclysmDungeonGameMode.cpp", f"ACataclysmDungeonGameMode::{step}", DAMAGE_OVER_TIME_DELIVERY, 0): _FLOOR
        for step in ("StepPlagueConvergence", "StepRawSewage", "StepSwarmOfLocusts", "StepInfestedHoard",
                     "StepFunerealProcession", "StepInfestedVeins", "StepBloodPrice", "StepNecroticGround")},

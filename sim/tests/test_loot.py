@@ -691,14 +691,26 @@ def test_nothing_drops_below_the_upgrade_level_its_rarity_requires():
 
 
 def test_no_affix_rolls_above_the_tier_gate():
-    """A drop's affix tiers are capped at the difficulty tier plus one."""
+    """A drop's affix tiers are capped at the difficulty tier plus one.
+
+    A HYBRID BY WHAT IT GRANTS (issue #2883, ruled 2026-11-25): its halves are
+    tier N - 2, and the hybrid itself is tier 3 at the least. Both are checked,
+    and a tier 1 drop must have shown a hybrid, or the hybrid half proves nothing.
+    """
     rng = random.Random(77)
+    hybrids_at_tier_one = 0
     for tier in (1, 3, 8):
         cap = af.max_affix_tier_on_a_drop(tier)
         for _ in range(200):
             item = loot.roll_item("Gloves", tier, magic_find=400.0, rng=rng)
             for rolled in item.affixes:
-                assert 1 <= rolled.tier <= cap
+                if isinstance(rolled.affix, af.HybridAffix):
+                    assert af.affix_ranges.LOWEST_HYBRID_TIER <= rolled.tier <= af.affix_ranges.MAX_TIER
+                    assert rolled.tier - af.affix_ranges.HYBRID_TIER_DROP <= cap
+                    hybrids_at_tier_one += tier == 1
+                else:
+                    assert 1 <= rolled.tier <= cap
+    assert hybrids_at_tier_one > 0
 
 
 def test_a_roll_lands_inside_its_band():
@@ -1008,10 +1020,21 @@ def test_the_ladder_is_the_six_enemy_rarities_the_power_model_has():
     assert len(ENEMY_RARITIES) == 6
 
 
-def test_a_common_kill_drops_the_genre_figure():
-    """0.16, Path of Exile's base chance for an item from a normal monster,
-    taken as the starting point because this design had none."""
-    assert loot.expected_gear_drops("Common") == pytest.approx(0.16)
+def test_a_common_kill_drops_half_the_genre_figure():
+    """0.08: half of 0.16, Path of Exile's base chance for an item from a
+    normal monster, which was the starting point because this design had none.
+    The project owner halved the whole gear column on 2026-11-24, issue #2853,
+    "Halve gear drops (Recommended)"."""
+    assert loot.expected_gear_drops("Common") == pytest.approx(0.08)
+
+
+def test_the_gear_column_is_half_what_it_was_at_every_rarity():
+    """The six figures, stated once, so the column's shape and its halving are
+    both pinned: every rarity alike, so the enemy ladder of 2026-08-18
+    stands. Issue #2853."""
+    before = {"Common": 0.16, "Elite": 0.5, "Legendary": 1.0, "Herald": 2.0,
+              "Boss": 5.0, "Cataclysm Boss": 12.0}
+    assert loot.ENEMY_GEAR_DROPS == {rarity: figure / 2 for rarity, figure in before.items()}
 
 
 def test_a_rarer_enemy_drops_more_and_better():
@@ -1053,7 +1076,7 @@ def test_an_unknown_enemy_rarity_is_rejected():
 
 def test_the_rolled_count_averages_the_expected_one():
     """The fractional part is a probability, so a Common enemy drops nothing
-    most of the time and the mean still comes out at 0.16. Rounding to the
+    most of the time and the mean still comes out at 0.08. Rounding to the
     nearest whole number instead would make it drop nothing ever."""
     rng = random.Random(20260818)
     for rarity in ENEMY_RARITIES:
@@ -1064,21 +1087,22 @@ def test_the_rolled_count_averages_the_expected_one():
 
 
 def test_a_common_kill_usually_drops_nothing_at_all():
-    """0.16 is a rate, not a guarantee, and the shape matters as much as the
+    """0.08 is a rate, not a guarantee, and the shape matters as much as the
     mean: most kills give the player nothing.
 
     THE EXACT SHARE MOVED WHEN THE COUNT BECAME A POISSON DRAW, from 84% empty
-    to 85.2%, and a Common enemy can now occasionally drop two. Issue #725.
+    to 85.2% at the 0.16 of the time, and a Common enemy can now occasionally
+    drop two. Issue #725. At 0.08, since issue #2853, 92.3% are empty.
     """
     rng = random.Random(1)
     rolled = [loot.roll_gear_drop_count("Common", 100.0, rng)
               for _ in range(20000)]
 
-    assert rolled.count(0) / len(rolled) == pytest.approx(0.852, abs=0.02)
+    assert rolled.count(0) / len(rolled) == pytest.approx(0.923, abs=0.02)
 
-    # AND TWO IS POSSIBLE, at about one kill in eighty. Asserted rather than
-    # left to chance, because the old method made two impossible at any rate
-    # below one and this is the difference.
+    # AND TWO IS POSSIBLE, at about one kill in 340 at 0.08 (about 59 of these
+    # 20,000). Asserted rather than left to chance, because the old method made
+    # two impossible at any rate below one and this is the difference.
     assert max(rolled) >= 2
 
 
@@ -1156,8 +1180,8 @@ def test_the_enemys_magic_find_reaches_the_rarity_roll():
                 seen += af.RARITIES.index(item.rarity) >= 3
         return seen
 
-    # A Herald adds 150% magic find and drops two items; a Common adds none and
-    # drops 0.16. Comparing shares rather than counts would be confounded by
+    # A Herald adds 150% magic find and drops one item; a Common adds none and
+    # drops 0.08. Comparing shares rather than counts would be confounded by
     # that, so this compares against what the distribution itself predicts.
     plain = loot.rarity_distribution(8, 0.0)
     lucky = loot.rarity_distribution(8, loot.magic_find_from("Herald"))
@@ -1167,7 +1191,8 @@ def test_the_enemys_magic_find_reaches_the_rarity_roll():
     # And the roll really uses it: a Herald's drops beat what no-magic-find
     # drops would give over the same number of items.
     heralds = share_above_superb("Herald")
-    expected_without = sum(plain[r] for r in above) * rounds * 2
+    expected_without = (sum(plain[r] for r in above) * rounds
+                        * loot.expected_gear_drops("Herald"))
     assert heralds > expected_without * 1.3, (
         f"a Herald's {rounds * 2} drops gave {heralds} above Superb, and with "
         f"no magic find at all they would give about {expected_without:.0f}")
@@ -1261,9 +1286,11 @@ def test_a_kill_can_drop_for_more_than_one_slot():
 # Crafting materials, on their own roll
 # --------------------------------------------------------------------------
 
-def test_a_kill_drops_a_quarter_as_many_materials_as_gear():
-    """A quarter of the gear rate since 2026-11-22, issue #2829. It was twice
-    the gear rate until 2026-08-23 (issue #850) and the gear rate until #2829.
+def test_a_kill_drops_half_as_many_materials_as_gear():
+    """Half the gear rate since 2026-11-24, when the owner halved the gear
+    column and not this one (issue #2853). A quarter of the gear rate from
+    2026-11-22 (issue #2829); twice the gear rate until 2026-08-23 (issue #850)
+    and the gear rate until #2829.
 
     THE RELATIONSHIP IS ASSERTED RATHER THAN THE SIX FIGURES. What the test
     guards is that the two columns move together deliberately, so a change to
@@ -1271,7 +1298,7 @@ def test_a_kill_drops_a_quarter_as_many_materials_as_gear():
     """
     for rarity in loot.ENEMY_GEAR_DROPS:
         assert loot.expected_material_drops(rarity) == pytest.approx(
-            loot.expected_gear_drops(rarity) / 4)
+            loot.expected_gear_drops(rarity) / 2)
 
 
 def test_the_material_drop_figures_are_what_the_owner_chose():
@@ -1572,3 +1599,39 @@ def test_the_material_reach_check_refuses_a_reach_that_inverts_the_ladder():
         loot._check_no_material_tier_overtakes_the_one_below_it()
     finally:
         loot.MATERIAL_MAGIC_FIND_REACH = original
+
+
+# --------------------------------------------------------------------------
+# The Cataclysm Boss's one piece of the next tier's best (issue #2853)
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("tier, rarity", [
+    (1, "Legendary"), (2, "Mythical"), (3, "Ascendant"), (4, "Cataclysmic"),
+    (5, "Cataclysmic"), (6, "Cataclysmic"), (7, "Cataclysmic"), (8, "Cataclysmic"),
+])
+def test_the_cataclysm_bosses_piece_is_the_next_tiers_best(tier, rarity):
+    """The owner's ruling of 2026-11-24, "The next tier's best (Recommended)": rarity number tier + 4, to Cataclysmic."""
+    assert loot.cataclysm_boss_piece_rarity(tier) == rarity
+    cap = loot.highest_droppable_rarity(tier)
+    if cap != "Cataclysmic":
+        assert loot.rarity_index(rarity) == loot.rarity_index(cap) + 1, "the piece is one rung above the tier's cap"
+
+
+@pytest.mark.parametrize("tier", [1, 4, 8])
+def test_a_cataclysm_boss_drops_one_piece_at_its_rarity_and_gate(tier):
+    """One piece, of exactly the next tier's best, at that rarity's gear level gate, for any magic find."""
+    rng = random.Random(2853 + tier)
+    for magic_find in (0.0, 100000.0):
+        pieces = loot.roll_the_cataclysm_bosses_piece("Cataclysm Boss", tier, magic_find, rng)
+        assert len(pieces) == 1
+        wanted = loot.cataclysm_boss_piece_rarity(tier)
+        assert pieces[0].rarity == wanted
+        assert pieces[0].gear_level == loot.gear_level_gate(wanted)
+
+
+def test_only_a_cataclysm_boss_drops_the_piece():
+    """Every other enemy rarity, a Boss included, drops no piece; the Cataclysm Boss drops one (the control)."""
+    rng = random.Random(2853)
+    for enemy in loot.ENEMY_GEAR_DROPS:
+        expected = 1 if enemy == "Cataclysm Boss" else 0
+        assert len(loot.roll_the_cataclysm_bosses_piece(enemy, 1, 0.0, rng)) == expected, enemy

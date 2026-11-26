@@ -7,6 +7,7 @@
 // rather than reading a gameplay attribute that is zero by design. Issue #973.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -397,12 +398,31 @@ float UCataclysmGameplayAbility::FervourCostFor(
 	// refused press's line -- so they cannot disagree.
 	// AND THE SKILL'S LEVEL LOWERS EITHER, here and nowhere else. Issue #2802: Subjugate's 30 is level 1's figure.
 	const float LevelCost = static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this));
+	float Cost = 0.0f;
 	if (FervourCostOverride >= 0.0f)
 	{
-		return FervourCostOverride * LevelCost;
+		Cost = FervourCostOverride * LevelCost;
 	}
-	EnsureSlotNumbersLoaded();
-	return FMath::Max(0.0f, SlotFervourCost) * LevelCost;
+	else
+	{
+		EnsureSlotNumbersLoaded();
+		Cost = FMath::Max(0.0f, SlotFervourCost) * LevelCost;
+	}
+
+	// AND WHAT A ROW TAKES OFF IT, LAST, FLOORED AT NOUGHT. The Ravager tree rework of 2026-11-24, Thronged: "Your
+	// Ultimate costs 5 less Fervour for each enemy within 4 metres of you when you use it". ASKED, with this skill's
+	// tags and the character's state, because the row is scaled by the enemies standing near and a scaled row is never
+	// folded into an attribute; the count is taken at the moment the cost is read, which is when it is checked and
+	// when it is paid. A fallback of nought, so a character with no such row pays exactly what it paid before. Taken
+	// off AFTER the level's factor, because the sentence states Fervour and not a share of the cost. A cost of nought
+	// is not reduced, so nothing is asked for a skill with no Fervour cost.
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (Cataclysm && Cost > 0.0f)
+	{
+		const float Less = Cataclysm->StatForSkill(FName(UltimateFervourCostReductionStat), SkillTagsForStats(), 0.0f);
+		Cost = FMath::Max(0.0f, Cost - FMath::Max(0.0f, Less));
+	}
+	return Cost;
 }
 
 bool UCataclysmGameplayAbility::FervourCovers(
@@ -421,6 +441,8 @@ const TCHAR* UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat =
 	TEXT("mana_cost_as_current_health_percent");
 const TCHAR* UCataclysmGameplayAbility::ManaCostAsMaximumManaPercentStat =
 	TEXT("mana_cost_as_maximum_mana_percent");
+const TCHAR* UCataclysmGameplayAbility::UltimateFervourCostReductionStat =
+	TEXT("ultimate_fervour_cost_reduction");
 const TCHAR* UCataclysmGameplayAbility::ManaCostAlsoTakenFromHealthPercentStat =
 	TEXT("mana_cost_also_taken_from_health_percent");
 
@@ -666,6 +688,13 @@ void UCataclysmGameplayAbility::ApplyCost(
 				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
 		{
 			Paying->NoteResourceConsumed(Fervour, &SkillTagsForStats());
+
+			// AND FERVOUR SPENT, with the amount and the skill's tags: the Death trees' slice C3a (2026-11-25).
+			// `resource_consumed` also fires for a next-use charge spent, so it cannot stand for Fervour.
+			Paying->NoteFervourSpent(Fervour, &SkillTagsForStats());
+
+			// AND A SPEND, for Crimson Tide's heal for every 10 Fervour spent or drained (2026-11-25).
+			FCataclysmWarFervour::NoteFervourSpentOrDrained(Paying, Fervour);
 		}
 	}
 
@@ -769,6 +798,15 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 		: AbilitySystem->HasMatchingGameplayTag(Tag);
 	if (bRefused)
 	{
+		// BORROWED STEP: a movement skill with no charge left may still be used, while the Fervour it costs is held.
+		// The Death trees' slice C3c (2026-11-25). `ApplyCooldown` takes the Fervour and leaves the cooldown running.
+		const float Borrowed = FervourToUseOnCooldown(AbilitySystem);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		if (Borrowed > 0.0f && AbilitySystem->HasAttributeSetForAttribute(Pool)
+			&& AbilitySystem->GetNumericAttribute(Pool) >= Borrowed)
+		{
+			return true;
+		}
 		if (OptionalRelevantTags)
 		{
 			OptionalRelevantTags->AddTag(Tag);
@@ -776,6 +814,18 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 		return false;
 	}
 	return true;
+}
+
+const TCHAR* UCataclysmGameplayAbility::MovementOnCooldownFervourCostStat = TEXT("movement_on_cooldown_fervour_cost");
+
+float UCataclysmGameplayAbility::FervourToUseOnCooldown(const UAbilitySystemComponent* AbilitySystem) const
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || GetDesignedSlot() != ECataclysmAbilitySlot::Movement)
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, Cataclysm->StatForSkill(FName(MovementOnCooldownFervourCostStat), SkillTagsForStats(), 0.0f));
 }
 
 float UCataclysmGameplayAbility::CooldownAfterReduction(
@@ -918,6 +968,25 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	if (!AbilitySystem)
 	{
 		return;
+	}
+
+	// BORROWED STEP'S USE: a movement skill used with no charge left, which `CheckCooldown` let through on the Fervour
+	// held. The Death trees' slice C3c (2026-11-25). Its cooldown RUNS ON AS IT WAS, a judgement of that slice: the use
+	// borrowed is not a use that starts another. The Fervour is taken here, where the use is known to be one, and is a
+	// spend like any cost: `resource_consumed` and `fervour_spent`, as `ApplyCost` raises them. A skill with no such
+	// cost, or a use with a charge in hand, goes on below exactly as before.
+	if (UCataclysmAbilitySystemComponent* Borrowing = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const float Borrowed = FervourToUseOnCooldown(Borrowing);
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		if (Borrowed > 0.0f && Borrowing->SkillChargesHeld(Slot, SkillTagsForStats()) <= 0
+			&& Borrowing->HasAttributeSetForAttribute(Pool) && Borrowing->GetNumericAttribute(Pool) >= Borrowed)
+		{
+			Borrowing->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Borrowed);
+			Borrowing->NoteResourceConsumed(Borrowed, &SkillTagsForStats());
+			Borrowing->NoteFervourSpent(Borrowed, &SkillTagsForStats());
+			return;
+		}
 	}
 
 	// AND THE CHANCE THE SKILL DOES NOT GO ON COOLDOWN AT ALL. Issue #973. The

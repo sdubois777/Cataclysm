@@ -9,6 +9,8 @@
 struct FCataclysmCarriedSlot;
 class UCataclysmInventoryComponent;
 class UDataTable;
+enum class ECataclysmInventoryTab : uint8;
+enum class ECataclysmWearResult : uint8;
 
 /**
  * How one carried cell is drawn. Issue #878.
@@ -310,6 +312,53 @@ public:
 								 const FString& HeldName = FString(),
 								 const FString& Gold = FString());
 
+	//~ The materials tab and the gems tab. Issue #2849, the owner's ruling of 2026-11-22: "One cell per kind, no limit
+	//~ (Recommended)". The header line above is the gear tab's name; these two names stand beside it.
+
+	/**
+	 * The name of the materials tab or the gems tab with how many kinds it holds: "Materials (12)", "Gems (3)". Empty
+	 * for the gear tab, whose name is `HeaderTextFor`'s line.
+	 */
+	static FString TabNameFor(ECataclysmInventoryTab Tab, int32 KindsHeld);
+
+	/** A tab's name in ink when it is the tab shown, and in the empty cell's colour when it is not. */
+	static FLinearColor TabColourFor(bool bShown);
+
+	/**
+	 * Every crafting material the materials tab shows, one cell each, held or not: the table's rows by tier, lowest
+	 * first, and within a tier in the table's own order. Q1 of #2849: the tab "always shows all 27 materials (by
+	 * tier)". Empty for no table.
+	 */
+	static TArray<FName> MaterialTabOrder(const UDataTable* CraftingMaterialTable);
+
+	/** What a material's cell says: its name, whether any is held or not. */
+	static FString MaterialTabLabelFor(FName Material, const UDataTable* CraftingMaterialTable);
+
+	/** How many of a material the cell says are held, nought included: "0", "1", "34". */
+	static FString MaterialTabCountFor(int32 Held);
+
+	//~ The gems tab's pages. The coordinating session, 2026-11-22: 28 gems at 8 rarities is 224 stacks, which is
+	//~ reachable in play, and a tab whose bottom rows ran off the screen would hide gems. The screen code has no scroll
+	//~ box, so the tab pages: "Previous", "Page N of M", "Next".
+
+	/**
+	 * How many gem stacks one page shows: rows of twelve, as many rows as the materials tab uses for `MaterialKinds`
+	 * materials, so the gems tab is never taller than the materials tab. 27 materials use 3 rows: 36 stacks a page.
+	 */
+	static int32 GemStacksPerPage(int32 MaterialKinds);
+
+	/** How many pages `Stacks` gem stacks fill at `PerPage` a page: at least 1, so an empty tab is page 1 of 1. */
+	static int32 GemPageCount(int32 Stacks, int32 PerPage);
+
+	/** `Page` held inside 1 to `Pages`: a page past the last, as when stacks are spent, shows the last. */
+	static int32 ClampGemPage(int32 Page, int32 Pages);
+
+	/** The place in the gems tab of the first stack page `Page` shows: page 1 starts at 0. */
+	static int32 GemPageStart(int32 Page, int32 PerPage);
+
+	/** "Page 2 of 6". */
+	static FString GemPageText(int32 Page, int32 Pages);
+
 	//~ What is on the cursor. Issue #878.
 
 	/**
@@ -395,6 +444,36 @@ public:
 	 *                size is treated as nought
 	 */
 	static FVector2D HeldItemTopLeftFor(const FVector2D& Cursor, float CellPx);
+
+	//~ What a press said. Issue #837, slice 3.
+
+	/**
+	 * The line the screen shows for what a press on it did: the sentence `UCataclysmWearing::Explain` gives, or nothing
+	 * when the press did what was asked (worn, swapped, taken off, picked up, put down, exchanged).
+	 *
+	 * THE OWNER'S Q6 OF 2026-11-24 (issue #837 comment 7150408605): the last weapon's refusal is shown on the inventory
+	 * screen, where until then it reached only the log. Every press that did not do what was asked is shown the same
+	 * way, so a press that changed nothing no longer looks like a press that missed. THE SAME RESULTS THE LOG LINE
+	 * NAMES, so the screen and the log never disagree: a drop on the floor is said in both, as it was logged before.
+	 */
+	static FString PressLineFor(ECataclysmWearResult Result);
+
+	/** How long the line stays, in seconds: long enough to read a sentence of two clauses. A judgement. */
+	static constexpr double PressLineSeconds = 4.0;
+
+	/**
+	 * Whether the line posted at `PostedAt` is still shown at `Now`, world seconds both: a line that says something,
+	 * for `PressLineSeconds`.
+	 */
+	static bool PressLineIsShown(const FString& Line, double PostedAt, double Now);
+
+	/**
+	 * How far below the top of the screen the line is drawn, centred across it. ABOVE THE PANEL, which is centred and
+	 * at most `PanelHeightShare` of the height tall, so the band above it is at least 14% of the screen: 151 units at
+	 * 1080, and the line and its backing take under 90 from the top. Below the panel the heads-up display's skill bar
+	 * is drawn, and a widget is drawn over it.
+	 */
+	static constexpr float PressLineTopPx = 48.0f;
 
 	//~ Colours. Six-digit hex, the same form UCataclysmCombatOverlay uses.
 

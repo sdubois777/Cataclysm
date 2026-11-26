@@ -16,8 +16,8 @@
     {
       "id": "trunk_000",
       "position": {
-        "x": 0,
-        "y": 770
+        "x": 0.0,
+        "y": 0.0
       },
       "type": "basic",
       "data": {
@@ -38,8 +38,8 @@
     {
       "id": "trunk_001",
       "position": {
-        "x": 0,
-        "y": 650
+        "x": 0.0,
+        "y": 220.0
       },
       "type": "basic",
       "data": {
@@ -60,14 +60,14 @@
     {
       "id": "trunk_002",
       "position": {
-        "x": -160,
-        "y": 650
+        "x": -150.0,
+        "y": 220.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Bloodthirst",
-        "description": "+0.3% life leech per point on all melee attacks.",
+        "description": "+1% life leech on all melee attacks for every 3 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -82,8 +82,8 @@
     {
       "id": "trunk_003",
       "position": {
-        "x": 160,
-        "y": 650
+        "x": 150.0,
+        "y": 220.0
       },
       "type": "basic",
       "data": {
@@ -104,8 +104,8 @@
     {
       "id": "trunk_004",
       "position": {
-        "x": 0,
-        "y": 530
+        "x": 0.0,
+        "y": 440.0
       },
       "type": "basic",
       "data": {
@@ -126,8 +126,8 @@
     {
       "id": "trunk_005",
       "position": {
-        "x": 160,
-        "y": 530
+        "x": 150.0,
+        "y": 440.0
       },
       "type": "basic",
       "data": {
@@ -148,8 +148,8 @@
     {
       "id": "trunk_006",
       "position": {
-        "x": 0,
-        "y": -430
+        "x": -150.0,
+        "y": 1960.0
       },
       "type": "keystone",
       "data": {
@@ -170,8 +170,8 @@
     {
       "id": "trunk_007",
       "position": {
-        "x": 0,
-        "y": 410
+        "x": 0.0,
+        "y": 660.0
       },
       "type": "basic",
       "data": {
@@ -192,8 +192,8 @@
     {
       "id": "trunk_008",
       "position": {
-        "x": -160,
-        "y": 410
+        "x": -150.0,
+        "y": 440.0
       },
       "type": "basic",
       "data": {
@@ -214,14 +214,14 @@
     {
       "id": "trunk_009",
       "position": {
-        "x": 160,
-        "y": 410
+        "x": 150.0,
+        "y": 660.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Berserking",
-        "description": "When you reach maximum Fervour your next melee attack consumes all Fervour. For each point of Fervour consumed that attack deals +10% bonus damage per point invested.",
+        "description": "When you reach maximum Fervour your next melee attack consumes all Fervour. For each point of Fervour consumed that attack deals +1% bonus damage per point invested.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -236,8 +236,8 @@
     {
       "id": "trunk_010",
       "position": {
-        "x": 0,
-        "y": 290
+        "x": 0.0,
+        "y": 880.0
       },
       "type": "basic",
       "data": {
@@ -258,8 +258,8 @@
     {
       "id": "trunk_011",
       "position": {
-        "x": -160,
-        "y": 290
+        "x": -150.0,
+        "y": 660.0
       },
       "type": "keystone",
       "data": {
@@ -280,8 +280,8 @@
     {
       "id": "trunk_012",
       "position": {
-        "x": 160,
-        "y": 290
+        "x": 300.0,
+        "y": 760.0
       },
       "type": "keystone",
       "data": {
@@ -302,8 +302,8 @@
     {
       "id": "twoh_001",
       "position": {
-        "x": -320,
-        "y": 410
+        "x": -400.0,
+        "y": 440.0
       },
       "type": "basic",
       "data": {
@@ -324,8 +324,8 @@
     {
       "id": "twoh_002",
       "position": {
-        "x": -480,
-        "y": 290
+        "x": -540.0,
+        "y": 348.8
       },
       "type": "basic",
       "data": {
@@ -346,8 +346,8 @@
     {
       "id": "twoh_003",
       "position": {
-        "x": -320,
-        "y": 290
+        "x": -400.0,
+        "y": 510.0
       },
       "type": "basic",
       "data": {
@@ -368,8 +368,8 @@
     {
       "id": "twoh_004",
       "position": {
-        "x": -480,
-        "y": 170
+        "x": -680.0,
+        "y": 257.5
       },
       "type": "basic",
       "data": {
@@ -390,8 +390,8 @@
     {
       "id": "twoh_005",
       "position": {
-        "x": -320,
-        "y": 170
+        "x": -400.0,
+        "y": 580.0
       },
       "type": "basic",
       "data": {
@@ -412,8 +412,8 @@
     {
       "id": "twoh_006",
       "position": {
-        "x": -640,
-        "y": 50
+        "x": -820.0,
+        "y": 166.2
       },
       "type": "basic",
       "data": {
@@ -434,8 +434,8 @@
     {
       "id": "twoh_007",
       "position": {
-        "x": -320,
-        "y": 50
+        "x": -400.0,
+        "y": 650.0
       },
       "type": "basic",
       "data": {
@@ -456,8 +456,8 @@
     {
       "id": "twoh_008",
       "position": {
-        "x": -640,
-        "y": -70
+        "x": -960.0,
+        "y": 75.0
       },
       "type": "keystone",
       "data": {
@@ -478,8 +478,8 @@
     {
       "id": "twoh_009",
       "position": {
-        "x": -480,
-        "y": -70
+        "x": -1220.0,
+        "y": 545.4
       },
       "type": "basic",
       "data": {
@@ -500,8 +500,8 @@
     {
       "id": "twoh_010",
       "position": {
-        "x": -320,
-        "y": -70
+        "x": -540.0,
+        "y": 741.2
       },
       "type": "basic",
       "data": {
@@ -522,8 +522,8 @@
     {
       "id": "twoh_011",
       "position": {
-        "x": -640,
-        "y": -190
+        "x": -1207.2,
+        "y": 690.6
       },
       "type": "basic",
       "data": {
@@ -544,8 +544,8 @@
     {
       "id": "twoh_012",
       "position": {
-        "x": -480,
-        "y": -190
+        "x": -1207.3,
+        "y": 399.8
       },
       "type": "basic",
       "data": {
@@ -566,8 +566,8 @@
     {
       "id": "twoh_013",
       "position": {
-        "x": -320,
-        "y": -190
+        "x": -680.0,
+        "y": 832.5
       },
       "type": "basic",
       "data": {
@@ -588,8 +588,8 @@
     {
       "id": "twoh_014",
       "position": {
-        "x": -640,
-        "y": -310
+        "x": -1166.3,
+        "y": 831.0
       },
       "type": "basic",
       "data": {
@@ -610,8 +610,8 @@
     {
       "id": "twoh_015",
       "position": {
-        "x": -480,
-        "y": -310
+        "x": -1166.4,
+        "y": 259.3
       },
       "type": "basic",
       "data": {
@@ -632,8 +632,8 @@
     {
       "id": "twoh_016",
       "position": {
-        "x": -320,
-        "y": -310
+        "x": -820.0,
+        "y": 923.8
       },
       "type": "basic",
       "data": {
@@ -654,8 +654,8 @@
     {
       "id": "twoh_ks_001",
       "position": {
-        "x": -640,
-        "y": -430
+        "x": -1088.5,
+        "y": 953.6
       },
       "type": "keystone",
       "data": {
@@ -676,8 +676,8 @@
     {
       "id": "twoh_ks_002",
       "position": {
-        "x": -480,
-        "y": -430
+        "x": -1088.6,
+        "y": 136.6
       },
       "type": "keystone",
       "data": {
@@ -698,8 +698,8 @@
     {
       "id": "twoh_ks_003",
       "position": {
-        "x": -320,
-        "y": -430
+        "x": -960.0,
+        "y": 1015.0
       },
       "type": "keystone",
       "data": {
@@ -720,8 +720,8 @@
     {
       "id": "dw_001",
       "position": {
-        "x": 320,
-        "y": 410
+        "x": 400.0,
+        "y": 440.0
       },
       "type": "basic",
       "data": {
@@ -742,8 +742,8 @@
     {
       "id": "dw_002",
       "position": {
-        "x": 480,
-        "y": 290
+        "x": 512.0,
+        "y": 367.0
       },
       "type": "basic",
       "data": {
@@ -764,8 +764,8 @@
     {
       "id": "dw_003",
       "position": {
-        "x": 320,
-        "y": 290
+        "x": 400.0,
+        "y": 545.0
       },
       "type": "basic",
       "data": {
@@ -786,8 +786,8 @@
     {
       "id": "dw_004",
       "position": {
-        "x": 640,
-        "y": 170
+        "x": 624.0,
+        "y": 294.0
       },
       "type": "basic",
       "data": {
@@ -808,8 +808,8 @@
     {
       "id": "dw_005",
       "position": {
-        "x": 480,
-        "y": 170
+        "x": 400.0,
+        "y": 650.0
       },
       "type": "basic",
       "data": {
@@ -830,8 +830,8 @@
     {
       "id": "dw_006",
       "position": {
-        "x": 640,
-        "y": 50
+        "x": 736.0,
+        "y": 221.0
       },
       "type": "basic",
       "data": {
@@ -852,8 +852,8 @@
     {
       "id": "dw_007",
       "position": {
-        "x": 320,
-        "y": 170
+        "x": 1207.3,
+        "y": 399.8
       },
       "type": "basic",
       "data": {
@@ -874,8 +874,8 @@
     {
       "id": "dw_008",
       "position": {
-        "x": 480,
-        "y": 50
+        "x": 512.0,
+        "y": 723.0
       },
       "type": "basic",
       "data": {
@@ -896,8 +896,8 @@
     {
       "id": "dw_009",
       "position": {
-        "x": 320,
-        "y": 50
+        "x": 1220.0,
+        "y": 545.4
       },
       "type": "basic",
       "data": {
@@ -918,8 +918,8 @@
     {
       "id": "dw_010",
       "position": {
-        "x": 640,
-        "y": -70
+        "x": 848.0,
+        "y": 148.0
       },
       "type": "basic",
       "data": {
@@ -940,8 +940,8 @@
     {
       "id": "dw_011",
       "position": {
-        "x": 480,
-        "y": -70
+        "x": 624.0,
+        "y": 796.0
       },
       "type": "basic",
       "data": {
@@ -962,8 +962,8 @@
     {
       "id": "dw_012",
       "position": {
-        "x": 320,
-        "y": -70
+        "x": 1207.2,
+        "y": 690.6
       },
       "type": "basic",
       "data": {
@@ -984,8 +984,8 @@
     {
       "id": "dw_013",
       "position": {
-        "x": 640,
-        "y": -190
+        "x": 960.0,
+        "y": 75.0
       },
       "type": "basic",
       "data": {
@@ -1006,8 +1006,8 @@
     {
       "id": "dw_014",
       "position": {
-        "x": 712.3459403529026,
-        "y": -247.9865317665414
+        "x": 986.0,
+        "y": 193.6
       },
       "type": "basic",
       "data": {
@@ -1028,8 +1028,8 @@
     {
       "id": "dw_015",
       "position": {
-        "x": 480,
-        "y": -190
+        "x": 736.0,
+        "y": 869.0
       },
       "type": "basic",
       "data": {
@@ -1050,8 +1050,8 @@
     {
       "id": "dw_016",
       "position": {
-        "x": 639.5256446460832,
-        "y": -310.6742619972853
+        "x": 1088.6,
+        "y": 136.6
       },
       "type": "basic",
       "data": {
@@ -1072,8 +1072,8 @@
     {
       "id": "dw_017",
       "position": {
-        "x": 480,
-        "y": -310
+        "x": 848.0,
+        "y": 942.0
       },
       "type": "basic",
       "data": {
@@ -1094,8 +1094,8 @@
     {
       "id": "dw_018",
       "position": {
-        "x": 320,
-        "y": -310
+        "x": 1166.3,
+        "y": 831.0
       },
       "type": "basic",
       "data": {
@@ -1116,8 +1116,8 @@
     {
       "id": "dw_ks_001",
       "position": {
-        "x": 640,
-        "y": -430
+        "x": 1166.4,
+        "y": 259.3
       },
       "type": "keystone",
       "data": {
@@ -1138,8 +1138,8 @@
     {
       "id": "dw_ks_002",
       "position": {
-        "x": 322.008221770991,
-        "y": -429.75438133884103
+        "x": 1088.5,
+        "y": 953.6
       },
       "type": "keystone",
       "data": {
@@ -1160,8 +1160,8 @@
     {
       "id": "dw_ks_003",
       "position": {
-        "x": 480.4524424742495,
-        "y": -428.46701488081925
+        "x": 960.0,
+        "y": 1015.0
       },
       "type": "keystone",
       "data": {
@@ -1182,8 +1182,8 @@
     {
       "id": "crit_001",
       "position": {
-        "x": 0,
-        "y": 170
+        "x": 150.0,
+        "y": 880.0
       },
       "type": "basic",
       "data": {
@@ -1204,8 +1204,8 @@
     {
       "id": "crit_002",
       "position": {
-        "x": 160,
-        "y": 50
+        "x": 150.0,
+        "y": 1150.0
       },
       "type": "basic",
       "data": {
@@ -1226,8 +1226,8 @@
     {
       "id": "crit_003",
       "position": {
-        "x": 160,
-        "y": -70
+        "x": 150.0,
+        "y": 1420.0
       },
       "type": "basic",
       "data": {
@@ -1248,8 +1248,8 @@
     {
       "id": "crit_004",
       "position": {
-        "x": 0,
-        "y": -70
+        "x": 0.0,
+        "y": 1150.0
       },
       "type": "basic",
       "data": {
@@ -1270,8 +1270,8 @@
     {
       "id": "crit_005",
       "position": {
-        "x": 160,
-        "y": -190
+        "x": 150.0,
+        "y": 1690.0
       },
       "type": "basic",
       "data": {
@@ -1292,8 +1292,8 @@
     {
       "id": "crit_ks_001",
       "position": {
-        "x": -160,
-        "y": -310
+        "x": 0.0,
+        "y": 1285.0
       },
       "type": "keystone",
       "data": {
@@ -1314,8 +1314,8 @@
     {
       "id": "crit_ks_002",
       "position": {
-        "x": 160,
-        "y": -310
+        "x": 150.0,
+        "y": 1960.0
       },
       "type": "keystone",
       "data": {
@@ -1336,14 +1336,14 @@
     {
       "id": "leech_001",
       "position": {
-        "x": -160,
-        "y": 170
+        "x": -150.0,
+        "y": 880.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Crimson Tide",
-        "description": "+0.5% life leech per point on melee attacks. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fervour you spend or drain generates a heal equal to 0.5% per point of your maximum HP.",
+        "description": "+1% life leech on melee attacks for every 2 points. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fervour you spend or drain generates a heal equal to 1% of your maximum HP for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1358,8 +1358,8 @@
     {
       "id": "leech_002",
       "position": {
-        "x": -160,
-        "y": 50
+        "x": -300.0,
+        "y": 880.0
       },
       "type": "keystone",
       "data": {
@@ -1380,8 +1380,8 @@
     {
       "id": "leech_003",
       "position": {
-        "x": 0,
-        "y": 50
+        "x": -150.0,
+        "y": 1150.0
       },
       "type": "basic",
       "data": {
@@ -1402,8 +1402,8 @@
     {
       "id": "leech_004",
       "position": {
-        "x": -160,
-        "y": -190
+        "x": -300.0,
+        "y": 1420.0
       },
       "type": "keystone",
       "data": {
@@ -1424,8 +1424,8 @@
     {
       "id": "leech_005",
       "position": {
-        "x": -160,
-        "y": -70
+        "x": -150.0,
+        "y": 1420.0
       },
       "type": "basic",
       "data": {
@@ -1446,8 +1446,8 @@
     {
       "id": "leech_006",
       "position": {
-        "x": 0,
-        "y": -190
+        "x": -150.0,
+        "y": 1690.0
       },
       "type": "basic",
       "data": {
@@ -1468,8 +1468,8 @@
     {
       "id": "leech_ks_001",
       "position": {
-        "x": -320,
-        "y": 530
+        "x": -150.0,
+        "y": 0.0
       },
       "type": "keystone",
       "data": {
@@ -1490,8 +1490,8 @@
     {
       "id": "capstone_25",
       "position": {
-        "x": -909.4447618621665,
-        "y": 810.8796031781528
+        "x": -1460.0,
+        "y": 2001.0
       },
       "type": "capstone",
       "data": {
@@ -1533,8 +1533,8 @@
     {
       "id": "capstone_50",
       "position": {
-        "x": -909.4447618621665,
-        "y": 570.8796031781528
+        "x": -1460.0,
+        "y": 1761.0
       },
       "type": "capstone",
       "data": {
@@ -1576,8 +1576,8 @@
     {
       "id": "capstone_100",
       "position": {
-        "x": -909.4447618621665,
-        "y": 330.8796031781528
+        "x": -1460.0,
+        "y": 1521.0
       },
       "type": "capstone",
       "data": {
@@ -1601,7 +1601,7 @@
           {
             "name": "Crimson Pact",
             "identity": "Crit \u00d7 Leech",
-            "description": "Your critical strike multiplier bonus is added to your life leech percentage. Your life leech percentage is added to your critical strike multiplier bonus."
+            "description": "Your critical strike multiplier is increased by 10% for every 1% of life leech you have."
           }
         ],
         "pointThreshold": 100,
@@ -1619,8 +1619,8 @@
     {
       "id": "capstone_200",
       "position": {
-        "x": -909.4447618621665,
-        "y": 90.87960317815282
+        "x": -1460.0,
+        "y": 1281.0
       },
       "type": "capstone",
       "data": {
@@ -1644,7 +1644,7 @@
           {
             "name": "Eternal Hunger",
             "identity": "Leech",
-            "description": "Your life leech cap is removed entirely. Any HP restored by life leech beyond your maximum is added as overleech that decays at 1% per second. Life leech effectiveness is increased by 50%."
+            "description": "Life leech can heal you up to 100% above your Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and damage you take removes it first. Your life leech is increased by 50%."
           }
         ],
         "pointThreshold": 200,

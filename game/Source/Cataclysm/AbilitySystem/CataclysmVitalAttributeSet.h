@@ -106,6 +106,16 @@ protected:
 	 */
 	void NotifyIfHealthReachedZero() const;
 
+public:
+	/**
+	 * The stat Eternal Army states on the commander: a follower of its does not die while the commander's health is
+	 * above this per cent of its maximum, and is left at 1 health instead. The Death trees' slice C6d2 (2026-11-25).
+	 * Read in `NotifyIfHealthReachedZero`.
+	 */
+	static constexpr const TCHAR* MinionCannotDieAboveHealthPercentStat = TEXT("minion_cannot_die_above_health_percent");
+
+protected:
+
 	/** Tell the character its health moved, so a health-triggered phase can
 	 *  begin. Called from `PostGameplayEffectExecute` for a blow and from
 	 *  `PostAttributeBaseChange` above for every other route. */

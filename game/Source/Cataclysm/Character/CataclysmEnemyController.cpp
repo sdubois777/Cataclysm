@@ -22,6 +22,8 @@
 // The charge lives on the enemy subclass rather than the shared base, so the
 // brain has to know about it to ask whether one is running. Issue #499.
 #include "Character/CataclysmEnemyCharacter.h"
+// For Death's Shadow Step, which a creature's attack reveals. 2026-11-24.
+#include "Character/CataclysmEnemyModifiers.h"
 // The player's body, which every melee reach is designed against. Issue #2706.
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmTargetCandidates.h"
@@ -359,6 +361,13 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	if (AActor* Ordered = UCataclysmCommand::OrderedTargetFor(Driven))
 	{
 		return Ordered;
+	}
+
+	// AND, WHERE THE COMMANDER HOLDS GUARD THE MASTER, THE LAST ENEMY THAT HIT THE COMMANDER: the Death trees' slice
+	// C6e (2026-11-25), as planned, after a Quarry order and before everything below. Null for everything else.
+	if (AActor* LastAttacker = UCataclysmCommand::CommandersLastAttackerFor(Driven))
+	{
+		return LastAttacker;
 	}
 
 	// AND A GADGET WHOSE SUMMONER'S ROW SAYS SO TAKES THE ENEMY WITH THE MOST HEALTH WITHIN ITS REACH. Ruled
@@ -965,6 +974,9 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	{
 		LastAttackTime = Now;
 		bHasAttacked = true;
+		// SEEN AS IT SWINGS: Death's Shadow Step, "Become invisible when not attacking", 2026-11-24. Before the swing,
+		// so a blow that lands at once is struck by a creature already seen.
+		UCataclysmEnemyModifiers::RevealForShadowStep(Driven);
 		Driven->AttackTarget(Target);
 		// RECORDED FOR ECHOES OF THE PAST: its last attack was the ordinary one.
 		if (ACataclysmEnemyCharacter* Recorded = Cast<ACataclysmEnemyCharacter>(Driven))
@@ -1608,6 +1620,8 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 		// this must not depend on what it does. Issue #396.
 		ShowWindUpMarker(Driven, Abilities[Chosen]);
 
+		// SEEN AS ITS WIND-UP BEGINS, beside the marker: Death's Shadow Step, 2026-11-24.
+		UCataclysmEnemyModifiers::RevealForShadowStep(Driven);
 		Driven->BeginEnemyAbilityWindUp(Chosen, Target);
 
 		LastAction = ECataclysmBrainAction::WindingUp;
@@ -1619,6 +1633,8 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 	// the aim point must not get a different answer depending on whether it was
 	// telegraphed.
 	AbilityLastUsedAt[Chosen] = Now;
+	// SEEN AS IT ACTS, an ability with no wind-up: Death's Shadow Step, 2026-11-24.
+	UCataclysmEnemyModifiers::RevealForShadowStep(Driven);
 	Driven->UseEnemyAbility(Chosen, Target,
 							AimPointFor(Driven, Target, Abilities[Chosen]));
 	++AbilitiesUsed;

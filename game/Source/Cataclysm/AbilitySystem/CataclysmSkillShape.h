@@ -696,9 +696,10 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * Percentage points of INCREASED damage an aura grants everyone on the
 	 * caster's side who is standing inside it.
 	 *
-	 * ONE ROW STATES ONE. Conflagration: "allies within it deal 8% increased
-	 * fire damage." Issue #1182. The War aura, Blood and Iron, is written with
-	 * the same shape of sentence and does not state a number yet.
+	 * FIVE ROWS STATE ONE, each 8: Exposing Light, Miasma, Undertow, Unreason and
+	 * Gnawing Want. Conflagration stated it from issue #1182 until 2026-11-25,
+	 * when the owner replaced its ally half ("Go with A") and Pall of Ending's
+	 * became `AllyMoreDamage`; War's Blood and Iron never stated it.
 	 *
 	 * THE ADDITIVE BUCKET, BECAUSE THE ROW SAYS `increased`. That word is not
 	 * decoration in this project: section VI of the design document reserves it
@@ -722,6 +723,63 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float AllyIncreasedDamage = 0.0f;
+
+	/**
+	 * Percentage points of MORE damage an aura grants its caster AND everyone on the caster's side inside it, minions
+	 * included: a separate multiplier, not added to the increases. Death's Pall of Ending, the owner's ruling of
+	 * 2026-11-25, verbatim: "make it 10% more and I'm good with it", and "you, your minions and your allies within it
+	 * deal 10% more damage".
+	 *
+	 * A NEW KEY AND NOT A NEW MEANING FOR `AllyIncreasedDamage`, which five other auras keep as an increase reaching
+	 * allies only. A row states one or the other; `UCataclysmAuraSkill::HelpAlliesInside` reads this one first.
+	 *
+	 * THE CASTER IS INCLUDED, which `AllyIncreasedDamage` never was: the owner named "you". Raised by the aura effect
+	 * and buff potency rows as the increase is (the coordinating session's ruling of 2026-11-25).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float AllyMoreDamage = 0.0f;
+
+	/**
+	 * Metres. While the aura runs, a burning enemy that dies inside its ring passes its strongest running burn -- the
+	 * rate and the seconds it had left -- to the nearest other living enemy within this many metres of the body,
+	 * credited to the aura's caster. Demonic's Conflagration, the owner's ruling of 2026-11-25 ("Go with A"). The
+	 * receiver takes it by the ordinary stacking rule for burns (`UCataclysmSkillEffects::ApplySpreadCopy`). 0 passes
+	 * nothing. Raised by the aura effect row as the aura's other figures are.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float BurnPassesOnDeath = 0.0f;
+
+	/**
+	 * Percent of armour an aura removes from every enemy inside it, through the armour-removed share damage already
+	 * reads (`UCataclysmAbilitySystemComponent::NoteArmourRemoved`), held for two pulses so an enemy that walks out
+	 * loses it two seconds later. War's Blood and Iron: "Enemies within the aura have their armor reduced by 10%".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float EnemyArmourRemoved = 0.0f;
+
+	/**
+	 * Percent an aura slows every enemy inside it, MOVEMENT ONLY (Cripple also slows attacks, which this does not),
+	 * held for two pulses. War's Blood and Iron: "their movement speed reduced by 15%". An enemy immune to Slow
+	 * ignores it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float EnemyMovementSpeedReduced = 0.0f;
+
+	/**
+	 * Percent faster the caster and every ally inside move, held for two pulses. War's Blood and Iron, the owner's
+	 * ruling of 2026-11-25: "you and your allies within it cannot be slowed and move 15% faster".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float AllyMovementSpeed = 0.0f;
+
+	/**
+	 * Immunities, a comma list in `Immune`'s words, the aura grants every ally inside for two pulses, WHATEVER THE
+	 * CASTER WEARS: `Immune` covers the caster, and the stat-gated sharing in `ShareImmunitiesWithAlliesInside` covers
+	 * the rest only for a caster wearing `aura_shares_immunities_with_allies`. War's Blood and Iron states
+	 * `Immune=Slow; AllyImmune=Slow`: "you and your allies within it cannot be slowed".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString AllyImmune;
 
 	/**
 	 * Percent of a blow taken that is returned to the caster as health, while

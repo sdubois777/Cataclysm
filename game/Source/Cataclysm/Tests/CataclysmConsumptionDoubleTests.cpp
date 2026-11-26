@@ -245,8 +245,9 @@ bool FCataclysmConsumptionDoubleOwnNumbersTest::RunTest(const FString& Parameter
 	// character's, and its health carries the tier's multiplier.
 	TestNotEqual(TEXT("CONTROL: tier 1's reference level is not the player's"),
 				 UCataclysmPowerScore::ReferenceCharacter(1).Level, 37);
-	TestEqual(TEXT("CONTROL: a tier-1 Corrupted Stalker carries the 0.49 health multiplier"),
-			  UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(1), 0.49f, 0.0001f);
+	// 0.23 SINCE THE STALKER'S RE-FIT OF 2026-11-25 (issues #2883 and #2884, window ar-w1); 0.49 before it.
+	TestEqual(TEXT("CONTROL: a tier-1 Corrupted Stalker carries the 0.23 health multiplier"),
+			  UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(1), 0.23f, 0.0001f);
 
 	ACataclysmConsumptionDoubleCharacter* Double = SpawnDouble(Scene.World, FVector(1000.0f, 0.0f, 0.0f));
 	if (!TestNotNull(TEXT("set-up: a double was spawned"), Double)
@@ -781,6 +782,9 @@ bool FCataclysmConsumptionDoubleCharacterMigrationTest::RunTest(const FString& P
 	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
 	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
+	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
+	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -917,6 +921,10 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
+	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
+	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

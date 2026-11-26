@@ -28,6 +28,8 @@ longer does. Rarity is a label for what fills a piece's four slots: a Masterful
 piece has four regular affixes and no enchantment, and a Cataclysmic one has four
 enchantments and no regular affix at all. Spending 36 prefixes and 36 suffixes
 across eighteen pieces therefore describes a full set of Masterful gear.
+SINCE ISSUE #2884 the re-fit below leaves 13 suffix places empty, by the
+owner's ruling, so 10 of its pieces are Superb or Quality (choice 3).
 
 The design document still says a difficulty tier 8 character is fully
 Cataclysmic, which describes a different character entirely -- one with 72
@@ -58,38 +60,109 @@ from . import damage as dmg
 from .character import DAMAGE_TYPES, Attributes, Character, Gear
 from .classes import DEMONIC_CLASSES
 
-#: How the 36 prefix slots are spent. Two on each of 18 pieces.
-#:
-#: Split between staying alive and killing things, because a character that spent
-#: everything on defence would flatter these numbers and one that spent nothing
-#: would make them meaningless.
-PREFIX_SPEND: dict[str, int] = {
-    "FLAT_HEALTH": 8,
-    "INCREASED_HEALTH": 6,
-    "FLAT_ARMOR": 6,
-    "INCREASED_ARMOR": 4,
-    "FLAT_DAMAGE": 6,
-    "INCREASED_DAMAGE": 6,
-}
-
-#: How the 36 suffix slots are spent, alongside the resistance affixes below.
-SUFFIX_SPEND: dict[str, int] = {
-    "FLAT_BLOCK_CHANCE": 4,
-    "FLAT_DAMAGE_REDUCTION": 4,
-    "INCREASED_CRIT_CHANCE": 4,
-    "FLAT_CRIT_MULTIPLIER": 4,
-    "INCREASED_ATTACK_SPEED": 4,
-    "FLAT_PENETRATION": 4,
-}
-
-#: All-resistance affixes, which are suffixes too. Twelve is roughly what capping
-#: all eight resistances at tier 8 costs, which `affixes.slots_to_cap` reports.
-RESISTANCE_AFFIXES = 12
+# --------------------------------------------------------------------------
+# THE RE-FIT FOR ISSUE #2884, under the affix ranges of #2883
+# --------------------------------------------------------------------------
+#
+# WHY IT HAD TO MOVE. The approved affix proposal (#2883) puts block chance on two kinds of piece (Shoulders, Belt),
+# flat damage reduction on one (Pants) and penetration on one (the weapon), and its whole-number all-resistance affix
+# is 40 at tier 7 on +10 gear, so capping all eight resistances at tier 8 (145) costs 3.6 affixes rather than 12.1.
+# The build as written spent four affixes each on block, damage reduction and penetration, and twelve on all
+# resistances; read literally it reached 140 block, 140 damage reduction and 480 resistance. The proposal's own words:
+# "Re-fitting it, and then `enemy_stats.py`, is #2884's."
+#
+# EVERY CHOICE, each a judgement and each stated so it can be changed:
+#   1. Every affix keeps its old slot count where the pieces it can now roll on allow it: min(old count, pieces).
+#      All six prefixes keep theirs (8 flat health, 6 increased health, 6 flat armour, 4 increased armour, 6 flat
+#      damage, 6 increased damage), as do increased crit chance, crit multiplier and attack speed (4 each).
+#      Block 4 -> 2, damage reduction 4 -> 1, penetration 4 -> 1.
+#   2. All-resistance affixes are the count that caps all eight resistances at tier 8, the old build's own rule
+#      ("Twelve is roughly what capping all eight resistances at tier 8 costs"): ceil(3.625) = 4, 160 per type.
+#   3. THE 13 FREED DEFENSIVE SUFFIX SLOTS (2 of block, 3 of damage reduction, 8 of resistance) ARE LEFT EMPTY. The
+#      project owner's ruling on issue #2884, 2026-11-24, verbatim: "A middle build (Recommended)", the option that
+#      fits the enemies to the re-fit with its 13 freed slots left empty, between filling them with health (Increased
+#      Vitality 8 and Constitution 5, which made the character 15.35 times harder to kill at tier 8 and was the first
+#      version of this re-fit) and spending them on offence (3.87 times). The 3 freed OFFENSIVE slots (penetration)
+#      still go one each on increased crit chance, crit multiplier and attack speed; none of them touches a
+#      defensive figure, so they change nothing the enemy fit reads.
+#      WHAT "EMPTY" MEANS HERE: the place holds no affix (`EMPTY` in `LAYOUT`) and counts for nothing in `gear`. By the
+#      rarity rule ("rarity is a label for what fills the slots", `affixes.RARITY_COMPOSITION`) a piece with three
+#      regular affixes is Superb and one with two is Quality, so this character wears 8 Masterful, 7 Superb and 3
+#      Quality pieces (`rarity_of_each_piece` counts them). Nothing in the enemy fit reads rarity; the Power Score
+#      would, and is not measured here.
+#   4. Every affix is placed on a named piece that can roll it, two prefixes and two suffixes a piece, no affix group
+#      twice on one piece: `LAYOUT`, checked at import. `PREFIX_SPEND`, `SUFFIX_SPEND` and `RESISTANCE_AFFIXES` are
+#      counted from it.
+#   5. UNCHANGED, AND STILL A STATED LIMIT: the weapon's own affixes are not doubled for being on a two-handed
+#      Greatsword, as before. Every affix it carries here is offensive (flat and increased damage, penetration and
+#      attack speed), so no defensive figure depends on it.
+# The alternatives measured beside this one, and what each does to the enemy refit, are in
+# `sim/analyse_enemy_rebalance_2884.py` and `.claude/windows/proposal_2884_enemy_rebalance_v2.md`, both on branch
+# `analysis/enemy-rebalance-2884`.
 
 #: One base per piece, chosen the way a defensive character would choose them.
 BASES: tuple[str, ...] = (
     "Helm", "Cuirass", "Pauldrons", "Gauntlets", "Greaves", "Sabatons", "Girdle",
 ) + ("Loop",) * 8 + ("Torc", "Idol", "Greatsword")
+
+#: A place in `LAYOUT` that holds no affix (choice 3).
+EMPTY = None
+
+#: Every piece's two prefixes and two suffixes, in `BASES` order. "ALL_RESISTANCE" is the all-resistances family and
+#: `EMPTY` a place left empty. The 13 `EMPTY` places are where the first version of this re-fit put Increased Vitality
+#: (8) and Increased Constitution (5); `HEALTH_FILLED_SUFFIXES_2884` says which held which.
+LAYOUT: tuple[tuple[str, tuple[str, str], tuple[str | None, str | None]], ...] = (
+    ("Helm", ("FLAT_HEALTH", "INCREASED_HEALTH"), ("ALL_RESISTANCE", EMPTY)),
+    ("Cuirass", ("FLAT_HEALTH", "INCREASED_HEALTH"), ("ALL_RESISTANCE", EMPTY)),
+    ("Pauldrons", ("FLAT_HEALTH", "FLAT_ARMOR"), ("FLAT_BLOCK_CHANCE", EMPTY)),
+    ("Gauntlets", ("FLAT_DAMAGE", "INCREASED_DAMAGE"), ("INCREASED_CRIT_CHANCE", "INCREASED_ATTACK_SPEED")),
+    ("Greaves", ("FLAT_HEALTH", "INCREASED_ARMOR"), ("FLAT_DAMAGE_REDUCTION", EMPTY)),
+    ("Sabatons", ("FLAT_HEALTH", "FLAT_ARMOR"), ("ALL_RESISTANCE", EMPTY)),
+    ("Girdle", ("FLAT_HEALTH", "INCREASED_ARMOR"), ("FLAT_BLOCK_CHANCE", EMPTY)),
+    ("Loop", ("FLAT_HEALTH", "INCREASED_HEALTH"), ("ALL_RESISTANCE", EMPTY)),
+    ("Loop", ("FLAT_HEALTH", "INCREASED_HEALTH"), (EMPTY, EMPTY)),
+    ("Loop", ("INCREASED_HEALTH", "FLAT_ARMOR"), (EMPTY, EMPTY)),
+    ("Loop", ("INCREASED_HEALTH", "FLAT_ARMOR"), (EMPTY, EMPTY)),
+    ("Loop", ("FLAT_ARMOR", "INCREASED_ARMOR"), ("INCREASED_CRIT_CHANCE", "FLAT_CRIT_MULTIPLIER")),
+    ("Loop", ("FLAT_ARMOR", "INCREASED_ARMOR"), ("INCREASED_CRIT_CHANCE", "INCREASED_ATTACK_SPEED")),
+    ("Loop", ("FLAT_DAMAGE", "INCREASED_DAMAGE"), ("FLAT_CRIT_MULTIPLIER", "INCREASED_ATTACK_SPEED")),
+    ("Loop", ("FLAT_DAMAGE", "INCREASED_DAMAGE"), ("INCREASED_CRIT_CHANCE", "FLAT_CRIT_MULTIPLIER")),
+    ("Torc", ("FLAT_DAMAGE", "INCREASED_DAMAGE"), ("FLAT_CRIT_MULTIPLIER", "INCREASED_ATTACK_SPEED")),
+    ("Idol", ("FLAT_DAMAGE", "INCREASED_DAMAGE"), ("INCREASED_CRIT_CHANCE", "FLAT_CRIT_MULTIPLIER")),
+    ("Greatsword", ("FLAT_DAMAGE", "INCREASED_DAMAGE"), ("FLAT_PENETRATION", "INCREASED_ATTACK_SPEED")),
+)
+
+#: The name of the all-resistances family in `LAYOUT`.
+RESISTANCE_TOKEN = "ALL_RESISTANCE"
+
+#: How the 36 prefix slots are spent, counted from `LAYOUT`. Split between staying alive and killing things, because a
+#: character that spent everything on defence would flatter these numbers and one that spent nothing would make them
+#: meaningless.
+PREFIX_SPEND: dict[str, int] = dict(Counter(p for _, prefixes, _ in LAYOUT for p in prefixes))
+
+#: How the suffix slots are spent, alongside the resistance affixes below, counted from `LAYOUT`: 23 of 36, the 13
+#: `EMPTY` places counting for nothing.
+SUFFIX_SPEND: dict[str, int] = dict(Counter(s for _, _, suffixes in LAYOUT for s in suffixes
+                                            if s not in (RESISTANCE_TOKEN, EMPTY)))
+
+#: All-resistance affixes, which are suffixes too: the count that caps all eight at tier 8 (choice 2 above).
+RESISTANCE_AFFIXES = sum(1 for _, _, suffixes in LAYOUT for s in suffixes if s == RESISTANCE_TOKEN)
+
+#: How many suffix places are left empty (choice 3).
+EMPTY_SUFFIX_SLOTS = sum(1 for _, _, suffixes in LAYOUT for s in suffixes if s is EMPTY)
+
+#: The first version of this re-fit, which filled the 13 empty places with the build's own attributes: what the owner
+#: chose against on 2026-11-24. Kept so the measurement can set it beside the adopted build.
+HEALTH_FILLED_SUFFIXES_2884: dict[str, int] = dict(SUFFIX_SPEND, INCREASED_VITALITY=8, INCREASED_CONSTITUTION=5)
+
+#: What the build spent before the re-fit, kept so the measurement can state the change. Not read by `gear`.
+SPEND_BEFORE_2884 = {
+    "prefix": {"FLAT_HEALTH": 8, "INCREASED_HEALTH": 6, "FLAT_ARMOR": 6, "INCREASED_ARMOR": 4, "FLAT_DAMAGE": 6,
+               "INCREASED_DAMAGE": 6},
+    "suffix": {"FLAT_BLOCK_CHANCE": 4, "FLAT_DAMAGE_REDUCTION": 4, "INCREASED_CRIT_CHANCE": 4,
+               "FLAT_CRIT_MULTIPLIER": 4, "INCREASED_ATTACK_SPEED": 4, "FLAT_PENETRATION": 4},
+    "resistance": 12,
+}
 
 #: 60 into Vitality for health, 40 into Constitution for armour and block.
 ATTRIBUTES = Attributes(vitality=60, constitution=40)
@@ -219,9 +292,48 @@ def _check_there_is_one_base_per_equipped_piece() -> None:
         af.base_named(base_name)
 
 
+def _layout_affix(name: str):
+    return af.ALL_RESISTANCE if name == RESISTANCE_TOKEN else _affix(name)
+
+
+def _check_every_affix_sits_on_a_piece_that_can_roll_it() -> None:
+    """ISSUE #2884. The build used to state totals only, so it could spend four block affixes when block now rolls on
+    two kinds of piece. Every affix is now placed on a named piece, and this refuses one that piece cannot roll, a
+    prefix in a suffix place or the other way round, and an affix group twice on one piece."""
+    if tuple(base for base, _, _ in LAYOUT) != BASES:
+        raise ValueError("LAYOUT does not name the pieces in BASES, in BASES order")
+    for base_name, prefixes, suffixes in LAYOUT:
+        slot = af.base_named(base_name).slot
+        groups: list[str] = []
+        for position, names in ((af.PREFIX, prefixes), (af.SUFFIX, suffixes)):
+            for name in names:
+                if name is EMPTY:
+                    continue
+                affix = _layout_affix(name)
+                if affix.position != position:
+                    raise ValueError(f"{name} sits in a {position} place on the {base_name} and is not a {position}")
+                allowed = af.RESISTANCE_SLOTS if name == RESISTANCE_TOKEN else affix.allowed_slots
+                if slot not in allowed:
+                    raise ValueError(f"{name} sits on the {base_name} ({slot}) and cannot roll there")
+                groups += (sorted(af.groups_of(affix, tuple(DAMAGE_TYPES))) if name == RESISTANCE_TOKEN
+                           else sorted(af.groups_of(affix)))
+        if len(groups) != len(set(groups)):
+            raise ValueError(f"the {base_name} repeats an affix group: {sorted(groups)}")
+
+
+def rarity_of_each_piece() -> dict[str, int]:
+    """How many pieces of each rarity the build wears: a piece with an `EMPTY` place carries fewer regular affixes,
+    and rarity is the label for what fills the slots (`affixes.rarity_of`)."""
+    counts: Counter[str] = Counter()
+    for _, prefixes, suffixes in LAYOUT:
+        counts[af.rarity_of(0, sum(1 for n in (*prefixes, *suffixes) if n is not EMPTY))] += 1
+    return dict(counts)
+
+
 _check_the_build_fits_in_the_slots_it_has()
 _check_every_affix_is_in_the_position_it_was_filed_under()
 _check_there_is_one_base_per_equipped_piece()
+_check_every_affix_sits_on_a_piece_that_can_roll_it()
 
 
 if __name__ == "__main__":

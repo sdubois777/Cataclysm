@@ -28,6 +28,14 @@
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 #include "UObject/Package.h"
 #include "Empire/CataclysmSeedMix.h"
+// For the eleven Death modifiers, 2026-11-24: the pyre, the resistances the Haunting copy cuts, the side a zone and a
+// curse reach, the player a curse finds, and the zones Lingering Decay leaves.
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmBonePyreCharacter.h"
+#include "GameFramework/PlayerController.h"
+#include "TimerManager.h"
 
 const TCHAR* UCataclysmEnemyModifiers::GenericCataclysm = TEXT("Generic");
 
@@ -73,6 +81,44 @@ const TCHAR* UCataclysmEnemyModifiers::InfernoChargeRow =
 	TEXT("Demonic_Inferno_Charge");
 const TCHAR* UCataclysmEnemyModifiers::StarvingAuraRow =
 	TEXT("Famine_Starving_Aura");
+const TCHAR* UCataclysmEnemyModifiers::HauntingRow =
+	TEXT("Death_Haunting");
+const TCHAR* UCataclysmEnemyModifiers::GraveTouchRow =
+	TEXT("Death_Grave_Touch");
+const TCHAR* UCataclysmEnemyModifiers::UndyingWillRow =
+	TEXT("Death_Undying_Will");
+const TCHAR* UCataclysmEnemyModifiers::SoulEaterRow =
+	TEXT("Death_Soul_Eater");
+const TCHAR* UCataclysmEnemyModifiers::ShadowStepRow =
+	TEXT("Death_Shadow_Step");
+const TCHAR* UCataclysmEnemyModifiers::SpectralShiftRow =
+	TEXT("Death_Spectral_Shift");
+const TCHAR* UCataclysmEnemyModifiers::LingeringDecayRow =
+	TEXT("Death_Lingering_Decay");
+const TCHAR* UCataclysmEnemyModifiers::FinalCurseRow =
+	TEXT("Death_Final_Curse");
+const TCHAR* UCataclysmEnemyModifiers::FuneralPyreRow =
+	TEXT("Death_Funeral_Pyre");
+const TCHAR* UCataclysmEnemyModifiers::SoulTetherRow =
+	TEXT("Death_Soul_Tether");
+const TCHAR* UCataclysmEnemyModifiers::MortalReminderRow =
+	TEXT("Death_Mortal_Reminder");
+const TCHAR* UCataclysmEnemyModifiers::CommanderRow =
+	TEXT("War_Commander");
+const TCHAR* UCataclysmEnemyModifiers::BattleCryRow =
+	TEXT("War_Battle_Cry");
+const TCHAR* UCataclysmEnemyModifiers::ArmoredJuggernautRow =
+	TEXT("War_Armored_Juggernaut");
+const TCHAR* UCataclysmEnemyModifiers::DrumsOfWarRow =
+	TEXT("War_Drums_of_War");
+const TCHAR* UCataclysmEnemyModifiers::ShieldWallRow =
+	TEXT("War_Shield_Wall");
+const TCHAR* UCataclysmEnemyModifiers::ArtilleryBarrageRow =
+	TEXT("War_Artillery_Barrage");
+const TCHAR* UCataclysmEnemyModifiers::BattleScarredRow =
+	TEXT("War_Battle_Scarred");
+const TCHAR* UCataclysmEnemyModifiers::PhalanxRow =
+	TEXT("War_Phalanx");
 
 const UDataTable* UCataclysmEnemyModifiers::LoadEnemyModifierTable()
 {
@@ -180,6 +226,44 @@ TArray<FName> UCataclysmEnemyModifiers::Draw(
 	}
 
 	return Drawn;
+}
+
+TArray<FName> UCataclysmEnemyModifiers::ClosedByInnateEffects(const UDataTable* EnemyModifierTable,
+																FName CataclysmType,
+																const TArray<FString>& InnateEffects)
+{
+	TArray<FName> Closed;
+	if (!EnemyModifierTable || InnateEffects.IsEmpty())
+	{
+		return Closed;
+	}
+
+	EnemyModifierTable->ForeachRow<FCataclysmEnemyModifierRow>(
+		TEXT("UCataclysmEnemyModifiers::ClosedByInnateEffects"),
+		[&Closed, &InnateEffects, CataclysmType](const FName& Key, const FCataclysmEnemyModifierRow& Row)
+		{
+			// ONLY A ROW THE CREATURE COULD DRAW: "a modifier belonging to a different Cataclysm is not a clash,
+			// because that enemy can never roll it" (the design's own words), so nothing else is closed.
+			if (!IsDrawableBy(Row, CataclysmType))
+			{
+				return;
+			}
+			for (const FString& Innate : InnateEffects)
+			{
+				if (Row.ModifierName.Equals(Innate, ESearchCase::IgnoreCase))
+				{
+					Closed.Add(Key);
+					return;
+				}
+			}
+		});
+
+	// SORTED, AS `PoolFor` IS, so what is closed does not depend on the order a map is walked in.
+	Closed.Sort([](const FName& A, const FName& B)
+	{
+		return A.LexicalLess(B);
+	});
+	return Closed;
 }
 
 const FCataclysmEnemyModifierRow* UCataclysmEnemyModifiers::FindRow(
@@ -465,6 +549,50 @@ namespace
 		Defender->ApplyGameplayEffectSpecToSelf(Spec);
 		return true;
 	}
+
+	/**
+	 * War's Commander and Drums of War on one pulse: the named buff granted to every ally of `Inspirer` within
+	 * `InspiringReachCm`, for `UCataclysmEnemyModifiers::WarAuraGrantSeconds`. 2026-11-25.
+	 *
+	 * ALLIES AND NOT ITSELF: `FindAlliesInSphere` leaves out the creature it searches for and the dead, which is the
+	 * rows' "allies". THE CREATURE FIRST AND THE ALLY SECOND, the order the Commander's Aura dungeon rule records
+	 * getting wrong: (Instigator, Target). REFRESHED RATHER THAN STACKED, one effect per tag, so an ally between two
+	 * carriers of one row gains it once.
+	 *
+	 * NOT HOSTILE, so a creature that takes no hostile action still grants it: the medic's rule (#1680) is about what
+	 * harms the player, and a buff on its own side harms nobody. A judgement, recorded.
+	 *
+	 * @return how many allies were granted it
+	 */
+	int32 EnemyModifiersInspireAlliesWithin(ACataclysmEnemyCharacter* Inspirer, const TCHAR* InspiringBuffName,
+											float InspiringReachCm)
+	{
+		const UWorld* InspiringWorld = Inspirer ? Inspirer->GetWorld() : nullptr;
+		const FGameplayTag InspiringBuff = UCataclysmSkillShapes::StatusTagFor(InspiringBuffName);
+		if (InspiringWorld == nullptr || !InspiringBuff.IsValid())
+		{
+			if (Inspirer && !InspiringBuff.IsValid())
+			{
+				UE_LOG(LogCataclysm, Warning,
+					   TEXT("%s cannot grant %s: there is no such status tag. See game/Config/Tags/CataclysmTags.ini "
+							"and tools/generate_gameplay_tags.py."),
+					   *Inspirer->GetName(), InspiringBuffName);
+			}
+			return 0;
+		}
+
+		int32 Inspired = 0;
+		for (AActor* Ally : UCataclysmTargeting::FindAlliesInSphere(
+				 InspiringWorld, Inspirer, Inspirer->GetActorLocation(), InspiringReachCm))
+		{
+			if (UCataclysmSkillEffects::ApplyTagForDuration(Inspirer, Ally, InspiringBuff,
+															UCataclysmEnemyModifiers::WarAuraGrantSeconds))
+			{
+				++Inspired;
+			}
+		}
+		return Inspired;
+	}
 }
 
 int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
@@ -512,7 +640,12 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 	// field's own comment says why the two are kept apart.
 	const bool bHealsAllies = Enemy->bHealsAlliesForTheFloorRule;
 
-	if (!bBurns && !bStripsResistance && !bStarves && !bHealsAllies)
+	// AND WAR'S TWO BUFFS ON ITS ALLIES, 2026-11-25: Commander and Drums of War. NOT GATED ON `bHostile`: a buff on
+	// its own side harms nobody, so a medic carrying one still grants it. See `EnemyModifiersInspireAlliesWithin`.
+	const bool bCommands = Carries(Enemy->ModifierRows, CommanderRow);
+	const bool bDrums = Carries(Enemy->ModifierRows, DrumsOfWarRow);
+
+	if (!bBurns && !bStripsResistance && !bStarves && !bHealsAllies && !bCommands && !bDrums)
 	{
 		// EVERY COMMON CREATURE COMES THROUGH HERE, carrying no aura and not
 		// being the floor's medic. The check that used to stand here asked
@@ -547,10 +680,22 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		Touched += HealAlliesPulse(Enemy);
 	}
 
+	// COMMANDER AT ITS EIGHT METRES AND DRUMS OF WAR AT HALF THAT, each its own buff, on the one pulse. A creature
+	// carrying both grants both, and an ally inside four metres of it then holds both.
+	if (bCommands)
+	{
+		Touched += EnemyModifiersInspireAlliesWithin(Enemy, TEXT("Commander"), CommanderReachCm);
+	}
+	if (bDrums)
+	{
+		Touched += EnemyModifiersInspireAlliesWithin(Enemy, TEXT("Drums of War"), DrumsOfWarReachCm);
+	}
+
 	if (!bBurns && !bStripsResistance && !bStarves)
 	{
-		// A MEDIC CARRYING NO AURA IS FINISHED. What follows searches for
-		// this creature's ENEMIES, which for a medic is work with no result.
+		// A MEDIC CARRYING NO AURA IS FINISHED, and so is a creature whose only
+		// aura buffs its own side. What follows searches for this creature's
+		// ENEMIES, which for either is work with no result.
 		return Touched;
 	}
 
@@ -1048,26 +1193,318 @@ bool UCataclysmEnemyModifiers::IsProtectedBySigil(const AActor* Character)
 	return false;
 }
 
+namespace
+{
+	/**
+	 * One step of Death's Shadow Step on one creature: hidden while it is not attacking, seen from the moment an attack
+	 * begins until `ShadowStepSeenSecondsAfterAnAttack` after it ends. 2026-11-24.
+	 *
+	 * HIDDEN AS THE VISION SYSTEM HIDES A CREATURE BEYOND THE PLAYER'S SIGHT, with `SetActorHiddenInGame`, so the bar,
+	 * the click and the status line all already answer it. AND ONLY UNDONE WHERE SHADOW STEP DID IT, which is what
+	 * `bHiddenByShadowStep` is for: a creature the vision system hid is never shown here. When the vision system shows
+	 * one this hid, the mark is dropped and the next step hides it again, a quarter of a second at worst.
+	 *
+	 * A CREATURE THAT TAKES NO HOSTILE ACTION IS NEVER HIDDEN, the medic's rule (#1680): it never attacks, so it would
+	 * be invisible for the whole floor, and the floor's medic is a creature the player has to be able to find.
+	 *
+	 * @return whether it changed what is drawn
+	 */
+	bool EnemyModifiersShadowStepFor(ACataclysmEnemyCharacter* Stepping, float StepSeconds)
+	{
+		const bool bCarries =
+			UCataclysmEnemyModifiers::Carries(Stepping->ModifierRows, UCataclysmEnemyModifiers::ShadowStepRow)
+			&& !Stepping->TakesNoHostileAction();
+
+		// THE VISION SYSTEM SHOWED IT SINCE: the mark is stale, and the creature is not this rule's to show.
+		if (Stepping->bHiddenByShadowStep && !Stepping->IsHidden())
+		{
+			Stepping->bHiddenByShadowStep = false;
+		}
+
+		if (!bCarries)
+		{
+			if (Stepping->bHiddenByShadowStep)
+			{
+				Stepping->SetActorHiddenInGame(false);
+				Stepping->bHiddenByShadowStep = false;
+				return true;
+			}
+			return false;
+		}
+
+		// ATTACKING IS EVERY STATE IN WHICH A BLOW IS COMING: an ordinary swing's blow waiting, an ability winding up, a
+		// charge running, Inferno Charge's channel. The brain also reveals it the moment it orders either kind of
+		// attack, so a swing whose blow lands inside one step is still seen.
+		const ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Stepping->GetController());
+		const bool bAttacking = Stepping->HasPendingBasicAttack() || Stepping->IsCharging()
+			|| Stepping->IsChannellingInfernoCharge() || (Brain && Brain->WindingUpAbility >= 0);
+		if (bAttacking)
+		{
+			Stepping->ShadowStepSeenSecondsLeft = UCataclysmEnemyModifiers::ShadowStepSeenSecondsAfterAnAttack;
+		}
+		else
+		{
+			Stepping->ShadowStepSeenSecondsLeft =
+				FMath::Max(0.0f, Stepping->ShadowStepSeenSecondsLeft - StepSeconds);
+		}
+
+		if (Stepping->ShadowStepSeenSecondsLeft > 0.0f)
+		{
+			if (Stepping->bHiddenByShadowStep)
+			{
+				Stepping->SetActorHiddenInGame(false);
+				Stepping->bHiddenByShadowStep = false;
+				return true;
+			}
+			return false;
+		}
+
+		if (!Stepping->IsHidden())
+		{
+			Stepping->SetActorHiddenInGame(true);
+			Stepping->bHiddenByShadowStep = true;
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Death's Lingering Decay on a character of the players' side: `Status.Debuff.LingeringDecay` laid, or refreshed,
+	 * while it stands in a necrotic zone, so the player's effects list names the cut. Added 2026-11-25 with the
+	 * Debuffs sheet's row, which the owner accepted on 2026-11-24 ("These are fine").
+	 *
+	 * THE CUT IS NOT THIS TAG'S. `UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt` still asks where the
+	 * character stands, so the cut holds exactly while it is inside; the tag is laid for
+	 * `LingeringDecayStatusSeconds` on every quarter-second step it is inside, so it shows within a step of entering
+	 * and goes within that time of leaving. IN THE NAME OF THE CREATURE THAT LEFT THE DEEPEST ZONE COVERING IT, as
+	 * every debuff is laid in its applier's name; when that creature has gone, nothing is laid, and the cut alone
+	 * remains for the rest of the zone's life. A judgement, recorded.
+	 *
+	 * @return whether the tag was laid or refreshed
+	 */
+	bool EnemyModifiersMarkLingeringDecay(AActor* Standing)
+	{
+		if (!IsValid(Standing) || UCataclysmSkillEffects::IsDead(Standing)
+			|| UCataclysmTeams::TeamOf(Standing) != UCataclysmTeams::IdFor(ECataclysmTeam::Players))
+		{
+			return false;
+		}
+		UWorld* StandingWorld = Standing->GetWorld();
+		if (StandingWorld == nullptr)
+		{
+			return false;
+		}
+
+		const ACataclysmGroundZone* Deepest = nullptr;
+		float DeepestCut = 0.0f;
+		for (TActorIterator<ACataclysmGroundZone> It(StandingWorld); It; ++It)
+		{
+			const ACataclysmGroundZone* Zone = *It;
+			if (!IsValid(Zone) || Zone->HealingLessPercentInside <= DeepestCut)
+			{
+				continue;
+			}
+			if (Zone->Covers(Standing->GetActorLocation()))
+			{
+				DeepestCut = Zone->HealingLessPercentInside;
+				Deepest = Zone;
+			}
+		}
+
+		AActor* LeftBy = Deepest ? Deepest->GetOwner() : nullptr;
+		const FGameplayTag Decay = UCataclysmSkillShapes::StatusTagFor(TEXT("Lingering Decay"));
+		if (!IsValid(LeftBy) || !Decay.IsValid())
+		{
+			return false;
+		}
+		return UCataclysmSkillEffects::ApplyTagForDuration(LeftBy, Standing, Decay,
+														   UCataclysmEnemyModifiers::LingeringDecayStatusSeconds);
+	}
+
+	/**
+	 * War's Battle Cry, one shout: `Status.Debuff.BattleCry` on every enemy of `Shouter` within
+	 * `BattleCryReachCm`, through the named-effect path, which cuts each resistance its row names by
+	 * `BattleCryResistanceCut`, never below nought, for `BattleCrySeconds`. 2026-11-25.
+	 *
+	 * STATED HERE AND IN THE ROW, ONE FIGURE: the row's `MovesStat` says which stats move and this says by how much and
+	 * for how long, the figures `tools/tests/test_war_enemy_modifiers_match_their_rows.py` holds equal to the row's.
+	 *
+	 * @param OutFound  how many enemies were within reach, whether or not each took the debuff: a shout at an
+	 *                  enemy that refuses debuffs is still a shout
+	 * @return how many took it
+	 */
+	int32 EnemyModifiersShoutBattleCry(ACataclysmEnemyCharacter* Shouter, const UWorld* ShoutWorld, int32& OutFound)
+	{
+		OutFound = 0;
+		const FGameplayTag Cry = UCataclysmSkillShapes::StatusTagFor(TEXT("Battle Cry"));
+		if (!Cry.IsValid() || ShoutWorld == nullptr)
+		{
+			return 0;
+		}
+
+		const TArray<AActor*> Heard = UCataclysmTargeting::FindEnemiesInSphere(
+			ShoutWorld, Shouter, Shouter->GetActorLocation(), UCataclysmEnemyModifiers::BattleCryReachCm);
+		OutFound = Heard.Num();
+
+		int32 Cowed = 0;
+		for (AActor* Target : Heard)
+		{
+			if (UCataclysmSkillEffects::ApplyNamedEffect(Shouter, Target, Cry, UCataclysmEnemyModifiers::BattleCrySeconds,
+														 UCataclysmEnemyModifiers::BattleCryResistanceCut,
+														 Shouter->DamageType))
+			{
+				++Cowed;
+			}
+		}
+
+		if (OutFound > 0)
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("%s let out a Battle Cry: %d of %d within reach lose %.0f of every resistance "
+										   "for %.0f seconds."),
+				   *Shouter->GetName(), Cowed, OutFound, UCataclysmEnemyModifiers::BattleCryResistanceCut,
+				   UCataclysmEnemyModifiers::BattleCrySeconds);
+		}
+		return Cowed;
+	}
+
+	/** Takes away every circle a barrage drew and forgets where its shells were to land. */
+	void EnemyModifiersCallOffArtilleryBarrage(ACataclysmEnemyCharacter* Caller)
+	{
+		for (const TWeakObjectPtr<ACataclysmTelegraphMarker>& Marker : Caller->ArtilleryShellMarkers)
+		{
+			if (ACataclysmTelegraphMarker* Drawn = Marker.Get())
+			{
+				Drawn->Dismiss();
+			}
+		}
+		Caller->ArtilleryShellMarkers.Reset();
+		Caller->ArtilleryShellsAt.Reset();
+		Caller->ArtilleryShellsSecondsLeft = 0.0f;
+	}
+
+	/**
+	 * War's Artillery Barrage, the call: `ArtilleryBarrageShells` points at random within
+	 * `ArtilleryBarrageLandsWithinCm` of the nearest enemy within `ArtilleryBarrageReachCm`, each drawn as a circle on
+	 * the floor for `ArtilleryBarrageWarningSeconds`. 2026-11-25.
+	 *
+	 * FIXED WHEN CALLED AND DRAWN AT ONCE, the general telegraph rule: a shell lands where its circle was drawn, not
+	 * where the player has gone. A SEEDED DRAW, as Phasewalker's direction is, salted so it is not the creature's other
+	 * draws on the same clock.
+	 *
+	 * @return whether a volley was called: false with nobody in reach, so the clock waits for one
+	 */
+	bool EnemyModifiersCallArtilleryBarrage(ACataclysmEnemyCharacter* Caller, const UWorld* CallWorld)
+	{
+		if (CallWorld == nullptr)
+		{
+			return false;
+		}
+		const TArray<AActor*> Nearest = UCataclysmTargeting::FindEnemiesInSphere(
+			CallWorld, Caller, Caller->GetActorLocation(), UCataclysmEnemyModifiers::ArtilleryBarrageReachCm,
+			/*MaxTargets=*/1);
+		if (Nearest.IsEmpty() || Nearest[0] == nullptr)
+		{
+			return false;
+		}
+
+		EnemyModifiersCallOffArtilleryBarrage(Caller);
+		const FVector Centre = Nearest[0]->GetActorLocation();
+		FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(Caller->GetUniqueID()),
+												   UCataclysmEnemyModifiers::ArtilleryBarrageDrawSalt,
+												   static_cast<int32>(CallWorld->GetTimeSeconds() * 1000.0f)));
+		for (int32 Shell = 0; Shell < UCataclysmEnemyModifiers::ArtilleryBarrageShells; ++Shell)
+		{
+			const float Angle = Stream.FRandRange(0.0f, 2.0f * PI);
+			const float Away = Stream.FRandRange(0.0f, UCataclysmEnemyModifiers::ArtilleryBarrageLandsWithinCm);
+			const FVector Aimed(Centre.X + Away * FMath::Cos(Angle), Centre.Y + Away * FMath::Sin(Angle), Centre.Z);
+			const FVector Where = ACataclysmEnemyController::FloorUnder(Caller, Aimed);
+			Caller->ArtilleryShellsAt.Add(Where);
+			Caller->ArtilleryShellMarkers.Emplace(ACataclysmTelegraphMarker::ShowCircle(
+				Caller, Where, UCataclysmEnemyModifiers::ArtilleryBarrageShellRadiusCm,
+				UCataclysmEnemyModifiers::ArtilleryBarrageWarningSeconds));
+		}
+		Caller->ArtilleryShellsSecondsLeft = UCataclysmEnemyModifiers::ArtilleryBarrageWarningSeconds;
+
+		UE_LOG(LogCataclysm, Log, TEXT("%s called an Artillery Barrage of %d shells on %s, landing in %.1f seconds."),
+			   *Caller->GetName(), UCataclysmEnemyModifiers::ArtilleryBarrageShells, *Nearest[0]->GetName(),
+			   UCataclysmEnemyModifiers::ArtilleryBarrageWarningSeconds);
+		return true;
+	}
+
+	/**
+	 * War's Artillery Barrage, the landing: each shell an area blow of `ArtilleryBarrageShellHits` of the caller's
+	 * own attack damage on every enemy of its side inside its circle. 2026-11-25.
+	 *
+	 * EACH SHELL ITS OWN BLOW, so a player where two circles overlap takes two, as Diablo III's mortars each strike.
+	 * AN AREA BLOW, which cannot be evaded and can be blocked, AND NEVER A CRITICAL STRIKE: the figure is hits banked,
+	 * as Funeral Pyre's and Infernal Brand's are (#2874). Of the caller's own damage type, read off it as any of its
+	 * blows is. READ AS THE SHELLS LAND, so a creature made stronger meanwhile lands stronger shells.
+	 *
+	 * @return how many blows landed
+	 */
+	int32 EnemyModifiersLandArtilleryShells(ACataclysmEnemyCharacter* Caller, const UWorld* LandWorld)
+	{
+		int32 Landed = 0;
+		const UAbilitySystemComponent* Own = UCataclysmTargeting::AbilitySystemOf(Caller);
+		const float ShellDamage = Own
+			? FMath::Max(0.0f, Own->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()))
+				* UCataclysmEnemyModifiers::ArtilleryBarrageShellHits
+			: 0.0f;
+		if (LandWorld != nullptr && ShellDamage > 0.0f)
+		{
+			FCataclysmHitDelivery Shell;
+			Shell.bIsArea = true;
+			Shell.bCannotCriticallyStrike = true;
+			for (const FVector& Where : Caller->ArtilleryShellsAt)
+			{
+				for (AActor* Target : UCataclysmTargeting::FindEnemiesInSphere(
+						 LandWorld, Caller, Where, UCataclysmEnemyModifiers::ArtilleryBarrageShellRadiusCm))
+				{
+					if (UCataclysmSkillEffects::ApplyDirectDamage(Caller, Target, ShellDamage, Shell))
+					{
+						++Landed;
+					}
+				}
+			}
+		}
+
+		UE_LOG(LogCataclysm, Log, TEXT("%s's Artillery Barrage landed: %d blows of %.0f."), *Caller->GetName(), Landed,
+			   ShellDamage);
+		EnemyModifiersCallOffArtilleryBarrage(Caller);
+		return Landed;
+	}
+}
+
 int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 {
+	// A BONE PYRE'S FUSE RUNS ON THIS STEP TOO, and a pyre carries no modifier, so it is asked before the test below
+	// that turns away every creature carrying none. Death's Funeral Pyre, 2026-11-24.
+	if (ACataclysmBonePyreCharacter* Pyre = Cast<ACataclysmBonePyreCharacter>(Character))
+	{
+		return PyreStep(Pyre, StepSeconds);
+	}
+
+	// AND DEATH'S LINGERING DECAY'S STATUS ON THE PLAYERS' SIDE, which comes through this step as every character does,
+	// so it is asked before the test below that turns away every character carrying no modifier. Nought for anything
+	// not of the players' side. 2026-11-25. See `EnemyModifiersMarkLingeringDecay`.
+	int32 Acted = EnemyModifiersMarkLingeringDecay(Character) ? 1 : 0;
+
 	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
 	if (Enemy == nullptr || Enemy->ModifierRows.IsEmpty())
 	{
-		return 0;
+		return Acted;
 	}
 
 	if (UCataclysmSkillEffects::IsDead(Enemy))
 	{
-		return 0;
+		return Acted;
 	}
 
 	UWorld* World = Enemy->GetWorld();
 	if (World == nullptr)
 	{
-		return 0;
+		return Acted;
 	}
-
-	int32 Acted = 0;
 
 	// A SIGIL THAT IS UP RUNS DOWN, whether or not this creature carries the
 	// modifier any more. Counted first so a sigil placed this step is not
@@ -1076,6 +1513,119 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	{
 		Enemy->SigilSecondsLeft =
 			FMath::Max(0.0f, Enemy->SigilSecondsLeft - StepSeconds);
+	}
+
+	// -- Spectral Shift, 2026-11-24 ---------------------------------------
+	// OUT OF EXISTENCE FOR FIVE SECONDS IN EVERY FIFTEEN. Run down first, as the sigil is above, so a phase begun this
+	// step is not shortened by it. While seconds are left, `ACataclysmEnemyCharacter::TakesNoDamage` answers true and
+	// every blow is emptied where the Reaper's and a shrouded creature's are.
+	if (Enemy->SpectralShiftSecondsLeft > 0.0f)
+	{
+		Enemy->SpectralShiftSecondsLeft = FMath::Max(0.0f, Enemy->SpectralShiftSecondsLeft - StepSeconds);
+	}
+	if (Carries(Enemy->ModifierRows, SpectralShiftRow))
+	{
+		Enemy->SecondsSinceSpectralShift += StepSeconds;
+		if (Enemy->SecondsSinceSpectralShift >= SpectralShiftIntervalSeconds)
+		{
+			Enemy->SecondsSinceSpectralShift = 0.0f;
+			Enemy->SpectralShiftSecondsLeft = SpectralShiftOutSeconds;
+			++Acted;
+			UE_LOG(LogCataclysm, Log, TEXT("%s shifted out of existence for %.0f seconds."),
+				   *Enemy->GetName(), SpectralShiftOutSeconds);
+		}
+	}
+
+	// -- Shadow Step, 2026-11-24 ------------------------------------------
+	if (EnemyModifiersShadowStepFor(Enemy, StepSeconds))
+	{
+		++Acted;
+	}
+
+	// -- Lingering Decay, 2026-11-24 --------------------------------------
+	// A NECROTIC ZONE EVERY FIVE SECONDS WHERE IT STANDS, on the floor under it, through the zone every creature's
+	// ground already uses, so it is drawn. It deals nothing; a heal asks whether its receiver stands in one
+	// (`LingeringDecayHealingLessPercentAt`). NOT FROM A CREATURE THAT TAKES NO HOSTILE ACTION, the medic's rule (#1680).
+	if (Carries(Enemy->ModifierRows, LingeringDecayRow) && !Enemy->TakesNoHostileAction())
+	{
+		Enemy->SecondsSinceDecayZone += StepSeconds;
+		if (Enemy->SecondsSinceDecayZone >= LingeringDecaySecondsBetweenZones)
+		{
+			Enemy->SecondsSinceDecayZone = 0.0f;
+			const FVector Feet = ACataclysmEnemyController::FloorUnder(Enemy, Enemy->GetActorLocation());
+			if (ACataclysmGroundZone* Decay = ACataclysmGroundZone::Spawn(
+					Enemy, Feet, LingeringDecayRadiusCm, LingeringDecayZoneSeconds, /*DamagePerTick=*/0.0f))
+			{
+				Decay->HealingLessPercentInside = LingeringDecayHealingLessPercent;
+				++Acted;
+				UE_LOG(LogCataclysm, Log, TEXT("%s left a necrotic zone lasting %.0f seconds."),
+					   *Enemy->GetName(), LingeringDecayZoneSeconds);
+			}
+		}
+	}
+
+	// -- Phalanx, 2026-11-25 ----------------------------------------------
+	// "10% DAMAGE REDUCTION FOR EVERY OTHER ENEMY WITHIN 5 METERS", counted every step and written to the creature's own
+	// damage reduction, the stat step 5 of the damage calculation reads and caps at 75. ONLY ON A CHANGE, and nothing
+	// else writes a creature's damage reduction (`ApplyStartingAttributes` never does), so the figure is the row's
+	// alone. Not gated on hostility: it defends.
+	if (Carries(Enemy->ModifierRows, PhalanxRow))
+	{
+		Enemy->PhalanxAlliesCounted = CountPhalanxAllies(Enemy);
+		UAbilitySystemComponent* Braced = Enemy->GetAbilitySystemComponent();
+		const FGameplayAttribute Reduction = UCataclysmCombatAttributeSet::GetDamageReductionAttribute();
+		const float Wanted = PhalanxDamageReductionFor(Enemy->PhalanxAlliesCounted);
+		if (Braced && Braced->HasAttributeSetForAttribute(Reduction)
+			&& !FMath::IsNearlyEqual(Braced->GetNumericAttributeBase(Reduction), Wanted))
+		{
+			Braced->SetNumericAttributeBase(Reduction, Wanted);
+			++Acted;
+		}
+	}
+
+	// -- Battle Cry, 2026-11-25 -------------------------------------------
+	// A SHOUT EVERY EIGHT SECONDS, ONLY WITH SOMEBODY TO HEAR IT: the clock waits at the interval until an enemy is in
+	// reach, as Inferno Charge's waits for somebody to charge. NOT FROM A CREATURE THAT TAKES NO HOSTILE ACTION, the
+	// medic's rule (#1680).
+	if (Carries(Enemy->ModifierRows, BattleCryRow) && !Enemy->TakesNoHostileAction())
+	{
+		Enemy->SecondsSinceBattleCry += StepSeconds;
+		if (Enemy->SecondsSinceBattleCry >= BattleCryIntervalSeconds)
+		{
+			int32 Heard = 0;
+			EnemyModifiersShoutBattleCry(Enemy, World, Heard);
+			if (Heard > 0)
+			{
+				Enemy->SecondsSinceBattleCry = 0.0f;
+				++Acted;
+			}
+		}
+	}
+
+	// -- Artillery Barrage, 2026-11-25 ------------------------------------
+	// A VOLLEY IN THE AIR IS COUNTED DOWN AND LANDS, AND THE CLOCK RUNS THROUGH ITS WARNING, so a volley is called every
+	// six seconds, Bombardier's "6 second cooldown", the warning being shorter. A VOLLEY ALREADY CALLED LANDS whatever
+	// the creature does next; one called off by its death never does (`NoteDeathOfACarrier`). NOT CALLED BY A CREATURE
+	// THAT TAKES NO HOSTILE ACTION, the medic's rule (#1680).
+	if (Enemy->ArtilleryShellsSecondsLeft > 0.0f)
+	{
+		Enemy->SecondsSinceArtilleryBarrage += StepSeconds;
+		Enemy->ArtilleryShellsSecondsLeft -= StepSeconds;
+		if (Enemy->ArtilleryShellsSecondsLeft <= KINDA_SMALL_NUMBER)
+		{
+			EnemyModifiersLandArtilleryShells(Enemy, World);
+			++Acted;
+		}
+	}
+	else if (Carries(Enemy->ModifierRows, ArtilleryBarrageRow) && !Enemy->TakesNoHostileAction())
+	{
+		Enemy->SecondsSinceArtilleryBarrage += StepSeconds;
+		if (Enemy->SecondsSinceArtilleryBarrage >= ArtilleryBarrageIntervalSeconds
+			&& EnemyModifiersCallArtilleryBarrage(Enemy, World))
+		{
+			Enemy->SecondsSinceArtilleryBarrage = 0.0f;
+			++Acted;
+		}
 	}
 
 	// -- Unholy Sigils --------------------------------------------------
@@ -1414,4 +1964,663 @@ bool UCataclysmEnemyModifiers::AuraPulseIsDue(float SecondsSinceLastPulse)
 	// accumulated figure lands exactly on 1.0 rather than near it, and a strict
 	// comparison would make every pulse wait an extra step.
 	return SecondsSinceLastPulse >= AuraPulseIntervalSeconds;
+}
+
+// ---------------------------------------------------------------------------
+// The Death modifiers, written 2026-11-24 ahead of their window
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	/**
+	 * Haunting's cut on one target: each resistance it holds taken down by `HauntingResistanceCut`, never below
+	 * nought, for `HauntingSeconds`, under `Status.Debuff.Haunting`. 2026-11-24.
+	 *
+	 * BUILT AS STARVING AURA'S DEBUFF IS (`EnemyModifiersApplyStarvingAura` above), with the public calls
+	 * `ApplyNamedEffectOnly` makes, because the status row names no stat to move (`MovesStat` is empty and the row is
+	 * still "(planned)"), so the named-effect path would lay the tag and cut nothing. The workbook is not this
+	 * change's to edit; the stats are named here.
+	 *
+	 * NEVER BELOW NOUGHT, the rule `ApplyNamedEffectOnly` states for every resistance a debuff cuts ("THE REDUCTION
+	 * CANNOT TAKE A RESISTANCE PAST ZERO"), measured with the earlier Haunting taken off first, which is the lesson
+	 * that function records: sized against a resistance an earlier cut had already lowered, a second cut raised it.
+	 *
+	 * EVERY RESISTANCE THE TARGET HOLDS: a player's eight, and the one a creature or a minion holds instead.
+	 *
+	 * THE TAG IS LAID EVEN WHEN NOTHING IS LEFT TO CUT, as the named-effect path lays a tag whose stats a target
+	 * does not hold, so the status line still says the player is haunted.
+	 */
+	bool EnemyModifiersApplyHauntingCut(AActor* Haunter, AActor* Haunted)
+	{
+		UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Haunted);
+		const FGameplayTag HauntingTag = UCataclysmSkillShapes::StatusTagFor(TEXT("Haunting"));
+		if (!Defender || !HauntingTag.IsValid() || UCataclysmDebuffs::RefusedByARow(Haunter, Haunted, HauntingTag))
+		{
+			return false;
+		}
+		const float HauntedSeconds = UCataclysmDebuffs::DurationOn(
+			Defender, UCataclysmEnemyModifiers::HauntingSeconds, FGameplayTagContainer(HauntingTag));
+		if (HauntedSeconds <= 0.0f)
+		{
+			return false;
+		}
+		UCataclysmDebuffs::NoteLaid(Haunter, Haunted, HauntingTag, /*bIsASpreadCopy=*/false);
+		UCataclysmSkillEffects::RemoveEffectsGranting(Haunted, HauntingTag);
+
+		UObject* HauntingOuter = GetTransientPackage();
+		UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+			HauntingOuter, MakeUniqueObjectName(HauntingOuter, UGameplayEffect::StaticClass(),
+												FName(TEXT("CataclysmStatus_Haunting"))));
+		Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+		Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(HauntedSeconds));
+
+		const FGameplayAttribute HauntedResistances[] = {
+			UCataclysmResistanceAttributeSet::GetWarResistanceAttribute(),
+			UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+			UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(),
+			UCataclysmResistanceAttributeSet::GetPestilenceResistanceAttribute(),
+			UCataclysmResistanceAttributeSet::GetFamineResistanceAttribute(),
+			UCataclysmResistanceAttributeSet::GetCelestialResistanceAttribute(),
+			UCataclysmResistanceAttributeSet::GetChaosResistanceAttribute(),
+			UCataclysmResistanceAttributeSet::GetVoidResistanceAttribute(),
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(),
+		};
+		for (const FGameplayAttribute& Resistance : HauntedResistances)
+		{
+			if (!Defender->HasAttributeSetForAttribute(Resistance))
+			{
+				continue;
+			}
+			const float Taken = FMath::Min(UCataclysmEnemyModifiers::HauntingResistanceCut,
+										   FMath::Max(0.0f, Defender->GetNumericAttribute(Resistance)));
+			if (Taken <= 0.0f)
+			{
+				continue;
+			}
+			FGameplayModifierInfo& Modifier = Effect->Modifiers.AddDefaulted_GetRef();
+			Modifier.Attribute = Resistance;
+			Modifier.ModifierOp = EGameplayModOp::Additive;
+			Modifier.ModifierMagnitude = FScalableFloat(-Taken);
+		}
+
+		UTargetTagsGameplayEffectComponent& TagsComponent =
+			Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>();
+		FInheritedTagContainer Granted;
+		Granted.Added.AddTag(HauntingTag);
+		TagsComponent.SetAndApplyTargetTagChanges(Granted);
+
+		UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Haunter);
+		FGameplayEffectContextHandle Context = (Source ? Source : Defender)->MakeEffectContext();
+		Context.AddInstigator(Haunter, Haunter);
+		const FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
+		Defender->ApplyGameplayEffectSpecToSelf(Spec);
+		return true;
+	}
+
+	/** Shows a creature Shadow Step hid. The one place that undoes the hide, so the mark and the drawing agree. */
+	void EnemyModifiersShowWhatShadowStepHid(ACataclysmEnemyCharacter* Hidden)
+	{
+		if (Hidden && Hidden->bHiddenByShadowStep)
+		{
+			Hidden->SetActorHiddenInGame(false);
+			Hidden->bHiddenByShadowStep = false;
+		}
+	}
+
+	/** How far from whoever struck, towards the creature, Funeral Pyre places its pyre: a metre, so the two bodies do
+	 *  not overlap, and never past the creature itself. A judgement; the row says only "summon". */
+	constexpr float FuneralPyreBesideStrikerCm = 100.0f;
+}
+
+float UCataclysmEnemyModifiers::GraveTouchMultiplier(const TArray<FName>& Rows, float TargetHealth,
+													 float TargetMaximumHealth)
+{
+	if (!Carries(Rows, GraveTouchRow) || TargetMaximumHealth <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	// "LESS THAN 50%", STRICTLY: a target holding exactly half is not below it.
+	return TargetHealth < TargetMaximumHealth * GraveTouchBelowHealthShare ? GraveTouchDamageMultiplier : 1.0f;
+}
+
+bool UCataclysmEnemyModifiers::IgnoresEnergyShield(const TArray<FName>& Rows)
+{
+	return Carries(Rows, SoulEaterRow);
+}
+
+bool UCataclysmEnemyModifiers::MortalReminderOnHit(AActor* Attacker, AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, MortalReminderRow))
+	{
+		return false;
+	}
+
+	// NOR A TARGET ALREADY DEAD, as Infernal Brand refuses one (#2874): the blow that kills reaches this after the death.
+	if (UCataclysmSkillEffects::IsDead(Target))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* Reminded =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	const UWorld* World = Target ? Target->GetWorld() : nullptr;
+	if (Reminded == nullptr || World == nullptr)
+	{
+		return false;
+	}
+
+	// THE HEALTH THE HIT LEFT, which is "their current HP" once the attack has landed: this is called after the blow's
+	// health is written. A LATER HIT SETS IT AGAIN, lower, and restarts the four seconds; a heal under the ceiling
+	// cannot have raised it in between, so the newest figure is always the lowest.
+	Reminded->MortalReminderCeiling =
+		Reminded->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	Reminded->MortalReminderEndsAtSeconds = World->GetTimeSeconds() + MortalReminderSeconds;
+
+	// AND ITS STATUS, SO THE PLAYER'S EFFECTS LIST NAMES IT: `Status.Debuff.MortalReminder`, from the Debuffs sheet's
+	// row added 2026-11-25, which the owner accepted on 2026-11-24 ("These are fine"). For the same four seconds, and
+	// refreshed by a later hit as the ceiling is. THE CEILING STAYS ON THE ABILITY SYSTEM: a tag carries no figure, and
+	// the ceiling is the health the hit left.
+	const FGameplayTag Reminder = UCataclysmSkillShapes::StatusTagFor(TEXT("Mortal Reminder"));
+	if (Reminder.IsValid())
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(Attacker, Target, Reminder, MortalReminderSeconds);
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s's Mortal Reminder holds %s's healing to %.0f health for %.0f seconds."),
+		   *Enemy->GetName(), *GetNameSafe(Target), Reminded->MortalReminderCeiling, MortalReminderSeconds);
+	return true;
+}
+
+float UCataclysmEnemyModifiers::RecoveryCeilingOn(const UAbilitySystemComponent& AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Reminded = Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem);
+	const UWorld* World = AbilitySystem.GetWorld();
+	if (Reminded == nullptr || World == nullptr || Reminded->MortalReminderCeiling < 0.0f
+		|| World->GetTimeSeconds() >= Reminded->MortalReminderEndsAtSeconds)
+	{
+		return -1.0f;
+	}
+	return Reminded->MortalReminderCeiling;
+}
+
+float UCataclysmEnemyModifiers::TetherOnHealthLost(AActor* Tethered, AActor* Striker, float HealthLost)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Tethered);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, SoulTetherRow) || Enemy->TakesNoHostileAction()
+		|| HealthLost <= 0.0f || Striker == nullptr || Striker == Tethered
+		|| UCataclysmSkillEffects::IsDead(Striker) || !UCataclysmTargeting::IsHostileTo(Striker, Enemy))
+	{
+		return 0.0f;
+	}
+
+	const FGameplayTag Tether = UCataclysmSkillShapes::StatusTagFor(TEXT("Soul Tether"));
+	if (!Tether.IsValid())
+	{
+		return 0.0f;
+	}
+
+	const float Laid = HealthLost * SoulTetherShareOfHealthLost;
+
+	// ADDED TO WHAT AN EARLIER TETHER STILL HAS TO DEAL, AND THE WHOLE SPREAD OVER A FRESH FOUR SECONDS. The row
+	// transfers "a portion of damage taken", so every blow's portion arrives; the ordinary rule for a damage over
+	// time, that a weaker application only refreshes a stronger one (#1503), would throw the later portions away.
+	float StillToCome = 0.0f;
+	UCataclysmSkillEffects::FRunningAilment Running;
+	if (UCataclysmSkillEffects::RunningAilmentOn(Striker, Tether, Running))
+	{
+		StillToCome = FMath::Max(0.0f, Running.DamagePerSecond * Running.SecondsLeft);
+		UCataclysmSkillEffects::RemoveEffectsGranting(Striker, Tether);
+	}
+
+	// ONE TICK A SECOND, the base rate, and NOT SCALED BY THE CREATURE'S OWN DAMAGE OVER TIME STATS: the figure is
+	// already the health it lost. Of the creature's own damage type, met by the striker's defences as a tick is, and
+	// a tick reaches the energy shield (#2014).
+	const float PerTick = (StillToCome + Laid) * UCataclysmSkillEffects::BaseSecondsPerTick / SoulTetherSeconds;
+	if (!UCataclysmSkillEffects::ApplyDamageOverTime(Enemy, Striker, PerTick, SoulTetherSeconds, Tether,
+													 /*bScalesWithInstigator=*/false))
+	{
+		return 0.0f;
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s's Soul Tether sends %.1f of the %.1f it lost back to %s over %.0f seconds."),
+		   *Enemy->GetName(), Laid, HealthLost, *GetNameSafe(Striker), SoulTetherSeconds);
+	return Laid;
+}
+
+bool UCataclysmEnemyModifiers::IsPhasedOut(const AActor* Character)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	return Enemy != nullptr && Enemy->SpectralShiftSecondsLeft > 0.0f;
+}
+
+void UCataclysmEnemyModifiers::RevealForShadowStep(AActor* Character)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, ShadowStepRow))
+	{
+		return;
+	}
+
+	// SEEN NOW AND FOR THE SECOND AFTER, which the timed step then runs down once no attack is under way.
+	Enemy->ShadowStepSeenSecondsLeft = ShadowStepSeenSecondsAfterAnAttack;
+	EnemyModifiersShowWhatShadowStepHid(Enemy);
+}
+
+bool UCataclysmEnemyModifiers::IsHiddenByShadowStep(const AActor* Character)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	return Enemy != nullptr && Enemy->bHiddenByShadowStep && Enemy->IsHidden();
+}
+
+bool UCataclysmEnemyModifiers::NoteDeathOfACarrier(AActor* Dying)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Dying);
+	if (Enemy == nullptr)
+	{
+		return false;
+	}
+
+	// A CREATURE SHADOW STEP HID IS SEEN TO FALL, and one out of existence is back in it: its timed step never runs
+	// again, so nothing else would undo either.
+	EnemyModifiersShowWhatShadowStepHid(Enemy);
+	Enemy->SpectralShiftSecondsLeft = 0.0f;
+
+	// AND A VOLLEY OF WAR'S ARTILLERY BARRAGE STILL IN THE AIR IS CALLED OFF, its circles taken away: its timed step
+	// never runs again, so the shells would never land and the circles would stand for nothing. Killing the caller in
+	// the warning spares the player, which is an answer the player can choose. 2026-11-25, a judgement, recorded.
+	if (Enemy->ArtilleryShellsSecondsLeft > 0.0f || !Enemy->ArtilleryShellMarkers.IsEmpty())
+	{
+		EnemyModifiersCallOffArtilleryBarrage(Enemy);
+	}
+
+	// -- Final Curse ------------------------------------------------------
+	// "UPON DEATH, CURSE THE PLAYER", whoever or whatever killed it and wherever the player stands: the row names no
+	// killer and no reach. The player is found as the death's other readers find them, through the first player
+	// controller. NOT A CREATURE THAT TAKES NO HOSTILE ACTION, the medic's rule (#1680).
+	if (!Carries(Enemy->ModifierRows, FinalCurseRow) || Enemy->TakesNoHostileAction())
+	{
+		return false;
+	}
+	UWorld* World = Enemy->GetWorld();
+	APlayerController* Watching = World ? World->GetFirstPlayerController() : nullptr;
+	APawn* Cursed = Watching ? Watching->GetPawn() : nullptr;
+	if (Cursed == nullptr || UCataclysmSkillEffects::IsDead(Cursed))
+	{
+		return false;
+	}
+	const FGameplayTag Curse = UCataclysmSkillShapes::StatusTagFor(TEXT("Final Curse"));
+	if (!Curse.IsValid() || !UCataclysmSkillEffects::ApplyTagForDuration(Enemy, Cursed, Curse, FinalCurseSeconds))
+	{
+		return false;
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s died carrying Final Curse and cursed %s for %.0f seconds."),
+		   *Enemy->GetName(), *Cursed->GetName(), FinalCurseSeconds);
+	return true;
+}
+
+float UCataclysmEnemyModifiers::FinalCurseOnSkillUse(AActor* User, bool bWasTheBasicAttack)
+{
+	// "WHEN USING ABILITIES": every skill a player chooses to use, and not the basic attack, which the game uses for
+	// them. A judgement, listed for the owner.
+	if (bWasTheBasicAttack || User == nullptr || UCataclysmSkillEffects::IsDead(User))
+	{
+		return 0.0f;
+	}
+
+	const FGameplayTag Curse = UCataclysmSkillShapes::StatusTagFor(TEXT("Final Curse"));
+	if (!Curse.IsValid() || !UCataclysmSkillEffects::HasTag(User, Curse))
+	{
+		return 0.0f;
+	}
+
+	const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(User);
+	const float Damage = System
+		? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+			* FinalCurseMaximumHealthPercentPerUse / 100.0f
+		: 0.0f;
+	if (Damage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// DEALT AS ECHO CHAMBER'S SELF HIT IS: the user's own blow on itself, an area so it is never evaded, no critical
+	// strike, no leech, nothing struck back. OF DEATH, the curse's Cataclysm, so the user's Death resistance meets it.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCannotLeech = true;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.DamageType = FName(TEXT("Death"));
+	if (!UCataclysmSkillEffects::ApplyDirectDamage(User, User, Damage, Delivery))
+	{
+		return 0.0f;
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s used a skill under Final Curse and paid %.0f."), *User->GetName(), Damage);
+	return Damage;
+}
+
+ACataclysmBonePyreCharacter* UCataclysmEnemyModifiers::PyreWhenStruck(AActor* Struck, AActor* Striker)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Struck);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, FuneralPyreRow) || Enemy->TakesNoHostileAction()
+		|| UCataclysmSkillEffects::IsDead(Enemy) || Striker == nullptr || Striker == Struck
+		|| !UCataclysmTargeting::IsHostileTo(Striker, Enemy))
+	{
+		return nullptr;
+	}
+
+	UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return nullptr;
+	}
+
+	// AT MOST ONE EVERY EIGHT SECONDS. Without it every blow would raise a pyre, and a player attacking at any speed
+	// would stand in a field of them: the reason the owner gave Beguiling, the other modifier set off by being hit, a
+	// cooldown of its own on 2026-09-05.
+	const float Now = World->GetTimeSeconds();
+	if (Enemy->FuneralPyreLastAt >= 0.0f && Now - Enemy->FuneralPyreLastAt < FuneralPyreCooldownSeconds)
+	{
+		return nullptr;
+	}
+
+	// AT THE FEET OF WHOEVER STRUCK, a metre towards the creature so the two bodies do not start inside each other;
+	// the spawn moves it clear of anything else. Under the striker, as Path of Exile's Crystal-skinned fires its
+	// crystals "under players when they hit you", so a player who attacks from range is answered too.
+	FVector Towards = Enemy->GetActorLocation() - Striker->GetActorLocation();
+	Towards.Z = 0.0f;
+	const FVector Where = Striker->GetActorLocation() + Towards.GetClampedToMaxSize(FuneralPyreBesideStrikerCm);
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmBonePyreCharacter* Pyre = World->SpawnActor<ACataclysmBonePyreCharacter>(
+		ACataclysmBonePyreCharacter::StaticClass(), Where, FRotator::ZeroRotator, Spawn);
+	if (Pyre == nullptr)
+	{
+		return nullptr;
+	}
+
+	// RAISED BY A RULE AND DYING UNPAID, as every floor source a rule places is: a save does not keep it, and breaking
+	// it drops nothing and grants nothing. On the creature's side, and of its damage type, so the explosion finds the
+	// creature's enemies and is met by their resistance to it.
+	Pyre->bRaisedByARule = true;
+	Pyre->bDiesUnpaid = true;
+	Pyre->DamageType = Enemy->DamageType;
+	Pyre->SetGenericTeamId(UCataclysmTeams::TeamOf(Enemy));
+
+	const UAbilitySystemComponent* Own = UCataclysmTargeting::AbilitySystemOf(Enemy);
+	const float MaximumHealth =
+		Own ? Own->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	const float AttackDamage =
+		Own ? Own->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()) : 0.0f;
+	Pyre->SetHealth(FMath::Max(1.0f, MaximumHealth * FuneralPyreShareOfHealth));
+	Pyre->PyreFuseSecondsLeft = FuneralPyreFuseSeconds;
+	Pyre->PyreExplosionDamage = FMath::Max(0.0f, AttackDamage) * FuneralPyreExplosionHits;
+	Pyre->PyreKindledBy = Enemy;
+	Enemy->FuneralPyreLastAt = Now;
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s was struck by %s and raised a bone pyre that explodes in %.0f seconds for %.0f."),
+		   *Enemy->GetName(), *Striker->GetName(), FuneralPyreFuseSeconds, Pyre->PyreExplosionDamage);
+	return Pyre;
+}
+
+int32 UCataclysmEnemyModifiers::PyreStep(ACataclysmBonePyreCharacter* Pyre, float StepSeconds)
+{
+	// A PYRE DESTROYED FIRST NEVER EXPLODES: a dead pyre takes no step, and its death is what destroying it means.
+	if (Pyre == nullptr || Pyre->bPyreSpent || UCataclysmSkillEffects::IsDead(Pyre))
+	{
+		return 0;
+	}
+
+	Pyre->PyreFuseSecondsLeft -= StepSeconds;
+	if (Pyre->PyreFuseSecondsLeft > KINDA_SMALL_NUMBER)
+	{
+		return 0;
+	}
+
+	// SPENT BEFORE THE BLAST, so nothing the blast sets off can explode it twice.
+	Pyre->bPyreSpent = true;
+	Pyre->PyreFuseSecondsLeft = 0.0f;
+
+	int32 Struck = 0;
+	UWorld* World = Pyre->GetWorld();
+	if (World != nullptr && Pyre->PyreExplosionDamage > 0.0f)
+	{
+		// EVERY ENEMY OF THE PYRE'S SIDE WITHIN THREE METRES, the player and the player's minions, through the search
+		// every skill uses. AN AREA BLOW, which cannot be evaded and can be blocked, and never a critical strike: the
+		// figure is three hits banked, as Infernal Brand's explosion is five and does not crit (#2874).
+		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+			World, Pyre, Pyre->GetActorLocation(), FuneralPyreRadiusCm);
+		FCataclysmHitDelivery Blast;
+		Blast.bIsArea = true;
+		Blast.bCannotCriticallyStrike = true;
+		for (AActor* Target : Caught)
+		{
+			if (UCataclysmSkillEffects::ApplyDirectDamage(Pyre, Target, Pyre->PyreExplosionDamage, Blast))
+			{
+				++Struck;
+			}
+		}
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("A bone pyre exploded for %.0f and caught %d."), Pyre->PyreExplosionDamage, Struck);
+
+	// GONE AT ONCE, AND REMOVED RATHER THAN KILLED: it was not destroyed by anyone, so no death is announced, nothing
+	// is credited and nothing is dropped. Hidden and its collision off now; the actor goes on the next tick, as a
+	// creature with no death clip does, because this runs inside the pyre's own step.
+	Pyre->SetActorHiddenInGame(true);
+	Pyre->SetActorEnableCollision(false);
+	World = Pyre->GetWorld();
+	if (World != nullptr)
+	{
+		FTimerDelegate Removal = FTimerDelegate::CreateWeakLambda(Pyre, [Pyre]()
+		{
+			Pyre->Destroy();
+		});
+		World->GetTimerManager().SetTimerForNextTick(Removal);
+	}
+	return Struck;
+}
+
+bool UCataclysmEnemyModifiers::HauntOnHit(AActor* Attacker, AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Copy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Copy == nullptr || !Copy->bIsASpectralCopy || UCataclysmSkillEffects::IsDead(Target))
+	{
+		return false;
+	}
+
+	if (!EnemyModifiersApplyHauntingCut(Attacker, Target))
+	{
+		return false;
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s, a spectral copy, haunted %s: every resistance %.0f lower for %.0f seconds."),
+		   *Copy->GetName(), *GetNameSafe(Target), HauntingResistanceCut, HauntingSeconds);
+	return true;
+}
+
+bool UCataclysmEnemyModifiers::UndyingWillRaises(const AActor* Fallen)
+{
+	// ONLY A DEATH THAT PAYS, so a creature a rule brought back -- Undying Will's own among them -- never rises again,
+	// and one resurrection is the most the row gives: the guard Dead Rising takes for its own revivals. A floor source
+	// is never one, whatever it carries.
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Fallen);
+	return Enemy != nullptr && Carries(Enemy->ModifierRows, UndyingWillRow) && Enemy->PaysForItsDeath()
+		&& !Enemy->IsA<ACataclysmFloorSourceCharacter>();
+}
+
+bool UCataclysmEnemyModifiers::HauntingLeavesACopy(const AActor* Fallen)
+{
+	// THE SAME GUARD, so a copy never leaves a copy and a creature brought back leaves none.
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Fallen);
+	return Enemy != nullptr && Carries(Enemy->ModifierRows, HauntingRow) && Enemy->PaysForItsDeath()
+		&& !Enemy->IsA<ACataclysmFloorSourceCharacter>();
+}
+
+void UCataclysmEnemyModifiers::MakeUndyingWillRisen(ACataclysmEnemyCharacter* Risen)
+{
+	if (Risen == nullptr)
+	{
+		return;
+	}
+
+	// RISEN FROM THE DEAD, SO ITS SECOND DEATH PAYS NOTHING: the owner's decision of 2026-09-17, one kill pays once.
+	Risen->bRisenFromTheDead = true;
+	Risen->bRisenByUndyingWill = true;
+
+	// "INCREASED DAMAGE OUTPUT", IN THE INCREASED BUCKET, as a rule's part so every later write of its damage keeps it
+	// (#2723). Written before the health, which a part does not touch.
+	ACataclysmEnemyCharacter::FRuleDamagePart Part;
+	Part.IncreasedPercent = UndyingWillDamageIncreasedPercent;
+	Risen->SetRuleDamagePart(ACataclysmEnemyCharacter::UndyingWillDamageSource, Part);
+
+	// "REDUCED HEALTH": half its maximum, written after the rung, because setting a rung refills health, as Divine
+	// Resurgence writes its half.
+	if (UAbilitySystemComponent* System = Risen->GetAbilitySystemComponent())
+	{
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * UndyingWillHealthShare);
+	}
+}
+
+void UCataclysmEnemyModifiers::MakeSpectralCopy(ACataclysmEnemyCharacter* Copy)
+{
+	if (Copy == nullptr)
+	{
+		return;
+	}
+
+	// A COPY PAYS NOTHING, as a creature a rule brought back pays nothing (2026-09-17): the creature it copies paid.
+	Copy->bRisenFromTheDead = true;
+	Copy->bIsASpectralCopy = true;
+	if (UAbilitySystemComponent* System = Copy->GetAbilitySystemComponent())
+	{
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * HauntingCopyHealthShare);
+	}
+}
+
+float UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(const AActor* Healed)
+{
+	// "PLAYERS STANDING IN THEM": the players' side, which is the player and the player's minions, as Starving Aura's
+	// cut reaches both (ruled 2026-10-26). A creature standing in one is healed in full.
+	if (!IsValid(Healed)
+		|| UCataclysmTeams::TeamOf(Healed) != UCataclysmTeams::IdFor(ECataclysmTeam::Players))
+	{
+		return 0.0f;
+	}
+
+	UWorld* World = Healed->GetWorld();
+	if (World == nullptr)
+	{
+		return 0.0f;
+	}
+
+	// THE LARGEST, NEVER A SUM, as `ACataclysmGroundZone::RegenerationScaleFor` reads its patches: two overlapping
+	// zones are one zone to whoever stands in both. THE FIGURE BEFORE THE GEOMETRY, so every other patch in the level
+	// costs one comparison.
+	float Most = 0.0f;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		const ACataclysmGroundZone* Zone = *It;
+		if (!IsValid(Zone) || Zone->HealingLessPercentInside <= Most)
+		{
+			continue;
+		}
+		if (Zone->Covers(Healed->GetActorLocation()))
+		{
+			Most = Zone->HealingLessPercentInside;
+		}
+	}
+	return FMath::Clamp(Most, 0.0f, 100.0f);
+}
+
+// ---------------------------------------------------------------------------
+// The War modifiers, written 2026-11-25 ahead of their window
+// ---------------------------------------------------------------------------
+
+float UCataclysmEnemyModifiers::ArmourMultiplier(const TArray<FName>& Rows)
+{
+	// A RUNNING MULTIPLIER, AS `MaxHealthMultiplier` IS, so a second modifier that also scales armour multiplies with
+	// this rather than replacing it.
+	float Multiplier = 1.0f;
+	if (Carries(Rows, ArmoredJuggernautRow))
+	{
+		Multiplier *= ArmoredJuggernautArmourMultiplier;
+	}
+	return Multiplier;
+}
+
+float UCataclysmEnemyModifiers::CritChanceMultiplier(const TArray<FName>& Rows)
+{
+	// "INCREASED", ONE PLUS THE SUM OF THE INCREASES, the bucket the word names.
+	float IncreasedPercent = 0.0f;
+	if (Carries(Rows, BattleScarredRow))
+	{
+		IncreasedPercent += BattleScarredCritChanceIncreasedPercent;
+	}
+	return 1.0f + IncreasedPercent / 100.0f;
+}
+
+float UCataclysmEnemyModifiers::AddedResistance(const TArray<FName>& Rows)
+{
+	// A SUM, so a second modifier that also adds resistance adds rather than replacing.
+	float Added = 0.0f;
+	if (Carries(Rows, BattleScarredRow))
+	{
+		Added += BattleScarredResistance;
+	}
+	return Added;
+}
+
+float UCataclysmEnemyModifiers::ShareOfProjectileDamageTaken(const AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Walled = Cast<ACataclysmEnemyCharacter>(Target);
+	return Walled != nullptr && Carries(Walled->ModifierRows, ShieldWallRow) ? ShieldWallProjectileDamageShare : 1.0f;
+}
+
+float UCataclysmEnemyModifiers::PhalanxDamageReductionFor(int32 Others)
+{
+	// NOT CAPPED HERE: the damage calculation caps every source of damage reduction together, at 75, and a second cap
+	// here could only disagree with it.
+	return FMath::Max(0, Others) * PhalanxDamageReductionPerAlly;
+}
+
+int32 UCataclysmEnemyModifiers::CountPhalanxAllies(const AActor* Character)
+{
+	const ACataclysmEnemyCharacter* Braced = Cast<ACataclysmEnemyCharacter>(Character);
+	const UWorld* BracedWorld = Braced ? Braced->GetWorld() : nullptr;
+	if (BracedWorld == nullptr)
+	{
+		return 0;
+	}
+
+	// "EVERY OTHER ENEMY": the creatures of its side beside it, which `FindAlliesInSphere` finds without the creature
+	// itself and without the dead. A CREATURE THAT CAN LOSE HEALTH, the reading of "ally" ruled for Sacrificial Bond on
+	// 2026-09-30 (#1559): a floor-rule object -- a spire, a pyre, a beacon -- is not one, nor is a creature that cannot
+	// be hurt. A shrouded creature still stands in the line and counts.
+	int32 Others = 0;
+	for (const AActor* Ally : UCataclysmTargeting::FindAlliesInSphere(
+			 BracedWorld, Braced, Braced->GetActorLocation(), PhalanxReachCm))
+	{
+		const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Ally);
+		if (Creature != nullptr && !Creature->IsA<ACataclysmFloorSourceCharacter>() && !Creature->bCannotBeHurt)
+		{
+			++Others;
+		}
+	}
+	return Others;
+}
+
+bool UCataclysmEnemyModifiers::IsArtilleryBarrageInTheAir(const AActor* Character)
+{
+	const ACataclysmEnemyCharacter* Caller = Cast<ACataclysmEnemyCharacter>(Character);
+	return Caller != nullptr && Caller->ArtilleryShellsSecondsLeft > 0.0f;
 }

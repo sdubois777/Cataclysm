@@ -7,6 +7,7 @@
 #include "Components/TextBlock.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmWearing.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -221,7 +222,8 @@ void UCataclysmCharacterSheetWidget::WriteStatus()
 				State ? State->GetRunKills() : 0,
 				State ? State->GetLifetimeKills() : 0),
 			*UCataclysmCharacterSheetLayout::WornResidueLine(
-				Equipment ? Equipment->WornResidue() : 0.0f, ShownDifficultyTier()),
+				Equipment ? UCataclysmWearing::CountedWornResidue(Equipment, Equipment->WornResidue()) : 0.0f,
+				ShownDifficultyTier(), UCataclysmWearing::IgnoredWornResidueShare(Equipment)),
 			Mark.IsEmpty() ? TEXT("") : TEXT("   "), *Mark)));
 	}
 

@@ -25,14 +25,14 @@ class UTextBlock;
  * where a diff shows them and a headless test can reach them, and the layout in
  * `WBP_PassiveTree` under `game/Content/Interface/`.
  *
- * WHAT IT DRAWS, STATED PLAINLY: a list. One row per node, in the order the
- * nodes are laid out in the authoring tool, top to bottom. It does NOT draw the
- * tree as a graph with lines between nodes, and the decision that put layout in
- * a Widget Blueprint gave "a large node graph with panning and zooming" as one
- * of its reasons. Issue #937 is the graph. A list is what makes the points
- * spendable and the rules visible today, and everything it needs from C++ --
- * which nodes exist, where they sit, what is shut and why -- is what a graph
- * would need too, so it is not work that gets thrown away.
+ * WHAT IT DRAWS, STATED PLAINLY: the tree as a graph, each node at its authored
+ * position and a line along each edge, fitted to the panel, zoomed by the wheel
+ * and panned by a drag (issue #937; it was a list before that). SINCE
+ * 2026-11-24 EACH NODE IS A MARK SIZED BY ITS KIND -- an ordinary node, a larger
+ * keystone, a wide vow -- so the shape a tree is laid out in reads on screen.
+ * A spent node shows its count on its mark; the node hovered or last selected
+ * shows its name and count beside its mark. Every node was a 150 by 44 labelled
+ * box until then, and the boxes hid the shape.
  *
  * WHY EVERY FUNCTION WORKS WITH NO WIDGETS AT ALL. The automation command in
  * `tools/unreal_build.py` passes `-nullrhi` and runs with no editor, so a test
@@ -147,6 +147,16 @@ public:
 	 */
 	static FName OptionValue(int32 Option);
 	static int32 OptionFromValue(FName Value);
+
+	/**
+	 * What the button for `Capstone`'s `Option` says while its options are on offer: its number and name, "(nothing is
+	 * written here)" for an option with no name, and for a named option with no row in `EffectTable` the name marked
+	 * "(not built yet: it does nothing)" (`UCataclysmPassiveTree::MarkedNotBuiltYet`). The War vow options' second
+	 * slice, 2026-11-25. Static, so a headless test reads the label the list draws without the list, which only a
+	 * Widget Blueprint has.
+	 */
+	static FString OptionLabelFor(const UDataTable* NodeTable, const UDataTable* EffectTable, FName Capstone,
+								  int32 Option);
 
 	//~ What the screen says.
 
@@ -281,13 +291,29 @@ public:
 	/** How far the view is scaled right now. For tests. */
 	float CurrentZoom() const { return Zoom; }
 
+	/**
+	 * The name drawn beside the node hovered or last selected, "Shield Mastery  2/3", or empty when none is. Since
+	 * 2026-11-24. With "(N add nothing)" after it for a node whose points add nothing, which its mark has no room for.
+	 */
+	FString NodeNameCaptionText() const;
+
+	/** Where that name's left edge sits on the panel, halfway up it, or zero when no node is captioned. For tests. */
+	FVector2D NodeNameCaptionPositionForTests() const;
+
+	/**
+	 * Hover `Node` as the cursor would. For tests: the hover handler is bound by reflection to a button no headless
+	 * test can reach, as `TouchNode` is public for the click.
+	 */
+	void HoverNodeForTests(FName Node) { HandleNodeHovered(Node); }
+
 protected:
 	/** Where the tree-selector buttons go. Filled by this class. */
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UPanelWidget> TreeBox;
 
 	/**
-	 * Where the tree is drawn: one button per node, one line per edge.
+	 * Where the tree is drawn: one mark per node (a button sized by the node's kind), one line per edge, and the
+	 * name of the node hovered or selected.
 	 *
 	 * A CANVAS PANEL AND NOT A LIST, since issue #937. Every node is placed at
 	 * its own authored position, scaled and panned, so the tree keeps the shape
@@ -460,12 +486,25 @@ private:
 	FString BuiltTree;
 
 	/**
-	 * How big a node may be drawn in the tree on the canvas, as a factor.
+	 * How big a node's mark may be drawn in the tree on the canvas, as a factor (`MarkScaleFor`).
 	 *
 	 * WORKED OUT ONCE WHEN THE TREE IS BUILT, because it walks every pair
 	 * of nodes and does not change while one tree is being looked at.
 	 */
-	float BuiltNodeScale = 1.0f;
+	float BuiltMarkScale = 1.0f;
+
+	/**
+	 * The name of the node hovered or last selected, drawn beside its mark. Since 2026-11-24.
+	 *
+	 * ONE LABEL FOR THE WHOLE CANVAS, MOVED TO WHICHEVER NODE IS `LastTouched`, rather than a name per node: 74 names
+	 * at once are the boxes the marks replaced. Added after the nodes, so it is drawn over them, and hit-test
+	 * invisible, so it never takes a click meant for a mark under it.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NodeNameLabel;
+
+	/** Write the name of `LastTouched` into `NodeNameLabel` and put it beside that node's mark. */
+	void PlaceNodeName();
 
 	/**
 	 * The capstone whose three options are in the tree list, or NAME_None.

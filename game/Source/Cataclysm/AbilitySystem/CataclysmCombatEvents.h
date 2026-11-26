@@ -291,6 +291,20 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 * then. Handed-over work, the overkill explosion's, runs with no rows acting, so its kills still raise them.
 	 */
 	bool bWhileTheKillersRowsActed = false;
+
+	/**
+	 * Whether the blow that killed was a critical strike, and not a tick of damage over time, which is never one as the
+	 * coordinating session ruled on 2026-11-25. The Death trees' slice C4a, for the Shadow's Clean Kill: the killer's
+	 * character restores `UCataclysmFervour::HealthRestoredOnCriticalKillStat`'s share of health when this holds.
+	 */
+	bool bByACriticalStrike = false;
+
+	/**
+	 * Whether the death was an execute's: an `execute_target` row's kill below its share of health
+	 * (`UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow`). A set bonus's cull is not one. Reaper's Edge's double
+	 * Fervour reads it through the kill handler's mark. The Death trees' slice C4d1 (2026-11-25).
+	 */
+	bool bByAnExecute = false;
 };
 
 /**
@@ -382,6 +396,13 @@ struct CATACLYSM_API FCataclysmLastBlow
 	 * `FCataclysmDeathNotice::KillingBlowDamage`.
 	 */
 	float KillingBlowDamage = 0.0f;
+
+	/**
+	 * Whether the blow that killed was a critical strike, for that blow only, as `Overkill` is. The Death trees' slice
+	 * C4a (2026-11-25), for the Shadow's Clean Kill, "Killing an enemy with a critical strike". Handed to the death notice
+	 * as `FCataclysmDeathNotice::bByACriticalStrike`, which leaves out a tick of damage over time.
+	 */
+	bool bKillingBlowWasCritical = false;
 
 	/**
 	 * For a blow that named no skill object, the tags of the skill it was a blow of, copied from

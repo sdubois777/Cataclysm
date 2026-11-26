@@ -73,11 +73,26 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * UPGRADES THOSE DAYS FINISHED, since issue #2825, added only when there are any: "; city upgrades finished:
 	 * Outpost (-3,0)".
 	 *
+	 * THE SAME WORDS FOR DAYS SPENT IN THE CAPITAL, after another lead, since issue #2857: a craft at the forge says
+	 * "at the forge, days 97 to 99: dungeons resolved: ..." and the empire upgrade tree's respec "for the respec, days 12
+	 * to 17: ...", each after its own line, and the screen that spent them shows "Meanwhile, days 97 to 99: ..."
+	 * (`UCataclysmGameInstance::KeepCapitalDays`). Until that issue a forge craft's days were run and their reports
+	 * thrown away, so the owner saw dungeons gone with nothing saying why.
+	 *
 	 * @param NamesBefore `NamesStanding` read before the days ran; a dungeon the days both brought and resolved is
 	 *                    named by its identifier alone.
+	 * @param Lead        what the line begins with: "while away" for a walk's days, which every walk says.
 	 */
 	static FString AwayAccount(int32 FromDay, int32 ToDay, const TArray<FCataclysmDayReport>& Days,
-							   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run);
+							   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run,
+							   const TCHAR* Lead = TEXT("while away"));
+
+	/**
+	 * Whether the days did anything `AwayAccount` names: a dungeon resolved, a city hit or fallen, a surge, or a city
+	 * upgrade finished. The screen that spent days in the capital shows their account only then; the PLAY LOOP line is
+	 * said whatever they did, so a missing line means the days were not reported. Issue #2857.
+	 */
+	static bool DaysDidSomething(const TArray<FCataclysmDayReport>& Days);
 
 	/** The capital, its map opened: the day, the board and the character, and the days away when a walk just ended. */
 	static FString CapitalLine(const UCataclysmEmpireRun* Run, int32 Level, int64 ExperienceIntoLevel,
@@ -221,6 +236,13 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString SkillForgottenLine(const FString& Slot);
 
 	/**
+	 * A change of gear that added skills to the pool on no key: "the Fist added 5 skills to the pool on no key, and 2 not
+	 * built yet". `Weapon` empty is "the weapons". Said by `ACataclysmPlayerCharacter::NoteSkillsAddedToThePool` beside
+	 * the notice it posts; never by a load. Issue #837 slice 2 (the owner's Q4).
+	 */
+	static FString SkillsAddedLine(const FString& Weapon, int32 Built, int32 NotBuilt);
+
+	/**
 	 * An item raised a gear level at the forge: "upgraded Quality Torc of Warding from +2 to +3 with two +3 stones, 4
 	 * left, and 2,055 gold; residue 87 to 112; it cost 3 days, day 20 to day 23". The owner's ruling of 2026-11-19,
 	 * "build it next"; the gold since #2830. Said by `UCataclysmForgeCraft::Upgrade`, after the stones and the gold are
@@ -309,6 +331,35 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * `UCataclysmForgeCraft::Dismantle`, after the piece left the bag and what it gave joined it.
 	 */
 	static FString ForgeDismantleLine(const FString& ItemName, const FString& Given, int32 Day);
+
+	/**
+	 * The Soul Forge's second level, said after the upgrade's own line: "The Soul Forge raised Quality Helm two levels,
+	 * +3 to +5". Issue #47, slice F6. Said by `UCataclysmForgeCraft::Upgrade`, only when it rose two.
+	 */
+	static FString ForgeSoulForgeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel);
+
+	/**
+	 * What the empire tree's material nodes kept of a forge craft, said after the craft's own line and its options' (N4):
+	 * "the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm". Issue #47, slice
+	 * F6b. Said by `UCataclysmForgeCraft::DoItemCraft`, only when it kept anything; `Kept` is
+	 * `FCataclysmForgeKeeping::KeptPartsOf`.
+	 */
+	static FString ForgeMaterialsKeptLine(const FString& ItemName, const FString& Kept);
+
+	/**
+	 * What the empire tree's affix nodes did to a forge craft's item, said after the craft's own line, its options' and
+	 * what the material nodes kept: "the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier
+	 * 5; made Flat life's roll its best, 37 to 100 percent". #2741's crafting group, slices C3 and C4. Said by
+	 * `UCataclysmForgeCraft::DoItemCraft`, only when they did anything; `Done` is `UCataclysmForge::AffixNodesDoneText`.
+	 */
+	static FString ForgeAffixNodesLine(const FString& ItemName, const FString& Done);
+
+	/**
+	 * The Master Tinkerer's critical success, said after the enchantment craft's own line: "a critical success on
+	 * Quality Helm: the rolls were drawn twice with the better kept, and the craft took no days". Issue #47, slice F6.
+	 * Said by `UCataclysmForgeCraft::DoEnchantmentWork`, only on a critical success.
+	 */
+	static FString ForgeCriticalLine(const FString& ItemName);
 
 	/**
 	 * A weapon's damage type infused or changed at the forge: "infused Quality Sword with Death, drawn, for 450 gold;

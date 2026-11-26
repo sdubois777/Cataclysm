@@ -222,8 +222,53 @@ def its_stated_stun_agrees_with_its_sentence(effect_row: dict[str, str],
     return any(float(stated) == low for stated in FOR_SECONDS.findall(sentence))
 
 
+#: A stat that is a stun's length in seconds, on a passive row.
+STUN_LENGTH_STAT = re.compile(r"(?:^|_)stun_seconds(?:_|$)")
+
+
+def its_stun_length_agrees_with_its_nodes_sentence(effect_row: dict[str, str],
+                                                   sentences: dict[tuple[str, int], str]) -> bool:
+    """Whether a passive row that is a stun's length states a length its node's
+    sentence states too.
+
+    A PASSIVE ROW HOLDS NO SENTENCE, as an enchantment's effect row holds none: it
+    names its node, and the node's row in `PassiveNodes.csv` holds the words (its
+    option's, for an option). Since 2026-11-25 a passive row can be a stun's
+    length: Riposte's "While at maximum Fervour this counter-attack also stuns the
+    target for 1 second" is `riposte_stun_seconds_at_maximum`, whose value
+    `FCataclysmWarFervour::RiposteOnBlock` reads as the seconds.
+
+    AS NARROW AS `its_stated_stun_agrees_with_its_sentence`: the stat names
+    `stun_seconds`, the row's value is above nought, and the node's sentence states
+    that same number as "for N seconds". A row with no length, a sentence that says
+    only "briefly", or a row and a sentence that state different lengths are still
+    reported."""
+    if not STUN_LENGTH_STAT.search(effect_row.get("Stat") or ""):
+        return False
+    try:
+        value = float(effect_row.get("ValuePerPoint") or 0.0)
+        option = int(effect_row.get("Option") or 0)
+    except ValueError:
+        return False
+    sentence = sentences.get((effect_row.get("Node") or "", option))
+    if value <= 0.0 or sentence is None:
+        return False
+    return any(float(stated) == value for stated in FOR_SECONDS.findall(sentence))
+
+
 def enchantment_sentences() -> dict[str, str]:
     return {row["Name"]: row["Effect"] for table in ENCHANTMENT_TABLES for row in rows_of(table)}
+
+
+def node_sentences() -> dict[tuple[str, int], str]:
+    """(node, option) to its sentence: option 0 is the node's own description."""
+    out = {}
+    for row in rows_of("PassiveNodes"):
+        out[(row["Name"], 0)] = row["Description"]
+        for option in (1, 2, 3):
+            if row.get(f"Option{option}Description"):
+                out[(row["Name"], option)] = row[f"Option{option}Description"]
+    return out
 
 
 def rows_of(name: str) -> list[dict[str, str]]:
@@ -292,6 +337,8 @@ def test_everything_that_applies_a_stun_states_how_long():
     exempt = DEFINITIONS | CHANCE_TO_APPLY
     sentences = enchantment_sentences()
     built = {row["Name"]: row for row in rows_of("EnchantmentEffects")}
+    nodes = node_sentences()
+    passive = {row["Name"]: row for row in rows_of("PassiveEffects")}
     missing = [(table, key) for table, key, text in stun_rows()
                if (table, key) not in exempt and not DURATION.search(text)
                and not (table == "EnchantmentEffects"
@@ -299,7 +346,9 @@ def test_everything_that_applies_a_stun_states_how_long():
                              or its_own_seconds_agree_with_its_sentence(
                                  built.get(key, {}), sentences)
                              or its_stated_stun_agrees_with_its_sentence(
-                                 built.get(key, {}), sentences)))]
+                                 built.get(key, {}), sentences)))
+               and not (table == "PassiveEffects"
+                        and its_stun_length_agrees_with_its_nodes_sentence(passive.get(key, {}), nodes))]
     assert not missing, (
         f"{missing} apply a stun without saying how long it lasts. Since the "
         "anti-stun-lock rule gave stun a 5 second immunity window, a duration "
@@ -340,6 +389,35 @@ def test_a_time_lock_rift_stun_is_excused_only_when_its_value_and_its_sentence_a
     assert not its_stated_stun_agrees_with_its_sentence(row("Nowhere", "5.0"), sentences)
     assert not its_stated_stun_agrees_with_its_sentence(
         row("Agrees", "5.0", stat="ground_pound_stun_seconds"), sentences)
+
+
+def test_a_passive_stun_length_is_excused_only_when_its_value_and_its_nodes_sentence_agree():
+    """What stops the excuse of 2026-11-25 being a way to say nothing. Made-up rows
+    under made-up sentences: the one that agrees, an option's sentence, and the
+    refusals, a sentence that says only "briefly", a sentence that states another
+    length, a row with no length, an unknown node, and a stat that is not a stun's
+    length under the same words. AND THE SHIPPED RIPOSTE ROW is seen as applying a
+    stun, and excused by its own node's sentence."""
+    sentences = {("Agrees", 0): "this counter-attack also stuns the target for 1 second",
+                 ("Brief", 0): "this counter-attack also briefly stuns the target",
+                 ("Another", 0): "this counter-attack also stuns the target for 2 seconds",
+                 ("Options", 2): "your slam stuns for 3 seconds"}
+
+    def row(node, value, stat="riposte_stun_seconds_at_maximum", option="0"):
+        return {"Node": node, "Stat": stat, "ValuePerPoint": value, "Option": option}
+    assert its_stun_length_agrees_with_its_nodes_sentence(row("Agrees", "1.0"), sentences)
+    assert its_stun_length_agrees_with_its_nodes_sentence(row("Options", "3.0", option="2"), sentences)
+    assert not its_stun_length_agrees_with_its_nodes_sentence(row("Options", "3.0"), sentences)
+    assert not its_stun_length_agrees_with_its_nodes_sentence(row("Brief", "1.0"), sentences)
+    assert not its_stun_length_agrees_with_its_nodes_sentence(row("Another", "1.0"), sentences)
+    assert not its_stun_length_agrees_with_its_nodes_sentence(row("Agrees", "0.0"), sentences)
+    assert not its_stun_length_agrees_with_its_nodes_sentence(row("Nowhere", "1.0"), sentences)
+    assert not its_stun_length_agrees_with_its_nodes_sentence(
+        row("Agrees", "1.0", stat="riposte_share_of_blocked"), sentences)
+    riposte = ("PassiveEffects", "Bulwark_keystone_ic_t1#3")
+    assert riposte in {(table, key) for table, key, _ in stun_rows()}
+    (shipped,) = [r for r in rows_of("PassiveEffects") if r["Name"] == riposte[1]]
+    assert its_stun_length_agrees_with_its_nodes_sentence(shipped, node_sentences())
 
 
 def test_a_stat_naming_stun_after_an_underscore_is_seen():

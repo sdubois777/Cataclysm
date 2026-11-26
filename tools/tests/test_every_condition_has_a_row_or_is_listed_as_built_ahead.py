@@ -67,12 +67,19 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: TWO JOINED AND LEFT THE SAME DAY in one change, `enemies_hit_at_most` and
 #: `opponent_is_crowd_controlled` for issue #1686, with their rows.
 BUILT_AHEAD_OF_THEIR_ROWS = {
-    # Landed with the movement conditions for the dungeon-modifier work. The
-    # row that wants it is a passive node, not an enchantment: Iron Aegis, an
-    # option of the Bulwark tree's Second Oath, "Your Block Chance is doubled
-    # while you have not attacked in the last 3 seconds". Bulwark is a War
-    # class tree, so it waits on the rule that no War work is done yet.
-    "not_attacked_for_seconds",
+    # NOT BUILT AHEAD BUT LEFT BEHIND, since the Demonic tree rework the project
+    # owner approved on 2026-11-24. Each was the condition of one Masochist node
+    # the rework gave a new job, and no other row names it: Cataclysmic
+    # Resonance's "for 5 seconds after you take damage of a Cataclysm type other
+    # than Demonic" (the node is now Gathered Pain, which counts Fervour held)
+    # and Thirst for Pain's "While you are Bleeding" (now a speed per stack of
+    # Bloodlust; the audit said in as many words that this leaves `while_bleeding`
+    # with no passive row). The engine still judges both, and a row may name
+    # either again.
+    "seconds_after_foreign_damage",
+    "while_bleeding",
+    # `not_attacked_for_seconds` LEFT ON 2026-11-25 with Iron Aegis's row, the
+    # Bulwark's Second Oath (slice D of `plan_death_and_war.md`).
     # TWO JOINED ON 2026-10-07, ruled that day and built ahead of their rows
     # while the design workbook is with another session: "Gain 50%-100%
     # increased damage while under the effect of a DoT" and "After 10 seconds
@@ -121,9 +128,14 @@ def conditions_named_by_a_row() -> set[str]:
     for table in EFFECT_TABLES:
         with table.open(newline="", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
-                name = (row.get("Condition") or "").strip().lower()
-                if name:
-                    used.add(name)
+                # AND THE SECOND CONDITION COLUMN, since the Death trees'
+                # slice C6b1 (2026-11-25): Opening Strike names
+                # `target_at_full_health` only as its second condition, which
+                # is as reachable in play as the first.
+                for column in ("Condition", "Condition2"):
+                    name = (row.get(column) or "").strip().lower()
+                    if name:
+                        used.add(name)
     return used
 
 

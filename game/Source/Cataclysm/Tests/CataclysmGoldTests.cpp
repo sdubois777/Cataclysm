@@ -163,23 +163,48 @@ namespace CataclysmGoldTest
 		return Out;
 	}
 
-	/** Kills `Kills` creatures of this rung in the world, each with its own corpse, and answers where each died. */
-	TArray<FVector> Kill(UWorld* World, int32 RarityStep, int32 Kills)
+	/** One kill: where its creature died, and the gold piles its death put on the floor. */
+	struct FGoldKill
 	{
-		TArray<FVector> Corpses;
+		FVector Corpse = FVector::ZeroVector;
+		TArray<ACataclysmDroppedItem*> Piles;
+	};
+
+	/**
+	 * Kills `Kills` creatures of this rung in the world, one at a time, each with its own corpse, and answers each kill's
+	 * corpse and the piles that kill put down: those on the floor after it that were not there before it.
+	 *
+	 * 100 M APART, AND EACH KILL'S PILES KEPT WITH IT. A kill's gold lies on a ring of radius 25 cm x (piles + 1)
+	 * (`UCataclysmDropSpawner::GoldScatterOffset`), and an odd count puts one pile straight behind. At the 6 m apart
+	 * these stood until window bb12-w1 (2026-11-24), a boss that rolled exactly 23 piles put one on the corpse before
+	 * it, and a check of every pile against every corpse counted that as lying where a kill's lone item would. A ring
+	 * would need 399 piles to reach a neighbour 100 m away, and the check now asks each kill only about its own corpse.
+	 */
+	TArray<FGoldKill> Kill(UWorld* World, int32 RarityStep, int32 Kills)
+	{
+		TArray<FGoldKill> Done;
 		for (int32 Index = 0; Index < Kills; ++Index)
 		{
+			const TArray<ACataclysmDroppedItem*> Before = PilesIn(World);
 			ACataclysmEnemyCharacter* Victim = World->SpawnActor<ACataclysmEnemyCharacter>(
-				ACataclysmEnemyCharacter::StaticClass(), FVector(2000.0f + 600.0f * static_cast<float>(Index), 0.0f, 0.0f),
-				FRotator::ZeroRotator);
+				ACataclysmEnemyCharacter::StaticClass(),
+				FVector(2000.0f + 10000.0f * static_cast<float>(Index), 0.0f, 0.0f), FRotator::ZeroRotator);
 			if (Victim != nullptr)
 			{
 				Victim->SetRarityStep(RarityStep);
-				Corpses.Add(Victim->GetActorLocation());
+				FGoldKill& This = Done.AddDefaulted_GetRef();
+				This.Corpse = Victim->GetActorLocation();
 				Victim->HandleDeath();
+				for (ACataclysmDroppedItem* Pile : PilesIn(World))
+				{
+					if (!Before.Contains(Pile))
+					{
+						This.Piles.Add(Pile);
+					}
+				}
 			}
 		}
-		return Corpses;
+		return Done;
 	}
 
 	/** The rung a Cataclysm Boss is: twelve piles expected, so no pile at all is about six chances in a million. */
@@ -251,8 +276,10 @@ bool FCataclysmGoldPileSizeTest::RunTest(const FString&)
 
 /**
  * A kill's piles follow the gear ladder, the ruling's "as gear and materials drop today", and no loot quantity moves
- * them: the expected piles of every rung equal its expected gear at the baseline, and stay there when loot quantity is
- * quadrupled while the gear does not. Prints "LADDER".
+ * them: the expected piles of every rung are twice its expected gear at the baseline, and stay there when loot quantity
+ * is quadrupled while the gear does not. TWICE SINCE 2026-11-24, when the owner halved the gear column and the gold
+ * column did not move (issue #2853): the piles are the gear ladder of 2026-11-18, its shape and its figures. Prints
+ * "LADDER".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGoldLadderTest,
 	"Cataclysm.Gold.AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem",
@@ -281,7 +308,8 @@ bool FCataclysmGoldLadderTest::RunTest(const FString&)
 		const float GearFourTimes = UCataclysmDropRoll::ExpectedGearDrops(Drops, Rarity, 400.0f);
 		Lines.Add(FString::Printf(TEXT("%s %g piles, %g gear, %g gear at 400%%"), *Rarity.ToString(), Piles, Gear,
 								  GearFourTimes));
-		TestEqual(*FString::Printf(TEXT("%s: its piles are its gear"), *Rarity.ToString()), Piles, Gear);
+		TestEqual(*FString::Printf(TEXT("%s: its piles are twice its gear, the ladder of 2026-11-18"), *Rarity.ToString()),
+				  Piles, 2.0f * Gear);
 		TestTrue(*FString::Printf(TEXT("%s: CONTROL: loot quantity does move its gear"), *Rarity.ToString()),
 				 GearFourTimes > Gear);
 	}
@@ -385,7 +413,7 @@ bool FCataclysmGoldKillsTest::RunTest(const FString&)
 	}
 
 	TestEqual(TEXT("CONTROL: no gold lies on the floor before the kills"), PilesIn(Scene.World).Num(), 0);
-	const TArray<FVector> Corpses = Kill(Scene.World, CataclysmBossStep, 3);
+	const TArray<FGoldKill> Kills = Kill(Scene.World, CataclysmBossStep, 3);
 	Kill(Solo.World, CataclysmBossStep, 3);
 
 	const TArray<ACataclysmDroppedItem*> Piles = PilesIn(Scene.World);
@@ -393,33 +421,44 @@ bool FCataclysmGoldKillsTest::RunTest(const FString&)
 	int32 InRange = 0;
 	int32 Coloured = 0;
 	int32 Thin = 0;
-	int32 OnACorpse = 0;
 	for (const ACataclysmDroppedItem* Pile : Piles)
 	{
 		Named += Pile->DisplayName == ACataclysmDroppedItem::GoldName(Pile->Gold) ? 1 : 0;
 		InRange += Pile->Gold >= 8 && Pile->Gold <= 12 ? 1 : 0;
 		Coloured += Pile->NameColour.Equals(ACataclysmDroppedItem::GoldNameColour) ? 1 : 0;
 		Thin += UCataclysmDropPickup::NameBorderThicknessOf(*Pile) == UCataclysmDropPickup::ThinnestNameBorderPx ? 1 : 0;
-		// WHERE A LONE ITEM LIES: on its corpse, which `ScatterOffset` gives a count of one. A pile's ring is 50 cm out
-		// at the least.
-		for (const FVector& Corpse : Corpses)
+	}
+
+	// WHERE A LONE ITEM LIES: on its corpse, which `ScatterOffset` gives a count of one. A pile's ring is 50 cm out at
+	// the least. EACH KILL'S PILES AGAINST ITS OWN CORPSE ONLY: where another kill's ring reaches is no question about
+	// this kill's lone item (see `Kill`).
+	int32 OnTheirCorpse = 0;
+	int32 Attributed = 0;
+	FString EachKill;
+	for (const FGoldKill& Each : Kills)
+	{
+		Attributed += Each.Piles.Num();
+		EachKill += FString::Printf(TEXT("%s%d"), EachKill.IsEmpty() ? TEXT("") : TEXT(", "), Each.Piles.Num());
+		for (const ACataclysmDroppedItem* Pile : Each.Piles)
 		{
-			OnACorpse += FVector::Dist2D(Pile->GetActorLocation(), Corpse) < 25.0f ? 1 : 0;
+			OnTheirCorpse += FVector::Dist2D(Pile->GetActorLocation(), Each.Corpse) < 25.0f ? 1 : 0;
 		}
 	}
 	const int32 SoloPiles = PilesIn(Solo.World).Num();
 
-	AddInfo(FString::Printf(TEXT("KILLS: %d piles from three Cataclysm Bosses; %d named, %d holding 8 to 12, %d in the gold "
-								 "colour, %d with the thinnest border, %d on a corpse; Solo Self-Found: %d piles"),
-							Piles.Num(), Named, InRange, Coloured, Thin, OnACorpse, SoloPiles));
+	AddInfo(FString::Printf(TEXT("KILLS: %d piles from three Cataclysm Bosses (%s); %d named, %d holding 8 to 12, %d in "
+								 "the gold colour, %d with the thinnest border, %d on its own kill's corpse; Solo "
+								 "Self-Found: %d piles"),
+							Piles.Num(), *EachKill, Named, InRange, Coloured, Thin, OnTheirCorpse, SoloPiles));
 
 	TestTrue(TEXT("killing three Cataclysm Bosses put gold on the floor"), Piles.Num() > 0);
 	TestEqual(TEXT("each pile is named for its gold"), Named, Piles.Num());
 	TestEqual(TEXT("each holds 8 to 12 at tier 1 on floor 1"), InRange, Piles.Num());
 	TestEqual(TEXT("each is drawn in the gold colour"), Coloured, Piles.Num());
 	TestEqual(TEXT("each has the thinnest border"), Thin, Piles.Num());
-	TestEqual(TEXT("CONTROL: three corpses were placed"), Corpses.Num(), 3);
-	TestEqual(TEXT("none lies where the kill's lone item would"), OnACorpse, 0);
+	TestEqual(TEXT("CONTROL: three corpses were placed"), Kills.Num(), 3);
+	TestEqual(TEXT("CONTROL: every pile on the floor is one of the three kills'"), Attributed, Piles.Num());
+	TestEqual(TEXT("none lies where its kill's lone item would"), OnTheirCorpse, 0);
 	TestTrue(TEXT("a Solo Self-Found character's kills put gold down too"), SoloPiles > 0);
 	return true;
 }
@@ -754,6 +793,9 @@ bool FCataclysmGoldCharacterMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
 	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
+	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
+	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -893,6 +935,10 @@ bool FCataclysmGoldRunMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
+	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
+	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1000,6 +1046,7 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheAccountsVersion5Defaults(*Expected); // And 5, #2741 slice 6e: no debt.
 	CataclysmSaveFixtures::AddTheAccountsVersion6Defaults(*Expected); // And 6, #2741 slice 8: no extra option.
 	CataclysmSaveFixtures::AddTheAccountsVersion7Defaults(*Expected); // And issue #2741 slice 9's step.
+	CataclysmSaveFixtures::AddTheAccountsVersion8Defaults(*Expected); // And #47 slice F6a's: the forge count.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1019,17 +1066,18 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
 }
 
 /**
- * The committed files hold their gold: `Account_v7.json` reads 1234567 into the balance and is read rather than
- * migrated, `Character_v15.json` reads 4321 into the character's own, and `Run_v18.json` restores a pile of 37 beside its
+ * The committed files hold their gold: `Account_v8.json` (`Account_v7.json` until #47 slice F6a) reads 1234567 into the balance and is read rather than
+ * migrated, `Character_v18.json` reads 4321 into the character's own, and `Run_v22.json` restores a pile of 37 beside its
  * piece of gear. Prints "FILES". The account file was `Account_v3.json` until the account record went to version 4 on
  * 2026-11-18 (issue #2741 slice 1b), `Account_v4.json` until it went to version 5 on 2026-11-20 (issue #2741 slice
  * 6e), `Account_v5.json` until it went to version 6 on 2026-11-21 (issue #2741 slice 8), and `Account_v6.json` until it
  * went to version 7 on 2026-11-22 (issue #2741 slice 9); each holds the same gold. The character file was `Character_v8.json` until the character record went to version 9 the same day (issue
  * #2741 slice 1c); `Character_v9.json`, since 2026-11-19 `Character_v10.json` (issue #2764), and
  * from 2026-11-20 `Character_v11.json` (issue #2741 slice 6e), from 2026-11-21 `Character_v12.json` (issue #2741
- * slice 8), from 2026-11-22 `Character_v13.json` (issue #46), and since
- * the same day `Character_v14.json` (issue #2741 slice 9), and since 2026-11-24 `Character_v15.json` (issue
- * #2848), hold the same.
+ * slice 8), from 2026-11-22 `Character_v13.json` (issue #46), from
+ * the same day `Character_v14.json` (issue #2741 slice 9), from 2026-11-24 `Character_v15.json` (issue #2848), and
+ * from the same day `Character_v16.json` (issue #2849), from the same day `Character_v17.json` (issue #837 slice
+ * 1), and since 2026-11-25 `Character_v18.json` (#47 slice F6a), hold the same.
  * The run file was `Run_v7.json` until the run record went to version 8 the same day (issue #2749, B10), and
  * `Run_v8.json` until it went to version 9 on 2026-11-19 (issue #2741 slice 3b), and `Run_v9.json` until it went to
  * version 10 the same day (issue #2725), and `Run_v10.json` until it went to version 11 on 2026-11-20 (issue #2741
@@ -1037,7 +1085,9 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
  * went to version 13 on 2026-11-21 (issue #2825), and `Run_v13.json` until it went to version 14 on 2026-11-22 (issue
  * #46), and `Run_v14.json` until it went to version 15 the same day (issue #2741 slice 9), and `Run_v15.json` until it
  * went to version 16 the same day (issue #2838), and `Run_v16.json` until it went to version 17 the same day (issue
- * #2840), each with the same pile.
+ * #2840), `Run_v17.json` until it went to version 18 on 2026-11-24 (issue #2848), and `Run_v18.json` until it went
+ * to version 19 the same day (issue #51), and `Run_v19.json` until it went to version 20 on 2026-11-25 (issue
+ * #2864), and `Run_v20.json` until it went to version 21 the same day (issue #51 slice B4), and `Run_v21.json` until it went to version 22 the same day (issue #51 slice B5), each with the same pile.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGoldCommittedFilesTest,
 	"Cataclysm.Gold.TheCommittedFilesReadIntoTheGoldTheyState",
@@ -1049,9 +1099,9 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 	FString RunText;
 	FString CharacterText;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Account_v7.json"), AccountText, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), RunText, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Character_v15.json"), CharacterText, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Account_v8.json"), AccountText, Reason)
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v22.json"), RunText, Reason)
+		|| !CataclysmSaveFixtures::Read(TEXT("Character_v18.json"), CharacterText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1067,8 +1117,8 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 		RunText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), RunResult, Message));
 	const UCataclysmCharacterSave* Character = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
 		CharacterText, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), CharacterResult, Message));
-	if (!TestNotNull(TEXT("Account_v7.json loads"), Account) || !TestNotNull(TEXT("Run_v18.json loads"), Run)
-		|| !TestNotNull(TEXT("Character_v15.json loads"), Character))
+	if (!TestNotNull(TEXT("Account_v8.json loads"), Account) || !TestNotNull(TEXT("Run_v22.json loads"), Run)
+		|| !TestNotNull(TEXT("Character_v18.json loads"), Character))
 	{
 		return false;
 	}

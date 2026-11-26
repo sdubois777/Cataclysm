@@ -11,6 +11,8 @@
 #include "Components/PrimitiveComponent.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
+// For the one attack speed every rack is paced by, after slows. The Ravager tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
@@ -34,6 +36,12 @@
 // For which flicker counts the deaths during it. Issue #2885, N10.
 #include "AbilitySystem/CataclysmKillFervour.h"
 #include "AbilitySystem/CataclysmCommand.h"
+// For Summon Imp's kind, made for a commander that holds no summon skill: a Wand
+// Ritualist's Press-Ganged replacement and The Swarm's minion at a kill. The
+// demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRisenImps.h"
+// For whether a kill's victim was an enemy of the commander's. The same rework.
+#include "AbilitySystem/CataclysmTeams.h"
 // For what a rack's spawn-less throw resolved to, and the Fervour it earns.
 // Issue #1515. `CataclysmSkillEffects.h` only declares the result.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -45,12 +53,19 @@
 #include "Character/CataclysmPlayerCharacter.h"
 // For a thrall's Compel strike, ordered as a rule's. Issue #783.
 #include "Character/CataclysmEnemyCharacter.h"
+// For Hollow Step's step out of an enemy's body: the capsules' radii (the Death trees' slice C6e).
+#include "Components/CapsuleComponent.h"
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
 #include "AbilitySystem/CataclysmTerrain.h"
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the Saboteur's Fervour on placing a War machine, and the gadget-placed event. Slice C of
+// plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -1865,8 +1880,14 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 	const float Attribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
 	const UCataclysmAbilitySystemComponent* Asking = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+
+	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273. AND WHAT WITHER
+	// LEAVES, multiplied with it as a separate slow. Issue #1722. Both through the one helper the basic attack's swing
+	// uses, `UCataclysmBasicAttack::AttackSpeedAfterSlows`, which also honours Relentless's "Your Movement Speed and
+	// Attack Speed cannot be reduced by any effect" (the Ravager tree rework of 2026-11-24). An ability system this
+	// project did not make carries no stat line and no flag, so it gets the attribute.
 	const float PerSecond = Asking
-		? Asking->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute)
+		? UCataclysmBasicAttack::AttackSpeedAfterSlows(Asking, SkillTags, Attribute, Avatar())
 		: Attribute;
 	if (PerSecond <= 0.0f)
 	{
@@ -1879,14 +1900,7 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 		return Stated;
 	}
 
-	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273.
-	const AActor* Thrower = Avatar();
-	// AND WHAT WITHER LEAVES, multiplied with it as a separate slow. Issue #1722.
-	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Thrower)
-		? UCataclysmSkillEffects::CrippleMultiplierOn(Thrower) * UCataclysmSkillEffects::WitherMultiplierOn(Thrower)
-		: 1.0f;
-
-	return Stated / (PerSecond * Crippled);
+	return Stated / PerSecond;
 }
 
 AActor* UCataclysmProjectileSkill::NextThrowTarget()
@@ -3368,10 +3382,61 @@ bool UCataclysmMovementSkill::RolledDirection(FVector& OutDirection) const
 	return true;
 }
 
-void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed)
+const TCHAR* UCataclysmMovementSkill::PassesThroughEnemiesStat = TEXT("movement_passes_through_enemies");
+
+bool UCataclysmMovementSkill::PassesThroughEnemies() const
+{
+	return PassesThroughEnemiesFor(Avatar(), SkillTags);
+}
+
+bool UCataclysmMovementSkill::PassesThroughEnemiesFor(const AActor* Mover, const FGameplayTagContainer& SkillTags)
+{
+	// THE SAME QUESTION `WornRowStat` ASKS, on the mover's own ability system with the skill's tags.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Mover ? Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Mover)) : nullptr;
+	return Asking && Asking->StatForSkill(FName(PassesThroughEnemiesStat), SkillTags, 0.0f) > 0.0f;
+}
+
+void UCataclysmMovementSkill::PassThroughEnemies(bool bThrough)
+{
+	if (ACataclysmCharacterBase* Mover = Cast<ACataclysmCharacterBase>(Avatar()))
+	{
+		Mover->SetMovesThroughHostiles(bThrough);
+	}
+	bPassingThrough = bThrough;
+}
+
+void UCataclysmMovementSkill::StepOutOfEnemies(const FVector& LineStart)
+{
+	// THE ONE STEP OUT, shared with Thousand Cuts' move (`UCataclysmMovement::StepOutOfEnemies`).
+	AActor* Mover = Avatar();
+	if (Mover && UCataclysmMovement::StepOutOfEnemies(Mover, LineStart))
+	{
+		ArrivedAt = Mover->GetActorLocation();
+	}
+}
+
+void UCataclysmMovementSkill::HitTheLineOnce(const FVector& From, const FVector& To,
+											 const TArray<AActor*>& AlreadyStruck)
+{
+	TArray<AActor*> Crossed;
+	for (AActor* OnTheLine : UCataclysmTargeting::FindEnemiesInLine(GetWorld(), Avatar(), From, To, ScaledRadiusCm()))
+	{
+		if (!AlreadyStruck.Contains(OnTheLine))
+		{
+			Crossed.Add(OnTheLine);
+		}
+	}
+	// AT THE SKILL'S OWN PERCENT: what its own hit gives a target, with nothing consumed.
+	HitWhatThePathCrossed(Crossed, PercentHitScaledGivesAnAlly(TArray<AActor*>()));
+}
+
+void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed, float PercentOverride)
 {
 	AActor* Self = Avatar();
-	const float Percent = (Self && !Crossed.IsEmpty()) ? WornRowStat(PathDamagePercentStat) : 0.0f;
+	const float Percent = (Self && !Crossed.IsEmpty())
+		? (PercentOverride >= 0.0f ? PercentOverride : WornRowStat(PathDamagePercentStat))
+		: 0.0f;
 	if (Percent <= 0.0f)
 	{
 		return;
@@ -3697,6 +3762,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 		return;
 	}
 
+	// PAID FOR, SO ITS END WILL BE A MOVEMENT SKILL'S END (the Death trees' slice C6b2, 2026-11-25). See `EndAbility`.
+	bPaidForThisUse = true;
+
 	AActor* Self = Avatar();
 	if (!Self)
 	{
@@ -3986,6 +4054,9 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// character inside it, AND NOT REFUSED FOR STARTING ON THE FLOOR, issues #2203
 	// and #2505: a blink in the frame the player is placed moved 0 cm.
 	const FVector SelfWas = Self->GetActorLocation();
+	// HOLLOW STEP: the move passes through enemies, for the move only, and never ends inside one (the Death trees'
+	// slice C6e). A Swap's teleport is not stopped by anything, so it only gains the line hit below.
+	const bool bThroughEnemies = PassesThroughEnemies();
 	if (Params.MovementMode == ECataclysmMovementMode::Swap)
 	{
 		// THE CASTER'S HALF OF THE EXCHANGE: unswept, and unchecked because `ChooseTradePartner` asked the fit.
@@ -3994,7 +4065,17 @@ void UCataclysmMovementSkill::ActivateAbility(
 	}
 	else
 	{
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(true);
+		}
 		UCataclysmMovement::MoveWithoutSticking(Self, End - Self->GetActorLocation());
+		ArrivedAt = Self->GetActorLocation();
+		if (bThroughEnemies)
+		{
+			PassThroughEnemies(false);
+			StepOutOfEnemies(Start);
+		}
 	}
 	ArrivedAt = Self->GetActorLocation();
 
@@ -4109,6 +4190,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// 2026-10-07. AFTER THE SKILL'S OWN BLOW AND WHAT FOLLOWS FROM IT, so a kill one of these makes is not counted
 	// as the arrival's. THE PULL IS LAST, so who the two hits reach does not depend on whether the pull is worn.
 	HitAlongThePath(Start, ArrivedAt);
+	// AND HOLLOW STEP'S "hits each one": every enemy on the line its own hit did not strike, once.
+	if (bThroughEnemies)
+	{
+		HitTheLineOnce(Start, ArrivedAt, Targets);
+	}
 	ExplodeAtBothEnds(Start, ArrivedAt);
 	PullNearbyToWhereItArrived();
 
@@ -4174,8 +4260,19 @@ void UCataclysmMovementSkill::FlickerOnce()
 							   Next->GetActorLocation().Y,
 							   Self->GetActorLocation().Z);
 			const FVector SelfWas = Self->GetActorLocation();
+			// HOLLOW STEP: each arrival passes through enemies and never ends inside one, the creature arrived at included.
+			const bool bThroughEnemies = PassesThroughEnemies();
+			if (bThroughEnemies)
+			{
+				PassThroughEnemies(true);
+			}
 			UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
 			ArrivedAt = Self->GetActorLocation();
+			if (bThroughEnemies)
+			{
+				PassThroughEnemies(false);
+				StepOutOfEnemies(SelfWas);
+			}
 
 			// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
 			UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
@@ -4191,6 +4288,11 @@ void UCataclysmMovementSkill::FlickerOnce()
 			TArray<AActor*> One;
 			One.Add(Next);
 			HitScaled(One, TArray<AActor*>());
+			// AND EVERY OTHER ENEMY ON THIS ARRIVAL'S LINE, once.
+			if (bThroughEnemies)
+			{
+				HitTheLineOnce(SelfWas, ArrivedAt, One);
+			}
 
 			// AND THE ROW'S NAMED EFFECTS ON IT, as every arrival lays them. Issue #2885, N22.
 			LayTheRowsEffectsOn(One);
@@ -4347,6 +4449,14 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	StruckAlready.Reset();
 	ArrivedAt = Start;
 
+	// HOLLOW STEP: a walked Charge passes through enemies until the ability ends, however it ends (`EndAbility`). It
+	// already hits each enemy on its line once, so it gains no line hit.
+	if (PassesThroughEnemies())
+	{
+		PassingThroughFrom = Start;
+		PassThroughEnemies(true);
+	}
+
 	// THE DIRECTION, TAKEN ONCE. `AimedPointWithin` is what every other movement
 	// mode uses to find where the player pointed, and taking it here rather than
 	// on each step is the whole of "cannot be turned aside".
@@ -4479,6 +4589,29 @@ void UCataclysmMovementSkill::EndAbility(
 		World->GetTimerManager().ClearTimer(AdvanceTimer);
 		World->GetTimerManager().ClearTimer(FlickerTimer);
 		World->GetTimerManager().ClearTimer(StopTimer);
+	}
+
+	// HOLLOW STEP'S MASK IS RESTORED ON EVERY WAY OUT, a cancelled or interrupted walked Charge included, and the mover
+	// is put outside any enemy it stopped inside (the Death trees' slice C6e, as ruled, H1 condition 3).
+	if (bPassingThrough)
+	{
+		PassThroughEnemies(false);
+		StepOutOfEnemies(PassingThroughFrom);
+	}
+
+	// A USE THAT WAS PAID FOR HAS ENDED, which Arrival's clock counts from (the Death trees' slice C6b2, 2026-11-25).
+	// A move cut short counts as well: it has ended. ONLY FOR A SKILL MADE FOR THE MOVEMENT SLOT, the slot the use's
+	// clock (`NoteMovementSkillUsed`) and Glancing Cuts' record ask. Cleared first, so the event the note raises
+	// cannot see it again.
+	const bool bAPaidMovementSkillUse = bPaidForThisUse && GetDesignedSlot() == ECataclysmAbilitySlot::Movement;
+	bPaidForThisUse = false;
+	if (bAPaidMovementSkillUse)
+	{
+		if (UCataclysmAbilitySystemComponent* Mover =
+				Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+		{
+			Mover->NoteMovementSkillEnded();
+		}
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
@@ -4616,6 +4749,55 @@ void UCataclysmMovementSkill::FinishFlicker()
 // Deployable -- Bolt Turret, Ballista, Iron Fortress
 // ==========================================================================
 
+float UCataclysmDeployableSkill::FervourReserveOfOne() const
+{
+	const AActor* Self = Avatar();
+	return Self ? FervourReserveFor(Self, Params, SkillTags, this) : 0.0f;
+}
+
+bool UCataclysmDeployableSkill::MovesInsteadOfPlacing(const FGameplayAbilitySpecHandle Handle,
+													   const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	const AActor* Self = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (!Self || !PlacesAGadget())
+	{
+		return false;
+	}
+	// A GADGET TO MOVE: with none standing, a use that cannot place is refused as any other (a judgement: there is
+	// nothing for the move to do, and a free use that does nothing would only start the cooldown).
+	const bool bAGadgetStands = ACataclysmMinion::DevicesOf(Self).ContainsByPredicate(
+		[](const ACataclysmMinion* Each) { return Each->IsGadget(); });
+	if (!bAGadgetStands)
+	{
+		return false;
+	}
+	int32 Machines = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		Machines += FMath::Max(0, Kind.Count);
+	}
+	if (!UCataclysmCommand::HasRoomToReserve(Self, FervourReserveFor(Self, Params, SkillTags, this)
+										   * static_cast<float>(Machines)))
+	{
+		return true;
+	}
+	// THE COST ASKED AS THE PRESS ASKS IT, by the parent's own check, never this class's override.
+	return !UCataclysmSkillTemplate::CheckCost(Handle, ActorInfo, nullptr);
+}
+
+bool UCataclysmDeployableSkill::CheckCost(const FGameplayAbilitySpecHandle Handle,
+										  const FGameplayAbilityActorInfo* ActorInfo,
+										  FGameplayTagContainer* OptionalRelevantTags) const
+{
+	return MovesInsteadOfPlacing(Handle, ActorInfo) || Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags);
+}
+
+bool UCataclysmDeployableSkill::PlacesAGadget() const
+{
+	return Params.Minions.ContainsByPredicate(
+		[](const FCataclysmMinionSpawn& Kind) { return Kind.Count > 0 && ACataclysmMinion::TypeIsAGadget(Kind.Type); });
+}
+
 int32 UCataclysmDeployableSkill::LivingDeployedCount()
 {
 	// DESTROYED OR DEAD, as `LivingMinionCount` below has counted since issue
@@ -4637,15 +4819,17 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		return nullptr;
 	}
 
-	// THE CAP STOPS PLACING RATHER THAN REPLACING: none of the three War
-	// deployable skills says anything of the kind, so reaching the cap here
-	// simply means nothing more goes down. THE ROW'S OWN FIGURE AND NO BONUS:
-	// these War rows reserve nothing yet (issue #1934, the no-War rule), so they
-	// keep the cap issue #2787 took from everything that reserves, and the cap
-	// bonus that once raised it became "Your deployables reserve 15%-30% reduced".
-	const int32 DeployCap = Params.MaxActive;
-	if (DeployCap > 0 && LivingDeployedCount() >= DeployCap)
+	// NO COUNT CAP: THE POOL IS THE LIMIT. Issue #1934, ruled 2026-11-25 under the owner's ruling of 2026-11-20 on
+	// issue #2787 ("that's limiting on its own"): a War machine reserves its row's Fervour, so it loses the count cap
+	// it kept while it reserved nothing. A machine that does not fit is refused, nothing is made and nothing is
+	// destroyed, as Summon Imp's is. `ActivateAbility` asks for a whole set before placing any of it.
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
 	{
+		bRefusedForRoom = true;
+		UE_LOG(LogCataclysm, Log,
+			TEXT("DEPLOY REFUSED: '%s' has no room in its pool for another machine reserving %.0f Fervour: %s."),
+			*SkillName, Reserve, *UCataclysmSkillTemplate::ReservedFervourByKindText(Self));
 		return nullptr;
 	}
 
@@ -4662,6 +4846,11 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	{
 		Deployed.Add(Machine);
 
+		// "RESERVES 5 FERVOUR WHILE IT STANDS." Issue #1934, the owner's approval of 2026-11-25. Through `HoldReserve`,
+		// as every maker's, so the reserve reaches `ReservedFervourOf`, what is spendable is cut to it at once, and
+		// everything that reads the reserve sees a machine as it sees an imp.
+		UCataclysmCommand::HoldReserve(Self, Machine, Reserve);
+
 		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO: every enemy within the row's `Radius` of it, each
 		// `Interval`, or each second when the row states none. Issue #2885, the Death Crossbow draft's C3, written for
 		// its Effigy; nothing a War row places states it.
@@ -4670,12 +4859,43 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 			Machine->BeginTaunting(Params.RadiusCm, Params.Interval);
 		}
 
-		// A WAR GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: these
-		// are War skills and the owner's mandate is no War work yet, so #1934
-		// stays open for them. (The skill gadget an enchantment places reserves
-		// since issue #2787; it is `ACataclysmMinion::PlaceSkillGadget`, not this.) Their rows already state `FervourReserve`, so building
-		// it is this one line, with a fit check before the spawn like Summon
-		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
+		// AND THE SABOTEUR'S FERVOUR FOR PLACING IT, "Placing a trap or a gadget generates Fervour". Slice C, 2026-11-24.
+		// A MACHINE THAT IS A TRAP earns the trap-placed rate and raises no event: `trap_placed` is the skill traps'
+		// event (`ACataclysmMinion::PlaceSkillTrap`), and a War trap never raised it, so raising it here would reach
+		// rows written for skill traps. EVERY OTHER MACHINE IS A GADGET (`ACataclysmMinion::IsGadget`): it raises the new
+		// `gadget_placed`, with its tags and itself, as `PlaceSkillGadget` does, and earns the gadget-placed rate.
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)))
+		{
+			const FGameplayTagContainer MachineTags = Machine->TypeTags;
+			if (Machine->IsTrap())
+			{
+				FCataclysmWarFervour::GainOnTrapPlaced(Theirs, MachineTags);
+				// AND ARMED AS IT IS PLACED, for `trap_armed`: a War trap has no arming step (Baited, V4a, ruled
+				// 2026-11-25).
+				Machine->AnnounceTrapArmed();
+			}
+			else
+			{
+				Theirs->ActOnEvent(FName(TEXT("gadget_placed")), &MachineTags,
+								   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
+				FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, MachineTags);
+			}
+
+			// AND `device_placed` FOR EITHER, a War trap included, a judgement: Razor Instincts says "after placing a trap
+			// or gadget", and `device_placed` is new, so no row written for skill traps alone can reach a War trap
+			// through it, which is the reason a War trap raises no `trap_placed`. The Saboteur's device conditions,
+			// 2026-11-25.
+			Theirs->ActOnEvent(FName(TEXT("device_placed")), &MachineTags,
+							   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
+		}
+		// AND BOLTED ONTO THE NEAREST GADGET WITHIN REACH, AFTER IT IS PLACED AND TOLD (Bolted Together, V5c, BT2). The
+		// one it bolted onto is answered; this one is gone, and leaves this skill's list.
+		if (ACataclysmMinion* Into = ACataclysmMinion::BoltOnPlacing(Machine))
+		{
+			Deployed.Remove(Machine);
+			Machine = Into;
+		}
 	}
 	return Machine;
 }
@@ -4686,6 +4906,28 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
+	// THE GADGET RULE, G3 AS REVISED after window war2-w1: a use that cannot place its set -- the reserve does not fit, or
+	// the cost cannot be paid -- moves every gadget to the aimed point instead, at the caster's height and with no range
+	// limit (G1). IT PAYS NO COST AND STARTS THE COOLDOWN. Asked before anything is committed, because a cost that cannot
+	// be paid is one of the two reasons. Iron Fortress's traps, and every trap, stay where they are.
+	bRefusedForRoom = false;
+	GadgetsMovedForWantOfRoom = 0;
+	if (MovesInsteadOfPlacing(Handle, ActorInfo))
+	{
+		bRefusedForRoom = true;
+		CommitAbilityCooldown(Handle, ActorInfo, ActivationInfo, /*ForceCooldown=*/false);
+		if (AActor* Mover = Avatar())
+		{
+			const FVector Aim = AimPoint();
+			GadgetsMovedForWantOfRoom = ACataclysmMinion::MoveEveryGadgetOf(
+				Mover, FVector(Aim.X, Aim.Y, Mover->GetActorLocation().Z));
+			UE_LOG(LogCataclysm, Log, TEXT("DEPLOY MOVED: '%s' could not place its set and moved %d gadgets, paying no "
+										   "cost."), *SkillName, GadgetsMovedForWantOfRoom);
+		}
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
 	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
 	{
 		return;
@@ -4695,6 +4937,31 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	if (!Self)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// THE WHOLE SET HAS TO FIT, OR NONE OF IT GOES DOWN. Issue #1934, ruled 2026-11-25 (Q1): Iron Fortress places five
+	// machines in one cast, "so the set reserves 25", and a fortress placed in part is a press that half-works. Asked
+	// before anything is placed; the press is spent, as a refused Summon Imp's is.
+	int32 Machines = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		Machines += FMath::Max(0, Kind.Count);
+	}
+	const float Each = FervourReserveFor(Self, Params, SkillTags, this);
+	// A SET OF TRAPS ALONE THAT CANNOT FIT, or a gadget set with no gadget standing to move, is refused as before: a
+	// gadget set with a gadget to move never reaches here (`MovesInsteadOfPlacing` above).
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Each * static_cast<float>(Machines)))
+	{
+		bRefusedForRoom = true;
+		const UCataclysmAbilitySystemComponent* Pool =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+		UE_LOG(LogCataclysm, Log,
+			TEXT("DEPLOY REFUSED: '%s' places %d machines reserving %.0f Fervour each, %.0f in all, and the pool has no "
+				 "room: %s, against a maximum of %.0f. Nothing was placed."),
+			*SkillName, Machines, Each, Each * static_cast<float>(Machines),
+			*UCataclysmSkillTemplate::ReservedFervourByKindText(Self), Pool ? Pool->MaximumClassResource() : 0.0f);
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
 
@@ -4727,10 +4994,9 @@ void UCataclysmDeployableSkill::ActivateAbility(
 
 	if (Placed == 0)
 	{
-		// Names nothing, or the cap was already full. Verbose rather than a
-		// warning: a player pressing a deployable key with its cap full is an
-		// ordinary event, and a row that names nothing is refused by the
-		// generator before it reaches here.
+		// Names nothing. Verbose rather than a warning: a row that names nothing
+		// is refused by the generator before it reaches here, and a press the
+		// pool has no room for returned above, saying so.
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' deployed nothing."), *SkillName);
 	}
@@ -4844,8 +5110,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		Minion->SummonedBy = this;
 		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
-		Minion->ReservedFervour = Reserve;
-		UCataclysmCommand::ClampFervourToSpendable(Self);
+		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
 
 		// AND A REPLACEMENT OF A TAUNTING KIND TAUNTS AS THE ONE IT REPLACES DID. Issue #2885, C3; see `SummonOne`.
 		if (Params.bTaunts)
@@ -4972,8 +5237,8 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 	}
 
 	// WHICH SUMMON SKILL'S KIND. The one that made the lost minion; failing
-	// that -- a thrall, or a skill since taken away -- the first the commander
-	// holds that summons anything.
+	// that -- a thrall, a risen imp, or a skill since taken away -- the first the
+	// commander holds that summons anything.
 	UCataclysmSummonSkill* Skill = nullptr;
 	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Lost))
 	{
@@ -4983,10 +5248,12 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 	{
 		Skill = FirstHeldSummonSkill(Commander);
 	}
-	if (!Skill)
-	{
-		return nullptr;
-	}
+
+	// AND WITH NO SUMMON SKILL HELD AT ALL, SUMMON IMP'S KIND, read from its row as a risen imp is. The demonic tree
+	// rework of 2026-11-24 and the owner's answer that day: "Press-Ganged, Rekindled and the new The Swarm work for a
+	// Wand Ritualist (Dominion stays Staff-only)". A Wand holds no summon skill, so its only minions are risen imps
+	// and this used to replace none of them. It reserves what a risen imp reserves, and is refused when the pool has
+	// no room, as every replacement is.
 
 	// PRESS-GANGED FIRST, THEN REKINDLED FOR AN EXPLOSION, AND ONE AT MOST.
 	const auto Try = [&](bool bForExplosion) -> ACataclysmMinion*
@@ -4998,7 +5265,9 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 		{
 			return nullptr;
 		}
-		ACataclysmMinion* Made = Skill->SummonReplacementAt(Where);
+		ACataclysmMinion* Made = Skill
+			? Skill->SummonReplacementAt(Where)
+			: UCataclysmRisenImps::SummonImpKindFor(Commander, Where, /*bRisen=*/false);
 		if (Made)
 		{
 			Theirs->NoteMinionReplaced(bForExplosion, Every);
@@ -5046,6 +5315,35 @@ ACataclysmMinion* UCataclysmSummonSkill::SpawnOneAtAKill(AActor* Killer, const F
 	}
 	UCataclysmSummonSkill* Skill = FirstHeldSummonSkill(Killer);
 	return Skill ? Skill->SummonReplacementAt(Where) : nullptr;
+}
+
+const TCHAR* UCataclysmSummonSkill::KillSummonsMinionStat = TEXT("kill_summons_minion_where_it_fell");
+
+ACataclysmMinion* UCataclysmSummonSkill::SummonAtAKillFor(AActor* Commander, const AActor* Victim,
+														  const FVector& Where)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	// ASKED FIRST AND CHEAPLY: every death in the game reaches the caller, and a character without the keystone pays
+	// one stat read. NOTHING FOR A DEAD COMMANDER, as `SpawnOneAtAKill` makes nothing for a dead killer.
+	if (!Theirs || !IsValid(Commander) || UCataclysmSkillEffects::IsDead(Commander)
+		|| Theirs->StatForSkill(FName(KillSummonsMinionStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// "KILLS AN ENEMY": the victim must have been an enemy of the commander's. ASKED OF THE TEAMS AND NOT OF
+	// `UCataclysmTargeting::IsHostileTo`, which answers no for anything dead, and the victim is dead by now -- the
+	// reading `UCataclysmRisenImps::RiseOnNecrosisKill` takes for the same reason.
+	if (!Victim || UCataclysmTeams::AttitudeBetween(Commander, Victim) != ETeamAttitude::Hostile)
+	{
+		return nullptr;
+	}
+
+	UCataclysmSummonSkill* Skill = FirstHeldSummonSkill(Commander);
+	return Skill
+		? Skill->SummonReplacementAt(Where)
+		: UCataclysmRisenImps::SummonImpKindFor(Commander, Where, /*bRisen=*/false);
 }
 
 bool UCataclysmSummonSkill::Possess()
@@ -5304,9 +5602,10 @@ bool UCataclysmSummonSkill::Possess()
 			   ThrallReserve);
 		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
 		// Fervour drops at once. Issue #1160.
+		// Held through `HoldReserve`, which raises Bound Offering's spend (the Death trees' slice C3b).
 		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
 		{
-			Thrall->ReservedFervour = ThrallReserve;
+			UCataclysmCommand::HoldReserve(Self, Thrall, ThrallReserve, &SkillTags);
 		}
 		// AND THIS SKILL'S ROW AND LEVEL FACTOR, READ ONCE, AT THE TAKE. Issue #2764, slice 2b, by judgement 3 ("Subjugate's
 		// thralls credit Subjugate") and the owner's ruling of 2026-11-19 ("Yes, they scale too"): while it is commanded,
@@ -5372,9 +5671,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
 
-		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934.
-		Minion->ReservedFervour = Reserve;
-		UCataclysmCommand::ClampFervourToSpendable(Self);
+		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934. Held through `HoldReserve`, which raises Bound
+		// Offering's spend (the Death trees' slice C3b).
+		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
 
 		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO, from the moment it rises and once a second after.
 		// Issue #2885, C3: Shallow Graves' husks, "every enemy within 4 meters of a husk turns on it and attacks it".
@@ -5666,6 +5965,18 @@ void UCataclysmAuraSkill::ActivateAbility(
 	// otherwise begin at whatever the first one ended at. Issue #1162.
 	BlowsTaken = 0;
 	HealthReturned = 0.0f;
+	BurnsPassedOn = 0;
+
+	// A BURNING ENEMY THAT DIES IN THE RING PASSES ITS BURN ON, for a row stating it: Demonic's Conflagration, the
+	// owner's ruling of 2026-11-25 ("Go with A"). Bound while the aura runs and removed in `EndAbility`.
+	if (Params.BurnPassesOnDeath > 0.0f)
+	{
+		if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World))
+		{
+			Events->OnDeath.Remove(SomeoneDiedHandle);
+			SomeoneDiedHandle = Events->OnDeath.AddUObject(this, &UCataclysmAuraSkill::OnSomeoneDied);
+		}
+	}
 
 	// AND THE KEY COUNTS AS STILL DOWN UNTIL A RELEASE ARRIVES. Issue #1114.
 	// Cleared here rather than in `EndAbility`, because the aura also ends for
@@ -5873,6 +6184,9 @@ int32 UCataclysmAuraSkill::Pulse()
 		}
 	}
 
+	// AND WHAT A ROW HOLDS ON WHAT STANDS INSIDE: War's Blood and Iron, 2026-11-25.
+	HoldSharesInside(Inside);
+
 	// AND THE ALLIES INSIDE ARE HELPED. Conflagration: "allies within it deal 8%
 	// increased fire damage." The aura never looked for an ally at all before
 	// this, though `UCataclysmTargeting::FindAlliesInSphere` had existed for it
@@ -6014,7 +6328,11 @@ bool UCataclysmAuraSkill::IsHelping(const AActor* Ally) const
 void UCataclysmAuraSkill::HelpAlliesInside()
 {
 	AActor* Self = Avatar();
-	if (Params.AllyIncreasedDamage <= 0.0f || !Self)
+	// `AllyMoreDamage` FIRST: Death's Pall of Ending, the owner's ruling of 2026-11-25, "make it 10% more". A row
+	// states one of the two, and five auras keep `AllyIncreasedDamage` as the increase it was.
+	const bool bMore = Params.AllyMoreDamage > 0.0f;
+	const float Figure = bMore ? Params.AllyMoreDamage : Params.AllyIncreasedDamage;
+	if (Figure <= 0.0f || !Self)
 	{
 		return;
 	}
@@ -6031,13 +6349,20 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 	// `Leaving` below and loses the bonus at this pulse, as one that walked out
 	// does.
 	TSet<AActor*> ShouldCarry;
-	ShouldCarry.Reserve(Allies.Num());
+	ShouldCarry.Reserve(Allies.Num() + 1);
 	for (AActor* Ally : Allies)
 	{
 		if (IsValid(Ally) && !UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Ally))
 		{
 			ShouldCarry.Add(Ally);
 		}
+	}
+	// AND THE CASTER, FOR THE MORE: the owner's "you, your minions and your allies within it", ruled for Death on
+	// 2026-11-25. Never refused: a character's own buffs never ask `RefusesBuffsFromAllies`. Never for the increase,
+	// which reached allies only and still does.
+	if (bMore)
+	{
+		ShouldCarry.Add(Self);
 	}
 
 	// TAKE IT BACK FROM WHOEVER WALKED OUT, and drop any key whose actor has
@@ -6090,8 +6415,11 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 		// `SkillBuff` AS THE SOURCE, matching `UCataclysmSelfBuffSkill::
 		// GrantIncrease`. The source decides whether a modifier is allowed into
 		// the `More` bucket at all, and this one is not asking for that bucket.
+		//
+		// AND THE MORE BUCKET FOR `AllyMoreDamage`, BECAUSE THAT ROW SAYS `more`: a separate multiplier. `SkillBuff` is a
+		// source that may grant More.
 		FCataclysmStatModifier Modifier;
-		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Bucket = bMore ? ECataclysmStatBucket::More : ECataclysmStatBucket::Increased;
 		Modifier.Source = ECataclysmModifierSource::SkillBuff;
 		// MORE OF IT WHEN A ROW MAKES THE CASTER'S AURAS MORE EFFECTIVE. Ruled
 		// 2026-10-13. Settled when the ally is given the bonus: an ally already
@@ -6102,7 +6430,7 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 		// 2026-10-13: this bonus is a buff a skill of the caster's lays on its
 		// allies, so both rows apply to it and multiply. 8 with 50% more
 		// effective and 40% more potent is 16.8.
-		const float Effective = MoreEffective(Params.AllyIncreasedDamage);
+		const float Effective = MoreEffective(Figure);
 		Modifier.Value = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, Effective);
 
 		// SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2) on
@@ -6184,6 +6512,152 @@ void UCataclysmAuraSkill::StopSharingImmunities()
 	ImmuneAllies.Reset();
 }
 
+void UCataclysmAuraSkill::HoldSharesInside(const TArray<AActor*>& EnemiesInside)
+{
+	AActor* Self = Avatar();
+	const bool bAnyShare = Params.EnemyArmourRemoved > 0.0f || Params.EnemyMovementSpeedReduced > 0.0f
+		|| Params.AllyMovementSpeed > 0.0f || !Params.AllyImmune.IsEmpty();
+	if (!Self || !bAnyShare)
+	{
+		return;
+	}
+
+	// FOR TWO PULSES, RENEWED EVERY PULSE, so a character that walks out keeps it two pulses more and then loses it:
+	// the coordinating session's ruling of 2026-11-25, the same span the aura's shared immunities are granted for.
+	const float Seconds = 2.0f * (Params.Interval > 0.0f ? Params.Interval : 1.0f);
+	auto Remember = [this](AActor* Who) { SharedWith.AddUnique(Who); };
+
+	// THE ENEMIES: armour removed and movement slowed, each raised by a row making the caster's auras more
+	// effective, as the aura's other figures are (ruled 2026-11-25).
+	const float Armour = MoreEffective(Params.EnemyArmourRemoved);
+	const float Slower = MoreEffective(Params.EnemyMovementSpeedReduced);
+	for (AActor* Enemy : EnemiesInside)
+	{
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Enemy));
+		if (!IsValid(Enemy) || !Theirs || UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			continue;
+		}
+		if (Armour > 0.0f)
+		{
+			Theirs->HoldAuraShare(ECataclysmAuraShareKind::ArmourRemoved, this, Armour, Seconds);
+		}
+		if (Slower > 0.0f)
+		{
+			Theirs->HoldAuraShare(ECataclysmAuraShareKind::MovementReduced, this, Slower, Seconds);
+		}
+		Remember(Enemy);
+	}
+
+	if (Params.AllyMovementSpeed <= 0.0f && Params.AllyImmune.IsEmpty())
+	{
+		return;
+	}
+
+	// THE CASTER AND EVERY ALLY INSIDE: faster, and what the row says they cannot be. The speed is a buff the caster's
+	// skill lays, so a row making the caster's buffs more potent raises it too, as it raises an aura's damage bonus.
+	// The caster's own immunity is the row's `Immune`, which `IsImmuneTo` reads off this running skill.
+	const float Faster = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, MoreEffective(Params.AllyMovementSpeed));
+	TArray<FString> Kinds;
+	Params.AllyImmune.ParseIntoArray(Kinds, TEXT(","));
+	TArray<AActor*> Friends = UCataclysmTargeting::FindAlliesInSphere(
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
+	Friends.Insert(Self, 0);
+	for (AActor* Friend : Friends)
+	{
+		const bool bCaster = Friend == Self;
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Friend));
+		// AN ALLY THAT REFUSES BUFFS FROM ALLIES IS GIVEN NOTHING (ruled 2026-10-19); the caster never refuses its own.
+		if (!IsValid(Friend) || !Theirs || UCataclysmSkillEffects::IsDead(Friend)
+			|| (!bCaster && UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Friend)))
+		{
+			continue;
+		}
+		if (Faster > 0.0f)
+		{
+			Theirs->HoldAuraShare(ECataclysmAuraShareKind::MovementRaised, this, Faster, Seconds);
+		}
+		if (!bCaster)
+		{
+			for (FString Kind : Kinds)
+			{
+				Kind.TrimStartAndEndInline();
+				Theirs->GrantImmunity(FName(*Kind), this, Seconds);
+			}
+		}
+		Remember(Friend);
+	}
+}
+
+void UCataclysmAuraSkill::ReleaseEveryShare()
+{
+	for (const TWeakObjectPtr<AActor>& Was : SharedWith)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Was.Get())))
+		{
+			Theirs->ReleaseAuraSharesFrom(this);
+			Theirs->RevokeImmunitiesFrom(this);
+		}
+	}
+	SharedWith.Reset();
+}
+
+void UCataclysmAuraSkill::OnSomeoneDied(const FCataclysmDeathNotice& Notice)
+{
+	AActor* Self = Avatar();
+	AActor* Victim = Notice.Victim;
+	if (!Self || !IsValid(Victim) || Victim == Self || Params.BurnPassesOnDeath <= 0.0f)
+	{
+		return;
+	}
+
+	// AN ENEMY OF THE CASTER'S, by the attitude every search compares (`UCataclysmTeams::AttitudeBetween`, which
+	// `UCataclysmTargeting::MatchesAttitude` ends on). Not `IsHostileTo` itself: that refuses the dead, and the death
+	// tag is on before this announcement is raised.
+	if (UCataclysmTeams::AttitudeBetween(Self, Victim) != ETeamAttitude::Hostile)
+	{
+		return;
+	}
+
+	// THAT DIED INSIDE THE RING: where the death notice says it fell, against the ring as it stands now.
+	if (FVector::DistSquared(Notice.Location, Self->GetActorLocation()) > FMath::Square(ScaledRadiusCm()))
+	{
+		return;
+	}
+
+	// AND WAS BURNING: ANY BURN, NOT ONLY THIS AURA'S, and the strongest when it carried more than one -- an enemy
+	// carries one application of an ailment, the strongest (`RunningAilmentOn`). The coordinating session's ruling of
+	// 2026-11-25.
+	UCataclysmSkillEffects::FRunningAilment Running;
+	if (!UCataclysmSkillEffects::RunningAilmentOn(Victim, UCataclysmSkillEffects::BurnTag(), Running))
+	{
+		return;
+	}
+
+	// TO THE NEAREST OTHER LIVING ENEMY WITHIN THE ROW'S METRES OF THE BODY, raised by a row making the caster's
+	// auras more effective. The search refuses the dead, so the body is never its own recipient. The copy carries the
+	// rate and the seconds left, credited to the caster, and the receiver takes it by the ordinary rule for burns.
+	const float RangeCm = MoreEffective(Params.BurnPassesOnDeath) * 100.0f;
+	for (AActor* Target : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, Notice.Location, RangeCm, 2))
+	{
+		if (Target == Victim)
+		{
+			continue;
+		}
+		if (UCataclysmSkillEffects::ApplySpreadCopy(Self, Target, Running))
+		{
+			++BurnsPassedOn;
+			UE_LOG(LogCataclysm, Log, TEXT("%s: %s died burning in the ring; its burn of %.1f a second for %.1f s "
+										   "passed to %s."),
+				   *SkillName, *Victim->GetName(), Running.DamagePerSecond, Running.SecondsLeft, *Target->GetName());
+		}
+		break;
+	}
+}
+
 void UCataclysmAuraSkill::StopHelpingEveryone()
 {
 	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
@@ -6236,6 +6710,15 @@ void UCataclysmAuraSkill::EndAbility(
 	// taking the sword out of the ground here. Issue #1182.
 	StopHelpingEveryone();
 	StopSharingImmunities();
+	ReleaseEveryShare();
+	if (SomeoneDiedHandle.IsValid())
+	{
+		if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
+		{
+			Events->OnDeath.Remove(SomeoneDiedHandle);
+		}
+		SomeoneDiedHandle.Reset();
+	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);

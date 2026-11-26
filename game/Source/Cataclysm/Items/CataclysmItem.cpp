@@ -397,91 +397,88 @@ FString UCataclysmItemValues::EnchantmentTextFor(const FString& Effect,
 	return Out;
 }
 
-float UCataclysmItemValues::AffixValue(float TopValue, float Floor,
-									   int32 Tier, float Roll,
-									   int32 GearLevel, bool bTwoHanded)
-{
-	float Low = 0.0f;
-	float High = 0.0f;
-	TierBand(TopValue, Tier, Low, High);
+// THE WHOLE-NUMBER VALUE RULE OF ISSUE #2883, approved by the owner on
+// 2026-11-24 ("Approve as written (Recommended)"). Until then an affix was its
+// TopValue times a geometric tier fraction, a 75%-to-100% band, divided back to
+// +0, upgraded and remapped onto a stated Floor, all in floating point and never
+// rounded, so a tool tip showed figures such as 3.4 that the character sheet
+// then truncated. Now every affix and implicit is a whole number at every tier,
+// roll and upgrade level, and the two ladders the owner kept (tier and upgrade;
+// see "Ease both levers, delete neither", issue #1179) both still apply:
+//   rule 3  each end of a tier's +0 range is upgraded on its own, exactly, in
+//           integers: (AtZero x (100 + 15 x Level) x Hands + 50) / 100;
+//   rule 4  the roll picks one of the whole numbers between the two ends,
+//           each equally likely.
+// The simulation's copy is sim/cataclysm_sim/affixes.py (`upgraded`,
+// `roll_value`), and tools/tests/test_affix_values_port.py holds the two equal.
 
-	const float Within = Low + (High - Low) * FMath::Clamp(Roll, 0.0f, 1.0f);
+// Two constants written independently, so this compares two facts rather than
+// one number with itself.
+static_assert(UCataclysmItemValues::GearLevelStepHundredths
+				  == static_cast<int32>(UCataclysmItemValues::GearLevelFactor * 100.0f + 0.5f),
+			  "GearLevelStepHundredths must be GearLevelFactor in whole hundredths");
 
-	// BOTH LADDERS ARE KEPT AND BOTH WERE EASED ON 2026-09-03, for issue #1179.
-	// The shape of this function did not change; the two constants it leans on
-	// did. TierFraction now spans 3.0 rather than 7.0 and GearLevelFactor gives
-	// 2.5 rather than 3.52, so the two multiply to about 10x instead of 32.9x.
-	//
-	// WHY THEY NEEDED EASING. At 32.9x a tier 1 roll on an un-upgraded drop was
-	// 3.04% of the endgame value, against Last Epoch's 16.7% across its own
-	// seven tiers. Twelve affixes could not show more than three different
-	// numbers early in the game and three could only ever display 0.0, which is
-	// a slot granting a number the player reads as nothing.
-	//
-	// WHY NEITHER WAS DELETED. An earlier attempt removed the gear level ladder
-	// entirely, on the reasoning that Path of Exile and Last Epoch both express
-	// progression once by gating which tiers can appear. The project owner
-	// rejected that: two levers are the point, and the fault was the size of
-	// their product rather than their number. Deleting one also put a hole in
-	// the late game -- a character's affix tier caps at 7 by difficulty tier 6,
-	// so beyond that the gear ladder is the only thing still raising their
-	// affixes, and without it their damage rose 7.7% across the last three
-	// difficulty tiers while everything scaling with character level kept
-	// climbing.
-	//
-	// The stated top values are still the +10 figures, so the band is divided
-	// back to +0 before the piece's own level is applied. Doing it the other way
-	// round would make a +10 piece worth 2.5 times a number that already
-	// included 2.5. The endgame value is therefore unchanged by all of this;
-	// what moved is everything below it.
-	const float AtZero = Within / GearLevelMultiplier(MaxGearLevel);
-	const float Unfloored = AtZero * GearLevelMultiplier(GearLevel);
-
-	// THE FLOOR IS ADDED AND THE LADDER RUNS ACROSS WHAT IS LEFT, rather
-	// than the tier ladder being squeezed to raise the bottom. Issue #1230.
-	//
-	// WHY NOT SQUEEZE THE TIER LADDER. Measured on 2026-09-04: a floor of a
-	// sixth of the top needs a tier ladder spanning 1.80, whose ratio
-	// between adjacent tiers is 1.1029, and
-	// Cataclysm.Item.BandsOverlapByExactlyOneTier then fails because a
-	// perfect roll two tiers down beats the worst roll here. The last floor
-	// that survives that route is about an eighth of the top, which is
-	// barely better than the tenth it already had.
-	//
-	// THIS MAP KEEPS THAT GUARD BECAUSE IT IS MONOTONE. It is an affine map
-	// from [TopValue * WorstMultiplier(), TopValue] onto [Floor, TopValue],
-	// so it preserves the order of every tier, roll and upgrade level
-	// combination, and every comparison the guard makes is unchanged.
-	//
-	// WHAT IT COSTS IS STEEPNESS, and only on the affixes that state a
-	// floor. A floor of a quarter of the top takes that affix's tier 1 to
-	// tier 7 ladder from 3.00 to 2.25 and its +0 to +10 ladder from 2.50 to
-	// 2.00. An affix with no floor keeps both in full.
-	const float Worst = TopValue * WorstMultiplier();
-	const float Span = TopValue - Worst;
-	if (Span <= 0.0f)
-	{
-		// A HYBRID ROW STATES NO VALUE OF ITS OWN. Its two halves are named
-		// in other columns and carry their own tops and floors.
-		return 0.0f;
-	}
-
-	const float Bottom = Floor > 0.0f ? Floor : Worst;
-	const float Value = Bottom
-					  + (TopValue - Bottom) * (Unfloored - Worst) / Span;
-
-	return Value * (bTwoHanded ? TwoHandedMultiplier : 1.0f);
-}
-
-float UCataclysmItemValues::ImplicitValue(float StatedValue, int32 GearLevel,
+int32 UCataclysmItemValues::UpgradedWhole(int32 AtZero, int32 GearLevel,
 										  bool bTwoHanded)
 {
-	// No tier and no band: an implicit is what the base IS rather than what a
+	const int32 Level = FMath::Clamp(GearLevel, 0, MaxGearLevel);
+	const int32 Hands = bTwoHanded ? static_cast<int32>(TwoHandedMultiplier) : 1;
+	const int32 Scaled = AtZero * (100 + GearLevelStepHundredths * Level) * Hands;
+	// A half goes up. Every value here is at least zero, so integer division
+	// after adding 50 is rounding half up.
+	return (Scaled + 50) / 100;
+}
+
+int32 UCataclysmItemValues::WholeAtRoll(int32 Low, int32 High, float Roll)
+{
+	if (High <= Low)
+	{
+		return Low;
+	}
+	const int32 Steps = High - Low;
+	const double Clamped = FMath::Clamp(static_cast<double>(Roll), 0.0, 1.0);
+	const int32 Index = FMath::Min(
+		FMath::FloorToInt32(Clamped * static_cast<double>(Steps + 1)), Steps);
+	return Low + Index;
+}
+
+void UCataclysmItemValues::AffixRangeAt(const FCataclysmAffixRow& Affix, int32 Tier,
+										int32 GearLevel, bool bTwoHanded,
+										int32& OutLow, int32& OutHigh)
+{
+	int32 LowAtZero = 0;
+	int32 HighAtZero = 0;
+	Affix.TierRange(Tier, LowAtZero, HighAtZero);
+	OutLow = UpgradedWhole(LowAtZero, GearLevel, bTwoHanded);
+	OutHigh = UpgradedWhole(HighAtZero, GearLevel, bTwoHanded);
+}
+
+float UCataclysmItemValues::AffixValue(const FCataclysmAffixRow& Affix, int32 Tier,
+									   float Roll, int32 GearLevel, bool bTwoHanded)
+{
+	// A HYBRID ROW STATES NO RANGE OF ITS OWN; its halves are other rows and
+	// go through HybridHalfValue. All fourteen of its tier cells are zero.
+	int32 Low = 0;
+	int32 High = 0;
+	AffixRangeAt(Affix, Tier, GearLevel, bTwoHanded, Low, High);
+	return static_cast<float>(WholeAtRoll(Low, High, Roll));
+}
+
+float UCataclysmItemValues::HybridHalfValue(const FCataclysmAffixRow& Half,
+											int32 HybridTier, float Roll,
+											int32 GearLevel, bool bTwoHanded)
+{
+	const int32 Tier = FMath::Clamp(HybridTier, LowestHybridTier, MaxAffixTier);
+	return AffixValue(Half, Tier - HybridTierDrop, Roll, GearLevel, bTwoHanded);
+}
+
+float UCataclysmItemValues::ImplicitValueAtLevel(int32 AtZero, int32 GearLevel,
+												 bool bTwoHanded)
+{
+	// No tier and no roll: an implicit is what the base IS rather than what a
 	// particular drop happened to get. Upgrade level and the two-handed
-	// multiplier still apply, exactly as they do to an affix.
-	const float AtZero = StatedValue / GearLevelMultiplier(MaxGearLevel);
-	return AtZero * GearLevelMultiplier(GearLevel)
-		 * (bTwoHanded ? TwoHandedMultiplier : 1.0f);
+	// multiplier still apply, by the same rule as an affix's range.
+	return static_cast<float>(UpgradedWhole(AtZero, GearLevel, bTwoHanded));
 }
 
 // ---------------------------------------------------------------------------
@@ -612,7 +609,7 @@ void UCataclysmItemModifiers::AccumulateInto(
 	// The base's implicits. What the item IS, before any roll.
 	const FString ImplicitStats[] = { Base->Implicit1Stat, Base->Implicit2Stat };
 	const FString ImplicitKinds[] = { Base->Implicit1Kind, Base->Implicit2Kind };
-	const float ImplicitValues[] = { Base->Implicit1Value, Base->Implicit2Value };
+	const int32 ImplicitsAtZero[] = { Base->Implicit1AtZero, Base->Implicit2AtZero };
 
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
@@ -630,8 +627,8 @@ void UCataclysmItemModifiers::AccumulateInto(
 		}
 		Add(FName(*ImplicitStats[Index]), Bucket,
 			ECataclysmModifierSource::GearImplicit,
-			UCataclysmItemValues::ImplicitValue(ImplicitValues[Index],
-												Item.GearLevel, bTwoHanded));
+			UCataclysmItemValues::ImplicitValueAtLevel(ImplicitsAtZero[Index],
+													   Item.GearLevel, bTwoHanded));
 	}
 
 	// The rolled affixes.
@@ -689,19 +686,17 @@ void UCataclysmItemModifiers::AccumulateInto(
 					continue;
 				}
 
-				// EACH HALF AT 70% OF THE WHOLE AFFIX, which the design states
-				// and the simulation derives. See UCataclysmItemValues::
-				// HybridFraction for where the figure comes from.
+				// EACH HALF AS ITS OWN AFFIX TWO TIERS DOWN, since issue #2883,
+				// which is the design's 70% share read off the half's own
+				// whole-number ladder. See UCataclysmItemValues::HybridTierDrop.
 				//
-				// THE HALF'S OWN TOP VALUE, NOT THE HYBRID'S. A hybrid is
-				// defined in terms of the affixes it combines rather than by
-				// copying their numbers, so it cannot drift from them.
+				// THE HALF'S OWN RANGES, NOT THE HYBRID'S. A hybrid is defined
+				// in terms of the affixes it combines rather than by copying
+				// their numbers, so it cannot drift from them.
 				Add(FName(*Part->Stat), PartBucket,
 					ECataclysmModifierSource::GearAffix,
-					UCataclysmItemValues::AffixValue(
-						Part->TopValue, Part->Floor, Rolled.Tier, Rolled.Roll,
-						Item.GearLevel, bTwoHanded)
-						* UCataclysmItemValues::HybridFraction);
+					UCataclysmItemValues::HybridHalfValue(
+						*Part, Rolled.Tier, Rolled.Roll, Item.GearLevel, bTwoHanded));
 			}
 			continue;
 		}
@@ -728,8 +723,8 @@ void UCataclysmItemModifiers::AccumulateInto(
 					Add(FName(Kind->Stat), ECataclysmStatBucket::Flat,
 						ECataclysmModifierSource::GearAffix,
 						UCataclysmItemValues::AffixValue(
-							Affix->TopValue, Affix->Floor, Rolled.Tier,
-							Rolled.Roll, Item.GearLevel, bTwoHanded));
+							*Affix, Rolled.Tier, Rolled.Roll, Item.GearLevel,
+							bTwoHanded));
 				}
 				else
 				{
@@ -743,8 +738,7 @@ void UCataclysmItemModifiers::AccumulateInto(
 		}
 
 		const float Value = UCataclysmItemValues::AffixValue(
-			Affix->TopValue, Affix->Floor, Rolled.Tier, Rolled.Roll,
-		Item.GearLevel, bTwoHanded);
+			*Affix, Rolled.Tier, Rolled.Roll, Item.GearLevel, bTwoHanded);
 
 		if (Affix->AffixKind == TEXT("Resistance"))
 		{
@@ -976,6 +970,14 @@ namespace
 			// ROLLED WITH THE VALUE WHEN THE ROW STATES TWO THRESHOLDS. Issue #1833,
 			// ruled 2026-09-30.
 			Out.ConditionValue = UCataclysmItemModifiers::RolledConditionValue(Effect, Roll);
+			// AN EVENT CONDITION IS THE GRANT'S, NOT THE STAT'S: Avenging Dead's "when a hit takes more than 5%", the
+			// Death trees' slice C6d2 (2026-11-25). The fact it reads exists only while the event is raised, so on the
+			// stat it would refuse at every read. The grant below takes it.
+			if (UCataclysmStatPipeline::IsJudgedAtItsEvent(Out.Condition))
+			{
+				Out.Condition = ECataclysmStatCondition::Always;
+				Out.ConditionValue = 0.0f;
+			}
 		}
 
 		// AND A SECOND CONDITION, WHICH MUST HOLD AS WELL. Issue #1833, ruled
@@ -1184,6 +1186,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				// and writes none by default.
 				Stack.EventValue = Effect->EventValue;
 				Stack.TriggerCooldownSeconds = Effect->TriggerCooldown;
+				// AND ITS CONDITION, WHEN THE ROW'S IS JUDGED AT ITS EVENT: Avenging Dead, the Death trees' slice C6d2.
+				// `PoolActionAllowed` judges it as the event is raised; the stat above was given none.
+				ECataclysmStatCondition AtTheEvent = ECataclysmStatCondition::Always;
+				if (!Effect->Condition.IsEmpty() && UCataclysmStatPipeline::ConditionNamed(Effect->Condition, AtTheEvent)
+					&& UCataclysmStatPipeline::IsJudgedAtItsEvent(AtTheEvent))
+				{
+					Stack.Condition = AtTheEvent;
+					Stack.ConditionValue = Effect->ConditionValue;
+				}
 				Stack.TriggerKey = FName(*FString::Printf(TEXT("%s:%s"),
 					*Stack.StackKey.ToString(), *Effect->ActionEvent));
 				// A COUNT OF HITS IN A ROW IS SCOPED BY THE ROW'S TAGS, ruled
@@ -1248,11 +1259,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// #1833, phase 2. Keyed by the enchantment and the action;
 					// Stack Seconds is the window and Scale Max Steps the cap,
 					// where nought is none ("stacking indefinitely").
-					const bool bArmourRemoved = Effect->Action.Equals(
+					const bool bArmourRemovedNearby = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EnemyArmorRemovedNearbyAction,
+						ESearchCase::IgnoreCase);
+					const bool bArmourRemoved = bArmourRemovedNearby || Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction,
 						ESearchCase::IgnoreCase);
 					const bool bDamageRemoved = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction,
+						ESearchCase::IgnoreCase);
+					// AND THORNWALL'S, THE THIRD KIND: retaliation taken. V3a, 2026-11-25.
+					const bool bRetaliationTaken = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction,
 						ESearchCase::IgnoreCase);
 					// AN "EVERY Nth" ROW, keyed by the enchantment and the action.
 					// Issue #1833, phase 2. The action names what is counted, so
@@ -1301,13 +1319,14 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						}
 					}
-					if (bArmourRemoved || bDamageRemoved)
+					if (bArmourRemoved || bDamageRemoved || bRetaliationTaken)
 					{
 						Action.PlacedKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						Action.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
 						Action.StackCap = Effect->ScaleMaxSteps;
 						Action.bPlacedCutsDamage = bDamageRemoved;
+						Action.bPlacedRaisesRetaliationTaken = bRetaliationTaken;
 					}
 					// A NEXT-SPELL COOLDOWN CHARGE, the fourth next-use kind. Issue
 					// #1833, the cooldown reduction action.
@@ -1335,6 +1354,20 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								 ESearchCase::IgnoreCase))
 					{
 						Action.CooldownReduce = ECataclysmCooldownReset::Heavy;
+					}
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceOthersAction,
+								 ESearchCase::IgnoreCase))
+					{
+						// EVERY SKILL BUT THE EVENT'S OWN: Turn of the Wheel, the Death trees' slice C3b.
+						Action.CooldownReduce = ECataclysmCooldownReset::Others;
+					}
+					// AND THE MOVEMENT SKILL'S, the Death trees' slice C6a (2026-11-25).
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceMovementAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.CooldownReduce = ECataclysmCooldownReset::Movement;
 					}
 					if (Action.CooldownReduce != ECataclysmCooldownReset::None)
 					{
@@ -1587,6 +1620,32 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// is the share of the overkill, in per cent.
 					Action.bExplodeVictimForOverkill = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT BURSTS FOR A SHARE OF ITS MAXIMUM HEALTH: The Ferryman, the Death trees' slice
+					// C4c1 (2026-11-25). The value is the share, in per cent.
+					Action.bBurstSlainForMaximumHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::BurstSlainForMaximumHealthAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT PASSES THE WEARER'S BLEED LEFT ON A DEAD ENEMY TO THE STRONGEST NEAR IT: Blood
+					// Debt, the Death trees' slice C4c2 (2026-11-25). The value is the seconds.
+					Action.bPassBleedLeftToStrongest = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::PassBleedLeftToStrongestAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT MAKES THE NEXT LANDED HIT A CRITICAL STRIKE: Chain Execution, the Death trees' slice
+					// C4d1 (2026-11-25). The value is the seconds.
+					Action.bNextHitCritical = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CriticalNextHitAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT LENGTHENS A RUNNING HOLD BEFORE THE FERVOUR DECAY: Keep the Count, the Death trees'
+					// slice C6a (2026-11-25). The value is the seconds.
+					Action.bExtendFervourHold = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FervourHoldExtendedAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT DOUBLES AN EVASION'S CRITICAL STRIKE CHARGE ON A ROLL OF ITS CHANCE: Twice Answered,
+					// the Death trees' slice C6b4 (2026-11-25). The chance is the row's `ChancePercent`.
+					Action.bNextHitCriticalTwice = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT STRIKES THE STRONGEST ENEMY NEAR ON A KILL, Blade Echo, or moves beside it and
+					// strikes, Thousand Cuts: the Death trees' slice C6e (2026-11-25).
+					Action.bStrikeStrongestNear = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeStrongestNearAction, ESearchCase::IgnoreCase);
+					Action.bDashToStrongestAndStrike = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
@@ -1625,11 +1684,58 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bTemporaryAbsorb = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::TemporaryAbsorbAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT PAYS WRATH INCARNATE'S RETALIATION PULSE, its radius in Event Value. V3a,
+					// 2026-11-25.
+					Action.bRetaliationPulse = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::RetaliationPulseAction,
+						ESearchCase::IgnoreCase);
+					// AND WHETHER IT IS THOUSAND DEATHS' CHAIN, its radius in Event Value. V3b, 2026-11-25.
+					Action.bFrenzyChain = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FrenzyChainAction,
+						ESearchCase::IgnoreCase);
+					// AND BAITED'S TAUNT AND TRAIL OF WIRE'S PLACING. V4a, 2026-11-25.
+					Action.bTauntNearTrap = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TauntEnemiesNearTrapAction,
+						ESearchCase::IgnoreCase);
+					Action.bPlaceLastTrapAgain = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction,
+						ESearchCase::IgnoreCase);
+					// AND COUNTERFIRE'S ANSWERS. V4b, 2026-11-25.
+					Action.bCounterfire = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CounterfireAction,
+						ESearchCase::IgnoreCase);
+					// AND WHERE THEY FALL'S AND CROSSFIRE'S. V5a, 2026-11-25.
+					Action.bCopyLastTrapAtKill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CopyLastTrapAtKillAction,
+						ESearchCase::IgnoreCase);
+					Action.bCrossfire = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CrossfireAction,
+						ESearchCase::IgnoreCase);
+					// AND SCRAP MINES'. V5b1, 2026-11-25.
+					Action.bScrapMine = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ScrapMineAction,
+						ESearchCase::IgnoreCase);
+					// AND TITANFALL'S. 2026-11-25.
+					Action.bTitanfall = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TitanfallAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))
 					{
 						Action.Nearby = ECataclysmNearbyAction::SmiteByArmour;
+					}
+					// AND THE TWO OF THE WAR VOW OPTIONS' SECOND SLICE, V2b, 2026-11-25: a smite sized by the event's hit,
+					// reaching its Event Value in metres (Pure Carnage, Ragnarok's shockwaves), and the armour stack
+					// above placed on every enemy nearby (Warlord).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyByHitAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteByHit;
+					}
+					if (bArmourRemovedNearby)
+					{
+						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;
 					}
 					if (Action.Nearby != ECataclysmNearbyAction::None && Effect->EveryNth > 1)
 					{
@@ -1650,6 +1756,31 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Base = ECataclysmPoolActionBase::EventAmount;
 					}
+					// FOR EACH OF THE EVENT'S AMOUNT, OR EACH TEN OF IT: the Death trees' slice C3b. `ActOnEvent`
+					// multiplies the value and puts the base back to the maximum before anything reads it.
+					else if (Effect->FractionOf.Equals(TEXT("for_each_of_event_amount"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachOfEventAmount;
+					}
+					else if (Effect->FractionOf.Equals(TEXT("for_each_ten_of_event_amount"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachTenOfEventAmount;
+					}
+					// AND FOR EACH WHOLE HUNDRED OF THE CLASS RESOURCE HELD: Relentless, the Death trees' slice C4d1.
+					else if (Effect->FractionOf.Equals(TEXT("for_each_hundred_class_resource_held"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::ForEachHundredClassResourceHeld;
+					}
+					// AND A FLAT AMOUNT OF THE CLASS RESOURCE, with the row's chance: Opening Found, Reaper's Due and Tear
+					// Loose, the Death trees' slice C6b3 (2026-11-25).
+					else if (Effect->FractionOf.Equals(TEXT("points"), ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::Points;
+					}
+					Action.ChancePercent = Effect->ChancePercent;
 
 					// THE SAME TAG PARSE THE STAT ROWS GET, so a scoped action row
 					// and a scoped stat row cannot disagree about what a tag list
@@ -1686,6 +1817,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						continue;
 					}
 					Action.ConditionValue = Effect->ConditionValue;
+					// AND A SECOND CONDITION, since the War vow options' second slice (V2b, 2026-11-25). Refused as the
+					// first is when this build does not know its name.
+					if (!Effect->Condition2.IsEmpty()
+						&& !UCataclysmStatPipeline::ConditionNamed(Effect->Condition2, Action.Condition2))
+					{
+						UE_LOG(LogCataclysm, Warning,
+							   TEXT("Enchantment '%s' acts under the second condition '%s', which this build does "
+									"not know, so the row does nothing. Regenerate the CSV from the workbook."),
+							   *Effect->Enchantment, *Effect->Condition2);
+						continue;
+					}
+					Action.ConditionValue2 = Effect->ConditionValue2;
 					Action.bFromADrawback = bFromADrawback;
 					Actions->Add(Action);
 				}
@@ -1895,7 +2038,7 @@ float UCataclysmItemModifiers::WeaponDamageForType(
 			// first too, but nothing in the sheet promises that, and assuming
 			// slot one would silently return zero the day it moves.
 			const FString ImplicitStats[] = { Row.Implicit1Stat, Row.Implicit2Stat };
-			const float ImplicitValues[] = { Row.Implicit1Value, Row.Implicit2Value };
+			const int32 ImplicitsAtZero[] = { Row.Implicit1AtZero, Row.Implicit2AtZero };
 
 			for (int32 Index = 0; Index < 2; ++Index)
 			{
@@ -1904,11 +2047,11 @@ float UCataclysmItemModifiers::WeaponDamageForType(
 					continue;
 				}
 
-				// THE STATED FIGURE IS THE +10 ONE and a two-hander doubles it.
+				// THE +0 FIGURE IS UPGRADED and a two-hander doubles it.
 				// Leaving either out is a silent halving or worse, and the
 				// symptom is only that everything hits softly.
-				Found = UCataclysmItemValues::ImplicitValue(
-					ImplicitValues[Index], GearLevel,
+				Found = UCataclysmItemValues::ImplicitValueAtLevel(
+					ImplicitsAtZero[Index], GearLevel,
 					/*bTwoHanded=*/Row.Hands == 2);
 				return;
 			}
@@ -1972,13 +2115,14 @@ namespace
 			/*bWarnIfMissing=*/false);
 	}
 
-	/** The attack damage implicit on a base row, before upgrade or doubling. */
-	float StatedAttackDamage(const FCataclysmItemBaseRow& Row)
+	/** The attack damage implicit on a base row at +0, before upgrade or
+	 *  doubling. A whole number since issue #2883. */
+	int32 AttackDamageAtZero(const FCataclysmItemBaseRow& Row)
 	{
 		// BOTH IMPLICIT SLOTS, for the reason WeaponDamageForType gives above:
 		// nothing in the sheet promises which slot carries the damage.
 		const FString Stats[] = { Row.Implicit1Stat, Row.Implicit2Stat };
-		const float Values[] = { Row.Implicit1Value, Row.Implicit2Value };
+		const int32 Values[] = { Row.Implicit1AtZero, Row.Implicit2AtZero };
 
 		for (int32 Index = 0; Index < 2; ++Index)
 		{
@@ -1988,7 +2132,7 @@ namespace
 				return Values[Index];
 			}
 		}
-		return 0.0f;
+		return 0;
 	}
 }
 
@@ -2001,17 +2145,17 @@ float UCataclysmItemModifiers::WeaponDamageForItem(
 		return 0.0f;
 	}
 
-	const float Stated = StatedAttackDamage(*Row);
-	if (Stated <= 0.0f)
+	const int32 AtZero = AttackDamageAtZero(*Row);
+	if (AtZero <= 0)
 	{
 		return 0.0f;
 	}
 
 	// THE ITEM'S OWN UPGRADE LEVEL, which is the entire point of this function
-	// existing beside WeaponDamageForType. The stated figure is the +10 one and
-	// a two-hander doubles it; leaving either out is a silent halving.
-	return UCataclysmItemValues::ImplicitValue(
-		Stated, Item.GearLevel, /*bTwoHanded=*/Row->Hands == 2);
+	// existing beside WeaponDamageForType. The +0 figure is upgraded and a
+	// two-hander doubles it; leaving either out is a silent halving.
+	return UCataclysmItemValues::ImplicitValueAtLevel(
+		AtZero, Item.GearLevel, /*bTwoHanded=*/Row->Hands == 2);
 }
 
 bool UCataclysmItemModifiers::WeaponIsArmed(
@@ -2022,7 +2166,7 @@ bool UCataclysmItemModifiers::WeaponIsArmed(
 	// ASKED OF THE STATED FIGURE AND NOT OF THE UPGRADED ONE, so the answer
 	// does not depend on how good the weapon is. A +0 Shield and a +10 Shield
 	// both arm nothing, and a +0 Whip arms.
-	return Row != nullptr && StatedAttackDamage(*Row) > 0.0f;
+	return Row != nullptr && AttackDamageAtZero(*Row) > 0;
 }
 
 float UCataclysmItemModifiers::BlendedWeaponDamage(

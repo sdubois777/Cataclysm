@@ -19,6 +19,9 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the Cataclysm.ShowFervour console command. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the Berserker's Fervour on a critical strike. Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 // For the Cataclysm.ShowDebt console command. Issue #1100.
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmLowHealthRelief.h"
@@ -29,8 +32,12 @@
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
+// For who commands a killer, so The Swarm hears a kill by one of this
+// character's minions. The demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -41,6 +48,7 @@
 // For the slain enemy's maximum health, which the kill event carries.
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
@@ -1026,6 +1034,11 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	//
 	// ONE HANDLER FOR BOTH THE POOL AND ITS MAXIMUM, because for the refresh
 	// neither says anything beyond "ask again".
+	//
+	// AND THE BERSERKER'S STATE BEFORE IT, the moment the pool fills or empties: Wrath and Frenzy begin at a full pool
+	// and end at an empty one, and Berserking arms at a full one. First, so a speed row under `in_frenzy` reads the
+	// state this change made. The Berserker's states, 2026-11-25.
+	FCataclysmBerserkerStates::Judge(Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()));
 	RefreshMovementSpeed();
 
 	// AND THE TWO WINDOWS A THRESHOLD CROSSING OPENS. Issue #1815. "When your
@@ -1076,14 +1089,33 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	// stamp did not apply the same rule the window and the condition would
 	// disagree, and every character with no class resource would be handed a
 	// bonus written for a full one.
-	const auto IsFull = [](float Held, float Maximum)
+	//
+	// AND THE TOP IS THE MAXIMUM LESS WHAT MINIONS HOLD BACK, as that predicate
+	// now judges it. Ruled by the coordinating session on 2026-11-25 (the Death
+	// trees' slice C): every gain stops at the maximum less the reserve, so a
+	// character with a minion out never reached the gross maximum, never
+	// crossed into "full", and never opened this window. The reserve is read
+	// once, now, for both sides: a reservation starting cuts the pool to what
+	// is left (`UCataclysmCommand::ClampFervourToSpendable`), and a bar full
+	// before it is full after it, so no crossing is reported for that.
+	const float Reserved = FMath::Max(0.0f, UCataclysmCommand::ReservedFervourOf(this));
+	const auto IsFull = [Reserved](float Held, float Maximum)
 	{
-		return Maximum > 0.0f && Held >= Maximum;
+		const float Fillable = Maximum - Reserved;
+		return Maximum > 0.0f && Fillable > 0.0f && Held >= Fillable;
 	};
 
 	if (!IsFull(HeldBefore, MaximumBefore) && IsFull(HeldNow, MaximumNow))
 	{
 		Cataclysm->NoteClassResourceFull();
+
+		// AND SECOND WIND'S HEAL, ON THE SAME CROSSING AND NO OTHER. The Ravager
+		// tree rework of 2026-11-24: "Each time your Fervour becomes full,
+		// restore 2% of your maximum health per point." Beside the stamp, so the
+		// heal and the window it opens cannot disagree about when the pool
+		// filled; a pool sitting at its maximum restores nothing more. Nought
+		// for every character without the node.
+		UCataclysmFervour::RestoreHealthOnFervourFull(Cataclysm);
 	}
 
 	// EMPTY IS ONLY EVER THE POOL, NOT THE MAXIMUM. "Hits zero" is about what
@@ -1092,6 +1124,10 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	if (bPoolMoved && HeldBefore > 0.0f && HeldNow <= 0.0f)
 	{
 		Cataclysm->NoteClassResourceEmptied();
+
+		// AND BLOOD PRICE'S DAMAGE, HELD FOR THE NEXT MELEE BLOW THAT LANDS, on the same crossing and for any reason the
+		// pool emptied (the Berserker's Blood Price, 2026-11-25). Nought for every character without the node.
+		FCataclysmWarFervour::ArmBloodPrice(Cataclysm);
 	}
 }
 
@@ -1140,6 +1176,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// strike chance and an evaded blow is never reported critical, so nothing
 	// refused here carries `bCritical`. It is refused all the same, so that the
 	// rule does not rest on either of those staying true.
+	// A TICK OF THE CHARACTER'S OWN DAMAGE OVER TIME ON A BOSS PAYS A KILL'S FERVOUR, at most once every so many
+	// seconds: Patient Blade, the Death trees' slice C4d2 (2026-11-25). Here, before ticks are dropped below; a minion's
+	// tick is left out.
+	if (Notice.bDamageOverTime && !Notice.bEvaded && !Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		UCataclysmFervour::PayForABossTick(GetAbilitySystemComponent(), Notice.Target);
+	}
+
 	if (Notice.bDamageOverTime || Notice.bEvaded)
 	{
 		return;
@@ -1219,9 +1263,30 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	{
 		Acting->AskToCullOnHit(Notice.Target);
 	}
+	// AND WHAT AN ATTACK SENT, HELD WHILE THE EVENT'S ROWS ACT, for Thousand Deaths' chain (V3b, 2026-11-25): "your
+	// attacks chain ... for 60% damage", ruled a share of what the hit sent before defences. NOUGHT FOR WHAT IS NOT THIS
+	// CHARACTER'S ATTACK: a spell, a tick, a retaliation payment, and a minion's own blow. Put back afterwards.
+	const bool bAnAttackThatMayChain = !Notice.bIsSpell && !Notice.bDamageOverTime && !Notice.bRetaliation
+		&& !Cast<ACataclysmMinion>(Notice.DealtBy);
+	const float WasSent = Acting->SetAttackBeingAnnouncedSent(bAnAttackThatMayChain ? Notice.Sent : 0.0f);
+	// AND WHAT ANY HIT OF THIS CHARACTER'S OWN SENT, SPELLS INCLUDED, for Crossfire's repeats (V5a, ruled X1): nought for
+	// a tick, a retaliation payment and a minion's own blow.
+	const bool bAHitThatMayBeRepeated =
+		!Notice.bDamageOverTime && !Notice.bRetaliation && !Cast<ACataclysmMinion>(Notice.DealtBy);
+	const float WasHitSent = Acting->SetHitBeingAnnouncedSent(bAHitThatMayBeRepeated ? Notice.Sent : 0.0f);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
+	Acting->SetHitBeingAnnouncedSent(WasHitSent);
+	Acting->SetAttackBeingAnnouncedSent(WasSent);
+
+	// AND FERVOUR FOR A BLOW THIS CHARACTER LANDED ITSELF: the Berserker's Frenzy, "all melee hits generate 2 additional
+	// Fervour", a row scoped to melee under `in_frenzy`, read with the blow's skill tags. NOT A MINION'S BLOW, for the
+	// reason the cull above gives: Conduit credits one here, and the minion dealt it. The Berserker's states, 2026-11-25.
+	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		FCataclysmWarFervour::GainOnHitDealt(Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+	}
 
 	// THE ATTACKER'S FIRST BLOW TO GET THROUGH TO THIS TARGET is a third event.
 	// Issue #1833 group E part 1, ruled 2026-10-01: "Your first hit against each
@@ -1248,9 +1313,33 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// and none carries a condition on the target.
 	if (Notice.bCritical)
 	{
+		// AND THE FERVOUR A CRITICAL STRIKE PAYS, the Shadow's starting node and Telling Blows (the Death trees' slice
+		// C4d1, 2026-11-25): "each critical strike you land", so a minion's is left out, as the cull above leaves it.
+		// THE BERSERKER'S TOO, "Gain 1 Fervour per critical strike", one stat and one payment since the bundle 3 merge
+		// (obligation 5): read with the blow's skill tags, so Battle Lust's "on every critical melee strike" adds to a
+		// melee one only. Before the critical_strike rows act, as ruled.
+		if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+		{
+			UCataclysmFervour::GainOnCriticalStrike(Acting, Notice.Target,
+													Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+		}
 		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
 						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 						   Notice.Target);
+
+		// AND SKULL SPLITTER'S ARMOR REDUCTION AND DEATHMARK'S MARK ON THE CREATURE STRUCK, each paying its own cost, the
+		// first first. The Berserker's nodes of 2026-11-25. Nought for every character without them.
+		const FGameplayTagContainer CritTags = Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer();
+		FCataclysmWarFervour::SkullSplitterOnCriticalStrike(Acting, Notice.Target, CritTags);
+		FCataclysmWarFervour::DeathmarkOnCriticalStrike(Acting, Notice.Target, CritTags);
+	}
+
+	// AND EVERY Nth LANDED HIT OF THE CHARACTER'S OWN ON A BOSS COUNTS AS A KILL OF IT: Death by Inches, the Death trees'
+	// slice C4d2 (2026-11-25). After the hit's own rows, so the kill's rows act on a hit already heard. A minion's hit is
+	// left out, as the cull leaves it.
+	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		UCataclysmFervour::CountAHitOnABoss(Acting, Notice.Target);
 	}
 }
 
@@ -1320,6 +1409,22 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 			&& UCataclysmTriggeredSkill::RepeatsFromARow(Used))
 		{
 			Acting->NoteSkillGadgetsCopy(Used);
+
+			// AND MAGNUM OPUS: the eldest gadget casts the same skill once, at its own target, with the whole of the
+			// damage (the War vow options' fourth slice, second half, V4b, ruled 2026-11-25). Skills only: NOT THE
+			// BASIC ATTACK, which is left out above, AND NOT THE MOVEMENT SKILL. ON THE NEXT TICK, for the reason the
+			// repeats above wait: this runs inside the used skill's activation, where a skill cannot be granted. The
+			// eldest is chosen then, so a gadget gone in between is passed over.
+			if (Notice.Slot != ECataclysmAbilitySlot::Movement && ACataclysmMinion::EldestGadgetCastsEverySkillFor(this))
+			{
+				GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, Used]()
+				{
+					if (ACataclysmMinion* Eldest = ACataclysmMinion::EldestGadgetOf(this))
+					{
+						Eldest->CastSkillCopy(Used);
+					}
+				}));
+			}
 		}
 	}
 }
@@ -1410,11 +1515,38 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			{
 				Mine->NoteKill();
 			}
+			// AND IN THE FRENZY THIS CHARACTER IS IN, for Thousand Deaths (V3b, 2026-11-25): every kill of its own, a
+			// chained blow's included, as ruled. Nothing outside Frenzy.
+			Acting->NoteKillInFrenzy();
 			// AND ON EACH WORN WEAPON, whose own count "This weapon has..." reads.
 			if (UCataclysmEquipmentComponent* Gear = GetEquipment())
 			{
 				Gear->NoteKillOnWornWeapons(Acting);
 			}
+
+			// AND THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. The Fervour this kill pays by the slain creature's
+			// rarity rung first, nought for a character without a Death starting node; then the stamp, for every
+			// character: the clock a row under `seconds_after_kill` reads, and the grace before the decay after a
+			// kill, asked against the slain creature. ON EVERY KILL CREDITED HERE, its damage over time's and a row's
+			// included; a skill's own `KillFervour` (#2885) pays on top when that skill's blow made the kill.
+			//
+			// THE PAYMENT BEFORE THE STAMP, ruled by the coordinating session on 2026-11-25 (the Death trees' slice
+			// C). Asked after it, `seconds_after_kill` on a kill's own stat read nought at every kill and always held;
+			// asked before it, it reads the time since the PREVIOUS kill, which "kills within 2 seconds of each
+			// other" needs. The grace is asked inside the stamp before the clock moves, so it reads the same.
+			//
+			// AND RECLAIMED'S GIVE-BACK BEFORE BOTH: what decay took in the seconds before this kill comes back as part of
+			// it. The Death trees' slice C4b2 (2026-11-25).
+			// MARKED AS AN EXECUTE'S KILL, OR NOT, FOR THE PAYMENT AND THE ROWS BELOW: Reaper's Edge's
+			// `kill_was_an_execute` reads it. Cleared after the rows. The Death trees' slice C4d1 (2026-11-25).
+			Acting->SetActingOnAKillByAnExecute(Notice.bByAnExecute);
+			UCataclysmFervour::GiveBackDecayOnKill(Acting);
+			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
+			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
+			// AND GRIM WAKE'S MARK on the enemies near the body, the Death trees' slice C4c2 (2026-11-25).
+			UCataclysmFervour::MarkNearAKill(Acting, Notice.Victim, Notice.Location);
+			// AND WEARER OF THE DEAD'S MODIFIERS, from an Elite or stronger body, the Death trees' slice C4d3 (2026-11-25).
+			UCataclysmFervour::WearTheModifiersOf(Acting, Notice.Victim);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
 			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
 			// slain enemy. No row read either on this event before; a row that takes
@@ -1427,9 +1559,14 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// NOT FOR A KILL A ROW MADE, so a row's kill does not fire rows again. See `bWhileTheKillersRowsActed`.
 			if (!Notice.bWhileTheKillersRowsActed)
 			{
+				// MARKED WHILE THE ROWS ACT, as made by a hit or by a tick: Passed On's `killing_blow_was_a_hit` reads
+				// it. The Death trees' slice C4c1 (2026-11-25).
+				Acting->SetActingOnAKillByAHit(!Notice.bByDamageOverTime);
 				Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
 								   /*bLanded=*/true, Notice.Victim);
+				Acting->SetActingOnAKillByAHit(false);
 			}
+			Acting->SetActingOnAKillByAnExecute(false);
 
 			// AND A DEATH SENTENCE THIS KILL MAY LIFT, heard for exactly the kills that raise `kill` above. Ruled
 			// 2026-10-18 (Q5) for the Demon King's Regalia's ten-piece. A call of its own rather than a row on
@@ -1453,18 +1590,20 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// own, smaller overkill. And the dungeon's rules must hear this death before the one the explosion
 			// causes, whichever of the two listeners the engine calls first.
 			const float OverkillShare = Acting->TakePendingOverkillExplosionSharePercent();
+			// AND ITS RADIUS, the largest any row that asked gives (the Death trees' slice C4c1, as ruled for Passed On).
+			const float OverkillRadiusCm = Acting->TakePendingOverkillExplosionRadiusCm();
 			if (OverkillShare > 0.0f)
 			{
 				const TWeakObjectPtr<ACataclysmPlayerCharacter> Killer(this);
 				const TWeakObjectPtr<const AActor> SlainActor(Notice.Victim);
 				const FVector At = Notice.Location;
 				const float Overkill = Notice.Overkill;
-				TFunction<void()> Explode = [Killer, SlainActor, At, Overkill, OverkillShare]()
+				TFunction<void()> Explode = [Killer, SlainActor, At, Overkill, OverkillShare, OverkillRadiusCm]()
 				{
 					if (Killer.IsValid())
 					{
 						UCataclysmSkillEffects::ExplodeForOverkill(Killer.Get(), SlainActor.Get(), At, Overkill,
-																   OverkillShare);
+																   OverkillShare, OverkillRadiusCm);
 					}
 				};
 				if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
@@ -1476,6 +1615,15 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 					Explode();
 				}
 			}
+
+			// AND THE FERRYMAN'S BURST: "every enemy you kill bursts for 10% of its maximum health to enemies within 4
+			// metres, and a creature the burst kills bursts too". The Death trees' slice C4c1 (2026-11-25). Made the way
+			// the overkill explosion above is, and for its reasons: through `ExplodeForOverkill`, sized by the slain
+			// creature's maximum health and unscaled by the killer's increases (Q5), handed to the announcer so a
+			// creature the burst kills is a kill of its own, raises `kill`, and bursts in turn while the bar is full.
+			// THROUGH THE ONE FUNCTION A FOLLOWER'S KILL UNDER DEATH'S TOLL USES TOO (`UCataclysmFervour::BurstTheSlain`).
+			UCataclysmFervour::BurstTheSlain(this, Notice.Victim, Notice.Location, SlainMaximum,
+											 Acting->TakePendingSlainBurstSharePercent());
 
 			// AND THE EXPLOSION OF AN ENEMY A TRAP KILLED. Ruled 2026-10-21 (traps layer 4, F10 to F12): "Enemies killed
 			// by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters". A row on `kill`
@@ -1520,6 +1668,28 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				this, Notice.Victim, Notice.Location, Notice.KillingTags);
 		}
 
+		// THE SOUL COLLECTOR ON A DEATH THIS CHARACTER DID NOT MAKE, the Death trees' slice C4b2 (2026-11-25). Death's
+		// Toll first: a follower's kill made this character's for everything the Soul Collector tree asks. Otherwise
+		// Claimed: an enemy this character hit shortly before gives its Fervour whatever killed it. Never both, as
+		// ruled, and neither for a kill this character made, which the block above has paid.
+		if (Notice.Killer != this && Notice.Victim
+			&& !UCataclysmFervour::CreditAFollowersKill(Acting, this, Notice))
+		{
+			UCataclysmFervour::ClaimOnDeath(Acting, Notice.Victim);
+		}
+
+		// AND THE SWARM: A MINION WHERE AN ENEMY THIS CHARACTER OR ONE OF ITS MINIONS KILLED FELL. The demonic tree
+		// rework of 2026-11-24: "When you or one of your minions kills an enemy, a new minion is summoned where it fell,
+		// if your Fervour has room for it." OUTSIDE THE KILLER TEST ABOVE, because a minion's kill is the minion's own
+		// unless Conduit is taken: with Conduit the killer is this character, without it the killer is a minion (or a
+		// thrall) this character commands, and either way it is heard once. Nothing without the keystone; the enemy
+		// test and the pool's room are `UCataclysmSummonSkill::SummonAtAKillFor`'s.
+		if (Notice.Killer
+			&& (Notice.Killer == this || UCataclysmCommand::CommanderOf(Notice.Killer) == this))
+		{
+			UCataclysmSummonSkill::SummonAtAKillFor(this, Notice.Victim, Notice.Location);
+		}
+
 		// AND LONG HOLD, BEFORE WRUNG OUT BELOW CAN BUY ANYTHING. Issue #1515.
 		// `Ravager_capstone_50`'s third option: "Killing an enemy restores 5% of
 		// your maximum health." A kill is this character's kill as above, its
@@ -1540,6 +1710,13 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		if (Notice.Killer == this && Notice.Victim)
 		{
 			UCataclysmFervour::RestoreHealthOnKillAtNoCost(Acting);
+
+			// AND THE SHADOW'S CLEAN KILL, FOR A KILL BY A CRITICAL STRIKE (a tick of damage over time is never one): the
+			// Death trees' slice C4a (2026-11-25). Beside the restoration above, which costs nothing as this does.
+			if (Notice.bByACriticalStrike)
+			{
+				UCataclysmFervour::RestoreHealthOnCriticalKill(Acting);
+			}
 		}
 
 		// AND FOLLOW THROUGH. Issue #1515, `Ravager_keystone_b_kB`: "Killing an
@@ -1706,8 +1883,30 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	const float FromAttribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute());
 
-	const UCataclysmAbilitySystemComponent* Cataclysm =
-		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+
+	// AN ACTOR IMMUNE TO SLOW IGNORES EVERY MOVEMENT REDUCTION, the coordinating session's ruling of 2026-11-25:
+	// Grave Shroud's, Fevered Blood's and Living Pyre's `Immune=Slow` until then blocked nothing, because nothing that
+	// slows asked the immunity. It takes the suppression branch below, which drops the reducing parts and keeps the
+	// earned ones, as a node saying "nothing may lower this character's speed" does.
+	const bool bImmuneToSlow = UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));
+	bSlowImmuneAtLastSpeedRefresh = bImmuneToSlow;
+
+	// AND WHAT AN AURA HOLDS ON IT: War's Blood and Iron raises an ally's movement 15% and slows an enemy's. Multiplied
+	// last, after everything else; a slow share is a reduction and an immunity to Slow drops it. 2026-11-25.
+	float AuraFactor = 1.0f;
+	if (Cataclysm)
+	{
+		Cataclysm->PruneLapsedAuraShares();
+		AuraFactor = 1.0f + Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) / 100.0f;
+		if (!bImmuneToSlow)
+		{
+			AuraFactor *= 1.0f - FMath::Clamp(Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced),
+											  0.0f, 99.0f) / 100.0f;
+		}
+	}
+
 	// WHAT CRIPPLE LEAVES OF IT, as a creature's walk is multiplied. Issue #2273. AND WHAT WITHER LEAVES, multiplied
 	// with it as a separate slow. Issue #1722.
 	const float Crippled = UCataclysmSkillEffects::CrippleMultiplierOn(this)
@@ -1715,7 +1914,7 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 
 	if (!Cataclysm)
 	{
-		ApplyMovementSpeed(FromAttribute * Crippled);
+		ApplyMovementSpeed(FromAttribute * (bImmuneToSlow ? 1.0f : Crippled));
 		return;
 	}
 
@@ -1738,35 +1937,61 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 		AbilitySystem->GetNumericAttribute(
 			UCataclysmCombatAttributeSet::
 				GetMovementSpeedReductionSuppressedAttribute()));
-	if (Suppressed <= 0.0f)
+	if (Suppressed <= 0.0f && !bImmuneToSlow)
 	{
-		ApplyMovementSpeed(Asked * Crippled);
+		ApplyMovementSpeed(Asked * Crippled * AuraFactor);
 		return;
 	}
 
-	// THE REDUCING PARTS ARE DROPPED, THE EARNED ONES KEPT, AND THE DIFFERENCE
+	// THE REDUCING ROWS ARE DROPPED, THE EARNED ONES KEPT, AND THE DIFFERENCE
 	// IS NOT ACADEMIC. Flooring the answer at the attribute would take away a
 	// node's +20% along with a Singularity Well's -40% and leave the character
 	// at their base speed; the row says the reduction does not apply, not that
-	// the bonus does not either. So the stat is run again with each bucket
-	// clamped to the side that cannot lower it:
+	// the bonus does not either.
 	//
-	//     Flat             floored at 0      a negative addition is a reduction
-	//     SumOfIncreases   floored at 0      a negative increase is a reduction
-	//     MoreMultiplier   floored at 1      a "less" multiplier is below one
+	// ROW BY ROW, NOT BY FLOORING THE SUMS, SINCE 2026-11-24. The coordinating
+	// session's ruling that day, on the Ravager tree rework's Relentless ("Your
+	// Movement Speed and Attack Speed cannot be reduced by any effect"):
+	// "cannot be reduced" means every reducing row is ignored on its own and
+	// every bonus still counts, the same for both speeds. Until then each
+	// bucket was summed first and the sum floored -- Flat at 0, the increases at
+	// 0, the "more" product at 1 -- so +12% beside -40% in the increased bucket
+	// summed to -28% and was floored to nothing, and the earned 12% was lost
+	// with the reduction. Now each row is judged by its own sign before
+	// anything is summed: a flat, an increase or a "more" stating a figure
+	// below nought is a reduction, and so is a removal, and only those are
+	// dropped. `UCataclysmBasicAttack::AttackSpeedAfterSlows` does the same for
+	// attack speed. A scaled row's sign is its value's, since every scale
+	// counts whole steps of nought or more.
+	//
+	// ONLY UNDER THE FLAG. A character without it -- every character slowed by
+	// a creature, a dungeon rule or Cripple outside Relentless, Unstoppable's
+	// crowd and Nothing Moves You's 50 Fervour -- still sums its rows as the
+	// pipeline does, above. The flag is one stat for all three of those
+	// clauses, so all three now read the way Relentless does.
 	//
 	// A SECOND PIPELINE PASS RATHER THAN ARITHMETIC ON THE FIRST ANSWER. The
 	// single number `StatForSkill` returns cannot be taken apart again -- a
 	// figure below the base could be a reduction or a small base, and nothing
-	// in it says which. The breakdown says which, so it is what gets asked.
+	// in it says which. The rows say which, so they are what gets asked.
 	const FCataclysmStatInputs* Inputs =
 		Cataclysm->GetStatInputs(FName(TEXT("movement_speed")));
 	if (!Inputs)
 	{
 		// NO STAT LINE MEANS NOTHING TO DROP, so the answer above already is the
 		// speed. That is every character before its first refresh.
-		ApplyMovementSpeed(Asked);
+		ApplyMovementSpeed(Asked * AuraFactor);
 		return;
+	}
+
+	TArray<FCataclysmStatModifier> Earned;
+	Earned.Reserve(Inputs->Modifiers.Num());
+	for (const FCataclysmStatModifier& Row : Inputs->Modifiers)
+	{
+		if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= 0.0f)
+		{
+			Earned.Add(Row);
+		}
 	}
 
 	// THE CONDITION STATE IS BUILT THE WAY `StatForSkill` BUILDS IT, and that is
@@ -1777,19 +2002,16 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	// passed. `WithEnemiesInReach` is what fills those distances in, and only
 	// when a row in the list actually asks.
 	const FCataclysmStatBreakdown Breakdown = UCataclysmStatPipeline::Evaluate(
-		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		Inputs->Base, Earned, FGameplayTagContainer(),
 		Cataclysm->WithEnemiesInReach(
-			Inputs->Modifiers,
+			Earned,
 			UCataclysmAbilitySystemComponent::WithTargetState(
-				Inputs->Modifiers, /*Target=*/nullptr,
+				Earned, /*Target=*/nullptr,
 				Cataclysm->CurrentConditions())));
 
-	const float Flat = FMath::Max(Breakdown.Flat, 0.0f);
-	const float Increases = FMath::Max(Breakdown.SumOfIncreases, 0.0f);
-	const float More = FMath::Max(Breakdown.MoreMultiplier, 1.0f);
-
-	ApplyMovementSpeed((Breakdown.Base + Flat) * (1.0f + Increases / 100.0f)
-					   * More);
+	// THE TREES BASE'S ROW-BY-ROW ANSWER (issue #2912) TIMES THE AURA'S SHARE (`AuraFactor`, the damage-type auras),
+	// as the other two paths above multiply theirs. Resolved in bundle 1, 2026-11-25.
+	ApplyMovementSpeed(FMath::Max(Breakdown.Final, 0.0f) * AuraFactor);
 }
 
 bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
@@ -1799,6 +2021,15 @@ bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
 	if (!Cataclysm)
 	{
 		return false;
+	}
+
+	// AN AURA'S SHARE AND AN IMMUNITY TO SLOW LAPSE WITH NO EVENT, so while either is held -- or the immunity was held
+	// at the last refresh, which has to be undone once -- the speed is worked out again on every regeneration step.
+	// 2026-11-25.
+	if (Cataclysm->HoldsAnyAuraShare() || bSlowImmuneAtLastSpeedRefresh
+		|| UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow")))
+	{
+		return true;
 	}
 
 	// BOTH STATS `RefreshMovementSpeed` ASKS FOR, because a row on either moves
@@ -2360,6 +2591,100 @@ bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
 	return UCataclysmSkillEffects::IsDead(this);
 }
 
+bool ACataclysmPlayerCharacter::SkillPoolNoticeIsUpAt(float WorldSeconds) const
+{
+	// UP FROM THE MOMENT IT WAS POSTED UNTIL `SkillPoolNoticeSeconds` AFTER IT, both ends included, as the death cost's.
+	if (SkillPoolNoticePostedAt < 0.0f || SkillPoolNotice.IsEmpty())
+	{
+		return false;
+	}
+	const float Since = WorldSeconds - SkillPoolNoticePostedAt;
+	return Since >= 0.0f && Since <= SkillPoolNoticeSeconds;
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeAt(float WorldSeconds) const
+{
+	return SkillPoolNoticeIsUpAt(WorldSeconds) ? SkillPoolNotice : FString();
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeFor(const FString& Weapon, int32 Built, int32 NotBuilt)
+{
+	// THE WEAPON NAMED WHEN ONE WAS ADDED, "The Fist adds"; else "Your weapons add". The skills that do something are
+	// counted first, and the ones that are not built yet after them, so the count a player can use is the one read.
+	const FString Who =
+		Weapon.IsEmpty() ? FString(TEXT("Your weapons add")) : FString::Printf(TEXT("The %s adds"), *Weapon);
+	const auto Skills = [](int32 Count)
+	{
+		return FString::Printf(TEXT("%d skill%s"), Count, Count == 1 ? TEXT("") : TEXT("s"));
+	};
+	FString What;
+	if (Built > 0 && NotBuilt > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool, and %d not built yet"), *Skills(Built), NotBuilt);
+	}
+	else if (Built > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool"), *Skills(Built));
+	}
+	else
+	{
+		What = FString::Printf(TEXT("%s not built yet to your pool"), *Skills(NotBuilt));
+	}
+	return FString::Printf(TEXT("%s %s. Press K, or click a skill box, to choose."), *Who, *What);
+}
+
+void ACataclysmPlayerCharacter::NoteSkillsAddedToThePool(const TArray<FCataclysmWeaponSkill>& PoolBefore,
+														 const TArray<FString>& TypesBefore)
+{
+	// NEW TO THE POOL AND ON NO KEY: a skill the change put on a key needs no telling, and one already in the pool was
+	// told of before. Rows, not names, since two weapons can make skills of one name.
+	TSet<FName> Before;
+	for (const FCataclysmWeaponSkill& Skill : PoolBefore)
+	{
+		Before.Add(Skill.RowName);
+	}
+	TSet<FName> OnKeys;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetAvailableSkills())
+	{
+		OnKeys.Add(Skill.RowName);
+	}
+	int32 Built = 0;
+	int32 NotBuilt = 0;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetSkillPool())
+	{
+		if (Skill.RowName.IsNone() || Before.Contains(Skill.RowName) || OnKeys.Contains(Skill.RowName))
+		{
+			continue;
+		}
+		if (UCataclysmWeaponSkills::IsBuilt(Skill))
+		{
+			++Built;
+		}
+		else
+		{
+			++NotBuilt;
+		}
+	}
+	if (Built + NotBuilt == 0)
+	{
+		return;
+	}
+
+	// THE WEAPON NAMED ONLY WHEN THE CHANGE ADDED EXACTLY ONE WEAPON TYPE.
+	TArray<FString> Added;
+	for (const FString& Type : WeaponSlots->GetWornWeaponTypes())
+	{
+		if (!TypesBefore.Contains(Type))
+		{
+			Added.AddUnique(Type);
+		}
+	}
+	const FString Weapon = Added.Num() == 1 ? Added[0] : FString();
+	SkillPoolNotice = SkillPoolNoticeFor(Weapon, Built, NotBuilt);
+	SkillPoolNoticePostedAt = GetWorld() ? static_cast<float>(GetWorld()->GetTimeSeconds()) : 0.0f;
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillsAddedLine(Weapon, Built, NotBuilt));
+}
+
 bool ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt(float WorldSeconds) const
 {
 	// UP FROM THE MOMENT IT WAS POSTED UNTIL `DeathCostNoticeSeconds` AFTER IT, both ends included, the form
@@ -2500,8 +2825,17 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 																	 const FCataclysmItem* AskedAbout,
 																	 ECataclysmGearSlot& OutSlot)
 {
+	return WearPastTheThreshold(CarriedSlot, AskedAbout, OutSlot, ECataclysmGearSlot::Count);
+}
+
+ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 CarriedSlot,
+																	 const FCataclysmItem* AskedAbout,
+																	 ECataclysmGearSlot& OutSlot,
+																	 ECataclysmGearSlot Into)
+{
 	ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>();
-	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot).Crosses();
+	// THE SLOT THE QUESTION WAS ABOUT, issue #837's slice 3: `Count` is `Equip`'s choice, as before it.
+	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot, 0, Into).Crosses();
 	const bool bWasMarked = State && State->IsMarkedByConsumption();
 
 	// MARKED FIRST, so the character record the equip writes already holds it. See the header.
@@ -2509,8 +2843,9 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 
 	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
 	const ECataclysmWearResult Result = AskedAbout
-		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went)
-		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true);
+		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went, 0, Into)
+		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true,
+											 0, Into);
 	const bool bWorn = Result == ECataclysmWearResult::Worn || Result == ECataclysmWearResult::Swapped;
 	if (bWorn)
 	{
@@ -2585,7 +2920,18 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	// takes back everything it granted before it grants again, so calling it
 	// for a change that was not a weapon refills the same six slots with the
 	// same six abilities rather than doubling them.
+	//
+	// AND WHAT THE CHANGE ADDED TO THE POOL ON NO KEY IS SAID, since issue #837 slice 2 (the owner's Q4 of 2026-11-24):
+	// slice 1 leaves the keys as they are, so a new weapon's skills wait in the pool, and the player is told where to
+	// choose them. NOT FOR A LOAD, whose one announcement comes here too: what a loaded character carries is not news.
+	const TArray<FCataclysmWeaponSkill> PoolBefore =
+		WeaponSlots ? WeaponSlots->GetSkillPool() : TArray<FCataclysmWeaponSkill>();
+	const TArray<FString> TypesBefore = WeaponSlots ? WeaponSlots->GetWornWeaponTypes() : TArray<FString>();
 	FillAbilitySlotsFromWornWeapon();
+	if (WeaponSlots && !(Equipment && Equipment->IsAnnouncingARestore()))
+	{
+		NoteSkillsAddedToThePool(PoolBefore, TypesBefore);
+	}
 
 	// AND WHAT IS IN THE CHARACTER'S HANDS. Issue #1125. Before this a player
 	// could equip a Greataxe and see nothing change at all.
@@ -2622,7 +2968,7 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 	// (Q11), and the weapons in slot order, the first OCCUPIED slot first, so a
 	// lone weapon in the second hand is the first weapon. With nothing worn the
 	// carried list is the creation type alone, for the starting weapon below.
-	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
+	ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
 	const FName CreationType = Chooser ? Chooser->GetChosenDamageType()
 									   : UCataclysmCharacterCreation::DefaultDamageType;
 
@@ -2638,8 +2984,27 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 		Equipment ? Equipment->WornWeaponTypes() : TArray<FString>();
 	if (!WornTypes.IsEmpty())
 	{
+		// AND WHAT EACH KEY HELD BY DEFAULT, since issue #837 slice 1 (the owner's Q1 of 2026-11-24, "the keys stay as
+		// they are"): handed over before the fill and remembered again after it, so the next fill keeps every key whose
+		// skill is still in the pool. Only a fill from worn weapons is remembered.
+		WeaponSlots->UseRememberedDefaults(Chooser ? Chooser->GetRememberedDefaults() : TArray<FCataclysmSkillChoice>());
 		WeaponSlots->EquipWeaponTypes(WornTypes);
+		if (Chooser)
+		{
+			Chooser->RememberDefaults(WeaponSlots->GetAvailableSkills());
+		}
 		return;
+	}
+
+	// NO WEAPON WORN, SO NOTHING IS HANDED OVER OR REMEMBERED (slice 1's R4): the starting weapon type below is a
+	// stand-in, and keys remembered from it would hold its skills over the first real weapon's. WHAT WAS REMEMBERED IS
+	// FORGOTTEN ONLY WHEN A WEAPON WAS EXPECTED: at possession, before the weapon goes on (`NotYet`), the player state
+	// may be carrying a character's keys into a new pawn (the player state outlives a death), and the gear put back
+	// next must find them.
+	WeaponSlots->UseRememberedDefaults(TArray<FCataclysmSkillChoice>());
+	if (Chooser && Expected == ECataclysmWeaponExpected::Yes)
+	{
+		Chooser->ForgetRememberedDefaults();
 	}
 
 	// THIS IS NOW A NET UNDER A CASE THAT SHOULD NOT ARISE, AND IT SAYS SO WHEN
@@ -3367,14 +3732,14 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantGem(
 				return;
 			}
 			const ECataclysmRarity Rarity = static_cast<ECataclysmRarity>(RarityStep - 1);
-			const int32 Cell = Character->GetInventory()->AddGems(Gem, Rarity, Count);
-			if (Cell == INDEX_NONE)
+			// THE GEMS TAB NEVER REFUSES FOR ROOM (#2849): one stack per gem and rarity, no limit.
+			if (!Character->GetInventory()->AddGems(Gem, Rarity, Count))
 			{
-				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				Ar.Log(TEXT("Nothing was added."));
 				return;
 			}
-			Ar.Logf(TEXT("%d %s (%s) in cell %d: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
-					*UCataclysmGems::RarityName(Rarity), Cell, Character->GetInventory()->CountOfGems(Gem, Rarity));
+			Ar.Logf(TEXT("%d %s (%s) in the gems tab: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
+					*UCataclysmGems::RarityName(Rarity), Character->GetInventory()->CountOfGems(Gem, Rarity));
 		}));
 
 // ---------------------------------------------------------------------------
@@ -3421,14 +3786,14 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantMaterial(
 				Ar.Log(TEXT("The count is at least 1."));
 				return;
 			}
-			const int32 Cell = Character->GetInventory()->AddMaterial(Material, Count);
-			if (Cell == INDEX_NONE)
+			// THE MATERIALS TAB NEVER REFUSES FOR ROOM (#2849): one stack per material, no limit.
+			if (!Character->GetInventory()->AddMaterial(Material, Count))
 			{
-				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				Ar.Log(TEXT("Nothing was added."));
 				return;
 			}
-			Ar.Logf(TEXT("%d %s in cell %d: %d carried."), Count,
-					*UCataclysmDropRoll::MaterialNameOf(Materials, Material), Cell,
+			Ar.Logf(TEXT("%d %s in the materials tab: %d carried."), Count,
+					*UCataclysmDropRoll::MaterialNameOf(Materials, Material),
 					Character->GetInventory()->CountOfMaterial(Material));
 		}));
 
@@ -3466,6 +3831,19 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
 				{
 					Ar.Logf(TEXT("  %2d  %s"), Index, *Item->Base.ToString());
 				}
+			}
+
+			// AND THE TWO STORES, which have no slot numbers (#2849).
+			Ar.Log(TEXT("--- materials ---"));
+			for (const FCataclysmCarriedSlot& Stack : Character->GetInventory()->GetMaterialStacks())
+			{
+				Ar.Logf(TEXT("  %s x%d"), *Stack.Material.ToString(), Stack.Quantity);
+			}
+			Ar.Log(TEXT("--- gems ---"));
+			for (const FCataclysmCarriedSlot& Stack : Character->GetInventory()->GetGemStacks())
+			{
+				Ar.Logf(TEXT("  %s (%s) x%d"), *Stack.Gem.ToString(), *UCataclysmGems::RarityName(Stack.GemRarity),
+						Stack.Quantity);
 			}
 
 			Ar.Logf(TEXT("Weapon type in hand: %s"),
@@ -4947,7 +5325,13 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 				}
 
 				TArray<FString> Parts;
-				if (Report.bSurged)
+				// SEVERAL SURGES ON ONE DAY SAY SO: since issue #2865 every city that falls fires its own.
+				if (Report.Surges > 1)
+				{
+					Parts.Add(FString::Printf(TEXT("%d surges brought %d dungeons"),
+											  Report.Surges, Report.Spawned.Num()));
+				}
+				else if (Report.bSurged)
 				{
 					Parts.Add(FString::Printf(TEXT("a surge brought %d dungeons"),
 											  Report.Spawned.Num()));

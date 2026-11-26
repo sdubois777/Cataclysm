@@ -574,7 +574,8 @@ bool FCataclysmTriggeredSkillChargeSelfStunTest::RunTest(const FString& Paramete
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	// "After using a charge skill you are briefly stunned for 0.5-1 second": the row as the item builds it, on
+	// "After using a charge skill you are briefly stunned for 1-2 seconds" (0.5-1 until issue #2883, D8; the stun here
+	// is a hand-made 0.75 s, which is all this test needs): the row as the item builds it, on
 	// `skill_end` asking for `Keyword.Charge`, as `Cataclysm.StatExemption.ARowLaysAStatusOnItsOwnWearer` builds it. A
 	// charge ends inside its own activation in an unticked world, so its stun is on before anything follows it, as it is
 	// before a repeat made on the next tick. THE FREE START STANDS FOR THAT REPEAT: `MakePendingRepeat` ends in the same

@@ -187,6 +187,17 @@ FString UCataclysmEmpireMapLayout::FallenCityDetail(const UCataclysmEmpireRun* R
 		: FString(TEXT("fallen"));
 }
 
+FString UCataclysmEmpireMapLayout::RiftMark(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	// THE RUN'S OWN LIST, BY `FCataclysmDungeon::IsARift`, and no new state. Issue #51 slice B2.
+	const int32 Rifts = Run != nullptr ? Run->RiftsOn(CityId) : 0;
+	if (Rifts <= 0)
+	{
+		return FString();
+	}
+	return Rifts == 1 ? FString(TEXT(", Rift")) : FString::Printf(TEXT(", %d Rifts"), Rifts);
+}
+
 FString UCataclysmEmpireMapLayout::StandingPart(const UCataclysmEmpireRun* Run)
 {
 	if (Run == nullptr || Run->Map == nullptr)
@@ -224,6 +235,29 @@ FString UCataclysmEmpireMapLayout::CityDetailDungeonLine(const UCataclysmEmpireR
 	if (Dungeon == nullptr || Run->Clock == nullptr)
 	{
 		return FString();
+	}
+
+	// A RIFT IS NAMED AS ONE, WITH THE DAYS UNTIL IT NEXT SENDS A DUNGEON, since issue #51 slice B2: "Infernal Rift of 4
+	// floors, 3 days left, sends a dungeon in 2 days". "Infernal Rift" is the floor panel's name for it (slice B1). Its
+	// sub-type is not named: every Rift is Elite.
+	if (Dungeon->IsARift())
+	{
+		const int32 Sends = Run->DaysUntilRiftSends(DungeonId);
+		return FString::Printf(TEXT("Infernal Rift of %d floors, %.0f days left, sends a dungeon in %d day%s"),
+							   Dungeon->Floors, Run->Clock->DaysUntilResolveFor(DungeonId), Sends,
+							   Sends == 1 ? TEXT("") : TEXT("s"));
+	}
+
+	// AN ABOMINATION LAIR IS NAMED AS ONE, WITH HOW STRONG ITS ABOMINATION IS, since issue #51 slice B5: "Abomination
+	// lair of 12 floors, 9 days left, its Abomination 1.45 times as strong". Its sub-type is not named: every lair is a
+	// Horde. Nought cities fallen, or a step of one, says "of its base strength".
+	if (Dungeon->IsALair())
+	{
+		const float Stronger = Dungeon->AbominationMultiplier();
+		return FString::Printf(TEXT("Abomination lair of %d floors, %.0f days left, its Abomination %s"),
+							   Dungeon->Floors, Run->Clock->DaysUntilResolveFor(DungeonId),
+							   Stronger > 1.0f ? *FString::Printf(TEXT("%.2f times as strong"), Stronger)
+											   : TEXT("of its base strength"));
 	}
 
 	// THE SUB-TYPE FOR EVERY DUNGEON, AND THE KIND AFTER IT FOR A QUEST DUNGEON ONLY. Issue #2800, ruled 2026-11-21.
@@ -574,6 +608,33 @@ FString UCataclysmEmpireMapLayout::DaysAwayLine(const UCataclysmEmpireRun* Run)
 	}
 
 	return FString::Printf(TEXT("While you were away, from day %d to day %d: %s."), Away.FromDay, Away.ToDay,
+						   *FString::Join(Parts, TEXT("; ")));
+}
+
+FString UCataclysmEmpireMapLayout::TimersRunningOutText(const UCataclysmEmpireRun* Run, int32 Days)
+{
+	if (Run == nullptr || Days <= 0)
+	{
+		return FString();
+	}
+	const TArray<FCataclysmTimerForecast> Forecast = Run->TimersRunningOutWithin(Days);
+	if (Forecast.IsEmpty())
+	{
+		return FString();
+	}
+
+	// EACH DUNGEON BY ITS NUMBER AND THE NAME THE PLAY LOOP GIVES IT, "13 (the dungeon on Outpost (-3,0))", then the city
+	// it would hit and the day, soonest first.
+	TArray<FString> Parts;
+	for (const FCataclysmTimerForecast& Each : Forecast)
+	{
+		const FString Named = Run->NameOfDungeon(Each.DungeonId);
+		Parts.Add(FString::Printf(TEXT("dungeon %d (%s) hits %s on day %d"), Each.DungeonId,
+								  Named.IsEmpty() ? TEXT("a dungeon") : *Named, *CityNameIn(*Run, Each.CityId), Each.Day));
+	}
+	const int32 Count = Forecast.Num();
+	return FString::Printf(TEXT(" Within %d day%s, %d %s: %s."), Days, Days == 1 ? TEXT("") : TEXT("s"), Count,
+						   Count == 1 ? TEXT("dungeon's timer runs out") : TEXT("dungeons' timers run out"),
 						   *FString::Join(Parts, TEXT("; ")));
 }
 

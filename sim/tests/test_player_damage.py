@@ -30,23 +30,28 @@ def test_the_composed_hit_is_the_three_buckets_multiplied_in_order():
     """Worked by hand from the constants, so this fails if any of them moves.
 
     At difficulty tier 8 the reference character carries T7 affixes on +10 gear
-    and holds an Axe and a Sword. Those sum to 46 + 40 = 86. Six flat damage
-    affixes at 22 give 132, so the base bracket is 218. Six increased damage
+    and holds an Axe and a Sword. Those sum to 45 + 40 = 85. Six flat damage
+    affixes at 38 give 228, so the base bracket is 313. Six increased damage
     affixes at 125% give 750%.
 
-        218 x 8.5 = 1853
+        313 x 8.5 = 2660.5
+
+    SINCE ISSUE #2883, the whole-number affix ranges: a flat damage affix tops
+    at 38 (its T7 Max of 15 at +10) where it was 22, and each implicit is a
+    whole number at +0, so the Axe's 46 is 18 at +0 and 45 at +10. Before it was
+    86 + 132 = 218, and 1,853 a hit.
 
     The flat damage affix was 18 until issue #511, which raised the damage target
     by 10.5% by applying the enemy's mitigation to it. 18 gave 1,649 per hit.
     """
     b = pd.breakdown(8)
     assert b.loadout == ("Axe", "Sword")
-    assert b.weapon_damage == pytest.approx(86.0)
-    assert b.flat_from_affixes == pytest.approx(132.0)
-    assert b.base_bracket == pytest.approx(218.0)
+    assert b.weapon_damage == pytest.approx(85.0)
+    assert b.flat_from_affixes == pytest.approx(228.0)
+    assert b.base_bracket == pytest.approx(313.0)
     assert b.increased == pytest.approx(7.5)
-    assert b.per_hit == pytest.approx(1853.0)
-    assert pd.damage_per_hit(8) == pytest.approx(1853.0)
+    assert b.per_hit == pytest.approx(2660.5)
+    assert pd.damage_per_hit(8) == pytest.approx(2660.5)
 
 
 def test_a_more_multiplier_multiplies_on_its_own_rather_than_joining_the_increases():
@@ -76,27 +81,31 @@ def test_a_support_skill_deals_nothing_because_its_slot_deals_nothing():
 def test_two_one_handed_weapons_sum_their_base_damage():
     """The rule and this example are stated under "It has to reach the
     implicits, not only the affixes" in `docs/Cataclysm_GDD_v2.md`:
-    "an Axe and a Sword give 86 against a Greatsword's stated 78"."""
+    "an Axe and a Sword give 85 against a Greatsword's stated 78". 86 until
+    issue #2883 (D9) made each implicit a whole number at +0: the Axe's stated
+    46 is 18 at +0 and 45 at +10."""
     axe = pd.weapon_base_damage("Axe")
     sword = pd.weapon_base_damage("Sword")
-    assert axe == pytest.approx(46.0)
+    assert axe == pytest.approx(45.0)
     assert sword == pytest.approx(40.0)
-    assert pd.weapon_base_damage(("Axe", "Sword")) == pytest.approx(86.0)
+    assert pd.weapon_base_damage(("Axe", "Sword")) == pytest.approx(85.0)
 
 
 def test_a_two_handed_weapon_doubles_its_own_implicit_damage():
-    """The Greatsword is stored at 78 and supplies 156, because it is two-handed."""
+    """The Greatsword is stored at 78 and supplies 155, because it is two-handed:
+    78 is 31 at +0 (issue #2883, D9), doubled and upgraded to +10 together,
+    31 x 2 x 2.5. It was exactly 156 before the implicits became whole."""
     stored = next(i.value for i in af.base_named("Greatsword").implicits
                   if i.stat == "attack_damage")
     assert stored == pytest.approx(78.0)
-    assert pd.weapon_base_damage("Greatsword") == \
-        pytest.approx(stored * af.TWO_HANDED_MULTIPLIER)
+    assert pd.weapon_base_damage("Greatsword") == pytest.approx(155.0)
+    assert abs(pd.weapon_base_damage("Greatsword") - stored * af.TWO_HANDED_MULTIPLIER) <= 2.5
 
 
 def test_a_single_one_handed_weapon_is_a_legal_loadout():
     """Stated by the project owner on 2026-08-15, against what the design
     document says. It deals less than a pair, which is the point of a pair."""
-    assert pd.damage_per_hit(8, "Axe") == pytest.approx(1513.0)
+    assert pd.damage_per_hit(8, "Axe") == pytest.approx(2320.5)  # 1,513 before issue #2883
     assert pd.damage_per_hit(8, "Axe") < pd.damage_per_hit(8, ("Axe", "Sword"))
 
 
@@ -217,7 +226,9 @@ def test_the_reference_pair_lands_on_the_damage_target():
     owner on 2026-08-15, and the arithmetic agrees from two directions.
 
     `reference_weapon_base` says the weapon term must supply about 87. An Axe and
-    a Sword supply 86 and land at 1,853 against a target of 1,860.
+    a Sword supply 85 and land at 2,660.5 against a target of 2,679 (1,853 and
+    1,860 before issue #2883 and the enemy rebalance of #2884, which raised the
+    affixes and, with them, enemy health and so the target).
 
     IT USED TO BE A LOOSER FIT. Before issue #511 the target applied no enemy
     mitigation and asked for 1,683, the weapon term was 90.03, and the pair's 86
@@ -225,24 +236,26 @@ def test_the_reference_pair_lands_on_the_damage_target():
     damage affix against it brought the two within one per cent.
     """
     assert af.reference_weapon_base(8) == pytest.approx(87.0, abs=1.0)
-    assert pd.weapon_base_damage(pd.REFERENCE_LOADOUT) == pytest.approx(86.0)
+    assert pd.weapon_base_damage(pd.REFERENCE_LOADOUT) == pytest.approx(85.0)
     assert pd.gap_against_target(8) == pytest.approx(1.0, abs=0.05)
 
 
 def test_the_two_strongest_pairs_bracket_the_weapon_term_the_target_needs():
-    """86.86 is not a pair sum, because pair sums are whole numbers. The two
+    """87.16 is not a pair sum, because pair sums are whole numbers. The two
     strongest legal pairs sit either side of it, which is why the module states a
-    five per cent margin rather than claiming an exact fit."""
+    five per cent margin rather than claiming an exact fit. 92 and 86 before
+    issue #2883 made each implicit a whole number at +0."""
     required = af.reference_weapon_base(8)
-    assert pd.weapon_base_damage(("Axe", "Axe")) == pytest.approx(92.0)
-    assert pd.weapon_base_damage(("Axe", "Sword")) == pytest.approx(86.0)
+    assert pd.weapon_base_damage(("Axe", "Axe")) == pytest.approx(90.0)
+    assert pd.weapon_base_damage(("Axe", "Sword")) == pytest.approx(85.0)
     assert pd.weapon_base_damage(("Axe", "Sword")) < required
     assert pd.weapon_base_damage(("Axe", "Axe")) > required
 
 
 def test_a_two_hander_is_ahead_of_the_target_by_the_figure_the_design_states():
     """The "The Damage Target" section of `docs/Cataclysm_GDD_v2.md` states
-    that "a two-handed weapon deals about 1.32 times the target". A two-hander
+    that "a two-handed weapon deals about 1.22 times the target" (1.32 until issue
+    #2883 raised flat damage, which made the affixes a bigger share of both loadouts). A two-hander
     exceeding the target is the two-handed multiplier working, not a loadout
     breaking the target.
 
@@ -255,24 +268,28 @@ def test_a_two_hander_is_ahead_of_the_target_by_the_figure_the_design_states():
 
     **THREE FIGURES ARE IN PLAY AND ONLY ONE OF THEM BELONGS HERE.**
 
-    * **1.32** -- composed damage per hit over the 1,860 target. Stated in
+    * **1.22** -- composed damage per hit over the 2,679 target. Stated in
       "The Damage Target". It is what this test asserts.
-    * **1.29** -- the ratio of the weapon brackets alone, 310 against 240.
-      Stated in "A Two-Handed Weapon Is Worth Double, Per Implicit and Per
-      Affix" and solved by `sim/analyse_two_handed_multiplier.py`.
-    * **1.3211** -- this model's two-hander over the Axe and Sword pair, which
-      is what this test used to measure. Stated nowhere, because it is 1.32
-      divided by the pair's own 1% shortfall against the target.
+    * **1.20** -- the ratio of the weapon brackets alone. Stated in "A
+      Two-Handed Weapon Is Worth Double, Per Implicit and Per Affix" and
+      solved by `sim/analyse_two_handed_multiplier.py`.
+    * **1.2236** -- this model's two-hander over the Axe and Sword pair, which
+      is what this test used to measure. Stated nowhere, because it is 1.22
+      divided by the pair's own 0.7% shortfall against the target.
+
+    The three were 1.32, 1.29 and 1.3211 until the whole-number affix ranges of
+    issue #2883 raised flat damage, which made the affixes a bigger share of
+    both loadouts and so narrowed the two-hander's lead.
 
     `tools/tests/test_two_handed_advantage_matches_the_design.py` holds the
     first two to the sentences that state them, which is the check that was
     missing while the figure drifted for three weeks.
     """
     ratio = pd.gap_against_target(8, ("Greatsword",))
-    assert ratio == pytest.approx(1.32, abs=0.005), (
+    assert ratio == pytest.approx(1.22, abs=0.005), (
         f"a Greatsword deals {ratio:.4f} times the damage target and the "
         f'"The Damage Target" section of docs/Cataclysm_GDD_v2.md states about '
-        f"1.32. Do not relax this to cover the 1.29 in the two-handed section: "
+        f"1.22. Do not relax this to cover the 1.20 in the two-handed section: "
         f"that is the weapon-bracket ratio, a different quantity.")
 
     against_pair = pd.damage_per_hit(8, ("Greatsword",)) / pd.damage_per_hit(8)

@@ -156,13 +156,32 @@ DISMANTLE_NODES = {"Salvage Protocol", "Disassembly Expert"}
 #: THE KINDS WHOSE TEXT STATES THE TOTAL AT THE NODE'S FULL POINTS, not the figure a point: Salvage Protocol's "25% more"
 #: at its 10 points is 2.5% a point (N6).
 TOTAL_AT_FULL_POINTS = {"DismantleMaterialsIncreased": 10}
+#: #47 slice F6, the forge: the two crafting options of the centre milestones (2026-11-22, R1 to R8), numbered 10.
+SLICE_F6 = {"The Soul Forge", "The Master Tinkerer"}
+#: #47 slice F6a, the forge's gold: the five forge gold nodes (2026-11-22, Q1 to Q10, the owner's 30% for Architectural
+#: Synergy; 2026-11-24, A and B), numbered 11.
+SLICE_F6A = {"Workshop Upgrades", "Apprentice Oversight", "Architectural Synergy", "Treasury Synergy", "Forge Upgrades"}
+#: #47 slice F6b, the forge's materials: the three forge material nodes (2026-11-22, Q11 to Q17; 2026-11-25, N1 to N5),
+#: numbered 12.
+SLICE_F6B = {"Material Conservation", "Resource Management", "Tempting Fate"}
+#: #2741's crafting group, slices C1 and C2: a forge craft's residue and days (2026-11-25), numbered 13.
+SLICE_C12 = {"Tool Maintenance", "Limited Knowledge", "Heat Shielding", "Stable Compounds", "Master's Touch",
+             "Master Craftsman", "Industrial Speed", "Sovereign's Assembly"}
+#: #2741's crafting group, slices C3 and C4: a forge craft's affixes (2026-11-25, D1 to D4), numbered 14.
+SLICE_C34 = {"Precision Crafting", "Master's Workshop", "Quality Materials", "Apprentice Smith", "Rough Draft"}
+#: #2741's crafting group, slice C6: Ancient Techniques and Residue Protocols (2026-11-25, R1 and R2), numbered 15.
+SLICE_C6 = {"Ancient Techniques", "Residue Protocols"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
                "WalkDaysFewerPerActiveType", "WalkDaysFewerOnFallenCities",
                "WalkDaysFewerPerFloorCleared", "WalkOneDayWithinDaysOfFalling",
                # Issue #2832: Rapid Renovation's "-1 Day" and Rapid Funding's "by 2 days".
-               "UpgradeBuildDaysFewer", "UpgradeRushDaysFewer"}
+               "UpgradeBuildDaysFewer", "UpgradeRushDaysFewer",
+               # #2741's crafting group, slice C2: Master Craftsman's "-1 Day to crafting time per point".
+               "CraftDaysOff",
+               # Slice C6: Ancient Techniques' "-1 Day crafting time per point".
+               "CraftDaysOffOnFullItems"}
 
 #: AN EFFECT IN FLOORS, found in its text as "<value> floor": the depth nodes.
 FLOOR_EFFECTS = {"FloorsAdded", "FloorsAddedPerActiveType", "FloorsPerBranchStep"}
@@ -234,13 +253,19 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_117_nodes_of_slices_3a_to_9_the_build_nodes_and_the_two_dismantle_nodes_act() -> None:
+def test_exactly_the_142_nodes_of_slices_3a_to_9_the_build_nodes_the_dismantle_nodes_f6_to_f6b_and_c1_to_c6_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
     assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2 and len(SLICE_7) == 4 and len(SLICE_8) == 1
     assert len(SLICE_BUILD_DAYS) == 3
     assert len(SLICE_9) == 5 and len(DISMANTLE_NODES) == 2
+    assert len(SLICE_F6) == 2
+    assert len(SLICE_F6A) == 5
+    assert len(SLICE_F6B) == 3
+    assert len(SLICE_C12) == 8
+    assert len(SLICE_C34) == 5
+    assert len(SLICE_C6) == 2
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
@@ -259,8 +284,26 @@ def test_exactly_the_117_nodes_of_slices_3a_to_9_the_build_nodes_and_the_two_dis
                 | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS) & SLICE_9
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
                 | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9) & DISMANTLE_NODES
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES) & SLICE_F6
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6) & SLICE_F6A
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6
+                | SLICE_F6A) & SLICE_F6B
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6
+                | SLICE_F6A | SLICE_F6B) & SLICE_C12
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6
+                | SLICE_F6A | SLICE_F6B | SLICE_C12) & SLICE_C34
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6
+                | SLICE_F6A | SLICE_F6B | SLICE_C12 | SLICE_C34) & SLICE_C6
     built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
-             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES)
+             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6 | SLICE_F6A
+             | SLICE_F6B | SLICE_C12 | SLICE_C34 | SLICE_C6)
+    assert len(built) == 142
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -282,6 +325,18 @@ def test_exactly_the_117_nodes_of_slices_3a_to_9_the_build_nodes_and_the_two_dis
         "every slice 9 node with an effect is one EMPIRE_TREE_BUILT gives to slice 9")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 2848 for name in DISMANTLE_NODES), (
         "every dismantle node is one EMPIRE_TREE_BUILT gives to issue #2848")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 10 for name in SLICE_F6), (
+        "every #47 slice F6 option with an effect is one EMPIRE_TREE_BUILT gives to slice 10")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 11 for name in SLICE_F6A), (
+        "every #47 slice F6a forge gold node is one EMPIRE_TREE_BUILT gives to slice 11")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 12 for name in SLICE_F6B), (
+        "every #47 slice F6b forge material node is one EMPIRE_TREE_BUILT gives to slice 12")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 13 for name in SLICE_C12), (
+        "every #2741 crafting slice C1/C2 node is one EMPIRE_TREE_BUILT gives to slice 13")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 14 for name in SLICE_C34), (
+        "every #2741 crafting slice C3/C4 node is one EMPIRE_TREE_BUILT gives to slice 14")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 15 for name in SLICE_C6), (
+        "every #2741 crafting slice C6 node is one EMPIRE_TREE_BUILT gives to slice 15")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:
@@ -322,7 +377,7 @@ def test_every_value_is_in_its_own_words(texts) -> None:
     assert not wrong, "\n".join(wrong)
 
 
-def test_the_fifteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
+def test_the_seventeen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
     caps = {name: effect[4]
             for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
             for effect in effects if len(effect) > 4 and effect[4]}
@@ -349,8 +404,13 @@ def test_the_fifteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> N
                     # Slice 9, the coordinating session's ruling of 2026-11-21:
                     # Reinvestment's "(Capped)" is 30%, Veteran's Edge at its full
                     # 10 points, held apart from it (V3).
-                    "Reinvestment": 0.30}, caps
+                    "Reinvestment": 0.30,
+                    # #47 slice F6a: Architectural Synergy's 30%, the owner's
+                    # choice of 2026-11-22, "30% (Recommended)" (Q4); Treasury
+                    # Synergy's own "(Cap 30%)" (Q7).
+                    "Architectural Synergy": 0.30, "Treasury Synergy": 0.30}, caps
     assert "(Capped)" in texts["Reinvestment"]
+    assert "(Cap 30%)" in texts["Treasury Synergy"]
     assert "cap 20%" in texts["Venture Capital"]
     assert "20% cap" in texts["Treasury Guard"]
     assert "25% cap" in texts["Imperial Reserve"]

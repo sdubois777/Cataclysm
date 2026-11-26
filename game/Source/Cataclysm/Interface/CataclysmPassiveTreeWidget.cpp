@@ -322,10 +322,12 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 	if (DescriptionLabel)
 	{
 		// WHAT THE LAST NODE TOUCHED SAYS IT DOES. This is the only place a
-		// player reads a node's own words. It shows the words whether or not
-		// the node has an authored effect behind it, and 267 of the 293 do
-		// not -- so a player reading this cannot tell which sentences the
-		// character actually receives. Issues #936 and #939.
+		// player reads a node's own words. Until 2026-11-25 it showed them
+		// whether or not the node had an authored effect behind it, so a
+		// player could not tell which sentences the character receives (issues
+		// #936 and #939). Since the War vow options' second slice a node or an
+		// option with no row is marked "(not built yet: it does nothing)":
+		// the effect table is handed to both description functions below.
 		//
 		// AND FOR A CAPSTONE, THE NAMES OF ITS THREE OPTIONS. Issue #1076. This
 		// read `Row->Description` until 2026-08-28, and a capstone's own
@@ -345,9 +347,11 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 		DescriptionLabel->SetText(FText::FromString(
 			bDeciding
 				? UCataclysmPassiveTree::FullDescriptionOf(NodeTable(),
-														   ChoosingOptionFor)
+														   ChoosingOptionFor,
+														   UCataclysmPassiveTree::LoadEffectTable())
 				: UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(),
-															LastTouched)));
+															LastTouched,
+															UCataclysmPassiveTree::LoadEffectTable())));
 	}
 }
 
@@ -476,15 +480,10 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 				const FString Name = Names.IsValidIndex(Option - 1)
 					? Names[Option - 1] : FString();
 
-				// A NAMELESS OPTION SAYS SO RATHER THAN SHOWING A BLANK BUTTON.
-				// The Saboteur's four capstones have three each, issue #935, and
-				// this list never opens on one of those -- `AwaitsAnOptionChoice`
-				// refuses a capstone offering nothing -- so this is for a
-				// capstone that names one option and not another.
-				const FString Label = Name.IsEmpty()
-					? FString::Printf(TEXT("%d  (nothing is written here)"),
-									  Option)
-					: FString::Printf(TEXT("%d  %s"), Option, *Name);
+				// THE LABEL, MARKED WHEN THE OPTION HAS NO ROW. See `OptionLabelFor`.
+				const FString Label = OptionLabelFor(
+					NodeTable(), UCataclysmPassiveTree::LoadEffectTable(),
+					ChoosingOptionFor, Option);
 
 				// TAKEN IS MARKED, AND EVERY OPTION STAYS CLICKABLE. A player
 				// who clicks one of the other two gets the refusal saying the
@@ -515,6 +514,28 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 		Button->SetChoice(Value, FText::FromString(Line),
 						  Allocation.PointsIn(Value) > 0, bCanTake);
 	}
+}
+
+FString UCataclysmPassiveTreeWidget::OptionLabelFor(const UDataTable* NodeTable, const UDataTable* EffectTable,
+													FName Capstone, int32 Option)
+{
+	const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(NodeTable, Capstone);
+	const TArray<FString> Names = Row ? UCataclysmPassiveTree::OptionNamesOf(*Row) : TArray<FString>();
+	const FString Name = Names.IsValidIndex(Option - 1) ? Names[Option - 1] : FString();
+
+	// A NAMELESS OPTION SAYS SO RATHER THAN SHOWING A BLANK BUTTON. This list never opens on a capstone naming no
+	// option at all (the Saboteur's four until 2026-11-25, issue #935) -- `AwaitsAnOptionChoice` refuses a capstone
+	// offering nothing -- so this is for a capstone that names one option and not another.
+	if (Name.IsEmpty())
+	{
+		return FString::Printf(TEXT("%d  (nothing is written here)"), Option);
+	}
+
+	// AND A NAMED OPTION WITH NO ROW SAYS IT DOES NOTHING, before the permanent choice is made. The War vow options'
+	// second slice, 2026-11-25. No table, nothing marked.
+	const FString Label = FString::Printf(TEXT("%d  %s"), Option, *Name);
+	return EffectTable && !UCataclysmPassiveTree::HasEffectRows(EffectTable, Capstone, Option)
+		? UCataclysmPassiveTree::MarkedNotBuiltYet(Label) : Label;
 }
 
 FName UCataclysmPassiveTreeWidget::OptionValue(int32 Option)
@@ -581,6 +602,11 @@ void UCataclysmPassiveTreeWidget::HandleNodeHovered(FName Node)
 	// over one.
 	LastTouched = Node;
 
+	// THE NAME BESIDE THE MARK FOLLOWS THE CURSOR. Since 2026-11-24 the mark holds no name, so this is how a node is
+	// read before it is clicked. It moves while a capstone's options are on offer too: it is one short line beside
+	// the graph, and the description label below, which is what the player is reading then, is left alone.
+	PlaceNodeName();
+
 	// AND NOT WHILE A CAPSTONE'S THREE OPTIONS ARE ON OFFER. Issue #1078. The
 	// player is part way through a permanent decision and the label is showing
 	// what they are deciding between; replacing it because the cursor passed
@@ -596,7 +622,8 @@ void UCataclysmPassiveTreeWidget::HandleNodeHovered(FName Node)
 		// through the same function, so a node hovered and a node clicked read
 		// alike. Issue #1076.
 		DescriptionLabel->SetText(FText::FromString(
-			UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(), Node)));
+			UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(), Node,
+													  UCataclysmPassiveTree::LoadEffectTable())));
 	}
 }
 
@@ -723,24 +750,17 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 		return;
 	}
 
-	// THE NAME AND THE COUNT, AND NOT THE REFUSAL. A node on the graph is about
-	// 150 pixels wide and the refusal is a sentence; the sentence goes under the
-	// tree instead, where there is room for it, when the node is clicked.
-	FString Label = FString::Printf(TEXT("%s  %d/%d"), *Row->NodeName,
-									Allocation.PointsIn(Node),
-									Row->MaxPoints);
+	// THE SPENT COUNT ON THE MARK, AND NOTHING ELSE. Since 2026-11-24 a node is a mark sized by its kind, not a box
+	// holding its name, so the shape a tree is laid out in reads; the name and count are drawn beside the mark of the
+	// node hovered or selected (`PlaceNodeName`), and the refusal, a sentence, goes under the tree as it always did.
+	// A node holding no points says nothing on its mark.
+	const FString Label = UCataclysmPassiveTreeLayout::MarkCaption(Allocation.PointsIn(Node), Row->MaxPoints);
 
-	// AND A NODE WHOSE POINTS ADD NOTHING IS MARKED WITH HOW MANY. Ruled
-	// 2026-10-09 (P6). More points are spent than earned, and this node is one
-	// that gives some up. The count goes on the label, and the reason goes on
-	// the tool tip below, where there is room for a sentence.
+	// A NODE WHOSE POINTS ADD NOTHING IS STILL TOLD APART. Ruled 2026-10-09 (P6). More points are spent than earned,
+	// and this node is one that gives some up. How many goes beside its name when it is hovered
+	// (`NodeNameCaptionText`), which a mark has no room for, and the reason on the tool tip below.
 	const int32 Idle =
 		UCataclysmPassiveTree::PointsAddingNothingIn(Allocation, Points, Node);
-	if (Idle > 0)
-	{
-		Label += FString::Printf(TEXT("  (%d add%s nothing)"), Idle,
-								 Idle == 1 ? TEXT("s") : TEXT(""));
-	}
 
 	// AND A CAPSTONE THAT HAS OPENED IS CLICKABLE THOUGH IT CANNOT TAKE A POINT.
 	// Issue #1064. Until then this asked only whether a point could go in, and
@@ -772,6 +792,16 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 				 "longer worn. The points stay spent and count again when that "
 				 "gear is worn."),
 			Idle, Idle == 1 ? TEXT("s") : TEXT(""));
+	}
+
+	// AND, LAST, A NODE WITH NO ROW: its name marked "(not built yet: it does nothing)". The War vow options' second
+	// slice, 2026-11-25. Not a capstone, whose own points carry no row by design: its options are marked where they are
+	// offered. No table, nothing marked.
+	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
+	if (ToolTip.IsEmpty() && Row->Kind != UCataclysmPassiveTree::CapstoneKind && Effects
+		&& !UCataclysmPassiveTree::HasEffectRows(Effects, Node))
+	{
+		ToolTip = UCataclysmPassiveTree::MarkedNotBuiltYet(Row->NodeName);
 	}
 	Button.SetToolTipText(FText::FromString(ToolTip));
 }
@@ -838,9 +868,9 @@ void UCataclysmPassiveTreeWidget::BuildGraph()
 	NodeButtonNames.Reset();
 	EdgeImages.Reset();
 	EdgeEnds.Reset();
+	NodeNameLabel = nullptr;
 	BuiltTree = ShownTree;
-	BuiltNodeScale =
-		UCataclysmPassiveTreeLayout::NodeScaleFor(NodeTable(), ShownTree);
+	BuiltMarkScale = UCataclysmPassiveTreeLayout::MarkScaleFor(NodeTable(), ShownTree);
 
 	if (ShownTree.IsEmpty())
 	{
@@ -891,11 +921,9 @@ void UCataclysmPassiveTreeWidget::BuildGraph()
 		Button->OnChoiceHovered.AddDynamic(
 			this, &UCataclysmPassiveTreeWidget::HandleNodeHovered);
 
-		// A NAME TOO LONG FOR ITS NODE IS CUT, NOT DRAWN OVER THE NEXT ONE.
-		// Without this, `Cataclysmic Resonance` in a node 99 pixels wide spills
-		// across its neighbours and several names become one illegible line.
-		// The whole name is still readable: it is in the description under the
-		// tree whenever the cursor is over the node.
+		// A COUNT TOO WIDE FOR ITS MARK IS CUT, NOT DRAWN OVER THE NEXT ONE. A mark holds at most "12/12" since
+		// 2026-11-24, and at a fitted zoom an ordinary mark is about a dozen pixels; the name and count are drawn in
+		// full beside the mark of the node hovered or selected.
 		//
 		// SET HERE AND NOT IN THE CHOICE BUTTON ITSELF, because the constraint
 		// comes from this screen. The character creator lays the same buttons
@@ -915,6 +943,88 @@ void UCataclysmPassiveTreeWidget::BuildGraph()
 
 		NodeButtons.Add(Button);
 		NodeButtonNames.Add(Node);
+	}
+
+	// THE NAME OF THE NODE HOVERED OR SELECTED, ADDED LAST SO IT IS DRAWN OVER THE MARKS. Since 2026-11-24. Hit-test
+	// invisible, so a click meant for a mark under it reaches the mark. Aligned to the middle of its own left edge, so
+	// `NameCaptionPosition` puts it beside the mark, level with its centre.
+	NodeNameLabel = NewObject<UTextBlock>(this);
+	if (NodeNameLabel)
+	{
+		NodeNameLabel->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(NodeNameLabel)))
+		{
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.0, 0.5));
+			Placement->SetAutoSize(true);
+		}
+	}
+}
+
+FString UCataclysmPassiveTreeWidget::NodeNameCaptionText() const
+{
+	const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(NodeTable(), LastTouched);
+	// NOTHING WHEN NO NODE OF THE TREE SHOWN IS HOVERED OR SELECTED: changing tree clears `LastTouched`.
+	if (!Row || Row->Tree != ShownTree)
+	{
+		return FString();
+	}
+
+	const ACataclysmPlayerState* Player = State();
+	static const FCataclysmPassiveAllocation Nothing;
+	const FCataclysmPassiveAllocation& Allocation = Player ? Player->GetPassiveAllocation() : Nothing;
+	FString Caption = UCataclysmPassiveTreeLayout::NameCaption(Row->NodeName, Allocation.PointsIn(LastTouched),
+															   Row->MaxPoints);
+
+	// AND HOW MANY OF ITS POINTS ADD NOTHING, which the node's box said until 2026-11-24 (ruled 2026-10-09, P6).
+	const int32 Idle = UCataclysmPassiveTree::PointsAddingNothingIn(
+		Allocation, Player ? Player->PassivePointsAvailable() : 0, LastTouched);
+	if (Idle > 0)
+	{
+		Caption += FString::Printf(TEXT("  (%d add%s nothing)"), Idle, Idle == 1 ? TEXT("s") : TEXT(""));
+	}
+	return Caption;
+}
+
+FVector2D UCataclysmPassiveTreeWidget::NodeNameCaptionPositionForTests() const
+{
+	const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(NodeTable(), LastTouched);
+	if (!Row || Row->Tree != ShownTree)
+	{
+		return FVector2D::ZeroVector;
+	}
+	// THE SCALE WORKED OUT HERE, since a headless test has no canvas and `BuildGraph` never reaches the line that keeps
+	// it; the same function, so the same number.
+	const float Scale = UCataclysmPassiveTreeLayout::MarkScaleFor(NodeTable(), ShownTree);
+	const FVector2D Centre = UCataclysmPassiveTreeLayout::ScreenPositionFor(
+		FVector2D(Row->PositionX, Row->PositionY), Focus, Zoom, CanvasSize());
+	return UCataclysmPassiveTreeLayout::NameCaptionPosition(
+		Centre, UCataclysmPassiveTreeLayout::MarkSizeForNode(NodeTable(), LastTouched) * Scale * Zoom);
+}
+
+void UCataclysmPassiveTreeWidget::PlaceNodeName()
+{
+	if (!NodeNameLabel)
+	{
+		return;
+	}
+
+	const FString Caption = NodeNameCaptionText();
+	NodeNameLabel->SetText(FText::FromString(Caption));
+	NodeNameLabel->SetVisibility(Caption.IsEmpty() ? ESlateVisibility::Collapsed
+												   : ESlateVisibility::HitTestInvisible);
+
+	const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(NodeTable(), LastTouched);
+	if (!Row || Caption.IsEmpty())
+	{
+		return;
+	}
+	if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(NodeNameLabel->Slot))
+	{
+		const FVector2D Centre = UCataclysmPassiveTreeLayout::ScreenPositionFor(
+			FVector2D(Row->PositionX, Row->PositionY), Focus, Zoom, CanvasSize());
+		Placement->SetPosition(UCataclysmPassiveTreeLayout::NameCaptionPosition(
+			Centre, UCataclysmPassiveTreeLayout::MarkSizeForNode(NodeTable(), LastTouched) * BuiltMarkScale * Zoom));
 	}
 }
 
@@ -955,15 +1065,17 @@ void UCataclysmPassiveTreeWidget::PlaceGraph()
 			// show more of the tree rather than the same number of full-sized
 			// buttons in a smaller area.
 			Placement->SetPosition(At);
-			// THE TREE'S OWN SPACING DECIDES HOW BIG A NODE IS, and the view's
-			// scale decides how big that is on screen. Drawing every tree's
-			// nodes at one size would overlap in the Bulwark tree, whose
-			// closest pair sits 74 units apart, and waste most of the room in
-			// the other three.
-			Placement->SetSize(FVector2D(
-				UCataclysmPassiveTreeLayout::NodeWidthPx * BuiltNodeScale * Zoom,
-				UCataclysmPassiveTreeLayout::NodeHeightPx * BuiltNodeScale * Zoom));
+			// THE NODE'S KIND DECIDES ITS MARK, THE TREE'S SPACING HOW FAR IT MAY BE SHRUNK, AND THE VIEW HOW BIG
+			// THAT IS ON SCREEN. Since 2026-11-24: an ordinary node, a larger keystone and a wide vow, so the kinds
+			// and the tree's shape read apart. No class tree crowds its marks today (`MarkScaleFor` is 1 for each).
+			Placement->SetSize(UCataclysmPassiveTreeLayout::MarkSizeForNode(Table, Node) * BuiltMarkScale * Zoom);
 		}
+
+		// THE COUNT ON THE MARK SHRINKS WITH IT, in the proportion the mark's height bears to the empire tree's box,
+		// whose label the choice button's designed font size was made for. Issue #1089 for why a screen asks.
+		Button->SetLabelScale(static_cast<float>(UCataclysmPassiveTreeLayout::MarkSizeForNode(Table, Node).Y
+												 / UCataclysmPassiveTreeLayout::NodeHeightPx)
+							  * BuiltMarkScale * Zoom);
 
 		DescribeNodeButton(*Button, Node);
 	}
@@ -994,8 +1106,10 @@ void UCataclysmPassiveTreeWidget::PlaceGraph()
 		FVector2D At;
 		FVector2D Extent;
 		float Angle = 0.0f;
+		// THICKER THAN THE EMPIRE TREE'S, since 2026-11-24: with the nodes drawn as marks the lines carry the shape,
+		// and a gap between two marks with no line reads as a gap only when the lines are plain to see.
 		UCataclysmPassiveTreeLayout::EdgeGeometry(
-			*From, *To, UCataclysmPassiveTreeLayout::EdgeThicknessPx * Zoom,
+			*From, *To, UCataclysmPassiveTreeLayout::MarkEdgeThicknessPx * Zoom,
 			At, Extent, Angle);
 
 		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Line->Slot))
@@ -1005,6 +1119,9 @@ void UCataclysmPassiveTreeWidget::PlaceGraph()
 		}
 		Line->SetRenderTransformAngle(Angle);
 	}
+
+	// THE NAME BESIDE THE NODE HOVERED OR SELECTED MOVES WITH THE VIEW, and its count changes with a spend.
+	PlaceNodeName();
 }
 
 FReply UCataclysmPassiveTreeWidget::NativeOnMouseWheel(const FGeometry& Geometry,

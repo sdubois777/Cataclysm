@@ -199,8 +199,9 @@ TArray<FCataclysmForgeSocketAction> UCataclysmForgeLayout::SocketActionsFor(cons
 		{
 			continue;
 		}
-		// EACH CARRIED STACK THAT FITS THIS SOCKET, in cell order.
-		const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+		// EACH CARRIED STACK THAT FITS THIS SOCKET, in the gems tab's order (by gem, then rarity). Read from the gems tab
+		// since #2849; `Cell` is the stack's place in it, as it was a bag cell before.
+		const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetGemStacks();
 		for (int32 Cell = 0; Cell < Slots.Num(); ++Cell)
 		{
 			const FCataclysmCarriedSlot& Carried = Slots[Cell];
@@ -685,7 +686,8 @@ TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActions
 	{
 		return Out;
 	}
-	const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+	// THE GEMS TAB, in its order (by gem, then rarity), since #2849; `Cell` is the stack's place in it.
+	const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetGemStacks();
 	for (int32 Cell = 0; Cell < Slots.Num(); ++Cell)
 	{
 		const FCataclysmCarriedSlot& Carried = Slots[Cell];

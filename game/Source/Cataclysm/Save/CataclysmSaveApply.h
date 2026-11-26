@@ -135,9 +135,11 @@ public:
 	 * Put a saved floor's creatures and drops back onto a dungeon floor the dungeon has just rebuilt. Issue #753, the
 	 * dungeon step, ruled 2026-10-30.
 	 *
-	 * NOT `FloorInto`, IN TWO WAYS. The creatures the floor's rules raised are kept, because the rebuild placed them
-	 * and the save holds none; and each creature put back is added to the dungeon's `FloorEnemies`, which the stairs
-	 * and a kill's payout count. NO CHARACTER IS PLACED: `PlacementInto` does that, last.
+	 * NOT `FloorInto`, IN THREE WAYS. The creatures the floor's rules raised are kept, because the rebuild placed them
+	 * and the save holds none; each creature put back is added to the dungeon's `FloorEnemies`, which the stairs
+	 * and a kill's payout count; and each is made the bound dungeon's sender's again
+	 * (`ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`, slice B3, 2026-11-25), which the creature's record does
+	 * not hold. NO CHARACTER IS PLACED: `PlacementInto` does that, last.
 	 */
 	static FCataclysmFloorRestored DungeonFloorInto(ACataclysmDungeonGameMode& Dungeon,
 													const FCataclysmSavedFloor& Saved);
@@ -211,9 +213,15 @@ public:
 	 * THE ORDER: the level, the experience and the kills; the creation choice; the spent attribute points; the worn
 	 * gear, silently (`UCataclysmEquipmentComponent::RestoreWornGear` says why); the 48 bag slots by position; the
 	 * passive allocation, the bosses and the figure an allocation was handed with, after the gear as the 2026-10-09
-	 * "order a save loader must keep" entry requires, without computing the figure again; then ONE announcement, which
-	 * refreshes the stat line and refills the skill slots from the worn weapons; then each saved skill choice through
-	 * `AssignSkill`, which checks it against those skills. `OutSkillsRefused` counts the choices it refused.
+	 * "order a save loader must keep" entry requires, without computing the figure again; the saved skill choices and
+	 * the remembered defaults, AS DATA (`ACataclysmPlayerState::RestoreSkillChoices`); then ONE announcement, which
+	 * refreshes the stat line and refills the skill slots from the worn weapons, the choices and the remembered
+	 * defaults. `OutSkillsRefused` counts the choices refused: a key that is not one of the six, a row the skill table
+	 * does not have, a key or a row named twice.
+	 *
+	 * THE CHOICES CAME AFTER THE ANNOUNCEMENT, THROUGH `AssignSkill`, UNTIL ISSUE #837 SLICE 1 (2026-11-24). That checked
+	 * each against the pool worn at loading, so a choice whose weapon was off at saving was refused and lost, against
+	 * the owner's Q5 of 2026-10-25; the owner's Q7 of 2026-11-24 confirmed it is kept.
 	 *
 	 * `EquipInto` CHECKS NO LEVEL AND NO ATTRIBUTE, read before this was written: only that the item exists and suits
 	 * the slot. So the attribute points need not come before the gear for gear to be accepted; they come first here

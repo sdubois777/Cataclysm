@@ -571,6 +571,90 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption:
 			Bonuses.ExtraEarlierMilestoneOptions += FMath::RoundToInt(Total);
 			break;
+		// #47 SLICE F6: two chances, each the larger held, as The Warlord's `RemoveAnotherDungeonChance` is.
+		case ECataclysmEmpireTreeEffect::UpgradeExtraLevelChance:
+			Bonuses.UpgradeExtraLevelChance = FMath::Max(Bonuses.UpgradeExtraLevelChance, Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::EnchantCriticalChance:
+			Bonuses.EnchantCriticalChance = FMath::Max(Bonuses.EnchantCriticalChance, Row->PerPoint);
+			break;
+		// #47 SLICE F6a: the forge's gold. Architectural Synergy's per-step total adds to Workshop Upgrades', as Temporal
+		// Efficiency's adds to the loot figure; Treasury Synergy keeps its cap beside its figure, as Reinvestment does.
+		case ECataclysmEmpireTreeEffect::CraftGoldReduced:
+		case ECataclysmEmpireTreeEffect::CraftGoldReducedPerBranchStep:
+			Bonuses.CraftGoldReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LowTierCraftGoldReduced:
+			Bonuses.LowTierCraftGoldReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftGoldReducedPerSpendingStep:
+			Bonuses.CraftGoldReducedPerSpendingStep += Total;
+			Bonuses.CraftGoldSpendingCap = FMath::Max(Bonuses.CraftGoldSpendingCap, Row->Cap);
+			break;
+		case ECataclysmEmpireTreeEffect::CraftGoldTenthOffChance:
+			Bonuses.CraftGoldTenthOffChance += Total;
+			break;
+		// #47 SLICE F6b: the forge's materials, three chances drawn once a craft (`UCataclysmForge::KeepingOn`).
+		case ECataclysmEmpireTreeEffect::LowTierMaterialKeptChance:
+			Bonuses.LowTierMaterialKeptChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::RareMaterialKeptChance:
+			Bonuses.RareMaterialKeptChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::HighResidueMaterialsReturnedChance:
+			Bonuses.HighResidueMaterialsReturnedChance += Total;
+			break;
+		// #2741's CRAFTING GROUP, SLICES C1 AND C2: a forge craft's residue and days. The three "(multiplicative)" nodes
+		// compound per point, as `WalkTimeCompounded` does.
+		case ECataclysmEmpireTreeEffect::CraftResidueKept:
+			Bonuses.CraftResidueFactor *= FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::LowLevelCraftResidueKept:
+			Bonuses.LowLevelCraftResidueFactor *=
+				FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::RareMaterialCraftResidueKept:
+			Bonuses.RareMaterialCraftResidueFactor *=
+				FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::StabilizerShareReduced:
+			Bonuses.StabilizerShareReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ResidueResetChancePerHundred:
+			Bonuses.ResidueResetChancePerHundred += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysOff:
+			Bonuses.CraftDaysOff += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysReduced:
+			Bonuses.CraftDaysReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysReducedMore:
+			Bonuses.CraftDaysReducedMore += Total;
+			break;
+		// #2741's CRAFTING GROUP, SLICES C3 AND C4: a forge craft's affixes.
+		case ECataclysmEmpireTreeEffect::AffixRollTopQuarterChance:
+			Bonuses.AffixRollTopQuarterChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixRollFloor:
+			Bonuses.AffixRollFloor += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixRollMaxedChance:
+			Bonuses.AffixRollMaxedChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixTierRaisedChance:
+			Bonuses.AffixTierRaisedChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixAddedChance:
+			Bonuses.AffixAddedChance += Total;
+			break;
+		// #2741's CRAFTING GROUP, SLICE C6: Ancient Techniques and Residue Protocols.
+		case ECataclysmEmpireTreeEffect::CraftDaysOffOnFullItems:
+			Bonuses.CraftDaysOffOnFullItems += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::WornResidueIgnored:
+			Bonuses.WornResidueIgnored += Total;
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:
@@ -1049,6 +1133,33 @@ float UCataclysmEmpireTree::EmpirePointsFromSpendingFor(const FCataclysmEmpireTr
 		FMath::FloorToDouble(GoldSpentAtTierOne / static_cast<double>(ReinvestmentGoldAStep)));
 	const float Share = Steps * Bonuses.EmpirePointsPerSpendingStep;
 	return Bonuses.EmpirePointsSpendingCap > 0.0f ? FMath::Min(Share, Bonuses.EmpirePointsSpendingCap) : Share;
+}
+
+float UCataclysmEmpireTree::CraftGoldFromSpendingFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+													 double GoldSpentAtTierOne)
+{
+	if (Bonuses.CraftGoldReducedPerSpendingStep <= 0.0f || GoldSpentAtTierOne <= 0.0)
+	{
+		return 0.0f;
+	}
+	const float Steps = static_cast<float>(
+		FMath::FloorToDouble(GoldSpentAtTierOne / static_cast<double>(TreasurySynergyGoldAStep)));
+	const float Share = Steps * Bonuses.CraftGoldReducedPerSpendingStep;
+	return Bonuses.CraftGoldSpendingCap > 0.0f ? FMath::Min(Share, Bonuses.CraftGoldSpendingCap) : Share;
+}
+
+float UCataclysmEmpireTree::CraftGoldFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+											   double CraftGoldSpentAtTierOne, int32 MaterialTier, bool bTenthOff)
+{
+	float Reduced = Bonuses.CraftGoldReduced + CraftGoldFromSpendingFor(Bonuses, CraftGoldSpentAtTierOne);
+	// A CRAFT'S TIER IS ITS MATERIAL'S (Q3): tier 1 or 2. A gem combine has no material, tier 0, and takes none.
+	if (MaterialTier >= 1 && MaterialTier <= LowTierCraftHighestTier)
+	{
+		Reduced += Bonuses.LowTierCraftGoldReduced;
+	}
+	const float AfterTheReductions = 1.0f - FMath::Clamp(Reduced, 0.0f, CraftGoldReductionCap);
+	// FORGE UPGRADES' TENTH IS A MULTIPLIER OF ITS OWN, after the cap (Q9), as Scaffolding's is on a city upgrade.
+	return bTenthOff ? AfterTheReductions * ForgeUpgradesFactor : AfterTheReductions;
 }
 
 int64 UCataclysmEmpireTree::UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price)

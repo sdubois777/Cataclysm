@@ -19,7 +19,9 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagContainer.h"
@@ -501,12 +503,13 @@ bool FCataclysmKindReservesTyrantsMinionTest::RunTest(const FString&)
 // ==========================================================================
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesSkillGadgetTest,
-	"Cataclysm.KindReserves.ASkillGadgetReserves15AndASecondPressMovesItAndHoldsNothingMore",
+	"Cataclysm.KindReserves.ASkillGadgetReserves15AndASecondPressPlacesAnotherReserving15More",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The slot's press places its gadget, and a second press MOVES the one standing (S6), which the coordinating session
- * ruled on 2026-11-20 is how the gadget is controlled and not a count cap. The move holds nothing more.
+ * The slot's press places its gadget, reserving 15. UNDER THE GADGET RULE (V5g, 2026-11-25), a second press places
+ * another while the pool can hold it, reserving 15 more; until then a second press moved the one standing (S6). THE
+ * CONTROL: a pool of 15 holds one, and its second press places nothing and holds nothing more.
  */
 bool FCataclysmKindReservesSkillGadgetTest::RunTest(const FString&)
 {
@@ -544,9 +547,25 @@ bool FCataclysmKindReservesSkillGadgetTest::RunTest(const FString&)
 	Player.Character->SetActorLocation(FVector(6 * KindM, 0, 0));
 	Player.System->PressOfASkillGadgetSlot(HeavyTag);
 	Player.System->ReleaseOfASkillGadgetSlot(HeavyTag);
-	TestTrue(TEXT("a second press keeps the same gadget"), Player.System->SkillGadgetIn(Heavy) == Placed);
-	TestEqual(TEXT("one thing is commanded"), Player.Commanded(), 1);
-	TestEqual(TEXT("and still 15 is held"), Player.Reserved(), 15.0f, 0.001f);
+	TestTrue(TEXT("a second press places another gadget"), Player.System->SkillGadgetIn(Heavy) != Placed);
+	TestEqual(TEXT("two things are commanded"), Player.Commanded(), 2);
+	TestEqual(TEXT("and 30 is held"), Player.Reserved(), 30.0f, 0.001f);
+
+	// THE CONTROL: a pool of 15 holds one gadget, and its second press places nothing and holds nothing more.
+	FKindPlayer Small(World, FVector(0, 40 * KindM, 0));
+	if (!TestTrue(TEXT("set-up: a second possessed player"), Small.IsUsable()))
+	{
+		return false;
+	}
+	Small.Holds({HeavyIsAGadget});
+	Small.Pool(15.0f);
+	for (int32 Press = 0; Press < 2; ++Press)
+	{
+		Small.System->PressOfASkillGadgetSlot(HeavyTag);
+		Small.System->ReleaseOfASkillGadgetSlot(HeavyTag);
+	}
+	TestEqual(TEXT("control: a pool of 15 commands one gadget after two presses"), Small.Commanded(), 1);
+	TestEqual(TEXT("control: holding 15"), Small.Reserved(), 15.0f, 0.001f);
 	return true;
 }
 
@@ -953,7 +972,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsPercentLessTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The Swarm's "Your minions reserve 12% reduced Fervour" takes an imp's 10 to 8.8, and a summoned imp holds that. The
+ * "Your minions reserve 12% reduced Fervour" (The Swarm's row until the demonic tree rework of 2026-11-24 gave the
+ * keystone a minion at each kill; enchantments still grant the stat) takes an imp's 10 to 8.8, and a summoned imp holds that. The
  * minion enchantment's two ends, 15 and 30, take it to 8.5 and 7. With Crowned's 5 points as well, the points come off
  * first and the percentage second, a judgement of issue #2787: 30% less of 5 is 3.5, where the other order would be 2.
  */
@@ -975,7 +995,7 @@ bool FCataclysmNoCapsPercentLessTest::RunTest(const FString&)
 		10.0f, 0.001f);
 
 	Player.Holds({PercentLess(12.0f)});
-	TestEqual(TEXT("The Swarm's 12% reduced makes it 8.8"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 8.8f, 0.001f);
+	TestEqual(TEXT("12% reduced makes it 8.8"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 8.8f, 0.001f);
 	UCataclysmSummonSkill* Skill = NoCapsGrantImps(Player);
 	if (!TestNotNull(TEXT("set-up: Summon Imp is granted"), Skill))
 	{
@@ -1119,6 +1139,134 @@ bool FCataclysmNoCapsFloorTest::RunTest(const FString&)
 	Player.Holds({PercentLess(150.0f)});
 	TestEqual(TEXT("150% less is 1, not a reserve below nothing"),
 		ReserveOfType(Player, 10.0f, TEXT("Imp")), UCataclysmCommand::SmallestMinionReserve, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// A full bar is the maximum less what minions hold back (ruled 2026-11-25, the Death trees' slice C)
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesFullWithAnImpTest,
+	"Cataclysm.KindReserves.AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Every gain stops at the maximum less the reserve, so before the ruling a character with an imp out never reached
+ * "full": `class_resource_at_maximum` never held for it and the full-bar crossing never opened its window. A pool of
+ * 100 with a necrosis imp reserving 5 is full at 95. THE CONTROL: a player with no imp is not full at 95, and is at 100.
+ */
+bool FCataclysmKindReservesFullWithAnImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmKindReservesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer WithImp(World, FVector::ZeroVector);
+	FKindPlayer Alone(World, FVector(0, 40 * KindM, 0));
+	if (!TestTrue(TEXT("set-up: two possessed players"), WithImp.IsUsable() && Alone.IsUsable()))
+	{
+		return false;
+	}
+	WithImp.Holds({KindRisesOnNecrosisKill});
+	WithImp.Pool(100.0f);
+	Alone.Holds({});
+	Alone.Pool(100.0f);
+
+	const auto IsFull = [](const FKindPlayer& Player)
+	{
+		return UCataclysmStatPipeline::ConditionHolds(
+			ECataclysmStatCondition::ClassResourceAtMaximum, 0.0f, Player.System->CurrentConditions());
+	};
+
+	if (!TestNotNull(TEXT("set-up: a necrosis kill raises an imp"),
+			KindNecrosisImp(World, WithImp, FVector(4 * KindM, 0, 0))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: it holds back 5"), WithImp.Reserved(), 5.0f, 0.001f);
+	TestEqual(TEXT("set-up: and the full pool is cut to 95"), WithImp.Held(), 95.0f, 0.001f);
+	TestTrue(TEXT("95 of 100 with 5 held back is a full bar"), IsFull(WithImp));
+
+	// THE CROSSING: below the top, then back to it, opens the window again.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	WithImp.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 90.0f);
+	TestFalse(TEXT("90 is not full"), IsFull(WithImp));
+	TestEqual(TEXT("and the window opened at the start has aged 2 seconds"),
+		WithImp.System->SecondsSinceClassResourceFull(), 2.0f, 0.1f);
+	WithImp.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 95.0f);
+	TestTrue(TEXT("back at 95 it is full again"), IsFull(WithImp));
+	TestEqual(TEXT("and reaching it opened the window again"),
+		WithImp.System->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+
+	// THE CONTROL: with nothing held back, 95 is not the top and 100 is.
+	Alone.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 95.0f);
+	TestFalse(TEXT("control: 95 of 100 with nothing held back is not full"), IsFull(Alone));
+	Alone.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
+	TestTrue(TEXT("control: and 100 is"), IsFull(Alone));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesFullMeasureTest,
+	"Cataclysm.KindReserves.FullMeasureCountsAFullBarForASoulCollectorWithAMinionOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A Death class reading a full bar through a real row. Full Measure, eight points: "+2% increased damage per point while
+ * your Fervour is at its maximum", read from `DT_PassiveEffects` as the game reads it. With a minion holding back 5 of
+ * a pool of 100, the row holds at 95. THE CONTROL: the same character below the top gets nothing.
+ */
+bool FCataclysmKindReservesFullMeasureTest::RunTest(const FString&)
+{
+	using namespace CataclysmKindReservesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("SoulCollector_basic_a_a2")), 8);
+	const TMap<FName, TArray<FCataclysmStatModifier>> Rows = UCataclysmPassiveTree::ModifiersFor(
+		Allocation, UCataclysmPassiveTree::LoadNodeTable(), UCataclysmPassiveTree::LoadEffectTable(),
+		{FName(TEXT("Death"))});
+	const FName Damage(TEXT("attack_damage"));
+	if (!TestTrue(TEXT("set-up: Full Measure's rows carry attack damage"), Rows.Contains(Damage)))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Lines;
+	FCataclysmStatInputs& DamageLine = Lines.FindOrAdd(Damage);
+	DamageLine.Base = 100.0f;
+	DamageLine.Modifiers = Rows[Damage];
+	FCataclysmStatModifier Rises;
+	Rises.Bucket = ECataclysmStatBucket::Flat;
+	Rises.Source = ECataclysmModifierSource::Enchantment;
+	Rises.Value = KindRisesOnNecrosisKill.Value;
+	FCataclysmStatInputs& RiseLine = Lines.FindOrAdd(FName(KindRisesOnNecrosisKill.Stat));
+	RiseLine.Base = 0.0f;
+	RiseLine.Modifiers = {Rises};
+	Player.System->SetStatInputs(MoveTemp(Lines));
+	Player.Pool(100.0f);
+
+	if (!TestNotNull(TEXT("set-up: a necrosis kill raises a minion"),
+			KindNecrosisImp(World, Player, FVector(4 * KindM, 0, 0))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: the pool is cut to 95"), Player.Held(), 95.0f, 0.001f);
+
+	const FGameplayTagContainer NoTags;
+	TestEqual(TEXT("at 95 with 5 held back, Full Measure's 16% increased applies"),
+		Player.System->StatForSkill(Damage, NoTags, 0.0f), 116.0f, 0.01f);
+
+	// THE CONTROL: below the top, nothing.
+	Player.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 90.0f);
+	TestEqual(TEXT("control: at 90 it does not"), Player.System->StatForSkill(Damage, NoTags, 0.0f), 100.0f, 0.01f);
 	return true;
 }
 

@@ -441,6 +441,32 @@ public:
 	 */
 	bool CopySummonersLastSkill();
 
+	/**
+	 * Cast `Skill` once from this gadget at its own target, free, at the whole of its damage: the cast
+	 * `CopySummonersLastSkill` makes, for a skill handed over rather than the recorded one. Refused, as that cast is,
+	 * for a gadget that cannot act, a summoner gone or dead, no target within reach, and a skill no row may cast again
+	 * (`UCataclysmTriggeredSkill::RepeatsFromARow`). Magnum Opus (the War vow options' fourth slice, second half, V4b,
+	 * 2026-11-25) calls it on the eldest gadget for each skill its summoner uses.
+	 */
+	bool CastSkillCopy(const FCataclysmWeaponSkill& Skill);
+
+	/**
+	 * Magnum Opus, V4b, 2026-11-25: "The gadget you have had standing longest uses every skill you use, at its own target
+	 * and with your full damage. When it is gone, the next longest-standing takes its place." A flag on the summoner,
+	 * flat 1, with no gameplay attribute, asked with no tags by `EldestGadgetCastsEverySkillFor`.
+	 */
+	static const TCHAR* EldestGadgetCastsEverySkillStat;
+
+	/** Whether `Player` holds `EldestGadgetCastsEverySkillStat`. The one place the stat is read. */
+	static bool EldestGadgetCastsEverySkillFor(const AActor* Player);
+
+	/**
+	 * The gadget `Player` has had standing longest: of every living gadget it commands, skill gadgets and War gadgets
+	 * alike, the earliest placed (the lowest `SpawnOrder`, which moving a skill gadget does not change), or null. Ruled
+	 * 2026-11-25 (Q10). The next longest-standing takes its place by itself when it is gone.
+	 */
+	static ACataclysmMinion* EldestGadgetOf(const AActor* Player);
+
 	/** The enemy this gadget's copy would be aimed at now, or null. See `CopySummonersLastSkill`. */
 	AActor* SkillCopyTarget() const;
 
@@ -457,10 +483,11 @@ public:
 	 * THE SKILL GADGET. Ruled 2026-10-16 by the coordinating session (S1-S14), for the four rows "Your heavy attack /
 	 * special ability / support ability / ultimate ability is converted into a deployable gadget that fires (or
 	 * activates) your ... once per ... cooldown ... Scales off gadget damage." The owner's words: pressing a converted
-	 * slot's key PLACES its gadget where the player stands, one gadget per converted slot, a new press moves it, and
-	 * the player no longer casts that skill.
+	 * slot's key PLACES its gadget where the player stands, and the player no longer casts that skill. One gadget per
+	 * slot, a new press moving it, was the rule until V5g (2026-11-25): a press now places another while the pool can
+	 * hold it, and with no room moves every gadget (`UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot`).
 	 *
-	 * A GADGET OF ITS OWN TYPE ROW, `SkillGadgetTypeName`, one per converted slot. It has no lifespan: the floor
+	 * A GADGET OF ITS OWN TYPE ROW, `SkillGadgetTypeName`, as many to a slot as the pool holds. It has no lifespan: the floor
 	 * being cleared destroys it as every deployable is destroyed (`UCataclysmFloorContents::ClearTheFloor`), and it
 	 * can be struck and killed as any gadget can. EVERY OTHER GADGET ROW REACHES IT, because it is a gadget (S9).
 	 *
@@ -478,8 +505,8 @@ public:
 	/**
 	 * The Fervour one skill gadget reserves while it stands, before Crowned. Issue #2787, a number under the owner's
 	 * delegation of unstated numbers: half a thrall's 30, because it stands as long as a thrall does (until the floor
-	 * is cleared or it is killed) but stays where it was put and casts one skill. A new press MOVES the slot's gadget
-	 * (S6) and reserves nothing more.
+	 * is cleared or it is killed) but stays where it was put and casts one skill. Each gadget placed reserves it; a press
+	 * with no room for another moves every gadget (V5g) and reserves nothing more.
 	 */
 	static constexpr float SkillGadgetFervourReserve = 15.0f;
 
@@ -507,10 +534,28 @@ public:
 	bool IsSkillGadget() const;
 
 	/**
-	 * Move this skill gadget to `Location`, as a new press does (S6). ITS HEALTH AND ITS CLOCK ARE KEPT, so pressing
-	 * again and again cannot force a cast; nothing is destroyed and no `gadget_destroyed` is raised.
+	 * Move this gadget to `Location`, as a press with no room for another does (V5g, ruled G7: the old skill-gadget move,
+	 * generalised to any gadget). ITS HEALTH AND ITS CLOCK ARE KEPT, so pressing again and again cannot force a cast;
+	 * nothing is destroyed and no `gadget_destroyed` is raised. A skill gadget's standing-still clock starts again.
 	 */
-	void MoveSkillGadgetTo(const FVector& Location);
+	void MoveGadgetTo(const FVector& Location);
+
+	/**
+	 * THE GADGET RULE, V5g, 2026-11-25 (the owner's second message and rulings G1, G2, G7): when a gadget press has no room
+	 * for another gadget's reserve, EVERY gadget `Player` commands moves to `Point`, skill gadgets and War machines alike,
+	 * and nothing new is placed. Traps never move. Keyed on what a machine is (`IsGadget`, `DevicesOf`), never on a
+	 * machine by name, so a gadget of any damage type moves the same way.
+	 *
+	 * WHERE THEY LAND (G2): one gadget on `Point`; two or more on a ring of `GadgetMoveRingRadiusCm` around it, in placing
+	 * order, the first due east of the point and the rest at equal angles. Returns how many moved.
+	 */
+	static int32 MoveEveryGadgetOf(AActor* Player, const FVector& Point);
+
+	/** The ring moved gadgets land on, in centimetres from the point. Ruled G2. */
+	static constexpr float GadgetMoveRingRadiusCm = 150.0f;
+
+	/** Whether a machine of the minion type `TypeName` is a gadget: deployable and not a trap, read off its type's tags. */
+	static bool TypeIsAGadget(const FString& TypeName);
 
 	/** Seconds since this skill gadget was placed or last moved; its own measure of standing still. */
 	float SecondsSinceSkillGadgetPlaced() const;
@@ -583,6 +628,14 @@ public:
 	 */
 	bool CastPlayersSkillFromHere(bool bEvenForADeadPlayer = false, AActor* AimedAt = nullptr,
 								  float ShotDamageMultiplier = 1.0f);
+
+	/**
+	 * The part of `CastPlayersSkillFromHere` after its own refusals, for any `Slot`: the slot must still be converted
+	 * into a gadget, and it casts the skill the player holds in it, from here. Out of that function for Bolted Together
+	 * (V5c), whose bolted gadget casts every slot it holds. Counts nothing and fires no bolted attack.
+	 */
+	bool CastSlotSkillFromHere(ECataclysmAbilitySlot Slot, bool bEvenForADeadPlayer, AActor* AimedAt,
+							   float ShotDamageMultiplier);
 
 	/**
 	 * A PLAYER'S DEATH FIRES ITS GADGETS. Ruled 2026-10-19 by the coordinating session (C1-C5), for "When you die, all
@@ -1287,10 +1340,36 @@ public:
 	static const TCHAR* TrapArmingSpeedStat;
 	static const TCHAR* TrapTriggerRadiusStat;
 
-	/** `SkillTrapArmSeconds` for `Player`'s trap of `TrapTags`: divided by one plus the arming-speed increases. */
-	static float SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags);
+	/**
+	 * THE SABOTEUR'S TRAP TIMING, ruled by the coordinating session on 2026-11-25 (the C1 plan): three figures of the
+	 * player's, asked with the trap's type tags by `SkillTrapArmingSecondsFor`. No gameplay attribute and no base.
+	 * - `TrapsArmInstantlyStat`, a flag: the trap arms at once (Hair Trigger at 5 points). It beats every other figure,
+	 *   Delayed Fuse's extra second included (ruled).
+	 * - `TrapArmingSecondsAddedStat`: seconds added to `SkillTrapArmSeconds` before arming speed divides it (Delayed Fuse,
+	 *   "a 1 second additional arming delay").
+	 * - `TrapArmingSecondsLessPerOtherTrapStat`: seconds taken off after the division for each other skill trap of the
+	 *   player's standing, never below `SkillTrapArmingFloorSeconds` by it (Volatile Casing, "reduces the arming delay of
+	 *   all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds").
+	 */
+	static const TCHAR* TrapsArmInstantlyStat;
+	static const TCHAR* TrapArmingSecondsAddedStat;
+	static const TCHAR* TrapArmingSecondsLessPerOtherTrapStat;
 
-	/** `SkillTrapTriggerRadiusCm` for `Player`'s trap of `TrapTags`: times one plus the trigger-radius increases. */
+	/** The least Volatile Casing's reduction leaves of a trap's arming time, in seconds. */
+	static constexpr float SkillTrapArmingFloorSeconds = 0.1f;
+
+	/**
+	 * Seconds from placing (or rearming) to armed for `Player`'s trap of `TrapTags`: none under `TrapsArmInstantlyStat`;
+	 * otherwise `SkillTrapArmSeconds` plus `TrapArmingSecondsAddedStat`, divided by one plus the arming-speed increases,
+	 * less `TrapArmingSecondsLessPerOtherTrapStat` for each of the player's skill traps standing other than `Self`.
+	 */
+	static float SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags,
+										   const ACataclysmMinion* Self = nullptr);
+
+	/**
+	 * `SkillTrapTriggerRadiusCm` for `Player`'s trap of `TrapTags`: times one plus the trigger-radius increases, and times
+	 * its "more" since 2026-11-25 (Overwhelming Presence's "doubled").
+	 */
 	static float SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags);
 
 	/**
@@ -1300,6 +1379,177 @@ public:
 	 * the trap's type tags. Free: the press that calls this is what pays.
 	 */
 	static ACataclysmMinion* PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location);
+
+	/**
+	 * A skill trap placed as a copy, not by the player: Where They Fall's (the War vow options' fifth slice, first half,
+	 * V5a, 2026-11-25, ruled W3). The ordinary placement with three differences: it reserves `Reserve` Fervour (refused
+	 * when the pool cannot hold that), it lasts exactly `LifetimeSeconds` (neither stretched by `minion_duration` nor
+	 * made permanent by "Traps do not expire"), and it raises no `trap_placed` or `device_placed`, earns no placement
+	 * Fervour and is not recorded as the last trap placed. Armed at its ordinary time; the caller arms it at once.
+	 */
+	static ACataclysmMinion* PlaceSkillTrapCopy(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location,
+												float Reserve, float LifetimeSeconds);
+
+	/**
+	 * Every living trap and gadget `Player` commands, skill and War alike, each once: the machines the Saboteur's
+	 * device options count and answer with ("every machine carrying Type.Trap or Type.Gadget", ruled 2026-11-25).
+	 * V5a, 2026-11-25, out of Counterfire's search.
+	 */
+	static TArray<ACataclysmMinion*> DevicesOf(const AActor* Player);
+
+	/**
+	 * Creeping Mines, V5a, 2026-11-25: "Your armed traps creep toward the nearest enemy within 10 metres of them, at 3
+	 * metres a second." The speed and the reach are flat stats of the summoner's, with no gameplay attribute, read by
+	 * `TrapCreepCmPerSecondFor` and `TrapCreepReachCmFor`.
+	 */
+	static const TCHAR* TrapCreepMetresPerSecondStat;
+	static const TCHAR* TrapCreepReachMetresStat;
+	static float TrapCreepCmPerSecondFor(const AActor* Player);
+	static float TrapCreepReachCmFor(const AActor* Player);
+
+	/**
+	 * Cat's Cradle, V5b2, 2026-11-25: "Each of your traps and gadgets is joined by a wire to every other one within 10
+	 * metres. An enemy crossing a wire is pinned for 1 second, no more than once every 4 seconds, and the nearer end
+	 * answers: a trap goes off, a gadget fires at it." The reach, the pin's seconds and the seconds an enemy waits before
+	 * it can be pinned again are flat stats of the player's, with no gameplay attribute. Nought reach is no wires.
+	 * `UCataclysmAbilitySystemComponent::StepCatsCradle` reads them.
+	 */
+	static const TCHAR* DeviceWireReachMetresStat;
+	static const TCHAR* DeviceWirePinSecondsStat;
+	static const TCHAR* DeviceWireRepinSecondsStat;
+	static float DeviceWireReachCmFor(const AActor* Player);
+	static float DeviceWirePinSecondsFor(const AActor* Player);
+	static float DeviceWireRepinSecondsFor(const AActor* Player);
+
+	/**
+	 * Walking Arsenal, V5b3, 2026-11-25: "Your gadgets walk after you, staying within 8 metres of you, and keep firing as
+	 * they move." The 8 is a flat stat of the player's, with no gameplay attribute; nought is no following. See
+	 * `WalkAfterSummoner`.
+	 */
+	static const TCHAR* GadgetFollowWithinMetresStat;
+	static float GadgetFollowWithinCmFor(const AActor* Player);
+
+	/**
+	 * BOLTED TOGETHER, V5c, 2026-11-25: "A gadget you place within 4 metres of another of yours is bolted onto it: one
+	 * gadget, with their health added together, that fires all their attacks with 10% more damage for each gadget in
+	 * it." The 4 and the 10 are flat stats of the player's, with no gameplay attribute; nought reach is no bolting.
+	 * Rulings B1 and BT1-BT4 of 2026-11-25. KEYED ON WHAT A MACHINE IS (`IsGadget`, `DevicesOf`, its slot and its own blow
+	 * figure), never on a machine by name.
+	 */
+	static const TCHAR* GadgetBoltReachMetresStat;
+	static const TCHAR* BoltedMorePercentPerGadgetStat;
+	static float GadgetBoltReachCmFor(const AActor* Player);
+	static float BoltedMorePercentPerGadgetFor(const AActor* Player);
+
+	/**
+	 * ONE ATTACK A BOLTED GADGET HOLDS, from a gadget it absorbed (ruled BT3): an attack that gadget made, keyed
+	 * generically -- a slot's cast (`Slot` set, the slot that gadget cast) or a brain attack with its own blow figure
+	 * (`BlowFigure` above nought, the absorbed gadget's `OwnDamagePerHit`). Never a machine class by name.
+	 */
+	struct FBoltedAttack
+	{
+		ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+		float BlowFigure = 0.0f;
+	};
+
+	/** The attacks this gadget holds from those bolted onto it, in the order they were absorbed. Empty for most. */
+	TArray<FBoltedAttack> BoltedAttacks;
+
+	/** How many gadgets this one is, itself counted: 1 until another is bolted onto it. */
+	int32 GadgetsBoltedIn = 1;
+
+	/**
+	 * The "more" on every attack this gadget fires: one plus the player's percent for each gadget in it, when it holds
+	 * two or more ("10% more damage for each gadget in it": two bolted deal 20% more); one otherwise.
+	 */
+	float BoltedMoreMultiplier() const;
+
+	/**
+	 * Bolt `Absorbed` onto this gadget (ruled B1, BT4): its attacks, and those it held, join this one's list; its count
+	 * joins this one's; this one's maximum and current health each gain its; its reserve moves here, so this one holds
+	 * both until it dies; this one's life becomes the later of the two, and one that never expires stays so; and
+	 * `Absorbed` is destroyed, which raises no `gadget_destroyed` (only a death does), so it leaves no scrap trap.
+	 */
+	void AbsorbGadget(ACataclysmMinion* Absorbed);
+
+	/**
+	 * At placing (ruled BT2): the nearest other gadget of `Placed`'s player within the bolt reach, the earlier placed of
+	 * two at one distance, absorbs `Placed`, and is returned; null, with nothing done, for a trap, for a player with no
+	 * reach, or with no gadget within it.
+	 */
+	static ACataclysmMinion* BoltOnPlacing(ACataclysmMinion* Placed);
+
+	/**
+	 * After a move (V5g; ruled BT2): `Moved`, in placing order, each absorbed into the nearest gadget already standing
+	 * from the same list within the bolt reach of `Player`. So the 1.5 m ring merges into the first placed. Returns how
+	 * many were absorbed.
+	 */
+	static int32 BoltAfterMove(AActor* Player, const TArray<ACataclysmMinion*>& Moved);
+
+	/**
+	 * Every attack this gadget holds from bolting, fired at `Target` (ruled BT3), each at `BoltedMoreMultiplier`: a slot
+	 * cast through `CastSlotSkillFromHere`, a brain attack through `AttackTarget` with its own blow figure. Nothing while
+	 * already firing them, so none of them fires the list again. Returns how many fired.
+	 */
+	int32 FireBoltedAttacksAt(AActor* Target);
+
+	/** Whether this gadget is firing its bolted attacks now. */
+	bool bFiringBoltedAttacks = false;
+
+	/** The enemy `StartPlayersSkillFromHere` last aimed at, or null: the target a cast's bolted attacks fire at. */
+	TWeakObjectPtr<AActor> LastSkillStartedAt;
+
+	/**
+	 * One step of Walking Arsenal for this gadget, `Seconds` long, on the coordinating session's rulings A1 and A2: a
+	 * gadget, skill or War alike (never a trap, a scrap trap included), farther along the floor from its summoner than
+	 * `GadgetFollowWithinCmFor` moves toward it by the speed its summoner's other followers walk
+	 * (`UCataclysmCommand::CommandedWalkSpeedShareOfCommander` of the summoner's walking speed now) times `Seconds`,
+	 * stopping at the reach. Moved in steps, as Creeping Mines moves a trap.
+	 *
+	 * IT KEEPS FIRING AS IT MOVES BECAUSE NOTHING ABOUT ITS FIRING CHANGES. It still `StaysWhereItIsPut`, so its brain
+	 * still fires at an enemy in reach on its attack interval, from wherever the step has put it, and a skill gadget still
+	 * casts from its own step. A gadget that cannot act does not walk. Returns whether it moved.
+	 */
+	bool WalkAfterSummoner(float Seconds);
+
+	/** The seconds between two device steps: `ACataclysmCharacterBase` steps every device every quarter second. */
+	static constexpr float DeviceStepSeconds = 0.25f;
+
+	/**
+	 * One step of Creeping Mines for this trap, `Seconds` long: an armed trap (a War trap is always armed) with no enemy
+	 * inside its trigger radius moves toward the nearest enemy within the reach, by the speed times `Seconds`, no
+	 * further than that enemy. Moved as a skill gadget is moved, in steps (ruled CM2, a play-test point). Returns
+	 * whether it moved. Nothing for a trap whose player holds no speed.
+	 */
+	bool CreepTowardNearestEnemy(float Seconds);
+
+	/**
+	 * Scrap Mines, the War vow options' fifth slice, second half, first part, V5b1, 2026-11-25: "When one of your gadgets
+	 * expires or is destroyed, it leaves a trap where it stood. The trap fires that gadget's attack once, at double
+	 * damage, at the first enemy to come within 3 metres." THE SCRAP TRAP IS A COPY OF THE GONE GADGET'S OWN TYPE, made
+	 * inert and marked a trap (`Type.Trap` added to its tags), at half size, reserving nothing (ruled 2026-11-25). So
+	 * every rule that counts traps counts it: Creeping Mines moves it, and Counterfire and Lightning Rod can set it off.
+	 * It arms after the ordinary arming time, fires once at `ShotMultiplier` of its gadget's attack (a War machine's own
+	 * blow, or a skill gadget's slot skill) at the nearest enemy within `TriggerRadiusCm`, and is used up. It lasts the
+	 * ordinary 20 s. Generic: it keys on what the gone gadget is (`IsGadget`), never on a machine by name.
+	 */
+	static ACataclysmMinion* LeaveScrapTrapOf(const ACataclysmMinion* Gone, float ShotMultiplier, float TriggerRadiusCm);
+
+	/** Whether this machine is a scrap trap. See `LeaveScrapTrapOf`. */
+	bool IsScrapTrap() const { return bIsScrapTrap; }
+
+	/** A scrap trap's step: armed at its time, it fires at the first enemy within its radius and is used up. */
+	bool StepScrapTrap();
+
+	/** A scrap trap's one shot at `Enemy`, at its multiplier, and then it is used up. Returns whether it fired. */
+	bool FireScrapTrapAt(AActor* Enemy);
+
+	bool bIsScrapTrap = false;
+	float ScrapShotMultiplier = 1.0f;
+	float ScrapTriggerRadiusCm = 0.0f;
+	float ScrapArmsAtAgeSeconds = 0.0f;
+	/** Held while a scrap trap's one shot is made, the only time its `AttackTarget` deals anything. */
+	bool bScrapTrapFiring = false;
 
 	/** Every living skill trap `Player` commands, the oldest first by `SpawnOrder`. */
 	static TArray<ACataclysmMinion*> SkillTrapsOf(const AActor* Player);
@@ -1349,6 +1599,30 @@ public:
 
 	/** Its age at which it arms, set when it is placed. */
 	float SkillTrapArmsAtAgeSeconds = 0.0f;
+
+	/**
+	 * Begin this skill trap's arming, at placing and at rearming: unarmed, to arm `Seconds` from now. ARMED AT THAT
+	 * EXACT TIME, by a one-shot timer that arms it and runs `StepSkillTrap` (so it looks for an enemy then), and not at
+	 * the next quarter-second step, which held every arming time between two steps to the later one: until 2026-11-25 an
+	 * arming-speed bonus below a third armed at the full second (the C1 plan's finding, ruled). `Seconds` of nought arms
+	 * it now and looks for an enemy on the next tick, so nothing is set off inside the press that placed it.
+	 */
+	void BeginSkillTrapArming(float Seconds);
+
+	/** The arming timer's call: arm this trap, then run its step. See `BeginSkillTrapArming`. */
+	void SkillTrapArmingTimeReached();
+
+	/**
+	 * Tell this trap's player it has armed: `trap_armed`, with the trap's tags, naming the trap. The War vow options'
+	 * fourth slice, V4a, 2026-11-25, ruled: raised wherever a skill trap becomes armed (its timer, its step, an arming
+	 * action and an arming time of nought), and by a War machine trap when it is placed, since it has no arming step.
+	 * RAISED AT DEPTH NOUGHT: an arming inside a row's action (`arm_traps_nearby`, Trail of Wire's copy) would be dropped
+	 * by `ActOnEvent`'s depth of one, so it waits for the next tick then. Nothing for a trap with no player.
+	 */
+	void AnnounceTrapArmed();
+
+	/** The one-shot timer `BeginSkillTrapArming` sets. */
+	FTimerHandle SkillTrapArmingTimer;
 
 	/** Whether it is armed. */
 	bool bSkillTrapArmed = false;
@@ -1404,6 +1678,15 @@ public:
 	 * reserve 5%-25% reduced Fervour", read by `UCataclysmCommand::ReserveFor`.
 	 */
 	static const TCHAR* TrapsDoNotExpireStat;
+
+	/**
+	 * DELAYED FUSE, "cannot be accidentally triggered by you or your gadgets during the arming period", ruled by the
+	 * coordinating session on 2026-11-25 (the C1 plan): a flag of the player's, asked with `Type.Trap`, under which
+	 * `SetOffSkillTrapsNear` passes over a trap not yet armed. Neither the player nor a gadget ever sets off a trap by
+	 * standing near it; a row action does (a gadget destroyed, a trap triggered, the player's death), and those all come
+	 * through there. No gameplay attribute and no base.
+	 */
+	static const TCHAR* TrapsNotSetOffWhileArmingStat;
 
 	/** Whether a skill trap `Player` places now has no life span: the no-expire flag, read as above nought. */
 	static bool SkillTrapsDoNotExpireFor(const AActor* Player);
@@ -1509,7 +1792,8 @@ public:
 	 * event of it answered (G-1 (a)). THE CHAIN GUARD (H5 (b), the owner's): a trap in the player's
 	 * `SkillTrapsSetOffThisChain` is never chosen, and each trap is added to it WHEN RECORDED, so each trap goes off at most
 	 * once in a chain. The list is taken once. A trap that cannot act, or whose slot is no longer converted, is not
-	 * chosen, as its own step does nothing then. `bEvenForADeadPlayer` for the player's death alone. How many recorded.
+	 * chosen, as its own step does nothing then. Nor, for a player holding `TrapsNotSetOffWhileArmingStat` (Delayed
+	 * Fuse, 2026-11-25), is one not yet armed. `bEvenForADeadPlayer` for the player's death alone. How many recorded.
 	 */
 	static int32 SetOffSkillTrapsNear(AActor* Player, const FVector* Place, float RadiusCm, bool bNearestOnly,
 									  const AActor* Except, bool bEvenForADeadPlayer);
@@ -1734,6 +2018,42 @@ public:
 	 * a second call returns at once.
 	 */
 	virtual void HandleDeath() override;
+
+	/**
+	 * The end of its time: removed, as every actor is, UNLESS ITS SUMMONER HOLDS REKINDLED, which keeps it for its whole
+	 * lifetime again. The Ritualist keystone since the demonic tree rework of 2026-11-24: "When one of your minions
+	 * reaches the end of its time, it stays for that long again, no more than once every 5 seconds."
+	 *
+	 * ONLY A LIVING MINION THAT IS NOT A PLACED MACHINE. A dead one's body is removed by this same call
+	 * `DeadBodySeconds` after its death, and must go; a deployable is a machine and the Ritualist tree's "minion"
+	 * means its imps and thralls (the owner, 2026-09-16). A thrall has no lifetime to end.
+	 *
+	 * REACHES A RISEN IMP, whose summoner is its curser, so it works for a Wand Ritualist, the owner's answer of
+	 * 2026-11-24. "No more than once every 5 seconds" is per summoner: the clock is on its ability system, so ten imps
+	 * expiring together keep one.
+	 */
+	virtual void LifeSpanExpired() override;
+
+	/**
+	 * Rekindled's stat: the seconds between two lifetimes renewed, read off the summoner with no tags. Above nought IS
+	 * the keystone being held. No gameplay attribute.
+	 */
+	static const TCHAR* LifetimeRenewedEverySecondsStat;
+
+	/**
+	 * Keep this minion for `GrantedLifetimeSeconds` again, if Rekindled allows it now, and answer whether it did. What
+	 * `LifeSpanExpired` asks first. PUBLIC SO A TEST CAN ASK WITHOUT WAITING FOR A TIMER.
+	 */
+	bool RenewLifetimeIfRekindled();
+
+	/**
+	 * The lifetime this minion was given when it was made, after its summoner's `minion_duration`: what Rekindled
+	 * gives it again. Nought for one with no lifetime. Written by `Spawn`.
+	 */
+	float GrantedLifetimeSeconds = 0.0f;
+
+	/** How many times Rekindled has kept this minion. Read by tests. */
+	int32 TimesLifetimeRenewed = 0;
 
 	/**
 	 * How long a minion that died without exploding stays before it is

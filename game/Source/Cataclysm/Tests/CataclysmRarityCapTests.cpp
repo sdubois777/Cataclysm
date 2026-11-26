@@ -350,12 +350,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityCapLiveDropTest,
  * drop and gem comes from, at a magic find no character reaches. No gear and no gem on the floor is above Masterful,
  * and Masterful itself is there (the control). The same kills at tier 8 leave a piece above Masterful, so the check
  * can see one. Fails if the drop site rolls past the cap or passes the wrong tier.
+ *
+ * AND THE CATACLYSM BOSS'S ONE PIECE, SET ASIDE BY NAME (issue #2853, the owner's ruling of 2026-11-24: "The next
+ * tier's best (Recommended)"). Each kill also drops it, as the death site does (`SpawnTheCataclysmBossesPieceFor`); it
+ * is above the cap on purpose, so it is counted apart, by `bTheCataclysmBossesPiece`: one a kill, each the next tier's
+ * best, Legendary at tier 1.
  */
 bool FCataclysmRarityCapLiveDropTest::RunTest(const FString&)
 {
 	using namespace CataclysmRarityCapTest;
 
-	const auto BestOnTheFloor = [this](int32 Tier, int32& OutMasterful) -> int32
+	const auto BestOnTheFloor = [this](int32 Tier, int32& OutMasterful, int32& OutPieces, int32& OutPiecesRight) -> int32
 	{
 		const CataclysmTestWorld::FScopedDifficultyTier Scoped(Tier);
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -375,13 +380,26 @@ bool FCataclysmRarityCapLiveDropTest::RunTest(const FString&)
 			UCataclysmDropSpawner::SpawnGemsFor(World, CataclysmBossStep, /*MagicFind=*/100000.0f,
 												UCataclysmDropRoll::BaselineLootQuantity * 1000.0f,
 												FVector(Kill * 400.0f, 800.0f, 40.0f), Stream);
+			UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(World, CataclysmBossStep, /*MagicFind=*/100000.0f,
+																   FVector(Kill * 400.0f, 1600.0f, 40.0f), Stream);
 		}
 
 		int32 Best = -1;
 		OutMasterful = 0;
+		OutPieces = 0;
+		OutPiecesRight = 0;
 		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 		{
 			const ACataclysmDroppedItem* Drop = *It;
+			if (Drop && Drop->bTheCataclysmBossesPiece)
+			{
+				// SET ASIDE BY NAME: above the cap on purpose (#2853). Counted, with whether it is the next tier's best.
+				ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+				++OutPieces;
+				OutPiecesRight += UCataclysmItemModifiers::RarityOfItem(Drop->Item, Rarity)
+					&& Rarity == UCataclysmDropRoll::CataclysmBossPieceRarity(Tier) ? 1 : 0;
+				continue;
+			}
 			int32 Rung = -1;
 			if (Drop && Drop->IsGem())
 			{
@@ -403,16 +421,158 @@ bool FCataclysmRarityCapLiveDropTest::RunTest(const FString&)
 
 	int32 MasterfulAtOne = 0;
 	int32 MasterfulAtEight = 0;
-	const int32 AtOne = BestOnTheFloor(1, MasterfulAtOne);
-	const int32 AtEight = BestOnTheFloor(8, MasterfulAtEight);
-	AddInfo(FString::Printf(TEXT("RARITY CAP LIVE: best at tier 1 %d (%d Masterful), best at tier 8 %d"), AtOne,
-							MasterfulAtOne, AtEight));
+	int32 PiecesAtOne = 0;
+	int32 PiecesAtEight = 0;
+	int32 RightAtOne = 0;
+	int32 RightAtEight = 0;
+	const int32 AtOne = BestOnTheFloor(1, MasterfulAtOne, PiecesAtOne, RightAtOne);
+	const int32 AtEight = BestOnTheFloor(8, MasterfulAtEight, PiecesAtEight, RightAtEight);
+	AddInfo(FString::Printf(TEXT("RARITY CAP LIVE: best at tier 1 %d (%d Masterful), best at tier 8 %d; the Cataclysm "
+								 "Boss's pieces %d at tier 1 (%d the next tier's best), %d at tier 8 (%d)"),
+							AtOne, MasterfulAtOne, AtEight, PiecesAtOne, RightAtOne, PiecesAtEight, RightAtEight));
+	TestEqual(TEXT("**one Cataclysm Boss's piece a kill at tier 1**"), PiecesAtOne, 20);
+	TestEqual(TEXT("**each the next tier's best, Legendary**"), RightAtOne, 20);
+	TestEqual(TEXT("and at tier 8, each Cataclysmic"), RightAtEight, 20);
 	TestTrue(TEXT("set-up: the tier 1 kills dropped something"), AtOne >= 0);
 	TestTrue(*FString::Printf(TEXT("nothing at tier 1 is above Masterful (best %d)"), AtOne),
 			 AtOne <= static_cast<int32>(ECataclysmRarity::Masterful));
 	TestTrue(*FString::Printf(TEXT("control: Masterful drops at tier 1 (%d)"), MasterfulAtOne), MasterfulAtOne > 0);
 	TestTrue(*FString::Printf(TEXT("control: the same kills at tier 8 drop above Masterful (best %d)"), AtEight),
 			 AtEight > static_cast<int32>(ECataclysmRarity::Masterful));
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// RC7. The Cataclysm Boss's piece is the next tier's best.
+// ---------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityCapBossPieceRarityTest,
+	"Cataclysm.RarityCap.TheCataclysmBossesPieceIsTheNextTiersBest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * RC7. Issue #2853, the owner's ruling of 2026-11-24, "The next tier's best (Recommended)": the piece's rarity at each
+ * tier, written out, tier 1 Legendary, 2 Mythical, 3 Ascendant, 4 to 8 Cataclysmic; and one rung above the tier's own
+ * cap wherever the cap is below Cataclysmic. Fails if `CataclysmBossPieceRarity` gives the tier's own cap.
+ */
+bool FCataclysmRarityCapBossPieceRarityTest::RunTest(const FString&)
+{
+	using FDrop = UCataclysmDropRoll;
+	const ECataclysmRarity Expected[] = {
+		ECataclysmRarity::Legendary, ECataclysmRarity::Mythical, ECataclysmRarity::Ascendant,
+		ECataclysmRarity::Cataclysmic, ECataclysmRarity::Cataclysmic, ECataclysmRarity::Cataclysmic,
+		ECataclysmRarity::Cataclysmic, ECataclysmRarity::Cataclysmic};
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		const ECataclysmRarity Piece = FDrop::CataclysmBossPieceRarity(Tier);
+		const ECataclysmRarity Cap = FDrop::HighestDroppableRarity(Tier);
+		TestEqual(*FString::Printf(TEXT("**tier %d: %s**"), Tier, *FDrop::RowNameFor(Expected[Tier - 1]).ToString()),
+				  static_cast<int32>(Piece), static_cast<int32>(Expected[Tier - 1]));
+		if (Cap != ECataclysmRarity::Cataclysmic)
+		{
+			TestEqual(*FString::Printf(TEXT("tier %d: one rung above the tier's cap"), Tier),
+					  static_cast<int32>(Piece), static_cast<int32>(Cap) + 1);
+		}
+	}
+	return true;
+}
+
+namespace CataclysmRarityCapTest
+{
+	/** The Cataclysm Boss's piece spawned once at `Tier` for a kill at `Step`: the drops it put on the floor. */
+	TArray<const ACataclysmDroppedItem*> BossPiecesFor(FAutomationTestBase& Test, int32 Tier, int32 Step, int32& OutSpawned,
+													   UWorld*& OutWorld)
+	{
+		TArray<const ACataclysmDroppedItem*> Out;
+		OutWorld = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("set-up: a world"), OutWorld))
+		{
+			return Out;
+		}
+		FRandomStream Stream(2853 + Tier);
+		OutSpawned = UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(OutWorld, Step, /*MagicFind=*/0.0f,
+																			 FVector(0.0f, 0.0f, 40.0f), Stream);
+		for (TActorIterator<ACataclysmDroppedItem> It(OutWorld); It; ++It)
+		{
+			Out.Add(*It);
+		}
+		return Out;
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// RC8. A Cataclysm Boss's kill drops one piece of the next tier's best, at its rarity's gate.
+// ---------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityCapBossPieceDropTest,
+	"Cataclysm.RarityCap.ACataclysmBossDropsOnePieceOfTheNextTiersBestAtItsGate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * RC8. At tiers 1, 4 and 8, `SpawnTheCataclysmBossesPieceFor` at the Cataclysm Boss's rung, with no magic find, puts
+ * exactly one item on the floor: marked `bTheCataclysmBossesPiece`, of the next tier's best rarity (Legendary,
+ * Cataclysmic, Cataclysmic), at its rarity's gear level gate as every drop is (Legendary +4, Cataclysmic +10).
+ */
+bool FCataclysmRarityCapBossPieceDropTest::RunTest(const FString&)
+{
+	using namespace CataclysmRarityCapTest;
+	const UDataTable* Rarities = UCataclysmDropRoll::LoadGearRarityTable();
+	if (!TestNotNull(TEXT("set-up: the gear rarity table"), Rarities))
+	{
+		return false;
+	}
+	for (const int32 Tier : {1, 4, 8})
+	{
+		const CataclysmTestWorld::FScopedDifficultyTier Scoped(Tier);
+		int32 Spawned = 0;
+		UWorld* World = nullptr;
+		const TArray<const ACataclysmDroppedItem*> Floor =
+			BossPiecesFor(*this, Tier, UCataclysmDropSpawner::CataclysmBossRarityStep, Spawned, World);
+		ON_SCOPE_EXIT { if (World) { World->DestroyWorld(false); } };
+		const ECataclysmRarity Wanted = UCataclysmDropRoll::CataclysmBossPieceRarity(Tier);
+		ECataclysmRarity Read = ECataclysmRarity::Everyday;
+		const bool bRead = Floor.Num() == 1 && UCataclysmItemModifiers::RarityOfItem(Floor[0]->Item, Read);
+		AddInfo(FString::Printf(TEXT("BOSS PIECE: tier %d, %d spawned, %d on the floor, %s +%d"), Tier, Spawned,
+								Floor.Num(), bRead ? *UCataclysmDropRoll::RowNameFor(Read).ToString() : TEXT("unread"),
+								Floor.Num() == 1 ? Floor[0]->Item.GearLevel : -1));
+		TestEqual(*FString::Printf(TEXT("tier %d: one piece"), Tier), Spawned, 1);
+		if (!TestEqual(*FString::Printf(TEXT("tier %d: one item on the floor"), Tier), Floor.Num(), 1))
+		{
+			continue;
+		}
+		TestTrue(*FString::Printf(TEXT("tier %d: marked as the Cataclysm Boss's piece"), Tier),
+				 Floor[0]->bTheCataclysmBossesPiece);
+		TestTrue(*FString::Printf(TEXT("**tier %d: of the next tier's best rarity**"), Tier), bRead && Read == Wanted);
+		TestEqual(*FString::Printf(TEXT("tier %d: at its rarity's gear level gate"), Tier), Floor[0]->Item.GearLevel,
+				  UCataclysmDropRoll::GearLevelGateFor(Rarities, Wanted));
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// RC9. Only the Cataclysm Boss's rung drops the piece.
+// ---------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityCapBossPieceRungTest,
+	"Cataclysm.RarityCap.OnlyTheCataclysmBossesRungDropsThePiece",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * RC9. At tier 1, `SpawnTheCataclysmBossesPieceFor` for every rung below the Cataclysm Boss's, the Boss's included,
+ * spawns nothing. CONTROL: at the Cataclysm Boss's rung it spawns one.
+ */
+bool FCataclysmRarityCapBossPieceRungTest::RunTest(const FString&)
+{
+	using namespace CataclysmRarityCapTest;
+	const CataclysmTestWorld::FScopedDifficultyTier Scoped(1);
+	for (int32 Step = 0; Step <= UCataclysmDropSpawner::CataclysmBossRarityStep; ++Step)
+	{
+		int32 Spawned = 0;
+		UWorld* World = nullptr;
+		const TArray<const ACataclysmDroppedItem*> Floor = BossPiecesFor(*this, 1, Step, Spawned, World);
+		ON_SCOPE_EXIT { if (World) { World->DestroyWorld(false); } };
+		const bool bTheBossRung = Step == UCataclysmDropSpawner::CataclysmBossRarityStep;
+		TestEqual(*FString::Printf(TEXT("%srung %d: %s"), bTheBossRung ? TEXT("CONTROL: ") : TEXT("**"), Step,
+								   bTheBossRung ? TEXT("one piece") : TEXT("nothing**")),
+				  Floor.Num(), bTheBossRung ? 1 : 0);
+	}
 	return true;
 }
 

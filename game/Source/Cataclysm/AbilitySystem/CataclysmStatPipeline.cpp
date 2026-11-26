@@ -149,6 +149,50 @@ namespace
 		{ TEXT("hit_dealt_is_not_spell"),       ECataclysmStatCondition::HitDealtIsNotSpell },
 		{ TEXT("target_is_silenced"),           ECataclysmStatCondition::TargetIsSilenced },
 		{ TEXT("target_is_moving"),             ECataclysmStatCondition::TargetIsMoving },
+		{ TEXT("target_carries_your_curse"),    ECataclysmStatCondition::TargetCarriesYourCurse },
+		{ TEXT("target_rarity_at_least"),       ECataclysmStatCondition::TargetRarityAtLeast },
+		{ TEXT("target_rarity_is"),             ECataclysmStatCondition::TargetRarityIs },
+		{ TEXT("seconds_after_kill"),           ECataclysmStatCondition::WithinSecondsOfKill },
+		{ TEXT("target_in_your_siphon"),        ECataclysmStatCondition::TargetInYourSiphon },
+		{ TEXT("seconds_after_fervour_spent"),  ECataclysmStatCondition::WithinSecondsOfFervourSpent },
+		{ TEXT("fervour_threshold_reached"),    ECataclysmStatCondition::FervourThresholdReached },
+		{ TEXT("class_resource_points_below"),  ECataclysmStatCondition::ClassResourcePointsBelow },
+		{ TEXT("target_carries_your_poison_or_bleed"), ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed },
+		{ TEXT("fervour_gain_not_from_a_kill"), ECataclysmStatCondition::FervourGainNotFromAKill },
+		{ TEXT("killing_blow_was_a_hit"), ECataclysmStatCondition::KillingBlowWasAHit },
+		{ TEXT("target_near_your_kill_within_seconds"), ECataclysmStatCondition::TargetNearYourKillWithinSeconds },
+		{ TEXT("kill_was_an_execute"), ECataclysmStatCondition::KillWasAnExecute },
+		{ TEXT("wearing_enemy_modifier"), ECataclysmStatCondition::WearingEnemyModifier },
+		{ TEXT("next_hit_is_critical"), ECataclysmStatCondition::NextHitIsCritical },
+		{ TEXT("target_struck_from_behind"), ECataclysmStatCondition::TargetStruckFromBehind },
+		{ TEXT("target_at_full_health"), ECataclysmStatCondition::TargetAtFullHealth },
+		{ TEXT("target_carries_your_poison"), ECataclysmStatCondition::TargetCarriesYourPoison },
+		{ TEXT("target_beyond_metres"), ECataclysmStatCondition::TargetBeyondMetres },
+		{ TEXT("seconds_after_movement_skill_ends"), ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd },
+		{ TEXT("target_struck_by_your_movement_skill_within_seconds"),
+		  ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds },
+		{ TEXT("opponent_rarity_at_least"), ECataclysmStatCondition::OpponentRarityAtLeast },
+		{ TEXT("enemy_of_rarity_in_reach"), ECataclysmStatCondition::EnemyOfRarityInReach },
+		{ TEXT("no_enemy_in_reach"), ECataclysmStatCondition::NoEnemyInReach },
+		{ TEXT("kill_chain_within_seconds"), ECataclysmStatCondition::KillChainWithinSeconds },
+		{ TEXT("minions_in_reach_at_least"), ECataclysmStatCondition::MinionsInReachAtLeast },
+		{ TEXT("target_carries_necrosis"), ECataclysmStatCondition::TargetCarriesNecrosis },
+		{ TEXT("seconds_after_minion_death"), ECataclysmStatCondition::WithinSecondsOfMinionDeath },
+		{ TEXT("minion_death_in_reach_within_seconds"), ECataclysmStatCondition::MinionDeathInReachWithinSeconds },
+		{ TEXT("hit_took_at_least_percent_of_max_health"), ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth },
+		{ TEXT("minion_within_metres_of_you"), ECataclysmStatCondition::MinionWithinMetresOfYou },
+		{ TEXT("target_marked_by_you"), ECataclysmStatCondition::TargetMarkedByYou },
+		{ TEXT("target_is_your_last_attacker"), ECataclysmStatCondition::TargetIsYourLastAttacker },
+		{ TEXT("dual_wielding"),                ECataclysmStatCondition::DualWielding },
+		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
+		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
+		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
+		{ TEXT("own_gadget_within_metres"),     ECataclysmStatCondition::OwnGadgetWithinMetres },
+		{ TEXT("target_not_yet_triggered_your_trap"), ECataclysmStatCondition::TargetNotYetTriggeredYourTrap },
+		{ TEXT("seconds_after_gadget_struck"),  ECataclysmStatCondition::WithinSecondsOfGadgetStruck },
+		{ TEXT("no_room_for_a_trap"),           ECataclysmStatCondition::NoRoomForATrap },
+		// THE SABOTEUR'S ROWS, 2026-11-25: Durable Modifications' 3% a point at or below half the pool.
+		{ TEXT("class_resource_at_or_below"),   ECataclysmStatCondition::ClassResourceAtOrBelowPercent },
 	};
 
 	struct FNamedStatScale
@@ -167,6 +211,7 @@ namespace
 		{ TEXT("carnage_stacks"),      ECataclysmStatScale::PerStackOfCarnage },
 		{ TEXT("debuffs_carried"),     ECataclysmStatScale::PerDebuffCarried },
 		{ TEXT("minions_held"),        ECataclysmStatScale::PerMinionHeld },
+		{ TEXT("enemies_in_siphon"),   ECataclysmStatScale::PerEnemyInSiphon },
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
@@ -181,6 +226,8 @@ namespace
 		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
 		{ TEXT("own_stacks"),          ECataclysmStatScale::PerOwnStack },
 		{ TEXT("consecutive_hits"),    ECataclysmStatScale::PerConsecutiveHit },
+		{ TEXT("seconds_poisoned_by_you"), ECataclysmStatScale::PerSecondPoisonedByYou },
+		{ TEXT("fervour_overflow_stacks"), ECataclysmStatScale::PerFervourOverflowStack },
 		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
 		{ TEXT("class_points_spent"),  ECataclysmStatScale::PerClassPointSpent },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
@@ -191,6 +238,7 @@ namespace
 		{ TEXT("deployables_active"),  ECataclysmStatScale::PerDeployableActive },
 		{ TEXT("traps_active"),        ECataclysmStatScale::PerTrapActive },
 		{ TEXT("gadgets_active"),      ECataclysmStatScale::PerGadgetActive },
+		{ TEXT("fervour_thresholds_reached"), ECataclysmStatScale::PerFervourThresholdReached },
 		{ TEXT("seconds_on_floor"),    ECataclysmStatScale::PerSecondOnThisFloor },
 		{ TEXT("floors_cleared"),      ECataclysmStatScale::PerFloorClearedThisRun },
 		{ TEXT("armor"),               ECataclysmStatScale::PerPointOfArmor },
@@ -199,6 +247,10 @@ namespace
 		{ TEXT("seconds_leeching"),    ECataclysmStatScale::PerSecondLeeching },
 		{ TEXT("share_of_range_moved"), ECataclysmStatScale::ShareOfRangeMoved },
 		{ TEXT("enemies_in_reach_while_own_stack"), ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld },
+		{ TEXT("increased_movement_speed"), ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed },
+		{ TEXT("max_class_resource"),  ECataclysmStatScale::PerPointOfMaximumClassResource },
+		{ TEXT("block_chance"),        ECataclysmStatScale::PerPercentOfBlockChance },
+		{ TEXT("current_health"),      ECataclysmStatScale::PerPointOfCurrentHealth },
 	};
 
 	/**
@@ -276,6 +328,59 @@ void UCataclysmStatPipeline::AllConditionNames(TArray<FString>& OutNames)
 	}
 }
 
+float UCataclysmStatPipeline::FervourHeldCounted(const FCataclysmStatConditions& State)
+{
+	return State.ClassResourceHeld < 0.0f
+		? State.ClassResourceHeld
+		: State.ClassResourceHeld + FMath::Max(0.0f, State.ClassResourceCountedAsHeld);
+}
+
+int32 CataclysmFervourThresholds::Count()
+{
+	return 4;
+}
+
+float CataclysmFervourThresholds::Figure(int32 Index)
+{
+	switch (Index)
+	{
+	case 0: return 20.0f;
+	case 1: return 40.0f;
+	case 2: return 60.0f;
+	case 3: return 100.0f;
+	default: return -1.0f;
+	}
+}
+
+int32 CataclysmFervourThresholds::OpensAtPoints(int32 Index)
+{
+	switch (Index)
+	{
+	case 0: return 25;
+	case 1: return 50;
+	case 2: return 100;
+	case 3: return 200;
+	default: return -1;
+	}
+}
+
+int32 CataclysmFervourThresholds::IndexOf(float FigureAskedFor)
+{
+	for (int32 Index = 0; Index < Count(); ++Index)
+	{
+		if (FMath::IsNearlyEqual(Figure(Index), FigureAskedFor))
+		{
+			return Index;
+		}
+	}
+	return -1;
+}
+
+bool UCataclysmStatPipeline::IsJudgedAtItsEvent(ECataclysmStatCondition Condition)
+{
+	return Condition == ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth;
+}
+
 bool UCataclysmStatPipeline::ConditionTakesAValue(
 	ECataclysmStatCondition Condition)
 {
@@ -310,13 +415,32 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesADot:
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 	case ECataclysmStatCondition::TargetStandsInYourZone:
+	case ECataclysmStatCondition::TargetInYourSiphon:
 	case ECataclysmStatCondition::WhileUnderDamageOverTime:
 	case ECataclysmStatCondition::WhileChannelling:
 	case ECataclysmStatCondition::HitDealtIsNotSpell:
 	case ECataclysmStatCondition::TargetIsSilenced:
 	case ECataclysmStatCondition::TargetIsMoving:
+	case ECataclysmStatCondition::TargetCarriesYourCurse:
+	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
+	case ECataclysmStatCondition::FervourGainNotFromAKill:
+	case ECataclysmStatCondition::KillingBlowWasAHit:
+	case ECataclysmStatCondition::KillWasAnExecute:
+	case ECataclysmStatCondition::NextHitIsCritical:
+	case ECataclysmStatCondition::TargetStruckFromBehind:
+	case ECataclysmStatCondition::TargetAtFullHealth:
+	case ECataclysmStatCondition::TargetCarriesYourPoison:
+	case ECataclysmStatCondition::NoEnemyInReach:
+	case ECataclysmStatCondition::TargetCarriesNecrosis:
+	case ECataclysmStatCondition::TargetMarkedByYou:
+	case ECataclysmStatCondition::TargetIsYourLastAttacker:
+	case ECataclysmStatCondition::DualWielding:
+	case ECataclysmStatCondition::InWrath:
+	case ECataclysmStatCondition::InFrenzy:
+	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
+	case ECataclysmStatCondition::NoRoomForATrap:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-four says
+		// nothing for a number to be compared against. Each of the fifty-three says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -407,6 +531,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::ClassResourceAtMaximum:
 	case C::ClassResourceAbovePercent:
 	case C::ClassResourcePointsAtLeast:
+	case C::ClassResourcePointsBelow:
+	// AND ITS COMPLEMENT, the Saboteur's rows of 2026-11-25.
+	case C::ClassResourceAtOrBelowPercent:
 		return EOn::ClassResource;
 
 	case C::EnergyShieldAtMaximum:
@@ -421,7 +548,26 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// that leaves speed alone does not do. Classed here, the reader re-asks as
 	// time passes, which is the answer this category gives.
 	case C::WieldingTwoHandedWeapon:
+	// AND HOW MANY ITEMS THE WEAPON SLOTS HOLD, for the same reason: a weapon swap. The Berserker's states, 2026-11-25.
+	case C::DualWielding:
 		return EOn::OtherAttributes;
+
+	// THE BERSERKER'S STATES BEGIN AT A FULL POOL AND END AT AN EMPTY ONE, so they move when the class resource moves.
+	// 2026-11-25. `ACataclysmPlayerCharacter::OnClassResourceChanged` judges the state before it works out the walking
+	// speed again, so a speed row under either reads the new state.
+	case C::InWrath:
+	case C::InFrenzy:
+		return EOn::ClassResource;
+
+	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Whether the pool has room for another trap moves with the pool and
+	// with the reserves, which a trap placed or ended changes in the pool's own maximum; the nearest gadget's distance
+	// moves as the character walks, which nothing announces; and a gadget's hit is a window that closes on time.
+	case C::NoRoomForATrap:
+		return EOn::ClassResource;
+	case C::OwnGadgetWithinMetres:
+		return EOn::Surroundings;
+	case C::WithinSecondsOfGadgetStruck:
+		return EOn::Time;
 
 	// EVERY WINDOW AFTER AN EVENT, and the three that measure how long
 	// something has or has not happened. Bleeding is here too: it ends when
@@ -439,6 +585,10 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfStrikingABoss:
 	case C::WithinSecondsOfSupportSkill:
 	case C::WithinSecondsOfMovementSkill:
+	case C::WithinSecondsOfMovementSkillEnd:
+	case C::WithinSecondsOfMinionDeath:
+	case C::MinionDeathInReachWithinSeconds:
+	case C::HitTookAtLeastPercentOfMaxHealth:
 	case C::WithinSecondsOfSpell:
 	case C::WithinSecondsOfMeleeHitTaken:
 	case C::WithinSecondsOfCrowdControl:
@@ -456,6 +606,21 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// a channelled skill begins, which is announced, and closes when its seconds
 	// run out, which nothing announces; the closing edge is what puts it here.
 	case C::ChannellingForUnderSeconds:
+	// AND THE WINDOW AFTER A KILL, the Death trees of 2026-11-24: it opens at a kill and closes when its seconds run
+	// out, which nothing announces.
+	case C::WithinSecondsOfKill:
+	case C::KillChainWithinSeconds:
+	case C::WithinSecondsOfFervourSpent:
+	// AND A WORN ENEMY MODIFIER, the Death trees' slice C4d3 (2026-11-25): it runs out after its seconds with nothing
+	// announcing it, as the kill's clock does.
+	case C::WearingEnemyModifier:
+	// AND A NEXT-HIT CRITICAL CHARGE, the Death trees' slice C6a (2026-11-25): it runs out after its seconds with nothing
+	// announcing it, as the two above do.
+	case C::NextHitIsCritical:
+	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held, and Long Shadow's
+	// seconds after a fall run out with nothing announcing it, which is what puts it here rather than with the class
+	// resource's conditions.
+	case C::FervourThresholdReached:
 		return EOn::Time;
 
 	// WHETHER THE CHARACTER IS CHANNELLING AT ALL. Ruled 2026-10-08. Both of its
@@ -468,6 +633,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 		return EOn::Motion;
 
 	case C::EnemiesInReachAtLeast:
+	case C::EnemyOfRarityInReach:
+	case C::NoEnemyInReach:
+	case C::MinionsInReachAtLeast:
 		return EOn::Surroundings;
 
 	// THE LAST LABEL OF THIS GROUP, `OpponentFirstStruckByYouSecondsAgo`, IS A
@@ -482,9 +650,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::HitIsRangedAttack:
 	case C::HitIsSpell:
 	case C::OpponentIsBoss:
+	case C::OpponentRarityAtLeast:
 	case C::MetresMovedBeforeAttack:
 	case C::OpponentBeyondMetres:
 	case C::TargetWithinMetres:
+	case C::TargetBeyondMetres:
 	case C::OpponentIsStaggered:
 	case C::OpponentIsCrowdControlled:
 	case C::MeleeHitWhileMoving:
@@ -496,6 +666,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesVoidSplinter:
 	case C::OpponentCarriesWeaken:
 	case C::TargetHealthBelowPercent:
+	case C::TargetAtFullHealth:
 	case C::EnemiesStruckTogetherAtLeast:
 	case C::EnemiesStruckTogetherAtMost:
 	case C::OpponentWithinMetres:
@@ -504,7 +675,10 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesAnyDebuff:
 	case C::TargetCarriesADot:
 	case C::TargetDamagedByYouWithinSeconds:
+	case C::TargetNearYourKillWithinSeconds:
+	case C::TargetStruckByYourMovementSkillWithinSeconds:
 	case C::TargetStandsInYourZone:
+	case C::TargetInYourSiphon:
 	case C::OpponentFirstStruckByYouSecondsAgo:
 		return EOn::TheBlowOrSkill;
 
@@ -520,6 +694,53 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE STRUCK CHARACTER IS MOVING, ruled 2026-10-23 (#2235, Q1): a fact of the target in hand, after
 	// `TargetIsSilenced`.
 	case C::TargetIsMoving:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK CHARACTER CARRIES A CURSE THE ASKER LAID, the demonic tree rework of 2026-11-24: a fact of the
+	// target in hand, after `TargetIsMoving`.
+	case C::TargetCarriesYourCurse:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK OR SLAIN CREATURE CARRIES THE ASKER'S POISON OR BLEED, the Death trees' slice C4a: a fact of the
+	// target in hand, as the curse above is.
+	// AND, AFTER IT, THE DEATH TREES' SLICE C6b1'S POISON ALONE AND HIT FROM BEHIND (2026-11-25), each a fact of the
+	// target in hand and the blow. (Its full health and its beyond metres sit with the health and distance labels.) NO
+	// COMMENT BETWEEN THE LABELS: `tools/tests/test_a_minion_row_asks_only_what_its_read_can_answer.py` reads each run
+	// of labels up to its `return`.
+	case C::TargetCarriesYourPoisonOrBleed:
+	case C::TargetCarriesYourPoison:
+	case C::TargetStruckFromBehind:
+	case C::TargetCarriesNecrosis:
+	case C::MinionWithinMetresOfYou:
+	case C::TargetMarkedByYou:
+	case C::TargetIsYourLastAttacker:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
+	// in hand, as a skill's kind is of the skill. It changes only while a kill is being paid for, and nothing outside
+	// a gain asks it.
+	case C::FervourGainNotFromAKill:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE KILL BEING ACTED ON WAS MADE BY A HIT, the Death trees' slice C4c1 (2026-11-25): a fact of the kill in
+	// hand, set only while the player's kill handler acts on it.
+	case C::KillingBlowWasAHit:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE KILL BEING ACTED ON WAS AN EXECUTE, the Death trees' slice C4d1 (2026-11-25): a fact of the kill in
+	// hand, as the one above, set only while the player's kill handler pays for and acts on it.
+	case C::KillWasAnExecute:
+		return EOn::TheBlowOrSkill;
+
+	// THE STRUCK OR SLAIN CREATURE'S RARITY RUNG, the Death trees of 2026-11-24: a fact of the target in hand, after
+	// `TargetCarriesYourCurse`.
+	case C::TargetRarityAtLeast:
+	case C::TargetRarityIs:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK CHARACTER HAS SET OFF A TRAP OF THE ASKER'S, the Saboteur's device conditions of 2026-11-25: a
+	// fact of the target in hand, after `TargetCarriesYourCurse`.
+	case C::TargetNotYetTriggeredYourTrap:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -791,9 +1012,22 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// A MAXIMUM OF NOTHING REFUSES TOO. A pool that cannot hold anything is
 		// not at its maximum in any sense a node means, and answering yes would
 		// give the bonus to a character that has never generated a point.
-		return State.ClassResourceHeld >= 0.0f
-			&& State.ClassResourceMaximum > 0.0f
-			&& State.ClassResourceHeld >= State.ClassResourceMaximum;
+		//
+		// AND THE TOP IS THE MAXIMUM LESS WHAT MINIONS HOLD BACK. Ruled by the
+		// coordinating session on 2026-11-25 (the Death trees' slice C). Every
+		// gain stops there, so a character with a minion out never reached the
+		// gross maximum and this never held for it. A reserve taking the whole
+		// pool leaves nothing to fill, which refuses, as a maximum of nothing
+		// does. The full-bar crossing in `ACataclysmPlayerCharacter::
+		// OnClassResourceChanged` applies the same rule.
+		{
+			const float Fillable =
+				State.ClassResourceMaximum - FMath::Max(0.0f, State.ClassResourceReserved);
+			return State.ClassResourceHeld >= 0.0f
+				&& State.ClassResourceMaximum > 0.0f
+				&& Fillable > 0.0f
+				&& State.ClassResourceHeld >= Fillable;
+		}
 
 	case ECataclysmStatCondition::EnergyShieldAtMaximum:
 		// NO THRESHOLD, SO `Value` IS NOT READ, the same as the predicate above.
@@ -945,12 +1179,43 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// rather than being guessed either way.
 		return State.WeaponHands == 2;
 
+	case ECataclysmStatCondition::DualWielding:
+		// TWO ITEMS IN THE WEAPON SLOTS, a shield among them. The Berserker's states, 2026-11-25. -1 is "no equipment"
+		// and refuses.
+		return State.WeaponsWorn == 2;
+
+	case ECataclysmStatCondition::InWrath:
+		// THE STATE THE ABILITY SYSTEM COMPONENT HOLDS. The Berserker's states, 2026-11-25.
+		return State.bInWrath;
+
+	case ECataclysmStatCondition::InFrenzy:
+		return State.bInFrenzy;
+
+	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Each refuses an unknown reading: no gadget (-1), no gadget struck
+	// (-1), no record read.
+	case ECataclysmStatCondition::OwnGadgetWithinMetres:
+		return State.MetresToNearestOwnGadget >= 0.0f && State.MetresToNearestOwnGadget <= Value;
+
+	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
+		return State.bTargetTrapHistoryKnown && !State.bTargetTriggeredAnotherTrapOfYours;
+
+	case ECataclysmStatCondition::WithinSecondsOfGadgetStruck:
+		return State.SecondsSinceGadgetStruck >= 0.0f && State.SecondsSinceGadgetStruck <= Value;
+
+	case ECataclysmStatCondition::NoRoomForATrap:
+		return State.bNoRoomForATrap;
+
 	case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 		// Issue #1515. Known first, as above, then the two rules of every
 		// clock: never reads -1 and refuses, and the window is inclusive.
 		return State.bTargetStrikeHistoryKnown
 			&& State.SecondsSinceStruckByYou >= 0.0f
 			&& State.SecondsSinceStruckByYou <= Value;
+
+	case ECataclysmStatCondition::TargetNearYourKillWithinSeconds:
+		// THE DEATH TREES' SLICE C4c2 (2026-11-25), GRIM WAKE: the target stood within reach of a kill of the asker's
+		// at most `Value` seconds ago. Never read, -1, refuses; the window is inclusive, as every clock's is.
+		return State.SecondsSinceNearYourKill >= 0.0f && State.SecondsSinceNearYourKill <= Value;
 
 	case ECataclysmStatCondition::TargetCarriesCripple:
 		// THE EXPLICIT TAG AND NOT AN IMPLIED PARENT. Issue #1515.
@@ -1245,6 +1510,190 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// hand" and "nothing asked", and all refuse together.
 		return State.bTargetIsMoving;
 
+	case ECataclysmStatCondition::TargetCarriesYourCurse:
+		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`. The demonic tree rework of
+		// 2026-11-24. False is also "no target in hand", "no asker" and "nothing asked", and all refuse together.
+		return State.bTargetCarriesYourCurse;
+
+	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
+		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`, as the curse above is. The Death
+		// trees' slice C4a (2026-11-25).
+		return State.bTargetCarriesYourPoisonOrBleed;
+
+	case ECataclysmStatCondition::FervourGainNotFromAKill:
+		// FILLED BY `CurrentConditions` FROM THE KILL-PAYMENT MARKER, the Death trees' slice C4b1 (2026-11-25): true
+		// unless a kill's Fervour is being paid. A state with no asker in hand stays false and refuses.
+		return State.bFervourGainNotFromAKill;
+
+	case ECataclysmStatCondition::KillingBlowWasAHit:
+		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it acts on a kill made by a hit, the
+		// Death trees' slice C4c1 (2026-11-25). False outside such a kill, which refuses.
+		return State.bKillingBlowWasAHit;
+
+	case ECataclysmStatCondition::KillWasAnExecute:
+		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it pays for and acts on a kill made by
+		// an execute, the Death trees' slice C4d1 (2026-11-25). False outside such a kill, which refuses.
+		return State.bKillWasAnExecute;
+
+	case ECataclysmStatCondition::WearingEnemyModifier:
+	{
+		// THE PLACE IN THE LIST, COUNTED FROM 1, as a whole number. The Death trees' slice C4d3 (2026-11-25).
+		const int32 Place = FMath::RoundToInt(Value);
+		return Place >= 1 && State.WornEnemyModifierPlaces.Contains(Place);
+	}
+
+	case ECataclysmStatCondition::NextHitIsCritical:
+		// FILLED BY `CurrentConditions` FROM THE CHARGE, the Death trees' slice C6a (2026-11-25).
+		return State.bHoldsNextHitCritical;
+
+	// THE FOUR OF THE DEATH TREES' SLICE C6b1 (2026-11-25).
+	case ECataclysmStatCondition::TargetStruckFromBehind:
+		return State.bTargetStruckFromBehind;
+
+	case ECataclysmStatCondition::TargetAtFullHealth:
+		// NOT READ (negative) REFUSES; FULL IS THE WHOLE SHARE, a thousandth allowed for rounding.
+		return State.TargetHealthPercent >= 0.0f && State.TargetHealthPercent >= 100.0f - 1.0e-3f;
+
+	case ECataclysmStatCondition::TargetCarriesYourPoison:
+		return State.bTargetCarriesYourPoison;
+
+	case ECataclysmStatCondition::TargetBeyondMetres:
+		// STRICTLY MORE THAN, "more than 4 metres", the boundary `OpponentBeyondMetres` keeps; not known refuses.
+		return State.TargetDistanceMetres >= 0.0f && State.TargetDistanceMetres > Value;
+
+	// THE TWO OF THE DEATH TREES' SLICE C6b2 (2026-11-25), each a clock: never reads -1 and refuses, and the window is
+	// inclusive, as every clock's is.
+	case ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd:
+		return State.SecondsSinceMovementSkillEnded >= 0.0f && State.SecondsSinceMovementSkillEnded <= Value;
+
+	case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:
+		return State.SecondsSinceStruckByYourMovementSkill >= 0.0f
+			&& State.SecondsSinceStruckByYourMovementSkill <= Value;
+
+	// THE THREE OF THE DEATH TREES' SLICE C6b3 (2026-11-25).
+	case ECataclysmStatCondition::OpponentRarityAtLeast:
+		// THE ATTACKER'S RUNG, -1 REFUSING, the rung compared a whole number, as `TargetRarityAtLeast` compares it.
+		return State.Blow.OpponentRarityStep >= 0 && State.Blow.OpponentRarityStep >= FMath::RoundToInt(Value);
+
+	case ECataclysmStatCondition::EnemyOfRarityInReach:
+	{
+		// ANY ONE ENEMY OF THE RUNG WITHIN THE ROW'S OWN REACH. A row with no reach counts nobody.
+		const int32 Rung = FMath::RoundToInt(Value);
+		for (int32 Index = 0; Index < State.HostileRarityDistancesMetres.Num(); ++Index)
+		{
+			if (ReachMetres > 0.0f && State.HostileRarityDistancesMetres[Index] <= ReachMetres
+				&& State.HostileRarityRungs.IsValidIndex(Index) && State.HostileRarityRungs[Index] >= Rung)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	case ECataclysmStatCondition::NoEnemyInReach:
+		// ONLY A WALK THAT WAS MADE CAN SAY NOBODY IS NEAR. A row with no reach refuses.
+		return ReachMetres > 0.0f && State.bHostileDistancesRead && EnemiesInReach(State, ReachMetres) == 0;
+
+	case ECataclysmStatCondition::TargetRarityAtLeast:
+		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",
+		// "no target in hand" and "nothing asked", and all refuse together; the rung compared is a whole number.
+		return State.TargetRarityStep >= 0
+			&& State.TargetRarityStep >= FMath::RoundToInt(Value);
+
+	case ECataclysmStatCondition::TargetRarityIs:
+		// THE SAME READING, EXACTLY ONE RUNG. The Death trees of 2026-11-24.
+		return State.TargetRarityStep >= 0
+			&& State.TargetRarityStep == FMath::RoundToInt(Value);
+
+	case ECataclysmStatCondition::WithinSecondsOfKill:
+		// THE SAME TWO RULES AS EVERY CLOCK: never killed reads -1 and refuses, and "within" is inclusive. The Death
+		// trees of 2026-11-24.
+		return State.SecondsSinceOwnKill >= 0.0f
+			&& State.SecondsSinceOwnKill <= Value;
+
+	case ECataclysmStatCondition::KillChainWithinSeconds:
+		// THE SAME CLOCK, ITS WINDOW LENGTHENED BY THE CHAIN'S EXTRA SECONDS (the Death trees' slice C6c, 2026-11-25).
+		return State.SecondsSinceOwnKill >= 0.0f
+			&& State.SecondsSinceOwnKill <= Value + FMath::Max(0.0f, State.KillChainSeconds);
+
+	// THE TWO OF THE DEATH TREES' SLICE C6d1 (2026-11-25).
+	case ECataclysmStatCondition::MinionsInReachAtLeast:
+	{
+		// AT LEAST `Value` OF THE CHARACTER'S OWN FOLLOWERS WITHIN THE ROW'S REACH. Below one refuses, and a row with no
+		// reach counts nobody, as `EnemiesInReachAtLeast` does.
+		if (Value < 1.0f || ReachMetres <= 0.0f)
+		{
+			return false;
+		}
+		int32 Near = 0;
+		for (const float Metres : State.OwnMinionDistancesMetres)
+		{
+			Near += Metres <= ReachMetres ? 1 : 0;
+		}
+		return static_cast<float>(Near) >= Value;
+	}
+
+	case ECataclysmStatCondition::TargetCarriesNecrosis:
+		return State.bTargetCarriesNecrosis;
+
+	case ECataclysmStatCondition::TargetMarkedByYou:
+		return State.bTargetMarkedByYou;
+
+	case ECataclysmStatCondition::TargetIsYourLastAttacker:
+		return State.bTargetIsYourLastAttacker;
+
+	// THE DEATH TREES' SLICE C6d2 (2026-11-25): a clock, as every clock is, never reads -1 and refuses, inclusive.
+	case ECataclysmStatCondition::WithinSecondsOfMinionDeath:
+		return State.SecondsSinceMinionDied >= 0.0f && State.SecondsSinceMinionDied <= Value;
+
+	// THE MINION BEING ASKED ABOUT STANDS WITHIN THIS MANY METRES OF ITS SUMMONER: Marshal. -1, no minion named, refuses.
+	case ECataclysmStatCondition::MinionWithinMetresOfYou:
+		return State.AskingMinionMetres >= 0.0f && State.AskingMinionMetres <= Value;
+
+	// THE HIT BEING ANNOUNCED TOOK AT LEAST THIS SHARE OF MAXIMUM HEALTH. -1, outside the announcement, refuses.
+	case ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth:
+		return State.HitTakenPercentOfMaxHealth >= 0.0f && State.HitTakenPercentOfMaxHealth >= Value;
+
+	// AND ONE THAT FELL WITHIN THE ROW'S REACH: any recorded death recent enough and near enough. No reach counts nothing.
+	case ECataclysmStatCondition::MinionDeathInReachWithinSeconds:
+	{
+		if (ReachMetres <= 0.0f)
+		{
+			return false;
+		}
+		const int32 Known = FMath::Min(State.RecentMinionDeathSecondsAgo.Num(), State.RecentMinionDeathMetres.Num());
+		for (int32 Index = 0; Index < Known; ++Index)
+		{
+			const float Ago = State.RecentMinionDeathSecondsAgo[Index];
+			const float Metres = State.RecentMinionDeathMetres[Index];
+			if (Ago >= 0.0f && Ago <= Value && Metres >= 0.0f && Metres <= ReachMetres)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	case ECataclysmStatCondition::TargetInYourSiphon:
+		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetStandsInYourZone` is. The Death trees' slice C2
+		// (2026-11-25). False is also "no target in hand" and "nothing asked".
+		return State.bTargetInYourSiphon;
+
+	case ECataclysmStatCondition::WithinSecondsOfFervourSpent:
+		// THE SAME TWO RULES AS EVERY CLOCK: never spent reads -1 and refuses, and "within" is inclusive. The Death
+		// trees' slice C3a (2026-11-25).
+		return State.SecondsSinceFervourSpent >= 0.0f
+			&& State.SecondsSinceFervourSpent <= Value;
+
+	case ECataclysmStatCondition::FervourThresholdReached:
+	{
+		// THE BIT THE CONDITIONS FILL SET for this figure. Unknown (-1) and a figure that is none of the four both
+		// refuse. The Death trees' slice C3d (2026-11-25).
+		const int32 Index = CataclysmFervourThresholds::IndexOf(Value);
+		return State.FervourThresholdsReached >= 0 && Index >= 0
+			&& (State.FervourThresholdsReached & (1 << Index)) != 0;
+	}
+
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills
 		// deal 25%-40% less damage if you have moved in the last 2 seconds" is
@@ -1279,10 +1728,21 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// A SHARE AND NOT A COUNT OF POINTS, unlike the scale that reads the
 		// same pool. Classes do not share a maximum, so "above 75%" is the only
 		// way to mean the same thing for each of them.
+		//
+		// THE FERVOUR COUNTED AS HELD, Chained Souls' share included (the Death trees' slice C3e). The guard still
+		// reads the pool, so an unknown reading refuses.
+		return State.ClassResourceHeld >= 0.0f
+			&& State.ClassResourceMaximum > 0.0f
+			&& (UCataclysmStatPipeline::FervourHeldCounted(State) / State.ClassResourceMaximum) * 100.0f
+				   > Value;
+
+	case ECataclysmStatCondition::ClassResourceAtOrBelowPercent:
+		// THE COMPLEMENT OF THE ONE ABOVE, WITH ITS THREE CLAUSES. The Saboteur's rows, 2026-11-25. Known, able to hold
+		// something, and then at or below: with the one above, every known share is exactly one of the two.
 		return State.ClassResourceHeld >= 0.0f
 			&& State.ClassResourceMaximum > 0.0f
 			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
-				   > Value;
+				   <= Value;
 
 	case ECataclysmStatCondition::ClassResourcePointsAtLeast:
 		// AT OR ABOVE, for "50 or more" -- the boundary `HealthAtOrAbovePercent`
@@ -1299,8 +1759,15 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// the game -- leaves the reading at -1, and without this guard a
 		// threshold of zero written by a sheet would hand all of them a bonus
 		// meant for a Ravager.
+		//
+		// THE FERVOUR COUNTED AS HELD, Chained Souls' share included (the Death trees' slice C3e).
 		return State.ClassResourceHeld >= 0.0f
-			&& State.ClassResourceHeld >= Value;
+			&& UCataclysmStatPipeline::FervourHeldCounted(State) >= Value;
+
+	case ECataclysmStatCondition::ClassResourcePointsBelow:
+		// STRICTLY BELOW, the Fervour counted as held, and an unknown reading refuses. See the header.
+		return State.ClassResourceHeld >= 0.0f
+			&& UCataclysmStatPipeline::FervourHeldCounted(State) < Value;
 
 	case ECataclysmStatCondition::EnergyShieldAboveZero:
 		// NO THRESHOLD, SO `Value` IS NOT READ. Issue #1981. "You take 10%-20%
@@ -1441,8 +1908,9 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		// WHOLE STEPS, ROUNDED DOWN, the same rule as the reading above. The
 		// design's own node uses a step of 1, where rounding cannot show, so the
 		// rule is read off the other scale rather than off this node's words.
+		// THE FERVOUR COUNTED AS HELD, Chained Souls' share included (the Death trees' slice C3e).
 		const float Steps =
-			FMath::FloorToFloat(State.ClassResourceHeld / Modifier.ScaleStep);
+			FMath::FloorToFloat(UCataclysmStatPipeline::FervourHeldCounted(State) / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 
@@ -1667,6 +2135,23 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			: 0.0f;
 	}
 
+	// AND THE OVERFLOW STACKS THE ASKER HOLDS: Overflow, the Death trees' slice C6c (2026-11-25).
+	case ECataclysmStatScale::PerFervourOverflowStack:
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		return Asking ? StackedValue(Modifier, Asking->FervourOverflowStacksHeld()) : 0.0f;
+	}
+
+	// AND THE WHOLE SECONDS THE TARGET OF THIS LOOKUP HAS CARRIED THE ASKER'S POISON WITHOUT A BREAK: Festering, the
+	// Death trees' slice C6b4 (2026-11-25). None for a lookup with no target or a creature not carrying it.
+	case ECataclysmStatScale::PerSecondPoisonedByYou:
+	{
+		const float Seconds =
+			UCataclysmAbilitySystemComponent::SecondsPoisonedByAsker(State.AskingAbilitySystem, State.LookupTarget);
+		return Seconds > 0.0f ? StackedValue(Modifier, FMath::FloorToInt(Seconds)) : 0.0f;
+	}
+
 	// AND THE AURAS RUNNING, COUNTED THE SAME WAY. Issue #1686.
 	case ECataclysmStatScale::PerAuraHeld:
 		return StackedValue(Modifier, State.AurasHeld);
@@ -1674,6 +2159,12 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	// AND THE PASSIVE POINTS SPENT, PAST THE OFFSET. Issue #1686. Whole points,
 	// so the stack arithmetic, on what is left once the offset is taken off.
 	// Unknown (-1) and at or below the offset are both nothing.
+	// AND THE FERVOUR THRESHOLDS REACHED, the Death trees' slice C3d (2026-11-25). Unknown (-1) is nothing.
+	case ECataclysmStatScale::PerFervourThresholdReached:
+		return State.FervourThresholdsReached < 0
+			? 0.0f
+			: StackedValue(Modifier, FMath::CountBits(static_cast<uint32>(State.FervourThresholdsReached)));
+
 	case ECataclysmStatScale::PerClassPointSpent:
 		if (State.ClassPointsSpent < 0)
 		{
@@ -1798,6 +2289,10 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerMinionHeld:
 		return StackedValue(Modifier, State.MinionsHeld);
 
+	// THE ENEMIES IN THE CHARACTER'S SIPHON. The Death trees' slice C2 (2026-11-25).
+	case ECataclysmStatScale::PerEnemyInSiphon:
+		return StackedValue(Modifier, State.EnemiesInSiphon);
+
 	// PER ENEMY STANDING WITHIN THE ROW'S OWN REACH. Issue #1597, and the
 	// third scale that is a count of things after debuffs carried and
 	// minions held.
@@ -1842,6 +2337,59 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		return Asking && !Modifier.StackKey.IsNone() && Asking->OwnStacksHeld(Modifier.StackKey) > 0
 			? StackedValue(Modifier, EnemiesInReach(State, Modifier.ReachMetres))
 			: 0.0f;
+	}
+
+	// PER WHOLE STEP OF INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless: "1% increased
+	// Attack Speed for every 2% increased Movement Speed you have" is a step of 2. The same two refusals as the
+	// readings above: an unknown reading, which is every state a lookup not asking for this scale was given, and a
+	// step of nothing. WHOLE STEPS, ROUNDED DOWN, the rule every per-point scale here follows; a sum below nought
+	// counts nothing.
+	case ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed:
+	{
+		if (State.IncreasedMovementSpeedPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps =
+			FMath::FloorToFloat(State.IncreasedMovementSpeedPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	// PER WHOLE STEP OF THE CLASS RESOURCE'S MAXIMUM, AND OF THE BLOCK CHANCE ATTRIBUTE. The War vow options' second
+	// slice, 2026-11-25: Titan's "1% for every 2 points of maximum Fervour" is a step of 2, Unbridled's "every 20 points
+	// of maximum Fervour" a step of 20, and Bastion's "1% for every 1% Block Chance" a step of 1. The same two refusals as
+	// the readings above, an unknown reading and a step of nothing; whole steps, rounded down.
+	case ECataclysmStatScale::PerPointOfMaximumClassResource:
+	{
+		if (State.ClassResourceMaximumNow < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps = FMath::FloorToFloat(State.ClassResourceMaximumNow / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPercentOfBlockChance:
+	{
+		if (State.BlockChance < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps = FMath::FloorToFloat(State.BlockChance / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPointOfCurrentHealth:
+	{
+		// THE SAME REFUSALS AS THE MAXIMUM HEALTH SCALE: an unknown reading of either figure, or a step of nothing.
+		// V3b, 2026-11-25.
+		if (State.HealthPercent < 0.0f || State.MaximumHealth < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Current = State.HealthPercent / 100.0f * State.MaximumHealth;
+		const float Steps = FMath::FloorToFloat(Current / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 	}
 

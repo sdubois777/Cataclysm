@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -72,12 +73,23 @@ namespace CataclysmCreationTest
 	 * does not contain and so a change to the design workbook cannot silently
 	 * change what these tests mean. The real matrix is exercised instead by
 	 * `tools/tests/test_character_creation_matches_the_design.py`, which
-	 * compares it against the design document.
+	 * compares it against the design document, and by
+	 * `EveryDemonicWeaponSaysAllSixOfItsSkillsWork` below.
 	 *
 	 * THE SIX SLOTS OF ONE PAIRING ARE THE INTERESTING PART. `Sword` and `War`
-	 * carries four rows with a skill name written and two without, so
-	 * `DesignedSkillCount` has something to count that is neither nothing nor
-	 * everything.
+	 * has three of its five weapon rows written and two not, and War's Aura
+	 * written on the `All` row, so `DesignedSkillCount` has something to count
+	 * that is neither nothing nor everything. Only one of those four has a
+	 * shape, so `WorkingSkillCount` counts fewer still: the other three are
+	 * granted the placeholder, as the real War rows are.
+	 *
+	 * `Greataxe` and `Demonic` IS ALL SIX, five weapon rows and the Aura on the
+	 * `All` row, each with a shape, as every real Demonic weapon is. Every
+	 * Demonic weapon read "5 of 6" until the owner's report of 2026-11-24.
+	 *
+	 * THE AURAS SIT ON `All` ROWS, AS THEY DO IN THE REAL MATRIX. Until
+	 * 2026-11-24 War's sat on a `Sword` row here, a row the real matrix has
+	 * nothing like, and that is why counting only the weapon's rows passed.
 	 */
 	UDataTable* MakeWeaponSkillTable(FAutomationTestBase& Test)
 	{
@@ -86,11 +98,11 @@ namespace CataclysmCreationTest
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
 			"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost,FervourCost\r\n"
-			// Sword: War with four skills written, Death with none.
+			// Sword: War with three weapon skills written, one with a shape, and
+			// Death with none.
 			"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
-			"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
-			"War_Sword_Support,Sword,War,Support,Guard,Guards.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
-			"War_Sword_Aura,Sword,War,Aura,Banner,Flies.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,,,-1,-1,-1,-1,-1\r\n"
+			"War_Sword_Support,Sword,War,Support,Guard,Guards.,,,,-1,-1,-1,-1,-1\r\n"
 			"War_Sword_Ultimate,Sword,War,Ultimate,,,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
 			"War_Sword_Movement,Sword,War,Movement,,,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
 			"Death_Sword_Heavy,Sword,Death,Heavy,,,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
@@ -98,12 +110,23 @@ namespace CataclysmCreationTest
 			// "Wand and Staff are excluded from War, which has no caster build".
 			"Death_Staff_Heavy,Staff,Death,Heavy,Grave Bolt,Bolts.,,Projectile,Range=8,-1,-1,-1,-1,-1\r\n"
 			"Demonic_Staff_Heavy,Staff,Demonic,Heavy,Hellfire,Burns.,,Projectile,Range=8,-1,-1,-1,-1,-1\r\n"
-			// Greataxe and Demonic: the pair a character has when nobody chose.
+			// Greataxe and Demonic: the pair a character has when nobody chose,
+			// with all five of its weapon skills written and shaped.
+			"Demonic_Greataxe_Support,Greataxe,Demonic,Support,Burning Wrath,Rages.,,SelfBuff,Duration=10,-1,-1,-1,-1,-1\r\n"
 			"Demonic_Greataxe_Heavy,Greataxe,Demonic,Heavy,Cleave,Cleaves.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"Demonic_Greataxe_Ultimate,Greataxe,Demonic,Ultimate,Pyroclasm,Erupts.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"Demonic_Greataxe_Movement,Greataxe,Demonic,Movement,Infernal Plunge,Leaps.,,Movement,Range=10,-1,-1,-1,-1,-1\r\n"
+			"Demonic_Greataxe_Special,Greataxe,Demonic,Special,Emberhurl,Hurls.,,Projectile,Range=8,-1,-1,-1,-1,-1\r\n"
+			// Greataxe and War: one skill written and none with a shape.
+			"War_Greataxe_Heavy,Greataxe,War,Heavy,Sunder,Sunders.,,,,-1,-1,-1,-1,-1\r\n"
 			// A Shield does carry skills. It is excluded for a different reason.
 			"War_Shield_Heavy,Shield,War,Heavy,Shield Bash,Bashes.,,Strike,Radius=2,-1,-1,-1,-1,-1\r\n"
-			// The auras, which do not care what is held. Counting this row as a
-			// weapon would give every weapon every damage type.
+			// The auras, which do not care what is held. Counting one of these
+			// rows as a weapon would give every weapon every damage type. War's
+			// has no shape, as the real War Aura has none.
+			"War_All_Aura,All,War,Aura,Banner,Flies.,,,,-1,-1,-1,-1,-1\r\n"
+			"Demonic_All_Aura,All,Demonic,Aura,Conflagration,Smoulders.,,Aura,Radius=10,-1,-1,-1,-1,-1\r\n"
+			"Death_All_Aura,All,Death,Aura,Pall,Chills.,,Aura,Radius=10,-1,-1,-1,-1,-1\r\n"
 			"Void_All_Aura,All,Void,Aura,Dread,Spreads.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"));
 
 		for (const FString& Problem : Problems)
@@ -125,12 +148,12 @@ namespace CataclysmCreationTest
 		Table->RowStruct = FCataclysmItemBaseRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value\r\n"
-			"Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8,1,3,attack_damage,flat,40.0,,,0.0\r\n"
-			"Weapon_Shield,Shield,Weapon,1,Blunt,Shield,4,1.0,Strike,Radius=1.5,2,3,armor,flat,300.0,,,0.0\r\n"
-			"Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,8,1.1,Strike,Radius=2.7,2,6,attack_damage,flat,72.0,,,0.0\r\n"
-			"Weapon_Staff,Staff,Weapon,2,Magic,Staff,8,1.3,Projectile,Range=7.2,2,6,attack_damage,flat,66.0,,,0.0\r\n"
-			"Head_Helm,Helm,Head,0,,,0,0.0,,,2,2,armor,flat,200.0,,,0.0\r\n"));
+			"Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value,Implicit1AtZero,Implicit2AtZero\r\n"
+			"Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8,1,3,attack_damage,flat,40.0,,,0.0,16,0\r\n"
+			"Weapon_Shield,Shield,Weapon,1,Blunt,Shield,4,1.0,Strike,Radius=1.5,2,3,armor,flat,300.0,,,0.0,120,0\r\n"
+			"Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,8,1.1,Strike,Radius=2.7,2,6,attack_damage,flat,72.0,,,0.0,29,0\r\n"
+			"Weapon_Staff,Staff,Weapon,2,Magic,Staff,8,1.3,Projectile,Range=7.2,2,6,attack_damage,flat,66.0,,,0.0,26,0\r\n"
+			"Head_Helm,Helm,Head,0,,,0,0.0,,,2,2,armor,flat,200.0,,,0.0,80,0\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -312,21 +335,209 @@ bool FCataclysmCreationCountsDesignedSkillsTest::RunTest(const FString&)
 	}
 
 	// A ROW WITH NO SKILL NAME IS A PAIRING THE DESIGN ALLOWS AND NOBODY HAS
-	// WRITTEN. Six of the seven legal pairings in the real matrix are like that,
-	// so a player picking one gets a character that cannot do anything, and the
-	// screen says so before they choose. Issues #62 and #836.
-	TestEqual(TEXT("Sword and War has four of its six written"),
+	// WRITTEN. Most legal pairings in the real matrix are like that, so a player
+	// picking one gets a character that cannot do anything, and the screen says
+	// so before they choose. Issues #62 and #836.
+	//
+	// FOUR, AND THE FOURTH IS WAR'S AURA ON THE `All` ROW. Three of the Sword's
+	// five War rows are written; counting only rows that name the Sword gave 3,
+	// which is the "5 of 6" the owner saw on every Demonic weapon (2026-11-24).
+	TestEqual(TEXT("Sword and War has four of its six written, its Aura among them"),
 			  UCataclysmCharacterCreation::DesignedSkillCount(
 				  Skills, FName(TEXT("Sword")), FName(TEXT("War"))), 4);
 
-	TestEqual(TEXT("Sword and Death has none, though the pairing is legal"),
+	// NONE, ALTHOUGH DEATH'S AURA IS WRITTEN. A weapon with no written skill of
+	// its own is given no Aura either (`UCataclysmWeaponSkills::SkillsFor`), so
+	// counting the Aura here would promise a skill the character never gets.
+	TestEqual(TEXT("Sword and Death has none, though the pairing is legal and Death's Aura is written"),
 			  UCataclysmCharacterCreation::DesignedSkillCount(
 				  Skills, FName(TEXT("Sword")), FName(TEXT("Death"))), 0);
 
+	TestEqual(TEXT("`All` is not a weapon, so it is given nothing"),
+			  UCataclysmCharacterCreation::DesignedSkillCount(
+				  Skills, FName(TEXT("All")), FName(TEXT("Void"))), 0);
+
 	const FString Summary = UCataclysmCharacterCreation::SummaryFor(
 		Skills, Choose(TEXT("Sword"), TEXT("Death")));
-	TestTrue(TEXT("and the summary line says so in words"),
-			 Summary.Contains(TEXT("no skills are designed")));
+	AddInfo(FString::Printf(TEXT("SWORD AND DEATH: '%s'"), *Summary));
+	TestEqual(TEXT("and the summary line says so in words"), Summary,
+			  FString(TEXT("Death, Sword    no skills are designed for this pairing yet")));
+
+	return true;
+}
+
+/**
+ * A pairing's sixth skill is its damage type's Aura, on the matrix's `All` row,
+ * and the line counts it.
+ *
+ * THE OWNER'S REPORT, 2026-11-24: "no matter what weapon you select if you pick
+ * demonic it says there's one skill not built for all of them." Every Demonic
+ * weapon read "5 of 6 skills designed" while the character was given all six,
+ * because the count matched only rows that name the weapon. Prints "DEMONIC
+ * LINES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreationCountsTheAuraTest,
+	"Cataclysm.Creation.TheDamageTypesAuraIsCountedAsTheSixthSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreationCountsTheAuraTest::RunTest(const FString&)
+{
+	using namespace CataclysmCreationTest;
+
+	UDataTable* Skills = MakeWeaponSkillTable(*this);
+	if (!Skills)
+	{
+		return false;
+	}
+
+	const FName Greataxe(TEXT("Greataxe"));
+	const FName Staff(TEXT("Staff"));
+	const FName Demonic(TEXT("Demonic"));
+
+	const FString Whole = UCataclysmCharacterCreation::SummaryFor(
+		Skills, Choose(TEXT("Greataxe"), TEXT("Demonic")));
+	const FString Partial = UCataclysmCharacterCreation::SummaryFor(
+		Skills, Choose(TEXT("Staff"), TEXT("Demonic")));
+	AddInfo(FString::Printf(TEXT("DEMONIC LINES: '%s'; '%s'"), *Whole, *Partial));
+
+	// FIVE WEAPON ROWS AND THE AURA. Without the Aura this is 5.
+	TestEqual(TEXT("Greataxe and Demonic has all six written"),
+			  UCataclysmCharacterCreation::DesignedSkillCount(Skills, Greataxe, Demonic), 6);
+	TestEqual(TEXT("and all six work, each having a shape with a template"),
+			  UCataclysmCharacterCreation::WorkingSkillCount(Skills, Greataxe, Demonic), 6);
+	TestEqual(TEXT("so the line says six of six work and nothing else"), Whole,
+			  FString(TEXT("Demonic, Greataxe    6 of 6 skills work")));
+
+	// ONE WEAPON ROW AND THE AURA. The four slots with nothing written are said
+	// to be not designed, rather than left out of a line that says "2 of 6".
+	TestEqual(TEXT("Staff and Demonic has its Hellfire and the Aura written"),
+			  UCataclysmCharacterCreation::DesignedSkillCount(Skills, Staff, Demonic), 2);
+	TestEqual(TEXT("and both work"),
+			  UCataclysmCharacterCreation::WorkingSkillCount(Skills, Staff, Demonic), 2);
+	TestEqual(TEXT("so the line names the four slots not designed"), Partial,
+			  FString(TEXT("Demonic, Staff    2 of 6 skills work; 4 are not designed yet")));
+
+	return true;
+}
+
+/**
+ * A written skill with no shape is granted the placeholder and does nothing, and
+ * the line says how many of those there are rather than counting them as built.
+ *
+ * WHAT THE LINE SAID BEFORE. "%d of 6 skills designed" counted a row with a skill
+ * name, so every War weapon read "5 of 6 skills designed" while all but two at
+ * most of its skills were granted `UCataclysmUndesignedSkill`: 7 of War's 61 rows
+ * have a shape (measured 2026-11-24). Prints "PLACEHOLDER LINES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreationReportsPlaceholderSkillsTest,
+	"Cataclysm.Creation.AWrittenSkillWithNoShapeIsSaidToDoNothingYet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreationReportsPlaceholderSkillsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCreationTest;
+
+	UDataTable* Skills = MakeWeaponSkillTable(*this);
+	if (!Skills)
+	{
+		return false;
+	}
+
+	const FName Sword(TEXT("Sword"));
+	const FName Greataxe(TEXT("Greataxe"));
+	const FName War(TEXT("War"));
+
+	const FString SomeWork = UCataclysmCharacterCreation::SummaryFor(
+		Skills, Choose(TEXT("Sword"), TEXT("War")));
+	const FString NoneWork = UCataclysmCharacterCreation::SummaryFor(
+		Skills, Choose(TEXT("Greataxe"), TEXT("War")));
+	AddInfo(FString::Printf(TEXT("PLACEHOLDER LINES: '%s'; '%s'"), *SomeWork, *NoneWork));
+
+	// FOUR WRITTEN AND ONE WORKING: the Heavy has a shape; the Special, the
+	// Support and War's Aura have none.
+	TestEqual(TEXT("Sword and War has four written"),
+			  UCataclysmCharacterCreation::DesignedSkillCount(Skills, Sword, War), 4);
+	TestEqual(TEXT("of which one works"),
+			  UCataclysmCharacterCreation::WorkingSkillCount(Skills, Sword, War), 1);
+	TestEqual(TEXT("and the line says all three kinds"), SomeWork,
+			  FString(TEXT("War, Sword    1 of 6 skills work; 3 more are designed and do "
+						   "nothing yet; 2 are not designed yet")));
+
+	// NONE WORKING. "Are designed", not "more are designed": there is nothing
+	// for them to be more than.
+	TestEqual(TEXT("Greataxe and War has two written, its Sunder and War's Aura"),
+			  UCataclysmCharacterCreation::DesignedSkillCount(Skills, Greataxe, War), 2);
+	TestEqual(TEXT("and neither works"),
+			  UCataclysmCharacterCreation::WorkingSkillCount(Skills, Greataxe, War), 0);
+	TestEqual(TEXT("so the line says none work and why"), NoneWork,
+			  FString(TEXT("War, Greataxe    0 of 6 skills work; 2 are designed and do "
+						   "nothing yet; 4 are not designed yet")));
+
+	return true;
+}
+
+/**
+ * Every weapon that carries Demonic says all six of its skills work, on the real
+ * weapon skill matrix.
+ *
+ * THE OWNER'S REPORT ITSELF, read off the table the game ships rather than one
+ * built here: "no matter what weapon you select if you pick demonic it says
+ * there's one skill not built for all of them" (2026-11-24). Every Demonic row has
+ * a shape (`tools/tests/test_demonic_skills.py` holds that), so every Demonic
+ * weapon has six skills that work.
+ *
+ * ALSO PRINTS TWO LINES IT DOES NOT ASSERT, War and a Crossbow and Death and a
+ * Sword, so a run shows what a player sees for a War weapon and for a pairing
+ * with nothing written: War's shapes and the other damage types' weapons are
+ * still being written, and pinning those lines would fail each time one is.
+ * Prints "CREATION LINES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreationEveryDemonicWeaponWorksTest,
+	"Cataclysm.Creation.EveryDemonicWeaponSaysAllSixOfItsSkillsWork",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreationEveryDemonicWeaponWorksTest::RunTest(const FString&)
+{
+	using namespace CataclysmCreationTest;
+
+	const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!Skills || !Bases)
+	{
+		AddError(TEXT("The real weapon skill matrix or item bases table did not load."));
+		return false;
+	}
+
+	const FName Demonic(TEXT("Demonic"));
+	const TArray<FName> Weapons =
+		UCataclysmCharacterCreation::WeaponTypesFor(Skills, Bases, Demonic);
+
+	// NOT VACUOUS: a matrix that offered Demonic on nothing would pass the loop.
+	TestTrue(TEXT("some weapon carries Demonic"), Weapons.Num() > 0);
+
+	TArray<FString> Lines;
+	for (const FName& Weapon : Weapons)
+	{
+		FCataclysmCreationChoice Choice;
+		Choice.WeaponType = Weapon;
+		Choice.DamageType = Demonic;
+
+		const FString Line = UCataclysmCharacterCreation::SummaryFor(Skills, Choice);
+		Lines.Add(Line);
+		TestEqual(*FString::Printf(TEXT("%s and Demonic says all six work"),
+								   *Weapon.ToString()),
+				  Line,
+				  FString::Printf(TEXT("Demonic, %s    6 of 6 skills work"),
+								  *Weapon.ToString()));
+	}
+
+	const FString DeathSword = UCataclysmCharacterCreation::SummaryFor(
+		Skills, Choose(TEXT("Sword"), TEXT("Death")));
+	const FString WarCrossbow = UCataclysmCharacterCreation::SummaryFor(
+		Skills, Choose(TEXT("Crossbow"), TEXT("War")));
+	AddInfo(FString::Printf(
+		TEXT("CREATION LINES: %d Demonic weapons: %s. Not asserted: '%s'; '%s'"),
+		Weapons.Num(), *FString::Join(Lines, TEXT("; ")), *DeathSword, *WarCrossbow));
 
 	return true;
 }

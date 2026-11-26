@@ -149,6 +149,15 @@ int32 UCataclysmSkillBar::BoxUnder(const FVector2D& Point, int32 Count, float Vi
 	return INDEX_NONE;
 }
 
+const TCHAR* UCataclysmSkillBar::OpenScreenHint = TEXT("K: skills");
+
+ECataclysmAbilitySlot UCataclysmSkillBar::KeyUnder(const TArray<FCataclysmSkillBarSlot>& Slots, const FVector2D& Point,
+												   float ViewportWidth, float ViewportHeight)
+{
+	const int32 Box = BoxUnder(Point, Slots.Num(), ViewportWidth, ViewportHeight);
+	return Slots.IsValidIndex(Box) ? Slots[Box].Slot : ECataclysmAbilitySlot::None;
+}
+
 TArray<FString> UCataclysmSkillBar::PopupLinesFor(const FCataclysmSkillBarSlot& Slot)
 {
 	TArray<FString> Lines;
@@ -470,14 +479,23 @@ FString UCataclysmSkillBar::FervourTextFor(const FCataclysmSkillBarSlot& Slot)
 						   FMath::CeilToInt(Slot.FervourCost));
 }
 
+const TCHAR* const UCataclysmSkillBar::GadgetPressRule =
+	TEXT("Press again to place another while you can pay for it and your Fervour can hold it; otherwise every gadget "
+		 "moves to where you aim, at no cost.");
+
 FString UCataclysmSkillBar::CostLineFor(const FCataclysmSkillBarSlot& Slot)
 {
-	if (!Slot.bFilled || Slot.bIsASkillGadget)
+	if (!Slot.bFilled)
 	{
 		return FString();
 	}
 	// UP, AS "needs 50 Fervour" ROUNDS, less a hair so a figure a float holds as 14.0000001 still reads 14.
 	auto Whole = [](float Value) { return FMath::CeilToInt(Value - 0.001f); };
+	// A SKILL GADGET'S PLACING COSTS NOTHING: its line is what each gadget reserves, and the gadget rule (V5g, G6).
+	if (Slot.bIsASkillGadget)
+	{
+		return FString::Printf(TEXT("Each gadget reserves %d Fervour. %s"), Whole(Slot.ReserveEach), GadgetPressRule);
+	}
 	TArray<FString> Costs;
 	if (Slot.FervourCost > 0.0f)
 	{
@@ -514,6 +532,11 @@ FString UCataclysmSkillBar::CostLineFor(const FCataclysmSkillBarSlot& Slot)
 	{
 		Line += FString::Printf(TEXT(" Each %s reserves %d Fervour."),
 								Slot.ReserveNoun.IsEmpty() ? TEXT("minion") : *Slot.ReserveNoun, Whole(Slot.ReserveEach));
+	}
+	// AND THE GADGET RULE, for a War deployable that places a gadget (V5g, G6).
+	if (Slot.bPressPlacesAGadget)
+	{
+		Line += FString::Printf(TEXT(" %s"), GadgetPressRule);
 	}
 	return Line;
 }
@@ -783,6 +806,24 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 			Box.ReserveEach = Maker->FervourReserveOfOne();
 			Box.ReserveNoun = ReserveNounFor(*Maker);
 		}
+		// AND A WAR DEPLOYABLE'S, which the pop-up did not name until V5g (ruled G6): "gadget" for a set of gadgets, "trap"
+		// for a set of traps, "machine" for a set of both, and the gadget rule when the set holds a gadget.
+		else if (const UCataclysmDeployableSkill* Deployer = Cast<UCataclysmDeployableSkill>(Ability))
+		{
+			Box.ReserveEach = Deployer->FervourReserveOfOne();
+			bool bAnyGadget = false;
+			bool bAnyTrap = false;
+			for (const FCataclysmMinionSpawn& Kind : Deployer->Params.Minions)
+			{
+				if (Kind.Count <= 0)
+				{
+					continue;
+				}
+				(ACataclysmMinion::TypeIsAGadget(Kind.Type) ? bAnyGadget : bAnyTrap) = true;
+			}
+			Box.ReserveNoun = bAnyGadget && bAnyTrap ? TEXT("machine") : bAnyGadget ? TEXT("gadget") : TEXT("trap");
+			Box.bPressPlacesAGadget = bAnyGadget;
+		}
 		Box.bShortOfFervour =
 			!UCataclysmGameplayAbility::FervourCovers(Abilities, Box.FervourCost);
 		Box.bAffordable = Box.bAffordable && !Box.bShortOfFervour;
@@ -857,6 +898,9 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 			if (Converting->SlotIsASkillGadget(Slot) && !Converting->SlotIsASkillTrap(Slot))
 			{
 				Box.bIsASkillGadget = true;
+				Box.bPressPlacesAGadget = true;
+				Box.ReserveEach = ACataclysmMinion::SkillGadgetReserveFor(Player, Slot);
+				Box.ReserveNoun = TEXT("gadget");
 				Box.Name = SkillGadgetName();
 				Box.bAffordable = true;
 				Box.bShortOfFervour = false;

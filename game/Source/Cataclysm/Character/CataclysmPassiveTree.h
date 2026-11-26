@@ -8,6 +8,8 @@
 #include "CataclysmPassiveTree.generated.h"
 
 struct FCataclysmPassiveNodeRow;
+struct FCataclysmPassiveEffectRow;
+struct FCataclysmEnchantmentEffectRow;
 class UDataTable;
 
 /**
@@ -180,8 +182,20 @@ public:
 	/** The generated edge table, the same way. */
 	static const UDataTable* LoadEdgeTable();
 
-	/** The generated effect table: what a node grants. Null when missing. */
+	/** The generated effect table: what a node grants. Null when missing. A table `SetEffectTableForTests` set
+	 *  wins while it is set. */
 	static const UDataTable* LoadEffectTable();
+
+	/**
+	 * The effect table `LoadEffectTable` hands back while one is set, for a test that drives the real equipment
+	 * refresh with rows of its own; null puts the generated table back. NOTHING IN PLAY CALLS IT, and a test that sets
+	 * one puts it back before it ends.
+	 *
+	 * WHY IT EXISTS. The passive row port of 2026-11-24: the refresh loads the tables by path, and no authored row acts
+	 * on an event yet, so without it the only way to show a node's action reaching the character would be to author
+	 * one. Held weakly, so a table the test let go of is never handed back.
+	 */
+	static void SetEffectTableForTests(const UDataTable* Table);
 
 	/** Every tree the node table names, in alphabetical order. */
 	static TArray<FString> TreeNames(const UDataTable* NodeTable);
@@ -284,8 +298,13 @@ public:
 	 * was clipped away, buttons and all. The refit that issue added means a long
 	 * description no longer hides anything -- but it does shrink the whole tree
 	 * while it is on screen, so what is shown by default is kept to one line.
+	 *
+	 * WITH AN EFFECT TABLE, A NODE OR AN OPTION WITH NO ROW IN IT IS MARKED (`MarkedNotBuiltYet`): the node's words,
+	 * or the option's number and name. The War vow options' second slice, 2026-11-25. Without one, nothing is marked,
+	 * which is what every caller before that slice asked for.
 	 */
-	static FString ShortDescriptionOf(const UDataTable* NodeTable, FName Node);
+	static FString ShortDescriptionOf(const UDataTable* NodeTable, FName Node,
+									  const UDataTable* EffectTable = nullptr);
 
 	/**
 	 * Everything a player reading this node should be told. Issue #1076.
@@ -304,19 +323,42 @@ public:
 	 * siblings are on every capstone row of `game/Data/PassiveNodes.csv` and
 	 * nothing in the interface read any of them.
 	 *
-	 * AN OPTION WITH NO NAME IS LEFT OUT RATHER THAN SHOWN BLANK. The Saboteur's
-	 * four capstones name none at all, issue #935, so this answers with the
-	 * node's own description for those, which is honest: there is nothing else
-	 * written.
+	 * AN OPTION WITH NO NAME IS LEFT OUT RATHER THAN SHOWN BLANK. A capstone that
+	 * names none at all -- the Saboteur's four until their options were written on
+	 * 2026-11-25, issue #935 -- answers with the node's own description, which is
+	 * honest: there is nothing else written.
+	 *
+	 * WITH AN EFFECT TABLE, A NODE OR AN OPTION WITH NO ROW IN IT IS MARKED, as `ShortDescriptionOf` marks it: an
+	 * ordinary node's words, and an option's heading line.
 	 */
-	static FString FullDescriptionOf(const UDataTable* NodeTable, FName Node);
+	static FString FullDescriptionOf(const UDataTable* NodeTable, FName Node,
+									 const UDataTable* EffectTable = nullptr);
+
+	/**
+	 * Whether the effect table holds a row for `Node`: for its `Option`, 1 to 3, on a capstone, and for the node's own
+	 * points with 0. The War vow options' second slice, 2026-11-25. False for no table, which is why every caller
+	 * asks only when it holds one: a table that failed to load must not mark every node.
+	 *
+	 * A NODE OR AN OPTION WITH NO ROW DOES NOTHING. Every effect a passive point has reaches the character through a
+	 * row of this table -- `AccumulateInto` and `EnchantmentRowsFor` read nothing else, and no code reads a node by
+	 * name -- so this is the whole answer to whether its words are built. A row that builds part of a sentence counts.
+	 */
+	static bool HasEffectRows(const UDataTable* EffectTable, FName Node, int32 Option = 0);
+
+	/**
+	 * `Name` followed by "(not built yet: it does nothing)", the words the floor modifier panel puts on a rule with no
+	 * effect (`UCataclysmFloorModifierPanelLayout::NameLineFor`), so the game says it one way. The War vow options'
+	 * second slice, 2026-11-25, accepted by the coordinating session: a player should not spend a point, or a
+	 * permanent choice, on words that do nothing without being told.
+	 */
+	static FString MarkedNotBuiltYet(const FString& Name);
 
 	/**
 	 * Why one of a capstone's options cannot be taken, or empty when it can.
 	 *
-	 * THE SABOTEUR'S FOUR CAPSTONES OFFER NONE, so every option is refused on
-	 * them and the reason says so rather than reporting a bad option number.
-	 * Issue #935.
+	 * A CAPSTONE OFFERING NONE, as the Saboteur's four did until 2026-11-25,
+	 * refuses every option and the reason says so rather than reporting a bad
+	 * option number. Issue #935.
 	 */
 	static FString RefusalForChoosingOption(const UDataTable* NodeTable,
 											const FCataclysmPassiveAllocation& Allocation,
@@ -345,9 +387,9 @@ public:
 	 * and to show the three names; the console listing uses it to name the
 	 * capstone and say what it needs.
 	 *
-	 * FALSE FOR A CAPSTONE THAT OFFERS NO OPTIONS, which is the Saboteur's four.
-	 * Issue #935. Announcing a decision that was never written would be worse
-	 * than saying nothing.
+	 * FALSE FOR A CAPSTONE THAT OFFERS NO OPTIONS, as the Saboteur's four did
+	 * until 2026-11-25. Issue #935. Announcing a decision that was never written
+	 * would be worse than saying nothing.
 	 *
 	 * IT SAYS NOTHING ABOUT WHETHER A POINT IS SPARE. A capstone costs one point
 	 * of its own on top of its threshold, and a player who has spent everything
@@ -505,6 +547,68 @@ public:
 		const FCataclysmPassiveAllocation& Allocation,
 		const UDataTable* NodeTable, const UDataTable* EffectTable,
 		const TArray<FName>& DamageTypes);
+
+	//~ The passive row port of 2026-11-24 (`plan_death_and_war.md`, slice B28).
+
+	/**
+	 * Whether a passive row is built as an enchantment row rather than read by `AccumulateInto`.
+	 *
+	 * A ROW THAT MOVES SOMETHING WHEN AN EVENT HAPPENS, OR WHOSE SIZE IS A COUNT AN EVENT GRANTS: a row stating
+	 * `Action`, or scaled by `own_stacks` or `consecutive_hits`. Both need an action the character fires on its event,
+	 * and the code that makes one from a row is `UCataclysmItemModifiers::AccumulateEnchantmentsInto`'s; the stat half
+	 * of an own-stack row must be made there too, so its stack key and its grant's are one key. The generator's
+	 * `SCALES_AN_ACTION_GRANTS` names the same two scales.
+	 */
+	static bool IsBuiltAsAnEnchantmentRow(const FCataclysmPassiveEffectRow& Effect);
+
+	/**
+	 * How many times a row's `ValuePerPoint` is paid at this many points in its node.
+	 *
+	 * THE THREE RULES IN ONE PLACE, so the stat rows and the enchantment-row copies cannot pay differently:
+	 *   - no `MinPoints`: once per point, every point (the rule every row followed before issue #1755);
+	 *   - `MinPoints` and no `PerPointFrom`: nothing below the threshold, then once (issue #1755);
+	 *   - `MinPoints` and `PerPointFrom` N: nothing below the threshold, then once for every point from the Nth on
+	 *     (the passive row port of 2026-11-24).
+	 * Never below nought.
+	 */
+	static int32 PointsPaid(const FCataclysmPassiveEffectRow& Effect, int32 Points);
+
+	/**
+	 * The name a passive row carries when it is copied into an enchantment row: `Passive_` and its node, and
+	 * `_Option` and the option for a capstone option's row.
+	 *
+	 * EVERY KEY THE BUILDER KEEPS IS MADE FROM IT -- a row's trigger cooldown, its own stacks, a next-use charge, an
+	 * every-Nth count -- so it is the node and the option and never the row: two rows of one node share an own stack
+	 * the way two rows of one enchantment do, and the generator refuses two action rows of one node, option, action
+	 * and event, which would share a cooldown. THE SAME NAME AT EVERY REFRESH, so a stack held survives the refresh
+	 * that the next item swap makes (`SetPoolActions` forgets a stack only when no action carries its key).
+	 *
+	 * NO ENCHANTMENT CAN BE CALLED THIS. An enchantment's row name keeps letters, digits and underscores and begins
+	 * `Positive_` or `Negative_`.
+	 */
+	static FString EnchantmentNameFor(FName Node, int32 Option);
+
+	/**
+	 * The start of every passive row's enchantment name, `Passive_`, and so of its action rows' trigger keys. No
+	 * enchantment begins so (see above). Read to tell a passive node's row from an item's: the overkill explosion's
+	 * radius, the Death trees' slice C4c1 (2026-11-25).
+	 */
+	static const TCHAR* PassiveEnchantmentPrefix;
+
+	/**
+	 * The passive rows `IsBuiltAsAnEnchantmentRow` names, for the nodes this allocation holds, each copied into an
+	 * enchantment row for `UCataclysmItemModifiers::AccumulateEnchantmentsInto`.
+	 *
+	 * THE SAME CHOICES `AccumulateInto` MAKES, in the same order: a node the table no longer has, a tree no worn
+	 * weapon reaches, an option not taken and a threshold not reached each grant nothing. The value is
+	 * `ValuePerPoint` times `PointsPaid`, written as both ends of the copy's range, so any roll gives it.
+	 *
+	 * RETURNED RATHER THAN BUILT HERE, so the builder stays the only code that turns a row into an action, and a test
+	 * can read what the tree hands over.
+	 */
+	static TArray<FCataclysmEnchantmentEffectRow> EnchantmentRowsFor(
+		const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable,
+		const UDataTable* EffectTable, const TArray<FName>& DamageTypes);
 
 	//~ More points spent than earned. Ruled 2026-10-09.
 

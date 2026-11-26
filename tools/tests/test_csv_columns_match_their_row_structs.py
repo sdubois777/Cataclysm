@@ -96,7 +96,11 @@ def read_structs() -> dict[str, list[str]]:
     block = re.compile(
         r"struct\s+(F\w+)\s*:\s*public\s+" + BASE + r"\s*\{(.*?)\n\};", re.S)
     prop = re.compile(
-        r"UPROPERTY\([^)]*\)\s*([A-Za-z0-9_:<>]+)\s+(\w+)\s*(?:=|;)")
+        # ONE LEVEL OF PARENTHESES INSIDE THE MACRO, for a `meta = (...)`: the
+        # passive row port of 2026-11-24 marks fourteen fields
+        # `meta = (DataTableImportOptional)`, and a pattern stopping at the first
+        # closing parenthesis read none of them.
+        r"UPROPERTY\((?:[^()]|\([^()]*\))*\)\s*([A-Za-z0-9_:<>]+)\s+(\w+)\s*(?:=|;)")
 
     for match in block.finditer(text):
         name, body = match.group(1), match.group(2)

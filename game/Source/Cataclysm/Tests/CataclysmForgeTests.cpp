@@ -21,6 +21,7 @@
 #include "Player/CataclysmForgeCraft.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -303,8 +304,9 @@ bool FCataclysmForgeCarriedTest::RunTest(const FString&)
 }
 
 /**
- * A worn weapon is raised in its slot and the wearer's attack damage rises with it: a Greataxe's 72 is stated at +10
- * and a two-handed weapon doubles it, so +0 is 57.6 and +1 is 57.6 x 1.15 = 66.24, a rise of 8.64. Prints "WORN".
+ * A worn weapon is raised in its slot and the wearer's attack damage rises with it: a Greataxe's 72 is stated at +10,
+ * which is 29 at +0 since issue #2883, and a two-handed weapon doubles it inside the rounding, so +0 is 58 and +1 is
+ * 29 x 1.15 x 2 = 66.7, 67 with a half going up: a rise of 9 (57.6 to 66.24, 8.64, before). Prints "WORN".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeWornTest,
 	"Cataclysm.Forge.UpgradingAWornWeaponRaisesItInItsSlotAndTheAttackDamageWithIt",
@@ -349,7 +351,7 @@ bool FCataclysmForgeWornTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("raised to +1 in its slot"), Raised->GearLevel, 1);
-	TestEqual(TEXT("the attack damage rises by 57.6 x 0.15 = 8.64"), After - Before, 8.64f, 0.05f);
+	TestEqual(TEXT("the attack damage rises from 58 to 67, by 9"), After - Before, 9.0f, 0.05f);
 	return true;
 }
 
@@ -596,6 +598,159 @@ bool FCataclysmForgeSameFrameTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("and holds the day the upgrade's day reached"), Read->Day, Scene.Run->Day());
+	return true;
+}
+
+namespace CataclysmForgeTest
+{
+	/** The PLAY LOOP lines said while it lives, in order, without their prefix. Issue #2857. */
+	struct FForgeDaysLines : public FOutputDevice
+	{
+		TArray<FString> Lines;
+
+		FForgeDaysLines()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FForgeDaysLines() override
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.StartsWith(FCataclysmPlayLoopLog::Prefix))
+			{
+				Lines.Add(Line.RightChop(FCString::Strlen(FCataclysmPlayLoopLog::Prefix)));
+			}
+		}
+
+		/** What was said, after the log is flushed: a line written off the game thread is buffered until then. */
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+	};
+
+	/**
+	 * The run's opening wave fired, ONE ORDINARY DUNGEON on a standing city -- not a bonus dungeon, and not a Void
+	 * dungeon, whose hit takes no defence -- set to run out after `Days` days, and every other timer pushed to 60, so
+	 * the test knows which dungeon its days run out. The dungeon, or INDEX_NONE when the wave stood none.
+	 */
+	int32 ForgeDungeonDueIn(UCataclysmEmpireRun& Run, float Days)
+	{
+		Run.FireOpeningSurge();
+		int32 Due = INDEX_NONE;
+		for (const FCataclysmDungeon& Dungeon : Run.Dungeons)
+		{
+			const FCataclysmCity* City = Run.Map != nullptr ? Run.Map->Find(Dungeon.CityId) : nullptr;
+			if (Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus && !Dungeon.AddsVoidStacks()
+				&& City != nullptr && !City->bFallen)
+			{
+				Due = Dungeon.DungeonId;
+				break;
+			}
+		}
+		if (Due != INDEX_NONE && Run.Clock != nullptr)
+		{
+			for (FCataclysmDungeonTimer& Timer : Run.Clock->Timers)
+			{
+				Timer.DaysUntilResolve = Timer.DungeonId == Due ? Days : 60.0f;
+			}
+		}
+		return Due;
+	}
+}
+
+/**
+ * Issue #2857: the owner saw dungeons gone after days spent at the forge, with nothing saying why, because the forge ran
+ * its days and threw their reports away. An upgrade whose three days run an ordinary dungeon's timer out now says so:
+ * a PLAY LOOP line after the upgrade's own, "at the forge, days 0 to 3: dungeons resolved: 7 (the dungeon on ...);
+ * cities hit: ... lost ...", and the same account, after "Meanwhile", kept for the forge's screen. The dungeon, having
+ * hit its city, is gone from the run. Prints "FORGE DAYS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeDaysReportedTest,
+	"Cataclysm.Forge.AnUpgradeWhoseDaysRunOutATimerSaysWhatResolvedAndTheCityItHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmForgeDaysReportedTest::RunTest(const FString&)
+{
+	using namespace CataclysmForgeTest;
+
+	FForgeScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const int32 Due = ForgeDungeonDueIn(*Scene.Run, 3.0f);
+	const FCataclysmDungeon* Dungeon = Due != INDEX_NONE ? Scene.Run->FindDungeon(Due) : nullptr;
+	const FCataclysmCity* City = Dungeon != nullptr ? Scene.Run->Map->Find(Dungeon->CityId) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the opening wave stood an ordinary dungeon on a standing city"), City))
+	{
+		return false;
+	}
+	const FString DueName = Scene.Run->NameOfDungeon(Due);
+	const FString CityName = City->Name;
+	const int32 DayBefore = Scene.Run->Day();
+
+	// A +0 PIECE CARRYING 250 RESIDUE: a day for the level it reaches and two for the residue, the dungeon's three.
+	const int32 Cell = Scene.Bag()->AddItem(PlainOf(GlovesBase, 0, 250.0f));
+	Scene.Bag()->AddMaterial(Stone(1), 2);
+
+	FForgeDaysLines Capture;
+	FCataclysmForgeUpgrade Done;
+	FString Message;
+	const ECataclysmForgeResult Result =
+		UCataclysmForgeCraft::Upgrade(Scene.World, FCataclysmForgeTarget::Carried(Cell), false, Done, Message);
+	const TArray<FString> Said = Capture.Said();
+	const FString Kept = UCataclysmGameInstance::CapitalDaysAccountIn(Scene.World);
+
+	const FString Lead = FString::Printf(TEXT("at the forge, days %d to %d: "), DayBefore, DayBefore + 3);
+	// THE DUNGEON BY ITS NUMBER AND NAME, which only the resolved part says; ITS CITY AMONG THOSE HIT, not necessarily
+	// first: a Siege's daily share is a hit too.
+	const FString Resolved = FString::Printf(TEXT("%d (%s)"), Due, *DueName);
+	const FString Hit = FString::Printf(TEXT("%s lost "), *CityName);
+	const int32 UpgradeAt = Said.IndexOfByPredicate([](const FString& Line) { return Line.StartsWith(TEXT("upgraded ")); });
+	const int32 AccountAt = Said.IndexOfByPredicate([&Lead](const FString& Line) { return Line.StartsWith(Lead); });
+	AddInfo(FString::Printf(TEXT("FORGE DAYS: dungeon %d (%s) due in 3 on %s; result %d '%s', %d days, day %d to %d; said: "
+								 "%s; kept: \"%s\""),
+							Due, *DueName, *CityName, static_cast<int32>(Result), *Message, Done.Days, DayBefore,
+							Scene.Run->Day(), *FString::Join(Said, TEXT(" | ")), *Kept));
+
+	TestEqual(TEXT("the upgrade is done"), static_cast<int32>(Result), static_cast<int32>(ECataclysmForgeResult::Done));
+	TestEqual(TEXT("set-up: in three days"), Done.Days, 3);
+	TestEqual(TEXT("the run is three days on"), Scene.Run->Day(), DayBefore + 3);
+	TestNull(TEXT("CONTROL: the dungeon is gone, as an ordinary dungeon that hit its city leaves"),
+			 Scene.Run->FindDungeon(Due));
+	if (TestTrue(TEXT("a PLAY LOOP line says what the forge's days did"), Said.IsValidIndex(AccountAt)))
+	{
+		TestTrue(TEXT("naming the dungeon that resolved, by the name it had before the days"),
+				 Said[AccountAt].Contains(Resolved));
+		TestTrue(TEXT("and the city it hit, with what that city lost"),
+				 Said[AccountAt].Contains(Hit) && !Said[AccountAt].Contains(TEXT("cities hit: none")));
+	}
+	TestTrue(TEXT("said after the upgrade's own line"), UpgradeAt != INDEX_NONE && AccountAt > UpgradeAt);
+	TestTrue(TEXT("the same account is kept for the screen, after \"Meanwhile\""),
+			 Kept.StartsWith(FString::Printf(TEXT("Meanwhile, days %d to %d: "), DayBefore, DayBefore + 3))
+				 && Kept.Contains(Resolved) && Kept.Contains(Hit) && Kept.EndsWith(TEXT(".")));
 	return true;
 }
 

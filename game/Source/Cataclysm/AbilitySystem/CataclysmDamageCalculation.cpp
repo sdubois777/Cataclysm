@@ -12,6 +12,8 @@
 // For the share of its summoner's armour and resistances a minion takes: who
 // the minion is, whose it is, and whether that character still lives.
 #include "AbilitySystem/CataclysmMinion.h"
+// For a commanded defender's damage taken from its commander, Grave Pact. The Death trees' slice C6d1.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -38,6 +40,7 @@ const TCHAR* UCataclysmDamageCalculation::BlockDamageReductionStat =
 	TEXT("block_damage_reduction");
 const TCHAR* UCataclysmDamageCalculation::BlockNegationChanceStat =
 	TEXT("block_negation_chance");
+const TCHAR* UCataclysmDamageCalculation::EveryBlockNegatesStat = TEXT("every_block_negates");
 const TCHAR* UCataclysmDamageCalculation::SpellAbsorbChanceStat = TEXT("spell_absorb_chance");
 const TCHAR* UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat =
 	TEXT("minion_defences_percent_of_yours");
@@ -99,6 +102,8 @@ const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
 	TEXT("shield_absorbs_damage_over_time");
 const TCHAR* UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat =
 	TEXT("armor_penetration_suppressed");
+const TCHAR* UCataclysmDamageCalculation::ArmorOverwhelmHalvedStat =
+	TEXT("armor_overwhelm_halved");
 const TCHAR* UCataclysmDamageCalculation::CriticalArmorPenetrationStat =
 	TEXT("critical_armor_penetration");
 const TCHAR* UCataclysmDamageCalculation::MeleeEvasionSuppressedStat =
@@ -339,6 +344,24 @@ namespace
 	}
 
 	/**
+	 * What a commanded defender takes of a blow, from its commander's `minion_damage_taken`: Grave Pact, "Your minions
+	 * take 30% less damage", the Death trees' slice C6d1 (2026-11-25). One plus its increases, times its more rows, with
+	 * the follower's own tags, as every minion stat is read; 1 for anything nobody commands.
+	 */
+	float MinionDamageTakenFactor(const UAbilitySystemComponent* Defender)
+	{
+		const AActor* Body = Defender ? Defender->GetAvatarActor() : nullptr;
+		const AActor* Commander = Body ? UCataclysmCommand::CommanderOf(Body) : nullptr;
+		if (!IsValid(Commander))
+		{
+			return 1.0f;
+		}
+		const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Body);
+		return FMath::Max(0.0f, UCataclysmCommand::SummonerMultiplierFor(
+			Commander, TEXT("minion_damage_taken"), Minion ? Minion->TypeTags : UCataclysmCommand::ThrallMinionTags()));
+	}
+
+	/**
 	 * The armour a minion takes from its summoner for this blow: the summoner's
 	 * armour AS THIS FORMULA WOULD READ IT FOR THE SUMMONER AS DEFENDER OF THE
 	 * BLOW, times the share. So a row of the summoner's about the blow arriving,
@@ -414,6 +437,7 @@ FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
 	Blow.bIsRanged = Hit.bIsRanged;
 	Blow.bIsSpell = Hit.bIsSpell;
 	Blow.bOpponentIsBoss = Hit.bFromBoss;
+	Blow.OpponentRarityStep = Hit.AttackerRarityStep;
 	Blow.bOpponentIsStaggered = Hit.bFromStaggered;
 	Blow.bOpponentIsCrowdControlled = Hit.bFromCrowdControlled;
 
@@ -879,11 +903,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// not change the number by a fraction. It sits after the evasion step's early
 	// return so that a hit which never landed is never reported as a critical
 	// strike, which would put an exclamation mark on the word "Evaded".
-	if (Hit.CritChance > 0.0f && Hit.CritMultiplier > 0.0f)
+	if ((Hit.CritChance > 0.0f || Hit.bCertainCritical) && Hit.CritMultiplier > 0.0f)
 	{
 		const float Roll = CritRoll >= 0.0f ? CritRoll
 											: CataclysmPercentDraw::Draw();
-		if (Roll < Hit.CritChance)
+		if (Hit.bCertainCritical || Roll < Hit.CritChance)
 		{
 			Result.bWasCritical = true;
 			Damage *= Hit.CritMultiplier / 100.0f;
@@ -952,7 +976,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// AND WHAT IT REMOVED, which the block event carries. Issue #1833
 			// group E part 3.
 			const float BeforeBlock = Damage;
-			Damage *= NegationChance >= 100.0f || NegationRoll < NegationChance
+			// AND EVERY BLOCK FOR A DEFENDER HOLDING THE UNBREAKABLE WALL'S FLAG, whatever was rolled. The owner's ruling
+			// of 2026-11-25. Recorded apart, so Iron Will does not charge for a block the flag negated.
+			Result.bNegatedByEveryBlock =
+				DefenderStat(Defender, EveryBlockNegatesStat, 0.0f, BlowOf(Hit)) > 0.0f;
+			Result.bNegated = Result.bNegatedByEveryBlock
+				|| NegationChance >= 100.0f || NegationRoll < NegationChance;
+			Damage *= Result.bNegated
 				? 0.0f
 				: 1.0f - BlockShareOf(Defender, BlowOf(Hit)) / 100.0f;
 			Result.DamageBlocked = BeforeBlock - Damage;
@@ -1053,8 +1083,16 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			* (1.0f - Ignored / 100.0f)
 			* (1.0f - Removed / 100.0f);
 		const float BeforeArmour = Damage;
+		// HALF THE OVERWHELM FOR A DEFENDER HOLDING IRONHIDE'S SECOND ROW. The Ravager tree rework, ruled by the
+		// project owner on 2026-11-24: Ironhide is an exception to "Overwhelm strips every kind of mitigation", and
+		// only halves what it takes from armour. Read here and at no other step, so the resistance, block and evasion
+		// steps above and below still meet the whole of it. The defender's own, as the penetration flag above is.
+		const bool bOverwhelmHalvedOnArmour =
+			DefenderStat(Defender, ArmorOverwhelmHalvedStat, 0.0f, BlowOf(Hit)) > 0.0f;
+		const float OverwhelmOnArmour =
+			bOverwhelmHalvedOnArmour ? Hit.OverwhelmPoints * 0.5f : Hit.OverwhelmPoints;
 		// LESS THE OVERWHELM, in points off the reduction percentage, held at nought. Issue #2824, slice b, ruling Q7.
-		Damage *= 1.0f - FMath::Max(0.0f, ArmorReduction(Armor, Tier) - Hit.OverwhelmPoints) / 100.0f;
+		Damage *= 1.0f - FMath::Max(0.0f, ArmorReduction(Armor, Tier) - OverwhelmOnArmour) / 100.0f;
 		Result.RemovedByArmour = BeforeArmour - Damage;
 	}
 
@@ -1209,7 +1247,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			DefenderStat(Defender, DamageTakenStat,
 						 Combat->GetDamageTaken(), BlowOf(Hit))
 			+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
-				  Defender, ECataclysmAilmentRider::DamageTaken)) / 100.0f;
+				  Defender, ECataclysmAilmentRider::DamageTaken)
+			// AND A DEATHMARK'S PERCENT, "Marked enemies take +3% increased damage per point from all sources" (the
+			// Berserker's Deathmark, 2026-11-25): from every attacker, minions and allies included (question 3), as the
+			// rider beside it is.
+			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)) / 100.0f;
 		Damage *= DamageTakenFactor;
 
 		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS
@@ -1294,6 +1336,19 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 				// tick but one its applier's stats priced; see `FCataclysmIncomingHit::TargetConditionedDotDamageMultiplier`.
 				Damage *= FMath::Max(0.0f, Hit.TargetConditionedDotDamageMultiplier);
 			}
+		}
+	}
+
+	// 6a. A COMMANDED DEFENDER'S SHARE FROM ITS COMMANDER, Grave Pact (the Death trees' slice C6d1): "Your minions take
+	// 30% less damage". A STEP OF ITS OWN AND NOT INSIDE STEP 6, which runs only for a defender with a combat set: an
+	// Imp has none, and window death3-w2 found the share never applied to one. The same two rules as step 6: only a blow
+	// that meets defences, and a blow that cannot be mitigated is not lowered by it (ruled 2026-10-12).
+	if (bMeetsDefences)
+	{
+		const float CommandersShare = MinionDamageTakenFactor(Defender);
+		if (!Hit.bCannotBeMitigated || CommandersShare > 1.0f)
+		{
+			Damage *= CommandersShare;
 		}
 	}
 
@@ -1390,7 +1445,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// THE WHOLE OF EVERYTHING ELSE, AS BEFORE. The share is one for every hit,
 	// for every tick that is not a bleed, and for a bleed on a character whose
 	// shield takes bleed whole, and the stat is not read for any of them.
-	const float ShieldShare = bShieldApplies
+	//
+	// AND NONE AT ALL OF A BLOW THAT IGNORES THE SHIELD: Death's Soul Eater, "Completely ignores player energy
+	// shields", 2026-11-24. The whole of it goes on to health, whatever the shield holds and whatever kind of blow it
+	// is; nothing that asks what the shield absorbed sees anything for it.
+	const float ShieldShare = Hit.bIgnoresEnergyShield
+		? 0.0f
+		: bShieldApplies
 		? 1.0f
 		: FMath::Clamp(
 			  DefenderStat(Defender, BleedDamageTakenFromEnergyShieldStat, 0.0f),

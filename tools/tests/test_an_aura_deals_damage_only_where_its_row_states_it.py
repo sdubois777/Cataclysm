@@ -69,13 +69,23 @@ AURAS: dict[str, tuple[str, float | None, str]] = {
         "the five the ruling names, and inside the rule it states"),
     "Death_All_Aura": (
         "Pall of Ending", None,
-        "enemies deal 15% less damage, and an ally bonus; it deals none"),
+        "enemies deal 15% less damage, and 10% more for the caster, minions "
+        "and allies (the owner, 2026-11-25); it deals none"),
+    "War_All_Aura": (
+        "Blood and Iron", None,
+        "armour and movement taken from enemies, speed and slow immunity for "
+        "the caster and allies; it deals none. Given the Aura shape on "
+        "2026-11-25 (the owner's 'Go with A')"),
     "Chaos_All_Aura": (
         "Unreason", None,
         "one curse a second drawn at random, and an ally bonus"),
     "Famine_All_Aura": (
         "Gnawing Want", None,
         "Withered Touch and an ally bonus; no damage named"),
+    "Death_Greatsword_Support": (
+        "Grave Muster", None,
+        "a Cripple each second and an ally bonus; no damage named. Approved by "
+        "the owner on 2026-11-24 (#2885)"),
     "Death_Dagger_Support": (
         "Grave Shroud", None,
         "Necrosis each second and two immunities; the Support slot's nought "
@@ -91,10 +101,6 @@ AURAS: dict[str, tuple[str, float | None, str]] = {
     "Celestial_Warhammer_Support": (
         "Aegis of Dawn", None,
         "a push each second; the Support slot's nought before the ruling too"),
-    "Death_Greatsword_Support": (
-        "Grave Muster", None,
-        "a Cripple each second and an ally bonus; no damage named. Approved by "
-        "the owner on 2026-11-24 (#2885)"),
 }
 
 #: Words a sentence uses when the aura itself deals damage. A row stating none
@@ -193,8 +199,9 @@ def test_what_each_aura_deals_a_second() -> None:
 
 
 def test_conflagrations_row_is_the_ruling() -> None:
-    """#2869: a 4 m ring, 10% a second; its burn, its Shred of 15 and its
-    allies' 8% unchanged."""
+    """#2869: a 4 m ring, 10% a second; its burn and its Shred of 15 unchanged.
+    Its allies' 8% REPLACED on 2026-11-25 by the owner's "Go with A": a burning
+    enemy dying inside passes its burn on within 4 m."""
     row = aura_rows()["Demonic_All_Aura"]
     params = dict(piece.strip().split("=", 1)
                   for piece in row["ShapeParams"].split(";") if piece.strip())
@@ -203,7 +210,8 @@ def test_conflagrations_row_is_the_ruling() -> None:
     assert params["Burn"] == "1"
     assert params["Effect"] == "Shred"
     assert params["EffectMagnitude"] == "15"
-    assert params["AllyIncreasedDamage"] == "8"
+    assert params["BurnPassesOnDeath"] == "4"
+    assert "AllyIncreasedDamage" not in params
     assert float(row["DamagePercent"]) == 10.0
     assert "4 meter radius" in row["SkillDescription"]
     assert "10% weapon damage" in row["SkillDescription"]

@@ -1,0 +1,2568 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Shadow Class Tree",
+    "description": "The Shadow's sigil: a dagger lying flat, point to the right. Fervour is the centre of the crossguard. The blade is the Blade limb: its two edges and its ridge, the ridge ending in Deathmark at the point and Two Marks the drop of blood falling from it. The grip is the Step limb's three bound strands, and the pommel is their keystones, Flicker at the very end. The guard is an S: the upper quillon is Evasion, bound by Slip where its fleur opens, with Riposte on the petal toward the blade and Ever Moving at the top; the lower quillon is the Path of the Kill, and Poison and Bleed is the fleur at its end. The four cuts stand in a column on the left. Positions only: every node and edge is the revised tree's.",
+    "createdAt": "2026-11-24T00:00:00.000Z",
+    "updatedAt": "2026-11-24T00:00:00.000Z",
+    "pointBudget": 230
+  },
+  "viewport": {
+    "x": 600.0,
+    "y": 450.0,
+    "zoom": 0.35
+  },
+  "nodes": [
+    {
+      "id": "basic_spine_000",
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fervour",
+        "description": "Kills generate Fervour: 10 for each enemy you kill, 25 for each Elite or stronger enemy you kill, and 2 for each critical strike you land. While you have this, Fervour drains at 10 per second once 4 seconds have passed since your last kill, so a pause in the killing is what empties it and a full bar means a run of quick kills.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_001",
+      "position": {
+        "x": 0.0,
+        "y": 115.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Big Game",
+        "description": "+2% increased damage per point against Elite and stronger enemies, whose kills fill 25 Fervour rather than 10.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_002",
+      "position": {
+        "x": 0.0,
+        "y": -115.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Quick Recovery",
+        "description": "+3% increased Cooldown Reduction per point for your movement skill.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_003",
+      "position": {
+        "x": 6.0,
+        "y": 178.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Killing Pace",
+        "description": "For 4 seconds after you kill an enemy, +1% increased Attack Speed and +1% increased Movement Speed per point, so one kill carries you to the next.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_004",
+      "position": {
+        "x": 20.0,
+        "y": 241.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Reaper's Share",
+        "description": "+2% increased Fervour gained from kills per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_005",
+      "position": {
+        "x": 6.0,
+        "y": -178.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Held Breath",
+        "description": "+1% increased damage per point for every full 20 Fervour you currently hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_006",
+      "position": {
+        "x": 42.0,
+        "y": 304.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Slow Exhale",
+        "description": "Fervour drains 5% slower per point once it has begun to drain.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_007",
+      "position": {
+        "x": 20.0,
+        "y": -241.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Telling Blows",
+        "description": "+1 Fervour per point for each critical strike you land on an Elite or stronger enemy, which keeps the bar up in a long fight where kills are rare.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_008",
+      "position": {
+        "x": 80.0,
+        "y": 395.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Envenom",
+        "description": "Your critical strikes have a 6% chance per point to apply Poison and a 6% chance per point to apply Bleed.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_009",
+      "position": {
+        "x": 42.0,
+        "y": -304.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fresh Start",
+        "description": "For 3 seconds after you use your movement skill, +2% increased Attack Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_010",
+      "position": {
+        "x": 250.0,
+        "y": 330.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Brim",
+        "description": "Each time your Fervour reaches its maximum, your next hit is a critical strike and deals +5% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_001",
+      "position": {
+        "x": -175.0,
+        "y": 150.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Momentum",
+        "description": "Fervour begins to drain 2 seconds later after your last kill: 6 seconds rather than 4.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_002",
+      "position": {
+        "x": -160.0,
+        "y": 300.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Hunting Ground",
+        "description": "While no enemy is within 20 metres of you, your Fervour does not drain, so a full bar carries from one pack to the next.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem0",
+      "position": {
+        "x": 122.0,
+        "y": 480.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Death's Patience",
+        "description": "Killing an enemy that carries your Poison or Bleed generates +1 Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem1",
+      "position": {
+        "x": 160.0,
+        "y": 548.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Lingering",
+        "description": "+3% increased damage over time damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem2",
+      "position": {
+        "x": 8.0,
+        "y": 617.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Lasting Wounds",
+        "description": "+4% increased duration per point for Poison and Bleed you apply.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a0",
+      "position": {
+        "x": 192.0,
+        "y": 598.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deep Venom",
+        "description": "Poison you apply deals +2% increased damage per point. Poison is the long fight's ailment: it pays out in full only against something that survives.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a1",
+      "position": {
+        "x": 224.0,
+        "y": 646.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Festering",
+        "description": "Poison you apply deals +1% increased damage for every 2 points for each second the enemy has stayed poisoned by you without a break, up to 10 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a2",
+      "position": {
+        "x": 256.0,
+        "y": 694.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Venomed Prey",
+        "description": "Your hits deal +2% increased damage per point to enemies carrying your Poison.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b0",
+      "position": {
+        "x": 277.0,
+        "y": 470.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Open Veins",
+        "description": "Bleed you apply deals +2% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b1",
+      "position": {
+        "x": 392.0,
+        "y": 520.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Arterial",
+        "description": "+3% increased damage over time frequency per point for Bleed you apply, so more of it lands before a quick kill.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b2",
+      "position": {
+        "x": 477.0,
+        "y": 590.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hit and Run",
+        "description": "Bleed you apply deals +3% increased damage per point to enemies more than 4 metres from you, which a bleeding enemy is while it chases you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_c0",
+      "position": {
+        "x": -80.0,
+        "y": 682.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Slow Death",
+        "description": "Against a Boss, your damage over time deals +4% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_c1",
+      "position": {
+        "x": -175.0,
+        "y": 630.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bide",
+        "description": "Against a Boss, your hits have a 3% chance per point to apply Poison.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kA",
+      "position": {
+        "x": 307.0,
+        "y": 780.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Lethal Dose",
+        "description": "Increases to your Critical Strike Multiplier also apply to the damage of Poison and Bleed that your critical strikes apply, at half their value.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kB",
+      "position": {
+        "x": 547.0,
+        "y": 505.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Blood Debt",
+        "description": "When an enemy bleeding from you dies, the damage its Bleed had left to deal is dealt over 2 seconds to the strongest enemy within 10 metres (the enemy Deathmark marked, if you have Deathmark).",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kC",
+      "position": {
+        "x": -200.0,
+        "y": 535.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Patient Blade",
+        "description": "Against a Boss, your damage over time ticks also count as kills for filling Fervour, once every 2 seconds.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem0",
+      "position": {
+        "x": 150.0,
+        "y": 55.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Keen Edge",
+        "description": "+3% increased Critical Strike Chance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem1",
+      "position": {
+        "x": 300.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Find the Gap",
+        "description": "+4% increased Critical Strike Multiplier per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem2",
+      "position": {
+        "x": 420.0,
+        "y": 200.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Read the Giant",
+        "description": "+3% increased damage per point against Bosses, where no kill comes to reset or refill you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a0",
+      "position": {
+        "x": 420.0,
+        "y": -200.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Open the Throat",
+        "description": "+3% increased Critical Strike Multiplier per point against enemies below 50% health.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a1",
+      "position": {
+        "x": 960.0,
+        "y": -170.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Clean Kill",
+        "description": "Killing an enemy with a critical strike restores 1% of your Maximum Health for every 2 points.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a2",
+      "position": {
+        "x": 1500.0,
+        "y": -132.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Last Breath",
+        "description": "+3% increased damage per point against enemies below 30% health.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b0",
+      "position": {
+        "x": 620.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "From Behind",
+        "description": "+3% increased Critical Strike Chance per point for hits that strike an enemy from behind, including hits a skill counts as struck from behind.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b1",
+      "position": {
+        "x": 1120.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Wearing Cut",
+        "description": "+1% increased damage for every 2 points for each hit in a row you have landed on the same enemy, up to 10 hits.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b2",
+      "position": {
+        "x": 1620.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hunter's Eye",
+        "description": "+2% increased Critical Strike Chance per point against Elite and stronger enemies, and against the enemy Deathmark marked, if you have Deathmark.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_c0",
+      "position": {
+        "x": 960.0,
+        "y": 170.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Find the Rhythm",
+        "description": "Against a Boss, each critical strike takes 1 second for every 4 points off your movement skill's remaining cooldown.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_c1",
+      "position": {
+        "x": 1500.0,
+        "y": 132.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Siege of One",
+        "description": "While you have hit a Boss in the last 2 seconds, Fervour drains 8% slower per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kA",
+      "position": {
+        "x": 2040.0,
+        "y": -88.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Executioner",
+        "description": "You deal 100% more damage against enemies below 30% health.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kB",
+      "position": {
+        "x": 2200.0,
+        "y": 0.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Deathmark",
+        "description": "The strongest enemy within 15 metres is marked. It takes 30% more damage from you, and each critical strike on it gives 5 Fervour. When it dies, the mark moves to the strongest enemy within 10 metres.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kC",
+      "position": {
+        "x": 2040.0,
+        "y": 88.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Death by Inches",
+        "description": "Against a Boss, every 10th hit you land counts as killing an Elite or stronger enemy, for Fervour and for everything else that happens when you kill.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kD",
+      "position": {
+        "x": 2200.0,
+        "y": 200.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Two Marks",
+        "description": "Requires Deathmark. You mark two enemies.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem0",
+      "position": {
+        "x": -150.0,
+        "y": -55.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Light Feet",
+        "description": "+1% increased Movement Speed per point, doubled for 4 seconds after a kill.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem1",
+      "position": {
+        "x": -300.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Arrival",
+        "description": "Hits you land within 1 second after your movement skill ends deal +3% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem2",
+      "position": {
+        "x": -400.0,
+        "y": -85.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hunting Leap",
+        "description": "+3% increased range per point for your movement skill, doubled for 2 seconds after a kill, so the jump after a kill reaches the next target.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a0",
+      "position": {
+        "x": -450.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cutting Path",
+        "description": "Your movement skill deals +4% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a1",
+      "position": {
+        "x": -685.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Quick Kill",
+        "description": "Killing an enemy within 2 seconds of using your movement skill generates +1 Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a2",
+      "position": {
+        "x": -920.0,
+        "y": 0.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blade on Arrival",
+        "description": "+3% increased Critical Strike Chance per point for your movement skill.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b0",
+      "position": {
+        "x": -400.0,
+        "y": 85.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Glancing Cuts",
+        "description": "Enemies your movement skill hits take +2% increased damage per point from you for 4 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b1",
+      "position": {
+        "x": -635.0,
+        "y": 85.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Through and Through",
+        "description": "Each enemy your movement skill hits generates 1 Fervour for every 2 points.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b2",
+      "position": {
+        "x": -870.0,
+        "y": 85.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deep Cut",
+        "description": "Your movement skill's hits have a 5% chance per point to apply Bleed. An enemy you leave bleeding behind you has to chase you, and Bleed deals its damage while it moves.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_c0",
+      "position": {
+        "x": -635.0,
+        "y": -85.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Borrowed Step",
+        "description": "Your movement skill can be used while it is on cooldown by spending 40 Fervour, reduced by 2 per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_c1",
+      "position": {
+        "x": -870.0,
+        "y": -85.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fed Stride",
+        "description": "+5% increased Cooldown Reduction per point for your movement skill while you hold 50 or more Fervour.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kA",
+      "position": {
+        "x": -1110.0,
+        "y": 0.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Flicker",
+        "description": "Killing an enemy resets your movement skill's cooldown (with Deathmark: killing the marked enemy also gives 10 Fervour).",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kB",
+      "position": {
+        "x": -1040.0,
+        "y": 125.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Hollow Step",
+        "description": "Your movement skill passes through enemies and hits each one.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kC",
+      "position": {
+        "x": -1040.0,
+        "y": -125.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Twin Step",
+        "description": "Your movement skill has one more charge, and anything that resets its cooldown restores every charge.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_25",
+      "position": {
+        "x": -1560.0,
+        "y": 0.0
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The First Cut",
+        "description": "Unlocks at 25 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Opening Strike",
+            "description": "Your first hit on an enemy at full health is a critical strike that deals 50% more."
+          },
+          {
+            "name": "Afterimage",
+            "description": "A shadow of you stays where your movement skill started and repeats your next attack."
+          },
+          {
+            "name": "Quickening",
+            "description": "+3% increased Movement Speed for every 10 Fervour held."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 25
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_50",
+      "position": {
+        "x": -1560.0,
+        "y": -240.0
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Second Cut",
+        "description": "Unlocks at 50 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Blade Echo",
+            "description": "Each kill throws a spectral blade at the strongest enemy within 10 metres (the enemy Deathmark marked, if you have Deathmark) for 100% weapon damage, so the next fight starts before you arrive."
+          },
+          {
+            "name": "Shadow Clone",
+            "description": "Every third kill of an Elite or stronger leaves a clone of you that fights for 5 seconds with your basic attack."
+          },
+          {
+            "name": "Honed Edge",
+            "description": "+1% critical strike chance for every 10 Fervour held."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 50
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_100",
+      "position": {
+        "x": -1560.0,
+        "y": -480.0
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Third Cut",
+        "description": "Unlocks at 100 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Shadow Step",
+            "description": "Your movement skill can target any enemy within 15 metres that you can see and puts you behind it."
+          },
+          {
+            "name": "Chain Execution",
+            "description": "A kill makes your next hit within 2 seconds a critical strike."
+          },
+          {
+            "name": "Relentless",
+            "description": "Each kill takes 1 second off all your skill cooldowns for every 100 Fervour held."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 100
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_200",
+      "position": {
+        "x": -1560.0,
+        "y": -720.0
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Final Cut",
+        "description": "Unlocks at 200 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Thousand Cuts",
+            "description": "Each kill moves you straight to the strongest enemy within 10 metres (the enemy Deathmark marked, if you have Deathmark) and strikes it."
+          },
+          {
+            "name": "Death Sentence",
+            "description": "Your hits kill a non-Boss enemy below 15% health outright; Bosses take double damage from you below 15%."
+          },
+          {
+            "name": "Flurry of the Dead",
+            "description": "Your hits strike again once for every 10 Fervour held, up to 10 extra strikes."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 200
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem0",
+      "position": {
+        "x": 80.0,
+        "y": -395.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Slip",
+        "description": "After you evade a hit, your next hit within 3 seconds is a critical strike.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem1",
+      "position": {
+        "x": 122.0,
+        "y": -480.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Counterstroke",
+        "description": "+1% Evasion chance per point, and +5% increased Critical Strike Multiplier per point for the critical strike an evasion gives you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem2",
+      "position": {
+        "x": 160.0,
+        "y": -548.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Nimble",
+        "description": "+3% increased Evasion chance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a0",
+      "position": {
+        "x": 277.0,
+        "y": -470.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Read the Blow",
+        "description": "+1% Evasion chance per point against attacks from Elite and stronger enemies.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a1",
+      "position": {
+        "x": 392.0,
+        "y": -520.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Twice Answered",
+        "description": "Each evasion has a 5% chance per point to give you two critical strikes rather than one.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a2",
+      "position": {
+        "x": 477.0,
+        "y": -590.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Opening Found",
+        "description": "Evading a hit generates 1 Fervour per point, or 2 per point if the attacker is Elite or stronger.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kA",
+      "position": {
+        "x": 547.0,
+        "y": -505.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Riposte",
+        "description": "When you evade a melee hit, you strike the attacker back at once with your basic attack.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b0",
+      "position": {
+        "x": 192.0,
+        "y": -598.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Moving Target",
+        "description": "+3% increased Evasion chance per point while you are moving.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b1",
+      "position": {
+        "x": 224.0,
+        "y": -646.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Tumble",
+        "description": "For 2 seconds after you use your movement skill, +3% Evasion chance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b2",
+      "position": {
+        "x": 256.0,
+        "y": -694.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Slipstream",
+        "description": "For 3 seconds after you evade a hit, +2% increased Movement Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kB",
+      "position": {
+        "x": 307.0,
+        "y": -780.0
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Ever Moving",
+        "description": "While you are moving, your Evasion chance also applies to area damage, at half its value.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_c0",
+      "position": {
+        "x": 8.0,
+        "y": -617.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Untouched",
+        "description": "+1% Evasion chance for every 2 points for every full 20 Fervour you currently hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_c1",
+      "position": {
+        "x": -80.0,
+        "y": -682.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Keep the Count",
+        "description": "Evading a hit adds 1 second for every 3 points to the time before your Fervour begins to drain.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kC",
+      "position": {
+        "x": -182.0,
+        "y": -548.0
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Sidestep",
+        "description": "Evading a hit takes 1 second for every 5 points off your movement skill's remaining cooldown.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "uiElements": [
+    {
+      "id": "ui_textLabel_frame_1",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -60.0,
+        "y": 980.0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 0.7,
+        "text": "SHADOW",
+        "fontSize": 22
+      },
+      "measured": {
+        "width": 132,
+        "height": 33
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_1",
+      "source": "basic_spine_000",
+      "target": "basic_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_2",
+      "source": "basic_spine_000",
+      "target": "basic_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_3",
+      "source": "basic_spine_001",
+      "target": "basic_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_4",
+      "source": "basic_spine_003",
+      "target": "basic_spine_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_5",
+      "source": "basic_spine_002",
+      "target": "basic_spine_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "e_6",
+      "source": "basic_spine_004",
+      "target": "basic_spine_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_7",
+      "source": "basic_spine_005",
+      "target": "basic_spine_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_8",
+      "source": "basic_spine_006",
+      "target": "basic_spine_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_9",
+      "source": "basic_spine_007",
+      "target": "basic_spine_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_10",
+      "source": "basic_spine_008",
+      "target": "basic_spine_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_11",
+      "source": "basic_spine_001",
+      "target": "keystone_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_12",
+      "source": "basic_spine_004",
+      "target": "keystone_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "e_14",
+      "source": "basic_spine_008",
+      "target": "basic_a_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_15",
+      "source": "basic_a_stem0",
+      "target": "basic_a_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_16",
+      "source": "basic_a_stem1",
+      "target": "basic_a_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_17",
+      "source": "basic_a_stem1",
+      "target": "basic_a_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_18",
+      "source": "basic_a_a0",
+      "target": "basic_a_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_19",
+      "source": "basic_a_a1",
+      "target": "basic_a_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_20",
+      "source": "basic_a_stem1",
+      "target": "basic_a_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_21",
+      "source": "basic_a_b0",
+      "target": "basic_a_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_22",
+      "source": "basic_a_b1",
+      "target": "basic_a_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_23",
+      "source": "basic_a_stem2",
+      "target": "basic_a_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_24",
+      "source": "basic_a_c0",
+      "target": "basic_a_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_25",
+      "source": "basic_a_a2",
+      "target": "keystone_a_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_26",
+      "source": "basic_a_b2",
+      "target": "keystone_a_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_27",
+      "source": "basic_a_c1",
+      "target": "keystone_a_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_42",
+      "source": "basic_spine_001",
+      "target": "basic_b_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_43",
+      "source": "basic_b_stem0",
+      "target": "basic_b_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_44",
+      "source": "basic_b_stem1",
+      "target": "basic_b_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_45",
+      "source": "basic_b_stem1",
+      "target": "basic_b_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_46",
+      "source": "basic_b_a0",
+      "target": "basic_b_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_47",
+      "source": "basic_b_a1",
+      "target": "basic_b_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_48",
+      "source": "basic_b_stem1",
+      "target": "basic_b_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_49",
+      "source": "basic_b_b0",
+      "target": "basic_b_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_50",
+      "source": "basic_b_b1",
+      "target": "basic_b_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_51",
+      "source": "basic_b_stem2",
+      "target": "basic_b_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_52",
+      "source": "basic_b_c0",
+      "target": "basic_b_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_53",
+      "source": "basic_b_a2",
+      "target": "keystone_b_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_54",
+      "source": "basic_b_b2",
+      "target": "keystone_b_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_55",
+      "source": "basic_b_c1",
+      "target": "keystone_b_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_56",
+      "source": "basic_spine_002",
+      "target": "basic_c_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_57",
+      "source": "basic_c_stem0",
+      "target": "basic_c_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_58",
+      "source": "basic_c_stem1",
+      "target": "basic_c_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_59",
+      "source": "basic_c_stem1",
+      "target": "basic_c_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_60",
+      "source": "basic_c_a0",
+      "target": "basic_c_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_61",
+      "source": "basic_c_a1",
+      "target": "basic_c_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_62",
+      "source": "basic_c_stem1",
+      "target": "basic_c_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_63",
+      "source": "basic_c_b0",
+      "target": "basic_c_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_64",
+      "source": "basic_c_b1",
+      "target": "basic_c_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_65",
+      "source": "basic_c_stem2",
+      "target": "basic_c_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_66",
+      "source": "basic_c_c0",
+      "target": "basic_c_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_67",
+      "source": "basic_c_a2",
+      "target": "keystone_c_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_68",
+      "source": "basic_c_b2",
+      "target": "keystone_c_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_69",
+      "source": "basic_c_c1",
+      "target": "keystone_c_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_70",
+      "source": "basic_spine_009",
+      "target": "basic_d_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_71",
+      "source": "basic_d_stem0",
+      "target": "basic_d_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_72",
+      "source": "basic_d_stem1",
+      "target": "basic_d_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_73",
+      "source": "basic_d_stem1",
+      "target": "basic_d_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_74",
+      "source": "basic_d_stem2",
+      "target": "basic_d_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_75",
+      "source": "basic_d_stem2",
+      "target": "basic_d_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_76",
+      "source": "basic_d_a0",
+      "target": "basic_d_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_77",
+      "source": "basic_d_a1",
+      "target": "basic_d_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_78",
+      "source": "basic_d_a2",
+      "target": "keystone_d_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_79",
+      "source": "basic_d_b0",
+      "target": "basic_d_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_80",
+      "source": "basic_d_b1",
+      "target": "basic_d_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_81",
+      "source": "basic_d_b2",
+      "target": "keystone_d_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_82",
+      "source": "basic_d_c0",
+      "target": "basic_d_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_83",
+      "source": "basic_d_c1",
+      "target": "keystone_d_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_84",
+      "source": "keystone_b_kB",
+      "target": "keystone_b_kD",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    }
+  ]
+}

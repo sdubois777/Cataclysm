@@ -413,6 +413,14 @@ by `git add` with no error and no warning. Guarded by
   raise is finished, when `UCataclysmEmpireMap::RaiseUpgrade` sets the new
   tier's figures. Its tests are in `Tests/CataclysmCityUpgradeRaiseTests.cpp`.
 
+  Since issue #51 slice B2 Demonic's Infernal Rifts are on the map: a Rift is a
+  Quest dungeon Demonic sent (`FCataclysmDungeon::IsARift`), four floors with
+  eight modifiers, opening on any standing city but the Pillar; every 5 days an
+  unsealed Rift sends a Basic Demonic dungeon to a neighbour a surge could target
+  (`UCataclysmEmpireRun::SendFromRifts`), and a death in one brings a surge
+  (`SurgeForADeathInARift`). Nothing about them is saved beyond what a dungeon
+  already saves. Its tests are in `Tests/CataclysmRiftsTests.cpp`.
+
   **Depth and reward are the same axis; depth and time are not, once a player has
   invested.** A floor costs one day to begin with, so the two floor upgrades move
   the resolve timer with the floor count — a deeper dungeon is slower to walk,

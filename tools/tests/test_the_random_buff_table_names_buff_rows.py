@@ -60,6 +60,10 @@ IN_THE_TABLE = (
     # their buffs.
     "Plague",
     "Chaotic Barrier",
+    # 2026-11-25: the Buffs sheet's Drums of War row, which War's Drums of War
+    # enemy modifier added, joins by the owner's "Add everything" of 2026-10-26.
+    # Appended, so places 0 to 16 keep their buffs.
+    "Drums of War",
 )
 
 
@@ -93,7 +97,7 @@ def buff_rows() -> dict[str, str]:
 
 def test_the_reader_finds_the_table() -> None:
     """A reader that finds nothing would pass the comparisons below."""
-    assert len(table_names()) == len(IN_THE_TABLE) == 17
+    assert len(table_names()) == len(IN_THE_TABLE) == 18
 
 
 def test_the_table_holds_exactly_the_buffs_listed_here_in_this_order() -> None:
@@ -115,11 +119,13 @@ def test_every_buff_row_is_in_the_table() -> None:
     Fifteen and two since batch 3 added Death, Feasting and The Ascended.
     Seventeen and none since batch 4 added Plague and Chaotic Barrier, and the
     list of those left out was deleted with its last entry.
+    Eighteen and none since 2026-11-25, when War's Drums of War added its row
+    and the row joined the table.
     A row added to the status table fails here until somebody decides whether
     it joins the table."""
     rows = set(buff_rows())
     assert rows == set(IN_THE_TABLE)
-    assert len(rows) == 17
+    assert len(rows) == 18
 
 
 def test_the_pin_names_the_buffs_in_the_tables_order() -> None:

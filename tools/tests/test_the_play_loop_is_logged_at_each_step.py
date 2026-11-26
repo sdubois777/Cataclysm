@@ -10,11 +10,14 @@ issue #2741 slice 2's; the fourteenth to twentieth, the character's build -- a p
 tree reset, attribute points spent and reset, a skill chosen and a choice forgotten -- are issue #2763's; the
 twenty-first and twenty-second, the forge's upgrade and combine, are the owner's ruling of 2026-11-19; the
 twenty-third and twenty-fourth, a piece of gear picked up and one worn, are the coordinating session's ruling of
-2026-11-19; the twenty-fifth, a skill level gained, is issue #2764's.
+2026-11-19; the twenty-fifth, a skill level gained, is issue #2764's. The thirty-fourth and thirty-fifth, what days spent
+at the forge and on a respec did, are issue #2857's. The fortieth, what the empire tree's material nodes kept at the
+forge, is #47 slice F6b's; the forty-first, what its affix nodes did to a forge craft's item, #2741's crafting slices C3
+and C4's.
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the thirty-three places says its builder's line;
+  1. each of the forty-one places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -38,7 +41,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The thirty-three places, by file and signature, and the builder each one says.
+#: The forty-one places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -65,6 +68,10 @@ STEPS = [
     ("Player/CataclysmPlayerState.cpp", "void ACataclysmPlayerState::ResetAttributePoints()", "AttributeResetLine"),
     ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::ChooseSkill(", "SkillChosenLine"),
     ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::ForgetSkillChoice(", "SkillForgottenLine"),
+    # AND WHAT A CHANGE OF GEAR ADDED TO THE SKILL POOL ON NO KEY, issue #837 slice 2: said beside the notice the pawn
+    # posts, and never for a load.
+    ("Character/CataclysmPlayerCharacter.cpp", "void ACataclysmPlayerCharacter::NoteSkillsAddedToThePool(",
+     "SkillsAddedLine"),
     # THE FORGE, ruled 2026-11-19: an item raised a level, and two stones combined into one of the next.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(", "ForgeUpgradeLine"),
     ("Player/CataclysmForgeCraft.cpp", "bool UCataclysmForgeCraft::Combine(", "ForgeCombineLine"),
@@ -87,6 +94,19 @@ STEPS = [
     # AND A CARRIED PIECE DISMANTLED, issue #2848 slice S2, through the same sequence.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(", "ForgeDismantleLine"),
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", "ForgeOptionsLine"),
+    # AND WHAT THE FORGE'S TWO EMPIRE MILESTONE OPTIONS DID, issue #47 slice F6: The Soul Forge's second level, said by
+    # the upgrade after its own line, and The Master Tinkerer's critical success, said by the enchantment crafts' end.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(", "ForgeSoulForgeLine"),
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(",
+     "ForgeCriticalLine"),
+    # AND WHAT THE EMPIRE TREE'S MATERIAL NODES KEPT, issue #47 slice F6b: said by the one item craft sequence after the
+    # craft's own line and its options', only when it kept anything (N4).
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(",
+     "ForgeMaterialsKeptLine"),
+    # AND WHAT THE EMPIRE TREE'S AFFIX NODES DID, #2741's crafting slices C3 and C4: said by the same sequence after what
+    # the material nodes kept, only when they did anything.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(",
+     "ForgeAffixNodesLine"),
     # GEAR PICKED UP AND WORN, the coordinating session's ruling of 2026-11-19: the owner's play log said nothing about
     # gear. Said where every pickup and every wear the player chooses comes through.
     ("Items/CataclysmDroppedItem.cpp", "bool UCataclysmDropPickup::TakeInto(", "PickedUpLine"),
@@ -94,6 +114,11 @@ STEPS = [
     # A SKILL LEVEL GAINED, issue #2764: said by the player state for every skill whose level rose, after a kill's
     # share or a character level that let a skill's kept experience through.
     ("Player/CataclysmPlayerState.cpp", "void ACataclysmPlayerState::SaySkillLevelsGained(", "SkillLevelLine"),
+    # WHAT DAYS SPENT IN THE CAPITAL DID, issue #2857: the walk's account of its days away, after the forge's lead and
+    # the respec's, said by the one craft sequence and by the respec after their own lines. Until then the forge threw
+    # its days' reports away, and the owner saw dungeons gone with nothing saying why.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", "AwayAccount"),
+    ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::RespecEmpireTree(", "AwayAccount"),
 ]
 
 #: What must come before each place's line, whitespace aside: the step it reports.

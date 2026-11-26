@@ -52,6 +52,9 @@ const TCHAR* UCataclysmCommand::MinionReserveReductionStat =
 // 12% reduced Fervour", and four enchantments, one of them negative.
 const TCHAR* UCataclysmCommand::MinionReservePercentLessStat = TEXT("minion_reserve_percent_less");
 
+// AND THE SHARE OF A RESERVE HELD THAT COUNTS AS SPENT: Bound Offering, the Death trees' slice C3b.
+const TCHAR* UCataclysmCommand::ReservedFervourSpentPercentStat = TEXT("reserved_fervour_spent_percent");
+
 namespace
 {
 	/** Whether this creature follows that commander, either way it can. */
@@ -337,7 +340,12 @@ float UCataclysmCommand::CommandedWalkSpeedCmPerSecond(const AActor* Follower)
 		return 0.0f;
 	}
 
-	return Movement->MaxWalkSpeed * CommandedWalkSpeedShareOfCommander;
+	// AND RAISED BY THE COMMANDER'S `minion_movement_speed`, Hasty Dead (the Death trees' slice C6d1, 2026-11-25): one plus
+	// its increases, times its more rows, with the follower's own tags, as every minion stat is read.
+	const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Follower);
+	return Movement->MaxWalkSpeed * CommandedWalkSpeedShareOfCommander
+		* SummonerMultiplierFor(Commander, TEXT("minion_movement_speed"),
+								Minion ? Minion->TypeTags : ThrallMinionTags());
 }
 
 FGameplayTag UCataclysmCommand::QuarryTag()
@@ -708,8 +716,35 @@ float UCataclysmCommand::AttackIntervalScaleFor(const AActor* Follower,
  * affix rows carry no scope tags and apply to every minion, and a row scoped
  * to `Type.Deployable` now reaches a machine and not an imp.
  */
+const TCHAR* UCataclysmCommand::TurnOnLastAttackerStat = TEXT("minions_turn_on_your_last_attacker");
+
+AActor* UCataclysmCommand::CommandersLastAttackerFor(const AActor* Follower)
+{
+	const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Follower);
+	const AActor* Commander = Follower ? CommanderOf(Follower) : nullptr;
+	const UCataclysmAbilitySystemComponent* Theirs = Commander
+		? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander))
+		: nullptr;
+	if (!Theirs || (Machine && Machine->IsDeployable())
+		|| Theirs->StatForSkill(FName(TurnOnLastAttackerStat), FGameplayTagContainer(), 0.0f) <= 0.0f
+		|| !Theirs->GetLastBlow().IsOnRecord())
+	{
+		return nullptr;
+	}
+	AActor* Attacker = Theirs->GetLastBlow().Attacker.Get();
+	const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+	if (!Attacker || Attacker == Follower || UCataclysmSkillEffects::IsDead(Attacker)
+		|| !UCataclysmTargeting::IsHostileTo(Attacker, Follower)
+		|| (Body && FVector::Dist(Follower->GetActorLocation(), Attacker->GetActorLocation()) > Body->NoticesFromCm()))
+	{
+		return nullptr;
+	}
+	return Attacker;
+}
+
 float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
-											 const FGameplayTagContainer& MinionTags)
+											 const FGameplayTagContainer& MinionTags,
+											 const AActor* AskingMinion)
 {
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(
@@ -730,8 +765,9 @@ float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCH
 	// scoped to `Type.Deployable` reaches a machine and not an imp.
 	// Measured 2026-09-25: no minion row in the enchantment or passive
 	// sheets carried required tags before, so none changes.
+	// AND THE MINION ASKING, WHEN THE CALLER NAMES IT, for Marshal's distance (the Death trees' slice C6d2).
 	return Theirs->MultiplierForStatAgainst(
-		FName(Stat), MinionTags, /*Target=*/nullptr);
+		FName(Stat), MinionTags, /*Target=*/nullptr, AskingMinion);
 }
 
 /**
@@ -753,7 +789,8 @@ float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCH
  */
 float UCataclysmCommand::SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
 												 const AActor* Target,
-												 const FGameplayTagContainer& MinionTags)
+												 const FGameplayTagContainer& MinionTags,
+												 const AActor* AskingMinion)
 {
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(
@@ -764,7 +801,7 @@ float UCataclysmCommand::SummonerMultiplierAgainst(const AActor* Summoner, const
 		return 1.0f;
 	}
 
-	return Theirs->MultiplierForStatAgainst(FName(Stat), MinionTags, Target);
+	return Theirs->MultiplierForStatAgainst(FName(Stat), MinionTags, Target, AskingMinion);
 }
 
 /**
@@ -797,7 +834,7 @@ float UCataclysmCommand::ThrallDamageMultiplierAgainst(const AActor* Striker, co
 	}
 	const AActor* Commander = CommanderOf(Striker);
 	return Commander
-		? SummonerMultiplierAgainst(Commander, TEXT("minion_damage"), Target, ThrallMinionTags())
+		? SummonerMultiplierAgainst(Commander, TEXT("minion_damage"), Target, ThrallMinionTags(), /*AskingMinion=*/Striker)
 		: 1.0f;
 }
 
@@ -967,8 +1004,13 @@ int32 UCataclysmCommand::ReleaseOldestForAThrall(const AActor* Commander, float 
 
 float UCataclysmCommand::ReservedFervourOf(const AActor* Commander)
 {
+	return ReservedFervourAmong(Commander, ThingsCommandedBy(Commander));
+}
+
+float UCataclysmCommand::ReservedFervourAmong(const AActor* Commander, const TArray<AActor*>& Commanded)
+{
 	float Reserved = 0.0f;
-	for (const AActor* Follower : ThingsCommandedBy(Commander))
+	for (const AActor* Follower : Commanded)
 	{
 		if (const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower))
 		{
@@ -1060,7 +1102,7 @@ float UCataclysmCommand::ReserveFor(const AActor* Commander, float Stated,
 }
 
 void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,
-									float Reserve)
+									float Reserve, const FGameplayTagContainer* SpendingTags)
 {
 	if (!IsValid(Follower))
 	{
@@ -1068,6 +1110,21 @@ void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacter
 	}
 	Follower->ReservedFervour = Reserve;
 	ClampFervourToSpendable(Commander);
+
+	// BOUND OFFERING: the share of what is held back that counts as spent, raised after the hold so a row reading the
+	// pool sees it as it now is. See the declaration.
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs || Reserve <= 0.0f)
+	{
+		return;
+	}
+	const FGameplayTagContainer& Tags = SpendingTags ? *SpendingTags : FGameplayTagContainer::EmptyContainer;
+	const float Percent = Theirs->StatForSkill(FName(ReservedFervourSpentPercentStat), Tags, 0.0f);
+	if (Percent > 0.0f)
+	{
+		Theirs->NoteFervourSpent(Reserve * Percent / 100.0f, SpendingTags, /*bTakenFromThePool=*/false);
+	}
 }
 
 bool UCataclysmCommand::SubjugateRefusalHolds(ECataclysmSubjugateRefusal Reason, const AActor* Commander,

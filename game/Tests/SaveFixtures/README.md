@@ -665,6 +665,18 @@ followed, ruled 2026-11-01:
   read it as the committed character file reads `Character_v10.json`, and every
   test that runs an older character file through the whole chain adds what the
   step writes through `CataclysmSaveFixtures::AddTheCharactersVersion10Defaults`.
+- **The account record went to version 8 on 2026-11-24**, for the empire tree's
+  forge gold nodes (#47 slice F6a). The account counts the tier 1 gold spent at
+  the forge across runs, `GoldSpentAtTheForge`, which Treasury Synergy reads, as
+  it counts what is spent on city upgrades for Reinvestment; `Migrate_7_to_8`
+  writes 0, as a record written before counted nothing. `Account_v8.json` is
+  `Account_v7.json` at version 8 with 62500.25 spent, a figure and not the
+  default, for the reason below. `Account_v7.json` is now a migration input;
+  every test that read it as the committed file reads the new one, and every
+  test that runs an older account file through the chain adds what the step
+  writes through `CataclysmSaveFixtures::AddTheAccountsVersion8Defaults`. A Solo
+  Self-Found character's count is its own record's, from the character record's
+  version 18, below.
 - **The account record went to version 7, the character record to version 14
   and the run record to version 15 on 2026-11-22**, for the empire tree's ninth
   slice (issue #2741 slice 9). The account and a Solo Self-Found character count
@@ -688,6 +700,44 @@ followed, ruled 2026-11-01:
   through the whole chain adds what the steps write through
   `CataclysmSaveFixtures::AddTheAccountsVersion7Defaults`,
   `AddTheCharactersVersion14Defaults` and `AddTheRunsVersion15Defaults`.
+- **The character record went to version 16 on 2026-11-24**, for the inventory's
+  tabs (issue #2849; the owner: "One cell per kind, no limit (Recommended)"). The
+  48 carried slots hold gear only, and the carried crafting materials and gems are
+  two lists of their own, `CarriedMaterials` and `CarriedGems`, each entry a
+  carried slot holding one stack. `Migrate_15_to_16` moves each stack out of
+  `CarriedSlots` into its list and blanks its cell, which stays, so every piece of
+  gear keeps its cell. `Character_v16.json` is `Character_v15.json` at version 16
+  with its 12 Whispering Ash moved from its second carried slot, now blank, into
+  `CarriedMaterials`, and with 3 Superb Of The Viper in `CarriedGems`: a figure
+  and not the default, for the reason below. `Character_v15.json` is now a
+  migration input; every test that read it as the committed file reads the new
+  one, and every test that runs an older file through the chain adds what the
+  step writes through `AddTheCharactersVersion16Defaults`.
+- **The character record went to version 17 on 2026-11-24**, for the skill keys
+  (issue #837 slice 1; the owner: "Approve all three (Recommended)"). The
+  character keeps what each key held by default after the last fill,
+  `RememberedDefaults`, so its keys stay as they are when a weapon goes on or off
+  and after a load. `Migrate_16_to_17` writes an empty list, which is what a
+  character written before it held. `Character_v17.json` is `Character_v16.json`
+  at version 17 with one remembered default, War_Greatsword_Special on the
+  Special key, and one in its held build, War_Greatsword_Support on the Support
+  key (the double copies the keys, ruled the same day): figures and not the
+  default, so the round trip proves both fields are read. The step writes an
+  empty list into a held build that lacks one, and keeps one `Migrate_5_to_6`
+  already wrote. `Character_v16.json` is now a migration input; every test that read it
+  as the committed file reads the new one, and every test that runs an older
+  file through the chain adds what the step writes through
+  `AddTheCharactersVersion17Defaults`.
+- **The character record went to version 18 on 2026-11-25**, for the empire
+  tree's forge gold nodes (#47 slice F6a), after the skill keys' 17. A Solo
+  Self-Found character counts the tier 1 gold it spends at the forge across
+  runs, `GoldSpentAtTheForge`, which Treasury Synergy reads, as the account
+  does at its version 8; `Migrate_17_to_18` writes 0. `Character_v18.json` is
+  `Character_v17.json` at version 18 with 41250.75 spent, a figure and not the
+  default, so the round trip proves the field is read. `Character_v17.json` is
+  now a migration input; every test that read it as the committed file reads the
+  new one, and every test that runs an older file through the chain adds what
+  the step writes through `AddTheCharactersVersion18Defaults`.
 - **The run record went to version 16 on 2026-11-22**, for the cleanse city
   upgrade (issue #2838): the run holds whether the cleanse has been bought in it,
   `bCleanseBoughtThisRun`, once a run. The step writes false: a run written before
@@ -920,6 +970,68 @@ followed, ruled 2026-11-01:
   comparing a migrated or committed file field by field), and the coordinating
   session ruled the version on 2026-11-24 by the rule above. That sentence now
   points here.
+- **The run record went to version 19 on 2026-11-24**, for a Rift's altars
+  (issue #51 slice B1): the floor's rule state keeps the altars that have fallen
+  on the floor being fought on, by their place in the order the floor placed
+  them, `RiftAltarsDestroyed`, so a load does not stand them up again.
+  `Migrate_18_to_19` writes an empty list into `Floor.RuleState`: no dungeon
+  placed an altar before. `Run_v19.json` is `Run_v18.json` at version 19 with
+  `"RiftAltarsDestroyed": [0, 2]` added to its rule state and nothing else
+  changed: not the default, so the test that reads it shows the field is read.
+  `Run_v18.json` is now a migration input, not edited again:
+  `Cataclysm.RiftAltars.ARunFileFromVersion18MigratesWithNoAltarFallen` runs it
+  through the step, every test that read `Run_v18.json` as the committed run
+  file reads `Run_v19.json` now, and every test that runs an older run file
+  through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion19Defaults`. **No other record
+  moves.**
+- **The run record went to version 20 on 2026-11-25**, for the owner's redesign
+  of Abyssal Rifts (issue #2864): a floor holds several rifts the player can kill,
+  so the floor's rule state keeps each rift's health left and seconds stood,
+  `AbyssalRiftHealthLeft` and `AbyssalRiftSecondsAlive`, by the rift's place in
+  the rule's list, where it kept one rift's state, `AbyssalRiftState`. Its hunters
+  are creature records already (`RaisedBy`, `RaisedGroup`), so no creature field
+  was added. `Migrate_19_to_20` removes the state and writes, for a state other
+  than 0 -- a rift the player had met, which a version 19 load closed and counted
+  failed (U2) -- three entries of 0 health and 0 seconds, every rift a floor could
+  then hold killed, and for 0 two empty lists, which a load reads as the rifts
+  standing as the floor rebuilds them. `Run_v20.json` is `Run_v19.json` at version
+  20 with `AbyssalRiftState` replaced by a standing rift at 1536.5 health and
+  96.25 seconds and a killed one at 0 and 30.5: figures and not the defaults.
+  `Run_v19.json` is now a migration input, not edited again:
+  `Cataclysm.SaveLoad.ARunFileFromVersion19MigratesItsRiftStateToEachRift` runs
+  it through the step, every test that read it as the committed file reads
+  `Run_v20.json` now, and every test that runs an older run file through the
+  whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion20Defaults`. **WRITTEN AS 17 TO 18 on
+  2026-11-24 and renumbered to 19 to 20** when it was rebuilt on development,
+  which by then held 18 (issue #2848) and 19 (issue #51). **No other record
+  moves.**
+- **The run record went to version 21 on 2026-11-25**, for the War quest (issue
+  #51 slice B4): a Siege's growth counts the days on the city it stands on now, so
+  each dungeon keeps the day it reached that city, `ArrivedDay`, -1 until it first
+  moves, and each city the Cataclysm whose hit felled it, `FellTo`, which decides
+  whether a fall was to War. `Migrate_20_to_21` writes -1 into every dungeon and
+  "None" into every city. `Run_v21.json` is `Run_v20.json` at version 21 with
+  those two fields added, the fallen city felled by Demonic, a figure and not the
+  default. `Run_v20.json` is now a migration input, not edited again:
+  `Cataclysm.WarQuestSieges.ARunFileFromVersion20GainsNoArrivalAndNoFeller` runs
+  it through the step, every test that read it as the committed file reads
+  `Run_v21.json` now, and every test that runs an older run file through the
+  whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion21Defaults`. Built on the Abyssal
+  Rifts branch, which takes 19 to 20. **No other record moves.**
+- **The run record went to version 22 on 2026-11-25**, for the Death quest (issue
+  #51 slice B5): an Abomination lair's boss grows with the cities fallen when the
+  lair appeared, so each dungeon keeps that count, `CitiesFallenBefore`, 0 for a
+  dungeon that is not a lair. `Migrate_21_to_22` writes 0 into every dungeon.
+  `Run_v22.json` is `Run_v21.json` at version 22 with that field added; its one
+  dungeon is Demonic's, so its count is 0. `Run_v21.json` is now a migration
+  input, not edited again: `Cataclysm.AbominationLairs.ARunFileFromVersion21CountsNoFallenCities`
+  runs it through the step, every test that read it as the committed file reads
+  `Run_v22.json` now, and every chain test adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion22Defaults`. Built on the War quest's
+  branch, which takes 20 to 21. **No other record moves.**
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -940,6 +1052,7 @@ followed, ruled 2026-11-01:
 | `Account_v5.json` | The same account at version 5: version 4's contents, plus a gold debt, 2500 owed with 250 taken a day |
 | `Account_v6.json` | The same account at version 6: version 5's contents, plus an extra option in its tree, the first of Foundations of the Empire's |
 | `Account_v7.json` | The same account at version 7: version 6's contents, plus 75000.5 tier 1 gold spent on city upgrades |
+| `Account_v8.json` | The same account at version 8: version 7's contents, plus 62500.25 tier 1 gold spent at the forge |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
@@ -955,6 +1068,9 @@ followed, ruled 2026-11-01:
 | `Character_v13.json` | The same character at version 13: version 12's contents, with each socket count as a list of sockets -- its carried piece's Attack holding Of The Viper at Quality and Defense, its worn greatsword's Attack, Defense and Utility, its held build's three of type Any -- and no gem in either carried slot |
 | `Character_v14.json` | The same character at version 14: version 13's contents, plus 50000.25 tier 1 gold spent on city upgrades |
 | `Character_v15.json` | The same character at version 15: version 14's contents, plus where each item arrived -- the creation greatsword +0 at tier 2, the carried Circlet +4 at tier 2, the empty slot not known, the worn ring +3 at tier 1 |
+| `Character_v16.json` | The same character at version 16: version 15's contents, with its 12 Whispering Ash in `CarriedMaterials` and its second carried slot blank, plus 3 Superb Of The Viper in `CarriedGems` |
+| `Character_v17.json` | The same character at version 17: version 16's contents, plus one remembered default, `War_Greatsword_Special` on the Special key, and one in its held build, `War_Greatsword_Support` on the Support key |
+| `Character_v18.json` | The same character at version 18: version 17's contents, plus 41250.75 tier 1 gold spent at the forge |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
@@ -973,6 +1089,10 @@ followed, ruled 2026-11-01:
 | `Run_v16.json` | The same run at version 16: version 15's contents, plus the cleanse bought this run |
 | `Run_v17.json` | The same run at version 17: version 16's contents, plus its thrall's taking skill, `Demonic_Staff_Ultimate`, at a level factor of 1.5, and the other creature None and 1 |
 | `Run_v18.json` | The same run at version 18: version 17's contents, plus where each ground item arrived -- the Circlet +0 at tier 4, the gold pile not known |
+| `Run_v19.json` | The same run at version 19: version 18's contents, plus a Rift's altars fallen on its floor, the first and the third |
+| `Run_v20.json` | The same run at version 20: version 19's contents, with the floor's one Abyssal Rift state replaced by two rifts' health left and seconds stood, a standing rift at 1536.5 and 96.25 and a killed one at 0 and 30.5 |
+| `Run_v21.json` | The same run at version 21: version 20's contents, plus each dungeon's day of arrival (-1, the Siege has not moved) and each city's felling Cataclysm (the fallen city Demonic, the standing one None) |
+| `Run_v22.json` | The same run at version 22: version 21's contents, plus each dungeon's count of the cities fallen when it appeared (0: its one dungeon is Demonic's, not a lair) |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

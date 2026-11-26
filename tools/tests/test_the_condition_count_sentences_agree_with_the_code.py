@@ -53,8 +53,14 @@ ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
 
 
 def number_word(word: str) -> int:
-    """'sixteen' -> 16, 'thirty-eight' -> 38, case-insensitive."""
+    """'sixteen' -> 16, 'thirty-eight' -> 38, 'hundred' -> 100, 'hundred-and-six' -> 106, case-insensitive.
+
+    THE HUNDREDS SINCE THE DEATH TREES' SLICE C6d1 (2026-11-25), when the conditions reached a hundred."""
     word = word.lower()
+    if word == "hundred":
+        return 100
+    if word.startswith("hundred-and-"):
+        return 100 + number_word(word[len("hundred-and-"):])
     if word in UNITS:
         return UNITS.index(word)
     tens, _, units = word.partition("-")
@@ -65,8 +71,17 @@ def number_word(word: str) -> int:
 def ordinal_word(word: str) -> int:
     """'thirty-ninth' -> 39, 'twentieth' -> 20, 'ninth' -> 9."""
     word = word.lower()
+    if word == "hundredth":
+        return 100
+    if word.startswith("hundred-and-"):
+        return 100 + ordinal_word(word[len("hundred-and-"):])
     if word in ORDINALS:
         return ORDINALS[word]
+    # THE TEENS, "tenth" to "nineteenth", since the bundle 3 merge (2026-11-25) made the count a hundred-and-fifteenth.
+    if word.endswith("th") and word[:-2] in UNITS[10:]:
+        return UNITS.index(word[:-2])
+    if word == "twelfth":
+        return 12
     if word.endswith("ieth"):
         return TENS[word[:-4] + "y"]
     tens, _, units = word.partition("-")
@@ -74,9 +89,12 @@ def ordinal_word(word: str) -> int:
     return TENS[tens] + ORDINALS[units]
 
 
-HEADER_SENTENCE = re.compile(r"([A-Z]+(?:-[A-Z]+)?) OF THE ([A-Z]+(?:-[A-Z]+)?) COMPARE NOTHING")
-ORDINAL_SENTENCE = re.compile(r"adds a ([a-z]+(?:-[a-z]+)?),")
-SWITCH_SENTENCE = re.compile(r"Each of the ([a-z]+(?:-[a-z]+)?) says")
+HEADER_SENTENCE = re.compile(r"([A-Z]+(?:-[A-Z]+)*) OF THE ([A-Z]+(?:-[A-Z]+)*) COMPARE NOTHING")
+#: "adds an" SINCE 2026-11-25, when the ordinal reached "eighty-second" (the
+#: Saboteur's device conditions) and the sentence took the article it needs;
+#: "an eightieth" on the Death line's slice C3a the same day.
+ORDINAL_SENTENCE = re.compile(r"adds an? ([a-z]+(?:-[a-z]+)*),")
+SWITCH_SENTENCE = re.compile(r"Each of the ([a-z]+(?:-[a-z]+)*) says")
 
 
 def test_the_header_count_sentence_states_the_two_counts_the_code_holds(request) -> None:

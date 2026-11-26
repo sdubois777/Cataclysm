@@ -329,6 +329,18 @@ public:
 	/** The choices the last fill was handed. */
 	const TArray<FCataclysmSkillChoice>& GetSkillChoices() const { return SkillChoices; }
 
+	/**
+	 * What each key held by default after the last fill, for the next. Issue #837 slice 1 (the owner's Q1 of
+	 * 2026-11-24, "the keys stay as they are"). What the pawn hands over from
+	 * `ACataclysmPlayerState::GetRememberedDefaults` beside the choices; the fill gives each key with no choice its
+	 * remembered row while that row is in the pool (`UCataclysmWeaponSkills::FillWithChoices`). An empty list is the
+	 * fill as it was. A component no pawn hands anything keeps what it was handed last, empty at first.
+	 */
+	void UseRememberedDefaults(const TArray<FCataclysmSkillChoice>& NewDefaults) { RememberedDefaults = NewDefaults; }
+
+	/** The remembered defaults the last fill was handed. */
+	const TArray<FCataclysmSkillChoice>& GetRememberedDefaultsHandedIn() const { return RememberedDefaults; }
+
 	/** Which weapon a character begins holding. For tests; see the field below. */
 	void SetStartingWeaponType(const FString& NewType) { StartingWeaponType = NewType; }
 
@@ -448,6 +460,9 @@ private:
 
 	/** The player's choices the fills read, as `UseSkillAssignment` was handed them. Issue #837 layer 3. */
 	UPROPERTY() TArray<FCataclysmSkillChoice> SkillChoices;
+
+	/** The remembered defaults the fills read, as `UseRememberedDefaults` was handed them. Issue #837 slice 1. */
+	UPROPERTY() TArray<FCataclysmSkillChoice> RememberedDefaults;
 
 	/** What the current weapon granted, so it can all be taken back. */
 	FCataclysmAbilitySetHandles GrantedHandles;

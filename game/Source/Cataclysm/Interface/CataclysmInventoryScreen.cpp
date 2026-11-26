@@ -8,6 +8,7 @@
 // A gem stack's name, issue #46 slice G2.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Items/CataclysmWearing.h"
 #include "Engine/DataTable.h"
 
 const TCHAR* UCataclysmInventoryScreen::PanelHex = TEXT("0A0F12");
@@ -255,6 +256,90 @@ FString UCataclysmInventoryScreen::HeaderTextFor(int32 Used, int32 Capacity,
 	return FString::Printf(TEXT("%s        holding %s"), *Counted, *HeldName);
 }
 
+FString UCataclysmInventoryScreen::TabNameFor(ECataclysmInventoryTab Tab, int32 KindsHeld)
+{
+	switch (Tab)
+	{
+	case ECataclysmInventoryTab::Materials:
+		return FString::Printf(TEXT("Materials (%d)"), FMath::Max(0, KindsHeld));
+	case ECataclysmInventoryTab::Gems:
+		return FString::Printf(TEXT("Gems (%d)"), FMath::Max(0, KindsHeld));
+	default:
+		return FString();
+	}
+}
+
+FLinearColor UCataclysmInventoryScreen::TabColourFor(bool bShown)
+{
+	return bShown ? InkColour() : UCataclysmCombatOverlay::ColourFromHex(EmptyCellHex);
+}
+
+TArray<FName> UCataclysmInventoryScreen::MaterialTabOrder(const UDataTable* CraftingMaterialTable)
+{
+	TArray<FName> Out;
+	if (CraftingMaterialTable == nullptr)
+	{
+		return Out;
+	}
+	// THE TABLE'S OWN ORDER WITHIN A TIER: a stable sort by tier keeps it.
+	struct FRowAt
+	{
+		FName Name;
+		int32 Tier = 0;
+	};
+	TArray<FRowAt> Rows;
+	for (const FName& Name : CraftingMaterialTable->GetRowNames())
+	{
+		const FCataclysmCraftingMaterialRow* Row = CraftingMaterialTable->FindRow<FCataclysmCraftingMaterialRow>(
+			Name, TEXT("UCataclysmInventoryScreen::MaterialTabOrder"), /*bWarnIfMissing=*/false);
+		Rows.Add({Name, Row != nullptr ? Row->Tier : 0});
+	}
+	Rows.StableSort([](const FRowAt& A, const FRowAt& B) { return A.Tier < B.Tier; });
+	for (const FRowAt& Row : Rows)
+	{
+		Out.Add(Row.Name);
+	}
+	return Out;
+}
+
+FString UCataclysmInventoryScreen::MaterialTabLabelFor(FName Material, const UDataTable* CraftingMaterialTable)
+{
+	return UCataclysmDropRoll::MaterialNameOf(CraftingMaterialTable, Material);
+}
+
+FString UCataclysmInventoryScreen::MaterialTabCountFor(int32 Held)
+{
+	return FString::FromInt(FMath::Max(0, Held));
+}
+
+int32 UCataclysmInventoryScreen::GemStacksPerPage(int32 MaterialKinds)
+{
+	const int32 Columns = UCataclysmInventoryComponent::Columns;
+	const int32 Rows = FMath::Max(1, (FMath::Max(0, MaterialKinds) + Columns - 1) / Columns);
+	return Rows * Columns;
+}
+
+int32 UCataclysmInventoryScreen::GemPageCount(int32 Stacks, int32 PerPage)
+{
+	const int32 Each = FMath::Max(1, PerPage);
+	return FMath::Max(1, (FMath::Max(0, Stacks) + Each - 1) / Each);
+}
+
+int32 UCataclysmInventoryScreen::ClampGemPage(int32 Page, int32 Pages)
+{
+	return FMath::Clamp(Page, 1, FMath::Max(1, Pages));
+}
+
+int32 UCataclysmInventoryScreen::GemPageStart(int32 Page, int32 PerPage)
+{
+	return (FMath::Max(1, Page) - 1) * FMath::Max(1, PerPage);
+}
+
+FString UCataclysmInventoryScreen::GemPageText(int32 Page, int32 Pages)
+{
+	return FString::Printf(TEXT("Page %d of %d"), Page, Pages);
+}
+
 int32 UCataclysmInventoryScreen::HeldSlotToDraw(
 	const UCataclysmInventoryComponent* Inventory)
 {
@@ -307,6 +392,27 @@ FLinearColor UCataclysmInventoryScreen::FrameColourFor(
 	FLinearColor Dimmed = ItemColour;
 	Dimmed.A *= LiftedFrameOpacity;
 	return Dimmed;
+}
+
+FString UCataclysmInventoryScreen::PressLineFor(ECataclysmWearResult Result)
+{
+	switch (Result)
+	{
+	case ECataclysmWearResult::Worn:
+	case ECataclysmWearResult::Swapped:
+	case ECataclysmWearResult::TakenOff:
+	case ECataclysmWearResult::PickedUp:
+	case ECataclysmWearResult::PutDown:
+	case ECataclysmWearResult::Exchanged:
+		return FString(); // It did what was asked, and the screen shows that.
+	default:
+		return UCataclysmWearing::Explain(Result);
+	}
+}
+
+bool UCataclysmInventoryScreen::PressLineIsShown(const FString& Line, double PostedAt, double Now)
+{
+	return !Line.IsEmpty() && Now >= PostedAt && Now < PostedAt + PressLineSeconds;
 }
 
 FString UCataclysmInventoryScreen::TextShownFor(const FString& Text,

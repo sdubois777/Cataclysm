@@ -1509,6 +1509,10 @@ bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
 
 		// OPENED ON THE CORPSE, for the reason the test above gives.
 		System->NoteHealthCostPaid();
+		// AND THE DEATH TREES' TWO CLOCKS, each taking an argument: a kill (slice B, which did not reset it here
+		// until slice C3a) and a spend of Fervour (slice C3a, 2026-11-25).
+		System->NoteOwnKill(/*GraceSeconds=*/4.0f);
+		System->NoteFervourSpent(/*Amount=*/10.0f);
 		for (const FWindow& Window : Windows)
 		{
 			(System->*Window.Open)();
@@ -1516,6 +1520,9 @@ bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
 
 		TestTrue(TEXT("a health cost counts as recent"),
 			System->SecondsSinceHealthCostPaid() >= 0.0f);
+		TestTrue(TEXT("a kill counts as recent"), System->SecondsSinceOwnKill() >= 0.0f);
+		TestTrue(TEXT("and holds the decay after it"), System->KillDecayIsHeld());
+		TestTrue(TEXT("a spend of Fervour counts as recent"), System->SecondsSinceFervourSpent() >= 0.0f);
 		for (const FWindow& Window : Windows)
 		{
 			TestTrue(FString::Printf(TEXT("before the respawn, %s counts as recent"),
@@ -1527,6 +1534,9 @@ bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
 
 		TestTrue(TEXT("after it, no health cost counts as recent"),
 			System->SecondsSinceHealthCostPaid() < 0.0f);
+		TestTrue(TEXT("after it, no kill counts as recent"), System->SecondsSinceOwnKill() < 0.0f);
+		TestFalse(TEXT("and the decay after a kill is no longer held"), System->KillDecayIsHeld());
+		TestTrue(TEXT("after it, no spend of Fervour counts as recent"), System->SecondsSinceFervourSpent() < 0.0f);
 		for (const FWindow& Window : Windows)
 		{
 			TestTrue(FString::Printf(TEXT("after the respawn, %s no longer counts"),
@@ -1647,14 +1657,13 @@ CATACLYSM_TEST(FCataclysmRespawnKeepsThePassiveTreeTest,
 	{
 		const FGameplayAttribute MaxHealth =
 			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
-		const FGameplayAttribute Armour =
-			UCataclysmCombatAttributeSet::GetArmorAttribute();
 		const float HealthBefore = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
-		const float ArmourBefore = CataclysmDeathTest::AttributeOf(Player, Armour);
 
 		// THE NODE `Cataclysm.Passives.SpendingAPointRaisesMaximumHealthWithNothing
 		// ElseTouched` spends into, through the same call: Pain Tolerance, behind
-		// the Masochist root, which raises maximum health and armour.
+		// the Masochist root, which raises maximum health. It raised armour too,
+		// and this test read both, until the tree rework the project owner
+		// approved on 2026-11-24 dropped that half.
 		const FName Root(TEXT("Masochist_basic_spine_000"));
 		const FName PainTolerance(TEXT("Masochist_basic_spine_001"));
 		const int32 Points = 10;
@@ -1677,13 +1686,9 @@ CATACLYSM_TEST(FCataclysmRespawnKeepsThePassiveTreeTest,
 		}
 
 		const float TreeHealth = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
-		const float TreeArmour = CataclysmDeathTest::AttributeOf(Player, Armour);
 		TestTrue(*FString::Printf(TEXT("the points raised maximum health: %.1f to %.1f"),
 								  HealthBefore, TreeHealth),
 				 TreeHealth > HealthBefore);
-		TestTrue(*FString::Printf(TEXT("and armour: %.1f to %.1f"),
-								  ArmourBefore, TreeArmour),
-				 TreeArmour > ArmourBefore);
 
 		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
 		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
@@ -1692,8 +1697,6 @@ CATACLYSM_TEST(FCataclysmRespawnKeepsThePassiveTreeTest,
 
 		TestEqual(TEXT("the tree's maximum health survived the respawn"),
 			CataclysmDeathTest::AttributeOf(Player, MaxHealth), TreeHealth, 0.01f);
-		TestEqual(TEXT("and so did its armour"),
-			CataclysmDeathTest::AttributeOf(Player, Armour), TreeArmour, 0.01f);
 		TestEqual(TEXT("the character came back filled to the raised maximum"),
 			CataclysmDeathTest::HealthOf(Player), TreeHealth, 0.01f);
 		TestEqual(TEXT("and every point is still on the node"),

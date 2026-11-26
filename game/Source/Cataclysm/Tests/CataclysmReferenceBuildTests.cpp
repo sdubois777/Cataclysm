@@ -28,9 +28,11 @@
  *
  * WHAT THE CHARACTER IS. A level 100 Ravager with 60 Vitality and 40
  * Constitution, wearing eighteen pieces at affix tier 7 and gear level +10,
- * spending all 36 prefix and all 36 suffix slots. In the rarity model that is a
- * full set of MASTERFUL gear: four regular affixes on every piece and no
- * enchantments.
+ * spending all 36 prefix slots and 23 of the 36 suffix slots: the re-fit for the
+ * whole-number affix ranges (issue #2883), with the 13 suffix places it freed
+ * left empty by the owner's ruling on issue #2884 (2026-11-24, "A middle build
+ * (Recommended)"). In the rarity model that is 8 Masterful, 7 Superb and 3
+ * Quality pieces. Until then it spent all 72 and was a full Masterful set.
  *
  * NOTHING IS QUOTED ANY MORE. The Ravager's class base values and what its
  * attribute points are worth used to be literals copied from the Python model,
@@ -40,9 +42,9 @@
  * passing unnoticed. Only the FINAL figures are still stated, which is the
  * point: they are what the model says the character reaches.
  *
- * WHERE THE AFFIXES SIT. The Python model spends 72 affix slots without saying
- * which piece each is on. The assignment below was solved so that the totals
- * match exactly while respecting every affix's slot restrictions and the two
+ * WHERE THE AFFIXES SIT. Since issue #2884 the Python model places every affix
+ * on a named piece (`reference_build.LAYOUT`), and the list below is that
+ * layout, piece by piece, respecting every affix's narrowed slots and the two
  * prefix and two suffix caps. The Greatsword carries only offensive affixes,
  * which matters: a two-handed weapon doubles what it carries, and the model does
  * not apply that. Since every affix that touches a defensive stat is barred from
@@ -80,10 +82,11 @@ namespace CataclysmReferenceTest
 	};
 
 	/**
-	 * The eighteen pieces, with all 72 affixes placed.
+	 * The eighteen pieces, with all 59 affixes placed and 13 places empty.
 	 *
-	 * Solved against `sim/cataclysm_sim/reference_build.py`: the totals are
-	 * exactly its PREFIX_SPEND, SUFFIX_SPEND and twelve all-resistance affixes.
+	 * The LAYOUT of `sim/cataclysm_sim/reference_build.py`, written out: the
+	 * totals are exactly its PREFIX_SPEND, SUFFIX_SPEND and four all-resistance
+	 * affixes.
 	 */
 	TArray<FPiece> ReferencePieces()
 	{
@@ -102,24 +105,24 @@ namespace CataclysmReferenceTest
 		const TCHAR* Pen = TEXT("Stat_Flat_penetration");
 
 		return {
-			{ TEXT("Head_Helm"),           { Health, Health, Block, Block } },
-			{ TEXT("Chest_Cuirass"),       { Health, Health, Block, Block } },
-			{ TEXT("Shoulders_Pauldrons"), { Health, Health, Reduction, Reduction } },
-			{ TEXT("Gloves_Gauntlets"),    { Damage, Damage, Crit, Crit } },
-			{ TEXT("Pants_Greaves"),       { Health, Health, Reduction, Reduction } },
-			{ TEXT("Boots_Sabatons"),      { HealthUp, HealthUp, Resist, Resist } },
-			{ TEXT("Belt_Girdle"),         { HealthUp, HealthUp, Resist, Resist } },
-			{ TEXT("Ring_Loop"),           { HealthUp, HealthUp, CritMult, CritMult } },
-			{ TEXT("Ring_Loop"),           { Armor, Armor, CritMult, CritMult } },
-			{ TEXT("Ring_Loop"),           { Armor, Armor, Speed, Speed } },
-			{ TEXT("Ring_Loop"),           { Armor, Armor, Speed, Speed } },
-			{ TEXT("Ring_Loop"),           { ArmorUp, ArmorUp, Pen, Pen } },
-			{ TEXT("Ring_Loop"),           { ArmorUp, ArmorUp, Pen, Pen } },
-			{ TEXT("Ring_Loop"),           { DamageUp, DamageUp, Resist, Resist } },
-			{ TEXT("Ring_Loop"),           { DamageUp, DamageUp, Resist, Resist } },
-			{ TEXT("Necklace_Torc"),       { Damage, Damage, Resist, Resist } },
-			{ TEXT("Relic_Idol"),          { Damage, Damage, Resist, Resist } },
-			{ TEXT("Weapon_Greatsword"),   { DamageUp, DamageUp, Crit, Crit } },
+			{ TEXT("Head_Helm"),            { Health, HealthUp, Resist } },
+			{ TEXT("Chest_Cuirass"),        { Health, HealthUp, Resist } },
+			{ TEXT("Shoulders_Pauldrons"),  { Health, Armor, Block } },
+			{ TEXT("Gloves_Gauntlets"),     { Damage, DamageUp, Crit, Speed } },
+			{ TEXT("Pants_Greaves"),        { Health, ArmorUp, Reduction } },
+			{ TEXT("Boots_Sabatons"),       { Health, Armor, Resist } },
+			{ TEXT("Belt_Girdle"),          { Health, ArmorUp, Block } },
+			{ TEXT("Ring_Loop"),            { Health, HealthUp, Resist } },
+			{ TEXT("Ring_Loop"),            { Health, HealthUp } },
+			{ TEXT("Ring_Loop"),            { HealthUp, Armor } },
+			{ TEXT("Ring_Loop"),            { HealthUp, Armor } },
+			{ TEXT("Ring_Loop"),            { Armor, ArmorUp, Crit, CritMult } },
+			{ TEXT("Ring_Loop"),            { Armor, ArmorUp, Crit, Speed } },
+			{ TEXT("Ring_Loop"),            { Damage, DamageUp, CritMult, Speed } },
+			{ TEXT("Ring_Loop"),            { Damage, DamageUp, Crit, CritMult } },
+			{ TEXT("Necklace_Torc"),        { Damage, DamageUp, CritMult, Speed } },
+			{ TEXT("Relic_Idol"),           { Damage, DamageUp, Crit, CritMult } },
+			{ TEXT("Weapon_Greatsword"),    { Damage, DamageUp, Pen, Speed } },
 		};
 	}
 
@@ -172,21 +175,22 @@ namespace CataclysmReferenceTest
 		float Expected;
 	};
 
+	// THE RE-FIT OF ISSUE #2884, under the whole-number affix ranges of #2883:
+	// `reference_build.defender(8)`. Until then 11,023 health, 7,299.42 armour,
+	// 28 block, 23.95 damage reduction and 144 resistance.
 	const FExpectation ExpectedStats[] = {
-		{ TEXT("max_health"),         11023.00f },
-		{ TEXT("armor"),               7299.42f },
-		{ TEXT("block_chance"),          28.00f },
+		{ TEXT("max_health"),         20309.50f },
+		{ TEXT("armor"),              12549.88f },
+		{ TEXT("block_chance"),          98.00f },
 		// 23.95 SINCE ISSUE #1230, and it was 15.95. The flat damage
 		// reduction affix states a top of 4 rather than 2, so the four slots
 		// this build spends on it are worth 16 rather than 8. That is the
 		// affix whose worst roll was 0.2 percentage points, which is what
 		// that issue was about; the top moved with the floor.
-		{ TEXT("damage_reduction"),      23.95f },
-		// 144 SINCE ISSUE #1229, and it was 72. The twelve all-resistance
-		// affixes this build spends are worth 12 each rather than 6. Note what
-		// that leaves: a tier 8 character needs 145 to sit at the 70 cap, so
-		// this build is one point short of capping at the tier it is built for.
-		{ TEXT("resistance_demonic"),   144.00f },
+		{ TEXT("damage_reduction"),      42.95f },
+		// 160 SINCE ISSUE #2883: four all-resistance affixes at 40 each, which
+		// caps all eight at tier 8 (145 needed). It was 144 from twelve.
+		{ TEXT("resistance_demonic"),   160.00f },
 	};
 }
 
@@ -208,20 +212,24 @@ bool FCataclysmReferenceBuildStatsTest::RunTest(const FString& Parameters)
 
 	const TMap<FName, TArray<FCataclysmStatModifier>> Gear = GearModifiers(Bases, Affixes);
 
-	// The character carries all 72 affixes, so it is a full set of Masterful
-	// gear: four regular affixes on every piece and no enchantments.
+	// The character carries 59 affixes and leaves 13 places empty (issue #2884),
+	// so by the rarity rule it wears 8 Masterful, 7 Superb and 3 Quality pieces.
 	int32 AffixCount = 0;
+	TMap<ECataclysmRarity, int32> Rarities;
 	for (const FPiece& Piece : ReferencePieces())
 	{
 		AffixCount += Piece.Affixes.Num();
+		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+		if (TestTrue(TEXT("a piece's affixes and no enchantment name a rarity"),
+				FValues::RarityOf(0, Piece.Affixes.Num(), Rarity)))
+		{
+			++Rarities.FindOrAdd(Rarity);
+		}
 	}
-	TestEqual(TEXT("the build spends all 72 affix slots"), AffixCount, 72);
-
-	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
-	TestTrue(TEXT("four affixes and no enchantment name a rarity"),
-		FValues::RarityOf(0, 4, Rarity));
-	TestEqual(TEXT("so every piece is Masterful"),
-		static_cast<int32>(Rarity), static_cast<int32>(ECataclysmRarity::Masterful));
+	TestEqual(TEXT("the build spends 59 affix slots"), AffixCount, 59);
+	TestEqual(TEXT("8 pieces are Masterful"), Rarities.FindRef(ECataclysmRarity::Masterful), 8);
+	TestEqual(TEXT("7 are Superb"), Rarities.FindRef(ECataclysmRarity::Superb), 7);
+	TestEqual(TEXT("3 are Quality"), Rarities.FindRef(ECataclysmRarity::Quality), 3);
 
 	UDataTable* Classes = LoadTable<FCataclysmClassStatRow>(TEXT("ClassStats.csv"));
 	UDataTable* AttributeEffects =
@@ -313,55 +321,57 @@ bool FCataclysmReferenceBuildSurvivalTest::RunTest(const FString& Parameters)
 	// The four mitigation layers, at the values the stat test above proves the
 	// game reaches. Stated here rather than recomputed so this test fails on its
 	// own terms if the damage calculation drifts.
-	constexpr float Health = 11023.0f;
-	constexpr float Armor = 7299.42f;
-	constexpr float BlockChance = 28.0f;
-	constexpr float DamageReduction = 23.95f;
-	constexpr float Resistance = 144.0f;
+	// THE RE-FIT OF ISSUE #2884 (see the expectations above).
+	constexpr float Health = 20309.5f;
+	constexpr float Armor = 12549.88f;
+	constexpr float BlockChance = 98.0f;
+	constexpr float DamageReduction = 42.95f;
+	constexpr float Resistance = 160.0f;
 
-	// Armour against the tier 8 curve removes 53.3%, and resistance is capped at
-	// 70% however far over it a character is.
+	// Armour against the tier 8 curve removes 66.2% (53.3% before the re-fit),
+	// and resistance is capped at 70% however far over it a character is.
 	const float ArmorReduction =
 		UCataclysmDamageCalculation::ArmorReduction(Armor, DifficultyTier);
-	TestTrue(FString::Printf(TEXT("armour removes 53.3%%, got %.1f%%"), ArmorReduction),
-		FMath::IsNearlyEqual(ArmorReduction, 53.3f, 0.2f));
+	TestTrue(FString::Printf(TEXT("armour removes 66.2%%, got %.1f%%"), ArmorReduction),
+		FMath::IsNearlyEqual(ArmorReduction, 66.2f, 0.2f));
 
 	const float Effective =
 		UCataclysmDamageCalculation::EffectiveResistance(Resistance, 0.0f);
-	TestTrue(TEXT("72% resistance is capped to 70%"),
+	TestTrue(TEXT("160% resistance is capped to 70%"),
 		FMath::IsNearlyEqual(Effective, 70.0f, 0.01f));
 
-	// The four layers multiply. Block removes half a hit on 28% of hits, so it
-	// is worth 14% on average.
+	// The four layers multiply. Block removes half a hit on 98% of hits, so it
+	// is worth 49% on average.
 	const float Landing =
 		(1.0f - ArmorReduction / 100.0f)
 		* (1.0f - Effective / 100.0f)
 		* (1.0f - (BlockChance / 100.0f) * 0.5f)
 		* (1.0f - DamageReduction / 100.0f);
 
-	// 9.17%, AND IT WAS 10.1% UNTIL ISSUE #1230 doubled the flat damage
-	// reduction affix. This build spends four slots on that stat, so it now
-	// stops 90.8% of a hit rather than 89.9%.
+	// 2.95% SINCE THE RE-FIT OF ISSUE #2884; 9.17% before it, and 10.1% until
+	// issue #1230 doubled the flat damage reduction affix.
 	TestTrue(FString::Printf(
-			TEXT("a hit lands for 9.17%% of itself, got %.2f%%"), Landing * 100.0f),
-		FMath::IsNearlyEqual(Landing * 100.0f, 9.17f, 0.2f));
+			TEXT("a hit lands for 2.95%% of itself, got %.2f%%"), Landing * 100.0f),
+		FMath::IsNearlyEqual(Landing * 100.0f, 2.95f, 0.05f));
 
-	// A Cataclysm Boss Gatekeeper at difficulty tier 8 hits for 65,497 raw.
-	// `sim/cataclysm_sim/reference_build.py` reports that landing for 6,004 and
-	// killing this character in 2 hits. It landed for 6,635 until issue #1230.
-	constexpr float GatekeeperHit = 65497.0f;
+	// A Cataclysm Boss Gatekeeper at difficulty tier 8 hits for 378,027 raw
+	// since the enemy rebalance of issue #2884 (65,497 before it). The model
+	// reports that landing for 11,144 and killing this character in 2 hits, as
+	// it did before: the rebalance was fitted to keep the hits.
+	constexpr float GatekeeperHit = 378027.0f;
 	const float Landed = GatekeeperHit * Landing;
 
 	TestTrue(FString::Printf(
-			TEXT("a Gatekeeper's 65,497 lands for about 6,004, got %.0f"), Landed),
-		FMath::IsNearlyEqual(Landed, 6004.0f, 150.0f));
+			TEXT("a Gatekeeper's 378,027 lands for about 11,144, got %.0f"), Landed),
+		FMath::IsNearlyEqual(Landed, 11144.0f, 300.0f));
 
 	const int32 HitsToKill = FMath::CeilToInt(Health / Landed);
 	TestEqual(TEXT("and two of them kill this character"), HitsToKill, 2);
 
-	// A Common Imp hits for 2,016 raw and takes 60 hits, which is what makes a
-	// pack rather than one enemy the threat. It was 54 until issue #1230.
-	constexpr float ImpHit = 2016.0f;
+	// A Common Imp hits for 11,567 raw since issue #2884 (2,016 before it) and
+	// still takes 60 hits, which is what makes a pack rather than one enemy the
+	// threat. It was 54 until issue #1230.
+	constexpr float ImpHit = 11567.0f;
 	const int32 ImpHits = FMath::CeilToInt(Health / (ImpHit * Landing));
 	TestEqual(TEXT("a Common Imp needs 60 hits"), ImpHits, 60);
 

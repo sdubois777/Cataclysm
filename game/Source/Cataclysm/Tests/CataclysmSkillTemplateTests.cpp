@@ -17000,6 +17000,102 @@ namespace CataclysmOverreachTest
 		Line.Modifiers = {Flat};
 		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
 	}
+
+	/**
+	 * Overreach's `melee_reach_metres` and the reach enchantment's
+	 * `melee_reach_centimetres` together, each flat and scoped to melee as its
+	 * row grants it. Either may be zero, which grants nothing for that stat.
+	 * One call, because SetStatInputs replaces every line it is given.
+	 */
+	void GiveMetresAndCentimetres(CataclysmSkillTest::FScopedFighter& Caster,
+								  float Metres, float Centimetres)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		const TPair<const TCHAR*, float> Grants[] = {
+			{UCataclysmSkillTemplate::MeleeReachMetresStat, Metres},
+			{UCataclysmSkillTemplate::MeleeReachCentimetresStat, Centimetres}};
+		for (const TPair<const TCHAR*, float>& Grant : Grants)
+		{
+			if (Grant.Value <= 0.0f)
+			{
+				continue;
+			}
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::Enchantment;
+			Flat.Value = Grant.Value;
+			Flat.RequiredTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(Grant.Key));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		}
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReachMetresAndCentimetresTest,
+	"Cataclysm.Skills.OverreachsMetresAndTheReachEnchantmentsCentimetresAddUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two stats, one reach. Issue #2883, D8: the reach enchantment rolls whole
+ * centimetres, `melee_reach_centimetres` 50 to 100, while Overreach keeps its
+ * `melee_reach_metres` 2. Ruled by the coordinating session on 2026-11-25: a
+ * second stat rather than a rename, read by MeleeReachBonusCm as metres times a
+ * hundred plus centimetres.
+ *
+ * Overreach's 2 m and a 75 cm roll on one character: a 1.8 m melee strike
+ * reaches 1.8 m + 2.75 m. The controls: the 75 cm alone reaches 2.55 m, so the
+ * centimetres are not read as metres; nothing granted reaches 1.8 m; and a
+ * strike without `Type.Melee` on the character holding both reaches 1.8 m, so
+ * the new stat keeps the row's melee scope.
+ */
+bool FCataclysmReachMetresAndCentimetresTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmOverreachTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto MeleeStrikeOf = [](FScopedFighter& Caster, const TCHAR* Tags)
+	{
+		return GrantSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=1.8"),
+			TEXT("Melee Strike"), Tags);
+	};
+
+	FScopedFighter Both(World, FVector::ZeroVector);
+	GiveMetresAndCentimetres(Both, 2.0f, 75.0f);
+	FScopedFighter CentimetresOnly(World, FVector(1000.0f, 0.0f, 0.0f));
+	GiveMetresAndCentimetres(CentimetresOnly, 0.0f, 75.0f);
+	FScopedFighter Neither(World, FVector(2000.0f, 0.0f, 0.0f));
+	GiveMetresAndCentimetres(Neither, 0.0f, 0.0f);
+
+	UCataclysmSkillTemplate* BothStrike = MeleeStrikeOf(Both, TEXT("Type.Melee"));
+	UCataclysmSkillTemplate* BothPlain = GrantSkill<UCataclysmStrikeSkill>(
+		Both, ECataclysmAbilitySlot::Heavy, TEXT("Radius=1.8"), TEXT("Plain Strike"));
+	UCataclysmSkillTemplate* CentimetresStrike = MeleeStrikeOf(CentimetresOnly, TEXT("Type.Melee"));
+	UCataclysmSkillTemplate* NeitherStrike = MeleeStrikeOf(Neither, TEXT("Type.Melee"));
+	if (!BothStrike || !BothPlain || !CentimetresStrike || !NeitherStrike)
+	{
+		AddError(TEXT("Could not grant the four strikes."));
+		return false;
+	}
+
+	TestEqual(TEXT("Overreach's 2 m and a 75 cm roll: a 1.8 m melee strike reaches 275 cm further, 455 cm"),
+			  BothStrike->ScaledRadiusCm(), 455.0f, 0.01f);
+	TestEqual(TEXT("the 75 cm alone reaches 255 cm, so centimetres are not read as metres"),
+			  CentimetresStrike->ScaledRadiusCm(), 255.0f, 0.01f);
+	TestEqual(TEXT("nothing granted reaches 180 cm"),
+			  NeitherStrike->ScaledRadiusCm(), 180.0f, 0.01f);
+	TestEqual(TEXT("a strike without the melee tag on the character holding both reaches 180 cm"),
+			  BothPlain->ScaledRadiusCm(), 180.0f, 0.01f);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverreachStrikeTest,
@@ -35430,6 +35526,418 @@ bool FCataclysmAbstinenceIsAHealthCostTest::RunTest(const FString&)
 	TestEqual(TEXT("which was not taken"), Dropped.Health(), 1000.0f, 0.01f);
 	TestEqual(TEXT("so it filled no Fervour"), Dropped.Fervour(), 0.0f, 0.001f);
 	TestEqual(TEXT("and opened no window"), Dropped.AbilitySystem->SecondsSinceHealthCostPaid(), -1.0f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// The three damage-type auras made different from one another, 2026-11-25
+// ==========================================================================
+//
+// The owner's rulings of 2026-11-25, verbatim: "make it 10% more and I'm good with it" (Death's Pall of Ending), "I
+// like those recommendations. Go with A for both" (Demonic's Conflagration, War's Blood and Iron), and "I think we
+// should avoid making all of the aura's kinda samey". The rows are written out here as the table holds them, so a
+// test reads what the game reads.
+
+namespace CataclysmDamageTypeAurasTest
+{
+	using namespace CataclysmSkillTest;
+
+	const TCHAR* const PallOfEnding = TEXT("Radius=10; Interval=1; Effect=Weaken; EffectMagnitude=15; AllyMoreDamage=10");
+	const TCHAR* const Conflagration =
+		TEXT("Radius=4; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; BurnPassesOnDeath=4");
+	const TCHAR* const BloodAndIron =
+		TEXT("Radius=10; Interval=1; EnemyArmourRemoved=10; EnemyMovementSpeedReduced=15; AllyMovementSpeed=15; "
+			 "Immune=Slow; AllyImmune=Slow");
+
+	/** `Caster`'s imp, `Metres` along X from the origin. Owned by it, which makes it an ally. */
+	ACataclysmMinion* ImpOf(FScopedFighter& Caster, float Metres)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Caster.Actor, FVector(Metres * M, 0, 0), /*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+		if (Imp)
+		{
+			Imp->SetOwner(Caster.Actor);
+		}
+		return Imp;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitiesOf(const AActor* Actor)
+	{
+		return Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	}
+
+	/** The More modifiers a character carries, as percentage points each. */
+	TArray<float> MoreOn(const AActor* Actor)
+	{
+		TArray<float> Found;
+		if (const UCataclysmAbilitySystemComponent* Its = AbilitiesOf(Actor))
+		{
+			for (const FCataclysmStatModifier& Modifier : Its->GetStatModifiers())
+			{
+				if (Modifier.Bucket == ECataclysmStatBucket::More)
+				{
+					Found.Add(Modifier.Value);
+				}
+			}
+		}
+		return Found;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPallOfEndingMoreTest,
+	"Cataclysm.DamageTypeAuras.PallOfEndingGivesItsCasterAndAMinionInsideTenPercentMoreAndOneOutsideNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Death's Pall of Ending: "You, your minions and your allies within it deal 10% more damage". A More modifier of 10,
+ * the separate multiplier, on the caster and on a minion inside the 10 m ring. CONTROLS: a minion 30 m away carries
+ * none, and the aura ending takes both back. (`AllyIncreasedDamage`'s own tests hold the five other auras' increase,
+ * which never reaches the caster: `Cataclysm.Skills.AnAuraGivesAlliesInsideTheIncreasedDamageItsRowStates`.)
+ */
+bool FCataclysmPallOfEndingMoreTest::RunTest(const FString&)
+{
+	using namespace CataclysmDamageTypeAurasTest;
+
+	// A WORLD THAT HAS BEGUN PLAY, because the imps are spawned with their type and `ACataclysmMinion::Spawn` writes
+	// their health then: a world that never initialised its actors leaves an imp's ability system without its vital
+	// attribute set, and the engine ensures on MaxHealth. Window bun1-w1 found it on this file's Blood and Iron test.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	ACataclysmMinion* Inside = ImpOf(Caster, 5.0f);
+	ACataclysmMinion* Outside = ImpOf(Caster, 30.0f);
+	if (!TestNotNull(TEXT("set-up: an imp inside"), Inside) || !TestNotNull(TEXT("set-up: and one outside"), Outside)
+		|| !TestNotNull(TEXT("set-up: the imp has an ability system"), AbilitiesOf(Inside)))
+	{
+		return false;
+	}
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, PallOfEnding, TEXT("Pall of Ending"), TEXT("Element.Death"));
+	if (!Aura || !TestTrue(TEXT("the aura activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+	Aura->Pulse();
+
+	const TArray<float> OnCaster = MoreOn(Caster.Actor);
+	const TArray<float> OnInside = MoreOn(Inside);
+	AddInfo(FString::Printf(TEXT("PALL MORE: caster %d at %.1f, imp inside %d at %.1f, imp outside %d"),
+							OnCaster.Num(), OnCaster.Num() ? OnCaster[0] : 0.0f, OnInside.Num(),
+							OnInside.Num() ? OnInside[0] : 0.0f, MoreOn(Outside).Num()));
+	TestTrue(TEXT("the caster carries one More of 10"), OnCaster.Num() == 1 && FMath::IsNearlyEqual(OnCaster[0], 10.0f));
+	TestTrue(TEXT("and so does the minion inside"), OnInside.Num() == 1 && FMath::IsNearlyEqual(OnInside[0], 10.0f));
+	TestTrue(TEXT("the aura says it helps its caster"), Aura->IsHelping(Caster.Actor));
+	TestEqual(TEXT("CONTROL: a minion outside the ring carries none"), MoreOn(Outside).Num(), 0);
+
+	Caster.AbilitySystem->CancelAbilityHandle(Aura->GetCurrentAbilitySpecHandle());
+	TestEqual(TEXT("ended, the caster carries none"), MoreOn(Caster.Actor).Num(), 0);
+	TestEqual(TEXT("nor the minion"), MoreOn(Inside).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPallOfEndingLingerTest,
+	"Cataclysm.DamageTypeAuras.AnEnemyLeavingPallOfEndingKeepsItsWeakenForTheFiveSecondsItLasts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies within it deal 15% less damage while they stay and for 5 seconds after they leave." The 15% is a Weaken,
+ * and the five seconds are its own duration from the Status Effects sheet, refreshed every pulse while the enemy
+ * stands inside: nothing was built for the linger, and this shows it holds. An enemy that walks out still carries a
+ * Weaken lasting 5 s. CONTROL: an enemy that never entered carries none. The world does not tick, so the lapse at five
+ * seconds is the engine's duration and is not watched here.
+ */
+bool FCataclysmPallOfEndingLingerTest::RunTest(const FString&)
+{
+	using namespace CataclysmDamageTypeAurasTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Leaving(World, FVector(3 * M, 0, 0));
+	FScopedFighter Never(World, FVector(30 * M, 0, 0));
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, PallOfEnding, TEXT("Pall of Ending"), TEXT("Element.Death"));
+	if (!Aura || !TestTrue(TEXT("the aura activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+	Aura->Pulse();
+	TestTrue(TEXT("an enemy inside is weakened"), Carries(Leaving, TEXT("Weaken")));
+
+	Leaving.Actor->SetActorLocation(FVector(30 * M, 5 * M, 0));
+	Aura->Pulse();
+
+	const FGameplayEffectQuery Weakens =
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(StatusTag(TEXT("Weaken"))));
+	const TArray<float> Durations = Leaving.AbilitySystem->GetActiveEffectsDuration(Weakens);
+	AddInfo(FString::Printf(TEXT("PALL LINGER: after leaving, %d Weaken, lasting %.2f s"), Durations.Num(),
+							Durations.Num() ? Durations[0] : 0.0f));
+	TestTrue(TEXT("walked out, it is still weakened"), Carries(Leaving, TEXT("Weaken")));
+	TestTrue(TEXT("by one Weaken lasting the 5 seconds the sheet gives it"),
+			 Durations.Num() == 1 && FMath::IsNearlyEqual(Durations[0], 5.0f, 0.01f));
+	TestFalse(TEXT("CONTROL: an enemy that never entered is not weakened"), Carries(Never, TEXT("Weaken")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConflagrationBurnPassesTest,
+	"Cataclysm.DamageTypeAuras.ABurningEnemyDyingInConflagrationPassesItsBurnToTheNearestOtherWithinFourMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Demonic's Conflagration: "When a burning enemy dies within it, its burn passes to the nearest other enemy within 4
+ * meters." An enemy burning 2 m from the caster dies; the enemy 3 m from its body takes the burn with the seconds it
+ * had left, credited to the caster, and one 5 m from it does not. CONTROLS: a burning enemy dying outside the 4 m ring
+ * passes nothing, and an enemy that was not burning passes nothing. Prints "CONFLAGRATION PASS".
+ */
+bool FCataclysmConflagrationBurnPassesTest::RunTest(const FString&)
+{
+	using namespace CataclysmDamageTypeAurasTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Dying(World, FVector(2 * M, 0, 0));
+	FScopedFighter Near(World, FVector(5 * M, 0, 0));
+	FScopedFighter Far(World, FVector(2 * M, 5 * M, 0));
+	FScopedFighter DyingOutside(World, FVector(-8 * M, 0, 0));
+	FScopedFighter NearTheOutside(World, FVector(-10 * M, 0, 0));
+	FScopedFighter Cold(World, FVector(0, -3 * M, 0));
+	FScopedFighter NearTheCold(World, FVector(0, -5 * M, 0));
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, Conflagration, TEXT("Conflagration"), TEXT("Element.Demonic"));
+	if (!Aura || !TestTrue(TEXT("the aura activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Dying.Actor, 100.0f, /*bScalesWithInstigator=*/true,
+									  /*bBurnIsDesigned=*/true);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, DyingOutside.Actor, 100.0f, /*bScalesWithInstigator=*/true,
+									  /*bBurnIsDesigned=*/true);
+	UCataclysmSkillEffects::FRunningAilment Before;
+	if (!TestTrue(TEXT("set-up: the dying enemy burns"),
+				  UCataclysmSkillEffects::RunningAilmentOn(Dying.Actor, UCataclysmSkillEffects::BurnTag(), Before))
+		|| !TestFalse(TEXT("set-up: the near one does not yet"),
+					  UCataclysmSkillEffects::HasTag(Near.Actor, UCataclysmSkillEffects::BurnTag())))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("it dies"), UCataclysmSkillEffects::MarkDead(Dying.Actor));
+
+	UCataclysmSkillEffects::FRunningAilment Passed;
+	const bool bNearBurns =
+		UCataclysmSkillEffects::RunningAilmentOn(Near.Actor, UCataclysmSkillEffects::BurnTag(), Passed);
+	AddInfo(FString::Printf(TEXT("CONFLAGRATION PASS: %d passed; the body's burn %.1f a second for %.2f s; the near "
+								 "enemy's %s %.1f a second for %.2f s, by %s"),
+							Aura->BurnsPassedOn, Before.DamagePerSecond, Before.SecondsLeft,
+							bNearBurns ? TEXT("burn") : TEXT("(none)"), Passed.DamagePerSecond, Passed.SecondsLeft,
+							Passed.Applier.IsValid() ? *Passed.Applier->GetName() : TEXT("nobody")));
+	TestTrue(TEXT("the enemy 3 m from the body burns"), bNearBurns);
+	TestEqual(TEXT("at the burn's own rate"), Passed.DamagePerSecond, Before.DamagePerSecond, 0.01f);
+	TestEqual(TEXT("for the seconds it had left"), Passed.SecondsLeft, Before.SecondsLeft, 0.01f);
+	TestTrue(TEXT("credited to the aura's caster"), Passed.Applier.Get() == Caster.Actor);
+	TestFalse(TEXT("CONTROL: the enemy 5 m from the body does not"),
+			  UCataclysmSkillEffects::HasTag(Far.Actor, UCataclysmSkillEffects::BurnTag()));
+
+	TestTrue(TEXT("a burning enemy outside the ring dies"), UCataclysmSkillEffects::MarkDead(DyingOutside.Actor));
+	TestFalse(TEXT("CONTROL: and its neighbour takes nothing"),
+			  UCataclysmSkillEffects::HasTag(NearTheOutside.Actor, UCataclysmSkillEffects::BurnTag()));
+	TestTrue(TEXT("an enemy inside that was not burning dies"), UCataclysmSkillEffects::MarkDead(Cold.Actor));
+	TestFalse(TEXT("CONTROL: and its neighbour takes nothing"),
+			  UCataclysmSkillEffects::HasTag(NearTheCold.Actor, UCataclysmSkillEffects::BurnTag()));
+	TestEqual(TEXT("one burn passed in all"), Aura->BurnsPassedOn, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAndIronEnemiesTest,
+	"Cataclysm.DamageTypeAuras.BloodAndIronTakesArmourAndSpeedFromEnemiesInsideAndNotOutside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * War's Blood and Iron: "Enemies within the aura have their armor reduced by 10% and their movement speed reduced by
+ * 15%." An enemy 6 m away has 10% of its armour removed, in the sum damage reads, and holds a 15% slow. CONTROL: an
+ * enemy 30 m away holds neither. The aura ending takes both back at once.
+ */
+bool FCataclysmBloodAndIronEnemiesTest::RunTest(const FString&)
+{
+	using namespace CataclysmDamageTypeAurasTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Inside(World, FVector(6 * M, 0, 0));
+	FScopedFighter Outside(World, FVector(30 * M, 0, 0));
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, BloodAndIron, TEXT("Blood and Iron"), TEXT("Element.War"));
+	if (!Aura || !TestTrue(TEXT("the aura activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+	Aura->Pulse();
+
+	AddInfo(FString::Printf(TEXT("BLOOD AND IRON ENEMIES: inside armour removed %.1f%%, slowed %.1f%%; outside %.1f%%, "
+								 "%.1f%%"),
+							Inside.AbilitySystem->ArmourRemovedPercentNow(),
+							Inside.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced),
+							Outside.AbilitySystem->ArmourRemovedPercentNow(),
+							Outside.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced)));
+	TestEqual(TEXT("an enemy inside has 10% of its armour removed"),
+			  Inside.AbilitySystem->ArmourRemovedPercentNow(), 10.0f, 0.01f);
+	TestEqual(TEXT("and is slowed 15%"),
+			  Inside.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced), 15.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: an enemy outside keeps its armour"), Outside.AbilitySystem->ArmourRemovedPercentNow(),
+			  0.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: and its speed"),
+			  Outside.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced), 0.0f, 0.01f);
+	TestEqual(TEXT("the aura deals no damage"), Inside.Health(), Outside.Health(), 0.01f);
+
+	Caster.AbilitySystem->CancelAbilityHandle(Aura->GetCurrentAbilitySpecHandle());
+	TestEqual(TEXT("ended, the armour is back at once"), Inside.AbilitySystem->ArmourRemovedPercentNow(), 0.0f, 0.01f);
+	TestEqual(TEXT("and the speed"),
+			  Inside.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAndIronAlliesTest,
+	"Cataclysm.DamageTypeAuras.BloodAndIronMakesItsCasterAndAMinionInsideFasterAndUnslowable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You and your allies within the aura cannot be slowed and move 15% faster." The caster and an imp 5 m away move 15%
+ * faster; the imp is granted an immunity to Slow and the caster's running row states it. The imp's walk is 15% above
+ * its fellow's. CONTROL: an imp 30 m away is neither faster nor immune, and the aura ending takes the caster's
+ * immunity and speed back.
+ */
+bool FCataclysmBloodAndIronAlliesTest::RunTest(const FString&)
+{
+	using namespace CataclysmDamageTypeAurasTest;
+
+	// A WORLD THAT HAS BEGUN PLAY, because the imps are spawned with their type and `ACataclysmMinion::Spawn` writes
+	// their health then: a world that never initialised its actors leaves an imp's ability system without its vital
+	// attribute set, and the engine ensures on MaxHealth. Window bun1-w1 found it on this file's Blood and Iron test.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	ACataclysmMinion* Inside = ImpOf(Caster, 5.0f);
+	ACataclysmMinion* Outside = ImpOf(Caster, 30.0f);
+	if (!TestNotNull(TEXT("set-up: an imp inside"), Inside) || !TestNotNull(TEXT("set-up: and one outside"), Outside)
+		|| !TestNotNull(TEXT("set-up: the imp has an ability system"), AbilitiesOf(Inside)))
+	{
+		return false;
+	}
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, BloodAndIron, TEXT("Blood and Iron"), TEXT("Element.War"));
+	if (!Aura || !TestTrue(TEXT("the aura activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+	Aura->Pulse();
+	Inside->RefreshWalkSpeed();
+	Outside->RefreshWalkSpeed();
+	const float InsideWalk = Inside->GetCharacterMovement()->MaxWalkSpeed;
+	const float OutsideWalk = Outside->GetCharacterMovement()->MaxWalkSpeed;
+
+	AddInfo(FString::Printf(TEXT("BLOOD AND IRON ALLIES: caster faster %.1f%% and immune %s; imp inside faster %.1f%%, "
+								 "immune %s, walk %.1f; imp outside walk %.1f"),
+							Caster.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised),
+							UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Slow")) ? TEXT("yes") : TEXT("no"),
+							AbilitiesOf(Inside)->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised),
+							UCataclysmSkillTemplate::IsImmuneTo(Inside, TEXT("Slow")) ? TEXT("yes") : TEXT("no"),
+							InsideWalk, OutsideWalk));
+	TestEqual(TEXT("the caster moves 15% faster"),
+			  Caster.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised), 15.0f, 0.01f);
+	TestTrue(TEXT("and cannot be slowed"), UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Slow")));
+	TestEqual(TEXT("the imp inside moves 15% faster"),
+			  AbilitiesOf(Inside)->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised), 15.0f, 0.01f);
+	TestTrue(TEXT("and cannot be slowed"), UCataclysmSkillTemplate::IsImmuneTo(Inside, TEXT("Slow")));
+	TestEqual(TEXT("its walk is 15% above its fellow's"), InsideWalk, OutsideWalk * 1.15f, 0.5f);
+	TestEqual(TEXT("CONTROL: the imp outside is not faster"),
+			  AbilitiesOf(Outside)->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised), 0.0f, 0.01f);
+	TestFalse(TEXT("CONTROL: nor immune"), UCataclysmSkillTemplate::IsImmuneTo(Outside, TEXT("Slow")));
+
+	Caster.AbilitySystem->CancelAbilityHandle(Aura->GetCurrentAbilitySpecHandle());
+	TestFalse(TEXT("ended, the caster can be slowed again"), UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Slow")));
+	TestEqual(TEXT("and is no faster"),
+			  Caster.AbilitySystem->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneToSlowIgnoresReductionsTest,
+	"Cataclysm.DamageTypeAuras.APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The coordinating session's ruling of 2026-11-25: an actor immune to Slow ignores every movement reduction, so Grave
+ * Shroud's, Fevered Blood's and Living Pyre's `Immune=Slow` -- which until then blocked nothing -- do what their rows
+ * say. A player at 5 m a second, held a 15% slow, walks at 4.25; granted an immunity to Slow, the same as a running
+ * row's `Immune=Slow` answers through `UCataclysmSkillTemplate::IsImmuneTo`, walks at 5 again; and a 15% haste held
+ * beside it still applies, so it walks at 5.75. CONTROL: the slowed figure, before the immunity.
+ */
+bool FCataclysmImmuneToSlowIgnoresReductionsTest::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("set-up: an ability system"), AbilitySystem))
+	{
+		return false;
+	}
+	AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(), 5.0f);
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+	auto Walk = [Character]()
+	{
+		Character->RefreshMovementSpeed();
+		return Character->GetCharacterMovement()->MaxWalkSpeed / 100.0f;
+	};
+
+	const float Unslowed = Walk();
+	AbilitySystem->HoldAuraShare(ECataclysmAuraShareKind::MovementReduced, Character, 15.0f, 60.0f);
+	const float Slowed = Walk();
+	AbilitySystem->GrantImmunity(FName(TEXT("Slow")), Character, 60.0f);
+	const float Immune = Walk();
+	AbilitySystem->HoldAuraShare(ECataclysmAuraShareKind::MovementRaised, PlayerState, 15.0f, 60.0f);
+	const float ImmuneAndFaster = Walk();
+
+	AddInfo(FString::Printf(TEXT("SLOW IMMUNITY: %.2f unslowed, %.2f slowed 15%%, %.2f immune, %.2f immune and 15%% "
+								 "faster (metres a second)"),
+							Unslowed, Slowed, Immune, ImmuneAndFaster));
+	TestEqual(TEXT("set-up: the player walks at 5"), Unslowed, 5.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: slowed 15%, at 4.25"), Slowed, 4.25f, 0.01f);
+	TestEqual(TEXT("immune to Slow, the slow is dropped"), Immune, 5.0f, 0.01f);
+	TestEqual(TEXT("and a haste is kept"), ImmuneAndFaster, 5.75f, 0.01f);
 	return true;
 }
 

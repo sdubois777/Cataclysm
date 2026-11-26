@@ -39,6 +39,11 @@
 #include "AbilitySystem/CataclysmCoffinNails.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the Bulwark's Fervour on a hit taken and on a block. Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
+// For the shield Warded Flesh gives a commander when one of its minions dies.
+// The demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRegeneration.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
 // apart from its own. Issue #975.
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -120,6 +125,16 @@ static TAutoConsoleVariable<float> CVarBlockRoll(
 	-1.0f,
 	TEXT("Pins the block roll, 0-100. -1 rolls normally. 0 blocks whenever there "
 		 "is any chance to; 100 never blocks."),
+	ECVF_Default);
+
+/**
+ * Pins Interpose's roll, 0-100, for tests (the Death trees' slice C6e). -1 rolls for real. A hit is taken by a minion
+ * when the roll is below the chance, so 0 always interposes and 100 never does.
+ */
+static TAutoConsoleVariable<float> CVarInterposeRoll(
+	TEXT("Cataclysm.InterposeRoll"),
+	-1.0f,
+	TEXT("Pins Interpose's roll, 0-100. -1 rolls normally. 0 interposes whenever there is any chance to."),
 	ECVF_Default);
 
 namespace
@@ -250,8 +265,10 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		{
 			NewValue = GetMaxHealth();
 		}
-		else if (Unhurt && Unhurt->bShrouded)
+		else if (Unhurt && (Unhurt->bShrouded || Unhurt->SpectralShiftSecondsLeft > 0.0f))
 		{
+			// AND ONE DEATH'S SPECTRAL SHIFT HAS OUT OF EXISTENCE, HELD THE SAME WAY, 2026-11-24: "becoming immune to
+			// damage" while it is out, keeping whatever hurt it carried in.
 			NewValue = FMath::Clamp(FMath::Max(NewValue, GetHealth()), 0.0f, GetMaxHealth());
 		}
 		else
@@ -604,6 +621,49 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// INTERPOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q9): "A hit aimed at you has a 3% chance per
+			// point to be taken instead by one of your minions within 3 metres of you." A hit, not a tick; the nearest
+			// of the defender's own followers within 3 metres, not a gadget or a trap, takes the whole of it from the
+			// attacker, through its own defences, and the defender takes nothing. Overkill is not passed back. The
+			// figure handed over is the hit as sent, before the defender's evasion, block and mitigation, so no
+			// critical strike is rolled on it twice.
+			if (!Hit.bIsDamageOverTime && Hit.Damage > 0.0f)
+			{
+				const UCataclysmAbilitySystemComponent* Guarded =
+					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+				AActor* Guard = nullptr;
+				const float Chance = Guarded
+					? Guarded->StatForSkill(FName(UCataclysmAbilitySystemComponent::InterposeChanceStat),
+											FGameplayTagContainer(), 0.0f)
+					: 0.0f;
+				if (Chance > 0.0f && Guarded->GetAvatarActor())
+				{
+					const float Pinned = CVarInterposeRoll.GetValueOnAnyThread();
+					if ((Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) < Chance)
+					{
+						for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(
+								 Guarded->GetAvatarActor(), UCataclysmAbilitySystemComponent::InterposeReachCm))
+						{
+							const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Follower);
+							if (!Machine || !Machine->IsDeployable())
+							{
+								Guard = Follower;
+								break;
+							}
+						}
+					}
+				}
+				AActor* Interposer = UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext());
+				if (Guard && Interposer)
+				{
+					FCataclysmHitDelivery Taken;
+					Taken.bCannotBeEvaded = true;
+					Taken.bCannotBeRetaliatedAgainst = true;
+					UCataclysmSkillEffects::ApplyDirectDamage(Interposer, Guard, Hit.Damage, Taken);
+					Hit.Damage = 0.0f;
+				}
+			}
+
 			// AND WHETHER THE ATTACKER'S MODIFIERS SAY IT CANNOT BE DODGED. The
 			// Perfect Aim enemy modifier reads "Attacks cannot be dodged", and
 			// evasion is rolled on the DEFENDER, so the only way an attacker can
@@ -625,6 +685,23 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// damage from Boss enemies". Issue #666. The same creature and the
 				// same cast, so a blow from anything but an enemy is not a boss's.
 				Hit.bFromBoss = Striker->IsBoss();
+				// AND ITS RARITY RUNG, for Read the Blow (the Death trees' slice C6b3, 2026-11-25).
+				Hit.AttackerRarityStep = Striker->RarityStep;
+
+				// AND DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect
+				// Aim's does, because the shield is the defender's and only the blow can refuse it. Every blow whose
+				// causer carries it, its ticks included. 2026-11-24, ahead of its window.
+				Hit.bIgnoresEnergyShield = UCataclysmEnemyModifiers::IgnoresEnergyShield(Striker->ModifierRows);
+
+				// AND DEATH'S GRAVE TOUCH, "Deal more damage to players with less than 50% health": half again, on a
+				// HIT and never a tick, judged on the health this character holds as the blow arrives. The same
+				// "more" every bucket multiplies, so it is applied to the blow before the defences, as a stronger
+				// creature's figure would be. 2026-11-24, ahead of its window.
+				if (!Hit.bIsDamageOverTime)
+				{
+					Hit.Damage *= UCataclysmEnemyModifiers::GraveTouchMultiplier(
+						Striker->ModifierRows, GetHealth(), GetMaxHealth());
+				}
 			}
 
 			// AND WHETHER THE BLOW ITSELF SAYS IT CANNOT BE EVADED. Ruled 2026-10-07.
@@ -961,6 +1038,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  /*Target=*/GetOwningActor())
 							: Offence->GetPenetration();
 
+						// AND A RETALIATION BLOW'S OWN PENETRATION, ADDED. The War vow options' second slice, V2b,
+						// 2026-11-25: Blood Oath, "Your retaliation damage ignores 25% of enemy resistances", ruled a
+						// retaliation-only penetration stat. Only for a blow stamped as retaliation, asked of the
+						// attacker with no tags and a fallback of nought; never below nought.
+						if (AskingToPenetrate
+							&& Data.EffectSpec.GetSetByCallerMagnitude(
+								   FName(UCataclysmSkillEffects::RetaliationDataName),
+								   /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+						{
+							Hit.ResistancePenetration += FMath::Max(0.0f, AskingToPenetrate->StatForSkill(
+								FName(UCataclysmRetaliation::PenetrationStat), FGameplayTagContainer(), 0.0f));
+						}
+
 						// ARMOUR PENETRATION IS ASKED WITH THE ATTACK'S COUNT, so a row
 						// conditioned on how many enemies the attack struck together
 						// is judged against this blow. Issue #1515. Sundering: "Your
@@ -1158,6 +1248,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							CataclysmDefendingBody(*this), Attacker->GetAvatarActor());
 						Hit.CritChance = FMath::Min(
 							(Stated >= 0.0f ? Stated : OwnCritChance) + FromNails, Ceiling);
+						// AND CERTAIN, WHATEVER THE CHANCE, CEILING OR SKILL'S STATED FIGURE, while the attacker holds a
+						// Chain Execution charge: "a critical strike" (the Death trees' slice C4d1, 2026-11-25).
+						Hit.bCertainCritical = Asking && Asking->HoldsNextHitCritical();
 
 						// THE MULTIPLIER IS ASKED FOR TOO, AND FOR THE SAME
 						// REASON THE CHANCE IS. Issue #947 lists it among the
@@ -1365,6 +1458,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					/*EvasionRoll=*/-1.0f, CVarBlockRoll.GetValueOnAnyThread(),
 					CVarCritRoll.GetValueOnAnyThread());
 
+			// A CHAIN EXECUTION CHARGE IS USED BY THE HIT IT MADE CRITICAL, which is a hit that landed: an evaded one is
+			// never critical. The first of a skill's hits to resolve uses it, so the others are rolled as usual. The
+			// Death trees' slice C4d1 (2026-11-25), as ruled.
+			if (Hit.bCertainCritical && Resolved.bWasCritical)
+			{
+				if (UCataclysmAbilitySystemComponent* Spending = Cast<UCataclysmAbilitySystemComponent>(
+						Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent()))
+				{
+					Spending->SpendNextHitCritical();
+				}
+			}
+
 			// A CONTAGIOUS TOUCH KEEPS ONLY WHETHER IT WAS EVADED. Issues #1820 and #41. The row: "Enemies no longer
 			// deal damage on contact. Instead, they apply a stacking "Contagion" debuff." The blow came through the
 			// whole pipeline so that the evasion step above answered it with every condition it reads, as ruled; the
@@ -1502,6 +1607,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// share of the cut figure, as was done until 2026-10-13, which leaves a wearer of the second save well
 			// above the share of health its heal watches and so not healed by the blow the row cut for it.
 			bool bSavedFromALethalBlow = false;
+			// THE HEALTH UNDYING RESTORES, paid after the blow's write below. The Fervour spends, 2026-11-25.
+			float UndyingRestore = 0.0f;
 			if (UCataclysmAbilitySystemComponent* Guarded =
 					Cast<UCataclysmAbilitySystemComponent>(
 						GetOwningAbilitySystemComponent()))
@@ -1557,6 +1664,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Guarded, CataclysmDefendingBody(*this), Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
 				}
+				// OR LIGHTNING ROD SENDS IT TO A DEVICE INSTEAD (the War vow options' fifth slice, first half, V5a, ruled
+				// 2026-11-25, L1): a landed hit that is not a tick, rolled where the absorb and the reflect are rolled,
+				// after evasion and before this character's block and defences. The device takes what the blow was
+				// worth before those defences, from the attacker, and this character takes nothing. Not a hit an absorb
+				// or a reflect has already turned, and not one with nobody to have dealt it.
+				AActor* const RodAttacker = Data.EffectSpec.GetContext().GetEffectCauser();
+				ACataclysmMinion* const Rod = bMayBeTurned && !bAbsorbed && !bReflected && !Hit.bIsDamageOverTime
+						&& IsValid(RodAttacker)
+					? Guarded->DeviceToTakeABlow()
+					: nullptr;
+				if (Rod)
+				{
+					Guarded->SendBlowToDevice(Rod, RodAttacker, Hit.Damage);
+				}
 				// AND AN ABSORBED SPELL IS STORED, for "Absorbed spell damage is
 				// converted to bonus damage on your next attack". Ruled
 				// 2026-10-07: what the spell would have dealt after the wearer's
@@ -1571,7 +1692,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							+ Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary);
 				}
 				if (Guarded->IsDamageImmune() || Guarded->IsImmuneToDamageType(Hit.DamageType)
-					|| bAbsorbed || bReflected)
+					|| bAbsorbed || bReflected || Rod)
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;
@@ -1586,13 +1707,48 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					const FName ImmuneForStat(UGuarded::ImmuneAfterLethalHitSecondsStat);
 					const float Every = Guarded->StatForSkill(
 						SurvivedEveryStat, FGameplayTagContainer(), 0.0f);
-					if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
+					// COLOSSUS ETERNAL'S SAVE FIRST, V3b (2026-11-25): health above the stat's share of maximum health
+					// BEFORE THE BLOW, which is what this attribute set holds here. No cooldown and no window, ruled
+					// that day, and judged before the Final Onslaught's so it never spends that save's cooldown.
+					const float SavedAbove = Guarded->StatForSkill(
+						FName(UGuarded::LethalHitSurvivedAboveHealthStat), FGameplayTagContainer(), 0.0f);
+					if (SavedAbove > 0.0f && GetMaxHealth() > 0.0f
+						&& GetHealth() / GetMaxHealth() * 100.0f > SavedAbove && EmptiesHealthLessTheDelayedShare())
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+					}
+					// TITANFALL'S WINDOW, OR TITANFALL FIRED BY THIS BLOW (ruled T2, 2026-11-25): after Colossus Eternal's
+					// save, which costs nothing, and before the Final Onslaught's, so this does not spend that save's
+					// cooldown. FIRED WITH THE WHOLE BLOW, its overkill included, because the cut below shrinks the
+					// figure `big_hit_taken` later carries; `TryTitanfall`'s own clock stops that event firing it twice.
+					// LAST OF ITS CONDITIONS, because firing has effects.
+					else if (EmptiesHealthLessTheDelayedShare()
+						&& (Guarded->IsTitanfallUnkillable()
+							|| Guarded->TryTitanfall(Resolved.DealtToHealth + Resolved.Overkill
+								+ Resolved.AbsorbedByShield + Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary)))
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+					}
+					else if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
 					{
 						bSavedFromALethalBlow = true;
 						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 						Guarded->NoteLethalHitSurvived(Every, Guarded->StatForSkill(
 							ImmuneForStat, FGameplayTagContainer(), 0.0f));
 					}
+				}
+
+				// AND A TICK IN TITANFALL'S WINDOW (ruled T3, 2026-11-25): "cannot be killed" is about dying, so a tick
+				// leaves the one point too. A blow in the window was saved above.
+				if (!bSavedFromALethalBlow && Hit.bIsDamageOverTime && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& Guarded->IsTitanfallUnkillable() && EmptiesHealthLessTheDelayedShare())
+				{
+					bSavedFromALethalBlow = true;
+					Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 				}
 
 				// AND A REPRIEVE THAT ENDS IN DEATH UNLESS A KILL IS MADE, FOR A BLOW OR A TICK NOTHING STOPS IT DID
@@ -1613,6 +1769,26 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Guarded->NoteLethalHitReprieved();
 				}
 
+				// AND THE BERSERKER'S UNDYING, FOR A BLOW OR A TICK NEITHER SAVE ABOVE TOOK. The Fervour spends,
+				// 2026-11-25: "When you would be reduced to 0 HP, if you have at least 50 Fervour, you are instead
+				// reduced to 1 HP. All of your Fervour is instantly spent, restoring HP equal to 5% of your maximum HP
+				// per 10 Fervour spent." AFTER THE TWO, because each of them costs nothing and this costs the whole
+				// pool; A TICK TOO, as the reprieve reads "would be killed". The blow leaves one point and the restore is
+				// paid after it is written, through `TopUp`, as any heal is.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& EmptiesHealthLessTheDelayedShare())
+				{
+					const float Restore = FCataclysmWarFervour::SpendAllOnLethalBlow(Guarded);
+					if (Restore >= 0.0f)
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+						UndyingRestore = Restore;
+					}
+				}
+
 				// AND A WORN ROW THAT HEALS AS HEALTH FALLS BELOW ITS SHARE, which
 				// also saves a blow that would empty health: ruled 2026-09-30 for
 				// Archon's Aegis, because 0 is below 10%. The blow leaves one point,
@@ -1628,6 +1804,30 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					bSavedFromALethalBlow = true;
 					Resolved.DealtToHealth = GetHealth() - 1.0f;
+				}
+
+				// AND THE SOUL COLLECTOR'S PHYLACTERY, "A blow that would kill you instead spends all your Fervour (at
+				// least 50) and leaves you at that many percent of your health. Once every 60 seconds." The Death
+				// trees' slice C3c (2026-11-25). LAST OF THE SAVES, a judgement of that slice: it costs everything
+				// held, so a save that costs less is asked first. A TICK TOO, as the reprieve above reads "would be
+				// killed", a second judgement. The blow then takes nothing and health is SET to the share, so a
+				// character hurt below it is raised to it; the spend is raised after, so a row healing on it (Feast)
+				// heals on top. Nothing of a saved blow is delayed, as for the saves above.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& Guarded->MaySaveLethalBlowWithFervour() && EmptiesHealthLessTheDelayedShare())
+				{
+					const float Spent = Guarded->TakeFervourForLethalSave();
+					if (Spent > 0.0f)
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = 0.0f;
+						// THE WRITE IS NOTICED BY `PostAttributeBaseChange`, which every write to health reaches, so no
+						// call of its own is made here.
+						SetHealth(FMath::Clamp(GetMaxHealth() * Spent / 100.0f, 1.0f, GetMaxHealth()));
+						Guarded->NoteFervourSpent(Spent);
+					}
 				}
 			}
 
@@ -1833,6 +2033,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary,
 						LeechTags);
 				}
+				// AND A MINION'S OR A THRALL'S BLOW PAYS ITS COMMANDER'S SHARED LEECH, the same figure (the Death trees'
+				// slice C6d2, 2026-11-25). OUTSIDE THE NO-LEECH CHECK ABOVE: every minion's blow carries that tag, so
+				// the minion leeches nothing from figures of its own (issue #895), and window death3-w2 found the share
+				// never paid while it sat inside. The share is the commander's leech, not the minion's.
+				if (!Hit.bIsConvertedDamage)
+				{
+					UCataclysmLeech::NoteMinionHit(
+						const_cast<UAbilitySystemComponent*>(
+							Data.EffectSpec.GetContext()
+								.GetInstigatorAbilitySystemComponent()),
+						Outcome.DealtToHealth + Outcome.AbsorbedByShield
+							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary);
+				}
 
 				// AND A BLOW THAT GOT THROUGH TO A BOSS OPENS THE ATTACKER'S
 				// COOLDOWN WINDOW. "Your cooldowns reset 50%-100% faster when
@@ -1986,10 +2199,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// well-defended Masochist retaliates for as much as a poorly
 					// defended one struck by the same blow. Using what landed
 					// would punish the class for its own defences.
+					//
+					// AND WHETHER THIS IS A BIG HIT IS SAID WHILE IT IS PAID FOR, for Absorb and Return's share (the War
+					// vow options' third slice, V3a, 2026-11-25): what got through, of all four pools, above a tenth of
+					// maximum health. Put back afterwards.
+					UCataclysmAbilitySystemComponent* PayingFor =
+						Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+					const bool bWasBig = PayingFor && PayingFor->SetPayingForABigHit(
+						UCataclysmAbilitySystemComponent::IsBigHit(
+							Outcome.DealtToHealth + Outcome.AbsorbedByShield + Outcome.AbsorbedByMana
+								+ Outcome.AbsorbedByTemporary,
+							GetMaxHealth()));
 					UCataclysmRetaliation::Pay(
 						GetOwningAbilitySystemComponent(), CataclysmDefendingBody(*this),
 						Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
+					if (PayingFor)
+					{
+						PayingFor->SetPayingForABigHit(bWasBig);
+					}
 
 					// AND A CREATURE CARRYING THORNS OF GLASS STRIKES BACK, with its
 					// own attack damage, whatever the hit was worth. Issue #2749
@@ -2367,6 +2595,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			{
 				UCataclysmFervour::GainFromDamage(
 					GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);
+				// AND SOULBOUND'S LOSS, by the HEALTH lost alone (the Death trees' slice C6c, 2026-11-25, as ruled: an
+				// energy shield or mana absorbing the blow costs nothing).
+				UCataclysmFervour::LoseFromDamage(GetOwningAbilitySystemComponent(), HealthLostToTheBlow);
+			}
+
+			// AND UNDYING'S RESTORE, NOW THAT THE BLOW HAS LEFT ONE POINT. Through `TopUp`, so every rule of a heal
+			// applies to it: the unreserved maximum, any reduction to healing received. With no tags: it is not
+			// regeneration, and not leech. The Fervour spends, 2026-11-25.
+			if (UndyingRestore > 0.0f)
+			{
+				if (UAbilitySystemComponent* Restoring = GetOwningAbilitySystemComponent())
+				{
+					UCataclysmRegeneration::TopUp(*Restoring, GetHealthAttribute(), GetMaxHealthAttribute(), UndyingRestore,
+												  FGameplayTagContainer());
+				}
 			}
 
 			// THE BONDED CREATURE'S ALLIES PAY THE REST, EVENLY. Issue #1559.
@@ -2501,6 +2744,28 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Cataclysm->NoteBlocked(
 						UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
 						Outcome.DamageBlocked);
+
+					// AND IRON WILL'S COST FOR A NEGATED BLOCK, before the block's own Fervour gain, so the 75 Fervour
+					// condition is judged on the pool that negated it. Nought for every character without
+					// `fervour_cost_per_negated_block`. The Fervour spends, 2026-11-25.
+					// NOT FOR A BLOCK THE UNBREAKABLE WALL NEGATED: Iron Will charges only when its negation changes
+					// what lands, the coordinating session's ruling of 2026-11-25.
+					if (Outcome.bNegated && !Outcome.bNegatedByEveryBlock)
+					{
+						FCataclysmWarFervour::SpendOnNegatedBlock(Cataclysm);
+					}
+
+					// AND RIPOSTE'S COUNTER-ATTACK, after Iron Will's cost (that cost is part of the block itself, "blocked
+					// attacks ... draining 20 Fervour per block"; the counter-attack comes "after a successful block") and
+					// before the block's own gain. A judgement on the order. Nought for every character without
+					// `riposte_share_of_blocked`. Riposte, 2026-11-25.
+					FCataclysmWarFervour::RiposteOnBlock(
+						Cataclysm, UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
+						Outcome.DamageBlocked);
+
+					// AND THE BULWARK'S FERVOUR FOR A BLOCK, "Taking hits, blocking and killing enemies generate
+					// Fervour". Nought for every character without `fervour_per_block`. Slice C, 2026-11-24.
+					FCataclysmWarFervour::GainOnBlock(Cataclysm);
 				}
 			}
 
@@ -2566,10 +2831,33 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// blow does. A TICK REACHES THIS LINE, as the count just below
 				// says by refusing one, so it is said here and not assumed. The
 				// same `AttackerOf` the evade above passes.
+				// AND THE SHARE OF MAXIMUM HEALTH IT TOOK FROM HEALTH, for Avenging Dead's "when a hit takes more than 5%
+				// of your maximum health" (the Death trees' slice C6d2, 2026-11-25), as ruled (Q2).
+				const float MaximumHealthNow = GetMaxHealth();
 				Cataclysm->NoteHitTaken(
 					!Outcome.bEvaded,
 					UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
-					Hit.bIsDamageOverTime);
+					Hit.bIsDamageOverTime,
+					MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);
+
+				// AND A BIG HIT IS ANNOUNCED, after the hit taken. The War vow options' third slice, V3a, ruled
+				// 2026-11-25: a landed hit, not a tick, that took more than 10% of maximum health after defences, counting
+				// what reached health, the energy shield, mana and the temporary absorb, the figure leech reads ("damage
+				// your energy shield took was still dealt to you"). NOT THE CHARACTER'S OWN BLOW, which has nobody to
+				// answer. It carries what got through and names the attacker; the retaliation pulse it may pay is
+				// sized, as retaliation is, by what the blow was worth before defences.
+				{
+					const AActor* BigHitAttacker = UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext());
+					const float GotThrough = Outcome.DealtToHealth + Outcome.AbsorbedByShield + Outcome.AbsorbedByMana
+						+ Outcome.AbsorbedByTemporary;
+					const bool bOwnBlow = BigHitAttacker
+						&& (BigHitAttacker == Cataclysm->GetAvatarActor() || BigHitAttacker == Cataclysm->GetOwnerActor());
+					if (!Outcome.bEvaded && !Hit.bIsDamageOverTime && !bOwnBlow
+						&& UCataclysmAbilitySystemComponent::IsBigHit(GotThrough, GetMaxHealth()))
+					{
+						Cataclysm->NoteBigHitTaken(GotThrough, Hit.Damage, BigHitAttacker);
+					}
+				}
 
 				// AND AN "EVERY Nth HIT YOU TAKE" ROW COUNTS IT, ruled 2026-09-24:
 				// a landed hit, not a tick and not an evaded blow; a blocked blow
@@ -2578,6 +2866,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				if (!Outcome.bEvaded && !Hit.bIsDamageOverTime)
 				{
 					Cataclysm->NoteNthEvent(ECataclysmEveryNth::HitTaken);
+
+					// AND THE BULWARK'S FERVOUR FOR A HIT TAKEN, counted as this count is: a landed hit, not a tick
+					// and not an evaded blow, and a blocked blow landed, so a block earns both its rates. Nought for
+					// every character without `fervour_per_hit_taken`. Slice C, 2026-11-24.
+					FCataclysmWarFervour::GainOnHitTaken(Cataclysm);
 				}
 
 				// AND A HIT THAT WAS TAKEN MAY MAKE ITS WEARER IMMUNE TO ITS DAMAGE TYPE FOR A TIME. Ruled
@@ -2761,7 +3054,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					UCataclysmEnemyModifiers::WitherOnHit(Striker, GetOwningActor());
 					// AND VOID'S TOUCH OF NOTHING, by the same rule: a hit that took health. Issue #1722.
 					UCataclysmEnemyModifiers::TouchOfNothingOnHit(Striker, GetOwningActor());
+
+					// AND THREE OF DEATH'S, BY THE SAME RULE, 2026-11-24, ahead of their window. Mortal Reminder's
+					// "Attacks apply a debuff", read after the health above is written, so the ceiling is the health
+					// the hit left; a Haunting copy's resistance cut; and Funeral Pyre, which is the other way round:
+					// THIS character was hit, so it is asked whether this character raises a pyre at whoever struck.
+					UCataclysmEnemyModifiers::MortalReminderOnHit(Striker, GetOwningActor());
+					UCataclysmEnemyModifiers::HauntOnHit(Striker, GetOwningActor());
+					UCataclysmEnemyModifiers::PyreWhenStruck(GetOwningActor(), Striker);
 				}
+
+				// AND DEATH'S SOUL TETHER, ON A TICK AS WELL AS A HIT: "Transfer a portion damage taken". What the
+				// write above really took from this character's health, measured across it, so an overkill, a
+				// sigil's hold and a delayed share are all left out. 2026-11-24, ahead of its window.
+				UCataclysmEnemyModifiers::TetherOnHealthLost(GetOwningActor(), Striker, TakenFromHealth);
 			}
 
 			// EVERY CHANCE TO APPLY AN AILMENT THE BLOW CARRIED IS ROLLED HERE,
@@ -2785,7 +3091,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			if (!Hit.bIsDamageOverTime)
 			{
 				UCataclysmAilments::RollOnLandedBlow(Data.EffectSpec,
-					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly);
+					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly,
+					/*bCritical=*/Outcome.bWasCritical);
 			}
 
 			// A MELEE CRITICAL STRIKE MAY APPLY BLEEDING TO WHAT IT HIT.
@@ -3082,6 +3389,30 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		return;
 	}
 
+	// A FOLLOWER WHOSE COMMANDER HOLDS ETERNAL ARMY DOES NOT DIE WHILE THE COMMANDER IS ABOVE ITS SHARE OF HEALTH: "Your
+	// minions cannot die while you are above 50% health", the Necromancer's Final Rite, the Death trees' slice C6d2
+	// (2026-11-25). It is left at 1 health instead. HERE, where every write of health at nought begins a death, so a hit
+	// and a tick are refused alike; a rule that ends a creature by calling `HandleDeath` outright does not pass here.
+	// Not a gadget or a trap, which are machines rather than minions. "Above" is strict.
+	if (const AActor* Commander = UCataclysmCommand::CommanderOf(Character))
+	{
+		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+		if (Theirs && AbilitySystem && (!AsMinion || !AsMinion->IsDeployable()))
+		{
+			const float AbovePercent =
+				Theirs->StatForSkill(FName(MinionCannotDieAboveHealthPercentStat), FGameplayTagContainer(), 0.0f);
+			const float TheirMaximum = Theirs->GetNumericAttribute(GetMaxHealthAttribute());
+			const float TheirHealth = Theirs->GetNumericAttribute(GetHealthAttribute());
+			if (AbovePercent > 0.0f && TheirMaximum > 0.0f && TheirHealth / TheirMaximum * 100.0f > AbovePercent)
+			{
+				const_cast<UAbilitySystemComponent*>(AbilitySystem)->SetNumericAttributeBase(GetHealthAttribute(), 1.0f);
+				return;
+			}
+		}
+	}
+
 	// WHOEVER WAS COMMANDING THIS THING GAINS FERVOUR FOR LOSING IT.
 	// Issue #1518, the Ritualist's generator: "and 5 when one of them dies".
 	//
@@ -3129,7 +3460,30 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	{
 		UCataclysmFervour::GainOnMinionDeath(
 			UCataclysmTargeting::AbilitySystemOf(Commander));
+
+		// AND THE SHIELD WARDED FLESH GIVES FOR THE SAME DEATH. The demonic tree rework of 2026-11-24, the First Pact's
+		// second option: "Each time one of your minions dies, you regain 10% of your Maximum Energy Shield". Here,
+		// beside the Fervour, so it answers exactly the deaths that grant it; nothing for a commander without the row.
+		UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander);
+
+		// AND THE COMMANDER IS TOLD ONE OF ITS MINIONS DIED, `minion_death`: Death Ward, Bone Knit and Marrow Feast, the
+		// Death trees' slice C6d2 (2026-11-25), as ruled (P1). HERE, beside the Fervour, so a minion, an imp and a thrall
+		// are told alike and once; while the body still stands, so a row may ask how far away it fell. NOT FOR A
+		// GADGET OR A TRAP, which is a machine rather than a minion and raises `gadget_destroyed` or nothing.
+		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+		if (!AsMinion || !AsMinion->IsDeployable())
+		{
+			if (UCataclysmAbilitySystemComponent* Commanders =
+					Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander)))
+			{
+				Commanders->NoteMinionDied(Character, AsMinion ? AsMinion->TypeTags : UCataclysmCommand::ThrallMinionTags());
+			}
+		}
 	}
+
+	// AND A SHADOW'S MARK ON IT MOVES, to the strongest enemy within 10 metres of it (the Death trees' slice C6e,
+	// 2026-11-25, as ruled), while the dying creature still stands where it fell.
+	UCataclysmAbilitySystemComponent::MoveShadowMarksOff(Character);
 
 	// WHAT A REPLACEMENT NEEDS, TAKEN BEFORE THE DEATH IS HANDLED. Issue #1515:
 	// Press-Ganged and Rekindled. A minion whose death is an explosion is

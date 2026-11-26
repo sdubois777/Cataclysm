@@ -163,8 +163,8 @@ public:
 	float ScaledRadiusCm() const;
 
 	/**
-	 * The flat reach a STRIKE gains from `melee_reach_metres`, in centimetres,
-	 * or nothing. Issue #1515: `Ravager_keystone_b_kC` Overreach, "Your melee
+	 * The flat reach a STRIKE gains from `melee_reach_metres` and
+	 * `melee_reach_centimetres` together, in centimetres, or nothing. Issue #1515: `Ravager_keystone_b_kC` Overreach, "Your melee
 	 * attacks reach 2 metres further than the skill states."
 	 *
 	 * STRIKES ONLY, ruled 2026-09-23 under the owner's delegation: a Strike's
@@ -181,6 +181,15 @@ public:
 
 	/** The stat Overreach grants: flat metres of reach on a melee strike. */
 	static const TCHAR* MeleeReachMetresStat;
+
+	/**
+	 * The stat the reach enchantment grants: flat centimetres of reach on a melee
+	 * strike, "Your melee skills have +50-100 centimetres reach". A second stat
+	 * rather than a rename of the first, so the enchantment rolls whole numbers
+	 * (issue #2883, D8) while Overreach keeps its 2 metres. Ruled by the
+	 * coordinating session on 2026-11-25. MeleeReachBonusCm reads both.
+	 */
+	static const TCHAR* MeleeReachCentimetresStat;
 
 	/**
 	 * The stats that lengthen what a skill itself sets going. Issue #1833,
@@ -881,6 +890,10 @@ public:
 	 * is how a row loses one of them in a later edit.
 	 *
 	 * @param Who     the character that might be immune
+	 * `Slow` IS ASKED BY THE CODE THAT WORKS OUT A WALKING SPEED, since 2026-11-25: an actor immune to Slow ignores
+	 * every movement reduction (`ACataclysmPlayerCharacter::RefreshMovementSpeed`,
+	 * `ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows`). `Pin` and `Madness` are asked by no code.
+	 *
 	 * @param Effect  one of `Stun`, `Knockdown`, `Slow`, `Displacement`, `Pin`
 	 *                or `Madness`. The design's own words, from its table of
 	 *                which effects the anti-stun-lock rule covers

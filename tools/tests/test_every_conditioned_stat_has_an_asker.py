@@ -89,12 +89,45 @@ def probed() -> set[str]:
     return set().union(*(table(accessor) for accessor in TABLES))
 
 
+def test_the_engine_pins_the_conditioned_table_at_the_size_it_has():
+    """`FCataclysmEveryConditionedProbeTest` stops at `TestEqual(...,
+    ConditionedProbes().Num(), N)` before running a single probe, so an N that
+    is not the table's size fails the whole Unreal test and runs no probe.
+
+    WHY THIS EXISTS. The Death trees' slices C3d to C4d3 (2026-11-25) added
+    eight conditioned probes and moved the pin above to 36 each time, while the
+    engine's pin stayed at 28. Nothing in the fast suite read it, so the
+    mismatch would have shown only in a build window. Slice C6d1 found it."""
+    text = PROBES_CPP.read_text(encoding="utf-8", errors="replace")
+    pins = re.findall(r"ConditionedProbes\(\)\.Num\(\),\s*(\d+)\)", text)
+    assert len(pins) == 1, (
+        f"expected one TestEqual pin on ConditionedProbes().Num() in "
+        f"{PROBES_CPP.name}, found {pins}; update this test's pattern")
+    assert int(pins[0]) == len(table("ConditionedProbes")), (
+        f"the engine pins the conditioned probe table at {pins[0]}, and it "
+        f"holds {len(table('ConditionedProbes'))}")
+
+
 def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     """Each parse, checked before anything is compared with it. THE THREE SIZES
     DIFFER, which is what shows `Probes` did not match another table's tail."""
     sizes = {accessor: len(table(accessor)) for accessor in TABLES}
 
-    assert sizes["ConditionedProbes"] == 24, sizes
+    # 25 SINCE 2026-11-24, when the Masochist tree rework stated
+    # `fervour_lost_to_healing` under a condition (Threadbare). 28 THE SAME DAY,
+    # for the Death classes' kill generator: `fervour_per_kill`,
+    # `fervour_kill_decay_per_second` and `fervour_kill_decay_grace_seconds`.
+    # 30 ON 2026-11-25, for the Soul Collector vows' clauses under a Fervour
+    # threshold (the Death trees' slice C3d): `projectile_count` and
+    # `cooldowns_recover_faster_percent`.
+    # 31 THE SAME DAY, for slice C4a's Hunting Leap: `skill_range`. 32 THE SAME
+    # DAY, for slice C4b1's Any Fuel: `class_resource_generation`. 33 THE SAME
+    # DAY, for slice C4d1's Telling Blows: `fervour_per_critical_strike`. 35
+    # THE SAME DAY, for slice C4d2's Patient Blade and Death by Inches:
+    # `boss_ticks_pay_a_kill_every_seconds` and `boss_hits_counted_as_a_kill_every`.
+    # 36 THE SAME DAY, for slice C4d3's Wearer of the Dead: `max_health`. 37
+    # THE SAME DAY, for slice C6d1's Ringed in Bone: `immune_to_slow`.
+    assert sizes["ConditionedProbes"] == 37, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes

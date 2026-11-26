@@ -827,7 +827,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesImpBlowTest,
  * An imp Summon Imp summons credits the skill with what its swing takes, and its swing grows with the skill's level,
  * READ ONCE WHEN IT WAS SUMMONED: the owner's ruling of 2026-11-19, "Yes, they scale too", and judgement 4. Issue
  * #2764, slice 2b. The imps are summoned on the real character as
- * `Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp` summons one (`SummonOne`), from the
+ * `Cataclysm.Passives.PressGangedReplacesAndRekindledKeepsARealRitualistsImp` summons one (`SummonOne`), from the
  * Staff's own granted Summon Imp with its row; each swing is dealt as
  * `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner` deals it. The first imp is summoned at
  * level 1, the skill raised to level 3, and a second summoned: the second's swing takes 1.0567 squared times the

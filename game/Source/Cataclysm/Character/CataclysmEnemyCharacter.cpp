@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmMovement.h"
 // For this creature's debuffs passing to whatever stands by its body. #1060.
 #include "AbilitySystem/CataclysmContagion.h"
+// For Deeper Hurt's pass of a Cripple and a Weaken on death. The Ravager tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 // For dropping an ordinary blow whose attacker was frightened before it landed.
 // Issue #783.
@@ -224,6 +226,11 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// what stops it rallying itself.
 	UCataclysmEnemyModifiers::RallyAlliesOnDeath(this);
 
+	// AND WHAT DEATH'S MODIFIERS DO AT A DEATH, 2026-11-24, ahead of their window: Final Curse curses the player, a
+	// creature Shadow Step hid is seen to fall, and one Spectral Shift had out of existence is back in it. After the
+	// mark, as the rally is, so it runs once.
+	UCataclysmEnemyModifiers::NoteDeathOfACarrier(this);
+
 	// A CREATURE DYING IS ONE OF THE FIVE EVENTS SECTION 6 WRITES ON, and it
 	// is the one that fires most: it is what stops a player killing a boss,
 	// quitting, and coming back to find it alive again.
@@ -349,7 +356,8 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		LootQuantity *= CityRewards.LootMore;
 
 		// AND THE GAP BETWEEN THE DUNGEON'S SCORE AND THE PLAYER'S (issue #2824, slice c; rule D and the owner's 25% loot
-		// floor, 2026-11-22): full from 0.6 of a tier width over the dungeon to 0.25 under it, up to 25% more above,
+		// floor, 2026-11-22; the per-tier start of the cut, issue #2853, 2026-11-24): full from the tier's start, 1.4 of
+		// a tier width over the dungeon at tier 1 down to 0.8 at tiers 7 and 8, to 0.25 under it, up to 25% more above,
 		// down to 5% experience and 25% loot below. The loot factor reaches the loot quantity and the gold multiplier
 		// through `KillLootFor`, once the tree's gold multiplier is known below; the experience takes its own factor at
 		// the grants. Both 1 outside an empire dungeon or with nobody playing (`PowerGapRewardsIn`). Asking draws nothing.
@@ -381,7 +389,8 @@ void ACataclysmEnemyCharacter::HandleDeath()
 				World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 				Stream, /*bMarked=*/bRaisedByARule, /*bInfested=*/false, RandomGearDropsGiven(),
 				/*MaterialCountGiven=*/-1, TreeDrops.LowTierMaterialExtraChance, ECataclysmRarity::Everyday,
-				CityRewards.MaterialsMore * TreeDrops.MaterialsMultiplier);
+				CityRewards.MaterialsMore * TreeDrops.MaterialsMultiplier, /*bTheCataclysmBossesPiece=*/false,
+				/*GearMore=*/AbominationGearMore); // A lair's Cursed Abomination pays more gear (L6). Issue #51 slice B5.
 			DropWhatItWore(World, GetActorLocation(), Stream);
 
 			// AND ITS GOLD, LAST, so the piles draw on the stream after every item and leave each item as it was. The
@@ -407,6 +416,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// slice G5.
 			UCataclysmDropSpawner::SpawnGemsFor(World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 												Stream, /*bMarked=*/bRaisedByARule);
+
+			// AND THE CATACLYSM BOSS'S ONE PIECE OF THE NEXT TIER'S BEST, LAST, so every draw above is as it was, and
+			// nothing for any other rung. Issue #2853, the owner's ruling of 2026-11-24: "The next tier's best
+			// (Recommended)". One piece whatever the loot quantity or the gap rule's loot factor: the owner said "always".
+			static_assert(UCataclysmDropSpawner::CataclysmBossRarityStep == ACataclysmDungeonGameMode::CataclysmBossRung,
+						  "The Cataclysm Boss's piece is no longer dropped at the rung the Gatekeeper is placed at");
+			UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(World, RarityStepItPaysAs(), MagicFind,
+																   GetActorLocation(), Stream,
+																   /*bMarked=*/bRaisedByARule);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.
@@ -537,6 +555,13 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// before the ailments pass on by themselves.
 	UCataclysmContagion::AnnounceAfflictedDeath(this);
 	UCataclysmContagion::SpreadFromTheDying(this);
+
+	// AND A CRIPPLE OR A WEAKEN PASSES TO THE NEAREST ENEMY, FOR AN APPLIER HOLDING DEEPER HURT. The Ravager tree
+	// rework of 2026-11-24: "When an enemy you have Crippled or Weakened dies, its Cripple and Weaken pass to the
+	// nearest enemy within 1 metre per point." Outside the killer's block for the reason the spread above is: the
+	// sentence asks who applied the effect, which is read off this creature's own running effects. Nought for every
+	// death of a creature no holder of the node crippled or weakened.
+	UCataclysmDebuffs::PassCrippleAndWeakenOnDeath(this);
 
 	// AND A CREATURE THAT DIES CURSED MAY RISE AS AN IMP FOR WHOEVER CURSED IT.
 	// Issue #1479, the Ritualist's starting node: "An enemy that dies carrying a
@@ -1159,6 +1184,19 @@ float ACataclysmEnemyCharacter::CommanderMultiplier() const
 	return 1.0f + CommanderIncreasePercent / 100.0f;
 }
 
+float ACataclysmEnemyCharacter::DrumsOfWarMultiplier() const
+{
+	// COMMANDER'S SHAPE: THE TAG IS THE TRUTH. War's Drums of War grants it for a stated time on its aura pulse and
+	// lets it lapse, so nothing here has to be told. 2026-11-25, ahead of its window.
+	const FGameplayTag Drums = UCataclysmSkillShapes::StatusTagFor(TEXT("Drums of War"));
+	if (!Drums.IsValid() || !UCataclysmSkillEffects::HasTag(this, Drums))
+	{
+		return 1.0f;
+	}
+
+	return 1.0f + DrumsOfWarIncreasePercent / 100.0f;
+}
+
 float ACataclysmEnemyCharacter::WraithMultiplier() const
 {
 	if (!bIsVengefulWraith)
@@ -1329,6 +1367,22 @@ float ACataclysmEnemyCharacter::AilmentWalkMultiplier() const
 	return 1.0f - Slow / 100.0f;
 }
 
+float ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows() const
+{
+	const UCataclysmAbilitySystemComponent* Abilities =
+		Cast<const UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	const float Raised =
+		1.0f + (Abilities ? Abilities->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) : 0.0f) / 100.0f;
+	if (UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow")))
+	{
+		return CommanderMultiplier() * (bWalkSpeedFollowsACommander ? 1.0f : WraithMultiplier()) * Raised;
+	}
+	const float Reduced = 1.0f
+		- FMath::Clamp(Abilities ? Abilities->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced) : 0.0f,
+					   0.0f, 99.0f) / 100.0f;
+	return WalkSpeedMultiplier() * AilmentWalkMultiplier() * Reduced * Raised;
+}
+
 void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
@@ -1381,7 +1435,7 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 	//
 	// BUT NOT THE VENGEFUL WRAITHS RULE'S 1.2, WHILE IT IS COMMANDED: a standing figure a dungeon rule gives the
 	// player's enemies, ruled the same night after window follow-w1. See `WalkSpeedMultiplier`.
-	const float Wanted = Base * WalkSpeedMultiplier() * AilmentWalkMultiplier();
+	const float Wanted = Base * WalkSpeedMultiplierWithSlows();
 
 	// ONLY ON A CHANGE. Assigning the same float every frame is harmless, and
 	// checking first says out loud that this is a state that changes rarely
@@ -1858,6 +1912,11 @@ void ACataclysmEnemyCharacter::SetPactOfTemptationDamageMultiplier(float NewMult
 	SetDamageMultiplierFrom(PactOfTemptationDamageSource, NewMultiplier);
 }
 
+void ACataclysmEnemyCharacter::SetAbominationDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(AbominationDamageSource, NewMultiplier);
+}
+
 void ACataclysmEnemyCharacter::SetTrialOfEnduranceDamageMultiplier(float NewMultiplier)
 {
 	SetDamageMultiplierFrom(TrialOfEnduranceDamageSource, NewMultiplier);
@@ -2151,9 +2210,16 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity(int32 FromTheFloor)
 		: CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), ModifierDrawSalt,
 			static_cast<int32>(Now * 1000.0f))); // Through the mix since #2749's seeding slice; it was their XOR.
 
+	// AND NONE THAT DUPLICATES AN EFFECT IT HAS INNATELY: "An innate ability must not duplicate a modifier its own
+	// Cataclysm can roll" (the design, the Succubus). Closed for whatever Cataclysm it belongs to now, since a creature
+	// takes its dungeon's: a War dungeon's Succubus never rolls `War_Commander`, which its Dominion already grants.
+	// Kept out of the pool beside what it carries, and never added to it. Nothing for a creature with no innate effect,
+	// whose draw is the one it always was. 2026-11-25. See `InnateEffectNames`.
+	const UDataTable* ModifierTable = UCataclysmEnemyModifiers::LoadEnemyModifierTable();
+	TArray<FName> NotToDraw = ModifierRows;
+	NotToDraw.Append(UCataclysmEnemyModifiers::ClosedByInnateEffects(ModifierTable, DamageType, InnateEffectNames()));
 	const TArray<FName> Drawn = UCataclysmEnemyModifiers::Draw(
-		UCataclysmEnemyModifiers::LoadEnemyModifierTable(), DamageType,
-		Shortfall, Stream, ModifierRows);
+		ModifierTable, DamageType, Shortfall, Stream, NotToDraw);
 
 	ModifierRows.Append(Drawn);
 
@@ -2307,11 +2373,17 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// split FCataclysmEnemyRarityRow states: rarity scales MAGNITUDE, and
 	// evasion, critical chance and critical multiplier say what KIND of creature
 	// this is. A Legendary Imp is a bigger Imp, not a different one.
+	//
+	// AND WHAT TWO OF WAR'S MODIFIERS DO TO THESE FIGURES, 2026-11-25, ahead of their window: Armored Juggernaut's
+	// "Gain 50% armor" multiplies the armour and Battle Scarred's "increased critical strike chance" the chance, each
+	// on the freshly computed figure as Titanic Resolve's multiplier is on health, so a recompute never compounds them.
+	// One for every creature carrying neither. Overpowered's certain critical strike still wins: it is written after,
+	// in `ApplyModifierAttributes`.
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetArmorAttribute(),
-				StartingArmour * ArmourScale);
+				StartingArmour * ArmourScale * UCataclysmEnemyModifiers::ArmourMultiplier(ModifierRows));
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetEvasionAttribute(), EvasionPercent);
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritChanceAttribute(),
-				CritChancePercent);
+				FMath::Min(100.0f, CritChancePercent * UCataclysmEnemyModifiers::CritChanceMultiplier(ModifierRows)));
 	ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(),
 				CritMultiplierPercent);
 
@@ -2327,8 +2399,11 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// -- deliberately, because this creature resists everything equally, so a type
 	// would be choosing between eight copies of one number. With no type there was
 	// no slot to pick and all eight were skipped. Issue #486.
+	//
+	// AND BATTLE SCARRED'S "DAMAGE RESISTANCE", ADDED TO IT, War's modifier, 2026-11-25, ahead of its window. Nought
+	// for every creature not carrying it. The damage calculation's own resistance cap still bounds the sum.
 	ApplyIfHeld(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(),
-				ResistancePercent);
+				ResistancePercent + UCataclysmEnemyModifiers::AddedResistance(ModifierRows));
 
 	// A CREATURE DOES NOT REGENERATE, AND THAT IS A STATED POSITION RATHER THAN
 	// AN OMISSION. Issue #653 wired up the three regeneration attributes, which

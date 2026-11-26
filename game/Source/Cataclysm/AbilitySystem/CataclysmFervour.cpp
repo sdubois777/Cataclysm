@@ -3,16 +3,22 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For whether a running buff holds Fervour from decay. Issue #2885, N8.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmTargetCandidates.h"
 #include "AbilitySystemComponent.h"
+#include "HAL/IConsoleManager.h"
+#include "Misc/ScopeExit.h"
 
 const TCHAR* UCataclysmFervour::FromDamageStat = TEXT("fervour_from_damage");
 const TCHAR* UCataclysmFervour::FromCostStat = TEXT("fervour_from_cost");
@@ -20,6 +26,8 @@ const TCHAR* UCataclysmFervour::LostToHealingStat =
 	TEXT("fervour_lost_to_healing");
 const TCHAR* UCataclysmFervour::LossSuppressedStat =
 	TEXT("fervour_loss_suppressed");
+const TCHAR* UCataclysmFervour::FloorAgainstHealingStat =
+	TEXT("fervour_floor_against_healing");
 const TCHAR* UCataclysmFervour::PerSecondStat = TEXT("fervour_per_second");
 const TCHAR* UCataclysmFervour::PerCastStat = TEXT("fervour_per_cast");
 const TCHAR* UCataclysmFervour::OnDroppingLowStat =
@@ -41,8 +49,268 @@ const TCHAR* UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat =
 const TCHAR* UCataclysmFervour::PerEnemyHitStat = TEXT("fervour_per_enemy_hit");
 const TCHAR* UCataclysmFervour::HealthRestoredOnKillAtNoCostStat =
 	TEXT("health_restored_on_kill_at_no_cost");
+const TCHAR* UCataclysmFervour::DecayGraceSecondsStat =
+	TEXT("fervour_decay_grace_seconds");
+const TCHAR* UCataclysmFervour::HealthRestoredOnFullStat =
+	TEXT("health_restored_on_fervour_full");
 const TCHAR* UCataclysmFervour::OnEnemyDeathNearbyStat =
 	TEXT("fervour_on_enemy_death_nearby");
+const TCHAR* UCataclysmFervour::PerKillStat = TEXT("fervour_per_kill");
+const TCHAR* UCataclysmFervour::KillDecayPerSecondStat = TEXT("fervour_kill_decay_per_second");
+const TCHAR* UCataclysmFervour::KillDecayGraceSecondsStat = TEXT("fervour_kill_decay_grace_seconds");
+const TCHAR* UCataclysmFervour::HoldRestartedByAnyGainStat = TEXT("fervour_hold_restarted_by_any_gain");
+const TCHAR* UCataclysmFervour::HoldExtendedOnGainSecondsStat = TEXT("fervour_hold_extended_on_gain_seconds");
+const TCHAR* UCataclysmFervour::DecayFloorPercentStat = TEXT("fervour_decay_floor_percent");
+const TCHAR* UCataclysmFervour::HealthPercentLostPerFervourLostStat = TEXT("health_percent_lost_per_fervour_lost");
+const TCHAR* UCataclysmFervour::OverflowAttackSpeedSecondsStat = TEXT("fervour_overflow_attack_speed_seconds");
+const TCHAR* UCataclysmFervour::KillChainSecondsStat = TEXT("kill_chain_seconds");
+const TCHAR* UCataclysmFervour::DecayGivenBackOnKillSecondsStat = TEXT("decay_given_back_on_kill_seconds");
+const TCHAR* UCataclysmFervour::ClaimedWithinSecondsStat = TEXT("fervour_claimed_within_seconds");
+const TCHAR* UCataclysmFervour::FollowerKillsCountAsYoursStat = TEXT("follower_kills_count_as_yours");
+const TCHAR* UCataclysmFervour::PerCriticalStrikeStat = TEXT("fervour_per_critical_strike");
+const TCHAR* UCataclysmFervour::BossTicksPayAKillEverySecondsStat = TEXT("boss_ticks_pay_a_kill_every_seconds");
+const TCHAR* UCataclysmFervour::BossHitsCountedAsAKillEveryStat = TEXT("boss_hits_counted_as_a_kill_every");
+
+FString UCataclysmFervour::SoulCollectorRowKeyPrefix()
+{
+	// THE NAME A PASSIVE ROW'S ENCHANTMENT IS GIVEN, FOR A NODE NAMED ONLY BY ITS TREE, so the prefix follows the one
+	// place that names passive rows.
+	return UCataclysmPassiveTree::EnchantmentNameFor(FName(TEXT("SoulCollector_")), 0);
+}
+
+float UCataclysmFervour::GiveBackDecayOnKill(UAbilitySystemComponent* AbilitySystem)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	const float Seconds = Cataclysm->StatForSkill(FName(DecayGivenBackOnKillSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Taken = Cataclysm->TakeFervourDecayedWithin(Seconds);
+	if (Taken <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// A KILL'S PAYMENT, UNSCALED, as ruled: what decay took comes back as it was taken, and Kindred Fires and Borrowed
+	// Time leave the hold to the kill's own stamp.
+	Cataclysm->BeginKillPayment();
+	ON_SCOPE_EXIT
+	{
+		Cataclysm->EndKillPayment();
+	};
+	return RaisePool(AbilitySystem, Taken);
+}
+
+float UCataclysmFervour::ClaimOnDeath(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Slain)
+	{
+		return 0.0f;
+	}
+	const float Within = Cataclysm->StatForSkill(FName(ClaimedWithinSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Within <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// THE RECORD IS KEPT ON THE STRUCK, keyed by the striker: `NoteStruckBy`. -1 is never struck by this character.
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Slain));
+	const float Since = Theirs ? Theirs->SecondsSinceStruckBy(AbilitySystem) : -1.0f;
+	if (Since < 0.0f || Since > Within)
+	{
+		return 0.0f;
+	}
+	return GainOnOwnKill(AbilitySystem, Slain);
+}
+
+void UCataclysmFervour::BurstTheSlain(AActor* Killer, const AActor* Slain, const FVector& At, float SlainMaximum,
+									  float SharePercent)
+{
+	if (!Killer || SlainMaximum <= 0.0f || SharePercent <= 0.0f)
+	{
+		return;
+	}
+	const TWeakObjectPtr<AActor> Burster(Killer);
+	const TWeakObjectPtr<const AActor> Body(Slain);
+	TFunction<void()> Burst = [Burster, Body, At, SlainMaximum, SharePercent]()
+	{
+		if (Burster.IsValid())
+		{
+			UCataclysmSkillEffects::ExplodeForOverkill(Burster.Get(), Body.Get(), At, SlainMaximum, SharePercent,
+													   UCataclysmSkillEffects::SlainBurstRadiusCm);
+		}
+	};
+	if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(Killer->GetWorld()))
+	{
+		Events->AfterThisDeathIsHeard(MoveTemp(Burst));
+	}
+	else
+	{
+		Burst();
+	}
+}
+
+void UCataclysmFervour::MarkNearAKill(UAbilitySystemComponent* Killer, const AActor* Slain, const FVector& At)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Killer);
+	AActor* KillerActor = Cataclysm ? Cataclysm->GetAvatarActor() : nullptr;
+	const UWorld* World = KillerActor ? KillerActor->GetWorld() : nullptr;
+	const float ReachMetres =
+		Cataclysm ? Cataclysm->WidestReachOfCondition(ECataclysmStatCondition::TargetNearYourKillWithinSeconds) : 0.0f;
+	if (!World || ReachMetres <= 0.0f)
+	{
+		return;
+	}
+	for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(World, KillerActor, At, ReachMetres * 100.0f))
+	{
+		if (Near == Slain)
+		{
+			continue;
+		}
+		if (UCataclysmAbilitySystemComponent* Marked =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Near)))
+		{
+			Marked->NoteNearKillBy(Killer);
+		}
+	}
+}
+
+bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySystem, AActor* Commander,
+											 const FCataclysmDeathNotice& Notice)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Commander || !Notice.Killer || !Notice.Victim || Notice.Killer == Commander
+		|| UCataclysmCommand::CommanderOf(Notice.Killer) != Commander
+		|| Cataclysm->StatForSkill(FName(FollowerKillsCountAsYoursStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return false;
+	}
+
+	// IN THE ORDER THE CHARACTER'S OWN KILL TAKES: what decay took given back, the payment, then the stamp.
+	GiveBackDecayOnKill(AbilitySystem);
+	GainOnOwnKill(AbilitySystem, Notice.Victim);
+	NoteOwnKill(AbilitySystem, Notice.Victim);
+	// AND GRIM WAKE'S MARK on the enemies near the body (the Death trees' slice C4c2), as for an own kill.
+	MarkNearAKill(AbilitySystem, Notice.Victim, Notice.Location);
+	// AND WEARER OF THE DEAD'S MODIFIERS, as ruled (W5): a follower's kill Death's Toll makes the character's lends them
+	// too. The Death trees' slice C4d3 (2026-11-25).
+	WearTheModifiersOf(AbilitySystem, Notice.Victim);
+
+	// `kill`, RAISED TO THE SOUL COLLECTOR'S OWN ROWS ONLY (Kill Chain's stacks among them), carrying the slain creature
+	// and its maximum health as an own kill's does. Not for a kill a row made, for the reason the own kill gives.
+	if (!Notice.bWhileTheKillersRowsActed)
+	{
+		const UAbilitySystemComponent* Slain = UCataclysmTargeting::AbilitySystemOf(Notice.Victim);
+		const float SlainMaximum =
+			Slain ? Slain->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+		const FString Prefix = SoulCollectorRowKeyPrefix();
+		Cataclysm->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum, /*bLanded=*/true,
+							  Notice.Victim, *Prefix);
+
+		// AND THE FERRYMAN'S BURST, which a Soul Collector row on `kill` asked for: this kill is the character's for
+		// this tree, so the burst is the character's and its kills are too (the Death trees' slice C4c1). Passed On's
+		// explosion is not made: its row asks for the character's own hit, which this kill was not.
+		BurstTheSlain(Commander, Notice.Victim, Notice.Location, SlainMaximum,
+					  Cataclysm->TakePendingSlainBurstSharePercent());
+	}
+
+	// AND LAST BREATH, the Soul Collector's health on a kill at no cost.
+	RestoreHealthOnKillAtNoCost(AbilitySystem);
+	return true;
+}
+
+float UCataclysmFervour::RaisePool(UAbilitySystemComponent* AbilitySystem, float Change)
+{
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem ? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+	if (!Resource || Change <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// CLAMPED HERE AS WELL AS BY EVERY CALLER, so a change that does not fit never leaves the stored base above the
+	// maximum, which `ApplyModToAttribute` would (issue #1036): what does not fit is lost, as a gain to a full bar is.
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+	const float Added = FMath::Min(Change, Resource->MaximumClassResourceAsked() - Before);
+	// WHAT DID NOT FIT IS OVERFLOW'S, above the full bar after reserves (the Death trees' slice C6c, 2026-11-25, as
+	// ruled): every gain to the pool comes through here, so every gain can overflow.
+	if (UCataclysmAbilitySystemComponent* Overflowing = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const float Overflow = Change - FMath::Max(0.0f, Added);
+		const float Window = Overflow > 0.0f
+			? Overflowing->StatForSkill(FName(OverflowAttackSpeedSecondsStat), FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+		if (Window > 0.0f)
+		{
+			Overflowing->NoteFervourOverflow(Overflow, Window);
+		}
+	}
+	if (Added <= 0.0f)
+	{
+		return 0.0f;
+	}
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Added);
+	const float Rise = AbilitySystem->GetNumericAttribute(Pool) - Before;
+	if (Rise > 0.0f)
+	{
+		AfterPoolRose(AbilitySystem, Rise);
+	}
+	return Rise;
+}
+
+float UCataclysmFervour::KillDecayHoldFullSeconds(const UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	if (Cataclysm->LastKillGraceSeconds() >= 0.0f)
+	{
+		return Cataclysm->LastKillGraceSeconds();
+	}
+	// BEFORE ANY KILL, A COMMON KILL'S GRACE, as ruled: the grace rows are written against the slain creature's rung,
+	// and a common creature is rung 0.
+	return FMath::Max(0.0f, Cataclysm->StatAsIfAgainstRarity(FName(KillDecayGraceSecondsStat), 0, 0.0f));
+}
+
+void UCataclysmFervour::AfterPoolRose(UAbilitySystemComponent* AbilitySystem, float Rise)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || Rise <= 0.0f)
+	{
+		return;
+	}
+
+	// A KILL'S PAYMENT SETS THE HOLD ONLY THROUGH THE KILL'S OWN STAMP, which follows it: ruled by the coordinating
+	// session on 2026-11-25. Kindred Fires' "holds off decay as a kill does" is about Fervour from other sources; a kill
+	// already holds off decay by its own grace, and a restart here would give a common kill inside an Elite kill's hold
+	// the Elite's 8 seconds.
+	if (Cataclysm->IsPayingForAKill())
+	{
+		return;
+	}
+
+	// KINDRED FIRES: ANY OTHER RISE restarts the hold at its full length.
+	if (Cataclysm->StatForSkill(FName(HoldRestartedByAnyGainStat), FGameplayTagContainer(), 0.0f) > 0.0f)
+	{
+		Cataclysm->RestartKillDecayHold(KillDecayHoldFullSeconds(AbilitySystem));
+		return;
+	}
+
+	// BORROWED TIME: otherwise a rise lengthens a hold still running, capped at its full length.
+	const float Extension =
+		Cataclysm->StatForSkill(FName(HoldExtendedOnGainSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Extension > 0.0f)
+	{
+		Cataclysm->ExtendKillDecayHold(Extension, KillDecayHoldFullSeconds(AbilitySystem));
+	}
+}
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -125,6 +393,34 @@ float UCataclysmFervour::GainFromDamage(UAbilitySystemComponent* AbilitySystem,
 {
 	return Move(AbilitySystem, FName(FromDamageStat), HealthLost, HitTags,
 				/*Sign=*/1.0f);
+}
+
+float UCataclysmFervour::LoseFromDamage(UAbilitySystemComponent* AbilitySystem, float HealthLost)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || HealthLost <= 0.0f || !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return 0.0f;
+	}
+	const float PerFervour =
+		Cataclysm->StatForSkill(FName(HealthPercentLostPerFervourLostStat), FGameplayTagContainer(), 0.0f);
+	const float MaximumHealth = Cataclysm->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (PerFervour <= 0.0f || MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const int32 Whole =
+		Cataclysm->AccumulateHealthLostForFervour(HealthLost / MaximumHealth * 100.0f, PerFervour);
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = Cataclysm->GetNumericAttribute(Pool);
+	// NEVER BELOW NOUGHT, AND NOT STOPPED BY MISER'S GRIP'S FLOOR, which is about decay, as ruled.
+	const float Taken = FMath::Min(static_cast<float>(Whole), FMath::Max(0.0f, Before));
+	if (Taken <= 0.0f)
+	{
+		return 0.0f;
+	}
+	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
+	return Before - Cataclysm->GetNumericAttribute(Pool);
 }
 
 float UCataclysmFervour::GainFromHealthCost(
@@ -211,6 +507,29 @@ bool UCataclysmFervour::LossIsSuppressed(
 		> 0.0f;
 }
 
+float UCataclysmFervour::FloorAgainstHealing(
+	const UAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& Healing)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm
+		|| !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO CLASS RESOURCE SET MEANS NO FERVOUR TO KEEP, for the reason
+		// `LossIsSuppressed` above gives.
+		return 0.0f;
+	}
+
+	// A FALLBACK OF ZERO, for the reason `LossIsSuppressed` gives: the stat has
+	// no gameplay attribute, so nothing recorded for it means no floor.
+	//
+	// FLOORED AT ZERO ITSELF, because a negative floor would be a floor below
+	// an empty pool, which is no floor; nothing states one.
+	return FMath::Max(
+		0.0f, Cataclysm->StatForSkill(FName(FloorAgainstHealingStat), Healing, 0.0f));
+}
+
 float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 							  FName Stat, float HealthChanged,
 							  const FGameplayTagContainer& Context, float Sign)
@@ -287,8 +606,28 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	// back by the helper exactly as it came.
 	const float Moved = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
 		AbilitySystem, Sign * Amount);
-	const float Wanted = FMath::Clamp(Before + Moved, 0.0f,
+
+	// AND HEALING STOPS AT A FLOOR A ROW STATES. Sanguine Ledger, reworked by
+	// the project owner's approval of 2026-11-24: "Healing never takes your
+	// Fervour below 50." Only the removing direction, for the reason the
+	// suppression above gives. A pool already at or below the floor keeps what
+	// it has -- the lowest healing may leave is the smaller of the floor and
+	// what was there -- and one above it loses no further than the floor. A
+	// character with no floor answers 0, which is the clamp this always had.
+	const float Lowest = Sign < 0.0f
+		? FMath::Min(Before, FloorAgainstHealing(AbilitySystem, Context))
+		: 0.0f;
+	const float Wanted = FMath::Clamp(Before + Moved, FMath::Max(0.0f, Lowest),
 									  Resource->MaximumClassResourceAsked());
+	// A GAIN: the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's. Before the
+	// full-bar return below, so a hit taken at a full bar still reaches it.
+	if (Moved > 0.0f)
+	{
+		RaisePool(AbilitySystem, Moved);
+		return AbilitySystem->GetNumericAttribute(Pool) - Before;
+	}
+
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -298,6 +637,7 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 		return 0.0f;
 	}
 
+	// A LOSS, written as it was.
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 
 	// MEASURED RATHER THAN ASSUMED, so a caller reporting what it did says what
@@ -412,17 +752,14 @@ float UCataclysmFervour::GainPerSecondStep(
 	// the reason it gives: `ApplyModToAttribute` writes a base value and whether
 	// that reaches `PreAttributeChange` depends on whether an aggregator happens
 	// to exist for the attribute.
-	const float Change =
-		FMath::Clamp(Before + Wanted, 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = Wanted;
+	if (Gain <= 0.0f)
 	{
-		// A FULL BAR IS THE ORDINARY CASE for a character standing at low health
-		// with this keystone, because ten a second fills it in ten seconds.
 		return 0.0f;
 	}
-
-	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -534,9 +871,17 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 		}
 	}
 
-	if (!Cataclysm->OutOfContactFor(DecayGraceSeconds))
+	// THE THREE SECONDS AND WHAT A ROW ADDS TO THEM. The Ravager tree rework of
+	// 2026-11-24, Stoked: "Your Fervour starts to decay 1 second later per
+	// point." Asked here, after the cheaper refusals above, so a character with
+	// no decay rate never asks; a fallback of nought, and a negative row is
+	// floored so nothing can make the grace shorter than the starting node's.
+	const float Grace = DecayGraceSeconds
+		+ FMath::Max(0.0f, Cataclysm->StatForSkill(FName(DecayGraceSecondsStat),
+												   FGameplayTagContainer(), 0.0f));
+	if (!Cataclysm->OutOfContactFor(Grace))
 	{
-		// INSIDE THE THREE SECONDS. The node grants the grace so that stepping
+		// INSIDE THE GRACE. The node grants the grace so that stepping
 		// behind a pillar does not empty a bar the character spent a fight
 		// filling.
 		return 0.0f;
@@ -556,7 +901,10 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 	}
 
 	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
-	return Cataclysm->GetNumericAttribute(Pool) - Before;
+	const float Moved = Cataclysm->GetNumericAttribute(Pool) - Before;
+	// AND WHAT IT TOOK, KEPT FOR RECLAIMED (the Death trees' slice C4b2, as ruled: both decays count).
+	Cataclysm->NoteFervourDecayed(-Moved);
+	return Moved;
 }
 
 float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
@@ -604,16 +952,14 @@ float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
 	// `PreAttributeChange` depends on whether an aggregator happens to exist.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCast),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCast);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -664,16 +1010,14 @@ float UCataclysmFervour::GainOnDroppingLow(UAbilitySystemComponent* AbilitySyste
 	// this file follows and for the reason they give.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDropping),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDropping);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -753,6 +1097,33 @@ float UCataclysmFervour::RestoreHealthOnKill(UAbilitySystemComponent* AbilitySys
 	return AbilitySystem->GetNumericAttribute(Health) - Before;
 }
 
+const TCHAR* UCataclysmFervour::HealthRestoredOnCriticalKillStat = TEXT("health_restored_on_critical_kill");
+
+float UCataclysmFervour::RestoreHealthOnCriticalKill(UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	const float Percent =
+		Cataclysm->StatForSkill(FName(HealthRestoredOnCriticalKillStat), FGameplayTagContainer(), 0.0f);
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (Percent <= 0.0f || !AbilitySystem->HasAttributeSetForAttribute(Health))
+	{
+		return 0.0f;
+	}
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+	if (Maximum <= 0.0f || Before >= Maximum)
+	{
+		return 0.0f;
+	}
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, MaxHealth, Maximum * Percent / 100.0f);
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
 float UCataclysmFervour::RestoreHealthOnKillAtNoCost(
 	UAbilitySystemComponent* AbilitySystem)
 {
@@ -789,6 +1160,45 @@ float UCataclysmFervour::RestoreHealthOnKillAtNoCost(
 	const float Before = AbilitySystem->GetNumericAttribute(Health);
 	if (Maximum <= 0.0f || Before >= Maximum)
 	{
+		return 0.0f;
+	}
+
+	// `TopUp`, FOR THE REASON `RestoreHealthOnKill` GIVES: the same ceiling and
+	// the same received-healing reductions as every other restoration.
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, MaxHealth,
+								  Maximum * Percent / 100.0f);
+
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
+float UCataclysmFervour::RestoreHealthOnFervourFull(UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !AbilitySystem->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		// No vital set means no health to restore.
+		return 0.0f;
+	}
+
+	// THE NODE FIRST, BECAUSE IT REFUSES ALMOST EVERYONE. Nought for every
+	// character without Second Wind, so nobody else reads their health when
+	// their pool fills.
+	const float Percent = Cataclysm->StatForSkill(
+		FName(HealthRestoredOnFullStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+	if (Maximum <= 0.0f || Before <= 0.0f || Before >= Maximum)
+	{
+		// FULL ALREADY, OR DEAD: a corpse whose pool fills is not restored.
 		return 0.0f;
 	}
 
@@ -890,17 +1300,14 @@ float UCataclysmFervour::GainForEnemiesHit(UAbilitySystemComponent* AbilitySyste
 	// follows; `GainForCast` gives the reason.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(
-								  AbilitySystem, PerEnemy * static_cast<float>(EnemiesHit)),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerEnemy * static_cast<float>(EnemiesHit));
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -954,16 +1361,14 @@ float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySyste
 	// this file follows and for the reason they give.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
-	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
-	if (FMath::IsNearlyZero(Change))
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath);
+	if (Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-
-	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	RaisePool(AbilitySystem, Gain);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
@@ -1062,15 +1467,354 @@ float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* Ability
 	// file follows.
 	//
 	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES. Ruled 2026-10-07.
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath);
+	if (Gain <= 0.0f)
+	{
+		return 0.0f;
+	}
+	RaisePool(AbilitySystem, Gain);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+void UCataclysmFervour::NoteOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return;
+	}
+
+	// THE GRACE IS ASKED AGAINST THE SLAIN CREATURE, so a row under `target_rarity_at_least` can lengthen it for an
+	// Elite. Nought for a character with no grace row, which holds the decay until now: nothing.
+	const float Grace = Cataclysm->StatForSkill(
+		FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f,
+		false, Slain);
+	Cataclysm->NoteOwnKill(Grace);
+}
+
+const TCHAR* UCataclysmFervour::PerKillExtraChanceStat = TEXT("fervour_per_kill_extra_chance");
+
+/**
+ * Pins the roll `GainOnOwnKill` makes against Gleaning's chance, 0 to 100, for tests. Negative, the default, rolls. The
+ * same shape as `Cataclysm.CooldownResetRoll`. The Death trees' slice C4a (2026-11-25).
+ */
+static TAutoConsoleVariable<float> CVarKillFervourExtraRoll(
+	TEXT("Cataclysm.KillFervourExtraRoll"), -1.0f,
+	TEXT("Pins the roll a kill makes against its chance of 1 extra Fervour (0-100); negative rolls."));
+
+float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill, which is every enemy.
+		return 0.0f;
+	}
+
+	// A KILL'S PAYMENT, MARKED FOR ITS WHOLE LENGTH (the Death trees' slice C4b1, 2026-11-25), so Any Fuel's condition
+	// refuses on the rate asked below and Borrowed Time leaves the hold to this kill's own stamp.
+	UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	Paying->BeginKillPayment();
+	ON_SCOPE_EXIT
+	{
+		Paying->EndKillPayment();
+	};
+
+	// ASKED AGAINST THE SLAIN CREATURE, so its rarity rung can pick the row. NO TAGS: the generator pays for the kill,
+	// not for the skill that made it. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
+	float PerKill = Cataclysm->StatForSkill(
+		FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain);
+	if (PerKill <= 0.0f)
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE.
+		return 0.0f;
+	}
+
+	// AND GLEANING'S CHANCE OF ONE MORE, rolled on each kill (the Death trees' slice C4a). A chance of 100 or more is
+	// always, compared rather than rolled, as a cooldown reset's is.
+	const float ExtraChance = Cataclysm->StatForSkill(
+		FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f,
+		false, Slain);
+	if (ExtraChance > 0.0f)
+	{
+		const float Pinned = CVarKillFervourExtraRoll.GetValueOnAnyThread();
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (ExtraChance >= 100.0f || Roll < ExtraChance)
+		{
+			PerKill += 1.0f;
+		}
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// SCALED BY HOW FAST THE CLASS RESOURCE GENERATES, AND CLAMPED BEFORE IT IS WRITTEN, the shape of
+	// `GainOnEnemyDeathNearby` above.
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerKill);
+	if (Gain <= 0.0f)
+	{
+		return 0.0f;
+	}
+	RaisePool(AbilitySystem, Gain);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck,
+											 const FGameplayTagContainer& SkillTags)
+{
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem ? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		return 0.0f;
+	}
+
+	// ASKED AGAINST THE CHARACTER STRUCK, so Telling Blows' rarity row is judged on it, AND WITH THE BLOW'S SKILL TAGS,
+	// so Battle Lust's melee row adds to a melee critical strike only (the bundle 3 merge, obligation 5): a row scoped to
+	// no tag is paid whatever the skill. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
+	const float PerCritical = Cataclysm->StatForSkill(
+		FName(PerCriticalStrikeStat), SkillTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck);
+	if (PerCritical <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+	// SCALED AND CLAMPED BEFORE IT IS WRITTEN, the shape of `GainOnOwnKill` above.
+	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerCritical);
+	if (Gain <= 0.0f)
+	{
+		return 0.0f;
+	}
+	RaisePool(AbilitySystem, Gain);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::PayForABossTick(UAbilitySystemComponent* AbilitySystem, const AActor* Ticked)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Ticked)
+	{
+		return 0.0f;
+	}
+	// ASKED AGAINST THE CHARACTER TICKED, so the row's `target_is_boss` is judged on it. No tags and no blow: a tick is
+	// not a blow being priced.
+	const float Every = Cataclysm->StatForSkill(
+		FName(BossTicksPayAKillEverySecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f,
+		-1.0f, false, Ticked);
+	if (Every <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// ONE CLOCK FOR THE CHARACTER, as ruled, inclusive of its seconds less a thousandth, so a tick landing on the second
+	// a frame's rounding puts a hair early still pays.
+	const float Since = Cataclysm->SecondsSinceBossTickPaid();
+	if (Since >= 0.0f && Since + 1.0e-3f < Every)
+	{
+		return 0.0f;
+	}
+	Cataclysm->NoteBossTickPaid();
+	return GainOnOwnKill(AbilitySystem, Ticked);
+}
+
+bool UCataclysmFervour::CountAHitOnABoss(UAbilitySystemComponent* AbilitySystem, AActor* Struck)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Struck || UCataclysmSkillEffects::IsDead(Struck))
+	{
+		return false;
+	}
+	const float Every = Cataclysm->StatForSkill(
+		FName(BossHitsCountedAsAKillEveryStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f,
+		-1.0f, false, Struck);
+	const int32 Nth = FMath::RoundToInt(Every);
+	if (Nth < 1)
+	{
+		return false;
+	}
+	if (Cataclysm->CountBossHit(Struck) % Nth != 0)
+	{
+		return false;
+	}
+	CreditAKillWithoutADeath(AbilitySystem, Struck);
+	return true;
+}
+
+void UCataclysmFervour::CreditAKillWithoutADeath(UAbilitySystemComponent* AbilitySystem, AActor* Slain)
+{
+	UCataclysmAbilitySystemComponent* Acting = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Acting || !Slain)
+	{
+		return;
+	}
+	// IN THE KILL HANDLER'S ORDER: what decay took given back, the payment, then the stamp, then the marks.
+	GiveBackDecayOnKill(AbilitySystem);
+	GainOnOwnKill(AbilitySystem, Slain);
+	NoteOwnKill(AbilitySystem, Slain);
+	MarkNearAKill(AbilitySystem, Slain, Slain->GetActorLocation());
+	// AND WEARER OF THE DEAD'S MODIFIERS (the Death trees' slice C4d3): the creature is alive and carries them still.
+	WearTheModifiersOf(AbilitySystem, Slain);
+
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Slain);
+	const float SlainMaximum =
+		Theirs ? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	Acting->ActOnEvent(FName(TEXT("kill")), nullptr, SlainMaximum, /*bLanded=*/true, Slain);
+
+	// WHAT NEEDS A BODY IS DROPPED: the explosions and the burst a real kill's handler makes from these shares.
+	Acting->TakePendingOverkillExplosionSharePercent();
+	Acting->TakePendingOverkillExplosionRadiusCm();
+	Acting->TakePendingSlainBurstSharePercent();
+	Acting->TakePendingKillingBlowExplosionSharePercent();
+}
+
+const TArray<FName>& UCataclysmFervour::WornEnemyModifierRows()
+{
+	// IN PLACE ORDER, FROM 1. Appended to, never reordered: a row's place is written in the data.
+	static const TArray<FName> Rows = {
+		FName(TEXT("Generic_Titanic_Resolve")),
+		FName(TEXT("Generic_Overpowered")),
+		FName(TEXT("Generic_Bloodthirsty")),
+		FName(TEXT("Generic_Unyielding")),
+		FName(TEXT("Generic_Relentless")),
+	};
+	return Rows;
+}
+
+int32 UCataclysmFervour::WornEnemyModifierPlace(FName Row)
+{
+	const int32 Index = WornEnemyModifierRows().IndexOfByKey(Row);
+	return Index == INDEX_NONE ? 0 : Index + 1;
+}
+
+int32 UCataclysmFervour::WearTheModifiersOf(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	UCataclysmAbilitySystemComponent* Wearer = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Slain);
+	if (!Wearer || !Creature || Creature->RarityStep < 1)
+	{
+		return 0;
+	}
+	int32 Recorded = 0;
+	for (const FName& Row : Creature->ModifierRows)
+	{
+		const int32 Place = WornEnemyModifierPlace(Row);
+		if (Place > 0 && Wearer->HoldsARowWearing(Place))
+		{
+			Wearer->NoteWornEnemyModifier(Place, WornEnemyModifierSeconds);
+			++Recorded;
+		}
+	}
+	if (Recorded > 0)
+	{
+		Wearer->RefreshLiveMaximumHealth();
+	}
+	return Recorded;
+}
+
+FString UCataclysmFervour::WornModifiersLine(const UCataclysmAbilitySystemComponent* Holder)
+{
+	if (!Holder)
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	const TArray<FName>& Rows = WornEnemyModifierRows();
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		const float Left = Holder->WornEnemyModifierSecondsLeft(Index + 1);
+		if (Left > 0.0f)
+		{
+			// THE ROW'S NAME LESS ITS CATACLYSM, its underscores as spaces: "Generic_Titanic_Resolve" is "Titanic Resolve".
+			FString Name = Rows[Index].ToString();
+			int32 Underscore = INDEX_NONE;
+			if (Name.FindChar(TEXT('_'), Underscore))
+			{
+				Name.RightChopInline(Underscore + 1);
+			}
+			Name.ReplaceCharInline(TEXT('_'), TEXT(' '));
+			Parts.Add(FString::Printf(TEXT("%s %ds"), *Name, FMath::CeilToInt(Left)));
+		}
+	}
+	return Parts.IsEmpty() ? FString() : TEXT("Worn: ") + FString::Join(Parts, TEXT(", "));
+}
+
+float UCataclysmFervour::KillDecayStep(UAbilitySystemComponent* AbilitySystem, float SecondsInStep)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || SecondsInStep <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// NOR A CREATURE HOLDING A PLAYER BUILD, for the reason `DecayStep` gives: the Corrupted Stalker is raised with its
+	// Ultimate's Fervour and must not lose it on the walk to the player. Issue #1308.
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Cataclysm->GetAvatarActor());
+		Enemy && Enemy->bHoldsAPlayerBuild)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource = Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>();
+	if (!Resource)
+	{
+		// No class resource set means no pool to drain, which is every enemy.
+		return 0.0f;
+	}
+
+	// THE RATE FIRST, THE CHEAPEST QUESTION AND THE ONE THAT REFUSES EVERY CHARACTER WITHOUT A DEATH STARTING NODE.
+	// Asked with the character's own state, so a row under `seconds_after_striking_a_boss` (Siege of One) is judged.
+	const float PerSecond = Cataclysm->StatForSkill(FName(KillDecayPerSecondStat), FGameplayTagContainer(), 0.0f);
+	if (PerSecond <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = Cataclysm->GetNumericAttribute(Pool);
+	if (Before <= 0.0f || Cataclysm->KillDecayIsHeld())
+	{
+		// AN EMPTY POOL, OR THE GRACE AFTER THE LAST KILL NOT YET RUN OUT.
+		return 0.0f;
+	}
+
+	// AND NEVER BELOW MISER'S GRIP'S FLOOR, a share of the full bar after reserves (the Death trees' slice C6c,
+	// 2026-11-25, as ruled): a pool at or under it loses nothing to decay.
+	const float FloorPercent = FMath::Clamp(
+		Cataclysm->StatForSkill(FName(DecayFloorPercentStat), FGameplayTagContainer(), 0.0f), 0.0f, 100.0f);
+	const float Floor = Resource->MaximumClassResourceAsked() * FloorPercent / 100.0f;
+	if (Before <= Floor)
+	{
+		return 0.0f;
+	}
+
+	// CLAMPED BEFORE IT IS WRITTEN, as `DecayStep` is and for its reason.
 	const float Change =
-		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, OnDeath),
-					 0.0f, Resource->MaximumClassResourceAsked())
-		- Before;
+		FMath::Clamp(Before - PerSecond * SecondsInStep, Floor, Resource->MaximumClassResourceAsked()) - Before;
 	if (FMath::IsNearlyZero(Change))
 	{
 		return 0.0f;
 	}
 
-	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
-	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	const float Moved = Cataclysm->GetNumericAttribute(Pool) - Before;
+	// AND WHAT IT TOOK, KEPT FOR RECLAIMED (the Death trees' slice C4b2, as ruled: both decays count).
+	Cataclysm->NoteFervourDecayed(-Moved);
+	return Moved;
 }

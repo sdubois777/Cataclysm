@@ -1181,6 +1181,13 @@ public:
 	static constexpr float OverkillExplosionRadiusCm = 500.0f;
 
 	/**
+	 * How far The Ferryman's burst reaches from the body: "to enemies within 4 metres". The Death trees' slice C4c1
+	 * (2026-11-25). The same 400 as `KillingBlowExplosionRadiusCm` and a constant of its own, because the two are two
+	 * sentences.
+	 */
+	static constexpr float SlainBurstRadiusCm = 400.0f;
+
+	/**
 	 * "Enemies killed by you explode for the overkill amount." Ruled 2026-10-07.
 	 *
 	 * Every enemy OF THE KILLER within `OverkillExplosionRadiusCm` of `At`, the victim itself left out, takes
@@ -1191,8 +1198,10 @@ public:
 	 *
 	 * IT DOES NOT HIT THE KILLER OR THE KILLER'S SIDE: the search is the one every skill uses for enemies.
 	 *
-	 * NOTHING CALLS THIS AT A KILL YET. That is the second part; see
-	 * `UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`.
+	 * THE PLAYER'S KILL HANDLER CALLS THIS AT A KILL, with the share and radius the rows recorded; see
+	 * `UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`. And for The Ferryman's burst, with the
+	 * slain creature's maximum health as `Overkill` and `SlainBurstRadiusCm`. (This said "NOTHING CALLS THIS AT A KILL
+	 * YET" until the Death trees' slice C4c1, 2026-11-25, long after the kill handler did.)
 	 *
 	 * A CHAIN BOUNDS ITSELF. An enemy this kills has its own overkill, which is less than what this dealt it,
 	 * and when the second part is wired it explodes in turn. So a target is asked again whether it is still
@@ -2661,6 +2670,17 @@ public:
 	 */
 	static const TCHAR* KnockbackSuppressedStat;
 
+	/**
+	 * A flag above zero meaning a pin does not take hold of the character. The War vow options' second slice,
+	 * 2026-11-25, for Unstoppable's "While above 75% Fervour you cannot be slowed, rooted, or knocked back".
+	 *
+	 * A PIN IS THE ROOT, ruled that day: the game has no root, and a pin is what holds a character in place. Read in
+	 * `ApplyPin` before anything is applied, so a refused pin leaves neither its tag nor its damage taken increase.
+	 *
+	 * ASKED THROUGH `StatForSkill` FOR `KnockbackSuppressedStat`'S REASON: the row that grants it carries two conditions.
+	 */
+	static const TCHAR* PinSuppressedStat;
+
 	/** Whether this actor is stunned right now and may not act. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsStunned(const AActor* Actor);
@@ -2816,9 +2836,15 @@ public:
 	 * and `ApplyLaunch` all move a target through. Each asks this before any
 	 * of its other rules.
 	 *
-	 * A STAGGER, A PIN, A SLOW AND MADNESS DO NOT ASK IT. `IsImmuneTo`'s own
-	 * header names Slow, Pin and Madness, but no code asks the immunity for
-	 * them, and the ruling follows the code. `ApplyStagger` keeps its own
+	 * A STAGGER, A PIN AND MADNESS DO NOT ASK IT, AND A SLOW ASKS IT ELSEWHERE.
+	 * `IsImmuneTo`'s own header names Slow, Pin and Madness. Pin and Madness
+	 * are still asked by no code. Slow is asked since 2026-11-25 (the
+	 * coordinating session's ruling that an actor immune to Slow ignores every
+	 * movement reduction) by the code that works out a walking speed --
+	 * `ACataclysmPlayerCharacter::RefreshMovementSpeed` and
+	 * `ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows` -- and not by
+	 * a function applying an effect, so this ceiling does not reach it. The
+	 * ruling follows the code. `ApplyStagger` keeps its own
 	 * ceiling, `StaggerHealthCeilingStat`. A stagger that follows a shove or
 	 * a knockdown is reached only when that landed, so it passes both
 	 * ceilings: the target's health is at or below 100 less the larger of

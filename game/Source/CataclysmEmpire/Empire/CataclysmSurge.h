@@ -373,6 +373,29 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	int32 SpawnedDay = 0;
 
 	/**
+	 * The day it reached the city it stands on now, or `INDEX_NONE` until it first moves, when `SpawnedDay` is that
+	 * day. Set wherever a dungeon's `CityId` moves: the timer's move (`UCataclysmEmpireRun::RelocateQuestDungeon`) and
+	 * the move on a fall (`UCataclysmEmpireRun::CityFell`). The model's `Dungeon.arrived_day`.
+	 *
+	 * NOT `SpawnedDay`, WHICH IS ALSO A RIFT'S SEND CLOCK and is "not reset when it moves" (issue #51), so the day of
+	 * arrival needs a field of its own. What a Siege's growth counts (`DaysOnItsCity`), the owner's choice of
+	 * 2026-10-17 quoted at `UCataclysmSurgeScheduler::QuestSiegesPerDay`. Saved: run record version 21. Issue #51
+	 * slice B4, the War quest.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 ArrivedDay = INDEX_NONE;
+
+	/**
+	 * The cities fallen when this dungeon appeared (`UCataclysmEmpireMap::FallenCityCount`), set for an Abomination
+	 * lair (`IsALair`) and 0 for every other dungeon. A lair a city's fall made counts that city: "Each fallen city adds
+	 * a more powerful Abomination" (the coordinating session, L1, 2026-11-25). What `AbominationMultiplier` raises the
+	 * step to. A retaken city no longer counts, since it is no longer fallen; the model counts the same way. The model's
+	 * `Dungeon.cities_fallen_before`. Saved: run record version 22. Issue #51 slice B5.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CitiesFallenBefore = 0;
+
+	/**
 	 * The dungeon modifiers it carries, as row keys of the modifier table.
 	 *
 	 * ONE PER DIFFICULTY TIER, DOUBLED FOR A SACRIFICIAL DUNGEON, drawn from the
@@ -490,6 +513,51 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * its hit leaves one on its city; see `UCataclysmEmpireRun::ResolveDungeon`.
 	 */
 	bool IsAscendant() const;
+
+	/**
+	 * Whether this is a Rift: the Demonic Cataclysm's Quest dungeon. Issue #51 slice B1, since 2026-11-24.
+	 *
+	 * THE OWNER, 2026-11-24, VERBATIM: "Rift = Quest dungeon (Recommended)". So a Rift is a Quest dungeon `Cataclysm`
+	 * says Demonic sent, and sealing one is clearing it: `UCataclysmEmpireRun::ClearDungeon` counts it as one of
+	 * Demonic's quest objectives, as it counts any Quest dungeon.
+	 *
+	 * BY ITS SENDER, NOT ITS SUB-TYPE, unlike `IsHollow` and `IsAscendant`, whose sub-types only their own Cataclysm's
+	 * Quest dungeons carry. A Rift's sub-type is Elite (`UCataclysmSurgeScheduler::QuestSubTypeFor`), and an ordinary
+	 * dungeon can roll Elite, so the sub-type cannot say which Elite dungeons are Rifts.
+	 *
+	 * ONE DEFINITION FOR BOTH HALVES OF HELL ON EARTH: `ACataclysmDungeonGameMode::IsARift` asks this of the dungeon
+	 * being walked (the four altars, slice B1), and the map's Rifts (slice B2) are the dungeons answering true here.
+	 */
+	bool IsARift() const;
+
+	/**
+	 * Days it has stood on the city it stands on now, on `Day`: from `ArrivedDay`, or from `SpawnedDay` when it has
+	 * not moved. NEVER NEGATIVE: a dungeon built by hand in a test may carry a day later than the clock, and a negative
+	 * age would heal a city. WHAT A SIEGE'S GROWTH COUNTS, as the model's `Dungeon.days_on_its_city`. Only a Quest
+	 * dungeon moves, so for every other dungeon this is its age.
+	 */
+	int32 DaysOnItsCity(int32 Day) const;
+
+	/**
+	 * The share of an ordinary Siege's daily damage this one deals, flat share and growth alike:
+	 * `UCataclysmSurgeScheduler::QuestSiegeBiteShare` for a Quest dungeon, 1 for any other. The model's
+	 * `Dungeon.siege_bite_share`. Only War's Quest dungeons are Sieges.
+	 */
+	float SiegeBiteShare() const;
+
+	/**
+	 * Whether this is an Abomination lair: a Quest dungeon Death sent, whatever its sub-type (Horde, by
+	 * `UCataclysmSurgeScheduler::QuestSubTypeFor`). The design's Dead Rising: "Players must defeat Abominations in
+	 * their quest dungeon lairs to collect 5 Seeds of Undeath". By its sender, as `IsARift` is. Issue #51 slice B5.
+	 */
+	bool IsALair() const;
+
+	/**
+	 * What a lair's Cursed Abomination's health, damage and gear drops are multiplied by:
+	 * `UCataclysmSurgeScheduler::AbominationStep` to the power of `CitiesFallenBefore`. 1 for a dungeon that is not a
+	 * lair. The model's `Simulation.abomination_multiplier`. Issue #51 slice B5.
+	 */
+	float AbominationMultiplier() const;
 
 	/**
 	 * The seed a walk of this dungeon carves its floors from:
@@ -767,8 +835,9 @@ public:
 	 * Whether a city falling fires a surge of its own.
 	 * `config.surge_on_city_fall`. The design document says it does.
 	 *
-	 * NOT EVERY FALL DOES. `IsDueOnCityFall` asks this flag and also that the
-	 * last surge is at least `LeastIntervalDays` behind. Issue #2380.
+	 * EVERY FALL DOES, since the owner's ruling of 2026-11-24 on issue #2865: "surges from cities falling should
+	 * happen regardless". From issue #2380 until then `IsDueOnCityFall` also asked that the last surge was at least
+	 * `LeastIntervalDays` behind.
 	 */
 	static constexpr bool bSurgeOnCityFall = true;
 
@@ -791,15 +860,42 @@ public:
 	 * It is there to ensure pressure remains." Issue #1406 built it in the
 	 * simulation and issue #1414 built it here.
 	 *
-	 * ANY EMPTY BOARD, WHATEVER EMPTIED IT, and every kind of dungeon counts as
-	 * standing: a Quest dungeon, a Fallen City and the dungeon the player is
-	 * inside all keep the board from being empty. `Simulation.board_is_empty`
-	 * is `not self.dungeons` and reads no kind.
+	 * ONLY AN ORDINARY DUNGEON KEEPS THE BOARD FROM BEING EMPTY, SINCE THE OWNER'S
+	 * RULING OF 2026-11-23 on issue #2865, verbatim "yes, your rec": "The board
+	 * counts as empty when no ordinary dungeon stands. Quest dungeons, the
+	 * Cataclysm boss dungeon and Fallen City dungeons do not count." Until then
+	 * every kind counted, and a Quest dungeon or a Fallen City that never leaves
+	 * the board kept it from ever being empty: on day 416 of the owner's run one
+	 * Quest dungeon stood and no surge came. The run counts what stands
+	 * (`UCataclysmEmpireRun::OrdinaryDungeonCount`); `Simulation.board_is_empty`
+	 * asks the same with `empty_board_counts_ordinary_only`.
 	 *
-	 * `LeastIntervalDays` IS THE ONLY BRAKE ON IT, and `IntervalDays` keeps
-	 * running: whichever comes first fires. See `IsDueOnEmptyBoard`.
+	 * NO MINIMUM GAP BRAKES IT, the same ruling: "The 25-day minimum gap
+	 * (LeastIntervalDays) does not apply to a surge fired by an empty board."
+	 * Every wave adds at least one ordinary dungeon, so the board is not empty
+	 * again until the player has cleared or lost all of them. `IntervalDays`
+	 * keeps running: whichever comes first fires. See `IsDueOnEmptyBoard`.
+	 *
+	 * AND IT IS LARGER: see `ExtraDungeonsOnEmptyBoard`.
 	 */
 	static constexpr bool bSurgeOnEmptyBoard = true;
+
+	/**
+	 * How many dungeons more a surge fired by an empty board brings than the
+	 * scheduled one would: the owner's ruling of 2026-11-24 on issue #2865,
+	 * chosen option verbatim "Flat +4, no stacking". The scheduled count plus 4,
+	 * 8 + 4 = 12 today, never grown from the previous wave. It superseded the
+	 * ruling of 2026-11-23, "the previous surge's dungeon count plus 4", after the
+	 * simulation showed that version compounding to waves of 20 to 45.
+	 *
+	 * ADDED BEFORE THE CAP AND THE LETHALITY MULTIPLIER, which then apply to it as
+	 * to any wave: the coordinating session's judgement of 2026-11-24, "apply both
+	 * after the +4, as for any wave". So `MostDungeonsPerSurge` caps it and
+	 * Heretic makes 12 into 15. `Simulation.surge_count(from_empty_board=True)`
+	 * adds `empty_board_surge_extra`, which `tools/tests/test_surge_port.py` holds
+	 * equal.
+	 */
+	static constexpr int32 ExtraDungeonsOnEmptyBoard = 4;
 
 	/**
 	 * What Heretic multiplies a wave by. "Surges spawn 25% more dungeons."
@@ -1051,6 +1147,31 @@ public:
 	static constexpr int32 SiegesPerCity = 1;
 
 	/**
+	 * WAR'S QUEST DUNGEONS ARE SIEGES (`QuestSubTypeFor`), and one never leaves on its own and moves on when its city
+	 * falls, so it bites until the player clears it. The owner, 2026-10-17, verbatim: "the first option, but make it up
+	 * to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." So at most
+	 * this many are MADE ON ONE DAY, by waves and by falls together (the coordinating session, 2026-11-25, W2, since a
+	 * fall to War makes one too and a fall is not a wave); a further Quest roll for War that day makes a Basic dungeon.
+	 * The model's `TuningConfig.quest_sieges_per_day_max`. Issue #51 slice B4.
+	 */
+	static constexpr int32 QuestSiegesPerDay = 2;
+
+	/**
+	 * The share of an ordinary Siege's daily damage a Quest Siege deals, flat share and growth alike: the second part
+	 * of the same choice of 2026-10-17. The model's `TuningConfig.quest_siege_bite_scale`.
+	 */
+	static constexpr float QuestSiegeBiteShare = 0.25f;
+
+	/**
+	 * The Abomination's step: what a lair's boss's health, damage and gear drops are multiplied by once for each city
+	 * fallen when the lair appeared, with no cap (the owner, 2026-11-24, Q7). The model's
+	 * `TuningConfig.abomination_step`. 1.10, A NUMBER FOR THE OWNER'S PLAY TEST (the coordinating session, 2026-11-25):
+	 * 2.6 times the base boss after ten falls, 6.7 after twenty. The slice A2 sweep could not size it, since the model
+	 * barely sees a lair boss's strength (issue #2917). Issue #51 slice B5.
+	 */
+	static constexpr float AbominationStep = 1.10f;
+
+	/**
 	 * The one sub-type a Cataclysm dungeon may not roll.
 	 *
 	 * **THE PROJECT OWNER RULED IT ON 2026-09-06, verbatim: "Last stand is a
@@ -1221,23 +1342,19 @@ public:
 	 * The one sub-type a Cataclysm's Quest dungeons take, or `None` for "roll
 	 * one as any dungeon does".
 	 *
-	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, FOR SEVEN OF ITS EIGHT. The
-	 * owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
+	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, ALL EIGHT. The owner,
+	 * 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
 	 * specific type." Death's are Horde, Demonic's Elite, Pestilence's Timed,
 	 * Famine's Sacrificial and Chaos's Volatile, since 2026-10-21, and the
 	 * Void's Hollow since 2026-10-22.
 	 *
-	 * And Celestial's Ascendant, the seventh, since 2026-10-22.
-	 *
-	 * ONE ANSWERS `None` ON PURPOSE, AND THE MODEL NAMES ONE FOR IT. War's are
-	 * Sieges in the model and roll here, because the owner has ruled War out
-	 * of the game. Celestial answered `None` too until 2026-10-22, while the
-	 * game had no Ascendant. `None` itself, the Cataclysm nobody named, answers
-	 * `None` too: a Quest dungeon made without a sender rolls, as the model's
-	 * does.
-	 * `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`
-	 * holds War; `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the
-	 * layers.
+	 * And Celestial's Ascendant, the seventh, since 2026-10-22, and War's
+	 * Siege, the eighth, since 2026-11-25 (issue #51 slice B4, the War quest).
+	 * Until then War's rolled on purpose, while the owner had ruled War out of
+	 * the game, and a file of Python checks named for War's Quest sub-type held
+	 * the gap; it was deleted by its own restore text. `None` itself, the Cataclysm nobody named, answers `None`: a Quest
+	 * dungeon made without a sender rolls, as the model's does.
+	 * `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the layers.
 	 *
 	 * IT DRAWS NOTHING. `MakeDungeon` still takes the sub-type draw and then
 	 * discards it for a fixed Quest dungeon; see there for why.
@@ -1530,9 +1647,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float DungeonMultiplier() const;
 
-	/** How many dungeons the next surge brings. Never fewer than one. */
+	/**
+	 * How many dungeons the next surge brings. Never fewer than one.
+	 *
+	 * @param bFromEmptyBoard  true for a surge an empty board fires, which brings
+	 *                         `ExtraDungeonsOnEmptyBoard` more, before the cap and
+	 *                         the lethality multiplier. Issue #2865.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
-	int32 DungeonsInNextSurge() const;
+	int32 DungeonsInNextSurge(bool bFromEmptyBoard = false) const;
 
 	/** How many days there will be between this surge and the one after it. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
@@ -1585,9 +1708,11 @@ public:
 	/**
 	 * Whether a surge fires today because nothing stands on the board.
 	 *
-	 * A PORT OF THE THREE REFUSALS AT THE TOP OF
-	 * `Simulation._maybe_surge_on_empty_board`: the rule is on, the board is
-	 * empty, and the last surge is at least `LeastIntervalDays` behind.
+	 * A PORT OF THE REFUSALS AT THE TOP OF
+	 * `Simulation._maybe_surge_on_empty_board`: the rule is on, and no ordinary
+	 * dungeon stands. NO MINIMUM GAP since the owner's ruling of 2026-11-23 on
+	 * issue #2865; until then the last surge had to be `LeastIntervalDays` behind,
+	 * and the model still asks that, but only with `empty_board_surge_braked` on.
 	 *
 	 * A REFUSAL IS A DELAY AND NOT A LOSS. The caller asks again every day, the
 	 * board is still empty tomorrow, and this answers true on the first day the
@@ -1596,36 +1721,34 @@ public:
 	 * IT DECIDES AND DOES NOT ACT, like `IsDue`. The run counts its dungeons and
 	 * passes the number in, because this class does not own them.
 	 *
-	 * @param Day              the day being asked about
-	 * @param DungeonsStanding how many dungeons of any kind are on the map
+	 * @param Day              the day being asked about. Read by nothing since the
+	 *                         minimum gap stopped applying; kept so a caller and a
+	 *                         test say which day they ask about.
+	 * @param OrdinaryDungeonsStanding how many ORDINARY dungeons are on the map,
+	 *                         `UCataclysmEmpireRun::OrdinaryDungeonCount`. A Quest
+	 *                         dungeon, the Cataclysm's own dungeon, a Fallen City
+	 *                         and a Scout Parties bonus dungeon are not counted.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
-	bool IsDueOnEmptyBoard(int32 Day, int32 DungeonsStanding) const;
+	bool IsDueOnEmptyBoard(int32 Day, int32 OrdinaryDungeonsStanding) const;
 
 	/**
 	 * Whether a city falling on this day fires a surge of its own.
 	 *
-	 * A PORT OF THE CONDITION AT THE END OF `Simulation._fall`: the rule is on,
-	 * and the last surge is at least `LeastIntervalDays` (25) behind. The model
-	 * has asked both since issue #1432; the game asked only the flag until
-	 * issue #2380.
+	 * A PORT OF THE CONDITION AT THE END OF `Simulation._fall`: the rule is on. Nothing else, since the owner's ruling
+	 * of 2026-11-24 on issue #2865, verbatim "surges from cities falling should happen regardless". From issue #2380
+	 * (2026-10-12) until then it also asked that the last surge was at least `LeastIntervalDays` (25) behind, as the
+	 * model did from issue #1432; the model's `city_fall_surge_braked` gives that rule back there, and ships off.
 	 *
-	 * A REFUSAL IS A LOSS AND NOT A DELAY, which is the opposite of
-	 * `IsDueOnEmptyBoard`. A fall is a moment. The caller asks once, when the
-	 * city falls, and a fall refused today is not asked about tomorrow. The
-	 * city still falls and still becomes a Dungeon City; only the wave is
-	 * withheld.
-	 *
-	 * SO TWO CITIES FALLING ON ONE DAY BRING ONE WAVE. The first fall's surge
-	 * is recorded by `RecordSurge`, which writes today into `LastSurgeDay`,
-	 * and the second fall is then nought days behind it. A fall on a day the
-	 * clock has already surged brings none for the same reason.
+	 * SO TWO CITIES FALLING ON ONE DAY BRING TWO WAVES, and a fall on a day the clock has already surged brings one
+	 * more. Each fall's wave is the scheduled size (`DungeonsInNextSurge()`), and each advances the escalation counter
+	 * (`bCityFallAdvancesEscalation`). The city falls and becomes a Dungeon City first either way.
 	 *
 	 * IT DOES NOT ASK WHAT STANDS ON THE BOARD, unlike the empty-board rule.
 	 *
 	 * IT DECIDES AND DOES NOT ACT, like `IsDue` and `IsDueOnEmptyBoard`.
 	 *
-	 * @param Day the day the city fell on
+	 * @param Day the day the city fell on; not read since issue #2865
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsDueOnCityFall(int32 Day) const;
@@ -1903,6 +2026,123 @@ public:
 		bool bCarriesSiege = false,
 		const TArray<int32>& SiegesPerCityNow = TArray<int32>());
 
+	// -- Demonic's Infernal Rifts (Hell on Earth), issue #51 slice B2 ----------------------------------------------
+	//
+	// THE OWNER'S RULINGS OF 2026-11-24, on issue #51, each verbatim: "Rift = Quest dungeon (Recommended)", "Anywhere
+	// but the Pillar (Recommended)", "Every death, no gap (Recommended)", "let's make them 4 floors?", "Keep the short
+	// timer for rifts", the eight modifiers (`UCataclysmDungeonModifierRules::RiftModifierCount` quotes that ruling), "No
+	// limit" and "(b) 8 modifiers only (Recommended)".
+	// A Rift is `FCataclysmDungeon::IsARift`: a Quest dungeon Demonic sent. `sim/cataclysm_sim/engine.py` holds the
+	// same rules (`Simulation.trigger_surge`, `_rift_spawns`, `_surge_for_a_rift_death`), and
+	// `tools/tests/test_demonic_rifts_port.py` holds the two halves equal.
+
+	/**
+	 * How many floors a Rift has: exactly four, one altar on each, whatever the city's floor upgrades and the empire
+	 * tree would add. The owner, 2026-11-24, "let's make them 4 floors?", and of the altars, "One per floor". A port
+	 * of `TuningConfig.rift_floors`.
+	 */
+	static constexpr int32 RiftFloors = 4;
+
+	/**
+	 * Days between the dungeons an unsealed Rift sends, counted from its `SpawnedDay` and not reset when it moves.
+	 * The design's 5 (section XI, "An unchecked Rift spawns a dungeon on an adjacent city every 5 days"). A port of
+	 * `TuningConfig.rift_spawn_every_days`.
+	 */
+	static constexpr int32 RiftSendEveryDays = 5;
+
+	/** The salt a Rift's own seeds are mixed with: "rift". */
+	static constexpr int32 RiftSalt = 0x72696674;
+
+	/**
+	 * Which of a Rift's draws a seed is for: its city (0), its modifiers (1), and the N-th dungeon it sends, N from 1,
+	 * `RiftSendDraw + N`, so 2 and up and never one of the first two.
+	 */
+	static constexpr int32 RiftPlaceDraw = 0;
+	static constexpr int32 RiftModifierDraw = 1;
+	static constexpr int32 RiftSendDraw = 1;
+
+	/**
+	 * The seed of one of a Rift's draws: `CataclysmSeedMix::Mix` of the run's seed and the Rift's identifier, mixed
+	 * again with the draw. Never nought.
+	 *
+	 * **A RIFT TAKES NO NUMBER OFF THE STREAMS THE REST OF THE RUN DRAWS FROM.** Its city, its eight modifiers and
+	 * every dungeon it sends come from streams made from this, so every other dungeon of a fixed-seed run rolls what it
+	 * rolled before Rifts existed, and nothing new is saved: the run's seed (`UCataclysmEmpireRun::
+	 * CorruptedStalkerSeed`, saved), the Rift's identifier and its `SpawnedDay` (saved on the dungeon) say all of it.
+	 * The draws an ordinary dungeon takes are still taken from the shared streams and thrown away, as the Quest
+	 * dungeon's sub-type draw is (`MakeDungeon`). A judgement of slice B2, in the shape of the Corrupted Stalker's
+	 * seed (issue #1308).
+	 */
+	static int32 RiftSeedFor(int32 RunSeed, int32 DungeonId, int32 Draw);
+
+	/**
+	 * Whether a Rift that opened on `SpawnedDay` sends its dungeon on `Day`: every `RiftSendEveryDays`-th day after it
+	 * opened, never on the day itself.
+	 */
+	static bool RiftSendsOn(int32 SpawnedDay, int32 Day);
+
+	/** Days from `Day` until a Rift that opened on `SpawnedDay` next sends: 1 to `RiftSendEveryDays`. */
+	static int32 DaysUntilRiftSends(int32 SpawnedDay, int32 Day);
+
+	/**
+	 * Where a Rift opens: any standing city but the Pillar, sealed cities behind the front included, by the surge's
+	 * tier weights (`TargetWeightFor`), and not a city at its dungeon cap (`RoomLeftOn`). The owner, 2026-11-24,
+	 * "Anywhere but the Pillar (Recommended)". `INDEX_NONE`, with no draw, when no city qualifies; the caller then
+	 * keeps the front-line city the wave drew. One draw otherwise.
+	 */
+	static int32 PickRiftCity(const UCataclysmEmpireMap& Map, FRandomStream& Draws,
+							  const TArray<int32>& DungeonsPerCity = TArray<int32>());
+
+	/**
+	 * Where a Rift standing on `From` sends its dungeon: an adjacent city a surge could target (`AdjacentCities`,
+	 * exposed and so standing, not the Pillar, not at its dungeon cap), by the surge's tier weights. `INDEX_NONE`,
+	 * with no draw, when no neighbour qualifies: "Nothing is sent when no neighbour qualifies". Choosing among several
+	 * neighbours by the tier weights is a judgement of slice B2; the ruling names no rule for it.
+	 */
+	static int32 PickRiftTarget(const UCataclysmEmpireMap& Map, const FCataclysmCity& From, FRandomStream& Draws,
+								const TArray<int32>& DungeonsPerCity = TArray<int32>());
+
+	/** The salt War's Quest Sieges' own seeds are mixed with: "wars". Issue #51 slice B4. */
+	static constexpr int32 WarSiegeSalt = 0x77617273;
+
+	/** Which of a War Quest Siege's draws a seed is for: the wave's re-draw of its city (0), a fall's Siege (1). */
+	static constexpr int32 WarSiegeWaveDraw = 0;
+	static constexpr int32 WarSiegeFallDraw = 1;
+
+	/**
+	 * The seed of one of a War Quest Siege's own draws, made as `RiftSeedFor` makes a Rift's, from the run's seed and
+	 * the dungeon's identifier. **NO NUMBER COMES OFF THE SHARED STREAMS**, so a run War does not face, and a War wave
+	 * that needs no re-draw, rolls exactly what it rolled before slice B4.
+	 */
+	static int32 WarSiegeSeedFor(int32 RunSeed, int32 DungeonId, int32 Draw);
+
+	/** The salt an Abomination lair's own seed is mixed with: "lair". Issue #51 slice B5. */
+	static constexpr int32 LairSalt = 0x6C616972;
+
+	/**
+	 * The seed of the stream a fall's Abomination lair is placed and made from: the run's seed and the identifier it
+	 * will take, as `WarSiegeSeedFor` makes one. No number comes off the shared streams.
+	 */
+	static int32 LairSeedFor(int32 RunSeed, int32 DungeonId);
+
+	/**
+	 * Where a War Quest dungeon drawn onto a city that already holds a Siege goes instead: an exposed city that is not
+	 * the Pillar, has room (`RoomLeftOn`) and holds no Siege, by the surge's tier weights. `INDEX_NONE`, with no draw,
+	 * when none qualifies; it then lands where it was drawn, the only way a city holds two. The model's re-draw in
+	 * `Simulation.trigger_surge`, ruled by the coordinating session on 2026-10-16. Issue #51 slice B4.
+	 */
+	static int32 PickCityWithoutASiege(const UCataclysmEmpireMap& Map, FRandomStream& Draws,
+									   const TArray<int32>& DungeonsPerCity, const TArray<int32>& SiegesPerCityNow);
+
+	/**
+	 * Where a city's fall to War makes its War Quest Siege: an adjacent city a surge could target (exposed and so
+	 * standing, not the Pillar, with room) that holds no Siege, by the surge's tier weights. `INDEX_NONE`, with no
+	 * draw, when none qualifies, and then none is made. The plan's reading of section XI, accepted by the owner on
+	 * 2026-11-24: "a city's fall to War starts the next one". Issue #51 slice B4.
+	 */
+	static int32 PickWarSiegeCity(const UCataclysmEmpireMap& Map, const FCataclysmCity& From, FRandomStream& Draws,
+								  const TArray<int32>& DungeonsPerCity, const TArray<int32>& SiegesPerCityNow);
+
 	/**
 	 * Where a Quest dungeon standing on a city that has just fallen goes, or
 	 * `INDEX_NONE` when nowhere qualifies and it stays on the fallen city.
@@ -1997,6 +2237,19 @@ public:
 	 *                       which Cataclysms a campaign faces. EMPTY BY
 	 *                       DEFAULT, and then every dungeon is made and left
 	 *                       carrying `None`, as before this was added.
+	 * @param bFromEmptyBoard true for a surge an empty board fired: the wave is
+	 *                       `DungeonsInNextSurge(true)`, `ExtraDungeonsOnEmptyBoard`
+	 *                       larger. Issue #2865.
+	 * @param RiftSeed       the run's seed for its Rifts' own draws (`RiftSeedFor`):
+	 *                       a Demonic Quest dungeon, a Rift, re-draws its city with
+	 *                       `PickRiftCity` from a stream of its own. Issue #51 slice
+	 *                       B2. 0 by default, which is still a seed. A War Quest
+	 *                       dungeon's re-draw away from a besieged city uses it
+	 *                       too (`WarSiegeSeedFor`), slice B4.
+	 * @param QuestSiegesAlreadyToday the War Quest Sieges already made today, by an
+	 *                       earlier wave or a fall: this wave makes at most
+	 *                       `QuestSiegesPerDay` less this, and a further War Quest
+	 *                       roll is made Basic. 0 by default. Issue #51 slice B4.
 	 */
 	TArray<FCataclysmDungeon> RollWave(
 		const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
@@ -2004,5 +2257,7 @@ public:
 		const TArray<int32>& DungeonsPerCity = TArray<int32>(),
 		const TArray<int32>& SiegesPerCityNow = TArray<int32>(),
 		const TFunction<ECataclysmType()>& DrawCataclysm =
-			TFunction<ECataclysmType()>()) const;
+			TFunction<ECataclysmType()>(),
+		bool bFromEmptyBoard = false, int32 RiftSeed = 0,
+		int32 QuestSiegesAlreadyToday = 0) const;
 };

@@ -17,6 +17,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import generate_datatables as gen  # noqa: E402
 
+#: The passive row port's fourteen columns, required on the Passive Effects sheet since the Death trees' slice
+#: C1 (2026-11-25) put them in the workbook. A test sheet that leaves them empty appends them, as each appended
+#: `Scale Max Steps` when that column became required. AND `Max Points` since the bundle 3 merge (2026-11-25): the
+#: Saboteur's rows of that day made it required on the War line.
+PASSIVE_PORT_HEADERS = list(gen.PASSIVE_ACTION_COLUMNS) + ["Per Point From", "Max Points"]
+
 
 def workbook_with(path: pathlib.Path, sheets: dict[str, list[list]]) -> pathlib.Path:
     """Build a workbook from {sheet name: rows}, always including a Tags sheet."""
@@ -798,7 +804,8 @@ class TestBasicAttacks:
                "Max Damage Types", "Implicit 1 Stat", "Implicit 1 Kind",
                "Implicit 1 Value", "Attack Speed", "Basic Shape",
                "Basic Shape Params", "Cells Wide", "Cells High",
-               "Implicit 2 Stat", "Implicit 2 Kind", "Implicit 2 Value"]
+               "Implicit 2 Stat", "Implicit 2 Kind", "Implicit 2 Value",
+               "Implicit 1 At +0", "Implicit 2 At +0"]
 
     def sheet(self, tmp_path, *rows) -> "openpyxl.Workbook":
         path = workbook_with(tmp_path / "b.xlsx",
@@ -809,8 +816,13 @@ class TestBasicAttacks:
         row = ["Sword", "Weapon", 1, "Slashing", "Sword", 4,
                "attack_damage", "flat", 40.0, 1.3,
                "Strike", "Radius=1.8; Angle=90; MaxTargets=1", 1, 3]
+        row += [None] * (len(self.HEADERS) - len(row))
         for column, value in changes.items():
             row[self.HEADERS.index(column)] = value
+        # THE IMPLICIT'S WHOLE VALUE AT +0, issue #2883: 40 at +10 is 16 at +0.
+        # Only for an implicit that has a stat, which the generator requires.
+        if row[self.HEADERS.index("Implicit 1 Stat")] and "Implicit 1 At +0" not in changes:
+            row[self.HEADERS.index("Implicit 1 At +0")] = 16
         return row
 
     def test_a_base_with_no_footprint_is_refused(self, tmp_path):
@@ -1268,11 +1280,14 @@ class TestTheWordAnAffixGivesAnItemsName:
     HEADER = ["Affix Name", "Affix Kind", "Position", "Stat", "Value Kind",
               "Top Value", "Breadth", "Ailment", "Gem", "Hybrid Part 1",
               "Hybrid Part 2", "Allowed Slots", "Name Word", "Floor",
-              "Percent"]
+              "Percent", *gen.AFFIX_TIER_COLUMNS]
 
     def row(self, name, position, word):
+        # SEVEN WHOLE, SEPARATE TIER RANGES (issue #2883), which every non-hybrid
+        # row must state: 1-2, 3-4 ... 13-14.
         return [name, "Stat", position, "max_health", "flat", 100, None,
-                None, None, None, None, "Chest", word]
+                None, None, None, None, "Chest", word, None, None,
+                *range(1, 15)]
 
     def book(self, tmp_path, rows):
         return openpyxl.load_workbook(workbook_with(
@@ -1469,7 +1484,8 @@ class TestAPassiveNodeCanGrantSeveralStats:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
-                 "Scale Step", "Option", "Reach Metres", "Min Points"]] + rows
+                 "Scale Step", "Option", "Reach Metres", "Min Points",
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1504,34 +1520,79 @@ class TestAPassiveNodeCanGrantSeveralStats:
         with pytest.raises(gen.DataError, match="same stat twice"):
             gen.passive_effects(rows)
 
-    def test_a_stack_seconds_column_on_this_sheet_is_refused(self, tmp_path):
-        """Issue #1833. Only an enchantment's row counts stacks of its own."""
+    @pytest.mark.parametrize("column", ["Stack Seconds", "Scale Offset"])
+    def test_a_stack_seconds_or_offset_column_on_this_sheet_is_read(self, tmp_path, column):
+        """Issues #1833 and #1686 refused these two columns here, because only an
+        enchantment's row was built with its own stacks or an offset. Since the
+        passive row port of 2026-11-24 a passive row stating one is built by the
+        enchantment rows' builder, so the columns are read: empty here, and a row
+        stating them is tested in `test_passive_rows_carry_the_action_columns.py`."""
+        # STACK SECONDS IS IN THE SHEET SINCE 2026-11-25 (the Saboteur's device
+        # conditions made it required), so only a column the sheet lacks is added.
+        header = self.sheet([])[0]
+        header = header + ([column] if column not in header else [])
+        line = ["A_node", "armor", "increased", 3]
+        line += [None] * (len(header) - len(line))
         book = openpyxl.load_workbook(workbook_with(
-            tmp_path / "effects.xlsx",
-            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
-                                  "Required Tags", "Stack Seconds"],
-                                 ["A_node", "armor", "increased", 3, None, None]]}))
-        with pytest.raises(gen.DataError, match="Stack Seconds"):
-            gen.passive_effects(book)
+            tmp_path / "effects.xlsx", {"Passive Effects": [header, line]}))
+        out = gen.passive_effects(book)
+        assert [r["Stat"] for r in out] == ["armor"]
+        assert out[0]["StackSeconds"] == 0.0 and out[0]["ScaleOffset"] == 0.0
 
-    def test_an_offset_column_on_this_sheet_is_refused(self, tmp_path):
-        """Issue #1686. Only an enchantment's modifier reads an offset."""
+    def capped(self, tmp_path, scale, step, cap):
+        """One row under a scale and a cap, every other column the reader asks
+        for present and empty."""
         book = openpyxl.load_workbook(workbook_with(
-            tmp_path / "effects.xlsx",
+            tmp_path / "capped.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
-                                  "Required Tags", "Scale Offset"],
-                                 ["A_node", "armor", "increased", 3, None, None]]}))
-        with pytest.raises(gen.DataError, match="Scale Offset"):
-            gen.passive_effects(book)
+                                  "Required Tags", "Condition", "Condition Value",
+                                  "Scale", "Scale Step", "Option", "Reach Metres",
+                                  "Min Points", "Scale Max Steps"] + PASSIVE_PORT_HEADERS,
+                                 ["A_node", "damage_taken", "more", -1, None, None,
+                                  None, scale, step, None, None, None, cap]]}))
+        return gen.passive_effects(book)
 
-    def test_a_cap_column_on_this_sheet_is_refused(self, tmp_path):
-        """Issue #1815. Only an enchantment's modifier reads a cap, so a cap
-        written on this sheet would be dropped with no error."""
+    def test_a_cap_on_this_sheet_reaches_the_output(self, tmp_path):
+        """Since the demonic tree rework of 2026-11-24. Wall of Servants, "You
+        take 1% less damage for each minion you have, up to 20% less", is a cap
+        of 20 steps; the engine copies it onto the modifier. Issue #1815 had
+        refused the column because no passive modifier carried a cap. The
+        control is the same row with the cell empty, which is no cap."""
+        assert self.capped(tmp_path, "minions_held", 1, 20)[0]["ScaleMaxSteps"] == 20
+        assert self.capped(tmp_path, "minions_held", 1, None)[0]["ScaleMaxSteps"] == 0
+
+    def test_a_cap_with_no_scale_is_refused(self, tmp_path):
+        """A cap limits how many steps a scale counts; on a fixed row it caps
+        nothing, and the engine's `ValidateModifier` refuses it too."""
+        with pytest.raises(gen.DataError, match="no scale"):
+            self.capped(tmp_path, None, None, 20)
+
+    @pytest.mark.parametrize("cap", [0, 2.5, gen.MAX_SCALE_STEPS + 1])
+    def test_a_cap_that_is_not_a_whole_number_of_steps_in_range_is_refused(
+            self, tmp_path, cap):
+        with pytest.raises(gen.DataError, match="whole number of steps"):
+            self.capped(tmp_path, "minions_held", 1, cap)
+
+    def test_a_sheet_without_the_cap_column_is_refused_now_the_rows_have_it(
+            self, tmp_path):
+        """The column was optional until Wall of Servants' row came, as Min Points
+        was until its rows came.
+
+        It read "a sheet without the cap column reads no cap while it is
+        optional" until the same day, 2026-11-24, when
+        `tools/reapply_demonic_tree_rework_workbook.py` put the column in the
+        workbook with that row's 20 and the declaration left `OPTIONAL_COLUMNS`.
+        A sheet without it is now refused like any other column the generator
+        reads, so a column deleted from the workbook cannot drop the cap in
+        silence."""
+        assert "Scale Max Steps" not in gen.OPTIONAL_COLUMNS.get("Passive Effects", {})
         book = openpyxl.load_workbook(workbook_with(
-            tmp_path / "effects.xlsx",
+            tmp_path / "without.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
-                                  "Required Tags", "Scale Max Steps"],
-                                 ["A_node", "armor", "increased", 3, None, None]]}))
+                                  "Required Tags", "Condition", "Condition Value",
+                                  "Scale", "Scale Step", "Option", "Reach Metres",
+                                  "Min Points"] + PASSIVE_PORT_HEADERS,
+                                 ["A_node", "armor", "increased", 3]]}))
         with pytest.raises(gen.DataError, match="Scale Max Steps"):
             gen.passive_effects(book)
 
@@ -1648,7 +1709,8 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
-                 "Reach Metres", "Required Tags", "Option", "Min Points"]] + rows
+                 "Reach Metres", "Required Tags", "Option", "Min Points",
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -2217,7 +2279,7 @@ class TestHealthThresholdAndFloorStart:
             gen.enchantment_effects(self.heal(tmp_path, {"Event Value": None}))
 
     def test_an_event_value_on_another_event_is_refused(self, tmp_path):
-        with pytest.raises(gen.DataError, match="Only health_falls_below reads one"):
+        with pytest.raises(gen.DataError, match="Only health_falls_below, fervour_spent and"):
             gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "block"}))
 
     def test_an_event_value_of_a_hundred_is_refused(self, tmp_path):
@@ -2811,12 +2873,29 @@ class TestAStatusLaidOnTheWearer:
         with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
             gen.enchantment_effects(self.hit(tmp_path, {"Ailment": "Stun"}))
 
-    def test_a_stun_is_refused_on_the_action_that_lays_a_status_on_another(self, tmp_path):
+    def test_a_stun_for_stated_seconds_is_laid_on_another(self, tmp_path):
+        """SINCE 2026-11-25, the coordinating session's ruling for Riposte's
+        "stuns the target for 1 second" and the Saboteur's Concealed (R20), made
+        general: `apply_status_seconds` may name Stun, a designed stun on the
+        event's other character for the row's seconds. Until then this test held
+        the refusal, as `test_a_stun_is_refused_on_the_action_that_lays_a_status_on_another`."""
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.STUN, "Effect": self.STUN_WORDS,
+            "Action": "apply_status_seconds", "Action Event": "hit_dealt",
+            "Ailment": "Stun", "Value Low": 0.5, "Value High": 1}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["Ailment"],
+                out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "apply_status_seconds", "hit_dealt", "Stun", 0.5, 1.0)
+
+    def test_a_stun_is_still_refused_on_the_plain_action_that_lays_a_status_on_another(self, tmp_path):
+        """THE CONTROL of the test above: a stun has no length of its own to fall
+        back on, so `apply_status`, which states none, may not name it."""
+        assert "Stun" not in gen.APPLY_STATUSES
         with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
             gen.enchantment_effects(self.book(tmp_path, {
                 "Enchantment": self.STUN, "Effect": self.STUN_WORDS,
-                "Action": "apply_status_seconds", "Action Event": "hit_dealt",
-                "Ailment": "Stun", "Value Low": 0.5, "Value High": 1}))
+                "Action": "apply_status", "Action Event": "hit_dealt",
+                "Ailment": "Stun", "Value Low": 50, "Value High": 50}))
 
     def test_the_sized_action_is_refused_off_dot_applied(self, tmp_path):
         with pytest.raises(gen.DataError, match="written on dot_applied"):
@@ -3439,6 +3518,147 @@ class TestOverkillExplosion:
             gen.enchantment_effects(self.explode(tmp_path, {"Trigger Cooldown": 1}))
 
 
+class TestDeathTreeActionBounds:
+    """The two value bounds the Death trees' slices C4c1 and C4c2 (2026-11-25)
+    added and left untested, as the coordinating session asked: The Ferryman's
+    burst is a share of the slain creature's maximum health above 0 and up to
+    `MAX_SLAIN_BURST_SHARE`; Blood Debt's value is the seconds its Bleed is
+    dealt over, above 0 and up to `MAX_BLEED_LEFT_SECONDS`. Each is driven
+    through the whole Enchantment Effects read. THE CONTROL for each: the edge
+    value itself is carried through."""
+
+    WORDS = "Enemies killed by you explode for the overkill amount"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnKill, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def row(self, tmp_path, action, event, value, fraction_of=None):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS, "Action": action,
+                  "Action Event": event, "Value Low": value, "Value High": value,
+                  "Fraction Of": fraction_of}
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "bounds.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_ferrymans_share_at_its_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.SLAIN_BURST_ACTION, "kill", gen.MAX_SLAIN_BURST_SHARE))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (100.0, 100.0)
+
+    @pytest.mark.parametrize("value", [0, 100.5])
+    def test_the_ferrymans_share_just_outside_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The share is above 0 and up to 100"):
+            gen.enchantment_effects(self.row(tmp_path, gen.SLAIN_BURST_ACTION, "kill", value))
+
+    def test_blood_debts_seconds_at_their_bound_are_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", gen.MAX_BLEED_LEFT_SECONDS))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (10.0, 10.0)
+
+    @pytest.mark.parametrize("value", [0, 10.5])
+    def test_blood_debts_seconds_just_outside_are_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+            gen.enchantment_effects(self.row(
+                tmp_path, gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", value))
+
+
+class TestDeathTreeC4d1Actions:
+    """The Death trees' slice C4d1 (2026-11-25): Chain Execution's action and
+    Relentless's sizing base, each driven through the whole Enchantment Effects
+    read. Chain Execution's row is on `kill` only, its seconds above 0 and up to
+    `MAX_NEXT_HIT_CRITICAL_SECONDS`. Relentless's base is accepted on a cooldown
+    reduction, on any event, and refused on a pool row and on a cooldown reset,
+    whose value is a chance. THE CONTROLS: the edge value and the accepted rows
+    are carried through."""
+
+    # THE ROW BUILDER OF THE CLASS ABOVE, taken rather than inherited, so its
+    # six tests are not run a second time under this class's name.
+    WORDS = TestDeathTreeActionBounds.WORDS
+    NAME = TestDeathTreeActionBounds.NAME
+    ENCHANTMENTS = TestDeathTreeActionBounds.ENCHANTMENTS
+    HEADER = TestDeathTreeActionBounds.HEADER
+    row = TestDeathTreeActionBounds.row
+
+    def test_chain_executions_row_at_its_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "kill", gen.MAX_NEXT_HIT_CRITICAL_SECONDS))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"]) == (
+            "next_hit_critical", "kill", 10.0)
+
+    # NOUGHT IS "UNTIL USED" SINCE THE DEATH TREES' SLICE C6a (Brim), so the
+    # value just outside at the bottom is below nought.
+    @pytest.mark.parametrize("value", [-1, 10.5])
+    def test_chain_executions_seconds_just_outside_are_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match=r"The seconds are 0 \(until used\) up to 10"):
+            gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "kill", value))
+
+    @pytest.mark.parametrize("event", ["hit_dealt", "critical_strike", "afflicted_death"])
+    def test_chain_executions_row_on_another_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only a kill, an evasion or a full bar grants it"):
+            gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, event, 2))
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt"])
+    def test_relentless_base_on_a_cooldown_reduction_is_carried_through(self, tmp_path, event):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, "cooldown_reduce_all", event, 1, gen.FRACTION_OF_HUNDREDS_HELD))
+        assert (out[0]["Action"], out[0]["FractionOf"]) == (
+            "cooldown_reduce_all", "for_each_hundred_class_resource_held")
+
+    @pytest.mark.parametrize("action", ["class_resource", "cooldown_reset_movement"])
+    def test_relentless_base_anywhere_else_is_refused(self, tmp_path, action):
+        with pytest.raises(gen.DataError):
+            gen.enchantment_effects(self.row(tmp_path, action, "kill", 1, gen.FRACTION_OF_HUNDREDS_HELD))
+
+
+class TestDeathTreeC6aActions:
+    """The Death trees' slice C6a (2026-11-25), each through the whole
+    Enchantment Effects read. Chain Execution's charge is now granted on an
+    evasion and a full bar too, and 0 seconds is "until used"; the movement
+    cooldown cut is a cooldown reduction like the others; Keep the Count's
+    longer hold is on `dodge` only, its seconds above 0 and up to the bound.
+    THE CONTROLS: the rows accepted are carried through."""
+
+    WORDS = TestDeathTreeActionBounds.WORDS
+    NAME = TestDeathTreeActionBounds.NAME
+    ENCHANTMENTS = TestDeathTreeActionBounds.ENCHANTMENTS
+    HEADER = TestDeathTreeActionBounds.HEADER
+    row = TestDeathTreeActionBounds.row
+
+    @pytest.mark.parametrize("event", ["dodge", "resource_full"])
+    def test_the_next_hit_charge_on_an_evasion_or_a_full_bar_is_carried_through(self, tmp_path, event):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, event, 3))
+        assert (out[0]["Action"], out[0]["ActionEvent"]) == ("next_hit_critical", event)
+
+    def test_a_charge_of_nought_seconds_until_used_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.NEXT_HIT_CRITICAL_ACTION, "resource_full", 0))
+        assert out[0]["ValueLow"] == 0.0
+
+    def test_the_movement_cut_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, "cooldown_reduce_movement", "dodge", 1))
+        assert (out[0]["Action"], out[0]["ValueLow"]) == ("cooldown_reduce_movement", 1.0)
+
+    def test_the_longer_hold_on_an_evasion_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, "dodge", 1))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"]) == ("fervour_hold_extended", "dodge", 1.0)
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt"])
+    def test_the_longer_hold_on_another_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only an evasion does"):
+            gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, event, 1))
+
+    @pytest.mark.parametrize("value", [0, 10.5])
+    def test_the_longer_hold_just_outside_its_bound_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+            gen.enchantment_effects(self.row(tmp_path, gen.FERVOUR_HOLD_EXTENDED_ACTION, "dodge", value))
+
+
 class TestStrikeTarget:
     """A row that deals a direct hit to the other character of its event.
     Ruled 2026-10-07: "When you evade a ranged attack, throw an attack dealing
@@ -3501,16 +3721,20 @@ class TestStrikeTarget:
 
     # `kill` AND `afflicted_death` NAME AN ENEMY THAT HAS DIED, and
     # `gadget_destroyed` the wearer's own machine. The others name nobody.
+    # `hit_taken` WAS AMONG THEM UNTIL THE WAR VOW OPTIONS' THIRD SLICE, V3a,
+    # 2026-11-25, when it began to name the attacker; `spell` names nobody.
     @pytest.mark.parametrize("event", ["kill", "afflicted_death", "gadget_destroyed",
-                                       "hit_taken", "skill_use", "timed", None])
+                                       "spell", "skill_use", "timed", None])
     def test_the_row_on_an_event_with_nobody_to_strike_is_refused(self, tmp_path, event):
         with pytest.raises(gen.DataError, match="names a living character other than"):
             gen.enchantment_effects(self.strike(tmp_path, {"Action Event": event}))
 
-    def test_the_list_of_events_is_exactly_the_eight(self):
+    def test_the_list_of_events_is_exactly_the_ten(self):
+        # TEN SINCE V3a, 2026-11-25: `hit_taken` and `big_hit_taken` name the attacker.
         assert set(gen.STRIKE_TARGET_EVENTS) == {
             "hit_dealt", "first_hit_dealt", "critical_strike", "deployable_hit",
-            "retaliation_dealt", "block", "melee_hit_taken", "dodge"}
+            "retaliation_dealt", "block", "melee_hit_taken", "dodge",
+            "hit_taken", "big_hit_taken"}
         assert set(gen.STRIKE_TARGET_EVENTS) <= gen.granting_events()
 
     def test_a_size_at_the_bound_is_carried_through(self, tmp_path):
@@ -3640,8 +3864,10 @@ class TestExecuteTarget:
             gen.enchantment_effects(self.execute(
                 tmp_path, {"Condition": condition, "Condition Value": value}))
 
-    def test_a_second_condition_is_refused_because_an_action_carries_one(self, tmp_path):
-        with pytest.raises(gen.DataError, match="An action carries one condition"):
+    def test_a_second_condition_is_refused_because_an_execute_carries_one(self, tmp_path):
+        # AN EXECUTE, AND NOT EVERY ACTION, since the War vow options' second slice (V2b, 2026-11-25) let an action
+        # carry a second condition. See `test_war_vows_v2b_scripts.py` for an action that carries one.
+        with pytest.raises(gen.DataError, match="An execute carries one condition"):
             gen.enchantment_effects(self.execute(
                 tmp_path, {"Condition 2": "target_is_not_boss"}))
 
@@ -4240,7 +4466,7 @@ class TestEnchantmentEffects:
             "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
             "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
             "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0,
-            "Ailment": "", "DamageShare": 0.0}]
+            "Ailment": "", "DamageShare": 0.0, "ChancePercent": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
@@ -4653,8 +4879,8 @@ class TestEnchantmentEffects:
                 {"Action Event": "sneezes_twice"})]))
 
     def test_an_event_with_no_clock_of_its_own_is_accepted(self, tmp_path):
-        # FIVE EVENTS HAVE NO CLOCK, because every clock is something done TO
-        # the character and these are things the character DID.
+        # THESE EVENTS HAVE NO CLOCK, which is the only thing that puts an
+        # event on the list; an event with a clock is derived from it.
         # AND THE ONE THAT NEEDS A THRESHOLD IS GIVEN ONE: health_falls_below
         # requires an Event Value, issue #1833 group D part 2.
         for event in gen.ACTION_ONLY_EVENTS:
@@ -5296,7 +5522,8 @@ class TestAnAtNPointsRowStatesItsThreshold:
     def sheet(rows: list[list]) -> list[list]:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Min Points", "Required Tags", "Condition", "Condition Value",
-                 "Scale", "Scale Step", "Option", "Reach Metres"]] + rows
+                 "Scale", "Scale Step", "Option", "Reach Metres",
+                 "Scale Max Steps"] + PASSIVE_PORT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5342,7 +5569,8 @@ class TestAnAtNPointsRowStatesItsThreshold:
             tmp_path / "without.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
-                                  "Scale", "Scale Step", "Option", "Reach Metres"],
+                                  "Scale", "Scale Step", "Option", "Reach Metres",
+                                  "Scale Max Steps"] + PASSIVE_PORT_HEADERS,
                                  ["A_node", "armor", "increased", 5]]}))
         with pytest.raises(gen.DataError, match="Min Points"):
             gen.passive_effects(book)
@@ -5543,17 +5771,23 @@ class TestTheConditionsAndTheScaleOfTheSeventhOfOctober:
         out = self.out(tmp_path, "Negative", self.LEECH, row)
         assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("character_kills", 0)
 
-    def test_the_leech_scale_is_refused_on_a_passive_row(self, tmp_path):
-        """The Passive Effects sheet has no cap column. The control is the
-        same row on a scale that needs none."""
+    def test_the_leech_scale_needs_a_cap_on_a_passive_row_too(self, tmp_path):
+        """The Passive Effects sheet has carried a cap column since the demonic
+        tree rework of 2026-11-24, so a passive row on the leech scale is
+        refused without a cap and carried with one, as an enchantment's is. The
+        control is the same row on a scale that needs none."""
         passive = TestARowCountingNearbyEnemiesCarriesItsOwnRadius()
         gen.passive_effects(passive.book(tmp_path, [
             ["A_node", "armor", "increased", 3,
              None, None, "seconds_in_combat", 1, None]]))
-        with pytest.raises(gen.DataError, match="needs a cap in Scale Max Steps"):
+        with pytest.raises(gen.DataError, match="states no Scale Max Steps"):
             gen.passive_effects(passive.book(tmp_path, [
                 ["A_node", "armor", "increased", 3,
                  None, None, "seconds_leeching", 1, None]]))
+        out = gen.passive_effects(passive.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "seconds_leeching", 1, None, None, None, None, 10]]))
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_leeching", 10)
 
     def test_a_leech_step_of_nothing_or_past_a_minute_is_refused(self, tmp_path):
         for step in (0, 61):
@@ -7967,7 +8201,7 @@ class GadgetRowsOnAMadeUpSheet:
     """
 
     HEADER = TestScaleStepHigh.HEADER
-    TAG = "Type.Deployable"
+    TAG = "Type.Gadget"
     #: What the sentence's own Tags cell holds. A class whose real sentence
     #: carries more than the one tag says so.
     SENTENCE_TAGS = TAG
@@ -7995,7 +8229,7 @@ class GadgetRowsOnAMadeUpSheet:
 
     def validation(self, rows):
         """What the generator's check of the finished sheet says of these
-        rows, told that `Type.Deployable` is a tag the game has."""
+        rows, told that `Type.Gadget` is a tag the game has."""
         return gen.validate_enchantment_effects(
             {"EnchantmentEffects": rows}, {self.TAG})
 
@@ -8014,7 +8248,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
     """`gadgets_target_most_health`, ruled 2026-10-13 and built ahead of its
     row, for "Your gadgets prioritize the highest HP enemy within their range
     instead of the nearest". One flag at a flat 1, scoped to
-    `Type.Deployable`: `ACataclysmMinion::MostHealthWithinReach` asks whether
+    `Type.Gadget`: `ACataclysmMinion::MostHealthWithinReach` asks whether
     it is above nought each time the shared brain chooses a gadget's target.
     """
 
@@ -8022,7 +8256,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
              "instead of the nearest")
     STAT = "gadgets_target_most_health"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_is_carried_through_and_is_not_refused(
             self, tmp_path):
@@ -8030,7 +8264,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
         assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"]) for row in out] == [
-            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "")]
+            (self.STAT, "flat", 1.0, 1.0, "Type.Gadget", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8039,7 +8273,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
         assert self.validation(out) == []
         # AND THE CONTROL OF THAT LAST LINE: told of no such tag, the sheet's
         # validation refuses the row for its tag, so it does read the row.
-        assert any("undefined tag Type.Deployable" in problem
+        assert any("undefined tag Type.Gadget" in problem
                    for problem in gen.validate_enchantment_effects(
                        {"EnchantmentEffects": out}, set()))
 
@@ -8075,7 +8309,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
                 ({"RequiredTags": ""}, "under the required tags ''"),
                 ({"RequiredTags": "Type.Trap"},
                  "under the required tags 'Type.Trap'"),
-                ({"RequiredTags": "Type.Deployable, Minion.Projectile"},
+                ({"RequiredTags": "Type.Gadget, Minion.Projectile"},
                  "under the required tags"),
                 ({"Action": "health"}, "with the action 'health'"),
                 ({"ValueLow": 0.0}, "states 0 on"),
@@ -8129,7 +8363,7 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
 class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
     """`gadget_volley_every_seconds`, ruled 2026-10-13 and built ahead of its
     row, for "Gadgets fire at all enemies within range simultaneously once
-    every 5-8 seconds". One flat row scoped to `Type.Deployable`.
+    every 5-8 seconds". One flat row scoped to `Type.Gadget`.
 
     THE ROW ROLLS DOWN, ruled: 5 seconds is the better figure. The sheet
     states the pair as the sentence does, 5 to 8, and the sentence's one
@@ -8141,7 +8375,7 @@ class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
              "every 5-8 seconds")
     STAT = "gadget_volley_every_seconds"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 5, "Value High": 8,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_with_its_mark_is_carried_through_falling(
             self, tmp_path):
@@ -8149,7 +8383,7 @@ class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
         assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"]) for row in out] == [
-            (self.STAT, "flat", 8.0, 5.0, "Type.Deployable", "", "", "")]
+            (self.STAT, "flat", 8.0, 5.0, "Type.Gadget", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8255,12 +8489,13 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
     """`gadgets_burst_on_kill`, ruled 2026-10-13 and built ahead of its row,
     for "When a gadget kills an enemy, it fires an additional burst at the
     nearest enemy within its range". One flag at a flat 1, scoped to
-    `Type.Deployable`, with no action and no action event:
+    `Type.Gadget`, with no action and no action event:
     `ACataclysmMinion::AttackTarget` asks whether it is above nought when a
     blow of the gadget's own has killed.
 
-    THE SENTENCE'S OWN TAGS ARE TWO, `Type.Deployable, Trigger.OnKill`, and
-    the row requires the first alone.
+    THE SENTENCE'S OWN TAGS ARE TWO, `Type.Deployable, Trigger.OnKill`, its
+    roll tags, which the owner's ruling of 2026-11-25 leaves alone; the row
+    requires `Type.Gadget` alone since that ruling.
     """
 
     WORDS = ("When a gadget kills an enemy, it fires an additional burst at "
@@ -8268,7 +8503,7 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
     STAT = "gadgets_burst_on_kill"
     SENTENCE_TAGS = "Type.Deployable, Trigger.OnKill"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_is_carried_through_and_is_not_refused(
             self, tmp_path):
@@ -8277,7 +8512,7 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"], row["ActionEvent"])
                 for row in out] == [
-            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+            (self.STAT, "flat", 1.0, 1.0, "Type.Gadget", "", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8313,8 +8548,8 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
         for change, said in (
                 ({"ValueKind": "increased"}, "value kind 'increased'"),
                 ({"RequiredTags": ""}, "under the required tags ''"),
-                ({"RequiredTags": "Type.Deployable, Trigger.OnKill"},
-                 "under the required tags 'Type.Deployable, Trigger.OnKill'"),
+                ({"RequiredTags": "Type.Gadget, Trigger.OnKill"},
+                 "under the required tags 'Type.Gadget, Trigger.OnKill'"),
                 ({"Action": "strike_target"},
                  "with the action 'strike_target'"),
                 ({"ValueLow": 0.0}, "states 0 on"),
@@ -8344,7 +8579,7 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
     ruled 2026-10-13 and built ahead of their rows, for "Your gadgets are
     invincible but lose 5% of their maximum HP per second passively". One
     sentence is two rows on one enchantment, both flat and scoped to
-    `Type.Deployable`: the flag 1 to 1 and the percent 5 to 5.
+    `Type.Gadget`: the flag 1 to 1 and the percent 5 to 5.
     `ACataclysmMinion::StepNoDamageAndDrain` reads both on the gadget's step.
     """
 
@@ -8353,9 +8588,9 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
     NO_DAMAGE = "gadgets_take_no_damage"
     DRAIN = "gadget_health_lost_percent_per_second"
     FLAG_ROW = {"Stat": NO_DAMAGE, "Value Kind": "flat", "Value Low": 1,
-                "Value High": 1, "Required Tags": "Type.Deployable"}
+                "Value High": 1, "Required Tags": "Type.Gadget"}
     DRAIN_ROW = {"Stat": DRAIN, "Value Kind": "flat", "Value Low": 5,
-                 "Value High": 5, "Required Tags": "Type.Deployable"}
+                 "Value High": 5, "Required Tags": "Type.Gadget"}
 
     def pair(self, tmp_path):
         return self.out(tmp_path, self.WORDS, [self.FLAG_ROW, self.DRAIN_ROW])
@@ -8367,9 +8602,9 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
                  row["ValueLow"], row["ValueHigh"], row["RequiredTags"],
                  row["Condition"], row["Scale"], row["Action"])
                 for row in out] == [
-            ("1", self.NO_DAMAGE, "flat", 1.0, 1.0, "Type.Deployable", "", "",
+            ("1", self.NO_DAMAGE, "flat", 1.0, 1.0, "Type.Gadget", "", "",
              ""),
-            ("2", self.DRAIN, "flat", 5.0, 5.0, "Type.Deployable", "", "",
+            ("2", self.DRAIN, "flat", 5.0, 5.0, "Type.Gadget", "", "",
              "")]
         assert out[0]["Enchantment"] == out[1]["Enchantment"]
         assert self.refusals(out) == []
@@ -8480,7 +8715,7 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
 class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
     """`gadgets_copy_your_last_skill`, ruled 2026-10-14 and built ahead of its
     row, for "Gadgets copy the last skill you used and fire it at their target
-    once every 2 seconds". One flag at a flat 1, scoped to `Type.Deployable`,
+    once every 2 seconds". One flag at a flat 1, scoped to `Type.Gadget`,
     with no action and no action event: `ACataclysmMinion::StepSkillCopy`
     asks whether it is above nought on each step of the gadget. THE 2 SECONDS
     ARE THE ENGINE'S, not the row's.
@@ -8490,7 +8725,7 @@ class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
              "target once every 2 seconds")
     STAT = "gadgets_copy_your_last_skill"
     ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
-           "Required Tags": "Type.Deployable"}
+           "Required Tags": "Type.Gadget"}
 
     def test_the_ruled_row_is_carried_through_and_is_not_refused(
             self, tmp_path):
@@ -8499,7 +8734,7 @@ class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
                  row["ValueHigh"], row["RequiredTags"], row["Condition"],
                  row["Scale"], row["Action"], row["ActionEvent"])
                 for row in out] == [
-            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+            (self.STAT, "flat", 1.0, 1.0, "Type.Gadget", "", "", "", "")]
         assert self.refusals(out) == []
         assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", out) == []
@@ -8546,8 +8781,8 @@ class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
         for change, said in (
                 ({"ValueKind": "increased"}, "value kind 'increased'"),
                 ({"RequiredTags": ""}, "under the required tags ''"),
-                ({"RequiredTags": "Type.Deployable, Type.Trap"},
-                 "under the required tags 'Type.Deployable, Type.Trap'"),
+                ({"RequiredTags": "Type.Gadget, Type.Trap"},
+                 "under the required tags 'Type.Gadget, Type.Trap'"),
                 ({"Action": "strike_target"},
                  "with the action 'strike_target'"),
                 ({"ValueLow": 0.0}, "states 0 on"),
@@ -9985,6 +10220,34 @@ class TestTheSkillTrapMinionType:
         assert re.search(r'ACataclysmMinion::SkillTrapTypeName\s*=\s*TEXT\("SkillTrap"\)', cpp)
         radius = re.search(r"SkillTrapTriggerRadiusCm\s*=\s*([0-9.]+)f;", header)
         assert radius and float(radius.group(1)) == self.ROW[10] == self.ROW[11]
+
+
+def test_a_slain_burst_row_is_refused_where_the_game_would_burst_nothing() -> None:
+    """The Death trees' slice C4c1 (2026-11-25), The Ferryman's action. ON
+    `kill` ONLY, and a fraction, a value kind or a scale is refused. THE
+    CONTROL: the same row on `kill` with none of them passes."""
+    check = gen._check_slain_burst_action
+    check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "", "", (), {})
+    with pytest.raises(gen.DataError, match="Only a kill has a slain creature"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "hit_dealt", "", "", (), {})
+    with pytest.raises(gen.DataError, match="states Fraction Of 'maximum'"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "maximum", "", (), {})
+    with pytest.raises(gen.DataError, match="states Value Kind 'flat'"):
+        check(1, "a row", gen.SLAIN_BURST_ACTION, "kill", "", "flat", (), {})
+
+
+def test_a_bleed_left_row_is_refused_where_the_game_would_pass_nothing() -> None:
+    """The Death trees' slice C4c2 (2026-11-25), Blood Debt's action. ON
+    `afflicted_death` ONLY, and a fraction, a value kind or a scale is refused.
+    THE CONTROL: the same row on `afflicted_death` with none of them passes."""
+    check = gen._check_bleed_left_to_strongest_action
+    check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "", "", (), {})
+    with pytest.raises(gen.DataError, match="Only the death of an enemy carrying the wearer's ailment"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "kill", "", "", (), {})
+    with pytest.raises(gen.DataError, match="states Fraction Of 'maximum'"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "maximum", "", (), {})
+    with pytest.raises(gen.DataError, match="states Value Kind 'flat'"):
+        check(1, "a row", gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", "", "flat", (), {})
 
 
 def test_the_two_trap_events_are_clockless_events_a_row_may_hang_on():

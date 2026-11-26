@@ -235,6 +235,23 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfestedHoardKey =
 const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsKey =
 	TEXT("Demonic_Abyssal_Rifts");
 
+const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsHealthArchetypeRow =
+	TEXT("Baseline");
+
+// THE THIRD RIFT IS REACHABLE AND IS NOT EVERY FLOOR'S: the threshold lies inside the range of plans the floor generator
+// draws, above the smallest and no higher than the largest. Issue #2864.
+static_assert(FCataclysmFloorGenerator::LeastFloorSide * FCataclysmFloorGenerator::LeastFloorSide
+					  < UCataclysmDungeonModifierEffects::AbyssalRiftsLargeFloorCells
+				  && UCataclysmDungeonModifierEffects::AbyssalRiftsLargeFloorCells
+					  <= FCataclysmFloorGenerator::MostFloorSide * FCataclysmFloorGenerator::MostFloorSide,
+	"Abyssal Rifts' large floor must be a plan the generator can draw and not every plan it draws, or every floor "
+	"would hold the same number of rifts.");
+
+// THE RIFTS' MAGIC FIND STOPS WHERE THE INFERNAL BEACONS' DOES, the same Cataclysm's reward of the same kind. Issue #2864.
+static_assert(UCataclysmDungeonModifierEffects::AbyssalRiftsMostMagicFind
+				  == UCataclysmDungeonModifierEffects::InfernalBeaconsMostMagicFind,
+	"Abyssal Rifts' magic find cap is Infernal Beacons' figure; change both or say why they part.");
+
 const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
 	TEXT("Famine_Swarm_of_Locusts");
 
@@ -2206,7 +2223,7 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	}
 	if (Effects.RiftMagicFindAdded > 0.0f)
 	{
-		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts closed in time"),
+		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts destroyed"),
 									Effects.RiftMagicFindAdded));
 	}
 	if (Effects.BeaconMagicFindAdded > 0.0f)
@@ -2707,24 +2724,33 @@ float UCataclysmDungeonModifierEffects::SwarmOfLocustsBurn(float MaximumHealth)
 	return MaximumHealth > 0.0f ? MaximumHealth * SwarmOfLocustsPercentPerSecond / 100.0f : 0.0f;
 }
 
-bool UCataclysmDungeonModifierEffects::AbyssalRiftsWaveIsDue(float SecondsOpen, int32 WavesSent)
+int32 UCataclysmDungeonModifierEffects::AbyssalRiftsFor(int32 PlanCells)
 {
-	return WavesSent < AbyssalRiftsWaves && SecondsOpen >= WavesSent * AbyssalRiftsSecondsBetweenWaves;
+	return PlanCells >= AbyssalRiftsLargeFloorCells ? AbyssalRiftsPerLargeFloor : AbyssalRiftsPerFloor;
 }
 
-bool UCataclysmDungeonModifierEffects::AbyssalRiftsHasRunOut(float SecondsOpen)
+bool UCataclysmDungeonModifierEffects::AbyssalRiftsHunterIsDue(float SecondsSinceLastSent, int32 OwnStanding)
 {
-	return SecondsOpen >= AbyssalRiftsSecondsToClose;
+	return SecondsSinceLastSent >= AbyssalRiftsSecondsBetweenHunters && OwnStanding < AbyssalRiftsMostHuntersPerRift;
 }
 
-int32 UCataclysmDungeonModifierEffects::AbyssalRiftsRungFor(int32 Successes)
+int32 UCataclysmDungeonModifierEffects::AbyssalRiftsStrengthStepsFor(float SecondsAlive)
 {
-	return FMath::Clamp(Successes, 0, AbyssalRiftsHighestRung);
+	// A HAIR UNDER THE STEP COUNTS AS THE STEP, so a beat count that lands on fifteen seconds through a sum of quarter
+	// seconds is the step it reads as. A quarter second is exact in a float, so the sum is too; this is a guard.
+	const int32 Steps = FMath::FloorToInt((FMath::Max(0.0f, SecondsAlive) + KINDA_SMALL_NUMBER)
+										  / AbyssalRiftsSecondsPerStrengthStep);
+	return FMath::Clamp(Steps, 0, AbyssalRiftsMostStrengthSteps);
+}
+
+float UCataclysmDungeonModifierEffects::AbyssalRiftsHunterMultiplierFor(float SecondsAlive)
+{
+	return 1.0f + AbyssalRiftsStrengthStepsFor(SecondsAlive) * AbyssalRiftsStrengthPercentPerStep / 100.0f;
 }
 
 float UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(int32 Successes)
 {
-	return FMath::Max(0, Successes) * AbyssalRiftsMagicFindPerSuccess;
+	return FMath::Min(FMath::Max(0, Successes) * AbyssalRiftsMagicFindPerSuccess, AbyssalRiftsMostMagicFind);
 }
 
 float UCataclysmDungeonModifierEffects::InfestedHoardChancePercentFor(int32 Stacks)
@@ -3326,8 +3352,10 @@ namespace
 	// eased by the tier relief and with damage scaled by the tier (issue #1569). TIER 1'S DAMAGE RE-FITTED 2026-11-19,
 	// 0.22 to 0.06, when issue #2749 cut tier 1's damage scale from 0.20 to 0.05; tiers 2 to 8 and every health figure
 	// did not move.
-	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.49f, 0.77f, 0.87f, 1.01f, 1.06f, 1.04f, 1.19f, 1.15f};
-	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.06f, 0.58f, 1.01f, 1.39f, 1.68f, 1.86f, 2.40f, 2.97f};
+	// RE-FITTED 2026-11-25 FROM WINDOW AR-W1'S MEASUREMENT, for the whole-number affix ranges and the enemy rebalance
+	// (issues #2883 and #2884): health 0.49 ... 1.15 and damage 0.06 ... 2.97 until then.
+	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.23f, 0.38f, 0.42f, 0.46f, 0.45f, 0.51f, 0.49f, 0.46f};
+	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.05f, 1.00f, 2.20f, 3.43f, 5.11f, 6.93f, 9.80f, 13.43f};
 }
 
 float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 DifficultyTier)
@@ -3535,11 +3563,13 @@ float UCataclysmDungeonModifierEffects::SoulHarvestResistanceAdded(int32 Souls)
 	return SoulHarvestResistancePerSoul * static_cast<float>(FMath::Max(0, Souls));
 }
 
-bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType)
+bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType, FName DungeonsOwnDamageType)
 {
 	// THE CREATURE'S CATACLYSM, read as the damage type it deals: the design gives each Cataclysm one, and its
-	// creatures deal it. Issue #1671.
-	return CreatureDamageType == FName(TEXT("Demonic"));
+	// creatures deal it. Issue #1671. AGAINST THE DUNGEON'S OWN CREATURES' TYPE since slice B3 (2026-11-25), Demonic for
+	// a dungeon nobody sent. See the header.
+	const FName OwnType = DungeonsOwnDamageType.IsNone() ? FName(TEXT("Demonic")) : DungeonsOwnDamageType;
+	return !CreatureDamageType.IsNone() && CreatureDamageType == OwnType;
 }
 
 bool UCataclysmDungeonModifierEffects::SoulHarvestSoulArrivesAfter(const FVector& From, const FVector& To,

@@ -774,7 +774,10 @@ def test_a_new_character_gains_at_least_three_levels_over_a_first_dungeon_of_sev
 # gone; the clears these campaigns give were compared, seeds 0 to 14, and are the same list.
 
 #: The seeds of each policy's tier 1 campaigns the guard walks. The fit used 0 to 59 and was checked on 60 to 119.
-RING_GUARD_SEEDS = range(15)
+#: 0 TO 16 SINCE ISSUE #2865, FROM 0 TO 14: with the surge rulings of 2026-11-23 and 2026-11-24 campaigns end sooner and
+#: seeds 0 to 14 gave the Pillar 19 clears, under the 20 the fixture below asks for; 0 to 16 gives 23, the fewest seeds
+#: that give more than 20. The coordinating session's ruling of 2026-11-24.
+RING_GUARD_SEEDS = range(17)
 
 #: The simulation's dungeon type -> the name `scoring` and `enemy_stats` take.
 SCORING_TYPE = {"Basic": "Basic", "Quest": "Quest", "FallenCity": "Fallen City", "Cataclysm": "Cataclysm"}
@@ -785,8 +788,9 @@ class Clear:
     stood on when cleared (None for the boss dungeon, which stands on no city), and the experience the character had
     banked when it entered."""
 
-    def __init__(self, policy, seed, dungeon, banked, standing_on=None):
+    def __init__(self, policy, seed, dungeon, banked, standing_on=None, is_rift=False):
         self.policy, self.seed = policy, seed
+        self.is_rift = is_rift
         self.dungeon_type = SCORING_TYPE[dungeon.dtype.value]
         self.ring = dungeon.city_tier.value
         self.standing_on = standing_on
@@ -805,9 +809,10 @@ def campaign_clears(model, seeds=RING_GUARD_SEEDS, kill_share=KILL_SHARE, tier=1
         def _finish_current(self):
             dungeon, before = self.current, self.cleared
             city = self.empire.cities.get(dungeon.city_id) if dungeon.city_id is not None else None
+            rift = self.is_rift(dungeon)
             super()._finish_current()
             if self.cleared > before:
-                self.cleared_in_order.append((dungeon, city.tier.value if city is not None else None))
+                self.cleared_in_order.append((dungeon, city.tier.value if city is not None else None, rift))
 
     out = []
     for name, policy in policies.ALL.items():
@@ -816,8 +821,8 @@ def campaign_clears(model, seeds=RING_GUARD_SEEDS, kill_share=KILL_SHARE, tier=1
             sim.cleared_in_order = []
             sim.run(policy)
             banked = banked_at_start
-            for dungeon, standing_on in sim.cleared_in_order:
-                clear = Clear(name, seed, dungeon, banked, standing_on)
+            for dungeon, standing_on, rift in sim.cleared_in_order:
+                clear = Clear(name, seed, dungeon, banked, standing_on, rift)
                 out.append(clear)
                 banked += kill_share * sum(
                     floor_experience(model, clear.subtype, clear.floors, floor, clear.modifier_score,
@@ -837,7 +842,9 @@ def walk_clear(clear, *, model, lines, constants, slots, weapon, first_tier_scal
 def clears(model) -> list:
     found = campaign_clears(model)
     by_ring = {ring: sum(1 for c in found if c.ring == ring) for ring in ("Outpost", "Bulwark", "Sanctuary", "Pillar")}
-    # Measured 2026-11-19 on seeds 0 to 14: 3,884 Outpost, 493 Bulwark, 217 Sanctuary and 60 Pillar clears.
+    # Measured 2026-11-19 on seeds 0 to 14: 3,884 Outpost, 493 Bulwark, 217 Sanctuary and 60 Pillar clears. Measured
+    # 2026-11-24 on seeds 0 to 16, with the surge rulings of issue #2865: 2,320 Outpost, 1,032 Bulwark, 1,180 Sanctuary
+    # and 23 Pillar.
     assert by_ring["Bulwark"] > 200 and by_ring["Sanctuary"] > 100 and by_ring["Pillar"] > 20, by_ring
     return found
 
@@ -850,7 +857,14 @@ def test_every_dungeon_a_tier_one_campaign_clears_on_this_ring_is_won_with_healt
     from cataclysm_sim import enemy_stats as es
 
     failed = []
-    for clear in (c for c in clears if c.ring == ring):
+    # A RIFT IS LEFT OUT, since issue #51 slice B2: the owner made it harder on purpose ("Keep it spicy", eight dungeon
+    # modifiers, "(b) 8 modifiers only (Recommended)"), so a ring's figure is not fitted to it, or every ordinary dungeon
+    # on the ring would be made easier to make it survivable. With the model's Rifts on, 4 of these campaigns' Bulwark
+    # and Sanctuary clears were Rifts lost or won under 10% health (seed 12, levels 8 to 11). RULED BY THE
+    # COORDINATING SESSION ON 2026-11-24: "the guard fits ordinary content, and softening Rifts or lowering the rings
+    # would undo a ruling or make every ordinary dungeon easier". `test_the_campaigns_clear_rifts_and_the_guard_leaves_
+    # them_out` holds that the campaigns clear Rifts, so leaving them out is not a check over nothing.
+    for clear in (c for c in clears if c.ring == ring and not c.is_rift):
         result = walk_clear(clear, model=model, lines=class_lines, constants=constants, slots=slots, weapon=weapon)
         if not result["won"] or result["left"] < LEAST_HEALTH_LEFT:
             failed.append((clear.policy, clear.seed, clear.dungeon_type, clear.subtype, clear.floors,
@@ -859,6 +873,17 @@ def test_every_dungeon_a_tier_one_campaign_clears_on_this_ring_is_won_with_healt
         f"{len(failed)} of the {ring} dungeons tier 1 campaigns clear are lost, or won with under "
         f"{LEAST_HEALTH_LEFT:.0%} health left, at the {ring}'s damage scale of {es.damage_scale(1, ring)}. (policy, "
         f"seed, type, sub-type, floors, level at entry, floor lost, health left), the first ten: {failed[:10]}")
+
+
+def test_the_campaigns_clear_rifts_and_the_guard_leaves_them_out(clears) -> None:
+    """The ring guard above leaves Rifts out (its comment says why). This holds that the campaigns do clear Rifts on the
+    inner rings, so leaving them out is a choice and not a check over nothing, and that what is left out is Rifts
+    alone: four floors, Elite, as the owner ruled."""
+    rifts = [c for c in clears if c.is_rift]
+    inner = [c for c in rifts if c.ring in ("Bulwark", "Sanctuary")]
+    assert inner, "no campaign cleared a Rift on a Bulwark or a Sanctuary, so the guard leaves out nothing there"
+    assert all((c.dungeon_type, c.subtype, c.floors) == ("Quest", "Elite", 4) for c in rifts), (
+        "a clear marked as a Rift is not a four-floor Elite Quest dungeon")
 
 
 def test_control_the_bulwarks_clears_are_lost_at_four_times_an_outposts_figure(

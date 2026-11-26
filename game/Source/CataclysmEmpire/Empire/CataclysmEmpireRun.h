@@ -107,7 +107,12 @@ struct CATACLYSMEMPIRE_API FCataclysmDaysAway
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Fallen;
 
-	/** How many of those days a surge fired on: at most one a day, since a fall's surge waits 25 days on the last. */
+	/**
+	 * How many surges fired in those days. A day can hold more than one since issue #2865, when every city's fall
+	 * began to fire its own (the owner's ruling of 2026-11-24); until then this counted the days a surge fired on,
+	 * which was the same number, because a fall's surge waited 25 days on the last. Totalled from
+	 * `FCataclysmDayReport::Surges`.
+	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Surges = 0;
 
@@ -117,6 +122,21 @@ struct CATACLYSMEMPIRE_API FCataclysmDaysAway
 
 	/** Whether a walk has ended this run, so there is something to say. */
 	bool HasEnded() const { return ToDay != INDEX_NONE; }
+};
+
+/**
+ * One dungeon whose timer runs out within days about to be spent, and the city it would hit:
+ * `UCataclysmEmpireRun::TimersRunningOutWithin`. Issue #2857. NOT SAVED: worked out when it is asked for.
+ */
+struct FCataclysmTimerForecast
+{
+	int32 DungeonId = INDEX_NONE;
+
+	/** The run's day its timer runs out on. */
+	int32 Day = INDEX_NONE;
+
+	/** The city it would hit: the one an ordinary dungeon stands on, or a Quest dungeon's host. */
+	int32 CityId = INDEX_NONE;
 };
 
 /**
@@ -342,6 +362,51 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 SurgeDungeons = 0;
+
+	/**
+	 * How many surges fired today. `bSurged` says only whether one did.
+	 *
+	 * MORE THAN ONE A DAY SINCE ISSUE #2865: the owner ruled on 2026-11-24 that "surges from cities falling should
+	 * happen regardless", so each city that falls fires its own, and on a day the clock also surged that is one more.
+	 * Until then a fall's surge waited 25 days on the last, and a day held at most one. The days-away summary and the
+	 * play loop's log count surges from this.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 Surges = 0;
+
+	/**
+	 * The dungeons an unsealed Rift sent today, in the order they were made; `Spawned` lists them too, and
+	 * `SurgeDungeons` does not, because no surge brought them. Issue #51 slice B2: the owner, 2026-11-24, "every 5
+	 * days an unsealed Rift sends an ordinary Basic Demonic dungeon to an adjacent city a surge could target, with no
+	 * limit on how many it has sent". `UCataclysmEmpireRun::SendFromRifts` fills it. Additive only, as `Hits` is; the
+	 * model counts the same dungeons in `Simulation.rift_spawns`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> RiftSent;
+
+	/**
+	 * The War Quest Sieges a city's fall to War made today, in the order they were made; `Spawned` lists them too, and
+	 * `SurgeDungeons` does not, because no surge brought them. `UCataclysmEmpireRun::MakeWarQuestSiegeOnAFall` fills
+	 * it. Additive only. Issue #51 slice B4.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> WarSiegeOnAFall;
+
+	/**
+	 * The Abomination lairs a city's fall made today while Death was active, in the order they were made; `Spawned`
+	 * lists them too, and `SurgeDungeons` does not. `UCataclysmEmpireRun::MakeLairOnAFall` fills it. Additive only.
+	 * Issue #51 slice B5.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> LairOnAFall;
+
+	/**
+	 * Whether a death in a Rift brought a surge in this report. `bSurged` and `Surges` say so too. Issue #51 slice B2:
+	 * the owner, 2026-11-24, "Every death, no gap (Recommended)". Only the report
+	 * `UCataclysmEmpireRun::SurgeForADeathInARift` answers sets it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bSurgedForARiftDeath = false;
 
 	/**
 	 * The cities on which a city upgrade was finished today, one entry per upgrade. Issue #2825: the capital's account
@@ -726,6 +791,15 @@ public:
 	 * consequence". The empty-board surge counts these (V16). Issue #2741 slice 9.
 	 */
 	int32 ThreateningDungeonCount() const;
+
+	/**
+	 * The ORDINARY dungeons standing, which are what keep the board from being empty: a Basic dungeon that is not a
+	 * Scout Parties bonus one. A Quest dungeon, the Cataclysm's own dungeon and a Fallen City are not counted. The
+	 * owner's ruling of 2026-11-23 on issue #2865: "The board counts as empty when no ordinary dungeon stands. Quest
+	 * dungeons, the Cataclysm boss dungeon and Fallen City dungeons do not count." `Simulation.board_is_empty` counts
+	 * `DungeonType.BASIC`. A bonus dungeon was already left out of the empty-board count (V16), and still is.
+	 */
+	int32 OrdinaryDungeonCount() const;
 
 	/**
 	 * Removes a Scout Parties bonus dungeon whose timer ran out, or in which the player died, with no damage, no
@@ -1774,6 +1848,30 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsAWalkUnderWay() const;
 
+	/**
+	 * The dungeons whose timers run out within the next `Days` days, as the board stands now, and the city each would
+	 * hit: what a press that spends days in the capital -- a craft at the forge, the empire upgrade tree's respec --
+	 * says before it is made. Issue #2857, the owner's ruling of 2026-11-22. Soonest first, and on one day in the
+	 * clock's order, which is the order `UCataclysmDayClock::AdvanceDay` resolves a day's timers in.
+	 *
+	 * A TIMER RUNS OUT ON THE FIRST DAY THAT TAKES IT TO NOUGHT, with the empire upgrade tree's days on it
+	 * (`UCataclysmDayClock::DaysUntilResolveFor`): a day comes off before it is asked, so one at 3 runs out on the third
+	 * day passed, and one at nought or below on the next.
+	 *
+	 * ONLY A TIMER THAT COSTS A CITY SOMETHING: an ordinary dungeon's, which hits the city it stands on and leaves, and a
+	 * Quest dungeon's, which hits its host (`ResolveDungeon`). Not a Fallen City's or the Cataclysm's dungeon, which hit
+	 * nothing; not a Scout Parties bonus dungeon, which leaves with no consequence (`LetABonusDungeonLeave`); not one on
+	 * a city already fallen, which has nothing left to bite; and not the dungeon the player stands in, whose timer does
+	 * not move.
+	 *
+	 * A FORECAST FROM THE TIMERS AND NOTHING ELSE. The days themselves can change what happens: a surge inside them lands
+	 * dungeons, a fall takes the ordinary dungeons on its city and moves its Quest dungeons, and a Quest dungeon whose
+	 * timer runs out twice in them hits twice. Each dungeon is named once, on the first day its timer runs out.
+	 *
+	 * @param Days how many days. Zero or fewer forecasts nothing.
+	 */
+	TArray<FCataclysmTimerForecast> TimersRunningOutWithin(int32 Days) const;
+
 	// ----------------------------------------------------------------------
 	// The dungeons standing on the map
 	// ----------------------------------------------------------------------
@@ -2003,6 +2101,36 @@ public:
 	FCataclysmDayReport ResolveDungeonOnDeath(int32 DungeonId);
 
 	/**
+	 * A death in a Rift brings an ordinary surge at once: the owner, 2026-11-24, issue #51, "Every death, no gap
+	 * (Recommended)", matching their ruling of the same day that every city's fall brings its own surge. Issue #51
+	 * slice B2.
+	 *
+	 * FIRES WHATEVER THE GAP SINCE THE LAST SURGE, on the clock's day, through the same wave a scheduled surge rolls,
+	 * so it moves the next scheduled surge on and advances the escalation. The caller decides it was a Rift:
+	 * `ACataclysmDungeonGameMode::EndTheDungeonForADeath` asks `FCataclysmDungeon::IsARift` of the dungeon the player
+	 * died in before its resolve, and calls this after the walk's days have run and before the death's own days, which
+	 * is the day of the death. A judgement of slice B2; the ruling says "at once". The model:
+	 * `Simulation._surge_for_a_rift_death`.
+	 *
+	 * @return the surge's report: `bSurged`, `Surges` 1, `bSurgedForARiftDeath`, what it landed. Empty when the run
+	 *         has not begun.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	FCataclysmDayReport SurgeForADeathInARift();
+
+	/**
+	 * Days until the Rift `DungeonId` next sends its dungeon, 1 to `UCataclysmSurgeScheduler::RiftSendEveryDays`,
+	 * counted from its `SpawnedDay`; 0 when that dungeon is not a Rift on the map. What the capital map shows beside
+	 * each Rift (issue #51 slice B2, "the map shows each Rift and its next spawn day").
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 DaysUntilRiftSends(int32 DungeonId) const;
+
+	/** How many Rifts stand on this city: the capital map marks a city holding one. Issue #51 slice B2. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 RiftsOn(int32 CityId) const;
+
+	/**
 	 * How many days a death costs in this run: 5 Standard, 10 Hardcore, 15
 	 * Heretic.
 	 *
@@ -2169,8 +2297,62 @@ private:
 	 * @param Today         the day it lands on
 	 * @param bFromCityFall whether a city falling caused it
 	 * @param OutReport     the day's report, to record what arrived
+	 * @param bFromEmptyBoard whether an empty board fired it, which brings `ExtraDungeonsOnEmptyBoard` more (#2865)
 	 */
-	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport);
+	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport, bool bFromEmptyBoard = false);
+
+	/**
+	 * Each unsealed Rift whose day it is sends its dungeon: every `UCataclysmSurgeScheduler::RiftSendEveryDays` days
+	 * from its `SpawnedDay`, an ordinary Basic Demonic dungeon, made as a surge makes one for that city, to an
+	 * adjacent city a surge could target (`PickRiftTarget`), with no limit on how many of its dungeons stand. Nothing
+	 * when no neighbour qualifies. The owner, 2026-11-24, issue #51: "Anywhere but the Pillar (Recommended)" and "No
+	 * limit". Called by `AdvanceDay` after the day's resolves. Issue #51 slice B2; the model's `_rift_spawns`.
+	 *
+	 * NOTHING ABOUT THE CLOCK IS SAVED, AND NOTHING NEEDS TO BE: `SpawnedDay` is saved on the dungeon and set only
+	 * when the dungeon is made, so a Rift's days come back with it from a save, and a Rift that leaves the map takes
+	 * its clock with it. Each send draws from a stream of its own (`RiftSeedFor`), so no shared stream moves.
+	 *
+	 * @param Today     the day being run
+	 * @param OutReport the day's report: each sent dungeon goes into `Spawned` and `RiftSent`
+	 */
+	void SendFromRifts(int32 Today, FCataclysmDayReport& OutReport);
+
+	/**
+	 * A city's fall to War starts the next Siege: one War Quest Siege, a Quest dungeon that counts toward War's
+	 * objectives when cleared, made as a surge makes one for an adjacent city a surge could target that holds no Siege
+	 * (`UCataclysmSurgeScheduler::PickWarSiegeCity`), unless `QuestSiegesPerDay` are already made today or no
+	 * neighbour qualifies. Its draws come from a stream of its own (`WarSiegeSeedFor`), so no shared stream moves.
+	 * The plan's reading of section XI, accepted by the owner on 2026-11-24; W1 to W3 ruled by the coordinating session
+	 * on 2026-11-25. `CityFell` calls it after the Dungeon City is made and before the fall's own surge, which then
+	 * counts it toward the day's two. The model's `Simulation._war_siege_on_a_fall`. Issue #51 slice B4.
+	 */
+	void MakeWarQuestSiegeOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * A city's fall while Death is active makes one Abomination lair: a Quest dungeon Death sends, made as a surge
+	 * makes one for the city `UCataclysmSurgeScheduler::PickRefuge` answers from the fallen city -- an adjacent exposed
+	 * city first, else the nearest that qualifies -- with no cap (L2). It counts the cities fallen, this one included
+	 * (L1), and toward Death's 5 objectives when cleared. Its draws come from a stream of its own (`LairSeedFor`).
+	 * `CityFell` calls it after War's Siege and before the fall's own surge. The owner, 2026-11-24, Q6; the
+	 * coordinating session, 2026-11-25, L1 and L2. The model's `Simulation._lair_on_a_fall`. Issue #51 slice B5.
+	 */
+	void MakeLairOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * The War Quest Sieges made on `Day` that still stand: the Quest dungeons on the map whose sub-type is Siege and
+	 * whose `SpawnedDay` is `Day`. What `QuestSiegesPerDay` counts against. One cleared the day it was made is not
+	 * counted, as in the model, which counts the same way.
+	 */
+	int32 QuestSiegesMadeOn(int32 Day) const;
+
+	/**
+	 * The Cataclysm whose hit is being dealt, set by each of the three hits that can fell a city just before its
+	 * `Map->Damage` and read and cleared by `CityFell`, which records it on the city (`FCataclysmCity::FellTo`).
+	 * Not saved: it lives only across one hit. A MEMBER AND NOT A PARAMETER of `CityFell`, so every call keeps the one
+	 * shape the port tests read (`CityFell(X, OutReport);`), the way `ArmTheLastStandFor` arms Last Stand Protocols
+	 * for the next hit. Issue #51 slice B4.
+	 */
+	ECataclysmType HitBy = ECataclysmType::None;
 
 	/**
 	 * Which active Cataclysm sent one dungeon of a wave.
@@ -2347,9 +2529,9 @@ private:
 	/**
 	 * A city fell: its ordinary dungeons are absorbed into the one it becomes,
 	 * its Quest dungeons move, and its fall fires a surge when
-	 * `UCataclysmSurgeScheduler::IsDueOnCityFall` says one is due. A fall
-	 * inside the least interval fires none and is not asked about again. Issue
-	 * #2380.
+	 * `UCataclysmSurgeScheduler::IsDueOnCityFall` says one is due, which since
+	 * the owner's ruling of 2026-11-24 (issue #2865) is every fall. From issue
+	 * #2380 until then a fall inside the least interval fired none.
 	 *
 	 * **A QUEST DUNGEON IS NOT ABSORBED**, since 2026-10-21, following the
 	 * simulation's rule of 2026-10-16. Each one standing on the city moves at

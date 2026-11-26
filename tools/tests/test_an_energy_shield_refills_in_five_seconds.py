@@ -16,9 +16,11 @@ all. The Ritualist's own took 38 seconds at level 100. Issue #1237.
 The automation test for the delay could not notice, because it writes both the
 shield and the rate by hand to have something to refill.
 
-THE RULE THIS HOLDS. Every source of maximum energy shield grants a fifth of what
-it gave as energy shield regeneration, so a shield refills in five seconds
-however it was built and whatever class is wearing it. Reading both numbers out
+THE RULE THIS HOLDS. Every item base and every class granting maximum energy
+shield grants about a fifth of it as energy shield regeneration, so a shield
+refills in about five seconds however it was built and whatever class is wearing
+it: 4.8 to 5.5 since issue #2883 made each implicit a whole number at +0. The flat
+affix pair is not held to it (ruled 2026-11-25); see its test below. Reading both numbers out
 of the data and dividing is what stops one moving without the other.
 """
 
@@ -29,6 +31,8 @@ import pathlib
 import sys
 
 import pytest
+
+from cataclysm_sim import affix_ranges
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "sim"))
@@ -41,6 +45,10 @@ REFILL_SECONDS = 5.0
 
 SHIELD = "max_energy_shield"
 REGEN = "energy_shield_regen"
+
+#: ABOUT FIVE SECONDS, since issue #2883 made each implicit a whole number at +0, rounded on its own: the four shield
+#: bases refill in 4.8 to 5.5 seconds. Ruled by the coordinating session on 2026-11-25; no data changed.
+ABOUT_FIVE = (4.8, 5.5)
 
 
 def rows(name: str) -> list[dict]:
@@ -73,6 +81,16 @@ def implicits(base: dict) -> dict[str, float]:
     return found
 
 
+def whole_implicits(base: dict) -> dict[str, int]:
+    """The whole +0 value of each implicit one item base grants, as {stat: value}."""
+    found = {}
+    for index in ("1", "2"):
+        stat = base.get(f"Implicit{index}Stat") or ""
+        if stat:
+            found[stat] = int(base[f"Implicit{index}AtZero"])
+    return found
+
+
 def test_every_base_granting_a_shield_also_grants_a_rate(bases) -> None:
     granting = [b for b in bases if SHIELD in implicits(b)]
     assert granting, "no item base grants maximum energy shield any more"
@@ -84,11 +102,21 @@ def test_every_base_granting_a_shield_also_grants_a_rate(bases) -> None:
             "no rate to refill it. A class with no energy shield regeneration "
             "of its own -- which is every class but the Ritualist -- would wear "
             "it and never see the shield come back. Issue #1237.")
+        # THE STATED +10 FIGURES KEEP EXACTLY A FIFTH, and the whole +0 values the game
+        # upgrades (issue #2883) keep it within their rounding: ABOUT FIVE SECONDS,
+        # 4.8 to 5.5, ruled 2026-11-25. Checked at +0 and +10.
         seconds = found[SHIELD] / found[REGEN]
         assert seconds == pytest.approx(REFILL_SECONDS), (
-            f"{base['Name']} grants {found[SHIELD]:g} maximum energy shield and "
+            f"{base['Name']} states {found[SHIELD]:g} maximum energy shield and "
             f"{found[REGEN]:g} a second, so its shield refills in "
             f"{seconds:.1f} seconds rather than {REFILL_SECONDS:.0f}.")
+        whole = whole_implicits(base)
+        for level in (0, 10):
+            seconds = (affix_ranges.upgraded(whole[SHIELD], level)
+                       / affix_ranges.upgraded(whole[REGEN], level))
+            assert ABOUT_FIVE[0] <= seconds <= ABOUT_FIVE[1], (
+                f"{base['Name']} at +{level} refills in {seconds:.2f} seconds, outside "
+                f"{ABOUT_FIVE[0]} to {ABOUT_FIVE[1]}")
 
 
 def test_no_base_grants_a_rate_without_a_shield(bases) -> None:
@@ -101,45 +129,29 @@ def test_no_base_grants_a_rate_without_a_shield(bases) -> None:
                 "energy shield.")
 
 
-def test_the_flat_affix_pair_refills_in_the_same_five_seconds(affixes) -> None:
-    """The affix granting a shield and the affix granting its rate.
+def test_the_flat_affix_pair_is_not_held_to_a_fifth_and_refills_as_it_rolls() -> None:
+    """The affix granting a shield and the affix granting its rate, since issue #2883.
 
-    They are two separate affixes and a character need not take both, so this is
-    not a rule about what any one item does. It keeps them in the same proportion
-    as every other source, so a character who takes both gets the same five
-    seconds however the two rolled.
-
-    THROUGH THE CURVE AND NOT OFF THE COLUMNS, at both ends of the ladder. A
-    floor stated on one and not the other would hold the proportion at the top
-    and break it at the bottom, which is what happened when the regeneration
-    affix was first added: five shield and 2.5 a second refills in two seconds.
+    THEY ARE TWO SEPARATE CHOICES AND NOT HELD TO A FIFTH: ruled by the coordinating session on 2026-11-25. Until then
+    this test held the pair to five seconds through the old curve (`affixes.affix_value` with Top Value and Floor), and
+    it went on passing against that retired curve after the game stopped using it. Under the approved whole-number
+    ranges a character taking both refills as the two roll, and one stacking regeneration refills well under five
+    seconds. The figures are pinned so that a later change to either range is seen.
     """
-    from cataclysm_sim import affixes as model
+    from cataclysm_sim import affix_ranges
 
-    shield = next(a for a in affixes
-                  if a["Stat"] == SHIELD and a["ValueKind"] == "flat")
-    regen = next(a for a in affixes
-                 if a["Stat"] == REGEN and a["ValueKind"] == "flat")
-
-    def value(row: dict, tier: int, roll: float, gear: int) -> float:
-        return model.affix_value(float(row["TopValue"]), tier, roll, gear,
-                                 float(row["Floor"]))
-
-    corners = (
-        (model.AFFIX_TIERS[0], 0.0, 0, "the worst roll on an un-upgraded piece"),
-        (model.AFFIX_TIERS[-1], 1.0, model.MAX_GEAR_LEVEL,
-         "a perfect top-tier roll on a fully upgraded piece"),
-        (4, 0.5, 5, "a middling roll in the middle of both ladders"),
+    shield = "Flat maximum energy shield"
+    regen = "Flat energy shield regeneration"
+    pinned = (
+        (1, 0.0, 0, 5, 1, 5.0),     # the worst roll on an un-upgraded piece
+        (1, 1.0, 0, 6, 2, 3.0),
+        (4, 0.5, 5, 20, 13, 20 / 13),
+        (7, 1.0, 10, 50, 35, 50 / 35),  # a perfect top-tier roll on a fully upgraded piece
     )
-    for tier, roll, gear, label in corners:
-        given = value(shield, tier, roll, gear)
-        rate = value(regen, tier, roll, gear)
-        seconds = given / rate
-        assert seconds == pytest.approx(REFILL_SECONDS), (
-            f"at {label} the flat maximum energy shield affix gives "
-            f"{given:.2f} and the flat energy shield regeneration affix gives "
-            f"{rate:.2f} a second, which refills in {seconds:.1f} seconds "
-            f"rather than {REFILL_SECONDS:.0f}.")
+    for tier, roll, gear, given, rate, seconds in pinned:
+        assert affix_ranges.value(shield, tier, roll, gear) == given, (tier, roll, gear)
+        assert affix_ranges.value(regen, tier, roll, gear) == rate, (tier, roll, gear)
+        assert given / rate == pytest.approx(seconds)
 
 
 def test_a_class_with_a_shield_refills_it_in_five_seconds(class_stats) -> None:
@@ -180,7 +192,7 @@ def test_a_class_with_a_shield_refills_it_in_five_seconds(class_stats) -> None:
 def test_the_design_document_states_the_rate() -> None:
     """It stated the delay and not the rate, which is how the rate went missing."""
     text = DESIGN.read_text(encoding="utf-8")
-    assert "refills at a fifth of its own maximum per second" in text, (
+    assert "refills at about a fifth of its own maximum per second" in text, (
         "the Energy Shield section of docs/Cataclysm_GDD_v2.md no longer states "
         "how fast a shield refills. It stated the three second delay and no "
         "rate for a long time, and the rate is what was missing from the game.")

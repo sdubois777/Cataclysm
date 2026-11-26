@@ -198,6 +198,11 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           # enemy ability could not sensibly state: nothing in the game buffs a
           # creature's allies. Issue #1182.
           "AllyIncreasedDamage",
+          # THE DAMAGE-TYPE AURAS' OWN, 2026-11-25: Pall of Ending's More, Conflagration's burn passing at a
+          # death, and Blood and Iron's four. Player rows only, as `AllyIncreasedDamage` is; listed so the two
+          # vocabularies stay one.
+          "AllyMoreDamage", "BurnPassesOnDeath", "EnemyArmourRemoved", "EnemyMovementSpeedReduced",
+          "AllyMovementSpeed", "AllyImmune",
           # `HealthFromHitTaken` joined on 2026-09-02 with Living Pyre,
           # "returns health equal to 25% of the damage that hit dealt". It is
           # the other half of the event `ScalingSource=HitTaken` reads. No

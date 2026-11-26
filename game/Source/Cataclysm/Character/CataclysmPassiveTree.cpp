@@ -31,6 +31,9 @@ namespace
 	TWeakObjectPtr<const UDataTable> CachedEdges;
 	TWeakObjectPtr<const UDataTable> CachedEffects;
 
+	/** See `UCataclysmPassiveTree::SetEffectTableForTests`. Unset in play, always. */
+	TWeakObjectPtr<const UDataTable> PassiveEffectTableSetForTests;
+
 	const UDataTable* LoadAndKeep(const TCHAR* Path,
 								  TWeakObjectPtr<const UDataTable>& Cache)
 	{
@@ -189,7 +192,17 @@ const UDataTable* UCataclysmPassiveTree::LoadEdgeTable()
 
 const UDataTable* UCataclysmPassiveTree::LoadEffectTable()
 {
+	// A TABLE A TEST SET WINS WHILE IT IS SET. See `SetEffectTableForTests`.
+	if (const UDataTable* ForTests = PassiveEffectTableSetForTests.Get())
+	{
+		return ForTests;
+	}
 	return LoadAndKeep(EffectAssetPath, CachedEffects);
+}
+
+void UCataclysmPassiveTree::SetEffectTableForTests(const UDataTable* Table)
+{
+	PassiveEffectTableSetForTests = Table;
 }
 
 TArray<FString> UCataclysmPassiveTree::TreeNames(const UDataTable* NodeTable)
@@ -369,7 +382,8 @@ TArray<FString> UCataclysmPassiveTree::OptionDescriptionsOf(
 }
 
 FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
-												  FName Node)
+												  FName Node,
+												  const UDataTable* EffectTable)
 {
 	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
 	if (!Row)
@@ -380,7 +394,8 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 	FString Text = Row->Description;
 	if (Row->Kind != CapstoneKind)
 	{
-		return Text;
+		// A NODE WITH NO ROW SAYS SO, when the caller hands over the table to ask. The War vow options' second slice.
+		return EffectTable && !HasEffectRows(EffectTable, Node) ? MarkedNotBuiltYet(Text) : Text;
 	}
 
 	// THE THREE NAMES ON THE SAME LINE, AND NOT WHAT THEY DO. Issue #1078. A
@@ -395,7 +410,9 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 		const int32 Index = Option - 1;
 		if (Names.IsValidIndex(Index) && !Names[Index].IsEmpty())
 		{
-			Offered.Add(FString::Printf(TEXT("%d %s"), Option, *Names[Index]));
+			// AND AN OPTION WITH NO ROW SAYS SO, beside its name. The War vow options' second slice, 2026-11-25.
+			const FString Named = FString::Printf(TEXT("%d %s"), Option, *Names[Index]);
+			Offered.Add(EffectTable && !HasEffectRows(EffectTable, Node, Option) ? MarkedNotBuiltYet(Named) : Named);
 		}
 	}
 
@@ -409,7 +426,8 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 }
 
 FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
-												 FName Node)
+												 FName Node,
+												 const UDataTable* EffectTable)
 {
 	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
 	if (!Row)
@@ -421,8 +439,9 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 	if (Row->Kind != CapstoneKind)
 	{
 		// EVERY ORDINARY NODE SAYS WHAT IT DOES IN ITS OWN DESCRIPTION, which is
-		// what this screen has always shown.
-		return Text;
+		// what this screen has always shown, and since 2026-11-25 that it does
+		// nothing when it has no row.
+		return EffectTable && !HasEffectRows(EffectTable, Node) ? MarkedNotBuiltYet(Text) : Text;
 	}
 
 	// A CAPSTONE'S DOES NOT. Issue #1076. "Unlocks at 25 points spent. Choose
@@ -436,13 +455,17 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 		const int32 Index = Option - 1;
 		if (!Names.IsValidIndex(Index) || Names[Index].IsEmpty())
 		{
-			// NOTHING IS WRITTEN FOR THIS ONE. The Saboteur's four capstones
-			// name no option at all, issue #935, and printing an empty heading
-			// would suggest there is something to read.
+			// NOTHING IS WRITTEN FOR THIS ONE. A capstone may name no option at
+			// all, as the Saboteur's four did until their options were written on
+			// 2026-11-25 (issue #935), and printing an empty heading would suggest
+			// there is something to read.
 			continue;
 		}
 
-		Text += FString::Printf(TEXT("\n\n%d  %s"), Option, *Names[Index]);
+		// THE HEADING MARKED WHEN THE OPTION HAS NO ROW. The War vow options' second slice, 2026-11-25.
+		const FString Named = FString::Printf(TEXT("%d  %s"), Option, *Names[Index]);
+		Text += TEXT("\n\n");
+		Text += EffectTable && !HasEffectRows(EffectTable, Node, Option) ? MarkedNotBuiltYet(Named) : Named;
 
 		// A NAMED OPTION WITH NO DESCRIPTION SAYS SO. It cannot happen in the
 		// six trees today and the alternative is a name followed by nothing,
@@ -455,6 +478,32 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 	}
 
 	return Text;
+}
+
+bool UCataclysmPassiveTree::HasEffectRows(const UDataTable* EffectTable, FName Node, int32 Option)
+{
+	if (!EffectTable)
+	{
+		return false;
+	}
+
+	// THE TABLE WALKED ONCE, STOPPING AT THE FIRST ROW, rather than `EffectsFor`, which builds and sorts a map of every
+	// node to answer for one. The screen asks this for every node it draws.
+	const FString Wanted = Node.ToString();
+	for (const TPair<FName, uint8*>& Each : EffectTable->GetRowMap())
+	{
+		const FCataclysmPassiveEffectRow* Effect = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Each.Value);
+		if (Effect && Effect->Option == Option && Effect->Node == Wanted)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FString UCataclysmPassiveTree::MarkedNotBuiltYet(const FString& Name)
+{
+	return FString::Printf(TEXT("%s (not built yet: it does nothing)"), *Name);
 }
 
 FString UCataclysmPassiveTree::RefusalForSpending(
@@ -509,9 +558,10 @@ FString UCataclysmPassiveTree::RefusalForSpending(
 				*Row->NodeName, Row->Threshold, *Row->Tree, Spent);
 		}
 
-		// THE SABOTEUR'S FOUR OFFER NONE, and its own descriptions say to choose
-		// one of three. Taking a capstone that offers nothing would spend a
-		// point on a choice that was never written. Issue #935.
+		// A CAPSTONE MAY OFFER NONE, as the Saboteur's four did until their options
+		// were written on 2026-11-25, while their descriptions said to choose one
+		// of three. Taking a capstone that offers nothing would spend a point on a
+		// choice that was never written. Issue #935.
 		const TArray<FString> Options = OptionNamesOf(*Row);
 		const bool bAnyOption = Options.ContainsByPredicate(
 			[](const FString& Name) { return !Name.IsEmpty(); });
@@ -659,9 +709,10 @@ bool UCataclysmPassiveTree::AwaitsAnOptionChoice(
 		return false;
 	}
 
-	// AND IT HAS TO HAVE SOMETHING TO OFFER. The Saboteur's four capstones name
-	// no options at all, issue #935, and announcing a decision nobody wrote
-	// would send a player looking for three names that do not exist.
+	// AND IT HAS TO HAVE SOMETHING TO OFFER. A capstone may name no options at
+	// all, as the Saboteur's four did until 2026-11-25 (issue #935), and
+	// announcing a decision nobody wrote would send a player looking for three
+	// names that do not exist.
 	const TArray<FString> Options = OptionNamesOf(*Row);
 	return Options.ContainsByPredicate(
 		[](const FString& Name) { return !Name.IsEmpty(); });
@@ -835,115 +886,286 @@ TArray<const FCataclysmPassiveEffectRow*> UCataclysmPassiveTree::EffectsFor(
 	return {};
 }
 
+namespace
+{
+	/**
+	 * Every effect row a passive allocation counts, with how many times its value is paid at the points its node
+	 * holds.
+	 *
+	 * THE WALK `UCataclysmPassiveTree::AccumulateInto` AND `UCataclysmPassiveTree::EnchantmentRowsFor` SHARE, so the
+	 * two make the same choices about the same nodes. The passive row port of 2026-11-24. The walk and its reasons
+	 * are `AccumulateInto`'s, moved here unchanged apart from `PointsPaid`, which now holds the threshold rule.
+	 */
+	void ForEachCountedPassiveEffectRow(
+		const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable, const UDataTable* EffectTable,
+		const TArray<FName>& DamageTypes,
+		const TFunctionRef<void(const FCataclysmPassiveEffectRow& Effect, FName Node, int32 Paid)>& Visit)
+	{
+		if (!NodeTable || !EffectTable)
+		{
+			return;
+		}
+
+		// WHICH TREES ARE DOING ANYTHING, ASKED ONCE. A character can have points in
+		// several trees and the answer is the same for every node of a tree, so asking
+		// per node would be the same question once for every node held.
+		TMap<FString, bool> TreeIsOn;
+
+		// EVERY EFFECT ROW GROUPED BY THE NODE IT IS ABOUT, BUILT ONCE. Issue #953.
+		//
+		// A KEYED LOOKUP CANNOT DO THIS ANY MORE. Until #953 the DataTable's row name
+		// WAS the node name, so one FindRow answered the question. A node may now
+		// have several rows -- the Masochist's starting node grants three Fervour
+		// rates -- so the row names carry a `#1` suffix and the node is a column.
+		// The table is read in full once here rather than scanned once per spent
+		// node, which a character can have 230 of.
+		const TMap<FName, TArray<const FCataclysmPassiveEffectRow*>> EffectsForNode =
+			UCataclysmPassiveTree::EffectsByNode(EffectTable);
+
+		for (const FCataclysmSpentNode& Spent : Allocation.Nodes)
+		{
+			if (Spent.Points <= 0)
+			{
+				continue;
+			}
+
+			const FCataclysmPassiveNodeRow* Node = UCataclysmPassiveTree::FindNode(NodeTable, Spent.Node);
+			if (!Node)
+			{
+				// A NODE THE TABLE NO LONGER HAS. A saved allocation can name one
+				// after a tree is re-authored, and skipping it is the only safe
+				// answer: the points stay in the record and grant nothing.
+				continue;
+			}
+
+			bool* Known = TreeIsOn.Find(Node->Tree);
+			if (!Known)
+			{
+				Known = &TreeIsOn.Add(Node->Tree,
+									  UCataclysmPassiveTree::TreeIsActive(Node->Tree, DamageTypes));
+			}
+			if (!*Known)
+			{
+				// THE PROJECT OWNER'S RULE OF 2026-08-25, doing its work. Points in
+				// a tree no equipped weapon reaches stay spent and grant nothing
+				// until a weapon carrying its damage type is worn again.
+				continue;
+			}
+
+			const TArray<const FCataclysmPassiveEffectRow*>* Effects = EffectsForNode.Find(Spent.Node);
+			if (!Effects)
+			{
+				// MOST NODES ARE HERE AND IT IS NOT A FAULT. A minority of the 293
+				// have an authored effect; the rest are rule changes, resource
+				// generation and behaviour that is not a stat modifier under any
+				// authoring scheme. Issue #939.
+				continue;
+			}
+
+			// WHICH OF A CAPSTONE'S THREE OPTIONS THIS CHARACTER TOOK. Issue #1029.
+			// Read once per node rather than per row, because the answer is the same
+			// for every row of a node. Zero for every node that is not a capstone,
+			// and for a capstone whose choice has not been made yet.
+			const int32 ChosenOption = Allocation.ChosenOptionIn(Spent.Node);
+
+			// ALL OF THEM, NOT THE FIRST. A node granting two stats grants both.
+			for (const FCataclysmPassiveEffectRow* Effect : *Effects)
+			{
+				// A ROW BELONGING TO AN OPTION APPLIES ONLY IF THAT OPTION WAS
+				// TAKEN. Issue #1029. A capstone offers three choices and the player
+				// keeps one for ever, so the rows for the two not taken must grant
+				// nothing.
+				//
+				// AND A CAPSTONE WITH NO CHOICE MADE YET GRANTS NOTHING, which falls
+				// out of the same comparison rather than needing a case of its own:
+				// `ChosenOptionIn` answers 0 for such a node, and 0 is also what a
+				// row that is not an option carries, so no option row can match it.
+				//
+				// A ROW WITH NO OPTION ALWAYS APPLIES, which is every row in the
+				// trees but the capstones'. That is the branch this check has
+				// to leave alone, and the one the test for it asserts first.
+				if (Effect->Option != 0 && Effect->Option != ChosenOption)
+				{
+					continue;
+				}
+
+				// AN "AT N POINTS" ROW GRANTS NOTHING BELOW ITS THRESHOLD. Issue
+				// #1755. How much it grants from there is `PointsPaid`'s answer.
+				const int32 Paid = UCataclysmPassiveTree::PointsPaid(*Effect, Spent.Points);
+				if (Paid <= 0)
+				{
+					continue;
+				}
+
+				Visit(*Effect, Spent.Node, Paid);
+			}
+		}
+	}
+}
+
+bool UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(const FCataclysmPassiveEffectRow& Effect)
+{
+	if (!Effect.Action.IsEmpty())
+	{
+		return true;
+	}
+
+	// BY THE PIPELINE'S OWN READING OF THE NAME, so a spelling the pipeline accepts is classed the way it will be
+	// built. A scale this build does not know is left to `AccumulateInto`, which makes it worth nothing.
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+	return !Effect.Scale.IsEmpty()
+		&& UCataclysmStatPipeline::ScaleNamed(Effect.Scale, Scale)
+		&& (Scale == ECataclysmStatScale::PerOwnStack || Scale == ECataclysmStatScale::PerConsecutiveHit);
+}
+
+int32 UCataclysmPassiveTree::PointsPaid(const FCataclysmPassiveEffectRow& Effect, int32 Points)
+{
+	if (Points <= 0)
+	{
+		return 0;
+	}
+
+	// AT OR PAST ITS UPPER LIMIT: NOTHING. The Saboteur's rows of 2026-11-25 (`MaxPoints`, exclusive): Durable
+	// Modifications' 3% a point above 50% Fervour stops at 4 points, where its 6% a point begins.
+	if (Effect.MaxPoints > 0 && Points >= Effect.MaxPoints)
+	{
+		return 0;
+	}
+
+	// NO THRESHOLD: EVERY POINT, which is what "per point" means in every description that has one.
+	if (Effect.MinPoints <= 0)
+	{
+		return Points;
+	}
+
+	// BELOW THE THRESHOLD: NOTHING. Issue #1755.
+	if (Points < Effect.MinPoints)
+	{
+		return 0;
+	}
+
+	// FROM IT: ONCE, OR ONCE FOR EVERY POINT FROM `PerPointFrom` ON. The generator keeps `PerPointFrom` at or below
+	// `MinPoints`, so at the threshold this is at least one; the floor at nought is for a hand-edited table.
+	return Effect.PerPointFrom > 0 ? FMath::Max(0, Points - Effect.PerPointFrom + 1) : 1;
+}
+
+const TCHAR* UCataclysmPassiveTree::PassiveEnchantmentPrefix = TEXT("Passive_");
+
+FString UCataclysmPassiveTree::EnchantmentNameFor(FName Node, int32 Option)
+{
+	return Option > 0
+		? FString::Printf(TEXT("%s%s_Option%d"), PassiveEnchantmentPrefix, *Node.ToString(), Option)
+		: FString::Printf(TEXT("%s%s"), PassiveEnchantmentPrefix, *Node.ToString());
+}
+
+TArray<FCataclysmEnchantmentEffectRow> UCataclysmPassiveTree::EnchantmentRowsFor(
+	const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable,
+	const UDataTable* EffectTable, const TArray<FName>& DamageTypes)
+{
+	TArray<FCataclysmEnchantmentEffectRow> Rows;
+	// HOW MANY ACTION ROWS OF ONE NODE, OPTION, ACTION, EVENT AND THRESHOLD HAVE BEEN COPIED, for the name below.
+	TMap<FString, int32> ActionRowsSeen;
+	ForEachCountedPassiveEffectRow(
+		Allocation, NodeTable, EffectTable, DamageTypes,
+		[&Rows, &ActionRowsSeen](const FCataclysmPassiveEffectRow& Effect, FName Node, int32 Paid)
+		{
+			if (!UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(Effect))
+			{
+				return;
+			}
+
+			FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
+			Row.Enchantment = UCataclysmPassiveTree::EnchantmentNameFor(Node, Effect.Option);
+			// AN ACTION ROW GRANTED FROM A POINT THRESHOLD IS KEYED APART, so "1 second for every 4 points" can be one row
+			// at 4 points and another at 8 that each act: an action row's trigger, reset and charge keys begin with this
+			// name, and two rows sharing one would share one key. The Death trees' slice C6a (2026-11-25): Find the
+			// Rhythm, Sidestep and Keep the Count. Stat rows sum and need no such key; no stat row is renamed.
+			if (!Effect.Action.IsEmpty() && Effect.MinPoints > 0)
+			{
+				Row.Enchantment += FString::Printf(TEXT("_From%d"), Effect.MinPoints);
+			}
+			// AND A SECOND ACTION ROW OF ONE NODE ON THE SAME ACTION AND EVENT IS KEYED APART TOO, as `_Row2`, so it keeps
+			// its own trigger cooldown and count. The Death trees' slice C6b3 (2026-11-25): Opening Found's "1 Fervour
+			// per point, or 2 per point if the attacker is Elite or stronger" is 1 always and 1 more for an Elite's
+			// attack, both on `dodge`. The generator accepts two such rows only under different conditions, and they come
+			// in the table's order, so the name is the same at every allocation.
+			if (!Effect.Action.IsEmpty())
+			{
+				const int32 Seen = ++ActionRowsSeen.FindOrAdd(Row.Enchantment + TEXT(":") + Effect.Action + TEXT(":")
+															   + Effect.ActionEvent);
+				if (Seen > 1)
+				{
+					Row.Enchantment += FString::Printf(TEXT("_Row%d"), Seen);
+				}
+			}
+			Row.Stat = Effect.Stat;
+			Row.ValueKind = Effect.ValueKind;
+
+			// THE VALUE AT THESE POINTS, AT BOTH ENDS OF THE RANGE, so the builder's roll (the set rows' 1, for rows
+			// handed to it this way) gives it whatever it is.
+			Row.ValueLow = Effect.ValuePerPoint * static_cast<float>(Paid);
+			Row.ValueHigh = Row.ValueLow;
+
+			Row.RequiredTags = Effect.RequiredTags;
+			Row.Condition = Effect.Condition;
+			Row.ConditionValue = Effect.ConditionValue;
+			Row.Scale = Effect.Scale;
+			Row.ScaleStep = Effect.ScaleStep;
+			Row.Action = Effect.Action;
+			Row.ActionEvent = Effect.ActionEvent;
+			Row.FractionOf = Effect.FractionOf;
+			Row.ScaleMaxSteps = Effect.ScaleMaxSteps;
+			Row.StackSeconds = Effect.StackSeconds;
+			Row.ScaleOffset = Effect.ScaleOffset;
+			Row.EverySeconds = Effect.EverySeconds;
+			Row.EveryNth = Effect.EveryNth;
+			Row.Condition2 = Effect.Condition2;
+			Row.ConditionValue2 = Effect.ConditionValue2;
+			Row.TriggerCooldown = Effect.TriggerCooldown;
+			Row.EventValue = Effect.EventValue;
+			Row.Ailment = Effect.Ailment;
+			Row.DamageShare = Effect.DamageShare;
+
+			// A ROW WITH A CHANCE IS PAID PER POINT IN ITS CHANCE AND NOT IN ITS AMOUNT. The Death trees' slice C6b3
+			// (2026-11-25), Tear Loose: "a 2% chance per point to give you 1 Fervour" pays 1 on a chance of 2 for each
+			// point. Held at 100, a chance that cannot be exceeded.
+			if (Effect.ChancePercent > 0.0f)
+			{
+				Row.ChancePercent = FMath::Min(100.0f, Effect.ChancePercent * static_cast<float>(Paid));
+				Row.ValueLow = Effect.ValuePerPoint;
+				Row.ValueHigh = Row.ValueLow;
+			}
+		});
+	return Rows;
+}
+
 int32 UCataclysmPassiveTree::AccumulateInto(
 	TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
 	const FCataclysmPassiveAllocation& Allocation, const UDataTable* NodeTable,
 	const UDataTable* EffectTable, const TArray<FName>& DamageTypes)
 {
-	if (!NodeTable || !EffectTable)
-	{
-		return 0;
-	}
-
-	// WHICH TREES ARE DOING ANYTHING, ASKED ONCE. A character can have points in
-	// several trees and the answer is the same for every node of a tree, so asking
-	// per node would be the same question once for every node held.
-	TMap<FString, bool> TreeIsOn;
-
-	// EVERY EFFECT ROW GROUPED BY THE NODE IT IS ABOUT, BUILT ONCE. Issue #953.
-	//
-	// A KEYED LOOKUP CANNOT DO THIS ANY MORE. Until #953 the DataTable's row name
-	// WAS the node name, so one FindRow answered the question. A node may now
-	// have several rows -- the Masochist's starting node grants three Fervour
-	// rates -- so the row names carry a `#1` suffix and the node is a column.
-	// The table is read in full once here rather than scanned once per spent
-	// node, which a character can have 230 of.
-	const TMap<FName, TArray<const FCataclysmPassiveEffectRow*>> EffectsForNode =
-		EffectsByNode(EffectTable);
-
 	int32 Added = 0;
-	for (const FCataclysmSpentNode& Spent : Allocation.Nodes)
-	{
-		if (Spent.Points <= 0)
+	ForEachCountedPassiveEffectRow(
+		Allocation, NodeTable, EffectTable, DamageTypes,
+		[&Totals, &Added](const FCataclysmPassiveEffectRow& Row, FName, int32 Paid)
 		{
-			continue;
-		}
+			const FCataclysmPassiveEffectRow* Effect = &Row;
 
-		const FCataclysmPassiveNodeRow* Node = FindNode(NodeTable, Spent.Node);
-		if (!Node)
-		{
-			// A NODE THE TABLE NO LONGER HAS. A saved allocation can name one
-			// after a tree is re-authored, and skipping it is the only safe
-			// answer: the points stay in the record and grant nothing.
-			continue;
-		}
-
-		bool* Known = TreeIsOn.Find(Node->Tree);
-		if (!Known)
-		{
-			Known = &TreeIsOn.Add(Node->Tree,
-								  TreeIsActive(Node->Tree, DamageTypes));
-		}
-		if (!*Known)
-		{
-			// THE PROJECT OWNER'S RULE OF 2026-08-25, doing its work. Points in
-			// a tree no equipped weapon reaches stay spent and grant nothing
-			// until a weapon carrying its damage type is worn again.
-			continue;
-		}
-
-		const TArray<const FCataclysmPassiveEffectRow*>* Effects =
-			EffectsForNode.Find(Spent.Node);
-		if (!Effects)
-		{
-			// MOST NODES ARE HERE AND IT IS NOT A FAULT. A minority of the 293
-			// have an authored effect; the rest are rule changes, resource
-			// generation and behaviour that is not a stat modifier under any
-			// authoring scheme. Issue #939.
-			continue;
-		}
-
-		// WHICH OF A CAPSTONE'S THREE OPTIONS THIS CHARACTER TOOK. Issue #1029.
-		// Read once per node rather than per row, because the answer is the same
-		// for every row of a node. Zero for every node that is not a capstone,
-		// and for a capstone whose choice has not been made yet.
-		const int32 ChosenOption = Allocation.ChosenOptionIn(Spent.Node);
-
-		// ALL OF THEM, NOT THE FIRST. A node granting two stats grants both.
-		for (const FCataclysmPassiveEffectRow* Effect : *Effects)
-		{
-			// A ROW BELONGING TO AN OPTION APPLIES ONLY IF THAT OPTION WAS
-			// TAKEN. Issue #1029. A capstone offers three choices and the player
-			// keeps one for ever, so the rows for the two not taken must grant
-			// nothing.
-			//
-			// AND A CAPSTONE WITH NO CHOICE MADE YET GRANTS NOTHING, which falls
-			// out of the same comparison rather than needing a case of its own:
-			// `ChosenOptionIn` answers 0 for such a node, and 0 is also what a
-			// row that is not an option carries, so no option row can match it.
-			//
-			// A ROW WITH NO OPTION ALWAYS APPLIES, which is every row in the
-			// trees but the capstones'. That is the branch this check has
-			// to leave alone, and the one the test for it asserts first.
-			if (Effect->Option != 0 && Effect->Option != ChosenOption)
+			// A ROW THAT ACTS ON AN EVENT, OR COUNTS WHAT AN EVENT GRANTS, IS NOT A MODIFIER MADE HERE. The passive row
+			// port of 2026-11-24. `EnchantmentRowsFor` copies it and the enchantment rows' builder makes both its
+			// action and, for an own stack, its modifier, so the two carry one key.
+			if (UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(*Effect))
 			{
-				continue;
-			}
-
-			// AN "AT N POINTS" ROW APPLIES FROM N POINTS, AND ONCE. Issue #1755.
-			// Below its threshold it grants nothing; from it, its value whole
-			// rather than times the points, so eight points in Scarred Plate
-			// grant its 5 crowd control resistance and not 10.
-			if (Effect->MinPoints > 0 && Spent.Points < Effect->MinPoints)
-			{
-				continue;
+				return;
 			}
 
 			FCataclysmStatModifier Modifier;
 			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
-			Modifier.Value = Effect->MinPoints > 0
-				? Effect->ValuePerPoint
-				: Effect->ValuePerPoint * Spent.Points;
+
+			// AN "AT N POINTS" ROW APPLIES FROM N POINTS, AND ONCE. Issue #1755. So eight points in Scarred Plate
+			// grant its 5 crowd control resistance and not 10. UNLESS THE ROW IS PAID PER POINT FROM A POINT ON, the
+			// passive row port of 2026-11-24. `PointsPaid` holds all three rules.
+			Modifier.Value = Effect->ValuePerPoint * static_cast<float>(Paid);
 
 			if (Effect->ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
 			{
@@ -1004,7 +1226,7 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 								"condition at all. Regenerate "
 								"game/Data/PassiveEffects.csv from the workbook."),
 						   *Effect->Node, *Effect->Condition);
-					continue;
+					return;
 				}
 
 				// AND THE NUMBER IT COMPARES, FOR THE PREDICATES THAT COMPARE
@@ -1020,6 +1242,29 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 						Modifier.Condition))
 				{
 					Modifier.ConditionValue = Effect->ConditionValue;
+				}
+			}
+
+			// AND A SECOND STATE, WHICH MUST HOLD AS WELL. The passive row port of 2026-11-24, by the rule the
+			// enchantment rows have kept since issue #1833: both conditions must hold, the literal reading of a
+			// sentence naming two. Read as the first is, so an unknown name grants nothing here too.
+			if (!Effect->Condition2.IsEmpty())
+			{
+				if (!UCataclysmStatPipeline::ConditionNamed(Effect->Condition2,
+															Modifier.Condition2))
+				{
+					UE_LOG(LogCataclysm, Warning,
+						   TEXT("Passive node '%s' names the second condition '%s', "
+								"which this build does not know. The row granted "
+								"nothing. Regenerate game/Data/PassiveEffects.csv "
+								"from the workbook."),
+						   *Effect->Node, *Effect->Condition2);
+					return;
+				}
+				if (UCataclysmStatPipeline::ConditionTakesAValue(
+						Modifier.Condition2))
+				{
+					Modifier.ConditionValue2 = Effect->ConditionValue2;
 				}
 			}
 
@@ -1054,6 +1299,18 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 													   Modifier.Scale))
 				{
 					Modifier.ScaleStep = Effect->ScaleStep;
+
+					// AND ITS CAP, IF THE ROW STATES ONE. The demonic tree
+					// rework of 2026-11-24: Wall of Servants' "up to 20%
+					// less" is 20 steps. Only on a scale this build knows, so
+					// a cap never lands on a modifier left at nothing below;
+					// never below nought, which means no cap.
+					Modifier.ScaleMaxSteps = FMath::Max(0, Effect->ScaleMaxSteps);
+
+					// AND HOW MUCH OF THE READING IS NOT COUNTED, IF THE ROW STATES ANY. The passive row port of
+					// 2026-11-24, as the enchantment rows have had since issue #1686: "for every 1,000 maximum health
+					// above 10,000" is 10,000. Only on a scale this build knows, as the cap is.
+					Modifier.ScaleOffset = Effect->ScaleOffset;
 				}
 				else
 				{
@@ -1079,12 +1336,16 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			// A ROW THAT COUNTS NOTHING CARRIES -1 AND IS LEFT AT -1, which is
 			// what `FCataclysmStatModifier` already defaults to, so this line
 			// changes nothing for the rows that do not count enemies.
+			//
+			// AND A THIRD READER SINCE THE DEATH TREES' SLICE C4c2 (2026-11-25):
+			// Grim Wake's rows under `target_near_your_kill_within_seconds`
+			// carry the radius around a kill's body that
+			// `UCataclysmFervour::MarkNearAKill` marks within.
 			Modifier.ReachMetres = Effect->ReachMetres;
 
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
 			++Added;
-		}
-	}
+		});
 
 	return Added;
 }

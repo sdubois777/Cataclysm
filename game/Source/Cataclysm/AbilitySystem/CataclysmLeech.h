@@ -191,6 +191,18 @@ public:
 								float DamageDealt);
 
 	/**
+	 * A minion's or a thrall's blow took this much from its target: its commander leeches the share its
+	 * `minion_damage_leeched_to_you_percent` names, as health, paid over the commander's own leech time as a life leech
+	 * payment is. Shared Leech, "At 8 points: 1% of the damage your minions deal is leeched to you as health", the Death
+	 * trees' slice C6d2 (2026-11-25). Nothing for a dealer that answers to nobody, or a commander with no such row.
+	 * Called beside `NoteHit` with the same figure, what got through, so overkill does not count here either.
+	 */
+	static void NoteMinionHit(UAbilitySystemComponent* Dealer, float DamageTaken);
+
+	/** The stat Shared Leech states: the per cent of a minion's damage its commander leeches as health. */
+	static constexpr const TCHAR* MinionDamageLeechedStat = TEXT("minion_damage_leeched_to_you_percent");
+
+	/**
 	 * Pay one step of every outstanding payment into its pool.
 	 *
 	 * NOTHING FOR THE DEAD, and nothing when a pool is already full, both for

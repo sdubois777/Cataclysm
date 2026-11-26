@@ -293,6 +293,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmSkillTemplate::MeleeReachBonusCm for the swing and for the
 		// basic attack's walk into reach. Issue #1515, the Overreach keystone.
 		TEXT("melee_reach_metres"),
+		// Flat centimetres of reach on a melee strike, read by the same
+		// function and added to the metres. The reach enchantment's stat since
+		// issue #2883 (D8), so its roll is a whole number.
+		TEXT("melee_reach_centimetres"),
 		// The seconds between replacements, read by
 		// UCataclysmSummonSkill::ReplaceLost after a commanded death: above zero
 		// means the keystone is held. Press-Ganged replaces a minion or thrall
@@ -338,6 +342,24 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// 2026-10-09. Neither has a gameplay attribute or a base.
 		TEXT("healing_skill_health_restored"),
 		TEXT("healing_skill_health_as_energy_shield"),
+		// FIVE MASOCHIST FIGURES FROM THE TREE REWORK THE PROJECT OWNER APPROVED
+		// ON 2026-11-24, none with a gameplay attribute or a base:
+		// Sanguine Ledger's floor, read by UCataclysmFervour::FloorAgainstHealing
+		// when healing removes Fervour ("Healing never takes your Fervour below
+		// 50");
+		TEXT("fervour_floor_against_healing"),
+		// Vessel of Plagues' switch, read by UCataclysmDebuffs::CountsTwiceOn for
+		// the pipeline's count of debuffs carried ("each debuff on you counts
+		// twice");
+		TEXT("debuffs_carried_count_twice"),
+		// Stigmata's switch, read by UCataclysmStigmata::AfterSettingAlight when
+		// its holder sets an enemy alight ("you are set alight as well");
+		TEXT("burn_self_on_burning_an_enemy"),
+		// Unstable Aura's share of weapon damage, read by UCataclysmNova::Step;
+		TEXT("nova_damage_of_weapon_damage"),
+		// and Carnivore's extra seconds of Carnage, read by
+		// UCataclysmStacks::CarnageExtraSeconds when a Carnage stack is granted.
+		TEXT("carnage_stack_seconds"),
 		// Above nought, applying a damage over time effect refreshes the
 		// applier's others on that target, read by UCataclysmSkillEffects where
 		// one is applied. Ruled 2026-10-06: Plague Doctor's six-piece bonus.
@@ -447,12 +469,20 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Set Stance's "cannot be knocked back", above zero meaning held, read
 		// by UCataclysmSkillEffects::ApplyKnockback. Issue #1755.
 		TEXT("knockback_suppressed"),
+		// Unstoppable's "cannot be rooted", a pin counted as the root, above zero
+		// meaning held, read by UCataclysmSkillEffects::ApplyPin. The War vow
+		// options' second slice, 2026-11-25.
+		TEXT("pin_suppressed"),
 		// The block's two figures, read in UCataclysmDamageCalculation::Resolve
 		// at the block step: the share a block removes, on a base of 50 that
 		// `EngineSuppliedBases` states, and the chance it removes all of the hit.
 		// Issue #1833 group E part 2.
 		TEXT("block_damage_reduction"),
 		TEXT("block_negation_chance"),
+		// The Unbreakable Wall's flag: every block negates the whole hit, read in
+		// UCataclysmDamageCalculation's block step. The owner's ruling of
+		// 2026-11-25. No gameplay attribute and no base.
+		TEXT("every_block_negates"),
 		// The two chances a defender rolls against an incoming blow, in
 		// UCataclysmVitalAttributeSet beside the no-damage window: a spell
 		// absorbed, and a melee hit reflected whole as retaliation. Ruled
@@ -477,6 +507,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("cripple_and_weaken_duration"),
 		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
 		TEXT("minion_attack_speed"),
+		// And the Necromancer's Hasty Dead, Grave Pact and Ringed in Bone, the Death trees' slice C6d1: a commanded
+		// follower's walk speed (UCataclysmCommand), what a commanded defender takes of a blow
+		// (UCataclysmDamageCalculation), and whether the character is immune to slows
+		// (UCataclysmSkillTemplate::IsImmuneTo). No attribute and no base.
+		TEXT("minion_movement_speed"),
+		TEXT("minion_damage_taken"),
+		TEXT("immune_to_slow"),
 		// Whether a minion explodes when it dies, read by
 		// ACataclysmMinion::HandleDeath. A flag: a row sets it to one.
 		TEXT("minion_explodes_on_death"),
@@ -730,6 +767,47 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// "Retaliation damage cannot be reduced or mitigated by the attacker". A
 		// flag. No gameplay attribute and no base.
 		TEXT("retaliation_cannot_be_mitigated"),
+		// Blood Oath's resistance points a retaliation blow ignores, read with
+		// the attacker's penetration in UCataclysmVitalAttributeSet for a blow
+		// stamped as retaliation; and Spiteful Guard's flag, read by
+		// UCataclysmAbilitySystemComponent::NoteBlockedDamageForRetaliation. The
+		// War vow options' second slice, V2b, 2026-11-25. No gameplay attribute
+		// and no base.
+		TEXT("retaliation_penetration"),
+		TEXT("blocked_damage_added_to_next_retaliation"),
+		// Absorb and Return's share for a big hit, read by UCataclysmRetaliation::AmountFor while a big hit is paid
+		// for; and Eternal Hunger's cap and decay, read by UCataclysmAbilitySystemComponent::NoteLeechHealed and
+		// DecayLeechAbsorb. The War vow options' third slice, V3a, 2026-11-25. No gameplay attribute and no base.
+		TEXT("retaliation_for_big_hits"),
+		TEXT("leech_overheal_absorb_percent_of_maximum_health"),
+		TEXT("leech_overheal_absorb_decay_percent_per_second"),
+		// Colossus Eternal's save above a share of health, read by UCataclysmVitalAttributeSet at a lethal hit, and its
+		// flag doubling the increases to maximum health, read by ApplyTo below. V3b, 2026-11-25. No gameplay attribute.
+		TEXT("lethal_hit_survived_above_health"),
+		TEXT("max_health_increases_count_twice"),
+		// Magnum Opus's flag, read by ACataclysmMinion::EldestGadgetCastsEverySkillFor at each skill use. V4b,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("eldest_gadget_casts_every_skill"),
+		// Creeping Mines's speed and reach, read by ACataclysmMinion::TrapCreepCmPerSecondFor and TrapCreepReachCmFor;
+		// Lightning Rod's chance for each device, read by UCataclysmAbilitySystemComponent::BlowToDeviceChanceFor. V5a,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("trap_creep_metres_per_second"),
+		TEXT("trap_creep_reach_metres"),
+		TEXT("blow_to_device_chance_per_device"),
+		// Cat's Cradle's reach, pin and seconds between pins, read by ACataclysmMinion::DeviceWireReachCmFor,
+		// DeviceWirePinSecondsFor and DeviceWireRepinSecondsFor at the player's step. V5b2, 2026-11-25. No gameplay
+		// attribute.
+		TEXT("device_wire_reach_metres"),
+		TEXT("device_wire_pin_seconds"),
+		TEXT("device_wire_repin_seconds"),
+		// Walking Arsenal's reach, read by ACataclysmMinion::GadgetFollowWithinCmFor at a gadget's step. V5b3,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("gadget_follow_within_metres"),
+		// Bolted Together's reach and its "more" for each gadget, read by ACataclysmMinion::GadgetBoltReachCmFor at a
+		// gadget's placing and move and by BoltedMorePercentPerGadgetFor at its firing. V5c, 2026-11-25. No gameplay
+		// attribute.
+		TEXT("gadget_bolt_reach_metres"),
+		TEXT("bolted_more_percent_per_gadget"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on
@@ -993,6 +1071,20 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// ACataclysmMinion::SkillTrapsDoNotExpireFor. No gameplay attribute and no
 		// base. (M1's trap cap bonus went with the cap, issue #2787.)
 		TEXT("traps_do_not_expire"),
+		// THE SABOTEUR'S TRAP TIMING, ruled by the coordinating session on 2026-11-25 (the C1 plan): Hair Trigger's
+		// instant arming, Delayed Fuse's extra second and Volatile Casing's seconds less for each other trap, read
+		// off the player with the trap's type tags by ACataclysmMinion::SkillTrapArmingSecondsFor; and Delayed
+		// Fuse's flag sparing a trap still arming, read with Type.Trap by ACataclysmMinion::SetOffSkillTrapsNear.
+		// No gameplay attribute and no base.
+		TEXT("traps_arm_instantly"),
+		TEXT("trap_arming_seconds_added"),
+		TEXT("trap_arming_seconds_less_per_other_trap"),
+		TEXT("traps_not_set_off_while_arming"),
+		// THIN AIR, ruled by the coordinating session on 2026-11-25 (the C5 plan): the flag and the seconds a landed
+		// blow breaks it for, read off the player with no tags by
+		// UCataclysmAbilitySystemComponent::IsHiddenByThinAir. No gameplay attribute and no base.
+		TEXT("cannot_be_targeted_while_moving"),
+		TEXT("cannot_be_targeted_broken_seconds"),
 		// Issue #2787, the owner's rulings of 2026-11-20: what raised a count cap
 		// lowers the reserve instead. The percent LESS one minion, gadget or trap
 		// reserves, a negative row being that many percent more, read with the
@@ -1035,6 +1127,210 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// their rows are not refused; nothing reads them on the wearer. No gameplay attribute and no base.
 		TEXT("socket_fits_any_gem"),
 		TEXT("socketed_gem_effect"),
+		// The Ritualist's demonic tree rework of 2026-11-24, each read off the commander with no tags. Open Channel's
+		// imps beyond the first that a cursed death raises, read by UCataclysmRisenImps::RiseOnDeath; and Warded
+		// Flesh's share of the maximum energy shield regained when a minion dies, read by
+		// UCataclysmRegeneration::GiveShieldOnMinionDeath. Flat. No gameplay attribute and no base.
+		TEXT("curse_death_extra_imps"),
+		TEXT("energy_shield_on_minion_death_percent"),
+		// And two more of the same rework, each read off the summoner with no tags: Rekindled's seconds between two
+		// lifetimes renewed, read by ACataclysmMinion::RenewLifetimeIfRekindled when a minion's time runs out, above
+		// nought meaning the keystone is held; and The Swarm's flag by which a kill of the summoner's or of one of its
+		// minions summons a minion where the enemy fell, read by UCataclysmSummonSkill::SummonAtAKillFor. Flat. No
+		// gameplay attribute and no base.
+		TEXT("minion_lifetime_renewed_every_seconds"),
+		TEXT("kill_summons_minion_where_it_fell"),
+		// THE RAVAGER TREE REWORK OF 2026-11-24, six stats its rows grant and code
+		// reads by name. None has a gameplay attribute or a base.
+		// Ironhide's second row, a flag read on the defender at the armour step
+		// of UCataclysmDamageCalculation::Resolve: Overwhelm takes half as much
+		// from its armour.
+		TEXT("armor_overwhelm_halved"),
+		// Thronged, Fervour off the Ultimate's cost, read in
+		// UCataclysmGameplayAbility::FervourCostFor with the skill's tags; its
+		// row is scaled by the enemies within 4 metres.
+		TEXT("ultimate_fervour_cost_reduction"),
+		// Stoked, seconds added to the grace before Fervour decays, read in
+		// UCataclysmFervour::DecayStep.
+		TEXT("fervour_decay_grace_seconds"),
+		// Second Wind, the share of maximum health restored when Fervour becomes
+		// full, read by UCataclysmFervour::RestoreHealthOnFervourFull from
+		// ACataclysmPlayerCharacter::OnClassResourceChanged.
+		TEXT("health_restored_on_fervour_full"),
+		// Relentless, a flag by which nothing lowers attack speed, read by
+		// UCataclysmBasicAttack::AttackSpeedAfterSlows for both attack speed
+		// readers.
+		TEXT("attack_speed_reduction_suppressed"),
+		// Deeper Hurt, the radius within which a Cripple or a Weaken the holder
+		// applied passes on when its carrier dies, read by
+		// UCataclysmDebuffs::PassCrippleAndWeakenOnDeath from the enemy's death.
+		TEXT("cripple_and_weaken_spread_on_death_metres"),
+		// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. Fervour a kill pays, asked by
+		// UCataclysmFervour::GainOnOwnKill with the slain creature as the target, so
+		// a row can be tiered by its rarity rung; the decay after the last kill, a
+		// rate asked by UCataclysmFervour::KillDecayStep; and that decay's grace,
+		// asked at the kill by UCataclysmFervour::NoteOwnKill with the slain
+		// creature as the target. None has a gameplay attribute: each is read only
+		// through the pipeline, at the moment it is needed.
+		TEXT("fervour_per_kill"),
+		TEXT("fervour_kill_decay_per_second"),
+		TEXT("fervour_kill_decay_grace_seconds"),
+		// THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25):
+		// its radius, the cut to what a member deals, its slow, the linger after
+		// leaving, and the four paid once a second (Drain's damage, Necrotic
+		// Siphon's chance, Life Siphon's health, Living Harvest's Fervour). Each
+		// is asked by FCataclysmSiphon on the regeneration step, through the
+		// pipeline, and none has a gameplay attribute.
+		TEXT("siphon_radius_metres"),
+		TEXT("siphon_enemies_deal_less_percent"),
+		TEXT("siphon_enemy_slow_percent"),
+		TEXT("siphon_linger_seconds"),
+		TEXT("siphon_drain_weapon_percent"),
+		TEXT("siphon_necrosis_chance"),
+		TEXT("siphon_life_percent"),
+		TEXT("siphon_fervour_per_second"),
+		// The Death trees' slice C3b: Bound Offering's share of a reserve held that counts as Fervour spent, read by
+		// UCataclysmCommand::HoldReserve with the making skill's tags. No gameplay attribute and no base.
+		TEXT("reserved_fervour_spent_percent"),
+		// The Death trees' slice C3c: Cinders Kept's share of a spend returned later, read by
+		// UCataclysmAbilitySystemComponent::NoteFervourSpent; Phylactery's seconds between two saves, read by
+		// MaySaveLethalBlowWithFervour; and Borrowed Step's Fervour for a movement skill on cooldown, read by
+		// UCataclysmGameplayAbility::FervourToUseOnCooldown, whose second row is negative. No attribute and no base.
+		TEXT("fervour_spent_returned_percent"),
+		TEXT("fervour_lethal_save_every_seconds"),
+		TEXT("movement_on_cooldown_fervour_cost"),
+		// The Death trees' slice C3d: Generous Count's reduction of every Fervour threshold and Long Shadow's seconds
+		// after one, read with no reading while the conditions are filled; and the fourth vow's faster cooldown
+		// recovery, asked on the regeneration step. No attribute and no base.
+		TEXT("fervour_threshold_reduction"),
+		TEXT("fervour_threshold_linger_seconds"),
+		TEXT("cooldowns_recover_faster_percent"),
+		// The Death trees' slice C3e: Chained Souls' share of what followers hold back counted as Fervour held, read with
+		// no reading while the conditions are filled. No attribute and no base.
+		TEXT("reserved_fervour_counts_as_held_percent"),
+		// The Death trees' slice C4a: Gleaning's chance of 1 extra Fervour on a kill, read by
+		// UCataclysmFervour::GainOnOwnKill against the slain creature. No attribute and no base.
+		TEXT("fervour_per_kill_extra_chance"),
+		// And the Shadow's Clean Kill: the share of maximum health a kill by a critical strike restores, read by
+		// UCataclysmFervour::RestoreHealthOnCriticalKill. No attribute and no base.
+		TEXT("health_restored_on_critical_kill"),
+		// And the Soul Collector's Kindred Fires and Borrowed Time, the Death trees' slice C4b1: whether any gain
+		// restarts the hold before decay, and the seconds a gain that is not a kill's lengthens it by. Read by
+		// UCataclysmFervour::AfterPoolRose. No attribute and no base.
+		TEXT("fervour_hold_restarted_by_any_gain"),
+		TEXT("fervour_hold_extended_on_gain_seconds"),
+		// And the Soul Collector's Miser's Grip, Soulbound, Overflow and Unbroken Chain, the Death trees' slice C6c: the
+		// floor the kill decay stops at, every how many percent of health lost to damage costs 1 Fervour, the seconds of
+		// Overflow's window, and the seconds a chain of kills is lengthened by. Read by UCataclysmFervour and
+		// UCataclysmAbilitySystemComponent. No attribute and no base.
+		TEXT("fervour_decay_floor_percent"),
+		TEXT("health_percent_lost_per_fervour_lost"),
+		TEXT("fervour_overflow_attack_speed_seconds"),
+		TEXT("kill_chain_seconds"),
+		// And the Necromancer's Shared Leech, the Death trees' slice C6d2: the per cent of a minion's damage its
+		// commander leeches as health. Read by UCataclysmLeech::NoteMinionHit. No attribute and no base.
+		TEXT("minion_damage_leeched_to_you_percent"),
+		// And its Eternal Army: the per cent of the commander's health above which a follower does not die. Read by
+		// UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero. No attribute and no base.
+		TEXT("minion_cannot_die_above_health_percent"),
+		// And its Bound Bones: the per cent of the commander's maximum health each follower gains for every other one
+		// alive. Read by UCataclysmRegeneration::BoundBonesStep. No attribute and no base.
+		TEXT("minion_health_percent_of_yours_per_other_minion"),
+		// And the Shadow's Deathmark and Two Marks, the Death trees' slice C6e: how many enemies a character marks.
+		// Read by UCataclysmAbilitySystemComponent::MaintainShadowMarks. No attribute and no base.
+		TEXT("death_marks_held"),
+		// And its Hollow Step: a movement skill that passes through enemies and hits each one. Read by
+		// UCataclysmMovementSkill::PassesThroughEnemies. No attribute and no base.
+		TEXT("movement_passes_through_enemies"),
+		// And the slice's Guard the Master (minions turn on the commander's last attacker), Lethal Dose (the share of
+		// the critical strike multiplier's increases a crit's Poison or Bleed takes) and Interpose (the chance a hit
+		// is taken by a minion). Read by UCataclysmCommand, UCataclysmAilments and UCataclysmVitalAttributeSet. No
+		// attribute and no base.
+		TEXT("minions_turn_on_your_last_attacker"),
+		TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"),
+		TEXT("interpose_chance"),
+		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
+		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
+		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.
+		TEXT("fervour_per_hit_taken"),
+		TEXT("fervour_per_block"),
+		// The Fervour a landed critical strike pays: the Shadow's starting node and Telling Blows (the Death trees' slice
+		// C4d1) and the Berserker's (the War line), read once, by UCataclysmFervour::GainOnCriticalStrike, against the
+		// character struck and with the blow's skill tags (Battle Lust's rows are melee-only). One reader since the
+		// bundle 3 merge. No attribute and no base.
+		TEXT("fervour_per_critical_strike"),
+		// And the Shadow's Patient Blade and Death by Inches, the Death trees' slice C4d2: the seconds between Boss tick
+		// payments, and every how many hits on a Boss count as a kill. Read by UCataclysmFervour against the Boss. No
+		// attribute and no base.
+		TEXT("boss_ticks_pay_a_kill_every_seconds"),
+		TEXT("boss_hits_counted_as_a_kill_every"),
+		// And the Soul Collector's Reclaimed, Claimed and Death's Toll, the Death trees' slice C4b2: the seconds of decay
+		// a kill gives back, the seconds after a hit within which a death pays its Fervour, and the switch that makes a
+		// follower's kill this character's. Read by UCataclysmFervour. No attribute and no base.
+		TEXT("decay_given_back_on_kill_seconds"),
+		TEXT("fervour_claimed_within_seconds"),
+		TEXT("follower_kills_count_as_yours"),
+		// And the Soul Collector's Passed On, the Death trees' slice C4c1: the radius a passive node's overkill explosion
+		// reaches. Read by UCataclysmAbilitySystemComponent::ActOnEvent. No attribute and no base.
+		TEXT("overkill_explosion_radius_metres"),
+		// The Saboteur's: Fervour per skill trap placed (ACataclysmMinion::PlaceSkillTrap, and a War machine that is a
+		// trap), per gadget placed (ACataclysmMinion::PlaceSkillGadget, and every other War machine), per skill trap
+		// triggered (ACataclysmMinion::TriggerSkillTrap) and per landed blow of one of its devices
+		// (ACataclysmMinion::AttackTarget and UCataclysmSkillEffects::ApplyHit, at their deployable_hit).
+		TEXT("fervour_per_trap_placed"),
+		TEXT("fervour_per_gadget_placed"),
+		TEXT("fervour_per_trap_triggered"),
+		TEXT("fervour_per_device_hit"),
+		// The Bulwark's and the Berserker's decay, Fervour a second once out of combat, read by
+		// FCataclysmWarFervour::OutOfCombatDecayStep from ACataclysmCharacterBase::RegenerationStep.
+		TEXT("fervour_decay_out_of_combat_per_second"),
+		// THE BERSERKER'S STATES, 2026-11-25 (`plan_death_and_war.md` slice B29). Fervour per blow the character lands
+		// itself, read with the blow's skill tags in ACataclysmPlayerCharacter::OnSomethingWasHit (Frenzy's "all melee
+		// hits generate 2 additional Fervour").
+		TEXT("fervour_per_hit_dealt"),
+		// The two flags that let a full pool begin Wrath or Frenzy, and Berserking's increased damage for each point of
+		// Fervour it consumes, read by FCataclysmBerserkerStates::Judge and ::SpendBerserking.
+		TEXT("wrath_on_full_fervour"),
+		TEXT("frenzy_on_full_fervour"),
+		TEXT("berserking_damage_per_fervour"),
+		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
+		// ACataclysmCharacterBase::RegenerationStep.
+		TEXT("fervour_drain_per_second"),
+		// THE FERVOUR SPENDS, 2026-11-25, each read by FCataclysmWarFervour: Iron Will's cost for a negated block
+		// (SpendOnNegatedBlock, at the block's announcement), Undying's health for each 10 Fervour spent on a lethal
+		// blow (SpendAllOnLethalBlow, in the vital attribute set's saves), Cleave's cost and gain for each extra enemy
+		// (TradeForEnemiesStruckTogether, at the start of an attack), and Blood Tithe's loss and its step of health
+		// regenerated (LoseForRegeneration, in UCataclysmRegeneration::TopUp).
+		TEXT("fervour_cost_per_negated_block"),
+		TEXT("health_percent_per_ten_fervour_on_lethal_blow"),
+		TEXT("fervour_cost_per_extra_enemy_hit"),
+		TEXT("fervour_per_extra_enemy_hit_paid"),
+		TEXT("fervour_lost_to_regeneration"),
+		TEXT("regeneration_per_fervour_loss"),
+		// RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25, each read by FCataclysmWarFervour: Riposte's share of
+		// the damage blocked, its cost and its stun (RiposteOnBlock, where a block is announced); Vengeful Discharge's
+		// drain, its pulse's radius and its bleed flag (RetaliationPulseDrainStep, in the regeneration step); Crimson
+		// Tide's health for every 10 Fervour spent or drained (NoteFervourSpentOrDrained, at every spend and drain).
+		TEXT("riposte_share_of_blocked"),
+		TEXT("riposte_fervour_cost"),
+		TEXT("riposte_stun_seconds_at_maximum"),
+		TEXT("retaliation_pulse_drain_per_second"),
+		TEXT("retaliation_pulse_radius_metres"),
+		TEXT("retaliation_pulse_applies_bleed"),
+		TEXT("health_percent_per_ten_fervour_spent"),
+		// SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25, each read by FCataclysmWarFervour: Skull Splitter's percent
+		// a stack, cost, cap and seconds, and Deathmark's percent, cost and seconds (SkullSplitterOnCriticalStrike and
+		// DeathmarkOnCriticalStrike, at a critical strike); Blood Price's percent of the maximum and seconds
+		// (ArmBloodPrice, as the pool empties).
+		TEXT("crit_armor_removed_in_wrath"),
+		TEXT("crit_armor_fervour_cost"),
+		TEXT("crit_armor_stack_cap"),
+		TEXT("crit_armor_seconds"),
+		TEXT("deathmark_damage_taken_percent"),
+		TEXT("deathmark_fervour_cost"),
+		TEXT("deathmark_seconds"),
+		TEXT("blood_price_percent_of_maximum_fervour"),
+		TEXT("blood_price_seconds"),
 	};
 	return Stats;
 }
@@ -2033,6 +2329,28 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		if (ForStat.IsEmpty())
 		{
 			return Base;
+		}
+
+		// COLOSSUS ETERNAL'S "YOUR INCREASES TO MAXIMUM HP COUNT TWICE", V3b, ruled 2026-11-25: while the flag holds,
+		// unconditioned and with no tags, every increase on `max_health` is entered twice, the attributes' included,
+		// each with its own scope and condition. Flat additions and "more" multipliers are entered once. Here, before
+		// the list is recorded, so the live maximum `StatForSkill` works out reads the same doubled list.
+		if (Modifiers && Stat == TEXT("max_health"))
+		{
+			const TArray<FCataclysmStatModifier>* Flag =
+				Modifiers->Find(FName(UCataclysmAbilitySystemComponent::MaxHealthIncreasesCountTwiceStat));
+			if (Flag && UCataclysmStatPipeline::Evaluate(0.0f, *Flag, FGameplayTagContainer()).Final > 0.0f)
+			{
+				const int32 Held = ForStat.Num();
+				for (int32 Index = 0; Index < Held; ++Index)
+				{
+					if (ForStat[Index].Bucket == ECataclysmStatBucket::Increased)
+					{
+						const FCataclysmStatModifier Again = ForStat[Index];
+						ForStat.Add(Again);
+					}
+				}
+			}
 		}
 
 		// KEPT SO A SKILL CAN WORK THIS OUT AGAIN WITH ITS OWN TAGS. Issue #943.

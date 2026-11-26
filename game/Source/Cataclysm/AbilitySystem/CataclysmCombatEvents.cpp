@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCharacterBase.h"
+// For Death's Final Curse, paid where a skill use is announced. 2026-11-24.
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Engine/World.h"
 #include "GameplayEffectExtension.h"
 
@@ -203,6 +205,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 				Blow.Overkill = Outcome.Overkill;
 				// AND ITS FIGURE BEFORE THE VICTIM'S MITIGATION, for the same blow only. Ruled 2026-10-21 (traps layer 4).
 				Blow.KillingBlowDamage = Hit.Damage;
+				// AND WHETHER IT WAS A CRITICAL STRIKE, for the same blow only (the Death trees' slice C4a).
+				Blow.bKillingBlowWasCritical = Outcome.bWasCritical;
 			}
 
 			Cataclysm->RecordLastBlow(MoveTemp(Blow));
@@ -332,6 +336,14 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 		Notice.bByAnAreaSkillShareOnAnAlly = Blow.bAreaSkillShareOnAnAlly;
 		// AND THE KILLING BLOW'S FIGURE BEFORE MITIGATION. Ruled 2026-10-21 (traps layer 4, F10).
 		Notice.KillingBlowDamage = Blow.KillingBlowDamage;
+		// AND WHETHER IT WAS A CRITICAL STRIKE. A TICK IS NEVER ONE, as ruled on 2026-11-25 (the Death trees' slice C4a).
+		Notice.bByACriticalStrike = Blow.bKillingBlowWasCritical && !Blow.bDamageOverTime;
+	}
+	// AND WHETHER AN EXECUTE IS KILLING IT NOW, the Death trees' slice C4d1 (2026-11-25). Read while the execute's
+	// health loss is being written, which is when this notice is built.
+	if (System)
+	{
+		Notice.bByAnExecute = System->IsBeingExecuted();
 	}
 
 	++Events->Deaths;
@@ -406,6 +418,12 @@ void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillNam
 										   const FGameplayTagContainer& SkillTags,
 										   ECataclysmAbilitySlot Slot, const FVector* Aim, bool bHasCooldown)
 {
+	// DEATH'S FINAL CURSE IS PAID HERE, BEFORE THE ANNOUNCEMENT AND WHETHER OR NOT ANYTHING LISTENS, 2026-11-24, ahead of
+	// its window: "causing them to take damage when using abilities". This is the one place every skill paid for is
+	// announced -- the eight shapes, the basic attack and a trap's press -- so one call reaches every use, and the
+	// basic attack is told apart by its slot. It does nothing for a user who is not cursed.
+	UCataclysmEnemyModifiers::FinalCurseOnSkillUse(User, Slot == ECataclysmAbilitySlot::BasicAttack);
+
 	UCataclysmCombatEvents* Events = User ? In(User->GetWorld()) : nullptr;
 	if (!Events || !Events->OnSkillUsed.IsBound())
 	{

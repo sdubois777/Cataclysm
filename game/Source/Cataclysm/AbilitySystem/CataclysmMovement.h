@@ -115,4 +115,19 @@ public:
 	 * fails on a plain swept `SetActorLocation` or `AddActorWorldOffset` anywhere else in the game's source.
 	 */
 	static void MoveWithoutSticking(AActor* Actor, const FVector& Delta);
+
+	/**
+	 * A mover whose capsule overlaps a living hostile creature is put back along the line toward `LineStart`, in steps
+	 * of 10 centimetres, to the first point where it overlaps none, never past `LineStart`; unswept. The Death trees'
+	 * slice C6e (2026-11-25), as ruled for Hollow Step (H1, condition 2), and used by Thousand Cuts. Answers whether it
+	 * moved the mover.
+	 */
+	static bool StepOutOfEnemies(AActor* Mover, const FVector& LineStart);
+
+	/**
+	 * Thousand Cuts' move, as ruled (Q6): the mover is put at `Creature`'s feet at its own height, unswept, as a Flicker
+	 * aims, and then out of any enemy's body back toward where it stood, so it stands beside the creature. Noted as an
+	 * instant relocation.
+	 */
+	static void PlaceBeside(AActor* Mover, const AActor* Creature);
 };

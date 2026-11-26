@@ -65,16 +65,16 @@ heading row describe their layout instead. Issue #1884.
 | Gems | 28 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type, Stat, Value Kind |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3, Tier 1 Gold, Tier 2 Gold, Tier 3 Gold, Gold Note |
 | Enchantments | 380 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down, Positive Set, Negative Set |
-| **Tags** | **145** | **Tag Name, Description** |
+| **Tags** | **146** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
 | Weapon Skills | 408 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost, Fervour Cost |
-| Buffs | 17 | one description per row, no heading row |
-| Debuffs | 27 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
+| Buffs | 18 | one description per row, no heading row |
+| Debuffs | 29 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | DoTs | 8 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | Crafting | 47 | Material Name, Tier & Source, Primary Use, Functions, (blank), (blank), CR Metric, Formula, Outcome |
-| Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types, Implicit 1 Stat, Implicit 1 Kind, Implicit 1 Value, Implicit 2 Stat, Implicit 2 Kind, Implicit 2 Value, Attack Speed, Basic Shape, Basic Shape Params, Cells Wide, Cells High |
-| Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth, Ailment, Gem, Hybrid Part 1, Hybrid Part 2, Allowed Slots, Name Word, Percent, Floor |
-| Class Stats | 33 | Class, Stat, Base, Per Level |
+| Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types, Implicit 1 Stat, Implicit 1 Kind, Implicit 1 Value, Implicit 2 Stat, Implicit 2 Kind, Implicit 2 Value, Attack Speed, Basic Shape, Basic Shape Params, Cells Wide, Cells High, Implicit 1 At +0, Implicit 2 At +0 |
+| Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth, Ailment, Gem, Hybrid Part 1, Hybrid Part 2, Allowed Slots, Name Word, Percent, Floor, T1 Min, T1 Max, T2 Min, T2 Max, T3 Min, T3 Max, T4 Min, T4 Max, T5 Min, T5 Max, T6 Min, T6 Max, T7 Min, T7 Max |
+| Class Stats | 49 | Class, Stat, Base, Per Level |
 | Minion Types | 15 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
 | Minion Scaling | 2 | Attribute, Requires Tag, Stat, Percent Per Point |
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
@@ -86,7 +86,7 @@ heading row describe their layout instead. Issue #1884.
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Gold Drops, Gem Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Gold | 8 | Difficulty Tier, Gold Per Pile, More Per Floor, Note |
-| Passive Effects | 325 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points |
+| Passive Effects | 898 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points, Scale Max Steps, Per Point From, Condition 2, Condition Value 2, Action Event, Stack Seconds, Action, Max Points, Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment, Damage Share, Chance Percent |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
 | Enchantment Effects | 709 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |
 

@@ -10,6 +10,7 @@
 // For asking whether this character can move Fervour at all. Issue #954.
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSilence.h"
@@ -19,6 +20,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
@@ -30,6 +32,12 @@
 #include "Character/CataclysmQuarantineCharacter.h"
 #include "Character/CataclysmInfectionBloomCharacter.h"
 #include "Character/CataclysmRiftCharacter.h"
+// For "Altar" under a Rift's altar. Issue #51 slice B1.
+#include "Character/CataclysmRiftAltarCharacter.h"
+// For the words Death's enemy modifiers put on the status line. 2026-11-24.
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "Character/CataclysmBonePyreCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystemComponent.h"
@@ -547,6 +555,26 @@ FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
 	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
 }
 
+FString UCataclysmCombatOverlay::MarkedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	return AbilitySystem && AbilitySystem->IsShadowMarked() ? FString(TEXT("Marked")) : FString();
+}
+
+FString UCataclysmCombatOverlay::DeathmarkTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || !AbilitySystem->IsDeathmarked())
+	{
+		return FString();
+	}
+	const int32 Percent = FMath::RoundToInt(AbilitySystem->DeathmarkPercentNow());
+	return Percent > 0 ? FString::Printf(TEXT("Deathmarked +%d%%"), Percent) : FString(TEXT("Deathmarked"));
+}
+
 FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -750,6 +778,40 @@ FString UCataclysmCombatOverlay::OwedTextFor(const AActor* Actor)
 	return Owed > 0.0f ? FString::Printf(TEXT("Owed %d"), FMath::CeilToInt(Owed)) : FString();
 }
 
+FString UCataclysmCombatOverlay::BoltedTextFor(const AActor* Actor)
+{
+	const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Actor);
+	if (!Gadget || Gadget->GadgetsBoltedIn <= 1 || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("%s x%d"), *FName::NameToDisplayString(Gadget->TypeName, /*bIsBool=*/false),
+		Gadget->GadgetsBoltedIn);
+}
+
+FString UCataclysmCombatOverlay::TitanfallTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	const float Seconds = AbilitySystem->TitanfallUnkillableSecondsLeft();
+	if (Seconds > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("cannot die %ds"), FMath::CeilToInt(Seconds)));
+	}
+	const float Stored = AbilitySystem->TitanfallStoredDamage();
+	if (Stored > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("next attack +%d"), FMath::CeilToInt(Stored)));
+	}
+	return Parts.IsEmpty() ? FString() : FString::Printf(TEXT("Titanfall: %s"), *FString::Join(Parts, TEXT(", ")));
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -869,10 +931,25 @@ FString UCataclysmCombatOverlay::PortalTextFor(const AActor* Actor)
 	return Enemy && Enemy->bIsAnAbomination ? FString(TEXT("Abomination")) : FString();
 }
 
+FString UCataclysmCombatOverlay::CursedAbominationTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsTheCursedAbomination && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Cursed Abomination"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::RiftTextFor(const AActor* Actor)
 {
 	return Actor && Actor->IsA<ACataclysmRiftCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
 		? FString(TEXT("Rift"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::RiftAltarTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmRiftAltarCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Altar"))
 		: FString();
 }
 
@@ -977,6 +1054,100 @@ FString UCataclysmCombatOverlay::ShroudedTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::DeathModifierTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+
+	TArray<FString> Words;
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor))
+	{
+		if (Enemy->IsA<ACataclysmBonePyreCharacter>())
+		{
+			Words.Add(TEXT("Bone Pyre"));
+		}
+		if (Enemy->bIsASpectralCopy)
+		{
+			Words.Add(TEXT("Spectral"));
+		}
+		if (Enemy->bRisenByUndyingWill)
+		{
+			Words.Add(TEXT("Undying"));
+		}
+		if (UCataclysmEnemyModifiers::IsPhasedOut(Enemy))
+		{
+			Words.Add(TEXT("Phased"));
+		}
+	}
+
+	// THE THREE TAGGED ONES BY THEIR STATUS NAMES, and Mortal Reminder and Lingering Decay by what the character's
+	// ability system and the zones say, which is what decides them. Those two had no status row until 2026-11-25; their
+	// tags are laid now for the player's effects list and do not decide the words here.
+	const TCHAR* const StatusNames[] = {TEXT("Final Curse"), TEXT("Soul Tether"), TEXT("Haunting")};
+	const TCHAR* const StatusWords[] = {TEXT("Final Curse"), TEXT("Soul Tether"), TEXT("Haunted")};
+	for (int32 Index = 0; Index < static_cast<int32>(UE_ARRAY_COUNT(StatusNames)); ++Index)
+	{
+		const FGameplayTag Tag = UCataclysmSkillShapes::StatusTagFor(StatusNames[Index]);
+		if (Tag.IsValid() && UCataclysmSkillEffects::HasTag(Actor, Tag))
+		{
+			Words.Add(StatusWords[Index]);
+		}
+	}
+	if (const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor))
+	{
+		if (UCataclysmEnemyModifiers::RecoveryCeilingOn(*System) >= 0.0f)
+		{
+			Words.Add(TEXT("Recovery capped"));
+		}
+	}
+	if (UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(Actor) > 0.0f)
+	{
+		Words.Add(TEXT("Decaying"));
+	}
+	return FString::Join(Words, TEXT("  "));
+}
+
+FString UCataclysmCombatOverlay::WarModifierTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+
+	TArray<FString> WarWords;
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor))
+	{
+		// PHALANX'S REDUCTION AS IT STANDS, whole, so the player sees what pulling the pack apart is worth.
+		if (UCataclysmEnemyModifiers::Carries(Enemy->ModifierRows, UCataclysmEnemyModifiers::PhalanxRow)
+			&& Enemy->PhalanxAlliesCounted > 0)
+		{
+			WarWords.Add(FString::Printf(TEXT("Phalanx -%d%%"),
+										 FMath::RoundToInt(UCataclysmEnemyModifiers::PhalanxDamageReductionFor(
+											 Enemy->PhalanxAlliesCounted))));
+		}
+		if (UCataclysmEnemyModifiers::IsArtilleryBarrageInTheAir(Enemy))
+		{
+			WarWords.Add(TEXT("Barrage"));
+		}
+	}
+
+	// THE ONE BUFF AND THE ONE DEBUFF BY THEIR STATUS NAMES: Drums of War on a creature, Battle Cry on a character of
+	// the players' side. Commander is not named here: several things grant it, and this line names what War's
+	// modifiers add.
+	const TCHAR* const WarStatusNames[] = {TEXT("Drums of War"), TEXT("Battle Cry")};
+	for (const TCHAR* StatusName : WarStatusNames)
+	{
+		const FGameplayTag Tag = UCataclysmSkillShapes::StatusTagFor(StatusName);
+		if (Tag.IsValid() && UCataclysmSkillEffects::HasTag(Actor, Tag))
+		{
+			WarWords.Add(StatusName);
+		}
+	}
+	return FString::Join(WarWords, TEXT("  "));
+}
+
 FString UCataclysmCombatOverlay::PlaguebearerTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -999,15 +1170,20 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
+		 {BoltedTextFor(Actor), SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CursedAbominationTextFor(Actor), CarcassTextFor(Actor),
+		  RiftTextFor(Actor), RiftAltarTextFor(Actor),
 		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
 		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
 		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor), TitheAngelTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
-		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
+		  // AND WHAT DEATH'S MODIFIERS HAVE DONE, beside the shroud, which is the other "a blow did nothing". 2026-11-24.
+		  DeathModifierTextFor(Actor),
+		  // AND WHAT WAR'S DO, beside them. 2026-11-25.
+		  WarModifierTextFor(Actor),
+		  ArmourRemovedTextFor(Actor), MarkedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
 		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.
 		  CrippledTextFor(Actor), WeakenedTextFor(Actor), ShreddedTextFor(Actor), StunnedTextFor(Actor),
@@ -1018,6 +1194,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  TouchOfNothingTextFor(Actor), NegatedTextFor(Actor),
 		  SilencedTextFor(Actor),
 		  DamageCutTextFor(Actor),
+		  DeathmarkTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
 		  HeldBuffTextFor(Actor),
 		  // AND THE DAMAGE TYPES IT IS IMMUNE TO FOR A TIME, after the buff's. Ruled 2026-10-12. Empty for every
@@ -1188,7 +1365,11 @@ bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,
 	// OR ANYTHING RESERVED, since issue #2787. A character with no generator can
 	// hold a skill gadget, a skill trap or a set bonus's minion, each of which
 	// reserves, and the player must be able to see that part of the pool held.
-	if (!UCataclysmFervour::HasAGenerator(AbilitySystem) && ReservedFervourOf(Actor) <= 0.0f)
+	//
+	// OR A WAR FERVOUR RATE, since 2026-11-25: the War classes' rates have no attribute, so `HasAGenerator` cannot see
+	// them, and a Bulwark, Berserker or Saboteur holding its starting node drew no bar. `FCataclysmWarFervour::HasARate`.
+	if (!UCataclysmFervour::HasAGenerator(AbilitySystem) && !FCataclysmWarFervour::HasARate(AbilitySystem)
+		&& ReservedFervourOf(Actor) <= 0.0f)
 	{
 		return false;
 	}

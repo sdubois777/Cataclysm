@@ -147,6 +147,14 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bCannotBeMitigated = false;
 
 	/**
+	 * Whether this blow passes the defender's energy shield by and goes to health. Death's Soul Eater, "Completely
+	 * ignores player energy shields", 2026-11-24. Read into here by `UCataclysmVitalAttributeSet` off the creature that
+	 * caused the blow, as `bCannotBeEvaded` is, and read once in `Resolve`: step 8 takes nothing. Every other step,
+	 * the temporary absorb and mana included, meets the blow as it would meet any other; the row names the shield.
+	 */
+	bool bIgnoresEnergyShield = false;
+
+	/**
 	 * The attacker's chance to critically strike, 0-100.
 	 *
 	 * READ OFF THE ATTACKER AND CARRIED, for the same reason the two penetration
@@ -164,6 +172,14 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float CritMultiplier = 150.0f;
+
+	/**
+	 * Whether this hit is a critical strike whatever the roll, should it land: the attacker holds a Chain Execution
+	 * charge (`UCataclysmAbilitySystemComponent::HoldsNextHitCritical`). The Death trees' slice C4d1 (2026-11-25). An
+	 * evaded hit is never critical, as before: the critical step is after evasion's early return.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bCertainCritical = false;
 
 	/**
 	 * What share of itself this hit keeps if its critical roll fails, as a
@@ -331,6 +347,12 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bFromBoss = false;
 
 	/**
+	 * The rarity rung of the creature that threw the blow, or -1 for anything that is not a creature. The Death trees'
+	 * slice C6b3 (2026-11-25), for `opponent_rarity_at_least` (Read the Blow). Filled where `bFromBoss` is.
+	 */
+	int32 AttackerRarityStep = -1;
+
+	/**
 	 * Metres from the character that dealt this blow to the one taking it, or
 	 * -1 when it is not known.
 	 *
@@ -459,6 +481,22 @@ struct CATACLYSM_API FCataclysmDamageResult
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	float DamageBlocked = 0.0f;
+
+	/**
+	 * The block negated the whole blow: its negation chance (`block_negation_chance`) succeeded. False for an unblocked
+	 * blow and for a block that took only its share. The Fervour spends, 2026-11-25: Iron Will's "blocked attacks
+	 * automatically negate all damage from that hit, draining 20 Fervour per block" pays for a negation, not a block.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bNegated = false;
+
+	/**
+	 * The block was negated because the defender holds `EveryBlockNegatesStat`, The Unbreakable Wall's flag, whatever
+	 * the negation roll was. The owner's ruling of 2026-11-25, and the coordinating session's that day: Iron Will
+	 * charges its Fervour only when its negation changes what lands, so it charges nothing for such a block.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bNegatedByEveryBlock = false;
 
 	/**
 	 * The hit landed as a critical strike and its damage above already carries
@@ -716,6 +754,14 @@ public:
 	static const TCHAR* BlockNegationChanceStat;
 
 	/**
+	 * `every_block_negates`: a flag on the DEFENDER. Above nought, every block removes all of the hit, whatever the
+	 * negation roll. The owner's ruling of 2026-11-25: The Unbreakable Wall, "Every block negates the whole hit." A
+	 * flag rather than a negation chance of 100, ruled that day, so the block step can tell a block the flag negated
+	 * from one Iron Will's chance negated (`FCataclysmDamageResult::bNegatedByEveryBlock`). No attribute and no base.
+	 */
+	static const TCHAR* EveryBlockNegatesStat;
+
+	/**
 	 * The chance, in per cent, that a SPELL that hits the defender is absorbed and deals nothing. Ruled 2026-10-06:
 	 * "Spells that hit you have a 15%-30% chance to be absorbed dealing no damage". On the DEFENDER, no gameplay
 	 * attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. See `SpellIsAbsorbed`.
@@ -920,6 +966,25 @@ public:
 	 * read rather than two.
 	 */
 	static const TCHAR* ArmorPenetrationSuppressedStat;
+
+	/**
+	 * `armor_overwhelm_halved`: the stat saying Overwhelm takes only half as many
+	 * points off this character's armour. The Ravager tree rework of 2026-11-24.
+	 *
+	 * `Ravager_keystone_spine_001` Ironhide's second row: "Your Armor cannot be
+	 * ignored, and Overwhelm takes only half as much from it." A flag; above
+	 * nought is held.
+	 *
+	 * ARMOUR ONLY, THE PROJECT OWNER'S RULING OF 2026-11-24: Ironhide is an
+	 * exception to the design's "Overwhelm strips every kind of mitigation", and
+	 * only halves what it takes from armour. Resistance, block and evasion stay
+	 * fully overwhelmed, so the keystone cannot be used to sidestep the rule.
+	 *
+	 * READ ON THE DEFENDER, at the armour step of `Resolve`, beside the
+	 * penetration flag above and for its reason: the node protects the armour of
+	 * whoever bought it. No gameplay attribute; `StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* ArmorOverwhelmHalvedStat;
 
 	/**
 	 * `minion_defences_percent_of_yours`: the share of its summoner's armour

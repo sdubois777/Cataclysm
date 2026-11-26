@@ -236,6 +236,8 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			TEXT("Ailment"), TEXT("EffectPick"),
 			// AND ONE ON 2026-11-24 FOR THE DEATH SKILLS, issue #2885 slice DS3, N5: the kind that rises, a name.
 			TEXT("RisesAs"),
+			// AND WHAT AN AURA'S ALLIES CANNOT BE, on 2026-11-25 for War's Blood and Iron: "Slow", in `Immune`'s words.
+			TEXT("AllyImmune"),
 		};
 		bool bIsNumber = true;
 		for (const TCHAR* const TextKey : TextKeys)
@@ -326,6 +328,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("Immune"), ESearchCase::IgnoreCase))
 		{
 			Params.Immune = Value;
+		}
+		// AND WHAT EVERY ALLY INSIDE AN AURA CANNOT BE, whatever the caster wears. War's Blood and Iron, 2026-11-25.
+		else if (Key.Equals(TEXT("AllyImmune"), ESearchCase::IgnoreCase))
+		{
+			Params.AllyImmune = Value;
 		}
 		else if (Key.Equals(TEXT("GroundRadius"), ESearchCase::IgnoreCase))
 		{
@@ -467,6 +474,26 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("AllyIncreasedDamage"), ESearchCase::IgnoreCase))
 		{
 			Params.AllyIncreasedDamage = Number;
+		}
+		else if (Key.Equals(TEXT("AllyMoreDamage"), ESearchCase::IgnoreCase))
+		{
+			Params.AllyMoreDamage = Number;
+		}
+		else if (Key.Equals(TEXT("BurnPassesOnDeath"), ESearchCase::IgnoreCase))
+		{
+			Params.BurnPassesOnDeath = Number;
+		}
+		else if (Key.Equals(TEXT("EnemyArmourRemoved"), ESearchCase::IgnoreCase))
+		{
+			Params.EnemyArmourRemoved = Number;
+		}
+		else if (Key.Equals(TEXT("EnemyMovementSpeedReduced"), ESearchCase::IgnoreCase))
+		{
+			Params.EnemyMovementSpeedReduced = Number;
+		}
+		else if (Key.Equals(TEXT("AllyMovementSpeed"), ESearchCase::IgnoreCase))
+		{
+			Params.AllyMovementSpeed = Number;
 		}
 		else if (Key.Equals(TEXT("HealthFromHitTaken"), ESearchCase::IgnoreCase))
 		{

@@ -284,18 +284,33 @@ def test_a_summon_stating_a_count_cap_is_refused():
     assert len(problems) == 1 and "MaxActive=3" in problems[0], problems
 
 
-def test_a_summon_with_no_cap_a_rift_and_a_deployable_are_left_alone():
+def test_a_summon_with_no_cap_and_a_rift_are_left_alone():
     """THE CONTROLS, so the refusal above is about the cap and nothing else:
-    Summon Imp's cell after branch B; a rift's pattern, a spawn every Interval,
-    where `SpawnTick` reads MaxActive as how many one cast makes; and a War
-    deployable, which keeps its cap until issue #1934."""
+    Summon Imp's cell after branch B; and a rift's pattern, a spawn every
+    Interval, where `SpawnTick` reads MaxActive as how many one cast makes.
+    (A War deployable was a third control until issue #1934 took its cap away
+    on 2026-11-25; see the two tests below.)"""
     assert gen.refuse_a_count_cap_on_a_summon(
         _tables("Count=1; Duration=20; Radius=3; Minions=Imp:1")) == []
     assert gen.refuse_a_count_cap_on_a_summon(
         _tables("Count=1; MaxActive=5; Duration=8; Interval=1; Minions=Imp:1")) == []
+
+
+def test_a_deployable_stating_a_count_cap_is_refused():
+    """Issue #1934, ruled 2026-11-25: the War machines reserve their Fervour and
+    lost their caps, so `DeployOne` reads no `MaxActive`. Bolt Turret's own cell
+    as it stood before."""
     deployable = {"WeaponSkills": [{"Name": "Turret", "Shape": "Deployable",
                                     "ShapeParams": "Count=1; MaxActive=1; Duration=20; "
-                                                   "Minions=BoltTurret:1"}]}
+                                                   "Minions=BoltTurret:1; FervourReserve=5"}]}
+    problems = gen.refuse_a_count_cap_on_a_summon(deployable)
+    assert len(problems) == 1 and "Deployable stating MaxActive=1" in problems[0], problems
+
+
+def test_the_control_a_deployable_with_no_cap_is_left_alone():
+    deployable = {"WeaponSkills": [{"Name": "Turret", "Shape": "Deployable",
+                                    "ShapeParams": "Count=1; Duration=20; Minions=BoltTurret:1; "
+                                                   "FervourReserve=5"}]}
     assert gen.refuse_a_count_cap_on_a_summon(deployable) == []
 
 

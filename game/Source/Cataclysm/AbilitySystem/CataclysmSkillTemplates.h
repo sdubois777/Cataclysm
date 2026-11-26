@@ -1703,7 +1703,47 @@ private:
 	bool RolledDirection(FVector& OutDirection) const;
 
 	/** `movement_path_damage_percent`: one hit of the row's per cent to each of `Crossed` still alive. */
-	void HitWhatThePathCrossed(const TArray<AActor*>& Crossed);
+	void HitWhatThePathCrossed(const TArray<AActor*>& Crossed, float PercentOverride = -1.0f);
+
+	/**
+	 * HOLLOW STEP, the Death trees' slice C6e (2026-11-25), as ruled (H1, H2): "Your movement skill passes through
+	 * enemies and hits each one." Whether this use carries `PassesThroughEnemiesStat`, asked with the skill's tags.
+	 */
+	bool PassesThroughEnemies() const;
+
+	/** Let the mover's moves pass through hostile creatures, or restore them. Restored again in `EndAbility`. */
+	void PassThroughEnemies(bool bThrough);
+
+	/**
+	 * A move that passed through enemies must not end inside one: if the mover's capsule overlaps a living hostile
+	 * creature, it is put back along the line toward `LineStart` to the first point where it overlaps none, in steps
+	 * of 10 centimetres, never past `LineStart`. As ruled (H1, condition 2).
+	 */
+	void StepOutOfEnemies(const FVector& LineStart);
+
+	/**
+	 * Every living enemy on the line from `From` to `To` that `AlreadyStruck` does not hold is hit once, at the skill's
+	 * own percent, through `HitWhatThePathCrossed`. As ruled (H2): once a use, so the skill's own hit is not doubled.
+	 */
+	void HitTheLineOnce(const FVector& From, const FVector& To, const TArray<AActor*>& AlreadyStruck);
+
+public:
+	/**
+	 * Whether a movement skill with `SkillTags` used by `Mover` carries `PassesThroughEnemiesStat` (Hollow Step), asked
+	 * as every worn-row rider of this skill is: on the mover's ability system, with the skill's tags. `PassesThroughEnemies`
+	 * asks this; public so the stat exemption probe reads the same answer (window death3-w3).
+	 */
+	static bool PassesThroughEnemiesFor(const AActor* Mover, const FGameplayTagContainer& SkillTags);
+
+	/** The stat Hollow Step states: a movement skill that carries it passes through enemies and hits each one. PUBLIC,
+	 *  so a test can grant it by name (window death3-w1 refused the private one). */
+	static const TCHAR* PassesThroughEnemiesStat;
+
+private:
+
+	/** Where a walked Charge passing through enemies began, for `StepOutOfEnemies` when it ends. */
+	FVector PassingThroughFrom = FVector::ZeroVector;
+	bool bPassingThrough = false;
 
 	/**
 	 * The row's named `Effect`, on every enemy of `Struck` the move's own blow landed on. Issue #2885, the Death
@@ -1858,6 +1898,13 @@ private:
 	 * clears it by name now, beside the two above.
 	 */
 	FTimerHandle StopTimer;
+
+	/**
+	 * Whether this use was paid for, so its end is a movement skill's end: set once `CommitAndBegin` succeeds in
+	 * `ActivateAbility`, read and cleared by `EndAbility`. The Death trees' slice C6b2 (2026-11-25), for Arrival. A
+	 * Recall's first press and a use refused before it was paid end without it.
+	 */
+	bool bPaidForThisUse = false;
 };
 
 /**
@@ -2055,9 +2102,13 @@ public:
 	 * Press-Ganged made nothing. A cap eviction never comes here, so it never
 	 * triggers Rekindled.
 	 *
-	 * THE KIND IS THE SUMMON SKILL THAT MADE THE LOST MINION; for a thrall, which
-	 * no summon skill made, the first summon skill the commander holds that
-	 * summons anything. A commander with no summon skill gets nothing.
+	 * THE KIND IS THE SUMMON SKILL THAT MADE THE LOST MINION; for a thrall or a
+	 * risen imp, which no summon skill made, the first summon skill the commander
+	 * holds that summons anything. A COMMANDER WITH NO SUMMON SKILL GETS SUMMON
+	 * IMP'S KIND, read from its row as a risen imp is
+	 * (`UCataclysmRisenImps::SummonImpKindFor`), since the demonic tree rework of
+	 * 2026-11-24: the owner answered that day that Press-Ganged and Rekindled work
+	 * for a Wand Ritualist, which holds no summon skill. Until then it got nothing.
 	 *
 	 * @param Commander  who commanded what was lost
 	 * @param Lost       the minion or thrall, possibly already destroyed
@@ -2139,6 +2190,33 @@ public:
 	static ACataclysmMinion* SpawnOneAtAKill(AActor* Killer, const FVector& Where);
 
 	/**
+	 * The Swarm, the Ritualist keystone, since the demonic tree rework of 2026-11-24: "When you or one of your minions
+	 * kills an enemy, a new minion is summoned where it fell, if your Fervour has room for it." A flag, flat 1, read
+	 * off the commander with no tags. No gameplay attribute.
+	 *
+	 * A STAT OF ITS OWN AND NOT `KillSpawnsMinionStat`, a judgement. That one is Reaper's Embrace's ten-piece, ruled
+	 * 2026-10-19 (C5-C7) to fire on the wearer's own kills only and to give nothing to a wearer holding no summon
+	 * skill; The Swarm's sentence answers both differently, so sharing the stat would have changed a set bonus
+	 * nobody re-ruled.
+	 */
+	static const TCHAR* KillSummonsMinionStat;
+
+	/**
+	 * Summon one minion for `Commander` at `Where`, for an enemy it or one of its minions killed there, when it holds
+	 * `KillSummonsMinionStat`. Called by `ACataclysmPlayerCharacter::OnSomethingDied` for a death whose killer is the
+	 * character or something it commands (`UCataclysmCommand::CommanderOf`), a thrall included.
+	 *
+	 * ITS FIRST SUMMON SKILL'S KIND, THROUGH `SummonReplacementAt`, so free and never by evicting; with NO SUMMON SKILL
+	 * HELD, SUMMON IMP'S KIND (`UCataclysmRisenImps::SummonImpKindFor`), so it works for a Wand Ritualist, the owner's
+	 * answer of 2026-11-24. LIMITED ONLY BY THE POOL'S ROOM: no interval, as the sentence states none. Nothing for a
+	 * commander that is dead or does not hold the flag, or for a victim that was no enemy of its.
+	 *
+	 * @param Victim  what died, asked whether it was an enemy of the commander's; null is refused
+	 * @return the minion summoned, or null
+	 */
+	static ACataclysmMinion* SummonAtAKillFor(AActor* Commander, const AActor* Victim, const FVector& Where);
+
+	/**
 	 * One spawn of an open rift, and the rift's closing: what `SpawnTimer` and `CollapseTimer` call. PUBLIC SINCE ISSUE
 	 * #2885 SLICE DS4, so a test can drive a rift without a clock, as `SummonOne` is public for.
 	 *
@@ -2198,9 +2276,10 @@ private:
  * of zero in game/Data/MinionTypes.csv, while an imp states 4.4. So "stays where
  * it is put" falls out of the data rather than being a rule this class imposes.
  *
- * NO OLDEST-EXPLODES RULE. That belongs to Summon Imp, whose design says a fourth
- * imp destroys the oldest. Nothing in the three deployable skills says anything
- * of the kind, so reaching the cap here simply stops placing more.
+ * NO OLDEST-EXPLODES RULE AND NO COUNT CAP. Each machine reserves its row's
+ * Fervour (issue #1934, approved by the owner on 2026-11-25), and the pool is the
+ * only limit, as for every kind that reserves since issue #2787: a press whose
+ * whole set does not fit places none of it and sets `bRefusedForRoom`.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmDeployableSkill : public UCataclysmSkillTemplate
@@ -2229,9 +2308,43 @@ public:
 								 const FGameplayAbilityActivationInfo ActivationInfo,
 								 const FGameplayEventData* TriggerEventData) override;
 
-	/** Put one of a named type down. Public so a test can drive it directly. */
+	/** Put one of a named type down, holding the row's Fervour reserve, or refuse when the pool has no room for it.
+	 *  Public so a test can drive it directly. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	ACataclysmMinion* DeployOne(const FString& InTypeName);
+
+	/** What one machine of this skill reserves for the caster now: the row's figure, levelled and reduced. Issue #2802. */
+	float FervourReserveOfOne() const;
+
+	/**
+	 * Whether any machine this skill places is a gadget (`ACataclysmMinion::TypeIsAGadget`). A use that cannot fit its
+	 * whole set's reserve then moves every gadget the caster commands to the aimed point instead, at the use's cost and
+	 * cooldown (V5g, ruled G3). A set of traps alone is refused as before, and traps never move.
+	 */
+	bool PlacesAGadget() const;
+
+	/** How many gadgets the last use moved instead of placing anything. Read by tests. */
+	int32 GadgetsMovedForWantOfRoom = 0;
+
+	/**
+	 * THE GADGET RULE, G3 AS REVISED after window war2-w1, on the owner's words "no moving unless you don't have enough
+	 * fervour to put out another": whether a use of this skill moves every gadget instead of placing its set, because
+	 * the set holds a gadget, the caster commands a gadget to move, and either the whole set's reserve does not fit or
+	 * the use's cost cannot be paid. Such a use pays no cost and starts the cooldown.
+	 */
+	bool MovesInsteadOfPlacing(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo) const;
+
+	/** A use that will move instead of placing is not refused for its cost: the move is free (G3 revised). */
+	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+						   FGameplayTagContainer* OptionalRelevantTags) const override;
+
+	/**
+	 * Whether the last use, or the last `DeployOne`, was refused for want of room in the pool. Issue #1934, ruled
+	 * 2026-11-25 (Q3): a refusal writes a log line saying why and sets this, which a test asserts, as the thrall's
+	 * `UCataclysmSummonSkill::bRefusedForRoom` does. An on-screen refusal is a separate item for every reserve.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	bool bRefusedForRoom = false;
 
 	/**
 	 * What this ability instance has out, oldest first.
@@ -2461,6 +2574,10 @@ private:
 	 * REFRESHED, NOT RE-ADDED, for an ally who is still inside. Adding a second
 	 * modifier every second would stack the bonus without limit, which is the
 	 * one way this could go badly wrong and is why the set is kept at all.
+	 *
+	 * TWO BONUSES, A ROW STATING ONE: `AllyMoreDamage` (Death's Pall of Ending,
+	 * 2026-11-25), a More modifier given to the caster too, or
+	 * `AllyIncreasedDamage`, an Increased one given to allies only.
 	 */
 	void HelpAlliesInside();
 
@@ -2515,6 +2632,35 @@ private:
 
 	/** Every ally currently holding immunities this aura granted. Weak, as above. */
 	TArray<TWeakObjectPtr<AActor>> ImmuneAllies;
+
+	/**
+	 * War's Blood and Iron, 2026-11-25: hold the row's shares for two pulses on what stands inside -- armour removed
+	 * and movement slowed on every enemy, movement raised on the caster and every ally -- and grant every ally inside
+	 * the row's `AllyImmune`. Nothing here takes a share back when its holder walks out: it lapses two pulses later
+	 * (the coordinating session's ruling of 2026-11-25, no new linger). Inert for a row stating none of the four.
+	 */
+	void HoldSharesInside(const TArray<AActor*>& EnemiesInside);
+
+	/** Take back every share and every `AllyImmune` grant this aura holds on anyone. */
+	void ReleaseEveryShare();
+
+	/** Everyone this aura holds a share or an `AllyImmune` grant on. Weak, as above. */
+	TArray<TWeakObjectPtr<AActor>> SharedWith;
+
+	/**
+	 * Demonic's Conflagration, 2026-11-25 ("Go with A"): a burning enemy that died inside the ring passes its burn on.
+	 * Bound to `UCataclysmCombatEvents::OnDeath` while the aura runs and a row states `BurnPassesOnDeath`.
+	 */
+	void OnSomeoneDied(const struct FCataclysmDeathNotice& Notice);
+
+	/** The binding above, removed when the aura ends. */
+	FDelegateHandle SomeoneDiedHandle;
+
+public:
+	/** How many burns this activation has passed on at a death. Public so tests can read it. */
+	int32 BurnsPassedOn = 0;
+
+private:
 
 	FTimerHandle PulseTimer;
 	FTimerHandle FinishTimer;

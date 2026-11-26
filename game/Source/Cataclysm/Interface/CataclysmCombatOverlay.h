@@ -533,6 +533,14 @@ public:
 	static FString ArmourRemovedTextFor(const AActor* Actor);
 
 	/**
+	 * "Deathmarked +18%" under a creature's health bar while a Deathmark lasts on it, carrying that much more damage
+	 * taken, "Deathmarked" for a mark laid when its cost could not be paid, or empty with none. The Berserker's
+	 * Deathmark, 2026-11-25: state on the creature, so nothing else on screen would say it was there (the owner's rule
+	 * that a system ships with a basic display).
+	 */
+	static FString DeathmarkTextFor(const AActor* Actor);
+
+	/**
 	 * What is said under a creature's health bar while Ground Down slows it,
 	 * such as "Slowed -15%", or empty while nothing does. Issue #1515.
 	 *
@@ -541,6 +549,12 @@ public:
 	 * named by `CrippledTextFor` (issue #2379).
 	 */
 	static FString SlowedTextFor(const AActor* Actor);
+
+	/**
+	 * "Marked" under a creature's health bar while a Shadow's Deathmark is on it, or empty. The Death trees' slice C6e
+	 * (2026-11-25), as ruled (Q5): its own word, so it is never read as War's "Deathmarked".
+	 */
+	static FString MarkedTextFor(const AActor* Actor);
 
 	/**
 	 * "Held" under a creature's health bar while a holder of Nowhere to Run holds
@@ -694,6 +708,20 @@ public:
 	static FString OwedTextFor(const AActor* Actor);
 
 	/**
+	 * Titanfall's window and store on a living actor, such as "Titanfall: cannot die 2s, next attack +3200", either part
+	 * alone while only it is held, or empty. Ruled 2026-11-25 (T6) under the owner's rule that every system has a basic
+	 * display. THE SECONDS ARE ROUNDED UP, as the held buff's are; THE AMOUNT TOO, as "Owed" is. Shown among the
+	 * player's buffs (`UCataclysmPlayerEffects`).
+	 */
+	static FString TitanfallTextFor(const AActor* Actor);
+
+	/**
+	 * A bolted gadget's name and how many gadgets it is, such as "Bolt Turret x3", or empty for anything else. Bolted
+	 * Together, V5c (accepted 2026-11-25). First on the gadget's status line, because it says what the gadget is.
+	 */
+	static FString BoltedTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.
@@ -762,6 +790,12 @@ public:
 	static FString PortalTextFor(const AActor* Actor);
 
 	/**
+	 * "Cursed Abomination" under the health bar of an Abomination lair's boss, or empty. Issue #51 slice B5: the
+	 * design's words, so it is told apart from Portal Unleashing's "Abomination" (L5).
+	 */
+	static FString CursedAbominationTextFor(const AActor* Actor);
+
+	/**
 	 * "Carcass" under the health bar of a Carrion Feast carcass, and "Feeder" under the bar of a creature one became,
 	 * or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason: it says what the creature is.
 	 */
@@ -819,10 +853,33 @@ public:
 	static FString RiftTextFor(const AActor* Actor);
 
 	/**
+	 * "Altar" under the health bar of a living altar of a Rift, the Demonic Quest dungeon, or empty. Issue #51 slice B1.
+	 * Beside the floor sources' words, for their reason: it says what the creature is, which here is what the player
+	 * must destroy to seal the Rift.
+	 */
+	static FString RiftAltarTextFor(const AActor* Actor);
+
+	/**
 	 * "Shrouded" under the health bar of a creature no damage reaches until light does, on a floor carrying Shadowy
 	 * Enemies, or empty. Issues #1820 and #41. It says why a blow on it did nothing.
 	 */
 	static FString ShroudedTextFor(const AActor* Actor);
+
+	/**
+	 * What Death's enemy modifiers have done to this character, in words, or empty. Written 2026-11-24 ahead of their
+	 * window, so each effect a player cannot otherwise see is named where they look. A creature: "Bone Pyre",
+	 * "Spectral" (a Haunting copy), "Undying" (one Undying Will brought back), "Phased" (Spectral Shift has it out of
+	 * existence, so a blow on it does nothing). A character of the players' side: "Final Curse", "Soul Tether",
+	 * "Haunted", "Recovery capped" (Mortal Reminder) and "Decaying" (standing in a Lingering Decay zone).
+	 */
+	static FString DeathModifierTextFor(const AActor* Actor);
+
+	/**
+	 * What War's enemy modifiers are doing to this character, in words, or empty. Written 2026-11-25 ahead of their
+	 * window. A creature: "Phalanx -30%" (what its allies give it now), "Barrage" (a volley of Artillery Barrage it
+	 * called is in the air) and "Drums of War" (it holds that buff). A character of the players' side: "Battle Cry".
+	 */
+	static FString WarModifierTextFor(const AActor* Actor);
 
 	/**
 	 * "Second Self" under the health bar of the minion or thrall A Second Self

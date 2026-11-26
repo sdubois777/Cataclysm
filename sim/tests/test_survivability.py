@@ -80,12 +80,17 @@ def test_it_has_one_base_for_every_equipped_piece():
 # Mitigation, which is the thing every earlier figure got wrong
 # --------------------------------------------------------------------------
 
-def test_four_mitigation_layers_multiply_to_roughly_a_tenth():
+def test_four_mitigation_layers_multiply_to_about_three_percent():
     """The measurement that made issue #108 answerable. Armour, resistance,
     block and flat reduction each look modest and compound to something that
-    is not."""
+    is not.
+
+    ABOUT 3% SINCE ISSUE #2883, where it was about a tenth: the re-fitted
+    reference character (the middle build, ruled on #2884) blocks 98% and
+    carries 12,550 armour at tier 8. Enemy damage was re-fitted to it by the
+    same ruling, which is why the design's hits-to-kill table did not move."""
     landed = rb.damage_taken_fraction(TIER)
-    assert 0.05 < landed < 0.18, f"a hit lands for {landed:.1%}"
+    assert 0.02 < landed < 0.04, f"a hit lands for {landed:.1%}"
 
 
 def test_every_mitigation_layer_actually_contributes():
@@ -119,21 +124,22 @@ def test_no_amount_of_gear_makes_the_reference_build_immune():
 # file can import both, which is why the pin lives here rather than beside the
 # constant.
 
-def test_the_enemy_mitigation_ceiling_is_what_the_player_actually_stops():
-    """Both directions matter. Above what the player stops and the rule "no
-    enemy stops more than the player does" is not what is enforced; far below it
-    and the ceiling has quietly become a different, stricter rule that nobody
-    decided."""
+def test_the_enemy_mitigation_ceiling_is_below_what_the_player_stops_and_89():
+    """THE RULE AS RESTATED ON 2026-11-25: below what the reference character
+    stops, and 89%. Until then it was "the whole percent below what the player
+    stops", and this test held it within two points. The re-fit for the
+    whole-number affix ranges (#2883) stops 97.05%, and the owner ruled on #2884
+    (ruling 4) to keep 89% and restate the rule. Above what the player stops
+    and "no enemy stops more than the player does" is not what is enforced."""
     player_stops = 100.0 * (1.0 - rb.damage_taken_fraction(TIER))
 
     assert es.ENEMY_MITIGATION_CEILING < player_stops, (
         f"the ceiling is {es.ENEMY_MITIGATION_CEILING}% and the reference "
         f"character stops {player_stops:.2f}%, so an enemy at the ceiling would "
         "stop more than the player does")
-    assert es.ENEMY_MITIGATION_CEILING > player_stops - 2.0, (
-        f"the ceiling is {es.ENEMY_MITIGATION_CEILING}% and the reference "
-        f"character stops {player_stops:.2f}%; the ceiling is meant to be that "
-        "figure rounded down to a whole percent, not a stricter rule")
+    assert es.ENEMY_MITIGATION_CEILING == 89.0, (
+        "the owner ruled the ceiling kept at 89% on #2884; a change is a new ruling")
+    assert player_stops == pytest.approx(97.05, abs=0.01)
 
 
 def test_the_player_stops_least_at_the_last_tier():

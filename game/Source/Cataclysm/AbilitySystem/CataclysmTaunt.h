@@ -72,4 +72,11 @@ public:
 	 * while the taunt lasts, as a silenced one is.
 	 */
 	static bool IsTaunted(const AActor* Actor);
+
+	/**
+	 * End every taunt `Taunter` holds now. Baited, the War vow options' fourth slice, V4a, 2026-11-25: "for 4 seconds or
+	 * until the trap goes off", ruled: a trap that goes off and rearms, rather than being used up, ends its taunts here,
+	 * as a used-up trap's end by itself. Returns how many ended.
+	 */
+	static int32 EndTauntsBy(const AActor* Taunter);
 };

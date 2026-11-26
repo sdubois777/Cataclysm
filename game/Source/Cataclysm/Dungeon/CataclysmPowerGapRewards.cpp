@@ -3,10 +3,22 @@
 #include "Dungeon/CataclysmPowerGapRewards.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 
-double FCataclysmPowerGapRule::Multiplier(double Gap, bool bLoot)
+double FCataclysmPowerGapRule::BandBelow(int32 DifficultyTier)
 {
-	// AS `Rule.multiplier` WRITES IT, line for line: the band's lower side, the floor, then above, below, inside.
-	const double Below = BandBelow;
+	// TIERS 1 TO 8, the simulation's `RULED.band_down_by_tier`; `tools/tests/test_power_gap_rewards_port.py` reads this
+	// line back.
+	static constexpr double ByTier[] = { 1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8, 0.8 };
+	// HELD INSIDE 1 TO 8, where the simulation refuses a tier outside them: a console variable can set any tier, and a
+	// kill must still be paid something.
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, static_cast<int32>(UE_ARRAY_COUNT(ByTier)));
+	return ByTier[Tier - 1];
+}
+
+double FCataclysmPowerGapRule::Multiplier(double Gap, bool bLoot, int32 DifficultyTier)
+{
+	// AS `Rule.multiplier` WRITES IT, line for line: the band's lower side at the tier, the floor, then above, below,
+	// inside.
+	const double Below = BandBelow(DifficultyTier);
 	const double Floor = bLoot ? LootFloor : ExperienceFloor;
 	if (Gap > BandAbove)
 	{
@@ -44,8 +56,8 @@ FCataclysmPowerGapRewards FCataclysmPowerGapRule::RewardsFor(int32 DungeonScore,
 		return Out;
 	}
 	const double Gap = GapOf(DungeonScore, PlayerScore, DifficultyTier);
-	Out.Experience = Multiplier(Gap, /*bLoot=*/false);
-	Out.Loot = Multiplier(Gap, /*bLoot=*/true);
+	Out.Experience = Multiplier(Gap, /*bLoot=*/false, DifficultyTier);
+	Out.Loot = Multiplier(Gap, /*bLoot=*/true, DifficultyTier);
 	Out.bScored = true;
 	return Out;
 }

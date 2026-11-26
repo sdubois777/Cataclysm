@@ -79,12 +79,16 @@ DEMONIC_PIECES: tuple[tuple[str, tuple[af.StatAffix, af.StatAffix]], ...] = (
 #: Thick Hide in full, twelve points: +1% increased armour and +0.5% increased maximum health a point.
 THICK_HIDE = {"armor": 0.12, "max_health": 0.06}
 
-#: What window w60 measured in the game, tiers 1 to 8, at the reference gear level: the Stalker's maximum health before
-#: its multiplier, its armour, and what its basic attack took from a target with no armour and no resistance. Printed
-#: by `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` and recorded in `docs/DECISIONS.md`.
-GAME_BUILT_HEALTH = (945.6, 1485.5, 2139.7, 2926.7, 3940.4, 5314.3, 6109.7, 6902.3)
-GAME_ARMOUR = (1155.3, 1382.7, 1641.1, 1937.0, 2289.4, 2723.9, 2983.5, 3243.8)
-GAME_BLOW = (348.0, 468.0, 634.0, 867.0, 1195.0, 1661.0, 1874.0, 2101.0)
+#: What window ar-w1 measured in the game (2026-11-25, `17f79489a`), tiers 1 to 8, at the reference gear level: the
+#: Stalker's maximum health before its multiplier, its armour, and what its basic attack took from a target with no
+#: armour and no resistance. Printed by `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`
+#: and recorded in `docs/DECISIONS.md`. MEASURED AGAIN FOR THE WHOLE-NUMBER AFFIX RANGES AND THE ENEMY REBALANCE (issues
+#: #2883 and #2884): the Stalker wears the Demonic entry's eighteen pieces, whose affixes those ranges raised, and its
+#: blow is built from the rebalanced enemy damage. Window w60's figures were 945.6 ... 6902.3, 1155.3 ... 3243.8 and
+#: 348 ... 2101.
+GAME_BUILT_HEALTH = (1684.8, 2961.9, 4725.7, 6866.4, 9840.8, 13982.5, 16460.1, 19068.6)
+GAME_ARMOUR = (1530.2, 1934.6, 2471.3, 3042.0, 3831.5, 4831.4, 5416.5, 6052.2)
+GAME_BLOW = (366.7, 505.2, 733.7, 1038.8, 1433.3, 2119.9, 2354.6, 2658.6)
 
 #: The multipliers in the game, tiers 1 to 8: `fitted_to_the_game` to two decimals, ruled by the coordinating session
 #: on 2026-10-26 and re-fitted on 2026-10-30 to the Boss the game now builds (issue #1569). They were health 0.49, 0.76,
@@ -92,8 +96,12 @@ GAME_BLOW = (348.0, 468.0, 634.0, 867.0, 1195.0, 1661.0, 1874.0, 2101.0)
 #: `CorruptedStalkerHealthMultipliers` and `CorruptedStalkerDamageMultipliers`. TIER 1'S DAMAGE RE-FITTED 2026-11-19,
 #: 0.22 to 0.06 (0.0559 to two decimals), when issue #2749 cut tier 1's damage scale from 0.20 to 0.05 and so the Boss's
 #: damage; tiers 2 to 8 and every health figure did not move.
-HEALTH_MULTIPLIERS = (0.49, 0.77, 0.87, 1.01, 1.06, 1.04, 1.19, 1.15)
-DAMAGE_MULTIPLIERS = (0.06, 0.58, 1.01, 1.39, 1.68, 1.86, 2.40, 2.97)
+#: RE-FITTED ON 2026-11-25 FROM WINDOW AR-W1's MEASUREMENT, for the whole-number affix ranges and the enemy rebalance
+#: (issues #2883 and #2884), by the two-window order the coordinating session ruled: health 0.49, 0.77, 0.87, 1.01,
+#: 1.06, 1.04, 1.19, 1.15 and damage 0.06, 0.58, 1.01, 1.39, 1.68, 1.86, 2.40, 2.97 until then. The rebalance's
+#: proposal estimated 0.22 to 0.50 and 0.05 to 13.43 from the simulation alone; the game's measurement gives these.
+HEALTH_MULTIPLIERS = (0.23, 0.38, 0.42, 0.46, 0.45, 0.51, 0.49, 0.46)
+DAMAGE_MULTIPLIERS = (0.05, 1.00, 2.20, 3.43, 5.11, 6.93, 9.80, 13.43)
 
 
 def damage_multiplier(tier: int, ring=es.DEFAULT_RING) -> float:
@@ -101,8 +109,9 @@ def damage_multiplier(tier: int, ring=es.DEFAULT_RING) -> float:
     damage scale, times that ring's damage scale over an Outpost's at the same tier. ISSUE #2749'S RING SLICE, ruled by
     the coordinating session on 2026-11-19: the Stalker is as dangerous as a Boss on the same floor, a Boss's damage is
     multiplied by `enemy_stats.damage_scale(tier, ring)`, and the fit is linear in the Boss's damage, so the ratio
-    carries the fit to every ring with no second table. At tier 1: 0.06 on an Outpost, 0.132 on a Bulwark, 0.156 on a
-    Sanctuary, 0.12 on the Pillar; tiers 2 to 8 are the same on every ring, as their damage scale is. The game's copy is
+    carries the fit to every ring with no second table. At tier 1: 0.05 on an Outpost, 0.10 on a Bulwark, 0.12 on a
+    Sanctuary, 0.07 on the Pillar since the re-fit of 2026-11-25 (0.06, 0.12, 0.144 and 0.084 before it); tiers 2 to 8 are
+    the same on every ring, as their damage scale is. The game's copy is
     `UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(Tier, Ring)`."""
     held = min(max(tier, 1), 8)
     return (DAMAGE_MULTIPLIERS[held - 1] * es.damage_scale(held, ring)

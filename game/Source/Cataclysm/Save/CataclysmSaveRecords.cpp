@@ -733,6 +733,184 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A record written before the inventory had tabs: its material and gem stacks lie in `CarriedSlots`. Issue #2849,
+	 * ruled 2026-11-22 (the owner: "One cell per kind, no limit (Recommended)"): the 48 slots hold gear only, and each
+	 * stack moves to `CarriedMaterials` or `CarriedGems`. Its cell is BLANKED, not removed, so `CarriedSlots` keeps its
+	 * length and every piece of gear keeps its cell. Two stacks of one kind are added together, in the order first met;
+	 * the inventory sorts the gems when it is restored. A stack of nought is dropped, as `RestoreSlots` would drop it.
+	 * Lists the record already holds are added to; one that is not a list, or an entry that is not an object, is
+	 * refused.
+	 */
+	bool Migrate_15_to_16(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		TArray<TSharedPtr<FJsonValue>> Materials;
+		TArray<TSharedPtr<FJsonValue>> Gems;
+		for (const TCHAR* Key : {TEXT("CarriedMaterials"), TEXT("CarriedGems")})
+		{
+			if (!Record->HasField(Key))
+			{
+				continue;
+			}
+			const TArray<TSharedPtr<FJsonValue>>* Held = nullptr;
+			if (!Record->TryGetArrayField(Key, Held) || Held == nullptr)
+			{
+				OutError = FString::Printf(TEXT("%s holds something that is not a list"), Key);
+				return false;
+			}
+			(FCString::Strcmp(Key, TEXT("CarriedMaterials")) == 0 ? Materials : Gems) = *Held;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Slots = nullptr;
+		if (Record->HasField(TEXT("CarriedSlots")))
+		{
+			if (!Record->TryGetArrayField(TEXT("CarriedSlots"), Slots) || Slots == nullptr)
+			{
+				OutError = TEXT("CarriedSlots holds something that is not a list");
+				return false;
+			}
+			for (const TSharedPtr<FJsonValue>& Entry : *Slots)
+			{
+				const TSharedPtr<FJsonObject>* Object = nullptr;
+				if (!Entry.IsValid() || !Entry->TryGetObject(Object) || Object == nullptr || !Object->IsValid())
+				{
+					OutError = TEXT("CarriedSlots holds an entry that is not an object");
+					return false;
+				}
+				const TSharedRef<FJsonObject> Slot = Object->ToSharedRef();
+
+				// GEAR STAYS. A slot whose item has a base is a piece of gear, whatever else it holds.
+				FString Base = TEXT("None");
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				if (Slot->TryGetObjectField(TEXT("Item"), Item) && Item != nullptr && Item->IsValid())
+				{
+					(*Item)->TryGetStringField(TEXT("Base"), Base);
+				}
+				FString Material = TEXT("None");
+				FString Gem = TEXT("None");
+				FString Rarity = TEXT("Everyday");
+				double Quantity = 0.0;
+				Slot->TryGetStringField(TEXT("Material"), Material);
+				Slot->TryGetStringField(TEXT("Gem"), Gem);
+				Slot->TryGetStringField(TEXT("GemRarity"), Rarity);
+				Slot->TryGetNumberField(TEXT("Quantity"), Quantity);
+				const bool bMaterial = Material != TEXT("None") && !Material.IsEmpty();
+				const bool bGem = !bMaterial && Gem != TEXT("None") && !Gem.IsEmpty();
+				if (Base != TEXT("None") || (!bMaterial && !bGem))
+				{
+					continue;
+				}
+
+				if (Quantity > 0.0)
+				{
+					TArray<TSharedPtr<FJsonValue>>& Into = bMaterial ? Materials : Gems;
+					bool bJoined = false;
+					for (const TSharedPtr<FJsonValue>& Existing : Into)
+					{
+						const TSharedPtr<FJsonObject>* Stack = nullptr;
+						if (!Existing.IsValid() || !Existing->TryGetObject(Stack) || Stack == nullptr || !Stack->IsValid())
+						{
+							continue;
+						}
+						FString Name;
+						FString StackRarity = TEXT("Everyday");
+						(*Stack)->TryGetStringField(bMaterial ? TEXT("Material") : TEXT("Gem"), Name);
+						(*Stack)->TryGetStringField(TEXT("GemRarity"), StackRarity);
+						if (Name == (bMaterial ? Material : Gem) && (bMaterial || StackRarity == Rarity))
+						{
+							double Was = 0.0;
+							(*Stack)->TryGetNumberField(TEXT("Quantity"), Was);
+							(*Stack)->SetNumberField(TEXT("Quantity"), Was + Quantity);
+							bJoined = true;
+							break;
+						}
+					}
+					if (!bJoined)
+					{
+						// THE STACK'S OWN OBJECT, COPIED, so its entry has every field a carried slot writes.
+						const TSharedRef<FJsonObject> Copy = MakeShared<FJsonObject>();
+						Copy->Values = Slot->Values;
+						Into.Add(MakeShared<FJsonValueObject>(Copy));
+					}
+				}
+
+				// BLANKED, NOT REMOVED: the cell stays, empty.
+				Slot->SetStringField(TEXT("Material"), TEXT("None")); // A migration's: the stack moved to its tab.
+				Slot->SetStringField(TEXT("Gem"), TEXT("None"));
+				Slot->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				Slot->SetNumberField(TEXT("Quantity"), 0.0);
+			}
+		}
+		Record->SetArrayField(TEXT("CarriedMaterials"), Materials); // A migration's: the materials tab, written out.
+		Record->SetArrayField(TEXT("CarriedGems"), Gems);
+		return true;
+	}
+
+	/**
+	 * A character written before the keys remembered their defaults (issue #837 slice 1, the owner's Q1 of 2026-11-24)
+	 * remembered none: an empty `RememberedDefaults`, so its first fill after loading remembers the default it showed
+	 * before. Written out, for `Migrate_3_to_4`'s reason. A LIST ALREADY THERE IS KEPT, and anything else under the key
+	 * is refused rather than read as empty.
+	 *
+	 * AND THE SAME IN THE HELD BUILD, `ConsumptionBuild`, which copies the keys for the double (ruled by the
+	 * coordinating session on 2026-11-24). Its list may already be there: `Migrate_5_to_6` writes a whole default build,
+	 * which carries every field the build has now.
+	 */
+	bool Migrate_16_to_17(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const auto WriteTheList = [&OutError](const TSharedRef<FJsonObject>& Into, const TCHAR* Where)
+		{
+			TArray<TSharedPtr<FJsonValue>> Held;
+			if (Into->HasField(TEXT("RememberedDefaults")))
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr;
+				if (!Into->TryGetArrayField(TEXT("RememberedDefaults"), Listed) || Listed == nullptr)
+				{
+					OutError = FString::Printf(TEXT("%sRememberedDefaults holds something that is not a list"), Where);
+					return false;
+				}
+				Held = *Listed;
+			}
+			Into->SetArrayField(TEXT("RememberedDefaults"), Held); // A migration's: the remembered defaults, written out.
+			return true;
+		};
+		if (!WriteTheList(Record, TEXT("")))
+		{
+			return false;
+		}
+		if (Record->HasField(TEXT("ConsumptionBuild")))
+		{
+			const TSharedPtr<FJsonObject>* Build = nullptr;
+			if (!Record->TryGetObjectField(TEXT("ConsumptionBuild"), Build) || Build == nullptr || !Build->IsValid())
+			{
+				OutError = TEXT("ConsumptionBuild holds something that is not an object");
+				return false;
+			}
+			return WriteTheList(Build->ToSharedRef(), TEXT("ConsumptionBuild's "));
+		}
+		return true;
+	}
+
+	/**
+	 * A record written before the forge's gold was counted (#47 slice F6a, Q5): `GoldSpentAtTheForge` is written 0, as
+	 * Reinvestment's count was; a number already there is kept, and anything else is refused.
+	 */
+	bool Migrate_17_to_18(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentAtTheForge"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentAtTheForge"), Held))
+		{
+			OutError = TEXT("GoldSpentAtTheForge holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentAtTheForge"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -754,6 +932,9 @@ namespace CataclysmCharacterSaveMigration
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
+		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
+		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
+		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
 	};
 }
 
@@ -1212,6 +1393,130 @@ namespace CataclysmRunSaveMigration
 		return CataclysmSaveArrival::WriteWhereEachItemArrived(Record, OutError);
 	}
 
+	/**
+	 * A run written before a Rift's altars stood holds none fallen: no dungeon placed an altar before issue #51 slice
+	 * B1, 2026-11-24. Written out, for `Migrate_1_to_2`'s reason, as an empty `RiftAltarsDestroyed` in the floor's rule
+	 * state, and only where the file has one; a version 1 file always has it, as `Migrate_1_to_2` says. Written whatever
+	 * the key held, for `Migrate_7_to_8`'s reason: a run written at 18 never wrote it.
+	 */
+	bool Migrate_18_to_19(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid()
+			&& (*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) && RuleState && RuleState->IsValid())
+		{
+			// A migration's: no Rift altar had fallen, written out.
+			(*RuleState)->SetArrayField(TEXT("RiftAltarsDestroyed"), TArray<TSharedPtr<FJsonValue>>());
+		}
+		return true;
+	}
+
+	/**
+	 * The most rifts a floor could hold when the run record went to version 20, `UCataclysmDungeonModifierEffects::
+	 * AbyssalRiftsPerLargeFloor` on that day. WRITTEN HERE AS A NUMBER AND NOT READ FROM THE RULE, so what an older
+	 * file migrates to does not move if the rule's figure does; the load reads only the rifts its floor placed.
+	 */
+	constexpr int32 RiftsAFloorAtVersion20 = 3;
+
+	/**
+	 * Version 19 to 20, issue #2864, the owner's redesign of Abyssal Rifts (2026-11-23): a floor holds several rifts the
+	 * player can kill, and the floor's rule state saves each rift's health left and seconds stood where it saved one
+	 * rift's state. `AbyssalRiftState` is read and removed. A STATE OTHER THAN 0 WAS A RIFT THE PLAYER HAD MET, open or
+	 * closed, and the version 19 load closed it and counted it failed (U2), so the floor's rifts are written as killed:
+	 * `RiftsAFloorAtVersion20` entries of 0 health and 0 seconds. A state of 0, or none, is written as no rift saved,
+	 * two empty lists, which the load reads as the rifts standing as the floor rebuilds them. Written out, for
+	 * `Migrate_1_to_2`'s reason. A run with no `Floor` or no `RuleState` object is left as it is, for `Migrate_6_to_7`'s
+	 * reason.
+	 */
+	bool Migrate_19_to_20(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (!Record->TryGetObjectField(TEXT("Floor"), Floor) || !Floor || !Floor->IsValid()
+			|| !(*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) || !RuleState || !RuleState->IsValid())
+		{
+			return true;
+		}
+		double State = 0.0;
+		(*RuleState)->TryGetNumberField(TEXT("AbyssalRiftState"), State);
+		(*RuleState)->RemoveField(TEXT("AbyssalRiftState")); // A migration's: the one rift's state is gone.
+		TArray<TSharedPtr<FJsonValue>> Health;
+		TArray<TSharedPtr<FJsonValue>> Seconds;
+		if (State != 0.0)
+		{
+			for (int32 Rift = 0; Rift < RiftsAFloorAtVersion20; ++Rift)
+			{
+				Health.Add(MakeShared<FJsonValueNumber>(0.0)); // A migration's: a met rift loads killed, as U2 closed it.
+				Seconds.Add(MakeShared<FJsonValueNumber>(0.0));
+			}
+		}
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftHealthLeft"), Health);
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftSecondsAlive"), Seconds);
+		return true;
+	}
+
+	/**
+	 * Version 20 to 21, issue #51 slice B4, the War quest. Every dungeon gets `ArrivedDay` -1 (`INDEX_NONE`): no
+	 * version 20 run recorded a day of arrival, so a Siege's growth counts from `SpawnedDay`, as it did. Every city
+	 * gets `FellTo` "None": no version 20 run recorded what felled a city. Written out, for `Migrate_1_to_2`'s reason.
+	 * A run with no `Dungeons` or no `Cities` array is left as it is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_20_to_21(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Record->TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("ArrivedDay"), INDEX_NONE); // A migration's: it has not moved.
+				}
+			}
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Record->TryGetArrayField(TEXT("Cities"), Cities) && Cities != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(City) && City != nullptr && City->IsValid())
+				{
+					(*City)->SetStringField(TEXT("FellTo"), TEXT("None")); // A migration's: not recorded before.
+				}
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Version 21 to 22, issue #51 slice B5, the Death quest. Every dungeon gets `CitiesFallenBefore` 0: no version 21
+	 * run recorded it. Written out, for `Migrate_1_to_2`'s reason. A run with no `Dungeons` array is left as it is, for
+	 * `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_21_to_22(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Record->TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("CitiesFallenBefore"), 0); // A migration's: not recorded before.
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1231,6 +1536,10 @@ namespace CataclysmRunSaveMigration
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
 		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
+		{ 18, TEXT("Migrate_18_to_19"), &Migrate_18_to_19 },
+		{ 19, TEXT("Migrate_19_to_20"), &Migrate_19_to_20 },
+		{ 20, TEXT("Migrate_20_to_21"), &Migrate_20_to_21 },
+		{ 21, TEXT("Migrate_21_to_22"), &Migrate_21_to_22 },
 	};
 }
 
@@ -1367,6 +1676,24 @@ namespace CataclysmAccountSaveMigration
 		return true;
 	}
 
+	/**
+	 * A record written before the forge's gold was counted (#47 slice F6a, Q5): `GoldSpentAtTheForge` is written 0, as
+	 * Reinvestment's count was; a number already there is kept, and anything else is refused.
+	 */
+	bool Migrate_7_to_8(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentAtTheForge"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentAtTheForge"), Held))
+		{
+			OutError = TEXT("GoldSpentAtTheForge holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentAtTheForge"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1375,6 +1702,7 @@ namespace CataclysmAccountSaveMigration
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
+		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 	};
 }
 

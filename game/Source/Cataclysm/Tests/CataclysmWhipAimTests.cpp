@@ -17,7 +17,11 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
+// For what a swing waits on when its test ends. Window bb12-w2.
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -103,8 +107,15 @@ namespace CataclysmWhipAimTest
 	{
 		FWhipAimRig(UWorld* World, const FVector& Where)
 		{
-			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+			// THE PLAYER STATE IS OWNED BY ITS CONTROLLER, as the engine's `AController::InitPlayerState` spawns it in
+			// the game. The abilities' actor info finds the player controller only through the player state's owner
+			// (`FGameplayAbilityActorInfo::InitFromActor`), and `SetPlayerState` sets none, so without it a skill's
+			// `AimPoint` has no controller and never reads the cursor: window bb12-w1 failed both cursor tests on it
+			// (2026-11-24).
 			Controller = World->SpawnActor<ACataclysmPlayerController>();
+			FActorSpawnParameters OwnedByTheController;
+			OwnedByTheController.Owner = Controller;
+			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>(OwnedByTheController);
 			Player = World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
 			if (!State || !Controller || !Player)
 			{
@@ -140,6 +151,7 @@ namespace CataclysmWhipAimTest
 				if (Skill && Skill->Slot == ECataclysmAbilitySlot::BasicAttack)
 				{
 					Basic = Skill;
+					BasicHandle = Spec.Handle;
 				}
 			}
 		}
@@ -152,6 +164,14 @@ namespace CataclysmWhipAimTest
 				Test.AddError(TEXT("set-up: a possessed player with the game's controller, holding a Whip with a basic "
 								   "attack granted. If the row is missing, DT_ItemBases may be older than game/Data: run "
 								   "tools/generate_datatable_assets.py"));
+				return false;
+			}
+			// AND THE ABILITIES' ACTOR INFO HOLDS THIS CONTROLLER, the one a skill asks where the cursor points. Without
+			// it every cursor case fails for a reason the test itself made (window bb12-w1), so it is said here first.
+			if (!Test.TestTrue(TEXT("set-up: the abilities' actor info holds the player's controller, which a skill asks "
+									"where the cursor points"),
+					System->AbilityActorInfo.IsValid() && System->AbilityActorInfo->PlayerController.Get() == Controller))
+			{
 				return false;
 			}
 			return Test.TestTrue(*FString::Printf(TEXT("set-up: the whip's basic attack is a Strike of 3 m and 45 "
@@ -181,11 +201,122 @@ namespace CataclysmWhipAimTest
 			return !Basic->IsWaitingForTheSwingToConnect();
 		}
 
+		/** Whether the basic attack's spec still counts as active in the ability system. */
+		bool IsStrikeActive() const
+		{
+			const FGameplayAbilitySpec* Spec = System ? System->FindAbilitySpecFromHandle(BasicHandle) : nullptr;
+			return Spec && Spec->IsActive();
+		}
+
+		/**
+		 * What the swing is waiting on, read once: the spec's active count, the ability object's own flag, the swing's
+		 * timer, a montage on the ability system or on the mesh, and which way the character faces. Window bb12-w2 asked
+		 * whether a swing with the controller in the actor info waits on a turn, a montage or a timer.
+		 */
+		FString WhatTheSwingWaitsOn() const
+		{
+			const FGameplayAbilitySpec* Spec = System ? System->FindAbilitySpecFromHandle(BasicHandle) : nullptr;
+			const USkeletalMeshComponent* Mesh = Player ? Player->GetMesh() : nullptr;
+			const UAnimInstance* Anim = Mesh ? Mesh->GetAnimInstance() : nullptr;
+			const UAnimMontage* OnTheMesh = Anim ? Anim->GetCurrentActiveMontage() : nullptr;
+			const UAnimMontage* OnTheSystem = System ? System->GetCurrentMontage() : nullptr;
+			const FVector Facing = Player ? Player->GetActorForwardVector() : FVector::ZeroVector;
+			return FString::Printf(TEXT("active count %d, the ability object %s, the swing timer %s, montage on the "
+										"ability system %s, montage on the mesh %s, facing (%.3f, %.3f)"),
+								   Spec ? static_cast<int32>(Spec->ActiveCount) : -1,
+								   Basic && Basic->IsActive() ? TEXT("active") : TEXT("not active"),
+								   Basic && Basic->IsWaitingForTheSwingToConnect() ? TEXT("waiting") : TEXT("none"),
+								   OnTheSystem ? *OnTheSystem->GetName() : TEXT("none"),
+								   OnTheMesh ? *OnTheMesh->GetName() : TEXT("none"), Facing.X, Facing.Y);
+		}
+
 		ACataclysmPlayerController* Controller = nullptr;
 		ACataclysmPlayerCharacter* Player = nullptr;
 		UCataclysmAbilitySystemComponent* System = nullptr;
 		UCataclysmSkillTemplate* Basic = nullptr;
+		FGameplayAbilitySpecHandle BasicHandle;
 	};
+
+	/**
+	 * After a test's last check: OBSERVE whether every rig's strike ends, then REMOVE each rig's strike from its ability
+	 * system before the world is destroyed. The world's clock is run in tenths of a second until no rig's strike spec
+	 * counts as active, for at most three seconds of game time, and each rig logs its spec's active count, whether the
+	 * ability object says it is active, and how long it waited. Prints "SWING END OBSERVED". It asserts nothing.
+	 *
+	 * AN OPEN QUESTION, NOT ANSWERED HERE, AND TRACED AS A TASK OF ITS OWN (the coordinating session, 2026-11-24). With
+	 * the player state owned by its controller, so that the abilities' actor info holds the controller as it does in the
+	 * game, the strike's spec keeps an active count of 1 after the swing: the ability object says it has ended, no swing
+	 * timer is pending, and a montage is still on the mesh (windows bb12-w2 and bb12-w3). The engine's
+	 * `ClearAllAbilities` then fails its ensure "Default__CataclysmStrikeSkill was still active" as the world is destroyed.
+	 * A player swings many times in a row in the game, which `UCataclysmBasicAttack::Swing` would refuse while the spec
+	 * counted as active, so the game very likely takes a path this test world does not.
+	 *
+	 * WHY A REMOVAL AND NOT A CANCEL. `CancelAllAbilities` reaches the strike through `UGameplayAbility::EndAbility`, and
+	 * `IsEndAbilityValid` refuses any end once the ability object says it is not active, so the count would stay at 1.
+	 * `ClearAbility` removes the spec itself, which is the ability system's own removal and is not followed by that ensure.
+	 */
+	void ObserveEachSwingThenRemoveTheStrikes(FAutomationTestBase& Test, UWorld* World,
+											  const TArray<const FWhipAimRig*>& Rigs)
+	{
+		constexpr float CapSeconds = 3.0f;
+		constexpr float StepSeconds = 0.1f;
+		TArray<float> EndedAfter;
+		EndedAfter.Init(-1.0f, Rigs.Num());
+		TArray<FString> WaitingOn;
+		for (const FWhipAimRig* Rig : Rigs)
+		{
+			WaitingOn.Add(Rig->WhatTheSwingWaitsOn());
+		}
+
+		float Waited = 0.0f;
+		while (true)
+		{
+			bool bAllEnded = true;
+			for (int32 Index = 0; Index < Rigs.Num(); ++Index)
+			{
+				if (EndedAfter[Index] < 0.0f)
+				{
+					if (Rigs[Index]->IsStrikeActive())
+					{
+						bAllEnded = false;
+					}
+					else
+					{
+						EndedAfter[Index] = Waited;
+					}
+				}
+			}
+			if (bAllEnded || Waited >= CapSeconds - KINDA_SMALL_NUMBER)
+			{
+				break;
+			}
+			CataclysmTestWorld::RunClock(World, StepSeconds);
+			Waited += StepSeconds;
+		}
+
+		for (int32 Index = 0; Index < Rigs.Num(); ++Index)
+		{
+			const FWhipAimRig* Rig = Rigs[Index];
+			const FGameplayAbilitySpec* Spec = Rig->System ? Rig->System->FindAbilitySpecFromHandle(Rig->BasicHandle)
+														   : nullptr;
+			Test.AddInfo(FString::Printf(TEXT("SWING END OBSERVED: rig %d ActiveCount %d, ability active %s, after %.1f s "
+											  "(%s); when the wait began: %s"),
+										 Index + 1, Spec ? static_cast<int32>(Spec->ActiveCount) : -1,
+										 Rig->Basic && Rig->Basic->IsActive() ? TEXT("yes") : TEXT("no"),
+										 EndedAfter[Index] >= 0.0f ? EndedAfter[Index] : Waited,
+										 EndedAfter[Index] >= 0.0f ? TEXT("the spec ended") : TEXT("the spec still active"),
+										 *WaitingOn[Index]));
+		}
+
+		// AND EACH RIG'S STRIKE IS REMOVED BEFORE THE WORLD IS DESTROYED, after the observation above was logged.
+		for (const FWhipAimRig* Rig : Rigs)
+		{
+			if (Rig->System && Rig->BasicHandle.IsValid())
+			{
+				Rig->System->ClearAbility(Rig->BasicHandle);
+			}
+		}
+	}
 }
 
 #define CATACLYSM_WHIP_AIM_TEST(TestClass, TestName) \
@@ -261,6 +392,9 @@ CATACLYSM_WHIP_AIM_TEST(FCataclysmWhipAimBesideTest,
 	}
 	TestFalse(TEXT("and an enemy 1 m ahead and 1.5 m to the side, its body a metre clear of the swing's edge, is not"),
 		WhipAimStruck(Clear));
+
+	// AND WHETHER EACH SWING ENDS IS LOGGED, THEN EACH STRIKE IS REMOVED, before the world is destroyed.
+	ObserveEachSwingThenRemoveTheStrikes(*this, World, {&Control, &Case, &Edge});
 	return true;
 }
 
@@ -325,6 +459,9 @@ CATACLYSM_WHIP_AIM_TEST(FCataclysmWhipAimFollowsTheCursorTest,
 							  Case.Player->GetActorForwardVector().X, Case.Player->GetActorForwardVector().Y),
 		FVector::DotProduct(Case.Player->GetActorForwardVector(), FVector(0.0f, -1.0f, 0.0f)) > 0.99f);
 	Case.Controller->ForgetCursorForTest();
+
+	// AND WHETHER EACH SWING ENDS IS LOGGED, THEN EACH STRIKE IS REMOVED, before the world is destroyed.
+	ObserveEachSwingThenRemoveTheStrikes(*this, World, {&Control, &Case});
 	return true;
 }
 
@@ -408,6 +545,9 @@ CATACLYSM_WHIP_AIM_TEST(FCataclysmWhipAimAtTheEnemyUnderTheCursorTest,
 	TestTrue(TEXT("with a corpse under the cursor, the floor point"),
 		Case.Controller->AimPointUnderCursor(Aimed) && Aimed.Equals(CaseHome + Behind, 0.01f));
 	Case.Controller->ForgetCursorForTest();
+
+	// AND WHETHER EACH SWING ENDS IS LOGGED, THEN EACH STRIKE IS REMOVED, before the world is destroyed.
+	ObserveEachSwingThenRemoveTheStrikes(*this, World, {&Control, &Case});
 	return true;
 }
 

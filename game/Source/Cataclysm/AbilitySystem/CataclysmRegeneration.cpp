@@ -4,11 +4,14 @@
 // For asking the pipeline what a rate is worth, rather than reading the
 // gameplay attribute it was folded into. Issue #1038.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the Necrosis tag, whose carrier is healed by nothing. Issue #920.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For emptying Fervour when health comes back. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For a patch of burning ground that heals whoever left it faster while they
 // stand in it. Blood Pyre. Issue #1162.
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -22,6 +25,8 @@
 #include "AbilitySystemComponent.h"
 // For a Corrupted Stalker's Necrosis, which spares a potion's heal. Issue #2580.
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
+// For Death's Mortal Reminder's ceiling and Lingering Decay's zones, 2026-11-24.
+#include "Character/CataclysmEnemyModifiers.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffect.h"
 
@@ -31,6 +36,8 @@ const TCHAR* UCataclysmRegeneration::HealingSkillHealthRestoredStat =
 	TEXT("healing_skill_health_restored");
 const TCHAR* UCataclysmRegeneration::HealingSkillHealthAsEnergyShieldStat =
 	TEXT("healing_skill_health_as_energy_shield");
+const TCHAR* UCataclysmRegeneration::ShieldOnMinionDeathStat =
+	TEXT("energy_shield_on_minion_death_percent");
 const TCHAR* UCataclysmRegeneration::ManaRegenStat = TEXT("mana_regen");
 const TCHAR* UCataclysmRegeneration::EnergyShieldRegenStat =
 	TEXT("energy_shield_regen");
@@ -61,6 +68,16 @@ float UCataclysmRegeneration::HealthHealingCeiling(const UAbilitySystemComponent
 			Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem))
 	{
 		Ceiling = FMath::Min(Ceiling, Cataclysm->UnreservedMaximumHealth());
+	}
+
+	// AND A MORTAL REMINDER HOLDS IT WHERE THE CREATURE'S LAST HIT LEFT IT, for four seconds. Death's Mortal Reminder,
+	// 2026-11-24: "prevents the player from being healed above their current HP for 4 seconds. It caps your 'recovery
+	// ceiling.'" HERE, beside the other ceilings, because every heal of health asks this; a character already at or
+	// above it is healed by nothing, as under any other ceiling. Negative is none.
+	const float Reminded = UCataclysmEnemyModifiers::RecoveryCeilingOn(AbilitySystem);
+	if (Reminded >= 0.0f)
+	{
+		Ceiling = FMath::Min(Ceiling, Reminded);
 	}
 	return FMath::Max(0.0f, Ceiling);
 }
@@ -176,11 +193,17 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		// Issue #1833, ruled 2026-10-06: "Diseased enemies' healing, regeneration
 		// and leech are reduced by 50%-100%" (worded "Disease effects reduce enemy
 		// healing by 50%-100%" until 2026-11-17).
+		//
+		// AND A NECROTIC ZONE THE CHARACTER STANDS IN, added and capped with them. Death's Lingering Decay, 2026-11-24:
+		// "Enemies leave behind necrotic zones that reduce healing to players standing in them." Asked of the body the
+		// heal reaches, so it holds while it stands inside; added to the rest as Starving Aura's cut is (ruled
+		// 2026-10-26), and the sum is capped at 100.
 		const float AmountReduction = FMath::Clamp(
 			AbilitySystem.GetNumericAttribute(
 				UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute())
 				+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
-					  &AbilitySystem, ECataclysmAilmentRider::HealingReceived),
+					  &AbilitySystem, ECataclysmAilmentRider::HealingReceived)
+				+ UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(AbilitySystem.GetAvatarActor()),
 			0.0f, 100.0f);
 		Gain *= (100.0f - AmountReduction) / 100.0f;
 		if (Gain <= 0.0f)
@@ -318,7 +341,29 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		{
 			const float Room = Ceiling > 0.0f ? FMath::Max(0.0f, Ceiling - Current) : 0.0f;
 			Overhealed->NoteOverheal(Gain - FMath::Min(Gain, Room));
+
+			// AND A LEECH PAYMENT IS NOTED, WITH WHAT DID NOT FIT, for Eternal Hunger (the War vow options' third slice,
+			// V3a, 2026-11-25): "Life leech can heal you up to 100% above your Maximum HP". LEECH ONLY, known by the
+			// tag `UCataclysmLeech` hands over; nothing for a character without the option but the payment's time.
+			const FGameplayTag Leech = UCataclysmFervour::LeechTag();
+			if (Leech.IsValid() && Healing.HasTag(Leech))
+			{
+				Overhealed->NoteLeechHealed(Gain - FMath::Min(Gain, Room));
+			}
 		}
+	}
+
+	// THE CLASS RESOURCE THROUGH THE ONE HELPER EVERY GAIN TO IT TAKES, so Kindred Fires and Borrowed Time see a row's
+	// gain (the Death trees' slice C4b1, 2026-11-25), AND the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
+	// Before the ceiling's refusal below, so a gain to a full bar still reaches it. Nothing below this is about it.
+	if (Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+	{
+		if (Gain > 0.0f)
+		{
+			UCataclysmFervour::RaisePool(&AbilitySystem, Gain);
+		}
+		return;
 	}
 
 	if (Ceiling <= 0.0f || Current >= Ceiling)
@@ -326,6 +371,7 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		return;
 	}
 
+	// EVERY OTHER POOL AS BEFORE.
 	const float Restored = FMath::Min(Gain, Ceiling - Current);
 	AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive, Restored);
 
@@ -347,6 +393,11 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
 	{
 		UCataclysmFervour::RemoveForHealing(&AbilitySystem, Restored, Healing);
+
+		// AND BLOOD TITHE'S LOSS, "Lose 5 Fervour for every 100 flat HP regenerated": a count of points of health
+		// rather than a share of the maximum, for regeneration only, on what fit. Nought for every character without
+		// `fervour_lost_to_regeneration`. The Fervour spends, 2026-11-25.
+		FCataclysmWarFervour::LoseForRegeneration(&AbilitySystem, Restored, Healing);
 	}
 }
 
@@ -404,6 +455,40 @@ float UCataclysmRegeneration::GiveHealingSkillShield(UAbilitySystemComponent& Ab
 	TopUp(AbilitySystem, Shield, UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
 		  HealthArrived * Percent / 100.0f);
 	return FMath::Max(0.0f, AbilitySystem.GetNumericAttribute(Shield) - ShieldBefore);
+}
+
+float UCataclysmRegeneration::GiveShieldOnMinionDeath(AActor* Commander)
+{
+	UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs || !Theirs->GetSet<UCataclysmVitalAttributeSet>()
+		|| UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return 0.0f;
+	}
+
+	// A PERCENTAGE ON A BASE OF NOUGHT, so a commander with no row answers nought and is given nothing. Never below
+	// nought: the row gives shield and takes none away.
+	const float Percent = FMath::Max(
+		0.0f, Theirs->StatAppliedTo(FName(ShieldOnMinionDeathStat), FGameplayTagContainer(), 0.0f));
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Maximum = Theirs->MaximumEnergyShield();
+	if (Maximum <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THROUGH `TopUp`, so the shield stops at its maximum, and what was added is read off the shield because `TopUp`
+	// does not return it.
+	const FGameplayAttribute Shield = UCataclysmVitalAttributeSet::GetEnergyShieldAttribute();
+	const float ShieldBefore = Theirs->GetNumericAttribute(Shield);
+	TopUp(*Theirs, Shield, UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
+		  Maximum * Percent / 100.0f);
+	return FMath::Max(0.0f, Theirs->GetNumericAttribute(Shield) - ShieldBefore);
 }
 
 float UCataclysmRegeneration::GainPerStep(float RatePerSecond,
@@ -465,6 +550,10 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 		// `RefreshLiveMaximumHealth`, which runs only for a character whose
 		// maximum moves with its state and would miss one whose reservation does.
 		Cataclysm->HoldHealthToUnreserved();
+
+		// AND ETERNAL HUNGER'S PART OF THE ABSORB DECAYS while its wearer is not leeching (V3a, 2026-11-25). Nothing
+		// for a character holding none of it.
+		Cataclysm->DecayLeechAbsorb(SecondsInStep);
 	}
 
 	// THE HEALTH STEP SAYS IT IS REGENERATION, and the other two do not bother
@@ -709,10 +798,66 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 	}
 
 	SharedBloodStep(Character, SecondsInStep, /*bFill=*/false);
+	BoundBonesStep(Character);
+
+	// AND THE SHADOW'S MARKS ARE KEPT UP: the Death trees' slice C6e (2026-11-25).
+	if (UCataclysmAbilitySystemComponent* Marker = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Marker->MaintainShadowMarks();
+	}
 }
 
 const TCHAR* UCataclysmRegeneration::SharedBloodStat =
 	TEXT("minion_energy_shield_percent_of_yours");
+
+const TCHAR* UCataclysmRegeneration::BoundBonesStat =
+	TEXT("minion_health_percent_of_yours_per_other_minion");
+
+void UCataclysmRegeneration::BoundBonesStep(AActor* Character)
+{
+	const AActor* Commander = UCataclysmCommand::CommanderOf(Character);
+	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+	if (!Commander || (AsMinion && AsMinion->IsDeployable()) || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return;
+	}
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!Theirs || !Mine || !Mine->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		return;
+	}
+
+	// THE OTHER FOLLOWERS ALIVE, gadgets and traps left out; `ThingsCommandedBy` leaves out the dead and this one.
+	int32 Others = 0;
+	for (const AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
+	{
+		const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Follower);
+		Others += (Follower != Character && (!Machine || !Machine->IsDeployable())) ? 1 : 0;
+	}
+	const float Percent = Theirs->StatForSkill(FName(BoundBonesStat), FGameplayTagContainer(), 0.0f);
+	const float TheirMaximum = Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Added = FMath::Max(0.0f, TheirMaximum * FMath::Max(0.0f, Percent) / 100.0f * Others);
+	const float Change = Added - Mine->BoundBonesHealthAdded;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return;
+	}
+
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float NewMaximum = FMath::Max(1.0f, Mine->GetNumericAttribute(MaxHealth) + Change);
+	Mine->BoundBonesHealthAdded = Added;
+	Mine->SetNumericAttributeBase(MaxHealth, NewMaximum);
+	// A RISE IS GAINED AS HEALTH TOO, so "gains 5% of your maximum health" is health the minion has; a fall is held at
+	// the new maximum and never kills.
+	const float NewHealth = Change > 0.0f
+		? Mine->GetNumericAttribute(Health) + Change
+		: FMath::Min(Mine->GetNumericAttribute(Health), NewMaximum);
+	Mine->SetNumericAttributeBase(Health, FMath::Clamp(NewHealth, 1.0f, NewMaximum));
+}
 
 void UCataclysmRegeneration::SharedBloodStep(AActor* Character, float SecondsInStep,
 											  bool bFill)

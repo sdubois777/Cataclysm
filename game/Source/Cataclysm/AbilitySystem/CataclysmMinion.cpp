@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "Misc/ScopeExit.h"
 // For the owner's rule of a tenth, asked of a trap's damage over time. Traps layer 4, 2026-10-21.
 #include "AbilitySystem/CataclysmAilments.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
@@ -20,6 +21,9 @@
 #include "AbilitySystem/CataclysmTeams.h"
 // For the copy of its summoner's last skill a gadget casts. Ruled 2026-10-14.
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
+// For the Saboteur's Fervour on placing, triggering and hitting with its devices, and the gadget-placed event.
+// Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For a skill gadget's clock, its skill and which skills it may cast. Ruled 2026-10-16.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
@@ -35,6 +39,7 @@
 // For the allowance a beat may come early by, which a minion's own taunt shares. Issue #2885, C3.
 #include "AbilitySystem/CataclysmTauntAura.h"
 #include "HAL/IConsoleManager.h"
+#include "TimerManager.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
 // For the level a minion's own health and damage are raised by, and for the
@@ -501,6 +506,31 @@ namespace
 		return FGameplayTag::RequestGameplayTag(
 			FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
 	}
+
+	/**
+	 * The tag every machine that is not a trap carries, so a row meaning gadgets alone can say so. The coordinating
+	 * session's ruling of 2026-11-25, for the Saboteur's "your gadgets" rows: carried by the type rows (BoltTurret,
+	 * Ballista, SkillGadget), which `tools/generate_datatables.py` holds to `IsGadget`.
+	 */
+	FGameplayTag TagOfAGadget()
+	{
+		return FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false);
+	}
+
+	/** The tags a machine's own blow reads its summoner's rows by: `Type.Deployable`, and `Type.Gadget` since 2026-11-25. */
+	FGameplayTagContainer TagsNamingMachines()
+	{
+		FGameplayTagContainer Named;
+		for (const FGameplayTag& Each : {DeployableTag(), TagOfAGadget()})
+		{
+			if (Each.IsValid())
+			{
+				Named.AddTag(Each);
+			}
+		}
+		return Named;
+	}
 }
 
 bool ACataclysmMinion::IsDeployable() const
@@ -651,6 +681,20 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 {
 	ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Character);
 
+	// CREEPING MINES FIRST, for a skill trap and a War trap alike (V5a, ruled CM1), so the trap's own check runs from
+	// where it has crept to. A War trap had no step before; this is its one.
+	if (Gadget && Gadget->IsTrap() && !UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		Gadget->CreepTowardNearestEnemy(DeviceStepSeconds);
+	}
+
+	// A SCRAP TRAP'S STEP, AND NOTHING OF A GADGET'S (V5b1): it is a trap now.
+	if (Gadget && Gadget->IsScrapTrap())
+	{
+		Gadget->StepScrapTrap();
+		return;
+	}
+
 	// A SKILL TRAP'S STEP, BEFORE THE REFUSAL OF WHAT IS NOT A GADGET, because a trap is not one (ruled 2026-10-07) and
 	// takes nothing of a gadget's step. Ruled 2026-10-19 (M4). Nothing for any other minion, a Spike Trap included.
 	if (Gadget && Gadget->IsSkillTrap())
@@ -671,6 +715,10 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 	{
 		return;
 	}
+
+	// WALKING ARSENAL (V5b3), BEFORE ANYTHING THE GADGET FIRES ON THIS STEP, so what it fires is fired from where it has
+	// walked to. Nothing for a gadget whose summoner holds no reach.
+	Gadget->WalkAfterSummoner(DeviceStepSeconds);
 
 	// THE COPY OF THE SUMMONER'S LAST SKILL, ON ITS OWN CLOCK, BEFORE THE VOLLEY, which returns early for a gadget
 	// whose summoner holds no volley row. Ruled 2026-10-14. A copy's blows are the summoner's and do not come back on
@@ -830,17 +878,55 @@ AActor* ACataclysmMinion::SkillCopyTarget() const
 
 bool ACataclysmMinion::CopySummonersLastSkill()
 {
-	// A GADGET, standing and able to act, OF A SUMMONER THAT IS STILL HERE AND ALIVE.
 	AActor* const Caster = Summoner.Get();
-	if (!IsGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
-		|| !IsValid(Caster) || UCataclysmSkillEffects::IsDead(Caster))
-	{
-		return false;
-	}
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Caster));
 	const FCataclysmWeaponSkill* Recorded = Theirs ? Theirs->SkillGadgetsCopy() : nullptr;
 	if (!Recorded)
+	{
+		return false;
+	}
+	// THE ROW AS IT WAS USED, whether or not the summoner still holds it: the coordinating session's ruling of
+	// 2026-10-14 (option B). Copied, because starting a skill may change what the record holds.
+	const FCataclysmWeaponSkill Skill = *Recorded;
+	return CastSkillCopy(Skill);
+}
+
+const TCHAR* ACataclysmMinion::EldestGadgetCastsEverySkillStat = TEXT("eldest_gadget_casts_every_skill");
+
+bool ACataclysmMinion::EldestGadgetCastsEverySkillFor(const AActor* Player)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	return Theirs
+		&& Theirs->StatForSkill(FName(EldestGadgetCastsEverySkillStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
+ACataclysmMinion* ACataclysmMinion::EldestGadgetOf(const AActor* Player)
+{
+	ACataclysmMinion* Eldest = nullptr;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		ACataclysmMinion* Each = Cast<ACataclysmMinion>(Follower);
+		if (!IsValid(Each) || Each->IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(Each)
+			|| !(Each->IsGadget() || Each->IsSkillGadget()))
+		{
+			continue;
+		}
+		if (!Eldest || Each->SpawnOrder < Eldest->SpawnOrder)
+		{
+			Eldest = Each;
+		}
+	}
+	return Eldest;
+}
+
+bool ACataclysmMinion::CastSkillCopy(const FCataclysmWeaponSkill& Skill)
+{
+	// A GADGET, standing and able to act, OF A SUMMONER THAT IS STILL HERE AND ALIVE.
+	AActor* const Caster = Summoner.Get();
+	if (!(IsGadget() || IsSkillGadget()) || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Caster) || UCataclysmSkillEffects::IsDead(Caster))
 	{
 		return false;
 	}
@@ -849,11 +935,7 @@ bool ACataclysmMinion::CopySummonersLastSkill()
 	{
 		return false;
 	}
-
-	// THE ROW AS IT WAS USED, whether or not the summoner still holds it: the coordinating session's ruling of
-	// 2026-10-14 (option B). Copied, because starting a skill may change what the record holds. Asked once more
-	// whether a row may cast it again, which it was when it was recorded.
-	const FCataclysmWeaponSkill Skill = *Recorded;
+	// ASKED WHETHER A ROW MAY CAST IT AGAIN, as when the copy was recorded.
 	if (!UCataclysmTriggeredSkill::RepeatsFromARow(Skill))
 	{
 		return false;
@@ -894,8 +976,8 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 		return nullptr;
 	}
 
-	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, the press places nothing. Asked only for a new
-	// gadget; a press that MOVES the slot's standing one never reaches this function.
+	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, nothing is placed. The press asks the same question
+	// first, and with no room moves every gadget instead (V5g), so a move never reaches this function.
 	const float Reserve = SkillGadgetReserveFor(Player, Slot);
 	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
@@ -926,6 +1008,30 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 	Placed->SkillGadgetSlot = Slot;
 	Placed->SkillGadgetPlacedAtSeconds = Placed->GetWorld()->GetTimeSeconds();
 	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
+
+	// AND THE PLAYER IS TOLD, with the gadget's tags and the gadget, as a trap's placing is told: the event a gadget's
+	// placing had none of until slice C (2026-11-24). Then the Saboteur's Fervour for it, after the reserve is held, so
+	// the gain is clamped to what the pool may hold with the new gadget's reserve taken out. A press that MOVES the
+	// slot's standing gadget never reaches this function, so a move is no placing and earns nothing.
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)))
+	{
+		const FGameplayTagContainer GadgetTags = Placed->TypeTags;
+		Theirs->ActOnEvent(FName(TEXT("gadget_placed")), &GadgetTags, /*EventAmount=*/0.0f,
+						   /*bLanded=*/true, Placed);
+		// AND `device_placed`, BESIDE IT: placing a trap or a gadget, one event for either. The Saboteur's device
+		// conditions, 2026-11-25 (the coordinating session's ruling), for Razor Instincts, "+3% evasion chance per point
+		// for 3 seconds after placing a trap or gadget": one row on one event, so one placing grants one stack.
+		Theirs->ActOnEvent(FName(TEXT("device_placed")), &GadgetTags, /*EventAmount=*/0.0f,
+						   /*bLanded=*/true, Placed);
+		FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, GadgetTags);
+	}
+	// AND BOLTED ONTO THE NEAREST GADGET WITHIN REACH, AFTER IT IS PLACED AND TOLD (Bolted Together, V5c, BT2): the one
+	// it bolted onto is answered, because this one is gone.
+	if (ACataclysmMinion* Into = BoltOnPlacing(Placed))
+	{
+		return Into;
+	}
 	return Placed;
 }
 
@@ -943,7 +1049,7 @@ bool ACataclysmMinion::IsSkillGadget() const
 	return SkillGadgetSlot != ECataclysmAbilitySlot::None && IsGadget();
 }
 
-void ACataclysmMinion::MoveSkillGadgetTo(const FVector& Location)
+void ACataclysmMinion::MoveGadgetTo(const FVector& Location)
 {
 	// MOVED, NOT REPLACED: its health, its clock and its age are its own and stay. S6.
 	const FVector Was = GetActorLocation();
@@ -952,6 +1058,35 @@ void ACataclysmMinion::MoveSkillGadgetTo(const FVector& Location)
 	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
 	UCataclysmMovement::NoteRelocatedInstantly(this, Was);
 	SkillGadgetPlacedAtSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+}
+
+int32 ACataclysmMinion::MoveEveryGadgetOf(AActor* Player, const FVector& Point)
+{
+	TArray<ACataclysmMinion*> Gadgets = DevicesOf(Player);
+	Gadgets.RemoveAll([](const ACataclysmMinion* Each) { return !Each->IsGadget(); });
+	Gadgets.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B) { return A.SpawnOrder < B.SpawnOrder; });
+	const int32 Count = Gadgets.Num();
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		FVector At = Point;
+		if (Count > 1)
+		{
+			const float Radians = 2.0f * UE_PI * static_cast<float>(Index) / static_cast<float>(Count);
+			At += FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f) * GadgetMoveRingRadiusCm;
+		}
+		Gadgets[Index]->MoveGadgetTo(At);
+	}
+	// AND WITH BOLTED TOGETHER HELD, WHAT LANDED WITHIN REACH BOLTS INTO THE FIRST PLACED (V5c, BT2).
+	BoltAfterMove(Player, Gadgets);
+	return Count;
+}
+
+bool ACataclysmMinion::TypeIsAGadget(const FString& InTypeName)
+{
+	const FGameplayTagContainer Tags = TagsOfType(InTypeName);
+	const FGameplayTag Deployable = DeployableTag();
+	const FGameplayTag Trap = TagOfATrap();
+	return Deployable.IsValid() && Tags.HasTagExact(Deployable) && !(Trap.IsValid() && Tags.HasTagExact(Trap));
 }
 
 float ACataclysmMinion::SecondsSinceSkillGadgetPlaced() const
@@ -1107,8 +1242,33 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 	// player's death and cast nothing while it lasts; THE ONE CAST THE DEATH ITSELF MAKES is the exception (ruled
 	// 2026-10-19, C2), and is let through only that refusal. See `FireForItsSummonersDeath`.
 	AActor* const Player = Summoner.Get();
-	if (!IsSkillGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+	// OR A SKILL GADGET'S SCRAP TRAP, which is a trap now and keeps the slot for its one cast (V5b1).
+	const bool bScrapOfASkillGadget = bIsScrapTrap && SkillGadgetSlot != ECataclysmAbilitySlot::None;
+	if (!(IsSkillGadget() || bScrapOfASkillGadget) || UCataclysmSkillEffects::IsDead(this)
+		|| UCataclysmSkillEffects::CannotAct(this)
 		|| !IsValid(Player) || (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
+	{
+		return false;
+	}
+
+	// THE CAST ITSELF, FOR THIS GADGET'S SLOT, AT ITS OWN "MORE" AND A BOLTED GADGET'S (V5c).
+	if (!CastSlotSkillFromHere(SkillGadgetSlot, bEvenForADeadPlayer, AimedAt,
+							   ShotDamageMultiplier * BoltedMoreMultiplier()))
+	{
+		return false;
+	}
+	++SkillGadgetCastsMade;
+	// AND EVERY ATTACK IT HOLDS FROM BOLTING, AT THE ENEMY THE CAST AIMED AT (ruled BT3).
+	FireBoltedAttacksAt(LastSkillStartedAt.Get());
+	return true;
+}
+
+bool ACataclysmMinion::CastSlotSkillFromHere(ECataclysmAbilitySlot Slot, bool bEvenForADeadPlayer, AActor* AimedAt,
+											 float ShotDamageMultiplier)
+{
+	AActor* const Player = Summoner.Get();
+	if (Slot == ECataclysmAbilitySlot::None || !IsValid(Player)
+		|| (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
 	{
 		return false;
 	}
@@ -1118,17 +1278,22 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 	// and casts nothing until the row is worn again; nothing destroys it, because nothing hears the gear change.
 	UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
-	if (!Theirs || !Theirs->SlotIsASkillGadget(SkillGadgetSlot))
+	if (!Theirs || !Theirs->SlotIsASkillGadget(Slot))
 	{
 		return false;
 	}
 
-	// A SHAPELESS SKILL CASTS NOTHING (S10), nor one no row may cast again. See `SkillGadgetMayCast`.
-	FCataclysmWeaponSkill Skill;
-	if (!SkillGadgetsSkill(Skill) || !SkillGadgetMayCast(Skill))
+	// A SHAPELESS SKILL CASTS NOTHING (S10), nor one no row may cast again. See `SkillGadgetMayCast`. WHAT THE PLAYER'S
+	// WEAPON SLOTS HOLD NOW for the slot, as `SkillGadgetsSkill` reads it for this gadget's own slot.
+	const UCataclysmWeaponSlotsComponent* Slots = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	const FCataclysmWeaponSkill* Held = Slots
+		? Slots->GetAvailableSkills().FindByPredicate([Slot](const FCataclysmWeaponSkill& Each) { return Each.Slot == Slot; })
+		: nullptr;
+	if (!Held || !SkillGadgetMayCast(*Held))
 	{
 		return false;
 	}
+	const FCataclysmWeaponSkill& Skill = *Held;
 
 	// THE PLAYER'S OWN ROW, WITH `Type.Deployable` ADDED TO ITS TAGS (S5), which `StampOnto` makes the one-use grant's
 	// skill tags inside `Trigger`. AIMED BY THE SKILL'S OWN REACH (S4) AND STARTED FROM HERE by the part a Tyrant's
@@ -1136,15 +1301,16 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 	// running copy (S13), the highest-health row and the nearest enemy (S4, S9), and the free start (S1) are there.
 	FCataclysmWeaponSkill AsTheGadgets = Skill;
 	AsTheGadgets.Tags.AddTag(DeployableTag());
+	// AND `Type.Gadget` SINCE 2026-11-25, so a row meaning gadgets alone reaches the gadget's cast as a row naming
+	// `Type.Deployable` does. A skill trap's cast carries neither (M5).
+	if (TagOfAGadget().IsValid())
+	{
+		AsTheGadgets.Tags.AddTag(TagOfAGadget());
+	}
 	// AND, FOR A SHOT A TRAP'S ROW ASKS (traps layer 6, J2, J3, J6), AT THE ENEMY IT NAMES AND AT ITS "MORE"; null and one
 	// for the clock's own cast and the death's.
-	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill), AimedAt, /*CastFromPlace=*/nullptr,
-								   ShotDamageMultiplier))
-	{
-		return false;
-	}
-	++SkillGadgetCastsMade;
-	return true;
+	return StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill), AimedAt, /*CastFromPlace=*/nullptr,
+									 ShotDamageMultiplier);
 }
 
 int32 ACataclysmMinion::FireEveryGadgetAtTheDeathOf(AActor* Dying)
@@ -1495,6 +1661,9 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	const float Duration =
 		Lifetime * UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_duration"), Minion->TypeTags);
 	Minion->SetLifeSpan(Duration > 0.0f ? Duration : Lifetime);
+	// AND REMEMBERED, because it is what Rekindled gives again when the time runs out. The demonic tree rework of
+	// 2026-11-24; see `LifeSpanExpired`.
+	Minion->GrantedLifetimeSeconds = Duration > 0.0f ? Duration : Lifetime;
 
 	// AND A GADGET TAKES ITS FIRST STEP AS IT IS PLACED. Ruled 2026-10-13. The step every character has comes a
 	// quarter of a second after the spawn, and a gadget whose summoner's row says it takes no damage would take
@@ -1528,7 +1697,13 @@ void ACataclysmMinion::RefreshWalkSpeed()
 	// ITS SUMMONER'S PACE, OR ITS OWN WHEN THERE IS NO SUMMONER TO READ. `CommandedWalkSpeedCmPerSecond` answers nought
 	// for a summoner that is not a walking character, which no shipped summon has. Issue #2793.
 	const float Commanded = UCataclysmCommand::CommandedWalkSpeedCmPerSecond(this);
-	const float Wanted = Commanded > 0.0f ? Commanded : UncommandedWalkSpeedCmPerSecond;
+	// AND FASTER WHILE AN AURA HOLDS THAT ON IT: War's Blood and Iron, "you and your allies within it ... move 15%
+	// faster", 2026-11-25. A minion has no slow to drop for its immunity: nothing slows a minion's walk.
+	const UCataclysmAbilitySystemComponent* Abilities =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this));
+	const float Raised =
+		1.0f + (Abilities ? Abilities->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) : 0.0f) / 100.0f;
+	const float Wanted = (Commanded > 0.0f ? Commanded : UncommandedWalkSpeedCmPerSecond) * Raised;
 
 	// ONLY ON A CHANGE, as a creature's walking speed is written: a state that changes rarely, not a value recomputed.
 	if (!FMath::IsNearlyEqual(Movement->MaxWalkSpeed, Wanted))
@@ -1554,10 +1729,24 @@ void ACataclysmMinion::AttackOnce()
 
 void ACataclysmMinion::AttackTarget(AActor* Target)
 {
+	// A SCRAP TRAP DEALS NOTHING BUT ITS ONE SHOT (V5b1): its controller would otherwise swing it as the gadget it was.
+	if (bIsScrapTrap && !bScrapTrapFiring)
+	{
+		return;
+	}
 	if (!IsValid(Summoner) || !IsValid(Target))
 	{
 		return;
 	}
+	// AND EVERY ATTACK A BOLTED GADGET HOLDS, AT THE SAME TARGET, after this blow (Bolted Together, V5c, ruled BT3). A
+	// skill gadget fires its list from its cast instead, so its brain's swing does not fire it a second time.
+	ON_SCOPE_EXIT
+	{
+		if (!IsSkillGadget())
+		{
+			FireBoltedAttacksAt(Target);
+		}
+	};
 
 	// ITS OWN DAMAGE, NOT A SHARE OF ITS SUMMONER'S WEAPON. Issue #340. This
 	// file dealt 30% of the summoner's weapon until the decision of 2026-08-06
@@ -1626,7 +1815,10 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// A WARHOUND'S BLOW IS A SHARE OF ITS SUMMONER'S ARMOUR, IN PLACE OF ITS TYPE'S OWN DAMAGE. Warlord's Will's
 	// six-piece, ruled 2026-10-18 (Q5): "deals damage based on your armor", 20% a hit. Everything below that raises a
 	// minion's blow raises it as it raises any other.
-	const float OwnBlow = bIsWarhound ? WarhoundBlow() : OwnDamagePerHit;
+	// AND A SCRAP TRAP'S SHOT AT ITS MULTIPLIER, "at double damage" (V5b1).
+	// AND A BOLTED GADGET'S "MORE", 10% FOR EACH GADGET IN IT (V5c).
+	const float OwnBlow = (bIsWarhound ? WarhoundBlow() : OwnDamagePerHit) * (bIsScrapTrap ? ScrapShotMultiplier : 1.0f)
+		* BoltedMoreMultiplier();
 	if (OwnBlow > 0.0f)
 	{
 		// AND THE SUMMONER'S INCREASED MINION DAMAGE ON TOP, WHICH IS NEW. Issue
@@ -1669,8 +1861,10 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			{
 				// WITH THE MACHINE'S AGE, which the two age rows read. Issue
 				// #1833, deployable Part 2.
+				// THE ROWS NAMING `Type.Deployable` OR, SINCE 2026-11-25, `Type.Gadget`: a row naming the second still
+				// requires it, so it reaches this blow only when this machine's tags carry it, which a trap's do not.
 				Own = Theirs->StatNamingTagAppliedTo(
-					FName(TEXT("attack_damage")), DeployableTag(), Own, TypeTags, Target,
+					FName(TEXT("attack_damage")), TagsNamingMachines(), Own, TypeTags, Target,
 					GetGameTimeSinceCreation());
 			}
 		}
@@ -1682,7 +1876,8 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// summoner's stat lines, a different list, so nothing is counted twice.
 		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
 			UCataclysmTargeting::AbilitySystemOf(this),
-			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
+			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags,
+															   /*AskingMinion=*/this),
 			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
@@ -1771,6 +1966,28 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			Theirs->ActOnEvent(FName(TEXT("deployable_hit")), &TypeTags, 0.0f,
 							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker,
 							   Target);
+
+			// AND THE SABOTEUR'S FERVOUR FOR A MACHINE'S LANDED BLOW, "one of them dealing damage": landed as the
+			// event says it, so an evaded blow earns nothing. Slice C, 2026-11-24.
+			if (!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)
+			{
+				FCataclysmWarFervour::GainOnDeviceHit(Theirs, TypeTags);
+			}
+		}
+	}
+	// ANY OTHER MINION'S BLOW IS ANNOUNCED TO ITS SUMMONER as `minion_hit`, ONCE, with the minion's tags and the enemy
+	// struck, landed only when it was not evaded and not refused as immune to its attacker: Cold Hands and Grave Cold,
+	// the Death trees' slice C6d1 (2026-11-25), as ruled. Once per landed blow whatever Conduit does with `hit_dealt`.
+	else if (OwnDamagePerHit > 0.0f)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			// WITH WHAT REACHED THE ENEMY'S HEALTH AS ITS AMOUNT, so an ailment a row applies on it meets the owner's
+			// rule of 2026-09-02 (#917, a tenth of the target's maximum health) as a hit's does. Window death3-w2 found
+			// it carried nought, which refused every ailment: Cold Hands' and Grave Cold's Necrosis never landed.
+			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, Resolved.DealtToHealth,
+							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker, Target);
 		}
 	}
 
@@ -1878,6 +2095,129 @@ int32 ACataclysmMinion::LayTheEffectsItsBlowsLay(AActor* Target)
 		}
 	}
 	return Laid;
+}
+
+const TCHAR* ACataclysmMinion::LifetimeRenewedEverySecondsStat =
+	TEXT("minion_lifetime_renewed_every_seconds");
+
+bool ACataclysmMinion::RenewLifetimeIfRekindled()
+{
+	// A BODY, A MACHINE, OR ONE WITH NO LIFETIME IS NEVER KEPT. A dead minion's body is removed by the same call
+	// `DeadBodySeconds` after its death; a deployable is a machine and not one of the Ritualist's minions.
+	if (UCataclysmSkillEffects::IsDead(this) || IsDeployable() || GrantedLifetimeSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	AActor* Commander = Summoner.Get();
+	UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs || UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return false;
+	}
+
+	// THE KEYSTONE'S INTERVAL IS ITS ROW'S FIGURE, and above nought IS the keystone being held, the shape
+	// Press-Ganged's stat takes. The clock is the summoner's, so one renewal in five seconds whatever is expiring.
+	const float Every = Theirs->StatForSkill(FName(LifetimeRenewedEverySecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Every <= 0.0f || !Theirs->MayRenewMinionLifetime())
+	{
+		return false;
+	}
+
+	// THE WHOLE LIFETIME IT WAS GIVEN, "it stays for that long again". Its reserve stays held, because it is the
+	// same minion: nothing was lost and nothing is made.
+	SetLifeSpan(GrantedLifetimeSeconds);
+	Theirs->NoteMinionLifetimeRenewed(Every);
+	++TimesLifetimeRenewed;
+	return true;
+}
+
+void ACataclysmMinion::LifeSpanExpired()
+{
+	if (RenewLifetimeIfRekindled())
+	{
+		return;
+	}
+	// A GADGET WHOSE LIFE SPAN RAN OUT IS ANNOUNCED, as `gadget_expired`, with its tags, naming it, before it goes. Ruled
+	// in the vow survey of 2026-11-25 ("a gadget expiring raises an event") and built for Scrap Mines (V5b1). A gadget
+	// only (`IsGadget`): a trap's expiry still raises nothing.
+	if (IsGadget())
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			const FGameplayTagContainer GadgetTags = TypeTags;
+			Theirs->ActOnEvent(FName(TEXT("gadget_expired")), &GadgetTags, /*EventAmount=*/0.0f, /*bLanded=*/true, this);
+		}
+	}
+	Super::LifeSpanExpired();
+}
+
+ACataclysmMinion* ACataclysmMinion::LeaveScrapTrapOf(const ACataclysmMinion* Gone, float ShotMultiplier,
+													 float TriggerRadiusCm)
+{
+	AActor* const Player = IsValid(Gone) ? Gone->Summoner.Get() : nullptr;
+	if (!Player || !Gone->IsGadget() || Gone->IsScrapTrap() || ShotMultiplier <= 0.0f || TriggerRadiusCm <= 0.0f)
+	{
+		return nullptr;
+	}
+	ACataclysmMinion* Scrap =
+		Spawn(Player, Gone->GetActorLocation(), SkillTrapSeconds, /*bBurns=*/false, Gone->TypeName);
+	if (!Scrap)
+	{
+		return nullptr;
+	}
+	// A TRAP NOW, AND INERT AS A GADGET. The slot is kept, so a skill gadget's scrap casts its slot's skill.
+	const FGameplayTag Trap = TagOfATrap();
+	if (Trap.IsValid())
+	{
+		Scrap->TypeTags.AddTag(Trap);
+	}
+	Scrap->bIsScrapTrap = true;
+	Scrap->SkillGadgetSlot = Gone->SkillGadgetSlot;
+	// AND WHAT A BOLTED GADGET HELD, so its scrap trap's shot fires the whole list (V5c, BT3).
+	Scrap->BoltedAttacks = Gone->BoltedAttacks;
+	Scrap->GadgetsBoltedIn = Gone->GadgetsBoltedIn;
+	Scrap->ScrapShotMultiplier = ShotMultiplier;
+	Scrap->ScrapTriggerRadiusCm = TriggerRadiusCm;
+	Scrap->ScrapArmsAtAgeSeconds = Scrap->GetGameTimeSinceCreation()
+		+ SkillTrapArmingSecondsFor(Player, Scrap->TypeTags, Scrap);
+	Scrap->SetActorScale3D(Gone->GetActorScale3D() * 0.5f);
+	return Scrap;
+}
+
+bool ACataclysmMinion::StepScrapTrap()
+{
+	if (!bIsScrapTrap || IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(this)
+		|| GetGameTimeSinceCreation() < ScrapArmsAtAgeSeconds - SkillGadgetClockAllowanceSeconds)
+	{
+		return false;
+	}
+	const TArray<AActor*> Within = HostilesWithin(ScrapTriggerRadiusCm);
+	return !Within.IsEmpty() && FireScrapTrapAt(Within[0]);
+}
+
+bool ACataclysmMinion::FireScrapTrapAt(AActor* Enemy)
+{
+	if (!bIsScrapTrap || !IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || IsActorBeingDestroyed())
+	{
+		return false;
+	}
+	bool bFired = false;
+	if (SkillGadgetSlot != ECataclysmAbilitySlot::None)
+	{
+		bFired = CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/false, Enemy, ScrapShotMultiplier);
+	}
+	else
+	{
+		TGuardValue<bool> Firing(bScrapTrapFiring, true);
+		AttackTarget(Enemy);
+		bFired = true;
+	}
+	// USED UP, as a skill trap is: destroyed, with no death, so no `gadget_destroyed` and no second scrap.
+	Destroy();
+	return bFired;
 }
 
 void ACataclysmMinion::HandleDeath()
@@ -2039,7 +2379,7 @@ void ACataclysmMinion::Explode()
 	// thrall. `minion_explosion_damage`, Volatile's stat, is a separate
 	// multiplier below and is not read twice.
 	const float OwnBlow = OwnDamagePerHit
-		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags);
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags, /*AskingMinion=*/this);
 	const float Damage = OwnBlow * ExplosionPercentOfOwnDamage / 100.0f;
 
 	if (IsValid(Summoner) && ExplosionRadiusCm > 0.0f && Damage > 0.0f)
@@ -2240,7 +2580,8 @@ float ACataclysmMinion::ThrallExplosionDamage(const AActor* Lost, const AActor* 
 	// ruled 2026-11-02): its commander's Spirit reaches its explosion as it reaches its blow. Volatile's
 	// `minion_explosion_damage` is still asked with no tags; no row of it carries one.
 	const float OwnBlow = AttackDamage
-		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags());
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags(),
+												   /*AskingMinion=*/Lost);
 	return OwnBlow * ThrallExplosionPercentOfOwnDamage / 100.0f
 		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_explosion_damage"), FGameplayTagContainer());
 }
@@ -2645,6 +2986,8 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 	const FVector Here = GetActorLocation();
 	const FVector From = CastFromPlace ? *CastFromPlace : Here;
 	FVector Aim = From;
+	// THE ENEMY THIS CAST AIMS AT, for the bolted attacks after it (V5c): none for a self buff or a place.
+	LastSkillStartedAt = nullptr;
 	if (Skill.Shape == ECataclysmSkillShape::SelfBuff)
 	{
 		// THE SELF BUFF IS THE PLAYER'S, AND ONLY WITHIN 8 M OF THIS MINION (S13; T4 for a Tyrant's Minion). Its enemy
@@ -2666,6 +3009,7 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 	}
 	else if (IsValid(AimedAt))
 	{
+		LastSkillStartedAt = AimedAt;
 		// A SKILL TRAP'S TRIGGERING ENEMY (T13), aimed at whatever the skill's reach: the trap has chosen it.
 		Aim = AimedAt->GetActorLocation();
 	}
@@ -2696,6 +3040,7 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 		{
 			return false;
 		}
+		LastSkillStartedAt = Target;
 		Aim = Target->GetActorLocation();
 	}
 
@@ -2712,6 +3057,9 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 const TCHAR* ACataclysmMinion::SkillTrapTypeName = TEXT("SkillTrap");
 const TCHAR* ACataclysmMinion::TrapArmingSpeedStat = TEXT("trap_arming_speed");
 const TCHAR* ACataclysmMinion::TrapTriggerRadiusStat = TEXT("trap_trigger_radius");
+const TCHAR* ACataclysmMinion::TrapsArmInstantlyStat = TEXT("traps_arm_instantly");
+const TCHAR* ACataclysmMinion::TrapArmingSecondsAddedStat = TEXT("trap_arming_seconds_added");
+const TCHAR* ACataclysmMinion::TrapArmingSecondsLessPerOtherTrapStat = TEXT("trap_arming_seconds_less_per_other_trap");
 
 namespace
 {
@@ -2722,13 +3070,116 @@ namespace
 			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
 		return Theirs ? FMath::Max(0.0f, Theirs->IncreasesForStat(FName(Stat), TrapTags)) : 0.0f;
 	}
+
+	/** The player's own figure of `Stat` for a trap of `TrapTags`, through the pipeline, or nought. Floored at nought. */
+	float SkillTrapTimingFigureOf(const AActor* Player, const TCHAR* Stat, const FGameplayTagContainer& TrapTags)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? FMath::Max(0.0f, Theirs->StatForSkill(FName(Stat), TrapTags, /*Fallback=*/0.0f)) : 0.0f;
+	}
 }
 
-float ACataclysmMinion::SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
+float ACataclysmMinion::SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags,
+												  const ACataclysmMinion* Self)
 {
+	// HAIR TRIGGER AT 5 POINTS: AT ONCE, whatever else is held (the C1 plan, ruled 2026-11-25: it beats Delayed Fuse).
+	if (SkillTrapTimingFigureOf(Player, TrapsArmInstantlyStat, TrapTags) > 0.0f)
+	{
+		return 0.0f;
+	}
+
 	// FASTER IS A RATE, so the seconds are divided by one plus the increases, as "Gadgets fire 20%-40% faster" divides a
-	// gadget's clock. 60% faster arms in 1/1.6 of a second.
-	return SkillTrapArmSeconds / (1.0f + SkillTrapIncreasesOf(Player, TrapArmingSpeedStat, TrapTags));
+	// gadget's clock. 60% faster arms in 1/1.6 of a second. DELAYED FUSE'S EXTRA SECOND IS ADDED FIRST (ruled), so
+	// arming speed shortens the whole delay.
+	const float Seconds = (SkillTrapArmSeconds + SkillTrapTimingFigureOf(Player, TrapArmingSecondsAddedStat, TrapTags))
+		/ (1.0f + SkillTrapIncreasesOf(Player, TrapArmingSpeedStat, TrapTags));
+
+	// VOLATILE CASING: LESS FOR EACH OTHER TRAP STANDING, after the division, counted when this one is placed or rearmed,
+	// and never below the floor by it (a time already under the floor is left as it is).
+	const float LessPerOther = SkillTrapTimingFigureOf(Player, TrapArmingSecondsLessPerOtherTrapStat, TrapTags);
+	if (LessPerOther <= 0.0f)
+	{
+		return Seconds;
+	}
+	int32 Others = 0;
+	for (const ACataclysmMinion* Each : SkillTrapsOf(Player))
+	{
+		Others += Each != Self ? 1 : 0;
+	}
+	return FMath::Max(FMath::Min(Seconds, SkillTrapArmingFloorSeconds), Seconds - LessPerOther * Others);
+}
+
+void ACataclysmMinion::BeginSkillTrapArming(float Seconds)
+{
+	UWorld* const World = GetWorld();
+	if (World)
+	{
+		World->GetTimerManager().ClearTimer(SkillTrapArmingTimer);
+	}
+	SkillTrapArmsAtAgeSeconds = GetGameTimeSinceCreation() + FMath::Max(0.0f, Seconds);
+	bSkillTrapArmed = Seconds <= 0.0f;
+	ShowSkillTrapTint();
+	// ARMED NOW, AND SAID SO (V4a, 2026-11-25): an arming time of nought is an arming.
+	if (bSkillTrapArmed)
+	{
+		AnnounceTrapArmed();
+	}
+	if (!World)
+	{
+		return;
+	}
+	if (Seconds > 0.0f)
+	{
+		World->GetTimerManager().SetTimer(SkillTrapArmingTimer, this, &ACataclysmMinion::SkillTrapArmingTimeReached,
+										  Seconds, /*bLoop=*/false);
+	}
+	else
+	{
+		SkillTrapArmingTimer =
+			World->GetTimerManager().SetTimerForNextTick(this, &ACataclysmMinion::SkillTrapArmingTimeReached);
+	}
+}
+
+void ACataclysmMinion::SkillTrapArmingTimeReached()
+{
+	if (!IsSkillTrap() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	// THE TIMER IS THE ARMING TIME, so it arms the trap rather than asking the age again, which a world clock added up in
+	// floating point could leave a hair short. Then the step, as on any quarter second: an enemy within the radius sets
+	// it off now.
+	if (!bSkillTrapArmed)
+	{
+		bSkillTrapArmed = true;
+		SkillTrapArmsAtAgeSeconds = FMath::Min(SkillTrapArmsAtAgeSeconds, GetGameTimeSinceCreation());
+		ShowSkillTrapTint();
+		AnnounceTrapArmed();
+	}
+	StepSkillTrap();
+}
+
+void ACataclysmMinion::AnnounceTrapArmed()
+{
+	AActor* const Player = Summoner.Get();
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs || !IsTrap() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	if (Theirs->IsActingOnAnEvent())
+	{
+		if (UWorld* const World = GetWorld())
+		{
+			World->GetTimerManager().SetTimerForNextTick(
+				FTimerDelegate::CreateWeakLambda(this, [this]() { AnnounceTrapArmed(); }));
+		}
+		return;
+	}
+	const FGameplayTagContainer TrapTags = TypeTags;
+	Theirs->ActOnEvent(FName(TEXT("trap_armed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, this);
 }
 
 float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
@@ -2736,7 +3187,17 @@ float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const 
 	// "INCREASED TRIGGER RADIUS" IS A SIZE, so the radius is multiplied by one plus the increases. NOT the type row's
 	// reach, which `Spawn` lengthens by "Gadgets have 20%-40% increased attack range" because a trap carries
 	// `Type.Deployable`: the radius is the constant of T2 and this stat alone.
-	return SkillTrapTriggerRadiusCm * (1.0f + SkillTrapIncreasesOf(Player, TrapTriggerRadiusStat, TrapTags));
+	//
+	// AND BY ITS "MORE", since 2026-11-25: Overwhelming Presence's "trap trigger radius is doubled" is 100% more, the
+	// coordinating session's ruling, so it doubles whatever the increases make the radius, as its "50% more trap damage"
+	// beside it does. `MultiplierForStatAgainst` is `(1 + increases) * more` with `1 + increases` floored at nought.
+	// ONE DIFFERENCE FROM THE OLD READ: `SkillTrapIncreasesOf` floored the increases themselves at nought, so a net
+	// reduction of the radius was ignored; now it shrinks the radius. No row reduces it (2026-11-25). With no "more" row
+	// and no net reduction, the figure is the old one.
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	return SkillTrapTriggerRadiusCm
+		* (Theirs ? Theirs->MultiplierForStatAgainst(FName(TrapTriggerRadiusStat), TrapTags, /*Target=*/nullptr) : 1.0f);
 }
 
 TArray<ACataclysmMinion*> ACataclysmMinion::SkillTrapsOf(const AActor* Player)
@@ -2763,6 +3224,347 @@ float ACataclysmMinion::SkillTrapReserveFor(const AActor* Player, ECataclysmAbil
 	const float Stated =
 		SkillTrapFervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOfSlot(Player, Slot));
 	return UCataclysmCommand::ReserveFor(Player, Stated, TagsOfType(SkillTrapTypeName));
+}
+
+const TCHAR* ACataclysmMinion::TrapCreepMetresPerSecondStat = TEXT("trap_creep_metres_per_second");
+const TCHAR* ACataclysmMinion::TrapCreepReachMetresStat = TEXT("trap_creep_reach_metres");
+const TCHAR* ACataclysmMinion::DeviceWireReachMetresStat = TEXT("device_wire_reach_metres");
+const TCHAR* ACataclysmMinion::DeviceWirePinSecondsStat = TEXT("device_wire_pin_seconds");
+const TCHAR* ACataclysmMinion::DeviceWireRepinSecondsStat = TEXT("device_wire_repin_seconds");
+const TCHAR* ACataclysmMinion::GadgetFollowWithinMetresStat = TEXT("gadget_follow_within_metres");
+const TCHAR* ACataclysmMinion::GadgetBoltReachMetresStat = TEXT("gadget_bolt_reach_metres");
+const TCHAR* ACataclysmMinion::BoltedMorePercentPerGadgetStat = TEXT("bolted_more_percent_per_gadget");
+
+namespace
+{
+	// A PLAYER'S FLAT DEVICE FIGURE, never below nought: Creeping Mines' two (V5a), Cat's Cradle's three (V5b2) and
+	// Walking Arsenal's reach (V5b3).
+	float CataclysmTrapCreepFigure(const AActor* Player, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? FMath::Max(0.0f, Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f)) : 0.0f;
+	}
+}
+
+float ACataclysmMinion::TrapCreepCmPerSecondFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, TrapCreepMetresPerSecondStat) * 100.0f;
+}
+
+float ACataclysmMinion::TrapCreepReachCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, TrapCreepReachMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::DeviceWireReachCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, DeviceWireReachMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::DeviceWirePinSecondsFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, DeviceWirePinSecondsStat);
+}
+
+float ACataclysmMinion::DeviceWireRepinSecondsFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, DeviceWireRepinSecondsStat);
+}
+
+float ACataclysmMinion::GadgetFollowWithinCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, GadgetFollowWithinMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::GadgetBoltReachCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, GadgetBoltReachMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::BoltedMorePercentPerGadgetFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, BoltedMorePercentPerGadgetStat);
+}
+
+float ACataclysmMinion::BoltedMoreMultiplier() const
+{
+	return GadgetsBoltedIn > 1
+		? 1.0f + BoltedMorePercentPerGadgetFor(Summoner.Get()) / 100.0f * static_cast<float>(GadgetsBoltedIn)
+		: 1.0f;
+}
+
+void ACataclysmMinion::AbsorbGadget(ACataclysmMinion* Absorbed)
+{
+	if (!IsValid(Absorbed) || Absorbed == this || Absorbed->IsActorBeingDestroyed())
+	{
+		return;
+	}
+	// ITS OWN ATTACKS, KEYED BY WHAT IT DID (BT3): the slot it cast, and its brain's blow when it has a figure.
+	if (Absorbed->SkillGadgetSlot != ECataclysmAbilitySlot::None)
+	{
+		BoltedAttacks.Add({Absorbed->SkillGadgetSlot, 0.0f});
+	}
+	if (Absorbed->OwnDamagePerHit > 0.0f)
+	{
+		BoltedAttacks.Add({ECataclysmAbilitySlot::None, Absorbed->OwnDamagePerHit});
+	}
+	// AND WHAT IT HELD ALREADY, so a bolted gadget bolted onto another brings its whole list.
+	BoltedAttacks.Append(Absorbed->BoltedAttacks);
+	GadgetsBoltedIn += Absorbed->GadgetsBoltedIn;
+
+	// THE HEALTH ADDED TOGETHER (B1): the maximum first, so the current fits under it.
+	UAbilitySystemComponent* Mine = GetAbilitySystemComponent();
+	const UAbilitySystemComponent* Its = Absorbed->GetAbilitySystemComponent();
+	if (Mine && Its)
+	{
+		const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Mine->SetNumericAttributeBase(Maximum, Mine->GetNumericAttribute(Maximum) + Its->GetNumericAttribute(Maximum));
+		Mine->SetNumericAttributeBase(Health, Mine->GetNumericAttribute(Health) + Its->GetNumericAttribute(Health));
+	}
+
+	// BOTH RESERVES HELD HERE (BT4), released together when this one dies: a dead follower holds nothing.
+	ReservedFervour += Absorbed->ReservedFervour;
+	Absorbed->ReservedFervour = 0.0f;
+
+	// THE LATER OF THE TWO LIVES (BT4), so bolting never shortens one. Nought is "never expires".
+	const float MyLife = GetLifeSpan();
+	const float ItsLife = Absorbed->GetLifeSpan();
+	if (MyLife > 0.0f)
+	{
+		SetLifeSpan(ItsLife <= 0.0f ? 0.0f : FMath::Max(MyLife, ItsLife));
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("BOLTED TOGETHER: %s absorbed %s; %d gadgets in it, %d attacks held."), *GetName(),
+		*Absorbed->GetName(), GadgetsBoltedIn, BoltedAttacks.Num());
+	Absorbed->Destroy();
+}
+
+ACataclysmMinion* ACataclysmMinion::BoltOnPlacing(ACataclysmMinion* Placed)
+{
+	if (!IsValid(Placed) || !Placed->IsGadget())
+	{
+		return nullptr;
+	}
+	AActor* const Player = Placed->Summoner.Get();
+	const float Reach = GadgetBoltReachCmFor(Player);
+	if (Reach <= 0.0f)
+	{
+		return nullptr;
+	}
+	ACataclysmMinion* Nearest = nullptr;
+	float NearestCm = 0.0f;
+	const FVector At = Placed->GetActorLocation();
+	for (ACataclysmMinion* Each : DevicesOf(Player))
+	{
+		if (Each == Placed || !Each->IsGadget())
+		{
+			continue;
+		}
+		const float Cm = FVector::Dist2D(Each->GetActorLocation(), At);
+		if (Cm <= Reach && (!Nearest || Cm < NearestCm || (Cm == NearestCm && Each->SpawnOrder < Nearest->SpawnOrder)))
+		{
+			Nearest = Each;
+			NearestCm = Cm;
+		}
+	}
+	if (Nearest)
+	{
+		Nearest->AbsorbGadget(Placed);
+	}
+	return Nearest;
+}
+
+int32 ACataclysmMinion::BoltAfterMove(AActor* Player, const TArray<ACataclysmMinion*>& Moved)
+{
+	const float Reach = GadgetBoltReachCmFor(Player);
+	if (Reach <= 0.0f)
+	{
+		return 0;
+	}
+	TArray<ACataclysmMinion*> Standing;
+	int32 Absorbed = 0;
+	for (ACataclysmMinion* Each : Moved)
+	{
+		if (!IsValid(Each) || Each->IsActorBeingDestroyed() || !Each->IsGadget())
+		{
+			continue;
+		}
+		ACataclysmMinion* Nearest = nullptr;
+		float NearestCm = 0.0f;
+		for (ACataclysmMinion* Survivor : Standing)
+		{
+			const float Cm = FVector::Dist2D(Survivor->GetActorLocation(), Each->GetActorLocation());
+			if (Cm <= Reach && (!Nearest || Cm < NearestCm))
+			{
+				Nearest = Survivor;
+				NearestCm = Cm;
+			}
+		}
+		if (Nearest)
+		{
+			Nearest->AbsorbGadget(Each);
+			++Absorbed;
+		}
+		else
+		{
+			Standing.Add(Each);
+		}
+	}
+	return Absorbed;
+}
+
+int32 ACataclysmMinion::FireBoltedAttacksAt(AActor* Target)
+{
+	if (bFiringBoltedAttacks || BoltedAttacks.IsEmpty() || !IsValid(Target) || UCataclysmSkillEffects::IsDead(Target)
+		|| UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this))
+	{
+		return 0;
+	}
+	TGuardValue<bool> Firing(bFiringBoltedAttacks, true);
+	const float More = BoltedMoreMultiplier();
+	const TArray<FBoltedAttack> Held = BoltedAttacks;
+	int32 Fired = 0;
+	for (const FBoltedAttack& Each : Held)
+	{
+		if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(Target) || UCataclysmSkillEffects::IsDead(this))
+		{
+			break;
+		}
+		if (Each.Slot != ECataclysmAbilitySlot::None)
+		{
+			Fired += CastSlotSkillFromHere(Each.Slot, /*bEvenForADeadPlayer=*/false, Target, More) ? 1 : 0;
+		}
+		else if (Each.BlowFigure > 0.0f)
+		{
+			// THE BRAIN ATTACK, PRICED AS THIS GADGET'S OWN BLOW IS, WITH THE ABSORBED ONE'S FIGURE. `AttackTarget` applies
+			// `BoltedMoreMultiplier` itself.
+			TGuardValue<float> Blow(OwnDamagePerHit, Each.BlowFigure);
+			TGuardValue<bool> NotAHound(bIsWarhound, false);
+			AttackTarget(Target);
+			++Fired;
+		}
+	}
+	return Fired;
+}
+
+bool ACataclysmMinion::WalkAfterSummoner(float Seconds)
+{
+	if (!IsGadget() || IsActorBeingDestroyed() || Seconds <= 0.0f || UCataclysmSkillEffects::IsDead(this)
+		|| UCataclysmSkillEffects::CannotAct(this))
+	{
+		return false;
+	}
+	AActor* const Player = Summoner.Get();
+	const float Within = GadgetFollowWithinCmFor(Player);
+	if (!IsValid(Player) || Within <= 0.0f)
+	{
+		return false;
+	}
+	// AT THE SPEED THE SUMMONER'S OTHER FOLLOWERS WALK (ruled A1): its walking speed now, times the share every commanded
+	// creature walks at. `UCataclysmCommand::CommandedWalkSpeedCmPerSecond` itself answers nought for a gadget, which
+	// stays where it is put, so the figure is taken from the summoner here.
+	const ACharacter* Walker = Cast<ACharacter>(Player);
+	const UCharacterMovementComponent* Movement = Walker ? Walker->GetCharacterMovement() : nullptr;
+	const float Speed =
+		Movement ? Movement->MaxWalkSpeed * UCataclysmCommand::CommandedWalkSpeedShareOfCommander : 0.0f;
+	const FVector Here = GetActorLocation();
+	const FVector Toward = Player->GetActorLocation() - Here;
+	const float Beyond = Toward.Size2D() - Within;
+	if (Speed <= 0.0f || Beyond <= 0.0f)
+	{
+		return false;
+	}
+	const float Step = FMath::Min(Speed * Seconds, Beyond);
+	SetActorLocation(Here + Toward.GetSafeNormal2D() * Step, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+	return true;
+}
+
+bool ACataclysmMinion::CreepTowardNearestEnemy(float Seconds)
+{
+	if (!IsTrap() || IsActorBeingDestroyed() || Seconds <= 0.0f || (IsSkillTrap() && !bSkillTrapArmed))
+	{
+		return false;
+	}
+	AActor* const Player = Summoner.Get();
+	const float Speed = TrapCreepCmPerSecondFor(Player);
+	const float Reach = TrapCreepReachCmFor(Player);
+	if (Speed <= 0.0f || Reach <= 0.0f)
+	{
+		return false;
+	}
+	// NOT WHILE AN ENEMY IS ALREADY WITHIN ITS TRIGGER RADIUS: then it goes off rather than moves.
+	const float Trigger = IsSkillTrap() ? SkillTrapTriggerRadiusCmFor(Player, TypeTags) : ReachCm;
+	if (!HostilesWithin(Trigger).IsEmpty())
+	{
+		return false;
+	}
+	const TArray<AActor*> Near = HostilesWithin(Reach);
+	if (Near.IsEmpty())
+	{
+		return false;
+	}
+	const FVector Here = GetActorLocation();
+	const FVector Toward = Near[0]->GetActorLocation() - Here;
+	const float Distance = Toward.Size2D();
+	const float Step = FMath::Min(Speed * Seconds, Distance);
+	if (Step <= 0.0f)
+	{
+		return false;
+	}
+	SetActorLocation(Here + Toward.GetSafeNormal2D() * Step, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+	return true;
+}
+
+TArray<ACataclysmMinion*> ACataclysmMinion::DevicesOf(const AActor* Player)
+{
+	TArray<ACataclysmMinion*> Devices;
+	const auto Consider = [&Devices](AActor* Follower)
+	{
+		ACataclysmMinion* Each = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Each) && !Each->IsActorBeingDestroyed() && !UCataclysmSkillEffects::IsDead(Each)
+			&& (Each->IsTrap() || Each->IsGadget()))
+		{
+			Devices.AddUnique(Each);
+		}
+	};
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		Consider(Follower);
+	}
+	for (ACataclysmMinion* Trap : SkillTrapsOf(Player))
+	{
+		Consider(Trap);
+	}
+	return Devices;
+}
+
+ACataclysmMinion* ACataclysmMinion::PlaceSkillTrapCopy(AActor* Player, ECataclysmAbilitySlot Slot,
+													   const FVector& Location, float Reserve, float LifetimeSeconds)
+{
+	if (!IsValid(Player) || Slot == ECataclysmAbilitySlot::None || LifetimeSeconds <= 0.0f
+		|| !UCataclysmCommand::HasRoomToReserve(Player, Reserve))
+	{
+		return nullptr;
+	}
+	ACataclysmMinion* Placed =
+		Spawn(Player, Location, LifetimeSeconds, /*bBurns=*/false, FString(SkillTrapTypeName));
+	if (!Placed)
+	{
+		return nullptr;
+	}
+	if (Placed->TypeName != SkillTrapTypeName || !Placed->IsTrap())
+	{
+		Placed->Destroy();
+		return nullptr;
+	}
+	// EXACTLY ITS SECONDS, whatever `Spawn` made of them (ruled W3).
+	Placed->SetLifeSpan(LifetimeSeconds);
+	Placed->SkillTrapSlot = Slot;
+	Placed->BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, Placed->TypeTags, Placed));
+	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
+	return Placed;
 }
 
 ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location)
@@ -2808,10 +3610,9 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		Placed->SetLifeSpan(0.0f);
 	}
 	Placed->SkillTrapSlot = Slot;
-	Placed->SkillTrapArmsAtAgeSeconds =
-		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
-	Placed->bSkillTrapArmed = false;
-	Placed->ShowSkillTrapTint();
+	// ARMED AT ITS EXACT TIME, by a timer (the C1 plan, ruled 2026-11-25). The slot is set above, so `SkillTrapsOf` counts
+	// this trap and Volatile Casing passes over it as `Self`.
+	Placed->BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, Placed->TypeTags, Placed));
 	// ITS RESERVE, and the spendable Fervour cut to what is left.
 	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
 
@@ -2820,7 +3621,17 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)))
 	{
 		const FGameplayTagContainer TrapTags = Placed->TypeTags;
+		// AND WHICH SLOT IT CAME FROM, for Trail of Wire's "the last trap you placed" (V4a, 2026-11-25).
+		Theirs->NoteSkillTrapPlaced(Slot);
 		Theirs->ActOnEvent(FName(TEXT("trap_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
+		// AND `device_placed`, BESIDE IT: placing a trap or a gadget, one event for either. The Saboteur's device
+		// conditions, 2026-11-25 (the coordinating session's ruling), for Razor Instincts, "+3% evasion chance per point
+		// for 3 seconds after placing a trap or gadget": one row on one event, so one placing grants one stack.
+		Theirs->ActOnEvent(FName(TEXT("device_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
+
+		// AND THE SABOTEUR'S FERVOUR FOR IT, after the reserve above is held. Nought for every character without
+		// `fervour_per_trap_placed`. Slice C, 2026-11-24.
+		FCataclysmWarFervour::GainOnTrapPlaced(Theirs, TrapTags);
 	}
 	return Placed;
 }
@@ -2871,6 +3682,7 @@ bool ACataclysmMinion::StepSkillTrap()
 		}
 		bSkillTrapArmed = true;
 		ShowSkillTrapTint();
+		AnnounceTrapArmed();
 	}
 
 	// A TRAP THAT CANNOT ACT, OF A PLAYER GONE OR DEAD, OR WHOSE SLOT IS NO LONGER CONVERTED, WAITS ARMED, as a skill
@@ -2940,6 +3752,21 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	}
 	++SkillTrapTriggersMade;
 
+	// AND THE ENEMY THAT SET IT OFF REMEMBERS IT, the first triggering of this player's traps it set off and no later
+	// one: this trap and this triggering's count. The Saboteur's device conditions, 2026-11-25, for Ambush's
+	// `target_not_yet_triggered_your_trap`. Written once the cast has started; this triggering's blows on that enemy, a
+	// late one included, are still judged "not yet triggered", because the condition sets this triggering aside
+	// (`TriggeredATrapOfOtherThan`). A LATER TRIGGERING OF THIS SAME TRAP, rearmed, is not set aside: the coordinating
+	// session's ruling of that day.
+	if (Enemy)
+	{
+		if (UCataclysmAbilitySystemComponent* EnemysOwn =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Enemy)))
+		{
+			EnemysOwn->NoteTriggeredATrapOf(Theirs, this, SkillTrapTriggersMade);
+		}
+	}
+
 	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
 	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
 	const FGameplayTagContainer TrapTags = TypeTags;
@@ -2950,6 +3777,14 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 					   /*bLanded=*/true, Enemy);
 	Theirs->SkillTrapRaisingItsTrigger.Reset();
 
+	// AND THE SABOTEUR'S FERVOUR FOR THE TRIGGER, once per trigger as the event is. Nought for every character without
+	// `fervour_per_trap_triggered`. Slice C, 2026-11-24.
+	FCataclysmWarFervour::GainOnTrapTriggered(Theirs, TrapTags);
+
+	// AND THE TAUNTS IT HOLDS END, "until the trap goes off" (Baited, V4a, ruled 2026-11-25): a trap that rearms below is
+	// not destroyed, so its taunts would otherwise run on. A used-up trap's would end by themselves.
+	UCataclysmTaunt::EndTauntsBy(this);
+
 	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
 	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
 	// STAYS where it is and is ARMED AGAIN after the ordinary arming time, so it cannot trigger twice on one step; it
@@ -2957,9 +3792,9 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// kept among the used-up traps, so a later blow of its cast finds it standing.
 	if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))
 	{
-		bSkillTrapArmed = false;
-		SkillTrapArmsAtAgeSeconds = GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, TypeTags);
-		ShowSkillTrapTint();
+		// AND ARMED AGAIN AT ITS EXACT TIME, as at placing (the C1 plan, ruled 2026-11-25). An arming time of nought arms
+		// it now and looks for an enemy on the next tick, so it still cannot trigger twice in this step.
+		BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, TypeTags, this));
 		return true;
 	}
 
@@ -3036,6 +3871,7 @@ AActor* ACataclysmMinion::SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const
 // ==========================================================================
 
 const TCHAR* ACataclysmMinion::TrapsDoNotExpireStat = TEXT("traps_do_not_expire");
+const TCHAR* ACataclysmMinion::TrapsNotSetOffWhileArmingStat = TEXT("traps_not_set_off_while_arming");
 
 namespace
 {
@@ -3191,11 +4027,13 @@ int32 ACataclysmMinion::ArmSkillTrapsNear(const AActor* Player, const FVector& P
 	}
 	for (ACataclysmMinion* Each : Unarmed)
 	{
-		// AS IF ITS ARMING TIME HAD PASSED, AND DRAWN ARMED (H2). Nothing else of it is touched: no event, its life span and
-		// the cap as they were.
+		// AS IF ITS ARMING TIME HAD PASSED, AND DRAWN ARMED (H2). Its life span and the cap as they were. AND `trap_armed`
+		// SINCE V4a (2026-11-25), ruled "at every arming path": raised on the next tick, since this runs inside a row's
+		// action.
 		Each->bSkillTrapArmed = true;
 		Each->SkillTrapArmsAtAgeSeconds = FMath::Min(Each->SkillTrapArmsAtAgeSeconds, Each->GetGameTimeSinceCreation());
 		Each->ShowSkillTrapTint();
+		Each->AnnounceTrapArmed();
 	}
 	return Unarmed.Num();
 }
@@ -3215,14 +4053,18 @@ int32 ACataclysmMinion::SetOffSkillTrapsNear(AActor* Player, const FVector* Plac
 	// as its own step casts nothing then.
 	TArray<ACataclysmMinion*> Standing = SkillTrapsStandingNear(Player, Place, RadiusCm, Except);
 	const TArray<TWeakObjectPtr<AActor>>& SetOffThisChain = Theirs->SkillTrapsSetOffThisChain;
-	Standing.RemoveAll([&SetOffThisChain, Theirs](const ACataclysmMinion* Each)
+	// AND NONE STILL ARMING, FOR A PLAYER HOLDING DELAYED FUSE'S FLAG (the C1 plan, ruled 2026-11-25): "cannot be
+	// accidentally triggered by you or your gadgets during the arming period". Without it, armed and unarmed alike (H4).
+	const bool bSparesTheArming = SkillTrapFigureOf(Player, TrapsNotSetOffWhileArmingStat) > 0.0f;
+	Standing.RemoveAll([&SetOffThisChain, Theirs, bSparesTheArming](const ACataclysmMinion* Each)
 	{
 		// A STANDING TRAP IS ITSELF IN THE LIST WHILE IT STANDS, so comparing what the list names now is enough here.
 		const bool bSetOffAlready = SetOffThisChain.ContainsByPredicate([Each](const TWeakObjectPtr<AActor>& Fired)
 		{
 			return Fired.Get() == Each;
 		});
-		return bSetOffAlready || UCataclysmSkillEffects::CannotAct(Each) || !Theirs->SlotIsASkillTrap(Each->SkillTrapSlot);
+		return bSetOffAlready || UCataclysmSkillEffects::CannotAct(Each) || !Theirs->SlotIsASkillTrap(Each->SkillTrapSlot)
+			|| (bSparesTheArming && !Each->bSkillTrapArmed);
 	});
 	if (bNearestOnly && Place)
 	{

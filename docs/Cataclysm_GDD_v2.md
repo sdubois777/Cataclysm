@@ -209,7 +209,7 @@ The following are default controls. Players with multiple damage types can map m
 
 | Input | Action |
 | :-: | :-: |
-| LMB | Attack the enemy under the cursor, pick up the dropped item under the cursor, or move to the point clicked. Which one is decided by what is under the cursor. |
+| LMB | Attack the enemy under the cursor, pick up the dropped item under the cursor, or move to the point clicked. Which one is decided by what is under the cursor. On a skill box of the bar it opens the skill choice screen with that key selected, and is neither an attack nor a move (issue #837, ruled 2026-11-24); "K: skills" is written by the bar. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
@@ -243,7 +243,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | Input | Action |
 | :-: | :-: |
 | WASD | Directional movement |
-| LMB | Attack the enemy under the cursor, or pick up the dropped item under the cursor. It does not move the character; the keys do that. |
+| LMB | Attack the enemy under the cursor, or pick up the dropped item under the cursor. It does not move the character; the keys do that. On a skill box of the bar it opens the skill choice screen with that key selected, and is neither an attack nor a move (issue #837, ruled 2026-11-24); "K: skills" is written by the bar. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
@@ -269,6 +269,36 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
   
 
 **Gamepad support is partial.** The left stick moves the character in both schemes. The seven ability slots are not bound to a gamepad yet.
+
+  
+
+### **Pausing**
+
+**The game can always be paused, offline and online.** The project owner, 2026-11-24: "Offline and online, pause is a must". Offline is built; online play is not built, and the rule for it is below.
+
+**Esc closes what is open first, and only Esc with nothing open pauses.** It is the same in both control schemes, and it is not in the two tables above, which list the bindings `tools/generate_input_assets.py` makes: Esc is read by the player controller itself, so that it reaches the game while the game is paused.
+
+- **A screen open:** Esc closes every open screen -- the inventory, the character sheet, the passive tree, the skill choice screen, the loot filter screen, the empire map, a city, the empire upgrade tree, the forge and the merchant -- and the floor object's choice panel, which it closes as its leave button does, choosing nothing. The game does not pause. The floor map on Tab is not a screen; it stays.
+- **Nothing open:** Esc pauses the game and shows the pause screen: "Paused", a Resume button, and "Esc resumes as well".
+- **Paused:** Esc, or Resume, lets the game run again.
+
+**Everything in play stops while paused**, because the pause is the engine's own: the world stops ticking its actors and its timers, and its clock stands still. Combat, creature brains, cooldowns, damage over time, ground zones, projectiles, buffs and debuffs, and every dungeon timer (The Reaper's ten seconds, the floor's clocks) stop together, and go on from where they were. Nothing in play runs on the real clock. The player's own frame takes nothing while paused: no material is swept up and no attack is swung. The interface does not pause, so the pause screen works.
+
+**The empire does not run in real time, so there is nothing more to stop there.** Days pass only by what the player does: a floor walked, a death, a craft at the forge, a respec of the empire upgrade tree. On the empire map Esc closes the map, and a second Esc pauses as anywhere else.
+
+**A pause is never saved.** The game saves itself on a clock and on events (Save System Design, section 6). The clock stops with the game, and play, which raises the events, has stopped too, so the game writes nothing during a pause (a console command that changes the character still writes it, as it is); nothing a record holds says whether the game was paused, and a game loaded or continued always starts running. Quitting from a pause keeps what the last save held, as quitting at any other moment does.
+
+**Other screens do not pause.** The skill choice screen's ruling (Q2, 2026-10-25) is that it does not, and the same holds for every screen but the pause screen. A recommendation, kept as it is: Diablo III's players report that its menu pauses a solo game, and Last Epoch offline pauses on Esc; Path of Exile also pauses on its full-screen interfaces such as the passive tree, which is the alternative if the owner wants it.
+
+**In Play In Editor, Shift+Esc stops Play.** The editor binds Esc to its Stop command and reads it before the game, so `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc for this project. `Cataclysm.PauseGame` pauses and resumes from the console as well.
+
+**Online, when it exists.** The party's rule is the owner's ruling of 2026-11-24; how long a paused instance is held, and boss fights, are recommendations.
+
+- **Solo online: Esc pauses the instance, as offline does.** The instance is the player's alone and the empire clock is moved only by what the player does, so stopping the instance stops everything the player can lose. The server holds a paused instance for a time and then saves and closes it, as Diablo III's solo game is reported by its players to unpause itself and log an idle player out "after a while"; the length is a judgement for the owner. Diablo IV and Last Epoch online cannot pause at all, even alone, and Diablo IV's players go to town to stop; the owner's rule rules that out here.
+- **A party: only the host can pause, and the host's pause stops the game for the whole party.** The owner's ruling, 2026-11-24: "Host pauses everyone". A player who is not the host cannot pause the party. Considered and not chosen: the instance pausing only while every player in it has paused, which is how Path of Exile 2's party pause is reported to work (a player's account of an interview with its director; Grinding Gear Games has not published it), and no pause in a party at all.
+- **Boss fights:** Path of Exile refuses to pause during its pinnacle boss fights ("Temporal Interference"). The save design's section 6 asks every way out of a fight to answer its rule, and a pause is not a way out, so nothing here refuses one; if the owner wants such fights unpausable, it is a per-fight flag, and a separate decision.
+
+`docs/DECISIONS.md`, 2026-11-24, has the sources.
 
   
 
@@ -345,6 +375,10 @@ This is the loop the run is built around: the threat chosen at run start decides
 ### **The Surge**
 
 A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. The first Surge, at run start, brings 12 dungeons; before any escalation every later Surge brings 8 and the next comes 90 days after the last. From 2026-10-13 to 2026-10-16 every Surge brought 5, and until 2026-10-13 4 every 120 days. Every measured figure in this document that is dated before 2026-10-13 was taken under the old rules: a dungeon that resolved stayed on the map, a Quest dungeon's timer cost its city nothing, and a surge came every 120 days at the size each passage states; and a figure dated before 2026-10-16 was taken with waves of 5 and an ordinary dungeon's hit 1.43 times today's (today's is 0.7 of it). None of them was measured again. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
+
+**A Surge also comes at once when no ordinary dungeon is left on the board**, and it brings 4 more dungeons than the scheduled one: 12 where the scheduled Surge brings 8, and 15 at Heretic. The scheduled Surge keeps its own clock, which restarts from the early one, so whichever comes first fires. Only an ordinary dungeon keeps the board from being empty: a Quest dungeon, the Cataclysm boss dungeon and a Fallen City dungeon do not, because none of them ever leaves the map on its own. No minimum gap holds the early Surge back: every Surge adds ordinary dungeons, so the board is not empty again until the player has cleared or lost all of them. The cap of 14 dungeons a Surge and the lethality mode's extra dungeons apply after the 4. The project owner ruled the rule on 2026-09-07, verbatim "Anytime there are no longer dungeons on the board, a surge happens"; on 2026-11-23 which dungeons count and that no gap applies, verbatim "yes, your rec"; and on 2026-11-24 the size, chosen option verbatim "Flat +4, no stacking". **Measured in the simulation on 2026-11-24**, provisionally because the gear drop rarity fix (issue #2853) was not yet in, over 2,000 campaigns in two disjoint blocks at difficulty tier 1, the `triage` policy, static surges of 8 every 90 days and resolve floor ratio 2.0: with no empire tree the board empties 7.24 times a campaign against 4.81 before, and 7.73 cities of 25 are lost against 3.51, with the win rate unchanged at 44%. A player in the Explorer tree almost never empties the board (0.13 times a campaign) and is not affected. Those figures were taken with a fall's Surge still held back by the 25-day gap the next paragraph removes. `docs/DECISIONS.md`, 2026-11-24, and issue [#2865](https://github.com/sdubois777/Cataclysm/issues/2865).
+
+**Every city that falls brings a Surge of its own at once**, whatever the gap since the last one: two cities falling on one day bring two Surges, and a city falling on the day of the scheduled Surge brings one more. Each is the scheduled size, and each advances the escalation as the scheduled Surge does, so the next scheduled Surge comes 90 days after it. The project owner ruled it on 2026-11-24, verbatim "surges from cities falling should happen regardless". From 2026-09-14 in the simulation and 2026-10-12 in the game until then, a city that fell within 25 days of the last Surge brought none (issues #1432 and #2380, judgements made under the owner's delegation); the owner's case was an Outpost that fell at most 24 days after a Surge and brought nothing (issue #2866). **Measured in the simulation on 2026-11-24**, provisionally for the same reason and under the same conditions as the paragraph above, with the empty-board rule as it stands: at difficulty tier 1 with no empire tree a campaign's falls bring 10.58 Surges against 2.80 with the gap, 10.44 cities of 25 are lost against 7.73, and the win rate is 39.1% against 44.0%; with the Architect tree 0.87 cities are lost against 0.67 and the win rate does not move (48.9% against 48.4%); at difficulty tier 4 with no tree 23.80 cities are lost against 21.75, the win rate is 19.7% against 23.2%, and a campaign ends after 347 days against 473. `docs/DECISIONS.md`, 2026-11-24, and issue [#2865](https://github.com/sdubois777/Cataclysm/issues/2865).
 
   
 
@@ -641,6 +675,10 @@ A player carrying several damage types will have far more skills available than 
 
   
 
+**A CHANGE OF WEAPONS NEVER TAKES A SKILL OFF A KEY WHILE IT IS STILL IN THE POOL.** Ruled by the project owner on 2026-11-24 (issue #837). Putting a second weapon on adds its skills to the pool and leaves every key as it was, so the keys never change because of which hand a weapon went into; taking a weapon off changes only the keys whose skills it took with it, each taking the next skill in the pool made for it. A key the player has not chosen for holds a skill that does something before one that is not built yet, and the skills the game put on keys by itself are remembered and saved with the character, as the player's own choices are. A choice whose weapon is off is kept and returns with the weapon, across a save and a load as in play.
+
+  
+
 | Slot | Description |
 | :-: | :-: |
 | Basic Attack | Left mouse button — augmented by all damage types on the weapon. Can be a damage source or resource generator depending on build. |
@@ -695,7 +733,9 @@ At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202
 
   
 
-**AN AURA DEALS DAMAGE ONLY IF ITS DESCRIPTION SAYS SO, AND THE FIGURE IS THEN ITS OWN.** Ruled by the owner on 2026-11-24 (issue #2875, "No damage unless stated"). An aura whose row states no Damage Percent deals none, on whichever key it sits: it is its burn, poison, curse, pull or ally bonus and nothing more. It never takes the Aura slot's 25%, which is what an aura that does state damage is typically worth. Six auras on the Aura key state none: Exposing Light, Miasma, Undertow, Pall of Ending, Unreason and Gnawing Want. **Conflagration states 10% of weapon damage a second**, below the 15–40% band this table gave until the owner's ruling on issue #2869 opened it to 10%. **Living Pyre**, an aura made for the Ultimate key, **states 66.67% a pulse**: the Ultimate's 400% spread over its six pulses, the owner's ruling of 2026-11-24 ("400% spread over 6 pulses"), still raised 8% by every hit its holder takes.
+**AN AURA DEALS DAMAGE ONLY IF ITS DESCRIPTION SAYS SO, AND THE FIGURE IS THEN ITS OWN.** Ruled by the owner on 2026-11-24 (issue #2875, "No damage unless stated"). An aura whose row states no Damage Percent deals none, on whichever key it sits: it is its burn, poison, curse, pull or ally bonus and nothing more. It never takes the Aura slot's 25%, which is what an aura that does state damage is typically worth. Seven auras on the Aura key state none: Exposing Light, Miasma, Undertow, Pall of Ending, Unreason, Gnawing Want and, since it was given its shape on 2026-11-25, Blood and Iron. **Conflagration states 10% of weapon damage a second**, below the 15–40% band this table gave until the owner's ruling on issue #2869 opened it to 10%. **Living Pyre**, an aura made for the Ultimate key, **states 66.67% a pulse**: the Ultimate's 400% spread over its six pulses, the owner's ruling of 2026-11-24 ("400% spread over 6 pulses"), still raised 8% by every hit its holder takes.
+
+**THE THREE DAMAGE-TYPE AURAS EACH HELP THEIR SIDE DIFFERENTLY**, the owner's rulings of 2026-11-25: "I think we should avoid making all of the aura's kinda samey". **Pall of Ending** (Death): you, your minions and your allies within it deal 10% more damage, a separate multiplier ("make it 10% more and I'm good with it"), while enemies within it deal 15% less damage while they stay and for 5 seconds after they leave. **Conflagration** (Demonic): when a burning enemy dies within it, its burn passes to the nearest other enemy within 4 metres, as your burn, with the seconds it had left ("Go with A"); its allies' 8% increased damage is gone. **Blood and Iron** (War): enemies within its 10 metres lose 10% of their armour and 15% of their movement speed, and you and your allies within it cannot be slowed and move 15% faster ("Go with A"); it drains mana a second as the other two do. Each enemy effect and the speed last two seconds after an enemy or ally leaves. **And an immunity to Slow now does what it says**: whoever is immune to Slow ignores every movement reduction, which makes Grave Shroud's, Fevered Blood's and Living Pyre's immunity, written in their rows since they were designed, take effect.
 
   
 
@@ -798,6 +838,14 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 | Keystones | Single-point investments that fundamentally change how a mechanic works. Build-defining. Require full investment in a parent node. |
 | Capstones | One per tier (25/50/100/200 pts). Player chooses one of three options per tier. Escalating power from identity declaration to god-tier mechanics. |
 
+**A threshold or a step, never a fraction.** A basic node's bonus at mid-investment reads "At N points: ..." and is granted whole from that point. A per-point value below 1 is written instead as a whole number "for every N points", granted at every Nth point: Brutal Determination's "+1% Life Leech for every 2 points" is 5% at ten points. The project owner chose steps over fractional values on 2026-11-24.
+
+**Keystones are upgrades by default**, and a tree keeps at most one or two that convert one thing into another; the Masochist's are The Reckoning and Point of No Return. **Each tree names a core count, and one option at every capstone tier scales with it**: the Masochist's Fervour held, the Ravager's enemies within 4 metres, the Ritualist's minions held. A mechanic of the class's own belongs on a keystone or a capstone, with one recorded exception: the Ritualist's starting node keeps "cursed enemies rise as imps", because that is how a Ritualist with no summon skill fills Fervour at all. Ruled 2026-11-24; `docs/DECISIONS.md` has the entry.
+
+**"Cannot be reduced" drops each reducing effect on its own and keeps every bonus.** The Ravager's Relentless reads "Your Movement Speed and Attack Speed cannot be reduced by any effect": every row that would lower either speed is ignored, one by one, and every increase still counts, so +12% beside -40% gives +12% for both speeds, and Cripple and Wither do not slow the holder at all. It is not a floor at the character's own speed, which would take the earned 12% away with the slow. Unstoppable's "cannot be slowed while an enemy is within 4 metres" and Nothing Moves You's clause at 50 or more Fervour share the movement half of the rule. A character without any of them sums its speed rows as every character does. Ruled by the coordinating session on 2026-11-24.
+
+**"Melee range" in a node is 4 metres.** Warmonger's "each enemy within melee range" and Cut and Run's "for each enemy within melee range" count enemies within 4 metres of the character, the reach the trees already use for enemies near a character in melee: the Ravager's core count of enemies within 4 metres, and Reprisal Wave's sphere. Ruled by the coordinating session on 2026-11-25.
+
   
 
 ### **Class Resource Systems**
@@ -831,7 +879,7 @@ Those six figures are judgements under the owner's delegation of unstated number
 
 **The generator's rates are not the only way Fervour arrives.** A rate is tied to health moving, and individual nodes may grant Fervour for something else entirely. Two do. The Masochist's Low Life keystone grants a flat amount per second while the character is at or below 35% health, from nothing having happened at all; and the first option of its 200 point capstone, The Last Drop, grants a flat amount for every skill cast while the character is below 20% health. Both are separate stats from the three rates and neither is part of any generator, which is why a node can add one without changing what a class's starting node grants.
 
-The six generators designed so far, one per class, each granted by that class's starting node:
+The nine generators designed so far, one per class, each granted by that class's starting node. The three Death classes' rows were added on 2026-11-24 with their trees, and none of the three is built in code yet:
 
   
 
@@ -843,6 +891,9 @@ The six generators designed so far, one per class, each granted by that class's 
 | Masochist (Demonic) | 1 per 1% of maximum health lost to damage, counting damage its energy shield absorbs as health lost, and 1 per 1% spent as an ability cost | Healing removes Fervour at the same rate, so health regeneration empties it. The energy shield recharging removes none |
 | Ravager (Demonic) | 1 for each enemy an attack hits, and 1 per second for every enemy within 4 metres | Fervour decays at 5 per second after 3 seconds with no enemy within 4 metres, so losing contact empties it |
 | Ritualist (Demonic) | 1 per second for each minion held, and 5 when one of them dies | Nothing. Fervour keeps its default of not decaying, which is what lets a thrall reserve it |
+| Soul Collector (Death) | 1 for each enemy it kills, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss | Fervour decays at 5 per second once 4 seconds have passed since its last kill, or 8 seconds after it kills an Elite or stronger creature, so a pause between kills empties it |
+| Necromancer (Death) | 1 each time an enemy dies within 10 metres of it or to one of its minions | Nothing. Fervour keeps its default of not decaying, which is what lets its minions reserve it |
+| Shadow (Death) | 10 for each enemy it kills, 25 for an Elite or stronger, and 2 for each critical strike | Fervour drains at 10 per second once 4 seconds have passed since its last kill, so a full bar means a run of quick kills |
 
   
 
@@ -984,19 +1035,44 @@ than a fault: the shared pool is what makes spreading thinner mean something.
 
 A player's Power Score combines level, gear quality, gear level, gem quality, socket count, and resistances into a single comparable number, on the same scale as the Enemy Score in section X. Dungeons within a close power range provide average exp and loot. Dungeons below the threshold provide less. Dungeons above provide more.
 
+**The close range is measured in tier widths, and where the cut below it begins depends on the difficulty tier.** A kill's experience, loot quantity and gold multiplier are paid in full while the dungeon's Dungeon Score is anywhere from a quarter of a tier width above the player's Power Score to the tier's start below it. A dungeon further above pays up to 25% more; one further below cuts the experience to 5% and the loot to 25% over one more tier width (issue #2824, ruled 2026-11-22). **The cut begins when the player is 1.4 tier widths above the dungeon at tier 1, 1.3 at tier 2, 1.1 at tier 3, 1.0 at tier 4, 0.9 at tiers 5 and 6, and 0.8 at tiers 7 and 8**, decided by the project owner on 2026-11-24 (issue #2853), choosing "Per-tier start (Recommended)", in place of 0.6 at every tier. The experience curve's character, at its tier-end level in its tier's reference gear, sits up to 1.22 tier widths above the shallowest dungeon tier 1 spawns, and 0.6 cut a normally levelled player in its own tier, which a dungeon's timer forces the player to clear. Each start is where that character sits plus a tenth, rounded up to a tenth; a character finished in the tier above is still cut to 5% of its experience in this tier's average dungeon (15% at tier 6).
+
   
 
 Power Score = (Level Weight × Character Level) + (Gear Weight × Σ over equipped pieces of Rarity × (1 + Upgrade Factor × Gear Level)) + (Gem Weight × Σ over filled sockets of Gem Rarity) + (Resistance Weight × Σ over the eight resistances of Resistance Percent)
 
   
 
-| Weight | Value |
-| :-: | :-: |
-| Level Weight | 6.3270 |
-| Gear Weight | 6.2330 |
-| Upgrade Factor | 0.2525 |
-| Gem Weight | 5.2725 |
-| Resistance Weight | 1.1298 |
+| Weight | Value | As a player reads it |
+| :-: | :-: | :-- |
+| Level Weight | 10 | 10 points a level |
+| Gear Weight | 2 | 2 points a rarity step of a piece at +0 |
+| Upgrade Factor | 1 | each upgrade level adds the piece's +0 worth again: 2 more points a rarity step |
+| Gem Weight | 5 | 5 points a rarity step of a socketed gem |
+| Resistance Weight | 1 | 1 point a resistance percent, up to 70 |
+
+  
+
+**The five weights are plain numbers, chosen so a player can add the score up.** Decided by the project owner on 2026-11-24 (#2853), "Adopt, and look at drop supply (Recommended)", after asking why a level was worth 6.3 points: "It would make sense as 1, 2, 5, 10, 25, 50, 100, but 6.3 makes no sense at all." So a gear piece scores 2 × its rarity × (1 + its gear level), a gem 5 × its rarity, and a level 10. Until then the five were derived from chosen shares and the tier 1 and tier 8 anchors, and were 6.3270, 6.2330, 0.2525, 5.2725 and 1.1298.
+
+  
+
+| Piece | Power Score |
+| :-- | :-: |
+| Everyday +0 | 2 |
+| Masterful +0, the best a tier 1 drop can be | 8 |
+| Everyday +3, the tier 1 reference character's | 8 |
+| Legendary +4, at its gate | 50 |
+| Mythical +6, at its gate | 84 |
+| Cataclysmic +10 | 176 |
+
+  
+
+A fresh Masterful drop counts the same as the tier 1 reference's Everyday +3, which is the lowest a rarity step can be worth without wearing the rarer piece ever lowering the score.
+
+  
+
+The character sheet shows the score on its status line and, on hover, each of the four terms beside the weight it comes from, so a player can see where every point came from: "From level: 60 (10 a level)" for a level 6 character.
 
   
 
@@ -1009,7 +1085,7 @@ Four rules follow from the formula:
   
 
   - **Socket count has no weight of its own.** It is the number of terms in the gem sum, so filling a socket is what a socket contributes.
-  - **Gear upgrade level multiplies gear rarity rather than adding to it.** A +10 Cataclysmic piece is worth 3.52 times the same piece at +0, and eight times what a +10 Everyday piece is worth. This is the only place two inputs multiply, and it is what makes the power curve rise faster than the difficulty tier.
+  - **Gear upgrade level multiplies gear rarity rather than adding to it.** A +10 Cataclysmic piece is worth 11 times the same piece at +0, and eight times what a +10 Everyday piece is worth. This is the only place two inputs multiply, and it is what makes the power curve rise faster than the difficulty tier. The tier anchors grow sixteen-fold from tier 1 to tier 8, so most of the tier 8 score has to come from terms where two rising things multiply; with upgrade level added rather than multiplied, every set of plain weights near the anchors puts about 60% of the tier 8 score on gems.
   - **What the hands hold counts as one equipped piece**, whatever the loadout, the same way every loadout gives the same six sockets. A two-handed weapon, two one-handed weapons and a single one-handed weapon all count once. No loadout may be worth free Power Score.
   - **Resistance above the 70% cap adds no Power Score.** Over-capping remains legal and useful, because enemy penetration reduces effective resistance, but it is headroom against penetration rather than power.
 
@@ -1019,13 +1095,13 @@ Eighteen equipped pieces carry a rarity and an upgrade level: seven armor pieces
 
   
 
-At level 100 with eighteen Cataclysmic pieces at +10, forty-five Cataclysmic gems and all eight resistances capped, the four terms contribute 10% from level, 50% from gear, 30% from gems and 10% from resistances.
+At level 100 with eighteen Cataclysmic pieces at +10, forty-five Cataclysmic gems and all eight resistances capped, the four terms contribute 15% from level, 49% from gear, 28% from gems and 9% from resistances. **The shares fall out of the weights rather than being chosen.** Until 2026-11-24 they were the input, 10%, 50%, 30% and 10%, and the weights were solved from them. The finished tier 1 character draws 33% from level, 40% from gear, 8% from gems and 19% from resistances, against 20%, 51%, 8% and 21% before: the owner's direction was more of the score from level and less from gear.
 
   
 
 ### **Expected Character by Tier**
 
-Power Score is calibrated against the tier ranges in section XII using the reference character below, which is the **ceiling** at the end of each difficulty tier: the best gear that tier can produce, fully upgraded, with every socket filled. It is a calibration reference, not a requirement. Actual leveling is player-driven, because one player may clear a hundred dungeons in a tier where another clears forty.
+Power Score is checked against the tier ranges in section XII using the reference character below, which is the **ceiling** at the end of each difficulty tier: the best gear that tier can produce, fully upgraded, with every socket filled. It is a calibration reference, not a requirement. Actual leveling is player-driven, because one player may clear a hundred dungeons in a tier where another clears forty.
 
   
 
@@ -1035,29 +1111,29 @@ Power Score is calibrated against the tier ranges in section XII using the refer
 
 | Gear on every piece at tier 8 | Power Score | Against the anchor |
 | :-- | :-: | :-: |
-| Cataclysmic | 6,327 | 100% |
-| Ascendant | 5,932 | 94% |
-| Mythical | 5,536 | 88% |
-| Legendary | 5,141 | 81% |
-| Masterful | 4,745 | 75% |
-| A mix of 4 Cataclysmic, 4 Ascendant, 5 Mythical and 5 Legendary | 5,690 | 90% |
+| Cataclysmic | 6,528 | 103% |
+| Ascendant | 6,132 | 97% |
+| Mythical | 5,736 | 91% |
+| Legendary | 5,340 | 84% |
+| Masterful | 4,944 | 78% |
+| A mix of 4 Cataclysmic, 4 Ascendant, 5 Mythical and 5 Legendary | 5,890 | 93% |
 
   
 
-So chasing Cataclysmic gear is what pushes a character toward the maximum Power Score, and the anchors describe that ceiling rather than a typical build. **This matters when reading any statement about what a tier 8 character has.** The affix values in section VI were fitted against 72 regular affix slots, which is a full set of Masterful gear; the character sitting exactly on the tier 8 anchor has none of them.
+So chasing Cataclysmic gear is what pushes a character toward the maximum Power Score, and the anchors describe that ceiling rather than a typical build. **This matters when reading any statement about what a tier 8 character has.** The affix values in section VI were fitted against 72 regular affix slots, which is a full set of Masterful gear; the tier 8 reference character, at the anchor, has none of them.
 
   
 
-| Tier | Level | Gear Rarity | Gear Level | Gems Filled | Each Resistance |
-| :-: | :-: | :-: | :-: | :-: | :-: |
-| T1 | 12 | Everyday | +3 | 6 | 8.8% |
-| T2 | 25 | Quality | +4 | 11 | 17.5% |
-| T3 | 38 | Superb | +5 | 17 | 26.2% |
-| T4 | 50 | Masterful | +6 | 22 | 35.0% |
-| T5 | 62 | Legendary | +7 | 28 | 43.8% |
-| T6 | 75 | Mythical | +8 | 34 | 52.5% |
-| T7 | 88 | Ascendant | +9 | 39 | 61.2% |
-| T8 | 100 | Cataclysmic | +10 | 45 | 70.0% |
+| Tier | Level | Gear Rarity | Gear Level | Gems Filled | Each Resistance | Power Score | The tier's anchor |
+| :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| T1 | 12 | Everyday | +3 | 6 | 8.8% | 364 | 385 (-5.5%) |
+| T2 | 25 | Quality | +4 | 11 | 17.5% | 860 | 883 (-2.6%) |
+| T3 | 38 | Superb | +5 | 17 | 26.2% | 1,493 | 1,508 (-1.0%) |
+| T4 | 50 | Masterful | +6 | 22 | 35.0% | 2,228 | 2,225 (+0.1%) |
+| T5 | 62 | Legendary | +7 | 28 | 43.8% | 3,110 | 3,078 (+1.0%) |
+| T6 | 75 | Mythical | +8 | 34 | 52.5% | 4,134 | 4,057 (+1.9%) |
+| T7 | 88 | Ascendant | +9 | 39 | 61.2% | 5,255 | 5,120 (+2.6%) |
+| T8 | 100 | Cataclysmic | +10 | 45 | 70.0% | 6,528 | 6,327 (+3.2%) |
 
   
 
@@ -1065,7 +1141,7 @@ The reference character wears gear and gems of the tier's own rarity, Everyday a
 
   
 
-This reference character scores 6,327 at tier 8, landing exactly on the tier 8 anchor, and 384 against the tier 1 anchor of 385. **The six tiers in between land exactly on their anchors**, because on 2026-08-05 those six anchors were reset to what this formula predicts. Before that they were 871, 1,457, 2,144, 3,251, 4,166 and 5,209, and the six tiers in between were within 5.3% rather than exact. Tiers 1 and 8 were deliberately left alone: the formula's weights are solved from those two anchors and nothing else, so moving either one would shift every prediction. Issue #7.
+**This reference character lands near every anchor rather than on it**, from 364 against 385 at tier 1 (-5.5%) to 6,528 against 6,327 at tier 8 (+3.2%), as the table shows. The weights are chosen plain numbers rather than solved from the anchors, so nothing pins a tier exactly; the owner ruled on that band on 2026-11-24 (#2853). The anchors themselves did not move: they are the Enemy Score model's tier ranges in section XII. Until 2026-11-24 the weights were solved from the tier 1 and tier 8 anchors, the reference character scored 6,327 at tier 8 and 384 at tier 1, and the six tiers between landed exactly on theirs, because on 2026-08-05 those six anchors were reset to what that formula predicted (issue #7).
 
   
 
@@ -1291,6 +1367,8 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 **But it is still not itself a hit.** It cannot critically strike, cannot apply an ailment, does not carry the weapon's sub-type, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.
 
+**Its own payment rolls no ailment; a row that acts on the retaliation event may apply one**, as the enchantment "Your retaliation damage also applies a bleed stack to the attacker" does (built 2026-10-01, `apply_status` Bleed on `retaliation_dealt`). The project owner accepted this reading on 2026-11-24 with the War trees' rulings pass (R7), which `docs/DECISIONS.md` records.
+
 
 
 **A minion's blow provokes it, and the minion takes it.** Retaliation is paid back to whoever dealt the blow, and a minion deals its own blow rather than dealing it in its summoner's name, so the creature that swung takes what comes back and a summoner standing well away from the fight takes nothing. That a minion takes neither its summoner's critical strikes, penetration, weapon sub-type nor leech is the same rule read the other way: those four do not reach a minion's blow, and what a minion's blow provokes does not reach the summoner.
@@ -1409,6 +1487,50 @@ Class resource **behaviour** is not set here, only the pool size. What each reso
 
   
 
+### **The Three Death Class Stat Lines**
+
+The Soul Collector, the Necromancer and the Shadow, added on 2026-11-24 with their passive trees. Values are at level 100 with no gear and no attribute points spent. Only the stats any of the three overrides are listed, with energy shield, which none of them takes.
+
+
+
+| Stat | Soul Collector | Necromancer | Shadow |
+| :-- | :-: | :-: | :-: |
+| Maximum Health | 1,798 | 1,273 | 1,377 |
+| Maximum Mana | 644 | 961 | 644 |
+| Maximum Energy Shield | 0 | 0 | 0 |
+| Health Regeneration | 26.75 | 15.85 | 15.85 |
+| Mana Regeneration | 10.9 | 19.32 | 10.9 |
+| Armor | 0 | 213 | 0 |
+| Evasion | 0 | 0 | 0 |
+| Damage Reduction | 6.96% | 4.97% | 0 |
+| Crowd Control Resistance | 10.92 | 14.9 | 0 |
+| Critical Strike Multiplier | 150% | 150% | 160% |
+| Area of Effect | 100% | 100% | 90% |
+| Movement Speed | 4.2 | 3.8 | 4.4 |
+| Class Resource | 100 | 100 | 100 |
+
+
+
+**Every stat a Death tree raises by an "increased" percentage has a base, on its class's line, on the default line, or from a flat node the increasing nodes are reached through.** An increase multiplies a base, so a node raising a stat its class has none of is worth nothing to the only class that can take it, which is what happened to two Masochist nodes until 2026-08-31. The Demonic lines met this without it being a rule; the Death lines were made to meet it.
+
+
+
+**Soul Collector.** It fights inside its own Siphon, among enemies, and takes power from the dead rather than from what it wears. More health than the default line, twice its health regeneration, and a little flat damage reduction and crowd control resistance, which its tree's Pale Ward, Stolen Strength and Held Close increase. It refuses armor, evasion, energy shield and leech.
+
+
+
+**Necromancer.** The summoner of the Death three, and not a second Ritualist: the Ritualist survives at range behind an energy shield, the Necromancer behind bone. It takes armor, a little flat damage reduction and crowd control resistance, which its Grave limb increases, a mana pool half again the default's, and less health than the default. It walks behind its army. It refuses evasion, energy shield and leech.
+
+
+
+**Shadow.** High single-target damage and critical strikes, low area damage, as its approved draft describes it: a larger critical strike multiplier than the default, which its Blade limb scales, and a tenth less area of effect; less health than the default; and faster on foot. It refuses armor, energy shield, damage reduction and leech: it is not there when the blow lands. **It has no base of evasion, as no class has**: its tree supplies its own. Counterstroke grants flat evasion chance, and every other Evasion node is reached through it, so the limb's increases always have a base under them.
+
+
+
+**Where the shapes come from.** In Diablo II the Necromancer gains 1.5 life and 2 mana a level against the Barbarian's 2 and 1. In Path of Exile the Shadow starts with 57 life against the Marauder's 66. So a summoner trades health for mana, and an assassin starts with less health than a fighter. Every number is a judgement under the owner's delegation of unstated numbers, and `docs/DECISIONS.md` has the sources.
+
+
+
 ### **Stat Calculation**
 
 Every percentage in the attribute table needs a base to apply to and a rule for combining with other sources. These are those rules, and they apply to gear affixes as well as attribute points.
@@ -1500,7 +1622,7 @@ Both were eased on 2026-09-03. The tier ladder spanned 7 and the gear ladder 3.5
 
 **The tier ladder rises by a constant ratio rather than in even steps**, so the step from tier 6 to tier 7 is worth more than the step from tier 1 to tier 2. That keeps the later tiers the ones worth crafting for, and it is also what keeps a perfect roll from ever beating a roll two tiers above it.
 
-**Gear upgrade level no longer uses the Power Score's upgrade weight.** How much an upgrade is worth to a rating and how much it multiplies the numbers on an item are different questions; section IV still multiplies gear rarity by 3.52 for scoring.
+**Gear upgrade level no longer uses the Power Score's upgrade weight.** How much an upgrade is worth to a rating and how much it multiplies the numbers on an item are different questions; for scoring, section IV counts a +10 piece as 11 times the same piece at +0 (3.52 times until 2026-11-24).
 
   
 
@@ -1739,7 +1861,7 @@ Energy shield is a distinct defence with its own rules, not a second health bar.
 
   - **It absorbs damage over time as well as hits, except bleed.** Poison, burn and every other kind of damage over time are absorbed like a hit. A bleed passes straight through to health, unless the character has something that lets bleed in too (the Warded keystone, or the drawback "Energy shield can now be effected by bleed"). The project owner decided this on 2026-09-18, reversing the rule that no damage over time reached the shield.
   - **It refills 3 seconds after the character last took damage.** Taking damage again inside that window restarts the wait.
-  - **It refills at a fifth of its own maximum per second, so a full shield takes 5 seconds however large it is.** Every source of maximum energy shield grants that rate alongside it: the Vestment's 120 comes with 24 a second, the flat maximum energy shield affix's 50 with 10, and the Ritualist's class line with a fifth of its own. A class with no energy shield of its own therefore refills the one it builds from gear at the same speed the Ritualist refills its own. Path of Exile recharges 20% of maximum energy shield per second after its own delay, which is the same figure.
+  - **It refills at about a fifth of its own maximum per second, so a full shield takes about 5 seconds however large it is: 4.8 to 5.5 seconds since each item's implicits became whole numbers (2026-11-25).** Every item base granting maximum energy shield grants that rate alongside it, and so does every class: the Vestment's 48 at +0 comes with 10 a second, and the Ritualist's class line with a fifth of its own. **The flat energy shield and flat energy shield regeneration affixes are two separate choices, and are not held to a fifth:** a character who stacks regeneration refills well under five seconds, which the whole-number affix ranges allowed (issue #2883; ruled 2026-11-25). A class with no energy shield of its own therefore refills the one it builds from gear at the same speed the Ritualist refills its own. Path of Exile recharges 20% of maximum energy shield per second after its own delay, which is the same figure.
   - **Two things move that 5 seconds, both deliberately.** The increased energy shield regeneration affix shortens it, to 3.4 seconds on four pieces and 2.0 on twelve. The increased maximum energy shield affix lengthens it, because it raises the pool and not the rate: 7.4 seconds on four pieces and 12.2 on twelve. A bigger shield taking longer to come back is the trade for having it.
   - **Damage over time restarts that wait as well.** So damage over time holds the shield empty while it ticks, whether or not the shield absorbs it, and a bleed also goes straight past it to health.
   - **Magic weapons strip 10% more of it** per hit than other sub-types.
@@ -1809,6 +1931,8 @@ Tier Width is the difference between the maximum Power Score of the current diff
   
 
 **Overwhelm strips every kind of mitigation, not only resistance.** Armor, block, evasion and resistance are all reduced. This is what stops a character sidestepping the mechanic by choosing a different defensive layer.
+
+**One exception: the Ravager's keystone Ironhide halves what Overwhelm takes from its holder's armour.** Resistance, block and evasion stay fully overwhelmed, so armour alone cannot be used to sidestep the rule, and a keystone named for its armour protects it. The project owner ruled it on 2026-11-24 ("Yes, but only halve it"); `docs/DECISIONS.md` has the entry.
 
   
 
@@ -2300,7 +2424,7 @@ The following is a sample of War damage type skills across weapon types to illus
 | Shield / Ultimate | Fortress | Become immovable for 5 seconds. 60% damage reduction. Reflect 500% of blocked damage. Allies within 6m take 30% less damage. |
 | Whip / Ultimate | Whirlwind of Steel | Spin the whip for 4 seconds in a 7m zone. Every enemy in range struck repeatedly. Each hit applies bleed. |
 | Greataxe / Ultimate | Annihilator | Channel spin for 3 seconds dealing rapid hits to all in melee range, applying bleed and reducing armor each revolution. |
-| All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. Allies: +8% physical damage. Drains mana. |
+| All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. You and allies: cannot be slowed, +15% move speed. Drains mana. |
 
   
 
@@ -2324,7 +2448,7 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Each reserves 10 Fervour while it is out, and as many stand as the pool holds. |
 | Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
 | Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. The blow never kills a target Subjugate could take -- one that is not a boss, not unable to be hurt, not already the player's, with room in the Fervour pool for it: a blow that would kill it leaves it at 1 health, below half, so it is taken (the owner's ruling of 2026-11-22, issue #2856: "ok, well it should still take them even if it would kill"). Anything else the blow can kill as before. A pool with no room for the thrall releases the oldest minions and thralls the player holds until it has some (the owner's ruling of 2026-11-24, "Replace the oldest"), and such a target is held at 1 health too. A thrall is built from its own kind and rarity at the player's level, not the floor's (issue #2868; see "A creature taken by Subjugate is raised by its commander's level too" under the eight shapes). Costs 30 Fervour to cast, where every other Ultimate costs 50 (the owner's ruling of 2026-11-21, issue #2801). A Common thrall reserves 30 Fervour, an Elite 45, a Legendary 60 and a Herald 90 (the owner's ruling of 2026-11-24, "Reserve grows with rarity"). Bosses cannot be taken. A thrall sets alight what it strikes: every blow it lands on a creature, not evaded, lays the burn a summoned imp's swing lays, grown by Subjugate's level at the take and credited to Subjugate (issue #2784). |
-| All / Aura | Conflagration | Hellfire aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. Allies: +8% damage. Drains mana. |
+| All / Aura | Conflagration | Hellfire aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. A burning enemy dying in it passes its burn to the nearest other enemy within 4m. Drains mana. |
 
   
 
@@ -2542,6 +2666,8 @@ and evasion build new offensive slots to serve six skills.
   - Jewelry: 8 Rings, Necklace, Relic
   - Consumables: 4 Potion slots
   - Weapons: See weapon types above
+
+**A ring put on while all eight ring slots are full replaces the worn ring of its own rarity, and hovering a ring compares it with that ring.** The owner, 2026-11-24: "when a ring drops on the ground and actually shows through the filter, it's supposed to compare against whatever ring is of equal tier." With several rings of that rarity worn, the one with the lowest Power Score is replaced, and among equals the lowest ring slot; with none of its rarity worn, the ring of the lowest rarity worn, which is the ring the loot filter judges rings by. A free ring slot is always filled first. Weapons follow the same rule when both hands hold weapons the new one may stand beside: the hand of its own rarity, else the lower hand. A hovered piece, in the bag or on the ground, is always compared with exactly what wearing it would take off.
 
 **The four potion slots each hold a health potion on the keys 2 to 5.** A drink heals 35% of maximum health over 3 seconds, and one potion heal runs at a time. Each slot holds up to 30 charges and a drink spends 10. Every kill adds charges to all four slots by the creature's rarity: Common 1, Elite 3.5, Legendary 6, and 11 for a Herald, a Boss or a Cataclysm Boss. A creature whose death pays no loot or experience adds none. Every slot is full on entering a dungeon and is not refilled on the stairs. A potion heal obeys every rule on healing, Point of No Return's ceiling included. The slots are identical until gems fill their sockets. These are play-test values chosen on 2026-09-25; `docs/DECISIONS.md` has the sources.
 
@@ -2913,16 +3039,18 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
 | Enemy rarity | Gear drops per kill | Material drops per kill | Magic find it adds |
 | :-- | --: | --: | --: |
-| Common | 0.16 | 0.04 | 0% |
-| Elite | 0.5 | 0.125 | 50% |
-| Legendary | 1.0 | 0.25 | 100% |
-| Herald | 2.0 | 0.5 | 150% |
-| Boss | 5.0 | 1.25 | 300% |
-| Cataclysm Boss | 12.0 | 3.0 | 500% |
+| Common | 0.08 | 0.04 | 0% |
+| Elite | 0.25 | 0.125 | 50% |
+| Legendary | 0.5 | 0.25 | 100% |
+| Herald | 1.0 | 0.5 | 150% |
+| Boss | 2.5 | 1.25 | 300% |
+| Cataclysm Boss | 6.0 | 3.0 | 500% |
 
   
 
-**The drop count is an expected number, not a chance.** The whole part is certain and the fraction is rolled, so 0.16 means one Common kill in six drops one item, and 5.0 means a Boss always drops five. A chance could not express a Cataclysm Boss dropping twelve things.
+**The gear column was halved on 2026-11-24, every enemy rarity alike** (issue #2853). The project owner, choosing "Halve gear drops (Recommended)": a tier 1 floor of about 258 creatures dropped about 123 gear pieces and a short Outpost dungeon about 919, so a fresh character wore a whole tier's best drops after one dungeon and spent the floor picking things up. It now drops about 61 a floor. The column keeps its shape, so a rarer enemy is still rewarding in the same proportion; the material, gem and gold columns did not move. Path of Exile 2, Diablo IV's Season 4 and Last Epoch's 1.0 each cut how many items drop in favour of what each one is worth; none of them states a size, so the half is a judgement. Until then a Common kill dropped 0.16, Path of Exile's figure for a normal monster, which covers every kind of drop and not gear alone.
+
+**The drop count is an expected number, not a chance.** It is drawn from a Poisson distribution with the figure as its mean, so 0.08 means about one Common kill in thirteen drops an item and now and then one drops two, and 2.5 means a Boss drops two or three on average and occasionally none. A chance could not express a Cataclysm Boss dropping six things.
 
   
 
@@ -2954,7 +3082,7 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
   
 
-**A kill drops a quarter as many materials as gear, since 2026-11-22.** Materials dropped at twice the gear rate until 2026-08-23, when a play test found the floor cluttered with them and the rate was halved to the gear rate. On 2026-11-21 the owner played again and found the material drops still "way too high", and the rate was cut to a quarter of that. A quarter still brings more upgrade stones than levelling can use: raising an item to level k takes k days of the run plus a day for each 100 residue it carries, and at a quarter a floor brings 1.6 to 5.9 times the stones one day of upgrading uses, depending on the difficulty tier. So the days, not the stones, limit how fast gear is levelled. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
+**A kill drops half as many materials as gear, since 2026-11-24, when the gear column halved and the material column did not; a quarter from 2026-11-22.** Materials dropped at twice the gear rate until 2026-08-23, when a play test found the floor cluttered with them and the rate was halved to the gear rate. On 2026-11-21 the owner played again and found the material drops still "way too high", and the rate was cut to a quarter of that. A quarter still brings more upgrade stones than levelling can use: raising an item to level k takes k days of the run plus a day for each 100 residue it carries, and at a quarter a floor brings 1.6 to 5.9 times the stones one day of upgrading uses, depending on the difficulty tier. So the days, not the stones, limit how fast gear is levelled. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
 
   
 
@@ -3018,7 +3146,7 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** Some dungeon modifiers place things on a floor for the player to act on: a totem to embrace or cleanse, and in time altars, chests and relics. Each shows its name over it as a drop does, and clicking the name within three metres opens a panel of what it offers, with a button for each choice and one to leave; a click from further off walks the character there first, as it does for a drop. The panel does not pause the game, like every other screen, so creatures go on while the player decides. Choosing is final: the modifier that placed the object answers it, and the object usually goes. No new key is needed, because the left mouse button already picks up what is named under the cursor.
+**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** Some dungeon modifiers place things on a floor for the player to act on: a totem to embrace or cleanse, and in time altars, chests and relics. Each shows its name over it as a drop does, and clicking the name within three metres opens a panel of what it offers, with a button for each choice and one to leave; a click from further off walks the character there first, as it does for a drop. The panel does not pause the game, like every other screen but the pause screen (Pausing, under Controls and Key Bindings), so creatures go on while the player decides; Esc closes it as its leave button does. Choosing is final: the modifier that placed the object answers it, and the object usually goes. No new key is needed, because the left mouse button already picks up what is named under the cursor.
 
   
 
@@ -3034,7 +3162,7 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**A kill can drop gold too, as piles lying on the floor.** The project owner ruled on 2026-11-18 that gold comes from creature kills, "larger for rarer creatures and deeper floors, as gear and materials drop today" (issue #2742). How many piles a kill drops is an expected number, drawn as the drops above are, and it is the gear column: 0.16 piles for a Common kill and 12 for a Cataclysm Boss. How much a pile holds depends on where the kill happened and not on what was killed: the difficulty tier being played and the floor. That is Diablo II's shape, in which a rarer monster drops more piles and a pile's value follows the level.
+**A kill can drop gold too, as piles lying on the floor.** The project owner ruled on 2026-11-18 that gold comes from creature kills, "larger for rarer creatures and deeper floors, as gear and materials drop today" (issue #2742). How many piles a kill drops is an expected number, drawn as the drops above are, and it is the gear column as it stood when gold was ruled: 0.16 piles for a Common kill and 12 for a Cataclysm Boss. Since the gear column halved on 2026-11-24 (issue #2853) that is twice the gear column; the gold column did not move, as the drop supply proposal the owner adopted recommended. How much a pile holds depends on where the kill happened and not on what was killed: the difficulty tier being played and the floor. That is Diablo II's shape, in which a rarer monster drops more piles and a pile's value follows the level.
 
   
 
@@ -3156,6 +3284,15 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 Everyday, Quality, Superb and Masterful keep their chances: no tier's cap is below Masterful, and the halving per rung still applies below the cap. Magic find cannot lift a drop past the cap. A gem's rarity is rolled the same way as gear's, so the same cap holds for gems. One exception, which the project owner ruled the same day: the High Roller's extra item, which its node promises at Legendary or rarer, is exactly Legendary at tiers 1 and 2, one rung above tier 1's cap; at tier 3 and up it rolls from Legendary to the cap.
 
+**THE CATACLYSM BOSS ALWAYS DROPS ONE PIECE OF THE NEXT TIER'S BEST, beside its ordinary drops.** Ruled by the project owner on 2026-11-24 (issue #2853): "always drop a single piece of loot that is 3 tiers above the current tier when possible ... show them what they have to look forward to getting in the next tier", and the chosen option "The next tier's best (Recommended)". The Gatekeeper, placed at the Cataclysm Boss rung on the last floor of the Cataclysm boss dungeon once a run, drops exactly one piece of gear at the rarest rarity the next tier can roll, rarity number tier + 4, stopping at Cataclysmic: one rung above the tier's own cap. It arrives at its rarity's upgrade gate, as every drop does, and it is one piece whatever the loot quantity. Every other roll keeps the cap.
+
+| Difficulty tier | The Cataclysm Boss's piece |
+| :-: | :-: |
+| 1 | Legendary |
+| 2 | Mythical |
+| 3 | Ascendant |
+| 4 to 8 | Cataclysmic |
+
 **Why the unpenalised reach is one above the tier rather than level with it.** The same reason the affix tier column gives: with it sitting exactly on the tier, the best thing a dungeon produces at full weight is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 are unpenalised the whole way up, exactly as affix tiers 6, 7 and 8 all reach T7.
 
 **What a drop *may* be is not what it is *likely* to be.** The likely answer also moves with the difficulty tier: the four ordinary rarities flatten toward Masterful as a player goes deeper, while Legendary and above keep the same share at every tier. A tier 8 player mostly finds Masterful and Superb; a tier 1 player mostly finds Everyday.
@@ -3199,6 +3336,8 @@ Three families, differing in how many resistances one roll covers. Per-type valu
   
 
 The efficient family changes as a run goes on, which is the point of having three. A difficulty tier is a run and each tier adds a Cataclysm, so the number of resistances that matter grows from one to eight. A single-resistance affix is the best use of a slot when one Cataclysm is active and nearly worthless when eight are; an all-resistance affix is the reverse.
+
+**The all-resistances family does not roll on a difficulty tier 1 drop; single and two resistances still do.** Decided by the project owner on 2026-11-24 (issue #2853), choosing "No all-resist at tier 1 (Recommended)". At tier 1 a run faces one Cataclysm, so an all-resistances roll is the weakest family in combat and the strongest in the Power Score, which counts all eight types: one roll was 24 to 29 points, and the family was 58 to 65 per cent of a fresh tier 1 character's resistance points. Path of Exile gates its own all-resistances suffix the same way, from item level 12, where its single-resistance suffix starts at 1. Another affix takes the place on the drop. Crafting is not gated, so a tier 1 player can still forge one.
 
   
 
@@ -3310,15 +3449,17 @@ The damage numbers are not chosen. They are read off the enemy statistics in sec
 
   
 
-An average Common enemy at difficulty tier 8 has 3,366 effective health and should take **2 non-critical strikes** to kill. That is not 1,683 damage per hit, because the creature also carries 673 armor, which stops 9.5% of every hit before it reaches health. The damage a player has to deal is **1,860 per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 219, of which the affixes supply 132. The weapons supply the remaining 87.
+An average Common enemy at difficulty tier 8 has 4,848 health and should take **2 non-critical strikes** to kill. That is not 2,424 damage per hit, because the creature also carries 673 armor, which stops 9.5% of every hit before it reaches health. The damage a player has to deal is **2,679 per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 315, of which the affixes supply 228. The weapons supply the remaining 87.
+
+**The figures moved on 2026-11-25 with the whole-number affix ranges (issue #2883) and the enemy rebalance that ships with them (issue #2884).** Flat damage tops at 38 a slot where it was 22, so the affixes supply 228 where they supplied 132; and every creature's health at tier 8 is 1.44 times what it was, so the target is 2,679 where it was 1,860. The weapons' share stayed at 87.
 
 **The enemy's own mitigation is counted, and it was not until 2026-08-16.** The target divided health by hits and applied nothing, so it answered how much health had to be removed rather than how much damage had to be dealt to remove it, and every offensive number fitted to it was 10.5% low. The average Common enemy is the mildest case: it carries less armor than anything else in the slice.
 
-**That 87 is two one-handed weapons, not one weapon.** The target describes a **dual wielder**, decided by the project owner on 2026-08-15. Two one-handed weapons sum their base damage, as Dual Wielding below sets out, so the 87 is what the pair supplies between them. No single weapon supplies 87 and none is meant to: the strongest one-hander carries 46 and the smallest two-hander 128. The two strongest pairs sit either side of the figure, an Axe with an Axe at 92 and an Axe with a Sword at 86.
+**That 87 is two one-handed weapons, not one weapon.** The target describes a **dual wielder**, decided by the project owner on 2026-08-15. Two one-handed weapons sum their base damage, as Dual Wielding below sets out, so the 87 is what the pair supplies between them. No single weapon supplies 87 and none is meant to: the strongest one-hander carries 45 and the smallest two-hander 130. The two strongest pairs sit either side of the figure, an Axe with an Axe at 90 and an Axe with a Sword at 85. (92 and 86 until each implicit became a whole number at +0, issue #2883: the Axe's stated 46 is 18 at +0 and 45 at +10.)
 
-**The fit is close rather than exact, and the residual is stated rather than hidden.** Pair sums are whole numbers and the requirement is 86.86, so an Axe with a Sword lands about 1% under it and an Axe with an Axe about 6% over. The resulting damage per hit is 1,853 and 1,904 against the 1,860 target.
+**The fit is close rather than exact, and the residual is stated rather than hidden.** Pair sums are whole numbers and the requirement is 87.16, so an Axe with a Sword lands about 2.5% under it and an Axe with an Axe about 3% over. The resulting damage per hit is 2,660.5 and 2,703 against the 2,679 target.
 
-**Every other loadout is measured against that one, and being above or below it is not an error.** A two-handed weapon deals about 1.32 times the target, which is the two-handed multiplier working rather than a loadout breaking the target. **That 1.32 is not the 1.29 the two-handed section below states, and the two do not disagree**: this figure is the composed damage per hit divided by the 1,860 target, and that one is the ratio of the weapon brackets alone, which `sim/analyse_two_handed_multiplier.py` solves. They are different quantities and both are checked against their own source by `tools/tests/test_two_handed_advantage_matches_the_design.py`. A single one-handed weapon deals about 0.81 times it, and a one-handed weapon with a Shield deals the same 0.81 since a Shield adds no attack damage; both trade damage for a free hand or for block and armor.
+**Every other loadout is measured against that one, and being above or below it is not an error.** A two-handed weapon deals about 1.22 times the target, which is the two-handed multiplier working rather than a loadout breaking the target. **That 1.22 is not the 1.20 the two-handed section below states, and the two do not disagree**: this figure is the composed damage per hit divided by the 1,860 target, and that one is the ratio of the weapon brackets alone, which `sim/analyse_two_handed_multiplier.py` solves. They are different quantities and both are checked against their own source by `tools/tests/test_two_handed_advantage_matches_the_design.py`. A single one-handed weapon deals about 0.87 times it, and a one-handed weapon with a Shield deals the same 0.87 since a Shield adds no attack damage; both trade damage for a free hand or for block and armor.
 
 `sim/cataclysm_sim/player_damage.py` composes all four loadouts from the gear and checks at import that the dual wielder still lands within five per cent of this target, so the declaration above cannot quietly stop being true.
 
@@ -3409,7 +3550,7 @@ The split above says which pool an affix is drawn from. It does not say what an 
 
 
 
-**What it does not do.** It does not stop a stat appearing across several pieces. Capping a resistance takes roughly twelve affix slots and is meant to be spread over a set; the rule constrains one piece, not one character.
+**What it does not do.** It does not stop a stat appearing across several pieces. Capping a resistance takes roughly four affix slots and is meant to be spread over a set; the rule constrains one piece, not one character. (Roughly twelve until the whole-number affix ranges of issue #2883, whose all-resistances affix reaches 40 at tier 7 on +10 gear: 3.6 slots cap all eight at tier 8.)
 
 
 
@@ -3538,11 +3679,11 @@ A two-handed weapon multiplies **both** its implicit values and every affix roll
 
   
 
-**It has to reach the implicits, not only the affixes.** Two one-handed weapons **sum** their base damage, so an Axe and a Sword give 86 against a Greatsword's stated 78. With the affix half alone the two-hander would lose on damage while also holding one fewer damage type, which makes it strictly worse. Reaching the same damage advantage through the affix half alone needs a multiplier of 3.40, which would hand the two-hander 13.6 affix slots-worth on the weapon against the dual wielder's 8 — the same free power the rule above forbids, pointed the other way. `sim/analyse_two_handed_multiplier.py` solves that figure and `sim/tests/test_analysis_scripts.py` holds the comment in `sim/cataclysm_sim/affixes.py` to it.
+**It has to reach the implicits, not only the affixes.** Two one-handed weapons **sum** their base damage, so an Axe and a Sword give 85 against a Greatsword's stated 78. With the affix half alone the two-hander would lose on damage while also holding one fewer damage type, which makes it strictly worse. Reaching the same damage advantage through the affix half alone needs a multiplier of 2.90, which would hand the two-hander 11.6 affix slots-worth on the weapon against the dual wielder's 8 — the same free power the rule above forbids, pointed the other way. `sim/analyse_two_handed_multiplier.py` solves that figure and `sim/tests/test_analysis_scripts.py` holds the comment in `sim/cataclysm_sim/affixes.py` to it.
 
   
 
-With the multiplier applied to both, a two-handed weapon deals about **1.29 times** the damage per hit and about **1.22 times** the damage per second, and the dual wielder holds a fourth damage type and a wider spread of affixes.
+With the multiplier applied to both, a two-handed weapon deals about **1.20 times** the damage per hit and about **1.14 times** the damage per second (1.29 and 1.22 until the larger flat damage affix of issue #2883 made the affixes a bigger share of both brackets), and the dual wielder holds a fourth damage type and a wider spread of affixes.
 
   
 
@@ -3942,7 +4083,7 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
   - **Gems stack**, one stack per gem and rarity, in the inventory and the stash, for the reason crafting materials stack.
   - **Two gems of one kind and rarity combine into one of the next rarity**, with no day and no residue, as two upgrade stones combine, for the gold a stone combine of the same rung costs: 50 gold for two Everyday gems, doubled for each rarity above (issue #2830). There is no limit by difficulty tier (the owner, 2026-11-21: "I don't think I want to cap what players can level their stuff to").
   - **A gem in a potion slot gives its stat for the 3 seconds the potion's heal runs.** That is a judgement, to be looked at again before it is built.
-  - **How often gems drop is not yet set**; it is measured in the simulation when gem drops are built.
+  - **How often gems drop is measured in the simulation, and falls with the difficulty tier.** A kill drops gems on a roll of its own, at the Enemy Drops sheet's Gem Drops column: 0.0136 gems for every gear drop at tier 8 (0.0068 of the gear column before it halved), the least that lets a full clear of tier 8's dungeons fill tier 8's reference character, rounded up (`sim/analyse_gem_drops.py`). **Each tier below 8 drops three quarters of the tier above's gems**: 13%, 18%, 24%, 32%, 42%, 56%, 75% and 100% of tier 8's rate at tiers 1 to 8, so tier 1 drops about one gem an Outpost dungeon and five or six in an average 50-floor dungeon. The project owner ruled on 2026-11-24 (issue #2853), choosing "Milder: tier 1 gets 1/8 (Recommended)": the rate scales by tier, less steeply than halving per tier, tier 1 getting about an eighth and tier 8 keeping its rate. Until then every tier dropped tier 8's rate, and a fresh character held seven gems after one Outpost dungeon, more than tier 1's whole reference character. Three quarters a step is a judgement: one plain step at every tier, and every tier still drops more than a full clear of it needs to fill its reference character, from 1.01 times at tier 8 to 41 times at tier 1.
 
   
 
@@ -4566,6 +4707,32 @@ The over-corruption mechanic in section VII works offline in full, because the d
 
   
 
+## **Abyssal Rifts (Dungeon Modifier)**
+
+Abyssal Rifts is a Demonic dungeon modifier of weight 10. Its row reads: "Portals to the Abyss tear open across the dungeon, several to a floor. From the moment you enter, each rift sends a demonic creature every 3 seconds to hunt you down, leaving a trail back to its source. A rift is a boss with great health that must be destroyed to stop it, and the creatures it sends grow stronger the longer it stays open. The rewards increase with each rift destroyed." It is the project owner's redesign of 2026-11-23 (issue #2864), which replaced a single rift that opened near the player and closed when its three waves were killed in time. `docs/DECISIONS.md` records the owner's words and why each figure below was chosen; every figure but the three seconds is a judgement.
+
+  
+
+**Two rifts on a floor, three on a large one.** A floor whose plan is 40 by 40 cells or more holds a third, so the hunters stay about as thick on the ground on a large floor as on a small one. They stand where the other floor sources stand, at least 20 metres from the entrance and from each other. A Horde arena has none, because its waves already come to the player.
+
+  
+
+**A rift is a Boss the player can target and kill.** It is placed at the Boss rung, with twice the health the floor's enemy score gives an average creature at that rung, because it neither moves nor strikes back and so takes every blow aimed at it. It has no brain and no attack, and says "Rift" under its health bar.
+
+  
+
+**From the moment the player enters, each rift sends a hunter every 3 seconds.** A hunter is one of the floor's own kinds that can walk, at Common, placed beside its rift. It notices the player from anywhere on the floor and walks to them, so the line of arriving hunters leads back to the rift. A rift keeps at most six of its own hunters standing; one killed is replaced on the next beat. Hunters pay nothing and are not counted among the floor's creatures, because a rift left standing never stops and would otherwise be a limitless source of loot and experience.
+
+  
+
+**The longer a rift stands, the stronger its hunters.** Each 15 seconds it has stood gives the hunters it sends 10% more health and damage, to at most twice their own figures after two and a half minutes. A floor left alone for a long time is therefore harder, and never harder than that.
+
+  
+
+**Killing a rift stops its hunters**, and the ones it already sent stay and keep hunting. Each rift killed is a success, worth +10 magic find, to at most +100. Successes count across the dungeon, and end on leaving the dungeon or at the player's death.
+
+  
+
 ## **Dungeon Score Formula**
 
 A dungeon's score is **its middle floor**, with that floor's six rarity scores collapsed into one number by how common each rarity is.
@@ -4675,12 +4842,15 @@ of the geometry rather than a separate decision.
 | 3 | **Outpost** | 12 | 20 |
 
 **At difficulty tier 1 a dungeon's creatures hit harder the further in its ring.** Their damage is multiplied by 0.05 in
-a dungeon rolled on an Outpost, 0.11 on a Bulwark and 0.13 on a Sanctuary. The Cataclysm boss dungeon, the only dungeon
-that stands on the Pillar, takes 0.10: the one exception to the rise, because the characters that win soonest reach it
+a dungeon rolled on an Outpost, 0.10 on a Bulwark and 0.12 on a Sanctuary. The Cataclysm boss dungeon, the only dungeon
+that stands on the Pillar, takes 0.07: the one exception to the rise, because the characters that win soonest reach it
 soonest and at the lowest levels. The ring is the one the dungeon's depth was rolled on, so a Quest dungeon that moves
 keeps it, as it keeps its depth. Health, armour and the experience a kill grants do not change with the ring, and from
 tier 2 the ring changes nothing. The project owner chose the rise by ring on 2026-11-19, over a rise with the character's
 level and over leaving tier 1 flat (issue #2749); each figure is measured, and `docs/DECISIONS.md` has the measurement.
+The Bulwark's, the Sanctuary's and the Pillar's were 0.11, 0.13 and 0.10 until 2026-11-24, when the surge rulings of
+issue #2865 brought more waves and the same measurement found these; they are provisional until the gear drop rarity
+fix (issue #2853) lands, when it is run again.
 
   
 
@@ -5018,6 +5188,8 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 
 **The merchant buys a carried piece of gear for gold, and a sale costs no day**, the one service that does not cost time, by the owner's choice of 2026-11-22 ("No days"). A piece sells for a number of the tier's gold piles: Everyday 1/16, doubling a rarity rung to Cataclysmic 8, and 10% more for each upgrade level. Affixes and enchantments do not change the price. A worn piece is not sold; take it off first. Until the capital is built, the merchant's screen opens from the empire map's "Merchant" button, under the Forge's. Issue #48; `DECISIONS.md` carries the rulings and the simulation sweep the numbers were chosen on.
 
+**A service that costs days says what they will do before they are spent, and what they did after.** The days pass through the run's own day loop, so a dungeon whose timer runs out inside them resolves and hits its city exactly as it would during a walk. So before the press that spends them, the service names every dungeon whose timer runs out within those days, the city it would hit and the day; and after it, what the days did: the dungeons resolved, the cities hit and by how much, the cities fallen, and any surge, in the same words the capital uses for a walk's days away. Nothing is added when nothing would happen, or nothing did. Built for the forge's crafts and the empire upgrade tree's respec, the two services that cost days today. The owner's ruling of 2026-11-22 on issue #2857, after a playtest in which 45 days spent at the forge resolved six dungeons with nothing saying so, and their absence read as if clearing another dungeon had taken them.
+
   
 
 ## **Storage**
@@ -5032,6 +5204,18 @@ opens is its own rather than the account's.
 
 **The carried inventory is 48 slots, four rows of twelve, and nothing increases
 it.** One item takes one slot whatever it is, the same rule the stash uses.
+
+**Since 2026-11-22 the 48 slots are for gear, and crafting materials and gems are
+carried in two tabs of their own.** The project owner: "I think we need to add tabs
+to the inventory. One for crafting materials and one for gems. Otherwise you wont be
+able to carry any loot", and then, of their shape, "One cell per kind, no limit
+(Recommended)". The materials tab shows every crafting material, by tier, with how
+many are carried; the gems tab shows each stack of a gem at a rarity that is carried.
+Neither fills and neither refuses a pickup, so a material or a gem never takes one of
+the 48 slots. Diablo IV's Materials and Socketables tabs work this way. Issue #2849.
+**The pressure described below is therefore a pressure on gear**: what fills the
+bag partway down a dungeon is pieces of gear, and a full bag still leaves gear on the
+floor.
 
   
 
@@ -5210,15 +5394,17 @@ A reference character at difficulty tier 8 — a level 100 Ravager spending ever
 
 | Layer | What it removes |
 | :-- | :-: |
-| Armor, 7,299 points against the tier 8 curve | 53.3% |
+| Armor, 12,550 points against the tier 8 curve | 66.2% |
 | Resistance, at the cap | 70.0% |
-| Block chance 28%, removing half a hit each time | 14.0% on average |
-| Damage reduction | 23.95% |
-| **All four together** | **90.8%** |
+| Block chance 98%, removing half a hit each time | 49.0% on average |
+| Damage reduction | 42.95% |
+| **All four together** | **97.05%** |
 
   
 
-So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen without reference to that is chosen against nothing, which is what happened before: an average Common enemy needed 176 hits to kill that character.
+So a hit lands for about **3%** of itself, 2.95%.
+
+**The reference character was re-fitted on 2026-11-25** with the whole-number affix ranges (issue #2883): block chance rolls on two kinds of piece, damage reduction on one, and four all-resistance affixes cap all eight resistances. By the owner's ruling on issue #2884 (2026-11-24, "A middle build (Recommended)"), the 13 suffix places that freed are left empty. It was 7,299 armour, 28% block and 23.95% damage reduction, stopping 90.8%, and a hit landed for about a tenth of itself. Every creature's damage was raised by the same ruling (1.84 times at tier 2 to 5.73 times at tier 8), so the table below is unchanged. Any enemy damage figure chosen without reference to that is chosen against nothing, which is what happened before: an average Common enemy needed 176 hits to kill that character.
 
   
 
@@ -5318,11 +5504,11 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
 **Why an enemy does not get the other two.** An enemy carries one untyped resistance rather than eight typed ones, so the resistance step already multiplies every hit it takes by one minus that figure. A flat damage reduction step would do the same arithmetic again with one difference: the player's penetration cuts into resistance and cuts into nothing else, so the second copy would be the same mitigation with the counterplay removed. Where a creature should stop more, it is given more resistance or a larger share of armor, which are the same arithmetic with an answer attached. Block is a different objection: a block applies to area damage, and area damage is the answer this design names for enemy evasion, so an enemy block chance would be the only enemy layer a player has no way to reduce. Block is also a shield's stat here, and no creature in the vertical slice carries a shield.
 
-**Where a creature stops more only sometimes, that is a modifier.** The Enemy Modifiers sheet already carries five that reduce damage taken — Shield Wall from the front, Phalanx per nearby ally, Divine Aegis below half health, Battle Scarred and Armored Juggernaut. Every one is conditional and every one names something the player can do about it. That is where this design puts the layer, and it is where Path of Exile puts monster damage reduction too.
+**Where a creature stops more only sometimes, that is a modifier.** The Enemy Modifiers sheet carries five that reduce damage taken. Three of them are conditional, and each names something the player can do about it: Shield Wall takes less only from projectiles (the wording the owner accepted on 2026-11-24; it said "from the front" until then), so the answer is any other kind of attack; Phalanx takes less only for each ally beside it, so the answer is to pull the pack apart or hit them all at once; and Divine Aegis takes less only below half health, so the answer is to land the heaviest blows before it falls to half. The other two are not conditional: Battle Scarred's extra resistance and Armored Juggernaut's extra armour hold for the creature's whole life, and nothing the player does takes them away. That is where this design puts the layer, and it is where Path of Exile puts monster damage reduction too.
 
   
 
-**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 90.8% of what is thrown at them. The ceiling is **89%**, below it, so that an enemy sitting exactly at the ceiling still stops less than the player after the published figure is rounded. It was set as the whole percent below the 89.9% the character stopped then, and kept when a stronger damage reduction affix raised that to 90.8% on 2026-09-04: it still sits below, with more room.
+**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 97.05% of what is thrown at them. The ceiling is **89%**, below it. It was set as the whole percent below the 89.9% the character stopped then, and kept when a stronger damage reduction affix raised that to 90.8% on 2026-09-04. **Its rule since 2026-11-25 is: below what the reference character stops, and 89%.** The re-fit for the whole-number affix ranges raised the character to 97.05%, and the owner ruled on issue #2884 (2026-11-24) to keep the ceiling at 89% and restate its rule rather than raise it to follow the character.
 
   
 
@@ -5608,6 +5794,10 @@ An enemy carries **one modifier per rarity above Common**:
   
 
 **Common enemies carry no modifiers at all.**
+
+  
+
+**An enemy draws its modifiers from its own Cataclysm's column and the Generic one, and an enemy belongs to the Cataclysm that sent its dungeon.** A dungeon Death sent fills with Death's creatures: each deals Death damage, meets the player's Death resistance, is struck by "damage against Death", and draws from the Death and Generic columns. This holds while the seven Demonic creatures stand in for Death's and War's own, which are not yet designed: the project owner accepted on 2026-11-24 that "a Death or War dungeon's Demonic bodies belong to that Cataclysm (deal its damage type, draw its modifiers)". It holds for all eight Cataclysms, and for every creature the dungeon places: its floors, a Horde dungeon's waves, the creatures its dungeon modifiers raise (The Reaper in a dungeon War sent is War's, though the row is Death's), and the Cataclysm Boss in the Cataclysm's own dungeon. The Gatekeeper's called Imps are the Gatekeeper's Cataclysm. A Fallen City is sent by nobody, and its creatures belong to the run's newest active Cataclysm (the Cataclysm of the dungeon whose hit felled the city is not recorded). The Corrupted Stalker and the corrupted double are not the Cataclysm's creatures: each deals its own build's damage type, the Stalker its entry's and the double the one its character chose at creation. The things a dungeon modifier stands on a floor to be destroyed are not creatures and keep their own type. **Soul Harvest's "demons" are the dungeon's own creatures**, whichever Cataclysm sent it, so the row works in a Death or War dungeon as in a Demonic one. `docs/DECISIONS.md`, 2026-11-25.
 
   
 
@@ -6132,11 +6322,13 @@ The ring behaviour is not scripted. It is what crowd avoidance produces when twe
 
   
 
-**An innate ability must not duplicate a modifier its own Cataclysm can roll.** Several names in `game/Data/StatusEffects.csv` are also enemy modifiers in `game/Data/EnemyModifiers.csv`, and an enemy carries one modifier per rarity above Common, drawn from its own Cataclysm's column and the Generic one. An ability that duplicated a modifier the same creature could roll would let it hold the effect twice with nothing saying what that means. Withered Touch is in neither the Demonic nor the Generic column, so the Succubus may have it innately.
+**An innate ability must not duplicate a modifier its own Cataclysm can roll.** Several names in `game/Data/StatusEffects.csv` are also enemy modifiers in `game/Data/EnemyModifiers.csv`, and an enemy carries one modifier per rarity above Common, drawn from its own Cataclysm's column and the Generic one. An ability that duplicated a modifier the same creature could roll would let it hold the effect twice with nothing saying what that means. Withered Touch is in neither the Demonic nor the Generic column, so the Succubus may have it innately. **The draw holds the rule too, since 2026-11-25, for whichever Cataclysm the creature belongs to:** a creature never draws a modifier whose name is an effect one of its own abilities applies or grants. A creature takes the Cataclysm of the dungeon it stands in, so a Succubus in a dungeon War sent is a War creature; its Dominion grants Commander, and it never rolls War's Commander modifier. `docs/DECISIONS.md`, 2026-11-25.
 
   
 
 **A modifier belonging to a different Cataclysm is not a clash**, because that enemy can never roll it. Two Demonic modifiers, Abyssal Aura and Infernal Brand, are also named in the effect table and are therefore closed to Demonic enemies as innate abilities. Nothing else is.
+
+**Since 2026-11-25 the seven Demonic creatures stand in for every Cataclysm's in that Cataclysm's dungeons and draw its column there** (Enemy Modifiers, above), **so a stand-in can roll a modifier of another column, and one clash exists: the Succubus's Dominion grants Commander, and Commander is also War's enemy modifier `War_Commander`.** A War dungeon's Succubus could therefore have rolled the effect it already gives innately. The War enemy modifier slice closed it in bundle 4, by this subsection's own rule: a creature cannot draw a modifier its innate ability already grants (`UCataclysmEnemyModifiers::ClosedByInnateEffects`), so a War dungeon's Succubus never rolls `War_Commander`.
 
   
 
@@ -6842,6 +7034,49 @@ Each Cataclysm has a unique world mechanic that layers onto the standard dungeon
 
 Infernal Rifts tear open across the map, spawning dungeons without needing a direct path. Players must assault Rifts, destroy the four altars powering each one, and seal 10 Rifts to challenge the enemy capital. Unchecked Rifts spawn a dungeon on an adjacent city every 5 days. Dying during a Rift assault triggers a Surge.
 
+**The Rift, as the owner ruled it on 2026-11-24 (issue #51).** Each is the owner's chosen option, verbatim, with what
+it means.
+
+- **A Rift is the Demonic Quest dungeon**: "Rift = Quest dungeon (Recommended)". Sealing a Rift is clearing it, and
+  one sealed Rift is one of Demonic's 10 quest objectives, as one cleared Quest dungeon is one objective. The Quest
+  dungeon rules hold for it: it is Elite (a boss at every floor's exit), it hits its city on its timer, and it moves
+  when its city falls.
+- **A Rift is four floors deep, with one altar on each floor.** The owner, later the same day: "Rift are quest
+  dungeons yes, but we determined they have 4 pillars the player needs to destroy. So... let's make them 4 floors? Is
+  that reasonable? Their difficulty would need to be increased a decent amount, but that seems fair to me." And:
+  "Keep the short timer for rifts. It's only fair, it has 4 floors. If you keep on top of them it wont matter." Its
+  timer is the ordinary depth-scaled Quest timer for four floors. **Its added difficulty is eight dungeon modifiers
+  and nothing else**, the owner's chosen option the same day, verbatim "(b) 8 modifiers only (Recommended)": its
+  floors are an ordinary four-floor dungeon's, and every Rift carries eight modifiers ("Also, I think we should make
+  it so Rifts always have 8 dungeon modifiers. Keep it spicy"). Written in slice B2.
+- **Where the altars stand**: "One per floor, spread (Recommended)": altar i on floor ceil(i x floors / 4), the spread
+  ruled for a Fallen City's bosses on 2026-10-29; a Rift of fewer than four floors puts the rest on its last floor. At
+  four floors that is one altar on each floor. The spread is kept for a Rift of any other depth -- one Demonic sent
+  before Rifts were made four floors deep, or one a city's floor upgrades deepened or shallowed -- at most one a floor,
+  the rest on the last.
+- **An altar** "does not attack, has the floor boss's health, and seals its floor's stairs while it stands, as the
+  Heavenly Core does". Its health is the floor boss's at Common, as the Core's is. "The Rift is sealed when the last
+  altar falls and the boss is dead": the last floor's stairs, which clear the Rift, stay sealed while its altar or its
+  boss stands. The floor panel names the Rift and says how many of its four altars have fallen and what seals the way
+  on; each altar wears the word "Altar" under its health bar.
+- **No chasm opens on a floor holding an altar, and a fall in a Rift lands no deeper than the next floor holding one**
+  (Those in the Dark). A judgement by the session that built the altars, so a fall never carries the player past an
+  altar; a four-floor Rift has no chasm at all.
+- **Where a Rift opens and what it sends**: "Anywhere but the Pillar (Recommended)": on any standing city except the
+  Pillar, behind the front included, weighted by the scheduler's tier weights (Outpost 5, Bulwark 3, Sanctuary 1.5).
+  Every 5 days, counted from the day it opened and not reset when it moves, an unsealed Rift sends an ordinary Basic
+  Demonic dungeon, made as a surge makes one for that city, to an adjacent city a surge could target; nothing is sent
+  when no neighbour qualifies.
+- **A death in a Rift**: "Every death, no gap (Recommended)": each death during a Rift assault brings an ordinary
+  surge at once, with no least-interval brake.
+
+What is written for the game and not yet built or run: the four altars, their seals and the boss's, the panel line
+and the saved state (issue #51 slice B1); and the Rift on the empire map in the paragraph below, its four-floor
+depth, its eight modifiers, where it opens, the 5-day spawn, the surge on a death and the map's marks (slice B2).
+The two are built and run together in one window.
+
+**The Rift on the empire map, as the owner ruled it on 2026-11-24 (issue #51).** A Rift is a Demonic Quest dungeon ("Rift = Quest dungeon (Recommended)"), so sealing one is clearing it, one of Demonic's 10 objectives. It opens on any standing city except the Pillar, cities behind the front included, by the tier weights a surge uses ("Anywhere but the Pillar (Recommended)"). It is exactly four floors, one altar on each ("let's make them 4 floors?"), whatever a city's floor upgrades or the empire upgrade tree would add, with the ordinary Quest timer for four floors ("Keep the short timer for rifts. It's only fair, it has 4 floors. If you keep on top of them it wont matter."). It always carries eight dungeon modifiers ("Also, I think we should make it so Rifts always have 8 dungeon modifiers. Keep it spicy"), and they are the whole of its added difficulty: its floors are an ordinary four-floor dungeon's ("(b) 8 modifiers only (Recommended)"). At difficulty tier 1 a Rift never draws the Demonic Guide among its eight; at tier 2 and above it may, as any modifier is drawn. The owner, 2026-11-25: "Make demonic guide not spawn on the Rifts. It would be really annoying if you're trying to destroy a pillar and you can't because that guy will kill you if you let him get out of range.", and a moment later, "at least not on t1" (a pillar is a Rift's altar). Every 5 days from the day it opened, not reset when it moves, an unsealed Rift sends an ordinary Basic Demonic dungeon, made as a surge makes one for that city, to an adjacent city a surge could target, and nothing when no neighbour qualifies; there is no limit on how many of its dungeons stand ("No limit"). Each death in a Rift brings an ordinary surge at once, with no least-interval brake ("Every death, no gap (Recommended)"). The capital map marks a city holding a Rift and gives each Rift's days until it next sends. Measured in the simulation before the game was written: at difficulty tier 1 with no empire tree a 4-floor Rift with no limit loses about 15 cities of 24 against 10.4 without Rifts, at about the same win rate (42% against 44%); the figures are in `docs/DECISIONS.md`, 2026-11-24. The drop rarity fix (issue #2853) cannot move them, since those campaigns do not model gear drops, so they stand as measured, as play-test points (the coordinating session's ruling of 2026-11-25).
+
   
 
 ## **Dead Rising (Death)**
@@ -6852,7 +7087,7 @@ Cursed Abominations spawn as cities fall, growing stronger with each subsequent 
 
 ## **World War (War)**
 
-Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. A wave brings at most two of them, each does a quarter of an ordinary Siege's daily damage, and its growth counts only the days it has stood on the city it stands on now; the owner, 2026-10-17, verbatim: "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." War is not built yet.
+Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. At most two of them are made on one day, by waves and by falls together, each does a quarter of an ordinary Siege's daily damage, and its growth counts only the days it has stood on the city it stands on now; the owner, 2026-10-17, verbatim: "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." One drawn onto a city that already holds a Siege goes to a city that holds none. **A city's fall to War starts the next one**: when the hit that felled a city was sent by War, a War quest Siege is made on a neighbouring city that holds no Siege, inside the day's two. This is the reading of "Player cities become aggressive and begin attacking each other" the owner accepted on 2026-11-24 ("Your recommendations work for all of those death/war questions"), with the details ruled by the coordinating session on 2026-11-25. Written for the game and not yet built or run (issue #51 slice B4); the rest of War is not built.
 
 The owner, 2026-10-16, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap." And, the same day: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
 
@@ -7115,7 +7350,7 @@ The opening takes 922,836 off the climb, 0.013% of it, and moves no figure below
 | Entering tier | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | :-- | --: | --: | --: | --: | --: | --: | --: |
 | at character level | 42 | 59 | 70 | 79 | 85 | 91 | 95 |
-| share of the tier's starting power carried in from level alone | 69% | 42% | 29% | 22% | 17% | 14% | 12% |
+| share of the tier's starting power carried in from level alone | 109% | 67% | 46% | 36% | 28% | 22% | 19% |
 
   
 

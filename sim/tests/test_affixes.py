@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from cataclysm_sim import affix_ranges
 from cataclysm_sim import affixes as af
 from cataclysm_sim import enemy_stats as es
 
@@ -83,9 +84,16 @@ def test_the_efficient_family_only_ever_broadens_as_tiers_rise():
 
 def test_capping_at_tier_eight_costs_a_reasonable_share_of_slots():
     """Reaching the cap on all eight is the hardest defensive requirement in the
-    game. It should be a real cost and should not consume the whole character."""
+    game. It should be a real cost and should not consume the whole character.
+
+    3.6 SLOTS SINCE ISSUE #2883, where it was 8 to 16 (about 12). The approved
+    proposal's row R2, sent to #2884: seven whole tiers rule out a smaller
+    all-resistances value (it cannot top below 35 at +10), so capping all eight
+    falls from about 12 slots to 3.6, and the difficulty tier's resistance
+    penalty (#1229) is the lever left. The owner approved the proposal with this
+    figure in it; this pins it so a change to it is seen."""
     slots = af.slots_to_cap(af.ALL_RESISTANCE, tier=8, active_cataclysms=8)
-    assert 8 <= slots <= 16, f"{slots:.1f} slots"
+    assert slots == pytest.approx(3.625), f"{slots:.2f} slots"
     assert slots / af.TOTAL_AFFIX_SLOTS < 0.25
 
 
@@ -144,8 +152,10 @@ def test_there_are_seven_affix_tiers():
 
 
 def test_a_perfect_roll_at_tier_seven_is_the_family_top_value():
+    """The top of tier 7 at +10 is the family's T7 Max upgraded, since issue #2883."""
     for family in af.RESISTANCE_FAMILIES:
-        assert family.value_at(7, roll=1.0) == pytest.approx(family.top_value)
+        top = affix_ranges.upgraded(affix_ranges.TIER_RANGES[family.name][-1][1], af.MAX_GEAR_LEVEL)
+        assert family.value_at(7, roll=1.0) == top
 
 
 # --------------------------------------------------------------------------
@@ -197,14 +207,17 @@ def test_a_perfect_roll_can_beat_the_tier_above_but_never_two_above():
                 f"beats a worst T{tier} ({this_worst:.2f})")
 
 
-def test_the_bands_do_overlap_between_adjacent_tiers():
-    """Asserted rather than merely allowed. If a future change quietly removed
-    the overlap, rolls would go back to being worth about one slot in 72, which
-    is the state this replaced."""
+def test_adjacent_tiers_do_not_overlap():
+    """THE OPPOSITE OF WHAT THIS ASSERTED UNTIL ISSUE #2883. The old curve
+    overlapped adjacent tiers on purpose, so a perfect tier 6 beat a poor tier 7.
+    The approved proposal removes the overlap ("no overlap"): a higher tier is
+    never worse at any roll, and the roll's worth comes from each tier holding at
+    least two whole numbers. `tools/tests/test_affix_values_port.py` checks every
+    affix at every level; this keeps the single resistance case here."""
     family = af.SINGLE_RESISTANCE
     seventh_worst, _ = family.range_at(7)
     _, sixth_best = family.range_at(6)
-    assert sixth_best > seventh_worst
+    assert sixth_best < seventh_worst
 
 
 def test_the_lowest_tier_cannot_roll_to_nothing():
@@ -214,74 +227,56 @@ def test_the_lowest_tier_cannot_roll_to_nothing():
         assert low > 0.0, f"{family.name} T1 can roll to zero"
 
 
-def test_crafting_a_perfect_set_saves_several_slots_not_a_fraction_of_one():
-    """The project owner's test of whether the range is worth having: a roll has
-    to change how many affixes it takes to cap resistances. An earlier version
-    saved about one slot out of 72, which nobody would craft for."""
+def test_crafting_a_perfect_set_saves_a_fraction_of_a_slot_since_the_tiers_narrowed():
+    """The project owner's test of whether the range was worth having: a roll had
+    to change how many affixes it takes to cap resistances, and saved three slots.
+
+    0.2 SLOTS SINCE ISSUE #2883. With the cap reached in 3.6 slots (R2) there are
+    hardly any slots left to save, and each whole-number tier is narrow. A
+    perfect set still saves something, which is what is held here; the roll's
+    worth moved to the reroll and perfect crafting acting on a tier of at least
+    two values. Recorded so that a change to it is seen."""
     perfect = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=1.0)
     minimum = af.slots_to_cap(af.ALL_RESISTANCE, 8, 8, roll=0.0)
-    assert minimum - perfect >= 3.0, (
-        f"perfect rolls save only {minimum - perfect:.1f} slots")
+    assert minimum - perfect == pytest.approx(3.8157894736842106 - 3.625)
+    assert minimum > perfect
 
 
-def test_a_minimum_roll_is_worth_three_quarters_of_a_perfect_one():
-    """States the band width as a property rather than leaving it in a constant,
-    so a change to it is deliberate.
-
-    ON AN AFFIX WITH NO STATED FLOOR, which is what this asserted of every
-    affix until issue #1230. A floor lifts the bottom of the whole range
-    without moving the top, so it narrows every band; the test below says
-    what a floored one does instead.
-    """
-    unfloored = [a for a in af.AFFIX_POOL if not a.floor]
-    assert unfloored, "every affix now states a floor, so nothing is checked"
-    for affix in unfloored:
+def test_a_minimum_roll_is_the_bottom_of_its_tiers_range():
+    """THE 75% BAND IS GONE WITH ISSUE #2883. A tier is a stated whole-number
+    range, so the worst roll is its T Min and the best its T Max, upgraded."""
+    for affix in af.AFFIX_POOL:
         for tier in af.AFFIX_TIERS:
             low, high = affix.range_at(tier)
-            assert low / high == pytest.approx(1.0 - af.ROLL_BAND_FRACTION)
-
-
-def test_a_stated_floor_narrows_the_band_and_never_widens_it():
-    """What a floor does to a tier's range, said as a property.
-
-    The floor is added and the ladder runs across what is left, so the top
-    of every band is unchanged and the bottom comes up. A band that got
-    WIDER would mean the map was not monotone, and
-    ``BandsOverlapByExactlyOneTier`` rests on it being monotone.
-    """
-    floored = [a for a in af.AFFIX_POOL if a.floor]
-    assert floored, "no affix states a floor, so nothing is checked"
-    for affix in floored:
-        for tier in af.AFFIX_TIERS:
-            low, high = affix.range_at(tier)
-            assert low / high > 1.0 - af.ROLL_BAND_FRACTION
+            assert (low, high) == affix_ranges.range_at(affix.name, tier), affix.name
             assert low < high
 
 
-def test_a_floor_is_the_worst_a_player_can_be_handed():
-    """Tier 1, the bottom of the band, on an un-upgraded piece."""
-    for affix in af.AFFIX_POOL:
-        if not affix.floor:
-            continue
-        assert affix.value_at(1, roll=0.0, gear_level=0) == pytest.approx(
-            affix.floor), affix.name
-    for family in af.RESISTANCE_FAMILIES:
-        if not family.floor:
-            continue
-        assert family.value_at(1, roll=0.0, gear_level=0) == pytest.approx(
-            family.floor), family.name
 
 
-def test_a_stated_floor_does_not_move_the_top():
-    """The whole point of the shape chosen for issue #1230: no ceiling moves."""
+def test_the_worst_a_player_can_be_handed_is_tier_ones_minimum():
+    """Tier 1, the bottom of the range, on an un-upgraded piece: T1 Min, a whole
+    number of at least 1. Until issue #2883 this was the stated Floor (#1230),
+    which the value rule no longer reads; #2904 retires the column."""
     for affix in af.AFFIX_POOL:
-        assert affix.value_at(7, roll=1.0,
-                              gear_level=af.MAX_GEAR_LEVEL) == pytest.approx(
-            affix.top_value), affix.name
+        assert affix.value_at(1, roll=0.0, gear_level=0) == (
+            affix_ranges.TIER_RANGES[affix.name][0][0]), affix.name
     for family in af.RESISTANCE_FAMILIES:
-        assert family.value_at(7, roll=1.0,
-                               gear_level=af.MAX_GEAR_LEVEL) == pytest.approx(
-            family.top_value), family.name
+        assert family.value_at(1, roll=0.0, gear_level=0) == (
+            affix_ranges.TIER_RANGES[family.name][0][0]), family.name
+
+
+def test_the_best_a_player_can_be_handed_is_tier_sevens_maximum_upgraded():
+    """Tier 7, the top of the range, on a +10 piece: T7 Max upgraded. Until issue
+    #2883 this was the stated Top Value, which the value rule no longer reads."""
+    for affix in af.AFFIX_POOL:
+        assert affix.value_at(7, roll=1.0, gear_level=af.MAX_GEAR_LEVEL) == (
+            affix_ranges.upgraded(affix_ranges.TIER_RANGES[affix.name][-1][1],
+                                  af.MAX_GEAR_LEVEL)), affix.name
+    for family in af.RESISTANCE_FAMILIES:
+        assert family.value_at(7, roll=1.0, gear_level=af.MAX_GEAR_LEVEL) == (
+            affix_ranges.upgraded(affix_ranges.TIER_RANGES[family.name][-1][1],
+                                  af.MAX_GEAR_LEVEL)), family.name
 
 
 def test_an_affix_with_no_floor_is_unchanged_by_the_floor_arithmetic():
@@ -444,24 +439,17 @@ def test_an_unknown_affix_kind_is_rejected():
         af.StatAffix("Bad", "max_health", "multiplicative", 10.0)
 
 
-def test_stat_affixes_use_the_same_curve_and_band_as_resistance_affixes():
-    """One shared curve across the whole pool. A family computing its own would
-    drift the moment either constant changed.
-
-    ASKED OF THE TWO CLASSES DIRECTLY SINCE ISSUE #1230, rather than of a
-    StatAffix against the raw band. Both now run their range through the same
-    floor arithmetic, so comparing one of them against the unfloored ladder
-    would only say that this particular affix states no floor.
-    """
+def test_stat_affixes_use_the_same_rule_as_resistance_affixes():
+    """One shared rule across the whole pool, `affix_ranges.value`, since issue
+    #2883. A family computing its own would drift the moment the rule changed."""
     for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
-        twin = af.AffixFamily(affix.name, breadth=1,
-                              top_value=affix.top_value, floor=affix.floor)
         for tier in af.AFFIX_TIERS:
-            assert affix.range_at(tier) == pytest.approx(twin.range_at(tier))
-            low, high = affix.range_at(tier)
-            if not affix.floor:
-                assert low / high == pytest.approx(
-                    1.0 - af.ROLL_BAND_FRACTION)
+            for roll in (0.0, 0.5, 1.0):
+                assert affix.value_at(tier, roll) == affix_ranges.value(affix.name, tier, roll)
+    for family in af.RESISTANCE_FAMILIES:
+        for tier in af.AFFIX_TIERS:
+            for roll in (0.0, 0.5, 1.0):
+                assert family.value_at(tier, roll) == affix_ranges.value(family.name, tier, roll)
 
 
 def test_a_flat_affix_is_worth_more_when_the_character_has_more_increases():
@@ -496,14 +484,19 @@ def test_flat_wins_early_and_increased_wins_late():
         assert above.kind == "increased"
 
 
-def test_the_health_crossover_lands_inside_a_real_build():
-    """Not at either end. A level 100 Ravager has 2,110 base health, so a
-    crossover far below that would make flat health pointless, and one far above
-    it would make increased health pointless."""
+def test_the_health_crossover_falls_below_a_real_build():
+    """A level 100 Ravager has 2,110 base health. Until issue #2883 the crossover
+    between flat and increased health sat inside a real build, 2,110 to 6,330.
+
+    679 SINCE ISSUE #2883, the approved proposal's row R1, sent to #2884: flat
+    health keeps its top while increased health goes from 12 to 53 at tier 7, so
+    increased health wins from a lower base. The owner approved the proposal
+    with this figure in it; this pins it so a change to it is seen."""
     from cataclysm_sim.classes import DEMONIC_CLASSES
     base = DEMONIC_CLASSES["Ravager"].base_at("max_health", 100)
     crossover = af.crossover_base(af.HEALTH_AFFIXES, existing_increases=2.0)
-    assert base < crossover < base * 3
+    assert crossover == pytest.approx(679.2452830188679)
+    assert crossover < base
 
 
 def test_the_crossover_moves_with_the_increases_already_on_the_character():
@@ -606,13 +599,15 @@ def test_the_weapon_supplies_a_real_share_at_the_reference_build():
     """At six slots each way the weapon and skill together should carry a
     substantial part of the base, not a rounding error.
 
-    This is what the flat damage value was set to achieve. At its previous value
-    of 60 the flat affixes alone filled the whole base bracket and this fails.
-    """
+    A SMALLER SHARE SINCE ISSUE #2883: flat damage is 35 to 38 at tier 7 on +10
+    gear, so six of them supply 228 against the weapon term's 87, where the
+    weapon carried more than half. It is still far from a rounding error, which
+    is what is held; recorded so that a change is seen."""
     target = af.damage_target(8)
     from_weapon = af.weapon_base_damage_needed(target, 6, 6)
     from_flat = af.FLAT_DAMAGE.value_at(7) * 6
-    assert from_weapon > from_flat * 0.5, (
+    assert from_flat == 228.0
+    assert from_weapon > from_flat * 0.25, (
         f"weapon supplies {from_weapon:.0f} against {from_flat:.0f} from affixes")
 
 
@@ -820,18 +815,20 @@ def test_a_gear_level_outside_the_designed_range_is_rejected():
             af.gear_level_multiplier(bad)
 
 
-def test_the_stated_top_values_are_what_a_fully_upgraded_piece_gives():
-    """So the numbers in this module and in the design document are the ones a
-    finished character reaches, and a fresh piece is a fraction of them."""
+def test_the_default_value_is_what_a_fully_upgraded_piece_gives():
+    """`value_at` defaults to tier 7, a perfect roll and +10: the finished
+    character's figure, T7 Max upgraded (issue #2883)."""
     for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
-        assert affix.value_at(7, gear_level=10) == pytest.approx(affix.top_value)
-        assert affix.value_at(7) == pytest.approx(affix.top_value)
+        assert affix.value_at(7) == affix.value_at(7, gear_level=10)
+        assert affix.value_at(7) == affix_ranges.upgraded(
+            affix_ranges.TIER_RANGES[affix.name][-1][1], 10)
 
 
-def test_an_unupgraded_piece_gives_the_stated_value_divided_by_the_multiplier():
+def test_an_unupgraded_piece_gives_the_tiers_own_number():
+    """At +0 a tier's range is exactly the row's stated whole numbers (issue
+    #2883): the upgrade multiplies those, never a +10 figure divided back."""
     for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
-        assert affix.value_at(7, gear_level=0) == pytest.approx(
-            affix.top_value / af.gear_level_multiplier(10))
+        assert affix.value_at(7, gear_level=0) == affix_ranges.TIER_RANGES[affix.name][-1][1]
 
 
 @pytest.mark.parametrize("family", ["SINGLE_RESISTANCE", "HYBRID_RESISTANCE",
@@ -855,13 +852,18 @@ def test_gear_level_lifts_increased_affixes_as_well_as_flat_ones():
 
 
 @pytest.mark.parametrize("level", [0, 3, 7, 10])
-def test_gear_level_scales_every_tier_by_the_same_proportion(level):
-    """It multiplies the affix, so it must not distort the tier curve."""
-    expected = af.gear_level_multiplier(level) / af.gear_level_multiplier(10)
+def test_gear_level_scales_every_tier_by_the_same_rule(level):
+    """It multiplies the affix, so it must not distort the tier curve. Since
+    issue #2883 each end of a tier is multiplied and rounded on its own, so the
+    proportion holds to within a half on each end rather than exactly."""
     for tier in af.AFFIX_TIERS:
-        at_level = af.FLAT_HEALTH.value_at(tier, gear_level=level)
-        at_max = af.FLAT_HEALTH.value_at(tier, gear_level=10)
-        assert at_level / at_max == pytest.approx(expected)
+        low0, high0 = affix_ranges.TIER_RANGES["Flat maximum health"][tier - 1]
+        low, high = af.FLAT_HEALTH.range_at(tier) if level == 10 else (
+            af.FLAT_HEALTH.value_at(tier, 0.0, level), af.FLAT_HEALTH.value_at(tier, 1.0, level))
+        factor = af.gear_level_multiplier(level)
+        assert (low, high) == (affix_ranges.upgraded(low0, level), affix_ranges.upgraded(high0, level))
+        assert abs(low - low0 * factor) <= 0.5 + 1e-9
+        assert abs(high - high0 * factor) <= 0.5 + 1e-9
 
 
 def test_gear_level_and_the_roll_are_independent():
@@ -1146,11 +1148,16 @@ def test_an_implicit_does_not_roll():
 
 
 def test_gear_level_multiplies_an_implicit_the_same_way_it_does_an_affix():
+    """Since issue #2883 (D9) an implicit is a whole +0 number, its stated +10
+    figure over 2.5 rounded half up and at least 1, upgraded by the affix rule.
+    So at +10 it is within 2.5 of the stated figure (a half at +0, times 2.5, or
+    the at-least-1 floor), and at +0 it is the whole number itself."""
     for base in af.ITEM_BASES:
         for implicit in base.implicits:
-            assert implicit.value_at(10) == pytest.approx(implicit.value)
-            assert implicit.value_at(0) == pytest.approx(
-                implicit.value / af.gear_level_multiplier(10))
+            at_zero = affix_ranges.implicit_at_zero(implicit.value)
+            assert implicit.value_at(0) == at_zero
+            assert implicit.value_at(10) == affix_ranges.upgraded(at_zero, 10)
+            assert abs(implicit.value_at(10) - implicit.value) <= 2.5
 
 
 def test_bases_in_one_slot_pull_in_different_directions():
@@ -1492,10 +1499,10 @@ def test_that_ailment_placement_check_actually_fires():
         af.AILMENT_AFFIXES = real
 
 
-def test_an_ailment_affix_uses_the_same_tier_curve_and_band_as_the_rest():
+def test_an_ailment_affix_uses_the_same_rule_as_the_rest():
     for affix in af.AILMENT_AFFIXES:
-        assert affix.range_at(7) == af.tier_band(affix.top_chance, 7)
-        assert affix.chance_at(7) == pytest.approx(affix.top_chance)
+        assert affix.range_at(7) == affix_ranges.range_at(affix.name, 7)
+        assert affix.chance_at(7) == affix_ranges.upgraded(affix_ranges.TIER_RANGES[affix.name][-1][1], 10)
         assert affix.chance_at(7, gear_level=0) < affix.chance_at(7)
 
 
@@ -1582,15 +1589,18 @@ def test_a_hybrid_is_worth_more_than_one_affix_spread_over_two_stats():
     """What stops the single affix being strictly better.
 
     Measured as a SHARE of each part's own value, not as a sum of the two
-    numbers. Summing them would be meaningless: the health and energy shield
-    hybrid grants 84 and 35, and adding those treats a point of health and a
-    point of shield as the same unit. An earlier version of this test did
-    exactly that and failed, because 84 plus 35 is less than flat health's 120.
-    """
+    numbers, which would treat a point of health and a point of shield as the
+    same unit.
+
+    EACH HALF IS ITS OWN AFFIX TWO TIERS DOWN since issue #2883 (D6), where it
+    was 70% of the same tier. The approved proposal measured the share at 0.59
+    to 0.81 a half rather than 0.70, so a hybrid is worth 1.2 to 1.6 affixes
+    rather than 1.4. Still more than one, which is the property."""
     for hybrid in af.HYBRID_AFFIXES:
-        share = sum(hybrid.value_of(p) / p.value_at(7) for p in hybrid.parts)
-        assert share == pytest.approx(2 * af.HYBRID_FRACTION)
-        assert share > 1.0, hybrid.name
+        halves = [hybrid.value_of(p) / p.value_at(7) for p in hybrid.parts]
+        for half in halves:
+            assert 0.59 <= half <= 0.82, (hybrid.name, halves)
+        assert sum(halves) > 1.0, hybrid.name
 
 
 def test_the_hybrid_reduction_is_read_off_the_resistance_families():
@@ -1640,8 +1650,9 @@ def test_the_pool_is_bigger_than_it_was():
 def test_a_two_handed_weapon_doubles_its_own_implicits():
     greatsword = af.base_named("Greatsword")
     assert greatsword.value_multiplier == af.TWO_HANDED_MULTIPLIER
-    # The stated base damage is 78. What the base actually supplies is double.
-    assert greatsword.implicit_values()["attack_damage"] == pytest.approx(156.0)
+    # The stated base damage is 78, which is 31 at +0 (issue #2883, D9); at +10
+    # two-handed that is 31 x 2.5 x 2 = 155.
+    assert greatsword.implicit_values()["attack_damage"] == 155.0
 
 
 def test_a_one_handed_weapon_and_armour_do_not():
@@ -1649,14 +1660,19 @@ def test_a_one_handed_weapon_and_armour_do_not():
     helm = af.base_named("Helm")
     assert axe.value_multiplier == 1.0
     assert helm.value_multiplier == 1.0
-    assert axe.implicit_values()["attack_damage"] == pytest.approx(46.0)
+    # The stated 46 is 18 at +0 (46 / 2.5 = 18.4), so 45 at +10 (issue #2883, D9).
+    assert axe.implicit_values()["attack_damage"] == 45.0
 
 
 def test_an_affix_on_a_two_handed_weapon_is_worth_double():
+    """Doubled inside the rounding since issue #2883: the two-handed range's ends
+    are the one-handed ends at +0 doubled, then upgraded and rounded once, so at
+    +10 the value is within one of twice the one-handed one (75 against 38)."""
     greatsword = af.base_named("Greatsword")
     axe = af.base_named("Axe")
-    assert (greatsword.affix_value(af.FLAT_DAMAGE)
-            == pytest.approx(2.0 * axe.affix_value(af.FLAT_DAMAGE)))
+    assert greatsword.affix_value(af.FLAT_DAMAGE) == affix_ranges.value(
+        af.FLAT_DAMAGE.name, 7, 1.0, 10, two_handed=True)
+    assert abs(greatsword.affix_value(af.FLAT_DAMAGE) - 2.0 * axe.affix_value(af.FLAT_DAMAGE)) <= 1.0
 
 
 def test_the_two_loadouts_are_worth_the_same_in_affixes():
@@ -1698,15 +1714,16 @@ def test_the_two_handed_bonus_beats_summed_one_handed_base_damage():
     affixes.
 
     Two one-handed bases SUM, which the project owner settled on 2026-08-03. An
-    Axe and a Sword give 86 against a Greatsword's stated 78, so with the affix
-    half alone the two-hander loses on damage while also holding one fewer
-    damage type. Doubling the implicit is what reverses it.
+    Axe and a Sword give 85 (86 until issue #2883 made each implicit a whole +0
+    number) against a Greatsword's stated 78, so with the affix half alone the
+    two-hander loses on damage while also holding one fewer damage type.
+    Doubling the implicit is what reverses it.
     """
     summed_one_handed = sum(af.base_named(n).implicit_values()["attack_damage"]
                             for n in ("Axe", "Sword"))
     two_handed = af.base_named("Greatsword").implicit_values()["attack_damage"]
 
-    assert summed_one_handed == pytest.approx(86.0)
+    assert summed_one_handed == 85.0
     assert two_handed > summed_one_handed
 
 

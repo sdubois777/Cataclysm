@@ -7,6 +7,7 @@
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmDungeonModifier.h"
+#include "Empire/CataclysmRoster.h"
 
 /**
  * What a dungeon is, as much of it as building one of its floors needs.
@@ -123,6 +124,28 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 * built by hand, and a dungeon not entered from the empire, leaves it at one: a boss on the final floor alone.
 	 */
 	int32 Bosses = 1;
+
+	/**
+	 * Which Cataclysm sent the dungeon: `FCataclysmDungeon::Cataclysm`, copied across by
+	 * `ACataclysmDungeonGameMode::BindEmpireDungeon` (as `DungeonCataclysm`). Slice B3 of the Death and War plan,
+	 * 2026-11-25.
+	 *
+	 * EVERY CREATURE THE DUNGEON PLACES BELONGS TO IT: it deals this Cataclysm's damage type and draws its enemy
+	 * modifiers from this Cataclysm's column and the Generic one, which is the design's rule ("drawn from its own
+	 * Cataclysm's column and the Generic one", `docs/Cataclysm_GDD_v2.md`). The owner accepted it for the Demonic
+	 * bodies standing in for Death's and War's on 2026-11-24 (the plan's Q16). `CreatureDamageTypeFor` turns it into
+	 * the damage type; `FCataclysmFloorPopulator::PackKindsFor` reads it, through the brief, for the roster.
+	 *
+	 * `None` LEAVES EVERY CREATURE ITS CLASS'S OWN TYPE, which is Demonic: a dungeon built by hand in a test, and pressing
+	 * Play in `L_Dungeon`. That is every creature the game placed before this field existed. A FALLEN CITY IS SENT BY
+	 * NOBODY (`UCataclysmSurgeScheduler::MakeFallenCityDungeon`) and still carries one here: the Cataclysm that felled
+	 * its city (`FCataclysmCity::FellTo`), or the run's newest active one when the city records nobody, which
+	 * `ACataclysmDungeonGameMode::BindEmpireDungeon` gives it, ruled on 2026-11-25 and wired in bundle 4.
+	 *
+	 * NOT SAVED HERE OR ANYWHERE NEW: a resumed walk binds the saved empire dungeon again, and its `Cataclysm` is saved,
+	 * the way `ACataclysmDungeonGameMode::DungeonCityTier` comes back.
+	 */
+	ECataclysmType Cataclysm = ECataclysmType::None;
 };
 
 /**
@@ -281,6 +304,16 @@ struct CATACLYSM_API FCataclysmFloorBrief
 	 * Imp in an ordinary dungeon notices at the distance it always did.
 	 */
 	float SightRadiusMultiplier = 1.0f;
+
+	/**
+	 * Which Cataclysm sent the dungeon this floor belongs to: `FCataclysmDungeonIdentity::Cataclysm`, unchanged on
+	 * every floor. Slice B3, 2026-11-25.
+	 *
+	 * READ BY THE POPULATION PASS for which roster the floor's groups are drawn from
+	 * (`FCataclysmFloorPopulator::PackKindsFor`), which is the Demonic seven for every Cataclysm until Death's and
+	 * War's own creatures exist. A default-constructed brief carries `None`, which draws the same roster.
+	 */
+	ECataclysmType Cataclysm = ECataclysmType::None;
 };
 
 /**
@@ -382,6 +415,62 @@ public:
 							  int32 FloorNumber);
 
 	/**
+	 * Where the `One`-th of `Count` things spread evenly down `TotalFloors` floors stands: floor
+	 * ceil(One x TotalFloors / Count), so the last of them is on the final floor.
+	 *
+	 * THE SPREAD THE OWNER CHOSE FOR A FALLEN CITY'S BOSSES on 2026-10-29 (issue #1466, "Spread evenly"), and the one
+	 * the owner chose for a Rift's four altars on 2026-11-24 (issue #51). Both rules call this, so the two cannot come
+	 * apart. NOT HELD TO ONE A FLOOR HERE: a caller that wants that passes a `Count` no larger than `TotalFloors`, as
+	 * both do. Nought for a `Count` below one.
+	 */
+	static int32 SpreadFloorOf(int32 One, int32 Count, int32 TotalFloors);
+
+	// ----------------------------------------------------------------------
+	// A Rift's four altars: the Demonic Quest dungeon, issue #51 slice B1
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How many altars a Rift holds. `docs/Cataclysm_GDD_v2.md` section XI, Hell on Earth: "destroy the four altars
+	 * powering each one". `tools/tests/test_a_rifts_four_altars.py` holds this to that sentence.
+	 */
+	static constexpr int32 RiftAltars = 4;
+
+	/**
+	 * Which floor of a Rift `TotalFloors` deep altar `Altar` (counted from 1) stands on, or nought when there is no
+	 * such altar or no such floor.
+	 *
+	 * THE OWNER'S RULING OF 2026-11-24 (issue #51, Q2), VERBATIM: "One per floor, spread (Recommended)", that is
+	 * "Altar *i* on floor ceil(*i* x floors / 4), the spread ruled for a Fallen City's bosses on 2026-10-29 (#1466); a
+	 * Rift of fewer than four floors puts the rest on its last floor."
+	 *
+	 * SO, AS THE FALLEN CITY'S BOSSES ARE, AT MOST ONE A FLOOR, AND THE REST ON THE LAST. Of four altars and F floors,
+	 * min(4, F) are spread by `SpreadFloorOf`, one a floor, and the remaining 4 - min(4, F) stand on floor F. From four
+	 * floors on that is ceil(i x F / 4) for every altar. Below four it is altar i on floor i and the rest on the last:
+	 * 1, 2, 2, 2 for a Rift of two floors. A READING OF THE RULING, stated so it can be checked: the bare formula would
+	 * give 1, 1, 2, 2 there, two on the first floor, which is not "one per floor" and leaves no "rest" for the last.
+	 *
+	 * A RIFT IS FOUR FLOORS DEEP, the owner's ruling later the same day: "A Rift is a Quest dungeon of exactly 4 floors,
+	 * one altar on each floor (this replaces the altar spread ceil(i x floors / 4), which now always gives one per
+	 * floor)." At four floors this gives 1, 2, 3, 4. THE SPREAD IS KEPT FOR ANY OTHER DEPTH, ruled by the coordinating
+	 * session that evening: a Quest dungeon Demonic rolled before the empire makes Rifts four floors deep (slice B2, not
+	 * this) is 20 to 70 floors deep, and a city's floor upgrades may move a Rift's depth if slice B2 lets them.
+	 */
+	static int32 RiftAltarFloor(int32 TotalFloors, int32 Altar);
+
+	/** How many of a Rift's altars stand on `FloorNumber` of a Rift `TotalFloors` deep, by `RiftAltarFloor`. */
+	static int32 RiftAltarsOnFloor(int32 TotalFloors, int32 FloorNumber);
+
+	/**
+	 * How many of a Rift's altars stand on floors above `FloorNumber`, by `RiftAltarFloor`. Every one of them has
+	 * fallen by the time the player stands on `FloorNumber`: each seals its floor's stairs while it stands, and no chasm
+	 * opens on a floor holding one (`ACataclysmDungeonGameMode::PlaceTheChasms`).
+	 */
+	static int32 RiftAltarsAboveFloor(int32 TotalFloors, int32 FloorNumber);
+
+	/** The first floor below `FloorNumber` of a Rift `TotalFloors` deep that holds an altar, or nought when none does. */
+	static int32 NextRiftAltarFloorAfter(int32 TotalFloors, int32 FloorNumber);
+
+	/**
 	 * Whether this floor's creatures arrive as one wave.
 	 *
 	 * ONE FLOOR IS ONE WAVE, WHICH IS WHAT THE DESIGN SENTENCE COUNTS:
@@ -445,6 +534,22 @@ public:
 	 */
 	static float SightRadiusMultiplierFor(const FCataclysmDungeonIdentity& Dungeon,
 										  int32 FloorNumber);
+
+	/**
+	 * The damage type a creature of a dungeon sent by this Cataclysm deals, as `ACataclysmEnemyCharacter::DamageType`
+	 * holds it: `UCataclysmRoster::NameFor`, "Death", "War", "Void". Slice B3, 2026-11-25.
+	 *
+	 * NAME_None FOR `None`, AND THAT IS NOT A DAMAGE TYPE TO WRITE: it means "leave the creature its class's own",
+	 * which is Demonic. `UCataclysmRoster::NameFor` spells `None` as "None", which as an `FName` is `NAME_None`
+	 * itself; a creature given it would draw from the Generic column alone and its blows would carry no type, so meet
+	 * no resistance. The caller must not write it. See `ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`, the one
+	 * writer on a floor.
+	 *
+	 * THE SAME NAME FOR ALL EIGHT, not only Death and War. The design's rule is the same for every Cataclysm, and the
+	 * owner's acceptance of 2026-11-24 (the plan's Q16) gives its reason in those terms. A judgement, recorded in
+	 * `docs/DECISIONS.md` (2026-11-25).
+	 */
+	static FName CreatureDamageTypeFor(ECataclysmType Cataclysm);
 
 	/**
 	 * How many of a wave may still be alive before the next one arrives.

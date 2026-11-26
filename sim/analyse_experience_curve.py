@@ -81,6 +81,7 @@ import pathlib
 
 from cataclysm_sim import scoring
 from cataclysm_sim.config import TuningConfig
+from cataclysm_sim.player_power import LEVEL_WEIGHT as POWER_SCORE_LEVEL_WEIGHT
 from cataclysm_sim.player_power import MAX_LEVEL
 
 # ---------------------------------------------------------------------------
@@ -308,8 +309,10 @@ PER_DUNGEON = {tier: dungeon_experience(tier, WHOLE_FLOORS, POPULATION, WEIGHTS)
 POE_RATE = rate_matching_path_of_exile()
 
 #: Level Weight from the Power Score formula, `docs/Cataclysm_GDD_v2.md`. What
-#: one character level is worth in Power Score.
-LEVEL_WEIGHT = 6.3270
+#: one character level is worth in Power Score: 10 since the owner's ruling of
+#: 2026-11-24 (issue #2853), 6.327 before. Read from `player_power`, which holds
+#: it, rather than written out again here, so the two cannot part.
+LEVEL_WEIGHT = POWER_SCORE_LEVEL_WEIGHT
 
 # ---------------------------------------------------------------------------
 # THE DECISION. Chosen by the project owner on 2026-08-24 from the measurements
@@ -585,7 +588,7 @@ def main() -> None:
     print("     against the tier anchors, so it has to be replaced with what levelling")
     print("     actually produces rather than left disagreeing.")
     print()
-    print(f"  2. Level Weight is {level_weight} in the Power Score formula, so level "
+    print(f"  2. Level Weight is {level_weight:g} in the Power Score formula, so level "
           f"{levels[0]} is worth")
     print(f"     {from_level:.0f} Power Score on its own. The maximum a player is expected to "
           f"reach by the")

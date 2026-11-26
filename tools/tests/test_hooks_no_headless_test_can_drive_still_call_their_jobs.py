@@ -88,6 +88,20 @@ HOOKS = {
             "UCataclysmFervour::DecayStep":
                 "the Fervour a Ravager loses once it has been out of "
                 "contact for three seconds, issue #1515",
+            "UCataclysmFervour::KillDecayStep":
+                "the Fervour a Soul Collector or a Shadow loses once the "
+                "seconds after its last kill have run out (the Death trees' "
+                "kill generator, 2026-11-24). Deleting it leaves the pool "
+                "never draining between kills, while each test of the decay, "
+                "which calls the step directly, still passes",
+            "FCataclysmSiphon::Step":
+                "the Soul Collector's Siphon (the Death trees' slice C2, "
+                "2026-11-25): who is in it, the cut to what each member deals "
+                "and its slow, and once a second Drain's damage, Necrotic "
+                "Siphon's chance, Life Siphon's health and Living Harvest's "
+                "Fervour. Deleting it leaves the Siphon empty, so every node "
+                "of its limb does nothing, while each test that calls the "
+                "step directly still passes",
             "UCataclysmNova::Step":
                 "the nova a character at very low health releases, issue #1050",
             "UCataclysmContagion::AuraStep":
@@ -179,7 +193,10 @@ HOOKS = {
                 "item, any kill's one more material, a boss's Legendary or rarer item, "
                 "issue #2741 slice 5b",
             "UCataclysmDropSpawner::SpawnGemsFor":
-                "the gems the creature dropped, last, from a stream of their own, issue #46 slice G5",
+                "the gems the creature dropped, from a stream of their own, issue #46 slice G5",
+            "UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor":
+                "the Cataclysm Boss's one piece of the next tier's best rarity, last, after the gems, "
+                "and nothing for any other rung, issue #2853 (the owner's ruling of 2026-11-24)",
             "UCataclysmHealthDebt::ClearOnKill":
                 "a kill clearing what the killer owes, issue #997",
             "UCataclysmStacks::NoteEnemyKilled":
@@ -196,12 +213,20 @@ HOOKS = {
             "UCataclysmContagion::SpreadFromTheDying":
                 "this creature's Disease passing to the two nearest enemies, "
                 "and whatever a row adds to that, issue #919",
+            "UCataclysmDebuffs::PassCrippleAndWeakenOnDeath":
+                "a Cripple and a Weaken on this creature passing to the "
+                "nearest enemy of whoever applied them, for the Ravager's "
+                "Deeper Hurt, the Demonic tree rework of 2026-11-24",
             "UCataclysmEnemyModifiers::RallyAlliesOnDeath":
                 "a creature carrying the Horde Leader enemy modifier buffing "
                 "the rest of its pack as it dies, issue #742",
             "UCataclysmSkillTemplate::NoteKill":
                 "telling the killer's running skills that it killed something, "
                 "which is what feeds the Axe's Butcher's Heat, issue #37",
+            "UCataclysmEnemyModifiers::NoteDeathOfACarrier":
+                "Death's Final Curse cursing the player, a creature Shadow Step hid "
+                "being shown as it falls, and one Spectral Shift had out of existence "
+                "coming back, 2026-11-24",
             "UCataclysmRisenImps::RiseOnDeath":
                 "a creature dying carrying a curse a Ritualist laid rising as "
                 "an imp for that Ritualist, issue #1479",
@@ -347,6 +372,9 @@ HOOKS = {
             "UCataclysmCombatEvents::NoteCreatureAbility":
                 "announcing a creature's ability with no wind-up as a "
                 "skill used, issue #41",
+            "UCataclysmEnemyModifiers::RevealForShadowStep":
+                "a creature carrying Death's Shadow Step being seen as its "
+                "ability begins, wound up or not, 2026-11-24",
         },
         "questions": {
             "UCataclysmCommand::AttackIntervalScaleFor",

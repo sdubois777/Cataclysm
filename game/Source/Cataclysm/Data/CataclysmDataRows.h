@@ -765,6 +765,21 @@ struct FCataclysmItemBaseRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit2Stat;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit2Kind;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") float Implicit2Value = 0.0f;
+
+	/**
+	 * Each implicit's value on an un-upgraded piece, a whole number. Zero for an
+	 * implicit the base does not have.
+	 *
+	 * WHAT THE GAME UPGRADES, since issue #2883 (D9 of the approved proposal;
+	 * the owner, 2026-11-24: "Approve as written (Recommended)"). It is the
+	 * stated +10 figure above over 2.5, rounded half up, at least 1, and
+	 * UCataclysmItemValues::ImplicitValue upgrades it the way an affix's range
+	 * is upgraded, so an implicit is a whole number at every level. The +10
+	 * figure stays as the design's statement of the top; the game no longer
+	 * divides it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") int32 Implicit1AtZero = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") int32 Implicit2AtZero = 0;
 };
 
 /**
@@ -938,6 +953,46 @@ struct FCataclysmAffixRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
 	bool Percent = false;
+
+	/**
+	 * THE SEVEN TIER RANGES ON AN UN-UPGRADED PIECE, whole numbers, tier 1
+	 * first: T1Min to T1Max is everything a tier 1 roll can give at +0.
+	 *
+	 * WHAT AN AFFIX ROLLS, since issue #2883 (the owner, 2026-11-24: "Approve
+	 * as written (Recommended)"). TopValue and Floor above are no longer read
+	 * for a value; issue #2904 retires them. UCataclysmItemValues::AffixValue
+	 * upgrades both ends of the tier's range, then the roll picks one of the
+	 * whole numbers in it, each equally likely.
+	 *
+	 * tools/generate_datatables.py refuses a range that is not whole numbers of
+	 * at least 1, a tier holding fewer than two values, and a tier starting at
+	 * or below where the tier beneath it ends. All fourteen are zero on a
+	 * Hybrid, whose halves are other rows carrying their own.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T1Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T1Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T2Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T2Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T3Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T3Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T4Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T4Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T5Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T5Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T6Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T6Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T7Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T7Max = 0;
+
+	/** A tier's range at +0, tier clamped to 1..7. Zero to zero on a Hybrid. */
+	void TierRange(int32 Tier, int32& OutMin, int32& OutMax) const
+	{
+		const int32 Mins[7] = { T1Min, T2Min, T3Min, T4Min, T5Min, T6Min, T7Min };
+		const int32 Maxes[7] = { T1Max, T2Max, T3Max, T4Max, T5Max, T6Max, T7Max };
+		const int32 Index = FMath::Clamp(Tier, 1, 7) - 1;
+		OutMin = Mins[Index];
+		OutMax = Maxes[Index];
+	}
 };
 
 /**
@@ -1696,9 +1751,10 @@ struct FCataclysmEnemyDropRow : public FTableRowBase
 	 * How many gear items this kill is EXPECTED to drop, before loot quantity.
 	 *
 	 * AN EXPECTED COUNT RATHER THAN A CHANCE, which matters at both ends. A
-	 * chance cannot exceed one and a Cataclysm Boss drops twelve; and 0.16 for a
+	 * chance cannot exceed one and a Cataclysm Boss drops six; and 0.08 for a
 	 * Common enemy rounds to nothing, so the fraction is rolled as a probability
-	 * instead. See UCataclysmDropRoll::RollDropCount.
+	 * instead. See UCataclysmDropRoll::RollDropCount. The column was halved on
+	 * 2026-11-24 (issue #2853).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
 	float GearDrops = 0.0f;
@@ -1997,11 +2053,11 @@ struct FCataclysmPassiveNodeRow : public FTableRowBase
 	 * would be the right shape for a number that could change and the wrong one
 	 * for a number that cannot.
 	 *
-	 * EMPTY FOR EVERY NODE THAT IS NOT A CAPSTONE, and empty for the Saboteur's
-	 * four capstones as well, which offer none in the source file even though
-	 * each says to choose one of three. Issue #935. A capstone with no options
-	 * cannot be taken and the screen says so, rather than offering a choice
-	 * between nothing.
+	 * EMPTY FOR EVERY NODE THAT IS NOT A CAPSTONE, and empty for a capstone whose
+	 * source file names no options, as the Saboteur's four did until their
+	 * options were written on 2026-11-25 even though each said to choose one of
+	 * three. Issue #935. A capstone with no options cannot be taken and the
+	 * screen says so, rather than offering a choice between nothing.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
 	FString Option1Name;
@@ -2514,6 +2570,93 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The same, for a piece of Superb or above (Disassembly Expert, 20%, N7 and O4). Issue #2848, slice S2. */
 	DismantleMaterialsIncreasedSuperbAndAbove,
+
+	/** The chance an item's upgrade adds two levels instead of one, up to +10 (The Soul Forge, 15%). #47 slice F6, read
+	 *  by `UCataclysmForge::SoulForgeLevels` through `UCataclysmEmpireTree::PlayerBonusesFor`. */
+	UpgradeExtraLevelChance,
+
+	/** The chance an enchantment craft is a critical success: its rolls drawn twice with the better kept, and no days
+	 *  (The Master Tinkerer, 5%). #47 slice F6, read by `UCataclysmForge::EnchantCritical`. */
+	EnchantCriticalChance,
+
+	/** Off every forge gold price, 1.5% a point (Workshop Upgrades). #47 slice F6a, read by
+	 *  `UCataclysmEmpireTree::CraftGoldFactorFor` through `UCataclysmEmpireTree::PlayerBonusesFor`. */
+	CraftGoldReduced,
+
+	/** Off a forge gold price whose material is tier 1 or 2, 20% (Apprentice Oversight, Q3). #47 slice F6a. */
+	LowTierCraftGoldReduced,
+
+	/** Off every forge gold price, 1% a point for each 10 points in the Treasury branch, capped at 30% (Architectural
+	 *  Synergy; the owner's cap of 2026-11-22). #47 slice F6a. */
+	CraftGoldReducedPerBranchStep,
+
+	/** Off every forge gold price, 1% for each 50,000 tier 1 gold spent at the forge, capped at 30% (Treasury Synergy,
+	 *  Q5 to Q7). #47 slice F6a, read by `UCataclysmEmpireTree::CraftGoldFromSpendingFor`. */
+	CraftGoldReducedPerSpendingStep,
+
+	/** The chance a forge craft costs a tenth less, 1% a point (Forge Upgrades, Q8 to Q10). #47 slice F6a. */
+	CraftGoldTenthOffChance,
+
+	/** The chance a forge item craft keeps its tier 1 and 2 crafting materials, 2% a point (Material Conservation).
+	 *  #47 slice F6b, drawn by `UCataclysmForge::KeepingOn`. */
+	LowTierMaterialKeptChance,
+
+	/** The chance a forge item craft keeps its tier 3 to 5 crafting materials, 1% a point (Resource Management: "Rare"
+	 *  is tier 3 and above, Q14). #47 slice F6b. */
+	RareMaterialKeptChance,
+
+	/** The chance a forge item craft returns every crafting material it used, on an item whose residue before the craft
+	 *  is above `UCataclysmForge::TemptingFateResidueAbove` (Tempting Fate, Q15, N5). #47 slice F6b. */
+	HighResidueMaterialsReturnedChance,
+
+	/** The residue every forge item craft adds, kept at 0.95 to the power of the points (Tool Maintenance, "-5% CR gained
+	 *  from all crafting actions per point (multiplicative)"). #2741's crafting group, slice C1. */
+	CraftResidueKept,
+
+	/** The same at 0.975 a point, on an item below +6 before the craft (Limited Knowledge). Slice C1. */
+	LowLevelCraftResidueKept,
+
+	/** The same at 0.975 a point, on a craft whose own material is tier 3 or above (Heat Shielding). Slice C1. */
+	RareMaterialCraftResidueKept,
+
+	/** Off the Chaos Stabilizer's share of the residue a craft adds, 0.025 a point (Stable Compounds). Slice C1. */
+	StabilizerShareReduced,
+
+	/** The chance, for each whole 100 of an item's residue before a craft, that the craft leaves it at 0 (Master's
+	 *  Touch). Slice C1. */
+	ResidueResetChancePerHundred,
+
+	/** Days off every forge item craft, one a point (Master Craftsman), after the multipliers. Slice C2. */
+	CraftDaysOff,
+
+	/** Off a forge item craft's days, 1% a point (Industrial Speed). Slice C2. */
+	CraftDaysReduced,
+
+	/** Off a forge item craft's days again, multiplied with the above, 50% (Sovereign's Assembly). Slice C2. */
+	CraftDaysReducedMore,
+
+	/** The chance an affix roll the forge draws is drawn from the top quarter of its band, 3% a point (Precision
+	 *  Crafting). #2741's crafting group, slice C3. */
+	AffixRollTopQuarterChance,
+
+	/** The floor of an affix roll the forge draws, 0.02 a point (Master's Workshop). Slice C3. */
+	AffixRollFloor,
+
+	/** The chance a forge item craft makes one random affix's roll its best, 10% a point (Quality Materials). Slice C3. */
+	AffixRollMaxedChance,
+
+	/** The chance a forge item craft raises one random affix a tier, 1% a point (Apprentice Smith). Slice C4. */
+	AffixTierRaisedChance,
+
+	/** The chance a forge item craft adds one affix, 5% a point (Rough Draft). Slice C4. */
+	AffixAddedChance,
+
+	/** Days off a forge craft on an item with four affixes or more before it, 1 a point (Ancient Techniques). #2741's
+	 *  crafting group, slice C6. */
+	CraftDaysOffOnFullItems,
+
+	/** The share of Worn Residue the Consumption Threshold does not count, 0.05 a point (Residue Protocols). Slice C6. */
+	WornResidueIgnored,
 };
 
 /**
@@ -2785,6 +2928,128 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	int32 MinPoints = 0;
+
+	/**
+	 * The most whole steps the row's scale counts, or 0 for no cap. Copied onto the modifier's
+	 * `FCataclysmStatModifier::ScaleMaxSteps`, which `UCataclysmStatPipeline::ScaledValue` caps by, as an enchantment
+	 * row's is.
+	 *
+	 * SINCE THE DEMONIC TREE REWORK OF 2026-11-24. Issue #1815 kept this sheet without the column, because a passive
+	 * modifier carried no cap and one written here would have been dropped. The Ritualist's Wall of Servants needs one,
+	 * "You take 1% less damage for each minion you have, up to 20% less", and the owner answered that day that the
+	 * per-minion damage reduction is capped at 20%: a cap of 20 steps of 1. The generator refuses a cap on a row with
+	 * no scale, as `ValidateModifier` does.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	int32 ScaleMaxSteps = 0;
+
+	//~ THE PASSIVE ROW PORT OF 2026-11-24 (`plan_death_and_war.md`, slice B28).
+	//
+	// THE THIRTEEN FIELDS BELOW ARE `FCataclysmEnchantmentEffectRow`'S, SAME NAMES AND SAME MEANINGS, read there; this
+	// comment does not restate them. They let a node DO something when an event happens -- restore health on a block,
+	// gain a stack when hit, apply a bleed when retaliation is paid -- and carry a second condition and an offset on
+	// its scale. A row stating `Action`, or scaled by `own_stacks` or `consecutive_hits`, is not read by
+	// `UCataclysmPassiveTree::AccumulateInto`: `UCataclysmPassiveTree::EnchantmentRowsFor` copies it into an
+	// enchantment row and the equipment's refresh hands that to `UCataclysmItemModifiers::AccumulateEnchantmentsInto`,
+	// the builder every worn row goes through, so a passive action and a worn one are built by one piece of code.
+	//
+	// THE ROLL'S COLUMNS ARE NOT HERE (`ValueHigh`, `ScaleStepHigh`, `StackSecondsHigh`, `ConditionValueHigh`): a
+	// passive row is paid per point and rolls nothing. Only `ValuePerPoint` is multiplied by the points; every field
+	// below is the row's whatever the points.
+	//
+	// MARKED `DataTableImportOptional`, the engine's own metadata for a column a CSV may leave out: the importer
+	// (`UDataTable::GetTablePropertyArray`, UE 5.8 DataTable.cpp, under WITH_EDITOR) reports every other struct field
+	// missing from a CSV's header as a problem. The generator always writes all fourteen, and
+	// `tools/tests/test_passive_rows_carry_the_action_columns.py` holds the written header to them; the mark lets a
+	// test build a table from a CSV naming only the columns it uses, as the tables written before the port do.
+
+	/** See `FCataclysmEnchantmentEffectRow::Action`. Empty on a row that changes a stat. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString Action;
+
+	/** See `FCataclysmEnchantmentEffectRow::ActionEvent`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString ActionEvent;
+
+	/** See `FCataclysmEnchantmentEffectRow::FractionOf`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString FractionOf;
+
+	/** See `FCataclysmEnchantmentEffectRow::StackSeconds`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float StackSeconds = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::ScaleOffset`. Read on a stat row too, by `AccumulateInto`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float ScaleOffset = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::EverySeconds`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float EverySeconds = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::EveryNth`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	int32 EveryNth = 0;
+
+	/** See `FCataclysmEnchantmentEffectRow::Condition2`. Read on a stat row too, by `AccumulateInto`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString Condition2;
+
+	/** See `FCataclysmEnchantmentEffectRow::ConditionValue2`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float ConditionValue2 = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::TriggerCooldown`. The generator writes its default, as there. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float TriggerCooldown = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::EventValue`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float EventValue = 0.0f;
+
+	/** See `FCataclysmEnchantmentEffectRow::Ailment`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	FString Ailment;
+
+	/** See `FCataclysmEnchantmentEffectRow::DamageShare`. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float DamageShare = 0.0f;
+
+	/**
+	 * From which point a row with `MinPoints` is paid per point, or 0 for once. The passive row port of 2026-11-24,
+	 * for a node sentence's "per point" inside an "At N points" clause.
+	 *
+	 * 0 KEEPS THE RULE OF ISSUE #1755: from `MinPoints`, `ValuePerPoint` once. A number from 1 up pays `ValuePerPoint`
+	 * for every point from that one on: Tempered Steel's "At 6 points: These bonuses are doubled while at maximum
+	 * Fervour" is `MinPoints` 6 and 1 here (all its points), and Tinkerer's "At 6 points: Gadgets remain active 20%
+	 * longer per point invested beyond 6" is `MinPoints` 7 and 7 here (the seventh and eighth). The generator refuses
+	 * it on a row with no `MinPoints`, and above it. `UCataclysmPassiveTree::PointsPaid` reads it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	int32 PerPointFrom = 0;
+
+	/**
+	 * The chance per point, in percent, that a class resource row pays when its event happens, or 0 for every time.
+	 * The Death trees' slice C6b3 (2026-11-25), ruled for Tear Loose: "a 2% chance per point to give you 1 Fervour".
+	 * A ROW WITH A CHANCE IS PAID PER POINT IN ITS CHANCE AND NOT IN ITS AMOUNT: `UCataclysmPassiveTree::
+	 * EnchantmentRowsFor` multiplies this by the points and leaves `ValuePerPoint` as the amount each success pays. The
+	 * generator refuses it on any row whose `Action` is not `class_resource`, and outside 0 to 100.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	float ChancePercent = 0.0f;
+
+	/**
+	 * The number of points from which a row stops applying, or 0 for no upper limit. The Saboteur's rows of 2026-11-25,
+	 * on the coordinating session's ruling for Durable Modifications' "+3% damage reduction per point
+	 * (multiplicative). At 4 points: This damage reduction is doubled while above 50% maximum Fervour": its 3% a point
+	 * above 50% holds at 1 to 3 points and stops at 4, where 6% a point takes over, so the two never multiply together.
+	 *
+	 * EXCLUSIVE: a row with `MaxPoints` 4 applies at 3 points and not at 4. The generator keeps it above `MinPoints` and
+	 * from 2 up. `UCataclysmPassiveTree::PointsPaid` reads it. AN EMPTY CELL IS NO LIMIT, so a row written by a script
+	 * that does not know the column is paid as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	int32 MaxPoints = 0;
 };
 
 /**
@@ -3053,4 +3318,18 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float DamageShare = 0.0f;
+
+	/**
+	 * The chance, in percent, that a class resource row pays, or 0 for every time. The Death trees' slice C6b3
+	 * (2026-11-25). NOT A COLUMN OF THE ENCHANTMENT EFFECTS SHEET: only a passive row states one, and
+	 * `UCataclysmPassiveTree::EnchantmentRowsFor` copies it here, sized by the points. `tools/generate_datatables.py`
+	 * writes 0, every time, on every row of `game/Data/EnchantmentEffects.csv`, so the table has the column as every
+	 * property of this struct must. See `FCataclysmPoolAction::ChancePercent`.
+	 *
+	 * MARKED `DataTableImportOptional`, as the passive row's copy is: the generated CSV always writes it, and a table a
+	 * test builds from a CSV naming only the columns it uses reads without it, at 0, every time. Window death3-w3 found 45
+	 * such tests refused with "Expected column 'ChancePercent' not found in input" while it was not.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect", meta = (DataTableImportOptional))
+	float ChancePercent = 0.0f;
 };

@@ -531,7 +531,7 @@ struct CATACLYSM_API FCataclysmSavedWalk
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 InfernalBeaconStacks = 0;
 
-	/** Abyssal Rifts: rifts closed. */
+	/** Abyssal Rifts: rifts closed, which since issue #2864 is rifts destroyed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 AbyssalRiftSuccesses = 0;
 
@@ -815,7 +815,8 @@ struct CATACLYSM_API FCataclysmSavedMoraleGroup
  * - The Labrynth's gates open, by the gate's index, and the stream its swaps are drawn on, as it stands, so the swaps
  *   after a load come in the order they would have without it (3c-2, Q2). The seconds to the next swap are a timer and
  *   are not saved (D1). Read only when `bLabrynthSaved`, so an older file keeps the rebuild's gates and stream (Q3);
- * - the voidlings the Void Parasite has attached to the player.
+ * - the voidlings the Void Parasite has attached to the player;
+ * - a Rift's altars on the floor that have fallen, by place (issue #51 slice B1, run record version 19).
  * Every default means not saved, which is what an older file reads as.
  */
 USTRUCT(BlueprintType)
@@ -835,8 +836,22 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bInfectionBloomDestroyed = false;
 
+	/**
+	 * ABYSSAL RIFTS SINCE THE OWNER'S REDESIGN, issue #2864: each rift this floor placed, by its place in the rule's
+	 * list, which the rebuilt floor fills in the same seeded order -- the health it had left, 0 for one killed, and the
+	 * seconds it had stood, which is what makes the hunters it sends stronger. Its hunters are creature records whose
+	 * `RaisedBy` names the rule and whose `RaisedGroup` is the rift's place. The seconds to its next hunter are a timer
+	 * and restart (D1). EMPTY MEANS NOT SAVED: the rebuilt rifts stand as placed.
+	 *
+	 * RUN RECORD VERSION 20. They replace `AbyssalRiftState`, the one rift's state (0 waiting, 1 open, 2 closed), which
+	 * `Migrate_19_to_20` reads and removes: a rift the player had met, open or closed, loaded closed and failed (U2),
+	 * so a state other than 0 is written as every rift a floor can hold killed; 0 as nothing saved.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
-	int32 AbyssalRiftState = 0;
+	TArray<float> AbyssalRiftHealthLeft;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> AbyssalRiftSecondsAlive;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<int32> VeinsDestroyed;
@@ -986,6 +1001,16 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FVector ConsumptionDoubleLocation = FVector::ZeroVector;
+
+	/**
+	 * A Rift's altars on this floor that have fallen, by their place in the order the floor placed them, which a rebuilt
+	 * floor repeats (`ACataclysmDungeonGameMode::PlaceTheRiftAltars`). A load destroys each again with `Destroy`, which
+	 * raises no death notice, so a fallen altar stays fallen and its seal stays open. The altars of the floors above are
+	 * not saved: a floor is rebuilt alone, and every one of them had fallen for the player to stand here. Issue #51 slice
+	 * B1. RUN RECORD VERSION 19: `Migrate_18_to_19` writes none fallen.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> RiftAltarsDestroyed;
 };
 
 /**
@@ -1076,7 +1101,11 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * buying rules were written (`UCataclysmEmpireTree`). The banked points are here because the game banks them: a
  * defeated dungeon's award, since issue #52's first slice.
  *
- * VERSION 7 SINCE 2026-11-22. The account counts the tier 1 gold spent on city upgrades across runs
+ * VERSION 8 SINCE 2026-11-24. The account counts the tier 1 gold spent at the forge across runs
+ * (`GoldSpentAtTheForge`, #47 slice F6a), which Treasury Synergy reads, and `Migrate_7_to_8` writes 0 into an account
+ * written at 7: the count starts at this build, as Reinvestment's did (Q5, as V5).
+ *
+ * VERSION 7 FROM 2026-11-22. The account counts the tier 1 gold spent on city upgrades across runs
  * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), which Reinvestment reads, and `Migrate_6_to_7` writes 0 into an
  * account written at 6: the count starts at this build (V5).
  *
@@ -1110,7 +1139,7 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 7;
+	static constexpr int32 SchemaVersionNow = 8;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1178,6 +1207,15 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	double GoldSpentOnCityUpgrades = 0.0;
+
+	/**
+	 * The tier 1 gold spent at the forge by the mode's characters, across runs: each done craft's price charged over its
+	 * run's gold scale, UNROUNDED, a double as `GoldSpentOnCityUpgrades` is (#47 slice F6a, Q5, as V4 and V20). Treasury
+	 * Synergy reads it; it is counted whether the node is held or not. `UCataclysmGameInstance::GoldSpentAtTheForgeBy`
+	 * reads it. A Solo Self-Found character's is in its character record. RECORD VERSION 8.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double GoldSpentAtTheForge = 0.0;
 
 	/**
 	 * What the partition's empire upgrade tree has bought: each node's points, and which option each centre capstone
@@ -1308,6 +1346,15 @@ struct CATACLYSM_API FCataclysmPlayerBuild
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
 
+	/**
+	 * What each other key held by default, as `ACataclysmPlayerState::GetRememberedDefaults` holds them. Issue #837
+	 * slice 1, ruled by the coordinating session on 2026-11-24: a double holds the keys the player actually had, so its
+	 * fill reads these after the choices, as the player's does. In the character record from its version 17
+	 * (`Migrate_16_to_17` writes an empty list into a held build that lacks it).
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	TArray<FCataclysmSkillChoice> RememberedDefaults;
+
 	/** Every point spent in the passive trees, as the player state holds it. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
 	FCataclysmPassiveAllocation PassiveAllocation;
@@ -1370,13 +1417,25 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 15 SINCE 2026-11-24. An item records the gear level and the difficulty tier it arrived at
+	 * 18 SINCE 2026-11-25. #47 slice F6a: a Solo Self-Found character counts the tier 1 gold it has spent at the
+	 * forge across runs (`GoldSpentAtTheForge`), which Treasury Synergy reads, and `Migrate_17_to_18` writes 0.
+	 *
+	 * 17 FROM 2026-11-24. Issue #837 slice 1: what each key held by default after the last fill,
+	 * `RememberedDefaults`, so a loaded character's keys stay as they were (the owner's Q1, "Approve all three
+	 * (Recommended)"). `Migrate_16_to_17` writes an empty list, which is what a character written before it held.
+	 *
+	 * 16 FROM 2026-11-24. Issue #2849: the 48 carried slots hold gear only, and the carried crafting materials and gems
+	 * are two lists of their own, `CarriedMaterials` and `CarriedGems`, one stack per material and one per gem and
+	 * rarity. `Migrate_15_to_16` moves each stack out of `CarriedSlots` into its list and blanks its cell, so every
+	 * piece of gear keeps its cell. The owner's ruling of that day: "One cell per kind, no limit (Recommended)".
+	 *
+	 * 15 FROM 2026-11-24. An item records the gear level and the difficulty tier it arrived at
 	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2), so a dismantle refunds only the upgrade
 	 * levels the player paid for. `Migrate_14_to_15` writes -1 and 0, "not known", on every item: nothing recorded it
 	 * before. A VERSION AND NOT A DEFAULT, ruled by the coordinating session on 2026-11-24, by
 	 * `game/Tests/SaveFixtures/README.md`: from issue #1472 on, a field added to a record takes a version.
 	 *
-	 * 14 SINCE 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
+	 * 14 FROM 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
 	 * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), as the account record does at its version 7. `Migrate_13_to_14`
 	 * writes 0: the count starts at this build (V5).
 	 *
@@ -1432,7 +1491,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 15;
+	static constexpr int32 SchemaVersionNow = 18;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1553,6 +1612,14 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	double GoldSpentOnCityUpgrades = 0.0;
+
+	/**
+	 * A Solo Self-Found character's own count of the tier 1 gold it has spent at the forge across runs:
+	 * `UCataclysmAccountSave::GoldSpentAtTheForge` for a character whose gold is its own. #47 slice F6a;
+	 * `ACataclysmPlayerState::GetOwnGoldSpentAtTheForge`. ZERO AND UNUSED FOR EVERY OTHER CHARACTER. VERSION 18.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double GoldSpentAtTheForge = 0.0;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the
@@ -1727,6 +1794,20 @@ public:
 	TArray<FCataclysmCarriedSlot> CarriedSlots;
 
 	/**
+	 * The carried crafting materials, the materials tab: one entry per material, its `Material` and `Quantity` set.
+	 * Version 16, issue #2849. `UCataclysmInventoryComponent::GetMaterialStacks` holds exactly this list.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> CarriedMaterials;
+
+	/**
+	 * The carried gems, the gems tab: one entry per gem and rarity, its `Gem`, `GemRarity` and `Quantity` set. Version
+	 * 15, issue #2849. `UCataclysmInventoryComponent::GetGemStacks` holds exactly this list.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> CarriedGems;
+
+	/**
 	 * What the character is wearing: one entry per occupied slot, each naming
 	 * its slot. See `FCataclysmWornItem` for why by name. Since 2026-09-24.
 	 *
@@ -1783,10 +1864,24 @@ public:
 	 *
 	 * ONE FIELD AND NO VERSION BUMP, ruled 2026-10-25 (Q6): an empty list is the default and means no choice, the
 	 * default fill, so a file written before it reads as the character it always was (section 5 of
-	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back through `AssignSkill` (#753).
+	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back AS DATA, before the restore's one
+	 * fill (`ACataclysmPlayerState::RestoreSkillChoices`, issue #837 slice 1); until then it went through `AssignSkill`
+	 * after the fill, which dropped a choice whose weapon was off.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/**
+	 * What each key held by default after the last fill: `ACataclysmPlayerState::GetRememberedDefaults`. Issue #837
+	 * slice 1, the owner's Q1 of 2026-11-24 ("the keys stay as they are"). Put back with the choices, as data, before the
+	 * restore's one fill, so a loaded character's keys are the keys it was saved with.
+	 *
+	 * VERSION 17 (`Migrate_16_to_17` writes an empty list): from issue #1472 on, a field added to a record takes a
+	 * version (`game/Tests/SaveFixtures/README.md`). Empty is what a character written before it holds: its first fill
+	 * after loading remembers the default it showed before.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmSkillChoice> RememberedDefaults;
 
 	/**
 	 * Each skill's total experience, by skill row: `ACataclysmPlayerState::GetSkillExperienceRecord`. Issue #2764,
@@ -1931,12 +2026,33 @@ public:
 	 * "not known", on every ground item: nothing recorded it before. A version and not a default, ruled by the
 	 * coordinating session on 2026-11-24, as the character record's 15.
 	 *
+	 * 19 SINCE 2026-11-24. A Rift's altars that have fallen on the floor being fought on
+	 * (`FCataclysmSavedFloorRuleState::RiftAltarsDestroyed`, issue #51 slice B1), so a load does not stand them up
+	 * again. `Migrate_18_to_19` writes an empty list into the floor's rule state: no altar stood in any dungeon before.
+	 *
 	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
+	 *
+	 * 20 SINCE 2026-11-25. Issue #2864 (written as 18 on 2026-11-24 and renumbered when it was rebuilt on development), the owner's redesign of Abyssal Rifts: a floor holds several rifts the player
+	 * can kill, so the floor's rule state carries each rift's health left and seconds stood
+	 * (`FCataclysmSavedFloorRuleState::AbyssalRiftHealthLeft`, `AbyssalRiftSecondsAlive`) where it carried one rift's
+	 * state (`AbyssalRiftState`). `Migrate_19_to_20` removes the state and writes, for a state other than 0 -- a rift
+	 * the player had met, which loaded closed and failed -- every rift a floor can hold as killed, and for 0 nothing.
+	 *
+	 * 21 SINCE 2026-11-25. Issue #51 slice B4, the War quest: a Siege's growth counts the days on the city it stands on
+	 * now, so each dungeon carries the day it reached that city (`FCataclysmDungeon::ArrivedDay`, `INDEX_NONE` until
+	 * it first moves), and each city the Cataclysm whose hit felled it (`FCataclysmCity::FellTo`), which decides
+	 * whether a fall was to War. `Migrate_20_to_21` writes `INDEX_NONE` into every dungeon -- growth then counts from
+	 * `SpawnedDay`, as it did -- and `None` into every city: what felled a city before was not recorded.
+	 *
+	 * 22 SINCE 2026-11-25. Issue #51 slice B5, the Death quest: an Abomination lair's boss grows with the cities fallen
+	 * when the lair appeared, so each dungeon carries that count (`FCataclysmDungeon::CitiesFallenBefore`, 0 for a
+	 * dungeon that is not a lair). `Migrate_21_to_22` writes 0 into every dungeon: no version 21 run recorded it, and a
+	 * lair loaded from one has an Abomination of the base strength.
 	 */
-	static constexpr int32 SchemaVersionNow = 18;
+	static constexpr int32 SchemaVersionNow = 22;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

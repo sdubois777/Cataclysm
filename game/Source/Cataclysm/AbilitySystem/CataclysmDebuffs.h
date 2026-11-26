@@ -143,6 +143,37 @@ public:
 	static int32 CountOnActor(const AActor* Actor);
 
 	/**
+	 * Above nought, each debuff on its holder counts twice for everything that
+	 * counts the debuffs on it. The Masochist's Vessel of Plagues, reworked by
+	 * the project owner's approval of 2026-11-24: "Debuffs on you last 50%
+	 * longer, and each debuff on you counts twice for everything that counts the
+	 * debuffs on you." A yes or a no, with no gameplay attribute.
+	 */
+	static const TCHAR* CountTwiceStat;
+
+	/**
+	 * Whether this character holds `CountTwiceStat`. Vessel of Plagues.
+	 *
+	 * READ FROM THE RECORDED LINE WITH NO STATE IN HAND, AND NOT THROUGH
+	 * `StatForSkill`, because its one caller is
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions`, which is what
+	 * `StatForSkill` calls: asking the pipeline here would re-enter it. The
+	 * cost is that a row stating the switch under a condition would be refused,
+	 * since no state is handed over; the one row that states it carries none.
+	 */
+	static bool CountsTwiceOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The debuffs this character is carrying AS THE NODES THAT COUNT THEM SEE
+	 * THEM: `CountOn`, twice over for a holder of Vessel of Plagues. Read by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` for the pipeline's
+	 * `debuffs_carried` scale, which is how every node paying per debuff on you
+	 * counts them. `CountOn` stays the plain count of distinct debuffs, which
+	 * the spreading nodes choose from and the console prints.
+	 */
+	static int32 CountCarriedOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Cleanse a character: every timed effect on it that grants a tag under `DebuffRoots` and that somebody else put
 	 * there is removed, and the cleanse is announced on `UCataclysmCombatEvents::OnCleansed` so the dungeon game mode
 	 * can clear the stacks whose rows say they are cleansed. Ruled by the coordinating session under the owner's
@@ -250,6 +281,45 @@ public:
 	 * disagreement that matters.
 	 */
 	static FGameplayTag BleedTag();
+
+	/**
+	 * Whether `Carrier` carries a Poison or a Bleed whose effect names `Applier` as its instigator: the condition
+	 * `target_carries_your_poison_or_bleed`, the Shadow's Death's Patience. The Death trees' slice C4a (2026-11-25). The
+	 * same query and record `UCataclysmRisenImps::CarriesCurseLaidBy` reads for a curse: each running effect granting
+	 * `Keyword.DoT.Poison` or `Keyword.DoT.Bleed`, and its instigator. False with either missing.
+	 */
+	static bool CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
+	 * Whether `Carrier` carries a Poison whose effect names `Applier` as its instigator, a Bleed not counting: the
+	 * condition `target_carries_your_poison`, the Shadow's Venomed Prey. The Death trees' slice C6b1 (2026-11-25).
+	 */
+	static bool CarriesPoisonLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
+	 * The damage `Applier`'s Bleeds on `Carrier` have left to deal, held to what a Bleed's movement still allows
+	 * (`UCataclysmSkillEffects::RemainingDamageOverTime`). Blood Debt's figure, the Death trees' slice C4c2 (2026-11-25).
+	 */
+	static float BleedLeftLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
+	 * The strongest enemy of `Asker`'s within `RadiusCm` of `Of`, `Of` itself and the dead left out: the highest rarity
+	 * rung, then the most current health, then the nearest. As ruled for Blood Debt, the Death trees' slice C4c2
+	 * (2026-11-25). Null when there is none.
+	 */
+	static AActor* StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm,
+									  const TArray<const AActor*>& Excluding = TArray<const AActor*>());
+
+	/** How far Blood Debt looks from the body: "the strongest enemy within 10 metres". */
+	static constexpr float BloodDebtReachCm = 1000.0f;
+
+	/**
+	 * Blood Debt: the damage `Applier`'s Bleed on `Dead` had left, laid on the strongest enemy within
+	 * `BloodDebtReachCm` of it as a Bleed of `Applier`'s over `Seconds`, unscaled. As a Bleed, so "the stronger
+	 * application wins" holds: on an enemy already carrying a stronger Bleed of `Applier`'s it only refreshes, as ruled.
+	 * Answers whether a Bleed was laid. The Deathmark half is not built.
+	 */
+	static bool PassBleedLeftToStrongest(AActor* Applier, AActor* Dead, float Seconds);
 
 	/**
 	 * How many seconds of movement one bleed ticks through before it stops: "ticks only while the affected target is
@@ -463,6 +533,48 @@ public:
 	static int32 HoldAppliedNearbyStep(AActor* Character, float StepSeconds);
 
 	/**
+	 * `cripple_and_weaken_spread_on_death_metres`: the radius, in metres, within
+	 * which a Cripple or a Weaken this character applied passes on when its
+	 * carrier dies. The Ravager tree rework of 2026-11-24, Deeper Hurt: "When an
+	 * enemy you have Crippled or Weakened dies, its Cripple and Weaken pass to
+	 * the nearest enemy within 1 metre per point." Flat, a metre a point; above
+	 * nought is held. No gameplay attribute, so
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* SpreadOnDeathMetresStat;
+
+	/**
+	 * Pass each Cripple and Weaken `Dying` carries to the enemy nearest its body,
+	 * for every applier holding `SpreadOnDeathMetresStat`, within that applier's
+	 * radius. The Ravager tree rework of 2026-11-24, Deeper Hurt.
+	 *
+	 * ONLY WHAT A HOLDER APPLIED: an effect is matched by its instigator, the
+	 * rule `HoldAppliedNearbyStep` keeps, so a Cripple from anyone without the
+	 * node dies with its carrier.
+	 *
+	 * THE NEAREST ENEMY OF THE APPLIER, measured from the body, never the body
+	 * itself and never one already carrying that effect: a pass is spent on an
+	 * enemy it is new to, the ruling of 2026-10-06 for an ailment that spreads
+	 * from the dying. Cripple and Weaken are passed separately, so they may land
+	 * on two different enemies only when the nearer one already carries one of
+	 * them.
+	 *
+	 * AT THE FIGURE THE APPLICATION STATED, so a Cripple strengthened by chance
+	 * past certainty passes as strong as it was, and FOR THE EFFECT'S OWN
+	 * DESIGNED DURATION, the rule `UCataclysmSkillEffects::CopyDebuffsTo` keeps
+	 * for a copy; the applier's duration rows are not read again, as
+	 * `UCataclysmAilments` says of every spread. CREDITED TO THE APPLIER, so the
+	 * passed effect is still "yours" and passes on again when its new carrier
+	 * dies.
+	 *
+	 * CALLED FROM THE ENEMY'S DEATH, outside the killer's block, because the
+	 * sentence asks who applied the effect and not who landed the last blow.
+	 *
+	 * @return how many effects were passed
+	 */
+	static int32 PassCrippleAndWeakenOnDeath(AActor* Dying);
+
+	/**
 	 * Ground Down's radius in metres and its share of both speeds, the
 	 * `Ravager_capstone_100` option 1 stats its row will carry. Issue #1515:
 	 * "Enemies within 4 metres of you have 15% reduced Movement Speed and 15%
@@ -562,9 +674,11 @@ public:
 						 bool bIsASpreadCopy);
 
 	/**
-	 * The percent less this character deals now for the debuffs it carries, 0
-	 * to 100: nought for an ability system that is not this project's. Read by
-	 * `UCataclysmSkillEffects::WeaponDamageOf`.
+	 * The percent less this character deals now for the debuffs it carries and
+	 * the Siphons it is in, 0 to 100, the two multiplied: nought for an ability
+	 * system that is not this project's. Read by
+	 * `UCataclysmSkillEffects::WeaponDamageOf`. The Siphon's share since the
+	 * Death trees' slice C2 (2026-11-25).
 	 */
 	static float DealLessPercentOn(const UAbilitySystemComponent* Carrier);
 

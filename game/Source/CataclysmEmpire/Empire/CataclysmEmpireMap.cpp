@@ -1055,6 +1055,7 @@ bool UCataclysmEmpireMap::Retake(int32 CityId)
 	// original is read as the maximum with the tree, as the half was (issue #2741 slice 3b).
 	const float Fraction = TreeBonuses.RetakeFraction > 0.0f ? TreeBonuses.RetakeFraction : RetakenFraction;
 	City->bFallen = false;
+	City->FellTo = ECataclysmType::None; // Standing again, so felled by nobody. Issue #51 slice B4.
 	City->Defence = EffectiveMaxDefence(*City) * Fraction;
 
 	// THE POPULATION WITH CIVIC PRIDE, held at the maximum: 0.75 x 1.5 would otherwise give 112.5% (V11). The defence is

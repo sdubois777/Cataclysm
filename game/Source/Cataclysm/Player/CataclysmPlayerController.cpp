@@ -14,9 +14,13 @@
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmEmpireTreeWidget.h"
 #include "Interface/CataclysmForgeWidget.h"
+#include "Interface/CataclysmInventoryScreen.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
+#include "Interface/CataclysmPauseScreenWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
+#include "Interface/CataclysmSkillBar.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Interface/CataclysmLootFilterWidget.h"
 #include "Interface/CataclysmMerchantWidget.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -438,6 +442,26 @@ bool ACataclysmPlayerController::PawnCannotWalk() const
 
 void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const bool bGamePaused)
 {
+	// WHILE THE GAME IS PAUSED THE PLAYER'S FRAME TOUCHES NOTHING IN THE WORLD. The project owner, 2026-11-24:
+	// "Offline and online, pause is a must". A player controller ticks when the world is paused, so that input reaches
+	// it (`APlayerController::TickActor` runs `TickPlayerInput` on a pause frame), and this function is part of that
+	// tick. Everything below it acts on the world: the sweep takes materials and souls, a pending attack swings, a
+	// pending pick-up is taken, Shoulder Through pushes, fear walks the pawn. So a paused frame only lets go of held
+	// skill keys, so that none fires on the far side of the pause, and takes the ground hover's tooltip down, since the
+	// cursor is over the pause screen. `Cataclysm.Pause.APausedFrameTakesNoMaterialAndAnUnpausedOneDoes` holds it.
+	const bool bThePlayersFrameActs = !bGamePaused;
+	if (!bThePlayersFrameActs)
+	{
+		if (UCataclysmAbilitySystemComponent* PausedAbilities = GetCataclysmAbilitySystem())
+		{
+			PausedAbilities->ClearAbilityInput();
+		}
+		bSteeredByAKeyThisFrame = false;
+		RefreshGroundItemHover();
+		Super::PostProcessInput(DeltaTime, bGamePaused);
+		return;
+	}
+
 	// A STUN HAS TO CANCEL MOVEMENT ALREADY UNDER WAY, NOT ONLY REFUSE NEW
 	// MOVEMENT. A click-to-move order hands the pawn to the path following
 	// component, which keeps walking the route with no further input, so a
@@ -569,19 +593,21 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	// THIS FUNCTION IS `PostProcessInput`, WHICH IS WHY THE ORDERING WORKS: the
 	// engine runs it after the frame's input has been processed, so `Input_Move`
 	// has already had its say and the flag describes this frame rather than the
-	// last one. Nothing above returns early, so it is never left set.
+	// last one. Nothing above returns early but the paused frame, which clears it
+	// too, so it is never left set.
 	bSteeredByAKeyThisFrame = false;
 
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
-		if (bGamePaused || bStunned)
+		if (bStunned)
 		{
-			// Menus and the empire layer's day clock both pause the world. A key
-			// held across the pause must not activate on the far side of it, and
-			// a key held across a stun must not activate on the far side of the
-			// stun either -- the design's stun means the target cannot act at
-			// all, so a skill fired the instant it ends was not the player
-			// reacting.
+			// A key held across a stun must not activate on the far side of the
+			// stun -- the design's stun means the target cannot act at all, so a
+			// skill fired the instant it ends was not the player reacting. A key
+			// held across a pause is let go of the same way, by the paused frame
+			// at the top of this function. This said "menus and the empire
+			// layer's day clock both pause the world" until 2026-11-24, when
+			// nothing in the game paused it: the pause screen is the first.
 			ASC->ClearAbilityInput();
 		}
 		else
@@ -628,6 +654,186 @@ bool ACataclysmPlayerController::IsAFullScreenOpen() const
 		}
 	}
 	return false;
+}
+
+bool ACataclysmPlayerController::InputKey(const FInputKeyEventArgs& Params)
+{
+	// ESC IS THIS GAME'S, AND ONLY A PRESS ACTS. A release and a repeat are taken too, so Enhanced Input, which binds
+	// nothing to Esc, never sees half of a press. The header says why Esc is read here and not bound as an action.
+	if (Params.Key == EKeys::Escape)
+	{
+		if (Params.Event == IE_Pressed)
+		{
+			PressEscape();
+		}
+		return true;
+	}
+	return Super::InputKey(Params);
+}
+
+ECataclysmEscape ACataclysmPlayerController::EscapeDoes(const bool bAScreenIsOpen, const bool bGameIsPaused)
+{
+	// THE PAUSE SCREEN IS ON TOP OF EVERYTHING, so a paused game resumes even when a console command opened a screen
+	// under it; that screen is still open afterwards, and the next Esc closes it.
+	if (bGameIsPaused)
+	{
+		return ECataclysmEscape::Resumed;
+	}
+	// ESC CLOSES WHAT IS OPEN FIRST, AND ONLY ESC WITH NOTHING OPEN PAUSES. The brief of 2026-11-24 for the owner's
+	// "pause is a must"; nothing in the game read Esc at all until then.
+	if (bAScreenIsOpen)
+	{
+		return ECataclysmEscape::ClosedScreens; // Esc's first job: what is open closes.
+	}
+	return ECataclysmEscape::Paused;
+}
+
+ECataclysmEscape ACataclysmPlayerController::PressEscape()
+{
+	switch (EscapeDoes(HasAScreenEscCloses(), IsPaused()))
+	{
+		case ECataclysmEscape::Resumed:
+			ResumeTheGame();
+			return ECataclysmEscape::Resumed;
+		case ECataclysmEscape::ClosedScreens:
+			CloseEveryScreenEscCloses();
+			return ECataclysmEscape::ClosedScreens;
+		default:
+			break;
+	}
+	return PauseTheGame() ? ECataclysmEscape::Paused : ECataclysmEscape::Refused;
+}
+
+bool ACataclysmPlayerController::PauseTheGame()
+{
+	// THE ENGINE'S OWN PAUSE, through the game mode, which holds the list of what is pausing it and sets the world's
+	// pauser (`AGameModeBase::SetPause`). It refuses on a client, which has no game mode to ask; online play, which is
+	// where that would matter, does not exist yet, and its rule is in the design document.
+	if (!IsPaused())
+	{
+		SetPause(/*bPause=*/true);
+	}
+	if (!IsPaused())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("The game could not be paused: there is no game mode here to ask, or it refused (a client cannot "
+					"pause)."));
+		return false;
+	}
+
+	// WANTED FIRST, AND THEN MADE: a test world has no local player and so no screen, and the record is what it reads.
+	bPauseScreenWanted = true;
+	ShowPauseScreen();
+	UE_LOG(LogCataclysm, Log, TEXT("The game is paused. Esc, or the pause screen's Resume, lets it run again."));
+	return true;
+}
+
+bool ACataclysmPlayerController::ResumeTheGame()
+{
+	bPauseScreenWanted = false;
+	HidePauseScreen();
+	if (IsPaused())
+	{
+		SetPause(/*bPause=*/false);
+	}
+
+	// THE PLAYING MODE, WITH THE GAME VIEWPORT FOCUSED AGAIN. A click on Resume can leave the button holding the
+	// keyboard's focus as the screen leaves the viewport, and the playing mode's focus is the game's. Issue #1015's
+	// one mode in one place.
+	ApplyPlayingInputMode();
+
+	const bool bRuns = !IsPaused();
+	UE_LOG(LogCataclysm, Log, TEXT("%s"),
+		   bRuns ? TEXT("The game runs again.") : TEXT("The pause screen is down and the game is still paused: something "
+													   "other than the pause screen holds the pause."));
+	return bRuns;
+}
+
+bool ACataclysmPlayerController::HasAScreenEscCloses() const
+{
+	return IsAFullScreenOpen() || (ChoicePanel && ChoicePanel->IsInViewport()) || bScreenOpenForTest;
+}
+
+void ACataclysmPlayerController::CloseEveryScreenEscCloses()
+{
+	// EACH THROUGH THE FUNCTION ITS OWN KEY OR BUTTON CALLS, which closes an open screen, so Esc and the key cannot
+	// differ: the inventory lets go of whatever is on the cursor, for one. The playing input mode is put back last.
+	if (InventoryScreen && InventoryScreen->IsInViewport())
+	{
+		Input_ToggleInventory();
+	}
+	if (CharacterCreationScreen && CharacterCreationScreen->IsInViewport())
+	{
+		ToggleCharacterCreation();
+	}
+	if (PassiveTreeScreen && PassiveTreeScreen->IsInViewport())
+	{
+		TogglePassiveTree();
+	}
+	if (CharacterSheetScreen && CharacterSheetScreen->IsInViewport())
+	{
+		ToggleCharacterSheet();
+	}
+	if (SkillAssignmentScreen && SkillAssignmentScreen->IsInViewport())
+	{
+		ToggleSkillAssignment();
+	}
+	if (LootFilterScreen && LootFilterScreen->IsInViewport())
+	{
+		ToggleLootFilterScreen();
+	}
+	if (MerchantScreen && MerchantScreen->IsInViewport())
+	{
+		ToggleMerchant();
+	}
+
+	// THE EMPIRE'S FOUR TOGETHER -- the map, a city, the upgrade tree and the forge -- as a walk closes them.
+	CloseEmpireScreens();
+
+	// THE CHOICE PANEL'S CLOSE IS ITS "LEAVE": it chooses nothing, and a question it was asking ends unanswered.
+	if (ChoicePanel && ChoicePanel->IsInViewport())
+	{
+		ChoicePanel->Close();
+	}
+
+	bScreenOpenForTest = false;
+	ApplyPlayingInputMode();
+}
+
+void ACataclysmPlayerController::ShowPauseScreen()
+{
+	// ONLY THE MACHINE THE PLAYER IS SITTING AT HAS A SCREEN TO DRAW ON. A test world has no local player, and
+	// `CreateWidget` refuses a controller without one.
+	if (!GetLocalPlayer())
+	{
+		return;
+	}
+
+	if (!PauseScreen)
+	{
+		PauseScreen = CreateWidget<UCataclysmPauseScreenWidget>(this, UCataclysmPauseScreenWidget::StaticClass());
+		if (!PauseScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The pause screen could not be created. The game is paused all the same, and Esc resumes it."));
+			return;
+		}
+		PauseScreen->SetResumer(this);
+	}
+
+	if (!PauseScreen->IsInViewport())
+	{
+		PauseScreen->AddToViewport(UCataclysmPauseScreenWidget::PauseScreenZOrder);
+	}
+	ApplyPlayingInputMode();
+}
+
+void ACataclysmPlayerController::HidePauseScreen()
+{
+	if (PauseScreen && PauseScreen->IsInViewport())
+	{
+		PauseScreen->RemoveFromParent();
+	}
 }
 
 void ACataclysmPlayerController::RefreshFloorMapSeen()
@@ -706,9 +912,11 @@ void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 	// STUN CHECK. Ruled 2026-10-16 (S7): placing is free and nothing refuses it,
 	// a stun included; only the gadget's cast can be refused. A slot that is not
 	// converted answers false and goes on below as before.
+	// AND THE POINT UNDER THE CURSOR GOES WITH IT, where every gadget moves when there is no room for another (V5g, G1).
 	if (UCataclysmAbilitySystemComponent* Placing = GetCataclysmAbilitySystem())
 	{
-		if (Placing->PressOfASkillGadgetSlot(SlotTag))
+		FVector Aim;
+		if (Placing->PressOfASkillGadgetSlot(SlotTag, AimPointUnderCursor(Aim) ? &Aim : nullptr))
 		{
 			return;
 		}
@@ -1145,12 +1353,41 @@ void ACataclysmPlayerController::ToggleSkillAssignment()
 		return;
 	}
 
-	// NO PAUSE (ruled Q2): no screen in this game pauses, so creatures go on while the player chooses.
+	// NO PAUSE (ruled Q2): creatures go on while the player chooses. The pause screen, Esc with nothing open, is the
+	// one screen that pauses (2026-11-24).
 	ApplyPlayingInputMode();
 
 	// REFRESHED ON EVERY OPENING: the worn weapons, and so the pool, can have changed since it was last closed.
 	SkillAssignmentScreen->Refresh();
 	SkillAssignmentScreen->AddToViewport();
+}
+
+ECataclysmAbilitySlot ACataclysmPlayerController::SkillBoxKeyAt(const FVector2D& Point, const FVector2D& Viewport) const
+{
+	// NO BAR, NO BOX: the bar can be switched off, and a pawn with no slots draws none.
+	if (!UCataclysmSkillBar::Enabled() || Viewport.X <= 0.0f || Viewport.Y <= 0.0f)
+	{
+		return ECataclysmAbilitySlot::None;
+	}
+	return UCataclysmSkillBar::KeyUnder(UCataclysmSkillBar::Read(GetPawn()), Point, Viewport.X, Viewport.Y);
+}
+
+bool ACataclysmPlayerController::OpenSkillAssignmentOn(ECataclysmAbilitySlot Key)
+{
+	// OPENED IF CLOSED, NEVER CLOSED: a second click on the bar with the screen open selects that key instead.
+	if (!SkillAssignmentScreen || !SkillAssignmentScreen->IsInViewport())
+	{
+		ToggleSkillAssignment();
+	}
+	if (!SkillAssignmentScreen || !SkillAssignmentScreen->IsInViewport())
+	{
+		return false;
+	}
+	if (UCataclysmWeaponSkills::IsChoosableSlot(Key))
+	{
+		SkillAssignmentScreen->SelectSlot(Key);
+	}
+	return true;
 }
 
 void ACataclysmPlayerController::Input_ToggleLootFilterScreen()
@@ -1189,7 +1426,7 @@ void ACataclysmPlayerController::ToggleLootFilterScreen()
 		return;
 	}
 
-	// NO PAUSE: no screen in this game pauses.
+	// NO PAUSE: no screen in this game pauses but the pause screen itself (2026-11-24).
 	ApplyPlayingInputMode();
 	LootFilterScreen->Refresh();
 	LootFilterScreen->AddToViewport();
@@ -1465,6 +1702,13 @@ FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
 
 bool ACataclysmPlayerController::CursorIsOverInterface() const
 {
+	// THE PAUSE SCREEN COVERS THE WHOLE VIEWPORT, so while it is wanted the cursor is over the interface wherever it
+	// is: no creature under it is described and no drop's tooltip is shown. 2026-11-24.
+	if (bPauseScreenWanted)
+	{
+		return true;
+	}
+
 	if (!InventoryScreen || !InventoryScreen->IsInViewport())
 	{
 		return false;
@@ -1512,18 +1756,18 @@ bool ACataclysmPlayerController::InventoryPressTarget(
 void ACataclysmPlayerController::ReportInventoryPress(
 	ECataclysmWearResult Result) const
 {
-	switch (Result)
+	// THE SCREEN'S LINE DECIDES WHAT IS SAID, and the log says the same. Issue
+	// #837, slice 3. A press that did what was asked takes the last line away,
+	// so a refusal is never left up beside the change that followed it.
+	const FString Line = UCataclysmInventoryScreen::PressLineFor(Result);
+	if (!Line.IsEmpty())
 	{
-	case ECataclysmWearResult::Worn:
-	case ECataclysmWearResult::Swapped:
-	case ECataclysmWearResult::TakenOff:
-	case ECataclysmWearResult::PickedUp:
-	case ECataclysmWearResult::PutDown:
-	case ECataclysmWearResult::Exchanged:
-		return;
-	default:
-		UE_LOG(LogCataclysm, Log, TEXT("%s"),
-			   *UCataclysmWearing::Explain(Result));
+		UE_LOG(LogCataclysm, Log, TEXT("%s"), *Line);
+	}
+	if (InventoryScreen)
+	{
+		const UWorld* World = GetWorld();
+		InventoryScreen->ShowPressLine(Line, World ? World->GetTimeSeconds() : 0.0);
 	}
 }
 
@@ -1544,6 +1788,25 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 
 	UCataclysmInventoryComponent* Bag = Wearer->GetInventory();
 
+	// A TAB'S NAME SHOWS THAT TAB, issue #2849: gear, crafting materials or gems. Nothing is picked up or put down by it,
+	// and an item already on the cursor stays there. The materials and gems tabs take no other press: a stack is never
+	// picked up, and dropping one is not offered, because the 15 m automatic collection would take it straight back (Q9,
+	// revised 2026-11-22).
+	ECataclysmInventoryTab Tab = ECataclysmInventoryTab::Gear;
+	if (InventoryScreen->TabUnderCursor(Point, Tab))
+	{
+		InventoryScreen->ShowTab(Tab);
+		return;
+	}
+
+	// AND THE GEMS TAB'S "PREVIOUS" AND "NEXT" TURN ITS PAGE: the coordinating session, 2026-11-22.
+	int32 PageStep = 0;
+	if (InventoryScreen->GemPagerUnderCursor(Point, PageStep))
+	{
+		InventoryScreen->TurnGemPage(PageStep);
+		return;
+	}
+
 	// THE CARRIED GRID FIRST. The two panels cannot overlap, so the order only
 	// decides which is asked first and not which answers.
 	const int32 Carried = InventoryScreen->CarriedSlotUnderCursor(Point);
@@ -1561,11 +1824,28 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 	const ECataclysmGearSlot Worn = InventoryScreen->GearSlotUnderCursor(Point);
 	if (Worn != ECataclysmGearSlot::Count)
 	{
-		// A WORN PIECE COMES OFF ONTO THE CURSOR. Putting one back ON with a
-		// left press is not defined by docs/Inventory_Screen_Design.md, whose
-		// table gives left only "pick it up off the body the same way", so a
-		// press on a gear slot while holding something is refused rather than
-		// given behaviour nobody chose.
+		// HOLDING AN ITEM, THE PRESS WEARS IT IN THIS SLOT, and what was there
+		// goes into the bag. The owner's Q5 of 2026-11-24 (issue #837 comment
+		// 7150408605), which docs/Inventory_Screen_Design.md's table now states;
+		// until then this press was refused because no rule had been chosen. A
+		// crossing of the Consumption Threshold is asked about first, about this
+		// slot, as the right press asks it.
+		if (Bag && Bag->IsHolding())
+		{
+			const int32 HeldCell = Bag->HeldSlot();
+			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+			const ECataclysmWearResult Result = UCataclysmWearing::WearHeldInto(
+				Bag, Wearer->GetEquipment(), Worn, Went);
+			if (Result == ECataclysmWearResult::WouldCrossConsumptionThreshold)
+			{
+				AskBeforeWearing(Wearer, HeldCell, Worn);
+				return;
+			}
+			ReportInventoryPress(Result);
+			return;
+		}
+
+		// HOLDING NOTHING, A WORN PIECE COMES OFF ONTO THE CURSOR.
 		ReportInventoryPress(UCataclysmWearing::PickUpWorn(
 			Bag, Wearer->GetEquipment(), Worn));
 		return;
@@ -1622,7 +1902,7 @@ void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
 			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went);
 		if (Result == ECataclysmWearResult::WouldCrossConsumptionThreshold)
 		{
-			AskBeforeWearing(Wearer, Carried);
+			AskBeforeWearing(Wearer, Carried, ECataclysmGearSlot::Count);
 			return;
 		}
 		ReportInventoryPress(Result);
@@ -1689,6 +1969,26 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 	// anything drawn on the canvas, so without this a click on a grid cell would
 	// send the character to whatever piece of floor lies behind the panel.
 	// Issue #731.
+	// A PRESS ON A SKILL BOX OPENS THE SKILL SCREEN WITH THAT KEY SELECTED, AND IS NEITHER A MOVE NOR A SWING. Issue
+	// #837 slice 2, the owner's Q3 of 2026-11-24. Asked first: the bar is drawn by the heads-up display, so the
+	// interface test below does not see it.
+	{
+		float MouseX = 0.0f;
+		float MouseY = 0.0f;
+		int32 ViewportX = 0;
+		int32 ViewportY = 0;
+		GetViewportSize(ViewportX, ViewportY);
+		const ECataclysmAbilitySlot Box = GetMousePosition(MouseX, MouseY)
+			? SkillBoxKeyAt(FVector2D(MouseX, MouseY), FVector2D(ViewportX, ViewportY))
+			: ECataclysmAbilitySlot::None;
+		if (Box != ECataclysmAbilitySlot::None)
+		{
+			bPressBeganOnInterface = true;
+			OpenSkillAssignmentOn(Box);
+			return;
+		}
+	}
+
 	bPressBeganOnInterface = CursorIsOverInterface();
 	if (bPressBeganOnInterface)
 	{
@@ -1737,7 +2037,10 @@ void ACataclysmPlayerController::PressOnAnEnemy(AActor* Enemy)
 				PendingAttack = nullptr;
 				return;
 			}
-			if (Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack)))
+			// WITH NO ROOM FOR ANOTHER, EVERY GADGET MOVES TO THE POINT UNDER THE CURSOR, ON EVERY CLICK (V5g, G5).
+			FVector Aim;
+			if (Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack),
+												 AimPointUnderCursor(Aim) ? &Aim : nullptr))
 			{
 				PendingAttack = nullptr;
 				return;
@@ -1980,7 +2283,8 @@ bool ACataclysmPlayerController::WearingQuestionIsOpen() const
 	return ChoicePanel && ChoicePanel->IsAskingAQuestion() && ChoicePanel->IsInViewport();
 }
 
-void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot)
+void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot,
+												  ECataclysmGearSlot Into)
 {
 	UCataclysmInventoryComponent* Bag = Wearer ? Wearer->GetInventory() : nullptr;
 	const FCataclysmItem* Carried = Bag ? Bag->ItemAt(CarriedSlot) : nullptr;
@@ -1992,8 +2296,9 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 
 	// A COPY, because the yes is about this item, and WearAfterConfirming compares the cell with it.
 	const FCataclysmItem AskedAbout = *Carried;
+	// ABOUT THE SLOT PRESSED, when one was (issue #837, slice 3), and the yes puts it there.
 	const FCataclysmThresholdCrossing Crossing =
-		UCataclysmWearing::CrossingFor(Bag, Wearer->GetEquipment(), CarriedSlot);
+		UCataclysmWearing::CrossingFor(Bag, Wearer->GetEquipment(), CarriedSlot, 0, Into);
 	const FString Name = UCataclysmItemName::NameOf(
 		AskedAbout, UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable());
 
@@ -2007,7 +2312,7 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 	Panel->SetQuestion(
 		TEXT("Past the Consumption Threshold"), UCataclysmWearing::ThresholdQuestion(Name, Crossing), {WearIt},
 		TEXT("Keep it off"),
-		[Asker, CarriedSlot, AskedAbout](FName)
+		[Asker, CarriedSlot, AskedAbout, Into](FName)
 		{
 			ACataclysmPlayerController* Controller = Asker.Get();
 			ACataclysmPlayerCharacter* Now =
@@ -2017,7 +2322,7 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 				return;
 			}
 			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-			Controller->ReportInventoryPress(Now->WearPastTheThreshold(CarriedSlot, &AskedAbout, Went));
+			Controller->ReportInventoryPress(Now->WearPastTheThreshold(CarriedSlot, &AskedAbout, Went, Into));
 		});
 	if (!Panel->IsInViewport())
 	{
@@ -2033,7 +2338,8 @@ void ACataclysmPlayerController::OpenChoicePanel(ACataclysmFloorObject* Object)
 		return;
 	}
 
-	// NOTHING PAUSES, as no screen in the project pauses: the panel sits over the floor while the creatures go on.
+	// NOTHING PAUSES, as no screen in the project pauses but the pause screen: the panel sits over the floor while the
+	// creatures go on. Esc closes it as its "Leave" does.
 	ChoicePanel->SetObject(Object);
 	if (!ChoicePanel->IsInViewport())
 	{

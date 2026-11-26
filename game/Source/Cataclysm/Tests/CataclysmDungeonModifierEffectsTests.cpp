@@ -112,6 +112,7 @@
 #include "Tests/CataclysmTestSwings.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "Dungeon/CataclysmEnemyScore.h"
+#include "Dungeon/CataclysmEnemyStrength.h"
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerClassStats.h"
@@ -25102,10 +25103,12 @@ bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
 
 	// AND THE DEATH PATH PASSES THE CREATURE'S MARK TO THE SPAWNER. The floor is cleared of
 	// drops first. This half's drop roll is the game's own and cannot be seeded. At the
-	// Cataclysm Boss rung the kill is expected to leave 15 drops (12 gear, 3 materials, since
-	// issue #2829), and both Poisson draws leave none with probability e^-15, about once in
-	// 3.3 million kills. That
-	// case FAILS the assertion that something fell, rather than passing while checking nothing.
+	// Cataclysm Boss rung the kill is expected to leave 9 drops (6 gear since the owner halved
+	// the gear column, issue #2853, and 3 materials, since issue #2829), and both Poisson draws
+	// leave none with probability e^-9, about once in 8,100 kills. Since #2853 the kill also
+	// always leaves the Cataclysm Boss's one piece of the next tier's best, marked as the
+	// creature's, so something falls even then. Had nothing fallen, the assertion that something
+	// fell would FAIL, rather than pass while checking nothing.
 	DropsLying(Lying);
 	for (ACataclysmDroppedItem* Drop : Lying)
 	{
@@ -34111,7 +34114,7 @@ bool FCataclysmLocustsBurnTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// Demonic_Abyssal_Rifts. Issues #1820 and #41.
+// Demonic_Abyssal_Rifts. Issues #1820, #41 and #2864, the owner's redesign of 2026-11-23.
 // ---------------------------------------------------------------------------
 
 namespace CataclysmDungeonModifierEffectsTest
@@ -34136,35 +34139,17 @@ namespace CataclysmDungeonModifierEffectsTest
 		return Mode;
 	}
 
-	/** The player moved 300 cm from the rift, well inside the distance that opens it. */
-	void StandBesideTheRift(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	/** The player's blow on a rift, its evasion taken away so the blow lands, big enough to kill a Boss. */
+	bool KillTheRift(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Rift)
 	{
-		const FVector At = Mode->AbyssalRiftNow()->GetActorLocation();
-		Player.Character->SetActorLocation(FVector(At.X + 300.0f, At.Y, Player.Character->GetActorLocation().Z));
-	}
-
-	/** The rift opened, and everything it sends killed on the beat it arrives, until it closes. */
-	bool CloseTheRiftInTime(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
-	{
-		if (!Test.TestNotNull(TEXT("a rift to close"), Mode->AbyssalRiftNow()))
+		if (!Test.TestNotNull(TEXT("a rift to kill"), Rift))
 		{
 			return false;
 		}
-		StandBesideTheRift(Mode, Player);
-		for (int32 Beats = 0; Beats <= BeatsFor(UCataclysmDungeonModifierEffects::AbyssalRiftsSecondsToClose)
-			 && Mode->AbyssalRiftStateNow() != ACataclysmDungeonGameMode::ERiftState::Closed; ++Beats)
-		{
-			Beat(Mode, 1);
-			for (ACataclysmEnemyCharacter* Sent : Mode->AbyssalRiftCreaturesStanding())
-			{
-				if (!KillWhatAPortalSent(Test, Player, Sent))
-				{
-					return false;
-				}
-			}
-		}
-		return Test.TestTrue(TEXT("the rift closed"),
-							 Mode->AbyssalRiftStateNow() == ACataclysmDungeonGameMode::ERiftState::Closed);
+		Rift->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Rift, 10000000.0f);
+		return Test.TestTrue(TEXT("the player's blow killed the rift"), UCataclysmSkillEffects::IsDead(Rift));
 	}
 
 	/** The flat magic find the dungeon's rules put on the player. */
@@ -34173,46 +34158,83 @@ namespace CataclysmDungeonModifierEffectsTest
 		const FCataclysmStatModifier* Modifier = DungeonRuleOn(Player.AbilitySystem, TEXT("magic_find"));
 		return Modifier ? Modifier->Value : 0.0f;
 	}
+
+	/** The health a creature of this archetype row is built with on the mode's floor at this rung, before the rung. */
+	float RiftTestStartingHealthOf(ACataclysmDungeonGameMode* Mode, FName ArchetypeRow, int32 Rung)
+	{
+		FCataclysmStartingFigures Built;
+		return UCataclysmEnemyStrength::StartingFiguresFor(
+				   UCataclysmEnemyRarity::LoadEnemyRarityTable(), UCataclysmEnemyStrength::LoadEnemyArchetypeTable(),
+				   ArchetypeRow, UCataclysmEnemyScore::FloorFor(Mode, ACataclysmGameMode::DifficultyTierIn(Mode)), Rung,
+				   Built)
+			? Built.Health
+			: -1.0f;
+	}
 }
 
-// THE FIGURES: OPENS AT 800 CM, THREE WAVES OF FOUR FIFTEEN SECONDS APART, SIXTY SECONDS TO CLOSE IT, +10 MAGIC FIND
-// A SUCCESS, ONE RUNG A SUCCESS TO DEMON PRINCE'S.
+// THE FIGURES: TWO RIFTS, THREE ON A FLOOR OF 1600 CELLS OR MORE; A HUNTER EVERY THREE SECONDS WHILE FEWER THAN SIX OF ITS
+// OWN STAND; THE BOSS RUNG AND TWICE A BOSS'S HEALTH; TEN PER CENT MORE EVERY FIFTEEN SECONDS TO TEN STEPS; TEN MAGIC FIND A
+// RIFT TO A HUNDRED.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsFiguresTest,
-	"Cataclysm.DungeonModifierEffects.AbyssalRiftsFiguresWavesRungsAndReward",
+	"Cataclysm.DungeonModifierEffects.AbyssalRiftsFiguresHuntersStrengthAndReward",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmRiftsFiguresTest::RunTest(const FString& Parameters)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	TestEqual(TEXT("opens within 800 cm"), Effects::AbyssalRiftsOpensWithinCm, 800.0f, 0.001f);
+	// THE OWNER'S FIGURE.
+	TestEqual(TEXT("a hunter every three seconds, the owner's figure"), Effects::AbyssalRiftsSecondsBetweenHunters, 3.0f,
+			  0.001f);
+
+	// THE JUDGEMENTS.
+	TestEqual(TEXT("two rifts a floor"), Effects::AbyssalRiftsPerFloor, 2);
+	TestEqual(TEXT("three on a large floor"), Effects::AbyssalRiftsPerLargeFloor, 3);
+	TestEqual(TEXT("a large floor is 40 by 40 cells or more"), Effects::AbyssalRiftsLargeFloorCells, 1600);
+	TestEqual(TEXT("a plan of 32 by 32: two"), Effects::AbyssalRiftsFor(32 * 32), 2);
+	TestEqual(TEXT("a plan of 39 by 41: two"), Effects::AbyssalRiftsFor(39 * 41), 2);
+	TestEqual(TEXT("a plan of 40 by 40: three"), Effects::AbyssalRiftsFor(40 * 40), 3);
+	TestEqual(TEXT("a plan of 48 by 48: three"), Effects::AbyssalRiftsFor(48 * 48), 3);
 	TestEqual(TEXT("a zone of 600 cm"), Effects::AbyssalRiftsZoneRadiusCm, 600.0f, 0.001f);
-	TestEqual(TEXT("three waves"), Effects::AbyssalRiftsWaves, 3);
-	TestEqual(TEXT("of four"), Effects::AbyssalRiftsCreaturesPerWave, 4);
-	TestEqual(TEXT("fifteen seconds apart"), Effects::AbyssalRiftsSecondsBetweenWaves, 15.0f, 0.001f);
-	TestEqual(TEXT("sixty seconds to close it"), Effects::AbyssalRiftsSecondsToClose, 60.0f, 0.001f);
-	TestEqual(TEXT("+10 magic find a success"), Effects::AbyssalRiftsMagicFindPerSuccess, 10.0f, 0.001f);
+	TestEqual(TEXT("six of its own at most"), Effects::AbyssalRiftsMostHuntersPerRift, 6);
+	TestEqual(TEXT("its hunters see as far as a Vengeful Wraith"), Effects::AbyssalRiftsHunterSightMultiplier,
+			  Effects::VengefulWraithsSightMultiplier, 0.001f);
+	TestEqual(TEXT("the rift at the Boss rung"), Effects::AbyssalRiftsRiftRung, ACataclysmEnemyCharacter::FirstBossRarityStep);
+	TestEqual(TEXT("twice a Boss's health"), Effects::AbyssalRiftsHealthMultiplier, 2.0f, 0.001f);
+	TestEqual(TEXT("its health is built from the average creature"), FName(Effects::AbyssalRiftsHealthArchetypeRow),
+			  FName(TEXT("Baseline")));
 
-	TestTrue(TEXT("the first wave at once"), Effects::AbyssalRiftsWaveIsDue(0.0f, 0));
-	TestFalse(TEXT("the second not at 14.75 s"), Effects::AbyssalRiftsWaveIsDue(14.75f, 1));
-	TestTrue(TEXT("the second at 15 s"), Effects::AbyssalRiftsWaveIsDue(15.0f, 1));
-	TestTrue(TEXT("the third at 30 s"), Effects::AbyssalRiftsWaveIsDue(30.0f, 2));
-	TestFalse(TEXT("no fourth"), Effects::AbyssalRiftsWaveIsDue(45.0f, 3));
-	TestFalse(TEXT("not run out at 59.75 s"), Effects::AbyssalRiftsHasRunOut(59.75f));
-	TestTrue(TEXT("run out at 60 s"), Effects::AbyssalRiftsHasRunOut(60.0f));
+	TestFalse(TEXT("2.75 seconds: not yet"), Effects::AbyssalRiftsHunterIsDue(2.75f, 0));
+	TestTrue(TEXT("3 seconds and none standing: one"), Effects::AbyssalRiftsHunterIsDue(3.0f, 0));
+	TestTrue(TEXT("3 seconds and five standing: one"), Effects::AbyssalRiftsHunterIsDue(3.0f, 5));
+	TestFalse(TEXT("3 seconds and six standing: none"), Effects::AbyssalRiftsHunterIsDue(3.0f, 6));
+	TestFalse(TEXT("a minute and six standing: none"), Effects::AbyssalRiftsHunterIsDue(60.0f, 6));
 
-	TestEqual(TEXT("no success: Common"), Effects::AbyssalRiftsRungFor(0), 0);
-	TestEqual(TEXT("two: two rungs up"), Effects::AbyssalRiftsRungFor(2), 2);
-	TestEqual(TEXT("many: Demon Prince's rung at most"), Effects::AbyssalRiftsRungFor(99), Effects::DemonPrinceRung);
+	TestEqual(TEXT("a new rift: no step"), Effects::AbyssalRiftsStrengthStepsFor(0.0f), 0);
+	TestEqual(TEXT("14.75 seconds: no step"), Effects::AbyssalRiftsStrengthStepsFor(14.75f), 0);
+	TestEqual(TEXT("15 seconds: one"), Effects::AbyssalRiftsStrengthStepsFor(15.0f), 1);
+	TestEqual(TEXT("149.75 seconds: nine"), Effects::AbyssalRiftsStrengthStepsFor(149.75f), 9);
+	TestEqual(TEXT("150 seconds: ten, the cap"), Effects::AbyssalRiftsStrengthStepsFor(150.0f), 10);
+	TestEqual(TEXT("an hour: still ten"), Effects::AbyssalRiftsStrengthStepsFor(3600.0f), 10);
+	TestEqual(TEXT("sent at once: its own figures"), Effects::AbyssalRiftsHunterMultiplierFor(3.0f), 1.0f, 0.0001f);
+	TestEqual(TEXT("sent at 15 seconds: 10% more"), Effects::AbyssalRiftsHunterMultiplierFor(15.0f), 1.1f, 0.0001f);
+	TestEqual(TEXT("sent at 150 seconds: twice"), Effects::AbyssalRiftsHunterMultiplierFor(150.0f), 2.0f, 0.0001f);
+	TestEqual(TEXT("sent after an hour: still twice"), Effects::AbyssalRiftsHunterMultiplierFor(3600.0f), 2.0f, 0.0001f);
+
+	TestEqual(TEXT("+10 magic find a rift destroyed"), Effects::AbyssalRiftsMagicFindPerSuccess, 10.0f, 0.001f);
 	TestEqual(TEXT("no success: nothing"), Effects::AbyssalRiftsMagicFindFor(0), 0.0f, 0.001f);
 	TestEqual(TEXT("three: +30"), Effects::AbyssalRiftsMagicFindFor(3), 30.0f, 0.001f);
+	TestEqual(TEXT("ten: +100"), Effects::AbyssalRiftsMagicFindFor(10), 100.0f, 0.001f);
+	TestEqual(TEXT("eleven: +100, Infernal Beacons' cap"), Effects::AbyssalRiftsMagicFindFor(11), 100.0f, 0.001f);
+	TestEqual(TEXT("the cap is Infernal Beacons'"), Effects::AbyssalRiftsMostMagicFind,
+			  Effects::InfernalBeaconsMostMagicFind, 0.001f);
 	return true;
 }
 
-// ONE RIFT A FLOOR THAT CANNOT BE HURT, SAYING "RIFT" WITH ITS ZONE, WAITING UNTIL THE PLAYER COMES NEAR; NONE ON A
-// HORDE ARENA.
+// TWO RIFTS OR MORE ON A FLOOR, AS MANY AS ITS PLAN HOLDS: EACH A BOSS WITH MUCH MORE HEALTH THAN A FLOOR SOURCE, SAYING
+// "RIFT" WITH ITS ZONE, THAT A BLOW HURTS; NONE ON A HORDE ARENA.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsPlacedTest,
-	"Cataclysm.DungeonModifierEffects.AbyssalRiftsPlacesOneRiftThatWaitsForThePlayer",
+	"Cataclysm.DungeonModifierEffects.AbyssalRiftsPlacesTwoOrMoreBossRiftsThePlayerCanHurt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmRiftsPlacedTest::RunTest(const FString& Parameters)
@@ -34233,146 +34255,98 @@ bool FCataclysmRiftsPlacedTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	ACataclysmEnemyCharacter* Rift = Mode->AbyssalRiftNow();
-	if (!TestNotNull(TEXT("a rift on the floor"), Rift))
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+	const TArray<ACataclysmEnemyCharacter*> Rifts = Mode->AbyssalRiftsNow();
+	AddInfo(FString::Printf(TEXT("RIFTS PLACED: a plan of %d by %d, %d rift(s), each %.0f maximum health"), Plan.Width,
+							Plan.Height, Rifts.Num(), Rifts.IsEmpty() ? -1.0f : MaxHealthOf(Rifts[0])));
+	if (!TestEqual(TEXT("as many rifts as the floor's plan holds"), Rifts.Num(),
+				   Effects::AbyssalRiftsFor(Plan.Width * Plan.Height))
+		|| !TestTrue(TEXT("more than one"), Rifts.Num() >= 2))
 	{
 		return false;
 	}
-	TestTrue(TEXT("a rift"), Rift->IsA<ACataclysmRiftCharacter>());
-	TestNull(TEXT("with no brain"), Rift->GetController());
-	TestTrue(TEXT("that cannot be hurt"), Rift->bCannotBeHurt);
-	TestFalse(TEXT("that pays nothing"), Rift->PaysForItsDeath());
-	TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Rift));
-	TestEqual(TEXT("\"Rift\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Rift), FString(TEXT("Rift")));
-	TestEqual(TEXT("with the Imp's health"), MaxHealthOf(Rift), Mode->AbyssalRiftHealth(), 0.5f);
-	TestTrue(TEXT("far enough from the entrance"),
-			 FVector::Dist2D(Rift->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
-				 >= Effects::EternalChorusApartCm - 1.0f);
-	Rift->GetAbilitySystemComponent()->SetNumericAttributeBase(
-		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
-	const float Before = HealthOf(Rift);
-	UCataclysmSkillEffects::ApplyHit(Player.Character, Rift, 100000.0f);
-	TestFalse(TEXT("a killing blow does not kill it"), UCataclysmSkillEffects::IsDead(Rift));
-	TestEqual(TEXT("and takes nothing off its health"), HealthOf(Rift), Before, 0.01f);
+	TestEqual(TEXT("every rift placed stands"), Mode->AbyssalRiftsPlaced(), Rifts.Num());
 
-	// TEN SECONDS WITH THE PLAYER AT THE ENTRANCE: IT WAITS, WITH ITS ZONE, AND SENDS NOTHING.
-	Beat(Mode, BeatsFor(10.0f));
-	TestTrue(TEXT("still waiting"), Mode->AbyssalRiftStateNow() == ACataclysmDungeonGameMode::ERiftState::Waiting);
-	TestEqual(TEXT("nothing sent"), Mode->AbyssalRiftCreaturesStanding().Num(), 0);
-	TestEqual(TEXT("one zone in the world"), ZonesOnTheFloor(World), 1);
-	ACataclysmGroundZone* Zone = Mode->AbyssalRiftZoneNow();
-	if (TestNotNull(TEXT("the rift's zone"), Zone))
+	// MUCH MORE HEALTH: twice what the floor's enemy score gives the average creature at the Boss rung, and far above the
+	// Imp's health at Common that every floor source has and a rift had.
+	const float Starting = Mode->AbyssalRiftStartingHealth();
+	const float Boss = RiftTestStartingHealthOf(Mode, FName(Effects::AbyssalRiftsHealthArchetypeRow),
+												Effects::AbyssalRiftsRiftRung);
+	if (TestTrue(TEXT("set-up: a Boss of the floor's average creature is built from the tables"), Boss > 0.0f))
 	{
-		TestTrue(TEXT("around it"), Zone->Covers(Rift->GetActorLocation()));
-		TestFalse(TEXT("and no further than 600 cm"), Zone->Covers(Rift->GetActorLocation()
-			+ FVector(Effects::AbyssalRiftsZoneRadiusCm + 50.0f, 0.0f, 0.0f)));
+		TestEqual(TEXT("a rift's health is twice a Boss's of the floor"), Starting,
+				  Boss * Effects::AbyssalRiftsHealthMultiplier, 0.01f);
+	}
+	for (ACataclysmEnemyCharacter* Rift : Rifts)
+	{
+		TestTrue(TEXT("a rift"), Rift->IsA<ACataclysmRiftCharacter>());
+		TestNull(TEXT("with no brain"), Rift->GetController());
+		TestEqual(TEXT("at the Boss rung"), Rift->RarityStep, ACataclysmEnemyCharacter::FirstBossRarityStep);
+		TestTrue(TEXT("a Boss"), Rift->IsBoss());
+		TestFalse(TEXT("that a blow can hurt"), Rift->TakesNoDamage());
+		TestFalse(TEXT("that pays nothing itself"), Rift->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Rift->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Rift));
+		TestEqual(TEXT("\"Rift\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Rift), FString(TEXT("Rift")));
+		TestEqual(TEXT("built with the rift's health"), Rift->GetStartingMaxHealth(), Starting, 0.01f);
+		TestTrue(FString::Printf(TEXT("its maximum, %.0f, is over ten times the %.0f a rift had"), MaxHealthOf(Rift),
+								 Mode->VoidPortalHealth()),
+				 MaxHealthOf(Rift) > 10.0f * Mode->VoidPortalHealth());
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Rift->GetActorLocation(), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+	}
+	TestTrue(TEXT("and from each other"),
+			 FVector::Dist2D(Rifts[0]->GetActorLocation(), Rifts[1]->GetActorLocation())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+
+	// A BLOW TAKES HEALTH OFF IT: it can be targeted and hurt, where until #2864 a killing blow took nothing.
+	ACataclysmEnemyCharacter* Struck = Rifts[0];
+	Struck->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	const float Before = HealthOf(Struck);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Struck, 100.0f);
+	TestTrue(FString::Printf(TEXT("a blow takes health off it (%.1f to %.1f)"), Before, HealthOf(Struck)),
+			 HealthOf(Struck) < Before);
+
+	// ONE BEAT: A ZONE FOR EACH, AND THE PANEL.
+	Beat(Mode, 1);
+	TestEqual(TEXT("a zone for each rift"), ZonesOnTheFloor(World), Rifts.Num());
+	for (ACataclysmEnemyCharacter* Rift : Rifts)
+	{
+		ACataclysmGroundZone* Zone = Mode->AbyssalRiftZoneOf(Rift);
+		if (TestNotNull(TEXT("the rift's zone"), Zone))
+		{
+			TestTrue(TEXT("around it"), Zone->Covers(Rift->GetActorLocation()));
+			TestFalse(TEXT("and no further than 600 cm"), Zone->Covers(Rift->GetActorLocation()
+				+ FVector(Effects::AbyssalRiftsZoneRadiusCm + 50.0f, 0.0f, 0.0f)));
+		}
 	}
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
-			  FString(TEXT("abyssal rifts: a rift waits; 0 closed in time, +0 magic find")));
+			  FString::Printf(TEXT("abyssal rifts: %d of %d rifts stand, sending hunters 0%% stronger; 0 hunters stand; 0 "
+								   "destroyed, +0 magic find"),
+							  Rifts.Num(), Rifts.Num()));
 
-	// A HORDE ARENA HAS NONE.
+	// A HORDE ARENA HAS NONE, and the last floor's rifts are gone.
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
 	{
 		return false;
 	}
-	TestNull(TEXT("no rift in a Horde arena"), Mode->AbyssalRiftNow());
-	TestFalse(TEXT("and the last floor's rift is gone"), IsValid(Rift));
+	TestTrue(TEXT("no rift in a Horde arena"), Mode->AbyssalRiftsNow().IsEmpty());
+	TestFalse(TEXT("and the last floor's rifts are gone"), IsValid(Rifts[0]));
 	TestEqual(TEXT("the Horde panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
-			  FString(TEXT("abyssal rifts: no rift on a Horde arena; 0 closed in time, +0 magic find")));
+			  FString(TEXT("abyssal rifts: no rift on a Horde arena; 0 destroyed, +0 magic find")));
 	return true;
 }
 
-// THE PLAYER COMES NEAR: IT OPENS AND SENDS FOUR OF THE FLOOR'S OWN CREATURES AT ONCE, FOUR MORE AT 15 S AND 30 S,
-// AND NO MORE; NOT KILLED IN SIXTY SECONDS, IT CLOSES WITH NO SUCCESS AND THEY STAY.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsOpensTest,
-	"Cataclysm.DungeonModifierEffects.ARiftOpensNearThePlayerAndSendsThreeWavesOfFour",
+// FROM THE FLOOR'S START EACH RIFT SENDS ITS FIRST HUNTER AT THREE SECONDS AND ONE EVERY THREE SECONDS AFTER, NEVER MORE
+// THAN SIX OF ITS OWN STANDING; ONE KILLED AFTER THE CLOCK HAS RUN IS REPLACED ON THE NEXT BEAT; A NEW FLOOR TAKES THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsHuntersTest,
+	"Cataclysm.DungeonModifierEffects.ARiftSendsAHunterEveryThreeSecondsFromTheFloorsStartUpToSix",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmRiftsOpensTest::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmDungeonModifierEffectsTest;
-	using Effects = UCataclysmDungeonModifierEffects;
-	using ERiftState = ACataclysmDungeonGameMode::ERiftState;
-
-	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("a test world was created"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-
-	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = ARiftFloor(*this, World, Player);
-	if (!Mode || !TestNotNull(TEXT("a rift"), Mode->AbyssalRiftNow()))
-	{
-		return false;
-	}
-	ACataclysmEnemyCharacter* Rift = Mode->AbyssalRiftNow();
-	const FVector At = Rift->GetActorLocation();
-
-	StandBesideTheRift(Mode, Player);
-	Beat(Mode, 1);
-	TestTrue(TEXT("it opened"), Mode->AbyssalRiftStateNow() == ERiftState::Open);
-	const TArray<ACataclysmEnemyCharacter*> First = Mode->AbyssalRiftCreaturesStanding();
-	if (!TestEqual(TEXT("the first wave at once: four"), First.Num(), Effects::AbyssalRiftsCreaturesPerWave))
-	{
-		return false;
-	}
-	for (ACataclysmEnemyCharacter* Creature : First)
-	{
-		TestFalse(TEXT("a creature of the floor's kinds, not a floor source"),
-				  Creature->IsA<ACataclysmFloorSourceCharacter>());
-		TestEqual(TEXT("at Common with no success yet"), Creature->RarityStep, 0);
-		TestNotNull(TEXT("with a brain"), Creature->GetController());
-		TestTrue(TEXT("that pays"), Creature->PaysForItsDeath());
-		TestTrue(TEXT("and one of the floor's creatures"), Mode->FloorEnemies.Contains(Creature));
-		TestTrue(TEXT("beside the rift"),
-				 FVector::Dist2D(Creature->GetActorLocation(), At) <= Effects::AbyssalRiftsZoneRadiusCm + 1.0f);
-	}
-	TestEqual(TEXT("the open panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
-			  FString(TEXT("abyssal rifts: open, 60 s left, 4 creatures left")));
-
-	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenWaves) - 1);
-	TestEqual(TEXT("14.75 s: still four"), Mode->AbyssalRiftCreaturesStanding().Num(), 4);
-	Beat(Mode, 1);
-	TestEqual(TEXT("15 s: eight"), Mode->AbyssalRiftCreaturesStanding().Num(), 8);
-	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenWaves));
-	TestEqual(TEXT("30 s: twelve"), Mode->AbyssalRiftCreaturesStanding().Num(), 12);
-	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenWaves));
-	TestEqual(TEXT("45 s: still twelve"), Mode->AbyssalRiftCreaturesStanding().Num(), 12);
-	TestTrue(TEXT("and still open"), Mode->AbyssalRiftStateNow() == ERiftState::Open);
-
-	// SIXTY SECONDS WITH THEM STANDING: CLOSED, NO SUCCESS, NOTHING PAID, AND THEY STAY.
-	const TArray<ACataclysmEnemyCharacter*> Left = Mode->AbyssalRiftCreaturesStanding();
-	ACataclysmGroundZone* Zone = Mode->AbyssalRiftZoneNow();
-	TestNotNull(TEXT("the rift's zone while open"), Zone);
-	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenWaves) + 1);
-	TestTrue(TEXT("sixty seconds: closed"), Mode->AbyssalRiftStateNow() == ERiftState::Closed);
-	TestEqual(TEXT("with no success"), Mode->AbyssalRiftSuccessesHeld(), 0);
-	TestFalse(TEXT("the rift is gone"), IsValid(Rift));
-	TestNull(TEXT("and forgotten"), Mode->AbyssalRiftNow());
-	TestFalse(TEXT("its zone is gone"), IsValid(Zone));
-	int32 Staying = 0;
-	for (ACataclysmEnemyCharacter* Creature : Left)
-	{
-		Staying += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
-	}
-	TestEqual(TEXT("its twelve creatures stay"), Staying, 12);
-	Beat(Mode, 1);
-	TestEqual(TEXT("no magic find"), RiftMagicFindOn(Player), 0.0f, 0.001f);
-	TestEqual(TEXT("the closed panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
-			  FString(TEXT("abyssal rifts: the rift is closed; 0 closed in time, +0 magic find")));
-	return true;
-}
-
-// EVERY CREATURE KILLED IN TIME CLOSES IT: ONE SUCCESS, +10 MAGIC FIND, CARRIED TO THE NEXT FLOOR, WHOSE RIFT SENDS
-// CREATURES ONE RUNG HIGHER.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsClosedTest,
-	"Cataclysm.DungeonModifierEffects.ARiftClosedInTimeGivesMagicFindAndRaisesTheNextRifts",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmRiftsClosedTest::RunTest(const FString& Parameters)
+bool FCataclysmRiftsHuntersTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierEffectsTest;
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -34390,47 +34364,296 @@ bool FCataclysmRiftsClosedTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	ACataclysmEnemyCharacter* Rift = Mode->AbyssalRiftNow();
-	Beat(Mode, 1);
-	ACataclysmGroundZone* Zone = Mode->AbyssalRiftZoneNow();
-	TestNotNull(TEXT("the rift's zone"), Zone);
-	TestEqual(TEXT("no magic find before"), RiftMagicFindOn(Player), 0.0f, 0.001f);
-	if (!CloseTheRiftInTime(*this, Mode, Player))
+	const TArray<ACataclysmEnemyCharacter*> Rifts = Mode->AbyssalRiftsNow();
+	if (!TestTrue(TEXT("two rifts or more"), Rifts.Num() >= 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("one closed in time"), Mode->AbyssalRiftSuccessesHeld(), 1);
-	TestFalse(TEXT("the rift is gone"), IsValid(Rift));
+	ACataclysmEnemyCharacter* First = Rifts[0];
+
+	// 2.75 SECONDS: NOTHING. THREE: ONE EACH, THOUGH THE PLAYER STANDS AT THE ENTRANCE AND HAS GONE NEAR NO RIFT.
+	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenHunters) - 1);
+	TestEqual(TEXT("at 2.75 seconds no rift has sent anything"), Mode->AbyssalRiftHuntersStanding().Num(), 0);
+	Beat(Mode, 1);
+	for (ACataclysmEnemyCharacter* Rift : Rifts)
+	{
+		const TArray<ACataclysmEnemyCharacter*> Sent = Mode->HuntersOf(Rift);
+		if (!TestEqual(TEXT("at three seconds each rift has sent one"), Sent.Num(), 1))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Hunter = Sent[0];
+		TestFalse(TEXT("a creature of the floor's kinds, not a floor source"),
+				  Hunter->IsA<ACataclysmFloorSourceCharacter>());
+		TestEqual(TEXT("at Common"), Hunter->RarityStep, 0);
+		TestNotNull(TEXT("with a brain"), Hunter->GetController());
+		TestFalse(TEXT("that pays nothing"), Hunter->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Hunter->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Hunter));
+		TestEqual(TEXT("seeing across the floor"), Hunter->SightRadiusMultiplier,
+				  Effects::AbyssalRiftsHunterSightMultiplier, 0.001f);
+		TestTrue(TEXT("beside its rift"), FVector::Dist2D(Hunter->GetActorLocation(), Rift->GetActorLocation())
+											  <= Effects::AbyssalRiftsZoneRadiusCm + 1.0f);
+	}
+
+	// THREE SECONDS MORE: TWO EACH. TO EIGHTEEN SECONDS: SIX EACH, THE CAP. TO THIRTY: STILL SIX.
+	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenHunters));
+	TestEqual(TEXT("at six seconds, two"), Mode->HuntersOf(First).Num(), 2);
+	Beat(Mode, BeatsFor(4.0f * Effects::AbyssalRiftsSecondsBetweenHunters));
+	TestEqual(TEXT("at eighteen seconds, six"), Mode->HuntersOf(First).Num(), Effects::AbyssalRiftsMostHuntersPerRift);
+	Beat(Mode, BeatsFor(4.0f * Effects::AbyssalRiftsSecondsBetweenHunters));
+	TestEqual(TEXT("at thirty seconds, still six"), Mode->HuntersOf(First).Num(), Effects::AbyssalRiftsMostHuntersPerRift);
+	const int32 AtTheCap = Rifts.Num() * Effects::AbyssalRiftsMostHuntersPerRift;
+	TestEqual(TEXT("every rift at the cap"), Mode->AbyssalRiftHuntersStanding().Num(), AtTheCap);
+	TestEqual(TEXT("the panel at the cap"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
+			  FString::Printf(TEXT("abyssal rifts: %d of %d rifts stand, sending hunters 20%% stronger; %d hunters stand; 0 "
+								   "destroyed, +0 magic find"),
+							  Rifts.Num(), Rifts.Num(), AtTheCap));
+
+	// ONE KILLED: FIVE STAND UNTIL THE NEXT BEAT, WHICH SENDS ITS REPLACEMENT, the clock having run past three seconds.
+	if (!KillWhatAPortalSent(*this, Player, Mode->HuntersOf(First)[0]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one killed: five stand"), Mode->HuntersOf(First).Num(), Effects::AbyssalRiftsMostHuntersPerRift - 1);
+	Beat(Mode, 1);
+	TestEqual(TEXT("the next beat sends its replacement"), Mode->HuntersOf(First).Num(),
+			  Effects::AbyssalRiftsMostHuntersPerRift);
+
+	// A NEW FLOOR TAKES THE RIFTS AND THEIR HUNTERS AWAY.
+	const TArray<ACataclysmEnemyCharacter*> Left = Mode->HuntersOf(First);
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	int32 Remaining = 0;
+	for (ACataclysmEnemyCharacter* Hunter : Left)
+	{
+		Remaining += IsValid(Hunter) ? 1 : 0;
+	}
+	TestEqual(TEXT("a new floor takes the last floor's hunters away"), Remaining, 0);
+	TestFalse(TEXT("and its rifts"), IsValid(First));
+	return true;
+}
+
+// A HUNTER HUNTS THE PLAYER FROM WHEREVER IT WAS SENT: IT NOTICES THE PLAYER FROM ACROSS THE LARGEST FLOOR AND ITS BRAIN
+// CHASES THEM FROM TWICE ITS OWN SIGHT AWAY. CONTROL: THE SAME HUNTER WITH ITS KIND'S OWN SIGHT DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsHuntTest,
+	"Cataclysm.DungeonModifierEffects.ARiftsHunterHuntsThePlayerAcrossTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRiftsHuntTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARiftFloor(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("a rift"), !Mode->AbyssalRiftsNow().IsEmpty()))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenHunters));
+	const TArray<ACataclysmEnemyCharacter*> Sent = Mode->HuntersOf(Mode->AbyssalRiftsNow()[0]);
+	if (!TestEqual(TEXT("set-up: the first rift has sent one"), Sent.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Hunter = Sent[0];
+	const float LargestFloorAcross = static_cast<float>(FCataclysmFloorGenerator::MostFloorSide)
+		* FCataclysmFloorGenerator::CellSizeCm * FMath::Sqrt(2.0f);
+	TestTrue(FString::Printf(TEXT("it notices from %.0f cm, further than the largest floor is across (%.0f cm)"),
+							 Hunter->NoticesFromCm(), LargestFloorAcross),
+			 Hunter->NoticesFromCm() >= LargestFloorAcross);
+
+	// THE PLAYER TWICE THE HUNTER'S OWN SIGHT AWAY: beyond what its kind notices, well inside what a hunter does.
+	const float OwnSight = Hunter->SightRadiusCm();
+	if (!TestTrue(TEXT("set-up: its kind sees some way"), OwnSight > 0.0f))
+	{
+		return false;
+	}
+	const FVector At = Hunter->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(At.X + 2.0f * OwnSight, At.Y, Player.Character->GetActorLocation().Z));
+	ACataclysmEnemyController* Brain = BrainOf(Hunter);
+	if (!TestNotNull(TEXT("set-up: the hunter has a brain"), Brain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its brain chases the player"), ThinksOnce(Brain), static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestTrue(TEXT("whom it has taken for its target"), Brain->CurrentTarget.Get() == Player.Character);
+
+	// CONTROL: THE SAME HUNTER SEEING ONLY AS FAR AS ITS KIND DOES NOTICES NOBODY FROM THERE.
+	Hunter->SightRadiusMultiplier = 1.0f;
+	TestNotEqual(TEXT("CONTROL: with its kind's sight it does not chase"), ThinksOnce(Brain),
+				 static_cast<int32>(ECataclysmBrainAction::Chasing));
+	Hunter->SightRadiusMultiplier = Effects::AbyssalRiftsHunterSightMultiplier;
+	return true;
+}
+
+// THE LONGER A RIFT HAS STOOD, THE STRONGER THE HUNTERS IT SENDS: ITS OWN FIGURES AT 3 AND 12 SECONDS, 10% MORE HEALTH AND
+// DAMAGE AT 15, TWICE AT 150, AND NO MORE AT 300.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsStrengthTest,
+	"Cataclysm.DungeonModifierEffects.ARiftsHuntersGrowStrongerWithItsAgeUpToTheCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRiftsStrengthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARiftFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Rifts = Mode->AbyssalRiftsNow();
+	if (!TestTrue(TEXT("two rifts or more"), Rifts.Num() >= 2))
+	{
+		return false;
+	}
+	// ONE RIFT LEFT, so the beats below spawn one hunter at a time; the others are killed, which is a success each.
+	ACataclysmEnemyCharacter* Rift = Rifts[0];
+	for (int32 Index = 1; Index < Rifts.Num(); ++Index)
+	{
+		if (!KillTheRift(*this, Player, Rifts[Index]))
+		{
+			return false;
+		}
+	}
+
+	// EVERY HUNTER TAKEN AWAY AS IT COMES, so the cap never holds one back, and the one each send was sent with kept by the
+	// second its rift had stood: the placed multiplier, and the starting health over its kind's on this floor.
+	TMap<int32, float> DamageAt;
+	TMap<int32, float> HealthAt;
+	for (int32 Beats = 0; Beats < BeatsFor(300.0f); ++Beats)
+	{
+		Beat(Mode, 1);
+		for (ACataclysmEnemyCharacter* Hunter : Mode->HuntersOf(Rift))
+		{
+			const int32 Second = FMath::RoundToInt(Mode->AbyssalRiftSecondsAliveOf(Rift));
+			const float Own = RiftTestStartingHealthOf(Mode, Hunter->ArchetypeRow, 0);
+			DamageAt.Add(Second, Hunter->GetPlacedDamageMultiplier());
+			HealthAt.Add(Second, Own > 0.0f ? Hunter->GetStartingMaxHealth() / Own : -1.0f);
+			Hunter->Destroy();
+		}
+	}
+	const auto Row = [&DamageAt, &HealthAt](int32 Second)
+	{
+		return FString::Printf(TEXT("%d s x%.3f damage x%.3f health"), Second, DamageAt.FindRef(Second),
+							   HealthAt.FindRef(Second));
+	};
+	AddInfo(FString::Printf(TEXT("RIFT HUNTERS BY AGE: %d sent; %s; %s; %s; %s; %s; %s"), DamageAt.Num(), *Row(3),
+							*Row(12), *Row(15), *Row(30), *Row(150), *Row(300)));
+	TestEqual(TEXT("one sent every three seconds for three hundred"), DamageAt.Num(), 100);
+	TestEqual(TEXT("sent at 3 seconds: its own damage"), DamageAt.FindRef(3), 1.0f, 0.0001f);
+	TestEqual(TEXT("and its own health"), HealthAt.FindRef(3), 1.0f, 0.001f);
+	TestEqual(TEXT("sent at 12 seconds: still its own"), DamageAt.FindRef(12), 1.0f, 0.0001f);
+	TestEqual(TEXT("sent at 15 seconds: 10% more damage"), DamageAt.FindRef(15), 1.1f, 0.0001f);
+	TestEqual(TEXT("and 10% more health"), HealthAt.FindRef(15), 1.1f, 0.001f);
+	TestEqual(TEXT("sent at 30 seconds: 20% more"), DamageAt.FindRef(30), 1.2f, 0.0001f);
+	TestEqual(TEXT("sent at 150 seconds: twice the damage"), DamageAt.FindRef(150), 2.0f, 0.0001f);
+	TestEqual(TEXT("and twice the health"), HealthAt.FindRef(150), 2.0f, 0.001f);
+	TestEqual(TEXT("sent at 300 seconds: no more than twice, the cap"), DamageAt.FindRef(300), 2.0f, 0.0001f);
+	TestEqual(TEXT("and no more health"), HealthAt.FindRef(300), 2.0f, 0.001f);
+	TestEqual(TEXT("the panel at the cap"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
+			  FString::Printf(TEXT("abyssal rifts: 1 of %d rifts stand, sending hunters 100%% stronger; 0 hunters stand; %d "
+								   "destroyed, +%d magic find"),
+							  Rifts.Num(), Rifts.Num() - 1,
+							  FMath::RoundToInt(Effects::AbyssalRiftsMagicFindFor(Rifts.Num() - 1))));
+	return true;
+}
+
+// A RIFT KILLED BY THE PLAYER'S BLOW IS A SUCCESS: ITS ZONE GOES, IT SENDS NO MORE WHILE THE OTHERS GO ON, THE HUNTER IT SENT
+// STAYS, +10 MAGIC FIND IS WRITTEN ON THE PLAYER, AND THE NEXT FLOOR KEEPS THE SUCCESS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftsKilledTest,
+	"Cataclysm.DungeonModifierEffects.AKilledRiftSendsNoMoreAndIsASuccess",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRiftsKilledTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARiftFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Rifts = Mode->AbyssalRiftsNow();
+	if (!TestTrue(TEXT("two rifts or more"), Rifts.Num() >= 2))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Killed = Rifts[0];
+	ACataclysmEnemyCharacter* Other = Rifts[1];
+	Beat(Mode, BeatsFor(Effects::AbyssalRiftsSecondsBetweenHunters));
+	ACataclysmGroundZone* Zone = Mode->AbyssalRiftZoneOf(Killed);
+	const TArray<ACataclysmEnemyCharacter*> SentBefore = Mode->HuntersOf(Killed);
+	if (!TestNotNull(TEXT("set-up: the rift's zone"), Zone)
+		|| !TestEqual(TEXT("set-up: it has sent one"), SentBefore.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no magic find before"), RiftMagicFindOn(Player), 0.0f, 0.001f);
+
+	if (!KillTheRift(*this, Player, Killed))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one destroyed"), Mode->AbyssalRiftSuccessesHeld(), 1);
+	TestFalse(TEXT("it is no longer standing"), Mode->AbyssalRiftsNow().Contains(Killed));
+	TestEqual(TEXT("one fewer stands"), Mode->AbyssalRiftsNow().Num(), Rifts.Num() - 1);
 	TestFalse(TEXT("its zone is gone"), IsValid(Zone));
+	TestNull(TEXT("and forgotten"), Mode->AbyssalRiftZoneOf(Killed));
 	Beat(Mode, 1);
 	TestEqual(TEXT("+10 magic find"), RiftMagicFindOn(Player), Effects::AbyssalRiftsMagicFindPerSuccess, 0.001f);
-	TestEqual(TEXT("the closed panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
-			  FString(TEXT("abyssal rifts: the rift is closed; 1 closed in time, +10 magic find")));
 
-	// THE NEXT FLOOR: THE SUCCESS AND ITS MAGIC FIND CARRIED, AND ITS RIFT SENDS AT ONE RUNG HIGHER.
+	// THIRTY SECONDS MORE: IT SENDS NOTHING, ITS HUNTER STAYS, AND THE OTHER RIFT SENDS TO ITS CAP.
+	Beat(Mode, BeatsFor(10.0f * Effects::AbyssalRiftsSecondsBetweenHunters));
+	TestEqual(TEXT("the killed rift sent no more: its one hunter stands"), Mode->HuntersOf(Killed).Num(), 1);
+	TestTrue(TEXT("the hunter it sent before it died stays"),
+			 IsValid(SentBefore[0]) && !UCataclysmSkillEffects::IsDead(SentBefore[0]));
+	TestEqual(TEXT("while the other rift sends to its cap"), Mode->HuntersOf(Other).Num(),
+			  Effects::AbyssalRiftsMostHuntersPerRift);
+	const int32 Standing = Mode->AbyssalRiftHuntersStanding().Num();
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
+			  FString::Printf(TEXT("abyssal rifts: %d of %d rifts stand, sending hunters 20%% stronger; %d hunters stand; 1 "
+								   "destroyed, +10 magic find"),
+							  Rifts.Num() - 1, Rifts.Num(), Standing));
+
+	// THE NEXT FLOOR: THE SUCCESS AND ITS MAGIC FIND CARRIED, AND NEW RIFTS STANDING.
 	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
 	{
 		return false;
 	}
 	Mode->ClearFloorEnemies();
 	Beat(Mode, 1);
-	TestEqual(TEXT("still one"), Mode->AbyssalRiftSuccessesHeld(), 1);
+	TestEqual(TEXT("still one destroyed"), Mode->AbyssalRiftSuccessesHeld(), 1);
 	TestEqual(TEXT("still +10 magic find"), RiftMagicFindOn(Player), Effects::AbyssalRiftsMagicFindPerSuccess, 0.001f);
-	if (!TestNotNull(TEXT("a new rift"), Mode->AbyssalRiftNow()))
-	{
-		return false;
-	}
-	StandBesideTheRift(Mode, Player);
-	Beat(Mode, 1);
-	const TArray<ACataclysmEnemyCharacter*> Sent = Mode->AbyssalRiftCreaturesStanding();
-	if (!TestEqual(TEXT("its first wave"), Sent.Num(), Effects::AbyssalRiftsCreaturesPerWave))
-	{
-		return false;
-	}
-	for (ACataclysmEnemyCharacter* Creature : Sent)
-	{
-		TestEqual(TEXT("one rung higher"), Creature->RarityStep, 1);
-	}
+	TestTrue(TEXT("and the next floor's rifts stand"), Mode->AbyssalRiftsNow().Num() >= 2);
 	return true;
 }
 
@@ -34453,7 +34676,8 @@ bool FCataclysmRiftsLeaveTest::RunTest(const FString& Parameters)
 
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = ARiftFloor(*this, World, Player);
-	if (!Mode || !CloseTheRiftInTime(*this, Mode, Player))
+	if (!Mode || !TestTrue(TEXT("a rift"), !Mode->AbyssalRiftsNow().IsEmpty())
+		|| !KillTheRift(*this, Player, Mode->AbyssalRiftsNow()[0]))
 	{
 		return false;
 	}
@@ -34487,14 +34711,16 @@ bool FCataclysmRiftsDeathTest::RunTest(const FString& Parameters)
 
 	const FPossessedPlayer Player(World);
 	ACataclysmDungeonGameMode* Mode = ARiftFloor(*this, World, Player);
-	if (!Mode || !CloseTheRiftInTime(*this, Mode, Player))
+	if (!Mode || !TestTrue(TEXT("a rift"), !Mode->AbyssalRiftsNow().IsEmpty())
+		|| !KillTheRift(*this, Player, Mode->AbyssalRiftsNow()[0]))
 	{
 		return false;
 	}
-	if (!TestEqual(TEXT("one closed in time"), Mode->AbyssalRiftSuccessesHeld(), 1))
+	if (!TestEqual(TEXT("one destroyed"), Mode->AbyssalRiftSuccessesHeld(), 1))
 	{
 		return false;
 	}
+	const int32 Placed = Mode->AbyssalRiftsPlaced();
 	ACataclysmEnemyCharacter* Killer = SpawnCreatureThatCanHit(World, Player.Character->GetActorLocation().X + 600.0f);
 	if (!TestNotNull(TEXT("a creature that can hit"), Killer))
 	{
@@ -34504,7 +34730,9 @@ bool FCataclysmRiftsDeathTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
 	TestEqual(TEXT("the player's death ends the successes"), Mode->AbyssalRiftSuccessesHeld(), 0);
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(RiftsRow),
-			  FString(TEXT("abyssal rifts: the rift is closed; 0 closed in time, +0 magic find")));
+			  FString::Printf(TEXT("abyssal rifts: %d of %d rifts stand, sending hunters 0%% stronger; 0 hunters stand; 0 "
+								   "destroyed, +0 magic find"),
+							  Placed - 1, Placed));
 	return true;
 }
 
@@ -42648,7 +42876,8 @@ bool FCataclysmBoxesRewardTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("the box went"), Mode->PandorasBoxesNow().Num(), 2);
-	// A BOSS'S KILL GIVES FIVE ITEMS ON AVERAGE, DRAWN, ON A STREAM SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
+	// A BOSS'S KILL GIVES 2.5 GEAR ITEMS AND 1.25 MATERIALS ON AVERAGE (5 GEAR BEFORE ISSUE #2853), DRAWN, ON A STREAM
+	// SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
 	TestTrue(FString::Printf(TEXT("it gave drops: %d"), Mode->PandorasBoxLastRewardDrops()),
 			 Mode->PandorasBoxLastRewardDrops() > 0);
 	TestEqual(TEXT("and they lie in the world"), DropsInTheWorld(World) - Before, Mode->PandorasBoxLastRewardDrops());
@@ -49076,13 +49305,16 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 		Names.Add(Skill.Name);
 	}
 
-	// WAR TODAY: 54 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills.
+	// WAR TODAY: 53 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills. 54
+	// until 2026-11-25, when Blood and Iron was built as an Aura (the damage-type auras), which leaves it out.
 	TMap<EWhy, TArray<FString>> War;
 	Pin(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
-	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 54);
+	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 53);
+	Pin(TEXT("War: aura"), CountOf(War, EWhy::Aura), 1);
 	Pin(TEXT("War: movement"), CountOf(War, EWhy::Movement), 3);
 	Pin(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
 	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
+	TestTrue(TEXT("Blood and Iron is an aura"), Holds(War, EWhy::Aura, TEXT("Blood and Iron")));
 	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
 	// A TYPE NO ROW CARRIES, AND NO LONGER CELESTIAL: issue #2580 gave Celestial a Warhammer kit and every damage type
 	// but War and Demonic one kit each, so no damage type is without a shaped skill any more.
@@ -55780,6 +56012,113 @@ namespace CataclysmDungeonModifierEffectsTest
 		OutDungeonId = DungeonId;
 		return Mode;
 	}
+}
+
+// A RIFT'S ALTARS AND THOSE IN THE DARK, issue #51 slice B1: no chasm opens on a floor of a Rift that holds an altar,
+// and a fall in a Rift lands no deeper than the next floor holding one, so no fall carries the player past an altar.
+// Both are the writing session's judgement, stated in `ACataclysmDungeonGameMode::PlaceTheChasms`.
+//
+// THE OWNER'S RIFT IS FOUR FLOORS DEEP with one altar on each, so no floor of it has a chasm, which the first half
+// shows on the same floor and seed that has chasms in a Quest dungeon Death sent. THE FALL IS A RIFT OF ANOTHER DEPTH'S,
+// thirty floors here, as Demonic rolled one before the empire made Rifts four floors deep: from floor 3 the fall lands
+// on 8, the next altar's floor, where in a dungeon that is no Rift it lands on 13. Prints "RIFT CHASMS".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftAltarsThoseInTheDarkTest,
+	"Cataclysm.DungeonModifierEffects.ARiftsAltarFloorsHaveNoChasmsAndAFallLandsNoDeeperThanTheNextAltar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRiftAltarsThoseInTheDarkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	UCataclysmEmpireRun* Run = nullptr;
+	int32 DungeonId = INDEX_NONE;
+	ACataclysmDungeonGameMode* Mode =
+		ADarkFloorEmpireDungeon(*this, World, Player, 4, Run, DungeonId, ECataclysmDungeonType::Quest);
+	if (!Mode)
+	{
+		return false;
+	}
+	const auto SentBy = [Run, DungeonId](ECataclysmType Sender, int32 Floors)
+	{
+		for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			if (Dungeon.DungeonId == DungeonId)
+			{
+				Dungeon.Cataclysm = Sender;
+				Dungeon.Floors = Floors;
+			}
+		}
+	};
+
+	// FOUR FLOORS, A QUEST DUNGEON DEATH SENT: ITS FLOOR 2 HAS CHASMS ON SOME SEED.
+	SentBy(ECataclysmType::Death, 4);
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 1, Seed))
+	{
+		return false;
+	}
+	TestFalse(TEXT("CONTROL: a Quest dungeon Death sent is no Rift"), Mode->IsARift());
+
+	// THE SAME DUNGEON, FLOOR AND SEED, A RIFT: AN ALTAR AND NO CHASM. And none on its floors 1 and 3, which hold one each.
+	SentBy(ECataclysmType::Demonic, 4);
+	FString Seen;
+	for (int32 Floor = 1; Floor <= 3; ++Floor)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("set-up: the Rift's floor %d was built"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		Seen += FString::Printf(TEXT(" floor %d: %d altar(s), %d chasm(s);"), Floor, Mode->RiftAltarsPlacedHere(),
+								Mode->ThoseInTheDarkChasmCellsNow().Num());
+		TestEqual(FString::Printf(TEXT("the Rift's floor %d holds its altar"), Floor), Mode->RiftAltarsPlacedHere(), 1);
+		TestTrue(FString::Printf(TEXT("and no chasm opens on floor %d"), Floor),
+				 Mode->ThoseInTheDarkChasmCellsNow().IsEmpty());
+	}
+
+	// THIRTY FLOORS, A DUNGEON THAT IS NO RIFT: THE FALL FROM FLOOR 3 LANDS ON 13.
+	SentBy(ECataclysmType::Death, 30);
+	if (!TestTrue(TEXT("set-up: the thirty-floor dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId))
+		|| !AFloorWithChasms(*this, Mode, Player, 3, 1, Seed) || !FallIntoAChasm(*this, Mode, Player))
+	{
+		return false;
+	}
+	const int32 OrdinaryLanding = Mode->FloorNumber;
+	if (!LeaveTheDarkFloorByItsStairs(*this, Mode))
+	{
+		return false;
+	}
+
+	// THE SAME, A RIFT: THE FALL FROM FLOOR 3 LANDS ON 8, WHERE ITS FIRST ALTAR STANDS.
+	SentBy(ECataclysmType::Demonic, 30);
+	if (!AFloorWithChasms(*this, Mode, Player, 3, 1, Seed))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: floor 3 of a thirty-floor Rift holds no altar, so it may have chasms"),
+			  Mode->RiftAltarsPlacedHere(), 0);
+	if (!FallIntoAChasm(*this, Mode, Player))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("RIFT CHASMS:%s a fall from floor 3 of 30 lands on %d in no Rift and on %d in a Rift"),
+							*Seen, OrdinaryLanding, Mode->FloorNumber));
+	TestEqual(TEXT("CONTROL: in a dungeon that is no Rift the fall from floor 3 of 30 lands on 13"), OrdinaryLanding, 13);
+	TestEqual(TEXT("in a Rift it lands on 8, the next floor holding an altar"), Mode->FloorNumber, 8);
+	TestEqual(TEXT("from floor 3"), Mode->TheDarkFloorFellFromFloor(), 3);
+	TestEqual(TEXT("and the dark floor holds no altar of its own"), Mode->RiftAltarsPlacedHere(), 0);
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("its stairs, its creatures cleared away, lead to floor 8"), TakeTheStairs(*this, Mode), 8);
+	TestEqual(TEXT("where the Rift's first altar stands"), Mode->RiftAltarsStandingNow().Num(), 1);
+	return true;
 }
 
 // D1. THE DARK FLOOR IS ITS OWN FLOOR, AND A FLOOR BUILT WITHOUT A FALL IS WHAT IT WAS BEFORE THIS LAYER.
@@ -63304,15 +63643,16 @@ bool FCataclysmCorruptedStalkerRingTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
-	// TYPED, so a moved constant fails here: 0.06 times 0.11, 0.13 and 0.10 over 0.05.
-	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.06"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.06f, 0.0001f);
-	TestEqual(TEXT("a Bulwark's at tier 1 is 0.132"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.132f, 0.0001f);
-	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.156"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.156f, 0.0001f);
-	TestEqual(TEXT("the Pillar's at tier 1 is 0.12"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.12f, 0.0001f);
+	// TYPED, so a moved constant fails here: 0.05 times 0.10, 0.12 and 0.07 over 0.05, since the re-fit of 2026-11-25
+	// (0.06 and so 0.12, 0.144 and 0.084 before it; 0.132, 0.156 and 0.12 until issue #2865 lowered the ring figures).
+	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.05"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.05f, 0.0001f);
+	TestEqual(TEXT("a Bulwark's at tier 1 is 0.10"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.10f, 0.0001f);
+	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.12"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.12f, 0.0001f);
+	TestEqual(TEXT("the Pillar's at tier 1 is 0.07"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.07f, 0.0001f);
 	for (int32 Tier = 2; Tier <= 8; ++Tier)
 	{
 		TestEqual(FString::Printf(TEXT("tier %d: a Sanctuary's is an Outpost's"), Tier),
@@ -63340,8 +63680,8 @@ bool FCataclysmCorruptedStalkerRingTest::RunTest(const FString& Parameters)
 	const float OutpostDamage = StalkerRead(OnAnOutpost, Combat::GetAttackDamageAttribute());
 	TestTrue(FString::Printf(TEXT("set-up: the Outpost's Stalker has an attack damage: %.2f"), OutpostDamage),
 			 OutpostDamage > 0.0f);
-	TestEqual(TEXT("the Bulwark's Stalker hits 0.11 / 0.05 times as hard"),
-			  StalkerRead(OnABulwark, Combat::GetAttackDamageAttribute()), OutpostDamage * 2.2f, 0.01f);
+	TestEqual(TEXT("the Bulwark's Stalker hits 0.10 / 0.05 times as hard"),
+			  StalkerRead(OnABulwark, Combat::GetAttackDamageAttribute()), OutpostDamage * 2.0f, 0.01f);
 	TestEqual(TEXT("and has the same maximum health, which the ring does not move"),
 			  StalkerRead(OnABulwark, Vital::GetMaxHealthAttribute()),
 			  StalkerRead(OnAnOutpost, Vital::GetMaxHealthAttribute()), 0.5f);
@@ -63366,14 +63706,17 @@ bool FCataclysmCorruptedStalkerBuildTest::RunTest(const FString& Parameters)
 	// derived numbers moved -- health 1.33 to 1.15 at tier 8, damage 1.12 to 0.22 at tier 1 and 3.68 to 2.97 at tier 8.
 	// AND BY ISSUE #2749: tier 1's damage scale fell from 0.20 to 0.05 on 2026-11-19, so tier 1's damage multiplier
 	// went from 0.22 to 0.06 (0.0559 to two decimals) and nothing else moved.
-	TestEqual(TEXT("the health multiplier is 0.49 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.49f,
+	// AND RE-FITTED ON 2026-11-25 for the whole-number affix ranges and the enemy rebalance (issues #2883 and #2884),
+	// from window ar-w1's measurement: health 0.49 to 0.23 at tier 1 and 1.15 to 0.46 at tier 8, damage 0.06 to 0.05
+	// at tier 1 and 2.97 to 13.43 at tier 8.
+	TestEqual(TEXT("the health multiplier is 0.23 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.23f,
 			  0.0001f);
-	TestEqual(TEXT("and 1.15 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 1.15f, 0.0001f);
-	TestEqual(TEXT("the damage multiplier is 0.06 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 0.06f,
+	TestEqual(TEXT("and 0.46 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 0.46f, 0.0001f);
+	TestEqual(TEXT("the damage multiplier is 0.05 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 0.05f,
 			  0.0001f);
-	TestEqual(TEXT("and 2.97 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 2.97f, 0.0001f);
-	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 0.06f, 0.0001f);
-	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 1.15f, 0.0001f);
+	TestEqual(TEXT("and 13.43 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 13.43f, 0.0001f);
+	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 0.05f, 0.0001f);
+	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 0.46f, 0.0001f);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -64456,8 +64799,17 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	constexpr float FittedBuiltHealth[8] = {945.6f, 1485.5f, 2139.7f, 2926.7f, 3940.4f, 5314.3f, 6109.7f, 6902.3f};
-	constexpr float FittedBlow[8] = {348.0f, 468.0f, 634.0f, 867.0f, 1195.0f, 1661.0f, 1874.0f, 2101.0f};
+	// THE DEMONIC CORRUPTED STALKER IS 3 TO 5% TOUGHER SINCE THE DEMONIC TREE REWORK (2026-11-24), because the rework
+	// raised the Ravager's health rows its build holds (Ravager_basic_spine_001 from 0.5 to 1.0 increased a point, and
+	// new rows on Ravager_basic_a_stem2 and Ravager_basic_a_c1). Measured in window tb-w1 (2026-11-25): 990.9 at tier 1
+	// (was 945.6, +4.8%) to 7122.1 at tier 8 (was 6902.3, +3.2%). By the coordinating session's ruling the multiplier
+	// is kept and only these figures follow the build; the Stalker's tables are fitted again in the affix ranges and
+	// rebalance bundle (issues #2883 and #2884), which measures the new game first.
+	//
+	// AND THEY WERE, ON 2026-11-25: window ar-w1 measured these figures under the whole-number affix ranges and the
+	// enemy rebalance, and the two tables in CataclysmDungeonModifierEffects.cpp are fitted to them.
+	constexpr float FittedBuiltHealth[8] = {1684.8f, 2961.9f, 4725.7f, 6866.4f, 9840.8f, 13982.5f, 16460.1f, 19068.6f};
+	constexpr float FittedBlow[8] = {366.7f, 505.2f, 733.7f, 1038.8f, 1433.3f, 2119.9f, 2354.6f, 2658.6f};
 	for (int32 Tier = 1; Tier <= 8; ++Tier)
 	{
 		ACataclysmCorruptedStalkerCharacter* Stalker =
@@ -64519,8 +64871,14 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 		TestEqual(FString::Printf(TEXT("tier %d: its health before the multiplier is the build the table was fitted to"),
 								  Tier),
 				  Health / Multiplier, FittedBuiltHealth[Tier - 1], FittedBuiltHealth[Tier - 1] * 0.01f);
+		// WITHIN 1%, OR HALF A POINT OF THE OBSERVED BLOW, WHICHEVER IS WIDER. The game deals whole points, so the
+		// observed blow is rounded before it is divided back by the multiplier: at tier 1 a 0.05 multiplier turns half
+		// a point into ten, more than 1% of 366.7. Window ar-w1 measured 22 / 0.06 = 366.7 there, and after the re-fit
+		// the same blow is 18 / 0.05 = 360, the same build seen through a coarser rounding.
+		const float BlowTolerance =
+			FMath::Max(FittedBlow[Tier - 1] * 0.01f, 0.5f / FMath::Max(DamageMultiplier, 0.0001f));
 		TestEqual(FString::Printf(TEXT("tier %d: its blow before the multiplier is the blow the table was fitted to"), Tier),
-				  Blow / DamageMultiplier, FittedBlow[Tier - 1], FittedBlow[Tier - 1] * 0.01f);
+				  Blow / DamageMultiplier, FittedBlow[Tier - 1], BlowTolerance);
 	}
 	return true;
 }
@@ -64691,7 +65049,7 @@ bool FCataclysmCorruptedStalkerMaterialsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and its death rolls no random gear"), Stalker->RandomGearDropsGiven(), 0);
 
 	// THE DEATH STREAM CANNOT BE PINNED (seeded from the creature and the clock), so bounds: every gear item on the
-	// floor is one it wore, and materials came. The Boss row's mean is five, a Poisson draw.
+	// floor is one it wore, and materials came. The Boss row's mean is 2.5 gear and 1.25 materials, a Poisson draw.
 	TSet<FName> Worn;
 	for (const FCataclysmItem& Piece : Stalker->WornPieces())
 	{

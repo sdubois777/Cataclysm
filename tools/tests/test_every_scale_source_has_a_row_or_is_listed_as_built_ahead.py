@@ -131,7 +131,18 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: with them.
 #: IT LEFT with its two rows on 2026-10-18, in the layer above its mechanism in
 #: the same build window, and the list is empty again.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: ONE JOINED ON 2026-11-24, `increased_movement_speed`, for the Ravager tree
+#: rework's Relentless, "you gain 1% increased Attack Speed for every 2%
+#: increased Movement Speed you have", built ahead of its row while the design
+#: workbook is with the session writing the rework's rows. It leaves with that
+#: row, and `EXPECTED_NAMED_BY_A_ROW` below moves then and not before.
+#: IT LEFT THE SAME DAY with that row, and in the same change `damage_reduction`
+#: JOINED, NOT BUILT AHEAD BUT LEFT BEHIND: its one row was the Ravager's Weight
+#: Against Them, "+1% increased Attack Damage for every 2% of Damage Reduction you
+#: have", which the rework replaced with Thronged. The engine still reads the
+#: scale, and a row may name it again. So `EXPECTED_NAMED_BY_A_ROW` does not
+#: move: one name gained its row and one lost its only one.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"damage_reduction"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -182,7 +193,25 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 41 WHEN `enemies_in_reach_while_own_stack` GAINED ITS TWO ROWS, 2026-10-18,
 #: for Warlord's Will's ten-piece bonus.
-EXPECTED_NAMED_BY_A_ROW = 41
+#:
+#: AND 42 WHEN `enemies_in_siphon` GAINED ITS ROWS, 2026-11-25, for the Soul
+#: Collector's Siphon (the Death trees' slice C2).
+#:
+#: AND 43 WHEN `fervour_thresholds_reached` GAINED ITS TWO ROWS, 2026-11-25, for
+#: the Soul Collector's Steady Count (the Death trees' slice C3d).
+#:
+#: AND 44 WHEN `seconds_poisoned_by_you` GAINED ITS FIVE ROWS, 2026-11-25, for
+#: the Shadow's Festering (the Death trees' slice C6b4).
+#:
+#: AND 45 WHEN `fervour_overflow_stacks` GAINED ITS ROW, 2026-11-25, for the
+#: Soul Collector's Overflow (the Death trees' slice C6c).
+#:
+#: AND 48 WHEN THE WAR LINE MET THE DEATH LINE (the Death trees' bundle 3 merge,
+#: 2026-11-25), whose three arrived on the War line the same day:
+#: `max_class_resource` and `block_chance` with the War vow options' second
+#: slice (Unbridled and Titan, and Bastion), and `current_health` with the
+#: third slice's second half, V3b (Colossus Eternal).
+EXPECTED_NAMED_BY_A_ROW = 48
 
 
 def scales_named_by_a_row() -> set[str]:

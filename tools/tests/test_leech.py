@@ -188,8 +188,13 @@ class TestTheThreeAffixesExist:
             assert affix.position == model.SUFFIX, affix.name
 
     def test_all_three_roll_where_a_hit_comes_from(self, model):
+        """ON THE WEAPON ALONE since issue #2883 (the approved proposal's
+        "Fewer slots" ruling), where they were every offensive slot: the weapon is
+        still where a hit comes from, and the whole-number ladder needs 35 a
+        piece at +10, so one piece is what the leech cap allows."""
         for affix in model.LEECH_AFFIXES:
-            assert affix.allowed_slots == model.OFFENSIVE_SLOTS, affix.name
+            assert affix.allowed_slots == frozenset({"Weapon"}), affix.name
+            assert affix.allowed_slots <= model.OFFENSIVE_SLOTS, affix.name
 
     def test_all_three_are_flat_and_worth_the_same(self, model):
         """One value for the family, which is a judgement recorded in
