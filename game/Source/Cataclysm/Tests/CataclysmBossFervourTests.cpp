@@ -347,9 +347,16 @@ bool FCataclysmBossFervourRealRowsTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const TPair<const TCHAR*, TPair<const TCHAR*, float>> Expected[] = {
-		{TEXT("Shadow_keystone_a_kC"), {UCataclysmFervour::BossTicksPayAKillEverySecondsStat, 2.0f}},
-		{TEXT("Shadow_keystone_b_kC"), {UCataclysmFervour::BossHitsCountedAsAKillEveryStat, 10.0f}}};
+	// A STRUCT AND NOT A NESTED TPair: window death3-w1 refused the nested brace lists (C2440).
+	struct FExpectedRow
+	{
+		const TCHAR* Key;
+		const TCHAR* Stat;
+		float Value;
+	};
+	const FExpectedRow Expected[] = {
+		{TEXT("Shadow_keystone_a_kC"), UCataclysmFervour::BossTicksPayAKillEverySecondsStat, 2.0f},
+		{TEXT("Shadow_keystone_b_kC"), UCataclysmFervour::BossHitsCountedAsAKillEveryStat, 10.0f}};
 	for (const auto& Each : Expected)
 	{
 		const TArray<const FCataclysmPassiveEffectRow*> Rows =
@@ -358,8 +365,8 @@ bool FCataclysmBossFervourRealRowsTest::RunTest(const FString&)
 		{
 			continue;
 		}
-		TestEqual(*FString::Printf(TEXT("%s: the stat"), Each.Key), Rows[0]->Stat, FString(Each.Value.Key));
-		TestEqual(*FString::Printf(TEXT("%s: the value"), Each.Key), Rows[0]->ValuePerPoint, Each.Value.Value, 0.001f);
+		TestEqual(*FString::Printf(TEXT("%s: the stat"), Each.Key), Rows[0]->Stat, FString(Each.Stat));
+		TestEqual(*FString::Printf(TEXT("%s: the value"), Each.Key), Rows[0]->ValuePerPoint, Each.Value, 0.001f);
 		TestEqual(*FString::Printf(TEXT("%s: against a Boss"), Each.Key), Rows[0]->Condition,
 				  FString(TEXT("target_is_boss")));
 	}

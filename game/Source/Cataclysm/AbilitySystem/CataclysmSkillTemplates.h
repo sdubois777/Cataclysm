@@ -1591,8 +1591,12 @@ private:
 	 */
 	void HitTheLineOnce(const FVector& From, const FVector& To, const TArray<AActor*>& AlreadyStruck);
 
-	/** The stat Hollow Step states: a movement skill that carries it passes through enemies and hits each one. */
+public:
+	/** The stat Hollow Step states: a movement skill that carries it passes through enemies and hits each one. PUBLIC,
+	 *  so a test can grant it by name (window death3-w1 refused the private one). */
 	static const TCHAR* PassesThroughEnemiesStat;
+
+private:
 
 	/** Where a walked Charge passing through enemies began, for `StepOutOfEnemies` when it ends. */
 	FVector PassingThroughFrom = FVector::ZeroVector;
