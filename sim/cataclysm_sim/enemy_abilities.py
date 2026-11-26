@@ -145,9 +145,12 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # every minion and gadget skill reserves Fervour rather than only the one
     # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all
     # Deployable and all three gained the key. No enemy ability uses it.
+    # `SiphonsAround` joined on 2026-11-26 with the Death Crossbow's Effigy (the
+    # Death finish slice A): what the row places widens its placer's Siphon. No
+    # enemy ability uses it.
     "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
                    "Interval", "Minions", "HealthPercent", "FervourReserve",
-                   "Taunts"),
+                   "Taunts", "SiphonsAround"),
     "Aura": ("Radius", "Duration", "Interval"),
     # `SpreadWhen` and `SpreadRadius` joined on 2026-09-02 with the
     # Wand's Hex of Cinders. No enemy ability states either yet.

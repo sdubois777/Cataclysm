@@ -30,7 +30,8 @@ Decisions made outside the Google Drive documents, newest first.
 - **NOTHING HERE HAS BEEN COMPILED OR RUN IN UNREAL.** The coordinating session runs the window. Every Unreal figure
   below is reasoned from the code.
 - **THE PINNED COUNTS WILL CONFLICT WITH THE OTHER DEATH FINISH SLICES**: `AUTHORED_ROWS` 909, `AUTHORED_NODES` 502,
-  `AUTHORED_OPTIONS` 96, and PassiveEffects 909 in `Cataclysm.Data.`, each this branch's own figure. The coordinating
+  `AUTHORED_OPTIONS` 96, PassiveEffects 909 in `Cataclysm.Data.`, and `docs/README.md`'s sheet table (Passive Effects
+  909, Minion Types 16, Tags 147), each this branch's own figure. The coordinating
   session reconciles them at assembly, and `FOLLOWERS` in `tools/tests/test_reapply_death_trees_workbook.py` lists the
   scripts that write Death rows after the trees' script, in the order they run.
 - **ISSUE [#2937](https://github.com/sdubois777/Cataclysm/issues/2937) IS DONE**: Soul Fuel is built and skips Cold Blood and Requiem by the keys their rows carry
