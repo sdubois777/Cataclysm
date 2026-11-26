@@ -4238,6 +4238,7 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 	int32 FixedQuests = 0;
 	int32 Overridden = 0;
 	int32 SiegesFreed = 0;
+	int32 SiegesTaken = 0; // Issue #51 slice B4: a War Quest Siege takes its city's one Siege, below.
 	int32 RiftsLeftOut = 0; // Issue #51 slice B2: compared by kind and depth only, below.
 
 	for (int32 Seed = 1; Seed <= 60; ++Seed)
@@ -4331,6 +4332,20 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 				// draw, read without the re-read. Never the other way round.
 				++SiegesFreed;
 			}
+			else if (A.SubType == ECataclysmDungeonSubType::Siege && B.SubType != ECataclysmDungeonSubType::Siege
+					 && With.ContainsByPredicate([&With, Index, &B](const FCataclysmDungeon& Earlier)
+					 {
+						 const int32 At = static_cast<int32>(&Earlier - With.GetData());
+						 return At < Index && Earlier.CityId == B.CityId
+							 && Earlier.SubType == ECataclysmDungeonSubType::Siege
+							 && Earlier.Type == ECataclysmDungeonType::Quest;
+					 }))
+			{
+				// THE OTHER WAY ROUND, SINCE WAR'S QUEST DUNGEONS ARE SIEGES (slice B4, bundle 4): an earlier War
+				// Quest dungeon on the same city is a Siege, which takes the city's one, so this dungeon's Siege roll
+				// is re-read as the cap re-reads any. Window b4-w1 found it. Only after such a Quest Siege.
+				++SiegesTaken;
+			}
 			else
 			{
 				TestEqual(TEXT("anything else keeps the sub-type it rolled"),
@@ -4345,8 +4360,8 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d dungeons compared, %d fixed Quest dungeons, %d of them a "
 			 "different sub-type from the one rolled; %d Sieges a fixed one "
-			 "left room for; %d Rifts compared by kind and depth only"),
-		Compared, FixedQuests, Overridden, SiegesFreed, RiftsLeftOut));
+			 "left room for; %d Sieges a War Quest Siege took; %d Rifts compared by kind and depth only"),
+		Compared, FixedQuests, Overridden, SiegesFreed, SiegesTaken, RiftsLeftOut));
 
 	// THE CONTROL. Unless some fixed Quest dungeon really came out different
 	// from what it rolled, the two waves never differed and the comparison

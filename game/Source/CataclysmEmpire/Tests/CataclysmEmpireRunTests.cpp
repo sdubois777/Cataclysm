@@ -1410,6 +1410,7 @@ bool FCataclysmEmpireRunOneSiegePerCityTest::RunTest(const FString& Parameters)
 	// pressure once waves have been landing for a while, and the dungeon cap is
 	// what stops it being impossible.
 	int32 CitiesSeenWithASiege = 0;
+	int32 RuledSecondSieges = 0;
 
 	for (int32 Seed = 1; Seed <= 8; ++Seed)
 	{
@@ -1435,11 +1436,39 @@ bool FCataclysmEmpireRunOneSiegePerCityTest::RunTest(const FString& Parameters)
 
 				if (Pair.Value > UCataclysmSurgeScheduler::SiegesPerCity)
 				{
+					// THE ONE WAY A CITY HOLDS TWO, RULED FOR WAR'S QUEST SIEGES (issue #51 slice B4): a War Quest
+					// dungeon drawn onto a besieged city re-draws among the front's cities holding none, and with none
+					// free it lands where it was drawn. So a second Siege is allowed only while every exposed city
+					// holds one. Window b4-w1 (bundle 4) found seed 2 day 96 with two, which this test did not know.
+					int32 FreeFrontCities = 0;
+					for (const int32 Front : Run->Map->ExposedCities())
+					{
+						FreeFrontCities += SiegesOn.FindRef(Front) == 0 ? 1 : 0;
+					}
+					FString Which;
+					for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+					{
+						if (Dungeon.CityId == Pair.Key && Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+						{
+							Which += FString::Printf(TEXT("dungeon %d (type %d, sent by %s, arrived day %d); "),
+													 Dungeon.DungeonId, static_cast<int32>(Dungeon.Type),
+													 *UCataclysmRoster::NameFor(Dungeon.Cataclysm).ToString(),
+													 Dungeon.ArrivedDay);
+						}
+					}
+					if (FreeFrontCities == 0)
+					{
+						++RuledSecondSieges;
+						AddInfo(FString::Printf(TEXT("RULED SECOND SIEGE: seed %d day %d: city %d holds %d, every "
+													 "exposed city besieged: %s"),
+												Seed, Day, Pair.Key, Pair.Value, *Which));
+						continue;
+					}
 					AddError(FString::Printf(
-						TEXT("seed %d day %d: city %d holds %d Sieges, and the "
-							 "design allows %d"),
-						Seed, Day, Pair.Key, Pair.Value,
-						UCataclysmSurgeScheduler::SiegesPerCity));
+						TEXT("seed %d day %d: city %d holds %d Sieges with %d exposed cities holding none, and the "
+							 "design allows %d: %s"),
+						Seed, Day, Pair.Key, Pair.Value, FreeFrontCities,
+						UCataclysmSurgeScheduler::SiegesPerCity, *Which));
 					return false;
 				}
 			}
@@ -1450,6 +1479,8 @@ bool FCataclysmEmpireRunOneSiegePerCityTest::RunTest(const FString& Parameters)
 	// have found no violation and proved nothing.
 	TestTrue(TEXT("cities carrying a Siege were actually seen"),
 			 CitiesSeenWithASiege > 0);
+	AddInfo(FString::Printf(TEXT("SIEGES: %d city-days with a Siege, %d with a ruled second"), CitiesSeenWithASiege,
+							RuledSecondSieges));
 
 	return true;
 }
