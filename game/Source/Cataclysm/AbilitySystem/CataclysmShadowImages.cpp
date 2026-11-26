@@ -483,7 +483,9 @@ int32 UCataclysmShadowImages::StrikeAgain(AActor* Instigator, AActor* Target, fl
 	int32 Dealt = 0;
 	FCataclysmHitDelivery Again = Delivery;
 	Again.bIsARowsAnswerToAnEvent = true;
-	// AND MARKED AN EXTRA STRIKE, which fires no on-hit row (the coordinating session's ruling of 2026-11-26).
+	// MARKED A ROW'S ANSWER TO AN EVENT (above), which is what keeps an extra strike from striking again, AND MARKED AN
+	// EXTRA STRIKE, so a listener can tell it from the hit it repeats. It fires on-hit effects as any hit does: the
+	// project owner's ruling of 2026-11-26 ("yes").
 	Again.bIsAnExtraStrike = true;
 	for (int32 Strike = 0; Strike < Times; ++Strike)
 	{

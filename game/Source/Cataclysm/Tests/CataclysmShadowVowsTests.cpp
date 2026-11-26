@@ -810,19 +810,22 @@ bool FCataclysmShadowVowsFlurryTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowVowsFlurryFiresNoOnHitRowTest,
-	"Cataclysm.ShadowVows.FlurryOfTheDeadsExtraStrikesDealDamageButPayNoCriticalStrikeFervour",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowVowsFlurryPaysOnHitEffectsTest,
+	"Cataclysm.ShadowVows.FlurryOfTheDeadsExtraStrikesPayOnHitEffectsLikeAnyHit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The coordinating session's ruling of 2026-11-26 at the bundle's assembly: Flurry of the Dead's extra strikes are full
- * hits but fire no on-hit row. A possessed player holding Flurry of the Dead's shipped row and one flat row of
- * `fervour_per_critical_strike` (5), every blow a critical strike, holds three and a half steps' worth of Fervour and
- * lands one hit on a creature: it deals four hits' worth (the hit and three extra strikes, every one a critical strike),
- * and gains the critical strike's Fervour ONCE, for the hit itself. THE CONTROL: the same player without Flurry's row
- * deals one hit's worth and gains the same Fervour once.
+ * The project owner's ruling of 2026-11-26 ("yes"): Flurry of the Dead's extra strikes trigger on-hit effects as any hit
+ * does. A possessed player holding Flurry of the Dead's shipped row and one flat row of `fervour_per_critical_strike`
+ * (5), every blow a critical strike, holds three and a half steps' worth of Fervour and lands one hit on a creature: it
+ * deals four hits' worth (the hit and three extra strikes, every one a critical strike) and gains the critical strike's
+ * Fervour FOUR TIMES. THE CONTROL: the same player without Flurry's row deals one hit's worth and gains it once.
+ *
+ * AND AN EXTRA STRIKE STRIKES NO FURTHER EXTRAS: a hit delivered as `UCataclysmShadowImages::StrikeAgain` delivers each
+ * extra strike (a row's answer to an event, marked an extra strike), by the player holding Flurry, deals one hit's worth
+ * and gains the critical strike's Fervour once. Were the extra strikes to strike again, the four above would be more.
  */
-bool FCataclysmShadowVowsFlurryFiresNoOnHitRowTest::RunTest(const FString&)
+bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 {
 	using namespace CataclysmShadowVowsTest;
 
@@ -835,9 +838,10 @@ bool FCataclysmShadowVowsFlurryFiresNoOnHitRowTest::RunTest(const FString&)
 	const float Step = Shipped->ScaleStep;
 	constexpr float PerCritical = 5.0f;
 
-	float Lost[2] = {0.0f, 0.0f};
-	float Gained[2] = {0.0f, 0.0f};
-	for (int32 WithFlurry = 0; WithFlurry < 2; ++WithFlurry)
+	// 0: without Flurry; 1: with it; 2: with it, the hit delivered as an extra strike is.
+	float Lost[3] = {0.0f, 0.0f, 0.0f};
+	float Gained[3] = {0.0f, 0.0f, 0.0f};
+	for (int32 Case = 0; Case < 3; ++Case)
 	{
 		UWorld* World = MakeWorldThatHasBegunPlay();
 		if (!TestNotNull(TEXT("world"), World))
@@ -852,7 +856,7 @@ bool FCataclysmShadowVowsFlurryFiresNoOnHitRowTest::RunTest(const FString&)
 			return false;
 		}
 		TMap<FName, FCataclysmStatInputs> Lines =
-			WithFlurry == 1 ? ShippedLines(TEXT("Shadow_capstone_200"), 3) : TMap<FName, FCataclysmStatInputs>();
+			Case > 0 ? ShippedLines(TEXT("Shadow_capstone_200"), 3) : TMap<FName, FCataclysmStatInputs>();
 		FCataclysmStatModifier PerCrit;
 		PerCrit.Bucket = ECataclysmStatBucket::Flat;
 		PerCrit.Source = ECataclysmModifierSource::PassiveKeystone;
@@ -865,23 +869,32 @@ bool FCataclysmShadowVowsFlurryFiresNoOnHitRowTest::RunTest(const FString&)
 
 		FCataclysmHitDelivery Delivery;
 		Delivery.bCannotBeEvaded = true;
+		if (Case == 2)
+		{
+			Delivery.bIsARowsAnswerToAnEvent = true;
+			Delivery.bIsAnExtraStrike = true;
+		}
 		const float Was = HealthOf(Creature);
 		const float FervourWas = Rig.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
 		UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), Delivery);
-		Lost[WithFlurry] = Was - HealthOf(Creature);
-		Gained[WithFlurry] =
+		Lost[Case] = Was - HealthOf(Creature);
+		Gained[Case] =
 			Rig.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()) - FervourWas;
 	}
 
 	AddInfo(FString::Printf(TEXT("FLURRY ON-HIT: without the row lost %.1f, gained %.1f Fervour; with it lost %.1f, gained "
-								 "%.1f"), Lost[0], Gained[0], Lost[1], Gained[1]));
+								 "%.1f; an extra strike alone lost %.1f, gained %.1f"),
+							Lost[0], Gained[0], Lost[1], Gained[1], Lost[2], Gained[2]));
 	if (!TestTrue(TEXT("set-up: the control's hit landed and paid its critical strike's Fervour"),
 				  Lost[0] > 0.0f && Gained[0] > 0.0f))
 	{
 		return false;
 	}
 	TestEqual(TEXT("THE EXTRA STRIKES ARE FULL HITS: four hits' worth"), Lost[1] / Lost[0], 4.0f, 0.001f);
-	TestEqual(TEXT("BUT THEY PAY NO CRITICAL STRIKE'S FERVOUR: the hit's, once"), Gained[1], Gained[0], 0.001f);
+	TestEqual(TEXT("AND EACH PAYS THE CRITICAL STRIKE'S FERVOUR: four times the control's"), Gained[1], Gained[0] * 4.0f,
+			  0.001f);
+	TestEqual(TEXT("AN EXTRA STRIKE STRIKES NO FURTHER EXTRAS: one hit's worth"), Lost[2] / Lost[0], 1.0f, 0.001f);
+	TestEqual(TEXT("and pays its critical strike's Fervour once"), Gained[2], Gained[0], 0.001f);
 	return true;
 }
 

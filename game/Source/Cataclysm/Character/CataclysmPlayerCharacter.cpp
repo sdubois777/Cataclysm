@@ -1221,13 +1221,9 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
-	// NOR ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES. Ruled by the coordinating session on 2026-11-26 at the bundle's
-	// assembly: each is a full hit for damage, critical strike and ailments, but fires no on-hit row (the critical
-	// strike's Fervour included), or a build paying Fervour for critical strikes refills its own Fervour from them.
-	if (Notice.bExtraStrike)
-	{
-		return;
-	}
+	// BUT ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES GOES ON, AS ANY HIT: the project owner's ruling of 2026-11-26 ("yes",
+	// its extra strikes do trigger on-hit effects), so each raises `hit_dealt` and `critical_strike` and pays a critical
+	// strike's Fervour. The bundle had returned here for it, by an earlier ruling the owner's replaced.
 
 	// NOR A WEARER'S SHARE OF WHAT A BLOW OF THIS CHARACTER'S DID TO THE WEARER'S ALLY. Ruled 2026-10-15, for "You take
 	// 5%-15% damage done to nearby allies": the share is not a blow this character struck, so it raises none of the

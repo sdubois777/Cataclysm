@@ -39,10 +39,18 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
   and with room for three and a half guards' reserve three.
 - **AFTERIMAGE REPEATS THE NEXT SKILL ATTACK, NEVER A BASIC SWING.** `GiveTheAttackToTheAfterimage` returns nothing for
   a basic attack, so the image waits for the next skill.
-- **FLURRY OF THE DEAD'S EXTRA STRIKES FIRE NO ON-HIT ROWS.** They deal their damage; the hit they deliver is marked
-  (`FCataclysmHitDelivery::bIsAnExtraStrike`, carried to `FCataclysmHitNotice::bExtraStrike`), and
-  `ACataclysmPlayerCharacter::OnSomethingWasHit` returns before any on-hit row for it.
-  `FlurryOfTheDeadsExtraStrikesDealDamageButPayNoCriticalStrikeFervour` holds it.
+- **FLURRY OF THE DEAD'S EXTRA STRIKES TRIGGER ON-HIT EFFECTS, AS ANY HIT: THE PROJECT OWNER'S RULING.** Asked whether
+  they should, the owner answered "yes" (2026-11-26). It replaces the coordinating session's earlier ruling at assembly,
+  that they fire no on-hit row so a build paying Fervour for critical strikes would not refill its own Fervour from
+  them; the bundle had built that ruling and took it out before its window ran. Each extra strike now raises `hit_dealt`
+  and `critical_strike` and pays a critical strike's Fervour: `ACataclysmPlayerCharacter::OnSomethingWasHit` no longer
+  returns early for it. The hit is still marked (`FCataclysmHitDelivery::bIsAnExtraStrike`, carried to
+  `FCataclysmHitNotice::bExtraStrike`) so a listener can tell it from the hit it repeats. WHAT STOPS AN EXTRA STRIKE
+  STRIKING AGAIN is `bIsARowsAnswerToAnEvent`, which `UCataclysmShadowImages::StrikeAgain` also sets, and which stays.
+  Because of it an extra strike records no first hit and calls no crow (`NoteCriticalStrikeLanded`), as before.
+  `FlurryOfTheDeadsExtraStrikesPayOnHitEffectsLikeAnyHit`: every blow critical with a flat 5 Fervour per critical
+  strike, one hit with three extra strikes deals four hits' worth and pays the critical strike's Fervour four times,
+  against once without Flurry; a hit delivered as an extra strike is deals one hit's worth and pays once.
 - **THE ABOMINATION AND THE BONE COLOSSUS ARE EXEMPT FROM EVERY DETONATION.** "They are vow giants, and a skill
   landing on them must not destroy them." `UCataclysmBoneGiants::IsAGiant` compares a minion with the stored giants,
   not its type, since both are drawn as a Barrow Guard; `UCataclysmDetonation` refuses them.

@@ -2428,7 +2428,8 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		Spec.SetSetByCallerMagnitude(FName(ExplosionAtAnAilmentsEndDataName), 1.0f);
 	}
 
-	// AND WHETHER IT IS ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES, which fires no on-hit row. Ruled 2026-11-26.
+	// AND WHETHER IT IS ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES, which fires on-hit effects as any hit does (the
+	// project owner's ruling of 2026-11-26); the mark lets a listener tell it from the hit it repeats.
 	if (Delivery.bIsAnExtraStrike)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ExtraStrikeDataName), 1.0f);

@@ -189,11 +189,11 @@ struct CATACLYSM_API FCataclysmHitDelivery
 
 	/**
 	 * Whether this blow is one of Flurry of the Dead's extra strikes (`UCataclysmShadowImages::StrikeAgain`). A full hit
-	 * for damage, critical strike and ailments, but NO ON-HIT ROW FIRES FOR IT: the coordinating session's ruling of
-	 * 2026-11-26 at the bundle's assembly, so a build paying Fervour for critical strikes does not refill its own
-	 * Fervour from its extra strikes. Stamped with `UCataclysmSkillEffects::ExtraStrikeDataName`; the hit announcement
-	 * carries it as `FCataclysmHitNotice::bExtraStrike`, and `ACataclysmPlayerCharacter::OnSomethingWasHit` raises none
-	 * of `hit_dealt`, `first_hit_dealt` and `critical_strike` for it, nor pays the critical strike's Fervour.
+	 * for damage, critical strike, ailments AND ON-HIT EFFECTS: the project owner's ruling of 2026-11-26 ("yes"), so
+	 * `ACataclysmPlayerCharacter::OnSomethingWasHit` raises `hit_dealt` and `critical_strike` for it and pays the critical
+	 * strike's Fervour as for any hit. Stamped with `UCataclysmSkillEffects::ExtraStrikeDataName`; the hit announcement
+	 * carries it as `FCataclysmHitNotice::bExtraStrike`, so a listener can tell it from the hit it repeats. WHAT STOPS
+	 * AN EXTRA STRIKE STRIKING AGAIN is not this mark but `bIsARowsAnswerToAnEvent`, which `StrikeAgain` also sets.
 	 */
 	bool bIsAnExtraStrike = false;
 

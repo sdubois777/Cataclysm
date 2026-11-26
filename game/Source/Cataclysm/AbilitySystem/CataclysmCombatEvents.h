@@ -147,8 +147,8 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bExplosionAtAnAilmentsEnd = false;
 
 	/**
-	 * Whether the blow is one of Flurry of the Dead's extra strikes, which fires none of its attacker's on-hit rows.
-	 * Ruled 2026-11-26. See `FCataclysmHitDelivery::bIsAnExtraStrike`.
+	 * Whether the blow is one of Flurry of the Dead's extra strikes. It fires its attacker's on-hit effects as any hit
+	 * does, by the project owner's ruling of 2026-11-26. See `FCataclysmHitDelivery::bIsAnExtraStrike`.
 	 */
 	bool bExtraStrike = false;
 
