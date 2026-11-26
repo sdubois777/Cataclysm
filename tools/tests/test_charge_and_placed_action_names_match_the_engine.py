@@ -841,13 +841,21 @@ def test_a_critical_strike_pays_fervour_and_a_minions_does_not() -> None:
     the code with comments taken out."""
     player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
     assert re.search(r"if \(Notice\.bCritical\)\s*\{\s*if \(!Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*\{\s*"
-                     r"UCataclysmFervour::GainOnCriticalStrike\(Acting, Notice\.Target\);\s*\}\s*"
+                     r"UCataclysmFervour::GainOnCriticalStrike\(Acting, Notice\.Target,\s*"
+                     r"Notice\.SkillTags \? \*Notice\.SkillTags : FGameplayTagContainer\(\)\);\s*\}\s*"
                      r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)", player)
+    # ONE PAYMENT, since the bundle 3 merge (obligation 5): the War line's second reader of the same stat is not called
+    # from the hit handler, and its own function hands on to this one.
+    assert "FCataclysmWarFervour::GainOnCriticalStrike" not in player
+    war = code_without_comments(SOURCE.parent / "CataclysmWarFervour.cpp")
+    start = war.index("float FCataclysmWarFervour::GainOnCriticalStrike(")
+    assert "return UCataclysmFervour::GainOnCriticalStrike(AbilitySystem, nullptr, SkillTags);" in \
+        war[start:war.index("\n}\n", start)]
     fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
     start = fervour.index("float UCataclysmFervour::GainOnCriticalStrike(")
     body = fervour[start:fervour.index("\n}\n", start)]
-    assert re.search(r"FName\(PerCriticalStrikeStat\), FGameplayTagContainer\(\), 0\.0f, -1\.0f, "
-                     r"FCataclysmBlowContext\(\), -1\.0f, -1\.0f, false,\s*Struck\);", body)
+    assert re.search(r"FName\(PerCriticalStrikeStat\), SkillTags, 0\.0f, -1\.0f, "
+                     r"FCataclysmBlowContext\(\), -1\.0f, -1\.0f, false, Struck\);", body)
     assert "RaisePool(AbilitySystem, Change);" in body
     assert "ClassResourceGainScaled(AbilitySystem, PerCritical)" in body
     assert "BeginKillPayment" not in body
@@ -958,7 +966,9 @@ def test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_dea
     and the shares that need a body are taken and dropped. Read from the code
     with comments taken out."""
     player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
-    assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)[^;]*;\s*\}\s*"
+    # AFTER THE CRITICAL STRIKE'S BLOCK, whatever else it holds (the War line's Skull Splitter and Deathmark since the
+    # bundle 3 merge): the block's own closing brace at one tab, then the count.
+    assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)[^;]*;[\s\S]*?\n\t\}\s*"
                      r"if \(!Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*\{\s*"
                      r"UCataclysmFervour::CountAHitOnABoss\(Acting, Notice\.Target\);", player)
     engine = code_without_comments(SOURCE)
@@ -1509,7 +1519,9 @@ def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_carries_t
     engine = code_without_comments(SOURCE)
     assert re.search(r"TGuardValue<float> SaysHowMuchItTook\(HitBeingAnnouncedPercentOfMaxHealth, "
                      r"PercentOfMaxHealthLost\);\s*ActOnEvent\(FName\(TEXT\(\"hit_taken\"\)\), nullptr, "
-                     r"FMath::Max\(0\.0f, PercentOfMaxHealthLost\), bLanded\);", engine)
+                     r"FMath::Max\(0\.0f, PercentOfMaxHealthLost\), bLanded,\s*"
+                     # AND WHO STRUCK, the War line's V3a, beside it since the bundle 3 merge.
+                     r"bDamageOverTime \|\| bOwnBlow \? nullptr : Attacker\);", engine)
     assert "State.HitTakenPercentOfMaxHealth = HitBeingAnnouncedPercentOfMaxHealth;" in engine
     item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
     assert re.search(r"if \(UCataclysmStatPipeline::IsJudgedAtItsEvent\(Out\.Condition\)\)\s*\{\s*Out\.Condition = "

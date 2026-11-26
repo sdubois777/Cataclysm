@@ -15,7 +15,7 @@
 
 const TCHAR* FCataclysmWarFervour::PerHitTakenStat = TEXT("fervour_per_hit_taken");
 const TCHAR* FCataclysmWarFervour::PerBlockStat = TEXT("fervour_per_block");
-const TCHAR* FCataclysmWarFervour::PerCriticalStrikeStat = TEXT("fervour_per_critical_strike");
+const TCHAR* const& FCataclysmWarFervour::PerCriticalStrikeStat = UCataclysmFervour::PerCriticalStrikeStat;
 const TCHAR* FCataclysmWarFervour::PerTrapPlacedStat = TEXT("fervour_per_trap_placed");
 const TCHAR* FCataclysmWarFervour::PerGadgetPlacedStat = TEXT("fervour_per_gadget_placed");
 const TCHAR* FCataclysmWarFervour::PerTrapTriggeredStat = TEXT("fervour_per_trap_triggered");
@@ -271,6 +271,13 @@ float FCataclysmWarFervour::TradeForEnemiesStruckTogether(UAbilitySystemComponen
 	{
 		return 0.0f;
 	}
+	// A NET GAIN GOES THROUGH `UCataclysmFervour::RaisePool`, as every gain to the pool does since the Death trees'
+	// bundle 3 merge (obligations 14 and 17), so Kindred Fires, Borrowed Time and Overflow hear of it; a net loss is
+	// written as it was.
+	if (Change > 0.0f)
+	{
+		return UCataclysmFervour::RaisePool(AbilitySystem, Change);
+	}
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
@@ -361,8 +368,9 @@ float FCataclysmWarFervour::GainByRate(UAbilitySystemComponent* AbilitySystem, c
 		return 0.0f;
 	}
 
-	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
-	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+	// THROUGH `UCataclysmFervour::RaisePool`, the one way a gain reaches the pool, since the Death trees' bundle 3 merge
+	// (obligations 14 and 17): a War gain is a gain that Kindred Fires and Borrowed Time act on, as any other is.
+	return UCataclysmFervour::RaisePool(AbilitySystem, Change);
 }
 
 float FCataclysmWarFervour::GainOnHitTaken(UAbilitySystemComponent* AbilitySystem)
@@ -378,7 +386,8 @@ float FCataclysmWarFervour::GainOnBlock(UAbilitySystemComponent* AbilitySystem)
 float FCataclysmWarFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem,
 												 const FGameplayTagContainer& SkillTags)
 {
-	return GainByRate(AbilitySystem, PerCriticalStrikeStat, SkillTags);
+	// THE ONE PAYMENT, the Death line's, asked with no character struck (the bundle 3 merge, obligation 5).
+	return UCataclysmFervour::GainOnCriticalStrike(AbilitySystem, nullptr, SkillTags);
 }
 
 float FCataclysmWarFervour::GainOnTrapPlaced(UAbilitySystemComponent* AbilitySystem,
@@ -466,10 +475,22 @@ float FCataclysmWarFervour::OutOfCombatDecayStep(ACataclysmCharacterBase* Charac
 	// (THE RUNNING-BUFF HOLD BELONGS HERE once `UCataclysmSkillTemplate::ARunningBuffHoldsFervour` is on the same
 	// branch; see the header.)
 
+	// AND NEVER BELOW MISER'S GRIP'S FLOOR, a share of the full bar after reserves, as the Death classes' decay after a
+	// kill stops at it (the Death trees' slice C6c; the bundle 3 merge, obligation 17): "Your Fervour never decays below
+	// 3% of your maximum Fervour per point" names no one decay. Nought for every character without the row.
+	const float FloorPercent = FMath::Clamp(
+		Cataclysm->StatForSkill(FName(UCataclysmFervour::DecayFloorPercentStat), FGameplayTagContainer(), 0.0f), 0.0f,
+		100.0f);
+	const float Floor = Resource->MaximumClassResourceAsked() * FloorPercent / 100.0f;
+	if (Before <= Floor)
+	{
+		return 0.0f;
+	}
+
 	// CLAMPED BEFORE IT IS WRITTEN, as `UCataclysmFervour::DecayStep` is, and not scaled by `class_resource_generation`:
 	// a decay is not a gain.
 	const float Change =
-		FMath::Clamp(Before - PerSecond * SecondsInStep, 0.0f, Resource->MaximumClassResourceAsked()) - Before;
+		FMath::Clamp(Before - PerSecond * SecondsInStep, Floor, Resource->MaximumClassResourceAsked()) - Before;
 	if (FMath::IsNearlyZero(Change))
 	{
 		return 0.0f;

@@ -876,8 +876,14 @@ public:
 	 * Pay the Fervour one landed critical strike on `Struck` earns, scaled by how fast the class resource generates and
 	 * held to the maximum, through `RaisePool`; answer what was added. Nought for a character without the stat. Called
 	 * by the player's hit handler for its own critical strikes, a minion's left out. Not a kill's payment.
+	 *
+	 * ASKED WITH THE BLOW'S SKILL TAGS TOO, since the Death trees' bundle 3 merge (2026-11-25, obligation 5): the War
+	 * line's Berserker reads the same stat, and Battle Lust's "on every critical melee strike" is a row scoped to melee.
+	 * THE ONE PAYMENT OF THE STAT: the War line paid it a second time from its own reader, and that call is gone.
+	 * `FCataclysmWarFervour::GainOnCriticalStrike` hands on to this one.
 	 */
-	static float GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck);
+	static float GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck,
+									  const FGameplayTagContainer& SkillTags = FGameplayTagContainer());
 
 	/**
 	 * The seconds between two payments of an own kill's Fervour for a tick of the character's damage over time on a

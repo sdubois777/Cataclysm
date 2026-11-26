@@ -1644,9 +1644,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// ONE PASS, AND ITS LIMIT. A `class_resource` row that itself asks a Fervour share or a full bar is judged here
 	// against the attribute, not against this maximum. No row is written that way.
 	//
-	// THE FULL BAR AND WHAT MINIONS RESERVE. The Death line's slice C1 (`feat/death-trees-c1`) judges "full" against
-	// `ClassResourceMaximum` less what minions hold back. Whichever of the two merges second keeps both: this maximum,
-	// less that reserve.
+	// THE FULL BAR AND WHAT MINIONS RESERVE. The Death line's slice C1 judges "full" against `ClassResourceMaximum` less
+	// what minions hold back (`ClassResourceReserved`). Both are kept since the Death trees' bundle 3 merge (obligation
+	// 8): `ClassResourceAtMaximum` reads this maximum, less that reserve.
 	if (State.ClassResourceMaximum >= 0.0f)
 	{
 		if (const FCataclysmStatInputs* Line = StatInputs.Find(FName(TEXT("class_resource"))))

@@ -30,6 +30,7 @@ CALL = re.compile(r"\bApplyModToAttribute\s*\(")
 
 FERVOUR = "game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp"
 ASC = "game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp"
+WAR = "game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp"
 
 #: Every `ApplyModToAttribute` call outside the tests: (file, function) -> (how many, why it is not a gain to the pool).
 INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
@@ -67,6 +68,15 @@ INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
         1, "mana, not the pool"),
     ("game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp", "ACataclysmDungeonGameMode::StepSufferingAura"): (
         1, "mana, not the pool"),
+    # THE WAR LINE'S, since the Death trees' bundle 3 merge (2026-11-25, obligations 14 and 17). Its two gains,
+    # `GainByRate` and Cleave's net gain, go through RaisePool (in GAINS below); these are its losses.
+    (WAR, "FCataclysmWarFervour::TakeFromPool"): (1, "a War spend of Fervour, a negative change"),
+    (WAR, "FCataclysmWarFervour::RetaliationPulseDrainStep"): (1, "Vengeful Discharge's drain, a negative change"),
+    (WAR, "FCataclysmWarFervour::TradeForEnemiesStruckTogether"): (
+        1, "Cleave's net loss only; its net gain calls RaisePool"),
+    (WAR, "FCataclysmWarFervour::OutOfCombatDecayStep"): (1, "the War classes' decay out of combat, a negative change"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp", "FCataclysmBerserkerStates::DrainStep"): (1, "Wrath's and Frenzy's drain, a negative change"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp", "FCataclysmBerserkerStates::SpendBerserking"): (1, "Berserking's spend of Fervour, a negative change"),
 }
 
 #: Every function that gains the pool, each of which has to call `RaisePool`.
@@ -82,6 +92,9 @@ GAINS = (
     (ASC, "UCataclysmAbilitySystemComponent::ReturnFervourDue"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp", "UCataclysmRegeneration::TopUp"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::FervourOnce"),
+    # AND THE WAR LINE'S TWO, since the bundle 3 merge: every rate (`GainByRate`) and Cleave's net gain.
+    (WAR, "FCataclysmWarFervour::GainByRate"),
+    (WAR, "FCataclysmWarFervour::TradeForEnemiesStruckTogether"),
 )
 
 

@@ -1501,11 +1501,12 @@ INVENTORY = {
         "2026-11-25), asked in CountAHitOnABoss with the creature struck so the "
         "row's target_is_boss is judged; it counts the hit, it does not price it",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+     'FName(PerCriticalStrikeStat), SkillTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
         "the Fervour a landed critical strike pays (the Death trees' slice "
         "C4d1, 2026-11-25), asked in GainOnCriticalStrike with the character "
-        "struck so Telling Blows' rarity row is judged; it pays for the "
-        "critical strike, not the skill, so no blow and no tags",
+        "struck so Telling Blows' rarity row is judged, and with the blow's "
+        "skill tags since the bundle 3 merge, so Battle Lust's melee row is "
+        "scoped; it pays for the critical strike, so no blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
         "the Fervour a kill pays (the Death trees' kill generator, "
@@ -1523,6 +1524,11 @@ INVENTORY = {
         "Miser's Grip's floor for the kill decay, a share of the full bar "
         "(the Death trees' slice C6c, 2026-11-25), asked in KillDecayStep "
         "with the character's own state; no tags: it is the character's.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(UCataclysmFervour::DecayFloorPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the same floor for the War classes' decay out of combat (the bundle "
+        "3 merge, obligation 17), asked in OutOfCombatDecayStep with the "
+        "character's own state; no tags: it is the character's.",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(HealthPercentLostPerFervourLostStat), FGameplayTagContainer(), 0.0f'):
         "Soulbound's percent of maximum health lost per Fervour lost (the "
@@ -1583,7 +1589,7 @@ TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {
         "whether it is a Boss, and the generator refuses a row on this stat "
         "asking the distance or the stagger (slice C4d2)",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+     'FName(PerCriticalStrikeStat), SkillTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
         "asked after a landed critical strike: the character struck is handed "
         "over for its rarity rung, and the generator refuses a row on this "
         "stat asking the distance or the stagger (slice C4d1)",

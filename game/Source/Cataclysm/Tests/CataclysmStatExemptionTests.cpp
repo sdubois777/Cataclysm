@@ -14855,10 +14855,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_block"), [](FAutomationTestBase& Test)
 				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerBlockStat,
 					[](UAbilitySystemComponent* System) { return FCataclysmWarFervour::GainOnBlock(System); }); }},
-			{TEXT("fervour_per_critical_strike"), [](FAutomationTestBase& Test)
-				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerCriticalStrikeStat,
-					[](UAbilitySystemComponent* System)
-					{ return FCataclysmWarFervour::GainOnCriticalStrike(System, FGameplayTagContainer()); }); }},
+			// (`fervour_per_critical_strike` is probed above, with the Death line's reader: one stat, one probe, since
+			// the bundle 3 merge.)
 			{TEXT("fervour_per_trap_placed"), [](FAutomationTestBase& Test)
 				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerTrapPlacedStat,
 					[](UAbilitySystemComponent* System)

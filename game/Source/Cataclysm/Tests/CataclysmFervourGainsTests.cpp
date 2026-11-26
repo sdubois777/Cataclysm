@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -370,6 +371,59 @@ bool FCataclysmFervourGainsRealRowsTest::RunTest(const FString&)
 				  FString(UCataclysmFervour::HoldRestartedByAnyGainStat));
 		TestEqual(TEXT("Kindred Fires: 1"), Kindred[0]->ValuePerPoint, 1.0f, 0.001f);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourGainsWarGainsTest,
+	"Cataclysm.FervourGains.AWarRateAndCleavesNetGainAreGainsKindredFiresHears",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Death trees' bundle 3 merge (2026-11-25, obligations 14 and 17): the War line's gains go through
+ * `UCataclysmFervour::RaisePool`, so Kindred Fires acts on them as on any gain. With the node and a common kill's
+ * 4-second grace: a block's 5 Fervour (`FCataclysmWarFervour::GainOnBlock`) holds decay off, and so does Cleave's net
+ * gain (3 enemies struck, 5 paid and 8 gained for each of the 2 beyond the first) once the first hold has run out.
+ * THE CONTROL: without Kindred Fires the same block holds nothing.
+ */
+bool FCataclysmFervourGainsWarGainsTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourGainsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FFervourGainsHolder Holder(World);
+	UCataclysmAbilitySystemComponent* System = Holder.AbilitySystem;
+
+	const auto Lines = [](bool bWithKindredFires)
+	{
+		TMap<FName, FCataclysmStatInputs> Made;
+		FlatLine(Made, FCataclysmWarFervour::PerBlockStat, 5.0f);
+		FlatLine(Made, FCataclysmWarFervour::CostPerExtraEnemyHitStat, 5.0f);
+		FlatLine(Made, FCataclysmWarFervour::GainPerExtraEnemyHitPaidStat, 8.0f);
+		Made.FindOrAdd(FName(UCataclysmFervour::KillDecayGraceSecondsStat)).Modifiers = {
+			GainsRow(ECataclysmStatBucket::Flat, 4.0f, ECataclysmStatCondition::TargetRarityIs, 0.0f)};
+		if (bWithKindredFires)
+		{
+			FlatLine(Made, UCataclysmFervour::HoldRestartedByAnyGainStat, 1.0f);
+		}
+		return Made;
+	};
+
+	System->SetStatInputs(Lines(false));
+	TestEqual(TEXT("set-up: a block pays its 5"), FCataclysmWarFervour::GainOnBlock(System), 5.0f, 0.001f);
+	TestFalse(TEXT("control: without Kindred Fires a block's gain holds nothing"), System->KillDecayIsHeld());
+
+	System->SetStatInputs(Lines(true));
+	Holder.SetFervour(0.0f);
+	TestEqual(TEXT("with it, a block still pays its 5"), FCataclysmWarFervour::GainOnBlock(System), 5.0f, 0.001f);
+	TestTrue(TEXT("and its gain holds decay off, as any gain does"), System->KillDecayIsHeld());
+	RunClock(World, 4.3f);
+	TestFalse(TEXT("set-up: 4.3 seconds later the hold has run out"), System->KillDecayIsHeld());
+
+	Holder.SetFervour(50.0f);
+	TestEqual(TEXT("Cleave's net gain over 3 enemies: 2 times (8 - 5)"),
+			  FCataclysmWarFervour::TradeForEnemiesStruckTogether(System, FGameplayTagContainer(), 3), 6.0f, 0.001f);
+	TestTrue(TEXT("and that net gain holds decay off too"), System->KillDecayIsHeld());
 	return true;
 }
 

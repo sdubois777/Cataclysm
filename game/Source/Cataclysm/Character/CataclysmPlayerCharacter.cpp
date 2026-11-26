@@ -1315,20 +1315,17 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	{
 		// AND THE FERVOUR A CRITICAL STRIKE PAYS, the Shadow's starting node and Telling Blows (the Death trees' slice
 		// C4d1, 2026-11-25): "each critical strike you land", so a minion's is left out, as the cull above leaves it.
+		// THE BERSERKER'S TOO, "Gain 1 Fervour per critical strike", one stat and one payment since the bundle 3 merge
+		// (obligation 5): read with the blow's skill tags, so Battle Lust's "on every critical melee strike" adds to a
+		// melee one only. Before the critical_strike rows act, as ruled.
 		if (!Cast<ACataclysmMinion>(Notice.DealtBy))
 		{
-			UCataclysmFervour::GainOnCriticalStrike(Acting, Notice.Target);
+			UCataclysmFervour::GainOnCriticalStrike(Acting, Notice.Target,
+													Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
 		}
 		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
 						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 						   Notice.Target);
-
-		// AND THE BERSERKER'S FERVOUR FOR IT, "Gain 1 Fervour per critical strike", read with the blow's skill tags so
-		// Battle Lust's "on every critical melee strike" adds to a melee one only. Here and not at the blow, because
-		// this is where a critical strike the character dealt is known, past every refusal above. Nought for every
-		// character without `fervour_per_critical_strike`. Slice C, 2026-11-24.
-		FCataclysmWarFervour::GainOnCriticalStrike(
-			Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
 
 		// AND SKULL SPLITTER'S ARMOR REDUCTION AND DEATHMARK'S MARK ON THE CREATURE STRUCK, each paying its own cost, the
 		// first first. The Berserker's nodes of 2026-11-25. Nought for every character without them.

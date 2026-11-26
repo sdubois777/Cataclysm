@@ -1517,7 +1517,8 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
-float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck)
+float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck,
+											 const FGameplayTagContainer& SkillTags)
 {
 	const UCataclysmClassResourceAttributeSet* Resource =
 		AbilitySystem ? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
@@ -1527,11 +1528,11 @@ float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySy
 		return 0.0f;
 	}
 
-	// ASKED AGAINST THE CHARACTER STRUCK, so Telling Blows' rarity row is judged on it. NO TAGS: the generator pays for
-	// the critical strike, not for the skill. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
+	// ASKED AGAINST THE CHARACTER STRUCK, so Telling Blows' rarity row is judged on it, AND WITH THE BLOW'S SKILL TAGS,
+	// so Battle Lust's melee row adds to a melee critical strike only (the bundle 3 merge, obligation 5): a row scoped to
+	// no tag is paid whatever the skill. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
 	const float PerCritical = Cataclysm->StatForSkill(
-		FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false,
-		Struck);
+		FName(PerCriticalStrikeStat), SkillTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck);
 	if (PerCritical <= 0.0f)
 	{
 		return 0.0f;
