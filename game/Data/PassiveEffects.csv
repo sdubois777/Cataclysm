@@ -897,3 +897,4 @@ Shadow_capstone_200#4,Shadow_capstone_200,,,100.0,,,0.0,,0.0,1,-1.0,0,0,dash_to_
 Necromancer_basic_gr_a1#1,Necromancer_basic_gr_a1,interpose_chance,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_gr_c1#1,Necromancer_basic_gr_c1,minions_turn_on_your_last_attacker,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_gr_c1#2,Necromancer_basic_gr_c1,minion_damage,increased,3.0,,target_is_your_last_attacker,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Bulwark_basic_trunk_000#4,Bulwark_basic_trunk_000,fervour_per_kill,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

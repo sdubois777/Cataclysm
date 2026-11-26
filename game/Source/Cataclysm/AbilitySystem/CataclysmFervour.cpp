@@ -1468,7 +1468,8 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 		FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain);
 	if (PerKill <= 0.0f)
 	{
-		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE.
+		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE OR THE BULWARK'S (which pays 1 a kill since the final
+		// bundle, 2026-11-26).
 		return 0.0f;
 	}
 

@@ -1,9 +1,11 @@
 """The two scripts that give the War starting nodes their Fervour rates, and what they wrote.
 
 SLICE C OF `plan_death_and_war.md`, 2026-11-24.
-`tools/apply_war_fervour_sources_2026_11_24.py` makes the Bulwark's and the
-Saboteur's starting sentences state their rates, by node name;
-`tools/reapply_war_fervour_sources_workbook.py` writes the nine rows into the
+`tools/apply_war_fervour_sources_2026_11_24.py` makes the Saboteur's starting
+sentence state its rates, by node name (and the Bulwark's, until the final
+bundle's slice of 2026-11-26 took that node over:
+`tools/tests/test_war_bulwark_kill_fervour_scripts.py`);
+`tools/reapply_war_fervour_sources_workbook.py` writes the six rows into the
 design workbook. These tests hold that the files in the repository are in the
 state the scripts write, that each script is idempotent, and that each refuses
 a node somebody changed since rather than overwriting it.
@@ -72,9 +74,9 @@ def test_the_sentence_script_rewrites_the_old_sentence_once(tmp_path):
 
 
 def test_the_sentence_script_refuses_a_sentence_changed_since(tmp_path):
-    original = DOCS / "Bulwark_Class_Tree_Final.json"
+    original = DOCS / "Saboteur_Class_Tree_Final.json"
     copy = tmp_path / original.name
-    (fix,) = sentences.FIXES["Bulwark"]
+    (fix,) = sentences.FIXES["Saboteur"]
     copy.write_bytes(original.read_bytes().replace(
         json.dumps(fix.after)[1:-1].encode("utf-8"), b"Somebody else's words."))
     with pytest.raises(sentences.order.Refused):
@@ -100,7 +102,7 @@ def test_the_generated_csv_holds_the_rows():
 
 
 def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
-    """A copy of the workbook with the nine rows taken out."""
+    """A copy of the workbook with the six rows taken out."""
     copy = tmp_path / "workbook.xlsx"
     shutil.copy(WORKBOOK, copy)
     book = openpyxl.load_workbook(copy)
@@ -118,7 +120,7 @@ def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
 def test_the_row_script_appends_the_rows_once(tmp_path):
     copy = _workbook_without_the_rows(tmp_path)
     first = rows.apply(copy)
-    assert sum(1 for line in first if ": + " in line) == 9, first
+    assert sum(1 for line in first if ": + " in line) == 6, first
     second = rows.apply(copy)
     assert second[-1] == "every row is already written; nothing written", second
 

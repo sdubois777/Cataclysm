@@ -854,7 +854,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 898 THE SAME DAY: Slippery's "After successfully evading, gain 3 Fervour"
 #: (`tools/reapply_saboteur_slippery_workbook.py`), window death3-w1's second pass. Its node already had a row.
-AUTHORED_ROWS = 898
+#:
+#: AND TO 899 ON 2026-11-26: the Bulwark's Fervour for a kill, on its starting node
+#: (`tools/reapply_war_bulwark_kill_fervour_workbook.py`, the final bundle).
+AUTHORED_ROWS = 899
 
 #: How many of the 441 nodes have an authored effect.
 #:
