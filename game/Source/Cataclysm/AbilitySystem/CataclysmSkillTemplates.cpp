@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 // The bodies a trade fits into each other's places. Issue #2792.
 #include "Components/PrimitiveComponent.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
@@ -139,9 +140,11 @@ namespace
 		// `UCataclysmCommand::ThrallReserveScaleFor` scales it. One for anything else: no creature named, a row that does
 		// not possess, and a creature that is not a designed one.
 		const float ByRarity = Params.bPossess ? UCataclysmCommand::ThrallReserveScaleFor(Taken) : 1.0f;
+		// AND ASKED WITH `Minion.Permanent` WHEN THE ROW MAKES A PERMANENT MINION OR TAKES A THRALL, so the Necromancer's
+		// Lighter Bones and Lone Revenant reach that reserve and no other (the Death line's finishing slice B, 2026-11-26).
 		return UCataclysmCommand::ReserveFor(
 			Self, Params.FervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(Skill)) * ByRarity,
-			SkillTags);
+			UCataclysmNecromancerArmy::TagsOfARaise(SkillTags, Params.bPermanent || Params.bPossess));
 	}
 }
 
@@ -3941,6 +3944,32 @@ void UCataclysmMovementSkill::ActivateAbility(
 		MarkExpiresAt = 0.0;
 	}
 
+	// AND GRAVE SWAP, the Necromancer's Second Rite's first option: "Your movement skill can swap places with any of your
+	// minions". A move aimed at one of the mover's own minions, within the skill's range, trades places with it instead of
+	// going to the point; the move's own blows, ground and effects land where it arrives, as for any arrival. Aimed
+	// anywhere else, it moves as it always did. Vesselstep trades already, and a return goes to its mark, so neither
+	// asks. The Death line's finishing slice B (2026-11-26).
+	bool bGraveSwapped = false;
+	if (Params.MovementMode != ECataclysmMovementMode::Recall && Params.MovementMode != ECataclysmMovementMode::Swap)
+	{
+		AActor* GraveSwapPartner = nullptr;
+		FVector GraveSwapSelfTo = FVector::ZeroVector;
+		FVector GraveSwapPartnerTo = FVector::ZeroVector;
+		if (UCataclysmNecromancerArmy::ChooseGraveSwapPartner(Self, AimPoint(), ScaledRangeCm(), GraveSwapPartner,
+															  GraveSwapSelfTo, GraveSwapPartnerTo))
+		{
+			const FVector GraveSwapPartnerWas = GraveSwapPartner->GetActorLocation();
+			End = GraveSwapSelfTo;
+			GraveSwapPartner->TeleportTo(GraveSwapPartnerTo, GraveSwapPartner->GetActorRotation(), /*bIsATest=*/false,
+										  /*bNoCheck=*/true);
+			UCataclysmMovement::NoteRelocatedInstantly(GraveSwapPartner, GraveSwapPartnerWas);
+			SwappedWith = GraveSwapPartner;
+			bGraveSwapped = true;
+			UE_LOG(LogCataclysm, Log, TEXT("GRAVE SWAP: '%s' traded %s's place with %s."), *SkillName,
+				   *GetNameSafe(Self), *GetNameSafe(GraveSwapPartner));
+		}
+	}
+
 	// AND A TRADE GOES WHERE ONE OF THE CASTER'S OWN CREATURES IS STANDING, AND
 	// SENDS IT BACK. The Staff's Vesselstep: "trade places with a creature you
 	// command up to 14 meters away."
@@ -4070,7 +4099,8 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// HOLLOW STEP: the move passes through enemies, for the move only, and never ends inside one (the Death trees'
 	// slice C6e). A Swap's teleport is not stopped by anything, so it only gains the line hit below.
 	const bool bThroughEnemies = PassesThroughEnemies();
-	if (Params.MovementMode == ECataclysmMovementMode::Swap)
+	// AND A GRAVE SWAP'S HALF THE SAME WAY, its fit asked by `UCataclysmNecromancerArmy::ChooseGraveSwapPartner`.
+	if (Params.MovementMode == ECataclysmMovementMode::Swap || bGraveSwapped)
 	{
 		// THE CASTER'S HALF OF THE EXCHANGE: unswept, and unchecked because `ChooseTradePartner` asked the fit.
 		// Issue #2792.
@@ -4109,7 +4139,8 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// ground moved, which is the 2026-09-12 judgement that a movement skill that travels is movement. Issue #2388.
 	if (Params.MovementMode == ECataclysmMovementMode::Blink
 		|| Params.MovementMode == ECataclysmMovementMode::Swap
-		|| Params.MovementMode == ECataclysmMovementMode::Recall)
+		|| Params.MovementMode == ECataclysmMovementMode::Recall
+		|| bGraveSwapped)
 	{
 		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
 	}
@@ -5156,10 +5187,15 @@ void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
 	// Choir, "fight beside you until they are destroyed". `Spawn` refuses a lifetime of nought, so it was given the
 	// summon's own and loses it here; the engine's `SetLifeSpan(0)` is "never expires", as a skill gadget's is
 	// (`PlaceSkillGadget`). Its reserve is held while it stands and is what limits the army, as a thrall's is.
+	// AND IT CARRIES `Minion.Permanent`, WITH ITS HEALTH KEPT LIVE FROM ITS TYPE ROW: the Necromancer's Legion rows require
+	// the tag, and their health reaches it as they change (the Death line's finishing slice B, 2026-11-26).
 	if (Params.bPermanent)
 	{
-		Minion->SetLifeSpan(0.0f);
+		UCataclysmNecromancerArmy::MakePermanent(Minion);
 	}
+
+	// AND WHETHER IT ROSE FROM THE DEAD, which a Death summon skill's minion did and Second Death asks (slice B).
+	UCataclysmNecromancerArmy::NoteMadeBy(Minion, SkillTags);
 
 	// AND ITS BLOWS LAY THE ROW'S EFFECT, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N11: Bone Choir's mages,
 	// "every bolt they throw Cripple what they hit, 20% slower for 2 seconds". Each effect the skill itself would lay,
@@ -5767,10 +5803,23 @@ void UCataclysmSummonSkill::ActivateAbility(
 		return;
 	}
 
+	int32 Raised = 0;
+	bool bNoRoom = false;
 	for (int32 Index = 0; Index < FMath::Max(1, Params.Count); ++Index)
 	{
-		SummonOne();
+		if (SummonOne())
+		{
+			++Raised;
+		}
+		else
+		{
+			bNoRoom = !UCataclysmCommand::HasRoomToReserve(Self, FervourReserveFor(Self, Params, SkillTags, this));
+		}
 	}
+
+	// AND WHAT THE NECROMANCER'S LEGION DOES AFTER A PRESS OF A PERMANENT SUMMON: Bone Lord's two more when it raised any,
+	// Reforged's heal when the pool had no room. Nothing for any other row (the Death line's finishing slice B).
+	UCataclysmNecromancerArmy::AfterASummon(Self, this, Raised, bNoRoom);
 
 	// DELIBERATELY NOT ENDED. The ability instance is what holds the minion
 	// list, and ending it is fine -- the list lives on the instance, which is

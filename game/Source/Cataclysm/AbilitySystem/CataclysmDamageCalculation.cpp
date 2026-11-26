@@ -357,8 +357,11 @@ namespace
 			return 1.0f;
 		}
 		const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Body);
+		// AS THE FOLLOWER ASKING, since the Death line's finishing slice B (2026-11-26), so Called to Heel's "while they are
+		// within 8 metres of you" is judged for the follower taking the blow.
 		return FMath::Max(0.0f, UCataclysmCommand::SummonerMultiplierFor(
-			Commander, TEXT("minion_damage_taken"), Minion ? Minion->TypeTags : UCataclysmCommand::ThrallMinionTags()));
+			Commander, TEXT("minion_damage_taken"), Minion ? Minion->TypeTags : UCataclysmCommand::ThrallMinionTags(),
+			/*AskingMinion=*/Body));
 	}
 
 	/**

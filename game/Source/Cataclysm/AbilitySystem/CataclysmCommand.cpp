@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For Crowned's attribute, which `ReserveFor` falls back to. Issue #2787.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -849,6 +850,13 @@ FGameplayTagContainer UCataclysmCommand::ThrallMinionTags()
 	{
 		Tags.AddTag(Creature);
 	}
+	// AND `Minion.Permanent`: a thrall stands until it is killed, so the Necromancer's rows for "your permanent minions"
+	// reach it (the Death line's finishing slice B, 2026-11-26).
+	const FGameplayTag Permanent = UCataclysmNecromancerArmy::PermanentTag();
+	if (Permanent.IsValid())
+	{
+		Tags.AddTag(Permanent);
+	}
 	return Tags;
 }
 
@@ -1098,7 +1106,10 @@ float UCataclysmCommand::ReserveFor(const AActor* Commander, float Stated,
 	// number of points off the figure, the percentage a share of what is reserved. A net 100 percent or more less
 	// would be nothing reserved, which the floor turns into one point.
 	const float Multiplier = FMath::Max(0.0f, 1.0f - PercentLess / 100.0f);
-	return FMath::Max(SmallestMinionReserve, (Stated - Reduction) * Multiplier);
+	// AND ITS "MORE" ROWS LAST, a separate multiplier as every "more" is: Lone Revenant's "reserve 300% more Fervour",
+	// required to be a permanent minion's (the Death line's finishing slice B, 2026-11-26). One with no such row.
+	return FMath::Max(SmallestMinionReserve, (Stated - Reduction) * Multiplier
+		* UCataclysmNecromancerArmy::ReserveMultiplier(Commander, Tags));
 }
 
 void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,
@@ -1330,8 +1341,11 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 				AsAMinion.Health, AsAMinion.AttackDamage, AsAMinion.Armour);
 		}
 
+		// ASKED WITH A THRALL'S TAGS SINCE THE DEATH LINE'S FINISHING SLICE B (2026-11-26), so a row requiring
+		// `Minion.Permanent` (Standing Army, Lone Revenant) reaches a thrall's health at its take. Measured that day: no
+		// `minion_health` row required `Minion.Creature`, the other tag, so nothing that existed changes.
 		AsCreature->SetCommanderHealthMultiplier(SummonerMultiplierFor(
-			Commander, TEXT("minion_health"), FGameplayTagContainer()));
+			Commander, TEXT("minion_health"), ThrallMinionTags()));
 	}
 
 	// AND IT IS HEALED TO FULL, ONCE, AT THE MOMENT IT IS TAKEN. The project

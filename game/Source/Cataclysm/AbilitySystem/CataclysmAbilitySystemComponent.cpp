@@ -5,6 +5,7 @@
 // For ON_SCOPE_EXIT, which drains the queued deaths after the depth guard ends.
 #include "Misc/ScopeExit.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmDeviceWire.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -881,6 +882,9 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// trees' slice C6d2, 2026-11-25). -1, which refuses, when no minion is named.
 	const AActor* Self = GetAvatarActor();
 	State.AskingMinionMetres = (AskingMinion && Self) ? UCataclysmTargeting::MetresBetween(Self, AskingMinion) : -1.0f;
+	// AND HOW LONG IT HAS STOOD AND WHETHER IT IS THE COMMANDER'S BIGGEST PERMANENT MINION, for Old Bones and First Among
+	// the Dead (the Death line's finishing slice B, 2026-11-26).
+	UCataclysmNecromancerArmy::FillAskingMinionState(State, Self, AskingMinion);
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
 		Inputs->Base, Inputs->Modifiers, Tags, State);
 
@@ -1418,6 +1422,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// player in the game.
 	const TArray<AActor*> Commanded = UCataclysmCommand::ThingsCommandedBy(GetAvatarActor());
 	State.MinionsHeld = Commanded.Num();
+	// AND HOW MANY KINDS BEYOND THE FIRST, for Motley Host (the Death line's finishing slice B, 2026-11-26).
+	State.MinionKindsBeyondTheFirst = UCataclysmNecromancerArmy::KindsBeyondTheFirst(Commanded);
 
 	// AND WHAT THEY HOLD BACK OF THE CLASS RESOURCE, from the same list, for
 	// the full bar `ClassResourceAtMaximum` judges against the maximum less it.
@@ -8549,6 +8555,10 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 		}
 	}
 	ActOnEvent(FName(TEXT("attack_use")), SkillTags);
+
+	// AND LICH FORM: a skill used within its seconds of the bar filling raises a husk where it lands (the Death line's
+	// finishing slice B, 2026-11-26). Nothing for the basic attack, which is no skill (ruled 2026-09-14).
+	UCataclysmNecromancerArmy::RaiseLichHusk(GetAvatarActor(), Aim, bBasicAttack);
 
 	// AND `melee_attack_use`, ONLY FOR A USE WHOSE TAGS HOLD `Type.Melee`, THE BASIC ATTACK INCLUDED. Ruled 2026-10-17
 	// (R1) for Spellblade's Will's six-piece bonus, "When you use a melee attack, you gain a stack of Spellslinger": the

@@ -6318,6 +6318,12 @@ CONDITIONS = {
     # summoner. The Death trees' slice C6e (2026-11-25). A fact of the target in
     # hand.
     "target_is_your_last_attacker": None,
+    # AND FIRST AMONG THE DEAD'S "Your permanent minion with the most maximum
+    # health", the Death line's finishing slice B (2026-11-26): the minion whose
+    # figure is asked is its commander's permanent minion with the most maximum
+    # health, which the summoner's lookup is handed for that minion's blow, its
+    # explosion, the damage it takes and its live health. Names a state.
+    "minion_has_your_most_maximum_health": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -6523,6 +6529,10 @@ SCALES = {
     # reserves 30 and an imp 10 against the Ritualist's 150. A step of ten
     # minions stays a sanity limit on what a row may state.
     "minions_held": (0.0, 10.0, "a number of minions"),
+    # MOTLEY HOST'S "for each kind of minion you have beyond the first", the
+    # Death line's finishing slice B (2026-11-26): counted from the same list
+    # as `minions_held`, each type row a kind and every thrall one kind.
+    "minion_kinds_beyond_the_first": (0.0, 10.0, "a number of kinds of minion"),
     # THE ENEMIES IN THE CHARACTER'S SIPHON. The Death trees' slice C2
     # (2026-11-25): Sapping Cold's and Stolen Strength's "for each of them, up
     # to 10 enemies", and Life Siphon's and Living Harvest's "each enemy in your
@@ -12758,6 +12768,15 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "boss_ticks_pay_a_kill_every_seconds": ASKER_PASSES_A_HIT_DEALT,
     "boss_hits_counted_as_a_kill_every": ASKER_PASSES_A_HIT_DEALT,
     "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
+    # THE DEATH LINE'S FINISHING SLICE B (2026-11-26). A minion's health and the
+    # damage it takes, each asked for that minion by the summoner's lookup with
+    # the minion named, so First Among the Dead's and Called to Heel's conditions
+    # about the minion asking are judged: health by
+    # `UCataclysmNecromancerArmy::HealthStep`, and the damage taken by
+    # `MinionDamageTakenFactor` in CataclysmDamageCalculation.cpp. Probed by
+    # `ProbeConditionedMinionHealth` and `ProbeConditionedMinionDamageTaken`.
+    "minion_health": ASKER_PASSES_NOTHING_MORE,
+    "minion_damage_taken": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
     # AND MAXIMUM HEALTH, the Death trees' slice C4d3 (2026-11-25), for Wearer of
