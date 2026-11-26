@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmMovement.h"
@@ -207,6 +208,9 @@ namespace CataclysmShadowVowsTest
 			Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
 			Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
 			bStep = UCataclysmTriggeredSkill::HeldSkillNamed(Player, FName(TEXT("Veilstep")), Step);
+			// AND THE DAGGER'S HEAVY, Gravepoint, a melee strike that is not a spell: the skill attack an afterimage
+			// repeats (the basic attack it never does).
+			bAttack = UCataclysmTriggeredSkill::HeldSkillNamed(Player, FName(TEXT("Gravepoint")), Attack);
 			const FCataclysmWeaponSkill* Held = UCataclysmTriggeredSkill::HeldBasicAttack(Player);
 			bBasic = Held != nullptr;
 			if (Held)
@@ -217,10 +221,10 @@ namespace CataclysmShadowVowsTest
 
 		bool IsUsable(FAutomationTestBase& Test) const
 		{
-			if (!Player || !System || !Slots || !bStep || !bBasic)
+			if (!Player || !System || !Slots || !bStep || !bBasic || !bAttack)
 			{
-				Test.AddError(TEXT("set-up: a possessed player holding a Death Dagger, with its basic attack and "
-								   "Veilstep. If a row is missing, DT_WeaponSkills may be older than "
+				Test.AddError(TEXT("set-up: a possessed player holding a Death Dagger, with its basic attack, "
+								   "Veilstep and Gravepoint. If a row is missing, DT_WeaponSkills may be older than "
 								   "game/Data/WeaponSkills.csv: run tools/generate_datatable_assets.py"));
 				return false;
 			}
@@ -250,8 +254,10 @@ namespace CataclysmShadowVowsTest
 		UCataclysmWeaponSlotsComponent* Slots = nullptr;
 		FCataclysmWeaponSkill Step;
 		FCataclysmWeaponSkill Basic;
+		FCataclysmWeaponSkill Attack;
 		bool bStep = false;
 		bool bBasic = false;
+		bool bAttack = false;
 	};
 }
 
@@ -463,10 +469,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowVowsAfterimageTest,
 
 /**
  * Afterimage with the shipped row. Veilstep's use is announced with the player at the origin, and the player is then
- * moved 12 metres away; a creature stands a metre from the origin. The next basic attack is announced aimed at it, and
- * its repeat, made as the next tick makes it, strikes the creature from the origin, out of the player's own reach.
- * The afterimage is then gone, and a second attack is given to nothing. CONTROL: without the row nothing is left and
- * the creature loses nothing.
+ * moved 12 metres away; a creature stands a metre from the origin. A BASIC SWING is announced aimed at it first, and
+ * leaves the afterimage waiting, with nothing repeated (the coordinating session's ruling of 2026-11-26: the afterimage
+ * repeats the next SKILL that is an attack, never the basic attack). The next skill attack, Gravepoint, is then announced
+ * aimed at it, and its repeat, made as the next tick makes it, strikes the creature from the origin, out of the player's
+ * own reach. The afterimage is then gone, and a second attack is given to nothing. CONTROL: without the row nothing is
+ * left and the creature loses nothing.
  */
 bool FCataclysmShadowVowsAfterimageTest::RunTest(const FString&)
 {
@@ -477,6 +485,8 @@ bool FCataclysmShadowVowsAfterimageTest::RunTest(const FString&)
 	int32 Repeated[2] = {0, 0};
 	bool bSecondGiven = true;
 	bool bGoneAfter = false;
+	bool bWaitedThroughTheBasic = false;
+	int32 RepeatedByTheBasic = -1;
 	for (int32 WithRow = 0; WithRow < 2; ++WithRow)
 	{
 		UWorld* World = MakeWorldThatHasBegunPlay();
@@ -502,7 +512,15 @@ bool FCataclysmShadowVowsAfterimageTest::RunTest(const FString&)
 		}
 		Rig.Player->SetActorLocation(FVector(12.0f * M, 0, 0));
 		const float Was = HealthOf(Creature);
+		// A BASIC SWING FIRST: it gives the afterimage nothing.
 		Rig.Uses(Rig.Basic, Creature->GetActorLocation());
+		if (WithRow == 1)
+		{
+			RepeatedByTheBasic = UCataclysmShadowImages::MakeAfterimageRepeats(Rig.Player);
+			bWaitedThroughTheBasic = UCataclysmShadowImages::StandingAfterimageOf(Rig.Player) != nullptr;
+		}
+		// THEN A SKILL ATTACK, which it repeats.
+		Rig.Uses(Rig.Attack, Creature->GetActorLocation());
 		Repeated[WithRow] = UCataclysmShadowImages::MakeAfterimageRepeats(Rig.Player);
 		Lost[WithRow] = Was - HealthOf(Creature);
 		if (WithRow == 1)
@@ -510,10 +528,10 @@ bool FCataclysmShadowVowsAfterimageTest::RunTest(const FString&)
 			bGoneAfter = UCataclysmShadowImages::StandingAfterimageOf(Rig.Player) == nullptr;
 			FCataclysmSkillUsedNotice Again;
 			Again.User = Rig.Player;
-			Again.SkillName = FName(*Rig.Basic.Name);
-			Again.Slot = ECataclysmAbilitySlot::BasicAttack;
+			Again.SkillName = FName(*Rig.Attack.Name);
+			Again.Slot = Rig.Attack.Slot;
 			Again.Aim = Creature->GetActorLocation();
-			bSecondGiven = UCataclysmShadowImages::GiveTheAttackToTheAfterimage(Rig.Player, Again, true) != nullptr;
+			bSecondGiven = UCataclysmShadowImages::GiveTheAttackToTheAfterimage(Rig.Player, Again, false) != nullptr;
 		}
 	}
 
@@ -521,7 +539,9 @@ bool FCataclysmShadowVowsAfterimageTest::RunTest(const FString&)
 								 "%d, repeated %d, lost %.1f"),
 							bLeft[0], Repeated[0], Lost[0], bLeft[1], Repeated[1], Lost[1]));
 	TestTrue(TEXT("with the row the movement skill leaves an afterimage"), bLeft[1]);
-	TestEqual(TEXT("and the next attack is repeated once"), Repeated[1], 1);
+	TestEqual(TEXT("A BASIC SWING IS NOT REPEATED"), RepeatedByTheBasic, 0);
+	TestTrue(TEXT("and leaves the afterimage waiting"), bWaitedThroughTheBasic);
+	TestEqual(TEXT("and the next skill attack is repeated once"), Repeated[1], 1);
 	TestTrue(TEXT("from the afterimage's place, 11 metres from the player: the creature is struck"), Lost[1] > 0.0f);
 	TestTrue(TEXT("and the afterimage is spent"), bGoneAfter);
 	TestFalse(TEXT("so a second attack is given to nothing"), bSecondGiven);
@@ -787,6 +807,81 @@ bool FCataclysmShadowVowsFlurryTest::RunTest(const FString&)
 	TestEqual(TEXT("past the cap: the hit and the cap's strikes, no more"), PastTheCap / One,
 			  static_cast<float>(Cap + 1), 0.001f);
 	TestEqual(TEXT("CONTROL: a row's answer to an event strikes once"), AnAnswer / One, 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowVowsFlurryFiresNoOnHitRowTest,
+	"Cataclysm.ShadowVows.FlurryOfTheDeadsExtraStrikesDealDamageButPayNoCriticalStrikeFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The coordinating session's ruling of 2026-11-26 at the bundle's assembly: Flurry of the Dead's extra strikes are full
+ * hits but fire no on-hit row. A possessed player holding Flurry of the Dead's shipped row and one flat row of
+ * `fervour_per_critical_strike` (5), every blow a critical strike, holds three and a half steps' worth of Fervour and
+ * lands one hit on a creature: it deals four hits' worth (the hit and three extra strikes, every one a critical strike),
+ * and gains the critical strike's Fervour ONCE, for the hit itself. THE CONTROL: the same player without Flurry's row
+ * deals one hit's worth and gains the same Fervour once.
+ */
+bool FCataclysmShadowVowsFlurryFiresNoOnHitRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmShadowVowsTest;
+
+	const FCataclysmPassiveEffectRow* Shipped =
+		ShippedRow(*this, TEXT("Shadow_capstone_200"), 3, UCataclysmShadowImages::ExtraStrikesStat);
+	if (!Shipped || !TestTrue(TEXT("set-up: a step"), Shipped->ScaleStep > 0.0f))
+	{
+		return false;
+	}
+	const float Step = Shipped->ScaleStep;
+	constexpr float PerCritical = 5.0f;
+
+	float Lost[2] = {0.0f, 0.0f};
+	float Gained[2] = {0.0f, 0.0f};
+	for (int32 WithFlurry = 0; WithFlurry < 2; ++WithFlurry)
+	{
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FRig Rig(World, FVector::ZeroVector);
+		ACataclysmEnemyCharacter* Creature = CreatureAt(World, FVector(1.0f * M, 0, 0), 100'000.0f);
+		if (!Rig.IsUsable(*this) || !TestNotNull(TEXT("set-up: a creature"), Creature))
+		{
+			return false;
+		}
+		TMap<FName, FCataclysmStatInputs> Lines =
+			WithFlurry == 1 ? ShippedLines(TEXT("Shadow_capstone_200"), 3) : TMap<FName, FCataclysmStatInputs>();
+		FCataclysmStatModifier PerCrit;
+		PerCrit.Bucket = ECataclysmStatBucket::Flat;
+		PerCrit.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerCrit.Value = PerCritical;
+		Lines.FindOrAdd(FName(UCataclysmFervour::PerCriticalStrikeStat)).Modifiers.Add(PerCrit);
+		Rig.System->SetStatInputs(MoveTemp(Lines));
+		Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+		Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
+		Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
+
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotBeEvaded = true;
+		const float Was = HealthOf(Creature);
+		const float FervourWas = Rig.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), Delivery);
+		Lost[WithFlurry] = Was - HealthOf(Creature);
+		Gained[WithFlurry] =
+			Rig.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()) - FervourWas;
+	}
+
+	AddInfo(FString::Printf(TEXT("FLURRY ON-HIT: without the row lost %.1f, gained %.1f Fervour; with it lost %.1f, gained "
+								 "%.1f"), Lost[0], Gained[0], Lost[1], Gained[1]));
+	if (!TestTrue(TEXT("set-up: the control's hit landed and paid its critical strike's Fervour"),
+				  Lost[0] > 0.0f && Gained[0] > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("THE EXTRA STRIKES ARE FULL HITS: four hits' worth"), Lost[1] / Lost[0], 4.0f, 0.001f);
+	TestEqual(TEXT("BUT THEY PAY NO CRITICAL STRIKE'S FERVOUR: the hit's, once"), Gained[1], Gained[0], 0.001f);
 	return true;
 }
 

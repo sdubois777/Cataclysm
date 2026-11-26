@@ -1220,6 +1220,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// NOR ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES. Ruled by the coordinating session on 2026-11-26 at the bundle's
+	// assembly: each is a full hit for damage, critical strike and ailments, but fires no on-hit row (the critical
+	// strike's Fervour included), or a build paying Fervour for critical strikes refills its own Fervour from them.
+	if (Notice.bExtraStrike)
+	{
+		return;
+	}
+
 	// NOR A WEARER'S SHARE OF WHAT A BLOW OF THIS CHARACTER'S DID TO THE WEARER'S ALLY. Ruled 2026-10-15, for "You take
 	// 5%-15% damage done to nearby allies": the share is not a blow this character struck, so it raises none of the
 	// three events below. Its kill is still this character's kill.
@@ -1400,9 +1408,9 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 
 		// AND THE SHADOW'S AFTERIMAGE (the Death line's finishing slice E, 2026-11-26): "A shadow of you stays where your
 		// movement skill started and repeats your next attack." A paid use of the movement skill leaves it where the use
-		// started, which is where the character stood as the use was announced; the next paid use of an attack, the basic
-		// attack's swing included, gives it that attack, and it repeats it on the next tick, for the reason the repeats
-		// above wait. A free start sends no notice, so neither the afterimage's repeat nor a clone's swing reaches here.
+		// started, which is where the character stood as the use was announced; the next paid use of a SKILL that is an
+		// attack gives it that attack (never a basic swing: the coordinating session's ruling of 2026-11-26 at the
+		// bundle's assembly), and it repeats it on the next tick, for the reason the repeats above wait. A free start sends no notice, so neither the afterimage's repeat nor a clone's swing reaches here.
 		if (UCataclysmShadowImages::IsAMovementSkillUse(this, Notice))
 		{
 			UCataclysmShadowImages::LeaveAfterimage(this, Notice.Location,

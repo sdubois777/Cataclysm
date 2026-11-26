@@ -268,6 +268,9 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	// AND WHETHER IT IS THE EXPLOSION AT AN AILMENT'S END, by the stamp its delivery left. Ruled 2026-10-13.
 	Notice.bExplosionAtAnAilmentsEnd = Data.EffectSpec.GetSetByCallerMagnitude(
 		FName(UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	// AND WHETHER IT IS ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES, by the stamp its delivery left. Ruled 2026-11-26.
+	Notice.bExtraStrike = Data.EffectSpec.GetSetByCallerMagnitude(
+		FName(UCataclysmSkillEffects::ExtraStrikeDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 	// AND WHETHER IT IS A WEARER'S SHARE OF AN ALLY'S BLOW, by the stamp its delivery left. Ruled 2026-10-15.
 	Notice.bShareOfDamageDoneToAnAlly = Data.EffectSpec.GetSetByCallerMagnitude(
 		FName(UCataclysmSkillEffects::ShareOfDamageDoneToAnAllyDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;

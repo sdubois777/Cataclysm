@@ -305,17 +305,15 @@ ACataclysmShadowImage* UCataclysmShadowImages::GiveTheAttackToTheAfterimage(AAct
 	{
 		return nullptr;
 	}
-	FCataclysmWeaponSkill Used;
+	// NOT THE BASIC ATTACK: the coordinating session's ruling of 2026-11-26 at the bundle's assembly. The basic attack
+	// swings by itself, so the afterimage would almost always repeat a basic swing; it waits for the next SKILL use that
+	// is an attack, and a basic swing leaves it waiting.
 	if (bBasicAttack)
 	{
-		const FCataclysmWeaponSkill* Basic = UCataclysmTriggeredSkill::HeldBasicAttack(Character);
-		if (!Basic)
-		{
-			return nullptr;
-		}
-		Used = *Basic;
+		return nullptr;
 	}
-	else if (!UCataclysmTriggeredSkill::HeldSkillNamed(Character, Notice.SkillName, Used))
+	FCataclysmWeaponSkill Used;
+	if (!UCataclysmTriggeredSkill::HeldSkillNamed(Character, Notice.SkillName, Used))
 	{
 		return nullptr;
 	}
@@ -485,6 +483,8 @@ int32 UCataclysmShadowImages::StrikeAgain(AActor* Instigator, AActor* Target, fl
 	int32 Dealt = 0;
 	FCataclysmHitDelivery Again = Delivery;
 	Again.bIsARowsAnswerToAnEvent = true;
+	// AND MARKED AN EXTRA STRIKE, which fires no on-hit row (the coordinating session's ruling of 2026-11-26).
+	Again.bIsAnExtraStrike = true;
 	for (int32 Strike = 0; Strike < Times; ++Strike)
 	{
 		if (UCataclysmSkillEffects::IsDead(Target) || UCataclysmSkillEffects::IsDead(Instigator))

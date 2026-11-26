@@ -1847,6 +1847,7 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 
 const TCHAR* UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat = TEXT("dot_explodes_at_expiry_chance");
 const TCHAR* UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName = TEXT("Cataclysm.ExplosionAtAnAilmentsEnd");
+const TCHAR* UCataclysmSkillEffects::ExtraStrikeDataName = TEXT("Cataclysm.ExtraStrike");
 
 const TCHAR* UCataclysmSkillEffects::StruckFromSetDataName = TEXT("Cataclysm.StruckFromSet");
 const TCHAR* UCataclysmSkillEffects::StruckFromXDataName = TEXT("Cataclysm.StruckFromX");
@@ -2425,6 +2426,12 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsAnExplosionAtAnAilmentsEnd)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ExplosionAtAnAilmentsEndDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES, which fires no on-hit row. Ruled 2026-11-26.
+	if (Delivery.bIsAnExtraStrike)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ExtraStrikeDataName), 1.0f);
 	}
 
 	// AND WHERE IT WAS STRUCK FROM, WHEN THAT WAS NOT ITS INSTIGATOR'S PLACE: a gadget's copy of its summoner's

@@ -152,14 +152,16 @@ public:
 	/**
 	 * Whether `Skill` is an attack an afterimage repeats: one a row may cast again
 	 * (`UCataclysmTriggeredSkill::RepeatsFromARow`, so no movement skill, self buff, aura, summon, deployable, held or
-	 * channelled skill) and not a spell. The basic attack is one. As ruled 2026-10-07, "next attack" is any hit that is
-	 * not a spell and not a tick, the basic attack included.
+	 * channelled skill) and not a spell. The basic attack would be one, but `GiveTheAttackToTheAfterimage` never gives it
+	 * one: the coordinating session's ruling of 2026-11-26 at the bundle's assembly.
 	 */
 	static bool IsAnAttack(const FCataclysmWeaponSkill& Skill);
 
 	/**
-	 * The other half, at the next paid use of an attack (the basic attack's swing included): the standing afterimage
-	 * is given the attack and its aim. The repeat itself is made on the next tick by `MakeAfterimageRepeats`.
+	 * The other half, at the next paid use of a SKILL that is an attack: the standing afterimage is given the attack and
+	 * its aim. A basic swing (`bBasicAttack`) gives it nothing and leaves it waiting: the basic attack swings by itself,
+	 * so the afterimage would almost always repeat a basic swing (the coordinating session's ruling of 2026-11-26 at the
+	 * bundle's assembly). The repeat itself is made on the next tick by `MakeAfterimageRepeats`.
 	 * @return the afterimage given it, or null when none stands or the use is no attack.
 	 */
 	static ACataclysmShadowImage* GiveTheAttackToTheAfterimage(AActor* Character, const FCataclysmSkillUsedNotice& Notice,

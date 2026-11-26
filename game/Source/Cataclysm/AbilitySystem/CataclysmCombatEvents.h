@@ -147,6 +147,12 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bExplosionAtAnAilmentsEnd = false;
 
 	/**
+	 * Whether the blow is one of Flurry of the Dead's extra strikes, which fires none of its attacker's on-hit rows.
+	 * Ruled 2026-11-26. See `FCataclysmHitDelivery::bIsAnExtraStrike`.
+	 */
+	bool bExtraStrike = false;
+
+	/**
 	 * Whether the blow is a wearer's share of what another blow did to an ally beside it, and not a blow its attacker
 	 * struck at the target. Ruled 2026-10-15. See `FCataclysmHitDelivery::bIsAShareOfDamageDoneToAnAlly`. The
 	 * attacker and the kill credit are those of the ally's blow; the player's on-hit rows read this and act on none of
