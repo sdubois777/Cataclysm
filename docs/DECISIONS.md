@@ -131,7 +131,37 @@ keeps passing through. Prefix `Cataclysm.ShadowMarks.`; must fail
 
 ### What was run
 
-FIGURES_HERE
+**The whole Python suite on `9edbb414a`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8976 passed, 9 skipped in 535.57s
+(0:08:55)". The JUnit file agrees: tests 8986, failures 1, errors 0, skipped 9, so 8976 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run on
+`8fb0875e9`, before this entry, also failed the check that every condition is named in this log, which this entry
+satisfies, and the console-priority check described under "Said first", fixed in `efdacb9c7`.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Thirteen Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`8fb0875e9`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The mark question never filled | `test_charge_and_placed_action_names_match_the_engine.py::test_the_shadows_marks_are_kept_moved_and_asked` |
+| A dying creature's mark never moved | the same test |
+| The pass-through not restored when the ability ends | `test_charge_and_placed_action_names_match_the_engine.py::test_hollow_step_passes_through_for_the_move_only_and_hits_the_line_once` |
+| An instant move no longer stepping out of an enemy | the same test |
+| The line hit no longer skipping the skill's own targets | the same test |
+| Hostile creatures given no body bit | `test_demonic_guide_is_no_target_and_no_obstacle.py::test_a_body_is_written_at_begin_play_and_with_its_side` |
+| Thousand Cuts no longer moving beside its target | `test_charge_and_placed_action_names_match_the_engine.py::test_the_last_five_shadow_and_necromancer_nodes_are_wired` |
+| A critical strike's flag no longer reaching the ailment roll | the same test |
+| Lethal Dose's share multiplying the increases rather than summing with them | the same test |
+| Interpose leaving the hit on the defender | the same test |
+| Guard the Master's choice no longer asked | the same test |
+| The condition count sentence left at forty-seven | `test_the_condition_count_sentences_agree_with_the_code.py::test_the_header_count_sentence_states_the_two_counts_the_code_holds` |
+| Lethal Dose at 40 rather than half | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
