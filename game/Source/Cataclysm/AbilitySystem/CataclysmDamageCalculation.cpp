@@ -1444,8 +1444,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// "Bleed deals no damage while the target has energy shield. Can bleed a magical barrier after all, so you'd need
 	// to hit actual health." It neither reaches health nor takes from the shield. A character whose shield takes bleed
 	// (`shield_absorbs_damage_over_time`) is left as it was until the coordinating session rules on that stat's two
-	// rows, and a tick that ignores the shield is not stopped by it.
-	if (Hit.bIsBleed && !bShieldApplies && !Hit.bIgnoresEnergyShield && Vitals->GetEnergyShield() > 0.0f)
+	// rows, and a tick that ignores the shield is not stopped by it. NOR IS THE MASOCHIST'S CONVERTED DAMAGE, laid as a
+	// bleed by The Breaking Point: it is damage already taken and deferred, not cancelled, which is why the movement gate
+	// (#918) passes it too. A judgement by the writing session, put to the coordinating session for a ruling; without it a
+	// Masochist with any shield would take nothing from its own converted damage.
+	if (Hit.bIsBleed && !Hit.bIsConvertedDamage && !bShieldApplies && !Hit.bIgnoresEnergyShield
+		&& Vitals->GetEnergyShield() > 0.0f)
 	{
 		Damage = 0.0f;
 	}

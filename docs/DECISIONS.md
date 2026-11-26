@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — Any blow that dealt something can carry an ailment; a bleed needs health and deals nothing while a shield stands; a Void Splinter ignores the shield
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp`: `BlowCanCarryAnAilment` takes what the blow
+  landed and asks it to be above nought; new `BlowCanCarryABleed` and `IsBleed`; `RollOnLandedBlow` takes the landed
+  figure and skips a bleed the blow cannot carry; `ApplyRandomDamageOverTime` refuses a bleed it is not allowed.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`: `FCataclysmDamageResult::Landed`, and
+  step 8, where a bleed tick deals nothing while the shield stands and a tick marked `bIgnoresEnergyShield` passes it.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: a Void Splinter tick ignores the shield; the
+  roll on a landed blow and the bleed on a critical strike read the new checks.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `SetHitBeingAnnouncedLanded` and
+  `DealtForAnAilment`, read by the row actions that lay an ailment, a random damage over time or a slow.
+- The callers that pass what a blow landed: `CataclysmCombatEvents.cpp`, `CataclysmPlayerCharacter.cpp`,
+  `CataclysmMinion.h` and `.cpp`, `CataclysmSkillEffects.h` and `.cpp`, `CataclysmSkillTemplate.h` and `.cpp`,
+  `CataclysmProjectile.cpp`, `CataclysmBuriedWeapon.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmAilmentTests.cpp` (the tenth's test rewritten, two new),
+  `game/Source/Cataclysm/Tests/CataclysmDamageCalculationTests.cpp` (the energy shield test extended).
+- `docs/Cataclysm_GDD_v2.md`: the mitigation table's step 8, the energy shield bullets, "Applying Damage Over Time and
+  Other Effects", and the Succubus's shield.
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The C++ is written and not compiled; it waits for a window. Nothing below claims a
+  measured outcome in the game.
+- **Four rows that put bleed and energy shield together await a ruling** (listed below). Until it comes, the two rows
+  carrying `shield_absorbs_damage_over_time` still let a bleed into the shield, the row carrying
+  `bleed_damage_taken_from_energy_shield` still moves its share, and The Breaking Point's converted damage is exempt.
+
+### The owner, verbatim
+
+- On dropping the tenth of maximum health an incidental ailment needed (#917, 2026-09-02): "I agree, fix it. Also,
+  bleed should be the only ailment that doesn't apply against energy shield. The rest should work. Maybe void splinter
+  should ignore es altogether?"
+- "Bleed deals no damage while the target has energy shield. Can bleed a magical barrier after all, so you'd need to
+  hit actual health."
+- 2026-11-25: "bleed does nothing against energy shield."
+- The Void Splinter question was ruled yes by the coordinating session on 2026-11-26.
+
+### The rules built
+
+1. **An ailment that is not the skill's own applies from any blow that landed and dealt more than nought**, counting
+   what the mana, the energy shield and a temporary absorb took as well as health. A blow that killed carries nothing.
+   An ailment the skill itself states applies whether or not the blow hurt, as before.
+2. **The stun keeps its tenth** (`StunDamageThresholdPercent`), and so do the knockdown and the stun in
+   `CataclysmSkillEffects.cpp`.
+3. **A bleed, chanced or stated, applies only from a blow that dealt damage to health.** A bleed tick deals nothing
+   while the target's shield is above nought, neither to health nor to the shield, and deals again once it is gone.
+4. **A Void Splinter's ticks go straight to health** and leave the shield whole. Its share is still of current health.
+5. **Ailments laid on the player follow the same rules**: every check reads the defender, whoever that is.
+
+### What the research settles
+
+- **Last Epoch has no damage threshold for an ailment.** Maxroll's ailment guide
+  (https://maxroll.gg/last-epoch/resources/ailments-explained) treats an ailment as a chance applied on hit, a chance
+  that "can be increased"; the one ailment it ties to how hard the hit was is the stun, which "Scales with damage".
+  That is the shape built here: a chance on any hit, and a damage figure only for the stun.
+- **Path of Exile's bleed is a plain chance on hit** with no fraction of life asked: a weapon affix reads
+  "15% chance to cause Bleeding on Hit" (https://poedb.tw/us/Bleeding). No page read gave bleeding, poison or ignite
+  a minimum hit size.
+- **What neither settles.** How energy shield meets damage over time could not be read from the pages reached
+  (poewiki and the Last Epoch fandom wiki refuse automated reading), so **bleed against the shield is this game's own
+  rule**, the owner's, and is not derived from the genre.
+
+### Judgements by the writing session, labelled as such
+
+- **Mana counts as dealt.** A blow the mana took whole landed and dealt something, as a blow the shield took whole
+  did. Put to the coordinating session to confirm.
+- **A stated bleed with no blow figure** (a caller that has none) asks the target's shield instead: it applies only
+  when the shield is at nought.
+- **A random damage over time that draws a bleed it may not lay lays nothing**, rather than drawing again, so a draw
+  pinned by its index for a test still means the same kind.
+- **A bleed tick that deals nothing does not restart the shield's refill wait**, because nothing landed; a bleed alone
+  never keeps a shield from refilling.
+- **The Breaking Point's converted damage is exempt from rule 3's tick**, as it is from bleed's movement gate (#918):
+  it is damage already taken and deferred, not cancelled. Without the exemption a Masochist with any shield would
+  take nothing from its own converted damage.
+- **`ApplyBurn`'s incidental burn** asks only that the hit dealt more than nought.
+
+### Rows that put bleed and energy shield together, reported for a ruling
+
+1. Warded, `Ritualist_keystone_c_kA`: "Your Energy Shield absorbs damage over time as well as hits."
+   (`shield_absorbs_damage_over_time` 1). Recommended: inert, with an issue to give it a new effect.
+2. The drawback `Negative_Energy_shield_can_now_be_effected_by_bleed` (the same stat). Recommended: a bleed drains the
+   shield, which keeps it a drawback.
+3. `Positive_10_20_of_bleed_damage_you_take_is_taken_from_y`: "10%-20% of bleed damage you take is taken from your
+   energy shield instead of your health" (`bleed_damage_taken_from_energy_shield`). Recommended: inert while the shield
+   stands, with an issue.
+4. The Breaking Point, `Masochist_basic_ll_b1`: converted damage laid as a bleed. Recommended: exempt, as built.
+
 ## 2026-11-26 — The owner's first play test: the passive screen opens on the class chosen, every class's starting node draws the Fervour bar, and a minion a skill detonates explodes for twice the caster's weapon (window dfix-w1)
 
 **Affects:**
