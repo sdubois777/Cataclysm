@@ -1249,6 +1249,30 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minions_turn_on_your_last_attacker"),
 		TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"),
 		TEXT("interpose_chance"),
+		// THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26), each read by
+		// UCataclysmDetonation at the detonation, the release, the lifespan's end or the blow it names: Lit Fuse, Made
+		// Room's flag and its two increases, Lingering Rot's seconds and share, Ripened's chance, Mass Grave's share and
+		// radius, Last Breath's multiple, and Living Bombs' flag, husk chance and husk seconds. No attribute and no base.
+		TEXT("weapon_skills_detonate_own_minions"),
+		TEXT("minion_detonates_when_released"),
+		TEXT("minion_detonation_damage"),
+		TEXT("minion_detonation_area"),
+		TEXT("minion_detonation_rot_seconds"),
+		TEXT("minion_detonation_rot_percent"),
+		TEXT("minion_explodes_at_lifespan_end_chance"),
+		TEXT("minion_detonation_spreads_percent"),
+		TEXT("minion_detonation_spread_radius_metres"),
+		TEXT("fervour_on_minion_detonated_reserve_multiple"),
+		TEXT("minions_detonate_on_contact"),
+		TEXT("minion_detonation_raises_husk_chance"),
+		TEXT("minion_detonation_husk_seconds"),
+		// And Teeming Grave's chance of one more minion raised, shared with the Legion's Rise Together by the coordinating
+		// session's ruling of 2026-11-26. Read by UCataclysmSummonSkill::RaiseOneMoreIfRolled. No attribute and no base.
+		TEXT("minion_extra_raise_chance"),
+		// And the Horde Ascendant's reach and share, read by UCataclysmHordeAscendant::EveryFollowerNearCasts at each
+		// skill use. No attribute and no base.
+		TEXT("minions_cast_your_skills_within_metres"),
+		TEXT("minion_skill_copy_damage_percent"),
 		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
 		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
 		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.

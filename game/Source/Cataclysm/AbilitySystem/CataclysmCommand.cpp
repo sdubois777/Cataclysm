@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -996,7 +997,13 @@ int32 UCataclysmCommand::ReleaseOldestForAThrall(const AActor* Commander, float 
 				 "for a thrall reserving %.0f."),
 			*Commander->GetName(), *Oldest->GetName(), Oldest->ReservedFervour, Oldest->CommandedSinceSeconds,
 			PerThrall);
-		Oldest->Destroy();
+		// MADE ROOM: a raised minion released detonates as it goes, when its commander holds the node (the finishing of
+		// the Death Cataclysm, slice C, 2026-11-26), which destroys it; otherwise it is destroyed as before. A thrall is
+		// an enemy taken and has nothing to detonate.
+		if (!UCataclysmDetonation::DetonateOnRelease(Cast<ACataclysmMinion>(Oldest)))
+		{
+			Oldest->Destroy();
+		}
 		++Released;
 	}
 	return Released;

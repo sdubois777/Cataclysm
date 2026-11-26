@@ -6837,6 +6837,17 @@ SCALES = {
     # the share of maximum health held times the maximum, as the character's
     # state reads them. Whole steps, rounded down. Bounded as `max_health` is.
     "current_health": (0.0, 5000.0, "an amount of current health"),
+
+    # THE FINISHING OF THE DEATH CATACLYSM, SLICE C, 2026-11-26. Close Packed's
+    # "for each other minion of yours within 3 metres of it, up to 5" is
+    # `minions_near_the_minion` with a step of 1, a `Reach Metres` of 3 and a cap
+    # of 5: the summoner's OTHER followers (raised minions and thralls, not
+    # machines) within the row's reach of the minion whose figure is asked,
+    # which `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` measures
+    # when a minion is named. With no minion named it counts nothing, so only a
+    # minion stat read with the minion asking can use it: today
+    # `minion_detonation_damage`. Bounded as `minions_held` is.
+    "minions_near_the_minion": (0.0, 10.0, "a number of other minions"),
 }
 
 #: The scale that reads the class resource's maximum with its rows counted, which
@@ -7539,7 +7550,11 @@ def passive_effects(book) -> list[dict]:
                           # AND THE DEATH TREES' SLICE C6b3'S TWO (2026-11-25).
                           "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                           # AND SLICE C6d1'S OWN MINIONS.
-                          "minions_in_reach_at_least"}
+                          "minions_in_reach_at_least",
+                          # AND CLOSE PACKED'S OTHER MINIONS NEAR THE MINION
+                          # ASKING, the finishing of the Death Cataclysm, slice C
+                          # (2026-11-26).
+                          "minions_near_the_minion"}
         # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
         # rather than around the character, read at the kill from this column.
         # The Death trees' slice C4c2 (2026-11-25).
@@ -9015,6 +9030,14 @@ ACTION_ONLY_EVENTS = (
     # before it goes. Ruled in the vow survey of 2026-11-25 ("a gadget expiring
     # raises an event") and built for Scrap Mines, V5b1. Clockless.
     "gadget_expired",
+    # A DETONATION OF THE WEARER'S, raised by
+    # `UCataclysmDetonation::NoteDetonation` after the blast, with the detonated
+    # minion's tags and NO CHARACTER: a minion a skill, a release, a contact or
+    # Mass Grave set off, and slice D's remains when they are detonated. The
+    # finishing of the Death Cataclysm, slice C (2026-11-26), for Bursting
+    # Ranks' "for each detonation of yours in the last 2 seconds, of a minion or
+    # of remains". Clockless.
+    "minion_detonated",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -12376,6 +12399,14 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's
+    # damage scaled by the other minions near the one going off (Close Packed),
+    # by the summoner's own stacks (Bursting Ranks) and by the minion's age
+    # (Swollen). Asked through `UCataclysmAbilitySystemComponent::
+    # MultiplierForStatAgainst` on the summoner with the minion named, by
+    # `UCataclysmDetonation::DamageMultiplierFor`;
+    # `ProbeScaledMinionDetonationDamage` measures it.
+    "minion_detonation_damage",
     # THE DEATH TREES' SLICE C6d2 (2026-11-25): a minion's attack speed scaled by
     # the summoner's own stacks, the Necromancer's Avenging Dead. Asked through
     # `UCataclysmAbilitySystemComponent::IncreasesForStat` on the summoner, with
@@ -16922,6 +16953,11 @@ def refuse_a_gem_enchantment_row_the_game_cannot_read(
 SCALES_THAT_COUNT_ENEMIES_IN_A_RADIUS = frozenset({
     "enemies_in_reach",
     "crippled_enemies_in_reach",
+    # AND THE SUMMONER'S OTHER MINIONS NEAR THE MINION ASKING, the finishing of
+    # the Death Cataclysm, slice C (2026-11-26): bodies inside the row's radius,
+    # counted from a minion rather than from the character, and needing the
+    # radius for the same reason.
+    "minions_near_the_minion",
 })
 
 

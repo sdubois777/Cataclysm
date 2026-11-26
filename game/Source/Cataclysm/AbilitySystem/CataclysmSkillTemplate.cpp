@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 // For UCataclysmSelfBuffSkill, which is the one shape that reacts to a kill.
 // A base including its own subclass is confined to this .cpp; the header
 // knows nothing about it.
@@ -1945,11 +1946,39 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 // Detonating the caster's own minions, and ordering them -- issue #2885
 // ==========================================================================
 
+bool UCataclysmSkillTemplate::DetonatesOwnMinions() const
+{
+	// THE ROW'S KEY, OR LIT FUSE. The finishing of the Death Cataclysm, slice C (2026-11-26), `Necromancer_basic_ch_stem0`:
+	// "Your weapon skills that land on one of your own minions detonate it, whatever kind it is."
+	if (Params.bDetonates)
+	{
+		return true;
+	}
+	// A WEAPON SKILL, NOT THE BASIC ATTACK, a judgement: the basic attack is the one slot the design calls automatic, and
+	// is no skill use (ruled 2026-09-14); a Necromancer swinging it beside his minions would pop them all the time. AND
+	// THE CASTER'S OWN USE, NOT A COPY ANOTHER ACTOR CASTS FROM WHERE IT STANDS (`FreeRepeatCastBy`), a judgement: a
+	// minion casting The Horde Ascendant's copy, or a gadget its own, stands at the heart of that copy's area and would
+	// detonate itself.
+	return Slot != ECataclysmAbilitySlot::BasicAttack && FreeRepeatCastBy.IsExplicitlyNull()
+		&& UCataclysmDetonation::WeaponSkillsDetonateOwnMinions(Avatar());
+}
+
 int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside)
 {
 	AActor* Self = Avatar();
-	if (!Params.bDetonates || !Self)
+	if (!Self)
 	{
+		MinionsDetonated = 0;
+		return 0;
+	}
+
+	// EVERY WEAPON SKILL'S LANDING ARRIVES HERE, since the finishing of the Death Cataclysm (2026-11-26): the call sites
+	// no longer ask the row's `Detonates` key, so what a skill's area holds can be detonated whatever its row says. The
+	// caster's MINIONS are detonated only below, by the row's key or Lit Fuse (`DetonatesOwnMinions`); a skill with
+	// neither leaves them standing.
+	if (!DetonatesOwnMinions())
+	{
+		MinionsDetonated = 0;
 		return 0;
 	}
 
@@ -1979,21 +2008,20 @@ int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const A
 	// minion dies, as the Necromancer's "dies without being detonated" nodes read it, so the clocks Death Ward and Bone
 	// Knit ask start too. Told before the blast, while the body still stands, as a killed minion is. NOT the Fervour or
 	// the shield a minion killed grants (`UCataclysmFervour::GainOnMinionDeath`): those pay for a loss, and a minion
-	// spent on purpose is not one.
-	UCataclysmAbilitySystemComponent* Told = Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	// spent on purpose is not one. `UCataclysmDetonation::Detonate` tells it, since slice C.
 	int32 Exploded = 0;
 	for (const TWeakObjectPtr<ACataclysmMinion>& One : Caught)
 	{
 		ACataclysmMinion* Minion = One.Get();
 		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion))
 		{
-			if (Told)
+			// AS THIS SKILL'S AREA HIT, since 2026-11-26: 200% of the caster's weapon damage (`ExplodeSetOffBy`). THROUGH
+			// `UCataclysmDetonation::Detonate` since the finishing of the Death Cataclysm, slice C, which tells the caster
+			// first (`NoteMinionDied`, as this did) and pays what the Charnel limb adds to a detonation.
+			if (UCataclysmDetonation::Detonate(Minion, this))
 			{
-				Told->NoteMinionDied(Minion, Minion->TypeTags);
+				++Exploded;
 			}
-			// AS THIS SKILL'S AREA HIT, since 2026-11-26: 200% of the caster's weapon damage (`ExplodeSetOffBy`).
-			Minion->ExplodeSetOffBy(this);
-			++Exploded;
 		}
 	}
 
