@@ -211,7 +211,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// the abstract average the rarity ladder is read against. It rises to 15
 	// when the second Cataclysm's enemies are designed, so this pin is what
 	// notices an archetype silently going missing in the meantime.
-	CHECK_TABLE(FCataclysmEnemyArchetypeRow,    "EnemyArchetypes.csv",         8)
+	// AND 9 SINCE 2026-11-26: Death's Wraith, the first creature of the second Cataclysm.
+	CHECK_TABLE(FCataclysmEnemyArchetypeRow,    "EnemyArchetypes.csv",         9)
 	// 6, not 7. The ladder is Common, Elite, Legendary, Herald, Boss and
 	// Cataclysm Boss, matching scoring.RARITY_WEIGHTS. There is no "Rare": the
 	// design document's older list is superseded, which is issue #30.

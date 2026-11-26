@@ -838,6 +838,22 @@ protected:
 	float HellhoundAttackDamage = 19.0f;
 
 	/**
+	 * The Wraith's figures when `DT_EnemyArchetypes` has no row for it (Death's Wraith, 2026-11-26). The same
+	 * derivation as the Hellhound's: health and armour are `stats_on_floor("Common", 1, "Cataclysm", kind="Wraith")`
+	 * in `sim/cataclysm_sim/enemy_stats.py`, 174.65 rounded and 0.0, and the attack is the training dummy's 20 times
+	 * its damage share of 0.9375. `tools/tests/test_wraith_matches_the_model.py` holds all three. No Wraith is placed in
+	 * the sandbox; these are read by the dungeon only.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float WraithHealth = 175.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float WraithArmour = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float WraithAttackDamage = 18.75f;
+
+	/**
 	 * How many Imps to place. Zero for none.
 	 *
 	 * **TEN, WHICH IS THE ONLY FIGURE HERE THE DESIGN STATES OUTRIGHT.**
@@ -1220,6 +1236,11 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 HellhoundRarityStep = -1;
+
+	/** Which rung each Wraith spawns at, or -1 to draw one. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 WraithRarityStep = -1;
 
 	/**
 	 * Which rung each Imp spawns at, or -1 to draw one.

@@ -39,6 +39,10 @@ enum class ECataclysmDungeonCreature : uint8
 	/** The boss. Placed at a floor's exit, never by the density. */
 	Gatekeeper,
 
+	/** Death's Wraith, 2026-11-26: Death's packs have it where the other Cataclysms have the Hellhound. AFTER THE
+	 *  GATEKEEPER so no earlier creature's number moves. */
+	Wraith,
+
 	/** Not a creature. How many there are, for a test that must cover each. */
 	Count
 };
@@ -337,17 +341,19 @@ public:
 	 * The kinds of group a floor of a dungeon sent by this Cataclysm draws from. Slice B3 of the Death and War plan,
 	 * 2026-11-25; `FCataclysmFloorBrief::Cataclysm` is what `Populate` passes.
 	 *
-	 * EVERY CATACLYSM'S IS THE DEMONIC SEVEN FOR NOW: `PackKinds()` itself, for Death and War as stand-ins until their
-	 * own rosters exist (the plan's slices B35 and B36; the owner accepted the stand-ins on 2026-11-24, Q16), for the
-	 * other five likewise, and for `None`. Slice B37 is what re-casts this.
+	 * DEATH'S HAS THE WRAITH WHERE THE OTHERS HAVE THE HELLHOUND, since 2026-11-26 (the owner: "for 4. yes use the
+	 * wraith"): a copy of `PackKinds()` with that one kind changed, the same weights and order. Every other Cataclysm's,
+	 * and `None`'s, is still `PackKinds()` itself, the Demonic seven as stand-ins until their own rosters exist (the
+	 * plan's slices B35 and B36; the owner accepted the stand-ins on 2026-11-24, Q16).
 	 *
-	 * THE SAME ARRAY AND NOT A COPY OF IT, so a floor draws exactly the groups it drew before a dungeon carried a
-	 * Cataclysm: the same seed builds the same floor whoever sent the dungeon.
-	 * `Cataclysm.CreatureCataclysm.TheBriefCarriesTheSenderAndEveryRosterIsTheDemonicSevenForNow` holds both. What the
-	 * Cataclysm does change is what each creature IS once placed: see `FCataclysmDungeonIdentity::Cataclysm`.
+	 * THE SAME ARRAY FOR EVERY OTHER CATACLYSM, AND THE SAME DRAWS FOR DEATH: the same seed builds the same floor whoever
+	 * sent the dungeon, a Death floor holding a Wraith wherever another holds a Hellhound.
+	 * `Cataclysm.CreatureCataclysm.TheBriefCarriesTheSenderAndDeathHasTheWraithWhereTheOthersHaveTheHellhound` holds
+	 * both. What the Cataclysm also changes is what each creature IS once placed: see
+	 * `FCataclysmDungeonIdentity::Cataclysm`.
 	 *
-	 * THE BOSS AND THE SUCCUBUS ESCORT ARE NOT IN IT, as they are not in `PackKinds()`: `Populate` places them by their
-	 * own rules, and they are the Demonic Gatekeeper and Succubus for every Cataclysm until B37 too.
+	 * THE BOSS AND THE ESCORT ARE NOT IN IT, as they are not in `PackKinds()`: `Populate` places them by their own
+	 * rules.
 	 */
 	static const TArray<FPackKind>& PackKindsFor(ECataclysmType Cataclysm);
 

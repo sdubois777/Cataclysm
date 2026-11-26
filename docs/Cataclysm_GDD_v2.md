@@ -5616,6 +5616,7 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 | Succubus | 1.0 s | 0.4 m | **No** |
 | Brute | 1.2 s | 0.7 m | **No**, for its basic attack |
 | Gatekeeper | 3.0 s | 3.9 m | Yes |
+| Wraith | 1.25 s | 0.8 m | **No**, for its basic attack |
 
   
 
@@ -6166,7 +6167,7 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Abyssal Warden, the Brute, the Corrupted Sentinel, the Gatekeeper, the Hellhound, the Imp and the Succubus are designed** — which is all seven. The Gatekeeper was the last, in issue #354.
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Abyssal Warden, the Brute, the Corrupted Sentinel, the Gatekeeper, the Hellhound, the Imp, the Succubus and the Wraith are designed** — the seven Demonic enemies and Death's first creature of its own. The Gatekeeper was the last of the seven, in issue #354, and the Wraith followed on 2026-11-26.
 
   
 
@@ -7021,6 +7022,40 @@ From phase 3, the ground erupts in a ring 6.5 metres in radius at its feet, mark
 - **Three phases rather than two.** The research supports either; three is chosen because the design document promises "each phase introduces new mechanics", plural, and two phases introduce one.
 
 Everything else is reused: Soulfall's figures are the Sentinel's mortar's, the ground riders are the Hellhound's, the summons are Imps, and the ring is the Warden's at a longer cooldown.
+
+  
+
+### **The Wraith**
+
+  
+
+**The Wraith is Death's first creature of its own, and it is the enemy that cannot be walked away from.** A hooded scythe ghost that hunts in threes, it replaces the Hellhound in Death dungeons, as the project owner ruled on 2026-11-26 ("I'm happy with those enemy designs"). It closes on the player by dashing straight through them and swinging from the other side, and it answers a player standing just out of its reach by pulling them in. It has no armour and the highest evasion of any creature, so area damage is the answer to it.
+
+  
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Reap | Basic | Strike | `Radius=1.6; Angle=120; MaxTargets=3` | its 1.25 s attack interval | No |
+| Phase Dash | Movement | Movement | `Mode=Charge; Range=8; Radius=1.0` | a 5 s cooldown | Yes, 0.69 s wind-up |
+| Soul Grab | Special | Strike | `Radius=4.0; Angle=360; ForcedMovement=Pull` | a 10 s cooldown | Yes, 1.54 s wind-up |
+
+  
+
+#### **Reap swings faster than the design first said, so it stays unmarked**
+
+The scythe reaches 1.6 metres in a 120 degree arc and catches up to three. The design approved on 2026-11-26 gave it a 1.6 second interval, and by the rule in the Attack Telegraphs subsection a 1.6 second cycle allows a 1.4 metre marker, so a swing of that reach would have had to be marked. It swings every 1.25 seconds instead, at the same damage per second: 0.9375 of the base share a swing rather than 1.20. At 1.25 seconds the largest marker is 0.8 metres, under the floor, so the swing goes unmarked as the design meant. **A judgement.**
+
+  
+
+#### **Phase Dash goes through the player, not into them**
+
+It dashes 8 metres along a straight lane marked 1.0 metre in radius, passing through creatures but stopping at walls, and hits what it crosses once at the Movement slot's 100%, with no shove. It uses the dash when the player is between 4 and 8 metres away, so the run ends behind the player and the next swing comes from the side they were backing towards. The design table gave the lane half that radius; a marker under a metre is not a telegraph, so the lane is the smallest marker the rules allow. **A judgement.** The dash is ready every 5 seconds, the Movement slot's cooldown and the Hellhound's.
+
+  
+
+#### **Soul Grab pulls a player who stands just out of reach**
+
+A ring of grasping hands 4 metres in radius round the Wraith, marked for 1.54 seconds. Whoever is still inside when it lands takes the Special slot's 150% and is pulled to the Wraith's side. It covers the ground between Reap's reach and the dash's shortest run, so a player at any distance has something coming; and because it is marked, it can always be walked out of. Soul Grab is ready every 10 seconds, the top of the Special slot's band. The owner made Soul Grab the third ability on 2026-11-26 and left its effect to be designed: **this effect is a judgement.**
 
   
 

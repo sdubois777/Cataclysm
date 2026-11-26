@@ -266,7 +266,7 @@ def test_the_per_enemy_table_matches_the_enemy_stat_model(section, archetypes):
             rf"\| {re.escape(name)} \| ([\d.]+) s \| ([\d.]+) m \|", section)
         assert row, (
             f"the Attack Telegraphs table has no row for {name}, which is one "
-            f"of the seven archetypes in sim/cataclysm_sim/enemy_stats.py. "
+            f"of the archetypes in sim/cataclysm_sim/enemy_stats.py. "
             f"Every enemy needs a stated answer or its design issue will "
             f"invent one.")
         stated_interval = float(row.group(1))
@@ -289,8 +289,9 @@ def test_the_per_enemy_table_matches_the_enemy_stat_model(section, archetypes):
             f"reaction allowance, it is {expected:.2f} m.")
         checked += 1
 
-    assert checked == 7, (
-        f"only {checked} of the seven vertical slice enemies were checked. "
+    # EIGHT SINCE 2026-11-26: the seven Demonic enemies and Death's Wraith.
+    assert checked == 8, (
+        f"only {checked} of the eight designed enemies were checked. "
         f"Either the model gained an archetype the document does not cover, or "
         f"the table's format changed and these rows stopped matching.")
 

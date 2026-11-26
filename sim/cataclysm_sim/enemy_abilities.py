@@ -739,6 +739,10 @@ ATTACK_REACH: dict[str, float] = {
     # is measured from the creature's centre too, so the two agree by
     # construction. Issue #354.
     "Gatekeeper": 2.0,
+
+    # 1.6 metres, which is Reap's own radius: a scythe reaches further than a
+    # bite. Death's Wraith, 2026-11-26.
+    "Wraith": 1.6,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -1515,6 +1519,53 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                  "Sevarog's ultimate is authored as targeting (0.87 s), a hold "
                  "loop (2.23 s) and the swing (2.63 s), which is exactly the "
                  "start-hold-release a 2 second wind-up needs.",
+        ),
+    ),
+    # DEATH'S WRAITH, 2026-11-26, the design the project owner approved that day. It phases through the player and
+    # reaps from the other side. Three abilities, the most a basic creature may have (ruled 2026-08-07).
+    "Wraith": (
+        Ability(
+            name="Reap",
+            shape="Strike",
+            slot="Basic",
+            # A scythe's arc in front, reaching 1.6 metres. PoE's Summon Reaper swings the same kind of arc.
+            params={"Radius": 1.6, "Angle": 120, "MaxTargets": 3},
+            note="A scythe swing in a 120 degree arc. Not telegraphed: its 1.25 second interval allows a marker "
+                 "of 0.79 metres, under the one metre floor.",
+        ),
+        Ability(
+            name="Phase Dash",
+            shape="Movement",
+            slot="Movement",
+            # A CHARGE THROUGH THE PLAYER AND NOT A LEAP ONTO THEM: it runs 8 metres along a fixed line, so from 4
+            # to 8 metres away it ends behind the player, and it passes through creatures but not walls.
+            #
+            # RADIUS 1.0, NOT THE DESIGN TABLE'S 0.5, so the lane is marked. The design says the dash is
+            # telegraphed, and a marker under a metre is not a telegraph by the Attack Telegraphs rules: it is
+            # smaller than the creature standing in it. 1.0 is the smallest marker those rules allow. A judgement.
+            #
+            # ONE HIT AT 100%, THE MOVEMENT SLOT'S, on what it crosses, and no shove: it goes through the player
+            # rather than knocking them aside.
+            params={"Mode": "Charge", "Range": 8, "Radius": 1.0},
+            # The Movement slot's typical cooldown in game/Data/SkillSlots.csv, and the Hellhound's.
+            cooldown=5.0,
+            note="Dashes 8 metres straight through the player along a marked lane and comes out behind them, "
+                 "hitting what it passes. Used when the player is 4 to 8 metres away.",
+        ),
+        Ability(
+            name="Soul Grab",
+            shape="Strike",
+            slot="Special",
+            # A JUDGEMENT, as the owner asked ("Design its effect yourself"): a ring of grasping hands 4 metres
+            # round the Wraith, marked for 1.54 seconds, that hits for the Special slot's 150% and pulls whoever
+            # it caught to the Wraith. It covers the ground between Reap's 1.6 metres and the dash's 4: the
+            # Wraith answers a player at any distance, and a marked ring can always be walked out of.
+            params={"Radius": 4.0, "Angle": 360, "ForcedMovement": "Pull"},
+            # Ten seconds, at the top of the Special slot's band (3 to 10 in game/Data/SkillSlots.csv), so it is
+            # an event in a fight rather than its rhythm.
+            cooldown=10.0,
+            note="Grasping hands in a marked 4 metre ring around the Wraith. Whoever is still inside when it "
+                 "lands takes a hit and is pulled to the Wraith's side.",
         ),
     ),
 }

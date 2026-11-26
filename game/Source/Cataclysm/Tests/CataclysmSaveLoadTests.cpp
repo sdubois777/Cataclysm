@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
+#include "Character/CataclysmWraithCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -8012,8 +8013,14 @@ bool FCataclysmSaveLoadReaperTest::RunTest(const FString&)
 				}
 				return Standing;
 			},
-			// ITS RUNG, AND NOT ITS BEING UNABLE TO BE HURT, which the hit below reads.
-			[](const ACataclysmEnemyCharacter& One) { return One.RarityStep == Effects::TheReaperRung; },
+			// ITS RUNG, AND NOT ITS BEING UNABLE TO BE HURT, which the hit below reads. AND ITS FORM SINCE 2026-11-26: a
+			// Wraith that is the Reaper, whose slow walk and missing dash a load must put back
+			// (`ACataclysmWraithCharacter::BecomeTheReaper`).
+			[](const ACataclysmEnemyCharacter& One)
+			{
+				const ACataclysmWraithCharacter* AsWraith = Cast<const ACataclysmWraithCharacter>(&One);
+				return One.RarityStep == Effects::TheReaperRung && AsWraith && AsWraith->bIsTheReaper;
+			},
 			[this](ACataclysmDungeonGameMode& Mode, int32)
 			{
 				// A HIT FROM THE PLAYER, with nothing to evade it or shield from it, and nothing answered back.

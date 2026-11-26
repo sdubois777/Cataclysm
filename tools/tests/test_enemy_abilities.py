@@ -2915,6 +2915,25 @@ UNIT_FIGURE = re.compile(
 #: `{n}` where the number stands. A phrase may match more than once; every
 #: match must hold the value.
 PROSE_RESTATEMENTS: dict[tuple[str, str, str, str], tuple[str, ...]] = {
+    # The Wraith, Death's first creature of its own (2026-11-26).
+    ("Wraith", "Wraith", "Reap", "Radius"): (
+        "The scythe reaches {n} metres",),
+    ("Wraith", "Wraith", "Reap", "Angle"): (
+        "in a {n} degree arc",),
+    ("Wraith", "Wraith", "Phase Dash", "Range"): (
+        "It dashes {n} metres along",
+        "between 4 and {n} metres away"),
+    ("Wraith", "Wraith", "Phase Dash", "Radius"): (
+        "a straight lane marked {n} metre in radius",),
+    ("Wraith", "Wraith", "Phase Dash", "cooldown"): (
+        "The dash is ready every {n} seconds",),
+    # THE DASH'S SHORTEST USE IS SOUL GRAB'S RADIUS BY DESIGN, not by coincidence: Soul Grab covers the ground inside
+    # it (`ACataclysmWraithCharacter::PhaseDashMinimumRangeCm` is `SoulGrabRadiusCm`).
+    ("Wraith", "Wraith", "Soul Grab", "Radius"): (
+        "grasping hands {n} metres in radius",
+        "between {n} and 8 metres away"),
+    ("Wraith", "Wraith", "Soul Grab", "cooldown"): (
+        "Soul Grab is ready every {n} seconds",),
     # The Abyssal Warden.
     ("Abyssal Warden", "Abyssal Warden", "Stampede", "Range"): (
         "it reaches {n} metres",

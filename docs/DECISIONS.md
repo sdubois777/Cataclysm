@@ -72,6 +72,133 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
 
 ---
 
+## 2026-11-26 — The Wraith, Death's first creature of its own: a scythe ghost that dashes through the player, replaces the Hellhound in Death dungeons, and plays The Reaper and Vengeful Wraiths
+
+**Affects:**
+- The model: `sim/cataclysm_sim/enemy_stats.py` (`ARCHETYPES["Wraith"]`) and `sim/cataclysm_sim/enemy_abilities.py`
+  (`ABILITIES["Wraith"]`, `ATTACK_REACH["Wraith"]`). Generated: `game/Data/EnemyArchetypes.csv` (9 rows). **The editor
+  step must rebuild `DT_EnemyArchetypes`.**
+- C++:
+  - `CataclysmWraithCharacter.h` and `.cpp` (new): the creature, its three abilities, its art, and the Reaper's form.
+  - `CataclysmFloorPopulation.h` and `.cpp`: `ECataclysmDungeonCreature::Wraith` (after the Gatekeeper, so no number
+    moves), its name, and `PackKindsFor(Death)`.
+  - `CataclysmDungeonGameMode.cpp`:
+    - `ClassFor` and `ApplyDesignedStats`;
+    - `RaiseTheReaper` raises a Wraith in the Reaper's form;
+    - `NoteDeathForVengefulWraiths` raises a Wraith;
+    - the load path puts the Reaper's form back;
+    - the population log line counts Wraiths.
+  - `CataclysmGameMode.h` and `game/Config/DefaultGame.ini`: `WraithRarityStep`, `WraithHealth`, `WraithArmour`,
+    `WraithAttackDamage`.
+  - Comments in `CataclysmDungeonModifierEffects.h` and `CataclysmDungeonGameMode.h`, where The Reaper was a Warden.
+- Docs: the Wraith's subsection, its telegraph-table row and the designed-enemies sentence in
+  `docs/Cataclysm_GDD_v2.md`; its timing-table row and its section in `game/docs/enemy-source-assets.md`.
+- Tests:
+  - Unreal:
+    - `CataclysmWraithTests.cpp` (new): `Cataclysm.Wraith.`, eight tests.
+    - `CataclysmCreatureCataclysmTests.cpp`: the rules test rewritten and renamed (below).
+    - `CataclysmDungeonModifierEffectsTests.cpp`: the Reaper is a Wraith in its form.
+    - `CataclysmSaveLoadTests.cpp`: the Reaper keeps its form across a load.
+    - `CataclysmDataTableTests.cpp`: the pin, 9.
+    - Three rung helpers set `WraithRarityStep`.
+  - Python:
+    - `tools/tests/test_wraith_matches_the_model.py` (new).
+    - `test_enemy_abilities.py`: the Wraith's prose figures registered.
+    - `test_enemy_telegraphs.py`: 8 designed enemies, not 7.
+    - `test_imp_matches_the_model.py`: the Imp's "only one with no armour" and "highest evasion" are among the
+      Demonic seven, with the Wraith as the control.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to:
+  - compile it;
+  - rebuild `DT_EnemyArchetypes`;
+  - run `Cataclysm.Wraith.` (eight tests, trailing dot), `Cataclysm.CreatureCataclysm.`,
+    `Cataclysm.DungeonModifierEffects.` (the Reaper test), the save-and-load Reaper test and `Cataclysm.Data.` (the
+    pin).
+- **ONE EXISTING UNREAL TEST FAILS ON THIS BRANCH ALONE, BY ARRANGEMENT.** The floor population sweep in
+  `CataclysmFloorPopulationTests.cpp` requires every kind but the Gatekeeper to appear across its seeds. The Wraith
+  appears only on Death floors, which that sweep does not draw.
+  - The Lich session adds Death floors to it (the coordinating session's split of 2026-11-26), and this branch does
+    not edit it.
+  - Until the two branches meet, that test names the Wraith as never placed.
+- **The art is read, not seen.**
+  - Clip lengths and root motion are from each asset's tags. Neither the mesh's height nor the swings' strike moments
+    were measured.
+  - The capsule's half-height (88 cm) is a judgement. A swing lands at once, as the Hellhound's bite does (issue #783).
+  - `Cataclysm.Wraith.ItWearsItsBodyHelmAndScytheAndHidesThePlaceholder` reports a skipped half in any worktree,
+    because only the main checkout has the pack.
+- **`Ghost_Appear` plays once when a rule raised the Wraith**, as the coordinating session ruled on 2026-11-26.
+  - A rule-raised creature already carries `bRisenFromTheDead`: Haunting, Undying Will, Vengeful Wraiths, and the
+    Lich's Raise the Fallen on its branch.
+  - Every rule sets the flag after the spawn, so after `BeginPlay`. The Wraith appears on the first tick that sees it.
+  - Its swing and its abilities are refused for the clip's 1.96 seconds, whether or not the art is present.
+  - `Cataclysm.Wraith.ARaisedWraithAppearsBeforeItActs` holds it, with an ordinary Wraith as the control.
+- **The Lich session touches the same shared files** (the creature enum, `EnemyArchetypes.csv` and the creature-count
+  pins). Each branch moves them by one, and the assembly reconciles them.
+
+### WHAT WAS RULED
+
+- The project owner, 2026-11-26, verbatim: "I'm happy with those enemy designs. And your recommendations for the rest
+  are good with me. for 4. yes use the wraith. 5. use the animation if we've got it".
+- So:
+  - the design is approved as written;
+  - the Wraith replaces the Hellhound in `PackKindsFor(Death)`;
+  - the Wraith art plays The Reaper and Vengeful Wraiths;
+  - Soul Grab becomes the third ability on the pack's `SoulGrab` clip, its effect for us to design, keeping the cap
+    of three;
+  - one look for every Wraith: Skin1 with Helm1 and the scythe, the other three helms kept for The Reaper.
+- The coordinating session, 2026-11-26:
+  - this session owns the two roster tests in `CataclysmCreatureCataclysmTests.cpp` and `PackKindsFor`;
+  - the Lich session owns the escort lines and the population sweep.
+
+### JUDGEMENTS
+
+- **Reap swings every 1.25 seconds at 0.9375 of the base share, not the design's 1.6 seconds at 1.20.**
+  - It is the same 0.75 a second.
+  - The design meant the 1.6 metre swing unmarked. By the Attack Telegraphs rules, though, a 1.6 second cycle allows a
+    1.4 metre marker, so it would have had to be marked: the design measured the wind-up its own reach needs, not the
+    largest marker its cycle allows.
+  - At 1.25 seconds the largest marker is 0.79 metres, under the one metre floor. The swing clips play at 1.33.
+- **Phase Dash's lane is 1.0 metre in radius, not 0.5.** The design says the dash is telegraphed, and a marker under a
+  metre is not a telegraph by the same rules. 1.0 is the smallest one allowed, and its wind-up is 0.69 seconds.
+- **Phase Dash's speed** is 1,142.86 cm/s: its 8 metres in the 0.7 seconds the Hellhound's and the Warden's charges
+  take. The pack's dash clip is in place, so there is no length to derive a speed from. It passes through creatures
+  and not walls, hits what it crosses once at 100%, and shoves nothing.
+- **Soul Grab, the owner's to leave to us:**
+  - a 4 metre ring around the Wraith, marked for 1.54 seconds;
+  - whoever is still inside takes the Special slot's 150% and is pulled to within Reap's reach;
+  - a 10 second cooldown, the top of the Special band.
+
+  It covers the ground between Reap's 1.6 metres and the dash's 4, so a player at any distance has something coming,
+  and a marked ring can always be walked out of. The dash's shortest use is Soul Grab's radius by construction.
+- **The Reaper is a Wraith that keeps the Reaper's rules.**
+  - The row says "The embodiment of death slowly stalks the player. If they are hit by his scythe, they instantly
+    die."
+  - So it walks at the Abyssal Warden's 2.8 metres a second, under the slowest class's 3.5, and uses neither the dash
+    nor the pull. Either would make a blow that kills outright impossible to escape.
+  - It wears Helm2. A load puts its form back.
+- **Vengeful Wraiths raise a Wraith.** The slain creature's kind still decides whether anything rises at all, and the
+  figures are the Wraith's own raised by the row, as the slain kind's were before.
+- **Reap's target is struck as every basic attack is, and up to two more in its 120 degree arc at 100%:**
+  `MaxTargets=3`.
+- **The fallback figures** (`WraithHealth` 175, `WraithArmour` 0, `WraithAttackDamage` 18.75) are the model's own
+  `stats_on_floor` at tier 1, and the training dummy's 20 times its damage share, as the Hellhound's are.
+- **The loops play at their authored speed.** A hovering body has no planted foot to slide, so there is no stride to
+  measure.
+
+### GENRE RESEARCH
+
+The design's own, recorded with it:
+- PoE's Summon Reaper: scythe area slashes and a dash on 4 seconds.
+- PoE 2's Thariel, the Umbral Wraith: a fast teleport and evasion.
+- Diablo II's Wraiths: physical resistance.
+
+No Last Epoch source could be reached. Soul Grab's pull is this project's own displacement (`ApplyPull`), which the
+player's Whip already uses.
+
+---
+
 ## 2026-11-26 — The Necromancer's remains: a marker where a creature fell, the Ossuary limb, the Abomination, the Bone Colossus and Many Made One (the Death finish, slice D)
 
 **Affects:**

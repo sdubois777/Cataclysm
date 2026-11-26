@@ -4002,7 +4002,8 @@ private:
 	/** The Reaper, on the beat: counts the floor's seconds and raises it when due. */
 	void StepTheReaper();
 
-	/** The Reaper itself: an Abyssal Warden at the entrance that cannot be hurt. */
+	/** The Reaper itself: a Wraith at the entrance that cannot be hurt, walking slowly (an Abyssal Warden until
+	 *  2026-11-26). */
 	void RaiseTheReaper();
 
 	/** The Reaper, on every blow: one of its that lands on the player kills them. */
