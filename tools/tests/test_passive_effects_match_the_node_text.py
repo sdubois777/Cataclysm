@@ -851,7 +851,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 897 ON 2026-11-25, when the Death line met the War line (the Death trees'
 #: bundle 3 merge): the Death line's 669 and the War line's 592 less the 364 both had.
-AUTHORED_ROWS = 897
+#:
+#: AND TO 898 THE SAME DAY: Slippery's "After successfully evading, gain 3 Fervour"
+#: (`tools/reapply_saboteur_slippery_workbook.py`), window death3-w1's second pass. Its node already had a row.
+AUTHORED_ROWS = 898
 
 #: How many of the 441 nodes have an authored effect.
 #:

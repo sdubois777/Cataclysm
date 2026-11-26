@@ -95,8 +95,9 @@ EXPRESSED_ANOTHER_WAY = {
     ("Saboteur_basic_trunk_013", "0", "while_moving"):
         "cannot_be_targeted_while_moving names moving in the stat itself (Thin Air)",
     ("Saboteur_basic_trunk_004", "0", "seconds_after_dodge"):
-        "NOT BUILT, FOUND HERE: Slippery's 'At 5 points: After successfully evading, gain 3 Fervour' has no row on the "
-        "War line, so no condition is lost; the clause itself is missing. Reported to the coordinating session",
+        "Slippery's 'After successfully evading, gain 3 Fervour' is a class_resource row on the dodge event itself "
+        "(tools/reapply_saboteur_slippery_workbook.py), found missing by this check and built in window death3-w1's "
+        "second pass",
     ("Shadow_basic_d_a0", "0", "target_rarity_at_least"):
         "Read the Blow's 'attacks from Elite and stronger enemies' is the attacker's rung on a blow taken, "
         "opponent_rarity_at_least (the Death trees' slice C6b3)",

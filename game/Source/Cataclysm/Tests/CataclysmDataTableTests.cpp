@@ -597,7 +597,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 592 THE SAME DAY, for V5c: Bolted Together's two.
 	// AND 897 SINCE THE BUNDLE 3 MERGE, 2026-11-25: the Death line's 669 and the War
 	// line's 592, less the 364 both had.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        897)
+	// AND 898 THE SAME DAY, for Slippery's Fervour on an evasion (window death3-w1's second pass).
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        898)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
