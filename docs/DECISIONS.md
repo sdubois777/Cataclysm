@@ -2,6 +2,163 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — Bundle 4: six branches merged (creatures belong to their Cataclysm, pause, Abyssal Rifts, War's Quest Sieges, Abomination lairs, the Death and War enemy modifiers), a Fallen City takes the Cataclysm that felled it, and seven windows
+
+**Branch `feat/bundle-4-creatures-pause-rifts-sieges-lairs-modifiers`, cut from development `9bd6ed996`**, which held
+bundle 1, the affix ranges and enemy re-fit (#2924) and the War line (#2925). Assembled for the coordinating session
+on 2026-11-25 and 2026-11-26.
+
+### What it merges
+
+| Branch | Head | Its entry, below |
+| :-- | :-- | :-- |
+| `feat/abyssal-rifts-2864-2` | `75200dd18` | Abyssal Rifts redesigned (#2864); run record 19 → 20 |
+| `feat/war-quest-sieges` | `119517167` | War's Quest dungeons are Sieges (#51 slice B4); run record 20 → 21 |
+| `feat/abomination-lairs` | `1b9b47a4c` | Death's Quest dungeons are Abomination lairs (#51 slice B5); run record 21 → 22 |
+| `feat/pause` | `a5aba43a1` | Esc pauses the game |
+| `feat/creature-cataclysm-b3` | `889fcc6d8` | Every creature belongs to the Cataclysm that sent its dungeon (#51 slice B3) |
+| `feat/death-war-enemy-modifiers` | `44b3ab7e2` | Death's eleven and War's eight built enemy modifiers |
+
+### What the merge did
+
+- **The design workbook** (`docs/All_Things_Cataclysm.xlsx`) cannot be merged. Each merge took development's copy. The
+  two branch edits were then re-applied:
+  - `tools/reapply_abyssal_rifts_row.py`: the row was already there.
+  - `tools/reapply_death_war_enemy_modifiers_workbook_edit.py`: 8 cells written, and no other cell changed.
+  - The generated CSVs already matched.
+- **This file:** every entry from both sides is kept, each branch's above development's.
+- **`docs/Play_Loop_Checklist.md`:** the pause step became step 34, since development already had steps 28 to 33. The
+  four places citing it were changed.
+- **`CataclysmCombatOverlay.cpp`:** both sides' include lines are kept.
+- **Checks on the merge:**
+  - `check_resolved_cpp.py` read the 81 changed C++ files and found 0 complaints.
+  - No member is declared twice in the headers several branches changed.
+  - The run record goes 19 → 20 → 21 → 22, one migration step each (`SchemaVersionNow` 22).
+
+### What the bundle adds
+
+- **A Fallen City's creatures take the Cataclysm that felled its city.** `BindEmpireDungeon` reads the city's `FellTo`,
+  which slice B4 saves. A city that records nobody, as one felled in a version 20 run does, keeps the run's newest
+  active Cataclysm. The coordinating session ruled this on 2026-11-25.
+  - The B3 test is renamed `AFallenCitysCreaturesTakeTheCataclysmThatFelledItsCity`. It sets War as the faller while
+    Death is the newest active Cataclysm, and expects War.
+  - Its controls: the unrecorded fallback, the newest Cataclysm rather than the first, and an ordinary dungeon staying
+    Demonic.
+  - No separate C++ proof was run for the `FellTo` read (FC1), as the coordinating session ruled: the test's War
+    expectation already fails if `FellTo` is ignored.
+- **The B3 entry's Succubus bullet and the design document's sentence** now say, in the past tense, that `War_Commander`
+  was closed to a creature whose innate ability grants it (`ClosedByInnateEffects`). The B3 entry's SaveLoad count is
+  restated against development: 84, 85 with its test, 87 at the bundle's head.
+- **#2899:** all 19 Death and War modifiers are enemy-only code (each reads an `ACataclysmEnemyCharacter`'s rows).
+  None could be widened in a few lines, because development has nowhere a player carries enemy modifier rows. They are
+  listed on #2899.
+- **The Cursed Abomination's damage has its own key** (`SetAbominationDamageMultiplier`, source "CursedAbomination").
+  It was a game fault, found by window b4-w1:
+  - `GoToFloor` populates a lair's last floor, which makes the Abomination, and then applies the floor's rules.
+  - With a player present, the rules reset every creature's placed damage multiplier.
+  - The Abomination therefore kept its health and lost its damage.
+  - The new key is set on a load too.
+
+### The windows
+
+The base was war2-w2's whole suite: 5,731 performed, 5,731 succeeded. 5,794 was predicted: 69 test names added, 6
+replaced.
+
+**b4-w1, on `0dda0efd4` (assets committed as `a62b96697`): FAILED.**
+- Build: succeeded, 71 files compiled.
+- Groups alone: Pause 10/10 and WarModifiers 9/9. Six tests failed across the other four groups.
+- Whole suite: "Tests: 5794 tests performed, 5785 succeeded, 9 failed". 58 skipped halves. 892 test saves written
+  and deleted, 0 left behind.
+- Python: 9,136 passed.
+- Proof: not run.
+
+The nine failures, game or test:
+
+| Test | Which | What changed |
+| :-- | :-- | :-- |
+| `AbominationLairs.TheCursedAbominationGrowsByTheStepForEachFallenCity` | **game** | its own damage key, above |
+| `CreatureCataclysm.TheGatekeepersCalledImpsTakeItsCataclysm` | test | a one-floor dungeon has no boss (#1465); now two floors |
+| `AbominationLairs.EveryFallMakesOneWithNoCap` | test | a surge's lair is counted apart: "LAIRS: 3 on the map, 2 from the falls, 1 a surge landed" (b4-w2) |
+| `WarQuestSieges.AWarQuestDungeonDrawnOntoABesiegedCityLandsOnOneWithout` | test | an earlier dungeon in the same wave can take the free city's Siege, the ruled "none free" case; "10 landed after an earlier dungeon of the wave took the free city's Siege" (b4-w2) |
+| `EmpireRun.ACityNeverHoldsTwoSieges` | test | B4's ruled exception is allowed only while every exposed city holds a Siege; b4-w2 showed both of city 14's Sieges were War Quest dungeons |
+| `RiftMap.ARiftsDetailLineNamesItAndTheDaysUntilItSends` | test | its control's Death Quest dungeon is now a lair; it uses Pestilence |
+| `Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` | test | a War Quest Siege takes its city's one Siege, so a later Siege roll there is re-read |
+| `DeathModifiers.FinalCurse...`, `DeathModifiers.SoulTether...` | test, then see b4-w2 to b4-w6 | |
+
+- Also: `game/Data/datatable_asset_sources.json` was committed with the assets (`0822d90d8`). The two Succubus
+  ability-order Python tests now read `EnemyAbilities`' own return rather than the file's first brace list.
+  - Proven in an archive copy with `break_and_run`: PROVED, 1 named failure and 2 named failures.
+
+**b4-w2, on `76fe58e58`: FAILED.**
+- Build: succeeded, 54 files compiled.
+- Groups alone: 7 of 9 passed. DeathModifiers failed 2 and WarModifiers failed 1 (Artillery Barrage).
+- Whole suite: "Tests: 5794 tests performed, 5792 succeeded, 2 failed" (Final Curse and Soul Tether). 58 skipped
+  halves. 892 test saves written and deleted, 0 left behind.
+- **This run's Python figure is void.** The two modifier test files were edited while it ran. It was re-run on
+  `f7440936a`: 9,136 passed, 10 skipped, JUnit 9,146 tests with 0 failures; ruff clean.
+- **This window's whole suite stands for every test b4-w3 to b4-w7 did not run again.** After it, only
+  `CataclysmDeathModifierTests.cpp` and `CataclysmWarModifierTests.cpp` changed.
+
+**b4-w3 to b4-w6, narrowed: a build and the two modifier groups alone, ruled by the coordinating session.**
+
+| Window | Head | Final Curse | Soul Tether | What it showed |
+| :-- | :-- | :-- | :-- | :-- |
+| b4-w3 | `f7440936a` | 55.00 of 50 | 57.0 of 65 | emptying the stat line (`SetStatInputs({})`) removed armour from class and weapon rows that the attributes did not show; a 10% increase remained |
+| b4-w4 | `6310a98a9` | passes: 55.00 against a control of 55.00 | 57.00; living-source control 65.00 | Final Curse compared with the same blow dealt directly; #2931 filed for the 10%. The control also contradicted #2932, which was closed |
+| b4-w5 | `675c812d0` | passes | dead-source control measured nothing | the Frail creature was already removed from the world |
+| b4-w6 | `7481ece17` | passes | 57.00; living 65.00, dead 64.08 | the source dying is not the cause; the tether's re-lay is (#2933) |
+
+- Artillery Barrage passed in b4-w3 onward. It had failed in b4-w2 because three shells read 2.988: the player kept
+  stat-line armour.
+- **Soul Tether's arrival is checked against a stated band until #2933 is fixed: at least 85% of what is owed**, with
+  the share printed. The coordinating session ruled this on 2026-11-26.
+
+**b4-w7, on `2ee9bd869`:** **PASSED.**
+- Build: succeeded, 1 file compiled.
+- DeathModifiers 11/11, WarModifiers 9/9. 2 test saves written and deleted, 0 left behind.
+- The Death tests printed:
+  - "FINAL CURSE: 5% of maximum health is 50.00; dealt directly as the curse deals it, it cost 55.00"
+  - "SOUL TETHER: 65.00 owed; the tether took 57.00; the same damage over time from the living source took 65.00, from
+    the dead source 64.08"
+  - "SOUL TETHER: the tether delivered 87.7% of what was owed"
+- **The combined C++ guard proof, run COMBINED** as the coordinating session ruled: one `prove_cpp_guard` call holding
+  all eight breaks, so a caught test shows it fails with its mechanism broken alongside others.
+  - The prefixes, joined by "+": CG4's five `DungeonModifierEffects` tests by name,
+    `SaveLoad.ACreatureSavedInADeathDungeon`, and the six new groups.
+  - With the breaks in: 64 performed, 39 succeeded, 25 failed. Every predicted name failed, and none failed
+    unpredicted.
+  - Restored: 64 of 64 passed. **PROVED.**
+
+| Proof | Branch | The break | Predicted, failed |
+| :-- | :-- | :-- | :-- |
+| CG4 | Abyssal Rifts | `Rift->bCannotBeHurt = true;` added in `PlaceTheRifts` | 5 of 5 |
+| B3-1 | creatures' Cataclysm | `GiveTheDungeonsCataclysm(Enemy);` read as `;` | 5 of 5 |
+| B3-2 | creatures' Cataclysm | `Dungeon.GiveTheDungeonsCataclysm(Back);` read as `;` | 1 of 1 |
+| WC1 | War's Quest Sieges | `if (FelledBy == War)` read as `if (false && ...)` | 2 of 2 |
+| LC1 | Abomination lairs | `if (ActiveCataclysms.Contains(Death))` read as `if (false && ...)` | 2 of 2 |
+| P2 | pause | `SetPause(true)` read as `SetPause(false)` | 8 of 8 |
+| CO | War enemy modifiers | Commander's inspire call read as `Touched += 0;` | 1 of 1 |
+| GT | Death enemy modifiers | `GraveTouchDamageMultiplier = 1.5f` read as `1.0f` | 1 of 1 |
+
+- **A rule was broken during this proof, and the proof is unaffected.** A Python suite run started at about 00:25 on
+  `6310a98a9` was still running when the proof began writing its breaks at 00:31. The project's rule says a C++ guard
+  proof must not run while the Python suite runs.
+  - That Python run read the WC1 break and failed one test (`test_a_fall_to_war_makes_the_next_siege_in_the_same_place_in_both`).
+    It is void and is quoted nowhere as evidence.
+  - The proof reads only Unreal test results, so it is unaffected.
+  - Python was run again on the final head, with nothing running beside it: PYTHON_FIGURE_PENDING (written by the commit after this one, from the run's own output).
+
+### Issues this bundle opened or closed
+
+- [#2931](https://github.com/sdubois777/Cataclysm/issues/2931): a test player with every defence at 0 takes 10% more
+  from Final Curse's hit on itself. Source not found.
+- [#2932](https://github.com/sdubois777/Cataclysm/issues/2932): closed. A damage over time from a living source
+  delivered all 65.
+- [#2933](https://github.com/sdubois777/Cataclysm/issues/2933): Soul Tether's re-lay delivers less than owed.
+- The #2899 comment listing the 19 enemy-only modifiers.
+
+---
+
 ## 2026-11-25 — War's enemy modifiers, eight of the nine written ahead of their window, and Death's eleven rebuilt on development with their two status rows
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `feat/death-war-enemy-modifiers`, cut from development
