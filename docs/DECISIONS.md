@@ -2,6 +2,231 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — War's enemy modifiers, eight of the nine written ahead of their window, and Death's eleven rebuilt on development with their two status rows
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `feat/death-war-enemy-modifiers`, cut from development
+`9acbb3528` (which holds bug batches 1 and 2), written by an agent for the coordinating session. Nothing here was
+compiled and no Unreal test was run; every statement below about what the engine does was read from the code.
+
+### Said first
+
+- **1 On 1 is not built.** Its arena needs a mechanism no code in the project has; it is described under "1 On 1, left"
+  below. A creature carrying it behaves as it did before, and the hover panel still names it.
+- **THE WINDOW MUST REBUILD TWO DATATABLE ASSETS FIRST**, `DT_StatusEffects` and `DT_EnemyModifiers`
+  (`python tools/run_editor_python.py tools/generate_datatable_assets.py`): `game/Data/StatusEffects.csv` and
+  `game/Data/EnemyModifiers.csv` changed, so `tools/tests/test_datatable_assets_are_current.py` fails until they are
+  rebuilt, and `Cataclysm.WarModifiers.BattleCryCutsEveryResistanceByTwentyFiveForFiveSecondsEveryEightSeconds` reads
+  the Battle Cry row's stat list out of `DT_StatusEffects`.
+- **This branch carries an unmerged edit to `docs/All_Things_Cataclysm.xlsx`**, eight cells, recorded as
+  `tools/reapply_death_war_enemy_modifiers_workbook_edit.py`; whichever branch lands second re-applies it.
+- **The design document's sentence on monster damage reduction said "Every one is conditional"** of five modifiers,
+  Armored Juggernaut and Battle Scarred among them. Neither is conditional as written in its row or as built here.
+  Corrected on the coordinating session's instruction of 2026-11-25: it now says which three are conditional, and the
+  answer to each, and that the other two hold for the creature's whole life.
+- **The agent rules of 2026-11-24 say "No War Cataclysm work".** The coordinating session's brief for this branch
+  assigned War's nine enemy modifiers by name, on the owner's rulings of 2026-11-24 (Q10 to Q12 below), and that is
+  what was followed.
+
+### Death's eleven, rebuilt on development
+
+The two commits of `feat/death-enemy-modifiers` (`da3ad75fe`, the code; `86ba80e4f`, its entry below this one) were
+cherry-picked onto development `9acbb3528`. **The code commit applied with no conflict.** Six of its files had changed
+on development since the Death branch's base `5cdd6bdc4`, and each change was read against it: the vital attribute set
+moved Infernal Brand into the hit-only block ([#2874](https://github.com/sdubois777/Cataclysm/issues/2874)), which is the block Death's three on-hit calls sit in, and added
+the Subjugate hold and the shield's Fervour; the enemy modifiers added the dead-target refusals Death's on-hit rules
+already make, and Infernal Sacrifice's unhurtable refusal; the regeneration file changed a comment. No semantic
+conflict was found. **The decisions log conflicted**, at its top: Death's entry was placed below the bug batches'
+entry and above the character creator's, by the author dates of the branch commits that first wrote each
+(`05c909bd0` 22:38, `86ba80e4f` 18:47, `9e9e5e73d` 17:42, all 2026-11-24), which the separator test passes.
+
+**The owner accepted the eleven as built on 2026-11-24**, as relayed by the coordinating session: "These are fine",
+with the recommended status rows for Mortal Reminder and Lingering Decay (Q6 of the entry below). The other seven
+answers stand as built.
+
+**The two status rows**, added to the Debuffs sheet:
+
+| Row | Text |
+|---|---|
+| `Debuff_Mortal_Reminder` | "A debuff a creature carrying Mortal Reminder lays with each attack that takes the player's health. For 4 seconds the player cannot be healed above the health that attack left." |
+| `Debuff_Lingering_Decay` | "The player is standing in a necrotic zone a creature carrying Lingering Decay left behind, and every heal of their health is reduced by 50% while they stay inside it." |
+
+Both carry no figures in their columns: the code holds them, and
+`tools/tests/test_war_enemy_modifiers_match_their_rows.py` holds each sentence's figure equal to its constant. **The
+tags are display only.** `MortalReminderOnHit` lays `Status.Debuff.MortalReminder` beside the ceiling for the same
+four seconds; the ceiling stays on the ability system, because a tag carries no figure. `TimedStep` lays
+`Status.Debuff.LingeringDecay` on a character of the players' side for half a second on every quarter-second step it
+stands in a zone, in the name of the creature that left the zone; the cut is still asked of where the character stands.
+**A judgement:** when the creature that left a zone has gone, the cut remains for the zone's life and the status does
+not show. The two Death tests gained assertions on the tags; their count and their registered proofs are unchanged.
+
+### War's rows, what each does in play, and where
+
+The rulings that apply: the coordinating session's Death and War plan of 2026-11-24, Q10 to Q12, and the owner the
+same day:
+"Your recommendations work for all of those death/war questions." The recommendations accepted: Q10, make Shield Wall
+non-positional, "Take 75% less damage from projectiles", by the owner's ruling of 2026-08-09, "we don't do positional
+weak points. That's too tedious in a diablo like arpg"; Q11, build 1 On 1 for one player, allies inside the arena when
+it forms consumed for 50% of their health and damage, and the player's movement skill crossing the arena wall; Q12,
+keep Commander and Drums of War, Drums of War at half Commander's radius.
+
+| Row | In play | Built in |
+|---|---|---|
+| Commander: "Inspires allies, increasing their movement speed and attack speed by 20%." | Every ally within 8 metres holds `Status.Buff.Commander`, re-granted each one-second aura pulse for two seconds: 20% faster moving and attacking. Not itself. | `AuraStep`; `CommanderMultiplier` reads it |
+| Drums of War: "Increases nearby allies move speed and attack speed by 50%." | Every ally within 4 metres holds `Status.Buff.DrumsofWar`, a new buff row, on the same pulse: 50% faster moving and attacking, multiplied with Commander's where both are held (1.8). | `AuraStep`; `ACataclysmEnemyCharacter::DrumsOfWarMultiplier`, a factor of `SpeedMultiplierWithWraithFactor` |
+| Armored Juggernaut: "Gain 50% armor" | Half again its own armour. A kind designed with no armour (the Imp) gains none. | `ApplyStartingAttributes`, `ArmourMultiplier` |
+| Battle Scarred: "Become more dangerous, gaining increased critical strike chance and damage resistance." | Double its own critical strike chance, and 30 more resistance, from the start. Overpowered's certain critical strike still wins. | `ApplyStartingAttributes`, `CritChanceMultiplier`, `AddedResistance` |
+| Shield Wall: "Take 75% less damage from projectiles." (reworded) | A quarter of every projectile's contact and blast reaches it; every other blow reaches it whole. | `ACataclysmProjectile::HitOne`, `ShareOfProjectileDamageTaken` |
+| Phalanx: "Gains 10% damage reduction for every other enemy within 5 meters." | 10 damage reduction for each other creature of its side within 5 metres that can lose health (no floor-rule object, nothing unhurtable), counted every step and capped with all damage reduction at 75. "Phalanx -30%" under its bar. | `TimedStep`, `CountPhalanxAllies`, its damage reduction attribute |
+| Battle Cry: "Emit a terrifying shout that reduces the player's resistances or armor for 5 seconds." | Every 8 seconds, when an enemy is within 6 metres, a shout cuts each of their resistances by 25, never below nought, for 5 seconds (`Status.Debuff.BattleCry`). The clock waits for somebody in reach. | `TimedStep`; the named-effect path with the row's eight resistances |
+| Artillery Barrage: "Call down explosive projectiles in random areas near the player." | Every 6 seconds, when an enemy is within 20 metres, three 3 metre circles are drawn on the floor at random within 4 metres of the nearest; 1.5 seconds later each lands for one and a half of the creature's hits on everyone of the player's side inside it, as an area blow that never crits. Killing the creature in the warning calls the volley off. "Barrage" under its bar. | `TimedStep`, `NoteDeathOfACarrier` |
+| 1 On 1 | **Not built.** | -- |
+
+**THE NEW BUFF ROW JOINED THE RANDOM BUFF TABLE.** `Buff_Drums_of_War` is a Buffs row, and the owner's "Add
+everything" of 2026-10-26 ([#2538](https://github.com/sdubois777/Cataclysm/issues/2538)) puts every Buff row in
+`UCataclysmAbilitySystemComponent::RandomBuffTable` once it is built as a buff its holder can hold;
+`tools/tests/test_the_random_buff_table_names_buff_rows.py` failed until it was decided. It is appended at place 17,
+so places 0 to 16 keep their buffs, laid on its holder as Commander's entry is: 50 increased movement speed and attack
+speed, no ally read. A drawn buff is one in eighteen now, not one in seventeen. **A judgement under that ruling.**
+
+A creature that takes no hostile action (the floor's medic, [#1680](https://github.com/sdubois777/Cataclysm/issues/1680)) never shouts or calls a barrage; it still grants
+Commander and Drums of War and still braces with Phalanx, because those harm nobody. **A judgement.** The status line
+gains "Phalanx -N%", "Barrage", "Drums of War" and "Battle Cry" (`UCataclysmCombatOverlay::WarModifierTextFor`); the
+player's effects list shows Battle Cry by its tag.
+
+### The figures the rows leave open, and where each came from
+
+Researched 2026-11-25, each page fetched in this session:
+
+| Figure | Value | Source, or "a judgement" |
+|---|---|---|
+| Commander's reach | 8 m | The Commander buff's own reach: the Succubus's Dominion and `War_Commander_s_Aura` (`CommandersAuraRadiusCm`). **A judgement**, one buff, one reach |
+| Commander's and Drums' grant | 2 s, re-granted each 1 s pulse | Abyssal Aura's and Starving Aura's 2 seconds. **A judgement** |
+| Drums of War's reach | 4 m | The owner's acceptance of Q12, half Commander's |
+| Drums with Commander | multiplied, 1.2 x 1.5 | As Commander and the Vengeful Wraiths increase already multiply. **A judgement**; Path of Exile would add two increases |
+| Armored Juggernaut | 50% more of its own armour | The row's 50; Path of Exile 2's monster armour modifiers state armour as a share, "monster additional strength ratio % for armour [50]" (poe2db.tw/us/Monster_Modifiers). **A judgement** that the base is the creature's own, so the unarmoured Imp gains nothing |
+| Battle Scarred's critical chance | 100% increased | Path of Exile's Deadeye: "100% increased Critical Strike Chance" (poedb.tw/us/Archnemesis) |
+| Battle Scarred's resistance | +30 | Path of Exile 2's monster modifier "+30% to all Elemental Resistances" (poe2db.tw/us/Monster_Modifiers) |
+| Battle Scarred's "Become" | from the start | **A judgement**: the row names no moment of change |
+| Shield Wall | 75% less, projectiles | The owner's acceptance of Q10 |
+| Phalanx | 10 per ally, 5 m | The row's; the 75 cap is the game's damage reduction cap |
+| Phalanx's "other enemy" | creatures that can lose health | The reading of "ally" ruled for Sacrificial Bond on 2026-09-30 ([#1559](https://github.com/sdubois777/Cataclysm/issues/1559)). **A judgement** |
+| Battle Cry's cut | 25 off each resistance | Abyssal Aura's and Haunting's 25. **A judgement** that it is resistances and not armour: the row offers either, and a status row moves one kind of stat |
+| Battle Cry's interval | 8 s | Path of Exile's Intimidating Cry: "Cooldown Time: 8.00 sec" (poedb.tw/us/Intimidating_Cry) |
+| Battle Cry's reach | 6 m | Every enemy aura's `AuraRadiusCm`. **A judgement** |
+| Artillery Barrage's shells | 3 per volley | Diablo III's Mortar elite affix: "3 projectiles per cast" (maxroll.gg/d3/resources/elite-affixes) |
+| Artillery Barrage's interval | 6 s | Path of Exile's Bombardier: "Periodically Fires a Nova of Fire Mortars (6 second cooldown)" (poedb.tw/us/Archnemesis) |
+| Artillery Barrage's circle | 3 m | Diablo III's Mortar: "3 yards radius for direct hit" |
+| Artillery Barrage's warning | 1.5 s | Derived as the Artillery Strike dungeon rule's is: twice the time to walk out of a circle from its middle at 400 cm a second |
+| Artillery Barrage's spread and damage | within 4 m; 1.5 hits | **Judgements**: a shell can fall on the player and three cannot cover the ground round them; Inferno Charge's 150%, the creature's other drawn attack |
+| Artillery Barrage's reach | 20 m | Inferno Charge's search. **A judgement** |
+| A barrage at its caller's death | called off | **A judgement**: killing the caller in the warning is an answer the player can choose |
+
+### An innate ability never duplicates a modifier, now at the draw
+
+**The coordinating session's instruction of 2026-11-25:** slice B3 (`feat/creature-cataclysm-b3`) makes every creature
+take its dungeon's Cataclysm, so a War dungeon's Succubus draws War modifiers while its Dominion already grants
+Commander; under the design's rule "An innate ability must not duplicate a modifier its own Cataclysm can roll", close
+`War_Commander` to any creature whose innate ability grants Commander, by extending the existing closure.
+
+**The existing closure was in the design data only**: `test_no_effect_duplicates_a_modifier_its_own_cataclysm_can_roll`
+in `tools/tests/test_enemy_abilities.py` refuses an innate effect its archetype's own Cataclysm names as a modifier,
+which is what closed Abyssal Aura and Infernal Brand to the Demonic creatures. That held while a creature's Cataclysm
+was its archetype's. **Extended to the draw, for whatever Cataclysm a creature belongs to:**
+
+- `ACataclysmEnemyCharacter::InnateEffectNames()`, virtual, empty; the Succubus answers its two, Withered Touch and
+  Commander, through the constants it applies them under.
+- `UCataclysmEnemyModifiers::ClosedByInnateEffects(Table, Cataclysm, Names)`: the rows of that creature's pool whose
+  modifier name is one of them.
+- `DrawModifiersForRarity` adds those rows to what it leaves out of the pool, beside what the creature carries. A War
+  Succubus never draws `War_Commander`; a Demonic Succubus's pool holds no row of either name, so its draws are the
+  ones they were; every creature with no innate effect is unchanged.
+- **The general rule, not a Commander special case. A judgement:** the instruction named Commander, and the only other
+  innate effect in the game, Withered Touch, is no modifier's name, so the two readings agree today.
+- `docs/Cataclysm_GDD_v2.md` says it in the Succubus's paragraph on the rule. **When B3 lands beside this**, its own
+  paragraph's last sentence ("how it is resolved is open ... for the War enemy modifier slice to settle") is answered
+  here and wants the past tense; the two edits are on different lines and merge without a conflict.
+
+**Tests.** `Cataclysm.WarModifiers.AWarSuccubusNeverDrawsTheCommanderItsDominionGrants`: the closed rows on the table
+(one, `War_Commander`, for a War creature granting Commander; none for a Demonic one; none with no innate effect), then
+a War Succubus and a plain War creature at the Boss rung on 200 seeds each. Its control: the plain creature draws
+`War_Commander` on some of them; the Succubus on none, while it still draws War's other rows. Python:
+`test_an_innate_effect_another_cataclysm_rolls_is_closed_at_the_draw` in `tools/tests/test_enemy_abilities.py` holds
+every innate effect that any column names as a modifier to the creature's `InnateEffectNames()`, and the draw to pass
+them. Proved with `tools/prove_guard.py`, two breaks, each PROVED, each failing that one test:
+`return {FString(WitherEffectName), FString(DominionEffectName)};` to `return {FString(WitherEffectName)};`, and the
+draw passing `TArray<FString>()` in place of `InnateEffectNames()`.
+
+### 1 On 1, left
+
+"Summon an arena around you and a nearby player that lasts until one of you is defeated. All allies in the area of the
+arena are consumed to empower you with 50% of all of their stats." The owner accepted Q11: one player; allies inside
+when it forms consumed, adding 50% of their health and damage; the player's movement skill crosses the arena wall.
+
+**What it needs that does not exist:** a ring that holds the player's walking but not a movement skill. The one wall
+in the game, `ACataclysmTerrain`'s Wall, "blocks movement and projectiles", every kind alike; nothing asks a player's
+own movement whether it may leave a place (`ACataclysmEnemyCharacter::MayMoveItselfTo` exists for creatures only);
+and whether each movement skill's move passes a wall depends on how it moves, which was not checked here. **The
+pieces, for the session that builds it:**
+(1) a hold on the player's walking inside a circle, asked where the player's movement is driven each frame, with an
+exemption while a movement skill moves the player (the skill's use time is already kept for "within seconds of a
+movement skill"); (2) the same hold on the carrier, through `MayMoveItselfTo` and `HoldAgainstMovingAway`; (3) the
+consumption, through the rule-damage part (`SetRuleDamagePart`) for damage and a new added-health figure written in
+`ApplyStartingAttributes` for health, since a direct write is undone by the next setter; (4) the arena's end at either
+death or the player's leaving, and its circle drawn; (5) a ruling on whether the player's minions and later creatures
+may cross it. Sized at a window of its own (M), in the player's movement code, which every other slice also touches.
+
+### Tests registered, and the guard proofs
+
+**Death:** `game/Source/Cataclysm/Tests/CataclysmDeathModifierTests.cpp`, group `Cataclysm.DeathModifiers.`,
+**11**, as the entry below registered them; the Mortal Reminder and Lingering Decay tests gained assertions only. Its
+eleven proofs are carried as registered there, in four changes of at most three, unchanged: none of their break lines
+moved.
+
+**War:** new file `game/Source/Cataclysm/Tests/CataclysmWarModifierTests.cpp`, group `Cataclysm.WarModifiers.`:
+**0 to 9**, the ninth being the innate closure's test above. `Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eight War rows too; that
+group's count does not move. Two more tests changed and keep their counts:
+`Cataclysm.Enchantments.ShardOfAnarchysTwoPiecesLayAPinnedBuffOrTheMergedDrawsDebuffAfterThirtySecondsOfAFight`
+names the eighteen buffs of the table, and `Cataclysm.Data.EveryGeneratedTableImports` pins `StatusEffects.csv` at 55
+rows, not 52 (`tools/tests/test_unreal_pinned_row_counts.py` failed until it did). **Whole suite: the base's last
+measured total plus 20** (11 Death, 9 War).
+
+One proof per War modifier, each a single-line break that still compiles, prefix `Cataclysm.WarModifiers.`, each to
+fail exactly the one test named:
+
+| Change | Proof | Break | Must fail |
+|---|---|---|---|
+| W1, the creature's own figures | AJ | `CataclysmEnemyModifiers.h`: `ArmoredJuggernautArmourMultiplier = 1.5f;` to `= 1.0f;` | `ArmoredJuggernautHasHalfAgainItsOwnArmourAndAnUnarmouredKindNone` |
+| W1 | BS | `CataclysmEnemyModifiers.h`: `BattleScarredResistance = 30.0f;` to `= 0.0f;` | `BattleScarredDoublesItsCriticalChanceAndAddsThirtyResistance` |
+| W1 | SW | `CataclysmProjectile.cpp`: `Percent *= UCataclysmEnemyModifiers::ShareOfProjectileDamageTaken(Target);` to `Percent *= 1.0f;` | `ShieldWallTakesAQuarterOfAProjectileAndEveryOtherBlowWhole` |
+| W2, its allies | CO | `CataclysmEnemyModifiers.cpp`: `Touched += EnemyModifiersInspireAlliesWithin(Enemy, TEXT("Commander"), CommanderReachCm);` to `Touched += 0;` | `CommanderGrantsTheCommanderBuffToAlliesWithinEightMetres` |
+| W2 | DW | `CataclysmEnemyCharacter.h`: `return CommanderMultiplier() * DrumsOfWarMultiplier() * CrippleMultiplier() * WraithFactor` to `return CommanderMultiplier() * CrippleMultiplier() * WraithFactor` | `DrumsOfWarGrantsHalfAgainSpeedToAlliesWithinFourMetres` |
+| W2 | PH | `CataclysmEnemyModifiers.cpp`: `Braced->SetNumericAttributeBase(Reduction, Wanted);` to `Braced->SetNumericAttributeBase(Reduction, 0.0f);` | `PhalanxTakesTenPercentLessForEveryOtherCreatureWithinFiveMetres` |
+| W3, attacks on the player | BC | `CataclysmEnemyModifiers.h`: `BattleCryResistanceCut = 25.0f;` to `= 10.0f;` | `BattleCryCutsEveryResistanceByTwentyFiveForFiveSecondsEveryEightSeconds` |
+| W3 | AB | `CataclysmEnemyModifiers.cpp`: `* UCataclysmEnemyModifiers::ArtilleryBarrageShellHits` to `* 0.0f` | `ArtilleryBarrageDrawsThreeCirclesNearThePlayerThatLandInASecondAndAHalf` |
+| W4, the innate closure | IC | `CataclysmEnemyCharacter.cpp`: `NotToDraw.Append(UCataclysmEnemyModifiers::ClosedByInnateEffects(ModifierTable, DamageType, InnateEffectNames()));` to `NotToDraw.Append(TArray<FName>());` | `AWarSuccubusNeverDrawsTheCommanderItsDominionGrants` |
+
+No Unreal proof was run: this change has had no window. The Python guard `test_war_enemy_modifiers_match_their_rows.py`
+was proved with `tools/prove_guard.py`, two breaks, each PROVED (failed with the break in, passed with it out):
+`ShieldWallProjectileDamageShare = 0.25f` to `0.5f` failed
+`test_shield_wall_is_the_owners_wording_and_its_share_is_a_quarter`; `BattleCryResistanceCut = 25.0f` to `20.0f`
+failed `test_battle_cry_states_one_figure_in_the_code_and_the_row`.
+
+### Python, as run on the branch
+
+The whole suite, `python -u -m pytest --junit-xml=<scratch>`, on `56815da5a`: **"1 failed, 8301 passed, 9 skipped in
+330.77s"**; the JUnit report agrees, tests 8311, failures 1, errors 0, skipped 9. The one failure is
+`test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`, naming
+`EnemyModifiers.csv` and `StatusEffects.csv`, which the window's editor step clears (Said first). The run before it
+found two more, `test_the_random_buff_table_names_buff_rows.py` and `test_unreal_pinned_row_counts.py`, both answered
+in `56815da5a` and described above. `python -m ruff check .`: "All checks passed!". `tools/check_resolved_cpp.py` on
+the 24 C++ files the branch changes against `9acbb3528`: "24 files read, 0 with complaints".
+
+**After the innate closure and the damage reduction sentence**, the coordinating session asked for the checks that read
+the design document: the 143 Python test files that name `Cataclysm_GDD_v2.md`, run together, "3177 passed, 3 skipped
+in 200.31s".
+
+---
+
 ## 2026-11-25 — Every creature belongs to the Cataclysm that sent its dungeon: a Death dungeon's Demonic bodies deal Death and draw Death and Generic modifiers (slice B3 of the Death and War plan)
 
 On `feat/creature-cataclysm-b3`, from development `9acbb3528`. Slice B3 of the coordinating session's plan for the
@@ -8824,6 +9049,131 @@ again on a load.
 - **Its depth**: four floors, set where the empire makes the dungeon. The dungeon side reads whatever depth it has; at
   four, one altar a floor. Whether a city's floor upgrades may move a Rift's depth is B2's call; the altars cope.
 - **Nothing else**: no field on the empire record, no new report. The run record's version is shared (above).
+
+---
+
+## 2026-11-24 — Death's eleven enemy modifiers, written ahead of their window: what each does, every figure the rows leave open, and eight questions for the owner
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `feat/death-enemy-modifiers`, cut from `feat/bug-batch-2`
+(`632a43022`, which carries batch 1) with development `5cdd6bdc4` merged in, as the coordinating session asked, so it
+moves with the two bug batches; its own commits sit on top of that merge to be cherry-picked. The owner approved the
+work on 2026-11-24: "yes, write the Death enemy modifiers ahead". The rows are `game/Data/EnemyModifiers.csv`, generated
+from the design workbook's Enemy Modifiers sheet; neither was edited. Measured on development `6dd62aba6` before this:
+none of the eleven was built.
+
+**REBUILT ON DEVELOPMENT ON 2026-11-25**, on `feat/death-war-enemy-modifiers` with War's modifiers, and the owner's
+acceptance of the eleven and of Q6's two status rows recorded: see the 2026-11-25 entry above, which is also where Q6
+is answered.
+
+### Said first
+
+- **Nothing here has been compiled or run in the engine.** Eleven automation tests are registered below, with a guard
+  proof for each, in four changes of at most three proofs.
+- **Two of the eleven have no status row, so no tag a player's status bar could show**: Mortal Reminder and Lingering
+  Decay. The design workbook's Debuffs sheet has no row for either, and this change was not to edit the workbook. Both
+  work and both are named on the status line this change adds (below), from state the code keeps rather than from a
+  tag. Q6 asks for the two rows.
+- **Haunting's debuff row is still "(planned)" with no figures** (`Debuff_Haunting`: "A debuff applied by a spectral copy
+  of an enemy that reduces all of a player's resistances"). Built from the sentence, with figures named in code; Q5.
+- **Undying Will's damage increase is not saved.** It is a rule's part of the creature's damage (#2723), and those parts
+  are not written to a save, so a save and load mid-fight brings the risen creature back without the 50%. Q7.
+- **The four "changes" are proof groups on one branch.** The eleven share files and functions, so they were written as
+  one change; the window may run the four groups below one after another.
+
+### The rows, what each does in play, and where
+
+| Row | In play | Built in |
+|---|---|---|
+| Grave Touch: "Deal more damage to players with less than 50% health." | A hit from it on a character below half its maximum health deals 50% more. A tick is not a hit. | `UCataclysmVitalAttributeSet`, the attacker's block beside Perfect Aim; `UCataclysmEnemyModifiers::GraveTouchMultiplier` |
+| Soul Eater: "Completely ignores player energy shields." | Every blow it causes, ticks included, passes the energy shield by to health. | `FCataclysmIncomingHit::bIgnoresEnergyShield`, step 8 of `UCataclysmDamageCalculation::Resolve` |
+| Mortal Reminder: "Attacks apply a debuff that prevents the player from being healed above their current HP for 4 seconds." | A hit that takes health sets a ceiling at the health it left for 4 seconds; a later hit sets it again, lower. Every heal of health stops there. | `MortalReminderOnHit`; the ceiling in `UCataclysmRegeneration::HealthHealingCeiling`, which every heal asks |
+| Spectral Shift: "Phase in and out of existence, becoming immune to damage." | Out of existence 5 seconds in every 15: no damage of any kind reaches it, as a shrouded creature's, and it goes on acting. "Phased" under its bar. | `TimedStep`; `ACataclysmEnemyCharacter::TakesNoDamage` and the health hold in `PreAttributeChange` |
+| Shadow Step: "Become invisible when not attacking." | Hidden, as the vision system hides a creature beyond sight (not drawn, no bar, not clickable, still struck by what reaches it), except from the moment an attack begins until a second after it ends. Never a creature that takes no hostile action. | `TimedStep`; the brain reveals it where it orders a swing and where an ability begins; shown again at its death |
+| Soul Tether: "Transfer a portion damage taken to the player as health degeneration over time." | A tenth of the health it loses to a blow, ticks included, is laid on whoever struck as damage over time across 4 seconds, added to what an earlier tether still owes. | `TetherOnHealthLost`, from the attribute set's on-hit block |
+| Lingering Decay: "Enemies leave behind necrotic zones that reduce healing to players standing in them." | Every 5 seconds it leaves a 3 metre zone at its feet that lasts 10 seconds; a character of the players' side standing in one has every heal of health cut by half, added to the other healing cuts and capped at 100. | `TimedStep`; `ACataclysmGroundZone::HealingLessPercentInside`; `UCataclysmRegeneration::TopUp` |
+| Final Curse: "Upon death, curse the player for 5 seconds, causing them to take damage when using abilities." | At its death the player is given Final Curse for 5 seconds; each skill used meanwhile, every slot but the basic attack, costs 5% of maximum health as Death damage. | `NoteDeathOfACarrier` from `HandleDeath`; `FinalCurseOnSkillUse` from `UCataclysmCombatEvents::NoteSkillUsed` |
+| Funeral Pyre: "Summon deadly bone pyres when hit that explode if not destroyed quickly." | Struck, it raises a bone pyre at the striker's feet, at most one every 8 seconds; the pyre holds a tenth of the creature's maximum health and explodes 3 seconds later for three of the creature's hits on everyone of the player's side within 3 metres, unless broken first. | `PyreWhenStruck`, `PyreStep`; the new `ACataclysmBonePyreCharacter`, a floor source |
+| Undying Will: "Enemies resurrect after death with reduced health but increased damage output." | Once, at once, where it fell: a creature of its kind and rung, with half its maximum health and 50% increased damage, whose own death pays nothing. Never the floor's Cataclysm Boss. | `ACataclysmDungeonGameMode::NoteDeathForUndyingWill`; `MakeUndyingWillRisen` |
+| Haunting: "A spectral copy of this enemy is created on death", with `Debuff_Haunting`. | A Common of its kind at half health where it fell, paying nothing; its hits cut each of the target's resistances by 25, never below nought, for 5 seconds, one application at a time. | `ACataclysmDungeonGameMode::NoteDeathForHaunting`; `MakeSpectralCopy`; `HauntOnHit` |
+
+Every one a medic or other creature that takes no hostile action would make harmful does nothing for it (Shadow Step,
+Lingering Decay, Final Curse, Funeral Pyre, Soul Tether), the rule of #1680. Each hit-applied effect refuses a target
+already dead, as Infernal Brand's does (#2874). The status line gains the words "Bone Pyre", "Spectral", "Undying",
+"Phased", "Final Curse", "Soul Tether", "Haunted", "Recovery capped" and "Decaying"
+(`UCataclysmCombatOverlay::DeathModifierTextFor`), so each effect a player cannot otherwise see is named.
+
+### The figures the rows leave open, and where each came from
+
+Researched 2026-11-24, every page fetched in this session and quoted from it:
+
+| Figure | Value | Source, or "a judgement" |
+|---|---|---|
+| Grave Touch's "more" | 50% | **A judgement**, below Path of Exile's Executioner monster modifier, "hit damage +% per 10% missing enemy life [15]", which is 75% at the row's line (poedb.tw/us/Archnemesis). Hits only, as Executioner's "hit damage" |
+| Mortal Reminder's shape | ceiling at current health | The row; Path of Exile 2's Hinder Aura monster modifier, "Prevents Recovery Above 50%" (poe2db.tw/us/Monster_Modifiers) |
+| Soul Eater's shape | the shield takes nothing | Path of Exile: "Chaos damage ignores energy shield, reducing life directly" (poedb.tw/us/Damage) |
+| Spectral Shift out | 5 s | Diablo III's Shielding elite affix, "5 sec duration" (maxroll.gg/d3/resources/elite-affixes); Diablo IV's Shielded, "The caster becomes Immune for a few seconds" (maxroll.gg/d4/resources/elites-affixes) |
+| Spectral Shift interval | 15 s | **A judgement**: hittable two thirds of the time |
+| Shadow Step's linger | 1 s after an attack ends | **A judgement**. Diablo IV's Veiled, "Enemy becomes invisible for a few seconds", is the nearest affix; invisibility is the vision system's own rule (`ACataclysmDungeonGameMode`, Fog of War) |
+| Soul Tether's portion | 10% of health lost | **A judgement**, of the health lost and never the blow, after the owner's Thorns of Glass ruling of 2026-11-18: "Your own damage no longer matters to it" |
+| Soul Tether's length | 4 s | Path of Exile's Corrupter monster modifier, "Corrupted Blood lasts for 4 seconds" (poedb.tw/us/Archnemesis) |
+| Lingering Decay's cut, interval, radius | 50%, 5 s, 3 m | This game's Necrotic Ground (`NecroticGroundHealingLessPercent`, `NecroticGroundSecondsBetweenPatches`, `NecroticGroundPatchRadiusCm`); Starving Aura's 50 too |
+| Lingering Decay's zone life | 10 s | **A judgement**: two zones from one creature at once. Diablo III's Poison Enchanted ground "lasts for 6 sec" (Maxroll) |
+| Final Curse's cost | 5% of maximum health per skill | Echo Chamber's self hit, sized from maximum health by the coordinating session on 2026-11-18 so "a small amount" holds at every level; Diablo II's Iron Maiden is the shape, a curse "condemning them to receive whatever pains they inflict upon others" (classic.battle.net) |
+| Funeral Pyre's fuse and cooldown | 3 s, 8 s | Diablo IV's Frozen: "Deals cold damage upon explosion after 3 seconds", cooldown 8 seconds (diablo4.wiki.fextralife.com/Elites); Diablo III's Frozen orbs take "4 sec to explode" |
+| Funeral Pyre's placing | at the striker's feet | Path of Exile's Crystal-skinned: "Fires crystals under Players when they hit you" (poedb.tw/us/Archnemesis) |
+| Funeral Pyre's blast, radius, health | 3 hits, 3 m, 10% | **Judgements**: below Infernal Brand's 5 hits, because a pyre can be walked from or broken |
+| Undying Will's health | 50% | Divine Resurgence's figure in this game |
+| Undying Will's damage | 50% increased | **A judgement**, in the increased bucket the row's word names |
+| Haunting's copy | a Common at half health | Diablo IV's Splitter: "Splits into 2 non-Elite mobs of the same type as the Elite on death" (Maxroll); Diablo III's Illusionist images "have 5% of normal life" (Maxroll) |
+| Haunting's cut and length | 25 resistance, 5 s | Abyssal Aura's 25, and Battle Cry's "for 5 seconds", the two figures the status table already gives a resistance debuff |
+
+### Questions for the owner, each with the answer built
+
+- **Q1, Soul Tether**: does "transfer" move a share of the blow off the creature, or copy it? **Built: a copy**; the
+  creature takes the whole blow, and the player is sent a tenth of the health it lost. Moving it would make it a second
+  Sacrificial Bond as well as a reflection.
+- **Q2, Lingering Decay**: zones left as it moves, or one zone where it dies? **Built: as it moves**, every 5 seconds,
+  because "leave behind" reads as a trail and a zone at death would be one the player has already left.
+- **Q3, Spectral Shift**: while out of existence, does it vanish and stop acting? **Built: no**; it stays drawn with
+  "Phased" under its bar and goes on fighting, as Diablo III's and IV's shielded elites do, because a creature the
+  player cannot see cannot be read for when it comes back.
+- **Q4, Final Curse**: is the basic attack an ability? **Built: no**; every other slot is. And it curses the player
+  wherever they stand and whoever killed it.
+- **Q5, Haunting**: the copy as a Common at half health, and its debuff at 25 resistance for 5 seconds, never below
+  nought. **Recommended and built**; the workbook's `Debuff_Haunting` row could carry these figures when it is next
+  edited.
+- **Q6, two missing status rows**: add Debuffs rows for Mortal Reminder and Lingering Decay, so they have tags and show
+  as statuses. **Recommended**; until then the status line's words are the only display.
+- **Q7, Undying Will**: its 50% is lost across a save and load, and the risen creature's modifiers are drawn afresh
+  for its rung, as Divine Resurgence's are, rather than its own. **Recommended: accept both for now**; saving rule
+  parts is its own change.
+- **Q8, Undying Will on the floor's Cataclysm Boss**: **built: it never rises**, because its death opens the stairs and
+  a new creature risen in its place is not the one the seal reads. Any other Boss rises like any creature.
+
+### Tests registered, and the guard proofs
+
+New file `game/Source/Cataclysm/Tests/CataclysmDeathModifierTests.cpp`, group `Cataclysm.DeathModifiers.`: **0 to 11**.
+`Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eleven rows too; that group's count does
+not move. Whole suite: the base's last measured total plus 11.
+
+One proof per modifier, each a single-line break that still compiles, prefix `Cataclysm.DeathModifiers.`, and each must
+fail exactly the one test named:
+
+| Change | Proof | Break | Must fail |
+|---|---|---|---|
+| 1, the blow | GT | `CataclysmEnemyModifiers.h`: `GraveTouchDamageMultiplier = 1.5f;` to `= 1.0f;` | `GraveTouchHitsHalfAgainHarderBelowHalfHealthAndNoTickIsChanged` |
+| 1 | SE | `CataclysmDamageCalculation.cpp`: `const float ShieldShare = Hit.bIgnoresEnergyShield` to `const float ShieldShare = false` | `SoulEaterPassesTheEnergyShieldByToHealth` |
+| 1 | MR | `CataclysmRegeneration.cpp`: `Ceiling = FMath::Min(Ceiling, Reminded);` to `Ceiling = FMath::Max(Ceiling, Reminded);` | `MortalReminderHoldsHealingToTheHealthAHitLeftForFourSeconds` |
+| 2, the creature's clocks | SS | `CataclysmEnemyModifiers.cpp`: `Enemy->SpectralShiftSecondsLeft = SpectralShiftOutSeconds;` to `Enemy->SpectralShiftSecondsLeft = 0.0f;` | `SpectralShiftTakesItOutOfExistenceForFiveSecondsInEveryFifteen` |
+| 2 | SH | `CataclysmEnemyModifiers.cpp`: `Stepping->SetActorHiddenInGame(true);` to `Stepping->SetActorHiddenInGame(false);` | `ShadowStepHidesTheCreatureUntilItAttacksAndForASecondAfter` |
+| 2 | ST | `CataclysmEnemyModifiers.h`: `SoulTetherShareOfHealthLost = 0.1f;` to `= 0.2f;` | `SoulTetherSendsATenthOfTheHealthItLostBackOverFourSeconds` |
+| 3, a death | FC | `CataclysmCombatEvents.cpp`: `FinalCurseOnSkillUse(User, Slot == ECataclysmAbilitySlot::BasicAttack);` to `FinalCurseOnSkillUse(User, true);` | `FinalCurseMakesEachSkillCostFivePercentForFiveSecondsAfterTheDeath` |
+| 3 | UW | `CataclysmEnemyModifiers.cpp`: `Part.IncreasedPercent = UndyingWillDamageIncreasedPercent;` to `Part.IncreasedPercent = 0.0f;` | `UndyingWillRaisesItOnceAtHalfHealthWithFiftyPercentIncreasedDamage` |
+| 3 | HA | `CataclysmEnemyModifiers.cpp`: `Modifier.ModifierMagnitude = FScalableFloat(-Taken);` to `Modifier.ModifierMagnitude = FScalableFloat(Taken);` | `HauntingLeavesACommonCopyAtHalfHealthWhoseHitsCutEveryResistance` |
+| 4, the floor | LD | `CataclysmRegeneration.cpp`: `+ UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(AbilitySystem.GetAvatarActor()),` to `+ 0.0f,` | `LingeringDecayLeavesAZoneEveryFiveSecondsThatHalvesHealingInside` |
+| 4 | FP | `CataclysmEnemyModifiers.cpp`: `Pyre->PyreExplosionDamage = FMath::Max(0.0f, AttackDamage) * FuneralPyreExplosionHits;` to `Pyre->PyreExplosionDamage = 0.0f;` | `FuneralPyreRaisesAPyreAtTheStrikerThatExplodesInThreeSecondsUnlessBroken` |
+
+No proof was run: this change has had no window.
 
 ---
 

@@ -73,6 +73,13 @@ const TCHAR* ACataclysmSuccubusCharacter::WitherEffectName =
 const TCHAR* ACataclysmSuccubusCharacter::DominionEffectName =
 	TEXT("Commander");
 
+TArray<FString> ACataclysmSuccubusCharacter::InnateEffectNames() const
+{
+	// BOTH OF ITS EFFECTS, BY THE NAMES IT APPLIES THEM UNDER, so a renamed effect cannot leave the closure behind.
+	// 2026-11-25: a Succubus in a War dungeon must not roll `War_Commander`, which its Dominion already is.
+	return {FString(WitherEffectName), FString(DominionEffectName)};
+}
+
 /**
  * Seconds between shots, for tuning one while playing.
  */

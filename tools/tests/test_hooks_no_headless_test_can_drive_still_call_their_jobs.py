@@ -209,6 +209,10 @@ HOOKS = {
             "UCataclysmSkillTemplate::NoteKill":
                 "telling the killer's running skills that it killed something, "
                 "which is what feeds the Axe's Butcher's Heat, issue #37",
+            "UCataclysmEnemyModifiers::NoteDeathOfACarrier":
+                "Death's Final Curse cursing the player, a creature Shadow Step hid "
+                "being shown as it falls, and one Spectral Shift had out of existence "
+                "coming back, 2026-11-24",
             "UCataclysmRisenImps::RiseOnDeath":
                 "a creature dying carrying a curse a Ritualist laid rising as "
                 "an imp for that Ritualist, issue #1479",
@@ -350,6 +354,9 @@ HOOKS = {
             "UCataclysmCombatEvents::NoteCreatureAbility":
                 "announcing a creature's ability with no wind-up as a "
                 "skill used, issue #41",
+            "UCataclysmEnemyModifiers::RevealForShadowStep":
+                "a creature carrying Death's Shadow Step being seen as its "
+                "ability begins, wound up or not, 2026-11-24",
         },
         "questions": {
             "UCataclysmCommand::AttackIntervalScaleFor",

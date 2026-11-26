@@ -20688,6 +20688,10 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForAbyssalRifts(Notice);
 	NoteDeathForRawSewage(Notice);
 	NoteDeathForMarchOfProgress(Notice);
+	// AND DEATH'S TWO ENEMY MODIFIERS THAT PUT A CREATURE BACK, 2026-11-24, before Dead Rising and Divine Resurgence for
+	// the reason that line gives: what they raise is already standing and marked when those rules look.
+	NoteDeathForUndyingWill(Notice);
+	NoteDeathForHaunting(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
 	NoteDeathForDeadRising(Notice);
@@ -21386,6 +21390,94 @@ void ACataclysmDungeonGameMode::NoteDeathForVoidParasite(const FCataclysmDeathNo
 
 	UE_LOG(LogCataclysm, Log, TEXT("Void Parasite: the player's kill of %s left a voidling on floor %d"),
 		   *Fallen->GetName(), FloorNumber);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForUndyingWill(const FCataclysmDeathNotice& Notice)
+{
+	// ONLY A DEATH THAT PAYS, of a creature carrying the row: see the declaration.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!IsValid(Fallen) || !UCataclysmEnemyModifiers::UndyingWillRaises(Fallen))
+	{
+		return;
+	}
+
+	// AND NEVER THE FLOOR'S CATACLYSM BOSS, whose death is what opens the stairs (`NoteDeathForTheCataclysmBoss`): a new
+	// creature risen in its place is not the one the seal reads, so the stairs would stand open with the boss standing.
+	// A judgement of the writing session, listed for the owner.
+	if (Fallen == CataclysmBoss.Get())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind == ECataclysmDungeonCreature::Count)
+	{
+		return;
+	}
+
+	// AT ONCE, WHERE IT FELL, AT THE RUNG IT DIED AT, as Dead Rising raises one; its modifiers are drawn afresh for that
+	// rung, as Divine Resurgence's are, because which it carried is not what the spawn takes (a judgement written in
+	// the decisions entry). It is marked before anything else, so it can never rise a second time.
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
+	Placement.Creature = Kind;
+	ACataclysmEnemyCharacter* Risen = SpawnPlacedCreature(
+		Placement, FloorBrief.SightRadiusMultiplier, Fallen->RarityStep);
+	if (!Risen)
+	{
+		return;
+	}
+	UCataclysmEnemyModifiers::MakeUndyingWillRisen(Risen);
+	FloorEnemies.Add(Risen);
+
+	UE_LOG(LogCataclysm, Log, TEXT("Undying Will: %s (%s) rose again at rung %d with %.0f%% health and %.0f%% increased damage"),
+		   *Fallen->GetName(), CataclysmDungeonCreatureName(Kind), Fallen->RarityStep,
+		   UCataclysmEnemyModifiers::UndyingWillHealthShare * 100.0f,
+		   UCataclysmEnemyModifiers::UndyingWillDamageIncreasedPercent);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForHaunting(const FCataclysmDeathNotice& Notice)
+{
+	// ONLY A DEATH THAT PAYS, of a creature carrying the row: see the declaration.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!IsValid(Fallen) || !UCataclysmEnemyModifiers::HauntingLeavesACopy(Fallen))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind == ECataclysmDungeonCreature::Count)
+	{
+		return;
+	}
+
+	// A COMMON OF ITS KIND, so it carries no modifier of its own and no copy of a copy can come from it; WHERE IT FELL.
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
+	Placement.Creature = Kind;
+	ACataclysmEnemyCharacter* Copy = SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0);
+	if (!Copy)
+	{
+		return;
+	}
+	UCataclysmEnemyModifiers::MakeSpectralCopy(Copy);
+	FloorEnemies.Add(Copy);
+
+	UE_LOG(LogCataclysm, Log, TEXT("Haunting: %s (%s) left a spectral copy at %.0f%% health"),
+		   *Fallen->GetName(), CataclysmDungeonCreatureName(Kind),
+		   UCataclysmEnemyModifiers::HauntingCopyHealthShare * 100.0f);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDeadRising(

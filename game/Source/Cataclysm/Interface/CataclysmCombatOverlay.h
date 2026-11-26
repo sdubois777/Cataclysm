@@ -860,6 +860,22 @@ public:
 	static FString ShroudedTextFor(const AActor* Actor);
 
 	/**
+	 * What Death's enemy modifiers have done to this character, in words, or empty. Written 2026-11-24 ahead of their
+	 * window, so each effect a player cannot otherwise see is named where they look. A creature: "Bone Pyre",
+	 * "Spectral" (a Haunting copy), "Undying" (one Undying Will brought back), "Phased" (Spectral Shift has it out of
+	 * existence, so a blow on it does nothing). A character of the players' side: "Final Curse", "Soul Tether",
+	 * "Haunted", "Recovery capped" (Mortal Reminder) and "Decaying" (standing in a Lingering Decay zone).
+	 */
+	static FString DeathModifierTextFor(const AActor* Actor);
+
+	/**
+	 * What War's enemy modifiers are doing to this character, in words, or empty. Written 2026-11-25 ahead of their
+	 * window. A creature: "Phalanx -30%" (what its allies give it now), "Barrage" (a volley of Artillery Barrage it
+	 * called is in the air) and "Drums of War" (it holds that buff). A character of the players' side: "Battle Cry".
+	 */
+	static FString WarModifierTextFor(const AActor* Actor);
+
+	/**
 	 * "Second Self" under the health bar of the minion or thrall A Second Self
 	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
 	 * it says what the creature is. Nothing else on screen marks a minion.

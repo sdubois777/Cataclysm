@@ -833,6 +833,8 @@ public:
 	static constexpr const TCHAR* SoulHarvestDamageSource = TEXT("SoulHarvest");
 	static constexpr const TCHAR* NothingIsForgottenDamageSource = TEXT("NothingIsForgotten");
 	static constexpr const TCHAR* VengefulWraithsDamageSource = TEXT("VengefulWraiths");
+	/** Undying Will's "increased damage output", on a creature it brought back. 2026-11-24. */
+	static constexpr const TCHAR* UndyingWillDamageSource = TEXT("UndyingWill");
 
 	/**
 	 * Writes one rule's part, replacing what that rule gave before, and rewrites the attack damage. A part that gives
@@ -965,6 +967,21 @@ public:
 	 *                      `SetModifierSeedForTests` wins over both.
 	 */
 	void DrawModifiersForRarity(int32 FromTheFloor = 0);
+
+	/**
+	 * The names of the status effects this creature's own abilities apply or grant, as `game/Data/StatusEffects.csv`
+	 * names them. `DrawModifiersForRarity` draws no modifier of the same name: the design's rule "An innate ability
+	 * must not duplicate a modifier its own Cataclysm can roll" (`docs/Cataclysm_GDD_v2.md`, the Succubus).
+	 *
+	 * HELD AT THE DRAW AND NOT ONLY IN THE DESIGN DATA SINCE 2026-11-25. Until a creature took its dungeon's
+	 * Cataclysm (slice B3 of the Death and War plan) a creature's Cataclysm was its archetype's, and
+	 * `tools/tests/test_enemy_abilities.py` closed the clash in the data: an innate ability could not use an effect
+	 * its own Cataclysm's modifiers named, which closed Abyssal Aura and Infernal Brand to the Demonic creatures. A
+	 * Succubus in a War dungeon is a War creature, and its Dominion grants Commander, which `War_Commander` names. So
+	 * the draw now leaves out every modifier of the creature's pool whose name is one of these, for whatever
+	 * Cataclysm the creature belongs to. Empty for every creature with no innate effect, which draws as it always did.
+	 */
+	virtual TArray<FString> InnateEffectNames() const { return TArray<FString>(); }
 
 	/**
 	 * How long since an aura modifier on this creature last pulsed, in seconds.
@@ -1125,6 +1142,40 @@ public:
 	 * while the answer matters.
 	 */
 	bool bInfernalBrandExploding = false;
+
+	/**
+	 * What the Death modifiers keep on the creature, written 2026-11-24 ahead of their window. PUBLIC FOR THE REASON
+	 * THE TIMERS ABOVE ARE: the rules that read them are statics on `UCataclysmEnemyModifiers`, so a test can drive
+	 * them a step at a time. NONE IS SAVED: a floor restored from a save starts each clock again.
+	 *
+	 * Spectral Shift's clock and the seconds it has left out of existence; Shadow Step's seconds left seen and whether
+	 * it is Shadow Step that hid the creature (so it never shows one the vision system hid); Lingering Decay's clock;
+	 * when Funeral Pyre last placed a pyre, negative until the first; and the two marks the dungeon game mode gives a
+	 * creature it brought back for Haunting or Undying Will.
+	 */
+	float SecondsSinceSpectralShift = 0.0f;
+	float SpectralShiftSecondsLeft = 0.0f;
+	float ShadowStepSeenSecondsLeft = 0.0f;
+	bool bHiddenByShadowStep = false;
+	float SecondsSinceDecayZone = 0.0f;
+	float FuneralPyreLastAt = -1.0f;
+	bool bIsASpectralCopy = false;
+	bool bRisenByUndyingWill = false;
+
+	/**
+	 * What the War modifiers keep on the creature, written 2026-11-25 ahead of their window, public and unsaved for
+	 * the reasons the Death modifiers' fields above give.
+	 *
+	 * Battle Cry's clock; Artillery Barrage's clock, the seconds a volley in the air has left (nought when none is),
+	 * where its shells will land and the circles drawn for them (held weakly: each marker removes itself when its time
+	 * is up); and how many allies Phalanx counted on its last step, which its damage reduction is written from.
+	 */
+	float SecondsSinceBattleCry = 0.0f;
+	float SecondsSinceArtilleryBarrage = 0.0f;
+	float ArtilleryShellsSecondsLeft = 0.0f;
+	TArray<FVector> ArtilleryShellsAt;
+	TArray<TWeakObjectPtr<class ACataclysmTelegraphMarker>> ArtilleryShellMarkers;
+	int32 PhalanxAlliesCounted = 0;
 
 	/**
 	 * Writes the attribute changes this creature's modifiers ask for.
@@ -1420,6 +1471,13 @@ public:
 	// The Succubus takes the tag off again when an ally leaves its aura or when
 	// it dies. The other three grant it for a stated time and let it expire.
 	// This is what the tag DOES.
+	//
+	// THE LIST ABOVE IS DATED 2026-09-14 AND IS NOT THE LIST NOW. The dungeon
+	// rule War_Commander_s_Aura grants it too, and since 2026-11-25 so does War's
+	// Commander enemy modifier, from `UCataclysmEnemyModifiers::AuraStep`, for a
+	// stated time. AND COMMANDER IS NO LONGER THE ONLY THING THAT MAKES A
+	// CREATURE BETTER: War's Drums of War grants a buff of its own, read beside
+	// this one by `DrumsOfWarMultiplier` below.
 	// ----------------------------------------------------------------------
 
 	/**
@@ -1443,6 +1501,22 @@ public:
 	 * help it.
 	 */
 	float CommanderMultiplier() const;
+
+	/**
+	 * How much a creature holding Drums of War gains, as a percentage: War's Drums of War enemy modifier, "Increases
+	 * nearby allies move speed and attack speed by 50%", the row's figure and the `Buff_Drums_of_War` row's. Written
+	 * 2026-11-25 ahead of its window.
+	 */
+	static constexpr float DrumsOfWarIncreasePercent = 50.0f;
+
+	/**
+	 * What Drums of War multiplies, or 1.0 when this creature does not hold it. THE SAME SHAPE AS COMMANDER'S: the tag
+	 * is the truth, granted for a stated time by `UCataclysmEnemyModifiers::AuraStep`, and it names both speeds, so it
+	 * is a factor of `SpeedMultiplierWithWraithFactor` by that function's rule. A SEPARATE FACTOR FROM COMMANDER AND
+	 * MULTIPLIED WITH IT, as Commander and the Vengeful Wraiths rule's increase already are: a creature holding both
+	 * is 1.2 x 1.5 faster. A judgement, recorded.
+	 */
+	float DrumsOfWarMultiplier() const;
 
 	/**
 	 * What Cripple multiplies, or 1.0 when this creature is not crippled.
@@ -1553,7 +1627,7 @@ public:
 	/** `SpeedMultiplier`'s factors, with the wraith's given, so the list is written once. Issue #2793. */
 	float SpeedMultiplierWithWraithFactor(float WraithFactor) const
 	{
-		return CommanderMultiplier() * CrippleMultiplier() * WraithFactor
+		return CommanderMultiplier() * DrumsOfWarMultiplier() * CrippleMultiplier() * WraithFactor
 			* GroundDownMultiplier() * AilmentSlowMultiplier();
 	}
 
@@ -1916,11 +1990,12 @@ public:
 	bool bShrouded = false;
 
 	/**
-	 * Whether no damage reaches this creature now: it cannot be hurt, or it is shrouded. What
-	 * `UCataclysmVitalAttributeSet` reads where it empties a resolved blow. Its health clamp asks the
-	 * two fields apart, because the Reaper is held at its maximum and a shrouded creature where it is.
+	 * Whether no damage reaches this creature now: it cannot be hurt, or it is shrouded, or Death's Spectral
+	 * Shift has it out of existence (2026-11-24). What `UCataclysmVitalAttributeSet` reads where it empties a
+	 * resolved blow. Its health clamp asks the fields apart, because the Reaper is held at its maximum and a
+	 * shrouded or phased creature where it is.
 	 */
-	bool TakesNoDamage() const { return bCannotBeHurt || bShrouded; }
+	bool TakesNoDamage() const { return bCannotBeHurt || bShrouded || SpectralShiftSecondsLeft > 0.0f; }
 
 	/**
 	 * Whether this creature's death is to pay nothing: a Blood Bond's elite, which dies because
