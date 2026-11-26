@@ -95,8 +95,13 @@ def test_the_rows_and_the_tag_taken_out_are_put_back_as_committed(copy_of_the_wo
         assert _sheet(copy_of_the_workbook, title) != _sheet(WORKBOOK, title)
     report = script.apply(copy_of_the_workbook)
     assert report[-1].startswith(f"wrote {len(script.NODES) + 2} change(s)"), report
+    # THE SAME ROWS, IN ANY ORDER, since the Death finish bundle's assembly (2026-11-26): the script appends its rows,
+    # and the committed sheets hold slice B's rows after this slice's, so put back they land after those. The heading
+    # row is compared in place.
     for title in (script.base.EFFECTS_SHEET, script.TAGS_SHEET):
-        assert _sheet(copy_of_the_workbook, title) == _sheet(WORKBOOK, title), title
+        put_back, committed = _sheet(copy_of_the_workbook, title), _sheet(WORKBOOK, title)
+        assert put_back[0] == committed[0], title
+        assert sorted(put_back[1:], key=repr) == sorted(committed[1:], key=repr), title
 
 
 def test_check_writes_nothing_and_exits_one(copy_of_the_workbook):
