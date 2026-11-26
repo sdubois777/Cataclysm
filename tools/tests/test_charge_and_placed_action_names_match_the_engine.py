@@ -1206,6 +1206,10 @@ def test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is(
     regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
     assert re.search(r"if \(Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute\(\)\)\s*\{\s*"
                      r"if \(Gain > 0\.0f\)\s*\{\s*UCataclysmFervour::RaisePool\(&AbilitySystem, Gain\);", regeneration)
+    # AND A HELD SWING THAT FORBIDS HEALING NEVER STOPS THAT GAIN: Fervour is not healing (ruled by the coordinating
+    # session, 2026-11-26).
+    assert re.search(r"if \(Pool != UCataclysmClassResourceAttributeSet::GetClassResourceAttribute\(\)\s*"
+                     r"&& UCataclysmStrikeSkill::AHeldSwingForbids\(", regeneration)
     assert re.search(r"if \(ChancePercent <= 0\.0f \|\| ChancePercent >= 100\.0f\)\s*\{\s*return true;\s*\}"
                      r".*?return Roll < ChancePercent;", engine, re.S)
     assert re.search(r"return Action\.Pool != ClassResourcePoolName \|\| ChancePercentComesUp\(Action\.ChancePercent\);",

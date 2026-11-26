@@ -13002,6 +13002,70 @@ bool FCataclysmHoldForbidsActingTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoldForbidsHealingNotFervourTest,
+	"Cataclysm.Skills.AHeldSwingThatForbidsHealingStillLetsAPoolActionPayFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A gain of Fervour is not healing (ruled by the coordinating session on 2026-11-26, issue #2936). A pool action's class
+ * resource gain reaches `UCataclysmFervour::RaisePool` through `UCataclysmRegeneration::TopUp`, whose first refusal is a
+ * held swing that forbids healing; that refusal never stops the class resource. With The Whole Weight drawn back, a
+ * `points` row of 10 Fervour on `dodge` pays 10. THE CONTROLS: in the same swing a top-up of health is refused, and a
+ * pool action of health on the same event pays nothing.
+ */
+bool FCataclysmHoldForbidsHealingNotFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	Holder.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+	Holder.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+	Holder.GiveFervourForUltimates(1);
+	UCataclysmStrikeSkill* Ultimate = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=9; Angle=180; Burn=1; ChargeTime=3; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; MaxDamagePercent=500; "
+			 "ChargeBreaksOn=Death; HoldForbids=Acting, Healing"),
+		TEXT("The Whole Weight"), TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: The Whole Weight"), Ultimate)
+		|| !TestTrue(TEXT("set-up: the greatsword is raised"), Activate(Holder, Ultimate))
+		|| !TestTrue(TEXT("set-up: and healing is forbidden"),
+					 UCataclysmStrikeSkill::AHeldSwingForbids(Holder.Actor, TEXT("Healing"))))
+	{
+		return false;
+	}
+
+	FCataclysmPoolAction Fervour;
+	Fervour.Event = FName(TEXT("dodge"));
+	Fervour.Pool = FName(TEXT("class_resource"));
+	Fervour.Percent = 10.0f;
+	Fervour.Base = ECataclysmPoolActionBase::Points;
+	Fervour.TriggerKey = FName(TEXT("Test:class_resource:dodge"));
+	FCataclysmPoolAction Health;
+	Health.Event = FName(TEXT("dodge"));
+	Health.Pool = FName(TEXT("health"));
+	Health.Percent = 1.0f;
+	Health.Base = ECataclysmPoolActionBase::Maximum;
+	Health.TriggerKey = FName(TEXT("Test:health:dodge"));
+	Holder.AbilitySystem->SetPoolActions({Fervour, Health});
+
+	// THE CONTROL: a top-up of health in the swing is refused.
+	const float HealthBefore = Holder.Health();
+	UCataclysmRegeneration::TopUp(*Holder.AbilitySystem, UCataclysmVitalAttributeSet::GetHealthAttribute(),
+								  UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100.0f);
+	TestEqual(TEXT("control: a top-up of health during the swing is refused"), Holder.Health(), HealthBefore, 0.01f);
+
+	Holder.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+	Holder.AbilitySystem->ActOnEvent(FName(TEXT("dodge")));
+	TestTrue(TEXT("set-up: the swing is still drawn back"), Ultimate->IsHoldingASwing());
+	TestEqual(TEXT("the pool action's 10 Fervour is paid during the swing"), Holder.Fervour(), 10.0f, 0.001f);
+	TestEqual(TEXT("control: its health on the same event is refused"), Holder.Health(), HealthBefore, 0.01f);
+	return true;
+}
+
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoldForbidsNothingTest,
 	"Cataclysm.Skills.AHeldSwingStatingNoRestrictionsForbidsNeither",

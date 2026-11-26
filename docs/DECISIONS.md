@@ -19,7 +19,8 @@ Decisions made outside the Google Drive documents, newest first.
   show them. `CataclysmVitalAttributeSet.cpp`: Grave Touch, Soul Eater and the risen wearer's blows read the causer
   whoever it is; a phased-out wearer's blow is emptied before the saves; Undying Will's rising, last of the saves; Funeral
   Pyre and Soul Tether are asked of the body struck. `CataclysmGroundZone.h`: `HealingLessReachesTeamId`, new.
-  `CataclysmCombatEvents.cpp`: a skill used reveals its Shadow Step wearer. `CataclysmTargetCandidates.cpp`: a creature's
+  `CataclysmCombatEvents.cpp`: a skill used reveals its Shadow Step wearer. `CataclysmRegeneration.cpp`: `TopUp`'s
+  held-swing refusal spares the class resource. `CataclysmTargetCandidates.cpp`: a creature's
   search passes over a wearer Shadow Step hides. `CataclysmCombatOverlay.cpp`: "Phased", "Hidden" and "Undying" on any
   wearer.
 - Tests: `CataclysmDeathOnAnyWearerTests.cpp`, new (10, group `Cataclysm.DeathOnAnyWearer.`);
@@ -34,9 +35,11 @@ Decisions made outside the Google Drive documents, newest first.
 - **THE EIGHT WAR MODIFIERS ARE NOT CONVERTED.** They stay enemy-only; issue #2899 keeps them.
 - **ISSUE #2933 WAS NOT THE TETHER.** The shortfall was the test player's own life leech, below. The tether's code is
   unchanged; the test's band is gone and the exact comparison is back.
-- **ONE BEHAVIOUR CHANGE OUTSIDE THE DEATH MODIFIERS:** a pool action's class resource gain now goes through `TopUp`,
-  whose first refusal is a held swing that forbids healing (The Whole Weight). Such a gain was paid during that swing
-  before. Issue #2936's proposal, followed; the coordinating session may want to confirm it.
+- **A POOL ACTION'S CLASS RESOURCE GAIN NOW GOES THROUGH `TopUp`** (issue #2936's proposal), AND `TopUp`'s REFUSAL
+  DURING A HELD SWING THAT FORBIDS HEALING (The Whole Weight) NO LONGER APPLIES TO THE CLASS RESOURCE: ruled by the
+  coordinating session on 2026-11-26, a gain of Fervour is not healing. Mana and the energy shield are refused during
+  that swing as before. `Cataclysm.Skills.AHeldSwingThatForbidsHealingStillLetsAPoolActionPayFervour` holds it, with a
+  health top-up and a health pool action in the same swing as its controls.
 
 ### The rule and the ruling
 
