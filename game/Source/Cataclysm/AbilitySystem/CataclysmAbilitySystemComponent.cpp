@@ -4686,6 +4686,39 @@ TArray<int32> UCataclysmAbilitySystemComponent::WornEnemyModifierPlacesNow() con
 	return Places;
 }
 
+void UCataclysmAbilitySystemComponent::NoteLentModifier(FName Row, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Row.IsNone() || Seconds <= 0.0f)
+	{
+		return;
+	}
+	LentModifierUntil.Add(Row, World->GetTimeSeconds() + Seconds);
+}
+
+float UCataclysmAbilitySystemComponent::LentModifierSecondsLeft(FName Row) const
+{
+	const UWorld* World = GetWorld();
+	const float* Until = LentModifierUntil.Find(Row);
+	return World && Until ? FMath::Max(0.0f, *Until - World->GetTimeSeconds()) : 0.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsAnyRowWearing() const
+{
+	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
+	{
+		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
+		{
+			if (Row.Condition == ECataclysmStatCondition::WearingEnemyModifier
+				|| Row.Condition2 == ECataclysmStatCondition::WearingEnemyModifier)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 bool UCataclysmAbilitySystemComponent::HoldsARowWearing(int32 Place) const
 {
 	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
@@ -11149,16 +11182,14 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 		return;
 	}
 
-	// A GAIN OF CLASS RESOURCE GOES THROUGH `UCataclysmFervour::RaisePool`, as every other gain to that pool does:
-	// held to the full bar after reserves (`MaximumClassResourceAsked`) rather than to the maximum attribute, and seen
-	// by Kindred Fires and Borrowed Time. Ruled by the coordinating session in the Death trees' slice C6b3
-	// (2026-11-25), for a `points` row and for the three enchantment rows that already granted class resource here
-	// through `TopUp`, whose amounts are unchanged. Scaled by `class_resource_generation` above.
-	if (Amount > 0.0f && Action.Pool == ClassResourcePoolName)
-	{
-		UCataclysmFervour::RaisePool(this, Amount);
-		return;
-	}
+	// A GAIN OF CLASS RESOURCE REACHES `UCataclysmFervour::RaisePool` THROUGH `TopUp` BELOW, as every other gain to that
+	// pool does: `TopUp` hands the whole gain of that pool to `RaisePool` (since commit 61a254cbe, Overflow hears every
+	// gain), which holds it to the full bar after reserves (`MaximumClassResourceAsked`) and lets Kindred Fires and
+	// Borrowed Time see it. As ruled by the coordinating session in the Death trees' slice C6b3 (2026-11-25), for a
+	// `points` row and the three enchantment rows that grant class resource; scaled by `class_resource_generation` above.
+	// THIS FUNCTION HAD A BRANCH OF ITS OWN THAT CALLED `RaisePool` until issue #2936: it did what `TopUp` does, so a
+	// guard break on it changed nothing any test could see. The one difference its removal makes is `TopUp`'s own first
+	// refusal, a held swing that forbids healing (The Whole Weight), which refuses every pool, Fervour included.
 
 	if (Amount > 0.0f)
 	{

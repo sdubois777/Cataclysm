@@ -372,47 +372,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	FName ArchetypeRow;
 
-	/**
-	 * Which rows of `game/Data/EnemyModifiers.csv` this creature carries.
-	 *
-	 * THE DESIGN GIVES AN ENEMY ONE PER RUNG ABOVE COMMON, up to five for a
-	 * Cataclysm Boss, and they are mechanical effects -- a burning aura, a charm
-	 * on being hit -- that change how the creature has to be fought.
-	 *
-	 * **NOTHING GRANTS THE EFFECT YET, AND THIS DOES NOT.** It is a list of
-	 * names that the panel reads and prints. A creature given Hellfire Aura here
-	 * does not burn anybody, because the aura does not exist. Two issues cover
-	 * the gap: issue #742 is that nothing ASSIGNS a modifier to any creature, so
-	 * the design's one-per-rung-above-Common rule has never run, and issue #674
-	 * is that five of the modifiers grant flat damage reduction and none of them
-	 * DOES anything. Building the effects is part of issue #39.
-	 *
-	 * SO WHY IS IT HERE AT ALL. Because otherwise the one thing the hover panel
-	 * exists for could never be seen by anybody. This is the same answer, for
-	 * the same reason, that `RarityStep` above got when it was made typeable: an
-	 * EditInstanceOnly field lets a creature placed in a level be given two
-	 * modifiers by hand, so the panel's modifier lines can be looked at and
-	 * judged before the generator that assigns them exists.
-	 *
-	 * EditInstanceOnly, LIKE RarityStep AND FOR ITS REASON. Which modifiers a
-	 * creature carries is the encounter's business. A list baked into the Brute
-	 * Blueprint would be a class-wide answer to a per-encounter question.
-	 *
-	 * **IT IS FILLED AUTOMATICALLY NOW.** `SetRarityStep` tops this list up to
-	 * the count the creature's rung carries, drawing from its own Cataclysm's
-	 * column and the Generic one. Issue #742. So a creature spawned by any
-	 * spawner arrives carrying the right number without anybody typing one, and
-	 * the field is left editable for the one thing a draw cannot do: put a
-	 * NAMED modifier on a creature, which is how a specific encounter is built
-	 * and how a test asks for one modifier in particular.
-	 *
-	 * ANYTHING TYPED IS KEPT AND THE DRAW TOPS UP AROUND IT, rather than being
-	 * replaced. Two typed onto a Herald leaves one to draw. More typed than the
-	 * rung carries are all kept, because deleting what somebody deliberately
-	 * asked for is worse than a creature carrying one modifier too many.
-	 */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	TArray<FName> ModifierRows;
+	// WHICH ROWS OF `game/Data/EnemyModifiers.csv` THIS CREATURE CARRIES IS `ModifierRows`, ON
+	// `ACataclysmCharacterBase` SINCE ISSUE #2899, so a player can carry one as well. THE DESIGN GIVES A
+	// CREATURE ONE PER RUNG ABOVE COMMON, up to five for a Cataclysm Boss. `SetRarityStep` tops the list up to the
+	// count the creature's rung carries, drawing from its own Cataclysm's column and the Generic one (issue #742);
+	// anything typed is kept and the draw tops up around it, because deleting what somebody deliberately asked for is
+	// worse than a creature carrying one modifier too many.
 
 	/**
 	 * Whether this creature strikes back at whatever hits it, for its own attack damage: it carries Thorns of Glass.
@@ -1163,21 +1128,10 @@ public:
 	bool bInfernalBrandExploding = false;
 
 	/**
-	 * What the Death modifiers keep on the creature, written 2026-11-24 ahead of their window. PUBLIC FOR THE REASON
-	 * THE TIMERS ABOVE ARE: the rules that read them are statics on `UCataclysmEnemyModifiers`, so a test can drive
-	 * them a step at a time. NONE IS SAVED: a floor restored from a save starts each clock again.
-	 *
-	 * Spectral Shift's clock and the seconds it has left out of existence; Shadow Step's seconds left seen and whether
-	 * it is Shadow Step that hid the creature (so it never shows one the vision system hid); Lingering Decay's clock;
-	 * when Funeral Pyre last placed a pyre, negative until the first; and the two marks the dungeon game mode gives a
-	 * creature it brought back for Haunting or Undying Will.
+	 * The two marks the dungeon game mode gives a creature it brought back for Haunting or Undying Will, written
+	 * 2026-11-24. The Death modifiers' clocks, which any wearer keeps, are on `ACataclysmCharacterBase` since issue
+	 * #2899. NEITHER IS SAVED.
 	 */
-	float SecondsSinceSpectralShift = 0.0f;
-	float SpectralShiftSecondsLeft = 0.0f;
-	float ShadowStepSeenSecondsLeft = 0.0f;
-	bool bHiddenByShadowStep = false;
-	float SecondsSinceDecayZone = 0.0f;
-	float FuneralPyreLastAt = -1.0f;
 	bool bIsASpectralCopy = false;
 	bool bRisenByUndyingWill = false;
 

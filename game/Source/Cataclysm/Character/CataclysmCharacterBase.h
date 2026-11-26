@@ -295,6 +295,47 @@ public:
 	bool bHeldAliveForATake = false;
 
 	/**
+	 * Which rows of `game/Data/EnemyModifiers.csv` this character carries as its own.
+	 *
+	 * ON EVERY CHARACTER AND NOT ONLY ON A CREATURE, since issue #2899 (the owner's ruling of 2026-11-25: "Everything
+	 * that isn't a new ability that would require a button push should work for a player"). A creature's list is drawn
+	 * by its rung (`ACataclysmEnemyCharacter::DrawModifiersForRarity`, issue #742) and shown by the hover panel; a
+	 * player's is empty, and a player wears modifiers lent by Wearer of the Dead instead, which its ability system
+	 * records (`UCataclysmAbilitySystemComponent::NoteLentModifier`). An effect that works on any wearer asks
+	 * `UCataclysmEnemyModifiers::CarriedBy`, which reads both, and never this list alone.
+	 *
+	 * Until issue #2899 this list was on `ACataclysmEnemyCharacter`, where it began as names the panel printed and
+	 * nothing more (issue #740); the effects that are built since are each said beside their numbers in
+	 * `UCataclysmEnemyModifiers`, and a name whose effect is not built still does nothing.
+	 *
+	 * EditInstanceOnly, as a creature's rung is: which modifiers a creature carries is the encounter's business, and a
+	 * list baked into a Blueprint would be a class-wide answer to a per-encounter question. ANYTHING TYPED IS KEPT AND
+	 * THE DRAW TOPS UP AROUND IT.
+	 */
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TArray<FName> ModifierRows;
+
+	/**
+	 * What the Death modifiers keep on whoever wears them, a creature or a player (issue #2899, 2026-11-26; they were
+	 * on `ACataclysmEnemyCharacter` from 2026-11-24 until then). PUBLIC so a test can drive the rules, statics on
+	 * `UCataclysmEnemyModifiers`, a step at a time. NONE IS SAVED: a floor restored from a save starts each clock again.
+	 *
+	 * Spectral Shift's clock and the seconds it has left out of existence; Shadow Step's seconds left seen and whether
+	 * it is Shadow Step that hid a creature (so it never shows one the vision system hid; a player is never hidden from
+	 * its own screen, only from creatures' sight); Lingering Decay's clock; when Funeral Pyre last placed a pyre,
+	 * negative until the first; and Undying Will on a wearer that is not a creature: whether its one rising is spent
+	 * and whether it has risen, which its blows read (a creature rises as a new creature the dungeon places instead).
+	 */
+	float SecondsSinceSpectralShift = 0.0f;
+	float SpectralShiftSecondsLeft = 0.0f;
+	float ShadowStepSeenSecondsLeft = 0.0f;
+	bool bHiddenByShadowStep = false;
+	float SecondsSinceDecayZone = 0.0f;
+	float FuneralPyreLastAt = -1.0f;
+	bool bUndyingWillSpent = false;
+	bool bRoseThroughUndyingWill = false;
+
+	/**
 	 * How far it actually notices a target, once its floor's multiplier is
 	 * applied. This is what the controller asks, and `SightRadiusCm` is the
 	 * creature's own figure that it scales.

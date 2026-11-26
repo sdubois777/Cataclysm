@@ -1736,6 +1736,23 @@ int32 UCataclysmFervour::WornEnemyModifierPlace(FName Row)
 	return Index == INDEX_NONE ? 0 : Index + 1;
 }
 
+const TArray<FName>& UCataclysmFervour::LentEnemyModifierRows()
+{
+	// DEATH'S ELEVEN LESS HAUNTING AND FINAL CURSE, which the owner ruled are never lent to the player (2026-11-26).
+	static const TArray<FName> Rows = {
+		FName(TEXT("Death_Grave_Touch")),
+		FName(TEXT("Death_Undying_Will")),
+		FName(TEXT("Death_Soul_Eater")),
+		FName(TEXT("Death_Shadow_Step")),
+		FName(TEXT("Death_Spectral_Shift")),
+		FName(TEXT("Death_Lingering_Decay")),
+		FName(TEXT("Death_Funeral_Pyre")),
+		FName(TEXT("Death_Soul_Tether")),
+		FName(TEXT("Death_Mortal_Reminder")),
+	};
+	return Rows;
+}
+
 int32 UCataclysmFervour::WearTheModifiersOf(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
 {
 	UCataclysmAbilitySystemComponent* Wearer = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
@@ -1745,12 +1762,19 @@ int32 UCataclysmFervour::WearTheModifiersOf(UAbilitySystemComponent* AbilitySyst
 		return 0;
 	}
 	int32 Recorded = 0;
+	// AND THE MODIFIERS LENT AS THEMSELVES, to a character holding the vow at all (issue #2899, 2026-11-26). Asked once.
+	const bool bHoldsTheVow = Wearer->HoldsAnyRowWearing();
 	for (const FName& Row : Creature->ModifierRows)
 	{
 		const int32 Place = WornEnemyModifierPlace(Row);
 		if (Place > 0 && Wearer->HoldsARowWearing(Place))
 		{
 			Wearer->NoteWornEnemyModifier(Place, WornEnemyModifierSeconds);
+			++Recorded;
+		}
+		else if (bHoldsTheVow && LentEnemyModifierRows().Contains(Row))
+		{
+			Wearer->NoteLentModifier(Row, WornEnemyModifierSeconds);
 			++Recorded;
 		}
 	}
@@ -1768,21 +1792,34 @@ FString UCataclysmFervour::WornModifiersLine(const UCataclysmAbilitySystemCompon
 		return FString();
 	}
 	TArray<FString> Parts;
+	// THE ROW'S NAME LESS ITS CATACLYSM, its underscores as spaces: "Generic_Titanic_Resolve" is "Titanic Resolve".
+	const auto Shown = [&Parts](FName Row, float Left)
+	{
+		FString Name = Row.ToString();
+		int32 Underscore = INDEX_NONE;
+		if (Name.FindChar(TEXT('_'), Underscore))
+		{
+			Name.RightChopInline(Underscore + 1);
+		}
+		Name.ReplaceCharInline(TEXT('_'), TEXT(' '));
+		Parts.Add(FString::Printf(TEXT("%s %ds"), *Name, FMath::CeilToInt(Left)));
+	};
 	const TArray<FName>& Rows = WornEnemyModifierRows();
 	for (int32 Index = 0; Index < Rows.Num(); ++Index)
 	{
 		const float Left = Holder->WornEnemyModifierSecondsLeft(Index + 1);
 		if (Left > 0.0f)
 		{
-			// THE ROW'S NAME LESS ITS CATACLYSM, its underscores as spaces: "Generic_Titanic_Resolve" is "Titanic Resolve".
-			FString Name = Rows[Index].ToString();
-			int32 Underscore = INDEX_NONE;
-			if (Name.FindChar(TEXT('_'), Underscore))
-			{
-				Name.RightChopInline(Underscore + 1);
-			}
-			Name.ReplaceCharInline(TEXT('_'), TEXT(' '));
-			Parts.Add(FString::Printf(TEXT("%s %ds"), *Name, FMath::CeilToInt(Left)));
+			Shown(Rows[Index], Left);
+		}
+	}
+	// AND THE MODIFIERS LENT AS THEMSELVES, after the five, in their list's order (issue #2899).
+	for (const FName& Lent : LentEnemyModifierRows())
+	{
+		const float Left = Holder->LentModifierSecondsLeft(Lent);
+		if (Left > 0.0f)
+		{
+			Shown(Lent, Left);
 		}
 	}
 	return Parts.IsEmpty() ? FString() : TEXT("Worn: ") + FString::Join(Parts, TEXT(", "));

@@ -958,6 +958,24 @@ public:
 	bool HoldsARowWearing(int32 Place) const;
 
 	/**
+	 * Whether this character holds a stat row under `wearing_enemy_modifier` at any place: it holds Wearer of the Dead,
+	 * whose option 1 is those rows. What lends a modifier that is no figure on a stat (`UCataclysmFervour::
+	 * LentEnemyModifierRows`), which has no row of its own to hold. Issue #2899 (2026-11-26).
+	 */
+	bool HoldsAnyRowWearing() const;
+
+	/**
+	 * Wearer of the Dead's record of a modifier lent as itself and not as a figure: the enemy modifier row `Row`, one of
+	 * `UCataclysmFervour::LentEnemyModifierRows`, is worn for `Seconds` from now, and `UCataclysmEnemyModifiers::
+	 * CarriedBy` answers yes for it on this character's body until then. A second record sets the full seconds again
+	 * and never stacks, as `NoteWornEnemyModifier` does. Issue #2899 (2026-11-26).
+	 */
+	void NoteLentModifier(FName Row, float Seconds);
+
+	/** The seconds the lent modifier `Row` has left, or nought when it is not lent. */
+	float LentModifierSecondsLeft(FName Row) const;
+
+	/**
 	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
 	 * of its maximum health. Ruled 2026-10-12 under the owner's delegation, for "Strike skills have a 10%-20% chance
 	 * to execute enemies below 15% HP". See `FCataclysmPoolAction::bExecuteTarget`.
@@ -7528,6 +7546,9 @@ protected:
 
 	/** When each worn enemy modifier runs out, in world seconds, by its place. See `NoteWornEnemyModifier`. */
 	TMap<int32, float> WornEnemyModifierUntil;
+
+	/** When each modifier lent as itself runs out, in world seconds, by its row. See `NoteLentModifier`. */
+	TMap<FName, float> LentModifierUntil;
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;
