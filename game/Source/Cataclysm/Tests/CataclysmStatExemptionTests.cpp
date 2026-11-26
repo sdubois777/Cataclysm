@@ -16319,6 +16319,10 @@ namespace CataclysmStatExemptionTest
 			// THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26).
 			{TEXT("weapon_skills_detonate_own_minions"), &ProbeWeaponSkillsDetonateOwnMinions},
 			{TEXT("minion_detonates_when_released"), &ProbeDetonatesWhenReleased},
+			// AND THE DETONATION'S DAMAGE, which slice C put on the list of stats with no attribute and probed only among
+			// the scaled stats; window dfb-w1 found it unprobed here. The scaled probe grants the stat on a stack and
+			// asserts `UCataclysmDetonation::DamageMultiplierFor` reads it, which is what this table asks.
+			{TEXT("minion_detonation_damage"), &ProbeScaledMinionDetonationDamage},
 			{TEXT("minion_detonation_area"), &ProbeDetonationArea},
 			{TEXT("minion_detonation_rot_seconds"), &ProbeDetonationRotSeconds},
 			{TEXT("minion_detonation_rot_percent"), &ProbeDetonationRotPercent},

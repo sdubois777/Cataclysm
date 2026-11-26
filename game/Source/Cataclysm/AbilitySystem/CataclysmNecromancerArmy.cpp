@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Cataclysm.h"
@@ -746,7 +747,10 @@ ACataclysmMinion* UCataclysmNecromancerArmy::EnemyDied(AActor* Dying)
 	{
 		Commander = Killer;
 	}
-	if (!UCataclysmTargeting::IsHostileTo(Dying, Commander))
+	// THE SIDES COMPARED DIRECTLY, as `CataclysmKillFervour.cpp` and `CataclysmRisenImps.cpp` compare them: the enemy is
+	// already marked dead when `HandleDeath` calls here, and `UCataclysmTargeting::IsHostileTo` answers false for any dead
+	// actor, so this returned before every roll. Window dfb-w1 found it (Harvest of the Host, The Restless Dead).
+	if (UCataclysmTeams::AttitudeBetween(Commander, Dying) != ETeamAttitude::Hostile)
 	{
 		return nullptr;
 	}

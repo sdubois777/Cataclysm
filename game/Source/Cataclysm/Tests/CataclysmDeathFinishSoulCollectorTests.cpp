@@ -563,6 +563,10 @@ bool FCataclysmDeathFinishAMarkedUseTest::RunTest(const FString&)
 		AddError(TEXT("A possessed player could not be built."));
 		return false;
 	}
+	// DEATH CHOSEN BEFORE POSSESSION, as `Cataclysm.CarriedDamageTypes.` builds its character: the starting weapon is
+	// then given carrying Death, so the Death trees are reached AND a weapon is worn. `attack_damage` comes wholly from
+	// what is worn, and window dfb-w1 failed this test's set-up with the starting weapon taken off ("No weapon is worn").
+	SpawnedState->SetCreationChoice(FName(TEXT("Dagger")), FName(TEXT("Death")));
 	Controller->SetPlayerState(SpawnedState);
 	Controller->Possess(Character);
 	ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
@@ -575,10 +579,6 @@ bool FCataclysmDeathFinishAMarkedUseTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	// AS `Cataclysm.SpendSized.` BUILDS ITS SOUL COLLECTOR: Death chosen, the starting weapon taken off so the Death
-	// trees are the ones reached.
-	State->SetCreationChoice(FName(TEXT("Dagger")), FName(TEXT("Death")));
-	Equipment->UnequipEverything();
 	State->SetLevelAndExperience(30, 0);
 
 	FGameplayTagContainer Unmarked;

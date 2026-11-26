@@ -839,6 +839,10 @@ bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 	}
 	const float Step = Shipped->ScaleStep;
 	constexpr float PerCritical = 5.0f;
+	// EVERY BLOW A CRITICAL STRIKE: each delivery states a chance of 100, the cap is raised to 100, and the roll is pinned
+	// at 50. The character's own chance attribute alone did not do it: in window dfb-w1 every hit landed for 100, none
+	// critical, and no Fervour was paid.
+	const CataclysmTestWorld::FScopedCritRoll Pinned(50.0f);
 
 	// 0: without Flurry; 1: with it; 2: with it, the hit delivered as an extra strike is.
 	float Lost[3] = {0.0f, 0.0f, 0.0f};
@@ -865,12 +869,14 @@ bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 		PerCrit.Value = PerCritical;
 		Lines.FindOrAdd(FName(UCataclysmFervour::PerCriticalStrikeStat)).Modifiers.Add(PerCrit);
 		Rig.System->SetStatInputs(MoveTemp(Lines));
+		Rig.Set(UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 100.0f);
 		Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
 		Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
 		Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
 
 		FCataclysmHitDelivery Delivery;
 		Delivery.bCannotBeEvaded = true;
+		Delivery.CritChancePercent = 100.0f;
 		if (Case == 2)
 		{
 			Delivery.bIsARowsAnswerToAnEvent = true;
@@ -926,6 +932,9 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 		return false;
 	}
 	const float Step = Shipped->ScaleStep;
+	// EVERY BLOW A CRITICAL STRIKE: each delivery states a chance of 100, the cap is raised to 100, and the roll is pinned
+	// at 50, as `FlurryOfTheDeadsExtraStrikesPayOnHitEffectsLikeAnyHit` does.
+	const CataclysmTestWorld::FScopedCritRoll Pinned(50.0f);
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
@@ -940,6 +949,7 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 		return false;
 	}
 	Rig.System->SetStatInputs(ShippedLines(TEXT("Shadow_capstone_200"), 3));
+	Rig.Set(UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 100.0f);
 	Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
 	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
 	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
@@ -964,6 +974,7 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 
 	FCataclysmHitDelivery AnAnswer;
 	AnAnswer.bCannotBeEvaded = true;
+	AnAnswer.CritChancePercent = 100.0f;
 	AnAnswer.bIsARowsAnswerToAnEvent = true;
 	FCataclysmHitDelivery AnExtraStrike = AnAnswer;
 	AnExtraStrike.bIsAnExtraStrike = true;
@@ -979,6 +990,7 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
 	FCataclysmHitDelivery Ordinary;
 	Ordinary.bCannotBeEvaded = true;
+	Ordinary.CritChancePercent = 100.0f;
 	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), Ordinary);
 	const int32 AfterTheFlurry = Crows->CrowsSent;
 

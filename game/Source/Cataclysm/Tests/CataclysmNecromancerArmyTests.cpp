@@ -876,9 +876,11 @@ bool FCataclysmArmyWillNotStayDownTest::RunTest(const FString&)
 			return false;
 		}
 		SetHealthOf(Guard, 0.0f);
-		World->GetTimerManager().Tick(UCataclysmNecromancerArmy::RisesAgainAfterSeconds * 0.5f);
+		// THE CLOCK RUN IN FRAMES, by `CataclysmTestWorld::RunClock`: two `FTimerManager::Tick` calls in one engine frame
+		// tick once (`HasBeenTickedThisFrame`), so window dfb-w1 reached only half the rise and saw none.
+		CataclysmTestWorld::RunClock(World, UCataclysmNecromancerArmy::RisesAgainAfterSeconds * 0.5f);
 		Early[Case] = CountOf(Commander.Actor, TEXT("BarrowGuard"));
-		World->GetTimerManager().Tick(UCataclysmNecromancerArmy::RisesAgainAfterSeconds * 0.6f);
+		CataclysmTestWorld::RunClock(World, UCataclysmNecromancerArmy::RisesAgainAfterSeconds * 0.6f);
 		Standing[Case] = CountOf(Commander.Actor, TEXT("BarrowGuard"));
 		ClearArmy(Commander.Actor);
 	}

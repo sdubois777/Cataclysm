@@ -59,6 +59,13 @@ namespace
 		return Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
 	}
 
+	/** `Actor`'s current health, or nought for an actor with no ability system. */
+	float RemainsHealthOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return Theirs ? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
 	/** What a dead creature or follower is, read into `Remains` while its body still stands. */
 	void RemainsRecordTheDead(ACataclysmRemainsMarker& Remains, AActor* Dead)
 	{
@@ -481,10 +488,18 @@ int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemainsMarker* Remai
 	// WHO IS STRUCK, read before the blast, by the search every skill uses: the blast's own search finds the same.
 	const float Damage = DetonationDamage(Caster, Remains);
 	TArray<AActor*> Struck;
+	// AND EACH ONE'S HEALTH BEFORE IT, so the event below carries what the blast took from it, as `minion_hit` carries
+	// `DealtToHealth`: a row answering it with an ailment is then judged on the blow's real size. Window dfb-w1 found the
+	// event raised with nought, which no ailment-carrying row could ever pass.
+	TArray<float> HealthBefore;
 	int32 Sent = 0;
 	if (World && Damage > 0.0f)
 	{
 		Struck = UCataclysmTargeting::FindEnemiesInSphere(World, Caster, At, DetonationRadiusCm);
+		for (const AActor* Enemy : Struck)
+		{
+			HealthBefore.Add(RemainsHealthOf(Enemy));
+		}
 		// AS ONE BLOW OF THE CASTER'S, sized by `Damage` at 100 per cent, unscaled by its increases: The Ferryman's
 		// burst's shape, a detonation sized by the dead creature's health.
 		Sent = UCataclysmSkillEffects::ExplodeForOverkill(Caster, /*Victim=*/nullptr, At, Damage, 100.0f,
@@ -493,16 +508,19 @@ int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemainsMarker* Remai
 
 	UCataclysmAbilitySystemComponent* Theirs = RemainsAbilitySystemOf(Caster);
 	const bool bPasses = StatOf(Caster, PassAilmentsStat) > 0.0f;
-	for (AActor* Enemy : Struck)
+	for (int32 Index = 0; Index < Struck.Num(); ++Index)
 	{
+		AActor* Enemy = Struck[Index];
 		if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy))
 		{
 			continue;
 		}
-		// GRAVE SPORES: "a 6% chance per point to inflict Necrosis on each enemy they hit". A row on this event.
+		// GRAVE SPORES: "a 6% chance per point to inflict Necrosis on each enemy they hit". A row on this event, carrying
+		// the health the blast took from this enemy.
 		if (Theirs)
 		{
-			Theirs->ActOnEvent(FName(TEXT("remains_detonation_hit")), nullptr, 0.0f, true, Enemy);
+			const float Dealt = FMath::Max(0.0f, HealthBefore[Index] - RemainsHealthOf(Enemy));
+			Theirs->ActOnEvent(FName(TEXT("remains_detonation_hit")), nullptr, Dealt, true, Enemy);
 		}
 		// PLAGUE PIT: "pass every ailment their creature died with, for the time it had left, to each enemy the blast
 		// hits". A damage over time ailment as a spread copy, the caster its applier; any other through the ailment's

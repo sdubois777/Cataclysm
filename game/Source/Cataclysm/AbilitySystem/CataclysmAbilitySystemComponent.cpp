@@ -889,7 +889,6 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// The fellows are walked only when a row on this stat asks, as `WithEnemiesInReach` walks only for a row that asks.
 	if (AskingMinion)
 	{
-		State.MinionSecondsActive = AskingMinion->GetGameTimeSinceCreation();
 		const bool bAsksForFellows = Inputs->Modifiers.ContainsByPredicate([](const FCataclysmStatModifier& Row)
 		{
 			return Row.Scale == ECataclysmStatScale::PerOtherMinionNearTheMinion;
@@ -909,6 +908,14 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// AND HOW LONG IT HAS STOOD AND WHETHER IT IS THE COMMANDER'S BIGGEST PERMANENT MINION, for Old Bones and First Among
 	// the Dead (the Death line's finishing slice B, 2026-11-26).
 	UCataclysmNecromancerArmy::FillAskingMinionState(State, Self, AskingMinion);
+	// AND, FOR A MINION SLICE B'S FILL GAVE NO AGE, ITS TIME SINCE IT WAS MADE: slice C's figure for Swollen, AFTER the
+	// fill, which writes the age from when the minion came under command only while the age is still unset. Before the
+	// bundle (window dfb-w1) slice C's line ran first and always won, so Old Bones never read a back-dated command time.
+	// For a summoned minion the two agree: `ACataclysmMinion::Spawn` sets the command time to the moment it is made.
+	if (AskingMinion && State.MinionSecondsActive < 0.0f)
+	{
+		State.MinionSecondsActive = AskingMinion->GetGameTimeSinceCreation();
+	}
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
 		Inputs->Base, Inputs->Modifiers, Tags, State);
 

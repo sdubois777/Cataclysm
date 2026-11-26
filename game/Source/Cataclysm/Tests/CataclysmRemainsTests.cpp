@@ -670,8 +670,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsPlaguePitTest,
 /**
  * Remains record a Necrosis the creature died carrying, with its seconds left. Plague Pit's real row passes it to an
  * enemy the detonation strikes; Grave Spores' real row at 6 points, its status roll pinned at nought, inflicts
- * Necrosis on each enemy struck. CONTROLS: with Mantle of Bone alone the enemy struck carries no Necrosis; Grave Spores
- * with its roll pinned at 99 inflicts none.
+ * Necrosis on each enemy struck BY A BLAST OF AT LEAST A TENTH OF ITS MAXIMUM HEALTH: Grave Spores follows the ailment
+ * rule of #917 as every row applying an ailment does (the coordinating session's ruling of 2026-11-26), so the remains
+ * here are a creature twenty times the struck one's health. CONTROLS: with Mantle of Bone alone the enemy struck carries
+ * no Necrosis; Grave Spores with its roll pinned at 99 inflicts none; and pinned at nought, the remains of a creature
+ * five times the struck one's health, whose blast is below a tenth, inflict none.
  */
 bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 {
@@ -721,24 +724,52 @@ bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 	Player.Hold({{MantleOfBone, 2}, {PlaguePit, 1}});
 	const bool bPassed = StruckCarriesNecrosis(FVector(10 * M, 10 * M, 0));
 
-	// GRAVE SPORES ON REMAINS WHOSE CREATURE DIED CARRYING NOTHING.
-	ACataclysmEnemyCharacter* Clean = RemainsCreatureAt(World, FVector(-8 * M, -8 * M, 0));
-	const auto SporesStrike = [&](const FVector& Where, float Roll)
+	// GRAVE SPORES ON REMAINS WHOSE CREATURE DIED CARRYING NOTHING: a large one, twenty times an ordinary creature's
+	// health, whose blast is a fifth of the struck creature's; and a smaller one, five times, whose blast is a twentieth.
+	const float Ordinary = RemainsMaximumHealthOf(Dying);
+	const auto CleanOf = [&](const FVector& Where, float Times)
+	{
+		ACataclysmEnemyCharacter* Clean = RemainsCreatureAt(World, Where);
+		if (UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Clean))
+		{
+			// THE MAXIMUM FIRST: health is held to it.
+			Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Ordinary * Times);
+			Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Ordinary * Times);
+		}
+		return Clean;
+	};
+	ACataclysmEnemyCharacter* Large = CleanOf(FVector(-8 * M, -8 * M, 0), 20.0f);
+	ACataclysmEnemyCharacter* Smaller = CleanOf(FVector(-8 * M, -16 * M, 0), 5.0f);
+	float Share = 0.0f;
+	const auto SporesStrike = [&](ACataclysmEnemyCharacter* Dead, const FVector& Where, float Roll)
 	{
 		FRemainsPinnedStatusRoll Pinned(Roll);
 		ACataclysmEnemyCharacter* Struck = RemainsCreatureAt(World, Where + FVector(1.5f * M, 0, 0));
-		ACataclysmRemainsMarker* Remains = UCataclysmRemains::LeaveFor(Player.Character, Clean, Where, true);
+		const float Before = RemainsHealthOf(Struck);
+		ACataclysmRemainsMarker* Remains = UCataclysmRemains::LeaveFor(Player.Character, Dead, Where, true);
 		UCataclysmRemains::Detonate(Player.Character, Remains);
+		const float Maximum = RemainsMaximumHealthOf(Struck);
+		Share = Maximum > 0.0f ? (Before - RemainsHealthOf(Struck)) / Maximum : 0.0f;
 		return RemainsCarries(Struck, TEXT("Keyword.DoT.Necrosis"));
 	};
 	Player.Hold({{MantleOfBone, 2}, {GraveSpores, 6}});
-	const bool bSporesMiss = SporesStrike(FVector(-10 * M, 0, 0), 99.0f);
-	const bool bSporesHit = SporesStrike(FVector(-10 * M, 10 * M, 0), 0.0f);
+	const bool bSporesMiss = SporesStrike(Large, FVector(-10 * M, 0, 0), 99.0f);
+	const bool bSporesHit = SporesStrike(Large, FVector(-10 * M, 10 * M, 0), 0.0f);
+	const float LargeShare = Share;
+	const bool bSporesSmall = SporesStrike(Smaller, FVector(-10 * M, 20 * M, 0), 0.0f);
+	const float SmallShare = Share;
+	AddInfo(FString::Printf(TEXT("GRAVE SPORES: the large remains' blast took %.3f of the struck creature's maximum health, "
+								 "the smaller remains' %.3f"), LargeShare, SmallShare));
 
 	TestFalse(TEXT("CONTROL: with Mantle of Bone alone the enemy struck carries no Necrosis"), bPlain);
 	TestTrue(TEXT("with Plague Pit it carries the Necrosis the creature died with"), bPassed);
 	TestFalse(TEXT("CONTROL: Grave Spores' roll pinned at 99 inflicts none"), bSporesMiss);
+	TestTrue(TEXT("set-up: the large remains' blast is at least a tenth of the struck creature's maximum health"),
+			 LargeShare >= 0.1f);
 	TestTrue(TEXT("and pinned at nought it inflicts Necrosis"), bSporesHit);
+	TestTrue(TEXT("set-up: the smaller remains' blast is above nought and below a tenth"),
+			 SmallShare > 0.0f && SmallShare < 0.1f);
+	TestFalse(TEXT("CONTROL: pinned at nought, a blast below a tenth inflicts none (#917)"), bSporesSmall);
 	return true;
 }
 
