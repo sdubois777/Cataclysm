@@ -3186,7 +3186,7 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// Support skill dealing nothing still lays it (#917); whether it connected is (#1156).
 		if (bLanded)
 		{
-			ApplyStatedAilmentTo(Self, Target);
+			ApplyStatedAilmentTo(Self, Target, Resolved.DealtToHealth);
 		}
 
 		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.
@@ -3725,7 +3725,7 @@ float UCataclysmSkillTemplate::PayHitFervourFor(AActor* Firer, float& StatedPaid
 	return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), Offered);
 }
 
-bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target) const
+bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target, float DealtToHealth) const
 {
 	if (Params.Ailment.IsEmpty() || !IsValid(Self) || !IsValid(Target))
 	{
@@ -3746,6 +3746,13 @@ bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target)
 	// so every tick names this skill (issue #41, slice 4) and the applier's damage over time stats are asked with its
 	// tags. NO DAMAGE TYPE IS HANDED OVER: the ticks are met as the instigator's, as an ailment a gear chance rolled
 	// is, which is `RollOnLandedBlow`'s call.
+	// A STATED BLEED STILL NEEDS HEALTH: "bleed should be the only ailment that doesn't apply against energy shield" (the
+	// owner, 2026-11-26). Every other stated ailment applies whether or not the blow hurt, as before. `DealtToHealth`
+	// below nought means the caller has no blow's figure, and the target's shield answers.
+	if (UCataclysmAilments::IsBleed(*Kind) && !UCataclysmAilments::BlowCanCarryABleed(Target, DealtToHealth))
+	{
+		return false;
+	}
 	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/1.0f, this);
 }
 

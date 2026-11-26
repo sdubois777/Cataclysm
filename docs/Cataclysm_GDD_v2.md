@@ -1736,7 +1736,7 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 | 5. Damage reduction | The flat percentage stat, capped at 75%. |
 | 6. Damage taken | The defender's own `damage_taken` stat, as a percentage where 100 is normal. A second stat, `damage_over_time_taken`, applies as well when the hit is damage over time. |
 | 7. Mana | Only for damage over time, and only if an enchantment grants it. |
-| 8. Energy shield | Absorbs before health, one for one. Absorbs damage over time too, except bleed. |
+| 8. Energy shield | Absorbs before health, one for one. Absorbs damage over time too. A bleed deals nothing while it stands, and a Void Splinter goes past it to health. |
 | 9. Health | Takes whatever is left. |
 
   
@@ -1859,11 +1859,11 @@ Energy shield is a distinct defence with its own rules, not a second health bar.
 
   
 
-  - **It absorbs damage over time as well as hits, except bleed.** Poison, burn and every other kind of damage over time are absorbed like a hit. A bleed passes straight through to health, unless the character has something that lets bleed in too (the Warded keystone, or the drawback "Energy shield can now be effected by bleed"). The project owner decided this on 2026-09-18, reversing the rule that no damage over time reached the shield.
+  - **It absorbs damage over time as well as hits, with two exceptions: a bleed deals nothing while it stands, and a Void Splinter ignores it.** Poison, burn and every other kind of damage over time are absorbed like a hit; the project owner decided that on 2026-09-18, reversing the rule that no damage over time reached the shield. **A bleed tick deals no damage at all while the shield is above nought, and resumes against health once the shield is gone.** It uses nothing up either: a temporary absorb and mana taken first for damage over time are not spent on it (ruled by the coordinating session the same day). The project owner, 2026-11-26: "Bleed deals no damage while the target has energy shield. Can bleed a magical barrier after all, so you'd need to hit actual health." Until then a bleed went straight past the shield to health. **A Void Splinter's ticks go straight to health and leave the shield whole** (ruled the same day), as a blow of a creature carrying Soul Eater does. Three rows that named bleed and the shield were ruled the same day. **The drawback "Energy shield can now be effected by bleed"** makes a bleed drain its holder's shield one for one and then health, where otherwise it would deal nothing, so it stays a drawback. **The Ritualist's Warded keystone** now reads "Your Energy Shield absorbs damage that would bypass it", the owner's choice: with it, a Void Splinter's tick and a Soul Eater creature's blow come off the shield like any other blow while the shield stands, and a bleed is still held off rather than turned into a cost. Until then Warded read "absorbs damage over time as well as hits", which had let only a bleed in since 2026-09-18. **The enchantment "10%-20% of bleed damage you take is taken from your energy shield instead of your health"** could do nothing under the new rule and became "You take 10%-20% less damage from bleeding", the owner's choice.
   - **It refills 3 seconds after the character last took damage.** Taking damage again inside that window restarts the wait.
   - **It refills at about a fifth of its own maximum per second, so a full shield takes about 5 seconds however large it is: 4.8 to 5.5 seconds since each item's implicits became whole numbers (2026-11-25).** Every item base granting maximum energy shield grants that rate alongside it, and so does every class: the Vestment's 48 at +0 comes with 10 a second, and the Ritualist's class line with a fifth of its own. **The flat energy shield and flat energy shield regeneration affixes are two separate choices, and are not held to a fifth:** a character who stacks regeneration refills well under five seconds, which the whole-number affix ranges allowed (issue #2883; ruled 2026-11-25). A class with no energy shield of its own therefore refills the one it builds from gear at the same speed the Ritualist refills its own. Path of Exile recharges 20% of maximum energy shield per second after its own delay, which is the same figure.
   - **Two things move that 5 seconds, both deliberately.** The increased energy shield regeneration affix shortens it, to 3.4 seconds on four pieces and 2.0 on twelve. The increased maximum energy shield affix lengthens it, because it raises the pool and not the rate: 7.4 seconds on four pieces and 12.2 on twelve. A bigger shield taking longer to come back is the trade for having it.
-  - **Damage over time restarts that wait as well.** So damage over time holds the shield empty while it ticks, whether or not the shield absorbs it, and a bleed also goes straight past it to health.
+  - **Damage over time restarts that wait as well.** So damage over time holds the shield empty while it ticks, whether the shield absorbs it or it reaches health past the shield, as a Void Splinter does. **A bleed tick that dealt nothing does not restart it**, because nothing landed, so a bleed alone never keeps a shield from refilling: it waits for the shield to break.
   - **Magic weapons strip 10% more of it** per hit than other sub-types.
   - Breaking the shield is a distinct event that other effects can trigger on.
 
@@ -2012,6 +2012,8 @@ Over-capping and raising the maximum are two different things and are easy to co
 ### **Applying Damage Over Time and Other Effects**
 
 Bleed, poison, disease, void splinter and the other effects a player can inflict are applied by chance on hit. Gems grant that chance, and so do affixes.
+
+**Any blow that landed and dealt more than nought can carry one, its energy shield's part counted.** The project owner, 2026-11-26, "I agree, fix it", removing the rule of 2026-09-02 (#917) that such a blow had to take a tenth of the target's maximum health. A blow that killed carries nothing, and an ailment the skill itself states (a skill row's own `Bleed=1`, say) applies whether or not the blow hurt. **The stun keeps its tenth**: a stun still needs the blow to take 10% of maximum health. **A bleed is the one exception: it applies only from a blow that reached health.** The project owner, the same day: "bleed should be the only ailment that doesn't apply against energy shield. The rest should work." So a blow the shield takes whole can poison, burn or splinter its target, and cannot bleed it, whether the bleed is chanced or the skill's own. These rules hold for ailments laid on the player as for those the player lays.
 
   
 
@@ -6388,7 +6390,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 
   
 
-- **Damage over time holds the shield empty**, because taking damage over time restarts the three second refill wait. Since 2026-09-18 the shield absorbs every kind of damage over time except bleed. 46 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player's burns now wear the shield down and keep it from refilling. They no longer pass through it. Only a bleed reaches the Succubus's health past a standing shield.
+- **Damage over time holds the shield empty**, because taking damage over time restarts the three second refill wait. Since 2026-09-18 the shield absorbs damage over time. 46 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player's burns now wear the shield down and keep it from refilling. They no longer pass through it. Since 2026-11-26 a bleed deals nothing to the Succubus while its shield stands, and only a Void Splinter reaches its health past a standing shield.
 - **Magic weapons strip 10% more of it per hit** than other weapon sub-types.
 - **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
 

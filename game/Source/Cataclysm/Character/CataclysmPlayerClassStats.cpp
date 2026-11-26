@@ -670,14 +670,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// leaves a chaos pool. Read by ACataclysmMinion::HandleDeath. Ruled
 		// 2026-10-06.
 		TEXT("minions_leave_chaos_pools"),
-		// And three about damage over time on the character who carries
+		// And two about damage over time on the character who carries
 		// them. Ruled 2026-10-06. A flag that refuses an ailment, asked with
 		// the ailment's tag by UCataclysmSkillEffects::ApplyDamageOverTime;
-		// the percent of a bleed tick the energy shield takes; and a flag
-		// that puts every tick to the mana first. The last two are read by
-		// UCataclysmDamageCalculation::Resolve.
+		// and a flag that puts every tick to the mana first, read by
+		// UCataclysmDamageCalculation::Resolve. A third, the percent of a
+		// bleed tick the energy shield took, was retired on 2026-11-26.
 		TEXT("ailment_immunity"),
-		TEXT("bleed_damage_taken_from_energy_shield"),
 		TEXT("damage_over_time_taken_from_mana_first"),
 		// And four read at one site each. Ruled 2026-10-07. None has a
 		// gameplay attribute. The percent more an energy shield loses for
@@ -2096,8 +2095,10 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// anything, because each node states a RULE rather than a magnitude.
 			// The halved rates two of them name are constants at their read sites,
 			// since the design rows state them and nothing else grants them.
-			{UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat,
-			 Combat::GetShieldAbsorbsDamageOverTimeAttribute()},
+			{UCataclysmDamageCalculation::BleedDrainsEnergyShieldStat,
+			 Combat::GetBleedDrainsEnergyShieldAttribute()},
+			{UCataclysmDamageCalculation::ShieldAbsorbsWhatBypassesItStat,
+			 Combat::GetShieldAbsorbsWhatBypassesItAttribute()},
 			{UCataclysmRegeneration::ShieldRechargesWhileDamagedStat,
 			 Combat::GetShieldRechargesWhileDamagedAttribute()},
 			// AND ONE ENCHANTMENT'S FLAG BESIDE THEM, issue #1833: the shield

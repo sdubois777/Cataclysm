@@ -385,7 +385,8 @@ CATACLYSM_TEST(FCataclysmTrapLateBlowShotTest,
 	// THREE PLAYERS 100 M APART, EACH HOLDING A DEMONIC WAND, WHOSE HEAVY MALEFICE IS A SHOT: a Heavy trap 20 m north
 	// with the enemy that sets it off 2.5 m east of it. The control holds the Heavy flag alone; the second also holds
 	// "Traps deal 20%-40% increased damage" at 50; the third the bleed row, its creature 1,000 health so the shot takes a
-	// tenth of it (the owner's rule of #917). THE TRAP IS USED UP AS ITS CAST STARTS, so every shot lands after it is gone.
+	// tenth of it, which the rule of #917 asked until the owner's ruling of 2026-11-26; since then a blow that reached
+	// health is enough for a bleed. THE TRAP IS USED UP AS ITS CAST STARTS, so every shot lands after it is gone.
 	FTrapLateBlowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -622,7 +623,9 @@ CATACLYSM_TEST(FCataclysmTrapLateBlowZoneTest,
 	// 1.5 m zone where it ends; a bystander of 100 health made 1.2 m from that zone's middle once it is laid. In each
 	// pair the control holds the Heavy flag (and the zone row), the other also "Traps deal 20%-40% increased damage" at
 	// 50 and the bleed row. The cleave's enemies hold 1,500 health, so its blow takes a tenth and the bleed row is seen
-	// to work on a hit; the shot's 50,000.
+	// to work on a hit (a tenth was the rule of #917 until 2026-11-26; since then any blow that reached health is enough,
+	// and the bystanders' sweeps below take health too, so only the missing deployable_hit keeps the bleed off them);
+	// the shot's 50,000.
 	FTrapLateBlowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{

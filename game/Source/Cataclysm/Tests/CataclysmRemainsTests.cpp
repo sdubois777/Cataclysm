@@ -670,11 +670,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsPlaguePitTest,
 /**
  * Remains record a Necrosis the creature died carrying, with its seconds left. Plague Pit's real row passes it to an
  * enemy the detonation strikes; Grave Spores' real row at 6 points, its status roll pinned at nought, inflicts
- * Necrosis on each enemy struck BY A BLAST OF AT LEAST A TENTH OF ITS MAXIMUM HEALTH: Grave Spores follows the ailment
- * rule of #917 as every row applying an ailment does (the coordinating session's ruling of 2026-11-26), so the remains
- * here are a creature twenty times the struck one's health. CONTROLS: with Mantle of Bone alone the enemy struck carries
- * no Necrosis; Grave Spores with its roll pinned at 99 inflicts none; and pinned at nought, the remains of a creature
- * five times the struck one's health, whose blast is below a tenth, inflict none.
+ * Necrosis on each enemy struck BY A BLAST THAT DEALT IT MORE THAN NOUGHT, as every row applying an ailment does since
+ * the owner's ruling of 2026-11-26: a blast of a fifth of the struck creature's maximum health and one of a twentieth
+ * both inflict it. Until that ruling the second, below a tenth, inflicted none (#917). CONTROLS: with Mantle of Bone
+ * alone the enemy struck carries no Necrosis; Grave Spores with its roll pinned at 99 inflicts none; and pinned at
+ * nought, `remains_detonation_hit` RAISED BY HAND CARRYING NOUGHT inflicts none. By hand because a blast that deals
+ * nought raises no event at all, so a control through `Detonate` could not fail; a counting row on the same event
+ * proves the event was heard, so only the rule can refuse the Necrosis.
  */
 bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 {
@@ -761,6 +763,31 @@ bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 	AddInfo(FString::Printf(TEXT("GRAVE SPORES: the large remains' blast took %.3f of the struck creature's maximum health, "
 								 "the smaller remains' %.3f"), LargeShare, SmallShare));
 
+	// THE CONTROL: THE EVENT RAISED BY HAND CARRYING NOUGHT, beside Grave Spores' real row, its roll still pinned at
+	// nought. A counting row on the same event is added to the rows the allocation wrote, so the event is shown heard.
+	const FName DetonationsHeard(TEXT("Test:count:remains_detonation_hit"));
+	FCataclysmPoolAction CountDetonations;
+	CountDetonations.Event = FName(TEXT("remains_detonation_hit"));
+	CountDetonations.StackKey = DetonationsHeard;
+	CountDetonations.StackSeconds = 60.0f;
+	CountDetonations.StackCap = 10;
+	CountDetonations.TriggerKey = DetonationsHeard;
+	TArray<FCataclysmPoolAction> WithCount = Player.System->GetPoolActions();
+	const int32 RowsWritten = WithCount.Num();
+	WithCount.Add(CountDetonations);
+	Player.System->SetPoolActions(MoveTemp(WithCount));
+	ACataclysmEnemyCharacter* Untouched = RemainsCreatureAt(World, FVector(-10 * M, 30 * M, 0));
+	// A SECOND ON, so no wait a row's trigger keeps after the strikes above can be what refuses the Necrosis. The row's
+	// Trigger Cooldown cell is 0 in `PassiveEffects.csv`; this does not lean on that.
+	World->TimeSeconds += 1.0f;
+	bool bNoughtInflicts = true;
+	{
+		FRemainsPinnedStatusRoll Pinned(0.0f);
+		Player.System->ActOnEvent(FName(TEXT("remains_detonation_hit")), /*EventTags=*/nullptr, /*EventAmount=*/0.0f,
+								  /*bLanded=*/true, Untouched);
+		bNoughtInflicts = RemainsCarries(Untouched, TEXT("Keyword.DoT.Necrosis"));
+	}
+
 	TestFalse(TEXT("CONTROL: with Mantle of Bone alone the enemy struck carries no Necrosis"), bPlain);
 	TestTrue(TEXT("with Plague Pit it carries the Necrosis the creature died with"), bPassed);
 	TestFalse(TEXT("CONTROL: Grave Spores' roll pinned at 99 inflicts none"), bSporesMiss);
@@ -769,7 +796,11 @@ bool FCataclysmRemainsPlaguePitTest::RunTest(const FString&)
 	TestTrue(TEXT("and pinned at nought it inflicts Necrosis"), bSporesHit);
 	TestTrue(TEXT("set-up: the smaller remains' blast is above nought and below a tenth"),
 			 SmallShare > 0.0f && SmallShare < 0.1f);
-	TestFalse(TEXT("CONTROL: pinned at nought, a blast below a tenth inflicts none (#917)"), bSporesSmall);
+	TestTrue(TEXT("and pinned at nought a blast below a tenth inflicts Necrosis too, since 2026-11-26"), bSporesSmall);
+	TestTrue(TEXT("control set-up: the allocation wrote rows to add the counting row to"), RowsWritten > 0);
+	TestEqual(TEXT("control set-up: remains_detonation_hit carrying nought was heard"),
+			  Player.System->OwnStacksHeld(DetonationsHeard), 1);
+	TestFalse(TEXT("CONTROL: pinned at nought, remains_detonation_hit carrying nought inflicts none"), bNoughtInflicts);
 	return true;
 }
 

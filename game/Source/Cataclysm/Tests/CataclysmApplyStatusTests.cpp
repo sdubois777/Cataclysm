@@ -32,8 +32,10 @@
  * `apply_status` rolls its value as a chance at the status's own duration;
  * `apply_status_seconds` always applies, for its value in seconds. The status is
  * an ailment, a stagger, or one debuff from the random pool. An ailment asks the
- * owner's rule of #917, a tenth of the target's maximum health, as every ailment
- * a blow carries does; a stagger does not, as no stagger does.
+ * owner's ruling of 2026-11-26, which replaced the tenth of maximum health of
+ * #917: an event that dealt more than nought on a target still alive, as every
+ * ailment a blow carries does, and a bleed only from one that reached health; a
+ * stagger asks none of it, as no stagger does.
  *
  * `first_hit_dealt` IS ITS OWN EVENT because the target records a blow before the
  * blow is announced, so by `hit_dealt` the record already holds it. The first
@@ -348,13 +350,15 @@ CATACLYSM_TEST(FCataclysmFirstHitOrderTest,
 }
 
 CATACLYSM_TEST(FCataclysmHitDealtCarriesItsAmountTest,
-	"Cataclysm.ApplyStatus.HitDealtCarriesWhatReachedHealthSoABleedOnItNeedsATenth")
+	"Cataclysm.ApplyStatus.HitDealtCarriesWhatReachedHealthSoABleedOnItNeedsABlowThatDealtSomething")
 {
 	using namespace CataclysmApplyStatusTest;
-	// A REAL PLAYER WEARING A BLEED ON `hit_dealt`, always. A blow taking less
-	// than a tenth of the creature's thousand applies none; one taking more
-	// applies it. Before issue #1833 group E part 1 `hit_dealt` carried nothing,
-	// and no blow would have.
+	// A REAL PLAYER WEARING A BLEED ON `hit_dealt`, always. A blow that deals
+	// nothing applies none; a blow taking less than a tenth of the creature's
+	// thousand applies it, as one taking more does. The owner's ruling of
+	// 2026-11-26 ("I agree, fix it") replaced the tenth of #917 with a blow that
+	// dealt more than nought. Before issue #1833 group E part 1 `hit_dealt`
+	// carried nothing, and no blow would have.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -364,11 +368,14 @@ CATACLYSM_TEST(FCataclysmHitDealtCarriesItsAmountTest,
 	UCataclysmCombatEvents::In(World);
 	ACataclysmPlayerCharacter* Player = SpawnPlayer(World, FVector::ZeroVector);
 	ACataclysmEnemyCharacter* Struck = SpawnEnemy(World, FVector(200.0f, 0.0f, 0.0f));
+	// A SECOND CREATURE, so each blow below is asked of a creature carrying no bleed.
+	ACataclysmEnemyCharacter* Other = SpawnEnemy(World, FVector(0.0f, 200.0f, 0.0f));
 	UCataclysmAbilitySystemComponent* System = Player
 		? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
 	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
 	if (!TestNotNull(TEXT("set-up: the player's ability system"), System)
 		|| !TestNotNull(TEXT("set-up: a creature"), Struck)
+		|| !TestNotNull(TEXT("set-up: another creature"), Other)
 		|| !TestTrue(TEXT("set-up: the bleed tag exists"), Bleed.IsValid()))
 	{
 		return false;
@@ -376,7 +383,16 @@ CATACLYSM_TEST(FCataclysmHitDealtCarriesItsAmountTest,
 	System->SetPoolActions({Status(ECataclysmApplyStatus::Chance, TEXT("hit_dealt"), TEXT("Bleed"), 100.0f)});
 	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
 
-	float Before = HealthOf(Struck);
+	// THE CONTROL: A BLOW THAT DEALS NOTHING APPLIES NO BLEED.
+	float Before = HealthOf(Other);
+	UCataclysmSkillEffects::ApplyHit(Player, Other, /*DamagePercent=*/0.0f);
+	if (!TestEqual(TEXT("set-up: a blow of nought percent took nothing"), HealthOf(Other), Before, 0.01f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: a blow that dealt nothing applies no bleed"), Carries(Other, Bleed));
+
+	Before = HealthOf(Struck);
 	UCataclysmSkillEffects::ApplyHit(Player, Struck, /*DamagePercent=*/10.0f);
 	const float Small = Before - HealthOf(Struck);
 	if (!TestTrue(*FString::Printf(TEXT("set-up: a small blow landed, under a tenth: %.1f"), Small),
@@ -384,17 +400,17 @@ CATACLYSM_TEST(FCataclysmHitDealtCarriesItsAmountTest,
 	{
 		return false;
 	}
-	TestFalse(TEXT("a blow under a tenth applies no bleed"), Carries(Struck, Bleed));
+	TestTrue(TEXT("a blow under a tenth that reached health applies the bleed"), Carries(Struck, Bleed));
 
-	Before = HealthOf(Struck);
-	UCataclysmSkillEffects::ApplyHit(Player, Struck, /*DamagePercent=*/300.0f);
-	const float Large = Before - HealthOf(Struck);
+	Before = HealthOf(Other);
+	UCataclysmSkillEffects::ApplyHit(Player, Other, /*DamagePercent=*/300.0f);
+	const float Large = Before - HealthOf(Other);
 	if (!TestTrue(*FString::Printf(TEXT("set-up: a large blow landed, over a tenth: %.1f"), Large),
 			Large >= 100.0f))
 	{
 		return false;
 	}
-	TestTrue(TEXT("a blow over a tenth applies the bleed"), Carries(Struck, Bleed));
+	TestTrue(TEXT("a blow over a tenth applies the bleed"), Carries(Other, Bleed));
 	return true;
 }
 
@@ -432,12 +448,13 @@ CATACLYSM_TEST(FCataclysmStaggerStatusTest,
 }
 
 CATACLYSM_TEST(FCataclysmAilmentStatusGateTest,
-	"Cataclysm.ApplyStatus.AnAilmentStatusAsksForATenthOfTheTargetsHealth")
+	"Cataclysm.ApplyStatus.AnAilmentStatusAsksForAnEventThatDealtSomething")
 {
 	using namespace CataclysmApplyStatusTest;
-	// THE OWNER'S RULE OF #917, AS `RollOnLandedBlow` ASKS IT OF ALL ELEVEN: a
-	// bleed and a Cripple on an event carrying 99 of a thousand apply nothing,
-	// and on one carrying 100 they apply.
+	// THE OWNER'S RULING OF 2026-11-26 ("I agree, fix it"), AS `RollOnLandedBlow`
+	// ASKS IT OF ALL ELEVEN, which replaced the tenth of #917: a bleed and a
+	// Cripple on an event carrying nought apply nothing, and on one carrying 99 of
+	// a thousand, under the old tenth, they apply.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -452,19 +469,19 @@ CATACLYSM_TEST(FCataclysmAilmentStatusGateTest,
 	}
 	{
 		const FFighter Wearer(World);
+		const FFighter Nothing(World);
 		const FFighter Under(World);
-		const FFighter AtATenth(World);
 		Wearer.AbilitySystem->SetPoolActions({
 			Status(ECataclysmApplyStatus::Chance, TEXT("critical_strike"), TEXT("Bleed"), 100.0f),
 			Status(ECataclysmApplyStatus::Seconds, TEXT("critical_strike"), TEXT("Cripple"), 3.0f)});
 
-		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("critical_strike")), nullptr, 99.0f, true, Under.Actor);
-		TestFalse(TEXT("99 of a thousand applies no bleed"), Carries(Under.Actor, Bleed));
-		TestFalse(TEXT("and no Cripple"), Carries(Under.Actor, Cripple));
+		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("critical_strike")), nullptr, 0.0f, true, Nothing.Actor);
+		TestFalse(TEXT("control: an event carrying nought applies no bleed"), Carries(Nothing.Actor, Bleed));
+		TestFalse(TEXT("control: and no Cripple"), Carries(Nothing.Actor, Cripple));
 
-		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("critical_strike")), nullptr, 100.0f, true, AtATenth.Actor);
-		TestTrue(TEXT("100 of a thousand applies the bleed"), Carries(AtATenth.Actor, Bleed));
-		TestTrue(TEXT("and the Cripple"), Carries(AtATenth.Actor, Cripple));
+		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("critical_strike")), nullptr, 99.0f, true, Under.Actor);
+		TestTrue(TEXT("99 of a thousand, under a tenth, applies the bleed"), Carries(Under.Actor, Bleed));
+		TestTrue(TEXT("and the Cripple"), Carries(Under.Actor, Cripple));
 	}
 	return true;
 }
@@ -633,7 +650,10 @@ CATACLYSM_TEST(FCataclysmStatusTriggerCooldownTest,
 	// "Gadgets apply a 1-2 second stagger to enemies they hit, once every 5
 	// seconds", BY HAND at a second: staggered at once, not again two seconds
 	// later though the first has ended, and again past five. And a bleed an event
-	// was too small to carry starts no cooldown, so the next event applies it.
+	// that dealt nothing could not carry starts no cooldown, so the next event
+	// applies it. (The event was one too small to carry it, under the tenth of
+	// #917, until the owner's ruling of 2026-11-26 made any event that dealt more
+	// than nought carry it; a nought is what is too small now.)
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -664,8 +684,8 @@ CATACLYSM_TEST(FCataclysmStatusTriggerCooldownTest,
 		CataclysmTestWorld::RunClock(World, 3.5f);
 		TestTrue(TEXT("past five seconds a gadget hit staggers again"), GadgetHits());
 
-		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("retaliation_dealt")), nullptr, 50.0f, true, Bled.Actor);
-		TestFalse(TEXT("retaliation too small to carry a bleed applies none"), Carries(Bled.Actor, Bleed));
+		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("retaliation_dealt")), nullptr, 0.0f, true, Bled.Actor);
+		TestFalse(TEXT("retaliation that dealt nothing carries no bleed and applies none"), Carries(Bled.Actor, Bleed));
 		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("retaliation_dealt")), nullptr, 150.0f, true, Bled.Actor);
 		TestTrue(TEXT("and started no cooldown: the next applies it"), Carries(Bled.Actor, Bleed));
 	}

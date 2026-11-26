@@ -9588,7 +9588,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						< Action.Percent;
 				// APPLIED BY THE AVATAR, as a random damage over time is below.
 				AActor* Applier = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
-				if (bComesUp && ApplyStatusOf(Action, Applier, Other, EventAmount))
+				if (bComesUp && ApplyStatusOf(Action, Applier, Other, EventAmount, DealtForAnAilment(EventAmount)))
 				{
 					NoteTriggerFired(Action);
 				}
@@ -9598,14 +9598,15 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// A RANDOM DAMAGE OVER TIME ON THE OTHER CHARACTER OF THE EVENT. Issue
 		// #1833 group D, ruled 2026-09-30. Landed only, once per row per event,
 		// only for an event naming that character and carrying what reached its
-		// health, and only past the owner's rule of 2026-09-02 (#917): the blow
-		// took a tenth of the target's maximum health and left it alive.
+		// health, and only past the owner's ruling of 2026-11-26: the blow dealt
+		// more than nought, its shield's part counted (`DealtForAnAilment`), and
+		// left the target alive. The tenth of maximum health #917 asked is gone.
 		if (Action.bRandomDamageOverTime)
 		{
 			AActor* Other = const_cast<AActor*>(EventTarget);
 			if (bLanded && Other && !StackedThisEvent.Contains(Action.TriggerKey)
 				&& TriggerReady(Action)
-				&& UCataclysmAilments::BlowCanCarryAnAilment(Other, EventAmount))
+				&& UCataclysmAilments::BlowCanCarryAnAilment(Other, DealtForAnAilment(EventAmount)))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				// THE CHANCE, where 100 is always. Compared as at most rather than
@@ -9616,8 +9617,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				// credited to, which for the player is the character and not
 				// the player state that owns this component.
 				AActor* Applier = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+				// A BLEED ONLY WHEN THE BLOW REACHED HEALTH, which is what the event's amount is for a hit.
 				if (bComesUp
-					&& UCataclysmAilments::ApplyRandomDamageOverTime(Applier, Other))
+					&& UCataclysmAilments::ApplyRandomDamageOverTime(Applier, Other,
+						UCataclysmAilments::BlowCanCarryABleed(Other, EventAmount)))
 				{
 					NoteTriggerFired(Action);
 				}
@@ -9644,9 +9647,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// THE OTHER CHARACTER OF THE EVENT IS SLOWED BY THE ROW'S PER CENT FOR ITS STACK SECONDS. Ruled 2026-10-21 (traps
 		// layer 3, M3 (b)), for "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" on `trap_triggered`,
 		// whose other character is the enemy that set the trap off. Landed only, once per row per event; applied by the
-		// avatar, as a status is above. AND THE OWNER'S RULE OF A TENTH (#917), as for every ailment a row lays on another
-		// character, against the event's amount: what the trap's cast took from that enemy in its largest blow. The owner,
-		// 2026-10-21: "Follow the tenth rule".
+		// avatar, as a status is above. AND THE OWNER'S RULE FOR EVERY AILMENT A ROW LAYS ON ANOTHER CHARACTER, against the
+		// event's amount (what the trap's cast took from that enemy in its largest blow) or the announced hit's landed
+		// figure: more than nought dealt, its shield's part counted, on a living target (the owner's ruling of 2026-11-26).
+		// From 2026-10-21 ("Follow the tenth rule") until then it was the tenth of maximum health of #917.
 		if (Action.bSlowForSeconds)
 		{
 			AActor* Slowed = const_cast<AActor*>(EventTarget);
@@ -9654,7 +9658,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				AActor* Slower = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
-				if (UCataclysmAilments::BlowCanCarryAnAilment(Slowed, EventAmount))
+				if (UCataclysmAilments::BlowCanCarryAnAilment(Slowed, DealtForAnAilment(EventAmount)))
 				{
 					if (Slower && UCataclysmAilments::ApplySlowOfStrength(Slower, Slowed, Action.Percent, Action.StackSeconds))
 					{
@@ -10896,7 +10900,7 @@ void UCataclysmAbilitySystemComponent::RefreshWornStatLine()
 }
 
 bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction& Action,
-	AActor* Applier, AActor* Other, float EventAmount)
+	AActor* Applier, AActor* Other, float EventAmount, float DealtForAilment)
 {
 	if (!Applier || !Other)
 	{
@@ -10938,12 +10942,14 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 	// EVERY OTHER STATUS IS AN AILMENT A BLOW CARRIES, and the code classifies
 	// those one way: `RollOnLandedBlow` asks `BlowCanCarryAnAilment` before any
 	// of the eleven, Cripple and Stun included, and so does a random damage over
-	// time on an event. A tenth of the target's maximum health, and a target
-	// still alive.
-	if (!UCataclysmAilments::BlowCanCarryAnAilment(Other, EventAmount))
+	// time on an event. A blow that dealt more than nought, its shield's part
+	// counted, and a target still alive: the owner's ruling of 2026-11-26.
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Other, DealtForAilment))
 	{
 		return false;
 	}
+	// AND A BLEED ONLY FROM A BLOW THAT REACHED HEALTH, which is what the event's amount is for a hit.
+	const bool bBleedMayLand = UCataclysmAilments::BlowCanCarryABleed(Other, EventAmount);
 	if (Action.StatusName.Equals(RandomDebuffStatus, ESearchCase::IgnoreCase))
 	{
 		return UCataclysmAilments::ApplyRandomDebuff(Applier, Other, EventAmount)
@@ -10968,7 +10974,8 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 		{
 			for (const FCataclysmAilmentKind* Each : UCataclysmAilments::RandomDamageOverTimePool())
 			{
-				if (Each && UCataclysmAilments::Apply(Applier, Other, *Each, /*Magnitude=*/1.0f,
+				if (Each && (bBleedMayLand || !UCataclysmAilments::IsBleed(*Each))
+					&& UCataclysmAilments::Apply(Applier, Other, *Each, /*Magnitude=*/1.0f,
 						/*Skill=*/nullptr, NAME_None, /*Seconds=*/0.0f))
 				{
 					bAnyOfTheFiveLanded = true;
@@ -10989,6 +10996,10 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 	// seconds in place of the status row's when it states them. AND AT THE ROW'S
 	// MULTIPLE OF ITS ORDINARY SIZE FOR A SIZED ROW, "1-2 bleed stacks" (traps
 	// layer 3; ruling 8 of 2026-10-07), once, since no ailment stacks.
+	if (UCataclysmAilments::IsBleed(*Kind) && !bBleedMayLand)
+	{
+		return false;
+	}
 	const float Magnitude = Action.ApplyStatus == ECataclysmApplyStatus::Sized ? Action.Percent : 1.0f;
 	return UCataclysmAilments::Apply(Applier, Other, *Kind, Magnitude,
 		/*Skill=*/nullptr, NAME_None, bSeconds ? Action.Percent : 0.0f);
@@ -11819,7 +11830,7 @@ void UCataclysmAbilitySystemComponent::GrantOwnStackLastingAlone(FName StackKey,
 }
 
 bool UCataclysmAbilitySystemComponent::LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck,
-															  float DealtToHealth)
+															  float DealtToHealth, float Landed)
 {
 	const UWorld* World = GetWorld();
 	if (!World || !Struck)
@@ -11832,9 +11843,13 @@ bool UCataclysmAbilitySystemComponent::LayALateSkillTrapSlow(const TWeakObjectPt
 	{
 		return Late.Trap.HasSameIndexAndSerialNumber(CastBy) && Late.Enemy.Get() == Struck;
 	});
-	// THE OWNER'S RULE OF A TENTH AGAINST THIS BLOW (the owner, 2026-10-21: "Follow the tenth rule"). A blow short of it
+	// THE OWNER'S AILMENT RULE AGAINST THIS BLOW: more than nought dealt on a living target (the owner's ruling of
+	// 2026-11-26; from 2026-10-21, "Follow the tenth rule", until then, a tenth of maximum health). A blow short of it
 	// leaves the slow waiting for the next.
-	if (Waiting == INDEX_NONE || !UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))
+	// WHAT THE BLOW LANDED, its shield's part included (the owner's ruling of 2026-11-26); the health figure when the
+	// caller gave none.
+	if (Waiting == INDEX_NONE
+		|| !UCataclysmAilments::BlowCanCarryAnAilment(Struck, Landed >= 0.0f ? Landed : DealtToHealth))
 	{
 		return false;
 	}

@@ -462,8 +462,11 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 	//
 	// TWO RULES DECIDE WHETHER A BLOW LEAVES AN AILMENT, and each assertion below
 	// says which one it shows. "The roll" is the comparison of the pinned roll
-	// with the chance. "The tenth rule" is the owner's rule of 2026-09-02 (issue
-	// #917): the blow must take at least a tenth of the target's maximum health.
+	// with the chance. "The dealt rule" is the owner's ruling of 2026-11-26 ("I
+	// agree, fix it"): the blow must land, deal more than nought and leave the
+	// target alive. It replaced the rule of 2026-09-02 (issue #917) that the blow
+	// take a tenth of the target's maximum health, which no longer applies to an
+	// ailment.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -477,9 +480,9 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 		return false;
 	}
 
-	// A BLOW OF 1,000. Against 5,000 maximum health it takes a fifth, which is
-	// twice what the tenth rule asks. Against 20,000 it takes a twentieth, which
-	// is half of it.
+	// A BLOW OF 1,000. Against 5,000 maximum health it takes a fifth. Against
+	// 20,000 it takes a twentieth, under the tenth the old rule asked, which the
+	// last assertions use to show that rule is gone.
 	const float Blow = 1000.0f;
 	const float SmallPool = 5000.0f;
 	const float DeepPool = 20000.0f;
@@ -493,7 +496,7 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 		bool bBleeds = false;
 		float Taken = 0.0f;
 	};
-	const auto Strike = [&](float Chance, float Roll, float MaxHealth)
+	const auto StrikeFor = [&](float Chance, float Roll, float MaxHealth, float Damage)
 	{
 		FRolledBlow Out;
 		const CataclysmTestWorld::FScopedAilmentRoll Pinned(Roll);
@@ -501,7 +504,7 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 			&& FMath::IsNearlyEqual(Pinned.Variable->GetFloat(), Roll, 0.0001f);
 
 		const FScopedFighter Attacker(World);
-		Attacker.ArmFor(Blow);
+		Attacker.ArmFor(Damage);
 		Attacker.SetChance(*Bleed, Chance);
 
 		const FScopedFighter Defender(World, MaxHealth);
@@ -511,6 +514,10 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 		Out.bBleeds = Defender.Carries(Bleed->TagName);
 		return Out;
 	};
+	const auto Strike = [&](float Chance, float Roll, float MaxHealth)
+	{
+		return StrikeFor(Chance, Roll, MaxHealth, Blow);
+	};
 
 	// THE SET-UP, ASSERTED BEFORE THE BEHAVIOUR. If the variable could not be
 	// pinned every blow below would roll for real, and if the bleed could never
@@ -518,7 +525,7 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 	const FRolledBlow AtNought = Strike(60.0f, 0.0f, SmallPool);
 	if (!TestTrue(TEXT("set-up: Cataclysm.AilmentRoll is pinned and reads back 0"),
 				  AtNought.bPinned)
-		|| !TestTrue(FString::Printf(TEXT("set-up, the tenth rule: the blow takes "
+		|| !TestTrue(FString::Printf(TEXT("set-up: the blow lands and takes "
 										  "over a tenth of maximum health, %.1f "
 										  "of %.0f"), AtNought.Taken, SmallPool),
 					 AtNought.Taken >= SmallPool / 10.0f)
@@ -537,8 +544,8 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 	{
 		return false;
 	}
-	TestTrue(FString::Printf(TEXT("the tenth rule does not decide the next "
-								  "assertion: the blow takes over a tenth, %.1f "
+	TestTrue(FString::Printf(TEXT("the dealt rule does not decide the next "
+								  "assertion: the blow lands and takes over a tenth, %.1f "
 								  "of %.0f"), Stated.Taken, SmallPool),
 			 Stated.Taken >= SmallPool / 10.0f);
 	TestTrue(TEXT("the roll, a chance at the cap: a chance of 100 at a roll of 100 "
@@ -575,19 +582,32 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
 				  "59.9 applies the bleed"),
 			 BelowUnderItsChance.bBleeds);
 
-	// AND THE OTHER RULE IS WHAT IT WAS. The same chance and the same roll, on a
-	// blow that takes under a tenth of maximum health, apply nothing. The guard
-	// is inside the roll and the tenth rule is asked before any roll.
+	// AND THE OTHER RULE. The same chance and the same roll, on a blow that takes
+	// under a tenth of maximum health, apply the bleed, because since 2026-11-26
+	// a blow that dealt anything carries an ailment. The guard is inside the roll
+	// and the dealt rule is asked before any roll.
 	const FRolledBlow Small = Strike(100.0f, 100.0f, DeepPool);
 	TestTrue(TEXT("set-up: the roll reads back 100 for the small blow"),
 			 Small.bPinned);
-	TestTrue(FString::Printf(TEXT("the tenth rule: the small blow lands and takes "
+	TestTrue(FString::Printf(TEXT("the dealt rule: the small blow lands and takes "
 								  "under a tenth, %.1f of %.0f"),
 							 Small.Taken, DeepPool),
 			 Small.Taken > 0.0f && Small.Taken < DeepPool / 10.0f);
-	TestFalse(TEXT("the tenth rule, unchanged: a chance of 100 at a roll of 100 on "
-				   "a blow that takes under a tenth applies nothing"),
-			  Small.bBleeds);
+	TestTrue(TEXT("the dealt rule: a chance of 100 at a roll of 100 on a blow that "
+				  "takes under a tenth applies the bleed"),
+			 Small.bBleeds);
+
+	// THE CONTROL: the same chance and the same roll on a blow of nought apply
+	// nothing, so the dealt rule is still asked and a certain chance does not
+	// skip it.
+	const FRolledBlow Nothing = StrikeFor(100.0f, 100.0f, DeepPool, 0.0f);
+	TestTrue(TEXT("set-up: the roll reads back 100 for the blow of nought"),
+			 Nothing.bPinned);
+	TestEqual(TEXT("set-up: the blow of nought takes nothing"),
+			  Nothing.Taken, 0.0f, 0.01f);
+	TestFalse(TEXT("CONTROL, the dealt rule: a chance of 100 at a roll of 100 on a "
+				   "blow of nought applies nothing"),
+			  Nothing.bBleeds);
 	return true;
 }
 
@@ -1016,7 +1036,7 @@ CATACLYSM_AILMENT_TEST(FCataclysmCrippleAndWeakenPastCertaintyTest,
 // ---------------------------------------------------------------------------
 
 CATACLYSM_AILMENT_TEST(FCataclysmAilmentThresholdTest,
-	"Cataclysm.Ailments.ABlowMustTakeATenthOfMaximumHealthAndLeaveItsTargetAlive")
+	"Cataclysm.Ailments.ABlowThatDealtAnythingCarriesAnAilmentAndOneThatKilledOrDealtNothingDoesNot")
 {
 	using namespace CataclysmAilmentTest;
 
@@ -1051,25 +1071,119 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentThresholdTest,
 		return Defender.Carries(Bleed->TagName);
 	};
 
-	// THE PROJECT OWNER'S RULE FOR AN AILMENT NOT FROM THE SKILL'S OWN ROW,
-	// settled on #917: the blow must take at least a tenth of maximum health.
+	// THE OWNER'S RULING OF 2026-11-26 ("I agree, fix it"): an ailment that is not the skill's own needs a blow that
+	// landed and dealt more than nought, and no longer the tenth of maximum health #917 asked (2026-09-02).
 	float Taken = 0.0f;
-	TestFalse(TEXT("a blow taking 9.9% of maximum health applies nothing"),
-		Bleeds(990.0f, 10'000.0f, 10'000.0f, Taken));
-	TestEqual(TEXT("and it did land"), Taken, 990.0f, 0.5f);
+	TestTrue(TEXT("a blow taking 1% of maximum health applies the bleed"),
+		Bleeds(100.0f, 10'000.0f, 10'000.0f, Taken));
+	TestEqual(TEXT("and it did land"), Taken, 100.0f, 0.5f);
 
-	TestTrue(TEXT("a blow taking 10.1% applies the bleed"),
-		Bleeds(1'010.0f, 10'000.0f, 10'000.0f, Taken));
+	// THE CONTROL: A BLOW THAT DEALT NOTHING APPLIES NOTHING, #917's original concern.
+	TestFalse(TEXT("CONTROL: a blow of nought applies nothing"),
+		Bleeds(0.0f, 10'000.0f, 10'000.0f, Taken));
+	TestEqual(TEXT("and took nothing"), Taken, 0.0f, 0.01f);
 
-	// AND A BLOW THAT KILLED APPLIES NOTHING, as a burn is never set on a
-	// corpse. 150 is more than a tenth of 1,000, so the threshold is not what
-	// stops it.
+	// AND A BLOW THAT KILLED APPLIES NOTHING, as a burn is never set on a corpse.
 	TestFalse(TEXT("a blow that kills applies nothing"),
 		Bleeds(500.0f, 150.0f, 1'000.0f, Taken));
-	TestEqual(TEXT("though it took more than a tenth"), Taken, 150.0f, 0.5f);
+	TestEqual(TEXT("though it took everything"), Taken, 150.0f, 0.5f);
 
 	TestTrue(TEXT("while the same blow at full health applies the bleed"),
 		Bleeds(500.0f, 1'000.0f, 1'000.0f, Taken));
+	return true;
+}
+
+CATACLYSM_AILMENT_TEST(FCataclysmAilmentShieldTest,
+	"Cataclysm.Ailments.ABlowTheShieldAbsorbsWholeLaysPoisonButNotBleed")
+{
+	using namespace CataclysmAilmentTest;
+	// THE OWNER, 2026-11-26: "bleed should be the only ailment that doesn't apply against energy shield. The rest should
+	// work." A blow of 1,000 into a shield of 10,000 reaches no health: it poisons and does not bleed. THE CONTROL: the
+	// same blow on a defender with no shield does both.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
+
+	const FCataclysmAilmentKind* Bleed = KindOf(TEXT("Bleed"));
+	const FCataclysmAilmentKind* Poison = KindOf(TEXT("Poison"));
+	if (!TestNotNull(TEXT("Bleed"), Bleed) || !TestNotNull(TEXT("Poison"), Poison))
+	{
+		return false;
+	}
+	const FScopedFighter Attacker(World);
+	Attacker.ArmFor(1'000.0f);
+	Attacker.SetChance(*Bleed, 100.0f);
+	Attacker.SetChance(*Poison, 100.0f);
+
+	const FScopedFighter Shielded(World, 5'000.0f);
+	Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 10'000.0f);
+	Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 10'000.0f);
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Shielded.Actor, 100.0f);
+	TestEqual(TEXT("set-up: the shield took the whole blow, health none"), Shielded.Health(), 5'000.0f, 0.5f);
+	TestTrue(TEXT("a blow the shield absorbed whole poisons"), Shielded.Carries(Poison->TagName));
+	TestFalse(TEXT("and does not bleed"), Shielded.Carries(Bleed->TagName));
+
+	const FScopedFighter Bare(World, 5'000.0f);
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Bare.Actor, 100.0f);
+	TestTrue(TEXT("CONTROL: with no shield the same blow poisons"), Bare.Carries(Poison->TagName));
+	TestTrue(TEXT("CONTROL: and bleeds"), Bare.Carries(Bleed->TagName));
+	return true;
+}
+
+CATACLYSM_AILMENT_TEST(FCataclysmAilmentVoidSplinterShieldTest,
+	"Cataclysm.Ailments.AVoidSplinterTickGoesPastTheShieldAndAPoisonTickDoesNot")
+{
+	using namespace CataclysmAilmentTest;
+	// THE OWNER, 2026-11-26: "Maybe void splinter should ignore es altogether?", ruled yes by the coordinating session.
+	// A Void Splinter on a defender with a full shield takes its share from health and leaves the shield whole. THE
+	// CONTROL: a poison on the same kind of defender is taken by the shield, and health is untouched.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FCataclysmAilmentKind* Splinter = KindOf(TEXT("Void Splinter"));
+	const FCataclysmAilmentKind* Poison = KindOf(TEXT("Poison"));
+	if (!TestNotNull(TEXT("Void Splinter"), Splinter) || !TestNotNull(TEXT("Poison"), Poison))
+	{
+		return false;
+	}
+	const FScopedFighter Attacker(World);
+	Attacker.ArmFor(1'000.0f);
+	const auto Shielded = [](const FScopedFighter& Fighter)
+	{
+		Fighter.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 1'000.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 1'000.0f);
+	};
+	const auto ShieldOf = [](const FScopedFighter& Fighter)
+	{
+		return Fighter.AbilitySystem->GetNumericAttribute(Vital::GetEnergyShieldAttribute());
+	};
+
+	const FScopedFighter Splintered(World, 5'000.0f);
+	Shielded(Splintered);
+	const FScopedFighter Poisoned(World, 5'000.0f);
+	Shielded(Poisoned);
+	if (!TestTrue(TEXT("set-up: the splinter is laid"),
+				  UCataclysmAilments::Apply(Attacker.Actor, Splintered.Actor, *Splinter, /*Magnitude=*/1.0f))
+		|| !TestTrue(TEXT("set-up: the poison is laid"),
+					 UCataclysmAilments::Apply(Attacker.Actor, Poisoned.Actor, *Poison, /*Magnitude=*/1.0f)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 2.1f);
+
+	TestTrue(*FString::Printf(TEXT("the splinter took health past the shield: %.1f of 5,000 left"), Splintered.Health()),
+			 Splintered.Health() < 5'000.0f);
+	TestEqual(TEXT("and left the shield whole"), ShieldOf(Splintered), 1'000.0f, 0.5f);
+	TestEqual(TEXT("CONTROL: the poison took no health"), Poisoned.Health(), 5'000.0f, 0.5f);
+	TestTrue(*FString::Printf(TEXT("CONTROL: the shield took the poison: %.1f of 1,000 left"), ShieldOf(Poisoned)),
+			 ShieldOf(Poisoned) < 1'000.0f);
 	return true;
 }
 

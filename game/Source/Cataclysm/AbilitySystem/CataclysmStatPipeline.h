@@ -5421,10 +5421,12 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * Issue #1833 group D, ruled 2026-09-30: "Critical strikes apply a random
 	 * DoT to the target". `Percent` is the chance, where 100 is always.
 	 *
-	 * THE BLOW MUST HAVE TAKEN A TENTH OF THE TARGET'S MAXIMUM HEALTH, the
-	 * owner's rule of 2026-09-02 (#917) for every ailment that does not come
-	 * from the skill's own row, so only an event carrying what reached health
-	 * as its amount may name it. See `UCataclysmAilments::BlowCanCarryAnAilment`.
+	 * THE BLOW MUST HAVE DEALT MORE THAN NOUGHT, its shield's part counted, the
+	 * owner's rule for every ailment that does not come from the skill's own
+	 * row (the ruling of 2026-11-26; a tenth of maximum health from 2026-09-02,
+	 * #917, until then), and a bleed only from a blow that reached health, so
+	 * only an event carrying what reached health as its amount may name it.
+	 * See `UCataclysmAilments::BlowCanCarryAnAilment`.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bRandomDamageOverTime = false;

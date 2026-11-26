@@ -7,7 +7,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "Misc/ScopeExit.h"
-// For the owner's rule of a tenth, asked of a trap's damage over time. Traps layer 4, 2026-10-21.
+// For the owner's ailment rule, asked of a trap's damage over time. Traps layer 4, 2026-10-21 (a tenth of maximum
+// health until the ruling of 2026-11-26, more than nought dealt since).
 #include "AbilitySystem/CataclysmAilments.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
@@ -2000,10 +2001,15 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
 		{
 			// WITH WHAT REACHED THE ENEMY'S HEALTH AS ITS AMOUNT, so an ailment a row applies on it meets the owner's
-			// rule of 2026-09-02 (#917, a tenth of the target's maximum health) as a hit's does. Window death3-w2 found
+			// ailment rule as a hit's does (a tenth of the target's maximum health from 2026-09-02, #917, until the
+			// ruling of 2026-11-26; more than nought dealt since, and health reached for a bleed). Window death3-w2 found
 			// it carried nought, which refused every ailment: Cold Hands' and Grave Cold's Necrosis never landed.
+			// AND EVERYTHING IT LANDED, its shield's part included, which an ailment a row lays asks above nought since the
+			// owner's ruling of 2026-11-26.
+			const float WasLanded = Theirs->SetHitBeingAnnouncedLanded(Resolved.Landed());
 			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, Resolved.DealtToHealth,
 							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker, Target);
+			Theirs->SetHitBeingAnnouncedLanded(WasLanded);
 		}
 	}
 
@@ -3817,7 +3823,8 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
 	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SentenceSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
 	// THE ENEMY THAT SET IT OFF, AND NOTHING TAKEN FROM IT YET: `ApplyHit` keeps what the cast's blows take from it, for
-	// the slow's rule of a tenth (the owner, 2026-10-21).
+	// the slow's ailment rule (the owner, 2026-10-21; a tenth of maximum health until the ruling of 2026-11-26, more than
+	// nought dealt since).
 	SkillTrapTriggeringEnemy = Enemy;
 	SkillTrapTookFromItsEnemy = 0.0f;
 	// AND THIS TRIGGER'S SHARE OF THAT ENEMY'S MAXIMUM HEALTH NOT YET ADDED: once per trigger (traps layer 4, F6).
@@ -3846,7 +3853,8 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	}
 
 	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
-	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
+	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's ailment rule reads (more than nought
+	// since the owner's ruling of 2026-11-26; a tenth of maximum health until then).
 	const FGameplayTagContainer TrapTags = TypeTags;
 	// AND WHICH TRAP IT IS, while the event is raised, so a slow no blow has yet earned can wait for a later blow of this
 	// cast (ruled 2026-10-21, brief 60c).
@@ -3969,7 +3977,8 @@ bool ACataclysmMinion::SkillTrapsDoNotExpireFor(const AActor* Player)
 
 void ACataclysmMinion::NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHealth) const
 {
-	// THE LARGEST SINGLE BLOW, since the rule of a tenth is asked of one blow and not of a sum.
+	// THE LARGEST SINGLE BLOW, since the ailment rule is asked of one blow and not of a sum (it was a tenth of maximum
+	// health until the owner's ruling of 2026-11-26, when the largest blow decided it; more than nought since).
 	if (Struck && Struck == SkillTrapTriggeringEnemy.Get())
 	{
 		SkillTrapTookFromItsEnemy = FMath::Max(SkillTrapTookFromItsEnemy, DealtToHealth);
@@ -4014,7 +4023,8 @@ float ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(const AActor* Player)
 	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapDamageOverTimeShareStat));
 }
 
-bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth, FName SkillRow)
+bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth, FName SkillRow,
+												   float Landed)
 {
 	// A GENERIC DAMAGE OVER TIME AND NOT AN AILMENT (F9): its own tag, so a second blow lays over it as every damage over
 	// time does, the stronger a second replacing it and a weaker refreshing its time, and it never stacks.
@@ -4026,9 +4036,11 @@ bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struc
 		return false;
 	}
 
-	// THE OWNER'S RULE OF A TENTH (#917), against what this blow took from that enemy's health: "Follow the tenth rule",
-	// which the owner holds for every lasting effect a trap lays on an enemy (F9).
-	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))
+	// THE OWNER'S RULE FOR EVERY LASTING EFFECT A TRAP LAYS ON AN ENEMY (F9, "Follow the tenth rule"), which is the rule
+	// for every ailment that is not the skill's own. Since the owner's ruling of 2026-11-26 that rule asks a blow that
+	// dealt more than nought, its shield's part counted, and no longer a tenth of maximum health. The share below is
+	// still a share of what reached health.
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, Landed >= 0.0f ? Landed : DealtToHealth))
 	{
 		return false;
 	}

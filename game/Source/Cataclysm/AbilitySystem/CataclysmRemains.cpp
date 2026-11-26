@@ -66,6 +66,13 @@ namespace
 		return Theirs ? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
 	}
 
+	/** The energy shield `Actor` holds now; nought for one with no ability system. */
+	float RemainsShieldOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return Theirs ? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()) : 0.0f;
+	}
+
 	/** What a dead creature or follower is, read into `Remains` while its body still stands. */
 	void RemainsRecordTheDead(ACataclysmRemainsMarker& Remains, AActor* Dead)
 	{
@@ -492,6 +499,9 @@ int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemainsMarker* Remai
 	// `DealtToHealth`: a row answering it with an ailment is then judged on the blow's real size. Window dfb-w1 found the
 	// event raised with nought, which no ailment-carrying row could ever pass.
 	TArray<float> HealthBefore;
+	// AND ITS SHIELD BEFORE IT, so the blast's whole landed figure, its shield's part included, is announced beside the
+	// event: an ailment a row lays asks that to be above nought since the owner's ruling of 2026-11-26, as for a hit.
+	TArray<float> ShieldBefore;
 	int32 Sent = 0;
 	if (World && Damage > 0.0f)
 	{
@@ -499,6 +509,7 @@ int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemainsMarker* Remai
 		for (const AActor* Enemy : Struck)
 		{
 			HealthBefore.Add(RemainsHealthOf(Enemy));
+			ShieldBefore.Add(RemainsShieldOf(Enemy));
 		}
 		// AS ONE BLOW OF THE CASTER'S, sized by `Damage` at 100 per cent, unscaled by its increases: The Ferryman's
 		// burst's shape, a detonation sized by the dead creature's health.
@@ -520,7 +531,10 @@ int32 UCataclysmRemains::Detonate(AActor* Caster, ACataclysmRemainsMarker* Remai
 		if (Theirs)
 		{
 			const float Dealt = FMath::Max(0.0f, HealthBefore[Index] - RemainsHealthOf(Enemy));
+			const float ShieldTook = FMath::Max(0.0f, ShieldBefore[Index] - RemainsShieldOf(Enemy));
+			const float WasLanded = Theirs->SetHitBeingAnnouncedLanded(Dealt + ShieldTook);
 			Theirs->ActOnEvent(FName(TEXT("remains_detonation_hit")), nullptr, Dealt, true, Enemy);
+			Theirs->SetHitBeingAnnouncedLanded(WasLanded);
 		}
 		// PLAGUE PIT: "pass every ailment their creature died with, for the time it had left, to each enemy the blast
 		// hits". A damage over time ailment as a spread copy, the caster its applier; any other through the ailment's

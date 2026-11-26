@@ -115,7 +115,8 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// Zero is the rule the design states for every character that has not
 	// bought one: a shield stops hits and not ticks, it waits three seconds
 	// after damage before recharging, and mana regeneration feeds mana.
-	InitShieldAbsorbsDamageOverTime(0.0f);
+	InitBleedDrainsEnergyShield(0.0f);
+	InitShieldAbsorbsWhatBypassesIt(0.0f);
 	InitShieldRechargesWhileDamaged(0.0f);
 	InitShieldRechargeHasNoDelay(0.0f);
 	InitAurasEndAtDeath(0.0f);
@@ -249,7 +250,8 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenMagnitude);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PossessionThresholdBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MinionReserveReduction);
-	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BleedDrainsEnergyShield);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsWhatBypassesIt);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AurasEndAtDeath);
@@ -458,7 +460,8 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		// AND WHAT ONE MINION RESERVES, applied to a figure the skill's own row
 		// states. Issue #1718.
 		GetMinionReserveReductionAttribute(),
-		GetShieldAbsorbsDamageOverTimeAttribute(),
+		GetBleedDrainsEnergyShieldAttribute(),
+		GetShieldAbsorbsWhatBypassesItAttribute(),
 		GetShieldRechargesWhileDamagedAttribute(),
 		GetShieldRechargeHasNoDelayAttribute(),
 		GetAurasEndAtDeathAttribute(),
@@ -528,7 +531,8 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionReserveReduction)
-CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedDrainsEnergyShield)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsWhatBypassesIt)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AurasEndAtDeath)

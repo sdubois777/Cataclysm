@@ -1257,7 +1257,8 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	//
 	// AND WHAT REACHED THEIR HEALTH, since issue #1833 group E part 1, ruled
 	// 2026-10-01: "Strike skills have a 15%-30% chance to apply a random debuff
-	// on hit" asks the owner's rule of #917, a tenth of maximum health. No row
+	// on hit" asks the owner's rule of #917 (a tenth of maximum health until the
+	// ruling of 2026-11-26, a blow that dealt more than nought since). No row
 	// read the amount before, measured 2026-10-01: only `health_cost` lets a row
 	// take a fraction of its event's amount, and only `health_falls_below` rows
 	// state a threshold.
@@ -1282,6 +1283,9 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	const bool bAHitThatMayBeRepeated =
 		!Notice.bDamageOverTime && !Notice.bRetaliation && !Cast<ACataclysmMinion>(Notice.DealtBy);
 	const float WasHitSent = Acting->SetHitBeingAnnouncedSent(bAHitThatMayBeRepeated ? Notice.Sent : 0.0f);
+	// AND EVERYTHING THE HIT LANDED, its shield's part included, for the rows that lay an ailment on it: the owner's
+	// ruling of 2026-11-26. Held across the three events below, which are all this hit's, and put back after them.
+	const float WasHitLanded = Acting->SetHitBeingAnnouncedLanded(Notice.Landed);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
@@ -1316,7 +1320,8 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// WITH WHO WAS STRUCK AND WHAT REACHED THEIR HEALTH, since issue #1833 group
 	// D: "Critical strikes apply a random DoT to the target" acts on the target,
 	// and the owner's rule of 2026-09-02 (#917) asks whether the blow took a
-	// tenth of its maximum health. No row read either before, measured
+	// tenth of its maximum health (until the ruling of 2026-11-26; since then
+	// whether it dealt more than nought). No row read either before, measured
 	// 2026-09-30: no critical_strike row takes a fraction of its event's amount,
 	// and none carries a condition on the target.
 	if (Notice.bCritical)
@@ -1341,6 +1346,7 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		FCataclysmWarFervour::SkullSplitterOnCriticalStrike(Acting, Notice.Target, CritTags);
 		FCataclysmWarFervour::DeathmarkOnCriticalStrike(Acting, Notice.Target, CritTags);
 	}
+	Acting->SetHitBeingAnnouncedLanded(WasHitLanded);
 
 	// AND EVERY Nth LANDED HIT OF THE CHARACTER'S OWN ON A BOSS COUNTS AS A KILL OF IT: Death by Inches, the Death trees'
 	// slice C4d2 (2026-11-25). After the hit's own rows, so the kill's rows act on a hit already heard. A minion's hit is

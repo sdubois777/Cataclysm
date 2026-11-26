@@ -1341,7 +1341,7 @@ protected:
 	 *
 	 * @return whether the ailment was applied
 	 */
-	bool ApplyStatedAilmentTo(AActor* Self, AActor* Target) const;
+	bool ApplyStatedAilmentTo(AActor* Self, AActor* Target, float DealtToHealth = -1.0f) const;
 
 	/**
 	 * The riders `HitTargets` lays on every LANDED blow beyond its damage, its burn and its stated ailment: the

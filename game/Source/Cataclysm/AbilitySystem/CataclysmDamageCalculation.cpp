@@ -87,10 +87,8 @@ const TCHAR* UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat = TEXT("zone_d
 const TCHAR* UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat = TEXT("zone_applies_effects_to_owner");
 const TCHAR* UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat = TEXT("zone_follows_owner_percent");
 const TCHAR* UCataclysmDamageCalculation::MinionsLeaveChaosPoolsStat = TEXT("minions_leave_chaos_pools");
-// Three about damage over time on the character who carries them. Ruled 2026-10-06. See the header.
+// Two about damage over time on the character who carries them. Ruled 2026-10-06. See the header.
 const TCHAR* UCataclysmDamageCalculation::AilmentImmunityStat = TEXT("ailment_immunity");
-const TCHAR* UCataclysmDamageCalculation::BleedDamageTakenFromEnergyShieldStat =
-	TEXT("bleed_damage_taken_from_energy_shield");
 // And one about every blow the energy shield takes. Ruled 2026-10-07. See the header.
 const TCHAR* UCataclysmDamageCalculation::EnergyShieldDamageTakenStat =
 	TEXT("energy_shield_damage_taken");
@@ -98,8 +96,10 @@ const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenFromManaFirstStat =
 	TEXT("damage_over_time_taken_from_mana_first");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
-const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
-	TEXT("shield_absorbs_damage_over_time");
+const TCHAR* UCataclysmDamageCalculation::BleedDrainsEnergyShieldStat =
+	TEXT("bleed_drains_energy_shield");
+const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsWhatBypassesItStat =
+	TEXT("shield_absorbs_what_bypasses_it");
 const TCHAR* UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat =
 	TEXT("armor_penetration_suppressed");
 const TCHAR* UCataclysmDamageCalculation::ArmorOverwhelmHalvedStat =
@@ -1369,11 +1369,30 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		}
 	}
 
+	// 6a2. A BLEED AGAINST A STANDING ENERGY SHIELD DEALS NOTHING, AND USES NOTHING UP. The project owner,
+	// 2026-11-26: "Bleed deals no damage while the target has energy shield." Decided here, before the temporary
+	// absorb and the mana of step 7 and not at step 8, by the coordinating session's ruling of the same day: such a
+	// bleed "must not use anything up either", so neither the absorb nor the mana pays for a tick that does nothing.
+	// Step 8 says which bleeds the shield does take.
+	//
+	// ONLY THE PLAIN BLEED: not one on a defender carrying `bleed_drains_energy_shield` (the drawback, whose bleed
+	// meets the absorb, the shield and health in that order as any tick does), not the Masochist's converted damage
+	// (damage already taken and deferred), and not a tick that ignores the shield.
+	if (Hit.bIsBleed && !Hit.bIsConvertedDamage && !Hit.bIgnoresEnergyShield
+		&& Vitals->GetEnergyShield() > 0.0f
+		&& DefenderStat(Defender, BleedDrainsEnergyShieldStat,
+						Combat ? Combat->GetBleedDrainsEnergyShield() : 0.0f)
+			<= 0.0f)
+	{
+		Damage = 0.0f;
+	}
+
 	// 6b. THE TEMPORARY ABSORB, BEFORE EVERY POOL. The project owner, 2026-10-07:
 	// it is separate from the energy shield. Ruled the same day under the owner's
 	// delegation: it is taken before the energy shield, and it absorbs every kind
 	// of damage, a bleed and every other tick included. So nothing here asks what
-	// kind of blow this is.
+	// kind of blow this is. A bleed that a standing shield holds off arrives here
+	// as nought (step 6a2), so it takes nothing from the absorb.
 	//
 	// ONE POINT FOR ONE POINT OF WHAT IS LEFT AFTER EVERY MULTIPLIER ABOVE. The
 	// magic sub-type's bonus below is against the energy shield and the slashing
@@ -1400,8 +1419,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// `damage_over_time_taken_from_mana_first`: "DoTs deal damage to your mana
 	// pool first". Ruled 2026-10-06. One point of mana for one point of damage,
 	// as far as the mana held goes. What is left carries on to the shield and to
-	// health exactly as the whole tick would have, so a bleed's remainder still
-	// passes the shield.
+	// health exactly as the whole tick would have. A bleed that a standing shield
+	// holds off arrives as nought (step 6a2) and takes no mana.
 	//
 	// AFTER EVERY MULTIPLIER ABOVE, so the mana pays for the damage the character
 	// would really have taken and not for what was sent.
@@ -1420,59 +1439,58 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		Damage -= Result.AbsorbedByMana;
 	}
 
-	// 8. Energy shield. It absorbs every hit and every kind of damage over time
-	// EXCEPT BLEED, which passes straight to health. The project owner,
-	// 2026-09-18: "every DoT except bleed reaches ES." Issue #2014. Until then
-	// no tick of any kind reached the shield, the rule of 2026-08-02 that this
-	// reverses.
+	// 8. Energy shield. It absorbs every hit and every kind of damage over time,
+	// with three exceptions the project owner ruled on 2026-11-26.
 	//
-	// UNLESS THIS CHARACTER CARRIES THE FLAG THAT LETS BLEED IN TOO:
-	// `Ritualist_keystone_c_kA` Warded, "Your Energy Shield absorbs damage over
-	// time as well as hits" (issue #1515), and the drawback "Energy shield can
-	// now be effected by bleed". Since #2014 the flag decides bleed and nothing
-	// else, so Warded now adds only bleed. Kept under its old name, by a ruling
-	// under the owner's delegation, rather than renamed across the data.
+	// A BLEED DEALS NOTHING AT ALL WHILE THE SHIELD HOLDS, neither to the shield
+	// nor to health (set to nought at step 6a2, before the temporary absorb, so it
+	// uses nothing up), and deals to health again once the shield is gone: "Bleed
+	// deals no damage while the target has energy shield. Can bleed a magical
+	// barrier after all, so you'd need to hit actual health." Until then a bleed
+	// passed straight to health (2026-09-18, issue #2014), and before that no
+	// tick of any kind reached the shield (2026-08-02).
+	//
+	// UNLESS THE DEFENDER CARRIES `bleed_drains_energy_shield`, the drawback
+	// "Energy shield can now be effected by bleed": its bleed is not stopped by
+	// the shield, and its ticks come off the shield one for one, then off health.
+	// Ruled by the coordinating session on 2026-11-26, so the row stays a
+	// drawback. Until then the stat was `shield_absorbs_damage_over_time` and the
+	// Warded keystone granted it too.
+	//
+	// A BLOW OR TICK THAT IGNORES THE SHIELD (`bIgnoresEnergyShield`: a Void
+	// Splinter's tick, ruled 2026-11-26, and a blow of a creature carrying Soul
+	// Eater, 2026-11-24) goes past it to health, UNLESS THE DEFENDER CARRIES
+	// `shield_absorbs_what_bypasses_it`, the Warded keystone: "Your Energy Shield
+	// absorbs damage that would bypass it." The owner's choice of 2026-11-26.
+	// Then the shield takes it like any other blow. A bleed is not among them:
+	// Warded must not turn a bleed, which does nothing against a shield, into a
+	// cost (the coordinating session, relaying the owner).
+	//
+	// AND THE MASOCHIST'S CONVERTED DAMAGE, laid as a bleed by The Breaking
+	// Point, is not held off: it is damage already taken and deferred, and it met
+	// every defence when it was converted. It goes to health, as before. Ruled by
+	// the coordinating session on 2026-11-26.
 	//
 	// A TICK WITH NO AILMENT -- a ground zone's, a dungeon hazard's -- IS NOT A
 	// BLEED, so the shield takes it. `FCataclysmIncomingHit::bIsBleed` says
 	// where the answer comes from.
 	//
-	// THIS IS THE ONLY PLACE IN THE MODULE WHERE DAMAGE OVER TIME AND THE
-	// ENERGY SHIELD MEET, which was swept rather than assumed: thirty-one sites
-	// branch on `bIsDamageOverTime` and the other thirty are critical strike,
-	// retaliation, the stun roll, contagion, evasion, ailment chance, the
-	// overlay's scale and the delivery flags that set the bool. Everything
-	// downstream reads `Result.AbsorbedByShield`, which is zero for a bleed tick
-	// only because of this line, and was zero for every tick until issue #2014,
-	// so all of it followed that change with no change of its own.
-	//
 	// READ FROM THE DEFENDER, like every other defence in this function. It is
 	// the shield being hit that decides, not the thing swinging.
-	const bool bShieldApplies = !Hit.bIsBleed
-		|| DefenderStat(Defender, ShieldAbsorbsDamageOverTimeStat,
-						Combat ? Combat->GetShieldAbsorbsDamageOverTime() : 0.0f)
+	const bool bBleedDrainsShield = Hit.bIsBleed
+		&& DefenderStat(Defender, BleedDrainsEnergyShieldStat,
+						Combat ? Combat->GetBleedDrainsEnergyShield() : 0.0f)
 			> 0.0f;
+	const bool bShieldApplies = !Hit.bIsBleed || bBleedDrainsShield;
+	const bool bShieldTakesWhatBypassesIt = !Hit.bIsBleed
+		&& DefenderStat(Defender, ShieldAbsorbsWhatBypassesItStat,
+						Combat ? Combat->GetShieldAbsorbsWhatBypassesIt() : 0.0f)
+			> 0.0f;
+	const bool bBypassesShield = Hit.bIgnoresEnergyShield && !bShieldTakesWhatBypassesIt;
 
-	// AND A SHARE OF A BLEED THE SHIELD WOULD LET THROUGH, for a character
-	// carrying `bleed_damage_taken_from_energy_shield`: "10%-20% of bleed damage
-	// you take is taken from your energy shield instead of your health". Ruled
-	// 2026-10-06. That percent of the tick is put to the shield, as far as the
-	// shield has it, and the rest goes to health as the whole of it did.
-	//
-	// THE WHOLE OF EVERYTHING ELSE, AS BEFORE. The share is one for every hit,
-	// for every tick that is not a bleed, and for a bleed on a character whose
-	// shield takes bleed whole, and the stat is not read for any of them.
-	//
-	// AND NONE AT ALL OF A BLOW THAT IGNORES THE SHIELD: Death's Soul Eater, "Completely ignores player energy
-	// shields", 2026-11-24. The whole of it goes on to health, whatever the shield holds and whatever kind of blow it
-	// is; nothing that asks what the shield absorbed sees anything for it.
-	const float ShieldShare = Hit.bIgnoresEnergyShield
-		? 0.0f
-		: bShieldApplies
-		? 1.0f
-		: FMath::Clamp(
-			  DefenderStat(Defender, BleedDamageTakenFromEnergyShieldStat, 0.0f),
-			  0.0f, 100.0f) / 100.0f;
+	// THE WHOLE OF A BLOW THE SHIELD APPLIES TO, and none of one that bypasses it
+	// or of a bleed it does not take.
+	const float ShieldShare = !bBypassesShield && bShieldApplies ? 1.0f : 0.0f;
 	if (ShieldShare > 0.0f && Vitals->GetEnergyShield() > 0.0f)
 	{
 		const float Magic = Hit.bIsMagic ? 1.0f + SubtypeBonus / 100.0f : 1.0f;

@@ -2,6 +2,169 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — Any blow that dealt something can carry an ailment; a bleed needs health and deals nothing while a shield stands; a Void Splinter ignores the shield; Warded and two bleed enchantments reworded
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp`: `BlowCanCarryAnAilment` takes what the blow
+  landed and asks it to be above nought; new `BlowCanCarryABleed` and `IsBleed`; `RollOnLandedBlow` takes the landed
+  figure and skips a bleed the blow cannot carry; `ApplyRandomDamageOverTime` refuses a bleed it is not allowed.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`: `FCataclysmDamageResult::Landed`, and
+  step 8, where a bleed tick deals nothing while the shield stands and a tick marked `bIgnoresEnergyShield` passes it.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: a Void Splinter tick ignores the shield; the
+  roll on a landed blow and the bleed on a critical strike read the new checks.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `SetHitBeingAnnouncedLanded` and
+  `DealtForAnAilment`, read by the row actions that lay an ailment, a random damage over time or a slow.
+- The callers that pass what a blow landed: `CataclysmCombatEvents.cpp`, `CataclysmPlayerCharacter.cpp`,
+  `CataclysmMinion.h` and `.cpp`, `CataclysmSkillEffects.h` and `.cpp`, `CataclysmSkillTemplate.h` and `.cpp`,
+  `CataclysmProjectile.cpp`, `CataclysmBuriedWeapon.cpp`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmRemains.cpp`, after the Death finish bundle merged: `Detonate` announces
+  what each struck enemy's shield lost beside `remains_detonation_hit`, so Grave Spores' Necrosis follows the rule
+  below. `Cataclysm.Remains.PlaguePitPassesTheAilmentsTheirCreatureDiedWithAndGraveSporesInflictsNecrosis` now expects
+  a blast under a tenth to inflict it, and its control raises the event by hand at nought, a counting row proving it
+  was heard.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmAilmentTests.cpp` (the tenth's test rewritten, two new),
+  `game/Source/Cataclysm/Tests/CataclysmDamageCalculationTests.cpp` (the energy shield test extended).
+- `docs/Cataclysm_GDD_v2.md`: the mitigation table's step 8, the energy shield bullets, "Applying Damage Over Time and
+  Other Effects", and the Succubus's shield.
+- The rulings on the rows that named bleed and the shield: `CataclysmCombatAttributeSet.h` and `.cpp` (the attribute
+  `ShieldAbsorbsDamageOverTime` renamed `BleedDrainsEnergyShield`, and a new `ShieldAbsorbsWhatBypassesIt`),
+  `CataclysmPlayerClassStats.cpp`, `CataclysmEnchantmentRenames.cpp` (one alias),
+  `tools/apply_ailment_shield_rulings_2026_11_26.py` (new: writes the workbook cells and Warded's sentence),
+  `docs/All_Things_Cataclysm.xlsx`, `docs/Ritualist_Class_Tree_Final.json`, the regenerated `game/Data/` CSVs,
+  `tools/tests/enchantment_row_names.txt`, and the tests in `CataclysmEnergyShieldKeystoneTests.cpp`,
+  `CataclysmEnchantmentEffectTests.cpp`, `CataclysmStatExemptionTests.cpp`, `CataclysmPlayerClassStatsTests.cpp`,
+  `CataclysmPassiveTreeTests.cpp`, `CataclysmDataTableTests.cpp` and three files in `tools/tests/`.
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The C++ is written and not compiled; it waits for a window. Nothing below claims a
+  measured outcome in the game.
+- **The DataTable assets are not regenerated.** `game/Data/` CSVs are; the `.uasset` files under
+  `game/Content/Data/` need the editor and wait for the window, as every workbook change's do.
+
+### The owner, verbatim
+
+- On dropping the tenth of maximum health an incidental ailment needed (#917, 2026-09-02): "I agree, fix it. Also,
+  bleed should be the only ailment that doesn't apply against energy shield. The rest should work. Maybe void splinter
+  should ignore es altogether?"
+- "Bleed deals no damage while the target has energy shield. Can bleed a magical barrier after all, so you'd need to
+  hit actual health."
+- 2026-11-25: "bleed does nothing against energy shield."
+- The Void Splinter question was ruled yes by the coordinating session on 2026-11-26.
+- **Warded**, the owner's choice of the coordinating session's recommended option (2026-11-26): "Your Energy Shield
+  absorbs damage that would bypass it."
+- **The positive enchantment** "10%-20% of bleed damage you take is taken from your energy shield instead of your
+  health", the owner's choice of the coordinating session's recommended option (2026-11-26): "You take 10%-20% less
+  damage from bleeding."
+
+### The rules built
+
+1. **An ailment that is not the skill's own applies from any blow that landed and dealt more than nought**, counting
+   what the mana, the energy shield and a temporary absorb took as well as health. A blow that killed carries nothing.
+   An ailment the skill itself states applies whether or not the blow hurt, as before.
+2. **The stun keeps its tenth** (`StunDamageThresholdPercent`), and so do the knockdown and the stun in
+   `CataclysmSkillEffects.cpp`.
+3. **A bleed, chanced or stated, applies only from a blow that dealt damage to health.** A bleed tick deals nothing
+   while the target's shield is above nought, neither to health nor to the shield, and deals again once it is gone.
+4. **A Void Splinter's ticks go straight to health** and leave the shield whole. Its share is still of current health.
+5. **Ailments laid on the player follow the same rules**: every check reads the defender, whoever that is.
+
+### What the research settles
+
+- **Last Epoch has no damage threshold for an ailment.** Maxroll's ailment guide
+  (https://maxroll.gg/last-epoch/resources/ailments-explained) treats an ailment as a chance applied on hit, a chance
+  that "can be increased"; the one ailment it ties to how hard the hit was is the stun, which "Scales with damage".
+  That is the shape built here: a chance on any hit, and a damage figure only for the stun.
+- **Path of Exile's bleed is a plain chance on hit** with no fraction of life asked: a weapon affix reads
+  "15% chance to cause Bleeding on Hit" (https://poedb.tw/us/Bleeding). No page read gave bleeding, poison or ignite
+  a minimum hit size.
+- **What neither settles.** How energy shield meets damage over time could not be read from the pages reached
+  (poewiki and the Last Epoch fandom wiki refuse automated reading), so **bleed against the shield is this game's own
+  rule**, the owner's, and is not derived from the genre.
+
+### Judgements by the writing session, labelled as such
+
+- **A stated bleed with no blow figure** (a caller that has none) asks the target's shield instead: it applies only
+  when the shield is at nought.
+- **A random damage over time that draws a bleed it may not lay lays nothing**, rather than drawing again, so a draw
+  pinned by its index for a test still means the same kind.
+- **A bleed tick that deals nothing does not restart the shield's refill wait**, because nothing landed; a bleed alone
+  never keeps a shield from refilling.
+- **`ApplyBurn`'s incidental burn** asks only that the hit dealt more than nought.
+
+### The rows that put bleed and energy shield together, and what each became
+
+Ruled by the coordinating session on 2026-11-26 within the owner's delegation, except where the owner chose.
+
+1. **Mana counts as dealt.** "MANA: yes. Count mana as dealt. The blow did damage."
+2. **The drawback "Energy shield can now be effected by bleed"** (`Negative_Energy_shield_can_now_be_effected_by_bleed`)
+   keeps a drawback's meaning: a bleed on its holder is not stopped by the shield, and its ticks come off the shield one
+   for one, then off health. Its stat is renamed from `shield_absorbs_damage_over_time`, which had not been true since
+   issue #2014, to `bleed_drains_energy_shield`, in the workbook, the C++ (the attribute too) and every test. Its Weight
+   and Tags are unchanged. No save holds the stat: a character's stats are rebuilt from its passive points and its
+   items' enchantments on load.
+3. **The Breaking Point's converted damage** (`Masochist_basic_ll_b1`) is exempt from rule 3 and keeps going to health,
+   "because it already met every defence when it was converted", as bleed's movement gate (#918) already exempts it.
+4. **Warded** (`Ritualist_keystone_c_kA`): the owner's words above. Its row moves to a stat of its own,
+   `shield_absorbs_what_bypasses_it`: with it, a blow or tick marked `bIgnoresEnergyShield` is taken by the shield like
+   any other while the shield stands. Two things set that mark, found by searching where the flag is assigned: a Void
+   Splinter's tick and a blow of a creature carrying Soul Eater (`UCataclysmEnemyModifiers::IgnoresEnergyShield`). **A
+   bleed is not included**: "Warded must not turn that into a cost." Its sentence is rewritten in
+   `docs/Ritualist_Class_Tree_Final.json` (and so `PassiveNodes.csv`) and in the design document.
+5. **The positive enchantment**: the owner's words above, at the same range, as the row shape the drawback "Bleed
+   effects applied to you deal 30%-50% increased damage" already has: `damage_over_time_taken` requiring
+   `Keyword.DoT.Bleed`, `more` at -10 to -20 ("less" is `more` at a negative figure in every "you take N% less damage"
+   row). No stat was added: the search for one found `damage_over_time_taken`, which already reads the tick's ailment
+   tag. Its Weight (3) and Tags (`Keyword.Shield, Stat.Defense.EnergyShield`) are unchanged. **Its row name changes**,
+   because a row name is the sentence's first 48 characters: `Positive_10_20_of_bleed_damage_you_take_is_taken_from_y`
+   becomes `Positive_You_take_10_20_less_damage_from_bleeding`. The old name, and the name it was itself renamed from,
+   `Positive_Your_energy_shield_absorbs_10_20_of_HP_damage`, both point at the new one in
+   `FCataclysmEnchantmentRenames::Aliases()` and in `tools/tests/enchantment_row_names.txt`, so a saved item carrying
+   either still resolves. The only other reader of the old name was one entry in
+   `Cataclysm.Enchantments.TheSixStatRowsOnDamageOverTimeAndZonesOnTheWearerEachGiveTheFigureTheGameAsksFor`, now
+   the new row read at 80 of a bleed's 100.
+6. **`bleed_damage_taken_from_energy_shield` is retired.** After item 5 no row grants it, and its only readers were
+   step 8 of `Resolve`, the stats-without-an-attribute list in `CataclysmPlayerClassStats.cpp`, and two tests in
+   `CataclysmStatExemptionTests.cpp` (its probe and one case of
+   `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment`, now the new enchantment's case).
+
+**Not changed, and said so:** `sim/cataclysm_sim/damage.py` keeps a field named `shield_absorbs_damage_over_time`. It
+belongs to the simulation's own older energy shield model, in which no tick reaches the shield unless the field is set,
+and that model was already behind the game before this change (the game has let every tick but bleed in since
+2026-09-18). Bringing the simulation's shield up to the game is a change of its own: issue
+[#2944](https://github.com/sdubois777/Cataclysm/issues/2944), opened on the coordinating session's instruction.
+
+### The temporary absorb comes after a bleed is held off
+
+Ruled by the coordinating session on 2026-11-26: "zero the bleed BEFORE the temporary absorb. Under the owner's rule a
+bleed against a standing shield does nothing, so it must not use anything up either." Built as step 6a2 of `Resolve`,
+before the temporary absorb (6b) and the mana of step 7, so a held-off bleed uses up neither. It covers only the plain
+bleed against a shield above nought: with the drawback (`bleed_drains_energy_shield`), and for converted damage, the
+order stays the absorb, then the shield, then health. The test is renamed
+`Cataclysm.TemporaryAbsorb.ItAbsorbsEveryTickButABleedAStandingShieldHoldsOffWhichUsesNothingUp` and checks that a
+bleed tick against a shield leaves the absorb whole, that a tick that is not a bleed still spends it, and that with no
+shield a bleed tick spends it.
+
+### What the controls cover, and what they do not
+
+- **A blow that deals nothing announces no hit at all.** `UCataclysmVitalAttributeSet` raises a hit's events, and rolls
+  its ailments, only inside `LocalDamage > 0`. So a control that strikes for nought cannot tell that outer check from
+  the rule built here. Two controls were moved to raise their event by hand with an amount of nought, each with a row
+  that counts the event to prove it was heard:
+  `Cataclysm.StatusActions.AFirstHitThatTakesUnderATenthLeavesAllFiveAndOneThatDealsNothingLeavesNone`
+  (`first_hit_dealt`) and `Cataclysm.Triggers.RetaliationRaisesItsEventWithTheAttackerAndWhatReachedItsHealth`
+  (`retaliation_dealt`, which `UCataclysmRetaliation::Pay` does not raise for a blow worth nothing).
+- **Attrition's control** (`Cataclysm.Passives.AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll`)
+  asserts as set-up that its blow at an attack damage of nought dealt nought. It shows the end result (a blow that dealt
+  nothing does not Cripple or Weaken) and cannot say which of the two checks refused it, for the reason above.
+- **Not covered: a blow that deals nought in three trap tests.** The set-up of
+  `...TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOff...EvenWhenTheCastTookUnderATenth`,
+  `...TheBleedRowBleedsEveryEnemyATrapsCastStrikes...EvenWhenTheBlowTookUnderATenth` and
+  `...TheDamageOverTimeRowLaysItsShare...EvenWhenTheBlowTookUnderATenth` cannot make a trap's cast deal nothing. Their
+  other controls (no row; a second enemy that did not set the trap off) stand. Accepted by the coordinating session.
+
+---
+
 ## 2026-11-26 — The Death finish bundle: the roster, slices C, E, F, D, A and B, the Wraith and the Lich merged, and the coordinating session's rulings at assembly
 
 **Affects:** the bundle's branch, feat/death-finish-bundle, which merges the roster branch and the Death line's finishing
@@ -92,6 +255,9 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
   when a larger creature (an elite or a brute) dies among smaller ones. Option (b), to exempt it as a chance on a hit,
   was not taken; the coordinating session is offering it to the owner. The event had carried an amount of nought,
   which no such row could ever pass; `UCataclysmRemains::Detonate` now passes the health each struck enemy lost.
+  **SUPERSEDED THE SAME DAY by the owner's ailment ruling of 2026-11-26** (the entry above): the tenth is gone, so Grave
+  Spores' Necrosis lands from any remains blast that dealt the struck enemy more than nought, its energy shield's part
+  counted. `Detonate` also announces what each enemy's shield lost, beside the event, for that reason.
 
 ### Joining the Wraith and the Lich
 

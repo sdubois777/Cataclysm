@@ -518,6 +518,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Data.EffectSpec.GetAllGrantedTags(Granted);
 				Hit.bIsBleed = Granted.HasTag(UCataclysmDebuffs::BleedTag());
 
+				// AND A VOID SPLINTER TICK GOES PAST THE SHIELD STRAIGHT TO HEALTH: the owner, 2026-11-26, "Maybe void
+				// splinter should ignore es altogether?", ruled yes by the coordinating session. Its share is still of
+				// current health, as before.
+				static const FGameplayTag VoidSplinterTick =
+					FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.VoidSplinter")), /*ErrorIfNotFound=*/false);
+				Hit.bIgnoresEnergyShield = VoidSplinterTick.IsValid() && Granted.HasTag(VoidSplinterTick);
+
 				// A BLEED TICKS ONLY WHILE ITS TARGET MOVES, AND STOPS AFTER 4 SECONDS OF MOVEMENT. Issue #918, ruled
 				// 2026-10-31. "Moving" is the movement sampler's answer, the one every movement condition reads, so a
 				// knockback or a pull counts. A tick on a carrier last seen standing still deals nothing and uses none
@@ -708,7 +715,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect Aim's
 				// does, because the shield is the defender's and only the blow can refuse it. Every blow whose causer
 				// carries it, its ticks included. 2026-11-24.
-				Hit.bIgnoresEnergyShield = UCataclysmEnemyModifiers::IgnoresEnergyShield(CauserRows);
+				// ADDED TO, not set: a Void Splinter tick already ignores the shield whatever struck (2026-11-26).
+				Hit.bIgnoresEnergyShield =
+					Hit.bIgnoresEnergyShield || UCataclysmEnemyModifiers::IgnoresEnergyShield(CauserRows);
 
 				// AND DEATH'S GRAVE TOUCH, "Deal more damage to players with less than 50% health": half again, on a
 				// HIT and never a tick, judged on the health this character holds as the blow arrives. The same
@@ -3122,8 +3131,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// were worked out on the attacker's side, where the skill's tags were
 			// in hand, and they arrive on the effect.
 			// `UCataclysmAilments::RollOnLandedBlow` holds every rule about them:
-			// the tenth of maximum health, nothing on a blow that killed, and one
-			// pool for a blunt weapon's 10% and the chance to stun from gear.
+			// a blow that dealt more than nought, its shield's part counted (the
+			// owner's ruling of 2026-11-26; the tenth of maximum health until then,
+			// which the stun keeps), a bleed only on health reached, nothing on a
+			// blow that killed, and one pool for a blunt weapon's 10% and the
+			// chance to stun from gear.
 			//
 			// NOT FOR A TICK OF DAMAGE OVER TIME. A tick carries no chance of its
 			// own. Until #899 a tick of damage over time applied by a character
@@ -3138,7 +3150,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			if (!Hit.bIsDamageOverTime)
 			{
 				UCataclysmAilments::RollOnLandedBlow(Data.EffectSpec,
-					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly,
+					GetOwningActor(), Outcome.DealtToHealth, Outcome.Landed(), Hit.bIsBlunt && !bAreaSkillShareOnAnAlly,
 					/*bCritical=*/Outcome.bWasCritical);
 			}
 
@@ -3159,14 +3171,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// reads and nothing at run time would report it.
 			//
 			// AND THE RULE FOR EVERY AILMENT THAT IS NOT THE SKILL'S OWN. Issue
-			// #1565, ruled 2026-10-01. The owner's rule of 2026-09-02 (#917): such
-			// an ailment needs the blow to have taken a tenth of the target's
-			// maximum health, and a blow that killed applies nothing. A passive
-			// node is not the skill's own row. Until #1565 this asked only that the
-			// blow reached health, so a scratch could bleed and so could a corpse.
-			// `UCataclysmAilments::BlowCanCarryAnAilment` holds both halves, and
-			// the gear roll above and the random damage over time enchantment ask
-			// it too, so the three cannot hold different rules.
+			// #1565, ruled 2026-10-01, and THE OWNER'S RULING OF 2026-11-26: an
+			// ailment that is not the skill's own needs a blow that dealt more
+			// than nought (the tenth of maximum health #917 asked is gone), and a
+			// BLEED needs that blow to have reached HEALTH: "bleed should be the
+			// only ailment that doesn't apply against energy shield". A blow that
+			// killed applies nothing. `UCataclysmAilments::BlowCanCarryABleed`
+			// holds both, as it does for every other bleed.
 			//
 			// READ OFF THE ATTRIBUTE RATHER THAN ASKED FOR, which is safe only
 			// because the node's one row carries no condition and no scale, so
@@ -3174,7 +3185,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// stat would need a `StatForSkill` call here or its row would be
 			// dropped in silence. Issue #1022.
 			if (Hit.bIsMelee && Outcome.bWasCritical
-				&& UCataclysmAilments::BlowCanCarryAnAilment(GetOwningActor(), Outcome.DealtToHealth))
+				&& UCataclysmAilments::BlowCanCarryABleed(GetOwningActor(), Outcome.DealtToHealth))
 			{
 				const UAbilitySystemComponent* Attacker =
 					Data.EffectSpec.GetContext()

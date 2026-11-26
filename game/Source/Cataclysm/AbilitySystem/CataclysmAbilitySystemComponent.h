@@ -1834,8 +1834,8 @@ public:
 	/**
 	 * Lay a status action's status on the wearer, by the wearer. Ruled 2026-10-06.
 	 *
-	 * THE RULE OF A TENTH IS NOT ASKED. The owner's rule of 2026-09-02 (issue #917) is about what a BLOW may lay on
-	 * its target. These rows state their status without condition and most have no blow at all. THE STUN'S
+	 * THE AILMENT RULE IS NOT ASKED. The owner's rule of 2026-09-02 (issue #917; a tenth of maximum health until the
+	 * ruling of 2026-11-26, more than nought dealt since) is about what a BLOW may lay on its target. These rows state their status without condition and most have no blow at all. THE STUN'S
 	 * IMMUNITY WINDOW IS KEPT, so a wearer is not stunned back to back.
 	 *
 	 * @return whether anything was applied
@@ -4701,6 +4701,24 @@ public:
 	}
 
 	/**
+	 * Everything the hit being announced dealt, its energy shield's part included (`FCataclysmDamageResult::Landed`),
+	 * for the row actions that lay an ailment: they ask it to be above nought, where the event's amount is only what
+	 * reached health. The owner's ruling of 2026-11-26. Set beside `SetHitBeingAnnouncedSent` by whoever announces a hit;
+	 * returns what it held before, for the caller to put back. Nought when no hit is being announced, and then the
+	 * event's own amount answers.
+	 */
+	float SetHitBeingAnnouncedLanded(float Landed)
+	{
+		const float Was = HitBeingAnnouncedLanded;
+		HitBeingAnnouncedLanded = Landed;
+		return Was;
+	}
+
+	/** What an ailment-laying row action asks to be above nought: the hit's whole landed figure, or the event's amount
+	 *  when no hit is being announced. */
+	float DealtForAnAilment(float EventAmount) const { return FMath::Max(EventAmount, HitBeingAnnouncedLanded); }
+
+	/**
 	 * Lightning Rod's device for a blow about to strike this character, or null: rolled against
 	 * `BlowToDeviceChancePerDeviceStat` times this character's devices, at most `BlowToDeviceMostChancePercent`, and
 	 * only when a device stands within `BlowToDeviceReachCm`, which is the nearest one (ruled L2). The console variable
@@ -6130,8 +6148,9 @@ public:
 	 * `ApplyStatusSizedAction` LAYS A DAMAGE OVER TIME ON THE OTHER CHARACTER OF ITS EVENT AT THE VALUE'S MULTIPLE OF ITS
 	 * ORDINARY SIZE, always: "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast", on `deployable_hit`
 	 * with `Type.Trap` (ruling 8 of 2026-10-07: "1-2 bleed stacks" is one bleed at 1 to 2 times its size). The
-	 * `ECataclysmApplyStatus::Sized` form, which until now only `ApplyStatusToSelfSizedAction` took. The owner's rule of
-	 * a tenth (#917) is asked of it as of every status a blow lays on another.
+	 * `ECataclysmApplyStatus::Sized` form, which until now only `ApplyStatusToSelfSizedAction` took. The owner's ailment
+	 * rule is asked of it as of every status a blow lays on another: more than nought dealt, its shield's part counted,
+	 * and a bleed only from a blow that reached health (the ruling of 2026-11-26; a tenth of maximum health, #917, until then).
 	 */
 	static const TCHAR* ApplyStatusSizedAction;
 
@@ -6139,8 +6158,9 @@ public:
 	 * `SlowForSecondsAction` SLOWS THE OTHER CHARACTER OF ITS EVENT BY THE VALUE IN PER CENT FOR `StackSeconds`: "Traps
 	 * apply a 20%-35% slow to triggered enemies for 2-4 seconds", on `trap_triggered`, whose other character is the enemy
 	 * that set the trap off and no other (M3 (b)). Cripple's tag at the stated strength, capped at Cripple's own cap, for
-	 * the stated seconds lengthened as a stated Cripple's are. THE RULE OF A TENTH IS ASKED (the owner, 2026-10-21: "Follow
-	 * the tenth rule") against the event's amount, the largest blow the trap's cast dealt that enemy
+	 * the stated seconds lengthened as a stated Cripple's are. THE OWNER'S AILMENT RULE IS ASKED (2026-10-21: "Follow the
+	 * tenth rule"; since the ruling of 2026-11-26 more than nought dealt, its shield's part counted, and no longer a
+	 * tenth of maximum health) against the event's amount, the largest blow the trap's cast dealt that enemy
 	 * (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). WHEN NO BLOW HAS YET QUALIFIED, the slow waits for a later blow of
 	 * the same cast (`LateSkillTrapSlows`, ruled 2026-10-21, brief 60c). See `UCataclysmAilments::ApplySlowOfStrength`.
 	 */
@@ -6161,10 +6181,11 @@ public:
 	/**
 	 * THE SLOW DECIDED AT A LATE BLOW. Ruled 2026-10-21 by the coordinating session (brief 60c): "when a blow from a trap's
 	 * cast lands on the enemy that set that trap off and takes at least a tenth of its maximum health, it lays the slow
-	 * there and then at the slow row's figures, once per trap". A blow already landed when the trap triggers is judged at
+	 * there and then at the slow row's figures, once per trap". SINCE THE OWNER'S RULING OF 2026-11-26 a blow qualifies
+	 * when it dealt more than nought, its shield's part counted, and no longer only at a tenth. A blow already landed when the trap triggers is judged at
 	 * `trap_triggered` (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). When none qualified, the slow action leaves one of
 	 * these, and a later blow of that cast (a shot in flight, a rack's throw, since traps layer 3b a buried weapon's
-	 * leap) that names THAT TRAP, compared by identity although the trap is gone, lays it, once, if it takes a tenth. Each waits at most
+	 * leap) that names THAT TRAP, compared by identity although the trap is gone, lays it, once, if it qualifies. Each waits at most
 	 * `SkillTrapLateSlowSeconds`. Emptied at death.
 	 */
 	struct FLateSkillTrapSlow
@@ -6184,12 +6205,14 @@ public:
 	TWeakObjectPtr<AActor> SkillTrapRaisingItsTrigger;
 
 	/**
-	 * A blow of the trap `CastBy` names has landed on `Struck`, taking `DealtToHealth`: if a slow waits for it and the blow
-	 * takes a tenth (the owner's rule, #917), lay the slow and stop waiting. Whether a slow was laid. Asked by
+	 * A blow of the trap `CastBy` names has landed on `Struck`, taking `DealtToHealth` (and `Landed` in all, its shield's
+	 * part included, when the caller gives it): if a slow waits for it and the blow dealt more than nought (the owner's
+	 * ruling of 2026-11-26; a tenth of maximum health, #917, until then), lay the slow and stop waiting. Whether a slow was laid. Asked by
 	 * `UCataclysmSkillEffects::ApplyHit` for every blow of a used-up trap's cast, with the identity `SpentSkillTrapNamed`
 	 * found it by (traps layer 3b), so a blow no slow waits for lays nothing.
 	 */
-	bool LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck, float DealtToHealth);
+	bool LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck, float DealtToHealth,
+							   float Landed = -1.0f);
 
 	/**
 	 * TRAPS LAYER 3B, A TRAP'S LATE BLOWS. Ruled 2026-10-21 by the coordinating session (#2462): "a trap's late shot, a
@@ -6767,6 +6790,9 @@ protected:
 	/** See `SetHitBeingAnnouncedSent`. V5a, 2026-11-25. */
 	float HitBeingAnnouncedSent = 0.0f;
 
+	/** See `SetHitBeingAnnouncedLanded`. The owner's ruling of 2026-11-26 on ailments. */
+	float HitBeingAnnouncedLanded = 0.0f;
+
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;
 
@@ -6834,12 +6860,16 @@ protected:
 	/**
 	 * Apply a status action's status to `Other`, the other character of its
 	 * event, by `Applier`. Issue #1833 group E part 1. `EventAmount` is what
-	 * reached `Other`'s health, which an ailment's rule of #917 reads.
+	 * reached `Other`'s health, which the owner's ailment rule reads: more than
+	 * nought dealt (the ruling of 2026-11-26; a tenth of maximum health, #917,
+	 * until then), and for a bleed health reached. `DealtForAilment` is what
+	 * the event dealt, its shield's part counted (`DealtForAnAilment`, which the
+	 * caller asks, since this function is static).
 	 *
 	 * @return whether the status was applied
 	 */
 	static bool ApplyStatusOf(const FCataclysmPoolAction& Action, AActor* Applier,
-							  AActor* Other, float EventAmount);
+							  AActor* Other, float EventAmount, float DealtForAilment);
 
 	/** Move one pool, by the rules the project owner's delegate ruled on 2026-09-14. */
 	void ApplyPoolAction(const FCataclysmPoolAction& Action,

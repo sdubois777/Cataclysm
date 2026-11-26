@@ -601,13 +601,16 @@ def test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_en
                      r"ApplyStatusSizedAction,", item)
     assert re.search(r"Action\.bSlowForSeconds = Effect->Action\.Equals\(\s*"
                      r"UCataclysmAbilitySystemComponent::SlowForSecondsAction,", item)
-    # AND THE SLOW ASKS THE RULE OF A TENTH against what the trap's cast took
-    # from the enemy that set it off, which `trap_triggered` carries. The owner,
-    # 2026-10-21: "Follow the tenth rule".
+    # AND THE SLOW ASKS THE AILMENT RULE against what the trap's cast took from
+    # the enemy that set it off, which `trap_triggered` carries. The owner,
+    # 2026-10-21: "Follow the tenth rule"; since the owner's ruling of 2026-11-26
+    # that rule asks a blow that dealt more than nought, its shield's part
+    # counted (`DealtForAnAilment`), and no longer a tenth.
     # WHEN NONE HAS QUALIFIED YET, IT WAITS FOR A LATER BLOW OF THE SAME CAST,
     # which `ApplyHit` hands it (ruled 2026-10-21, brief 60c).
     engine = SOURCE.read_text(encoding="utf-8")
-    assert re.search(r"if \(UCataclysmAilments::BlowCanCarryAnAilment\(Slowed, EventAmount\)\)\s*\{\s*"
+    assert re.search(r"if \(UCataclysmAilments::BlowCanCarryAnAilment\(Slowed, DealtForAnAilment\(EventAmount\)\)\)"
+                     r"\s*\{\s*"
                      r"if \(Slower && UCataclysmAilments::ApplySlowOfStrength\(", engine)
     assert "LateSkillTrapSlows.Add(Late);" in engine
     effects = (SOURCE.parent / "CataclysmSkillEffects.cpp").read_text(encoding="utf-8")
@@ -615,7 +618,7 @@ def test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_en
     # trap's identity, and the slow is asked with that identity beside the
     # trap's `deployable_hit`.
     assert re.search(r"MachinesPlayer->LayALateSkillTrapSlow\(SpentTrap\.Trap, Target, "
-                     r"Result->DealtToHealth\);", effects)
+                     r"Result->DealtToHealth, Result->Landed\(\)\);", effects)
     minion = (SOURCE.parent / "CataclysmMinion.cpp").read_text(encoding="utf-8")
     assert re.search(r'ActOnEvent\(FName\(TEXT\("trap_triggered"\)\), &TrapTags, '
                      r'/\*EventAmount=\*/SkillTrapTookFromItsEnemy,', minion)
@@ -969,7 +972,10 @@ def test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_dea
     player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
     # AFTER THE CRITICAL STRIKE'S BLOCK, whatever else it holds (the War line's Skull Splitter and Deathmark since the
     # bundle 3 merge): the block's own closing brace at one tab, then the count.
+    # AND THE HIT'S LANDED FIGURE PUT BACK between them (the owner's ailment ruling of 2026-11-26), so the boss count's
+    # kill rows do not read the hit's figure.
     assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)[^;]*;[\s\S]*?\n\t\}\s*"
+                     r"Acting->SetHitBeingAnnouncedLanded\(WasHitLanded\);\s*"
                      r"if \(!Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*\{\s*"
                      r"UCataclysmFervour::CountAHitOnABoss\(Acting, Notice\.Target\);", player)
     engine = code_without_comments(SOURCE)
@@ -1470,16 +1476,20 @@ def test_a_minions_and_a_thralls_blow_raise_minion_hit_on_the_commander() -> Non
     minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
     assert re.search(r"else if \(OwnDamagePerHit > 0\.0f\)\s*\{\s*if \(UCataclysmAbilitySystemComponent\* Theirs =\s*"
                      r"Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\(Summoner\)\)\)\s*"
-                     # WITH WHAT REACHED HEALTH AS ITS AMOUNT since window death3-w2, so an ailment a row applies
-                     # on it meets the owner's tenth-of-maximum-health rule (#917) as a hit's does.
-                     r"\{\s*Theirs->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &TypeTags, Resolved\.DealtToHealth,\s*"
-                     r"!Resolved\.bEvaded && !Resolved\.bRefusedByImmunityToAttacker, Target\);",
+                     # WITH WHAT REACHED HEALTH AS ITS AMOUNT since window death3-w2, and since the owner's ruling
+                     # of 2026-11-26 with everything it landed announced beside it, so an ailment a row applies on
+                     # it meets the ailment rule as a hit's does.
+                     r"\{\s*const float WasLanded = Theirs->SetHitBeingAnnouncedLanded\(Resolved\.Landed\(\)\);\s*"
+                     r"Theirs->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &TypeTags, Resolved\.DealtToHealth,\s*"
+                     r"!Resolved\.bEvaded && !Resolved\.bRefusedByImmunityToAttacker, Target\);\s*"
+                     r"Theirs->SetHitBeingAnnouncedLanded\(WasLanded\);",
                      minion)
     assert minion.count('"minion_hit"') == 1
     effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
     assert re.search(r"UCataclysmTargeting::AbilitySystemOf\(UCataclysmCommand::CommanderOf\(Instigator\)\)\)\)\s*\{\s*"
+                     r"const float WasLanded = Commanders->SetHitBeingAnnouncedLanded\(Landed->Landed\(\)\);\s*"
                      r"Commanders->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &SkillTags, Landed->DealtToHealth,\s*"
-                     r"true,\s*Target\);", effects)
+                     r"true,\s*Target\);\s*Commanders->SetHitBeingAnnouncedLanded\(WasLanded\);", effects)
     assert effects.count('"minion_hit"') == 1
 
 

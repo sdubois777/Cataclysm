@@ -7896,10 +7896,12 @@ MAX_COOLDOWN_REDUCE_SECONDS = 60.0
 RANDOM_DOT_ACTION = "apply_random_dot"
 
 #: The events a random damage over time may hang on: the ones naming the other
-#: character AND carrying what reached its health, because the owner's rule of
-#: 2026-09-02 (#917) lets an ailment that does not come from the skill's own row
-#: land only from a blow that took a tenth of the target's maximum health.
-#: `hit_dealt` names who was struck and carries no amount, so it is not here.
+#: character AND carrying what reached its health. Chosen under the owner's rule
+#: of 2026-09-02 (#917), that an ailment not from the skill's own row lands only
+#: from a blow that took a tenth of the target's maximum health; since the
+#: owner's ruling of 2026-11-26 it asks only a blow that dealt more than nought,
+#: its shield's part counted, and a bleed one that reached health. `hit_dealt`
+#: names who was struck and carries no amount, so it is not here.
 RANDOM_DOT_EVENTS = (
     "critical_strike",
     "retaliation_dealt",
@@ -8202,9 +8204,10 @@ APPLY_STATUSES_TO_SELF_ONLY = (
 #: `ApplyStatusToSelfSecondsAction` and `ApplyStatusToSelfSizedAction` hold the
 #: same names.
 #:
-#: THE RULE OF A TENTH IS NOT ASKED OF THEM. The owner's rule of 2026-09-02
-#: (#917) is about what a blow may lay on its target; these sentences state
-#: their status without condition, and most have no blow.
+#: THE AILMENT RULE IS NOT ASKED OF THEM. The owner's rule of 2026-09-02
+#: (#917), since 2026-11-26 a blow that dealt more than nought, is about what a
+#: blow may lay on its target; these sentences state their status without
+#: condition, and most have no blow.
 APPLY_STATUS_TO_SELF_ACTIONS = (
     "apply_status_to_self",
     "apply_status_to_self_seconds",
@@ -16270,7 +16273,9 @@ def refuse_a_reserve_percent_row_the_game_cannot_read(
 #: of its maximum health." The event's amount is the largest blow the trap's
 #: cast dealt the enemy that set it off (`ACataclysmMinion::
 #: SkillTrapTookFromItsEnemy`), and the rule is asked against it, as for every
-#: ailment a row lays on another character. AND WHEN NO BLOW HAS YET QUALIFIED,
+#: ailment a row lays on another character. SINCE THE OWNER'S RULING OF
+#: 2026-11-26 that rule asks a blow that dealt more than nought, its shield's
+#: part counted, and no longer a tenth. AND WHEN NO BLOW HAS YET QUALIFIED,
 #: the slow waits up to 5 s for a later blow of the same cast on that enemy (a
 #: shot that lands after the trap is used up), and that blow decides it (ruled
 #: 2026-10-21, brief 60c). The row's cells are the same either way. No Ailment
