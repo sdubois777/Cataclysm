@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Components/CapsuleComponent.h"
+#include "Engine/World.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -64,6 +65,59 @@ void UCataclysmMovement::PlaceBeside(AActor* Mover, const AActor* Creature)
 	Mover->SetActorLocation(Feet, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
 	StepOutOfEnemies(Mover, From);
 	NoteRelocatedInstantly(Mover, From);
+}
+
+FVector UCataclysmMovement::SpotBehind(const AActor* Mover, const AActor* Creature)
+{
+	if (!Mover || !Creature)
+	{
+		return Mover ? Mover->GetActorLocation() : FVector::ZeroVector;
+	}
+	// OPPOSITE THE CREATURE'S FACING, ALONG THE GROUND. A creature facing straight up or down (no ground facing) is
+	// read as facing the mover, so "behind" is its far side from the mover.
+	FVector Facing = Creature->GetActorForwardVector();
+	Facing.Z = 0.0f;
+	if (!Facing.Normalize())
+	{
+		Facing = FVector(Mover->GetActorLocation().X - Creature->GetActorLocation().X,
+						 Mover->GetActorLocation().Y - Creature->GetActorLocation().Y, 0.0f);
+		if (!Facing.Normalize())
+		{
+			Facing = FVector::ForwardVector;
+		}
+	}
+	const float Apart = UCataclysmTargeting::BodyRadiusOf(Mover) + UCataclysmTargeting::BodyRadiusOf(Creature)
+		+ BehindGapCm;
+	const FVector Behind = Creature->GetActorLocation() - Facing * Apart;
+	return FVector(Behind.X, Behind.Y, Mover->GetActorLocation().Z);
+}
+
+void UCataclysmMovement::PlaceBehind(AActor* Mover, const AActor* Creature)
+{
+	UWorld* World = Mover ? Mover->GetWorld() : nullptr;
+	if (!World || !Creature)
+	{
+		return;
+	}
+	FVector Spot = SpotBehind(Mover, Creature);
+	// ROOM FIRST: `FindTeleportSpot` answers true, unchanged, for a spot that is already free, and moves it to the nearest
+	// free place otherwise. With no room near it at all the mover is put beside the creature instead, as Thousand Cuts
+	// puts it.
+	if (!World->FindTeleportSpot(Mover, Spot, Mover->GetActorRotation()))
+	{
+		PlaceBeside(Mover, Creature);
+		return;
+	}
+	Mover->SetActorLocation(Spot, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+	// AND OUT OF ANY OTHER ENEMY STANDING THERE, further behind the creature rather than toward it.
+	const FVector FurtherBehind = Spot + (Spot - Creature->GetActorLocation()).GetSafeNormal2D() * 1000.0f;
+	StepOutOfEnemies(Mover, FurtherBehind);
+	// AND FACING IT, which is what being behind it is for.
+	const FVector Toward = Creature->GetActorLocation() - Mover->GetActorLocation();
+	if (!Toward.IsNearlyZero())
+	{
+		Mover->SetActorRotation(FRotator(0.0f, Toward.Rotation().Yaw, 0.0f));
+	}
 }
 
 void UCataclysmMovement::MoveWithoutSticking(AActor* Actor, const FVector& Delta)

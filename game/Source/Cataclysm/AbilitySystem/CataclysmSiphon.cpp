@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -84,24 +85,39 @@ int32 FCataclysmSiphon::Step(ACataclysmCharacterBase* Holder, float StepSeconds)
 
 	// WHO IS WITHIN THE RADIUS NOW. An enemy new to it enters now; one already in it is seen again.
 	TSet<const AActor*> SeenNow;
-	for (AActor* Each : UCataclysmTargeting::FindEnemiesInSphere(World, Holder, Holder->GetActorLocation(),
-																	   Radius * 100.0f))
+	const auto SeeAround = [World, Holder, Radius, Now, &SeenNow, &Members](const FVector& Centre)
 	{
-		if (!Each || UCataclysmSkillEffects::IsDead(Each))
+		for (AActor* Each : UCataclysmTargeting::FindEnemiesInSphere(World, Holder, Centre, Radius * 100.0f))
 		{
-			continue;
+			if (!Each || UCataclysmSkillEffects::IsDead(Each) || SeenNow.Contains(Each))
+			{
+				continue;
+			}
+			SeenNow.Add(Each);
+			if (UCataclysmAbilitySystemComponent::FSiphonMember* Known = Members.Find(Each))
+			{
+				Known->LastInsideAtSeconds = Now;
+			}
+			else
+			{
+				UCataclysmAbilitySystemComponent::FSiphonMember Fresh;
+				Fresh.EnteredAtSeconds = Now;
+				Fresh.LastInsideAtSeconds = Now;
+				Members.Add(Each, Fresh);
+			}
 		}
-		SeenNow.Add(Each);
-		if (UCataclysmAbilitySystemComponent::FSiphonMember* Known = Members.Find(Each))
+	};
+	SeeAround(Holder->GetActorLocation());
+
+	// AND AROUND EACH LIVING MACHINE OF THE HOLDER'S THAT WIDENS ITS SIPHON: the Effigy, "If you have the Siphon keystone,
+	// the effigy siphons the enemies around it too" (the Crossbow draft's C4, the Death finish slice A, 2026-11-26). The
+	// same radius, the holder's own: "the Siphon also takes in every enemy within its radius of the effigy". An enemy
+	// within reach of both is one member, seen once.
+	for (const ACataclysmMinion* Machine : ACataclysmMinion::DevicesOf(Holder))
+	{
+		if (Machine && Machine->bWidensSummonersSiphon)
 		{
-			Known->LastInsideAtSeconds = Now;
-		}
-		else
-		{
-			UCataclysmAbilitySystemComponent::FSiphonMember Fresh;
-			Fresh.EnteredAtSeconds = Now;
-			Fresh.LastInsideAtSeconds = Now;
-			Members.Add(Each, Fresh);
+			SeeAround(Machine->GetActorLocation());
 		}
 	}
 

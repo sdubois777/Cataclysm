@@ -560,7 +560,8 @@ public:
 	float OwnersRegenerationScale = 1.0f;
 
 	/**
-	 * How much less of each heal reaches a character of the players' side standing in this patch, in percent. Death's
+	 * How much less of each heal reaches a character of the side `HealingLessReachesTeamId` names (the players' side,
+	 * unless a player left it) standing in this patch, in percent. Death's
 	 * Lingering Decay: "Enemies leave behind necrotic zones that reduce healing to players standing in them". Written
 	 * 2026-11-24, ahead of its window; nought for every other patch.
 	 *
@@ -573,6 +574,14 @@ public:
 	 */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	float HealingLessPercentInside = 0.0f;
+
+	/**
+	 * The side whose healing `HealingLessPercentInside` cuts, as `FGenericTeamId::GetId` gives it. Nought, the players'
+	 * side (`ECataclysmTeam::Players`), unless the zone was left by a wearer of the players' side, whose zone cuts the
+	 * creatures' healing instead: issue #2899 (2026-11-26), every enemy modifier works on any wearer. Written by
+	 * `UCataclysmEnemyModifiers::TimedStep` beside the cut; read by `LingeringDecayHealingLessPercentAt`.
+	 */
+	uint8 HealingLessReachesTeamId = 0;
 
 	/** Whether this point falls inside this patch. Read by tests. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ground Zone")

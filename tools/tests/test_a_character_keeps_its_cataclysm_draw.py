@@ -193,8 +193,16 @@ def _mixed_seed(seed: int, salt: int) -> int:
     return _int32(salted * 2654435761 + 2654435769)
 
 
-def order_for(seed: int) -> list[str]:
-    """`UCataclysmRoster::OrderFor`, in Python: Fisher-Yates, backwards, on a stream of the mixed seed."""
+#: `UCataclysmRoster::Built`, the project owner's ruling of 2026-11-26. Read out of the game's source rather than
+#: written here, so this copy cannot drift from it.
+BUILT = tuple(re.findall(r"ECataclysmType::(\w+)", re.search(
+    r"UCataclysmRoster::Built\(\)\s*\{(.*?)\n\}",
+    (SOURCE / "CataclysmEmpire" / "Empire" / "CataclysmRoster.cpp").read_text(encoding="utf-8"), re.S).group(1)))
+
+
+def whole_roster_shuffle(seed: int) -> list[str]:
+    """`UCataclysmRoster::OrderFor` before the ruling of 2026-11-26: Fisher-Yates, backwards, on a stream of the mixed
+    seed, over all eight."""
     state = _mixed_seed(seed, 1) & 0xFFFFFFFF
     order = list(ROSTER)
     for index in range(len(order) - 1, 0, -1):
@@ -206,14 +214,43 @@ def order_for(seed: int) -> list[str]:
     return order
 
 
+def order_for(seed: int) -> list[str]:
+    """`UCataclysmRoster::OrderFor`, in Python: the whole roster's shuffle, then the built ones moved to the front, each
+    part keeping the order the shuffle gave it."""
+    whole = whole_roster_shuffle(seed)
+    return [name for name in whole if name in BUILT] + [name for name in whole if name not in BUILT]
+
+
+def test_the_copy_reads_some_built_cataclysms_and_only_real_ones():
+    """A read that found nothing would make every order below the whole roster's shuffle, unnoticed."""
+    assert BUILT and set(BUILT) <= set(ROSTER), BUILT
+
+
 def test_the_seeds_the_unreal_tests_chose_draw_what_their_comments_say():
-    assert order_for(24681357)[:3] == ["Demonic", "Pestilence", "War"]
-    assert order_for(11)[:3] == ["Death", "Chaos", "Void"]
-    assert order_for(12)[:3] == ["War", "Famine", "Demonic"]
-    assert order_for(7)[:3] == ["Celestial", "Death", "Void"]
-    assert order_for(8)[:3] == ["Void", "Demonic", "Death"]
+    """Since the ruling of 2026-11-26. The lists before it are what `whole_roster_shuffle` gives, checked below."""
+    assert order_for(24681357)[:3] == ["Demonic", "War", "Death"]
+    assert order_for(11)[:3] == ["Death", "Demonic", "War"]
+    assert order_for(12)[:3] == ["War", "Demonic", "Death"]
+    assert order_for(7)[:4] == ["Death", "Demonic", "War", "Celestial"]
+    assert order_for(8)[:4] == ["Demonic", "Death", "War", "Void"]
+
+
+def test_the_lists_before_the_ruling_are_what_the_comments_say_they_were():
+    assert whole_roster_shuffle(24681357)[:3] == ["Demonic", "Pestilence", "War"]
+    assert whole_roster_shuffle(11)[:3] == ["Death", "Chaos", "Void"]
+    assert whole_roster_shuffle(12)[:3] == ["War", "Famine", "Demonic"]
+    assert whole_roster_shuffle(7)[:3] == ["Celestial", "Death", "Void"]
+    assert whole_roster_shuffle(8)[:3] == ["Void", "Demonic", "Death"]
 
 
 def test_every_order_the_copy_draws_is_the_whole_roster():
     for seed in range(200):
         assert sorted(order_for(seed)) == sorted(ROSTER)
+
+
+def test_the_figures_the_roster_tests_quote_are_what_the_copy_gives():
+    """`Cataclysm.Roster.AdjacentSeedsDrawUnrelatedOrders` quotes 130 and 105 shared firsts in 400 neighbouring pairs:
+    the first Cataclysm, and the first unbuilt one."""
+    built = len(BUILT)
+    assert sum(order_for(s)[0] == order_for(s + 1)[0] for s in range(400)) == 130
+    assert sum(order_for(s)[built] == order_for(s + 1)[built] for s in range(400)) == 105

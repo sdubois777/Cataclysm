@@ -285,6 +285,14 @@ private:
 	void DrawReaperSoulNames();
 
 	/**
+	 * The tag "Remains" over every remains of the local player's own near the character, in their one colour, drawn
+	 * as a Soul's tag is: the Death finish's slice D (2026-11-26), Bone Fuse's "a small marker where each one fell ...
+	 * which only you see". Only the viewer's own: another player's remains are not drawn. Not recorded for a click;
+	 * remains are used by summon skills, weapon skills and the Bone Colossus, never picked up.
+	 */
+	void DrawRemainsNames();
+
+	/**
 	 * The tag "Demonic soul" over every soul Soul Harvest released that is still floating near the character, in its
 	 * one colour, drawn as a Reaper's Soul's tag is, so a player sees a soul travel to the creature it will feed. Issue
 	 * #1671. Not recorded for a click: nothing can take one.

@@ -306,7 +306,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 
 ### **Game Start**
 
-**A character's first Cataclysm is selected when the character is created, and it stays selected.** A new character begins against one randomly selected Cataclysm — the selection is made once, at character creation, not afresh at the start of each run. Every time a Cataclysm is defeated, the next run adds one more — so the player will eventually face all eight simultaneously. The run ends when the player defeats the Cataclysm boss dungeon or loses the capital.
+**A character's first Cataclysm is selected when the character is created, and it stays selected.** A new character begins against one randomly selected Cataclysm — the selection is made once, at character creation, not afresh at the start of each run. Every time a Cataclysm is defeated, the next run adds one more — so the player will eventually face all eight simultaneously. The run ends when the player defeats the Cataclysm boss dungeon or loses the capital. For now only the Cataclysms that are built — Demonic, Death and War — are drawn while a tier needs no more than those: a character's first three are those three in a random order, and a tier that needs a fourth adds the unbuilt ones after them, also in a random order (project owner, 2026-11-26).
 
   
 
@@ -5468,6 +5468,7 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 | Succubus | 10% | Little of its own; the energy shield is what keeps it alive |
 | Brute | 15% | Thick hide on top of its armor, which is its main defence |
 | Corrupted Sentinel | 20% | A construct rather than a living thing, and it cannot retreat |
+| Lich | 25% | Already dead; the approved design's figure, between the Sentinel's and the Gatekeeper's |
 | Abyssal Warden | 35% | The design describes this one, and only this one, as having high damage resistance |
 | Gatekeeper | 30% | High, but its real threat is its phases |
 
@@ -5614,8 +5615,10 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 | Corrupted Sentinel | 1.0 s | 0.4 m | **No** |
 | Abyssal Warden | 2.4 s | 2.8 m | Yes |
 | Succubus | 1.0 s | 0.4 m | **No** |
+| Lich | 1.0 s | 0.4 m | **No**, for its basic attack |
 | Brute | 1.2 s | 0.7 m | **No**, for its basic attack |
 | Gatekeeper | 3.0 s | 3.9 m | Yes |
+| Wraith | 1.25 s | 0.8 m | **No**, for its basic attack |
 
   
 
@@ -5735,6 +5738,7 @@ Three conditions follow, and `sim/cataclysm_sim/enemy_abilities.py` checks all t
 | :-- | :-: | :-: | :-: | :-: |
 | The Succubus's Soulfire | 0.5 s | 0.5 m | 1200 cm/s | 1.95 m |
 | The Corrupted Sentinel's Siege Bolt | 0.5 s | 0.5 m | 1400 cm/s | 2.28 m |
+| The Lich's Grave Bolt | 0.5 s | 0.5 m | 1200 cm/s | 1.95 m |
 
   
 
@@ -6166,7 +6170,7 @@ The table above says what each of the seven is. This says what each one does.
 
   
 
-The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Abyssal Warden, the Brute, the Corrupted Sentinel, the Gatekeeper, the Hellhound, the Imp and the Succubus are designed** — which is all seven. The Gatekeeper was the last, in issue #354.
+The machine-readable copy is `ABILITIES` in `sim/cataclysm_sim/enemy_abilities.py`. **Only the Abyssal Warden, the Brute, the Corrupted Sentinel, the Gatekeeper, the Hellhound, the Imp, the Lich, the Succubus and the Wraith are designed** — the seven Demonic enemies and Death's two creatures of its own. The Gatekeeper was the last of the seven, in issue #354; the Wraith and the Lich, Death's caster, followed on 2026-11-26.
 
   
 
@@ -6389,6 +6393,75 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 - **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
 
   
+
+### **The Lich**
+
+
+
+**The Lich is Death's caster, and it makes the player's kills come back.** The Succubus makes allies stronger; the Lich raises what the player has just killed. It is a slow skeleton that stays behind a fight, with three abilities: a bolt fired as a quick cast, a burst around it when it is reached, and a raise. The owner approved it on 2026-11-26. **It escorts one group in four on every floor of a Death dungeon, in the Succubus's place**; every other Cataclysm keeps the Succubus as its escort.
+
+
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Raise the Fallen | Special | Summon | `Range=10; Count=3` | a 10 s cooldown | No |
+| Grave Burst | Heavy | Strike | `Radius=3.0; Angle=360` | an 8 s cooldown | Yes: a circle for 1.26 s |
+| Grave Bolt | Basic | Projectile | `Range=8; Radius=0.5; Speed=1200` | its 1.0 s attack interval | No: a quick cast, 0.5 s |
+
+
+
+| Figure | Lich | Compared with |
+| :-- | :-: | :-- |
+| Health share | 1.60 | Corrupted Sentinel 1.30, Brute 2.20 |
+| Damage share | 0.60, a bolt every 1.0 s | Succubus 0.6154 |
+| Armour share | 0.50 | Succubus 0.20 |
+| Critical strike | 10% for 200% | the Succubus's |
+| Movement speed | 3.0 m/s | Succubus 3.5, Brute 2.5 |
+| Energy shield | 30% of its health, Path of Exile 2's Desiccated Lich | Succubus 50% |
+| Resistance | 25% | Gatekeeper 30% |
+| Evasion | none, a judgement | Succubus 10% |
+
+
+
+#### **Raise the Fallen**
+
+
+
+**Up to three of the most recent deaths within 10 metres of the Lich stand up again where they fell**, each a Common of its own kind at half its health, worth nothing when it dies again. Those are the owner's terms of 2026-11-26, the ones Haunting already uses. **A death is raised at most once**, by a Lich or by a rule: a death that Undying Will, Haunting or Dead Rising got back up is not recorded for a Lich, and a death a Lich has raised is spent. It never raises a Lich, a Gatekeeper, the Cataclysm Boss, or anything already worth nothing, so nothing it raises can be raised again and it cannot loop.
+
+
+
+**Corpses do not remain**, so the dungeon keeps its own record of the floor's deaths: what each one was, where it fell and when. The record is emptied when a floor begins and when the walk ends, and it is not saved, a judgement: a load forgets which deaths a Lich could raise, which costs the player nothing. It is kept apart from Echoes of the Past, which holds no positions and keeps the last floor's dead, and from the Necromancer's remains, which are the player's.
+
+
+
+**It is cast only when such a death is near**, so a Lich never casts at nothing. Its 10 second cooldown is Path of Exile 2's Desiccated Lich's revive. It draws no marker, as no Summon does: it is read from the Lich's cast, and interrupting the Lich cancels it. That is the counter, with killing the Lich before the raise comes round again.
+
+
+
+#### **Grave Burst**
+
+
+
+**When the player comes within 3 metres, the Lich answers with a ring around itself** at 250% of its hit, after a circle on the ground for 1.26 seconds, which is 0.4 plus 3.0 over 3.5 by the wind-up rule in the Attack Telegraphs section. Its 8 second cooldown is the Brute's stomp's. It is the Lich's answer to being reached, as the mortar is the Corrupted Sentinel's, and it is area damage, so it cannot be evaded.
+
+
+
+#### **Grave Bolt**
+
+
+
+**Grave Bolt is the Succubus's Soulfire in a Lich's hands**: fired half a second after it decides to, with no marker, every second. Its radius is 0.5 metres, so the slowest class can step clear of it from 1.95 metres out, and its speed is the slowest player projectile's, as Soulfire's is. The Lich walks to 8 metres and holds there without kiting, for the Succubus's reasons.
+
+
+
+#### **Its art, and what is not yet confirmed**
+
+
+
+The owner's Lich pack has five attack clips named only `Attack1` to `Attack5`. Their lengths, root motion (off in all five) and notifies (none) were read from the asset files without the editor, and the clips were chosen by length: `Attack4`, the only one short enough for a bolt every second, for Grave Bolt; `Attack2` for Grave Burst; `Attack1` for Raise the Fallen. **Which clip is a cast and which a strike, the moment each releases, and whether the bones carry the body forward were not confirmed**; each release moment is one named constant in `ACataclysmLichCharacter`. The pack has two hit clips, not four: `Hit1` plays when the Lich is struck from the front or from behind, `Hit2` from either side. `game/docs/enemy-source-assets.md` records the clips.
+
+
 
 ### **The Hellhound**
 
@@ -7021,6 +7094,40 @@ From phase 3, the ground erupts in a ring 6.5 metres in radius at its feet, mark
 - **Three phases rather than two.** The research supports either; three is chosen because the design document promises "each phase introduces new mechanics", plural, and two phases introduce one.
 
 Everything else is reused: Soulfall's figures are the Sentinel's mortar's, the ground riders are the Hellhound's, the summons are Imps, and the ring is the Warden's at a longer cooldown.
+
+  
+
+### **The Wraith**
+
+  
+
+**The Wraith is Death's first creature of its own, and it is the enemy that cannot be walked away from.** A hooded scythe ghost that hunts in threes, it replaces the Hellhound in Death dungeons, as the project owner ruled on 2026-11-26 ("I'm happy with those enemy designs"). It closes on the player by dashing straight through them and swinging from the other side, and it answers a player standing just out of its reach by pulling them in. It has no armour and the highest evasion of any creature, so area damage is the answer to it.
+
+  
+
+| Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
+| :-- | :-: | :-: | :-- | :-: | :-: |
+| Reap | Basic | Strike | `Radius=1.6; Angle=120; MaxTargets=3` | its 1.25 s attack interval | No |
+| Phase Dash | Movement | Movement | `Mode=Charge; Range=8; Radius=1.0` | a 5 s cooldown | Yes, 0.69 s wind-up |
+| Soul Grab | Special | Strike | `Radius=4.0; Angle=360; ForcedMovement=Pull` | a 10 s cooldown | Yes, 1.54 s wind-up |
+
+  
+
+#### **Reap swings faster than the design first said, so it stays unmarked**
+
+The scythe reaches 1.6 metres in a 120 degree arc and catches up to three. The design approved on 2026-11-26 gave it a 1.6 second interval, and by the rule in the Attack Telegraphs subsection a 1.6 second cycle allows a 1.4 metre marker, so a swing of that reach would have had to be marked. It swings every 1.25 seconds instead, at the same damage per second: 0.9375 of the base share a swing rather than 1.20. At 1.25 seconds the largest marker is 0.8 metres, under the floor, so the swing goes unmarked as the design meant. **A judgement.**
+
+  
+
+#### **Phase Dash goes through the player, not into them**
+
+It dashes 8 metres along a straight lane marked 1.0 metre in radius, passing through creatures but stopping at walls, and hits what it crosses once at the Movement slot's 100%, with no shove. It uses the dash when the player is between 4 and 8 metres away, so the run ends behind the player and the next swing comes from the side they were backing towards. The design table gave the lane half that radius; a marker under a metre is not a telegraph, so the lane is the smallest marker the rules allow. **A judgement.** The dash is ready every 5 seconds, the Movement slot's cooldown and the Hellhound's.
+
+  
+
+#### **Soul Grab pulls a player who stands just out of reach**
+
+A ring of grasping hands 4 metres in radius round the Wraith, marked for 1.54 seconds. Whoever is still inside when it lands takes the Special slot's 150% and is pulled to the Wraith's side. It covers the ground between Reap's reach and the dash's shortest run, so a player at any distance has something coming; and because it is marked, it can always be walked out of. Soul Grab is ready every 10 seconds, the top of the Special slot's band. The owner made Soul Grab the third ability on 2026-11-26 and left its effect to be designed: **this effect is a judgement.**
 
   
 

@@ -636,6 +636,18 @@ class TuningConfig:
     # the code did not have.
     CATACLYSM_ROSTER: tuple[str, ...] = ("Demonic", "Death", "War", "Pestilence",
                                          "Famine", "Celestial", "Chaos", "Void")
+    # THE CATACLYSMS BUILT IN THE GAME, WHICH A CHARACTER DRAWS FIRST. The
+    # project owner ruled on 2026-11-26, verbatim: "yeah only draw the ones that
+    # are built. It's kinda pointless to test stuff that isn't even in the
+    # game." So `engine.cataclysm_order_for` puts these before the rest, each
+    # part in the order its shuffle gave it, and a tier no higher than this
+    # many faces only built ones. Like the roster, a set and not an order.
+    # Adding one when the game builds it is one line here and one in
+    # `UCataclysmRoster::Built` (game/Source/CataclysmEmpire/Empire/
+    # CataclysmRoster.cpp); `tools/tests/test_only_built_cataclysms_are_drawn_first.py`
+    # holds the two equal. Set it to the whole roster to measure the draw from
+    # before the ruling.
+    BUILT_CATACLYSMS: tuple[str, ...] = ("Demonic", "Death", "War")
 
     # A dungeon carries one modifier per tier. Sacrificial dungeons start with
     # double that -- the player may sacrifice materials to shed the extra ones,

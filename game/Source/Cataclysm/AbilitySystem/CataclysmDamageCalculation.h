@@ -1028,6 +1028,13 @@ public:
 	static const TCHAR* MeleeEvasionSuppressedStat;
 
 	/**
+	 * The share, in per cent, of the defender's evasion chance that area damage meets: Ever Moving's, 50 while moving
+	 * (the Death line's finishing slice E, 2026-11-26). Nought, every defender without the row, leaves area damage
+	 * unevadable as it has always been. Read on the defender, with the blow, at the evasion step of `Resolve`.
+	 */
+	static const TCHAR* EvasionAgainstAreaPercentStat;
+
+	/**
 	 * What either of those two reads when nothing has changed it.
 	 *
 	 * A HUNDRED IS THE IDENTITY FOR A MULTIPLIER, so a character with no node

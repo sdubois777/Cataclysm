@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -11,6 +12,7 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the chaos pool a killed minion leaves its commander. Ruled 2026-10-06.
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -1712,6 +1714,11 @@ void ACataclysmMinion::RefreshWalkSpeed()
 	}
 }
 
+float ACataclysmMinion::AttackReachCm() const
+{
+	return UCataclysmDetonation::AttackReachCmFor(this, ReachCm);
+}
+
 void ACataclysmMinion::AttackOnce()
 {
 	// Nearest first, one target. Used by tests and by anything that wants one
@@ -1735,6 +1742,13 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		return;
 	}
 	if (!IsValid(Summoner) || !IsValid(Target))
+	{
+		return;
+	}
+	// A LIVING BOMB'S ATTACK IS ITS DETONATION, when it has reached its enemy. The Second Rite's option 2, slice C of the
+	// Death Cataclysm's finishing (2026-11-26): "Your minions run at the nearest enemy and detonate on contact". It is
+	// destroyed by it, so nothing below runs.
+	if (UCataclysmDetonation::DetonateOnContact(this, Target))
 	{
 		return;
 	}
@@ -1877,7 +1891,9 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
 			UCataclysmTargeting::AbilitySystemOf(this),
 			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags,
-															   /*AskingMinion=*/this),
+															   /*AskingMinion=*/this)
+				// AND MASTER'S EDGE'S CRITICAL STRIKE, rolled for this blow: one with no such row (slice B, 2026-11-26).
+				* UCataclysmNecromancerArmy::CriticalFactorForBlow(this),
 			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
@@ -2139,6 +2155,13 @@ void ACataclysmMinion::LifeSpanExpired()
 	{
 		return;
 	}
+	// RIPENED, AFTER REKINDLED: a minion kept for its time again has not reached its end. The finishing of the Death
+	// Cataclysm, slice C (2026-11-26): "A minion of yours whose lifespan ends without being detonated has a 10% chance per
+	// point to explode anyway". Its explosion destroys it, so nothing below runs.
+	if (UCataclysmDetonation::RipenAtLifespanEnd(this))
+	{
+		return;
+	}
 	// A GADGET WHOSE LIFE SPAN RAN OUT IS ANNOUNCED, as `gadget_expired`, with its tags, naming it, before it goes. Ruled
 	// in the vow survey of 2026-11-25 ("a gadget expiring raises an event") and built for Scrap Mines (V5b1). A gadget
 	// only (`IsGadget`): a trap's expiry still raises nothing.
@@ -2355,22 +2378,27 @@ void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)
 	ExplosionRadiusCm = RadiusCm;
 }
 
-void ACataclysmMinion::ExplodeSetOffBy(UCataclysmSkillTemplate* SetOffBy)
+float ACataclysmMinion::ExplodeSetOffBy(UCataclysmSkillTemplate* SetOffBy, float ShareOfFigure)
 {
 	AActor* Caster = SetOffBy ? SetOffBy->GetAvatarActorFromActorInfo() : nullptr;
 	if (!IsValid(Caster) || ExplosionRadiusCm <= 0.0f)
 	{
 		Explode();
-		return;
+		return 0.0f;
 	}
 
 	// THE SKILL'S AREA HIT, CENTRED ON THIS MINION: 200% of the caster's weapon damage, the skill named so its level
 	// factor and its tags apply, times the summoner's `minion_explosion_damage` (Volatile, `Ritualist_basic_b_b2`, the
 	// one row stating it on 2026-11-26), which every explosion takes.
+	// AND A DETONATION'S OWN TWO, the finishing of the Death Cataclysm, slice C (2026-11-26): the summoner's
+	// `minion_detonation_damage` on the figure and `minion_detonation_area` on the radius (`UCataclysmDetonation`), and
+	// the share of the whole figure the caller asks for, Mass Grave's 40% for each minion it chains to.
 	const float Percent = DetonatedPercentOfWeaponDamage
-		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags);
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags)
+		* UCataclysmDetonation::DamageMultiplierFor(this) * FMath::Max(0.0f, ShareOfFigure);
 	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), this, GetActorLocation(), ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this));
+		GetWorld(), this, GetActorLocation(),
+		ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this) * UCataclysmDetonation::AreaMultiplierFor(this));
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsArea = true;
 	Delivery.Skill = SetOffBy;
@@ -2388,7 +2416,17 @@ void ACataclysmMinion::ExplodeSetOffBy(UCataclysmSkillTemplate* SetOffBy)
 			 "landed %.1f"),
 		*TypeName, *GetName(), Caught.Num(), Caught.Num() == 1 ? TEXT("y") : TEXT("ies"), Percent,
 		*SetOffBy->SkillName, Sent);
+
+	// WHAT IT WAS WORTH, for Lingering Rot's share: the largest the blast sent, and with nothing caught the figure it
+	// would have sent, priced by the caster's own modifiers as `ApplyHit` prices it, before any defender.
+	const float Figure = Sent > 0.0f
+		? Sent
+		: UCataclysmSkillEffects::ModifiedDamage(
+			  UCataclysmTargeting::AbilitySystemOf(Caster),
+			  UCataclysmSkillEffects::WeaponDamageOf(UCataclysmTargeting::AbilitySystemOf(Caster)) * Percent / 100.0f,
+			  SetOffBy->SkillTagsForStats());
 	Destroy();
+	return Figure;
 }
 
 void ACataclysmMinion::Explode()

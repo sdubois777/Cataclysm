@@ -764,6 +764,55 @@ public:
 	static float GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
 
 	/**
+	 * Spirit Volley, option 2 of the Soul Collector's vow at 50 points (`SoulCollector_capstone_50`), issue #2908: "Each
+	 * Fervour you gain from a kill flies to you as a spirit that strikes the nearest enemy on its way for 30% of weapon
+	 * damage. Kills make spirits, spirits make kills." The percent of weapon damage each spirit deals; nought without the
+	 * option. Read by `LooseSpiritVolley` with no tags. No attribute.
+	 */
+	static const TCHAR* SpiritVolleyWeaponPercentStat;
+
+	/**
+	 * The most spirits one kill looses, a judgement of the Death finish slice A (2026-11-26): ten, so a Boss's 15 and the
+	 * doubled payments of the strong cannot loose a storm of blows from one death. Path of Exile's Summon Phantasm caps
+	 * its kill-made phantasms at 5 to 10 and Herald of Purity its sentinels at 4. A spirit lives only for its one blow, so
+	 * a cap on one kill's spirits is the cap on how many exist at once.
+	 */
+	static constexpr int32 SpiritVolleyMostAKill = 10;
+
+	/**
+	 * How far from its line a spirit's flight reaches for an enemy "on its way": the half-width, in centimetres, of the
+	 * corridor from the slain body to the character. Three metres, a judgement: the width of the Soul Collector's own
+	 * nearby reach is five, and a corridor that wide either side would be a ten-metre swath.
+	 */
+	static constexpr float SpiritPathHalfWidthCm = 300.0f;
+
+	/**
+	 * Loose one spirit for each whole Fervour `Paid` (the Fervour a kill paid, before the full bar clamps it, a judgement:
+	 * a full bar is where a Soul Collector stands in a fight, and "kills make spirits" would stop there), at most
+	 * `SpiritVolleyMostAKill`, from where `Slain` lies toward the character. HANDED TO THE ANNOUNCER
+	 * (`UCataclysmCombatEvents::AfterThisDeathIsHeard`), as the overkill explosion is, so a creature a spirit kills is a
+	 * kill of the character's of its own, heard after this one, which pays and looses spirits in turn: "kills make
+	 * spirits, spirits make kills". The Fervour itself arrives with the kill, as before; the spirits are its blows.
+	 *
+	 * @return how many spirits were loosed; nought without the option
+	 */
+	static int32 LooseSpiritVolley(UAbilitySystemComponent* AbilitySystem, const AActor* Slain, float Paid);
+
+	/**
+	 * Fly `Spirits` spirits from `From` toward `Character`: each strikes, as the character's own hit for `Percent` of
+	 * weapon damage, the living enemy nearest `From` within `SpiritPathHalfWidthCm` of the line from `From` to the
+	 * character (`Slain` left out), chosen again for each spirit so one that a spirit killed is passed over. A spirit with
+	 * no enemy on its way reaches the character and strikes nothing, and so does every one after it. Public so a test can
+	 * drive it.
+	 *
+	 * @return how many spirits struck an enemy
+	 */
+	static int32 FlySpirits(AActor* Character, const AActor* Slain, const FVector& From, int32 Spirits, float Percent);
+
+	/** What every line this writes begins with, at Log: "SPIRIT VOLLEY: ...". */
+	static const TCHAR* const SpiritVolleyLogPrefix;
+
+	/**
 	 * Add `Change` to the class resource pool and answer how much it rose. THE ONE WAY A GAIN REACHES THE POOL: every
 	 * function here that fills it, Cinders Kept's return (`UCataclysmAbilitySystemComponent::ReturnFervourDue`), the
 	 * Siphon, and a class resource top-up through `UCataclysmRegeneration::TopUp` call this rather than
@@ -977,6 +1026,18 @@ public:
 
 	/** The place of `Row` in `WornEnemyModifierRows`, counted from 1, or nought when it is not there. */
 	static int32 WornEnemyModifierPlace(FName Row);
+
+	/**
+	 * The enemy modifiers Wearer of the Dead lends AS THEMSELVES rather than as a figure on a stat: each is no number on
+	 * a player stat, so the vow holds no row for it, and a character holding the vow at all (`UCataclysmAbilitySystem
+	 * Component::HoldsAnyRowWearing`) is lent it, recorded by its row (`NoteLentModifier`) and read wherever its effect
+	 * asks `UCataclysmEnemyModifiers::CarriedBy`. Issue #2899 (2026-11-26): the Death modifiers, converted to work on any
+	 * wearer. NINE OF DEATH'S ELEVEN: the owner ruled on 2026-11-26 that of the three that act at their wearer's death
+	 * only Undying Will is lent to the player ("you come back once with less health and more damage"), and Haunting and
+	 * Final Curse never are. `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` holds this list to
+	 * the Death rows of `game/Data/EnemyModifiers.csv` less those two.
+	 */
+	static const TArray<FName>& LentEnemyModifierRows();
 
 	/** How long a lent modifier is worn: "for 20 seconds". */
 	static constexpr float WornEnemyModifierSeconds = 20.0f;

@@ -55,6 +55,14 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Shadow_capstone_50", "2", "target_rarity_at_least"):
+        "Shadow Clone's 'Every third kill of an Elite or stronger' is the rung the kill counter asks of the slain "
+        "creature (rarity rung 1 and up, UCataclysmShadowImages::NoteKillForShadowClone); its two rows are the count "
+        "and the seconds, not stats a condition could gate (the Death line's finishing slice E, 2026-11-26)",
+    ("Shadow_basic_spine_010", "0", "seconds_after_resource_full"):
+        "Brim's 'Each time your Fervour reaches its maximum, your next hit is a critical strike' is an action row on "
+        "the event `resource_full` (next_hit_critical), not a window after it; the words became a condition's when "
+        "Lich Form's 'for 10 seconds' row was written (the Death line's finishing slice B, 2026-11-26)",
     ("Necromancer_basic_gr_a1", "0", "minion_within_metres_of_you"):
         "Interpose's 'one of your minions within 3 metres of you' is the reach the game searches for the minion that "
         "takes the hit (UCataclysmAbilitySystemComponent::InterposeReachCm), not a condition on a stat (the Death "

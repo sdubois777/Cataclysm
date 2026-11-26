@@ -167,15 +167,23 @@ def siege_daily_damage(sim, d, city) -> float:
     `_roll_subtype` runs for every `_make_dungeon` but a surge's Quest
     dungeon, and since 2026-10-16 that one takes its Cataclysm's fixed
     sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`), which for War is the
-    Siege, at most two made a day. Measured on 2026-11-25 over 10,000 campaigns
-    (seeds 0 to 9999, 1,343,372 dungeons, each recorded when it was made) at the
+    Siege, at most two made a day. Measured on 2026-11-26 over 10,000 campaigns
+    (seeds 0 to 9999, 1,939,224 dungeons, each recorded when it was made) at the
     settings `siege_urgency` names below, by the method of
     `sim/tests/test_the_siege_prose_in_policies_is_true.py`, with an ordinary
     dungeon leaving after it hits its city (`dungeon_persists_after_resolve`
-    False), the 107,735 Sieges that reached the map were 67% Basic, 29% Quest,
-    5% Fallen City and 0% Cataclysm, about 10.77 a campaign. That is why the
+    False), the 181,681 Sieges that reached the map were 50% Basic, 45% Quest,
+    4% Fallen City and 0% Cataclysm, about 18.17 a campaign. That is why the
     callers below apply this in all three scoring branches instead of only the
     ordinary one.
+    UNTIL 2026-11-26 THIS SAID 107,735 Sieges at 67 / 29 / 5 / 0 and 10.77 a
+    campaign, measured on 2026-11-25 over 1,343,372 dungeons. THE QUEST SHARE
+    AND THE RATE ROSE with the project owner's ruling of 2026-11-26 that a
+    character draws the built Cataclysms first (`TuningConfig.BUILT_CATACLYSMS`):
+    War is one of the three, so it is active in far more campaigns below tier 4,
+    and every War Quest dungeon is a Siege. The shares before rounding are
+    50.38 / 45.24 / 4.39 / 0.00; seeds 0 to 319, which the test reads, give
+    46.19 / 49.28 / 4.53 / 0.00.
     UNTIL 2026-11-25 THIS SAID 96,875 Sieges at 70 / 25 / 5 / 0 and 9.69 a
     campaign, measured on 2026-11-24 over 1,215,787 dungeons. THE QUEST SHARE
     ROSE with issue #51 slice B4: a city's fall to War makes a War Quest Siege

@@ -2228,6 +2228,17 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	ClassResourceAtOrBelowPercent
 		UMETA(DisplayName = "Class Resource At Or Below Percent"),
+
+	/**
+	 * The minion whose figure is being asked is its commander's permanent minion with the most maximum health: First
+	 * Among the Dead, "Your permanent minion with the most maximum health has +4% increased damage and +4% increased
+	 * health per point". The Death line's finishing slice B (2026-11-26). Read from
+	 * `bAskingMinionHasTheMostMaximumHealth`, which `UCataclysmNecromancerArmy::FillAskingMinionState` fills when the
+	 * caller names the minion -- its blow, its explosion, the damage it takes and its live health -- and false, which
+	 * refuses, otherwise. IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	MinionHasYourMostMaximumHealth
+		UMETA(DisplayName = "Minion Has Your Most Maximum Health"),
 };
 
 /**
@@ -3123,6 +3134,36 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPointOfCurrentHealth
 		UMETA(DisplayName = "Per Point Of Current Health"),
+
+	/**
+	 * `Value` per `ScaleStep` OTHER minions of the summoner's within the row's `ReachMetres` of the minion whose figure is
+	 * asked. The finishing of the Death Cataclysm, slice C (2026-11-26): Close Packed, "A minion's detonation deals +1%
+	 * increased damage per point for each other minion of yours within 3 metres of it, up to 5", a step of 1, a reach of
+	 * 3 and a cap of 5. Read from `FCataclysmStatConditions::OtherMinionMetresFromAskingMinion`, which
+	 * `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` fills when a minion is named; with none named, nothing.
+	 */
+	PerOtherMinionNearTheMinion
+		UMETA(DisplayName = "Per Other Minion Near The Minion"),
+
+	/**
+	 * `Value` per `ScaleStep` of the character's OWN REMAINS lying within the row's `ReachMetres` of it, along the floor,
+	 * at most `ScaleMaxSteps` of them. The Death finish's slice D (2026-11-26): Mantle of Bone's "+1% increased Armor for
+	 * every 2 points for each creature's remains within 6 metres of you, up to 10". Read from
+	 * `FCataclysmStatConditions::OwnRemainsDistancesMetres`, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach`
+	 * fills only when a row asks. Another player's remains are not counted: remains belong to the player they were left
+	 * for (`ACataclysmRemainsMarker::LeftFor`).
+	 */
+	PerOwnRemainsInReach
+		UMETA(DisplayName = "Per Own Remains In Reach"),
+
+	/**
+	 * `Value` per kind of minion the character commands beyond the first: Motley Host, "+2% increased Minion Damage per
+	 * point for each kind of minion you have beyond the first". The Death line's finishing slice B (2026-11-26). Read from
+	 * `FCataclysmStatConditions::MinionKindsBeyondTheFirst`, which `CurrentConditions` counts from the same list as
+	 * `MinionsHeld` through `UCataclysmNecromancerArmy::KindsBeyondTheFirst`.
+	 */
+	PerMinionKindBeyondTheFirst
+		UMETA(DisplayName = "Per Minion Kind Beyond The First"),
 };
 
 /**
@@ -3480,6 +3521,21 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float AskingMinionMetres = -1.0f;
+
+	/**
+	 * How far each OTHER raised minion or thrall of the summoner's stands from the minion whose figure is being asked, in
+	 * metres; empty when no minion is named. The finishing of the Death Cataclysm, slice C (2026-11-26). See
+	 * `PerOtherMinionNearTheMinion`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> OtherMinionMetresFromAskingMinion;
+
+	/**
+	 * Whether the minion whose figure is being asked is its commander's permanent minion with the most maximum health.
+	 * The Death line's finishing slice B (2026-11-26). See `MinionHasYourMostMaximumHealth`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bAskingMinionHasTheMostMaximumHealth = false;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
@@ -3855,6 +3911,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * default is 0 and not the -1 the readings above use to mean "not asked".
 	 */
 	int32 MinionsHeld = 0;
+
+	/**
+	 * How many kinds of minion those are, beyond the first. The Death line's finishing slice B (2026-11-26). See
+	 * `PerMinionKindBeyondTheFirst`. A count, so nought for a character commanding one kind or none.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 MinionKindsBeyondTheFirst = 0;
 
 	/**
 	 * How many of those are deployable machines. Issue #1833, deployable Part 3.
@@ -4445,6 +4508,15 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> CrippledHostileDistancesMetres;
+
+	/**
+	 * How far each of the character's OWN remains lies from it, in metres along the floor, within the widest reach a row
+	 * asks about. The Death finish's slice D (2026-11-26), for `PerOwnRemainsInReach`. FILLED ONLY WHEN A ROW ASKS, by
+	 * `UCataclysmAbilitySystemComponent::WithEnemiesInReach` through `UCataclysmRemains::DistancesOfOwnRemains`; empty
+	 * otherwise, which every row reading it answers with nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> OwnRemainsDistancesMetres;
 
 	/**
 	 * The debuffs the character being HIT is carrying, as the explicit tags
@@ -6154,7 +6226,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-fifteenth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-sixteenth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -6171,7 +6243,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FIFTY-THREE OF THE HUNDRED-AND-FOURTEEN COMPARE NOTHING. They are the case labels
+	 * FIFTY-FOUR OF THE HUNDRED-AND-FIFTEEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

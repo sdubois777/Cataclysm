@@ -38,6 +38,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSilence.h"
+#include "AbilitySystem/CataclysmShadowImages.h"
 // A taunt is crowd control, as a silence is. Warlord's Will's six-piece, ruled 2026-10-18 (B).
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -972,6 +973,10 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
+	// THE PERCENTAGE AS ASKED, before the level factors below multiply it: Flurry of the Dead deals the hit again
+	// through this function, which applies them again (the Death line's finishing slice E, 2026-11-26).
+	const float PercentAsAsked = DamagePercent;
+
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
 	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
 	if (!Source || !Defender)
@@ -1531,12 +1536,28 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		// strike call a crow through a row's answer and that answer another. A skill gadget's or trap's cast takes the
 		// other path below and is the machine's blow, as a minion's is the minion's. Nothing for a blow that did not
 		// critically strike, which is nearly every one: the buffs are asked only then.
+		// BUT ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES IS LET THROUGH, though it is marked a row's answer: an extra strike
+		// that critically strikes calls the crows as any critical strike does, by the coordinating session's ruling of
+		// 2026-11-26 within the project owner's "yes" (Flurry's extra strikes trigger on-hit effects). The crows' own
+		// guards still hold: one a `CrowCooldownSeconds`, and a crow's own strike calls no other. Flurry's filter below
+		// still keeps the extra strike out, so it strikes no extras of its own.
 		if (Landed->bWasCritical && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
+			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
+			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
+			&& (!Arrived.bIsARowsAnswerToAnEvent || Arrived.bIsAnExtraStrike))
+		{
+			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
+		}
+		// AND FLURRY OF THE DEAD: "Your hits strike again once for every 10 Fervour held, up to 10 extra strikes" (the Death
+		// line's finishing slice E, 2026-11-26). The same filter as the crows' above, less the critical strike: a blow the
+		// instigator struck and landed. Each extra strike is this hit again, whole, marked a row's answer to an event, so
+		// it strikes nothing again itself. Nothing for a wearer without the row, which is every creature.
+		if (bDealt && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
 			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
 			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
 			&& !Arrived.bIsARowsAnswerToAnEvent)
 		{
-			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
+			UCataclysmShadowImages::StrikeAgain(Instigator, Target, PercentAsAsked, SkillTags, Delivery);
 		}
 		return bDealt ? Sent : 0.0f;
 	}
@@ -1831,6 +1852,7 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 
 const TCHAR* UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat = TEXT("dot_explodes_at_expiry_chance");
 const TCHAR* UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName = TEXT("Cataclysm.ExplosionAtAnAilmentsEnd");
+const TCHAR* UCataclysmSkillEffects::ExtraStrikeDataName = TEXT("Cataclysm.ExtraStrike");
 
 const TCHAR* UCataclysmSkillEffects::StruckFromSetDataName = TEXT("Cataclysm.StruckFromSet");
 const TCHAR* UCataclysmSkillEffects::StruckFromXDataName = TEXT("Cataclysm.StruckFromX");
@@ -2409,6 +2431,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsAnExplosionAtAnAilmentsEnd)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ExplosionAtAnAilmentsEndDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES, which fires on-hit effects as any hit does (the
+	// project owner's ruling of 2026-11-26); the mark lets a listener tell it from the hit it repeats.
+	if (Delivery.bIsAnExtraStrike)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ExtraStrikeDataName), 1.0f);
 	}
 
 	// AND WHERE IT WAS STRUCK FROM, WHEN THAT WAS NOT ITS INSTIGATOR'S PLACE: a gadget's copy of its summoner's

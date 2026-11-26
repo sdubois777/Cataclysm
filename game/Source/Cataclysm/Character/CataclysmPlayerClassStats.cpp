@@ -1189,6 +1189,15 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("siphon_necrosis_chance"),
 		TEXT("siphon_life_percent"),
 		TEXT("siphon_fervour_per_second"),
+		// THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel's and Deeper Draw's most Fervour a skill spends, and Soul
+		// Fuel's increased damage for each Fervour it spent, both read by UCataclysmSkillTemplate::CommitAndBegin with
+		// the skill's tags; Pyre's increased area for every 5 Fervour a use spent, read by
+		// UCataclysmSkillTemplate::AreaOfEffectMultiplier; and Spirit Volley's percent of weapon damage a spirit deals,
+		// read by UCataclysmFervour::LooseSpiritVolley at a kill. No attribute and no base.
+		TEXT("skill_fervour_spend"),
+		TEXT("damage_per_skill_fervour_spent"),
+		TEXT("area_of_effect_per_five_fervour_spent"),
+		TEXT("spirit_volley_weapon_percent"),
 		// The Death trees' slice C3b: Bound Offering's share of a reserve held that counts as Fervour spent, read by
 		// UCataclysmCommand::HoldReserve with the making skill's tags. No gameplay attribute and no base.
 		TEXT("reserved_fervour_spent_percent"),
@@ -1236,6 +1245,28 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// And its Bound Bones: the per cent of the commander's maximum health each follower gains for every other one
 		// alive. Read by UCataclysmRegeneration::BoundBonesStep. No attribute and no base.
 		TEXT("minion_health_percent_of_yours_per_other_minion"),
+		// And the Necromancer's army, the Death line's finishing slice B (2026-11-26): Reforged's heal, Master's Edge's
+		// share of the commander's critical strike, Will Not Stay Down's chance, Mending Dead's regeneration, Bone Lord's
+		// extra raises, Carrion Host's and Harvest of the Host's chance, Second Death's flag, The Restless Dead's chance,
+		// Grave Swap's flag, Lich Form's husk window, Shared Flesh's flag, Lone Revenant's flag, the reserve's "more"
+		// bucket and Rise Together's chance. Each read by UCataclysmNecromancerArmy (CataclysmNecromancerArmy.cpp), the last by
+		// UCataclysmCommand::ReserveFor through it. No attribute and no base.
+		TEXT("summon_without_room_heals_permanent_percent"),
+		TEXT("minion_crit_share_of_yours_percent"),
+		TEXT("minion_rises_again_chance"),
+		TEXT("minion_health_regen_percent_per_second"),
+		TEXT("summon_raises_more_permanent_minions"),
+		TEXT("permanent_minion_kill_rises_as_husk_chance"),
+		TEXT("minion_death_rises_as_husk"),
+		TEXT("kill_rises_as_skeleton_chance"),
+		TEXT("movement_swaps_with_minion"),
+		TEXT("skills_raise_husks_seconds_after_resource_full"),
+		TEXT("damage_taken_split_with_minions"),
+		TEXT("lone_revenant_held"),
+		TEXT("minion_reserve"),
+		// And Rise Together's chance, rolled once for each permanent minion a summon raises, a stat of its own by the
+		// coordinating session's ruling of 2026-11-26 (Teeming Grave's, rolled once a use, is another).
+		TEXT("permanent_minion_raises_a_second_chance"),
 		// And the Shadow's Deathmark and Two Marks, the Death trees' slice C6e: how many enemies a character marks.
 		// Read by UCataclysmAbilitySystemComponent::MaintainShadowMarks. No attribute and no base.
 		TEXT("death_marks_held"),
@@ -1249,6 +1280,41 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minions_turn_on_your_last_attacker"),
 		TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"),
 		TEXT("interpose_chance"),
+		// THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26), each read by
+		// UCataclysmDetonation at the detonation, the release, the lifespan's end or the blow it names: Lit Fuse, Made
+		// Room's flag and its two increases, Lingering Rot's seconds and share, Ripened's chance, Mass Grave's share and
+		// radius, Last Breath's multiple, and Living Bombs' flag, husk chance and husk seconds. No attribute and no base.
+		TEXT("weapon_skills_detonate_own_minions"),
+		TEXT("minion_detonates_when_released"),
+		TEXT("minion_detonation_damage"),
+		TEXT("minion_detonation_area"),
+		TEXT("minion_detonation_rot_seconds"),
+		TEXT("minion_detonation_rot_percent"),
+		TEXT("minion_explodes_at_lifespan_end_chance"),
+		TEXT("minion_detonation_spreads_percent"),
+		TEXT("minion_detonation_spread_radius_metres"),
+		TEXT("fervour_on_minion_detonated_reserve_multiple"),
+		TEXT("minions_detonate_on_contact"),
+		TEXT("minion_detonation_raises_husk_chance"),
+		TEXT("minion_detonation_husk_seconds"),
+		// And Teeming Grave's chance of one more minion raised, rolled once a use (the coordinating session's ruling at the
+		// bundle's assembly, 2026-11-26; Rise Together has a stat of its own). Read by
+		// UCataclysmSummonSkill::RaiseOneMoreIfRolled. No attribute and no base.
+		TEXT("minion_extra_raise_chance"),
+		// And the Horde Ascendant's reach and share, read by UCataclysmHordeAscendant::EveryFollowerNearCasts at each
+		// skill use. No attribute and no base.
+		TEXT("minions_cast_your_skills_within_metres"),
+		TEXT("minion_skill_copy_damage_percent"),
+		// And the Shadow's four remaining vow options and its Ever Moving, the Death line's finishing slice E (2026-11-26):
+		// Afterimage's flag, Shadow Clone's count and seconds, Shadow Step's metres and Flurry of the Dead's extra strikes,
+		// read by UCataclysmShadowImages; Ever Moving's share of evasion against area damage, read by
+		// UCataclysmDamageCalculation::Resolve. No attribute and no base.
+		TEXT("afterimage_repeats_your_next_attack"),
+		TEXT("shadow_clone_every_elite_kills"),
+		TEXT("shadow_clone_seconds"),
+		TEXT("movement_targets_an_enemy_within_metres"),
+		TEXT("hits_strike_again"),
+		TEXT("evasion_against_area_percent"),
 		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
 		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
 		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.
@@ -1331,6 +1397,26 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("deathmark_seconds"),
 		TEXT("blood_price_percent_of_maximum_fervour"),
 		TEXT("blood_price_seconds"),
+		// THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26), each read by UCataclysmRemains
+		// (CataclysmRemains.cpp) or UCataclysmBoneGiants (CataclysmBoneGiants.cpp) off the player with no tags, at its
+		// own moment: whether a death leaves remains for this player (Bone Fuse, the Bone Colossus vow); Gravefinder's
+		// reach and Bone-Bound's reserve, at a summon; Two From One's chance, at a raise; Mantle of Bone's detonation and
+		// its share of maximum health, Festering's increase per ailment and Plague Pit's flag, at a weapon skill's
+		// landing; Gathered Remains' longer life, as remains are left; Fallen Again's chance, at a follower's death; the
+		// two vows' flags and Many Made One's reduction, at a kill. No attribute and no base.
+		TEXT("remains_left"),
+		TEXT("remains_raise_reach_metres"),
+		TEXT("minion_on_remains_reserve_percent_less"),
+		TEXT("remains_kept_on_raise_chance"),
+		TEXT("weapon_skills_detonate_remains"),
+		TEXT("remains_detonation_percent_of_maximum_health"),
+		TEXT("remains_detonation_increased_per_ailment"),
+		TEXT("detonated_remains_pass_ailments"),
+		TEXT("remains_duration"),
+		TEXT("minion_leaves_remains_chance"),
+		TEXT("abomination_rises"),
+		TEXT("abomination_kill_percent_less"),
+		TEXT("bone_colossus"),
 	};
 	return Stats;
 }

@@ -51,6 +51,8 @@ INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
         2, "a skill's Fervour cost and its charged Fervour, both negative changes"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp", "UCataclysmGameplayAbility::ApplyCooldown"): (
         1, "Fervour borrowed for a cooldown, a negative change"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp", "UCataclysmSkillTemplate::SpendSoulFuel"): (
+        1, "Soul Fuel's spend on a skill's use, a negative change (the Death finish slice A, 2026-11-26)"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp", "UCataclysmAuraSkill::Pulse"): (
         1, "an aura's charged Fervour, a negative change"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp", "UCataclysmDelayedDamage::DrainStep"): (

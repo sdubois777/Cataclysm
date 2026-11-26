@@ -15,6 +15,9 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+#include "AbilitySystem/CataclysmDetonation.h"
+#include "AbilitySystem/CataclysmHordeAscendant.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmFervour.h"
 // For the War classes' Fervour rates and decay. Slice C of plan_death_and_war.md, 2026-11-24.
@@ -25,6 +28,8 @@
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmBoneGiants.h"
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
@@ -58,6 +63,7 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmNova.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -82,6 +88,8 @@
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// The Shadow's last vows, the Death line's finishing slice E (2026-11-26).
+#include "AbilitySystem/CataclysmShadowImages.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmTerrain.h"
@@ -6317,6 +6325,8 @@ namespace CataclysmStatExemptionTest
 	void ProbeScaledProjectileCount(FAutomationTestBase& Test);
 	void ProbeScaledDotDamage(FAutomationTestBase& Test);
 	void ProbeScaledMinionAttackSpeed(FAutomationTestBase& Test);
+	// AND THE FINISHING OF THE DEATH CATACLYSM'S SLICE C (2026-11-26), defined beside the detonation probes.
+	void ProbeScaledMinionDetonationDamage(FAutomationTestBase& Test);
 
 	/**
 	 * `fervour_drain_per_second`, scaled by debuffs carried, asked by `FCataclysmBerserkerStates::DrainStep`. Added
@@ -6386,11 +6396,192 @@ namespace CataclysmStatExemptionTest
 					   2.0f * ACataclysmMinion::SkillTrapTriggerRadiusCm, 0.01f);
 	}
 
+	// ------------------------------------------------------------------------
+	// THE SHADOW'S LAST VOWS AND EVER MOVING, the Death line's finishing slice E (2026-11-26). Each probe gives a holder
+	// on the players' team the row and asks the reader in `UCataclysmShadowImages` or `UCataclysmDamageCalculation`
+	// with and without it. Above the three tables, which all name them.
+	// ------------------------------------------------------------------------
+
+	/** `afterimage_repeats_your_next_attack`, read by `UCataclysmShadowImages::LeaveAfterimage` (Afterimage). */
+	void ProbeAfterimage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		const FGameplayTagContainer MovementTags;
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmShadowImages::LeaveAfterimage(Holder, FVector::ZeroVector, MovementTags) != nullptr;
+		SiphonLines(Holder, {SiphonStat(UCataclysmShadowImages::AfterimageStat, 1.0f)});
+		const bool bHeld = UCataclysmShadowImages::LeaveAfterimage(Holder, FVector::ZeroVector, MovementTags) != nullptr;
+		Test.TestFalse(TEXT("afterimage_repeats_your_next_attack: control, a movement skill leaves no shadow without it"),
+					   bPlain);
+		Test.TestTrue(TEXT("and with it one is left, so LeaveAfterimage really reads it"), bHeld);
+	}
+
+	/**
+	 * `shadow_clone_every_elite_kills` (`bEvery`) or `shadow_clone_seconds`, read by
+	 * `UCataclysmShadowImages::NoteKillForShadowClone` (Shadow Clone). An Elite's kill with every 1 and 5 seconds makes a
+	 * clone at once; the same kill with the probed row at nought makes none.
+	 */
+	void ProbeShadowClone(FAutomationTestBase& Test, bool bEvery)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Elite = RavagerReworkCreatureNear(Test, World);
+		if (!Holder || !Elite)
+		{
+			return;
+		}
+		Elite->RarityStep = 1;
+		const auto Lines = [Holder](float Every, float Seconds)
+		{
+			SiphonLines(Holder, {SiphonStat(UCataclysmShadowImages::CloneEveryEliteKillsStat, Every),
+								 SiphonStat(UCataclysmShadowImages::CloneSecondsStat, Seconds)});
+		};
+		Lines(bEvery ? 0.0f : 1.0f, bEvery ? 5.0f : 0.0f);
+		const bool bPlain = UCataclysmShadowImages::NoteKillForShadowClone(Holder, Elite) != nullptr;
+		Lines(1.0f, 5.0f);
+		const ACataclysmShadowImage* Clone = UCataclysmShadowImages::NoteKillForShadowClone(Holder, Elite);
+		const TCHAR* Stat = bEvery ? UCataclysmShadowImages::CloneEveryEliteKillsStat
+								   : UCataclysmShadowImages::CloneSecondsStat;
+		Test.TestFalse(*FString::Printf(TEXT("%s: control, at nought an Elite's kill leaves no clone"), Stat), bPlain);
+		if (Test.TestNotNull(*FString::Printf(TEXT("%s: and with it one is left, so NoteKillForShadowClone reads it"),
+											  Stat), Clone))
+		{
+			Test.TestEqual(TEXT("for the 5 seconds its row says"), Clone->ExpiresAtSeconds - World->GetTimeSeconds(),
+						   5.0, 0.001);
+		}
+	}
+
+	/** `movement_targets_an_enemy_within_metres`, read by `UCataclysmShadowImages::ShadowStepTarget` (Shadow Step). */
+	void ProbeShadowStep(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		if (!Holder || !Creature)
+		{
+			return;
+		}
+		const FGameplayTagContainer MovementTags;
+		SiphonLines(Holder, {});
+		const AActor* Plain =
+			UCataclysmShadowImages::ShadowStepTarget(Holder, Creature->GetActorLocation(), MovementTags);
+		SiphonLines(Holder, {SiphonStat(UCataclysmShadowImages::ShadowStepMetresStat, 15.0f)});
+		const AActor* Held =
+			UCataclysmShadowImages::ShadowStepTarget(Holder, Creature->GetActorLocation(), MovementTags);
+		Test.TestNull(TEXT("movement_targets_an_enemy_within_metres: control, no enemy is a target without it"), Plain);
+		Test.TestTrue(TEXT("and with it the creature aimed at is, so ShadowStepTarget really reads it"), Held == Creature);
+	}
+
+	/**
+	 * `hits_strike_again`, read by `UCataclysmShadowImages::StrikeAgain` (Flurry of the Dead): flat 2 (`bScaled` false)
+	 * or 1 for every 10 Fervour held, the holder holding 50 (`bScaled` true), against nought.
+	 */
+	void ProbeHitsStrikeAgain(FAutomationTestBase& Test, bool bScaled)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		if (!Holder || !Creature)
+		{
+			return;
+		}
+		Holder->SetAttackDamage(10.0f);
+		Creature->SetHealth(100'000.0f);
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotBeEvaded = true;
+		Delivery.bCannotCriticallyStrike = true;
+		SiphonLines(Holder, {});
+		const int32 Plain = UCataclysmShadowImages::StrikeAgain(Holder, Creature, 100.0f, FGameplayTagContainer(), Delivery);
+		SiphonLines(Holder, {TPair<FName, FCataclysmStatModifier>(
+			FName(UCataclysmShadowImages::ExtraStrikesStat),
+			bScaled ? SiphonRow(1.0f, ECataclysmStatScale::PerPointOfClassResourceHeld, 10.0f) : SiphonRow(2.0f))});
+		const float Was = Creature->GetAbilitySystemComponent()->GetNumericAttribute(Vital::GetHealthAttribute());
+		const int32 Held = UCataclysmShadowImages::StrikeAgain(Holder, Creature, 100.0f, FGameplayTagContainer(), Delivery);
+		const float Lost = Was - Creature->GetAbilitySystemComponent()->GetNumericAttribute(Vital::GetHealthAttribute());
+		Test.TestEqual(TEXT("hits_strike_again: control, a hit strikes no more without it"), Plain, 0);
+		Test.TestEqual(bScaled ? TEXT("and 5 more holding 50 Fervour, so it is asked with the holder's state")
+							   : TEXT("and 2 more with 2, so StrikeAgain really reads it"),
+					   Held, bScaled ? 5 : 2);
+		Test.TestTrue(TEXT("and the extra strikes land"), Lost > 0.0f);
+	}
+
+	/**
+	 * `evasion_against_area_percent` under `while_moving`, read on the defender by `UCataclysmDamageCalculation::Resolve`
+	 * (Ever Moving): a defender of 100 evasion, an area hit rolled at 10, evaded only with the row while moving.
+	 */
+	void ProbeEvasionAgainstArea(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+		FCataclysmIncomingHit Area;
+		Area.Damage = 100.0f;
+		Area.bIsArea = true;
+		const auto Evaded = [&Area, System]()
+		{
+			return UCataclysmDamageCalculation::Resolve(Area, System, 1, /*EvasionRoll=*/10.0f, /*BlockRoll=*/100.0f)
+				.bEvaded;
+		};
+		FCataclysmStatModifier Row = SiphonRow(50.0f);
+		Row.Condition = ECataclysmStatCondition::WhileMoving;
+		System->NoteMovedMetres(1.0f);
+		SiphonLines(Holder, {});
+		const bool bPlain = Evaded();
+		SiphonLines(Holder, {TPair<FName, FCataclysmStatModifier>(
+			FName(UCataclysmDamageCalculation::EvasionAgainstAreaPercentStat), Row)});
+		const bool bMoving = Evaded();
+		System->NoteDidNotMove();
+		const bool bStanding = Evaded();
+		Test.TestFalse(TEXT("evasion_against_area_percent: control, area damage is not evaded without it"), bPlain);
+		Test.TestTrue(TEXT("and with it, moving, half of 100 evasion meets a roll of 10, so Resolve really reads it"),
+					  bMoving);
+		Test.TestFalse(TEXT("and standing still its while_moving refuses, so it is asked with the defender's state"),
+					   bStanding);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
 			// THE DEATH TREES' SLICE C6d2 (2026-11-25): Avenging Dead's minion attack speed by the summoner's own stacks.
 			{TEXT("minion_attack_speed"),        &ProbeScaledMinionAttackSpeed},
+			// THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's damage, scaled three ways.
+			{TEXT("minion_detonation_damage"),   &ProbeScaledMinionDetonationDamage},
 			{TEXT("crowd_control_resistance"),   &ProbeScaledCrowdControlResistance},
 			// THE DEATH TREES' SLICE C6a (2026-11-25): Soul Barrage's projectiles by the Fervour held.
 			{TEXT("projectile_count"),           &ProbeScaledProjectileCount},
@@ -6438,6 +6629,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("siphon_radius_metres"),       &ProbeScaledSiphonRadius},
 			{TEXT("siphon_life_percent"),        &ProbeScaledSiphonLife},
 			{TEXT("siphon_fervour_per_second"),  &ProbeScaledSiphonFervour},
+			// THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Flurry of the Dead's extra strikes by the Fervour held.
+			{TEXT("hits_strike_again"), [](FAutomationTestBase& Test) { ProbeHitsStrikeAgain(Test, true); }},
 		};
 		return Made;
 	}
@@ -13062,6 +13255,134 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * A fighter with a Fervour pool of 100 holding `Held`, and a strike on the Support key (whose slot has a cooldown
+	 * of 4), for the Death finish slice A's four probes below. Null when the skill could not be given.
+	 */
+	UCataclysmStrikeSkill* FervourSpenderOn(FScopedFighter& Fighter, float Held)
+	{
+		Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Held);
+		const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Support, /*Level=*/100, Fighter.Actor);
+		const FGameplayAbilitySpec* Spec = Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		return Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	}
+
+	/**
+	 * `skill_fervour_spend`, read by `UCataclysmSkillTemplate::SpendSoulFuel`: Soul Fuel's 10 and Deeper Draw's 1 a
+	 * point, the Death finish slice A (2026-11-26). ONE FIGHTER holding 30, with a strike on the Support key. THE CONTROL
+	 * IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: nothing is spent. Granted at a flat 12, 12 is.
+	 *
+	 * WHAT THIS DOES NOT REACH. A use and what it buys: `Cataclysm.DeathFinishSoulCollector.`.
+	 */
+	void ProbeSkillFervourSpend(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmStrikeSkill* Skill = FervourSpenderOn(Fighter, /*Held=*/30.0f);
+		if (!Test.TestNotNull(TEXT("a skill on the support key"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: with no skill_fervour_spend a use spends nothing"),
+					   Skill->SpendSoulFuel(Fighter.AbilitySystem), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmSkillTemplate::SkillFervourSpendStat, 12.0f);
+		Test.TestEqual(TEXT("with it at 12 a use spends 12, so SpendSoulFuel really reads it"),
+					   Skill->SpendSoulFuel(Fighter.AbilitySystem), 12.0f, 0.001f);
+	}
+
+	/**
+	 * `damage_per_skill_fervour_spent`, read by `UCataclysmSkillTemplate::SoulFuelIncreasePercent`, which
+	 * `CommitAndBegin` adds to a use's increases: Soul Fuel's damage, the Death finish slice A. ONE FIGHTER. THE CONTROL
+	 * IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: 10 Fervour spent buy nothing. Granted at a flat 3, they buy 30%.
+	 */
+	void ProbeDamagePerSkillFervourSpent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmStrikeSkill* Skill = FervourSpenderOn(Fighter, /*Held=*/30.0f);
+		if (!Test.TestNotNull(TEXT("a skill on the support key"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: with no damage_per_skill_fervour_spent 10 spent buy nothing"),
+					   Skill->SoulFuelIncreasePercent(Fighter.AbilitySystem, 10.0f), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmSkillTemplate::DamagePerSoulFuelFervourStat, 3.0f);
+		Test.TestEqual(TEXT("with it at 3 they buy 30%, so SoulFuelIncreasePercent really reads it"),
+					   Skill->SoulFuelIncreasePercent(Fighter.AbilitySystem, 10.0f), 30.0f, 0.001f);
+	}
+
+	/**
+	 * `area_of_effect_per_five_fervour_spent`, read by `UCataclysmSkillTemplate::AreaOfEffectMultiplier`: Pyre, the
+	 * Death finish slice A. ONE FIGHTER whose skill's last use spent 10 Fervour. THE CONTROL IS THE SAME FIGHTER BEFORE THE
+	 * STAT IS GRANTED: its area is unchanged. Granted at a flat 25, two fives make it 1.5 times.
+	 */
+	void ProbeAreaPerFiveFervourSpent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmStrikeSkill* Skill = FervourSpenderOn(Fighter, /*Held=*/30.0f);
+		if (!Test.TestNotNull(TEXT("a skill on the support key"), Skill))
+		{
+			return;
+		}
+		Skill->FervourSpentByThisUse = 10.0f;
+		Test.TestEqual(TEXT("control: with no area_of_effect_per_five_fervour_spent the area is unchanged"),
+					   Skill->AreaOfEffectMultiplier(), 1.0f, 0.001f);
+		GrantFlat(Fighter.Actor, UCataclysmSkillTemplate::AreaPerFiveFervourSpentStat, 25.0f);
+		Test.TestEqual(TEXT("with it at 25 and 10 spent, 1.5, so AreaOfEffectMultiplier really reads it"),
+					   Skill->AreaOfEffectMultiplier(), 1.5f, 0.001f);
+	}
+
+	/**
+	 * `spirit_volley_weapon_percent`, read by `UCataclysmFervour::LooseSpiritVolley` at a kill: Spirit Volley, the Death
+	 * finish slice A. ONE FIGHTER and a body. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a kill paying 3
+	 * looses no spirit. Granted at a flat 30, it looses 3.
+	 */
+	void ProbeSpiritVolleyWeaponPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		const AActor* Body = World->SpawnActor<AActor>();
+		if (!Test.TestNotNull(TEXT("a body"), Body))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: with no spirit_volley_weapon_percent a kill paying 3 looses none"),
+					   UCataclysmFervour::LooseSpiritVolley(Fighter.AbilitySystem, Body, 3.0f), 0);
+		GrantFlat(Fighter.Actor, UCataclysmFervour::SpiritVolleyWeaponPercentStat, 30.0f);
+		Test.TestEqual(TEXT("with it at 30 the kill looses 3, so LooseSpiritVolley really reads it"),
+					   UCataclysmFervour::LooseSpiritVolley(Fighter.AbilitySystem, Body, 3.0f), 3);
+	}
+
+	/**
 	 * `health_restored_on_critical_kill`, read by `UCataclysmFervour::RestoreHealthOnCriticalKill`: the Shadow's Clean
 	 * Kill, the Death trees' slice C4a (2026-11-25). ONE FIGHTER at half health. THE CONTROL IS THE SAME FIGHTER BEFORE
 	 * THE STAT IS GRANTED: nothing is restored. Granted at a flat 4, 4% of its maximum.
@@ -13818,6 +14139,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("resistance_celestial"),  [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 5); }},
 			{TEXT("resistance_chaos"),      [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 6); }},
 			{TEXT("resistance_void"),       [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 7); }},
+			// THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Ever Moving's share of evasion, under `while_moving`.
+			{TEXT("evasion_against_area_percent"), &ProbeEvasionAgainstArea},
 		};
 		return Made;
 	}
@@ -14781,6 +15104,905 @@ namespace CataclysmStatExemptionTest
 					  bHeld);
 	}
 
+	// ======================================================================
+	// THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26): every stat with no
+	// attribute `UCataclysmDetonation` and `UCataclysmHordeAscendant` read, each probed against the reader, with a control.
+	// ======================================================================
+
+	/** An Imp of `Summoner`'s `AlongX` along +X, told Summon Imp's 3 m explosion radius. */
+	ACataclysmMinion* DetonationProbeImp(AActor* Summoner, float AlongX)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Summoner, FVector(AlongX, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+														/*bBurns=*/false, TEXT("Imp"));
+		if (Imp)
+		{
+			Imp->RecordExplosionRadius(3.0f * M);
+		}
+		return Imp;
+	}
+
+	/** A 4 m swing granted to `Fighter`, for a detonation to be the hit of. */
+	UCataclysmStrikeSkill* DetonationProbeSkill(FScopedFighter& Fighter)
+	{
+		const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/1, Fighter.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmStrikeSkill* Strike = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Strike)
+		{
+			Strike->SkillName = TEXT("A probing swing");
+			Strike->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=4; Angle=90"));
+		}
+		return Strike;
+	}
+
+	/** A class resource pool of 150 for `Fighter`, holding `Held`. */
+	void DetonationProbePool(FScopedFighter& Fighter, float Held)
+	{
+		if (!Fighter.AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+		{
+			Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		}
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+													   Held);
+	}
+
+	/** How many ground zones `Owner` has left. */
+	int32 DetonationProbeZonesOf(UWorld* World, const AActor* Owner)
+	{
+		int32 Found = 0;
+		for (TActorIterator<ACataclysmGroundZone> Zone(World); Zone; ++Zone)
+		{
+			Found += IsValid(*Zone) && Zone->GetOwner() == Owner ? 1 : 0;
+		}
+		return Found;
+	}
+
+	/** One increased row on `Stat`, and nothing else. */
+	void GrantIncreasedLine(FScopedFighter& Fighter, const TCHAR* Stat, float Value)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Increased;
+		Row.Source = ECataclysmModifierSource::PassiveKeystone;
+		Row.Value = Value;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(Stat)).Modifiers = {Row};
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * A probe of a flag `Read` answers: false with no row (THE CONTROL), true with the row at `Value`. `Read` is handed the
+	 * fighter and a fresh Imp of its, 3 m along +X.
+	 */
+	void ProbeDetonationFlag(FAutomationTestBase& Test, const TCHAR* Stat, float Value,
+							 TFunction<bool(FScopedFighter&, ACataclysmMinion*)> Read)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+		DetonationProbePool(Fighter, 150.0f);
+		GrantFlatLines(Fighter, {});
+		ACataclysmMinion* First = DetonationProbeImp(Fighter.Actor, 3.0f * M);
+		const bool bPlain = First && Read(Fighter, First);
+		GrantFlatLines(Fighter, {{Stat, Value}});
+		ACataclysmMinion* Second = DetonationProbeImp(Fighter.Actor, 6.0f * M);
+		const bool bHeld = Second && Read(Fighter, Second);
+		for (ACataclysmMinion* Each : {First, Second})
+		{
+			if (IsValid(Each))
+			{
+				Each->Destroy();
+			}
+		}
+		Test.TestFalse(*FString::Printf(TEXT("%s: control, with no row the reader answers no"), Stat), bPlain);
+		Test.TestTrue(*FString::Printf(TEXT("%s: and with %.0f it answers yes, so it is really read"), Stat, Value), bHeld);
+	}
+
+	/**
+	 * A probe of a stat that acts only beside `Partner`, held at `PartnerValue` in both halves: a detonation of an Imp as
+	 * a swing's hit, and `Count` what came of it. THE CONTROL is the partner alone.
+	 */
+	void ProbeDetonationPair(FAutomationTestBase& Test, const TCHAR* Stat, float Value, const TCHAR* Partner,
+							 float PartnerValue, TFunction<int32(UWorld*, FScopedFighter&)> Count)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheStat, float AlongY) -> int32
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			DetonationProbePool(Fighter, 150.0f);
+			if (bWithTheStat)
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}, {Stat, Value}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}});
+			}
+			UCataclysmStrikeSkill* Strike = DetonationProbeSkill(Fighter);
+			ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Fighter.Actor, FVector(3.0f * M, AlongY, 0.0f), 20.0f, false,
+															TEXT("Imp"));
+			if (!Strike || !Imp)
+			{
+				return -1;
+			}
+			Imp->RecordExplosionRadius(3.0f * M);
+			UCataclysmDetonation::Detonate(Imp, Strike);
+			return Count(World, Fighter);
+		};
+		const int32 Plain = Once(false, 0.0f);
+		const int32 Held = Once(true, 200.0f * M);
+		Test.TestEqual(*FString::Printf(TEXT("%s: control, %s alone makes nothing"), Stat, Partner), Plain, 0);
+		Test.TestEqual(*FString::Printf(TEXT("%s: and with it, one, so the detonation really reads it"), Stat), Held, 1);
+	}
+
+	void ProbeWeaponSkillsDetonateOwnMinions(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::WeaponSkillsDetonateOwnMinionsStat, 1.0f,
+			[](FScopedFighter& Fighter, ACataclysmMinion*) {
+				return UCataclysmDetonation::WeaponSkillsDetonateOwnMinions(Fighter.Actor); });
+	}
+
+	void ProbeDetonatesWhenReleased(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::DetonatesWhenReleasedStat, 1.0f,
+			[](FScopedFighter&, ACataclysmMinion* Imp) { return UCataclysmDetonation::DetonateOnRelease(Imp); });
+	}
+
+	void ProbeExplodesAtLifespanEndChance(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::ExplodesAtLifespanEndChanceStat, 100.0f,
+			[](FScopedFighter&, ACataclysmMinion* Imp) { return UCataclysmDetonation::RipenAtLifespanEnd(Imp); });
+	}
+
+	void ProbeDetonateOnContact(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmDetonation::DetonateOnContactStat, 1.0f,
+			[](FScopedFighter&, ACataclysmMinion* Imp) { return UCataclysmDetonation::IsALivingBomb(Imp); });
+	}
+
+	void ProbeMinionsCastYourSkillsWithinMetres(FAutomationTestBase& Test)
+	{
+		ProbeDetonationFlag(Test, UCataclysmHordeAscendant::ReachMetresStat, 10.0f,
+			[](FScopedFighter& Fighter, ACataclysmMinion*) { return UCataclysmHordeAscendant::Holds(Fighter.Actor); });
+	}
+
+	void ProbeDetonationArea(FAutomationTestBase& Test)
+	{
+		// `minion_detonation_area`, read by `UCataclysmDetonation::AreaMultiplierFor` (Made Room). 1 with no row, 1.5
+		// with 50% increased.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+		ACataclysmMinion* Imp = DetonationProbeImp(Fighter.Actor, 3.0f * M);
+		if (!Test.TestNotNull(TEXT("minion_detonation_area: an Imp"), Imp))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Plain = UCataclysmDetonation::AreaMultiplierFor(Imp);
+		GrantIncreasedLine(Fighter, UCataclysmDetonation::DetonationAreaStat, 50.0f);
+		const float Held = UCataclysmDetonation::AreaMultiplierFor(Imp);
+		Test.TestEqual(TEXT("minion_detonation_area: control, 1 with no row"), Plain, 1.0f, 0.0001f);
+		Test.TestEqual(TEXT("and 1.5 with 50% increased, so it is really read"), Held, 1.5f, 0.0001f);
+	}
+
+	void ProbeDetonationRotSeconds(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::RotSecondsStat, 4.0f, UCataclysmDetonation::RotPercentStat, 10.0f,
+			[](UWorld* World, FScopedFighter& Fighter) { return DetonationProbeZonesOf(World, Fighter.Actor); });
+	}
+
+	void ProbeDetonationRotPercent(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::RotPercentStat, 10.0f, UCataclysmDetonation::RotSecondsStat, 4.0f,
+			[](UWorld* World, FScopedFighter& Fighter) { return DetonationProbeZonesOf(World, Fighter.Actor); });
+	}
+
+	void ProbeDetonationRaisesHuskChance(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::RaisesHuskChanceStat, 100.0f, UCataclysmDetonation::HuskSecondsStat,
+			8.0f, [](UWorld*, FScopedFighter& Fighter)
+			{ return UCataclysmCommand::MinionsOfTypeCommandedBy(Fighter.Actor, TEXT("Husk")).Num(); });
+	}
+
+	void ProbeDetonationHuskSeconds(FAutomationTestBase& Test)
+	{
+		ProbeDetonationPair(Test, UCataclysmDetonation::HuskSecondsStat, 8.0f, UCataclysmDetonation::RaisesHuskChanceStat,
+			100.0f, [](UWorld*, FScopedFighter& Fighter)
+			{ return UCataclysmCommand::MinionsOfTypeCommandedBy(Fighter.Actor, TEXT("Husk")).Num(); });
+	}
+
+	void ProbeDetonationSpread(FAutomationTestBase& Test, const TCHAR* Stat, float Value, const TCHAR* Partner,
+							   float PartnerValue)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheStat, float AlongY) -> bool
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			if (bWithTheStat)
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}, {Stat, Value}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {{Partner, PartnerValue}});
+			}
+			UCataclysmStrikeSkill* Strike = DetonationProbeSkill(Fighter);
+			ACataclysmMinion* First =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(3.0f * M, AlongY, 0.0f), 20.0f, false, TEXT("Imp"));
+			ACataclysmMinion* Beyond =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(4.0f * M, AlongY, 0.0f), 20.0f, false, TEXT("Imp"));
+			if (!Strike || !First || !Beyond)
+			{
+				return false;
+			}
+			First->RecordExplosionRadius(3.0f * M);
+			Beyond->RecordExplosionRadius(3.0f * M);
+			UCataclysmDetonation::Detonate(First, Strike);
+			const bool bTaken = !IsValid(Beyond) || Beyond->IsActorBeingDestroyed();
+			if (IsValid(Beyond))
+			{
+				Beyond->Destroy();
+			}
+			return bTaken;
+		};
+		const bool bPlain = Once(false, 0.0f);
+		const bool bHeld = Once(true, 200.0f * M);
+		Test.TestFalse(*FString::Printf(TEXT("%s: control, %s alone takes no Imp beside the one detonated"), Stat, Partner),
+					   bPlain);
+		Test.TestTrue(*FString::Printf(TEXT("%s: and with it the chain takes it, so it is really read"), Stat), bHeld);
+	}
+
+	void ProbeDetonationSpreadsPercent(FAutomationTestBase& Test)
+	{
+		ProbeDetonationSpread(Test, UCataclysmDetonation::SpreadPercentStat, 40.0f,
+							  UCataclysmDetonation::SpreadRadiusMetresStat, 3.0f);
+	}
+
+	void ProbeDetonationSpreadRadiusMetres(FAutomationTestBase& Test)
+	{
+		ProbeDetonationSpread(Test, UCataclysmDetonation::SpreadRadiusMetresStat, 3.0f,
+							  UCataclysmDetonation::SpreadPercentStat, 40.0f);
+	}
+
+	void ProbeFervourOnMinionDetonatedReserveMultiple(FAutomationTestBase& Test)
+	{
+		// `fervour_on_minion_detonated_reserve_multiple`, read by `UCataclysmDetonation::Detonate` (Last Breath). An Imp
+		// holding 20 back is detonated with the pool emptied first. THE CONTROL: with no row the pool stays at nought.
+		// With 2, it holds 40.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheRow, float AlongY) -> float
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			DetonationProbePool(Fighter, 150.0f);
+			if (bWithTheRow)
+			{
+				GrantFlatLines(Fighter, {{UCataclysmDetonation::FervourPerReserveMultipleStat, 2.0f}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {});
+			}
+			UCataclysmStrikeSkill* Strike = DetonationProbeSkill(Fighter);
+			ACataclysmMinion* Imp =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(3.0f * M, AlongY, 0.0f), 20.0f, false, TEXT("Imp"));
+			if (!Strike || !Imp)
+			{
+				return -1.0f;
+			}
+			Imp->RecordExplosionRadius(3.0f * M);
+			UCataclysmCommand::HoldReserve(Fighter.Actor, Imp, 20.0f);
+			Fighter.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+			UCataclysmDetonation::Detonate(Imp, Strike);
+			return Fighter.AbilitySystem->GetNumericAttribute(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		};
+		const float Plain = Once(false, 0.0f);
+		const float Held = Once(true, 200.0f * M);
+		Test.TestEqual(TEXT("fervour_on_minion_detonated_reserve_multiple: control, nothing with no row"), Plain, 0.0f,
+					   0.01f);
+		Test.TestEqual(TEXT("and twice the 20 held back with 2, so the detonation really reads it"), Held, 40.0f, 0.01f);
+	}
+
+	void ProbeMinionExtraRaiseChance(FAutomationTestBase& Test)
+	{
+		// `minion_extra_raise_chance`, read by `UCataclysmSummonSkill::RaiseOneMoreIfRolled` (Teeming Grave, and Rise
+		// Together). One summon of an Imp: one Imp with no row (THE CONTROL), two at 100.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Once = [&](bool bWithTheRow) -> int32
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			DetonationProbePool(Fighter, 150.0f);
+			if (bWithTheRow)
+			{
+				GrantFlatLines(Fighter, {{UCataclysmDetonation::ExtraRaiseChanceStat, 100.0f}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {});
+			}
+			const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Fighter.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid() ? Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmSummonSkill* Summon = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Summon)
+			{
+				return -1;
+			}
+			Summon->SkillName = TEXT("A probing summon");
+			Summon->Params = UCataclysmSkillShapes::ParseParams(TEXT("Minions=Imp:1; Duration=20"));
+			Summon->SummonOne();
+			const TArray<ACataclysmMinion*> Imps = UCataclysmCommand::MinionsOfTypeCommandedBy(Fighter.Actor, TEXT("Imp"));
+			for (ACataclysmMinion* Each : Imps)
+			{
+				Each->Destroy();
+			}
+			return Imps.Num();
+		};
+		const int32 Plain = Once(false);
+		const int32 Held = Once(true);
+		Test.TestEqual(TEXT("minion_extra_raise_chance: control, one Imp with no row"), Plain, 1);
+		Test.TestEqual(TEXT("and two at 100, so the summon really reads it"), Held, 2);
+	}
+
+	void ProbeMinionSkillCopyDamagePercent(FAutomationTestBase& Test)
+	{
+		// `minion_skill_copy_damage_percent`, read by `UCataclysmHordeAscendant::EveryFollowerNearCasts`. The reach held at
+		// 10 m, an Imp 5 m away, an all-round strike: no cast with no share (THE CONTROL), one at 10.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FCataclysmWeaponSkill Skill;
+		Skill.Name = TEXT("A probing strike");
+		Skill.Slot = ECataclysmAbilitySlot::Heavy;
+		Skill.Shape = ECataclysmSkillShape::Strike;
+		Skill.Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=360"));
+		Skill.DamagePercent = 100.0f;
+		const auto Once = [&](bool bWithTheRow, float /*AlongY*/) -> int32
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/100.0f);
+			if (bWithTheRow)
+			{
+				GrantFlatLines(Fighter, {{UCataclysmHordeAscendant::ReachMetresStat, 10.0f},
+										 {UCataclysmHordeAscendant::DamagePercentStat, 10.0f}});
+			}
+			else
+			{
+				GrantFlatLines(Fighter, {{UCataclysmHordeAscendant::ReachMetresStat, 10.0f}});
+			}
+			// THE FIGHTER STANDS AT THE ORIGIN, having no body to move: the Imp 5 m from it in both halves.
+			ACataclysmMinion* Imp =
+				ACataclysmMinion::Spawn(Fighter.Actor, FVector(5.0f * M, 0.0f, 0.0f), 20.0f, false, TEXT("Imp"));
+			if (!Imp)
+			{
+				return -1;
+			}
+			ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+			return UCataclysmHordeAscendant::EveryFollowerNearCasts(Fighter.Actor, Skill, FVector(6.0f * M, 0.0f, 0.0f));
+		};
+		const int32 Plain = Once(false, 0.0f);
+		const int32 Held = Once(true, 200.0f * M);
+		Test.TestEqual(TEXT("minion_skill_copy_damage_percent: control, no cast with no share"), Plain, 0);
+		Test.TestEqual(TEXT("and one at 10, so the vow really reads it"), Held, 1);
+	}
+
+	/**
+	 * `minion_detonation_damage`, read by `UCataclysmDetonation::DamageMultiplierFor` through the summoner's
+	 * `MultiplierForStatAgainst` with the minion named. Shipped scaled by the minion's fellows (Close Packed), the
+	 * summoner's own stacks (Bursting Ranks) and the minion's age (Swollen); own stacks prove the ask. 50% increased for
+	 * one stack: 1 before it is granted (THE CONTROL), 1.5 after.
+	 */
+	void ProbeScaledMinionDetonationDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		const FName Key(TEXT("Probe_minion_detonation_damage"));
+		FCataclysmStatModifier PerStack;
+		PerStack.Bucket = ECataclysmStatBucket::Increased;
+		PerStack.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerStack.Value = 50.0f;
+		PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+		PerStack.ScaleStep = 1.0f;
+		PerStack.ScaleMaxSteps = 1;
+		PerStack.StackKey = Key;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmDetonation::DetonationDamageStat)).Modifiers = {PerStack};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		ACataclysmMinion* Imp = DetonationProbeImp(Summoner.Actor, 3.0f * M);
+		if (!Test.TestNotNull(TEXT("minion_detonation_damage: an Imp"), Imp))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Before = UCataclysmDetonation::DamageMultiplierFor(Imp);
+		Summoner.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/60.0f, /*Cap=*/1);
+		const float After = UCataclysmDetonation::DamageMultiplierFor(Imp);
+		Test.TestEqual(TEXT("minion_detonation_damage: control, 1 before the stack"), Before, 1.0f, 0.0001f);
+		Test.TestEqual(TEXT("and 1.5 with one stack, so it is asked with the summoner's state"), After, 1.5f, 0.0001f);
+	}
+
+	/**
+	 * THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26): each of its thirteen stats, read by
+	 * `UCataclysmRemains` or `UCataclysmBoneGiants` off a swinger with no tags. EACH CONTROL IS THE SAME CALL BEFORE THE
+	 * STAT IS GRANTED. A dead Imp of the swinger's stands in for a dead creature where only its figures are read; the
+	 * Abomination's two and Plague Pit's need a Common creature of the monsters' side. Rolls are pinned at nought, so a
+	 * chance above nought succeeds. What each does in play is `Cataclysm.Remains.`'s.
+	 */
+	void ProbeRemains(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT
+		{
+			UCataclysmRemains::PinnedRollForTests = -1.0f;
+			World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		};
+		UCataclysmRemains::PinnedRollForTests = 0.0f;
+
+		FScopedSwinger Holder(World, FVector::ZeroVector);
+		Holder.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 200.0f);
+		ACataclysmMinion* Dead = ImpToldItsExplosion(Test, Holder.Actor, FVector(0.5f * M, 0, 0));
+		if (!Dead)
+		{
+			return;
+		}
+		const FVector Near(0.5f * M, 0, 0);
+		const auto Remains = [&Holder, Dead, &Near]()
+		{
+			return UCataclysmRemains::LeaveFor(Holder.Actor, Dead, Near, /*bEvenWithoutTheFlag=*/true);
+		};
+		const auto RemainsIn = [World]()
+		{
+			int32 Count = 0;
+			for (TActorIterator<ACataclysmRemainsMarker> It(World); It; ++It)
+			{
+				Count += IsValid(*It) ? 1 : 0;
+			}
+			return Count;
+		};
+
+		switch (Which)
+		{
+		case 0:
+		{
+			const bool bPlain = UCataclysmRemains::LeaveFor(Holder.Actor, Dead, Near) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmRemains::RemainsLeftStat, 1.0f);
+			const bool bWith = UCataclysmRemains::LeaveFor(Holder.Actor, Dead, Near) != nullptr;
+			Test.TestFalse(TEXT("remains_left: control, without it no remains are left"), bPlain);
+			Test.TestTrue(TEXT("and with it remains are left, so UCataclysmRemains::LeaveFor really reads it"), bWith);
+			return;
+		}
+		case 1:
+		{
+			Remains();
+			const bool bPlain = UCataclysmRemains::ChooseToRaiseOn(Holder.Actor, FVector::ZeroVector) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmRemains::RaiseReachMetresStat, 1.0f);
+			const bool bWith = UCataclysmRemains::ChooseToRaiseOn(Holder.Actor, FVector::ZeroVector) != nullptr;
+			Test.TestFalse(TEXT("remains_raise_reach_metres: control, without it nothing is raised on remains"), bPlain);
+			Test.TestTrue(TEXT("and with 1 metre the remains half a metre off are chosen, so ChooseToRaiseOn reads it"),
+						  bWith);
+			return;
+		}
+		case 2:
+		{
+			const float Plain = UCataclysmRemains::ReserveOnRemains(Holder.Actor, 10.0f);
+			GrantFlat(Holder.Actor, UCataclysmRemains::ReservePercentLessStat, 40.0f);
+			const float With = UCataclysmRemains::ReserveOnRemains(Holder.Actor, 10.0f);
+			Test.TestEqual(TEXT("minion_on_remains_reserve_percent_less: control, 10 stays 10"), Plain, 10.0f, 0.001f);
+			Test.TestEqual(TEXT("and 40 less makes it 6, so ReserveOnRemains really reads it"), With, 6.0f, 0.001f);
+			return;
+		}
+		case 3:
+		{
+			ACataclysmMinion* Raised = ImpToldItsExplosion(Test, Holder.Actor, FVector(0, 2 * M, 0));
+			ACataclysmMinion* Again = ImpToldItsExplosion(Test, Holder.Actor, FVector(0, -2 * M, 0));
+			ACataclysmRemainsMarker* First = Remains();
+			if (!Raised || !Again || !Test.TestNotNull(TEXT("set-up: remains"), First))
+			{
+				return;
+			}
+			const bool bPlainConsumed = UCataclysmRemains::RaiseOn(Holder.Actor, Raised, First);
+			ACataclysmRemainsMarker* Second = Remains();
+			GrantFlat(Holder.Actor, UCataclysmRemains::KeptOnRaiseChanceStat, 50.0f);
+			const bool bWithConsumed = UCataclysmRemains::RaiseOn(Holder.Actor, Again, Second);
+			Test.TestTrue(TEXT("remains_kept_on_raise_chance: control, without it a raise consumes the remains"),
+						  bPlainConsumed);
+			Test.TestFalse(TEXT("and with it (roll pinned at nought) they are kept, so RaiseOn really reads it"),
+						   bWithConsumed);
+			return;
+		}
+		case 4:
+		{
+			Remains();
+			const int32 Plain = UCataclysmRemains::DetonateWhere(Holder.Actor, [](const AActor&) { return true; });
+			GrantFlat(Holder.Actor, UCataclysmRemains::DetonateStat, 1.0f);
+			const int32 With = UCataclysmRemains::DetonateWhere(Holder.Actor, [](const AActor&) { return true; });
+			Test.TestEqual(TEXT("weapon_skills_detonate_remains: control, without it nothing is detonated"), Plain, 0);
+			Test.TestEqual(TEXT("and with it the remains are, so DetonateWhere really reads it"), With, 1);
+			return;
+		}
+		case 5:
+		case 6:
+		{
+			ACataclysmRemainsMarker* Left = Remains();
+			if (!Test.TestNotNull(TEXT("set-up: remains"), Left))
+			{
+				return;
+			}
+			Left->MaximumHealth = 1000.0f;
+			Left->Ailments.AddDefaulted(2);
+			if (Which == 5)
+			{
+				const float Plain = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+				GrantFlat(Holder.Actor, UCataclysmRemains::DetonationPercentStat, 3.0f);
+				const float With = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+				Test.TestEqual(TEXT("remains_detonation_percent_of_maximum_health: control, nought"), Plain, 0.0f, 0.001f);
+				Test.TestEqual(TEXT("and 3% of 1,000 with it, so DetonationDamage really reads it"), With, 30.0f, 0.001f);
+				return;
+			}
+			GrantFlat(Holder.Actor, UCataclysmRemains::DetonationPercentStat, 3.0f);
+			const float Plain = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+			GrantFlats(Holder.Actor, {{FName(UCataclysmRemains::DetonationPercentStat), 3.0f},
+									  {FName(UCataclysmRemains::IncreasedPerAilmentStat), 10.0f}});
+			const float With = UCataclysmRemains::DetonationDamage(Holder.Actor, Left);
+			Test.TestEqual(TEXT("remains_detonation_increased_per_ailment: control, 30"), Plain, 30.0f, 0.001f);
+			Test.TestEqual(TEXT("and 20% more for two ailments at 10 each, 36, so DetonationDamage really reads it"),
+						   With, 36.0f, 0.001f);
+			return;
+		}
+		case 7:
+		{
+			ACataclysmEnemyCharacter* Enemy =
+				World->SpawnActor<ACataclysmEnemyCharacter>(FVector(1.5f * M, 0, 0), FRotator::ZeroRotator);
+			const FGameplayTag Necrosis =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false);
+			if (!Test.TestNotNull(TEXT("set-up: a creature"), Enemy) || !Test.TestTrue(TEXT("set-up: the tag"),
+																					  Necrosis.IsValid()))
+			{
+				return;
+			}
+			const auto Carries = [Enemy, &Necrosis]()
+			{
+				const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Enemy);
+				return Its && Its->HasMatchingGameplayTag(Necrosis);
+			};
+			const auto WithNecrosis = [&Remains, &Necrosis]()
+			{
+				ACataclysmRemainsMarker* Left = Remains();
+				if (Left)
+				{
+					Left->MaximumHealth = 100.0f;
+					FCataclysmRemainsAilment& Held = Left->Ailments.AddDefaulted_GetRef();
+					Held.Ailment = TEXT("Necrosis");
+					Held.Tag = Necrosis;
+					Held.DamagePerSecond = 1.0f;
+					Held.SecondsLeft = 5.0f;
+				}
+				return Left;
+			};
+			GrantFlat(Holder.Actor, UCataclysmRemains::DetonationPercentStat, 1.0f);
+			UCataclysmRemains::Detonate(Holder.Actor, WithNecrosis());
+			const bool bPlain = Carries();
+			GrantFlats(Holder.Actor, {{FName(UCataclysmRemains::DetonationPercentStat), 1.0f},
+									  {FName(UCataclysmRemains::PassAilmentsStat), 1.0f}});
+			UCataclysmRemains::Detonate(Holder.Actor, WithNecrosis());
+			Test.TestFalse(TEXT("detonated_remains_pass_ailments: control, without it the creature takes no Necrosis"),
+						   bPlain);
+			Test.TestTrue(TEXT("and with it the Necrosis the remains held is passed on, so Detonate really reads it"),
+						  Carries());
+			return;
+		}
+		case 8:
+		{
+			ACataclysmRemainsMarker* Plain = Remains();
+			UCataclysmAbilitySystemComponent* System = Holder.AbilitySystem;
+			FCataclysmStatModifier Longer;
+			Longer.Bucket = ECataclysmStatBucket::Increased;
+			Longer.Source = ECataclysmModifierSource::PassiveKeystone;
+			Longer.Value = 100.0f;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(UCataclysmRemains::RemainsDurationStat)).Modifiers = {Longer};
+			System->SetStatInputs(MoveTemp(Inputs));
+			ACataclysmRemainsMarker* With = Remains();
+			if (!Test.TestNotNull(TEXT("set-up: remains"), Plain) || !Test.TestNotNull(TEXT("set-up: remains"), With))
+			{
+				return;
+			}
+			Test.TestEqual(TEXT("remains_duration: control, 10 seconds"), Plain->GetLifeSpan(), 10.0f, 0.01f);
+			Test.TestEqual(TEXT("and 100% increased makes 20, so LeaveFor really reads it"), With->GetLifeSpan(), 20.0f,
+						   0.01f);
+			return;
+		}
+		case 9:
+		{
+			const bool bPlain = UCataclysmRemains::LeaveForAFollower(Holder.Actor, Dead, Near) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmRemains::FollowerLeavesChanceStat, 6.0f);
+			const bool bWith = UCataclysmRemains::LeaveForAFollower(Holder.Actor, Dead, Near) != nullptr;
+			Test.TestFalse(TEXT("minion_leaves_remains_chance: control, without it a follower leaves none"), bPlain);
+			Test.TestTrue(TEXT("and with it (roll pinned at nought) one is left, so LeaveForAFollower reads it"), bWith);
+			return;
+		}
+		case 10:
+		case 11:
+		{
+			TArray<ACataclysmEnemyCharacter*> Started;
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+					FVector(3 * M, (Index - 2) * 2 * M, 0), FRotator::ZeroRotator);
+				if (!Test.TestNotNull(TEXT("set-up: a creature"), Creature))
+				{
+					return;
+				}
+				UCataclysmBoneGiants::NoteStartedWith(Creature);
+				Started.Add(Creature);
+			}
+			if (Which == 11)
+			{
+				const int32 Plain = UCataclysmBoneGiants::KillsNeededFor(Holder.Actor);
+				GrantFlat(Holder.Actor, UCataclysmBoneGiants::AbominationKillPercentLessStat, 25.0f);
+				const int32 With = UCataclysmBoneGiants::KillsNeededFor(Holder.Actor);
+				Test.TestEqual(TEXT("abomination_kill_percent_less: control, half of 4 is 2"), Plain, 2);
+				Test.TestEqual(TEXT("and 25% of 4 is 1 with 25 less, so KillsNeededFor really reads it"), With, 1);
+				return;
+			}
+			const auto Kill = [&Holder](AActor* Victim)
+			{
+				FCataclysmDeathNotice Notice;
+				Notice.Victim = Victim;
+				Notice.Killer = Holder.Actor;
+				Notice.Location = Victim->GetActorLocation();
+				UCataclysmBoneGiants::NoteDeath(Holder.Actor, Notice);
+			};
+			Kill(Started[0]);
+			Kill(Started[1]);
+			const bool bPlain = UCataclysmBoneGiants::AbominationOf(Holder.Actor) != nullptr;
+			GrantFlat(Holder.Actor, UCataclysmBoneGiants::AbominationRisesStat, 1.0f);
+			Kill(Started[2]);
+			Test.TestFalse(TEXT("abomination_rises: control, without it half the floor killed raises nothing"), bPlain);
+			Test.TestNotNull(TEXT("and with it the next kill raises the Abomination, so NoteDeath really reads it"),
+							 UCataclysmBoneGiants::AbominationOf(Holder.Actor));
+			return;
+		}
+		default:
+		{
+			UCataclysmBoneGiants::RemainsLanded(Holder.Actor, Remains());
+			const bool bPlain = UCataclysmBoneGiants::ColossusOf(Holder.Actor) != nullptr;
+			const int32 LeftPlain = RemainsIn();
+			GrantFlat(Holder.Actor, UCataclysmBoneGiants::BoneColossusStat, 1.0f);
+			UCataclysmBoneGiants::RemainsLanded(Holder.Actor, Remains());
+			Test.TestFalse(TEXT("bone_colossus: control, without it remains raise no Colossus"), bPlain);
+			Test.TestEqual(TEXT("control: and the remains stay"), LeftPlain, 1);
+			Test.TestNotNull(TEXT("and with it the remains raise one, so RemainsLanded really reads it"),
+							 UCataclysmBoneGiants::ColossusOf(Holder.Actor));
+			return;
+		}
+		}
+	}
+
+	/**
+	 * The Necromancer's army's fourteen stats with no attribute, the Death line's finishing slice B (2026-11-26), each
+	 * read by `UCataclysmNecromancerArmy`: `Which` picks one. A commander with a pool of 150 and an Imp of its own, the
+	 * army's rolls pinned at 0. THE CONTROL in each: the same reading with no row answers otherwise. What each does in
+	 * play is `CataclysmNecromancerArmyTests.cpp`'s.
+	 */
+	void ProbeNecromancerArmy(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.NecromancerArmyRoll"));
+		if (Roll)
+		{
+			Roll->Set(0.0f, ECVF_SetByConsole);
+		}
+		ON_SCOPE_EXIT
+		{
+			if (Roll)
+			{
+				Roll->Set(-1.0f, ECVF_SetByConsole);
+			}
+		};
+
+		FScopedFighter Commander(World, /*AttackDamage=*/0.0f);
+		USphereComponent* Body = NewObject<USphereComponent>(Commander.Actor);
+		Body->InitSphereRadius(34.0f);
+		Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Body->SetCollisionObjectType(ECC_Pawn);
+		Body->SetCollisionResponseToAllChannels(ECR_Overlap);
+		Commander.Actor->SetRootComponent(Body);
+		Body->RegisterComponent();
+		Commander.AbilitySystem->AddAttributeSetSubobject(
+			NewObject<UCataclysmClassResourceAttributeSet>(Commander.Actor));
+		Commander.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		FScopedFighter Other(World, /*AttackDamage=*/0.0f);
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Commander.Actor, FVector(3.0f * M, 0, 0), 60.0f, false,
+														TEXT("Imp"));
+		UCataclysmSummonSkill* Skill = NewObject<UCataclysmSummonSkill>(GetTransientPackage());
+		if (!Test.TestNotNull(TEXT("an Imp of the commander's"), Imp) || !Skill)
+		{
+			return;
+		}
+		Skill->Params.bPermanent = true;
+		Imp->SummonedBy = Skill;
+		using Army = UCataclysmNecromancerArmy;
+
+		auto HalfThen = [Imp](const TFunction<void()>& Act)
+		{
+			UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Imp);
+			const float Maximum = System->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum * 0.5f);
+			Act();
+			return System->GetNumericAttribute(Vital::GetHealthAttribute());
+		};
+		auto KilledBy = [World, &Other](AActor* Killer)
+		{
+			FCataclysmLastBlow Blow;
+			Blow.Attacker = Killer;
+			Blow.DealtBy = Killer;
+			Blow.WorldSeconds = World->GetTimeSeconds();
+			Other.AbilitySystem->RecordLastBlow(MoveTemp(Blow));
+			return Army::EnemyDied(Other.Actor) ? 1.0f : 0.0f;
+		};
+		auto Swaps = [&Commander, Imp]()
+		{
+			AActor* Partner = nullptr;
+			FVector SelfTo;
+			FVector PartnerTo;
+			return Army::ChooseGraveSwapPartner(Commander.Actor, Imp->GetActorLocation(), 10.0f * M, Partner, SelfTo,
+												PartnerTo) ? 1.0f : 0.0f;
+		};
+
+		const TCHAR* Stat = nullptr;
+		float Value = 0.0f;
+		TFunction<float()> Read;
+		switch (Which)
+		{
+		case 0:
+			Stat = Army::ReforgedHealPercentStat;
+			Value = 10.0f;
+			Army::MakePermanent(Imp);
+			Read = [&]() { return HalfThen([&]() { Army::AfterASummon(Commander.Actor, Skill, 0, true); }); };
+			break;
+		case 1:
+			Stat = Army::CritShareOfYoursPercentStat;
+			Value = 4.0f;
+			Read = [&]() { float Chance = 0.0f; float Multiplier = 0.0f;
+						   Army::CriticalFiguresFor(Imp, Chance, Multiplier); return Multiplier; };
+			break;
+		case 2:
+			Stat = Army::RisesAgainChanceStat;
+			Value = 4.0f;
+			Army::MakePermanent(Imp);
+			Read = [&]() { return static_cast<float>(Army::FollowerDied(Imp, Commander.Actor)); };
+			break;
+		case 3:
+			Stat = Army::RegenPercentPerSecondStat;
+			Value = 1.0f;
+			Read = [&]() { return HalfThen([&]() { Army::Step(Imp, 1.0f); }); };
+			break;
+		case 4:
+			Stat = Army::MorePermanentRaisedStat;
+			Value = 2.0f;
+			Read = [&]() { return static_cast<float>(Army::MorePermanentToRaise(Commander.Actor, Skill)); };
+			break;
+		case 5:
+			Stat = Army::PermanentKillRisesAsHuskChanceStat;
+			Value = 100.0f;
+			Army::MakePermanent(Imp);
+			Read = [&]() { return KilledBy(Imp); };
+			break;
+		case 6:
+			Stat = Army::DeathRisesAsHuskStat;
+			Value = 1.0f;
+			Read = [&]() { return static_cast<float>(Army::FollowerDied(Imp, Commander.Actor)); };
+			break;
+		case 7:
+			Stat = Army::KillRisesAsSkeletonChanceStat;
+			Value = 20.0f;
+			Read = [&]() { return KilledBy(Commander.Actor); };
+			break;
+		case 8:
+			Stat = Army::MovementSwapsWithMinionStat;
+			Value = 1.0f;
+			Read = Swaps;
+			break;
+		case 9:
+			Stat = Army::SkillsRaiseHusksSecondsStat;
+			Value = 10.0f;
+			Commander.AbilitySystem->NoteClassResourceFull();
+			Read = [&]() { return Army::RaiseLichHusk(Commander.Actor, FVector(5.0f * M, 0, 0), false) ? 1.0f : 0.0f; };
+			break;
+		case 10:
+			Stat = Army::DamageSplitWithMinionsStat;
+			Value = 1.0f;
+			Read = [&]() { return Army::SplitWithMinions(Commander.AbilitySystem, Other.Actor, 300.0f, false); };
+			break;
+		case 13:
+			Stat = Army::RaisesASecondChanceStat;
+			Value = 4.0f;
+			Read = [&]() { return Army::ChanceToRaiseASecond(Commander.Actor, Skill); };
+			break;
+		case 11:
+			Stat = Army::LoneRevenantHeldStat;
+			Value = 1.0f;
+			Read = [&]() { return Army::LoneRevenantHeld(Commander.Actor) ? 1.0f : 0.0f; };
+			break;
+		default:
+			Stat = Army::ReserveStat;
+			Value = 300.0f;
+			Read = [&]() { return UCataclysmCommand::ReserveFor(Commander.Actor, 10.0f, FGameplayTagContainer()); };
+			break;
+		}
+
+		const float Without = Read();
+		if (Which == 12)
+		{
+			// THE RESERVE'S "MORE" BUCKET, which a flat row does not fill.
+			FCataclysmStatModifier More;
+			More.Bucket = ECataclysmStatBucket::More;
+			More.Source = ECataclysmModifierSource::PassiveKeystone;
+			More.Value = Value;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(Stat)).Modifiers = {More};
+			Commander.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+		else
+		{
+			GrantFlatLines(Commander, {{Stat, Value}});
+		}
+		const float With = Read();
+		Test.TestNotEqual(*FString::Printf(TEXT("%s: %.2f with no row and %.2f with %.0f, so UCataclysmNecromancerArmy "
+												"really reads it"), Stat, Without, With, Value),
+						  With, Without);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -15061,6 +16283,11 @@ namespace CataclysmStatExemptionTest
 			{TEXT("reserved_fervour_counts_as_held_percent"), &ProbeReservedFervourCountsAsHeld},
 			{TEXT("fervour_per_kill_extra_chance"), &ProbeFervourPerKillExtraChance},
 			{TEXT("health_restored_on_critical_kill"), &ProbeHealthRestoredOnCriticalKill},
+			// THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel, Deeper Draw, Pyre and Spirit Volley.
+			{TEXT("skill_fervour_spend"), &ProbeSkillFervourSpend},
+			{TEXT("damage_per_skill_fervour_spent"), &ProbeDamagePerSkillFervourSpent},
+			{TEXT("area_of_effect_per_five_fervour_spent"), &ProbeAreaPerFiveFervourSpent},
+			{TEXT("spirit_volley_weapon_percent"), &ProbeSpiritVolleyWeaponPercent},
 			// THE DEATH TREES' SLICE C4b1 (2026-11-25): Kindred Fires and Borrowed Time.
 			{TEXT("fervour_hold_restarted_by_any_gain"), &ProbeHoldRestartedByAnyGain},
 			{TEXT("fervour_hold_extended_on_gain_seconds"), &ProbeHoldExtendedOnGainSeconds},
@@ -15089,6 +16316,26 @@ namespace CataclysmStatExemptionTest
 			{TEXT("interpose_chance"), &ProbeInterposeChance},
 			{TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"), &ProbeLethalDose},
 			{TEXT("movement_passes_through_enemies"), &ProbeMovementPassesThroughEnemies},
+			// THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26).
+			{TEXT("weapon_skills_detonate_own_minions"), &ProbeWeaponSkillsDetonateOwnMinions},
+			{TEXT("minion_detonates_when_released"), &ProbeDetonatesWhenReleased},
+			// AND THE DETONATION'S DAMAGE, which slice C put on the list of stats with no attribute and probed only among
+			// the scaled stats; window dfb-w1 found it unprobed here. The scaled probe grants the stat on a stack and
+			// asserts `UCataclysmDetonation::DamageMultiplierFor` reads it, which is what this table asks.
+			{TEXT("minion_detonation_damage"), &ProbeScaledMinionDetonationDamage},
+			{TEXT("minion_detonation_area"), &ProbeDetonationArea},
+			{TEXT("minion_detonation_rot_seconds"), &ProbeDetonationRotSeconds},
+			{TEXT("minion_detonation_rot_percent"), &ProbeDetonationRotPercent},
+			{TEXT("minion_explodes_at_lifespan_end_chance"), &ProbeExplodesAtLifespanEndChance},
+			{TEXT("minion_detonation_spreads_percent"), &ProbeDetonationSpreadsPercent},
+			{TEXT("minion_detonation_spread_radius_metres"), &ProbeDetonationSpreadRadiusMetres},
+			{TEXT("fervour_on_minion_detonated_reserve_multiple"), &ProbeFervourOnMinionDetonatedReserveMultiple},
+			{TEXT("minions_detonate_on_contact"), &ProbeDetonateOnContact},
+			{TEXT("minion_detonation_raises_husk_chance"), &ProbeDetonationRaisesHuskChance},
+			{TEXT("minion_detonation_husk_seconds"), &ProbeDetonationHuskSeconds},
+			{TEXT("minion_extra_raise_chance"), &ProbeMinionExtraRaiseChance},
+			{TEXT("minions_cast_your_skills_within_metres"), &ProbeMinionsCastYourSkillsWithinMetres},
+			{TEXT("minion_skill_copy_damage_percent"), &ProbeMinionSkillCopyDamagePercent},
 			// THE WAR CLASSES' FERVOUR, slice C, 2026-11-24.
 			{TEXT("fervour_per_hit_taken"), [](FAutomationTestBase& Test)
 				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerHitTakenStat,
@@ -15162,6 +16409,43 @@ namespace CataclysmStatExemptionTest
 			// THIN AIR, 2026-11-25 (the C5 plan).
 			{TEXT("cannot_be_targeted_while_moving"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, false); }},
 			{TEXT("cannot_be_targeted_broken_seconds"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, true); }},
+			// THE SHADOW'S LAST VOWS AND EVER MOVING, the Death line's finishing slice E (2026-11-26).
+			{TEXT("afterimage_repeats_your_next_attack"), &ProbeAfterimage},
+			{TEXT("shadow_clone_every_elite_kills"), [](FAutomationTestBase& Test) { ProbeShadowClone(Test, true); }},
+			{TEXT("shadow_clone_seconds"), [](FAutomationTestBase& Test) { ProbeShadowClone(Test, false); }},
+			{TEXT("movement_targets_an_enemy_within_metres"), &ProbeShadowStep},
+			{TEXT("hits_strike_again"), [](FAutomationTestBase& Test) { ProbeHitsStrikeAgain(Test, false); }},
+			{TEXT("evasion_against_area_percent"), &ProbeEvasionAgainstArea},
+			// THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26).
+			{TEXT("remains_left"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 0); }},
+			{TEXT("remains_raise_reach_metres"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 1); }},
+			{TEXT("minion_on_remains_reserve_percent_less"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 2); }},
+			{TEXT("remains_kept_on_raise_chance"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 3); }},
+			{TEXT("weapon_skills_detonate_remains"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 4); }},
+			{TEXT("remains_detonation_percent_of_maximum_health"),
+			 [](FAutomationTestBase& Test) { ProbeRemains(Test, 5); }},
+			{TEXT("remains_detonation_increased_per_ailment"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 6); }},
+			{TEXT("detonated_remains_pass_ailments"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 7); }},
+			{TEXT("remains_duration"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 8); }},
+			{TEXT("minion_leaves_remains_chance"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 9); }},
+			{TEXT("abomination_rises"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 10); }},
+			{TEXT("abomination_kill_percent_less"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 11); }},
+			{TEXT("bone_colossus"), [](FAutomationTestBase& Test) { ProbeRemains(Test, 12); }},
+			// THE NECROMANCER'S ARMY, the Death line's finishing slice B (2026-11-26).
+			{TEXT("summon_without_room_heals_permanent_percent"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 0); }},
+			{TEXT("minion_crit_share_of_yours_percent"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 1); }},
+			{TEXT("minion_rises_again_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 2); }},
+			{TEXT("minion_health_regen_percent_per_second"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 3); }},
+			{TEXT("summon_raises_more_permanent_minions"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 4); }},
+			{TEXT("permanent_minion_kill_rises_as_husk_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 5); }},
+			{TEXT("minion_death_rises_as_husk"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 6); }},
+			{TEXT("kill_rises_as_skeleton_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 7); }},
+			{TEXT("movement_swaps_with_minion"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 8); }},
+			{TEXT("skills_raise_husks_seconds_after_resource_full"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 9); }},
+			{TEXT("damage_taken_split_with_minions"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 10); }},
+			{TEXT("lone_revenant_held"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 11); }},
+			{TEXT("minion_reserve"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 12); }},
+			{TEXT("permanent_minion_raises_a_second_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 13); }},
 		};
 		return Made;
 	}
@@ -15373,7 +16657,8 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// SAME DAY, for the Death classes' kill generator's three stats. THIRTY-SEVEN ON 2026-11-25: the Death trees' slices
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
-	if (!TestEqual(TEXT("the thirty-seven probes are all here"), ConditionedProbes().Num(), 37))
+	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
+	if (!TestEqual(TEXT("the thirty-eight probes are all here"), ConditionedProbes().Num(), 38))
 	{
 		return false;
 	}

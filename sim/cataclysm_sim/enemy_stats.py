@@ -422,7 +422,8 @@ BASELINE = Archetype(name="Baseline", role="The average enemy, for reading the "
                                            "rarity ladder on its own")
 
 #: The seven Demonic Cataclysm enemies the design document names for the vertical
-#: slice. Their roles are quoted from it; the numbers are this file's.
+#: slice, and Death's first creature of its own, the Wraith (2026-11-26). Their roles
+#: are quoted from it; the numbers are this file's.
 ARCHETYPES: dict[str, Archetype] = {
     a.name: a for a in (
         BASELINE,
@@ -454,6 +455,24 @@ ARCHETYPES: dict[str, Archetype] = {
             move_speed=3.5, evasion=10.0, energy_shield_fraction=0.50,
             # Little of its own. What keeps it alive is the shield.
             resistance=10.0,
+        ),
+        # DEATH'S CASTER, THE LICH, since 2026-11-26: the owner approved the
+        # design ("I'm happy with those enemy designs") and it escorts one group
+        # in four in Death dungeons in place of the Succubus. A slow skeletal
+        # caster that holds at 8 metres and raises what the player just killed.
+        # Figures from the approved design: health 1.6 (Sentinel 1.3, Brute
+        # 2.2), damage 0.60 at 1.0 s (the Succubus's 0.6154), armour 0.5, a
+        # shield of 30% of health from PoE 2's Desiccated Lich, resistance 25.
+        # Evasion 0, a judgement: the design states none and a slow skeleton in
+        # robes has no reason to dodge.
+        Archetype(
+            name="Lich",
+            role="Slow caster that raises the fallen. A bolt every second",
+            cataclysm="Death",
+            health_share=1.60, damage_share=0.60, armor_share=0.50,
+            attack_interval=1.0, crit_chance=10.0, crit_multiplier=200.0,
+            move_speed=3.0, evasion=0.0, energy_shield_fraction=0.30,
+            resistance=25.0,
         ),
         Archetype(
             name="Hellhound",
@@ -560,6 +579,32 @@ ARCHETYPES: dict[str, Archetype] = {
             # High, but below the Abyssal Warden, which is the one the design
             # singles out for resistance. This one's threat is its phases.
             resistance=30.0,
+        ),
+        # DEATH'S FIRST CREATURE OF ITS OWN, 2026-11-26. The design the project owner approved that day ("I'm happy with
+        # those enemy designs"), in place of the Hellhound in Death dungeons. A hooded scythe ghost that phases through
+        # the player and reaps from the other side, so backing away does not save the player.
+        Archetype(
+            name="Wraith",
+            cataclysm="Death",
+            role="Fast scythe ghost. Phases through the player and reaps from the other side",
+            # 0.70 between the Succubus's 0.60 and the Hellhound's 0.75: a fast melee creature that hunts in threes.
+            health_share=0.70,
+            # 0.75 A SECOND, the design's figure, under the Hellhound's 0.86: its threat is that it cannot be walked
+            # away from, not that each swing is large. The design stated 1.20 a swing every 1.6 seconds; this is
+            # the same 0.75 a second at 1.25 seconds, 0.9375 a swing. See `attack_interval` below.
+            damage_share=0.9375,
+            # NO ARMOUR AND THE HIGHEST EVASION IN THE GAME, so area damage is the answer, as the design says for
+            # evasive creatures. The Imp's 25 was the highest until now.
+            armor_share=0.0, evasion=30.0,
+            # 1.25 SECONDS, NOT THE DESIGN'S 1.6, SO ITS 1.6 METRE SWING STAYS UNMARKED (a judgement, 2026-11-26).
+            # By the Attack Telegraphs rules a 1.6 second cycle allows a 1.4 metre marker, so a 1.6 metre swing on
+            # it would have to be marked; the design meant it unmarked, and measured the wind-up its own reach would
+            # need instead of the largest marker its cycle allows. At 1.25 seconds the largest marker is 0.79
+            # metres, under the one metre floor, so Reap draws none, as the Brute's 1.2 second slam does not.
+            attack_interval=1.25, crit_chance=10.0, crit_multiplier=175.0,
+            # Faster than every class (the Ravager's 4.6) and slower than the Imp's 6.5.
+            move_speed=5.0,
+            resistance=15.0,
         ),
     )
 }

@@ -297,7 +297,7 @@ def test_only_the_archetypes_meant_to_have_a_shield_have_one():
     and the construct have one, the animals and the brawlers do not."""
     with_shield = {k.name for k in es.ARCHETYPES.values()
                    if k.energy_shield_fraction > 0}
-    assert with_shield == {"Succubus", "Corrupted Sentinel"}
+    assert with_shield == {"Succubus", "Corrupted Sentinel", "Lich"}
 
 
 def test_the_shield_is_a_fraction_of_that_enemys_own_health():

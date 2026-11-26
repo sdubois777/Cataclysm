@@ -55,6 +55,10 @@ _SIPHON = ("the Soul Collector's Siphon, a passive tree's rule and no skill: dam
 #: The calls that name neither a skill nor a row, by rule, each with its reason.
 CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
     ("AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::Explode", "ApplyBurn", 0): _EXPLOSION,
+    # PLAGUE PIT, the Necromancer's keystone, a passive tree's rule and no skill: an ailment a creature died with,
+    # passed from its detonated remains to each enemy the blast strikes. The Death finish's slice D, 2026-11-26.
+    ("AbilitySystem/CataclysmRemains.cpp", "UCataclysmRemains::Detonate", "UCataclysmAilments::Apply", 0):
+        _WORN_ROW + "; Plague Pit, the Death finish's slice D, 2026-11-26",
     # BLOOD DEBT, the Shadow's keystone, a passive tree's rule and no skill: the
     # Bleed left on a dead enemy laid again on the strongest near it. The Death
     # trees' slice C4c2, 2026-11-25.
