@@ -39,7 +39,8 @@ SCORING_TYPE = {
 
 
 def cataclysm_order_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
-    """The order this campaign's character adds Cataclysms in, all eight of them.
+    """The order this campaign's character adds Cataclysms in, all eight of them,
+    the built ones first.
 
     A CAMPAIGN IN THIS MODEL IS ONE RUN BY ONE CHARACTER, and that is what
     decides how this is seeded. `Simulation` plays a single run at a single
@@ -96,10 +97,21 @@ def cataclysm_order_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
     nothing the owner did not say; it is not evidence about what the game will
     do, and this docstring is where that is recorded so a later reader does not
     mistake the shuffle for a decision.
+
+    THE BUILT ONES COME FIRST. The project owner ruled on 2026-11-26, verbatim:
+    "yeah only draw the ones that are built. It's kinda pointless to test stuff
+    that isn't even in the game." So the whole roster is shuffled exactly as
+    before and then split, `cfg.BUILT_CATACLYSMS` in front and the rest after,
+    each part keeping the order the shuffle gave it. A uniform shuffle read that
+    way is a uniform shuffle of each part, the generator is read exactly as it
+    was, and with every Cataclysm built the order is the one drawn before the
+    ruling. `UCataclysmRoster::OrderFor` does the same in the game.
     """
     order = list(cfg.CATACLYSM_ROSTER)
     random.Random(f"cataclysm-order:{seed}").shuffle(order)
-    return tuple(order)
+    built = set(cfg.BUILT_CATACLYSMS)
+    return (tuple(name for name in order if name in built)
+            + tuple(name for name in order if name not in built))
 
 
 def active_cataclysms_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:

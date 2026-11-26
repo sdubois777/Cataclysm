@@ -91,6 +91,24 @@ public:
 	static const TArray<ECataclysmType>& All();
 
 	/**
+	 * The Cataclysms that are built in the game, which a character draws before any other.
+	 *
+	 * THE PROJECT OWNER'S RULING OF 2026-11-26, verbatim: "yeah only draw the ones that are built. It's kinda pointless
+	 * to test stuff that isn't even in the game." Until it, `OrderFor` shuffled all eight alike, so a new character
+	 * usually began against a Cataclysm with nothing behind it -- the owner's Death character drew Famine.
+	 *
+	 * ADDING ONE WHEN IT IS BUILT IS ONE LINE in `CataclysmRoster.cpp`'s list. `config.BUILT_CATACLYSMS` in
+	 * `sim/cataclysm_sim/config.py` is the model's copy, and
+	 * `tools/tests/test_only_built_cataclysms_are_drawn_first.py` holds the two equal.
+	 *
+	 * THE ORDER OF THIS LIST MEANS NOTHING, as `All`'s does not: `OrderFor` reads only whether a Cataclysm is in it.
+	 */
+	static const TArray<ECataclysmType>& Built();
+
+	/** Whether this Cataclysm is in `Built`. `None` is not. */
+	static bool IsBuilt(ECataclysmType Cataclysm);
+
+	/**
 	 * How many Cataclysms are active at once at this difficulty tier.
 	 *
 	 * THE DIFFICULTY TIER IS THE COUNT. `docs/Cataclysm_GDD_v2.md`, Game Start:
@@ -105,6 +123,13 @@ public:
 
 	/**
 	 * The order this character adds Cataclysms in, all eight of them.
+	 *
+	 * **THE BUILT ONES COME FIRST**, in the order the draw gave them, and the unbuilt ones after them, also in the
+	 * order the draw gave them: the project owner's ruling of 2026-11-26 (see `Built`). So a tier no higher than
+	 * `Built().Num()` faces only built Cataclysms, and a tier that needs more takes unbuilt ones after them. HOW: the
+	 * whole roster is shuffled exactly as before the ruling, then split, keeping each part's order. Each part is
+	 * therefore a uniform shuffle of itself, the seed alone still decides everything, and if every Cataclysm were
+	 * built the order would be the one drawn before the ruling.
 	 *
 	 * THE SEED IS THE CHARACTER, which is the whole of why this is drawn rather
 	 * than fixed. The project owner ruled on 2026-09-06, verbatim, "if they are
@@ -129,9 +154,10 @@ public:
 	 * IT DOES NOT REPRODUCE THE MODEL'S SEQUENCE and does not claim to.
 	 * `random.Random` seeded from a string and `FRandomStream` are different
 	 * generators, so seed 7 draws a different order in each. What is ported is
-	 * the shape -- a uniform draw over the eight, keyed only on the seed -- and
-	 * uniformity is the model's stated ASSUMPTION rather than a design decision.
-	 * Issue #1338 carries whether any ordering should be constrained.
+	 * the shape -- a uniform draw over the eight, keyed only on the seed, with
+	 * the built ones then moved to the front -- and uniformity within each part
+	 * is the model's stated ASSUMPTION rather than a design decision. Issue
+	 * #1338 carries whether any ordering should be constrained.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<ECataclysmType> OrderFor(int32 Seed);

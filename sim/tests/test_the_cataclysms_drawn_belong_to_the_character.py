@@ -54,6 +54,7 @@ from cataclysm_sim.engine import (Simulation, active_cataclysms_for,
 from cataclysm_sim.modifiers import pool_for
 
 ROSTER = TuningConfig().CATACLYSM_ROSTER
+BUILT = TuningConfig().BUILT_CATACLYSMS
 TIERS = range(1, len(ROSTER) + 1)
 
 
@@ -156,9 +157,18 @@ class TestTheSeedIsTheCharacter:
         """`random.Random` seeds from a string through SHA-512, which is stable.
         `hash()` of a string is salted per process, so a switch to it would make
         every campaign irreproducible between runs while every test above still
-        passed. Hence one hard-coded expected draw."""
-        assert cataclysm_order_for(TuningConfig(), 0) == (
+        passed. Hence one hard-coded expected draw.
+
+        TWO SINCE THE OWNER'S RULING OF 2026-11-26. With every Cataclysm built
+        the draw is the one this test pinned before the ruling, unchanged; with
+        the three that are built, it is that draw with War, Death and Demonic
+        moved to the front in the order it gave them."""
+        everything_built = replace(TuningConfig(), BUILT_CATACLYSMS=ROSTER)
+        assert cataclysm_order_for(everything_built, 0) == (
             "Chaos", "Famine", "War", "Void", "Death", "Demonic", "Celestial",
+            "Pestilence")
+        assert cataclysm_order_for(TuningConfig(), 0) == (
+            "War", "Death", "Demonic", "Chaos", "Famine", "Void", "Celestial",
             "Pestilence")
 
 
@@ -172,16 +182,34 @@ class TestWhichCataclysmsAreDrawnActuallyVaries:
             "is the pre-#1338 behaviour: engine.py took a fixed prefix of a "
             "fixed roster.")
 
-    def test_every_cataclysm_can_be_the_one_a_character_starts_against(self):
+    def test_every_built_cataclysm_can_be_the_one_a_character_starts_against(self):
         """Not merely that the set varies -- that nothing is pinned. Demonic
         was first for every campaign this model ever ran, and Demonic was
-        then the only one of the eight the model let ignore the frontier."""
+        then the only one of the eight the model let ignore the frontier.
+
+        EVERY BUILT ONE, SINCE THE OWNER'S RULING OF 2026-11-26: only the built
+        Cataclysms come first. Until it this asked for all eight."""
         firsts = {cataclysm_order_for(TuningConfig(), s)[0] for s in range(400)}
-        assert firsts == set(ROSTER), (
-            f"these Cataclysms never come first in 400 draws: "
-            f"{sorted(set(ROSTER) - firsts)}. The owner ruled the order is "
-            f"randomised per character with nothing always first and nothing "
-            f"always last. Issue #1338.")
+        assert firsts == set(BUILT), (
+            f"in 400 draws the first Cataclysm was {sorted(firsts)}, not every "
+            f"built one, {sorted(BUILT)}. The owner ruled the order is "
+            f"randomised per character with nothing always first (issue #1338) "
+            f"and that only built ones are drawn (2026-11-26).")
+
+    def test_every_unbuilt_cataclysm_can_be_the_first_unbuilt_one(self):
+        """The part after the built ones is shuffled too, not left in the
+        roster's declared order."""
+        firsts = {cataclysm_order_for(TuningConfig(), s)[len(BUILT)]
+                  for s in range(400)}
+        assert firsts == set(ROSTER) - set(BUILT)
+
+    def test_with_everything_built_every_cataclysm_can_come_first(self):
+        """The draw before the ruling is still the draw underneath it: with
+        every Cataclysm counted as built, all eight come first again."""
+        everything_built = replace(TuningConfig(), BUILT_CATACLYSMS=ROSTER)
+        firsts = {cataclysm_order_for(everything_built, s)[0]
+                  for s in range(400)}
+        assert firsts == set(ROSTER)
 
     def test_the_position_in_the_roster_tuple_carries_no_meaning(self):
         """`CATACLYSM_ROSTER` is a set. If a draw ever returns it unshuffled
@@ -202,6 +230,71 @@ class TestWhichCataclysmsAreDrawnActuallyVaries:
         cfg = at(3)
         assert (active_cataclysms_for(cfg, 9)
                 == cataclysm_order_for(cfg, 9)[:3])
+
+
+def _whole_roster_shuffle(seed: int) -> list[str]:
+    """The draw before the owner's ruling of 2026-11-26, written out: the
+    roster shuffled on the same generator, nothing moved."""
+    order = list(ROSTER)
+    random.Random(f"cataclysm-order:{seed}").shuffle(order)
+    return order
+
+
+class TestOnlyBuiltCataclysmsAreDrawnFirst:
+    """The project owner's ruling of 2026-11-26, verbatim: "yeah only draw the
+    ones that are built. It's kinda pointless to test stuff that isn't even in
+    the game." The owner's Death character had drawn Famine."""
+
+    def test_the_built_ones_are_a_part_of_the_roster(self):
+        assert BUILT, "no Cataclysm is built, so there is nothing to draw first"
+        assert len(set(BUILT)) == len(BUILT)
+        assert set(BUILT) <= set(ROSTER), (
+            f"BUILT_CATACLYSMS names {sorted(set(BUILT) - set(ROSTER))}, which "
+            f"CATACLYSM_ROSTER does not")
+
+    def test_a_tier_no_higher_than_the_built_count_faces_only_built_ones(self):
+        for seed in range(1000):
+            for tier in range(1, len(BUILT) + 1):
+                faced = active_cataclysms_for(at(tier), seed)
+                assert set(faced) <= set(BUILT), (
+                    f"seed {seed} at tier {tier} faces "
+                    f"{sorted(set(faced) - set(BUILT))}, which is not built. "
+                    f"The owner ruled on 2026-11-26 that only built "
+                    f"Cataclysms are drawn.")
+
+    def test_control_the_draw_before_the_ruling_faced_unbuilt_ones(self):
+        """What makes the test above able to fail: the same generator, with no
+        built ones moved to the front, puts an unbuilt Cataclysm in the first
+        `len(BUILT)` for most seeds."""
+        unbuilt = sum(1 for seed in range(1000)
+                      for name in _whole_roster_shuffle(seed)[:len(BUILT)]
+                      if name not in BUILT)
+        assert unbuilt > 0
+
+    def test_the_tier_past_the_built_ones_adds_an_unbuilt_one_last(self):
+        tier = len(BUILT) + 1
+        if tier > len(ROSTER):
+            pytest.skip("every Cataclysm is built; no tier takes an unbuilt one")
+        for seed in range(1000):
+            faced = active_cataclysms_for(at(tier), seed)
+            assert set(faced[:len(BUILT)]) == set(BUILT)
+            assert faced[-1] not in BUILT, (
+                f"seed {seed} at tier {tier} adds {faced[-1]}, a built one, "
+                f"after the built ones")
+
+    def test_the_order_is_the_shuffle_with_the_built_ones_moved_to_the_front(self):
+        """The rule exactly, and so determinism by seed: the expected order is
+        worked out from the seed alone."""
+        moved = 0
+        for seed in range(1000):
+            whole = _whole_roster_shuffle(seed)
+            expected = (tuple(n for n in whole if n in BUILT)
+                        + tuple(n for n in whole if n not in BUILT))
+            assert cataclysm_order_for(TuningConfig(), seed) == expected
+            moved += tuple(whole) != expected
+        assert moved > 0, (
+            "CONTROL: the split moved nothing in 1000 seeds, so this compared "
+            "a shuffle with itself")
 
 
 class TestTheModifierPoolGrowsWithTheTier:
@@ -242,15 +335,25 @@ class TestCampaignsStillRun:
         strongest city, Void erases cities, and Celestial sends few deep
         dungeons. Before #1338 only Demonic was
         ever reached by a campaign, so the other three rules ran in no
-        measurement this project has on record."""
+        measurement this project has on record.
+
+        Since the owner's ruling of 2026-11-26 a default campaign at tier 1
+        meets only a built Cataclysm, so this counts every Cataclysm as built
+        to keep reaching the other five's rules; the default is checked below.
+        """
         played = set()
         for seed in range(60):
-            sim = Simulation(at(1), seed=seed)
+            sim = Simulation(at(1, BUILT_CATACLYSMS=ROSTER), seed=seed)
             played.add(sim.active_types[0])
             assert sim.run(policies.triage).survived_days > 0
         assert played == set(ROSTER), (
             f"never played as the only active Cataclysm: "
             f"{sorted(set(ROSTER) - played)}")
+
+    def test_a_default_campaign_at_tier_1_plays_every_built_one(self):
+        played = {Simulation(at(1), seed=seed).active_types[0]
+                  for seed in range(60)}
+        assert played == set(BUILT)
 
 
 class TestTheReportSaysWhichCataclysmsItsFiguresAreAbout:

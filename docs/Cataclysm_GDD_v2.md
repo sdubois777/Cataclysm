@@ -306,7 +306,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 
 ### **Game Start**
 
-**A character's first Cataclysm is selected when the character is created, and it stays selected.** A new character begins against one randomly selected Cataclysm — the selection is made once, at character creation, not afresh at the start of each run. Every time a Cataclysm is defeated, the next run adds one more — so the player will eventually face all eight simultaneously. The run ends when the player defeats the Cataclysm boss dungeon or loses the capital.
+**A character's first Cataclysm is selected when the character is created, and it stays selected.** A new character begins against one randomly selected Cataclysm — the selection is made once, at character creation, not afresh at the start of each run. Every time a Cataclysm is defeated, the next run adds one more — so the player will eventually face all eight simultaneously. The run ends when the player defeats the Cataclysm boss dungeon or loses the capital. For now only the Cataclysms that are built — Demonic, Death and War — are drawn while a tier needs no more than those: a character's first three are those three in a random order, and a tier that needs a fourth adds the unbuilt ones after them, also in a random order (project owner, 2026-11-26).
 
   
 

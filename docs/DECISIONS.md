@@ -2,6 +2,72 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — A character draws the built Cataclysms, Demonic, Death and War, before any other
+
+**Affects:**
+- `game/Source/CataclysmEmpire/Empire/CataclysmRoster.h` and `.cpp`: `UCataclysmRoster::Built` (new, the one list),
+  `IsBuilt` (new), and `OrderFor`, which moves the built ones to the front of its draw.
+- `sim/cataclysm_sim/config.py`: `TuningConfig.BUILT_CATACLYSMS` (new); `sim/cataclysm_sim/engine.py`:
+  `cataclysm_order_for`, the same rule.
+- Tests: three new and one changed in `game/Source/CataclysmEmpire/Tests/CataclysmRosterTests.cpp`; one changed in
+  `game/Source/Cataclysm/Tests/CataclysmCataclysmDrawTests.cpp`; `sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py`,
+  `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`, and new
+  `tools/tests/test_only_built_cataclysms_are_drawn_first.py`. Three model tests the new draw broke:
+  `sim/tests/test_every_cataclysm_lands_on_the_front_line.py` now counts every Cataclysm as built, since no default
+  character meets Pestilence, Famine, Celestial, Chaos or Void alone any more;
+  `sim/tests/test_a_city_fall_respects_the_minimum_surge_gap.py` counts Fallen City dungeons, since its seed 1 now
+  faces Death, whose fall adds an Abomination lair as well; and the Siege mix that
+  `sim/tests/test_the_siege_prose_in_policies_is_true.py` reads out of `policies.siege_daily_damage` was re-measured.
+- `sim/cataclysm_sim/policies.py`, `siege_daily_damage`'s docstring: over seeds 0 to 9999 the Sieges that reached the
+  map went from 107,735 at 67 / 29 / 5 / 0 (Basic, Quest, Fallen City, Cataclysm), 10.77 a campaign, to 181,681 at
+  50 / 45 / 4 / 0, 18.17 a campaign: War is one of the three built Cataclysms and every War Quest dungeon is a Siege.
+- `docs/Cataclysm_GDD_v2.md`, Game Start: one sentence. `sim/README.md` and `game/README.md`: one sentence each.
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The C++ was written without a build; the Python suite and ruff were run.
+- **IT CHANGES WHICH CATACLYSMS MOST FIXED-SEED UNREAL TESTS MEET.** A run begun with `Begin(Seed)` draws its Cataclysms
+  from its own seed, and five seeds in eight drew an unbuilt Cataclysm first. Seed 1, the commonest in the tests, met
+  Pestilence at tier 1 and now meets War. Tests that pin the outcome of a seeded run may move; the whole suite has to be
+  run to find them.
+- **A RUN ALREADY SAVED KEEPS ITS CATACLYSMS.** `FCataclysmSaveApply::RunInto` copies `ActiveCataclysms` out of the run
+  record, so the owner's Death character keeps Famine until that run ends. Its next run -- after a win, or a new run when
+  the saved one cannot be read -- is begun by `BeginACharactersEmpireRun` from the character's seed, and meets the new
+  draw.
+
+### The ruling
+
+The owner's Death character drew Famine, which nothing in the game is built for. Asked, the project owner ruled on
+2026-11-26, verbatim:
+
+> yeah only draw the ones that are built. It's kinda pointless to test stuff that isn't even in the game.
+
+### What was built
+
+**One list.** `UCataclysmRoster::Built` holds Demonic, Death and War; building another Cataclysm is one line there, and
+one in `TuningConfig.BUILT_CATACLYSMS`, which `tools/tests/test_only_built_cataclysms_are_drawn_first.py` holds equal.
+
+**The order.** `OrderFor` shuffles all eight exactly as it did before, on the same stream, and then puts the built ones
+first and the rest after, each part in the order the shuffle gave it. So tiers 1 to 3 face only built Cataclysms, in an
+order drawn per character, and a tier that needs a fourth takes the unbuilt ones after them, also drawn. A JUDGEMENT of
+the session that built it: a split of the old shuffle rather than two new shuffles, because the read of the stream is
+unchanged, each part is still a uniform shuffle of itself, a seed whose draw began with a built Cataclysm still begins
+with it, and with every Cataclysm built the order would be the one drawn before the ruling. The model does the same with
+its own generator.
+
+**What is not changed.** The order is still the character's, drawn from its seed alone, so the rules of 2026-09-06 and
+2026-11-02 hold: the same tier meets the same Cataclysms, and a tier higher meets those and one more. Nothing about how
+many Cataclysms a tier faces changed.
+
+**What it makes stale.** Every simulated campaign figure below tier 8 was measured over a draw that is no longer the
+model's; at tier 1, five campaigns in eight met an unbuilt Cataclysm. None was re-measured.
+
+**What it weakens.** Two Unreal tests compare a run's Cataclysms with the character's draw, and a list drawn from
+anything else used to agree by chance once in 1,680 at tier 4 and once in 336 at tier 3. With three built it is once in
+30 and once in 6. Their comments in `CataclysmSaveLoadTests.cpp` say so; the tests are unchanged.
+
+---
+
 ## 2026-11-26 — The owner's first play test: the passive screen opens on the class chosen, every class's starting node draws the Fervour bar, and a minion a skill detonates explodes for twice the caster's weapon (window dfix-w1)
 
 **Affects:**
