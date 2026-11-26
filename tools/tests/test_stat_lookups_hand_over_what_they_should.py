@@ -750,11 +750,15 @@ INVENTORY = {
         "how many enemies the character marks (the Death trees' slice C6e, "
         "Deathmark and Two Marks), asked each regeneration step, which is a "
         "clock rather than a blow",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
-     'FName(UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat), FGameplayTagContainer(), 0.0f'):
-        "the share of the critical strike multiplier's increases a crit's Poison "
-        "or Bleed takes (the Death trees' slice C6e, Lethal Dose), asked of the "
-        "applier as the ailment is applied; a flag of the character's, so no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CritIncreasesToAilmentsStat), FGameplayTagContainer(), 0.0f'):
+        "Lethal Dose's share of the critical strike multiplier's increases (the Death trees' slice C6e), asked in "
+        "LethalDoseLentBy for RollOnLandedBlow since window death3-w3 made it a reader of its own; no tags: it is "
+        "the applier's.",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(PassesThroughEnemiesStat), SkillTags, 0.0f'):
+        "Hollow Step's flag (the Death trees' slice C6e), asked in PassesThroughEnemiesFor on the mover with the "
+        "movement skill's tags, as every worn-row rider of the skill is; a reader of its own since window death3-w3.",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
      'FName(TurnOnLastAttackerStat), FGameplayTagContainer(), 0.0f'):
         "whether the commander's minions turn on its last attacker (the Death "

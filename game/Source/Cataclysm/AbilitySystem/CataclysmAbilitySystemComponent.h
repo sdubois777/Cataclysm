@@ -5571,6 +5571,14 @@ public:
 	float AilmentIncreasePercentLentByCritical = 0.0f;
 
 	/**
+	 * The increased damage over time, in percentage points, Lethal Dose lends a Poison or Bleed of `Lender`'s critical
+	 * strike: `CritIncreasesToAilmentsStat`'s share of the critical strike multiplier's increases, nought without the
+	 * stat. `UCataclysmAilments::RollOnLandedBlow` asks this; public so the stat exemption probe reads the same answer
+	 * (window death3-w3).
+	 */
+	static float LethalDoseLentBy(const UCataclysmAbilitySystemComponent* Lender);
+
+	/**
 	 * INTERPOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q9): the chance in per cent that a hit aimed at
 	 * this character is taken instead by its nearest minion within 3 metres. Read by
 	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.

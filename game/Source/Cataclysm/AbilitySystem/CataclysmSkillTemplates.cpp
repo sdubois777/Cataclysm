@@ -3137,7 +3137,15 @@ const TCHAR* UCataclysmMovementSkill::PassesThroughEnemiesStat = TEXT("movement_
 
 bool UCataclysmMovementSkill::PassesThroughEnemies() const
 {
-	return WornRowStat(PassesThroughEnemiesStat) > 0.0f;
+	return PassesThroughEnemiesFor(Avatar(), SkillTags);
+}
+
+bool UCataclysmMovementSkill::PassesThroughEnemiesFor(const AActor* Mover, const FGameplayTagContainer& SkillTags)
+{
+	// THE SAME QUESTION `WornRowStat` ASKS, on the mover's own ability system with the skill's tags.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Mover ? Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Mover)) : nullptr;
+	return Asking && Asking->StatForSkill(FName(PassesThroughEnemiesStat), SkillTags, 0.0f) > 0.0f;
 }
 
 void UCataclysmMovementSkill::PassThroughEnemies(bool bThrough)

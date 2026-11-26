@@ -3325,7 +3325,11 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 * `UCataclysmPassiveTree::EnchantmentRowsFor` copies it here, sized by the points. `tools/generate_datatables.py`
 	 * writes 0, every time, on every row of `game/Data/EnchantmentEffects.csv`, so the table has the column as every
 	 * property of this struct must. See `FCataclysmPoolAction::ChancePercent`.
+	 *
+	 * MARKED `DataTableImportOptional`, as the passive row's copy is: the generated CSV always writes it, and a table a
+	 * test builds from a CSV naming only the columns it uses reads without it, at 0, every time. Window death3-w3 found 45
+	 * such tests refused with "Expected column 'ChancePercent' not found in input" while it was not.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect", meta = (DataTableImportOptional))
 	float ChancePercent = 0.0f;
 };

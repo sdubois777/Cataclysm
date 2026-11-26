@@ -62,6 +62,7 @@
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -14548,6 +14549,238 @@ namespace CataclysmStatExemptionTest
 					   0.001f);
 	}
 
+	// ------------------------------------------------------------------------
+	// THE DEATH TREES' SEVEN STATS WITH NO ATTRIBUTE AND, UNTIL WINDOW death3-w3, NO PROBE (slices C6d1, C6d2 and C6e).
+	// Each grants the stat to a holder on the players' team and asks the code that reads it, with and without.
+	// ------------------------------------------------------------------------
+
+	/** One Imp of `Holder`'s, a metre to its side, with a deep pool of health. */
+	ACataclysmMinion* DeathProbeImp(ACataclysmEnemyCharacter* Holder)
+	{
+		ACataclysmMinion* Imp = Holder ? ACataclysmMinion::Spawn(Holder, FVector(0, 1 * M, 0), /*Lifetime=*/60.0f,
+																 /*bBurns=*/false, TEXT("Imp")) : nullptr;
+		if (UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp))
+		{
+			ImpSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100'000.0f);
+			ImpSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100'000.0f);
+		}
+		return Imp;
+	}
+
+	float DeathProbeHealthOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	}
+
+	/** One blow of `Creature`'s on `Target` that can be neither evaded nor critical, and what it took from health. */
+	float DeathProbeBlowLoss(ACataclysmEnemyCharacter* Creature, AActor* Target)
+	{
+		const float Was = DeathProbeHealthOf(Target);
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotBeEvaded = true;
+		Delivery.bCannotCriticallyStrike = true;
+		UCataclysmSkillEffects::ApplyHit(Creature, Target, 100.0f, FGameplayTagContainer(), Delivery);
+		return Was - DeathProbeHealthOf(Target);
+	}
+
+	/** `immune_to_slow`, read by `UCataclysmSkillTemplate::IsImmuneTo` for "Slow" (Ringed in Bone). */
+	void ProbeImmuneToSlow(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Slow"));
+		SiphonLines(Holder, {SiphonStat(TEXT("immune_to_slow"), 1.0f)});
+		const bool bHeld = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Slow"));
+		Test.TestFalse(TEXT("immune_to_slow: control, a character without it is slowed"), bPlain);
+		Test.TestTrue(TEXT("and with it IsImmuneTo answers Slow, so it really reads it"), bHeld);
+	}
+
+	/** `minion_movement_speed`, read by `UCataclysmCommand::CommandedWalkSpeedCmPerSecond` (Hasty Dead). */
+	void ProbeMinionMovementSpeed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmMinion* Imp = DeathProbeImp(Holder);
+		if (!Holder || !Test.TestNotNull(TEXT("an Imp of the holder's"), Imp))
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const float Plain = UCataclysmCommand::CommandedWalkSpeedCmPerSecond(Imp);
+		SiphonLines(Holder, {TPair<FName, FCataclysmStatModifier>(
+								FName(TEXT("minion_movement_speed")),
+								SiphonRow(50.0f, ECataclysmStatScale::Fixed, 0.0f, ECataclysmStatBucket::Increased))});
+		const float Held = UCataclysmCommand::CommandedWalkSpeedCmPerSecond(Imp);
+		Test.TestTrue(TEXT("minion_movement_speed: set-up, the Imp has a walk"), Plain > 0.0f);
+		Test.TestEqual(TEXT("and 50% increased makes it 1.5 times, so CommandedWalkSpeedCmPerSecond really reads it"),
+					   Plain > 0.0f ? Held / Plain : 0.0f, 1.5f, 0.001f);
+	}
+
+	/** `minions_turn_on_your_last_attacker`, read by `UCataclysmCommand::CommandersLastAttackerFor` (Guard the Master). */
+	void ProbeMinionsTurnOnYourLastAttacker(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		ACataclysmMinion* Imp = DeathProbeImp(Holder);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System || !Creature || !Test.TestNotNull(TEXT("an Imp of the holder's"), Imp))
+		{
+			return;
+		}
+		FCataclysmLastBlow Blow;
+		Blow.Attacker = Creature;
+		Blow.WorldSeconds = World->GetTimeSeconds();
+		System->RecordLastBlow(MoveTemp(Blow));
+		SiphonLines(Holder, {});
+		const AActor* Plain = UCataclysmCommand::CommandersLastAttackerFor(Imp);
+		SiphonLines(Holder, {SiphonStat(UCataclysmCommand::TurnOnLastAttackerStat, 1.0f)});
+		const AActor* Held = UCataclysmCommand::CommandersLastAttackerFor(Imp);
+		Test.TestTrue(TEXT("minions_turn_on_your_last_attacker: control, without it no attacker is named"),
+					  Plain == nullptr);
+		Test.TestTrue(TEXT("and with it the creature that struck the holder is, so it really reads it"), Held == Creature);
+	}
+
+	/** `minion_damage_taken`, read by `UCataclysmDamageCalculation`'s step 6a (Grave Pact). */
+	void ProbeMinionDamageTaken(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		ACataclysmMinion* Imp = DeathProbeImp(Holder);
+		if (!Holder || !Creature || !Test.TestNotNull(TEXT("an Imp of the holder's"), Imp))
+		{
+			return;
+		}
+		Creature->SetAttackDamage(100.0f);
+		SiphonLines(Holder, {});
+		const float Plain = DeathProbeBlowLoss(Creature, Imp);
+		SiphonLines(Holder, {TPair<FName, FCataclysmStatModifier>(
+								FName(TEXT("minion_damage_taken")),
+								SiphonRow(-30.0f, ECataclysmStatScale::Fixed, 0.0f, ECataclysmStatBucket::More))});
+		const float Held = DeathProbeBlowLoss(Creature, Imp);
+		Test.TestTrue(TEXT("minion_damage_taken: set-up, the blow hurt the Imp"), Plain > 0.0f);
+		Test.TestEqual(TEXT("and 30% less makes it 0.7 of that, so the damage calculation really reads it"),
+					   Plain > 0.0f ? Held / Plain : 0.0f, 0.7f, 0.001f);
+	}
+
+	/** `interpose_chance`, read by `UCataclysmVitalAttributeSet` as a blow lands (Interpose), its roll pinned. */
+	void ProbeInterposeChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.InterposeRoll"));
+		if (!Test.TestNotNull(TEXT("the Interpose roll can be pinned"), Roll))
+		{
+			return;
+		}
+		const float WasPinned = Roll->GetFloat();
+		Roll->Set(0.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(WasPinned, ECVF_SetByConsole); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		ACataclysmMinion* Imp = DeathProbeImp(Holder);
+		if (!Holder || !Creature || !Test.TestNotNull(TEXT("an Imp of the holder's"), Imp))
+		{
+			return;
+		}
+		Holder->SetHealth(100'000.0f);
+		Creature->SetAttackDamage(100.0f);
+		SiphonLines(Holder, {});
+		const float Plain = DeathProbeBlowLoss(Creature, Holder);
+		SiphonLines(Holder, {SiphonStat(UCataclysmAbilitySystemComponent::InterposeChanceStat, 100.0f)});
+		const float Held = DeathProbeBlowLoss(Creature, Holder);
+		Test.TestTrue(TEXT("interpose_chance: control, without it the holder takes the blow"), Plain > 0.0f);
+		Test.TestEqual(TEXT("and with it the Imp takes it instead, so the landing blow really reads it"), Held, 0.0f,
+					   0.001f);
+	}
+
+	/** `crit_multiplier_increases_to_poison_and_bleed_percent`, read by
+	 *  `UCataclysmAbilitySystemComponent::LethalDoseLentBy` for `UCataclysmAilments::RollOnLandedBlow` (Lethal Dose). */
+	void ProbeLethalDose(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const TPair<FName, FCataclysmStatModifier> CritIncreases(
+			FName(TEXT("crit_multiplier")),
+			SiphonRow(100.0f, ECataclysmStatScale::Fixed, 0.0f, ECataclysmStatBucket::Increased));
+		SiphonLines(Holder, {CritIncreases});
+		const float Plain = UCataclysmAbilitySystemComponent::LethalDoseLentBy(System);
+		SiphonLines(Holder, {CritIncreases,
+							 SiphonStat(UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat, 50.0f)});
+		const float Held = UCataclysmAbilitySystemComponent::LethalDoseLentBy(System);
+		Test.TestEqual(TEXT("crit_multiplier_increases_to_poison_and_bleed_percent: control, nothing lent without it"),
+					   Plain, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and with 50 half of the 100 increased is lent, so LethalDoseLentBy really reads it"), Held,
+					   50.0f, 0.001f);
+	}
+
+	/** `movement_passes_through_enemies`, read by `UCataclysmMovementSkill::PassesThroughEnemiesFor` (Hollow Step). */
+	void ProbeMovementPassesThroughEnemies(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		const FGameplayTagContainer MovementTags;
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmMovementSkill::PassesThroughEnemiesFor(Holder, MovementTags);
+		SiphonLines(Holder, {SiphonStat(UCataclysmMovementSkill::PassesThroughEnemiesStat, 1.0f)});
+		const bool bHeld = UCataclysmMovementSkill::PassesThroughEnemiesFor(Holder, MovementTags);
+		Test.TestFalse(TEXT("movement_passes_through_enemies: control, a skill without it is stopped by enemies"), bPlain);
+		Test.TestTrue(TEXT("and with it the movement skill passes through, so PassesThroughEnemiesFor really reads it"),
+					  bHeld);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -14848,6 +15081,14 @@ namespace CataclysmStatExemptionTest
 			{TEXT("follower_kills_count_as_yours"), &ProbeFollowerKillsCountAsYours},
 			// THE DEATH TREES' SLICE C4c1 (2026-11-25): Passed On's radius.
 			{TEXT("overkill_explosion_radius_metres"), &ProbeOverkillExplosionRadiusMetres},
+			// THE DEATH TREES' SEVEN STATS WITH NO ATTRIBUTE, probed since window death3-w3 found them unprobed.
+			{TEXT("immune_to_slow"), &ProbeImmuneToSlow},
+			{TEXT("minion_movement_speed"), &ProbeMinionMovementSpeed},
+			{TEXT("minions_turn_on_your_last_attacker"), &ProbeMinionsTurnOnYourLastAttacker},
+			{TEXT("minion_damage_taken"), &ProbeMinionDamageTaken},
+			{TEXT("interpose_chance"), &ProbeInterposeChance},
+			{TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"), &ProbeLethalDose},
+			{TEXT("movement_passes_through_enemies"), &ProbeMovementPassesThroughEnemies},
 			// THE WAR CLASSES' FERVOUR, slice C, 2026-11-24.
 			{TEXT("fervour_per_hit_taken"), [](FAutomationTestBase& Test)
 				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerHitTakenStat,

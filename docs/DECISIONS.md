@@ -51,9 +51,11 @@ Decisions made outside the Google Drive documents, newest first.
 - **HOLLOW STEP, AS RULED (H1, H2), AND ITS THREE CONDITIONS.**
   1. *Every reader of the body mask bits was checked.* `ACataclysmCharacterBase::RefreshPassThroughBody` is the only code
      that writes or reads them; the floor guide's refresh in `ACataclysmDungeonGameMode` calls it. Nothing treats a
-     creature's mask of nought as meaning hostile. Two checks assert that a creature's own pass-through bit is nought
-     (`CataclysmPassThroughBodiesTests.cpp`) and are unchanged, because the hostile bit is put on the capsule's FILTER
-     only and `PassThroughBodyMaskBit` still answers nought for a creature. The obvious shape -- giving a creature bit 8
+     creature's mask of nought as meaning hostile. The check that a creature's own pass-through bit is nought
+     (`CataclysmPassThroughBodiesTests.cpp`) is unchanged, because the hostile bit is put on the capsule's FILTER
+     only and `PassThroughBodyMaskBit` still answers nought for a creature. TWO OTHER CHECKS THERE READ THE FILTER and
+     expected "0/0" for a hostile creature and a thrall given back; THIS ENTRY SAID THEY WERE UNCHANGED, AND THAT WAS
+     WRONG: window death3-w3 failed both, and they expect "8/0" since. The obvious shape -- giving a creature bit 8
      as its own bit -- would have made `MovesThroughMaskFor` let every creature walk through the player and its
      minions; the filter-only shape keeps a creature's own move-ignore mask at nought. One text check in
      `tools/tests/test_demonic_guide_is_no_target_and_no_obstacle.py` read the old line and reads the new one.

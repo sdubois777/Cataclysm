@@ -1592,6 +1592,13 @@ private:
 	void HitTheLineOnce(const FVector& From, const FVector& To, const TArray<AActor*>& AlreadyStruck);
 
 public:
+	/**
+	 * Whether a movement skill with `SkillTags` used by `Mover` carries `PassesThroughEnemiesStat` (Hollow Step), asked
+	 * as every worn-row rider of this skill is: on the mover's ability system, with the skill's tags. `PassesThroughEnemies`
+	 * asks this; public so the stat exemption probe reads the same answer (window death3-w3).
+	 */
+	static bool PassesThroughEnemiesFor(const AActor* Mover, const FGameplayTagContainer& SkillTags);
+
 	/** The stat Hollow Step states: a movement skill that carries it passes through enemies and hits each one. PUBLIC,
 	 *  so a test can grant it by name (window death3-w1 refused the private one). */
 	static const TCHAR* PassesThroughEnemiesStat;

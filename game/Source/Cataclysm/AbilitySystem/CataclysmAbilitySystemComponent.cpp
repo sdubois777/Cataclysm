@@ -6317,6 +6317,17 @@ const TCHAR* UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat =
 	TEXT("crit_multiplier_increases_to_poison_and_bleed_percent");
 const TCHAR* UCataclysmAbilitySystemComponent::InterposeChanceStat = TEXT("interpose_chance");
 
+float UCataclysmAbilitySystemComponent::LethalDoseLentBy(const UCataclysmAbilitySystemComponent* Lender)
+{
+	const float Share = Lender
+		? Lender->StatForSkill(FName(CritIncreasesToAilmentsStat), FGameplayTagContainer(), 0.0f)
+		: 0.0f;
+	return Share > 0.0f
+		? FMath::Max(0.0f, Lender->IncreasesForStat(FName(TEXT("crit_multiplier")), FGameplayTagContainer())) * 100.0f
+			* Share / 100.0f
+		: 0.0f;
+}
+
 AActor* UCataclysmAbilitySystemComponent::MarkedOrStrongestNear(float RadiusCm) const
 {
 	const AActor* Self = GetAvatarActor();

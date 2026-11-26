@@ -495,15 +495,7 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 		if (bCritical && (FCString::Strcmp(Kind.Ailment, TEXT("Poison")) == 0 || FCString::Strcmp(Kind.Ailment, TEXT("Bleed")) == 0))
 		{
 			Lender = Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Applier));
-			const float Share = Lender
-				? Lender->StatForSkill(FName(UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat),
-									   FGameplayTagContainer(), 0.0f)
-				: 0.0f;
-			if (Share > 0.0f)
-			{
-				Lent = FMath::Max(0.0f, Lender->IncreasesForStat(FName(TEXT("crit_multiplier")), FGameplayTagContainer()))
-					* 100.0f * Share / 100.0f;
-			}
+			Lent = UCataclysmAbilitySystemComponent::LethalDoseLentBy(Lender);
 		}
 		float Unlent = 0.0f;
 		float& LentSlot = Lender ? Lender->AilmentIncreasePercentLentByCritical : Unlent;
