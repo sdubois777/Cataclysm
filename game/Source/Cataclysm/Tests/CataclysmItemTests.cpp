@@ -56,8 +56,38 @@ namespace CataclysmItemTest
 }
 
 // ---------------------------------------------------------------------------
-// The value curves
+// The value rule: whole numbers from seven tier ranges. Issue #2883
 // ---------------------------------------------------------------------------
+//
+// UNTIL ISSUE #2883 THIS SECTION TESTED A FLOATING-POINT CURVE: a stated top
+// value times a geometric tier fraction, a 75%-to-100% band, an upgrade ladder
+// and a stated floor. Five tests pinned that curve (ValueCurvesMatchTheModel,
+// BandsOverlapByExactlyOneTier, AStatedFloorIsTheWorstAPlayerCanBeHanded,
+// AStatedFloorKeepsTheOneTierOverlap, EveryStatedFloorIsWhatAnAffixActuallyGives).
+// The owner approved the replacement on 2026-11-24 ("Approve as written
+// (Recommended)"): each affix states seven whole-number ranges at +0, each end
+// is upgraded on its own in integers, and the roll picks one of the whole
+// numbers between them. The tests below pin that rule. The expected figures
+// are printed by `sim/cataclysm_sim/affix_ranges.py`, not recomputed here.
+
+namespace CataclysmItemTest
+{
+	/** An affix row holding Flat armor's seven ranges, as Affixes.csv states them. */
+	FCataclysmAffixRow FlatArmor()
+	{
+		FCataclysmAffixRow Row;
+		Row.AffixName = TEXT("Flat armor");
+		Row.AffixKind = TEXT("Stat");
+		Row.T1Min = 25;  Row.T1Max = 29;
+		Row.T2Min = 30;  Row.T2Max = 35;
+		Row.T3Min = 36;  Row.T3Max = 42;
+		Row.T4Min = 43;  Row.T4Max = 49;
+		Row.T5Min = 50;  Row.T5Max = 59;
+		Row.T6Min = 60;  Row.T6Max = 74;
+		Row.T7Min = 75;  Row.T7Max = 100;
+		return Row;
+	}
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemCurvesTest,
 	"Cataclysm.Item.ValueCurvesMatchTheModel",
@@ -67,335 +97,200 @@ bool FCataclysmItemCurvesTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmItemTest;
 
-	// Printed by sim/cataclysm_sim/affixes.py.
-	//
-	// A +10 PIECE WAS 3.5245807 AND IS NOW 2.5, changed on 2026-09-03 for issue
-	// #1179. The old figure was the Power Score model's own upgrade weight; the
-	// two are decoupled now, because how much an upgrade is worth to a rating
-	// and how much it multiplies the numbers on an item are different questions.
+	// THE UPGRADE MULTIPLIER IS UNCHANGED: 1 at +0, 2.5 at +10 (issue #1179).
 	TestTrue(TEXT("a +0 piece multiplies by 1"),
 		FMath::IsNearlyEqual(FValues::GearLevelMultiplier(0), 1.0f, 0.0001f));
 	TestTrue(TEXT("a +10 piece multiplies by 2.5"),
 		FMath::IsNearlyEqual(FValues::GearLevelMultiplier(10), 2.5f, 0.0001f));
 
-	// THE TIER LADDER IS GEOMETRIC AND WAS LINEAR. It ran `Tier / 7`, so tier 7
-	// was worth seven times tier 1; it now spans 3.0 with a constant ratio
-	// between tiers. A constant ratio rather than a flatter straight line,
-	// because squashing a LINEAR ladder to 3.0 breaks the one-tier overlap bound
-	// that the test below asserts. See TierFraction for the working.
-	for (int32 Tier = 1; Tier <= FValues::MaxAffixTier; ++Tier)
-	{
-		const float Expected = FMath::Pow(
-			FValues::TierLadderSpan,
-			static_cast<float>(Tier - FValues::MaxAffixTier)
-			/ static_cast<float>(FValues::MaxAffixTier - 1));
-		TestTrue(FString::Printf(TEXT("tier %d is %.4f of the top value"),
-								 Tier, Expected),
-			FMath::IsNearlyEqual(FValues::TierFraction(Tier), Expected, 0.0001f));
-	}
+	// RULE 3, IN INTEGERS. A half goes up, and 10 x 1.15 is exactly 11.5 here,
+	// which floating point holds as 11.4999... and would round down.
+	TestEqual(TEXT("7 at +10 is 17.5, a half, so 18"), FValues::UpgradedWhole(7, 10), 18);
+	TestEqual(TEXT("10 at +1 is 11.5, a half, so 12"), FValues::UpgradedWhole(10, 1), 12);
+	TestEqual(TEXT("11 at +1 is 12.65, so 13"), FValues::UpgradedWhole(11, 1), 13);
+	TestEqual(TEXT("1 at +10 on a two-handed weapon is 5, doubled inside the rounding"),
+		FValues::UpgradedWhole(1, 10, /*bTwoHanded=*/true), 5);
+	TestEqual(TEXT("1 at +3 is still 1"), FValues::UpgradedWhole(1, 3), 1);
+	TestEqual(TEXT("1 at +4 is 2"), FValues::UpgradedWhole(1, 4), 2);
+	TestEqual(TEXT("a level above 10 is held at 10"), FValues::UpgradedWhole(7, 15), 18);
 
-	// TIER 7 IS EXACTLY 1.0, which is what keeps the stated top values meaning
-	// what they always meant.
-	TestTrue(TEXT("tier 7 is the whole stated value"),
-		FMath::IsNearlyEqual(FValues::TierFraction(FValues::MaxAffixTier),
-							 1.0f, 0.0001f));
+	// RULE 4: every whole number in the range is equally likely.
+	TestEqual(TEXT("1 to 2, roll 0: 1"), FValues::WholeAtRoll(1, 2, 0.0f), 1);
+	TestEqual(TEXT("1 to 2, roll 0.49: 1"), FValues::WholeAtRoll(1, 2, 0.49f), 1);
+	TestEqual(TEXT("1 to 2, roll 0.5: 2"), FValues::WholeAtRoll(1, 2, 0.5f), 2);
+	TestEqual(TEXT("1 to 2, roll 1: 2"), FValues::WholeAtRoll(1, 2, 1.0f), 2);
+	TestEqual(TEXT("10 to 13, roll 0.25: 11"), FValues::WholeAtRoll(10, 13, 0.25f), 11);
+	TestEqual(TEXT("10 to 13, roll 0.75: 13"), FValues::WholeAtRoll(10, 13, 0.75f), 13);
 
-	// AND THE LADDER IS BACK-LOADED, which is what the linear one was protecting
-	// and this protects harder: the last step up is worth more than the first,
-	// so the later tiers are the hardest to skip.
-	const float FirstStep = FValues::TierFraction(2) - FValues::TierFraction(1);
-	const float LastStep = FValues::TierFraction(7) - FValues::TierFraction(6);
-	TestTrue(FString::Printf(
-			TEXT("the last tier step (%.4f) is larger than the first (%.4f)"),
-			LastStep, FirstStep),
-		LastStep > FirstStep * 2.0f);
+	// FLAT ARMOR, BOTH ENDS OF EVERY AXIS. Printed by affix_ranges.value.
+	const FCataclysmAffixRow Armor = FlatArmor();
+	TestEqual(TEXT("T7, perfect roll, +10: 250"), FValues::AffixValue(Armor, 7, 1.0f, 10), 250.0f);
+	TestEqual(TEXT("T7, worst roll, +10: 188"), FValues::AffixValue(Armor, 7, 0.0f, 10), 188.0f);
+	TestEqual(TEXT("T7, middle roll, +10: 219"), FValues::AffixValue(Armor, 7, 0.5f, 10), 219.0f);
+	TestEqual(TEXT("T4, middle roll, +5: 81"), FValues::AffixValue(Armor, 4, 0.5f, 5), 81.0f);
+	TestEqual(TEXT("T1, worst roll, +0: 25"), FValues::AffixValue(Armor, 1, 0.0f, 0), 25.0f);
 
-	// The band for a top value of 120, quoted from the model.
-	float Low = 0.0f, High = 0.0f;
-	FValues::TierBand(120.0f, 7, Low, High);
-	TestTrue(TEXT("tier 7 of 120 runs 90 to 120"),
-		FMath::IsNearlyEqual(Low, 90.0f, 0.001f)
-		&& FMath::IsNearlyEqual(High, 120.0f, 0.001f));
-
-	FValues::TierBand(120.0f, 1, Low, High);
-	TestTrue(TEXT("tier 1 of 120 runs 30 to 40"),
-		FMath::IsNearlyEqual(Low, 30.0f, 0.01f)
-		&& FMath::IsNearlyEqual(High, 40.0f, 0.01f));
-
-	// Four values quoted from the model, covering both ends of every axis.
-	//
-	// THREE OF THESE CHANGED ON 2026-09-03. Tier 1 of 120 ran 12.857 to 17.143,
-	// a T7 perfect roll on a +0 piece gave 34.0466, and a T4 middle roll on a +5
-	// piece gave 38.5117. Both affix ladders were eased for issue #1179 -- the
-	// tier ladder from a span of 7.0 to 3.0 and made geometric, and the gear
-	// level ladder from 3.52 to 2.5 -- because their product put a starting
-	// affix at 3.04% of the endgame value. See TierFraction and GearLevelFactor.
-	//
-	// THE FIRST TWO DID NOT CHANGE, and that is the point: the stated top values
-	// are still the tier 7 figures on a +10 piece, so nothing above the top of
-	// the curve moved.
-	TestTrue(TEXT("T7, perfect roll, +10 gives the stated top value of 120"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 10), 120.0f, 0.01f));
-	TestTrue(TEXT("T7, worst roll, +10 gives 90"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 0.0f, 10), 90.0f, 0.01f));
-	TestTrue(TEXT("T7, perfect roll, +0 gives 48"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 0), 48.0f, 0.01f));
-	TestTrue(TEXT("T4, middle roll, +5 gives 42.4352"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 4, 0.5f, 5), 42.4352f, 0.01f));
-
-	// THE TWO LADDERS TOGETHER, which is the number issue #1179 is about. A
-	// tier 1 roll at its worst on an un-upgraded drop, against a tier 7 roll at
-	// its best on a finished one. It was 32.9x, which is what made a starting
-	// affix 3.04% of a finished one; it is now about 10x.
-	const float Fresh = FValues::AffixValue(120.0f, /*Floor=*/0.0f, 1, 0.0f, 0);
-	const float Finished = FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, FValues::MaxGearLevel);
-	TestTrue(FString::Printf(
-			TEXT("the two ladders span %.2fx, which should be about 10"),
-			Finished / Fresh),
-		FMath::IsNearlyEqual(Finished / Fresh, 10.0f, 0.05f));
-
-	// AND NEITHER LADDER IS FLAT, because deleting one was tried and rejected:
-	// two levers are the point, and removing the gear one put a hole in the late
-	// game where a character's affix tier has already capped at 7.
+	// THE TWO LADDERS TOGETHER span 10x, as they did since issue #1179.
+	TestEqual(TEXT("the finished best is ten times the fresh worst"),
+		FValues::AffixValue(Armor, 7, 1.0f, FValues::MaxGearLevel)
+			/ FValues::AffixValue(Armor, 1, 0.0f, 0), 10.0f, 0.0001f);
 	TestTrue(TEXT("the tier ladder still does something"),
-		FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 10)
-		> FValues::AffixValue(120.0f, /*Floor=*/0.0f, 1, 1.0f, 10) * 2.0f);
+		FValues::AffixValue(Armor, 7, 1.0f, 10) > FValues::AffixValue(Armor, 1, 1.0f, 10) * 2.0f);
 	TestTrue(TEXT("the gear level ladder still does something"),
-		FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 10)
-		> FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 0) * 2.0f);
+		FValues::AffixValue(Armor, 7, 1.0f, 10) > FValues::AffixValue(Armor, 7, 1.0f, 0) * 2.0f);
 
-	// A roll outside the band is clamped rather than escaping it.
-	TestTrue(TEXT("a roll above 1 does not exceed the band"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 5.0f, 10), 120.0f, 0.01f));
-	TestTrue(TEXT("a roll below 0 does not fall under the band"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, -5.0f, 10), 90.0f, 0.01f));
+	// A roll outside [0, 1] is clamped rather than escaping the range.
+	TestEqual(TEXT("a roll above 1 does not exceed the range"), FValues::AffixValue(Armor, 7, 5.0f, 10), 250.0f);
+	TestEqual(TEXT("a roll below 0 does not fall under it"), FValues::AffixValue(Armor, 7, -5.0f, 10), 188.0f);
 
+	// A HYBRID ROW STATES NO RANGE, so asking it directly gives nothing.
+	FCataclysmAffixRow Hybrid;
+	Hybrid.AffixKind = TEXT("Hybrid");
+	TestEqual(TEXT("a hybrid row on its own gives 0"), FValues::AffixValue(Hybrid, 7, 1.0f, 10), 0.0f);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemBandOverlapTest,
-	"Cataclysm.Item.BandsOverlapByExactlyOneTier",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemTiersNeverOverlapTest,
+	"Cataclysm.Item.EveryAffixsTiersAreWholeAndSeparateAtEveryUpgradeLevel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmItemBandOverlapTest::RunTest(const FString& Parameters)
+/**
+ * EVERY AFFIX IN THE DATA, at every upgrade level, on a two-handed weapon or
+ * not: each tier shows at least two whole numbers and starts above where the
+ * tier below it ends. The approved proposal's check 2 (issue #2883), and the
+ * opposite of the old one-tier overlap the curve had on purpose: the proposal
+ * removes the overlap so a higher tier is never worse at any roll.
+ *
+ * AND THE ENDS ARE THE ROW'S OWN: the worst roll of tier 1 at +0 is T1Min and
+ * the best roll of tier 7 at +10 is T7Max upgraded, so no affix's top or bottom
+ * moved on the way through the function.
+ */
+bool FCataclysmItemTiersNeverOverlapTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmItemTest;
 
-	// A perfect roll at one tier can beat a poor roll at the tier above, and can
-	// never beat the one above that. The bound is provable rather than tuned: a
-	// tier's floor is 0.75 of its own fraction, so tier N is undercut by N-1
-	// only when N is above 4 and by N-2 only when N is above 8, which seven
-	// tiers cannot reach.
-	const float Top = 120.0f;
-	for (int32 Tier = 3; Tier <= FValues::MaxAffixTier; ++Tier)
-	{
-		const float PerfectTwoBelow = FValues::AffixValue(Top, /*Floor=*/0.0f, Tier - 2, 1.0f, 10);
-		const float WorstHere = FValues::AffixValue(Top, /*Floor=*/0.0f, Tier, 0.0f, 10);
-		TestTrue(FString::Printf(
-				TEXT("a perfect T%d (%.2f) cannot beat the worst T%d (%.2f)"),
-				Tier - 2, PerfectTwoBelow, Tier, WorstHere),
-			PerfectTwoBelow < WorstHere);
-	}
-
-	// And that the one-tier overlap really is there, so the reroll and perfect
-	// crafting materials have something to do.
-	bool bFoundOverlap = false;
-	for (int32 Tier = 2; Tier <= FValues::MaxAffixTier; ++Tier)
-	{
-		if (FValues::AffixValue(Top, /*Floor=*/0.0f, Tier - 1, 1.0f, 10)
-			> FValues::AffixValue(Top, /*Floor=*/0.0f, Tier, 0.0f, 10))
-		{
-			bFoundOverlap = true;
-			break;
-		}
-	}
-	TestTrue(TEXT("a perfect roll can beat the tier above somewhere"), bFoundOverlap);
-
-	return true;
-}
-
-// ---------------------------------------------------------------------------
-// A stated floor. Issue #1230.
-// ---------------------------------------------------------------------------
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemFloorIsTheWorstRoll,
-	"Cataclysm.Item.AStatedFloorIsTheWorstAPlayerCanBeHanded",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmItemFloorIsTheWorstRoll::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmItemTest;
-
-	// TIER 1, THE BOTTOM OF THE ROLL BAND, ON AN UN-UPGRADED PIECE. That is the
-	// worst combination the three ladders can produce, and a stated floor is
-	// the number a player sees there.
-	const float Top = 4.0f;
-	const float Floor = 1.0f;
-
-	TestTrue(FString::Printf(TEXT("the worst roll is the floor, not %.3f"),
-			FValues::AffixValue(Top, Floor, 1, 0.0f, 0)),
-		FMath::IsNearlyEqual(FValues::AffixValue(Top, Floor, 1, 0.0f, 0),
-							 Floor, 0.001f));
-
-	// AND THE TOP DOES NOT MOVE, which is the whole point of the shape chosen:
-	// no ceiling changes, only the bottom comes up.
-	TestTrue(TEXT("a perfect tier 7 roll on a +10 piece is still the top value"),
-		FMath::IsNearlyEqual(
-			FValues::AffixValue(Top, Floor, FValues::MaxAffixTier, 1.0f,
-								FValues::MaxGearLevel),
-			Top, 0.001f));
-
-	// A FLOOR OF ZERO MEANS NONE WAS STATED, and the affix is then exactly what
-	// it was before there were floors at all: a tenth of its top at the worst.
-	TestTrue(FString::Printf(
-			TEXT("with no floor the worst roll is a tenth of the top, not %.3f"),
-			FValues::AffixValue(Top, 0.0f, 1, 0.0f, 0)),
-		FMath::IsNearlyEqual(FValues::AffixValue(Top, 0.0f, 1, 0.0f, 0),
-							 Top * FValues::WorstMultiplier(), 0.001f));
-	TestTrue(TEXT("and that multiplier is a tenth"),
-		FMath::IsNearlyEqual(FValues::WorstMultiplier(), 0.1f, 0.0001f));
-
-	// STATING THE DERIVED FLOOR EXPLICITLY CHANGES NOTHING. The remap is the
-	// identity map at exactly that value, so this is one piece of arithmetic
-	// reaching the same answer rather than a branch that could rot.
-	for (int32 Tier = 1; Tier <= FValues::MaxAffixTier; ++Tier)
-	{
-		for (const float Roll : { 0.0f, 0.5f, 1.0f })
-		{
-			for (const int32 Level : { 0, 5, FValues::MaxGearLevel })
-			{
-				const float Unstated =
-					FValues::AffixValue(Top, 0.0f, Tier, Roll, Level);
-				const float Stated = FValues::AffixValue(
-					Top, Top * FValues::WorstMultiplier(), Tier, Roll, Level);
-				TestTrue(FString::Printf(
-						TEXT("T%d roll %.1f at +%d: %.4f against %.4f"),
-						Tier, Roll, Level, Unstated, Stated),
-					FMath::IsNearlyEqual(Unstated, Stated, 0.001f));
-			}
-		}
-	}
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemFloorKeepsTheOverlapBound,
-	"Cataclysm.Item.AStatedFloorKeepsTheOneTierOverlap",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmItemFloorKeepsTheOverlapBound::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmItemTest;
-
-	// THE RISK THE WHOLE SHAPE WAS CHOSEN TO AVOID. Raising the floor by
-	// squeezing the tier ladder puts the tiers closer together, and a floor
-	// better than about an eighth of the top then lets a perfect roll two tiers
-	// down beat the worst roll here -- which
-	// Cataclysm.Item.BandsOverlapByExactlyOneTier forbids.
-	//
-	// ADDING THE FLOOR AND RUNNING THE LADDER ACROSS WHAT IS LEFT IS MONOTONE,
-	// so it cannot do that. This walks the same comparison that test makes, at
-	// floors far past the point the squeezing route fails.
-	const float Top = 4.0f;
-	for (const float Floor : { 0.0f, 0.5f, 1.0f, 2.0f, 3.0f })
-	{
-		for (int32 Tier = 3; Tier <= FValues::MaxAffixTier; ++Tier)
-		{
-			const float PerfectTwoBelow =
-				FValues::AffixValue(Top, Floor, Tier - 2, 1.0f, 10);
-			const float WorstHere =
-				FValues::AffixValue(Top, Floor, Tier, 0.0f, 10);
-			TestTrue(FString::Printf(
-					TEXT("floor %.1f: a perfect T%d (%.3f) cannot beat the "
-						 "worst T%d (%.3f)"),
-					Floor, Tier - 2, PerfectTwoBelow, Tier, WorstHere),
-				PerfectTwoBelow < WorstHere);
-		}
-
-		// And the one-tier overlap really is still there, so the reroll and
-		// perfect crafting materials keep having something to act on.
-		bool bFoundOverlap = false;
-		for (int32 Tier = 2; Tier <= FValues::MaxAffixTier; ++Tier)
-		{
-			if (FValues::AffixValue(Top, Floor, Tier - 1, 1.0f, 10)
-				> FValues::AffixValue(Top, Floor, Tier, 0.0f, 10))
-			{
-				bFoundOverlap = true;
-				break;
-			}
-		}
-		TestTrue(FString::Printf(
-				TEXT("floor %.1f: a perfect roll can still beat the tier above "
-					 "somewhere"), Floor),
-			bFoundOverlap);
-	}
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemEveryFloorInTheDataHolds,
-	"Cataclysm.Item.EveryStatedFloorIsWhatAnAffixActuallyGives",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmItemEveryFloorInTheDataHolds::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmItemTest;
-
-	// AGAINST THE TABLE RATHER THAN AGAINST EXAMPLES, so an affix whose floor
-	// is added or moved later is covered without anybody editing this file.
 	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
 	if (!TestNotNull(TEXT("the affix table loaded"), AffixTable))
 	{
 		return false;
 	}
 
-	int32 Floored = 0;
+	int32 Ranged = 0;
 	for (const TPair<FName, uint8*>& Row : AffixTable->GetRowMap())
 	{
-		const FCataclysmAffixRow* Affix =
-			reinterpret_cast<const FCataclysmAffixRow*>(Row.Value);
-		if (!Affix || Affix->TopValue <= 0.0f)
+		const FCataclysmAffixRow* Affix = reinterpret_cast<const FCataclysmAffixRow*>(Row.Value);
+		if (!Affix || Affix->AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
 		{
-			// A hybrid states no value of its own; its halves carry theirs.
 			continue;
 		}
-
-		const float Worst = FValues::AffixValue(Affix->TopValue, Affix->Floor,
-											   1, 0.0f, 0);
-		const float Best = FValues::AffixValue(
-			Affix->TopValue, Affix->Floor, FValues::MaxAffixTier, 1.0f,
-			FValues::MaxGearLevel);
-
-		if (Affix->Floor > 0.0f)
+		++Ranged;
+		for (int32 Level = 0; Level <= FValues::MaxGearLevel; ++Level)
 		{
-			++Floored;
-			if (!FMath::IsNearlyEqual(Worst, Affix->Floor, 0.001f))
+			for (const bool bTwoHanded : {false, true})
 			{
-				AddError(FString::Printf(
-					TEXT("%s states a floor of %.3f and its worst roll is "
-						 "%.3f."), *Row.Key.ToString(), Affix->Floor, Worst));
-			}
-			if (Affix->Floor >= Affix->TopValue)
-			{
-				AddError(FString::Printf(
-					TEXT("%s states a floor of %.3f and a top of %.3f. A floor "
-						 "at or above the top makes every tier and every roll "
-						 "one number."),
-					*Row.Key.ToString(), Affix->Floor, Affix->TopValue));
+				int32 PreviousHigh = 0;
+				for (int32 Tier = 1; Tier <= FValues::MaxAffixTier; ++Tier)
+				{
+					int32 Low = 0;
+					int32 High = 0;
+					FValues::AffixRangeAt(*Affix, Tier, Level, bTwoHanded, Low, High);
+					if (High <= Low || Low <= PreviousHigh)
+					{
+						AddError(FString::Printf(
+							TEXT("%s, tier %d at +%d%s: %d to %d after a tier ending at %d"),
+							*Row.Key.ToString(), Tier, Level, bTwoHanded ? TEXT(" two-handed") : TEXT(""),
+							Low, High, PreviousHigh));
+					}
+					PreviousHigh = High;
+				}
 			}
 		}
-
-		if (!FMath::IsNearlyEqual(Best, Affix->TopValue, 0.001f))
-		{
-			AddError(FString::Printf(
-				TEXT("%s tops out at %.3f rather than its stated %.3f. No "
-					 "ceiling was supposed to move."),
-				*Row.Key.ToString(), Best, Affix->TopValue));
-		}
+		TestEqual(FString::Printf(TEXT("%s: the worst roll of tier 1 at +0 is T1Min"), *Row.Key.ToString()),
+			FValues::AffixValue(*Affix, 1, 0.0f, 0), static_cast<float>(Affix->T1Min));
+		TestEqual(FString::Printf(TEXT("%s: the best roll of tier 7 at +10 is T7Max upgraded"), *Row.Key.ToString()),
+			FValues::AffixValue(*Affix, 7, 1.0f, FValues::MaxGearLevel),
+			static_cast<float>(FValues::UpgradedWhole(Affix->T7Max, FValues::MaxGearLevel)));
 	}
 
-	AddInfo(FString::Printf(TEXT("%d affixes state a floor."), Floored));
-	TestTrue(TEXT("some affix states a floor"), Floored > 0);
+	// 73 SINCE ISSUE #2883, the non-hybrid rows; tools/tests/test_affix_values_port.py
+	// counts the same rows in Affixes.csv.
+	TestEqual(TEXT("every non-hybrid affix was read"), Ranged, 73);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemHybridHalfTest,
+	"Cataclysm.Item.AHybridHalfIsItsOwnAffixTwoTiersDownAndATierBelowThreeReadsAsThree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * D6 of the approved proposal (issue #2883): a hybrid at tier N grants each half
+ * as that half's own affix at tier N - 2, so a hybrid rolls tiers 3 to 7. A
+ * hybrid saved at tier 1 or 2, which the drop roll made before the change, is
+ * read as tier 3: ruled by the coordinating session on 2026-11-25, with no save
+ * step. Figures printed by `affix_ranges.hybrid_half`.
+ */
+bool FCataclysmItemHybridHalfTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+	const FCataclysmAffixRow Armor = FlatArmor();
+
+	for (int32 Tier = FValues::LowestHybridTier; Tier <= FValues::MaxAffixTier; ++Tier)
+	{
+		for (const float Roll : {0.0f, 0.5f, 1.0f})
+		{
+			TestEqual(FString::Printf(TEXT("a hybrid at tier %d, roll %.1f, is its half at tier %d"),
+								  Tier, Roll, Tier - 2),
+				FValues::HybridHalfValue(Armor, Tier, Roll, 10), FValues::AffixValue(Armor, Tier - 2, Roll, 10));
+		}
+	}
+	TestEqual(TEXT("tier 7 at +10, best: 148, Flat armor's tier 5"), FValues::HybridHalfValue(Armor, 7, 1.0f, 10), 148.0f);
+	TestEqual(TEXT("a saved tier 1, worst at +0, reads as tier 3: 25"), FValues::HybridHalfValue(Armor, 1, 0.0f, 0), 25.0f);
+	TestEqual(TEXT("a saved tier 2, best at +0, reads as tier 3: 29"), FValues::HybridHalfValue(Armor, 2, 1.0f, 0), 29.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemImplicitWholeTest,
+	"Cataclysm.Item.AnImplicitIsItsWholeValueAtNoughtUpgraded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * D9 of the approved proposal (issue #2883): an implicit is a whole number at
+ * +0, read from the base row's ImplicitNAtZero, upgraded by rule 3. The
+ * Greatsword's stated 78 at +10 is 31 at +0. AND EVERY BASE IN THE DATA states a
+ * whole +0 value for each implicit it has, and none for one it does not.
+ */
+bool FCataclysmItemImplicitWholeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	TestEqual(TEXT("31 at +0 is 31"), FValues::ImplicitValueAtLevel(31, 0), 31.0f);
+	TestEqual(TEXT("31 at +10 is 77.5, a half, so 78"), FValues::ImplicitValueAtLevel(31, 10), 78.0f);
+	TestEqual(TEXT("and 155 on a two-handed weapon"), FValues::ImplicitValueAtLevel(31, 10, true), 155.0f);
+
+	const UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	if (!TestNotNull(TEXT("ItemBases.csv loaded"), Bases))
+	{
+		return false;
+	}
+	int32 Implicits = 0;
+	Bases->ForeachRow<FCataclysmItemBaseRow>(TEXT("AnImplicitIsItsWholeValueAtNoughtUpgraded"),
+		[this, &Implicits](const FName& Name, const FCataclysmItemBaseRow& Row)
+		{
+			const TPair<const FString*, int32> Each[] = {{&Row.Implicit1Stat, Row.Implicit1AtZero},
+														 {&Row.Implicit2Stat, Row.Implicit2AtZero}};
+			for (const TPair<const FString*, int32>& Implicit : Each)
+			{
+				if (Implicit.Key->IsEmpty())
+				{
+					TestEqual(FString::Printf(TEXT("%s: no implicit, no value"), *Name.ToString()), Implicit.Value, 0);
+					continue;
+				}
+				++Implicits;
+				TestTrue(FString::Printf(TEXT("%s %s: at least 1 at +0"), *Name.ToString(), **Implicit.Key),
+					Implicit.Value >= 1);
+			}
+		});
+	TestEqual(TEXT("every implicit in the data was read"), Implicits, 76);
 	return true;
 }
 
@@ -600,12 +495,15 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 		WeaponModifiers.Find(FName(TEXT("attack_damage")));
 	if (WeaponDamage && WeaponDamage->Num() == 2)
 	{
-		TestTrue(FString::Printf(TEXT("its 78 implicit doubles to 156, got %.2f"),
+		// SINCE ISSUE #2883, whole numbers doubled inside the rounding: the
+		// implicit's 31 at +0 is 155 two-handed at +10 (156 before), and the
+		// affix's tier 7 top of 15 at +0 is 75 (44 when it was 22 doubled).
+		TestTrue(FString::Printf(TEXT("its 78 implicit, 31 at +0, is 155, got %.2f"),
 				 (*WeaponDamage)[0].Value),
-			FMath::IsNearlyEqual((*WeaponDamage)[0].Value, 156.0f, 0.05f));
-		TestTrue(FString::Printf(TEXT("its 22 affix doubles to 44, got %.2f"),
+			FMath::IsNearlyEqual((*WeaponDamage)[0].Value, 155.0f, 0.05f));
+		TestTrue(FString::Printf(TEXT("its affix, 15 at +0, is 75, got %.2f"),
 				 (*WeaponDamage)[1].Value),
-			FMath::IsNearlyEqual((*WeaponDamage)[1].Value, 44.0f, 0.05f));
+			FMath::IsNearlyEqual((*WeaponDamage)[1].Value, 75.0f, 0.05f));
 	}
 	else
 	{
@@ -627,12 +525,14 @@ bool FCataclysmItemModifiersTest::RunTest(const FString& Parameters)
 		AxeModifiers.Find(FName(TEXT("attack_damage")));
 	if (AxeDamage && AxeDamage->Num() == 2)
 	{
-		TestTrue(FString::Printf(TEXT("its 46 implicit stays 46, got %.2f"),
+		// 18 at +0 is 45 at +10 (the stated 46 before issue #2883), and the
+		// affix's 15 at +0 is 38 (37.5, a half going up).
+		TestTrue(FString::Printf(TEXT("its implicit, 18 at +0, is 45, got %.2f"),
 				 (*AxeDamage)[0].Value),
-			FMath::IsNearlyEqual((*AxeDamage)[0].Value, 46.0f, 0.05f));
-		TestTrue(FString::Printf(TEXT("its affix stays 22, got %.2f"),
+			FMath::IsNearlyEqual((*AxeDamage)[0].Value, 45.0f, 0.05f));
+		TestTrue(FString::Printf(TEXT("its affix is 38, got %.2f"),
 				 (*AxeDamage)[1].Value),
-			FMath::IsNearlyEqual((*AxeDamage)[1].Value, 22.0f, 0.05f));
+			FMath::IsNearlyEqual((*AxeDamage)[1].Value, 38.0f, 0.05f));
 	}
 	else
 	{
@@ -689,13 +589,11 @@ bool FCataclysmItemResistanceTest::RunTest(const FString& Parameters)
 			Found != nullptr && Found->Num() == 1);
 		if (Found && Found->Num() == 1)
 		{
-			// 12% per resistance at tier 7 on +10 gear. It was 6 until issue
-			// #1229 doubled the three resistance affixes, because the
-			// difficulty tier now takes resistance off a player and a tier 8
-			// character needs 145 rather than 70 to sit at the cap.
-			TestTrue(FString::Printf(TEXT("%s is 12 points, got %.2f"),
+			// 40 per resistance at tier 7 on +10 gear, its T7 Max of 16 at +0,
+			// since issue #2883. It was 12 from #1229 and 6 before that.
+			TestTrue(FString::Printf(TEXT("%s is 40 points, got %.2f"),
 					 *Stat.ToString(), (*Found)[0].Value),
-				FMath::IsNearlyEqual((*Found)[0].Value, 12.0f, 0.05f));
+				FMath::IsNearlyEqual((*Found)[0].Value, 40.0f, 0.05f));
 		}
 	}
 
@@ -730,13 +628,15 @@ bool FCataclysmItemResistanceTest::RunTest(const FString& Parameters)
 		Demonic != nullptr && Demonic->Num() == 1);
 	if (Demonic && Demonic->Num() == 1)
 	{
-		// 40 points for a single resistance at tier 7 on +10 gear, against 12
-		// for the family covering all eight. Concentration is worth more per
-		// type, and the RATIO is what this line is really about: both doubled
-		// together for issue #1229, so it is unchanged at 3.33 to 1.
-		TestTrue(FString::Printf(TEXT("a single resistance is 40 points, got %.2f"),
+		// 58 points for a single resistance at tier 7 on +10 gear (its T7 Max
+		// of 23 at +0), against 40 for the family covering all eight, since
+		// issue #2883. Concentration is still worth more per type, now 1.45 to
+		// 1 rather than 3.33 to 1 (40 against 12): the approved proposal's row
+		// R2, seven whole tiers holding the all-resistances affix at 35 or more
+		// at +10.
+		TestTrue(FString::Printf(TEXT("a single resistance is 58 points, got %.2f"),
 				 (*Demonic)[0].Value),
-			FMath::IsNearlyEqual((*Demonic)[0].Value, 40.0f, 0.05f));
+			FMath::IsNearlyEqual((*Demonic)[0].Value, 58.0f, 0.05f));
 	}
 
 	return true;
@@ -821,19 +721,21 @@ bool FCataclysmWeaponDamageByTypeTest::RunTest(const FString& Parameters)
 	struct FCase
 	{
 		const TCHAR* Type;
-		float Stated;
-		bool bTwoHanded;
+		float Expected;
 	};
+	// SINCE ISSUE #2883 an implicit is its whole +0 value upgraded, so the stated
+	// +10 figure is no longer exactly the answer: the Greataxe's 72 is 29 at +0
+	// and 145 two-handed at +10, the Staff's 66 is 26 and 130, the Fist's 30 is
+	// 12 and 30. (144, 132 and 30 before.)
 	const FCase Cases[] = {
-		{ TEXT("Greataxe"), 72.0f, true  },
-		{ TEXT("Staff"),    66.0f, true  },
-		{ TEXT("Fist"),     30.0f, false },
+		{ TEXT("Greataxe"), 145.0f },
+		{ TEXT("Staff"),    130.0f },
+		{ TEXT("Fist"),      30.0f },
 	};
 
 	for (const FCase& Case : Cases)
 	{
-		// At gear level 10 the stated figure IS the answer, before doubling.
-		const float Expected = Case.Stated * (Case.bTwoHanded ? 2.0f : 1.0f);
+		const float Expected = Case.Expected;
 		const float Actual = UCataclysmItemModifiers::WeaponDamageForType(
 			Bases, Case.Type, /*GearLevel=*/10);
 
@@ -911,25 +813,26 @@ bool FCataclysmTwoWeaponsSumTheirDamage::RunTest(const FString& Parameters)
 	const FCataclysmItem Axe = At10(TEXT("Weapon_Axe"));
 	const FCataclysmItem Sword = At10(TEXT("Weapon_Sword"));
 
-	TestEqual(TEXT("an Axe alone carries the 46 the sheet states"),
-		UCataclysmItemModifiers::WeaponDamageForItem(Axe, Bases), 46.0f, 0.01f);
+	// 45, the stated 46 being 18 at +0 since issue #2883.
+	TestEqual(TEXT("an Axe alone carries 45"),
+		UCataclysmItemModifiers::WeaponDamageForItem(Axe, Bases), 45.0f, 0.01f);
 	TestEqual(TEXT("a Sword alone carries 40"),
 		UCataclysmItemModifiers::WeaponDamageForItem(Sword, Bases), 40.0f, 0.01f);
 
 	// THE TWO FIGURES THE DESIGN DOCUMENT STATES.
-	TestEqual(TEXT("an Axe with a Sword gives 86, as the design document says"),
+	TestEqual(TEXT("an Axe with a Sword gives 85, as the design document says"),
 		UCataclysmItemModifiers::BlendedWeaponDamage({Axe, Sword}, Bases),
-		86.0f, 0.01f);
-	TestEqual(TEXT("an Axe with an Axe gives 92, as the design document says"),
+		85.0f, 0.01f);
+	TestEqual(TEXT("an Axe with an Axe gives 90, as the design document says"),
 		UCataclysmItemModifiers::BlendedWeaponDamage({Axe, Axe}, Bases),
-		92.0f, 0.01f);
+		90.0f, 0.01f);
 
 	// A TWO-HANDED WEAPON IS WORTH DOUBLE ITS STATED FIGURE, and is one entry
 	// rather than two, because it is stored in the first weapon slot alone.
 	const FCataclysmItem Greatsword = At10(TEXT("Weapon_Greatsword"));
-	TestEqual(TEXT("a Greatsword's stated 78 doubles to 156"),
+	TestEqual(TEXT("a Greatsword's 31 at +0 doubles to 155"),
 		UCataclysmItemModifiers::BlendedWeaponDamage({Greatsword}, Bases),
-		156.0f, 0.01f);
+		155.0f, 0.01f);
 
 	// HOLDING NOTHING IS WORTH NOTHING, rather than being an error.
 	TestEqual(TEXT("no weapons at all are worth nothing"),
@@ -970,9 +873,10 @@ bool FCataclysmUpgradeLevelReachesWeaponDamage::RunTest(const FString& Parameter
 	const float AtZero = UCataclysmItemModifiers::WeaponDamageForItem(Fresh, Bases);
 	const float AtTen = UCataclysmItemModifiers::WeaponDamageForItem(Upgraded, Bases);
 
-	// The sheet states the +10 figure, and a Whip's is 32.
-	TestEqual(TEXT("a +10 Whip carries the 32 the sheet states"),
-		AtTen, 32.0f, 0.01f);
+	// The sheet states 32 at +10, which is 13 at +0 since issue #2883, so a
+	// +10 Whip carries 33 (32.5, a half going up).
+	TestEqual(TEXT("a +10 Whip carries 33"),
+		AtTen, 33.0f, 0.01f);
 
 	// ABOUT 2.5 TIMES, which is the upgrade curve stated on FCataclysmItem
 	// itself. It was 3.52 until 2026-09-03, when the gear level ladder was eased
@@ -1142,89 +1046,51 @@ bool FCataclysmHybridAffixGrantsBothHalves::RunTest(const FString& Parameters)
 							 (*Armour)[0].Value),
 		(*Armour)[0].Value > 0.0f);
 
-	// SEVENTY PER CENT OF WHAT THE WHOLE AFFIX WOULD GRANT, measured against the
-	// single affix rather than against a number written here. That is what makes
+	// THE SINGLE AFFIX TWO TIERS DOWN, since issue #2883 (D6), measured against
+	// the single affix rather than against a number written here. It was 70%
+	// of the single affix at the same tier; two tiers down on each half's own
+	// whole-number ladder is the same share within a few per cent, and it keeps
 	// a hybrid a compromise: more in total across two stats, less of either.
-	FCataclysmItem WholeHealth;
-	WholeHealth.Base = Belt.Base;
-	WholeHealth.GearLevel = Belt.GearLevel;
-	FCataclysmRolledAffix Single;
-	Single.Affix = FName(TEXT("Stat_Flat_maximum_health"));
-	Single.Tier = UCataclysmItemValues::MaxAffixTier;
-	Single.Roll = 1.0f;
-	WholeHealth.Affixes.Add(Single);
-
-	const TMap<FName, TArray<FCataclysmStatModifier>> WholeModifiers =
-		UCataclysmItemModifiers::ModifiersFor(WholeHealth, Bases, Affixes);
-	const TArray<FCataclysmStatModifier>* WholeHealthMods =
-		WholeModifiers.Find(FName(TEXT("max_health")));
-
-	if (TestNotNull(TEXT("the single affix grants maximum health"), WholeHealthMods)
-		&& WholeHealthMods->Num() == 1)
+	const auto SingleHealthAt = [&](int32 Tier)
 	{
-		TestEqual(TEXT("and the hybrid's half is 70% of it"),
-			(*Health)[0].Value,
-			(*WholeHealthMods)[0].Value * UCataclysmItemValues::HybridFraction,
-			0.01f);
+		FCataclysmItem WholeHealth;
+		WholeHealth.Base = Belt.Base;
+		WholeHealth.GearLevel = Belt.GearLevel;
+		FCataclysmRolledAffix Single;
+		Single.Affix = FName(TEXT("Stat_Flat_maximum_health"));
+		Single.Tier = Tier;
+		Single.Roll = 1.0f;
+		WholeHealth.Affixes.Add(Single);
+		const TMap<FName, TArray<FCataclysmStatModifier>> WholeModifiers =
+			UCataclysmItemModifiers::ModifiersFor(WholeHealth, Bases, Affixes);
+		const TArray<FCataclysmStatModifier>* WholeHealthMods =
+			WholeModifiers.Find(FName(TEXT("max_health")));
+		return WholeHealthMods && WholeHealthMods->Num() == 1 ? (*WholeHealthMods)[0].Value : -1.0f;
+	};
 
-		// AND STRICTLY LESS THAN THE WHOLE, stated separately so that a
-		// HybridFraction accidentally set to 1.0 fails here as well as above.
-		TestTrue(TEXT("which is less than the single affix grants"),
-			(*Health)[0].Value < (*WholeHealthMods)[0].Value);
+	const float TwoTiersDown = SingleHealthAt(
+		UCataclysmItemValues::MaxAffixTier - UCataclysmItemValues::HybridTierDrop);
+	const float SameTier = SingleHealthAt(UCataclysmItemValues::MaxAffixTier);
+	if (TestTrue(TEXT("the single affix grants maximum health"), TwoTiersDown > 0.0f && SameTier > 0.0f))
+	{
+		TestEqual(TEXT("and the hybrid's half is the single affix two tiers down"),
+			(*Health)[0].Value, TwoTiersDown, 0.001f);
+
+		// AND STRICTLY LESS THAN THE WHOLE AT THE SAME TIER, stated separately
+		// so that a tier drop accidentally set to 0 fails here as well as above.
+		TestTrue(TEXT("which is less than the single affix grants at the same tier"),
+			(*Health)[0].Value < SameTier);
 	}
 
 	return true;
 }
 
-/**
- * The hybrid share is the ratio the project already set, not a number picked.
- *
- * `sim/cataclysm_sim/affixes.py` derives it rather than writing it down, and
- * says why: it is the ratio between the two-resistance affix and the
- * single-resistance one, so the whole pool moves together if that ratio ever
- * changes. The game holds it as a constant for speed, and this is what stops
- * the two drifting apart in silence.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHybridShareIsTheResistanceRatio,
-	"Cataclysm.Items.TheHybridShareIsTheResistanceRatio",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmHybridShareIsTheResistanceRatio::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmItemTest;
-
-	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
-	if (!Affixes)
-	{
-		AddError(TEXT("could not load Affixes.csv"));
-		return false;
-	}
-
-	const FCataclysmAffixRow* Single = Affixes->FindRow<FCataclysmAffixRow>(
-		FName(TEXT("Resistance_Single_resistance")), TEXT("HybridShare"),
-		/*bWarnIfMissing=*/false);
-	const FCataclysmAffixRow* Two = Affixes->FindRow<FCataclysmAffixRow>(
-		FName(TEXT("Resistance_Two_resistances")), TEXT("HybridShare"),
-		/*bWarnIfMissing=*/false);
-
-	if (!TestNotNull(TEXT("the single resistance affix is in the data"), Single)
-		|| !TestNotNull(TEXT("and the two-resistance one"), Two))
-	{
-		return false;
-	}
-
-	if (!TestTrue(TEXT("the single resistance affix is worth something"),
-			Single->TopValue > 0.0f))
-	{
-		return false;
-	}
-
-	TestEqual(TEXT("the hybrid share is the two-resistance affix over the single"),
-		UCataclysmItemValues::HybridFraction,
-		Two->TopValue / Single->TopValue, 0.0001f);
-
-	return true;
-}
+// THE HYBRID SHARE TEST IS RETIRED WITH THE SHARE. `Cataclysm.Items.TheHybridShareIsTheResistanceRatio`
+// held `UCataclysmItemValues::HybridFraction`, the 70% a hybrid half was worth, to the two-resistance affix's top
+// value over the single one's. Since issue #2883 (D6) a hybrid half is its own affix two tiers down
+// (`UCataclysmItemValues::HybridTierDrop`), and nothing reads HybridFraction; issue #2904 retires it with
+// TopValue and Floor. `Cataclysm.Item.AHybridHalfIsItsOwnAffixTwoTiersDownAndATierBelowThreeReadsAsThree` and the
+// test above hold the new rule.
 
 /**
  * NO AFFIX IN THE DATA GRANTS NOTHING AT ALL.
@@ -1417,12 +1283,14 @@ bool FCataclysmAilmentAffixGrantsItsChance::RunTest(const FString& Parameters)
 		return Total;
 	};
 
-	TestEqual(TEXT("a top-tier Chance to bleed on a +10 ring grants 15"),
-		ChanceToBleedOn(TEXT("Ring_Band")), 15.0f, 0.01f);
+	// SINCE ISSUE #2883: tier 7's top is 15 at +0, so 38 at +10 on a ring
+	// (37.5, a half going up), and 75 on a two-handed weapon, doubled inside
+	// the rounding. 15 and 30 before.
+	TestEqual(TEXT("a top-tier Chance to bleed on a +10 ring grants 38"),
+		ChanceToBleedOn(TEXT("Ring_Band")), 38.0f, 0.01f);
 
-	TestEqual(TEXT("and on a +10 Greatsword, which is two-handed, 30"),
-		ChanceToBleedOn(TEXT("Weapon_Greatsword")),
-		15.0f * UCataclysmItemValues::TwoHandedMultiplier, 0.01f);
+	TestEqual(TEXT("and on a +10 Greatsword, which is two-handed, 75"),
+		ChanceToBleedOn(TEXT("Weapon_Greatsword")), 75.0f, 0.01f);
 
 	return true;
 }

@@ -324,9 +324,12 @@ bool FCataclysmEnemyStrengthRarityOnce::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("a Legendary scores above a Common on the same floor"),
 			 UCataclysmEnemyScore::StrengthScoreFor(Where, Legendary) > UCataclysmEnemyScore::StrengthScoreFor(Where, 0));
-	TestEqual(TEXT("its Starting health is its score at Common's share, with no rarity ratio in it"),
+	// AND THE TIER'S HEALTH FACTOR, since issue #2884's rebalance (1.16 at this floor's tier 2).
+	TestEqual(TEXT("its Starting health is its score at Common's share and the tier's health factor, with no rarity "
+				   "ratio in it"),
 			  static_cast<double>(Built.Health),
-			  UCataclysmEnemyScore::StrengthScoreFor(Where, Legendary) * Common->HealthPerScore * Imp->HealthShare, 0.01);
+			  UCataclysmEnemyScore::StrengthScoreFor(Where, Legendary) * Common->HealthPerScore * Imp->HealthShare
+				  * UCataclysmEnemyScore::HealthFactor(Where.DifficultyTier), 0.01);
 	return true;
 }
 

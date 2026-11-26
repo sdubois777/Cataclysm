@@ -21,6 +21,7 @@ from collections import Counter
 
 import pytest
 
+from cataclysm_sim import affix_ranges
 from cataclysm_sim import affixes as af
 
 
@@ -220,22 +221,21 @@ def test_a_roll_at_a_difficulty_tier_outside_the_range_is_rejected():
 # --------------------------------------------------------------------------
 
 def test_a_capped_affix_is_worth_its_share_of_the_top_value():
-    """The gate and the tier curve have to agree.
+    """The gate and the tier ranges have to agree.
 
-    THE SHARE CHANGED ON 2026-09-03. It was four sevenths, because the ladder
-    was `tier / 7`. The ladder is geometric now and spans 3.0 rather than 7.0,
-    so a tier 4 affix is worth `3 ** ((4 - 7) / 6)` of a tier 7 one, which is
-    about 0.577. Issue #1179 says why both ladders were eased.
+    THE SHARE IS THE ROW'S OWN SINCE ISSUE #2883. It was four sevenths until
+    2026-09-03, then the geometric `3 ** ((4 - 7) / 6)`, about 0.577, of the
+    stated top (issue #1179). Each affix now states its seven ranges, so a
+    capped tier 4 affix is worth that tier's own top: Flat maximum health's
+    T4 Max of 24, against T7's 48, at +0.
 
-    Read from TIER_FRACTIONS rather than written out, so this states that the
-    gate and the curve agree rather than restating the curve's own formula and
-    being able to drift from it.
+    Read from the ranges rather than written out, so this states that the gate
+    and the ranges agree rather than restating them.
     """
     cap = af.max_affix_tier_on_a_drop(3)
     assert cap == 4
-    assert af.FLAT_HEALTH.value_at(cap) == pytest.approx(
-        af.FLAT_HEALTH.value_at(7) * af.TIER_FRACTIONS[cap])
-    assert af.TIER_FRACTIONS[cap] == pytest.approx(0.5774, abs=0.0005)
+    assert af.FLAT_HEALTH.value_at(cap, 1.0, 0) == affix_ranges.TIER_RANGES["Flat maximum health"][cap - 1][1]
+    assert af.FLAT_HEALTH.value_at(cap, 1.0, 0) / af.FLAT_HEALTH.value_at(7, 1.0, 0) == pytest.approx(24 / 48)
 
 
 def test_the_cap_at_every_difficulty_tier_produces_a_computable_value():

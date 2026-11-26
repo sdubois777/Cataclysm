@@ -1782,7 +1782,7 @@ Energy shield is a distinct defence with its own rules, not a second health bar.
 
   - **It absorbs damage over time as well as hits, except bleed.** Poison, burn and every other kind of damage over time are absorbed like a hit. A bleed passes straight through to health, unless the character has something that lets bleed in too (the Warded keystone, or the drawback "Energy shield can now be effected by bleed"). The project owner decided this on 2026-09-18, reversing the rule that no damage over time reached the shield.
   - **It refills 3 seconds after the character last took damage.** Taking damage again inside that window restarts the wait.
-  - **It refills at a fifth of its own maximum per second, so a full shield takes 5 seconds however large it is.** Every source of maximum energy shield grants that rate alongside it: the Vestment's 120 comes with 24 a second, the flat maximum energy shield affix's 50 with 10, and the Ritualist's class line with a fifth of its own. A class with no energy shield of its own therefore refills the one it builds from gear at the same speed the Ritualist refills its own. Path of Exile recharges 20% of maximum energy shield per second after its own delay, which is the same figure.
+  - **It refills at about a fifth of its own maximum per second, so a full shield takes about 5 seconds however large it is: 4.8 to 5.5 seconds since each item's implicits became whole numbers (2026-11-25).** Every item base granting maximum energy shield grants that rate alongside it, and so does every class: the Vestment's 48 at +0 comes with 10 a second, and the Ritualist's class line with a fifth of its own. **The flat energy shield and flat energy shield regeneration affixes are two separate choices, and are not held to a fifth:** a character who stacks regeneration refills well under five seconds, which the whole-number affix ranges allowed (issue #2883; ruled 2026-11-25). A class with no energy shield of its own therefore refills the one it builds from gear at the same speed the Ritualist refills its own. Path of Exile recharges 20% of maximum energy shield per second after its own delay, which is the same figure.
   - **Two things move that 5 seconds, both deliberately.** The increased energy shield regeneration affix shortens it, to 3.4 seconds on four pieces and 2.0 on twelve. The increased maximum energy shield affix lengthens it, because it raises the pool and not the rate: 7.4 seconds on four pieces and 12.2 on twelve. A bigger shield taking longer to come back is the trade for having it.
   - **Damage over time restarts that wait as well.** So damage over time holds the shield empty while it ticks, whether or not the shield absorbs it, and a bleed also goes straight past it to health.
   - **Magic weapons strip 10% more of it** per hit than other sub-types.
@@ -3364,15 +3364,17 @@ The damage numbers are not chosen. They are read off the enemy statistics in sec
 
   
 
-An average Common enemy at difficulty tier 8 has 3,366 effective health and should take **2 non-critical strikes** to kill. That is not 1,683 damage per hit, because the creature also carries 673 armor, which stops 9.5% of every hit before it reaches health. The damage a player has to deal is **1,860 per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 219, of which the affixes supply 132. The weapons supply the remaining 87.
+An average Common enemy at difficulty tier 8 has 4,848 health and should take **2 non-critical strikes** to kill. That is not 2,424 damage per hit, because the creature also carries 673 armor, which stops 9.5% of every hit before it reaches health. The damage a player has to deal is **2,679 per hit**. Solving the pipeline backwards, a character spending 6 slots on flat damage and 6 on increased damage needs a base of 315, of which the affixes supply 228. The weapons supply the remaining 87.
+
+**The figures moved on 2026-11-25 with the whole-number affix ranges (issue #2883) and the enemy rebalance that ships with them (issue #2884).** Flat damage tops at 38 a slot where it was 22, so the affixes supply 228 where they supplied 132; and every creature's health at tier 8 is 1.44 times what it was, so the target is 2,679 where it was 1,860. The weapons' share stayed at 87.
 
 **The enemy's own mitigation is counted, and it was not until 2026-08-16.** The target divided health by hits and applied nothing, so it answered how much health had to be removed rather than how much damage had to be dealt to remove it, and every offensive number fitted to it was 10.5% low. The average Common enemy is the mildest case: it carries less armor than anything else in the slice.
 
-**That 87 is two one-handed weapons, not one weapon.** The target describes a **dual wielder**, decided by the project owner on 2026-08-15. Two one-handed weapons sum their base damage, as Dual Wielding below sets out, so the 87 is what the pair supplies between them. No single weapon supplies 87 and none is meant to: the strongest one-hander carries 46 and the smallest two-hander 128. The two strongest pairs sit either side of the figure, an Axe with an Axe at 92 and an Axe with a Sword at 86.
+**That 87 is two one-handed weapons, not one weapon.** The target describes a **dual wielder**, decided by the project owner on 2026-08-15. Two one-handed weapons sum their base damage, as Dual Wielding below sets out, so the 87 is what the pair supplies between them. No single weapon supplies 87 and none is meant to: the strongest one-hander carries 45 and the smallest two-hander 130. The two strongest pairs sit either side of the figure, an Axe with an Axe at 90 and an Axe with a Sword at 85. (92 and 86 until each implicit became a whole number at +0, issue #2883: the Axe's stated 46 is 18 at +0 and 45 at +10.)
 
-**The fit is close rather than exact, and the residual is stated rather than hidden.** Pair sums are whole numbers and the requirement is 86.86, so an Axe with a Sword lands about 1% under it and an Axe with an Axe about 6% over. The resulting damage per hit is 1,853 and 1,904 against the 1,860 target.
+**The fit is close rather than exact, and the residual is stated rather than hidden.** Pair sums are whole numbers and the requirement is 87.16, so an Axe with a Sword lands about 2.5% under it and an Axe with an Axe about 3% over. The resulting damage per hit is 2,660.5 and 2,703 against the 2,679 target.
 
-**Every other loadout is measured against that one, and being above or below it is not an error.** A two-handed weapon deals about 1.32 times the target, which is the two-handed multiplier working rather than a loadout breaking the target. **That 1.32 is not the 1.29 the two-handed section below states, and the two do not disagree**: this figure is the composed damage per hit divided by the 1,860 target, and that one is the ratio of the weapon brackets alone, which `sim/analyse_two_handed_multiplier.py` solves. They are different quantities and both are checked against their own source by `tools/tests/test_two_handed_advantage_matches_the_design.py`. A single one-handed weapon deals about 0.81 times it, and a one-handed weapon with a Shield deals the same 0.81 since a Shield adds no attack damage; both trade damage for a free hand or for block and armor.
+**Every other loadout is measured against that one, and being above or below it is not an error.** A two-handed weapon deals about 1.22 times the target, which is the two-handed multiplier working rather than a loadout breaking the target. **That 1.22 is not the 1.20 the two-handed section below states, and the two do not disagree**: this figure is the composed damage per hit divided by the 1,860 target, and that one is the ratio of the weapon brackets alone, which `sim/analyse_two_handed_multiplier.py` solves. They are different quantities and both are checked against their own source by `tools/tests/test_two_handed_advantage_matches_the_design.py`. A single one-handed weapon deals about 0.87 times it, and a one-handed weapon with a Shield deals the same 0.87 since a Shield adds no attack damage; both trade damage for a free hand or for block and armor.
 
 `sim/cataclysm_sim/player_damage.py` composes all four loadouts from the gear and checks at import that the dual wielder still lands within five per cent of this target, so the declaration above cannot quietly stop being true.
 
@@ -3463,7 +3465,7 @@ The split above says which pool an affix is drawn from. It does not say what an 
 
 
 
-**What it does not do.** It does not stop a stat appearing across several pieces. Capping a resistance takes roughly twelve affix slots and is meant to be spread over a set; the rule constrains one piece, not one character.
+**What it does not do.** It does not stop a stat appearing across several pieces. Capping a resistance takes roughly four affix slots and is meant to be spread over a set; the rule constrains one piece, not one character. (Roughly twelve until the whole-number affix ranges of issue #2883, whose all-resistances affix reaches 40 at tier 7 on +10 gear: 3.6 slots cap all eight at tier 8.)
 
 
 
@@ -3592,11 +3594,11 @@ A two-handed weapon multiplies **both** its implicit values and every affix roll
 
   
 
-**It has to reach the implicits, not only the affixes.** Two one-handed weapons **sum** their base damage, so an Axe and a Sword give 86 against a Greatsword's stated 78. With the affix half alone the two-hander would lose on damage while also holding one fewer damage type, which makes it strictly worse. Reaching the same damage advantage through the affix half alone needs a multiplier of 3.40, which would hand the two-hander 13.6 affix slots-worth on the weapon against the dual wielder's 8 — the same free power the rule above forbids, pointed the other way. `sim/analyse_two_handed_multiplier.py` solves that figure and `sim/tests/test_analysis_scripts.py` holds the comment in `sim/cataclysm_sim/affixes.py` to it.
+**It has to reach the implicits, not only the affixes.** Two one-handed weapons **sum** their base damage, so an Axe and a Sword give 85 against a Greatsword's stated 78. With the affix half alone the two-hander would lose on damage while also holding one fewer damage type, which makes it strictly worse. Reaching the same damage advantage through the affix half alone needs a multiplier of 2.90, which would hand the two-hander 11.6 affix slots-worth on the weapon against the dual wielder's 8 — the same free power the rule above forbids, pointed the other way. `sim/analyse_two_handed_multiplier.py` solves that figure and `sim/tests/test_analysis_scripts.py` holds the comment in `sim/cataclysm_sim/affixes.py` to it.
 
   
 
-With the multiplier applied to both, a two-handed weapon deals about **1.29 times** the damage per hit and about **1.22 times** the damage per second, and the dual wielder holds a fourth damage type and a wider spread of affixes.
+With the multiplier applied to both, a two-handed weapon deals about **1.20 times** the damage per hit and about **1.14 times** the damage per second (1.29 and 1.22 until the larger flat damage affix of issue #2883 made the affixes a bigger share of both brackets), and the dual wielder holds a fourth damage type and a wider spread of affixes.
 
   
 
@@ -5281,15 +5283,17 @@ A reference character at difficulty tier 8 — a level 100 Ravager spending ever
 
 | Layer | What it removes |
 | :-- | :-: |
-| Armor, 7,299 points against the tier 8 curve | 53.3% |
+| Armor, 12,550 points against the tier 8 curve | 66.2% |
 | Resistance, at the cap | 70.0% |
-| Block chance 28%, removing half a hit each time | 14.0% on average |
-| Damage reduction | 23.95% |
-| **All four together** | **90.8%** |
+| Block chance 98%, removing half a hit each time | 49.0% on average |
+| Damage reduction | 42.95% |
+| **All four together** | **97.05%** |
 
   
 
-So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen without reference to that is chosen against nothing, which is what happened before: an average Common enemy needed 176 hits to kill that character.
+So a hit lands for about **3%** of itself, 2.95%.
+
+**The reference character was re-fitted on 2026-11-25** with the whole-number affix ranges (issue #2883): block chance rolls on two kinds of piece, damage reduction on one, and four all-resistance affixes cap all eight resistances. By the owner's ruling on issue #2884 (2026-11-24, "A middle build (Recommended)"), the 13 suffix places that freed are left empty. It was 7,299 armour, 28% block and 23.95% damage reduction, stopping 90.8%, and a hit landed for about a tenth of itself. Every creature's damage was raised by the same ruling (1.84 times at tier 2 to 5.73 times at tier 8), so the table below is unchanged. Any enemy damage figure chosen without reference to that is chosen against nothing, which is what happened before: an average Common enemy needed 176 hits to kill that character.
 
   
 
@@ -5393,7 +5397,7 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
-**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 90.8% of what is thrown at them. The ceiling is **89%**, below it, so that an enemy sitting exactly at the ceiling still stops less than the player after the published figure is rounded. It was set as the whole percent below the 89.9% the character stopped then, and kept when a stronger damage reduction affix raised that to 90.8% on 2026-09-04: it still sits below, with more room.
+**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 97.05% of what is thrown at them. The ceiling is **89%**, below it. It was set as the whole percent below the 89.9% the character stopped then, and kept when a stronger damage reduction affix raised that to 90.8% on 2026-09-04. **Its rule since 2026-11-25 is: below what the reference character stops, and 89%.** The re-fit for the whole-number affix ranges raised the character to 97.05%, and the owner ruled on issue #2884 (2026-11-24) to keep the ceiling at 89% and restate its rule rather than raise it to follow the character.
 
   
 

@@ -91,7 +91,7 @@ Positive_When_your_class_resource_hits_zero_instantly_re,"When your class resour
 Positive_When_your_class_resource_hits_zero_all_skill_co,"When your class resource hits zero, all skill cooldowns are reduced by 2-4 seconds",Generic,4.0,Trigger.OnResourceEmpty,False,,0
 Positive_Each_unique_debuff_you_apply_to_an_enemy_increas,Each unique debuff you apply to an enemy increases your damage against that enemy by 5%-10%,Generic,3.0,"Trigger.OnStatusApplied, Type.Debuff, Stat.Offense.Global",False,,0
 Positive_Staggered_enemies_take_20_35_increased_damage,Staggered enemies take 20%-35% increased damage from all sources,Generic,3.0,"Keyword.Stagger, Stat.Offense.Global",False,,0
-Positive_Enemies_you_stagger_are_also_briefly_rooted_for,Enemies you stagger are also briefly rooted for 0.5-1.5 seconds,Generic,4.0,"Keyword.Stagger, Keyword.CC",False,,0
+Positive_Enemies_you_stagger_are_also_briefly_rooted_for,Enemies you stagger are also briefly rooted for 1-2 seconds,Generic,4.0,"Keyword.Stagger, Keyword.CC",False,,0
 Positive_Charge_skills_deal_30_60_bonus_damage_proporti,Charge skills deal 30%-60% bonus damage proportional to distance traveled,Generic,3.0,"Keyword.Charge, Stat.Offense.Global",False,,0
 Positive_Charge_skills_leave_a_persistent_AOE_zone_at_the,Charge skills leave a persistent AOE zone at the impact point for 3-6 seconds,Generic,4.0,"Keyword.Charge, Type.AOE.Persistent",False,,0
 Positive_10_20_of_bleed_damage_you_take_is_taken_from_y,10%-20% of bleed damage you take is taken from your energy shield instead of your health,Generic,3.0,"Keyword.Shield, Stat.Defense.EnergyShield",False,,0
@@ -165,8 +165,8 @@ Positive_While_below_50_HP_your_leech_is_doubled,While below 50% HP your leech i
 Positive_Killing_an_enemy_while_below_30_HP_instantly_re,Killing an enemy while below 30% HP instantly restores 15%-25% of your maximum HP,Generic,3.0,"Trigger.LowLife, Trigger.OnKill, Stat.Defense.Life",False,,0
 Positive_Every_20_seconds_all_your_skill_cooldowns_are_in,Every 20 seconds all your skill cooldowns are instantly reset,Generic,2.0,Trigger.Timer,False,,0
 Positive_Every_12_seconds_gain_a_shield_absorbing_15_25,Every 12 seconds gain a shield absorbing 15%-25% of your maximum HP in damage,Generic,3.0,"Trigger.Timer, Keyword.Shield, Stat.Defense.EnergyShield",False,,0
-Positive_Your_damage_is_increased_by_0_01_0_05_permanen,Your damage is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run,Generic,4.0,"Trigger.Progression, Stat.Offense.Global",False,,0
-Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm,Your maximum HP is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run,Generic,4.0,"Trigger.Progression, Stat.Defense.Life",False,,0
+Positive_Your_damage_is_increased_by_1_5_permanently_fo,"Your damage is increased by 1%-5% permanently for every 100,000 enemies killed this run",Generic,4.0,"Trigger.Progression, Stat.Offense.Global",False,,0
+Positive_Your_maximum_HP_is_increased_by_1_5_permanentl,"Your maximum HP is increased by 1%-5% permanently for every 100,000 enemies killed this run",Generic,4.0,"Trigger.Progression, Stat.Defense.Life",False,,0
 Positive_Your_armor_is_increased_by_1_2_for_every_dunge,Your armor is increased by 1%-2% for every dungeon floor cleared this run,Generic,4.0,"Trigger.Progression, Stat.Defense.Armor",False,,0
 Positive_Your_cooldowns_reset_50_100_faster_when_fighti,"Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4 seconds after you strike one",Generic,3.0,,False,,0
 Positive_Critical_strike_chance_is_increased_by_20_40_a,Critical strike chance is increased by 20%-40% against Boss enemies,Generic,3.0,Stat.Offense.Crit,False,,0
@@ -191,7 +191,7 @@ Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar,Your critical strikes ig
 Positive_Your_DoTs_ignore_20_40_of_enemy_resistances,Your DoTs ignore 20%-40% of enemy resistances,Generic,3.0,"Stat.Offense.Penetration, Keyword.DoT.Generic, Stat.Defense.Resist",False,,0
 Positive_Your_first_hit_against_each_enemy_ignores_all_ar,Your first hit against each enemy ignores all armor,Generic,3.0,"Stat.Offense.Penetration, Stat.Defense.Armor",False,,0
 Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo,"Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking indefinitely",Generic,2.0,"Stat.Offense.Penetration, Stat.Defense.Armor",False,,0
-Positive_Each_class_point_spent_above_100_grants_0_5_1,Each class point spent above 100 grants 0.5%-1% increased damage,Generic,3.0,"Stat.Progression.ClassPoints, Stat.Offense.Global",False,,0
+Positive_Every_2_class_points_spent_above_100_grant_1_2,Every 2 class points spent above 100 grant 1%-2% increased damage,Generic,3.0,"Stat.Progression.ClassPoints, Stat.Offense.Global",False,,0
 Positive_Class_points_spent_in_your_primary_tree_are_10,Class points spent in your primary tree are 10%-20% more effective,Generic,0.0,Stat.Progression.ClassPoints,False,,0
 Positive_Your_first_hit_against_each_enemy_in_a_combat_ig,Your first hit against each enemy in a combat ignores all resistances,Generic,2.0,Stat.Defense.Resist,False,,0
 Positive_This_weapon_has_2_4_damage_types,This weapon has 2-4 damage types,Generic,1.0,"Element.Demonic, Element.Celestial, Element.Void, Element.Death, Element.War, Element.Pestilence, Element.Chaos, Element.Famine, Item.Slot.Weapon",False,,0
@@ -227,7 +227,7 @@ Positive_Each_active_gadget_increases_trap_damage_by_10,Each active gadget incre
 Positive_Your_basic_attack_is_converted_into_a_placeable,"Your basic attack is converted into a placeable trap. When triggered, it fires your basic attack at the nearest enemy. Scales off trap damage. Shares your basic attack cooldown across all placed copies.",Generic,4.0,"Type.Trap, Slot.Basic",False,,0
 Positive_Your_basic_attack_is_converted_into_a_deployable,"Your basic attack is converted into a deployable gadget that fires your basic attack at the nearest enemy within range, once per basic attack cooldown. Scales off gadget damage.",Generic,4.0,"Type.Deployable, Slot.Basic",False,,0
 Positive_Your_heavy_attack_applies_its_full_effect_twice,Your heavy attack applies its full effect twice if you have not moved in the last 2 seconds,Generic,3.0,Slot.Heavy,False,,0
-Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5,Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a critical strike,Generic,4.0,"Slot.Heavy, Trigger.OnCrit",False,,0
+Positive_Your_heavy_attack_cooldown_is_reduced_by_1_2_sec,Your heavy attack cooldown is reduced by 1-2 seconds each time you land a critical strike,Generic,4.0,"Slot.Heavy, Trigger.OnCrit",False,,0
 Positive_Your_special_ability_has_20_40_increased_area,Your special ability has 20%-40% increased area of effect,Generic,4.0,Slot.Special,False,,0
 Positive_Your_special_ability_deals_20_40_increased_dam,Your special ability deals 20%-40% increased damage while you are moving,Generic,4.0,Slot.Special,False,,0
 Positive_Your_support_ability_duration_is_increased_by_50,Your support ability duration is increased by 50%-100%,Generic,4.0,Slot.Support,False,,0
@@ -268,7 +268,7 @@ Positive_While_stationary_your_gadgets_deal_20_40_incr,"While stationary, your g
 Positive_While_stationary_your_aura_radius_is_doubled,"While stationary, your aura radius is doubled",Generic,4.0,"Slot.Aura, Type.AOE.Aura",False,,0
 Positive_Your_first_hit_against_each_enemy_has_a_50_100,Your first hit against each enemy has a 50%-100% chance to stagger them,Generic,3.0,"Keyword.Stagger, Keyword.CC",False,,0
 Positive_Your_ranged_skills_have_20_40_increased_range,Your ranged skills have 20%-40% increased range,Generic,4.0,"Stat.Offense.Range, Type.Ranged",False,,0
-Positive_Your_melee_skills_have_0_5_1_metre_reach,Your melee skills have +0.5-1 metre reach,Generic,4.0,"Stat.Offense.Range, Type.Melee",False,,0
+Positive_Your_melee_skills_have_50_100_centimetres_reach,Your melee skills have +50-100 centimetres reach,Generic,4.0,"Stat.Offense.Range, Type.Melee",False,,0
 Positive_Your_aura_radius_is_increased_by_30_60,Your aura radius is increased by 30%-60%,Generic,4.0,"Stat.Offense.Range, Slot.Aura, Type.AOE.Aura",False,,0
 Positive_Your_retaliation_damage_also_applies_a_random_Do,Your retaliation damage also applies a random DoT to attackers,Generic,4.0,"Keyword.DoT.Generic, Stat.Defense.Retaliation",False,,0
 Positive_Regenerate_2_5_of_your_maximum_mana_per_second,Regenerate 2%-5% of your maximum mana per second,Generic,4.0,"Stat.Recovery.Regen, Stat.Resource.Mana",False,,0
@@ -294,7 +294,7 @@ Positive_Your_retaliation_damage_also_applies_a_bleed_sta,Your retaliation damag
 Positive_Retaliation_damage_has_a_20_40_chance_to_stagg,Retaliation damage has a 20%-40% chance to stagger the attacker,Generic,4.0,"Stat.Defense.Retaliation, Keyword.Stagger",False,,0
 Positive_Retaliation_damage_applies_a_2_4_second_slow_to,Retaliation damage applies a 2-4 second slow to the attacker,Generic,4.0,"Stat.Defense.Retaliation, Keyword.CC",False,,0
 Positive_Spells_have_20_40_increased_area_of_effect,Spells have 20%-40% increased area of effect,Generic,4.0,"Type.Spell, Type.AOE.PointBlank",False,,0
-Positive_Each_spell_cast_reduces_your_next_spell_cooldown,Each spell cast reduces your next spell cooldown by 0.5-1.5 seconds,Generic,3.0,Type.Spell,False,,0
+Positive_Each_spell_cast_reduces_your_next_spell_cooldown,Each spell cast reduces your next spell cooldown by 1-2 seconds,Generic,3.0,Type.Spell,False,,0
 Positive_While_below_35_HP_your_movement_speed_is_increa,While below 35% HP your movement speed is increased by 20%-40%,Generic,4.0,"Trigger.LowLife, Stat.Utility.Movespeed",False,,0
 Positive_Every_10_seconds_gain_a_stack_of_momentum_granti,"Every 10 seconds gain a stack of momentum granting 5%-10% increased damage, up to 5 stacks",Generic,4.0,"Trigger.Timer, Stat.Offense.Global",False,,0
 Positive_Every_8_seconds_your_next_attack_deals_100_200,Every 8 seconds your next attack deals 100%-200% increased damage,Generic,4.0,"Trigger.Timer, Stat.Offense.Global",False,,0
@@ -350,7 +350,7 @@ Positive_Mana_Weaver_6_Piece_Bonus_You_gain_an_aura_th,"Mana Weaver (6-Piece Bon
 Positive_Mana_Weaver_10_Piece_Bonus_Your_ultimate_abil,"Mana Weaver (10-Piece Bonus): Your ultimate ability no longer has a cooldown. Instead, its mana cost is doubled every time you use it. This cost resets at the beginning of every dungeon",Set,1.0,"Slot.Ultimate, Stat.Resource.Mana",False,,8
 Positive_Brute_s_Heart_2_Piece_Bonus_You_gain_25_incr,Brute's Heart (2-Piece Bonus): You gain 25% increased damage against enemies that are within 5 meters of you,Set,1.0,Stat.Offense.Global,False,,9
 Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,"Brute's Heart (6-Piece Bonus): When your health falls below 50%, you gain a powerful aura that taunts all nearby enemies and increases your armor and resistances by 50%",Set,1.0,"Stat.Defense.Life, Type.AOE.Aura, Slot.Aura, Stat.Defense.Armor, Stat.Defense.Resist, Trigger.LowLife, Keyword.CC",False,,9
-Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds,"Brute's Heart (10-Piece Bonus): Every 30 seconds, you can unleash a powerful ""Ground Pound"" that deals 500% of your armor as damage to all enemies in a large radius and stuns them for 3 seconds. The cooldown of this ability is reduced by 0.5 seconds per kill",Set,1.0,"Stat.Defense.Armor, Type.AOE.PointBlank, Keyword.CC, Trigger.OnKill",False,,9
+Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds,"Brute's Heart (10-Piece Bonus): Every 30 seconds, you can unleash a powerful ""Ground Pound"" that deals 500% of your armor as damage to all enemies in a large radius and stuns them for 3 seconds. The cooldown of this ability is reduced by 1 second for every 2 kills",Set,1.0,"Stat.Defense.Armor, Type.AOE.PointBlank, Keyword.CC, Trigger.OnKill",False,,9
 Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at,Spellblade's Will (2-Piece Bonus): Your melee attacks have a 25% chance to trigger an ability with a cooldown,Set,1.0,"Type.Strike, Type.Melee",False,,10
 Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use,"Spellblade's Will (6-Piece Bonus): When you use a melee attack, you gain a stack of Spellslinger which makes your spells cost 10% less mana per stack, and when you use a spell, you gain a stack of Dervish which increases your attack speed for melee attacks by 10% per stack",Set,1.0,"Type.Strike, Stat.Resource.Mana, Type.Spell, Stat.Offense.Speed",False,,10
 Positive_Spellblade_s_Will_10_Piece_Bonus_Your_melee_a,Spellblade's Will (10-Piece Bonus): Your melee attacks have a 25% of triggering one of your spells. This does not put the spell on cooldown but does use it's mana cost,Set,1.0,"Type.Strike, Type.Spell",False,,10

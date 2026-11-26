@@ -2193,6 +2193,20 @@ def item_bases(book) -> list[dict]:
             entry[f"Implicit{slot_index}Stat"] = stat
             entry[f"Implicit{slot_index}Kind"] = kind
             entry[f"Implicit{slot_index}Value"] = float(value) if value else 0.0
+            # THE WHOLE-NUMBER VALUE AT +0, since issue #2883 (D9 of the approved
+            # proposal): what the game upgrades, in place of the stated +10
+            # figure divided by 2.5. An implicit with no stat states none.
+            at_zero = _cell(raw, headers, f"Implicit {slot_index} At +0")
+            if stat:
+                entry[f"Implicit{slot_index}AtZero"] = _whole_number(
+                    at_zero, f"Item Bases row {index}: {name}'s Implicit "
+                             f"{slot_index} At +0")
+            elif at_zero:
+                raise DataError(f"Item Bases row {index}: {name} states an "
+                                f"Implicit {slot_index} At +0 of {at_zero!r} "
+                                "for an implicit with no stat")
+            else:
+                entry[f"Implicit{slot_index}AtZero"] = 0
 
         if implicits == 0:
             raise DataError(f"Item Bases row {index}: {name} grants nothing, so "
@@ -2319,6 +2333,63 @@ def weapon_meshes(book) -> list[dict]:
     return unique(out, "Weapon Meshes")
 
 
+#: The affix tiers, 1 to 7, each read as a whole-number range at +0. Issue #2883.
+AFFIX_TIERS = (1, 2, 3, 4, 5, 6, 7)
+
+#: The workbook columns holding them, T1 Min .. T7 Max, and the row fields they
+#: become, T1Min .. T7Max, in the same order.
+AFFIX_TIER_COLUMNS = tuple(f"T{t} {end}" for t in AFFIX_TIERS for end in ("Min", "Max"))
+AFFIX_TIER_FIELDS = tuple(column.replace(" ", "") for column in AFFIX_TIER_COLUMNS)
+
+
+def _whole_number(text: str, where: str) -> int:
+    """A cell that must hold a whole number above zero, refused otherwise."""
+    try:
+        number = float(text)
+    except ValueError as error:
+        raise DataError(f"{where} is {text!r}, which is not a number") from error
+    if number != int(number) or number < 1:
+        raise DataError(f"{where} is {text!r}, and it has to be a whole number "
+                        "of at least 1")
+    return int(number)
+
+
+def _affix_tier_ranges(raw, headers, index: int, name: str, kind: str) -> tuple[int, ...]:
+    """An affix row's seven tier ranges at +0, as fourteen whole numbers, T1 Min first.
+
+    THE RULES ARE THE APPROVED PROPOSAL'S, issue #2883 (the owner, 2026-11-24:
+    "Approve as written (Recommended)"):
+      - every number is a whole number of at least 1, so what a player is handed
+        is a whole number at +0 and the upgrade rule keeps it one;
+      - a tier holds at least two values, so the reroll and perfect crafting
+        materials always have something to act on;
+      - tiers do not overlap: a tier starts above where the one below it ends,
+        so a higher tier is never worse than a lower one at any roll.
+    A hybrid states none: its two halves are other rows and carry their own.
+    """
+    cells = [_cell(raw, headers, column) for column in AFFIX_TIER_COLUMNS]
+    if kind == "Hybrid":
+        if any(cells):
+            raise DataError(f"Affixes row {index}: the hybrid {name} states tier "
+                            "ranges, and a hybrid's halves carry their own")
+        return tuple(0 for _ in AFFIX_TIER_COLUMNS)
+    numbers = tuple(_whole_number(text, f"Affixes row {index}: {name}'s {column}")
+                    for text, column in zip(cells, AFFIX_TIER_COLUMNS, strict=True))
+    previous_high = 0
+    for t in AFFIX_TIERS:
+        low, high = numbers[2 * (t - 1)], numbers[2 * (t - 1) + 1]
+        if high <= low:
+            raise DataError(f"Affixes row {index}: {name}'s tier {t} is {low} to "
+                            f"{high}, and a tier has to hold at least two values "
+                            "or the reroll material has nothing to do")
+        if low <= previous_high:
+            raise DataError(f"Affixes row {index}: {name}'s tier {t} starts at {low}, "
+                            f"at or below where tier {t - 1} ends ({previous_high}), "
+                            "and tiers must not overlap")
+        previous_high = high
+    return numbers
+
+
 def affixes(book) -> list[dict]:
     """One rollable affix per row, across four kinds.
 
@@ -2382,6 +2453,8 @@ def affixes(book) -> list[dict]:
                     "be below the top, or every tier and every roll produce "
                     "one number and the reroll material has nothing to do.")
 
+        tiers = _affix_tier_ranges(raw, headers, index, name, kind)
+
         # THE WORD THIS AFFIX GIVES AN ITEM'S NAME, and only a suffix has one.
         # An item is called `<rarity> <base> of <word>`, so the first word is
         # the rarity: a prefix has nowhere in the name to appear, and a word on
@@ -2432,6 +2505,12 @@ def affixes(book) -> list[dict]:
             # worthless on the affixes whose top is itself small. An affix with
             # no floor here is unchanged in every respect.
             "Floor": float(floor) if floor else 0.0,
+            # THE SEVEN TIER RANGES AT +0, whole numbers, since issue #2883.
+            # What an affix rolls is read from these, not from TopValue and
+            # Floor, which stay until issue #2904 retires them. Zero on a
+            # hybrid, whose halves carry their own.
+            **{column: value for column, value in zip(AFFIX_TIER_FIELDS, tiers,
+                                                      strict=True)},
         })
 
     # TWO AFFIXES SHARING A WORD would make an item's name say less than it

@@ -245,8 +245,9 @@ bool FCataclysmConsumptionDoubleOwnNumbersTest::RunTest(const FString& Parameter
 	// character's, and its health carries the tier's multiplier.
 	TestNotEqual(TEXT("CONTROL: tier 1's reference level is not the player's"),
 				 UCataclysmPowerScore::ReferenceCharacter(1).Level, 37);
-	TestEqual(TEXT("CONTROL: a tier-1 Corrupted Stalker carries the 0.49 health multiplier"),
-			  UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(1), 0.49f, 0.0001f);
+	// 0.23 SINCE THE STALKER'S RE-FIT OF 2026-11-25 (issues #2883 and #2884, window ar-w1); 0.49 before it.
+	TestEqual(TEXT("CONTROL: a tier-1 Corrupted Stalker carries the 0.23 health multiplier"),
+			  UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(1), 0.23f, 0.0001f);
 
 	ACataclysmConsumptionDoubleCharacter* Double = SpawnDouble(Scene.World, FVector(1000.0f, 0.0f, 0.0f));
 	if (!TestNotNull(TEXT("set-up: a double was spawned"), Double)

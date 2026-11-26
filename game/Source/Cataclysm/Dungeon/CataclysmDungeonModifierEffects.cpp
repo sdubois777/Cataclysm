@@ -3326,8 +3326,10 @@ namespace
 	// eased by the tier relief and with damage scaled by the tier (issue #1569). TIER 1'S DAMAGE RE-FITTED 2026-11-19,
 	// 0.22 to 0.06, when issue #2749 cut tier 1's damage scale from 0.20 to 0.05; tiers 2 to 8 and every health figure
 	// did not move.
-	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.49f, 0.77f, 0.87f, 1.01f, 1.06f, 1.04f, 1.19f, 1.15f};
-	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.06f, 0.58f, 1.01f, 1.39f, 1.68f, 1.86f, 2.40f, 2.97f};
+	// RE-FITTED 2026-11-25 FROM WINDOW AR-W1'S MEASUREMENT, for the whole-number affix ranges and the enemy rebalance
+	// (issues #2883 and #2884): health 0.49 ... 1.15 and damage 0.06 ... 2.97 until then.
+	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.23f, 0.38f, 0.42f, 0.46f, 0.45f, 0.51f, 0.49f, 0.46f};
+	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.05f, 1.00f, 2.20f, 3.43f, 5.11f, 6.93f, 9.80f, 13.43f};
 }
 
 float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 DifficultyTier)

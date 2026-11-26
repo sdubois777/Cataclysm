@@ -4817,13 +4817,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointRowsTest,
  * The three class point enchantments, worn by a player, at two allocations.
  * Issue #1686. A worn item rolls the top of each range.
  *
- *   "Your skills deal 1.5%-2.5% less damage for every 10 class points spent
- *    above 100": 150 points are five steps, 12.5% less.
- *   "Each class point spent above 100 grants 0.5%-1% increased damage": 150
- *    points are 50 steps, 50% more increases than at 100.
- *   "Your maximum HP is reduced by 1.5%-2.5% for every 10 class points above
- *    50": 100 points are five steps, 12.5% of increases off a figure of 1000
- *    against 50 points.
+ *   "Your skills deal 3%-5% less damage for every 20 class points spent above
+ *    100": 160 points are three steps, 15% less.
+ *   "Every 2 class points spent above 100 grant 1%-2% increased damage": 150
+ *    points are 25 steps, 50% more increases than at 100.
+ *   "Your maximum HP is reduced by 3%-5% for every 20 class points above 50":
+ *    110 points are three steps, 15% of increases off a figure of 1000 against
+ *    50 points.
+ *
+ * THE SAME RATES AS BEFORE ISSUE #2883 (D8), in whole numbers: the rows were
+ * 1.5%-2.5% a 10 points, 0.5%-1% a point and 1.5%-2.5% a 10 points, and at
+ * these three allocations both wordings give the same figures. A step is
+ * whole, so the new rows move in steps twice as long.
  *
  * THE POINTS SIT IN A NODE IN NO TREE, so they grant nothing of their own.
  */
@@ -4880,7 +4885,7 @@ bool FCataclysmClassPointRowsTest::RunTest(const FString&)
 	};
 
 	// THE DAMAGE DRAWBACK.
-	Wear(BenefitWithNoEffect, TEXT("Negative_Your_skills_deal_1_5_2_5_less_damage_for_every"));
+	Wear(BenefitWithNoEffect, TEXT("Negative_Your_skills_deal_3_5_less_damage_for_every_20"));
 	if (!TestTrue(TEXT("it put a modifier on spell damage as well"),
 			CarriesAModifierOn(ASC, TEXT("spell_damage"))))
 	{
@@ -4889,12 +4894,12 @@ bool FCataclysmClassPointRowsTest::RunTest(const FString&)
 	Spend(100);
 	TestEqual(TEXT("at 100 points the drawback takes nothing"),
 		ASC->AttackDamageMoreForSkill(FGameplayTagContainer()), 1.0f, 0.001f);
-	Spend(150);
-	TestEqual(TEXT("at 150 points it takes 12.5%"),
-		ASC->AttackDamageMoreForSkill(FGameplayTagContainer()), 0.875f, 0.001f);
+	Spend(160);
+	TestEqual(TEXT("at 160 points it takes 15%"),
+		ASC->AttackDamageMoreForSkill(FGameplayTagContainer()), 0.85f, 0.001f);
 
 	// THE BENEFIT.
-	Wear(TEXT("Positive_Each_class_point_spent_above_100_grants_0_5_1"), DrawbackWithNoEffect);
+	Wear(TEXT("Positive_Every_2_class_points_spent_above_100_grant_1_2"), DrawbackWithNoEffect);
 	const auto Increases = [&]()
 	{
 		return ASC->AttackDamageIncreasesForSkill(FGameplayTagContainer(),
@@ -4907,14 +4912,14 @@ bool FCataclysmClassPointRowsTest::RunTest(const FString&)
 		Increases() - AtHundred, 0.50f, 0.001f);
 
 	// THE HEALTH DRAWBACK.
-	Wear(BenefitWithNoEffect, TEXT("Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever"));
+	Wear(BenefitWithNoEffect, TEXT("Negative_Your_maximum_HP_is_reduced_by_3_5_for_every_20"));
 	const FName Maximum(TEXT("max_health"));
 	Spend(50);
 	const float AtFifty = ASC->StatAppliedTo(Maximum, FGameplayTagContainer(), 1000.0f);
-	Spend(100);
-	TestEqual(TEXT("50 points above 50 take 12.5% of increases off a figure of 1000"),
+	Spend(110);
+	TestEqual(TEXT("60 points above 50 take 15% of increases off a figure of 1000"),
 		AtFifty - ASC->StatAppliedTo(Maximum, FGameplayTagContainer(), 1000.0f),
-		125.0f, 0.01f);
+		150.0f, 0.01f);
 
 	return true;
 }
@@ -8452,21 +8457,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownReduceHeavyRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a
- * critical strike", at 1.5: a critical strike, by any skill, leaves heavy at
- * 28.5 and special at 30. Issue #1833, the cooldown reduction action.
+ * "Your heavy attack cooldown is reduced by 1-2 seconds each time you land a
+ * critical strike", at 2 (0.5-1.5 until issue #2883, D8): a critical strike, by
+ * any skill, leaves heavy at 28 and special at 30. Issue #1833, the cooldown
+ * reduction action.
  */
 bool FCataclysmCooldownReduceHeavyRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmCooldownReduceTest;
 	CataclysmCooldownResetTest::FWorn Worn(
-		TEXT("Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5"));
+		TEXT("Positive_Your_heavy_attack_cooldown_is_reduced_by_1_2_sec"));
 	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 	{
 		return false;
 	}
 	Worn.ASC()->ActOnEvent(FName(TEXT("critical_strike")));
-	TestEqual(TEXT("heavy has 28.5 left"), SecondsLeft(Worn.ASC(), ESlot::Heavy), 28.5f, 0.01f);
+	TestEqual(TEXT("heavy has 28 left"), SecondsLeft(Worn.ASC(), ESlot::Heavy), 28.0f, 0.01f);
 	TestEqual(TEXT("special still has 30"), SecondsLeft(Worn.ASC(), ESlot::Special), 30.0f, 0.01f);
 	return true;
 }
@@ -8508,13 +8514,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextSpellCooldownRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Each spell cast reduces your next spell cooldown by 0.5-1.5 seconds", at 1.5,
- * with real skills granted and used. Issue #1833, the cooldown reduction action.
+ * "Each spell cast reduces your next spell cooldown by 1-2 seconds", at 2 (0.5-1.5
+ * until issue #2883, D8), with real skills granted and used. Issue #1833, the cooldown reduction action.
  *
  * A spell's first cast starts its full ten seconds, because the charge it
  * grants is granted after its own cooldown. It then holds one charge, and a
  * second spell event still holds one, the cap of 1. A heavy attack that is not
- * a spell starts its full ten and leaves the charge. The next spell starts 8.5.
+ * a spell starts its full ten and leaves the charge. The next spell starts 8.
  *
  * "SPELL" FIRES ONLY FOR A SKILL TAGGED `Type.Spell`, which today is only the
  * Demonic caster skills, so the row does nothing for a character without one.
@@ -8533,21 +8539,21 @@ bool FCataclysmNextSpellCooldownRowTest::RunTest(const FString&)
 	TestTrue(TEXT("the spell is used"), Caster.Use(Caster.Spell));
 	TestEqual(TEXT("the first spell starts its full ten"),
 		SecondsLeft(ASC, ESlot::Special), 10.0f, 0.01f);
-	TestEqual(TEXT("and one charge of 1.5 is held"), ASC->NextSpellCooldownSecondsHeld(), 1.5f, 0.001f);
+	TestEqual(TEXT("and one charge of 2 is held"), ASC->NextSpellCooldownSecondsHeld(), 2.0f, 0.001f);
 
 	ASC->ActOnEvent(FName(TEXT("spell")));
 	TestEqual(TEXT("a second spell event still holds one"),
-		ASC->NextSpellCooldownSecondsHeld(), 1.5f, 0.001f);
+		ASC->NextSpellCooldownSecondsHeld(), 2.0f, 0.001f);
 
 	TestTrue(TEXT("the heavy attack is used"), Caster.Use(Caster.Heavy));
 	TestEqual(TEXT("a heavy attack that is no spell starts its full ten"),
 		SecondsLeft(ASC, ESlot::Heavy), 10.0f, 0.01f);
-	TestEqual(TEXT("and leaves the charge"), ASC->NextSpellCooldownSecondsHeld(), 1.5f, 0.001f);
+	TestEqual(TEXT("and leaves the charge"), ASC->NextSpellCooldownSecondsHeld(), 2.0f, 0.001f);
 
 	Caster.Clear(ESlot::Special);
 	TestTrue(TEXT("the spell is used again"), Caster.Use(Caster.Spell));
-	TestEqual(TEXT("the next spell starts 8.5"),
-		SecondsLeft(ASC, ESlot::Special), 8.5f, 0.01f);
+	TestEqual(TEXT("the next spell starts 8"),
+		SecondsLeft(ASC, ESlot::Special), 8.0f, 0.01f);
 	return true;
 }
 
@@ -9560,11 +9566,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillsThisRunRowsTest,
 
 /**
  * Issue #1833, the kill counter. Worn at the top of their ranges:
- * "Your damage is increased by 0.01%-0.05% permanently for every 1000 enemies
- * killed this run" adds 0.05% to attack and spell damage for each whole 1000,
- * and "Your maximum HP is increased by 0.01%-0.05% permanently for every 1000
- * enemies killed this run" adds 0.05% to maximum health. 999 kills are
- * nothing; 1000 are one step; 2999 are two.
+ * "Your damage is increased by 1%-5% permanently for every 100,000 enemies
+ * killed this run" adds 5% to attack and spell damage for each whole 100,000,
+ * and "Your maximum HP is increased by 1%-5% permanently for every 100,000
+ * enemies killed this run" adds 5% to maximum health. One short of the next
+ * 100,000 is nothing more; the 100,000 is one step; 99,999 beyond it is still
+ * one step.
+ *
+ * THE SAME RATE AS BEFORE ISSUE #2883 (D8), in whole numbers: the rows were
+ * 0.01%-0.05% for every 1000, which is 1%-5% for every 100,000 taken a
+ * thousand at a time.
  */
 bool FCataclysmKillsThisRunRowsTest::RunTest(const FString&)
 {
@@ -9593,9 +9604,9 @@ bool FCataclysmKillsThisRunRowsTest::RunTest(const FString&)
 		const TCHAR* Stats[2];
 	};
 	const FCase Cases[] = {
-		{TEXT("Positive_Your_damage_is_increased_by_0_01_0_05_permanen"),
+		{TEXT("Positive_Your_damage_is_increased_by_1_5_permanently_fo"),
 		 {TEXT("attack_damage"), TEXT("spell_damage")}},
-		{TEXT("Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm"),
+		{TEXT("Positive_Your_maximum_HP_is_increased_by_1_5_permanentl"),
 		 {TEXT("max_health"), nullptr}},
 	};
 	const FGameplayTagContainer NoTags;
@@ -9617,9 +9628,10 @@ bool FCataclysmKillsThisRunRowsTest::RunTest(const FString&)
 		Equipment->RefreshAttributes(ASC);
 
 		// EVERY STAT AT THE SAME COUNTS, from the kills already made, since a
-		// count only rises: one short of the next thousand, the thousand, and
-		// two thousand more less one.
-		const int32 Next = (State->GetRunKills() / 1000 + 1) * 1000;
+		// count only rises: one short of the next 100,000, the 100,000, and
+		// 100,000 more less one.
+		const int32 Step = 100000;
+		const int32 Next = (State->GetRunKills() / Step + 1) * Step;
 		TMap<FName, float> Before;
 		for (const TCHAR* Stat : Case.Stats)
 		{
@@ -9638,11 +9650,11 @@ bool FCataclysmKillsThisRunRowsTest::RunTest(const FString&)
 			}
 		};
 		KillUpTo(Next - 1);
-		Check(TEXT("one short of the next thousand"), 0.0f);
+		Check(TEXT("one short of the next 100,000"), 0.0f);
 		KillUpTo(Next);
-		Check(TEXT("the next thousand"), 0.0005f);
-		KillUpTo(Next + 2000 - 1);
-		Check(TEXT("two thousand more less one"), 0.0005f + 0.0005f);
+		Check(TEXT("the next 100,000"), 0.05f);
+		KillUpTo(Next + Step - 1);
+		Check(TEXT("100,000 more less one, still one step"), 0.05f);
 		Equipment->Unequip(Slot, Removed);
 	}
 	return true;
@@ -10218,7 +10230,7 @@ namespace CataclysmRowsNowTest
 	const TCHAR* MaximumResists = TEXT("Positive_You_have_10_maximum_resists");
 	const TCHAR* BleedDuration = TEXT("Positive_Bleed_you_apply_lasts_50_100_longer");
 	const TCHAR* KillLock = TEXT("Negative_Killing_an_enemy_triggers_a_1_2_second_global_co");
-	const TCHAR* CritLock = TEXT("Negative_Critical_strikes_trigger_a_0_5_1_second_global_c");
+	const TCHAR* CritLock = TEXT("Negative_Critical_strikes_trigger_a_1_2_second_global_coo");
 
 	/** A skill's tags for one slot, which is all the lock is asked with. */
 	FGameplayTagContainer SlotTags(const TCHAR* Slot)
@@ -10303,9 +10315,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLockRowsTest,
 
 /**
  * "Killing an enemy triggers a 1-2 second global cooldown on all your skills"
- * and "Critical strikes trigger a 0.5-1 second global cooldown on all your
- * skills", each worn at the top of its range: 2 seconds and 1 second. Issue
- * #1833. Each is `skill_locked` flat 1 scaled by the row's own stacks, granted
+ * and "Critical strikes trigger a 1-2 second global cooldown on all your
+ * skills", each worn at the top of its range: 2 seconds each (the crit row was
+ * 0.5-1 until issue #2883, D8). Issue #1833. Each is `skill_locked` flat 1 scaled by the row's own stacks, granted
  * on its event and lasting the rolled time; the skill template refuses any
  * skill that is not a basic attack while the lock reads above nought.
  *
@@ -10329,7 +10341,7 @@ bool FCataclysmSkillLockRowsTest::RunTest(const FString&)
 		float Seconds;
 	};
 	for (const FCase& Case : {FCase{KillLock, TEXT("kill"), 2.0f},
-							  FCase{CritLock, TEXT("critical_strike"), 1.0f}})
+							  FCase{CritLock, TEXT("critical_strike"), 2.0f}})
 	{
 		FWorn Worn(Case.Drawback, false);
 		UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
@@ -10794,16 +10806,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeReachRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Your melee skills have +0.5-1 metre reach", worn at the top, adds a metre to
- * a melee strike's reach and nothing to a ranged one's. Issue #1833, on
- * Overreach's `melee_reach_metres` (issue #1515) scoped to `Type.Melee`.
+ * "Your melee skills have +50-100 centimetres reach", worn at the top, adds a
+ * metre to a melee strike's reach and nothing to a ranged one's. Issue #1833;
+ * since issue #2883 (D8) on its own `melee_reach_centimetres`, read beside
+ * Overreach's `melee_reach_metres` (issue #1515), scoped to `Type.Melee`.
  */
 bool FCataclysmMeleeReachRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmProjectileRangeRowsTest;
 	using FWorn = CataclysmSmallHalvesTest::FWorn;
 
-	FWorn Worn(TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach"), true);
+	FWorn Worn(TEXT("Positive_Your_melee_skills_have_50_100_centimetres_reach"), true);
 	if (!TestNotNull(TEXT("a wearer"), Worn.ASC()))
 	{
 		return false;
@@ -11436,7 +11449,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaxHealthPerKillAttributeTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Your maximum HP is increased by 0.01%-0.05% permanently for every 1000
+ * "Your maximum HP is increased by 1%-5% permanently for every 100,000
  * enemies killed this run", worn at the top: 100,000 kills move the MaxHealth
  * ATTRIBUTE, the health bar's figure, at the next regeneration step, to what
  * the stat line answers. Issue #1833 group C part 3c: the row's own test reads
@@ -11453,7 +11466,7 @@ bool FCataclysmMaxHealthPerKillAttributeTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	FWearingPlayer Wearing(Scope.World, TEXT("Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm"),
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_Your_maximum_HP_is_increased_by_1_5_permanentl"),
 						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
 	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
 	{
@@ -20726,7 +20739,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFourOneSiteRowsTest,
  * `leech_payout_rate` applied to 100 gives half of what it gave.
  * "Your heavy attack hits all enemies in a 180 degree arc in front of you": `strike_arc_at_least_degrees`
  * is 180 higher asked with a heavy attack's slot tag and NO higher asked with a basic attack's.
- * "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds": `stagger_root_seconds` is 1.5 higher.
+ * "Enemies you stagger are also briefly rooted for 1-2 seconds": `stagger_root_seconds` is 2 higher (0.5-1.5 and 1.5
+ * until issue #2883, D8).
  */
 bool FCataclysmFourOneSiteRowsTest::RunTest(const FString&)
 {
@@ -20820,9 +20834,9 @@ bool FCataclysmFourOneSiteRowsTest::RunTest(const FString&)
 		const FName Stat(TEXT("stagger_root_seconds"));
 		const float WornReading = Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f);
 		TakeOff(Worn);
-		TestEqual(*(FString(TEXT("the root row, worn: the stat is 1.5 above what it is taken off.")) +
+		TestEqual(*(FString(TEXT("the root row, worn: the stat is 2 above what it is taken off.")) +
 					CataclysmRepeatRowsTest::OlderAsset),
-			WornReading - Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f), 1.5f, 0.01f);
+			WornReading - Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f), 2.0f, 0.01f);
 	}
 	return true;
 }
@@ -21337,11 +21351,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCastDelayRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Point blank AOE skills have a 0.75-1.5 second cast delay before firing".
- * One row: `blow_delay_seconds` flat 0.75 to 1.5 requiring
+ * "Point blank AOE skills have a 1-2 second cast delay before firing" (0.75-1.5
+ * until issue #2883, D8). One row: `blow_delay_seconds` flat 1 to 2 requiring
  * `Type.AOE.PointBlank`. The real row WORN at the top of its range, which for
- * this drawback is 1.5, the longer wait. Asked for a point blank skill the
- * stat answers 1.5; asked for a melee skill without that tag, or for a skill
+ * this drawback is 2, the longer wait. Asked for a point blank skill the
+ * stat answers 2; asked for a melee skill without that tag, or for a skill
  * with no tags, it answers nought; and nought for a point blank skill when the
  * item is taken off.
  */
@@ -21349,7 +21363,7 @@ bool FCataclysmCastDelayRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSmallHalvesTest;
 	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
-	const TCHAR* const RowName = TEXT("Negative_Point_blank_AOE_skills_have_a_0_75_1_5_second_ca");
+	const TCHAR* const RowName = TEXT("Negative_Point_blank_AOE_skills_have_a_1_2_second_cast_de");
 	const UDataTable* Negative =
 		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
 	const FGameplayTagContainer NoTags;
@@ -21370,9 +21384,9 @@ bool FCataclysmCastDelayRowTest::RunTest(const FString&)
 	const FName Delay(UCataclysmSkillTemplate::BlowDelaySecondsStat);
 	const auto For = [&](const FGameplayTagContainer& Tags) { return Worn.ASC()->StatForSkill(Delay, Tags, 0.0f); };
 
-	TestEqual(*(FString(TEXT("worn: asked for a point blank skill, the delay is 1.5 seconds.")) +
+	TestEqual(*(FString(TEXT("worn: asked for a point blank skill, the delay is 2 seconds.")) +
 				CataclysmRepeatRowsTest::OlderAsset),
-		For(PointBlank), 1.5f, 0.001f);
+		For(PointBlank), 2.0f, 0.001f);
 	TestEqual(TEXT("worn: asked for a melee skill without the tag, it is nought"), For(Melee), 0.0f, 0.001f);
 	TestEqual(TEXT("worn: asked for a skill with no tags, it is nought"), For(NoTags), 0.0f, 0.001f);
 

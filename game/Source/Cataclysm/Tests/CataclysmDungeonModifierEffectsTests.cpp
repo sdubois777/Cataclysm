@@ -63417,16 +63417,16 @@ bool FCataclysmCorruptedStalkerRingTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
-	// TYPED, so a moved constant fails here: 0.06 times 0.10, 0.12 and 0.07 over 0.05, since issue #2865 lowered the
-	// ring figures (0.11, 0.13 and 0.10 until then, giving 0.132, 0.156 and 0.12).
-	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.06"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.06f, 0.0001f);
-	TestEqual(TEXT("a Bulwark's at tier 1 is 0.12"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.12f, 0.0001f);
-	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.144"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.144f, 0.0001f);
-	TestEqual(TEXT("the Pillar's at tier 1 is 0.084"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.084f, 0.0001f);
+	// TYPED, so a moved constant fails here: 0.05 times 0.10, 0.12 and 0.07 over 0.05, since the re-fit of 2026-11-25
+	// (0.06 and so 0.12, 0.144 and 0.084 before it; 0.132, 0.156 and 0.12 until issue #2865 lowered the ring figures).
+	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.05"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.05f, 0.0001f);
+	TestEqual(TEXT("a Bulwark's at tier 1 is 0.10"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.10f, 0.0001f);
+	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.12"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.12f, 0.0001f);
+	TestEqual(TEXT("the Pillar's at tier 1 is 0.07"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.07f, 0.0001f);
 	for (int32 Tier = 2; Tier <= 8; ++Tier)
 	{
 		TestEqual(FString::Printf(TEXT("tier %d: a Sanctuary's is an Outpost's"), Tier),
@@ -63480,14 +63480,17 @@ bool FCataclysmCorruptedStalkerBuildTest::RunTest(const FString& Parameters)
 	// derived numbers moved -- health 1.33 to 1.15 at tier 8, damage 1.12 to 0.22 at tier 1 and 3.68 to 2.97 at tier 8.
 	// AND BY ISSUE #2749: tier 1's damage scale fell from 0.20 to 0.05 on 2026-11-19, so tier 1's damage multiplier
 	// went from 0.22 to 0.06 (0.0559 to two decimals) and nothing else moved.
-	TestEqual(TEXT("the health multiplier is 0.49 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.49f,
+	// AND RE-FITTED ON 2026-11-25 for the whole-number affix ranges and the enemy rebalance (issues #2883 and #2884),
+	// from window ar-w1's measurement: health 0.49 to 0.23 at tier 1 and 1.15 to 0.46 at tier 8, damage 0.06 to 0.05
+	// at tier 1 and 2.97 to 13.43 at tier 8.
+	TestEqual(TEXT("the health multiplier is 0.23 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.23f,
 			  0.0001f);
-	TestEqual(TEXT("and 1.15 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 1.15f, 0.0001f);
-	TestEqual(TEXT("the damage multiplier is 0.06 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 0.06f,
+	TestEqual(TEXT("and 0.46 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 0.46f, 0.0001f);
+	TestEqual(TEXT("the damage multiplier is 0.05 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 0.05f,
 			  0.0001f);
-	TestEqual(TEXT("and 2.97 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 2.97f, 0.0001f);
-	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 0.06f, 0.0001f);
-	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 1.15f, 0.0001f);
+	TestEqual(TEXT("and 13.43 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 13.43f, 0.0001f);
+	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 0.05f, 0.0001f);
+	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 0.46f, 0.0001f);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -64576,8 +64579,11 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 	// (was 945.6, +4.8%) to 7122.1 at tier 8 (was 6902.3, +3.2%). By the coordinating session's ruling the multiplier
 	// is kept and only these figures follow the build; the Stalker's tables are fitted again in the affix ranges and
 	// rebalance bundle (issues #2883 and #2884), which measures the new game first.
-	constexpr float FittedBuiltHealth[8] = {990.9f, 1553.3f, 2231.9f, 3044.2f, 4086.0f, 5492.8f, 6309.4f, 7122.1f};
-	constexpr float FittedBlow[8] = {348.0f, 468.0f, 634.0f, 867.0f, 1195.0f, 1661.0f, 1874.0f, 2101.0f};
+	//
+	// AND THEY WERE, ON 2026-11-25: window ar-w1 measured these figures under the whole-number affix ranges and the
+	// enemy rebalance, and the two tables in CataclysmDungeonModifierEffects.cpp are fitted to them.
+	constexpr float FittedBuiltHealth[8] = {1684.8f, 2961.9f, 4725.7f, 6866.4f, 9840.8f, 13982.5f, 16460.1f, 19068.6f};
+	constexpr float FittedBlow[8] = {366.7f, 505.2f, 733.7f, 1038.8f, 1433.3f, 2119.9f, 2354.6f, 2658.6f};
 	for (int32 Tier = 1; Tier <= 8; ++Tier)
 	{
 		ACataclysmCorruptedStalkerCharacter* Stalker =
@@ -64639,8 +64645,14 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 		TestEqual(FString::Printf(TEXT("tier %d: its health before the multiplier is the build the table was fitted to"),
 								  Tier),
 				  Health / Multiplier, FittedBuiltHealth[Tier - 1], FittedBuiltHealth[Tier - 1] * 0.01f);
+		// WITHIN 1%, OR HALF A POINT OF THE OBSERVED BLOW, WHICHEVER IS WIDER. The game deals whole points, so the
+		// observed blow is rounded before it is divided back by the multiplier: at tier 1 a 0.05 multiplier turns half
+		// a point into ten, more than 1% of 366.7. Window ar-w1 measured 22 / 0.06 = 366.7 there, and after the re-fit
+		// the same blow is 18 / 0.05 = 360, the same build seen through a coarser rounding.
+		const float BlowTolerance =
+			FMath::Max(FittedBlow[Tier - 1] * 0.01f, 0.5f / FMath::Max(DamageMultiplier, 0.0001f));
 		TestEqual(FString::Printf(TEXT("tier %d: its blow before the multiplier is the blow the table was fitted to"), Tier),
-				  Blow / DamageMultiplier, FittedBlow[Tier - 1], FittedBlow[Tier - 1] * 0.01f);
+				  Blow / DamageMultiplier, FittedBlow[Tier - 1], BlowTolerance);
 	}
 	return true;
 }

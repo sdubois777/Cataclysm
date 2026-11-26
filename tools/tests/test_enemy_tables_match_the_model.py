@@ -418,19 +418,28 @@ def test_a_written_multiplier_reproduces_the_models_own_stat_block() -> None:
     them. This one removes that assumption by calling `stats_for` itself and
     comparing the answer, so a change to how the model combines its layers
     fails here even though both files would still agree on the constants.
+
+    THE TIER'S REBALANCE FACTOR IS NOT IN THE TABLES, since issue #2884: the
+    model multiplies health and damage by `rebalance_factors(tier)` inside
+    `stats_for`, and the game multiplies by the same factors in
+    `UCataclysmEnemyStrength::StartingFiguresFor`, after reading these tables.
+    So the table's damage times the tier's damage factor is what `stats_for`
+    gives; `test_enemy_rebalance_port.py` holds the two factor tables equal.
     """
     stats = model()
     rows = {row["RarityName"]: row for row in read_csv(RARITIES_CSV)}
     shares = {row["ArchetypeName"]: row for row in read_csv(ARCHETYPES_CSV)}
 
     score = 1000.0
+    _, damage_factor = stats.rebalance_factors(8)
     for rarity in stats.RARITY_ORDER:
         for name in stats.ARCHETYPES:
             block = stats.stats_for(rarity, score, name, tier=8)
 
             from_table = (score
                           * float(rows[rarity]["DamagePerScore"])
-                          * float(shares[name]["DamageShare"]))
+                          * float(shares[name]["DamageShare"])
+                          * damage_factor)
             assert from_table == pytest.approx(block.damage_per_hit, rel=1e-5), (
                 f"{rarity} {name}: the two tables give {from_table} damage per "
                 f"hit at score {score} and enemy_stats.stats_for gives "

@@ -2409,6 +2409,19 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 			// drawn exactly as they are anywhere. `Chaos_Chaotic_Loot`.
 			Rolled.Tier = bChaoticTiers ? RollChaoticAffixTier(DifficultyTier, Stream)
 										: RollAffixTier(AffixTierTable, DifficultyTier, Stream);
+			// A HYBRID ROLLS TIERS 3 TO 7 ONLY, since issue #2883 (D6 of the approved
+			// proposal): at tier N it grants each half at that half's tier N - 2, and there
+			// is no tier below 1. Raised after the draw rather than drawn from a smaller
+			// range, so no extra number is taken from the stream and every seeded drop keeps
+			// its base, its affixes and their rolls. `loot.roll_item` does the same.
+			if (const FCataclysmAffixRow* Row = AffixTable != nullptr
+					? AffixTable->FindRow<FCataclysmAffixRow>(Candidate.Affix, TEXT("RollItem"),
+															  /*bWarnIfMissing=*/false)
+					: nullptr;
+				Row != nullptr && Row->AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
+			{
+				Rolled.Tier = FMath::Max(Rolled.Tier, UCataclysmItemValues::LowestHybridTier);
+			}
 			Rolled.Roll = Stream.FRand();
 			Rolled.DamageTypes = Candidate.DamageTypes;
 			OutItem.Affixes.Add(MoveTemp(Rolled));

@@ -62,11 +62,15 @@ bool UCataclysmEnemyStrength::StartingFiguresFor(const UDataTable* EnemyRarityTa
 
 	// AT LEAST ONE HEALTH, as the model's `stats_for` holds it. The minimum strength keeps every creature far above it
 	// -- a Common Imp on the first floor of tier 1 has 4.2 -- so this only stops a nonsense table building a corpse.
-	Out.Health = FMath::Max(1.0f, static_cast<float>(Strength * Common->HealthPerScore * Kind->HealthShare));
+	// THE TIER'S HEALTH AND DAMAGE FACTORS (issue #2884) multiply both, as the model's `stats_for` applies them: the
+	// enemy rebalance that ships with the whole-number affix ranges. Armour is not moved.
+	Out.Health = FMath::Max(1.0f, static_cast<float>(Strength * Common->HealthPerScore * Kind->HealthShare
+		* UCataclysmEnemyScore::HealthFactor(Floor.DifficultyTier)));
 	// THE RING MOVES THE DAMAGE ALONE, at tier 1 (issue #2749's ring slice): health and armour are the same on every
 	// ring, and so is the strength they are built from.
 	Out.AttackDamage = static_cast<float>(Strength * Common->DamagePerScore * Kind->DamageShare
-		* UCataclysmEnemyScore::DamageScale(Floor.DifficultyTier, Floor.CityTier));
+		* UCataclysmEnemyScore::DamageScale(Floor.DifficultyTier, Floor.CityTier)
+		* UCataclysmEnemyScore::DamageFactor(Floor.DifficultyTier));
 	Out.Armour = static_cast<float>(Strength * Common->ArmorPerScore * Kind->ArmorShare);
 	return true;
 }

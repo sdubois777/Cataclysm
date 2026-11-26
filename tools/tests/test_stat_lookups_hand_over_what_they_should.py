@@ -701,6 +701,10 @@ INVENTORY = {
         "a strike's own reach, asked with the skill's tags before any blow "
         'exists',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(MeleeReachCentimetresStat), SkillTags, 0.0f'):
+        "the reach enchantment's centimetres added to the same reach, asked the "
+        'same way (issue #2883, D8)',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(HealthCostSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "a skill's own cost and shape, asked before any blow exists",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',

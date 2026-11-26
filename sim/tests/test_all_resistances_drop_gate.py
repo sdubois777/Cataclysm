@@ -73,8 +73,12 @@ def test_a_tier_two_drop_is_rolled_exactly_as_before_the_rule() -> None:
             if count:
                 drawn.extend(af.draw_without_repeating_a_group(loot._candidates_for(slot, position, rng), count, rng,
                                                                group_of=loot._groups_of_candidate))
-        rolled = tuple(loot.RolledAffix(affix=c.affix, tier=af.roll_affix_tier(tier, rng), roll=rng.random(),
-                                        covers=c.covers) for c in drawn)
+        # A HYBRID IS RAISED TO TIER 3 AFTER THE DRAW, as `loot.roll_item` raises it (issue #2883); that rule is
+        # not the one this test isolates.
+        rolled = tuple(loot.RolledAffix(affix=c.affix,
+                                        tier=loot._a_hybrid_rolls_tier_three_at_the_least(
+                                            c.affix, af.roll_affix_tier(tier, rng)),
+                                        roll=rng.random(), covers=c.covers) for c in drawn)
         return loot.RolledItem(base=base, gear_level=loot.gear_level_gate(rarity), affixes=rolled,
                                enchantments=af.enchantments_for(rarity), residue=loot.roll_residue(rarity, rng),
                                sockets=loot.roll_sockets(base, rng))

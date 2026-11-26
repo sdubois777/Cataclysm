@@ -71,7 +71,7 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		{TEXT("Positive_Critical_hits_have_a_15_30_chance_to_reset_you"),
 		 TEXT("Positive_Critical_strikes_have_a_15_30_chance_to_reset")},
 		{TEXT("Negative_Critical_hits_trigger_a_0_5_1_second_global_cool"),
-		 TEXT("Negative_Critical_strikes_trigger_a_0_5_1_second_global_c")},
+		 TEXT("Negative_Critical_strikes_trigger_a_1_2_second_global_coo")},
 		{TEXT("Negative_Non_critical_hits_deal_20_35_less_damage"),
 		 TEXT("Negative_Non_critical_strikes_deal_20_35_less_damage")},
 		{TEXT("Negative_Your_critical_hit_chance_cannot_exceed_30_50"),
@@ -83,9 +83,9 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		{TEXT("Positive_Your_retaliation_damage_is_increased_by_5_10_f"),
 		 TEXT("Positive_Your_retaliation_damage_is_increased_by_2_4_fo")},
 		{TEXT("Negative_Your_skills_deal_5_10_less_damage_for_every_cl"),
-		 TEXT("Negative_Your_skills_deal_1_5_2_5_less_damage_for_every")},
+		 TEXT("Negative_Your_skills_deal_3_5_less_damage_for_every_20")},
 		{TEXT("Negative_Each_class_point_above_50_reduces_your_maximum_H"),
-		 TEXT("Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever")},
+		 TEXT("Negative_Your_maximum_HP_is_reduced_by_3_5_for_every_20")},
 		// THE THIRTEEN REWORDS the owner approved on 2026-09-30, from the #1833
 		// survey: sentences that counted stacks the one-stack rule does not allow,
 		// or that said something the engine already does. One of them renames a
@@ -114,7 +114,7 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		{TEXT("Positive_Your_movement_abilities_no_longer_share_a_cooldo"),
 		 TEXT("Positive_Your_movement_ability_has_2_charges")},
 		{TEXT("Positive_Your_melee_skills_have_20_40_increased_reach"),
-		 TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach")},
+		 TEXT("Positive_Your_melee_skills_have_50_100_centimetres_reach")},
 		{TEXT("Negative_You_cannot_cure_or_reduce_bleed_stacks_on_yourse"),
 		 TEXT("Negative_Bleeding_on_you_lasts_50_100_longer")},
 		{TEXT("Positive_While_moving_your_DoTs_deal_20_40_increased_d"),
@@ -175,6 +175,30 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Positive_Your_deployables_reserve_15_30_reduced_Fervour")},
 		{TEXT("Positive_Your_trap_skills_get_1_6_to_max_trap_count"),
 		 TEXT("Positive_Your_traps_reserve_5_25_reduced_Fervour")},
+		//
+		// AND NINE ON 2026-11-25, issue #2883 (D8 of the approved affix range proposal, accepted by the
+		// coordinating session on 2026-11-25): thirteen enchantments whose numbers became whole, nine of them
+		// inside the first 48 characters. The rate of each is unchanged except where D8 states it: durations
+		// of 0.5-1.5 seconds became 1-2. Each older name above that pointed at one of these now points straight
+		// at the newest, with no step between.
+		{TEXT("Positive_Your_damage_is_increased_by_0_01_0_05_permanen"),
+		 TEXT("Positive_Your_damage_is_increased_by_1_5_permanently_fo")},
+		{TEXT("Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm"),
+		 TEXT("Positive_Your_maximum_HP_is_increased_by_1_5_permanentl")},
+		{TEXT("Positive_Each_class_point_spent_above_100_grants_0_5_1"),
+		 TEXT("Positive_Every_2_class_points_spent_above_100_grant_1_2")},
+		{TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach"),
+		 TEXT("Positive_Your_melee_skills_have_50_100_centimetres_reach")},
+		{TEXT("Negative_Your_skills_deal_1_5_2_5_less_damage_for_every"),
+		 TEXT("Negative_Your_skills_deal_3_5_less_damage_for_every_20")},
+		{TEXT("Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever"),
+		 TEXT("Negative_Your_maximum_HP_is_reduced_by_3_5_for_every_20")},
+		{TEXT("Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5"),
+		 TEXT("Positive_Your_heavy_attack_cooldown_is_reduced_by_1_2_sec")},
+		{TEXT("Negative_Point_blank_AOE_skills_have_a_0_75_1_5_second_ca"),
+		 TEXT("Negative_Point_blank_AOE_skills_have_a_1_2_second_cast_de")},
+		{TEXT("Negative_Critical_strikes_trigger_a_0_5_1_second_global_c"),
+		 TEXT("Negative_Critical_strikes_trigger_a_1_2_second_global_coo")},
 	};
 	return Table;
 }
