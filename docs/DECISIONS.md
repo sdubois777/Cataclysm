@@ -2,6 +2,4108 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' last slice (V5c): Bolted Together, gadgets within 4 metres join into one that fires all their attacks
+
+**Affects:**
+- `tools/reapply_war_vows_v5c_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (592 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - the two stats and their readers, `BoltedMoreMultiplier`, `AbsorbGadget`, `BoltOnPlacing`, `BoltAfterMove`,
+      `FireBoltedAttacksAt`, and `BoltedAttacks` and `GadgetsBoltedIn`;
+    - `CastSlotSkillFromHere`, the cast of `CastPlayersSkillFromHere` taken out for any slot;
+    - `StartPlayersSkillFromHere` records the enemy it aimed at;
+    - `AttackTarget` fires a bolted gadget's list after its own blow, and multiplies its own blow;
+    - `PlaceSkillGadget` and `MoveEveryGadgetOf` bolt; a scrap trap copies the list.
+  - `CataclysmSkillTemplates.cpp`: a War deployable's machine bolts after it is placed.
+  - `CataclysmCombatOverlay.h` and `.cpp`: `BoltedTextFor`, first on a gadget's status line.
+  - `CataclysmPlayerClassStats.cpp`: the two stats listed as having no gameplay attribute.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5cTests.cpp` (new, six tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe for each stat.
+    - `CataclysmDataTableTests.cpp`: the pin, 592.
+    - `CataclysmWarVowsV2aTests.cpp`: `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` used Bolted Together as its
+      option with no row. No option in any tree is left without one, so it now takes Bolted Together's rows out of a
+      copy of the effect table and asks the copy. A new control asks the loaded table, which holds them.
+  - Python:
+    - `tools/tests/test_war_vows_v5c_scripts.py` (new, six).
+    - `test_passive_effects_match_the_node_text.py`:
+      - 592 rows and 72 authored options, and Bolted Together's words;
+      - `bolted_more_percent_per_gadget` among `FLAT_STATS_THAT_MULTIPLY`, because the engine applies it as a
+        multiplier of its own.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's window (bundle 2):
+  - `Cataclysm.WarVowsV5c.`: six tests, new.
+  - `Cataclysm.StatExemption.` (two probes more), `Cataclysm.Data.` (592) and `Cataclysm.WarVowsV2a.`, counts
+    unchanged.
+  - The groups that cast from or strike with a gadget, counts unchanged: `Cataclysm.SkillGadgets.`,
+    `Cataclysm.GadgetCopiesSkill.`, `Cataclysm.WarVowsV4b.`, `Cataclysm.WarVowsV5a.`, `Cataclysm.WarVowsV5b1.`,
+    `Cataclysm.WarVowsV5g.`.
+- **A SKILL GADGET'S CAST WAS RESTRUCTURED.** `CastPlayersSkillFromHere` keeps its refusals and calls
+  `CastSlotSkillFromHere` for the cast. That function asks the same questions for any slot (still converted; the skill
+  the player holds; `SkillGadgetMayCast`) and starts the same cast. With nothing bolted, the cast is meant to be the
+  same as before. Only the window can show that it is.
+- **A BOLTED SLOT'S CAST IS NOT TESTED FIRING.** The tests show that a bolted gadget holds an absorbed slot's cast, and
+  that a bolted turret deals both blows. They do not watch a held slot's skill land.
+- **THE LABEL HAS NOT BEEN SEEN.** It is the gadget's type name, spaced ("Bolt Turret x2"), on the status line every
+  character with an overhead bar draws.
+
+### THE WINDOW, war2-w1 and war2-w2 (bundle 2: the War line)
+
+This record covers the whole War line, which ran in these two windows together. The other War entries below say
+"NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL"; that was true when each was written, and this section supersedes it.
+
+**war2-w1, tested head `46423d824`, on development `dcd86be4c`: FAILED, and fixed.**
+- **The build failed twice before anything ran.** Both times the error was C2666, an ambiguous `TestEqual`. In Unreal
+  Engine 5.8, `FVector::Dist2D` and `GetActorScale3D` return `double`, and `TestEqual` has no overload taking a
+  `double` with a `float`.
+  - The first build stopped on twelve such calls (fixed at `b9e3bc77d`); the second on one more, whose expected value
+    was a `double` (fixed at `61e74940e`). Each was fixed with a `static_cast<float>`.
+  - Two builds of the machine's time went on this. **Write `static_cast<float>(FVector::Dist2D(...))` from the start**
+    in any new test.
+- **The editor step** rebuilt the five tables and committed them alone as `46423d824`.
+- **The whole suite:** "5731 tests performed, 5716 succeeded, 15 failed". 58 skipped halves and 881 test saves, both as
+  registered. 67 of the 78 groups run alone passed. Python passed, 9,081, and ruff was clean. The proofs did not run.
+- **The fifteen failures, diagnosed at `4c47c3e7e`:**
+  - **One was a game fault.** Ambush's row, whose only condition is the trap history
+    (`TargetNotYetTriggeredYourTrap`), was refused. The ability system's state builder (`WithTargetState`) returned
+    early before reading that history, because neither its "wants everything" test nor its "wants nothing" test named
+    it. Both now do.
+  - **Thirteen were faults in the tests:**
+    - timers ticked by hand twice in one engine frame, which the timer manager ignores (V4a, V4b, V5a); the frame
+      counter is advanced first;
+    - a timer set before the first tick (V5b1, SaboteurTrapTiming), now run with `RunClock`;
+    - Titanfall's two tests asked a bare actor whether it was dead, and only a character is ever marked dead; they now
+      read its health;
+    - Crossfire's repeat keeps the starting Greataxe's slashing bonus, so it expects 1,650 rather than 1,500;
+    - Skull Splitter's test lacked Wrath's own flag;
+    - V2a read the conditioned maximum instead of the attribute;
+    - V3b's condition needed the maximum health set;
+    - two V5g tests ran a skill on a slot that the starting Greataxe's skill still held.
+  - **One needed a ruling:** Lightning Rod. Its ruling (L3) is revised in the V5a entry. The coordinating session then
+    revised the gadget rule (G3) as well; see the V5g entry. Both were built at `5c833c8a1`.
+- Proof A's Titan's Scale break was moved from the attribute write to the scale's read, because V2b made the old place
+  void. The coordinating session accepted this.
+
+**war2-w2, tested head `4b83e3c66`, on development `f52294218`: PASSED.**
+- Development `f52294218` (the affix ranges and the enemy re-fit, #2924) was merged in at `9ef81a52e`. The editor step
+  rebuilt the five tables again and committed them alone as `4b83e3c66`.
+- **Three builds:** 55, 90 and 28 files compiled; 0 compiler warning or error lines.
+- **Groups alone:** "78 of 78 passed", 1,398 tests, each at its registered count. The 24 new War groups ran first.
+- **The whole Unreal suite:** "Tests: 5731 tests performed, 5731 succeeded, 0 failed. 58 skipped part of what they
+  check". "Test saves: 881 written and deleted, 0 left behind". Every declared test was reported by the run.
+  - The registered 5,731 was the affix window ar-w2's 5,620 tests, less the 4 the War line renamed or replaced, plus
+    the 114 War tests and the 1 added after war2-w1.
+- **Python, beside it:** "9093 passed, 10 skipped in 711.89s"; JUnit 9,103 tests, 0 failures, 0 errors.
+- **ruff:** "All checks passed!"
+- **No War test moved with the affix branch's enemy re-fit.**
+- **The two C++ guard proofs, run COMBINED** as the coordinating session ruled (Q-W1). Each break was applied together
+  with every other break in its proof. A caught test shows that it fails when its mechanism is broken alongside others,
+  not alone.
+
+  | Proof | Breaks | Prefix | With the breaks in | Restored |
+  | :-- | :-- | :-- | :-- | :-- |
+  | A | 14, one a slice (V2a to V5c, Titanfall, the owner's rulings) | `Cataclysm.War` | 96 performed, 75 succeeded, 21 failed: all 20 predicted, and `TwoClustersBuiltApartStayTwoUntilAMoveMakesThemOne` | 96 of 96 |
+  | B | 1, the Fervour reserve | `Cataclysm.FervourReserve.` | 6 performed, 5 succeeded, 1 failed: `IronFortressPlacesItsWholeSetOrNoneOfIt` | 6 of 6 |
+
+  Both printed "proved: True": the engine proved it, and every predicted test was among the named failures.
+- **PROOF A FAILED TO COMPILE THE FIRST TIME.** The build stopped on C4702, "unreachable code": 13 errors in
+  `CataclysmMinion.cpp` and 3 in engine headers inlined there. No test ran.
+  - The cause was the V5c break. It put a bare `return nullptr;` at the top of `ACataclysmMinion::BoltOnPlacing`,
+    which made the rest of the function unreachable, and this build treats that warning as an error.
+  - The break was changed to `if (IsValid(Placed)) { return nullptr; }`. Every gadget the tests place is valid, so it
+    breaks the same thing. Proof A was then run again, on the same head, under its own lock.
+  - **A C++ break must never be an unconditional early return.** Make the return conditional on something the
+    compiler cannot decide. `if (true)` and `false &&` in a condition compiled here; a bare return did not.
+- **The Cat's Cradle wire was not seen on screen.** The editor was opened in this worktree after Proof A, for at most
+  15 minutes, as the coordinating session allowed. Setting up a War character with Cat's Cradle needs the game's own
+  console commands. The editor connection this session had offered no way to run them, so the editor was closed with
+  nothing shown. The wire's tests passed (`Cataclysm.WarVowsV5b2.`, 3 of 3).
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, first message, verbatim: "Well my thought was, players would probably want to build more than
+  one super turret for boss fights and such. So you'd need a way to do that."
+- The owner, second message, verbatim: "also, even without super turrets, you'd probably want to be able to put out
+  more than one at a time right? So I'd say no moving unless you don't have enough fervour to put out another? then they
+  all move to where you select? then you could build a few super turrets, and then press the move button, and they'd all
+  combine into some insane turret right? that sounds fun"
+- The coordinating session's B1, accepted 2026-11-25: the new gadget is absorbed into the nearest standing gadget
+  within 4 m; the survivor's maximum and current health each gain the new one's; it fires every attack it holds at 10%
+  more for each gadget in it; the absorbed actor is destroyed and the survivor holds both reserves.
+- BT1-BT4, accepted 2026-11-25, with the coordinating session's additions:
+  - **BT1: B1'S TWO BULLETS ABOUT SLOTS ARE DROPPED**, "a slot held in a bolted gadget, pressed again, moves the whole
+    bolted gadget" and "its death frees every slot it holds", because the gadget rule (V5g) replaced exclusive slots.
+    A press places another gadget while the reserve fits, and otherwise moves every gadget.
+  - BT2: a gadget bolts at its placing, and after a V5g move every gadget that lands within 4 m bolts into the first
+    placed. Traps never bolt.
+  - BT3: on each firing the survivor fires every attack it holds at the same target, each 10% more for each gadget in
+    it, the survivor counted. Answers through Counterfire's path (Counterfire, Cat's Cradle) and a scrap trap's shot
+    fire the whole list. **Volleys and Magnum Opus's copies stay single, a judgement.**
+  - BT4: health adds; the reserves are held together and released together when the survivor dies or expires; the
+    survivor's life becomes the later of the two; the absorbed gadget is destroyed raising no `gadget_destroyed`.
+  - The label "Name x3".
+
+### WHERE THE ATTACK LIST IS KEYED (BT3)
+
+An entry is an attack the absorbed gadget made: its slot's cast, when it had a slot (`SkillGadgetSlot`), and its
+brain's blow, when its own blow figure is above nought (`OwnDamagePerHit`). Both are read from the gadget itself, never
+from a machine class by name. A gadget absorbed with a list of its own brings that list. Whether a machine bolts at all
+is `IsGadget` (deployable and not a trap), whose gadgets `DevicesOf`, and the reach is the player's stat.
+
+### JUDGEMENTS
+
+- **A SKILL GADGET'S LIST FIRES FROM ITS CAST, NOT FROM ITS BRAIN'S SWING**, so a bolted skill gadget does not fire
+  the list twice. Every other gadget fires it from `AttackTarget`.
+- **THE CAST'S LIST FIRES AT THE ENEMY THE CAST AIMED AT.** A self buff and a cast at a place aim at no enemy, and then
+  the list fires nothing.
+- **A SCRAP TRAP OF A BOLTED GADGET** fires the whole list, at its own double, as one shot.
+- **THE MOVE'S BOLTING** takes the moved gadgets in placing order and puts each into the nearest one already kept
+  within 4 m. With the 1.5 m ring that is always the first placed.
+
+### THE PYTHON SUITE
+
+On `3b396bf167de1ae9c0d9ec71de8c099bbe7cc38e`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9058 passed, 9 skipped in 677.15s**, and the JUnit file `tests="9068" failures="1"
+errors="0" skipped="9"`, which is 9,058 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 61
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5cTests.cpp` without `#include "Interface/CataclysmCombatOverlay.h"` failed.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: the reach's stat name misspelt (`gadget_bolt_reach_metre`) | `pytest tools/tests/test_war_vows_v5c_scripts.py` | `test_the_engine_reads_the_two_names` |
+| `CataclysmPlayerClassStats.cpp`: `bolted_more_percent_per_gadget` taken off the list of stats with no attribute | the same | `test_the_engine_reads_the_two_names` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5c.AGadgetPlacedWithinFourMetresIsBoltedOnAndOneBeyondIsNot` | a second skill gadget placed 3 m away is bolted onto the first (one stands, two in it, its attack held, its label "Skill Gadget x2"); a third 10 m away stands alone (the control); a player without the option keeps two 3 m apart (the control) |
+| `Cataclysm.WarVowsV5c.TwoClustersBuiltApartStayTwoUntilAMoveMakesThemOne` | four gadgets in two pairs 20 m apart stay two clusters of two (the control); a press with no room moves them and they become the first placed, four in it, three attacks held, all 60 reserved |
+| `Cataclysm.WarVowsV5c.ABoltedTurretFiresEveryAttackItHoldsAtTheSameTargetAtTenPercentMoreEach` | a lone turret's blow measured (the control); two turret casts at one place bolt; struck once, the bolted turret deals 2 x 1.2 of that blow |
+| `Cataclysm.WarVowsV5c.HealthAddsTheLaterLifeIsKeptAndTheReservesAreReleasedTogether` | a turret holding its own 5 and a running life (the controls) absorbs a skill gadget: maximum health up, still full, life never ending, 20 reserved; killed, 0 reserved |
+| `Cataclysm.WarVowsV5c.AGadgetTheBasicSlotConversionPlacesBoltsLikeAnyOther` | the basic slot converted by `skill_slot_is_a_gadget`: its gadget 10 m from a turret stands alone (the control); one 3 m away is bolted on, and the turret holds the basic slot's cast |
+| `Cataclysm.WarVowsV5c.ATrapIsNeverBolted` | a Spike Trap cast where a turret stands stays a trap of its own; a second turret there is bolted on (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: `BoltOnPlacing` answering null at once | `Cataclysm.WarVowsV5c.` | `AGadgetPlacedWithinFourMetresIsBoltedOnAndOneBeyondIsNot`, `HealthAddsTheLaterLifeIsKeptAndTheReservesAreReleasedTogether`, `AGadgetTheBasicSlotConversionPlacesBoltsLikeAnyOther`, `ATrapIsNeverBolted`, `ABoltedTurretFiresEveryAttackItHoldsAtTheSameTargetAtTenPercentMoreEach` |
+
+**Dropped under that ruling:** a proof that the move bolts (`BoltAfterMove`'s call taken out), which would fail
+`TwoClustersBuiltApartStayTwoUntilAMoveMakesThemOne`.
+
+---
+
+## 2026-11-25 — Titanfall, the Bulwark's keystone: a hit taking more than a fifth of maximum health leaves its wearer unkillable for 2 seconds and adds the hit to the next attack
+
+**Affects:**
+- `docs/Bulwark_Class_Tree_Final.json`: Titanfall's sentence is now R6's, written by
+  `tools/apply_titanfall_sentence_2026_11_25.py` (new), which finds the node by its id. `game/Data/PassiveNodes.csv`
+  carries it.
+- `tools/reapply_war_titanfall_workbook.py` (new) writes one row into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (590 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/generate_datatables.py`: the action `titanfall`, on `big_hit_taken` only:
+  - its value is the seconds the wearer cannot be killed, above 0 and up to 10;
+  - its Event Value is the share of maximum health the hit must take, in per cent, above 0 and up to 100;
+  - it takes a Trigger Cooldown, and no fraction, value kind or scale.
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `TitanfallAction`, `TryTitanfall`, `IsTitanfallUnkillable`, `TitanfallUnkillableSecondsLeft` and
+      `TitanfallStoredDamage`;
+    - the action in `ActOnEvent`;
+    - the store spent in `SpendStoredAbsorbedDamage`;
+    - the store and the window cleared in `ClearWhatDeathEnds`.
+  - `CataclysmVitalAttributeSet.cpp`:
+    - in the lethal-blow branch, Titanfall's window, or Titanfall fired by the blow, between Colossus Eternal's save
+      and the Final Onslaught's;
+    - a tick in the window leaves one point.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bTitanfall`. `CataclysmItem.cpp`: the builder sets it.
+  - `CataclysmCombatOverlay.h` and `.cpp`: `TitanfallTextFor`. `CataclysmPlayerEffects.cpp`: it is listed among the
+    player's buffs.
+- Tests:
+  - Unreal:
+    - `CataclysmWarTitanfallTests.cpp` (new, four tests).
+    - `CataclysmDataTableTests.cpp`: the pin, 590.
+  - Python:
+    - `tools/tests/test_war_titanfall_scripts.py` (new, fourteen).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the name.
+    - `test_passive_effects_match_the_node_text.py`: 590 rows, 323 authored nodes, and Titanfall's words.
+    - `test_class_passive_trees.py`: 63 tree strings containing "more" or "less". R6's "more than 20%" is ordinary
+      English, not a magnitude.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's window (bundle 2):
+  - `Cataclysm.WarTitanfall.`: four tests, new.
+  - `Cataclysm.Data.` (590), its count unchanged.
+  - The groups that read a lethal blow's saves, the next-attack stores and the player's buffs, counts unchanged:
+    `Cataclysm.WarVowsV3a.`, `Cataclysm.WarVowsV3b.`, `Cataclysm.AbsorbedDamageStored.`, `Cataclysm.LethalHit.`,
+    `Cataclysm.PlayerEffects.`.
+- **A TICK IN THE WINDOW IS NOT TESTED.** The tick save (T3) is a separate block from the blow's, and no test drives a
+  damage-over-time tick into it.
+- **THE STORE IS PREDICTED AT 200,000 FOR A BLOW OF 200,000 ON 100,000 HEALTH**, because the figure fired with is what
+  reached health plus the overkill plus the three absorbing pools. If the calculation does not fill the overkill for
+  such a blow, `AHitThatWouldKillFiresItAndIsSurvived` fails on that one figure, and the store holds what reached health
+  (100,000).
+- **ITS OWN CLOCK, NOT THE ROW'S TRIGGER.** `TryTitanfall` keeps the 30 seconds itself, taken from the row's Trigger
+  Cooldown. It is fired from the lethal-blow branch before the blow is cut to leave one point, because the cut shrinks
+  the figure `big_hit_taken` later carries. When that event then arrives, the clock refuses a second firing. A death
+  does not reset the clock.
+- **THE OLD "(not built yet: it does nothing)" MARK GOES BY ITSELF.** The passive tree adds it to a node with no rows,
+  and Titanfall now has one. No script removes it.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-24, accepting R1-R29 verbatim: "I'll go with your recommendations on the war rulings." R6:
+  "When a single hit takes more than 20% of your Maximum HP, you cannot be killed for 2 seconds and your next attack
+  deals bonus damage equal to that hit. Can only happen once every 30 seconds."
+- The coordinating session, 2026-11-25:
+  - T1: "trigger on the got-through figure big_hit_taken already measures, above 20% of maximum health. New action
+    titanfall, Event Value 20, Value 2, trigger cooldown 30, one row, no new event."
+  - T2: "a triggering hit that would kill is survived at 1 health. It is judged after Colossus Eternal's save and
+    before the Final Onslaught's."
+  - T3: "every blow and tick in the 2 seconds leaves at least 1 health. Damage is still taken."
+  - T4: "the store is spent whole, with no cap, on the next non-spell, non-tick hit, before the target's defences. A
+    second Titanfall replaces it. Death clears it. No time limit."
+  - T5: "write R6's sentence into docs/Bulwark_Class_Tree_Final.json with a by-name script".
+  - T6: "the window and the store need something visible on screen ... If there is a display there, show Titanfall's
+    2 seconds and the stored bonus amount through it." There is one, the player's buffs (`UCataclysmPlayerEffects`),
+    and Titanfall is shown through it: "Titanfall: cannot die 2s, next attack +25000", either part alone while only
+    it is held.
+
+### JUDGEMENTS
+
+- **A LETHAL BLOW FIRES TITANFALL WITH ITS WHOLE FIGURE**, its overkill included. "That hit" is the hit, not the part
+  of it health could hold.
+- **THE SECONDS AND THE AMOUNT ARE ROUNDED UP ON SCREEN**, as the held buff's seconds and "Owed" are.
+- **THE WINDOW AND THE STORE GO AT DEATH; THE CLOCK DOES NOT.** A respawn does not make Titanfall ready again sooner.
+
+### THE PYTHON SUITE
+
+On `df37ebc767bc569ba29ed130faaf33f84399e59e`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9052 passed, 9 skipped in 693.71s**, and the JUnit file `tests="9062" failures="1"
+errors="0" skipped="9"`, which is 9,052 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 60
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarTitanfallTests.cpp` without `#include "Interface/CataclysmCombatOverlay.h"` failed.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break | Command | Named failures |
+|---|---|---|
+| Titanfall allowed on `hit_taken` | `pytest tools/tests/test_war_titanfall_scripts.py` | `test_a_titanfall_row_on_another_event_is_refused`, `test_the_names_are_the_generators` |
+| Titanfall given the default fraction of maximum | the same | `test_the_control_a_titanfall_row_is_read_with_its_share_its_wait_and_no_fraction` |
+| Titanfall's seconds bound set to nought | the same | `test_the_control_a_titanfall_row_is_read_with_its_share_its_wait_and_no_fraction`, `test_a_titanfall_row_with_no_share_is_refused` |
+| The sentence script's R6 with "2 seconds" written as "3 seconds" | the same | `test_the_tree_file_and_the_node_table_carry_r6`, `test_the_sentence_script_has_nothing_left_to_do`, `test_the_sentence_script_writes_r6_once_byte_for_byte`, `test_the_sentence_script_refuses_a_sentence_somebody_changed_since` |
+
+The third break's second named failure is not the guard it targets: with no seconds allowed, the row with no share
+is refused for its seconds before its missing share is reached, so the refusal's words differ from the ones the test
+expects.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarTitanfall.AHitAboveAFifthOfMaximumHealthOpensTheWindowAndStoresTheHit` | a hit of 15% does nothing (the control); a hit of 25% opens 2 s and stores 25,000, shown on the buffs; in the window a lethal blow leaves 1 health and the store is not replaced; 3 s on, the window is shut and the store shown alone; 4 s after firing, a lethal blow kills (the control for the clock) |
+| `Cataclysm.WarTitanfall.AHitThatWouldKillFiresItAndIsSurvived` | a wearer with no row dies of a blow of 200,000 (the control); with the row the blow leaves 1 health, opens the window and stores 200,000 |
+| `Cataclysm.WarTitanfall.TheNextAttackDealsTheStoredHitWholeAndOnlyOnce` | after a hit of 25,000, the next attack deals 25,000 more than the one after it (the control), and the store is empty |
+| `Cataclysm.WarTitanfall.ABulwarkTakingTitanfallIsHandedItsAction` | through `SetPassiveAllocation`: one action on `big_hit_taken`, 2 s, 20%, 30 s; none before it is taken (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: the Titanfall save in the lethal-blow branch taken out | `Cataclysm.WarTitanfall.` | `AHitThatWouldKillFiresItAndIsSurvived`, `AHitAboveAFifthOfMaximumHealthOpensTheWindowAndStoresTheHit` |
+
+**Dropped under that ruling:** a proof that the store is spent (its lines in `SpendStoredAbsorbedDamage` taken out),
+which would fail `TheNextAttackDealsTheStoredHitWholeAndOnlyOnce`.
+
+---
+
+## 2026-11-25 — The gadget rule (V5g): a gadget press places another while the pool holds it, and otherwise moves every gadget to where the player aims
+
+**Affects:**
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `PressOfASkillGadgetSlot` takes the aimed point and applies the rule;
+    - `SkillGadgetIn` answers the newest gadget of the slot, out of `DevicesOf`;
+    - the map of one gadget per slot is removed.
+  - `CataclysmMinion.h` and `.cpp`:
+    - `MoveSkillGadgetTo` is renamed `MoveGadgetTo`, for any gadget;
+    - `MoveEveryGadgetOf` and `TypeIsAGadget` are new;
+    - four comments that stated the old rule now say it changed.
+  - `CataclysmSkillTemplates.h` and `.cpp`: `UCataclysmDeployableSkill`:
+    - with no room for its set, a use whose set holds a gadget moves every gadget instead;
+    - `FervourReserveOfOne`, `PlacesAGadget` and `GadgetsMovedForWantOfRoom` are new.
+  - `CataclysmPlayerController.cpp`: the slot key and the converted basic attack's click hand over the point under the
+    cursor.
+  - `CataclysmSkillBar.h` and `.cpp`:
+    - `GadgetPressRule`, the rule's sentence;
+    - `bPressPlacesAGadget`;
+    - the cost line of a skill gadget box and of a War deployable box.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5gTests.cpp` (new, four tests).
+    - `CataclysmEnchantmentEffectTests.cpp`: one new test.
+    - Rewritten for the new rule, each with a control:
+      - `Cataclysm.SkillGadgets.ASecondPressMovesTheSameGadgetKeepsItsHealthAndDoesNotCastAtOnce`, renamed
+        `...ASecondPressWithNoRoomMovesTheSameGadget...`;
+      - `Cataclysm.SkillGadgets.TwoConvertedSlotsGiveTwoGadgetsAndAnUnconvertedSlotStillCasts` (its move assertion);
+      - `Cataclysm.SkillGadgets.AClickOnAnEnemyPlacesTheBasicGadgetSwingsNothingAndTheNextClickMovesIt` (a pool of 15);
+      - `Cataclysm.KindReserves.ASkillGadgetReserves15AndASecondPressMovesItAndHoldsNothingMore`, renamed
+        `...AndASecondPressPlacesAnotherReserving15More`;
+      - `Cataclysm.SkillCost.ThePopupSaysWhatAPressCosts` (a skill gadget's line).
+  - Python: `test_every_instant_relocation_announces_itself.py` names `MoveGadgetTo`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's window (bundle 2):
+  - `Cataclysm.WarVowsV5g.`: four tests, new.
+  - `Cataclysm.Enchantments.`: one test more.
+  - The five rewritten tests: two renamed, so their groups' counts are unchanged.
+  - The groups that place or press a gadget, counts unchanged:
+    - `Cataclysm.SkillGadgets.` (all of it, since its rig's pool decides now what a press does);
+    - `Cataclysm.KindReserves.`, `Cataclysm.FervourReserve.`, `Cataclysm.SkillCost.`, `Cataclysm.SkillBar.`;
+    - `Cataclysm.WarVowsV4b.`, `Cataclysm.WarVowsV5b3.`.
+- **EVERY OTHER SKILL GADGET TEST NOW DEPENDS ON ITS RIG'S POOL.** A rig whose pool holds more than one gadget used to
+  move its gadget on a second press, and now places another. Only the five tests above press twice; I found no other by
+  sweeping for `PressOfASkillGadgetSlot`, `Taps(`, `SkillGadgetIn` and `MoveSkillGadgetTo`. A failure in
+  `Cataclysm.SkillGadgets.` in the window is most likely one I missed.
+- **THE MOVE KEEPS THE PLAYER'S HEIGHT.** The point under the cursor is a floor point. Each gadget is put at its X and Y
+  and at the player's own Z, as a gadget is placed at the player's feet. On a floor that is not level, a gadget lands at
+  the wrong height. A judgement.
+- **WITH NO CURSOR**, as in every automation test and for a press the controller does not route, gadgets move to the
+  player's feet. A War cast with no cursor uses the avatar's location, as `AimPoint` already did.
+- **PLAY-TEST POINTS, as ruled:**
+  - G3: a War cast with no room spends its cost and its cooldown on moving the gadgets. **Revised after window
+    war2-w1:** the move is free and starts the cooldown. See below.
+  - G5: the converted basic attack, with no room, moves every gadget on every click, so clicking quickly moves them
+    again and again.
+- **WHERE THE TEXT APPEARS (G6):** the second line of a skill box's pop-up, its cost line
+  (`UCataclysmSkillBar::CostLineFor`).
+  - On a slot converted into a gadget: "Each gadget reserves 15 Fervour. Press again to place another while your
+    Fervour can hold it; with no room, every gadget moves to where you aim." (15 before levels and reductions).
+    **After window war2-w1** the rule reads: "Press again to place another while you can pay for it and your Fervour
+    can hold it; otherwise every gadget moves to where you aim, at no cost."
+  - On a War deployable whose set holds a gadget: after its costs, "Each gadget reserves 5 Fervour." (Iron Fortress:
+    "Each machine reserves 5 Fervour.") and the same rule.
+  - A War deployable's reserve was not named in the pop-up before.
+- **WALKING ARSENAL (V5b3):** a following gadget moves to the cursor with the rest and follows from there on its next
+  step. `AFollowingGadgetMovesWithTheRestAndFollowsFromThere` holds it, as the coordinating session asked.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, first message, verbatim: "Well my thought was, players would probably want to build more than
+  one super turret for boss fights and such. So you'd need a way to do that." (It produced a detach rule, which the
+  second message replaced.)
+- The owner, second message, verbatim: "also, even without super turrets, you'd probably want to be able to put out
+  more than one at a time right? So I'd say no moving unless you don't have enough fervour to put out another? then they
+  all move to where you select? then you could build a few super turrets, and then press the move button, and they'd all
+  combine into some insane turret right? that sounds fun". Asked which gadgets move, the owner chose every gadget the
+  player has, War machines included.
+- The owner, third message, verbatim: "I know, other classes in other damage types will also have turrets and gadgets,
+  not just these two." So the rule is generic.
+- The coordinating session, G1-G9, every recommendation as written:
+  - G1: place at the feet; move to the point under the cursor; no range limit.
+  - G2: a 1.5 m ring in placing order.
+  - G3: a War cast that cannot fit moves every gadget, at its cost and cooldown; Iron Fortress's traps never move.
+  - G4: each gadget on a slot casts on its own clock, and `SkillGadgetIn` answers the newest.
+  - G5: the basic gadget moves on every click with no room.
+  - G6: the sentence in `CostLineFor`, and the War deployable's reserve there.
+  - G7: through `MoveSkillGadgetTo` generalised.
+  - G8: test with a slotless machine of the `SkillGadget` type.
+  - G9: rewrite the tests of the old rule.
+- The coordinating session, on enchantments: the place-or-move rule covers a skill gadget an enchantment places; test
+  one. **TRAPS KEEP TODAY'S BEHAVIOUR: each press places one while the reserve fits, and traps never move.**
+
+### G3, REVISED AFTER WINDOW war2-w1
+
+- **What the window found.** War2-w1 failed the V5g War-cast test. An Iron Fortress cast was refused for its cost, 50
+  Fervour from a pool of 5, before it reached the room check. The fix sent with the window's diagnosis set the tests'
+  Fervour cost to nought.
+- **What the coordinating session ruled instead.** It went back to the owner's own words: "no moving unless you don't
+  have enough fervour to put out another". The revised G3, as the coordinating session put it:
+  - "a gadget press that cannot place another gadget, because the reserve does not fit OR the cast's cost cannot be
+    paid, moves every gadget instead";
+  - "The move pays no resource cost and starts the skill's cooldown";
+  - "Apply it to every gadget skill, not only War casts";
+  - "Check for room and cost before CheckCost refuses".
+- **How it is built.**
+  - `UCataclysmDeployableSkill::MovesInsteadOfPlacing` decides whether a use moves.
+    - It moves when the set holds a gadget, the caster commands a gadget, and either the whole set's reserve does not
+      fit or the parent class's `CheckCost` refuses.
+    - The deployable's `CheckCost` override answers yes when the use will move. A cost that cannot be paid therefore
+      no longer stops the press before it reaches `ActivateAbility`.
+  - `ActivateAbility` asks that first, before `CommitAndBegin`. When the use moves, it:
+    - commits only the cooldown;
+    - moves every gadget to the aimed point;
+    - ends the ability.
+  - The old move, made after the cost was paid, is gone.
+- **A converted slot's move was already free.** It now starts a cooldown of its own, kept on the ability system per
+  slot: `SkillGadgetMoveReadyAtSeconds`, read by `SkillGadgetMoveSecondsLeft`.
+  - Its length is the interval the slot's newest gadget casts on, `SkillGadgetSecondsBetweenCasts`. That is a
+    judgement: a converted slot's skill no longer runs a cooldown of its own.
+  - A move press while the cooldown runs does nothing. Placing another gadget is unchanged and never waits.
+  - G5, rapid clicking on the basic gadget, stays a play-test point. The cooldown now limits it.
+- **Judgement: with no gadget standing, nothing moves.** A use that cannot place is refused as before, because a free
+  use that moves nothing would only start the cooldown.
+- **Tests.**
+  - `Grants` sets the real costs again.
+  - `ACastThatCannotPayOrFitMovesEveryGadgetFreeAndStartsTheCooldown` (new) holds four things:
+    - a Bolt Turret with room and mana places another and pays (the control);
+    - Iron Fortress at its real 50, with 30 Fervour and room for its set, moves the turret and spends nothing;
+    - a Bolt Turret, a mana gadget, with no room moves and spends no mana;
+    - the cooldown tag is held after that move.
+  - The press test adds that a second move during the slot's cooldown moves nothing, and that one made after it does.
+  - `ThePopupSaysWhatAPressCosts` holds the new sentence.
+
+### WHERE EVERY RULE IS KEYED (G8)
+
+- What moves: `ACataclysmMinion::IsGadget`, which means deployable and not a trap, read from the machine's own type
+  tags.
+- Whose: `ACataclysmMinion::DevicesOf`, which means the player commands it.
+- Whether there is room: `UCataclysmCommand::HasRoomToReserve`, with the gadget's own reserve.
+- Whether a War cast moves: `ACataclysmMinion::TypeIsAGadget` of each kind its row places.
+
+No rule names a Bolt Turret, a Ballista or any War class. The test moves a slotless machine of the `SkillGadget` type,
+which is neither a War machine nor a skill gadget, alongside the others.
+
+### JUDGEMENTS
+
+- **ONE GADGET LANDS ON THE POINT ITSELF**; two or more land on the ring, the first due east and the rest at equal angles.
+- **A WAR DEPLOYABLE'S NOUN** in the pop-up is "gadget" for a set of gadgets, "trap" for a set of traps, and "machine"
+  for a set of both.
+- **`bRefusedForRoom` STILL READS TRUE** for a War cast that moved the gadgets instead of placing, because it placed
+  nothing. `GadgetsMovedForWantOfRoom` says how many it moved.
+- **BOLTED TOGETHER (V5c) IS NOT BUILT.** "Clusters whole" in G2 has nothing to keep whole until it is: each gadget is
+  one actor today.
+
+### THE PYTHON SUITE
+
+On `c2ad05ebd849d90311d17c32229da0bd8657b34a`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9037 passed, 9 skipped in 687.16s**, and the JUnit file `tests="9047" failures="1"
+errors="0" skipped="9"`, which is 9,037 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 59
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5gTests.cpp` without `#include "AbilitySystem/CataclysmSkillTemplates.h"`
+  failed.
+
+### PYTHON GUARD PROOF
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; `proved` True.
+
+| Break | Command | Named failures |
+|---|---|---|
+| `CataclysmMinion.cpp`: `MoveGadgetTo` without its `NoteRelocatedInstantly` call | `pytest tools/tests/test_every_instant_relocation_announces_itself.py` | `test_each_instant_relocation_announces_itself[void ACataclysmMinion::MoveGadgetTo(]`, `test_twelve_calls_in_all_and_none_elsewhere` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5g.APressPlacesAnotherGadgetWhileThePoolHoldsItAndOtherwiseMovesEveryGadget` | a pool of 35: two presses place two gadgets, the slot answering the newest, reserving 30; the third places nothing and moves the turret, the slotless machine and both gadgets onto the 1.5 m ring around the aim in placing order, health kept; the Spike Trap stays (the control) |
+| `Cataclysm.WarVowsV5g.AWarGadgetCastWithNoRoomMovesEveryGadgetAndTrapsStay` | a pool of 5: a Bolt Turret cast places one (the control); a second cast places nothing and moves it to the player; Iron Fortress with no room moves it again; a Spike Trap stays (the control) |
+| `Cataclysm.WarVowsV5g.AFollowingGadgetMovesWithTheRestAndFollowsFromThere` | Walking Arsenal held: a press with no room moves the gadget to the aim 30 m away, and its next step follows from there |
+| `Cataclysm.WarVowsV5g.ThePopupSaysTheGadgetRuleForAGadgetAndAWarDeployable` | Bolt Turret's box: "Each gadget reserves 5 Fervour." and the rule; Iron Fortress's: "Each machine reserves 5 Fervour." and the rule; a box with no gadget says no rule (the control) |
+| `Cataclysm.Enchantments.TheWornBasicGadgetRowPlacesASecondGadgetWithRoomAndMovesBothWithout` | the worn enchantment, a pool of 30: two presses place two basic gadgets; the third moves both onto the ring around the aim |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: the press always places, never moves (the room check replaced by `true`) | `Cataclysm.WarVowsV5g.` | `APressPlacesAnotherGadgetWhileThePoolHoldsItAndOtherwiseMovesEveryGadget`, `AFollowingGadgetMovesWithTheRestAndFollowsFromThere` |
+
+**Dropped under that ruling:** a proof that a War cast with no room moves the gadgets (the `PlacesAGadget` branch taken
+out), which would fail `AWarGadgetCastWithNoRoomMovesEveryGadgetAndTrapsStay`.
+
+---
+
+## 2026-11-25 — The War vow options' fifth slice, second half, third part (V5b3): Walking Arsenal
+
+**Affects:**
+- `tools/reapply_war_vows_v5b3_workbook.py` (new) writes one row into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (589 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- C++:
+  - `CataclysmMinion.h` and `.cpp`: the stat `gadget_follow_within_metres`, `GadgetFollowWithinCmFor`, and
+    `WalkAfterSummoner`, called by `GadgetStep` after the drain and before anything the gadget fires.
+  - `CataclysmPlayerClassStats.cpp`: the stat listed as having no gameplay attribute.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5b3Tests.cpp` (new, two tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe for the stat.
+    - `CataclysmDataTableTests.cpp`: the pin, 589.
+  - Python:
+    - `tools/tests/test_war_vows_v5b3_scripts.py` (new, six).
+    - `test_passive_effects_match_the_node_text.py`: 589 rows and 71 authored options, and Walking Arsenal's words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5b3.`: two tests, new.
+  - `Cataclysm.StatExemption.` (one probe more), and `Cataclysm.Data.` (589), its count unchanged.
+  - The groups that step a gadget, counts unchanged: `Cataclysm.SkillGadgets.`, `Cataclysm.GadgetCopiesSkill.`,
+    `Cataclysm.WarVowsV4b.`, `Cataclysm.WarVowsV5a.`, `Cataclysm.WarVowsV5b1.`.
+- **A2 IS MET WITHOUT THE NEW BRANCH IN THE MINION CONTROLLER THAT THE RULING EXPECTED.** The gadget is moved in steps,
+  as Creeping Mines moves a trap (ruled CM2), and it still `StaysWhereItIsPut`. So its brain goes on firing at an
+  enemy in reach on its attack interval, from wherever the step has put it, and a skill gadget goes on casting from its
+  own step. Nothing that reads the flag changes: the sweep found four readers (`UCataclysmCommand::
+  CommandedWalkSpeedCmPerSecond`, `ACataclysmMinion::Spawn`'s tick, its `RefreshWalkSpeed`, and
+  `ACataclysmEnemyController`'s follow), and two test files.
+- **THE GADGET JUMPS: IT IS MOVED ONCE EVERY QUARTER SECOND, AND ITS DRAWN POSITION IS NOT SMOOTHED BETWEEN STEPS.**
+  At a player walk of 6 m a second each jump is up to 1.875 m. This is a known prototype limit, accepted by the
+  coordinating session on 2026-11-25 ("interpolate its drawn position between steps, or say in the entry that it jumps
+  and that this is a known prototype limit"). Nobody has seen it in a running game.
+- **WITH THE GADGET RULE (V5g)**, which moves every gadget to the cursor when the reserve cannot fit another: a following
+  gadget goes to the cursor with the rest, and its following resumes from there on its next step. V5g holds that with
+  one test, as the coordinating session asked, because V5g lands after this slice.
+- **FIRING WHILE MOVING IS HELD ONLY BY THE FLAG.** The tests assert the walking turret still stays where it is put; no
+  test ticks a brain and watches it fire, because a test world is never ticked.
+
+### WHAT WAS RULED
+
+- A1 (2026-11-25): "Skill gadgets and War gadgets both follow the player when farther than 8 m away, at the speed the
+  commander's other followers walk. A skill gadget already casts from its step wherever it stands."
+- A2: "Under Walking Arsenal it never stops: it fires at an enemy in reach on its attack interval while following."
+
+### JUDGEMENTS
+
+- **A TRAP DOES NOT FOLLOW**, a scrap trap included: "your gadgets". `IsGadget` is the test.
+- **A GADGET THAT CANNOT ACT DOES NOT WALK.**
+- **IT STOPS AT 8 m**, measured along the floor to the summoner's centre, and never closer.
+- **THE SPEED** is the summoner's walking speed now times `UCataclysmCommand::CommandedWalkSpeedShareOfCommander`
+  (1.25), the figure every commanded creature walks at; taken from the summoner here, because the command's own
+  function answers nought for a gadget.
+
+### THE PYTHON SUITE
+
+On `7fd6c5c24e9ec6612a92a8c176a705e1e8035fc7`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9037 passed, 9 skipped in 662.09s**, and the JUnit file `tests="9047" failures="1"
+errors="0" skipped="9"`, which is 9,037 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 52
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5b3Tests.cpp` without `#include "AbilitySystem/CataclysmCommand.h"` failed.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True.
+
+| Break | Command | Named failures |
+|---|---|---|
+| `CataclysmMinion.cpp`: the stat name misspelt (`gadget_follow_within_metre`) | `pytest tools/tests/test_war_vows_v5b3_scripts.py` | `test_the_engine_reads_the_name` |
+| `tools/reapply_war_vows_v5b3_workbook.py`: 9 metres for 8 | the same | `test_the_script_lists_walking_arsenals_row`, `test_the_workbook_holds_the_rows`, `test_the_script_writes_the_row_once` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5b3.AGadgetFartherThanEightMetresWalksAfterThePlayerAndStopsAtEight` | without the option a step moves nothing (the control); with it a turret 20 m away moves one step's worth nearer, a turret 5 m away does not (the control), a Spike Trap does not follow (the control), the walking turret still stays where it is put (the control for A2), and steps enough bring it to 8 m and no nearer |
+| `Cataclysm.WarVowsV5b3.AWarPlayerTakingWalkingArsenalIsHandedItsReach` | through `SetPassiveAllocation`: 800 cm; Baited hands over none (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: `WalkAfterSummoner` not stopping at the reach (`Beyond` replaced by the whole distance in the step's `Min`) | `Cataclysm.WarVowsV5b3.` | `AGadgetFartherThanEightMetresWalksAfterThePlayerAndStopsAtEight` |
+
+---
+
+## 2026-11-25 — The War vow options' fifth slice, second half, second part (V5b2): Cat's Cradle, with its wires seen
+
+**Affects:**
+- `tools/reapply_war_vows_v5b2_workbook.py` (new) writes three rows into `docs/All_Things_Cataclysm.xlsx`. The
+  generated table: `game/Data/PassiveEffects.csv` (588 rows). `docs/README.md` (the count). **The editor step must
+  rebuild `DT_PassiveEffects`.**
+- C++:
+  - `CataclysmDeviceWire.h` and `.cpp` (new): `ACataclysmDeviceWire`, one seen wire, the engine's cube squashed to a
+    3 cm bar in the telegraph markers' unlit material, no collision, no tick.
+  - `CataclysmMinion.h` and `.cpp`: the three stat names, and `DeviceWireReachCmFor`, `DeviceWirePinSecondsFor` and
+    `DeviceWireRepinSecondsFor`, read through the same helper as Creeping Mines' figures.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `StepCatsCradle`, the wires, their crossing, the pin and the answer;
+    - `QueueDeviceAnswer`, Counterfire's answer taken out of `QueueCounterfire` unchanged, so both use one path;
+    - the seen wires and when each enemy was last caught.
+  - `CataclysmCharacterBase.cpp`: the step calls `StepCatsCradle` beside `GadgetStep`, for every character.
+  - `CataclysmPlayerClassStats.cpp`: the three stats listed as having no gameplay attribute.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5b2Tests.cpp` (new, three tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe for each of the three stats.
+    - `CataclysmDataTableTests.cpp`: the pin, 588.
+  - Python:
+    - `tools/tests/test_war_vows_v5b2_scripts.py` (new, six).
+    - `test_passive_effects_match_the_node_text.py`: 588 rows and 70 authored options, and Cat's Cradle's words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5b2.`: three tests, new.
+  - `Cataclysm.StatExemption.` (three probes more), and `Cataclysm.Data.` (588), its count unchanged.
+  - The groups that use Counterfire's answer, counts unchanged: `Cataclysm.WarVowsV4b.` and `Cataclysm.WarVowsV5b1.`.
+- **THE WIRE HAS NOT BEEN LOOKED AT.** The tests hold that one is spawned for each pair, where it should be, as long as
+  it should be, with a mesh; nobody has seen it in a running game. Its 3 cm and its pale steel (`C8D2DC`) are
+  judgements, and a play-test point.
+- **EVERY CHARACTER'S STEP NOW ASKS FOR THE REACH**, four times a second: one stat lookup for each character, nought
+  for every one but a Saboteur holding the option. It was not measured.
+- **A SKILL TRAP OR A SKILL GADGET ANSWERING A WIRE IS NOT TESTED.** The tests use a Spike Trap and a Bolt Turret,
+  whose blows differ (18 and 36), so the damage says which end answered. A skill trap's and a skill gadget's answers go
+  through `QueueDeviceAnswer`, the path Counterfire's own tests hold.
+
+### WHAT WAS RULED
+
+- C1 (2026-11-25): "A wire is the segment between two devices 10 m apart or less. 'Crossing' means the enemy's centre
+  comes within 50 cm of a wire at the player's quarter-second step. The 50 cm is a judgement. The enemy is pinned
+  through ApplyPin, with its refusals. Each enemy waits 4 s before it can be pinned again. The device at the nearer end
+  answers through Counterfire's path: a skill trap goes off; a skill gadget fires at the enemy; a War machine deals its
+  ordinary blow."
+- C2: the wires are seen, a thin line between each pair, refreshed at the step.
+
+### JUDGEMENTS
+
+- **A REFUSED PIN IS STILL A CROSSING.** An enemy that `ApplyPin` refuses is still caught: the nearer end answers, and
+  it waits its 4 s. The sentence answers the crossing, not the pin.
+- **ONE CATCH A STEP FOR EACH ENEMY**, by the first wire found, the earliest placed pair first: an enemy across two
+  wires at once is pinned once and answered once.
+- **THE NEARER END** is measured along the floor to the enemy's centre; of two at one distance, the earlier placed.
+- **A GADGET'S ANSWER IS AT 100%.** "A gadget fires at it" states no share; Counterfire's row states 100 for the same
+  words.
+- **THE THREE FIGURES ARE STATS**, as Creeping Mines' two are, so the reach, the pin and the wait are data.
+- **THE WIRES ARE MEASURED BETWEEN THE DEVICES' OWN PLACES**, never against the seen actor, so a wire that failed to
+  spawn changes nothing in play.
+
+### THE PYTHON SUITE
+
+On `f2eec65eb1d69b1999ab473a59dee04fe89d5b8b`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 9031 passed, 9 skipped in 817.27s**, and the JUnit file `tests="9041" failures="1"
+errors="0" skipped="9"`, which is 9,031 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 51
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmAbilitySystemComponent.cpp` without `#include "AbilitySystem/CataclysmDeviceWire.h"`
+  failed, naming `ACataclysmDeviceWire`.
+- **What the audit does not model**, a member reached through a pointer to a type seen only by a forward declaration:
+  the new test calls `GetStaticMesh` on the wire's `UStaticMeshComponent`, so it includes
+  `Components/StaticMeshComponent.h`, added by reading rather than by the audit.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: the pin's stat name misspelt (`device_wire_pin_second`) | `pytest tools/tests/test_war_vows_v5b2_scripts.py` | `test_the_engine_reads_the_three_names` |
+| `CataclysmPlayerClassStats.cpp`: `device_wire_repin_seconds` taken off the list of stats with no attribute | the same | `test_the_engine_reads_the_three_names` |
+
+The generator refuses the rows while the three stats are not listed in `CataclysmPlayerClassStats.cpp` ("a flat row on
+a stat the game reads nowhere"), seen when the rows were first generated before the list was written.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5b2.AnEnemyCrossingAWireIsPinnedAndTheNearerEndAnswers` | a Spike Trap and a Bolt Turret 6 m apart: without the option nobody is caught (the control); with it, a creature 30 cm off the wire nearer each end is pinned and takes that end's blow; a creature 2 m off is neither (the control); 2 s later neither is caught again (the control), 4.5 s later both are |
+| `Cataclysm.WarVowsV5b2.AWireJoinsDevicesWithinReachIsSeenAndComesDownWithoutTheOption` | three Bolt Turrets at 20, 28 and 40 m: without the option no wire (the control); with it one wire, 8 m long, halfway between, with a mesh, and a creature between the devices 12 m apart is not caught (the control); with a reach of 13 m, two wires; with the option gone, none, and the one seen taken down |
+| `Cataclysm.WarVowsV5b2.AWarPlayerTakingCatsCradleIsHandedItsThreeFigures` | through `SetPassiveAllocation`: 1,000 cm, 1 s and 4 s; Trail of Wire hands over no reach (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: the nearer end chosen the other way (`<` turned to `>` in `StepCatsCradle`) | `Cataclysm.WarVowsV5b2.` | `AnEnemyCrossingAWireIsPinnedAndTheNearerEndAnswers` |
+
+**Dropped under that ruling:** a proof that the 4 s wait holds (the wait taken out), which would fail the same test.
+
+---
+
+## 2026-11-25 — The War vow options' fifth slice, second half, first part (V5b1): Scrap Mines, and the event a gadget raises when its life span runs out
+
+**Affects:**
+- `tools/reapply_war_vows_v5b1_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (585 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an event, `gadget_expired`, which names the wearer's own gadget and so may carry no strike;
+  - an action, `scrap_mine`, on `gadget_destroyed` and `gadget_expired` only. Its value is the shot's per cent (above 0,
+    up to 1,000); its Event Value is the trigger radius in metres (above 0, up to 10). It takes no fraction, value kind
+    or scale.
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - `LifeSpanExpired` raises `gadget_expired` for a gadget before it goes;
+    - `LeaveScrapTrapOf`, `IsScrapTrap`, `StepScrapTrap` and `FireScrapTrapAt`;
+    - the scrap trap's step comes first in `GadgetStep`, after Creeping Mines;
+    - `AttackTarget` deals nothing for a scrap trap except its one shot, which is multiplied;
+    - `CastPlayersSkillFromHere` lets a skill gadget's scrap trap make its one cast.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `ScrapMineAction`, and the action in `ActOnEvent`;
+    - Counterfire's answer and Lightning Rod's struck trap both fire a scrap trap's one shot.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bScrapMine`.
+  - `CataclysmItem.cpp`: the builder sets it.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5b1Tests.cpp` (new, three tests).
+    - `CataclysmDataTableTests.cpp`: the pin, 585.
+  - Python:
+    - `tools/tests/test_war_vows_v5b1_scripts.py` (new, nine).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the name.
+    - `test_passive_effects_match_the_node_text.py`:
+      - 585 rows and 69 authored options;
+      - Scrap Mines' words, "at double damage" for 200;
+      - the duplicate-row key now includes the action and its event, because Scrap Mines' two rows differ only in the
+        event.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5b1.`: three tests, new.
+  - `Cataclysm.Data.` (585), its count unchanged.
+  - The groups touching a gadget's expiry, its blow and the gadget step, counts unchanged: `Cataclysm.WarVowsV4b.`,
+    `Cataclysm.WarVowsV5a.`, `Cataclysm.SkillGadgets.`, `Cataclysm.GadgetCopiesSkill.`, `Cataclysm.Command.` and
+    `Cataclysm.Enchantments.` (the gadget rows and Rekindled's renewed lifetime).
+- **THE SCRAP TRAP IS A COPY OF THE GONE GADGET'S TYPE, MARKED A TRAP**, at half size, as the coordinating session
+  accepted on 2026-11-25. It is therefore counted by every trap rule:
+  - Creeping Mines moves it;
+  - Counterfire and Lightning Rod can set it off, which fires its one shot.
+  It RESERVES NOTHING. It lasts the ordinary 20 s and arms after the ordinary arming time.
+- **A SKILL GADGET'S SCRAP TRAP CASTING ITS SLOT'S SKILL IS NOT TESTED.** The tests use Bolt Turrets, whose scrap fires
+  the turret's own blow. The cast goes through `CastPlayersSkillFromHere`, which the skill gadget's own groups hold.
+- **`gadget_expired` IS NEW FOR EVERY GADGET**, whoever holds Scrap Mines. A gadget whose life span runs out now raises
+  it. Before this, it raised nothing. No other row acts on it.
+
+### WHAT WAS RULED
+
+- S1 (2026-11-25): "a new event, gadget_expired, raised when a gadget's life span runs out ... Scrap Mines acts on
+  gadget_destroyed and gadget_expired."
+- S2: "the scrap trap ... fires once and is used up ... arms after the ordinary arming time"; it reserves no Fervour,
+  and lasts the ordinary 20 s.
+- The coordinating session, 2026-11-25, on the design: "The scrap trap as an inert, half-size copy of the gone gadget
+  tagged Type.Trap is accepted: generic, no per-machine code, and it reuses the gadget's own attack pricing. State in
+  the entry that it is then counted by every trap rule ... and that it reserves nothing."
+
+### JUDGEMENTS
+
+- **A scrap trap's death or expiry leaves no scrap**, because it is no longer a gadget (`IsGadget` is false).
+- **A scrap trap is used up by destruction, not death**, as a skill trap is. So its firing raises no
+  `gadget_destroyed`.
+- **Generic by construction**: the rule asks `IsGadget` of what is gone and copies its own type, never a machine by
+  name.
+
+### THE PYTHON SUITE
+
+On the merge of `development` into this line, `a696d2ad2dcfbf5e6337371f604c7b3363ba26a1` (tree `f17f67f49`, the tree
+the run read), 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed,
+9025 passed, 9 skipped in 904.66s**, and the JUnit file `tests="9035" failures="1" errors="0" skipped="9"`, which is
+9,025 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**IT RAN ON THE MERGE, NOT ON THIS SLICE'S OWN COMMIT** (`abdd2ab88`). No run was made on that commit alone.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 83 files, **0 types used that the file cannot see, 0 notes**.
+- Repeated after the merge of `development`: the 49 .cpp files that differ from `development`, 0 and 0; the same
+  control failed.
+- Control: a copy of `CataclysmWarVowsV5b1Tests.cpp` without `#include "AbilitySystem/CataclysmMinion.h"` failed,
+  naming `ACataclysmMinion`.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Scrap Mines allowed on `trap_triggered` | `pytest tools/tests/test_war_vows_v5b1_scripts.py` | `test_a_scrap_row_on_an_event_other_than_a_gadget_gone_is_refused`, `test_the_names_are_the_generators` |
+| Scrap Mines' radius bound set to nought | the same | `test_the_control_a_scrap_row_is_read_with_its_radius_and_no_fraction` |
+| Scrap Mines given the default fraction of maximum | the same | `test_the_control_a_scrap_row_is_read_with_its_radius_and_no_fraction` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5b1.ADestroyedGadgetLeavesAScrapTrapThatFiresItsAttackOnceAtDouble` | a destroyed Bolt Turret leaves one scrap trap where it stood, a trap and not a gadget, at half size, reserving nothing; before its arming time it fires nothing and its own swing deals nothing (the controls); armed, it fires once at double a turret's blow and is used up; a scrap trap destroyed leaves no scrap (the control) |
+| `Cataclysm.WarVowsV5b1.AGadgetWhoseLifeRunsOutRaisesGadgetExpiredAndLeavesAScrapTrap` | before a short-lived turret's life runs out no scrap stands (the control); when it runs out one does |
+| `Cataclysm.WarVowsV5b1.AWarPlayerTakingScrapMinesIsHandedBothActions` | through `SetPassiveAllocation`: two actions, on `gadget_destroyed` and `gadget_expired`, 200% within 3 m; Trail of Wire hands over none (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: a scrap trap's shot not multiplied (the `* (bIsScrapTrap ? ScrapShotMultiplier : 1.0f)` taken out) | `Cataclysm.WarVowsV5b1.` | `ADestroyedGadgetLeavesAScrapTrapThatFiresItsAttackOnceAtDouble` |
+
+**Dropped under that ruling:** a proof that `LifeSpanExpired` raises `gadget_expired` (the call taken out), which would
+fail `AGadgetWhoseLifeRunsOutRaisesGadgetExpiredAndLeavesAScrapTrap`.
+
+---
+
+## 2026-11-25 — The War vow options' fifth slice, first half (V5a): Creeping Mines, Where They Fall, Crossfire and Lightning Rod
+
+**Affects:**
+- `tools/reapply_war_vows_v5a_workbook.py` (new) writes five rows into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (583 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`: two actions.
+  - `copy_last_trap_at_kill`, on `kill` only. Its value is the copy's seconds (above 0, up to 30); its Event Value is
+    the metres from a device (above 0, up to 20).
+  - `crossfire`, on `hit_dealt` only. Its value is the share of the hit (above 0, up to 100); its Event Value is the
+    metres (above 0, up to 30).
+  - Neither takes a fraction, a value kind or a scale.
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - `DevicesOf`, out of Counterfire's search, which now calls it;
+    - Creeping Mines: `TrapCreepMetresPerSecondStat`, `TrapCreepReachMetresStat`, `TrapCreepCmPerSecondFor`,
+      `TrapCreepReachCmFor` and `CreepTowardNearestEnemy`, run first in `GadgetStep`. That is the first step a War
+      trap takes;
+    - `PlaceSkillTrapCopy`, the placement Where They Fall's copy uses.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - the two action names, and the two actions in `ActOnEvent`;
+    - `QueueLastTrapCopyAt`, `RepeatFromDevices` and `SetHitBeingAnnouncedSent`;
+    - Lightning Rod: `BlowToDeviceChancePerDeviceStat`, `BlowToDeviceChanceFor`, `DeviceToTakeABlow` (its roll pinned
+      by the console variable `Cataclysm.LightningRodRoll`) and `SendBlowToDevice`;
+    - a forward declaration of `ACataclysmMinion`.
+  - `CataclysmVitalAttributeSet.cpp`: Lightning Rod's roll beside the absorb and the reflect.
+  - `CataclysmPlayerCharacter.cpp`: what any hit of the player's own sent, spells included, held while `hit_dealt`'s
+    rows act.
+  - `CataclysmStatPipeline.h`: `bCopyLastTrapAtKill` and `bCrossfire`.
+  - `CataclysmItem.cpp`: the builder sets both.
+  - `CataclysmPlayerClassStats.cpp`: the three stats in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5aTests.cpp` (new, five tests).
+    - `CataclysmStatExemptionTests.cpp`: three probes.
+    - `CataclysmDataTableTests.cpp`: the pin, 583.
+    - `CataclysmWarVowsV2aTests.cpp`: the not-built-yet test takes Bolted Together (the Saboteur's Third Oath, option
+      2, built last), with Counterfire's capstone as its node, since Crossfire now has a row.
+  - Python:
+    - `tools/tests/test_war_vows_v5a_scripts.py` (new, fifteen).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the two names.
+    - `test_passive_effects_match_the_node_text.py`:
+      - 583 rows and 68 authored options;
+      - the rows' words, with a lookup by option for two action rows on one capstone.
+    - `test_stat_lookups_hand_over_what_they_should.py`: Lightning Rod's lookup.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5a.`: five tests, new.
+  - `Cataclysm.StatExemption.`: three more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins or examples moved: `Cataclysm.Data.` (583) and `Cataclysm.WarVowsV2a.`;
+    - the groups touching the device search, the skill trap's placement and step, and the blow on the player:
+      `Cataclysm.WarVowsV4b.`, `Cataclysm.Traps.`, `Cataclysm.SaboteurTrapTiming.`, `Cataclysm.SkillGadgets.` and
+      `Cataclysm.LethalHit.`.
+- **CROSSFIRE'S COST IS MEASURED, AS ASKED.** Its test writes the time one hit's fifteen repeats take to the log
+  ("Crossfire: one hit's 15 repeats took ... ms in this test world"). The figure is the window's to record; none is
+  claimed here.
+- **WHERE THEY FALL COPIES SKILL TRAPS ONLY**, from V4a's record of the last skill-trap slot placed, as Trail of Wire
+  does. With no skill trap placed, a kill leaves nothing.
+- **A COPY RAISES `trap_armed` BUT NOT `trap_placed` OR `device_placed`**, and earns no placement Fervour, as ruled
+  (W3). So Baited applies to a copy.
+- **CREEPING MINES MOVES IN STEPS**, a quarter second apart, by teleport, as ruled (CM2, a play-test point).
+- **A SKILL TRAP STRUCK BY LIGHTNING ROD IS NOT TESTED GOING OFF.** A skill trap struck by Lightning Rod goes off
+  through the existing forced set-off, which casts its slot's skill. No new test casts a skill from a trap. The Spike
+  Trap's answer is tested.
+
+### WHAT WAS RULED
+
+The coordinating session's rulings on V5, 2026-11-25, "every recommendation as written":
+- CM1: skill traps and War Spike Traps both creep, the Spike Traps given a step. CM2: quarter-second steps, a
+  play-test point.
+- W1: the player's own kills. W2: the last skill-trap slot placed from; a copy is never recorded as placed. W3: the
+  ordinary placement on the next tick, armed at once, reserving 1 Fervour, refused when the pool cannot hold it;
+  exactly 4 s; `trap_armed` raised; no `trap_placed`, `device_placed` or placement Fervour.
+- X1: every hit of the player's own skills and basic attack, spells included; not a tick, a retaliation payment, or a
+  minion's or device's own blow. A direct blow by the player of 10% of what the hit sent, from the device's place, from
+  the nearest 15 within 15 m; repeats are not repeated. X2: a play-test point, "and also measure, in its Unreal test,
+  how long one hit with 15 devices takes, and record it".
+- L1: any landed hit that is not a tick, rolled where the absorb and the reflect are, before the player's block and
+  defences; the device takes `Hit.Damage` from the attacker, meeting its own defences; the player takes nothing. L2: 3%
+  for each device at any distance, up to 30%; a roll only when a device stands within 10 m. L3: a skill trap struck
+  goes off; a War Spike Trap deals its ordinary blow at the attacker; a gadget only takes the blow.
+- **L3, AFTER WINDOW war2-w1**, the coordinating session, verbatim: "A trap killed by the blow still goes off."
+  - **L3 had no survival condition.** `SendBlowToDevice` added one: it returned when the blow had killed the device.
+    A Spike Trap has 40 health and the test's blow is 500, so the trap never went off. The window caught it.
+  - `|| UCataclysmSkillEffects::IsDead(Device)` is taken out of that early return. `!IsValid` and
+    `IsActorBeingDestroyed` stay, so a trap already gone does not fire.
+  - `AHitOnThePlayerCanStrikeTheNearestDeviceWithinTenMetresInstead` now measures one Spike Trap blow first, on a
+    creature 60 m away. It then asserts three things:
+    - the blow kills the trap;
+    - the attacker loses exactly one such blow (it fires once, not twice);
+    - the trap leaves as a dead trap does, its collision off.
+
+### JUDGEMENTS
+
+- **"No enemy within its trigger radius" stops a trap's creep**: it goes off instead. A War trap's radius is its reach.
+- **A creep stops at the enemy**, never past it.
+- **Crossfire's 15 nearest devices are counted by distance to the enemy struck**, ties to the earlier placed.
+- **Lightning Rod's blow on a device is dealt by the attacker**, so the device's defences take their share and the
+  attacker is the one a War trap answers.
+- **"Up to 30%" and "within 10 metres" are the engine's constants**, and the 3% is the row's, because the sentence
+  states one figure for each device. Where They Fall's 1 Fervour and Crossfire's 15 devices are the engine's constants
+  as well, and the 4 seconds and the 10% the rows'.
+
+### THE PYTHON SUITE
+
+On `2ddcaea39df59f475748a1214ee998b6156a4674`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8654 passed, 9 skipped in 722.69s**, and the JUnit file `tests="8664" failures="1"
+errors="0" skipped="9"`, which is 8,654 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**THE FIRST RUN, on the code commit `0dac7c505c7b49d3d9fc3ac04d57efa944b93d3a`, failed one more**:
+`test_console_variables_in_tests_are_written_at_console_priority.py`. Lightning Rod's test pinned its roll at code
+priority (`ECVF_SetByCode`), which a variable written earlier at console priority silently overrides (issue #1470).
+Corrected in `2ddcaea39df59f475748a1214ee998b6156a4674` to `ECVF_SetByConsole`. That run read 2 failed, 8653 passed, 9 skipped.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 82 files, **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5aTests.cpp` without `#include "AbilitySystem/CataclysmMinion.h"` failed, naming
+  `ACataclysmMinion`.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Where They Fall allowed on `afflicted_death` | `pytest tools/tests/test_war_vows_v5a_scripts.py` | `test_where_they_fall_on_an_event_other_than_a_kill_is_refused`, `test_the_names_are_the_generators` |
+| Crossfire's share bound raised to 1,000 | the same | `test_crossfire_above_a_whole_hit_is_refused` |
+| Crossfire given the default fraction of maximum | the same | `test_the_control_each_is_read_with_its_metres_and_no_fraction[crossfire]` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5a.AnArmedTrapCreepsTowardTheNearestEnemyWithinTenMetres` | a Spike Trap does not move without the stats (the control) and moves 75 cm toward a creature 8 m away with them; a creature 12 m away draws nothing (the control); an unarmed skill trap does not creep (the control), and armed it creeps 75 cm |
+| `Cataclysm.WarVowsV5a.AKillNearADeviceLeavesAnArmedFourSecondCopyOfTheLastTrap` | a kill 30 m from every device leaves nothing (the control); a kill 8 m from a trap leaves a copy where the creature stood, from the Heavy slot, armed, lasting 4 s, reserving 1 |
+| `Cataclysm.WarVowsV5a.AHitIsRepeatedFromUpToFifteenDevicesWithinFifteenMetresAtATenth` | a hit that sent nothing is repeated by none (the control); 1,000 sent is repeated 15 times at 100 though 16 turrets stand within 15 m and one beyond; the time taken is logged |
+| `Cataclysm.WarVowsV5a.AHitOnThePlayerCanStrikeTheNearestDeviceWithinTenMetresInstead` | at a roll of 50, above the 12%, the player takes the blow (the control); at 5, the Spike Trap takes it and goes off at the attacker; with no device within 10 m the player takes it at a roll of nought (the control) |
+| `Cataclysm.WarVowsV5a.AWarPlayerTakingTheOptionsIsHandedTheirStatsAndActions` | through `SetPassiveAllocation`: each option's stats and actions; the other options hand over none (the controls) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: Lightning Rod's device takes the blow but the player is not spared (`|| Rod` taken out of the condition that empties the blow) | `Cataclysm.WarVowsV5a.` | `AHitOnThePlayerCanStrikeTheNearestDeviceWithinTenMetresInstead` |
+
+**Dropped under that ruling:**
+- a proof that Crossfire's cap of 15 holds (the `CrossfireMostDevices` test taken out), which would fail
+  `AHitIsRepeatedFromUpToFifteenDevicesWithinFifteenMetresAtATenth`;
+- a proof that an unarmed skill trap does not creep, which would fail
+  `AnArmedTrapCreepsTowardTheNearestEnemyWithinTenMetres`;
+- a proof that Where They Fall's copy lasts its 4 s (the `SetLifeSpan` taken out), which would fail
+  `AKillNearADeviceLeavesAnArmedFourSecondCopyOfTheLastTrap`.
+
+---
+
+## 2026-11-25 — The War vow options' fourth slice, second half (V4b): Counterfire answers an evaded blow with the player's traps and gadgets, and Magnum Opus's eldest gadget casts every skill used
+
+**Affects:**
+- `tools/reapply_war_vows_v4b_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`: the first rows
+  on the Saboteur's Third and Final Oaths. The generated table: `game/Data/PassiveEffects.csv` (578 rows).
+  `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an action, `counterfire`, on `dodge` only;
+  - its Event Value is the devices for each answer, a whole number from 1 to 10, required;
+  - its value is a share of a shot, above 0 and up to 1,000;
+  - it may state a Trigger Cooldown (`takes_a_trigger_cooldown`).
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `CounterfireAction`, `QueueCounterfire` and the action in `ActOnEvent`;
+    - the drain of queued gadget shots now lets a War machine, a gadget or a trap, answer with its own ordinary blow
+      (`AttackTarget`). A skill gadget still fires its shot.
+  - `CataclysmMinion.h` and `.cpp`:
+    - `CopySummonersLastSkill`'s cast moved into `CastSkillCopy`, which it now calls with the recorded skill;
+    - `EldestGadgetCastsEverySkillStat`, `EldestGadgetCastsEverySkillFor` and `EldestGadgetOf`.
+  - `CataclysmPlayerCharacter.cpp`: at each skill use, not the basic attack and not the movement slot, a player
+    holding the flag has the eldest gadget cast the same skill on the next tick.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bCounterfire`.
+  - `CataclysmItem.cpp`: the builder sets it.
+  - `CataclysmPlayerClassStats.cpp`: the flag in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV4bTests.cpp` (new, three tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe, `ProbeEldestGadgetCastsEverySkill`.
+    - `CataclysmDataTableTests.cpp`: the pin, 578.
+    - `CataclysmWarVowsV2aTests.cpp`: `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` takes Crossfire (the
+      Saboteur's Final Oath, option 3, V5's) as its unbuilt option, now that Magnum Opus has a row.
+  - Python:
+    - `tools/tests/test_war_vows_v4b_scripts.py` (new, twelve).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the name.
+    - `test_passive_effects_match_the_node_text.py`: 578 rows, 322 authored nodes, 64 authored options, and the two
+      rows' words.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the flag's lookup.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV4b.`: three tests, new.
+  - `Cataclysm.StatExemption.`: one more probe inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins or examples moved: `Cataclysm.Data.` (578) and `Cataclysm.WarVowsV2a.`;
+    - the groups touching the moved skill copy and the gadget shot drain: `Cataclysm.GadgetCopiesSkill.`,
+      `Cataclysm.AoeStrikesAllies.`, `Cataclysm.SkillGadgets.` and `Cataclysm.Traps.`.
+- **COUNTERFIRE'S TEST USES WAR TURRETS ONLY.** A skill trap going off and a skill gadget firing at the attacker go
+  through the existing forced set-off and gadget shot, which their own groups (`Cataclysm.Traps.`) hold. This slice
+  only queues them, and no new test casts a skill from a trap or a skill gadget.
+- **A WAR TRAP ANSWERS WITH ITS ORDINARY BLOW, as a War gadget does.** It has no set-off of its own. Q9 ruled the
+  forced set-off for traps, which exists for skill traps only, so this is a judgement, stated here.
+- **THE SKILL COPY'S CAST WAS MOVED, NOT CHANGED.** `CopySummonersLastSkill` makes the same cast through
+  `CastSkillCopy`, with the same refusals, now in this order:
+  - the recorded skill is read first;
+  - then the gadget's state and its summoner's;
+  - then the target;
+  - then `RepeatsFromARow`.
+  Before, the gadget's state was asked before the record. The gadget test reads `IsGadget() || IsSkillGadget()`, and
+  **THAT CHANGES NOTHING IN PLAY**: `ACataclysmMinion::IsSkillGadget` is `SkillGadgetSlot != None && IsGadget()`, so
+  every skill gadget was already a gadget. A skill gadget, an enchantment's included, copied the last skill used before
+  this slice as it does after it. This entry said "one refusal was widened" when first written, which was wrong. The
+  coordinating session asked, on that wording, for the widening to be recorded as a change in play; reading
+  `IsSkillGadget` showed there is none.
+
+### WHAT WAS RULED
+
+The coordinating session's rulings on V4, 2026-11-25, "every recommendation as written":
+- Q7: Counterfire acts on `dodge` with a 1 s trigger cooldown. The count is half, rounded down, of every `Type.Trap`
+  and `Type.Gadget` machine the player commands, skill and War alike; the nearest the attacker answer. An evade that
+  names no attacker answers nothing.
+- Q8: a skill gadget fires its existing shot at the attacker; "build the War gadget's own attack at the attacker; the
+  scope ruling covers War gadgets".
+- Q9: a skill trap goes off through the existing forced set-off, as it is.
+- Q10: "standing longest" is the living gadget, skill or War, with the earliest `SpawnOrder`. Moving a skill gadget
+  does not reset it.
+- Q11: on each skill use, not the basic attack and not the movement slot, the eldest gadget casts the same skill once:
+  on the next tick, free, with no cooldown, raising no `skill_use`, at damage share 1.0, at its own target within its
+  reach, and not at all with no target in reach. Skills the copy path refuses are not copied.
+- Q12: worn with "Gadgets copy the last skill you used", both apply.
+
+### JUDGEMENTS
+
+- **"The nearest the attacker first"** ties go to the earlier placed (`SpawnOrder`).
+- **A War machine's answer is one ordinary blow** (`AttackTarget`), whatever the row's share. The row's 100 is the
+  share of a skill gadget's shot, and a War machine's blow has no share to scale.
+- **Counterfire's answers are queued and made after the event, at depth nought**, in the queue the gadget shots at a
+  trap's enemy use. So the answers' own blows are announced to the player's rows.
+- **Magnum Opus chooses the eldest on the next tick**, when the cast is made, so a gadget gone in between is passed
+  over.
+
+### THE PYTHON SUITE
+
+On `f1a3bab7d8ed7a8bf344d2e43d07b220b5d43282`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8638 passed, 9 skipped in 524.23s**, and the JUnit file `tests="8648" failures="1"
+errors="0" skipped="9"`, which is 8,638 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed. The first run.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 81 files, **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV4bTests.cpp` without `#include "Items/CataclysmWeaponSlotsComponent.h"` failed,
+  naming `UCataclysmWeaponSlotsComponent` on line 57.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Counterfire allowed on `block` | `pytest tools/tests/test_war_vows_v4b_scripts.py` | `test_counterfire_on_an_event_other_than_a_dodge_is_refused`, `test_the_names_are_the_generators` |
+| Counterfire's count not held to a whole number | the same | `test_counterfire_with_a_count_that_is_not_whole_is_refused` |
+| Counterfire may not state a Trigger Cooldown | the same | four: the control, the two refusals before it is read, and `test_the_names_are_the_generators` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV4b.AnEvadedBlowIsAnsweredByOneDeviceForEveryTwoTheNearestFirstOnceASecond` | four Bolt Turrets: an evade is answered by two blows; a second at once by none (the control); one 1.1 s later by two; with one turret left, none (the control) |
+| `Cataclysm.WarVowsV4b.TheEldestGadgetCastsEverySkillUsedAndTheNextTakesItsPlace` | without the flag no turret casts (the control); a use from the movement slot is not copied (the control); a use is copied once by the elder and not the younger; with the elder gone the younger copies the next |
+| `Cataclysm.WarVowsV4b.AWarPlayerTakingTheOptionsIsHandedCounterfireAndMagnumOpus` | through `SetPassiveAllocation`: Counterfire's action (on `dodge`, 2, 100%, 1 s) and Magnum Opus's flag; the first options hand over neither (the controls) |
+| `ProbeEldestGadgetCastsEverySkill` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | a character without the flag is answered no, one holding it yes |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: `QueueCounterfire` answers with every device (`FloorToInt(... / Action.EventValue)` replaced by `Devices.Num()`) | `Cataclysm.WarVowsV4b.` | `AnEvadedBlowIsAnsweredByOneDeviceForEveryTwoTheNearestFirstOnceASecond` |
+
+**Dropped under that ruling:** a proof that Magnum Opus copies a movement-slot use (the `Notice.Slot != Movement` test
+taken out), which would fail `TheEldestGadgetCastsEverySkillUsedAndTheNextTakesItsPlace`.
+
+---
+
+## 2026-11-25 — The War vow options' fourth slice, first half (V4a): Baited draws enemies to a trap that arms, and Trail of Wire places the last trap again where the movement began
+
+**Affects:**
+- `tools/reapply_war_vows_v4a_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`: the first rows
+  on the Saboteur's First and Second Oaths. The generated table: `game/Data/PassiveEffects.csv` (576 rows).
+  `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an event, `trap_armed`, which names the wearer's own trap and so may carry no strike;
+  - an action, `taunt_enemies_near_trap`, on `trap_armed` only: its radius is in Event Value (above 0, up to 20), its
+    seconds are the value (above 0, up to 30);
+  - an action, `place_last_trap_again`, on `movement_skill` only, value 100;
+  - neither action takes a fraction, a value kind or a scale.
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - `AnnounceTrapArmed` raises `trap_armed` with the trap's tags, naming the trap, at depth nought: from inside a
+      row's action it waits for the next tick;
+    - it is raised where a skill trap becomes armed: at an arming time of nought, at its timer, at its step, and by
+      `ArmSkillTrapsNear`;
+    - a trap that goes off ends its taunts, before it rearms or is used up;
+    - `PlaceSkillTrap` records the slot placed from.
+  - `CataclysmSkillTemplates.cpp`: a War machine trap announces itself armed when it is placed.
+  - `CataclysmTaunt.h` and `.cpp`: `UCataclysmTaunt::EndTauntsBy`.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - the two action names, and the two actions in `ActOnEvent`;
+    - `TauntEnemiesNearTrap`;
+    - `NoteSkillTrapPlaced`, `LastSkillTrapSlotPlacedFrom` and `QueueLastTrapPlacedAgain`;
+    - the record clears at death.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bTauntNearTrap` and `bPlaceLastTrapAgain`.
+  - `CataclysmItem.cpp`: the builder sets both.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV4aTests.cpp` (new, three tests).
+    - `CataclysmDataTableTests.cpp`: the pin, 576.
+  - Python:
+    - `tools/tests/test_war_vows_v4a_scripts.py` (new, fifteen).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the two names.
+    - `test_passive_effects_match_the_node_text.py`: 576 rows, 320 authored nodes, 62 authored options, and the two
+      action rows' words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2), as ruled on
+  2026-11-25:
+  - `Cataclysm.WarVowsV4a.`: three tests, new.
+  - `Cataclysm.Data.` (576), its count unchanged.
+  - The neighbouring groups, counts unchanged: `Cataclysm.SaboteurTrapTiming.` (the arming paths), `Cataclysm.Traps.`
+    (placement, the set-off and the rearm), `Cataclysm.SaboteurDevices.`, and the taunt's other users,
+    `Cataclysm.SetBonus.` (the Brute's and the Warlord's six-pieces) and `Cataclysm.Enchantments.`.
+- **TRAIL OF WIRE REPEATS SKILL TRAPS ONLY, A KNOWN LIMIT AND NOT NEW WORK** (ruled 2026-11-25, Q4). A War machine
+  trap is placed by casting its skill, which the engine cannot place again. So when the last trap placed was a War
+  trap, the movement skill places the last SKILL trap again, or nothing if none was placed.
+- **THE WAR TRAP'S "ARMED WHEN PLACED" HAS NO UNREAL TEST.** It is one call where a deployable skill places a machine
+  that is a trap. Placing one needs the deployable skill granted and cast, which the three new tests do not do.
+- **A TAUNTED ENEMY MAY DESTROY THE TRAP** (it has 40 health) before it goes off, which also ends the taunt. Noted in
+  the rulings, not a question.
+
+### WHAT WAS RULED
+
+The coordinating session's rulings on V4, 2026-11-25, "every recommendation as written":
+- Q1: `trap_armed` at every arming path; a War machine trap counts as armed when placed.
+- Q2: the taunt through `UCataclysmTaunt::ApplyTaunt` with all its refusals kept: bosses, a running taunt by another,
+  `Immune=Taunt`, the health ceiling, and crowd-control resistance.
+- Q3: `EndTauntsBy` when the trap goes off.
+- Q4: skill traps only for Trail of Wire, "record it in the entry as a known limit of Trail of Wire, not as new work".
+- Q5: the ordinary placement, its reserve and events included.
+- Q6: "where the movement began" is where the player stands when the movement skill commits; Recall's first press
+  places nothing.
+
+### JUDGEMENTS
+
+- **An arming inside a row's action is announced on the next tick.** `ActOnEvent` acts at depth one, so a `trap_armed`
+  raised from `arm_traps_nearby`, or from Trail of Wire's copy, would be dropped. Waiting a tick keeps every arming
+  announced, as ruled.
+- **Trail of Wire's copy is placed on the next tick**, at the place taken when the movement skill was announced, for the
+  same reason. Its `trap_placed` and `device_placed` are then raised at depth nought, as Q5 requires.
+- **A copy the placement armed already (Hair Trigger) is not armed a second time**, so it is announced once.
+- **A trap that rearms is announced again when it arms again**: "when one of your traps arms".
+
+### THE PYTHON SUITE
+
+On `3e96595c34f98b58a4b041a7d69de0f1ce9611c4`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8625 passed, 9 skipped in 686.52s**, and the JUnit file `tests="8635" failures="1"
+errors="0" skipped="9"`, which is 8,625 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed. The first run.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 80 files, **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmAbilitySystemComponent.cpp` without `#include "AbilitySystem/CataclysmTaunt.h"` failed,
+  naming `UCataclysmTaunt` on line 6163.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Baited allowed on `trap_placed` | `pytest tools/tests/test_war_vows_v4a_scripts.py` | `test_baited_on_an_event_other_than_a_trap_arming_is_refused`, `test_the_names_are_the_generators` |
+| Trail of Wire's value of 100 not checked | the same | `test_trail_of_wire_with_a_value_other_than_100_is_refused` |
+| Baited given the default fraction of maximum | the same | `test_the_control_baited_is_read_with_its_radius_and_no_fraction` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV4a.ATrapThatArmsDrawsEveryEnemyWithinEightMetresToIt` | a trap with an arming time placed 30 m away has not armed, and the creature beside it is not taunted (the control); an instant trap placed 2 m east draws the creatures 3 and 7 m from it, for 4 s, and not the one 11 m from it; ending its taunts frees both |
+| `Cataclysm.WarVowsV4a.TheMovementSkillPlacesTheLastTrapAgainWhereTheMovementBeganArmed` | before any trap, the movement skill places none (the control); after a Heavy trap, it places a second, on the next tick, where the movement began and not where the player ended, from the Heavy slot, armed although the first is not (the control); a death clears the record |
+| `Cataclysm.WarVowsV4a.AWarPlayerTakingTheOptionsIsHandedTheirActions` | through `SetPassiveAllocation`: Baited's taunt (4 s, 8 m, on `trap_armed`) and Trail of Wire's placing; the third options hand over neither (the controls) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: `BeginSkillTrapArming` does not announce an arming time of nought (`AnnounceTrapArmed();` taken out of its `if (bSkillTrapArmed)`) | `Cataclysm.WarVowsV4a.` | `ATrapThatArmsDrawsEveryEnemyWithinEightMetresToIt` |
+
+**Dropped under that ruling:** a proof that Trail of Wire's copy is placed where the movement began (the location taken
+at the event replaced by the avatar's location on the next tick), which would fail
+`TheMovementSkillPlacesTheLastTrapAgainWhereTheMovementBeganArmed`.
+
+---
+
+## 2026-11-25 — The War vow options' third slice, second half (V3b): Colossus Eternal's increases to maximum health counted twice, its save above half health and its bonus from current health; Thousand Deaths' chain
+
+**Affects:**
+- `tools/reapply_war_vows_v3b_workbook.py` (new) writes four rows into `docs/All_Things_Cataclysm.xlsx` and takes
+  over Colossus Eternal's healing row from `tools/reapply_war_vows_v1_workbook.py`, which no longer lists it. The
+  generated table: `game/Data/PassiveEffects.csv` (574 rows). `docs/README.md` (the count). **The editor step must
+  rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an action, `frenzy_chain`, on `hit_dealt` only, its radius in Event Value (above 0, up to 20) and its share above
+    0, up to 1,000, with no fraction, value kind or scale;
+  - a scale, `current_health`, its step above 0, up to 5,000.
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `FrenzyChainAction`, `ChainFromStruck` and the chain in `ActOnEvent`;
+    - `FrenzyKillsHeld` and `NoteKillInFrenzy`, the kills in the current Frenzy, cleared by `SetBerserkerState`
+      whenever the state changes;
+    - `SetAttackBeingAnnouncedSent`;
+    - `LethalHitSurvivedAboveHealthStat` and `MaxHealthIncreasesCountTwiceStat`.
+  - `CataclysmStatPipeline.h` and `.cpp`: `FCataclysmPoolAction::bFrenzyChain`, and the scale `PerPointOfCurrentHealth`
+    (`current_health`).
+  - `CataclysmItem.cpp`: the builder sets `bFrenzyChain`.
+  - `CataclysmPlayerCharacter.cpp`:
+    - what an attack sent is held while `hit_dealt`'s rows act, nought for a spell, a tick, a retaliation payment and
+      a minion's own blow;
+    - each of the character's kills is counted in its Frenzy.
+  - `CataclysmVitalAttributeSet.cpp`: Colossus Eternal's save, judged before the Final Onslaught's.
+  - `CataclysmPlayerClassStats.cpp`:
+    - the two new stats in `StatsWithNoAttribute`;
+    - while the flag holds, every increase on `max_health` entered twice before the list is recorded.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV3bTests.cpp` (new, four tests).
+    - `CataclysmStatExemptionTests.cpp`: two probes, `ProbeLethalHitSurvivedAboveHealth` and
+      `ProbeMaxHealthIncreasesCountTwice`.
+    - `CataclysmDataTableTests.cpp`: the pin, 574.
+    - `CataclysmWarVowsV1Tests.cpp`: the Final Oaths' row counts, 7 and 7.
+    - `CataclysmWarVowsV2aTests.cpp`:
+      - the Berserker Final Oath's row count, 7;
+      - `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` takes Magnum Opus (the Saboteur's Final Oath, option 2) as
+        its unbuilt option, because every Berserker and Bulwark option now has a row, and Thousand Deaths as its
+        control.
+  - Python:
+    - `tools/tests/test_war_vows_v3b_scripts.py` (new, sixteen).
+    - `test_war_vows_v1_scripts.py`: three rows on three options.
+    - `test_war_vows_v3a_scripts.py`: its control row is Bloodied but Unbroken's.
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the new action name.
+    - `test_passive_effects_match_the_node_text.py`:
+      - 574 rows and 60 authored options;
+      - `health_above` also read as "while above";
+      - the `current_health` scale, checked as a share of a pool (`SCALES_STATED_AS_A_SHARE`: the value for every 100
+        points is the percentage the sentence states);
+      - the flag's words.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the save's lookup.
+    - `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`: 44 scale sources named by a row.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run:
+  - `Cataclysm.WarVowsV3b.`: four tests, new.
+  - `Cataclysm.StatExemption.`: two more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins or examples moved: `Cataclysm.Data.` (574), `Cataclysm.WarVowsV1.` and
+      `Cataclysm.WarVowsV2a.`;
+    - the groups touching what this changes: `Cataclysm.WarVowsV3a.`, `Cataclysm.LethalHit.`, `Cataclysm.SetBonus.`
+      (the Demon King's reprieve after the saves), `Cataclysm.DelayedDamage.`, `Cataclysm.BerserkerStates.`,
+      `Cataclysm.SkullDeathmarkBlood.`, `Cataclysm.StatPipeline.`, `Cataclysm.KillCounter.` and
+      `Cataclysm.PlayerStats.`.
+- **COLOSSUS ETERNAL'S SAVE RAISES NO EVENT, WHICH IS NOT WHAT THE RULED PROPOSAL SAID.** Q9 as proposed and ruled
+  read "it raises lethal_hit_reprieved as the Final Onslaught's save does". The Final Onslaught's save
+  (`NoteLethalHitSurvived`) raises no event at all; `lethal_hit_reprieved` is raised only by the Demon King's Regalia's
+  reprieve (`NoteLethalHitReprieved`), and rows act on it. Raising it here would have handed that set's rows to every
+  Colossus Eternal save. Built as the Final Onslaught's is, raising nothing, and reported to the coordinating session
+  for a ruling. **Ruled the same day: kept raising nothing.** The coordinating session: "keep Colossus Eternal's save
+  raising nothing, as you built it. lethal_hit_reprieved belongs to the Demon King's Regalia reprieve, and raising it
+  here would hand that set's critical strike rows to every Colossus save, which no sentence says." Q9's "as the Final
+  Onslaught's save does" was wrong: `NoteLethalHitSurvived`, the Final Onslaught's save, starts its cooldown and its
+  window of immunity and raises no event.
+- **EVERY BERSERKER AND BULWARK OPTION HAS A ROW FROM HERE**; Titanfall, a keystone, is still not built and is
+  deferred to after V5, as ruled.
+- **A CHAINED BLOW IS DEALT AS DIRECT DAMAGE BY THE PLAYER**, so it is announced as the player's hit like any blow.
+  `ActOnEvent` acts at depth one, so it fires none of the player's rows, the chain included. Fervour from hits dealt is
+  granted outside the rows: `FCataclysmWarFervour::GainOnHitDealt` is asked with the chained blow's tags, which are
+  none, so a melee-scoped Fervour row does not count it. That was read from the code and not measured.
+
+### WHAT WAS RULED
+
+- The vow survey, 2026-11-25:
+  - item 7, Thousand Deaths: "chain range 5 m, a chained blow does not chain again";
+  - item 17, Colossus Eternal: "as you propose, the save with no cooldown".
+- The coordinating session's rulings on the V3 questions, 2026-11-25, "every proposal as written":
+  - Q8: the flag `max_health_increases_count_twice`; every increase to `max_health` entered twice in the list both
+    maximum-health calculations read; "more" multipliers and flat additions unchanged.
+  - Q9: the save, a stat of its own, `lethal_hit_survived_above_health`, flat 50; a lethal hit that is not a tick
+    leaves 1 HP when health before it was above 50%; no cooldown and no window of immunity; "judged before the Final
+    Onslaught's save". (Its event: see SAID FIRST.)
+  - Q10: a new scale, `current_health`; the row `attack_damage` flat 2 for every 100 current health under
+    `health_above` 75; it reaches attacks and not spells, through the path flat attack damage takes.
+  - Q11: on each landed `hit_dealt` that is not a spell, in Frenzy and dual wielding, the hit chains to the nearest N
+    other enemies within 5 m of the enemy struck; N is 1 plus the kills in the current Frenzy; each takes 60% of what
+    the hit sent before defences, as a direct blow its own defences reduce.
+  - Q12: kills by chained blows count; the count clears when Frenzy ends, in the state judge.
+
+### JUDGEMENTS
+
+- **"Your attacks" leaves out four kinds of blow, not only spells.** The chain is sized by what the attack sent, which
+  the player character holds while `hit_dealt`'s rows act. For a spell, a damage-over-time tick, a retaliation payment
+  and a minion's own blow it holds nought, so the chain strikes nobody. Q11 named spells; the other three are not
+  attacks the player made.
+- **The kill count clears on any change of the Berserker's state**, entering Frenzy included, which is the same as
+  clearing at its end because a count is only ever taken in Frenzy.
+- **Every kill of the character's own counts while in Frenzy**, a kill by damage over time and a kill a row made
+  included, as `NoteKill` counts them.
+- **The doubled increases include the ones the attributes add** to `max_health`: "your increases to Maximum HP" is
+  every increase. Each copy keeps its own scope and condition.
+- **The save compares health with maximum health as the attribute set holds them before the blow**, strictly above,
+  so a character at exactly half health dies.
+- **The share-of-a-pool check in the text test** (`SCALES_STATED_AS_A_SHARE`) reads the value and the step together,
+  "2% of your current HP" being 2 for every 100, because the sentence names no step of its own.
+
+### THE PYTHON SUITE
+
+On `52be835fd63d03e11269694735e58ef8a8a81b56`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8609 passed, 9 skipped in 544.60s**, and the JUnit file `tests="8619" failures="1"
+errors="0" skipped="9"`, which is 8,609 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**THE FIRST RUN, on the code commit `e1785f735ea048eb36496085d0ec344aeb2e93c9`, failed one more**:
+`test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py::test_the_reader_finds_the_measured_number_of_used_names`,
+which pins the scale sources a row names at 43. This slice's `current_health` made it 44. Corrected in `52be835fd`.
+That run read 2 failed, 8608 passed, 9 skipped.
+
+### A MERGE OBLIGATION THIS LINE CARRIES, recorded here at the coordinating session's request (2026-11-25)
+
+**`fervour_per_critical_strike` is built twice, once on each line, and both landing unchanged would pay twice per
+critical strike.**
+- The War line's slice C (`feat/war-fervour-sources`): `FCataclysmWarFervour::PerCriticalStrikeStat`, paid by
+  `FCataclysmWarFervour::GainOnCriticalStrike` from `ACataclysmPlayerCharacter`'s hit handler (`CataclysmPlayerCharacter.cpp`,
+  the `critical_strike` block), with its class-stats entry and probe.
+- The Death line's C4d1: a stat of the same name, paid from the same handler and judged against the enemy struck.
+- Ruled: this line lands first, and the Death line reconciles at its merge. There is one payment, the Death line's,
+  judged against the target, and this line's constant names that payment. No further caller of this line's path is
+  added meanwhile.
+
+**What this line's path does besides paying**, so the Death line can carry it over. `GainOnCriticalStrike` calls
+`FCataclysmWarFervour::GainByRate` (`CataclysmWarFervour.cpp`), which:
+1. reads the rate through `StatForSkill` with the blow's skill tags. That is what lets Battle Lust's "on every critical
+   melee strike" row, scoped to melee, add to a melee critical strike only;
+2. pays nothing to a character with no class resource set or no `UCataclysmAbilitySystemComponent`, which is every
+   enemy, and nothing for a rate of nought or less;
+3. scales the rate by the class resource's generation (`UCataclysmAbilitySystemComponent::ClassResourceGainScaled`,
+   `class_resource_generation`, ruled 2026-10-07);
+4. clamps the result to `UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked`, the most the pool may hold
+   after its reserves (the War machines' and the Death line's);
+5. writes it with `ApplyModToAttribute` and returns what was gained. It raises no event.
+
+The call site is reached for every critical strike the hit handler announces, past the handler's refusals. Unlike
+`GainOnHitDealt` beside it, it does not leave out a minion's own blow that Conduit credits to the player. That was read
+from the code and not measured.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over
+every .cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not: 78
+files, **0 types used that the file cannot see, 0 notes**. The control, a copy of `CataclysmWarVowsV3bTests.cpp`
+without `#include "AbilitySystem/CataclysmTeams.h"`, failed naming `ECataclysmTeam` and `UCataclysmTeams` on line 144.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+the two files broken byte-identical afterwards (MD5 before and after).
+
+| Break | Command | Named failures |
+|---|---|---|
+| `generate_datatables.py`: a chain allowed on `critical_strike` | `pytest tools/tests/test_war_vows_v3b_scripts.py` | `test_a_chain_on_an_event_that_is_not_a_hit_dealt_is_refused`, `test_the_names_are_the_generators` |
+| `generate_datatables.py`: a chain given the default fraction of maximum | the same | `test_the_control_a_chain_is_read_with_its_radius_and_no_fraction` |
+| `PassiveEffects.csv`: Colossus Eternal's bonus written as 3 for every 100, where the node says 2% | `pytest tools/tests/test_passive_effects_match_the_node_text.py -k test_a_scale_matches_the_words_of_the_node_it_is_on` | `test_a_scale_matches_the_words_of_the_node_it_is_on` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV3b.ColossusEternalSavesFromALethalHitAboveHalfHealthWithNoCooldown` | real blows of 200,000 on a wearer of 100,000 maximum health holding the save at 50: at 60,000 it is left at 1; at 1 the next kills (the control); at 60,000 again at once it is saved again; at exactly 50,000 it dies (the control) |
+| `Cataclysm.WarVowsV3b.ACurrentHealthScaleGrantsItsValueForEveryStepOfHealthHeld` | 2 for every 100 current health above 75%: 160 at 8,000 of 10,000; 0 at 7,000 (the control); 0 with health unknown (the control) |
+| `Cataclysm.WarVowsV3b.ThousandDeathsChainsToOneEnemyMoreForEachKillInTheFrenzy` | an attack that sent nothing chains to nobody (the control); 1,000 sent chains 600 to the nearest other enemy only; in Frenzy with two kills to three, never to the one 10 metres from the struck enemy; leaving Frenzy clears the kills |
+| `Cataclysm.WarVowsV3b.AWarPlayerTakingTheOptionsIsHandedTheirStatsAndChain` | through `SetPassiveAllocation`: Colossus Eternal's save at 50 and flag; Thousand Deaths' chain, 60% within 5 metres on a hit dealt, in Frenzy, dual wielding; Wrath Incarnate and Eternal Hunger hand over none (the controls) |
+| the two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | the save at 50: a defender at 600 of 1,000 is left at 1 by a blow of 5,000, and one without it at nothing; the flag: the list `max_health` is worked out from carries twice the increases, and the maximum is higher |
+
+### C++ GUARD PROOFS (planned, three)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: Colossus Eternal's save never taken (`SavedAbove > 0.0f` replaced by `false`) | `Cataclysm.WarVowsV3b.` | `ColossusEternalSavesFromALethalHitAboveHalfHealthWithNoCooldown` |
+| `CataclysmAbilitySystemComponent.cpp`: `ChainFromStruck` ignores the Frenzy's kills (`1 + FrenzyKills` replaced by `1`) | `Cataclysm.WarVowsV3b.` | `ThousandDeathsChainsToOneEnemyMoreForEachKillInTheFrenzy` |
+| `CataclysmStatPipeline.cpp`: the current-health scale reads the maximum (`State.HealthPercent / 100.0f * State.MaximumHealth` replaced by `State.MaximumHealth`) | `Cataclysm.WarVowsV3b.` | `ACurrentHealthScaleGrantsItsValueForEveryStepOfHealthHeld` |
+
+---
+
+## 2026-11-25 — The War vow options' third slice (V3a): Thornwall's stack on the attacker, the big hit with Wrath Incarnate's pulse and Absorb and Return, and Eternal Hunger's health above the maximum held in the temporary absorb
+
+**Affects:**
+- `tools/reapply_war_vows_v3a_workbook.py` (new) writes five rows into `docs/All_Things_Cataclysm.xlsx` and takes over
+  two earlier rows from `tools/reapply_war_vows_v1_workbook.py`, which no longer lists them. The generated table:
+  `game/Data/PassiveEffects.csv` (570 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - a placed action, `attacker_retaliation_taken`, on `hit_taken`;
+  - an event, `big_hit_taken`, which carries an amount;
+  - an action on it, `retaliation_pulse`, its radius in Event Value (above 0, up to 20) and its share above 0, up to
+    1,000, with no fraction, value kind or scale;
+  - `hit_taken` and `big_hit_taken` in `STRIKE_TARGET_EVENTS`, because both now name a living attacker.
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - the placed stacks carry one of three kinds, `EPlacedStackKind` (armour removed, damage cut, retaliation
+      taken), in place of a bool, and `RetaliationTakenPercentNow`;
+    - `hit_taken` names the attacker of a landed hit that is not a tick and not the character's own;
+    - `IsBigHit`, `NoteBigHitTaken`, `IsPayingForABigHit` and `SetPayingForABigHit`;
+    - `NoteLeechHealed`, `DecayLeechAbsorb` and `LeechAbsorbHeld`, Eternal Hunger's part of the temporary absorb,
+      cut to what remains when damage spends the absorb and cleared at a respawn;
+    - the pulse in `ApplyPoolAction`.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bPlacedRaisesRetaliationTaken` and `bRetaliationPulse`.
+  - `CataclysmItem.cpp`: the builder sets both.
+  - `CataclysmRetaliation.h` and `.cpp`:
+    - `TakenMultiplierOf`, applied to each target in `Pay` and in the pulse;
+    - `BigHitShareStat` (`retaliation_for_big_hits`), added to the share in `AmountFor` while a big hit is paid for;
+    - `PayPulseFor`, a pulse sized by a stated blow and share; `PayPulse` is now that function with the last blow
+      taken this floor and 100.
+  - `CataclysmVitalAttributeSet.cpp`: the big hit is judged where retaliation is paid and announced after
+    `NoteHitTaken`.
+  - `CataclysmRegeneration.cpp`: a leech heal of health is noted, with what did not fit, and Eternal Hunger's part
+    decays at each regeneration step.
+  - `CataclysmPlayerClassStats.cpp`: the three new stats in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV3aTests.cpp` (new, four tests).
+    - `CataclysmStatExemptionTests.cpp`: three probes, `ProbeRetaliationForBigHits`, `ProbeLeechOverhealAbsorbCap`
+      and `ProbeLeechOverhealAbsorbDecay`.
+    - `CataclysmDataTableTests.cpp`: the pin, 570.
+    - `CataclysmWarVowsV1Tests.cpp` and `CataclysmWarVowsV2aTests.cpp`: the Final Oaths' row counts, 6 (Berserker)
+      and 4 (Bulwark).
+    - `CataclysmWarDataRowsTests.cpp`: a comment that said Thornwall has no row.
+  - Python:
+    - `tools/tests/test_war_vows_v3a_scripts.py` (new, nineteen).
+    - `test_war_vows_v1_scripts.py`: four rows on four options.
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the two new action names.
+    - `test_pool_action_names_match_the_engine.py`: `hit_taken` now carries a character; the control that carries none
+      is `health_cost`.
+    - `test_damage_over_time_names_its_skill.py`: Vengeful Discharge's Bleed is laid in `PayPulseFor`.
+    - `test_generate_datatables.py`: the events a strike may hang on are ten, and the example of an event naming
+      nobody is `spell` in `hit_taken`'s place.
+    - `test_passive_effects_match_the_node_text.py`: 570 rows, 318 authored nodes, 59 authored options.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the three new stat lookups.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run:
+  - `Cataclysm.WarVowsV3a.`: four tests, new.
+  - `Cataclysm.StatExemption.`: three more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins moved: `Cataclysm.Data.` (570), `Cataclysm.WarVowsV1.` and `Cataclysm.WarVowsV2a.`;
+    - the groups touching what this changes: `Cataclysm.WarVowsV2b.`, `Cataclysm.WarDataRows.`,
+      `Cataclysm.Retaliation.`, `Cataclysm.RetaliationUnmitigated.`, `Cataclysm.WarFervour.` (Vengeful Discharge's
+      pulse), `Cataclysm.Enchantments.` (the placed stacks and `hit_taken`), `Cataclysm.TeleportWhenHit.`,
+      `Cataclysm.HitCancels.`, `Cataclysm.OverhealAbsorb.`, `Cataclysm.TemporaryAbsorb.`, `Cataclysm.Regeneration.`,
+      `Cataclysm.SetBonus.` and `Cataclysm.StrikeTarget.`.
+- **TITANFALL IS NOT BUILT, AND IS DEFERRED, NOT DROPPED.** It is the Bulwark's keystone `keystone_jg_final`: "When you
+  absorb a single hit exceeding 5,000 flat damage, you become unkillable for 2 seconds and your next attack deals damage
+  equal to the full amount of that hit. Requires 25,000 Maximum HP to activate. Can only trigger once every 30
+  seconds." It has no rows and is still marked "(not built yet: it does nothing)". The coordinating session ruled on
+  2026-11-25 that it is built after V5. The big-hit event here is fixed at 10% of maximum health and does not serve
+  Titanfall's 5,000 flat line as it stands.
+- **COLOSSUS ETERNAL AND THOUSAND DEATHS ARE V3b's**, the next slice. Thousand Deaths is still marked not built.
+- **`hit_taken` NOW NAMES THE ATTACKER** of a landed hit that is not a tick and not the character's own blow. Before
+  this it named nobody. The shipped rows on `hit_taken` were swept first: three enchantment action rows (`health`,
+  `apply_status_to_self`, `teleport_randomly`) and the Feasting set bonus's own-stack row. All of them act on the wearer
+  and none carries a condition on the target, so none of them changes.
+- **THE PLACED STACKS' BOOL BECAME A KIND.** `ReceivePlacedStack` with a bool still exists and places the same two
+  kinds as before, so no caller changed.
+
+### WHAT WAS RULED
+
+- The vow survey, 2026-11-25:
+  - item 8, Eternal Hunger: "health above maximum held in the temporary absorb, up to 100% of maximum HP, losing 1% of
+    maximum HP a second while not leeching (a judgement, play-test)";
+  - item 12, Thornwall: "any hit, the attacker passed on hit taken; 10 s, refreshed by each hit";
+  - item 18, Wrath Incarnate: "the big hit measured after defences".
+- The coordinating session's rulings on the V3 questions, 2026-11-25, "every proposal as written":
+  - Q0: V3a, then V3b; "Titanfall deferred, but kept on your list: it is a War keystone and gets built after V5".
+  - Q1: Thornwall, "a landed hit only". Q2: "a separate multiplier on the receiving side, in Pay and PayPulse, not in a
+    minion's StrikeBack".
+  - Q3: the big hit counts "all four pools (health, energy shield, mana, temporary absorb), the same 'got through'
+    figure leech uses: damage your energy shield took was still dealt to you. The 10% fixed in the engine."
+  - Q4: the pulse, a new action on `big_hit_taken`, 200% within the row's 4 metres, the attacker included, delivered as
+    `PayPulse` delivers, and paid besides the ordinary payment. Q5: Absorb and Return, "added to the share".
+  - Q6: "the decay applies only to Eternal Hunger's own part, with its own count cut by damage; other sources' shields
+    are not drained". Q7: "not leeching" is no leech payment in the last second.
+
+### JUDGEMENTS
+
+- **Thornwall's stacks are read whoever placed them.** Only a player can wear Thornwall, and the multiplier is the
+  target's, so "the retaliation damage they take from you" is not narrowed further.
+- **The pulse is sized as retaliation is: by what the blow was worth before the defender's defences** (`Hit.Damage`,
+  which `Pay` is given). The big hit is judged on what got through after them, as ruled. So the line is drawn after
+  defences and the payment is priced before them, as every retaliation payment is.
+- **The character's own blow is never a big hit and places no Thornwall stack**: it has nobody to answer.
+- **A leech payment that all fitted still counts as leeching**: its time is noted whether or not anything overflowed.
+- **The decay is a stat of its own** (`leech_overheal_absorb_decay_percent_per_second`, 1), not a constant, so the
+  play-test point can be tuned in the workbook.
+- **`hit_taken` and `big_hit_taken` are events a strike may hang on.** The test that reads the engine requires every
+  event raised with a character to be on that list or on the list of characters that cannot be struck. No row strikes
+  on either today.
+
+### THE PYTHON SUITE
+
+On `eab36da502ca534da30663db6d364a3f297c1fad`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8592 passed, 9 skipped in 615.67s**, and the JUnit file `tests="8602" failures="1"
+errors="0" skipped="9"`, which is 8,592 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**THE FIRST RUN, on the code commit `873894e5b520b3ad7007966ab518e896cedce115`, failed two more**, both in
+`test_generate_datatables.py::TestStrikeTarget`: one pinned the events a strike may hang on at eight, and one used
+`hit_taken` as an event naming nobody. Both were this slice's: it added `hit_taken` and `big_hit_taken` to that list.
+Corrected in `eab36da50`; that run read 3 failed, 8590 passed, 9 skipped.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| a retaliation pulse given the default fraction of maximum | `pytest tools/tests/test_war_vows_v3a_scripts.py` | `test_the_control_a_pulse_is_read_with_its_radius_and_no_fraction` |
+| a retaliation pulse allowed on `hit_taken` | the same | `test_a_pulse_on_an_event_that_is_not_a_big_hit_is_refused`, `test_the_names_are_the_generators` |
+| Thornwall's stack allowed on `block` | the same | `test_thornwalls_stack_on_an_event_naming_nobody_who_struck_is_refused`, `test_the_names_are_the_generators` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV3a.ThornwallStacksOnTheAttackerOfALandedHitAndRaisesTheRetaliationItTakes` | a tick and an evaded blow place nothing (the controls); twelve landed hits place the cap of ten, 50%; a payment of 100 reaches the striker as 150 and a bystander as 100 (the control); the stacks lapse after 10 seconds |
+| `Cataclysm.WarVowsV3a.ABigHitPaysWrathIncarnatesPulseToEveryEnemyWithinItsRadius` | real blows on a wearer of 100,000 health with retaliation at 10: a blow of 5,000 is not big (the control), the striker takes 500 and the creature 3 metres away nothing; a blow of 15,000 is big, the striker takes 1,500 and the pulse's 3,000, the creature 3 metres away 3,000 and the one 7 metres away nothing |
+| `Cataclysm.WarVowsV3a.EternalHungersPartOfTheAbsorbIsCutByDamageAndDecaysAloneWhileNotLeeching` | a heal that is not leech adds nothing (the control); a leech payment of 3,000 at full health is all held; within a second of it nothing decays (the control); the decay takes the part and stops at another source's 2,000; damage cuts the part to what remains |
+| `Cataclysm.WarVowsV3a.AWarPlayerTakingTheOptionsIsHandedTheirActionsAndStats` | through `SetPassiveAllocation`: Thornwall's stack, the pulse, 6 for big hits at 2 points of Absorb and Return, Eternal Hunger's cap of 100 and decay of 1; the first options and no Absorb and Return hand over none of it (the controls) |
+| the three probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | `retaliation_for_big_hits` at 3: a big hit's payment of 100 becomes 115, and not for a blow that is not big; the cap: a leech payment of 300 at full health is held, a further 900 stops at 1,000; the decay at 1: 500 loses 10 in a second, and a holder without it loses nothing |
+
+### C++ GUARD PROOFS (planned, three)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmRetaliation.cpp`: `Pay` sends `Amount + Stored` without `TakenMultiplierOf(Target)` | `Cataclysm.WarVowsV3a.` | `ThornwallStacksOnTheAttackerOfALandedHitAndRaisesTheRetaliationItTakes` |
+| `CataclysmVitalAttributeSet.cpp`: the big hit never announced (`IsBigHit(GotThrough, GetMaxHealth())` in the announcement replaced by `false`) | `Cataclysm.WarVowsV3a.` | `ABigHitPaysWrathIncarnatesPulseToEveryEnemyWithinItsRadius` |
+| `CataclysmAbilitySystemComponent.cpp`: `SpendTemporaryAbsorb` leaves Eternal Hunger's part uncut | `Cataclysm.WarVowsV3a.` | `EternalHungersPartOfTheAbsorbIsCutByDamageAndDecaysAloneWhileNotLeeching` |
+
+---
+
+## 2026-11-25 — Three owner rulings on the War line: Berserking at 1% a point, the gadget enchantments scoped to Type.Gadget, and The Unbreakable Wall negating every block, with Iron Will charging nothing for a block the Wall negated
+
+**Affects:**
+- `tools/apply_war_owner_rulings_2026_11_25.py` (new) writes all three into `docs/All_Things_Cataclysm.xlsx`,
+  `docs/Berserker_Class_Tree_Final.json` and `docs/Bulwark_Class_Tree_Final.json`. The generated tables:
+  `game/Data/PassiveEffects.csv` (565 rows), `game/Data/EnchantmentEffects.csv` (709 rows, count unchanged) and
+  `game/Data/PassiveNodes.csv`. `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects`,
+  `DT_EnchantmentEffects` and `DT_PassiveNodes`.**
+- `tools/reapply_war_berserker_states_workbook.py`: Berserking's row states 1.
+- `tools/generate_datatables.py`: `GADGET_ROW_TAG` is `Type.Gadget`.
+- C++:
+  - `CataclysmDamageCalculation.h` and `.cpp`: `EveryBlockNegatesStat` (`every_block_negates`), read at the block
+    step, and `FCataclysmDamageResult::bNegatedByEveryBlock`.
+  - `CataclysmVitalAttributeSet.cpp`: Iron Will's cost is not charged for a block the flag negated.
+  - `CataclysmPlayerClassStats.cpp`: the flag in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmStatExemptionTests.cpp`: a probe, `ProbeEveryBlockNegates`; and a new test,
+      `Cataclysm.WarOwnerRulings.IronWillChargesNothingForABlockTheUnbreakableWallNegated`.
+    - `CataclysmSkillTrapTests.cpp`: the gadget armour row's test reads the shipped row's tags, `Type.Gadget`.
+    - `CataclysmEnchantmentEffectTests.cpp`: 29 places that named the gadget rows' tag move to `Type.Gadget`, and one
+      test is renamed: `...TheGadgetRowsAreStillGrantedByAnyGadgetDestroyedAndRaiseOnlyADeployablesDamage` is now
+      `...RaiseOnlyAGadgetsDamage`.
+    - `CataclysmBerserkerStatesTests.cpp`: the generated Berserking row, 1.
+    - `CataclysmWarVowsV1Tests.cpp`: the Bulwark Final Oath's row count, 3.
+    - `CataclysmDataTableTests.cpp`: the pin, 565.
+  - Python:
+    - `tools/tests/test_war_owner_rulings_scripts.py` (new, seven).
+    - `test_generate_datatables.py`: the five gadget-stat classes' made-up rows require `Type.Gadget`.
+    - `test_passive_effects_match_the_node_text.py`: 565 rows, 58 authored options, the Wall's words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the three assets, and run:
+  - `Cataclysm.WarOwnerRulings.`: one test, new.
+  - `Cataclysm.StatExemption.`: one more probe inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - `Cataclysm.Traps.`, `Cataclysm.Enchantments.`, `Cataclysm.HealingSkillUse.` (one test renamed),
+    `Cataclysm.BerserkerStates.`, `Cataclysm.WarVowsV1.`, `Cataclysm.Data.` (565): counts unchanged.
+- **BERSERKING IS A TENTH OF WHAT IT WAS.** At 10 points with 100 Fervour, one melee attack deals +1,000%, not
+  +10,000%.
+- **THE GADGET ENCHANTMENTS NO LONGER REACH A TRAP.** Rows scoped to `Type.Deployable` reached Spike Traps and
+  War traps, unless the reading code left traps out by itself. Now the tag leaves them out.
+  - The enchantments' own roll tags, which decide where they can roll, are unchanged.
+  - The one enchantment that says "deployables" ("Your deployables reserve 15%-30% reduced Fervour") keeps
+    `Type.Deployable`.
+  - THE STANDING RULE against changing War enchantments' tags is lifted for these 18 by the owner's ruling, quoted
+    below.
+- **THE UNBREAKABLE WALL AND IRON WILL, THE OVERLAP.** A character holding both has every block negated by the Wall.
+  Iron Will's negation then changes nothing. As built until now, Iron Will would still have charged its 20 Fervour
+  (less 2 a point) on each such block at or above 75 Fervour. By the coordinating session's ruling it now charges
+  nothing for a block the Wall negated.
+  - **NOT CHANGED, and not part of this ruling:** a partial negation chance from other sources still sums with Iron
+    Will's 100 as before. Iron Will still charges for a block those sources alone might have negated.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, relayed by the coordinating session, verbatim:
+  - Berserking: "yeah lower it to 1%".
+  - The 18 enchantment rows that mean gadgets and read `Type.Deployable`: "agree with your rec".
+  - The Unbreakable Wall: "accepted", the sentence "Every block negates the whole hit."
+- The coordinating session, 2026-11-25:
+  - "a player holding both The Unbreakable Wall and Iron Will must not pay Iron Will's Fervour for a block The
+    Unbreakable Wall already negates whole. Iron Will charges only when its negation changes what lands."
+  - "Accepted: the flag stat every_block_negates for The Unbreakable Wall, a block negates if the flag holds or the
+    roll succeeds, and Iron Will charges only on a negated block when the flag does not hold."
+
+**The sentences** (old beside new):
+
+| Node | Old | New |
+|---|---|---|
+| Berserking (`Berserker_trunk_009`) | "... that attack deals +10% bonus damage per point invested." | "... that attack deals +1% bonus damage per point invested." |
+| The Unbreakable Wall (`Bulwark_capstone_200`, option 1) | "You may equip a shield in your primary weapon slot. You may now block AOE damage." | "Every block negates the whole hit." |
+
+**The 18 enchantments**, 21 rows from `Type.Deployable` to `Type.Gadget` (three of them have two rows each):
+- Gadgets deal 20%-40% increased damage (two rows);
+- Gadgets deal bonus damage equal to 3%-6% of your maximum HP;
+- While stationary your gadgets deal 20%-40% increased damage;
+- Gadgets have 40%-70% increased HP;
+- Gadgets last 30%-60% longer;
+- Gadgets fire 20%-40% faster;
+- Gadgets apply a 15%-25% armor reduction;
+- Gadgets deal 5%-10% increased damage for each second;
+- Gadgets that survive for 15 seconds;
+- Gadgets have 20%-40% increased attack range;
+- When any of your gadgets is destroyed (two rows);
+- Your gadgets prioritize the highest HP enemy;
+- Gadgets fire at all enemies within range simultaneously;
+- When a gadget kills an enemy;
+- Your gadgets are invincible but lose 5% (two rows);
+- Gadgets copy the last skill you used;
+- When a gadget is destroyed it arms all traps;
+- When a gadget is destroyed the nearest active trap.
+
+### JUDGEMENTS
+
+- **The Wall is a flag, not a negation chance of 100**, ruled as above, so the block step can tell a block the Wall
+  negated (`bNegatedByEveryBlock`) from one Iron Will's chance negated.
+- **The generator's gadget-stat rule moves with the rows.** `refuse_a_gadget_row_the_game_cannot_read` held the six
+  gadget-only stats to exactly `Type.Deployable`. It now holds them to `Type.Gadget`. The reader asks with the
+  machine's own type tags, and every machine that is not a trap carries `Type.Gadget`, Bolt Turret, Ballista and the
+  skill gadget included.
+
+### THE PYTHON SUITE
+
+Run on `3cf13b254d4bb5c3b803ca5145ec0a32771dec97`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8570 passed, 9 skipped in
+612.03s**, and the JUnit file `tests="8580" failures="1" errors="0" skipped="9"`, which is 8,570 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `EnchantmentEffects.csv`, `MinionTypes.csv`, `PassiveEffects.csv`, `PassiveNodes.csv` and `WeaponSkills.csv`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 10 files read, 0 with complaints. The include audit over the nine
+changed .cpp files: 0 names unreachable.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and the
+tracked files identical afterwards to a copy taken before.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `tools/apply_war_owner_rulings_2026_11_25.py`: the workbook written before the sentences are checked | `pytest tools/tests/test_war_owner_rulings_scripts.py` | `test_the_script_refuses_a_sentence_somebody_wrote_since` |
+| `tools/generate_datatables.py`: `GADGET_ROW_TAG` back to `Type.Deployable` | `pytest tools/tests/test_generate_datatables.py -k GadgetsChooseTheMostHealth` | three, among them `test_the_ruled_row_is_carried_through_and_is_not_refused` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarOwnerRulings.IronWillChargesNothingForABlockTheUnbreakableWallNegated` | two defenders with 100 Fervour and Iron Will's shape block a real blow: alone, the negated block costs 20 (the control); with the Wall's flag as well, it costs nothing |
+| `ProbeEveryBlockNegates` (inside `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`) | the negation roll pinned at 99: the plain blocked blow keeps its share, and the defender holding the flag keeps nothing |
+| `Cataclysm.Traps.TheGadgetArmourReductionRowReachesASkillGadgetsHitAndNotASkillTrapsHit` | the shipped row requires `Type.Gadget`; a skill gadget's hit takes 20% of its enemy's armour, and a skill trap's takes none (the control) |
+
+### C++ GUARD PROOFS (planned, two)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: Iron Will charged for every negated block (`&& !Outcome.bNegatedByEveryBlock` taken out) | `Cataclysm.WarOwnerRulings.` | `IronWillChargesNothingForABlockTheUnbreakableWallNegated` |
+| `CataclysmDamageCalculation.cpp`: the flag not read (`bNegatedByEveryBlock = false`) | `Cataclysm.WarOwnerRulings.` | the same test: the Wall's block is no longer negated, at the set-up check |
+
+---
+
+## 2026-11-25 — The War machines reserve their Fervour: Bolt Turret, Ballista and Iron Fortress hold 5 each, the pool is their only limit, and Iron Fortress places its whole set or none of it (issue #1934)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` and `.h`:
+  - `UCataclysmDeployableSkill::DeployOne` drops its `MaxActive` count cap. It refuses a machine the pool has no room
+    for (`UCataclysmCommand::HasRoomToReserve`), and holds each placed machine's reserve through
+    `UCataclysmCommand::HoldReserve`.
+  - `ActivateAbility` checks the whole set's reserve before placing any of it.
+  - Both refusals write a log line saying why and set the new `bRefusedForRoom`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`: the three rows lose `MaxActive` and the sentence
+  stating the cap (`tools/apply_war_gadget_reserves_2026_11_25.py`, new). **The editor step must rebuild
+  `DT_WeaponSkills`.**
+- `tools/generate_datatables.py`: `refuse_a_count_cap_on_a_summon` refuses a `MaxActive` on a Deployable row too.
+- Tests:
+  - Unreal, in `CataclysmCommandTests.cpp`:
+    - two tests rewritten for the reserve (below);
+    - `Cataclysm.FervourReserve.AWarMachineReservesFiveAndTheSpendableFervourDropsAtOnce` and
+      `Cataclysm.FervourReserve.IronFortressPlacesItsWholeSetOrNoneOfIt`, new.
+  - Python:
+    - `tools/tests/test_war_gadget_reserves_scripts.py` (new, five).
+    - `test_minion_skill_shapes.py`: a Deployable stating a cap is refused, with its control; the control that a
+      Deployable was left alone is gone.
+    - `tools/tests/test_a_deployable_cap_holds_what_base_timing_allows.py` is REWRITTEN, keeping its name because this
+      log names it. It held the caps of the ruling of 2026-09-25, which this one replaces. It now holds that the three
+      shipped machine rows state a reserve of 5 and no cap.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_WeaponSkills`, and run:
+  - `Cataclysm.FervourReserve.`: two tests more than before.
+  - `Cataclysm.Command.`:
+    - `TheShippedDeployablesStateCapsAndThreeActivationsLeaveOneBoltTurret` is renamed
+      `TheShippedDeployablesReserveFiveEachAndThePoolIsTheirOnlyLimit`;
+    - its count is unchanged.
+  - `Cataclysm.MinionDeath.`:
+    - `AGadgetKilledThroughItsHealthFreesItsPlaceAtOnce` now frees a reserve, not a capped place;
+    - the name and count are unchanged.
+  - `Cataclysm.KindReserves.` and `Cataclysm.NoCaps.`: neighbours, unchanged.
+- **PLAY CHANGES FOR EVERY WAR PLAYER WITH THESE SKILLS.**
+  - A machine now takes 5 Fervour off what can be spent while it stands; Crowned's, the reduction percentages' and the
+    skill level's changes apply.
+  - The count caps of 1, 2 and 5 are gone. **A full bar of 100 now holds up to 20 Bolt Turrets**, each press placing
+    one while its cooldown allows. Before, one could stand at a time.
+- **A MERGE OBLIGATION.** The Death line's slice C1 (`feat/death-trees-c1`, `54aa0bfb3`) judges "the bar is full"
+  against the maximum less what minions reserve (`FCataclysmStatConditions::ClassResourceReserved`, from
+  `UCataclysmCommand::ReservedFervourAmong`). A War machine's reserve is held through `HoldReserve` like every
+  follower's, so that rule counts it once both lines are merged.
+  - The test the coordinating session asked for cannot compile here, because this line lacks that field.
+  - It is to be written by whichever line merges second: a War player with a full 100 who places one Bolt Turret
+    reads `class_resource_at_maximum` at 95 held and not at 94.
+- **A REFUSED PRESS IS SPENT**, as a refused Summon Imp's is. On-screen refusals for every reserve (imp, thrall and
+  machine) are a separate backlog item, by the coordinating session.
+- **#1934 IS CLOSED BY HAND WHEN THIS MERGES.** The coordinating session does it: "Closes #1934" does not fire on a
+  merge into `development`.
+
+### WHAT WAS RULED
+
+- The owner, 2026-11-25, relayed by the coordinating session: "build War skill gadget Fervour reserves (issue #1934)
+  next, after V2b and before V3."
+- The coordinating session, 2026-11-25:
+  - "Q1 (a): Iron Fortress checks the whole set's reserve before placing any; if it does not fit, none is placed."
+  - "Q2: remove the count caps once the machines reserve. The owner's ruling of 2026-11-20 under #2787 ("that's
+    limiting on its own") is about exactly this ... Update the rows' and descriptions' wording that states a cap, and
+    say in the entry that a full bar now holds up to 20 turrets."
+  - "Q3: the log line and a flag a test asserts, as the thrall and imp do, the press spent."
+
+**The rows** (old beside new; the Shape Params lose only `; MaxActive=N`):
+
+| Skill | Sentence removed from the description | `MaxActive` removed |
+|---|---|---|
+| Bolt Turret (`War_Crossbow_Special`) | "One turret may stand at a time." | 1 |
+| Ballista (`War_Spear_Special`) | "Up to 2 ballistas may stand at once." | 2 |
+| Iron Fortress (`War_Spear_Ultimate`) | "One set may stand at a time." | 5 |
+
+Each description still says "reserves 5 Fervour while it stands", and Iron Fortress's "so the set reserves 25".
+
+### JUDGEMENTS
+
+- **`DeployOne` checks room for one machine as well**, so a test or a later caller placing one directly honours the
+  reserve. `ActivateAbility`'s whole-set check comes first, so a press either places the set or refuses before
+  `DeployOne` is asked.
+- **Each machine of a set reserves the row's figure, asked with the skill's tags**, as Summon Imp's is. A reduction
+  scoped to `Type.Trap` reaches Iron Fortress's spike traps only if the skill's tags carry it. They do: the row's tags
+  include `Type.Trap`.
+- **`LivingDeployedCount` and the `Deployed` list are kept.** Nothing reads them as a cap now; the list holds what this
+  instance has out.
+
+### THE PYTHON SUITE
+
+Run on `3ae3f543252ee784d14b6f3e4bddb97308061fcb`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8563 passed, 9 skipped in
+476.31s**, and the JUnit file `tests="8573" failures="1" errors="0" skipped="9"`, which is 8,563 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `MinionTypes.csv`, `PassiveEffects.csv`, `PassiveNodes.csv` and `WeaponSkills.csv`, which this stack carries
+until the editor step. `python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed`: 3
+files read, 0 with complaints. The include audit over the two changed .cpp files: 0 names unreachable.
+
+### PYTHON GUARD PROOF
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; `proved` True, and the
+tracked files identical afterwards to a copy taken before.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `tools/generate_datatables.py`: the count-cap refusal reads Summon rows only again | `pytest tools/tests/test_minion_skill_shapes.py` | `test_a_deployable_stating_a_count_cap_is_refused` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.FervourReserve.AWarMachineReservesFiveAndTheSpendableFervourDropsAtOnce` | a Bolt Turret in a full pool of 150 reserves 5, leaves 145 spendable and cuts the pool to 145. Control: the row with no reserve holds nothing |
+| `Cataclysm.FervourReserve.IronFortressPlacesItsWholeSetOrNoneOfIt` | the shipped row in a pool of 24 places nothing and sets the flag. Control: in a pool of 25 all five stand, reserving 25 |
+| `Cataclysm.Command.TheShippedDeployablesReserveFiveEachAndThePoolIsTheirOnlyLimit` | the three shipped rows state no cap and 5 a machine; three presses in a pool of 150 leave three turrets reserving 15. Control: in a pool of 10, two stand and the third is refused for room |
+| `Cataclysm.MinionDeath.AGadgetKilledThroughItsHealthFreesItsPlaceAtOnce` | a pool of 5: a second turret is refused for room while the first lives, and placed once it dies |
+
+Predicted counts: `Cataclysm.FervourReserve.` two more; `Cataclysm.Command.` and `Cataclysm.MinionDeath.` unchanged.
+
+### C++ GUARD PROOFS (planned, two, with `test_prefix="Cataclysm.FervourReserve."`)
+
+| Break | Predicted named failure |
+|---|---|
+| `ActivateAbility`: the whole set's check asks for one machine's reserve (`Each * 1.0f`) | `IronFortressPlacesItsWholeSetOrNoneOfIt` (four are placed in a pool of 24) |
+| `DeployOne`: `HoldReserve(Self, Machine, Reserve)` holds 0 | `AWarMachineReservesFiveAndTheSpendableFervourDropsAtOnce` |
+
+---
+
+## 2026-11-25 — The War vow options' second slice (V2b): Fervour shares judged against the maximum the Fervour rows make, Warlord's armour removal on every enemy nearby, a nova sized by a hit for Pure Carnage and Ragnarok's shockwaves, Blood Oath's retaliation penetration, Spiteful Guard's store of blocked damage, and a second condition on an action
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (564 rows): five rows on five options
+  (`tools/reapply_war_vows_v2b_workbook.py`, new), which also takes over Ragnarok's two earlier rows from
+  `tools/reapply_war_vows_v2a_workbook.py` (now eight rows on five nodes and options). `docs/README.md` (the count).
+  **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - two actions: `enemy_armor_removed_nearby` in `PLACED_ACTIONS`, on `hit_dealt`; and `smite_nearby_by_hit` in
+    `NEARBY_ACTIONS`, on the events that carry a hit (`SMITE_NEARBY_BY_HIT_EVENTS`), its radius required in Event Value
+    (above 0 and up to 20 metres);
+  - an action row may state Condition 2, an execute excepted.
+- C++:
+  - `CataclysmAbilitySystemComponent.cpp` and `.h`:
+    - `CurrentConditions` evaluates the `class_resource` line once, last but one, for `ClassResourceMaximum`;
+    - `PoolActionAllowed` judges a second condition;
+    - `ActOnNearby` takes the event's amount and acts for the two new kinds;
+    - a stored-blocked-damage store (`NoteBlockedDamageForRetaliation`, `SpendStoredBlockedDamage`), filled by
+      `NoteBlocked` and cleared at death;
+    - two action names.
+  - `CataclysmStatPipeline.h`: `ECataclysmNearbyAction::SmiteByHit` and `ArmourRemoved`;
+    `FCataclysmPoolAction::Condition2` and `ConditionValue2`; comments on `ClassResourceMaximum` and
+    `ClassResourceMaximumNow`.
+  - `CataclysmItem.cpp`: the builder maps the two actions and copies a second condition.
+  - `CataclysmRetaliation.h` and `.cpp`: `PenetrationStat` and `BlockedDamageAddedStat`; `Pay` adds the store to its
+    first blow.
+  - `CataclysmVitalAttributeSet.cpp`: a blow stamped as retaliation adds the attacker's `retaliation_penetration`.
+  - `CataclysmPlayerClassStats.cpp`: the two stats in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV2bTests.cpp` (new, four).
+    - `CataclysmStatExemptionTests.cpp`: two probes, `ProbeRetaliationPenetration` and
+      `ProbeBlockedDamageAddedToNextRetaliation`.
+    - `CataclysmWarVowsV2aTests.cpp`: three row counts; and its "not built yet" test now uses Thousand Deaths and
+      Eternal Hunger, since V2b builds the Warlord it used.
+    - `CataclysmWarVowsV1Tests.cpp`: three row counts.
+    - `CataclysmDataTableTests.cpp`: the pin, 564.
+  - Python:
+    - `tools/tests/test_war_vows_v2b_scripts.py` (new, fifteen).
+    - `test_war_vows_v2a_scripts.py`: eight rows on five nodes and options; Ragnarok's test moved to the new file.
+    - `test_passive_effects_match_the_node_text.py`: 564 rows and 57 authored options; Spiteful Guard stated in words;
+      Opportunist's exemption keyed by its empty condition too, since Warlord's action row shares its node and empty
+      stat.
+    - `test_generate_datatables.py`: the second-condition refusal is an execute's now.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the two new lookups.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  these groups:
+  - `Cataclysm.WarVowsV2b.`: four tests, new.
+  - `Cataclysm.WarVowsV2a.`: six, three row counts moved and one test changed (above).
+  - `Cataclysm.WarVowsV1.`: three, three row counts moved.
+  - `Cataclysm.Data.`: the pin, 564.
+  - `Cataclysm.StatExemption.`: two more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - Neighbours, their counts unchanged:
+    - `Cataclysm.BlockReflect.`, for `ActOnNearby` and the block note;
+    - `Cataclysm.Retaliation.` and `Cataclysm.RetaliationUnmitigated.`, for `Pay`;
+    - `Cataclysm.Enchantments.`, for `PoolActionAllowed` and the builder;
+    - `Cataclysm.BerserkerStates.` and `Cataclysm.Passives.`, for the conditions' maximum.
+- **THE FERVOUR SHARE CHANGE MOVES PLAY FOR TWO KINDS OF CHARACTER.** `class_resource_above`,
+  `class_resource_at_or_below` and `class_resource_at_maximum` now divide by the maximum with the `class_resource`
+  rows that hold now. This changes play in two cases:
+  - **Ragnarok with two hands.** The bar is 200, and Unstoppable's "above 75% Fervour" holds at 151, not 76.
+  - **Vessel (the Ritualist).** "At maximum" is judged against the real bar, not a little before it. That is the cost
+    commit `2df271abf` wrote at the line under issue #1515.
+- **ISSUE #1515 IS NOT CLOSED BY THIS**, as the coordinating session asked to be checked. It was already closed, and
+  its subject was 48 Ravager and Ritualist nodes. The cost this change removes was recorded at the line by commit
+  `2df271abf` (Weight Bearing and Vessel, 2026-09-23), and no open issue tracked it.
+- **THE ONE-PASS LIMIT.** The maximum is worked out once, near the end of `CurrentConditions`, with the state already
+  built. A maximum-Fervour row that itself depends on a Fervour share or a full bar is therefore judged against the
+  unconditioned maximum. No such row exists.
+- **A MERGE OBLIGATION, NAMED AS THE COORDINATING SESSION ASKED.** The Death line's slice C1 (`feat/death-trees-c1`,
+  `54aa0bfb3`) changed "the bar is full" to "held reaches the maximum less the reserve", for every class, in the same
+  conditions (`ClassResourceAtMaximum`, with `FCataclysmStatConditions::ClassResourceReserved`). Whichever of the two
+  merges second keeps both: the full maximum from this change, less the reserve from theirs. Both read
+  `ClassResourceMaximum`, so the two compose if both edits survive the merge.
+- **AN ACTION MAY NOW CARRY A SECOND CONDITION**, for every action, not only Warlord's. It is judged beside the first,
+  against the same state, when the event fires. An execute still carries one: its condition is its share of health,
+  judged after the hit. The generator test that pinned "An action carries one condition" now pins the execute's
+  refusal, and was renamed.
+- **OPTIONS STILL WITH NO ROW**, which the tree screen marks "(not built yet: it does nothing)": 15.
+  - The Saboteur's twelve.
+  - Thousand Deaths, Thornwall and The Unbreakable Wall.
+  - 120 nodes, unchanged by this branch.
+
+### WHAT WAS RULED
+
+- The coordinating session, 2026-11-25, on the vow survey, verbatim in the parts this branch builds:
+  - "1 Warlord: all enemies within 5 m."
+  - "5 Pure Carnage: a share of what the hit took from health."
+  - "11 Blood Oath: the retaliation-only penetration stat."
+  - "15 Spiteful Guard: as written."
+- The split: "V2b (Warlord, Pure Carnage, Ragnarok's shockwaves, Blood Oath, Spiteful Guard)".
+- The Fervour shares: "RULED IN, in V2b, as you propose: at the end of CurrentConditions, evaluate the class_resource
+  line once with the state already built and divide by that maximum. Test it with Ragnarok's doubling (Unstoppable's
+  "above 75%" holds at 151 of 200 and not at 76) and a control with no doubling. State the one-pass limit in the
+  entry."
+- "'Melee range' in a node is 4 metres" (`docs/Cataclysm_GDD_v2.md`, ruled on 2026-11-25), for Pure Carnage's
+  "within melee range".
+
+No sentence is reworded by this branch.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+| Option | Row |
+|---|---|
+| Warlord (`Berserker_capstone_25`, 1) | `enemy_armor_removed_nearby` 15 on `hit_dealt` with `Type.Melee`, above 50% Fervour and with a two-handed weapon, 3 seconds, one stack |
+| Pure Carnage (`Berserker_capstone_100`, 2) | `smite_nearby_by_hit` 30 on `critical_strike` in Frenzy, within 4 metres |
+| Ragnarok (`Berserker_capstone_200`, 1) | `smite_nearby_by_hit` 50 on `hit_dealt` in Wrath, within 6 metres, beside its drain removed and its doubled maximum |
+| Blood Oath (`Bulwark_capstone_25`, 3) | `retaliation_penetration` 25 |
+| Spiteful Guard (`Bulwark_capstone_100`, 3) | `blocked_damage_added_to_next_retaliation`, a flag |
+
+**Judgements:**
+
+- **Warlord's stack goes on every enemy within the nearby actions' 5 metres of the wearer**, as ruled. It is the armour
+  stack `enemy_armor_removed` places on the enemy struck, under its own key. Each hit restarts its 3-second window,
+  and its cap of one makes "refreshes on each hit" one stack, not several.
+  - Its two conditions are judged on the wearer when the hit is dealt.
+  - Its melee tag is judged on the hit's own skill tags.
+- **The nova is a share of what the hit took from health**, as ruled.
+  - It strikes every enemy within its radius, the one struck included: "all enemies within".
+  - It meets each one's mitigation, as the armour nova (`smite_nearby_by_armor`) does.
+  - Its blows fire none of the wearer's own rows, because `ActOnEvent` acts at depth one.
+  - **Its radius is the row's Event Value.** The gadget's shot at a trap's enemy already reads a radius in metres
+    there, so no column was added.
+  - Both rows carry the generator's quarter-second trigger wait for an event a hit fires, so Ragnarok's shockwaves come
+    at most four times a second.
+  - Pure Carnage states no weapon condition: Frenzy is entered only dual wielding. Ragnarok's shockwaves state none
+    either: Wrath is entered only with two hands.
+- **Blood Oath's 25 points are added to the attacker's penetration on every blow stamped as retaliation**, and on no
+  other. The blows stamped that way are the ordinary payment, the pulse, a creature's strike-back, a blocked blow's
+  reflect and Riposte. It is asked with no tags, as retaliation is no skill.
+- **Spiteful Guard's store:**
+  - It is filled by each block's removed damage while the flag holds. It has no ceiling, since the sentence states
+    none, and death clears it.
+  - It is spent whole on the first blow of the next ordinary retaliation payment (`UCataclysmRetaliation::Pay`), not
+    on a pulse, a reflect or Riposte: "your next retaliation hit".
+  - The first target is the attacker when there is one.
+  - It is added to what is sent, so the target's defences take their share of it as of the rest.
+  - A blow's own block is noted after its payment, so what it blocked waits for the next payment.
+
+### THE PYTHON SUITE
+
+**THE FIRST RUN FAILED TWO REAL TESTS.** On `870dc249babf0dff225f058999faef2750a0012a`: **3 failed, 8554 passed, 9
+skipped in 499.29s**, the JUnit file agreeing. Two of the failures were
+`test_charge_and_placed_action_names_match_the_engine.py`'s placed and nearby name tests. They hold the generator's
+action names equal to the engine's, and did not list V2b's two new names. They were corrected in
+`8b848fc9f52a3ff411a8354b1a29db1d9fc31ad0`, where that file reads 42 passed.
+
+**The second run**, on `8b848fc9f52a3ff411a8354b1a29db1d9fc31ad0`, with nothing in the worktree changing during the
+run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8556 passed, 9 skipped
+in 604.74s**, and the JUnit file `tests="8566" failures="1" errors="0" skipped="9"`, which is 8,556 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed` before the commit: 13 files read, 0 with complaints. The include audit
+over the branch's nine changed .cpp files: 0 names unreachable.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit. Each reported `proved`
+True: a named test failed with the break in, and the files passed with it restored. The tracked files were compared
+with a copy taken before the proofs, and were identical afterwards.
+
+| Break in `tools/generate_datatables.py` | Command | Named failure |
+|---|---|---|
+| the nova's radius no longer required | `pytest tools/tests/test_war_vows_v2b_scripts.py` | `test_a_nova_with_no_radius_is_refused` |
+| every action refused a second condition again | the same | `test_the_control_an_action_with_a_second_condition_is_read` |
+| the nova allowed on an event that carries no hit | the same | `test_a_nova_on_an_event_that_carries_no_hit_is_refused` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV2b.AFervourShareIsJudgedAgainstTheMaximumRagnaroksDoublingMakes` | a level 100 War player with a greataxe, Unstoppable and Ragnarok: an attribute of 100, a bar of 200, the conditions read 200, Unstoppable holds at 151 and not at 76. Control: with Eternal Hunger the conditions read 100, and it holds at 76 and not at 75 |
+| `Cataclysm.WarVowsV2b.ANovaSizedByAHitStrikesEveryEnemyWithinItsRadiusForItsShare` | 30% within 4 metres on a critical strike that took 200: the creatures at 2 and 3 metres lose 60 each, the one at 7 nothing. Control: a strike that took nothing strikes nobody |
+| `Cataclysm.WarVowsV2b.AnArmourStackGoesOnEveryEnemyNearbyOnlyWhileBothConditionsHold` | 15% for 3 seconds, one stack, under two health conditions: nothing at 60% or 10% health (controls); at 40% the creatures at 2 and 4 metres lose 15% of their armour and the one at 8 none; a second hit leaves 15% |
+| `Cataclysm.WarVowsV2b.AWarPlayerTakingTheOptionsIsHandedTheirActionsAndStats` | a Berserker with Warlord, Pure Carnage and Ragnarok is handed the armour removal (with its second condition and melee tag) and two novas (4 metres on a critical strike in Frenzy, 6 on a hit in Wrath); a Bulwark with Blood Oath and Spiteful Guard is handed 25 penetration and the flag. Controls: the third options, and Shield Oath and Bastion |
+
+Predicted counts:
+- `Cataclysm.WarVowsV2b.`: 4.
+- `Cataclysm.WarVowsV2a.`: 6.
+- `Cataclysm.WarVowsV1.`: 3.
+- The rest: unchanged.
+
+### C++ GUARD PROOFS (planned, three, with `test_prefix="Cataclysm.WarVowsV2b."`)
+
+| Break | Predicted named failure |
+|---|---|
+| `CataclysmAbilitySystemComponent.cpp`, `CurrentConditions`: `State.ClassResourceMaximum = FMath::Max(0.0f, State.ClassResourceMaximum + (Now - Folded));` keeps the attribute (`+ 0.0f`) | `AFervourShareIsJudgedAgainstTheMaximumRagnaroksDoublingMakes` |
+| `ActOnNearby`: the nova's `ApplyDirectDamage(Self, Other, ByHit)` sends 0 | `ANovaSizedByAHitStrikesEveryEnemyWithinItsRadiusForItsShare` |
+| `PoolActionAllowed`: the second condition's check made `false && ...` | `AnArmourStackGoesOnEveryEnemyNearbyOnlyWhileBothConditionsHold` |
+
+Blood Oath's and Spiteful Guard's engine halves are held by their two probes and get no planned proof here.
+
+---
+
+## 2026-11-25 — The War vow options' second slice (V2a): Titan, Unbridled and Bastion on two new scales, Ragnarok's doubled maximum Fervour, Opportunist on a new event raised on entering Frenzy, a pin refused by Unstoppable, and a passive node or option with no row marked "not built yet" on the tree screen
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (559 rows): seven rows on six nodes and options
+  (`tools/reapply_war_vows_v2a_workbook.py`, new), which also takes over Unstoppable's two rows and Ragnarok's drain row
+  from `tools/reapply_war_vows_v1_workbook.py` (now six rows on six options). `docs/README.md` (the sheet table's
+  count). **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - two scales, `max_class_resource` (bounded at 1,000) and `block_chance` (bounded at 100);
+  - the event `frenzy_entered`;
+  - `pin_suppressed` and `class_resource` accepted under a condition, each asked with the wearer's state;
+  - a refusal of a `class_resource` row scaled by `max_class_resource` (`MAXIMUM_CLASS_RESOURCE_SCALE`).
+- C++:
+  - `CataclysmStatPipeline.h` and `.cpp`: the two scales (`PerPointOfMaximumClassResource`, `PerPercentOfBlockChance`)
+    and two readings (`ClassResourceMaximumNow`, `BlockChance`).
+  - `CataclysmAbilitySystemComponent.cpp`: `CurrentConditions` reads the Block Chance attribute;
+    `WithEnemiesInReach` fills `ClassResourceMaximumNow` from `MaximumClassResource` only when a row asks for its scale.
+  - `CataclysmBerserkerStates.cpp`: `Judge` raises `frenzy_entered` when the state becomes Frenzy.
+  - `CataclysmSkillEffects.h` and `.cpp`: `ApplyPin` refuses a target holding `pin_suppressed`
+    (`PinSuppressedStat`). `CataclysmPlayerClassStats.cpp`: the stat in `StatsWithNoAttribute`.
+  - `CataclysmPassiveTree.h` and `.cpp`: `HasEffectRows`, `MarkedNotBuiltYet`, and an effect table handed to
+    `ShortDescriptionOf` and `FullDescriptionOf`. `CataclysmPassiveTreeWidget.h` and `.cpp`: the screen hands the table
+    over, puts the mark on an option's button (`OptionLabelFor`, new) and on a node's tool tip.
+- Tests:
+  - Unreal: `CataclysmWarVowsV2aTests.cpp` (new, six); `CataclysmStatExemptionTests.cpp` (a probe,
+    `ProbePinSuppressed`); `CataclysmWarVowsV1Tests.cpp` (two row counts, 3 and 2); `CataclysmDataTableTests.cpp`
+    (the pin, 559).
+  - Python: `tools/tests/test_war_vows_v2a_scripts.py` (new, thirteen). `test_war_vows_v1_scripts.py`: six rows on six
+    options, and its Unstoppable test moved to the new file. `test_passive_effects_match_the_node_text.py`: the two
+    scales' words, three values stated in words, 559 rows, 317 nodes, 53 authored options, and Ragnarok's excuse
+    removed (`MULTIPLIER_WAITS_FOR_A_LATER_SLICE` is empty). `test_stat_lookups_hand_over_what_they_should.py`: the
+    pin's lookup. `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`: 43 scales named by a row.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  these groups:
+  - `Cataclysm.WarVowsV2a.`: six tests, new.
+  - `Cataclysm.WarVowsV1.`: three, two row counts moved.
+  - `Cataclysm.Data.`: the pin, 559.
+  - `Cataclysm.StatExemption.`: one more probe inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - `Cataclysm.BerserkerStates.`, `Cataclysm.Debuff.` and `Cataclysm.Passives.`: neighbours of `Judge`, `ApplyPin`
+    and the tree screen; their counts unchanged.
+- **THE PASSIVE TREE SCREEN HAD NO "NOT BUILT YET" WORDS BEFORE THIS BRANCH**, which the coordinating session asked to
+  be searched. The words the game had were on the floor modifier panel only,
+  `UCataclysmFloorModifierPanelLayout::NameLineFor`: "(not built yet: it does nothing)". The skill screen has none
+  either. With this branch the same words go on:
+  - a node's description under the tree, and its tool tip on the graph;
+  - a capstone option's button while the choice is on offer, and its heading in the full description.
+  Measured on the generated table after this branch: 19 options and 120 nodes are marked, all in the three War trees.
+  - The options: the Saboteur's twelve; the Berserker's Warlord, Pure Carnage and Thousand Deaths; the Bulwark's Blood
+    Oath, Thornwall, Spiteful Guard and The Unbreakable Wall.
+  - The nodes: Berserker 45, Bulwark 43, Saboteur 32.
+- **"NO ROW" IS WHAT IS MARKED, NOT "PART OF THE SENTENCE".** An option with a row that builds part of its sentence is
+  not marked. Ragnarok (its shockwaves are V2b's), Eternal Hunger, Colossus Eternal and Wrath Incarnate are such
+  options. A player choosing one of them is not told that part of it does nothing yet.
+- **A COST THIS BRANCH WIDENS, FOR A RULING.** The Fervour percentage conditions divide by the maximum-Fervour
+  attribute, not by the maximum its conditioned rows make: `class_resource_above`, `class_resource_at_or_below` and
+  `class_resource_at_maximum`. The code says so at the line, under issue #1515, with the reason: the larger maximum
+  is worked out by `MaximumClassResource`, which calls `CurrentConditions`, so `CurrentConditions` cannot call it.
+  - Until now that gap was a few points, from Vessel's scaled row.
+  - With Ragnarok's doubling held, the bar is 200 and the attribute 100. So Unstoppable's "above 75% Fervour" holds at
+    76 Fervour held, not at 151, and every other "above N% Fervour" row moves the same way. `Judge` reads the larger
+    maximum, so Wrath still begins at a full 200.
+  - Not changed here. A fix that cannot loop: at the end of `CurrentConditions`, evaluate the `class_resource` line
+    once with the state already built, and use that maximum. It is to be ruled first, because it changes when every
+    such row holds.
+
+### WHAT WAS RULED
+
+- The coordinating session, 2026-11-25, on the vow survey, verbatim in the parts this branch builds:
+  - "2 Opportunist: build frenzy_entered."
+  - "3 Unstoppable: pin counts as the root; keep the name."
+  - "4 Titan: the maximum-Fervour scale (serves Unbridled too)."
+  - "6 Ragnarok: out-of-combat decay continues; Titan with Ragnarok accepted, noted as a play-test point."
+  - "13 Bastion: the block chance attribute."
+- The same day, the split: "V2a (Titan, Unbridled, Bastion, Ragnarok's doubling, Opportunist's frenzy_entered, pin as
+  root) then V2b (Warlord, Pure Carnage, Ragnarok's shockwaves, Blood Oath, Spiteful Guard), each with up to three C++
+  proofs."
+- And the display: "If nothing says so, add a small item to V2a: an option or node with no rows shows "not built yet"
+  on the tree screen, with a test and a control. A player should not spend a choice on words that do nothing without
+  being told." Then: "accepted; follow the floor modifier panel's wording so the game says it one way. Test it with a
+  node that has rows (control) and one that has none."
+
+No sentence is reworded by this branch.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+| Node or option | Row |
+|---|---|
+| Unbridled (`Berserker_trunk_004`) | `class_resource` flat 10 a point; from 5 points `damage_reduction` flat 1 for every 20 of `max_class_resource` |
+| Opportunist (`Berserker_capstone_25`, 2) | `cooldown_reset_movement` on `frenzy_entered`, 100 (always) |
+| Unstoppable (`Berserker_capstone_50`, 1) | `pin_suppressed`, a flag, beside the first slice's two, all above 75% Fervour with a two-handed weapon |
+| Titan (`Berserker_capstone_100`, 1) | `max_health` increased 1 for every 2 of `max_class_resource`, with a two-handed weapon |
+| Ragnarok (`Berserker_capstone_200`, 1) | `class_resource` more 100 with a two-handed weapon, beside the first slice's drain row |
+| Bastion (`Bulwark_capstone_100`, 1) | `max_health` increased 1 for every 1 of `block_chance` |
+
+**Judgements:**
+- **The maximum Titan and Unbridled read** is `MaximumClassResource`, the attribute with the `class_resource` rows that
+  hold now. So Ragnarok's doubling raises Titan's health, as ruled. It is not the maximum less what an army reserves
+  (`MaximumClassResourceAsked`): a reservation holds part of the bar back, and the bar is as big as it was.
+- **It is read only when a row asks**, in `WithEnemiesInReach`, as the increased movement speed reading is.
+  `MaximumClassResource` evaluates its line with `CurrentConditions`, not through `WithEnemiesInReach`, so it never
+  asks for this reading and cannot loop. A `class_resource` row scaled by it would read an unknown maximum and grant
+  nothing, so the generator refuses one.
+- **Bastion reads the attribute in `CurrentConditions`**, beside Armor, as ruled. A `block_chance` row conditioned on
+  the blow or the moment does not move it. Iron Aegis's doubling, while the character has not attacked for 3 seconds,
+  is such a row.
+- **`frenzy_entered` is raised once per entry**, after the state is set, with no tags. A Frenzy that goes on raises
+  nothing more, and Wrath raises nothing. A pool filled by a row's own action enters Frenzy without the event, because
+  `ActOnEvent` acts at depth one; `resource_full` is dropped there the same way.
+- **Opportunist's row states no weapon condition.** Frenzy is entered only dual wielding: `frenzy_on_full_fervour` is
+  under `dual_wielding`. Cut and Run's row does the same.
+- **Unstoppable refuses a pin before anything is applied**, so a refused pin leaves neither its tag nor its damage
+  taken increase, and a pin already running is kept.
+- **The not-built mark**:
+  - It follows the floor modifier panel's form, "<name> (not built yet: it does nothing)", on all four places.
+  - A capstone's own node is never marked. Its points carry no row by design; its options are marked where they are
+    offered.
+  - With no effect table, nothing is marked: a table that failed to load must not mark every node.
+
+### THE PYTHON SUITE
+
+Run on `8f6653cc38c1debccfe964e613192bd1cc83b594`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8541 passed, 9 skipped in
+476.11s**, and the JUnit file `tests="8551" failures="1" errors="0" skipped="9"`, which is 8,541 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `MinionTypes.csv`, `PassiveEffects.csv` and `PassiveNodes.csv`, which this stack of branches carries until the
+editor step. `python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed` before the
+commit: 15 files read, 0 with complaints. The include audit over the branch's eleven changed .cpp files: 0 names
+unreachable.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit. Each reported `proved`
+True: a named test failed with the break in, and the files passed with it restored. The tracked files were compared
+with a copy taken before the proofs, and were identical afterwards.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `CataclysmBerserkerStates.cpp`: the `frenzy_entered` call taken out | `pytest tools/tests/test_pool_action_names_match_the_engine.py` | `test_every_event_a_row_may_hang_on_is_one_the_game_fires` |
+| `tools/generate_datatables.py`: the refusal of a `class_resource` row scaled by its own maximum switched off | `pytest tools/tests/test_war_vows_v2a_scripts.py` | `test_a_class_resource_row_scaled_by_its_own_maximum_is_refused` |
+| `game/Data/PassiveEffects.csv`: Titan's step written as 3 rather than 2 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_scale_matches_the_words_of_the_node_it_is_on` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV2a.TitanUnbridledRagnarokAndBastionGiveTheirFiguresAndTheirControlsNone` | the generated rows through `ModifiersFor`: Titan 50% at 100 maximum Fervour with two hands (none with one hand, with the maximum unknown, or with Crimson Pact); Ragnarok 100 to 200 with two hands (100 with one, and with Eternal Hunger); Unbridled 50 Fervour and 7 damage reduction at 5 points and 150 maximum (40 and none at 4 points); Bastion 25% at 25% block chance (none unknown, none with Bloodied but Unbroken) |
+| `Cataclysm.WarVowsV2a.TitansScaleReadsTheMaximumFervourItsConditionedRowsMake` | a creature with a `class_resource` line of 100 doubling at or below 50% health, and Titan's row on `max_health` of 1,000: 1,500 at full health, 2,000 at 40%. Controls: the attribute stays 100; a lookup no row of which asks leaves the reading unknown |
+| `Cataclysm.WarVowsV2a.EnteringFrenzyRaisesFrenzyEnteredOncePerEntry` | `Judge` on a creature allowed Frenzy: one event at a full pool, none more while in Frenzy, a second after it ends and begins again. Control: a creature allowed Wrath raises none |
+| `Cataclysm.WarVowsV2a.AWarPlayerTakingOpportunistIsHandedAMovementResetOnEnteringFrenzy` | a level 10 War player through `SetPassiveAllocation`: Opportunist hands over one movement reset on `frenzy_entered`, always. Control: Vital Strikes none |
+| `Cataclysm.WarVowsV2a.UnstoppableRefusesAPinOnlyWhileItsConditionHolds` | `ModifiersFor`: Unstoppable grants `pin_suppressed` with both conditions (Thrill of the Hunt none); a creature holding it above 75% is not pinned at 100 Fervour, and is pinned at 50 (the control). **Corrected on 2026-11-25 before any window ran it**: it looked for the flag among `EnchantmentRowsFor`'s copies, which a stat row with a second condition never is, and would have failed |
+| `Cataclysm.WarVowsV2a.APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` | Open Wounds and Warlord, with no row, are marked in the description, the option button, the full description and the tool tip. Controls: Wrath and Vital Strikes, with rows, are not; with no table, nothing is |
+
+Predicted counts:
+- `Cataclysm.WarVowsV2a.`: 6.
+- `Cataclysm.WarVowsV1.`: 3.
+- `Cataclysm.Data.`, `Cataclysm.StatExemption.`, `Cataclysm.BerserkerStates.`, `Cataclysm.Debuff.` and
+  `Cataclysm.Passives.`: unchanged.
+
+### C++ GUARD PROOFS (planned, three, with `test_prefix="Cataclysm.WarVowsV2a."`)
+
+| Break | Predicted named failure |
+|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: `State.ClassResourceMaximumNow = MaximumClassResource();` reads the attribute instead (`= State.ClassResourceMaximum;`) | `TitansScaleReadsTheMaximumFervourItsConditionedRowsMake` |
+| `CataclysmSkillEffects.cpp`: the `PinSuppressedStat` check in `ApplyPin` made `false && ...` | `UnstoppableRefusesAPinOnlyWhileItsConditionHolds` |
+| `CataclysmPassiveTree.cpp`: `MarkedNotBuiltYet` returns the name unmarked | `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` |
+
+---
+
+## 2026-11-25 — The War vow options' first slice: nine rows on eight options, the ruled option sentences and the Saboteur's twelve options written into the tree files, and the passive row port's last eight columns made required
+
+**Affects:**
+- `docs/Berserker_Class_Tree_Final.json`, `docs/Bulwark_Class_Tree_Final.json`, `docs/Saboteur_Class_Tree_Final.json`:
+  five option sentences reworded and the Saboteur's twelve options written into its four oaths
+  (`tools/apply_war_vow_sentences_2026_11_25.py`, new). `game/Data/PassiveNodes.csv`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (552 rows): nine rows on eight options, and the eight
+  columns Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment and Damage Share
+  (`tools/reapply_war_vows_v1_workbook.py`, new). `docs/README.md` (the sheet table: the count and the columns).
+  **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/reapply_war_data_rows_workbook.py`:
+  - the row record gains the eight columns' fields, under the Death line's names (`fraction_of`, `scale_offset`,
+    `every_seconds`, `every_nth`, `trigger_cooldown`, `event_value`, `ailment`, `damage_share`);
+  - `columns` adds columns whether or not a row uses them, and adding columns alone is a change to write;
+  - the read-back requires the columns too;
+  - a report line names an action row by its action and event.
+- `tools/generate_datatables.py`: `OPTIONAL_COLUMNS` is empty, as on the Death line.
+- C++, COMMENTS ONLY: `CataclysmPassiveTree.h` and `.cpp`, `CataclysmDataRows.h`, `CataclysmPassiveTreeWidget.cpp`
+  no longer say the Saboteur's capstones offer no options. The code always read the option cells, so its behaviour is
+  unchanged.
+- Tests:
+  - Unreal: `CataclysmWarVowsV1Tests.cpp` (new, three); `CataclysmDataTableTests.cpp` (the pin, 552);
+    `CataclysmPassiveTreeTests.cpp`, where two tests that read the Saboteur's First Oath as a capstone naming no option
+    now read the hand-made table's `Ravager_empty`, since no real capstone names none.
+  - Python: `tools/tests/test_war_vows_v1_scripts.py` (new, fifteen).
+  - `test_class_passive_trees.py`: the rule of three named options on every capstone, widened to every tree (issue
+    #935's second part), and its wording counts.
+  - `test_passive_tables_match_the_tree_files.py`: 72 options carried across.
+  - `test_passive_effects_match_the_node_text.py`: the words, 552 rows, 316 nodes, 50 authored and 72 named options,
+    "are doubled", Wrath Incarnate's armour scale, and a waiting list for Ragnarok's doubling.
+  - `test_passive_rows_carry_the_action_columns.py`: the Death line's test, verbatim.
+  - `test_generate_datatables.py`: the test sheets carry the eight columns.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run these
+  groups:
+  - `Cataclysm.WarVowsV1.`: three tests, new.
+  - `Cataclysm.Data.`: the pin, 552.
+  - `Cataclysm.Passives.`: its count unchanged; two of its tests moved to the hand-made table:
+    `ACapstoneThatHasOpenedAndIsUndecidedSaysSo` and `ReadingACapstoneSaysWhatItsThreeOptionsDo`.
+  - `Cataclysm.PassiveRowPort.`: the builder these rows go through; its count unchanged.
+- **ISSUE #935 IS DONE BY THIS BRANCH**, both of its parts: the Saboteur's twelve options are written, and the rule
+  that every capstone offers three named options now covers every tree, so the next tree cannot ship without them.
+  The issue's smaller note, the threshold field's name, was settled by the passive order fixes of 2026-11-24, which
+  gave the Saboteur's oaths `threshold`.
+  To be closed when this branch merges.
+- **THE SABOTEUR'S TWELVE OPTIONS ARE WORDS, NOT YET MECHANICS.** A Saboteur can now choose one, and gets nothing until
+  its slice is built (V4 and V5). Their source is the "Ready to paste" block of
+  `C:/Projects/Cataclysm/.claude/worktrees/nice-carson-77a188/.claude/windows/saboteur_vows_draft.md`, which is not in
+  git. Each sentence was checked against that block, word for word, before it was written.
+- **EIGHT OPTIONS ARE WRITTEN IN PART**; the rest waits for its slice:
+  - Unstoppable: a pin as a root waits for V2.
+  - Ragnarok: the doubled maximum and the shockwaves wait for V2.
+  - Eternal Hunger: health above the maximum waits for V3.
+  - Colossus Eternal: increases to Maximum HP counted twice, the lethal save, and the bonus from current health wait
+    for V2 and V3.
+  - Wrath Incarnate: the big hit waits for V3.
+  - Shield Oath, Flesh Oath and Bloodied but Unbroken are whole.
+- **WHAT MATCHES THE DEATH LINE, AND WHAT WHOEVER MERGES SECOND RESOLVES.** Checked against
+  `origin/feat/death-trees-c4a` (`fed4e15fe`), as the coordinating session asked.
+  - Matches:
+    - the fourteen port columns, under the same header names, all required;
+    - the same Fraction Of values (this branch uses only `maximum` and `current`; the Death line's two others are its
+      own);
+    - the row record's field names;
+    - the name and assertions of `test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them`.
+  - Still differs:
+    - the column order;
+    - Max Points, on this line only;
+    - the text of the `OPTIONAL_COLUMNS` comment;
+    - the rest of `test_passive_rows_carry_the_action_columns.py`;
+    - `test_generate_datatables.py`'s header lists (`PORT_EIGHT_HEADERS` here, the Death line's `PASSIVE_PORT_HEADERS`,
+      a different list).
+  - The workbook cannot be merged: the second line to land re-applies its scripts onto the first's workbook.
+- **TWO TEST WIDENINGS, said plainly.**
+  - `MULTIPLIES` accepts "are doubled" beside "is doubled", for Colossus Eternal's R17 sentence ("the healing you
+    receive are doubled"), which the owner accepted and this test may not reword.
+  - Ragnarok's "Your maximum Fervour is doubled" is excused, by `MULTIPLIER_WAITS_FOR_A_LATER_SLICE`, from having a
+    multiplying row until V2 builds one. The excuse fails the test as soon as such a row exists, proved below, so it
+    cannot outlive its reason.
+
+### WHAT WAS RULED
+
+- The project owner, 2026-11-24, on every War ruling: "I'll go with your recommendations on the war rulings." That
+  includes R14 (Eternal Hunger), R17 (Colossus Eternal) and R18 (Wrath Incarnate).
+- The coordinating session, 2026-11-25, on the vow survey: "Every recommendation accepted, except item 16" (The
+  Unbreakable Wall, which goes to the owner and is not here).
+  - Item 9: "Shield Oath: "Blocking an attack restores 2% of your Maximum HP" (2% is a play-test point)".
+  - Item 10: "Flesh Oath: in combat only".
+  - Item 14: "Bloodied but Unbroken: "1% for every 1% of your Maximum HP you are missing" on health_missing".
+- The same day: "R14, R17, R18 and the 12 approved Saboteur sentences go into the workbook in V1, with every
+  replacement sentence ruled tonight, each recorded with the old sentence beside it."
+- And on the columns: "all eight remaining port columns added as required under the Death line's header and field
+  names, OPTIONAL_COLUMNS emptied, no new Fraction Of values, and the Death line's test name and assertions taken
+  verbatim."
+
+**The sentences** (old beside new):
+
+| Option | Old sentence | New sentence | Ruling |
+|---|---|---|---|
+| Eternal Hunger (Berserker Final Oath) | "Your life leech cap is removed entirely. Any HP restored by life leech beyond your maximum is added as overleech that decays at 1% per second. Life leech effectiveness is increased by 50%." | "Life leech can heal you up to 100% above your Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and damage you take removes it first. Your life leech is increased by 50%." | R14 |
+| Colossus Eternal (Bulwark Final Oath) | "All healing, regeneration, and HP bonuses are doubled. While above 50% HP, you are immune to instant-kill effects. While above 75% HP, your attacks deal bonus damage equal to 2% of your current HP." | "Your health regeneration and the healing you receive are doubled, and your increases to Maximum HP count twice. While above 50% health, a hit that would kill you leaves you at 1 HP instead. While above 75% health, your attacks deal bonus damage equal to 2% of your current HP." | R17 |
+| Wrath Incarnate (Bulwark Final Oath) | "Your retaliation damage percentage is added to your total Armor, and your Armor contributes to your retaliation damage proportional to the damage reduction it provides. When you take a hit that would deal more than 10% of your Maximum HP in a single strike, you erupt — instantly retaliating against all nearby enemies for 200% of your retaliation damage." | "Your retaliation damage is increased by 1% for every 100 Armor you have. When a single hit takes more than 10% of your Maximum HP, you retaliate against every enemy within 4 metres for 200% of your retaliation damage." | R18 |
+| Shield Oath (Bulwark First Oath) | "Blocking an attack restores 50 HP." | "Blocking an attack restores 2% of your Maximum HP." | vow survey item 9 |
+| Bloodied but Unbroken (Bulwark Third Oath) | "Your retaliation damage is increased by 1% for every 75 HP you are missing." | "Your retaliation damage is increased by 1% for every 1% of your Maximum HP you are missing." | vow survey item 14 |
+| The Saboteur's twelve | none: each oath's option list was empty | Baited, Walking Arsenal, Lightning Rod; Trail of Wire, Scrap Mines, Cat's Cradle; Creeping Mines, Bolted Together, Counterfire; Where They Fall, Magnum Opus, Crossfire, each with its approved sentence (`SABOTEUR_OPTIONS` in the script) | approved 2026-11-24 |
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+| Option | Row |
+|---|---|
+| Unstoppable (`Berserker_capstone_50`, 1) | `movement_speed_reduction_suppressed` and `knockback_suppressed`, flags, above 75% Fervour with a two-handed weapon |
+| Ragnarok (`Berserker_capstone_200`, 1) | `fervour_drain_per_second` removed in Wrath |
+| Eternal Hunger (`Berserker_capstone_200`, 3) | `life_leech` increased 50 |
+| Shield Oath (`Bulwark_capstone_25`, 1) | `health` on `block`, 2% of maximum |
+| Flesh Oath (`Bulwark_capstone_25`, 2) | `health` every second, 1% of current |
+| Bloodied but Unbroken (`Bulwark_capstone_100`, 2) | `retaliation` increased 1, per 1% of maximum health missing |
+| Colossus Eternal (`Bulwark_capstone_200`, 2) | `healing_received` more 100 |
+| Wrath Incarnate (`Bulwark_capstone_200`, 3) | `retaliation` increased 1 per 100 armour |
+
+**Judgements:**
+- Ragnarok's row carries only `in_wrath` and no weapon condition. The row that grants Wrath
+  (`Berserker_twoh_001`, `wrath_on_full_fervour`) requires a two-handed weapon, and the Berserker states' step ends
+  Wrath once that row no longer holds (`CataclysmBerserkerStates.cpp`), so being in Wrath already means two hands, up to
+  that step's quarter second.
+- Colossus Eternal's doubling is one row on healing received, which regeneration and leech already pass through. A
+  second row on regeneration would make it four times, as the survey said.
+
+### THE PYTHON SUITE
+
+Run on `df77c40d60269f21e9c4af84622dc5b3fe67c0e1`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8529 passed, 9
+skipped in 472.80s**, and the JUnit file `tests="8539" failures="1" errors="0" skipped="9"`, which is
+8,529 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed` before the commit: 6 files read, 0 with complaints. The include
+audit over the branch's five .cpp files: 0 unreachable.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the files passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `docs/Saboteur_Class_Tree_Final.json`: the First Oath's three options taken away again | `pytest tools/tests/test_class_passive_trees.py` | `test_every_capstone_in_every_tree_offers_three_named_choices[Saboteur]` |
+| `tools/generate_datatables.py`: Fraction Of declared optional again | `pytest tools/tests/test_passive_rows_carry_the_action_columns.py tools/tests/test_required_workbook_columns.py` | nine, among them `test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them` and `test_an_optional_column_the_sheet_now_has_is_not_listed` |
+| `game/Data/PassiveEffects.csv`: Ragnarok's row made a "more" row, so its excuse is out of date | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_the_bucket_matches_the_nodes_own_wording` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV1.EachOptionsStatRowsGiveItsFiguresAndAnotherOptionGivesNone` | the generated stat rows through `ModifiersFor`: Eternal Hunger 50% leech (Thousand Deaths none, the control); Ragnarok's drain of 5 removed in Wrath, kept out of it, and kept under Eternal Hunger (controls); Colossus Eternal doubled healing (Wrath Incarnate not); Wrath Incarnate 10% retaliation at 1,000 armour (Colossus Eternal none); Bloodied but Unbroken 30% at 30% missing (Bastion none) |
+| `Cataclysm.WarVowsV1.UnstoppableIsAModifierAndTheHealthOathsAreCopiedForTheBuilderOnlyWhenTaken` | `ModifiersFor`: Unstoppable's two flags with both conditions, and `EnchantmentRowsFor` copies neither (Thrill of the Hunt none); `EnchantmentRowsFor`: Shield Oath's 2% of maximum on a block; Flesh Oath's 1% of current every second (Blood Oath none). **Corrected and renamed on 2026-11-25 before any window ran it**: it was `...UnstoppableAndTheHealthOathsAreCopiedForTheBuilderOnlyWhenTaken` and looked for the two flags among the copies, which a stat row with a second condition never is (`IsBuiltAsAnEnchantmentRow`); it would have failed |
+| `Cataclysm.WarVowsV1.AWarPlayerTakingAHealthOathIsHandedItsHealthAction` | a level 10 War Greataxe player through `SetPassiveAllocation`: Blood Oath hands over no health action (control); Shield Oath one on a block, 2% of maximum; Flesh Oath one every second, 1% of current |
+
+Predicted counts:
+- `Cataclysm.WarVowsV1.`: 3.
+- `Cataclysm.Data.`: the pin, 552; its count unchanged.
+- `Cataclysm.Passives.` and `Cataclysm.PassiveRowPort.`: unchanged.
+
+**No C++ guard proof is planned.** This branch changes no engine code, only comments; what its new tests read is data,
+and the Python checks on that data are proved above.
+
+---
+
+## 2026-11-25 — Thin Air hides a moving player from a creature's search until a blow lands, and Calculated at 6 points reworded to 10% more maximum Fervour because no enemy effect lowers Fervour
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`:
+  - `IsHiddenByThinAir`, and the stats `cannot_be_targeted_while_moving` and `cannot_be_targeted_broken_seconds`;
+  - `SecondsSinceLandedHitTaken`, stamped by `NoteHitTaken` for a blow that landed and cleared by `ClearWhatDeathEnds`.
+- `game/Source/Cataclysm/Character/CataclysmTargetCandidates.cpp`: `NearestHostile` passes over a player Thin Air hides.
+- `game/Source/Cataclysm/Interface/CataclysmPlayerEffects.cpp`: "Thin Air" on the effects line while it hides the player.
+- `CataclysmPlayerClassStats.cpp`: the two stats have no attribute.
+- `docs/Saboteur_Class_Tree_Final.json` (Calculated's sentence; `tools/apply_saboteur_rewordings_2026_11_25.py` gains
+  it), `game/Data/PassiveNodes.csv`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (543 rows): every row of Thin Air and Calculated
+  (`tools/reapply_war_saboteur_thin_air_workbook.py`, new).
+  - Calculated is taken over from `tools/reapply_war_saboteur_rows_workbook.py` through `extending` (now twelve nodes,
+    22 rows).
+  - `docs/README.md` (the sheet table).
+  - **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- Tests:
+  - Unreal: `CataclysmThinAirTests.cpp` (new, two), `CataclysmStatExemptionTests.cpp` (two probes),
+    `CataclysmDataTableTests.cpp` (the pin, 543).
+  - Python: `tools/tests/test_war_saboteur_thin_air_scripts.py` (new, ten), `test_war_saboteur_rows_scripts.py`,
+    `test_passive_effects_match_the_node_text.py` (the words, 543 rows, 312 nodes),
+    `test_stat_lookups_hand_over_what_they_should.py` (two lookups).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run these
+  groups:
+  - `Cataclysm.ThinAir.`: two tests, new.
+  - `Cataclysm.StatExemption.`: the two probes; its count does not change.
+  - `Cataclysm.Data.`: the pin, 543.
+  - **The groups that choose a target**, because every creature's search now asks one more question of a player
+    candidate (counts unchanged): `Cataclysm.AI.`, `Cataclysm.Brute.`, `Cataclysm.Command.`, `Cataclysm.Gatekeeper.`,
+    `Cataclysm.TargetChoice.`, `Cataclysm.GadgetTargets.`, `Cataclysm.BallistaTargets.` and `Cataclysm.EnemiesInReach.`.
+- **WHAT THIN AIR DOES NOT DO, as ruled ("players only on the NearestHostile path"):**
+  - An area blow still strikes the player.
+  - The search an enemy runs with no target lists (`ACataclysmEnemyController`'s fallback) does not read it.
+  - A taunt, which `ChooseTarget` asks before the search, still holds a creature to the player.
+- **PERFORMANCE:** the question is asked of a player candidate only, and last, after the distance, capsule and
+  hostility tests, because this is the search every creature runs on its think (#1547). Not measured.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the C1/C5 plan of that day: "C1/C5 plan accepted
+as written." With it:
+- "Thin Air: build as written, players only on the NearestHostile path, with its "Thin Air" display."
+- The rewordings, Calculated at 6 among them, "accepted as proposed, each recorded in the entry as the coordinating
+  session's ruling of 2026-11-25 with the old sentence beside the new ... Calculated at 6 ("Your maximum Fervour is
+  increased by 10%"), since no enemy effect lowers Fervour on any line."
+
+The search behind that ruling (question 3 of the Saboteur survey), run the same day: no enemy effect lowers a player's
+Fervour on this branch, on origin/development (`0d9259653`), or on `44b3ab7e2` (the Death line's enemy modifiers). The
+nearest is the Eternal Chorus floor modifier, a Less on `fervour_per_second`, a regeneration rate no War node grants.
+
+**The rewording, the coordinating session's ruling of 2026-11-25:**
+
+| Node | Old sentence | New sentence |
+|---|---|---|
+| Calculated | "+5 maximum Fervour per point. At 6 points: Your Fervour cannot be reduced by enemy effects." | "+5 maximum Fervour per point. At 6 points: Your maximum Fervour is increased by 10%." |
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Thin Air (`Saboteur_basic_trunk_013`, 1 point):** `cannot_be_targeted_while_moving`, a flag, and
+   `cannot_be_targeted_broken_seconds` 2.
+   - A player holding the flag, moving (the movement sampler's `IsMoving`), and with no landed blow within the
+     seconds, is passed over by `NearestHostile` as if it were not there. The creature takes the next nearest
+     hostile, or none.
+   - "Thin Air" shows on the effects line while it holds.
+   - **Judgement: "Taking damage" is a blow that landed** (`NoteHitTaken` with `bLanded`), a damage-over-time tick
+     included and an evaded blow not. The hit-taken clock beside it opens for evaded blows too, so a second clock was
+     added.
+   - **Judgement: "players" are `ACataclysmPlayerCharacter`.** A cast, so a player with no controller (as in a test) is
+     one.
+2. **Calculated (`Saboteur_basic_trunk_003`):** `class_resource` 5 a point, as before; from 6 points `class_resource`
+   increased 10.
+
+### THE PYTHON SUITE
+
+Run on `8a56fab382eb83d327084a463725316c1a64ebcd`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8508 passed, 9
+skipped in 451.83s**, and the JUnit file `tests="8518" failures="1" errors="0" skipped="9"`, which is
+8,508 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. The worktree was unchanged after the run.
+`python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed` before the commit: 7
+files read, 0 with complaints. The include audit of 2026-11-25 (`tools/check_includes.py`'s first form) over the
+branch's seven .cpp files: 0 unreachable.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `game/Data/PassiveEffects.csv`: Calculated's 10% from 5 points, not 6 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| `game/Data/PassiveEffects.csv`: Thin Air broken for 3 seconds, not 2 | the same | `test_every_value_appears_in_the_nodes_own_description` |
+| `docs/Saboteur_Class_Tree_Final.json`: Calculated's sentence back to "cannot be reduced by enemy effects" | `pytest tools/tests/test_war_saboteur_thin_air_scripts.py` | `test_calculated_is_reworded_to_what_its_row_gives` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.ThinAir.AMovingPlayerIsPassedOverByACreaturesSearchUntilABlowLands` | a creature 3 m from a player: without the flag a moving player is found (control); with it, a player standing still is found (control); with it and moving, nothing is found and "Thin Air" is shown; an evaded blow leaves it whole; 1.5 s after a landed blow the player is found and nothing is shown; 2.5 s after, hidden again |
+| `Cataclysm.ThinAir.TheGeneratedRowsGiveThinAirAndCalculatedTheirFigures` | the generated rows: Thin Air's flag and 2 seconds; Calculated 25 and no increase at 5 points (control), 30 and 10% at 6 |
+
+Predicted counts:
+- `Cataclysm.ThinAir.`: 2.
+- `Cataclysm.Data.`: the pin, 543; its count unchanged.
+- `Cataclysm.StatExemption.` and the target-choosing groups listed above: unchanged.
+
+**Planned C++ guard proofs** (one per mechanism; not run; prefix `Cataclysm.ThinAir.`):
+1. **The search:** in `CataclysmTargetCandidates.cpp`, `|| PlayerCandidateHiddenByThinAir(Candidate)` is taken out.
+   Must fail `AMovingPlayerIsPassedOverByACreaturesSearchUntilABlowLands` ("with the flag and moving, the search finds
+   nothing").
+2. **The landed-blow clock:** in `NoteHitTaken`, the `if (bLanded)` around `LastLandedHitTakenAtSeconds` is taken out,
+   so an evaded blow stamps it too. Must fail the same test ("an evaded blow does not break it").
+3. **The break:** in `IsHiddenByThinAir`, `return Since < 0.0f || Since >= Broken;` becomes `return true;`. Must fail
+   the same test ("1.5 s after a landed blow the player is found").
+
+---
+
+## 2026-11-25 — The Saboteur's trap timing: a trap arms at its exact time, Hair Trigger arms at once, Delayed Fuse adds a second and spares a trap still arming, Volatile Casing shortens arming for each other trap, and four sentences reworded to what the game has
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`:
+  - `BeginSkillTrapArming` and `SkillTrapArmingTimeReached`, a one-shot timer at placing and at rearming that arms the
+    trap and runs its step;
+  - `SkillTrapArmingSecondsFor` gains Hair Trigger's flag, Delayed Fuse's second and Volatile Casing's reduction (and a
+    `Self` parameter);
+  - `SetOffSkillTrapsNear` passes over a trap still arming for a player holding Delayed Fuse's flag;
+  - four stats: `traps_arm_instantly`, `trap_arming_seconds_added`, `trap_arming_seconds_less_per_other_trap`,
+    `traps_not_set_off_while_arming`.
+- `CataclysmPlayerClassStats.cpp`: the four stats have no attribute.
+- `docs/Saboteur_Class_Tree_Final.json` (four sentences, `tools/apply_saboteur_rewordings_2026_11_25.py`, new),
+  `game/Data/PassiveNodes.csv`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (540 rows): every row of six nodes
+  (`tools/reapply_war_saboteur_trap_timing_workbook.py`, new).
+  - Three of those nodes, Hair Trigger, Hair Wire and Minefield, are taken over from
+    `tools/reapply_war_saboteur_rows_workbook.py`, which no longer lists them.
+  - `tools/reapply_war_data_rows_workbook.py` gains `extending`: a node an earlier script wrote may hold some of the
+    rows wanted, and only the rest are appended. A row held that is not wanted is still refused, before the save and in
+    the read-back.
+  - `docs/README.md` (the sheet table).
+  - **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- Tests:
+  - Unreal: `CataclysmSaboteurTrapTimingTests.cpp` (new, five), `CataclysmStatExemptionTests.cpp` (four probes),
+    `CataclysmDataTableTests.cpp` (the pin, 540).
+  - Python: `tools/tests/test_war_saboteur_trap_timing_scripts.py` (new, thirteen),
+    `test_war_saboteur_rows_scripts.py` (23 rows on 13 nodes), `test_passive_effects_match_the_node_text.py` (the new
+    words, 540 rows, 311 nodes), `test_stat_lookups_hand_over_what_they_should.py` (one lookup).
+- `tools/apply_passive_order_fixes_2026_11_24.py`: a `Reword` may name `later` sentences, written by a later ruling,
+  which count as fixed; Minefield's names this slice's. Its test file gains one test.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run these
+  groups:
+  - `Cataclysm.SaboteurTrapTiming.`: five tests, new.
+  - `Cataclysm.StatExemption.`: the four probes; its count does not change.
+  - `Cataclysm.Data.`: the pin, 540.
+  - **The groups that place skill traps, because every trap now arms by a timer**, each count unchanged:
+    `Cataclysm.Traps.`, `Cataclysm.KindReserves.`, `Cataclysm.NoCaps.`, `Cataclysm.SaboteurDevices.`,
+    `Cataclysm.BuriedWeaponKills.`, `Cataclysm.DeathInActivation.`, `Cataclysm.LevelCosts.`,
+    `Cataclysm.NoSkillBlowTags.`, `Cataclysm.SkillAssignment.` and `Cataclysm.SkillLevelSources.`. The trap tests call
+    a trap's step by hand after a clock pass, so they never saw the quarter-second rounding, and they should hold.
+- **THE ARMING ROWS CHANGE IN PLAY.** Until this change a trap checked whether it had armed only on its quarter-second
+  step, so an arming time between two steps waited for the later one: 1/1.30 = 0.769 s armed at 1.0 s.
+  - **Any arming-speed bonus below a third did nothing on its own.** That covers Trapsmith's 6% a point at 1 to 5
+    points (the Saboteur rows slice) and the enchantment rows "Traps arm 30%-60% faster" below 34%.
+  - Now a trap arms at its exact time, so every one of those figures counts.
+  - A trap also looks for an enemy at that moment rather than at the next step, so a trap with an enemy already inside
+    its radius goes off up to a quarter second sooner than before.
+- **TWO NODES' CLAUSES ARE ALREADY TRUE AND HAVE NO ROW:**
+  - Trapsmith at 4 ("Traps can be placed while moving without interrupting your movement"): placing a skill trap by
+    its key starts no ability, plays no animation and stops nothing. A basic trap placed by clicking an enemy goes
+    through the world click, which ends a click-to-move path, as every click does.
+  - Field Engineer at 4 ("Deploying a gadget does not interrupt any action you are currently performing"): a skill
+    gadget is placed the same way; a War machine plays the punch clip and stops nothing.
+- **MERGE OBLIGATIONS:**
+  - Any other branch adding Passive Effects rows moves the same counts. Whichever merges second adds both.
+  - Any branch calling `tools/reapply_war_data_rows_workbook.py`'s `plan` or `apply` positionally past `label` must
+    account for the new `extending` argument (no caller does today).
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the C1/C5 plan of that day: "C1/C5 plan accepted
+as written." With it:
+- "Exact-time arming: yes, a one-shot timer at placing and rearming that arms the trap and runs the same enemy check.
+  Test it with a bonus below a third (for example 30%: arms at about 0.77 s, not 1.0 s) and a control with none. Say in
+  the entry that Trapsmith's rows and the enchantment trap-arming-speed rows did nothing below a third until this
+  change, so they change in play."
+- "Hair Trigger at 5 and Delayed Fuse: build as written. Judgement accepted: instant arming beats Delayed Fuse's extra
+  second when both are held."
+- "The rewordings, accepted as proposed, each recorded in the entry as the coordinating session's ruling of 2026-11-25
+  with the old sentence beside the new."
+- "Trapsmith at 4 and Field Engineer's 4-point clause: already true; no rows."
+
+The rule the rewordings follow, set by the coordinating session earlier that day: build the smallest mechanism, and
+reword only a sentence the game cannot have.
+
+**The rewordings, the coordinating session's ruling of 2026-11-25** (each sentence names a delay or a speed the game
+does not have: a trap triggers on the step it finds an enemy, with nothing between; placing and deploying take no time):
+
+| Node | Old sentence | New sentence |
+|---|---|---|
+| Hair Wire | "+10% trap trigger radius per point. At 4 points: Traps trigger 20% faster after detecting an enemy." | "+10% trap trigger radius per point. At 4 points: Your traps arm 20% faster." |
+| Volatile Casing | "Each active trap on the battlefield reduces the trigger delay of all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds." | "Each active trap on the battlefield reduces the arming delay of all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds." |
+| Minefield | "+10% trap placement speed per point. At 6 points: Your traps reserve 5% reduced Fervour." | "+10% trap arming speed per point. At 6 points: Your traps reserve 5% reduced Fervour." |
+| Field Engineer | "+12% gadget deployment speed per point. At 4 points: Deploying a gadget does not interrupt any action you are currently performing." | "+12% gadget attack speed per point. At 4 points: Deploying a gadget does not interrupt any action you are currently performing." |
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Exact-time arming.**
+   - Placing and rearming set a one-shot timer for the arming time. Its call arms the trap and runs the trap's step,
+     which looks for an enemy at once.
+   - An arming time of nought arms the trap at placing, and looks for an enemy on the next tick, so nothing is set off
+     inside the press that placed it.
+   - The quarter-second step still arms a trap whose time has passed, as before.
+2. **Hair Trigger at 5:** `traps_arm_instantly`, a flag; the trap arms at placing (and at rearming).
+3. **Delayed Fuse:**
+   - 15% increased trap damage a point (`minion_damage` on `Type.Trap`).
+   - `trap_arming_seconds_added` 1: the extra second, added to the base before arming speed divides it (a judgement of
+     the plan: arming speed shortens the whole delay).
+   - `traps_not_set_off_while_arming`: a flag under which a forced set-off passes over a trap still arming. Neither the
+     player nor a gadget ever sets off a trap by standing near it. The row actions do: a gadget destroyed, a trap
+     triggered, the player's death. Every one of those comes through `SetOffSkillTrapsNear`.
+4. **Volatile Casing:** 0.1 s a point less for each other skill trap of the player's standing when this one is placed
+   or rearmed. It is taken off after the speed division, and the time is never brought below 0.1 s by it; a time
+   already under 0.1 s is left as it is. **Judgement:** counted at placing and rearming, so a trap placed later does
+   not shorten one already arming.
+5. **The rows, every row of six nodes:**
+   - Hair Trigger's radius and flag (from 5 points).
+   - Hair Wire's radius and 20% arming speed (from 4 points).
+   - Volatile Casing's 0.1 s a point.
+   - Minefield's 10% arming speed a point and its reserve (from 6 points).
+   - Field Engineer's 12% `minion_attack_speed` a point on `Type.Gadget` (the stat "Gadgets fire faster" uses).
+   - Delayed Fuse's three.
+
+### THE PYTHON SUITE
+
+**THE FIRST RUN FOUND A REAL FAILURE.** Run on `7e3f19dee55e4a8638b402fe339ca7f8c6d1abe5`:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **2 failed, 8496 passed, 9 skipped
+in 445.26s**, and the JUnit file `tests="8507" failures="2" errors="0" skipped="9"`, which agrees.
+- One failure was the asset check every CSV branch carries until the editor step.
+- The other was
+  `test_apply_passive_order_fixes_2026_11_24.py::test_a_real_tree_ends_fixed_with_its_graph_and_its_rules_intact[Saboteur_Class_Tree_Final.json]`.
+  The order fixes of 2026-11-24 reworded Minefield's count cap and refuse a sentence that is neither theirs nor the
+  one they replaced, so they refused this slice's Minefield sentence.
+- A narrowed run of the node-text and script tests had not covered that test file. The `later` field above is the
+  fix.
+
+**THE SECOND RUN WAS COMPROMISED, NOT BY THIS BRANCH.** Run on `3ca53f9d0a9914a1f014d89e840ed6e2ecf2cd42`: 3 failed,
+8497 passed, 9 skipped. Beside the asset check, two cases of
+`test_what_a_run_ending_costs.py::test_the_guards_fail_when_the_document_regresses` failed.
+- One case broke `docs/Cataclysm_GDD_v2.md` on purpose, and `tools/prove_guard.py`'s restore of it, in its `finally`
+  (`path.write_bytes(content)`, line 453), raised `OSError: [Errno 22] Invalid argument`. So the break stayed in the
+  document, and the next case failed against it.
+- Neither file is this branch's. The document was restored from git, the file then passed alone (27 passed), and
+  the document was unchanged after.
+- Which process held the file is not known.
+
+**THE THIRD RUN**, on the same head with nothing else writing: the count line read **1 failed, 8499 passed, 9
+skipped in 430.76s**, and the JUnit file `tests="8509" failures="1" errors="0" skipped="9"`, which is
+8,499 passed: the two agree. The one failure is the asset check. The worktree was unchanged after the run.
+`python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed`: 0 with complaints.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `tools/reapply_war_data_rows_workbook.py`: the extending path no longer refuses a row held beside the wanted ones | `pytest tools/tests/test_war_saboteur_trap_timing_scripts.py` | `test_the_row_script_refuses_a_row_somebody_wrote_on_a_node_it_extends` |
+| `game/Data/PassiveEffects.csv`: Hair Wire's arming speed from 3 points, not 4 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| `tools/apply_passive_order_fixes_2026_11_24.py`: a `later` sentence no longer counts as fixed | `pytest tools/tests/test_apply_passive_order_fixes_2026_11_24.py` | `test_a_sentence_a_later_ruling_wrote_is_left_alone_and_any_other_refused`, `test_a_real_tree_ends_fixed_with_its_graph_and_its_rules_intact[Saboteur_Class_Tree_Final.json]` |
+| `docs/Saboteur_Class_Tree_Final.json`: Volatile Casing's sentence back to "trigger delay" | `pytest tools/tests/test_war_saboteur_trap_timing_scripts.py` | `test_the_tree_file_holds_the_reworded_sentences`, `test_the_reword_script_rewords_the_ruled_sentences_once` |
+
+**THE FIRST PROOF FAILED ONCE, AND THAT FOUND TWO FAULTS.** As first written, the refusal test passed with the break
+in. The break let the script append beside the foreign row and save; the read-back after the save then refused, and its
+message quotes the same words the test matched.
+- The read-back now passes `extending` too.
+- The test now also asserts the message does not say the workbook was saved, and that the file is unchanged.
+- The rerun proved.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SaboteurTrapTiming.ATrapArmsAtItsExactTimeNotAtTheNextQuarterSecond` | two traps placed at one moment, the control with no row and one with 30% arming speed (0.769 s); the clock run as play runs it: 0.8 s in, the quick trap is armed and the control is not; 1.05 s in, both |
+| `Cataclysm.SaboteurTrapTiming.HairTriggerArmsAtOnceAndBeatsDelayedFusesExtraSecond` | the control at 1 s; the extra second at 2 s; the flag armed at placing; both held, armed at placing; on the clock the fused trap is unarmed at 1.05 s and armed at 2.05 s |
+| `Cataclysm.SaboteurTrapTiming.VolatileCasingShortensArmingForEachOtherTrapDownToATenthOfASecond` | with four others standing and no row, 1 s (control); 0.2 s less for five others held at 0.1 s; 0.15 s less for six, 0.1 s; 0.1 s less for seven, 0.3 s; 0.15 s in, the floored trap is armed and the 0.3 s one and the control are not |
+| `Cataclysm.SaboteurTrapTiming.DelayedFuseKeepsATrapStillArmingFromBeingSetOff` | two players, each with an armed trap and one still arming; a forced set-off of all of each player's traps: without the flag both recorded (control), with it only the armed one |
+| `Cataclysm.SaboteurTrapTiming.TheGeneratedRowsGiveEachFigureAtItsPoints` | the generated rows: Hair Trigger no flag at 4 (control), the flag at 5; Hair Wire no arming speed at 3 (control), 20% at 4; Volatile Casing 0.8 at 8; Minefield 80% at 8; Field Engineer 96% at 8 on a gadget and none on a trap (control); Delayed Fuse at 6: 90%, one second, the flag |
+
+Predicted counts:
+- `Cataclysm.SaboteurTrapTiming.`: 5.
+- `Cataclysm.Data.`: the pin, 540; its count unchanged.
+- `Cataclysm.StatExemption.` and the trap-placing groups listed above: unchanged.
+
+**Planned C++ guard proofs** (one per mechanism; not run; prefix `Cataclysm.SaboteurTrapTiming.`):
+1. **Exact-time arming:** in `CataclysmMinion.cpp`, `BeginSkillTrapArming`'s
+   `World->GetTimerManager().SetTimer(SkillTrapArmingTimer, ...)` is taken out. Must fail
+   `ATrapArmsAtItsExactTimeNotAtTheNextQuarterSecond` ("0.8 s in, the quick trap is armed") and
+   `VolatileCasingShortensArmingForEachOtherTrapDownToATenthOfASecond` ("0.15 s in, the floored trap is armed").
+2. **Hair Trigger:** in `SkillTrapArmingSecondsFor`, `if (SkillTrapTimingFigureOf(Player, TrapsArmInstantlyStat,
+   TrapTags) > 0.0f)` becomes `if (false)`. Must fail `HairTriggerArmsAtOnceAndBeatsDelayedFusesExtraSecond`.
+3. **Delayed Fuse's flag:** in `SetOffSkillTrapsNear`, `|| (bSparesTheArming && !Each->bSkillTrapArmed)` is taken out.
+   Must fail `DelayedFuseKeepsATrapStillArmingFromBeingSetOff`.
+
+---
+
+## 2026-11-25 — Skull Splitter, Deathmark and Blood Price: an armour reduction a critical strike in Wrath pays 3 Fervour for, a mark that raises the damage an enemy takes from every source, and damage held for the next melee blow after the pool empties
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (532 rows): twelve rows on three Berserker nodes,
+  Skull Splitter (`Berserker_twoh_003`), Deathmark (`Berserker_crit_004`) and Blood Price (`Berserker_trunk_008`)
+  (`tools/reapply_war_skull_deathmark_blood_workbook.py`, new). `docs/README.md` (the sheet table). **The editor step
+  must rebuild `DT_PassiveEffects`.**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`: nine stats, and
+  `SkullSplitterOnCriticalStrike`, `DeathmarkOnCriticalStrike` and `ArmBloodPrice`.
+  `CataclysmAbilitySystemComponent.h` and `.cpp`: the mark (`MarkWithDeathmark`, `IsDeathmarked`, `DeathmarkPercentNow`,
+  `DeathmarkPercentOn`) and the held damage (`HoldBloodPrice`, `BloodPriceHeldNow`, `BloodPriceSecondsLeft`,
+  `SpendBloodPrice`), both cleared by `ClearWhatDeathEnds` beside the other windows. `CataclysmDamageCalculation.cpp`:
+  the mark's percent in the damage-taken factor. `CataclysmSkillEffects.cpp`: the held damage in `ApplyHit`'s flat sum,
+  spent by a blow that lands.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: Skull Splitter and Deathmark at a critical strike
+  (`OnSomethingWasHit`, after the critical strike's Fervour gain), Blood Price as the pool empties
+  (`OnClassResourceChanged`, beside `NoteClassResourceEmptied`). `CataclysmPlayerClassStats.cpp`: the nine stats have no
+  attribute.
+- `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`: `DeathmarkTextFor`, in the line under a
+  creature's health bar. `CataclysmPlayerEffects.cpp`: "Blood Price +N damage", with its seconds, on the effects line.
+- `tools/generate_datatables.py`: Skull Splitter's percent and cost are conditioned stats with an asker.
+- Tests: `CataclysmSkullDeathmarkBloodTests.cpp` (new, four), `CataclysmStatExemptionTests.cpp` (nine probes),
+  `CataclysmDataTableTests.cpp` (the pin, 532); `tools/tests/test_war_skull_deathmark_blood_scripts.py` (new),
+  `test_passive_effects_match_the_node_text.py` (the nine stats' words, 532 rows and 308 nodes),
+  `test_stat_lookups_hand_over_what_they_should.py` (nine lookups).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  `Cataclysm.SkullDeathmarkBlood.` (four tests, new), `Cataclysm.StatExemption.` (the nine probes, inside
+  `EveryStatWithNoAttributeIsActuallyRead`; the group's count does not change), `Cataclysm.Data.` (the pin, 532) and
+  `Cataclysm.WarFervour.` (the critical strike's site; its count does not change).
+- **THE DISPLAY, CHECKED AS THE COORDINATING SESSION ASKED.** A placed stack already shows: Skull Splitter's stacks are
+  placed stacks, which `ArmourRemovedTextFor` sums with every other armour reduction into "Armor -N%" under the
+  creature's health bar (`StatusLineFor`). A Deathmark showed nowhere, so it has a basic display: "Deathmarked +18%", or
+  "Deathmarked" for a mark carrying nothing (question 2). Blood Price's held damage shows on the player's effects line.
+- **TWO MERGE OBLIGATIONS.** (1) Any other branch adding Passive Effects rows moves the same counts
+  (`AUTHORED_ROWS`, `AUTHORED_NODES`, the pin in `CataclysmDataTableTests.cpp`, `docs/README.md`); whichever merges
+  second adds both. (2) `feat/death-trees-c3d` changes `OnClassResourceChanged` in `CataclysmPlayerCharacter.cpp` at
+  the place Blood Price is armed; whichever merges second keeps both, and runs `tools/check_resolved_cpp.py`.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the plan of that day: "Q1 neither the drain nor
+the armor reduction when the pool cannot pay 3; Q2 less than Deathmark's cost is treated as none (the mark with no
+bonus, nothing spent), as the node's last sentence says for none; Q3 "all sources" includes minions and allies; Q4 "for
+any reason" includes decay; Q5 the first melee blow that lands." And: "check whether a placed stack already shows on
+the enemy; if not, the mark needs a basic display."
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Skull Splitter**: "+6% critical strike multiplier per point" is a row on `crit_multiplier` under
+   `wielding_two_handed_weapon`. At a critical strike the player dealt, in Wrath and with a two-handed weapon (the
+   percent's and the cost's two conditions), a pool holding 3 pays 3 and the struck creature receives one stack of 10%
+   a point armour removed for 2 seconds, up to 4 stacks to 4 points and 6 from 5 points (Max Points 5 on the first cap
+   row). A pool holding less pays nothing and places nothing (question 1). **Judgements:** the stacks are placed stacks
+   keyed by the node, so they add into the one armour-removed sum, clamped at 100 (issue #1833's ruling), and lapse
+   together 2 seconds after the last one, each new stack restarting the window (the own-stack rule of 2026-09-24); a
+   critical strike at the cap still pays 3, since it still applies the reduction (the window restarts); the cap and
+   the seconds carry no condition, because they are read only once the conditioned percent is above nought.
+2. **Deathmark**: at a critical strike the player dealt, a pool holding the whole cost (10 less 1 a point: 9 at 1 point,
+   4 at 6) pays it and the struck creature is marked for 5 seconds with 3% a point more damage taken; a pool holding less,
+   or nothing, pays nothing and marks with no bonus (question 2). The percent is read in the damage step beside an
+   ailment's damage-taken rider, for every blow the creature takes, whoever deals it (question 3). **Judgements:** one
+   mark at a time; a later critical strike replaces it, restarting its 5 seconds with the newer percent. "Increased"
+   adds into the damage-taken factor rather than multiplying it, as the three-bucket rule reads the word. Skull
+   Splitter pays first, then Deathmark, both after the critical strike's own Fervour gain, so that gain can pay for
+   either.
+3. **Blood Price**: when the player's pool reaches 0 for any reason, the out-of-combat decay included (question 4),
+   5% a point of the maximum Fervour at that moment is held for 3 seconds. The first melee blow of the player's own that
+   lands in that time adds it to the blow's flat damage, before the increases, and spends it (question 5); an evaded
+   blow, or one the target is immune to, keeps it. **Judgements:** flat before the increases, as traps layer 4's "bonus
+   damage equal to X% of the enemy's maximum HP" (F5) is; a later emptying replaces what is held rather than adding to
+   it; "melee" is a delivery flagged melee or a skill carrying `Type.Melee`; a use a minion cast in the player's name, a
+   damage-over-time tick and an area skill's share struck at an ally neither carry nor spend it.
+
+### THE PYTHON SUITE
+
+Run on `9de1000212c783334f436b0280417115beab8e4f`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8484 passed, 9 skipped in 450.72s**, and the JUnit file `tests="8494" failures="1" errors="0"
+skipped="9"`, which is 8,484 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. Nine more passed than on `bce3d40d1` (8,475): the
+nine tests of `test_war_skull_deathmark_blood_scripts.py`. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed` before the commit: 13 files read, 0 with complaints; and the new test
+file on its own: 1 read, 0 with complaints.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `PassiveEffects.csv`: Skull Splitter's first cap row stops at 4 points, not 5 (Max Points 5 to 4) | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_stopping_at_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| `PassiveEffects.csv`: Deathmark's cost falls by 2 a point, not 1 | the same | `test_every_value_appears_in_the_nodes_own_description` |
+| `CataclysmStatExemptionTests.cpp`: Skull Splitter's cost loses its probe | `pytest tools/tests/test_every_conditioned_stat_has_an_asker.py` | `test_every_listed_stat_has_a_probe_or_is_named_as_unprobed` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SkullDeathmarkBlood.TheGeneratedRowsGiveEachFigureAtItsPoints` | the generated rows, judged by the pipeline: Skull Splitter at 4 points in Wrath with two hands a multiplier of 24, 40% a stack, a cost of 3, 2 seconds, a cap of 4; a cap of 6 at 5 and 8 points; out of Wrath no percent and no cost but a multiplier of 30 at 5 (controls); with one hand none of the three (controls); Deathmark 3% and a cost of 9 at 1 point, 18% and 4 at 6, 5 seconds; Blood Price 5% at 1 point, 40% at 8, 3 seconds |
+| `Cataclysm.SkullDeathmarkBlood.SkullSplitterPaysThreeForEachStackAndPlacesNoneItCannotPayFor` | a real player's critical strike: out of Wrath, and a blow that is not critical in Wrath, place and spend nothing (controls); in Wrath 10% placed, 3 spent, "Armor -10%" shown; five place four stacks (40%) and spend 15; a pool holding 2 places nothing on a second creature and spends nothing (question 1); the stacks lapse after 2 seconds |
+| `Cataclysm.SkullDeathmarkBlood.DeathmarkMarksOnACriticalStrikeAndTheMarkedTakeMoreFromEverySource` | a blow that is not critical marks nothing (control); a critical strike marks with 18%, shows "Deathmarked +18%" and spends 4; a second 3 seconds on refreshes the mark past the first's 5; a pool of 3 and an empty pool mark with no bonus, show "Deathmarked" and spend nothing (question 2); a blow of 100 with no attacker deals 118 to a creature marked with 18% and 100 to one marked with nothing (control) |
+| `Cataclysm.SkullDeathmarkBlood.BloodPriceArmsAsThePoolEmptiesAndTheFirstMeleeBlowThatLandsSpendsIt` | the decay empties a real player's pool: nothing held without the percent (control); 40 held with 40% of 100, shown as "Blood Price +40 damage" with 3 seconds (question 4); between two bare characters a ranged blow neither carries nor spends it (control); the first melee blow carries 40 more and spends it, the next carries nothing (question 5); held past 3 seconds it is gone |
+
+Predicted counts: `Cataclysm.SkullDeathmarkBlood.` 4; `Cataclysm.Data.` the pin, 532, its count unchanged;
+`Cataclysm.StatExemption.` and `Cataclysm.WarFervour.` unchanged.
+
+**Planned C++ guard proofs** (one per ruling with a mechanism of its own; not run; prefix
+`Cataclysm.SkullDeathmarkBlood.`):
+1. Question 1: in `CataclysmWarFervour.cpp`, Skull Splitter's `if (Held < Cost)`, under the comment "IN EXCHANGE FOR
+   THE WHOLE COST, OR NOT AT ALL", becomes `if (Held < 0.0f)`, so a pool of 2 pays 2 and places a stack. Must fail
+   `SkullSplitterPaysThreeForEachStackAndPlacesNoneItCannotPayFor`.
+2. Question 3: in `CataclysmDamageCalculation.cpp`, `+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender))`
+   becomes `+ 0.0f)`. Must fail `DeathmarkMarksOnACriticalStrikeAndTheMarkedTakeMoreFromEverySource` (118).
+3. Question 5: in `CataclysmSkillEffects.cpp`, `BloodPricePayer->SpendBloodPrice();` becomes `(void)BloodPricePayer;`.
+   Must fail `BloodPriceArmsAsThePoolEmptiesAndTheFirstMeleeBlowThatLandsSpendsIt` ("and spends it", "so the next
+   carries nothing").
+
+---
+
+## 2026-11-25 — Type.Gadget on every machine that is not a trap, sixteen Saboteur nodes' rows, and Durable Modifications exactly doubled by a Max Points column and the condition class_resource_at_or_below
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Config/Tags/CataclysmTags.ini`, `game/Data/MinionTypes.csv`: `Type.Gadget`
+  declared on the Tags sheet and carried by BoltTurret, Ballista and SkillGadget
+  (`tools/apply_gadget_tag_2026_11_25.py`, new). `game/Data/PassiveEffects.csv` (520 rows): Support Network's two gadget
+  damage rows moved to it, twenty-six rows on sixteen nodes (`tools/reapply_war_saboteur_rows_workbook.py`, new), and
+  the columns Action and Max Points. `docs/README.md` (the sheet table). **The editor step must rebuild
+  `DT_PassiveEffects` and `DT_MinionTypes`, and the editor must be restarted to read the new tag.**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`: a skill gadget's cast carries `Type.Gadget`; a War
+  machine's own blow reads the rows naming `Type.Deployable` or `Type.Gadget`. `CataclysmSkillEffects.cpp`: a skill
+  gadget's blow treats `Type.Gadget` as it treats `Type.Deployable` (taken out of the spell part, read for the flat rows,
+  left out of the rows the attribute cannot carry). `CataclysmAbilitySystemComponent.h` and `.cpp`: container forms of
+  `StatNamingTagAppliedTo`, `FlatOfStatNamingTag` and `FlatTheAttributeCannotCarry`.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: `FCataclysmPassiveEffectRow::MaxPoints`.
+  `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`: `PointsPaid` reads it.
+  `CataclysmStatPipeline.h` and `.cpp`: the condition `ClassResourceAtOrBelowPercent`, and the counted sentences (forty
+  of eighty-two).
+- `tools/generate_datatables.py`: the Minion Types rule for `Type.Gadget`; `Type.Gadget` allowed on a reserve row; Max
+  Points read (`_max_points`); the condition; Action leaves `OPTIONAL_COLUMNS`; the passive duplicate key gains Required
+  Tags and Max Points. `tools/reapply_war_data_rows_workbook.py`: the columns Action and Max Points; a read-back failure
+  says the workbook was saved.
+- Tests: `CataclysmSaboteurRowsTests.cpp` (new, three), `CataclysmDataTableTests.cpp` (the pin, 520);
+  `tools/tests/test_gadget_tag_script.py` and `test_war_saboteur_rows_scripts.py` (new);
+  `test_passive_effects_match_the_node_text.py` (words, action rows, "beyond N", a node stating a condition by its
+  complement, the Max Points threshold check, 520 rows and 305 nodes), `test_generate_datatables.py` and
+  `test_passive_rows_carry_the_action_columns.py` (the test sheets carry Action and Max Points);
+  `tools/reapply_war_saboteur_devices_workbook.py` writes Support Network's rows on `Type.Gadget`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, restart the editor
+  for the tag, and run `Cataclysm.SaboteurRows.` (three tests, new), `Cataclysm.Data.` (the pin, 520) and the groups
+  that price a gadget's or a trap's blow, whose counts do not change: `Cataclysm.SkillGadgets.`, `Cataclysm.Traps.`,
+  `Cataclysm.GadgetCopiesSkill.`, `Cataclysm.GadgetAndResource.` and `Cataclysm.DeployableSelfBlast.`.
+- **TWO MERGE OBLIGATIONS**, recorded at the coordinating session's request. (1) Any test on another branch that builds
+  its own Passive Effects sheet, as `test_generate_datatables.py` and `test_passive_rows_carry_the_action_columns.py` do
+  here, lacks the columns Action Event, Stack Seconds, Action and Max Points; whichever branch merges second adds them to
+  those sheets. (2) `feat/death-trees-c3a` adds a condition too: whichever merges second recounts the sentences in
+  `CataclysmStatPipeline.h` and `.cpp`.
+- **MAX POINTS IS A REQUIRED COLUMN AND AN EMPTY CELL IS NO LIMIT**, as Condition 2, Action Event and Stack Seconds
+  behave, keeping issue #1882's rule whole (the coordinating session agreed). A script that does not know the column
+  writes an empty cell, which is no limit, so every other writer of Passive Effects rows keeps working.
+- **EIGHTEEN ENCHANTMENT ROWS MEAN GADGETS AND STILL READ `Type.Deployable`**, left as they are by the ruling (their
+  Weights and Tags are not changed); a trap still takes them: "Gadgets deal 20%-40% increased damage", "Gadgets deal
+  bonus damage equal to 3%-6% of your maximum HP per hit", "While stationary, your gadgets deal 20%-40% increased
+  damage", "Gadgets have 40%-70% increased HP", "Gadgets last 30%-60% longer", "Gadgets fire 20%-40% faster", "Gadgets
+  apply a 15%-25% armor reduction to enemies they hit for 3 seconds", "Gadgets deal 5%-10% increased damage for each
+  second they have been active, up to 30 seconds", "Gadgets that survive for 15 seconds gain a permanent 20%-40% damage
+  bonus for the rest of their duration", "Gadgets have 20%-40% increased attack range", "When any of your gadgets is
+  destroyed, all remaining gadgets gain 30%-50% increased damage for 5 seconds", "Your gadgets prioritize the highest HP
+  enemy within their range instead of the nearest", "Gadgets fire at all enemies within range simultaneously once every
+  5-8 seconds", "When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range", "Your
+  gadgets are invincible but lose 5% of their maximum HP per second passively", "Gadgets copy the last skill you used
+  and fire it at their target once every 2 seconds", "When a gadget is destroyed it arms all traps within 12 meters
+  instantly" and "When a gadget is destroyed, the nearest active trap within 10 meters is triggered immediately". "Your
+  deployables reserve 15%-30% reduced Fervour" means both and is right on `Type.Deployable`.
+- **FOURTEEN NODES ARE WRITTEN IN PART**: the clauses that need a mechanism wait for their slices, Hair Trigger's,
+  Hair Wire's, Trapsmith's and Minefield's for the C1 plan, Calculated's for its search (question 3), Slippery's and
+  Reinforced Frame's for C2, Volatile Mixture's and Death Ground's for C3. Each is named in the rows script.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the Saboteur survey of that day:
+- **Question 1:** "add Type.Gadget to every machine that is not a trap, and move every PASSIVE row that means gadgets
+  only onto it ... Do not change any enchantment row's Weights or Tags; if an enchantment row's action means gadgets and
+  reads Type.Deployable, list it in the entry and leave it as it is." This replaces its judgement 5 of the device
+  conditions: with a gadget tag, "gadget damage" means gadgets.
+- **Question 4:** "exact doubling: 6% a point while above 50% and 3% a point otherwise. If no opposite condition exists,
+  a condition for 'at or below 50%' is cheap and worth adding." Then, on being told two "more" rows multiply: "option
+  (a), a Max Points column (exclusive) ... It is general, changes no existing row, and other 'At N points: ...
+  becomes' sentences can use it", and on #1882: "Max Points is a required column and an empty cell means no upper limit".
+- **Question 5:** the rule of a tenth governs Pressure Sensitive's slow (and Concealed's stun and Bleeding Ground's
+  bleed, which are not built here).
+- Questions 2 and 3 are for the C1/C5 plan, sent before building.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **`Type.Gadget`** on the three machines that are not traps; the generator refuses a deployable type that is not a
+   trap without it, and a type with it that is a trap or not deployable. A row naming it reaches a gadget's blow, cast,
+   reserve, health and lifetime, and not a trap's: a trap's tags lack it, and every reading checks a row's tags against
+   the machine's.
+2. **The rows** (the rows script lists each node, its rows and the clauses left): sixteen nodes. **Judgements:**
+   Volatile Mixture's "trap and explosive area" is the traps' own blasts (`area_of_effect` on `Type.Trap`); Pressure
+   Sensitive's "Enemies slowed by your traps" is any Cripple; Tinkerer's duration reaches War gadgets only, since a
+   skill gadget has no lifetime.
+3. **Max Points**, a whole number from 2 up and above Min Points; a row stops applying at that many points. An empty cell
+   is no limit.
+4. **`class_resource_at_or_below`**: the class resource at or below that percentage of its maximum, the complement of
+   `class_resource_above` with its three clauses. It compares a number; an unknown reading refuses, as the complement's
+   does, so a character with no pool is neither.
+5. **Durable Modifications**: damage reduction "more", 3% a point at or below 50%; 3% a point above 50% at 1 to 3 points
+   (Max Points 4); 6% a point above 50% from 4 points. One row holds at a time, so the doubling is exact.
+6. **The duplicate-row key gains Required Tags** (Bag of Tricks lowers traps' and gadgets' reserves, one stat twice)
+   and Max Points.
+
+### THE PYTHON SUITE
+
+Run on `bce3d40d13e3b7032b8f966e2461a522a3b8194b`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8475 passed, 9 skipped in 421.40s**, and the JUnit file `tests="8485" failures="1" errors="0"
+skipped="9"`, which is 8,475 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py` on the C++ files this branch changes: 0 with complaints.
+
+**THE RUNS BEFORE IT.** On `b6dc9867e`: 2 failed, 8474 passed, 9 skipped, the asset check and
+`test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`, the PassiveEffects pin left at 517; the
+commit after it moved it to 520. One run before that, on `1f783e966`, was stopped part-way to add an include to a file
+the suite reads, and measured nothing.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored. Each break is to
+`game/Data/PassiveEffects.csv`.
+
+| Break | Command | Named failure |
+|---|---|---|
+| Bag of Tricks' gadget reserve row put back on `Type.Deployable` | `pytest tools/tests/test_gadget_tag_script.py` | `test_no_passive_row_names_deployables` |
+| Durable Modifications' Max Points 4 to 3 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_stopping_at_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| Its at-or-below value 50 to 40 | the same | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+The generator's new Minion Types rule was seen refusing before the tags were written: "Minion Types row 4: BoltTurret
+is a deployable machine that is not a trap and does not carry Type.Gadget".
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SaboteurRows.AMaxPointsRowAppliesBelowItsLimitAndNotAtIt` | no limit: 4 at 4 (control); Max Points 4: 3 at 3, nothing at 4 or 6; Min 2 and Max 4: nothing at 1, once at 2 and 3, nothing at 4 |
+| `Cataclysm.SaboteurRows.DurableModificationsIsExactlyDoubledAboveHalfFromFourPoints` | the generated rows at 1 to 6 points: 1 + 3p% at or below half; above half 1 + 3p% at 1 to 3 and 1 + 6p% from 4 (each edge's neighbour the control) |
+| `Cataclysm.SaboteurRows.AGadgetRowReachesGadgetsAndNotTraps` | the three gadget types carry the tag and the two trap types do not (controls); a ballista's blow 150, a spike trap's 100 (control); a skill gadget's reserve halved, a skill trap's unchanged (control) |
+
+Predicted counts: `Cataclysm.SaboteurRows.` 3; `Cataclysm.Data.` the pin, 520.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. Max Points: in `CataclysmPassiveTree.cpp`, `Points >= Effect.MaxPoints` becomes `Points > Effect.MaxPoints`. Must fail
+   `AMaxPointsRowAppliesBelowItsLimitAndNotAtIt` and `DurableModificationsIsExactlyDoubledAboveHalfFromFourPoints`.
+2. The condition: in `CataclysmStatPipeline.cpp`, the at-or-below case's `<= Value` becomes `< Value`. Must fail
+   `DurableModificationsIsExactlyDoubledAboveHalfFromFourPoints` (50 of 100 is at half).
+3. The gadget rows: in `CataclysmAbilitySystemComponent.cpp`, the container `StatNamingTagAppliedTo`'s
+   `Modifier.RequiredTags.HasAnyExact(Named)` becomes `Modifier.RequiredTags.HasTagExact(Named.First())`. Must fail
+   `AGadgetRowReachesGadgetsAndNotTraps`.
+
+---
+
+## 2026-11-25 — The Saboteur's device conditions: nine nodes on the player's traps and gadgets, a `device_placed` event, four conditions, a "more" on the trap trigger radius, and the passive order fixes written into the War trees
+
+**Affects:**
+- `docs/Saboteur_Class_Tree_Final.json` and `docs/Bulwark_Class_Tree_Final.json`: the passive order fixes the owner approved
+  on 2026-11-24 (`tools/apply_passive_order_fixes_2026_11_24.py`), applied: six Saboteur count caps reworded, the four
+  Saboteur oaths' decision fields, Serrated Edge. `game/Data/PassiveNodes.csv`: the seven sentences.
+- `docs/All_Things_Cataclysm.xlsx`: thirteen rows on nine Saboteur nodes and two columns, Action Event and Stack Seconds
+  (`tools/reapply_war_saboteur_devices_workbook.py`, new; the row helper `tools/reapply_war_data_rows_workbook.py` learns
+  the two columns). `game/Data/PassiveEffects.csv` (494 rows); `docs/README.md` (the sheet's count and columns).
+  **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: four conditions, `OwnGadgetWithinMetres`,
+  `TargetNotYetTriggeredYourTrap`, `WithinSecondsOfGadgetStruck` and `NoRoomForATrap`, with their readings and the
+  counted sentences (forty of eighty-one compare nothing).
+- `CataclysmAbilitySystemComponent.h` and `.cpp`: the nearest gadget's distance in the walk that counts the machines; the
+  gadget-struck clock (`NoteGadgetStruck`, called from a gadget's own `NoteHitTaken`, raising `gadget_struck`); the
+  enemy's record of the first trap it set off (`NoteTriggeredATrapOf`, `TriggeredATrapOfOtherThan`); `HasNoRoomForATrap`,
+  filled by `WithEnemiesInReach` only when a row asks; `TrapDamageNamingTrap` names the blow's trap.
+- `CataclysmMinion.h` and `.cpp`: `device_placed` beside `trap_placed` and `gadget_placed`; `TriggerSkillTrap` writes the
+  enemy's record; `SkillTrapTriggerRadiusCmFor` reads the radius's "more". `CataclysmSkillTemplates.cpp`: `device_placed`
+  for every War machine. `CataclysmSkillEffects.cpp`: `ApplyHit` names the blow's trap.
+- `tools/generate_datatables.py`: the four conditions, `device_placed`, `trap_trigger_radius` in `STATS_WITH_AN_ASKER` and
+  `CONDITIONED_STATS_WITH_AN_ASKER`; Action Event and Stack Seconds leave `OPTIONAL_COLUMNS`, required now the workbook
+  has them (issue #1882's rule).
+- Tests: `CataclysmSaboteurDeviceTests.cpp` (new, six), `CataclysmStatExemptionTests.cpp` (`ProbeScaledTrapTriggerRadius`),
+  `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`), `CataclysmDataTableTests.cpp` (the pin, 494);
+  `tools/tests/test_war_saboteur_devices_scripts.py` (new), `test_passive_effects_match_the_node_text.py` (the words, an
+  own stack's event and seconds, 494 rows, 289 nodes), `test_the_condition_count_sentences_agree_with_the_code.py` ("adds
+  an"), `test_passive_rows_carry_the_action_columns.py` and `test_generate_datatables.py` (the two columns required: the
+  test sheets carry them, and `test_the_sheet_reads_with_no_port_column_at_all` became
+  `test_the_sheet_reads_with_no_optional_port_column`).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run
+  `Cataclysm.SaboteurDevices.` (six tests, new), `Cataclysm.StatExemption.` (one more scaled probe), `Cataclysm.Passives.`
+  (the value-less list) and `Cataclysm.Data.` (the pin, 494).
+- **A MERGE POINT WITH THE DEATH TREES' LINE.** `feat/death-trees-c3a` adds the condition `seconds_after_fervour_spent`;
+  both lines change the counted sentences in `CataclysmStatPipeline.h` and `.cpp` and add enumerators after `InFrenzy`.
+  Whichever merges second must recount: `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` fails until
+  it does.
+- **THE PASSIVE ORDER FIXES WERE NEVER IN A TREE FILE.** `fix/passive-order-2026-11-24` (5d883e185) adds the script and its
+  tests and writes no tree file, so no merge meets these sentences twice. If a later branch writes them, the sentences in
+  `tools/apply_passive_order_fixes_2026_11_24.py` are the ones to keep.
+- **SUPPORT NETWORK'S "GADGET DAMAGE" REACHES TRAPS TOO.** It is written on `Type.Deployable`, as every "gadgets deal" row
+  is; a trap carries that tag, so a trap's own blow also gains it. That is the precedent's breadth, not a new one.
+- **A NEW EVENT A ROW MAY ACT ON, `gadget_struck`**, raised beside the clock `seconds_after_gadget_struck`, because every
+  `seconds_after_<event>` clock is an event (`test_pool_action_names_match_the_engine.py`). No row acts on it.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the survey of that day:
+- Apply the War-tree parts of the passive order fixes as the first commit of the branch.
+- **Support Network's** 4-point clause: 10% while at least one gadget is active, not per gadget.
+- **Ambush:** an enemy's first trap counts as "not yet triggered"; the record is written after that trap's blows land; an
+  enemy caught in a blast it did not set off keeps the bonus.
+- **Overcautious:** "under attack" lasts 2 seconds after a gadget takes a hit.
+- **Overwhelming Presence:** "doubled" is a true doubling: a "more" read on `trap_trigger_radius`, and the node 100% more.
+- **Razor Instincts:** one `device_placed` event raised beside `trap_placed` and `gadget_placed`, the node one row on it,
+  and an Unreal test that one placing gives one stack (3%, not 6%).
+- **AND ON THE BRANCH'S FIRST REVIEW, THE SAME DAY**, judgement 4's second half overruled: "A rearmed trap that the same
+  enemy sets off a second time is not that enemy's first. The node says 'enemies that have not yet triggered one of
+  your traps', and after the first time it has. Set aside the triggering (that cast of the trap), not the trap itself,
+  so the first triggering's blows all count, a late shot included, and a later triggering of the same trap by the same
+  enemy does not." Judgements 1, 2, 4's first half and 5 accepted, and the radius read's change.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Data alone.** Snap Back: 4% evasion a point, `traps_active` capped at one step ("at least one active trap"). Sprung:
+   3% movement speed a point, the row's own stack on `trap_triggered`, 3 s, one at most. Emergency Protocol: 5% movement
+   speed and 5% evasion a point, own stacks on `gadget_destroyed`, 5 s (a stack's key is node and stat, so each stat keeps
+   its own). Support Network: 3% attack and spell damage a point on `Type.Deployable` per active trap; from 4 points 10%
+   trap trigger radius while a gadget is active.
+2. **`device_placed`** is raised by `PlaceSkillTrap` beside `trap_placed`, by `PlaceSkillGadget` beside `gadget_placed`,
+   and by `UCataclysmDeployableSkill::DeployOne` for every War machine. **A judgement: a War trap raises it too**, which
+   "after placing a trap or gadget" says; a War trap raises no `trap_placed` so that rows written for skill traps do not
+   reach it, and no such row can be written on an event that did not exist. Razor Instincts: 3% evasion a point, one row,
+   its own stack on `device_placed`, 3 s, one at most.
+3. **`own_gadget_within_metres`** (Sentry Network, 15): the nearest gadget the wearer commands, in metres from the wearer.
+   It compares a number; with no gadget the reading is -1 and the condition refuses.
+4. **`target_not_yet_triggered_your_trap`** (Ambush): the struck enemy has set off no skill trap of the asker's other than
+   the triggering whose blow this is. It compares nothing; with no target or no record read it refuses. The enemy keeps
+   the first triggering of each player's traps it set off, as the trap and its count (`SkillTrapTriggersMade`); the blow
+   names its trap and triggering (a used-up trap's kept record carries the count it was used up at). **Judgement on the
+   ruling's "after that trap's blows land": the record is written when the trap's cast starts, and the condition sets
+   that triggering aside**, so all its blows, a late shot included, still count as the first's. **A rearmed trap set
+   off again by the same enemy is not its first: the ruling, which overruled this entry's first judgement that it was.**
+   ONE CASE IS READ WRONG, and it is said here: a late blow of a standing trap's earlier triggering that lands after the
+   trap rearmed and went off again is read as the later triggering's, because a blow carries its trap and not its
+   triggering. Rearming takes the arming time, so only a blow in flight that long is affected.
+5. **`seconds_after_gadget_struck`** (Overcautious, 2): within that many seconds of a gadget the wearer commands taking a
+   landed blow that is not a tick. It compares a number; never struck reads -1 and refuses.
+6. **`no_room_for_a_trap`** (Overwhelming Presence): at least one slot converted into a skill trap, and none could reserve
+   another. It compares nothing; **a character with no trap slot refuses it**, a judgement: there is no trap to place, so
+   "no room for another" has nothing to be about. Filled only when a row asks, since it asks a stat of every slot.
+   Overwhelming Presence: 50% more trap damage and 100% more trap trigger radius under it. **The radius now reads "more"**,
+   through `MultiplierForStatAgainst`: `(1 + increases) x more`, with `1 + increases` floored at nought. **One difference
+   from the old read**, which floored the increases themselves at nought: a net reduction of the radius was ignored and
+   now shrinks it. No row reduces the radius today.
+
+### THE PYTHON SUITE
+
+**AFTER THE RULING ON A REARMED TRAP**, run on `365f0b949d47b54751c9b0b106d20ec235341a27`, with nothing in the worktree
+changing during the run: **1 failed, 8452 passed, 9 skipped in 403.69s**, and the JUnit file `tests="8462" failures="1"
+errors="0" skipped="9"`, which is 8,452 passed: the two agree. The one failure is the asset check below. Ruff: all
+checks passed; `check_resolved_cpp.py` on the twelve C++ files this branch changes: 0 with complaints.
+
+Before that ruling, run on `1d97ba1d2bd990cc9dabbb325996dde3586aabe6`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8452 passed, 9 skipped in 402.79s**, and the JUnit file `tests="8462" failures="1" errors="0"
+skipped="9"`, which is 8,452 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py` on the twelve C++ files this branch changes: 12 files read, 0 with complaints.
+
+**THE RUN BEFORE IT**, on `11318524a`, read 2 failed, 8449 passed, 9 skipped: the asset check, and
+`test_required_workbook_columns.py::test_an_optional_column_the_sheet_now_has_is_not_listed`, because Action Event and
+Stack Seconds were still declared optional; the commit after it made them required. Two runs before that were stopped
+part-way, each to correct a file the suite reads, and measured nothing.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Each reported `proved` True: a named test
+failed with the break in, and all 27 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failure |
+|---|---|
+| Sprung's stack, `Saboteur_basic_trap_mid_002#1`, 3 seconds to 4 | `test_an_own_stack_states_its_event_and_its_seconds` |
+| Overcautious's condition value, 2 to 3 | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Ambush's condition, `target_not_yet_triggered_your_trap` to `target_not_yet_struck_by_you` | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SaboteurDevices.RazorInstinctsOnePlacingGrantsOneStackOfThree` | the generated row: nothing before (control); a trap placed, 3; a gadget within the window, still 3; 3.1 s on, nothing |
+| `Cataclysm.SaboteurDevices.TwoRowsOnOneStackKeyEachCountTheOneStack` | two hand rows on one key, granted on `trap_placed` and `gadget_placed`: one trap placed, one stack and 6 (measures why the node is one row) |
+| `Cataclysm.SaboteurDevices.SentryNetworkHoldsWithinFifteenMetresOfAGadget` | the generated row: a gadget 20 m away, nothing (control); moved to 5 m, 2 |
+| `Cataclysm.SaboteurDevices.OvercautiousHoldsForTwoSecondsAfterAGadgetIsStruck` | the generated row: not struck, and a tick, nothing (controls); a landed blow, 4; held at 1.9 s, gone at 2.1 |
+| `Cataclysm.SaboteurDevices.AmbushCountsAnEnemysFirstTrapAndNoLaterOne` | 5% before anything (control); after the enemy sets trap A off for real, A's blow 5%, B's nothing, B's on a second enemy 5%; A rearmed and set off again by the same enemy, nothing |
+| `Cataclysm.SaboteurDevices.OverwhelmingPresenceHoldsOnlyWhenNoTrapSlotHasRoom` | room: 450 cm and a "more" of 1 (control); no room: 900 cm and 1.5; no trap slot: 450 again (control) |
+
+Predicted counts: `Cataclysm.SaboteurDevices.` 6; `Cataclysm.StatExemption.` the same count, one more scaled probe;
+`Cataclysm.Data.` the pin, 494.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. The trap room: in `CataclysmAbilitySystemComponent.cpp`, `HasNoRoomForATrap`'s `return bAnyTrapSlot;` becomes
+   `return false;`. Must fail `OverwhelmingPresenceHoldsOnlyWhenNoTrapSlotHasRoom`.
+2. The enemy's record: in `CataclysmMinion.cpp`, `EnemysOwn->NoteTriggeredATrapOf(Theirs, this, SkillTrapTriggersMade);`
+   becomes `EnemysOwn->NoteTriggeredATrapOf(Theirs, nullptr, SkillTrapTriggersMade);`. Must fail
+   `AmbushCountsAnEnemysFirstTrapAndNoLaterOne`.
+3. The placing event: in `CataclysmMinion.cpp`, `PlaceSkillTrap`'s `FName(TEXT("device_placed")), &TrapTags` becomes
+   `FName(TEXT("gadget_struck")), &TrapTags`. Must fail `RazorInstinctsOnePlacingGrantsOneStackOfThree`.
+
+---
+
+## 2026-11-25 — Riposte, Vengeful Discharge and Crimson Tide: a counter-attack that stuns at a full pool, a drain whose emptying pulses retaliation on the last blow taken, a heal for Fervour spent or drained, and a Stun on another character for a row's seconds
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`: `RiposteOnBlock`, `RetaliationPulseDrainStep`
+  and `NoteFervourSpentOrDrained` (called by `TakeFromPool`, Cleave's costs, and the sites below).
+- `CataclysmRetaliation.h` and `.cpp`: `Pay` remembers every blow taken; `PayPulse`, new.
+- `CataclysmAbilitySystemComponent.h` and `.cpp`: the last blow taken and when (`NoteBlowTakenForRetaliation`,
+  `LastBlowTakenThisFloor`), Crimson Tide's count, `ApplyStatusOf`'s new Stun branch, and a pool action's Fervour drain
+  noted for Crimson Tide.
+- The other call sites: `CataclysmVitalAttributeSet.cpp` (Riposte after Iron Will's cost), `CataclysmCharacterBase.cpp`
+  (the pulse drain in the regeneration step), `CataclysmBerserkerStates.cpp` (its drain and Berserking noted),
+  `CataclysmGameplayAbility.cpp` (the Ultimate's Fervour cost noted).
+- `tools/generate_datatables.py`: `Stun` in `APPLY_STATUSES_FOR_SECONDS`; two Riposte stats in
+  `CONDITIONED_STATS_WITH_AN_ASKER`. Seven stats in `StatsWithNoAttribute`, each probed.
+- `docs/Bulwark_Class_Tree_Final.json` and `docs/Berserker_Class_Tree_Final.json`: Vengeful Discharge and Crimson Tide
+  reworded (`tools/apply_war_riposte_discharge_tide_2026_11_25.py`, new). `docs/All_Things_Cataclysm.xlsx`: sixteen
+  rows (`tools/reapply_war_riposte_discharge_tide_workbook.py`, new). `game/Data/PassiveEffects.csv` (481 rows).
+  **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- Tests: `CataclysmWarFervourTests.cpp` (three), `CataclysmApplyStatusTests.cpp` (one), `CataclysmStatExemptionTests.cpp`
+  (seven probes), `CataclysmDataTableTests.cpp` (the pin, 481); `tools/tests/test_war_riposte_discharge_tide_scripts.py`,
+  new; `test_passive_effects_match_the_node_text.py` (words, 481 rows, 280 nodes), `test_stat_lookups_hand_over_what_they_should.py`,
+  `test_charge_and_placed_action_names_match_the_engine.py` (Stun is the one seconds-status not in `APPLY_STATUSES`),
+  `test_generate_datatables.py` (the Stun refusal on `apply_status_seconds` became its acceptance, with the plain
+  action's refusal as its control), `test_damage_over_time_names_its_skill.py` (`PayPulse`'s Bleed, which credits no
+  skill), `test_stun_durations_are_stated.py` (a passive row that is a stun's length, read against its node's sentence).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run
+  `Cataclysm.WarFervour.` (thirteen tests, three new), `Cataclysm.ApplyStatus.` (one new),
+  `Cataclysm.StatExemption.` (same count, seven more probes) and `Cataclysm.Data.` (the pin, 481).
+- **CRIMSON TIDE'S "INSTANTLY" PAYS WITHIN A QUARTER SECOND, NOT IN THE SAME FRAME**, the data route the coordinating
+  session accepted: 1,100 more leech payout rate on its base of 100 pays a leech on the next quarter-second step.
+- **CRIMSON TIDE DOES NOT COUNT THE MASOCHIST'S OR THE RAVAGER'S SPENDS** in `UCataclysmFervour` (Bought With Ruin, Wrung
+  Out), which the Death trees session owns. Every War spend and drain counts, and so do the Ultimate's Fervour cost and
+  a pool action's drain. A Berserker holding a Demonic node beside Crimson Tide would not count those two.
+- **TWO RECORDS OF FERVOUR, DIFFERENT ON PURPOSE.** `FCataclysmWarFervour::NoteFervourSpentOrDrained` counts spends
+  and drains for Crimson Tide. The Death trees' `UCataclysmAbilitySystemComponent::NoteFervourSpent`
+  (`feat/death-trees-c3a`) records a skill's Fervour cost alone, for `seconds_after_fervour_spent` and the event
+  `fervour_spent`. This branch's function, and the component's count and remainder beside it, were renamed from
+  `NoteFervourSpent`, `CountFervourSpentSteps` and `FervourSpentTowardsHeal` on 2026-11-25 at the coordinating session's
+  request, so the two cannot be confused. **AT MERGE, `CataclysmGameplayAbility.cpp` KEEPS BOTH CALLS** after the
+  Ultimate's Fervour cost: both branches change the same line, and that cost is a skill's spend for the one record and
+  counts for Crimson Tide in the other.
+- **THE GENERAL STUN BRANCH IS EXERCISED ON A PLAIN EVENT** (`deployable_hit`); the Saboteur's Concealed, which asked for
+  it on a trap trigger, is not built here.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation:
+- **Vengeful Discharge's** "100% of your retaliation damage" is the retaliation percentage times the damage of the last
+  blow taken, remembered for the purpose; nothing if no blow has been taken this floor. Only its own drain sets the pulse
+  off. Its sentence takes the War rulings' R7, which the owner accepted on 2026-11-24.
+- **Crimson Tide** counts spends and drains, not decay; a payout on the next quarter-second step meets "instantly".
+- **Riposte's** stun is a general Stun branch of `apply_status` on another character (for the Saboteur's Concealed, R20,
+  too), and Riposte is one action that judges "at least 25" and "at maximum" before it spends.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Riposte** (`RiposteOnBlock`), where the block is announced: the share (at 25 Fervour or more) and the stun (at the
+   maximum) read first, then the 25 taken, then 75% of the damage blocked dealt to the attacker as `reflect_blocked`
+   delivers it, then the stun. **A judgement on the order:** after Iron Will's cost, which is part of the block itself,
+   and before the block's own gain.
+2. **Vengeful Discharge**: its own drain, `retaliation_pulse_drain_per_second` 10 (once); when that drain takes the pool to
+   nought, `UCataclysmRetaliation::PayPulse` pays every enemy within 4 metres the retaliation a blow of the last size taken
+   would earn, delivered as `Pay` delivers. "This floor" is read by comparing when the blow was taken with when the floor
+   began (`ACataclysmPlayerState::SecondsOnFloor`), so no reset was added. **Judgements:** the +3% a point holds whether or
+   not the drain is draining; the Bleed is laid on an enemy the pulse took health from, without the rule of a tenth.
+3. **Crimson Tide**: its fractions made steps by the design document's rule "A threshold or a step, never a fraction" (as
+   Bloodthirst's were): 1% life leech on melee for every 2 points (2% at 4, 4% at 8, as 0.5 a point gave), and the heal 1%
+   of maximum health for every 2 points for each whole 10 Fervour spent or drained (`NoteFervourSpentOrDrained`, the rest carried).
+4. **The Stun branch** (`ApplyStatusOf`): a designed stun on the event's other character for the row's seconds, on
+   `apply_status_seconds` only; a plain row naming Stun lays nothing.
+5. **The rule that every stun states how long** (issue #271) now reads a passive row. Riposte's is the first passive row
+   to apply a stun, and a passive row holds no sentence, as an enchantment's effect row holds none, so a row whose stat
+   names `stun_seconds` is excused when its value is above nought and its node's sentence states that same number as
+   "for N seconds". **A judgement**, in the shape of the Time-Lock rift's excuse of 2026-10-19; a sentence that says
+   only "briefly", another length, or a row with no length is still reported.
+
+### THE PYTHON SUITE
+
+Run on `5273e90e6e379243449ff59096d1367a39b9a48b`, the commit after the one that brought this entry, which updated the
+three checks named last under Affects, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8437 passed, 9 skipped in 403.59s**, and the JUnit file `tests="8447" failures="1" errors="0"
+skipped="9"`, which is 8,437 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py` on the fifteen C++ files this branch changes: 15 files read, 0 with complaints.
+
+**THE RUN BEFORE IT**, on `12f1f1e22`, read 4 failed, 8432 passed, 9 skipped: the asset check, and the three checks
+the commit after it updated (the Stun refusal on `apply_status_seconds`, `PayPulse`'s Bleed unlisted, and Riposte's
+stun row unread by the rule that every stun states how long).
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Both reported `proved` True: a named test failed
+with the break in, and all 26 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| Riposte's share row, `Bulwark_keystone_ic_t1#1`, its condition value 25 to 20 | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Crimson Tide's leech payout row, 1,100 to 1,000 | `test_every_value_appears_in_the_nodes_own_description` |
+
+And one against `python -m pytest tools/tests/test_stun_durations_are_stated.py`, which reported `proved` True: two named
+tests failed with the break in, and all 28 passed with it restored.
+
+| Break | Named failures |
+|---|---|
+| Riposte's stun row, `Bulwark_keystone_ic_t1#3`, 1 second to 2, which its node's sentence does not state | `test_everything_that_applies_a_stun_states_how_long`, `test_a_passive_stun_length_is_excused_only_when_its_value_and_its_nodes_sentence_agree` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarFervour.RiposteCountersABlockAtTwentyFiveFervourAndStunsAtTheMaximum` | no share, nothing dealt or spent (control); with it the attacker loses health and 25 are spent; with the stun, stunned |
+| `Cataclysm.WarFervour.VengefulDischargesDrainPulsesOnTheLastBlowTakenWhenItEmptiesThePool` | no blow this floor, the pulse strikes nothing (control); with a blow of 100, a creature a metre away is struck |
+| `Cataclysm.WarFervour.CrimsonTideHealsForFervourDrainedAndNotForFervourDecayed` | 20 decayed heals nothing (control); 20 drained heals 800 |
+| `Cataclysm.ApplyStatus.AStunWithStatedSecondsIsLaidOnTheOtherCharacterAndAPlainStunRowIsNot` | a plain Stun row stuns nobody (control); a seconds row stuns |
+
+Predicted counts: `Cataclysm.WarFervour.` 13; `Cataclysm.ApplyStatus.` one more than its last measured count.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. Riposte's site: in `CataclysmVitalAttributeSet.cpp`, `Outcome.DamageBlocked);` in the `RiposteOnBlock` call becomes
+   `0.0f);`. Must fail `RiposteCountersABlockAtTwentyFiveFervourAndStunsAtTheMaximum`.
+2. The pulse's trigger: in `CataclysmWarFervour.cpp`, `if (After <= 0.0f)` becomes `if (After < -1.0f)`. Must fail
+   `VengefulDischargesDrainPulsesOnTheLastBlowTakenWhenItEmptiesThePool`.
+3. Crimson Tide's drain site: in `CataclysmBerserkerStates.cpp`, `FCataclysmWarFervour::NoteFervourSpentOrDrained(Cataclysm, -Moved);`
+   becomes `FCataclysmWarFervour::NoteFervourSpentOrDrained(Cataclysm, 0.0f);`. Must fail
+   `CrimsonTideHealsForFervourDrainedAndNotForFervourDecayed`.
+
+---
+
+## 2026-11-25 — The Fervour spends: Iron Will, Undying, Cleave and Blood Tithe spend or lose Fervour where their sentences say, and Warmonger and Cut and Run count enemies within melee range, which is 4 metres
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`: `SpendOnNegatedBlock`, `SpendAllOnLethalBlow`,
+  `TradeForEnemiesStruckTogether` and `LoseForRegeneration`, each reading its stat where it applies, and `TakeFromPool`.
+- The call sites: `CataclysmDamageCalculation.h` and `.cpp` (`FCataclysmDamageResult::bNegated`, set where the block's
+  negation is rolled); `CataclysmVitalAttributeSet.cpp` (Iron Will's cost after `NoteBlocked`; Undying's save after the
+  reprieve, and its restore through `TopUp` after the blow's write); `CataclysmSkillTemplate.cpp` (`BeginAttackOn`,
+  Cleave's trade before Berserking's spend); `CataclysmRegeneration.cpp` (`TopUp`, Blood Tithe's loss beside the
+  Masochist's removal for healing). `CataclysmAbilitySystemComponent.h`: Blood Tithe's count of health regenerated.
+- Six stats in `UCataclysmPlayerClassStats::StatsWithNoAttribute`, each probed in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`; `fervour_drain_per_second` in
+  `STATS_WITH_AN_ASKER` with `ProbeScaledFervourDrainPerSecond`; seven stats in `CONDITIONED_STATS_WITH_AN_ASKER`.
+- `docs/Cataclysm_GDD_v2.md`, Passive Class Trees: **"Melee range" in a node is 4 metres.**
+- `docs/All_Things_Cataclysm.xlsx`: sixteen rows (`tools/reapply_war_fervour_spends_workbook.py`, new); slice D's `Row`
+  carries a reach. `game/Data/PassiveEffects.csv` (465 rows). **The editor step must rebuild `DT_PassiveEffects`.**
+- Tests: `CataclysmWarFervourTests.cpp` (four), `CataclysmWarDataRowsTests.cpp` (one), `CataclysmDataTableTests.cpp`
+  (the pin, 465); `tools/tests/test_war_fervour_spends_scripts.py`, new; `test_passive_effects_match_the_node_text.py`
+  (a new reach check, a five-part value key, the words, 465 rows, 277 nodes, 42 options);
+  `test_war_data_rows_scripts.py` (deletes by node and option); `test_stat_lookups_hand_over_what_they_should.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  `Cataclysm.WarFervour.` (ten tests, four new), `Cataclysm.WarDataRows.` (five, one new), `Cataclysm.StatExemption.`
+  (same count; six more probes in one test and one more in the scaled probes) and `Cataclysm.Data.` (the pin, 465).
+- **CLEAVE'S TRADE IS NOT EXERCISED THROUGH ITS CALL SITE** (`BeginAttackOn`): its test calls the function. The site is
+  one call beside Berserking's spend, read only.
+- **A PLAY-TEST POINT: UNDYING IS A LETHAL-BLOW SAVE WITH NO COOLDOWN**, gated only by the pool refilling to 50 Fervour.
+  A Berserker who fills 50 Fervour quickly is saved from every lethal blow that finds it full. Built as the sentence
+  states; the coordinating session asked on 2026-11-25 that it be watched in play.
+- **NOT IN THIS BRANCH:** Riposte, Vengeful Discharge and Crimson Tide, ruled the same day (below) and going on the next
+  branch; Skull Splitter, Deathmark and Blood Price (a mark, a mark, and a sentence to rule).
+- **A NEW CHECK, AND WHAT IT FOUND:** no test held a row's reach to its sentence. `test_a_reach_is_the_one_the_node_states`
+  does now; the 23 rows with a reach all pass it, so nothing was wrong before.
+
+### WHAT WAS RULED
+
+- **"Melee range" is 4 metres**, the coordinating session's ruling of 2026-11-25 under the owner's delegation: the reach
+  the trees already use for enemies near a character in melee (the Ravager's core count, Reprisal Wave). Written into the
+  design document.
+- **For the next branch**, the coordinating session the same day, under the owner's delegation: Vengeful Discharge's
+  "100% of your retaliation damage" is the retaliation percentage times the last blow taken, remembered for the purpose,
+  nothing if none was taken this floor, and only its own drain triggers it; Crimson Tide counts spends and drains but
+  not decay, and a leech payout within a quarter second meets "instantly"; Riposte's stun is a general Stun branch of
+  `apply_status` on another character, with one Riposte action that checks "at least 25" and "at maximum" before it
+  spends.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Iron Will.** A negated block (the hit's new `bNegated`) costs `fervour_cost_per_negated_block`, paid where the block
+   is announced and before the block's own Fervour gain, so the "above 75 Fervour" condition is judged on the pool that
+   negated it. Rows: negation 100 and cost 20, each once, and -2 a point, all at 75 Fervour or more. **Judgements:** 18
+   at one point and 4 at eight ("Per point: reduces the Fervour drain by 2" counts the first point); a block that took
+   only its share costs nothing; a cost above the pool takes what there is.
+2. **Undying.** A third lethal-blow save, after Nothing Stops It and the Demon King's reprieve (each costs nothing): with
+   the row held (stated under at least 50 Fervour), the blow leaves 1 health, the whole pool is spent, and 5% of maximum
+   health returns for each whole 10 spent, through `TopUp` after the blow's write. **Judgements:** whole steps rounded
+   down (the 2026-08-25 rule a bonus counts whole steps); a tick is saved too, as the reprieve reads "would be killed";
+   no cooldown, since the sentence states none and the pool must refill to 50.
+3. **Cleave.** `strike_arc_at_least_degrees` 180 once and 10 a point on melee, two-handed; each enemy beyond the first, in
+   turn, costs 5 if the pool holds it and then gains 3 a point (scaled by generation); an enemy the pool cannot pay for
+   gains nothing. Paid once as an attack begins, before Berserking spends what is left. **Judgements:** 190 degrees at one
+   point; the cost per enemy rather than for the whole attack ("Each enemy hit beyond the first costs 5"); Cleave before
+   Berserking.
+4. **Blood Tithe.** For health restored by regeneration (the tag `UCataclysmRegeneration`'s step puts on it), on what
+   fit, a loss for each whole step, the rest carried: 5 for each 100, and from 6 points 1 for each 150 (rows of -4 and
+   +50 from 6 points). Above 50% Fervour, 50% increased maximum health, once. **Judgements:** "50% Fervour" is the share
+   condition `class_resource_above`, and "50 Fervour" elsewhere the points one; the 50% maximum health is not per point.
+5. **Warmonger and Cut and Run**, on `enemies_in_reach` with a reach of 4: Warmonger's drain 3 for each enemy, once, and
+   its damage 8% a point for each; Cut and Run's speed 5% for each enemy, in Frenzy.
+6. **"At least 50 Fervour" and "above 75 Fervour" are `class_resource_points_at_least`**, the only points condition, as
+   the War riders' Steeled Resolve was.
+
+### THE PYTHON SUITE
+
+Run on `eaec990f55dc985b025c7fffbb27311eddedf746`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8422 passed, 9 skipped in 381.09s**, and the JUnit file `tests="8432" failures="1" errors="0"
+skipped="9"`, which is 8,422 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 13 files read, 0 with complaints.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Both reported `proved` True: a named test
+failed with the break in, and all 26 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| Warmonger's drain row, `Berserker_twoh_016#1`, reach 4 to 5 | `test_a_reach_is_the_one_the_node_states` |
+| Blood Tithe's 6-point loss row, `Bulwark_basic_jg_resolve_001#3`, -4 to -3 | `test_every_value_appears_in_the_nodes_own_description` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarFervour.ANegatedBlockPaysIronWillsCostAndABlockThatTookAShareDoesNot` | a block that took its share costs nothing (control); a negated one costs 20 and nothing reaches health; 20 with 5 held takes 5 |
+| `Cataclysm.WarFervour.UndyingSpendsThePoolOnALethalBlowAndRestoresFivePercentForEachTen` | without the row the blow kills (control); with it, 73 spent and 1 + 350 health |
+| `Cataclysm.WarFervour.CleavePaysForEachEnemyBeyondTheFirstAndGainsForEachPaid` | one enemy or a non-melee attack: nothing (controls); three: -4; 4 held: nothing |
+| `Cataclysm.WarFervour.BloodTitheTakesFervourForEachWholeStepOfHealthRegenerated` | a heal that is not regeneration: nothing (control); 250: -10; 60 more: -5 |
+| `Cataclysm.WarDataRows.TheSpendsCarryTheMeleeRangeAndChangeAtTheirPoints` | the 4 m reach in both modifiers; Iron Will 18 and 4; Cleave 190 and 240; Blood Tithe 5 per 100 and 1 per 150 |
+
+Predicted counts: `Cataclysm.WarFervour.` 10; `Cataclysm.WarDataRows.` 5.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. Iron Will's site: in `CataclysmVitalAttributeSet.cpp`, `if (Outcome.bNegated)` becomes `if (false && Outcome.bNegated)`.
+   Must fail `ANegatedBlockPaysIronWillsCostAndABlockThatTookAShareDoesNot`.
+2. Undying's steps: in `CataclysmWarFervour.cpp`, `FMath::FloorToFloat(Spent / 10.0f)` becomes
+   `FMath::FloorToFloat(Spent / 20.0f)`. Must fail `UndyingSpendsThePoolOnALethalBlowAndRestoresFivePercentForEachTen`.
+3. Blood Tithe's site: in `CataclysmRegeneration.cpp`, `LoseForRegeneration(&AbilitySystem, Restored, Healing)` becomes
+   `LoseForRegeneration(&AbilitySystem, 0.0f, Healing)`. Must fail
+   `BloodTitheTakesFervourForEachWholeStepOfHealthRegenerated`.
+
+---
+
+## 2026-11-25 — The War riders: ten Berserker and Bulwark nodes written as rows on the Berserker's states and the War Fervour rates, and the workbook gains a second condition
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, Passive Effects: twenty rows on ten nodes, and the `Condition 2` and `Condition Value 2`
+  columns (`tools/reapply_war_riders_workbook.py`, new). `game/Data/PassiveEffects.csv` (449 rows). **The editor step
+  must rebuild `DT_PassiveEffects`.**
+- `tools/reapply_war_data_rows_workbook.py` (slice D's machinery): `Row` carries a second condition, and the script adds
+  any of `Per Point From`, `Condition 2` and `Condition Value 2` an appended row uses, the two condition columns together.
+- `tools/generate_datatables.py`: `Condition 2` and `Condition Value 2` leave `OPTIONAL_COLUMNS`, so the workbook must
+  carry them; `fervour_per_critical_strike` and `fervour_per_hit_taken` join `CONDITIONED_STATS_WITH_AN_ASKER` (both are
+  probed in the table of stats with no attribute since slice C).
+- `tools/tests/test_passive_effects_match_the_node_text.py`: **the condition-words check reads both of a row's
+  conditions**, and the duplicate-row key carries the second; the words and forms the new sentences use; `AUTHORED_ROWS`
+  449, `AUTHORED_NODES` 272.
+- `tools/tests/test_war_riders_scripts.py`, new. `test_passive_rows_carry_the_action_columns.py`,
+  `test_generate_datatables.py` and `test_war_data_rows_scripts.py`: the two columns are required, and slice D's
+  comparison leaves out a `Per Point From` it did not write (Razor Mind's).
+- `game/Source/Cataclysm/Tests/CataclysmWarDataRowsTests.cpp`: one more test. `CataclysmDataTableTests.cpp`: the pin, 449.
+  `docs/README.md`: 449 and the two columns. **No engine code changed.**
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN RUN IN UNREAL.** No engine code changed; one test was added, read as the compiler only. A window
+  has to rebuild `DT_PassiveEffects` and run `Cataclysm.WarDataRows.` (four tests now) and `Cataclysm.Data.` (the pin).
+- **WAITING, AND WHY:**
+  - **Warmonger and Cut and Run count enemies "within melee range"**, and nothing in the code or the data says what melee
+    range is in metres. A ruling is needed before their rows (an `enemies_in_reach` scale needs a reach).
+  - Crusher needs a stagger chance on hit, which no stat is.
+  - Relentless needs "a hit that does not crit" as a condition.
+  - Juggernaut, Wrecking Ball, Killing Blow, Skull Splitter, Momentum, Bloodied and the rest each still have one clause
+    with no mechanism. Their other clauses could be rows today; a node is written only when its whole sentence is, so the
+    coverage count never counts a node half-built.
+- The condition-words check never read a second condition before this; no row had one, so nothing was missed.
+
+### WHAT WAS RULED
+
+- The coordinating session, 2026-11-25: the state-dependent nodes and the `Condition 2` columns, stacked on the
+  Berserker's states. Plain "damage" is attack and spell damage (the owner, 2026-08-25): Brute Force is two rows.
+
+### THE ROWS, AND THE JUDGEMENTS
+
+| Node | Rows |
+|---|---|
+| Battle Lust | `fervour_per_critical_strike` 1 a point on `Type.Melee` |
+| Razor Mind | `crit_multiplier` 4 a point on melee; `fervour_per_critical_strike` 2 a point; from 5 points another 2 a point above 75% Fervour, on every point (`Per Point From` 1) |
+| Hair-Trigger | `crit_chance` 2 a point in Frenzy; another 2 a point in Frenzy above 75% Fervour (`Condition 2`) |
+| Death Blow | `crit_chance` 5 a point on melee against an enemy below 25% health, two-handed (`Condition 2`) |
+| Brute Force | `attack_damage` and `spell_damage` 10% a point against a staggered enemy, two-handed |
+| Titan's Grip | in Wrath, `fervour_drain_per_second` 4, once; melee `attack_damage` 10% a point |
+| Shield Mastery | `block_chance` 2 a point; from 5 points `fervour_per_block` 3 |
+| Resolve Under Fire | `fervour_per_hit_taken` 1 a point; from 5 points 10 more under `health_below` 30 |
+| Immovable | `damage_reduction` 2 a point after 2 s without moving; from 5 points `fervour_per_hit_taken` doubled (a More of 100) while stationary |
+| Steeled Resolve | at 50 Fervour or more, `damage_reduction` 3 a point and `fervour_drain_per_second` 5, once; from 6 points `fervour_drain_per_second` -3 with no condition |
+
+Judgements:
+1. **"+X% damage reduction" with no "(multiplicative)" is flat.** The tree writes "(multiplicative)" where it means a More
+   (Iron Wall, Dense Muscle, Barbed Skin), and the "Flat damage reduction" affix adds points of the same stat.
+2. **A drain stated beside a per-point bonus is one rate**: Titan's Grip's "drain 4 additional Fervour per second to
+   increase all melee damage by +10% per point", Steeled Resolve's "This bonus drains 5 Fervour per second". Each is
+   granted once from the first point.
+3. **Steeled Resolve's "Reduces the drain rate to 2" is -3 with no condition**: the drain row is under the 50 Fervour
+   condition, so the total is 2 while it holds and -3 below, and a drain that sums to nought or less takes nothing
+   (`FCataclysmBerserkerStates::DrainStep`). A More of -60 would say the same number and put a row in a bucket the
+   sentence does not describe.
+4. **"While above 50 Fervour" is `class_resource_points_at_least` 50**, the only points condition, which is inclusive. The
+   two readings differ at the single value 50.
+5. **Hair-Trigger's "This bonus is doubled while above 75% Fervour" is a second equal row** under both conditions: doubling
+   a flat 2 a point adds 2 a point, where a More would double every crit chance the character has. The bucket check
+   excuses the word "doubled" for that node only while it holds exactly that shape (`DOUBLES_ITS_OWN_FLAT_BONUS`).
+6. **Resolve Under Fire's "a hit that would reduce you below 30% HP"** is health below 30% when the gain is paid, which is
+   after the blow is written (`CataclysmVitalAttributeSet.cpp`, health at line 2253, the gain at 2556): the health the hit
+   left, whether or not it was above 30% before.
+7. **Titan's Grip, Death Blow and Brute Force need no Wrath or weapon condition beyond the one stated**: Titan's Grip's rows
+   are under `in_wrath`, and Wrath ends when its two-handed rule stops holding.
+
+### THE PYTHON SUITE
+
+Run on `1d95f7289ad5dc22333855732e735f23aca8329a`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8414 passed, 9 skipped in 396.24s**, and the JUnit file `tests="8424" failures="1" errors="0"
+skipped="9"`, which is 8,414 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 2 files read, 0 with complaints.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Both reported `proved` True: a named test failed
+with the break in, and all 25 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| Every second condition `wielding_two_handed_weapon` (Death Blow's row and Brute Force's two) to `dual_wielding` | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Hair-Trigger's second condition value, 75 to 50 | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+They show the condition-words check reads a second condition and its value; before this entry it read neither.
+
+### UNREAL TEST (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarDataRows.TheRidersCarryASecondConditionAndPayTheirDrainsOnce` | Death Blow's two conditions in the modifier; Hair-Trigger's two rows, one with a second condition; Titan's Grip's drain 4 at 1 and 10 points against its damage per point; Steeled Resolve's drain 5 at 5 points and 2 at 6 against its damage reduction; Razor Mind's 8 at 4 points and 20 at 5 |
+
+Predicted counts: `Cataclysm.WarDataRows.` 4. **No C++ guard proof is planned:** no engine code changed, and a broken
+row reaches the engine only through the editor step, which `prove_cpp_guard` does not run.
+
+---
+
+## 2026-11-25 — The Berserker's states: Wrath and Frenzy begin at a full Fervour pool and end at an empty one, Berserking spends the whole pool on the next melee attack, and a War character's Fervour bar is drawn (slice B29, with R29's rename)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.h` and `.cpp`, new: `FCataclysmBerserkerStates`, which
+  judges when a state begins and ends (`Judge`), drains the pool (`DrainStep`), and spends it for Berserking
+  (`SpendBerserking`).
+- `CataclysmAbilitySystemComponent.h` and `.cpp`: `ECataclysmBerserkerState`, the held state and whether Berserking is
+  armed, and the two readings filled in `CurrentConditions`.
+- `CataclysmStatPipeline.h` and `.cpp`: three conditions, `dual_wielding`, `in_wrath` and `in_frenzy`, and their
+  readings `WeaponsWorn`, `bInWrath` and `bInFrenzy`.
+- The call sites, one each: `ACataclysmPlayerCharacter::OnClassResourceChanged` (the state judged when the pool moves,
+  before the walking speed), `OnSomethingWasHit` (Fervour per blow landed), `ACataclysmCharacterBase::RegenerationStep`
+  (the drain), `UCataclysmSkillTemplate::BeginAttackOn` (Berserking's spend, into the increased damage Bought With Ruin
+  buys), `UCataclysmPlayerEffects::EntriesFor` (the state shown) and `UCataclysmCombatOverlay::FervourOf` (the bar).
+- `CataclysmWarFervour.h` and `.cpp`: `fervour_per_hit_dealt` and `GainOnHitDealt`; `GainStats` and `HasARate`.
+- Five stats in `UCataclysmPlayerClassStats::StatsWithNoAttribute`, each with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`; four in `CONDITIONED_STATS_WITH_AN_ASKER`.
+- `docs/All_Things_Cataclysm.xlsx`, Passive Effects: eight rows (`tools/reapply_war_berserker_states_workbook.py`, new,
+  on slice D's machinery, whose `plan`, `apply` and `main` now take a list of nodes). `game/Data/PassiveEffects.csv`
+  (429 rows). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- R29: `docs/Bulwark_Class_Tree_Final.json`, the basic node `basic_tw_stem_004` renamed from Wrath Incarnate to
+  Outnumbered (`tools/apply_outnumbered_rename_2026_11_25.py`, new); `PassiveNodes.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmBerserkerStatesTests.cpp`, new: seven tests in `Cataclysm.BerserkerStates.`.
+- Python: `tools/tests/test_war_berserker_states_scripts.py` and `tools/tests/test_outnumbered_rename.py`, new;
+  `test_passive_effects_match_the_node_text.py` (the words, 429 rows, 262 nodes), `test_war_data_rows_scripts.py`
+  (compares sorted rows), `test_stat_lookups_hand_over_what_they_should.py` (the five new lookups, each with its reason), `CataclysmDataTableTests.cpp` (the pin, 429), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile it,
+  rebuild the two DataTable assets, and run `Cataclysm.BerserkerStates.` (seven tests, trailing dot),
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (five more probes), `Cataclysm.Passives.` (the
+  condition-name copy in `ComparesNothing`) and `Cataclysm.Data.` (the pin, 429).
+- **A FAULT OF SLICE C, FIXED HERE: NO WAR CHARACTER DREW A FERVOUR BAR.** `UCataclysmCombatOverlay::FervourOf` draws the
+  bar only for a character `UCataclysmFervour::HasAGenerator` says has a generator, and that function asks attributes;
+  every War rate is a stat with no attribute. `FCataclysmWarFervour::HasARate` now answers for them, called beside it,
+  so the War work stays out of `CataclysmFervour.cpp` as the coordinating session asked.
+- **BERSERKING'S NUMBER IS LARGE AND IT IS THE DESIGN'S.** 10% a point for each Fervour consumed: at one point a full pool
+  of 100 is 1,000% increased damage on one attack, and at its ten points 10,000%. Built as written; a figure to watch in
+  play.
+- **NOT IN THIS SLICE:** the nodes that ride on the states (Hair-Trigger, Cut and Run, Titan's Grip, Warmonger and the
+  rest of the Frenzy and Wrath riders), the second-condition columns the workbook still lacks, Bloodied's "Berserking
+  triggers on every melee hit" and Berserker's Rage's "no longer drain".
+- **NO WEAPON PLUS SHIELD WAS TESTED**: the item bases table holds no shield yet, so `dual_wielding` with a shield is the
+  design document's sentence, not a measurement.
+
+### WHAT WAS RULED
+
+- Q21, the owner's answer of 2026-11-24 ("Your recommendations work for all of those death/war questions"): Berserking
+  fires only outside Wrath and Frenzy.
+- R29, the War rulings the owner accepted on 2026-11-24 ("I'll go with your recommendations on the war rulings"): the
+  basic node is renamed Outnumbered; the Final Oath's option keeps the name. The coordinating session asked for it in
+  this branch.
+- The coordinating session, 2026-11-25: the War nodes that need a mechanism, grouped by mechanism, on a new branch. The
+  Berserker's states were the group the War survey found the most entries waiting on: the dual-wield condition 25, a
+  Fervour spend or drain 18, Frenzy 16, Wrath 7, Berserking 3.
+
+### GENRE RESEARCH
+
+A state that drains its resource each second and ends when the resource runs out is Path of Exile's: Berserk spends Rage
+each second while its buff holds ([poedb.tw/us/Berserk](https://poedb.tw/us/Berserk)), and Rage Vortex of Berserking
+"ends if you run out" of Rage ([poedb.tw/us/Rage_Vortex_of_Berserking](https://poedb.tw/us/Rage_Vortex_of_Berserking)).
+Diablo IV's Berserking is a timed buff instead ([maxroll.gg](https://maxroll.gg/d4/resources/barbarian-class-overview)),
+which the design's sentences do not take. **The research settles only the shape** (drain while held, end at empty); every
+number is the design's sentence, and the order and edges below are judgements.
+
+### THE THREE CONDITIONS
+
+- **`dual_wielding`**: two items in the weapon slots. A weapon and a Shield count, by the design document's Dual Wielding
+  sentence "A character holding a weapon and a Shield is dual wielding"; a two-handed weapon is stored once and is one
+  item; two under Both Hands Full are two. **Unknown refuses**: no equipment component, which is every enemy, reads -1.
+  Compares no number.
+- **`in_wrath`** and **`in_frenzy`**: the state `FCataclysmBerserkerStates` holds the character in. False is "not in it",
+  which every enemy is. Compare no number. Classed as depending on the class resource, since a state moves only when the
+  pool does or a regeneration step runs.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **A state begins at a full pool** (at or above `MaximumClassResourceAsked`, above nought) when its flag row holds:
+   Wrath's `wrath_on_full_fervour` under `wielding_two_handed_weapon`, Frenzy's `frenzy_on_full_fervour` under
+   `dual_wielding`. So "Two-handed weapons only" and "Dual wield only" are the flags' own conditions, and every bonus of
+   the state is a row under `in_wrath` or `in_frenzy`. **A judgement:** "when you reach maximum Fervour" is read as being
+   at the maximum when asked; the pool's change notice asks the moment it fills, and the regeneration step four times a
+   second after that.
+2. **A state ends** at an empty pool, as each sentence says, **and when its flag no longer holds** (a weapon swap). The
+   second is a judgement.
+3. **Wrath is asked before Frenzy.** Only a character under Both Hands Full meets both weapon rules. A judgement for a fixed
+   order, not a design statement.
+4. **The drain is a stat, `fervour_drain_per_second`**, taken every regeneration step from any row granting it, under any
+   condition; not scaled by generation, and not gated on combat. Wrath's 5 and Frenzy's 8 are rows under their states,
+   and the riders that drain more while a bonus is held can be rows too.
+5. **Frenzy's "all melee hits generate 2 additional Fervour"** is `fervour_per_hit_dealt` 2 on `Type.Melee` under
+   `in_frenzy`, paid where `hit_dealt` is raised, for a blow the character landed itself (not a minion's, which Conduit
+   also credits there). A judgement on the minion.
+6. **Berserking arms at a full pool** for a character in neither state holding its row, and stays armed when the pool then
+   falls; **it fires on the next attack whose skill tags reach the row** (`Type.Melee`) **and that struck at least one
+   enemy**, consumes the whole pool, and adds 10 a point times the Fervour consumed to that attack's increased damage,
+   on the sum Bought With Ruin uses. Three judgements: armed until used, a swing at the air spends nothing, and "+10%
+   bonus damage" is an increase.
+7. **"Your melee attacks deal +15% damage"** is `attack_damage` increased on `Type.Melee`: it names attacks, as the
+   Ravager's "your attacks deal 20% more damage" does, so the owner's 2026-08-25 rule that plain "damage" is attack and
+   spell damage does not reach it.
+8. **The player sees the state**: "Wrath", "Frenzy" or "Berserking ready" in the list of what affects the player, the
+   owner's rule of 2026-08-24 that a system must be seen in game.
+
+### THE PYTHON SUITE
+
+Run on `0bd47ca4a09d7218b062f8e694d1db8f06b7fac4`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8406 passed, 9 skipped in 365.97s**, and the JUnit file `tests="8416" failures="1" errors="0"
+skipped="9"`, which is 8,406 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 15 files read, 0 with complaints.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit. Both reported `proved` True:
+a named test failed with the break in, and everything passed with it restored.
+
+| Break | Command | Named failures |
+|---|---|---|
+| Wrath's drain, `Berserker_twoh_001#3` in `PassiveEffects.csv`, 5.0 to 6.0 | `test_passive_effects_match_the_node_text.py` | `test_every_value_appears_in_the_nodes_own_description` |
+| Frenzy's flag stated under `in_frenzy` rather than `dual_wielding` in the rows script | `test_war_berserker_states_scripts.py` | `test_each_state_begins_under_its_weapon_rule_and_its_bonuses_hold_only_in_it`, `test_the_workbook_holds_the_rows`, `test_the_generated_csv_holds_the_rows` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.BerserkerStates.TheThreeConditionsReadTheWeaponSlotsAndTheHeldState` | the three judged; an enemy's count -1; a held state in the reading; a player's sword 1, sword and axe 2, greataxe 1 |
+| `Cataclysm.BerserkerStates.AFullPoolBeginsWrathItsDrainEmptiesThePoolAndAnEmptyPoolEndsIt` | 99 begins nothing and drains nothing; 100 begins Wrath; 5 a second; empty ends it; refilled begins it; flag gone ends it; the two-handed flag never holds with no weapon |
+| `Cataclysm.BerserkerStates.FrenzyBeginsAsWrathDoesAndEitherStateDisarmsBerserking` | Frenzy at full; Wrath first with both; Berserking armed at full and kept below it; a state disarms it; losing the row disarms it |
+| `Cataclysm.BerserkerStates.BerserkingConsumesThePoolOnTheNextMeleeAttackThatStrikesSomebody` | not melee: nothing (control); struck nobody: nothing; struck two: 1,000% and an empty pool; the next: nothing; in Wrath: nothing |
+| `Cataclysm.BerserkerStates.InFrenzyARealMeleeHitNoticeGainsTwoFervour` | outside Frenzy 0 (control); in Frenzy 2; not melee 0 |
+| `Cataclysm.BerserkerStates.AWarRateDrawsTheFervourBarAndTheListNamesTheState` | no rate no bar (control); a War rate draws it; the list names each state |
+| `Cataclysm.BerserkerStates.WrathFrenzyAndBerserkingGrantTheirRowsFromTheGeneratedTable` | the eight rows, after the editor step |
+
+Predicted counts: `Cataclysm.BerserkerStates.` 7. `Cataclysm.StatExemption.` unchanged in number; its keeper test runs
+five more probes.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. The state's end at an empty pool: in `CataclysmBerserkerStates.cpp`, `(Now == ECataclysmBerserkerState::Wrath && (Held
+   <= 0.0f || !bWrathAllowed))` becomes `(Now == ECataclysmBerserkerState::Wrath && (Held < -1.0f || !bWrathAllowed))`.
+   Must fail `AFullPoolBeginsWrathItsDrainEmptiesThePoolAndAnEmptyPoolEndsIt`.
+2. Berserking's melee scope: in `SpendBerserking`, `StatForSkill(FName(BerserkingDamagePerFervourStat), SkillTags, 0.0f)`
+   becomes `StatForSkill(FName(BerserkingDamagePerFervourStat), FGameplayTagContainer(UCataclysmDamageCalculation::MeleeTag()), 0.0f)`.
+   Must fail `BerserkingConsumesThePoolOnTheNextMeleeAttackThatStrikesSomebody` (the non-melee control spends).
+3. The War bar: in `CataclysmCombatOverlay.cpp`, `!FCataclysmWarFervour::HasARate(AbilitySystem)` becomes `true`. Must
+   fail `AWarRateDrawsTheFervourBarAndTheListNamesTheState`.
+
+---
+
+## 2026-11-25 — Thirty War nodes given their rows with no new code: the War survey's twenty-three data-only nodes and options, and the eight rulings the owner accepted whose sentence is a row (slice D)
+
+**Affects:**
+- `docs/Bulwark_Class_Tree_Final.json`, `docs/Berserker_Class_Tree_Final.json`, `docs/Saboteur_Class_Tree_Final.json`:
+  eleven sentences reworded by name (`tools/apply_war_data_rows_2026_11_24.py`, new).
+- `docs/All_Things_Cataclysm.xlsx`, Passive Effects: 48 rows on 30 nodes, and the `Per Point From` column
+  (`tools/reapply_war_data_rows_workbook.py`, new). `game/Data/PassiveEffects.csv` (421 rows) and `PassiveNodes.csv`,
+  generated. **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/generate_datatables.py`: `Per Point From` leaves `OPTIONAL_COLUMNS`, so the workbook must carry it; the
+  `max_health` scale's step bound rises from 1,000 to 5,000.
+- `tools/tests/test_passive_effects_match_the_node_text.py`: the words and forms the new sentences use, three
+  allowances each keyed to one node, a new check that plain "damage" is two rows, and `AUTHORED_ROWS` 421,
+  `AUTHORED_NODES` 259, `AUTHORED_OPTIONS` 41.
+- `tools/tests/test_war_data_rows_scripts.py`, new. `tools/tests/test_passive_rows_carry_the_action_columns.py` and
+  `tools/tests/test_generate_datatables.py`: their sheets carry the now-required column.
+- `game/Source/Cataclysm/Tests/CataclysmWarDataRowsTests.cpp`, new: three tests in `Cataclysm.WarDataRows.`.
+  `CataclysmDataTableTests.cpp`: the Passive Effects pin, 421. `docs/README.md`: 421 and the column.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** No engine code changed; the one new C++ file is a test file, read
+  as the compiler only. A window has to compile it, rebuild the two DataTable assets, and run `Cataclysm.WarDataRows.`
+  (three tests, trailing dot) and `Cataclysm.Data.` (the 421 pin).
+- **"DATA ALONE" IS THE GENERATOR'S VERDICT, NOT A READING.** Every scaled and every conditioned row passed
+  `refuse_a_scale_nothing_asks_for` and `refuse_a_condition_nothing_asks_for`, whose lists of stats something asks for
+  are each held by an engine probe (`Cataclysm.StatExemption.`). Iron Constitution's armour-scaled maximum health is
+  the one that most needed it: a scaled row is never folded into a gameplay attribute.
+- **`test_datatable_assets_are_current` FAILS** until the editor step, as it does on every branch that changes a CSV.
+- **THIS SLICE FIRST WROTE SEVEN NODES WITH ATTACK DAMAGE ALONE**, against the owner's ruling of 2026-08-25 that
+  plain "damage" on a passive node is attack and spell damage, and every check passed them. Found before committing,
+  by comparing with the Demonic rows; each is two rows now, and
+  `test_plain_damage_on_a_passive_node_is_attack_and_spell_damage` is new so the next tree cannot repeat it.
+- **NOT IN THIS SLICE:** the Bulwark's kill Fervour (it waits on `fervour_per_kill` from `feat/death-trees-b`), the War
+  nodes that need a mechanism, the vow options, and R29's rename of Wrath Incarnate to Outnumbered.
+
+### WHAT WAS RULED
+
+- **The War rulings (Q20), the owner's answer of 2026-11-24:** "I'll go with your recommendations on the war
+  rulings." Eight of them are a sentence and a row, written here word for word: R1 Crushing Presence, R2 Weight of the
+  World, R15 Crimson Pact (a Third Oath option), R21 Saturation, R22 Meat Shield, R23 Dense Muscle, R24 Unstoppable
+  Force, R25 Walking Fortress. R26, Ironblood, is reworded here too and counted with the survey's nodes.
+- **Barbed Skin, the coordinating session's ruling of 2026-11-24 under the owner's delegation:** "+2% Retaliation per
+  point.", a flat 2, as the Masochist's Spine node words the same row.
+- **The `max_health` step bound**, raised to 5,000 for R2, R23 and R25, which step by 5,000; agreed by the coordinating
+  session the same day. The bound guards against a figure typed into the wrong column, and the simulation's tier 8
+  reference character holds 11,023 maximum health.
+- **"Damage" is attack damage and spell damage**, the owner's ruling of 2026-08-25 (the entry headed "Increased damage"
+  on a passive node means attack damage and spell damage). Seven nodes here say plain "damage", increased or more, and
+  each is two rows.
+
+### WHAT WAS DECIDED HERE (judgements, labelled)
+
+1. **Bloodthirst, "+0.3% life leech per point" became "+1% life leech on all melee attacks for every 3 points".** The
+   design document's rule "A threshold or a step, never a fraction" (the owner's choice of 2026-11-24). The 3 is the
+   whole step nearest 1 / 0.3: 2% at its 8 points where 0.3 a point gave 2.4.
+2. **Iron Constitution's "At 5 points: Gain HP equal to 10% of your Armor value"** is 1 flat maximum health for every
+   10 armour, granted once from 5 points. The sentence states a share of armour, not a figure a point.
+3. **Aura of Pain's "Enemies within 3 meters"** is a 3 metre radius granted once from the first point. A per-point row
+   would make it 24 metres at 8.
+4. **Pain is Power's "At 5 points: This bonus also applies to retaliation damage"** is its 2% for every 10% of missing
+   health on retaliation too, paid on every point once 5 are spent (`Per Point From` 1). Nothing at 4; 10% at 5.
+5. **Crushing Presence's "+1 flat damage" is flat attack damage alone,** as the "Flat damage" affix grants
+   (`game/Data/Affixes.csv`, `Stat_Flat_damage`) and as R1 sized it ("about four flat damage affixes"). The owner's
+   ruling of 2026-08-25 is about increases; no flat spell damage row exists on any passive node.
+6. **Vital Strikes' "all incoming damage is reduced by your current life leech percentage"** is 1 damage reduction for
+   every 1% of life leech, while above 50% Fervour.
+
+### HOW THE CHECKS WERE KEPT ABLE TO FAIL
+
+`test_passive_effects_match_the_node_text.py` needed three allowances, each keyed to one node so no other row is
+loosened: Iron Constitution's value in words (a four-part key, node, stat, condition and bucket, because the node grants
+`max_health` twice), Vital Strikes' step of one in words (`STEP_OF_ONE_ON_ONE_NODE`), and Aura of Pain's radius from
+the first point (`FIXED_FROM_THE_FIRST_POINT`). Each was guard-proved below. The new check,
+`test_plain_damage_on_a_passive_node_is_attack_and_spell_damage`, is what would have caught the seven nodes this slice
+first wrote with attack damage alone; it was guard-proved too.
+
+### THE PYTHON SUITE
+
+Run on `e0d1376400a6fa8086bad735f1cb09aec53a1ecd`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8394 passed, 9 skipped in 378.46s**, and the JUnit file `tests="8404" failures="1" errors="0"
+skipped="9"`, which is 8,394 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step rebuilds the assets. `python -m ruff check .`: all
+checks passed. `python tools/check_resolved_cpp.py --changed`: 1 file read, 0 with complaints.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, each against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Every one reported `proved` True: a named
+test failed with the break in, and all 25 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| P1. Iron Constitution's armour row, `Bulwark_basic_trunk_002#2`, value 1.0 to 2.0 | `test_every_value_appears_in_the_nodes_own_description` |
+| P2. Vital Strikes' row, `Berserker_capstone_25#1`, scale step 1.0 to 2.0 | `test_a_scale_matches_the_words_of_the_node_it_is_on` |
+| P3. Warbringer's spell damage row, `Bulwark_basic_trunk_003#2`, removed | `test_plain_damage_on_a_passive_node_is_attack_and_spell_damage`, `test_the_coverage_is_what_it_was_measured_to_be` |
+
+P1 and P2 show the two one-node allowances still check the value and the step they excuse the words of. P3 is the
+fault this slice first made.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarDataRows.ThresholdRowsPayFromTheirThresholdAsTheirSentencesSay` | Bloodthirst 0, 1, 1, 2 at 2, 3, 5, 8 points; Pain is Power's retaliation 0, 10, 16 at 4, 5, 8; Aura of Pain's 3 m at 1 and 8; Iron Constitution's and Walking Fortress's threshold rows; each against its node's per-point row |
+| `Cataclysm.WarDataRows.ScaledRowsCarryTheirStepAndCapIntoTheModifier` | Saturation's cap of 5 against Crushing Presence's none; the 1,000 and 5,000 steps; Army of One's four rows |
+| `Cataclysm.WarDataRows.EachWarOathOptionGrantsItsOwnRowAndNoOther` | Iron Aegis and Titan's Blood each alone; nothing with no option or with Thornwall; Vital Strikes and not Warlord |
+
+Predicted counts: `Cataclysm.WarDataRows.` 3. `Cataclysm.Data.` unchanged in number; its import test reads 421 rows.
+
+**No C++ guard proof is planned.** The slice changes no engine code, and a broken row reaches the engine only through
+the editor step, which `prove_cpp_guard` does not run. Each test above carries its own control instead, and the
+mechanisms it leans on were guard-proved where they were built (`PointsPaid`, the passive row port).
+
+---
+
+## 2026-11-24 — The War classes fill Fervour: the Bulwark on a hit taken and a block, the Berserker on a critical strike, the Saboteur on placing, triggering and landing its devices; the Bulwark and the Berserker decay out of combat (slice C)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`, new: `FCataclysmWarFervour`, seven gains and
+  one decay, each reading a flat rate through the stat pipeline.
+- The event sites, one call each: `CataclysmVitalAttributeSet.cpp` (a landed hit taken that is not a tick, and a block),
+  `CataclysmPlayerCharacter.cpp` (`OnSomethingWasHit`, a critical strike the character dealt), `CataclysmMinion.cpp`
+  (`PlaceSkillTrap`, `PlaceSkillGadget`, `TriggerSkillTrap`, `AttackTarget`'s `deployable_hit`),
+  `CataclysmSkillEffects.cpp` (`ApplyHit`'s `deployable_hit`), `CataclysmSkillTemplates.cpp`
+  (`UCataclysmDeployableSkill::DeployOne`), `CataclysmCharacterBase.cpp` (the decay, beside the Ravager's).
+- A new event, `gadget_placed`, raised by `PlaceSkillGadget` and, for a War machine that is not a trap, by `DeployOne`;
+  in `ACTION_ONLY_EVENTS` and `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK` in `tools/generate_datatables.py`.
+- Eight stats in `UCataclysmPlayerClassStats::StatsWithNoAttribute`, each with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (`CataclysmStatExemptionTests.cpp`).
+- `docs/Bulwark_Class_Tree_Final.json` and `docs/Saboteur_Class_Tree_Final.json`: the starting nodes' sentences state
+  their rates (`tools/apply_war_fervour_sources_2026_11_24.py`, new). `docs/All_Things_Cataclysm.xlsx`, Passive Effects:
+  nine rows (`tools/reapply_war_fervour_sources_workbook.py`, new). `game/Data/PassiveEffects.csv` (373 rows) and
+  `PassiveNodes.csv`, generated. **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `game/Source/Cataclysm/Tests/CataclysmWarFervourTests.cpp`, new: six tests in `Cataclysm.WarFervour.`.
+- `tools/tests/test_war_fervour_sources_scripts.py`, new; `tools/tests/test_passive_effects_match_the_node_text.py`
+  (the eight phrases, 373 rows, 229 nodes).
+- `CataclysmFervour.h`: its paragraph on the missing generators points here.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile it, rebuild
+  the two DataTable assets, and run `Cataclysm.WarFervour.` (six tests, trailing dot: `Cataclysm.Warden.` shares the
+  prefix without it) and `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **THE BULWARK'S FERVOUR FOR A KILL IS NOT BUILT.** Its sentence still says "killing enemies generate Fervour". The Death
+  trees session is building per-kill Fervour in `UCataclysmFervour` at the same time, and the coordinating session asked
+  that the two not collide; the Bulwark's kill gain should be built on that piece once it lands, not beside it. **THAT
+  PIECE EXISTS** on `feat/death-trees-b` (`d50c26c6b`): every kill credited to the character pays `fervour_per_kill`,
+  asked against the slain creature. The Bulwark's kill row is to be a `fervour_per_kill` row on its starting node,
+  written once that branch has landed.
+- **TWO SITES ARE NOT EXERCISED BY AN UNREAL TEST**: a skill trap triggering (`TriggerSkillTrap`) and a device's landed
+  blow (`AttackTarget`, `ApplyHit`'s `deployable_hit`). Each needs a weapon skill to cast or a War machine. Their gain
+  functions are exercised directly and by the probes; the call sites were checked by reading only.
+- **OBLIGATION FOR WHOEVER MERGES SECOND**, agreed with the coordinating session on 2026-11-24: the War decay
+  (`FCataclysmWarFervour::OutOfCombatDecayStep`) does not ask `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`,
+  which is on `feat/death-skills-2885` and not on this branch. Whichever of that branch and this one merges into
+  `development` second adds the one call, where the decay's comment marks it (after the pool is read and before the
+  out-of-combat test), and a test that a running buff holding Fervour stops the War decay.
+- **NOT PART OF THIS SLICE:** War class stat lines (issue #932; a War character still sits on the Ravager's line) and
+  the War machines' reserves (issue #1934; they reserve nothing and keep their count cap).
+
+### WHAT WAS RULED
+
+- The Bulwark's decay, `plan_death_and_war.md` Q21, the owner's answer of 2026-11-24 ("Your recommendations work for all
+  of those death/war questions"): 5 a second after 3 seconds out of combat.
+- The Berserker's, its own starting node: "Gain 1 Fervour per critical strike. While you have this, your Fervour decays at
+  10 per second after 3 seconds out of combat."
+- The coordinating session, 2026-11-24: the War generators in functions of their own, apart from `UCataclysmFervour`; the
+  War decay without the running-buff call, as above.
+
+### WHAT WAS BUILT
+
+1. **Seven gains of one shape** (`FCataclysmWarFervour::GainByRate`): the rate, read through the stat pipeline with the
+   event's tags and fallback nought; scaled by `class_resource_generation`; clamped to what the pool may hold after its
+   reserves; written; measured. `UCataclysmFervour::GainForEnemiesHit`'s shape, line for line.
+2. **Where each is called:** a hit taken where the "every Nth hit you take" count is made (landed, not a tick, not
+   evaded; a blocked blow landed, so a block earns both rates); a block after `NoteBlocked`; a critical strike after the
+   `critical_strike` event in `OnSomethingWasHit`, with the blow's skill tags, so Battle Lust's "on every critical melee
+   strike" reaches a melee one only; a skill trap placed, a skill gadget placed and a War machine placed after the
+   reserve is held; a skill trap's trigger once per trigger; a device's blow when it landed.
+3. **A War machine that is a trap earns the trap rate and raises no event.** `trap_placed` is the skill traps' event and a
+   War trap never raised it; raising it would reach rows written for skill traps. A judgement.
+4. **A press that moves a standing skill gadget is not a placing** and earns nothing: it never reaches `PlaceSkillGadget`.
+5. **The decay** (`OutOfCombatDecayStep`): the rate a second, once `SecondsOutOfCombat` is at or above nought, which is 3
+   seconds after the last blow dealt or taken (`CombatLapseSeconds`). **A judgement:** "after 3 seconds out of combat"
+   read as 3 seconds after the last blow, not 3 after the lapse; the clock's own comment counts the lapse as the 3
+   seconds and asks the Berserker's decay to read it. A separate stat from the Ravager's, so a character holding both
+   meets both rules. Not scaled by generation (a decay is not a gain). A Corrupted Stalker holding a War build does not
+   decay, as `DecayStep` refuses it.
+6. **The rates.** Every gain on a starting node is 1, the rate the Ravager's and the Masochist's starting nodes grant per
+   event. **A judgement** under the owner's delegation of unstated numbers, and **A PLAY-TEST POINT, NOT A MEASURED
+   FIGURE** (the coordinating session, 2026-11-24): a Berserker landing about one critical strike a second takes about
+   50 seconds to afford a 50-Fervour Ultimate from critical strikes alone, before its tree adds more. No genre research
+   was needed: the sources are the design's own sentences and only their sizes are chosen here.
+7. **The sentences** now say so. The Bulwark: "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit
+   you take and 1 for each block. While you have this, your Fervour decays at 5 per second after 3 seconds out of
+   combat." The Saboteur: "Placing a trap or a gadget generates Fervour, and so does one of them dealing damage or
+   triggering: 1 for each trap placed, 1 for each gadget placed, 1 each time a trap triggers and 1 for each blow one of
+   them lands. It adds no rule about emptying, so your Fervour does not decay on its own." The Berserker's is unchanged.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarFervour.EachGainIsItsRateScaledByGenerationAndClampedToWhatThePoolMayHold` | the seven gains: nothing without the rate, 2 at 150% is 3, clamped at the top |
+| `Cataclysm.WarFervour.TheDecayWaitsThreeSecondsAfterTheLastBlowThenTakesItsRate` | nothing at 1 and 2.9 s after a hit, 10 at 3.5 s, stopped by a blow dealt; a control |
+| `Cataclysm.WarFervour.ARealBlowTakenAndARealBlockFillABulwarksFervour` | a real blow 1, a real blocked blow 1 + 2; a control |
+| `Cataclysm.WarFervour.ACriticalStrikeARealPlayerDealtFillsItsFervourAndAMeleeRowAddsToAMeleeOne` | a hit notice on a real player: not critical 0, critical 1, melee critical 4 |
+| `Cataclysm.WarFervour.PlacingASkillTrapAndASkillGadgetFillsASaboteurAndTheGadgetIsAnnounced` | a trap 2, a gadget 3, and `gadget_placed` fires an action; a control |
+| `Cataclysm.WarFervour.TheThreeWarStartingNodesGrantTheirFervourRates` | the generated table's nine rows (after the editor step) |
+
+Predicted counts: `Cataclysm.WarFervour.` 6. `Cataclysm.StatExemption.` unchanged in number; its one keeper test runs
+eight more probes.
+
+**Planned guard proofs** (one per mechanism; not run):
+1. The hit-taken site: in `CataclysmVitalAttributeSet.cpp`, `FCataclysmWarFervour::GainOnHitTaken(Cataclysm);` becomes
+   `FCataclysmWarFervour::GainOnHitTaken(nullptr);`. Must fail `ARealBlowTakenAndARealBlockFillABulwarksFervour`.
+2. The critical-strike site: in `CataclysmPlayerCharacter.cpp`, `Acting, Notice.SkillTags ? *Notice.SkillTags :
+   FGameplayTagContainer());` becomes `nullptr, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());`. Must
+   fail `ACriticalStrikeARealPlayerDealtFillsItsFervourAndAMeleeRowAddsToAMeleeOne`.
+3. The decay's gate: in `CataclysmWarFervour.cpp`, `if (Cataclysm->SecondsOutOfCombat() < 0.0f)` becomes
+   `if (Cataclysm->SecondsOutOfCombat() < -100.0f)`. Must fail `TheDecayWaitsThreeSecondsAfterTheLastBlowThenTakesItsRate`.
+
+### PYTHON
+
+`python -u -m pytest --junit-xml=<outside the repository>` on the branch before this section was written: "1 failed,
+8368 passed, 9 skipped in 380.67s"; the JUnit file: tests 8378, failures 1, errors 0, skipped 9. **The one failure is
+inherited**: `test_datatable_assets_are_current.py` names `PassiveEffects.csv` and `PassiveNodes.csv`, whose assets the
+editor step has not rebuilt, as it does on `feat/demonic-tree-rework` and `feat/passive-row-port`. `python -m ruff check
+.`: "All checks passed!". `python tools/check_resolved_cpp.py --changed`: "9 files read, 0 with complaints".
+`python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date".
+
+**A Python guard proof**, `tools/prove_guard.py` `break_and_run` in a `git archive` copy of `547c74f88`: the workbook
+script's refusal of a node somebody wrote since (`if current:` before its `raise ReapplyError(` made `if False:`).
+"PROVED: 1 failed, 8 passed | restored: 9 passed"; named:
+`tools/tests/test_war_fervour_sources_scripts.py::test_the_row_script_refuses_a_node_somebody_wrote_since`.
+
+---
+
+## 2026-11-24 — A passive node can act on an event: Passive Effects rows carry the enchantment row's action columns, a second condition, an offset on a scale, and a per-point count from a threshold (the passive row port)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: fourteen fields on `FCataclysmPassiveEffectRow` after
+  `ScaleMaxSteps`: the thirteen action fields of `FCataclysmEnchantmentEffectRow` (`Action`, `ActionEvent`,
+  `FractionOf`, `StackSeconds`, `ScaleOffset`, `EverySeconds`, `EveryNth`, `Condition2`, `ConditionValue2`,
+  `TriggerCooldown`, `EventValue`, `Ailment`, `DamageShare`) and `PerPointFrom`.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp`: `IsBuiltAsAnEnchantmentRow`, `PointsPaid`,
+  `EnchantmentNameFor`, `EnchantmentRowsFor`, `SetEffectTableForTests`; `AccumulateInto` walks the counted rows through
+  one shared walk and reads the second condition and the offset.
+- `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`: the refresh hands the counted nodes' action rows to the
+  enchantment rows' builder, and calls `SetPoolActions` after the passive tree rather than before it.
+- `game/Source/Cataclysm/Tests/CataclysmPassiveRowPortTests.cpp`, new: six tests in `Cataclysm.PassiveRowPort.`.
+- `tools/generate_datatables.py`: the Enchantment Effects sheet's per-row rules moved, unchanged, into `_effect_row`;
+  `passive_effects` reads a row stating an action column through it; `Per Point From`; fourteen columns declared in
+  `OPTIONAL_COLUMNS`; `validate_passive_effects` asks no stat question of an action row.
+- `game/Data/PassiveEffects.csv`, generated: fourteen columns added, empty on all 365 rows. **The editor step must
+  rebuild `DT_PassiveEffects`.**
+- `tools/tests/test_passive_rows_carry_the_action_columns.py`, new; `tools/tests/test_generate_datatables.py` (two
+  tests that asserted the old refusal of `Stack Seconds` and `Scale Offset` now assert they are read);
+  `tools/tests/test_csv_columns_match_their_row_structs.py` (its pattern reads a `meta = (...)` inside `UPROPERTY`).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile it, run
+  the editor step for `DT_PassiveEffects`, and run `Cataclysm.PassiveRowPort.` (six tests) and the groups that read
+  passive rows (`Cataclysm.Passives.`, `Cataclysm.PassiveScaleCap`).
+- **NO AUTHORED ROW USES THE NEW COLUMNS YET**, and the workbook is not changed: the fourteen columns are declared in
+  `OPTIONAL_COLUMNS` until the first War or Death tree slice that writes a row using one adds that column with its
+  re-apply script. So nothing a player can reach changes until such a row lands; the end-to-end test drives the real
+  refresh with a table of its own (`SetEffectTableForTests`).
+- **NO FORMULA IS CHOSEN HERE, SO NO GENRE RESEARCH WAS NEEDED.** Every column means what it already means on the
+  Enchantment Effects sheet; the port makes passive rows say the same things through the same code.
+
+### WHAT WAS ASKED
+
+The project owner, 2026-11-24, verbatim: "Let's get the war and death trees in and working." `plan_death_and_war.md`
+(section 4.1, "The mechanisms that unblock the most") puts first the passive row port: `Action`, `ActionEvent`,
+`StackSeconds`, `ScaleMaxSteps`, `TriggerCooldown`, `Condition2`, `ScaleOffset` and "per point from N points" on
+`FCataclysmPassiveEffectRow`, needed by 42 War entries (64 with the last three) and about ten Death ones.
+`ScaleMaxSteps` arrived first, with the Demonic tree rework of the same day (the owner's Q17). The coordinating
+session asked for it on a branch of its own, `feat/passive-row-port`, from `feat/demonic-tree-rework`, because the
+Death trees session builds on it.
+
+### WHAT WAS BUILT
+
+1. **One builder for passive and worn rows.** A passive row stating `Action`, or scaled by `own_stacks` or
+   `consecutive_hits`, is not made a modifier by `UCataclysmPassiveTree::AccumulateInto`.
+   `UCataclysmPassiveTree::EnchantmentRowsFor` copies it into an `FCataclysmEnchantmentEffectRow`, and the equipment's
+   refresh hands the copies to `UCataclysmItemModifiers::AccumulateEnchantmentsInto` as its extra rows, the path a held
+   random buff's rows have taken since issue #2538. That function makes the action, and for an own stack both the
+   stack action and the modifier that reads it, under one key. **A judgement:** a second builder written for passive
+   rows would have to be kept in step with the first, which holds over forty kinds of action.
+2. **The keys are the node and the option.** A copy is named `Passive_<node>`, or `Passive_<node>_Option<n>` for a
+   capstone option's row (`EnchantmentNameFor`), and every key the builder keeps (trigger cooldown, own stacks,
+   next-use charge, every-Nth count) is made from that name. The same name at every refresh, so a held stack survives
+   the next item swap. The generator refuses two action rows of one node, option, action and event, which would share
+   a cooldown. **A judgement**, the enchantment rows' rule (one name, action and event per row) carried over.
+3. **The same choices as the stat rows.** `AccumulateInto` and `EnchantmentRowsFor` share one walk
+   (`ForEachCountedPassiveEffectRow`): a node the table no longer has, a tree no worn weapon reaches, an option not
+   taken and a threshold not reached grant nothing. The refresh hands both the same reduced allocation, so points that
+   add nothing (ruled 2026-10-09) add no action either. Only `ValuePerPoint` is multiplied by the points; every other
+   column is the row's.
+4. **A second condition and an offset on a stat row.** `AccumulateInto` copies `Condition2` (read through
+   `UCataclysmStatPipeline::ConditionNamed`, so an unknown name grants nothing, as the first condition's does) and
+   `ScaleOffset` (on a scale this build knows, as the cap is) onto the modifier.
+5. **Per Point From.** A row with `MinPoints` may state `PerPointFrom` N: from the threshold it pays `ValuePerPoint`
+   once for every point from the Nth on (`PointsPaid`). Tempered Steel's "At 6 points: These bonuses are doubled while
+   at maximum Fervour" is `MinPoints` 6 and 1; Tinkerer's "At 6 points: Gadgets remain active 20% longer per point
+   invested beyond 6" is `MinPoints` 7 and 7. The generator refuses it without `MinPoints`, above `MinPoints`, and
+   below 1. **A judgement:** one integer column covers both readings the War trees use.
+6. **The generator reads a passive action row by the Enchantment Effects sheet's own rules.** The per-row body of
+   `enchantment_effects` moved, unchanged, into `_effect_row`; every generated CSV was byte-identical after the move
+   (`python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date"). `passive_effects` maps
+   `Node` onto `Enchantment` and `Value Per Point` onto `Value Low` and calls it, handing over the node's own sentence
+   (the option's, for an option row) where a rule reads a row's words. A refusal is reported against the Passive
+   Effects sheet. The columns about an item (`Enchantment`, `Effect`, `Value Low`, `Value High`, `Scale Step High`,
+   `Stack Seconds High`, `Condition Value High`) are refused on the passive sheet.
+7. **Two refusals, judgements, because the enchantment builder could not honour them:** a passive action row may not
+   count enemies within a radius (the builder carries no reach, so it would count nobody), and may not use the scale
+   that counts enemies while an own stack is held (no passive row needs it yet).
+8. **`DataTableImportOptional` on the fourteen fields.** Unreal's CSV importer reports every struct field missing from
+   a CSV header as a problem (`UDataTable::GetTablePropertyArray`, UE 5.8 `DataTable.cpp`, under `WITH_EDITOR`), unless
+   the field carries that metadata. The generator always writes all fourteen and a Python test holds the written header
+   to them; the mark lets a test build a table from a CSV naming only the columns it uses, which keeps the four
+   in-memory passive tables the tests built before the port valid. **A judgement:** the Demonic tree rework instead
+   added its one column to every such table; fourteen columns to four tables was more churn than the mark.
+9. **A test seam, `UCataclysmPassiveTree::SetEffectTableForTests`.** The refresh loads the tables by path and no
+   authored row acts on an event yet, so without it the only way to show a node's action reaching a character would
+   have been to author one. Nothing in play calls it; the test that sets it puts the generated table back at scope exit.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.PassiveRowPort.APointsRowIsPaidByTheThreeRules` | `PointsPaid`: every point, once from a threshold, every point from N |
+| `Cataclysm.PassiveRowPort.AnActionRowIsCopiedForTheBuilderAndNotMadeAModifier` | the copies and the modifiers from one allocation |
+| `Cataclysm.PassiveRowPort.ACopyFollowsTheTreeTheOptionAndTheThreshold` | threshold, option and dormant tree, for a copy |
+| `Cataclysm.PassiveRowPort.AStatRowCarriesASecondConditionAndAnOffset` | `Condition2`, `ScaleOffset` and `PerPointFrom` on modifiers |
+| `Cataclysm.PassiveRowPort.ACopiedRowIsBuiltIntoAnActionAndAStack` | the builder makes the actions and one shared stack key |
+| `Cataclysm.PassiveRowPort.ANodesActionReachesTheCharacterThroughTheRefresh` | the real refresh, with a control before and after |
+
+Predicted counts: `Cataclysm.PassiveRowPort.` 6. `Cataclysm.Passives.` and `Cataclysm.PassiveScaleCap` unchanged in
+number; their in-memory tables are unchanged.
+
+**Planned guard proofs** (one per mechanism; not run):
+1. The routing: in `CataclysmPassiveTree.cpp`, `if (UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(*Effect))` inside
+   `AccumulateInto` becomes `if (false && UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(*Effect))`. Must fail
+   `AnActionRowIsCopiedForTheBuilderAndNotMadeAModifier` and
+   `ANodesActionReachesTheCharacterThroughTheRefresh`.
+2. The refresh: in `CataclysmEquipmentComponent.cpp`, `&Actions, &PassiveRows);` becomes `nullptr, &PassiveRows);`.
+   Must fail `ANodesActionReachesTheCharacterThroughTheRefresh`.
+3. Per Point From: in `PointsPaid`, `return Effect.PerPointFrom > 0 ? FMath::Max(0, Points - Effect.PerPointFrom + 1) : 1;`
+   becomes `return 1;`. Must fail `APointsRowIsPaidByTheThreeRules` and `AStatRowCarriesASecondConditionAndAnOffset`.
+
+### PYTHON
+
+`python -u -m pytest --junit-xml=<outside the repository>` on the branch before this entry's figures were written:
+"1 failed, 8359 passed, 9 skipped in 362.13s"; the JUnit file: tests 8369, failures 1, errors 0, skipped 9. **The one
+failure is inherited**: `test_datatable_assets_are_current.py::...test_every_csv_still_hashes_to_what_was_recorded`
+names `PassiveEffects.csv` and `PassiveNodes.csv`, whose assets the editor step has not rebuilt, and the same test fails
+the same way on `feat/demonic-tree-rework` at `cf18466a7` (run in a `git archive` copy of that commit: "1 failed, 17
+passed"). `python -m ruff check .`: "All checks passed!". `python tools/check_resolved_cpp.py --changed`: "4 files read,
+0 with complaints". `python tools/generate_datatables.py --check` after the generator's move and before the new
+columns: "All 34 DataTable CSVs are up to date".
+
+**Two Python guard proofs**, `tools/prove_guard.py` `break_and_run` in a `git archive` copy of `cb92ec18d`, each
+running `tools/tests/test_passive_rows_carry_the_action_columns.py`:
+1. The refusal names the Passive Effects sheet: `"Enchantment Effects row", "Passive Effects row", 1)` in
+   `_passive_action_row` made `"Enchantment Effects row", "Enchantment Effects row", 1)`. "PROVED: 2 failed, 24 passed |
+   restored: 26 passed"; named: `test_a_refusal_names_the_passive_sheet`, `test_an_own_stack_row_with_no_event_is_refused`.
+2. The routing: `_passive_row_is_action_shaped`'s first test made `if False:`. "PROVED: 7 failed, 19 passed | restored: 26
+   passed"; named: `test_an_action_row_is_read_by_the_enchantment_rules`, `test_a_refusal_names_the_passive_sheet`,
+   `test_the_control_the_same_pool_is_accepted`, `test_a_second_condition_is_kept_on_a_stat_row`,
+   `test_an_action_row_may_not_count_enemies_in_a_radius`,
+   `test_two_rows_of_one_node_sharing_an_action_and_event_are_refused`,
+   `test_two_options_of_one_oath_may_share_an_action_and_event`.
+
+---
+
 ## 2026-11-25 — Every affix and implicit is a whole number, from seven stated tier ranges, and every creature's health and damage are re-fitted to the character those affixes make (#2883, #2884)
 
 **Python, the workbook and C++ written; no Unreal build yet.** Branch `feat/affixes-and-rebalance-2883-2884`, from

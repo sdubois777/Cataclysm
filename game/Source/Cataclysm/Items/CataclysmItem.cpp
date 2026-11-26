@@ -1242,11 +1242,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// #1833, phase 2. Keyed by the enchantment and the action;
 					// Stack Seconds is the window and Scale Max Steps the cap,
 					// where nought is none ("stacking indefinitely").
-					const bool bArmourRemoved = Effect->Action.Equals(
+					const bool bArmourRemovedNearby = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EnemyArmorRemovedNearbyAction,
+						ESearchCase::IgnoreCase);
+					const bool bArmourRemoved = bArmourRemovedNearby || Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction,
 						ESearchCase::IgnoreCase);
 					const bool bDamageRemoved = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction,
+						ESearchCase::IgnoreCase);
+					// AND THORNWALL'S, THE THIRD KIND: retaliation taken. V3a, 2026-11-25.
+					const bool bRetaliationTaken = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction,
 						ESearchCase::IgnoreCase);
 					// AN "EVERY Nth" ROW, keyed by the enchantment and the action.
 					// Issue #1833, phase 2. The action names what is counted, so
@@ -1295,13 +1302,14 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						}
 					}
-					if (bArmourRemoved || bDamageRemoved)
+					if (bArmourRemoved || bDamageRemoved || bRetaliationTaken)
 					{
 						Action.PlacedKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						Action.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
 						Action.StackCap = Effect->ScaleMaxSteps;
 						Action.bPlacedCutsDamage = bDamageRemoved;
+						Action.bPlacedRaisesRetaliationTaken = bRetaliationTaken;
 					}
 					// A NEXT-SPELL COOLDOWN CHARGE, the fourth next-use kind. Issue
 					// #1833, the cooldown reduction action.
@@ -1619,11 +1627,58 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bTemporaryAbsorb = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::TemporaryAbsorbAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT PAYS WRATH INCARNATE'S RETALIATION PULSE, its radius in Event Value. V3a,
+					// 2026-11-25.
+					Action.bRetaliationPulse = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::RetaliationPulseAction,
+						ESearchCase::IgnoreCase);
+					// AND WHETHER IT IS THOUSAND DEATHS' CHAIN, its radius in Event Value. V3b, 2026-11-25.
+					Action.bFrenzyChain = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FrenzyChainAction,
+						ESearchCase::IgnoreCase);
+					// AND BAITED'S TAUNT AND TRAIL OF WIRE'S PLACING. V4a, 2026-11-25.
+					Action.bTauntNearTrap = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TauntEnemiesNearTrapAction,
+						ESearchCase::IgnoreCase);
+					Action.bPlaceLastTrapAgain = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction,
+						ESearchCase::IgnoreCase);
+					// AND COUNTERFIRE'S ANSWERS. V4b, 2026-11-25.
+					Action.bCounterfire = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CounterfireAction,
+						ESearchCase::IgnoreCase);
+					// AND WHERE THEY FALL'S AND CROSSFIRE'S. V5a, 2026-11-25.
+					Action.bCopyLastTrapAtKill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CopyLastTrapAtKillAction,
+						ESearchCase::IgnoreCase);
+					Action.bCrossfire = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CrossfireAction,
+						ESearchCase::IgnoreCase);
+					// AND SCRAP MINES'. V5b1, 2026-11-25.
+					Action.bScrapMine = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ScrapMineAction,
+						ESearchCase::IgnoreCase);
+					// AND TITANFALL'S. 2026-11-25.
+					Action.bTitanfall = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TitanfallAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))
 					{
 						Action.Nearby = ECataclysmNearbyAction::SmiteByArmour;
+					}
+					// AND THE TWO OF THE WAR VOW OPTIONS' SECOND SLICE, V2b, 2026-11-25: a smite sized by the event's hit,
+					// reaching its Event Value in metres (Pure Carnage, Ragnarok's shockwaves), and the armour stack
+					// above placed on every enemy nearby (Warlord).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyByHitAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteByHit;
+					}
+					if (bArmourRemovedNearby)
+					{
+						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;
 					}
 					if (Action.Nearby != ECataclysmNearbyAction::None && Effect->EveryNth > 1)
 					{
@@ -1680,6 +1735,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						continue;
 					}
 					Action.ConditionValue = Effect->ConditionValue;
+					// AND A SECOND CONDITION, since the War vow options' second slice (V2b, 2026-11-25). Refused as the
+					// first is when this build does not know its name.
+					if (!Effect->Condition2.IsEmpty()
+						&& !UCataclysmStatPipeline::ConditionNamed(Effect->Condition2, Action.Condition2))
+					{
+						UE_LOG(LogCataclysm, Warning,
+							   TEXT("Enchantment '%s' acts under the second condition '%s', which this build does "
+									"not know, so the row does nothing. Regenerate the CSV from the workbook."),
+							   *Effect->Enchantment, *Effect->Condition2);
+						continue;
+					}
+					Action.ConditionValue2 = Effect->ConditionValue2;
 					Action.bFromADrawback = bFromADrawback;
 					Actions->Add(Action);
 				}

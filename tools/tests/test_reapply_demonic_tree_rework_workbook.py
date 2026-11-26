@@ -139,7 +139,28 @@ def test_the_two_order_fix_positions_accept_either_starting_state(copy_of_the_wo
     assert sheet_rows(copy_of_the_workbook) == sheet_rows(WORKBOOK)
 
 
+def sheet_by_column(path: pathlib.Path) -> list[dict]:
+    """The sheet's rows keyed by their headers, so two sheets holding the same
+    columns in another order compare equal. The generator reads by header.
+
+    A CAP THIS SCRIPT DID NOT WRITE IS LEFT OUT: Saturation's, written by
+    `tools/reapply_war_data_rows_workbook.py` on 2026-11-25. Deleting the column
+    deletes it too, and this script restores only the caps of its own nodes."""
+    header, *rows = sheet_rows(path)
+    ours = {change.node for change in reapply.CHANGES}
+    keyed = [dict(zip(header, row, strict=False)) for row in rows]
+    for cells in keyed:
+        if cells.get("Node") not in ours:
+            cells.pop(reapply.CAP_COLUMN, None)
+    return keyed
+
+
 def test_the_cap_column_is_added_when_missing(copy_of_the_workbook):
+    """COMPARED BY COLUMN NAME SINCE 2026-11-25. The script adds the cap column at
+    the end of the header, and slice D of `plan_death_and_war.md` has since put
+    `Per Point From` after it in the repository's workbook, so the column comes
+    back in another place than it was taken from. Every cell is still compared
+    but the caps of nodes this script does not own (`sheet_by_column`)."""
     book = openpyxl.load_workbook(copy_of_the_workbook)
     sheet = book[reapply.SHEET]
     header = [c.value for c in sheet[1]]
@@ -150,7 +171,7 @@ def test_the_cap_column_is_added_when_missing(copy_of_the_workbook):
     book.save(copy_of_the_workbook)
 
     reapply.apply(copy_of_the_workbook)
-    assert sheet_rows(copy_of_the_workbook) == sheet_rows(WORKBOOK)
+    assert sheet_by_column(copy_of_the_workbook) == sheet_by_column(WORKBOOK)
 
 
 def test_every_for_every_n_points_series_is_whole_and_counts_from_n():

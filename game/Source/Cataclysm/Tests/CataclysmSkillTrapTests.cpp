@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -24,6 +25,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmSkillBar.h"
+#include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -1100,10 +1102,11 @@ CATACLYSM_TEST(FCataclysmSkillTrapGadgetRowTest,
 	using namespace CataclysmSkillTrapTest;
 
 	// TWO PLAYERS 100 M APART, EACH WEARING "Gadgets apply a 15%-25% armor reduction to enemies" AS THE ITEM BUILDS IT
-	// FROM ITS ROW (`game/Data/EnchantmentEffects.csv`: action `enemy_armor_removed` on `deployable_hit`, 15 to 25, Required
-	// Tags `Type.Deployable`, Stack Seconds 3, Scale Max Steps 1), rolled here at 20. The control's Heavy slot is a skill
-	// gadget's, placed 20 m north with its enemy 3 m east; the other's is a skill trap's, placed 20 m north with its enemy
-	// 2.5 m east.
+	// FROM ITS ROW (`game/Data/EnchantmentEffects.csv`: action `enemy_armor_removed` on `deployable_hit`, 15 to 25, Stack
+	// Seconds 3, Scale Max Steps 1), rolled here at 20, WITH THE REQUIRED TAGS READ FROM THE SHIPPED ROW: `Type.Gadget` since
+	// the owner's ruling of 2026-11-25 ("agree with your rec"), which moved the 18 enchantments that say "gadget" off
+	// `Type.Deployable`. The control's Heavy slot is a skill gadget's, placed 20 m north with its enemy 3 m east; the
+	// other's is a skill trap's, placed 20 m north with its enemy 2.5 m east.
 	FSkillTrapWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -1121,11 +1124,23 @@ CATACLYSM_TEST(FCataclysmSkillTrapGadgetRowTest,
 						 TEXT("Slot.Heavy")}});
 	TrapPlayer.Holds({SkillTrapFlag(TEXT("Slot.Heavy"))});
 	const TCHAR* const ArmourRow = TEXT("Positive_Gadgets_apply_a_15_25_armor_reduction_to_enemi");
+	const UDataTable* Effects = UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+	const FCataclysmEnchantmentEffectRow* Shipped = Effects
+		? Effects->FindRow<FCataclysmEnchantmentEffectRow>(FName(*FString::Printf(TEXT("%s#1"), ArmourRow)), TEXT("gadget row"),
+															 /*bWarnIfRowMissing=*/false)
+		: nullptr;
+	if (!TestNotNull(TEXT("set-up: the shipped armour reduction row"), Shipped)
+		|| !TestEqual(TEXT("set-up: it requires Type.Gadget, by the owner's ruling. If not, DT_EnchantmentEffects may be "
+						   "older than the CSV: run tools/generate_datatable_assets.py"),
+					  Shipped->RequiredTags, FString(TEXT("Type.Gadget"))))
+	{
+		return false;
+	}
 	FCataclysmPoolAction Armour;
 	Armour.Event = FName(TEXT("deployable_hit"));
 	Armour.Pool = FName(UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction);
 	Armour.Percent = 20.0f;
-	Armour.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false));
+	Armour.RequiredTags = UCataclysmSkillShapes::TagsFromCell(Shipped->RequiredTags);
 	Armour.PlacedKey = FName(*FString::Printf(TEXT("%s:%s"), ArmourRow, UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction));
 	Armour.StackSeconds = 3.0f;
 	Armour.StackCap = 1;
@@ -1170,7 +1185,7 @@ CATACLYSM_TEST(FCataclysmSkillTrapGadgetRowTest,
 	TestTrue(*FString::Printf(TEXT("the skill trap's cast struck its enemy: %.2f"), SkillTrapTakenFrom(TrapEnemy)),
 		SkillTrapTakenFrom(TrapEnemy) > 0.0f);
 	TestTrue(*FString::Printf(TEXT("and raised deployable_hit: %d"), TrapHits.Count), TrapHits.Count > 0);
-	TestEqual(TEXT("which carries no Type.Deployable, so the gadget row took none of its enemy's armour"),
+	TestEqual(TEXT("which carries no Type.Gadget, so the gadget row took none of its enemy's armour"),
 		TrapEnemySystem->ArmourRemovedPercentNow(), 0.0f, 0.001f);
 	return true;
 }

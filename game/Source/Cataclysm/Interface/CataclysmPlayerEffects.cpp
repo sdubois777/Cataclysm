@@ -3,6 +3,7 @@
 #include "Interface/CataclysmPlayerEffects.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -296,6 +297,34 @@ TArray<FCataclysmPlayerEffect> UCataclysmPlayerEffects::EntriesFor(const AActor*
 	AddText(Buffs, Overlay::HeldBuffTextFor(Actor), false, AbilitySystem, nullptr);
 	AddText(Buffs, Overlay::DamageTypeImmunityTextFor(Actor), false, AbilitySystem, nullptr);
 	AddText(Buffs, Overlay::KeptStacksTextFor(Actor), false, AbilitySystem, nullptr);
+	// THE BERSERKER'S STATE, OR BERSERKING READY: Wrath and Frenzy are states the player is in until the pool empties,
+	// and Berserking waits for the next melee attack. The Berserker's states, 2026-11-25; the owner's rule of 2026-08-24
+	// that a system must be seen in game.
+	AddText(Buffs, FCataclysmBerserkerStates::StateTextFor(Actor), false, AbilitySystem, nullptr);
+	// AND TITANFALL'S WINDOW AND STORE, the Bulwark's keystone (ruled T6, 2026-11-25).
+	AddText(Buffs, Overlay::TitanfallTextFor(Actor), false, AbilitySystem, nullptr);
+	// AND BLOOD PRICE'S DAMAGE WHILE IT WAITS FOR THE NEXT MELEE BLOW THAT LANDS, with its seconds. The Berserker's Blood
+	// Price, 2026-11-25.
+	if (const UCataclysmAbilitySystemComponent* BloodPriceHolder =
+			Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		if (BloodPriceHolder->BloodPriceHeldNow() > 0.0f)
+		{
+			FCataclysmPlayerEffect Held;
+			Held.Name = FString::Printf(TEXT("Blood Price +%d damage"),
+										FMath::RoundToInt(BloodPriceHolder->BloodPriceHeldNow()));
+			Held.SecondsLeft = BloodPriceHolder->BloodPriceSecondsLeft();
+			Buffs.Add(Held);
+		}
+		// AND THIN AIR WHILE IT HIDES THE PLAYER (the Saboteur's Thin Air, 2026-11-25): no seconds, since it lasts while
+		// the player moves.
+		if (BloodPriceHolder->IsHiddenByThinAir())
+		{
+			FCataclysmPlayerEffect Hidden;
+			Hidden.Name = TEXT("Thin Air");
+			Buffs.Add(Hidden);
+		}
+	}
 	if (NihilMore > 0.0f)
 	{
 		FCataclysmPlayerEffect Reward;

@@ -814,6 +814,8 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 
 **"Cannot be reduced" drops each reducing effect on its own and keeps every bonus.** The Ravager's Relentless reads "Your Movement Speed and Attack Speed cannot be reduced by any effect": every row that would lower either speed is ignored, one by one, and every increase still counts, so +12% beside -40% gives +12% for both speeds, and Cripple and Wither do not slow the holder at all. It is not a floor at the character's own speed, which would take the earned 12% away with the slow. Unstoppable's "cannot be slowed while an enemy is within 4 metres" and Nothing Moves You's clause at 50 or more Fervour share the movement half of the rule. A character without any of them sums its speed rows as every character does. Ruled by the coordinating session on 2026-11-24.
 
+**"Melee range" in a node is 4 metres.** Warmonger's "each enemy within melee range" and Cut and Run's "for each enemy within melee range" count enemies within 4 metres of the character, the reach the trees already use for enemies near a character in melee: the Ravager's core count of enemies within 4 metres, and Reprisal Wave's sphere. Ruled by the coordinating session on 2026-11-25.
+
   
 
 ### **Class Resource Systems**

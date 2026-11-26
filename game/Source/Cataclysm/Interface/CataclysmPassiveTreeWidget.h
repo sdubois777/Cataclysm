@@ -148,6 +148,16 @@ public:
 	static FName OptionValue(int32 Option);
 	static int32 OptionFromValue(FName Value);
 
+	/**
+	 * What the button for `Capstone`'s `Option` says while its options are on offer: its number and name, "(nothing is
+	 * written here)" for an option with no name, and for a named option with no row in `EffectTable` the name marked
+	 * "(not built yet: it does nothing)" (`UCataclysmPassiveTree::MarkedNotBuiltYet`). The War vow options' second
+	 * slice, 2026-11-25. Static, so a headless test reads the label the list draws without the list, which only a
+	 * Widget Blueprint has.
+	 */
+	static FString OptionLabelFor(const UDataTable* NodeTable, const UDataTable* EffectTable, FName Capstone,
+								  int32 Option);
+
 	//~ What the screen says.
 
 	/** How many points are earned, spent and left. */

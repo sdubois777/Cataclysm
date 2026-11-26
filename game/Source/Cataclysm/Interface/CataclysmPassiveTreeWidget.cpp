@@ -322,10 +322,12 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 	if (DescriptionLabel)
 	{
 		// WHAT THE LAST NODE TOUCHED SAYS IT DOES. This is the only place a
-		// player reads a node's own words. It shows the words whether or not
-		// the node has an authored effect behind it, and 267 of the 293 do
-		// not -- so a player reading this cannot tell which sentences the
-		// character actually receives. Issues #936 and #939.
+		// player reads a node's own words. Until 2026-11-25 it showed them
+		// whether or not the node had an authored effect behind it, so a
+		// player could not tell which sentences the character receives (issues
+		// #936 and #939). Since the War vow options' second slice a node or an
+		// option with no row is marked "(not built yet: it does nothing)":
+		// the effect table is handed to both description functions below.
 		//
 		// AND FOR A CAPSTONE, THE NAMES OF ITS THREE OPTIONS. Issue #1076. This
 		// read `Row->Description` until 2026-08-28, and a capstone's own
@@ -345,9 +347,11 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 		DescriptionLabel->SetText(FText::FromString(
 			bDeciding
 				? UCataclysmPassiveTree::FullDescriptionOf(NodeTable(),
-														   ChoosingOptionFor)
+														   ChoosingOptionFor,
+														   UCataclysmPassiveTree::LoadEffectTable())
 				: UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(),
-															LastTouched)));
+															LastTouched,
+															UCataclysmPassiveTree::LoadEffectTable())));
 	}
 }
 
@@ -476,15 +480,10 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 				const FString Name = Names.IsValidIndex(Option - 1)
 					? Names[Option - 1] : FString();
 
-				// A NAMELESS OPTION SAYS SO RATHER THAN SHOWING A BLANK BUTTON.
-				// The Saboteur's four capstones have three each, issue #935, and
-				// this list never opens on one of those -- `AwaitsAnOptionChoice`
-				// refuses a capstone offering nothing -- so this is for a
-				// capstone that names one option and not another.
-				const FString Label = Name.IsEmpty()
-					? FString::Printf(TEXT("%d  (nothing is written here)"),
-									  Option)
-					: FString::Printf(TEXT("%d  %s"), Option, *Name);
+				// THE LABEL, MARKED WHEN THE OPTION HAS NO ROW. See `OptionLabelFor`.
+				const FString Label = OptionLabelFor(
+					NodeTable(), UCataclysmPassiveTree::LoadEffectTable(),
+					ChoosingOptionFor, Option);
 
 				// TAKEN IS MARKED, AND EVERY OPTION STAYS CLICKABLE. A player
 				// who clicks one of the other two gets the refusal saying the
@@ -515,6 +514,28 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 		Button->SetChoice(Value, FText::FromString(Line),
 						  Allocation.PointsIn(Value) > 0, bCanTake);
 	}
+}
+
+FString UCataclysmPassiveTreeWidget::OptionLabelFor(const UDataTable* NodeTable, const UDataTable* EffectTable,
+													FName Capstone, int32 Option)
+{
+	const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(NodeTable, Capstone);
+	const TArray<FString> Names = Row ? UCataclysmPassiveTree::OptionNamesOf(*Row) : TArray<FString>();
+	const FString Name = Names.IsValidIndex(Option - 1) ? Names[Option - 1] : FString();
+
+	// A NAMELESS OPTION SAYS SO RATHER THAN SHOWING A BLANK BUTTON. This list never opens on a capstone naming no
+	// option at all (the Saboteur's four until 2026-11-25, issue #935) -- `AwaitsAnOptionChoice` refuses a capstone
+	// offering nothing -- so this is for a capstone that names one option and not another.
+	if (Name.IsEmpty())
+	{
+		return FString::Printf(TEXT("%d  (nothing is written here)"), Option);
+	}
+
+	// AND A NAMED OPTION WITH NO ROW SAYS IT DOES NOTHING, before the permanent choice is made. The War vow options'
+	// second slice, 2026-11-25. No table, nothing marked.
+	const FString Label = FString::Printf(TEXT("%d  %s"), Option, *Name);
+	return EffectTable && !UCataclysmPassiveTree::HasEffectRows(EffectTable, Capstone, Option)
+		? UCataclysmPassiveTree::MarkedNotBuiltYet(Label) : Label;
 }
 
 FName UCataclysmPassiveTreeWidget::OptionValue(int32 Option)
@@ -601,7 +622,8 @@ void UCataclysmPassiveTreeWidget::HandleNodeHovered(FName Node)
 		// through the same function, so a node hovered and a node clicked read
 		// alike. Issue #1076.
 		DescriptionLabel->SetText(FText::FromString(
-			UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(), Node)));
+			UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(), Node,
+													  UCataclysmPassiveTree::LoadEffectTable())));
 	}
 }
 
@@ -770,6 +792,16 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 				 "longer worn. The points stay spent and count again when that "
 				 "gear is worn."),
 			Idle, Idle == 1 ? TEXT("s") : TEXT(""));
+	}
+
+	// AND, LAST, A NODE WITH NO ROW: its name marked "(not built yet: it does nothing)". The War vow options' second
+	// slice, 2026-11-25. Not a capstone, whose own points carry no row by design: its options are marked where they are
+	// offered. No table, nothing marked.
+	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
+	if (ToolTip.IsEmpty() && Row->Kind != UCataclysmPassiveTree::CapstoneKind && Effects
+		&& !UCataclysmPassiveTree::HasEffectRows(Effects, Node))
+	{
+		ToolTip = UCataclysmPassiveTree::MarkedNotBuiltYet(Row->NodeName);
 	}
 	Button.SetToolTipText(FText::FromString(ToolTip));
 }

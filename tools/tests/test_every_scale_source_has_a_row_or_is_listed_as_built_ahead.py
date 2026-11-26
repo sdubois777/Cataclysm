@@ -193,7 +193,14 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 41 WHEN `enemies_in_reach_while_own_stack` GAINED ITS TWO ROWS, 2026-10-18,
 #: for Warlord's Will's ten-piece bonus.
-EXPECTED_NAMED_BY_A_ROW = 41
+#:
+#: AND 43 WHEN `max_class_resource` AND `block_chance` ARRIVED WITH THEIR ROWS,
+#: the War vow options' second slice, 2026-11-25: Unbridled and Titan, and
+#: Bastion.
+#:
+#: AND 44 WHEN `current_health` ARRIVED WITH ITS ROW, the third slice's second
+#: half, V3b, 2026-11-25: Colossus Eternal.
+EXPECTED_NAMED_BY_A_ROW = 44
 
 
 def scales_named_by_a_row() -> set[str]:

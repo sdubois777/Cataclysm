@@ -533,6 +533,14 @@ public:
 	static FString ArmourRemovedTextFor(const AActor* Actor);
 
 	/**
+	 * "Deathmarked +18%" under a creature's health bar while a Deathmark lasts on it, carrying that much more damage
+	 * taken, "Deathmarked" for a mark laid when its cost could not be paid, or empty with none. The Berserker's
+	 * Deathmark, 2026-11-25: state on the creature, so nothing else on screen would say it was there (the owner's rule
+	 * that a system ships with a basic display).
+	 */
+	static FString DeathmarkTextFor(const AActor* Actor);
+
+	/**
 	 * What is said under a creature's health bar while Ground Down slows it,
 	 * such as "Slowed -15%", or empty while nothing does. Issue #1515.
 	 *
@@ -692,6 +700,20 @@ public:
 	 * on a creature's status line, where it is empty today because no creature wears a row.
 	 */
 	static FString OwedTextFor(const AActor* Actor);
+
+	/**
+	 * Titanfall's window and store on a living actor, such as "Titanfall: cannot die 2s, next attack +3200", either part
+	 * alone while only it is held, or empty. Ruled 2026-11-25 (T6) under the owner's rule that every system has a basic
+	 * display. THE SECONDS ARE ROUNDED UP, as the held buff's are; THE AMOUNT TOO, as "Owed" is. Shown among the
+	 * player's buffs (`UCataclysmPlayerEffects`).
+	 */
+	static FString TitanfallTextFor(const AActor* Actor);
+
+	/**
+	 * A bolted gadget's name and how many gadgets it is, such as "Bolt Turret x3", or empty for anything else. Bolted
+	 * Together, V5c (accepted 2026-11-25). First on the gadget's status line, because it says what the gadget is.
+	 */
+	static FString BoltedTextFor(const AActor* Actor);
 
 	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or

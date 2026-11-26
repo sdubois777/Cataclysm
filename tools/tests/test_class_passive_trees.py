@@ -233,8 +233,22 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: containing strings use the word as ordinary English: "50 or more Fervour"
 #: (Unflinching, Ceaseless, Deep Reserves, Nothing Moves You), "three or more
 #: enemies" (Plated, Thick Blood, Slow to Fall) and Thronged's "5 less Fervour".
-STRINGS_CONTAINING_THE_WORD = 59
-STRINGS_USING_IT_AS_A_MAGNITUDE = 32
+#:
+#: CONTAINING ROSE BY THREE AND MAGNITUDES BY ONE ON 2026-11-25, when the War vow
+#: options' first slice wrote the Saboteur's twelve approved options into its
+#: four oaths (`tools/apply_war_vow_sentences_2026_11_25.py`). Bolted Together's
+#: "10% more damage for each gadget in it" is a magnitude; Cat's Cradle's "no
+#: more than once every 4 seconds" and Counterfire's "No more than once a
+#: second" are ordinary English. The same slice's five rewordings moved
+#: neither count: Wrath Incarnate's R18 sentence still says "more than 10%", as
+#: the sentence it replaced did, and the other four use neither word.
+#:
+#: CONTAINING ROSE BY ONE AND MAGNITUDES BY NONE ON 2026-11-25, when Titanfall's
+#: ruled sentence R6 replaced its old one (`tools/apply_titanfall_sentence_2026_11_25.py`):
+#: "more than 20% of your Maximum HP" is ordinary English. The old sentence used
+#: neither word.
+STRINGS_CONTAINING_THE_WORD = 63
+STRINGS_USING_IT_AS_A_MAGNITUDE = 33
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -300,7 +314,12 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #: 10% less damage", a cut the game applies as its own multiplier) and The
 #: Second Pact, whose new Wall of Servants takes "1% less damage for each
 #: minion you have, up to 20% less" (question 3).
-NODES_RELYING_ON_THE_WIDENED_RULE = 13
+#:
+#: FOURTEEN SINCE 2026-11-25: the Saboteur's Third Oath, for its option Bolted
+#: Together, "one gadget ... that fires all their attacks with 10% more damage
+#: for each gadget in it" (the twelve approved options, written that day). It
+#: wants a separate multiplier: the merged gadget's damage grows with its count.
+NODES_RELYING_ON_THE_WIDENED_RULE = 14
 
 
 def load(tree_name: str) -> dict:
@@ -720,6 +739,28 @@ def test_the_masochist_capstones_offer_three_named_choices_each(demonic):
             assert option["name"].strip() and option["description"].strip(), (
                 f"Masochist capstone {node['data']['name']!r} has a choice "
                 f"with no name or no description.")
+
+
+def test_every_capstone_in_every_tree_offers_three_named_choices(tree):
+    """The rule `test_the_masochist_capstones_offer_three_named_choices_each` checks, for every tree.
+
+    ISSUE #935: the Saboteur's four capstones said "Choose one of three oaths" and offered none, and no test noticed,
+    because the check above was written for the Masochist tree alone. The issue asked for the twelve options to be
+    written and this rule widened together, since widening it first fails the suite. Both landed on 2026-11-25, with
+    the War vow options' first slice (`tools/apply_war_vow_sentences_2026_11_25.py` wrote the twelve approved on
+    2026-11-24)."""
+    name, data = tree
+    capstones = nodes_of(data, "capstone")
+    assert len(capstones) == 4, f"{name} has {len(capstones)} capstones, not 4"
+    for node in capstones:
+        assert node["data"].get("isDecision") is True, (
+            f"{name} capstone {node['data']['name']!r} is not marked as a decision, so the editor will not offer its "
+            f"options.")
+        options = node["data"].get("options") or []
+        assert len(options) == 3, f"{name} capstone {node['data']['name']!r} offers {len(options)} choices, not 3."
+        for option in options:
+            assert str(option.get("name", "")).strip() and str(option.get("description", "")).strip(), (
+                f"{name} capstone {node['data']['name']!r} has a choice with no name or no description.")
 
 
 def test_the_masochist_resource_is_anguish_and_the_tree_unlocks_it(demonic):

@@ -45,6 +45,8 @@
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the Saboteur's Fervour on a skill gadget's or skill trap's landed blow. Slice C of plan_death_and_war.md.
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -409,6 +411,8 @@ const TCHAR* UCataclysmSkillEffects::CrowdControlResistanceStat =
 	TEXT("crowd_control_resistance");
 const TCHAR* UCataclysmSkillEffects::KnockbackSuppressedStat =
 	TEXT("knockback_suppressed");
+const TCHAR* UCataclysmSkillEffects::PinSuppressedStat =
+	TEXT("pin_suppressed");
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
@@ -620,13 +624,36 @@ float UCataclysmSkillEffects::AttackDamageWithNoTarget(
 		   + ExtraIncreases);
 }
 
+namespace
+{
+	/**
+	 * The tags a row meaning gadgets names: `Type.Deployable`, and `Type.Gadget` since 2026-11-25 (the coordinating
+	 * session's ruling). A skill gadget's blow takes both out of its spell part, reads both for its flat rows, and leaves
+	 * both out of the rows the attribute cannot carry.
+	 */
+	FGameplayTagContainer SkillEffectsTagsNamingGadgets()
+	{
+		FGameplayTagContainer Named;
+		for (const TCHAR* Name : {TEXT("Type.Deployable"), TEXT("Type.Gadget")})
+		{
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Named.AddTag(Tag);
+			}
+		}
+		return Named;
+	}
+}
+
 float UCataclysmSkillEffects::SkillHitWithNoTarget(
 	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags, float DamagePercent,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow, float ExtraIncreases)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Source);
-	const FGameplayTag NamesGadgets =
-		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	// THE TAG FOR GADGETS ALONE, SINCE 2026-11-25 (the coordinating session's ruling): a row naming it is left out
+	// and taken out exactly where a row naming `Type.Deployable` is.
+	const FGameplayTagContainer NamingGadgets = SkillEffectsTagsNamingGadgets();
 
 	// A SKILL THAT IS NOT A SPELL ADDS NO SPELL DAMAGE, so its figure is the weapon part's at its percent, the
 	// expression each caller used before #2498. AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, as
@@ -635,7 +662,7 @@ float UCataclysmSkillEffects::SkillHitWithNoTarget(
 	if (!IsSpell(SkillTags))
 	{
 		const float LineFlat = Cataclysm
-			? Cataclysm->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags,
+			? Cataclysm->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamingGadgets, SkillTags,
 													 /*Target=*/nullptr)
 			: 0.0f;
 		if (LineFlat <= 0.0f)
@@ -657,9 +684,9 @@ float UCataclysmSkillEffects::SkillHitWithNoTarget(
 	// exactly then, by the scope `ApplyHit` and `LeaveZoneAlong` open for a gadget's cast, and `ApplyHit` asks the same
 	// question of its delivery to decide the same removal.
 	FGameplayTagContainer SpellTags = SkillTags;
-	if (Cataclysm && Cataclysm->SkillGadgetBeingPriced.Get() && NamesGadgets.IsValid())
+	if (Cataclysm && Cataclysm->SkillGadgetBeingPriced.Get())
 	{
-		SpellTags.RemoveTag(NamesGadgets);
+		SpellTags.RemoveTags(NamingGadgets);
 	}
 	const float SpellFlat = SpellDamageOf(Source, SpellTags, SkillHealthCostPercent,
 										  /*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false,
@@ -1007,11 +1034,14 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		SkillGadget ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
 	const FGameplayTag NamesGadgets =
 		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	// AND THE TAG FOR GADGETS ALONE, SINCE 2026-11-25: taken out of the spell part, read for the flat rows and left out
+	// of the rows the attribute cannot carry exactly as `Type.Deployable` is.
+	const FGameplayTagContainer NamingGadgets = SkillEffectsTagsNamingGadgets();
 	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow PricedForTheGadget(GadgetsPlayer, SkillGadget);
 	FGameplayTagContainer TagsForSpellDamage = SkillTags;
-	if (GadgetsPlayer && NamesGadgets.IsValid())
+	if (GadgetsPlayer)
 	{
-		TagsForSpellDamage.RemoveTag(NamesGadgets);
+		TagsForSpellDamage.RemoveTags(NamingGadgets);
 	}
 
 	// THE THREE-BUCKET PIPELINE, REOPENED. Issue #895.
@@ -1193,7 +1223,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// Beside the spell part and outside the skill's percent, because "per hit" states an amount; the increases below
 	// reach it, as the naming increases reach a gadget's own blow. Nought for every other blow.
 	const float GadgetFlat = GadgetsPlayer
-		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamingGadgets, SkillTags, AilmentTarget)
 		: 0.0f;
 
 	// AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, issue #2499, ruled 2026-10-25: "Your skills deal
@@ -1202,7 +1232,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// `SpellDamageOf` and the sentence counts once; and never a row naming gadgets (Q-F3), which `GadgetFlat` prices.
 	const UCataclysmAbilitySystemComponent* const LinesOwner = Cast<const UCataclysmAbilitySystemComponent>(Source);
 	const float LineFlat = LinesOwner && !IsSpell(SkillTags)
-		? LinesOwner->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		? LinesOwner->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamingGadgets, SkillTags, AilmentTarget)
 		: 0.0f;
 
 	// A SKILL TRAP'S CAST IS PRICED AS THE TRAP'S, BY ONE ADDED READ, ruled 2026-10-19 (T10) for "Scales off trap
@@ -1229,7 +1259,17 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	float TrapMore = 1.0f;
 	if (TrapsPlayer)
 	{
-		TrapsPlayer->TrapDamageNamingTrap(SkillTags, AilmentTarget, TrapIncreases, TrapMore);
+		// AND WHICH TRAP'S BLOW IT IS, AND OF WHICH OF ITS TRIGGERINGS, the trap standing (its count now) or the used-up
+		// one the blow names (the count it was used up at), for Ambush (the Saboteur's device conditions, 2026-11-25): an
+		// enemy's first triggering counts as "not yet triggered" on its own blows. A LATE BLOW OF A STANDING TRAP'S
+		// EARLIER TRIGGERING, landing after the trap rearmed and went off again, is read as the later triggering's: the
+		// blow carries its trap and not its triggering.
+		const TWeakObjectPtr<const AActor> BlowsTrap = SkillTrap
+			? TWeakObjectPtr<const AActor>(SkillTrap)
+			: TWeakObjectPtr<const AActor>(NamedCastBy);
+		const int32 BlowsTriggering = SkillTrap ? SkillTrap->SkillTrapTriggersMade : SpentTrap.Triggering;
+		TrapsPlayer->TrapDamageNamingTrap(SkillTags, AilmentTarget, TrapIncreases, TrapMore, BlowsTrap,
+										  BlowsTriggering);
 	}
 	// AND A BLOW OF A TRAP'S CAST ON THE ENEMY THAT SET THAT TRIGGER OFF (traps layer 4, ruled 2026-10-21, F4 to F7), of a
 	// trap standing or used up, a late blow included, and no other enemy the cast strikes: "Traps deal 100%-200%
@@ -1269,9 +1309,22 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// named there. A minion's own swing never comes here; it is the minion's `ApplyDirectDamage`.
 	const float KeptUnderTheCurse = NamedCastBy.IsExplicitlyNull() ? KeptUnderWitheredTouch(Instigator) : 1.0f;
 
+	// AND BLOOD PRICE'S HELD DAMAGE, ON THE PLAYER'S OWN MELEE BLOW: "your next melee attack within 3 seconds deals bonus
+	// damage equal to 5% per point of your maximum Fervour" (the Berserker's Blood Price, 2026-11-25). Flat, before the
+	// increases, as the share of a trap's enemy's health is (F5). Not for a use a minion cast in the player's name, a
+	// tick, or a share struck at an ally. SPENT BELOW ONLY IF THE BLOW LANDS (question 5): an evaded blow keeps it for
+	// the next.
+	const FGameplayTag BloodPriceMelee = UCataclysmDamageCalculation::MeleeTag();
+	UCataclysmAbilitySystemComponent* const BloodPricePayer =
+		NamedCastBy.IsExplicitlyNull() && !Delivery.bIsDamageOverTime && Delivery.AreaSkillShareOnAnAllyPercent <= 0.0f
+			&& (Delivery.bIsMelee || (BloodPriceMelee.IsValid() && SkillTags.HasTag(BloodPriceMelee)))
+		? Cast<UCataclysmAbilitySystemComponent>(Source)
+		: nullptr;
+	const float BloodPriceFlat = BloodPricePayer ? BloodPricePayer->BloodPriceHeldNow() : 0.0f;
+
 	const float Damage = ModifiedDamage(
 		Source,
-		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat)
+		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat + BloodPriceFlat)
 			* (1.0f + Applying + Conditional + Bought + TrapIncreases)
 			* TrapMore
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
@@ -1419,6 +1472,11 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		FCataclysmDamageResult ThrallsOwnResult;
 		FCataclysmDamageResult* const Landed = OutResolved ? OutResolved : &ThrallsOwnResult;
 		const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Landed);
+		// BLOOD PRICE IS SPENT BY THE BLOW THAT LANDS, and kept by one evaded or refused (question 5).
+		if (BloodPriceFlat > 0.0f && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker)
+		{
+			BloodPricePayer->SpendBloodPrice();
+		}
 		// AND A THRALL SETS ALIGHT WHAT IT STRIKES. Issue #2784, Subjugate's row: "...fights for you until it dies, keeps
 		// its own abilities, and sets alight what it strikes." Ruled 2026-11-22, the summoned imp's swing burn's shape
 		// (Q3): DESIGNED, so it lands whatever the blow did (#917); the flat `DoT_Burn`, SET BY THE THRALL, neither side's
@@ -1487,6 +1545,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	}
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
+
+	// AND THE SABOTEUR'S FERVOUR FOR A SKILL GADGET'S OR SKILL TRAP'S LANDED BLOW, "one of them dealing damage", landed
+	// as the event above says it, with the same tags. Slice C, 2026-11-24.
+	if (!Result->bEvaded && !Result->bRefusedByImmunityToAttacker)
+	{
+		FCataclysmWarFervour::GainOnDeviceHit(MachinesPlayer, GadgetsTags);
+	}
 	return bDealt ? Sent : 0.0f;
 }
 
@@ -5226,6 +5291,17 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 	if (!Source || !Defender)
 	{
 		return false;
+	}
+
+	// A TARGET THAT CANNOT BE ROOTED IS NOT PINNED, and keeps whatever pin it already carries. The War vow options'
+	// second slice, 2026-11-25: Unstoppable's "you cannot be ... rooted", with a pin counted as the root. Asked of the
+	// target through the pipeline, as `ApplyKnockback` asks its flag, and before anything is applied.
+	if (const UCataclysmAbilitySystemComponent* Held = Cast<UCataclysmAbilitySystemComponent>(Defender))
+	{
+		if (Held->StatForSkill(FName(PinSuppressedStat), FGameplayTagContainer(), 0.0f) > 0.0f)
+		{
+			return false;
+		}
 	}
 
 	// THE STRONGEST APPLICATION WINS, which the project owner ruled on

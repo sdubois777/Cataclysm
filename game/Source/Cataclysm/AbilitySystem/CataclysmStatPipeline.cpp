@@ -150,6 +150,16 @@ namespace
 		{ TEXT("target_is_silenced"),           ECataclysmStatCondition::TargetIsSilenced },
 		{ TEXT("target_is_moving"),             ECataclysmStatCondition::TargetIsMoving },
 		{ TEXT("target_carries_your_curse"),    ECataclysmStatCondition::TargetCarriesYourCurse },
+		{ TEXT("dual_wielding"),                ECataclysmStatCondition::DualWielding },
+		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
+		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
+		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
+		{ TEXT("own_gadget_within_metres"),     ECataclysmStatCondition::OwnGadgetWithinMetres },
+		{ TEXT("target_not_yet_triggered_your_trap"), ECataclysmStatCondition::TargetNotYetTriggeredYourTrap },
+		{ TEXT("seconds_after_gadget_struck"),  ECataclysmStatCondition::WithinSecondsOfGadgetStruck },
+		{ TEXT("no_room_for_a_trap"),           ECataclysmStatCondition::NoRoomForATrap },
+		// THE SABOTEUR'S ROWS, 2026-11-25: Durable Modifications' 3% a point at or below half the pool.
+		{ TEXT("class_resource_at_or_below"),   ECataclysmStatCondition::ClassResourceAtOrBelowPercent },
 	};
 
 	struct FNamedStatScale
@@ -201,6 +211,9 @@ namespace
 		{ TEXT("share_of_range_moved"), ECataclysmStatScale::ShareOfRangeMoved },
 		{ TEXT("enemies_in_reach_while_own_stack"), ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld },
 		{ TEXT("increased_movement_speed"), ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed },
+		{ TEXT("max_class_resource"),  ECataclysmStatScale::PerPointOfMaximumClassResource },
+		{ TEXT("block_chance"),        ECataclysmStatScale::PerPercentOfBlockChance },
+		{ TEXT("current_health"),      ECataclysmStatScale::PerPointOfCurrentHealth },
 	};
 
 	/**
@@ -318,8 +331,13 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsSilenced:
 	case ECataclysmStatCondition::TargetIsMoving:
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
+	case ECataclysmStatCondition::DualWielding:
+	case ECataclysmStatCondition::InWrath:
+	case ECataclysmStatCondition::InFrenzy:
+	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
+	case ECataclysmStatCondition::NoRoomForATrap:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-five says
+		// nothing for a number to be compared against. Each of the forty says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -410,6 +428,8 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::ClassResourceAtMaximum:
 	case C::ClassResourceAbovePercent:
 	case C::ClassResourcePointsAtLeast:
+	// AND ITS COMPLEMENT, the Saboteur's rows of 2026-11-25.
+	case C::ClassResourceAtOrBelowPercent:
 		return EOn::ClassResource;
 
 	case C::EnergyShieldAtMaximum:
@@ -424,7 +444,26 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// that leaves speed alone does not do. Classed here, the reader re-asks as
 	// time passes, which is the answer this category gives.
 	case C::WieldingTwoHandedWeapon:
+	// AND HOW MANY ITEMS THE WEAPON SLOTS HOLD, for the same reason: a weapon swap. The Berserker's states, 2026-11-25.
+	case C::DualWielding:
 		return EOn::OtherAttributes;
+
+	// THE BERSERKER'S STATES BEGIN AT A FULL POOL AND END AT AN EMPTY ONE, so they move when the class resource moves.
+	// 2026-11-25. `ACataclysmPlayerCharacter::OnClassResourceChanged` judges the state before it works out the walking
+	// speed again, so a speed row under either reads the new state.
+	case C::InWrath:
+	case C::InFrenzy:
+		return EOn::ClassResource;
+
+	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Whether the pool has room for another trap moves with the pool and
+	// with the reserves, which a trap placed or ended changes in the pool's own maximum; the nearest gadget's distance
+	// moves as the character walks, which nothing announces; and a gadget's hit is a window that closes on time.
+	case C::NoRoomForATrap:
+		return EOn::ClassResource;
+	case C::OwnGadgetWithinMetres:
+		return EOn::Surroundings;
+	case C::WithinSecondsOfGadgetStruck:
+		return EOn::Time;
 
 	// EVERY WINDOW AFTER AN EVENT, and the three that measure how long
 	// something has or has not happened. Bleeding is here too: it ends when
@@ -528,6 +567,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE STRUCK CHARACTER CARRIES A CURSE THE ASKER LAID, the demonic tree rework of 2026-11-24: a fact of the
 	// target in hand, after `TargetIsMoving`.
 	case C::TargetCarriesYourCurse:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK CHARACTER HAS SET OFF A TRAP OF THE ASKER'S, the Saboteur's device conditions of 2026-11-25: a
+	// fact of the target in hand, after `TargetCarriesYourCurse`.
+	case C::TargetNotYetTriggeredYourTrap:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -953,6 +997,32 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// rather than being guessed either way.
 		return State.WeaponHands == 2;
 
+	case ECataclysmStatCondition::DualWielding:
+		// TWO ITEMS IN THE WEAPON SLOTS, a shield among them. The Berserker's states, 2026-11-25. -1 is "no equipment"
+		// and refuses.
+		return State.WeaponsWorn == 2;
+
+	case ECataclysmStatCondition::InWrath:
+		// THE STATE THE ABILITY SYSTEM COMPONENT HOLDS. The Berserker's states, 2026-11-25.
+		return State.bInWrath;
+
+	case ECataclysmStatCondition::InFrenzy:
+		return State.bInFrenzy;
+
+	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Each refuses an unknown reading: no gadget (-1), no gadget struck
+	// (-1), no record read.
+	case ECataclysmStatCondition::OwnGadgetWithinMetres:
+		return State.MetresToNearestOwnGadget >= 0.0f && State.MetresToNearestOwnGadget <= Value;
+
+	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
+		return State.bTargetTrapHistoryKnown && !State.bTargetTriggeredAnotherTrapOfYours;
+
+	case ECataclysmStatCondition::WithinSecondsOfGadgetStruck:
+		return State.SecondsSinceGadgetStruck >= 0.0f && State.SecondsSinceGadgetStruck <= Value;
+
+	case ECataclysmStatCondition::NoRoomForATrap:
+		return State.bNoRoomForATrap;
+
 	case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 		// Issue #1515. Known first, as above, then the two rules of every
 		// clock: never reads -1 and refuses, and the window is inclusive.
@@ -1296,6 +1366,14 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 			&& State.ClassResourceMaximum > 0.0f
 			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
 				   > Value;
+
+	case ECataclysmStatCondition::ClassResourceAtOrBelowPercent:
+		// THE COMPLEMENT OF THE ONE ABOVE, WITH ITS THREE CLAUSES. The Saboteur's rows, 2026-11-25. Known, able to hold
+		// something, and then at or below: with the one above, every known share is exactly one of the two.
+		return State.ClassResourceHeld >= 0.0f
+			&& State.ClassResourceMaximum > 0.0f
+			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
+				   <= Value;
 
 	case ECataclysmStatCondition::ClassResourcePointsAtLeast:
 		// AT OR ABOVE, for "50 or more" -- the boundary `HealthAtOrAbovePercent`
@@ -1870,6 +1948,43 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		}
 		const float Steps =
 			FMath::FloorToFloat(State.IncreasedMovementSpeedPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	// PER WHOLE STEP OF THE CLASS RESOURCE'S MAXIMUM, AND OF THE BLOCK CHANCE ATTRIBUTE. The War vow options' second
+	// slice, 2026-11-25: Titan's "1% for every 2 points of maximum Fervour" is a step of 2, Unbridled's "every 20 points
+	// of maximum Fervour" a step of 20, and Bastion's "1% for every 1% Block Chance" a step of 1. The same two refusals as
+	// the readings above, an unknown reading and a step of nothing; whole steps, rounded down.
+	case ECataclysmStatScale::PerPointOfMaximumClassResource:
+	{
+		if (State.ClassResourceMaximumNow < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps = FMath::FloorToFloat(State.ClassResourceMaximumNow / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPercentOfBlockChance:
+	{
+		if (State.BlockChance < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps = FMath::FloorToFloat(State.BlockChance / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPointOfCurrentHealth:
+	{
+		// THE SAME REFUSALS AS THE MAXIMUM HEALTH SCALE: an unknown reading of either figure, or a step of nothing.
+		// V3b, 2026-11-25.
+		if (State.HealthPercent < 0.0f || State.MaximumHealth < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Current = State.HealthPercent / 100.0f * State.MaximumHealth;
+		const float Steps = FMath::FloorToFloat(Current / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 	}

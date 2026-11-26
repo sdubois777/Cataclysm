@@ -2728,15 +2728,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadGadgetFreesItsPlaceTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * A dead gadget stops counting toward its skill's cap the moment it dies.
- * Issue #1528, found while making that change and ruled the same day:
- * `UCataclysmDeployableSkill::LivingDeployedCount` dropped only destroyed
- * gadgets, so a dead one held its place until its body was removed -- the
- * gadget version of issue #1957, which fixed the same thing for minions.
+ * A dead gadget stops holding its place the moment it dies. Issue #1528, found
+ * while making that change and ruled the same day: a dead one held its place
+ * until its body was removed -- the gadget version of issue #1957, which fixed
+ * the same thing for minions.
  *
- * A CAP OF ONE, so the second placement is refused while the first gadget
- * lives and allowed once it has died, with its body still in the level for
- * half a second.
+ * ITS PLACE IS ITS RESERVE SINCE ISSUE #1934 (2026-11-25), when the War machines
+ * lost their count caps and began to reserve Fervour. A pool of 5 and a turret
+ * reserving 5, so the second placement is refused while the first gadget lives
+ * and allowed once it has died, with its body still in the level for half a
+ * second. Until then this was a cap of one.
  */
 bool FCataclysmDeadGadgetFreesItsPlaceTest::RunTest(const FString&)
 {
@@ -2750,10 +2751,10 @@ bool FCataclysmDeadGadgetFreesItsPlaceTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	FScopedCaster Caster(World, FVector::ZeroVector);
+	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/5.0f);
 	UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
-		TEXT("Count=1; MaxActive=1; Duration=20; Minions=BoltTurret:1"), TEXT("Bolt Turret"));
+		TEXT("Count=1; Duration=20; Minions=BoltTurret:1; FervourReserve=5"), TEXT("Bolt Turret"));
 	if (!TestNotNull(TEXT("a deployable skill"), Skill))
 	{
 		return false;
@@ -2774,8 +2775,9 @@ bool FCataclysmDeadGadgetFreesItsPlaceTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { if (IsValid(First)) { First->Destroy(); } };
 
 	Activate(Caster, Skill);
-	TestEqual(TEXT("a second is refused while it lives: the cap is one"),
+	TestEqual(TEXT("a second is refused while it lives: the pool of 5 holds one reserve of 5"),
 			  UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 1);
+	TestTrue(TEXT("and the refusal says it was for room"), Skill->bRefusedForRoom);
 
 	Kill(First);
 	if (!TestTrue(TEXT("the turret is dead and its body is still here for now"),
@@ -4276,23 +4278,21 @@ bool FCataclysmSharedRuinThrallTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShippedDeployableCapsTest,
-	"Cataclysm.Command.TheShippedDeployablesStateCapsAndThreeActivationsLeaveOneBoltTurret",
+	"Cataclysm.Command.TheShippedDeployablesReserveFiveEachAndThePoolIsTheirOnlyLimit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Issue #1833, the deployable cap, ruled 2026-09-25 under the owner's
- * delegation: each deployable skill holds what its timing already allows, so
- * nothing changes at base. Read from the SHIPPED rows in `DT_WeaponSkills`:
- * Bolt Turret states 1, Ballista 2 and Iron Fortress 5, one set.
+ * Issue #1934, approved by the owner on 2026-11-25 and ruled that day: the War
+ * deployables reserve their rows' Fervour and lose their count caps, as every
+ * kind that reserves did under issue #2787 ("that's limiting on its own"). Read
+ * from the SHIPPED rows in `DT_WeaponSkills`: Bolt Turret, Ballista and Iron
+ * Fortress each state a reserve of 5 and no `MaxActive`.
  *
  * Then the Bolt Turret row as shipped, with its cooldown turned off so every
- * activation fires: three activations leave one turret at its cap.
- *
- * THE WAR DEPLOYABLES KEEP THEIR CAPS. Issue #2787 removed every count cap on
- * what reserves the class resource, and these reserve nothing until issue #1934
- * reaches the War tree. The half of this test where a cap bonus of 3 left three
- * turrets went with the bonus: "Add 1-3 to your max deployable count" became
- * "Your deployables reserve 15%-30% reduced Fervour".
+ * activation fires: in a pool of 150 three activations leave three turrets
+ * reserving 15. THE CONTROL: in a pool of 10, the third is refused for room and
+ * two stand. Until 2026-11-25 this test held the caps of 1, 2 and 5, and three
+ * activations left one turret.
  */
 bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
 {
@@ -4312,15 +4312,16 @@ bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
 	const TCHAR* const Stale =
 		TEXT("If not, DT_WeaponSkills may be older than the rows: run "
 			 "tools/generate_datatable_assets.py");
-	TestEqual(FString::Printf(TEXT("Bolt Turret states a cap of 1. %s"), Stale),
-		UCataclysmSkillShapes::ParseParams(Turret).MaxActive, 1);
-	TestEqual(TEXT("Ballista states 2"),
-		UCataclysmSkillShapes::ParseParams(ParamsOf(TEXT("War_Spear_Special"))).MaxActive, 2);
-	TestEqual(TEXT("Iron Fortress states 5, one set of two ballistas and three spike traps"),
-		UCataclysmSkillShapes::ParseParams(ParamsOf(TEXT("War_Spear_Ultimate"))).MaxActive, 5);
+	for (const TCHAR* Row : {TEXT("War_Crossbow_Special"), TEXT("War_Spear_Special"), TEXT("War_Spear_Ultimate")})
+	{
+		const FCataclysmSkillShapeParams Shipped = UCataclysmSkillShapes::ParseParams(ParamsOf(Row));
+		TestEqual(*FString::Printf(TEXT("%s states no count cap. %s"), Row, Stale), Shipped.MaxActive, 0);
+		TestEqual(*FString::Printf(TEXT("%s reserves 5 a machine"), Row), Shipped.FervourReserve, 5.0f, 0.001f);
+	}
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	bool bRefused = false;
 	const auto TurretsAfterThree = [&](FScopedCaster& Caster) -> int32
 	{
 		UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
@@ -4338,11 +4339,16 @@ bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
 				return -1;
 			}
 		}
+		bRefused = Skill->bRefusedForRoom;
 		return UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num();
 	};
 	FScopedCaster Plain(World, FVector::ZeroVector);
-	TestEqual(TEXT("three activations leave one turret at the shipped cap"),
-		TurretsAfterThree(Plain), 1);
+	TestEqual(TEXT("in a pool of 150 three activations leave three turrets"), TurretsAfterThree(Plain), 3);
+	TestEqual(TEXT("reserving 15"), UCataclysmCommand::ReservedFervourOf(Plain.Actor), 15.0f, 0.001f);
+	TestFalse(TEXT("and none was refused"), bRefused);
+	FScopedCaster Small(World, FVector(5000.0f, 0.0f, 0.0f), /*Pool=*/10.0f);
+	TestEqual(TEXT("control: in a pool of 10 two stand"), TurretsAfterThree(Small), 2);
+	TestTrue(TEXT("control: and the third was refused for room"), bRefused);
 	return true;
 }
 
@@ -5815,6 +5821,107 @@ bool FCataclysmRekindledThrallTest::RunTest(const FString&)
 	GiveStats(Plain, {{TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f}});
 	TestTrue(TEXT("CONTROL: set-up: its thrall explodes"), ThrallDiesAt(Plain, FVector(9 * M, 30 * M, 0)));
 	TestEqual(TEXT("CONTROL: without Rekindled it is not replaced"), PlainSkill->LivingMinionCount(), 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The War machines' Fervour reserves, issue #1934
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAWarMachineReservesTest,
+	"Cataclysm.FervourReserve.AWarMachineReservesFiveAndTheSpendableFervourDropsAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Reserves 5 Fervour while it stands." Issue #1934, approved by the owner on 2026-11-25. A Bolt Turret placed in a
+ * full pool of 150 holds 5 of it: what is reserved is 5, what can be spent 145, and a full pool is cut to 145 at once,
+ * through `UCataclysmCommand::HoldReserve` as an imp's is. THE CONTROL: the same row stating no reserve holds nothing.
+ */
+bool FCataclysmAWarMachineReservesTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Bare(World, FVector(5000.0f, 0.0f, 0.0f));
+	UCataclysmDeployableSkill* NoReserve = GrantSkill<UCataclysmDeployableSkill>(
+		Bare, ECataclysmAbilitySlot::Special, TEXT("Count=1; Duration=20; Minions=BoltTurret:1"), TEXT("Bolt Turret"));
+	if (!TestNotNull(TEXT("set-up: a deployable with no reserve"), NoReserve))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: a row with no reserve places its turret"), Activate(Bare, NoReserve)
+			 && UCataclysmCommand::ThingsCommandedBy(Bare.Actor).Num() == 1);
+	TestEqual(TEXT("control: and it holds nothing"), UCataclysmCommand::ReservedFervourOf(Bare.Actor), 0.0f, 0.001f);
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Count=1; Duration=20; Minions=BoltTurret:1; FervourReserve=5"),
+		TEXT("Bolt Turret"));
+	if (!TestNotNull(TEXT("set-up: a deployable reserving 5"), Skill))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: a full pool of 150"), FervourIn(Caster), RitualistPool, 0.001f);
+	TestTrue(TEXT("the turret is placed"), Activate(Caster, Skill)
+			 && UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num() == 1);
+	TestEqual(TEXT("it reserves 5"), UCataclysmCommand::ReservedFervourOf(Caster.Actor), 5.0f, 0.001f);
+	TestEqual(TEXT("so 145 of 150 can be spent"), SpendableOf(Caster), RitualistPool - 5.0f, 0.001f);
+	TestEqual(TEXT("and a full pool is cut to 145 at once"), FervourIn(Caster), RitualistPool - 5.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIronFortressAllOrNoneTest,
+	"Cataclysm.FervourReserve.IronFortressPlacesItsWholeSetOrNoneOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1934, ruled 2026-11-25 (Q1): Iron Fortress checks its whole set's reserve before placing any of it. Its
+ * shipped row, two ballistas and three spike traps at 5 each, "so the set reserves 25". In a pool of 24 the press is
+ * refused, nothing is placed, and the refusal says it was for room. THE CONTROL: in a pool of 25 all five are placed,
+ * reserving 25, and nothing was refused.
+ */
+bool FCataclysmIronFortressAllOrNoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+	const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+	const FCataclysmWeaponSkillRow* Row = Skills
+		? Skills->FindRow<FCataclysmWeaponSkillRow>(FName(TEXT("War_Spear_Ultimate")), TEXT("fortress"), false)
+		: nullptr;
+	if (!TestNotNull(TEXT("set-up: the shipped Iron Fortress row"), Row))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const auto Fortress = [&](FScopedCaster& Caster)
+	{
+		UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+			Caster, ECataclysmAbilitySlot::Special, Row->ShapeParams, TEXT("Iron Fortress"),
+			TEXT("Type.Deployable, Type.Minion, Type.Trap"));
+		if (Skill)
+		{
+			Skill->CooldownOverride = 0.0f;
+			Activate(Caster, Skill);
+		}
+		return Skill;
+	};
+
+	FScopedCaster Short(World, FVector::ZeroVector, /*Pool=*/24.0f);
+	const UCataclysmDeployableSkill* Refused = Fortress(Short);
+	if (!TestNotNull(TEXT("set-up: Iron Fortress granted"), Refused))
+	{
+		return false;
+	}
+	TestEqual(TEXT("in a pool of 24 nothing is placed"), UCataclysmCommand::ThingsCommandedBy(Short.Actor).Num(), 0);
+	TestTrue(TEXT("and the refusal says it was for room"), Refused->bRefusedForRoom);
+
+	FScopedCaster Enough(World, FVector(5000.0f, 0.0f, 0.0f), /*Pool=*/25.0f);
+	const UCataclysmDeployableSkill* Placed = Fortress(Enough);
+	TestEqual(TEXT("control: in a pool of 25 all five are placed"),
+			  UCataclysmCommand::ThingsCommandedBy(Enough.Actor).Num(), 5);
+	TestEqual(TEXT("control: reserving 25"), UCataclysmCommand::ReservedFervourOf(Enough.Actor), 25.0f, 0.001f);
+	TestFalse(TEXT("control: and nothing was refused"), Placed && Placed->bRefusedForRoom);
 	return true;
 }
 

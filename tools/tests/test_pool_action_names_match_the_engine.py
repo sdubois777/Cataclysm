@@ -230,14 +230,22 @@ def test_every_event_a_strike_may_hang_on_is_fired_with_a_character(event_readin
     character cannot be struck. So a new event that carries a character has to
     be put in one list or the other.
 
-    THE CONTROLS ARE IN THE SAME TEST. `hit_taken` is raised with three
+    THE CONTROLS ARE IN THE SAME TEST. `health_cost` is raised with two
     arguments after its name and `dot_applied` with none, and the reader must
     say neither carries a character. `block` passes `FMath::Max(0.0f,
     DamageBlocked)` before its attacker, so reading `Attacker` there shows the
-    comma inside the brackets was not taken for a separator."""
-    assert characters_passed("hit_taken") and not carries_a_character("hit_taken"), (
-        f"hit_taken is fired with {characters_passed('hit_taken')}, which this "
+    comma inside the brackets was not taken for a separator.
+
+    `hit_taken` WAS THE FIRST CONTROL UNTIL THE WAR VOW OPTIONS' THIRD SLICE,
+    V3a, 2026-11-25, when it began to name the attacker of a landed hit that is
+    not a tick ("any hit: pass the attacker on hit taken", for Thornwall). It is
+    held here now as carrying one."""
+    assert characters_passed("health_cost") and not carries_a_character("health_cost"), (
+        f"health_cost is fired with {characters_passed('health_cost')}, which this "
         f"reader takes for a character. {PARSE_ADVICE}")
+    assert carries_a_character("hit_taken"), (
+        f"hit_taken is fired with {characters_passed('hit_taken')}, and names no "
+        f"attacker. {PARSE_ADVICE}")
     assert characters_passed("dot_applied") and not carries_a_character("dot_applied"), (
         f"dot_applied is fired with {characters_passed('dot_applied')}. {PARSE_ADVICE}")
     assert "Attacker" in characters_passed("block"), (

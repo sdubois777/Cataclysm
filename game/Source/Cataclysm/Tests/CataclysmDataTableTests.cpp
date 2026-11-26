@@ -514,7 +514,38 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// approved that day: the Masochist 126 to 150, the Ravager 103 to 113 and the
 	// Ritualist 92 to 97, most of the 39 the "for every N points" steps that
 	// replaced per-point values below 1, one row per step.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        364)
+	// AND 373 SINCE 2026-11-24, for the War classes' Fervour (slice C of
+	// plan_death_and_war.md): nine rows on the three War starting nodes.
+	// AND 421 SINCE 2026-11-25, for slice D of plan_death_and_war.md: forty-eight
+	// rows on thirty War nodes that had none, every one data alone.
+	// AND 429 SINCE 2026-11-25, for the Berserker's states: eight rows on Wrath,
+	// Frenzy and Berserking.
+	// AND 449 SINCE 2026-11-25, for the War riders: twenty rows on ten nodes.
+	// AND 465 THE SAME DAY, for the Fervour spends: sixteen rows on six nodes.
+	// AND 481 THE SAME DAY, for Riposte, Vengeful Discharge and Crimson Tide.
+	// AND 494 THE SAME DAY, for Snap Back, Sprung, Emergency Protocol and Support Network, and Razor Instincts, Sentry
+	// Network, Ambush, Overcautious and Overwhelming Presence.
+	// AND 517 THE SAME DAY, for fifteen Saboteur nodes, the survey's groups A and B.
+	// AND 520 THE SAME DAY, for Durable Modifications' three rows on the Max Points column.
+	// AND 532 THE SAME DAY, for Skull Splitter, Deathmark and Blood Price.
+	// AND 540 THE SAME DAY, for the Saboteur's trap timing (the C1 plan).
+	// AND 543 THE SAME DAY, for Thin Air and Calculated (the C5 plan).
+	// AND 552 THE SAME DAY, for the War vow options' first slice.
+	// AND 559 THE SAME DAY, for the second slice, V2a: Unbridled, Opportunist, Unstoppable's pin, Titan, Ragnarok's
+	// doubling and Bastion.
+	// AND 564 THE SAME DAY, for V2b: Warlord, Pure Carnage, Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
+	// AND 565 THE SAME DAY, for The Unbreakable Wall, by the owner's ruling.
+	// AND 570 THE SAME DAY, for V3a: Thornwall, Wrath Incarnate's pulse, Absorb and Return and Eternal Hunger's two.
+	// AND 574 THE SAME DAY, for V3b: Colossus Eternal's three and Thousand Deaths' chain.
+	// AND 576 THE SAME DAY, for V4a: Baited's taunt and Trail of Wire.
+	// AND 578 THE SAME DAY, for V4b: Counterfire and Magnum Opus.
+	// AND 583 THE SAME DAY, for V5a: Lightning Rod, Creeping Mines' two, Where They Fall and Crossfire.
+	// AND 585 THE SAME DAY, for V5b1: Scrap Mines' two.
+	// AND 588 THE SAME DAY, for V5b2: Cat's Cradle's three.
+	// AND 589 THE SAME DAY, for V5b3: Walking Arsenal's reach.
+	// AND 590 THE SAME DAY, for Titanfall's action.
+	// AND 592 THE SAME DAY, for V5c: Bolted Together's two.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        592)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

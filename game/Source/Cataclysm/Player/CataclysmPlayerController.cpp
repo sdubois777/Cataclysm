@@ -709,9 +709,11 @@ void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 	// STUN CHECK. Ruled 2026-10-16 (S7): placing is free and nothing refuses it,
 	// a stun included; only the gadget's cast can be refused. A slot that is not
 	// converted answers false and goes on below as before.
+	// AND THE POINT UNDER THE CURSOR GOES WITH IT, where every gadget moves when there is no room for another (V5g, G1).
 	if (UCataclysmAbilitySystemComponent* Placing = GetCataclysmAbilitySystem())
 	{
-		if (Placing->PressOfASkillGadgetSlot(SlotTag))
+		FVector Aim;
+		if (Placing->PressOfASkillGadgetSlot(SlotTag, AimPointUnderCursor(Aim) ? &Aim : nullptr))
 		{
 			return;
 		}
@@ -1824,7 +1826,10 @@ void ACataclysmPlayerController::PressOnAnEnemy(AActor* Enemy)
 				PendingAttack = nullptr;
 				return;
 			}
-			if (Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack)))
+			// WITH NO ROOM FOR ANOTHER, EVERY GADGET MOVES TO THE POINT UNDER THE CURSOR, ON EVERY CLICK (V5g, G5).
+			FVector Aim;
+			if (Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack),
+												 AimPointUnderCursor(Aim) ? &Aim : nullptr))
 			{
 				PendingAttack = nullptr;
 				return;

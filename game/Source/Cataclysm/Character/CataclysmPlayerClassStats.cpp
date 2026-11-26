@@ -469,12 +469,20 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Set Stance's "cannot be knocked back", above zero meaning held, read
 		// by UCataclysmSkillEffects::ApplyKnockback. Issue #1755.
 		TEXT("knockback_suppressed"),
+		// Unstoppable's "cannot be rooted", a pin counted as the root, above zero
+		// meaning held, read by UCataclysmSkillEffects::ApplyPin. The War vow
+		// options' second slice, 2026-11-25.
+		TEXT("pin_suppressed"),
 		// The block's two figures, read in UCataclysmDamageCalculation::Resolve
 		// at the block step: the share a block removes, on a base of 50 that
 		// `EngineSuppliedBases` states, and the chance it removes all of the hit.
 		// Issue #1833 group E part 2.
 		TEXT("block_damage_reduction"),
 		TEXT("block_negation_chance"),
+		// The Unbreakable Wall's flag: every block negates the whole hit, read in
+		// UCataclysmDamageCalculation's block step. The owner's ruling of
+		// 2026-11-25. No gameplay attribute and no base.
+		TEXT("every_block_negates"),
 		// The two chances a defender rolls against an incoming blow, in
 		// UCataclysmVitalAttributeSet beside the no-damage window: a spell
 		// absorbed, and a melee hit reflected whole as retaliation. Ruled
@@ -752,6 +760,47 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// "Retaliation damage cannot be reduced or mitigated by the attacker". A
 		// flag. No gameplay attribute and no base.
 		TEXT("retaliation_cannot_be_mitigated"),
+		// Blood Oath's resistance points a retaliation blow ignores, read with
+		// the attacker's penetration in UCataclysmVitalAttributeSet for a blow
+		// stamped as retaliation; and Spiteful Guard's flag, read by
+		// UCataclysmAbilitySystemComponent::NoteBlockedDamageForRetaliation. The
+		// War vow options' second slice, V2b, 2026-11-25. No gameplay attribute
+		// and no base.
+		TEXT("retaliation_penetration"),
+		TEXT("blocked_damage_added_to_next_retaliation"),
+		// Absorb and Return's share for a big hit, read by UCataclysmRetaliation::AmountFor while a big hit is paid
+		// for; and Eternal Hunger's cap and decay, read by UCataclysmAbilitySystemComponent::NoteLeechHealed and
+		// DecayLeechAbsorb. The War vow options' third slice, V3a, 2026-11-25. No gameplay attribute and no base.
+		TEXT("retaliation_for_big_hits"),
+		TEXT("leech_overheal_absorb_percent_of_maximum_health"),
+		TEXT("leech_overheal_absorb_decay_percent_per_second"),
+		// Colossus Eternal's save above a share of health, read by UCataclysmVitalAttributeSet at a lethal hit, and its
+		// flag doubling the increases to maximum health, read by ApplyTo below. V3b, 2026-11-25. No gameplay attribute.
+		TEXT("lethal_hit_survived_above_health"),
+		TEXT("max_health_increases_count_twice"),
+		// Magnum Opus's flag, read by ACataclysmMinion::EldestGadgetCastsEverySkillFor at each skill use. V4b,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("eldest_gadget_casts_every_skill"),
+		// Creeping Mines's speed and reach, read by ACataclysmMinion::TrapCreepCmPerSecondFor and TrapCreepReachCmFor;
+		// Lightning Rod's chance for each device, read by UCataclysmAbilitySystemComponent::BlowToDeviceChanceFor. V5a,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("trap_creep_metres_per_second"),
+		TEXT("trap_creep_reach_metres"),
+		TEXT("blow_to_device_chance_per_device"),
+		// Cat's Cradle's reach, pin and seconds between pins, read by ACataclysmMinion::DeviceWireReachCmFor,
+		// DeviceWirePinSecondsFor and DeviceWireRepinSecondsFor at the player's step. V5b2, 2026-11-25. No gameplay
+		// attribute.
+		TEXT("device_wire_reach_metres"),
+		TEXT("device_wire_pin_seconds"),
+		TEXT("device_wire_repin_seconds"),
+		// Walking Arsenal's reach, read by ACataclysmMinion::GadgetFollowWithinCmFor at a gadget's step. V5b3,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("gadget_follow_within_metres"),
+		// Bolted Together's reach and its "more" for each gadget, read by ACataclysmMinion::GadgetBoltReachCmFor at a
+		// gadget's placing and move and by BoltedMorePercentPerGadgetFor at its firing. V5c, 2026-11-25. No gameplay
+		// attribute.
+		TEXT("gadget_bolt_reach_metres"),
+		TEXT("bolted_more_percent_per_gadget"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on
@@ -1015,6 +1064,20 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// ACataclysmMinion::SkillTrapsDoNotExpireFor. No gameplay attribute and no
 		// base. (M1's trap cap bonus went with the cap, issue #2787.)
 		TEXT("traps_do_not_expire"),
+		// THE SABOTEUR'S TRAP TIMING, ruled by the coordinating session on 2026-11-25 (the C1 plan): Hair Trigger's
+		// instant arming, Delayed Fuse's extra second and Volatile Casing's seconds less for each other trap, read
+		// off the player with the trap's type tags by ACataclysmMinion::SkillTrapArmingSecondsFor; and Delayed
+		// Fuse's flag sparing a trap still arming, read with Type.Trap by ACataclysmMinion::SetOffSkillTrapsNear.
+		// No gameplay attribute and no base.
+		TEXT("traps_arm_instantly"),
+		TEXT("trap_arming_seconds_added"),
+		TEXT("trap_arming_seconds_less_per_other_trap"),
+		TEXT("traps_not_set_off_while_arming"),
+		// THIN AIR, ruled by the coordinating session on 2026-11-25 (the C5 plan): the flag and the seconds a landed
+		// blow breaks it for, read off the player with no tags by
+		// UCataclysmAbilitySystemComponent::IsHiddenByThinAir. No gameplay attribute and no base.
+		TEXT("cannot_be_targeted_while_moving"),
+		TEXT("cannot_be_targeted_broken_seconds"),
 		// Issue #2787, the owner's rulings of 2026-11-20: what raised a count cap
 		// lowers the reserve instead. The percent LESS one minion, gadget or trap
 		// reserves, a negative row being that many percent more, read with the
@@ -1095,6 +1158,72 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// applied passes on when its carrier dies, read by
 		// UCataclysmDebuffs::PassCrippleAndWeakenOnDeath from the enemy's death.
 		TEXT("cripple_and_weaken_spread_on_death_metres"),
+		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
+		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
+		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.
+		TEXT("fervour_per_hit_taken"),
+		TEXT("fervour_per_block"),
+		// The Berserker's: Fervour per critical strike, read with the blow's skill tags in
+		// ACataclysmPlayerCharacter::OnSomethingWasHit.
+		TEXT("fervour_per_critical_strike"),
+		// The Saboteur's: Fervour per skill trap placed (ACataclysmMinion::PlaceSkillTrap, and a War machine that is a
+		// trap), per gadget placed (ACataclysmMinion::PlaceSkillGadget, and every other War machine), per skill trap
+		// triggered (ACataclysmMinion::TriggerSkillTrap) and per landed blow of one of its devices
+		// (ACataclysmMinion::AttackTarget and UCataclysmSkillEffects::ApplyHit, at their deployable_hit).
+		TEXT("fervour_per_trap_placed"),
+		TEXT("fervour_per_gadget_placed"),
+		TEXT("fervour_per_trap_triggered"),
+		TEXT("fervour_per_device_hit"),
+		// The Bulwark's and the Berserker's decay, Fervour a second once out of combat, read by
+		// FCataclysmWarFervour::OutOfCombatDecayStep from ACataclysmCharacterBase::RegenerationStep.
+		TEXT("fervour_decay_out_of_combat_per_second"),
+		// THE BERSERKER'S STATES, 2026-11-25 (`plan_death_and_war.md` slice B29). Fervour per blow the character lands
+		// itself, read with the blow's skill tags in ACataclysmPlayerCharacter::OnSomethingWasHit (Frenzy's "all melee
+		// hits generate 2 additional Fervour").
+		TEXT("fervour_per_hit_dealt"),
+		// The two flags that let a full pool begin Wrath or Frenzy, and Berserking's increased damage for each point of
+		// Fervour it consumes, read by FCataclysmBerserkerStates::Judge and ::SpendBerserking.
+		TEXT("wrath_on_full_fervour"),
+		TEXT("frenzy_on_full_fervour"),
+		TEXT("berserking_damage_per_fervour"),
+		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
+		// ACataclysmCharacterBase::RegenerationStep.
+		TEXT("fervour_drain_per_second"),
+		// THE FERVOUR SPENDS, 2026-11-25, each read by FCataclysmWarFervour: Iron Will's cost for a negated block
+		// (SpendOnNegatedBlock, at the block's announcement), Undying's health for each 10 Fervour spent on a lethal
+		// blow (SpendAllOnLethalBlow, in the vital attribute set's saves), Cleave's cost and gain for each extra enemy
+		// (TradeForEnemiesStruckTogether, at the start of an attack), and Blood Tithe's loss and its step of health
+		// regenerated (LoseForRegeneration, in UCataclysmRegeneration::TopUp).
+		TEXT("fervour_cost_per_negated_block"),
+		TEXT("health_percent_per_ten_fervour_on_lethal_blow"),
+		TEXT("fervour_cost_per_extra_enemy_hit"),
+		TEXT("fervour_per_extra_enemy_hit_paid"),
+		TEXT("fervour_lost_to_regeneration"),
+		TEXT("regeneration_per_fervour_loss"),
+		// RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25, each read by FCataclysmWarFervour: Riposte's share of
+		// the damage blocked, its cost and its stun (RiposteOnBlock, where a block is announced); Vengeful Discharge's
+		// drain, its pulse's radius and its bleed flag (RetaliationPulseDrainStep, in the regeneration step); Crimson
+		// Tide's health for every 10 Fervour spent or drained (NoteFervourSpentOrDrained, at every spend and drain).
+		TEXT("riposte_share_of_blocked"),
+		TEXT("riposte_fervour_cost"),
+		TEXT("riposte_stun_seconds_at_maximum"),
+		TEXT("retaliation_pulse_drain_per_second"),
+		TEXT("retaliation_pulse_radius_metres"),
+		TEXT("retaliation_pulse_applies_bleed"),
+		TEXT("health_percent_per_ten_fervour_spent"),
+		// SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25, each read by FCataclysmWarFervour: Skull Splitter's percent
+		// a stack, cost, cap and seconds, and Deathmark's percent, cost and seconds (SkullSplitterOnCriticalStrike and
+		// DeathmarkOnCriticalStrike, at a critical strike); Blood Price's percent of the maximum and seconds
+		// (ArmBloodPrice, as the pool empties).
+		TEXT("crit_armor_removed_in_wrath"),
+		TEXT("crit_armor_fervour_cost"),
+		TEXT("crit_armor_stack_cap"),
+		TEXT("crit_armor_seconds"),
+		TEXT("deathmark_damage_taken_percent"),
+		TEXT("deathmark_fervour_cost"),
+		TEXT("deathmark_seconds"),
+		TEXT("blood_price_percent_of_maximum_fervour"),
+		TEXT("blood_price_seconds"),
 	};
 	return Stats;
 }
@@ -2093,6 +2222,28 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		if (ForStat.IsEmpty())
 		{
 			return Base;
+		}
+
+		// COLOSSUS ETERNAL'S "YOUR INCREASES TO MAXIMUM HP COUNT TWICE", V3b, ruled 2026-11-25: while the flag holds,
+		// unconditioned and with no tags, every increase on `max_health` is entered twice, the attributes' included,
+		// each with its own scope and condition. Flat additions and "more" multipliers are entered once. Here, before
+		// the list is recorded, so the live maximum `StatForSkill` works out reads the same doubled list.
+		if (Modifiers && Stat == TEXT("max_health"))
+		{
+			const TArray<FCataclysmStatModifier>* Flag =
+				Modifiers->Find(FName(UCataclysmAbilitySystemComponent::MaxHealthIncreasesCountTwiceStat));
+			if (Flag && UCataclysmStatPipeline::Evaluate(0.0f, *Flag, FGameplayTagContainer()).Final > 0.0f)
+			{
+				const int32 Held = ForStat.Num();
+				for (int32 Index = 0; Index < Held; ++Index)
+				{
+					if (ForStat[Index].Bucket == ECataclysmStatBucket::Increased)
+					{
+						const FCataclysmStatModifier Again = ForStat[Index];
+						ForStat.Add(Again);
+					}
+				}
+			}
 		}
 
 		// KEPT SO A SKILL CAN WORK THIS OUT AGAIN WITH ITS OWN TAGS. Issue #943.

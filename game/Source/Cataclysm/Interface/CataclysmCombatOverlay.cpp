@@ -10,6 +10,7 @@
 // For asking whether this character can move Fervour at all. Issue #954.
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSilence.h"
@@ -19,6 +20,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
@@ -549,6 +551,19 @@ FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
 	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
 }
 
+FString UCataclysmCombatOverlay::DeathmarkTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || !AbilitySystem->IsDeathmarked())
+	{
+		return FString();
+	}
+	const int32 Percent = FMath::RoundToInt(AbilitySystem->DeathmarkPercentNow());
+	return Percent > 0 ? FString::Printf(TEXT("Deathmarked +%d%%"), Percent) : FString(TEXT("Deathmarked"));
+}
+
 FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -750,6 +765,40 @@ FString UCataclysmCombatOverlay::OwedTextFor(const AActor* Actor)
 	// ROUNDED UP, so the last point still owed reads "Owed 1".
 	const float Owed = AbilitySystem->DelayedDamageOwed();
 	return Owed > 0.0f ? FString::Printf(TEXT("Owed %d"), FMath::CeilToInt(Owed)) : FString();
+}
+
+FString UCataclysmCombatOverlay::BoltedTextFor(const AActor* Actor)
+{
+	const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Actor);
+	if (!Gadget || Gadget->GadgetsBoltedIn <= 1 || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("%s x%d"), *FName::NameToDisplayString(Gadget->TypeName, /*bIsBool=*/false),
+		Gadget->GadgetsBoltedIn);
+}
+
+FString UCataclysmCombatOverlay::TitanfallTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	const float Seconds = AbilitySystem->TitanfallUnkillableSecondsLeft();
+	if (Seconds > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("cannot die %ds"), FMath::CeilToInt(Seconds)));
+	}
+	const float Stored = AbilitySystem->TitanfallStoredDamage();
+	if (Stored > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("next attack +%d"), FMath::CeilToInt(Stored)));
+	}
+	return Parts.IsEmpty() ? FString() : FString::Printf(TEXT("Titanfall: %s"), *FString::Join(Parts, TEXT(", ")));
 }
 
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
@@ -1008,7 +1057,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
+		 {BoltedTextFor(Actor), SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
 		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor), RiftAltarTextFor(Actor),
@@ -1027,6 +1076,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  TouchOfNothingTextFor(Actor), NegatedTextFor(Actor),
 		  SilencedTextFor(Actor),
 		  DamageCutTextFor(Actor),
+		  DeathmarkTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
 		  HeldBuffTextFor(Actor),
 		  // AND THE DAMAGE TYPES IT IS IMMUNE TO FOR A TIME, after the buff's. Ruled 2026-10-12. Empty for every
@@ -1197,7 +1247,11 @@ bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,
 	// OR ANYTHING RESERVED, since issue #2787. A character with no generator can
 	// hold a skill gadget, a skill trap or a set bonus's minion, each of which
 	// reserves, and the player must be able to see that part of the pool held.
-	if (!UCataclysmFervour::HasAGenerator(AbilitySystem) && ReservedFervourOf(Actor) <= 0.0f)
+	//
+	// OR A WAR FERVOUR RATE, since 2026-11-25: the War classes' rates have no attribute, so `HasAGenerator` cannot see
+	// them, and a Bulwark, Berserker or Saboteur holding its starting node drew no bar. `FCataclysmWarFervour::HasARate`.
+	if (!UCataclysmFervour::HasAGenerator(AbilitySystem) && !FCataclysmWarFervour::HasARate(AbilitySystem)
+		&& ReservedFervourOf(Actor) <= 0.0f)
 	{
 		return false;
 	}

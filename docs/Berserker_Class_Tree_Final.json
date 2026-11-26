@@ -67,7 +67,7 @@
       "data": {
         "kind": "basic",
         "name": "Bloodthirst",
-        "description": "+0.3% life leech per point on all melee attacks.",
+        "description": "+1% life leech on all melee attacks for every 3 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -221,7 +221,7 @@
       "data": {
         "kind": "basic",
         "name": "Berserking",
-        "description": "When you reach maximum Fervour your next melee attack consumes all Fervour. For each point of Fervour consumed that attack deals +10% bonus damage per point invested.",
+        "description": "When you reach maximum Fervour your next melee attack consumes all Fervour. For each point of Fervour consumed that attack deals +1% bonus damage per point invested.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1343,7 +1343,7 @@
       "data": {
         "kind": "basic",
         "name": "Crimson Tide",
-        "description": "+0.5% life leech per point on melee attacks. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fervour you spend or drain generates a heal equal to 0.5% per point of your maximum HP.",
+        "description": "+1% life leech on melee attacks for every 2 points. At 5 points: Life leech is applied instantly rather than over time. Every 10 Fervour you spend or drain generates a heal equal to 1% of your maximum HP for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1601,7 +1601,7 @@
           {
             "name": "Crimson Pact",
             "identity": "Crit \u00d7 Leech",
-            "description": "Your critical strike multiplier bonus is added to your life leech percentage. Your life leech percentage is added to your critical strike multiplier bonus."
+            "description": "Your critical strike multiplier is increased by 10% for every 1% of life leech you have."
           }
         ],
         "pointThreshold": 100,
@@ -1644,7 +1644,7 @@
           {
             "name": "Eternal Hunger",
             "identity": "Leech",
-            "description": "Your life leech cap is removed entirely. Any HP restored by life leech beyond your maximum is added as overleech that decays at 1% per second. Life leech effectiveness is increased by 50%."
+            "description": "Life leech can heal you up to 100% above your Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and damage you take removes it first. Your life leech is increased by 50%."
           }
         ],
         "pointThreshold": 200,
