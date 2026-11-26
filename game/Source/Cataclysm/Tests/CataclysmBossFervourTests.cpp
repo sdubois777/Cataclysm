@@ -207,12 +207,14 @@ bool FCataclysmBossFervourPatientHandlerTest::RunTest(const FString&)
 	Scene.System->SetStatInputs(MoveTemp(Lines));
 	ACataclysmEnemyCharacter* Boss = RungedCreature(World, FVector(5 * BossMetre, 0, 0), 100000.0f, BossRung);
 	ACataclysmEnemyCharacter* Common = RungedCreature(World, FVector(-5 * BossMetre, 0, 0), 100000.0f, 0);
-	const FGameplayTag Bleed = FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Bleed")), false);
-	if (!Boss || !Common || !TestTrue(TEXT("set-up: a Bleed tag"), Bleed.IsValid())
-		|| !TestTrue(TEXT("set-up: the player bleeds the Boss"),
-					 UCataclysmSkillEffects::ApplyDamageOverTime(Scene.Player, Boss, 5.0f, 10.0f, Bleed, false))
+	// A POISON AND NOT A BLEED: a bleed ticks only while its target moves (issue #918), and these two stand still, so
+	// window death3-w2 measured no tick at all with a bleed here.
+	const FGameplayTag Poison = FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), false);
+	if (!Boss || !Common || !TestTrue(TEXT("set-up: a Poison tag"), Poison.IsValid())
+		|| !TestTrue(TEXT("set-up: the player poisons the Boss"),
+					 UCataclysmSkillEffects::ApplyDamageOverTime(Scene.Player, Boss, 5.0f, 10.0f, Poison, false))
 		|| !TestTrue(TEXT("set-up: and the Common creature"),
-					 UCataclysmSkillEffects::ApplyDamageOverTime(Scene.Player, Common, 5.0f, 10.0f, Bleed, false)))
+					 UCataclysmSkillEffects::ApplyDamageOverTime(Scene.Player, Common, 5.0f, 10.0f, Poison, false)))
 	{
 		return false;
 	}

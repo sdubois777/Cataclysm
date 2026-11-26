@@ -1558,7 +1558,10 @@ def test_marshal_shared_leech_and_bound_bones_are_read_where_they_act() -> None:
     assert re.search(r"State\.AskingMinionMetres = \(AskingMinion && Self\) \? "
                      r"UCataclysmTargeting::MetresBetween\(Self, AskingMinion\) : -1\.0f;", engine)
     vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
-    assert re.search(r"UCataclysmLeech::NoteHit\([^;]*;\s*UCataclysmLeech::NoteMinionHit\(", vitals)
+    # AFTER THE OWN LEECH AND OUTSIDE ITS NO-LEECH CHECK since window death3-w2: every minion's blow carries that tag
+    # (issue #895), so inside it the share never paid. Only converted damage is left out.
+    assert re.search(r"UCataclysmLeech::NoteHit\([^;]*;\s*\}\s*if \(!Hit\.bIsConvertedDamage\)\s*\{\s*"
+                     r"UCataclysmLeech::NoteMinionHit\(", vitals)
     regeneration = code_without_comments(SOURCE.parent / "CataclysmRegeneration.cpp")
     assert re.search(r"SharedBloodStep\(Character, SecondsInStep, false\);\s*BoundBonesStep\(Character\);", regeneration)
 

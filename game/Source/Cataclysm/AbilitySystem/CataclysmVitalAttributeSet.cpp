@@ -2005,8 +2005,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Outcome.DealtToHealth + Outcome.AbsorbedByShield
 							+ Outcome.AbsorbedByMana + Outcome.AbsorbedByTemporary,
 						LeechTags);
-					// AND A MINION'S OR A THRALL'S BLOW PAYS ITS COMMANDER'S SHARED LEECH, the same figure (the Death
-					// trees' slice C6d2, 2026-11-25). The blow itself still leeches nothing for the minion.
+				}
+				// AND A MINION'S OR A THRALL'S BLOW PAYS ITS COMMANDER'S SHARED LEECH, the same figure (the Death trees'
+				// slice C6d2, 2026-11-25). OUTSIDE THE NO-LEECH CHECK ABOVE: every minion's blow carries that tag, so
+				// the minion leeches nothing from figures of its own (issue #895), and window death3-w2 found the share
+				// never paid while it sat inside. The share is the commander's leech, not the minion's.
+				if (!Hit.bIsConvertedDamage)
+				{
 					UCataclysmLeech::NoteMinionHit(
 						const_cast<UAbilitySystemComponent*>(
 							Data.EffectSpec.GetContext()
