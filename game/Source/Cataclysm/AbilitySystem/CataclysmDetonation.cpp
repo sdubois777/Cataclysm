@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmRisingCurse.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For `UCataclysmSummonSkill`, which a minion's `SummonedBy` names: the skill that raised it.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Cataclysm.h"
@@ -219,8 +221,10 @@ void UCataclysmDetonation::NoteDetonation(AActor* Character, const FGameplayTagC
 	{
 		return;
 	}
-	// NO CHARACTER: what went off is gone, and remains are no character at all.
-	Theirs->ActOnEvent(FName(DetonatedEvent), &Tags, /*EventAmount=*/0.0f, /*bLanded=*/true, /*EventTarget=*/nullptr);
+	// NO CHARACTER: what went off is gone, and remains are no character at all. THE NAME WRITTEN OUT, as every event is
+	// fired, so `tools/tests/test_pool_action_names_match_the_engine.py` reads it; `DetonatedEvent` holds the same.
+	Theirs->ActOnEvent(FName(TEXT("minion_detonated")), &Tags, /*EventAmount=*/0.0f, /*bLanded=*/true,
+					   /*EventTarget=*/nullptr);
 }
 
 bool UCataclysmDetonation::DetonateOnRelease(ACataclysmMinion* Minion)
