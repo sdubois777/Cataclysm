@@ -690,6 +690,10 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	// control from its own last source, the dead one, as the coordinating session ruled for window b4-w5. All three
 	// figures are printed. If the dead-source control also falls short, the shortfall belongs to any damage over time
 	// whose source has died, and not to the tether; it is then a game fault filed against that rule.
+	//
+	// THE DEAD SOURCE IS A FRESH CREATURE KILLED AS THE FRAIL ONE WAS, not the Frail one itself: window b4-w5 found the
+	// Frail creature already removed from the world by the time its control ran. The control lays the damage over time
+	// from the fresh creature and kills it at once with a blow far past its health, as the tether's last lay was.
 	const float Owed = StillToCome();
 	const float HealthBefore = Player.Health();
 	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
@@ -718,10 +722,36 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 		return Before - Player.Health();
 	};
 	const float FromTheLiving = ControlFrom(Tethered, TEXT("the living tethered creature"));
-	const float FromTheDead = ControlFrom(Frail, TEXT("the dead Frail creature"));
+
+	// THE DEAD SOURCE: the same damage over time laid from a fresh creature of 100 health, which is then killed at once.
+	ACataclysmEnemyCharacter* Doomed = DeathCreatureAt(World, FVector(500.0f, 500.0f, 0.0f), nullptr);
+	if (!TestNotNull(TEXT("set-up: a fresh creature to be the dead source"), Doomed))
+	{
+		return false;
+	}
+	if (UAbilitySystemComponent* DoomedSystem = Doomed->GetAbilitySystemComponent())
+	{
+		DoomedSystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 100.0f);
+	}
+	Player.SetHealth(DeathModifiersMostHealth);
+	const float DeadBefore = Player.Health();
+	if (!TestTrue(TEXT("set-up: the control damage over time from the doomed creature was applied"),
+				  UCataclysmSkillEffects::ApplyDamageOverTime(Doomed, Player.Character, PerTick,
+															  UCataclysmEnemyModifiers::SoulTetherSeconds, Tether,
+															  /*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	DeathBlowTook(Player.Character, Doomed, 100000.0f);
+	TestTrue(TEXT("set-up: the blow killed the doomed creature"), UCataclysmSkillEffects::IsDead(Doomed));
+	CataclysmTestWorld::RunClock(World, 4.5f);
+	const float FromTheDead = DeadBefore - Player.Health();
+	AddInfo(FString::Printf(TEXT("SOUL TETHER: 4.5 seconds after its death, the dead source %s in the world"),
+							IsValid(Doomed) ? TEXT("is still") : TEXT("is no longer")));
 	AddInfo(FString::Printf(TEXT("SOUL TETHER: %.2f owed; the tether took %.2f; the same damage over time from the living "
 								 "source took %.2f, from the dead source %.2f"),
 							Owed, TetherTook, FromTheLiving, FromTheDead));
+	(void)Frail;
 	TestTrue(TEXT("CONTROL: the same damage over time from the living source took something"), FromTheLiving > 1.0f);
 	if (!TestTrue(TEXT("CONTROL: and from the dead source"), FromTheDead > 1.0f))
 	{
