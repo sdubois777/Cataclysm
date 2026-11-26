@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Death finish bundle: the roster and slices C, E, F, D, A and B merged, and the coordinating session's rulings at assembly
+
+**Affects:** the branch `feat/death-finish-bundle`, which merges the roster branch and the Death line's finishing
+slices C, E, F, D, A and B in that order. Each slice's workbook script is run on the bundle's copy of
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` is regenerated from it (998 rows, 204 tags), and the
+pinned counts move with it: `docs/README.md` (Passive Effects 998, Tags 149), `CataclysmDataTableTests.cpp` (998),
+`test_passive_effects_match_the_node_text.py` (`AUTHORED_ROWS` 998, `AUTHORED_NODES` 543, `AUTHORED_OPTIONS` 108) and
+`test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` (51). Code the bundle itself adds, by the rulings
+below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowImages`, `CataclysmCombatEvents`,
+`CataclysmSkillEffects` and `CataclysmPlayerCharacter.cpp` (Afterimage and Flurry of the Dead), `CataclysmBoneGiants`,
+`CataclysmDetonation.cpp` and `CataclysmRemains.cpp` (the giants, Bursting Ranks, Lone Revenant), and tests in
+`CataclysmNecromancerDetonationTests.cpp`, `CataclysmShadowVowsTests.cpp`, `CataclysmRemainsTests.cpp` and
+`CataclysmNecromancerArmyTests.cpp`.
+
+### SAID FIRST
+
+- **NOTHING THE BUNDLE ADDS HAS BEEN COMPILED OR RUN IN UNREAL YET.** The coordinating session's window does that;
+  its figures are added here after it runs.
+- **THE WRAITH AND THE LICH ARE NOT MERGED YET.** They join this branch when the coordinating session sends them.
+
+### The rulings, made by the coordinating session at assembly (2026-11-26)
+
+- **TEEMING GRAVE ROLLS ONCE A USE.** "Each time a summon skill raises minions ... one more": `SummonOne` asks
+  `RaiseOneMoreIfRolled` only at the first minion each use raises (`bExtraRaiseRolledThisUse`, cleared in
+  `ActivateAbility`). `TeemingGraveRaisesOneMoreAtItsChanceAndTheOneMoreRaisesNoOther` uses a summon: at 100% a use
+  raising one raises two, a use raising two raises three, and at nought one.
+- **RISE TOGETHER DOES NOT SHARE TEEMING GRAVE'S READER.** The earlier ruling that the two share one stat is withdrawn,
+  because the two sentences differ: Rise Together's "Each permanent minion you raise has a 4% chance per point to raise
+  a second one beside it, if your Fervour has room for it" keeps slice B's own stat,
+  `permanent_minion_raises_a_second_chance`, rolled for each permanent minion raised by
+  `UCataclysmNecromancerArmy::RollToRaiseASecond`, the second only when the reserve fits.
+  `RiseTogetherRollsForEachGuardAUseRaisesWhileTheReserveFits`: a Barrow Guard use at 100% raises four, at nought two,
+  and with room for three and a half guards' reserve three.
+- **AFTERIMAGE REPEATS THE NEXT SKILL ATTACK, NEVER A BASIC SWING.** `GiveTheAttackToTheAfterimage` returns nothing for
+  a basic attack, so the image waits for the next skill.
+- **FLURRY OF THE DEAD'S EXTRA STRIKES FIRE NO ON-HIT ROWS.** They deal their damage; the hit they deliver is marked
+  (`FCataclysmHitDelivery::bIsAnExtraStrike`, carried to `FCataclysmHitNotice::bExtraStrike`), and
+  `ACataclysmPlayerCharacter::OnSomethingWasHit` returns before any on-hit row for it.
+  `FlurryOfTheDeadsExtraStrikesDealDamageButPayNoCriticalStrikeFervour` holds it.
+- **THE ABOMINATION AND THE BONE COLOSSUS ARE EXEMPT FROM EVERY DETONATION.** "They are vow giants, and a skill
+  landing on them must not destroy them." `UCataclysmBoneGiants::IsAGiant` compares a minion with the stored giants,
+  not its type, since both are drawn as a Barrow Guard; `UCataclysmDetonation` refuses them.
+  `NeitherGiantIsDetonatedByALitFuseSwingWhileAnOrdinaryMinionBesideItIs`.
+- **BURSTING RANKS HEARS REMAINS DETONATIONS** (`UCataclysmRemains::Detonate` calls `NoteDetonation`), and **MANTLE OF
+  BONE WORKS FROM ANY WEAPON SKILL**: `MantleOfBoneDetonatesRemainsFromAWeaponSkillWithNoDetonatesKeyAndBurstingRanksHearsIt`.
+- **LONE REVENANT'S 400% REACHES THE ABOMINATION EXACTLY ONCE**: "Abomination with Lone Revenant = base x 5, not x 25".
+  Slice D reads the flag through slice B's `UCataclysmNecromancerArmy::LoneRevenantHeld`, its one reader; slice D's own
+  constant is gone; `lone_revenant_held` is on the list of stats with no attribute. Lone Revenant's `minion_health` and
+  `minion_damage` rows require `Minion.Permanent`, which neither giant carries, so slice D's multiplier is the only
+  path. `LoneRevenantGivesTheAbominationFiveTimesNotTwentyFive` grants the real node and checks five times the health
+  and the blow at a swing, with a control that the same rows give a minion tagged `Minion.Permanent` five times.
+- **THE RESTLESS DEAD'S 20% IS A PLAY-TEST NUMBER.** It stands until play says otherwise.
+
+### Found while merging
+
+- **TWO SLICES BROUGHT ONE SCALE'S WORDS.** Old Bones (slice B, "for every full 30 seconds it has stood") and Swollen
+  (slice C, "for each full second it has stood") each added a `minion_seconds_active` entry to `SCALE_WORDS` in
+  `test_passive_effects_match_the_node_text.py`. A Python dictionary keeps the later key, so Old Bones failed. They
+  are one entry now: either phrase, a step of 30 in digits, a step of 1 in words.
+- **SLICE D'S ORDERING CHECK LOOKED FOR A NAME SLICE C HAD REMOVED.**
+  `test_every_weapon_skills_landing_detonates_remains_before_the_minions_rule` asked for `Params.bDetonates`, which
+  slice C replaced with `DetonatesOwnMinions()`; it raised `ValueError` from slice D's merge on. It now asks for
+  `DetonatesOwnMinions()`, and it fails with the remains call moved after the minions' rule.
+- **SLICE C'S WORKBOOK TEST COMPARED ROWS IN ORDER**, and the later slices' rows changed the order;
+  `test_reapply_death_finish_c_workbook.py` compares the rows it puts back in any order.
+- **EACH SLICE'S DECISIONS ENTRY SITS BY WHEN IT WAS FIRST WRITTEN**, newest first, and each earlier sentence a ruling
+  here overtook carries a note saying so.
+
+---
+
 ## 2026-11-26 — The Necromancer's remains: a marker where a creature fell, the Ossuary limb, the Abomination, the Bone Colossus and Many Made One (the Death finish, slice D)
 
 **Affects:**
@@ -50,8 +120,12 @@ Decisions made outside the Google Drive documents, newest first.
   skill's landing to reach `DetonateOwnMinionsWhere`; on this branch the call sites still run only for rows with
   `Detonates=1` (for example the line skill's landing in `CataclysmSkillTemplates.cpp`), so until slice C's change to
   those sites is merged, only the detonating skills detonate remains in play. The tests call `DetonateWhere` itself.
+  **BOTH WIRED AT THE BUNDLE (2026-11-26):** `UCataclysmRemains::Detonate` calls `UCataclysmDetonation::NoteDetonation`,
+  and slice C's call sites reach `DetonateOwnMinionsWhere` from every weapon skill's landing; see the bundle's entry.
 - **LONE REVENANT'S FLAG IS SLICE B'S.** The Abomination reads `lone_revenant_held` (the name the coordinating session
-  gave both slices); it is not on this branch's exemption list, and its test grants it by hand.
+  gave both slices); it is not on this branch's exemption list, and its test grants it by hand. **AT THE BUNDLE
+  (2026-11-26)** it is read through slice B's `UCataclysmNecromancerArmy::LoneRevenantHeld`, and slice D's own constant
+  for it is gone; the 400% reaches the Abomination once. See the bundle's entry.
 - **THE NUMBERS THE SENTENCES LEAVE OPEN ARE THE COORDINATING SESSION'S ANSWERS OF 2026-11-26 OR JUDGEMENTS, AND THE
   ABOMINATION'S TWO ARE PLAY-TEST FIGURES:** its health 10% and its damage 5% of what the floor's kills summed (Q1;
   at tier 8, 150 kills at 10% damage would give about three times a geared player's hit, and 5% about one and a
@@ -59,6 +133,8 @@ Decisions made outside the Google Drive documents, newest first.
 - **AN INTERACTION FOR THE OWNER:** Lit Fuse (slice C) detonates "one of your own minions ... whatever kind it is",
   and both giants are minions, so with Lit Fuse a weapon skill landing on the Abomination or the Colossus explodes it,
   and the Abomination does not rise again that floor. Neither sentence decides it; nothing here exempts them.
+  **RULED AT THE BUNDLE (2026-11-26): both giants are exempt from every detonation** (`UCataclysmBoneGiants::IsAGiant`);
+  see the bundle's entry.
 
 ### What a remains is
 
@@ -209,7 +285,8 @@ shipped rows, and read expected figures from `DT_PassiveEffects`. Changed:
   minion a summon raises. The coordinating session ruled on 2026-11-26 that it is not slice C's
   `minion_extra_raise_chance` (Teeming Grave's, rolled once a use). It first ruled the opposite the same day.
 - **The Restless Dead's chance is 20%, a judgement**: the sentence says "a chance". It is the one number here no
-  sentence states. A question for the owner, with the figure in the re-apply script (`RESTLESS_DEAD_CHANCE`).
+  sentence states. A question for the owner, with the figure in the re-apply script (`RESTLESS_DEAD_CHANCE`). **AT THE
+  BUNDLE (2026-11-26) the coordinating session ruled it a play-test number**: 20% stands until play says otherwise.
 - **Grave Swap, Shared Flesh and the thrall halves** carry judgements of their shape, each below.
 - **Many Made One is not here**: it is slice D's.
 
@@ -530,7 +607,8 @@ row without `SiphonsAround` and a fallen machine for the Siphon; a Boss for the 
   `ActivateAbility`), so a `Count=2` summon rolls once and a rift raising one at each interval rolls once. Slice B's
   Rise Together ("Each permanent minion you raise has a 4% chance per point to raise a second one beside it") reads
   per minion, and Barrow Guard and Bone Choir raise two permanent minions a use, so whether it shares this reader was
-  put to the coordinating session at assembly.
+  put to the coordinating session at assembly. **It does not**: Rise Together keeps slice B's own stat, rolled for
+  each permanent minion raised; see the bundle's entry.
 - **EVERY WEAPON SKILL'S LANDING NOW CALLS `DetonateOwnMinionsWhere`**, as the coordinating session asked, so slice D
   can detonate remains there. A skill with neither `Detonates=1` nor Lit Fuse still detonates no minion: tested.
 
