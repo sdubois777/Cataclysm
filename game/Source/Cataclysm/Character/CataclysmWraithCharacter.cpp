@@ -51,6 +51,10 @@ const TCHAR* ACataclysmWraithCharacter::PhaseDashAnimationPath =
 const TCHAR* ACataclysmWraithCharacter::SoulGrabAnimationPath =
 	TEXT("/Game/Wraith/Animation/Anim_Wraith_Ghost_SoulGrab.Anim_Wraith_Ghost_SoulGrab");
 
+// WHAT A RAISED WRAITH PLAYS ONCE BEFORE IT ACTS (the coordinating session, 2026-11-26). 1.9583 seconds.
+const TCHAR* ACataclysmWraithCharacter::AppearAnimationPath =
+	TEXT("/Game/Wraith/Animation/Anim_Wraith_Ghost_Appear.Anim_Wraith_Ghost_Appear");
+
 // TWO DEATHS OF 2.4583 SECONDS, inside UCataclysmEnemyDeath::LongestCorpseSeconds's 4.
 const TCHAR* ACataclysmWraithCharacter::FirstDeathAnimationPath =
 	TEXT("/Game/Wraith/Animation/Anim_Wraith_FlyingDeath1.Anim_Wraith_FlyingDeath1");
@@ -123,7 +127,26 @@ void ACataclysmWraithCharacter::Tick(float DeltaSeconds)
 {
 	// Super FIRST: it advances a running dash, and the loop below reads the speed that leaves.
 	Super::Tick(DeltaSeconds);
+	AppearIfRisen();
 	UpdateLoopingAnimation();
+}
+
+void ACataclysmWraithCharacter::AppearIfRisen()
+{
+	if (bAppeared || !bRisenFromTheDead)
+	{
+		return;
+	}
+	bAppeared = true;
+	const UWorld* World = GetWorld();
+	AppearEndsAtSeconds = (World ? World->GetTimeSeconds() : 0.0f) + AppearSeconds;
+	PlayOneShot(AppearAnimation.Get());
+}
+
+bool ACataclysmWraithCharacter::IsAppearing() const
+{
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < AppearEndsAtSeconds;
 }
 
 float ACataclysmWraithCharacter::AttackIntervalSecondsInUse()
@@ -184,6 +207,12 @@ TArray<FCataclysmEnemyAbility> ACataclysmWraithCharacter::EnemyAbilities() const
 
 void ACataclysmWraithCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor* /*Target*/)
 {
+	// NOTHING WHILE IT APPEARS: a raised Wraith appears before it acts.
+	if (IsAppearing())
+	{
+		return;
+	}
+
 	// THE DASH CLIP RUNS ACROSS THE WIND-UP AND THE RUN, its 1.46 seconds over the 1.39 the two take, so the ghost
 	// is still mid-dash when it arrives. SOUL GRAB'S RUNS ACROSS ITS WIND-UP, the hands closing as the ring lands.
 	if (Index == PhaseDashAbility)
@@ -199,7 +228,7 @@ void ACataclysmWraithCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor* /*T
 void ACataclysmWraithCharacter::UseEnemyAbility(int32 Index, AActor* /*Target*/, const FVector& AimedAt)
 {
 	UWorld* World = GetWorld();
-	if (!World)
+	if (!World || IsAppearing())
 	{
 		return;
 	}
@@ -240,6 +269,13 @@ void ACataclysmWraithCharacter::UseEnemyAbility(int32 Index, AActor* /*Target*/,
 
 void ACataclysmWraithCharacter::AttackTarget(AActor* Target)
 {
+	// NO SWING WHILE IT APPEARS: a raised Wraith appears before it acts.
+	LastReapCaught = 0;
+	if (IsAppearing())
+	{
+		return;
+	}
+
 	// THE SWING, ITS TARGET FIRST, as every creature's basic attack lands: `StrikeWhenTheSwingConnects` with the
 	// unmeasured strike of zero lands it now (issue #783).
 	UAnimSequence* Swing = ReapAnimations.IsValidIndex(NextReapClip) ? ReapAnimations[NextReapClip].Get() : nullptr;
@@ -429,6 +465,7 @@ bool ACataclysmWraithCharacter::ResolveBody(bool bIncludeAnimation)
 		FlyAnimation = Cast<UAnimSequence>(FSoftObjectPath(FlyAnimationPath).TryLoad());
 		PhaseDashAnimation = Cast<UAnimSequence>(FSoftObjectPath(PhaseDashAnimationPath).TryLoad());
 		SoulGrabAnimation = Cast<UAnimSequence>(FSoftObjectPath(SoulGrabAnimationPath).TryLoad());
+		AppearAnimation = Cast<UAnimSequence>(FSoftObjectPath(AppearAnimationPath).TryLoad());
 
 		// BOTH DEATH CLIPS, A NULL KEPT rather than skipped: see ACataclysmEnemyCharacter::PlayDeathAnimation.
 		DeathAnimations.Reset();

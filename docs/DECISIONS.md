@@ -25,7 +25,7 @@ Decisions made outside the Google Drive documents, newest first.
   `docs/Cataclysm_GDD_v2.md`; its timing-table row and its section in `game/docs/enemy-source-assets.md`.
 - Tests:
   - Unreal:
-    - `CataclysmWraithTests.cpp` (new): `Cataclysm.Wraith.`, seven tests.
+    - `CataclysmWraithTests.cpp` (new): `Cataclysm.Wraith.`, eight tests.
     - `CataclysmCreatureCataclysmTests.cpp`: the rules test rewritten and renamed (below).
     - `CataclysmDungeonModifierEffectsTests.cpp`: the Reaper is a Wraith in its form.
     - `CataclysmSaveLoadTests.cpp`: the Reaper keeps its form across a load.
@@ -43,7 +43,7 @@ Decisions made outside the Google Drive documents, newest first.
 - **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to:
   - compile it;
   - rebuild `DT_EnemyArchetypes`;
-  - run `Cataclysm.Wraith.` (seven tests, trailing dot), `Cataclysm.CreatureCataclysm.`,
+  - run `Cataclysm.Wraith.` (eight tests, trailing dot), `Cataclysm.CreatureCataclysm.`,
     `Cataclysm.DungeonModifierEffects.` (the Reaper test), the save-and-load Reaper test and `Cataclysm.Data.` (the
     pin).
 - **ONE EXISTING UNREAL TEST FAILS ON THIS BRANCH ALONE, BY ARRANGEMENT.** The floor population sweep in
@@ -58,8 +58,12 @@ Decisions made outside the Google Drive documents, newest first.
   - The capsule's half-height (88 cm) is a judgement. A swing lands at once, as the Hellhound's bite does (issue #783).
   - `Cataclysm.Wraith.ItWearsItsBodyHelmAndScytheAndHidesThePlaceholder` reports a skipped half in any worktree,
     because only the main checkout has the pack.
-- **`Ghost_Appear` is not wired.** The design wants it played when a rule raises a Wraith, and nothing in the game yet
-  tells a creature that a rule raised it.
+- **`Ghost_Appear` plays once when a rule raised the Wraith**, as the coordinating session ruled on 2026-11-26.
+  - A rule-raised creature already carries `bRisenFromTheDead`: Haunting, Undying Will, Vengeful Wraiths, and the
+    Lich's Raise the Fallen on its branch.
+  - Every rule sets the flag after the spawn, so after `BeginPlay`. The Wraith appears on the first tick that sees it.
+  - Its swing and its abilities are refused for the clip's 1.96 seconds, whether or not the art is present.
+  - `Cataclysm.Wraith.ARaisedWraithAppearsBeforeItActs` holds it, with an ordinary Wraith as the control.
 - **The Lich session touches the same shared files** (the creature enum, `EnemyArchetypes.csv` and the creature-count
   pins). Each branch moves them by one, and the assembly reconciles them.
 

@@ -346,6 +346,62 @@ CATACLYSM_WRAITH_TEST(FCataclysmWraithDressedTest, "Cataclysm.Wraith.ItWearsItsB
 	return true;
 }
 
+CATACLYSM_WRAITH_TEST(FCataclysmWraithAppearsTest, "Cataclysm.Wraith.ARaisedWraithAppearsBeforeItActs")
+{
+	using namespace CataclysmWraithTest;
+	// A WRAITH A RULE RAISED (`bRisenFromTheDead`, set after its spawn as every rule sets it) appears on its next tick
+	// and does not swing until the appearance's 1.96 seconds have passed; then its swing lands. THE CONTROL: an ordinary
+	// Wraith does not appear and its first swing lands at once.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	ACataclysmWraithCharacter* Risen = SpawnWraith(World, FVector::ZeroVector);
+	ACataclysmWraithCharacter* Ordinary = SpawnWraith(World, FVector(0.0f, 3000.0f, 0.0f));
+	ACataclysmEnemyCharacter* RisensTarget = WraithTestTarget(World, FVector(120.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* OrdinarysTarget = WraithTestTarget(World, FVector(120.0f, 3000.0f, 0.0f));
+	if (!TestNotNull(TEXT("a raised Wraith"), Risen) || !TestNotNull(TEXT("an ordinary one"), Ordinary)
+		|| !TestNotNull(TEXT("a target for each"), RisensTarget) || !TestNotNull(TEXT("and the other"), OrdinarysTarget))
+	{
+		return false;
+	}
+	Risen->SetAttackDamage(50.0f);
+	Ordinary->SetAttackDamage(50.0f);
+
+	Risen->bRisenFromTheDead = true;
+	Risen->AppearIfRisen();
+	Ordinary->AppearIfRisen();
+	TestTrue(TEXT("the raised Wraith appears"), Risen->bAppeared && Risen->IsAppearing());
+	TestFalse(TEXT("CONTROL: the ordinary one does not"), Ordinary->bAppeared || Ordinary->IsAppearing());
+	if (Risen->AppearAnimation)
+	{
+		TestTrue(TEXT("playing Ghost_Appear"), Risen->LastPlayedAnimation == Risen->AppearAnimation);
+	}
+	else
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this,
+			TEXT("the owner's Wraith pack is not present, so the appearance's clip was not loaded; its window, which "
+				 "does not depend on the clip, was checked."));
+	}
+
+	const float RisensBefore = WraithTestHealthOf(RisensTarget);
+	const float OrdinarysBefore = WraithTestHealthOf(OrdinarysTarget);
+	Risen->AttackTarget(RisensTarget);
+	Ordinary->AttackTarget(OrdinarysTarget);
+	TestEqual(TEXT("while it appears, its swing does not land"), WraithTestHealthOf(RisensTarget), RisensBefore, 0.01f);
+	TestTrue(TEXT("CONTROL: the ordinary Wraith's lands at once"), WraithTestHealthOf(OrdinarysTarget) < OrdinarysBefore);
+
+	World->TimeSeconds += Wraith_t::AppearSeconds + 0.1f;
+	TestFalse(TEXT("its appearance is over"), Risen->IsAppearing());
+	Risen->AppearIfRisen();
+	TestFalse(TEXT("and it appears once, not again"), Risen->IsAppearing());
+	Risen->AttackTarget(RisensTarget);
+	TestTrue(TEXT("then its swing lands"), WraithTestHealthOf(RisensTarget) < RisensBefore);
+	return true;
+}
+
 #undef CATACLYSM_WRAITH_TEST
 
 #endif // WITH_AUTOMATION_TESTS

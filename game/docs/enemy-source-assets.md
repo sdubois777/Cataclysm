@@ -1033,8 +1033,8 @@ with Helm1 and the scythe. The Reaper wears Helm2.
 | `Anim_Wraith_FlyingDeath1` and `2` | 2.458 s each | its two deaths |
 
 **Not measured, and said so.** The mesh's height (the capsule's half-height of 88 cm is a judgement), the swings'
-strike moments (they land at once, as the Hellhound's bite does, issue #783), and `Ghost_Appear` (1.958 s) is not wired:
-nothing in the game yet tells a creature a rule raised it.
+strike moments (they land at once, as the Hellhound's bite does, issue #783). `Ghost_Appear` (1.958 s) plays once
+when a rule has raised the Wraith (`bRisenFromTheDead`), on its first tick after, and it does not act until it ends.
 
 ### The Abyssal Warden — Grux, molten
 

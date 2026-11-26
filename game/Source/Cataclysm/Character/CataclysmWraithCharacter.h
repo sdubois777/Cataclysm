@@ -259,6 +259,7 @@ public:
 	static const TCHAR* FlyAnimationPath;
 	static const TCHAR* PhaseDashAnimationPath;
 	static const TCHAR* SoulGrabAnimationPath;
+	static const TCHAR* AppearAnimationPath;
 	static const TCHAR* FirstDeathAnimationPath;
 	static const TCHAR* SecondDeathAnimationPath;
 
@@ -334,6 +335,37 @@ public:
 
 	/** Which swing comes next: 0 or 1. */
 	int32 NextReapClip = 0;
+
+	// ----------------------------------------------------------------------
+	// Rising: a Wraith a rule raised appears before it acts
+	//
+	// THE COORDINATING SESSION'S RULING OF 2026-11-26: a creature a rule raises already carries `bRisenFromTheDead`
+	// (Haunting, Undying Will, Vengeful Wraiths, and the Lich's Raise the Fallen), and a Wraith carrying it plays
+	// `Ghost_Appear` once before it acts. EVERY RULE SETS THE FLAG AFTER THE SPAWN, so after BeginPlay; the first tick
+	// that sees it is where the Wraith appears. Its swing and its abilities are refused until the clip's length has
+	// passed, whether or not the art is present, so the window is the same in a worktree.
+	// ----------------------------------------------------------------------
+
+	/** How long `Anim_Wraith_Ghost_Appear` runs, read from its `SequenceLength` on 2026-11-26. */
+	static constexpr float AppearSeconds = 1.9583f;
+
+	/** Plays the appearance once if this Wraith was raised and has not yet appeared. Called from Tick; public so a
+	 *  test can drive it without ticking a world. */
+	void AppearIfRisen();
+
+	/** Whether this Wraith is still appearing, so may not act. */
+	bool IsAppearing() const;
+
+	/** Whether it has played its appearance. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bAppeared = false;
+
+	/** When its appearance ends, in world seconds; zero when it has none. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float AppearEndsAtSeconds = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> AppearAnimation;
 
 private:
 	/** Plays one clip once inside `HoldSeconds` (its own length when zero), never slower than authored. */
