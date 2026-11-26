@@ -2,6 +2,103 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
+
+**Affects:**
+- The merge of the Death trees (at `dd04be38b`) into the Death weapon skills (`c4eed0b01`), commit `61c0e79c0`; development
+  (`6dcc5a0f0`) merged in, `01902d193`; the Bulwark's Fervour for a kill (`f37160884`) merged in, `24fe5920b`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `GainStated` hands the whole gain to `RaisePool`
+  and, for a kill, marks a kill's payment; `KillDecayStep` asks whether a running buff holds Fervour.
+  `CataclysmWarFervour.h` and `.cpp`: `OutOfCombatDecayStep` asks the same. `CataclysmSkillTemplates.cpp`: Requiem
+  records what it spends beyond its cost; a walked charge reads `PassesThroughEnemies`; the five `KillFervour`
+  payments mark a kill. `CataclysmKillFervour.cpp`, `CataclysmBuriedWeapon.cpp`, `CataclysmCurseSpread.cpp`: the same
+  marking. `CataclysmSkillTemplate.cpp`: a detonated minion is reported to its caster. `CataclysmSkillShape.h` and
+  `.cpp`: the `PassesThroughEnemies` key. `CataclysmAbilitySystemComponent.h`: `NoteMinionDied`'s comment.
+- `tools/generate_datatables.py` (the key, refused off a walked charge), `tools/reapply_death_skills_workbook.py`
+  (Wraithwalk's cell), `sim/cataclysm_sim/enemy_abilities.py` (the vocabulary copy).
+- Tests: six new in `CataclysmDeathSkillsTests.cpp`; `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`
+  and `tools/tests/test_death_skill_shape_keys.py`; the merged aura counts in `CataclysmAuraDamageTests.cpp` and
+  `tools/tests/test_an_aura_deals_damage_only_where_its_row_states_it.py`.
+
+### SAID FIRST
+
+- **WINDOW dfinal-w1 PASSED IN UNREAL ON `1671956de`.** It was the first compile of the Death weapon skills, slices DS1
+  to DS5, which were written without one; it compiled with no error. The whole Unreal suite: 6,036 performed, 6,036
+  succeeded. Proof D proved.
+- **THE PYTHON SUITE RUN BESIDE THE UNREAL SUITE HAD ONE FAILURE, A TIMING LIMIT.**
+  `tools/tests/test_a_failing_not_in_against_a_document_reports_at_once.py::test_a_real_failing_not_in_prints_the_offset_and_not_the_diff`
+  took 12.1 seconds against its 10-second limit. Neither it nor the root `conftest.py` changed on this branch; it
+  passed in the whole suite run on `24fe5920b` before the window, and its file passed alone after it (6 passed in 2.40
+  seconds). Read as a limit too tight while the Unreal suite loads the machine; that is not established. Accepted
+  with the failure recorded by the coordinating session; issue [#2939](https://github.com/sdubois777/Cataclysm/issues/2939).
+- **OBLIGATION 2 IS NOT DONE.** "Soul Fuel catches Cold Blood and Requiem" has nothing to attach to: Soul Fuel is built
+  on neither line. Issue [#2937](https://github.com/sdubois777/Cataclysm/issues/2937).
+- **TWO JUDGEMENTS, BOTH ACCEPTED BY THE COORDINATING SESSION ON 2026-11-26:** a detonation counts as a minion's death,
+  so Marrow Feast heals on it and Death Ward's and Bone Knit's clocks start, but no Fervour or energy shield is paid for
+  it; and Requiem's one press makes two records of Fervour spent, its cost's and the rest's.
+
+### The merge
+
+Thirty files both lines changed. Where the Death skills had moved a piece of the Death trees' code, the trees' change
+went with it: the flicker's arrival, moved into Danse Macabre's two-lap loop, keeps Hollow Step's pass through enemies
+and its strike along the line. A War machine and a summoned minion hold their reserve through `HoldReserve` (the trees)
+and taunt when the row says so (the skills). The aura count is fourteen: War's Blood and Iron and the Death Greatsword's
+Grave Muster. `docs/DECISIONS.md` was merged again with the histogram algorithm, which found one conflict where git's
+own found eight, and resolved with `tools/resolve_decisions_log.py`: 1,402 entries, the base's 1,275 and 21 and 106.
+The workbook is the Death trees' copy with `tools/reapply_death_skills_workbook.py` run on it (348 cells), so the CSVs
+differ from the trees' only in `WeaponSkills.csv` and `MinionTypes.csv`.
+
+Development's squash of the Death trees (`6dcc5a0f0`) shares no history with `dd04be38b`, so merging it reported nine
+conflicts on lines this branch had built on; each keeps this branch's. The automatic merge also wrote a second copy of
+Miser's Grip floor into the War decay, which would not compile; that file is kept as it was. The result differs from
+the commit before it only by the Death trees' decisions entry.
+
+The Bulwark's branch (`f37160884`, the War session's) conflicted only in the workbook and this log. The workbook is its
+copy with `tools/reapply_death_skills_workbook.py` run on it: 899 Passive Effects rows.
+
+### The obligations
+
+| # | What | Done | Unreal test |
+|---|---|---|---|
+| 1 | Requiem calls `NoteFervourSpent` | What it spends beyond its cost is recorded, with its tags, and counted for the War classes; `ApplyCost` records the cost. A 50 cost is whole tens, so "for every 10 spent" pays the same on the two records as on their sum | `RequiemRecordsEveryFervourItSpendsAndNotOnlyItsCost` |
+| 2 | Soul Fuel catches Cold Blood and Requiem | NOT DONE: Soul Fuel is not built. #2937 | none |
+| 3 | The kill decay asks `ARunningBuffHoldsFervour` | `KillDecayStep` asks it after the empty-pool and hold refusals | `ABuffThatHoldsFervourStopsTheKillDecayAndTheWarDecayAsWell` |
+| 4 | A skill's kill Fervour marks a kill's payment and goes through `RaisePool` | `GainStated(..., bForAKill)`: the marker opens before the rate is asked and closes on every way out; the whole scaled gain goes to `RaisePool`, so Overflow and the rise handler see it. The five `KillFervour` payments pass true; `HitFervour` does not | `ASkillRowsKillFervourIsPaidAsAKillAndItsHitFervourIsNot` |
+| 10 | War's decay asks it too, without holding one buff twice | `OutOfCombatDecayStep` asks it after the out-of-combat refusal. Each decay stops only itself | the same test as 3 |
+
+**WRAITHWALK, "straight through anything in the way".** A new row key, `PassesThroughEnemies=1`, read by a walked charge
+in `BeginAdvance` exactly as Hollow Step's `movement_passes_through_enemies` is: the hostile body bit ignored for the
+walk only, restored on every way out. A walked charge already strikes what it walks into, so the key adds no line hit;
+the generator refuses it on anything but a walked charge. A JUDGEMENT: "anything" is read as enemy bodies; walls and
+terrain still stop the walk. Test `WraithwalkDriftsStraightThroughEnemiesForItsWalkAndNoLonger`.
+
+**MARROW FEAST, "dies or is detonated".** `DetonateOwnMinionsWhere` reports each minion to its caster's
+`NoteMinionDied` before it explodes. Test `AMinionDetonatedIsToldToItsCasterAsAMinionDeathSoMarrowFeastHeals`.
+
+### Window dfinal-w1
+
+On `24fe5920b`, registered against window death3-w4's whole-suite engine log (5,959 completed) plus 77 tests added by
+name (76 in the new `Cataclysm.DeathSkills.` group, and the Bulwark's
+`Cataclysm.WarFervour.ABulwarkIsPaidOneFervourForAKillAtEveryRarityThroughTheRealRow`).
+
+| Step | Result |
+|---|---|
+| Build | Succeeded |
+| Editor step | `DT_MinionTypes`, `DT_PassiveEffects`, `DT_PassiveNodes`, `DT_WeaponSkills` and `datatable_asset_sources.json`, committed alone as `1671956de`, the tested head |
+| `Cataclysm.DeathSkills.` alone | 76 performed, 76 succeeded (registered 76) |
+| Whole Unreal suite | 6,036 performed, 6,036 succeeded, 0 failed (registered 6,036). 58 skipped part of what they check (registered 58). Test saves: 892 written and deleted, 0 left behind (registered 892) |
+| Python, beside the Unreal suite | 1 FAILED, a timing limit (12.1 s against 10 s; passes alone in 2.40 s), [#2939](https://github.com/sdubois777/Cataclysm/issues/2939), accepted with it recorded. 9,563 passed, 10 skipped; JUnit `tests=9574`, `failures=1`, `errors=0`, `skipped=10` |
+| Ruff | No problems |
+| Proof D, 6 breaks, `Cataclysm.DeathSkills.` | Proved: with the breaks in, 76 performed and the 5 predicted tests failed; restored, all passed |
+
+Proof D's breaks, each in one line: F1 records Requiem's rest as nought; F2 and F3 make the kill decay's and the War
+decay's running-buff check never true (both predicted by the one decay test, so the run cannot tell which it noticed);
+F4 inverts the kill-payment marker; F5 ignores Wraithwalk's key; F6 reports no detonated minion. Before the window,
+four Python guard proofs, run in an archive copy, all proved: a kill payment without the marker, `GainStated` without
+the marker, `GainStated` writing the pool itself, and `PassesThroughEnemies` accepted on any shape.
+
+---
+
 ## 2026-11-26 — The Death line meets the War line and runs in Unreal: the bundle 3 merge, its obligations, and four windows (death3-w1 to w4)
 
 **Affects:**
