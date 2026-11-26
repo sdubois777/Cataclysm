@@ -698,6 +698,10 @@ ATTACK_REACH: dict[str, float] = {
     # holds at, because it neither advances nor retreats. Issue #349.
     "Succubus": 8.0,
 
+    # The Lich holds at 8 metres, as the Succubus does and for the same reason:
+    # the shortest player gap-closer. 2026-11-26.
+    "Lich": 8.0,
+
     # Contact and no further: 0.42 for the player's body plus its own 0.48. A
     # Hellhound is more than half again as wide as an Imp, so only five fit
     # around one player where twenty Imps do. Its threat is the charge rather
@@ -833,6 +837,50 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             note="Every allied enemy within 8 metres gains 20% increased "
                  "stats, for as long as the Succubus is alive. Killing it "
                  "first is the correct play, and this is what makes that true.",
+        ),
+    ),
+    "Lich": (
+        # ORDER IS PRIORITY, AS THE GAME'S `EnemyAbilities` READS IT: the raise
+        # first, the burst second, the bolt, which has no cooldown, last.
+        Ability(
+            name="Raise the Fallen",
+            shape="Summon",
+            slot="Special",
+            # Up to 3 of the most recent deaths within 10 metres of the Lich come
+            # back as Commons of their own kind at half health, worth nothing,
+            # where they fell (the owner's ruling 3, 2026-11-26). It is chosen
+            # only when one such death is near. The 10 second cooldown is PoE 2's
+            # Desiccated Lich's revive.
+            params={"Range": 10, "Count": 3},
+            cooldown=10.0,
+            note="It raises up to three of the creatures the player has just "
+                 "killed near it, at half health and worth nothing. No marker: "
+                 "it is read from the cast, and interrupting it cancels it.",
+        ),
+        Ability(
+            name="Grave Burst",
+            shape="Strike",
+            slot="Heavy",
+            # Radius 3.0 gives a wind-up of 0.4 + 3.0 / 3.5 = 1.26 seconds, the
+            # design's. At 250% of its hit (the game's `GraveBurstDamagePercent`;
+            # a Strike's parameters carry no damage figure), on an 8 second
+            # cooldown, the Brute's Stomp's: its answer to being reached, as the mortar is the
+            # Sentinel's.
+            params={"Radius": 3.0, "Angle": 360},
+            cooldown=8.0,
+            note="A ring of grave-cold bursts around it when the player comes "
+                 "within 3 metres, after a circle on the ground.",
+        ),
+        Ability(
+            name="Grave Bolt",
+            shape="Projectile",
+            slot="Basic",
+            # A quick cast, as Soulfire is: half a second, no lane, the bolt in
+            # flight is the warning.
+            params={"Range": 8, "Radius": 0.5, "Speed": 1200},
+            quick_cast=True,
+            note="A bolt of grave-cold, fired half a second after it decides "
+                 "to with no marker on the ground.",
         ),
     ),
     "Hellhound": (

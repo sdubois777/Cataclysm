@@ -69,6 +69,11 @@ EXPECTED: dict[str, tuple[str, tuple[str, str, str, str]]] = {
     "Succubus": (
         "ParagonCountess/Characters/Heroes/Countess/Animations",
         ("Hitreact_Fwd", "Hitreact_Bwd", "Hitreact_Left", "Hitreact_Right")),
+    # THE OWNER'S LICH PACK has two hit clips, not four: Hit1 front and back,
+    # Hit2 left and right, the owner's accepted recommendation of 2026-11-26.
+    "Lich": (
+        "Lich/Animations",
+        ("Anim_Hit1_Lich", "Anim_Hit1_Lich", "Anim_Hit2_Lich", "Anim_Hit2_Lich")),
 }
 
 #: How each creature is named in the asset record's table.
@@ -80,6 +85,7 @@ RECORD_NAMES = {
     "Hellhound": "The Hellhound",
     "Gatekeeper": "The Gatekeeper",
     "Succubus": "The Succubus",
+    "Lich": "The Lich",
 }
 
 #: The function each creature's one-shots all pass through. Two creatures play a
@@ -93,6 +99,7 @@ ONE_SHOT = {
     "Hellhound": "PlayOneShot",
     "Gatekeeper": "PlayOneShotAtRate",
     "Succubus": "PlayOneShotAtRate",
+    "Lich": "PlayOneShotAtRate",
 }
 
 LITERAL = re.compile(r'TEXT\(\s*((?:"[^"]*"\s*)+)\)')

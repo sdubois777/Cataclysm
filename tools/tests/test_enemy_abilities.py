@@ -3075,6 +3075,19 @@ PROSE_RESTATEMENTS: dict[tuple[str, str, str, str], tuple[str, ...]] = {
         "Its curse keeps its {n} second cooldown"),
     ("Succubus", "Succubus", "Dominion", "Radius"): (
         "every allied enemy within {n} metres",),
+    # The Lich, 2026-11-26.
+    ("Lich", "Lich", "Raise the Fallen", "Range"): (
+        "most recent deaths within {n} metres of the Lich",),
+    ("Lich", "Lich", "Raise the Fallen", "cooldown"): (
+        "Its {n} second cooldown is Path of Exile 2's",),
+    ("Lich", "Lich", "Grave Burst", "Radius"): (
+        "When the player comes within {n} metres",),
+    ("Lich", "Lich", "Grave Burst", "cooldown"): (
+        "Its {n} second cooldown is the Brute's",),
+    ("Lich", "Lich", "Grave Bolt", "Radius"): (
+        "Its radius is {n} metres, so the slowest class can step clear of it from 1.95",),
+    ("Lich", "Lich", "Grave Bolt", "Range"): (
+        "The Lich walks to {n} metres and holds",),
 }
 
 #: Numbers with a unit that equal one of their own enemy's values and do NOT

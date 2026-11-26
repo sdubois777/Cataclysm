@@ -294,13 +294,11 @@ namespace CataclysmCreatureCataclysmTest
  * Death's roster is the Demonic seven's with the Wraith where the Hellhound is (the owner's ruling of 2026-11-26), and
  * every other Cataclysm's, `None` included, is the very array the Demonic seven are; and the same plan populated for a
  * dungeon Death sent and one nobody sent places a creature on the same cell in the same group every time, a Wraith
- * wherever the other holds a Hellhound, so no draw was added.
+ * wherever the other holds a Hellhound and a Lich wherever it holds a Succubus (Death's escort, `EscortFor`, from the
+ * Lich's branch, joined to this one at the Death finish bundle, 2026-11-26), so no draw was added.
  *
  * THE CONTROLS for the last: the floor holds creatures, so two empty lists cannot agree by being empty; and it holds a
- * Hellhound, so the swap was exercised rather than vacuously true.
- *
- * THE ESCORT IS NOT HELD HERE YET. The Lich session (branch feat/death-creature-lich) makes Death's escort the Lich in
- * place of the Succubus; when the two branches meet, the per-creature comparison below maps that escort too.
+ * Hellhound and a Succubus, so both swaps were exercised rather than vacuously true.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreatureCataclysmRulesTest,
 	"Cataclysm.CreatureCataclysm.TheBriefCarriesTheSenderAndDeathHasTheWraithWhereTheOthersHaveTheHellhound",
@@ -384,14 +382,20 @@ bool FCataclysmCreatureCataclysmRulesTest::RunTest(const FString& Parameters)
 				 &FCataclysmFloorPopulator::PackKindsFor(One) == &Demonic);
 	}
 
-	// 4. THE SAME SEED BUILDS THE SAME FLOOR WHOEVER SENT THE DUNGEON, A WRAITH FOR EVERY HELLHOUND. The first seed from
-	// 11 whose floor holds a Hellhound, so the swap is exercised.
+	// 4. THE SAME SEED BUILDS THE SAME FLOOR WHOEVER SENT THE DUNGEON, A WRAITH FOR EVERY HELLHOUND AND A LICH FOR EVERY
+	// SUCCUBUS. The first seed from 11 whose floor holds a Hellhound and a Succubus, so both swaps are exercised.
+	const auto DeathsKindFor = [](ECataclysmDungeonCreature Creature)
+	{
+		return Creature == ECataclysmDungeonCreature::Hellhound ? ECataclysmDungeonCreature::Wraith
+			: Creature == ECataclysmDungeonCreature::Succubus	? ECataclysmDungeonCreature::Lich
+																: Creature;
+	};
 	FCataclysmFloorBrief ByNobody;
 	FCataclysmFloorBrief ByDeath;
 	ByDeath.Cataclysm = ECataclysmType::Death;
 	FCataclysmFloorPopulation Nobodys;
 	FCataclysmFloorPopulation Deaths;
-	for (int32 Seed = 11; Seed < 61; ++Seed)
+	for (int32 Seed = 11; Seed < 211; ++Seed)
 	{
 		FCataclysmFloorRequest Request;
 		Request.DungeonSeed = Seed;
@@ -404,15 +408,18 @@ bool FCataclysmCreatureCataclysmRulesTest::RunTest(const FString& Parameters)
 		}
 		Nobodys = FCataclysmFloorPopulator::Populate(Plan, 1.0f, ByNobody);
 		Deaths = FCataclysmFloorPopulator::Populate(Plan, 1.0f, ByDeath);
-		if (Nobodys.HowMany(ECataclysmDungeonCreature::Hellhound) > 0)
+		if (Nobodys.HowMany(ECataclysmDungeonCreature::Hellhound) > 0
+			&& Nobodys.HowMany(ECataclysmDungeonCreature::Succubus) > 0)
 		{
 			break;
 		}
 	}
 
 	TestTrue(TEXT("CONTROL: the floor holds creatures"), Nobodys.Enemies.Num() > 0);
-	if (!TestTrue(TEXT("CONTROL: and a Hellhound, so the swap is exercised"),
-				  Nobodys.HowMany(ECataclysmDungeonCreature::Hellhound) > 0))
+	if (!TestTrue(TEXT("CONTROL: and a Hellhound, so the Wraith's swap is exercised"),
+				  Nobodys.HowMany(ECataclysmDungeonCreature::Hellhound) > 0)
+		|| !TestTrue(TEXT("CONTROL: and a Succubus, so the Lich's swap is exercised"),
+					 Nobodys.HowMany(ECataclysmDungeonCreature::Succubus) > 0))
 	{
 		return false;
 	}
@@ -426,15 +433,18 @@ bool FCataclysmCreatureCataclysmRulesTest::RunTest(const FString& Parameters)
 	{
 		const FCataclysmEnemyPlacement& A = Nobodys.Enemies[Index];
 		const FCataclysmEnemyPlacement& B = Deaths.Enemies[Index];
-		const ECataclysmDungeonCreature Expected =
-			A.Creature == ECataclysmDungeonCreature::Hellhound ? ECataclysmDungeonCreature::Wraith : A.Creature;
+		const ECataclysmDungeonCreature Expected = DeathsKindFor(A.Creature);
 		Differ += (A.Cell != B.Cell || B.Creature != Expected || A.Pack != B.Pack) ? 1 : 0;
 	}
-	TestEqual(TEXT("and the same creature on the same cell in the same group, a Wraith for each Hellhound, every one"),
+	TestEqual(TEXT("and the same creature on the same cell in the same group, a Wraith for each Hellhound and a Lich for "
+				   "each Succubus, every one"),
 			  Differ, 0);
 	TestEqual(TEXT("as many Wraiths in Death's as Hellhounds in the other"),
 			  Deaths.HowMany(ECataclysmDungeonCreature::Wraith), Nobodys.HowMany(ECataclysmDungeonCreature::Hellhound));
 	TestEqual(TEXT("and no Hellhound left in Death's"), Deaths.HowMany(ECataclysmDungeonCreature::Hellhound), 0);
+	TestEqual(TEXT("as many Liches in Death's as Succubi in the other"),
+			  Deaths.HowMany(ECataclysmDungeonCreature::Lich), Nobodys.HowMany(ECataclysmDungeonCreature::Succubus));
+	TestEqual(TEXT("and no Succubus left in Death's"), Deaths.HowMany(ECataclysmDungeonCreature::Succubus), 0);
 	TestEqual(TEXT("in as many groups"), Deaths.PackCount, Nobodys.PackCount);
 	return true;
 }
