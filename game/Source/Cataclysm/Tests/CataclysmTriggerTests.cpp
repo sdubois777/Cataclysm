@@ -244,13 +244,15 @@ CATACLYSM_TEST(FCataclysmRandomDotNeedsADealtBlowTest,
 	// maximum health of 2026-09-02 (#917). And the action's own rules: an event
 	// that landed, naming who was struck. EACH "APPLIES NOTHING" IS ASKED BEFORE
 	// THE BLOW THAT APPLIES ONE, so the target carries nothing when it is asked.
+	// PINNED TO POISON (index 1), NOT BLEED: a bleed is also refused by the rule that a bleed needs health, so a bleed
+	// in the "dealt nothing" case could not show the rule asked of every ailment.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
 		return false;
 	}
 	{
-		const FPinnedInt Pinned(TEXT("Cataclysm.RandomDotPick"), 0);
+		const FPinnedInt Pinned(TEXT("Cataclysm.RandomDotPick"), 1);
 		const FFighter Striker(World);
 		Striker.AbilitySystem->SetPoolActions({RandomDotOn(TEXT("critical_strike"))});
 		const FName Crit(TEXT("critical_strike"));

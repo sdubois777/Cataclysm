@@ -17675,8 +17675,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDeeperHurtOnARealCharacterTest
  * Weaken you apply per point", and this test measured that. The duration stat it
  * granted keeps its reader and its probe and no longer has a row.
  *
- * ATTRITION IS HELD THROUGHOUT, so a melee blow over a tenth of the target's
- * maximum health Cripples and Weakens it. Both nodes are spent through the player
+ * ATTRITION IS HELD THROUGHOUT, so a melee blow that deals the target anything
+ * Cripples and Weakens it (a tenth of its maximum health until the owner's ruling
+ * of 2026-11-26). Both nodes are spent through the player
  * state; nothing is granted by hand, so this fails while the row is missing. The
  * blow is a real one, and the death is the game's own: the victim's health set to
  * nought, which runs `ACataclysmEnemyCharacter::HandleDeath`.
@@ -21395,21 +21396,22 @@ bool FCataclysmNeverLetsGoRealHitTest::RunTest(const FString&)
 			return false;
 		}
 
-		// A BLOW OF A TENTH OF THE ENEMY'S MAXIMUM HEALTH OR MORE, AND NOT A KILLING ONE.
-		// An ailment that does not come from the skill's own row is rolled only on
-		// a blow that takes a tenth of the target's maximum health, the owner's rule
-		// of 2026-09-02 (#917), and never on a corpse. This test first hit for 100
-		// and rolled nothing. Both are set-up, asserted, so a wrong guess about the
-		// enemy's armour or the Ravager's multipliers fails here and not on "Crippled it".
+		// A BLOW THAT DEALS SOMETHING, AND NOT A KILLING ONE. An ailment that does not
+		// come from the skill's own row is rolled only on a blow that dealt more than
+		// nought and left the target alive, the owner's rule of 2026-11-26. From
+		// 2026-09-02 until then it asked a tenth of the target's maximum health (#917),
+		// which is why this blow is so large: the test first hit for 100 and rolled
+		// nothing. Both are set-up, asserted, so a wrong guess about the enemy's
+		// armour or the Ravager's multipliers fails here and not on "Crippled it".
 		const FGameplayAttribute EnemyHealth = UCataclysmVitalAttributeSet::GetHealthAttribute();
 		const float MaxHealth = EnemySystem->GetNumericAttribute(
 			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
 		const float HealthBefore = EnemySystem->GetNumericAttribute(EnemyHealth);
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, 250'000.0f, Melee, Delivery);
 		const float Taken = HealthBefore - EnemySystem->GetNumericAttribute(EnemyHealth);
-		if (!TestTrue(*FString::Printf(TEXT("set-up: the blow took %.0f, at least a tenth of %.0f"),
+		if (!TestTrue(*FString::Printf(TEXT("set-up: the blow took %.0f of %.0f, more than nought"),
 									   Taken, MaxHealth),
-					  Taken >= MaxHealth * 0.1f)
+					  Taken > 0.0f)
 			|| !TestTrue(TEXT("set-up: and the enemy is still alive"),
 						 EnemySystem->GetNumericAttribute(EnemyHealth) > 0.0f))
 		{

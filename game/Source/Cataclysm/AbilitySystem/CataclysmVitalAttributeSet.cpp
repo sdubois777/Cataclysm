@@ -3131,8 +3131,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// were worked out on the attacker's side, where the skill's tags were
 			// in hand, and they arrive on the effect.
 			// `UCataclysmAilments::RollOnLandedBlow` holds every rule about them:
-			// the tenth of maximum health, nothing on a blow that killed, and one
-			// pool for a blunt weapon's 10% and the chance to stun from gear.
+			// a blow that dealt more than nought, its shield's part counted (the
+			// owner's ruling of 2026-11-26; the tenth of maximum health until then,
+			// which the stun keeps), a bleed only on health reached, nothing on a
+			// blow that killed, and one pool for a blunt weapon's 10% and the
+			// chance to stun from gear.
 			//
 			// NOT FOR A TICK OF DAMAGE OVER TIME. A tick carries no chance of its
 			// own. Until #899 a tick of damage over time applied by a character

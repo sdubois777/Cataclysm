@@ -11504,7 +11504,7 @@ namespace CataclysmRandomDotRowTest
 		return Character && Tag.IsValid() && Character->HasMatchingGameplayTag(Tag);
 	}
 
-	/** A thousand health, so a tenth of the maximum is 100. */
+	/** A thousand health, so a blow of 50 is under the tenth of the maximum #917 asked until 2026-11-26. */
 	void GiveAThousand(UAbilitySystemComponent* Character)
 	{
 		Character->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
@@ -11547,10 +11547,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalStrikeRandomDotRowTest,
 /**
  * "Critical strikes apply a random DoT to the target". Issue #1833 group D,
  * ruled 2026-09-30: one of Bleed, Poison, Disease, Necrosis and Burn on the
- * enemy struck, from a blow that took a tenth of its maximum health (#917). Its
- * Trigger Cooldown cell is empty, so the generator wrote the quarter second a
- * critical strike's trigger waits, and a second critical strike in the same
- * moment applies nothing.
+ * enemy struck, from a blow that dealt it more than nought: the owner's ruling
+ * of 2026-11-26, so a blow of 50 against a thousand applies it. Until then it
+ * needed a tenth of the maximum health (#917). Its Trigger Cooldown cell is
+ * empty, so the generator wrote the quarter second a critical strike's trigger
+ * waits, and a second critical strike in the same moment applies nothing.
+ * CONTROL: a critical strike carrying nought applies nothing, and one worth 50
+ * on the same enemy in the same moment then applies it, so the row was ready
+ * and only the nought refused it. Raised by hand, as every event here is.
  */
 bool FCataclysmCriticalStrikeRandomDotRowTest::RunTest(const FString&)
 {
@@ -11573,8 +11577,8 @@ bool FCataclysmCriticalStrikeRandomDotRowTest::RunTest(const FString&)
 	GiveAThousand(Second.AbilitySystem);
 	const FName Crit(TEXT("critical_strike"));
 
-	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, First.Actor);
-	TestTrue(TEXT("a critical strike taking a tenth applies the pinned Poison"),
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 50.0f, true, First.Actor);
+	TestTrue(TEXT("a critical strike worth 50, under a tenth of a thousand, applies the pinned Poison"),
 		Carries(First.AbilitySystem, *Pool[1]));
 	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, Second.Actor);
 	TestFalse(TEXT("a second in the same moment applies nothing: the row waits"),
@@ -11583,6 +11587,17 @@ bool FCataclysmCriticalStrikeRandomDotRowTest::RunTest(const FString&)
 	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, Second.Actor);
 	TestTrue(TEXT("a quarter of a second later it applies again"),
 		Carries(Second.AbilitySystem, *Pool[1]));
+
+	// THE CONTROL, a further quarter second on so the row is ready again.
+	CataclysmEnchantmentEffectTest::FWearer Third(Worn.World);
+	GiveAThousand(Third.AbilitySystem);
+	Worn.World->TimeSeconds += 0.25f;
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 0.0f, true, Third.Actor);
+	TestFalse(TEXT("CONTROL: a critical strike carrying nought applies nothing"),
+		Carries(Third.AbilitySystem, *Pool[1]));
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 50.0f, true, Third.Actor);
+	TestTrue(TEXT("control set-up: one worth 50 in the same moment applies it, so the row was ready"),
+		Carries(Third.AbilitySystem, *Pool[1]));
 	return true;
 }
 
@@ -12540,8 +12555,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalBleedRowTest,
  * "Your critical strikes always cause bleeding". Issue #1833 group E part 1: a
  * status action on `critical_strike`, Bleed, 100. WORN by a real player, whose
  * real critical strike on a creature bleeds it, and whose ordinary blow on
- * another bleeds nothing. Each blow takes over a tenth of the creature's ten
- * thousand, so the owner's rule of #917 is met and is not what decides it.
+ * another bleeds nothing. Each blow takes health from a living creature, so the
+ * owner's rule of 2026-11-26 (more than nought dealt, and a bleed only from a
+ * blow that reached health) is met and is not what decides it. Each takes over
+ * a tenth of its ten thousand as well, which the rule of #917 asked until then.
  */
 bool FCataclysmCriticalBleedRowTest::RunTest(const FString&)
 {

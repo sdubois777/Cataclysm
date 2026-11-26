@@ -253,11 +253,13 @@ public:
 	 * Roll every chance a blow carried, now that it has landed, and apply what
 	 * the rolls give.
 	 *
-	 * THE BLOW MUST HAVE TAKEN A TENTH OF THE TARGET'S MAXIMUM HEALTH, the project
-	 * owner's rule for an ailment that does not come from the skill's own row
-	 * (#917). The threshold and the figure it is measured against, damage dealt
-	 * to health, are the ones the incidental stun has always used. So an evaded
-	 * blow, a blow a shield took, and a blow that scratched apply nothing.
+	 * THE BLOW MUST HAVE DEALT MORE THAN NOUGHT, its shield's part counted
+	 * (`BlowCanCarryAnAilment` with `Landed`), the project owner's ruling of
+	 * 2026-11-26 for an ailment that does not come from the skill's own row. A
+	 * bleed asks for health reached as well (`BlowCanCarryABleed`). The stun and
+	 * the knockdown keep their tenth of maximum health. So an evaded blow and a
+	 * blow mitigated to nought apply nothing. Until that ruling every ailment
+	 * asked the stun's tenth of maximum health, dealt to health (#917).
 	 *
 	 * A BLOW THAT KILLED APPLIES NOTHING, as `UCataclysmSkillEffects::ApplyBurn`
 	 * already refuses to set a corpse alight.

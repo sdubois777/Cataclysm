@@ -1257,7 +1257,8 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	//
 	// AND WHAT REACHED THEIR HEALTH, since issue #1833 group E part 1, ruled
 	// 2026-10-01: "Strike skills have a 15%-30% chance to apply a random debuff
-	// on hit" asks the owner's rule of #917, a tenth of maximum health. No row
+	// on hit" asks the owner's rule of #917 (a tenth of maximum health until the
+	// ruling of 2026-11-26, a blow that dealt more than nought since). No row
 	// read the amount before, measured 2026-10-01: only `health_cost` lets a row
 	// take a fraction of its event's amount, and only `health_falls_below` rows
 	// state a threshold.
@@ -1319,7 +1320,8 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// WITH WHO WAS STRUCK AND WHAT REACHED THEIR HEALTH, since issue #1833 group
 	// D: "Critical strikes apply a random DoT to the target" acts on the target,
 	// and the owner's rule of 2026-09-02 (#917) asks whether the blow took a
-	// tenth of its maximum health. No row read either before, measured
+	// tenth of its maximum health (until the ruling of 2026-11-26; since then
+	// whether it dealt more than nought). No row read either before, measured
 	// 2026-09-30: no critical_strike row takes a fraction of its event's amount,
 	// and none carries a condition on the target.
 	if (Notice.bCritical)

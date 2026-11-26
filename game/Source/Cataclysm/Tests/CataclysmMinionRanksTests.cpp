@@ -367,9 +367,9 @@ bool FCataclysmMinionRanksGraveColdTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	// A VICTIM AN IMP'S BLOW CAN CARRY AN AILMENT TO: 2,000 health, so its blow of about 220 is more than the tenth the
-	// owner's rule asks (#917, ruled to apply to `minion_hit` as to a player's `hit_dealt`). Against the sturdy million
-	// no Necrosis can land, which window death3-w2 measured.
+	// A VICTIM OF 2,000 HEALTH, so its blow of about 220 lands on a living enemy. Until the owner's ruling of 2026-11-26
+	// this was needed to clear the tenth of maximum health #917 asked (against the sturdy million no Necrosis could land,
+	// which window death3-w2 measured); since that ruling any blow that dealt more than nought carries the ailment.
 	Victim->SetHealth(2000.0f);
 
 	TMap<FName, FCataclysmStatInputs> Lines;
@@ -441,8 +441,8 @@ bool FCataclysmMinionRanksNoActionTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	// THE SAME 2,000-HEALTH VICTIM AS THE TEST ABOVE, so the Imp's blow could carry an ailment and the control is one:
-	// against the sturdy million no blow carries one with or without a row.
+	// THE SAME 2,000-HEALTH VICTIM AS THE TEST ABOVE, so the only difference from it is the row: the Imp's blow could
+	// carry an ailment had the summoner held one.
 	Victim->SetHealth(2000.0f);
 	FMinionRanksEventCount MinionHits(Summoner.AbilitySystem, TEXT("minion_hit"));
 	for (int32 Strike = 0; Strike < 5; ++Strike)

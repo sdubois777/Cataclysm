@@ -17,6 +17,11 @@ Decisions made outside the Google Drive documents, newest first.
 - The callers that pass what a blow landed: `CataclysmCombatEvents.cpp`, `CataclysmPlayerCharacter.cpp`,
   `CataclysmMinion.h` and `.cpp`, `CataclysmSkillEffects.h` and `.cpp`, `CataclysmSkillTemplate.h` and `.cpp`,
   `CataclysmProjectile.cpp`, `CataclysmBuriedWeapon.cpp`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmRemains.cpp`, after the Death finish bundle merged: `Detonate` announces
+  what each struck enemy's shield lost beside `remains_detonation_hit`, so Grave Spores' Necrosis follows the rule
+  below. `Cataclysm.Remains.PlaguePitPassesTheAilmentsTheirCreatureDiedWithAndGraveSporesInflictsNecrosis` now expects
+  a blast under a tenth to inflict it, and its control raises the event by hand at nought, a counting row proving it
+  was heard.
 - Tests: `game/Source/Cataclysm/Tests/CataclysmAilmentTests.cpp` (the tenth's test rewritten, two new),
   `game/Source/Cataclysm/Tests/CataclysmDamageCalculationTests.cpp` (the energy shield test extended).
 - `docs/Cataclysm_GDD_v2.md`: the mitigation table's step 8, the energy shield bullets, "Applying Damage Over Time and
@@ -250,6 +255,9 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
   when a larger creature (an elite or a brute) dies among smaller ones. Option (b), to exempt it as a chance on a hit,
   was not taken; the coordinating session is offering it to the owner. The event had carried an amount of nought,
   which no such row could ever pass; `UCataclysmRemains::Detonate` now passes the health each struck enemy lost.
+  **SUPERSEDED THE SAME DAY by the owner's ailment ruling of 2026-11-26** (the entry above): the tenth is gone, so Grave
+  Spores' Necrosis lands from any remains blast that dealt the struck enemy more than nought, its energy shield's part
+  counted. `Detonate` also announces what each enemy's shield lost, beside the event, for that reason.
 
 ### Joining the Wraith and the Lich
 

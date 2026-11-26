@@ -1519,8 +1519,9 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 				if (UCataclysmAbilitySystemComponent* Commanders = Cast<UCataclysmAbilitySystemComponent>(
 						UCataclysmTargeting::AbilitySystemOf(UCataclysmCommand::CommanderOf(Instigator))))
 				{
-					// WITH WHAT REACHED HEALTH, as an imp's carries since window death3-w2 (the ailment rule, #917).
-					// AND EVERYTHING IT LANDED, its shield's part included (the owner's ruling of 2026-11-26).
+					// WITH WHAT REACHED HEALTH, as an imp's carries since window death3-w2 (the ailment rule, #917; a
+					// bleed asks it). AND EVERYTHING IT LANDED, its shield's part included, which every other ailment asks
+					// above nought since the owner's ruling of 2026-11-26.
 					const float WasLanded = Commanders->SetHitBeingAnnouncedLanded(Landed->Landed());
 					Commanders->ActOnEvent(FName(TEXT("minion_hit")), &SkillTags, Landed->DealtToHealth, /*bLanded=*/true,
 										   Target);
@@ -1583,11 +1584,12 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Instigator, Target, Arrived, bAShareOnAnAlly);
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
 	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
-	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps cause a bleed of 1-2 times normal
+	// meets the owner's ailment rule with the blow's own figure (a tenth of maximum health, #917, until the ruling of
+	// 2026-11-26; more than nought since, and health reached for a bleed): "Traps cause a bleed of 1-2 times normal
 	// strength in every enemy caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
 	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
-	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth (the owner,
-	// 2026-10-21: "Follow the tenth rule"). A TRAP ALREADY USED UP KEEPS NOTHING: a slow waiting for a late blow of its
+	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's ailment rule (the owner,
+	// 2026-10-21: "Follow the tenth rule"; more than nought dealt since the ruling of 2026-11-26). A TRAP ALREADY USED UP KEEPS NOTHING: a slow waiting for a late blow of its
 	// cast on this enemy is asked instead (ruled 2026-10-21, brief 60c), with the identity the used-up trap was found by
 	// above, so one match decides the price, the event and the slow, and each happens once for the blow.
 	if (Machine && !GadgetsPlayer)

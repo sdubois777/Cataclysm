@@ -9588,7 +9588,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						< Action.Percent;
 				// APPLIED BY THE AVATAR, as a random damage over time is below.
 				AActor* Applier = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
-				if (bComesUp && ApplyStatusOf(Action, Applier, Other, EventAmount))
+				if (bComesUp && ApplyStatusOf(Action, Applier, Other, EventAmount, DealtForAnAilment(EventAmount)))
 				{
 					NoteTriggerFired(Action);
 				}
@@ -9647,9 +9647,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// THE OTHER CHARACTER OF THE EVENT IS SLOWED BY THE ROW'S PER CENT FOR ITS STACK SECONDS. Ruled 2026-10-21 (traps
 		// layer 3, M3 (b)), for "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" on `trap_triggered`,
 		// whose other character is the enemy that set the trap off. Landed only, once per row per event; applied by the
-		// avatar, as a status is above. AND THE OWNER'S RULE OF A TENTH (#917), as for every ailment a row lays on another
-		// character, against the event's amount: what the trap's cast took from that enemy in its largest blow. The owner,
-		// 2026-10-21: "Follow the tenth rule".
+		// avatar, as a status is above. AND THE OWNER'S RULE FOR EVERY AILMENT A ROW LAYS ON ANOTHER CHARACTER, against the
+		// event's amount (what the trap's cast took from that enemy in its largest blow) or the announced hit's landed
+		// figure: more than nought dealt, its shield's part counted, on a living target (the owner's ruling of 2026-11-26).
+		// From 2026-10-21 ("Follow the tenth rule") until then it was the tenth of maximum health of #917.
 		if (Action.bSlowForSeconds)
 		{
 			AActor* Slowed = const_cast<AActor*>(EventTarget);
@@ -10899,7 +10900,7 @@ void UCataclysmAbilitySystemComponent::RefreshWornStatLine()
 }
 
 bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction& Action,
-	AActor* Applier, AActor* Other, float EventAmount)
+	AActor* Applier, AActor* Other, float EventAmount, float DealtForAilment)
 {
 	if (!Applier || !Other)
 	{
@@ -10943,7 +10944,7 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 	// of the eleven, Cripple and Stun included, and so does a random damage over
 	// time on an event. A blow that dealt more than nought, its shield's part
 	// counted, and a target still alive: the owner's ruling of 2026-11-26.
-	if (!UCataclysmAilments::BlowCanCarryAnAilment(Other, DealtForAnAilment(EventAmount)))
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Other, DealtForAilment))
 	{
 		return false;
 	}
@@ -11842,7 +11843,8 @@ bool UCataclysmAbilitySystemComponent::LayALateSkillTrapSlow(const TWeakObjectPt
 	{
 		return Late.Trap.HasSameIndexAndSerialNumber(CastBy) && Late.Enemy.Get() == Struck;
 	});
-	// THE OWNER'S RULE OF A TENTH AGAINST THIS BLOW (the owner, 2026-10-21: "Follow the tenth rule"). A blow short of it
+	// THE OWNER'S AILMENT RULE AGAINST THIS BLOW: more than nought dealt on a living target (the owner's ruling of
+	// 2026-11-26; from 2026-10-21, "Follow the tenth rule", until then, a tenth of maximum health). A blow short of it
 	// leaves the slow waiting for the next.
 	// WHAT THE BLOW LANDED, its shield's part included (the owner's ruling of 2026-11-26); the health figure when the
 	// caller gave none.
