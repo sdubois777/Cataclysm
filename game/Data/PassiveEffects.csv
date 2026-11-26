@@ -898,3 +898,9 @@ Shadow_capstone_200#4,Shadow_capstone_200,,,100.0,,,0.0,,0.0,1,-1.0,0,0,dash_to_
 Necromancer_basic_gr_a1#1,Necromancer_basic_gr_a1,interpose_chance,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_gr_c1#1,Necromancer_basic_gr_c1,minions_turn_on_your_last_attacker,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_gr_c1#2,Necromancer_basic_gr_c1,minion_damage,increased,3.0,,target_is_your_last_attacker,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_25#5,Shadow_capstone_25,afterimage_repeats_your_next_attack,flat,1.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_50#3,Shadow_capstone_50,shadow_clone_every_elite_kills,flat,3.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_50#4,Shadow_capstone_50,shadow_clone_seconds,flat,5.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_100#3,Shadow_capstone_100,movement_targets_an_enemy_within_metres,flat,15.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_200#5,Shadow_capstone_200,hits_strike_again,flat,1.0,,,0.0,class_resource_held,10.0,3,-1.0,0,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_keystone_d_kB#1,Shadow_keystone_d_kB,evasion_against_area_percent,flat,50.0,,while_moving,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

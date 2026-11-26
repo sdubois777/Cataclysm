@@ -2,6 +2,151 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Death line's finishing slice E: the Shadow's last four vow options (Afterimage, Shadow Clone, Shadow Step, Flurry of the Dead) and its keystone Ever Moving ([#2906](https://github.com/sdubois777/Cataclysm/issues/2906), [#2907](https://github.com/sdubois777/Cataclysm/issues/2907), [#2909](https://github.com/sdubois777/Cataclysm/issues/2909))
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmShadowImages.h` and `.cpp` (new): `ACataclysmShadowImage`, a shadow of
+  the character that is not a minion, and `UCataclysmShadowImages`, the four options' code.
+- `CataclysmDamageCalculation.h` and `.cpp`: Ever Moving at the evasion step of `Resolve`
+  (`EvasionAgainstAreaPercentStat`). `CataclysmSkillEffects.cpp`: Flurry of the Dead after a landed hit in `ApplyHit`.
+  `CataclysmSkillTemplates.cpp`: Shadow Step in `UCataclysmMovementSkill::ActivateAbility`. `CataclysmMovement.h` and
+  `.cpp`: `SpotBehind` and `PlaceBehind`. `CataclysmPlayerCharacter.cpp`: the afterimage at a movement skill's use and
+  its repeat at the next attack, and the clone's count at a kill. `CataclysmPlayerClassStats.cpp`: the six stats, which
+  have no attribute.
+- Data: `tools/reapply_death_finish_e_shadow_workbook.py` (new) writes six rows into `docs/All_Things_Cataclysm.xlsx`;
+  `game/Data/PassiveEffects.csv` regenerated (905 rows on this branch). `tools/generate_datatables.py`: `hits_strike_again`
+  in `STATS_WITH_AN_ASKER`, `evasion_against_area_percent` in `CONDITIONED_STATS_WITH_AN_ASKER`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmShadowVowsTests.cpp` (new, group `Cataclysm.ShadowVows.`, seven tests);
+  six probes in `CataclysmStatExemptionTests.cpp`; the pins in `CataclysmDataTableTests.cpp`,
+  `tools/tests/test_passive_effects_match_the_node_text.py` and `tools/tests/test_every_conditioned_stat_has_an_asker.py`;
+  `tools/tests/test_death_finish_e_shadow_scripts.py` (new); `tools/tests/test_reapply_death_trees_workbook.py` puts the
+  finishing slices' rows back after its own.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** The brief for the finishing slices leaves every build and every Unreal window to
+  the coordinating session. The C++ was read against the engine's headers where an engine call was new to this project
+  (`UPoseableMeshComponent::CopyPoseFromSkeletalComponent` takes a non-const component; `SetSkinnedAssetAndUpdate`), and
+  nothing more.
+- **THE COUNTS MOVED ON THIS BRANCH ALONE**, as the brief says they would: `AUTHORED_ROWS` 899 to 905, `AUTHORED_NODES`
+  497 to 498 (Ever Moving), `AUTHORED_OPTIONS` 95 to 99, the Unreal `PassiveEffects.csv` pin 899 to 905, and the
+  conditioned probe pins 37 to 38 in both places. Each other finishing slice moves the same figures; the coordinating
+  session reconciles them at assembly.
+- **`test_reapply_death_trees_workbook.py` NOW APPLIES EVERY `tools/reapply_death_finish_*_workbook.py` AFTER THE DEATH
+  TREES' SCRIPT**, in the order of their names, because it takes every `Shadow_` row out of a copy and requires the
+  committed sheets back. The committed workbook must hold the finishing slices' rows in that same order.
+- **EVERY OPTION'S NUMBERS ARE ITS SENTENCE'S**: 15 metres, every third kill, 5 seconds, once for every 10 Fervour up to
+  10, half. Everything else below is a judgement, labelled as one.
+
+### The research
+
+- **A copy of the character that repeats its attacks.** Last Epoch's Bladedancer leaves shadows that "imitate your
+  attacks" from where they stand, for some skills only (forum.lastepoch.com, "What do shadows actually do?"). Diablo IV's
+  Rogue skill Shadow Clone: "Summon a shadow that mimics your actions for 15 seconds. This Shadow Clone deals 40% of your
+  damage" (purediablo.com, Shadow_Clone; other sources give 60%). Neither description read says it can be struck, and
+  neither is a minion in its game's sense. **What the research settles:** the shadow is the character's own attack made
+  again from another place, not a summon with numbers of its own. **What it does not:** a share below the whole; both
+  games give one, and this game's sentences state none, so the whole is kept (a judgement).
+- **A movement skill that ends behind an enemy.** Diablo IV's Shadow Step makes the Rogue Unstoppable and stabs an enemy
+  "from behind" (diablo4.wiki.fextralife.com, Shadow_Step; game8.co). **Settled:** the move is to a chosen enemy and ends
+  at its back. **Not settled:** what "behind" means against a creature facing a wall; this game's answer is below.
+- **A hit that strikes again.** Path of Exile's Multistrike repeats a melee attack after the first, and most on-hit
+  effects are rolled per hit (poewiki.net, Multistrike_Support; pathofexile.com forum thread 1743780, with a later
+  thread, 3191503, reporting one debuff applied on the first hit only). **Settled:** each extra strike is a hit in full.
+- **Evasion against area damage, at half.** Path of Exile 2's Acrobatics keystone, before its 0.3.0 patch, let evasion
+  apply to area attacks, and turned spell suppression into spell dodge "at half their value" (poe2wiki.net, Acrobatics;
+  the 0.3.0 reporting on sportskeeda.com and opencritic.com). **Settled:** a fraction of a defence's chance meeting the
+  hits it normally cannot is a shipped shape. The half is the sentence's.
+
+### Afterimage (Shadow, The First Cut, option 2)
+
+"A shadow of you stays where your movement skill started and repeats your next attack." Row: `afterimage_repeats_your_next_attack`
+flat 1. A paid use of the movement skill (the key's slot is Movement, or the row held under that name was made for it)
+leaves an `ACataclysmShadowImage` where the character stood as the use was announced. The next paid use of an attack
+gives it that attack and its aim, and on the next tick the shadow casts the same row, free, from its own place
+(`UCataclysmTriggeredSkill::Trigger` with a place, the path a skill gadget's copy takes), then is gone.
+
+- **"Your next attack" is the next paid use of the basic attack or of a skill a row may cast again that is not a
+  spell** (a judgement, on the ruling of 2026-10-07 that "next attack" is any hit that is not a spell and not a tick,
+  the basic attack included). A movement skill, self buff, aura, summon, deployable, held or channelled skill is not one.
+- **It waits 5 seconds** (`AfterimageWaitsSeconds`, a judgement: as long as Shadow Clone's clone fights; the sentence
+  states no time), **one at a time** (a new movement skill use replaces it), and **repeats at the whole of the damage**.
+- **It cannot be struck, is no minion and reserves nothing.** It looks like the character, posed as the character was
+  when it left (a copy of the character's mesh, `UPoseableMeshComponent`).
+
+### Shadow Clone (Shadow, The Second Cut, option 2)
+
+"Every third kill of an Elite or stronger leaves a clone of you that fights for 5 seconds with your basic attack."
+Rows: `shadow_clone_every_elite_kills` 3, `shadow_clone_seconds` 5. Every kill credited to the character of a creature
+of rarity rung 1 or more (Elite to Cataclysm Boss) is counted, a row's kill and a clone's own included; the third
+leaves a clone and the count starts again.
+
+- **The clone is the character's basic attack, free, from the clone's place, at the character's rate and numbers** (a
+  judgement: the whole, as the afterimage). It walks at the character's walking speed toward the nearest living enemy
+  within 15 metres of itself (a summoned imp's notice) until that enemy is within the basic attack's reach, and copies
+  the character's pose at each step, so it moves as the character moves.
+- **It is left a metre to the killer's right** (a judgement). It cannot be struck, is no minion (no minion row reaches
+  it, no minion count counts it) and reserves nothing.
+- **The count is kept per character for as long as the character exists**, and is not lost with time (a judgement:
+  "every third kill" names no window).
+
+### Shadow Step (Shadow, The Third Cut, option 1)
+
+"Your movement skill can target any enemy within 15 metres that you can see and puts you behind it." Row:
+`movement_targets_an_enemy_within_metres` 15. When the movement skill is aimed at an enemy, it goes behind that enemy
+instead of to the point; aimed at none, it is the move it was ("can").
+
+- **Aimed at:** the living enemy whose body is nearest the aimed point and within 1 metre of it (`AimAllowanceCm`, a
+  judgement; the game's cursor already answers an enemy under it). **Within 15 metres:** centre to centre along the
+  ground, whatever the skill's own range. **That you can see:** nothing on the visibility channel between the two
+  middles, as a trade asks of a creature it commands.
+- **Behind:** opposite the enemy's facing along the ground, the two bodies touching (5 cm apart), at the character's
+  height, turned to face it. A wall there moves it to the nearest place with room, and with none it is put beside the
+  enemy, as Thousand Cuts puts it (a judgement). The arrival is an instant relocation, so it is not ground walked.
+- **Which moves:** a leap, a blink and a charge that arrives once. Not a return to a mark, a trade, a flicker, a walked
+  charge, or a move whose `Requires` names its creature: each has a destination of its own (a judgement). A random
+  direction a worn row gives does not apply to a move that steps behind an enemy.
+
+### Flurry of the Dead (Shadow, The Final Cut, option 3)
+
+"Your hits strike again once for every 10 Fervour held, up to 10 extra strikes." Row: `hits_strike_again` 1 scaled by
+`class_resource_held` in steps of 10, at most 10 steps, so the stat is the number of extra strikes. After the
+character's own landed hit (not a tick, a share struck at an ally, a blow returned, a death's consequence, an ailment's
+end explosion, a share of an ally's blow, or a row's answer to an event), the same hit is dealt again that many times.
+
+- **Each extra strike is the hit again, whole**: the same skill percentage, tags and delivery, its own critical strike
+  roll, its own evasion and ailment rolls, and it fires the character's on-hit rows (a judgement on the research above).
+  The count is read once, before the first, so Fervour an extra strike earns adds none to that hit.
+- **It is marked a row's answer to an event, so it strikes nothing again** and is not recorded as a first blow. It
+  stops when the target dies.
+- **A skill gadget's or trap's cast is not the character's hit** and takes no extra strikes; an afterimage's repeat and a
+  clone's swing are the character's own hits and do.
+
+### Ever Moving (Shadow keystone)
+
+"While you are moving, your Evasion chance also applies to area damage, at half its value." Row:
+`evasion_against_area_percent` 50 under `while_moving`, asked of the defender with the blow at the evasion step.
+An area hit is evaded on a roll under half of the chance a direct attack meets, **after the overwhelm is taken off**
+(a judgement: half of the chance that applies). A tick of damage over time is still never evaded. "Moving" is the
+reading `while_moving` takes for every other Shadow evasion node.
+
+### Tests to register (for the coordinating session's window)
+
+New group `Cataclysm.ShadowVows.`, seven tests:
+`EverMovingEvadesAreaDamageAtItsShareOfTheChanceOnlyWhileMoving`,
+`ShadowStepTakesTheEnemyAimedAtWithinItsMetresThatTheMoverCanSee`,
+`ShadowStepPutsTheMovementSkillBehindTheEnemyFacingIt`,
+`AfterimageRepeatsTheNextAttackFromWhereTheMovementSkillStarted`,
+`ShadowCloneIsLeftByEveryThirdEliteOrStrongerKill`,
+`AShadowCloneSwingsYourBasicAttackAtYourRateUntilItsSecondsRunOut`,
+`FlurryOfTheDeadStrikesAgainOnceForEveryTenFervourHeldUpToTen`.
+Changed: `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (six probes),
+`Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline` (one),
+`Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` (one, pin 38), and the `Cataclysm.Data.`
+PassiveEffects count (905). No proof was run.
+
+---
+
 ## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
 
 **Affects:**

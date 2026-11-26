@@ -1249,6 +1249,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minions_turn_on_your_last_attacker"),
 		TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"),
 		TEXT("interpose_chance"),
+		// And the Shadow's four remaining vow options and its Ever Moving, the Death line's finishing slice E (2026-11-26):
+		// Afterimage's flag, Shadow Clone's count and seconds, Shadow Step's metres and Flurry of the Dead's extra strikes,
+		// read by UCataclysmShadowImages; Ever Moving's share of evasion against area damage, read by
+		// UCataclysmDamageCalculation::Resolve. No attribute and no base.
+		TEXT("afterimage_repeats_your_next_attack"),
+		TEXT("shadow_clone_every_elite_kills"),
+		TEXT("shadow_clone_seconds"),
+		TEXT("movement_targets_an_enemy_within_metres"),
+		TEXT("hits_strike_again"),
+		TEXT("evasion_against_area_percent"),
 		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
 		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
 		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.

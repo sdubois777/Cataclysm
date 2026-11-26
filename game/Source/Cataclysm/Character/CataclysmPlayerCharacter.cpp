@@ -36,6 +36,8 @@
 // character's minions. The demonic tree rework of 2026-11-24.
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// The Shadow's Afterimage and Shadow Clone, the Death line's finishing slice E (2026-11-26).
+#include "AbilitySystem/CataclysmShadowImages.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
@@ -1395,6 +1397,24 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 			}));
 		}
 
+		// AND THE SHADOW'S AFTERIMAGE (the Death line's finishing slice E, 2026-11-26): "A shadow of you stays where your
+		// movement skill started and repeats your next attack." A paid use of the movement skill leaves it where the use
+		// started, which is where the character stood as the use was announced; the next paid use of an attack, the basic
+		// attack's swing included, gives it that attack, and it repeats it on the next tick, for the reason the repeats
+		// above wait. A free start sends no notice, so neither the afterimage's repeat nor a clone's swing reaches here.
+		if (UCataclysmShadowImages::IsAMovementSkillUse(this, Notice))
+		{
+			UCataclysmShadowImages::LeaveAfterimage(this, Notice.Location,
+													Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+		}
+		else if (UCataclysmShadowImages::GiveTheAttackToTheAfterimage(this, Notice, bBasicAttack))
+		{
+			GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				UCataclysmShadowImages::MakeAfterimageRepeats(this);
+			}));
+		}
+
 		// AND THE LAST SKILL ITS GADGETS COPY IS RECORDED. Ruled 2026-10-14, for "Gadgets copy the last skill you
 		// used and fire it at their target once every 2 seconds": the last skill whose use sent this notice and that
 		// a row may cast again, `UCataclysmTriggeredSkill::RepeatsFromARow`, found among the skills this character
@@ -1548,6 +1568,9 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			UCataclysmFervour::MarkNearAKill(Acting, Notice.Victim, Notice.Location);
 			// AND WEARER OF THE DEAD'S MODIFIERS, from an Elite or stronger body, the Death trees' slice C4d3 (2026-11-25).
 			UCataclysmFervour::WearTheModifiersOf(Acting, Notice.Victim);
+			// AND SHADOW CLONE'S COUNT, every third Elite or stronger kill leaving a clone (the Death line's finishing slice
+			// E, 2026-11-26). Every kill credited here counts, a row's and a clone's own included.
+			UCataclysmShadowImages::NoteKillForShadowClone(this, Notice.Victim);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
 			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
 			// slain enemy. No row read either on this event before; a row that takes

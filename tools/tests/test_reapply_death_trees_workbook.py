@@ -14,6 +14,7 @@ import pathlib
 import shutil
 import sys
 
+import importlib
 import openpyxl
 import pytest
 
@@ -52,6 +53,18 @@ def take_the_death_rows_out(path: pathlib.Path) -> None:
     book.save(path)
 
 
+#: THE DEATH LINE'S FINISHING SLICES (2026-11-26) each write their own Death rows with a script of their own,
+#: `tools/reapply_death_finish_<slice>_workbook.py`, because the workbook cannot be merged. Taking every Death row out
+#: takes theirs out too, so putting the committed sheets back is this script and then each of theirs, in the order of
+#: their names, which is the order the committed workbook holds them in.
+FINISHING_SCRIPTS = tuple(sorted(path.stem for path in (REPO_ROOT / "tools").glob("reapply_death_finish_*_workbook.py")))
+
+
+def apply_the_finishing_slices(path: pathlib.Path) -> None:
+    for name in FINISHING_SCRIPTS:
+        importlib.import_module(name).apply(path)
+
+
 @pytest.fixture
 def copy_of_the_workbook(tmp_path) -> pathlib.Path:
     target = tmp_path / "workbook.xlsx"
@@ -78,6 +91,7 @@ def test_the_rows_taken_out_are_put_back_as_the_committed_sheets(copy_of_the_wor
     report = reapply.apply(copy_of_the_workbook)
     changes = len(reapply.NODES) + len(reapply.CLASS_STATS)
     assert report[-1].startswith(f"wrote {changes} change(s)"), report
+    apply_the_finishing_slices(copy_of_the_workbook)
     for title in SHEETS:
         assert sheet_rows(copy_of_the_workbook, title) == sheet_rows(WORKBOOK, title), title
 
@@ -217,6 +231,7 @@ def test_the_port_columns_are_added_when_the_sheet_lacks_them(copy_of_the_workbo
 
     report = reapply.apply(copy_of_the_workbook)
     assert any("added the column(s)" in line for line in report), report
+    apply_the_finishing_slices(copy_of_the_workbook)
     for title in SHEETS:
         assert rows_by_name(copy_of_the_workbook, title) == rows_by_name(WORKBOOK, title), title
 

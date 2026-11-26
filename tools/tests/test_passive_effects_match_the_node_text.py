@@ -857,7 +857,13 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 899 ON 2026-11-26: the Bulwark's Fervour for a kill, on its starting node
 #: (`tools/reapply_war_bulwark_kill_fervour_workbook.py`, the final bundle).
-AUTHORED_ROWS = 899
+#:
+#: AND TO 905 ON 2026-11-26, ON THIS BRANCH ALONE: the Death line's finishing slice E
+#: (`tools/reapply_death_finish_e_shadow_workbook.py`), six rows -- Afterimage's flag,
+#: Shadow Clone's count and seconds, Shadow Step's metres, Flurry of the Dead's extra
+#: strikes and Ever Moving's share of evasion. The other finishing slices move this
+#: too; the coordinating session reconciles the figure when the slices are assembled.
+AUTHORED_ROWS = 905
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1391,7 +1397,11 @@ AUTHORED_ROWS = 899
 #:
 #: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
 #: the War line's 323 less the 226 both had.
-AUTHORED_NODES = 497
+#:
+#: AND TO 498 ON 2026-11-26, ON THIS BRANCH ALONE: the Shadow's keystone Ever Moving,
+#: the Death line's finishing slice E. Its four vow options are on capstones already
+#: counted. Reconciled at assembly, as `AUTHORED_ROWS` is.
+AUTHORED_NODES = 498
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1555,7 +1565,10 @@ AUTHORED_NODES = 497
 #: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
 #: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
 #: War line's 72 less the 36 both had.
-AUTHORED_OPTIONS = 95
+#: AND TO 99 ON 2026-11-26, ON THIS BRANCH ALONE: the Death line's finishing slice E --
+#: Afterimage, Shadow Clone, Shadow Step and Flurry of the Dead (Shadow). Each capstone
+#: already had a row. Reconciled at assembly, as `AUTHORED_ROWS` is.
+AUTHORED_OPTIONS = 99
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2971,6 +2984,11 @@ VALUE_FORMS = {
     # UNBROKEN CHAIN, the same slice: "allows 1 second more between kills for
     # every 4 points", a row at each step.
     "kill_chain_seconds": ("{value:g} second more between kills",),
+    # THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Shadow Clone's "fights for 5
+    # seconds", Shadow Step's "any enemy within 15 metres", Flurry of the Dead's
+    # "strike again once", one extra strike a step.
+    "shadow_clone_seconds": ("fights for {value:g} seconds",),
+    "movement_targets_an_enemy_within_metres": ("any enemy within {value:g} metres",),
     # THE TWO DEBUFF CHANCES, WHICH ARE THE FIRST TWO FLAT ROWS ON ONE NODE.
     # The Ravager's `Wearing Blows` reads "+2% chance to Cripple and +2% chance
     # to Weaken on melee hit per point", so both its rows carry the same number
@@ -3849,6 +3867,17 @@ VALUE_IN_WORDS = {
     ("Shadow_keystone_b_kD", "death_marks_held"): ("you mark two enemies", 1.0),
     # AND HOLLOW STEP'S FLAG, "passes through enemies and hits each one".
     ("Shadow_keystone_c_kB", "movement_passes_through_enemies"): ("passes through enemies and hits each one", 1.0),
+    # AND AFTERIMAGE'S FLAG, the Death line's finishing slice E (2026-11-26): "repeats
+    # your next attack", a switch of one.
+    ("Shadow_capstone_25", "afterimage_repeats_your_next_attack"): ("repeats your next attack", 1.0),
+    # AND SHADOW CLONE'S COUNT, "Every third kill of an Elite or stronger", three.
+    ("Shadow_capstone_50", "shadow_clone_every_elite_kills"): ("every third kill of an elite or stronger", 3.0),
+    # AND FLURRY OF THE DEATH'S "strike again once for every 10 Fervour held", one
+    # extra strike a step of ten.
+    ("Shadow_capstone_200", "hits_strike_again"): ("strike again once for every 10 fervour held", 1.0),
+    # AND EVER MOVING'S "at half its value", 50 per cent of the evasion chance, as
+    # Lethal Dose's "at half their value" is written.
+    ("Shadow_keystone_d_kB", "evasion_against_area_percent"): ("at half its value", 50.0),
     # AND THE REST OF SLICE C6e: Lethal Dose's "at half their value", 50 per
     # cent; Guard the Master's "Your minions turn on the last enemy that hit
     # you", a flag of one a point.

@@ -82,6 +82,8 @@
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// The Shadow's last vows, the Death line's finishing slice E (2026-11-26).
+#include "AbilitySystem/CataclysmShadowImages.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmTerrain.h"
@@ -6386,6 +6388,185 @@ namespace CataclysmStatExemptionTest
 					   2.0f * ACataclysmMinion::SkillTrapTriggerRadiusCm, 0.01f);
 	}
 
+	// ------------------------------------------------------------------------
+	// THE SHADOW'S LAST VOWS AND EVER MOVING, the Death line's finishing slice E (2026-11-26). Each probe gives a holder
+	// on the players' team the row and asks the reader in `UCataclysmShadowImages` or `UCataclysmDamageCalculation`
+	// with and without it. Above the three tables, which all name them.
+	// ------------------------------------------------------------------------
+
+	/** `afterimage_repeats_your_next_attack`, read by `UCataclysmShadowImages::LeaveAfterimage` (Afterimage). */
+	void ProbeAfterimage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		const FGameplayTagContainer MovementTags;
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmShadowImages::LeaveAfterimage(Holder, FVector::ZeroVector, MovementTags) != nullptr;
+		SiphonLines(Holder, {SiphonStat(UCataclysmShadowImages::AfterimageStat, 1.0f)});
+		const bool bHeld = UCataclysmShadowImages::LeaveAfterimage(Holder, FVector::ZeroVector, MovementTags) != nullptr;
+		Test.TestFalse(TEXT("afterimage_repeats_your_next_attack: control, a movement skill leaves no shadow without it"),
+					   bPlain);
+		Test.TestTrue(TEXT("and with it one is left, so LeaveAfterimage really reads it"), bHeld);
+	}
+
+	/**
+	 * `shadow_clone_every_elite_kills` (`bEvery`) or `shadow_clone_seconds`, read by
+	 * `UCataclysmShadowImages::NoteKillForShadowClone` (Shadow Clone). An Elite's kill with every 1 and 5 seconds makes a
+	 * clone at once; the same kill with the probed row at nought makes none.
+	 */
+	void ProbeShadowClone(FAutomationTestBase& Test, bool bEvery)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Elite = RavagerReworkCreatureNear(Test, World);
+		if (!Holder || !Elite)
+		{
+			return;
+		}
+		Elite->RarityStep = 1;
+		const auto Lines = [Holder](float Every, float Seconds)
+		{
+			SiphonLines(Holder, {SiphonStat(UCataclysmShadowImages::CloneEveryEliteKillsStat, Every),
+								 SiphonStat(UCataclysmShadowImages::CloneSecondsStat, Seconds)});
+		};
+		Lines(bEvery ? 0.0f : 1.0f, bEvery ? 5.0f : 0.0f);
+		const bool bPlain = UCataclysmShadowImages::NoteKillForShadowClone(Holder, Elite) != nullptr;
+		Lines(1.0f, 5.0f);
+		const ACataclysmShadowImage* Clone = UCataclysmShadowImages::NoteKillForShadowClone(Holder, Elite);
+		const TCHAR* Stat = bEvery ? UCataclysmShadowImages::CloneEveryEliteKillsStat
+								   : UCataclysmShadowImages::CloneSecondsStat;
+		Test.TestFalse(*FString::Printf(TEXT("%s: control, at nought an Elite's kill leaves no clone"), Stat), bPlain);
+		if (Test.TestNotNull(*FString::Printf(TEXT("%s: and with it one is left, so NoteKillForShadowClone reads it"),
+											  Stat), Clone))
+		{
+			Test.TestEqual(TEXT("for the 5 seconds its row says"), Clone->ExpiresAtSeconds - World->GetTimeSeconds(),
+						   5.0, 0.001);
+		}
+	}
+
+	/** `movement_targets_an_enemy_within_metres`, read by `UCataclysmShadowImages::ShadowStepTarget` (Shadow Step). */
+	void ProbeShadowStep(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		if (!Holder || !Creature)
+		{
+			return;
+		}
+		const FGameplayTagContainer MovementTags;
+		SiphonLines(Holder, {});
+		const AActor* Plain =
+			UCataclysmShadowImages::ShadowStepTarget(Holder, Creature->GetActorLocation(), MovementTags);
+		SiphonLines(Holder, {SiphonStat(UCataclysmShadowImages::ShadowStepMetresStat, 15.0f)});
+		const AActor* Held =
+			UCataclysmShadowImages::ShadowStepTarget(Holder, Creature->GetActorLocation(), MovementTags);
+		Test.TestNull(TEXT("movement_targets_an_enemy_within_metres: control, no enemy is a target without it"), Plain);
+		Test.TestTrue(TEXT("and with it the creature aimed at is, so ShadowStepTarget really reads it"), Held == Creature);
+	}
+
+	/**
+	 * `hits_strike_again`, read by `UCataclysmShadowImages::StrikeAgain` (Flurry of the Dead): flat 2 (`bScaled` false)
+	 * or 1 for every 10 Fervour held, the holder holding 50 (`bScaled` true), against nought.
+	 */
+	void ProbeHitsStrikeAgain(FAutomationTestBase& Test, bool bScaled)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = RavagerReworkCreatureNear(Test, World);
+		if (!Holder || !Creature)
+		{
+			return;
+		}
+		Holder->SetAttackDamage(10.0f);
+		Creature->SetHealth(100'000.0f);
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotBeEvaded = true;
+		Delivery.bCannotCriticallyStrike = true;
+		SiphonLines(Holder, {});
+		const int32 Plain = UCataclysmShadowImages::StrikeAgain(Holder, Creature, 100.0f, FGameplayTagContainer(), Delivery);
+		SiphonLines(Holder, {TPair<FName, FCataclysmStatModifier>(
+			FName(UCataclysmShadowImages::ExtraStrikesStat),
+			bScaled ? SiphonRow(1.0f, ECataclysmStatScale::PerPointOfClassResourceHeld, 10.0f) : SiphonRow(2.0f))});
+		const float Was = Creature->GetAbilitySystemComponent()->GetNumericAttribute(Vital::GetHealthAttribute());
+		const int32 Held = UCataclysmShadowImages::StrikeAgain(Holder, Creature, 100.0f, FGameplayTagContainer(), Delivery);
+		const float Lost = Was - Creature->GetAbilitySystemComponent()->GetNumericAttribute(Vital::GetHealthAttribute());
+		Test.TestEqual(TEXT("hits_strike_again: control, a hit strikes no more without it"), Plain, 0);
+		Test.TestEqual(bScaled ? TEXT("and 5 more holding 50 Fervour, so it is asked with the holder's state")
+							   : TEXT("and 2 more with 2, so StrikeAgain really reads it"),
+					   Held, bScaled ? 5 : 2);
+		Test.TestTrue(TEXT("and the extra strikes land"), Lost > 0.0f);
+	}
+
+	/**
+	 * `evasion_against_area_percent` under `while_moving`, read on the defender by `UCataclysmDamageCalculation::Resolve`
+	 * (Ever Moving): a defender of 100 evasion, an area hit rolled at 10, evaded only with the row while moving.
+	 */
+	void ProbeEvasionAgainstArea(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+		FCataclysmIncomingHit Area;
+		Area.Damage = 100.0f;
+		Area.bIsArea = true;
+		const auto Evaded = [&Area, System]()
+		{
+			return UCataclysmDamageCalculation::Resolve(Area, System, 1, /*EvasionRoll=*/10.0f, /*BlockRoll=*/100.0f)
+				.bEvaded;
+		};
+		FCataclysmStatModifier Row = SiphonRow(50.0f);
+		Row.Condition = ECataclysmStatCondition::WhileMoving;
+		System->NoteMovedMetres(1.0f);
+		SiphonLines(Holder, {});
+		const bool bPlain = Evaded();
+		SiphonLines(Holder, {TPair<FName, FCataclysmStatModifier>(
+			FName(UCataclysmDamageCalculation::EvasionAgainstAreaPercentStat), Row)});
+		const bool bMoving = Evaded();
+		System->NoteDidNotMove();
+		const bool bStanding = Evaded();
+		Test.TestFalse(TEXT("evasion_against_area_percent: control, area damage is not evaded without it"), bPlain);
+		Test.TestTrue(TEXT("and with it, moving, half of 100 evasion meets a roll of 10, so Resolve really reads it"),
+					  bMoving);
+		Test.TestFalse(TEXT("and standing still its while_moving refuses, so it is asked with the defender's state"),
+					   bStanding);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -6438,6 +6619,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("siphon_radius_metres"),       &ProbeScaledSiphonRadius},
 			{TEXT("siphon_life_percent"),        &ProbeScaledSiphonLife},
 			{TEXT("siphon_fervour_per_second"),  &ProbeScaledSiphonFervour},
+			// THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Flurry of the Dead's extra strikes by the Fervour held.
+			{TEXT("hits_strike_again"), [](FAutomationTestBase& Test) { ProbeHitsStrikeAgain(Test, true); }},
 		};
 		return Made;
 	}
@@ -13818,6 +14001,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("resistance_celestial"),  [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 5); }},
 			{TEXT("resistance_chaos"),      [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 6); }},
 			{TEXT("resistance_void"),       [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 7); }},
+			// THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Ever Moving's share of evasion, under `while_moving`.
+			{TEXT("evasion_against_area_percent"), &ProbeEvasionAgainstArea},
 		};
 		return Made;
 	}
@@ -15162,6 +15347,13 @@ namespace CataclysmStatExemptionTest
 			// THIN AIR, 2026-11-25 (the C5 plan).
 			{TEXT("cannot_be_targeted_while_moving"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, false); }},
 			{TEXT("cannot_be_targeted_broken_seconds"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, true); }},
+			// THE SHADOW'S LAST VOWS AND EVER MOVING, the Death line's finishing slice E (2026-11-26).
+			{TEXT("afterimage_repeats_your_next_attack"), &ProbeAfterimage},
+			{TEXT("shadow_clone_every_elite_kills"), [](FAutomationTestBase& Test) { ProbeShadowClone(Test, true); }},
+			{TEXT("shadow_clone_seconds"), [](FAutomationTestBase& Test) { ProbeShadowClone(Test, false); }},
+			{TEXT("movement_targets_an_enemy_within_metres"), &ProbeShadowStep},
+			{TEXT("hits_strike_again"), [](FAutomationTestBase& Test) { ProbeHitsStrikeAgain(Test, false); }},
+			{TEXT("evasion_against_area_percent"), &ProbeEvasionAgainstArea},
 		};
 		return Made;
 	}
@@ -15373,7 +15565,8 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// SAME DAY, for the Death classes' kill generator's three stats. THIRTY-SEVEN ON 2026-11-25: the Death trees' slices
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
-	if (!TestEqual(TEXT("the thirty-seven probes are all here"), ConditionedProbes().Num(), 37))
+	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
+	if (!TestEqual(TEXT("the thirty-eight probes are all here"), ConditionedProbes().Num(), 38))
 	{
 		return false;
 	}
