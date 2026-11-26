@@ -77,6 +77,11 @@ def ordinal_word(word: str) -> int:
         return 100 + ordinal_word(word[len("hundred-and-"):])
     if word in ORDINALS:
         return ORDINALS[word]
+    # THE TEENS, "tenth" to "nineteenth", since the bundle 3 merge (2026-11-25) made the count a hundred-and-fifteenth.
+    if word.endswith("th") and word[:-2] in UNITS[10:]:
+        return UNITS.index(word[:-2])
+    if word == "twelfth":
+        return 12
     if word.endswith("ieth"):
         return TENS[word[:-4] + "y"]
     tens, _, units = word.partition("-")

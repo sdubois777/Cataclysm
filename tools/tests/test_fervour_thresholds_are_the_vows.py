@@ -76,7 +76,9 @@ def test_the_figures_and_their_points_are_the_four_vows():
 def threshold_row(tmp_path, figure):
     header = ["Node", "Stat", "Value Kind", "Value Per Point", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Option", "Reach Metres", "Min Points", "Scale Max Steps",
-              *gen.PASSIVE_ACTION_COLUMNS, "Per Point From"]
+              *gen.PASSIVE_ACTION_COLUMNS, "Per Point From",
+              # AND MAX POINTS, required since the War line (the bundle 3 merge).
+              "Max Points"]
     cells = {"Node": "A_node", "Stat": "area_of_effect", "Value Kind": "more", "Value Per Point": 20,
              "Condition": "fervour_threshold_reached", "Condition Value": figure}
     row = [cells.get(name) for name in header]

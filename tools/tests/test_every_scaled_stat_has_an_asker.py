@@ -153,7 +153,8 @@ def test_every_probe_a_table_names_is_declared_above_the_table() -> None:
         encoding="utf-8").split("\n")
     first_seen: dict[str, int] = {}
     for number, line in enumerate(source, 1):
-        match = re.match(r"\s*(?:static\s+)?void (Probe\w+)\(FAutomationTestBase& \w*\)\s*;?\s*$", line)
+        # A DEFINITION ON ONE LINE COUNTS TOO, `void ProbeName(FAutomationTestBase& Test) { ... }`, the War line's shape.
+        match = re.match(r"\s*(?:static\s+)?void (Probe\w+)\(FAutomationTestBase& \w*\)\s*(?:;|\{.*\})?\s*$", line)
         if match:
             first_seen.setdefault(match.group(1), number)
     used = [(name, number) for number, line in enumerate(source, 1)

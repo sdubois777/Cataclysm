@@ -189,24 +189,43 @@ def test_every_node_named_is_a_node_of_its_tree_and_a_capstone_row_names_an_opti
 
 
 def test_the_port_columns_are_added_when_the_sheet_lacks_them(copy_of_the_workbook):
-    """The passive row port's fourteen columns, added after the sheet's last one by
-    the first run that writes an action row (the Death trees' slice C1,
-    2026-11-25). A sheet without them, and without the Death rows, comes back as
-    the committed one."""
+    """The passive row port's columns, added after the sheet's last one by the
+    first run that writes an action row (the Death trees' slice C1,
+    2026-11-25). A sheet without them, and without the Death rows, comes back
+    holding what the committed one holds.
+
+    COMPARED BY COLUMN NAME SINCE THE BUNDLE 3 MERGE (2026-11-25): the War line
+    put the same columns in the workbook in stages and in another order, so
+    they no longer sit at the sheet's end, and the script puts back any it does
+    not find after the last column. Each row is read as its cells keyed by
+    header; every cell is still compared."""
     take_the_death_rows_out(copy_of_the_workbook)
     book = openpyxl.load_workbook(copy_of_the_workbook)
     sheet = book[reapply.EFFECTS_SHEET]
+    # ONLY THE COLUMNS NO OTHER ROW USES ONCE THE DEATH ROWS ARE OUT: the War line's rows state the rest (Per Point
+    # From on Pain is Power, Action on its own action rows), and this script does not write theirs.
     header = [c.value for c in sheet[1]]
-    port = [column for column, _ in reapply.OPTIONAL_EFFECT_COLUMNS if column != "Scale Max Steps"]
-    assert header[-len(port):] == port, header
-    sheet.delete_cols(len(header) - len(port) + 1, len(port))
+    others = [dict(zip(header, row, strict=False)) for row in sheet.iter_rows(min_row=2, values_only=True)]
+    port = [column for column, _ in reapply.OPTIONAL_EFFECT_COLUMNS
+            if column in header and all(row.get(column) in (None, "", 0) for row in others)]
+    assert "Chance Percent" in port, port
+    for column in port:
+        header = [c.value for c in sheet[1]]
+        sheet.delete_cols(header.index(column) + 1, 1)
     book.save(copy_of_the_workbook)
-    assert "Action" not in sheet_rows(copy_of_the_workbook, reapply.EFFECTS_SHEET)[0]
+    assert "Chance Percent" not in sheet_rows(copy_of_the_workbook, reapply.EFFECTS_SHEET)[0]
 
     report = reapply.apply(copy_of_the_workbook)
     assert any("added the column(s)" in line for line in report), report
     for title in SHEETS:
-        assert sheet_rows(copy_of_the_workbook, title) == sheet_rows(WORKBOOK, title), title
+        assert rows_by_name(copy_of_the_workbook, title) == rows_by_name(WORKBOOK, title), title
+
+
+def rows_by_name(path: pathlib.Path, title: str) -> list[dict]:
+    """Each row as its cells keyed by header, the empty ones left out."""
+    rows = sheet_rows(path, title)
+    return [{name: value for name, value in zip(rows[0], row, strict=False) if value is not None}
+            for row in rows[1:]]
 
 
 def test_an_action_row_reads_back_as_it_was_written():

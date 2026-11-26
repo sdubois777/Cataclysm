@@ -66,7 +66,9 @@ def spend_row(tmp_path, event_value, event="fervour_spent"):
     judged by the enchantment rows' own checks (`_effect_row`), which hold the Event Value rule."""
     header = ["Node", "Stat", "Value Kind", "Value Per Point", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Option", "Reach Metres", "Min Points", "Scale Max Steps",
-              *gen.PASSIVE_ACTION_COLUMNS, "Per Point From"]
+              *gen.PASSIVE_ACTION_COLUMNS, "Per Point From",
+              # AND MAX POINTS, required since the War line (the bundle 3 merge).
+              "Max Points"]
     cells = {"Node": "A_node", "Value Per Point": 1, "Action": "health", "Action Event": event,
              "Fraction Of": "maximum", "Event Value": event_value}
     row = [cells.get(name) for name in header]

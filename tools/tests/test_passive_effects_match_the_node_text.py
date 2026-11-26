@@ -2245,9 +2245,11 @@ CONDITION_WORDS = {
                           "for a herald"),
                          {0.0: "each enemy you kill", 1.0: "for an elite",
                           2.0: "for a legendary", 3.0: "for a herald"}),
-    "target_rarity_at_least": (("elite or stronger", "elite and stronger", "for a boss"),
+    # AND DEATH SENTENCE'S "Bosses take double damage from you", its second condition, which this check reads since
+    # the War line's riders (the bundle 3 merge, 2026-11-25).
+    "target_rarity_at_least": (("elite or stronger", "elite and stronger", "for a boss", "bosses take"),
                                {1.0: ("elite or stronger", "elite and stronger"),
-                                4.0: "for a boss"}),
+                                4.0: ("for a boss", "bosses take")}),
     # And the Shadow's Siege of One, "While you have hit a Boss in the last 2
     # seconds", the first passive row on this predicate.
     "seconds_after_striking_a_boss": ("hit a boss in the last", "{value:g} second"),
@@ -2789,6 +2791,17 @@ OWN_STACK_EVENT_WORDS = {
     "gadget_destroyed": ("gadget is destroyed",),
     # Razor Instincts' "after placing a trap or gadget", one event for either.
     "device_placed": ("placing a trap or gadget",),
+    # AND THE DEATH LINE'S THREE, since the bundle 3 merge (2026-11-25): Kill Chain's kills, Burnt Offering's "after you
+    # spend 10 or more Fervour at once", and Avenging Dead's "When a hit takes more than 5% of your maximum health".
+    "kill": ("kills within",),
+    "fervour_spent": ("after you spend",),
+    "hit_taken": ("when a hit takes",),
+}
+
+#: A stack's seconds written in other words than "for N seconds", by node. Kill Chain (the Death trees' slice C1): "Kills
+#: within 2 seconds of each other form a chain" is the 2-second window each kill renews.
+STACK_SECONDS_IN_OTHER_WORDS = {
+    "SoulCollector_basic_b_a0": "within {seconds:g} seconds of each other",
 }
 
 
@@ -2811,7 +2824,8 @@ def test_an_own_stack_states_its_event_and_its_seconds(effects, nodes):
             f"{row['Name']} grants its own stack on {event!r} and its node does not say "
             f"{OWN_STACK_EVENT_WORDS[event]}: {words_of(row, nodes)}")
         seconds = float(row["StackSeconds"] or 0)
-        assert seconds > 0 and f"for {seconds:g} second" in words, (
+        said = STACK_SECONDS_IN_OTHER_WORDS.get(row["Node"], "for {seconds:g} second").format(seconds=seconds)
+        assert seconds > 0 and said in words, (
             f"{row['Name']}'s stack lasts {seconds:g} seconds and its node does not say "
             f"\"for {seconds:g} second(s)\": {words_of(row, nodes)}")
 
@@ -3987,6 +4001,18 @@ VALUE_IS_A_DIFFERENCE = {
 #: `apply_status`'s value is a chance in per cent (`APPLY_STATUS_ACTIONS` in the
 #: generator).
 ACTION_VALUE_FORMS = {
+    # THE WAR LINE'S ACTIONS, read by this check since the bundle 3 merge (2026-11-25): the War line's copy of this
+    # file skipped every action row, so each form below is the number as its node's sentence writes it.
+    "slow_for_seconds": ("{value:g}% slow",),
+    "enemy_armor_removed_nearby": ("by {value:g}% for",),
+    "smite_nearby_by_hit": ("{value:g}% of the hit's damage",),
+    "attacker_retaliation_taken": ("by {value:g}%",),
+    "retaliation_pulse": ("for {value:g}% of",),
+    "frenzy_chain": ("for {value:g}% damage",),
+    "taunt_enemies_near_trap": ("for {value:g} seconds",),
+    "copy_last_trap_at_kill": ("lasts {value:g} seconds",),
+    "crossfire": ("at {value:g}% of its damage",),
+    "titanfall": ("for {value:g} seconds",),
     "apply_status": ("{value:g}% chance",),
     # THE FERRYMAN, the Death trees' slice C4c1 (2026-11-25): "bursts for 10% of
     # its maximum health".
@@ -4000,7 +4026,10 @@ ACTION_VALUE_FORMS = {
     # (Turn of the Wheel). Each is the figure for ONE Fervour, or one ten.
     # AND MARROW FEAST'S "you recover 1% of your maximum health" (the Death trees'
     # slice C6d2, 2026-11-25).
-    "health": ("{value:g}% of maximum health", "recover {value:g}% of your maximum health"),
+    "health": ("{value:g}% of maximum health", "recover {value:g}% of your maximum health",
+               # AND THE WAR LINE'S SHIELD OATH, since the bundle 3 merge: "restores 2% of your Maximum HP" and
+               # "Regenerate 1% of your current HP per second".
+               "{value:g}% of your Maximum HP", "{value:g}% of your current HP"),
     "mana": ("{value:g}% of your maximum mana",),
     "energy_shield": ("{value:g}% of your Maximum Energy Shield",),
     "smite_nearby": ("{value:g}% of your weapon damage",),
@@ -4043,6 +4072,13 @@ SIZED_BY_THE_AMOUNT_ROWS = 5
 #: An action row's number stated in words, by node and action, as
 #: `VALUE_IN_WORDS` holds a stat's.
 ACTION_VALUE_IN_WORDS = {
+    # THE WAR LINE'S ACTIONS WHOSE NUMBER IS WORDS, since the bundle 3 merge (2026-11-25): Frenzy's reset of the
+    # movement skill (100, the whole cooldown), the Saboteur's trap placed again and Counterfire's answer (100, always),
+    # and Scrap Mines' "at double damage" (200).
+    ("Berserker_capstone_25", "cooldown_reset_movement"): ("immediately resets the cooldown", 100.0),
+    ("Saboteur_capstone_50", "place_last_trap_again"): ("is placed again", 100.0),
+    ("Saboteur_capstone_100", "counterfire"): ("is answered by one of your traps", 100.0),
+    ("Saboteur_capstone_50", "scrap_mine"): ("at double damage", 200.0),
     # THOUSAND CUTS, the Death trees' slice C6e (2026-11-25): "moves you straight
     # to the strongest enemy within 10 metres ... and strikes it", a hit of 100%
     # of weapon damage, as ruled (Q6).

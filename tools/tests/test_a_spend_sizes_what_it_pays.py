@@ -53,7 +53,9 @@ def action_row(tmp_path, action, fraction_of, event="fervour_spent"):
     checks (`_effect_row`), which hold the Fraction Of rules."""
     header = ["Node", "Stat", "Value Kind", "Value Per Point", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Option", "Reach Metres", "Min Points", "Scale Max Steps",
-              *gen.PASSIVE_ACTION_COLUMNS, "Per Point From"]
+              *gen.PASSIVE_ACTION_COLUMNS, "Per Point From",
+              # AND MAX POINTS, required since the War line (the bundle 3 merge).
+              "Max Points"]
     cells = {"Node": "A_node", "Value Per Point": 1, "Action": action, "Action Event": event,
              "Fraction Of": fraction_of}
     row = [cells.get(name) for name in header]
@@ -111,8 +113,10 @@ def test_a_reserve_held_raises_the_spend_and_every_maker_holds_through_it():
     templates = code_only((SOURCE / "AbilitySystem" / "CataclysmSkillTemplates.cpp").read_text(encoding="utf-8"))
     assert re.search(r"->ReservedFervour\s*=[^=]", templates) is None, (
         "a skill template writes a reserve itself, so Bound Offering never hears of that hold")
-    assert templates.count("UCataclysmCommand::HoldReserve(") == 3, (
-        "the two summons and Subjugate hold their reserve through HoldReserve")
+    # FOUR SINCE THE BUNDLE 3 MERGE (2026-11-25): the War line's machines (`UCataclysmDeployableSkill::DeployOne`) hold
+    # theirs through it too.
+    assert templates.count("UCataclysmCommand::HoldReserve(") == 4, (
+        "the two summons, Subjugate and the War machines hold their reserve through HoldReserve")
 
     # THE CONTROL: a level lowering a reserve already held still writes it directly, and is not a hold.
     levels = code_only((SOURCE / "Character" / "CataclysmSkillLevels.cpp").read_text(encoding="utf-8"))
