@@ -871,6 +871,8 @@ bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 		Rig.System->SetStatInputs(MoveTemp(Lines));
 		Rig.Set(UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 100.0f);
 		Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+		// AND A MULTIPLIER: the damage calculation rolls no critical strike for a multiplier of nought, the test player's.
+		Rig.Set(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
 		Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
 		Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
 
@@ -951,6 +953,8 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 	Rig.System->SetStatInputs(ShippedLines(TEXT("Shadow_capstone_200"), 3));
 	Rig.Set(UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 100.0f);
 	Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+	// AND A MULTIPLIER: the damage calculation rolls no critical strike for a multiplier of nought, the test player's.
+	Rig.Set(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
 	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
 	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
 

@@ -582,6 +582,10 @@ bool FCataclysmArmyOldBonesTest::RunTest(const FString&)
 	FArmyCommander Commander(World, FVector::ZeroVector);
 	UCataclysmSummonSkill* Guards = BarrowGuardSkill(Commander);
 	UCataclysmSummonSkill* Graves = ShallowGravesSkill(Commander);
+	// THE CLOCK STARTED AT 1,000 SECONDS, so the command times set back below stay above nought: a fresh test world's
+	// clock is at nought, and `FillAskingMinionState` reads no age from a command time below it. Window dfb-w1 read every
+	// guard at 1.000 for that reason.
+	World->TimeSeconds = 1000.0f;
 	ACataclysmMinion* Fresh = Guards ? Guards->SummonOne() : nullptr;
 	ACataclysmMinion* Older = Guards ? Guards->SummonOne() : nullptr;
 	ACataclysmMinion* Oldest = Guards ? Guards->SummonOne() : nullptr;
