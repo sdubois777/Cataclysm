@@ -520,12 +520,22 @@ def test_the_aura_is_over_the_telegraph_cap_and_is_the_one_exemption():
         "rather than the C++.")
 
 
+def enemy_abilities_body() -> str:
+    """The Succubus source from `EnemyAbilities`'s definition on, so the first `return {...};` found is that
+    function's. Since bundle 4 `InnateEffectNames`, defined above it, returns a brace list of its own (the Death and
+    War enemy modifiers' closure of `War_Commander`), and a search of the whole file read that one instead."""
+    body = source(SUCCUBUS_SOURCE)
+    start = body.find("ACataclysmSuccubusCharacter::EnemyAbilities() const")
+    assert start != -1, "CataclysmSuccubusCharacter.cpp no longer defines EnemyAbilities."
+    return body[start:]
+
+
 def test_the_aura_is_not_an_entry_in_the_ability_array():
     """Every entry in EnemyAbilities is chosen by range, gated by the attack
     interval and USED at a moment. This is none of those. Putting it in the
     array would make the creature stop shooting in order to hold up an aura it
     is already holding up."""
-    body = source(SUCCUBUS_SOURCE)
+    body = enemy_abilities_body()
 
     match = re.search(r"return\s*\{([^}]*)\};", body)
     assert match is not None, (
@@ -646,7 +656,7 @@ def test_the_curse_is_listed_before_the_bolt():
     Soulfire has a cooldown of zero and the same range, so a Soulfire at the
     front would be the only thing the creature ever did. Issue #491 is that
     defect on the Abyssal Warden."""
-    body = source(SUCCUBUS_SOURCE)
+    body = enemy_abilities_body()
 
     match = re.search(r"return\s*\{([^}]*)\};", body)
     assert match is not None, (
