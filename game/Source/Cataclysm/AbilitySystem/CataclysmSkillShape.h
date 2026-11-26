@@ -1343,6 +1343,15 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bUntargetable = false;
 
+	/**
+	 * True when a walked charge passes through enemy bodies for its walk: `PassesThroughEnemies=1`, the Staff's
+	 * Wraithwalk, "straight through anything in the way". The same passing Hollow Step's `movement_passes_through_enemies`
+	 * gives a walked charge (`UCataclysmMovementSkill::BeginAdvance`), stated by the row instead of worn. The Death skills
+	 * merge, 2026-11-26. The generator refuses it on anything but a walked charge.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bPassesThroughEnemies = false;
+
 	/** True when the player fights unarmed until the weapon is retrieved. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bDisarmsUntilRecalled = false;

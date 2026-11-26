@@ -469,8 +469,8 @@ def test_added_melee_reach_is_a_self_buffs_alone():
 GRAVETOUCH = ("Radius=2; Angle=60; MaxTargets=1; Ailment=Bleed; OnDeath=Burst; BurstPercentOfMaximumHealth=10; "
               "OnDeathRange=4")
 SOUL_LANCE = "Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=1; HitFervourPerCast=4"
-WRAITHWALK = ("Mode=Charge; Range=12; Duration=1; Radius=1.5; Untargetable=1; Effect=Cripple; EffectMagnitude=30; "
-              "EffectDuration=3")
+WRAITHWALK = ("Mode=Charge; Range=12; Duration=1; Radius=1.5; Untargetable=1; PassesThroughEnemies=1; Effect=Cripple; "
+              "EffectMagnitude=30; EffectDuration=3")
 
 
 def test_a_wound_that_bursts_as_its_bearer_dies_is_accepted_on_a_strike():
@@ -645,3 +645,30 @@ def test_the_crows_quarter_second_is_the_generators_trigger_cooldown():
     header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem" / "CataclysmSkillTemplates.h")
     (written,) = re.findall(r"CrowCooldownSeconds\s*=\s*([0-9.]+)f;", header.read_text(encoding="utf-8"))
     assert float(written) == gen.DEFAULT_TRIGGER_COOLDOWN
+
+
+# --------------------------------------------------------------------------
+# The Death skills merge: Wraithwalk's PassesThroughEnemies=1, Hollow Step's passing stated by a walked charge's row
+
+
+def test_a_walked_charge_passing_through_enemies_is_accepted():
+    """Wraithwalk's cell, word for word."""
+    assert parse(WRAITHWALK, "Movement")["PassesThroughEnemies"] == "1"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Movement", "Mode=Charge; Range=12; Radius=2; PassesThroughEnemies=1"),
+    ("Movement", "Mode=Leap; Range=10; Radius=3; PassesThroughEnemies=1"),
+    ("Movement", "Mode=Flicker; Range=10; Duration=4; Interval=0.33; PassesThroughEnemies=1"),
+    ("Strike", "Radius=2; Angle=60; PassesThroughEnemies=1"),
+])
+def test_passing_through_enemies_is_refused_off_a_walked_charge(shape, text):
+    assert "only a walked charge" in refused(text, shape)
+
+
+def test_the_wraithwalk_row_states_it_in_the_generated_table():
+    """The row as generated, so a workbook re-run that loses the key fails here and not only in the engine."""
+    rows = (REPO_ROOT / "game" / "Data" / "WeaponSkills.csv").read_bytes().decode("utf-8-sig")
+    line = next(row for row in rows.splitlines() if row.startswith("Death_Staff_Movement,"))
+    assert "PassesThroughEnemies=1" in line
+

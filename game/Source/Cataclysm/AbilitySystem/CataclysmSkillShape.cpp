@@ -712,6 +712,10 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bUntargetable = Number != 0.0f;
 		}
+		else if (Key.Equals(TEXT("PassesThroughEnemies"), ESearchCase::IgnoreCase))
+		{
+			Params.bPassesThroughEnemies = Number != 0.0f;
+		}
 		else if (Key.Equals(TEXT("DisarmsUntilRecalled"), ESearchCase::IgnoreCase))
 		{
 			Params.bDisarmsUntilRecalled = Number != 0.0f;

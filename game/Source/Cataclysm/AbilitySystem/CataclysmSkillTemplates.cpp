@@ -4463,8 +4463,9 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	ArrivedAt = Start;
 
 	// HOLLOW STEP: a walked Charge passes through enemies until the ability ends, however it ends (`EndAbility`). It
-	// already hits each enemy on its line once, so it gains no line hit.
-	if (PassesThroughEnemies())
+	// already hits each enemy on its line once, so it gains no line hit. AND A ROW STATING `PassesThroughEnemies=1`
+	// passes the same way: the Staff's Wraithwalk, "straight through anything in the way" (the Death skills merge).
+	if (Params.bPassesThroughEnemies || PassesThroughEnemies())
 	{
 		PassingThroughFrom = Start;
 		PassThroughEnemies(true);

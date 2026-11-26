@@ -2221,6 +2221,89 @@ bool FCataclysmDeathSkillsDetonatingSwingTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsDetonationFeedsMarrowFeastTest,
+	"Cataclysm.DeathSkills.AMinionDetonatedIsToldToItsCasterAsAMinionDeathSoMarrowFeastHeals",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Marrow Feast's "or is detonated" (the Death skills merge, `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` telling
+ * its caster `NoteMinionDied`): each caster holds Marrow Feast's row by hand, a `health` action of 1% of maximum on
+ * `minion_death` with its 0.1 s trigger cooldown, at half of 10,000 health, with one minion 2 m ahead. THE CASE: a 4 m,
+ * 90 degree swing stating `Detonates=1` explodes it, the caster heals 100 and its minion-death clock reads nought. THE
+ * CONTROL, 100 m along +Y: the same swing without the key explodes nothing, heals nothing, and the clock has never run.
+ */
+bool FCataclysmDeathSkillsDetonationFeedsMarrowFeastTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FCataclysmPoolAction Heal;
+	Heal.Event = FName(TEXT("minion_death"));
+	Heal.Pool = FName(TEXT("health"));
+	Heal.Percent = 1.0f;
+	Heal.Base = ECataclysmPoolActionBase::Maximum;
+	Heal.TriggerCooldownSeconds = 0.1f;
+	Heal.TriggerKey = FName(TEXT("Passive_marrow_feast:minion_death"));
+
+	struct FSwung
+	{
+		int32 Detonated = -1;
+		float Healed = -1.0f;
+		float SinceAMinionDied = -2.0f;
+	};
+	TArray<ACataclysmMinion*> Made;
+	ON_SCOPE_EXIT { DeathSkillClear(Made); };
+	const auto SwingWith = [&](const TCHAR* Shape, float AcrossMetres) -> FSwung
+	{
+		FSwung Out;
+		FDeathSkillFighter Caster(World, FVector(0.0f, AcrossMetres * DeathSkillMetre, 0.0f));
+		DeathSkillSideWithThePlayers(Caster, PlayersSide);
+		Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
+		Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 5000.0f);
+		Caster.AbilitySystem->SetPoolActions({Heal});
+		ACataclysmMinion* Ahead =
+			DeathSkillMinionOf(Caster.Actor, FVector(2.0f * DeathSkillMetre, AcrossMetres * DeathSkillMetre, 0.0f));
+		Made.Add(Ahead);
+		UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+			Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Heavy, Shape, TEXT("A swing"));
+		if (!Ahead || !Swing)
+		{
+			return Out;
+		}
+		const float Before = Caster.Health();
+		Swing->SwingOnce();
+		Out.Detonated = Swing->MinionsDetonated;
+		Out.Healed = Caster.Health() - Before;
+		Out.SinceAMinionDied = Caster.AbilitySystem->SecondsSinceMinionDied();
+		return Out;
+	};
+
+	const FSwung Plain = SwingWith(TEXT("Radius=4; Angle=90"), 100.0f);
+	if (!TestEqual(TEXT("control: a swing without the key explodes nothing"), Plain.Detonated, 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and heals nothing"), Plain.Healed, 0.0f, DeathSkillAllowance);
+	TestTrue(TEXT("control: and no minion of its caster has died"), Plain.SinceAMinionDied < 0.0f);
+
+	const FSwung Detonating = SwingWith(TEXT("Radius=4; Angle=90; Detonates=1"), 0.0f);
+	if (!TestEqual(TEXT("set-up: the detonating swing explodes the minion"), Detonating.Detonated, 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("A MINION DETONATED HEALS MARROW FEAST'S 1% OF 10,000"), Detonating.Healed, 100.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("and its caster's minion-death clock starts"), Detonating.SinceAMinionDied, 0.0f, DeathSkillAllowance);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsCommandingSwingTest,
 	"Cataclysm.DeathSkills.ASwingThatCommandsOrdersEveryCreatureItsCasterCommandsAndOneThatDoesNotOrdersNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -5850,6 +5933,76 @@ bool FCataclysmDeathSkillsWraithwalkTest::RunTest(const FString&)
 			  DeathSkillAllowance);
 	TestEqual(TEXT("for its 3 seconds"), DeathSkillSecondsLeft(Passed.Actor, Cripple), 3.0f, DeathSkillAllowance);
 	TestFalse(TEXT("control: the creature 3 m off the line is not"), OffTheLine.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsWraithwalkPassesThroughTest,
+	"Cataclysm.DeathSkills.WraithwalkDriftsStraightThroughEnemiesForItsWalkAndNoLonger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Staff's Wraithwalk, "straight through anything in the way" (the Death skills merge, `PassesThroughEnemies=1`, read
+ * by `UCataclysmMovementSkill::BeginAdvance` as Hollow Step's `movement_passes_through_enemies` is): a character on the
+ * players' side that goes up with the row passes through hostile bodies while it drifts, and no longer once the drift is
+ * cancelled. THE CONTROL, 100 m along +Y: the same row with the key taken off does not pass through while it walks.
+ */
+bool FCataclysmDeathSkillsWraithwalkPassesThroughTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Staff"), ECataclysmAbilitySlot::Movement);
+	if (!TestEqual(TEXT("set-up: the Death Staff's Movement row is Wraithwalk. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Wraithwalk")))
+		|| !TestTrue(TEXT("its row states PassesThroughEnemies=1"), Row.Params.bPassesThroughEnemies))
+	{
+		return false;
+	}
+	FCataclysmWeaponSkill Plain = Row;
+	Plain.Params.bPassesThroughEnemies = false;
+
+	const auto GoUp = [World](const FCataclysmWeaponSkill& Walked, float AcrossMetres, bool& bOutWhileWalking,
+									bool& bOutAfterCancel) -> bool
+	{
+		FDeathSkillCreature Walker(World, FVector(0.0f, AcrossMetres * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+		Walker.Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+		Walker.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+		FDeathSkillCreature InTheWay(World, FVector(3.0f * DeathSkillMetre, AcrossMetres * DeathSkillMetre, 0.0f),
+									 ECataclysmTeam::Monsters);
+		UCataclysmMovementSkill* Drift =
+			GrantDeathRow<UCataclysmMovementSkill>(Walker.AbilitySystem, Walker.Actor, Walked);
+		if (!Drift || !ActivateDeathSkill(Walker.AbilitySystem, Drift))
+		{
+			return false;
+		}
+		bOutWhileWalking = Walker.Actor->MovesThroughHostiles();
+		Walker.AbilitySystem->CancelAbilityHandle(Drift->GetCurrentAbilitySpecHandle());
+		bOutAfterCancel = Walker.Actor->MovesThroughHostiles();
+		return true;
+	};
+
+	bool bPlainWhileWalking = true;
+	bool bPlainAfter = true;
+	if (!TestTrue(TEXT("set-up: the control walks"), GoUp(Plain, 100.0f, bPlainWhileWalking, bPlainAfter)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: without the key the walk does not pass through enemies"), bPlainWhileWalking);
+
+	bool bWhileWalking = false;
+	bool bAfter = true;
+	if (!TestTrue(TEXT("set-up: Wraithwalk drifts"), GoUp(Row, 0.0f, bWhileWalking, bAfter)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("WHILE IT DRIFTS IT PASSES THROUGH ENEMIES"), bWhileWalking);
+	TestFalse(TEXT("and once the drift is cancelled it no longer does"), bAfter);
 	return true;
 }
 

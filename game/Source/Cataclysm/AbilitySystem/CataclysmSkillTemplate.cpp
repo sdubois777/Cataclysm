@@ -1969,12 +1969,23 @@ int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const A
 		}
 	}
 
+	// AND THE CASTER IS TOLD EACH ONE WENT, AS IT IS TOLD OF A MINION KILLED (`NoteMinionDied`): Marrow Feast, "When one
+	// of your minions dies or is detonated" (the Death skills merge, 2026-11-26). A JUDGEMENT: a detonation is one way a
+	// minion dies, as the Necromancer's "dies without being detonated" nodes read it, so the clocks Death Ward and Bone
+	// Knit ask start too. Told before the blast, while the body still stands, as a killed minion is. NOT the Fervour or
+	// the shield a minion killed grants (`UCataclysmFervour::GainOnMinionDeath`): those pay for a loss, and a minion
+	// spent on purpose is not one.
+	UCataclysmAbilitySystemComponent* Told = Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
 	int32 Exploded = 0;
 	for (const TWeakObjectPtr<ACataclysmMinion>& One : Caught)
 	{
 		ACataclysmMinion* Minion = One.Get();
 		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion))
 		{
+			if (Told)
+			{
+				Told->NoteMinionDied(Minion, Minion->TypeTags);
+			}
 			Minion->Explode();
 			++Exploded;
 		}

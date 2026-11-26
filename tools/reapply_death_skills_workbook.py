@@ -134,6 +134,11 @@ SUPERSEDED: dict[tuple[str, str], dict[str, object]] = {
         'Ride as Death rides. You charge 16 meters in 1.5 seconds and nothing turns you aside: everything in your path '
         'is run through for 300% weapon damage and Crippled, moving and attacking 50% slower for 4 seconds. Every enemy '
         'it kills gives you 5 Fervour.')},
+    # WRAITHWALK'S SHAPE PARAMS, as slice DS5 wrote them before the Death skills merge gave the walk
+    # `PassesThroughEnemies=1` (2026-11-26): "straight through anything in the way", through Hollow Step's passing.
+    ("Staff", "Movement"): {PARAMS: (
+        'Mode=Charge; Range=12; Duration=1; Radius=1.5; Untargetable=1; Effect=Cripple; EffectMagnitude=30; '
+        'EffectDuration=3')},
 }
 
 
@@ -385,7 +390,7 @@ ROWS: tuple[DeathRow, ...] = (
          'attacking 30% slower for 3 seconds.'),
         ('Item.Weapon.Staff, Element.Death, Type.Spell, Keyword.Charge, Type.Debuff, Stat.Defense.Evasion'),
         'Movement',
-        ('Mode=Charge; Range=12; Duration=1; Radius=1.5; Untargetable=1; Effect=Cripple; '
+        ('Mode=Charge; Range=12; Duration=1; Radius=1.5; Untargetable=1; PassesThroughEnemies=1; Effect=Cripple; '
          'EffectMagnitude=30; EffectDuration=3'),
         needs=('N18', 'N22')),
     DeathRow(

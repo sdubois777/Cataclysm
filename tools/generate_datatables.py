@@ -408,6 +408,9 @@ SHAPE_RIDERS = {
                        "REFUND_TARGETS. What triggers it is the row's Trigger "
                        "tag",
     "Untargetable": "1 if the caster cannot be hit while the skill runs",
+    "PassesThroughEnemies": "1 if a walked charge passes through enemy bodies "
+                            "for its walk, as Hollow Step's "
+                            "movement_passes_through_enemies makes it",
 
     # --- Added 2026-11-17 for the Corrupted Stalker's kits, issue #2580 -----
     #
@@ -1011,7 +1014,10 @@ def check_a_bursting_wound_a_paid_hit_and_an_escape(params: dict[str, str], shap
     none, and a cap a cast without the payment caps nothing. `Untargetable=1`
     is read by a move that lasts -- a flicker and a walked charge (a `Charge`
     stating a `Duration`) -- and by nothing else, so on any other move or shape
-    it would make its caster untouchable for no time at all.
+    it would make its caster untouchable for no time at all. `PassesThroughEnemies=1`
+    (the Death skills merge: Wraithwalk's "straight through anything in the
+    way") is read by a walked charge alone, which already strikes what it
+    walks into, so the key adds the passing and no blow.
     """
     if params.get("OnDeath") == "Burst":
         if not (params.get("Ailment") or "").strip():
@@ -1063,6 +1069,16 @@ def check_a_bursting_wound_a_paid_hit_and_an_escape(params: dict[str, str], shap
                 f"which only a flicker and a walked charge (a Charge stating a "
                 f"Duration) read, for as long as they run. Anything else would "
                 f"make its caster untouchable for no time at all")
+    if is_on(params, "PassesThroughEnemies"):
+        walked = shape == "Movement" and params.get("Mode") == "Charge" and float(
+            params.get("Duration", "0")) > 0.0
+        if not walked:
+            raise DataError(
+                f"{where}: a {shape} states PassesThroughEnemies="
+                f"{params['PassesThroughEnemies']}, which only a walked charge "
+                f"(a Charge stating a Duration) reads. Another move would pass "
+                f"through enemies and also strike the line, which is Hollow "
+                f"Step's and not what this key says")
 
 
 def check_a_bursting_rift_and_a_buff_on_every_blow(params: dict[str, str],
