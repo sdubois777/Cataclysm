@@ -105,6 +105,8 @@ Final Curse. That settles the shape; the per-modifier readings below are this ga
   KindredFiresLeavesAKillsHoldToTheKillsOwnStamp` now also reads a kill's payment with no stamp after it, which fails
   under C4b1-1 whatever B-2 does.
 
+---
+
 ## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
 
 **Affects:**
