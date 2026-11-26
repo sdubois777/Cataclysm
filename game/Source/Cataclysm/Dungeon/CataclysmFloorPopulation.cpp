@@ -16,9 +16,15 @@ const TCHAR* CataclysmDungeonCreatureName(ECataclysmDungeonCreature Creature)
 	case ECataclysmDungeonCreature::AbyssalWarden:		return TEXT("AbyssalWarden");
 	case ECataclysmDungeonCreature::CorruptedSentinel:	return TEXT("CorruptedSentinel");
 	case ECataclysmDungeonCreature::Succubus:			return TEXT("Succubus");
+	case ECataclysmDungeonCreature::Lich:				return TEXT("Lich");
 	case ECataclysmDungeonCreature::Gatekeeper:			return TEXT("Gatekeeper");
 	default:											return TEXT("Unknown");
 	}
+}
+
+ECataclysmDungeonCreature FCataclysmFloorPopulator::EscortFor(ECataclysmType Cataclysm)
+{
+	return Cataclysm == ECataclysmType::Death ? ECataclysmDungeonCreature::Lich : ECataclysmDungeonCreature::Succubus;
 }
 
 int32 FCataclysmFloorPopulation::HowMany(ECataclysmDungeonCreature Creature) const
@@ -499,7 +505,8 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 		{
 			FCataclysmEnemyPlacement Escort;
 			Escort.Cell = Plan.CellAt(Nearby[Spare].Value);
-			Escort.Creature = ECataclysmDungeonCreature::Succubus;
+			// THE SENDING CATACLYSM'S ESCORT: the Lich for Death, the Succubus otherwise. 2026-11-26.
+			Escort.Creature = EscortFor(Brief.Cataclysm);
 			Escort.Pack = Pack;
 
 			Out.Enemies.Add(Escort);

@@ -36,6 +36,12 @@ enum class ECataclysmDungeonCreature : uint8
 	CorruptedSentinel,
 	Succubus,
 
+	/**
+	 * Death's caster, which raises what the player just killed. Death's escort in place of the Succubus
+	 * (`FCataclysmFloorPopulator::EscortFor`); a creature of no other Cataclysm. The owner, 2026-11-26.
+	 */
+	Lich,
+
 	/** The boss. Placed at a floor's exit, never by the density. */
 	Gatekeeper,
 
@@ -287,6 +293,15 @@ public:
 	 * a decision the player makes several times a floor rather than once.
 	 */
 	static constexpr int32 SuccubusEscortsOnePackIn = 4;
+
+	/**
+	 * The creature that escorts one group in `SuccubusEscortsOnePackIn` on a floor of this Cataclysm's dungeon: the
+	 * Lich for Death, which raises what the player kills beside the group it escorts, and the Succubus for every other
+	 * Cataclysm. The owner's ruling of 2026-11-26: "the Lich replaces the Succubus as the escort that joins one group in
+	 * four". The escort is placed inside the same cells either way (`CataclysmPopulationSuccubusAuraCells`, 8 m), which
+	 * a raiser needs as much as a buffer: the deaths it raises are the group's.
+	 */
+	static ECataclysmDungeonCreature EscortFor(ECataclysmType Cataclysm);
 
 	// ----------------------------------------------------------------------
 	// What

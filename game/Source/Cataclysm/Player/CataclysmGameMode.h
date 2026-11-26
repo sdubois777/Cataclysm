@@ -1073,6 +1073,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float SuccubusAttackDamage = 12.308f;
 
+	/**
+	 * How much health each Lich has, Death's caster (2026-11-26). The design model's own figure on `BruteHealth`'s
+	 * reasoning: `stats_on_floor("Common", tier=1, "Cataclysm", kind="Lich")` is 399.2, rounded to a whole number.
+	 * Its class adds an energy shield of 30% of that in front of it.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "1"))
+	float LichHealth = 399.0f;
+
+	/** How much armour each Lich has: the same stat block's 24.95, rounded. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float LichArmour = 25.0f;
+
+	/** What one Grave Bolt is worth: the training dummy's 20 times its damage share of 0.60, a bolt every second. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
+	float LichAttackDamage = 12.0f;
+
 	/** How many Gatekeepers to place. Zero for none. **One**, because it is a
 	 *  boss and two of them is not a thing the design has. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
@@ -1254,6 +1270,11 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 SuccubusRarityStep = -1;
+
+	/** Which rung each Lich spawns at, or -1 to draw one. */
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
+			  meta = (ClampMin = "-1", ClampMax = "5"))
+	int32 LichRarityStep = -1;
 
 	/** Which rung the Gatekeeper spawns at, or -1 to draw one.
 	 *

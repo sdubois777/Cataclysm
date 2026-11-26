@@ -455,6 +455,24 @@ ARCHETYPES: dict[str, Archetype] = {
             # Little of its own. What keeps it alive is the shield.
             resistance=10.0,
         ),
+        # DEATH'S CASTER, THE LICH, since 2026-11-26: the owner approved the
+        # design ("I'm happy with those enemy designs") and it escorts one group
+        # in four in Death dungeons in place of the Succubus. A slow skeletal
+        # caster that holds at 8 metres and raises what the player just killed.
+        # Figures from the approved design: health 1.6 (Sentinel 1.3, Brute
+        # 2.2), damage 0.60 at 1.0 s (the Succubus's 0.6154), armour 0.5, a
+        # shield of 30% of health from PoE 2's Desiccated Lich, resistance 25.
+        # Evasion 0, a judgement: the design states none and a slow skeleton in
+        # robes has no reason to dodge.
+        Archetype(
+            name="Lich",
+            role="Slow caster that raises the fallen. A bolt every second",
+            cataclysm="Death",
+            health_share=1.60, damage_share=0.60, armor_share=0.50,
+            attack_interval=1.0, crit_chance=10.0, crit_multiplier=200.0,
+            move_speed=3.0, evasion=0.0, energy_shield_fraction=0.30,
+            resistance=25.0,
+        ),
         Archetype(
             name="Hellhound",
             role="Aggressive charger that leaves fire trails",

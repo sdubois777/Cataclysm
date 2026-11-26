@@ -79,6 +79,7 @@
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
+#include "Character/CataclysmLichCharacter.h"
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
@@ -1902,6 +1903,8 @@ TSubclassOf<ACataclysmEnemyCharacter> ACataclysmDungeonGameMode::ClassFor(
 		return ACataclysmCorruptedSentinelCharacter::StaticClass();
 	case ECataclysmDungeonCreature::Succubus:
 		return ACataclysmSuccubusCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Lich:
+		return ACataclysmLichCharacter::StaticClass();
 	case ECataclysmDungeonCreature::Gatekeeper:
 		return ACataclysmGatekeeperCharacter::StaticClass();
 	default:
@@ -2003,6 +2006,10 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 
 	case ECataclysmDungeonCreature::Succubus:
 		Build(SuccubusRarityStep, SuccubusHealth, SuccubusAttackDamage, &SuccubusArmour);
+		break;
+
+	case ECataclysmDungeonCreature::Lich:
+		Build(LichRarityStep, LichHealth, LichAttackDamage, &LichArmour);
 		break;
 
 	// THE BOSS. Its fixed figures are `ACataclysmGameMode::GatekeeperHealth` and the two beside it, which the
@@ -4175,6 +4182,98 @@ void ACataclysmDungeonGameMode::NoteDeathForEchoesOfThePast(const FCataclysmDeat
 	Dead.Rung = Fallen->RarityStep;
 	Dead.Attack = Fallen->LastAttackUsed;
 	EchoesThisFloor.Add(Dead);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForRaiseTheFallen(const FCataclysmDeathNotice& Notice,
+															bool bAnotherRuleRaisedIt)
+{
+	// A DEATH IS RAISED AT MOST ONCE, whichever rule raises it: the owner's terms of 2026-11-26.
+	if (bAnotherRuleRaisedIt)
+	{
+		return;
+	}
+	// NOTHING WORTH NOTHING (a creature already risen, an echo, a spectral copy), nothing that cannot be hurt, NO LICH,
+	// so a Lich cannot raise another and nothing loops, and NO GATEKEEPER, so the Cataclysm Boss and every boss floor's
+	// keeper are refused by their class whatever rung they stand on.
+	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!IsValid(Fallen) || !Fallen->PaysForItsDeath() || Fallen->bCannotBeHurt
+		|| Fallen->IsA<ACataclysmLichCharacter>() || Fallen->IsA<ACataclysmGatekeeperCharacter>()
+		|| Fallen == CataclysmBoss.Get())
+	{
+		return;
+	}
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind == ECataclysmDungeonCreature::Count || Kind == ECataclysmDungeonCreature::Lich
+		|| Kind == ECataclysmDungeonCreature::Gatekeeper)
+	{
+		return;
+	}
+	const UWorld* World = GetWorld();
+	FFallenToRaise Dead;
+	Dead.Kind = Kind;
+	Dead.Where = Notice.Location;
+	Dead.DiedAtSeconds = World ? World->GetTimeSeconds() : 0.0f;
+	FallenThisFloor.Add(Dead);
+}
+
+int32 ACataclysmDungeonGameMode::FallenToRaiseNear(const FVector& At, float RadiusCm) const
+{
+	int32 Near = 0;
+	for (const FFallenToRaise& Dead : FallenThisFloor)
+	{
+		if (!Dead.bRaised && FVector::DistSquared2D(Dead.Where, At) <= FMath::Square(RadiusCm))
+		{
+			++Near;
+		}
+	}
+	return Near;
+}
+
+int32 ACataclysmDungeonGameMode::RaiseTheFallenNear(ACataclysmEnemyCharacter* Raiser, const FVector& At,
+													 float RadiusCm, int32 Most)
+{
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || Most <= 0)
+	{
+		return 0;
+	}
+	int32 Raised = 0;
+	// THE MOST RECENT FIRST, a judgement (J2): the record is in the order the deaths came, so it is read from its end.
+	// No time limit: a death stays raisable until the floor ends.
+	for (int32 Which = FallenThisFloor.Num() - 1; Which >= 0 && Raised < Most; --Which)
+	{
+		FFallenToRaise& Dead = FallenThisFloor[Which];
+		if (Dead.bRaised || FVector::DistSquared2D(Dead.Where, At) > FMath::Square(RadiusCm))
+		{
+			continue;
+		}
+		// SPENT BEFORE THE SPAWN, so a death whose spawn fails is not tried again on every later cast.
+		Dead.bRaised = true;
+		FCataclysmEnemyPlacement Placement;
+		Placement.Cell = CurrentFloor->CellOfWorld(Dead.Where);
+		Placement.Creature = Dead.Kind;
+		// A COMMON OF ITS OWN KIND, WHERE IT FELL: the owner's ruling 3 of 2026-11-26, Haunting's terms.
+		ACataclysmEnemyCharacter* Risen =
+			SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0);
+		if (!Risen)
+		{
+			continue;
+		}
+		// WORTH NOTHING: the creature it was paid when it died.
+		Risen->bRisenFromTheDead = true;
+		if (UAbilitySystemComponent* System = Risen->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+					* ACataclysmLichCharacter::RaisedHealthShare);
+		}
+		FloorEnemies.Add(Risen);
+		++Raised;
+		UE_LOG(LogCataclysm, Log, TEXT("Raise the Fallen: %s raised a %s at %.0f%% health"),
+			   Raiser ? *Raiser->GetName() : TEXT("nobody"), CataclysmDungeonCreatureName(Dead.Kind),
+			   ACataclysmLichCharacter::RaisedHealthShare * 100.0f);
+	}
+	return Raised;
 }
 
 void ACataclysmDungeonGameMode::DismissTheEchoes()
@@ -17934,6 +18033,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// AND NO DEATH OF THIS DUNGEON ECHOES INTO THE NEXT. Issues #1820 and #41.
 	EchoesThisFloor.Reset();
 	EchoesFromLastFloor.Reset();
+	FallenThisFloor.Reset();
 	ForgetThePlagueHarbingers();
 	ForgetTheChoruses();
 	ForgetTheBlooms();
@@ -20700,11 +20800,15 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForMarchOfProgress(Notice);
 	// AND DEATH'S TWO ENEMY MODIFIERS THAT PUT A CREATURE BACK, 2026-11-24, before Dead Rising and Divine Resurgence for
 	// the reason that line gives: what they raise is already standing and marked when those rules look.
+	const int32 StandingBeforeTheRaisers = FloorEnemies.Num();
 	NoteDeathForUndyingWill(Notice);
 	NoteDeathForHaunting(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
 	NoteDeathForDeadRising(Notice);
+	// AND THE LICH'S RECORD, after the three rules that raise a death at once: a death one of them got back up has had
+	// its second life, and a Lich does not give it a third. Each of the three adds what it raised to `FloorEnemies`.
+	NoteDeathForRaiseTheFallen(Notice, FloorEnemies.Num() > StandingBeforeTheRaisers);
 	NoteDeathForBloodGates(Notice);
 	NoteDeathForRuleOfChaos(Notice);
 	NoteDeathForNothingIsForgotten(Notice);
@@ -26823,6 +26927,8 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// pawn this did not reach (issue #2858). Issues #1820 and #41.
 	EchoesFromLastFloor = MoveTemp(EchoesThisFloor);
 	EchoesThisFloor.Reset();
+	// THE LICH RAISES ONLY THIS FLOOR'S DEAD: a death on the floor before lies where nobody can stand now.
+	FallenThisFloor.Reset();
 
 	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THIS FLOOR, FROM THE MARK AS THE FLOOR IS ENTERED: a Horde wave too (J6, as
 	// the Stalker treats a wave). Here and not in `ApplyFloorRulesToPlayer`, which leaving a dungeon runs. Issue #2688.
