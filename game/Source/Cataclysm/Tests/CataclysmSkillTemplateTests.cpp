@@ -24131,7 +24131,7 @@ bool FCataclysmTemporaryAbsorbOrderTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbEveryKindTest,
-	"Cataclysm.TemporaryAbsorb.ItAbsorbsADamageOverTimeTickAndABleedTickBeforeTheEnergyShieldIsAsked",
+	"Cataclysm.TemporaryAbsorb.ItAbsorbsEveryTickButABleedAStandingShieldHoldsOffWhichUsesNothingUp",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -24140,13 +24140,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemporaryAbsorbEveryKindTest,
  * health take none. Then one tick through the whole pipeline, so the write is seen.
  *
  * AND A BLEED TICK, UNDER THE OWNER'S RULE OF 2026-11-26: "Bleed deals no damage while the target has energy
- * shield." On the control's shield of 40 a bleed tick deals nothing to the shield or to health, so the bleed's own
- * control is a third character with no shield, whose health takes the whole tick. The temporary absorb is step 6b of
- * `UCataclysmDamageCalculation::Resolve`, before step 8 asks whether a shield stands, so the holder's absorb, beside
- * a shield of 40, still takes the whole bleed tick the bare character's health took, and its shield and health none.
+ * shield." On the control's shield of 40 a bleed tick deals nothing to the shield or to health. The coordinating
+ * session ruled the same day that such a bleed "must not use anything up either": it is set to nought at step 6a2 of
+ * `UCataclysmDamageCalculation::Resolve`, before the temporary absorb. So:
+ *   - a bleed tick on the holder, beside a shield of 40, leaves the absorb whole, and its shield and health too;
+ *   - a tick that is not a bleed (a poison's, a burn's) still spends the absorb, as before;
+ *   - with no shield, a bleed tick spends the absorb: a second holder with no shield has its absorb take the whole
+ *     bleed tick that a bare character's health takes.
  *
  * STANDING: the holder at the origin, the enemy 3 m along X, the control 20 m along Y, the bare character 40 m along
- * Y. The first half calls `Resolve` by hand and changes nobody's pools.
+ * Y, the holder with no shield 60 m along Y. The first half calls `Resolve` by hand and changes nobody's pools.
  */
 bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
 {
@@ -24160,14 +24163,18 @@ bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
 	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
 	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
 	FScopedFighter Bare(World, FVector(0, 40 * M, 0));
+	FScopedFighter BareHolder(World, FVector(0, 60 * M, 0));
 	Defences(Holder, 0.0f, 0.0f);
 	Defences(Enemy, 0.0f, 0.0f);
 	Defences(Plain, 0.0f, 0.0f);
 	Defences(Bare, 0.0f, 0.0f);
+	Defences(BareHolder, 0.0f, 0.0f);
 	SetShield(Holder, 40.0f);
 	SetShield(Plain, 40.0f);
 	SetShield(Bare, 0.0f);
+	SetShield(BareHolder, 0.0f);
 	HoldAbsorb(Holder, 500.0f);
+	HoldAbsorb(BareHolder, 500.0f);
 
 	FCataclysmIncomingHit Tick;
 	Tick.Damage = 100.0f;
@@ -24195,17 +24202,25 @@ bool FCataclysmTemporaryAbsorbEveryKindTest::RunTest(const FString&)
 			  TickOnPlain.AbsorbedByTemporary, 0.0f, 0.001f);
 
 	const FCataclysmDamageResult TickOnHolder = ResolvedOn(Tick, Holder);
-	TestEqual(TEXT("the absorb takes what the control's shield and health took of a tick, together"),
+	TestEqual(TEXT("a tick that is not a bleed still spends the absorb: it takes what the control's shield and health "
+				   "took of it, together"),
 			  TickOnHolder.AbsorbedByTemporary, TickOnPlain.AbsorbedByShield + TickOnPlain.DealtToHealth, 0.001f);
 	TestEqual(TEXT("so the holder's shield takes none of it"), TickOnHolder.AbsorbedByShield, 0.0f, 0.001f);
 	TestEqual(TEXT("and its health takes none"), TickOnHolder.DealtToHealth, 0.0f, 0.001f);
 
-	// THE ABSORB IS ASKED BEFORE THE SHIELD, so a bleed tick on a holder whose shield stands is still taken by it.
+	// A BLEED TICK ON A HOLDER WHOSE SHIELD STANDS USES NOTHING UP: the coordinating session's ruling of 2026-11-26.
 	const FCataclysmDamageResult BleedOnHolder = ResolvedOn(BleedTick, Holder);
-	TestEqual(TEXT("the absorb takes the whole bleed tick the bare character's health took"),
-			  BleedOnHolder.AbsorbedByTemporary, BleedOnBare.DealtToHealth, 0.001f);
-	TestEqual(TEXT("so the holder's shield takes none of the bleed"), BleedOnHolder.AbsorbedByShield, 0.0f, 0.001f);
-	TestEqual(TEXT("so the holder's health takes none of the bleed"), BleedOnHolder.DealtToHealth, 0.0f, 0.001f);
+	TestEqual(TEXT("a bleed tick against a standing shield leaves the temporary absorb whole"),
+			  BleedOnHolder.AbsorbedByTemporary, 0.0f, 0.001f);
+	TestEqual(TEXT("and takes nothing from the holder's shield"), BleedOnHolder.AbsorbedByShield, 0.0f, 0.001f);
+	TestEqual(TEXT("or from its health"), BleedOnHolder.DealtToHealth, 0.0f, 0.001f);
+
+	// THE CONTROL: WITH NO SHIELD, A BLEED TICK SPENDS THE ABSORB, as every other tick does.
+	const FCataclysmDamageResult BleedOnBareHolder = ResolvedOn(BleedTick, BareHolder);
+	TestEqual(TEXT("control: with no shield the absorb takes the whole bleed tick the bare character's health took"),
+			  BleedOnBareHolder.AbsorbedByTemporary, BleedOnBare.DealtToHealth, 0.001f);
+	TestEqual(TEXT("control: so that holder's health takes none of the bleed"), BleedOnBareHolder.DealtToHealth, 0.0f,
+			  0.001f);
 
 	// AND A TICK THROUGH THE WHOLE PIPELINE, so the amount held is seen to fall.
 	FCataclysmHitDelivery AsATick;
@@ -31778,7 +31793,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsASmallFirstHitTest,
  * ailment that is not the skill's own. The same player, the same row, the same blow: a creature the blow takes under
  * a tenth of carries all five afterwards, as does a second creature in the same world the blow takes more than a
  * tenth of, so the size of the blow against the creature's maximum no longer decides it. THE CONTROL IS A THIRD
- * CREATURE struck by a blow that deals nothing, which carries none.
+ * CREATURE for which `first_hit_dealt` is raised by hand with an amount of nought, and which carries none.
+ *
+ * WHY BY HAND. A blow that deals nothing announces no hit at all (`UCataclysmVitalAttributeSet` raises the hit's
+ * events only inside `LocalDamage > 0`), so a control struck at nought percent would carry none whatever the rule
+ * said. Raised by hand, the event is heard, which a counting row on the same event proves, and only the rule can
+ * refuse the five.
  *
  * STANDING: the player at the origin; the large creature 2 m along +X with a maximum health of 100,000; the small
  * one 2 m along +Y with 500; the untouched one 2 m along -Y with 500; the creature the blow is measured on 30 m
@@ -31819,7 +31839,15 @@ bool FCataclysmStatusActionsASmallFirstHitTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	Player.AbilitySystem->SetPoolActions({StatusAllDotsRow(100.0f, /*CooldownSeconds=*/0.0f)});
+	// AND A ROW THAT ONLY COUNTS `first_hit_dealt`, so the control below can prove the event was heard.
+	const FName FirstHitsHeard(TEXT("Test:count:first_hit_dealt"));
+	FCataclysmPoolAction CountFirstHits;
+	CountFirstHits.Event = FName(TEXT("first_hit_dealt"));
+	CountFirstHits.StackKey = FirstHitsHeard;
+	CountFirstHits.StackSeconds = 60.0f;
+	CountFirstHits.StackCap = 10;
+	CountFirstHits.TriggerKey = FirstHitsHeard;
+	Player.AbilitySystem->SetPoolActions({StatusAllDotsRow(100.0f, /*CooldownSeconds=*/0.0f), CountFirstHits});
 
 	const float LargeBefore = StatusHealthOf(Large);
 	UCataclysmSkillEffects::ApplyHit(Player.Character, Large, /*DamagePercent=*/100.0f);
@@ -31830,10 +31858,11 @@ bool FCataclysmStatusActionsASmallFirstHitTest::RunTest(const FString&)
 	}
 	UCataclysmSkillEffects::ApplyHit(Player.Character, Small, /*DamagePercent=*/100.0f);
 
-	const float UntouchedBefore = StatusHealthOf(Untouched);
-	UCataclysmSkillEffects::ApplyHit(Player.Character, Untouched, /*DamagePercent=*/0.0f);
-	if (!TestEqual(TEXT("set-up: the blow at nought percent took nothing from the third creature"),
-				   StatusHealthOf(Untouched), UntouchedBefore, 0.01f))
+	const int32 HeardBefore = Player.AbilitySystem->OwnStacksHeld(FirstHitsHeard);
+	Player.AbilitySystem->ActOnEvent(FName(TEXT("first_hit_dealt")), /*EventTags=*/nullptr, /*EventAmount=*/0.0f,
+									 /*bLanded=*/true, Untouched);
+	if (!TestEqual(TEXT("set-up: first_hit_dealt carrying nought was heard for the third creature"),
+				   Player.AbilitySystem->OwnStacksHeld(FirstHitsHeard), HeardBefore + 1))
 	{
 		return false;
 	}

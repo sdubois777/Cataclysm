@@ -126,7 +126,37 @@ Ruled by the coordinating session on 2026-11-26 within the owner's delegation, e
 **Not changed, and said so:** `sim/cataclysm_sim/damage.py` keeps a field named `shield_absorbs_damage_over_time`. It
 belongs to the simulation's own older energy shield model, in which no tick reaches the shield unless the field is set,
 and that model was already behind the game before this change (the game has let every tick but bleed in since
-2026-09-18). Bringing the simulation's shield up to the game is a change of its own.
+2026-09-18). Bringing the simulation's shield up to the game is a change of its own: issue
+[#2944](https://github.com/sdubois777/Cataclysm/issues/2944), opened on the coordinating session's instruction.
+
+### The temporary absorb comes after a bleed is held off
+
+Ruled by the coordinating session on 2026-11-26: "zero the bleed BEFORE the temporary absorb. Under the owner's rule a
+bleed against a standing shield does nothing, so it must not use anything up either." Built as step 6a2 of `Resolve`,
+before the temporary absorb (6b) and the mana of step 7, so a held-off bleed uses up neither. It covers only the plain
+bleed against a shield above nought: with the drawback (`bleed_drains_energy_shield`), and for converted damage, the
+order stays the absorb, then the shield, then health. The test is renamed
+`Cataclysm.TemporaryAbsorb.ItAbsorbsEveryTickButABleedAStandingShieldHoldsOffWhichUsesNothingUp` and checks that a
+bleed tick against a shield leaves the absorb whole, that a tick that is not a bleed still spends it, and that with no
+shield a bleed tick spends it.
+
+### What the controls cover, and what they do not
+
+- **A blow that deals nothing announces no hit at all.** `UCataclysmVitalAttributeSet` raises a hit's events, and rolls
+  its ailments, only inside `LocalDamage > 0`. So a control that strikes for nought cannot tell that outer check from
+  the rule built here. Two controls were moved to raise their event by hand with an amount of nought, each with a row
+  that counts the event to prove it was heard:
+  `Cataclysm.StatusActions.AFirstHitThatTakesUnderATenthLeavesAllFiveAndOneThatDealsNothingLeavesNone`
+  (`first_hit_dealt`) and `Cataclysm.Triggers.RetaliationRaisesItsEventWithTheAttackerAndWhatReachedItsHealth`
+  (`retaliation_dealt`, which `UCataclysmRetaliation::Pay` does not raise for a blow worth nothing).
+- **Attrition's control** (`Cataclysm.Passives.AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll`)
+  asserts as set-up that its blow at an attack damage of nought dealt nought. It shows the end result (a blow that dealt
+  nothing does not Cripple or Weaken) and cannot say which of the two checks refused it, for the reason above.
+- **Not covered: a blow that deals nought in three trap tests.** The set-up of
+  `...TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOff...EvenWhenTheCastTookUnderATenth`,
+  `...TheBleedRowBleedsEveryEnemyATrapsCastStrikes...EvenWhenTheBlowTookUnderATenth` and
+  `...TheDamageOverTimeRowLaysItsShare...EvenWhenTheBlowTookUnderATenth` cannot make a trap's cast deal nothing. Their
+  other controls (no row; a second enemy that did not set the trap off) stand. Accepted by the coordinating session.
 
 ---
 

@@ -392,7 +392,15 @@ CATACLYSM_TEST(FCataclysmRetaliationDealtTest,
 		const FFighter Attacker(World);
 		// A SECOND ATTACKER FOR THE LARGE BLOW, so it is asked of one carrying nothing.
 		const FFighter LargeAttacker(World);
-		Defender.AbilitySystem->SetPoolActions({RandomDotOn(TEXT("retaliation_dealt"))});
+		// AND A ROW THAT ONLY COUNTS `retaliation_dealt`, so the control below can prove the event was heard.
+		const FName RetaliationsHeard(TEXT("Test:count:retaliation_dealt"));
+		FCataclysmPoolAction CountRetaliations;
+		CountRetaliations.Event = FName(TEXT("retaliation_dealt"));
+		CountRetaliations.StackKey = RetaliationsHeard;
+		CountRetaliations.StackSeconds = 60.0f;
+		CountRetaliations.StackCap = 10;
+		CountRetaliations.TriggerKey = RetaliationsHeard;
+		Defender.AbilitySystem->SetPoolActions({RandomDotOn(TEXT("retaliation_dealt")), CountRetaliations});
 		// RETALIATION OF A HUNDRED PER CENT, so a blow worth 50 pays 50 back,
 		// under a tenth of the attacker's thousand, and one worth 500 pays 500.
 		// Since the owner's ruling of 2026-11-26 ("I agree, fix it") anything that
@@ -405,10 +413,13 @@ CATACLYSM_TEST(FCataclysmRetaliationDealtTest,
 		// NO EARLY RETURN, which would skip the world's destruction below: each use of the pool asks this instead.
 		const bool bPool = TestEqual(TEXT("set-up: five damage over time ailments to choose among"), Pool.Num(), 5);
 
-		// THE CONTROL: A BLOW WORTH NOTHING PAYS NOTHING BACK AND APPLIES NOTHING.
-		const float Nothing = UCataclysmRetaliation::Pay(
-			Defender.AbilitySystem, Defender.Actor, Attacker.Actor, 0.0f);
-		TestEqual(TEXT("control: a blow worth nothing paid nothing back"), Nothing, 0.0f, 0.01f);
+		// THE CONTROL: `retaliation_dealt` CARRYING NOUGHT APPLIES NOTHING. RAISED BY HAND, because `Pay` with a blow
+		// worth nothing returns before it raises the event, so a control through `Pay` would apply nothing whatever the
+		// rule said. The counting row proves the event was heard, so only the rule can refuse the damage over time.
+		Defender.AbilitySystem->ActOnEvent(FName(TEXT("retaliation_dealt")), /*EventTags=*/nullptr,
+										   /*EventAmount=*/0.0f, /*bLanded=*/true, Attacker.Actor);
+		TestEqual(TEXT("control set-up: retaliation_dealt carrying nought was heard"),
+			Defender.AbilitySystem->OwnStacksHeld(RetaliationsHeard), 1);
 		TestEqual(TEXT("control: and applied nothing"), Attacker.DamageOverTimeCarried(), 0);
 
 		const float Small = UCataclysmRetaliation::Pay(

@@ -1352,11 +1352,30 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		}
 	}
 
+	// 6a2. A BLEED AGAINST A STANDING ENERGY SHIELD DEALS NOTHING, AND USES NOTHING UP. The project owner,
+	// 2026-11-26: "Bleed deals no damage while the target has energy shield." Decided here, before the temporary
+	// absorb and the mana of step 7 and not at step 8, by the coordinating session's ruling of the same day: such a
+	// bleed "must not use anything up either", so neither the absorb nor the mana pays for a tick that does nothing.
+	// Step 8 says which bleeds the shield does take.
+	//
+	// ONLY THE PLAIN BLEED: not one on a defender carrying `bleed_drains_energy_shield` (the drawback, whose bleed
+	// meets the absorb, the shield and health in that order as any tick does), not the Masochist's converted damage
+	// (damage already taken and deferred), and not a tick that ignores the shield.
+	if (Hit.bIsBleed && !Hit.bIsConvertedDamage && !Hit.bIgnoresEnergyShield
+		&& Vitals->GetEnergyShield() > 0.0f
+		&& DefenderStat(Defender, BleedDrainsEnergyShieldStat,
+						Combat ? Combat->GetBleedDrainsEnergyShield() : 0.0f)
+			<= 0.0f)
+	{
+		Damage = 0.0f;
+	}
+
 	// 6b. THE TEMPORARY ABSORB, BEFORE EVERY POOL. The project owner, 2026-10-07:
 	// it is separate from the energy shield. Ruled the same day under the owner's
 	// delegation: it is taken before the energy shield, and it absorbs every kind
 	// of damage, a bleed and every other tick included. So nothing here asks what
-	// kind of blow this is.
+	// kind of blow this is. A bleed that a standing shield holds off arrives here
+	// as nought (step 6a2), so it takes nothing from the absorb.
 	//
 	// ONE POINT FOR ONE POINT OF WHAT IS LEFT AFTER EVERY MULTIPLIER ABOVE. The
 	// magic sub-type's bonus below is against the energy shield and the slashing
@@ -1383,8 +1402,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// `damage_over_time_taken_from_mana_first`: "DoTs deal damage to your mana
 	// pool first". Ruled 2026-10-06. One point of mana for one point of damage,
 	// as far as the mana held goes. What is left carries on to the shield and to
-	// health exactly as the whole tick would have, so a bleed's remainder still
-	// passes the shield.
+	// health exactly as the whole tick would have. A bleed that a standing shield
+	// holds off arrives as nought (step 6a2) and takes no mana.
 	//
 	// AFTER EVERY MULTIPLIER ABOVE, so the mana pays for the damage the character
 	// would really have taken and not for what was sent.
@@ -1407,7 +1426,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// with three exceptions the project owner ruled on 2026-11-26.
 	//
 	// A BLEED DEALS NOTHING AT ALL WHILE THE SHIELD HOLDS, neither to the shield
-	// nor to health, and deals to health again once the shield is gone: "Bleed
+	// nor to health (set to nought at step 6a2, before the temporary absorb, so it
+	// uses nothing up), and deals to health again once the shield is gone: "Bleed
 	// deals no damage while the target has energy shield. Can bleed a magical
 	// barrier after all, so you'd need to hit actual health." Until then a bleed
 	// passed straight to health (2026-09-18, issue #2014), and before that no
@@ -1450,12 +1470,6 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 						Combat ? Combat->GetShieldAbsorbsWhatBypassesIt() : 0.0f)
 			> 0.0f;
 	const bool bBypassesShield = Hit.bIgnoresEnergyShield && !bShieldTakesWhatBypassesIt;
-
-	if (Hit.bIsBleed && !Hit.bIsConvertedDamage && !bShieldApplies && !bBypassesShield
-		&& Vitals->GetEnergyShield() > 0.0f)
-	{
-		Damage = 0.0f;
-	}
 
 	// THE WHOLE OF A BLOW THE SHIELD APPLIES TO, and none of one that bypasses it
 	// or of a bleed it does not take.
