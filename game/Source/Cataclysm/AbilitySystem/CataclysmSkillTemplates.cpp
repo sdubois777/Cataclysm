@@ -57,6 +57,9 @@
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the Saboteur's Fervour on placing a War machine, and the gadget-placed event. Slice C of
+// plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -4306,6 +4309,55 @@ void UCataclysmMovementSkill::FinishFlicker()
 // Deployable -- Bolt Turret, Ballista, Iron Fortress
 // ==========================================================================
 
+float UCataclysmDeployableSkill::FervourReserveOfOne() const
+{
+	const AActor* Self = Avatar();
+	return Self ? FervourReserveFor(Self, Params, SkillTags, this) : 0.0f;
+}
+
+bool UCataclysmDeployableSkill::MovesInsteadOfPlacing(const FGameplayAbilitySpecHandle Handle,
+													   const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	const AActor* Self = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (!Self || !PlacesAGadget())
+	{
+		return false;
+	}
+	// A GADGET TO MOVE: with none standing, a use that cannot place is refused as any other (a judgement: there is
+	// nothing for the move to do, and a free use that does nothing would only start the cooldown).
+	const bool bAGadgetStands = ACataclysmMinion::DevicesOf(Self).ContainsByPredicate(
+		[](const ACataclysmMinion* Each) { return Each->IsGadget(); });
+	if (!bAGadgetStands)
+	{
+		return false;
+	}
+	int32 Machines = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		Machines += FMath::Max(0, Kind.Count);
+	}
+	if (!UCataclysmCommand::HasRoomToReserve(Self, FervourReserveFor(Self, Params, SkillTags, this)
+										   * static_cast<float>(Machines)))
+	{
+		return true;
+	}
+	// THE COST ASKED AS THE PRESS ASKS IT, by the parent's own check, never this class's override.
+	return !UCataclysmSkillTemplate::CheckCost(Handle, ActorInfo, nullptr);
+}
+
+bool UCataclysmDeployableSkill::CheckCost(const FGameplayAbilitySpecHandle Handle,
+										  const FGameplayAbilityActorInfo* ActorInfo,
+										  FGameplayTagContainer* OptionalRelevantTags) const
+{
+	return MovesInsteadOfPlacing(Handle, ActorInfo) || Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags);
+}
+
+bool UCataclysmDeployableSkill::PlacesAGadget() const
+{
+	return Params.Minions.ContainsByPredicate(
+		[](const FCataclysmMinionSpawn& Kind) { return Kind.Count > 0 && ACataclysmMinion::TypeIsAGadget(Kind.Type); });
+}
+
 int32 UCataclysmDeployableSkill::LivingDeployedCount()
 {
 	// DESTROYED OR DEAD, as `LivingMinionCount` below has counted since issue
@@ -4327,15 +4379,17 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		return nullptr;
 	}
 
-	// THE CAP STOPS PLACING RATHER THAN REPLACING: none of the three War
-	// deployable skills says anything of the kind, so reaching the cap here
-	// simply means nothing more goes down. THE ROW'S OWN FIGURE AND NO BONUS:
-	// these War rows reserve nothing yet (issue #1934, the no-War rule), so they
-	// keep the cap issue #2787 took from everything that reserves, and the cap
-	// bonus that once raised it became "Your deployables reserve 15%-30% reduced".
-	const int32 DeployCap = Params.MaxActive;
-	if (DeployCap > 0 && LivingDeployedCount() >= DeployCap)
+	// NO COUNT CAP: THE POOL IS THE LIMIT. Issue #1934, ruled 2026-11-25 under the owner's ruling of 2026-11-20 on
+	// issue #2787 ("that's limiting on its own"): a War machine reserves its row's Fervour, so it loses the count cap
+	// it kept while it reserved nothing. A machine that does not fit is refused, nothing is made and nothing is
+	// destroyed, as Summon Imp's is. `ActivateAbility` asks for a whole set before placing any of it.
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
 	{
+		bRefusedForRoom = true;
+		UE_LOG(LogCataclysm, Log,
+			TEXT("DEPLOY REFUSED: '%s' has no room in its pool for another machine reserving %.0f Fervour: %s."),
+			*SkillName, Reserve, *UCataclysmSkillTemplate::ReservedFervourByKindText(Self));
 		return nullptr;
 	}
 
@@ -4352,12 +4406,48 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	{
 		Deployed.Add(Machine);
 
-		// A WAR GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: these
-		// are War skills and the owner's mandate is no War work yet, so #1934
-		// stays open for them. (The skill gadget an enchantment places reserves
-		// since issue #2787; it is `ACataclysmMinion::PlaceSkillGadget`, not this.) Their rows already state `FervourReserve`, so building
-		// it is this one line, with a fit check before the spawn like Summon
-		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
+		// "RESERVES 5 FERVOUR WHILE IT STANDS." Issue #1934, the owner's approval of 2026-11-25. Through `HoldReserve`,
+		// as every maker's, so the reserve reaches `ReservedFervourOf`, what is spendable is cut to it at once, and
+		// everything that reads the reserve sees a machine as it sees an imp.
+		UCataclysmCommand::HoldReserve(Self, Machine, Reserve);
+
+		// AND THE SABOTEUR'S FERVOUR FOR PLACING IT, "Placing a trap or a gadget generates Fervour". Slice C, 2026-11-24.
+		// A MACHINE THAT IS A TRAP earns the trap-placed rate and raises no event: `trap_placed` is the skill traps'
+		// event (`ACataclysmMinion::PlaceSkillTrap`), and a War trap never raised it, so raising it here would reach
+		// rows written for skill traps. EVERY OTHER MACHINE IS A GADGET (`ACataclysmMinion::IsGadget`): it raises the new
+		// `gadget_placed`, with its tags and itself, as `PlaceSkillGadget` does, and earns the gadget-placed rate.
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)))
+		{
+			const FGameplayTagContainer MachineTags = Machine->TypeTags;
+			if (Machine->IsTrap())
+			{
+				FCataclysmWarFervour::GainOnTrapPlaced(Theirs, MachineTags);
+				// AND ARMED AS IT IS PLACED, for `trap_armed`: a War trap has no arming step (Baited, V4a, ruled
+				// 2026-11-25).
+				Machine->AnnounceTrapArmed();
+			}
+			else
+			{
+				Theirs->ActOnEvent(FName(TEXT("gadget_placed")), &MachineTags,
+								   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
+				FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, MachineTags);
+			}
+
+			// AND `device_placed` FOR EITHER, a War trap included, a judgement: Razor Instincts says "after placing a trap
+			// or gadget", and `device_placed` is new, so no row written for skill traps alone can reach a War trap
+			// through it, which is the reason a War trap raises no `trap_placed`. The Saboteur's device conditions,
+			// 2026-11-25.
+			Theirs->ActOnEvent(FName(TEXT("device_placed")), &MachineTags,
+							   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
+		}
+		// AND BOLTED ONTO THE NEAREST GADGET WITHIN REACH, AFTER IT IS PLACED AND TOLD (Bolted Together, V5c, BT2). The
+		// one it bolted onto is answered; this one is gone, and leaves this skill's list.
+		if (ACataclysmMinion* Into = ACataclysmMinion::BoltOnPlacing(Machine))
+		{
+			Deployed.Remove(Machine);
+			Machine = Into;
+		}
 	}
 	return Machine;
 }
@@ -4368,6 +4458,28 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
+	// THE GADGET RULE, G3 AS REVISED after window war2-w1: a use that cannot place its set -- the reserve does not fit, or
+	// the cost cannot be paid -- moves every gadget to the aimed point instead, at the caster's height and with no range
+	// limit (G1). IT PAYS NO COST AND STARTS THE COOLDOWN. Asked before anything is committed, because a cost that cannot
+	// be paid is one of the two reasons. Iron Fortress's traps, and every trap, stay where they are.
+	bRefusedForRoom = false;
+	GadgetsMovedForWantOfRoom = 0;
+	if (MovesInsteadOfPlacing(Handle, ActorInfo))
+	{
+		bRefusedForRoom = true;
+		CommitAbilityCooldown(Handle, ActorInfo, ActivationInfo, /*ForceCooldown=*/false);
+		if (AActor* Mover = Avatar())
+		{
+			const FVector Aim = AimPoint();
+			GadgetsMovedForWantOfRoom = ACataclysmMinion::MoveEveryGadgetOf(
+				Mover, FVector(Aim.X, Aim.Y, Mover->GetActorLocation().Z));
+			UE_LOG(LogCataclysm, Log, TEXT("DEPLOY MOVED: '%s' could not place its set and moved %d gadgets, paying no "
+										   "cost."), *SkillName, GadgetsMovedForWantOfRoom);
+		}
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
 	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
 	{
 		return;
@@ -4377,6 +4489,31 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	if (!Self)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// THE WHOLE SET HAS TO FIT, OR NONE OF IT GOES DOWN. Issue #1934, ruled 2026-11-25 (Q1): Iron Fortress places five
+	// machines in one cast, "so the set reserves 25", and a fortress placed in part is a press that half-works. Asked
+	// before anything is placed; the press is spent, as a refused Summon Imp's is.
+	int32 Machines = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		Machines += FMath::Max(0, Kind.Count);
+	}
+	const float Each = FervourReserveFor(Self, Params, SkillTags, this);
+	// A SET OF TRAPS ALONE THAT CANNOT FIT, or a gadget set with no gadget standing to move, is refused as before: a
+	// gadget set with a gadget to move never reaches here (`MovesInsteadOfPlacing` above).
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Each * static_cast<float>(Machines)))
+	{
+		bRefusedForRoom = true;
+		const UCataclysmAbilitySystemComponent* Pool =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+		UE_LOG(LogCataclysm, Log,
+			TEXT("DEPLOY REFUSED: '%s' places %d machines reserving %.0f Fervour each, %.0f in all, and the pool has no "
+				 "room: %s, against a maximum of %.0f. Nothing was placed."),
+			*SkillName, Machines, Each, Each * static_cast<float>(Machines),
+			*UCataclysmSkillTemplate::ReservedFervourByKindText(Self), Pool ? Pool->MaximumClassResource() : 0.0f);
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
 
@@ -4409,10 +4546,9 @@ void UCataclysmDeployableSkill::ActivateAbility(
 
 	if (Placed == 0)
 	{
-		// Names nothing, or the cap was already full. Verbose rather than a
-		// warning: a player pressing a deployable key with its cap full is an
-		// ordinary event, and a row that names nothing is refused by the
-		// generator before it reaches here.
+		// Names nothing. Verbose rather than a warning: a row that names nothing
+		// is refused by the generator before it reaches here, and a press the
+		// pool has no room for returned above, saying so.
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' deployed nothing."), *SkillName);
 	}

@@ -42,9 +42,11 @@ struct FCataclysmDeathNotice;
  *               an ability cost
  *   Ritualist   1 a second for each minion held, and 5 when one of them dies
  *
- * The Masochist's is issue #954 and the Ritualist's is #1518. The four that are
- * missing are different rules rather than different numbers, and each needs its
- * own code in its own place.
+ * The Masochist's is issue #954 and the Ritualist's is #1518. THE THREE WAR
+ * GENERATORS ARE NOT IN THIS FILE: they are `FCataclysmWarFervour`
+ * (`CataclysmWarFervour.h`), slice C of `plan_death_and_war.md` (2026-11-24),
+ * kept apart so the Death trees' per-kill Fervour, written here at the same
+ * time, did not collide with them. The Bulwark's kill gain is not built there.
  *
  * THE RAVAGER'S IS BUILT IN CODE, ONE OF ITS ROWS STILL WAITING ON THE DESIGN
  * WORKBOOK, AND THIS PARAGRAPH SAID THE OPPOSITE UNTIL ISSUE #1515. It read "the largest of the four left" and "nothing in the game

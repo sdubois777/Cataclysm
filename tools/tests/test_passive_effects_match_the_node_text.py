@@ -142,7 +142,11 @@ def words_of(row: dict, nodes: dict) -> str:
 #: SO THIS PATTERN NOW ASKS FOR A NUMBER EVERYWHERE, which is what makes it worth
 #: having. A sentence stating no magnitude cannot be tied to a magnitude in a
 #: spreadsheet, however honest the word in it is.
-MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
+#:
+#: "ARE DOUBLED" BESIDE "IS DOUBLED" SINCE 2026-11-25, for Colossus Eternal's "Your health regeneration and the healing
+#: you receive are doubled" (R17, accepted by the owner on 2026-11-24, so the wording is not this test's to change). The
+#: plural of the same word, not a new one.
+MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:more|less)\b",
                         re.IGNORECASE)
 
 #: How many rows the effects file holds altogether.
@@ -757,7 +761,97 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 662 THE SAME DAY, for slice C6e: Deathmark (four) and Two Marks. AND
 #: TO 663 FOR ITS HOLLOW STEP. AND TO 669 FOR ITS LETHAL DOSE, BLADE ECHO,
 #: THOUSAND CUTS, INTERPOSE AND GUARD THE MASTER (TWO).
-AUTHORED_ROWS = 669
+#:
+#: AND TO 373 ON 2026-11-24, for the War classes' Fervour (slice C of
+#: `plan_death_and_war.md`): nine rows on the three War starting nodes, which had
+#: none. The Bulwark's three (hit taken, block, decay), the Berserker's two
+#: (critical strike, decay) and the Saboteur's four (trap placed, gadget placed,
+#: trap triggered, device hit). Three new nodes, so `AUTHORED_NODES` moves too.
+#:
+#: AND TO 421 ON 2026-11-25, for slice D of `plan_death_and_war.md`: forty-eight
+#: rows on thirty War nodes that had none, every one data alone, seven of them the
+#: spell damage half of a plain "damage". Written by
+#: `tools/reapply_war_data_rows_workbook.py`, which lists them.
+#:
+#: AND TO 429 ON 2026-11-25, for the Berserker's states (slice B29): eight rows
+#: on Wrath, Frenzy and Berserking, which had none
+#: (`tools/reapply_war_berserker_states_workbook.py`).
+#:
+#: AND TO 449 ON 2026-11-25, the War riders: twenty rows on six Berserker and
+#: four Bulwark nodes that had none (`tools/reapply_war_riders_workbook.py`).
+#:
+#: AND TO 465 THE SAME DAY, the Fervour spends: sixteen rows on Warmonger, Cut
+#: and Run (a capstone option), Iron Will, Undying, Cleave and Blood Tithe
+#: (`tools/reapply_war_fervour_spends_workbook.py`).
+#:
+#: AND TO 481 THE SAME DAY: sixteen rows on Riposte, Vengeful Discharge and
+#: Crimson Tide (`tools/reapply_war_riposte_discharge_tide_workbook.py`).
+#:
+#: AND TO 488 THE SAME DAY: seven rows on Snap Back, Sprung, Emergency Protocol
+#: and Support Network, the Saboteur's device conditions that need no code
+#: (`tools/reapply_war_saboteur_devices_workbook.py`).
+#:
+#: AND TO 494 THE SAME DAY: six rows on Razor Instincts, Sentry Network, Ambush,
+#: Overcautious and Overwhelming Presence, on the event and the four conditions
+#: the same branch adds.
+#:
+#: AND TO 517 THE SAME DAY: twenty-three rows on fifteen Saboteur nodes, the
+#: survey's groups A and B (`tools/reapply_war_saboteur_rows_workbook.py`).
+#:
+#: AND TO 520 THE SAME DAY: Durable Modifications' three rows, on the Max Points
+#: column and the at-or-below condition.
+#:
+#: AND TO 532 THE SAME DAY: twelve rows on Skull Splitter, Deathmark and Blood
+#: Price (`tools/reapply_war_skull_deathmark_blood_workbook.py`).
+#:
+#: AND TO 540 THE SAME DAY: eight rows of the Saboteur's trap timing
+#: (`tools/reapply_war_saboteur_trap_timing_workbook.py`, the C1 plan).
+#:
+#: AND TO 543 THE SAME DAY: Thin Air's two rows and Calculated's 6-point row
+#: (`tools/reapply_war_saboteur_thin_air_workbook.py`, the C5 plan).
+#:
+#: AND TO 552 THE SAME DAY: nine rows on eight War vow options
+#: (`tools/reapply_war_vows_v1_workbook.py`).
+#:
+#: AND TO 559 THE SAME DAY: seven rows of the War vow options' second slice,
+#: V2a (`tools/reapply_war_vows_v2a_workbook.py`): Unbridled's two, Opportunist,
+#: Unbridled's two, Opportunist, Unstoppable's pin, Titan, Ragnarok's doubling and Bastion.
+#:
+#: AND TO 564 THE SAME DAY: five rows of V2b (`tools/reapply_war_vows_v2b_workbook.py`): Warlord, Pure Carnage,
+#: Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
+#:
+#: AND TO 565 THE SAME DAY: The Unbreakable Wall's flag, by the owner's ruling
+#: (`tools/apply_war_owner_rulings_2026_11_25.py`).
+#:
+#: AND TO 570 THE SAME DAY: five rows of V3a (`tools/reapply_war_vows_v3a_workbook.py`): Thornwall's stack, Wrath
+#: Incarnate's pulse, Absorb and Return's share for big hits, and Eternal Hunger's cap and decay.
+#:
+#: AND TO 574 THE SAME DAY: four rows of V3b (`tools/reapply_war_vows_v3b_workbook.py`): Colossus Eternal's flag, save
+#: and bonus from current health, and Thousand Deaths' chain.
+#:
+#: AND TO 576 THE SAME DAY: two rows of V4a (`tools/reapply_war_vows_v4a_workbook.py`): Baited's taunt and Trail of
+#: Wire.
+#:
+#: AND TO 578 THE SAME DAY: two rows of V4b (`tools/reapply_war_vows_v4b_workbook.py`): Counterfire and Magnum Opus.
+#:
+#: AND TO 583 THE SAME DAY: five rows of V5a (`tools/reapply_war_vows_v5a_workbook.py`): Lightning Rod, Creeping
+#: Mines' two, Where They Fall and Crossfire.
+#:
+#: AND TO 585 THE SAME DAY: Scrap Mines' two rows, on `gadget_destroyed` and `gadget_expired`
+#: (`tools/reapply_war_vows_v5b1_workbook.py`, V5b1).
+#:
+#: AND TO 588 THE SAME DAY: Cat's Cradle's three flat rows, its reach, its pin and the seconds between pins
+#: (`tools/reapply_war_vows_v5b2_workbook.py`, V5b2).
+#:
+#: AND TO 589 THE SAME DAY: Walking Arsenal's reach (`tools/reapply_war_vows_v5b3_workbook.py`, V5b3).
+#:
+#: AND TO 590 THE SAME DAY: Titanfall's action row (`tools/reapply_war_titanfall_workbook.py`).
+#:
+#: AND TO 592 THE SAME DAY: Bolted Together's reach and its "more" (`tools/reapply_war_vows_v5c_workbook.py`, V5c).
+#:
+#: AND TO 897 ON 2026-11-25, when the Death line met the War line (the Death trees'
+#: bundle 3 merge): the Death line's 669 and the War line's 592 less the 364 both had.
+AUTHORED_ROWS = 897
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1253,7 +1347,45 @@ AUTHORED_ROWS = 669
 #: FOR ITS HOLLOW STEP. AND TO 400 FOR ITS LETHAL DOSE, INTERPOSE AND GUARD THE
 #: MASTER; Blade Echo and Thousand Cuts are options, counted in
 #: `AUTHORED_OPTIONS`, on capstones already counted.
-AUTHORED_NODES = 400
+#:
+#: AND TO 229 ON 2026-11-24: the three War starting nodes, `Bulwark_basic_trunk_000`,
+#: `Berserker_trunk_000` and `Saboteur_basic_trunk_000`, each given its Fervour rows
+#: by slice C of `plan_death_and_war.md`.
+#:
+#: AND TO 259 ON 2026-11-24: the thirty War nodes slice D of
+#: `plan_death_and_war.md` gave rows, none of which had one -- sixteen Bulwark
+#: (fifteen nodes and its Second Oath), seven Berserker (four nodes and its three
+#: Oaths) and seven Saboteur.
+#:
+#: AND TO 262 ON 2026-11-25: Wrath, Frenzy and Berserking, the Berserker's states.
+#: AND TO 272 THE SAME DAY: the ten nodes of the War riders.
+#: AND TO 277 THE SAME DAY: Warmonger, Iron Will, Undying, Cleave and Blood Tithe,
+#: the Fervour spends (Cut and Run is an option of a capstone already counted).
+#: AND TO 280 THE SAME DAY: Riposte, Vengeful Discharge and Crimson Tide.
+#: AND TO 284 THE SAME DAY: Snap Back, Sprung, Emergency Protocol and Support
+#: Network, the Saboteur's device conditions that need no code.
+#: AND TO 289 THE SAME DAY: Razor Instincts, Sentry Network, Ambush, Overcautious
+#: and Overwhelming Presence.
+#: AND TO 304 THE SAME DAY: fifteen Saboteur nodes, the survey's groups A and B.
+#: AND TO 305 THE SAME DAY: Durable Modifications.
+#: AND TO 308 THE SAME DAY: Skull Splitter, Deathmark and Blood Price.
+#: AND TO 311 THE SAME DAY: Volatile Casing, Field Engineer and Delayed Fuse.
+#: AND TO 312 THE SAME DAY: Thin Air.
+#: AND TO 316 THE SAME DAY: four oaths, with the War vow options' first slice.
+#: AND TO 317 THE SAME DAY: Unbridled, with the second slice, V2a. Its options
+#: (Opportunist, Titan, Bastion) are on capstones already counted.
+#: AND TO 318 THE SAME DAY: Absorb and Return, with the third slice, V3a. Its
+#: other option rows (Thornwall, Wrath Incarnate's pulse, Eternal Hunger's) are
+#: on capstones already counted.
+#: AND TO 320 THE SAME DAY: the Saboteur's First and Second Oaths, with V4a's
+#: Baited and Trail of Wire, the first rows on either capstone.
+#: AND TO 322 THE SAME DAY: the Saboteur's Third and Final Oaths, with V4b's
+#: Counterfire and Magnum Opus, the first rows on either capstone.
+#: AND TO 323 THE SAME DAY: the Bulwark's keystone Titanfall, its first row.
+#:
+#: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
+#: the War line's 323 less the 226 both had.
+AUTHORED_NODES = 497
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1264,9 +1396,10 @@ AUTHORED_NODES = 400
 #: its twelve options granted nothing, and the project owner found out by taking
 #: Water to Blood in play and getting nothing. Issue #1066.
 #:
-#: NAMED OPTIONS ONLY, because the Saboteur's four capstones name none at all --
-#: issue #935 -- and counting twelve options nobody wrote as unauthored would mix
-#: two different problems into one number.
+#: NAMED OPTIONS ONLY, because the Saboteur's four capstones named none at all
+#: until their options were written on 2026-11-25 -- issue #935 -- and counting
+#: twelve options nobody wrote as unauthored would have mixed two different
+#: problems into one number.
 #:
 #: IT WENT FROM 8 TO 9 ON 2026-08-28, when Water to Blood was built. The eight
 #: before it are spread across the Masochist's four capstones; the Bulwark's
@@ -1383,7 +1516,40 @@ AUTHORED_NODES = 400
 #:
 #: AND TO 59 THE SAME DAY, for slice C6e: Blade Echo (the Shadow's 50 vow,
 #: option 1) and Thousand Cuts (its 200 vow, option 1).
-AUTHORED_OPTIONS = 59
+#: AND TO 41 ON 2026-11-24, slice D of `plan_death_and_war.md`: the Bulwark's
+#: Iron Aegis and Titan's Blood (its Second Oath), and the Berserker's Vital
+#: Strikes, Thrill of the Hunt and Crimson Pact (the third option of each Oath).
+#: Each capstone had no row, so all four move `AUTHORED_NODES` too.
+#: AND TO 42 ON 2026-11-25: Cut and Run, the Berserker's Second Oath's second
+#: option, with the Fervour spends. Its capstone already had a row.
+#: AND TO 50 THE SAME DAY: the War vow options' first slice -- Unstoppable,
+#: Ragnarok and Eternal Hunger (Berserker), Shield Oath, Flesh Oath, Bloodied but
+#: Unbroken, Colossus Eternal and Wrath Incarnate (Bulwark). Four capstones had
+#: no row and move `AUTHORED_NODES` too: the Berserker's Final Oath and the
+#: Bulwark's First, Third and Final Oaths.
+#: AND TO 53 THE SAME DAY: the second slice, V2a -- Opportunist and Titan
+#: (Berserker) and Bastion (Bulwark). Each capstone already had a row.
+#: AND TO 57 THE SAME DAY: V2b -- Warlord and Pure Carnage (Berserker), and Blood Oath and Spiteful Guard (Bulwark).
+#: Each capstone already had a row, so `AUTHORED_NODES` does not move. Ragnarok's shockwaves are a third row on an
+#: option already counted.
+#: AND TO 58 THE SAME DAY: The Unbreakable Wall (Bulwark), by the owner's ruling. Its capstone already had a row.
+#: AND TO 59 THE SAME DAY: V3a -- Thornwall (Bulwark). Its capstone already had a row. Wrath Incarnate's pulse and
+#: Eternal Hunger's two are rows on options already counted.
+#: AND TO 60 THE SAME DAY: V3b -- Thousand Deaths (Berserker). Its capstone already had a row. Colossus Eternal's three
+#: are rows on an option already counted. Every Berserker and Bulwark option has a row from here.
+#: AND TO 62 THE SAME DAY: V4a -- Baited and Trail of Wire (Saboteur), the first rows on their capstones, which move
+#: `AUTHORED_NODES` too.
+#: AND TO 64 THE SAME DAY: V4b -- Counterfire and Magnum Opus (Saboteur), the first rows on their capstones, which move
+#: `AUTHORED_NODES` too.
+#: AND TO 68 THE SAME DAY: V5a -- Lightning Rod, Creeping Mines, Where They Fall and Crossfire (Saboteur). Each
+#: capstone already had a row.
+#: AND TO 69 THE SAME DAY: V5b1 -- Scrap Mines (Saboteur). Its capstone already had a row.
+#: AND TO 70 THE SAME DAY: V5b2 -- Cat's Cradle (Saboteur). Its capstone already had a row.
+#: AND TO 71 THE SAME DAY: V5b3 -- Walking Arsenal (Saboteur). Its capstone already had a row.
+#: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
+#: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
+#: War line's 72 less the 36 both had.
+AUTHORED_OPTIONS = 95
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1391,7 +1557,9 @@ AUTHORED_OPTIONS = 59
 #: #950 with twelve capstones between them, three options each.
 #: 60 UNTIL 2026-11-24, when the three Death trees landed with twelve vows
 #: between them, three options each.
-NAMED_OPTIONS = 96
+#: AND TO 72 ON 2026-11-25, when the Saboteur's twelve options, approved on
+#: 2026-11-24, were written into its four oaths (`tools/apply_war_vow_sentences_2026_11_25.py`).
+NAMED_OPTIONS = 108
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -1586,18 +1754,24 @@ def test_no_node_grants_the_same_stat_twice(effects):
         # values below 1 (question 4 of the Masochist audit), and each step is
         # the same row at its own `MinPoints`. Without the threshold in the key
         # five steps of Brutal Determination read as one row written five times.
+        #
+        # AND THE SECOND CONDITION, since the War riders of 2026-11-25:
+        # Hair-Trigger's two crit chance rows are both under `in_frenzy`, the
+        # second also above 75% Fervour, and they are two rows.
+        #
+        # AND THE REQUIRED TAGS, since the Saboteur's rows of 2026-11-25: Bag of
+        # Tricks lowers what traps reserve and what gadgets reserve, one stat on
+        # `Type.Trap` and on `Type.Gadget`. The generator's key has them too.
+        #
+        # AND THE ACTION AND ITS EVENT, since Scrap Mines (V5b1, 2026-11-25):
+        # one action on `gadget_destroyed` and the same on `gadget_expired`,
+        # two rows with no stat that differ only in the event they act on.
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row.get("Option", ""), row.get("MinPoints", ""),
-               # AND THE REQUIRED TAGS, since the Death trees' slice C6a
-               # (2026-11-25), as the generator's key has them: a row requires
-               # every tag it names, so "Poison and Bleed you apply" is one row
-               # for each (Lasting Wounds).
-               row.get("RequiredTags", ""),
-               # AND THE ACTION AND ITS EVENT, since the passive row port of
-               # 2026-11-24, as the generator's key has them: an action row has
-               # no stat, and one node may restore health and mana on one event.
-               row.get("Action", ""), row.get("ActionEvent", ""))
+               row.get("Condition2", ""), row.get("ConditionValue2", ""),
+               row.get("RequiredTags", ""), row.get("Action", ""),
+               row.get("ActionEvent", ""))
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
@@ -1657,7 +1831,12 @@ CONDITION_WORDS = {
     # Requiring the subject as well as the word is what keeps this row off that
     # node. It needs no `CONDITION_WORDS_MUST_NOT_SAY` entry for the same
     # reason: the fragment is already unique.
-    "health_above": ("you are above", "{value:g}%"),
+    #
+    # AND "while above", Colossus Eternal's (the War vow options' third slice,
+    # second half, V3b, 2026-11-25): "While above 75% health, your attacks deal
+    # bonus damage". Still the character's own health and never a cost: Grand
+    # Tithe's sentence holds no "while above".
+    "health_above": (("you are above", "while above"), "{value:g}%"),
 
     "seconds_after_health_cost": ("after you pay a health cost",
                                   "{value:g} second"),
@@ -1703,11 +1882,21 @@ CONDITION_WORDS = {
     # because the number is a count.
     #
     # NO ENTRY IN `CONDITION_WORDS_MUST_NOT_SAY` FOR IT. That guard exists for a
-    # predicate confusable with a neighbour's words, and the only neighbour
-    # reading this pool as a share, `class_resource_above`, is used by no
-    # passive row at all, so there is nothing yet to be confused with. Give it
-    # one on the day a node uses that condition.
-    "class_resource_points_at_least": ("or more fervour", "{value:g}"),
+    # predicate confusable with a neighbour's words. The neighbour reading this
+    # pool as a share, `class_resource_above`, is used by passive rows since
+    # slice D (Precision, Prepared, Vital Strikes, and Razor Mind and
+    # Hair-Trigger since the War riders), and the two are told apart by the
+    # number: a share is written "75%", a count "50 Fervour" -- which is why
+    # the second wording below carries the pool's name after the number.
+    #
+    # AND STEELED RESOLVE'S "While above 50 Fervour" (the War riders,
+    # 2026-11-25), read as at least 50: the only points condition is inclusive,
+    # and the two readings differ at the single value 50 of a pool that drains
+    # in quarter-second steps. A judgement, recorded in docs/DECISIONS.md.
+    #
+    # AND UNDYING'S "if you have at least 50 Fervour" (the Fervour spends,
+    # 2026-11-25), the inclusive reading in so many words.
+    "class_resource_points_at_least": (("or more fervour", "while above", "have at least"), "{value:g}"),
     # A SOUL COLLECTOR VOW'S FERVOUR THRESHOLD, the Death trees' slice C3d
     # (2026-11-25): "while you hold 20 or more Fervour", the same words.
     "fervour_threshold_reached": ("or more fervour", "{value:g}"),
@@ -1718,14 +1907,29 @@ CONDITION_WORDS = {
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
     # AND "IS AT ITS MAXIMUM", the Soul Collector's Full Measure of 2026-11-24.
+    # AND RIPOSTE'S "While at maximum Fervour this counter-attack also stuns"
+    # (2026-11-25): a state held while the event happens, which "while" says,
+    # unlike the seventeen "when you attack at maximum Fervour".
     "class_resource_at_maximum": (("fervour is at maximum", "fervour is full",
                                    "fervour is at its maximum",
                                    # AND THE FERRYMAN'S "While your bar is full",
                                    # the Death trees' slice C4c1 (2026-11-25).
-                                   "your bar is full"), None),
+                                   "your bar is full", "while at maximum fervour"), None),
     # PASSED ON, the Death trees' slice C4c1 (2026-11-25): "the damage your hit
     # deals beyond what killing an enemy needed".
     "killing_blow_was_a_hit": ("damage your hit deals", None),
+    # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Sentry Network's "while
+    # within 15 meters of at least one active gadget"; Ambush's "enemies that
+    # have not yet triggered one of your traps"; Overcautious's "while any of your
+    # gadgets are under attack", whose 2 seconds the sentence does not state (the
+    # coordinating session's ruling that "under attack" lasts 2 seconds after a
+    # gadget takes a hit), so the words are listed against that one value and any
+    # other is refused; and Overwhelming Presence's "While your Fervour has no
+    # room to reserve another trap".
+    "own_gadget_within_metres": ("of at least one active gadget", "{value:g} meters"),
+    "target_not_yet_triggered_your_trap": ("have not yet triggered one of your traps", None),
+    "seconds_after_gadget_struck": ("gadgets are under attack", {2.0: "under attack"}),
+    "no_room_for_a_trap": ("no room to reserve another trap", None),
 
     # THE CONDITIONS THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW
     # FOR THE FIRST TIME. Each was already known to the generator and the game;
@@ -1739,6 +1943,16 @@ CONDITION_WORDS = {
     #   Subjugator, Long Servitude      "enemies carrying your curse", a condition
     #     (Ritualist)                   the rework added to the game
     "seconds_after_hit_taken": ("after you are hit", "{value:g} second"),
+    # THE WAR ROWS OF SLICE D, plan_death_and_war.md, 2026-11-24: Punishing Blow's
+    # "for 3 seconds after a successful block", On Your Toes' "for 3 seconds after
+    # successfully evading", and "while above 50% Fervour" (Precision, Vital
+    # Strikes) and "while above 50% of your maximum Fervour" (Prepared).
+    "seconds_after_block": ("after a successful block", "{value:g} second"),
+    "seconds_after_dodge": (("after successfully evading", "after you evade a hit"), "{value:g} second"),
+    "class_resource_above": ("while above", "{value:g}%"),
+    # ITS COMPLEMENT, the Saboteur's rows of 2026-11-25. A node may state it only
+    # as the other side of a "while above": see `STATED_AS_ITS_COMPLEMENT`.
+    "class_resource_at_or_below": ("at or below", "{value:g}%"),
     "out_of_combat": ("out of combat", None),
     # AND "YOUR MOVEMENT SKILL", the Shadow's Fresh Start and Tumble of 2026-11-24.
     "seconds_after_movement_skill": (("after you use a movement skill",
@@ -1789,7 +2003,9 @@ CONDITION_WORDS = {
     # it is written the second way: "while you have not moved for 2 seconds".
     # The prose is good and says exactly what the condition means, so the entry
     # widened rather than the node being reworded to suit a test.
-    "stationary_for_seconds": (("stationary for", "not moved for"),
+    # AND IMMOVABLE'S "while you have not moved in the last 2 seconds" (the War
+    # riders, 2026-11-25).
+    "stationary_for_seconds": (("stationary for", "not moved for", "not moved in the last"),
                                "{value:g} second"),
 
     # "while you have not attacked in the last 3 seconds" is the only wording in
@@ -1869,8 +2085,11 @@ CONDITION_WORDS = {
     # Crippled enemies"; both are the same promise, and widening the entry
     # is what this table's own comment says to do rather than wording the
     # design prose around the test.
+    # AND PRESSURE SENSITIVE'S "Enemies slowed by your traps also take +15%"
+    # (2026-11-25): a trap's slow is a Cripple; the row asks any Cripple, a
+    # judgement recorded in `tools/reapply_war_saboteur_rows_workbook.py`.
     "target_carries_cripple": (("against crippled enemies",
-                                "damage to crippled enemies"), None),
+                                "damage to crippled enemies", "enemies slowed by your traps"), None),
     "target_carries_cripple_and_weaken": ("both crippled and weakened", None),
 
     # AND THE ONE THAT ASKS ABOUT THE ATTACKER RATHER THAN THE TARGET. Spreading
@@ -1887,6 +2106,16 @@ CONDITION_WORDS = {
     # TWO HANDS, `Ravager_basic_b_b0`: "Two-handed weapons only." Issue #1515.
     # The equipped weapon's base row takes two hands.
     "wielding_two_handed_weapon": ("two-handed weapons only", None),
+
+    # THE BERSERKER'S STATES, 2026-11-25. Frenzy's "Dual wield only", and the
+    # two states' own "While in Wrath" and "While in Frenzy".
+    "dual_wielding": ("dual wield only", None),
+    "in_wrath": ("while in wrath", None),
+    "in_frenzy": ("while in frenzy", None),
+
+    # BRUTE FORCE, the War riders of 2026-11-25: "+10% damage per point against
+    # staggered enemies". The character struck is staggered.
+    "target_is_staggered": ("against staggered enemies", None),
 
     # SET UPON, `Ritualist_basic_a_b0`, and SET THE PACK ON, the first option of
     # `Ritualist_capstone_100`: "enemies you have damaged in the last 2
@@ -2004,7 +2233,7 @@ CONDITION_WORDS = {
     # "Your hits kill a non-Boss enemy below 15% health outright; Bosses take
     # double damage from you below 15%".
     "target_health_below": (("against enemies below", "enemy below"),
-                            {15.0: "15%", 30.0: "30%", 35.0: "35%",
+                            {15.0: "15%", 25.0: "25%", 30.0: "30%", 35.0: "35%",
                              50.0: ("half health", "50%")}),
 
     # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24 (slice B). The slain or
@@ -2039,8 +2268,8 @@ CONDITION_WORDS = {
     # AND REAPER'S DUE'S "Each hit on a Boss", the Death trees' slice C6b3.
     "target_is_boss": (("against a boss", "against bosses", "hit on a boss"), None),
     # The Shadow's Slipstream: "For 3 seconds after you evade a hit". The
-    # predicate reads `Outcome.bEvaded`, which is an evasion.
-    "seconds_after_dodge": ("after you evade a hit", "{value:g} second"),
+    # predicate reads `Outcome.bEvaded`, which is an evasion. (Its words are on
+    # `seconds_after_dodge` above, beside the War line's, since the bundle 3 merge.)
 
     # THE SECOND POOL ASKED WHETHER IT IS FULL, AND THE FRAGMENT HAS TO KEEP IT
     # OFF THE OTHER TWELVE. Issue #1515. Thirteen nodes mention an energy shield
@@ -2103,9 +2332,29 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
     Both halves are checked: that the words the condition implies are in the
     description at all, and that the number is.
     """
-    for row in effects:
-        condition = row["Condition"].strip()
+    # BOTH CONDITIONS OF A ROW, since the War riders of 2026-11-25 wrote the
+    # first rows with a second: Death Blow's "Two-handed weapons only" beside
+    # "against enemies below 25% HP", Hair-Trigger's "above 75% Fervour" beside
+    # "While in Frenzy". Each is held to the node's words as the first is.
+    for row, condition, condition_value in (
+            (row, (row.get(column) or "").strip(), row.get(value_column) or 0)
+            for row in effects
+            for column, value_column in (("Condition", "ConditionValue"),
+                                         ("Condition2", "ConditionValue2"))):
         if not condition:
+            continue
+
+        complement = STATED_AS_ITS_COMPLEMENT.get((row["Node"], condition))
+        if complement is not None:
+            other, other_words = complement
+            value = float(condition_value or 0)
+            assert any(each["Node"] == row["Node"] and each["Condition"].strip() == other
+                       and float(each["ConditionValue"] or 0) == value for each in effects), (
+                f"{row['Node']} states {condition!r} only as the other side of {other!r} at {value:g}, and carries "
+                f"no row under {other!r} at that value")
+            assert f"{other_words} {value:g}%" in words_of(row, nodes).lower(), (
+                f"{row['Node']} states {condition!r} as the other side of {other_words!r} {value:g}%, and its "
+                f"sentence does not say that: {words_of(row, nodes)}")
             continue
 
         assert condition in CONDITION_WORDS, (
@@ -2160,7 +2409,7 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
                     f"different predicate or the node was reworded."
                 )
 
-        value = float(row["ConditionValue"])
+        value = float(condition_value)
 
         if value_form is None:
             # THE CONDITION COMPARES NOTHING, SO THE VALUE MUST BE NOTHING.
@@ -2263,9 +2512,13 @@ def test_a_condition_is_actually_used(effects):
 SCALE_WORDS = {
     "health_missing": (("for every", "missing"), "{value:g}%", None),
     # "FERVOUR HELD" AS WELL, since the Death trees of 2026-11-24, whose vow
-    # options say "for every 10 Fervour held". A tuple inside the words means
+    # options say "for every 10 Fervour held". A tuple inside a word set means
     # any of its phrases will do.
-    "class_resource_held": ((("fervour you", "fervour held"),),
+    # AND Endless Spite's "for every 10 Fervour currently held" (slice D,
+    # 2026-11-24), a second word set beside the first.
+    # AND Mechanical Familiar's "+1% bonus damage and +5% bonus HP per 10
+    # Fervour" (the Saboteur's rows, 2026-11-25).
+    "class_resource_held": ([(("fervour you", "fervour held"),), ("fervour currently held",), ("per 10 fervour",)],
                             "{value:g} fervour", "each point of fervour"),
     "health_owed": (("for every", "owe"), "{value:g}%", None),
 
@@ -2276,7 +2529,11 @@ SCALE_WORDS = {
     #
     # A STEP FORM IN PERCENT, because the sentence writes one -- "1% of life
     # leech" -- unlike the stack counts below, which name no step at all.
-    "life_leech": (("for every", "life leech"), "{value:g}%", None),
+    #
+    # AND VITAL STRIKES' "reduced by your current life leech percentage" (the
+    # Berserker's First Oath, slice D, 2026-11-24): 1 for every 1% of leech, the
+    # step stated in words. See `STEP_OF_ONE_ON_ONE_NODE`.
+    "life_leech": ([("for every", "life leech"), ("your current life leech",)], "{value:g}%", None),
 
     # THREE STACK COUNTS, EACH NAMING ITS OWN STACK. Issues #1002, #1003 and
     # #1004. The words include the stack's name wherever the node gives it one,
@@ -2348,7 +2605,7 @@ SCALE_WORDS = {
     # AND "your minions gain" SINCE SLICE C6d2: Avenging Dead's own stack, granted
     # by `hit_taken` with a cap of one, is a window renewed by each hit that took
     # enough, and counts nothing, as Spent Breath's does.
-    "own_stacks": ((("for each", "after you spend", "your minions gain"),), None, None),
+    "own_stacks": ([(("for each", "after you spend", "your minions gain"),), ("for", "second")], None, None),
 
     # THE ENEMIES IN THE CHARACTER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Sapping Cold, Stolen Strength, Life Siphon and Living Harvest
@@ -2436,8 +2693,33 @@ SCALE_WORDS = {
     # Issue #1515. Weight Bearing reads "1 Armor for every 10 maximum health you
     # have": the others read how FULL the bar is, and this reads how BIG it is,
     # so naming the pool is what keeps this row off a node about missing health.
-    "max_health": (("for every", "maximum health"), "{value:g} maximum health",
-                   None),
+    #
+    # AND THE WAR RULINGS' WORDING, accepted by the owner on 2026-11-24 (R1, R2,
+    # R22 to R25): "for every 1,000 Maximum HP" and "Each 1,000 Maximum HP", with
+    # a thousands comma. A LIST of word sets, any one of which must be wholly
+    # present, and a tuple of step forms, any one of which must appear.
+    "max_health": ([("for every", "maximum health"), ("for every", "maximum hp"),
+                    ("each", "maximum hp")],
+                   ("{value:g} maximum health", "{value:,g} maximum hp"), None),
+    # THE SCALES SLICE D PUT ON A PASSIVE ROW FOR THE FIRST TIME, 2026-11-24.
+    # Iron Constitution's "Gain HP equal to 10% of your Armor value" (1 for every
+    # 10 armour); Army of One's "Each active gadget" and Mobile Armory's "for each
+    # active gadget"; Saturation's "for each of your active traps".
+    # AND WRATH INCARNATE'S "increased by 1% for every 100 Armor you have" (R18, written 2026-11-25).
+    "armor": ([("of your armor",), ("armor you have",)], ("{value:g}%", "every {value:g} armor"), None),
+    "gadgets_active": (("active gadget",), None, "each active gadget"),
+    # AND SNAP BACK'S "while you have at least one active trap" (2026-11-25), the
+    # trap count capped at one step, which is exactly "at least one"; and SUPPORT
+    # NETWORK'S "for each active trap on the battlefield" the same day.
+    "traps_active": ([("active traps",), ("at least one active trap",), ("each active trap",)], None,
+                     "for each of your active traps"),
+    # A ROW'S OWN STACK, ON A PASSIVE ROW FOR THE FIRST TIME (the Saboteur's
+    # device conditions, 2026-11-25): Sprung's "for 3 seconds after one of your
+    # traps is triggered" and Emergency Protocol's "for 5 seconds when a gadget is
+    # destroyed". One stack at a time, so the step is one.
+    # `test_an_own_stack_states_its_event_and_its_seconds` holds the event and
+    # the seconds to the sentence. (Its words are on `own_stacks` above, a second
+    # word set beside the Death line's, since the bundle 3 merge.)
 
     # THE SCALES THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW FOR
     # THE FIRST TIME. Beacon of Despair counts the debuffs on the enemy struck
@@ -2450,7 +2732,88 @@ SCALE_WORDS = {
                          None),
     "increased_movement_speed": (("for every", "increased movement speed"),
                                  "{value:g}%", None),
+
+    # THE CLASS RESOURCE'S MAXIMUM AND THE BLOCK CHANCE ATTRIBUTE, the War vow
+    # options' second slice (2026-11-25). Titan reads "for every 2 points of
+    # maximum Fervour you have" and Unbridled "Every 20 points of maximum Fervour
+    # you have": "maximum fervour" keeps the row off a node about the Fervour
+    # held, and the step form carries the number beside "points of maximum
+    # fervour". Bastion reads "for every 1% Block Chance you have".
+    "max_class_resource": (("maximum fervour", "you have"), "{value:g} points of maximum fervour", None),
+    "block_chance": (("for every", "block chance you have"), "{value:g}% block chance", None),
+
+    # THE CHARACTER'S CURRENT HEALTH, the War vow options' third slice, second
+    # half (V3b, 2026-11-25): Colossus Eternal's "bonus damage equal to 2% of your
+    # current HP", 2 for every 100 points. The sentence states a SHARE, not a
+    # step, so the step is checked with the value in `SCALES_STATED_AS_A_SHARE`.
+    "current_health": (("of your current hp",), "{value:g}", None),
 }
+
+
+#: Scales whose sentence states the value and the step together as one share of
+#: a pool, "2% of your current HP", rather than "for every N": the row's value
+#: per step of 100 must be that share, printed before these words. The War vow
+#: options' third slice, second half (V3b, 2026-11-25).
+SCALES_STATED_AS_A_SHARE = {
+    "current_health": "of your current hp",
+}
+
+
+#: A step of one one node states in words while the rest of its scale states the
+#: step in digits, keyed by node and scale. Vital Strikes (the Berserker's First
+#: Oath, slice D, 2026-11-24) reads "reduced by your current life leech
+#: percentage", one for every 1% of leech; Glutton and Crimson Pact write the
+#: same step as "for every 1% of life leech", so giving the whole scale a
+#: step-of-one phrase would fail them.
+STEP_OF_ONE_ON_ONE_NODE = {
+    ("Berserker_capstone_25", "life_leech"): "your current life leech percentage",
+}
+
+
+#: Rows whose condition the node states only as the other side of a condition
+#: the node also carries, by (node, condition): the complement it is the other
+#: side of, and the words the sentence says that one in. Durable Modifications
+#: (the Saboteur's rows, 2026-11-25): "doubled while above 50% maximum Fervour",
+#: whose otherwise is the 3% a point at or below 50%, the ruling on question 4.
+#: EXCUSED ONLY WHILE the node carries a row under the complement with the same
+#: value and the sentence says the complement's words with that value.
+STATED_AS_ITS_COMPLEMENT = {
+    ("Saboteur_basic_trunk_014", "class_resource_at_or_below"): ("class_resource_above", "while above"),
+}
+
+
+#: The words that say which event grants a passive row its own stack, by the
+#: row's Action Event. The Saboteur's device conditions, 2026-11-25.
+OWN_STACK_EVENT_WORDS = {
+    "trap_triggered": ("traps is triggered",),
+    "gadget_destroyed": ("gadget is destroyed",),
+    # Razor Instincts' "after placing a trap or gadget", one event for either.
+    "device_placed": ("placing a trap or gadget",),
+}
+
+
+def test_an_own_stack_states_its_event_and_its_seconds(effects, nodes):
+    """A passive row's own stack is granted by its Action Event and lasts its
+    Stack Seconds, and the node's sentence states both: the event in the words
+    `OWN_STACK_EVENT_WORDS` gives, and the seconds as "for N second(s)". A stack
+    lasting 4 seconds on a node that says 3, or granted by the wrong event, gives
+    a player something the sentence does not promise, and the arithmetic still
+    runs. THE CONTROL is the first assertion: the check reads at least one row."""
+    stacked = [row for row in effects if row["Scale"].strip() == "own_stacks"]
+    assert stacked, "no passive row is scaled by own_stacks, so this check reads nothing"
+    for row in stacked:
+        words = words_of(row, nodes).lower()
+        event = row["ActionEvent"].strip()
+        assert event in OWN_STACK_EVENT_WORDS, (
+            f"{row['Name']} grants its own stack on {event!r}, whose words this test does not know. "
+            f"Known: {sorted(OWN_STACK_EVENT_WORDS)}.")
+        assert all(phrase in words for phrase in OWN_STACK_EVENT_WORDS[event]), (
+            f"{row['Name']} grants its own stack on {event!r} and its node does not say "
+            f"{OWN_STACK_EVENT_WORDS[event]}: {words_of(row, nodes)}")
+        seconds = float(row["StackSeconds"] or 0)
+        assert seconds > 0 and f"for {seconds:g} second" in words, (
+            f"{row['Name']}'s stack lasts {seconds:g} seconds and its node does not say "
+            f"\"for {seconds:g} second(s)\": {words_of(row, nodes)}")
 
 
 def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
@@ -2483,15 +2846,19 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
 
         described = words_of(row, nodes)
         words = described.lower()
-        for phrase in expected_words:
-            # ONE PHRASE, OR A TUPLE OF PHRASES ANY OF WHICH WILL DO.
+        # A LIST OF WORD SETS IS ANY ONE OF THEM, WHOLLY (slice D, 2026-11-24); a
+        # tuple is one set, every word of it. AND A TUPLE INSIDE A SET IS ANY ONE
+        # OF ITS PHRASES (the Death trees, 2026-11-24).
+        word_sets = expected_words if isinstance(expected_words, list) else [expected_words]
+
+        def says(phrase, words=words) -> bool:
             either = (phrase,) if isinstance(phrase, str) else tuple(phrase)
-            assert any(one in words for one in either), (
-                f"{row['Node']} carries the scale {scale!r} and its description "
-                f"does not say {phrase!r}:\n"
-                f"    {described}\n"
-                f"All of {list(expected_words)} have to be in it."
-            )
+            return any(one in words for one in either)
+
+        assert any(all(says(phrase) for phrase in each) for each in word_sets), (
+            f"{row['Node']} carries the scale {scale!r} and its description "
+            f"says none of these sets in full: {word_sets}: {described}"
+        )
 
         step = float(row["ScaleStep"])
         assert step > 0.0, (
@@ -2513,6 +2880,18 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
                 "step form in SCALE_WORDS instead."
             )
             continue
+
+        # A SHARE OF A POOL, THE VALUE AND THE STEP TOGETHER. See `SCALES_STATED_AS_A_SHARE`.
+        if scale in SCALES_STATED_AS_A_SHARE:
+            share = float(row["ValuePerPoint"]) * 100.0 / step
+            stated = f"{share:g}% {SCALES_STATED_AS_A_SHARE[scale]}"
+            assert stated in words, (
+                f"{row['Node']} grants {row['ValuePerPoint']} for every {step:g} on the scale {scale!r}, which is "
+                f"{stated!r}, and the node says:\n    {described}")
+            continue
+
+        # ONE NODE'S STEP OF ONE IN WORDS. See `STEP_OF_ONE_ON_ONE_NODE`.
+        step_of_one_words = STEP_OF_ONE_ON_ONE_NODE.get((row["Node"], scale), step_of_one_words)
 
         if step == 1.0 and step_of_one_words is not None:
             # A STEP OF ONE STATED IN WORDS RATHER THAN DIGITS. Issue #1029.
@@ -2648,7 +3027,8 @@ VALUE_FORMS = {
     # what makes that worth doing: a workbook changed to 6 metres while the node
     # still says 4 fails this check, where a constant in C++ could disagree with
     # the sentence for ever and nothing would notice.
-    "retaliation_radius_metres": "{value:g} metre",
+    # AND "meters", which the War trees write (Aura of Pain, slice D, 2026-11-24).
+    "retaliation_radius_metres": ("{value:g} metre", "{value:g} meter"),
 
     # A PLAIN COUNT OF MAXIMUM FERVOUR. Issue #1515. `class_resource` is the
     # size of the class's resource pool, and until 2026-09-11 every row on it
@@ -2666,7 +3046,11 @@ VALUE_FORMS = {
     # ANY ONE OF THEM MAY MATCH, the shape `CONDITION_WORDS` already uses for
     # the same reason. It does not weaken the check: each alternative still has
     # to appear in the sentence with the row's own number in it.
-    "class_resource": ("{value:g} maximum Fervour", "{value:g} Fervour"),
+    #
+    # AND MEAT SHIELD'S RULED "increases your maximum Fervour by 3" (R22, slice
+    # D, 2026-11-24), the number after the noun.
+    "class_resource": ("{value:g} maximum Fervour", "{value:g} Fervour",
+                       "maximum Fervour by {value:g}"),
 
     # A FLAT AMOUNT OF ARMOUR, WHICH ONLY ONE NODE GRANTS. Issue #1515. Weight
     # Bearing reads "1 Armor for every 10 maximum health you have", so the
@@ -2785,7 +3169,10 @@ VALUE_FORMS = {
     # critical strike you land", and Telling Blows' "+1 Fervour per point for
     # each critical strike".
     "fervour_per_critical_strike": ("and {value:g} for each critical strike",
-                                    "+{value:g} Fervour per point for each critical strike"),
+                                    "+{value:g} Fervour per point for each critical strike",
+                                    # AND THE WAR LINE'S, since the bundle 3 merge: see below.
+                                    "{value:g} Fervour per critical strike", "{value:g} Fervour gained",
+                                    "{value:g} Fervour per point"),
     # SLICE C4d2 (2026-11-25): Patient Blade's "once every 2 seconds", and Death
     # by Inches' "every 10th hit you land".
     "boss_ticks_pay_a_kill_every_seconds": ("once every {value:g} seconds",),
@@ -2881,6 +3268,90 @@ VALUE_FORMS = {
     "cripple_and_weaken_spread_on_death_metres": "{value:g} metre",
     "ultimate_fervour_cost_reduction": "{value:g} less Fervour",
     "minion_lifetime_renewed_every_seconds": "{value:g} second",
+    # IRONBLOOD'S RULED "+2 flat HP Regen per second per point" (R26, slice D,
+    # 2026-11-24), the first flat health_regen row; the percent form stays for
+    # any node that writes the regeneration as a share.
+    "health_regen": ("{value:g}%", "{value:g} flat HP Regen"),
+    # CRUSHING PRESENCE'S RULED "+1 flat damage per point for every 1,000 Maximum
+    # HP" (R1, slice D, 2026-11-24), the first flat attack_damage row.
+    "attack_damage": ("{value:g}%", "{value:g} flat damage"),
+    # WALKING FORTRESS'S RULED "+40 flat Maximum HP per point" (R25, slice D,
+    # 2026-11-24). Iron Constitution's flat row states its value in words and is
+    # in `VALUE_IN_WORDS`.
+    "max_health": ("{value:g}%", "{value:g} flat Maximum HP"),
+    # THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24. Each
+    # the whole phrase after its number, for the reason the Ravager's starting
+    # node gives above: the Bulwark's and the Saboteur's sentences each hold
+    # several 1s, and a bare "{value:g}" would let the rows satisfy each other.
+    # AND RESOLVE UNDER FIRE'S "+1 Fervour generated from taking hits" and its
+    # "an additional 10 Fervour", and SHIELD MASTERY'S "generates 3 Fervour"
+    # (the War riders, 2026-11-25).
+    "fervour_per_hit_taken": ("{value:g} for each hit you take", "{value:g} Fervour generated from taking hits",
+                              "additional {value:g} Fervour"),
+    "fervour_per_block": ("{value:g} for each block", "generates {value:g} Fervour"),
+    "fervour_decay_out_of_combat_per_second": "{value:g} per second after",
+    # AND BATTLE LUST'S "+1 Fervour gained per point" and RAZOR MIND'S "+2
+    # Fervour per point" (the War riders, 2026-11-25): their forms are on
+    # `fervour_per_critical_strike` above since the bundle 3 merge.
+    "fervour_per_trap_placed": "{value:g} for each trap placed",
+    "fervour_per_gadget_placed": "{value:g} for each gadget placed",
+    # AND TRIPWIRE NETWORK'S "+1 Fervour per point when a trap is triggered"
+    # (the Saboteur's rows, 2026-11-25).
+    "fervour_per_trap_triggered": ("{value:g} each time a trap triggers", "+{value:g} Fervour per point when a trap"),
+    "fervour_per_device_hit": "{value:g} for each blow one of them lands",
+    # THE BERSERKER'S STATES, 2026-11-25. Wrath's and Frenzy's "Fervour drains
+    # at 5 per second" and "at 8 per second"; Frenzy's "all melee hits generate
+    # 2 additional Fervour"; Berserking's "+10% bonus damage per point".
+    # AND TITAN'S GRIP'S "drain 4 additional Fervour per second" and STEELED
+    # RESOLVE'S "drains 5 Fervour per second" (the War riders, 2026-11-25).
+    "fervour_drain_per_second": ("drains at {value:g} per second", "drain {value:g} additional Fervour per second",
+                                 "drains {value:g} Fervour per second",
+                                 # AND WARMONGER'S "each enemy within melee range
+                                 # drains 3 additional Fervour per second" (the
+                                 # Fervour spends, 2026-11-25).
+                                 "drains {value:g} additional Fervour per second"),
+    "fervour_per_hit_dealt": "generate {value:g} additional Fervour",
+    "berserking_damage_per_fervour": "{value:g}% bonus damage",
+    # THE FERVOUR SPENDS, 2026-11-25. Iron Will's "draining 20 Fervour per block"
+    # and "reduces the Fervour drain by 2"; Undying's "5% of your maximum HP per
+    # 10 Fervour"; Cleave's "180 degree arc", "by 10 degrees", "costs 5
+    # Fervour" and "generates 3 Fervour per point"; Blood Tithe's "Lose 5
+    # Fervour" and "100 flat HP regenerated".
+    "fervour_cost_per_negated_block": ("draining {value:g} Fervour per block", "reduces the Fervour drain by {value:g}"),
+    "health_percent_per_ten_fervour_on_lethal_blow": "{value:g}% of your maximum HP per 10 Fervour",
+    "strike_arc_at_least_degrees": ("{value:g} degree arc", "by {value:g} degrees"),
+    "fervour_cost_per_extra_enemy_hit": "costs {value:g} Fervour",
+    "fervour_per_extra_enemy_hit_paid": "generates {value:g} Fervour per point",
+    "fervour_lost_to_regeneration": "Lose {value:g} Fervour",
+    "regeneration_per_fervour_loss": "{value:g} flat HP regenerated",
+    # RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25: "draining 25
+    # Fervour", "stuns the target for 1 second", "drains 10 Fervour per second",
+    # "within 4 metres", and Crimson Tide's "a heal equal to 1% of your maximum
+    # HP", which its "1% life leech" beside it would otherwise satisfy.
+    "riposte_fervour_cost": "draining {value:g} Fervour",
+    # SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25: "drain an additional
+    # 3 Fervour per hit in exchange for applying a 2-second armor reduction of
+    # 10% per point", "stacks up to 6 times instead of 4"; "apply a Deathmark for
+    # 5 seconds", "costs 10 Fervour", "+3% increased damage per point"; "within 3
+    # seconds deals bonus damage equal to 5% per point of your maximum Fervour".
+    "crit_armor_removed_in_wrath": "armor reduction of {value:g}% per point",
+    # VOLATILE CASING, the Saboteur's trap timing, 2026-11-25: "reduces the arming delay of all your other
+    # traps by 0.1 seconds per point".
+    "trap_arming_seconds_less_per_other_trap": "by {value:g} seconds per point",
+    # THIN AIR, 2026-11-25: "Taking damage breaks this effect for 2 seconds".
+    "cannot_be_targeted_broken_seconds": "breaks this effect for {value:g} seconds",
+    "crit_armor_fervour_cost": "drain an additional {value:g} Fervour",
+    "crit_armor_stack_cap": ("up to {value:g} times", "instead of {value:g}"),
+    "crit_armor_seconds": "{value:g}-second armor reduction",
+    "deathmark_damage_taken_percent": "+{value:g}% increased damage per point",
+    "deathmark_fervour_cost": "costs {value:g} Fervour",
+    "deathmark_seconds": "Deathmark for {value:g} seconds",
+    "blood_price_percent_of_maximum_fervour": "{value:g}% per point of your maximum Fervour",
+    "blood_price_seconds": "within {value:g} seconds",
+    "riposte_stun_seconds_at_maximum": "for {value:g} second",
+    "retaliation_pulse_drain_per_second": "drains {value:g} Fervour per second",
+    "retaliation_pulse_radius_metres": "within {value:g} metres",
+    "health_percent_per_ten_fervour_spent": "heal equal to {value:g}% of your maximum HP",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2949,6 +3420,118 @@ VALUE_IN_WORDS = {
     ("Shadow_capstone_200", "spell_damage", "target_health_below"):
         ("double damage", 100.0),
 
+    # THE BULWARK'S SECOND OATH, slice D, 2026-11-24: Iron Aegis' "Your Block
+    # Chance is doubled ..." and Titan's Blood's "Your HP regeneration is
+    # doubled", each a More of 100 stated as "doubled".
+    ("Bulwark_capstone_50", "block_chance"): ("is doubled", 100.0),
+    ("Bulwark_capstone_50", "health_regen"): ("is doubled", 100.0),
+    # VITAL STRIKES, the Berserker's First Oath, slice D, 2026-11-24: "all
+    # incoming damage is reduced by your current life leech percentage" is 1
+    # damage reduction for every 1% of leech, the 1 stated by "percentage".
+    ("Berserker_capstone_25", "damage_reduction"): ("reduced by your current life leech percentage", 1.0),
+    # THE BERSERKER'S STATES, 2026-11-25: the two flags a full pool begins its
+    # state by, each 1, stated as "enter a state of Wrath" and "of Frenzy".
+    ("Berserker_twoh_001", "wrath_on_full_fervour"): ("enter a state of wrath", 1.0),
+    ("Berserker_dw_001", "frenzy_on_full_fervour"): ("enter a state of frenzy", 1.0),
+    # THE WAR RIDERS, 2026-11-25. Immovable's "your Fervour generation from
+    # taking hits is doubled", a More of 100; and Steeled Resolve's "At 6 points:
+    # Reduces the drain rate to 2 Fervour per second", 3 less than the 5, on a
+    # row with no condition (its other drain row is under the 50 Fervour one).
+    ("Bulwark_basic_jg_t1_001", "fervour_per_hit_taken"): ("is doubled", 100.0),
+    ("Bulwark_basic_trunk_009", "fervour_drain_per_second", "", "flat"): ("reduces the drain rate to 2", -3.0),
+    # THE FERVOUR SPENDS, 2026-11-25. Iron Will's "negate all damage from that
+    # hit", a negation chance of 100. Blood Tithe's "At 6 points: The Fervour
+    # cost is reduced to 1 per 150 HP regenerated": 4 less than the 5 and 50 more
+    # than the 100, each from 6 points -- keyed by the threshold as well, since
+    # each stat's two rows differ in nothing else.
+    ("Bulwark_basic_ic_resolve_001", "block_negation_chance"): ("negate all damage", 100.0),
+    # VENGEFUL DISCHARGE'S "At 5 points: this also applies Bleed", a flag; and
+    # CRIMSON TIDE'S "Life leech is applied instantly", 1,100 on a payout rate
+    # of 100, which pays within the next quarter-second step (2026-11-25).
+    ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_applies_bleed"): ("also applies bleed", 1.0),
+    ("Berserker_leech_001", "leech_payout_rate"): ("applied instantly", 1100.0),
+    # DURABLE MODIFICATIONS' "doubled while above 50%" from 4 points, 6% a point,
+    # the ruling on question 4 (the Saboteur's rows, 2026-11-25); its two 3% rows
+    # are checked by their digits.
+    ("Saboteur_basic_trunk_014", "damage_reduction", "class_resource_above", "more", "4"): ("doubled", 6.0),
+    # DEATHMARK'S "costs 10 Fervour, reduced by 1 per point": the -1 a point
+    # beside the 10 once (2026-11-25).
+    ("Berserker_crit_004", "deathmark_fervour_cost", "", "flat", "0"): ("reduced by 1 per point", -1.0),
+    # OVERWHELMING PRESENCE'S "trap trigger radius is doubled", 100% more by the
+    # coordinating session's ruling of 2026-11-25 (a true doubling).
+    ("Saboteur_keystone_trap_qty", "trap_trigger_radius"): ("radius is doubled", 100.0),
+    # THE SABOTEUR'S TRAP TIMING, 2026-11-25 (the C1 plan): Hair Trigger's "At 5
+    # points: Traps arm instantly", a flag; Delayed Fuse's "a 1 second additional
+    # arming delay", one second, and its "cannot be accidentally triggered ...
+    # during the arming period", a flag.
+    ("Saboteur_basic_trunk_001", "traps_arm_instantly"): ("traps arm instantly", 1.0),
+    # UNSTOPPABLE, the Berserker's Second Oath, 2026-11-25: "you cannot be slowed, rooted, or knocked back", two flags.
+    ("Berserker_capstone_50", "movement_speed_reduction_suppressed"): ("cannot be slowed", 1.0),
+    ("Berserker_capstone_50", "knockback_suppressed"): ("knocked back", 1.0),
+    # AND ITS "rooted", a third flag, with the second slice, V2a: a pin counted as the root, as ruled on 2026-11-25.
+    ("Berserker_capstone_50", "pin_suppressed"): ("rooted", 1.0),
+    # RAGNAROK'S "Your maximum Fervour is doubled", a More of 100 under "Two-handed weapons only" (V2a, 2026-11-25).
+    ("Berserker_capstone_200", "class_resource"): ("maximum fervour is doubled", 100.0),
+    # OPPORTUNIST, the Berserker's First Oath (V2a, 2026-11-25): "Entering Frenzy immediately resets the cooldown of
+    # your movement skill", a `cooldown_reset_movement` action whose value is its chance, 100 being always. An action
+    # row names no stat, so the key's stat is empty. KEYED BY ITS EMPTY CONDITION TOO since V2b gave the node a second
+    # action row, Warlord's, under `class_resource_above`, whose 15% is stated in digits.
+    ("Berserker_capstone_25", "", ""): ("immediately resets the cooldown of your movement skill", 100.0),
+    # SPITEFUL GUARD, the Bulwark's Third Oath (V2b, 2026-11-25): "Blocked damage is stored and added to your next
+    # retaliation hit", a flag.
+    ("Bulwark_capstone_100", "blocked_damage_added_to_next_retaliation"):
+        ("blocked damage is stored and added to your next retaliation hit", 1.0),
+    # THE UNBREAKABLE WALL, the Bulwark's Final Oath (the owner's ruling of 2026-11-25): "Every block negates the
+    # whole hit.", a flag.
+    ("Bulwark_capstone_200", "every_block_negates"): ("every block negates the whole hit", 1.0),
+    # RAGNAROK, the Berserker's Final Oath, 2026-11-25: "Wrath no longer drains Fervour passively", the drain removed.
+    ("Berserker_capstone_200", "fervour_drain_per_second"): ("no longer drains fervour", 1.0),
+    # COLOSSUS ETERNAL, the Bulwark's Final Oath (R17), 2026-11-25: "the healing you receive are doubled", a More of
+    # 100 on healing received, which regeneration and leech already pass through.
+    ("Bulwark_capstone_200", "healing_received"): ("the healing you receive are doubled", 100.0),
+    # AND ITS "your increases to Maximum HP count twice", a flag (V3b, 2026-11-25).
+    ("Bulwark_capstone_200", "max_health_increases_count_twice"): ("your increases to maximum hp count twice", 1.0),
+    # BAITED AND TRAIL OF WIRE, the Saboteur's First and Second Oaths (V4a, 2026-11-25): action rows, keyed by their
+    # empty stat and condition. Baited's value is the taunt's seconds; Trail of Wire's is 100, always.
+    ("Saboteur_capstone_25", "", ""): ("for 4 seconds", 4.0),
+    ("Saboteur_capstone_50", "", ""): ("the last trap you placed is placed again", 100.0),
+    # COUNTERFIRE AND MAGNUM OPUS, the Saboteur's Third and Final Oaths (V4b, 2026-11-25): Counterfire's value is 100%
+    # of a gadget's shot, which the sentence says as "a gadget fires at it"; Magnum Opus is a flag.
+    ("Saboteur_capstone_100", "", ""): ("a gadget fires at it", 100.0),
+    ("Saboteur_capstone_200", "eldest_gadget_casts_every_skill"): ("uses every skill you use", 1.0),
+    # THE FIFTH SLICE'S FIRST HALF (V5a, 2026-11-25): Creeping Mines' speed and reach, Lightning Rod's 3% for each
+    # device, and the Final Oath's two action rows, keyed by their option: Where They Fall's copy lasts 4 seconds, and
+    # Crossfire repeats at 10%.
+    ("Saboteur_capstone_100", "trap_creep_metres_per_second"): ("at 3 metres a second", 3.0),
+    ("Saboteur_capstone_100", "trap_creep_reach_metres"): ("within 10 metres of them", 10.0),
+    ("Saboteur_capstone_25", "blow_to_device_chance_per_device"): ("a 3% chance for each trap and gadget", 3.0),
+    ("Saboteur_capstone_200", "option 1", ""): ("lasts 4 seconds", 4.0),
+    ("Saboteur_capstone_200", "option 3", ""): ("at 10% of its damage", 10.0),
+    # SCRAP MINES (V5b1, 2026-11-25): two action rows, "at double damage", which is 200%.
+    ("Saboteur_capstone_50", "option 2", ""): ("at double damage", 200.0),
+    # CAT'S CRADLE (V5b2, 2026-11-25): its reach, its pin and the seconds an enemy waits before it is pinned again.
+    ("Saboteur_capstone_50", "device_wire_reach_metres"): ("every other one within 10 metres", 10.0),
+    ("Saboteur_capstone_50", "device_wire_pin_seconds"): ("pinned for 1 second", 1.0),
+    ("Saboteur_capstone_50", "device_wire_repin_seconds"): ("no more than once every 4 seconds", 4.0),
+    # TITANFALL (2026-11-25): an action row, keyed by its empty stat and condition; its value is the seconds it cannot
+    # be killed.
+    ("Bulwark_keystone_jg_final", "", ""): ("you cannot be killed for 2 seconds", 2.0),
+    # BOLTED TOGETHER (V5c, 2026-11-25): its reach and its "more" for each gadget.
+    ("Saboteur_capstone_100", "gadget_bolt_reach_metres"): ("within 4 metres of another of yours", 4.0),
+    ("Saboteur_capstone_100", "bolted_more_percent_per_gadget"): ("10% more damage for each gadget in it", 10.0),
+    # WALKING ARSENAL (V5b3, 2026-11-25): how near the player its gadgets stay.
+    ("Saboteur_capstone_25", "gadget_follow_within_metres"): ("staying within 8 metres of you", 8.0),
+    ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
+    ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
+    # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.
+    ("Saboteur_basic_trunk_013", "cannot_be_targeted_while_moving"): ("cannot be targeted while moving", 1.0),
+    ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration", "", "flat", "6"): ("reduced to 1 per 150", -4.0),
+    ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss", "", "flat", "6"): ("reduced to 1 per 150", 50.0),
+    # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%
+    # of your Armor value" is 1 maximum health for every 10 armour, a share of
+    # another stat. Its other max_health row, "+2% Maximum HP per point", is an
+    # increase stated in digits, so the key carries the bucket.
+    ("Bulwark_basic_trunk_002", "max_health", "", "flat"): ("10% of your armor", 1.0),
     # AND THE COUNT OF MINIONS BEHIND THE VEIL ASKS FOR. Issue #1515. The node
     # reads "while you have three or more minions", so the sheet's 3 has no
     # digit to match in the sentence. Its OTHER row needs no entry: the same
@@ -3342,10 +3925,28 @@ VALUE_IN_WORDS = {
 
 
 def in_words(row: dict):
-    """The `VALUE_IN_WORDS` entry for a row: by node, stat and condition first,
-    then by node and stat. The three-part key is for a node granting one stat
-    twice under different conditions, each stated in its own words (2026-11-24)."""
-    return (VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip()))
+    """The `VALUE_IN_WORDS` entry for a row: by node, stat, condition and value
+    kind first, then by node, stat and condition, then by node and stat. The
+    three-part key is for a node granting one stat twice under different
+    conditions, each stated in its own words (2026-11-24); the four-part key
+    for one granting a stat twice in two buckets, one of them stated as a share
+    of another stat (Iron Constitution, slice D, 2026-11-24)."""
+    #
+    # AND A FIVE-PART KEY, the threshold as well, for a node whose two rows of one
+    # stat differ only in it: Blood Tithe's "At 6 points" rows (the Fervour
+    # spends, 2026-11-25).
+    min_points = str(int(float(row.get("MinPoints") or 0)))
+    # AND BY THE OPTION, FIRST, for two action rows on one capstone that differ only in it: Where They Fall and
+    # Crossfire on the Saboteur's Final Oath (V5a, 2026-11-25), both with no stat and no condition. Keyed as
+    # (node, "option N", stat).
+    by_option = VALUE_IN_WORDS.get((row["Node"], f"option {row.get('Option') or '0'}", row["Stat"]))
+    if by_option:
+        return by_option
+    return (VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip(),
+                                row["ValueKind"].strip().lower(), min_points))
+            or VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip(),
+                                   row["ValueKind"].strip().lower()))
+            or VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip()))
             or VALUE_IN_WORDS.get((row["Node"], row["Stat"])))
 
 
@@ -3788,7 +4389,19 @@ def test_a_node_that_takes_something_away_is_actually_tested(effects):
 #: the Ritualist's Grip of the Pact grants it "At 4 points: ... deal 10% less
 #: damage" since the rework of 2026-11-24. The row is a figure the game reads,
 #: not a term in the pipeline's buckets, so `flat` is the only kind it can be.
-FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent"})
+#: AND `bolted_more_percent_per_gadget` SINCE V5c (2026-11-25): Bolted Together's "10% more damage for each gadget in
+#: it", which `ACataclysmMinion::BoltedMoreMultiplier` applies to a bolted gadget's every attack as a multiplier of its
+#: own (one plus the percent times the gadgets in it), for the same reason.
+FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent", "bolted_more_percent_per_gadget"})
+
+
+#: See `test_the_bucket_matches_the_nodes_own_wording`.
+#: An option whose sentence multiplies in a clause a later slice builds; see
+#: `test_a_multiplicative_description_has_a_multiplicative_row`. Ragnarok's "Your maximum Fervour is doubled" was the
+#: one, until the War vow options' second slice, V2a, wrote its `class_resource` row on 2026-11-25. Empty since.
+MULTIPLIER_WAITS_FOR_A_LATER_SLICE: frozenset[tuple[str, int]] = frozenset()
+
+DOUBLES_ITS_OWN_FLAT_BONUS = frozenset({"Berserker_dw_014"})
 
 #: A more-bucket row whose sentence says it multiplies in a word rather than as
 #: "N% more", by node and capstone option, with that word. NOT ADDED TO
@@ -3848,6 +4461,26 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
                          for row in effects
                          if row["ValueKind"].strip().lower() == "more"
                          or row["Stat"] in FLAT_STATS_THAT_MULTIPLY}
+
+    # A NODE THAT DOUBLES ITS OWN FLAT BONUS UNDER A FURTHER CONDITION, written
+    # as a second equal row under both conditions: Hair-Trigger's "This bonus is
+    # doubled while above 75% Fervour" (the War riders, 2026-11-25). Doubling a
+    # flat 2 a point adds 2 a point; a More would double every crit chance the
+    # character has. Excused only while the node really holds two equal flat
+    # rows of one stat, the second carrying a second condition.
+    # A DOUBLING WHOSE ROW A LATER SLICE BUILDS: Ragnarok's "Your maximum Fervour is doubled" waits for the War vow
+    # options' second slice, which makes `class_resource` a stat a condition can be stated on; the first slice wrote
+    # only its drain removed in Wrath (2026-11-25). Excused only while the option still has no multiplying row, so the
+    # entry has to be taken out when the doubling lands.
+    for node, option in MULTIPLIER_WAITS_FOR_A_LATER_SLICE:
+        assert (node, option) not in multiplying_nodes, (
+            f"{node} option {option} now holds its multiplying row: take it out of MULTIPLIER_WAITS_FOR_A_LATER_SLICE")
+        multiplying_nodes.add((node, option))
+
+    for node in DOUBLES_ITS_OWN_FLAT_BONUS:
+        own = [row for row in effects if row["Node"] == node]
+        assert len(own) == 2 and own[0]["Stat"] == own[1]["Stat"] and own[0]["ValuePerPoint"] == own[1]["ValuePerPoint"]             and {row["ValueKind"] for row in own} == {"flat"} and sorted(bool(row.get("Condition2")) for row in own)             == [False, True], f"{node} no longer doubles its own flat bonus with a second equal row: {own}"
+        multiplying_nodes.add((node, 0))
 
     for row in effects:
         # AN ACTION ROW HAS NO BUCKET (the passive row port, 2026-11-24): the
@@ -4295,6 +4928,56 @@ STATED_ONCE_BESIDE_A_PER_POINT_ROW = {
 }
 
 
+#: Rows granting a fixed figure once from a node's first point: `MinPoints` 1,
+#: on a node of several points whose sentence states the figure with no "per
+#: point" and no "At N points". Aura of Pain, slice D, 2026-11-24: "+5% aura
+#: retaliation damage per point. Enemies within 3 meters take retaliation
+#: damage ..." -- the 3 metres is the aura's radius at any number of points, so
+#: it is granted once, where a per-point row would make it 24 metres at 8.
+#:
+#: AND TWO DRAINS, the War riders of 2026-11-25: Titan's Grip's "drain 4
+#: additional Fervour per second" and Steeled Resolve's "This bonus drains 5
+#: Fervour per second while active" are each one rate, whatever the points; the
+#: bonus beside each is the per-point figure.
+FIXED_FROM_THE_FIRST_POINT = frozenset({
+    # THE SABOTEUR'S TRAP TIMING, 2026-11-25: Delayed Fuse's extra second and its
+    # flag are one figure whatever the points.
+    ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"),
+    ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"),
+    # SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25: each cost, cap and
+    # length is one figure whatever the points; Skull Splitter's cap of 4 stops at
+    # 5 points (Max Points), where its 6 begins.
+    ("Berserker_twoh_003", "crit_armor_fervour_cost"),
+    ("Berserker_twoh_003", "crit_armor_stack_cap"),
+    ("Berserker_twoh_003", "crit_armor_seconds"),
+    ("Berserker_crit_004", "deathmark_fervour_cost"),
+    ("Berserker_crit_004", "deathmark_seconds"),
+    ("Berserker_trunk_008", "blood_price_seconds"),
+    ("Bulwark_basic_tw_t3_001", "retaliation_radius_metres"),
+    ("Berserker_twoh_011", "fervour_drain_per_second"),
+    ("Bulwark_basic_trunk_009", "fervour_drain_per_second"),
+    # AND WARMONGER'S "each enemy within melee range drains 3 additional Fervour
+    # per second", 3 for each enemy whatever the points (the Fervour spends,
+    # 2026-11-25).
+    ("Berserker_twoh_016", "fervour_drain_per_second"),
+    # AND THE FERVOUR SPENDS' ONCE-ONLY FIGURES, 2026-11-25: Iron Will's
+    # negation and its 20 (the point figure is the -2 beside it); Cleave's 180
+    # degrees and its cost of 5 (the 10 degrees and the gain of 3 are a point
+    # each); Blood Tithe's 50% maximum health and its 5 per 100.
+    ("Bulwark_basic_ic_resolve_001", "block_negation_chance"),
+    ("Bulwark_basic_ic_resolve_001", "fervour_cost_per_negated_block"),
+    ("Berserker_twoh_004", "strike_arc_at_least_degrees"),
+    ("Berserker_twoh_004", "fervour_cost_per_extra_enemy_hit"),
+    ("Bulwark_basic_jg_resolve_001", "max_health"),
+    ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration"),
+    ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss"),
+    # AND VENGEFUL DISCHARGE'S DRAIN AND PULSE RADIUS, each one figure whatever
+    # the points; the 3% beside them is the per-point one (2026-11-25).
+    ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_drain_per_second"),
+    ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_radius_metres"),
+})
+
+
 def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         effects, nodes):
     """A row with `MinPoints` belongs to a node that says "At N points:", with
@@ -4311,6 +4994,10 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         min_points = int(float(row.get("MinPoints", 0) or 0))
         if not min_points:
             continue
+        # A FIXED FIGURE FROM THE FIRST POINT, which the sentence states with no
+        # "per point" and no threshold. See `FIXED_FROM_THE_FIRST_POINT`.
+        if min_points == 1 and (row["Node"], row["Stat"]) in FIXED_FROM_THE_FIRST_POINT:
+            continue
         sentence = nodes.get(row["Node"], {}).get("Description", "")
         # OR A FIGURE STATED ONCE BESIDE A PER-POINT ROW ON THE SAME STAT, from
         # the first point: "40 Fervour, reduced by 2 per point". Named one by
@@ -4321,11 +5008,31 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
                 and not int(float(other.get("MinPoints", 0) or 0)) for other in effects):
             continue
         said = [int(n) for n in AT_N_POINTS.findall(sentence)]
+        # AND "per point invested beyond N", whose first paid point is N + 1:
+        # Tinkerer, Min Points 7 and Per Point From 7, as the generator's
+        # `_per_point_from` describes it (the Saboteur's rows, 2026-11-25).
+        said += [int(n) + 1 for n in re.findall(r"per point invested beyond (\d+)", sentence)]
         # OR A STEP OF A "FOR EVERY N POINTS" SERIES, at a multiple of its N.
         steps = [int(n) for n in FOR_EVERY_N_POINTS.findall(sentence)]
         if min_points not in said and not any(min_points % n == 0 for n in steps):
             wrong.append(f"{row['Name']} applies from {min_points} points and "
                          f"its node's sentence says {said or 'no threshold'}")
+    assert not wrong, wrong
+
+
+def test_a_row_stopping_at_n_points_is_on_a_node_whose_sentence_says_at_n_points(effects, nodes):
+    """A row with `MaxPoints` stops at a threshold its node names, "At N points:", with that N. The Saboteur's rows of
+    2026-11-25: Durable Modifications' 3% a point above 50% stops at 4, where "At 4 points" doubles it. THE CONTROL is
+    the first assertion: the check reads at least one such row."""
+    stopping = [row for row in effects if int(float(row.get("MaxPoints", 0) or 0))]
+    assert stopping, "no passive row stops at a number of points, so this check reads nothing"
+    wrong = []
+    for row in stopping:
+        max_points = int(float(row["MaxPoints"]))
+        said = [int(n) for n in AT_N_POINTS.findall(nodes.get(row["Node"], {}).get("Description", ""))]
+        if max_points not in said:
+            wrong.append(f"{row['Name']} stops at {max_points} points and its node's sentence says "
+                         f"{said or 'no threshold'}")
     assert not wrong, wrong
 
 
@@ -4420,3 +5127,99 @@ def test_a_chance_on_melee_hit_is_scoped_to_melee(effects, nodes):
     assert len(checked) == 8, (
         f"expected the six on-melee-hit rows and Attrition's two, found {checked}")
     assert not wrong, "a chance on a melee hit is not scoped to melee:\n" + "\n".join(wrong)
+
+
+#: "+3% damage", "20% more damage", "+2% to all damage": a percentage of damage
+#: that names no kind. The number is captured so a row is matched to the figure
+#: its own sentence states for it.
+PLAIN_DAMAGE = re.compile(r"(\d+(?:\.\d+)?)% (?:more |increased )?(?:to all )?damage\b")
+
+#: The columns two rows have to share to be one bonus granted to two stats.
+SAME_BONUS_COLUMNS = ("Node", "Option", "ValueKind", "ValuePerPoint", "RequiredTags", "Condition",
+                      "ConditionValue", "Condition2", "ConditionValue2", "Scale", "ScaleStep",
+                      "ScaleMaxSteps", "ScaleOffset", "MinPoints", "PerPointFrom")
+
+
+def test_plain_damage_on_a_passive_node_is_attack_and_spell_damage(effects, nodes):
+    """A node saying "damage" with no kind grants attack damage AND spell damage.
+
+    THE OWNER'S RULING OF 2026-08-25 (`docs/DECISIONS.md`, "Increased damage" on
+    a passive node means attack damage and spell damage): "a node granting it is
+    therefore two rows ... one per stat, both the same value". The fifteen
+    Demonic nodes saying it were written that way by hand, and nothing checked
+    it: slice D of `plan_death_and_war.md` first wrote seven War nodes with
+    attack damage alone, and every other check here passed them.
+
+    WHAT IT READS: every `increased` or `more` row on attack or spell damage whose
+    own sentence (the option's, for a capstone) states that row's figure as plain
+    damage. Such a row needs a partner on the other stat sharing every column of
+    `SAME_BONUS_COLUMNS`.
+
+    A SENTENCE NAMING ATTACKS OR SPELLS IS LEFT OUT, because "your attacks deal
+    20% more damage" is attack damage alone (the Ravager's First Onslaught), and
+    a check that cannot tell that apart from plain damage would fire on it. So it
+    can miss a node that says both; it cannot accuse one that is right.
+    """
+    def bonus(row: dict, stat: str) -> tuple:
+        return (stat, *(str(row.get(column, "")).strip() for column in SAME_BONUS_COLUMNS))
+
+    granted = {bonus(row, row["Stat"]) for row in effects}
+    checked = []
+    alone = []
+    for row in effects:
+        if row["Stat"] not in ("attack_damage", "spell_damage") or row["ValueKind"] not in ("increased", "more"):
+            continue
+        described = words_of(row, nodes).lower()
+        if "attack" in described or "spell" in described:
+            continue
+        figure = f"{abs(float(row['ValuePerPoint'])):g}"
+        if figure not in {found.group(1) for found in PLAIN_DAMAGE.finditer(described)}:
+            continue
+        checked.append(row["Name"])
+        other = "spell_damage" if row["Stat"] == "attack_damage" else "attack_damage"
+        if bonus(row, other) not in granted:
+            alone.append(f"{row['Name']}: {row['Stat']} {row['ValueKind']} {figure} has no {other} beside it: "
+                         f"{described}")
+
+    # THE CHECK REACHES ROWS AT ALL, and enough of them to cover both sources:
+    # the Demonic nodes written by hand and the War nodes slice D wrote. Measured
+    # 2026-11-25: 60 rows, 16 of them on War nodes (eight pairs, Prepared's among
+    # them).
+    assert len(checked) >= 60, f"the check read only {len(checked)} rows: {checked}"
+    assert not alone, ("plain damage on a passive node is attack damage and spell damage, two rows of one bonus "
+                       "(the owner's ruling of 2026-08-25):\n" + "\n".join(alone))
+
+
+#: "Melee range" in a node is 4 metres: the coordinating session's ruling of
+#: 2026-11-25, a sentence in the design document's Passive Class Trees.
+MELEE_RANGE_METRES = 4.0
+
+
+def test_a_reach_is_the_one_the_node_states(effects, nodes):
+    """A row's `ReachMetres` is a distance its node's own sentence states.
+
+    ADDED 2026-11-25 WITH WARMONGER AND CUT AND RUN, the first rows whose reach
+    comes from a ruling rather than a number in the sentence. A reach decides
+    which enemies count, and nothing at run time reports a wrong one: the count
+    is simply smaller or larger than the sentence promises. Every other column
+    a row carries is held to the sentence somewhere in this file; the reach was
+    not.
+
+    THE SENTENCE WRITES THE NUMBER, "4 metres" or "4 meters", OR "MELEE RANGE"
+    FOR 4, per `MELEE_RANGE_METRES`. Measured 2026-11-25: 23 rows carry a reach,
+    three of them Warmonger's and Cut and Run's, and every one states it this
+    way.
+    """
+    checked = []
+    wrong = []
+    for row in effects:
+        reach = float(row.get("ReachMetres") or -1)
+        if reach <= 0:
+            continue
+        checked.append(row["Name"])
+        words = words_of(row, nodes).lower()
+        stated = any(f"{reach:g} {unit}" in words for unit in ("metre", "meter"))
+        if not stated and not (reach == MELEE_RANGE_METRES and "melee range" in words):
+            wrong.append(f"{row['Name']}: a reach of {reach:g} metres, and the node says: {words}")
+    assert len(checked) >= 23, f"the check read only {len(checked)} rows with a reach: {checked}"
+    assert not wrong, "a row's reach is not the one its node states:\n" + "\n".join(wrong)

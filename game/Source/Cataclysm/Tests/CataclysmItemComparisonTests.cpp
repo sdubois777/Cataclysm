@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmComparisonStandIn.h"
+#include "Data/CataclysmDataRows.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Interface/CataclysmCharacterSheetLayout.h"
@@ -304,7 +305,16 @@ bool FCataclysmItemComparisonHelmAgainstHelm::RunTest(const FString& Parameters)
 	Control.Wear(Worn);
 	Control.Wear(Hovered);
 	const float HealthWith = Control.RefreshedMaxHealth();
-	const float AffixWorth = UCataclysmItemValues::AffixValue(120.0f, 0.0f, UCataclysmItemValues::MaxAffixTier, 1.0f, 10);
+	// THE AFFIX ROW'S OWN TIER 7 TOP AT +10, read from the table since issue #2883 (48 at +0, 120 at +10 today).
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	const FCataclysmAffixRow* HealthRow = AffixTable
+		? AffixTable->FindRow<FCataclysmAffixRow>(FName(HealthAffix), TEXT("ItemComparisonTests"), false)
+		: nullptr;
+	if (!TestNotNull(TEXT("set-up: the flat health affix row"), HealthRow))
+	{
+		return false;
+	}
+	const float AffixWorth = UCataclysmItemValues::AffixValue(*HealthRow, UCataclysmItemValues::MaxAffixTier, 1.0f, 10);
 	TestEqual(TEXT("CONTROL: really wearing it raises maximum health by exactly the affix's value"),
 			  HealthWith - HealthNow, AffixWorth, 0.01f);
 
@@ -970,10 +980,11 @@ namespace CataclysmItemComparisonTest
  * Demonic enemies" raises the new line, the hit on a Demonic creature's health, and leaves the plain hit where it is;
  * a Torc against Celestial enemies raises neither. Prints "FAMILY HIT".
  *
- * THE FIGURES ARE WORKED OUT HERE AND NOT READ BACK. The Greataxe's 72 attack damage is stated at +10, and a
- * two-handed weapon doubles it: 72 / 2.5 x 2 = 57.6 at +0. The Slashing bonus is 10% more against health: 63.36. A T1
- * affix rolled at the top of its band, with no floor, is its 400% top x 1/3 (T1 is a third of T7) / 2.5 (stated at
- * +10): 53.33%, so the hit becomes 57.6 x 1.5333 x 1.1 = 97.15.
+ * THE FIGURES ARE WORKED OUT HERE AND NOT READ BACK. The Greataxe's 72 attack damage is stated at +10, which is 29
+ * at +0 since issue #2883 (72 / 2.5 = 28.8, a half up), and a two-handed weapon doubles it: 58 at +0. The Slashing
+ * bonus is 10% more against health: 63.8. A T1 affix rolled at the top of its range is its T1 Max at +0, 47%, so the
+ * hit becomes 58 x 1.47 x 1.1 = 93.786. (Before issue #2883: 57.6, 63.36 and 97.15, from a 400% top taken as a third
+ * at tier 1 and divided by 2.5.)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemComparisonFamilyHit,
 	"Cataclysm.ItemComparison.ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit",
@@ -1008,19 +1019,19 @@ bool FCataclysmItemComparisonFamilyHit::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("CONTROL: the Greataxe's plain hit is 72 / 2.5 x 2 = 57.6"), Now.BasicHit, 57.6f, 0.01f);
-	TestEqual(TEXT("its hit on a Demonic creature's health is 10% more, Slashing's bonus: 63.36"), Now.FamilyHits[0],
-			  63.36f, 0.01f);
+	TestEqual(TEXT("CONTROL: the Greataxe's plain hit is 29 x 2 = 58"), Now.BasicHit, 58.0f, 0.01f);
+	TestEqual(TEXT("its hit on a Demonic creature's health is 10% more, Slashing's bonus: 63.8"), Now.FamilyHits[0],
+			  63.8f, 0.01f);
 
 	const FCataclysmItem Against = TorcAgainst(TEXT("Demonic"));
 	const FCataclysmComparisonResult Raised =
 		UCataclysmItemComparison::Compare(Against, *Character.Equipment, Character.AbilitySystem, *StandIn, nullptr,
 										  &Demonic);
 	TestTrue(TEXT("a Torc against Demonic enemies is compared"), Raised.bCompared);
-	TestTrue(TEXT("and the line for the hit on a Demonic creature goes from 63.4 to 97.2"),
+	TestTrue(TEXT("and the line for the hit on a Demonic creature goes from 63.8 to 93.8"),
 			 Raised.ChangeLines.Contains(UCataclysmItemComparison::ChangeLineNamed(
-				 UCataclysmItemComparison::FamilyHitLineName(FName(TEXT("Demonic"))), /*bPercentage=*/false, 63.36f,
-				 97.152f)));
+				 UCataclysmItemComparison::FamilyHitLineName(FName(TEXT("Demonic"))), /*bPercentage=*/false, 63.8f,
+				 93.786f)));
 	TestFalse(TEXT("while the plain hit, which knows no creature, does not move"),
 			  AnyLineNamed(Raised.ChangeLines, UCataclysmItemComparison::BasicHitLineName));
 

@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "Taking hits, blocking and killing enemies generate Fervour. While you have this, your Fervour decays slowly out of combat.",
+        "description": "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit you take and 1 for each block. While you have this, your Fervour decays at 5 per second after 3 seconds out of combat.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Meat Shield",
-        "description": "+4% Maximum HP per point. Each 1,000 Maximum HP above 5,000 increases your Fervour cap by 5.",
+        "description": "+4% Maximum HP per point. Each 1,000 Maximum HP increases your maximum Fervour by 3.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -749,7 +749,7 @@
       "data": {
         "kind": "basic",
         "name": "Ironblood",
-        "description": "+50 flat HP Regen per second per point.",
+        "description": "+2 flat HP Regen per second per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -815,7 +815,7 @@
       "data": {
         "kind": "basic",
         "name": "Crushing Presence",
-        "description": "+100 flat damage per point. Requires 5,000 Maximum HP to activate.",
+        "description": "+1 flat damage per point for every 1,000 Maximum HP.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -903,7 +903,7 @@
       "data": {
         "kind": "basic",
         "name": "Dense Muscle",
-        "description": "+2% damage reduction per point for every 5,000 Maximum HP above 10,000 (multiplicative).",
+        "description": "+1% damage reduction per point for every 5,000 Maximum HP (multiplicative).",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -925,7 +925,7 @@
       "data": {
         "kind": "basic",
         "name": "Unstoppable Force",
-        "description": "+1% damage per point for every 1,000 Maximum HP above 10,000.",
+        "description": "+1% damage per point for every 1,000 Maximum HP.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -947,7 +947,7 @@
       "data": {
         "kind": "basic",
         "name": "Weight of the World",
-        "description": "+50 flat damage per point for every 5,000 Maximum HP you have. Requires 8,000 Maximum HP to activate.",
+        "description": "+1% damage per point for every 5,000 Maximum HP (multiplicative).",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1035,7 +1035,7 @@
       "data": {
         "kind": "basic",
         "name": "Walking Fortress",
-        "description": "+500 flat Maximum HP per point. At 6 points: For every 10,000 Maximum HP you have, gain 1% of your Maximum HP as flat damage reduction (multiplicative).",
+        "description": "+40 flat Maximum HP per point. At 6 points: +1% damage reduction for every 5,000 Maximum HP (multiplicative).",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1123,7 +1123,7 @@
       "data": {
         "kind": "keystone",
         "name": "Titanfall",
-        "description": "When you absorb a single hit exceeding 5,000 flat damage, you become unkillable for 2 seconds and your next attack deals damage equal to the full amount of that hit. Requires 25,000 Maximum HP to activate. Can only trigger once every 30 seconds.",
+        "description": "When a single hit takes more than 20% of your Maximum HP, you cannot be killed for 2 seconds and your next attack deals bonus damage equal to that hit. Can only happen once every 30 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1145,7 +1145,7 @@
       "data": {
         "kind": "basic",
         "name": "Barbed Skin",
-        "description": "+2% damage reflected to attackers per point (multiplicative).",
+        "description": "+2% Retaliation per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1233,7 +1233,7 @@
       "data": {
         "kind": "basic",
         "name": "Vengeful Discharge",
-        "description": "Passively drains 10 Fervour per second to increase your retaliation damage by +3% per point. When this drain reduces you to 0 Fervour, automatically trigger a retaliation pulse hitting all nearby enemies for 100% of your retaliation damage. At 5 points: This pulse also applies a bleed stack to all enemies hit.",
+        "description": "Passively drains 10 Fervour per second to increase your retaliation damage by +3% per point. When this drain reduces you to 0 Fervour, you retaliate against every enemy within 4 metres for 100% of your retaliation damage. At 5 points: this also applies Bleed to every enemy it strikes.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1276,7 +1276,7 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Wrath Incarnate",
+        "name": "Outnumbered",
         "description": "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at maximum Fervour, your retaliation damage hits all nearby enemies rather than just your attacker.",
         "currentPoints": 0,
         "color": "#94a3b8",
@@ -1321,7 +1321,7 @@
       "data": {
         "kind": "basic",
         "name": "Serrated Edge",
-        "description": "+10% bleed duration per point applied by your retaliation damage.",
+        "description": "+10% duration of bleeds you apply, per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1574,7 +1574,7 @@
           {
             "name": "Shield Oath",
             "identity": "Block/Shield",
-            "description": "Blocking an attack restores 50 HP."
+            "description": "Blocking an attack restores 2% of your Maximum HP."
           },
           {
             "name": "Flesh Oath",
@@ -1665,7 +1665,7 @@
           {
             "name": "Bloodied but Unbroken",
             "identity": "HP \u00d7 Retaliation",
-            "description": "Your retaliation damage is increased by 1% for every 75 HP you are missing."
+            "description": "Your retaliation damage is increased by 1% for every 1% of your Maximum HP you are missing."
           },
           {
             "name": "Spiteful Guard",
@@ -1703,17 +1703,17 @@
           {
             "name": "The Unbreakable Wall",
             "identity": "Block/Shield",
-            "description": "You may equip a shield in your primary weapon slot. You may now block AOE damage."
+            "description": "Every block negates the whole hit."
           },
           {
             "name": "Colossus Eternal",
             "identity": "Juggernaut/HP",
-            "description": "All healing, regeneration, and HP bonuses are doubled. While above 50% HP, you are immune to instant-kill effects. While above 75% HP, your attacks deal bonus damage equal to 2% of your current HP."
+            "description": "Your health regeneration and the healing you receive are doubled, and your increases to Maximum HP count twice. While above 50% health, a hit that would kill you leaves you at 1 HP instead. While above 75% health, your attacks deal bonus damage equal to 2% of your current HP."
           },
           {
             "name": "Wrath Incarnate",
             "identity": "Retaliation/Thorns",
-            "description": "Your retaliation damage percentage is added to your total Armor, and your Armor contributes to your retaliation damage proportional to the damage reduction it provides. When you take a hit that would deal more than 10% of your Maximum HP in a single strike, you erupt \u2014 instantly retaliating against all nearby enemies for 200% of your retaliation damage."
+            "description": "Your retaliation damage is increased by 1% for every 100 Armor you have. When a single hit takes more than 10% of your Maximum HP, you retaliate against every enemy within 4 metres for 200% of your retaliation damage."
           }
         ],
         "pointThreshold": 200

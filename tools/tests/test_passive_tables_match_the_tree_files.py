@@ -223,18 +223,22 @@ def test_capstone_options_are_carried_across(trees, node_rows):
                 if expected:
                     carried += 1
 
-    # NOT VACUOUS. Eight trees carry three options on each of four capstones,
-    # which is 96. Without this the test above would pass just as happily if the
+    # NOT VACUOUS. Nine trees carry three options on each of four capstones,
+    # which is 108. Without this the test above would pass just as happily if the
     # generator wrote empty columns for every capstone in every tree.
     #
     # IT WAS 36 AND THREE TREES UNTIL 2026-09-07, when the Ravager and Ritualist
     # trees were added for issue #950 and brought twelve capstones between them,
-    # each offering three options. IT WAS 60 AND FIVE TREES UNTIL 2026-11-24,
-    # when the three Death trees brought twelve vows each.
-    assert carried == 96, (
-        f"{carried} capstone options were carried across, expected 96: eight "
-        "trees with three options on each of four capstones. The Saboteur's "
-        "four have none, which is issue #935."
+    # each offering three options.
+    #
+    # AND 60 AND FIVE TREES UNTIL 2026-11-24, when the three Death trees brought
+    # twelve vows each; and the Saboteur's twelve options, approved on
+    # 2026-11-24, were written into its four oaths on 2026-11-25
+    # (`tools/apply_war_vow_sentences_2026_11_25.py`). They had none until then,
+    # which was issue #935.
+    assert carried == 108, (
+        f"{carried} capstone options were carried across, expected 108: nine "
+        "trees with three options on each of four capstones."
     )
 
 

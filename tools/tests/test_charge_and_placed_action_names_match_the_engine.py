@@ -28,7 +28,10 @@ CONSTANTS = {
     "NextAttackDamageAction": "next_attack_damage",
     "NextSkillEffectivenessAction": "next_skill_effectiveness",
     "EnemyArmorRemovedAction": "enemy_armor_removed",
+    "EnemyArmorRemovedNearbyAction": "enemy_armor_removed_nearby",
     "AttackerDamageRemovedAction": "attacker_damage_removed",
+    # AND THORNWALL'S STACK ON THE ATTACKER, the War vow options' third slice, V3a, 2026-11-25.
+    "AttackerRetaliationTakenAction": "attacker_retaliation_taken",
     # AND THE THREE EVERY-Nth NAMES, since issue #1833's every Nth.
     "NthHitTakenDamageAction": "nth_hit_taken_damage",
     "NthSpellManaCostAction": "nth_spell_mana_cost",
@@ -80,6 +83,23 @@ CONSTANTS = {
     "StunNearTheDyingAction": "stun_near_the_dying",
     "AllDotsStatus": "All DoTs",
     "SmiteNearbyByArmourAction": "smite_nearby_by_armor",
+    "SmiteNearbyByHitAction": "smite_nearby_by_hit",
+    # AND WRATH INCARNATE'S PULSE, V3a, 2026-11-25.
+    "RetaliationPulseAction": "retaliation_pulse",
+    # AND THOUSAND DEATHS' CHAIN, V3b, 2026-11-25.
+    "FrenzyChainAction": "frenzy_chain",
+    # AND BAITED'S TAUNT AND TRAIL OF WIRE, V4a, 2026-11-25.
+    "TauntEnemiesNearTrapAction": "taunt_enemies_near_trap",
+    "PlaceLastTrapAgainAction": "place_last_trap_again",
+    # AND COUNTERFIRE, V4b, 2026-11-25.
+    "CounterfireAction": "counterfire",
+    # AND WHERE THEY FALL AND CROSSFIRE, V5a, 2026-11-25.
+    "CopyLastTrapAtKillAction": "copy_last_trap_at_kill",
+    "CrossfireAction": "crossfire",
+    # AND SCRAP MINES, V5b1, 2026-11-25.
+    "ScrapMineAction": "scrap_mine",
+    # AND TITANFALL, the Bulwark's keystone, 2026-11-25.
+    "TitanfallAction": "titanfall",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -213,9 +233,51 @@ def test_the_generator_accepts_exactly_the_next_use_names_the_engine_has() -> No
 
 
 def test_the_generator_accepts_exactly_the_placed_names_the_engine_has() -> None:
+    # AND `EnemyArmorRemovedNearbyAction`, the same stack on every enemy nearby (the War vow options' second slice,
+    # V2b, 2026-11-25), whose name ends in "NearbyAction".
+    # AND `AttackerRetaliationTakenAction`, Thornwall's stack (the War vow options' third slice, V3a, 2026-11-25),
+    # which raises what the attacker takes rather than removing anything.
     engine = {name for constant, name in engine_names().items()
-              if constant.endswith("RemovedAction")}
+              if constant.endswith("RemovedAction") or constant.endswith("RemovedNearbyAction")
+              or constant == "AttackerRetaliationTakenAction"}
     assert set(gen.PLACED_ACTIONS) == engine
+
+
+def test_the_generator_accepts_exactly_the_retaliation_pulse_name_the_engine_has() -> None:
+    """The War vow options' third slice, V3a, 2026-11-25: Wrath Incarnate."""
+    assert gen.RETALIATION_PULSE_ACTION == engine_names()["RetaliationPulseAction"]
+
+
+def test_the_generator_accepts_exactly_the_frenzy_chain_name_the_engine_has() -> None:
+    """The War vow options' third slice, second half, V3b, 2026-11-25: Thousand Deaths."""
+    assert gen.FRENZY_CHAIN_ACTION == engine_names()["FrenzyChainAction"]
+
+
+def test_the_generator_accepts_exactly_the_v4a_names_the_engine_has() -> None:
+    """The War vow options' fourth slice, first half, V4a, 2026-11-25: Baited and Trail of Wire."""
+    assert gen.TAUNT_NEAR_TRAP_ACTION == engine_names()["TauntEnemiesNearTrapAction"]
+    assert gen.PLACE_LAST_TRAP_AGAIN_ACTION == engine_names()["PlaceLastTrapAgainAction"]
+
+
+def test_the_generator_accepts_exactly_the_counterfire_name_the_engine_has() -> None:
+    """The War vow options' fourth slice, second half, V4b, 2026-11-25: Counterfire."""
+    assert gen.COUNTERFIRE_ACTION == engine_names()["CounterfireAction"]
+
+
+def test_the_generator_accepts_exactly_the_v5a_names_the_engine_has() -> None:
+    """The War vow options' fifth slice, first half, V5a, 2026-11-25: Where They Fall and Crossfire."""
+    assert gen.COPY_LAST_TRAP_AT_KILL_ACTION == engine_names()["CopyLastTrapAtKillAction"]
+    assert gen.CROSSFIRE_ACTION == engine_names()["CrossfireAction"]
+
+
+def test_the_generator_accepts_exactly_the_scrap_mine_name_the_engine_has() -> None:
+    """The War vow options' fifth slice, second half, first part, V5b1, 2026-11-25: Scrap Mines."""
+    assert gen.SCRAP_MINE_ACTION == engine_names()["ScrapMineAction"]
+
+
+def test_the_generator_accepts_exactly_the_titanfall_name_the_engine_has() -> None:
+    """Titanfall, the Bulwark's keystone, 2026-11-25."""
+    assert gen.TITANFALL_ACTION == engine_names()["TitanfallAction"]
 
 
 def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:
@@ -244,9 +306,11 @@ def test_the_generator_accepts_exactly_the_health_cap_name_the_engine_has() -> N
 def test_the_generator_accepts_exactly_the_nearby_names_the_engine_has() -> None:
     """Issue #1833 group D part 3."""
     names = engine_names()
+    # AND THE NOVA SIZED BY A HIT, the War vow options' second slice, V2b, 2026-11-25.
     assert set(gen.NEARBY_ACTIONS) == {names["SmiteNearbyAction"],
                                        names["HealNearbyEnemiesAction"],
-                                       names["SmiteNearbyByArmourAction"]}
+                                       names["SmiteNearbyByArmourAction"],
+                                       names["SmiteNearbyByHitAction"]}
 
 
 def test_the_generator_accepts_exactly_the_remaining_damage_names_the_engine_has() -> None:
@@ -473,7 +537,8 @@ def test_every_status_a_row_may_name_is_one_the_engine_applies() -> None:
     names = engine_names()
     named = {names["StaggerStatus"], names["RandomDebuffStatus"]}
     assert set(gen.APPLY_STATUSES) - named == kinds - {"Stun"}
-    assert set(gen.APPLY_STATUSES_FOR_SECONDS) <= set(gen.APPLY_STATUSES)
+    # STUN IS THE ONE EXCEPTION, since 2026-11-25: on another character it is laid only for a row's stated seconds.
+    assert set(gen.APPLY_STATUSES_FOR_SECONDS) - {"Stun"} <= set(gen.APPLY_STATUSES)
 
 
 def test_the_generator_spells_silence_as_the_engine_does() -> None:

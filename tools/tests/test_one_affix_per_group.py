@@ -119,8 +119,8 @@ class TestTheNumbersInTheSectionComeFromTheModel:
             self, section, model):
         match = re.search(r"takes roughly (\w+) affix slots", section)
         assert match, "the section does not say what capping a resistance costs"
-        words = {"ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
-                 "fourteen": 14}
+        words = {"three": 3, "four": 4, "five": 5, "ten": 10, "eleven": 11, "twelve": 12,
+                 "thirteen": 13, "fourteen": 14}
         stated = words.get(match.group(1))
         assert stated is not None, (
             f"the section says 'roughly {match.group(1)}', which this test "

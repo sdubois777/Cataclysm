@@ -2670,6 +2670,17 @@ public:
 	 */
 	static const TCHAR* KnockbackSuppressedStat;
 
+	/**
+	 * A flag above zero meaning a pin does not take hold of the character. The War vow options' second slice,
+	 * 2026-11-25, for Unstoppable's "While above 75% Fervour you cannot be slowed, rooted, or knocked back".
+	 *
+	 * A PIN IS THE ROOT, ruled that day: the game has no root, and a pin is what holds a character in place. Read in
+	 * `ApplyPin` before anything is applied, so a refused pin leaves neither its tag nor its damage taken increase.
+	 *
+	 * ASKED THROUGH `StatForSkill` FOR `KnockbackSuppressedStat`'S REASON: the row that grants it carries two conditions.
+	 */
+	static const TCHAR* PinSuppressedStat;
+
 	/** Whether this actor is stunned right now and may not act. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsStunned(const AActor* Actor);

@@ -219,7 +219,7 @@ FString UCataclysmItemTooltip::StatInWords(const FString& Stat)
 
 FString UCataclysmItemTooltip::ImplicitLine(const FString& Stat,
 											const FString& Kind,
-											float StatedValue,
+											int32 AtZero,
 											int32 GearLevel,
 											bool bTwoHanded,
 											const UDataTable* AffixTable)
@@ -232,7 +232,7 @@ FString UCataclysmItemTooltip::ImplicitLine(const FString& Stat,
 	}
 
 	const float Value =
-		UCataclysmItemValues::ImplicitValue(StatedValue, GearLevel, bTwoHanded);
+		UCataclysmItemValues::ImplicitValueAtLevel(AtZero, GearLevel, bTwoHanded);
 	const FString Subject = StatInWords(Stat);
 
 	if (Kind.Equals(TEXT("increased"), ESearchCase::IgnoreCase))
@@ -265,8 +265,7 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 
 	const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable);
 	const float Value = UCataclysmItemValues::AffixValue(
-		Affix->TopValue, Affix->Floor, Rolled.Tier, Rolled.Roll,
-		Item.GearLevel, bTwoHanded);
+		*Affix, Rolled.Tier, Rolled.Roll, Item.GearLevel, bTwoHanded);
 
 	const FString Tier = FString::Printf(TEXT(" (tier %d)"), Rolled.Tier);
 
@@ -303,9 +302,9 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 	// halves perfectly well. Issue #847 fixed what a hybrid is WORTH and left
 	// what it SAYS.
 	//
-	// THE SAME LOOKUP AND THE SAME SHARE `UCataclysmItemModifiers::AccumulateInto`
-	// USES, read from the same constant, so the line and the modifier cannot
-	// drift. A part is found by its AffixName rather than by a row name, which is
+	// THE SAME LOOKUP AND THE SAME RULE `UCataclysmItemModifiers::AccumulateInto`
+	// USES, UCataclysmItemValues::HybridHalfValue (each half two tiers down,
+	// since issue #2883), so the line and the modifier cannot drift. A part is found by its AffixName rather than by a row name, which is
 	// what the columns hold.
 	if (Affix->AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
 	{
@@ -319,10 +318,8 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 				continue;
 			}
 
-			const float PartValue = UCataclysmItemValues::AffixValue(
-										Part->TopValue, Part->Floor, Rolled.Tier,
-										Rolled.Roll, Item.GearLevel, bTwoHanded)
-								  * UCataclysmItemValues::HybridFraction;
+			const float PartValue = UCataclysmItemValues::HybridHalfValue(
+				*Part, Rolled.Tier, Rolled.Roll, Item.GearLevel, bTwoHanded);
 
 			const FString Phrase = TooltipStatPhrase(*Part, PartValue);
 			if (!Phrase.IsEmpty())
@@ -588,10 +585,10 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 	{
 		for (const FString& Line : {
 				 ImplicitLine(Base->Implicit1Stat, Base->Implicit1Kind,
-							  Base->Implicit1Value, Item.GearLevel, bTwoHanded,
+							  Base->Implicit1AtZero, Item.GearLevel, bTwoHanded,
 							  AffixTable),
 				 ImplicitLine(Base->Implicit2Stat, Base->Implicit2Kind,
-							  Base->Implicit2Value, Item.GearLevel, bTwoHanded,
+							  Base->Implicit2AtZero, Item.GearLevel, bTwoHanded,
 							  AffixTable)})
 		{
 			if (!Line.IsEmpty())

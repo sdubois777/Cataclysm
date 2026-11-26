@@ -78,12 +78,8 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # either again.
     "seconds_after_foreign_damage",
     "while_bleeding",
-    # Landed with the movement conditions for the dungeon-modifier work. The
-    # row that wants it is a passive node, not an enchantment: Iron Aegis, an
-    # option of the Bulwark tree's Second Oath, "Your Block Chance is doubled
-    # while you have not attacked in the last 3 seconds". Bulwark is a War
-    # class tree, so it waits on the rule that no War work is done yet.
-    "not_attacked_for_seconds",
+    # `not_attacked_for_seconds` LEFT ON 2026-11-25 with Iron Aegis's row, the
+    # Bulwark's Second Oath (slice D of `plan_death_and_war.md`).
     # TWO JOINED ON 2026-10-07, ruled that day and built ahead of their rows
     # while the design workbook is with another session: "Gain 50%-100%
     # increased damage while under the effect of a DoT" and "After 10 seconds

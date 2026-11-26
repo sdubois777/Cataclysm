@@ -2125,6 +2125,109 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetIsYourLastAttacker
 		UMETA(DisplayName = "Target Is Your Last Attacker"),
+
+	/**
+	 * The character holds two items in its weapon slots. The Berserker's states, `plan_death_and_war.md` slice B29,
+	 * 2026-11-25: "Dual wield only", which sixteen Berserker nodes and options say, Frenzy first.
+	 *
+	 * A WEAPON AND A SHIELD COUNT, by the design document's own sentence (Dual Wielding): "A character holding a weapon
+	 * and a Shield is dual wielding". A two-handed weapon is stored once, in the first slot, so it is one item and does
+	 * not count; two two-handed weapons held under Both Hands Full are two items, and do.
+	 *
+	 * AN UNKNOWN READING REFUSES: no equipment component (every enemy) leaves it at -1.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	DualWielding
+		UMETA(DisplayName = "Dual Wielding"),
+
+	/**
+	 * The character is in the Berserker's Wrath. The Berserker's states, 2026-11-25: Wrath, "Two-handed weapons only.
+	 * When you reach maximum Fervour, enter a state of Wrath. ... Wrath ends when Fervour reaches 0." Rows the Wrath
+	 * node grants, and every "While in Wrath" of the tree, are stated under it.
+	 *
+	 * READ OFF THE ABILITY SYSTEM COMPONENT, which holds the state `FCataclysmBerserkerStates` judges. False is "not in
+	 * Wrath", which every enemy is.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	InWrath
+		UMETA(DisplayName = "In Wrath"),
+
+	/**
+	 * The character is in the Berserker's Frenzy. The Berserker's states, 2026-11-25: Frenzy, "Dual wield only. When you
+	 * reach maximum Fervour, enter a state of Frenzy. ... Frenzy ends when Fervour reaches 0." The same reading as
+	 * `InWrath`, for the other state.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	InFrenzy
+		UMETA(DisplayName = "In Frenzy"),
+
+	/**
+	 * The character stands within `Value` metres of at least one gadget it commands. The Saboteur's device conditions,
+	 * 2026-11-25: Sentry Network, "+2% evasion chance per point while within 15 meters of at least one active gadget".
+	 * A gadget is `ACataclysmMinion::IsGadget`, a deployable machine that is not a trap, as `gadgets_active` counts.
+	 *
+	 * READ FROM `MetresToNearestOwnGadget`, measured in the walk that counts the character's machines. -1 is "none
+	 * commanded" and refuses; the window is inclusive.
+	 */
+	OwnGadgetWithinMetres
+		UMETA(DisplayName = "Own Gadget Within Metres"),
+
+	/**
+	 * The enemy struck has not set off a skill trap of the asker's before the triggering whose blow this is. The
+	 * Saboteur's device conditions, 2026-11-25: Ambush, "+5% trap damage per point against enemies that have not yet
+	 * triggered one of your traps". The coordinating session's rulings of that day: an enemy's first triggering counts as
+	 * not yet triggered, an enemy caught in a blast it did not set off keeps the bonus, and a rearmed trap set off again
+	 * by the same enemy is not that enemy's first.
+	 *
+	 * THE ENEMY KEEPS THE RECORD, the first triggering of each player's skill traps it set off, as the trap and its count
+	 * (`UCataclysmAbilitySystemComponent::NoteTriggeredATrapOf`, written by `ACataclysmMinion::TriggerSkillTrap`), and
+	 * the blow names its trap and triggering (`TrapDamageNamingTrap`), so that triggering's own blows on it, a late one
+	 * included, still find it "not yet triggered". A lookup with no target in hand refuses.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetNotYetTriggeredYourTrap
+		UMETA(DisplayName = "Target Not Yet Triggered Your Trap"),
+
+	/**
+	 * Within `Value` seconds of a gadget the character commands taking a landed blow. The Saboteur's device conditions,
+	 * 2026-11-25: Overcautious, "+4% evasion chance per point while any of your gadgets are under attack", and the
+	 * coordinating session's ruling of that day that "under attack" lasts 2 seconds after a gadget takes a hit.
+	 *
+	 * A LANDED BLOW, NOT A TICK: `UCataclysmAbilitySystemComponent::NoteHitTaken` on the gadget's own ability system
+	 * tells its summoner's (`NoteGadgetStruck`). -1 is "never" and refuses; the window is inclusive.
+	 */
+	WithinSecondsOfGadgetStruck
+		UMETA(DisplayName = "Within Seconds Of Gadget Struck"),
+
+	/**
+	 * The character's Fervour has no room to reserve another skill trap. The Saboteur's device conditions, 2026-11-25:
+	 * Overwhelming Presence, as the passive order fixes the owner approved on 2026-11-24 reword it, "While your Fervour
+	 * has no room to reserve another trap, you deal 50% more trap damage and trap trigger radius is doubled".
+	 *
+	 * TRUE WHEN AT LEAST ONE SLOT IS CONVERTED INTO A SKILL TRAP AND NONE OF THEM COULD RESERVE ANOTHER
+	 * (`UCataclysmCommand::HasRoomToReserve` with `ACataclysmMinion::SkillTrapReserveFor`); false for a character with no
+	 * trap slot, which has no trap to place. FILLED ONLY WHEN A ROW ASKS, by `WithEnemiesInReach`, because it asks a
+	 * stat of every slot.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	NoRoomForATrap
+		UMETA(DisplayName = "No Room For A Trap"),
+
+	/**
+	 * The class resource is AT OR BELOW that PERCENTAGE of its maximum: the complement of `ClassResourceAbovePercent`,
+	 * with its three clauses in the same order. The Saboteur's rows of 2026-11-25, for Durable Modifications' "+3% damage
+	 * reduction per point (multiplicative). At 4 points: This damage reduction is doubled while above 50% maximum
+	 * Fervour": the coordinating session ruled the doubling exact, 6% a point above 50% and 3% a point otherwise, so the
+	 * otherwise needs a condition of its own. AN UNKNOWN READING REFUSES, as its complement's does: a character with no
+	 * pool is neither above nor at or below.
+	 */
+	ClassResourceAtOrBelowPercent
+		UMETA(DisplayName = "Class Resource At Or Below Percent"),
 };
 
 /**
@@ -2679,8 +2782,8 @@ enum class ECataclysmStatScale : uint8
 
 	/**
 	 * Multiplied by the whole `ScaleStep` passive points the character has
-	 * spent, past `ScaleOffset`. Issue #1686: "Your skills deal 1.5%-2.5% less
-	 * damage for every 10 class points spent above 100" is a step of 10 and an
+	 * spent, past `ScaleOffset`. Issue #1686: "Your skills deal 3%-5% less
+	 * damage for every 20 class points spent above 100" is a step of 20 and an
 	 * offset of 100.
 	 *
 	 * A CLASS POINT IS A PASSIVE POINT SPENT, ruled under the owner's
@@ -2717,8 +2820,9 @@ enum class ECataclysmStatScale : uint8
 
 	/**
 	 * `Value` per whole `ScaleStep` enemies the character has killed this run.
-	 * Issue #1833, the kill counter: "Your damage is increased by 0.01%-0.05%
-	 * permanently for every 1000 enemies killed this run" is a step of 1000.
+	 * Issue #1833, the kill counter: "Your damage is increased by 1%-5%
+	 * permanently for every 100,000 enemies killed this run" is a step of
+	 * 100,000 (1000 at 0.01%-0.05% until issue #2883, D8).
 	 *
 	 * A KILL IS THE CHARACTER'S OWN "kill" EVENT, and "this run" is since the
 	 * session began; see `ACataclysmPlayerState::NoteKill`. A CHARACTER WITH
@@ -2988,6 +3092,37 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerFervourOverflowStack
 		UMETA(DisplayName = "Per Fervour Overflow Stack"),
+
+	/**
+	 * `Value` per whole `ScaleStep` points of the class resource's maximum. The War vow options' second slice,
+	 * 2026-11-25: Titan's "Your maximum HP is increased by 1% for every 2 points of maximum Fervour you have" is a step
+	 * of 2, and Unbridled's "Every 20 points of maximum Fervour you have also grants 1% damage reduction" a step of 20.
+	 *
+	 * READ FROM `FCataclysmStatConditions::ClassResourceMaximumNow`, the maximum with the `class_resource` rows that
+	 * hold now counted, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills only when a row in the list
+	 * it is handed asks for this scale. A `class_resource` row scaled by it would read an unknown maximum and count
+	 * nothing, so `tools/generate_datatables.py` refuses one.
+	 */
+	PerPointOfMaximumClassResource
+		UMETA(DisplayName = "Per Point Of Maximum Class Resource"),
+
+	/**
+	 * `Value` per whole `ScaleStep` percentage points of the character's Block Chance attribute. The War vow options'
+	 * second slice, 2026-11-25: Bastion's "Your Maximum HP is increased by 1% for every 1% Block Chance you have" is a
+	 * step of 1. The ATTRIBUTE, as `PerPointOfArmor` reads its attribute; `FCataclysmStatConditions::BlockChance` says
+	 * why.
+	 */
+	PerPercentOfBlockChance
+		UMETA(DisplayName = "Per Percent Of Block Chance"),
+
+	/**
+	 * `Value` per whole `ScaleStep` points of the character's current health. The War vow options' third slice, second
+	 * half, V3b, 2026-11-25: Colossus Eternal's "your attacks deal bonus damage equal to 2% of your current HP" is a flat
+	 * `attack_damage` of 2 a step of 100. Read from `FCataclysmStatConditions::HealthPercent` and `MaximumHealth`, which
+	 * every reading of the character's state fills; an unknown reading of either counts nothing.
+	 */
+	PerPointOfCurrentHealth
+		UMETA(DisplayName = "Per Point Of Current Health"),
 };
 
 /**
@@ -3402,6 +3537,12 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * whose pool cannot hold anything is not "at maximum" in any sense a node
 	 * means, and answering yes would hand Communion of Pain's bonus to every
 	 * class that never generates a point.
+	 *
+	 * WITH THE `class_resource` ROWS THAT HOLD NOW, since the War vow options'
+	 * second slice (V2b, 2026-11-25): `CurrentConditions` reads the attribute
+	 * and, last but one, evaluates the line once with the state it has built.
+	 * Ragnarok's doubling makes it 200 over an attribute of 100. A row on that
+	 * line that itself asks a Fervour share is judged against the attribute.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceMaximum = -1.0f;
@@ -3537,6 +3678,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	int32 WeaponHands = -1;
 
 	/**
+	 * How many items the character holds in its weapon slots: 0, 1 or 2, or -1 with no equipment component, which is
+	 * every enemy. Read by `DualWielding`. The Berserker's states, 2026-11-25.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 WeaponsWorn = -1;
+
+	/**
 	 * How much maximum health the character has. Issue #1515.
 	 *
 	 * NEGATIVE MEANS UNKNOWN: an ability system with no vital attribute set.
@@ -3624,6 +3772,33 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bIsChannelling = false;
 
 	/**
+	 * Whether the character is in the Berserker's Wrath, or its Frenzy. Read by `InWrath` and `InFrenzy`. The
+	 * Berserker's states, 2026-11-25. Never both: a character holds one state at a time.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bInWrath = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bInFrenzy = false;
+
+	/**
+	 * The Saboteur's device conditions, 2026-11-25. The distance in metres from the character to the nearest gadget it
+	 * commands, or -1 with none (`OwnGadgetWithinMetres`); the seconds since one of its gadgets took a landed blow, or -1
+	 * (`WithinSecondsOfGadgetStruck`); whether its Fervour has no room to reserve another skill trap, filled only when a
+	 * row asks (`NoRoomForATrap`); and whether the target's record of the asker's traps was read, and whether that target
+	 * set off one other than the trap whose blow this is (`TargetNotYetTriggeredYourTrap`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MetresToNearestOwnGadget = -1.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceGadgetStruck = -1.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNoRoomForATrap = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetTrapHistoryKnown = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetTriggeredAnotherTrapOfYours = false;
+
+	/**
 	 * How long the character has been channelling, in seconds, or negative
 	 * while it is not. Ruled 2026-10-08. Counted from the first channelled
 	 * skill to begin while none was running. `ChannellingForUnderSeconds`
@@ -3703,6 +3878,36 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	/** The Armor attribute, or -1 when there is no combat set. Issue #1833. */
 	float Armor = -1.0f;
+
+	/**
+	 * The Block Chance attribute in percentage points, or -1 when there is no combat set. The War vow options' second
+	 * slice, 2026-11-25, for Bastion's "for every 1% Block Chance you have"; read by
+	 * `ECataclysmStatScale::PerPercentOfBlockChance`.
+	 *
+	 * THE ATTRIBUTE, THE CHARACTER SHEET'S FIGURE, ruled that day: not the chance a blow is judged against, which
+	 * `block_chance` rows conditioned on the blow or on the moment change -- Iron Aegis doubles it while the character
+	 * has not attacked for 3 seconds -- so a maximum health read from it does not move every 3 seconds.
+	 */
+	float BlockChance = -1.0f;
+
+	/**
+	 * The class resource's maximum as `UCataclysmAbilitySystemComponent::MaximumClassResource` answers it, with the
+	 * `class_resource` rows that hold now counted, or -1. The War vow options' second slice, 2026-11-25, for Titan and
+	 * Unbridled; read by `ECataclysmStatScale::PerPointOfMaximumClassResource`.
+	 *
+	 * NOT `ClassResourceMaximum` WHEN THIS WAS WRITTEN (V2a), which was then the attribute and left out a conditioned
+	 * row: Ragnarok's "Your maximum Fervour is doubled" is one, under "Two-handed weapons only", and the ruling of
+	 * 2026-11-25 is that it raises Titan's health. Since V2b that field counts the same rows in one pass, so the two
+	 * agree for every row written; they differ only for a `class_resource` row that asks a Fervour share, which this
+	 * reading counts against the larger maximum and that field against the attribute.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, which is every state but one a lookup asking for that scale was given: `CurrentConditions`
+	 * never fills it. `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills it, and only when a row in the list it
+	 * is handed asks for the scale, from `MaximumClassResource`, which evaluates the `class_resource` line with
+	 * `CurrentConditions` and so never asks for this reading itself. Not the maximum less what an army reserves
+	 * (`MaximumClassResourceAsked`): a reservation holds part of the bar back, and the bar is as big as it was.
+	 */
+	float ClassResourceMaximumNow = -1.0f;
 
 	/** Unique Cataclysm bosses ever defeated, or -1 with no player state. */
 	int32 CataclysmBossesDefeated = -1;
@@ -4588,6 +4793,19 @@ enum class ECataclysmNearbyAction : uint8
 	 * your armor as damage to nearby enemies". Issue #1833 group E part 3.
 	 */
 	SmiteByArmour UMETA(DisplayName = "Smite nearby enemies by armour"),
+
+	/**
+	 * A blow of `Percent` of what the event's hit took from health on every enemy within `EventValue` metres, the
+	 * struck one included, meeting each one's mitigation as a blow does. The War vow options' second slice, V2b,
+	 * 2026-11-25: Pure Carnage's nova and Ragnarok's shockwaves.
+	 */
+	SmiteByHit UMETA(DisplayName = "Smite nearby enemies by a share of the hit"),
+
+	/**
+	 * The row's armour stack (`PlacedKey`, `StackSeconds`, `StackCap`) placed on every enemy nearby rather than on the
+	 * event's own character. The War vow options' second slice, V2b, 2026-11-25: Warlord.
+	 */
+	ArmourRemoved UMETA(DisplayName = "Remove the armour of nearby enemies"),
 };
 
 /**
@@ -4952,6 +5170,18 @@ struct CATACLYSM_API FCataclysmPoolAction
 	float ConditionValue = 0.0f;
 
 	/**
+	 * A second state this only fires in, judged with the first at the moment of the event. The War vow options'
+	 * second slice, V2b, 2026-11-25: Warlord's "above 50% Fervour" with "Two-handed weapons only". `Always` is none,
+	 * which is every action before it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition2 = ECataclysmStatCondition::Always;
+
+	/** What that second condition compares against. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ConditionValue2 = 0.0f;
+
+	/**
 	 * Set, this action GRANTS A STACK of the row it names instead of moving a
 	 * pool. Issue #1833: the event, the tag scope and the condition are judged
 	 * exactly as for a pool, and `Pool` is not read.
@@ -4996,6 +5226,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** Set, the placed stack cuts the other character's damage; clear, its armour. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bPlacedCutsDamage = false;
+
+	/**
+	 * Set, the placed stack raises the retaliation the other character takes, and `bPlacedCutsDamage` is not read:
+	 * Thornwall's, `UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction`. The War vow options' third
+	 * slice, V3a, 2026-11-25.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPlacedRaisesRetaliationTaken = false;
 
 	/**
 	 * Set, this action COUNTS ITS KIND OF EVENT, and acts on every Nth. Issue
@@ -5512,6 +5750,59 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bTemporaryAbsorb = false;
 
 	/**
+	 * Set, this action PAYS A RETALIATION PULSE: `Percent` of the retaliation the big hit being answered earns, to every
+	 * enemy within `EventValue` metres of the wearer. Wrath Incarnate, the War vow options' third slice, V3a,
+	 * 2026-11-25. On `big_hit_taken` only. See `UCataclysmAbilitySystemComponent::RetaliationPulseAction`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bRetaliationPulse = false;
+
+	/**
+	 * Set, this action CHAINS THE ATTACK being announced to the nearest enemies within `EventValue` metres of the enemy
+	 * struck, for `Percent` of what it sent: Thousand Deaths, V3b, 2026-11-25. On `hit_dealt` only. See
+	 * `UCataclysmAbilitySystemComponent::ChainFromStruck`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFrenzyChain = false;
+
+	/**
+	 * Set, this action TAUNTS EVERY ENEMY within `EventValue` metres of the trap its event names, for `Percent` seconds:
+	 * Baited, V4a, 2026-11-25. On `trap_armed` only. See `UCataclysmAbilitySystemComponent::TauntEnemiesNearTrap`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTauntNearTrap = false;
+
+	/**
+	 * Set, this action PLACES THE LAST TRAP AGAIN where the movement began, armed at once: Trail of Wire, V4a,
+	 * 2026-11-25. On `movement_skill` only. See `UCataclysmAbilitySystemComponent::QueueLastTrapPlacedAgain`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPlaceLastTrapAgain = false;
+
+	/**
+	 * Set, this action ANSWERS AN EVADED BLOW with the wearer's traps and gadgets: Counterfire, V4b, 2026-11-25. On
+	 * `dodge` only. See `UCataclysmAbilitySystemComponent::QueueCounterfire`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCounterfire = false;
+
+	/** Set, Where They Fall's copy on a kill (V5a, 2026-11-25). See `UCataclysmAbilitySystemComponent::QueueLastTrapCopyAt`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCopyLastTrapAtKill = false;
+
+	/** Set, Crossfire's repeats of a hit (V5a, 2026-11-25). See `UCataclysmAbilitySystemComponent::RepeatFromDevices`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCrossfire = false;
+
+	/** Set, Scrap Mines' scrap trap (V5b1, 2026-11-25). See `ACataclysmMinion::LeaveScrapTrapOf`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bScrapMine = false;
+
+	/** Set, the Bulwark's Titanfall (2026-11-25). See `UCataclysmAbilitySystemComponent::TryTitanfall`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTitanfall = false;
+
+	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's
 	 * ailments that were on the body on them. Ruled 2026-10-07 for "Plague
@@ -5863,7 +6154,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-seventh, which is the drift that put the passive tree eight
+	 * adds a hundred-and-fifteenth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5880,7 +6171,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-EIGHT OF THE HUNDRED-AND-SIX COMPARE NOTHING. They are the case labels
+	 * FIFTY-THREE OF THE HUNDRED-AND-FOURTEEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

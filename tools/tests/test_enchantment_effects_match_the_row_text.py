@@ -424,6 +424,11 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # enemies in a large radius": 8 m, the game's figure for a set's "area" (Warlord's
     # Will's ten-piece), ruled 2026-10-18 (Q1) under the owner's delegation.
     "ground_pound_radius_metres": {"large": 8.0},
+    # "KILLS" IS 0.5 ON `ground_pound_seconds_off_per_kill`, for Brute's Heart's ten-piece, "reduced by 1 second
+    # for every 2 kills": half a second a kill. The sentence said "0.5 seconds per kill" until issue #2883 (D8)
+    # made its numbers whole; the coordinating session ruled on 2026-11-25 to change the words only and keep the
+    # row's 0.5, the same rate.
+    "ground_pound_seconds_off_per_kill": {"kills": 0.5},
     # "ARMOR" IS 20 ON `warhound_percent_of_armor` AND "TAUNTS" IS 3 ON
     # `warhound_taunt_seconds`, for Warlord's Will's six-piece, "The Warhound taunts
     # enemies and deals damage based on your armor": 20% of the summoner's armour a hit,

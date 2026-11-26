@@ -19,6 +19,9 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the Cataclysm.ShowFervour console command. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the Berserker's Fervour on a critical strike. Slice C of plan_death_and_war.md, 2026-11-24.
+#include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 // For the Cataclysm.ShowDebt console command. Issue #1100.
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmLowHealthRelief.h"
@@ -1031,6 +1034,11 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	//
 	// ONE HANDLER FOR BOTH THE POOL AND ITS MAXIMUM, because for the refresh
 	// neither says anything beyond "ask again".
+	//
+	// AND THE BERSERKER'S STATE BEFORE IT, the moment the pool fills or empties: Wrath and Frenzy begin at a full pool
+	// and end at an empty one, and Berserking arms at a full one. First, so a speed row under `in_frenzy` reads the
+	// state this change made. The Berserker's states, 2026-11-25.
+	FCataclysmBerserkerStates::Judge(Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()));
 	RefreshMovementSpeed();
 
 	// AND THE TWO WINDOWS A THRESHOLD CROSSING OPENS. Issue #1815. "When your
@@ -1116,6 +1124,10 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	if (bPoolMoved && HeldBefore > 0.0f && HeldNow <= 0.0f)
 	{
 		Cataclysm->NoteClassResourceEmptied();
+
+		// AND BLOOD PRICE'S DAMAGE, HELD FOR THE NEXT MELEE BLOW THAT LANDS, on the same crossing and for any reason the
+		// pool emptied (the Berserker's Blood Price, 2026-11-25). Nought for every character without the node.
+		FCataclysmWarFervour::ArmBloodPrice(Cataclysm);
 	}
 }
 
@@ -1251,9 +1263,30 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	{
 		Acting->AskToCullOnHit(Notice.Target);
 	}
+	// AND WHAT AN ATTACK SENT, HELD WHILE THE EVENT'S ROWS ACT, for Thousand Deaths' chain (V3b, 2026-11-25): "your
+	// attacks chain ... for 60% damage", ruled a share of what the hit sent before defences. NOUGHT FOR WHAT IS NOT THIS
+	// CHARACTER'S ATTACK: a spell, a tick, a retaliation payment, and a minion's own blow. Put back afterwards.
+	const bool bAnAttackThatMayChain = !Notice.bIsSpell && !Notice.bDamageOverTime && !Notice.bRetaliation
+		&& !Cast<ACataclysmMinion>(Notice.DealtBy);
+	const float WasSent = Acting->SetAttackBeingAnnouncedSent(bAnAttackThatMayChain ? Notice.Sent : 0.0f);
+	// AND WHAT ANY HIT OF THIS CHARACTER'S OWN SENT, SPELLS INCLUDED, for Crossfire's repeats (V5a, ruled X1): nought for
+	// a tick, a retaliation payment and a minion's own blow.
+	const bool bAHitThatMayBeRepeated =
+		!Notice.bDamageOverTime && !Notice.bRetaliation && !Cast<ACataclysmMinion>(Notice.DealtBy);
+	const float WasHitSent = Acting->SetHitBeingAnnouncedSent(bAHitThatMayBeRepeated ? Notice.Sent : 0.0f);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
+	Acting->SetHitBeingAnnouncedSent(WasHitSent);
+	Acting->SetAttackBeingAnnouncedSent(WasSent);
+
+	// AND FERVOUR FOR A BLOW THIS CHARACTER LANDED ITSELF: the Berserker's Frenzy, "all melee hits generate 2 additional
+	// Fervour", a row scoped to melee under `in_frenzy`, read with the blow's skill tags. NOT A MINION'S BLOW, for the
+	// reason the cull above gives: Conduit credits one here, and the minion dealt it. The Berserker's states, 2026-11-25.
+	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		FCataclysmWarFervour::GainOnHitDealt(Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+	}
 
 	// THE ATTACKER'S FIRST BLOW TO GET THROUGH TO THIS TARGET is a third event.
 	// Issue #1833 group E part 1, ruled 2026-10-01: "Your first hit against each
@@ -1289,6 +1322,19 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
 						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 						   Notice.Target);
+
+		// AND THE BERSERKER'S FERVOUR FOR IT, "Gain 1 Fervour per critical strike", read with the blow's skill tags so
+		// Battle Lust's "on every critical melee strike" adds to a melee one only. Here and not at the blow, because
+		// this is where a critical strike the character dealt is known, past every refusal above. Nought for every
+		// character without `fervour_per_critical_strike`. Slice C, 2026-11-24.
+		FCataclysmWarFervour::GainOnCriticalStrike(
+			Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+
+		// AND SKULL SPLITTER'S ARMOR REDUCTION AND DEATHMARK'S MARK ON THE CREATURE STRUCK, each paying its own cost, the
+		// first first. The Berserker's nodes of 2026-11-25. Nought for every character without them.
+		const FGameplayTagContainer CritTags = Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer();
+		FCataclysmWarFervour::SkullSplitterOnCriticalStrike(Acting, Notice.Target, CritTags);
+		FCataclysmWarFervour::DeathmarkOnCriticalStrike(Acting, Notice.Target, CritTags);
 	}
 
 	// AND EVERY Nth LANDED HIT OF THE CHARACTER'S OWN ON A BOSS COUNTS AS A KILL OF IT: Death by Inches, the Death trees'
@@ -1366,6 +1412,22 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 			&& UCataclysmTriggeredSkill::RepeatsFromARow(Used))
 		{
 			Acting->NoteSkillGadgetsCopy(Used);
+
+			// AND MAGNUM OPUS: the eldest gadget casts the same skill once, at its own target, with the whole of the
+			// damage (the War vow options' fourth slice, second half, V4b, ruled 2026-11-25). Skills only: NOT THE
+			// BASIC ATTACK, which is left out above, AND NOT THE MOVEMENT SKILL. ON THE NEXT TICK, for the reason the
+			// repeats above wait: this runs inside the used skill's activation, where a skill cannot be granted. The
+			// eldest is chosen then, so a gadget gone in between is passed over.
+			if (Notice.Slot != ECataclysmAbilitySlot::Movement && ACataclysmMinion::EldestGadgetCastsEverySkillFor(this))
+			{
+				GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, Used]()
+				{
+					if (ACataclysmMinion* Eldest = ACataclysmMinion::EldestGadgetOf(this))
+					{
+						Eldest->CastSkillCopy(Used);
+					}
+				}));
+			}
 		}
 	}
 }
@@ -1456,6 +1518,9 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			{
 				Mine->NoteKill();
 			}
+			// AND IN THE FRENZY THIS CHARACTER IS IN, for Thousand Deaths (V3b, 2026-11-25): every kill of its own, a
+			// chained blow's included, as ruled. Nothing outside Frenzy.
+			Acting->NoteKillInFrenzy();
 			// AND ON EACH WORN WEAPON, whose own count "This weapon has..." reads.
 			if (UCataclysmEquipmentComponent* Gear = GetEquipment())
 			{

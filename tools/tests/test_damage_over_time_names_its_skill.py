@@ -79,6 +79,11 @@ CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
     ("AbilitySystem/CataclysmStigmata.cpp", "UCataclysmStigmata::AfterSettingAlight", "ApplyDamageOverTime", 0):
         "Stigmata's self-burn, a passive node's burn laid on its own holder (the Demonic tree rework of 2026-11-24): "
         "damage a passive adds credits nothing, judgement 2, and no skill of the holder's deals it",
+    # `PayPulseFor` SINCE THE WAR VOW OPTIONS' THIRD SLICE, V3a, 2026-11-25: `PayPulse` became the form of it that
+    # sizes the pulse by the last blow, and the Bleed is laid where every pulse is paid.
+    ("AbilitySystem/CataclysmRetaliation.cpp", "UCataclysmRetaliation::PayPulseFor", "UCataclysmAilments::Apply", 0):
+        "Vengeful Discharge's Bleed, a passive node's, laid by its retaliation pulse (2026-11-25): retaliation is no "
+        "skill's, and damage a passive adds credits nothing, judgement 2",
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyDamageOverTime",
      DAMAGE_OVER_TIME_DELIVERY, 0): _OWN_EFFECT,
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyShareOfHealthOverTime",

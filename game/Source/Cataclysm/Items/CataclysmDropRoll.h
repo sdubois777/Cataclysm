@@ -612,6 +612,13 @@ public:
 	 *
 	 * IT DOES NOT CAP CRAFTING, which has no tier gate at all. That is why a
 	 * rare high tier is a windfall rather than the route.
+	 *
+	 * A HYBRID IS CAPPED BY WHAT IT GRANTS, since issue #2883. A hybrid rolls
+	 * tiers 3 to 7 and at tier N grants each half at tier N - 2
+	 * (UCataclysmItemValues::HybridHalfValue), so a tier 1 drop's hybrid is tier
+	 * 3 and grants both halves at tier 1, under the cap of 2. Ruled by the
+	 * coordinating session on 2026-11-25: the cap bounds power, and a hybrid's
+	 * power is its halves'. RollItem raises a hybrid to 3 after the draw.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	static int32 MaxAffixTierOnADrop(int32 DifficultyTier);

@@ -205,7 +205,13 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 45 WHEN `fervour_overflow_stacks` GAINED ITS ROW, 2026-11-25, for the
 #: Soul Collector's Overflow (the Death trees' slice C6c).
-EXPECTED_NAMED_BY_A_ROW = 45
+#:
+#: AND 48 WHEN THE WAR LINE MET THE DEATH LINE (the Death trees' bundle 3 merge,
+#: 2026-11-25), whose three arrived on the War line the same day:
+#: `max_class_resource` and `block_chance` with the War vow options' second
+#: slice (Unbridled and Titan, and Bastion), and `current_health` with the
+#: third slice's second half, V3b (Colossus Eternal).
+EXPECTED_NAMED_BY_A_ROW = 48
 
 
 def scales_named_by_a_row() -> set[str]:

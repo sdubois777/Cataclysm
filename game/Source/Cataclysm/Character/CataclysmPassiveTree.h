@@ -298,8 +298,13 @@ public:
 	 * was clipped away, buttons and all. The refit that issue added means a long
 	 * description no longer hides anything -- but it does shrink the whole tree
 	 * while it is on screen, so what is shown by default is kept to one line.
+	 *
+	 * WITH AN EFFECT TABLE, A NODE OR AN OPTION WITH NO ROW IN IT IS MARKED (`MarkedNotBuiltYet`): the node's words,
+	 * or the option's number and name. The War vow options' second slice, 2026-11-25. Without one, nothing is marked,
+	 * which is what every caller before that slice asked for.
 	 */
-	static FString ShortDescriptionOf(const UDataTable* NodeTable, FName Node);
+	static FString ShortDescriptionOf(const UDataTable* NodeTable, FName Node,
+									  const UDataTable* EffectTable = nullptr);
 
 	/**
 	 * Everything a player reading this node should be told. Issue #1076.
@@ -318,19 +323,42 @@ public:
 	 * siblings are on every capstone row of `game/Data/PassiveNodes.csv` and
 	 * nothing in the interface read any of them.
 	 *
-	 * AN OPTION WITH NO NAME IS LEFT OUT RATHER THAN SHOWN BLANK. The Saboteur's
-	 * four capstones name none at all, issue #935, so this answers with the
-	 * node's own description for those, which is honest: there is nothing else
-	 * written.
+	 * AN OPTION WITH NO NAME IS LEFT OUT RATHER THAN SHOWN BLANK. A capstone that
+	 * names none at all -- the Saboteur's four until their options were written on
+	 * 2026-11-25, issue #935 -- answers with the node's own description, which is
+	 * honest: there is nothing else written.
+	 *
+	 * WITH AN EFFECT TABLE, A NODE OR AN OPTION WITH NO ROW IN IT IS MARKED, as `ShortDescriptionOf` marks it: an
+	 * ordinary node's words, and an option's heading line.
 	 */
-	static FString FullDescriptionOf(const UDataTable* NodeTable, FName Node);
+	static FString FullDescriptionOf(const UDataTable* NodeTable, FName Node,
+									 const UDataTable* EffectTable = nullptr);
+
+	/**
+	 * Whether the effect table holds a row for `Node`: for its `Option`, 1 to 3, on a capstone, and for the node's own
+	 * points with 0. The War vow options' second slice, 2026-11-25. False for no table, which is why every caller
+	 * asks only when it holds one: a table that failed to load must not mark every node.
+	 *
+	 * A NODE OR AN OPTION WITH NO ROW DOES NOTHING. Every effect a passive point has reaches the character through a
+	 * row of this table -- `AccumulateInto` and `EnchantmentRowsFor` read nothing else, and no code reads a node by
+	 * name -- so this is the whole answer to whether its words are built. A row that builds part of a sentence counts.
+	 */
+	static bool HasEffectRows(const UDataTable* EffectTable, FName Node, int32 Option = 0);
+
+	/**
+	 * `Name` followed by "(not built yet: it does nothing)", the words the floor modifier panel puts on a rule with no
+	 * effect (`UCataclysmFloorModifierPanelLayout::NameLineFor`), so the game says it one way. The War vow options'
+	 * second slice, 2026-11-25, accepted by the coordinating session: a player should not spend a point, or a
+	 * permanent choice, on words that do nothing without being told.
+	 */
+	static FString MarkedNotBuiltYet(const FString& Name);
 
 	/**
 	 * Why one of a capstone's options cannot be taken, or empty when it can.
 	 *
-	 * THE SABOTEUR'S FOUR CAPSTONES OFFER NONE, so every option is refused on
-	 * them and the reason says so rather than reporting a bad option number.
-	 * Issue #935.
+	 * A CAPSTONE OFFERING NONE, as the Saboteur's four did until 2026-11-25,
+	 * refuses every option and the reason says so rather than reporting a bad
+	 * option number. Issue #935.
 	 */
 	static FString RefusalForChoosingOption(const UDataTable* NodeTable,
 											const FCataclysmPassiveAllocation& Allocation,
@@ -359,9 +387,9 @@ public:
 	 * and to show the three names; the console listing uses it to name the
 	 * capstone and say what it needs.
 	 *
-	 * FALSE FOR A CAPSTONE THAT OFFERS NO OPTIONS, which is the Saboteur's four.
-	 * Issue #935. Announcing a decision that was never written would be worse
-	 * than saying nothing.
+	 * FALSE FOR A CAPSTONE THAT OFFERS NO OPTIONS, as the Saboteur's four did
+	 * until 2026-11-25. Issue #935. Announcing a decision that was never written
+	 * would be worse than saying nothing.
 	 *
 	 * IT SAYS NOTHING ABOUT WHETHER A POINT IS SPARE. A capstone costs one point
 	 * of its own on top of its threshold, and a player who has spent everything

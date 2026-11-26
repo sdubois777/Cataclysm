@@ -1564,8 +1564,8 @@ bool FCataclysmWeaponHandsTest::RunTest(const FString&)
 	UDataTable* SwordOnly = NewObject<UDataTable>();
 	SwordOnly->RowStruct = FCataclysmItemBaseRow::StaticStruct();
 	const TArray<FString> Problems = SwordOnly->CreateTableFromCSVString(TEXT(
-		"Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value\r\n"
-		"Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8,1,3,attack_damage,flat,40.0,,,0.0\r\n"));
+		"Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value,Implicit1AtZero,Implicit2AtZero\r\n"
+		"Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8,1,3,attack_damage,flat,40.0,,,0.0,16,0\r\n"));
 	for (const FString& Problem : Problems)
 	{
 		AddError(Problem);

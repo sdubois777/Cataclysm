@@ -498,6 +498,112 @@ INVENTORY = {
      'FName(DoNotExpireStat), FGameplayTagContainer(), 0.0f'):
         'what a debuff this character carries is worth, with no blow in '
         'hand',
+    # THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        "a War class's Fervour rate, asked at its event with that event's "
+        'tags (a hit, a block, a critical strike, a trap or gadget placed, a '
+        'trap triggered, a device blow); the blow is not handed over',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(OutOfCombatDecayPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        'the War decay, asked on a timer with no blow, target or skill in '
+        'hand',
+    # THE BERSERKER'S STATES, 2026-11-25.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(WrathOnFullFervourStat), NoTags, 0.0f'):
+        "whether a full pool begins Wrath, asked when the pool moves and on "
+        'a timer, with no blow or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(FrenzyOnFullFervourStat), NoTags, 0.0f'):
+        "whether a full pool begins Frenzy, asked as Wrath's flag is",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(BerserkingDamagePerFervourStat), '
+     'FGameplayTagContainer(UCataclysmDamageCalculation::MeleeTag()), 0.0f'):
+        'whether the character holds Berserking at all, asked with the '
+        'melee tag its row is scoped to and no blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(BerserkingDamagePerFervourStat), SkillTags, 0.0f'):
+        "Berserking's damage for each point consumed, asked as an attack "
+        "begins with the attack's tags; no blow is resolved yet",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(DrainPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        'the drain, asked on a timer with no blow, target or skill in hand',
+    # THE FERVOUR SPENDS, 2026-11-25.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CostPerNegatedBlockStat), FGameplayTagContainer(), 0.0f'):
+        "Iron Will's cost, asked where a negated block is announced, after "
+        'the blow resolved; the blow is not handed over',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(LethalBlowHealthPerTenFervourStat), FGameplayTagContainer(), 0.0f'):
+        "Undying's restore, asked inside a lethal blow's saves with the "
+        "wearer's state; the blow is not handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CostPerExtraEnemyHitStat), SkillTags, 0.0f'):
+        "Cleave's cost, asked as an attack begins with the attack's tags; no "
+        'blow is resolved yet',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(GainPerExtraEnemyHitPaidStat), SkillTags, 0.0f'):
+        "Cleave's gain, asked beside its cost",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(LostToRegenerationStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Tithe's loss, asked when regeneration restores health; no "
+        'blow, target or skill is in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RegenerationPerLossStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Tithe's step, asked beside its loss",
+    # RIPOSTE, VENGEFUL DISCHARGE AND CRIMSON TIDE, 2026-11-25.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RiposteShareOfBlockedStat), FGameplayTagContainer(), 0.0f'):
+        "Riposte's share, asked where a block is announced, before its cost is taken; the blow is not handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RiposteFervourCostStat), FGameplayTagContainer(), 0.0f'):
+        "Riposte's cost, asked beside its share",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(RiposteStunSecondsAtMaximumStat), FGameplayTagContainer(), 0.0f'):
+        "Riposte's stun, asked beside its share, before the cost is taken",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(PulseDrainPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        "Vengeful Discharge's drain, asked on a timer with no blow, target or skill in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(PulseRadiusMetresStat), FGameplayTagContainer(), 0.0f'):
+        "the pulse's radius, asked when that drain empties the pool",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(PulseAppliesBleedStat), FGameplayTagContainer(), 0.0f'):
+        "the pulse's bleed flag, asked beside its radius",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(HealthPerTenFervourSpentStat), FGameplayTagContainer(), 0.0f'):
+        "Crimson Tide's heal, asked at every spend and drain with the wearer's state; no blow is handed over",
+    # SKULL SPLITTER AND DEATHMARK, 2026-11-25: each asked at a critical strike with the crit's skill tags and the
+    # wearer's state (Wrath and the weapon for Skull Splitter's percent and cost); the creature struck is not handed
+    # over, since none of them asks about it.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorRemovedInWrathStat), SkillTags, 0.0f'):
+        "Skull Splitter's percent a stack, asked at a critical strike under Wrath and a two-handed weapon",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorSecondsStat), SkillTags, 0.0f'):
+        "Skull Splitter's seconds, asked beside its percent",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorFervourCostStat), SkillTags, 0.0f'):
+        "Skull Splitter's cost, asked once its percent and seconds are known",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorStackCapStat), SkillTags, 0.0f'):
+        "Skull Splitter's cap, asked once the cost is paid",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(DeathmarkPercentStat), SkillTags, 0.0f'):
+        "Deathmark's percent, asked at a critical strike",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(DeathmarkSecondsStat), SkillTags, 0.0f'):
+        "Deathmark's seconds, asked beside its percent",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(DeathmarkFervourCostStat), SkillTags, 0.0f'):
+        "Deathmark's cost, asked once its percent and seconds are known",
+    # BLOOD PRICE, 2026-11-25: asked as the pool empties, with the wearer's state and no tags.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(BloodPricePercentStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Price's percent of the maximum, asked as the pool empties",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(BloodPriceSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Price's seconds, asked beside its percent",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'Stat, Context, Plain'):
         'class resource generation, asked on a timer with no blow, '
@@ -733,6 +839,42 @@ INVENTORY = {
      'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Set Stance's flag, asked of the target of a knockback before it is "
         'moved (issue #1755); whether it holds, not a modifier of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(UCataclysmRetaliation::BlockedDamageAddedStat), FGameplayTagContainer(), 0.0f'):
+        "Spiteful Guard's flag (the War vow options' second slice, V2b, 2026-11-25), asked when a block is noted; "
+        "whether it holds, not a modifier of a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmRetaliation::PenetrationStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Oath's retaliation-only penetration (V2b, 2026-11-25), asked of the attacker of a blow stamped as "
+        "retaliation; retaliation is not a skill and carries no tags, and the stat is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(LeechOverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f'):
+        "Eternal Hunger's cap (the War vow options' third slice, V3a, 2026-11-25), asked at a leech payment of health; "
+        "a heal is not a skill and carries no tags, and the stat is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(LeechOverhealAbsorbDecayStat), FGameplayTagContainer(), 0.0f'):
+        "Eternal Hunger's decay (V3a, 2026-11-25), asked at a regeneration step; no blow and no skill are in hand, and "
+        "the stat is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UGuarded::LethalHitSurvivedAboveHealthStat), FGameplayTagContainer(), 0.0f'):
+        "Colossus Eternal's save (the War vow options' third slice, second half, V3b, 2026-11-25), asked at a lethal "
+        "blow and compared with health before it; the stat is stated under no condition, and a save is not a skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(EldestGadgetCastsEverySkillStat), FGameplayTagContainer(), 0.0f'):
+        "Magnum Opus's flag (the War vow options' fourth slice, second half, V4b, 2026-11-25), asked of the player at "
+        "each skill use; whether it holds, not a modifier of a blow, and stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(BlowToDeviceChancePerDeviceStat), FGameplayTagContainer(), 0.0f'):
+        "Lightning Rod's chance for each device (the War vow options' fifth slice, first half, V5a, 2026-11-25), asked "
+        "of the player as a blow arrives; the chance is the player's, stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp',
+     'FName(BigHitShareStat), FGameplayTagContainer(), 0.0f'):
+        "Absorb and Return's share (V3a, 2026-11-25), asked while retaliation for a big hit is priced; retaliation is "
+        "not a skill and carries no tags, and the stat is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(PinSuppressedStat), FGameplayTagContainer(), 0.0f'):
+        "Unstoppable's flag (the War vow options' second slice, 2026-11-25), asked of the target of a pin before "
+        "anything is applied; whether it holds, not a modifier of a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat), SkillTags, UCataclysmDamageCalculation::NormalZoneFirstSweepDamage'):
         "the share a skill's zone deals on its first sweep (issue #1686), "
@@ -817,6 +959,10 @@ INVENTORY = {
      'FName(MeleeReachMetresStat), SkillTags, 0.0f'):
         "a strike's own reach, asked with the skill's tags before any blow "
         'exists',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(MeleeReachCentimetresStat), SkillTags, 0.0f'):
+        "the reach enchantment's centimetres added to the same reach, asked the "
+        'same way (issue #2883, D8)',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(HealthCostSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "a skill's own cost and shape, asked before any blow exists",
@@ -1137,6 +1283,20 @@ INVENTORY = {
         "row requiring one ailment's tag reaches that ailment alone; no blow "
         "exists yet and the stat is no modifier of one, so no blow and no "
         "target are handed over",
+    # THIN AIR, 2026-11-25 (the C5 plan): its flag and the seconds a landed blow breaks it for, asked with no tags as a
+    # creature's search weighs a player or the effects line is drawn; no blow is in hand.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CannotBeTargetedWhileMovingStat), FGameplayTagContainer(), 0.0f'):
+        "Thin Air's flag, asked while a creature's search weighs a moving player",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ThinAirBrokenSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Thin Air's seconds after a landed blow, asked beside its flag",
+    # THE SABOTEUR'S TRAP TIMING, 2026-11-25 (the C1 plan): Hair Trigger's flag, Delayed Fuse's extra second and
+    # Volatile Casing's seconds less for each other trap.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(Stat), TrapTags, 0.0f'):
+        "the player's own trap-timing figures, asked by SkillTrapTimingFigureOf with the trap's type tags when "
+        "a trap is placed or rearmed; no blow and no target exist then",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
      'FName(Stat), TypeTags, 0.0f'):
         "a stat a summoner's row gives its gadgets (ruled 2026-10-13), asked "

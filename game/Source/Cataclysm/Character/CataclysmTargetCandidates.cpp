@@ -2,11 +2,13 @@
 
 #include "Character/CataclysmTargetCandidates.h"
 // For a minion type row's threat of nought, which no creature's search seeks. Issue #2553.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCharacterBase.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -30,6 +32,22 @@ namespace
 	{
 		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Candidate);
 		return AsMinion && AsMinion->bDrawsNoAttention;
+	}
+
+	/**
+	 * Whether a candidate is a player Thin Air hides now (`UCataclysmAbilitySystemComponent::IsHiddenByThinAir`): the
+	 * Saboteur's Thin Air, ruled 2026-11-25. PLAYERS ONLY, AND ASKED LAST: this is the search every creature runs on its
+	 * think (#1547), and a stat lookup is dearer than the distance, capsule and hostility tests before it.
+	 */
+	bool PlayerCandidateHiddenByThinAir(const ACataclysmCharacterBase* Candidate)
+	{
+		if (!Cast<ACataclysmPlayerCharacter>(Candidate))
+		{
+			return false;
+		}
+		const UCataclysmAbilitySystemComponent* Its =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Candidate));
+		return Its && Its->IsHiddenByThinAir();
 	}
 }
 
@@ -360,7 +378,9 @@ AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase
 			if (DistanceSquared >= NearestDistanceSquared
 				|| !CapsuleReachesInto(Candidate, Origin, RadiusCm)
 				|| MinionWhoseRowDrawsNoAttention(Candidate)
-				|| !UCataclysmTargeting::IsHostileTo(Candidate, Searcher))
+				|| !UCataclysmTargeting::IsHostileTo(Candidate, Searcher)
+				// AND A PLAYER THIN AIR HIDES, as if it were not there (2026-11-25): the creature takes the next nearest.
+				|| PlayerCandidateHiddenByThinAir(Candidate))
 			{
 				continue;
 			}

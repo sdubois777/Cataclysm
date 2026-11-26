@@ -192,7 +192,8 @@ namespace CataclysmPassiveTest
 			"Ravager_low,Ravager,low,basic,Cornered,While at or below 20% health.,8,0,-100,200,,,,,,\r\n"
 			// A capstone with three options, opening at four points spent.
 			"Ravager_cap,Ravager,cap,capstone,First Vow,Choose one.,1,4,300,0,Iron,Take iron.,Blood,Take blood.,Ash,Take ash.\r\n"
-			// A capstone with none, which is what the Saboteur tree has. #935.
+			// A capstone with none, as the Saboteur tree's four were until their
+			// options were written on 2026-11-25. #935.
 			"Ravager_empty,Ravager,empty,capstone,Silent Vow,Choose one of three.,1,4,300,100,,,,,,\r\n"
 			// A second tree, of a different damage type.
 			"Bulwark_root,Bulwark,root,basic,Resolve,Unlocks Resolve.,1,0,0,0,,,,,,\r\n"));
@@ -2417,7 +2418,7 @@ bool FCataclysmPassiveCapstoneTest::RunTest(const FString&)
 										  Capstone, Plenty, Reason));
 
 	// A CAPSTONE WITH NO OPTIONS CANNOT BE TAKEN, which is what all four of the
-	// Saboteur tree's capstones are today. Issue #935.
+	// Saboteur tree's capstones were until 2026-11-25. Issue #935.
 	const FName Empty(TEXT("Ravager_empty"));
 	TestFalse(TEXT("a capstone offering nothing takes no option"),
 			  UCataclysmPassiveTree::ChooseOption(NodeTable, Allocation, Empty,
@@ -3603,7 +3604,16 @@ namespace CataclysmPassiveConditionTest
 			// AND THE SHADOW'S DEATHMARK'S "It takes 30% more damage from you", the Death trees' slice C6e: a state.
 			|| Name == TEXT("target_marked_by_you")
 			// AND GUARD THE MASTER'S "the last enemy that hit you", the same slice: a state.
-			|| Name == TEXT("target_is_your_last_attacker");
+			|| Name == TEXT("target_is_your_last_attacker")
+			// THE BERSERKER'S STATES, 2026-11-25: "DUAL WIELD ONLY", "WHILE IN WRATH" AND "WHILE IN FRENZY". Each names
+			// a state, so each compares nothing.
+			|| Name == TEXT("dual_wielding")
+			|| Name == TEXT("in_wrath")
+			|| Name == TEXT("in_frenzy")
+			// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25: the two that name a state. `own_gadget_within_metres` and
+			// `seconds_after_gadget_struck` compare their metres and seconds and are deliberately absent.
+			|| Name == TEXT("target_not_yet_triggered_your_trap")
+			|| Name == TEXT("no_room_for_a_trap");
 	}
 }
 
@@ -9605,23 +9615,23 @@ bool FCataclysmPassiveAwaitsAChoiceTest::RunTest(const FString&)
 		UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable, Allocation,
 													Ordinary));
 
-	// AND NEITHER IS A CAPSTONE THAT NAMES NO OPTIONS. The Saboteur's four
-	// offer none -- issue #935 -- and announcing a decision nobody wrote would
-	// send a player looking for three names that do not exist.
-	FCataclysmPassiveAllocation Saboteur;
-	const FName SaboteurCapstone(TEXT("Saboteur_capstone_25"));
-	for (const FName& Node :
-		 UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Saboteur")))
+	// AND NEITHER IS A CAPSTONE THAT NAMES NO OPTIONS. Announcing a decision
+	// nobody wrote would send a player looking for three names that do not
+	// exist. UNTIL 2026-11-25 THIS READ THE SABOTEUR'S FIRST OATH, which named
+	// none (issue #935); its options were written that day and no real capstone
+	// names none now, so the hand-made table's `Ravager_empty` stands for one,
+	// opened by four points spent in its tree, beside `Ravager_cap` (the
+	// control, three options, opened by the same four).
+	if (const UDataTable* Made = CataclysmPassiveTest::MakeNodeTable(*this))
 	{
-		if (Node != SaboteurCapstone)
-		{
-			Saboteur.Add(Node, 25);
-			break;
-		}
+		FCataclysmPassiveAllocation Opened;
+		Opened.Add(TEXT("Ravager_root"), 1);
+		Opened.Add(TEXT("Ravager_mid"), 3);
+		TestTrue(TEXT("control: an opened capstone with three options waits for a choice"),
+			UCataclysmPassiveTree::AwaitsAnOptionChoice(Made, Opened, TEXT("Ravager_cap")));
+		TestFalse(TEXT("a capstone offering no options announces nothing"),
+			UCataclysmPassiveTree::AwaitsAnOptionChoice(Made, Opened, TEXT("Ravager_empty")));
 	}
-	TestFalse(TEXT("a capstone offering no options announces nothing"),
-		UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable, Saboteur,
-													SaboteurCapstone));
 
 	return true;
 }
@@ -10300,17 +10310,21 @@ bool FCataclysmPassiveCapstoneOptionTextTest::RunTest(const FString&)
 	}
 
 	// AND A CAPSTONE WITH NO OPTIONS WRITTEN READS AS ITS OWN DESCRIPTION AND
-	// NOTHING MORE. The Saboteur's four name none at all, issue #935, and three
-	// empty headings would suggest there is something there to read.
-	const FName Nameless(TEXT("Saboteur_capstone_25"));
-	const FCataclysmPassiveNodeRow* NamelessRow =
-		UCataclysmPassiveTree::FindNode(NodeTable, Nameless);
-	if (TestNotNull(TEXT("the first Saboteur capstone exists"), NamelessRow))
+	// NOTHING MORE: three empty headings would suggest there is something there
+	// to read. UNTIL 2026-11-25 THIS READ THE SABOTEUR'S FIRST OATH, which named
+	// none (issue #935); its options were written that day, so the hand-made
+	// table's `Ravager_empty` stands for one.
+	if (const UDataTable* Made = CataclysmPassiveTest::MakeNodeTable(*this))
 	{
-		TestEqual(TEXT("a capstone naming no option reads as its own "
-					   "description alone"),
-				  UCataclysmPassiveTree::FullDescriptionOf(NodeTable, Nameless),
-				  NamelessRow->Description);
+		const FName Nameless(TEXT("Ravager_empty"));
+		const FCataclysmPassiveNodeRow* NamelessRow = UCataclysmPassiveTree::FindNode(Made, Nameless);
+		if (TestNotNull(TEXT("the hand-made capstone naming no option exists"), NamelessRow))
+		{
+			TestEqual(TEXT("a capstone naming no option reads as its own "
+						   "description alone"),
+					  UCataclysmPassiveTree::FullDescriptionOf(Made, Nameless),
+					  NamelessRow->Description);
+		}
 	}
 
 	return true;

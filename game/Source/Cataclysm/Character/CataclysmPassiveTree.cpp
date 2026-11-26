@@ -382,7 +382,8 @@ TArray<FString> UCataclysmPassiveTree::OptionDescriptionsOf(
 }
 
 FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
-												  FName Node)
+												  FName Node,
+												  const UDataTable* EffectTable)
 {
 	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
 	if (!Row)
@@ -393,7 +394,8 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 	FString Text = Row->Description;
 	if (Row->Kind != CapstoneKind)
 	{
-		return Text;
+		// A NODE WITH NO ROW SAYS SO, when the caller hands over the table to ask. The War vow options' second slice.
+		return EffectTable && !HasEffectRows(EffectTable, Node) ? MarkedNotBuiltYet(Text) : Text;
 	}
 
 	// THE THREE NAMES ON THE SAME LINE, AND NOT WHAT THEY DO. Issue #1078. A
@@ -408,7 +410,9 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 		const int32 Index = Option - 1;
 		if (Names.IsValidIndex(Index) && !Names[Index].IsEmpty())
 		{
-			Offered.Add(FString::Printf(TEXT("%d %s"), Option, *Names[Index]));
+			// AND AN OPTION WITH NO ROW SAYS SO, beside its name. The War vow options' second slice, 2026-11-25.
+			const FString Named = FString::Printf(TEXT("%d %s"), Option, *Names[Index]);
+			Offered.Add(EffectTable && !HasEffectRows(EffectTable, Node, Option) ? MarkedNotBuiltYet(Named) : Named);
 		}
 	}
 
@@ -422,7 +426,8 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 }
 
 FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
-												 FName Node)
+												 FName Node,
+												 const UDataTable* EffectTable)
 {
 	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
 	if (!Row)
@@ -434,8 +439,9 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 	if (Row->Kind != CapstoneKind)
 	{
 		// EVERY ORDINARY NODE SAYS WHAT IT DOES IN ITS OWN DESCRIPTION, which is
-		// what this screen has always shown.
-		return Text;
+		// what this screen has always shown, and since 2026-11-25 that it does
+		// nothing when it has no row.
+		return EffectTable && !HasEffectRows(EffectTable, Node) ? MarkedNotBuiltYet(Text) : Text;
 	}
 
 	// A CAPSTONE'S DOES NOT. Issue #1076. "Unlocks at 25 points spent. Choose
@@ -449,13 +455,17 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 		const int32 Index = Option - 1;
 		if (!Names.IsValidIndex(Index) || Names[Index].IsEmpty())
 		{
-			// NOTHING IS WRITTEN FOR THIS ONE. The Saboteur's four capstones
-			// name no option at all, issue #935, and printing an empty heading
-			// would suggest there is something to read.
+			// NOTHING IS WRITTEN FOR THIS ONE. A capstone may name no option at
+			// all, as the Saboteur's four did until their options were written on
+			// 2026-11-25 (issue #935), and printing an empty heading would suggest
+			// there is something to read.
 			continue;
 		}
 
-		Text += FString::Printf(TEXT("\n\n%d  %s"), Option, *Names[Index]);
+		// THE HEADING MARKED WHEN THE OPTION HAS NO ROW. The War vow options' second slice, 2026-11-25.
+		const FString Named = FString::Printf(TEXT("%d  %s"), Option, *Names[Index]);
+		Text += TEXT("\n\n");
+		Text += EffectTable && !HasEffectRows(EffectTable, Node, Option) ? MarkedNotBuiltYet(Named) : Named;
 
 		// A NAMED OPTION WITH NO DESCRIPTION SAYS SO. It cannot happen in the
 		// six trees today and the alternative is a name followed by nothing,
@@ -468,6 +478,32 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 	}
 
 	return Text;
+}
+
+bool UCataclysmPassiveTree::HasEffectRows(const UDataTable* EffectTable, FName Node, int32 Option)
+{
+	if (!EffectTable)
+	{
+		return false;
+	}
+
+	// THE TABLE WALKED ONCE, STOPPING AT THE FIRST ROW, rather than `EffectsFor`, which builds and sorts a map of every
+	// node to answer for one. The screen asks this for every node it draws.
+	const FString Wanted = Node.ToString();
+	for (const TPair<FName, uint8*>& Each : EffectTable->GetRowMap())
+	{
+		const FCataclysmPassiveEffectRow* Effect = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Each.Value);
+		if (Effect && Effect->Option == Option && Effect->Node == Wanted)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FString UCataclysmPassiveTree::MarkedNotBuiltYet(const FString& Name)
+{
+	return FString::Printf(TEXT("%s (not built yet: it does nothing)"), *Name);
 }
 
 FString UCataclysmPassiveTree::RefusalForSpending(
@@ -522,9 +558,10 @@ FString UCataclysmPassiveTree::RefusalForSpending(
 				*Row->NodeName, Row->Threshold, *Row->Tree, Spent);
 		}
 
-		// THE SABOTEUR'S FOUR OFFER NONE, and its own descriptions say to choose
-		// one of three. Taking a capstone that offers nothing would spend a
-		// point on a choice that was never written. Issue #935.
+		// A CAPSTONE MAY OFFER NONE, as the Saboteur's four did until their options
+		// were written on 2026-11-25, while their descriptions said to choose one
+		// of three. Taking a capstone that offers nothing would spend a point on a
+		// choice that was never written. Issue #935.
 		const TArray<FString> Options = OptionNamesOf(*Row);
 		const bool bAnyOption = Options.ContainsByPredicate(
 			[](const FString& Name) { return !Name.IsEmpty(); });
@@ -672,9 +709,10 @@ bool UCataclysmPassiveTree::AwaitsAnOptionChoice(
 		return false;
 	}
 
-	// AND IT HAS TO HAVE SOMETHING TO OFFER. The Saboteur's four capstones name
-	// no options at all, issue #935, and announcing a decision nobody wrote
-	// would send a player looking for three names that do not exist.
+	// AND IT HAS TO HAVE SOMETHING TO OFFER. A capstone may name no options at
+	// all, as the Saboteur's four did until 2026-11-25 (issue #935), and
+	// announcing a decision nobody wrote would send a player looking for three
+	// names that do not exist.
 	const TArray<FString> Options = OptionNamesOf(*Row);
 	return Options.ContainsByPredicate(
 		[](const FString& Name) { return !Name.IsEmpty(); });
@@ -983,6 +1021,13 @@ bool UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow(const FCataclysmPassiveEff
 int32 UCataclysmPassiveTree::PointsPaid(const FCataclysmPassiveEffectRow& Effect, int32 Points)
 {
 	if (Points <= 0)
+	{
+		return 0;
+	}
+
+	// AT OR PAST ITS UPPER LIMIT: NOTHING. The Saboteur's rows of 2026-11-25 (`MaxPoints`, exclusive): Durable
+	// Modifications' 3% a point above 50% Fervour stops at 4 points, where its 6% a point begins.
+	if (Effect.MaxPoints > 0 && Points >= Effect.MaxPoints)
 	{
 		return 0;
 	}

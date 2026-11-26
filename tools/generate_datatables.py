@@ -2038,9 +2038,24 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: writes a row using one adds that column to the workbook with its re-apply
 #: script and deletes it here, which `tools/tests/test_required_workbook_columns.py`
 #: then requires.
-#: THEY LEFT ON 2026-11-25, when the Death trees' slice C1 wrote the first rows
-#: using them and `tools/reapply_death_trees_workbook.py` added all fourteen to
-#: the workbook, and the table is empty again.
+#: PER POINT FROM LEFT ON 2026-11-24 with slice D's rows
+#: (`tools/reapply_war_data_rows_workbook.py`), which added the column for Pain
+#: is Power's "At 5 points: This bonus also applies to retaliation damage".
+#: CONDITION 2 AND CONDITION VALUE 2 LEFT ON 2026-11-25 with the War riders
+#: (`tools/reapply_war_riders_workbook.py`), which added the two columns for
+#: Hair-Trigger's, Death Blow's and Brute Force's second conditions.
+#:
+#: ACTION EVENT AND STACK SECONDS LEFT THE SAME DAY with the Saboteur's device
+#: conditions (`tools/reapply_war_saboteur_devices_workbook.py`), which added the
+#: two columns for Sprung's, Emergency Protocol's and Razor Instincts' own stacks.
+#: AND ACTION THE SAME DAY with the Saboteur's rows
+#: (`tools/reapply_war_saboteur_rows_workbook.py`): Pressure Sensitive's slow.
+#: THE LAST EIGHT LEFT THE SAME DAY with the War vow options' first slice
+#: (`tools/reapply_war_vows_v1_workbook.py`), which added all eight -- Fraction
+#: Of and Every Seconds for Shield Oath's and Flesh Oath's health, and the six
+#: beside them -- so the War line's sheet carries the fourteen the Death line's
+#: `tools/reapply_death_trees_workbook.py` had added that day, all required (the
+#: coordinating session's ruling). The table is empty again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -2203,6 +2218,20 @@ def item_bases(book) -> list[dict]:
             entry[f"Implicit{slot_index}Stat"] = stat
             entry[f"Implicit{slot_index}Kind"] = kind
             entry[f"Implicit{slot_index}Value"] = float(value) if value else 0.0
+            # THE WHOLE-NUMBER VALUE AT +0, since issue #2883 (D9 of the approved
+            # proposal): what the game upgrades, in place of the stated +10
+            # figure divided by 2.5. An implicit with no stat states none.
+            at_zero = _cell(raw, headers, f"Implicit {slot_index} At +0")
+            if stat:
+                entry[f"Implicit{slot_index}AtZero"] = _whole_number(
+                    at_zero, f"Item Bases row {index}: {name}'s Implicit "
+                             f"{slot_index} At +0")
+            elif at_zero:
+                raise DataError(f"Item Bases row {index}: {name} states an "
+                                f"Implicit {slot_index} At +0 of {at_zero!r} "
+                                "for an implicit with no stat")
+            else:
+                entry[f"Implicit{slot_index}AtZero"] = 0
 
         if implicits == 0:
             raise DataError(f"Item Bases row {index}: {name} grants nothing, so "
@@ -2329,6 +2358,63 @@ def weapon_meshes(book) -> list[dict]:
     return unique(out, "Weapon Meshes")
 
 
+#: The affix tiers, 1 to 7, each read as a whole-number range at +0. Issue #2883.
+AFFIX_TIERS = (1, 2, 3, 4, 5, 6, 7)
+
+#: The workbook columns holding them, T1 Min .. T7 Max, and the row fields they
+#: become, T1Min .. T7Max, in the same order.
+AFFIX_TIER_COLUMNS = tuple(f"T{t} {end}" for t in AFFIX_TIERS for end in ("Min", "Max"))
+AFFIX_TIER_FIELDS = tuple(column.replace(" ", "") for column in AFFIX_TIER_COLUMNS)
+
+
+def _whole_number(text: str, where: str) -> int:
+    """A cell that must hold a whole number above zero, refused otherwise."""
+    try:
+        number = float(text)
+    except ValueError as error:
+        raise DataError(f"{where} is {text!r}, which is not a number") from error
+    if number != int(number) or number < 1:
+        raise DataError(f"{where} is {text!r}, and it has to be a whole number "
+                        "of at least 1")
+    return int(number)
+
+
+def _affix_tier_ranges(raw, headers, index: int, name: str, kind: str) -> tuple[int, ...]:
+    """An affix row's seven tier ranges at +0, as fourteen whole numbers, T1 Min first.
+
+    THE RULES ARE THE APPROVED PROPOSAL'S, issue #2883 (the owner, 2026-11-24:
+    "Approve as written (Recommended)"):
+      - every number is a whole number of at least 1, so what a player is handed
+        is a whole number at +0 and the upgrade rule keeps it one;
+      - a tier holds at least two values, so the reroll and perfect crafting
+        materials always have something to act on;
+      - tiers do not overlap: a tier starts above where the one below it ends,
+        so a higher tier is never worse than a lower one at any roll.
+    A hybrid states none: its two halves are other rows and carry their own.
+    """
+    cells = [_cell(raw, headers, column) for column in AFFIX_TIER_COLUMNS]
+    if kind == "Hybrid":
+        if any(cells):
+            raise DataError(f"Affixes row {index}: the hybrid {name} states tier "
+                            "ranges, and a hybrid's halves carry their own")
+        return tuple(0 for _ in AFFIX_TIER_COLUMNS)
+    numbers = tuple(_whole_number(text, f"Affixes row {index}: {name}'s {column}")
+                    for text, column in zip(cells, AFFIX_TIER_COLUMNS, strict=True))
+    previous_high = 0
+    for t in AFFIX_TIERS:
+        low, high = numbers[2 * (t - 1)], numbers[2 * (t - 1) + 1]
+        if high <= low:
+            raise DataError(f"Affixes row {index}: {name}'s tier {t} is {low} to "
+                            f"{high}, and a tier has to hold at least two values "
+                            "or the reroll material has nothing to do")
+        if low <= previous_high:
+            raise DataError(f"Affixes row {index}: {name}'s tier {t} starts at {low}, "
+                            f"at or below where tier {t - 1} ends ({previous_high}), "
+                            "and tiers must not overlap")
+        previous_high = high
+    return numbers
+
+
 def affixes(book) -> list[dict]:
     """One rollable affix per row, across four kinds.
 
@@ -2392,6 +2478,8 @@ def affixes(book) -> list[dict]:
                     "be below the top, or every tier and every roll produce "
                     "one number and the reroll material has nothing to do.")
 
+        tiers = _affix_tier_ranges(raw, headers, index, name, kind)
+
         # THE WORD THIS AFFIX GIVES AN ITEM'S NAME, and only a suffix has one.
         # An item is called `<rarity> <base> of <word>`, so the first word is
         # the rarity: a prefix has nowhere in the name to appear, and a word on
@@ -2442,6 +2530,12 @@ def affixes(book) -> list[dict]:
             # worthless on the affixes whose top is itself small. An affix with
             # no floor here is unchanged in every respect.
             "Floor": float(floor) if floor else 0.0,
+            # THE SEVEN TIER RANGES AT +0, whole numbers, since issue #2883.
+            # What an affix rolls is read from these, not from TopValue and
+            # Floor, which stay until issue #2904 retires them. Zero on a
+            # hybrid, whose halves carry their own.
+            **{column: value for column, value in zip(AFFIX_TIER_FIELDS, tiers,
+                                                      strict=True)},
         })
 
     # TWO AFFIXES SHARING A WORD would make an item's name say less than it
@@ -3162,6 +3256,19 @@ def minion_types(book) -> list[dict]:
                 raise DataError(
                     f"Minion Types row {index}: {name} is a {family} and also "
                     f"carries {tag}, so both families' scaling would reach it")
+        # `Type.Gadget` IS EVERY DEPLOYABLE MACHINE THAT IS NOT A TRAP, and
+        # nothing else: the coordinating session's ruling of 2026-11-25, so a row
+        # meaning gadgets alone can name it. `ACataclysmMinion::IsGadget` is the
+        # same test in the game.
+        is_gadget = "Type.Deployable" in tags and "Type.Trap" not in tags
+        if is_gadget != ("Type.Gadget" in tags):
+            raise DataError(
+                f"Minion Types row {index}: {name} "
+                + ("is a deployable machine that is not a trap and does not carry "
+                   "Type.Gadget, so a row meaning gadgets would not reach it"
+                   if is_gadget else
+                   "carries Type.Gadget and is not a deployable machine that is "
+                   "not a trap, so a row meaning gadgets would reach it"))
 
         mode = _cell(raw, headers, "Target Mode")
         if mode not in MINION_TARGET_MODES:
@@ -5433,6 +5540,9 @@ CONDITIONS = {
     #
     # STRICTLY ABOVE, the boundary `health_above` draws for the same word.
     "class_resource_above": (0.0, 100.0, "a percentage of the maximum class resource"),
+    # ITS COMPLEMENT, "at or below", the Saboteur's rows of 2026-11-25: Durable
+    # Modifications' 3% a point at or below 50%, beside its 6% above.
+    "class_resource_at_or_below": (0.0, 100.0, "a percentage of the maximum class resource"),
 
     # "While you have 50 or more Fervour, you gain +2% increased Damage Reduction
     # and +3% increased Attack Damage per point" is the Ravager's Set Against It.
@@ -5482,6 +5592,19 @@ CONDITIONS = {
     #
     # IT TAKES NO VALUE: it names a state rather than comparing a number.
     "wielding_two_handed_weapon": None,
+
+    # "Dual wield only" is `dual_wielding`: two items in the weapon slots, a
+    # weapon and a Shield among them (the design document's Dual Wielding: "A
+    # character holding a weapon and a Shield is dual wielding"). The
+    # Berserker's states, 2026-11-25, for Frenzy and the fifteen other Berserker
+    # entries that say it. No equipment, which is every enemy, refuses.
+    #
+    # "While in Wrath" and "While in Frenzy" are `in_wrath` and `in_frenzy`: the
+    # state `FCataclysmBerserkerStates` begins at a full pool and ends at an
+    # empty one. Each takes no value: it names a state.
+    "dual_wielding": None,
+    "in_wrath": None,
+    "in_frenzy": None,
 
     # "Enemies that survive more than 5 seconds after first being hit gain
     # 20%-40% increased damage" is `opponent_first_struck_by_you_seconds_ago`
@@ -5700,6 +5823,31 @@ CONDITIONS = {
     # `class_resource_points_at_least`, and on the same Fervour counted as held
     # (Chained Souls' share included); the same wide bound, for its reason.
     "class_resource_points_below": (0.0, 1000.0, "a count of class resource points"),
+
+    # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25, on the coordinating
+    # session's rulings of that day.
+    #
+    # "while within 15 meters of at least one active gadget" (Sentry Network) is
+    # `own_gadget_within_metres` with 15: the nearest gadget the wearer commands,
+    # measured from the wearer. The same 0 to 100 metre bound the other distance
+    # conditions use.
+    "own_gadget_within_metres": (0.0, 100.0, "a distance in metres"),
+    # "against enemies that have not yet triggered one of your traps" (Ambush)
+    # is `target_not_yet_triggered_your_trap`: the enemy struck has set off no
+    # skill trap of the wearer's before the triggering whose blow it is taking
+    # (a rearmed trap set off again by the same enemy is not its first).
+    # IT TAKES NO VALUE. A fact of the target in hand, so it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`.
+    "target_not_yet_triggered_your_trap": None,
+    # "while any of your gadgets are under attack" (Overcautious) is
+    # `seconds_after_gadget_struck` with 2: within that many seconds of a gadget
+    # the wearer commands taking a landed blow (the ruling: 2 seconds).
+    "seconds_after_gadget_struck": (0.0, 60.0, "a number of seconds"),
+    # "While your Fervour has no room to reserve another trap" (Overwhelming
+    # Presence, as the passive order fixes of 2026-11-24 reword it) is
+    # `no_room_for_a_trap`: a slot converted into a skill trap, and none of them
+    # could reserve another. IT TAKES NO VALUE.
+    "no_room_for_a_trap": None,
 }
 
 #: The figures of the Soul Collector's four Fervour thresholds, in order: "while
@@ -5923,7 +6071,17 @@ SCALES = {
     # passives, and the Ravager 2,110. A step past 1,000 would be a bonus worth
     # one or two of itself at the very end of a character's life, which is far
     # likelier a number typed into the wrong column.
-    "max_health": (0.0, 1000.0, "an amount of maximum health"),
+    #
+    # RAISED TO 5,000 ON 2026-11-24 for the War trees' rulings R2, R23 and R25,
+    # which the owner accepted that day: Weight of the World, Dense Muscle and
+    # Walking Fortress step by 5,000 maximum health. The figure above is before
+    # gear and passives; the simulation's tier 8 reference character, level
+    # 100 with half its slots on staying alive, holds 11,023
+    # (`sim/cataclysm_sim/fight.py`, `reference_player`), and a Bulwark that
+    # invests in health holds more, so a step of 5,000 is reached twice by that
+    # character and more often by the build these nodes are for. The
+    # coordinating session agreed the raise the same day.
+    "max_health": (0.0, 5000.0, "an amount of maximum health"),
 
     # "Ranged skills deal 10%-20% bonus damage for each meter of distance to the
     # target" is `metres_to_target` with a step of 1. Issue #1981.
@@ -6115,7 +6273,37 @@ SCALES = {
     # read. Whole steps, rounded down. Bounded at 1,000, the bound the other
     # percentage-of-a-stat scales take.
     "increased_movement_speed": (0.0, 1000.0, "a percentage of increased movement speed"),
+
+    # THE WAR VOW OPTIONS' SECOND SLICE, 2026-11-25, on the coordinating
+    # session's rulings that day. Titan's "Your maximum HP is increased by 1%
+    # for every 2 points of maximum Fervour you have" is `max_class_resource`
+    # with a step of 2, and Unbridled's "Every 20 points of maximum Fervour you
+    # have" a step of 20: the maximum `MaximumClassResource` answers, with the
+    # `class_resource` rows that hold now counted, so Ragnarok's doubling raises
+    # Titan's health as ruled. Bounded at 1,000 points, the bound
+    # `class_resource_points_at_least` takes. A `class_resource` row may not
+    # scale by it (`MAXIMUM_CLASS_RESOURCE_SCALE`). Bastion's "Your Maximum HP
+    # is increased by 1% for every 1% Block Chance you have" is `block_chance`
+    # with a step of 1: the Block Chance attribute in percentage points, the
+    # character sheet's figure, as ruled, and not the chance a blow is judged
+    # against. Whole steps, rounded down, for both.
+    "max_class_resource": (0.0, 1000.0, "a number of points of the class resource's maximum"),
+    "block_chance": (0.0, 100.0, "a percentage of block chance"),
+
+    # THE WAR VOW OPTIONS' THIRD SLICE, SECOND HALF, V3b, 2026-11-25. Colossus
+    # Eternal's "your attacks deal bonus damage equal to 2% of your current HP"
+    # is a flat `attack_damage` of 2 with a step of 100 points of current health:
+    # the share of maximum health held times the maximum, as the character's
+    # state reads them. Whole steps, rounded down. Bounded as `max_health` is.
+    "current_health": (0.0, 5000.0, "an amount of current health"),
 }
+
+#: The scale that reads the class resource's maximum with its rows counted, which
+#: a `class_resource` row may not take. The War vow options' second slice,
+#: 2026-11-25. The engine reads that maximum by evaluating the `class_resource`
+#: line without the readings a row must ask for, so a row on that line scaled by
+#: it would read an unknown maximum and grant nothing.
+MAXIMUM_CLASS_RESOURCE_SCALE = "max_class_resource"
 
 
 #: The largest cap on a scale a row may state, in whole steps. Issue #1815.
@@ -6538,6 +6726,35 @@ def _per_point_from(raw, headers, index: int, node: str, min_points: int) -> int
     return int(value)
 
 
+def _max_points(raw, headers, index: int, node: str, min_points: int) -> int:
+    """The Max Points column: the number of points from which a row stops applying.
+
+    THE SABOTEUR'S ROWS OF 2026-11-25, on the coordinating session's ruling for
+    Durable Modifications: its 3% a point above 50% Fervour holds at 1 to 3
+    points and its 6% a point from 4, so the two never multiply together.
+    EXCLUSIVE: 4 applies at 3 points and not at 4. AN EMPTY CELL IS NO LIMIT,
+    which is every row a script that does not know the column writes.
+
+    A WHOLE NUMBER FROM 2 UP, AND ABOVE ITS MIN POINTS: at or below the
+    threshold the row would never apply.
+    """
+    written = clean(_cell(raw, headers, "Max Points"))
+    if not written:
+        return 0
+    value = number(written, "Max Points", index)
+    if value != int(value) or value < 2:
+        raise DataError(
+            f"Passive Effects row {index}: {node} has a Max Points of {value:g}, "
+            f"and it takes a whole number of points from 2 up, the point at which "
+            f"the row stops. Leave the column empty for no upper limit.")
+    if min_points and value <= min_points:
+        raise DataError(
+            f"Passive Effects row {index}: {node} applies from {min_points} points "
+            f"and stops at {int(value)}, so it never applies. Max Points is above "
+            f"the Min Points.")
+    return int(value)
+
+
 def passive_effects(book) -> list[dict]:
     """What a passive node grants, one stat effect per row.
 
@@ -6622,6 +6839,7 @@ def passive_effects(book) -> list[dict]:
         option = _passive_option(raw, headers, index, node)
         min_points = _passive_min_points(raw, headers, index, node)
         per_point_from = _per_point_from(raw, headers, index, node, min_points)
+        max_points = _max_points(raw, headers, index, node, min_points)
 
         # A ROW STATING AN ACTION COLUMN, OR SCALED BY A COUNT AN ACTION GRANTS,
         # IS READ BY THE ENCHANTMENT EFFECTS SHEET'S OWN RULES. The passive row
@@ -6677,6 +6895,7 @@ def passive_effects(book) -> list[dict]:
                 "PerPointFrom": per_point_from,
                 # AND THE CHANCE, LAST. The Death trees' slice C6b3 (2026-11-25).
                 "ChancePercent": _chance_percent(raw, headers, index, node, shared["Action"]),
+                "MaxPoints": max_points,
             })
             continue
 
@@ -6738,6 +6957,15 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: {node} scales by {scale!r}, which "
                 f"counts enemies only while an enchantment's own stack is held, "
                 f"and a passive node has no own stacks. The row would grant "
+                f"nothing.")
+        # NOR THE POOL'S MAXIMUM BY ITSELF. The War vow options' second slice,
+        # 2026-11-25. See `MAXIMUM_CLASS_RESOURCE_SCALE`.
+        if scale == MAXIMUM_CLASS_RESOURCE_SCALE and stat == "class_resource":
+            raise DataError(
+                f"Passive Effects row {index}: {node} scales `class_resource` by "
+                f"{scale!r}. That scale reads the maximum the `class_resource` "
+                f"line comes to, and the line is read without the readings a row "
+                f"must ask for, so the row would read an unknown maximum and grant "
                 f"nothing.")
 
         # HOW FAR "NEAR" IS, FOR THE TWO NAMES THAT COUNT NEARBY ENEMIES.
@@ -6833,6 +7061,8 @@ def passive_effects(book) -> list[dict]:
             "PerPointFrom": per_point_from,
             # AND THE CHANCE, which a stat row may not state: refused here.
             "ChancePercent": _chance_percent(raw, headers, index, node, ""),
+            # AND THE UPPER LIMIT, since the Saboteur's rows of 2026-11-25.
+            "MaxPoints": max_points,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -6863,13 +7093,16 @@ def passive_effects(book) -> list[dict]:
     # AND SO ARE THE REQUIRED TAGS, since the Death trees' slice C6a
     # (2026-11-25): a row requires every tag it names, so "Poison and Bleed you
     # apply" is one row for each, the same stat under two tags (Lasting Wounds).
+    # The Saboteur's rows of the same day need it too: Bag of Tricks lowers what
+    # traps reserve and what gadgets reserve, one stat on `Type.Trap` and on
+    # `Type.Gadget`, two things a player gets.
     pairs: dict[tuple, int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row["Option"], row["MinPoints"], row["Action"],
                row["ActionEvent"], row["FractionOf"], row["Condition2"],
-               row["ConditionValue2"], row["RequiredTags"])
+               row["ConditionValue2"], row["RequiredTags"], row["MaxPoints"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:
@@ -6978,6 +7211,25 @@ NEXT_USE_ACTIONS = (
 PLACED_ACTIONS = {
     "enemy_armor_removed": ("hit_dealt", "deployable_hit"),
     "attacker_damage_removed": ("melee_hit_taken",),
+    # THE SAME ARMOUR STACK PLACED ON EVERY ENEMY NEAR THE WEARER, within the
+    # nearby radius of five metres, rather than on the event's own character.
+    # The War vow options' second slice, V2b, 2026-11-25: Warlord, "your melee
+    # attacks reduce the armor of all enemies within 5 meters by 15% for 3
+    # seconds. This effect refreshes on each hit", ruled "all enemies within 5
+    # m". The window and the cap are read as for the one above.
+    # `UCataclysmAbilitySystemComponent::EnemyArmorRemovedNearbyAction` holds
+    # the same name.
+    "enemy_armor_removed_nearby": ("hit_dealt",),
+    # A STACK RAISING THE RETALIATION THE ATTACKER TAKES, placed on whoever
+    # landed a hit on the wearer. The War vow options' third slice, V3a,
+    # 2026-11-25: Thornwall, "Enemies that hit you are inflicted with a stack of
+    # Exposed. Each stack of Exposed increases the retaliation damage they take
+    # from you by 5%, stacking up to 10 times", ruled "any hit: pass the attacker
+    # on hit taken", a landed hit and not a tick, 10 seconds refreshed by each
+    # hit. `hit_taken` names the attacker since that slice.
+    # `UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction` holds
+    # the same name.
+    "attacker_retaliation_taken": ("hit_taken",),
 }
 
 #: The actions that COUNT A KIND OF EVENT AND ACT ON EVERY Nth, each naming
@@ -7118,7 +7370,27 @@ NEARBY_ACTIONS = (
     # 2026-10-02: "Blocking attacks deals 200%-400% of your armor as damage to
     # nearby enemies". `SmiteNearbyByArmourAction` holds the same name.
     "smite_nearby_by_armor",
+    # A BLOW OF A SHARE OF WHAT THE EVENT'S HIT TOOK FROM HEALTH on every enemy
+    # within the row's Event Value in metres of the wearer, the struck one
+    # included, meeting each one's mitigation as a blow does. The War vow
+    # options' second slice, V2b, 2026-11-25: Pure Carnage, "critical strikes
+    # release a nova of force that deals 30% of the hit's damage to all enemies
+    # within melee range", ruled "a share of what the hit took from health", and
+    # Ragnarok's shockwaves, 50% within 6 metres. Its radius is its own, so it is
+    # not the five metres above; see `SMITE_NEARBY_BY_HIT_ACTION`.
+    # `SmiteNearbyByHitAction` holds the same name.
+    "smite_nearby_by_hit",
 )
+
+#: The nova sized by a hit, its events and its radius. The War vow options'
+#: second slice, V2b, 2026-11-25. ONLY THE EVENTS THAT CARRY WHAT A HIT TOOK
+#: FROM HEALTH, which `ACataclysmPlayerCharacter` raises with the hit notice's
+#: `DealtToHealth`. THE RADIUS IS THE ROW'S EVENT VALUE IN METRES, required, as
+#: the gadget's shot at a trap's enemy reads its own there: Pure Carnage's "melee
+#: range" is 4 (the design document's melee range) and Ragnarok's 6.
+SMITE_NEARBY_BY_HIT_ACTION = "smite_nearby_by_hit"
+SMITE_NEARBY_BY_HIT_EVENTS = ("hit_dealt", "first_hit_dealt", "critical_strike")
+MAX_SMITE_NEARBY_BY_HIT_METRES = 20.0
 
 #: The largest share a nearby action may state: a smite of ten times weapon
 #: damage, or a heal of a whole maximum. A sanity bound, as the clocks' is.
@@ -7126,6 +7398,7 @@ MAX_NEARBY_PERCENT = {
     "smite_nearby": 1000.0,
     "heal_nearby_enemies": 100.0,
     "smite_nearby_by_armor": 1000.0,
+    "smite_nearby_by_hit": 1000.0,
 }
 
 #: The action that PAYS A SHARE OF WHAT A BLOCK REMOVED BACK TO THE ATTACKER, as
@@ -7373,9 +7646,17 @@ MAX_STATUS_SIZE = 10
 #: The statuses `apply_status_seconds` may name: the two whose duration a row
 #: may state in place of their own. Cripple keeps its row's strength for the
 #: stated seconds. Issue #1833 group E part 1.
+#:
+#: AND STUN, ON ANOTHER CHARACTER, SINCE 2026-11-25: the coordinating session's
+#: ruling for Riposte's "stuns the target for 1 second" and the Saboteur's
+#: Concealed (R20), made general. A DESIGNED STUN for the row's seconds
+#: (`UCataclysmAbilitySystemComponent::ApplyStatusOf`). NOT IN `APPLY_STATUSES`,
+#: for the reason that list gives: a stun has no length of its own to fall back
+#: on, so only a row that states its seconds may lay one.
 APPLY_STATUSES_FOR_SECONDS = (
     "Stagger",
     "Cripple",
+    "Stun",
 )
 
 #: The longest a stated status may last. A sanity bound, as the clocks' is.
@@ -7692,6 +7973,13 @@ STRIKE_TARGET_EVENTS = (
     "block",
     "melee_hit_taken",
     "dodge",
+    # THE ATTACKER OF A LANDED HIT THAT IS NOT A TICK, and of a big hit. The War
+    # vow options' third slice, V3a, 2026-11-25, which made `hit_taken` name the
+    # attacker for Thornwall and raised `big_hit_taken` with it: a living
+    # character other than the wearer, as `melee_hit_taken`'s is. No row strikes
+    # on either today.
+    "hit_taken",
+    "big_hit_taken",
 )
 
 #: The events that carry a character a strike cannot land on, each with why.
@@ -7716,6 +8004,16 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # AND `minion_death` (the Death trees' slice C6d2, 2026-11-25), which carries
     # the commander's own follower as it dies: nothing a row may strike.
     "minion_death",
+    # Slice C of plan_death_and_war.md, 2026-11-24. `gadget_placed` carries the
+    # wearer's own gadget, as `trap_placed` carries its trap.
+    "gadget_placed",
+    # The Saboteur's device conditions, 2026-11-25. `device_placed` carries the
+    # wearer's own trap or gadget.
+    "device_placed",
+    # V4a, 2026-11-25. `trap_armed` carries the wearer's own trap.
+    "trap_armed",
+    # V5b1, 2026-11-25. `gadget_expired` carries the wearer's own gadget.
+    "gadget_expired",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -7766,6 +8064,11 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             # `trap_triggered`, which no hit fires, so it takes none by default.
             or action == SLOW_FOR_SECONDS_ACTION
             or action == STRIKE_TARGET_ACTION
+            # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
+            # a second" is its Trigger Cooldown (V4b, 2026-11-25).
+            or action == COUNTERFIRE_ACTION
+            # AND TITANFALL'S "once every 30 seconds" IS ITS OWN (2026-11-25).
+            or action == TITANFALL_ACTION
             # AN EXECUTE MAY STATE ONE, AND TAKES NONE BY DEFAULT: see
             # `ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN`. The engine starts a
             # stated wait when an enemy is executed, and not when the roll
@@ -7860,6 +8163,119 @@ MAX_EVERY_SECONDS = 60.0
 #: attributes, what is held and the most that can be held, and the absorb is
 #: one plain number with no maximum of its own.
 TEMPORARY_ABSORB_ACTION = "temporary_absorb"
+
+#: The action that PAYS A RETALIATION PULSE for a big hit: its value is the
+#: share of the retaliation the big hit earns, paid to every enemy within its
+#: Event Value in metres of the wearer, as retaliation is delivered. The War vow
+#: options' third slice, V3a, 2026-11-25: Wrath Incarnate, "When a single hit
+#: takes more than 10% of your Maximum HP, you retaliate against every enemy
+#: within 4 metres for 200% of your retaliation damage". ON THE BIG HIT ONLY,
+#: which is the one event carrying a blow to size it by.
+#: `UCataclysmAbilitySystemComponent::RetaliationPulseAction` holds the same
+#: name.
+RETALIATION_PULSE_ACTION = "retaliation_pulse"
+RETALIATION_PULSE_EVENTS = ("big_hit_taken",)
+MAX_RETALIATION_PULSE_METRES = 20.0
+MAX_RETALIATION_PULSE_PERCENT = 1000.0
+
+#: The action that CHAINS AN ATTACK to the nearest enemies within its Event
+#: Value in metres of the enemy struck, for its value's share of what the attack
+#: sent before defences, to one enemy plus one for each kill in the current
+#: Frenzy. The War vow options' third slice, second half, V3b, 2026-11-25:
+#: Thousand Deaths, "Dual wield only. While in Frenzy, your attacks chain to one
+#: additional nearby enemy for 60% damage. Each kill during Frenzy permanently
+#: adds one additional chain target for the remainder of the Frenzy duration",
+#: ruled 5 metres, and a chained blow does not chain again. ON `hit_dealt` ONLY,
+#: the one event that names the enemy struck and carries what the attack sent.
+#: `UCataclysmAbilitySystemComponent::FrenzyChainAction` holds the same name.
+FRENZY_CHAIN_ACTION = "frenzy_chain"
+FRENZY_CHAIN_EVENTS = ("hit_dealt",)
+MAX_FRENZY_CHAIN_METRES = 20.0
+MAX_FRENZY_CHAIN_PERCENT = 1000.0
+
+#: The action that TAUNTS EVERY ENEMY within its Event Value in metres of the
+#: trap its event names, for its value in seconds, through the engine's taunt
+#: with all its refusals. The War vow options' fourth slice, V4a, 2026-11-25:
+#: Baited, "When one of your traps arms, every enemy within 8 metres of it is
+#: drawn to it: it goes for the trap instead of whatever it was attacking, for 4
+#: seconds or until the trap goes off". ON `trap_armed` ONLY.
+#: `UCataclysmAbilitySystemComponent::TauntEnemiesNearTrapAction` holds the
+#: same name.
+TAUNT_NEAR_TRAP_ACTION = "taunt_enemies_near_trap"
+TAUNT_NEAR_TRAP_EVENTS = ("trap_armed",)
+MAX_TAUNT_NEAR_TRAP_METRES = 20.0
+MAX_TAUNT_NEAR_TRAP_SECONDS = 30.0
+
+#: The action that PLACES THE LAST SKILL TRAP AGAIN where the movement began,
+#: armed at once, through the ordinary placement. V4a, 2026-11-25: Trail of
+#: Wire, "Each time you use your movement skill, the last trap you placed is
+#: placed again where the movement began, armed at once". ON `movement_skill`
+#: ONLY. ITS VALUE IS 100, always, as a cooldown reset's is: the sentence states
+#: no chance. `UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction` holds
+#: the same name.
+PLACE_LAST_TRAP_AGAIN_ACTION = "place_last_trap_again"
+PLACE_LAST_TRAP_AGAIN_EVENTS = ("movement_skill",)
+
+#: The action that ANSWERS AN EVADED BLOW with the wearer's traps and gadgets:
+#: one for every Event Value of them, rounded down, the nearest the attacker
+#: first; a skill trap goes off, a skill gadget fires at the attacker at the
+#: row's value as a share of its shot, and a War machine deals its own blow at
+#: the attacker. The War vow options' fourth slice, second half, V4b,
+#: 2026-11-25: Counterfire, "Each hit you evade is answered by one of your traps
+#: or gadgets for every 2 you have on the battlefield, nearest the attacker
+#: first: a gadget fires at it, a trap goes off. No more than once a second."
+#: ON `dodge` ONLY, which names the attacker; the second is the row's Trigger
+#: Cooldown. `UCataclysmAbilitySystemComponent::CounterfireAction` holds the
+#: same name.
+COUNTERFIRE_ACTION = "counterfire"
+COUNTERFIRE_EVENTS = ("dodge",)
+
+#: The action that LEAVES A COPY OF THE LAST SKILL TRAP PLACED where an enemy
+#: the wearer killed fell, when one of the wearer's devices stands within its
+#: Event Value in metres: armed at once, reserving 1 Fervour, lasting the row's
+#: value in seconds. The War vow options' fifth slice, first half, V5a,
+#: 2026-11-25: Where They Fall. ON `kill` ONLY.
+#: `UCataclysmAbilitySystemComponent::CopyLastTrapAtKillAction` holds the name.
+COPY_LAST_TRAP_AT_KILL_ACTION = "copy_last_trap_at_kill"
+COPY_LAST_TRAP_AT_KILL_EVENTS = ("kill",)
+MAX_COPY_LAST_TRAP_AT_KILL_METRES = 20.0
+MAX_COPY_LAST_TRAP_AT_KILL_SECONDS = 30.0
+
+#: The action that REPEATS THE HIT DEALT from each of the wearer's devices
+#: within its Event Value in metres of the enemy struck, the nearest 15, at the
+#: row's value in per cent of what the hit sent. V5a, 2026-11-25: Crossfire. ON
+#: `hit_dealt` ONLY. `UCataclysmAbilitySystemComponent::CrossfireAction` holds
+#: the name.
+CROSSFIRE_ACTION = "crossfire"
+CROSSFIRE_EVENTS = ("hit_dealt",)
+MAX_CROSSFIRE_METRES = 30.0
+MAX_CROSSFIRE_PERCENT = 100.0
+
+#: The action that LEAVES A SCRAP TRAP where a gadget that was destroyed or
+#: expired stood: a copy of the gadget marked a trap, firing the gadget's attack
+#: once at the row's value in per cent at the first enemy within its Event Value
+#: in metres. The War vow options' fifth slice, second half, first part, V5b1,
+#: 2026-11-25: Scrap Mines. ON `gadget_destroyed` AND `gadget_expired` ONLY,
+#: one row on each. `UCataclysmAbilitySystemComponent::ScrapMineAction` holds the
+#: name.
+SCRAP_MINE_ACTION = "scrap_mine"
+SCRAP_MINE_EVENTS = ("gadget_destroyed", "gadget_expired")
+MAX_SCRAP_MINE_METRES = 10.0
+MAX_SCRAP_MINE_PERCENT = 1000.0
+
+#: The action that, when a big hit took more than its Event Value in per cent of
+#: the wearer's maximum health (the figure `big_hit_taken` carries: what got
+#: through, of all four pools, after defences), leaves the wearer unkillable for
+#: the row's value in seconds and stores that figure for the next attack. Its
+#: own 30 seconds between firings are the row's Trigger Cooldown. The Bulwark's
+#: Titanfall, ruled 2026-11-25 (T1-T6) on the sentence R6. ON `big_hit_taken`
+#: ONLY. `UCataclysmAbilitySystemComponent::TitanfallAction` holds the name.
+TITANFALL_ACTION = "titanfall"
+TITANFALL_EVENTS = ("big_hit_taken",)
+MAX_TITANFALL_SECONDS = 10.0
+MAX_TITANFALL_SHARE_PERCENT = 100.0
+MAX_COUNTERFIRE_DEVICES_PER_ANSWER = 10.0
+MAX_COUNTERFIRE_PERCENT = 1000.0
 
 #: The events a temporary absorb may be granted on: the clock, and no other
 #: until a sentence asks for one. The clock counts only while the wearer is in
@@ -8016,6 +8432,48 @@ ACTION_ONLY_EVENTS = (
     # (2026-11-25), as ruled, for Cold Hands and Grave Cold. Not a machine's,
     # which is `deployable_hit`.
     "minion_hit",
+    # A GADGET PLACED, raised once per gadget on its player by
+    # `ACataclysmMinion::PlaceSkillGadget` and, for a War machine that is not
+    # a trap, `UCataclysmDeployableSkill::DeployOne`, with the gadget's type
+    # tags and the gadget as the character. Slice C of plan_death_and_war.md,
+    # 2026-11-24 (`FCataclysmWarFervour::GadgetPlacedEvent`): nothing raised one
+    # before, and Razor Instincts and Forward Operating Base are about it.
+    # Clockless, as the two above; in no narrower list yet.
+    "gadget_placed",
+    # A TRAP OR A GADGET PLACED, one event for either, raised beside
+    # `trap_placed` by `ACataclysmMinion::PlaceSkillTrap`, beside `gadget_placed`
+    # by `PlaceSkillGadget`, and by `UCataclysmDeployableSkill::DeployOne` for
+    # every War machine, a trap included. The Saboteur's device conditions,
+    # 2026-11-25 (the coordinating session's ruling): Razor Instincts, "+3%
+    # evasion chance per point for 3 seconds after placing a trap or gadget", is
+    # one row on it, so one placing grants one stack. Clockless.
+    "device_placed",
+    # THE BERSERKER ENTERING FRENZY, raised once per entry by
+    # `FCataclysmBerserkerStates::Judge` after the state is set, with no tags.
+    # The War vow options' second slice, 2026-11-25, ruled that day: Opportunist,
+    # "Entering Frenzy immediately resets the cooldown of your movement skill", is
+    # a `cooldown_reset_movement` row on it. Clockless.
+    "frenzy_entered",
+    # A BIG HIT TAKEN: one landed hit, not a tick and not the wearer's own,
+    # that took more than 10% of maximum health after defences, counting what
+    # reached health, the energy shield, mana and the temporary absorb. Raised
+    # by `UCataclysmAbilitySystemComponent::NoteBigHitTaken` with that amount
+    # and the attacker. The War vow options' third slice, V3a, ruled 2026-11-25
+    # ("the 10% fixed in the engine"): Wrath Incarnate's pulse is a
+    # `retaliation_pulse` row on it. Clockless.
+    "big_hit_taken",
+    # A TRAP OF THE WEARER'S ARMED: a skill trap at its arming time, at its step,
+    # by an arming action or at an arming time of nought, and a War machine trap
+    # when it is placed. Raised by `ACataclysmMinion::AnnounceTrapArmed` with the
+    # trap's tags, naming the trap, at depth nought. The War vow options' fourth
+    # slice, V4a, ruled 2026-11-25: Baited's taunt is a
+    # `taunt_enemies_near_trap` row on it. Clockless.
+    "trap_armed",
+    # A GADGET OF THE WEARER'S WHOSE LIFE SPAN RAN OUT, raised by
+    # `ACataclysmMinion::LifeSpanExpired` with the gadget's tags, naming it,
+    # before it goes. Ruled in the vow survey of 2026-11-25 ("a gadget expiring
+    # raises an event") and built for Scrap Mines, V5b1. Clockless.
+    "gadget_expired",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -8054,6 +8512,8 @@ EVENTS_WITH_AN_AMOUNT = (
     # THE FERVOUR ONE PAYMENT SPENT. The Death trees' slice C3a (2026-11-25),
     # raised by `UCataclysmAbilitySystemComponent::NoteFervourSpent`.
     "fervour_spent",
+    # What the big hit took, after defences. V3a, 2026-11-25.
+    "big_hit_taken",
 )
 
 
@@ -8175,6 +8635,20 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
     if action == TEMPORARY_ABSORB_ACTION:
         _check_temporary_absorb_action(index, who, action, event, fraction_of,
                                        kind, raw, headers)
+        return
+    if action == RETALIATION_PULSE_ACTION:
+        _check_retaliation_pulse_action(index, who, action, event, fraction_of,
+                                        kind, raw, headers)
+        return
+    if action == FRENZY_CHAIN_ACTION:
+        _check_frenzy_chain_action(index, who, action, event, fraction_of,
+                                   kind, raw, headers)
+        return
+    if action in (TAUNT_NEAR_TRAP_ACTION, PLACE_LAST_TRAP_AGAIN_ACTION,
+                  COUNTERFIRE_ACTION, COPY_LAST_TRAP_AT_KILL_ACTION,
+                  CROSSFIRE_ACTION, SCRAP_MINE_ACTION, TITANFALL_ACTION):
+        _check_v4a_action(index, who, action, event, fraction_of, kind, raw,
+                          headers)
         return
     if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
         _check_kept_stacks_repeat_skill_action(index, who, action, event,
@@ -8430,6 +8904,13 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
             f"nearby on the event {event or '(none)'!r}, which the game does "
             f"not fire. Known: {', '.join(sorted(known))}.")
     fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
+    # A NOVA SIZED BY A HIT NEEDS AN EVENT CARRYING ONE. V2b, 2026-11-25.
+    if action == SMITE_NEARBY_BY_HIT_ACTION and event not in SMITE_NEARBY_BY_HIT_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} deals a share of a hit on "
+            f"the event {event!r}, which carries no hit. Only "
+            f"{', '.join(SMITE_NEARBY_BY_HIT_EVENTS)} carry what a hit took "
+            f"from health.")
     for column, written in (("Fraction Of", fraction_of),
                             ("Value Kind", kind),
                             ("Scale", clean(_cell(raw, headers, "Scale")))):
@@ -8629,6 +9110,91 @@ def _check_temporary_absorb_action(index: int, who: str, action: str,
                 f"Enchantment Effects row {index}: {who} grants a temporary "
                 f"absorb and states {column} {written!r}. Its value is a "
                 f"percentage of maximum health and nothing else, so the "
+                f"column must be empty.")
+
+
+def _check_retaliation_pulse_action(index: int, who: str, action: str,
+                                    event: str, fraction_of: str, kind: str,
+                                    raw, headers: dict[str, int]) -> None:
+    """Everything a retaliation pulse row must say, and everything it must not.
+    The War vow options' third slice, V3a, 2026-11-25: Wrath Incarnate. On the
+    big hit only, which carries the blow the pulse is sized by; the radius is
+    checked where Event Value is read. A fraction, a value kind and a scale
+    each mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in RETALIATION_PULSE_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} pays a retaliation pulse "
+            f"on the event {event or '(none)'!r}. Only a big hit carries a blow "
+            f"to size it by: {', '.join(RETALIATION_PULSE_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} pays a retaliation "
+                f"pulse and states {column} {written!r}. Its value is a share "
+                f"of the retaliation the big hit earns and nothing else, so "
+                f"the column must be empty.")
+
+
+def _check_frenzy_chain_action(index: int, who: str, action: str,
+                               event: str, fraction_of: str, kind: str,
+                               raw, headers: dict[str, int]) -> None:
+    """Everything a Frenzy chain row must say, and everything it must not. The
+    War vow options' third slice, second half, V3b, 2026-11-25: Thousand
+    Deaths. On `hit_dealt` only; the radius is checked where Event Value is
+    read. A fraction, a value kind and a scale each mean nothing here, so each
+    is refused rather than dropped.
+    """
+    if event not in FRENZY_CHAIN_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} chains an attack on the "
+            f"event {event or '(none)'!r}. Only a hit dealt names the enemy "
+            f"struck and what the attack sent: {', '.join(FRENZY_CHAIN_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} chains an attack and "
+                f"states {column} {written!r}. Its value is a share of what the "
+                f"attack sent and nothing else, so the column must be empty.")
+
+
+def _check_v4a_action(index: int, who: str, action: str, event: str,
+                      fraction_of: str, kind: str, raw,
+                      headers: dict[str, int]) -> None:
+    """Everything a Baited taunt row or a Trail of Wire row must say, and
+    everything it must not. The War vow options' fourth slice, V4a, 2026-11-25.
+    Each on its one event; the radius, the seconds and the value are checked
+    where they are read. A fraction, a value kind and a scale each mean nothing
+    here, so each is refused rather than dropped.
+    """
+    # AND COUNTERFIRE'S, ON `dodge`, since the fourth slice's second half,
+    # V4b, the same day.
+    events = {TAUNT_NEAR_TRAP_ACTION: TAUNT_NEAR_TRAP_EVENTS,
+              PLACE_LAST_TRAP_AGAIN_ACTION: PLACE_LAST_TRAP_AGAIN_EVENTS,
+              COUNTERFIRE_ACTION: COUNTERFIRE_EVENTS,
+              # AND WHERE THEY FALL'S AND CROSSFIRE'S, V5a, the same day.
+              COPY_LAST_TRAP_AT_KILL_ACTION: COPY_LAST_TRAP_AT_KILL_EVENTS,
+              CROSSFIRE_ACTION: CROSSFIRE_EVENTS,
+              # AND SCRAP MINES', V5b1, the same day.
+              SCRAP_MINE_ACTION: SCRAP_MINE_EVENTS,
+              # AND TITANFALL'S, the same day.
+              TITANFALL_ACTION: TITANFALL_EVENTS}[action]
+    if event not in events:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} acts as {action} on the "
+            f"event {event or '(none)'!r}. It is ruled on {', '.join(events)} "
+            f"only.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} acts as {action} and "
+                f"states {column} {written!r}, which means nothing to it, so the "
                 f"column must be empty.")
 
 
@@ -9198,6 +9764,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != STRIKE_TARGET_ACTION \
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
+                and action != RETALIATION_PULSE_ACTION \
+                and action != FRENZY_CHAIN_ACTION \
+                and action != TAUNT_NEAR_TRAP_ACTION \
+                and action != PLACE_LAST_TRAP_AGAIN_ACTION \
+                and action != COUNTERFIRE_ACTION \
+                and action != COPY_LAST_TRAP_AT_KILL_ACTION \
+                and action != CROSSFIRE_ACTION \
+                and action != SCRAP_MINE_ACTION \
+                and action != TITANFALL_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9592,6 +10167,80 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} grants a temporary "
                 f"absorb of {low:g} to {high:g} per cent of maximum health. "
                 f"It is above 0 and up to {MAX_TEMPORARY_ABSORB_PERCENT:g}.")
+
+    # A RETALIATION PULSE'S VALUE IS A SHARE OF THE RETALIATION THE BIG HIT
+    # EARNS, above 0 and up to the bound. V3a, 2026-11-25.
+    if action == RETALIATION_PULSE_ACTION:
+        if not (0 < low <= MAX_RETALIATION_PULSE_PERCENT
+                and 0 < high <= MAX_RETALIATION_PULSE_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} pays a retaliation "
+                f"pulse of {low:g} to {high:g} per cent. It is above 0 and up "
+                f"to {MAX_RETALIATION_PULSE_PERCENT:g}.")
+
+    # BAITED'S VALUE IS THE TAUNT'S SECONDS, above 0 and up to the bound; TRAIL
+    # OF WIRE'S IS 100, always. V4a, 2026-11-25.
+    if action == TAUNT_NEAR_TRAP_ACTION:
+        if not (0 < low <= MAX_TAUNT_NEAR_TRAP_SECONDS
+                and 0 < high <= MAX_TAUNT_NEAR_TRAP_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} taunts for {low:g} to "
+                f"{high:g} seconds. It is above 0 and up to "
+                f"{MAX_TAUNT_NEAR_TRAP_SECONDS:g}.")
+    # WHERE THEY FALL'S VALUE IS THE COPY'S SECONDS, AND CROSSFIRE'S A SHARE OF
+    # THE HIT, each above 0 and up to its bound. V5a, 2026-11-25.
+    # TITANFALL'S VALUE IS ITS SECONDS UNKILLABLE, above 0 and up to the bound.
+    # 2026-11-25.
+    if action == TITANFALL_ACTION:
+        if not (0 < low <= MAX_TITANFALL_SECONDS
+                and 0 < high <= MAX_TITANFALL_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves its wearer "
+                f"unkillable for {low:g} to {high:g} seconds. It is above 0 and "
+                f"up to {MAX_TITANFALL_SECONDS:g}.")
+    # A SCRAP TRAP'S VALUE IS ITS SHOT'S PER CENT. V5b1, 2026-11-25.
+    if action == SCRAP_MINE_ACTION:
+        if not (0 < low <= MAX_SCRAP_MINE_PERCENT
+                and 0 < high <= MAX_SCRAP_MINE_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves a scrap trap "
+                f"firing at {low:g} to {high:g} per cent. It is above 0 and up "
+                f"to {MAX_SCRAP_MINE_PERCENT:g}.")
+    if action in (COPY_LAST_TRAP_AT_KILL_ACTION, CROSSFIRE_ACTION):
+        bound = (MAX_COPY_LAST_TRAP_AT_KILL_SECONDS
+                 if action == COPY_LAST_TRAP_AT_KILL_ACTION
+                 else MAX_CROSSFIRE_PERCENT)
+        if not (0 < low <= bound and 0 < high <= bound):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts as {action} with "
+                f"the value {low:g} to {high:g}. It is above 0 and up to "
+                f"{bound:g}.")
+
+    # COUNTERFIRE'S VALUE IS A SHARE OF A GADGET'S SHOT, above 0 and up to the
+    # bound. V4b, 2026-11-25.
+    if action == COUNTERFIRE_ACTION:
+        if not (0 < low <= MAX_COUNTERFIRE_PERCENT
+                and 0 < high <= MAX_COUNTERFIRE_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} answers with {low:g} "
+                f"to {high:g} per cent of a shot. It is above 0 and up to "
+                f"{MAX_COUNTERFIRE_PERCENT:g}.")
+    if action == PLACE_LAST_TRAP_AGAIN_ACTION:
+        if not (low == 100 and high == 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} places the last trap "
+                f"again with the value {low:g} to {high:g}. It is 100, always: "
+                f"the sentence states no chance.")
+
+    # A FRENZY CHAIN'S VALUE IS A SHARE OF WHAT THE ATTACK SENT, above 0 and up
+    # to the bound. V3b, 2026-11-25.
+    if action == FRENZY_CHAIN_ACTION:
+        if not (0 < low <= MAX_FRENZY_CHAIN_PERCENT
+                and 0 < high <= MAX_FRENZY_CHAIN_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} chains an attack for "
+                f"{low:g} to {high:g} per cent. It is above 0 and up to "
+                f"{MAX_FRENZY_CHAIN_PERCENT:g}.")
 
     # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
     if action in SKILL_IN_HAND_ACTIONS:
@@ -10134,10 +10783,17 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
             raise DataError(
                 f"Enchantment Effects row {index}: {name} names "
                 f"{condition!r} as both conditions.")
-        if action:
+        # AN ACTION MAY CARRY A SECOND CONDITION since the War vow options'
+        # second slice (V2b, 2026-11-25): Warlord's armour removal holds "above
+        # 50% Fervour" with "Two-handed weapons only". Both are judged when the
+        # event fires (`UCataclysmAbilitySystemComponent::PoolActionAllowed`).
+        # NOT AN EXECUTE: its one condition is its share of health, judged after
+        # the hit.
+        if action == EXECUTE_TARGET_ACTION:
             raise DataError(
-                f"Enchantment Effects row {index}: {name} moves {action} and "
-                f"states Condition 2. An action carries one condition.")
+                f"Enchantment Effects row {index}: {name} executes and states "
+                f"Condition 2. An execute carries one condition, its share of "
+                f"health, judged after the hit.")
         if CONDITIONS[condition2] is None:
             if value2_text:
                 raise DataError(
@@ -10269,6 +10925,119 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"Enchantment Effects row {index}: {name} wants "
                     f"{event_value:g} Fervour spent at once. It is 0, any "
                     f"spend, up to {MAX_FERVOUR_SPENT_AT_ONCE:g}.")
+    elif action == SMITE_NEARBY_BY_HIT_ACTION:
+        # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
+        # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} deals a share of a "
+                f"hit to the enemies nearby and states no Event Value. It is the "
+                f"radius in metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_SMITE_NEARBY_BY_HIT_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reaches "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == TITANFALL_ACTION:
+        # OR TITANFALL'S SHARE OF MAXIMUM HEALTH A BIG HIT MUST TAKE, in per
+        # cent, required. 2026-11-25. See `TITANFALL_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts on a big hit and "
+                f"states no Event Value. It is the share of maximum health, in "
+                f"per cent, the hit must take.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_TITANFALL_SHARE_PERCENT:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} asks a big hit for "
+                f"{event_value:g} per cent of maximum health. It is above 0 and "
+                f"up to {MAX_TITANFALL_SHARE_PERCENT:g}.")
+    elif action == SCRAP_MINE_ACTION:
+        # OR A SCRAP TRAP'S TRIGGER RADIUS, in metres, required. V5b1,
+        # 2026-11-25. See `SCRAP_MINE_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves a scrap trap "
+                f"and states no Event Value. It is the trigger radius in "
+                f"metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_SCRAP_MINE_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves a scrap trap "
+                f"with a radius of {event_value:g} metres. It is above 0 and up "
+                f"to {MAX_SCRAP_MINE_METRES:g}.")
+    elif action in (COPY_LAST_TRAP_AT_KILL_ACTION, CROSSFIRE_ACTION):
+        # OR THE METRES FROM A DEVICE, required: Where They Fall's to the one
+        # killed, Crossfire's to the enemy struck. V5a, 2026-11-25.
+        bound = (MAX_COPY_LAST_TRAP_AT_KILL_METRES
+                 if action == COPY_LAST_TRAP_AT_KILL_ACTION
+                 else MAX_CROSSFIRE_METRES)
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} acts as {action} and "
+                f"states no Event Value. It is the metres from a device.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= bound:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reaches "
+                f"{event_value:g} metres from a device. It is above 0 and up "
+                f"to {bound:g}.")
+    elif action == COUNTERFIRE_ACTION:
+        # OR COUNTERFIRE'S DEVICES FOR EACH ANSWER, required, a whole number
+        # from 1 to the bound. V4b, 2026-11-25. See `COUNTERFIRE_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} answers an evaded "
+                f"blow and states no Event Value. It is the devices for each "
+                f"answer.")
+        event_value = number(event_value_text, "Event Value", index)
+        if (event_value != int(event_value)
+                or not 1 <= event_value <= MAX_COUNTERFIRE_DEVICES_PER_ANSWER):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} answers once for every "
+                f"{event_value:g} devices. It is a whole number from 1 to "
+                f"{MAX_COUNTERFIRE_DEVICES_PER_ANSWER:g}.")
+    elif action == TAUNT_NEAR_TRAP_ACTION:
+        # OR THE RADIUS OF BAITED'S TAUNT, in metres around the trap, required.
+        # V4a, 2026-11-25. See `TAUNT_NEAR_TRAP_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} taunts the enemies "
+                f"near a trap and states no Event Value. It is the radius in "
+                f"metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_TAUNT_NEAR_TRAP_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} taunts within "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_TAUNT_NEAR_TRAP_METRES:g}.")
+    elif action == FRENZY_CHAIN_ACTION:
+        # OR THE RADIUS OF A FRENZY CHAIN, in metres around the enemy struck,
+        # required. V3b, 2026-11-25. See `FRENZY_CHAIN_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} chains an attack and "
+                f"states no Event Value. It is the radius in metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_FRENZY_CHAIN_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} chains "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_FRENZY_CHAIN_METRES:g}.")
+    elif action == RETALIATION_PULSE_ACTION:
+        # OR THE RADIUS OF A RETALIATION PULSE, in metres, required, and its
+        # share bounded. V3a, 2026-11-25. See `RETALIATION_PULSE_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} pays a retaliation "
+                f"pulse and states no Event Value. It is the radius in metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_RETALIATION_PULSE_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reaches "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_RETALIATION_PULSE_METRES:g}.")
     elif event_value_text:
         raise DataError(
             f"Enchantment Effects row {index}: {name} states an Event Value on "
@@ -11090,6 +11859,17 @@ STATS_WITH_AN_ASKER = frozenset({
     # Asked through the pipeline at the kill by `UCataclysmFervour::GainOnOwnKill`;
     # `ProbeScaledFervourPerKill` measures it.
     "fervour_per_kill",
+    # ADDED 2026-11-25 FOR SUPPORT NETWORK, "At 4 points: Active gadgets increase
+    # trap trigger radius by 10%": `trap_trigger_radius` scaled by gadgets active,
+    # one step at most. `ACataclysmMinion::SkillTrapTriggerRadiusCmFor` asks it
+    # through `IncreasesForStat`, which evaluates the rows against the player's
+    # state; `ProbeScaledTrapTriggerRadius` measures it.
+    "trap_trigger_radius",
+    # ADDED 2026-11-25 FOR WARMONGER, "While in Wrath, each enemy within melee
+    # range drains 3 additional Fervour per second": `fervour_drain_per_second`
+    # scaled by enemies within 4 metres. `FCataclysmBerserkerStates::DrainStep`
+    # asks it with `StatForSkill`; `ProbeScaledFervourDrainPerSecond` measures it.
+    "fervour_drain_per_second",
     # ADDED 2026-10-05 FOR "Starvation (10-Piece Bonus): When you kill an enemy,
     # gain a stack of 'Famished.' Each stack increases all of your leech by 5%",
     # issue #1833, three rows scaled by their own stacks. `UCataclysmLeech::NoteHit`
@@ -11358,6 +12138,10 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_carries_your_poison_or_bleed",
     "target_rarity_at_least",
     "target_rarity_is",
+    # The Saboteur's device conditions, 2026-11-25: Ambush. A fact of the target
+    # in hand, read by `WithTargetState`; the trap rows that carry it are priced
+    # by `TrapDamageNamingTrap` with the enemy struck.
+    "target_not_yet_triggered_your_trap",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for
@@ -11464,6 +12248,59 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "class_resource_generation": ASKER_PASSES_NOTHING_MORE,
     "cooldowns_recover_faster_percent": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
+    # THE BERSERKER'S STATES, 2026-11-25. The two flags `FCataclysmBerserkerStates::Judge`
+    # asks with no tags, each stated under its weapon rule; the drain
+    # `DrainStep` asks with no tags, stated under a state; and the Fervour per
+    # blow `FCataclysmWarFervour::GainOnHitDealt` asks with the blow's skill tags
+    # and no blow record. Each is probed in `CataclysmStatExemptionTests.cpp`'s
+    # table of stats with no attribute.
+    # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Overwhelming Presence's
+    # "trap trigger radius is doubled", stated under `no_room_for_a_trap`.
+    # `ACataclysmMinion::SkillTrapTriggerRadiusCmFor` asks it with the trap's
+    # tags and no blow; probed in the table of conditioned stats.
+    "trap_trigger_radius": ASKER_PASSES_NOTHING_MORE,
+    # SKULL SPLITTER, 2026-11-25: its percent a stack and its cost, each stated
+    # under `in_wrath` and `wielding_two_handed_weapon`, asked by
+    # `FCataclysmWarFervour::SkullSplitterOnCriticalStrike` with the crit's skill
+    # tags and no blow; probed in the table of stats with no attribute.
+    "crit_armor_removed_in_wrath": ASKER_PASSES_NOTHING_MORE,
+    "crit_armor_fervour_cost": ASKER_PASSES_NOTHING_MORE,
+    "wrath_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
+    "frenzy_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
+    "fervour_drain_per_second": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_hit_dealt": ASKER_PASSES_NOTHING_MORE,
+    # AND ONE OF SLICE C'S RATES, asked by `FCataclysmWarFervour::GainByRate`
+    # with the event's tags and the wearer's state, for the War riders of
+    # 2026-11-25: Resolve Under Fire's "below 30% HP" and Immovable's "while
+    # stationary". Probed in the same table by `ProbeWarFervourGain`. ITS
+    # SIBLING `fervour_per_critical_strike` (Razor Mind's "while above 75%
+    # Fervour") is the Death line's since the bundle 3 merge, asked with the
+    # blow by `UCataclysmFervour::GainOnCriticalStrike`: listed above.
+    "fervour_per_hit_taken": ASKER_PASSES_NOTHING_MORE,
+    # THE FERVOUR SPENDS, 2026-11-25. Iron Will's cost, Undying's restore and
+    # Cleave's cost and gain, each asked by `FCataclysmWarFervour` with the
+    # wearer's state (Cleave's with the attack's skill tags) and probed in the
+    # table of stats with no attribute; and three stats the engine already
+    # asked with the live state, which a War row now states under a condition:
+    # `strike_arc_at_least_degrees` (`UCataclysmStrikeSkill::ArcAtLeastDegrees`,
+    # Cleave under "Two-handed weapons only"), `max_health`
+    # (`RefreshLiveMaximumHealth`, Blood Tithe above 50% Fervour) and
+    # `block_negation_chance` (`UCataclysmDamageCalculation`'s block step, with
+    # the blow being taken; Iron Will above 75 Fervour). Each has a probe in one
+    # of the three tables already.
+    "fervour_cost_per_negated_block": ASKER_PASSES_NOTHING_MORE,
+    "health_percent_per_ten_fervour_on_lethal_blow": ASKER_PASSES_NOTHING_MORE,
+    "fervour_cost_per_extra_enemy_hit": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_extra_enemy_hit_paid": ASKER_PASSES_NOTHING_MORE,
+    "strike_arc_at_least_degrees": ASKER_PASSES_NOTHING_MORE,
+    # (`max_health` is listed above, with its probe.)
+    "block_negation_chance": ASKER_PASSES_A_BLOW_TAKEN,
+    # RIPOSTE, 2026-11-25: its share under at least 25 Fervour and its stun
+    # under the pool at its maximum, each asked by
+    # `FCataclysmWarFervour::RiposteOnBlock` with the wearer's state and no
+    # blow, and probed in the table of stats with no attribute.
+    "riposte_share_of_blocked": ASKER_PASSES_NOTHING_MORE,
+    "riposte_stun_seconds_at_maximum": ASKER_PASSES_NOTHING_MORE,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
     # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
     # cannot move while channeling any skill". Its probe is `ProbeCannotWalk`,
@@ -11494,6 +12331,17 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "health_cost_suppressed": ASKER_PASSES_NOTHING_MORE,
     "health_regen": ASKER_PASSES_NOTHING_MORE,
     "knockback_suppressed": ASKER_PASSES_NOTHING_MORE,
+    # THE WAR VOW OPTIONS' SECOND SLICE, 2026-11-25. Unstoppable's "cannot be
+    # rooted", a pin counted as the root, under "above 75% Fervour" and
+    # "Two-handed weapons only": `UCataclysmSkillEffects::ApplyPin` asks it of
+    # the target with no tags; probed in the table of stats with no attribute.
+    # And Ragnarok's "Your maximum Fervour is doubled", under "Two-handed weapons
+    # only": `UCataclysmAbilitySystemComponent::MaximumClassResource` evaluates
+    # the line with the wearer's state, which every gain, spend and full-pool
+    # judgement reads; probed by `ProbeScaledMaximumClassResource` in the table
+    # of scaled stats, which measures that the line is asked with the state.
+    "pin_suppressed": ASKER_PASSES_NOTHING_MORE,
+    "class_resource": ASKER_PASSES_NOTHING_MORE,
     "life_leech": ASKER_PASSES_NOTHING_MORE,
     "mana_cost": ASKER_PASSES_NOTHING_MORE,
     "mana_leech": ASKER_PASSES_NOTHING_MORE,
@@ -12619,12 +13467,16 @@ def refuse_an_exploding_ailment_row_the_game_cannot_read(
 #: The tag a row about "your gadgets" is scoped by, as the merged gadget rows
 #: are: "Gadgets have 40%-70% increased HP", "Gadgets fire 20%-40% faster".
 #:
-#: A SPIKE TRAP CARRIES THIS TAG TOO AND IS NOT A GADGET. It also carries
-#: `Type.Trap` (ruled 2026-10-07), and the game answers every stat below
-#: nought for it: `ACataclysmMinion::SummonersGadgetStat` asks
-#: `ACataclysmMinion::IsGadget` before it asks the summoner anything. So the
-#: tag scopes the row to placed machines and the code leaves the trap out.
-GADGET_ROW_TAG = "Type.Deployable"
+#: `Type.Gadget` SINCE THE OWNER'S RULING OF 2026-11-25 ("agree with your
+#: rec"), which moved the 18 enchantments that say "gadget" off
+#: `Type.Deployable`. Every machine that is not a trap carries `Type.Gadget`
+#: (the Saboteur's rows, 2026-11-25), a Bolt Turret and a Ballista included, so
+#: the tag itself now leaves a Spike Trap out. The game still asks
+#: `ACataclysmMinion::IsGadget` first in `ACataclysmMinion::SummonersGadgetStat`.
+#:
+#: UNTIL THEN `Type.Deployable`, which a Spike Trap carries too: the code alone
+#: left the trap out.
+GADGET_ROW_TAG = "Type.Gadget"
 
 #: The flag by which a summoner's gadgets choose the enemy with the most
 #: current health within their reach. Ruled 2026-10-13 by the coordinating
@@ -14678,7 +15530,11 @@ MINION_RESERVE_PERCENT_LESS_STAT = "minion_reserve_percent_less"
 #: minions"); `Type.Deployable`, a skill gadget and a skill trap ("Your
 #: deployables"); or `Type.Trap`, a skill trap alone ("Your traps"). Those are
 #: the tags `game/Data/MinionTypes.csv` gives the kinds that reserve.
-MINION_RESERVE_PERCENT_REQUIRED_TAGS = frozenset({"", "Type.Deployable", "Type.Trap"})
+#:
+#: AND `Type.Gadget` SINCE 2026-11-25, the tag for gadgets alone (the
+#: coordinating session's ruling): "Your gadgets reserve 10% reduced Fervour"
+#: reaches a skill gadget and not a skill trap.
+MINION_RESERVE_PERCENT_REQUIRED_TAGS = frozenset({"", "Type.Deployable", "Type.Trap", "Type.Gadget"})
 
 #: The most a row may state either way, in per cent. A bound for typing
 #: mistakes, as `MAX_STATUS_SIZE` is: the sentences say 5 to 30 less and 25 to
@@ -16682,21 +17538,26 @@ def refuse_a_count_cap_on_a_summon(tables: dict[str, list[dict]]) -> list[str]:
 
     A ROW WITH AN `Interval` IS LEFT ALONE: that is Open the Rift's pattern, a
     spawn every Interval over the skill's Duration, where `SpawnTick` reads
-    `MaxActive` as how many one cast makes in all. A `Deployable` is left alone
-    too: the War deployables keep their caps under the no-War rule until issue
-    #1934.
+    `MaxActive` as how many one cast makes in all.
+
+    AND A `Deployable` SINCE ISSUE #1934 (2026-11-25): the War machines reserve
+    their rows' Fervour and lost their caps, ruled that day under the same
+    ruling, and `UCataclysmDeployableSkill::DeployOne` reads no `MaxActive`. A
+    Deployable has no Interval pattern, so any `MaxActive` on one is refused.
     """
     problems = []
     for row in tables.get("WeaponSkills") or []:
-        if row.get("Shape") != "Summon" or not row.get("ShapeParams"):
+        shape = row.get("Shape")
+        if shape not in ("Summon", "Deployable") or not row.get("ShapeParams"):
             continue
         where = f"WeaponSkills/{row['Name']}"
         params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
-        if "MaxActive" in params and "Interval" not in params:
+        if "MaxActive" in params and (shape == "Deployable" or "Interval" not in params):
             problems.append(
-                f"{where}: is a Summon stating MaxActive={params['MaxActive']} "
-                "and no Interval. Nothing that reserves the class resource has "
-                "a count cap (issue #2787): the reserve is the limit, and "
+                f"{where}: is a {shape} stating MaxActive={params['MaxActive']}"
+                f"{'' if shape == 'Deployable' else ' and no Interval'}. "
+                "Nothing that reserves the class resource has a count cap "
+                "(issues #2787 and #1934): the reserve is the limit, and "
                 "nothing in the game reads this one. Remove it.")
     return problems
 

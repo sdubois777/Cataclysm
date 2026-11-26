@@ -148,12 +148,12 @@ namespace CataclysmCreationTest
 		Table->RowStruct = FCataclysmItemBaseRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value\r\n"
-			"Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8,1,3,attack_damage,flat,40.0,,,0.0\r\n"
-			"Weapon_Shield,Shield,Weapon,1,Blunt,Shield,4,1.0,Strike,Radius=1.5,2,3,armor,flat,300.0,,,0.0\r\n"
-			"Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,8,1.1,Strike,Radius=2.7,2,6,attack_damage,flat,72.0,,,0.0\r\n"
-			"Weapon_Staff,Staff,Weapon,2,Magic,Staff,8,1.3,Projectile,Range=7.2,2,6,attack_damage,flat,66.0,,,0.0\r\n"
-			"Head_Helm,Helm,Head,0,,,0,0.0,,,2,2,armor,flat,200.0,,,0.0\r\n"));
+			"Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value,Implicit1AtZero,Implicit2AtZero\r\n"
+			"Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8,1,3,attack_damage,flat,40.0,,,0.0,16,0\r\n"
+			"Weapon_Shield,Shield,Weapon,1,Blunt,Shield,4,1.0,Strike,Radius=1.5,2,3,armor,flat,300.0,,,0.0,120,0\r\n"
+			"Weapon_Greataxe,Greataxe,Weapon,2,Slashing,Greataxe,8,1.1,Strike,Radius=2.7,2,6,attack_damage,flat,72.0,,,0.0,29,0\r\n"
+			"Weapon_Staff,Staff,Weapon,2,Magic,Staff,8,1.3,Projectile,Range=7.2,2,6,attack_damage,flat,66.0,,,0.0,26,0\r\n"
+			"Head_Helm,Helm,Head,0,,,0,0.0,,,2,2,armor,flat,200.0,,,0.0,80,0\r\n"));
 
 		for (const FString& Problem : Problems)
 		{

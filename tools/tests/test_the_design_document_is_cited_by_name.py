@@ -163,14 +163,14 @@ CITED_PASSAGES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "the dual wielder the damage target describes, cited by "
         "CataclysmEquipmentTests.cpp",
         "**That 87 is two one-handed weapons, not one weapon.**",
-        ("an Axe with an Axe at 92 and an Axe with a Sword at 86",),
+        ("an Axe with an Axe at 90 and an Axe with a Sword at 85",),
     ),
     (
         "the rule that two one-handers sum their base damage, cited by "
         "player_damage.py and test_player_damage.py",
         "**It has to reach the implicits, not only the affixes.**",
         ("Two one-handed weapons **sum** their base damage, so an Axe and a "
-         "Sword give 86 against a Greatsword's stated 78.",),
+         "Sword give 85 against a Greatsword's stated 78.",),
     ),
     (
         "the section stating the two-handed advantage, cited by "

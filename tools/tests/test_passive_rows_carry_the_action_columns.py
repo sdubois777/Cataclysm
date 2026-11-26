@@ -34,7 +34,7 @@ HEADERS = ["Node", "Stat", "Value Kind", "Value Per Point", "Required Tags", "Co
            "Scale Max Steps", "Action", "Action Event", "Fraction Of", "Stack Seconds",
            "Scale Offset", "Every Seconds", "Every Nth", "Condition 2", "Condition Value 2",
            "Trigger Cooldown", "Event Value", "Ailment", "Damage Share", "Per Point From",
-           "Chance Percent"]
+           "Chance Percent", "Max Points"]
 
 #: Real nodes, so a row's words can be read from the tree files. Their own sentences do not matter here.
 BLOCK_NODE = "Bulwark_basic_ic_t2_002"
@@ -212,10 +212,14 @@ def test_a_column_about_an_item_is_refused(tmp_path, column):
 def test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them(tmp_path):
     """The fourteen were optional until the first rows using them came.
 
-    Until 2026-11-25 this read "the sheet reads with no port column at all": the workbook had none of the fourteen,
-    and `OPTIONAL_COLUMNS` let the sheet read without them. The Death trees' slice C1 wrote the first rows using them,
-    put all fourteen in the workbook with `tools/reapply_death_trees_workbook.py` and took them out of
-    `OPTIONAL_COLUMNS`, so a sheet without them is now refused like any other column the generator reads."""
+    THE NAME AND THE ASSERTIONS ARE THE DEATH LINE'S, taken verbatim on 2026-11-25 at the coordinating session's
+    ruling, so the two lines' copies of this test differ as little as they can. On the Death line its slice C1 put all
+    fourteen in the workbook at once with `tools/reapply_death_trees_workbook.py`. On the War line they came in
+    stages: Per Point From with slice D, the second condition with the War riders, Action Event, Stack Seconds and
+    Action with the Saboteur's slices, and the last eight with the War vow options' first slice
+    (`tools/reapply_war_vows_v1_workbook.py`). On both, `OPTIONAL_COLUMNS` is now empty, so a sheet without them is
+    refused like any other column the generator reads. UNTIL 2026-11-25 THE WAR LINE'S TEST HERE WAS
+    `test_the_sheet_reads_with_no_optional_port_column`."""
     old = HEADERS[:HEADERS.index("Action")]
     with pytest.raises(gen.DataError, match="the Passive Effects sheet has no '") as refused:
         read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
@@ -227,6 +231,21 @@ def test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them(tmp_path)
 # ---------------------------------------------------------------------------
 # Per Point From
 # ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("column", ["Per Point From", "Condition 2", "Condition Value 2", "Action Event",
+                                    "Stack Seconds", "Action", "Max Points"])
+def test_a_sheet_without_a_column_a_row_now_uses_is_refused(tmp_path, column):
+    """Slice D put `Per Point From` in the workbook on 2026-11-24 with Pain is Power's row, the War riders put
+    `Condition 2` and `Condition Value 2` there on 2026-11-25 with Hair-Trigger's, Death Blow's and Brute Force's, and
+    the Saboteur's device conditions put `Action Event` and `Stack Seconds` there the same day with Sprung's; each
+    declaration left `OPTIONAL_COLUMNS`, as `Scale Max Steps` did with Wall of Servants'. A sheet without one is now
+    refused like any other column the generator reads, so a column deleted from the workbook cannot drop a threshold
+    or a second condition in silence."""
+    assert "Passive Effects" not in gen.OPTIONAL_COLUMNS
+    without = [name for name in HEADERS if name != column]
+    with pytest.raises(gen.DataError, match=column):
+        read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=without)
+
 
 def test_per_point_from_is_kept_with_a_threshold(tmp_path):
     """Tempered Steel's "At 6 points: These bonuses are doubled while at maximum Fervour": all its points, from 6."""
@@ -266,13 +285,15 @@ def test_the_struct_carries_the_port_fields_in_the_csv_order():
     """`test_csv_columns_match_their_row_structs.py` holds the column NAMES to the struct; this holds the ORDER of
     the fourteen, so a reader of either file finds the port's fields after `ScaleMaxSteps`, as both say."""
     fields = _passive_row_struct_fields()
-    assert fields[fields.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "ChancePercent"]
+    assert fields[fields.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "ChancePercent",
+                                                        "MaxPoints"]
 
 
 def test_the_written_csv_has_the_port_columns_last():
     with open(REPO_ROOT / "game/Data/PassiveEffects.csv", encoding="utf-8", newline="") as handle:
         header = next(csv.reader(handle))
-    assert header[header.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "ChancePercent"]
+    assert header[header.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "ChancePercent",
+                                                        "MaxPoints"]
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +314,8 @@ def test_an_empty_chance_is_every_time_and_leaves_an_existing_row_as_it_was(tmp_
     plain = row(Node=BLOCK_NODE, Action="class_resource", Action_Event="block", Value_Per_Point=3)
     assert read(tmp_path, [plain])[0]["ChancePercent"] == 0.0
     without = [header for header in HEADERS if header != "Chance Percent"]
-    assert read(tmp_path, [plain[:-1]], headers=without)[0]["ChancePercent"] == 0.0
+    cells = [cell for header, cell in zip(HEADERS, plain, strict=True) if header != "Chance Percent"]
+    assert read(tmp_path, [cells], headers=without)[0]["ChancePercent"] == 0.0
 
 
 @pytest.mark.parametrize("cells", [

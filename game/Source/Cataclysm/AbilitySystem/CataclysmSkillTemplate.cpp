@@ -18,6 +18,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For the share of a point-blank skill's blow struck at the allies inside its area. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
@@ -2373,6 +2375,22 @@ bool UCataclysmSkillTemplate::BeginAttackOn(const TArray<AActor*>& Targets)
 		UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
 			GetAbilitySystemComponentFromActorInfo(), SkillTags,
 			AttackEnemiesStruckTogether);
+
+	// AND CLEAVE'S TRADE, ONCE FOR THE WHOLE ATTACK, before Berserking spends what is left: "Each enemy hit beyond the
+	// first costs 5 Fervour and generates 3 Fervour per point if Fervour was available to pay the cost." Nothing for a
+	// character without `fervour_cost_per_extra_enemy_hit`, or an attack that struck one enemy. The Fervour spends,
+	// 2026-11-25.
+	FCataclysmWarFervour::TradeForEnemiesStruckTogether(
+		GetAbilitySystemComponentFromActorInfo(), SkillTags, AttackEnemiesStruckTogether);
+
+	// AND BERSERKING'S SPEND, ONCE FOR THE WHOLE ATTACK, INTO THE SAME SUM: "your next melee attack consumes all Fervour.
+	// For each point of Fervour consumed that attack deals +10% bonus damage per point invested." Nothing for a
+	// character with Berserking not armed, an attack its melee-scoped row does not reach, or one that struck nobody.
+	// The Berserker's states, 2026-11-25.
+	AttackIncreasedDamageBoughtPercent +=
+		FCataclysmBerserkerStates::SpendBerserking(
+			GetAbilitySystemComponentFromActorInfo(), SkillTags,
+			AttackEnemiesStruckTogether);
 	return true;
 }
 
@@ -3384,6 +3402,9 @@ float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
 const TCHAR* UCataclysmSkillTemplate::MeleeReachMetresStat =
 	TEXT("melee_reach_metres");
 
+const TCHAR* UCataclysmSkillTemplate::MeleeReachCentimetresStat =
+	TEXT("melee_reach_centimetres");
+
 const TCHAR* UCataclysmSkillTemplate::SkillDurationStat = TEXT("skill_duration");
 const TCHAR* UCataclysmSkillTemplate::BuffDurationStat = TEXT("buff_duration");
 
@@ -3458,11 +3479,13 @@ float UCataclysmSkillTemplate::MeleeReachBonusCm() const
 		return 0.0f;
 	}
 
-	// METRES IN THE ROW, CENTIMETRES HERE, and never below nothing: a row that
-	// shortened a reach would be a different sentence from this one.
-	return FMath::Max(0.0f, Mine->StatForSkill(FName(MeleeReachMetresStat),
-											   SkillTags, 0.0f))
-		* 100.0f;
+	// TWO STATS, ONE REACH: Overreach's metres times a hundred, plus the reach
+	// enchantment's centimetres (issue #2883, D8), and never below nothing: a
+	// row that shortened a reach would be a different sentence from these.
+	const float Metres = Mine->StatForSkill(FName(MeleeReachMetresStat), SkillTags, 0.0f);
+	const float Centimetres =
+		Mine->StatForSkill(FName(MeleeReachCentimetresStat), SkillTags, 0.0f);
+	return FMath::Max(0.0f, Metres * 100.0f + Centimetres);
 }
 
 float UCataclysmSkillTemplate::ScaledRadiusCm() const

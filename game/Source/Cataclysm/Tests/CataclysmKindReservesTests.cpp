@@ -503,12 +503,13 @@ bool FCataclysmKindReservesTyrantsMinionTest::RunTest(const FString&)
 // ==========================================================================
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesSkillGadgetTest,
-	"Cataclysm.KindReserves.ASkillGadgetReserves15AndASecondPressMovesItAndHoldsNothingMore",
+	"Cataclysm.KindReserves.ASkillGadgetReserves15AndASecondPressPlacesAnotherReserving15More",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The slot's press places its gadget, and a second press MOVES the one standing (S6), which the coordinating session
- * ruled on 2026-11-20 is how the gadget is controlled and not a count cap. The move holds nothing more.
+ * The slot's press places its gadget, reserving 15. UNDER THE GADGET RULE (V5g, 2026-11-25), a second press places
+ * another while the pool can hold it, reserving 15 more; until then a second press moved the one standing (S6). THE
+ * CONTROL: a pool of 15 holds one, and its second press places nothing and holds nothing more.
  */
 bool FCataclysmKindReservesSkillGadgetTest::RunTest(const FString&)
 {
@@ -546,9 +547,25 @@ bool FCataclysmKindReservesSkillGadgetTest::RunTest(const FString&)
 	Player.Character->SetActorLocation(FVector(6 * KindM, 0, 0));
 	Player.System->PressOfASkillGadgetSlot(HeavyTag);
 	Player.System->ReleaseOfASkillGadgetSlot(HeavyTag);
-	TestTrue(TEXT("a second press keeps the same gadget"), Player.System->SkillGadgetIn(Heavy) == Placed);
-	TestEqual(TEXT("one thing is commanded"), Player.Commanded(), 1);
-	TestEqual(TEXT("and still 15 is held"), Player.Reserved(), 15.0f, 0.001f);
+	TestTrue(TEXT("a second press places another gadget"), Player.System->SkillGadgetIn(Heavy) != Placed);
+	TestEqual(TEXT("two things are commanded"), Player.Commanded(), 2);
+	TestEqual(TEXT("and 30 is held"), Player.Reserved(), 30.0f, 0.001f);
+
+	// THE CONTROL: a pool of 15 holds one gadget, and its second press places nothing and holds nothing more.
+	FKindPlayer Small(World, FVector(0, 40 * KindM, 0));
+	if (!TestTrue(TEXT("set-up: a second possessed player"), Small.IsUsable()))
+	{
+		return false;
+	}
+	Small.Holds({HeavyIsAGadget});
+	Small.Pool(15.0f);
+	for (int32 Press = 0; Press < 2; ++Press)
+	{
+		Small.System->PressOfASkillGadgetSlot(HeavyTag);
+		Small.System->ReleaseOfASkillGadgetSlot(HeavyTag);
+	}
+	TestEqual(TEXT("control: a pool of 15 commands one gadget after two presses"), Small.Commanded(), 1);
+	TestEqual(TEXT("control: holding 15"), Small.Reserved(), 15.0f, 0.001f);
 	return true;
 }
 

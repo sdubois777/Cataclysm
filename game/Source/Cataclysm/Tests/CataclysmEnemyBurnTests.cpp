@@ -315,8 +315,9 @@ CATACLYSM_ENEMY_BURN_TEST(FCataclysmEnemyBurnStalkerTest,
 		return false;
 	}
 	const float Multiplier = UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(1);
-	TestEqual(TEXT("its damage over time multiplier is its hits' at tier 1, 0.06"), Stalker->DamageOverTimeMultiplier(),
-			  0.06f, 0.0001f);
+	// 0.05 SINCE THE STALKER'S RE-FIT OF 2026-11-25 (issues #2883 and #2884); 0.06 before it.
+	TestEqual(TEXT("its damage over time multiplier is its hits' at tier 1, 0.05"), Stalker->DamageOverTimeMultiplier(),
+			  0.05f, 0.0001f);
 
 	TestTrue(TEXT("set-up: the Stalker lays the table's burn"),
 			 UCataclysmSkillEffects::ApplyDamageOverTime(Stalker, Player, 25.0f, 4.0f, Burn,
@@ -399,10 +400,11 @@ CATACLYSM_ENEMY_BURN_TEST(FCataclysmEnemyBurnStalkerTest,
 	{
 		const float OnTheBulwark =
 			UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark);
-		TestEqual(TEXT("a Bulwark Stalker's damage over time multiplier is its hits', 0.12"),
+		// 0.10 AND 0.05 SINCE THE RE-FIT OF 2026-11-25 (0.12 and 0.06 before it), so the two are 0.05 apart.
+		TestEqual(TEXT("a Bulwark Stalker's damage over time multiplier is its hits', 0.10"),
 				  OnABulwark->DamageOverTimeMultiplier(), OnTheBulwark, 0.0001f);
-		TestTrue(TEXT("CONTROL: and not an Outpost's 0.06"),
-				 FMath::Abs(OnABulwark->DamageOverTimeMultiplier() - Multiplier) > 0.05f);
+		TestTrue(TEXT("CONTROL: and not an Outpost's 0.05"),
+				 FMath::Abs(OnABulwark->DamageOverTimeMultiplier() - Multiplier) > 0.04f);
 	}
 	return true;
 }

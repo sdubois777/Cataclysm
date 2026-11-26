@@ -358,6 +358,29 @@ public:
 	 */
 	static constexpr double DamageScaleLineAtFirstTier = 0.20;
 
+	/**
+	 * WHAT EVERY CREATURE'S HEALTH AND DAMAGE ARE MULTIPLIED BY AT EACH DIFFICULTY TIER, tier 1 first, since issue
+	 * #2884: the enemy rebalance that ships with the whole-number affix ranges of issue #2883.
+	 *
+	 * Health by the reference character's damage per hit under the new affixes over the old, so an average Common
+	 * takes as many hits as before; damage by its effective health under the new affixes over the old, so every
+	 * creature takes as many hits to kill it as before. Fitted to the re-fit with its 13 freed suffix slots empty, by
+	 * the project owner's ruling on issue #2884, 2026-11-24: "A middle build (Recommended)". Tier 1 is 1.00 in both:
+	 * it is fitted to the starting character, which carries no affixes, so the ring scales above stand.
+	 *
+	 * The simulation's `enemy_stats.HEALTH_FACTOR_BY_TIER` and `DAMAGE_FACTOR_BY_TIER`, applied in its `stats_for`;
+	 * `tools/tests/test_enemy_rebalance_port.py` holds the two equal. Read by `StartingFiguresFor` alone, which is
+	 * where the game builds every creature's health and damage from a score.
+	 */
+	static constexpr double HealthFactorByTier[8] = { 1.00, 1.16, 1.28, 1.29, 1.31, 1.42, 1.42, 1.44 };
+	static constexpr double DamageFactorByTier[8] = { 1.00, 1.84, 2.52, 2.95, 3.65, 4.75, 5.12, 5.73 };
+
+	/** Issue #2884's health factor at this tier, held to tiers 1 to 8. */
+	static double HealthFactor(int32 Tier);
+
+	/** Issue #2884's damage factor at this tier, held to tiers 1 to 8. */
+	static double DamageFactor(int32 Tier);
+
 	/** The minimum strength is what the same creature scores on floor 1 of a
 	 *  dungeon this many floors deep, of the same kind, after the relief. */
 	static constexpr int32 MinimumStrengthReferenceFloors = 12;

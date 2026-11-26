@@ -306,6 +306,32 @@ ARMOR_PER_STEP = 1.35
 BODY_SCALE_AT_COMMON = 1.0
 BODY_SCALE_PER_STEP = 1.20
 
+#: WHAT EVERY CREATURE'S HEALTH AND DAMAGE ARE MULTIPLIED BY AT EACH DIFFICULTY TIER, tier 1 first, since
+#: issue #2884: the enemy rebalance that ships with the whole-number affix ranges of issue #2883, so the
+#: reference character re-fitted under the new affixes (`reference_build.py`) meets each tier as today's met it.
+#:
+#: HEALTH: each tier's factor is the reference character's damage per non-critical hit under the new affixes over
+#: the old (`player_damage.damage_per_hit`), so an average Common takes as many hits as before at every tier, and
+#: the damage target of 2 non-critical hits at tier 8 ("The Damage Target") holds within its 5%.
+#: DAMAGE: each tier's factor is the tier's reference character's effective health (`fight.reference_player`:
+#: health over the share of a hit that lands) under the new affixes over the old, so every creature takes as many
+#: hits to kill it as before; at tier 8 that is the #108 fit re-solved (the Gatekeeper in 2, an Imp in 60).
+#: FITTED TO THE RE-FIT WITH ITS 13 FREED SUFFIX SLOTS EMPTY, by the project owner's ruling on issue #2884,
+#: 2026-11-24: "A middle build (Recommended)". Re-fitted on development db7427d7a on 2026-11-25 and unchanged.
+#: TIER 1 IS 1.00 IN BOTH, deliberately: tier 1's damage is fitted to the starting character (#2749: no affixes, a
+#: gear-level-0 Greataxe), which the affix change does not touch, so its ring scales and the opening guards stand.
+#: `sim/analyse_enemy_rebalance_2884.py` on `analysis/enemy-rebalance-2884` measured every figure. The game holds
+#: the same two tables beside `UCataclysmEnemyScore::DamageScale`; `tools/tests/test_enemy_rebalance_port.py` holds
+#: them equal.
+HEALTH_FACTOR_BY_TIER: tuple[float, ...] = (1.00, 1.16, 1.28, 1.29, 1.31, 1.42, 1.42, 1.44)
+DAMAGE_FACTOR_BY_TIER: tuple[float, ...] = (1.00, 1.84, 2.52, 2.95, 3.65, 4.75, 5.12, 5.73)
+
+
+def rebalance_factors(tier: int) -> tuple[float, float]:
+    """The health and damage factors of issue #2884 at a difficulty tier, held to tiers 1 to 8."""
+    held = min(max(int(tier), 1), len(HEALTH_FACTOR_BY_TIER))
+    return HEALTH_FACTOR_BY_TIER[held - 1], DAMAGE_FACTOR_BY_TIER[held - 1]
+
 
 # --------------------------------------------------------------------------
 # Archetypes: what KIND of thing the enemy is
@@ -773,18 +799,20 @@ def stats_for(rarity: str, score: float,
     `scoring.py` says the encounter is worth, and `tier` is the difficulty tier
     it stands at.
 
-    `tier` CHANGES NOTHING THIS FUNCTION COMPUTES, and it has no default anyway.
-    See the field's own note on `EnemyStats`: armour is worth twice as much at
-    tier 1 as at tier 8, so a defaulted tier would be a wrong answer that looks
-    like a right one. Requiring it means every caller states which tier its
-    figures are about.
+    `tier` MULTIPLIES HEALTH AND DAMAGE BY ISSUE #2884'S FACTORS
+    (`rebalance_factors`), since that issue; until then it changed nothing this
+    function computed. It has no default: armour is worth twice as much at tier
+    1 as at tier 8 (see the field's own note on `EnemyStats`), so a defaulted
+    tier would be a wrong answer that looks like a right one. Requiring it means
+    every caller states which tier its figures are about.
     """
     kind = archetype(kind) if isinstance(kind, str) else kind
     n = rarity_step(rarity)
     score = max(0.0, score)
+    health_factor, damage_factor = rebalance_factors(tier)
 
     health = max(1.0, score * HEALTH_AT_COMMON * HEALTH_PER_STEP ** n
-                 * kind.health_share)
+                 * kind.health_share * health_factor)
 
     return EnemyStats(
         archetype=kind,
@@ -793,7 +821,7 @@ def stats_for(rarity: str, score: float,
         tier=tier,
         health=health,
         damage_per_hit=(score * DAMAGE_AT_COMMON * DAMAGE_PER_STEP ** n
-                        * kind.damage_share),
+                        * kind.damage_share * damage_factor),
         armor=(score * ARMOR_AT_COMMON * ARMOR_PER_STEP ** n
                * kind.armor_share),
         energy_shield=health * kind.energy_shield_fraction,
@@ -999,6 +1027,14 @@ def strength_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 #: stopped with neither one over its own cap. "No combination of these layers
 #: reaches immunity" is a statement about the combination, and until issue #483
 #: nothing checked the combination.
+#:
+#: ITS RULE SINCE 2026-11-25: BELOW WHAT THE REFERENCE CHARACTER STOPS, AND 89%.
+#: The re-fit of the reference character for the whole-number affix ranges
+#: (issue #2883; the middle build, the owner's ruling on #2884 of 2026-11-24)
+#: stops 97.05% at tier 8, so "the whole percent below the player" would now be
+#: 97%. The owner ruled on #2884 (ruling 4) to keep the ceiling at 89% and
+#: restate the rule rather than raise it. The figures above are the history it
+#: was set from.
 ENEMY_MITIGATION_CEILING = 89.0
 
 #: An armour figure large enough to sit at `damage.ARMOR_REDUCTION_CAP` at any

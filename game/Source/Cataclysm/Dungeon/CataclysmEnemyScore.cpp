@@ -264,6 +264,18 @@ double UCataclysmEnemyScore::ContentRelief(int32 Tier)
 	return ContentReliefTierWidths + ContentReliefPerTierWidths * static_cast<double>(Held - ContentReliefFromTier);
 }
 
+double UCataclysmEnemyScore::HealthFactor(int32 Tier)
+{
+	const int32 Held = FMath::Clamp(Tier, LowestDifficultyTier, HighestDifficultyTier);
+	return HealthFactorByTier[Held - LowestDifficultyTier];
+}
+
+double UCataclysmEnemyScore::DamageFactor(int32 Tier)
+{
+	const int32 Held = FMath::Clamp(Tier, LowestDifficultyTier, HighestDifficultyTier);
+	return DamageFactorByTier[Held - LowestDifficultyTier];
+}
+
 double UCataclysmEnemyScore::DamageScale(int32 Tier, ECataclysmCityTier Ring)
 {
 	const int32 Held = FMath::Clamp(Tier, LowestDifficultyTier, HighestDifficultyTier);
