@@ -21,6 +21,8 @@ Cataclysm's own weight wants at least one sealed city, and that the campaigns re
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from cataclysm_sim import policies
@@ -29,6 +31,12 @@ from cataclysm_sim.engine import Simulation
 from cataclysm_sim.patterns import PATTERNS
 
 ROSTER = TuningConfig().CATACLYSM_ROSTER
+
+#: EVERY CATACLYSM COUNTED AS BUILT, so each of the eight can be a tier 1 character's only one. Since the project
+#: owner's ruling of 2026-11-26 a default character draws the built ones (`TuningConfig.BUILT_CATACLYSMS`) first, and
+#: no seed faces Pestilence, Famine, Celestial, Chaos or Void alone; the wave rule this file holds is every
+#: Cataclysm's, built or not.
+EVERY_ONE_BUILT = replace(TuningConfig(), BUILT_CATACLYSMS=ROSTER)
 
 #: The seeds whose tier 1 character faces each Cataclysm alone are found among these. Every one of the eight is the
 #: only active one for at least `LEAST_SEEDS` of them.
@@ -44,7 +52,7 @@ CAMPAIGN_SEEDS = range(12)
 
 def alone_seeds(cataclysm: str) -> list[int]:
     """The seeds in `SEED_RANGE` whose tier 1 character faces `cataclysm` and no other."""
-    return [seed for seed in SEED_RANGE if list(Simulation(TuningConfig(), seed).active_types) == [cataclysm]]
+    return [seed for seed in SEED_RANGE if list(Simulation(EVERY_ONE_BUILT, seed).active_types) == [cataclysm]]
 
 
 def sealed_cities(sim: Simulation) -> list:
@@ -63,7 +71,7 @@ def test_the_first_wave_of_each_cataclysm_alone_lands_only_on_the_front_line(cat
     pattern = PATTERNS[cataclysm]
     landed, behind = 0, []
     for seed in seeds:
-        sim = Simulation(TuningConfig(), seed)
+        sim = Simulation(EVERY_ONE_BUILT, seed)
         sealed = sealed_cities(sim)
         # SET-UP: the Cataclysm's own weight wants a city the line keeps it from, so the line is what is tested.
         assert any(pattern.weight(sim.empire, c) > 0 for c in sealed), (
@@ -85,7 +93,7 @@ def test_a_demonic_wave_reaches_a_bulwark_once_its_lane_opens_and_no_sealed_one(
     """THE OTHER HALF. Following the line must not mean staying on the rim: a fallen Outpost opens the Bulwark it
     shielded, and a Demonic wave then lands there -- and still on no Bulwark whose lane is closed."""
     seed = alone_seeds("Demonic")[0]
-    sim = Simulation(TuningConfig(), seed)
+    sim = Simulation(EVERY_ONE_BUILT, seed)
     bulwark = next(c for c in sim.empire.cities.values() if c.tier is CityTier.BULWARK)
     sim.empire.cities[bulwark.outward[0]].fallen = True
 

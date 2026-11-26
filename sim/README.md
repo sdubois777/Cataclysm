@@ -344,6 +344,13 @@ and the same seed one tier higher meets those plus one, which is one character
 climbing. Different seeds are different characters, so a sweep cell averages over
 the draws a population of players would meet.
 
+**The built ones come first.** Since the project owner's ruling of 2026-11-26
+("yeah only draw the ones that are built") the order puts
+`TuningConfig.BUILT_CATACLYSMS` -- Demonic, Death and War -- before the rest, so
+tiers 1 to 3 meet only those. Every campaign figure below tier 8 measured before
+that day averaged over a draw the model no longer makes. Set
+`BUILT_CATACLYSMS` to the whole roster to measure the old draw.
+
 **EVERY CAMPAIGN FIGURE MEASURED BELOW TIER 8 BEFORE 2026-09-06 IS STALE.**
 Until #1338 the count was a flat 1 whatever the tier, and the set was the first
 N of a fixed tuple, so every campaign the model ever ran faced Demonic and

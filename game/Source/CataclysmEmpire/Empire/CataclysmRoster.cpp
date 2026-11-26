@@ -46,6 +46,25 @@ const TArray<ECataclysmType>& UCataclysmRoster::All()
 	return Roster;
 }
 
+const TArray<ECataclysmType>& UCataclysmRoster::Built()
+{
+	// ONE LINE A CATACLYSM: when another one is built, add it here. The project owner's ruling of 2026-11-26 and
+	// `tools/tests/test_only_built_cataclysms_are_drawn_first.py`, which holds this list equal to the model's
+	// `BUILT_CATACLYSMS`, are in the header. Function-local for `All`'s reason.
+	static const TArray<ECataclysmType> BuiltOnes = {
+		ECataclysmType::Demonic,
+		ECataclysmType::Death,
+		ECataclysmType::War,
+	};
+
+	return BuiltOnes;
+}
+
+bool UCataclysmRoster::IsBuilt(ECataclysmType Cataclysm)
+{
+	return Built().Contains(Cataclysm);
+}
+
 int32 UCataclysmRoster::ActiveCountFor(int32 DifficultyTier)
 {
 	// CLAMPED TO 1..8 EXACTLY AS `active_cataclysm_count` CLAMPS. A tier of 0 or
@@ -73,7 +92,7 @@ int32 UCataclysmRoster::MixedSeed(int32 Seed, int32 Salt)
 
 TArray<ECataclysmType> UCataclysmRoster::OrderFor(int32 Seed)
 {
-	TArray<ECataclysmType> Order = All();
+	TArray<ECataclysmType> Drawn = All();
 
 	FRandomStream Stream(MixedSeed(Seed, OrderSalt));
 
@@ -81,9 +100,30 @@ TArray<ECataclysmType> UCataclysmRoster::OrderFor(int32 Seed)
 	// `RandRange` is inclusive at both ends, so swapping index `Index` with
 	// something in `[0, Index]` includes leaving it where it is -- which is the
 	// step people drop, and dropping it makes some orderings unreachable.
-	for (int32 Index = Order.Num() - 1; Index > 0; --Index)
+	for (int32 Index = Drawn.Num() - 1; Index > 0; --Index)
 	{
-		Order.Swap(Index, Stream.RandRange(0, Index));
+		Drawn.Swap(Index, Stream.RandRange(0, Index));
+	}
+
+	// THE BUILT ONES TO THE FRONT, EACH PART KEEPING THE ORDER THE SHUFFLE GAVE IT: the project owner's ruling of
+	// 2026-11-26 (`Built`). A uniform shuffle's built entries, read in order, are a uniform shuffle of the built ones,
+	// and the same holds for the rest, so neither part needs a draw of its own -- and the stream is read exactly as it
+	// was before the ruling, so a seed whose draw began with a built Cataclysm still begins with it.
+	TArray<ECataclysmType> Order;
+	Order.Reserve(Drawn.Num());
+	for (const ECataclysmType Cataclysm : Drawn)
+	{
+		if (IsBuilt(Cataclysm))
+		{
+			Order.Add(Cataclysm);
+		}
+	}
+	for (const ECataclysmType Cataclysm : Drawn)
+	{
+		if (!IsBuilt(Cataclysm))
+		{
+			Order.Add(Cataclysm);
+		}
 	}
 
 	return Order;

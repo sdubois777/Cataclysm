@@ -65,6 +65,21 @@ namespace CataclysmRosterTest
 		Run.ClearDungeon(Dungeon.DungeonId);
 	}
 
+	/**
+	 * The order a seed drew before the project owner's ruling of 2026-11-26: all eight, shuffled on `OrderFor`'s own
+	 * stream, with nothing moved. Written out here rather than read from `OrderFor`, so a test can compare the two.
+	 */
+	TArray<ECataclysmType> WholeRosterShuffle(int32 Seed)
+	{
+		TArray<ECataclysmType> Order = UCataclysmRoster::All();
+		FRandomStream Stream(UCataclysmRoster::MixedSeed(Seed, UCataclysmRoster::OrderSalt));
+		for (int32 Index = Order.Num() - 1; Index > 0; --Index)
+		{
+			Order.Swap(Index, Stream.RandRange(0, Index));
+		}
+		return Order;
+	}
+
 	/** Clears exactly as many as this Cataclysm asks for. */
 	void FinishOneCataclysm(UCataclysmEmpireRun& Run, ECataclysmType Cataclysm)
 	{
@@ -309,34 +324,239 @@ bool FCataclysmRosterAdjacentSeedsTest::RunTest(const FString& Parameters)
 	// first draws. `UCataclysmRoster::MixedSeed` exists to break that, and
 	// without it the first Cataclysm of seed N and of seed N+1 would march in
 	// step -- every character in a sweep block facing nearly the same campaign.
+	//
+	// **TWO FIRSTS SINCE THE PROJECT OWNER'S RULING OF 2026-11-26**: the built
+	// Cataclysms come before the rest (`UCataclysmRoster::Built`), so the first
+	// of the whole order is the first BUILT one, and the first unbuilt one sits
+	// at `Built().Num()`. Each part is its own shuffle and each is checked here.
+	// Until the ruling this asked for all eight as somebody's first and allowed
+	// 120 of 400 shared firsts against the 50 chance gives.
+	const int32 BuiltCount = UCataclysmRoster::Built().Num();
+	const int32 UnbuiltCount = UCataclysmRoster::Count - BuiltCount;
+
 	int32 SameFirst = 0;
+	int32 SameFirstUnbuilt = 0;
 	TSet<ECataclysmType> Firsts;
+	TSet<ECataclysmType> FirstsUnbuilt;
 
 	for (int32 Seed = 0; Seed < 400; ++Seed)
 	{
-		const ECataclysmType First = UCataclysmRoster::OrderFor(Seed)[0];
-		const ECataclysmType Next = UCataclysmRoster::OrderFor(Seed + 1)[0];
+		const TArray<ECataclysmType> Order = UCataclysmRoster::OrderFor(Seed);
+		const TArray<ECataclysmType> NextOrder = UCataclysmRoster::OrderFor(Seed + 1);
 
-		Firsts.Add(First);
-		if (First == Next)
+		Firsts.Add(Order[0]);
+		SameFirst += Order[0] == NextOrder[0] ? 1 : 0;
+
+		if (UnbuiltCount > 0)
 		{
-			++SameFirst;
+			FirstsUnbuilt.Add(Order[BuiltCount]);
+			SameFirstUnbuilt += Order[BuiltCount] == NextOrder[BuiltCount] ? 1 : 0;
 		}
 	}
 
-	// EVERY CATACLYSM IS SOMEBODY'S FIRST. A draw that always began with the
-	// same one would be no draw at all, which is the state the model was in
+	// EVERY BUILT CATACLYSM IS SOMEBODY'S FIRST. A draw that always began with
+	// the same one would be no draw at all, which is the state the model was in
 	// before issue #1338: every campaign it ever ran faced Demonic first.
-	TestEqual(TEXT("all eight are drawn first by some character"),
-			  Firsts.Num(), UCataclysmRoster::Count);
+	TestEqual(TEXT("every built Cataclysm is drawn first by some character"),
+			  Firsts.Num(), BuiltCount);
 
-	// ONE IN EIGHT NEIGHBOURING PAIRS SHARE A FIRST BY CHANCE, so 50 of 400 is
-	// the expectation. A generator that had not been mixed would give 400.
+	// AND EVERY UNBUILT ONE IS SOMEBODY'S FIRST UNBUILT ONE: the part after the
+	// built ones is shuffled too, not left in declaration order.
+	TestEqual(TEXT("every unbuilt Cataclysm is the first unbuilt one for some character"),
+			  FirstsUnbuilt.Num(), UnbuiltCount);
+
+	// ONE IN `BuiltCount` NEIGHBOURING PAIRS SHARE A FIRST BY CHANCE -- 133 of
+	// 400 with three built -- and one in `UnbuiltCount` a first unbuilt one, 80
+	// with five. A generator that had not been mixed would give 400 for both,
+	// so twice the chance figure still tells the two apart. The Python copy of
+	// the generator in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`
+	// gives 130 and 105.
+	const int32 ChanceFirst = 400 / FMath::Max(BuiltCount, 1);
 	TestTrue(FString::Printf(
 		TEXT("neighbouring seeds share a first Cataclysm %d times in 400, "
-			 "which is near the 50 chance alone gives"), SameFirst),
-		SameFirst < 120);
+			 "which is near the %d chance alone gives"), SameFirst, ChanceFirst),
+		SameFirst < 2 * ChanceFirst);
 
+	if (UnbuiltCount > 0)
+	{
+		const int32 ChanceUnbuilt = 400 / UnbuiltCount;
+		TestTrue(FString::Printf(
+			TEXT("neighbouring seeds share a first unbuilt Cataclysm %d times "
+				 "in 400, which is near the %d chance alone gives"),
+			SameFirstUnbuilt, ChanceUnbuilt),
+			SameFirstUnbuilt < 2 * ChanceUnbuilt);
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Only the built Cataclysms are drawn first -- the project owner's ruling of
+// 2026-11-26: "yeah only draw the ones that are built. It's kinda pointless to
+// test stuff that isn't even in the game."
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRosterOnlyBuiltAtLowTiersTest,
+	"Cataclysm.Roster.ATierNoHigherThanTheBuiltCountFacesOnlyBuiltCataclysms",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRosterOnlyBuiltAtLowTiersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmRosterTest;
+
+	const int32 BuiltCount = UCataclysmRoster::Built().Num();
+
+	// SET-UP: THE LIST IS A LIST OF CATACLYSMS. Three since the ruling --
+	// Demonic, Death and War -- but written against the count, so building a
+	// fourth is the one line in `Built` and not a second one here.
+	TestTrue(FString::Printf(TEXT("set-up: some Cataclysms are built (%d)"), BuiltCount),
+			 BuiltCount > 0 && BuiltCount <= UCataclysmRoster::Count);
+	TestEqual(TEXT("set-up: no built Cataclysm is listed twice"),
+			  TSet<ECataclysmType>(UCataclysmRoster::Built()).Num(), BuiltCount);
+	TestFalse(TEXT("set-up: the unassigned value is not built"),
+			  UCataclysmRoster::IsBuilt(ECataclysmType::None));
+	for (const ECataclysmType Cataclysm : UCataclysmRoster::Built())
+	{
+		TestTrue(FString::Printf(TEXT("set-up: built %s is one of the eight"),
+								 *UCataclysmRoster::NameFor(Cataclysm).ToString()),
+				 UCataclysmRoster::All().Contains(Cataclysm));
+	}
+
+	int32 UnbuiltInFront = 0;
+	int32 OldUnbuiltInFront = 0;
+	for (int32 Seed = 0; Seed < 1000; ++Seed)
+	{
+		for (int32 Tier = 1; Tier <= BuiltCount; ++Tier)
+		{
+			for (const ECataclysmType Cataclysm : UCataclysmRoster::ActiveFor(Seed, Tier))
+			{
+				UnbuiltInFront += UCataclysmRoster::IsBuilt(Cataclysm) ? 0 : 1;
+			}
+		}
+
+		// THE CONTROL: THE DRAW BEFORE THE RULING, the same stream shuffling
+		// all eight with nothing moved, read by the same count. It is what
+		// says the count above can be anything but nought.
+		const TArray<ECataclysmType> Old = WholeRosterShuffle(Seed);
+		for (int32 Index = 0; Index < BuiltCount; ++Index)
+		{
+			OldUnbuiltInFront += UCataclysmRoster::IsBuilt(Old[Index]) ? 0 : 1;
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("ONLY BUILT: over 1000 seeds at tiers 1 to %d, %d unbuilt Cataclysms faced; the draw "
+								 "before the ruling put %d unbuilt ones in the first %d"),
+							BuiltCount, UnbuiltInFront, OldUnbuiltInFront, BuiltCount));
+
+	TestEqual(FString::Printf(TEXT("over 1000 seeds, no run at tiers 1 to %d faces an unbuilt Cataclysm"), BuiltCount),
+			  UnbuiltInFront, 0);
+	TestTrue(TEXT("CONTROL: the whole roster's shuffle, with no built ones moved to the front, would have"),
+			 OldUnbuiltInFront > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRosterUnbuiltAfterBuiltTest,
+	"Cataclysm.Roster.ATierPastTheBuiltCountAddsAnUnbuiltCataclysmAfterThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRosterUnbuiltAfterBuiltTest::RunTest(const FString& Parameters)
+{
+	const int32 BuiltCount = UCataclysmRoster::Built().Num();
+	if (BuiltCount >= UCataclysmRoster::Count)
+	{
+		// EVERY CATACLYSM BUILT: there is no tier past the built ones, and that is the day this test retires.
+		AddInfo(TEXT("UNBUILT AFTER: every Cataclysm is built, so no tier takes an unbuilt one"));
+		return true;
+	}
+
+	// THE FIRST TIER THAT NEEDS MORE THAN THE BUILT ONES -- tier 4 with three
+	// built. Its first `BuiltCount` are the built ones, every one of them, and
+	// the one it adds is not built.
+	const int32 Tier = BuiltCount + 1;
+	int32 BuiltLast = 0;
+	int32 NotEveryBuiltOne = 0;
+
+	for (int32 Seed = 0; Seed < 1000; ++Seed)
+	{
+		const TArray<ECataclysmType> Active = UCataclysmRoster::ActiveFor(Seed, Tier);
+		BuiltLast += UCataclysmRoster::IsBuilt(Active[BuiltCount]) ? 1 : 0;
+
+		bool bEveryBuiltOneInFront = true;
+		for (const ECataclysmType Cataclysm : UCataclysmRoster::Built())
+		{
+			const int32 At = Active.Find(Cataclysm);
+			if (At == INDEX_NONE || At >= BuiltCount)
+			{
+				bEveryBuiltOneInFront = false;
+			}
+		}
+		NotEveryBuiltOne += bEveryBuiltOneInFront ? 0 : 1;
+	}
+
+	AddInfo(FString::Printf(TEXT("UNBUILT AFTER: over 1000 seeds at tier %d, %d added a built one; %d fronts were not "
+								 "the built ones"), Tier, BuiltLast, NotEveryBuiltOne));
+
+	TestEqual(FString::Printf(TEXT("the Cataclysm tier %d adds is never a built one"), Tier), BuiltLast, 0);
+	TestEqual(FString::Printf(TEXT("and tier %d's first %d are every built one"), Tier, BuiltCount),
+			  NotEveryBuiltOne, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRosterOrderRuleTest,
+	"Cataclysm.Roster.AnOrderIsTheRostersShuffleWithTheBuiltOnesMovedToTheFront",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRosterOrderRuleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmRosterTest;
+
+	// THE RULE EXACTLY, AND SO DETERMINISM BY SEED: the expected order is
+	// worked out from the seed alone, by the draw before the ruling and a
+	// split that keeps each part's order. An order that depended on anything
+	// else -- the clock, a run's own stream, how often it had been asked --
+	// would not match it.
+	int32 Mismatched = 0;
+	int32 Moved = 0;
+	for (int32 Seed = 0; Seed < 1000; ++Seed)
+	{
+		const TArray<ECataclysmType> Whole = WholeRosterShuffle(Seed);
+		TArray<ECataclysmType> Expected;
+		for (const ECataclysmType Cataclysm : Whole)
+		{
+			if (UCataclysmRoster::IsBuilt(Cataclysm))
+			{
+				Expected.Add(Cataclysm);
+			}
+		}
+		for (const ECataclysmType Cataclysm : Whole)
+		{
+			if (!UCataclysmRoster::IsBuilt(Cataclysm))
+			{
+				Expected.Add(Cataclysm);
+			}
+		}
+
+		Mismatched += UCataclysmRoster::OrderFor(Seed) == Expected ? 0 : 1;
+		Moved += Whole == Expected ? 0 : 1;
+	}
+
+	// AND A CHARACTER'S TWO RUNS, each with its own run seed, face the same
+	// list: what a run faces is the character's seed's and nothing of the run's.
+	UCataclysmEmpireRun* First = NewObject<UCataclysmEmpireRun>();
+	First->BeginForCharacter(/* InSeed */ 11, /* InCataclysmOrderSeed */ 24681357, ECataclysmSurgeMode::Static, 0, 4);
+	UCataclysmEmpireRun* Second = NewObject<UCataclysmEmpireRun>();
+	Second->BeginForCharacter(/* InSeed */ 12, /* InCataclysmOrderSeed */ 24681357, ECataclysmSurgeMode::Static, 0, 4);
+
+	AddInfo(FString::Printf(TEXT("ORDER RULE: %d of 1000 seeds differ from the rule; the split moved something for %d"),
+							Mismatched, Moved));
+
+	TestEqual(TEXT("every one of 1000 seeds draws the roster's shuffle with the built ones moved to the front"),
+			  Mismatched, 0);
+	TestTrue(TEXT("CONTROL: the split moves something for some seeds, so the comparison is not of a shuffle with itself"),
+			 Moved > 0);
+	TestTrue(TEXT("two runs of one character, on different run seeds, face the same Cataclysms in the same order"),
+			 First->ActiveCataclysms == Second->ActiveCataclysms
+			 && First->ActiveCataclysms == UCataclysmRoster::ActiveFor(24681357, 4));
 	return true;
 }
 
