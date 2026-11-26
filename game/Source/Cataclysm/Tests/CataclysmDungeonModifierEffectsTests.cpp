@@ -63480,14 +63480,17 @@ bool FCataclysmCorruptedStalkerBuildTest::RunTest(const FString& Parameters)
 	// derived numbers moved -- health 1.33 to 1.15 at tier 8, damage 1.12 to 0.22 at tier 1 and 3.68 to 2.97 at tier 8.
 	// AND BY ISSUE #2749: tier 1's damage scale fell from 0.20 to 0.05 on 2026-11-19, so tier 1's damage multiplier
 	// went from 0.22 to 0.06 (0.0559 to two decimals) and nothing else moved.
-	TestEqual(TEXT("the health multiplier is 0.49 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.49f,
+	// AND RE-FITTED ON 2026-11-25 for the whole-number affix ranges and the enemy rebalance (issues #2883 and #2884),
+	// from window ar-w1's measurement: health 0.49 to 0.23 at tier 1 and 1.15 to 0.46 at tier 8, damage 0.06 to 0.05
+	// at tier 1 and 2.97 to 13.43 at tier 8.
+	TestEqual(TEXT("the health multiplier is 0.23 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.23f,
 			  0.0001f);
-	TestEqual(TEXT("and 1.15 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 1.15f, 0.0001f);
-	TestEqual(TEXT("the damage multiplier is 0.06 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 0.06f,
+	TestEqual(TEXT("and 0.46 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 0.46f, 0.0001f);
+	TestEqual(TEXT("the damage multiplier is 0.05 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 0.05f,
 			  0.0001f);
-	TestEqual(TEXT("and 2.97 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 2.97f, 0.0001f);
-	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 0.06f, 0.0001f);
-	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 1.15f, 0.0001f);
+	TestEqual(TEXT("and 13.43 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 13.43f, 0.0001f);
+	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 0.05f, 0.0001f);
+	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 0.46f, 0.0001f);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -64642,8 +64645,14 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 		TestEqual(FString::Printf(TEXT("tier %d: its health before the multiplier is the build the table was fitted to"),
 								  Tier),
 				  Health / Multiplier, FittedBuiltHealth[Tier - 1], FittedBuiltHealth[Tier - 1] * 0.01f);
+		// WITHIN 1%, OR HALF A POINT OF THE OBSERVED BLOW, WHICHEVER IS WIDER. The game deals whole points, so the
+		// observed blow is rounded before it is divided back by the multiplier: at tier 1 a 0.05 multiplier turns half
+		// a point into ten, more than 1% of 366.7. Window ar-w1 measured 22 / 0.06 = 366.7 there, and after the re-fit
+		// the same blow is 18 / 0.05 = 360, the same build seen through a coarser rounding.
+		const float BlowTolerance =
+			FMath::Max(FittedBlow[Tier - 1] * 0.01f, 0.5f / FMath::Max(DamageMultiplier, 0.0001f));
 		TestEqual(FString::Printf(TEXT("tier %d: its blow before the multiplier is the blow the table was fitted to"), Tier),
-				  Blow / DamageMultiplier, FittedBlow[Tier - 1], FittedBlow[Tier - 1] * 0.01f);
+				  Blow / DamageMultiplier, FittedBlow[Tier - 1], BlowTolerance);
 	}
 	return true;
 }

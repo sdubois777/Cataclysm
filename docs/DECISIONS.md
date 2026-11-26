@@ -132,6 +132,34 @@ health before its multiplier 1,684.8, 2,961.9, 4,725.7, 6,866.4, 9,840.8, 13,982
 1,433.3, 2,119.9, 2,354.6, 2,658.6. The reference build: `Cataclysm.ReferenceBuild.` 2/2, so the game reaches the
 simulation's 20,309.5 health, 12,549.88 armour, 98 block, 42.95 damage reduction and 160 resistance at tier 8.
 
+### Window ar-w2 (window 2 of 2: it proves)
+
+**On `8ffe1c1e2` and the commit that carries this section, 2026-11-25, holding the editor lock as ar-w2.** Development
+had not moved (`dcd86be4c`). Base: ar-w1's whole suite on `17f79489a`, 5,620 performed; predicted 5,620.
+
+- **First pass:** the build succeeded, 24 files compiled. Whole suite: 5,620 performed, 5,616 succeeded, 4 failed.
+  - Three tests pinned the Stalker's old table ends (0.49, 1.15, 0.06, 2.97):
+    `ConsumptionDouble.TheDoubleHoldsThePlayersOwnNumbersNotTheStalkers`,
+    `DungeonModifierEffects.ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel` and
+    `EnemyBurn.ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMultiplier`. The last one's Bulwark
+    control also needed a gap above 0.04, since 0.10 and 0.05 are 0.05 apart.
+  - The fourth, `WhatACorruptedStalkerIsBuiltWithAtEachTier`, read tier 1's blow as 360 against the measured 366.7. The
+    game deals whole points, so the observed blow (18) is rounded before it is divided back by 0.05. Its tolerance is
+    now 1% or half a point of the observed blow, whichever is wider.
+  - Python alongside: 8,729 passed, 0 failed.
+- **Second pass, after those four:** the build succeeded, 11 files compiled. DungeonModifierEffects 786/786,
+  ConsumptionDouble 15/15 and EnemyBurn 4/4 run alone.
+
+```
+Tests: 5620 tests performed, 5620 succeeded, 0 failed. 58 skipped part of what they check
+Test saves: 881 written and deleted, 0 left behind
+python -u -m pytest: 8729 passed, 10 skipped in 515.77s (JUnit: tests 8739, failures 0)
+```
+
+- **C++ proof**, `prove_cpp_guard`, prefix `Cataclysm.DungeonModifierEffects.ACorruptedStalkersDamage`. The break puts
+  the Stalker's tier 1 damage back to 0.06 (`0.05f, 1.00f` to `0.06f, 1.00f`). **PROVED**, as registered: with the break
+  in, 1 performed, 1 failed, `ACorruptedStalkersDamageFollowsTheRingItsDungeonWasRolledOn`; restored, 1 of 1 passed.
+
 **A shield refills in about five seconds, 4.8 to 5.5, since implicits became whole.** Ruled by the coordinating
 session on 2026-11-25, option (a). The design gives each source a refill of a fifth of its shield; rounding each
 implicit on its own breaks the fifth:
