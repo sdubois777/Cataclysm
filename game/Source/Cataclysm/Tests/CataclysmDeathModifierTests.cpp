@@ -682,11 +682,14 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	TestTrue(TEXT("set-up: the huge blow killed it"), UCataclysmSkillEffects::IsDead(Frail));
 	TestEqual(TEXT("and sent back a tenth of its 100 health"), StillToCome() - Before, 10.0f, 0.05f);
 
-	// AND IT ARRIVES: over four seconds the player loses all of it, AS THE SAME DAMAGE OVER TIME WOULD TAKE. The owed
-	// figure is before the player's defences and ticks; a tick meets them as any does. So the control is the same
-	// damage over time of the owed amount, the same tag, length and tick, from the same creature, run straight after,
-	// and what the tether took must equal what it takes. Windows b4-w1 to b4-w3 (bundle 4) compared against the owed
-	// figure itself and read 37.8, then 57.0, for 65 owed, while the set-up changed under them.
+	// AND IT ARRIVES: over four seconds the player loses all of it, AS THE SAME DAMAGE OVER TIME FROM THE SAME SOURCE
+	// WOULD TAKE. The owed figure is before the player's defences and ticks. The tether's last re-lay above came from
+	// the Frail creature, which that blow killed, so the whole debt is a damage over time whose source is dead.
+	// Window b4-w4 (bundle 4) read 57.00 taken of 65 owed, where the same damage over time from the LIVING tethered
+	// creature took 65.00. So two controls run straight after, one from each source. The tether is compared with the
+	// control from its own last source, the dead one, as the coordinating session ruled for window b4-w5. All three
+	// figures are printed. If the dead-source control also falls short, the shortfall belongs to any damage over time
+	// whose source has died, and not to the tether; it is then a game fault filed against that rule.
 	const float Owed = StillToCome();
 	const float HealthBefore = Player.Health();
 	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
@@ -694,23 +697,38 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	const float TetherTook = HealthBefore - Player.Health();
 	TestFalse(TEXT("four seconds later the tether has run out"), UCataclysmSkillEffects::HasTag(Player.Character, Tether));
 
-	Player.SetHealth(DeathModifiersMostHealth);
-	const float ControlBefore = Player.Health();
 	const float PerTick = Owed * UCataclysmSkillEffects::BaseSecondsPerTick / UCataclysmEnemyModifiers::SoulTetherSeconds;
-	if (!TestTrue(TEXT("set-up: the control damage over time was applied"),
-				  UCataclysmSkillEffects::ApplyDamageOverTime(Tethered, Player.Character, PerTick,
-															  UCataclysmEnemyModifiers::SoulTetherSeconds, Tether,
-															  /*bScalesWithInstigator=*/false)))
+	const auto ControlFrom = [this, &Player, World, PerTick, &Tether](AActor* Source, const TCHAR* Which) -> float
+	{
+		if (!IsValid(Source))
+		{
+			AddInfo(FString::Printf(TEXT("SOUL TETHER: %s is no longer in the world"), Which));
+			return -1.0f;
+		}
+		Player.SetHealth(DeathModifiersMostHealth);
+		const float Before = Player.Health();
+		if (!TestTrue(*FString::Printf(TEXT("set-up: the control damage over time from %s was applied"), Which),
+					  UCataclysmSkillEffects::ApplyDamageOverTime(Source, Player.Character, PerTick,
+																  UCataclysmEnemyModifiers::SoulTetherSeconds, Tether,
+																  /*bScalesWithInstigator=*/false)))
+		{
+			return -1.0f;
+		}
+		CataclysmTestWorld::RunClock(World, 4.5f);
+		return Before - Player.Health();
+	};
+	const float FromTheLiving = ControlFrom(Tethered, TEXT("the living tethered creature"));
+	const float FromTheDead = ControlFrom(Frail, TEXT("the dead Frail creature"));
+	AddInfo(FString::Printf(TEXT("SOUL TETHER: %.2f owed; the tether took %.2f; the same damage over time from the living "
+								 "source took %.2f, from the dead source %.2f"),
+							Owed, TetherTook, FromTheLiving, FromTheDead));
+	TestTrue(TEXT("CONTROL: the same damage over time from the living source took something"), FromTheLiving > 1.0f);
+	if (!TestTrue(TEXT("CONTROL: and from the dead source"), FromTheDead > 1.0f))
 	{
 		return false;
 	}
-	CataclysmTestWorld::RunClock(World, 4.5f);
-	const float ControlTook = ControlBefore - Player.Health();
-	AddInfo(FString::Printf(TEXT("SOUL TETHER: %.2f owed; the tether took %.2f; the same damage over time took %.2f"), Owed,
-							TetherTook, ControlTook));
-	TestTrue(TEXT("CONTROL: the same damage over time took something"), ControlTook > 1.0f);
-	TestEqual(TEXT("four seconds later the player has lost what that damage over time takes"), TetherTook, ControlTook,
-			  ControlTook * 0.02f);
+	TestEqual(TEXT("four seconds later the player has lost what that damage over time from its last source takes"),
+			  TetherTook, FromTheDead, FromTheDead * 0.02f);
 	return true;
 }
 
