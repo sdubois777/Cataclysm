@@ -148,8 +148,8 @@
     {
       "asset": "DT_MinionTypes",
       "csv": "MinionTypes.csv",
-      "rows": 9,
-      "csv_sha256": "5faeadce54b70931d44ff671bf9cf1d3fcd94324f230adf73f72d3e35ec0a4e6"
+      "rows": 15,
+      "csv_sha256": "d1710f0d556a16c4100bc722876cee8ea25589aeb3832b9480549a79ff0e1be4"
     },
     {
       "asset": "DT_MaterialTiers",
@@ -172,14 +172,14 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 898,
-      "csv_sha256": "088b15d05d8f4586a5250869fc0a7872e2924f56656263c1aa0f55dd0119c190"
+      "rows": 899,
+      "csv_sha256": "e34cbb80b2ceac26f203b692f5da14ee19e8a2159a85b663c9714781ef619d11"
     },
     {
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 661,
-      "csv_sha256": "afd30fa28c37da3f97ff57002d5f9b7f72286d111d0c5e316b06c4412f1173b0"
+      "csv_sha256": "3ac401211c4accd7450a6dd4d8adce7d91bf97b04851f47d27895598de4a9ccd"
     },
     {
       "asset": "DT_SkillSlots",
@@ -202,8 +202,8 @@
     {
       "asset": "DT_WeaponSkills",
       "csv": "WeaponSkills.csv",
-      "rows": 403,
-      "csv_sha256": "177b0aed0ff5607029e5790aa10e2bfc588fefc95133414afc087e33ceadd448"
+      "rows": 408,
+      "csv_sha256": "9298f7895888d066abb6b15491158ccb8a08b85ece1800345425ff659566bd18"
     }
   ]
 }
