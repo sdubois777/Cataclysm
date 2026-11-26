@@ -18,8 +18,19 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
 
 ### SAID FIRST
 
-- **NOTHING THE BUNDLE ADDS HAS BEEN COMPILED OR RUN IN UNREAL YET.** The coordinating session's window does that;
-  its figures are added here after it runs.
+- **WINDOW dfb-w1 PASSED ON ITS SECOND RUN**, tested head dd7cee2ff:
+  - the 8 new groups alone, 91 tests: every one passed;
+  - the whole Unreal suite: 6134 performed, 6134 succeeded, 0 failed, with 61 skipped halves;
+  - test saves: 895 written and deleted, 0 left behind;
+  - Python beside it: 9717 passed and 10 skipped;
+  - ruff: clean.
+  The EnemyArchetypes, MinionTypes, PassiveEffects and WeaponSkills tables were rebuilt once, in the first run's
+  editor step (82914d73). Proof F on 837691593 is PROVED:
+  - with its 28 breaks in, 111 performed, 39 failed, catching all 28 predicted tests;
+  - restored, 111 performed, 111 succeeded.
+  837691593 changes one test helper: `DeathPlayerKills`' blow cannot be evaded. The first proof's restored half
+  failed `Cataclysm.Lich.RaiseTheFallen...` because the Imp the Lich raised, which keeps the Imp's designed 25% evasion,
+  evaded the killing blow. `Cataclysm.DeathModifiers.` and `Cataclysm.Lich.` passed after it, 20 of 20.
 - **THE WRAITH AND THE LICH ARE MERGED LAST**, each cut from `development` and not from this branch:
   `feat/death-creature-wraith` at 46d9f964b (with `Ghost_Appear` for a Wraith a rule raised) and
   `feat/death-creature-lich` at 090829b87. Their own entries follow this one.
