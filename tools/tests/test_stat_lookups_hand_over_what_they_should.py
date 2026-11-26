@@ -321,6 +321,14 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    # THE DEATH LINE'S FINISHING SLICE E (2026-11-26): `UCataclysmShadowImages::StatOf`, one asker for the Shadow's
+    # last vows' six stats -- Afterimage's flag and Shadow Step's metres with the movement skill's tags, Shadow Clone's
+    # count and seconds with none, Flurry of the Dead's extra strikes with the hit's skill tags, after the hit has
+    # landed. Each is about the wearer and its own state (the Fervour held); none is a blow's or a target's.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmShadowImages.cpp',
+     'FName(Stat), Tags, 0.0f'):
+        "the Shadow's last vows' own stats (the Death line's finishing slice E), asked of the wearer with the "
+        "skill's tags or none; each is about the wearer, and Flurry of the Dead's is asked after the hit has landed",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
      'FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat), FGameplayTagContainer(), 0.0f'):
         'a flag read on an aura\'s caster at each pulse, saying whether the allies '

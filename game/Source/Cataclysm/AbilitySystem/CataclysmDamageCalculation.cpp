@@ -886,10 +886,9 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		//
 		// LESS THE OVERWHELM, held at nought. Issue #2824, slice b, ruling Q7.
 		// AN AREA HIT MEETS THE ROW'S SHARE OF THE WHOLE CHANCE, after the overwhelm: half of what a direct attack meets.
-		const float Chance = FMath::Max(0.0f, DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(), BlowOf(Hit))
-											- Hit.OverwhelmPoints)
-			* (Hit.bIsArea ? AreaShare / 100.0f : 1.0f);
-		if (Roll < Chance)
+		const float AreaFraction = Hit.bIsArea ? AreaShare / 100.0f : 1.0f;
+		if (Roll < AreaFraction * FMath::Max(0.0f, DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(), BlowOf(Hit))
+														- Hit.OverwhelmPoints))
 		{
 			Result.bEvaded = true;
 			return Result;

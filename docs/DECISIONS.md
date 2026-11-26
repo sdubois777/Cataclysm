@@ -21,6 +21,10 @@ Decisions made outside the Google Drive documents, newest first.
   `tools/tests/test_passive_effects_match_the_node_text.py` and `tools/tests/test_every_conditioned_stat_has_an_asker.py`;
   `tools/tests/test_death_finish_e_shadow_scripts.py` (new); `tools/tests/test_reapply_death_trees_workbook.py` puts the
   finishing slices' rows back after its own.
+- `docs/README.md`'s sheet table (Passive Effects 905); the new call site in
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`; Shadow Clone's "Elite or stronger" in
+  `EXPRESSED_ANOTHER_WAY` of `tools/tests/test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`, since the
+  kill counter asks the rung and no row carries it as a condition.
 
 ### SAID FIRST
 
