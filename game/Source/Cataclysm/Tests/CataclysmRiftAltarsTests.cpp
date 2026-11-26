@@ -1065,7 +1065,7 @@ bool FCataclysmRiftAltarsSavedByPlaceTest::RunTest(const FString& Parameters)
 
 /**
  * The run record's step to 19 (issue #51 slice B1): `Run_v18.json`, written before a floor's rule state kept a Rift's
- * fallen altars, migrates to none fallen. CONTROL: `Run_v21.json` is read, not migrated, and states places 0 and 2, not
+ * fallen altars, migrates to none fallen. CONTROL: `Run_v22.json` is read, not migrated, and states places 0 and 2, not
  * the default, so the field is read from the file. Every other field is checked by the tests that run every older run
  * file through the whole chain, each of which adds `CataclysmSaveFixtures::AddTheRunsVersion19Defaults`. Prints "RIFT
  * ALTARS FILES".
@@ -1081,12 +1081,12 @@ bool FCataclysmRiftAltarsMigrationTest::RunTest(const FString& Parameters)
 	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::NotValidJson;
 	const UCataclysmRunSave* Old = ReadRiftAltarsRunFixture(*this, TEXT("Run_v18.json"), OldResult);
-	const UCataclysmRunSave* Committed = ReadRiftAltarsRunFixture(*this, TEXT("Run_v21.json"), NewResult);
-	if (!TestNotNull(TEXT("Run_v18.json loads"), Old) || !TestNotNull(TEXT("Run_v21.json loads"), Committed))
+	const UCataclysmRunSave* Committed = ReadRiftAltarsRunFixture(*this, TEXT("Run_v22.json"), NewResult);
+	if (!TestNotNull(TEXT("Run_v18.json loads"), Old) || !TestNotNull(TEXT("Run_v22.json loads"), Committed))
 	{
 		return false;
 	}
-	AddInfo(FString::Printf(TEXT("RIFT ALTARS FILES: Run_v18.json %s, fallen [%s]; Run_v21.json %s, fallen [%s]"),
+	AddInfo(FString::Printf(TEXT("RIFT ALTARS FILES: Run_v18.json %s, fallen [%s]; Run_v22.json %s, fallen [%s]"),
 							FCataclysmSaveStorage::Describe(OldResult),
 							*RiftAltarsJoined(Old->Floor.RuleState.RiftAltarsDestroyed),
 							FCataclysmSaveStorage::Describe(NewResult),
@@ -1095,7 +1095,7 @@ bool FCataclysmRiftAltarsMigrationTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Run_v18.json is migrated"), static_cast<int32>(OldResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
 	TestTrue(TEXT("**and holds no Rift altar fallen**"), Old->Floor.RuleState.RiftAltarsDestroyed.IsEmpty());
-	TestEqual(TEXT("CONTROL: Run_v21.json is read, not migrated"), static_cast<int32>(NewResult),
+	TestEqual(TEXT("CONTROL: Run_v22.json is read, not migrated"), static_cast<int32>(NewResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("CONTROL: and states places 0 and 2, not the default"),
 			  RiftAltarsJoined(Committed->Floor.RuleState.RiftAltarsDestroyed), FString(TEXT("0,2")));

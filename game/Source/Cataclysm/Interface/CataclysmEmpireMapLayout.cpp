@@ -248,6 +248,18 @@ FString UCataclysmEmpireMapLayout::CityDetailDungeonLine(const UCataclysmEmpireR
 							   Sends == 1 ? TEXT("") : TEXT("s"));
 	}
 
+	// AN ABOMINATION LAIR IS NAMED AS ONE, WITH HOW STRONG ITS ABOMINATION IS, since issue #51 slice B5: "Abomination
+	// lair of 12 floors, 9 days left, its Abomination 1.45 times as strong". Its sub-type is not named: every lair is a
+	// Horde. Nought cities fallen, or a step of one, says "of its base strength".
+	if (Dungeon->IsALair())
+	{
+		const float Stronger = Dungeon->AbominationMultiplier();
+		return FString::Printf(TEXT("Abomination lair of %d floors, %.0f days left, its Abomination %s"),
+							   Dungeon->Floors, Run->Clock->DaysUntilResolveFor(DungeonId),
+							   Stronger > 1.0f ? *FString::Printf(TEXT("%.2f times as strong"), Stronger)
+											   : TEXT("of its base strength"));
+	}
+
 	// THE SUB-TYPE FOR EVERY DUNGEON, AND THE KIND AFTER IT FOR A QUEST DUNGEON ONLY. Issue #2800, ruled 2026-11-21.
 	// `SubTypeName` answers nothing for `None`, so a dungeon without one reads as the line always did.
 	TArray<FString> Words;

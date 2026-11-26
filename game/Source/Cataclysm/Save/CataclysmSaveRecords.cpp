@@ -1494,6 +1494,29 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * Version 21 to 22, issue #51 slice B5, the Death quest. Every dungeon gets `CitiesFallenBefore` 0: no version 21
+	 * run recorded it. Written out, for `Migrate_1_to_2`'s reason. A run with no `Dungeons` array is left as it is, for
+	 * `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_21_to_22(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Record->TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("CitiesFallenBefore"), 0); // A migration's: not recorded before.
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1516,6 +1539,7 @@ namespace CataclysmRunSaveMigration
 		{ 18, TEXT("Migrate_18_to_19"), &Migrate_18_to_19 },
 		{ 19, TEXT("Migrate_19_to_20"), &Migrate_19_to_20 },
 		{ 20, TEXT("Migrate_20_to_21"), &Migrate_20_to_21 },
+		{ 21, TEXT("Migrate_21_to_22"), &Migrate_21_to_22 },
 	};
 }
 

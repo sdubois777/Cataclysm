@@ -1021,6 +1021,17 @@ followed, ruled 2026-11-01:
   whole chain adds what the step writes through
   `CataclysmSaveFixtures::AddTheRunsVersion21Defaults`. Built on the Abyssal
   Rifts branch, which takes 19 to 20. **No other record moves.**
+- **The run record went to version 22 on 2026-11-25**, for the Death quest (issue
+  #51 slice B5): an Abomination lair's boss grows with the cities fallen when the
+  lair appeared, so each dungeon keeps that count, `CitiesFallenBefore`, 0 for a
+  dungeon that is not a lair. `Migrate_21_to_22` writes 0 into every dungeon.
+  `Run_v22.json` is `Run_v21.json` at version 22 with that field added; its one
+  dungeon is Demonic's, so its count is 0. `Run_v21.json` is now a migration
+  input, not edited again: `Cataclysm.AbominationLairs.ARunFileFromVersion21CountsNoFallenCities`
+  runs it through the step, every test that read it as the committed file reads
+  `Run_v22.json` now, and every chain test adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion22Defaults`. Built on the War quest's
+  branch, which takes 20 to 21. **No other record moves.**
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -1081,6 +1092,7 @@ followed, ruled 2026-11-01:
 | `Run_v19.json` | The same run at version 19: version 18's contents, plus a Rift's altars fallen on its floor, the first and the third |
 | `Run_v20.json` | The same run at version 20: version 19's contents, with the floor's one Abyssal Rift state replaced by two rifts' health left and seconds stood, a standing rift at 1536.5 and 96.25 and a killed one at 0 and 30.5 |
 | `Run_v21.json` | The same run at version 21: version 20's contents, plus each dungeon's day of arrival (-1, the Siege has not moved) and each city's felling Cataclysm (the fallen city Demonic, the standing one None) |
+| `Run_v22.json` | The same run at version 22: version 21's contents, plus each dungeon's count of the cities fallen when it appeared (0: its one dungeon is Demonic's, not a lair) |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

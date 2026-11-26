@@ -1740,6 +1740,13 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 		MakeWarQuestSiegeOnAFall(CityId, OutReport);
 	}
 
+	// AND A FALL WHILE DEATH IS ACTIVE ADDS AN ABOMINATION LAIR, whoever felled the city, after War's Siege and before
+	// the fall's surge, as `Simulation._fall` orders them. Issue #51 slice B5.
+	if (ActiveCataclysms.Contains(ECataclysmType::Death))
+	{
+		MakeLairOnAFall(CityId, OutReport);
+	}
+
 	// AND THE FALL FIRES A SURGE OF ITS OWN. The design document says a city
 	// falling triggers one; `UCataclysmSurgeScheduler::bCityFallAdvancesEscalation`
 	// is what makes it also speed the rest of the run up.
@@ -2397,6 +2404,45 @@ void UCataclysmEmpireRun::MakeWarQuestSiegeOnAFall(int32 FallenCityId, FCataclys
 	Dungeons.Add(Made);
 	OutReport.Spawned.Add(Made.DungeonId);
 	OutReport.WarSiegeOnAFall.Add(Made.DungeonId);
+	NextDungeonId = FMath::Max(NextDungeonId, Made.DungeonId + 1);
+}
+
+void UCataclysmEmpireRun::MakeLairOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport)
+{
+	const FCataclysmCity* Fallen = Map != nullptr ? Map->Find(FallenCityId) : nullptr;
+	if (Fallen == nullptr || Surges == nullptr || Clock == nullptr)
+	{
+		return;
+	}
+
+	// ITS OWN STREAM, from the run's seed and the identifier it will take, so no shared stream moves.
+	FRandomStream Draws(UCataclysmSurgeScheduler::LairSeedFor(CorruptedStalkerSeed, NextDungeonId));
+
+	// PLACED AS A FALL MOVES A QUEST DUNGEON (L2). A lair carries no Siege, so no city is refused for holding one, and
+	// the empty count is `PickRefuge`'s "the caller did not say".
+	const FCataclysmCity* To = Map->Find(
+		UCataclysmSurgeScheduler::PickRefuge(*Map, *Fallen, Draws, /* bCarriesSiege */ false, TArray<int32>()));
+	if (To == nullptr)
+	{
+		return;
+	}
+
+	// A QUEST DUNGEON DEATH SENDS, MADE AS A SURGE MAKES ONE FOR THAT CITY, so `QuestSubTypeFor` makes it a Horde, and
+	// it counts the cities fallen, the one that just fell included (L1). The steps `MakeWarQuestSiegeOnAFall` takes.
+	FCataclysmDungeon Made = Surges->MakeDungeon(NextDungeonId, *To, OutReport.Day, Draws, /* bSiegeAllowed */ true,
+												 ECataclysmDungeonType::Quest, ECataclysmType::Death);
+	Made.Cataclysm = ECataclysmType::Death;
+	Made.CitiesFallenBefore = Map->FallenCityCount();
+	GiveModifiersFrom(Made, Draws);
+
+	if (!Clock->AddDungeon(Made.DungeonId, Made.Floors))
+	{
+		return;
+	}
+	Clock->SetResolveDays(Made.DungeonId, Made.ResolveDays);
+	Dungeons.Add(Made);
+	OutReport.Spawned.Add(Made.DungeonId);
+	OutReport.LairOnAFall.Add(Made.DungeonId);
 	NextDungeonId = FMath::Max(NextDungeonId, Made.DungeonId + 1);
 }
 

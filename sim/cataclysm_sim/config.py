@@ -1336,6 +1336,28 @@ class TuningConfig:
     # `UCataclysmEmpireRun::MakeWarQuestSiegeOnAFall`.
     war_fall_makes_a_quest_siege: bool = True
 
+    # DEATH'S QUEST DUNGEONS ARE ABOMINATION LAIRS, since 2026-11-25 (issue #51
+    # slice B5, with the simulation slice A2). The design's Dead Rising: "Cursed
+    # Abominations spawn as cities fall, growing stronger with each subsequent
+    # loss ... Each fallen city adds a more powerful Abomination." Accepted by the
+    # owner on 2026-11-24 ("Your recommendations work for all of those death/war
+    # questions"): Q6, a surge's Death Quest dungeon is a lair AND every city that
+    # falls while Death is active adds one, placed as a fall moves a Quest
+    # dungeon (`Simulation._quest_refuge`), with no cap (L2); Q7, its boss's
+    # health and damage are multiplied by `abomination_step` once for every city
+    # fallen when the lair appeared, the fall that made it included (L1), with no
+    # cap. The coordinating session ruled L1 to L9 on 2026-11-25.
+    death_lairs: bool = True
+
+    # THE ABOMINATION'S STEP: the multiplier on a lair boss's health and damage
+    # for each city fallen when the lair appeared. 1.10, A NUMBER FOR THE
+    # OWNER'S PLAY TEST, set by the coordinating session on 2026-11-25: 2.6
+    # times the base boss after ten falls, 6.7 after twenty. NOT SIZED BY THE
+    # MODEL: the slice A2 sweep moved the tier 1 Death won share by at most 0.1
+    # point between 1.00 and 1.25, so the L7 criterion (the largest step within 5
+    # points) picked only the top of the range swept. Issue #2917.
+    abomination_step: float = 1.10
+
     # THE VOID ADDS STACKS AND DOES NO DAMAGE, since 2026-10-18. The owner,
     # 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void stacks to a city instead of doing damage to the city or population and at 10 stacks the city is erased. So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time."
     # Ruled by the coordinating session the same day: an ordinary Void dungeon

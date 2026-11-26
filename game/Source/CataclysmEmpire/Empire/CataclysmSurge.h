@@ -386,6 +386,16 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	int32 ArrivedDay = INDEX_NONE;
 
 	/**
+	 * The cities fallen when this dungeon appeared (`UCataclysmEmpireMap::FallenCityCount`), set for an Abomination
+	 * lair (`IsALair`) and 0 for every other dungeon. A lair a city's fall made counts that city: "Each fallen city adds
+	 * a more powerful Abomination" (the coordinating session, L1, 2026-11-25). What `AbominationMultiplier` raises the
+	 * step to. A retaken city no longer counts, since it is no longer fallen; the model counts the same way. The model's
+	 * `Dungeon.cities_fallen_before`. Saved: run record version 22. Issue #51 slice B5.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CitiesFallenBefore = 0;
+
+	/**
 	 * The dungeon modifiers it carries, as row keys of the modifier table.
 	 *
 	 * ONE PER DIFFICULTY TIER, DOUBLED FOR A SACRIFICIAL DUNGEON, drawn from the
@@ -534,6 +544,20 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * `Dungeon.siege_bite_share`. Only War's Quest dungeons are Sieges.
 	 */
 	float SiegeBiteShare() const;
+
+	/**
+	 * Whether this is an Abomination lair: a Quest dungeon Death sent, whatever its sub-type (Horde, by
+	 * `UCataclysmSurgeScheduler::QuestSubTypeFor`). The design's Dead Rising: "Players must defeat Abominations in
+	 * their quest dungeon lairs to collect 5 Seeds of Undeath". By its sender, as `IsARift` is. Issue #51 slice B5.
+	 */
+	bool IsALair() const;
+
+	/**
+	 * What a lair's Cursed Abomination's health, damage and gear drops are multiplied by:
+	 * `UCataclysmSurgeScheduler::AbominationStep` to the power of `CitiesFallenBefore`. 1 for a dungeon that is not a
+	 * lair. The model's `Simulation.abomination_multiplier`. Issue #51 slice B5.
+	 */
+	float AbominationMultiplier() const;
 
 	/**
 	 * The seed a walk of this dungeon carves its floors from:
@@ -1137,6 +1161,15 @@ public:
 	 * of the same choice of 2026-10-17. The model's `TuningConfig.quest_siege_bite_scale`.
 	 */
 	static constexpr float QuestSiegeBiteShare = 0.25f;
+
+	/**
+	 * The Abomination's step: what a lair's boss's health, damage and gear drops are multiplied by once for each city
+	 * fallen when the lair appeared, with no cap (the owner, 2026-11-24, Q7). The model's
+	 * `TuningConfig.abomination_step`. 1.10, A NUMBER FOR THE OWNER'S PLAY TEST (the coordinating session, 2026-11-25):
+	 * 2.6 times the base boss after ten falls, 6.7 after twenty. The slice A2 sweep could not size it, since the model
+	 * barely sees a lair boss's strength (issue #2917). Issue #51 slice B5.
+	 */
+	static constexpr float AbominationStep = 1.10f;
 
 	/**
 	 * The one sub-type a Cataclysm dungeon may not roll.
@@ -2082,6 +2115,15 @@ public:
 	 * that needs no re-draw, rolls exactly what it rolled before slice B4.
 	 */
 	static int32 WarSiegeSeedFor(int32 RunSeed, int32 DungeonId, int32 Draw);
+
+	/** The salt an Abomination lair's own seed is mixed with: "lair". Issue #51 slice B5. */
+	static constexpr int32 LairSalt = 0x6C616972;
+
+	/**
+	 * The seed of the stream a fall's Abomination lair is placed and made from: the run's seed and the identifier it
+	 * will take, as `WarSiegeSeedFor` makes one. No number comes off the shared streams.
+	 */
+	static int32 LairSeedFor(int32 RunSeed, int32 DungeonId);
 
 	/**
 	 * Where a War Quest dungeon drawn onto a city that already holds a Siege goes instead: an exposed city that is not

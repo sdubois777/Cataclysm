@@ -863,6 +863,27 @@ namespace CataclysmSaveFixtures
 		}
 	}
 
+	/**
+	 * What the run record's newest step, `Migrate_21_to_22`, writes into a run file written before it:
+	 * `CitiesFallenBefore` 0 on every dungeon. Issue #51 slice B5, the Death quest. NAMED FOR THE VERSION IT REACHES, 22.
+	 * ONE COPY. A file with no `Dungeons` is left as it is, as the step leaves it.
+	 */
+	inline void AddTheRunsVersion22Defaults(FJsonObject& Expected)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Dungeons = nullptr;
+		if (Expected.TryGetArrayField(TEXT("Dungeons"), Dungeons) && Dungeons != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : *Dungeons)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (Each.IsValid() && Each->TryGetObject(Dungeon) && Dungeon != nullptr && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetNumberField(TEXT("CitiesFallenBefore"), 0.0);
+				}
+			}
+		}
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

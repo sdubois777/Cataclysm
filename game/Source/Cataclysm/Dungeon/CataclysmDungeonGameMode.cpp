@@ -2920,6 +2920,13 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 			{
 				NoteTheCataclysmBoss(Enemy);
 			}
+			// A LAIR'S LAST WAVE: its Gatekeeper is the Cursed Abomination. HERE, because a Horde's waves skip the
+			// ordinary path's boss noting. Issue #51 slice B5.
+			if (WaveStillToArrive[Index].Creature == ECataclysmDungeonCreature::Gatekeeper && IsALair()
+				&& IsOnTheLastFloor())
+			{
+				MakeTheCursedAbomination(Enemy, /*bScale=*/true);
+			}
 			NoteThePack(Enemy, WaveStillToArrive[Index]);
 			FloorEnemies.Add(Enemy);
 			CurrentWave.Add(Enemy);
@@ -5381,9 +5388,19 @@ int32 ACataclysmDungeonGameMode::PopulationRungFor(const FCataclysmEnemyPlacemen
 {
 	// "A CATACLYSM BOSS IS PLACED, NOT DRAWN" (`docs/Cataclysm_GDD_v2.md` section VIII): its weight is 0, so no draw can
 	// give it, and the last floor of the Cataclysm boss dungeon puts its boss on that rung. Issue #1324 slice 6d.
-	return Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsTheCataclysmBossFloor()
-		? CataclysmBossRung
-		: UCataclysmEnemyRarity::RollTheRarity;
+	if (Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsTheCataclysmBossFloor())
+	{
+		return CataclysmBossRung;
+	}
+
+	// A LAIR'S LAST-FLOOR GATEKEEPER, ITS CURSED ABOMINATION, IS PLACED AT THE BOSS RUNG (L3, the coordinating session,
+	// 2026-11-25), where every other Gatekeeper draws one, so the lair's step multiplies a boss and never a Common.
+	// Issue #51 slice B5.
+	if (Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsALair() && IsOnTheLastFloor())
+	{
+		return ACataclysmEnemyCharacter::FirstBossRarityStep;
+	}
+	return UCataclysmEnemyRarity::RollTheRarity;
 }
 
 void ACataclysmDungeonGameMode::NoteTheCataclysmBoss(ACataclysmEnemyCharacter* Boss)
@@ -5495,6 +5512,35 @@ bool ACataclysmDungeonGameMode::IsARift() const
 	// THE BOUND DUNGEON'S OWN ANSWER, READ LIVE: a Quest dungeon Demonic sent. Nothing bound, nothing a Rift.
 	const FCataclysmDungeon* Dungeon = BoundDungeon();
 	return Dungeon != nullptr && Dungeon->IsARift();
+}
+
+bool ACataclysmDungeonGameMode::IsALair() const
+{
+	// THE BOUND DUNGEON'S OWN ANSWER, READ LIVE: a Quest dungeon Death sent. Nothing bound, nothing a lair.
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	return Dungeon != nullptr && Dungeon->IsALair();
+}
+
+void ACataclysmDungeonGameMode::MakeTheCursedAbomination(ACataclysmEnemyCharacter* Boss, bool bScale)
+{
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	if (Boss == nullptr || Dungeon == nullptr)
+	{
+		return;
+	}
+	const float Stronger = Dungeon->AbominationMultiplier();
+	Boss->bIsTheCursedAbomination = true;
+	Boss->AbominationGearMore = Stronger;
+	// ITS HEALTH AND DAMAGE, the Abyssal Rift hunter's way: the starting health and the placed multiplier, which a save
+	// keeps (`FCataclysmSavedCreature`). Nought fallen, a step of one: nothing to multiply.
+	if (bScale && Stronger > 1.0f)
+	{
+		Boss->SetHealth(Boss->GetStartingMaxHealth() * Stronger);
+		Boss->SetPlacedDamageMultiplier(Stronger);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Abomination lair: the Cursed Abomination %s stands on floor %d, %d cities fallen "
+								   "when the lair appeared, %.3f times as strong"),
+		   *Boss->GetName(), FloorNumber, Dungeon->CitiesFallenBefore, Stronger);
 }
 
 int32 ACataclysmDungeonGameMode::RiftAltarsOnThisFloor() const
@@ -16719,6 +16765,15 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 		&& Saved.RaisedBy == NAME_None)
 	{
 		NoteTheRiftBoss(&Creature);
+	}
+
+	// AND A LAIR'S CURSED ABOMINATION, FOUND THE SAME WAY: the floor's own Gatekeeper on its last floor. NO SAVED FIELD
+	// IS ADDED and it is not scaled again: the record's starting health and placed multiplier carry its strength, and
+	// the flag and the gear's step are read off the bound dungeon. Issue #51 slice B5.
+	if (IsALair() && IsOnTheLastFloor() && Creature.IsA<ACataclysmGatekeeperCharacter>() && !Saved.bRisenFromTheDead
+		&& Saved.RaisedBy == NAME_None)
+	{
+		MakeTheCursedAbomination(&Creature, /*bScale=*/false);
 	}
 
 	// AND A CLOSED SOUL CHAINS GATE'S BEARER, back on its gate, which then has bearers again. Issue #753, Group 3c-1.
