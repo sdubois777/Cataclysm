@@ -206,7 +206,9 @@ def test_every_weapon_skills_landing_detonates_remains_before_the_minions_rule()
     body = _code(_function_body(SOURCE / "AbilitySystem" / "CataclysmSkillTemplate.cpp",
                                 "int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere("))
     assert "UCataclysmRemains::DetonateWhere(Self, IsInside);" in body
-    assert body.index("UCataclysmRemains::DetonateWhere") < body.index("Params.bDetonates")
+    # SLICE C'S RULE FOR THE MINIONS IS `DetonatesOwnMinions()`, the row's key or Lit Fuse; it asked
+    # `Params.bDetonates` itself before the bundle (2026-11-26) joined the two slices.
+    assert body.index("UCataclysmRemains::DetonateWhere") < body.index("DetonatesOwnMinions()")
 
 
 def test_a_summon_chooses_its_remains_before_the_reserve_and_raises_on_them_after_holding_it():
