@@ -1331,6 +1331,26 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("deathmark_seconds"),
 		TEXT("blood_price_percent_of_maximum_fervour"),
 		TEXT("blood_price_seconds"),
+		// THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26), each read by UCataclysmRemains
+		// (CataclysmRemains.cpp) or UCataclysmBoneGiants (CataclysmBoneGiants.cpp) off the player with no tags, at its
+		// own moment: whether a death leaves remains for this player (Bone Fuse, the Bone Colossus vow); Gravefinder's
+		// reach and Bone-Bound's reserve, at a summon; Two From One's chance, at a raise; Mantle of Bone's detonation and
+		// its share of maximum health, Festering's increase per ailment and Plague Pit's flag, at a weapon skill's
+		// landing; Gathered Remains' longer life, as remains are left; Fallen Again's chance, at a follower's death; the
+		// two vows' flags and Many Made One's reduction, at a kill. No attribute and no base.
+		TEXT("remains_left"),
+		TEXT("remains_raise_reach_metres"),
+		TEXT("minion_on_remains_reserve_percent_less"),
+		TEXT("remains_kept_on_raise_chance"),
+		TEXT("weapon_skills_detonate_remains"),
+		TEXT("remains_detonation_percent_of_maximum_health"),
+		TEXT("remains_detonation_increased_per_ailment"),
+		TEXT("detonated_remains_pass_ailments"),
+		TEXT("remains_duration"),
+		TEXT("minion_leaves_remains_chance"),
+		TEXT("abomination_rises"),
+		TEXT("abomination_kill_percent_less"),
+		TEXT("bone_colossus"),
 	};
 	return Stats;
 }

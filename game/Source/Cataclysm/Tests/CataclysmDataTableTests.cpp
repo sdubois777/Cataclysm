@@ -609,7 +609,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// line's 592, less the 364 both had.
 	// AND 898 THE SAME DAY, for Slippery's Fervour on an evasion (window death3-w1's second pass).
 	// AND 899 ON 2026-11-26, for the Bulwark's Fervour for a kill (the final bundle).
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        899)
+	// AND 931 THE SAME DAY ON THE DEATH FINISH'S SLICE D ALONE, for the remains: the Ossuary's thirteen nodes, Many Made
+	// One and the two vows, 32 rows. The other slices move it too; the coordinating session reconciles at assembly.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        931)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

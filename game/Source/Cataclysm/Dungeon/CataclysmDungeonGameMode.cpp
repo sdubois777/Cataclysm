@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBoneGiants.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
@@ -2451,6 +2452,14 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// what makes "10% or less of the previous wave" a question about one wave.
 	CurrentWave.Reset();
 
+	// AND ON AN ARENA CARVED FOR THIS FLOOR, THE ABOMINATION'S TALLY BEGINS AGAIN: the Death finish's slice D
+	// (2026-11-26). What this population puts down is what "the creatures the floor started with" counts; a kept Horde
+	// arena's later wave is a rule that keeps sending, and its creatures are not noted.
+	if (!bKeptTheArena)
+	{
+		UCataclysmBoneGiants::BeginFloor(World);
+	}
+
 	// WHAT THE WAVE HAS PUT ON THE FLOOR, WHICH ONCE ALL OF IT HAS ARRIVED IS THE
 	// DENOMINATOR OF THE OWNER'S RULE. Counted up as creatures arrive rather than
 	// set once, because since issue #1544 a wave arrives over several frames;
@@ -2522,6 +2531,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 				Enemy->FloorSection = FloorSections.SectionOf(CurrentFloor->GetPlan(), Placement.Cell);
 				FloorEnemies.Add(Enemy);
 				CurrentWave.Add(Enemy);
+				// ONE OF THE CREATURES THE FLOOR STARTED WITH, on an arena carved for it (the Death finish's slice D).
+				if (!bKeptTheArena)
+				{
+					UCataclysmBoneGiants::NoteStartedWith(Enemy);
+				}
 				++Spawned;
 			}
 		}
@@ -2948,6 +2962,12 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 			NoteThePack(Enemy, WaveStillToArrive[Index]);
 			FloorEnemies.Add(Enemy);
 			CurrentWave.Add(Enemy);
+			// ONE OF THE CREATURES THE FLOOR STARTED WITH, when the wave is the first on an arena carved for it (the
+			// Death finish's slice D).
+			if (!bKeptTheArena)
+			{
+				UCataclysmBoneGiants::NoteStartedWith(Enemy);
+			}
 			++WaveSpawned;
 			++Arrived;
 		}

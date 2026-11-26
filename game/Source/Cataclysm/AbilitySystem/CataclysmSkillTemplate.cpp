@@ -17,6 +17,7 @@
 // The Wand's Anathema. Issue #37.
 #include "AbilitySystem/CataclysmCurseSpread.h"
 // For a curse under which the dying rise. Issue #2885, N5.
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisingCurse.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -1948,6 +1949,10 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside)
 {
 	AActor* Self = Avatar();
+	// AND THE CASTER'S OWN REMAINS INSIDE THE SAME AREA, BEFORE THE MINIONS' OWN RULE: Mantle of Bone, "Your weapon skills
+	// that land on remains detonate them". The Death finish's slice D (2026-11-26), approved by the coordinating session:
+	// every weapon skill's landing reaches this function, and the remains need no `Detonates=1`.
+	UCataclysmRemains::DetonateWhere(Self, IsInside);
 	if (!Params.bDetonates || !Self)
 	{
 		return 0;

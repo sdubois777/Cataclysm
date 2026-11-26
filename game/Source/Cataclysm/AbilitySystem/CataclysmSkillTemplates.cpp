@@ -39,6 +39,7 @@
 // For Summon Imp's kind, made for a commander that holds no summon skill: a Wand
 // Ritualist's Press-Ganged replacement and The Swarm's minion at a kill. The
 // demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 // For whether a kill's victim was an enemy of the commander's. The same rework.
 #include "AbilitySystem/CataclysmTeams.h"
@@ -5648,7 +5649,16 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	// "Summoning a fourth destroys the oldest, which explodes" with it ("Drop it with the cap"). The pool is the
 	// limit: a press is refused, with nothing made and nothing destroyed, when it cannot hold the new imp's reserve
 	// (issue #1934, ruling R1).
-	const float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
+	//
+	// AND GRAVEFINDER'S REMAINS, CHOSEN BEFORE THE RESERVE IS ASKED: the Death finish's slice D (2026-11-26). The nearest
+	// of the caster's own remains within its reach of where this rises; the minion rises on them, and Bone-Bound lowers
+	// what it reserves, so a raise on remains can fit where one off them would not.
+	ACataclysmRemains* RisesOn = UCataclysmRemains::ChooseToRaiseOn(Self, RiftLocation);
+	float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
+	if (RisesOn)
+	{
+		Reserve = UCataclysmRemains::ReserveOnRemains(Self, Reserve);
+	}
 	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
 	{
 		UE_LOG(LogCataclysm, Verbose,
@@ -5673,7 +5683,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
 
 	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
-		Self, RiftLocation, Lifetime, Params.bBurns, SummonedType);
+		Self, RisesOn ? RisesOn->GetActorLocation() : RiftLocation, Lifetime, Params.bBurns, SummonedType);
 	if (Minion)
 	{
 		// WHAT ITS DEATH WOULD EXPLODE FOR, TOLD NOW WHILE THE ROW IS IN HAND.
@@ -5688,6 +5698,13 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934. Held through `HoldReserve`, which raises Bound
 		// Offering's spend (the Death trees' slice C3b).
 		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
+
+		// AND RAISED ON THE REMAINS GRAVEFINDER CHOSE: its tag (Raised on Bones), the event (Bone Fuse's and Grave
+		// Robber's Fervour) and the remains consumed unless Two From One keeps them. The Death finish's slice D.
+		if (RisesOn)
+		{
+			UCataclysmRemains::RaiseOn(Self, Minion, RisesOn);
+		}
 
 		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO, from the moment it rises and once a second after.
 		// Issue #2885, C3: Shallow Graves' husks, "every enemy within 4 meters of a husk turns on it and attacks it".

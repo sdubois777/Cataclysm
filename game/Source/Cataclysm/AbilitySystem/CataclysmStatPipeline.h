@@ -3123,6 +3123,17 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPointOfCurrentHealth
 		UMETA(DisplayName = "Per Point Of Current Health"),
+
+	/**
+	 * `Value` per `ScaleStep` of the character's OWN REMAINS lying within the row's `ReachMetres` of it, along the floor,
+	 * at most `ScaleMaxSteps` of them. The Death finish's slice D (2026-11-26): Mantle of Bone's "+1% increased Armor for
+	 * every 2 points for each creature's remains within 6 metres of you, up to 10". Read from
+	 * `FCataclysmStatConditions::OwnRemainsDistancesMetres`, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach`
+	 * fills only when a row asks. Another player's remains are not counted: remains belong to the player they were left
+	 * for (`ACataclysmRemains::LeftFor`).
+	 */
+	PerOwnRemainsInReach
+		UMETA(DisplayName = "Per Own Remains In Reach"),
 };
 
 /**
@@ -4445,6 +4456,15 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> CrippledHostileDistancesMetres;
+
+	/**
+	 * How far each of the character's OWN remains lies from it, in metres along the floor, within the widest reach a row
+	 * asks about. The Death finish's slice D (2026-11-26), for `PerOwnRemainsInReach`. FILLED ONLY WHEN A ROW ASKS, by
+	 * `UCataclysmAbilitySystemComponent::WithEnemiesInReach` through `UCataclysmRemains::DistancesOfOwnRemains`; empty
+	 * otherwise, which every row reading it answers with nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> OwnRemainsDistancesMetres;
 
 	/**
 	 * The debuffs the character being HIT is carrying, as the explicit tags
