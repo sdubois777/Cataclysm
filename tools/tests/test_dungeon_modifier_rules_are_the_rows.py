@@ -1826,6 +1826,14 @@ def test_no_floor_rule_writes_a_shared_damage_type():
     THE CODE, NOT THE COMMENTS. Both files explain the removed field in comments, and
     those lines are removed before the search. Each file is also checked for something it
     must still contain, so a file that was not read cannot pass.
+
+    ONE WRITE IS A CREATURE'S OWN TYPE, AND IS LEFT OUT BY NAME. Since slice B3 of the
+    Death and War plan (2026-11-25) every creature a dungeon places belongs to the
+    Cataclysm that sent it, and `ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`
+    writes that onto the creature: one creature's own field, not an actor the floor's
+    rules share. That function's body is left out of the search, and only that body; it
+    must exist, and every write in it must be onto its creature, `Enemy`, so the
+    exemption cannot hide a write onto anything else.
     """
     dungeon = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
 
@@ -1848,7 +1856,24 @@ def test_no_floor_rule_writes_a_shared_damage_type():
     assert "Delivery.DamageType = " in game_mode, (
         "CataclysmDungeonGameMode.cpp no longer puts a type on any hit's delivery, so this "
         "check cannot tell a file that writes no shared type from one it did not read.")
-    written = re.findall(r"^.*->\s*DamageType\s*=.*$", game_mode, flags=re.MULTILINE)
+
+    a_pointer_write = r"^.*->\s*DamageType\s*=.*$"
+    creatures_own = re.search(
+        r"^void ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm\(ACataclysmEnemyCharacter\* Enemy\) const\n"
+        r"\{\n(.*?)^\}",
+        game_mode, flags=re.MULTILINE | re.DOTALL)
+    assert creatures_own, (
+        "CataclysmDungeonGameMode.cpp no longer defines GiveTheDungeonsCataclysm, the one "
+        "function whose write of a creature's own damage type this check leaves out. Remove "
+        "the exemption with it.")
+    in_the_creatures_own = re.findall(a_pointer_write, creatures_own.group(1), flags=re.MULTILINE)
+    assert in_the_creatures_own and all(
+        line.strip().startswith("Enemy->DamageType = ") for line in in_the_creatures_own), (
+        "GiveTheDungeonsCataclysm must write its creature's own damage type, Enemy's, and "
+        "nothing else's: " + "; ".join(line.strip() for line in in_the_creatures_own))
+
+    elsewhere = game_mode[:creatures_own.start()] + game_mode[creatures_own.end():]
+    written = re.findall(a_pointer_write, elsewhere, flags=re.MULTILINE)
     assert not written, (
         "CataclysmDungeonGameMode.cpp writes a damage type through a pointer, which is how "
         "the rules wrote the floor source's shared type before issue #1924. A floor rule's "

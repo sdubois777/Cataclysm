@@ -583,6 +583,12 @@ void ACataclysmGatekeeperCharacter::UseEnemyAbility(
 				Imp->SetOwner(this);
 			}
 
+			// OF THE GATEKEEPER'S OWN CATACLYSM, which on a dungeon floor is the one that sent the dungeon: a Death
+			// dungeon's Gatekeeper calls Imps that deal Death. Slice B3 of the Death and War plan, 2026-11-25. They are
+			// not placed by the floor, so the floor's own stamp (`ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`)
+			// never reaches them. Common, so they draw no modifiers for it to decide.
+			Imp->DamageType = DamageType;
+
 			// A STARTING MAXIMUM, AS EVERY OTHER CREATURE PLAY SPAWNS HAS ONE: the maximum it arrived with, so its
 			// health in play does not change. Without it a rung change left its maximum where it was -- Volatile
 			// Evolution raised its rung without its rung's health -- and a rule that puts its health share back after

@@ -914,6 +914,10 @@ namespace CataclysmSaveLoadTest
 		int32 Day = 0;
 		float PartialDay = 0.0f;
 		int32 DaysOwed = 0;
+
+		/** The floor's standing creatures no rule raised, and how many dealt the sender's damage type, when saved. */
+		int32 StandingWhenSaved = 0;
+		int32 StandingOfTheSender = 0;
 	};
 
 	float HealthOfActor(const AActor& Actor)
@@ -956,8 +960,10 @@ namespace CataclysmSaveLoadTest
 	 * no health. One creature is hurt, the potions are spent below full, and the character is moved and hurt first.
 	 *
 	 * @param bWithTheGuide  the dungeon carries Demonic Guide, whose guide is a creature the floor's rule raises
+	 * @param Sender         which Cataclysm sent the dungeon; nobody unless told, as `PlaceByHand` leaves it. Slice B3.
 	 */
-	bool SaveInADungeon(FAutomationTestBase& Test, bool bDies, bool bWithTheGuide, int32 Floor, FSavedInADungeon& Out)
+	bool SaveInADungeon(FAutomationTestBase& Test, bool bDies, bool bWithTheGuide, int32 Floor, FSavedInADungeon& Out,
+						ECataclysmType Sender = ECataclysmType::None)
 	{
 		FDungeonScene Scene = MakeDungeonScene();
 		if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
@@ -999,6 +1005,14 @@ namespace CataclysmSaveLoadTest
 				}
 			}
 		}
+		// AND WHO SENT IT, which every creature it places takes. Slice B3, 2026-11-25.
+		for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			if (Dungeon.DungeonId == Out.DungeonId)
+			{
+				Dungeon.Cataclysm = Sender;
+			}
+		}
 		if (!Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(Out.DungeonId))
 			|| !Test.TestTrue(TEXT("set-up: the walk reached the floor"), Scene.Mode->GoToFloor(Floor))
 			|| !Test.TestNotNull(TEXT("set-up: the floor was built"), Scene.Mode->CurrentFloor.Get()))
@@ -1017,6 +1031,12 @@ namespace CataclysmSaveLoadTest
 		if (!Test.TestTrue(TEXT("set-up: the floor has a creature to hurt"), Standing.Num() > 0))
 		{
 			return false;
+		}
+		Out.StandingWhenSaved = Standing.Num();
+		const FName SendersType = FCataclysmDungeonFloorRules::CreatureDamageTypeFor(Sender);
+		for (const ACataclysmEnemyCharacter* Creature : Standing)
+		{
+			Out.StandingOfTheSender += (!SendersType.IsNone() && Creature->DamageType == SendersType) ? 1 : 0;
 		}
 		if (UAbilitySystemComponent* Hurt = UCataclysmTargeting::AbilitySystemOf(Standing[0]))
 		{
@@ -1144,6 +1164,82 @@ bool FCataclysmSaveLoadDungeonTest::RunTest(const FString&)
 	TestEqual(TEXT("no part of a day"), PartialDay, Saved.PartialDay, 0.0001f);
 	TestEqual(TEXT("and the walk owes the days it owed"), DaysOwed, Saved.DaysOwed);
 	TestEqual(TEXT("the character's place, health and potions came back"), Held, Saved.Held);
+	return true;
+}
+
+/**
+ * A creature saved on a floor of a dungeon Death sent comes back dealing Death. Slice B3 of the Death and War plan,
+ * 2026-11-25: every creature belongs to the Cataclysm that sent its dungeon, and the creature's record holds no damage
+ * type. The load binds the saved dungeon again before it puts the creatures back, and the dungeon's sender is saved, so
+ * `FCataclysmSaveApply::DungeonFloorInto` gives each creature it puts back that sender's type
+ * (`ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`). No record took a version step for it.
+ *
+ * THE CONTROLS: in the saving world every standing creature dealt Death, so the save had Death creatures to keep; the
+ * creatures standing after the load are the ones put back -- as many as were saved, the hurt one among them with the
+ * health it had -- and not the fresh floor the dungeon built before the load replaced its creatures; and each was
+ * spawned anew by the load, from its class, which is Demonic until the dungeon gives it Death.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadSendersCreaturesTest,
+	"Cataclysm.SaveLoad.ACreatureSavedInADeathDungeonComesBackDealingDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadSendersCreaturesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSavedInADungeon Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveInADungeon(*this, /*bDies=*/false, /*bWithTheGuide=*/false, /*Floor=*/2, Saved, ECataclysmType::Death))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("CONTROL: the saving floor's creatures stood"), Saved.StandingWhenSaved > 0)
+		|| !TestEqual(TEXT("CONTROL: and every one of them dealt Death when it was saved"), Saved.StandingOfTheSender,
+					  Saved.StandingWhenSaved))
+	{
+		return false;
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	if (!TestEqual(TEXT("set-up: the load put the character and its run back"),
+				   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded)))
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Standing = UnruledStanding(*Scene.Mode);
+	const FName DeathType(TEXT("Death"));
+	int32 OfDeath = 0;
+	bool bHurtOneBack = false;
+	for (const ACataclysmEnemyCharacter* Creature : Standing)
+	{
+		OfDeath += Creature->DamageType == DeathType ? 1 : 0;
+		bHurtOneBack |= FMath::IsNearlyEqual(HealthOfActor(*Creature), Saved.HurtHealth, 0.5f);
+	}
+	AddInfo(FString::Printf(TEXT("LOAD SENDER: %d of %d creatures standing after the load deal Death (%d saved, %d of "
+								 "them Death's when saved); the hurt one %s; the dungeon is sent by %s"),
+							OfDeath, Standing.Num(), Saved.CreaturesSaved, Saved.StandingOfTheSender,
+							bHurtOneBack ? TEXT("back") : TEXT("NOT BACK"),
+							*UCataclysmRoster::NameFor(Scene.Mode->DungeonCataclysm).ToString()));
+
+	TestEqual(TEXT("the dungeon walked again is still Death's"), static_cast<int32>(Scene.Mode->DungeonCataclysm),
+			  static_cast<int32>(ECataclysmType::Death));
+	TestEqual(TEXT("CONTROL: every creature saved is standing, put back by the load"), Standing.Num(),
+			  Saved.CreaturesSaved);
+	TestTrue(TEXT("CONTROL: the hurt one among them with the health it had"), bHurtOneBack);
+	TestEqual(TEXT("and every creature put back deals Death"), OfDeath, Standing.Num());
 	return true;
 }
 
