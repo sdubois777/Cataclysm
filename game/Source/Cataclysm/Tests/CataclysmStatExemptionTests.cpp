@@ -13062,6 +13062,134 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * A fighter with a Fervour pool of 100 holding `Held`, and a strike on the Support key (whose slot has a cooldown
+	 * of 4), for the Death finish slice A's four probes below. Null when the skill could not be given.
+	 */
+	UCataclysmStrikeSkill* FervourSpenderOn(FScopedFighter& Fighter, float Held)
+	{
+		Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Held);
+		const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Support, /*Level=*/100, Fighter.Actor);
+		const FGameplayAbilitySpec* Spec = Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		return Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	}
+
+	/**
+	 * `skill_fervour_spend`, read by `UCataclysmSkillTemplate::SpendSoulFuel`: Soul Fuel's 10 and Deeper Draw's 1 a
+	 * point, the Death finish slice A (2026-11-26). ONE FIGHTER holding 30, with a strike on the Support key. THE CONTROL
+	 * IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: nothing is spent. Granted at a flat 12, 12 is.
+	 *
+	 * WHAT THIS DOES NOT REACH. A use and what it buys: `Cataclysm.DeathFinishSoulCollector.`.
+	 */
+	void ProbeSkillFervourSpend(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmStrikeSkill* Skill = FervourSpenderOn(Fighter, /*Held=*/30.0f);
+		if (!Test.TestNotNull(TEXT("a skill on the support key"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: with no skill_fervour_spend a use spends nothing"),
+					   Skill->SpendSoulFuel(Fighter.AbilitySystem), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmSkillTemplate::SkillFervourSpendStat, 12.0f);
+		Test.TestEqual(TEXT("with it at 12 a use spends 12, so SpendSoulFuel really reads it"),
+					   Skill->SpendSoulFuel(Fighter.AbilitySystem), 12.0f, 0.001f);
+	}
+
+	/**
+	 * `damage_per_skill_fervour_spent`, read by `UCataclysmSkillTemplate::SoulFuelIncreasePercent`, which
+	 * `CommitAndBegin` adds to a use's increases: Soul Fuel's damage, the Death finish slice A. ONE FIGHTER. THE CONTROL
+	 * IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: 10 Fervour spent buy nothing. Granted at a flat 3, they buy 30%.
+	 */
+	void ProbeDamagePerSkillFervourSpent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmStrikeSkill* Skill = FervourSpenderOn(Fighter, /*Held=*/30.0f);
+		if (!Test.TestNotNull(TEXT("a skill on the support key"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: with no damage_per_skill_fervour_spent 10 spent buy nothing"),
+					   Skill->SoulFuelIncreasePercent(Fighter.AbilitySystem, 10.0f), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmSkillTemplate::DamagePerSoulFuelFervourStat, 3.0f);
+		Test.TestEqual(TEXT("with it at 3 they buy 30%, so SoulFuelIncreasePercent really reads it"),
+					   Skill->SoulFuelIncreasePercent(Fighter.AbilitySystem, 10.0f), 30.0f, 0.001f);
+	}
+
+	/**
+	 * `area_of_effect_per_five_fervour_spent`, read by `UCataclysmSkillTemplate::AreaOfEffectMultiplier`: Pyre, the
+	 * Death finish slice A. ONE FIGHTER whose skill's last use spent 10 Fervour. THE CONTROL IS THE SAME FIGHTER BEFORE THE
+	 * STAT IS GRANTED: its area is unchanged. Granted at a flat 25, two fives make it 1.5 times.
+	 */
+	void ProbeAreaPerFiveFervourSpent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmStrikeSkill* Skill = FervourSpenderOn(Fighter, /*Held=*/30.0f);
+		if (!Test.TestNotNull(TEXT("a skill on the support key"), Skill))
+		{
+			return;
+		}
+		Skill->FervourSpentByThisUse = 10.0f;
+		Test.TestEqual(TEXT("control: with no area_of_effect_per_five_fervour_spent the area is unchanged"),
+					   Skill->AreaOfEffectMultiplier(), 1.0f, 0.001f);
+		GrantFlat(Fighter.Actor, UCataclysmSkillTemplate::AreaPerFiveFervourSpentStat, 25.0f);
+		Test.TestEqual(TEXT("with it at 25 and 10 spent, 1.5, so AreaOfEffectMultiplier really reads it"),
+					   Skill->AreaOfEffectMultiplier(), 1.5f, 0.001f);
+	}
+
+	/**
+	 * `spirit_volley_weapon_percent`, read by `UCataclysmFervour::LooseSpiritVolley` at a kill: Spirit Volley, the Death
+	 * finish slice A. ONE FIGHTER and a body. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a kill paying 3
+	 * looses no spirit. Granted at a flat 30, it looses 3.
+	 */
+	void ProbeSpiritVolleyWeaponPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		const AActor* Body = World->SpawnActor<AActor>();
+		if (!Test.TestNotNull(TEXT("a body"), Body))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: with no spirit_volley_weapon_percent a kill paying 3 looses none"),
+					   UCataclysmFervour::LooseSpiritVolley(Fighter.AbilitySystem, Body, 3.0f), 0);
+		GrantFlat(Fighter.Actor, UCataclysmFervour::SpiritVolleyWeaponPercentStat, 30.0f);
+		Test.TestEqual(TEXT("with it at 30 the kill looses 3, so LooseSpiritVolley really reads it"),
+					   UCataclysmFervour::LooseSpiritVolley(Fighter.AbilitySystem, Body, 3.0f), 3);
+	}
+
+	/**
 	 * `health_restored_on_critical_kill`, read by `UCataclysmFervour::RestoreHealthOnCriticalKill`: the Shadow's Clean
 	 * Kill, the Death trees' slice C4a (2026-11-25). ONE FIGHTER at half health. THE CONTROL IS THE SAME FIGHTER BEFORE
 	 * THE STAT IS GRANTED: nothing is restored. Granted at a flat 4, 4% of its maximum.
@@ -15061,6 +15189,11 @@ namespace CataclysmStatExemptionTest
 			{TEXT("reserved_fervour_counts_as_held_percent"), &ProbeReservedFervourCountsAsHeld},
 			{TEXT("fervour_per_kill_extra_chance"), &ProbeFervourPerKillExtraChance},
 			{TEXT("health_restored_on_critical_kill"), &ProbeHealthRestoredOnCriticalKill},
+			// THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel, Deeper Draw, Pyre and Spirit Volley.
+			{TEXT("skill_fervour_spend"), &ProbeSkillFervourSpend},
+			{TEXT("damage_per_skill_fervour_spent"), &ProbeDamagePerSkillFervourSpent},
+			{TEXT("area_of_effect_per_five_fervour_spent"), &ProbeAreaPerFiveFervourSpent},
+			{TEXT("spirit_volley_weapon_percent"), &ProbeSpiritVolleyWeaponPercent},
 			// THE DEATH TREES' SLICE C4b1 (2026-11-25): Kindred Fires and Borrowed Time.
 			{TEXT("fervour_hold_restarted_by_any_gain"), &ProbeHoldRestartedByAnyGain},
 			{TEXT("fervour_hold_extended_on_gain_seconds"), &ProbeHoldExtendedOnGainSeconds},

@@ -1432,11 +1432,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsWaitingRowsArePlaceholders
  * built (`tools/reapply_death_skills_workbook.py` names what each waits on): 33 after slice DS1, 23 after slice DS2,
  * which built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled, 14 after slice DS3, which built N5, N6,
  * N7, N8 and N10, 6 after slice DS4, which built N9, N12, N13, N15, N17 and N21, and 1 after slice DS5, which built
- * N14, N18, N19, C1 and C2: the Effigy, waiting on the Siphon keystone (C4) and a Death deployable's reserve. It is
- * offered by its weapon (`SkillsFor` keeps a named row), carries its description, and has no shape, so `TemplateFor`
- * answers null and the weapon slots grant `UCataclysmUndesignedSkill`, which says what it will do and does nothing yet.
- * THE CONTROL: across every Death weapon and the aura the table holds 51 named Death rows, of which 50 have a shape:
- * the Dagger's five, the aura and the forty-four the five slices write whole.
+ * N14, N18, N19, C1 and C2: the Effigy, waiting on the Siphon keystone (C4) and a Death deployable's reserve. AND NONE
+ * SINCE THE DEATH FINISH SLICE A (2026-11-26), which built C4 after issue #1934 had made a placed machine hold its
+ * reserve: the Effigy is written whole, a Deployable, so `TemplateFor` answers the deployable template and no Death
+ * weapon grants `UCataclysmUndesignedSkill` any more. THE CONTROL: across every Death weapon and the aura the table holds
+ * 51 named Death rows, and every one of them has a shape: the Dagger's five, the aura and the forty-five of issue #2885.
  */
 bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&)
 {
@@ -1448,23 +1448,13 @@ bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&
 		return false;
 	}
 
-	using ESlot = ECataclysmAbilitySlot;
-	const FDeathRowWaiting Waiting[] = {
-		{TEXT("Crossbow"), ESlot::Special, TEXT("Effigy")},
-	};
-	TestEqual(TEXT("set-up: 1 row waits"), static_cast<int32>(UE_ARRAY_COUNT(Waiting)), 1);
-
-	for (const FDeathRowWaiting& Row : Waiting)
-	{
-		const FCataclysmWeaponSkill Skill = DeathRowOf(Row.Weapon, Row.Slot);
-		const FString Where = FString::Printf(TEXT("%s, Death %s"), Row.Name, Row.Weapon);
-		TestEqual(*FString::Printf(TEXT("%s: offered by its weapon under its name. If empty, DT_WeaponSkills is older "
-										 "than the CSV"), *Where), Skill.Name, FString(Row.Name));
-		TestFalse(*FString::Printf(TEXT("%s: it carries its description"), *Where), Skill.Description.IsEmpty());
-		TestTrue(*FString::Printf(TEXT("%s: it has no shape yet"), *Where), Skill.Shape == ECataclysmSkillShape::None);
-		TestTrue(*FString::Printf(TEXT("%s: so no template, and the placeholder is granted"), *Where),
-				 UCataclysmWeaponSkills::TemplateFor(Skill.Shape).Get() == nullptr);
-	}
+	// THE LAST ROW THAT WAITED, NOW WHOLE.
+	const FCataclysmWeaponSkill Effigy = DeathRowOf(TEXT("Crossbow"), ECataclysmAbilitySlot::Special);
+	TestEqual(TEXT("the Effigy is offered by its weapon under its name. If empty, DT_WeaponSkills is older than the CSV"),
+			  Effigy.Name, FString(TEXT("Effigy")));
+	TestTrue(TEXT("it has its shape, a Deployable"), Effigy.Shape == ECataclysmSkillShape::Deployable);
+	TestTrue(TEXT("so a template is granted and not the placeholder"),
+			 UCataclysmWeaponSkills::TemplateFor(Effigy.Shape).Get() != nullptr);
 
 	int32 Named = 0;
 	int32 Shaped = 0;
@@ -1474,8 +1464,7 @@ bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&
 		Shaped += Skill.Shape != ECataclysmSkillShape::None ? 1 : 0;
 	}
 	TestEqual(TEXT("control: 51 named Death rows, the 45 of issue #2885, the Dagger's five and the aura"), Named, 51);
-	TestEqual(TEXT("control: of which 50 have a shape, the 44 of the five slices, the Dagger's five and the aura"),
-			  Shaped, 50);
+	TestEqual(TEXT("control: and every one has a shape, none waiting"), Shaped, 51);
 	return true;
 }
 

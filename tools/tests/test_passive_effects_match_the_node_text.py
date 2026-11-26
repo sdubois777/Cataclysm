@@ -857,7 +857,12 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 899 ON 2026-11-26: the Bulwark's Fervour for a kill, on its starting node
 #: (`tools/reapply_war_bulwark_kill_fervour_workbook.py`, the final bundle).
-AUTHORED_ROWS = 899
+#:
+#: AND TO 909 ON 2026-11-26, the Death finish slice A
+#: (`tools/reapply_death_finish_soul_collector_workbook.py`): Soul Fuel's four, Deeper
+#: Draw's, Pyre's, Soul Shatter's, Final Rites' two and Spirit Volley's. The other
+#: Death finish slices move this too; the coordinating session reconciles it.
+AUTHORED_ROWS = 909
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1391,7 +1396,9 @@ AUTHORED_ROWS = 899
 #:
 #: AND TO 497 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 400 and
 #: the War line's 323 less the 226 both had.
-AUTHORED_NODES = 497
+#: AND TO 502 ON 2026-11-26, the Death finish slice A: Soul Fuel, Deeper Draw, Pyre,
+#: Soul Shatter and Final Rites. Spirit Volley's capstone already had rows.
+AUTHORED_NODES = 502
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1555,7 +1562,8 @@ AUTHORED_NODES = 497
 #: AND TO 72 THE SAME DAY: V5c -- Bolted Together (Saboteur), the last option with no row. Its capstone already had one.
 #: AND TO 95 ON 2026-11-25, the Death trees' bundle 3 merge: the Death line's 59 and the
 #: War line's 72 less the 36 both had.
-AUTHORED_OPTIONS = 95
+#: AND TO 96 ON 2026-11-26, the Death finish slice A: Spirit Volley (issue #2908).
+AUTHORED_OPTIONS = 96
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -3227,6 +3235,15 @@ VALUE_FORMS = {
     # CHAINED SOULS, slice C3e: "8% per point of the Fervour your minions ...".
     "reserved_fervour_counts_as_held_percent": ("{value:g}% per point of the Fervour your minions",),
     "movement_on_cooldown_fervour_cost": ("by spending {value:g} Fervour", "reduced by {value:g} per point"),
+    # THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel's "spend up to 10 Fervour" and
+    # Deeper Draw's "spend 1 more Fervour per point"; Soul Fuel's "+1% increased
+    # damage for every 4 points for each Fervour they spend"; Pyre's "+1% increased
+    # Area of Effect per point for every 5 Fervour"; Spirit Volley's "for 30% of
+    # weapon damage".
+    "skill_fervour_spend": ("spend up to {value:g} Fervour", "spend {value:g} more Fervour per point"),
+    "damage_per_skill_fervour_spent": ("+{value:g}% increased damage for every 4 points for each Fervour",),
+    "area_of_effect_per_five_fervour_spent": ("+{value:g}% increased Area of Effect per point for every 5 Fervour",),
+    "spirit_volley_weapon_percent": ("for {value:g}% of weapon damage",),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
                                          "for {value:g} seconds rather than",
                                          "{value:g} second later",
@@ -4982,6 +4999,9 @@ STATED_ONCE_BESIDE_A_PER_POINT_ROW = {
 #: Fervour per second while active" are each one rate, whatever the points; the
 #: bonus beside each is the per-point figure.
 FIXED_FROM_THE_FIRST_POINT = frozenset({
+    # SOUL FUEL'S "spend up to 10 Fervour", one figure whatever the points; its
+    # damage is the "for every 4 points" series (the Death finish slice A, 2026-11-26).
+    ("SoulCollector_basic_spine_009", "skill_fervour_spend"),
     # THE SABOTEUR'S TRAP TIMING, 2026-11-25: Delayed Fuse's extra second and its
     # flag are one figure whatever the points.
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"),

@@ -31,7 +31,8 @@
  * UNDESIGNED ONE'S. The 45 Death skills the owner approved on 2026-11-24 were
  * entered with their names, descriptions and numbers, and those whose code is
  * not built yet with no shape: 33 after the first slice, 23 after the second,
- * 14 after the third, 6 after the fourth, 1 after the fifth (the Effigy);
+ * 14 after the third, 6 after the fourth, 1 after the fifth (the Effigy), and
+ * none since the Death finish slice A (2026-11-26) wrote the Effigy whole;
  * `tools/reapply_death_skills_workbook.py` holds each one's shape and the piece
  * it waits on, and writes the shape when that piece is built.
  *

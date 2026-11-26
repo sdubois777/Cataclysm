@@ -498,6 +498,84 @@ public:
 	float FervourSpentThisUse = 0.0f;
 
 	/**
+	 * Every Fervour this skill's last use spent, whatever spent it: its cost (an Ultimate's 50, Borrowed Step's use on
+	 * cooldown), Soul Fuel's spend (`SoulFuelSpentThisUse`) and a `SpendsAllFervour=1` row's rest (Requiem). Nought for a
+	 * use that spent none. The Death finish slice A (2026-11-26): what "skills that spend Fervour" reads. Written by
+	 * `CommitAndBegin` and by Requiem's spend; read by `AreaOfEffectMultiplier` for Pyre's "for every 5 Fervour they
+	 * spend", and above nought it puts `SpentFervourTag` on this skill's tags for the use (`MarkTheUseAsSpendingFervour`).
+	 * IT OUTLIVES THE CAST, as `LastNextUseIncreasePercent` does: each use writes it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float FervourSpentByThisUse = 0.0f;
+
+	/**
+	 * The Fervour Soul Fuel spent on this skill's last use: "Your skills that have a cooldown, other than movement
+	 * skills, spend up to 10 Fervour when you use them" (`SoulCollector_basic_spine_009`), at most the character's
+	 * `SkillFervourSpendStat` (10, and Deeper Draw's 1 a point) and at most what it holds. Nought for a skill Soul Fuel
+	 * does not reach (`SoulFuelReaches`). The Death finish slice A, issue #2937.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float SoulFuelSpentThisUse = 0.0f;
+
+	/**
+	 * The most Fervour Soul Fuel spends on one use: Soul Fuel's 10 (one row from its first point) and Deeper Draw's 1 a
+	 * point ("up to 20 Fervour a skill", which its tenth point reaches). Asked with the skill's tags. No attribute.
+	 */
+	static const TCHAR* SkillFervourSpendStat;
+
+	/**
+	 * The increased damage, in percent, a use deals for each whole Fervour Soul Fuel spent on it: "+1% increased damage
+	 * for every 4 points for each Fervour they spend", one row at each of 4, 8 and 12 points. Added to what the use deals
+	 * itself through `LastNextUseIncreasePercent`. No attribute.
+	 */
+	static const TCHAR* DamagePerSoulFuelFervourStat;
+
+	/**
+	 * The increased area of effect, in percent, for every whole 5 Fervour a use spent: Pyre's "+1% increased Area of
+	 * Effect per point for every 5 Fervour they spend". Read by `AreaOfEffectMultiplier` with `FervourSpentByThisUse`.
+	 * No attribute.
+	 */
+	static const TCHAR* AreaPerFiveFervourSpentStat;
+
+	/**
+	 * `Use.SpentFervour`: put on this skill's tags for a use that spent Fervour, and taken off for one that spent none,
+	 * so a passive row scoped to it ("Skills that spend Fervour": Soul Shatter's critical strike chance, Final Rites'
+	 * damage against Elite and stronger) reaches every blow of that use: its hits, the projectiles it fires (which copy
+	 * the tags) and the ground it leaves. Invalid before the tag table loads, and then nothing is marked.
+	 */
+	static FGameplayTag SpentFervourTag();
+
+	/**
+	 * Whether Soul Fuel reaches this skill. "Your skills that have a cooldown, other than movement skills": a skill with
+	 * a cooldown, not made for the movement slot. AND NOT AN ULTIMATE (the coordinating session's ruling 1 of
+	 * 2026-11-25: every Ultimate costs 50 and Soul Fuel adds nothing to one). AND NOT A SKILL WHOSE OWN ROW ALREADY SPENDS
+	 * OR HOLDS FERVOUR (ruling 2, issue #2937): the Sword's Cold Blood (`HoldsFervour=1`, its purpose is holding Fervour)
+	 * and the Wand's Requiem (`SpendsAllFervour=1`, it already spends all of it). The rule is the two keys, not the two
+	 * names, so a later row stating either is skipped too.
+	 */
+	bool SoulFuelReaches() const;
+
+	/**
+	 * Soul Fuel's spend for this use: take at most `SkillFervourSpendStat` and at most what is held, record it as a spend
+	 * (the clock, `fervour_spent` with this skill's tags, `resource_consumed`, the War count, as `ApplyCost` records a
+	 * cost), and answer it. Nought for a skill it does not reach, a character without the node, or an empty pool.
+	 */
+	float SpendSoulFuel(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The increased damage, in percent, a use buys with `Spent` Fervour of Soul Fuel's: `DamagePerSoulFuelFervourStat`,
+	 * asked with this skill's tags, for each WHOLE Fervour spent. Nought for a character without the rows, and floored
+	 * at nought. `CommitAndBegin` adds it to `LastNextUseIncreasePercent` for a use that deals damage itself.
+	 */
+	float SoulFuelIncreasePercent(const UCataclysmAbilitySystemComponent* AbilitySystem, float Spent) const;
+
+	/**
+	 * Put `SpentFervourTag` on this skill's tags when `FervourSpentByThisUse` is above nought, and take it off when it is
+	 * not. Called by `CommitAndBegin` for every use and by Requiem's spend.
+	 */
+	void MarkTheUseAsSpendingFervour();
+
+	/**
 	 * How many of its caster's Poisons, Bleeds and Necroses this skill's last swing cashed in. Issue #2885, the Death
 	 * draft's N15 (`CashInRadius`). Zero for every skill that states none. Read by tests.
 	 */

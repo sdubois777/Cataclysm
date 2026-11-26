@@ -1189,6 +1189,15 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("siphon_necrosis_chance"),
 		TEXT("siphon_life_percent"),
 		TEXT("siphon_fervour_per_second"),
+		// THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel's and Deeper Draw's most Fervour a skill spends, and Soul
+		// Fuel's increased damage for each Fervour it spent, both read by UCataclysmSkillTemplate::CommitAndBegin with
+		// the skill's tags; Pyre's increased area for every 5 Fervour a use spent, read by
+		// UCataclysmSkillTemplate::AreaOfEffectMultiplier; and Spirit Volley's percent of weapon damage a spirit deals,
+		// read by UCataclysmFervour::LooseSpiritVolley at a kill. No attribute and no base.
+		TEXT("skill_fervour_spend"),
+		TEXT("damage_per_skill_fervour_spent"),
+		TEXT("area_of_effect_per_five_fervour_spent"),
+		TEXT("spirit_volley_weapon_percent"),
 		// The Death trees' slice C3b: Bound Offering's share of a reserve held that counts as Fervour spent, read by
 		// UCataclysmCommand::HoldReserve with the making skill's tags. No gameplay attribute and no base.
 		TEXT("reserved_fervour_spent_percent"),

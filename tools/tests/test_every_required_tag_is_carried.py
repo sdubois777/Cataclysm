@@ -54,6 +54,11 @@ ENGINE_GRANTED = {
     "Keyword.DoT.Generic": (
         "AbilitySystem/CataclysmMinion.cpp",
         "the skill trap's own damage over time, ACataclysmMinion::LaySkillTrapsDamageOverTime (F9)"),
+    # THE DEATH FINISH SLICE A (2026-11-26): put on a skill's tags for a use that spent Fervour, read by Soul Shatter's
+    # and Final Rites' rows ("Skills that spend Fervour").
+    "Use.SpentFervour": (
+        "AbilitySystem/CataclysmSkillTemplate.cpp",
+        "UCataclysmSkillTemplate::SpentFervourTag, put on a use's tags by MarkTheUseAsSpendingFervour"),
 }
 
 
