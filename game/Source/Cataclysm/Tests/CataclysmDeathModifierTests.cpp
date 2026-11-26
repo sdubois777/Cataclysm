@@ -682,13 +682,35 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierSoulTetherTest,
 	TestTrue(TEXT("set-up: the huge blow killed it"), UCataclysmSkillEffects::IsDead(Frail));
 	TestEqual(TEXT("and sent back a tenth of its 100 health"), StillToCome() - Before, 10.0f, 0.05f);
 
-	// AND IT ARRIVES: over four seconds the player loses all of it.
+	// AND IT ARRIVES: over four seconds the player loses all of it, AS THE SAME DAMAGE OVER TIME WOULD TAKE. The owed
+	// figure is before the player's defences and ticks; a tick meets them as any does. So the control is the same
+	// damage over time of the owed amount, the same tag, length and tick, from the same creature, run straight after,
+	// and what the tether took must equal what it takes. Windows b4-w1 to b4-w3 (bundle 4) compared against the owed
+	// figure itself and read 37.8, then 57.0, for 65 owed, while the set-up changed under them.
 	const float Owed = StillToCome();
 	const float HealthBefore = Player.Health();
 	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
 	CataclysmTestWorld::RunClock(World, 4.5f);
-	TestEqual(TEXT("four seconds later the player has lost what was owed"), HealthBefore - Player.Health(), Owed,
-			  Owed * 0.02f);
+	const float TetherTook = HealthBefore - Player.Health();
+	TestFalse(TEXT("four seconds later the tether has run out"), UCataclysmSkillEffects::HasTag(Player.Character, Tether));
+
+	Player.SetHealth(DeathModifiersMostHealth);
+	const float ControlBefore = Player.Health();
+	const float PerTick = Owed * UCataclysmSkillEffects::BaseSecondsPerTick / UCataclysmEnemyModifiers::SoulTetherSeconds;
+	if (!TestTrue(TEXT("set-up: the control damage over time was applied"),
+				  UCataclysmSkillEffects::ApplyDamageOverTime(Tethered, Player.Character, PerTick,
+															  UCataclysmEnemyModifiers::SoulTetherSeconds, Tether,
+															  /*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 4.5f);
+	const float ControlTook = ControlBefore - Player.Health();
+	AddInfo(FString::Printf(TEXT("SOUL TETHER: %.2f owed; the tether took %.2f; the same damage over time took %.2f"), Owed,
+							TetherTook, ControlTook));
+	TestTrue(TEXT("CONTROL: the same damage over time took something"), ControlTook > 1.0f);
+	TestEqual(TEXT("four seconds later the player has lost what that damage over time takes"), TetherTook, ControlTook,
+			  ControlTook * 0.02f);
 	return true;
 }
 
@@ -738,8 +760,29 @@ CATACLYSM_DEATH_MODIFIER_TEST(FCataclysmDeathModifierFinalCurseTest,
 	TestTrue(TEXT("and the status line says so"),
 			 UCataclysmCombatOverlay::DeathModifierTextFor(Player.Character).Contains(TEXT("Final Curse")));
 	TestEqual(TEXT("set-up: nothing shields the player (Expose's current values)"), Player.Unexposed(), FString());
-	TestEqual(TEXT("a skill costs 5% of 1000 health"), SkillCost(ECataclysmAbilitySlot::Special), 50.0f, 0.5f);
-	TestEqual(TEXT("so does a movement skill"), SkillCost(ECataclysmAbilitySlot::Movement), 50.0f, 0.5f);
+
+	// THE FIGURE A SKILL COSTS, FROM THE GAME: a hit of 5% of maximum health, dealt as the curse deals it (the user's own
+	// area blow of Death on itself), meets the player's defences as any hit does. Windows b4-w1 to b4-w3 (bundle 4)
+	// compared against 50 itself and read 49.36, then 55.00, while the set-up changed under them; this compares with
+	// the same blow dealt directly.
+	FCataclysmHitDelivery AsTheCurse;
+	AsTheCurse.bIsArea = true;
+	AsTheCurse.bCannotCriticallyStrike = true;
+	AsTheCurse.bCannotLeech = true;
+	AsTheCurse.bCannotBeRetaliatedAgainst = true;
+	AsTheCurse.DamageType = FName(TEXT("Death"));
+	const float FivePercent =
+		Player.Read(Vital::GetMaxHealthAttribute()) * UCataclysmEnemyModifiers::FinalCurseMaximumHealthPercentPerUse / 100.0f;
+	const float ControlBefore = Player.Health();
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Player.Character, FivePercent, AsTheCurse);
+	const float ControlCost = ControlBefore - Player.Health();
+	Player.SetHealth(DeathModifiersMostHealth);
+	AddInfo(FString::Printf(TEXT("FINAL CURSE: 5%% of maximum health is %.2f; dealt directly as the curse deals it, it "
+								 "cost %.2f"), FivePercent, ControlCost));
+	TestTrue(TEXT("CONTROL: the same blow dealt directly costs something"), ControlCost > 1.0f);
+	TestEqual(TEXT("a skill costs what a 5% Death blow on oneself costs"), SkillCost(ECataclysmAbilitySlot::Special),
+			  ControlCost, 0.5f);
+	TestEqual(TEXT("so does a movement skill"), SkillCost(ECataclysmAbilitySlot::Movement), ControlCost, 0.5f);
 	TestEqual(TEXT("the basic attack costs nothing"), SkillCost(ECataclysmAbilitySlot::BasicAttack), 0.0f, 0.01f);
 
 	CataclysmTestWorld::RunClock(World, 5.5f);
