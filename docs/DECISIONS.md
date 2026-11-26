@@ -47,10 +47,20 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
   returns early for it. The hit is still marked (`FCataclysmHitDelivery::bIsAnExtraStrike`, carried to
   `FCataclysmHitNotice::bExtraStrike`) so a listener can tell it from the hit it repeats. WHAT STOPS AN EXTRA STRIKE
   STRIKING AGAIN is `bIsARowsAnswerToAnEvent`, which `UCataclysmShadowImages::StrikeAgain` also sets, and which stays.
-  Because of it an extra strike records no first hit and calls no crow (`NoteCriticalStrikeLanded`), as before.
   `FlurryOfTheDeadsExtraStrikesPayOnHitEffectsLikeAnyHit`: every blow critical with a flat 5 Fervour per critical
   strike, one hit with three extra strikes deals four hits' worth and pays the critical strike's Fervour four times,
   against once without Flurry; a hit delivered as an extra strike is deals one hit's worth and pays once.
+  - **AN EXTRA STRIKE THAT CRITICALLY STRIKES CALLS THE CROWS**: the coordinating session's ruling within the owner's
+    "yes", since Carrion Crows' row reads "each time you land a critical strike". The crows' filter in
+    `UCataclysmSkillEffects::ApplyHit` lets an extra strike through its `bIsARowsAnswerToAnEvent` exclusion and nothing
+    else does; the crows' own guards stay (one a `CrowCooldownSeconds`, and a crow's own strike calls no other), and
+    Flurry's own filter still keeps an extra strike out, so it strikes no extras of its own.
+    `AFlurryExtraStrikesCriticalStrikeCallsTheCrowsWithinTheirQuarterSecond`: a row's answer to an event calls no
+    crow (the control), an extra strike's critical strike calls one, another in the same instant none, and a whole
+    flurry of four critical strikes 0.3 s later one more, not four.
+  - **AN EXTRA STRIKE IS NEVER A FIRST HIT, AND THAT IS UNCHANGED**: it follows the hit that set it off, on the same
+    target, so it is never that target's first hit. `bIsARowsAnswerToAnEvent` keeps it from being recorded as one, as
+    before; the same ruling left that as it is.
 - **THE ABOMINATION AND THE BONE COLOSSUS ARE EXEMPT FROM EVERY DETONATION.** "They are vow giants, and a skill
   landing on them must not destroy them." `UCataclysmBoneGiants::IsAGiant` compares a minion with the stored giants,
   not its type, since both are drawn as a Barrow Guard; `UCataclysmDetonation` refuses them.

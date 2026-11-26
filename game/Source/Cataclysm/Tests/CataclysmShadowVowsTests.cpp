@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmShadowImages.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -895,6 +897,99 @@ bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 			  0.001f);
 	TestEqual(TEXT("AN EXTRA STRIKE STRIKES NO FURTHER EXTRAS: one hit's worth"), Lost[2] / Lost[0], 1.0f, 0.001f);
 	TestEqual(TEXT("and pays its critical strike's Fervour once"), Gained[2], Gained[0], 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowVowsFlurryCallsTheCrowsTest,
+	"Cataclysm.ShadowVows.AFlurryExtraStrikesCriticalStrikeCallsTheCrowsWithinTheirQuarterSecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The coordinating session's ruling of 2026-11-26, within the project owner's "yes" to Flurry of the Dead's extra strikes
+ * triggering on-hit effects: an extra strike that critically strikes calls the crows as any critical strike does, and the
+ * crows' own quarter second still holds. A possessed player whose every blow is a critical strike, holding Flurry of the
+ * Dead's shipped row and a running buff stating `Duration=8; Radius=10; StrikesOnCritical=1` (Carrion Crows'):
+ *   - THE CONTROL: a hit delivered as a worn row's answer to an event, and not as an extra strike, calls no crow;
+ *   - a hit delivered as `UCataclysmShadowImages::StrikeAgain` delivers an extra strike calls one;
+ *   - another in the same instant calls none: one a `CrowCooldownSeconds`;
+ *   - 0.3 s later, with three and a half steps of Fervour, one ordinary hit and its three extra strikes, all in one
+ *     instant and all critical strikes, call one more crow and not four.
+ */
+bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmShadowVowsTest;
+
+	const FCataclysmPassiveEffectRow* Shipped =
+		ShippedRow(*this, TEXT("Shadow_capstone_200"), 3, UCataclysmShadowImages::ExtraStrikesStat);
+	if (!Shipped || !TestTrue(TEXT("set-up: a step"), Shipped->ScaleStep > 0.0f))
+	{
+		return false;
+	}
+	const float Step = Shipped->ScaleStep;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FRig Rig(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Creature = CreatureAt(World, FVector(1.0f * M, 0, 0), 100'000.0f);
+	if (!Rig.IsUsable(*this) || !TestNotNull(TEXT("set-up: a creature"), Creature))
+	{
+		return false;
+	}
+	Rig.System->SetStatInputs(ShippedLines(TEXT("Shadow_capstone_200"), 3));
+	Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+
+	const FGameplayAbilitySpecHandle Handle =
+		Rig.System->GiveAbilityInSlot(UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support,
+									  /*Level=*/100, Rig.Player);
+	FGameplayAbilitySpec* Spec = Handle.IsValid() ? Rig.System->FindAbilitySpecFromHandle(Handle) : nullptr;
+	UCataclysmSelfBuffSkill* Crows = Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the crows' buff is granted"), Crows))
+	{
+		return false;
+	}
+	Crows->SkillName = TEXT("A murder of crows");
+	Crows->Params = UCataclysmSkillShapes::ParseParams(TEXT("Duration=8; Radius=10; StrikesOnCritical=1"));
+	Crows->DamagePercentOverride = 40.0f;
+	if (!TestTrue(TEXT("set-up: the buff goes up"),
+				  Rig.System->TryActivateAbility(Crows->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)))
+	{
+		return false;
+	}
+
+	FCataclysmHitDelivery AnAnswer;
+	AnAnswer.bCannotBeEvaded = true;
+	AnAnswer.bIsARowsAnswerToAnEvent = true;
+	FCataclysmHitDelivery AnExtraStrike = AnAnswer;
+	AnExtraStrike.bIsAnExtraStrike = true;
+
+	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), AnAnswer);
+	const int32 AfterTheAnswer = Crows->CrowsSent;
+	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), AnExtraStrike);
+	const int32 AfterTheExtraStrike = Crows->CrowsSent;
+	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), AnExtraStrike);
+	const int32 AfterTheSecondAtOnce = Crows->CrowsSent;
+
+	World->TimeSeconds += 0.3f;
+	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
+	FCataclysmHitDelivery Ordinary;
+	Ordinary.bCannotBeEvaded = true;
+	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), Ordinary);
+	const int32 AfterTheFlurry = Crows->CrowsSent;
+
+	AddInfo(FString::Printf(TEXT("FLURRY AND THE CROWS: %d after a row's answer, %d after an extra strike, %d after a "
+								 "second at once, %d after a flurry 0.3 s later"),
+							AfterTheAnswer, AfterTheExtraStrike, AfterTheSecondAtOnce, AfterTheFlurry));
+	TestEqual(TEXT("CONTROL: a row's answer to an event calls no crow"), AfterTheAnswer, 0);
+	TestEqual(TEXT("AN EXTRA STRIKE'S CRITICAL STRIKE CALLS ONE"), AfterTheExtraStrike, 1);
+	TestEqual(TEXT("ANOTHER IN THE SAME INSTANT CALLS NONE: one a quarter second"), AfterTheSecondAtOnce, 1);
+	TestEqual(TEXT("A FLURRY 0.3 S LATER, FOUR CRITICAL STRIKES IN ONE INSTANT, CALLS ONE MORE AND NOT FOUR"),
+			  AfterTheFlurry, 2);
 	return true;
 }
 

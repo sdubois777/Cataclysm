@@ -1536,10 +1536,15 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		// strike call a crow through a row's answer and that answer another. A skill gadget's or trap's cast takes the
 		// other path below and is the machine's blow, as a minion's is the minion's. Nothing for a blow that did not
 		// critically strike, which is nearly every one: the buffs are asked only then.
+		// BUT ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES IS LET THROUGH, though it is marked a row's answer: an extra strike
+		// that critically strikes calls the crows as any critical strike does, by the coordinating session's ruling of
+		// 2026-11-26 within the project owner's "yes" (Flurry's extra strikes trigger on-hit effects). The crows' own
+		// guards still hold: one a `CrowCooldownSeconds`, and a crow's own strike calls no other. Flurry's filter below
+		// still keeps the extra strike out, so it strikes no extras of its own.
 		if (Landed->bWasCritical && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
 			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
 			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
-			&& !Arrived.bIsARowsAnswerToAnEvent)
+			&& (!Arrived.bIsARowsAnswerToAnEvent || Arrived.bIsAnExtraStrike))
 		{
 			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
 		}
