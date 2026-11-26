@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Necromancer's army: the Legion's permanent minions, husks raised on a kill, and four vow options (the Death line's finishing slice B)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.h` and `.cpp`, new: `UCataclysmNecromancerArmy` (every
+  mechanism below) and `UCataclysmArmyMark` (what one follower carries).
+- Hooks, each one call into that file: `CataclysmSkillTemplates.cpp` (`FervourReserveFor` asks with
+  `Minion.Permanent`; `UCataclysmSummonSkill::RecordTheSkillOn` calls `MakePermanent` and `NoteMadeBy`;
+  `UCataclysmSummonSkill::ActivateAbility` calls `AfterASummon`; `UCataclysmMovementSkill::ActivateAbility` trades
+  places for Grave Swap). `CataclysmCommand.cpp` (`ThrallMinionTags` carries the tag; a thrall's health at its take is
+  asked with it; `ReserveFor` multiplies by the reserve's "more" rows). `CataclysmAbilitySystemComponent.cpp`
+  (`MultiplierForStatAgainst`, `CurrentConditions`, `ActOnSkillUse`). `CataclysmStatPipeline.h` and `.cpp` (one
+  condition, one scale). `CataclysmDamageCalculation.cpp` (`MinionDamageTakenFactor` names the follower).
+  `CataclysmRegeneration.cpp`, `CataclysmVitalAttributeSet.cpp`, `CataclysmEnemyCharacter.cpp` and
+  `CataclysmMinion.cpp` (`AttackTarget`'s blow takes Master's Edge's roll). `CataclysmPlayerClassStats.cpp` (14 names).
+- Data: `tools/reapply_death_finish_b_workbook.py`, new: the tag `Minion.Permanent` and 29 Passive Effects rows.
+  `game/Data/PassiveEffects.csv`, `game/Config/Tags/CataclysmTags.ini`, `docs/All_Things_Cataclysm.xlsx`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmNecromancerArmyTests.cpp`, new (17); thirteen probes in
+  `CataclysmStatExemptionTests.cpp`; `minion_has_your_most_maximum_health` in `CataclysmPassiveTreeTests.cpp`.
+  `tools/tests/test_death_finish_b_scripts.py`, new, and eight Python checks brought up to the code.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The coordinating session's window compiles it and runs
+  `Cataclysm.NecromancerArmy.` and `Cataclysm.StatExemption.`.
+- **`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` FAILS ON THIS BRANCH ALONE** for
+  `minion_extra_raise_chance`: Rise Together's row is written on the stat slice C's Teeming Grave reads (the
+  coordinating session's ruling of 2026-11-26, one reader), and the reader and its probe are slice C's.
+- **The Restless Dead's chance is 20%, a judgement**: the sentence says "a chance". It is the one number here no
+  sentence states. A question for the owner, with the figure in the re-apply script (`RESTLESS_DEAD_CHANCE`).
+- **Grave Swap, Shared Flesh and the thrall halves** carry judgements of their shape, each below.
+- **Many Made One is not here**: it is slice D's.
+
+### "Your permanent minions" is a tag
+
+A permanent minion "stands until it is killed" (`Necromancer_tree_summary.md`): a `Permanent=1` summon's minion
+(Barrow Guard, Exhume's Bone Reaper, Bone Choir's mages) and every thrall. The tag `Minion.Permanent` marks it.
+`UCataclysmNecromancerArmy::MakePermanent` gives it no lifespan and adds the tag to its `TypeTags`, and
+`UCataclysmCommand::ThrallMinionTags` carries it. Every read of a minion's figures is asked with those tags already,
+so each "your permanent minions" row is an ordinary row requiring the tag: its blow, explosion, damage taken, reserve,
+health and regeneration. A placed machine is never one.
+
+The reserve is asked before the minion exists, so `FervourReserveFor` adds the tag when the row makes a permanent
+minion or takes a thrall (`TagsOfARaise`). The Abomination is slice D's. It carries the tag only if slice D makes it
+permanent through `MakePermanent`. If it does, Lone Revenant's `minion_damage` and `minion_health` rows reach it
+through the tag, and slice D must not add Lone Revenant's 400% a second time from `lone_revenant_held`. The reserve
+rows cannot reach it either way: its reserve is asked with its own tags.
+
+**A permanent minion's health is kept live (a judgement).** The owner ruled on 2026-09-13 that minions update live, and
+the decisions log records health as the one figure not built ("set once at spawn"). A minion that stands until killed
+is where that matters. Lone Revenant taken mid-fight, Standing Army's next point, and First Among the Dead (whose
+minion changes as health moves) all reach a standing guard. `UCataclysmNecromancerArmy::HealthStep` does it each
+quarter second, after Bound Bones. It recomputes the type's health at the summoner's level times the summoner's
+`minion_health` and writes only the difference, as Bound Bones does. **A thrall is not kept live**: re-running a
+creature's starting attributes heals it to full. A thrall takes its permanent rows at its take: its health multiplier
+is asked with its tags now, and no `minion_health` row required `Minion.Creature`, so nothing that existed moves.
+
+### The nodes
+
+| Node | Rows | Built by |
+|---|---|---|
+| Standing Army | `minion_damage`, `minion_health` increased 3, `Minion.Permanent` | the tag |
+| Reforged | `summon_without_room_heals_permanent_percent` 10 | `AfterASummon` |
+| Motley Host | `minion_damage` increased 2, scale `minion_kinds_beyond_the_first` | new scale |
+| Old Bones | `minion_damage` increased 1, tag, `minion_seconds_active` step 30, cap 4 | the minion's age |
+| First Among the Dead | `minion_damage`, `minion_health` increased 4, tag, `minion_has_your_most_maximum_health` | new condition |
+| Master's Edge | `minion_crit_share_of_yours_percent` 4, tag | `CriticalFactorForBlow`; a thrall's own figures in `Step` |
+| Lighter Bones | `minion_reserve_percent_less` 2, tag | the tag on the reserve |
+| Will Not Stay Down | `minion_rises_again_chance` 4, tag | `FollowerDied` |
+| Rise Together | `minion_extra_raise_chance` 4, tag | **slice C's reader** |
+| Mending Dead | `minion_health_regen_percent_per_second` 1 at 2, 4 and 6 points, tag | `Step` |
+| Called to Heel | `minion_damage_taken` increased -3, tag, `minion_within_metres_of_you` 8 | the follower named in the damage calculation |
+| Lone Revenant | `minion_reserve` more 300, `minion_damage` more 400, `minion_health` more 400, tag; `lone_revenant_held` 1 | the "more" bucket; the flag for slice D |
+| Bone Lord | `summon_raises_more_permanent_minions` 2 | `AfterASummon` |
+| Carrion Host | `permanent_minion_kill_rises_as_husk_chance` 3 | `EnemyDied` |
+| Second Death | `minion_death_rises_as_husk` 1 | `FollowerDied` |
+| Harvest of the Host | `permanent_minion_kill_rises_as_husk_chance` 100 | `EnemyDied` |
+| The Restless Dead (First Rite 1) | `kill_rises_as_skeleton_chance` 20 | `EnemyDied` |
+| Grave Swap (Second Rite 1) | `movement_swaps_with_minion` 1 | `ChooseGraveSwapPartner` |
+| Lich Form (Third Rite 1) | `attack_damage`, `spell_damage` more 50 under `seconds_after_resource_full` 10; `skills_raise_husks_seconds_after_resource_full` 10 | the enchantments' clock; `RaiseLichHusk` |
+| Shared Flesh (Third Rite 2) | `damage_taken_split_with_minions` 1 | `SplitWithMinions` |
+
+"A husk that lasts 8 seconds" is Shallow Graves' husk in every figure (its lifetime, its 3 reserve, its taunt), read
+from its Summon row as Death Rattle's is. Every raise asks the pool for room first (issue #2787).
+
+### Judgements
+
+- **Motley Host's kinds**: each type row is a kind and every thrall together is one. A placed machine counts, as
+  `minions_held` counts it, because the sentence calls this the multiclass node.
+- **Old Bones' "stood"** is the time since the minion came under command (`CommandedSinceSeconds`), summoned or taken.
+- **First Among the Dead**: a tie goes to the minion commanded longest. Its bonus raises the health it is judged on,
+  so the first stays first until a bigger one rises, which is what "your biggest minion gets more" asks.
+- **Master's Edge**: a minion's own critical strike chance is nought, as "a minion never critically strikes" has it.
+  Its own multiplier is the game's default 150%, the player's. The row adds its share of the commander's to each.
+  Path of Exile 1 gives a minion a base multiplier of its own (130% against a player's 150%, by a developer's post).
+  Last Epoch's minions run the player's crit formula. The nearest shipped inheritance is PoE's Neurotoxin (base attack
+  crit chance equal to your main hand's). Rolled once per blow in `AttackTarget`. A thrall rolls its own figures, so
+  the share is added to them and kept there.
+- **Reforged**: only a `Permanent=1` summon, and only when a raise was refused for room. "Most wounded" is the largest
+  share of maximum health missing. The heal is 10% of that minion's maximum per point.
+- **Bone Lord**: two more of the press's own kind, each through `SummonOne`, which asks for room.
+- **Will Not Stay Down**: the skill that made it raises it again, 3 seconds later, where it fell, if the pool has room
+  then. A thrall is a creature that was taken, not raised, so it is not made again. Last Epoch's Summon Skeleton
+  reanimation (a chance per point, 3 seconds later, at the same spot) is the same shape. PoE 2's Reviving Minions
+  revive after a delay.
+- **Second Death**: "raised from the dead" is a minion a Death summon skill made (its tags carry `Element.Death`), one
+  risen from a dying creature, or one these rules raised. "As large as it was" is the fallen minion's maximum health,
+  its blow and its scale. A release is not a death, so it raises nothing.
+- **Carrion Host and Harvest of the Host**: the killer is the follower that dealt the last blow. Only a permanent one
+  counts.
+- **The Restless Dead**: there is no skeleton type row, so the skeleton is a husk's body at a quarter of its health and
+  blow. It lasts the husk's 8 seconds and reserves its 3, and does not taunt, which is the husk's own rule. One body
+  rises at most once: a husk from Carrion Host before a skeleton. Killed by the commander or any follower. **The 20%
+  chance** is not stated anywhere. One kill in five, with the 3 Fervour each reserves as the real limit.
+- **Lich Form**: "reaches its maximum" is `resource_full`, the full bar after reserves (`NoteClassResourceFull`).
+  "Each one raises a husk where it lands" is one husk per skill used, at the point it was aimed, within the 10
+  seconds. The basic attack is no skill (ruled 2026-09-14). A second fill restarts the 10 seconds, as "each time"
+  says. PoE 2's Unbound Avatar (a fixed "more" for 8 to 10 seconds when a bar fills) is the precedent. It also refuses
+  to refill while active, which this sentence does not ask for.
+- **Grave Swap**: a movement skill aimed within 2 metres of one of your minions, within the skill's range and in
+  sight, trades places with it, each standing where the other stood, as Vesselstep's trade does. The move's own blows
+  and effects land where it arrives. Aimed anywhere else, it moves as before. **No shipped game has a true swap**:
+  PoE's Bodyswap teleports onto a minion and destroys it, and Last Epoch's Death's Cavalry brings minions along. So
+  the swap that keeps the minion is a judgement of this sentence.
+- **Shared Flesh**: a hit, not a tick, split evenly between the character and every living minion and thrall it
+  commands, with no distance. Each minion's part is sent from the attacker and meets its own defences. It cannot be
+  evaded or retaliated against, and a minion can die of it. Applied after Interpose. PoE 2's Romira's Requital and
+  Diablo III's Life Link both share hits and not damage over time. Both take the minion's part first and stop when
+  none is left.
+
+### Research
+
+| Game | Source | What it shows |
+|---|---|---|
+| Path of Exile 2 | [poe2db, Romira's Requital](https://poe2db.tw/us/Romiras_Requital) | 10% of damage from hits taken from a companion's life first; hits only |
+| Diablo III | Life Link (Zombie Dogs), diablowiki snippet | the dogs absorb 10% of the Witch Doctor's damage while alive |
+| Path of Exile 1 | [poedb, Neurotoxin](https://poedb.tw/Neurotoxin) | minions' base attack crit chance equals your main hand's |
+| Path of Exile 1 | [a developer's post](https://devtrackers.gg/pathofexile/p/72cd0ff5-kingmaker-s-presence-buff-aoe) | minions have a base 130% crit multiplier against players' 150% |
+| Path of Exile 2 | [poe2db, Reviving Minions](https://poe2db.tw/us/Reviving_Minions) | persistent minions revive after a delay |
+| Last Epoch | Summon Skeleton's reanimation node, Icy Veins and support snippets | a chance per point to come back at the same spot 3 seconds later |
+| Path of Exile 2 | [poe2db, Unbound Avatar](https://poe2db.tw/us/Unbound_Avatar) | at a full bar, 8 to 9.9 s of 40% more elemental damage |
+| Diablo IV | [Aspect of Reanimation](https://diablo4.life/database/aspects/aspect-of-reanimation) | summons gain damage while alive, up to a cap after 10 s |
+| Path of Exile 1 | [poedb, Bodyswap of Sacrifice](https://poedb.tw/us/Bodyswap_of_Sacrifice) | a teleport onto a minion that destroys it; no true swap found |
+
+Several Last Epoch and Diablo pages refused automated reads, and those rows are search snippets. **The research
+settles the shapes.** The percentages are this game's, from the sentences. **Not settled by it**: whether a shared hit
+meets the minion's defences, and the Restless Dead's chance.
+
 ## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
 
 **Affects:**

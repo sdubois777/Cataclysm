@@ -781,6 +781,11 @@ INVENTORY = {
         "skill's: at a summon, a death, a step or a minion's blow, never with a "
         "blow of the commander's",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.cpp',
+     'FName(SkillsRaiseHusksSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Lich Form's window (the Death line's finishing slice B), asked of the "
+        "player at each skill it uses, with its own state; the clock is the "
+        "bar's, not the skill's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNecromancerArmy.cpp',
      'FName(DamageSplitWithMinionsStat), FGameplayTagContainer(), 0.0f'):
         "Shared Flesh's flag (the Death line's finishing slice B), asked of the "
         "defender before the hit resolves, as Interpose's chance is; a flag of "

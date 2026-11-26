@@ -188,18 +188,18 @@ namespace CataclysmNecromancerArmyTest
 	 * Give `Commander` the real rows of these nodes at their full points, each capstone's `Option` chosen, read as a
 	 * Death weapon reads them: what `UCataclysmPassiveTree::ModifiersFor` builds, put on its stat lines.
 	 */
-	void GiveNodes(const FArmyCommander& Commander, const TArray<FString>& Nodes,
-				   const TArray<TPair<FString, int32>>& Options = {})
+	void GiveNodes(const FArmyCommander& Commander, const TArray<const TCHAR*>& Nodes,
+				   const TArray<TPair<const TCHAR*, int32>>& Options = {})
 	{
 		FCataclysmPassiveAllocation Allocation;
-		for (const FString& Node : Nodes)
+		for (const TCHAR* Node : Nodes)
 		{
-			Allocation.Add(FName(*Node), FMath::Max(1, MaxPointsOf(*Node)));
+			Allocation.Add(FName(Node), FMath::Max(1, MaxPointsOf(Node)));
 		}
-		for (const TPair<FString, int32>& Chosen : Options)
+		for (const TPair<const TCHAR*, int32>& Chosen : Options)
 		{
-			Allocation.Add(FName(*Chosen.Key), 1);
-			Allocation.SetChosenOption(FName(*Chosen.Key), Chosen.Value);
+			Allocation.Add(FName(Chosen.Key), 1);
+			Allocation.SetChosenOption(FName(Chosen.Key), Chosen.Value);
 		}
 		TMap<FName, FCataclysmStatInputs> Inputs;
 		for (TPair<FName, TArray<FCataclysmStatModifier>>& Line : UCataclysmPassiveTree::ModifiersFor(
