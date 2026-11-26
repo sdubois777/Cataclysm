@@ -368,7 +368,7 @@ No genre research: no formula, number or new mechanic is chosen. The rule is the
 
 **Unreal, registered and not yet run.** New group **`Cataclysm.CreatureCataclysm.`, 8 tests** (none before; no other
 group begins with that string), in `game/Source/Cataclysm/Tests/CataclysmCreatureCataclysmTests.cpp`; and
-**`Cataclysm.SaveLoad.` goes from 83 to 84**. Counted by registration macro in the source. The whole suite: its base
+**`Cataclysm.SaveLoad.` goes from 83 to 84** on this slice's base. **Retaken at bundle 4:** development `9bd6ed996` registers 84, so this slice's one test makes it 85, and the bundle's head registers 87 with the Abyssal Rifts' two (`AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad` and `ARunFileFromVersion19MigratesItsRiftStateToEachRift`). Counted by registration macro in the source. The whole suite: its base
 plus 9.
 
 | Test | What it checks | Controls |
