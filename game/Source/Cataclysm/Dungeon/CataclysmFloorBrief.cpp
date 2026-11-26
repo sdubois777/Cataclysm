@@ -434,6 +434,18 @@ FCataclysmFloorBrief FCataclysmDungeonFloorRules::BriefFor(
 	Brief.SightRadiusMultiplier = SightRadiusMultiplierFor(Dungeon, Floor);
 	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore, &Brief.TwistedIn,
 				 &Brief.EveryCreatureModifier, &Brief.RuleOfChaosChange);
+	// AND WHO SENT THE DUNGEON, for the roster the population pass draws from. Slice B3, 2026-11-25.
+	Brief.Cataclysm = Dungeon.Cataclysm;
 
 	return Brief;
+}
+
+FName FCataclysmDungeonFloorRules::CreatureDamageTypeFor(ECataclysmType Cataclysm)
+{
+	// NOBODY SENT IT: the creature keeps its class's own type. See the header for why "None" must not be written.
+	if (Cataclysm == ECataclysmType::None)
+	{
+		return NAME_None;
+	}
+	return UCataclysmRoster::NameFor(Cataclysm);
 }

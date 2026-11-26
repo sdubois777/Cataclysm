@@ -362,6 +362,15 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 	Skills = UCataclysmWeaponSkills::SkillsFor(UCataclysmWeaponSkills::LoadGeneratedTable(), Entry.WeaponType,
 											   Entry.DamageType.ToString());
 	WornEntryName = Entry.Name;
+
+	// AND IT DEALS ITS ENTRY'S DAMAGE TYPE, as the corrupted former character wearing that build: a Void entry's blows
+	// meet the player's Void resistance. Ruled by the coordinating session on 2026-11-25 for slice B3. Not the dungeon's
+	// sender: it is not the Cataclysm's creature, and nothing gives it one (`ACataclysmDungeonGameMode::
+	// GiveTheDungeonsCataclysm` is not called on it). Raised again through here on every floor it hunts and after a load.
+	if (!Entry.DamageType.IsNone())
+	{
+		DamageType = Entry.DamageType;
+	}
 	return true;
 }
 

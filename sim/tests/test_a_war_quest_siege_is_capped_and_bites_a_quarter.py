@@ -1,10 +1,11 @@
-"""A War Quest Siege: at most two a wave, a quarter of the bite, growth from its arrival.
+"""A War Quest Siege: at most two a day, a quarter of the bite, growth from its arrival.
 
 THE OWNER, 2026-10-17, VERBATIM, choosing among measured options: "the first
 option, but make it up to 2 a wave. So they player isn't just stuck there forever
-waiting for the next surge to progress." `TuningConfig.quest_sieges_per_wave_max`
+waiting for the next surge to progress." `TuningConfig.quest_sieges_per_day_max`
 and `quest_siege_bite_scale` carry it, and `Dungeon.days_on_its_city` is what a
-Siege's growth counts.
+Siege's growth counts. ONE DAY AND NOT ONE WAVE since 2026-11-25 (issue #51 slice
+B4): a fall to War makes one too, and waves and falls are counted together.
 
 EVERY CASE HAS A CONTROL that the rule must leave alone.
 """
@@ -28,7 +29,7 @@ def simulation(cataclysm: str, seed: int = 0, **over) -> Simulation:
 
 def test_the_numbers_are_the_owners() -> None:
     cfg = TuningConfig()
-    assert cfg.quest_sieges_per_wave_max == 2
+    assert cfg.quest_sieges_per_day_max == 2
     assert cfg.quest_siege_bite_scale == 0.25
 
 
@@ -51,12 +52,19 @@ def test_a_war_wave_carries_at_most_two_quest_dungeons() -> None:
             "CONTROL: only a Cataclysm whose Quest dungeons are Sieges is capped")
 
 
-def test_the_cap_is_per_wave() -> None:
+def test_the_cap_is_per_day() -> None:
+    """Two waves on one day make two War Quest Sieges between them, since
+    2026-11-25; until then this was `test_the_cap_is_per_wave` and asserted four.
+    CONTROL: a wave on the next day makes two more."""
     sim = simulation("War", quest_dungeon_chance=1.0, surge_opening_count=4, surge_dungeon_count=4)
     sim.trigger_surge()
     sim.trigger_surge()
     quests = [d for d in sim.dungeons.values() if d.dtype is DungeonType.QUEST]
-    assert len(quests) == 4, "two waves, two each"
+    assert len(quests) == 2, "two waves on one day, two between them"
+    sim.day += 1
+    sim.trigger_surge()
+    quests = [d for d in sim.dungeons.values() if d.dtype is DungeonType.QUEST]
+    assert len(quests) == 4, "CONTROL: the next day's wave makes two more"
 
 
 def two_outposts(sim: Simulation):

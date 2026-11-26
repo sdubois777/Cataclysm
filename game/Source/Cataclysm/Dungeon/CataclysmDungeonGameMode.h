@@ -303,6 +303,27 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmCityTier DungeonCityTier = ECataclysmCityTier::Outpost;
 
+	/**
+	 * Which Cataclysm sent the dungeon being walked: `FCataclysmDungeon::Cataclysm`, copied by `BindEmpireDungeon`, put
+	 * back to `None` by `LeaveEmpireDungeon`, and handed to the floor rules by `DungeonIdentity`. Slice B3 of the Death
+	 * and War plan, 2026-11-25.
+	 *
+	 * EVERY CREATURE THE DUNGEON PLACES BELONGS TO IT (`GiveTheDungeonsCataclysm`): a Death dungeon's creatures deal
+	 * Death and draw Death and Generic modifiers. `None`, which every floor with no empire dungeon behind it carries,
+	 * leaves each creature Demonic, its class's own type.
+	 *
+	 * A FALLEN CITY, WHICH NOBODY SENT, TAKES THE CATACLYSM THAT FELLED ITS CITY HERE (`BindEmpireDungeon`, reading
+	 * `FCataclysmCity::FellTo`), and the run's newest active Cataclysm when the city records nobody, as a city felled in
+	 * a version 20 run does. Ruled by the coordinating session on 2026-11-25; its empire record still names nobody.
+	 *
+	 * EDITABLE HERE for the reason `DungeonSubType` is: pressing Play in `L_Dungeon` builds a floor with no empire behind
+	 * it, and a floor should be able to be told what it is standing in.
+	 *
+	 * NOT SAVED HERE: a resumed walk binds the saved empire dungeon again, and its `Cataclysm` is saved.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	ECataclysmType DungeonCataclysm = ECataclysmType::None;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
@@ -1475,10 +1496,41 @@ public:
 	 * zero and it is the only creature in the roster with none, so calling
 	 * `SetArmour(0)` would look like a figure somebody chose. The sandbox's own
 	 * Imp spawner says the same thing.
+	 *
+	 * AND, FIRST OF ALL, THE CATACLYSM THAT SENT THE DUNGEON, before its modifiers are drawn, because the draw reads
+	 * it: `GiveTheDungeonsCataclysm`. Slice B3, 2026-11-25. With no dungeon bound, which is a test calling this on a
+	 * bare game mode, nothing changes.
 	 */
 	void ApplyDesignedStats(ACataclysmEnemyCharacter* Enemy,
 							ECataclysmDungeonCreature Creature,
 							int32 FixedRung = -1) const;
+
+	/**
+	 * Makes one creature belong to the Cataclysm that sent the dungeon being walked: its `DamageType` becomes
+	 * `FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm)`, so its blows meet that Cataclysm's
+	 * resistance, a player's "damage against" that Cataclysm reads it, and a draw of its modifiers made after this pools
+	 * that Cataclysm's column and the Generic one (`UCataclysmEnemyModifiers::PoolFor`). Slice B3 of the Death and War
+	 * plan, 2026-11-25; the owner accepted it on 2026-11-24 (Q16).
+	 *
+	 * NOTHING WHEN NOBODY SENT IT (`DungeonCataclysm` is `None`): a Fallen City, a floor with no empire dungeon behind
+	 * it, every test that binds none. The creature keeps its class's own type, Demonic, as every creature did before.
+	 *
+	 * IT DRAWS NOTHING AND WRITES NOTHING ELSE, so it adds no draw to any stream and moves no figure: a creature's
+	 * stats do not read its damage type. A Demonic dungeon's creatures come out exactly as they did.
+	 *
+	 * TWO CALLERS: `ApplyDesignedStats`, which every creature the floor places goes through (the population, a
+	 * Horde wave, and every rule arrival placed through `SpawnPlacedCreature`); and `FCataclysmSaveApply::
+	 * DungeonFloorInto`, for a creature a load puts back, whose record holds no damage type -- the bound dungeon's
+	 * `Cataclysm` is saved, as `DungeonCityTier`'s ring is. Public for that second caller and for the tests.
+	 *
+	 * NOT THE OBJECTS A RULE STANDS ON A FLOOR (a Chorus's source, a Bloom, a Spire, a Heavenly Core and the others
+	 * spawned directly), which never strike and keep their class's type; NOT THE CORRUPTED STALKER OR THE CORRUPTED
+	 * DOUBLE, which are a player's build and not the Cataclysm's creatures, and deal their build's own type
+	 * (`ACataclysmCorruptedStalkerCharacter::WearTheBuild`, `ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`).
+	 * The Gatekeeper's called Imps take the Gatekeeper's own (`ACataclysmGatekeeperCharacter`). `docs/DECISIONS.md`,
+	 * 2026-11-25, lists every spawn site.
+	 */
+	void GiveTheDungeonsCataclysm(ACataclysmEnemyCharacter* Enemy) const;
 
 private:
 	/**
@@ -1486,7 +1538,9 @@ private:
 	 *
 	 * PRIVATE, unlike the wave state above, because it is bookkeeping for the
 	 * tick and says nothing about the dungeon. A test drives
-	 * `BringTheNextWaveIn` or ticks this actor rather than reading it.
+	 * `BringTheNextWaveIn` or ticks this actor rather than writing it. ONE
+	 * READER SINCE 2026-11-24: `SecondsTowardTheNextBeat`, for the pause's
+	 * tests, which tick the whole world and ask whether this clock moved.
 	 */
 	float SinceWaveCheckSeconds = 0.0f;
 
@@ -2369,6 +2423,18 @@ private:
 	void NoteDeathForDeadRising(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Death's Undying Will and Haunting, two ENEMY modifiers rather than floor rules, on every death. 2026-11-24, ahead
+	 * of their window. Here because only the dungeon can place a creature: Undying Will puts the creature that carried
+	 * it back where it fell, at its kind and rung, with half its maximum health and 50% increased damage; Haunting
+	 * leaves a Common of its kind there at half health, whose hits cut the player's resistances. Each is asked of
+	 * `UCataclysmEnemyModifiers::UndyingWillRaises` and `HauntingLeavesACopy`, whose guard is the death paying, so a
+	 * creature either rule brought back never brings anything back itself. A creature that is none of the seven kinds
+	 * this dungeon places leaves nothing, the refusal Dead Rising and Vengeful Wraiths make. Neither asks who killed it.
+	 */
+	void NoteDeathForUndyingWill(const struct FCataclysmDeathNotice& Notice);
+	void NoteDeathForHaunting(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * Demonic Blood Gates, on every death. Issues #1820 and #41.
 	 *
 	 * COUNTS THE PLAYER'S KILLS OF UNMARKED CREATURES, and nothing else: a death to any
@@ -2506,7 +2572,8 @@ public:
 	/**
 	 * Whether a soul may feed this creature: it stands, it is a demon (`SoulHarvestTakesAsADemon` of its damage type),
 	 * and it is the player's enemy, which a thrall the player took is not. Asked by a floating soul of its own demon
-	 * every step, issue #1671.
+	 * every step, issue #1671. A DEMON IS ONE OF THE DUNGEON'S OWN CREATURES since slice B3 (2026-11-25): of the type
+	 * `DungeonCataclysm`'s creatures deal, Demonic when nobody sent the dungeon.
 	 */
 	bool SoulHarvestMayFeed(const ACataclysmEnemyCharacter* Creature) const;
 
@@ -2729,6 +2796,12 @@ public:
 	 * Read off the bound dungeon and not copied onto the game mode, so nothing is left to reset when the walk ends.
 	 */
 	bool IsARift() const;
+
+	/**
+	 * Whether the dungeon being walked is an Abomination lair: `FCataclysmDungeon::IsALair`, a Quest dungeon Death sent.
+	 * False with nothing bound. Read off the bound dungeon, as `IsARift` is. Issue #51 slice B5.
+	 */
+	bool IsALair() const;
 
 	/**
 	 * How many of the Rift's altars this floor holds by the ruling, `FCataclysmDungeonFloorRules::RiftAltarsOnFloor`
@@ -3262,7 +3335,8 @@ public:
 	 * THE RULE THAT RAISED THIS CREATURE IN PLAY AND WOULD KNOW IT AGAIN, by a plain tag, and its group: true only for a
 	 * creature in one of these rules' lists -- the tithe's angels, the relics' spirits, the totems' Elites, the banner's
 	 * assailants, and a Pandora's Box's standing wave, its group the wave's index; and, since 3d-3b and 3d-4, the kinds
-	 * the tags below name, a portal's creature's group the portal's index. Any other creature answers false, and the save
+	 * the tags below name, a portal's creature's group the portal's index, and since issue #2864 an Abyssal Rift's
+	 * hunter's group its rift's index. Any other creature answers false, and the save
 	 * skips it if a rule raised it. Issue #753, Group 3d-3a, ruled 2026-10-31.
 	 */
 	bool RaisedByOf(const ACataclysmEnemyCharacter& Creature, FName& OutTag, int32& OutGroup) const;
@@ -3284,6 +3358,7 @@ public:
 	static constexpr const TCHAR* RaisedUnstablePortalWarden = TEXT("UnstablePortalWarden");
 	static constexpr const TCHAR* RaisedTheReaper = TEXT("TheReaper");
 	static constexpr const TCHAR* RaisedPortalUnleashing = TEXT("PortalUnleashing");
+	static constexpr const TCHAR* RaisedAbyssalRiftHunter = TEXT("AbyssalRiftHunter");
 
 	/** Trick or Treat, for tests: the pair a trick raised that still stands. Issue #753, Group 3d-4a. */
 	TArray<ACataclysmEnemyCharacter*> TrickOrTreatPairStanding() const;
@@ -3559,31 +3634,36 @@ public:
 	/** The Infested Hoard, for the panel and tests: the Infestation stacks the player holds. */
 	int32 InfestedHoardStacksHeld() const { return InfestedHoardStacks; }
 
-	/** Abyssal Rifts, for the panel and tests: where this floor's rift stands in its life. */
-	enum class ERiftState : uint8
-	{
-		Waiting,
-		Open,
-		Closed
-	};
+	/**
+	 * Abyssal Rifts, for the panel and tests: this floor's rifts still standing, in the order the floor placed them.
+	 * Issue #2864. A rift killed is not here; its place in the rule's list is kept (`AbyssalRiftsPlaced`).
+	 */
+	TArray<ACataclysmEnemyCharacter*> AbyssalRiftsNow() const;
 
-	/** Abyssal Rifts, for tests: this floor's rift, or null once it has closed or on a floor with none. */
-	ACataclysmEnemyCharacter* AbyssalRiftNow() const { return AbyssalRift.Get(); }
+	/** Abyssal Rifts, for tests and the save: how many rifts this floor placed, standing or killed. Issue #2864. */
+	int32 AbyssalRiftsPlaced() const { return AbyssalRifts.Num(); }
 
-	/** Abyssal Rifts, for tests: the rift's zone, or null before its first beat and once it has closed. */
-	class ACataclysmGroundZone* AbyssalRiftZoneNow() const { return AbyssalRiftZone.Get(); }
+	/** Abyssal Rifts, for tests: the zone drawn around `Rift`, or null. */
+	class ACataclysmGroundZone* AbyssalRiftZoneOf(const ACataclysmEnemyCharacter* Rift) const;
 
-	/** Abyssal Rifts, for tests: the rift's state. */
-	ERiftState AbyssalRiftStateNow() const { return AbyssalRiftState; }
+	/** Abyssal Rifts, for the panel and tests: the hunters `Rift` sent that still stand. Issue #2864. */
+	TArray<ACataclysmEnemyCharacter*> HuntersOf(const ACataclysmEnemyCharacter* Rift) const;
 
-	/** Abyssal Rifts, for the panel and tests: the rifts closed in time this dungeon. */
+	/** Abyssal Rifts, for tests: every hunter this floor's rifts sent that still stands, a killed rift's included. */
+	TArray<ACataclysmEnemyCharacter*> AbyssalRiftHuntersStanding() const;
+
+	/** Abyssal Rifts, for tests and the panel: how long `Rift` has stood, in seconds, or a negative number. #2864. */
+	float AbyssalRiftSecondsAliveOf(const ACataclysmEnemyCharacter* Rift) const;
+
+	/** Abyssal Rifts, for the panel and tests: the rifts destroyed this dungeon. */
 	int32 AbyssalRiftSuccessesHeld() const { return AbyssalRiftSuccesses; }
 
-	/** Abyssal Rifts, for the panel and tests: the creatures the rift sent that still stand. */
-	TArray<ACataclysmEnemyCharacter*> AbyssalRiftCreaturesStanding() const;
-
-	/** The health a rift is given: the Imp's at Common, 87, as the other floor sources have. */
-	float AbyssalRiftHealth() const { return ImpHealth; }
+	/**
+	 * The health a rift is built with before its Boss rung's scale, on this floor: what the floor's enemy score gives
+	 * the Baseline archetype at the Boss rung, times `AbyssalRiftsHealthMultiplier`. Twice the Imp's fixed figure at
+	 * Common when the tables are missing, as a floor source's fallback. Issue #2864.
+	 */
+	float AbyssalRiftStartingHealth() const;
 
 	/** Swarm of Locusts, for tests: the swarm on the floor, or null between swarms. */
 	class ACataclysmGroundZone* SwarmOfLocustsNow() const { return SwarmOfLocusts.Get(); }
@@ -3758,6 +3838,13 @@ public:
 	float SecondsOnThisFloor() const { return FloorSecondsSincePlaced; }
 
 	/**
+	 * Seconds `Tick` has counted toward the next beat: the clock every timed floor rule counts by, The Reaper's ten
+	 * seconds among them, since each beat hands its rules the time it covered. Read by the pause's tests, which tick the
+	 * world and ask whether it moved; a paused world does not tick this game mode. 2026-11-24.
+	 */
+	float SecondsTowardTheNextBeat() const { return SinceWaveCheckSeconds; }
+
+	/**
 	 * The seconds after placing at which this floor or wave was first found cleared, or -1 while it has not
 	 * been. The same moment is logged, with the floor's number and cell count, whether or not any rule is
 	 * on, so the time Trial of Endurance allows can be tuned from play. Issues #1820 and #41.
@@ -3849,6 +3936,14 @@ private:
 
 	/** Records `Boss` as the boss of a Rift's last floor, the one `RiftBossNow` answers. Issue #51 slice B1. */
 	void NoteTheRiftBoss(ACataclysmEnemyCharacter* Boss);
+
+	/**
+	 * Makes `Boss`, the Gatekeeper on a lair's last wave, its Cursed Abomination: the flag, its gear's step, and, when
+	 * `bScale`, its health and damage times the lair's `AbominationMultiplier` -- through its starting health and its
+	 * placed damage multiplier, which a save keeps, as an Abyssal Rift's hunter is made stronger. A load passes false,
+	 * since the record already carries both. Issue #51 slice B5.
+	 */
+	void MakeTheCursedAbomination(ACataclysmEnemyCharacter* Boss, bool bScale);
 
 	/** Forgets the Rift's boss, as a floor is populated and as the dungeon is left. */
 	void ForgetTheRiftBoss();
@@ -4197,22 +4292,26 @@ private:
 	/** `Count` of the floor's own kinds beside `Where`, at Common; the floor's creatures when `bTheFloors`. */
 	TArray<ACataclysmEnemyCharacter*> InfectionBloomSend(const FVector& Where, int32 Count, bool bTheFloors);
 
-	/** Abyssal Rifts: this floor's rift, placed where a new arena is populated. None on a Horde arena. */
-	void PlaceTheRift();
+	/** Abyssal Rifts: this floor's rifts, placed where a new arena is populated. None on a Horde arena. Issue #2864. */
+	void PlaceTheRifts();
 
-	/** The rift and its zone destroyed and forgotten. Its creatures are the floor's and stay; the successes stay. */
-	void ForgetTheRift();
-
-	/** The rift closes: destroyed with its zone, with a success or without. */
-	void CloseTheRift(bool bInTime);
+	/** Every rift, its zone and every hunter it sent destroyed and forgotten. The successes stay. */
+	void ForgetTheRifts();
 
 	/**
-	 * Abyssal Rifts, on the beat: the reward written on the player when the successes changed, the rift's zone kept
-	 * drawn, the rift opening when the player comes near, its waves, and its closing in time or not.
+	 * One rift gone, with its zone: it sends no more. Its hunters stay, and its place in the list is kept. A rift
+	 * killed in play goes through its own death; `bDestroyTheRift` destroys one a load closes.
+	 */
+	void CloseTheRiftAt(int32 Index, bool bDestroyTheRift);
+
+	/**
+	 * Abyssal Rifts, on the beat: the reward written on the player when the successes changed, each rift's zone kept
+	 * drawn, its age counted, and a hunter sent by each rift whose clock has run and whose own hunters standing are
+	 * under the cap, as strong as the rift's age makes it.
 	 */
 	void StepAbyssalRifts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
-	/** Abyssal Rifts: the player's death ends the successes and their magic find. */
+	/** Abyssal Rifts: a rift killed is a success and sends no more; the player's death ends the successes. */
 	void NoteDeathForAbyssalRifts(const struct FCataclysmDeathNotice& Notice);
 
 	/** Swarm of Locusts: this arena's shelters chosen, where a new arena is populated. Drawn on the next beat. */
@@ -6318,19 +6417,28 @@ private:
 	int32 InfestedHoardPanelStacks = -1;
 
 	/**
-	 * Abyssal Rifts: this floor's rift and its zone, its state, how long it has been open, the waves it has sent and
-	 * the creatures in them, the dungeon's successes and what was last written on the player, and what the panel
-	 * last showed. Issues #1820 and #41.
+	 * Abyssal Rifts: one rift, the zone drawn around it, how long it has stood, the seconds since it last sent a
+	 * hunter, whether it has been killed, and the hunters it sent. Issues #1820, #41 and #2864. A KILLED RIFT KEEPS ITS
+	 * PLACE IN THE LIST, so the save names each rift and each hunter's rift by the same index the rebuilt floor gives.
 	 */
-	TWeakObjectPtr<ACataclysmEnemyCharacter> AbyssalRift;
-	TWeakObjectPtr<class ACataclysmGroundZone> AbyssalRiftZone;
-	ERiftState AbyssalRiftState = ERiftState::Waiting;
-	float AbyssalRiftSecondsOpen = 0.0f;
-	int32 AbyssalRiftWavesSent = 0;
-	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> AbyssalRiftCreatures;
+	struct FAbyssalRift
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Rift;
+		TWeakObjectPtr<class ACataclysmGroundZone> Zone;
+		float SecondsAlive = 0.0f;
+		float SecondsSinceLastSent = 0.0f;
+		bool bClosed = false;
+		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Sent;
+	};
+
+	/**
+	 * Abyssal Rifts: this floor's rifts, the dungeon's successes and what was last written on the player, and what the
+	 * panel last showed. Issues #1820, #41 and #2864.
+	 */
+	TArray<FAbyssalRift> AbyssalRifts;
 	int32 AbyssalRiftSuccesses = 0;
 	int32 AbyssalRiftSuccessesApplied = 0;
-	int32 AbyssalRiftPanelSecond = -1;
+	int32 AbyssalRiftPanelKey = -1;
 
 	/**
 	 * Swarm of Locusts: the swarm on the floor, its travel, how long since it appeared and since the last one

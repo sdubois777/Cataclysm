@@ -1445,7 +1445,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// THE WHOLE OF EVERYTHING ELSE, AS BEFORE. The share is one for every hit,
 	// for every tick that is not a bleed, and for a bleed on a character whose
 	// shield takes bleed whole, and the stat is not read for any of them.
-	const float ShieldShare = bShieldApplies
+	//
+	// AND NONE AT ALL OF A BLOW THAT IGNORES THE SHIELD: Death's Soul Eater, "Completely ignores player energy
+	// shields", 2026-11-24. The whole of it goes on to health, whatever the shield holds and whatever kind of blow it
+	// is; nothing that asks what the shield absorbed sees anything for it.
+	const float ShieldShare = Hit.bIgnoresEnergyShield
+		? 0.0f
+		: bShieldApplies
 		? 1.0f
 		: FMath::Clamp(
 			  DefenderStat(Defender, BleedDamageTakenFromEnergyShieldStat, 0.0f),

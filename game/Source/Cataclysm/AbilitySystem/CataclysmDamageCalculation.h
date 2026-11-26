@@ -147,6 +147,14 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bCannotBeMitigated = false;
 
 	/**
+	 * Whether this blow passes the defender's energy shield by and goes to health. Death's Soul Eater, "Completely
+	 * ignores player energy shields", 2026-11-24. Read into here by `UCataclysmVitalAttributeSet` off the creature that
+	 * caused the blow, as `bCannotBeEvaded` is, and read once in `Resolve`: step 8 takes nothing. Every other step,
+	 * the temporary absorb and mana included, meets the blow as it would meet any other; the row names the shield.
+	 */
+	bool bIgnoresEnergyShield = false;
+
+	/**
 	 * The attacker's chance to critically strike, 0-100.
 	 *
 	 * READ OFF THE ATTACKER AND CARRIED, for the same reason the two penetration

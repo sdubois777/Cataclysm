@@ -3329,6 +3329,20 @@ public:
 	float NecrosisDeniedHealing = 0.0f;
 
 	/**
+	 * Death's Mortal Reminder on this character: the health no heal may take it above, and the world time that ends.
+	 * "Attacks apply a debuff that prevents the player from being healed above their current HP for 4 seconds." Written
+	 * 2026-11-24, ahead of its window, by `UCataclysmEnemyModifiers::MortalReminderOnHit`, and read through
+	 * `UCataclysmEnemyModifiers::RecoveryCeilingOn` by `UCataclysmRegeneration::HealthHealingCeiling`, which every heal
+	 * of health asks. Negative ceiling for none. ON THE ABILITY SYSTEM AND NOT ONLY AS A STATUS EFFECT because a tag
+	 * carries no figure and the ceiling is the health the hit left. Until 2026-11-25 there was no tag at all, the
+	 * Debuffs sheet having no Mortal Reminder row; the row was added then, on the owner's acceptance of 2026-11-24, and
+	 * `Status.Debuff.MortalReminder` is laid beside this for the same four seconds so the player's effects list names
+	 * it. Not written to a save: four seconds.
+	 */
+	float MortalReminderCeiling = -1.0f;
+	double MortalReminderEndsAtSeconds = -1.0;
+
+	/**
 	 * Whether a movement sample has looked at this character yet.
 	 * Issue #41, slice 2.
 	 */

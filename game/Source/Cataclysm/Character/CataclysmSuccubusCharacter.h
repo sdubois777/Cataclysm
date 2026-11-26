@@ -400,6 +400,13 @@ public:
 	static const TCHAR* DominionEffectName;
 
 	/**
+	 * Withered Touch and Commander, the two effects its abilities apply: Wither the Living's curse and Dominion's
+	 * buff. No modifier of the same name is drawn for it (`ACataclysmEnemyCharacter::InnateEffectNames`), so a
+	 * Succubus in a War dungeon never rolls `War_Commander`, which its Dominion already is. 2026-11-25.
+	 */
+	virtual TArray<FString> InnateEffectNames() const override;
+
+	/**
 	 * Seconds between one sweep for allies and the next.
 	 *
 	 * A TIMER RATHER THAN Tick, which is what `UCataclysmAuraSkill` does for the

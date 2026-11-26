@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCharacterBase.h"
+// For Death's Final Curse, paid where a skill use is announced. 2026-11-24.
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Engine/World.h"
 #include "GameplayEffectExtension.h"
 
@@ -416,6 +418,12 @@ void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillNam
 										   const FGameplayTagContainer& SkillTags,
 										   ECataclysmAbilitySlot Slot, const FVector* Aim, bool bHasCooldown)
 {
+	// DEATH'S FINAL CURSE IS PAID HERE, BEFORE THE ANNOUNCEMENT AND WHETHER OR NOT ANYTHING LISTENS, 2026-11-24, ahead of
+	// its window: "causing them to take damage when using abilities". This is the one place every skill paid for is
+	// announced -- the eight shapes, the basic attack and a trap's press -- so one call reaches every use, and the
+	// basic attack is told apart by its slot. It does nothing for a user who is not cursed.
+	UCataclysmEnemyModifiers::FinalCurseOnSkillUse(User, Slot == ECataclysmAbilitySlot::BasicAttack);
+
 	UCataclysmCombatEvents* Events = User ? In(User->GetWorld()) : nullptr;
 	if (!Events || !Events->OnSkillUsed.IsBound())
 	{

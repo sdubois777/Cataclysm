@@ -17,6 +17,18 @@ from .modifiers import CORRUPTED_STALKER, DEMONIC_GUIDE, pool_for
 from .patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 from .world import City, Empire, build_empire
 
+
+@dataclass(frozen=True)
+class _Carrying:
+    """What `Simulation._quest_refuge` reads of the dungeon it places: its
+    sub-type, for the one-Siege-per-city refusal. The lair a fall makes is
+    placed before it is made, so it is described by this."""
+    subtype: str
+
+
+#: A dungeon carrying no Siege: an Abomination lair, a Horde (issue #51 slice B5).
+_CARRIES_NO_SIEGE = _Carrying("Horde")
+
 # DungeonType -> the string keys scoring.py uses.
 SCORING_TYPE = {
     DungeonType.BASIC: "Basic",
@@ -153,12 +165,17 @@ class Dungeon:
     #: own: a short Rift's rolled depth (`TuningConfig.rift_floors`, issue #51).
     #: 0, for every other dungeon, means its own `floors`.
     strength_floors: int = 0
+    #: The cities fallen when this dungeon appeared, set for an Abomination lair
+    #: (a Quest dungeon Death sent) and 0 for every other. A lair made by a
+    #: city's fall counts that city (L1). Issue #51 slice B5; the game's
+    #: `FCataclysmDungeon::CitiesFallenBefore`.
+    cities_fallen_before: int = 0
 
     def days_on_its_city(self, day: int) -> int:
         """Days this dungeon has stood on the city it stands on now.
 
         WHAT A SIEGE'S GROWTH COUNTS, since 2026-10-17 (the owner's choice is
-        quoted at `TuningConfig.quest_sieges_per_wave_max`). Only a Quest
+        quoted at `TuningConfig.quest_sieges_per_day_max`). Only a Quest
         dungeon moves, so for every other dungeon this is its age. NEVER
         NEGATIVE: a dungeon built by hand in a test may carry a spawn day later
         than the clock, and a negative age would heal the city.
@@ -337,6 +354,17 @@ class Simulation:
         self.rifts_opened = 0
         self.rift_spawns = 0
         self.surges_from_rift_deaths = 0
+        #: War Quest Sieges a city's fall to War made (issue #51 slice B4).
+        self.war_sieges_on_a_fall = 0
+        #: Abomination lairs a city's fall made while Death was active (issue
+        #: #51 slice B5).
+        self.lairs_on_a_fall = 0
+        #: The Cataclysm whose hit is being dealt, set by each of the three hits
+        #: that can fell a city just before it checks for the fall, and read and
+        #: cleared by `_fall`. AN ATTRIBUTE AND NOT A PARAMETER, so every call
+        #: keeps the one shape the port tests read (the city alone), as the
+        #: game's `UCataclysmEmpireRun::HitBy` does. Issue #51 slice B4.
+        self.hit_by = ""
         #: The last dungeon each Rift sent, by the Rift's id, for
         #: `rift_one_sent_at_a_time`.
         self.rift_sent: dict[int, int] = {}
@@ -564,6 +592,11 @@ class Simulation:
             d.tree_floors = 0
         if subtype == "Hollow":
             d.hollow_from = natural
+        # AN ABOMINATION LAIR COUNTS THE CITIES FALLEN AS IT APPEARS (issue #51
+        # slice B5). Read here, where the Cataclysm making it is known, and not
+        # by the caller. NO DRAW.
+        if cfg.death_lairs and dtype is DungeonType.QUEST and self.making_for == "Death":
+            d.cities_fallen_before = len(self.empire.fallen_cities())
         self._next_did += 1
         self.dungeons[d.did] = d
         return d
@@ -684,6 +717,7 @@ class Simulation:
             extra_cap=(cfg.ascendant_extra_modifiers_cap
                        if d.subtype == "Ascendant" else 0),
             strength_floors=d.strength_floors,
+            boss_score_multiplier=self.abomination_multiplier(d),
         )
 
     def average_modifier_score(self) -> float:
@@ -853,7 +887,10 @@ class Simulation:
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
         count = max(1, int(round(self.surge_count(from_empty_board) * volume)))
         quest_chance = self.quest_chance(volume)
-        quest_sieges: dict[str, int] = {}
+        # THE DAY'S, NOT THE WAVE'S, since 2026-11-25: the Quest Sieges already
+        # made today by an earlier wave or a fall count. See
+        # `TuningConfig.quest_sieges_per_day_max`.
+        quest_sieges: dict[str, int] = self.quest_sieges_made_today()
 
         for _ in range(count):
             idx = self.rng.choices(range(len(self.active_types)),
@@ -877,12 +914,13 @@ class Simulation:
                      if self.rng.random() < quest_chance
                      else DungeonType.BASIC)
 
-            # AT MOST `quest_sieges_per_wave_max` SIEGE-CARRYING QUEST DUNGEONS
-            # FROM ONE CATACLYSM IN ONE WAVE, since 2026-10-17; a further Quest
-            # roll makes an ordinary dungeon. `TuningConfig` quotes the owner.
+            # AT MOST `quest_sieges_per_day_max` SIEGE-CARRYING QUEST DUNGEONS
+            # FROM ONE CATACLYSM MADE ON ONE DAY, since 2026-10-17 (one wave
+            # until 2026-11-25); a further Quest roll makes an ordinary dungeon.
+            # `TuningConfig` quotes the owner.
             if (dtype is DungeonType.QUEST
                     and cfg.QUEST_SUBTYPE_BY_CATACLYSM.get(ctype) == "Siege"):
-                if quest_sieges.get(ctype, 0) >= cfg.quest_sieges_per_wave_max:
+                if quest_sieges.get(ctype, 0) >= cfg.quest_sieges_per_day_max:
                     dtype = DungeonType.BASIC
                 else:
                     quest_sieges[ctype] = quest_sieges.get(ctype, 0) + 1
@@ -1028,6 +1066,21 @@ class Simulation:
             self.surges_from_empty_board += 1
 
     # -- Demonic's Rifts (issue #51) ---------------------------------------
+
+    def is_lair(self, d: Dungeon) -> bool:
+        """Whether `d` is an Abomination lair: a Quest dungeon Death sent, with
+        `TuningConfig.death_lairs` on. Issue #51 slice B5; the game's
+        `FCataclysmDungeon::IsALair`."""
+        return (self.cfg.death_lairs and d.dtype is DungeonType.QUEST
+                and d.source == "Death")
+
+    def abomination_multiplier(self, d: Dungeon) -> float:
+        """What a lair's boss's health and damage are multiplied by:
+        `abomination_step` to the power of the cities fallen when it appeared.
+        1 for any dungeon that is not a lair."""
+        if not self.is_lair(d):
+            return 1.0
+        return self.cfg.abomination_step ** d.cities_fallen_before
 
     def is_rift(self, d: Dungeon) -> bool:
         """Whether `d` is a Rift: a Quest dungeon Demonic sent, with
@@ -1291,7 +1344,8 @@ class Simulation:
             city.population = max(0.0, city.population)
 
         # ONE FALL, by the damage or by the tenth stack; `_fall` erases the
-        # city in the second case.
+        # city in the second case. WHO HIT IT, for `_fall` (issue #51 slice B4).
+        self.hit_by = d.source
         if city.defense <= 0 or erased:
             self._fall(city)
 
@@ -1453,7 +1507,9 @@ class Simulation:
             city.population = max(0.0, city.population)
 
         # ONE FALL, by the damage or by the tenth stack; `_fall` erases the city
-        # in the second case and moves this dungeon on in both.
+        # in the second case and moves this dungeon on in both. WHO HIT IT, for
+        # `_fall` (issue #51 slice B4).
+        self.hit_by = d.source
         if city.defense <= 0 or erased:
             self._fall(city)
 
@@ -1523,17 +1579,18 @@ class Simulation:
         the same care for the same reason.
         """
         cfg = self.cfg
-        hosts: list[tuple[int, int, float]] = []
+        hosts: list[tuple[int, int, float, str]] = []
         for d in self.dungeons.values():
             if d.subtype != "Siege":
                 continue
             # THE GROWTH COUNTS THE DAYS ON THIS CITY, AND A QUEST SIEGE BITES
             # A QUARTER AS HARD, since 2026-10-17; `TuningConfig.
-            # quest_sieges_per_wave_max` quotes the owner.
+            # quest_sieges_per_day_max` quotes the owner. WITH ITS SENDER, for
+            # `_fall` (issue #51 slice B4).
             hosts.append((d.city_id, d.days_on_its_city(self.day),
-                          d.siege_bite_share(cfg.quest_siege_bite_scale)))
+                          d.siege_bite_share(cfg.quest_siege_bite_scale), d.source))
 
-        for city_id, days_stood, share in hosts:
+        for city_id, days_stood, share, source in hosts:
             city = self.empire.cities.get(city_id)
             # CHECKED AGAIN FOR EACH ONE. A city that fell to an earlier Siege
             # in this same loop must not be bitten a second time.
@@ -1565,6 +1622,7 @@ class Simulation:
                 + grown) * taken
             city.population = max(0.0, city.population)
 
+            self.hit_by = source
             if city.defense <= 0:
                 self._fall(city)
 
@@ -1572,6 +1630,10 @@ class Simulation:
         cfg = self.cfg
         city.defense = 0.0
         city.fallen = True
+        # WHO FELLED IT, read and cleared: the hit that felled it set it.
+        # Issue #51 slice B4.
+        felled_by, self.hit_by = self.hit_by, ""
+        city.fell_to = felled_by
         # ERASED AT TEN VOID STACKS, and only then, since 2026-10-18: a city
         # that falls with fewer can be retaken (`TuningConfig.void_stacks_to_erase`).
         if city.void_stacks >= cfg.void_stacks_to_erase:
@@ -1625,6 +1687,20 @@ class Simulation:
             finally:
                 self.making_floors = None
 
+        # A CITY'S FALL TO WAR STARTS THE NEXT ONE: a War Quest Siege on a
+        # neighbour, after the Fallen City and before the fall's surge, whose
+        # wave then counts it toward the day's two. Issue #51 slice B4; the game
+        # takes the same order in `UCataclysmEmpireRun::CityFell`.
+        if (cfg.war_fall_makes_a_quest_siege and felled_by == "War"
+                and cfg.QUEST_SUBTYPE_BY_CATACLYSM.get("War") == "Siege"):
+            self._war_siege_on_a_fall(city)
+
+        # AND A FALL WHILE DEATH IS ACTIVE ADDS AN ABOMINATION LAIR, after War's
+        # Siege and before the fall's surge, as the game's `CityFell` orders
+        # them. Issue #51 slice B5.
+        if cfg.death_lairs and "Death" in self.active_types:
+            self._lair_on_a_fall(city)
+
         # EVERY FALL FIRES A SURGE, WHATEVER THE GAP SINCE THE LAST ONE. The
         # owner's ruling of 2026-11-24 on issue #2865, verbatim: "surges from
         # cities falling should happen regardless". So a fall the day after a
@@ -1642,6 +1718,72 @@ class Simulation:
                     and self.days_since_last_surge() < cfg.surge_interval_min):
                 return
             self.trigger_surge(from_city_fall=True)
+
+    def _lair_on_a_fall(self, fallen: City) -> None:
+        """A city's fall while Death is active makes one Abomination lair.
+
+        PLACED AS A FALL MOVES A QUEST DUNGEON (L2): `_quest_refuge`, an adjacent
+        exposed city first, else the nearest that qualifies counted in lanes,
+        one draw. A lair carries no Siege, so no city is refused for holding
+        one. None qualifies and none is made. Made as a surge makes a Death
+        Quest dungeon for that city, so it is a Horde, counts the cities fallen,
+        this one included (L1), and counts toward Death's 5 objectives. No cap.
+        Issue #51 slice B5; the game's `UCataclysmEmpireRun::MakeLairOnAFall`.
+        """
+        target = self._quest_refuge(_CARRIES_NO_SIEGE, fallen)
+        if target is None:
+            return
+        pat = PATTERNS.get("Death", PATTERN_DEFAULT)
+        self.making_for = "Death"
+        try:
+            made = self._make_dungeon(DungeonType.QUEST, target,
+                                      floors_mult=pat.floors_mult)
+        finally:
+            self.making_for = ""
+        made.source = "Death"
+        self.lairs_on_a_fall += 1
+
+    def quest_sieges_made_today(self) -> dict[str, int]:
+        """The Quest Sieges made today that still stand, by the Cataclysm that
+        sent them: what `quest_sieges_per_day_max` counts against. One cleared
+        the day it was made is not counted, as the game's
+        `UCataclysmEmpireRun::QuestSiegesMadeOn` does not count it."""
+        made: dict[str, int] = {}
+        for d in self.dungeons.values():
+            if (d.dtype is DungeonType.QUEST and d.subtype == "Siege"
+                    and d.spawned_day == self.day):
+                made[d.source] = made.get(d.source, 0) + 1
+        return made
+
+    def _war_siege_on_a_fall(self, fallen: City) -> None:
+        """A city's fall to War makes one War Quest Siege on a neighbour.
+
+        AN ADJACENT EXPOSED CITY THAT HOLDS NO SIEGE (`adjacent_exposed_cities`
+        leaves the Pillar out), drawn by the surge's tier weights, as a Rift
+        draws where it sends. None qualifies, or `quest_sieges_per_day_max` War
+        Quest Sieges are already made today, and none is made, with no draw.
+        Made as a surge makes a War Quest dungeon for that city, so it is a
+        Siege and counts toward War's objectives when cleared. Issue #51 slice
+        B4; `TuningConfig.war_fall_makes_a_quest_siege` quotes the ruling.
+        """
+        cfg = self.cfg
+        if self.quest_sieges_made_today().get("War", 0) >= cfg.quest_sieges_per_day_max:
+            return
+        targets = [c for c in self.empire.adjacent_exposed_cities(fallen)
+                   if self.sieges_on(c.cid) < cfg.siege_max_per_city]
+        weights = [cfg.SURGE_TARGET_WEIGHT[c.tier] for c in targets]
+        if sum(weights) <= 0:
+            return
+        target = self.rng.choices(targets, weights=weights, k=1)[0]
+        pat = PATTERNS.get("War", PATTERN_DEFAULT)
+        self.making_for = "War"
+        try:
+            made = self._make_dungeon(DungeonType.QUEST, target,
+                                      floors_mult=pat.floors_mult)
+        finally:
+            self.making_for = ""
+        made.source = "War"
+        self.war_sieges_on_a_fall += 1
 
     def _quest_refuge(self, d: Dungeon, fallen: City) -> City | None:
         """Where a Quest dungeon on a city that has just fallen goes.
@@ -1682,6 +1824,7 @@ class Simulation:
 
     def _retake(self, city: City) -> None:
         city.fallen = False
+        city.fell_to = ""  # Standing again, so felled by nobody. Issue #51 slice B4.
         # A RETAKEN CITY'S VOID STACKS ARE CLEARED, ruled 2026-10-16.
         city.void_stacks = 0
         self.empire._invalidate()

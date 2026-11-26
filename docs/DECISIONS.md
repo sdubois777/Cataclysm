@@ -2,6 +2,1173 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — Bundle 4: six branches merged (creatures belong to their Cataclysm, pause, Abyssal Rifts, War's Quest Sieges, Abomination lairs, the Death and War enemy modifiers), a Fallen City takes the Cataclysm that felled it, and seven windows
+
+**Branch `feat/bundle-4-creatures-pause-rifts-sieges-lairs-modifiers`, cut from development `9bd6ed996`**, which held
+bundle 1, the affix ranges and enemy re-fit (#2924) and the War line (#2925). Assembled for the coordinating session
+on 2026-11-25 and 2026-11-26.
+
+### What it merges
+
+| Branch | Head | Its entry, below |
+| :-- | :-- | :-- |
+| `feat/abyssal-rifts-2864-2` | `75200dd18` | Abyssal Rifts redesigned (#2864); run record 19 → 20 |
+| `feat/war-quest-sieges` | `119517167` | War's Quest dungeons are Sieges (#51 slice B4); run record 20 → 21 |
+| `feat/abomination-lairs` | `1b9b47a4c` | Death's Quest dungeons are Abomination lairs (#51 slice B5); run record 21 → 22 |
+| `feat/pause` | `a5aba43a1` | Esc pauses the game |
+| `feat/creature-cataclysm-b3` | `889fcc6d8` | Every creature belongs to the Cataclysm that sent its dungeon (#51 slice B3) |
+| `feat/death-war-enemy-modifiers` | `44b3ab7e2` | Death's eleven and War's eight built enemy modifiers |
+
+### What the merge did
+
+- **The design workbook** (`docs/All_Things_Cataclysm.xlsx`) cannot be merged. Each merge took development's copy. The
+  two branch edits were then re-applied:
+  - `tools/reapply_abyssal_rifts_row.py`: the row was already there.
+  - `tools/reapply_death_war_enemy_modifiers_workbook_edit.py`: 8 cells written, and no other cell changed.
+  - The generated CSVs already matched.
+- **This file:** every entry from both sides is kept, each branch's above development's.
+- **`docs/Play_Loop_Checklist.md`:** the pause step became step 34, since development already had steps 28 to 33. The
+  four places citing it were changed.
+- **`CataclysmCombatOverlay.cpp`:** both sides' include lines are kept.
+- **Checks on the merge:**
+  - `check_resolved_cpp.py` read the 81 changed C++ files and found 0 complaints.
+  - No member is declared twice in the headers several branches changed.
+  - The run record goes 19 → 20 → 21 → 22, one migration step each (`SchemaVersionNow` 22).
+
+### What the bundle adds
+
+- **A Fallen City's creatures take the Cataclysm that felled its city.** `BindEmpireDungeon` reads the city's `FellTo`,
+  which slice B4 saves. A city that records nobody, as one felled in a version 20 run does, keeps the run's newest
+  active Cataclysm. The coordinating session ruled this on 2026-11-25.
+  - The B3 test is renamed `AFallenCitysCreaturesTakeTheCataclysmThatFelledItsCity`. It sets War as the faller while
+    Death is the newest active Cataclysm, and expects War.
+  - Its controls: the unrecorded fallback, the newest Cataclysm rather than the first, and an ordinary dungeon staying
+    Demonic.
+  - No separate C++ proof was run for the `FellTo` read (FC1), as the coordinating session ruled: the test's War
+    expectation already fails if `FellTo` is ignored.
+- **The B3 entry's Succubus bullet and the design document's sentence** now say, in the past tense, that `War_Commander`
+  was closed to a creature whose innate ability grants it (`ClosedByInnateEffects`). The B3 entry's SaveLoad count is
+  restated against development: 84, 85 with its test, 87 at the bundle's head.
+- **#2899:** all 19 Death and War modifiers are enemy-only code (each reads an `ACataclysmEnemyCharacter`'s rows).
+  None could be widened in a few lines, because development has nowhere a player carries enemy modifier rows. They are
+  listed on #2899.
+- **The Cursed Abomination's damage has its own key** (`SetAbominationDamageMultiplier`, source "CursedAbomination").
+  It was a game fault, found by window b4-w1:
+  - `GoToFloor` populates a lair's last floor, which makes the Abomination, and then applies the floor's rules.
+  - With a player present, the rules reset every creature's placed damage multiplier.
+  - The Abomination therefore kept its health and lost its damage.
+  - The new key is set on a load too.
+
+### The windows
+
+The base was war2-w2's whole suite: 5,731 performed, 5,731 succeeded. 5,794 was predicted: 69 test names added, 6
+replaced.
+
+**b4-w1, on `0dda0efd4` (assets committed as `a62b96697`): FAILED.**
+- Build: succeeded, 71 files compiled.
+- Groups alone: Pause 10/10 and WarModifiers 9/9. Six tests failed across the other four groups.
+- Whole suite: "Tests: 5794 tests performed, 5785 succeeded, 9 failed". 58 skipped halves. 892 test saves written
+  and deleted, 0 left behind.
+- Python: 9,136 passed.
+- Proof: not run.
+
+The nine failures, game or test:
+
+| Test | Which | What changed |
+| :-- | :-- | :-- |
+| `AbominationLairs.TheCursedAbominationGrowsByTheStepForEachFallenCity` | **game** | its own damage key, above |
+| `CreatureCataclysm.TheGatekeepersCalledImpsTakeItsCataclysm` | test | a one-floor dungeon has no boss (#1465); now two floors |
+| `AbominationLairs.EveryFallMakesOneWithNoCap` | test | a surge's lair is counted apart: "LAIRS: 3 on the map, 2 from the falls, 1 a surge landed" (b4-w2) |
+| `WarQuestSieges.AWarQuestDungeonDrawnOntoABesiegedCityLandsOnOneWithout` | test | an earlier dungeon in the same wave can take the free city's Siege, the ruled "none free" case; "10 landed after an earlier dungeon of the wave took the free city's Siege" (b4-w2) |
+| `EmpireRun.ACityNeverHoldsTwoSieges` | test | B4's ruled exception is allowed only while every exposed city holds a Siege; b4-w2 showed both of city 14's Sieges were War Quest dungeons |
+| `RiftMap.ARiftsDetailLineNamesItAndTheDaysUntilItSends` | test | its control's Death Quest dungeon is now a lair; it uses Pestilence |
+| `Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` | test | a War Quest Siege takes its city's one Siege, so a later Siege roll there is re-read |
+| `DeathModifiers.FinalCurse...`, `DeathModifiers.SoulTether...` | test, then see b4-w2 to b4-w6 | |
+
+- Also: `game/Data/datatable_asset_sources.json` was committed with the assets (`0822d90d8`). The two Succubus
+  ability-order Python tests now read `EnemyAbilities`' own return rather than the file's first brace list.
+  - Proven in an archive copy with `break_and_run`: PROVED, 1 named failure and 2 named failures.
+
+**b4-w2, on `76fe58e58`: FAILED.**
+- Build: succeeded, 54 files compiled.
+- Groups alone: 7 of 9 passed. DeathModifiers failed 2 and WarModifiers failed 1 (Artillery Barrage).
+- Whole suite: "Tests: 5794 tests performed, 5792 succeeded, 2 failed" (Final Curse and Soul Tether). 58 skipped
+  halves. 892 test saves written and deleted, 0 left behind.
+- **This run's Python figure is void.** The two modifier test files were edited while it ran. It was re-run on
+  `f7440936a`: 9,136 passed, 10 skipped, JUnit 9,146 tests with 0 failures; ruff clean.
+- **This window's whole suite stands for every test b4-w3 to b4-w7 did not run again.** After it, only
+  `CataclysmDeathModifierTests.cpp` and `CataclysmWarModifierTests.cpp` changed.
+
+**b4-w3 to b4-w6, narrowed: a build and the two modifier groups alone, ruled by the coordinating session.**
+
+| Window | Head | Final Curse | Soul Tether | What it showed |
+| :-- | :-- | :-- | :-- | :-- |
+| b4-w3 | `f7440936a` | 55.00 of 50 | 57.0 of 65 | emptying the stat line (`SetStatInputs({})`) removed armour from class and weapon rows that the attributes did not show; a 10% increase remained |
+| b4-w4 | `6310a98a9` | passes: 55.00 against a control of 55.00 | 57.00; living-source control 65.00 | Final Curse compared with the same blow dealt directly; #2931 filed for the 10%. The control also contradicted #2932, which was closed |
+| b4-w5 | `675c812d0` | passes | dead-source control measured nothing | the Frail creature was already removed from the world |
+| b4-w6 | `7481ece17` | passes | 57.00; living 65.00, dead 64.08 | the source dying is not the cause; the tether's re-lay is (#2933) |
+
+- Artillery Barrage passed in b4-w3 onward. It had failed in b4-w2 because three shells read 2.988: the player kept
+  stat-line armour.
+- **Soul Tether's arrival is checked against a stated band until #2933 is fixed: at least 85% of what is owed**, with
+  the share printed. The coordinating session ruled this on 2026-11-26.
+
+**b4-w7, on `2ee9bd869`:** **PASSED.**
+- Build: succeeded, 1 file compiled.
+- DeathModifiers 11/11, WarModifiers 9/9. 2 test saves written and deleted, 0 left behind.
+- The Death tests printed:
+  - "FINAL CURSE: 5% of maximum health is 50.00; dealt directly as the curse deals it, it cost 55.00"
+  - "SOUL TETHER: 65.00 owed; the tether took 57.00; the same damage over time from the living source took 65.00, from
+    the dead source 64.08"
+  - "SOUL TETHER: the tether delivered 87.7% of what was owed"
+- **The combined C++ guard proof, run COMBINED** as the coordinating session ruled: one `prove_cpp_guard` call holding
+  all eight breaks, so a caught test shows it fails with its mechanism broken alongside others.
+  - The prefixes, joined by "+": CG4's five `DungeonModifierEffects` tests by name,
+    `SaveLoad.ACreatureSavedInADeathDungeon`, and the six new groups.
+  - With the breaks in: 64 performed, 39 succeeded, 25 failed. Every predicted name failed, and none failed
+    unpredicted.
+  - Restored: 64 of 64 passed. **PROVED.**
+
+| Proof | Branch | The break | Predicted, failed |
+| :-- | :-- | :-- | :-- |
+| CG4 | Abyssal Rifts | `Rift->bCannotBeHurt = true;` added in `PlaceTheRifts` | 5 of 5 |
+| B3-1 | creatures' Cataclysm | `GiveTheDungeonsCataclysm(Enemy);` read as `;` | 5 of 5 |
+| B3-2 | creatures' Cataclysm | `Dungeon.GiveTheDungeonsCataclysm(Back);` read as `;` | 1 of 1 |
+| WC1 | War's Quest Sieges | `if (FelledBy == War)` read as `if (false && ...)` | 2 of 2 |
+| LC1 | Abomination lairs | `if (ActiveCataclysms.Contains(Death))` read as `if (false && ...)` | 2 of 2 |
+| P2 | pause | `SetPause(true)` read as `SetPause(false)` | 8 of 8 |
+| CO | War enemy modifiers | Commander's inspire call read as `Touched += 0;` | 1 of 1 |
+| GT | Death enemy modifiers | `GraveTouchDamageMultiplier = 1.5f` read as `1.0f` | 1 of 1 |
+
+- **A rule was broken during this proof, and the proof is unaffected.** A Python suite run started at about 00:25 on
+  `6310a98a9` was still running when the proof began writing its breaks at 00:31. The project's rule says a C++ guard
+  proof must not run while the Python suite runs.
+  - That Python run read the WC1 break and failed one test (`test_a_fall_to_war_makes_the_next_siege_in_the_same_place_in_both`).
+    It is void and is quoted nowhere as evidence.
+  - The proof reads only Unreal test results, so it is unaffected.
+  - Python was run again on the final head, with nothing running beside it: on `aa490c834`, the commit holding this entry, with nothing running beside it: "9136 passed, 10 skipped"; JUnit 9,146 tests, 0 failures, 0 errors. ruff: "All checks passed!"
+
+### Issues this bundle opened or closed
+
+- [#2931](https://github.com/sdubois777/Cataclysm/issues/2931): a test player with every defence at 0 takes 10% more
+  from Final Curse's hit on itself. Source not found.
+- [#2932](https://github.com/sdubois777/Cataclysm/issues/2932): closed. A damage over time from a living source
+  delivered all 65.
+- [#2933](https://github.com/sdubois777/Cataclysm/issues/2933): Soul Tether's re-lay delivers less than owed.
+- The #2899 comment listing the 19 enemy-only modifiers.
+
+---
+
+## 2026-11-25 — War's enemy modifiers, eight of the nine written ahead of their window, and Death's eleven rebuilt on development with their two status rows
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `feat/death-war-enemy-modifiers`, cut from development
+`9acbb3528` (which holds bug batches 1 and 2), written by an agent for the coordinating session. Nothing here was
+compiled and no Unreal test was run; every statement below about what the engine does was read from the code.
+
+### Said first
+
+- **1 On 1 is not built.** Its arena needs a mechanism no code in the project has; it is described under "1 On 1, left"
+  below. A creature carrying it behaves as it did before, and the hover panel still names it.
+- **THE WINDOW MUST REBUILD TWO DATATABLE ASSETS FIRST**, `DT_StatusEffects` and `DT_EnemyModifiers`
+  (`python tools/run_editor_python.py tools/generate_datatable_assets.py`): `game/Data/StatusEffects.csv` and
+  `game/Data/EnemyModifiers.csv` changed, so `tools/tests/test_datatable_assets_are_current.py` fails until they are
+  rebuilt, and `Cataclysm.WarModifiers.BattleCryCutsEveryResistanceByTwentyFiveForFiveSecondsEveryEightSeconds` reads
+  the Battle Cry row's stat list out of `DT_StatusEffects`.
+- **This branch carries an unmerged edit to `docs/All_Things_Cataclysm.xlsx`**, eight cells, recorded as
+  `tools/reapply_death_war_enemy_modifiers_workbook_edit.py`; whichever branch lands second re-applies it.
+- **The design document's sentence on monster damage reduction said "Every one is conditional"** of five modifiers,
+  Armored Juggernaut and Battle Scarred among them. Neither is conditional as written in its row or as built here.
+  Corrected on the coordinating session's instruction of 2026-11-25: it now says which three are conditional, and the
+  answer to each, and that the other two hold for the creature's whole life.
+- **The agent rules of 2026-11-24 say "No War Cataclysm work".** The coordinating session's brief for this branch
+  assigned War's nine enemy modifiers by name, on the owner's rulings of 2026-11-24 (Q10 to Q12 below), and that is
+  what was followed.
+
+### Death's eleven, rebuilt on development
+
+The two commits of `feat/death-enemy-modifiers` (`da3ad75fe`, the code; `86ba80e4f`, its entry below this one) were
+cherry-picked onto development `9acbb3528`. **The code commit applied with no conflict.** Six of its files had changed
+on development since the Death branch's base `5cdd6bdc4`, and each change was read against it: the vital attribute set
+moved Infernal Brand into the hit-only block ([#2874](https://github.com/sdubois777/Cataclysm/issues/2874)), which is the block Death's three on-hit calls sit in, and added
+the Subjugate hold and the shield's Fervour; the enemy modifiers added the dead-target refusals Death's on-hit rules
+already make, and Infernal Sacrifice's unhurtable refusal; the regeneration file changed a comment. No semantic
+conflict was found. **The decisions log conflicted**, at its top: Death's entry was placed below the bug batches'
+entry and above the character creator's, by the author dates of the branch commits that first wrote each
+(`05c909bd0` 22:38, `86ba80e4f` 18:47, `9e9e5e73d` 17:42, all 2026-11-24), which the separator test passes.
+
+**The owner accepted the eleven as built on 2026-11-24**, as relayed by the coordinating session: "These are fine",
+with the recommended status rows for Mortal Reminder and Lingering Decay (Q6 of the entry below). The other seven
+answers stand as built.
+
+**The two status rows**, added to the Debuffs sheet:
+
+| Row | Text |
+|---|---|
+| `Debuff_Mortal_Reminder` | "A debuff a creature carrying Mortal Reminder lays with each attack that takes the player's health. For 4 seconds the player cannot be healed above the health that attack left." |
+| `Debuff_Lingering_Decay` | "The player is standing in a necrotic zone a creature carrying Lingering Decay left behind, and every heal of their health is reduced by 50% while they stay inside it." |
+
+Both carry no figures in their columns: the code holds them, and
+`tools/tests/test_war_enemy_modifiers_match_their_rows.py` holds each sentence's figure equal to its constant. **The
+tags are display only.** `MortalReminderOnHit` lays `Status.Debuff.MortalReminder` beside the ceiling for the same
+four seconds; the ceiling stays on the ability system, because a tag carries no figure. `TimedStep` lays
+`Status.Debuff.LingeringDecay` on a character of the players' side for half a second on every quarter-second step it
+stands in a zone, in the name of the creature that left the zone; the cut is still asked of where the character stands.
+**A judgement:** when the creature that left a zone has gone, the cut remains for the zone's life and the status does
+not show. The two Death tests gained assertions on the tags; their count and their registered proofs are unchanged.
+
+### War's rows, what each does in play, and where
+
+The rulings that apply: the coordinating session's Death and War plan of 2026-11-24, Q10 to Q12, and the owner the
+same day:
+"Your recommendations work for all of those death/war questions." The recommendations accepted: Q10, make Shield Wall
+non-positional, "Take 75% less damage from projectiles", by the owner's ruling of 2026-08-09, "we don't do positional
+weak points. That's too tedious in a diablo like arpg"; Q11, build 1 On 1 for one player, allies inside the arena when
+it forms consumed for 50% of their health and damage, and the player's movement skill crossing the arena wall; Q12,
+keep Commander and Drums of War, Drums of War at half Commander's radius.
+
+| Row | In play | Built in |
+|---|---|---|
+| Commander: "Inspires allies, increasing their movement speed and attack speed by 20%." | Every ally within 8 metres holds `Status.Buff.Commander`, re-granted each one-second aura pulse for two seconds: 20% faster moving and attacking. Not itself. | `AuraStep`; `CommanderMultiplier` reads it |
+| Drums of War: "Increases nearby allies move speed and attack speed by 50%." | Every ally within 4 metres holds `Status.Buff.DrumsofWar`, a new buff row, on the same pulse: 50% faster moving and attacking, multiplied with Commander's where both are held (1.8). | `AuraStep`; `ACataclysmEnemyCharacter::DrumsOfWarMultiplier`, a factor of `SpeedMultiplierWithWraithFactor` |
+| Armored Juggernaut: "Gain 50% armor" | Half again its own armour. A kind designed with no armour (the Imp) gains none. | `ApplyStartingAttributes`, `ArmourMultiplier` |
+| Battle Scarred: "Become more dangerous, gaining increased critical strike chance and damage resistance." | Double its own critical strike chance, and 30 more resistance, from the start. Overpowered's certain critical strike still wins. | `ApplyStartingAttributes`, `CritChanceMultiplier`, `AddedResistance` |
+| Shield Wall: "Take 75% less damage from projectiles." (reworded) | A quarter of every projectile's contact and blast reaches it; every other blow reaches it whole. | `ACataclysmProjectile::HitOne`, `ShareOfProjectileDamageTaken` |
+| Phalanx: "Gains 10% damage reduction for every other enemy within 5 meters." | 10 damage reduction for each other creature of its side within 5 metres that can lose health (no floor-rule object, nothing unhurtable), counted every step and capped with all damage reduction at 75. "Phalanx -30%" under its bar. | `TimedStep`, `CountPhalanxAllies`, its damage reduction attribute |
+| Battle Cry: "Emit a terrifying shout that reduces the player's resistances or armor for 5 seconds." | Every 8 seconds, when an enemy is within 6 metres, a shout cuts each of their resistances by 25, never below nought, for 5 seconds (`Status.Debuff.BattleCry`). The clock waits for somebody in reach. | `TimedStep`; the named-effect path with the row's eight resistances |
+| Artillery Barrage: "Call down explosive projectiles in random areas near the player." | Every 6 seconds, when an enemy is within 20 metres, three 3 metre circles are drawn on the floor at random within 4 metres of the nearest; 1.5 seconds later each lands for one and a half of the creature's hits on everyone of the player's side inside it, as an area blow that never crits. Killing the creature in the warning calls the volley off. "Barrage" under its bar. | `TimedStep`, `NoteDeathOfACarrier` |
+| 1 On 1 | **Not built.** | -- |
+
+**THE NEW BUFF ROW JOINED THE RANDOM BUFF TABLE.** `Buff_Drums_of_War` is a Buffs row, and the owner's "Add
+everything" of 2026-10-26 ([#2538](https://github.com/sdubois777/Cataclysm/issues/2538)) puts every Buff row in
+`UCataclysmAbilitySystemComponent::RandomBuffTable` once it is built as a buff its holder can hold;
+`tools/tests/test_the_random_buff_table_names_buff_rows.py` failed until it was decided. It is appended at place 17,
+so places 0 to 16 keep their buffs, laid on its holder as Commander's entry is: 50 increased movement speed and attack
+speed, no ally read. A drawn buff is one in eighteen now, not one in seventeen. **A judgement under that ruling.**
+
+A creature that takes no hostile action (the floor's medic, [#1680](https://github.com/sdubois777/Cataclysm/issues/1680)) never shouts or calls a barrage; it still grants
+Commander and Drums of War and still braces with Phalanx, because those harm nobody. **A judgement.** The status line
+gains "Phalanx -N%", "Barrage", "Drums of War" and "Battle Cry" (`UCataclysmCombatOverlay::WarModifierTextFor`); the
+player's effects list shows Battle Cry by its tag.
+
+### The figures the rows leave open, and where each came from
+
+Researched 2026-11-25, each page fetched in this session:
+
+| Figure | Value | Source, or "a judgement" |
+|---|---|---|
+| Commander's reach | 8 m | The Commander buff's own reach: the Succubus's Dominion and `War_Commander_s_Aura` (`CommandersAuraRadiusCm`). **A judgement**, one buff, one reach |
+| Commander's and Drums' grant | 2 s, re-granted each 1 s pulse | Abyssal Aura's and Starving Aura's 2 seconds. **A judgement** |
+| Drums of War's reach | 4 m | The owner's acceptance of Q12, half Commander's |
+| Drums with Commander | multiplied, 1.2 x 1.5 | As Commander and the Vengeful Wraiths increase already multiply. **A judgement**; Path of Exile would add two increases |
+| Armored Juggernaut | 50% more of its own armour | The row's 50; Path of Exile 2's monster armour modifiers state armour as a share, "monster additional strength ratio % for armour [50]" (poe2db.tw/us/Monster_Modifiers). **A judgement** that the base is the creature's own, so the unarmoured Imp gains nothing |
+| Battle Scarred's critical chance | 100% increased | Path of Exile's Deadeye: "100% increased Critical Strike Chance" (poedb.tw/us/Archnemesis) |
+| Battle Scarred's resistance | +30 | Path of Exile 2's monster modifier "+30% to all Elemental Resistances" (poe2db.tw/us/Monster_Modifiers) |
+| Battle Scarred's "Become" | from the start | **A judgement**: the row names no moment of change |
+| Shield Wall | 75% less, projectiles | The owner's acceptance of Q10 |
+| Phalanx | 10 per ally, 5 m | The row's; the 75 cap is the game's damage reduction cap |
+| Phalanx's "other enemy" | creatures that can lose health | The reading of "ally" ruled for Sacrificial Bond on 2026-09-30 ([#1559](https://github.com/sdubois777/Cataclysm/issues/1559)). **A judgement** |
+| Battle Cry's cut | 25 off each resistance | Abyssal Aura's and Haunting's 25. **A judgement** that it is resistances and not armour: the row offers either, and a status row moves one kind of stat |
+| Battle Cry's interval | 8 s | Path of Exile's Intimidating Cry: "Cooldown Time: 8.00 sec" (poedb.tw/us/Intimidating_Cry) |
+| Battle Cry's reach | 6 m | Every enemy aura's `AuraRadiusCm`. **A judgement** |
+| Artillery Barrage's shells | 3 per volley | Diablo III's Mortar elite affix: "3 projectiles per cast" (maxroll.gg/d3/resources/elite-affixes) |
+| Artillery Barrage's interval | 6 s | Path of Exile's Bombardier: "Periodically Fires a Nova of Fire Mortars (6 second cooldown)" (poedb.tw/us/Archnemesis) |
+| Artillery Barrage's circle | 3 m | Diablo III's Mortar: "3 yards radius for direct hit" |
+| Artillery Barrage's warning | 1.5 s | Derived as the Artillery Strike dungeon rule's is: twice the time to walk out of a circle from its middle at 400 cm a second |
+| Artillery Barrage's spread and damage | within 4 m; 1.5 hits | **Judgements**: a shell can fall on the player and three cannot cover the ground round them; Inferno Charge's 150%, the creature's other drawn attack |
+| Artillery Barrage's reach | 20 m | Inferno Charge's search. **A judgement** |
+| A barrage at its caller's death | called off | **A judgement**: killing the caller in the warning is an answer the player can choose |
+
+### An innate ability never duplicates a modifier, now at the draw
+
+**The coordinating session's instruction of 2026-11-25:** slice B3 (`feat/creature-cataclysm-b3`) makes every creature
+take its dungeon's Cataclysm, so a War dungeon's Succubus draws War modifiers while its Dominion already grants
+Commander; under the design's rule "An innate ability must not duplicate a modifier its own Cataclysm can roll", close
+`War_Commander` to any creature whose innate ability grants Commander, by extending the existing closure.
+
+**The existing closure was in the design data only**: `test_no_effect_duplicates_a_modifier_its_own_cataclysm_can_roll`
+in `tools/tests/test_enemy_abilities.py` refuses an innate effect its archetype's own Cataclysm names as a modifier,
+which is what closed Abyssal Aura and Infernal Brand to the Demonic creatures. That held while a creature's Cataclysm
+was its archetype's. **Extended to the draw, for whatever Cataclysm a creature belongs to:**
+
+- `ACataclysmEnemyCharacter::InnateEffectNames()`, virtual, empty; the Succubus answers its two, Withered Touch and
+  Commander, through the constants it applies them under.
+- `UCataclysmEnemyModifiers::ClosedByInnateEffects(Table, Cataclysm, Names)`: the rows of that creature's pool whose
+  modifier name is one of them.
+- `DrawModifiersForRarity` adds those rows to what it leaves out of the pool, beside what the creature carries. A War
+  Succubus never draws `War_Commander`; a Demonic Succubus's pool holds no row of either name, so its draws are the
+  ones they were; every creature with no innate effect is unchanged.
+- **The general rule, not a Commander special case. A judgement:** the instruction named Commander, and the only other
+  innate effect in the game, Withered Touch, is no modifier's name, so the two readings agree today.
+- `docs/Cataclysm_GDD_v2.md` says it in the Succubus's paragraph on the rule. **When B3 lands beside this**, its own
+  paragraph's last sentence ("how it is resolved is open ... for the War enemy modifier slice to settle") is answered
+  here and wants the past tense; the two edits are on different lines and merge without a conflict.
+
+**Tests.** `Cataclysm.WarModifiers.AWarSuccubusNeverDrawsTheCommanderItsDominionGrants`: the closed rows on the table
+(one, `War_Commander`, for a War creature granting Commander; none for a Demonic one; none with no innate effect), then
+a War Succubus and a plain War creature at the Boss rung on 200 seeds each. Its control: the plain creature draws
+`War_Commander` on some of them; the Succubus on none, while it still draws War's other rows. Python:
+`test_an_innate_effect_another_cataclysm_rolls_is_closed_at_the_draw` in `tools/tests/test_enemy_abilities.py` holds
+every innate effect that any column names as a modifier to the creature's `InnateEffectNames()`, and the draw to pass
+them. Proved with `tools/prove_guard.py`, two breaks, each PROVED, each failing that one test:
+`return {FString(WitherEffectName), FString(DominionEffectName)};` to `return {FString(WitherEffectName)};`, and the
+draw passing `TArray<FString>()` in place of `InnateEffectNames()`.
+
+### 1 On 1, left
+
+"Summon an arena around you and a nearby player that lasts until one of you is defeated. All allies in the area of the
+arena are consumed to empower you with 50% of all of their stats." The owner accepted Q11: one player; allies inside
+when it forms consumed, adding 50% of their health and damage; the player's movement skill crosses the arena wall.
+
+**What it needs that does not exist:** a ring that holds the player's walking but not a movement skill. The one wall
+in the game, `ACataclysmTerrain`'s Wall, "blocks movement and projectiles", every kind alike; nothing asks a player's
+own movement whether it may leave a place (`ACataclysmEnemyCharacter::MayMoveItselfTo` exists for creatures only);
+and whether each movement skill's move passes a wall depends on how it moves, which was not checked here. **The
+pieces, for the session that builds it:**
+(1) a hold on the player's walking inside a circle, asked where the player's movement is driven each frame, with an
+exemption while a movement skill moves the player (the skill's use time is already kept for "within seconds of a
+movement skill"); (2) the same hold on the carrier, through `MayMoveItselfTo` and `HoldAgainstMovingAway`; (3) the
+consumption, through the rule-damage part (`SetRuleDamagePart`) for damage and a new added-health figure written in
+`ApplyStartingAttributes` for health, since a direct write is undone by the next setter; (4) the arena's end at either
+death or the player's leaving, and its circle drawn; (5) a ruling on whether the player's minions and later creatures
+may cross it. Sized at a window of its own (M), in the player's movement code, which every other slice also touches.
+
+### Tests registered, and the guard proofs
+
+**Death:** `game/Source/Cataclysm/Tests/CataclysmDeathModifierTests.cpp`, group `Cataclysm.DeathModifiers.`,
+**11**, as the entry below registered them; the Mortal Reminder and Lingering Decay tests gained assertions only. Its
+eleven proofs are carried as registered there, in four changes of at most three, unchanged: none of their break lines
+moved.
+
+**War:** new file `game/Source/Cataclysm/Tests/CataclysmWarModifierTests.cpp`, group `Cataclysm.WarModifiers.`:
+**0 to 9**, the ninth being the innate closure's test above. `Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eight War rows too; that
+group's count does not move. Two more tests changed and keep their counts:
+`Cataclysm.Enchantments.ShardOfAnarchysTwoPiecesLayAPinnedBuffOrTheMergedDrawsDebuffAfterThirtySecondsOfAFight`
+names the eighteen buffs of the table, and `Cataclysm.Data.EveryGeneratedTableImports` pins `StatusEffects.csv` at 55
+rows, not 52 (`tools/tests/test_unreal_pinned_row_counts.py` failed until it did). **Whole suite: the base's last
+measured total plus 20** (11 Death, 9 War).
+
+One proof per War modifier, each a single-line break that still compiles, prefix `Cataclysm.WarModifiers.`, each to
+fail exactly the one test named:
+
+| Change | Proof | Break | Must fail |
+|---|---|---|---|
+| W1, the creature's own figures | AJ | `CataclysmEnemyModifiers.h`: `ArmoredJuggernautArmourMultiplier = 1.5f;` to `= 1.0f;` | `ArmoredJuggernautHasHalfAgainItsOwnArmourAndAnUnarmouredKindNone` |
+| W1 | BS | `CataclysmEnemyModifiers.h`: `BattleScarredResistance = 30.0f;` to `= 0.0f;` | `BattleScarredDoublesItsCriticalChanceAndAddsThirtyResistance` |
+| W1 | SW | `CataclysmProjectile.cpp`: `Percent *= UCataclysmEnemyModifiers::ShareOfProjectileDamageTaken(Target);` to `Percent *= 1.0f;` | `ShieldWallTakesAQuarterOfAProjectileAndEveryOtherBlowWhole` |
+| W2, its allies | CO | `CataclysmEnemyModifiers.cpp`: `Touched += EnemyModifiersInspireAlliesWithin(Enemy, TEXT("Commander"), CommanderReachCm);` to `Touched += 0;` | `CommanderGrantsTheCommanderBuffToAlliesWithinEightMetres` |
+| W2 | DW | `CataclysmEnemyCharacter.h`: `return CommanderMultiplier() * DrumsOfWarMultiplier() * CrippleMultiplier() * WraithFactor` to `return CommanderMultiplier() * CrippleMultiplier() * WraithFactor` | `DrumsOfWarGrantsHalfAgainSpeedToAlliesWithinFourMetres` |
+| W2 | PH | `CataclysmEnemyModifiers.cpp`: `Braced->SetNumericAttributeBase(Reduction, Wanted);` to `Braced->SetNumericAttributeBase(Reduction, 0.0f);` | `PhalanxTakesTenPercentLessForEveryOtherCreatureWithinFiveMetres` |
+| W3, attacks on the player | BC | `CataclysmEnemyModifiers.h`: `BattleCryResistanceCut = 25.0f;` to `= 10.0f;` | `BattleCryCutsEveryResistanceByTwentyFiveForFiveSecondsEveryEightSeconds` |
+| W3 | AB | `CataclysmEnemyModifiers.cpp`: `* UCataclysmEnemyModifiers::ArtilleryBarrageShellHits` to `* 0.0f` | `ArtilleryBarrageDrawsThreeCirclesNearThePlayerThatLandInASecondAndAHalf` |
+| W4, the innate closure | IC | `CataclysmEnemyCharacter.cpp`: `NotToDraw.Append(UCataclysmEnemyModifiers::ClosedByInnateEffects(ModifierTable, DamageType, InnateEffectNames()));` to `NotToDraw.Append(TArray<FName>());` | `AWarSuccubusNeverDrawsTheCommanderItsDominionGrants` |
+
+No Unreal proof was run: this change has had no window. The Python guard `test_war_enemy_modifiers_match_their_rows.py`
+was proved with `tools/prove_guard.py`, two breaks, each PROVED (failed with the break in, passed with it out):
+`ShieldWallProjectileDamageShare = 0.25f` to `0.5f` failed
+`test_shield_wall_is_the_owners_wording_and_its_share_is_a_quarter`; `BattleCryResistanceCut = 25.0f` to `20.0f`
+failed `test_battle_cry_states_one_figure_in_the_code_and_the_row`.
+
+### Python, as run on the branch
+
+The whole suite, `python -u -m pytest --junit-xml=<scratch>`, on `56815da5a`: **"1 failed, 8301 passed, 9 skipped in
+330.77s"**; the JUnit report agrees, tests 8311, failures 1, errors 0, skipped 9. The one failure is
+`test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`, naming
+`EnemyModifiers.csv` and `StatusEffects.csv`, which the window's editor step clears (Said first). The run before it
+found two more, `test_the_random_buff_table_names_buff_rows.py` and `test_unreal_pinned_row_counts.py`, both answered
+in `56815da5a` and described above. `python -m ruff check .`: "All checks passed!". `tools/check_resolved_cpp.py` on
+the 24 C++ files the branch changes against `9acbb3528`: "24 files read, 0 with complaints".
+
+**After the innate closure and the damage reduction sentence**, the coordinating session asked for the checks that read
+the design document: the 143 Python test files that name `Cataclysm_GDD_v2.md`, run together, "3177 passed, 3 skipped
+in 200.31s".
+
+---
+
+## 2026-11-25 — Every creature belongs to the Cataclysm that sent its dungeon: a Death dungeon's Demonic bodies deal Death and draw Death and Generic modifiers (slice B3 of the Death and War plan)
+
+On `feat/creature-cataclysm-b3`, from development `9acbb3528`. Slice B3 of the coordinating session's plan for the
+Demonic quest and the Death and War Cataclysms (2026-11-24, section 5).
+
+**Said first:**
+
+- **WRITTEN AHEAD OF ITS WINDOW. NOT BUILT, NOT RUN IN UNREAL.** Every C++ line here is unbuilt; the nine Unreal tests
+  and the three guard proofs below are registered for the window and have not run. Only the Python suite has run.
+- **A FALLEN CITY'S FALLER WAS NOT RECORDED HERE, so its creatures took the run's newest active Cataclysm**, the
+  coordinating session's fallback. **Since bundle 4 the faller is recorded and read:** slice B4 saves it on the city
+  (`FCataclysmCity::FellTo`, run record version 21), and `BindEmpireDungeon` gives a Fallen City's creatures that
+  Cataclysm, keeping the newest active one only for a city that records nobody, as one felled in a version 20 run does.
+  `Cataclysm.CreatureCataclysm.AFallenCitysCreaturesTakeTheCataclysmThatFelledItsCity` tests it. What this slice
+  recorded when it was written: Recording the faller needs a saved field and a run record version step: the empire record's
+  `Cataclysm` must stay `None` on a Fallen City, because "a fallen city was sent by nobody" is a rule the empire holds
+  (`Cataclysm.Roster.EveryDungeonASurgeLandsNamesTheCataclysmThatSentIt` asserts it) and a fall is reached from three hit
+  paths that
+  three Python port tests pin to the text `CityFell(<id>, OutReport);`. With another branch already taking the run record
+  to 19, that is more than the half day allowed, so it is left, as the ruling said to do.
+- **A CLASH THIS OPENED, NEVER LIVE: the Succubus's Dominion grants Commander, which is also War's enemy modifier
+  `War_Commander`.** A War dungeon's Succubus could have rolled the effect it already gives. The row had no effect
+  then, so nothing doubled. The War enemy modifier work closed `War_Commander` to a creature whose innate ability
+  grants Commander (`UCataclysmEnemyModifiers::ClosedByInnateEffects`), as the design's rule already closed Abyssal
+  Aura and Infernal Brand, and it reached development with this slice in bundle 4. Recorded in
+  `docs/Cataclysm_GDD_v2.md` beside that rule.
+- **NO SAVE RECORD MOVES.** No saved field was added: a load binds the saved empire dungeon again, and its `Cataclysm` was
+  already saved, so the creatures a load puts back are given its type, as `DungeonCityTier` comes back. A Fallen City's
+  Cataclysm is read off the run at every bind (its city's `FellTo` since bundle 4, which slice B4 saves), and the
+  Stalker and the double wear their build again on a load.
+- **War is included.** The agent rules of 2026-11-24 said "No War Cataclysm work"; the coordinating session confirmed on
+  2026-11-25 that the owner lifted it on 2026-11-24 ("Let's get the war and death trees in and working").
+
+### The owner's ruling
+
+The plan's Q16, as asked: "Until Death and War creatures exist, should a Death or War dungeon's Demonic bodies belong to
+that Cataclysm (deal its damage type, draw its modifiers)? Recommended: yes." The owner, 2026-11-24, verbatim: "Your
+recommendations work for all of those death/war questions."
+
+### The coordinating session's rulings of 2026-11-25, on this entry's first draft
+
+Verbatim:
+
+1. "Soul Harvest: a floor rule's "demons" are the dungeon's own creatures, whatever Cataclysm sent them. The row was
+   written when every creature was Demonic; #1671's "a demon is a creature whose damage type is Demonic" stays true for
+   everything except this floor rule, so Soul Harvest keeps working in a Death or War dungeon."
+2. "Fallen City: it takes the Cataclysm of the dungeon whose hit made the city fall; if that is not recorded, the run's
+   newest active Cataclysm. If recording the faller needs a saved field, that is a save version step: take the next free
+   run record number and say so. If it would grow this slice by more than about half a day, leave it, state it in the
+   entry, and tell me."
+3. "The Corrupted Stalker: it deals its kit entry's damage type (it is a corrupted former character wearing that build).
+   The corrupted double likewise deals the build's damage type."
+4. "The Succubus/Commander clash: I am telling the War enemy modifiers agent to close War_Commander to any creature whose
+   innate ability already grants Commander, as the GDD rule already closes Abyssal Aura and Infernal Brand. Nothing for
+   you to do there."
+
+What was built from them:
+
+- **Soul Harvest.** `UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon` takes the dungeon's own creatures'
+  damage type beside the creature's (`FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm)`, nothing for
+  a dungeon nobody sent, which reads as Demonic), and `ACataclysmDungeonGameMode::SoulHarvestMayFeed` passes it. In a
+  Demonic dungeon and on a floor with no empire dungeon behind it nothing changes; a Fallen City's demons are the newest
+  active Cataclysm's creatures, as its creatures are. **A judgement within the ruling:** "the dungeon's own creatures" is read as "a creature of the type the
+  dungeon's own creatures deal". So a Corrupted Stalker of another entry's type is not fed, and the objects a rule stands
+  on a floor, which keep the class's Demonic type, are fed in a Demonic dungeon as before and not in another.
+- **A Fallen City** takes `Run.ActiveCataclysms.Last()` in `BindEmpireDungeon` when its record names nobody, as
+  `OpenCataclysmDungeonIfEarned` reads "the newest active Cataclysm". Any other dungeon naming nobody stays Demonic.
+- **The Stalker** sets `DamageType` to its entry's at the end of `WearTheBuild`; **the double** to the build's
+  `CreationDamageType` at the end of `WearThePlayersBuild`, keeping Demonic when a build holds none. Both are raised
+  through those functions on every floor and after a load.
+
+### Why
+
+A creature draws its enemy modifiers from its own Cataclysm's column and the Generic one
+(`UCataclysmEnemyModifiers::Draw`, called with `ACataclysmEnemyCharacter::DamageType` in `DrawModifiersForRarity`), and
+that field defaulted to Demonic and nothing outside the tests set it. So a Death or War dungeon filled with Demonic
+creatures dealing Demonic damage, and none of the 11 Death or 9 War enemy modifier rows (being built on other branches)
+could ever be drawn in play. `FCataclysmDungeonIdentity` had no Cataclysm field, so nothing on the floor side could know
+who sent the dungeon.
+
+### What changed
+
+- **The sender crosses into the dungeon.** `ACataclysmDungeonGameMode::DungeonCataclysm` (new) is copied from
+  `FCataclysmDungeon::Cataclysm` by `BindEmpireDungeon` (entering and a load's resume both bind), put back to `None` by
+  `LeaveEmpireDungeon`, and handed to the floor rules by `DungeonIdentity` as `FCataclysmDungeonIdentity::Cataclysm`
+  (new). `FCataclysmDungeonFloorRules::BriefFor` copies it onto `FCataclysmFloorBrief::Cataclysm` (new).
+- **Each creature the floor places takes it.** `ApplyDesignedStats`, which every creature `SpawnPlacedCreature` places goes
+  through, first calls `GiveTheDungeonsCataclysm` (new), which writes
+  `FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm)` (new: `UCataclysmRoster::NameFor`, or nothing
+  for `None`) onto `DamageType` **before** `DrawModifiersForRarity` draws. It draws nothing and moves no figure, so a
+  Demonic dungeon's floor is the same draw for draw.
+- **A creature a load puts back takes it**: `FCataclysmSaveApply::DungeonFloorInto` calls `GiveTheDungeonsCataclysm` on
+  each.
+- **The Gatekeeper's called Imps take the Gatekeeper's type** (`ACataclysmGatekeeperCharacter`, Call the Damned).
+- **From the rulings of 2026-11-25** (above): Soul Harvest's demons are the dungeon's own creatures; a Fallen City takes
+  the run's newest active Cataclysm; the Corrupted Stalker and the corrupted double deal their build's type.
+- **A roster per Cataclysm in the floor populator, every one the Demonic seven**:
+  `FCataclysmFloorPopulator::PackKindsFor` (new) answers `PackKinds()` itself, the same array, for all eight and `None`,
+  and `Populate` draws its groups from `PackKindsFor(Brief.Cataclysm)`. No floor changes; slice B37 re-casts it when
+  Death's and War's rosters exist (B35, B36).
+- Comments brought into line: `ACataclysmEnemyCharacter::DamageType`, `SoulHarvestKey`, `DungeonFloorInto`, and the
+  design document's Enemy Modifiers section and its innate-ability clash rule.
+
+### Every place a creature is spawned, and what it takes
+
+| Spawn site | Takes the dungeon's Cataclysm? |
+| :-- | :-- |
+| The floor's population, every floor, the boss at the exit included (`PopulateFloor` through `SpawnPlacedCreature`) | **Yes** |
+| A Horde dungeon's waves (`ContinueTheWaveArriving` through `SpawnPlacedCreature`) | **Yes** |
+| Every dungeon-rule arrival placed through `SpawnPlacedCreature`: The Reaper, Vengeful Wraiths, Grave Tide, Dead Rising's risen, Echoes of the Past, the Demon Prince, Epidemic's lord, the Royal Guard, Warzone allies, Quarantine Breach, the Unstable Portal's Warden, Divine Resurgence, the Demonic Guide and the rest (30 call sites in 29 functions; with the population and the wave, every one of the 32 calls of `SpawnPlacedCreature`) | **Yes**, judgement 2 |
+| A creature a rule raises a rung (Volatile Evolution, Blood-Forged Champions, the dark floor's raise) | Keeps what it was placed with, which is the dungeon's |
+| The Cataclysm boss dungeon's Cataclysm Boss (the Gatekeeper at rung 5) and its floors | **Yes**: that dungeon's sender is the newest active Cataclysm (`OpenCataclysmDungeonIfEarned`) |
+| A Fallen City's creatures | **The Cataclysm that felled its city since bundle 4, and the run's newest active Cataclysm when the city records nobody**: nobody sent it (`Cataclysm` is `None` on its record, as before), ruling 2 |
+| The Gatekeeper's called Imps | **The Gatekeeper's own type**, which on a floor is the dungeon's |
+| A creature a load puts back (`DungeonFloorInto`) | **Yes**, from the dungeon bound again |
+| The Corrupted Stalker and the corrupted double (`RaiseTheCorruptedStalker`, `RaiseTheConsumptionDouble`) | **No: their build's own type**, the Stalker its entry's and the double its character's creation choice, ruling 3 |
+| The objects a rule stands on a floor (Chorus sources, Blooms, Spires, the Heavenly Core, Sarcophagi, Beacons, Portals, the Abyssal Rift, the Necrotic Bloom, the Quarantine, carcasses, veins) | **No**: `ACataclysmFloorSourceCharacter` and kin never strike and draw nothing |
+| The sandbox's spawners (`ACataclysmGameMode`) and the cloth stress console tool | **No**: no dungeon, Demonic |
+
+### Judgements
+
+1. **All eight Cataclysms, not only Death and War. A judgement:** the design's rule (own column and Generic) is the same
+   for every Cataclysm, and Q16 gives its reason in those terms. A Pestilence, Celestial or Chaos dungeon's creatures now
+   draw rows that have no effect yet (none of those columns is built), where before they drew the 8 built Demonic rows;
+   Famine and Void have 2 and 1 built.
+2. **A rule's creature belongs to the dungeon's sender, not to the row's Cataclysm. A judgement:** one rule, one source
+   of truth. The Reaper, a Death row, raised in a War dungeon is War's; the Demon Prince in a Death dungeon is Death's.
+3. *(Replaced by the coordinating session's ruling 2: a Fallen City takes the run's newest active Cataclysm. The first
+   draft kept it Demonic.)*
+4. *(Replaced by ruling 3: the Stalker and the double deal their build's type. The first draft kept them Demonic.)*
+5. **No saved field, so no record version step. A judgement:** the dungeon's sender is saved and every creature on its
+   floor is its sender's. The one case that comes back different is a thrall carried from one dungeon into another entered
+   from inside a walk and saved there: it comes back as the second dungeon's. Its type moves nothing a thrall does to a
+   creature, which has one resistance figure for every type.
+
+No genre research: no formula, number or new mechanic is chosen. The rule is the design's own.
+
+### Tests
+
+**Unreal, registered and not yet run.** New group **`Cataclysm.CreatureCataclysm.`, 8 tests** (none before; no other
+group begins with that string), in `game/Source/Cataclysm/Tests/CataclysmCreatureCataclysmTests.cpp`; and
+**`Cataclysm.SaveLoad.` goes from 83 to 84** on this slice's base. **Retaken at bundle 4:** development `9bd6ed996` registers 84, so this slice's one test makes it 85, and the bundle's head registers 87 with the Abyssal Rifts' two (`AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad` and `ARunFileFromVersion19MigratesItsRiftStateToEachRift`). Counted by registration macro in the source. The whole suite: its base
+plus 9.
+
+| Test | What it checks | Controls |
+| :-- | :-- | :-- |
+| `Cataclysm.CreatureCataclysm.TheBriefCarriesTheSenderAndEveryRosterIsTheDemonicSevenForNow` | the brief carries the sender on every floor; `None` names no type; each of the eight names its own and is the enemy modifier table's spelling; every roster is the same array as `PackKinds()`; a floor populated for Death and for nobody places the same creatures | the floor holds creatures |
+| `Cataclysm.CreatureCataclysm.ADeathDungeonsCreaturesDealDeathAndDrawOnlyDeathAndGenericModifiers` | entered from the empire, every creature of a Death dungeon's floor (all at the Herald rung) deals Death and is read as Death by `DamageTypeOf`; every row drawn is Death's or Generic | creatures stand; some rows are Death's own; the sender reaches the identity and the brief; leaving forgets it |
+| `Cataclysm.CreatureCataclysm.ADemonicDungeonsCreaturesStayDemonicAndDrawWhatTheyDrewBefore` | one dungeon entered as sent by nobody, by Demonic and by Death: nobody's and Demonic's creatures are Demonic and carry the same modifiers in the same order | Death's holds the same kinds, all Death's, with other modifiers |
+| `Cataclysm.CreatureCataclysm.ACreatureARuleRaisesInAWarDungeonDealsWar` | The Reaper raised in a dungeon War sent deals War | the same rule in a dungeon nobody sent raises a Demonic Reaper |
+| `Cataclysm.CreatureCataclysm.TheGatekeepersCalledImpsTakeItsCataclysm` | a War dungeon's Gatekeeper is War's and every Imp it calls deals War | a Gatekeeper outside any floor and its Imps are Demonic |
+| `Cataclysm.CreatureCataclysm.InADeathDungeonSoulHarvestFeedsTheDungeonsOwnCreatures` | in a dungeon Death sent carrying `Demonic_Soul_Harvest`, a soul may feed the dungeon's own (Death) creature and not a nearer Demonic one, and the nearest demon for a death is the dungeon's own | in a dungeon nobody sent the same two kinds swap: the Demonic one is fed and chosen, the Death one is not |
+| `Cataclysm.CreatureCataclysm.AFallenCitysCreaturesTakeTheCataclysmThatFelledItsCity` (named `...TakeTheRunsNewestActiveCataclysm` until bundle 4 wired the faller) | a Fallen City placed by hand on a city that records War, the run facing Demonic then Death: it binds War and every creature deals War | its city recording nobody, it binds Death, the newest active; an ordinary dungeon nobody sent binds nobody and its creatures are Demonic; facing Death then War with nobody recorded, the Fallen City binds War |
+| `Cataclysm.CreatureCataclysm.TheCorruptedStalkerAndTheDoubleDealTheirBuildsDamageType` | every authored Stalker entry, worn, deals its entry's type and `DamageTypeOf` reads it; a double wearing a build whose character chose Death deals Death | each is Demonic before it wears a build; some entry is not Demonic |
+| `Cataclysm.SaveLoad.ACreatureSavedInADeathDungeonComesBackDealingDeath` | a floor saved in a Death dungeon and loaded in another world: every creature put back deals Death | every creature dealt Death when saved; the standing creatures are the saved ones, the hurt one among them |
+
+`SaveInADungeon` in `CataclysmSaveLoadTests.cpp` gains a defaulted `Sender` parameter (nobody, as before) and records how
+many standing creatures dealt the sender's type; its three existing callers are unchanged.
+
+**Tests that assumed every creature is Demonic, swept** (every caller of `EnterEmpireDungeon`, `ResumeEmpireDungeon` and
+`EnterThePendingWalkIfReady` in the test files, read for what it asserts): **none both places creatures in a dungeon with a
+sender and asserts something this moves.** The save-and-load tests bind dungeons placed by hand with no sender; the
+Boss Floor, Winning the Run, Dungeon Costs Days, Floor Brief, Walk Seed, Potions, Enemy Strength and dark-floor tests bind
+seed-rolled senders and assert days, seals, rungs, briefs, seeds or win lines, clearing the boss's rows before a kill; the
+three Heavenly Core tests bind Celestial and read only the Core, which is spawned directly. The tests that assume Demonic
+(`Cataclysm.EnemyModifiers.*` seed searches through `Imp->DamageType`, `Cataclysm.Enemy.AnOrdinaryEnemyCarriesTheBaselineProfile`,
+`Cataclysm.DamageDoneToAllies.TheWearersArmourAndResistanceToTheBlowsTypeReduceTheShare`, the Soul Harvest tests,
+`Cataclysm.Seeding.*`) bind no dungeon, or one sent by nobody, so are unchanged. One test calls `ApplyDesignedStats` with a
+seed-rolled dungeon bound (`Cataclysm.EnemyStrength.AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage`):
+its Imp is Common, draws nothing, and only its starting damage and health are asserted.
+
+**Swept again for the rulings of 2026-11-25.** The tests that enter a Fallen City (Death Cost, Dungeon Costs Days, Empire
+Tree Loot and Walk, Enemy Strength, Walk From the Screen) read no creature's type, modifiers or Soul Harvest. The tests
+that wear a Stalker entry or a double's build (Stalker Entries, Enemy Burn, Player Copies, Consumption Double) read entry
+types, skills, casts and burns, not the type of a blow against a typed resistance; the Stalker Kit tests that set a Death
+or Chaos resistance strike from a kit fighter granted the skill directly, which no `WearTheBuild` touches. The one test
+of `SoulHarvestTakesAsADemon` itself (three asserts in
+`Cataclysm.SoulHarvestTravel.AStepFloatsEightMetresASecondAndArrivesWithinHalfAMetre`) calls it with one argument, which
+still means a dungeon nobody sent, so reads as before.
+
+**C++ guard proofs, planned and not run** (`prove_cpp_guard`), at most three:
+
+| Proof | File | Break | Prefix | Must fail |
+| :-- | :-- | :-- | :-- | :-- |
+| B3-1, no creature takes the sender | `CataclysmDungeonGameMode.cpp` | `GiveTheDungeonsCataclysm(Enemy);` read as `;` | `Cataclysm.CreatureCataclysm.` | `ADeathDungeonsCreaturesDealDeathAndDrawOnlyDeathAndGenericModifiers`, `ADemonicDungeonsCreaturesStayDemonicAndDrawWhatTheyDrewBefore`, `ACreatureARuleRaisesInAWarDungeonDealsWar`, `TheGatekeepersCalledImpsTakeItsCataclysm`, `AFallenCitysCreaturesTakeTheCataclysmThatFelledItsCity`; and not the other three, which stamp no floor creature through it |
+| B3-2, a load forgets it | `CataclysmSaveApply.cpp` | `Dungeon.GiveTheDungeonsCataclysm(Back);` read as `;` | `Cataclysm.SaveLoad.ACreatureSavedInADeathDungeon` | `ACreatureSavedInADeathDungeonComesBackDealingDeath` |
+| B3-3, Soul Harvest's demons Demonic again | `CataclysmDungeonGameMode.cpp` | `FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm))` in `SoulHarvestMayFeed` read as `FCataclysmDungeonFloorRules::CreatureDamageTypeFor(ECataclysmType::None))` | `Cataclysm.CreatureCataclysm.InADeathDungeonSoulHarvest` | `InADeathDungeonSoulHarvestFeedsTheDungeonsOwnCreatures` |
+
+**Not proved, within the owner's budget of three a change** (2026-09-14): the called Imps' copy
+(`Imp->DamageType = DamageType;`), the Fallen City's fallback in `BindEmpireDungeon`, and the Stalker's and the double's
+writes. Each is held by its own test above, which runs in the group and the whole suite.
+
+**Python.** One existing check read the change and refused it, rightly by its letter:
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py::test_no_floor_rule_writes_a_shared_damage_type` forbids any
+`->DamageType =` in `CataclysmDungeonGameMode.cpp`, because before issue #1924 the floor rules wrote a type onto the
+one hazard-source actor they all share. `GiveTheDungeonsCataclysm` writes one creature's own field, which is not that.
+**The check now leaves out that one function's body by name, and only it**: the function must exist, and every write in
+it must be onto its own creature, `Enemy`. Proved with `tools/prove_guard.py`, both halves, on the test file alone:
+
+| Break in `CataclysmDungeonGameMode.cpp` | Result |
+| :-- | :-- |
+| `DungeonCataclysm = ECataclysmType::None;` in `LeaveEmpireDungeon` read as `TheReaper->DamageType = NAME_None;` | "PROVED: 1 failed, 222 passed in 0.91s \| restored: 223 passed in 0.74s"; named failure `test_no_floor_rule_writes_a_shared_damage_type` |
+| `Enemy->DamageType = SendersDamageType;` read as `CorruptedStalker->DamageType = SendersDamageType;` | "PROVED: 1 failed, 222 passed in 0.86s \| restored: 223 passed in 0.74s"; the same named failure |
+
+No other Python check was added: the slice changes no data and nothing in `sim/`.
+
+**The Python suite.** On `2c78f9b30`, before the guard was amended: "1 failed, 8290 passed, 9 skipped in 367.26s
+(0:06:07)", the one failure being the check above. On `fc196cce9`: "8291 passed, 9 skipped in 333.24s (0:05:33)"; JUnit
+8300 tests, 0 failures, 0 errors, 9 skipped. After the rulings of 2026-11-25, on `acae24ae5`: "8291 passed, 9 skipped in
+352.67s (0:05:52)"; JUnit 8300 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks passed!".
+
+---
+
+## 2026-11-24 — Esc pauses the game: it closes what is open first, and with nothing open it pauses everything in play and shows a pause screen; online, a solo game pauses and a party is paused by its host
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `game/Source/Cataclysm/Player/
+  CataclysmPlayerController.cpp`: `ECataclysmEscape`, `InputKey`, `PressEscape`, `EscapeDoes`, `PauseTheGame`,
+  `ResumeTheGame`, `IsPauseScreenWanted`, `HasAScreenEscCloses`, `CloseEveryScreenEscCloses`, `SetAScreenOpenForTest`,
+  `ShowPauseScreen`, `HidePauseScreen`, all new; `PostProcessInput` does nothing to the world on a paused frame;
+  `CursorIsOverInterface` answers true under the pause screen; four comments that said no screen pauses.
+- `game/Source/Cataclysm/Interface/CataclysmPauseScreenWidget.h` and `.cpp`, new: the screen, built in C++ with no
+  Widget Blueprint, and the console command `Cataclysm.PauseGame`.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`: `SecondsTowardTheNextBeat`, a read of the beat's clock.
+- `game/Source/Cataclysm/Interface/CataclysmChoicePanelWidget.h` and `CataclysmLootFilterWidget.h`: comments.
+- `game/Config/DefaultEditorSettings.ini`, new: the editor's Stop moved from Esc to Shift+Esc for this project.
+- `game/Source/Cataclysm/Tests/CataclysmPauseTests.cpp`, new: `Cataclysm.Pause.`, ten tests.
+- `tools/tests/test_editor_stop_is_on_shift_escape.py`, new.
+- `docs/Cataclysm_GDD_v2.md`: Pausing, a new subsection of Controls and Key Bindings, and the choice panel's sentence;
+  `docs/Save_System_Design.md`, section 6; `docs/Play_Loop_Checklist.md`, "Before you start" and step 34.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN.** Written by an agent that may not build; a window builds it and runs
+  `Cataclysm.Pause.` (ten tests, registered below) and the three guard proofs below.
+- **FIVE OF THE TEN TESTS TICK A WHOLE TEST WORLD WITH `UWorld::Tick`, WHICH NO OTHER TEST IN THE PROJECT DOES.** The
+  pause is the engine's choice not to tick, so only the engine's tick can show it: `RunClock` fires the timers by hand
+  and would fire them in a paused game too. The world is given a plain `UGameInstance` and the engine's own
+  `AGameModeBase` (never `ACataclysmGameMode`, which would begin saving), because `APlayerController::SetPause` asks
+  the world's authority game mode. Epic's own `System.Engine.TimerManager` ticks a test world the same way. If those
+  five fail for a reason that is not the pause -- something in a whole world tick a test world lacks -- that is the
+  harness and not the feature, and their messages say which reading failed.
+- **THE EDITOR SETTING IS UNTESTED BY ANY RUN.** In Play In Editor, Esc reached the editor's Stop command before the
+  game (`UGameViewportClient::InputKey` runs `UEditorEngine::ProcessDebuggerCommands` first), so the pause could not be
+  reached where the owner plays. `game/Config/DefaultEditorSettings.ini` moves Stop to Shift+Esc through the engine's
+  project-defined chords (`FUserDefinedChords::LoadChords`, Slate's InputBindingManager.cpp). Only opening the editor
+  shows it took; a Python check holds the entry's nine fields, because `LoadChord` reads them unchecked and a missing
+  one stops the editor as it starts. If it does not take, `Cataclysm.PauseGame` pauses from the console. The owner
+  ruled the move itself on 2026-11-24 ("Move Stop to Shift+Esc (Recommended)"); whether the editor applies it is
+  still unmeasured.
+- **NOTHING IN THE GAME READ ESC BEFORE THIS.** The brief said Esc closed screens; it did not. In a packaged or
+  standalone game Esc did nothing, and in Play In Editor it stopped Play (an earlier entry, on writing the passive
+  tree: "Escape in Play In Editor stops play without closing it"). So "Esc closes an open screen first" is new
+  behaviour, not kept behaviour.
+
+### The ruling
+
+The project owner, 2026-11-24, verbatim: "Also, i'm pretty sure it's already in the design, but we need to be able to
+pause. Offline and online, pause is a must". It was not in the design: `docs/Cataclysm_GDD_v2.md` named "pause" only
+for a Siege pausing city upgrades.
+
+**The owner's rulings on the three points this change left open, 2026-11-24**, relayed by the coordinating session,
+the chosen options verbatim:
+
+1. **The editor's Stop:** "Move Stop to Shift+Esc (Recommended)". `game/Config/DefaultEditorSettings.ini` stays as
+   written.
+2. **The pause screen:** "Resume only, for now (Recommended)". Settings and Quit come later, once a settings screen
+   exists and leaving mid-dungeon is ruled.
+3. **Online party pause:** "Host pauses everyone". This differs from the recommendation below, which was the instance
+   pausing only while every player in it has paused. The GDD's Pausing now says that in a party only the host can
+   pause, and the host's pause stops the game for the whole party; solo online pauses the instance, as recommended.
+   The recommendation and its research stay below as the record of what was considered.
+
+### What Esc does
+
+`ACataclysmPlayerController::EscapeDoes(bAScreenIsOpen, bGameIsPaused)`:
+
+| Paused | A screen open | Esc |
+| :-- | :-- | :-- |
+| yes | either | resumes: the pause screen is on top |
+| no | yes | closes every open screen; does not pause |
+| no | no | pauses and shows the pause screen |
+
+- **The screens Esc closes** are `IsAFullScreenOpen`'s eleven and the choice panel, each through the function its own
+  key or button calls (the inventory lets go of what is on the cursor, as I does), the empire's four through
+  `CloseEmpireScreens`, and the choice panel through `Close`, its "Leave". One Esc closes every open one.
+- **The floor map on Tab is not a screen** and stays: it is drawn over play and takes no input. A judgement.
+- **Only a press acts.** A release and a repeat are taken and do nothing, so holding Esc does not toggle.
+- **The pause screen** is "Paused", a Resume button and "Esc resumes as well", over a dim. It takes every click on it.
+- **Esc is read in `InputKey`, not bound as an Enhanced Input action. A judgement**, for two reasons: the engine calls
+  `InputKey` from the viewport whether or not the world is paused, where an action would need `bTriggerWhenPaused` set
+  by `tools/generate_input_assets.py`, which only an editor run writes; and Esc is the menu key a player should not
+  rebind away. So the controls tables (which list the generator's bindings) do not list Esc; the GDD's Pausing does.
+
+### What stops, and what keeps running
+
+The pause is the engine's own (`APlayerController::SetPause` through `AGameModeBase::SetPause`, which sets the world's
+pauser). Read out of UE 5.8's `UWorld::Tick` (LevelTick.cpp): while paused, actor and component ticks run only for tick
+functions marked `bTickEvenWhenPaused`, the world's timer manager is not ticked, latent actions are not processed,
+`TimeSeconds` does not advance, and `FTickableGameObject`s tick only if `IsTickableWhenPaused`. So every system in this
+game stops together: combat, creature brains (`ACataclysmEnemyController`'s think timer), cooldowns and damage over
+time (gameplay effects, which the ability system times with the world's timers and clock), ground zones, projectiles,
+the dungeon's beat and every timed floor rule (The Reaper's ten seconds), the save writer's clock.
+
+**Searched for anything on the real clock**: `FPlatformTime`, `GetRealTimeSeconds`, `GetUnpausedTimeSeconds`,
+`GetAudioTimeSeconds`, `FApp` time, `FDateTime`, `FTSTicker`, `bTickEvenWhenPaused`, `IsTickableWhenPaused`, a game
+instance timer manager, and widgets' `NativeTick`. In play, none: `FDateTime` and `FPlatformTime::Cycles` seed random
+streams; `FPlatformTime::Seconds` bounds waits for a save write to finish; `FTSTicker` completes asynchronous save
+writes (`CataclysmSaveStorage.cpp`) and runs the cloth stress command, a developer tool; the widgets' `NativeTick`s
+redraw what changed and advance nothing. No actor, component or tickable in the project ticks while paused.
+
+**One thing in play did run while paused, and is stopped now: the player's own frame.** A player controller ticks on
+a pause frame so input reaches it, and `PostProcessInput` is part of that tick: its sweep took materials and souls in
+reach, a pending attack could swing and a pending pick-up be taken, Shoulder Through pushed, fear walked the pawn. A
+paused frame now only lets go of held skill keys and takes the ground hover's tooltip down.
+
+**A world-time stamp also stops.** Three comments in `CataclysmDungeonGameMode.h` (Edict of Silence, Death's Embrace's
+warning and its count) say "a subtraction from world time would count a paused game". `UWorld::TimeSeconds` does not
+advance while paused, so it would not; their conclusion, counting by the beat, is right for their other reason and is
+left alone. Only `GetRealTimeSeconds` and `GetUnpausedTimeSeconds` count a pause.
+
+### The empire layer
+
+Nothing advances in real time. Days pass only through `UCataclysmEmpireRun::AdvanceDay` and `AdvanceDays`, called by a
+floor's time spent, a death's days, a forge craft, an empire tree respec and console commands. The empire map's
+`NativeTick` only redraws when the day changes. So pausing on the empire map stops nothing more; Esc there closes the
+map, and a second Esc pauses as anywhere.
+
+### Saving and loading
+
+Nothing saves the pause. The save writer's clock is a tickable world subsystem, not ticked while paused; every event
+trigger comes from play, which has stopped (a console command that changes the character still writes it, as it is);
+and the pause is the world's pauser, which no record gathers (`CataclysmSaveGather` reads no world time either). A
+level change makes a new world, which runs; so a continue or a load always starts running. Quitting from a pause keeps
+what the last write held, as quitting at any other moment does.
+
+### The pause screen's buttons: only Resume, and why
+
+The owner asked for the existing actions that fit. **None exists to add.** The save design: "The game saves itself,
+often, and there is no manual save" (section 6, set by the owner on 2026-08-20). No way back to the character select
+screen exists from inside a level; the nearest machinery, `ACataclysmGameMode::TravelTo` with its synchronous
+hand-over, writes the records with no floor held, so used mid-dungeon it would drop the floor and its boss's damage:
+the Hardcore escape section 6 forbids. A "Quit" and a "Return to character select" were left for the owner, who ruled
+"Resume only, for now (Recommended)": Settings and Quit come later, once a settings screen exists and leaving
+mid-dungeon is ruled.
+
+### Other screens do not pause: a recommendation
+
+Kept as built. The skill choice screen's ruling Q2 (2026-10-25) is "no pause", and every other screen follows it.
+Diablo III's players report its menu pauses a solo game; Last Epoch offline pauses on Esc. Path of Exile is the
+counter-example: since 3.26 "You can now pause the game by opening the menu or any fullscreen interface like the
+Passive Skill Tree", which would be the shape to take if the owner wants screens to pause.
+
+### Online: the recommendation that was put to the owner
+
+Online play is not built ("Online play needs a service that does not exist yet"). The rule is written into the GDD as
+the owner stated it. **The party's rule was then ruled differently from what is recommended here**: "Host pauses
+everyone" (above), and the GDD follows the ruling. The recommendation as it was made, kept as the record of what was
+considered:
+
+- **Solo online: Esc pauses the instance, as offline.** Nothing shared runs in real time: the empire clock moves only by
+  the player's actions, so stopping the instance stops everything the player can lose. The server keeps a paused
+  instance for a time and then saves and closes it; Diablo III's players report its solo pause unpauses itself and
+  logs an idle player out "after a while". The length is a judgement left to the owner.
+- **A party: the instance pauses only while every player in it has paused.** One player's Esc shows their pause screen
+  without stopping the others. Path of Exile 2's party pause is reported to work this way. A host-only pause lets one
+  player stop three; no pause breaks the owner's rule for every party. A judgement among those three.
+- **Boss fights.** Path of Exile refuses a pause in its pinnacle fights ("Temporal Interference"). A pause is not a way
+  out of a fight, so section 6's rule does not require that here; it would be a per-fight flag, and a separate decision.
+
+**Sources**, read 2026-11-24:
+- Path of Exile 3.26 patch notes, Grinding Gear Games:
+  [pathofexile.com/forum/view-thread/3787013](https://www.pathofexile.com/forum/view-thread/3787013) -- the menu and
+  any fullscreen interface pause; lag or a disconnect pauses; "Temporal Interference" prevents pausing in pinnacle
+  fights. Maxroll calls it "effectively identical" to Path of Exile 2's:
+  [maxroll.gg](https://maxroll.gg/poe/news/pause-feature-is-coming-to-path-of-exile-1-in-3-26).
+- Path of Exile 2's party pause, "multiplayer instances pause when all players in that instance are pausing": a
+  player's second-hand account of an interview with Jonathan Rogers, not Grinding Gear Games' own words:
+  [pathofexile.com/forum/view-thread/3591746](https://pathofexile.com/forum/view-thread/3591746).
+- Diablo III: players on Blizzard's forum, no Blizzard employee: Escape "pauses the in-game action in a solo game";
+  "you CANNOT pause a public game or when another player is with you":
+  [us.forums.blizzard.com/en/d3/t/rip-during-pause-again/14646](https://us.forums.blizzard.com/en/d3/t/rip-during-pause-again/14646).
+- Diablo IV: no pause, solo or not; players go to town:
+  [eu.forums.blizzard.com/en/d4/t/how-can-i-pause-the-game/7702](https://eu.forums.blizzard.com/en/d4/t/how-can-i-pause-the-game/7702).
+- Last Epoch: "no way to pause the game during online play, either with friends or alone"; offline, Esc pauses:
+  [ginx.tv](https://www.ginx.tv/en/?p=61103) (a guide, updated 2024-07-20).
+- The Path of Exile 2 wiki's Pause page (poe2wiki.net) answered with a bot-protection page and was not read.
+
+### Judgements, each labelled
+
+- Esc read in `InputKey` rather than bound as an action (above).
+- One Esc closes every open screen, rather than one at a time: the screens are independent toggles with no stack.
+- A paused game resumes on Esc even with a screen open under the pause screen.
+- The floor map stays on Esc.
+- The project's editor setting moving Stop to Shift+Esc (the alternative left the pause unreachable in Play In Editor).
+  Ruled since: "Move Stop to Shift+Esc (Recommended)".
+- The pause screen's look: a dim of 60%, the inventory's panel colours, a button of solid colours. Looks.
+- The online recommendations (above). The party's was overruled: "Host pauses everyone".
+
+### Tests, registered before the window
+
+`Cataclysm.Pause.` is new and performs **10**; no existing test changes, so the whole suite performs the base's last
+measured total plus 10.
+
+| Test | What it asserts |
+| :-- | :-- |
+| `EscClosesAScreenFirstPausesWithNothingOpenAndResumesAPausedGame` | the rule's four cases |
+| `EscWithNothingOpenPausesTheGameAndAsksForThePauseScreen` | Esc through `InputKey`: the world paused, the screen wanted; CONTROL: it ran before |
+| `EscOnThePausedGameResumesIt` | a second Esc resumes; a third pauses again |
+| `EscWithAScreenOpenClosesItAndDoesNotPause` | the control: closed, not paused, no screen wanted; the next Esc pauses |
+| `ThePauseScreensResumeButtonResumesTheGame` | Resume resumes; CONTROL: with no controller it does nothing |
+| `OnlyAPressOfEscActsAndNoEscIsPassedOn` | a release and a repeat are taken and do nothing; a press pauses |
+| `WhilePausedACooldownDoesNotRunDown` | 10 s cooldown: 9 after 1 s running (CONTROL), still 9 after 1 s paused, 8 after 1 s running |
+| `WhilePausedADamageOverTimeDoesNotTick` | a burn takes health running (CONTROL), nothing paused, health again resumed |
+| `WhilePausedTheDungeonsBeatDoesNotAdvance` | the beat's clock moves running (CONTROL), not paused, and again resumed |
+| `APausedFrameTakesNoMaterialAndAnUnpausedOneDoes` | `PostProcessInput` paused leaves a material lying; unpaused (CONTROL) takes it |
+
+**No test sees** the screen drawn, a mouse click on Resume, or Esc through Play In Editor; step 34 of
+`docs/Play_Loop_Checklist.md` is the owner's press for those.
+
+### Guard proofs, planned (three, one a mechanism), prefix `Cataclysm.Pause.`
+
+| | Mechanism | Break, in `CataclysmPlayerController.cpp` | Must fail |
+| :-- | :-- | :-- | :-- |
+| P1 | Esc closes before it pauses | `return ECataclysmEscape::ClosedScreens; // Esc's first job: what is open closes.` becomes `return ECataclysmEscape::Paused; // Esc's first job: what is open closes.` | `EscClosesAScreenFirstPausesWithNothingOpenAndResumesAPausedGame`, `EscWithAScreenOpenClosesItAndDoesNotPause` |
+| P2 | Esc pauses the engine | `SetPause(/*bPause=*/true);` becomes `SetPause(/*bPause=*/false);` | the eight that pause: every test above but the rule's and the frame's |
+| P3 | the paused frame does nothing | `const bool bThePlayersFrameActs = !bGamePaused;` becomes `const bool bThePlayersFrameActs = true;` | `APausedFrameTakesNoMaterialAndAnUnpausedOneDoes` |
+
+### Python
+
+The whole suite, once, on the change as committed bar this section, on the base `5f302b0a7`:
+`python -u -m pytest --junit-xml=<outside the repository>` printed `8257 passed, 9 skipped in 387.97s (0:06:27)`; the
+JUnit file holds tests 8266, failures 0, errors 0, skipped 9, so 8257 passed. `python -m ruff check .`: "All checks
+passed!". `python tools/check_resolved_cpp.py --changed`: "8 files read, 0 with complaints".
+
+Again after the owner's three rulings were written into this entry and the GDD, on `fcb002e22` with those edits and
+before this paragraph: `8257 passed, 9 skipped in 454.05s (0:07:34)`; JUnit tests 8266, failures 0, errors 0,
+skipped 9, so 8257 passed.
+
+---
+
+## 2026-11-25 — Death's Quest dungeons are Abomination lairs: a fall while Death is active adds one, and each lair's Cursed Abomination, the Gatekeeper at the Boss rung, grows by a step for every city fallen when the lair appeared (#51, slice B5)
+
+**Affects:**
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`:
+  `FCataclysmDungeon::CitiesFallenBefore`, `IsALair`, `AbominationMultiplier`, `AbominationStep`, `LairSeedFor`, the
+  count in `RollWave`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`:
+  `MakeLairOnAFall`, called from `CityFell`; `FCataclysmDayReport::LairOnAFall`.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `IsALair`, `MakeTheCursedAbomination`, the Boss rung in
+  `PopulationRungFor`, the last wave, the load.
+- `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and
+  `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`: `bIsTheCursedAbomination`, `AbominationGearMore`.
+- `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and `game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp`:
+  `SpawnDropsFor`'s `GearMore`.
+- `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h`, `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.cpp`
+  and `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.cpp`: "Cursed Abomination", the map's lair line.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`: run
+  record version 22, `Migrate_21_to_22`; `game/Tests/SaveFixtures/Run_v22.json`, new; `game/Tests/SaveFixtures/README.md`;
+  `game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h`; the 20 test files that read the committed run file or run the
+  chain.
+- `game/Source/Cataclysm/Tests/CataclysmAbominationLairsTests.cpp`, new.
+- `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py` and `sim/cataclysm_sim/combat.py`;
+  `sim/tests/test_an_abomination_lair.py`, new.
+- `tools/tests/test_abomination_lairs_port.py`, new; `tools/tests/test_war_quest_sieges_port.py`.
+
+Issue [#51](https://github.com/sdubois777/Cataclysm/issues/51), slice B5 of the plan for the Demonic, Death and War
+Cataclysms (2026-11-24), the Death quest and surge effect, **with the simulation slice A2, which was never done**. On
+`feat/abomination-lairs`, stacked on `feat/war-quest-sieges` (slice B4), which takes the run record to 21 (L8).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.**
+- **THE STEP IS 1.10, A NUMBER FOR THE OWNER'S PLAY TEST**, set by the coordinating session on 2026-11-25 because the
+  model could not size it (see "The step, slice A2" below). An Abomination is 1.1 to the power of the cities fallen
+  when its lair appeared: **2.6 times its base after ten falls, 6.7 times after twenty.**
+- **WHAT A PLAYER MEETS.** Every Quest dungeon Death sends is an Abomination lair, a Horde. Its last wave holds the
+  Cursed Abomination, a Gatekeeper at the Boss rung named so under its bar, whose health, damage and gear grow by the
+  step once for every city fallen when the lair appeared. Every city that falls while Death is active adds one more
+  lair, next to it. Clearing a lair is one of Death's 5 Seeds of Undeath, as clearing a Death Quest dungeon already was.
+- **A RETAKEN CITY NO LONGER COUNTS**, in either half: the count is the cities fallen at that moment.
+- **A ONE-FLOOR LAIR HAS NO ABOMINATION**: a one-floor dungeon has no boss at its exit (`BossAtTheExit`).
+- **THE RUN RECORD GOES FROM 21 TO 22.**
+
+### The rulings
+
+- **The design**, Dead Rising: "Cursed Abominations spawn as cities fall, growing stronger with each subsequent loss.
+  Players must defeat Abominations in their quest dungeon lairs to collect 5 Seeds of Undeath and unlock the enemy
+  capital. Each fallen city adds a more powerful Abomination."
+- **The owner, 2026-11-24**, accepting Q6 to Q8: "Your recommendations work for all of those death/war questions."
+- **The coordinating session, 2026-11-25:**
+  - **L1:** the count includes the fall that made the lair.
+  - **L2:** a fall's lair is placed by `PickRefuge`, with no cap.
+  - **L3:** the boss is fixed at the Boss rung.
+  - **L4:** the stand-in is the Gatekeeper, because no Death creature exists (#29).
+  - **L5:** its on-screen name is "Cursed Abomination".
+  - **L6:** gear drops are multiplied by the same step, and gold is unchanged.
+  - **L7:** the largest step that keeps the tier 1 Death won share within 5 points of a step of 1.00, labelled a judgement.
+  - **L8:** stacked on B4's branch, run record 21 to 22.
+  - **L9:** the sweep runs only when no Unreal window does.
+- **Research**: Last Epoch's Nemesis can be empowered and each empowerment upgrades its rewards (Maxroll's Nemesis
+  overview, recorded in the plan's Q7). It shows a returning enemy that pays more as it grows; the size of the step is
+  this game's own.
+
+### What it does
+
+| Rule | Game | Simulation |
+| :-- | :-- | :-- |
+| A lair | `IsALair`: Quest, sent by Death | `is_lair` |
+| Its count | `CitiesFallenBefore`, set in `RollWave` and `MakeLairOnAFall` from `FallenCityCount` | `cities_fallen_before`, set in `_make_dungeon` |
+| A fall adds one | `MakeLairOnAFall`, after War's Siege, before the fall's surge, `PickRefuge` from a stream of its own | `_lair_on_a_fall`, the same place, `_quest_refuge` |
+| The boss | the last wave's Gatekeeper at `FirstBossRarityStep`, `MakeTheCursedAbomination`; found again on a load | the boss score in `death_chance` |
+| Its growth | health and damage times `AbominationStep ^ count`, through the starting health and the placed multiplier, which a save keeps; gear times the same (`SpawnDropsFor`'s `GearMore`) | `boss_score_multiplier`, since an enemy's health and damage are each its score times a fixed share |
+
+### Tests
+
+`Cataclysm.AbominationLairs.`, a new group of 10: what a lair is and its multiplier; a surge's lair counts the fallen
+(200 waves) with War's Quest dungeons counting nothing; a fall while Death is active makes one, counting the fall,
+CONTROL none without Death; two falls, two lairs; the last wave's Cursed Abomination at the Boss rung, named, with its
+gear's step, CONTROL War's Horde; its health and damage by the step; the map's line; the save's round trip; the
+migration from `Run_v21.json`. Python: `sim/tests/test_an_abomination_lair.py` (6) and
+`tools/tests/test_abomination_lairs_port.py` (6).
+
+### The step, slice A2
+
+Campaigns whose drawn Cataclysms include Death, the first 1000 seeds at each tier, `policies.triage`, the report
+settings (`.claude/windows/b5_sweep_abomination_step.py`). Won share, noise between two cells 2.2 points:
+
+| Tier | 1.00 | 1.05 | 1.10 | 1.15 | 1.20 | 1.25 |
+| --: | --: | --: | --: | --: | --: | --: |
+| 1 | 45.0 | 45.0 | 45.0 | 45.0 | 45.0 | 44.9 |
+| 2 | 43.3 | 43.2 | 43.4 | 43.4 | 43.2 | 43.1 |
+| 3 | 22.2 | 21.5 | 21.3 | 21.4 | 21.4 | 21.4 |
+
+Cities lost: tier 1 10.36, tier 2 17.85 to 17.90, tier 3 23.83 to 23.85. Lairs a fall made: 10.35, 17.6 and 22.9 a
+campaign. Objectives: 5.00 at tier 1 in every cell.
+
+- **The L7 criterion printed 1.25, the top of the range swept, and that is no answer**: no step in the range moves tier 1
+  by more than 0.1 point, though 1.25 makes a lair after 10 to 20 falls 9 to 87 times its base.
+- **Why the model is insensitive, as far as I can tell, and NOT CONFIRMED which:** a lair's boss is one capped term of
+  the last floor's death chance (boss risk at most 0.95, survival at least 0.05), so a boss far stronger than the player
+  changes nothing more; or a tier 1 Death player clears exactly the 5 objectives the win needs and may not walk the late,
+  strong lairs. [#2917](https://github.com/sdubois777/Cataclysm/issues/2917) holds both and the first test.
+- **So the step is a play-test number, 1.10**, the coordinating session's choice (c) on 2026-11-25, over sizing it from
+  a wider sweep: that would show where the cap bites, not what feels right in play.
+
+### Registered
+
+**The whole Python suite at `3b554c098`:** "3 failed, 8634 passed, 9 skipped in 465.83s (0:07:45)"; JUnit 8646 tests,
+3 failures, 0 errors, 9 skipped; ruff "All checks passed!".
+- **One failure is the base branch's**: `test_datatable_assets_are_current.py` names `DungeonModifiers.csv`, which the
+  Abyssal Rifts branch changes and its window's editor step rebuilds. This slice changes no CSV.
+- **Two were this slice's**: `test_city_upgrade_dungeon_rewards.py`'s `test_a_kill_takes_the_city_rewards_before_it_
+  rolls_and_in_each_grant` and `test_empire_tree_treasurer_cities.py`'s `test_the_golden_touchs_materials_reach_the_
+  material_roll_and_draw_nothing` each read the kill's materials figure as the drop call's LAST argument, and the
+  Cursed Abomination's gear step now follows it. Both read it as an argument followed by others at `593599f6b`, which
+  changes only those two checks; the two files then gave "12 passed in 1.02s". **The whole suite was not run again.**
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `593599f6b`:
+
+| Proof | The break | Result | Named failures |
+| :-- | :-- | :-- | :-- |
+| LP1 | a fall adds a lair when Pestilence is active, not Death | "PROVED: 2 failed, 4 passed in 0.16s \| restored: 6 passed in 0.05s" | `test_a_fall_while_death_is_active_adds_a_lair_that_counts_it`, `test_every_fall_adds_one_with_no_cap` |
+| LP2 | a lair counts no fallen city | "PROVED: 3 failed, 3 passed in 0.12s \| restored: 6 passed in 0.05s" | `test_a_lair_counts_the_cities_fallen_as_it_appears` and the two above |
+| LP3 | the last wave's Gatekeeper is not made the Cursed Abomination | "PROVED: 1 failed, 5 passed in 2.37s \| restored: 6 passed in 0.18s" | `test_the_boss_is_the_cursed_abomination_at_the_boss_rung` |
+
+**For the window**, counted statically and to be recounted from the window's base log:
+- **The editor step:** none of this slice's.
+- **The whole suite:** the base's figure plus 10 (`Cataclysm.AbominationLairs.`), none removed.
+- **Save record:** the run record 21 to 22.
+- **Groups alone:** `AbominationLairs.` (new), `WarQuestSieges.`, and B4's list (`Surge.`, `EmpireRun.`, `Rifts.`,
+  `SaveLoad.`, `SaveRecords.`, `SaveWriter.` and every group with a chain test), with `Gatekeeper.`, `EmpireMapLayout.`
+  and `CombatOverlay.` for the boss, the map line and the bar's name, and the drop groups the spawner's new argument
+  reaches.
+- **One C++ guard proof**, the bundle's limit of one a slice:
+
+| Proof | File | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| LC1 | `CataclysmEmpireRun.cpp` | `if (ActiveCataclysms.Contains(ECataclysmType::Death))` read as `if (false && ActiveCataclysms.Contains(ECataclysmType::Death))` | `Cataclysm.AbominationLairs.` | `AFallWhileDeathIsActiveMakesALairThatCountsIt`, `EveryFallMakesOneWithNoCap` |
+
+  **Dropped, for the same limit:** the Boss rung (`PopulationRungFor`'s lair branch), guarded by
+  `ALairsLastWaveHoldsTheCursedAbominationAtTheBossRung`; and the strength (`MakeTheCursedAbomination`'s scaling),
+  guarded by `TheCursedAbominationGrowsByTheStepForEachFallenCity`.
+
+---
+
+## 2026-11-25 — War's Quest dungeons are Sieges in the game: at most two are made a day, each bites a quarter of a Siege, grows from the day it reached its city and is re-drawn off a besieged city, and a city's fall to War makes the next one (#51, slice B4)
+
+**Affects:**
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`:
+  `QuestSubTypeFor(War)`, `QuestSiegesPerDay`, `QuestSiegeBiteShare`, `FCataclysmDungeon::ArrivedDay`,
+  `DaysOnItsCity`, `SiegeBiteShare`, `WarSiegeSeedFor`, `PickCityWithoutASiege`, `PickWarSiegeCity`, `RollWave`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h` and `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp`:
+  `FCataclysmCity::FellTo`, cleared by `Retake`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`:
+  `HitBy`, `CityFell`, `MakeWarQuestSiegeOnAFall`, `QuestSiegesMadeOn`, `ApplySiegeDamage`, the forecast, both moves,
+  `FireSurge`, `FCataclysmDayReport::WarSiegeOnAFall`.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`: run
+  record version 21, `Migrate_20_to_21`.
+- `game/Tests/SaveFixtures/Run_v21.json`, new; `game/Tests/SaveFixtures/README.md`;
+  `game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h`: `AddTheRunsVersion21Defaults`; the 19 test files that read
+  the committed run file or run the chain.
+- `game/Source/Cataclysm/Tests/CataclysmWarQuestSiegesTests.cpp`, new;
+  `game/Source/CataclysmEmpire/Tests/CataclysmSurgeTests.cpp`: two tests at eight sub-types.
+- `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py` and `sim/cataclysm_sim/world.py`;
+  `sim/cataclysm_sim/policies.py`: `siege_daily_damage`'s Siege mix re-measured over 10,000 campaigns, 107,735 Sieges
+  at 67% Basic, 29% Quest, 5% Fallen City, 10.77 a campaign, where it said 96,875 at 70 / 25 / 5 and 9.69;
+  `sim/tests/test_a_fall_to_war_starts_the_next_siege.py`, new;
+  `sim/tests/test_a_war_quest_siege_is_capped_and_bites_a_quarter.py`.
+- `docs/Cataclysm_GDD_v2.md`, World War: the cap a day's, the re-draw, and a fall to War starting the next Siege.
+- `tools/tests/test_war_quest_sieges_port.py`, new; `tools/tests/test_dungeon_subtype_port.py`;
+  `tools/tests/test_demonic_rifts_port.py`: `Kind` is no longer `const` in `RollWave`.
+- The file of Python checks that held War's Quest sub-type as a gap in the game, deleted by its own restore text (it
+  is named in the 2026-10-21 entry's dated sentences).
+
+Issue [#51](https://github.com/sdubois777/Cataclysm/issues/51), slice B4 of the plan for the Demonic, Death and War
+Cataclysms (2026-11-24), the War quest. On `feat/war-quest-sieges`, **stacked on `feat/abyssal-rifts-2864-2`**, which
+takes the run record from 19 to 20 (the coordinating session, 2026-11-25, W4).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled or run in Unreal.
+- **WHAT A PLAYER MEETS.** A Quest dungeon War sends is always a Siege. It bites its city every day at a quarter of
+  an ordinary Siege, and its growth starts again when it moves. At most two are made on one day. When a hit War sent
+  fells a city, a new War Quest Siege appears on a neighbour. Clearing either kind counts toward War's 10 objectives.
+- **A RUN THAT FACES WAR PLAYS DIFFERENTLY FROM THE FIRST WAR QUEST DUNGEON ON.** No shared random stream takes more
+  or fewer numbers: the re-draw and the fall's Siege draw from streams of their own (`WarSiegeSeedFor`), and a
+  Quest dungeon's sub-type draw is still taken and thrown away. What moves is downstream: a War Quest dungeon that
+  would have rolled another sub-type is a Siege, so cities, falls and every later draw a different city history causes
+  move with it. A run that does not face War is unchanged.
+- **THE RUN RECORD GOES FROM 20 TO 21.** Each dungeon saves the day it reached its city and each city the Cataclysm
+  whose hit felled it.
+- **THE CAP IS PER DAY IN THE SIMULATION TOO NOW, NOT PER WAVE.** `quest_sieges_per_wave_max` is renamed
+  `quest_sieges_per_day_max`. Two waves on one day were already possible, a fall's and the clock's, and could make
+  four; they now make two between them.
+
+### The rulings
+
+- **The owner, 2026-10-16**, verbatim: "War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one
+  specific type."
+- **The owner, 2026-10-17**, verbatim, quoted at `TuningConfig.quest_sieges_per_day_max`: "the first option, but make
+  it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." That is a
+  cap, a quarter of the bite, and growth from arrival.
+- **The coordinating session, 2026-10-16**: one drawn onto a besieged city re-draws among those holding none.
+- **The plan's reading of section XI** ("Player cities become aggressive and begin attacking each other"): the War
+  Quest Sieges are those attacks, and a city's fall to War starts the next one. The owner accepted every
+  recommendation on 2026-11-24: "Your recommendations work for all of those death/war questions."
+- **The coordinating session, 2026-11-25**, on this slice's questions:
+  - **W1:** "falls to War" means the felling hit was sent by War.
+  - **W2:** at most two War Quest Sieges are made on one day, waves and falls together.
+  - **W3:** the fall makes a Quest dungeon that counts toward War's objectives.
+  - **W4:** build on the Abyssal Rifts branch and take the run record from 20 to 21.
+  - **W5:** run the sweeps when no Unreal window is running, and quote the War rows.
+- **The link to slice B3** (the coordinating session): the Fallen City dungeon takes the run's newest active
+  Cataclysm, because recording which Cataclysm felled a city needed a save step. **`FCataclysmCity::FellTo` is that
+  fact, saved here.** The Fallen City can now read it; it does not yet. That is B3's change, on its own branch.
+
+### What it does
+
+| Rule | Game | Simulation |
+| :-- | :-- | :-- |
+| War's Quest dungeons are Sieges | `QuestSubTypeFor` answers Siege for War | `QUEST_SUBTYPE_BY_CATACLYSM`, unchanged |
+| At most two made on one day | `RollWave` counts from `QuestSiegesAlreadyToday` (`FireSurge` passes `QuestSiegesMadeOn(Today)`); a further roll is made Basic before the depth is rolled | `trigger_surge` starts from `quest_sieges_made_today()` |
+| Re-drawn off a besieged city | `PickCityWithoutASiege`, by tier weights, from its own stream; none free, it lands where drawn | the same, by the pattern's weights |
+| A quarter of the bite | `SiegeBiteShare()` on the flat share and the growth, in the day's share and the forecast | `siege_bite_share`, unchanged |
+| Growth from arrival | `DaysOnItsCity` from `ArrivedDay`, set by the timer's move and the move on a fall | `days_on_its_city`, unchanged |
+| A fall to War makes the next | `CityFell` reads `HitBy` (set by the three felling hits), records `FellTo`, and calls `MakeWarQuestSiegeOnAFall` after the Fallen City and before the fall's surge | `_fall` reads `hit_by`, records `fell_to`, and calls `_war_siege_on_a_fall` in the same place |
+
+**`HitBy` and `hit_by` are a member and an attribute, not parameters**, so every call keeps the one shape the port
+tests read: `CityFell(X, OutReport);` and `self._fall(city)`. That is the shape `ArmTheLastStandFor` already takes.
+**The fall's Siege goes to an adjacent exposed city that is not the Pillar, has room and holds no Siege**, by the
+surge's tier weights. The neighbours are read after the fall, so a city the fallen one shielded qualifies.
+
+### The save, run record version 21
+
+`Migrate_20_to_21` writes `ArrivedDay` -1 into every dungeon and `FellTo` "None" into every city. `Run_v21.json` is
+`Run_v20.json` at version 21 with the two fields; the fallen city records Demonic, a figure and not the default.
+Every test that read `Run_v20.json` as the committed file reads `Run_v21.json`, and each of the 15 chain tests adds
+`AddTheRunsVersion21Defaults`. **No other record moves.**
+
+### Tests
+
+`Cataclysm.WarQuestSieges.`, a new group of 11:
+
+| Test | What it checks |
+| :-- | :-- |
+| `WarsQuestDungeonsAreSiegesWithTheModelsTwoNumbers` | Siege, 2, 0.25; CONTROL an ordinary Siege's share is 1, Death's Horde |
+| `AWaveMakesNoMoreWarQuestSiegesThanTheDayHasLeft` | 400 waves: two made, none; one made, at most one; CONTROL some waves make two, Death uncapped |
+| `AWarQuestDungeonDrawnOntoABesiegedCityLandsOnOneWithout` | every one on the free city; CONTROL none free, on a besieged one |
+| `AQuestSiegeBitesAQuarterOfWhatAnOrdinarySiegeBites` | a quarter of the ordinary Siege's day; CONTROL the whole, six days grown |
+| `ASiegesGrowthCountsFromTheDayItArrived` | `DaysOnItsCity`; forecast and day's share from arrival; CONTROL from the spawn |
+| `AQuestDungeonMovedByAFallArrivesThatDay` | `ArrivedDay` the day of the fall; CONTROL `INDEX_NONE` |
+| `AFallToWarMakesAWarQuestSiegeOnANeighbour` | `FellTo` War, one on an exposed neighbour; CONTROL Demonic, none |
+| `AFallToWarMakesNoneWhenTheDayHasItsTwoOrEveryNeighbourIsBesieged` | none, none; CONTROL one |
+| `ARetakenCityWasFelledByNobody` | `None` after `Retake`; CONTROL War before |
+| `AGatheredRunRecordCarriesArrivalAndFeller` | 57 and War read back; CONTROL `INDEX_NONE` and `None` |
+| `ARunFileFromVersion20GainsNoArrivalAndNoFeller` | migrated, every other field kept; CONTROL `Run_v21.json` loaded, Demonic |
+
+**Two existing tests renamed.** `Cataclysm.Surge.SevenCataclysmsNameTheirQuestSubTypeAndTheRestRoll` is now
+`...EightCataclysmsNameTheirQuestSubTypeAndNobodyRolls`, and
+`Cataclysm.Surge.InARunSevenCataclysmsQuestDungeonsAreTheirOneSubType` is now `...InARunEight...`. Each expects War's
+Siege, and the second's control that War's Quest dungeons still roll is gone with the rule.
+
+Python: `tools/tests/test_war_quest_sieges_port.py`, six checks holding the two halves to the same numbers and shapes,
+and `sim/tests/test_a_fall_to_war_starts_the_next_siege.py`, four. `test_dungeon_subtype_port.py` compares eight pairs.
+
+### Registered
+
+**The whole Python suite at `73499bed9`:** "1 failed, 8624 passed, 9 skipped in 627.61s (0:10:27)"; JUnit 8634 tests,
+1 failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is the base branch's**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded` names
+`DungeonModifiers.csv`, which `feat/abyssal-rifts-2864-2` changes and its window's editor step rebuilds. This slice
+changes no CSV. **The first run, at `ebacd1c52`, had 7 failures; six were this slice's**, each fixed at `73499bed9`:
+
+| Check | Why it failed | Fixed by |
+| :-- | :-- | :-- |
+| `test_the_siege_prose_in_policies_is_true.py` | the Siege mix moved: 62.8% Basic over its 320 campaigns, against 70% stated | re-measuring it over 10,000 campaigns (Affects) |
+| `test_cpp_comments_cite_real_python_tests.py` | a header comment named the deleted file | rewording the comment |
+| `test_the_decisions_log_names_real_files.py` | this entry's Affects named the deleted file | describing it instead |
+| `test_demonic_rifts_port.py` | it reads `const ... Kind = RollKind(Stream);` | reading it without `const` |
+| `test_empire_tree_event_counts_are_saved.py` | `HitBy` sat between `ArmTheLastStandFor` and the hit | setting `HitBy` first |
+| `test_war_quest_sieges_port.py` | it counted the step's own migration test as a chain test | skipping that file |
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `73499bed9`:
+
+| Proof | The break | Result | Named failures |
+| :-- | :-- | :-- | :-- |
+| WP1 | `_fall` makes the Siege on a fall to Death, not War | "PROVED: 3 failed, 1 passed in 0.18s \| restored: 4 passed in 0.05s" | the three fall tests in `test_a_fall_to_war_starts_the_next_siege.py` that expect a Siege |
+| WP2 | `quest_sieges_made_today` counts nothing | "PROVED: 2 failed, 9 passed in 0.13s \| restored: 11 passed in 0.07s" | `test_the_day_s_two_count_the_falls_and_the_waves_together`, `test_the_cap_is_per_day` |
+| WP3 | the move on a fall sets no `ArrivedDay` | "PROVED: 1 failed, 5 passed in 2.30s \| restored: 6 passed in 0.19s" | `test_growth_counts_from_arrival_and_the_quest_share_bites_in_both` |
+
+WP3 was first sent with an anchor holding a carriage return and a line feed, which `prove_guard` reads
+converted, so it refused the break as changing nothing and ran no test; it was sent again with an anchor on one
+line.
+
+**For the window** (bundle 4, the coordinating session, 2026-11-25), counted statically and to be recounted from the
+window's base log:
+- **The editor step:** none of this slice's; the base branch's rebuilds `DT_DungeonModifiers`.
+- **The whole suite:** the base's figure plus 11 (`Cataclysm.WarQuestSieges.`), none removed; two `Cataclysm.Surge.`
+  tests renamed.
+- **Save record:** the run record 20 to 21.
+- **Groups alone**, every group with a test that reads what this slice moved: `WarQuestSieges.` (new), `Surge.`,
+  `EmpireRun.`, `Rifts.`, `SaveLoad.`, `SaveRecords.`, `SaveWriter.`, `CityCleanseSave.`, `CityUpgradeBuildSave.`,
+  `ConsumptionDouble.`, `DeathCost.`, `Dismantle.`, `EarnedBoss.`, `EarnedBossSave.`, `EmpireTreeCity.`,
+  `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `EmpireTreeWalk.`,
+  `GemSave.`, `Gold.`, `RiftAltars.`, `Seeding.`, `ThrallSave.`, `WalkSeed.`, `WinningTheRun.`.
+- **One C++ guard proof**, the bundle's limit of one a slice:
+
+| Proof | File | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| WC1 | `CataclysmEmpireRun.cpp` | `if (FelledBy == ECataclysmType::War)` read as `if (false && FelledBy == ECataclysmType::War)` | `Cataclysm.WarQuestSieges.` | `AFallToWarMakesAWarQuestSiegeOnANeighbour`, `AFallToWarMakesNoneWhenTheDayHasItsTwoOrEveryNeighbourIsBesieged` |
+
+  **Dropped, for the same limit:** the quarter (`* Host.Share *` read as `*`), guarded by
+  `AQuestSiegeBitesAQuarterOfWhatAnOrdinarySiegeBites`; and the day's cap (`QuestSiegesToday >= QuestSiegesPerDay`
+  read as `false`), guarded by `AWaveMakesNoMoreWarQuestSiegesThanTheDayHasLeft`. Each keeps its own test with a
+  control. WC1 is kept because the fall rule is the one rule new to both halves.
+- **The sweeps** (`sim/experiments.py`, W5) ran on `c37b947ca`: "Done. 39,240 campaigns run." **Their report has no row
+  per Cataclysm**, so it has no War rows to quote: each campaign draws its Cataclysms from its seed and the report
+  averages over them. So W5 was met by a focused measurement instead, approved by the coordinating session the same
+  day: campaigns whose drawn Cataclysms include War, 1000 per cell, `policies.triage`, the report settings, with the
+  fall rule (`war_fall_makes_a_quest_siege`) on and off. The noise between two cells is 2.2 points.
+
+| Tier | Fall rule | Won | Lost | Cities lost | War Quest Sieges a fall made |
+| :-- | :-- | --: | --: | --: | --: |
+| 1 | off | 6.8% | 93.2% | 23.86 | 0.00 |
+| 1 | on | 2.6% | 97.4% | 23.98 | 6.82 |
+| 2 | off | 35.1% | 64.9% | 23.57 | 0.00 |
+| 2 | on | 32.3% | 67.7% | 23.75 | 5.00 |
+| 3 | off | 21.7% | 78.3% | 23.96 | 0.00 |
+| 3 | on | 22.3% | 77.7% | 23.99 | 3.88 |
+
+- **The fall rule costs tier 1 4.2 points and tier 2 2.8**, each more than the noise; tier 3's 0.6 is within it.
+- **THE LOW TIER 1 BASE PREDATES THIS SLICE.** War-only tier 1 campaigns win 6.8% with the fall rule off. The same 1000
+  seeds give **7.5% on `development` (`551381d2b`) and 7.5% on this slice's parent (`75200dd18`)**, each in its own
+  extracted copy in one session. The 0.7-point gap to this slice, with its fall rule off, is within the noise; it holds the
+  per-day cap and the re-draw together. Opened as [#2916](https://github.com/sdubois777/Cataclysm/issues/2916), "War-only tier 1
+  campaigns win about 7% in the simulation"; the coordinating session ruled the slice is not held for it.
+- **THE PER-DAY CAP WAS NOT MEASURED ON ITS OWN, AND WHY:** it has no switch, so both cells above hold it. Telling it
+  apart from the re-draw would need a run with the re-draw removed. The coordinating session ruled it not measured
+  unless the fall rule's figures looked wrong; against the 10-point condition it set, they did not. The comparison with
+  the parent bounds the cap and the re-draw together at 0.7 points at tier 1, within the noise.
+
+---
+
 ## 2026-11-25 — The Shadow's marks, Hollow Step, the kill strikes and Lethal Dose, and the Necromancer's Interpose and Guard the Master (Death trees, slice C6e)
 
 **Affects:**
@@ -12163,6 +13330,131 @@ again on a load.
 
 ---
 
+## 2026-11-24 — Death's eleven enemy modifiers, written ahead of their window: what each does, every figure the rows leave open, and eight questions for the owner
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `feat/death-enemy-modifiers`, cut from `feat/bug-batch-2`
+(`632a43022`, which carries batch 1) with development `5cdd6bdc4` merged in, as the coordinating session asked, so it
+moves with the two bug batches; its own commits sit on top of that merge to be cherry-picked. The owner approved the
+work on 2026-11-24: "yes, write the Death enemy modifiers ahead". The rows are `game/Data/EnemyModifiers.csv`, generated
+from the design workbook's Enemy Modifiers sheet; neither was edited. Measured on development `6dd62aba6` before this:
+none of the eleven was built.
+
+**REBUILT ON DEVELOPMENT ON 2026-11-25**, on `feat/death-war-enemy-modifiers` with War's modifiers, and the owner's
+acceptance of the eleven and of Q6's two status rows recorded: see the 2026-11-25 entry above, which is also where Q6
+is answered.
+
+### Said first
+
+- **Nothing here has been compiled or run in the engine.** Eleven automation tests are registered below, with a guard
+  proof for each, in four changes of at most three proofs.
+- **Two of the eleven have no status row, so no tag a player's status bar could show**: Mortal Reminder and Lingering
+  Decay. The design workbook's Debuffs sheet has no row for either, and this change was not to edit the workbook. Both
+  work and both are named on the status line this change adds (below), from state the code keeps rather than from a
+  tag. Q6 asks for the two rows.
+- **Haunting's debuff row is still "(planned)" with no figures** (`Debuff_Haunting`: "A debuff applied by a spectral copy
+  of an enemy that reduces all of a player's resistances"). Built from the sentence, with figures named in code; Q5.
+- **Undying Will's damage increase is not saved.** It is a rule's part of the creature's damage (#2723), and those parts
+  are not written to a save, so a save and load mid-fight brings the risen creature back without the 50%. Q7.
+- **The four "changes" are proof groups on one branch.** The eleven share files and functions, so they were written as
+  one change; the window may run the four groups below one after another.
+
+### The rows, what each does in play, and where
+
+| Row | In play | Built in |
+|---|---|---|
+| Grave Touch: "Deal more damage to players with less than 50% health." | A hit from it on a character below half its maximum health deals 50% more. A tick is not a hit. | `UCataclysmVitalAttributeSet`, the attacker's block beside Perfect Aim; `UCataclysmEnemyModifiers::GraveTouchMultiplier` |
+| Soul Eater: "Completely ignores player energy shields." | Every blow it causes, ticks included, passes the energy shield by to health. | `FCataclysmIncomingHit::bIgnoresEnergyShield`, step 8 of `UCataclysmDamageCalculation::Resolve` |
+| Mortal Reminder: "Attacks apply a debuff that prevents the player from being healed above their current HP for 4 seconds." | A hit that takes health sets a ceiling at the health it left for 4 seconds; a later hit sets it again, lower. Every heal of health stops there. | `MortalReminderOnHit`; the ceiling in `UCataclysmRegeneration::HealthHealingCeiling`, which every heal asks |
+| Spectral Shift: "Phase in and out of existence, becoming immune to damage." | Out of existence 5 seconds in every 15: no damage of any kind reaches it, as a shrouded creature's, and it goes on acting. "Phased" under its bar. | `TimedStep`; `ACataclysmEnemyCharacter::TakesNoDamage` and the health hold in `PreAttributeChange` |
+| Shadow Step: "Become invisible when not attacking." | Hidden, as the vision system hides a creature beyond sight (not drawn, no bar, not clickable, still struck by what reaches it), except from the moment an attack begins until a second after it ends. Never a creature that takes no hostile action. | `TimedStep`; the brain reveals it where it orders a swing and where an ability begins; shown again at its death |
+| Soul Tether: "Transfer a portion damage taken to the player as health degeneration over time." | A tenth of the health it loses to a blow, ticks included, is laid on whoever struck as damage over time across 4 seconds, added to what an earlier tether still owes. | `TetherOnHealthLost`, from the attribute set's on-hit block |
+| Lingering Decay: "Enemies leave behind necrotic zones that reduce healing to players standing in them." | Every 5 seconds it leaves a 3 metre zone at its feet that lasts 10 seconds; a character of the players' side standing in one has every heal of health cut by half, added to the other healing cuts and capped at 100. | `TimedStep`; `ACataclysmGroundZone::HealingLessPercentInside`; `UCataclysmRegeneration::TopUp` |
+| Final Curse: "Upon death, curse the player for 5 seconds, causing them to take damage when using abilities." | At its death the player is given Final Curse for 5 seconds; each skill used meanwhile, every slot but the basic attack, costs 5% of maximum health as Death damage. | `NoteDeathOfACarrier` from `HandleDeath`; `FinalCurseOnSkillUse` from `UCataclysmCombatEvents::NoteSkillUsed` |
+| Funeral Pyre: "Summon deadly bone pyres when hit that explode if not destroyed quickly." | Struck, it raises a bone pyre at the striker's feet, at most one every 8 seconds; the pyre holds a tenth of the creature's maximum health and explodes 3 seconds later for three of the creature's hits on everyone of the player's side within 3 metres, unless broken first. | `PyreWhenStruck`, `PyreStep`; the new `ACataclysmBonePyreCharacter`, a floor source |
+| Undying Will: "Enemies resurrect after death with reduced health but increased damage output." | Once, at once, where it fell: a creature of its kind and rung, with half its maximum health and 50% increased damage, whose own death pays nothing. Never the floor's Cataclysm Boss. | `ACataclysmDungeonGameMode::NoteDeathForUndyingWill`; `MakeUndyingWillRisen` |
+| Haunting: "A spectral copy of this enemy is created on death", with `Debuff_Haunting`. | A Common of its kind at half health where it fell, paying nothing; its hits cut each of the target's resistances by 25, never below nought, for 5 seconds, one application at a time. | `ACataclysmDungeonGameMode::NoteDeathForHaunting`; `MakeSpectralCopy`; `HauntOnHit` |
+
+Every one a medic or other creature that takes no hostile action would make harmful does nothing for it (Shadow Step,
+Lingering Decay, Final Curse, Funeral Pyre, Soul Tether), the rule of #1680. Each hit-applied effect refuses a target
+already dead, as Infernal Brand's does (#2874). The status line gains the words "Bone Pyre", "Spectral", "Undying",
+"Phased", "Final Curse", "Soul Tether", "Haunted", "Recovery capped" and "Decaying"
+(`UCataclysmCombatOverlay::DeathModifierTextFor`), so each effect a player cannot otherwise see is named.
+
+### The figures the rows leave open, and where each came from
+
+Researched 2026-11-24, every page fetched in this session and quoted from it:
+
+| Figure | Value | Source, or "a judgement" |
+|---|---|---|
+| Grave Touch's "more" | 50% | **A judgement**, below Path of Exile's Executioner monster modifier, "hit damage +% per 10% missing enemy life [15]", which is 75% at the row's line (poedb.tw/us/Archnemesis). Hits only, as Executioner's "hit damage" |
+| Mortal Reminder's shape | ceiling at current health | The row; Path of Exile 2's Hinder Aura monster modifier, "Prevents Recovery Above 50%" (poe2db.tw/us/Monster_Modifiers) |
+| Soul Eater's shape | the shield takes nothing | Path of Exile: "Chaos damage ignores energy shield, reducing life directly" (poedb.tw/us/Damage) |
+| Spectral Shift out | 5 s | Diablo III's Shielding elite affix, "5 sec duration" (maxroll.gg/d3/resources/elite-affixes); Diablo IV's Shielded, "The caster becomes Immune for a few seconds" (maxroll.gg/d4/resources/elites-affixes) |
+| Spectral Shift interval | 15 s | **A judgement**: hittable two thirds of the time |
+| Shadow Step's linger | 1 s after an attack ends | **A judgement**. Diablo IV's Veiled, "Enemy becomes invisible for a few seconds", is the nearest affix; invisibility is the vision system's own rule (`ACataclysmDungeonGameMode`, Fog of War) |
+| Soul Tether's portion | 10% of health lost | **A judgement**, of the health lost and never the blow, after the owner's Thorns of Glass ruling of 2026-11-18: "Your own damage no longer matters to it" |
+| Soul Tether's length | 4 s | Path of Exile's Corrupter monster modifier, "Corrupted Blood lasts for 4 seconds" (poedb.tw/us/Archnemesis) |
+| Lingering Decay's cut, interval, radius | 50%, 5 s, 3 m | This game's Necrotic Ground (`NecroticGroundHealingLessPercent`, `NecroticGroundSecondsBetweenPatches`, `NecroticGroundPatchRadiusCm`); Starving Aura's 50 too |
+| Lingering Decay's zone life | 10 s | **A judgement**: two zones from one creature at once. Diablo III's Poison Enchanted ground "lasts for 6 sec" (Maxroll) |
+| Final Curse's cost | 5% of maximum health per skill | Echo Chamber's self hit, sized from maximum health by the coordinating session on 2026-11-18 so "a small amount" holds at every level; Diablo II's Iron Maiden is the shape, a curse "condemning them to receive whatever pains they inflict upon others" (classic.battle.net) |
+| Funeral Pyre's fuse and cooldown | 3 s, 8 s | Diablo IV's Frozen: "Deals cold damage upon explosion after 3 seconds", cooldown 8 seconds (diablo4.wiki.fextralife.com/Elites); Diablo III's Frozen orbs take "4 sec to explode" |
+| Funeral Pyre's placing | at the striker's feet | Path of Exile's Crystal-skinned: "Fires crystals under Players when they hit you" (poedb.tw/us/Archnemesis) |
+| Funeral Pyre's blast, radius, health | 3 hits, 3 m, 10% | **Judgements**: below Infernal Brand's 5 hits, because a pyre can be walked from or broken |
+| Undying Will's health | 50% | Divine Resurgence's figure in this game |
+| Undying Will's damage | 50% increased | **A judgement**, in the increased bucket the row's word names |
+| Haunting's copy | a Common at half health | Diablo IV's Splitter: "Splits into 2 non-Elite mobs of the same type as the Elite on death" (Maxroll); Diablo III's Illusionist images "have 5% of normal life" (Maxroll) |
+| Haunting's cut and length | 25 resistance, 5 s | Abyssal Aura's 25, and Battle Cry's "for 5 seconds", the two figures the status table already gives a resistance debuff |
+
+### Questions for the owner, each with the answer built
+
+- **Q1, Soul Tether**: does "transfer" move a share of the blow off the creature, or copy it? **Built: a copy**; the
+  creature takes the whole blow, and the player is sent a tenth of the health it lost. Moving it would make it a second
+  Sacrificial Bond as well as a reflection.
+- **Q2, Lingering Decay**: zones left as it moves, or one zone where it dies? **Built: as it moves**, every 5 seconds,
+  because "leave behind" reads as a trail and a zone at death would be one the player has already left.
+- **Q3, Spectral Shift**: while out of existence, does it vanish and stop acting? **Built: no**; it stays drawn with
+  "Phased" under its bar and goes on fighting, as Diablo III's and IV's shielded elites do, because a creature the
+  player cannot see cannot be read for when it comes back.
+- **Q4, Final Curse**: is the basic attack an ability? **Built: no**; every other slot is. And it curses the player
+  wherever they stand and whoever killed it.
+- **Q5, Haunting**: the copy as a Common at half health, and its debuff at 25 resistance for 5 seconds, never below
+  nought. **Recommended and built**; the workbook's `Debuff_Haunting` row could carry these figures when it is next
+  edited.
+- **Q6, two missing status rows**: add Debuffs rows for Mortal Reminder and Lingering Decay, so they have tags and show
+  as statuses. **Recommended**; until then the status line's words are the only display.
+- **Q7, Undying Will**: its 50% is lost across a save and load, and the risen creature's modifiers are drawn afresh
+  for its rung, as Divine Resurgence's are, rather than its own. **Recommended: accept both for now**; saving rule
+  parts is its own change.
+- **Q8, Undying Will on the floor's Cataclysm Boss**: **built: it never rises**, because its death opens the stairs and
+  a new creature risen in its place is not the one the seal reads. Any other Boss rises like any creature.
+
+### Tests registered, and the guard proofs
+
+New file `game/Source/Cataclysm/Tests/CataclysmDeathModifierTests.cpp`, group `Cataclysm.DeathModifiers.`: **0 to 11**.
+`Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eleven rows too; that group's count does
+not move. Whole suite: the base's last measured total plus 11.
+
+One proof per modifier, each a single-line break that still compiles, prefix `Cataclysm.DeathModifiers.`, and each must
+fail exactly the one test named:
+
+| Change | Proof | Break | Must fail |
+|---|---|---|---|
+| 1, the blow | GT | `CataclysmEnemyModifiers.h`: `GraveTouchDamageMultiplier = 1.5f;` to `= 1.0f;` | `GraveTouchHitsHalfAgainHarderBelowHalfHealthAndNoTickIsChanged` |
+| 1 | SE | `CataclysmDamageCalculation.cpp`: `const float ShieldShare = Hit.bIgnoresEnergyShield` to `const float ShieldShare = false` | `SoulEaterPassesTheEnergyShieldByToHealth` |
+| 1 | MR | `CataclysmRegeneration.cpp`: `Ceiling = FMath::Min(Ceiling, Reminded);` to `Ceiling = FMath::Max(Ceiling, Reminded);` | `MortalReminderHoldsHealingToTheHealthAHitLeftForFourSeconds` |
+| 2, the creature's clocks | SS | `CataclysmEnemyModifiers.cpp`: `Enemy->SpectralShiftSecondsLeft = SpectralShiftOutSeconds;` to `Enemy->SpectralShiftSecondsLeft = 0.0f;` | `SpectralShiftTakesItOutOfExistenceForFiveSecondsInEveryFifteen` |
+| 2 | SH | `CataclysmEnemyModifiers.cpp`: `Stepping->SetActorHiddenInGame(true);` to `Stepping->SetActorHiddenInGame(false);` | `ShadowStepHidesTheCreatureUntilItAttacksAndForASecondAfter` |
+| 2 | ST | `CataclysmEnemyModifiers.h`: `SoulTetherShareOfHealthLost = 0.1f;` to `= 0.2f;` | `SoulTetherSendsATenthOfTheHealthItLostBackOverFourSeconds` |
+| 3, a death | FC | `CataclysmCombatEvents.cpp`: `FinalCurseOnSkillUse(User, Slot == ECataclysmAbilitySlot::BasicAttack);` to `FinalCurseOnSkillUse(User, true);` | `FinalCurseMakesEachSkillCostFivePercentForFiveSecondsAfterTheDeath` |
+| 3 | UW | `CataclysmEnemyModifiers.cpp`: `Part.IncreasedPercent = UndyingWillDamageIncreasedPercent;` to `Part.IncreasedPercent = 0.0f;` | `UndyingWillRaisesItOnceAtHalfHealthWithFiftyPercentIncreasedDamage` |
+| 3 | HA | `CataclysmEnemyModifiers.cpp`: `Modifier.ModifierMagnitude = FScalableFloat(-Taken);` to `Modifier.ModifierMagnitude = FScalableFloat(Taken);` | `HauntingLeavesACommonCopyAtHalfHealthWhoseHitsCutEveryResistance` |
+| 4, the floor | LD | `CataclysmRegeneration.cpp`: `+ UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(AbilitySystem.GetAvatarActor()),` to `+ 0.0f,` | `LingeringDecayLeavesAZoneEveryFiveSecondsThatHalvesHealingInside` |
+| 4 | FP | `CataclysmEnemyModifiers.cpp`: `Pyre->PyreExplosionDamage = FMath::Max(0.0f, AttackDamage) * FuneralPyreExplosionHits;` to `Pyre->PyreExplosionDamage = 0.0f;` | `FuneralPyreRaisesAPyreAtTheStrikerThatExplodesInThreeSecondsUnlessBroken` |
+
+No proof was run: this change has had no window.
+
+---
+
 ## 2026-11-24 — The character creator's skill line counts the damage type's Aura and says how many skills work: "Demonic, Sword    6 of 6 skills work"
 
 On `fix/creation-skill-count`, from development `5cdd6bdc4`. No issue was filed: the owner's report came to the
@@ -14052,6 +15344,261 @@ apply wrote six and reported no other cell changed; the result matched this bran
 sheets (15,114 non-empty cells, none differing); the generator run on it wrote `WeaponSkills.csv` and `SkillSlots.csv`
 byte-identical to this branch's; a second run reported all six already set and wrote nothing; and a copy with
 Conflagration's Shape Params set to a third value was refused, exit 1, before anything was written.
+
+---
+
+## 2026-11-24 — Abyssal Rifts redesigned by the owner: two or three Boss rifts a floor that the player can kill, each sending a hunter every 3 seconds from the floor's start, stronger the longer it stands (#2864)
+
+**REBUILT ON DEVELOPMENT ON 2026-11-25, AND ITS RUN RECORD STEP RENUMBERED FROM 17 TO 18 TO 19 TO 20**, on
+`feat/abyssal-rifts-2864-2`, by the coordinating session's instruction: development's run record had reached 19
+meanwhile (18 for where an item arrived, #2848; 19 for a Rift's altars, #51). Read every name below with that mapping:
+`Migrate_17_to_18` is `Migrate_19_to_20`, `RiftsAFloorAtVersion18` is `RiftsAFloorAtVersion20`,
+`AddTheRunsVersion18Defaults` is `AddTheRunsVersion20Defaults`, the committed `Run_v18.json` is `Run_v20.json`
+(development's `Run_v19.json` with the rifts' two lists), the migration input `Run_v17.json` is `Run_v19.json`, and
+`Cataclysm.SaveLoad.ARunFileFromVersion17MigratesItsRiftStateToEachRift` is
+`...FromVersion19MigratesItsRiftStateToEachRift`. The text below is as it was written on 2026-11-24. Its workbook row
+was re-applied to development's workbook with `tools/reapply_abyssal_rifts_row.py`.
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `feat/abyssal-rifts-2864`, from `origin/development`, by a
+feature agent of the coordinating session, 2026-11-24. The Unreal compile, the automation tests, the guard proofs and
+the DataTable asset step have NOT run; their figures are added here when they have. Issue
+[#2864](https://github.com/sdubois777/Cataclysm/issues/2864); the rule was built under
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and [#41](https://github.com/sdubois777/Cataclysm/issues/41),
+and its entry of 2026-09-25 below ("Abyssal Rifts: one rift a floor opens when the player comes near...") is
+superseded by this one.
+
+**THIS CHANGE MOVES THE RUN RECORD TO VERSION 18**, and **another session was moving the run record from 17 to 18 the
+same day**: whichever lands second renumbers its step, its fixture and its defaults to the next number. The
+coordinating session said on 2026-11-24 that the selling and dismantling work (`feat/sd-w1`) merges first and takes 17
+to 18, so this branch becomes 18 to 19 when it is rebased. And it edits the design workbook,
+`docs/All_Things_Cataclysm.xlsx`, one cell, which git cannot merge: only one branch may carry an unmerged edit to it at
+a time. **The coordinating session ruled the same day to keep the edit and redo it if another branch's workbook edit
+lands first**: `tools/reapply_abyssal_rifts_row.py` writes that one cell into whatever workbook `development` holds,
+finding the row by its type and name, proves no other cell moved, and regenerates the CSVs.
+
+### The owner's words, verbatim
+
+Given while playtesting the main checkout on 2026-11-23, recorded in the issue:
+
+> "Abyssal Rifts: Same targeting issue as the demonic guide. Shouldn't be targetable or able to take damage. Also, I
+> feel like maybe more than one should be able to spawn per floor, and they should spawn an enemy every 3 seconds that
+> hunts you on the floor from the moment you enter, so you can basically follow the trail back to the source. I think
+> this means the rifts should also be targetable and able to be killed, but they should spawn as Bosses and have much
+> more health. The enemies the spawn from them should slowly increase in difficulty the longer the rift is alive."
+
+The last part supersedes the first: rifts become targetable and killable (the issue says so). **The three seconds are
+the owner's figure. Every other figure below is a judgement**, made under the owner's delegation of unstated numbers
+(2026-09-11), with its reason.
+
+### The row
+
+`Demonic_Abyssal_Rifts`, weight 10 unchanged, in the Dungeon Modifiers sheet of `docs/All_Things_Cataclysm.xlsx` (row
+56, its Description cell, the only cell changed: measured by comparing every cell of all 28 sheets before and after,
+with 0 formulas, 0 charts and 0 images in the file) and so in `game/Data/DungeonModifiers.csv`, regenerated by
+`tools/generate_datatables.py`. Was: "Portals to the Abyss open up, unleashing waves of demonic creatures. Players must
+close these rifts by defeating waves of enemies within a given time limit. The difficulty and rewards increase with
+each successfully closed rift." Now:
+
+> "Portals to the Abyss tear open across the dungeon, several to a floor. From the moment you enter, each rift sends a
+> demonic creature every 3 seconds to hunt you down, leaving a trail back to its source. A rift is a boss with great
+> health that must be destroyed to stop it, and the creatures it sends grow stronger the longer it stays open. The
+> rewards increase with each rift destroyed."
+
+A judgement, the wording: the owner's five points in the row's voice, keeping its last clause, "the rewards increase
+with each rift destroyed", for the magic find below. **`game/Content/Data/DT_DungeonModifiers.uasset` needs the editor
+step** (`tools/run_editor_python.py tools/generate_datatable_assets.py`); until it runs,
+`tools/tests/test_datatable_assets_are_current.py` fails on this CSV's hash, as it must.
+
+**To redo the edit on a later workbook**: `python tools/reapply_abyssal_rifts_row.py` (and `--check` to ask whether the
+workbook holds it). Run on 2026-11-24 in a copy of `origin/development` made with `git archive`: `--check` answered
+"does NOT hold" (exit 1); the run printed "row 56 written: its Description is the #2864 text, and no other cell
+changed", the generator printed "All 34 DataTable CSVs are up to date." on its `--check`, the CSV differed from
+development's by that one row only, and it was byte-identical to this branch's. `tools/tests/test_reapply_abyssal_rifts_row.py`
+holds the script's text to the CSV's and the key's, and runs it on a copy put back to the old text.
+
+### What the rule does now
+
+- **Two rifts on a floor, three on a floor whose plan is 40 by 40 cells or more** (`AbyssalRiftsFor`), where Eternal
+  Chorus's picker puts its sources: at least 20 metres from the entrance and from each other. None on a Horde arena.
+- **Each rift is a Boss the player can target and kill**: the Boss rung, 4, and health of twice what the floor's enemy
+  score gives the Baseline archetype (the average creature) at that rung (`AbyssalRiftStartingHealth`). No brain, no
+  attack, no modifier, "Rift" under its bar, its Demonic zone of 600 cm. It pays nothing itself and is not one of the
+  floor's creatures.
+- **From the floor's start, each rift sends one hunter every 3 seconds** -- the first at 3 seconds -- while fewer than
+  six of its own stand; the clock runs while the cap is full, so one killed is replaced on the next beat. A hunter is a
+  creature of the floor's kinds that can walk (not the Corrupted Sentinel, which cannot move, nor the Gatekeeper, the
+  floor's boss), at Common, on a cell within 600 cm of its rift, seeing 30 times its own sight, so it walks to the player
+  from anywhere on the floor. It pays nothing, is raised by the rule and is not one of the floor's creatures.
+- **A hunter is sent stronger the longer its rift has stood**: 10% more health and attack damage for every 15 seconds,
+  at most ten steps, twice its own figures from 150 seconds on (`AbyssalRiftsHunterMultiplierFor`). Applied through its
+  starting health and its placed damage multiplier, both of which a save keeps.
+- **A rift killed sends no more**; its zone goes and the hunters it sent stay. **Each rift killed is one success**:
+  +10 magic find each, at most +100. Successes count across the dungeon and end at leaving it or at the player's death,
+  as ruled on 2026-09-25.
+- The panel: "abyssal rifts: 2 of 3 rifts stand, sending hunters 20% stronger; 9 hunters stand; 1 destroyed, +10 magic
+  find", or on a Horde arena "abyssal rifts: no rift on a Horde arena; 1 destroyed, +10 magic find".
+
+### Judgements, each with its reason
+
+1. **Two rifts, three from a plan of 1600 cells** (`AbyssalRiftsPerFloor`, `AbyssalRiftsPerLargeFloor`,
+   `AbyssalRiftsLargeFloorCells`). A judgement. The owner asked for "more than one"; a floor's sides are drawn from 32 to
+   48 cells, so 40 by 40 is the middle of the range, and 133 of the 289 pairs of sides (46%) reach it when both are drawn
+   evenly; three rifts on the larger floors keep the hunters roughly as dense as two on a small one. Portal Unleashing
+   places two.
+2. **The first hunter at 3 seconds, not at once.** A judgement reading "every 3 seconds from the moment you enter" as a
+   clock that starts at the entrance: a hunter at once would put two or three creatures on the move before the player
+   has taken a step.
+3. **Six hunters of its own standing at most, per rift** (`AbyssalRiftsMostHuntersPerRift`), the cap the issue asked
+   for. A judgement: half the twelve the old rift sent, so a floor of three rifts holds at most eighteen; a rift nobody
+   answers reaches it in eighteen seconds. Per rift and not per floor, so every rift keeps its own trail. Portal
+   Unleashing caps four a portal at one every ten seconds. **Not measured for frame time**; the window can.
+4. **Hunters pay nothing, are raised by the rule and are not the floor's creatures.** A judgement, Portal Unleashing's
+   ruled reason: a source that never stops would make paid creatures unlimited loot and experience, and the floor's
+   "cleared" counts the floor's creatures. Until #2864 the rift's creatures paid and were the floor's, because the old
+   rift sent twelve and stopped.
+5. **Hunters see 30 times their own sight** (`AbyssalRiftsHunterSightMultiplier`), the Vengeful Wraiths' figure, which
+   covers the largest floor corner to corner, as The Reaper's and the Corrupted Stalker's hunts do. This is the owner's
+   "hunts you on the floor".
+6. **Hunters are drawn from the floor's kinds that walk.** A judgement: a Corrupted Sentinel has a move speed of 0 and
+   could hunt nobody, and the Gatekeeper is the floor's boss at its exit (Portal Unleashing and the old rift could send
+   either).
+7. **The Boss rung is `ACataclysmEnemyCharacter::FirstBossRarityStep`, 4**, the owner's "spawn as Bosses", tied by a
+   `static_assert`. A consequence worth stating: **a rift is a Boss to every rule that asks the rung** -- it cannot be
+   executed, and its death counts as a boss's death for the rules that read `IsBoss()` or `DiedAsAFloorsBoss` (Wasting
+   Sickness's cleanse among them). That is what the Boss rung means in this game, so it is left as it is.
+8. **Twice a Boss's health of the floor** (`AbyssalRiftsHealthMultiplier`, from the Baseline archetype). A judgement for
+   "much more health". Built from the floor's enemy score as every creature on a floor is (#1569), so a deep rift is as
+   much harder as its hunters are; a fixed figure, as the other floor sources have, would fall behind its own hunters.
+   Doubled because a rift neither moves, dodges nor strikes back, so every blow aimed at it lands. Against the 87 a rift
+   had: the model gives a Boss Baseline about 814 health on floor 1 at tier 1 and about 25,500 at tier 8, so a rift is
+   about 19 times to 590 times what it was (`sim/cataclysm_sim/enemy_stats.py`, `strength_on_floor`).
+9. **Ten per cent a step, a step every 15 seconds, ten steps** (`AbyssalRiftsStrengthPercentPerStep`,
+   `AbyssalRiftsSecondsPerStrengthStep`, `AbyssalRiftsMostStrengthSteps`). A judgement. The shape is settled by the
+   research below and by Ravenous Hoard here (a share of the creature's own figure per stretch of time, to a cap); the
+   figures are this game's, stretched for the owner's "slowly": a floor is two to five minutes, and its hunters reach
+   twice their figures at two and a half. The cap is the issue's "a floor left for long does not become impossible":
+   twice a Common's health and damage is about an Elite's health (1.85 times) with more damage.
+10. **The rift's rung for its hunters is gone.** Until #2864 each success sent later rifts' creatures one rung higher,
+    to Herald. A judgement: the owner made the rift's age the difficulty, and with two or three rifts a floor three
+    kills would have put every later hunter at Herald, on top of the age. The row's "difficulty ... increase with each
+    successfully closed rift" is gone with it. Reversible: the rung was `AbyssalRiftsRungFor`.
+11. **The magic find is kept, +10 a rift destroyed, now at most +100** (`AbyssalRiftsMostMagicFind`, tied by a
+    `static_assert` to `InfernalBeaconsMostMagicFind`). A judgement: the row keeps "the rewards increase"; the cap is new
+    because two or three rifts a floor would otherwise multiply a reward ruled for one, and Infernal Beacons, the same
+    Cataclysm's magic find, stops at 100.
+12. **A rift pays nothing itself**, as every floor source does: its reward is the success. A Boss's drop two or three
+    times a floor would be the richest source of loot in the game.
+13. **A killed rift's hunters stay** and keep hunting, as the old rift's creatures stayed when it closed.
+
+### Saved and loaded: the run record goes to version 18
+
+The issue asked that the save keep each rift's health and age and its hunters.
+
+- **`FCataclysmSavedFloorRuleState` gains `AbyssalRiftHealthLeft` and `AbyssalRiftSecondsAlive`**, one entry per rift
+  the floor placed, by its place in the rule's list, which the rebuilt floor fills in the same seeded order; 0 health is
+  a rift killed. They replace `AbyssalRiftState`, the one rift's state. The load closes a killed rift again without its
+  success (the walk holds the successes), and gives a standing one its health and seconds; the seconds to its next
+  hunter are a timer and restart.
+- **Hunters need no new field**: each is a creature record with `RaisedBy` "AbyssalRiftHunter" and `RaisedGroup` its
+  rift's place (`RaisedByOf`, `RestoreCreatureRoles`); its strength is its record's starting health and placed damage
+  multiplier.
+- **`Migrate_17_to_18`** removes `AbyssalRiftState` and writes, for a state other than 0 -- a rift the player had met,
+  which a version 17 load closed and counted failed (U2) -- three rifts killed, 0 health and 0 seconds, and for 0 two
+  empty lists, which the load reads as the rifts standing as rebuilt. Three is the most a floor holds on this day,
+  written in the step as a number so an older file's meaning does not move with the rule.
+- `game/Tests/SaveFixtures/Run_v18.json` is `Run_v17.json` at 18 with a standing rift at 1536.5 health and 96.25
+  seconds and a killed one at 0 and 30.5. Every test that read `Run_v17.json` as the committed file reads `Run_v18.json`,
+  and every chain test adds `CataclysmSaveFixtures::AddTheRunsVersion18Defaults`. The fixtures README says so.
+
+### The research: a source that sends monsters, and monsters that grow with a counter
+
+Fetched on 2026-11-24 before it was quoted. Path of Exile's fandom wiki and poewiki refuse this tool, and Maxroll's
+Harbinger and Breach league guides answered 404, so poedb.tw and Maxroll's other pages are cited.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Abyss | https://poedb.tw/us/Abyss_league | "Enemies spawn along the crack, and a rare enemy spawns from the pit." |
+| Path of Exile, Harbinger | https://poedb.tw/us/Harbinger_league | "Harbingers, otherworldly enemies which can only be defeated by destroying its minions." |
+| Last Epoch, Monolith Corruption | https://maxroll.gg/last-epoch/monolith/beginner-guide | "Increasing Corruption also increases the health and damage of every enemy in the Timeline"; "The amount of increase per point of Corruption is effectively linear"; "Corruption caps at 50 in normal timelines, but is unlimited in Empowered." |
+| Diablo IV, Helltide | https://maxroll.gg/d4/resources/helltide-guide | Rising threat brings "more random ambushes of more lethal packs of enemies", and at the top "a Hellborne spawns to challenge you for your transgressions." |
+
+**What it settles.** A source standing on the floor that sends monsters, with a trail leading to it, is Path of Exile's
+Abyss: the owner's "follow the trail back to the source". Growth by a counter that raises enemies' health and damage
+together, linearly, with a cap in the ordinary mode, is Last Epoch's Corruption: the shape of the hunters' strength
+(both figures, linear steps, a cap). Diablo IV's Helltide escalates the longer the player stays. **What it does not
+settle**: a spawner the player kills with a Boss's health (Path of Exile's Harbinger is defeated through its minions,
+not its own life; no page this tool could read described Diablo's spawner objects or Last Epoch's), the number of rifts,
+the cap of six, the 15-second step, the 10% and the doubling of the rift's health. **Those are this game's own and are
+labelled judgements above.**
+
+### What changed in the code
+
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`, `.cpp`: the key's comment, the figures above, and
+  `AbyssalRiftsFor`, `AbyssalRiftsHunterIsDue`, `AbyssalRiftsStrengthStepsFor`, `AbyssalRiftsHunterMultiplierFor`;
+  `AbyssalRiftsMagicFindFor` capped. Gone: `AbyssalRiftsOpensWithinCm`, `AbyssalRiftsWaves`,
+  `AbyssalRiftsCreaturesPerWave`, `AbyssalRiftsSecondsBetweenWaves`, `AbyssalRiftsSecondsToClose`,
+  `AbyssalRiftsHighestRung`, `AbyssalRiftsWaveIsDue`, `AbyssalRiftsHasRunOut`, `AbyssalRiftsRungFor`.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`, `.cpp`: `FAbyssalRift` and the list of them, where one
+  rift and `ERiftState` were; `PlaceTheRifts`, `ForgetTheRifts`, `CloseTheRiftAt`, `StepAbyssalRifts`,
+  `NoteDeathForAbyssalRifts`; for tests `AbyssalRiftsNow`, `AbyssalRiftsPlaced`, `AbyssalRiftZoneOf`, `HuntersOf`,
+  `AbyssalRiftHuntersStanding`, `AbyssalRiftSecondsAliveOf`, `AbyssalRiftStartingHealth`; the save's gather and restore;
+  the panel line.
+- `game/Source/Cataclysm/Character/CataclysmRiftCharacter.h`: its comment.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `.cpp`: the two fields, version 18, `Migrate_17_to_18`.
+
+### Tests
+
+Unreal, in `Cataclysm.DungeonModifierEffects.` (four removed, six added, two kept and rewritten):
+
+- `AbyssalRiftsFiguresHuntersStrengthAndReward` (was `AbyssalRiftsFiguresWavesRungsAndReward`): every figure and helper.
+- `AbyssalRiftsPlacesTwoOrMoreBossRiftsThePlayerCanHurt` (was `AbyssalRiftsPlacesOneRiftThatWaitsForThePlayer`): as
+  many rifts as the plan holds and at least two; each a Boss, hurt by a blow, twice a Boss's health of the floor and over
+  ten times the old 87; zones; panel; none on a Horde arena.
+- `ARiftSendsAHunterEveryThreeSecondsFromTheFloorsStartUpToSix`: none at 2.75 s, one each at 3 s with the player at the
+  entrance, two at 6, six at 18 and 30; a killed one replaced on the next beat; a new floor takes them.
+- `ARiftsHunterHuntsThePlayerAcrossTheFloor`: it notices across the largest floor, and its brain chases the player from
+  twice its own sight; CONTROL: with its kind's sight it does not.
+- `ARiftsHuntersGrowStrongerWithItsAgeUpToTheCap`: one hunter every 3 s for 300 s, at x1.0 at 3 and 12 s, x1.1 at 15,
+  x1.2 at 30, x2.0 at 150 and still x2.0 at 300, damage and health.
+- `AKilledRiftSendsNoMoreAndIsASuccess`: the player's blow kills it; a success, its zone gone, +10 magic find; 30 s on it
+  has sent no more and its hunter stays, while another rift reaches its cap; the next floor keeps the success.
+- `RiftSuccessesEndAtLeavingTheDungeon`, `RiftSuccessesEndAtThePlayersDeath`: kept, a rift killed in place of one
+  closed in time.
+- Removed: `ARiftOpensNearThePlayerAndSendsThreeWavesOfFour`, `ARiftClosedInTimeGivesMagicFindAndRaisesTheNextRifts`.
+
+In `Cataclysm.SaveLoad.`: `AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad` and
+`ARunFileFromVersion17MigratesItsRiftStateToEachRift` added; `ARulesCreaturesAndCountersComeBackAfterALoad` and
+`AFloorsRuleObjectsAreRebuiltInTheSameOrderByALoad` changed for several rifts (a rift killed in place of one opened).
+
+Python: `tools/tests/test_abyssal_rifts_redesign.py` (new, seven checks of the source, the step and the fixture),
+`tools/tests/test_reapply_abyssal_rifts_row.py` (new, two checks of the workbook script), and the row check in
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` now reads the new row's phrases.
+
+**Python guard proofs, run 2026-11-24 with `tools/prove_guard.py`'s `break_and_run` on
+`python -m pytest tools/tests/test_abyssal_rifts_redesign.py`, each PROVED (one named failure with the break in, 7 passed
+with it out):**
+
+| Proof | The break | Failed with the break in |
+| :-- | :-- | :-- |
+| PG1 | `Migrate_17_to_18` taken out of the chain | `test_the_step_replaces_the_one_rifts_state_and_is_in_the_chain` |
+| PG2 | `CataclysmGoldTests.cpp` without `AddTheRunsVersion18Defaults` | `test_every_chain_test_adds_the_new_steps_write` |
+| PG3 | `Hunter->bDiesUnpaid = false;` | `test_a_hunter_hunts_pays_nothing_and_is_sent_as_strong_as_its_rifts_age` |
+| PG4 | `Rift->bCannotBeHurt = true;` after `Rift->SetHealth(Health);` | `test_a_rift_is_a_boss_that_a_blow_can_kill_and_its_death_is_a_success` |
+| PG5 | the script's text says "every 4 seconds" (on `tools/tests/test_reapply_abyssal_rifts_row.py`) | `test_the_new_text_is_the_rows_and_the_keys` |
+| PG6 | the script writes `OLD_TEXT` into the cell (the same command) | `test_it_writes_the_one_cell_on_a_copy_holding_the_old_text` |
+
+**C++ guard proofs planned for the window, none run** (a trailing dot on each prefix):
+
+| Proof | The one-line break | Must fail |
+| :-- | :-- | :-- |
+| CG1 | `AbyssalRiftsHunterIsDue(One.SecondsSinceLastSent, One.Sent.Num())` to `..., 0)`: no cap | `Cataclysm.DungeonModifierEffects.ARiftSendsAHunterEveryThreeSecondsFromTheFloorsStartUpToSix` |
+| CG2 | `AbyssalRiftsHunterMultiplierFor(One.SecondsAlive)` to `...(0.0f)`: no growth | `ARiftsHuntersGrowStrongerWithItsAgeUpToTheCap`; `Cataclysm.SaveLoad.AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad` |
+| CG3 | the hunter spawned with `FloorBrief.SightRadiusMultiplier` in place of `Effects::AbyssalRiftsHunterSightMultiplier` | `ARiftsHunterHuntsThePlayerAcrossTheFloor`, `ARiftSendsAHunterEveryThreeSecondsFromTheFloorsStartUpToSix` |
+| CG4 | `Rift->bCannotBeHurt = true;` added in `PlaceTheRifts` | `AbyssalRiftsPlacesTwoOrMoreBossRiftsThePlayerCanHurt`, `AKilledRiftSendsNoMoreAndIsASuccess`, `ARiftsHuntersGrowStrongerWithItsAgeUpToTheCap`, `RiftSuccessesEndAtLeavingTheDungeon`, `RiftSuccessesEndAtThePlayersDeath` |
+| CG5 | `if (One.bClosed \|\| !IsValid(Rift) \|\| ...IsDead(Rift))` to `if (!IsValid(Rift))` in the step: a killed rift sends on | `AKilledRiftSendsNoMoreAndIsASuccess` |
+| CG6 | `Out.AbyssalRiftSecondsAlive.Add(One.SecondsAlive);` to `...Add(0.0f);` | `Cataclysm.SaveLoad.AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad` |
+| CG7 | the restore's `CloseTheRiftAt(Index, /*bDestroyTheRift=*/true);` taken out | `Cataclysm.SaveLoad.AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad`, `ARulesCreaturesAndCountersComeBackAfterALoad` |
+| CG8 | `if (State != 0.0)` to `if (State == 0.0)` in `Migrate_17_to_18` | `Cataclysm.SaveLoad.ARunFileFromVersion17MigratesItsRiftStateToEachRift` and every chain test that migrates an older run file |
 
 ---
 
@@ -79999,6 +81546,7 @@ on `development` at `cd5c85e82` (written on `b7980dc48` as `feat/game-quest-subt
   are Ascendant and the Void's Hollow in the simulation, and neither sub-type exists in the game.
   Since the entry headed "In the game the Void's Quest dungeon is a Hollow…" (2026-10-22) the Void's are Hollows in the game as well, and the file that holds the rest is `tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`.
   Since the entry headed "In the game the Celestial's Quest dungeon is an Ascendant…" (2026-10-22) Celestial's are Ascendants in the game too, and War's alone are held, in `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`.
+  Since the entry headed "War's Quest dungeons are Sieges in the game…" (2026-11-25, issue #51 slice B4) War's are Sieges in the game as well, so all eight are fixed, and that file was deleted, as its restore text said: it held nothing more.
 - **THE CITY SCREEN NAMES EACH DUNGEON'S SUB-TYPE**: "Horde, 12 floors, 9 days until it bites". A dungeon with no
   sub-type reads as before, "30 floors, 40 days until it bites".
 - **A SEED STILL LANDS THE SAME WAVES ON THE SAME CITIES AT THE SAME DEPTHS, AND SENDS THEM FROM THE SAME

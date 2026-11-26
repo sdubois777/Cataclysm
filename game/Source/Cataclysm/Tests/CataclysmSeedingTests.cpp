@@ -232,7 +232,7 @@ CATACLYSM_SEEDING_TEST(FCataclysmSeedingNeighbourTest,
  * A RUN LOADED FROM A SAVE KEEPS ITS DRAWS: the slice moved how a NEW run seeds its Cataclysm stream, and a loaded run's
  * stream is the state its save stored (`FCataclysmSaveGather` writes `GetCurrentSeed()`, `FCataclysmSaveApply::RunInto`
  * puts it back). Ruled by the coordinating session on 2026-11-19: "add one assertion that a run loaded from a committed
- * fixture draws the same next Cataclysm as before the change". The committed `Run_v19.json` holds the state 1357924680
+ * fixture draws the same next Cataclysm as before the change". The committed `Run_v22.json` holds the state 1357924680
  * and the active Cataclysms Demonic, Death, War and Pestilence; the engine's generator from that state draws index 0
  * then 2, so Demonic then War, as `sim/analyse_placement_seeds.py`'s `Stream` computes, before and after the slice.
  * It followed the committed run file as the run record moved: `Run_v9.json` until the rebase onto `e583b0788`
@@ -253,7 +253,7 @@ CATACLYSM_SEEDING_TEST(FCataclysmSeedingLoadedRunTest,
 {
 	FString Text;
 	FString Reason;
-	if (!TestTrue(TEXT("set-up: Run_v19.json is read"), CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason)))
+	if (!TestTrue(TEXT("set-up: Run_v22.json is read"), CataclysmSaveFixtures::Read(TEXT("Run_v22.json"), Text, Reason)))
 	{
 		AddError(Reason);
 		return false;

@@ -1826,6 +1826,14 @@ def test_no_floor_rule_writes_a_shared_damage_type():
     THE CODE, NOT THE COMMENTS. Both files explain the removed field in comments, and
     those lines are removed before the search. Each file is also checked for something it
     must still contain, so a file that was not read cannot pass.
+
+    ONE WRITE IS A CREATURE'S OWN TYPE, AND IS LEFT OUT BY NAME. Since slice B3 of the
+    Death and War plan (2026-11-25) every creature a dungeon places belongs to the
+    Cataclysm that sent it, and `ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`
+    writes that onto the creature: one creature's own field, not an actor the floor's
+    rules share. That function's body is left out of the search, and only that body; it
+    must exist, and every write in it must be onto its creature, `Enemy`, so the
+    exemption cannot hide a write onto anything else.
     """
     dungeon = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
 
@@ -1848,7 +1856,24 @@ def test_no_floor_rule_writes_a_shared_damage_type():
     assert "Delivery.DamageType = " in game_mode, (
         "CataclysmDungeonGameMode.cpp no longer puts a type on any hit's delivery, so this "
         "check cannot tell a file that writes no shared type from one it did not read.")
-    written = re.findall(r"^.*->\s*DamageType\s*=.*$", game_mode, flags=re.MULTILINE)
+
+    a_pointer_write = r"^.*->\s*DamageType\s*=.*$"
+    creatures_own = re.search(
+        r"^void ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm\(ACataclysmEnemyCharacter\* Enemy\) const\n"
+        r"\{\n(.*?)^\}",
+        game_mode, flags=re.MULTILINE | re.DOTALL)
+    assert creatures_own, (
+        "CataclysmDungeonGameMode.cpp no longer defines GiveTheDungeonsCataclysm, the one "
+        "function whose write of a creature's own damage type this check leaves out. Remove "
+        "the exemption with it.")
+    in_the_creatures_own = re.findall(a_pointer_write, creatures_own.group(1), flags=re.MULTILINE)
+    assert in_the_creatures_own and all(
+        line.strip().startswith("Enemy->DamageType = ") for line in in_the_creatures_own), (
+        "GiveTheDungeonsCataclysm must write its creature's own damage type, Enemy's, and "
+        "nothing else's: " + "; ".join(line.strip() for line in in_the_creatures_own))
+
+    elsewhere = game_mode[:creatures_own.start()] + game_mode[creatures_own.end():]
+    written = re.findall(a_pointer_write, elsewhere, flags=re.MULTILINE)
     assert not written, (
         "CataclysmDungeonGameMode.cpp writes a damage type through a pointer, which is how "
         "the rules wrote the floor source's shared type before issue #1924. A floor rule's "
@@ -3080,7 +3105,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetPlaguebearerDamageMultiplier", "PlaguebearerDamageSource"),
                         ("SetFamishedBeastsDamageMultiplier", "FamishedBeastsDamageSource"),
                         ("SetInfernalBeaconsDamageMultiplier", "InfernalBeaconsDamageSource"),
-                        ("SetPactOfTemptationDamageMultiplier", "PactOfTemptationDamageSource")):
+                        ("SetPactOfTemptationDamageMultiplier", "PactOfTemptationDamageSource"),
+                        ("SetAbominationDamageMultiplier", "AbominationDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4583,20 +4609,24 @@ def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter()
             "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
 
 
-def test_abyssal_rifts_row_still_has_rifts_closed_by_waves_in_time_and_rewards_that_grow():
-    """The phrases the rule's readings rest on.
+def test_abyssal_rifts_row_still_has_several_killable_boss_rifts_sending_hunters_that_grow_stronger():
+    """The phrases the rule's readings rest on, since the owner's redesign of 2026-11-23 (#2864).
 
-    "Portals to the Abyss open up, unleashing waves of demonic creatures. Players must close these rifts by
-    defeating waves of enemies within a given time limit. The difficulty and rewards increase with each successfully
-    closed rift." WAVES is what a rift sends; CLOSE THESE RIFTS BY DEFEATING WAVES and WITHIN A GIVEN TIME LIMIT are
-    the success; DIFFICULTY AND REWARDS INCREASE are the rung and the magic find each success adds. If any of them
+    "Portals to the Abyss tear open across the dungeon, several to a floor. From the moment you enter, each rift sends
+    a demonic creature every 3 seconds to hunt you down, leaving a trail back to its source. A rift is a boss with
+    great health that must be destroyed to stop it, and the creatures it sends grow stronger the longer it stays open.
+    The rewards increase with each rift destroyed." SEVERAL TO A FLOOR is the count; FROM THE MOMENT YOU ENTER and
+    EVERY 3 SECONDS are the hunters' clock, the owner's figure; HUNT YOU DOWN is their sight; A RIFT IS A BOSS and
+    MUST BE DESTROYED are the rift's rung and that it can be killed; GROW STRONGER THE LONGER IT STAYS OPEN is the
+    strength by age; REWARDS INCREASE WITH EACH RIFT DESTROYED is the magic find each success adds. If any of them
     changes, the reading must be revisited.
     """
     words = flat(rows()["Demonic_Abyssal_Rifts"]["Description"])
     lower = words.lower()
 
-    for phrase in ("unleashing waves", "close these rifts by defeating waves", "within a given time limit",
-                   "difficulty and rewards increase", "successfully closed rift"):
+    for phrase in ("several to a floor", "from the moment you enter", "every 3 seconds", "hunt you down",
+                   "a trail back to its source", "a rift is a boss", "must be destroyed",
+                   "grow stronger the longer it stays open", "rewards increase with each rift destroyed"):
         assert phrase in lower, (
             f"Demonic_Abyssal_Rifts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "AbyssalRiftsKey in CataclysmDungeonModifierEffects.h. " + words)

@@ -531,7 +531,7 @@ struct CATACLYSM_API FCataclysmSavedWalk
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 InfernalBeaconStacks = 0;
 
-	/** Abyssal Rifts: rifts closed. */
+	/** Abyssal Rifts: rifts closed, which since issue #2864 is rifts destroyed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 AbyssalRiftSuccesses = 0;
 
@@ -836,8 +836,22 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bInfectionBloomDestroyed = false;
 
+	/**
+	 * ABYSSAL RIFTS SINCE THE OWNER'S REDESIGN, issue #2864: each rift this floor placed, by its place in the rule's
+	 * list, which the rebuilt floor fills in the same seeded order -- the health it had left, 0 for one killed, and the
+	 * seconds it had stood, which is what makes the hunters it sends stronger. Its hunters are creature records whose
+	 * `RaisedBy` names the rule and whose `RaisedGroup` is the rift's place. The seconds to its next hunter are a timer
+	 * and restart (D1). EMPTY MEANS NOT SAVED: the rebuilt rifts stand as placed.
+	 *
+	 * RUN RECORD VERSION 20. They replace `AbyssalRiftState`, the one rift's state (0 waiting, 1 open, 2 closed), which
+	 * `Migrate_19_to_20` reads and removes: a rift the player had met, open or closed, loaded closed and failed (U2),
+	 * so a state other than 0 is written as every rift a floor can hold killed; 0 as nothing saved.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
-	int32 AbyssalRiftState = 0;
+	TArray<float> AbyssalRiftHealthLeft;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> AbyssalRiftSecondsAlive;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<int32> VeinsDestroyed;
@@ -2020,8 +2034,25 @@ public:
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
+	 *
+	 * 20 SINCE 2026-11-25. Issue #2864 (written as 18 on 2026-11-24 and renumbered when it was rebuilt on development), the owner's redesign of Abyssal Rifts: a floor holds several rifts the player
+	 * can kill, so the floor's rule state carries each rift's health left and seconds stood
+	 * (`FCataclysmSavedFloorRuleState::AbyssalRiftHealthLeft`, `AbyssalRiftSecondsAlive`) where it carried one rift's
+	 * state (`AbyssalRiftState`). `Migrate_19_to_20` removes the state and writes, for a state other than 0 -- a rift
+	 * the player had met, which loaded closed and failed -- every rift a floor can hold as killed, and for 0 nothing.
+	 *
+	 * 21 SINCE 2026-11-25. Issue #51 slice B4, the War quest: a Siege's growth counts the days on the city it stands on
+	 * now, so each dungeon carries the day it reached that city (`FCataclysmDungeon::ArrivedDay`, `INDEX_NONE` until
+	 * it first moves), and each city the Cataclysm whose hit felled it (`FCataclysmCity::FellTo`), which decides
+	 * whether a fall was to War. `Migrate_20_to_21` writes `INDEX_NONE` into every dungeon -- growth then counts from
+	 * `SpawnedDay`, as it did -- and `None` into every city: what felled a city before was not recorded.
+	 *
+	 * 22 SINCE 2026-11-25. Issue #51 slice B5, the Death quest: an Abomination lair's boss grows with the cities fallen
+	 * when the lair appeared, so each dungeon carries that count (`FCataclysmDungeon::CitiesFallenBefore`, 0 for a
+	 * dungeon that is not a lair). `Migrate_21_to_22` writes 0 into every dungeon: no version 21 run recorded it, and a
+	 * lair loaded from one has an Abomination of the base strength.
 	 */
-	static constexpr int32 SchemaVersionNow = 19;
+	static constexpr int32 SchemaVersionNow = 22;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

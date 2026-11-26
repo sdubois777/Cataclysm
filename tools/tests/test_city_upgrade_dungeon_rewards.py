@@ -104,9 +104,10 @@ def test_a_kill_takes_the_city_rewards_before_it_rolls_and_in_each_grant() -> No
         assert found and found.start() < paying, f"the kill does not apply {change!r} before it rolls"
 
     drops = re.search(r"UCataclysmDropSpawner::SpawnDropsFor\(([^;]*)\);", handler)
-    # Slice 7 of #2741 multiplies the city's figure by The Golden Touch's (T4), and the city's is still the last
-    # argument's first factor.
-    assert drops and re.search(r"CityRewards\.MaterialsMore(\s*\*\s*TreeDrops\.MaterialsMultiplier)?$",
+    # Slice 7 of #2741 multiplies the city's figure by The Golden Touch's (T4), and the city's is still the
+    # materials argument's first factor. FOLLOWED BY THE CATACLYSM BOSS'S PIECE AND THE GEAR'S STEP since issue #51
+    # slice B5 (a lair's Cursed Abomination pays more gear), so it is no longer the last argument.
+    assert drops and re.search(r"CityRewards\.MaterialsMore(\s*\*\s*TreeDrops\.MaterialsMultiplier)?\s*(,|$)",
                                drops.group(1).rstrip()), (
         "the kill does not give its drop roll the city's materials figure")
     gold = re.search(r"UCataclysmDropSpawner::SpawnGoldFor\(([^;]*)\);", handler)

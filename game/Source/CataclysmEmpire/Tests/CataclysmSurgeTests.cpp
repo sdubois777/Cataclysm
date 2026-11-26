@@ -4121,12 +4121,15 @@ bool FCataclysmSurgeFloorUpgradeHitTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 /**
- * `QuestSubTypeFor` names seven pairs and answers `None` for the rest.
+ * `QuestSubTypeFor` names eight pairs and answers `None` for a Cataclysm nobody
+ * named.
  *
  * NAMED `Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll`
- * UNTIL 2026-10-22, when the Void's Hollow became the sixth pair, and
+ * UNTIL 2026-10-22, when the Void's Hollow became the sixth pair,
  * `Cataclysm.Surge.SixCataclysmsNameTheirQuestSubTypeAndTheRestRoll` until
- * later that day, when Celestial's Ascendant became the seventh.
+ * later that day, when Celestial's Ascendant became the seventh, and
+ * `Cataclysm.Surge.SevenCataclysmsNameTheirQuestSubTypeAndTheRestRoll` until
+ * 2026-11-25, when War's Siege became the eighth (issue #51 slice B4).
  *
  * THE OWNER, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
  * specific type." The model's `config.QUEST_SUBTYPE_BY_CATACLYSM` is the
@@ -4135,7 +4138,7 @@ bool FCataclysmSurgeFloorUpgradeHitTest::RunTest(const FString& Parameters)
  * that a pair changed in the switch is caught here as well as there.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestSubTypeForTest,
-	"Cataclysm.Surge.SevenCataclysmsNameTheirQuestSubTypeAndTheRestRoll",
+	"Cataclysm.Surge.EightCataclysmsNameTheirQuestSubTypeAndNobodyRolls",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
@@ -4156,6 +4159,7 @@ bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
 		{ ECataclysmType::Chaos,		ECataclysmDungeonSubType::Volatile },
 		{ ECataclysmType::Void,		ECataclysmDungeonSubType::Hollow },
 		{ ECataclysmType::Celestial,	ECataclysmDungeonSubType::Ascendant },
+		{ ECataclysmType::War,			ECataclysmDungeonSubType::Siege },
 	};
 
 	TSet<ECataclysmDungeonSubType> Answered;
@@ -4174,11 +4178,9 @@ bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
 		Answered.Add(Got);
 	}
 
-	// WAR ROLLS. War is ruled out of the game by the owner. `None` is the
-	// Cataclysm nobody named. The Void and Celestial rolled here too until
-	// 2026-10-22.
-	for (const ECataclysmType Rolls : { ECataclysmType::War,
-										ECataclysmType::None })
+	// `None`, THE CATACLYSM NOBODY NAMED, ROLLS. The Void and Celestial rolled
+	// here too until 2026-10-22, and War until 2026-11-25.
+	for (const ECataclysmType Rolls : { ECataclysmType::None })
 	{
 		TestEqual(FString::Printf(
 			TEXT("Cataclysm %d answers None, so its Quest dungeons roll"),
@@ -4187,11 +4189,11 @@ bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
 			static_cast<int32>(ECataclysmDungeonSubType::None));
 	}
 
-	// THE CONTROL. Seven different answers, none of them `None`: a function that
+	// THE CONTROL. Eight different answers, none of them `None`: a function that
 	// answered one sub-type for every Cataclysm, or nothing for any, would fail
 	// one of these where it could pass a check of a single pair.
-	TestEqual(TEXT("the seven name seven different sub-types"), Answered.Num(), 7);
-	TestFalse(TEXT("and none of the seven answers None"),
+	TestEqual(TEXT("the eight name eight different sub-types"), Answered.Num(), 8);
+	TestFalse(TEXT("and none of the eight answers None"),
 			  Answered.Contains(ECataclysmDungeonSubType::None));
 
 	return true;
@@ -4236,6 +4238,7 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 	int32 FixedQuests = 0;
 	int32 Overridden = 0;
 	int32 SiegesFreed = 0;
+	int32 SiegesTaken = 0; // Issue #51 slice B4: a War Quest Siege takes its city's one Siege, below.
 	int32 RiftsLeftOut = 0; // Issue #51 slice B2: compared by kind and depth only, below.
 
 	for (int32 Seed = 1; Seed <= 60; ++Seed)
@@ -4329,6 +4332,20 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 				// draw, read without the re-read. Never the other way round.
 				++SiegesFreed;
 			}
+			else if (A.SubType == ECataclysmDungeonSubType::Siege && B.SubType != ECataclysmDungeonSubType::Siege
+					 && With.ContainsByPredicate([&With, Index, &B](const FCataclysmDungeon& Earlier)
+					 {
+						 const int32 At = static_cast<int32>(&Earlier - With.GetData());
+						 return At < Index && Earlier.CityId == B.CityId
+							 && Earlier.SubType == ECataclysmDungeonSubType::Siege
+							 && Earlier.Type == ECataclysmDungeonType::Quest;
+					 }))
+			{
+				// THE OTHER WAY ROUND, SINCE WAR'S QUEST DUNGEONS ARE SIEGES (slice B4, bundle 4): an earlier War
+				// Quest dungeon on the same city is a Siege, which takes the city's one, so this dungeon's Siege roll
+				// is re-read as the cap re-reads any. Window b4-w1 found it. Only after such a Quest Siege.
+				++SiegesTaken;
+			}
 			else
 			{
 				TestEqual(TEXT("anything else keeps the sub-type it rolled"),
@@ -4343,8 +4360,8 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d dungeons compared, %d fixed Quest dungeons, %d of them a "
 			 "different sub-type from the one rolled; %d Sieges a fixed one "
-			 "left room for; %d Rifts compared by kind and depth only"),
-		Compared, FixedQuests, Overridden, SiegesFreed, RiftsLeftOut));
+			 "left room for; %d Sieges a War Quest Siege took; %d Rifts compared by kind and depth only"),
+		Compared, FixedQuests, Overridden, SiegesFreed, SiegesTaken, RiftsLeftOut));
 
 	// THE CONTROL. Unless some fixed Quest dungeon really came out different
 	// from what it rolled, the two waves never differed and the comparison
@@ -4357,13 +4374,15 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 }
 
 /**
- * In a run, seven Cataclysms' Quest dungeons are their one sub-type, and
- * War's still roll.
+ * In a run, all eight Cataclysms' Quest dungeons are their one sub-type.
  *
  * NAMED `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType`
- * UNTIL 2026-10-22, when the Void's Quest dungeons became Hollows, and
+ * UNTIL 2026-10-22, when the Void's Quest dungeons became Hollows,
  * `Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType` until
- * later that day, when Celestial's became Ascendants.
+ * later that day, when Celestial's became Ascendants, and
+ * `Cataclysm.Surge.InARunSevenCataclysmsQuestDungeonsAreTheirOneSubType` until
+ * 2026-11-25, when War's became Sieges (issue #51 slice B4); its control that War's
+ * still rolled went with it.
  *
  * THE PATH THE DAY LOOP TAKES. A run at difficulty tier 8 faces all eight
  * Cataclysms, and `FireSurge` hands `RollWave` the run's own Cataclysm draw.
@@ -4380,7 +4399,7 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
  * sends each, so a single campaign shows too few.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestSubTypeRunTest,
-	"Cataclysm.Surge.InARunSevenCataclysmsQuestDungeonsAreTheirOneSubType",
+	"Cataclysm.Surge.InARunEightCataclysmsQuestDungeonsAreTheirOneSubType",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
@@ -4397,11 +4416,9 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 	Expected.Add(ECataclysmType::Chaos, ECataclysmDungeonSubType::Volatile);
 	Expected.Add(ECataclysmType::Void, ECataclysmDungeonSubType::Hollow);
 	Expected.Add(ECataclysmType::Celestial, ECataclysmDungeonSubType::Ascendant);
-
-	const ECataclysmType Rolling[] = { ECataclysmType::War };
+	Expected.Add(ECataclysmType::War, ECataclysmDungeonSubType::Siege);
 
 	TMap<ECataclysmType, int32> FixedSeen;
-	TMap<ECataclysmType, TSet<ECataclysmDungeonSubType>> RolledSeen;
 	TSet<ECataclysmDungeonSubType> OrdinaryFromTheFive;
 	int32 Wrong = 0;
 	int32 Campaigns = 0;
@@ -4411,14 +4428,6 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 		for (const TPair<ECataclysmType, ECataclysmDungeonSubType>& Pair : Expected)
 		{
 			if (FixedSeen.FindRef(Pair.Key) < EnoughOfEach)
-			{
-				return false;
-			}
-		}
-		for (const ECataclysmType Cataclysm : Rolling)
-		{
-			const TSet<ECataclysmDungeonSubType>* Seen = RolledSeen.Find(Cataclysm);
-			if (Seen == nullptr || Seen->Num() < 2)
 			{
 				return false;
 			}
@@ -4476,10 +4485,6 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 								*UCataclysmSurgeScheduler::SubTypeName(*Fixed)));
 						}
 					}
-					else
-					{
-						RolledSeen.FindOrAdd(Dungeon.Cataclysm).Add(Dungeon.SubType);
-					}
 				}
 				else if (Fixed != nullptr)
 				{
@@ -4502,16 +4507,7 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 			FixedSeen.FindRef(Pair.Key) >= EnoughOfEach);
 	}
 
-	for (const ECataclysmType Cataclysm : Rolling)
-	{
-		const TSet<ECataclysmDungeonSubType>* Seen = RolledSeen.Find(Cataclysm);
-		TestTrue(FString::Printf(
-			TEXT("CONTROL: %s's Quest dungeons still roll, two sub-types or more"),
-			*UCataclysmRoster::NameFor(Cataclysm).ToString()),
-			Seen != nullptr && Seen->Num() >= 2);
-	}
-
-	TestTrue(TEXT("CONTROL: the seven's ordinary dungeons still roll"),
+	TestTrue(TEXT("CONTROL: the eight's ordinary dungeons still roll"),
 			 OrdinaryFromTheFive.Num() >= 2);
 
 	TestEqual(TEXT("no fixed Quest dungeon came out another sub-type"), Wrong, 0);

@@ -375,7 +375,8 @@ public:
 							   int32 GearCountGiven = -1, int32 MaterialCountGiven = -1,
 							   float LowTierMaterialExtraChance = 0.0f,
 							   ECataclysmRarity LowestRarity = ECataclysmRarity::Everyday,
-							   float MaterialsMore = 1.0f, bool bTheCataclysmBossesPiece = false);
+							   float MaterialsMore = 1.0f, bool bTheCataclysmBossesPiece = false,
+							   float GearMore = 1.0f);
 
 	/** The rung named Elite, which Opportunistic Looting asks for; and the first boss rung, as
 	 *  `ACataclysmEnemyCharacter::IsBoss` reads it, which The High Roller asks for. Issue #2741 slice 5b. */

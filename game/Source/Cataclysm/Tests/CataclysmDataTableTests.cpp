@@ -113,7 +113,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// apply, and none of the four said what it did.
 	// 52, not 54. Issue #2533 retired two rows whose effect is built elsewhere and nothing read: the Warzone Control
 	// Points buff (the floor rule is whole without it) and Toxic Trail's own debuff (its effect is Poison).
-	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          52)
+	// 55, not 52, since 2026-11-25: Death's Mortal Reminder and Lingering Decay debuffs, which the owner accepted on
+	// 2026-11-24, and War's Drums of War buff, the enemy modifier's own. Each was added to its sheet with its modifier.
+	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          55)
 	// 27, not 26. The Of Wasting gem was added to apply Necrosis, which was the
 	// one status effect in the data that nothing applied, and the Of Embers gem
 	// to apply Burn, which every designed Demonic skill applies and which no gem

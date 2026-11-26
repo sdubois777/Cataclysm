@@ -7,6 +7,7 @@
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmDungeonModifier.h"
+#include "Empire/CataclysmRoster.h"
 
 /**
  * What a dungeon is, as much of it as building one of its floors needs.
@@ -123,6 +124,28 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 * built by hand, and a dungeon not entered from the empire, leaves it at one: a boss on the final floor alone.
 	 */
 	int32 Bosses = 1;
+
+	/**
+	 * Which Cataclysm sent the dungeon: `FCataclysmDungeon::Cataclysm`, copied across by
+	 * `ACataclysmDungeonGameMode::BindEmpireDungeon` (as `DungeonCataclysm`). Slice B3 of the Death and War plan,
+	 * 2026-11-25.
+	 *
+	 * EVERY CREATURE THE DUNGEON PLACES BELONGS TO IT: it deals this Cataclysm's damage type and draws its enemy
+	 * modifiers from this Cataclysm's column and the Generic one, which is the design's rule ("drawn from its own
+	 * Cataclysm's column and the Generic one", `docs/Cataclysm_GDD_v2.md`). The owner accepted it for the Demonic
+	 * bodies standing in for Death's and War's on 2026-11-24 (the plan's Q16). `CreatureDamageTypeFor` turns it into
+	 * the damage type; `FCataclysmFloorPopulator::PackKindsFor` reads it, through the brief, for the roster.
+	 *
+	 * `None` LEAVES EVERY CREATURE ITS CLASS'S OWN TYPE, which is Demonic: a dungeon built by hand in a test, and pressing
+	 * Play in `L_Dungeon`. That is every creature the game placed before this field existed. A FALLEN CITY IS SENT BY
+	 * NOBODY (`UCataclysmSurgeScheduler::MakeFallenCityDungeon`) and still carries one here: the Cataclysm that felled
+	 * its city (`FCataclysmCity::FellTo`), or the run's newest active one when the city records nobody, which
+	 * `ACataclysmDungeonGameMode::BindEmpireDungeon` gives it, ruled on 2026-11-25 and wired in bundle 4.
+	 *
+	 * NOT SAVED HERE OR ANYWHERE NEW: a resumed walk binds the saved empire dungeon again, and its `Cataclysm` is saved,
+	 * the way `ACataclysmDungeonGameMode::DungeonCityTier` comes back.
+	 */
+	ECataclysmType Cataclysm = ECataclysmType::None;
 };
 
 /**
@@ -281,6 +304,16 @@ struct CATACLYSM_API FCataclysmFloorBrief
 	 * Imp in an ordinary dungeon notices at the distance it always did.
 	 */
 	float SightRadiusMultiplier = 1.0f;
+
+	/**
+	 * Which Cataclysm sent the dungeon this floor belongs to: `FCataclysmDungeonIdentity::Cataclysm`, unchanged on
+	 * every floor. Slice B3, 2026-11-25.
+	 *
+	 * READ BY THE POPULATION PASS for which roster the floor's groups are drawn from
+	 * (`FCataclysmFloorPopulator::PackKindsFor`), which is the Demonic seven for every Cataclysm until Death's and
+	 * War's own creatures exist. A default-constructed brief carries `None`, which draws the same roster.
+	 */
+	ECataclysmType Cataclysm = ECataclysmType::None;
 };
 
 /**
@@ -501,6 +534,22 @@ public:
 	 */
 	static float SightRadiusMultiplierFor(const FCataclysmDungeonIdentity& Dungeon,
 										  int32 FloorNumber);
+
+	/**
+	 * The damage type a creature of a dungeon sent by this Cataclysm deals, as `ACataclysmEnemyCharacter::DamageType`
+	 * holds it: `UCataclysmRoster::NameFor`, "Death", "War", "Void". Slice B3, 2026-11-25.
+	 *
+	 * NAME_None FOR `None`, AND THAT IS NOT A DAMAGE TYPE TO WRITE: it means "leave the creature its class's own",
+	 * which is Demonic. `UCataclysmRoster::NameFor` spells `None` as "None", which as an `FName` is `NAME_None`
+	 * itself; a creature given it would draw from the Generic column alone and its blows would carry no type, so meet
+	 * no resistance. The caller must not write it. See `ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`, the one
+	 * writer on a floor.
+	 *
+	 * THE SAME NAME FOR ALL EIGHT, not only Death and War. The design's rule is the same for every Cataclysm, and the
+	 * owner's acceptance of 2026-11-24 (the plan's Q16) gives its reason in those terms. A judgement, recorded in
+	 * `docs/DECISIONS.md` (2026-11-25).
+	 */
+	static FName CreatureDamageTypeFor(ECataclysmType Cataclysm);
 
 	/**
 	 * How many of a wave may still be alive before the next one arrives.

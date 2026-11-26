@@ -429,6 +429,27 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierEffectsExistTest,
 		UCataclysmEnemyModifiers::BloodthirstyRow,
 		UCataclysmEnemyModifiers::ThornsOfGlassRow,
 		UCataclysmEnemyModifiers::HellfireAuraRow,
+		// AND DEATH'S ELEVEN, written 2026-11-24 ahead of their window.
+		UCataclysmEnemyModifiers::HauntingRow,
+		UCataclysmEnemyModifiers::GraveTouchRow,
+		UCataclysmEnemyModifiers::UndyingWillRow,
+		UCataclysmEnemyModifiers::SoulEaterRow,
+		UCataclysmEnemyModifiers::ShadowStepRow,
+		UCataclysmEnemyModifiers::SpectralShiftRow,
+		UCataclysmEnemyModifiers::LingeringDecayRow,
+		UCataclysmEnemyModifiers::FinalCurseRow,
+		UCataclysmEnemyModifiers::FuneralPyreRow,
+		UCataclysmEnemyModifiers::SoulTetherRow,
+		UCataclysmEnemyModifiers::MortalReminderRow,
+		// AND EIGHT OF WAR'S NINE, written 2026-11-25 ahead of their window. 1 On 1 is not built and has no constant.
+		UCataclysmEnemyModifiers::CommanderRow,
+		UCataclysmEnemyModifiers::BattleCryRow,
+		UCataclysmEnemyModifiers::ArmoredJuggernautRow,
+		UCataclysmEnemyModifiers::DrumsOfWarRow,
+		UCataclysmEnemyModifiers::ShieldWallRow,
+		UCataclysmEnemyModifiers::ArtilleryBarrageRow,
+		UCataclysmEnemyModifiers::BattleScarredRow,
+		UCataclysmEnemyModifiers::PhalanxRow,
 	};
 
 	for (const TCHAR* Key : Built)

@@ -104,11 +104,12 @@ def weight(text: str, cpp_name: str) -> float:
 
 
 #: The Cataclysms whose Quest dungeons the game gives one fixed sub-type, since
-#: 2026-10-21, and the Void and Celestial since 2026-10-22. The model names one
-#: for all eight; the other one -- War -- is held, with why, in
-#: `test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`.
+#: 2026-10-21, the Void and Celestial since 2026-10-22, and War since 2026-11-25
+#: (issue #51 slice B4). The model names one for all eight, so all eight are here.
+#: Until War was added, `test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_
+#: the_game.py` held it; that file was deleted, as its restore text said.
 FIXED_IN_THE_GAME = ("Death", "Demonic", "Pestilence", "Famine", "Chaos", "Void",
-                     "Celestial")
+                     "Celestial", "War")
 
 #: The sub-types the game has and never rolls, spelled the same on both sides.
 #: THE VOID'S QUEST DUNGEON, THE HOLLOW, since 2026-10-22: a Quest dungeon the
@@ -561,24 +562,24 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
 
 
 class TestEachCataclysmsQuestSubType:
-    """**SEVEN CATACLYSMS' QUEST DUNGEONS ARE ONE SUB-TYPE IN BOTH HALVES.**
+    """**ALL EIGHT CATACLYSMS' QUEST DUNGEONS ARE ONE SUB-TYPE IN BOTH HALVES.**
 
     The owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be
     one specific type." The model's `TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM` is
     the original and names one for all eight; the game's
-    `UCataclysmSurgeScheduler::QuestSubTypeFor` names one for the seven in
-    `FIXED_IN_THE_GAME` -- five since 2026-10-21 and the Void and Celestial
-    since 2026-10-22 -- and this compares them BY NAME. The other one, War,
-    differs on purpose and is held in its own file.
+    `UCataclysmSurgeScheduler::QuestSubTypeFor` names one for the eight in
+    `FIXED_IN_THE_GAME` -- five since 2026-10-21, the Void and Celestial since
+    2026-10-22 and War since 2026-11-25 -- and this compares them BY NAME.
 
     WHAT THIS CANNOT SEE. That a run actually lands them: the Unreal tests
-    `Cataclysm.Surge.InARunSevenCataclysmsQuestDungeonsAreTheirOneSubType` (named
+    `Cataclysm.Surge.InARunEightCataclysmsQuestDungeonsAreTheirOneSubType` (named
     `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType` until
-    2026-10-22 and `...InARunSixCataclysms...` later that day) and
+    2026-10-22, `...InARunSixCataclysms...` later that day, and
+    `...InARunSevenCataclysms...` until 2026-11-25) and
     `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` do that.
     """
 
-    def test_the_game_fixes_the_same_seven_pairs_the_model_does(self, model):
+    def test_the_game_fixes_the_same_eight_pairs_the_model_does(self, model):
         cases, default = the_games_quest_sub_types(
             read(SURGE_HEADER.parent / "CataclysmSurge.cpp"))
         wanted = model.QUEST_SUBTYPE_BY_CATACLYSM
@@ -593,13 +594,10 @@ class TestEachCataclysmsQuestSubType:
                 "config.QUEST_SUBTYPE_BY_CATACLYSM is the original")
 
         assert sorted(cases) == sorted(FIXED_IN_THE_GAME), (
-            f"QuestSubTypeFor names {sorted(cases)}, not the seven. An eighth is "
-            "War, held in "
-            "test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py; "
-            "follow its failure message")
+            f"QuestSubTypeFor names {sorted(cases)}, not the eight")
         assert default == "None", (
             f"QuestSubTypeFor answers {default} for a Cataclysm it does not "
-            "name, so War stops rolling")
+            "name, so a Quest dungeon made without a sender stops rolling")
 
     def test_the_comparison_sees_a_changed_pair(self, model):
         """**THE CONTROL.** The same parse of the same source with Famine's
