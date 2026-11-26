@@ -812,6 +812,56 @@ bool FCataclysmShadowVowsFlurryTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmShadowVowsTest
+{
+	/**
+	 * A real player on a real player state, as `Cataclysm.CritsAndExecutes.` builds the one whose critical strikes pay
+	 * Fervour: no controller, no weapon, a blow of 100, a Fervour pool of `MaxFervour` holding `Fervour`, and `Lines` as
+	 * its stat lines with the damage a blow needs. Null when it cannot be built. With nothing worn, a hit's damage and
+	 * critical strike come from these lines and attributes alone.
+	 */
+	UCataclysmAbilitySystemComponent* CriticalPlayer(UWorld* World, ACataclysmPlayerCharacter*& OutPlayer,
+													 TMap<FName, FCataclysmStatInputs> Lines, float MaxFervour,
+													 float Fervour)
+	{
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		OutPlayer = World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!State || !OutPlayer)
+		{
+			return nullptr;
+		}
+		OutPlayer->SetPlayerState(State);
+		OutPlayer->OnRep_PlayerState();
+		UCataclysmAbilitySystemComponent* System = State->GetCataclysmAbilitySystemComponent();
+		if (!System)
+		{
+			return nullptr;
+		}
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), MaxFervour);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Fervour);
+		Lines.FindOrAdd(FName(TEXT("attack_damage"))).Base = 100.0f;
+		Lines.FindOrAdd(FName(TEXT("spell_damage"))).Base = 100.0f;
+		System->SetStatInputs(MoveTemp(Lines));
+		return System;
+	}
+
+	/** One blow of `Player`'s at 100%, in the name of a test strike stating a critical strike chance of 100. */
+	FCataclysmHitDelivery CriticalBlow(ACataclysmPlayerCharacter* Player, FGameplayTagContainer& OutTags)
+	{
+		UCataclysmStrikeSkill* Swing = NewObject<UCataclysmStrikeSkill>(Player);
+		Swing->SkillName = TEXT("Test Swing");
+		Swing->SkillTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Strike"))));
+		OutTags = Swing->SkillTags;
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 100.0f;
+		Delivery.Skill = Swing;
+		return Delivery;
+	}
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowVowsFlurryPaysOnHitEffectsTest,
 	"Cataclysm.ShadowVows.FlurryOfTheDeadsExtraStrikesPayOnHitEffectsLikeAnyHit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -819,9 +869,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowVowsFlurryPaysOnHitEffectsTest,
 /**
  * The project owner's ruling of 2026-11-26 ("yes"): Flurry of the Dead's extra strikes trigger on-hit effects as any hit
  * does. A possessed player holding Flurry of the Dead's shipped row and one flat row of `fervour_per_critical_strike`
- * (5), every blow a critical strike, holds three and a half steps' worth of Fervour and lands one hit on a creature: it
- * deals four hits' worth (the hit and three extra strikes, every one a critical strike) and gains the critical strike's
- * Fervour FOUR TIMES. THE CONTROL: the same player without Flurry's row deals one hit's worth and gains it once.
+ * (5), every blow a critical strike, holds three steps' worth of Fervour and lands one hit on a creature: it deals four
+ * hits' worth (the hit and three extra strikes, every one a critical strike) and gains the critical strike's Fervour
+ * FOUR TIMES. THE CONTROL: the same player without Flurry's row deals one hit's worth and gains it once.
  *
  * AND AN EXTRA STRIKE STRIKES NO FURTHER EXTRAS: a hit delivered as `UCataclysmShadowImages::StrikeAgain` delivers each
  * extra strike (a row's answer to an event, marked an extra strike), by the player holding Flurry, deals one hit's worth
@@ -839,10 +889,6 @@ bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 	}
 	const float Step = Shipped->ScaleStep;
 	constexpr float PerCritical = 5.0f;
-	// EVERY BLOW A CRITICAL STRIKE: each delivery states a chance of 100, the cap is raised to 100, and the roll is pinned
-	// at 50. The character's own chance attribute alone did not do it: in window dfb-w1 every hit landed for 100, none
-	// critical, and no Fervour was paid.
-	const CataclysmTestWorld::FScopedCritRoll Pinned(50.0f);
 
 	// 0: without Flurry; 1: with it; 2: with it, the hit delivered as an extra strike is.
 	float Lost[3] = {0.0f, 0.0f, 0.0f};
@@ -855,12 +901,11 @@ bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 			return false;
 		}
 		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		const FRig Rig(World, FVector::ZeroVector);
-		ACataclysmEnemyCharacter* Creature = CreatureAt(World, FVector(1.0f * M, 0, 0), 100'000.0f);
-		if (!Rig.IsUsable(*this) || !TestNotNull(TEXT("set-up: a creature"), Creature))
-		{
-			return false;
-		}
+		// EVERY BLOW A CRITICAL STRIKE: `CriticalPlayer` and `CriticalBlow`, and the roll pinned at nought AFTER THE WORLD
+		// IS MADE, which silences critical strikes (`CataclysmTestWorld::SilenceCriticalStrikes`, a roll of 100). Window
+		// dfb-w1 pinned it first, and the world's 100 replaced the pin: no hit was critical.
+		const CataclysmTestWorld::FScopedCritRoll Pinned(0.0f);
+		ACataclysmEnemyCharacter* Creature = CreatureAt(World, FVector(3.0f * M, 0, 0), 100'000.0f);
 		TMap<FName, FCataclysmStatInputs> Lines =
 			Case > 0 ? ShippedLines(TEXT("Shadow_capstone_200"), 3) : TMap<FName, FCataclysmStatInputs>();
 		FCataclysmStatModifier PerCrit;
@@ -868,28 +913,33 @@ bool FCataclysmShadowVowsFlurryPaysOnHitEffectsTest::RunTest(const FString&)
 		PerCrit.Source = ECataclysmModifierSource::PassiveKeystone;
 		PerCrit.Value = PerCritical;
 		Lines.FindOrAdd(FName(UCataclysmFervour::PerCriticalStrikeStat)).Modifiers.Add(PerCrit);
-		Rig.System->SetStatInputs(MoveTemp(Lines));
-		Rig.Set(UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 100.0f);
-		Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
-		// AND A MULTIPLIER: the damage calculation rolls no critical strike for a multiplier of nought, the test player's.
-		Rig.Set(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
-		Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
-		Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
-
-		FCataclysmHitDelivery Delivery;
-		Delivery.bCannotBeEvaded = true;
-		Delivery.CritChancePercent = 100.0f;
+		ACataclysmPlayerCharacter* Player = nullptr;
+		UCataclysmAbilitySystemComponent* System =
+			CriticalPlayer(World, Player, MoveTemp(Lines), Step * 10.0f, Step * 3.0f);
+		// THREE STEPS EXACTLY, AND NOT THREE AND A HALF: the hit's own critical strike pays its Fervour before Flurry counts
+		// the steps held, so at three and a half its 5 made four steps and four extra strikes (window dfb-w1's reruns). At
+		// three, a payment smaller than a step leaves three whichever comes first.
+		if (!TestTrue(TEXT("set-up: a critical strike's Fervour is less than a step"), PerCritical < Step))
+		{
+			return false;
+		}
+		if (!TestNotNull(TEXT("set-up: a player"), System) || !TestNotNull(TEXT("set-up: a creature"), Creature))
+		{
+			return false;
+		}
+		FGameplayTagContainer Tags;
+		FCataclysmHitDelivery Delivery = CriticalBlow(Player, Tags);
 		if (Case == 2)
 		{
 			Delivery.bIsARowsAnswerToAnEvent = true;
 			Delivery.bIsAnExtraStrike = true;
 		}
 		const float Was = HealthOf(Creature);
-		const float FervourWas = Rig.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
-		UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), Delivery);
+		const float FervourWas = System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		UCataclysmSkillEffects::ApplyHit(Player, Creature, 100.0f, Tags, Delivery);
 		Lost[Case] = Was - HealthOf(Creature);
 		Gained[Case] =
-			Rig.System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()) - FervourWas;
+			System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()) - FervourWas;
 	}
 
 	AddInfo(FString::Printf(TEXT("FLURRY ON-HIT: without the row lost %.1f, gained %.1f Fervour; with it lost %.1f, gained "
@@ -934,9 +984,6 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 		return false;
 	}
 	const float Step = Shipped->ScaleStep;
-	// EVERY BLOW A CRITICAL STRIKE: each delivery states a chance of 100, the cap is raised to 100, and the roll is pinned
-	// at 50, as `FlurryOfTheDeadsExtraStrikesPayOnHitEffectsLikeAnyHit` does.
-	const CataclysmTestWorld::FScopedCritRoll Pinned(50.0f);
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
@@ -944,24 +991,22 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	const FRig Rig(World, FVector::ZeroVector);
-	ACataclysmEnemyCharacter* Creature = CreatureAt(World, FVector(1.0f * M, 0, 0), 100'000.0f);
-	if (!Rig.IsUsable(*this) || !TestNotNull(TEXT("set-up: a creature"), Creature))
+	// EVERY BLOW A CRITICAL STRIKE: `CriticalPlayer` and `CriticalBlow`, and the roll pinned at nought after the world is
+	// made, as `FlurryOfTheDeadsExtraStrikesPayOnHitEffectsLikeAnyHit` does.
+	const CataclysmTestWorld::FScopedCritRoll Pinned(0.0f);
+	ACataclysmEnemyCharacter* Creature = CreatureAt(World, FVector(3.0f * M, 0, 0), 100'000.0f);
+	ACataclysmPlayerCharacter* Player = nullptr;
+	UCataclysmAbilitySystemComponent* System =
+		CriticalPlayer(World, Player, ShippedLines(TEXT("Shadow_capstone_200"), 3), Step * 10.0f, 0.0f);
+	if (!TestNotNull(TEXT("set-up: a player"), System) || !TestNotNull(TEXT("set-up: a creature"), Creature))
 	{
 		return false;
 	}
-	Rig.System->SetStatInputs(ShippedLines(TEXT("Shadow_capstone_200"), 3));
-	Rig.Set(UCataclysmCombatAttributeSet::GetMaxCritChanceAttribute(), 100.0f);
-	Rig.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
-	// AND A MULTIPLIER: the damage calculation rolls no critical strike for a multiplier of nought, the test player's.
-	Rig.Set(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
-	Rig.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), Step * 10.0f);
-	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
 
 	const FGameplayAbilitySpecHandle Handle =
-		Rig.System->GiveAbilityInSlot(UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support,
-									  /*Level=*/100, Rig.Player);
-	FGameplayAbilitySpec* Spec = Handle.IsValid() ? Rig.System->FindAbilitySpecFromHandle(Handle) : nullptr;
+		System->GiveAbilityInSlot(UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support,
+								  /*Level=*/100, Player);
+	FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
 	UCataclysmSelfBuffSkill* Crows = Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
 	if (!TestNotNull(TEXT("set-up: the crows' buff is granted"), Crows))
 	{
@@ -971,31 +1016,29 @@ bool FCataclysmShadowVowsFlurryCallsTheCrowsTest::RunTest(const FString&)
 	Crows->Params = UCataclysmSkillShapes::ParseParams(TEXT("Duration=8; Radius=10; StrikesOnCritical=1"));
 	Crows->DamagePercentOverride = 40.0f;
 	if (!TestTrue(TEXT("set-up: the buff goes up"),
-				  Rig.System->TryActivateAbility(Crows->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)))
+				  System->TryActivateAbility(Crows->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false)))
 	{
 		return false;
 	}
 
-	FCataclysmHitDelivery AnAnswer;
-	AnAnswer.bCannotBeEvaded = true;
-	AnAnswer.CritChancePercent = 100.0f;
+	FGameplayTagContainer Tags;
+	FCataclysmHitDelivery AnAnswer = CriticalBlow(Player, Tags);
 	AnAnswer.bIsARowsAnswerToAnEvent = true;
 	FCataclysmHitDelivery AnExtraStrike = AnAnswer;
 	AnExtraStrike.bIsAnExtraStrike = true;
 
-	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), AnAnswer);
+	UCataclysmSkillEffects::ApplyHit(Player, Creature, 100.0f, Tags, AnAnswer);
 	const int32 AfterTheAnswer = Crows->CrowsSent;
-	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), AnExtraStrike);
+	UCataclysmSkillEffects::ApplyHit(Player, Creature, 100.0f, Tags, AnExtraStrike);
 	const int32 AfterTheExtraStrike = Crows->CrowsSent;
-	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), AnExtraStrike);
+	UCataclysmSkillEffects::ApplyHit(Player, Creature, 100.0f, Tags, AnExtraStrike);
 	const int32 AfterTheSecondAtOnce = Crows->CrowsSent;
 
 	World->TimeSeconds += 0.3f;
-	Rig.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
-	FCataclysmHitDelivery Ordinary;
-	Ordinary.bCannotBeEvaded = true;
-	Ordinary.CritChancePercent = 100.0f;
-	UCataclysmSkillEffects::ApplyHit(Rig.Player, Creature, 100.0f, FGameplayTagContainer(), Ordinary);
+	System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Step * 3.5f);
+	FGameplayTagContainer OrdinaryTags;
+	const FCataclysmHitDelivery Ordinary = CriticalBlow(Player, OrdinaryTags);
+	UCataclysmSkillEffects::ApplyHit(Player, Creature, 100.0f, OrdinaryTags, Ordinary);
 	const int32 AfterTheFlurry = Crows->CrowsSent;
 
 	AddInfo(FString::Printf(TEXT("FLURRY AND THE CROWS: %d after a row's answer, %d after an extra strike, %d after a "

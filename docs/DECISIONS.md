@@ -74,6 +74,13 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
   path. `LoneRevenantGivesTheAbominationFiveTimesNotTwentyFive` grants the real node and checks five times the health
   and the blow at a swing, with a control that the same rows give a minion tagged `Minion.Permanent` five times.
 - **THE RESTLESS DEAD'S 20% IS A PLAY-TEST NUMBER.** It stands until play says otherwise.
+- **GRAVE SPORES FOLLOWS THE AILMENT RULE OF #917**, the coordinating session's ruling within the owner's delegation
+  (#917 is the owner's own rule of 2026-09-02, for any ailment that does not come from the skill's own row). Its row
+  applies Necrosis on `remains_detonation_hit`, and `ApplyStatusOf` asks `UCataclysmAilments::BlowCanCarryAnAilment`,
+  so in play it fires only when the remains blast deals at least a tenth of the struck enemy's maximum health: mostly
+  when a larger creature (an elite or a brute) dies among smaller ones. Option (b), to exempt it as a chance on a hit,
+  was not taken; the coordinating session is offering it to the owner. The event had carried an amount of nought,
+  which no such row could ever pass; `UCataclysmRemains::Detonate` now passes the health each struck enemy lost.
 
 ### Joining the Wraith and the Lich
 
@@ -89,6 +96,26 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
   and searches seeds 11 to 210 for a floor holding both, with a control for each.
 - **TEN ENEMY ARCHETYPES** (`EnemyArchetypes.csv`, pinned at 10 in `CataclysmDataTableTests.cpp`), so the window's
   editor step rebuilds `DT_EnemyArchetypes` once, after both. `test_enemy_telegraphs.py` follows the model's count.
+
+### Window dfb-w1's first full run: ten failures and their causes
+
+The first run in Unreal of slices A, B, D and E and of the two creatures. 6134 tests performed, 6124 succeeded, 10
+failed; the proof was not run. Each cause, and whether the code or the test was wrong:
+
+| Test | Cause | Wrong |
+|---|---|---|
+| `NecromancerArmy.HarvestOfTheHost...`, `TheRestlessDead...` | `UCataclysmNecromancerArmy::EnemyDied` asked `IsHostileTo` of an enemy already marked dead, which always answers false; it now compares sides with `UCataclysmTeams::AttitudeBetween` | code |
+| `NecromancerArmy.OldBones...` | slice C's age (time since creation) was written before slice B's fill (time since command), which writes only an unset age, so the creation time is now the fallback after it; and the test set its command times back from a fresh world's clock of nought, below nought, which the fill does not read, so its clock now starts at 1,000 s | code (the merge) and test |
+| `Remains.PlaguePit...GraveSpores...` | the event's amount was nought (above); the test's remains now blast a tenth, with a control below it | code and test |
+| `NecromancerArmy.WillNotStayDown...` | two timer ticks in one engine frame tick once; `CataclysmTestWorld::RunClock` | test |
+| `ShadowVows.FlurryOfTheDeads...`, `AFlurryExtraStrikes...Crows...` | no hit critically struck: the tests pinned the crit roll at nought BEFORE making the world, and making a test world sets it to 100 (`CataclysmTestWorld::SilenceCriticalStrikes`), so no roll could pass; the pin now comes after, on a player built as `Cataclysm.CritsAndExecutes.` builds one. The on-hit test also starts at three steps of Fervour, not three and a half, because the hit's own critical strike pays before Flurry counts the steps | test |
+| `DeathFinishSoulCollector.SoulShatterAndFinalRites...` | the set-up took the starting weapon off, leaving no attack damage; Death is now chosen before possession | test |
+| `EmpireRun.ASiegeTakesItsShare...` | since the roster ruling seed 1 faces War, not Pestilence, and War's Quest Sieges bite at a quarter; the run is pinned to Demonic, the figures unchanged | test |
+| `StatExemption.EveryStatWithNoAttributeIsActuallyRead` | `minion_detonation_damage` was probed only among the scaled stats; it is now probed in the no-attribute table too | test |
+
+The run also performed 3 tests more than registered (the roster's three in `CataclysmEmpire/Tests`, which the count by
+name did not read) and wrote 3 saves more (three of the Lich's tests, each deleted). Five compile errors in the
+Wraith's and the Lich's code, never compiled before, were fixed first (1d7732158).
 
 ### Found while merging
 
