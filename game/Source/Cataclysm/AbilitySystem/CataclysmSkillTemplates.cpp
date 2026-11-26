@@ -5732,6 +5732,10 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		{
 			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
 		}
+
+		// AND RISE TOGETHER'S ROLL FOR A SECOND BESIDE IT, for a permanent minion: the Death line's finishing slice B
+		// (2026-11-26). Nothing for any other row or a commander with no such row.
+		UCataclysmNecromancerArmy::RollToRaiseASecond(Self, this, Minion);
 	}
 	return Minion;
 }

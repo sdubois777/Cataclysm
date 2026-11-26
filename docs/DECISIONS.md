@@ -18,7 +18,7 @@ Decisions made outside the Google Drive documents, newest first.
   `CataclysmMinion.cpp` (`AttackTarget`'s blow takes Master's Edge's roll). `CataclysmPlayerClassStats.cpp` (14 names).
 - Data: `tools/reapply_death_finish_b_workbook.py`, new: the tag `Minion.Permanent` and 29 Passive Effects rows.
   `game/Data/PassiveEffects.csv`, `game/Config/Tags/CataclysmTags.ini`, `docs/All_Things_Cataclysm.xlsx`.
-- Tests: `game/Source/Cataclysm/Tests/CataclysmNecromancerArmyTests.cpp`, new (17); thirteen probes in
+- Tests: `game/Source/Cataclysm/Tests/CataclysmNecromancerArmyTests.cpp`, new (18); fourteen probes in
   `CataclysmStatExemptionTests.cpp`; `minion_has_your_most_maximum_health` in `CataclysmPassiveTreeTests.cpp`.
   `tools/tests/test_death_finish_b_scripts.py`, new, and eight Python checks brought up to the code.
 
@@ -26,9 +26,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 - **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The coordinating session's window compiles it and runs
   `Cataclysm.NecromancerArmy.` and `Cataclysm.StatExemption.`.
-- **`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` FAILS ON THIS BRANCH ALONE** for
-  `minion_extra_raise_chance`: Rise Together's row is written on the stat slice C's Teeming Grave reads (the
-  coordinating session's ruling of 2026-11-26, one reader), and the reader and its probe are slice C's.
+- **Rise Together has a stat of its own**, `permanent_minion_raises_a_second_chance`, rolled once for each permanent
+  minion a summon raises. The coordinating session ruled on 2026-11-26 that it is not slice C's
+  `minion_extra_raise_chance` (Teeming Grave's, rolled once a use). It first ruled the opposite the same day.
 - **The Restless Dead's chance is 20%, a judgement**: the sentence says "a chance". It is the one number here no
   sentence states. A question for the owner, with the figure in the re-apply script (`RESTLESS_DEAD_CHANCE`).
 - **Grave Swap, Shared Flesh and the thrall halves** carry judgements of their shape, each below.
@@ -70,7 +70,7 @@ is asked with its tags now, and no `minion_health` row required `Minion.Creature
 | Master's Edge | `minion_crit_share_of_yours_percent` 4, tag | `CriticalFactorForBlow`; a thrall's own figures in `Step` |
 | Lighter Bones | `minion_reserve_percent_less` 2, tag | the tag on the reserve |
 | Will Not Stay Down | `minion_rises_again_chance` 4, tag | `FollowerDied` |
-| Rise Together | `minion_extra_raise_chance` 4, tag | **slice C's reader** |
+| Rise Together | `permanent_minion_raises_a_second_chance` 4, tag | `RollToRaiseASecond`, from `SummonOne` |
 | Mending Dead | `minion_health_regen_percent_per_second` 1 at 2, 4 and 6 points, tag | `Step` |
 | Called to Heel | `minion_damage_taken` increased -3, tag, `minion_within_metres_of_you` 8 | the follower named in the damage calculation |
 | Lone Revenant | `minion_reserve` more 300, `minion_damage` more 400, `minion_health` more 400, tag; `lone_revenant_held` 1 | the "more" bucket; the flag for slice D |
@@ -102,6 +102,9 @@ from its Summon row as Death Rattle's is. Every raise asks the pool for room fir
 - **Reforged**: only a `Permanent=1` summon, and only when a raise was refused for room. "Most wounded" is the largest
   share of maximum health missing. The heal is 10% of that minion's maximum per point.
 - **Bone Lord**: two more of the press's own kind, each through `SummonOne`, which asks for room.
+- **Rise Together**: rolled for each permanent minion a press raises, Bone Lord's extras included. The second rises a
+  metre to the first's side through the replacement path, which asks for room. It does not roll again, so one raise
+  cannot chain. A thrall's take is not a raise.
 - **Will Not Stay Down**: the skill that made it raises it again, 3 seconds later, where it fell, if the pool has room
   then. A thrall is a creature that was taken, not raised, so it is not made again. Last Epoch's Summon Skeleton
   reanimation (a chance per point, 3 seconds later, at the same spot) is the same shape. PoE 2's Reviving Minions

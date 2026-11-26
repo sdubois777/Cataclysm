@@ -1239,8 +1239,8 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// And the Necromancer's army, the Death line's finishing slice B (2026-11-26): Reforged's heal, Master's Edge's
 		// share of the commander's critical strike, Will Not Stay Down's chance, Mending Dead's regeneration, Bone Lord's
 		// extra raises, Carrion Host's and Harvest of the Host's chance, Second Death's flag, The Restless Dead's chance,
-		// Grave Swap's flag, Lich Form's husk window, Shared Flesh's flag, Lone Revenant's flag and the reserve's "more"
-		// bucket. Each read by UCataclysmNecromancerArmy (CataclysmNecromancerArmy.cpp), the last by
+		// Grave Swap's flag, Lich Form's husk window, Shared Flesh's flag, Lone Revenant's flag, the reserve's "more"
+		// bucket and Rise Together's chance. Each read by UCataclysmNecromancerArmy (CataclysmNecromancerArmy.cpp), the last by
 		// UCataclysmCommand::ReserveFor through it. No attribute and no base.
 		TEXT("summon_without_room_heals_permanent_percent"),
 		TEXT("minion_crit_share_of_yours_percent"),
@@ -1255,10 +1255,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("damage_taken_split_with_minions"),
 		TEXT("lone_revenant_held"),
 		TEXT("minion_reserve"),
-		// And Rise Together's, which slice C's Teeming Grave writes too and slice C's summon path reads: the coordinating
-		// session's ruling of 2026-11-26, one reader for both. Listed here so this branch's row is a stat the game
-		// supplies; the reader and its probe are slice C's.
-		TEXT("minion_extra_raise_chance"),
+		// And Rise Together's chance, rolled once for each permanent minion a summon raises, a stat of its own by the
+		// coordinating session's ruling of 2026-11-26 (Teeming Grave's, rolled once a use, is another).
+		TEXT("permanent_minion_raises_a_second_chance"),
 		// And the Shadow's Deathmark and Two Marks, the Death trees' slice C6e: how many enemies a character marks.
 		// Read by UCataclysmAbilitySystemComponent::MaintainShadowMarks. No attribute and no base.
 		TEXT("death_marks_held"),

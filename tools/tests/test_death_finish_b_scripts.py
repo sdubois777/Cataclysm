@@ -38,11 +38,7 @@ NEW_STATS = (
     "minion_health_regen_percent_per_second", "summon_raises_more_permanent_minions",
     "permanent_minion_kill_rises_as_husk_chance", "minion_death_rises_as_husk", "kill_rises_as_skeleton_chance",
     "movement_swaps_with_minion", "skills_raise_husks_seconds_after_resource_full", "damage_taken_split_with_minions",
-    "lone_revenant_held", "minion_reserve")
-
-#: Rise Together's stat, which slice C's Teeming Grave writes too and slice C's summon path reads (one reader, ruled by
-#: the coordinating session on 2026-11-26). Listed by this branch, read by slice C's.
-SHARED_WITH_SLICE_C = "minion_extra_raise_chance"
+    "lone_revenant_held", "minion_reserve", "permanent_minion_raises_a_second_chance")
 
 
 def node_rows() -> dict[str, dict]:
@@ -89,8 +85,7 @@ def test_every_permanent_minion_row_requires_the_tag():
     for node, _, wanted in rows.NODES:
         sentence = node_rows()[node]["Description"].lower()
         for row in wanted:
-            if row.stat.startswith("minion_") and row.stat != "minion_extra_raise_chance" and \
-                    "permanent minion" in sentence:
+            if row.stat.startswith("minion_") and "permanent minion" in sentence:
                 assert row.tags == rows.PERMANENT, (node, row.stat)
     motley = [row for node, _, wanted in rows.NODES for row in wanted if node == "Necromancer_basic_lg_stem2"]
     assert [row.tags for row in motley] == [None], "Motley Host says Minion Damage, every minion's"
@@ -105,7 +100,7 @@ def test_the_workbook_holds_the_rows_and_the_tag():
 def test_the_generated_files_hold_the_rows_and_the_tag():
     with EFFECTS_CSV.open(encoding="utf-8", newline="") as handle:
         written = [row for row in csv.DictReader(handle) if row["Node"] in {node for node, _, _ in rows.NODES}
-                   and (row["Stat"] in NEW_STATS + (SHARED_WITH_SLICE_C,) or row["RequiredTags"] == rows.PERMANENT
+                   and (row["Stat"] in NEW_STATS or row["RequiredTags"] == rows.PERMANENT
                         or row["Scale"] == "minion_kinds_beyond_the_first"
                         or row["Condition"] == "seconds_after_resource_full")]
     assert len(written) == sum(len(wanted) for _, _, wanted in rows.NODES) == 29
@@ -167,13 +162,13 @@ def test_the_script_refuses_a_tag_somebody_described_otherwise(tmp_path):
 
 def test_the_engine_reads_every_new_name_and_lists_it():
     """Each new stat is a `...Stat = TEXT("...")` constant of `UCataclysmNecromancerArmy` and is listed as having no
-    attribute; Rise Together's is listed here and read by slice C."""
+    attribute. Rise Together's is its own, not slice C's `minion_extra_raise_chance`."""
     army = ARMY_CPP.read_text(encoding="utf-8")
     listed = CLASS_STATS_CPP.read_text(encoding="utf-8")
     for stat in NEW_STATS:
         assert re.search(r'UCataclysmNecromancerArmy::\w+Stat =\s+TEXT\("' + stat + r'"\)', army), stat
         assert f'TEXT("{stat}")' in listed, stat
-    assert f'TEXT("{SHARED_WITH_SLICE_C}")' in listed
+    assert not any(row.stat == "minion_extra_raise_chance" for _, _, wanted in rows.NODES for row in wanted)
 
 
 def test_the_scale_and_the_condition_are_known_to_the_generator():

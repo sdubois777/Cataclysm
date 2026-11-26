@@ -908,7 +908,7 @@ Necromancer_basic_lg_a1#2,Necromancer_basic_lg_a1,minion_health,increased,4.0,Mi
 Necromancer_basic_lg_a2#1,Necromancer_basic_lg_a2,minion_crit_share_of_yours_percent,flat,4.0,Minion.Permanent,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_lg_b0#1,Necromancer_basic_lg_b0,minion_reserve_percent_less,flat,2.0,Minion.Permanent,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_lg_b1#1,Necromancer_basic_lg_b1,minion_rises_again_chance,flat,4.0,Minion.Permanent,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
-Necromancer_basic_lg_b2#1,Necromancer_basic_lg_b2,minion_extra_raise_chance,flat,4.0,Minion.Permanent,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Necromancer_basic_lg_b2#1,Necromancer_basic_lg_b2,permanent_minion_raises_a_second_chance,flat,4.0,Minion.Permanent,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_lg_c0#1,Necromancer_basic_lg_c0,minion_health_regen_percent_per_second,flat,1.0,Minion.Permanent,,0.0,,0.0,0,-1.0,2,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_lg_c0#2,Necromancer_basic_lg_c0,minion_health_regen_percent_per_second,flat,1.0,Minion.Permanent,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_basic_lg_c0#3,Necromancer_basic_lg_c0,minion_health_regen_percent_per_second,flat,1.0,Minion.Permanent,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

@@ -14783,7 +14783,7 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * The Necromancer's army's thirteen stats with no attribute, the Death line's finishing slice B (2026-11-26), each
+	 * The Necromancer's army's fourteen stats with no attribute, the Death line's finishing slice B (2026-11-26), each
 	 * read by `UCataclysmNecromancerArmy`: `Which` picks one. A commander with a pool of 150 and an Imp of its own, the
 	 * army's rolls pinned at 0. THE CONTROL in each: the same reading with no row answers otherwise. What each does in
 	 * play is `CataclysmNecromancerArmyTests.cpp`'s.
@@ -14923,6 +14923,11 @@ namespace CataclysmStatExemptionTest
 			Stat = Army::DamageSplitWithMinionsStat;
 			Value = 1.0f;
 			Read = [&]() { return Army::SplitWithMinions(Commander.AbilitySystem, Other.Actor, 300.0f, false); };
+			break;
+		case 13:
+			Stat = Army::RaisesASecondChanceStat;
+			Value = 4.0f;
+			Read = [&]() { return Army::ChanceToRaiseASecond(Commander.Actor, Skill); };
 			break;
 		case 11:
 			Stat = Army::LoneRevenantHeldStat;
@@ -15353,6 +15358,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_taken_split_with_minions"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 10); }},
 			{TEXT("lone_revenant_held"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 11); }},
 			{TEXT("minion_reserve"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 12); }},
+			{TEXT("permanent_minion_raises_a_second_chance"), [](FAutomationTestBase& Test) { ProbeNecromancerArmy(Test, 13); }},
 		};
 		return Made;
 	}

@@ -38,6 +38,7 @@ const TCHAR* UCataclysmNecromancerArmy::CritShareOfYoursPercentStat = TEXT("mini
 const TCHAR* UCataclysmNecromancerArmy::RisesAgainChanceStat = TEXT("minion_rises_again_chance");
 const TCHAR* UCataclysmNecromancerArmy::RegenPercentPerSecondStat = TEXT("minion_health_regen_percent_per_second");
 const TCHAR* UCataclysmNecromancerArmy::MorePermanentRaisedStat = TEXT("summon_raises_more_permanent_minions");
+const TCHAR* UCataclysmNecromancerArmy::RaisesASecondChanceStat = TEXT("permanent_minion_raises_a_second_chance");
 const TCHAR* UCataclysmNecromancerArmy::PermanentKillRisesAsHuskChanceStat =
 	TEXT("permanent_minion_kill_rises_as_husk_chance");
 const TCHAR* UCataclysmNecromancerArmy::DeathRisesAsHuskStat = TEXT("minion_death_rises_as_husk");
@@ -532,6 +533,35 @@ int32 UCataclysmNecromancerArmy::AfterASummon(AActor* Commander, UCataclysmSummo
 		}
 	}
 	return 0;
+}
+
+float UCataclysmNecromancerArmy::ChanceToRaiseASecond(const AActor* Commander, const UCataclysmSummonSkill* Skill)
+{
+	if (!Commander || !Skill || !Skill->Params.bPermanent || Skill->Params.bPossess)
+	{
+		return 0.0f;
+	}
+	return CommanderStat(Commander, RaisesASecondChanceStat, TagsOfARaise(Skill->SkillTags, /*bRaisesPermanent=*/true));
+}
+
+ACataclysmMinion* UCataclysmNecromancerArmy::RollToRaiseASecond(AActor* Commander, UCataclysmSummonSkill* Skill,
+																 const ACataclysmMinion* Raised)
+{
+	const float Chance = ChanceToRaiseASecond(Commander, Skill);
+	if (!IsValid(Raised) || Chance <= 0.0f || Roll() >= Chance)
+	{
+		return nullptr;
+	}
+	// BESIDE IT, a metre to its side, a judgement; and through the replacement path, which asks the pool for room ("if
+	// your Fervour has room for it") and is not a press, so the second does not roll again.
+	const FVector Beside = Raised->GetActorLocation() + Raised->GetActorRightVector() * SecondRisesBesideCm;
+	ACataclysmMinion* Second = Skill->SummonReplacementAt(Beside);
+	if (Second)
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("RISE TOGETHER: '%s' raised a second %s beside %s for %s."), *Skill->SkillName,
+			   *Second->TypeName, *GetNameSafe(Raised), *GetNameSafe(Commander));
+	}
+	return Second;
 }
 
 int32 UCataclysmNecromancerArmy::MorePermanentToRaise(const AActor* Commander, const UCataclysmSummonSkill* Skill)

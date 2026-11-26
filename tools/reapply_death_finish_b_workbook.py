@@ -11,8 +11,9 @@ and four vow options. Every node and option below had no row. The code each new 
   - "YOUR PERMANENT MINIONS" IS THE TAG `Minion.Permanent`, which a `Permanent=1` summon's minion and every thrall carry
     (`UCataclysmNecromancerArmy::MakePermanent`, `UCataclysmCommand::ThrallMinionTags`).
   - Many Made One (`Necromancer_basic_lg_d0`) is slice D's and is not here.
-  - Rise Together writes `minion_extra_raise_chance`, the stat slice C reads for Teeming Grave: the coordinating
-    session's ruling of 2026-11-26, one reader for both.
+  - Rise Together writes a stat of its own, `permanent_minion_raises_a_second_chance`, rolled once for each permanent
+    minion raised: the coordinating session's ruling of 2026-11-26 (it first ruled the opposite the same day, one
+    shared stat with slice C's Teeming Grave, which is rolled once a use).
   - Lone Revenant also writes `lone_revenant_held`, the flag slice D's Abomination reads (the same ruling day).
 
 THE MACHINERY IS `tools/reapply_war_data_rows_workbook.py`'s, imported. IT IS IDEMPOTENT and REFUSES RATHER THAN
@@ -65,7 +66,7 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Necromancer_basic_lg_b1", "Will Not Stay Down", (
         R("minion_rises_again_chance", "flat", 4, tags=PERMANENT),)),
     ("Necromancer_basic_lg_b2", "Rise Together", (
-        R("minion_extra_raise_chance", "flat", 4, tags=PERMANENT),)),
+        R("permanent_minion_raises_a_second_chance", "flat", 4, tags=PERMANENT),)),
     ("Necromancer_basic_lg_c0", "Mending Dead", tuple(
         R("minion_health_regen_percent_per_second", "flat", 1, tags=PERMANENT, min_points=points)
         for points in (2, 4, 6))),

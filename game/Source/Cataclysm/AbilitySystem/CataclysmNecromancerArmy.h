@@ -86,6 +86,8 @@ public:
 	static const TCHAR* RisesAgainChanceStat;
 	/** Mending Dead: the per cent of its maximum health a minion regenerates each second, asked with its tags. */
 	static const TCHAR* RegenPercentPerSecondStat;
+	/** Rise Together: the chance each permanent minion a summon skill raises raises a second one beside it. */
+	static const TCHAR* RaisesASecondChanceStat;
 	/** Bone Lord: how many more permanent minions a summon skill raises each time it raises any. */
 	static const TCHAR* MorePermanentRaisedStat;
 	/** Carrion Host and Harvest of the Host: the chance an enemy a permanent minion kills rises as a husk. */
@@ -111,6 +113,8 @@ public:
 	static constexpr float SkeletonShareOfAHusk = 0.25f;
 	/** Will Not Stay Down's "3 seconds later". The sentence's own figure. */
 	static constexpr float RisesAgainAfterSeconds = 3.0f;
+	/** Rise Together's "beside it": how far to the side of the first the second rises. A judgement, 1 m. */
+	static constexpr float SecondRisesBesideCm = 100.0f;
 	/** Grave Swap: how near the aimed point a minion must stand to be the one swapped with. A judgement, 2 m. */
 	static constexpr float GraveSwapAimToleranceCm = 200.0f;
 
@@ -202,6 +206,20 @@ public:
 
 	/** Bone Lord's figure: how many more permanent minions `Skill`'s press raises for `Commander` when it raises any. */
 	static int32 MorePermanentToRaise(const AActor* Commander, const UCataclysmSummonSkill* Skill);
+
+	/** Rise Together's chance, in per cent, for one permanent minion `Skill` raises for `Commander`; nought otherwise. */
+	static float ChanceToRaiseASecond(const AActor* Commander, const UCataclysmSummonSkill* Skill);
+
+	/**
+	 * Rise Together: "Each permanent minion you raise has a 4% chance per point to raise a second one beside it, if your
+	 * Fervour has room for it." Rolled once for each permanent minion a summon skill's press raises (`SummonOne`, Bone
+	 * Lord's extras included). The second rises through `UCataclysmSummonSkill::SummonReplacementAt`, which asks the
+	 * pool for room, and does not roll again.
+	 *
+	 * @return the second, or null
+	 */
+	static ACataclysmMinion* RollToRaiseASecond(AActor* Commander, UCataclysmSummonSkill* Skill,
+												const ACataclysmMinion* Raised);
 
 	/** The permanent minion of `Commander` missing the largest share of its maximum health, or null. */
 	static AActor* MostWoundedPermanentMinion(const AActor* Commander);

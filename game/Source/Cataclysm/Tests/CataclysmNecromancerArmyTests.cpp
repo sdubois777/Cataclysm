@@ -1208,4 +1208,67 @@ bool FCataclysmArmyMendingDeadTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArmyRiseTogetherTest,
+	"Cataclysm.NecromancerArmy.RiseTogetherRaisesASecondGuardBesideTheFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Rise Together at its full points, the roll pinned at 0: one guard raised by Barrow Guard raises a second beside it,
+ * which does not roll again. CONTROLS: with the roll pinned at 100 one guard stands; Shallow Graves' husk, which is not
+ * permanent, raises no second with the roll at 0.
+ */
+bool FCataclysmArmyRiseTogetherTest::RunTest(const FString&)
+{
+	using namespace CataclysmNecromancerArmyTest;
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	FArmyCommander Commander(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Guards = BarrowGuardSkill(Commander);
+	UCataclysmSummonSkill* Graves = ShallowGravesSkill(Commander);
+	if (!TestNotNull(TEXT("set-up: two summon skills"), Guards && Graves ? Guards : nullptr))
+	{
+		return false;
+	}
+	const TCHAR* Node = TEXT("Necromancer_basic_lg_b2");
+	GiveNodes(Commander, {Node});
+	const float Chance = UCataclysmNecromancerArmy::ChanceToRaiseASecond(Commander.Actor, Guards);
+	int32 Above = 0;
+	{
+		FPinnedArmyRoll Pinned(100.0f);
+		Guards->SummonOne();
+		Above = CountOf(Commander.Actor, TEXT("BarrowGuard"));
+	}
+	ClearArmy(Commander.Actor);
+	ACataclysmMinion* First = nullptr;
+	int32 Husks = 0;
+	{
+		FPinnedArmyRoll Pinned(0.0f);
+		First = Guards->SummonOne();
+		Graves->SummonOne();
+		Husks = CountOf(Commander.Actor, TEXT("Husk"));
+	}
+	const TArray<ACataclysmMinion*> Standing =
+		UCataclysmCommand::MinionsOfTypeCommandedBy(Commander.Actor, TEXT("BarrowGuard"));
+	AddInfo(FString::Printf(TEXT("RISE TOGETHER: %.0f%%; %d guard(s) at roll 100, %d at roll 0, %d husk(s)"), Chance,
+							Above, Standing.Num(), Husks));
+	TestEqual(TEXT("the chance is the row's at full points"), Chance,
+			  FullOf(Node, TEXT("permanent_minion_raises_a_second_chance")), 0.001f);
+	TestEqual(TEXT("CONTROL: a roll above the chance raises one"), Above, 1);
+	TestEqual(TEXT("CONTROL: a husk raises no second"), Husks, 1);
+	if (TestEqual(TEXT("a roll under it raises a second, and the second does not roll again"), Standing.Num(), 2)
+		&& TestNotNull(TEXT("set-up: the first guard"), First))
+	{
+		const ACataclysmMinion* Second = Standing[0] == First ? Standing[1] : Standing[0];
+		TestTrue(TEXT("beside the first"),
+				 FVector::Dist2D(Second->GetActorLocation(), First->GetActorLocation())
+					 <= UCataclysmNecromancerArmy::SecondRisesBesideCm + 1.0f);
+	}
+	ClearArmy(Commander.Actor);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
