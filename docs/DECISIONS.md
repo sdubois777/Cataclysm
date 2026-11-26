@@ -4,7 +4,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-11-26 — The Death finish bundle: the roster, slices C, E, F, D, A and B, the Wraith and the Lich merged, and the coordinating session's rulings at assembly
 
-**Affects:** the branch `feat/death-finish-bundle`, which merges the roster branch and the Death line's finishing
+**Affects:** the bundle's branch, feat/death-finish-bundle, which merges the roster branch and the Death line's finishing
 slices C, E, F, D, A and B in that order. Each slice's workbook script is run on the bundle's copy of
 `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` is regenerated from it (998 rows, 204 tags), and the
 pinned counts move with it: `docs/README.md` (Passive Effects 998, Tags 149), `CataclysmDataTableTests.cpp` (998),
