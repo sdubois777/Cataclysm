@@ -241,12 +241,12 @@ void ACataclysmLichCharacter::UseEnemyAbility(int32 Index, AActor* Target, const
 	if (Index == GraveBurstAbility)
 	{
 		// EVERYTHING HOSTILE IN THE RING, the Brute's Stomp's way, with no stun and no knockback: a caster's burst.
-		const FGameplayTagContainer Tags = UCataclysmSkillShapes::TagsFromCell(GraveBurstTags);
+		const FGameplayTagContainer BurstTags = UCataclysmSkillShapes::TagsFromCell(GraveBurstTags);
 		LastBurstCaught = 0;
 		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(World, this, GetActorLocation(),
 																		GraveBurstRadiusCm))
 		{
-			UCataclysmSkillEffects::ApplyHit(this, Caught, GraveBurstDamagePercent, Tags);
+			UCataclysmSkillEffects::ApplyHit(this, Caught, GraveBurstDamagePercent, BurstTags);
 			++LastBurstCaught;
 		}
 		return;

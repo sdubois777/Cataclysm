@@ -454,7 +454,7 @@ bool FCataclysmShadowVowsShadowStepMovesBehindTest::RunTest(const FString&)
 								 "%.0f); facing the creature %.3f"),
 							Arrived[0].X, Arrived[0].Y, Arrived[1].X, Arrived[1].Y, Facing));
 	TestTrue(TEXT("with the row the player is behind the creature, which faces +Y"), Arrived[1].Y < -Touching * 0.5f);
-	TestEqual(TEXT("and straight behind it"), Arrived[1].X, 8.0f * M, 5.0f);
+	TestEqual(TEXT("and straight behind it"), static_cast<float>(Arrived[1].X), 8.0f * M, 5.0f);
 	TestTrue(TEXT("and faces it"), Facing > 0.99f);
 	TestTrue(TEXT("CONTROL: without the row the blink stops in front of it, on the line it was aimed along"),
 			 FMath::Abs(Arrived[0].Y) < 5.0f && Arrived[0].X < 8.0f * M);

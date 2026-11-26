@@ -329,7 +329,7 @@ CATACLYSM_WRAITH_TEST(FCataclysmWraithDressedTest, "Cataclysm.Wraith.ItWearsItsB
 	}
 	TestNotNull(TEXT("it wears its body"), Wraith->GetMesh()->GetSkeletalMeshAsset());
 	TestNotNull(TEXT("and its helm"), Wraith->Helm ? Wraith->Helm->GetSkeletalMeshAsset() : nullptr);
-	TestNotNull(TEXT("and its scythe"), Wraith->Scythe ? Wraith->Scythe->GetStaticMesh() : nullptr);
+	TestNotNull(TEXT("and its scythe"), Wraith->Scythe ? Wraith->Scythe->GetStaticMesh().Get() : nullptr);
 	TestEqual(TEXT("on the scythe bone"), Wraith->Scythe ? Wraith->Scythe->GetAttachSocketName() : NAME_None,
 			  FName(Wraith_t::ScytheBoneName));
 	TestEqual(TEXT("two swings to alternate"), Wraith->ReapAnimations.Num(), 2);

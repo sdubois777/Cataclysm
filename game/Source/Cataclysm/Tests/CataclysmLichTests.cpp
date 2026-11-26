@@ -101,7 +101,7 @@ CATACLYSM_LICH_TEST(FCataclysmLichAbilitiesTest,
 	}
 
 	const FCataclysmEnemyAbility& Raise = Abilities[ACataclysmLichCharacter::RaiseTheFallenAbility];
-	TestEqual(TEXT("first, Raise the Fallen"), Raise.Name, FString(TEXT("Raise the Fallen")));
+	TestEqual(TEXT("first, Raise the Fallen"), Raise.Name, FName(TEXT("Raise the Fallen")));
 	TestTrue(TEXT("a Summon, which draws no marker"), Raise.Shape == ECataclysmSkillShape::Summon);
 	TestEqual(TEXT("on a 10 s cooldown"), Raise.CooldownSeconds, 10.0f);
 	// THE CONTROL HALF OF J3: no dungeon keeps a record here, so no death is near and the raise cannot be chosen.
@@ -109,7 +109,7 @@ CATACLYSM_LICH_TEST(FCataclysmLichAbilitiesTest,
 			  0.0f);
 
 	const FCataclysmEnemyAbility& Burst = Abilities[ACataclysmLichCharacter::GraveBurstAbility];
-	TestEqual(TEXT("second, Grave Burst"), Burst.Name, FString(TEXT("Grave Burst")));
+	TestEqual(TEXT("second, Grave Burst"), Burst.Name, FName(TEXT("Grave Burst")));
 	TestTrue(TEXT("a Strike"), Burst.Shape == ECataclysmSkillShape::Strike);
 	TestEqual(TEXT("chosen within its 3 m ring"), Burst.MaxRangeCm, 300.0f);
 	TestEqual(TEXT("and marking that ring"), Burst.MarkerRadiusCm, 300.0f);
@@ -118,7 +118,7 @@ CATACLYSM_LICH_TEST(FCataclysmLichAbilitiesTest,
 	TestEqual(TEXT("on an 8 s cooldown"), Burst.CooldownSeconds, 8.0f);
 
 	const FCataclysmEnemyAbility& Bolt = Abilities[ACataclysmLichCharacter::GraveBoltAbility];
-	TestEqual(TEXT("last, Grave Bolt"), Bolt.Name, FString(TEXT("Grave Bolt")));
+	TestEqual(TEXT("last, Grave Bolt"), Bolt.Name, FName(TEXT("Grave Bolt")));
 	TestTrue(TEXT("a Projectile"), Bolt.Shape == ECataclysmSkillShape::Projectile);
 	TestTrue(TEXT("its basic attack"), Bolt.bIsBasicAttack);
 	TestTrue(TEXT("a quick cast, with no marker"), Bolt.bDrawsNoMarker);
