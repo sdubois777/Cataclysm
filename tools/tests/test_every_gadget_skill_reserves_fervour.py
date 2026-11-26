@@ -87,7 +87,22 @@ RESERVE_KEY = "FervourReserve"
 #:
 #: A NEW GADGET SKILL SHOULD RAISE THIS. If it falls, a skill stopped being a
 #: summon or a deployable and somebody should say why.
-RESERVING_SKILLS = 5
+#:
+#: SEVEN SINCE 2026-11-24 (issue #2885): the Death Greatsword's Wailing Host, 3
+#: for each of five shades, and the Death Greataxe's Shallow Graves, 3 for each
+#: of four husks. The other Death rows that reserve -- Barrow Guard, Exhume,
+#: Bone Choir, Grave Mouth and the Crossbow's Effigy -- are entered with no
+#: shape until the code they need is built (`tools/reapply_death_skills_workbook.py`
+#: names it), and each raises this by one when its shape is written: twelve.
+#:
+#: TEN SINCE SLICE DS2 THE SAME DAY: Barrow Guard, 10 for each of two guards;
+#: Exhume, 15 for its Reaper; and Bone Choir, 10 for each of two mages, written
+#: whole once N1, N2 and N11 were built. Grave Mouth (N12) and the Effigy (C4
+#: and a Death deployable's reserve) still wait, and bring it to twelve.
+#:
+#: ELEVEN SINCE SLICE DS4 THE SAME DAY: Grave Mouth, 2 for each wisp, written
+#: whole once N12 was built. The Effigy still waits, and brings it to twelve.
+RESERVING_SKILLS = 11
 
 
 def skills() -> list[dict]:

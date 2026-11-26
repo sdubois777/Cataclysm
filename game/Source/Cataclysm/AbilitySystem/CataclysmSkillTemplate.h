@@ -345,6 +345,9 @@ public:
 	 * session 2026-11-17, issue #2580: a projectile with a speed hits through `ACataclysmProjectile::HitOne`, which
 	 * never passed through `HitTargets`, so none of them reached what it touched. The same code, not a copy.
 	 *
+	 * AND, LAST, A NAIL for a row stating `CritChanceAgainst`: issue #2885, the Death Crossbow draft's C1, slice DS5, the
+	 * Crossbow's Coffin Nail (`UCataclysmCoffinNails::DriveInto`), in the firer's name.
+	 *
 	 * @return whether the contact pinned the target, for a line `OnDeath=Release` binds when the shot finishes
 	 */
 	bool LayWhatALandedShotCarries(AActor* Firer, AActor* Target, float Dealt) const;
@@ -358,6 +361,23 @@ public:
 	 * hit, which is every slot but the basic attack, and nothing while mana on hit is removed.
 	 */
 	void PayManaOnHitTo(UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
+	 * Pay `Firer` the Fervour this skill's row states for one enemy a flying shot of its landed on, held to the row's cap
+	 * a cast, and answer what arrived. Issue #2885, the Death draft's N19, slice DS5: the Spear's Soul Lance, `HitFervour=1;
+	 * HitFervourPerCast=4`, "each enemy it hits gives you 1 Fervour, at most 4 a throw". CALLED FROM
+	 * `ACataclysmProjectile::HitOne`, at a contact that landed and carried damage, beside `LayWhatALandedShotCarries`.
+	 *
+	 * THE CAP COUNTS THE ROW'S OWN FIGURES, a judgement of slice DS5: what each contact offered, before the generation
+	 * rate and whether a full pool took it, so "at most 4 a throw" is four enemies' worth however the pool stood. EACH
+	 * CONTACT IS ITS OWN LANDING, as `fervour_per_enemy_hit`'s are (ruled 2026-09-16): a return pass pays again, under the
+	 * same cap. PAID TO THE FIRER'S OWN ABILITY SYSTEM, as that Fervour is, because a shot lands after its use has ended.
+	 *
+	 * @param StatedPaidThisUse  the row's figures this use has already paid, which this adds to: the record the use's
+	 *                           projectiles share (`ACataclysmProjectile::HitFervourStatedInItsUse`)
+	 * @return the Fervour that arrived: nought for a row stating none, for a use at its cap, and for a full pool
+	 */
+	float PayHitFervourFor(AActor* Firer, float& StatedPaidThisUse) const;
 
 	/**
 	 * How far the character had moved since its own last attack when this skill
@@ -449,6 +469,51 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	float ThisUseHitsAllWithinCm = 0.0f;
+
+	/**
+	 * How many commanded creatures this skill's last order sent onto its target.
+	 *
+	 * TWO ROWS ORDER ANY: the Staff's Compel, "everything you command strikes that same enemy at once", a projectile,
+	 * and since 2026-11-24 the Greatsword's Gravebell, a strike (issue #2885, the Death draft's N4). Zero for every
+	 * other skill, and for one cast by a character commanding nothing. ON THE BASE CLASS SINCE THAT DAY, as the order
+	 * is (`OrderEveryCommandedStrikeOn`); it was the projectile template's alone.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 CommandedStrikes = 0;
+
+	/**
+	 * How many of the caster's minions this skill's last detonation exploded. Issue #2885, the Death draft's N3
+	 * (`Detonates=1`). Zero for every skill that states none. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 MinionsDetonated = 0;
+
+	/**
+	 * The Fervour this skill's last use spent when its row states `SpendsAllFervour=1`: its own cost and every point
+	 * held beside it. Nought for every other skill and for a free start that pays nothing. Issue #2885, the Death
+	 * draft's N13, slice DS4: what `ScalingSource=FervourSpent` counts, the Wand's Requiem, "1% more for every Fervour
+	 * spent". Written by `UCataclysmStrikeSkill::ActivateAbility` when the use is paid for, read at the blow.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float FervourSpentThisUse = 0.0f;
+
+	/**
+	 * How many of its caster's Poisons, Bleeds and Necroses this skill's last swing cashed in. Issue #2885, the Death
+	 * draft's N15 (`CashInRadius`). Zero for every skill that states none. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 AilmentsCashedIn = 0;
+
+	/**
+	 * Every Poison, Bleed and Necrosis this skill's caster laid on an enemy within the row's `CashInRadius` of `Centre`
+	 * deals all the damage it had left, at once, and ends; answers how many, and records it in `AilmentsCashedIn`.
+	 * Issue #2885, the Death draft's N15, slice DS4: the Fist's Quietus. THE PRECEDENT'S OWN CALL, the enchantment row
+	 * "all active DoTs on nearby enemies instantly deal their remaining damage"
+	 * (`UCataclysmSkillEffects::DealRemainingDamageOverTime` at 100% with each one ended), narrowed to the three
+	 * ailments the sentence names. THE CASTER'S OWN: a minion's ailment is the minion's (ruled 2026-09-17), and
+	 * another's is not cashed. Public so a test can drive it.
+	 */
+	int32 CashInOwnAilmentsAround(const FVector& Centre);
 
 	/**
 	 * Set, the use now running was counted as a channelled skill on its
@@ -728,6 +793,12 @@ public:
 	 * while it lasts grants 1% more damage and adds another second to the heat".
 	 * A buff whose `ScalingSource` is not `Kill` ignores it.
 	 *
+	 * AND A SECOND SINCE ISSUE #2885 SLICE DS3: the Sword's Danse Macabre, a
+	 * flicker stating `ScalingSource=Kill`, "every enemy that dies during the
+	 * dance gives you 5 Fervour and adds half a second to it"
+	 * (`UCataclysmMovementSkill::NoteADeathWhileItRuns`). A move counting nothing
+	 * is not told and not counted below.
+	 *
 	 * CALLED FROM `ACataclysmEnemyCharacter::HandleDeath`, beside the three
 	 * things a kill already does there -- granting experience, clearing a health
 	 * debt and building a Carnage stack. That file's comment already calls
@@ -739,9 +810,26 @@ public:
 	 * three and is not made worse here.
 	 *
 	 * @return how many running self buffs were told, whether or not each one
-	 *         counts kills
+	 *         counts kills, and how many running flickers took the death in
 	 */
 	static int32 NoteKill(AActor* Killer);
+
+	/**
+	 * The Fervour this character holds now: its class resource pool's current value, or nought for a character with no
+	 * pool. Issue #2885, the Death draft's N7, slice DS3: what `ScalingSource=Fervour` counts, for a Strike's blow
+	 * (`ScalingUnits`, the Greataxe's Grim Swath) and a self buff's bonus (`UCataclysmSelfBuffSkill::ScalingCount`, the
+	 * Sword's Cold Blood). What is held, not the pool's maximum: a reservation lowers what may be held, and a Fervour
+	 * cost paid before the blow has already left.
+	 */
+	static float FervourHeldBy(const AActor* Who);
+
+	/**
+	 * Whether a self buff running on this character holds its Fervour from decaying: one stating `HoldsFervour=1`.
+	 * Issue #2885, the Death draft's N8, slice DS3, the Sword's Cold Blood. Asked by `UCataclysmFervour::DecayStep`.
+	 * ASKED OF THE RUNNING ABILITIES RATHER THAN HELD AS STATE, as `NoteKill` above asks them: a buff that lasts is an
+	 * active ability for as long as it lasts, so nothing is left behind when it ends, is cancelled, or its owner dies.
+	 */
+	static bool ARunningBuffHoldsFervour(const AActor* Who);
 
 	/**
 	 * How much further a self buff this character is holding makes its blows
@@ -769,6 +857,14 @@ public:
 	 * Zero for a character holding no such buff, which is the ordinary case.
 	 */
 	static float HeldRangeIncreasePercent(const AActor* Self);
+
+	/**
+	 * The flat melee reach a self buff this character is holding adds, in centimetres: the largest `MeleeReachCm` of its
+	 * running self buffs, or nought. Issue #2885, the Death draft's N21, slice DS4: the Spear's Grim Reach, "your attacks
+	 * reach 3 meters farther". The same walk as `HeldRangeIncreasePercent` above, for the same reasons, and THE LARGEST
+	 * RATHER THAN THE SUM for its reason. Read by `MeleeReachBonusCm`, for a melee strike.
+	 */
+	static float HeldMeleeReachCm(const AActor* Self);
 
 	/**
 	 * Whether any skill this character is running makes it immune to an effect.
@@ -908,6 +1004,22 @@ public:
 	 */
 	static int32 NoteBlowLanded(AActor* Attacker, AActor* Target,
 								const FVector& Where, bool bFromBehind = false);
+
+	/**
+	 * Tell this character's running buffs that one of its blows was a critical strike, once that blow is wholly
+	 * resolved. Issue #2885, the Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "each time you land
+	 * a critical strike, a crow dives at the enemy you struck". A buff stating no `StrikesOnCritical` is not told.
+	 *
+	 * CALLED FROM `UCataclysmSkillEffects::ApplyHit`, after `ApplyDirectDamage` returns, for a blow the striker landed
+	 * that critically struck -- the one place every skill blow, basic attack, flying shot's contact and path hit of a
+	 * player is dealt -- so the struck creature's health is written and its death marked by then. That function says
+	 * which blows count.
+	 *
+	 * @param Struck   what the critical strike landed on, dead or alive
+	 * @param BySkill  the skill whose blow it was, so a buff's own strike calls no other; null for one no skill dealt
+	 * @return how many running buffs were told
+	 */
+	static int32 NoteCriticalStrikeLanded(AActor* Striker, AActor* Struck, const UGameplayAbility* BySkill);
 
 	/**
 	 * The reach a `Requires` condition is judged over, in centimetres.
@@ -1353,6 +1465,52 @@ protected:
 	 * @return how many effects were applied
 	 */
 	int32 ApplyNamedEffectsTo(AActor* Target, float DurationScale = 1.0f) const;
+
+	/**
+	 * Explode every minion of the caster's that `IsInside` accepts, when the row states `Detonates=1`; answers how
+	 * many, and records it in `MinionsDetonated`. Issue #2885, the Death draft's N3: Gravebell, Barrow Leap, Open
+	 * Grave, Marrow Lance and Grave Return.
+	 *
+	 * WHICH MINIONS. Every creature the caster raised -- an `ACataclysmMinion` it commands whose `Summoner` it is --
+	 * whatever kind it is: the owner ruled on 2026-11-24 that "pop minion" is a playstyle and not a distinction, so a
+	 * Barrow Guard in the area explodes as a shade does. NOT A MACHINE, a judgement of slice DS2: a turret, a gadget or
+	 * a trap is placed rather than raised, and no Death sentence names one. NOT A THRALL, the same judgement: a thrall
+	 * is an enemy taken, has no `Explode`, and bursts only through Every One Bursts. Found through
+	 * `UCataclysmCommand::ThingsCommandedBy`, whose it is, and not through a side, which Madness can turn.
+	 *
+	 * `IsInside` IS THE SKILL'S AREA, measured as its enemy search measures an enemy: the two wrappers below for a
+	 * sphere and a line, and a strike's cone at its call.
+	 *
+	 * AN EXPLOSION AND NOT A DEATH: `ACataclysmMinion::Explode`, which deals the minion's own blast with the radius
+	 * its summoning row told it and destroys it, freeing its reserve at once. So nothing a minion's death raises --
+	 * Press-Ganged, Rekindled, Shared Ruin, Fervour for a lost minion -- is raised by a detonation, a judgement of
+	 * slice DS2 recorded in `docs/DECISIONS.md`.
+	 */
+	int32 DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside);
+
+	/**
+	 * `DetonateOwnMinionsWhere` for a sphere: every minion of the caster's whose body reaches within `RadiusCm` of
+	 * `Centre` along the ground, as a sphere's overlap finds an enemy's capsule.
+	 */
+	int32 DetonateOwnMinionsAround(const FVector& Centre, float RadiusCm);
+
+	/**
+	 * `DetonateOwnMinionsWhere` for a line: every minion of the caster's within `HalfWidthCm` of the segment from
+	 * `Start` to `End`, measured as `UCataclysmTargeting::FindEnemiesInLine` measures an enemy.
+	 */
+	int32 DetonateOwnMinionsAlong(const FVector& Start, const FVector& End, float HalfWidthCm);
+
+	/**
+	 * Order everything the caster commands to strike `Target` at once, wherever each is standing; answers how many
+	 * were ordered, and records it in `CommandedStrikes`.
+	 *
+	 * THE STAFF'S COMPEL'S ORDER, MOVED HERE FROM `UCataclysmProjectileSkill::Land` ON 2026-11-24 so a strike can give
+	 * it too: issue #2885, the Death draft's N4, the Greatsword's Gravebell, "every other creature you command strikes
+	 * the first enemy the arc hit, wherever it is standing". The body is Compel's, unchanged: a stunned, knocked-down
+	 * or feared creature is not ordered (#2560), a thrall strikes as a rule orders it (#783), and nothing measures a
+	 * distance. Null or a target already gone orders nobody.
+	 */
+	int32 OrderEveryCommandedStrikeOn(AActor* Target);
 
 	/**
 	 * This skill's damage type as the name the resistance slots are keyed by,

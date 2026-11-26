@@ -21,6 +21,7 @@
 // For the potion charges a kill adds. Issue #806.
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
+#include "AbilitySystem/CataclysmRisingCurse.h"
 // For the stack a kill may build. Issue #1004.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -571,6 +572,12 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// raises an imp too. The curse is read off this creature's own running
 	// effects, which `MarkDead` leaves in place.
 	UCataclysmRisenImps::RiseOnDeath(this);
+
+	// AND A CREATURE THAT DIES UNDER A RISING CURSE RISES FOR WHOEVER LAID IT. Issue #2885, the Death draft's N5, slice
+	// DS3: the Greataxe's Death Rattle, "any that dies while it rattles rises at once as a husk". Beside the risen imp
+	// and for the same reason, outside the killer's block: the sentence asks who laid the curse. Inert for every
+	// creature no such curse was laid on: a component lookup.
+	UCataclysmRisingCurse::RiseFromDying(this);
 
 	// WHAT DYING LOOKS LIKE, AND HOW LONG THE BODY IS KEPT FOR IT. Before
 	// issue #522 a creature played nothing and was gone within a frame.

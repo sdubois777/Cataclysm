@@ -763,19 +763,28 @@ class TestASkillsOwnCriticalStrikeChance:
         book = openpyxl.load_workbook(path, data_only=True)
         assert gen.weapon_skills(book)[0]["CritChancePercent"] == -1.0
 
-    def test_every_shipped_row_states_nothing(self):
-        """No skill is designed to differ yet, and that is the owner's call.
+    #: The rows that state a critical strike chance of their own, and why. Both
+    #: are Death skills the owner approved on 2026-11-24 (issue #2885): Mercy
+    #: Stroke's 10, "300% single-target stroke ... 10% critical strike chance",
+    #: and None Spared's 100, ruled that day: "None Spared's critical strikes
+    #: are certain". Each is entered with its numbers before its shape is built.
+    STATED = {"Death_Sword_Heavy": 10.0, "Death_Crossbow_Ultimate": 100.0}
+
+    def test_every_shipped_row_states_nothing_but_the_two_designed_to(self):
+        """No other skill is designed to differ yet, and that is the owner's call.
 
         This is not a rule -- it is a record of where the data stands. When a
         skill is deliberately given its own chance, change this test with it.
+        Until 2026-11-24 no row stated one.
         """
         book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
         stated = {r["Name"]: r["CritChancePercent"]
                   for r in gen.weapon_skills(book)
                   if r["CritChancePercent"] != -1.0}
-        assert not stated, (
+        assert stated == self.STATED, (
             "these skill rows state a critical strike chance of their own: "
-            f"{stated}. That is allowed; update this test to say so.")
+            f"{stated}, where {self.STATED} were designed to. That is allowed; "
+            "update this test to say so.")
 
 
 class TestBasicAttacks:

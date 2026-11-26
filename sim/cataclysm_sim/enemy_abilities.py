@@ -76,8 +76,22 @@ SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Deployable"
 #: chord, so an arc of `Arc * range` is in the air for
 #: `sqrt(8 * Arc * range / g)`.
 SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
+    # `Detonates` and `CommandStrike` joined on 2026-11-24 with the Death skills
+    # (issue #2885, the draft's N3 and N4), for the Greatsword's Gravebell; the
+    # caster's minions explode, so no enemy ability uses either.
+    # `KillFervour` joined the same day with slice DS3 (the draft's N6) on
+    # Strike, Projectile, Movement and Debuff: extra Fervour for a kill. No
+    # enemy ability uses it.
+    # `SpendsAllFervour` and `CashInRadius` joined the same day with slice DS4
+    # (the draft's N13 and N15): the Wand's Requiem spends every Fervour held,
+    # and the Fist's Quietus cashes in its caster's ailments. No enemy ability
+    # uses either.
+    # `BurstPercentOfMaximumHealth` joined with slice DS5 (N14, the Fist's
+    # Gravetouch). No enemy ability uses it.
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
-               "DisarmsUntilRecalled"),
+               "DisarmsUntilRecalled", "Detonates", "CommandStrike",
+               "KillFervour", "SpendsAllFervour", "CashInRadius",
+               "BurstPercentOfMaximumHealth"),
     # A PROJECTILE MAY REPEAT since 2026-09-01. Butcher's Bill throws thirty
     # axes over ten seconds, which needs the Count, Duration and Interval a
     # Summon has always had. No enemy ability uses them on a projectile yet.
@@ -85,31 +99,63 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
                    "Count", "Duration", "Interval", "TargetMode",
                    "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
                    "CommandStrike",
-                   "TetherTargets", "TetherLength", "TetherDuration"),
+                   "TetherTargets", "TetherLength", "TetherDuration",
+                   # N3, issue #2885: the Staff's Marrow Lance.
+                   "Detonates",
+                   # N6, slice DS3: Restless Spirits and Hungering Soul.
+                   "KillFervour",
+                   # N19, slice DS5: the Spear's Soul Lance.
+                   "HitFervour", "HitFervourPerCast",
+                   # The Crossbow draft's C1, slice DS5: Coffin Nail.
+                   "CritChanceAgainst", "CritChanceAgainstMax"),
     # `Interval` joined on 2026-09-02 with the Spear's Held Fast, which is
     # the first self buff that repeats. No enemy ability states it yet.
-    "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease"),
+    # `HoldsFervour` joined on 2026-11-24 with slice DS3 (the Death draft's N8,
+    # Cold Blood). No enemy ability uses it.
+    # `MeleeReachMetres` and `EveryBlow` joined with slice DS4 (N21 and N17,
+    # Grim Reach, Hemlock and Death Grip). No enemy ability uses either.
+    # `StrikesOnCritical` joined with slice DS5 (the Crossbow draft's C2,
+    # Carrion Crows). No enemy ability uses it.
+    "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease",
+                 "HoldsFervour", "MeleeReachMetres", "EveryBlow",
+                 "StrikesOnCritical"),
     # `MaxTargets` JOINED ON 2026-09-01, and the engine had always read it: all
     # three movement modes that hit anything hand it straight to the targeting
     # search. The Spear's Nail Down impales "the first enemy you reach" where the
     # Whip's Reel takes "every enemy the line crosses", and without this the two
     # charges have no way to differ. No enemy ability states it yet.
+    # `Detonates` joined on 2026-11-24 (issue #2885, N3): Barrow Leap, Open Grave
+    # and Grave Return. No enemy ability uses it.
+    # `MaxDuration` joined with slice DS3 (N10, Danse Macabre). No enemy ability
+    # uses it.
     "Movement": ("Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits"),
+                 "RearHits", "Detonates", "KillFervour", "MaxDuration"),
+    # `Taunts` joined on 2026-11-24 with the Death skills (issue #2885, the
+    # Crossbow draft's C3) on Summon and Deployable: what a row raises or places
+    # taunts the enemies within the row's Radius of it. No enemy ability uses it.
+    # `Permanent` and `MinionsLayEffect` joined the same day with slice DS2 (the
+    # draft's N1 and N11), for the permanent raises. No enemy ability uses them.
+    # `CollapseBursts` joined with slice DS4 (N12, Grave Mouth). No enemy ability
+    # uses it.
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent"),
+               "HealthThresholdPercent", "Taunts", "Permanent",
+               "MinionsLayEffect", "CollapseBursts"),
     # `FervourReserve` joined on 2026-09-08, when the project owner ruled that
     # every minion and gadget skill reserves Fervour rather than only the one
     # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all
     # Deployable and all three gained the key. No enemy ability uses it.
     "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
-                   "Interval", "Minions", "HealthPercent", "FervourReserve"),
+                   "Interval", "Minions", "HealthPercent", "FervourReserve",
+                   "Taunts"),
     "Aura": ("Radius", "Duration", "Interval"),
     # `SpreadWhen` and `SpreadRadius` joined on 2026-09-02 with the
     # Wand's Hex of Cinders. No enemy ability states either yet.
+    # `KillFervour` joined on 2026-11-24 with slice DS3 (N6), for the Sword's
+    # Death Warrant. No enemy ability states it.
+    # `RisesAs` joined the same day (N5, Death Rattle). No enemy ability uses it.
     "Debuff": ("Range", "Radius", "MaxTargets", "Duration",
-               "SpreadWhen", "SpreadRadius"),
+               "SpreadWhen", "SpreadRadius", "KillFervour", "RisesAs"),
 }
 
 #: Riders any shape may carry, from the same section of the design document.
@@ -184,6 +230,9 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "SpreadWhen", "SpreadRadius",
           "MaxDamagePercent", "MinDamagePercent",
           "ChargeTime", "ChargeBreaksOn", "RefundsCooldown", "Untargetable",
+          # PassesThroughEnemies joined on 2026-11-26 with the Death skills merge:
+          # the Staff's Wraithwalk walks through enemy bodies. No enemy ability does.
+          "PassesThroughEnemies",
           # Four joined on 2026-11-17 for the Corrupted Stalker's weapon kits,
           # issue #2580: a stated ailment, a damage roll's two ends, and a
           # random pick among named effects. No enemy ability states any yet.

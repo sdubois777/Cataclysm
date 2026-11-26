@@ -522,6 +522,8 @@ CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourRowsTest,
 		{TEXT("Bulwark_basic_trunk_000"), FCataclysmWarFervour::PerHitTakenStat, 1.0f},
 		{TEXT("Bulwark_basic_trunk_000"), FCataclysmWarFervour::PerBlockStat, 1.0f},
 		{TEXT("Bulwark_basic_trunk_000"), FCataclysmWarFervour::OutOfCombatDecayPerSecondStat, 5.0f},
+		// AND 1 A KILL since the final bundle, 2026-11-26, on the Death line's kill generator.
+		{TEXT("Bulwark_basic_trunk_000"), UCataclysmFervour::PerKillStat, 1.0f},
 		{TEXT("Berserker_trunk_000"), FCataclysmWarFervour::PerCriticalStrikeStat, 1.0f},
 		{TEXT("Berserker_trunk_000"), FCataclysmWarFervour::OutOfCombatDecayPerSecondStat, 10.0f},
 		{TEXT("Saboteur_basic_trunk_000"), FCataclysmWarFervour::PerTrapPlacedStat, 1.0f},
@@ -540,6 +542,89 @@ CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourRowsTest,
 						  "python tools/run_editor_python.py tools/generate_datatable_assets.py"));
 		}
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Bulwark's Fervour for a kill, 2026-11-26 (the final bundle)
+// ---------------------------------------------------------------------------
+
+CATACLYSM_WAR_FERVOUR_TEST(FCataclysmWarFervourBulwarkKillTest,
+	"Cataclysm.WarFervour.ABulwarkIsPaidOneFervourForAKillAtEveryRarityThroughTheRealRow")
+{
+	using namespace CataclysmWarFervourTest;
+	// THE REAL ROWS: the Bulwark's starting node read out of `DT_PassiveEffects` through `ModifiersFor`, as the game does,
+	// and handed to a fighter at 10 Fervour of 100. A kill is paid by the Death line's generator,
+	// `UCataclysmFervour::GainOnOwnKill`, which writes through `RaisePool`: 1 for a common creature and 1 for a Boss, the
+	// sentence stating no rarity. THE CONTROL: a fighter holding the Berserker's starting node, which states no kill
+	// Fervour, is paid nothing for the same kill.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const auto RealLines = [](const TCHAR* Node)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		Allocation.Add(FName(Node), 1);
+		TMap<FName, FCataclysmStatInputs> Lines;
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Row : UCataclysmPassiveTree::ModifiersFor(
+				 Allocation, UCataclysmPassiveTree::LoadNodeTable(), UCataclysmPassiveTree::LoadEffectTable(),
+				 {FName(TEXT("War"))}))
+		{
+			Lines.FindOrAdd(Row.Key).Modifiers = Row.Value;
+		}
+		return Lines;
+	};
+	const auto CreatureOfRung = [World](int32 Rung, float Y)
+	{
+		ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(800.0f + 300.0f * Rung, Y, 0.0f), FRotator::ZeroRotator);
+		if (Creature)
+		{
+			Creature->SetRarityStep(Rung);
+		}
+		return Creature;
+	};
+
+	TMap<FName, FCataclysmStatInputs> BulwarkLines = RealLines(TEXT("Bulwark_basic_trunk_000"));
+	if (!TestTrue(TEXT("set-up: the Bulwark's starting node carries fervour_per_kill"),
+				  BulwarkLines.Contains(FName(UCataclysmFervour::PerKillStat))))
+	{
+		AddError(TEXT("If the row is in game/Data/PassiveEffects.csv, DT_PassiveEffects is older than it is: run  "
+					  "python tools/run_editor_python.py tools/generate_datatable_assets.py"));
+		return false;
+	}
+	const FWarFervourFighter Bulwark(World, 100.0f);
+	Bulwark.AbilitySystem->SetStatInputs(MoveTemp(BulwarkLines));
+	for (const int32 Rung : {0, 4})
+	{
+		ACataclysmEnemyCharacter* Slain = CreatureOfRung(Rung, 0.0f);
+		if (!TestNotNull(*FString::Printf(TEXT("set-up: a creature of rung %d"), Rung), Slain))
+		{
+			return false;
+		}
+		Bulwark.SetFervour(10.0f);
+		const float Paid = UCataclysmFervour::GainOnOwnKill(Bulwark.AbilitySystem, Slain);
+		TestEqual(*FString::Printf(TEXT("a kill of rung %d pays the Bulwark 1"), Rung), Paid, 1.0f, 0.001f);
+		TestEqual(*FString::Printf(TEXT("and the pool holds it: 10 to 11, rung %d"), Rung), Bulwark.Fervour(), 11.0f,
+				  0.001f);
+	}
+
+	TMap<FName, FCataclysmStatInputs> BerserkerLines = RealLines(TEXT("Berserker_trunk_000"));
+	if (!TestFalse(TEXT("set-up: the Berserker's starting node carries no fervour_per_kill"),
+				   BerserkerLines.Contains(FName(UCataclysmFervour::PerKillStat))))
+	{
+		return false;
+	}
+	const FWarFervourFighter Berserker(World, 100.0f);
+	Berserker.AbilitySystem->SetStatInputs(MoveTemp(BerserkerLines));
+	Berserker.SetFervour(10.0f);
+	ACataclysmEnemyCharacter* Control = CreatureOfRung(0, 600.0f);
+	TestEqual(TEXT("control: a Berserker is paid nothing for the same kill"),
+			  UCataclysmFervour::GainOnOwnKill(Berserker.AbilitySystem, Control), 0.0f, 0.001f);
+	TestEqual(TEXT("control: and its pool stays at 10"), Berserker.Fervour(), 10.0f, 0.001f);
 	return true;
 }
 

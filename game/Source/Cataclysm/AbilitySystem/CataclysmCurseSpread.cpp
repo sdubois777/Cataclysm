@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmCurseSpread.h"
+// For the Fervour a death under a paying curse earns its caster. Issue #2885, N6.
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmKillFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -32,6 +35,13 @@ UCataclysmCurseSpread* UCataclysmCurseSpread::MarkOn(AActor* Target,
 
 	Mark->RangeCm = RangeCm;
 	Mark->Caster = Caster;
+
+	// AND NOTHING A DEATH WOULD PAY, until the caller says otherwise. Issue #2885, N6: a curse stating `KillFervour`
+	// writes it back after this call (`UCataclysmSkillTemplate::ApplyNamedEffectsTo`, and `SpreadFromDying` for the
+	// next holder); every other refresh -- an Anathema over a Death Warrant -- leaves a mark that pays nothing.
+	Mark->KillFervour = 0.0f;
+	Mark->SkillName.Reset();
+	Mark->Curses.Reset();
 	return Mark;
 }
 
@@ -55,6 +65,25 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 	// GONE. A player who cursed a pack and then left, or died, should not stop
 	// the curse it already paid for from passing on.
 	AActor* Credited = Mark->Caster.IsValid() ? Mark->Caster.Get() : Dying;
+
+	// WHAT A PAYING CURSE CARRIES, copied before anything below can refresh this mark. Issue #2885, N6.
+	const float PaysOnDeath = Mark->KillFervour;
+	const FString PayingSkill = Mark->SkillName;
+	const TArray<FGameplayTag> PayingCurses = Mark->Curses;
+
+	// AND A DEATH WHILE THE CURSE HOLDS PAYS ITS CASTER, whether or not anything is in reach to pass it to. Issue #2885,
+	// the Death draft's N6, slice DS3: the Sword's Death Warrant, "if it dies while the warrant holds, you gain 10
+	// Fervour". HOLDS means the dying creature still carries one of the curses that skill laid, laid by that caster, so
+	// a warrant that ran out or was cleansed pays nothing. ONLY WHILE THE CASTER IS HERE: a caster gone has no pool.
+	if (PaysOnDeath > 0.0f && Mark->Caster.IsValid()
+		&& UCataclysmKillFervour::CarriesACurseLaidBy(Dying, PayingCurses, Mark->Caster.Get()))
+	{
+		const float Paid = UCataclysmFervour::GainStated(
+			UCataclysmTargeting::AbilitySystemOf(Mark->Caster.Get()), PaysOnDeath, /*bForAKill=*/true);
+		UE_LOG(LogCataclysm, Display,
+			TEXT("%s died under %s's curse, which holds: %.1f Fervour paid of the %.1f its row states."),
+			*GetNameSafe(Dying), *PayingSkill, Paid, PaysOnDeath);
+	}
 
 	// "THE NEAREST LIVING ENEMY" IS AN ENEMY OF THE CASTER'S SIDE, which is the
 	// dying creature's own side. With the caster here, that is the caster's
@@ -95,7 +124,17 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 	// name above, so a chain ends when no living enemy is within reach.
 	if (Applied > 0)
 	{
-		UCataclysmCurseSpread::MarkOn(Next[0], Mark->Caster.Get(), Mark->RangeCm);
+		UCataclysmCurseSpread* Passed = UCataclysmCurseSpread::MarkOn(Next[0], Mark->Caster.Get(), Mark->RangeCm);
+
+		// AND WHAT ITS DEATH WOULD PAY GOES WITH IT, so each holder in the chain is worth the row's figure: "the warrant
+		// passes to the nearest enemy". The copies `CopyDebuffsTo` laid are credited to the caster, so the next death
+		// is asked "does the warrant hold" of the same curses. Issue #2885, N6.
+		if (Passed && PaysOnDeath > 0.0f)
+		{
+			Passed->KillFervour = PaysOnDeath;
+			Passed->SkillName = PayingSkill;
+			Passed->Curses = PayingCurses;
+		}
 
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("%s died carrying a spreading curse; %d applications passed to "

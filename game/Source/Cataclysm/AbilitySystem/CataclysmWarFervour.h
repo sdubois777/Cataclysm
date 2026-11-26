@@ -131,11 +131,10 @@ public:
 	 * NOT THE RAVAGER'S `UCataclysmFervour::DecayStep`, whose grace is about an enemy standing near, not about combat.
 	 * The two are separate stats, so a character holding both rows meets both rules.
 	 *
-	 * NOT YET ASKING WHETHER A RUNNING BUFF HOLDS FERVOUR. `UCataclysmSkillTemplate::ARunningBuffHoldsFervour` (the
-	 * Sword's Cold Blood, "while it lasts your Fervour does not decay") is on `feat/death-skills-2885` and not on the
-	 * branch this was written on. Agreed with the coordinating session on 2026-11-24: whichever of the two merges into
-	 * `development` second adds the one call here, before the pool is read, and a test for it. `docs/DECISIONS.md`
-	 * records the obligation.
+	 * NOR WHILE A RUNNING BUFF HOLDS FERVOUR: `UCataclysmSkillTemplate::ARunningBuffHoldsFervour` (the Sword's Cold
+	 * Blood, "while it lasts your Fervour does not decay"), asked after the out-of-combat refusal, as the Ravager's
+	 * decay asks it after its cheap refusals. Added by the Death skills merge (obligation 10), as agreed with the
+	 * coordinating session on 2026-11-24.
 	 *
 	 * @return the change to the pool, nought or below
 	 */

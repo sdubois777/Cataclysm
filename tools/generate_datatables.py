@@ -408,6 +408,9 @@ SHAPE_RIDERS = {
                        "REFUND_TARGETS. What triggers it is the row's Trigger "
                        "tag",
     "Untargetable": "1 if the caster cannot be hit while the skill runs",
+    "PassesThroughEnemies": "1 if a walked charge passes through enemy bodies "
+                            "for its walk, as Hollow Step's "
+                            "movement_passes_through_enemies makes it",
 
     # --- Added 2026-11-17 for the Corrupted Stalker's kits, issue #2580 -----
     #
@@ -433,14 +436,46 @@ SHAPE_RIDERS = {
 #: CLOSED FOR THE SAME REASON THE PARAMETER LIST IS. A misspelled value that
 #: parsed would be a skill that runs and quietly does nothing, which is the
 #: failure `parse_shape_params` exists to prevent one level up.
+#:
+#: `Fervour` JOINED ON 2026-11-24, issue #2885 slice DS3: the Death draft's N7,
+#: the Fervour held when the blow lands or while the buff runs. The Greataxe's
+#: Grim Swath ("1% more for every 2 Fervour you hold") on a Strike, and the
+#: Sword's Cold Blood ("1% more damage for every 4 Fervour you hold") on a self
+#: buff; `check_death_skill_keys` refuses it on any other shape, where nothing
+#: reads it.
+#:
+#: `FervourSpent` JOINED THE SAME DAY WITH SLICE DS4: the Death draft's N13,
+#: the Fervour a use spent when its row states `SpendsAllFervour=1` -- the
+#: Wand's Requiem, "1% more for every Fervour spent".
+#: `check_a_spending_or_cashing_strike` refuses it without that key.
 SCALING_SOURCES = frozenset({
     "Kill", "Burning", "Second", "Meter", "HitTaken", "Consume", "Consumed",
-    "Bounce", "Pierced", "Pinned", "HealthMissing",
+    "Bounce", "Pierced", "Pinned", "HealthMissing", "Fervour", "FervourSpent",
 })
+
+#: The shapes that read `ScalingSource=Fervour`: a Strike's blow, through
+#: `UCataclysmSkillTemplate::ScalingUnits`, and a self buff's bonus, through
+#: `UCataclysmSelfBuffSkill::ScalingCount`. Issue #2885, N7.
+FERVOUR_SCALING_SHAPES = frozenset({"Strike", "SelfBuff"})
 FORCED_MOVEMENTS = frozenset({"Knockdown", "Launch", "Pull", "Drag", "Pin"})
 TERRAIN_KINDS = frozenset({"Pit", "Wall", "Fissure", "Thicket"})
 REQUIREMENTS = frozenset({"Burning", "Target", "Stationary", "RearHit"})
-ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release"})
+#: `Rise` JOINED ON 2026-11-24, issue #2885 slice DS3: the Death draft's N5,
+#: the Greataxe's Death Rattle, "any that dies while it rattles rises at once
+#: as a husk, the same husk Shallow Graves raises". A Debuff's alone, beside
+#: `RisesAs=<kind>`, which `validate_risen_kinds` holds to a Summon row of the
+#: same damage type raising that kind.
+#:
+#: `Burst` JOINED THE SAME DAY WITH SLICE DS5: the Death draft's N14, the
+#: Fist's Gravetouch, "if it dies while the wound still bleeds, it bursts,
+#: dealing 10% of its maximum health to every enemy within 4 meters". Beside
+#: the row's `Ailment` (the wound), `BurstPercentOfMaximumHealth` and
+#: `OnDeathRange`, which `check_a_bursting_wound_a_paid_hit_and_an_escape`
+#: asks for.
+ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release", "Rise", "Burst"})
+
+#: How a `RisesAs` value is written: one Minion Types row's name.
+RISEN_KIND = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
 
 #: What a skill may make its caster immune to while it runs.
 #:
@@ -491,8 +526,16 @@ SPREAD_CONDITIONS = frozenset({"Burning"})
 #: BURN IS LEFT OUT ON PURPOSE, a judgement of 2026-11-17 recorded in
 #: docs/DECISIONS.md: `Burn=1` already applies it through `ApplyBurn`, which
 #: carries burn's own rules, and two keys for one ailment would let a row state
-#: it twice. BLEED IS LEFT OUT because the owner's set does not name it.
-SKILL_ROW_AILMENTS = frozenset({"Poison", "Disease", "Necrosis", "VoidSplinter"})
+#: it twice.
+#:
+#: BLEED JOINED ON 2026-11-24, issue #2885, the Death draft's N16: the owner
+#: accepted the Death and War plan's Q22 that day ("Your recommendations work
+#: for all of those death/war questions"), which widens the owner's four by
+#: Bleed for the Fist's Gravetouch and Severing Rush. `UCataclysmAilments`
+#: already lays one by name (`KindNamedInASkillRow`), with bleed's movement
+#: gate (issue #918), so this set is the whole of the change.
+SKILL_ROW_AILMENTS = frozenset({"Poison", "Disease", "Necrosis", "VoidSplinter",
+                                "Bleed"})
 
 #: How a row naming several effects lays them. Issue #2580, [N4]. Absent means
 #: every one, which is what Anathema's `Effect=Shred, Madness` does.
@@ -541,7 +584,11 @@ TEXT_PARAM_VALUES = {
 #: Iron Fortress deploys two ballistae AND three spike traps, which no single
 #: key and value can say. Every type it names must exist in the Minion Types
 #: sheet, and `validate_minion_references` refuses one that does not.
-TEXT_PARAMS = frozenset({"Mode", "Effect", "Minions"}
+#:
+#: `RisesAs` JOINED ON 2026-11-24, issue #2885 slice DS3, N5: the kind that
+#: rises from a creature dying under a curse, a Minion Types row's name, which
+#: `validate_risen_kinds` checks against the sheet as `Minions` is checked.
+TEXT_PARAMS = frozenset({"Mode", "Effect", "Minions", "RisesAs"}
                         | set(TEXT_PARAM_VALUES))
 
 #: How a `Minions` entry is written: `Imp:1`, or `Ballista:2, SpikeTrap:3`.
@@ -601,7 +648,29 @@ SHAPE_PARAMS = {
     "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval",
                # Buried Fire leaves the greatsword in the ground and the player
                # fights bare-handed until it is pulled free. Only it states this.
-               "DisarmsUntilRecalled"},
+               "DisarmsUntilRecalled",
+               # BOTH JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885,
+               # for the Greatsword's Gravebell: N3, `Detonates`, explodes every
+               # minion of the caster's inside the swing, and N4, `CommandStrike`,
+               # orders everything else it commands onto the first enemy the
+               # swing struck, as Compel orders them onto what its bolt hit.
+               "Detonates", "CommandStrike",
+               # SLICE DS3, 2026-11-24, issue #2885: N6, `KillFervour`, extra
+               # Fervour for each enemy the skill's own blow kills (Grim Swath,
+               # Last Toll). On the four shapes whose blows are their own, and
+               # `check_death_skill_keys` says what a Debuff's means.
+               "KillFervour",
+               # SLICE DS4, 2026-11-24, issue #2885: N13, `SpendsAllFervour`,
+               # a use that spends every Fervour held (the Wand's Requiem),
+               # and N15, `CashInRadius`, the caster's own Poison, Bleed and
+               # Necrosis around it deal all they had left (the Fist's
+               # Quietus). N9 needs no key: `RefundsCooldown` is a rider, and
+               # a strike now reads it.
+               "SpendsAllFervour", "CashInRadius",
+               # SLICE DS5, 2026-11-24, issue #2885: N14, the share of the
+               # dying creature's maximum health a wound bursts for, beside
+               # `OnDeath=Burst` (the Fist's Gravetouch).
+               "BurstPercentOfMaximumHealth"},
     # A PROJECTILE MAY NOW REPEAT. Butcher's Bill throws thirty axes over ten
     # seconds, which needs the same Count, Duration and Interval a Summon has
     # always had; before this it could only be written as prose. `TargetMode`
@@ -611,14 +680,45 @@ SHAPE_PARAMS = {
                    "Count", "Duration", "Interval", "TargetMode",
                    "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
                    "CommandStrike",
-                   "TetherTargets", "TetherLength", "TetherDuration"},
+                   "TetherTargets", "TetherLength", "TetherDuration",
+                   # N3, issue #2885, for the Staff's Marrow Lance: the
+                   # caster's minions on the line it flew explode.
+                   "Detonates",
+                   # N6, slice DS3: Restless Spirits' kills, and Hungering
+                   # Soul's hosts, whose buried soul carries it on.
+                   "KillFervour",
+                   # N19, slice DS5: the Spear's Soul Lance, Fervour for each
+                   # enemy a flying shot lands on, to a cap a cast.
+                   "HitFervour", "HitFervourPerCast",
+                   # The Crossbow draft's C1, slice DS5: the Crossbow's Coffin
+                   # Nail, a nail's critical strike chance and the nails' ceiling.
+                   "CritChanceAgainst", "CritChanceAgainstMax"},
     # `Interval` JOINED ON 2026-09-02 WITH THE SPEAR'S HELD FAST, whose
     # sentence has a per-second half: "any pinned enemy within 12 meters is
     # set alight again each second it is held". Until then a self buff was
     # the one lasting shape that could not repeat, so that half of the row
     # could not be written down at all. Strike, Projectile, Movement, Summon,
     # Deployable and Aura all already had it.
-    "SelfBuff": {"Duration", "Interval", "Radius", "RangeIncrease"},
+    #
+    # `HoldsFervour` JOINED ON 2026-11-24, issue #2885 slice DS3: the Death
+    # draft's N8, the Sword's Cold Blood, "while it lasts your Fervour does not
+    # decay". `UCataclysmFervour::DecayStep` asks whether a running buff holds it.
+    #
+    # `MeleeReachMetres` AND `EveryBlow` JOINED THE SAME DAY WITH SLICE DS4:
+    # the Death draft's N21, flat metres a running buff adds to its holder's
+    # melee reach (the Spear's Grim Reach), and N17, a buff whose `Ailment`,
+    # `Effect` and `ForcedMovement` are laid by every blow its holder lands
+    # (Hemlock, Death Grip, Grim Reach). `UCataclysmSelfBuffSkill::
+    # NoteBlowLanded` lays them; `check_a_bursting_rift_and_a_buff_on_every_blow`
+    # refuses either where it would do nothing.
+    #
+    # `StrikesOnCritical` JOINED WITH SLICE DS5: the Crossbow draft's C2, a buff
+    # whose holder's critical strikes each strike again for the row's Damage
+    # Percent (the Crossbow's Carrion Crows); `check_a_buff_striking_on_a_
+    # critical_states_its_damage` asks the row for that figure.
+    "SelfBuff": {"Duration", "Interval", "Radius", "RangeIncrease",
+                 "HoldsFervour", "MeleeReachMetres", "EveryBlow",
+                 "StrikesOnCritical"},
     # Inexorable walks for three seconds and Everywhere at Once flickers for
     # four, so a movement can now last and repeat. `RearHits` says every blow it
     # lands counts as struck from behind.
@@ -633,12 +733,41 @@ SHAPE_PARAMS = {
     # enemy you reach" where the Whip's Reel takes "every enemy the line
     # crosses". The two are both charges and differ in nothing else, so without
     # this there is no way to write the difference down at all.
+    #
+    # `Detonates` JOINED ON 2026-11-24, issue #2885, N3: Barrow Leap, Open
+    # Grave and Grave Return explode the caster's minions where they arrive.
+    # `check_death_skill_keys` refuses it on a flicker and a walked charge,
+    # whose blows are struck elsewhere and do not detonate.
+    #
+    # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: Pale Rider's kills, and
+    # Danse Macabre's deaths during the dance. `MaxDuration` JOINED THE SAME
+    # DAY, N10: the ceiling on a flicker its deaths lengthen by `DurationPer`
+    # ("up to 8 seconds in all"); `check_death_skill_keys` says where.
     "Movement": {"Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits"},
+                 "RearHits", "Detonates", "KillFervour", "MaxDuration"},
     # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
+    #
+    # `Taunts` JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885: the
+    # Crossbow draft's C3, approved by the owner that day for the Greataxe's
+    # Shallow Graves, whose husks "turn the enemies around them on themselves".
+    # Each minion the row raises taunts every enemy within the row's `Radius` of
+    # it as it rises and once a second after (`ACataclysmMinion::BeginTaunting`).
+    # A threat figure could not say it: only Behind the Veil reads one.
+    #
+    # `Permanent` AND `MinionsLayEffect` JOINED ON 2026-11-24, issue #2885:
+    # the Death draft's N1, a raise that stands until it is destroyed (Barrow
+    # Guard, Exhume, Bone Choir), and N11, minions that lay the row's `Effect`
+    # with each blow (Bone Choir's mages). N2 needs no key: a Summon row that
+    # states a Damage Percent strikes as it raises, and lays its `Effect` with
+    # that blow (`check_a_summon_effect_has_a_carrier`).
+    #
+    # `CollapseBursts` JOINED WITH SLICE DS4: the Death draft's N12, what a rift
+    # raised bursts as the rift closes rather than being destroyed (the Staff's
+    # Grave Mouth); refused on a summon that is not a rift, which never closes.
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent"},
+               "HealthThresholdPercent", "Taunts", "Permanent",
+               "MinionsLayEffect", "CollapseBursts"},
     # AN EIGHTH SHAPE, added with issue #338. A summon spawns things that walk to
     # the enemy; a deployable places things that stay where they are put. The
     # split is behavioural and the data already carried it as a tag -- Bolt
@@ -654,11 +783,23 @@ SHAPE_PARAMS = {
     # Deployable -- Bolt Turret, Ballista and Iron Fortress -- and the shape
     # did not allow it, so the generator refused them. Summon already allowed
     # it because Subjugate has carried it since 2026-09-01.
+    #
+    # `Taunts` JOINED ON 2026-11-24, as on Summon above: a placed machine
+    # taunts every enemy within the row's `Radius` of it each `Interval`, or
+    # each second when the row states none. The Death Crossbow's Effigy is the
+    # row it was drafted for (issue #2885); it waits on the Siphon (C4).
     "Deployable": {"Range", "Radius", "Count", "MaxActive", "Duration",
-                   "Interval", "Minions", "HealthPercent", "FervourReserve"},
+                   "Interval", "Minions", "HealthPercent", "FervourReserve",
+                   "Taunts"},
     "Aura": {"Radius", "Duration", "Interval"},
+    # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: the Sword's Death
+    # Warrant, "if it dies while the warrant holds, you gain 10 Fervour". A
+    # curse pays for a death it marks, so `check_death_skill_keys` asks for
+    # `OnDeath=SpreadDebuff` beside it. `RisesAs` JOINED THE SAME DAY, N5: the
+    # kind that rises from a creature dying under the curse, beside
+    # `OnDeath=Rise` (Death Rattle's husk).
     "Debuff": {"Range", "Radius", "MaxTargets", "Duration",
-               "SpreadWhen", "SpreadRadius"},
+               "SpreadWhen", "SpreadRadius", "KillFervour", "RisesAs"},
 }
 
 #: The movement modes, and what each one is.
@@ -742,7 +883,403 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
         params[key] = value
 
     check_stalker_kit_keys(params, shape, where)
+    check_taunt_keys(params, where)
+    check_death_skill_keys(params, shape, where)
     return params
+
+
+def is_on(params: dict[str, str], key: str) -> bool:
+    """Whether a flag key is stated and not nought."""
+    return key in params and float(params[key]) != 0.0
+
+
+def check_death_skill_keys(params: dict[str, str], shape: str,
+                           where: str) -> None:
+    """Refuse the Death skills' keys where they could not do what they say.
+
+    Issue #2885, slice DS2. EACH REFUSAL IS A ROW THAT WOULD RUN AND QUIETLY DO
+    SOMETHING ELSE: a permanent raise that still has a lifespan, or that takes
+    rather than raises; minions told to lay an effect the row does not name; a
+    detonation stated on a move whose blows are struck elsewhere.
+    """
+    if is_on(params, "Permanent"):
+        for clash in ("Duration", "Interval", "Possess"):
+            if clash in params and float(params[clash]) != 0.0:
+                raise DataError(
+                    f"{where}: states Permanent={params['Permanent']} and "
+                    f"{clash}={params[clash]}. A permanent raise stands until "
+                    f"it is destroyed, so it has no Duration and no rift "
+                    f"Interval, and a thrall Possess takes is already its "
+                    f"commander's for good")
+    if is_on(params, "MinionsLayEffect"):
+        if not (params.get("Effect") or "").strip():
+            raise DataError(
+                f"{where}: states MinionsLayEffect={params['MinionsLayEffect']}"
+                f" and names no Effect, so its minions would lay nothing")
+        if is_on(params, "Possess"):
+            raise DataError(
+                f"{where}: states MinionsLayEffect on a summon that possesses. "
+                f"A thrall is taken, not raised, and keeps its own blows")
+    if is_on(params, "Detonates") and shape == "Movement":
+        mode = params.get("Mode", "")
+        walks = mode == "Charge" and float(params.get("Duration", "0")) > 0.0
+        if mode == "Flicker" or walks:
+            raise DataError(
+                f"{where}: states Detonates on a {'walked charge' if walks else 'flicker'}. "
+                f"A move detonates where its single arrival strikes, and this "
+                f"one's blows are struck step by step, so nothing would explode")
+    check_kill_fervour_and_fervour_scaling(params, shape, where)
+    check_a_lengthened_flicker(params, shape, where)
+    check_a_rising_curse(params, shape, where)
+    check_a_spending_or_cashing_strike(params, where)
+    check_a_bursting_rift_and_a_buff_on_every_blow(params, where)
+    check_a_bursting_wound_a_paid_hit_and_an_escape(params, shape, where)
+    check_a_coffin_nail(params, shape, where)
+
+
+def check_a_coffin_nail(params: dict[str, str], shape: str, where: str) -> None:
+    """Refuse the Crossbow draft's C1 nails where they would raise nothing. Issue #2885, slice DS5.
+
+    A flying shot stating `CritChanceAgainst` drives a nail into what it lands
+    on, each worth that many points of its firer's critical strike chance
+    against it, to `CritChanceAgainstMax` in all, until `EffectDuration` passes
+    without a new one (`UCataclysmCoffinNails`). So nought or less a nail
+    raises nothing; a ceiling with no nails caps nothing, and one below a
+    single nail's points would not let one count whole; nails that never lapse
+    or lapse at once are not what the key means; and a beam's landing is no
+    flying contact, so it drives none.
+    """
+    if "CritChanceAgainst" in params:
+        per_nail = float(params["CritChanceAgainst"])
+        if per_nail <= 0.0:
+            raise DataError(
+                f"{where}: states CritChanceAgainst={params['CritChanceAgainst']}, "
+                f"which raises nothing. A nail's critical strike chance has to "
+                f"be more than nought")
+        if "CritChanceAgainstMax" in params and float(params["CritChanceAgainstMax"]) < per_nail:
+            raise DataError(
+                f"{where}: states CritChanceAgainstMax="
+                f"{params['CritChanceAgainstMax']}, below one nail's "
+                f"CritChanceAgainst={params['CritChanceAgainst']}, so not even "
+                f"one nail would count whole")
+        if float(params.get("EffectDuration", "0")) <= 0.0:
+            raise DataError(
+                f"{where}: states CritChanceAgainst and no EffectDuration above "
+                f"nought, which is how long the nails stay without a new one")
+        if shape == "Projectile" and not flies(params):
+            raise DataError(
+                f"{where}: states CritChanceAgainst on a projectile with no "
+                f"Speed and no Arc, a beam, and only a flying shot's contact "
+                f"drives a nail")
+    elif "CritChanceAgainstMax" in params:
+        raise DataError(
+            f"{where}: states CritChanceAgainstMax and no CritChanceAgainst, so "
+            f"there are no nails to cap")
+
+
+def check_a_buff_striking_on_a_critical_states_its_damage(params: dict[str, str],
+                                                         damage_percent: str,
+                                                         where: str) -> None:
+    """A buff whose holder's critical strikes strike again states the Damage Percent each strike is worth.
+
+    Issue #2885, the Crossbow draft's C2, slice DS5: the Crossbow's Carrion
+    Crows, "a crow dives at the enemy you struck for 40% weapon damage". The
+    strike is the row's own Damage Percent (`UCataclysmSelfBuffSkill::
+    CriticalStrikeLanded`); left blank it would take its slot's figure, which
+    for the Support slot a buff sits in is nought, so every crow would deal
+    nothing. A slot is a key and a skill is worth what it is worth (the owner,
+    2026-08-22), so the row says it.
+    """
+    if is_on(params, "StrikesOnCritical") and not (damage_percent or "").strip():
+        raise DataError(
+            f"{where}: states StrikesOnCritical={params['StrikesOnCritical']} "
+            f"and no Damage Percent, so each strike would be worth whatever "
+            f"its slot is, nought for a Support. State what each strike deals")
+
+
+def flies(params: dict[str, str]) -> bool:
+    """Whether a Projectile row puts a shot in the air: a `Speed` or an `Arc` above nought, not a beam."""
+    return float(params.get("Speed", "0")) > 0.0 or float(params.get("Arc", "0")) > 0.0
+
+
+def check_a_bursting_wound_a_paid_hit_and_an_escape(params: dict[str, str], shape: str,
+                                                   where: str) -> None:
+    """Refuse N14's wound burst, N19's Fervour per hit and N18's untouchable walk where they would do nothing.
+
+    Issue #2885, slice DS5. `OnDeath=Burst` bursts a creature that dies while
+    the ailment the skill laid still runs on it, so a row naming no `Ailment`
+    has no wound, and one stating no share or no reach bursts for nothing or
+    at nobody; the share alone, without the burst, says nothing. Fervour for
+    each enemy hit is paid at a flying shot's contact, so a beam would pay
+    none, and a cap a cast without the payment caps nothing. `Untargetable=1`
+    is read by a move that lasts -- a flicker and a walked charge (a `Charge`
+    stating a `Duration`) -- and by nothing else, so on any other move or shape
+    it would make its caster untouchable for no time at all. `PassesThroughEnemies=1`
+    (the Death skills merge: Wraithwalk's "straight through anything in the
+    way") is read by a walked charge alone, which already strikes what it
+    walks into, so the key adds the passing and no blow.
+    """
+    if params.get("OnDeath") == "Burst":
+        if not (params.get("Ailment") or "").strip():
+            raise DataError(
+                f"{where}: states OnDeath=Burst and names no Ailment, so it "
+                f"lays no wound for the dying to burst while it still runs")
+        if float(params.get("BurstPercentOfMaximumHealth", "0")) <= 0.0:
+            raise DataError(
+                f"{where}: states OnDeath=Burst and no "
+                f"BurstPercentOfMaximumHealth above nought, so the burst "
+                f"would deal nothing")
+        if float(params.get("OnDeathRange", "0")) <= 0.0:
+            raise DataError(
+                f"{where}: states OnDeath=Burst and no OnDeathRange above "
+                f"nought, so the burst would reach nobody")
+    elif "BurstPercentOfMaximumHealth" in params:
+        raise DataError(
+            f"{where}: states BurstPercentOfMaximumHealth="
+            f"{params['BurstPercentOfMaximumHealth']} and not OnDeath=Burst, "
+            f"so nothing bursts for it")
+    if "HitFervour" in params:
+        if float(params["HitFervour"]) <= 0.0:
+            raise DataError(
+                f"{where}: states HitFervour={params['HitFervour']}, which "
+                f"pays nothing. Fervour for each enemy hit has to be more "
+                f"than nought")
+        if shape == "Projectile" and not flies(params):
+            raise DataError(
+                f"{where}: states HitFervour on a projectile with no Speed "
+                f"and no Arc, a beam, and only a flying shot's contact pays "
+                f"it")
+    if "HitFervourPerCast" in params:
+        if "HitFervour" not in params:
+            raise DataError(
+                f"{where}: states HitFervourPerCast and no HitFervour, so "
+                f"there is no payment to cap")
+        if float(params["HitFervourPerCast"]) <= 0.0:
+            raise DataError(
+                f"{where}: states HitFervourPerCast="
+                f"{params['HitFervourPerCast']}, a cap that would let no "
+                f"payment through")
+    if is_on(params, "Untargetable"):
+        lasts = shape == "Movement" and (
+            params.get("Mode") == "Flicker"
+            or (params.get("Mode") == "Charge" and float(params.get("Duration", "0")) > 0.0))
+        if not lasts:
+            raise DataError(
+                f"{where}: a {shape} states Untargetable={params['Untargetable']}, "
+                f"which only a flicker and a walked charge (a Charge stating a "
+                f"Duration) read, for as long as they run. Anything else would "
+                f"make its caster untouchable for no time at all")
+    if is_on(params, "PassesThroughEnemies"):
+        walked = shape == "Movement" and params.get("Mode") == "Charge" and float(
+            params.get("Duration", "0")) > 0.0
+        if not walked:
+            raise DataError(
+                f"{where}: a {shape} states PassesThroughEnemies="
+                f"{params['PassesThroughEnemies']}, which only a walked charge "
+                f"(a Charge stating a Duration) reads. Another move would pass "
+                f"through enemies and also strike the line, which is Hollow "
+                f"Step's and not what this key says")
+
+
+def check_a_bursting_rift_and_a_buff_on_every_blow(params: dict[str, str],
+                                                   where: str) -> None:
+    """Refuse N12's `CollapseBursts`, N17's `EveryBlow` and N21's `MeleeReachMetres` where they would do nothing.
+
+    Issue #2885, slice DS4. `SHAPE_PARAMS` keeps the first to a Summon and the
+    other two to a SelfBuff. Only a rift closes -- a summon spawning one every
+    `Interval` over its `Duration`, Open the Rift's pattern -- so a summon that
+    is not one would never burst what it raised. A buff laying its riders with
+    every blow lays its `Ailment`, `Effect` and `ForcedMovement`, so one naming
+    none of them lays nothing. And a buff adding nought or less to its holder's
+    melee reach lengthens nothing, which no row means.
+    """
+    if is_on(params, "CollapseBursts"):
+        rift = float(params.get("Interval", "0")) > 0.0 and float(params.get("Duration", "0")) > 0.0
+        if not rift:
+            raise DataError(
+                f"{where}: states CollapseBursts={params['CollapseBursts']} "
+                f"and is not a rift (an Interval and a Duration above "
+                f"nought), so it never closes and nothing would burst")
+    if is_on(params, "EveryBlow"):
+        lays = [key for key in ("Ailment", "Effect", "ForcedMovement") if (params.get(key) or "").strip()]
+        if not lays:
+            raise DataError(
+                f"{where}: states EveryBlow={params['EveryBlow']} and no "
+                f"Ailment, Effect or ForcedMovement, so its holder's blows "
+                f"would lay nothing")
+    if "MeleeReachMetres" in params and float(params["MeleeReachMetres"]) <= 0.0:
+        raise DataError(
+            f"{where}: states MeleeReachMetres={params['MeleeReachMetres']}, "
+            f"which lengthens nothing. A buff's added reach has to be more "
+            f"than nought")
+
+
+def check_a_spending_or_cashing_strike(params: dict[str, str],
+                                       where: str) -> None:
+    """Refuse N13's `ScalingSource=FervourSpent` and N15's `CashInRadius` where they would do nothing. Slice DS4.
+
+    Issue #2885. `SHAPE_PARAMS` keeps `SpendsAllFervour` and `CashInRadius` to
+    a Strike. What a use spent is counted only when its row spends: a row
+    scaling by `FervourSpent` without `SpendsAllFervour=1` would scale by a
+    nought it never moves -- the Wand's Requiem states both. And a cash-in
+    reaches the enemies within its radius, so nought or less reaches nobody.
+    """
+    if params.get("ScalingSource") == "FervourSpent" and not is_on(params, "SpendsAllFervour"):
+        raise DataError(
+            f"{where}: states ScalingSource=FervourSpent and not "
+            f"SpendsAllFervour=1, so nothing is spent and it would scale by "
+            f"nought")
+    if "CashInRadius" in params and float(params["CashInRadius"]) <= 0.0:
+        raise DataError(
+            f"{where}: states CashInRadius={params['CashInRadius']}, which "
+            f"reaches nobody. A cash-in's radius has to be more than nought")
+
+
+def check_a_lengthened_flicker(params: dict[str, str], shape: str,
+                               where: str) -> None:
+    """Refuse N10's keys on a move whose deaths would not lengthen it. Issue #2885, slice DS3.
+
+    `UCataclysmMovementSkill::NoteADeathWhileItRuns` lengthens a running
+    flicker that counts deaths -- `Mode=Flicker; ScalingSource=Kill` -- by its
+    `DurationPer`, to its `MaxDuration` in all: Danse Macabre. On any other
+    move `DurationPer` is read by nothing, and a ceiling with nothing to cap,
+    or one below the move's own duration, says something untrue.
+    """
+    if shape != "Movement":
+        return
+    lengthens = float(params.get("DurationPer", "0")) > 0.0
+    if lengthens and (params.get("Mode") != "Flicker" or params.get("ScalingSource") != "Kill"):
+        raise DataError(
+            f"{where}: a Movement states DurationPer={params['DurationPer']} "
+            f"and is not a flicker counting kills (Mode=Flicker; "
+            f"ScalingSource=Kill), the one move whose deaths lengthen it, so "
+            f"nothing would read it")
+    if "MaxDuration" in params:
+        ceiling = float(params["MaxDuration"])
+        if not lengthens:
+            raise DataError(
+                f"{where}: states MaxDuration={params['MaxDuration']} and no "
+                f"DurationPer above nought, so there is nothing to cap")
+        if ceiling < float(params.get("Duration", "0")):
+            raise DataError(
+                f"{where}: MaxDuration={params['MaxDuration']} is below the "
+                f"move's own Duration={params.get('Duration')}, so the ceiling "
+                f"would be lower than where it starts")
+
+
+def check_a_rising_curse(params: dict[str, str], shape: str,
+                         where: str) -> None:
+    """Refuse N5's `OnDeath=Rise` and `RisesAs` where nothing would rise. Issue #2885, slice DS3.
+
+    A Debuff's curse marks the creature it lands on
+    (`UCataclysmSkillTemplate::ApplyNamedEffectsTo`), and the creature rises
+    as `RisesAs` names if it dies while that curse holds. So the two keys go
+    together, on a Debuff, which names the curse in its `Effect`. Whether a
+    Summon row raises the kind is `validate_risen_kinds`'s to say, since it
+    needs the whole table.
+    """
+    rises = params.get("OnDeath") == "Rise"
+    if rises and shape != "Debuff":
+        raise DataError(
+            f"{where}: a {shape} states OnDeath=Rise, which only a Debuff's "
+            f"curse marks a creature for")
+    if rises and not (params.get("RisesAs") or "").strip():
+        raise DataError(
+            f"{where}: states OnDeath=Rise and no RisesAs, so it names no kind "
+            f"to rise")
+    if "RisesAs" in params and not rises:
+        raise DataError(
+            f"{where}: states RisesAs={params['RisesAs']} and not OnDeath=Rise, "
+            f"so nothing would rise")
+    if rises and not RISEN_KIND.match(params["RisesAs"].strip()):
+        raise DataError(
+            f"{where}: RisesAs={params['RisesAs']!r} is not one Minion Types "
+            f"row's name")
+    if rises and not (params.get("Effect") or "").strip():
+        raise DataError(
+            f"{where}: states OnDeath=Rise and names no Effect, so there is no "
+            f"curse for a creature to die under")
+
+
+def check_kill_fervour_and_fervour_scaling(params: dict[str, str], shape: str,
+                                           where: str) -> None:
+    """Refuse N6's `KillFervour` and N7's `ScalingSource=Fervour` where they would pay or scale nothing.
+
+    Issue #2885, slice DS3. `SHAPE_PARAMS` already keeps `KillFervour` to the
+    four shapes whose blows are their own; this refuses what is left. A
+    payment below nought takes Fervour for a kill, which no row means. A
+    Debuff deals no blow of its own in the Support slot, so its Fervour is for
+    a death it marks -- Death Warrant's "if it dies while the warrant holds" --
+    and the mark is `OnDeath=SpreadDebuff`; without it the curse pays nothing.
+    And `ScalingSource=Fervour` is read by a Strike's blow and a self buff's
+    bonus alone (`FERVOUR_SCALING_SHAPES`).
+    """
+    if "KillFervour" in params:
+        amount = float(params["KillFervour"])
+        if amount < 0.0:
+            raise DataError(
+                f"{where}: states KillFervour={params['KillFervour']}, below "
+                f"nought, which would take Fervour for a kill")
+        if amount > 0.0 and shape == "Debuff" and params.get("OnDeath") != "SpreadDebuff":
+            raise DataError(
+                f"{where}: a Debuff states KillFervour={params['KillFervour']} "
+                f"and not OnDeath=SpreadDebuff. A curse pays for a death it "
+                f"marks, and only OnDeath=SpreadDebuff marks one, so this would "
+                f"pay nothing")
+    if params.get("ScalingSource") == "Fervour" and shape not in FERVOUR_SCALING_SHAPES:
+        raise DataError(
+            f"{where}: a {shape} states ScalingSource=Fervour, which only a "
+            f"Strike's blow and a self buff's bonus read "
+            f"({sorted(FERVOUR_SCALING_SHAPES)}), so it would scale nothing")
+
+
+def check_a_summon_effect_has_a_carrier(params: dict[str, str], shape: str,
+                                        damage_percent: str,
+                                        where: str) -> None:
+    """A Summon row naming an `Effect` says what lays it. Issue #2885, N2 and N11.
+
+    TWO CARRIERS AND NO THIRD. A summon that states a Damage Percent strikes as
+    it raises and lays its effect with that blow (N2: Barrow Guard's Cripple);
+    one stating `MinionsLayEffect=1` has its minions lay it with their blows
+    (N11: Bone Choir's). With neither, the summon template reads the effect
+    nowhere and the row's sentence would be false. A possession lays nothing
+    of its own either: Subjugate's burn is `Burn=1`.
+    """
+    if shape != "Summon" or not (params.get("Effect") or "").strip():
+        return
+    try:
+        strikes = bool(damage_percent) and float(damage_percent) > 0.0
+    except ValueError:
+        strikes = False  # `skill_number` names the unreadable cell
+    if is_on(params, "Possess") or not (strikes or is_on(params, "MinionsLayEffect")):
+        raise DataError(
+            f"{where}: a Summon names Effect={params['Effect']} and nothing "
+            f"lays it. It needs a Damage Percent, which makes the raise strike "
+            f"and lay it, or MinionsLayEffect=1, and it may not possess")
+
+
+def check_taunt_keys(params: dict[str, str], where: str) -> None:
+    """Refuse a `Taunts` that could not taunt anything. Issue #2885, C3.
+
+    TWO WAYS, EACH A ROW THAT WOULD RUN AND QUIETLY DO NOTHING. A taunt reaches
+    the enemies within the row's `Radius` of each minion, so a row stating no
+    radius taunts nobody. And a summon that possesses (Subjugate) makes no
+    minion of its own: the thrall it takes never passes through
+    `UCataclysmSummonSkill::SummonOne`, so nothing would be told to taunt.
+    A value of nought is the key switched off and passes.
+    """
+    if "Taunts" not in params or float(params["Taunts"]) == 0.0:
+        return
+    if float(params.get("Radius", "0")) <= 0.0:
+        raise DataError(
+            f"{where}: states Taunts={params['Taunts']} and no Radius above "
+            f"nought. A taunt reaches the enemies within the row's Radius of "
+            f"each minion, so this one would taunt nobody")
+    if float(params.get("Possess", "0")) != 0.0:
+        raise DataError(
+            f"{where}: states Taunts={params['Taunts']} on a summon that "
+            f"possesses. A thrall is taken, not raised, so nothing the row "
+            f"makes would be told to taunt")
 
 
 def check_stalker_kit_keys(params: dict[str, str], shape: str,
@@ -895,6 +1432,10 @@ def weapon_skills(book) -> list[dict]:
         if shape:
             parsed = parse_shape_params(params, shape, where)
             check_a_roll_states_no_damage_percent(parsed, damage_percent, where)
+            check_a_summon_effect_has_a_carrier(parsed, shape, damage_percent,
+                                                where)
+            check_a_buff_striking_on_a_critical_states_its_damage(
+                parsed, damage_percent, where)
 
         out.append({"Name": row_name(damage, weapon, slot),
                     "WeaponType": weapon, "DamageType": damage, "Slot": slot,
@@ -17525,6 +18066,59 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def validate_risen_kinds(tables: dict[str, list[dict]]) -> list[str]:
+    """A curse's `RisesAs` names a kind exactly one Summon row of its damage type raises. Issue #2885, N5.
+
+    WHAT RISES IS READ FROM THAT ROW: `UCataclysmRisingCurse::MarkOn` finds the
+    Summon row of the curse's damage type whose `Minions` names the kind, and
+    takes its `Duration`, `FervourReserve`, `Radius`, `Taunts` and `Burn` --
+    Death Rattle's husk is Shallow Graves' husk in every figure, which is what
+    its sentence says. So the kind must be a Minion Types row, and one such
+    Summon row must exist, with a `Duration` (a risen minion's lifetime) and
+    not possessing. Two would leave the engine choosing between them by table
+    order, so two are refused too. A row with no shape raises nothing, so a
+    Summon row still waiting on code -- Grave Mouth, before N12 -- does not
+    count, and Soul Snare's wisp waits with it.
+    """
+    skills = tables.get("WeaponSkills")
+    types = tables.get("MinionTypes")
+    if not skills or not types:
+        return []
+
+    known = {row["Name"] for row in types}
+    raisers: dict[tuple[str, str], list[str]] = {}
+    for row in skills:
+        if row["Shape"] != "Summon" or not row["ShapeParams"]:
+            continue
+        params = parse_shape_params(row["ShapeParams"], "Summon", f"WeaponSkills/{row['Name']}")
+        if is_on(params, "Possess") or float(params.get("Duration", "0")) <= 0.0 or not params.get("Minions"):
+            continue
+        for kind in parse_minions(params["Minions"], f"WeaponSkills/{row['Name']}"):
+            raisers.setdefault((row["DamageType"], kind), []).append(row["Name"])
+
+    problems = []
+    for row in skills:
+        if not row["Shape"] or not row["ShapeParams"]:
+            continue
+        where = f"WeaponSkills/{row['Name']}"
+        params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
+        if params.get("OnDeath") != "Rise":
+            continue
+        kind = params.get("RisesAs", "").strip()
+        if kind not in known:
+            problems.append(
+                f"{where}: RisesAs={kind!r}, which has no row in the Minion "
+                f"Types sheet. It reads {sorted(known)}.")
+            continue
+        found = raisers.get((row["DamageType"], kind), [])
+        if len(found) != 1:
+            problems.append(
+                f"{where}: RisesAs={kind}, and {len(found)} {row['DamageType']} "
+                f"Summon rows with a Duration raise it ({found}); what rises is "
+                f"read from exactly one, so one must exist and no second.")
+    return problems
+
+
 def refuse_a_count_cap_on_a_summon(tables: dict[str, list[dict]]) -> list[str]:
     """A Summon row states no `MaxActive` unless it states an `Interval` too.
 
@@ -17998,6 +18592,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weapon_tags(tables, declared_tags(book))
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)
+                + validate_risen_kinds(tables)
                 + refuse_a_count_cap_on_a_summon(tables)
                 + validate_targeted_shapes_state_a_radius(tables)
                 + validate_hybrid_parts(tables)

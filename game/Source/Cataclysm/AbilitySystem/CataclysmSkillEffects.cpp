@@ -22,6 +22,8 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCurseSpread.h"
+// For the Fervour a skill's killing blow pays. Issue #2885, N6.
+#include "AbilitySystem/CataclysmKillFervour.h"
 // For a line of creatures run through by one spear, which comes apart when any
 // one of them dies. The Spear's Skewer is the only thing that binds one.
 #include "AbilitySystem/CataclysmPinnedLine.h"
@@ -49,6 +51,8 @@
 #include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For a wound that bursts as its bearer dies, from `MarkDead`. Issue #2885, the Death draft's N14, slice DS5.
+#include "AbilitySystem/CataclysmWoundBurst.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 // For the boss check in ApplyStun: boss-ness lives on the enemy as its rarity
@@ -1515,6 +1519,24 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 										   Target);
 				}
 			}
+		}
+		// AND A CRITICAL STRIKE THE INSTIGATOR LANDED IS TOLD TO ITS RUNNING BUFFS, ONCE THE BLOW IS WHOLLY RESOLVED. Issue
+		// #2885, the Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "each time you land a critical
+		// strike, a crow dives at the enemy you struck ... or at the nearest enemy within 10 meters if the strike killed
+		// it". HERE, AFTER `ApplyDirectDamage` RETURNS, so the struck creature's health is written and its death marked:
+		// the hit notice is heard before that write and could not say whether the strike killed. A STRIKE THE INSTIGATOR
+		// LANDED: not evaded, not refused as immune to its attacker, not a tick, not a share struck at an ally, and not a
+		// blow that is no strike of its -- the consequence of a death, a blow returned for one taken, the explosion at an
+		// ailment's end, a share of an ally's blow, or a worn row's answer to an event, which would let one critical
+		// strike call a crow through a row's answer and that answer another. A skill gadget's or trap's cast takes the
+		// other path below and is the machine's blow, as a minion's is the minion's. Nothing for a blow that did not
+		// critically strike, which is nearly every one: the buffs are asked only then.
+		if (Landed->bWasCritical && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
+			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
+			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
+			&& !Arrived.bIsARowsAnswerToAnEvent)
+		{
+			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
 		}
 		return bDealt ? Sent : 0.0f;
 	}
@@ -4769,7 +4791,7 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	}
 
 	// A DEATH ALREADY BEING MARKED IS NOT MARKED AGAIN FROM INSIDE ITSELF. Issue #2871. The tag goes on at the bottom of
-	// this function, after the five hooks below, and every one of them can strike: a hook's blow that reaches back to
+	// this function, after the six hooks below, and every one of them can strike: a hook's blow that reaches back to
 	// this actor -- Harrower's leap into a creature carrying Sacrificial Bond, which pays this dying ally a share of it
 	// -- writes its health at nought and calls its `HandleDeath` again before the tag is on. Without this the second
 	// call ran the hooks again and returned true, and so did every call inside it, so `HandleDeath` paid the kill once
@@ -4784,6 +4806,13 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 		return false;
 	}
 	BeingMarked.Add(Actor);
+
+	// THE SKILL WHOSE BLOW KILLED IT PAYS ITS ROW'S `KillFervour`, FIRST. Issue #2885, the Death draft's N6, slice DS3:
+	// Grim Swath, Last Toll, Pale Rider and Restless Spirits, "every enemy it kills gives you 5 Fervour". Here, the one
+	// place every death is recorded, and BEFORE THE HOOKS BELOW, so a mark of the same skill's that one of them pays
+	// for -- a warrant still holding, a soul still buried -- is still on the dying creature to be asked about, and one
+	// death pays one skill once. Inert for every death but one a stating skill's blow dealt: a last-blow lookup.
+	UCataclysmKillFervour::PayForTheKillingBlow(Actor);
 
 	// A CURSE THAT PASSES ON DOES SO NOW, BEFORE THE DEATH IS RECORDED. The
 	// Wand's Anathema: "anything that dies while damned passes the curse to the
@@ -4817,6 +4846,13 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	// bound to no line, which is all of them but one Skewer's catch: it costs a
 	// component lookup.
 	UCataclysmPinnedLine::ReleaseFromDying(Actor);
+
+	// AND A WOUND STILL RUNNING ON IT BURSTS, for the same reasons and at the same moment. Issue #2885, the Death draft's
+	// N14, slice DS5: the Fist's Gravetouch, "if it dies while the wound still bleeds, it bursts, dealing 10% of its
+	// maximum health to every enemy within 4 meters". Here, so a wounded creature killed by its own bleed, by another's
+	// blow or by a rule bursts alike, and before the tag, while the running bleed is still on it to be read. Inert for
+	// every creature carrying no wound whose skill bursts it: a walk of its running effects.
+	UCataclysmWoundBurst::BurstFromDying(Actor);
 
 	// AND A SWING THIS CHARACTER HAD DRAWN BACK IS LOST, for the fourth time for
 	// the same reasons and at the same moment. The Greatsword's The Whole
@@ -5797,7 +5833,23 @@ bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
 		// the one that matters: `UCataclysmTeams` reads the tag and makes the
 		// creature hostile to everything, so there is no number to apply and
 		// nothing is missing.
-		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+		//
+		// BUT A CRIPPLE'S SIZE TRAVELS ON ITS TAG, AND UNTIL 2026-11-24 THIS DROPPED
+		// IT. Issue #2885: `CrippleMultiplierOn` reads the strength the running
+		// application stated, so a skill row's `Effect=Cripple; EffectMagnitude=20`
+		// slowed by the Cripple row's own 30 -- the Death Greatsword's Grave Muster
+		// and Fist's Nightshade state 20. Stated now, held to the row's cap, as a
+		// ground zone's slow already is (`ACataclysmGroundZone`, which found the
+		// same drop on 2026-10-06 and went round it). A magnitude of nought states
+		// nothing, which is every caller but a skill row's, and every other effect
+		// whose row moves no stat still states nothing, as before.
+		float StatedCrippleStrength = 0.0f;
+		if (Magnitude > 0.0f && EffectTag == UCataclysmDebuffs::CrippleTag())
+		{
+			const float CrippleCap = NumbersForEffectTag(EffectTag).StrengthCap;
+			StatedCrippleStrength = CrippleCap > 0.0f ? FMath::Min(Magnitude, CrippleCap) : Magnitude;
+		}
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds, StatedCrippleStrength);
 	}
 
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);

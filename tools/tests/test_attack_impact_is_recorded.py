@@ -535,9 +535,13 @@ SOURCE_DIR = REPO_ROOT / "game" / "Source" / "Cataclysm"
 #: (file, where the rule's strike is found, what ends that stretch). The rule
 #: that orders a creature's ordinary attack at a target wherever it stands.
 #: Echoes of the Past was the second until issue #2740; see the test below this.
+#: COMPEL'S ORDER MOVED ON 2026-11-24 out of `UCataclysmProjectileSkill::Land`
+#: into `UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn`, so the
+#: Greatsword's Gravebell can give it from a strike (issue #2885, the Death
+#: draft's N4); both call it, so this reads the one body they share.
 RULE_STRIKES = [
-    ("AbilitySystem/CataclysmSkillTemplates.cpp",
-     "if (Params.bCommandStrike", "++Landings;"),
+    ("AbilitySystem/CataclysmSkillTemplate.cpp",
+     "int32 UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn(", "\n}"),
 ]
 
 

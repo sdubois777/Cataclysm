@@ -1155,6 +1155,65 @@ public:
 	float WarhoundBlow() const;
 
 	/**
+	 * A MINION ITS ROW TELLS TO TAUNT: `Taunts=1` on a Summon or a Deployable row. Issue #2885, the Death Crossbow
+	 * draft's C3, approved by the owner on 2026-11-24 for the Greataxe's Shallow Graves ("Every enemy within 4 meters
+	 * of a husk turns on it and attacks it until it falls; Bosses are not fooled"), and ruled the same day for the
+	 * Greatsword's Barrow Guards.
+	 *
+	 * A BEAT TAUNTS EVERY ENEMY WITHIN `TauntRadiusCm` OF THIS MINION, AS ITS TAUNTER, for `RowTauntSeconds`, through
+	 * `UCataclysmTaunt::ApplyTaunt`, which refuses a boss, an enemy another taunter holds and the rest, and ends the
+	 * taunt the moment this minion dies or goes. The first beat is as it appears (`BeginTaunting`); the next is
+	 * `TauntEverySeconds` after the last, looked at four times a second on the regeneration step (`RowTauntStep`), as
+	 * Brute's Heart's taunt aura (`UCataclysmTauntAura`) is looked at. So an enemy within the radius is taunted again
+	 * each beat and stays on this minion while it stands, and one that leaves is let go when its seconds run out.
+	 *
+	 * THE RADIUS IS THE ROW'S OWN `Radius`, NOT WIDENED BY AREA OF EFFECT, as the explosion radius a summon records on
+	 * its minion is the row's own (`RecordExplosionRadius`). A judgement of 2026-11-24, as the Effigy's 8 m is its row's.
+	 *
+	 * NOUGHT FOR EVERY MINION NO SUCH ROW MADE, which is every minion before issue #2885: such a minion never beats.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	float TauntRadiusCm = 0.0f;
+
+	/** The seconds from one beat to the next: the row's `Interval` for a placed machine, else `RowTauntEverySeconds`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	float TauntEverySeconds = 0.0f;
+
+	/**
+	 * The seconds each beat taunts for, 3: the figure Brute's Heart's six-piece aura taunts for each second it beats,
+	 * and the Warhound's taunt on each hit, so the three taunts in the game agree. A judgement of 2026-11-24 (issue
+	 * #2885): longer than the beat, so a minion that stands keeps an enemy in reach taunted without a gap.
+	 */
+	static constexpr float RowTauntSeconds = 3.0f;
+
+	/** A summoned minion's beat, once a second: C3's "when they rise and once a second after". */
+	static constexpr float RowTauntEverySeconds = 1.0f;
+
+	/** World time of this minion's last beat, or a negative number before its first. */
+	float LastTauntBeatAtSeconds = -1.0f;
+
+	/** How many taunts this minion's beats have landed, placed or restarted. Read by tests. */
+	int32 TauntsLanded = 0;
+
+	/**
+	 * Make this minion taunt the enemies within `RadiusCm` of it, every `EverySeconds` (`RowTauntEverySeconds` when
+	 * nought or less), and beat at once. Called by `UCataclysmSummonSkill::SummonOne` and `SummonReplacementAt`, and by
+	 * `UCataclysmDeployableSkill::DeployOne`, for a row stating `Taunts=1`. Nothing for a radius of nought.
+	 *
+	 * @return how many taunts the first beat landed
+	 */
+	int32 BeginTaunting(float RadiusCm, float EverySeconds);
+
+	/**
+	 * Beat `Character`'s taunt if it is a minion told to taunt, alive, and due. Run by the regeneration step; a test
+	 * moves the world's clock by hand and calls this directly, as for `UCataclysmTauntAura::Step`. A step that comes up
+	 * to `UCataclysmTauntAura::BeatAllowanceSeconds` early still takes the beat.
+	 *
+	 * @return how many taunts the beat landed: nought when it did not beat or landed none
+	 */
+	static int32 RowTauntStep(AActor* Character);
+
+	/**
 	 * Tyrant's Chains' ten-piece bonus: "Your Tyrant's Minion now casts your ultimate ability every 3 seconds". The
 	 * coordinating session's ruling #7 of 2026-10-17 (a FREE START, as the skill gadget's) and its rulings T1-T7 of
 	 * 2026-10-18; `docs/DECISIONS.md` carries both.
@@ -2039,6 +2098,33 @@ public:
 	 * #2764, slice 2b, by judgement 4 (accepted 2026-11-19). 1 for a minion no levelling skill made.
 	 */
 	float LevelFactorOnCreatures = 1.0f;
+
+	/**
+	 * The named effects this minion's blows lay, told by the summon skill that made it when its row states
+	 * `MinionsLayEffect=1`, each beside the seconds it lasts (`EffectSecondsItsBlowsLay`, the same index). Issue #2885,
+	 * the Death draft's N11: Bone Choir's Skeletal Mages, "every bolt they throw Cripple what they hit, 20% slower for
+	 * 2 seconds". READ ONCE, WHEN IT WAS MADE, as `LevelFactorOnCreatures` is. Empty for every other minion.
+	 *
+	 * LAID BY A BLOW THAT LANDED, after it (`AttackTarget`): not an evaded one (#1156) and not one the enemy refused as
+	 * immune to its attacker, as the Warhound's taunt asks; THE MINION LAYS IT, as it sets the fire its row's `Burn=1`
+	 * gives it (ruled 2026-09-17). Its explosion lays none: the row names its bolts.
+	 */
+	TArray<FGameplayTag> EffectTagsItsBlowsLay;
+
+	/** The seconds each of `EffectTagsItsBlowsLay` lasts, by the same index. */
+	TArray<float> EffectSecondsItsBlowsLay;
+
+	/** The size the row states for those effects, `EffectMagnitude`, or nought for each effect's own. */
+	float EffectMagnitudeItsBlowsLay = 0.0f;
+
+	/** The summoning skill's damage type, which a Shred among those effects cuts the resistance of. */
+	FName EffectDamageTypeItsBlowsLay = NAME_None;
+
+	/**
+	 * Lay every effect in `EffectTagsItsBlowsLay` on `Target`; answers how many were laid. Called by `AttackTarget` for
+	 * a blow that landed. Public so a test can lay them without a swing.
+	 */
+	int32 LayTheEffectsItsBlowsLay(AActor* Target);
 	//~ End
 
 protected:

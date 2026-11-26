@@ -31,6 +31,10 @@
 #include "AbilitySystem/CataclysmPinnedLine.h"
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the Fervour a self buff scaling by it follows. Issue #2885, N7.
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For which flicker counts the deaths during it. Issue #2885, N10.
+#include "AbilitySystem/CataclysmKillFervour.h"
 #include "AbilitySystem/CataclysmCommand.h"
 // For Summon Imp's kind, made for a commander that holds no summon skill: a Wand
 // Ritualist's Press-Ganged replacement and The Swarm's minion at a kill. The
@@ -154,6 +158,35 @@ void UCataclysmStrikeSkill::ActivateAbility(
 	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
 	{
 		return;
+	}
+
+	// A ROW THAT SPENDS EVERY FERVOUR HELD SPENDS IT NOW, ONCE THE USE IS PAID FOR. Issue #2885, the Death draft's N13,
+	// slice DS4: the Wand's Requiem, "spend every Fervour you hold, the Ultimate's 50 among it". The cost was taken by
+	// `ApplyCost` in the commit above; what is spent is that cost and every point left beside it, which the blow then
+	// scales by (`ScalingSource=FervourSpent`). HERE, AT THE PRESS, as the cost is, and not when the blow lands, so a
+	// wave whose swing waits on its animation spends what was held when it was pressed.
+	//
+	// A FREE START THAT PAYS NOTHING SPENDS NOTHING, a judgement of slice DS4: Follow Through's repeat "pays nothing"
+	// (ruled 2026-09-24), so it empties no pool and its blow scales by nought. A free start that pays its cost (ruled
+	// 2026-10-06) pays all.
+	FervourSpentThisUse = 0.0f;
+	if (Params.bSpendsAllFervour && (!bFreeRepeat || bFreeRepeatPaysCost))
+	{
+		UAbilitySystemComponent* Spender = GetAbilitySystemComponentFromActorInfo();
+		const float Rest = UCataclysmFervour::SpendAll(Spender);
+		FervourSpentThisUse = FervourCostFor(Spender) + Rest;
+
+		// AND THE REST IS A SPEND, recorded as `ApplyCost` records the cost: the clock, `fervour_spent` with the
+		// amount and this skill's tags, Cinders Kept's share, and the War classes' count of Fervour spent. The Death
+		// skills merge, obligation 1 ("Requiem calls NoteFervourSpent"). TWO RECORDS FOR ONE PRESS, the cost's and the
+		// rest's, a judgement: `ApplyCost` is every skill's and records before this runs, and a 50 cost is whole tens,
+		// so "for every 10 Fervour spent" pays the same on the two as on their sum.
+		if (UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(Spender);
+			Paying && Rest > 0.0f)
+		{
+			Paying->NoteFervourSpent(Rest, &SkillTagsForStats());
+			FCataclysmWarFervour::NoteFervourSpentOrDrained(Paying, Rest);
+		}
 	}
 
 	// EVERYTHING BELOW WAITS FOR THE WEAPON TO ARRIVE. Issue #1133. Until this,
@@ -494,6 +527,71 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 		if (BlowLandedOn(Target))
 		{
 			ApplyNamedEffectsTo(Target);
+		}
+	}
+
+	// AND IN THE SAME INSTANT THE CASTER'S OWN POISON, BLEED AND NECROSIS AROUND IT DEAL ALL THEY HAD LEFT, AND END, WHEN
+	// THE ROW SAYS SO. Issue #2885, the Death draft's N15, slice DS4: the Fist's Quietus, "deliver the quietus to one
+	// enemy for 400% weapon damage. In the same instant every Poison, Bleed and Necrosis you have laid on enemies within
+	// 10 meters deals all the damage it had left, and ends." AFTER THE BLOW, the sentence's order, so the blow is not
+	// struck at an enemy the cash-in has just killed. WITH EVERY SWING, WHETHER OR NOT ITS BLOW LANDED, a judgement:
+	// the sentence ties the cash-in to the instant and not to the hit, so an evaded quietus still cashes them in.
+	// Around where the use is cast from, the apex, which is the caster's own place unless a free start gave another.
+	if (Params.CashInRadiusCm > 0.0f)
+	{
+		CashInOwnAilmentsAround(Apex);
+	}
+
+	// AND THE CASTER'S OWN MINIONS INSIDE THE SWING EXPLODE, IF THE ROW SAYS SO, AND THEN EVERYTHING ELSE IT COMMANDS
+	// STRIKES THE FIRST ENEMY THE SWING HIT. Issue #2885, the Death draft's N3 and N4: the Greatsword's Gravebell,
+	// "every minion of yours the arc passes through explodes, and every other creature you command strikes the first
+	// enemy the arc hit, wherever it is standing". In that order, the sentence's, so a minion the arc exploded is not
+	// also ordered.
+	//
+	// THE SAME AREA THE ENEMIES WERE FOUND IN, the cone at the apex, or every direction when a row rolled that this use
+	// hits all around (`ThisUseHitsAllWithinCm`); a cone of 360 degrees is a ring.
+	if (Params.bDetonates)
+	{
+		const bool bAllAround = ThisUseHitsAllWithinCm > 0.0f;
+		const float Reach = bAllAround ? FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()) : ScaledRadiusCm();
+		const float Arc = bAllAround ? 360.0f : ArcDegrees();
+		const FVector Facing = AimDirection();
+		DetonateOwnMinionsWhere([&Apex, &Facing, Reach, Arc](const AActor& Minion)
+		{
+			return UCataclysmTargeting::IsActorInCone(Apex, Facing, &Minion, Reach, Arc);
+		});
+	}
+
+	// THE FIRST ENEMY THE SWING STRUCK THAT IT LEFT STANDING, a judgement of slice DS2: the search answers nearest
+	// first, and a creature ordered onto one the swing has just killed would strike nothing. Nobody is ordered when the
+	// swing killed everything it struck.
+	if (Params.bCommandStrike)
+	{
+		for (AActor* Target : Targets)
+		{
+			if (IsValid(Target) && !UCataclysmSkillEffects::IsDead(Target))
+			{
+				OrderEveryCommandedStrikeOn(Target);
+				break;
+			}
+		}
+	}
+
+	// AND THE COOLDOWN COMES BACK IF THE SWING KILLED WHAT IT STRUCK, WHEN THE ROW SAYS SO. Issue #2885, the Death
+	// draft's N9, slice DS4: the Sword's Mercy Stroke, "if the stroke kills, the sword is ready to strike again at once".
+	// Emberhaul's test at its arrival (`UCataclysmMovementSkill`), asked of the targets this swing struck and not of a
+	// death anywhere: dead, or at no health, whichever of the two its death path reached first. LAST, after everything
+	// the swing does, so a kill by its curse or its cash-in in the same instant counts as the stroke's. Nothing for a
+	// strike stating no `RefundsCooldown`, which was every strike before slice DS4.
+	if (!Params.RefundsCooldown.IsEmpty() && !Targets.IsEmpty())
+	{
+		for (AActor* Target : Targets)
+		{
+			if (UCataclysmSkillEffects::IsDead(Target) || AtNoHealth(Target))
+			{
+				RefundCooldown();
+				break;
+			}
 		}
 	}
 
@@ -1443,6 +1541,13 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		// projectile still flies and still sets alight what it touches.
 		BindTether(Caster);
 
+		// THE RECORD OF THE FERVOUR THIS USE PAYS FOR ENEMIES HIT, MADE FRESH FOR EACH USE and handed to every shot it
+		// fires, a rack's included, so the row's cap a cast is the use's and not each shot's. Issue #2885, the Death
+		// draft's N19, slice DS5: the Spear's Soul Lance, "at most 4 a throw" however many lances a row of the user's
+		// adds (a judgement of the draft's, kept). Nought paid until a shot lands; a row stating no `HitFervour` pays
+		// nothing into it.
+		HitFervourOfThisUse = MakeShared<float>(0.0f);
+
 		// A RACK OF THIRTY RATHER THAN ONE THROW. The Axe's Butcher's Bill is
 		// the only row that states a Count beside an Interval, and it needs the
 		// ability to stay alive across all of them rather than ending when the
@@ -1517,6 +1622,8 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		InFlight->StrikesFromPoint = Origin;
 		// AND WHO IT WAS CAST BY, which outlives the use: a skill gadget's shot is its own when it lands. Stack 2.
 		InFlight->CastBy = FreeRepeatCastBy;
+		// AND THE USE'S RECORD OF THE FERVOUR PAID FOR ENEMIES HIT. Issue #2885, N19.
+		InFlight->HitFervourStatedInItsUse = HitFervourOfThisUse;
 
 		// AND IT GLANCES ONWARD IF THE ROW SAYS SO. The Axe's Carom: "it glances
 		// from them to the next nearest and onward through three more ... every
@@ -1584,6 +1691,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 				Shot->bStrikesFromAPoint = bFreeRepeatHasOrigin;
 				Shot->StrikesFromPoint = Origin;
 				Shot->CastBy = FreeRepeatCastBy;
+				Shot->HitFervourStatedInItsUse = HitFervourOfThisUse;
 				Shot->JoinsAUse(LandedOn, Index);
 				LetItGlance(Shot);
 				Shot->OnFinished.AddUObject(
@@ -1629,6 +1737,16 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		// stopped by a wall half way burns half the path; one that returns
 		// finishes back at the caster and still burns the whole flight.
 		LeaveGroundForFlight(Projectile->StartedAt, Projectile->FurthestReached);
+
+		// AND THE CASTER'S OWN MINIONS ON THE LINE IT FLEW EXPLODE, IF THE ROW SAYS SO. Issue #2885, the Death draft's
+		// N3: the Staff's Marrow Lance, "every minion of yours on the line explodes". ONCE, AS IT FINISHES, ALONG THE
+		// WHOLE FLIGHT, a judgement of slice DS2: the line is known only now, as the ground's is above, and a lance
+		// stopped by a wall detonates nothing beyond it. Its own radius is the line's width, so the circle a shot that
+		// stops on its first enemy lands in is the line's far end.
+		if (Params.bDetonates)
+		{
+			DetonateOwnMinionsAlong(Projectile->StartedAt, Projectile->FurthestReached, ScaledRadiusCm());
+		}
 
 		// AND THE CURSES ON WHAT IT STRUCK ARE COPIED OUTWARD. The Wand's
 		// Malefice: "copying every curse it already carries onto the two nearest
@@ -1882,6 +2000,9 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		// AND WHO IT WAS CAST BY: A RACK'S LAST AXES LAND AFTER THE USE HAS ENDED, and are still a skill gadget's.
 		// Ruled 2026-10-16, stack 2.
 		Axe->CastBy = FreeRepeatCastBy;
+		// AND THE USE'S RECORD OF THE FERVOUR PAID FOR ENEMIES HIT, so a rack's cap a cast is the rack's. Null for a
+		// throw a test made with no use begun, whose axe then counts its own. Issue #2885, N19.
+		Axe->HitFervourStatedInItsUse = HitFervourOfThisUse;
 	}
 
 	// AND EACH AXE OF A RACK GLANCES AS A SINGLE THROW DOES, when the row states bounces or a row of the
@@ -2103,6 +2224,11 @@ int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
 		// AND THE SKILL'S NAME, FOR THE LINES EACH LEAP WRITES, AND THE WEAPON DRAWN IN WHAT IT STRUCK, its blade
 		// toward the creature from where the use was cast. Issue #2872: "nothing shows the axe leaping".
 		Left->SkillName = SkillName;
+		// AND WHAT EACH HOST IT LEAVES DEAD PAYS, AND THE AILMENT EACH NEW HOST IS GIVEN, from this row. Issue #2885, the
+		// Death draft's N6, slice DS3: Hungering Soul's `KillFervour=2` and `Ailment=Necrosis`. Nought and empty for
+		// every row that states neither, Harrower's among them, as `BuryIn` left them.
+		Left->KillFervour = Params.KillFervour;
+		Left->StatedAilment = Params.Ailment;
 		Left->DrawIn(CastOrigin());
 		UE_LOG(LogCataclysm, Display,
 			TEXT("%s%s's weapon is buried in %s; when that one dies it leaps to the nearest living enemy within %.1f m%s."),
@@ -2205,16 +2331,27 @@ int32 UCataclysmProjectileSkill::Land()
 		EndAttack();
 	}
 
+	// AND THE CASTER'S OWN MINIONS IN THE BEAM'S AREA EXPLODE, IF THE ROW SAYS SO: its line when it pierces, the
+	// circle it lands in when it does not, the two searches above. Issue #2885, the Death draft's N3. A shot with a
+	// speed detonates when it finishes, along the line it flew (`OnProjectileFinished`).
+	if (Params.bDetonates)
+	{
+		if (Pierces > 0)
+		{
+			DetonateOwnMinionsAlong(Origin, Destination, ScaledRadiusCm());
+		}
+		else
+		{
+			DetonateOwnMinionsAround(Destination, ScaledRadiusCm());
+		}
+	}
+
 	// AND EVERYTHING THE CASTER COMMANDS STRIKES THE SAME ENEMY, IF THE ROW SAYS
 	// SO. The Staff's Compel: "everything you command strikes that same enemy at
 	// once, wherever it happens to be standing." Its `CommandStrike=1` was parsed
-	// and read by nothing until 2026-09-02.
-	//
-	// "WHEREVER IT HAPPENS TO BE STANDING" IS THE HALF THAT NEEDED SAYING, and it
-	// is why nothing here checks a distance. A creature ordered onto an enemy
-	// across the room strikes it from where it is; the row is explicit that
-	// reaching it is not the player's problem. That is what makes Compel worth a
-	// Heavy slot rather than being a slower Quarry.
+	// and read by nothing until 2026-09-02. The order itself is
+	// `UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn` since 2026-11-24, so a
+	// strike can give it too (issue #2885, the Greatsword's Gravebell).
 	//
 	// THE ENEMY THE BOLT ITSELF HIT, AND ONLY ONE. Compel states `MaxTargets=1`
 	// and `Pierce=0`, so the search above answers at most one creature and "that
@@ -2222,51 +2359,7 @@ int32 UCataclysmProjectileSkill::Land()
 	// allows.
 	if (Params.bCommandStrike && !Targets.IsEmpty())
 	{
-		CommandedStrikes = 0;
-		for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
-		{
-			if (ACataclysmCharacterBase* Body =
-					Cast<ACataclysmCharacterBase>(Follower))
-			{
-				// A STUNNED, KNOCKED-DOWN OR FEARED CREATURE IS NOT ORDERED, ruled
-				// 2026-10-27 (#2560), as the echo strike asks since #2558:
-				// `CannotAct`, then the flee step, in the brain's order. Skipped
-				// before the order, so it is neither ordered nor counted, and
-				// `CommandedStrikes` still means "ordered".
-				const AActor* Striker = Body;
-				FVector FleeSource;
-				if (UCataclysmSkillEffects::CannotAct(Striker)
-					|| UCataclysmFear::FleeSourceOf(Striker, FleeSource))
-				{
-					continue;
-				}
-				// `AttackTarget` IS WHAT A BRAIN CALLS WHEN IT DECIDES TO SWING,
-				// so ordering one is the same act the creature would have taken
-				// itself. A minion swings; a subjugated enemy uses its own
-				// attack, which is what "keeps its own abilities" means for a
-				// thrall; the base class does nothing at all.
-				//
-				// A THRALL STRIKES AS A RULE ORDERS IT, issue #783: its blow waits
-				// for its swing and is not measured against reach when it lands,
-				// which is "wherever it happens to be standing" kept true.
-				if (ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Body))
-				{
-					Thrall->StrikeAsARuleOrders(Targets[0]);
-				}
-				else
-				{
-					Body->AttackTarget(Targets[0]);
-				}
-				++CommandedStrikes;
-			}
-		}
-
-		if (CommandedStrikes > 0)
-		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("'%s' ordered %d commanded creatures onto '%s'."),
-				*SkillName, CommandedStrikes, *Targets[0]->GetName());
-		}
+		OrderEveryCommandedStrikeOn(Targets[0]);
 	}
 
 	++Landings;
@@ -2361,6 +2454,10 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	CooldownsReturned = 0;
 	AttackersLit = 0;
 	SecondsHeld = 0;
+	BlowsLaidOn = 0;
+	// AND THE CROWS THIS ACTIVATION SENT, AND WHEN THE LAST WENT. Issue #2885, the Death Crossbow draft's C2.
+	CrowsSent = 0;
+	LastCrowAt = -1.0;
 
 	// AND THE STORE STARTS EMPTY, for the same reason. Martyr's Ember holds "40%
 	// of all damage you take WHILE IT LASTS", so what was held during the last
@@ -2397,14 +2494,30 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 
 	GrantIncrease();
 
+	// AND A BONUS SCALING BY THE FERVOUR HELD FOLLOWS IT FOR AS LONG AS THE BUFF RUNS. Issue #2885, the Death draft's
+	// N7, slice DS3: the Sword's Cold Blood, "your hits deal 1% more damage for every 4 Fervour you hold". "Hold" is
+	// now, so the bonus granted above is put back each time the pool crosses a whole point, unlike Burning Wrath's
+	// count, which its sentence fixes at the cast ("currently burning").
+	if (Params.ScalingSource.Equals(TEXT("Fervour"), ESearchCase::IgnoreCase))
+	{
+		WatchTheFervourHeld();
+	}
+
 	// GRANTED ONLY IF THE SKILL NAMES AN EFFECT, and neither designed self buff
 	// does: the design gives Burning Wrath and Martyr's Ember a duration and a
 	// magnitude but never names the buff, so there is no status in the Buffs
 	// sheet for either and no tag to grant. The magnitude no longer depends on
 	// this: it is a stat modifier on the caster, not a tag anything reads.
-	UCataclysmSkillEffects::ApplyTagForDuration(
-		Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
-		Lasts);
+	//
+	// AND NOT TO ITS HOLDER WHEN THE ROW LAYS IT WITH EVERY BLOW. Issue #2885, the Death draft's N17, slice DS4: the
+	// Spear's Grim Reach names `Effect=Cripple` for what its holder's hits lay, and granted here it would Cripple the
+	// player, as the draft and slice DS2's entry both warned. `NoteBlowLanded` lays it on what each blow hits instead.
+	if (!Params.bEveryBlow)
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
+			Lasts);
+	}
 
 	// AND A ROW WRITING `Effect=RandomBuff` DRAWS ONE BUFF FROM THE GAME'S OWN POOL, for as long as this buff lasts.
 	// Issue #2580, [N5], the Chaos Whip's Loaded Dice: "gain one buff drawn at random from every buff there is, for 8
@@ -2478,6 +2591,10 @@ void UCataclysmSelfBuffSkill::EndAbility(
 	// buff can also end because the ability was cancelled, because the avatar
 	// died, or because the ability system was cleared, and an increase left
 	// behind by any of those would last until the character was destroyed.
+	//
+	// AND THE FERVOUR IS NO LONGER FOLLOWED, FIRST, for the same reason: a binding left on the pool would put the
+	// increase back after it was taken off. Issue #2885, N7.
+	StopWatchingTheFervourHeld();
 	RevokeIncrease();
 
 	// AND THE REPEAT STOPS FOR THE SAME REASON. A looping timer left running
@@ -2625,10 +2742,63 @@ int32 UCataclysmSelfBuffSkill::ScalingCount() const
 		return SecondsHeld;
 	}
 
+	// AND `Fervour` IS WHAT IS HELD NOW, IN WHOLE POINTS. Issue #2885, the Death draft's N7, slice DS3: the Sword's Cold
+	// Blood, `MoreDamagePer=0.25; ScalingSource=Fervour`, so 100 held is 25% more. Read afresh each time the bonus is
+	// put back, which `FervourChanged` does whenever the pool crosses a whole point.
+	if (Params.ScalingSource.Equals(TEXT("Fervour"), ESearchCase::IgnoreCase))
+	{
+		return FMath::FloorToInt(FervourHeldBy(Avatar()));
+	}
+
 	// One of the sources nothing counts. A buff naming one grants nothing, which
 	// is the safe answer: the alternative is a number taken from whatever
 	// happened to be to hand.
 	return 0;
+}
+
+void UCataclysmSelfBuffSkill::WatchTheFervourHeld()
+{
+	StopWatchingTheFervourHeld();
+
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Avatar());
+	if (!AbilitySystem || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO POOL TO FOLLOW, so the bonus granted at the cast, nought, stands.
+		return;
+	}
+
+	FervourChangedHandle = AbilitySystem->GetGameplayAttributeValueChangeDelegate(
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+		.AddUObject(this, &UCataclysmSelfBuffSkill::FervourChanged);
+	FervourWatched = AbilitySystem;
+}
+
+void UCataclysmSelfBuffSkill::StopWatchingTheFervourHeld()
+{
+	if (UAbilitySystemComponent* Watched = FervourWatched.Get())
+	{
+		if (FervourChangedHandle.IsValid())
+		{
+			Watched->GetGameplayAttributeValueChangeDelegate(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+				.Remove(FervourChangedHandle);
+		}
+	}
+	FervourChangedHandle.Reset();
+	FervourWatched.Reset();
+}
+
+void UCataclysmSelfBuffSkill::FervourChanged(const FOnAttributeChangeData& Change)
+{
+	// ONLY WHILE THE BUFF RUNS, AND ONLY ACROSS A WHOLE POINT: the count is whole points, so a fraction gained or spent
+	// inside one leaves the bonus where it is. The pool has already moved when this is heard, so `ScalingCount` reads
+	// the new figure.
+	if (!IsActive() || FMath::FloorToInt(Change.OldValue) == FMath::FloorToInt(Change.NewValue))
+	{
+		return;
+	}
+	RevokeIncrease();
+	GrantIncrease();
 }
 
 void UCataclysmSelfBuffSkill::SecondPassed()
@@ -2991,6 +3161,27 @@ void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
 		++CooldownsReturned;
 	}
 
+	// AND A ROW LAYING ITS RIDERS WITH EVERY BLOW LAYS THEM ON WHAT THIS ONE HIT. Issue #2885, the Death draft's N17,
+	// slice DS4: the Fist's Hemlock, "every blow you land while it lasts Poisons what it hits"; the Whip's Death Grip,
+	// "every blow you land drags what it hits 1 meter toward you. Each drag within 5 seconds of the last on the same
+	// enemy goes half as far"; and the Spear's Grim Reach, "every hit you land Cripples what it hits". Groundbreaker's
+	// verb, with the buff's own riders in the order a strike lays its own: the stated ailment (`ApplyStatedAilmentTo`),
+	// the forced movement (`ApplyForcedMovementTo`, whose pull is halved within five seconds on the same target by the
+	// displacement rule every pull meets, so Death Grip's second sentence is that rule and needs no key), then the named
+	// effects (`ApplyNamedEffectsTo`). ON WHAT THE BLOW HIT AND NOT ON THE HOLDER, which `ActivateAbility` therefore
+	// grants no effect to. NOT ON A BLOW THAT KILLED, a judgement: a body is neither poisoned nor dragged.
+	if (Params.bEveryBlow && IsValid(Target))
+	{
+		AActor* Holder = Avatar();
+		if (Holder && Holder != Target && !UCataclysmSkillEffects::IsDead(Target) && !AtNoHealth(Target))
+		{
+			ApplyStatedAilmentTo(Holder, Target);
+			ApplyForcedMovementTo(Holder, Target, /*DamageDealt=*/0.0f);
+			ApplyNamedEffectsTo(Target);
+			++BlowsLaidOn;
+		}
+	}
+
 	if (Params.Terrain.IsEmpty())
 	{
 		// Every self buff in the game but Groundbreaker. It costs a string test.
@@ -3009,6 +3200,77 @@ void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
 	{
 		++TerrainLeft;
 	}
+}
+
+void UCataclysmSelfBuffSkill::CriticalStrikeLanded(AActor* Struck, const UGameplayAbility* BySkill)
+{
+	// A STRIKE OF THIS BUFF'S OWN CALLS NO OTHER, by its name or because this buff is striking now: "a crow's own
+	// critical strike calls no other". And nothing for a buff not running, or stating no `StrikesOnCritical`.
+	if (bSendingACrow || BySkill == this || !IsActive() || !Params.bStrikesOnCritical)
+	{
+		return;
+	}
+
+	AActor* Holder = Avatar();
+	UWorld* World = GetWorld();
+	if (!Holder || !World)
+	{
+		return;
+	}
+
+	// AT MOST ONE A QUARTER SECOND: "at most four crows dive each second". A critical strike inside it calls nothing.
+	const double Now = World->GetTimeSeconds();
+	if (LastCrowAt >= 0.0 && Now - LastCrowAt < static_cast<double>(CrowCooldownSeconds))
+	{
+		return;
+	}
+
+	// AT THE ENEMY STRUCK, OR, IF THE STRIKE KILLED IT, AT THE NEAREST WITHIN THE ROW'S OWN RADIUS OF WHERE IT STOOD: "or
+	// at the nearest enemy within 10 meters if the strike killed it". The blow is wholly resolved by now, so dead or at no
+	// health is the strike's kill. The row's own `Radius`, not widened by area of effect: a reach that finds the crow's
+	// enemy, as a cash-in's and a taunt's are the row's own (slice DS4, slice DS1).
+	AActor* CrowAt = nullptr;
+	if (IsValid(Struck))
+	{
+		if (!UCataclysmSkillEffects::IsDead(Struck) && !AtNoHealth(Struck))
+		{
+			CrowAt = Struck;
+		}
+		else if (Params.RadiusCm > 0.0f)
+		{
+			for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(World, Holder, Struck->GetActorLocation(),
+																		 Params.RadiusCm))
+			{
+				if (Near != Struck && !AtNoHealth(Near))
+				{
+					CrowAt = Near;
+					break;
+				}
+			}
+		}
+	}
+	if (!CrowAt)
+	{
+		return;
+	}
+
+	// THE QUARTER SECOND IS CLAIMED BEFORE THE STRIKE, so nothing the strike sets off -- its own critical strike among it
+	// -- finds the buff free in the same instant.
+	LastCrowAt = Now;
+
+	// AN ORDINARY HIT OF THE HOLDER'S, at the row's Damage Percent, with the skill's tags and its own critical strike
+	// chance, naming this skill. See the header.
+	FCataclysmHitDelivery CrowsDelivery;
+	CrowsDelivery.CritChancePercent = CritChancePercent;
+	CrowsDelivery.Skill = this;
+	{
+		TGuardValue<bool> Sending(bSendingACrow, true);
+		UCataclysmSkillEffects::ApplyHit(Holder, CrowAt, GetDamagePercent(), SkillTags, CrowsDelivery);
+	}
+	++CrowsSent;
+
+	UE_LOG(LogCataclysm, Verbose, TEXT("'%s' sent a strike at '%s' for a critical strike, %d this activation."),
+		*SkillName, *GetNameSafe(CrowAt), CrowsSent);
 }
 
 void UCataclysmSelfBuffSkill::RevokeIncrease()
@@ -3207,6 +3469,61 @@ void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Cross
 		{
 			UCataclysmSkillEffects::ApplyHit(Self, OnThePath, Percent, SkillTags, PathDelivery);
 		}
+	}
+}
+
+void UCataclysmMovementSkill::LayTheRowsEffectsOn(const TArray<AActor*>& Struck)
+{
+	// A ROW THAT LEAVES GROUND OF ITS OWN LAYS ITS EFFECT THROUGH THAT GROUND, as Foul Wake has since 2026-09-02. See the
+	// header: a judgement of 2026-11-24, issue #2885.
+	if (Params.Effect.IsEmpty() || Params.LeavesGround())
+	{
+		return;
+	}
+
+	// ON WHAT THE BLOW LANDED ON, as `UCataclysmStrikeSkill::SwingOnce` lays a Strike's: an evaded blow carries nothing
+	// (#1156), and a move dealing no damage still curses, because `BlowLandedOn` answers yes for a target no blow was
+	// sent at.
+	for (AActor* Target : Struck)
+	{
+		if (IsValid(Target) && BlowLandedOn(Target))
+		{
+			ApplyNamedEffectsTo(Target);
+		}
+	}
+}
+
+void UCataclysmMovementSkill::DetonateWhereItArrived(const FVector& Start, const FVector& End)
+{
+	if (!Params.bDetonates)
+	{
+		return;
+	}
+
+	// MODE BY MODE, THE SEARCH `ActivateAbility` MADE FOR THE ENEMIES, so a minion is exploded exactly where an enemy
+	// standing in its place would have been struck.
+	const float Reach = ScaledRadiusCm();
+	switch (Params.MovementMode)
+	{
+	case ECataclysmMovementMode::Charge:
+		DetonateOwnMinionsAlong(Start, End, Reach);
+		break;
+
+	case ECataclysmMovementMode::Swap:
+	case ECataclysmMovementMode::Blink:
+	{
+		// BOTH ENDS, COUNTED ONCE: `MinionsDetonated` is the last call's, so it is added up here.
+		const int32 AtStart = DetonateOwnMinionsAround(Start, Reach);
+		const int32 AtEnd = DetonateOwnMinionsAround(End, Reach);
+		MinionsDetonated = AtStart + AtEnd;
+		break;
+	}
+
+	case ECataclysmMovementMode::Recall:
+	case ECataclysmMovementMode::Leap:
+	default:
+		DetonateOwnMinionsAround(End, Reach);
+		break;
 	}
 }
 
@@ -3497,6 +3814,13 @@ void UCataclysmMovementSkill::ActivateAbility(
 		Arrivals = 0;
 		EnemiesHit = FlickerCircuit.Num();
 		ArrivedAt = Start;
+
+		// RESET ON EVERY CAST, as the self buff's kill tally is: one instance stands for every use of the skill. Issue
+		// #2885, N10: how long this dance runs in all, how many deaths it has heard of, and how many fresh circles it
+		// has gathered.
+		FlickerSecondsInAll = Params.Duration;
+		DeathsDuringTheFlicker = 0;
+		FreshCirclesGathered = 0;
 
 		// "NOTHING CAN TOUCH YOU BETWEEN ARRIVALS", FOR THE WHOLE DURATION. It
 		// is applied whether or not anything was found: the row pays for the
@@ -3818,6 +4142,16 @@ void UCataclysmMovementSkill::ActivateAbility(
 	}
 	IgniteAroundConsumed(Consumed);
 
+	// AND THE EFFECTS THE ROW NAMES, ON EVERY ENEMY THE ARRIVAL'S BLOW LANDED ON. Issue #2885, N22: the Sword's Pale
+	// Stride, "Crippling it so it moves and attacks 30% slower for 3 seconds", the Spear's Pale Vault and the Crossbow's
+	// Parting Shot. Until 2026-11-24 a Movement row's `Effect` was dropped here.
+	LayTheRowsEffectsOn(Targets);
+
+	// AND THE CASTER'S OWN MINIONS WHERE IT STRUCK EXPLODE, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N3:
+	// Barrow Leap, Open Grave and Grave Return. After the blow and its curse, as "land in a burst of grave-cold,
+	// Crippling every enemy within 4 meters ... Every minion of yours within it explodes as you land" orders them.
+	DetonateWhereItArrived(Start, End);
+
 	// AND THE COOLDOWN COMES BACK IF THE ARRIVAL KILLED. The Axe's Emberhaul:
 	// "if the arrival kills them, the axe comes back ready to throw again."
 	//
@@ -3899,7 +4233,7 @@ bool UCataclysmMovementSkill::HasMark() const
 void UCataclysmMovementSkill::FlickerOnce()
 {
 	AActor* Self = Avatar();
-	if (!Self || FlickerCircuit.Num() == 0)
+	if (!Self)
 	{
 		return;
 	}
@@ -3909,63 +4243,160 @@ void UCataclysmMovementSkill::FlickerOnce()
 	// safety and simply stops moving, which is why this returns quietly rather
 	// than ending the ability: the untargetability is half of what the row paid
 	// for.
-	const int32 Count = FlickerCircuit.Num();
-	for (int32 Tried = 0; Tried < Count; ++Tried)
+	//
+	// UNLESS ITS DEATHS LENGTHEN IT, WHEN A SECOND LAP GOES ROUND A FRESH CIRCLE. Issue #2885, the Death draft's N10,
+	// slice DS3: Danse Macabre, "re-gathering its circle". A dance its kills carry to 8 seconds would otherwise stand
+	// still once the enemies it began among have fallen; it gathers every living enemy within its range of where the
+	// caster now stands, once a lap has found nobody, and goes on. A judgement of slice DS3: once a circle is spent and
+	// not at each death, so the dance finishes a pack before it moves to the next. Every other flicker, Everywhere at
+	// Once among them, keeps the one circle it gathered at the cast, as before.
+	for (int32 Lap = 0; Lap < 2; ++Lap)
 	{
-		AActor* Next = FlickerCircuit[NextInCircuit].Get();
-		NextInCircuit = (NextInCircuit + 1) % Count;
-
-		if (!IsValid(Next) || UCataclysmSkillEffects::IsDead(Next))
+		const int32 Count = FlickerCircuit.Num();
+		for (int32 Tried = 0; Tried < Count; ++Tried)
 		{
-			continue;
+			AActor* Next = FlickerCircuit[NextInCircuit].Get();
+			NextInCircuit = (NextInCircuit + 1) % Count;
+
+			if (!IsValid(Next) || UCataclysmSkillEffects::IsDead(Next))
+			{
+				continue;
+			}
+
+			// AT THE CREATURE'S FEET AND AT THE CASTER'S OWN HEIGHT, which is the
+			// arrangement `ConditionalDestination` uses and for the same two
+			// reasons: `SetActorLocation` sweeps, so aiming inside the creature's
+			// collision stops the caster short of it; and taking the creature's
+			// height would drop a character through the floor when it arrived at
+			// something standing lower.
+			const FVector Feet(Next->GetActorLocation().X,
+							   Next->GetActorLocation().Y,
+							   Self->GetActorLocation().Z);
+			const FVector SelfWas = Self->GetActorLocation();
+			// HOLLOW STEP: each arrival passes through enemies and never ends inside one, the creature arrived at included.
+			const bool bThroughEnemies = PassesThroughEnemies();
+			if (bThroughEnemies)
+			{
+				PassThroughEnemies(true);
+			}
+			UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
+			ArrivedAt = Self->GetActorLocation();
+			if (bThroughEnemies)
+			{
+				PassThroughEnemies(false);
+				StepOutOfEnemies(SelfWas);
+			}
+
+			// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
+			UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
+			++Arrivals;
+
+			// ONE CREATURE PER ARRIVAL. "Striking each from behind as you arrive" is
+			// one blow at the one it arrived at, not a sweep of whatever is nearby.
+			//
+			// AND IT COUNTS AS A REAR HIT WITHOUT THIS FUNCTION SAYING SO. The row's
+			// `RearHits=1` is read in `HitTargets`, which is also where the burn
+			// rider fires, so both halves of "striking each from behind ... and
+			// setting them alight" are handled by the blow rather than here.
+			TArray<AActor*> One;
+			One.Add(Next);
+			HitScaled(One, TArray<AActor*>());
+			// AND EVERY OTHER ENEMY ON THIS ARRIVAL'S LINE, once.
+			if (bThroughEnemies)
+			{
+				HitTheLineOnce(SelfWas, ArrivedAt, One);
+			}
+
+			// AND THE ROW'S NAMED EFFECTS ON IT, as every arrival lays them. Issue #2885, N22.
+			LayTheRowsEffectsOn(One);
+
+			return;
 		}
 
-		// AT THE CREATURE'S FEET AND AT THE CASTER'S OWN HEIGHT, which is the
-		// arrangement `ConditionalDestination` uses and for the same two
-		// reasons: `SetActorLocation` sweeps, so aiming inside the creature's
-		// collision stops the caster short of it; and taking the creature's
-		// height would drop a character through the floor when it arrived at
-		// something standing lower.
-		const FVector Feet(Next->GetActorLocation().X,
-						   Next->GetActorLocation().Y,
-						   Self->GetActorLocation().Z);
-		const FVector SelfWas = Self->GetActorLocation();
-		// HOLLOW STEP: each arrival passes through enemies and never ends inside one, the creature arrived at included.
-		const bool bThroughEnemies = PassesThroughEnemies();
-		if (bThroughEnemies)
+		// NOBODY STANDING IN THIS CIRCLE. A second lap round a fresh one, for a flicker its deaths lengthen; for every
+		// other flicker, or when the fresh circle is empty too, it stands where it is. Issue #2885, N10.
+		if (Lap > 0 || !LengthensWithDeaths() || !GatherAFreshCircle(Self->GetActorLocation()))
 		{
-			PassThroughEnemies(true);
+			return;
 		}
-		UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
-		ArrivedAt = Self->GetActorLocation();
-		if (bThroughEnemies)
-		{
-			PassThroughEnemies(false);
-			StepOutOfEnemies(SelfWas);
-		}
-
-		// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
-		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
-		++Arrivals;
-
-		// ONE CREATURE PER ARRIVAL. "Striking each from behind as you arrive" is
-		// one blow at the one it arrived at, not a sweep of whatever is nearby.
-		//
-		// AND IT COUNTS AS A REAR HIT WITHOUT THIS FUNCTION SAYING SO. The row's
-		// `RearHits=1` is read in `HitTargets`, which is also where the burn
-		// rider fires, so both halves of "striking each from behind ... and
-		// setting them alight" are handled by the blow rather than here.
-		TArray<AActor*> One;
-		One.Add(Next);
-		HitScaled(One, TArray<AActor*>());
-		// AND EVERY OTHER ENEMY ON THIS ARRIVAL'S LINE, once.
-		if (bThroughEnemies)
-		{
-			HitTheLineOnce(SelfWas, ArrivedAt, One);
-		}
-
-		return;
 	}
+}
+
+bool UCataclysmMovementSkill::LengthensWithDeaths() const
+{
+	return Params.DurationPer > 0.0f && UCataclysmKillFervour::CountsTheDeathsWhileItRuns(Params);
+}
+
+bool UCataclysmMovementSkill::GatherAFreshCircle(const FVector& Around)
+{
+	FlickerCircuit.Reset();
+	NextInCircuit = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Avatar(), Around, ScaledRangeCm(), Params.MaxTargets))
+	{
+		if (!UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			FlickerCircuit.Add(Enemy);
+		}
+	}
+	if (FlickerCircuit.IsEmpty())
+	{
+		return false;
+	}
+
+	++FreshCirclesGathered;
+	EnemiesHit += FlickerCircuit.Num();
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' gathered a fresh circle of %d enemies, its last having fallen."), *SkillName, FlickerCircuit.Num());
+	return true;
+}
+
+bool UCataclysmMovementSkill::NoteADeathWhileItRuns()
+{
+	if (!IsActive() || Params.MovementMode != ECataclysmMovementMode::Flicker
+		|| !UCataclysmKillFervour::CountsTheDeathsWhileItRuns(Params))
+	{
+		// Every move but a running flicker counting deaths: Danse Macabre's alone.
+		return false;
+	}
+
+	++DeathsDuringTheFlicker;
+	AActor* Self = Avatar();
+
+	// "EVERY ENEMY THAT DIES DURING THE DANCE GIVES YOU 5 FERVOUR." Issue #2885, the Death draft's N6, slice DS3: paid
+	// for every death heard of while it runs, whether or not the dance's ceiling has been reached.
+	if (Params.KillFervour > 0.0f && Self)
+	{
+		UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Self), Params.KillFervour, /*bForAKill=*/true);
+	}
+
+	// "AND ADDS HALF A SECOND TO IT, UP TO 8 SECONDS IN ALL." Issue #2885, N10. The stop timer is reset to what is left
+	// plus what is added, as Butcher's Heat lengthens its own, since a timer manager cannot add to a running timer. What
+	// is added stops at the ceiling; a flicker already finishing is not brought back.
+	UWorld* World = GetWorld();
+	const float Ceiling = Params.MaxDuration > 0.0f ? Params.MaxDuration : TNumericLimits<float>::Max();
+	const float Added = FMath::Min(Params.DurationPer, Ceiling - FlickerSecondsInAll);
+	if (!World || Added <= 0.0f)
+	{
+		return true;
+	}
+	const float Remaining = World->GetTimerManager().GetTimerRemaining(StopTimer);
+	if (Remaining <= 0.0f)
+	{
+		return true;
+	}
+
+	FlickerSecondsInAll += Added;
+	World->GetTimerManager().SetTimer(
+		StopTimer, this, &UCataclysmMovementSkill::FinishFlicker, Remaining + Added, /*bLoop=*/false);
+
+	// AND NOTHING CAN TOUCH THE DANCER FOR THE LONGER DANCE. The tag is refreshed to the longer length, which a refresh
+	// of a running application allows (`ApplyTagForDuration`).
+	if (Params.bUntargetable && Self)
+	{
+		UCataclysmSkillEffects::ApplyUntargetable(Self, Self, Remaining + Added);
+	}
+	return true;
 }
 
 const UCataclysmMovementSkill* UCataclysmMovementSkill::RunningAdvanceOn(
@@ -4032,8 +4463,9 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	ArrivedAt = Start;
 
 	// HOLLOW STEP: a walked Charge passes through enemies until the ability ends, however it ends (`EndAbility`). It
-	// already hits each enemy on its line once, so it gains no line hit.
-	if (PassesThroughEnemies())
+	// already hits each enemy on its line once, so it gains no line hit. AND A ROW STATING `PassesThroughEnemies=1`
+	// passes the same way: the Staff's Wraithwalk, "straight through anything in the way" (the Death skills merge).
+	if (Params.bPassesThroughEnemies || PassesThroughEnemies())
 	{
 		PassingThroughFrom = Start;
 		PassThroughEnemies(true);
@@ -4074,6 +4506,16 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 	// 9.3 metres a second, a little over twice a Ravager's 4.6 metre walk.
 	SpeedCmPerSecond = ScaledRangeCm() / Params.Duration;
 	LastSearchedFrom = Start;
+
+	// "NOTHING CAN TOUCH YOU WHILE YOU DRIFT", FOR THE WHOLE WALK. Issue #2885, the Death draft's N18, slice DS5: the
+	// Staff's Wraithwalk. The flicker's own call (`ActivateAbility`), for the walk's `Duration`, the time the stop timer
+	// below ends it at: until 2026-11-24 only a flicker read `Untargetable=1`, and a walked charge stating it was
+	// touchable throughout. A walk cut short keeps what is left of it, as a flicker cut short does: the tag runs out by
+	// its own time and is not taken off at the end.
+	if (Params.bUntargetable)
+	{
+		UCataclysmSkillEffects::ApplyUntargetable(Self, Self, Params.Duration);
+	}
 
 	// THE ENGINE MOVES THE CHARACTER, AND THIS SKILL USED TO DO IT ITSELF. Until
 	// 2026-09-02 `AdvanceOneStep` teleported the character 46.7cm at a time with
@@ -4254,6 +4696,10 @@ void UCataclysmMovementSkill::AdvanceOneStep()
 	// the end with nearly all of it.
 	HitScaledAsACharge(Caught, TArray<AActor*>(), WalkedCm);
 
+	// AND THE ROW'S NAMED EFFECTS ON WHAT THIS STEP'S BLOW LANDED ON, once each, since `Caught` holds only what no
+	// earlier step struck. Issue #2885, N22: the Spear's Pale Rider Cripples "everything in your path".
+	LayTheRowsEffectsOn(Caught);
+
 	// AND THE HIT A ROW GIVES EVERYTHING ON THE PATH, once each: `Caught` holds only what no earlier step struck.
 	// Ruled 2026-10-07.
 	HitWhatThePathCrossed(Caught);
@@ -4418,6 +4864,14 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		// as every maker's, so the reserve reaches `ReservedFervourOf`, what is spendable is cut to it at once, and
 		// everything that reads the reserve sees a machine as it sees an imp.
 		UCataclysmCommand::HoldReserve(Self, Machine, Reserve);
+
+		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO: every enemy within the row's `Radius` of it, each
+		// `Interval`, or each second when the row states none. Issue #2885, the Death Crossbow draft's C3, written for
+		// its Effigy; nothing a War row places states it.
+		if (Params.bTaunts)
+		{
+			Machine->BeginTaunting(Params.RadiusCm, Params.Interval);
+		}
 
 		// AND THE SABOTEUR'S FERVOUR FOR PLACING IT, "Placing a trap or a gadget generates Fervour". Slice C, 2026-11-24.
 		// A MACHINE THAT IS A TRAP earns the trap-placed rate and raises no event: `trap_placed` is the skill traps'
@@ -4671,6 +5125,12 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
 		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
+
+		// AND A REPLACEMENT OF A TAUNTING KIND TAUNTS AS THE ONE IT REPLACES DID. Issue #2885, C3; see `SummonOne`.
+		if (Params.bTaunts)
+		{
+			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
+		}
 	}
 	return Minion;
 }
@@ -4691,6 +5151,90 @@ void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
 	// is multiplied by is its skill's level at its summoning, and a level the skill reaches later reaches the next one.
 	Minion->SummoningSkillRow = UCataclysmSkillLevels::RowThatLevels(this);
 	Minion->LevelFactorOnCreatures = static_cast<float>(UCataclysmSkillLevels::LevelFactorOf(this));
+
+	// A PERMANENT RAISE STANDS UNTIL IT IS DESTROYED. Issue #2885, the Death draft's N1: Barrow Guard, Exhume and Bone
+	// Choir, "fight beside you until they are destroyed". `Spawn` refuses a lifetime of nought, so it was given the
+	// summon's own and loses it here; the engine's `SetLifeSpan(0)` is "never expires", as a skill gadget's is
+	// (`PlaceSkillGadget`). Its reserve is held while it stands and is what limits the army, as a thrall's is.
+	if (Params.bPermanent)
+	{
+		Minion->SetLifeSpan(0.0f);
+	}
+
+	// AND ITS BLOWS LAY THE ROW'S EFFECT, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N11: Bone Choir's mages,
+	// "every bolt they throw Cripple what they hit, 20% slower for 2 seconds". Each effect the skill itself would lay,
+	// for the seconds it would lay it, read now, once; the generator refuses `MinionsLayEffect` with no `Effect`.
+	if (Params.bMinionsLayEffect)
+	{
+		Minion->EffectTagsItsBlowsLay.Reset();
+		Minion->EffectSecondsItsBlowsLay.Reset();
+		for (const FGameplayTag& EffectTag : NamedEffectTags())
+		{
+			Minion->EffectTagsItsBlowsLay.Add(EffectTag);
+			Minion->EffectSecondsItsBlowsLay.Add(AppliedEffectSeconds(EffectTag));
+		}
+		Minion->EffectMagnitudeItsBlowsLay = Params.EffectMagnitude;
+		Minion->EffectDamageTypeItsBlowsLay = DamageTypeName();
+	}
+}
+
+bool UCataclysmSummonSkill::StrikesAsItRises() const
+{
+	return !Params.bPossess && DamagePercentOverride > 0.0f;
+}
+
+int32 UCataclysmSummonSkill::StrikeAsItRises()
+{
+	StruckAsItRose = 0;
+	AActor* Self = Avatar();
+	if (!Self || !StrikesAsItRises())
+	{
+		return 0;
+	}
+
+	TArray<AActor*> Struck;
+	if (Params.MaxTargets == 1)
+	{
+		// ONE ENEMY, WITHIN THE ROW'S RANGE OF THE CASTER, THE ONE NEAREST WHERE THE PLAYER IS POINTING: Subjugate's rule
+		// (`Possess`), which gives its reasons. Exhume, "hew one enemy within 4 meters".
+		TArray<AActor*> InReach = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Self->GetActorLocation(), ScaledRangeCm());
+		const FVector Aim = AimPoint();
+		InReach.Sort([&Aim](const AActor& A, const AActor& B)
+		{
+			return FVector::DistSquared(A.GetActorLocation(), Aim) < FVector::DistSquared(B.GetActorLocation(), Aim);
+		});
+		if (!InReach.IsEmpty())
+		{
+			Struck.Add(InReach[0]);
+			// "AT ITS FEET": what this row raises rises where the enemy it hewed stands.
+			RiftLocation = InReach[0]->GetActorLocation();
+		}
+	}
+	else
+	{
+		// A RING ROUND WHERE IT RISES: Barrow Guard's "every enemy within 5 meters", at the caster's feet; Bone Choir's
+		// at the point it was aimed.
+		Struck = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, RiftLocation, ScaledRadiusCm(), Params.MaxTargets);
+	}
+
+	if (Struck.IsEmpty())
+	{
+		return 0;
+	}
+
+	// THE BLOW, THEN THE CURSE ON WHAT IT LANDED ON, as `UCataclysmStrikeSkill::SwingOnce` orders them.
+	HitTargets(Struck);
+	for (AActor* Target : Struck)
+	{
+		if (BlowLandedOn(Target))
+		{
+			ApplyNamedEffectsTo(Target);
+		}
+	}
+	StruckAsItRose = Struck.Num();
+	return StruckAsItRose;
 }
 
 ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
@@ -5144,6 +5688,14 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934. Held through `HoldReserve`, which raises Bound
 		// Offering's spend (the Death trees' slice C3b).
 		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
+
+		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO, from the moment it rises and once a second after.
+		// Issue #2885, C3: Shallow Graves' husks, "every enemy within 4 meters of a husk turns on it and attacks it".
+		// The row's own radius, as the explosion radius above is.
+		if (Params.bTaunts)
+		{
+			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
+		}
 	}
 	return Minion;
 }
@@ -5189,6 +5741,11 @@ void UCataclysmSummonSkill::ActivateAbility(
 	RiftLocation = Params.RangeCm > 0.0f
 		? AimedPointWithin(ScaledRangeCm())
 		: Self->GetActorLocation();
+
+	// AND A ROW THAT STATES ITS OWN DAMAGE STRIKES AS IT RISES, BEFORE ANYTHING RISES. Issue #2885, the Death draft's
+	// N2: Barrow Guard's and Bone Choir's burst, Exhume's hewn enemy, at whose feet the Reaper then rises. Nothing for
+	// a row stating no damage of its own, which is every summon before slice DS2.
+	StrikeAsItRises();
 
 	UWorld* World = Self->GetWorld();
 
@@ -5277,6 +5834,7 @@ void UCataclysmSummonSkill::Collapse()
 	}
 
 	AActor* Self = Avatar();
+	BurstAtCollapse = 0;
 
 	// "When the rift closes it collapses, dealing 400% weapon damage in its
 	// radius and destroying the imps it spawned."
@@ -5288,6 +5846,36 @@ void UCataclysmSummonSkill::Collapse()
 		// THE COLLAPSE COMES AFTER THE CAST, so Chorus does not repeat it.
 		TGuardValue<bool> AfterTheCast(bHitsAfterTheCast, true);
 		HitTargets(Caught, Params.FinalHitPercent);
+	}
+
+	// AND WHAT THE RIFT MADE BURSTS, WHEN THE ROW SAYS SO, BEFORE WHAT IS LEFT IS DESTROYED. Issue #2885, the Death
+	// draft's N12, slice DS4: the Staff's Grave Mouth, "when the grave closes, every wisp still out bursts at once".
+	// Each living one explodes as `ACataclysmMinion::Explode` explodes, for its own blow in the row's radius, which
+	// destroys it and frees its reserve; a minion already dead bursts nothing and is destroyed below with the rest.
+	//
+	// GATHERED FIRST AND BURST AFTER, as `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` gathers: a burst strikes
+	// enemies, and a kill it makes may raise a minion into this skill's list (`SpawnOneAtAKill`), so the list is read
+	// once, before the first goes off, and each is asked again as it comes up.
+	if (Params.bCollapseBursts)
+	{
+		TArray<TWeakObjectPtr<ACataclysmMinion>> StillOut;
+		for (const TObjectPtr<ACataclysmMinion>& Made : Minions)
+		{
+			if (IsValid(Made) && !UCataclysmSkillEffects::IsDead(Made))
+			{
+				StillOut.Add(Made.Get());
+			}
+		}
+		for (const TWeakObjectPtr<ACataclysmMinion>& One : StillOut)
+		{
+			ACataclysmMinion* Bursting = One.Get();
+			if (IsValid(Bursting) && !UCataclysmSkillEffects::IsDead(Bursting))
+			{
+				Bursting->Explode();
+				++BurstAtCollapse;
+			}
+		}
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' closed and %d of what it raised burst."), *SkillName, BurstAtCollapse);
 	}
 
 	for (const TObjectPtr<ACataclysmMinion>& Minion : Minions)

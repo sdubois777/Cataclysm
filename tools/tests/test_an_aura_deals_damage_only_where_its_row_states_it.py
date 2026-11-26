@@ -82,6 +82,10 @@ AURAS: dict[str, tuple[str, float | None, str]] = {
     "Famine_All_Aura": (
         "Gnawing Want", None,
         "Withered Touch and an ally bonus; no damage named"),
+    "Death_Greatsword_Support": (
+        "Grave Muster", None,
+        "a Cripple each second and an ally bonus; no damage named. Approved by "
+        "the owner on 2026-11-24 (#2885)"),
     "Death_Dagger_Support": (
         "Grave Shroud", None,
         "Necrosis each second and two immunities; the Support slot's nought "

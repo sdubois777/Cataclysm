@@ -6,6 +6,8 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For whether a running buff holds Fervour from decay. Issue #2885, N8.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -818,6 +820,16 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 		return 0.0f;
 	}
 
+	// AND NOTHING DECAYS WHILE A BUFF THAT HOLDS FERVOUR RUNS. Issue #2885, the Death draft's N8, slice DS3: the Sword's
+	// Cold Blood, "while it lasts your Fervour does not decay" (`HoldsFervour=1`). Asked after the two cheap refusals
+	// above and before the search for bodies below: a walk over the character's own running abilities, which the
+	// search costs more than. The Death classes' decay after a kill (`KillDecayStep`) and the War classes' out of combat
+	// (`FCataclysmWarFervour::OutOfCombatDecayStep`) ask it too, since the Death skills merge.
+	if (UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Character))
+	{
+		return 0.0f;
+	}
+
 	// THE RADIUS IS A STAT AND TWO NODES ADD TO IT. The starting node grants 4
 	// and `Ravager_keystone_d_kC` No Ground Given grants 4 more, so a character
 	// holding both is asking about 8 -- which is what that keystone's sentence
@@ -1360,6 +1372,64 @@ float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySyste
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
+float UCataclysmFervour::GainStated(UAbilitySystemComponent* AbilitySystem, float Stated, bool bForAKill)
+{
+	if (!AbilitySystem || Stated <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	if (!AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// No class resource set means no pool to fill, which is every enemy and every minion.
+		return 0.0f;
+	}
+
+	// A KILL'S PAYMENT, MARKED FOR ITS WHOLE LENGTH, as `GainOnOwnKill` marks its own: opened before the rate is asked,
+	// so Any Fuel's condition refuses on it, and held through `RaisePool`, so Kindred Fires and Borrowed Time leave the
+	// hold to the kill. The Death skills merge, obligation 4 (the coordinating session's ruling on slice C4b1).
+	UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const bool bMarked = bForAKill && Paying;
+	if (bMarked)
+	{
+		Paying->BeginKillPayment();
+	}
+	ON_SCOPE_EXIT
+	{
+		if (bMarked)
+		{
+			Paying->EndKillPayment();
+		}
+	};
+
+	// SCALED FIRST BY HOW FAST THE CLASS RESOURCE GENERATES (ruled 2026-10-07), then THE WHOLE GAIN TO `RaisePool`, which
+	// clamps it at the full bar after reserves and gives what does not fit to Overflow, as every gain in this file does
+	// (the Death trees' slice C6c). Issue #2885, N6; through `RaisePool` since the Death skills merge, obligation 4.
+	return RaisePool(AbilitySystem, UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, Stated));
+}
+
+float UCataclysmFervour::SpendAll(UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// No class resource set means no pool to spend, which is every enemy and every minion.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float HeldBefore = AbilitySystem->GetNumericAttribute(Pool);
+	if (HeldBefore <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// TAKEN AS THE COST IS, through `ApplyModToAttribute`, so the pool's own clamp at nought is what it meets. Issue
+	// #2885, N13.
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -HeldBefore);
+	return FMath::Max(0.0f, HeldBefore - AbilitySystem->GetNumericAttribute(Pool));
+}
+
 float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* AbilitySystem,
 												float MetresAway)
 {
@@ -1468,7 +1538,8 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 		FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain);
 	if (PerKill <= 0.0f)
 	{
-		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE.
+		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE OR THE BULWARK'S (which pays 1 a kill since the final
+		// bundle, 2026-11-26).
 		return 0.0f;
 	}
 
@@ -1723,6 +1794,14 @@ float UCataclysmFervour::KillDecayStep(UAbilitySystemComponent* AbilitySystem, f
 	if (Before <= 0.0f || Cataclysm->KillDecayIsHeld())
 	{
 		// AN EMPTY POOL, OR THE GRACE AFTER THE LAST KILL NOT YET RUN OUT.
+		return 0.0f;
+	}
+
+	// AND NOTHING DECAYS WHILE A BUFF THAT HOLDS FERVOUR RUNS: the Sword's Cold Blood, "while it lasts your Fervour does
+	// not decay", as `DecayStep` asks it. The Death skills merge, obligation 3, ruled by the coordinating session on
+	// 2026-11-24. Each decay asks for itself and stops itself only, so a character under two decays is not held twice.
+	if (UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Cataclysm->GetAvatarActor()))
+	{
 		return 0.0f;
 	}
 

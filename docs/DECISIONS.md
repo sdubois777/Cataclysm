@@ -2,6 +2,103 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
+
+**Affects:**
+- The merge of the Death trees (at `dd04be38b`) into the Death weapon skills (`c4eed0b01`), commit `61c0e79c0`; development
+  (`6dcc5a0f0`) merged in, `01902d193`; the Bulwark's Fervour for a kill (`f37160884`) merged in, `24fe5920b`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `GainStated` hands the whole gain to `RaisePool`
+  and, for a kill, marks a kill's payment; `KillDecayStep` asks whether a running buff holds Fervour.
+  `CataclysmWarFervour.h` and `.cpp`: `OutOfCombatDecayStep` asks the same. `CataclysmSkillTemplates.cpp`: Requiem
+  records what it spends beyond its cost; a walked charge reads `PassesThroughEnemies`; the five `KillFervour`
+  payments mark a kill. `CataclysmKillFervour.cpp`, `CataclysmBuriedWeapon.cpp`, `CataclysmCurseSpread.cpp`: the same
+  marking. `CataclysmSkillTemplate.cpp`: a detonated minion is reported to its caster. `CataclysmSkillShape.h` and
+  `.cpp`: the `PassesThroughEnemies` key. `CataclysmAbilitySystemComponent.h`: `NoteMinionDied`'s comment.
+- `tools/generate_datatables.py` (the key, refused off a walked charge), `tools/reapply_death_skills_workbook.py`
+  (Wraithwalk's cell), `sim/cataclysm_sim/enemy_abilities.py` (the vocabulary copy).
+- Tests: six new in `CataclysmDeathSkillsTests.cpp`; `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`
+  and `tools/tests/test_death_skill_shape_keys.py`; the merged aura counts in `CataclysmAuraDamageTests.cpp` and
+  `tools/tests/test_an_aura_deals_damage_only_where_its_row_states_it.py`.
+
+### SAID FIRST
+
+- **WINDOW dfinal-w1 PASSED IN UNREAL ON `1671956de`.** It was the first compile of the Death weapon skills, slices DS1
+  to DS5, which were written without one; it compiled with no error. The whole Unreal suite: 6,036 performed, 6,036
+  succeeded. Proof D proved.
+- **THE PYTHON SUITE RUN BESIDE THE UNREAL SUITE HAD ONE FAILURE, A TIMING LIMIT.**
+  `tools/tests/test_a_failing_not_in_against_a_document_reports_at_once.py::test_a_real_failing_not_in_prints_the_offset_and_not_the_diff`
+  took 12.1 seconds against its 10-second limit. Neither it nor the root `conftest.py` changed on this branch; it
+  passed in the whole suite run on `24fe5920b` before the window, and its file passed alone after it (6 passed in 2.40
+  seconds). Read as a limit too tight while the Unreal suite loads the machine; that is not established. Accepted
+  with the failure recorded by the coordinating session; issue [#2939](https://github.com/sdubois777/Cataclysm/issues/2939).
+- **OBLIGATION 2 IS NOT DONE.** "Soul Fuel catches Cold Blood and Requiem" has nothing to attach to: Soul Fuel is built
+  on neither line. Issue [#2937](https://github.com/sdubois777/Cataclysm/issues/2937).
+- **TWO JUDGEMENTS, BOTH ACCEPTED BY THE COORDINATING SESSION ON 2026-11-26:** a detonation counts as a minion's death,
+  so Marrow Feast heals on it and Death Ward's and Bone Knit's clocks start, but no Fervour or energy shield is paid for
+  it; and Requiem's one press makes two records of Fervour spent, its cost's and the rest's.
+
+### The merge
+
+Thirty files both lines changed. Where the Death skills had moved a piece of the Death trees' code, the trees' change
+went with it: the flicker's arrival, moved into Danse Macabre's two-lap loop, keeps Hollow Step's pass through enemies
+and its strike along the line. A War machine and a summoned minion hold their reserve through `HoldReserve` (the trees)
+and taunt when the row says so (the skills). The aura count is fourteen: War's Blood and Iron and the Death Greatsword's
+Grave Muster. `docs/DECISIONS.md` was merged again with the histogram algorithm, which found one conflict where git's
+own found eight, and resolved with `tools/resolve_decisions_log.py`: 1,402 entries, the base's 1,275 and 21 and 106.
+The workbook is the Death trees' copy with `tools/reapply_death_skills_workbook.py` run on it (348 cells), so the CSVs
+differ from the trees' only in `WeaponSkills.csv` and `MinionTypes.csv`.
+
+Development's squash of the Death trees (`6dcc5a0f0`) shares no history with `dd04be38b`, so merging it reported nine
+conflicts on lines this branch had built on; each keeps this branch's. The automatic merge also wrote a second copy of
+Miser's Grip floor into the War decay, which would not compile; that file is kept as it was. The result differs from
+the commit before it only by the Death trees' decisions entry.
+
+The Bulwark's branch (`f37160884`, the War session's) conflicted only in the workbook and this log. The workbook is its
+copy with `tools/reapply_death_skills_workbook.py` run on it: 899 Passive Effects rows.
+
+### The obligations
+
+| # | What | Done | Unreal test |
+|---|---|---|---|
+| 1 | Requiem calls `NoteFervourSpent` | What it spends beyond its cost is recorded, with its tags, and counted for the War classes; `ApplyCost` records the cost. A 50 cost is whole tens, so "for every 10 spent" pays the same on the two records as on their sum | `RequiemRecordsEveryFervourItSpendsAndNotOnlyItsCost` |
+| 2 | Soul Fuel catches Cold Blood and Requiem | NOT DONE: Soul Fuel is not built. #2937 | none |
+| 3 | The kill decay asks `ARunningBuffHoldsFervour` | `KillDecayStep` asks it after the empty-pool and hold refusals | `ABuffThatHoldsFervourStopsTheKillDecayAndTheWarDecayAsWell` |
+| 4 | A skill's kill Fervour marks a kill's payment and goes through `RaisePool` | `GainStated(..., bForAKill)`: the marker opens before the rate is asked and closes on every way out; the whole scaled gain goes to `RaisePool`, so Overflow and the rise handler see it. The five `KillFervour` payments pass true; `HitFervour` does not | `ASkillRowsKillFervourIsPaidAsAKillAndItsHitFervourIsNot` |
+| 10 | War's decay asks it too, without holding one buff twice | `OutOfCombatDecayStep` asks it after the out-of-combat refusal. Each decay stops only itself | the same test as 3 |
+
+**WRAITHWALK, "straight through anything in the way".** A new row key, `PassesThroughEnemies=1`, read by a walked charge
+in `BeginAdvance` exactly as Hollow Step's `movement_passes_through_enemies` is: the hostile body bit ignored for the
+walk only, restored on every way out. A walked charge already strikes what it walks into, so the key adds no line hit;
+the generator refuses it on anything but a walked charge. A JUDGEMENT: "anything" is read as enemy bodies; walls and
+terrain still stop the walk. Test `WraithwalkDriftsStraightThroughEnemiesForItsWalkAndNoLonger`.
+
+**MARROW FEAST, "dies or is detonated".** `DetonateOwnMinionsWhere` reports each minion to its caster's
+`NoteMinionDied` before it explodes. Test `AMinionDetonatedIsToldToItsCasterAsAMinionDeathSoMarrowFeastHeals`.
+
+### Window dfinal-w1
+
+On `24fe5920b`, registered against window death3-w4's whole-suite engine log (5,959 completed) plus 77 tests added by
+name (76 in the new `Cataclysm.DeathSkills.` group, and the Bulwark's
+`Cataclysm.WarFervour.ABulwarkIsPaidOneFervourForAKillAtEveryRarityThroughTheRealRow`).
+
+| Step | Result |
+|---|---|
+| Build | Succeeded |
+| Editor step | `DT_MinionTypes`, `DT_PassiveEffects`, `DT_PassiveNodes`, `DT_WeaponSkills` and `datatable_asset_sources.json`, committed alone as `1671956de`, the tested head |
+| `Cataclysm.DeathSkills.` alone | 76 performed, 76 succeeded (registered 76) |
+| Whole Unreal suite | 6,036 performed, 6,036 succeeded, 0 failed (registered 6,036). 58 skipped part of what they check (registered 58). Test saves: 892 written and deleted, 0 left behind (registered 892) |
+| Python, beside the Unreal suite | 1 FAILED, a timing limit (12.1 s against 10 s; passes alone in 2.40 s), [#2939](https://github.com/sdubois777/Cataclysm/issues/2939), accepted with it recorded. 9,563 passed, 10 skipped; JUnit `tests=9574`, `failures=1`, `errors=0`, `skipped=10` |
+| Ruff | No problems |
+| Proof D, 6 breaks, `Cataclysm.DeathSkills.` | Proved: with the breaks in, 76 performed and the 5 predicted tests failed; restored, all passed |
+
+Proof D's breaks, each in one line: F1 records Requiem's rest as nought; F2 and F3 make the kill decay's and the War
+decay's running-buff check never true (both predicted by the one decay test, so the run cannot tell which it noticed);
+F4 inverts the kill-payment marker; F5 ignores Wraithwalk's key; F6 reports no detonated minion. Before the window,
+four Python guard proofs, run in an archive copy, all proved: a kill payment without the marker, `GainStated` without
+the marker, `GainStated` writing the pool itself, and `PassesThroughEnemies` accepted on any shape.
+
+---
+
 ## 2026-11-26 — The Death line meets the War line and runs in Unreal: the bundle 3 merge, its obligations, and four windows (death3-w1 to w4)
 
 **Affects:**
@@ -136,6 +233,107 @@ under a tenth of the target's maximum health (#917, `UCataclysmAilments::BlowCan
 own `apply_status` row on `hit_dealt` is: that event carries `Notice.DealtToHealth` into the same check. RULED BY THE
 COORDINATING SESSION, 2026-11-25: consistency, so no exemption. Cold Hands (`Necromancer_basic_spine_004`) and Grave Cold
 (`Necromancer_keystone_spine_002`) therefore rarely apply Necrosis from a weak minion against a strong enemy.
+
+---
+
+## 2026-11-26 — The Bulwark's starting node pays 1 Fervour for each enemy you kill, on the Death line's kill generator
+
+**Affects:**
+- `tools/reapply_war_bulwark_kill_fervour_workbook.py` (new) writes the Bulwark starting node's four rows into
+  `docs/All_Things_Cataclysm.xlsx`: slice C's three and `fervour_per_kill` 1. It takes the node over from
+  `tools/reapply_war_fervour_sources_workbook.py`, which now writes only the Berserker's and the Saboteur's.
+- `tools/apply_war_bulwark_kill_fervour_sentence_2026_11_26.py` (new) rewords the node's sentence in
+  `docs/Bulwark_Class_Tree_Final.json`. It takes the sentence over from `tools/apply_war_fervour_sources_2026_11_24.py`.
+- Generated: `game/Data/PassiveEffects.csv` (899 rows, one more) and `game/Data/PassiveNodes.csv` (the sentence).
+  `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- C++, comments only:
+  - `CataclysmFervour.cpp`, in `GainOnOwnKill`;
+  - `CataclysmPlayerCharacter.cpp`, at the kill's payment.
+
+  Both said a character without a Death starting node is paid nothing for a kill. The Bulwark's is paid too now.
+- Tests:
+  - Unreal:
+    - `CataclysmWarFervourTests.cpp`: one new test, and the Bulwark's kill row in `TheThreeWarStartingNodesGrantTheirFervourRates`.
+    - `CataclysmDataTableTests.cpp`: the pin, 899.
+  - Python:
+    - `tools/tests/test_war_bulwark_kill_fervour_scripts.py` (new, eleven).
+    - `test_war_fervour_sources_scripts.py`: six rows, not nine, and its refusal test on the Saboteur's sentence.
+    - `test_passive_effects_match_the_node_text.py`: 899.
+    - `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`: the Bulwark's sentence in
+      `EXPRESSED_ANOTHER_WAY`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the final bundle's window with the Death skills. That
+  window has to:
+  - compile `CataclysmWarFervourTests.cpp` and the two comment changes;
+  - rebuild `DT_PassiveEffects` and `DT_PassiveNodes`;
+  - run `Cataclysm.WarFervour.` (one test more) and `Cataclysm.Data.` (the 899 pin).
+- **NO GAME CODE CHANGES, so no C++ guard proof is needed.** `UCataclysmFervour::GainOnOwnKill` already pays any row
+  on `fervour_per_kill`, whatever the class.
+  - It asks the stat against the slain creature, scales the gain by `class_resource_generation`, and writes it through
+    `UCataclysmFervour::RaisePool`. That is how the Death line pays (the bundle 3 merge, obligation 4).
+  - The new Unreal test calls that same function with the node's real rows.
+- **THE RATE IS A JUDGEMENT AND A PLAY-TEST POINT.** The node's sentence has always said killing enemies generates
+  Fervour, and it stated no number.
+  - 1 a kill is the rate of every gain on a War starting node: slice C's judgement of 2026-11-24, under the owner's
+    delegation of unstated numbers.
+  - It is the same at every rarity, because the sentence names none. The Soul Collector's starting node is the
+    contrast: its sentence states 1, 3, 5, 8 and 15 by rarity.
+- **THE SENTENCE IS NEW WORDING**, written so that the row's value appears in the node's own words, as
+  `test_passive_effects_match_the_node_text.py` requires:
+  - before: "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit you take and 1 for each block.
+    While you have this, your Fervour decays at 5 per second after 3 seconds out of combat."
+  - after: "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit you take, 1 for each block and 1
+    for each enemy you kill. While you have this, your Fervour decays at 5 per second after 3 seconds out of combat."
+- **THE BULWARK'S KILL DOES NOT DECAY.** The Death classes' kill decay (`fervour_kill_decay_per_second`) is a separate
+  stat on their own nodes, and the Bulwark holds none. Its Fervour decays only by slice C's rule, 5 a second after 3
+  seconds out of combat.
+- **BLOOD AND SWEAT IS NOT BUILT HERE.** That is the Bulwark keystone that says "Killing an enemy generates 1 Fervour,
+  up to 5 per second" (`Bulwark_keystone_trunk_002`). It still has no row, because "up to 5 per second" needs a cap the
+  kill generator does not have. Not in this task's scope.
+
+- **THE FIRST WHOLE PYTHON SUITE FAILED ON THREE TESTS THIS CHANGE MOVED**, beside the expected stale-asset test.
+  The three were in files I had not run. Both causes are corrected in the same change:
+  - `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` reads "each enemy you kill" as the Soul
+    Collector's rarity condition. The Bulwark's sentence now has an entry in `EXPRESSED_ANOTHER_WAY`, beside Gleaning's
+    for the same words: every kill, not a rarity.
+  - Two tests in `test_reapply_death_trees_workbook.py` expect every Death row to sit after every War row in
+    Passive Effects. The kill row was appended at the end of the sheet, after the Death rows. The Death rows were then
+    taken out and written back by `tools/reapply_death_trees_workbook.py`, the same steps those tests perform, which put
+    the kill row at sheet row 595, before them, where Slippery's row sits. A comparison of the workbook before and
+    after found all 28 sheets identical, the kill row's position aside.
+
+### WHAT WAS RULED
+
+- Slice C's entry (2026-11-24) left the kill unbuilt: "The Bulwark's kill row is to be a `fervour_per_kill` row on its
+  starting node, written once that branch has landed."
+- The coordinating session, 2026-11-26, set this task: the Bulwark kill Fervour node's row on `fervour_per_kill`,
+  checked to pay through `RaisePool` as the Death line does. It is built on `feat/death-trees-c6b` at `dd04be38b`, and
+  is to be merged into the final bundle with the Death skills.
+
+### WHY THE NODE IS TAKEN OVER RATHER THAN SHARED
+
+Slice C's scripts refuse a node or a sentence that holds anything other than what they wrote, so that nobody's later
+edit is overwritten silently. Adding a fourth row, or a new sentence, would have made them refuse. They no longer list
+the Bulwark's starting node. The new scripts hold all four rows and the sentence, and pass the three slice C rows over
+when a workbook already has them. That is the case a merge meets, because the War scripts are re-run in the order they
+were added. This is how the Saboteur's Calculated and its trap-timing nodes were taken over on 2026-11-25.
+
+### TESTS
+
+| Test | What it holds | Control |
+|---|---|---|
+| `Cataclysm.WarFervour.ABulwarkIsPaidOneFervourForAKillAtEveryRarityThroughTheRealRow` (Unreal, predicted, not run) | the real rows pay 1 for a common creature and 1 for a Boss, 10 to 11 in the pool | a Berserker's starting node is paid nothing for the same kill |
+| `Cataclysm.WarFervour.TheThreeWarStartingNodesGrantTheirFervourRates` (Unreal, one entry more) | the table holds the Bulwark's `fervour_per_kill` 1 | the other eight rates as before |
+| `test_war_bulwark_kill_fervour_scripts.py` (eleven) | the sentence and the four rows are written, idempotently; a workbook holding slice C's three gets only the kill row | a workbook with none gets four; a node or sentence somebody changed is refused |
+
+### PYTHON GUARD PROOF
+
+`tools/prove_guard.py`, breaking the generated row `Bulwark_basic_trunk_000#4` from `1.0` to `2.0` in
+`game/Data/PassiveEffects.csv`, command `python -m pytest tools/tests/test_war_bulwark_kill_fervour_scripts.py`:
+"PROVED: 1 failed, 10 passed in 8.05s | restored: 11 passed in 8.08s". `named_failures`:
+`tools/tests/test_war_bulwark_kill_fervour_scripts.py::test_the_generated_csv_holds_the_four_rows`.
 
 ---
 
@@ -17769,6 +17967,3470 @@ C5. No second whole suite." **The whole Unreal suite did not run at `fb69687b8`.
 The Python runs in this worktree skip 10 tests since the builds, against 9 before them: the tenth is
 `test_run_editor_python.py`'s `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, which says "this
 checkout has its modules built, so nothing is missing".
+
+---
+
+## 2026-11-25 — The Death weapon skills, slice DS5: five more rows working; a walked charge nobody can touch, Fervour for each enemy a flying shot hits to a cap a cast, a wound that bursts as its bearer dies, nails that raise the chance to critically strike, and a buff whose holder's critical strikes strike again (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS4 (`ce993f239`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N18, N19, N14, `29e2cf809`), change B (C1, C2,
+  `476b5a386`) and change C (the rows, the data and the row tests, `2d0fae880`). Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **EVERY PIECE THE BRIEF NAMED IS BUILT, AND EVERY ROW IT NAMED IS WHOLE.** Gravetouch (N14), Wraithwalk (N18), Soul
+  Lance (N19), Coffin Nail (C1) and Carrion Crows (C2): 44 of the 45 Death rows work. **THE EFFIGY STILL WAITS**, on the
+  Soul Collector's Siphon keystone (C4) and on a Death deployable's reserve, which the brief said not to build. None of
+  the five pieces turned out large: N14, which slice DS2 judged large, became one hook in `MarkDead` and a small class,
+  once the wound was read off the running bleed rather than kept as a mark beside it (below).
+- **NOT BUILT, WORTH A LOOK: WRAITHWALK'S "STRAIGHT THROUGH ANYTHING IN THE WAY".** N18 makes the walker untargetable for
+  the walk. Whether its body passes through enemy bodies is the walked charge's existing movement (a root motion source,
+  `UCataclysmMovementSkill::BeginAdvance`), which this slice did not change and no test here measures; Pale Rider ("nothing
+  turns you aside") stands on the same behaviour since slice DS3. If the owner's play shows the drift stopped by a body,
+  that is a separate change to the walked charge.
+- **JUDGEMENTS, each worth a look:**
+  - *N14, the wound is the running ailment itself, not a mark beside it.* Slice DS2 sized N14 as a mark the strike leaves,
+    a component as `UCataclysmCurseSpread` is. The design gives every ailment one stack on a target, so the bleed the
+    strike laid is either the one still running -- perhaps refreshed by a weaker or equal application, which keeps it
+    running -- or gone: replaced by a stronger one of another source's, cleansed, or run out. The running effect already
+    names the skill that laid it (its context's ability) and its instigator, so "while the wound still bleeds" is read off
+    it (`UCataclysmWoundBurst::WoundThatBursts`). A bleed the caster laid with another skill (Severing Rush) that replaced
+    it names that skill, which states no burst. The one-stack rule `UCataclysmKillFervour::CarriesACurseLaidBy` reads for
+    a curse, read for an ailment. It is generic: the wound is whatever `Ailment` the row names.
+  - *N14, what the burst is.* The dying creature's own maximum health, read as it dies, times the row's share, sent as
+    it stands -- no increase of the caster's raises it and no skill level scales it, as Shared Ruin's death blast and the
+    overkill explosion send theirs; the struck creatures' defences meet it. In the caster's name, at every enemy of the
+    caster's within the row's own 4 m of where it fell, NOT WIDENED BY AREA OF EFFECT, as no death blast in the game is.
+    The consequence of a death (`bIsConsequenceOfADeath`), as the overkill explosion and Contagion's blast are: area,
+    never a critical strike, no weapon sub-type, no leech, not retaliated, and no on-hit row of the caster's fires.
+  - *N14, whether the burst credits Gravetouch* (slice DS2's "ruling-sized question"): **it names the skill**
+    (`FCataclysmHitDelivery::Skill`), so a death it causes is Gravetouch's kill in the hit and death notices -- "it bursts"
+    is the second half of Gravetouch's own sentence -- **and it credits no skill experience row of its own**, as the
+    overkill explosion and Contagion's blast credit none: the wound's ticks already earned the skill its share of the
+    creature they bled. A burst's kill can burst in turn when the creature it kills carries a wound of its own; that death
+    comes back through `MarkDead`, which refuses a death already being marked (issue #2871). The burst is a sixth hook in
+    `MarkDead`, after the death is recorded as being marked and before the dead tag (`test_a_wound_bursts_inside_the_record_
+    and_before_the_tag`).
+  - *N18, the walk's own seconds.* Untargetable for the walk's `Duration`, the time its stop timer ends it at -- the
+    flicker's call, and like the flicker's not lengthened by `skill_duration`. A walk cut short keeps what is left of it,
+    as a flicker cut short does. The generator now refuses `Untargetable=1` on anything but a flicker and a walked charge,
+    which would make a caster untouchable for no time at all (the two flickers that stated it, Everywhere at Once and
+    Danse Macabre, still pass).
+  - *N19, the cap counts the row's own figures*: what each contact offered, before the generation rate and whether a full
+    pool took it, so "at most 4 a throw" is four enemies' worth however the pool stood. Each contact is its own landing, as
+    `fervour_per_enemy_hit`'s are (ruled 2026-09-16), so a return pass would pay again under the same cap. Counted across
+    every projectile one use fires -- the draft's own judgement, "Soul Lance's cap stays 4 a cast however many lances
+    fly" -- through a record each use makes fresh and hands to every shot (`ACataclysmProjectile::HitFervourStatedInItsUse`),
+    a rack's axes included. Paid at a contact that landed and carried damage, the burn's test; a beam, whose landing is no
+    flying contact, is refused by the generator.
+  - *C1, every blow of the nailer's and no one else's*, added to whichever chance the blow has -- its skill's stated chance
+    or the character's own -- before the critical strike ceiling, the owner's "flat critical strike chance added to the
+    base"; so Mercy Stroke's 10 becomes 30 against four nails. The bolt that drives a nail was settled before it and gains
+    nothing from it. **One nailer's nails at a time**, the single-stack rule: another character's nail starts the count
+    again for that one, which nothing in a one-player game does. The nails lapse when the row's `EffectDuration` has
+    passed since the last one (not lengthened by `skill_duration`), every new nail renewing them all; the ceiling caps
+    how many count, so a fifth renews the four and adds nothing.
+  - *C2, told once the critical blow is wholly resolved.* The hit notice is heard before the struck creature's health is
+    written (`UCataclysmVitalAttributeSet`), so it cannot say whether the strike killed. The buffs are told from
+    `UCataclysmSkillEffects::ApplyHit` after `ApplyDirectDamage` returns -- the place every skill blow, basic attack,
+    flying shot's contact and path hit of a player is dealt -- and only for a strike the holder landed: not evaded, not
+    refused as immune, not a tick, not a share struck at an ally, and not a blow that is no strike of its (the consequence
+    of a death, a blow returned for one taken, the explosion at an ailment's end, a share of an ally's blow, or a worn row's
+    answer to an event, which would let a critical strike call a crow through a row's answer and that answer another). A
+    skill gadget's or trap's cast takes the machine's path and calls none, as a minion's blow is the minion's.
+  - *C2, where the crow goes when the strike killed*: the nearest enemy of the holder's within the row's own 10 m **of where
+    the struck enemy stood** -- the crow was diving there -- not of the holder; not widened by area of effect, as a
+    cash-in's and a taunt's reach are the row's own. None when nothing is there.
+  - *C2, the quarter second* is claimed before the crow strikes, so nothing the crow sets off finds the buff free in the
+    same instant; a critical strike inside it calls nothing and is not kept for later, as a row on cooldown keeps nothing.
+    `CrowCooldownSeconds` is held to the generator's `DEFAULT_TRIGGER_COOLDOWN` by a Python check, as the Warhound's is.
+    A crow's own critical strike calls no other twice over: it names the buff, and it lands while the buff is striking.
+  - *C2, what a crow is*: an ordinary hit of the holder's, `ApplyHit` at the row's Damage Percent with the row's tags and
+    its own critical strike chance (the holder's, the row stating none), which it may roll -- as a row's path hit is dealt.
+    It raises the hit notice every on-hit row hears; it is no skill swing through `HitTargets`, so it pays no
+    `fervour_per_enemy_hit` and tells no running buff it landed. At once, with nothing drawn in flight. The generator
+    refuses `StrikesOnCritical` on a row stating no Damage Percent, whose crows would take its slot's figure (nought for a
+    Support).
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming `MinionTypes.csv`, `SkillSlots.csv` and
+  `WeaponSkills.csv`, and every Unreal test reading the tables reads stale ones: the five row tests and the two counting
+  tests fail at their set-up lines, which say so. The six mechanism tests write their own cells, so they do not wait on
+  it.
+
+**Affects:** `tools/generate_datatables.py` (`ON_DEATHS`, `SHAPE_PARAMS`, `check_a_bursting_wound_a_paid_hit_and_an_escape`,
+`check_a_coffin_nail`, `check_a_buff_striking_on_a_critical_states_its_damage`, `flies`) and its copy in
+`sim/cataclysm_sim/enemy_abilities.py`; `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp`
+(`BurstPercentOfMaximumHealth`, `HitFervour`, `HitFervourPerCast`, `CritChanceAgainst`, `CritChanceAgainstMax`,
+`bStrikesOnCritical`); `CataclysmWoundBurst.h` and `.cpp` (new); `CataclysmCoffinNails.h` and `.cpp` (new);
+`CataclysmSkillEffects.h` and `.cpp` (`MarkDead`'s sixth hook, `ApplyHit` telling a critical strike);
+`CataclysmVitalAttributeSet.cpp` (the nails' chance); `CataclysmProjectile.h` and `.cpp` (`HitFervourStatedInItsUse`, the
+payment at a contact); `CataclysmSkillTemplate.h` and `.cpp` (`PayHitFervourFor`, `NoteCriticalStrikeLanded`, the nail in
+`LayWhatALandedShotCarries`); `CataclysmSkillTemplates.h` and `.cpp` (the walk's untargetability, the projectile skill's
+`HitFervourOfThisUse`, the self buff's `CriticalStrikeLanded`, `CrowCooldownSeconds`, `CrowsSent`); `CataclysmUndesignedSkill.h`
+(the counts); `tools/reapply_death_skills_workbook.py` and the workbook it edits; `game/Data/WeaponSkills.csv`; the Unreal
+tests in `CataclysmDeathSkillsTests.cpp`; and the Python checks named below.
+
+### The instruction, verbatim
+
+- The coordinating session's brief for slice DS5, 2026-11-24: "Build N14 (Gravetouch's mark; DS2 judged it large: a mark
+  component like the curse spread's, a death hook in MarkDead, which bleed counts as "the wound" under the one-stack rule,
+  whether the burst credits the skill; decide each and label it), N18 (Wraithwalk), N19 (Soul Lance: +1 Fervour per enemy
+  hit, at most 4 a cast), C1 (Coffin Nail) and C2 (Carrion Crows), and give each completed row its full Shape. Do NOT build
+  C4 or the Effigy (they wait on the Soul Collector's Siphon keystone and on deployable reserves)." Its summary of the
+  approved Crossbow rows: "C1 Coffin Nail: +5 flat critical strike chance per nail against that enemy, up to 4 nails, until
+  4 s pass without a new one; C2 Carrion Crows: for 8 s each critical strike sends a crow at the enemy struck for 40% weapon
+  damage, at most four a second, a crow's own crit calls no other; the owner approved both with the recommendations: None
+  Spared's crits certain, Coffin Nail's +5 is flat chance added to the base". No owner ruling is new to this slice; the
+  rows are the 45 the owner approved on 2026-11-24, quoted in DS1's entry below.
+
+### The rows
+
+**Five more written whole**, 44 of the 45 in all, each exactly as approved:
+
+| Row | Needs |
+| :-- | :-- |
+| Gravetouch (Fist Heavy) | N14 (N16 built in slice DS2) |
+| Wraithwalk (Staff Movement) | N18 (N22 built in slice DS1) |
+| Soul Lance (Spear Special) | N19 |
+| Coffin Nail (Crossbow Heavy) | C1 |
+| Carrion Crows (Crossbow Support) | C2 |
+
+**1 still waits, with no shape:** the Effigy (Crossbow Special), on C4 (the Siphon keystone) and a Death deployable's
+reserve. `tools/reapply_death_skills_workbook.py` holds its shape.
+
+**The workbook cells**, 10: on Weapon Skills, the Shape and Shape Params of the five rows. No Minion Types row is new. Run
+a second time the script writes nothing ("0 cells to write; nothing written"), and `generate_datatables.py --check` says
+"All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N18, `Untargetable=1` on a walked charge.** `UCataclysmMovementSkill::BeginAdvance` lays the untargetable tag on the
+  walker for the walk's `Duration` (`UCataclysmSkillEffects::ApplyUntargetable`, the flicker's call). No key: `Untargetable`
+  was a rider every shape may state, read only by the flicker. The generator refuses it on any other move or shape.
+- **N19, `HitFervour=N; HitFervourPerCast=M` on a flying Projectile.** `ACataclysmProjectile::HitOne`, at a contact that
+  landed and carried damage, calls `UCataclysmSkillTemplate::PayHitFervourFor`, which pays the row's figure through
+  `UCataclysmFervour::GainStated` (N6's write) to what is left under the cap, counted in the record the use shares
+  (`UCataclysmProjectileSkill::HitFervourOfThisUse`). The generator refuses nought or less, a beam, a cap with nothing to
+  cap and a cap of nought.
+- **N14, `OnDeath=Burst; BurstPercentOfMaximumHealth=N; OnDeathRange=M` beside a Strike's `Ailment`.**
+  `UCataclysmWoundBurst::BurstFromDying`, a sixth hook in `UCataclysmSkillEffects::MarkDead`: a creature dying while a
+  running effect grants the ailment a skill stating the burst laid, in that skill's caster's name, bursts at every enemy
+  of the caster's within M metres for N% of its maximum health. The generator refuses a burst with no `Ailment`, no
+  share or no reach, and a share without the burst.
+
+**Change B.**
+
+- **C1, `CritChanceAgainst=N; CritChanceAgainstMax=M; EffectDuration=S` on a flying Projectile.**
+  `UCataclysmSkillTemplate::LayWhatALandedShotCarries` drives a nail (`UCataclysmCoffinNails::DriveInto`, a component on
+  the creature, one per creature, refreshed); `UCataclysmVitalAttributeSet` adds `UCataclysmCoffinNails::CritChanceAgainst`
+  -- the nails' points, to M -- to the blow's chance before the ceiling. The generator refuses nought or less a nail, a
+  ceiling below one nail or with no nails, no `EffectDuration`, and a beam.
+- **C2, `StrikesOnCritical=1` on a SelfBuff.** `UCataclysmSkillEffects::ApplyHit` tells
+  `UCataclysmSkillTemplate::NoteCriticalStrikeLanded` of a critical strike its striker landed, once it is resolved; each
+  running buff stating the key answers in `UCataclysmSelfBuffSkill::CriticalStrikeLanded`. The generator refuses the key
+  on a row stating no Damage Percent.
+
+### Research
+
+No formula is new. Each shape is the approved drafts', with their sources -- Diablo IV's Heartseeker upgrade, "Critical
+Strike Chance against them is increased by 5% for 4 seconds", up to 20% (Coffin Nail, taken whole); Path of Exile's Cast On
+Critical Strike, "Trigger a Supported Spell when you Crit an Enemy", and Diablo III's Companion raven (Carrion Crows);
+Diablo III's Exploding Palm, unverified (Gravetouch); the Ravager's `fervour_per_enemy_hit` (Soul Lance) -- which were not
+fetched again for this slice. Each piece calls this game's own precedent rather than a copy: the flicker's
+`ApplyUntargetable` (N18), N6's `GainStated` and the projectile contact's Fervour (N19), the curse spread's place in
+`MarkDead` and the overkill explosion's delivery (N14), the curse spread's component (C1), and the engine's quarter-second
+trigger rate (C2). What the precedents do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Eleven new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **71 performed, 71 succeeded** (DS1's 14, DS2's
+14, DS3's 18, DS4's 14 and these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `AWalkedChargeStatingUntargetableCannotBeTouchedForItsWalkAndOneStatingNoneCan` | A, N18 | untargetable 1 s, a blow lands nothing; control: no key, the blow lands |
+| `AShotPayingFervourForEachEnemyItHitsPaysOneEachToItsCapACastAndAgainTheNextCast` | A, N19 | 5 struck, 4 paid; a second cast 4 more; controls: 2 struck pay 2, no key pays nothing |
+| `ACreatureDyingWhileItsWoundRunsBurstsForATenthOfItsMaximumHealthAndNoOtherDeathDoes` | A, N14 | 3 m off takes the reference tenth, named the skill's; 5 m off nothing; controls: a bleed no skill laid, a wound ended |
+| `AShotDrivingNailsRaisesItsFirersCriticalStrikeChanceAgainstWhatItNailsToItsCeilingUntilTheyLapse` | B, C1 | 1 nail 5, 4 nails 20; roll 18 crits; controls: another's blow, a clean creature; 3.9 s held, 4.1 s lapsed |
+| `ABuffStrikingOnCriticalsStrikesWhatEachCriticalStrikeLandsOnForItsDamageAtMostFourASecond` | B, C2 | control: none before the buff; one crow worth a 40% blow; none in the same instant, one 0.3 s later; none cancelled |
+| `ACriticalStrikeThatKillsSendsItsStrikeAtTheNearestWithinTheRadiusAndAStrikesOwnCriticalCallsNoOther` | B, C2 | a kill sends it 4 m on; control: 11 m off nothing; a critting crow calls no second |
+| `GravetouchBleedsOneEnemyAndItsDeathWhileItBleedsBurstsForATenthOfItsMaximumHealthWithinFourMetres` | C, row | one struck, bleeding; burst a tenth at 3 m and beside; control: 5 m |
+| `WraithwalkDriftsUntouchableForItsSecondAndCripplesWhatItPassesThroughByThirty` | C, row | untargetable 1 s; passed Crippled 30 for 3 s; control: 3 m off the line |
+| `SoulLancePiercesItsFourteenMetreLineAndPaysOneFervourAnEnemyToFourAThrow` | C, row | 5 struck, 4 paid; control: 17 m off untouched |
+| `CoffinNailNailsTheFirstEnemyInItsLineFivePointsANailToTwentyHeldFourSeconds` | C, row | 1 nail 5; control: the one behind neither struck nor nailed; 4 nails 20; roll 18 crits; 4.1 s lapsed |
+| `CarrionCrowsSendsACrowForFortyPercentAtWhatEachCriticalStrikeLandsOnForEightSeconds` | C, row | 8 s; control: none before; one crow worth a 40% blow of the row's tags |
+
+**Two Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 44 rows (from 39) and the five rows' DS5 keys (Wraithwalk's walk and untargetability, Gravetouch's burst, Soul
+Lance's payment and cap, Coffin Nail's nails, Carrion Crows' key, 8 s and cooldown of 10);
+`Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` reads 1 waiting (from 6) and 50 of 51
+shaped (from 45). No DataTable pin moves: no row is added to either table. **The whole suite is registered as 5483**:
+slice DS4's registered 5472 and these 11; a prediction, the run is the figure.
+
+**Five C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`, after the editor step.
+Change A has three, change B two; change C is data and has none:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N18 | `CataclysmSkillTemplates.cpp` | `UCataclysmSkillEffects::ApplyUntargetable(Self, Self, Params.Duration);` becomes `UCataclysmSkillEffects::ApplyUntargetable(Self, Self, 0.0f * Params.Duration);` | `AWalkedChargeStatingUntargetable...`, `WraithwalkDrifts...` |
+| G2, N19 | `CataclysmSkillTemplate.cpp` | `return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), Offered);` becomes `return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), 0.0f * Offered);` | `AShotPayingFervourForEachEnemy...`, `SoulLancePierces...` |
+| G3, N14 | `CataclysmWoundBurst.cpp` | `if (!Skill)` (in `BurstFromDying`; `WoundThatBursts` reads `if (!Skill \|\| ...` and is untouched) becomes `if (true \|\| !Skill)` | `ACreatureDyingWhileItsWoundRuns...`, `GravetouchBleeds...` |
+| G4, C1 | `CataclysmVitalAttributeSet.cpp` | `(Stated >= 0.0f ? Stated : OwnCritChance) + FromNails, Ceiling);` becomes `(Stated >= 0.0f ? Stated : OwnCritChance) + 0.0f * FromNails, Ceiling);` | `AShotDrivingNailsRaises...`, `CoffinNailNails...` (each at its critical strike line; the nail counts still pass) |
+| G5, C2 | `CataclysmSkillEffects.cpp` | `if (Landed->bWasCritical && !Landed->bEvaded && ...` becomes `if (false && Landed->bWasCritical && !Landed->bEvaded && ...` | `ABuffStrikingOnCriticals...`, `ACriticalStrikeThatKills...`, `CarrionCrowsSends...` |
+
+Each break line was confirmed to appear exactly once in its file.
+
+**Python checks moved with the rows:** the script's built rows 39 to 44 and the Effigy alone waiting
+(`test_reapply_death_skills_workbook.py`, its waiting-row check renamed for slice DS5 as DS4 renamed DS3's); the undesigned
+count 60 of 198 to 55 (`CataclysmUndesignedSkill.h`). **New:** in `test_death_skill_shape_keys.py`, each new key accepted
+on its row's cell and refused where it would do nothing, the crows' quarter second held to `DEFAULT_TRIGGER_COOLDOWN`;
+in `test_a_death_is_marked_once_from_inside_its_own_hooks.py`, the burst's place inside `MarkDead`.
+
+### What was run, on `2d0fae880`
+
+- **Full Python suite: "1 failed, 8448 passed, 9 skipped in 366.31s"; JUnit 8458 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` and `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the changed and new C++ files: "13 files read, 0 with complaints" (change A), "11 files
+  read, 0 with complaints" (change B), "2 files read, 0 with complaints" (change C). The engine-name, anonymous-helper,
+  header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0 cells to write; nothing written";
+  `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- **Eighteen Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `2d0fae880`**, each
+  failing with the break in and passing restored. Every break makes one condition `False and ...` (or `if False and`),
+  but P16, P17 and P18:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N14 | the no-`Ailment` refusal | its `test_a_wound_burst_that_could_burst_nothing_is_refused` case |
+| P2, N14 | the no-share refusal | its two `test_a_wound_burst_that_could_burst_nothing_is_refused` cases |
+| P3, N14 | the no-reach refusal | its `test_a_wound_burst_that_could_burst_nothing_is_refused` case |
+| P4, N14 | the share-without-the-burst refusal | `test_a_burst_share_without_the_burst_is_refused` |
+| P5, N19 | the nought-or-less refusal | its two `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` cases |
+| P6, N19 | the beam refusal | its `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` case |
+| P7, N19 | the cap-with-nothing-to-cap refusal | its `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` case |
+| P8, N19 | the cap-of-nought refusal | its `test_fervour_for_each_enemy_hit_that_would_pay_nothing_is_refused` case |
+| P9, N18 | `if not lasts:` | the five `test_untargetable_on_a_move_or_shape_that_does_not_last_is_refused` |
+| P10, C1 | the nought-or-less refusal | its two `test_nails_that_would_raise_nothing_are_refused` cases |
+| P11, C1 | the ceiling-below-a-nail refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P12, C1 | the no-`EffectDuration` refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P13, C1 | the beam refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P14, C1 | the ceiling-with-no-nails refusal | its `test_nails_that_would_raise_nothing_are_refused` case |
+| P15, C2 | the no-Damage-Percent refusal | `test_a_buff_striking_on_a_critical_that_states_no_damage_is_refused` |
+| P16, the rows | `BUILT` without N14 in the script | five checks of `test_reapply_death_skills_workbook.py`, the committed workbook and table among them |
+| P17, N14's place | `MarkDead`'s burst call commented out | `test_a_wound_bursts_inside_the_record_and_before_the_tag` |
+| P18, C2's rate | `CrowCooldownSeconds = 0.25f` made `0.5f` | `test_the_crows_quarter_second_is_the_generators_trigger_cooldown` |
+
+---
+
+## 2026-11-24 — The Death weapon skills, slice DS4: eight more rows working; a strike's refund on a kill, spending every Fervour held, cashing in its caster's ailments, a rift's minions bursting as it closes, a buff laid by every blow, and a buff lengthening melee reach (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS3 (`3f7bc432e`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N9, N13, N15, `7c66aa287`), change B (N12, N17,
+  N21, `96e47c162`) and change C (the rows, the data and the row tests, `299592390`). Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **EVERY PIECE THE BRIEF NAMED IS BUILT, AND EVERY ROW IT NAMED IS WHOLE: none was left waiting.** Mercy Stroke (N9),
+  Grave Mouth (N12), Soul Snare (N5 and N12), Requiem (N13), Quietus (N15), Hemlock and Death Grip (N17), Grim Reach
+  (N17 and N21). Each piece was small: N9, N15 and N21 reuse a call that already existed (Emberhaul's refund, the
+  enchantment row's remaining-damage burst, Overreach's flat reach), N12 is a branch in the rift's closing, N13 one spend
+  and one scaling source, N17 three existing riders called from Groundbreaker's hook.
+- **SOUL SNARE'S WISP IS GRAVE MOUTH'S, AS SLICE DS3 FOUND IT HAD TO BE.** With Grave Mouth shaped and the `Wisp` in the
+  Minion Types sheet, a snared creature dying rises as a wisp lasting Grave Mouth's 4 seconds and reserving its 2 -- the
+  draft's own judgement of 4 seconds ("that is Grave Mouth's own duration ... a snared enemy's wisp has no grave to
+  close") is what the engine reads, not a figure of its own.
+- **JUDGEMENTS, each worth a look:**
+  - *N9, Mercy Stroke's refund,* is asked of the targets the swing struck, dead or at no health (Emberhaul's test), and
+    LAST, after the swing's curse, cash-in, detonation and order, so a kill any of them deals in the same instant
+    counts as the stroke's.
+  - *N13, Requiem's spend,* happens at the press, once the use is paid for, and what is spent is the cost and every
+    point left beside it -- "every Fervour you hold, the Ultimate's 50 among it" -- read by the blow however long its
+    swing waits. A free start that pays nothing (Follow Through) spends nothing and scales by nought; one that pays its
+    cost (ruled 2026-10-06) spends all. The rest of the pool raises no second `resource_consumed` event: the cost
+    already raised one, "once per payment whatever its size" (issue #1833), and this is the same payment.
+  - *N15, Quietus's cash-in,* is centred on where the use is cast (the caster), reaches the row's own 10 m, not widened
+    by area of effect (as C3's taunt radius is the row's own), and goes off with every swing, whether or not its blow
+    landed: the sentence ties it to "the same instant", not to the hit. After the blow, the sentence's order. The
+    caster's own Poison, Bleed and Necrosis only: not a burn, a disease or a splinter (the sentence names three), not a
+    minion's (a minion's ailment is the minion's, ruled 2026-09-17) and not another's.
+  - *N12, Grave Mouth's closing,* bursts the living minions in the rift's own list, gathered before the first goes off,
+    and destroys the rest as before. A rift cut short does not collapse (ruled 2026-10-08), so its wisps do not burst and
+    keep their 4 s. A burst is an explosion and not a death, DS2's judgement, kept.
+  - *N17, every blow,* lays the buff's ailment, then its forced movement, then its named effect -- the order a strike
+    keeps -- on a blow that landed and dealt damage (Groundbreaker's hook hears no other), and NOT on a blow that killed:
+    a body is neither poisoned nor dragged. The buff grants its `Effect` to nobody else, its holder included, so Grim
+    Reach does not Cripple the player (the draft's and slice DS2's warning). Death Grip's "each drag within 5 seconds of
+    the last on the same enemy goes half as far" is the displacement rule every pull already meets
+    (`TakeNextDisplacementShare`, its five-second window), so it is no key.
+  - *N21, Grim Reach's reach,* is added to strikes tagged `Type.Melee` (the basic attack among them, issue #944), beside
+    the `melee_reach_metres` stat and after area of effect and a range increase, as Overreach's is; the largest of the
+    holder's running buffs, as `HeldRangeIncreasePercent` takes it.
+  - *The Wisp's threat* stays the draft's 10: neither Grave Mouth's sentence nor Soul Snare's says the enemies pass it
+    over, as Wailing Host's says of the Shade (slice DS1's judgement for the Shade is not carried over).
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming `MinionTypes.csv`, `SkillSlots.csv` (bug batch 2's)
+  and `WeaponSkills.csv`, and every Unreal test reading the tables reads stale ones: the eight row tests and the two
+  counting tests fail at their set-up lines, which say so. The six mechanism tests write their own cells and raise Imps,
+  which the old table has, so they do not wait on it.
+
+**Affects:** `tools/generate_datatables.py` (`SCALING_SOURCES`, `SHAPE_PARAMS`, `check_a_spending_or_cashing_strike`,
+`check_a_bursting_rift_and_a_buff_on_every_blow`) and its copy in `sim/cataclysm_sim/enemy_abilities.py`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp` (`bSpendsAllFervour`, `CashInRadiusCm`,
+`bCollapseBursts`, `bEveryBlow`, `MeleeReachCm`); `CataclysmFervour.h` and `.cpp` (`SpendAll`); `CataclysmSkillTemplate.h`
+and `.cpp` (`FervourSpentThisUse`, `AilmentsCashedIn`, `CashInOwnAilmentsAround`, `HeldMeleeReachCm`, `ScalingUnits`,
+`MeleeReachBonusCm`); `CataclysmSkillTemplates.h` and `.cpp` (the strike's spend, cash-in and refund; the self buff's
+every-blow riders and its holder's effect; the rift's `SpawnTick` and `Collapse` made public, `BurstAtCollapse`);
+`CataclysmRisingCurse.h` (a comment); `CataclysmUndesignedSkill.h` (the counts); `tools/reapply_death_skills_workbook.py`
+and the workbook it edits; `game/Data/WeaponSkills.csv` and `game/Data/MinionTypes.csv`; `docs/README.md`; the Unreal
+tests in `CataclysmDeathSkillsTests.cpp` and `CataclysmDataTableTests.cpp`; and the Python checks named below.
+
+### The instruction, verbatim
+
+- The coordinating session's brief for slice DS4, 2026-11-24: "Build these pieces and give every row they complete its
+  full Shape: N12 (Grave Mouth, and with DS3's N5, Soul Snare; it needs the `Wisp` minion row), N9 (Mercy Stroke), N13
+  (Requiem), N15 (Quietus), N17 (Hemlock, Death Grip; with N21, Grim Reach: the flat 3 m reach that `RangeIncrease`
+  cannot give ...)." No owner ruling is new to this slice; the rows are the 40 the owner approved on 2026-11-24, quoted
+  in DS1's entry below.
+
+### The rows
+
+**Eight more written whole**, 39 of the 45 in all, each exactly as approved:
+
+| Row | Needs |
+| :-- | :-- |
+| Mercy Stroke (Sword Heavy) | N9 |
+| Grave Mouth (Staff Special) | N12 |
+| Soul Snare (Wand Support) | N5, N12 |
+| Requiem (Wand Ultimate) | N13 |
+| Quietus (Fist Ultimate) | N15 |
+| Hemlock (Fist Support) | N17 |
+| Death Grip (Whip Support) | N17 |
+| Grim Reach (Spear Support) | N17, N21 |
+
+**6 still wait, with no shape** (`tools/reapply_death_skills_workbook.py` holds each one's shape):
+
+| Waits on | Rows |
+| :-- | :-- |
+| N14 (burst on death) | Gravetouch |
+| N18 (untargetable on a charge) | Wraithwalk |
+| N19 (Fervour per enemy hit, a cap a cast) | Soul Lance |
+| C1 | Coffin Nail |
+| C2 | Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+
+**The minion kind**: `Wisp` (60 health, 3.5 a blow every 0.8 s, threat 10, reach 3 m, `Minion.Spell`), the draft's
+figures. **The workbook cells**, 30: on Weapon Skills, the Shape and Shape Params of the eight rows (16); on Minion
+Types, row 16, every column (14). Run a second time the script writes nothing ("0 cells to write; nothing written"), and
+`generate_datatables.py --check` says "All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N9, `RefundsCooldown` on a Strike.** `UCataclysmStrikeSkill::SwingOnce` returns the named cooldown when a target
+  its swing struck is dead or at no health, Emberhaul's test at a movement's arrival. No key: `RefundsCooldown` was a
+  rider every shape may state and no strike read it.
+- **N13, `SpendsAllFervour=1` and `ScalingSource=FervourSpent` on a Strike.** `UCataclysmStrikeSkill::ActivateAbility`,
+  once `CommitAndBegin` has paid the cost, empties the pool (`UCataclysmFervour::SpendAll`) and records the cost and the
+  rest in `FervourSpentThisUse`, which `ScalingUnits` answers for `FervourSpent`: Requiem's 250%, 1% more a point
+  spent, to its 700% ceiling (500% at 100). The generator refuses `FervourSpent` without `SpendsAllFervour=1`.
+- **N15, `CashInRadius=N` on a Strike.** In the same swing, after the blow and its curse,
+  `UCataclysmSkillTemplate::CashInOwnAilmentsAround` deals every Poison, Bleed and Necrosis the caster laid on an enemy
+  within N metres at 100% of what it had left and ends it: the enchantment row's call
+  (`UCataclysmSkillEffects::DealRemainingDamageOverTime`, "all active DoTs on nearby enemies instantly deal their
+  remaining damage"), once for each of the three tags. A bleed pays only what its four seconds of movement still allow
+  (issue #918). The generator refuses a radius of nought or less.
+
+**Change B.**
+
+- **N12, `CollapseBursts=1` on a rift.** `UCataclysmSummonSkill::Collapse` explodes every living minion of the rift's
+  list (`ACataclysmMinion::Explode`, its own blow in the row's radius) before destroying what is left. `SpawnTick` and
+  `Collapse` are public so a test drives a rift without a clock. The generator refuses it on a summon that is no rift
+  (an `Interval` and a `Duration`), which never closes.
+- **N17, `EveryBlow=1` on a self buff.** `UCataclysmSelfBuffSkill::NoteBlowLanded`, Groundbreaker's hook, which every
+  landed blow of the holder's reaches (projectiles and buried weapons included, issue #1938), lays the buff's
+  `Ailment` (`ApplyStatedAilmentTo`), `ForcedMovement` (`ApplyForcedMovementTo`) and `Effect` (`ApplyNamedEffectsTo`)
+  on what the blow hit, and `ActivateAbility` grants the buff's `Effect` to its holder only when the row states no
+  `EveryBlow`. The generator refuses it with nothing to lay.
+- **N21, `MeleeReachMetres=N` on a self buff.** `UCataclysmSkillTemplate::HeldMeleeReachCm` (the largest of the holder's
+  running buffs) is added in `MeleeReachBonusCm` beside the `melee_reach_metres` stat for a strike tagged `Type.Melee`,
+  so `ScaledRadiusCm` and the basic attack's reach (`UCataclysmBasicAttack`) both take it: the spear's swing reaches
+  6.3 m and Reaping Arc 10. The generator refuses nought or less.
+
+### Research
+
+No formula is new. Each shape is the approved draft's, with its sources -- Diablo IV's Reap and its "Cull the Weak"
+upgrade (Mercy Stroke's refund), Last Epoch's Summon Wraith as Maxroll describes it and Path of Exile 2's Unearth (Grave
+Mouth's stream of short-lived minions), the draft's research table -- which were not fetched again for this slice. The
+draft names this game's own precedent for each piece -- Emberhaul's arrival (N9), Soul Fuel's spend and Extinction's
+`ScalingSource=Consumed` (N13), the necrosis enchantment that deals remaining damage (N15), Open the Rift's collapse and
+`ACataclysmMinion::Explode` (N12), Groundbreaker's every blow (N17), Overreach's flat reach and Coil of Embers'
+`HeldRangeIncreasePercent` (N21) -- and each piece calls that precedent's code rather than a copy. What the precedents
+do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Fourteen new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **60 performed, 60 succeeded** (DS1's 14, DS2's
+14, DS3's 18 and these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `AStrikeThatRefundsItsCooldownIsReadyAgainWhenItsSwingKillsAndWaitsWhenItDoesNot` | A, N9 | a kill takes the cooldown off; controls: a survivor, and no key, keep it |
+| `AStrikeThatSpendsEveryFervourEmptiesThePoolAndStrikesHarderForWhatItSpentToItsCeiling` | A, N13 | 100 spent, pool empty, 2x; 150 spent, 2.4x under a 600 ceiling; control: spends its 50 alone |
+| `AStrikeThatCashesInEndsItsCastersPoisonBleedAndNecrosisWithinItsRadiusForWhatTheyHadLeft` | A, N15 | three cashed in and ended; burn, another's, 12 m off run on; control: no key |
+| `ARiftThatBurstsAsItClosesExplodesWhatItRaisedAndOneThatDoesNotDestroysItQuietly` | B, N12 | two burst, 1 m past struck, 7 m past not; control: destroyed, nothing struck |
+| `ABuffOnEveryBlowLaysItsAilmentEffectAndPullOnWhatItsHolderHitsAndNothingOnItsHolder` | B, N17 | Poison, Cripple 30 for 4 s, dragged ~1 m, holder unharmed; control: the swing before it |
+| `ABuffLengtheningMeleeReachMakesAMeleeStrikeReachItsMetresFartherAndARangedOneNoFarther` | B, N21 | 2 m to 5 m, the 4 m creature struck, ranged stays 2 m, back on cancel; control: misses before |
+| `MercyStrokeStrikesOneEnemyForThreeHundredAndIsReadyAgainWhenItKills` | C, row | one struck, killed, cooldown off; control: a survivor's cooldown runs |
+| `GraveMouthStreamsEightWispsReservingTwoAndBurstsThemAllAsItCloses` | C, row | eight wisps of 4 s reserving 2, a ninth refused; all burst; control: 7 m past |
+| `SoulSnareShredsWithinFourteenMetresAndTheSnaredDeadLooseGraveMouthsWisp` | C, row | Shred 10 s on two; a wisp of 4 s reserving 2 rises; control: 15 m |
+| `RequiemSpendsEveryFervourStrikesHarderForWhatItSpentToSevenHundredAndCripplesByForty` | C, row | 50, 100, 200 spent: 375%, 500%, 700%; Cripple 40 for 6 s at 13 m; control: 15 m |
+| `QuietusStrikesOneEnemyAndCashesInTheCastersAilmentsWithinTenMetres` | C, row | one struck; three cashed in at 8 m; control: 11 m runs on |
+| `HemlockPoisonsWhatEveryBlowHitsForSixSeconds` | C, row | 6 s; a blow poisons; control: the swing before it |
+| `DeathGripDragsWhatEveryBlowHitsAMetreAndHalfAsFarWithinFiveSeconds` | C, row | ~1 m, then ~half; control: the swing before it |
+| `GrimReachMakesTheSpearReachThreeMetresFartherAndEveryHitCrippleByThirty` | C, row | 3.3 m to 6.3 m, Cripple 30 for 4 s, holder unharmed; control: misses before |
+
+**Three Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 39 rows (from 31), the eight rows' DS4 keys and Mercy Stroke's crit chance and cooldowns;
+`Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` reads 6 waiting (from 14) and 45 of
+51 shaped (from 37); `Cataclysm.Data.EveryGeneratedTableImports` pins `MinionTypes.csv` at 15 (from 14). **The whole
+suite is registered as 5472**: slice DS3's registered 5458 and these 14; a prediction, the run is the figure.
+
+**Six C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`, after the editor step.
+Change A has three, change B three; change C is data and has none:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N9 | `CataclysmSkillTemplates.cpp` | `if (!Params.RefundsCooldown.IsEmpty() && !Targets.IsEmpty())` becomes `if (false && !Params.RefundsCooldown.IsEmpty() && !Targets.IsEmpty())` | `AStrikeThatRefundsItsCooldown...`, `MercyStrokeStrikes...` |
+| G2, N13 | `CataclysmSkillTemplates.cpp` | `FervourSpentThisUse = FervourCostFor(Spender) + UCataclysmFervour::SpendAll(Spender);` becomes `FervourSpentThisUse = 0.0f * (FervourCostFor(Spender) + UCataclysmFervour::SpendAll(Spender));` | `AStrikeThatSpendsEveryFervour...`, `RequiemSpends...` |
+| G3, N15 | `CataclysmSkillTemplate.cpp` | `if (!Self \|\| Params.CashInRadiusCm <= 0.0f)` becomes `if (true \|\| !Self \|\| Params.CashInRadiusCm <= 0.0f)` | `AStrikeThatCashesIn...`, `QuietusStrikes...` |
+| G4, N12 | `CataclysmSkillTemplates.cpp` | `if (Params.bCollapseBursts)` becomes `if (false && Params.bCollapseBursts)` | `ARiftThatBurstsAsItCloses...`, `GraveMouthStreams...` (not Soul Snare, whose wisp rises without a closing) |
+| G5, N17 | `CataclysmSkillTemplates.cpp` | `if (Params.bEveryBlow && IsValid(Target))` becomes `if (false && Params.bEveryBlow && IsValid(Target))` | `ABuffOnEveryBlow...`, `HemlockPoisons...`, `DeathGripDrags...`, `GrimReachMakes...` |
+| G6, N21 | `CataclysmSkillTemplate.cpp` | `Largest = FMath::Max(Largest, Running->Params.MeleeReachCm);` becomes `Largest = 0.0f * FMath::Max(Largest, Running->Params.MeleeReachCm);` | `ABuffLengtheningMeleeReach...`, `GrimReachMakes...` |
+
+Each break line was confirmed to appear exactly once in its file.
+
+**Python checks moved with the rows:** the script's built rows 31 to 39, what each of the six waiting rows waits on, and
+a rising curse with the row it reads (`test_reapply_death_skills_workbook.py`); two rising curses, Death Rattle's husk and
+Soul Snare's wisp (`test_minion_skill_shapes.py`); the `Wisp` in the minion table (`test_minion_stat_blocks.py`);
+`RESERVING_SKILLS` 10 to 11 (`test_every_gadget_skill_reserves_fervour.py`); the README's Minion Types row count 14 to
+15; the undesigned count 68 of 198 to 60 (`CataclysmUndesignedSkill.h`). **New:** in `test_death_skill_shape_keys.py`,
+each new key accepted on its rows' cells and refused where it would do nothing.
+
+### What was run, on `299592390`
+
+- **Full Python suite: "1 failed, 8404 passed, 9 skipped in 341.62s"; JUnit 8414 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` and `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the twelve changed C++ files: "12 files read, 0 with complaints". The engine-name,
+  anonymous-helper, header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0 cells to write;
+  nothing written"; `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+
+- **Six Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `299592390`**, each
+  failing with the break in and passing restored:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N13 | the `FervourSpent`-without-`SpendsAllFervour` refusal made `if False and ...` | the three `test_scaling_by_the_fervour_spent_without_spending_it_is_refused` |
+| P2, N15 | the nought-or-less `CashInRadius` refusal made `if False and ...` | both `test_a_cash_in_that_reaches_nobody_is_refused` |
+| P3, N12 | the no-rift refusal made `if False and not rift:` | the four `test_bursting_what_was_raised_on_a_summon_that_never_closes_is_refused` |
+| P4, N17 | the nothing-to-lay refusal made `if False and not lays:` | `test_a_buff_on_every_blow_that_lays_nothing_is_refused` |
+| P5, N21 | the nought-or-less `MeleeReachMetres` refusal made `if False and ...` | both `test_a_buff_adding_no_reach_is_refused` |
+| P6, the rows | `BUILT` without N12 in the script | six checks of `test_reapply_death_skills_workbook.py` (the committed workbook and table among them) and two of `test_minion_skill_shapes.py` |
+
+---
+
+## 2026-11-24 — The Death weapon skills, slice DS3: nine more rows working; Fervour paid for a kill, scaling by the Fervour held, a buff holding Fervour from decay, a flicker its deaths lengthen, and a curse under which the dying rise (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS2 (`4849df2ad`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N6, N7, N8, `cce887883`), change B (N10, N5,
+  `c2bfcb68e`) and change C (the rows, the data and the row tests, `7f52f4c10`), and a fourth, `b843c1000`, renaming
+  a local and three parameters that shared a name with a member of their class, a precaution against the shadowing
+  warning a build treats as an error. Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **SOUL SNARE IS NOT WRITTEN WHOLE: IT WAITS ON N12 AS WELL AS N5, found while building N5.** Its sentence reads its
+  wisp from Grave Mouth's row ("the same wisp Grave Mouth tears free"), and Grave Mouth has no shape until N12 is built,
+  nor the `Wisp` a Minion Types row. The engine reads what rises from the Summon row raising the kind, and the generator
+  refuses a `RisesAs` no Death Summon row raises (`validate_risen_kinds`), so Soul Snare cannot be shaped before Grave
+  Mouth. N12 was not in this slice's list and is not built. The script now says `needs=('N5', 'N12')`.
+- **`RisesAs=Husk` IS ADDED TO DEATH RATTLE'S APPROVED CELL -- a judgement, worth a look.** The draft wrote `OnDeath=Rise`
+  alone and named the husk only in the sentence ("the same husk Shallow Graves raises"); its N5 says "a minion read from
+  a named skill's row" without saying where the name is written. The key names the kind in the data, so the engine reads
+  the husk from the one Death Summon row raising it -- Shallow Graves: its 8 s, its 3 Fervour, its 4 m, its taunt -- and
+  the generator can refuse a kind nothing raises. Soul Snare's waiting cell gains `RisesAs=Wisp` the same way. No figure
+  and no sentence changed.
+- **A KILL IS A BLOW'S, NOT A TICK'S -- a judgement.** `KillFervour` on a row whose sentence says "every enemy it kills"
+  (Grim Swath, Last Toll, Pale Rider, Restless Spirits) pays for a death whose killing blow was the skill's own, not a
+  tick of the Necrosis it laid: that kill is the ailment's. The rows whose sentences reach past the blow -- Death Warrant
+  ("if it dies while the warrant holds"), Hungering Soul ("every host it leaves dead"), Danse Macabre ("every enemy that
+  dies during the dance") -- are paid through their marks, whoever dealt the death. One death pays one skill once: the
+  blow's payment steps aside for a mark of the same skill's that will pay.
+- **"EVERY ENEMY THAT DIES DURING THE DANCE" IS EVERY DEATH THE CHARACTER IS TOLD OF -- a judgement on the precedent the
+  draft names.** N10's precedent is Butcher's Heat, which counts every death `UCataclysmSkillTemplate::NoteKill` is told
+  of from `ACataclysmEnemyCharacter::HandleDeath` (the watching player's, whoever dealt it). Danse Macabre counts the
+  same and pays its 5 Fervour for each, its ceiling capping the time and not the Fervour: a minion's kill during the
+  dance lengthens it too.
+- **HUNGERING SOUL'S SOUL GIVES EACH HOST ITS NECROSIS -- found while completing the row, built with N6.** "It lodges in
+  it, giving it Necrosis, and when its host dies it tears free and flies into the nearest living enemy ... again and
+  again": a leap's blow laid no ailment (`UCataclysmBuriedWeapon::LeapFromDying` carried Harrower's burn and nothing
+  else), so after the first host the soul gave none. The buried weapon now carries the throwing row's `Ailment` and lays
+  it on each new host its leap's blow lands on, as it sets each alight for Harrower. Harrower states no `Ailment` and is
+  unchanged. A Hungering Soul whose own impact kills its first target is paid as that blow's kill; the soul is then
+  buried in the body and goes no further, which is Harrower's existing behaviour for a killing throw and is not changed
+  here.
+- **A DETONATION IS STILL AN EXPLOSION AND NOT A DEATH**, DS2's judgement, kept: no row of this slice says otherwise.
+  `KillFervour`, a rising curse and a flicker's count all hear deaths, and `ACataclysmMinion::Explode` raises none.
+  **When the Necromancer tree lands, its Last Breath ("popping a Fervour battery") must count explosions explicitly**,
+  as the coordinating session's brief for this slice says.
+- **N8 IS BUILT AGAINST THE ONE DECAY THAT EXISTS.** Cold Blood's `HoldsFervour=1` stops `UCataclysmFervour::DecayStep`,
+  the Ravager's decay out of contact. The Soul Collector's and the Shadow's decay from the last kill is not built (the
+  draft's N8 note says N8 "lands with it"); whoever builds it must ask
+  `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`, as `DecayStep` now does. Built now because it was small and makes
+  "your Fervour does not decay" true of every decay there is.
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json` (this slice changes
+  `WeaponSkills.csv` alone; DS1 and DS2 changed `MinionTypes.csv`, and bug batch 2 `SkillSlots.csv`). Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming those three CSVs, and every test reading the table
+  reads a stale one: the nine row tests, the two counting tests and the rising curse's mechanism test (which reads
+  Shallow Graves and the Husk, DS1's) fail at their set-up lines, which say so.
+
+**Affects:** `tools/generate_datatables.py` (`SCALING_SOURCES`, `ON_DEATHS`, `TEXT_PARAMS`, `SHAPE_PARAMS`,
+`check_kill_fervour_and_fervour_scaling`, `check_a_lengthened_flicker`, `check_a_rising_curse`, `validate_risen_kinds`)
+and its copy in `sim/cataclysm_sim/enemy_abilities.py`; `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and
+`.cpp` (`KillFervour`, `bHoldsFervour`, `MaxDuration`, `RisesAs`); `CataclysmKillFervour.h` and `.cpp` (new);
+`CataclysmRisingCurse.h` and `.cpp` (new); `CataclysmFervour.h` and `.cpp` (`GainStated`, and `DecayStep`'s hold);
+`CataclysmSkillEffects.cpp` (`MarkDead`); `CataclysmCurseSpread.h` and `.cpp`; `CataclysmBuriedWeapon.h` and `.cpp`;
+`CataclysmSkillTemplate.h` and `.cpp` (`FervourHeldBy`, `ARunningBuffHoldsFervour`, `NoteKill`, `ScalingUnits`,
+`ApplyNamedEffectsTo`); `CataclysmSkillTemplates.h` and `.cpp` (the self buff's Fervour, the flicker's deaths and fresh
+circle, `BuryInStruck`); `Character/CataclysmEnemyCharacter.cpp` (`HandleDeath`); `CataclysmUndesignedSkill.h` (the
+counts); `tools/reapply_death_skills_workbook.py` and the workbook it edits; `game/Data/WeaponSkills.csv`; the Unreal
+tests in `CataclysmDeathSkillsTests.cpp`; and the Python checks named below.
+
+### The instruction, verbatim
+
+- The coordinating session's brief for slice DS3, 2026-11-24: "Keep DS2's judgement that a detonation is an explosion
+  and not a death unless a row here says otherwise; note in your entry that when the Necromancer tree lands, its Last
+  Breath ("popping a Fervour battery") must count explosions explicitly." No owner ruling is new to this slice; the
+  rows are the 40 the owner approved on 2026-11-24, quoted in DS1's entry below.
+
+### The rows
+
+**Nine more written whole**, 31 of the 45 in all, each as approved but for Death Rattle's `RisesAs=Husk`:
+
+| Row | Needs |
+| :-- | :-- |
+| Cold Blood (Sword Support) | N7, N8 |
+| Danse Macabre (Sword Ultimate) | N6, N10 |
+| Death Warrant (Sword Special) | N6 |
+| Death Rattle (Greataxe Support) | N5, C3 |
+| Grim Swath (Greataxe Heavy) | N6, N7 |
+| Hungering Soul (Wand Heavy) | N6 |
+| Restless Spirits (Wand Special) | N6 |
+| Last Toll (Whip Ultimate) | N6 |
+| Pale Rider (Spear Ultimate) | N6, N22 |
+
+**14 still wait, with no shape** (`tools/reapply_death_skills_workbook.py` holds each one's shape):
+
+| Waits on | Rows |
+| :-- | :-- |
+| N9 | Mercy Stroke |
+| N12 | Grave Mouth; Soul Snare (N5 built; its wisp is Grave Mouth's) |
+| N13 | Requiem |
+| N14 (burst on death) | Gravetouch |
+| N15 | Quietus |
+| N17 | Hemlock, Death Grip; Grim Reach also N21 |
+| N18 | Wraithwalk |
+| N19 | Soul Lance |
+| C1 | Coffin Nail |
+| C2 | Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+
+**The workbook cells**, 18: on Weapon Skills, the Shape and Shape Params of the nine rows. No Minion Types row is new.
+Run a second time the script writes nothing ("0 cells to write; nothing written"), and `generate_datatables.py --check`
+says "All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N6, `KillFervour=N` on a Strike, a Projectile, a Movement or a Debuff.** Four routes, one payment a death for one
+  skill, every one through `UCataclysmFervour::GainStated` (the row's figure, scaled by how fast the class resource
+  generates and clamped, as every gain is):
+  - a kill by the skill's own blow, from `UCataclysmSkillEffects::MarkDead` before its hooks
+    (`UCataclysmKillFervour::PayForTheKillingBlow`): the last blow on record was lethal (`KillingBlowDamage`), a blow
+    and not a tick, not a point-blank share on an ally, a skill's stating `KillFervour`; its caster is here and was the
+    dying creature's enemy; and no mark of the same skill's on the creature pays for the death;
+  - a death while a paying curse holds (`UCataclysmCurseSpread::SpreadFromDying`): the mark `OnDeath=SpreadDebuff`
+    leaves carries the figure and the curses laid, and "holds" is the dying creature still carrying one of them laid by
+    that caster (`CarriesACurseLaidBy`); the mark passed to the next holder carries them on, so each holder in the chain
+    pays (Death Warrant). The generator refuses `KillFervour` on a Debuff without `OnDeath=SpreadDebuff`;
+  - a host a buried weapon leaves dead (`UCataclysmBuriedWeapon::LeapFromDying`): the host it tears free of, whoever
+    killed it, and each host its leap's own blow kills (Hungering Soul);
+  - a death while a flicker counting deaths runs (change B).
+- **N7, `ScalingSource=Fervour`.** What is held now (`UCataclysmSkillTemplate::FervourHeldBy`): read at the blow for a
+  Strike (`ScalingUnits`; Grim Swath, 1% more a 2 Fervour to its 350% ceiling), and for a self buff in whole points,
+  put back each time the pool crosses one (`ScalingCount`, `FervourChanged`, bound to the pool's change while the buff
+  runs; Cold Blood). **Judgements:** the buff's count is whole points, its other counts being whole; the strike reads
+  after the use's own Fervour cost is paid. The generator refuses it on any other shape.
+- **N8, `HoldsFervour=1` on a self buff.** `DecayStep` takes nothing while a buff stating it runs.
+
+**Change B.**
+
+- **N10, a flicker its deaths lengthen.** `Mode=Flicker; ScalingSource=Kill` with `DurationPer` and `MaxDuration`.
+  `NoteKill` tells it as it tells Butcher's Heat; `UCataclysmMovementSkill::NoteADeathWhileItRuns` pays its
+  `KillFervour` (N6) and lengthens the stop timer and, for `Untargetable=1`, the untargetability by `DurationPer`, to
+  `MaxDuration` in all. Once a lap finds nobody standing, `FlickerOnce` gathers a fresh circle within its range of where
+  the caster now stands and goes on (**a judgement**: once a circle is spent, not at each death, so a pack is finished
+  before the next; every other flicker keeps its one circle). The generator refuses `DurationPer` on any other move and
+  `MaxDuration` with nothing to cap or below the move's own `Duration`.
+- **N5, `OnDeath=Rise; RisesAs=<kind>` on a Debuff.** `ApplyNamedEffectsTo` marks the cursed creature
+  (`UCataclysmRisingCurse`) with the kind and every figure of the one Summon row of the curse's damage type raising it.
+  A creature dying while the curse holds rises, where it fell, for its curser, from `ACataclysmEnemyCharacter::
+  HandleDeath` beside the Ritualist's risen imp, if the curser's pool holds the row's reserve (issue #2787): lasting the
+  row's `Duration`, its explosion and its taunt (C3) at the row's `Radius`. The generator refuses either key without the
+  other, `OnDeath=Rise` off a Debuff or with no `Effect`, and (`validate_risen_kinds`) a kind the Minion Types sheet
+  lacks or no single Summon row of the damage type raises with a `Duration`.
+
+### Research
+
+No formula is new; each shape is the approved draft's, with its sources (Path of Exile's minion skills, Diablo IV's
+Book of the Dead, Army of the Dead and Reap; the draft's research table), which were not fetched again for this slice.
+The draft names this game's own precedents for each piece -- the class generators (N6), the eleven scaling sources
+(N7), the enchantment that stops the Ravager's decay (N8), Butcher's Heat (N10) and the Ritualist's risen imp (N5) --
+and says Cold Blood had no shipped precedent found. What the precedents do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Eighteen new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **46 performed, 46 succeeded** (DS1's 14, DS2's
+14 and these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `AStrikeStatingKillFervourPaysItForEachEnemyItsBlowKillsAndNothingForOneLeftStanding` | A, N6 | 2 kills pay 4, the one standing nothing; control: no key, nothing |
+| `ADeathWhileAPayingCurseHoldsPaysItsCasterAndTheCursePassedOnPaysAgain` | A, N6 | 10, the curse passes, 10 more; control: cleansed, nothing |
+| `ASoulStatingKillFervourPaysForEachHostItLeavesDeadAndGivesEachNewHostItsAilment` | A, N6 | 2 a host, Necrosis on the next; control: Harrower's shape, neither |
+| `AStrikeScalingByFervourDealsMoreForEachPointHeldUpToItsCeiling` | A, N7 | 1.5 at 100, 1.6 at 150 under a 320 ceiling; control: no scaling |
+| `ASelfBuffScalingByFervourGrantsMoreDamageForWhatIsHeldAndFollowsItWhileItRuns` | A, N7 | 25 at 100, 10 at 40, nothing once cancelled; control: `Burning` |
+| `ASelfBuffThatHoldsFervourStopsItsDecayAndTheDecayReturnsWhenItEnds` | A, N8 | 5 taken, then nothing, then 5; the first step the control |
+| `AFlickerItsDeathsLengthenGainsHalfASecondAndItsFervourForEachDeathToItsCeiling` | B, N10, N6 | 4, 4.5, 5, 5; 5 Fervour each; control: a plain flicker |
+| `AFlickerItsDeathsLengthenGathersAFreshCircleOnceItsFirstHasFallen` | B, N10 | a fresh circle, a second arrival; control: a plain flicker stands |
+| `ACreatureDyingUnderARisingCurseRisesAsItsKindReadFromTheRowThatRaisesIt` | B, N5 | a husk, 8 s, 3, taunting 4 m; controls: cleansed; no rise |
+| `DeathWarrantCripplesOneEnemyTenSecondsAndItsDeathPaysTenAndPassesTheWarrant` | C, row | 30 for 10 s on one; 10 paid; passed; control: the other untouched |
+| `HungeringSoulLodgesWithNecrosisAndLeapsEightMetresOnItsHostsDeathPayingTwo` | C, row | Necrosis, 2 paid, leaps 6 m; control: 15 m off, nothing |
+| `RestlessSpiritsFlyAtTheNearestWithNecrosisAndAKillPaysOne` | C, row | a kill pays 1; Necrosis on the next; control: no more paid |
+| `LastTollDragsTheTwelveMetreRingInWithNecrosisAndPaysFiveForEachKill` | C, row | 10 for two kills; dragged, Necrosis; control: 13 m untouched |
+| `PaleRiderCripplesWhatItRunsThroughByFiftyAndAKillPaysFive` | C, row | 50 spent, 5 paid; 50 for 4 s; control: 5 m off the path |
+| `DanseMacabreDancesFourSecondsAndEachDeathPaysFiveAndAddsHalfASecondToEight` | C, row | 4 s to 8; 9 deaths pay 45; control: the ninth adds no time |
+| `GrimSwathMowsHalfAgainAsHardAtAHundredFervourToItsCeilingAndAKillPaysTwo` | C, row | 1.5 and 1.75; a kill pays 2; control: the swing at none |
+| `ColdBloodGrantsAPercentMoreForEachFourFervourHeldForSixSecondsAndHoldsItFromDecay` | C, row | 6 s, 25%, no decay; control: decay before it |
+| `DeathRattleCripplesWithinTwelveMetresByTwentyAndTheRattledDeadRiseAsHusks` | C, row | 20 for 8 s on two; one husk, 8 s, 3, 4 m; control: 13 m |
+
+**Two Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 31 rows (from 22) and the nine rows' DS3 keys; `Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder`
+reads 14 waiting (from 23) and 37 of 51 shaped (from 28). No DataTable pin moves: no row is added to either table.
+**The whole suite is registered as 5458**: slice DS2's registered 5440 and these 18; a prediction, the run is the
+figure.
+
+**Five C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`, after the editor step.
+Change A has three, change B two; change C is data and has none:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N6 | `CataclysmKillFervour.cpp` | `if (!Skill \|\| Skill->Params.KillFervour <= 0.0f)` becomes `if (true \|\| !Skill \|\| Skill->Params.KillFervour <= 0.0f)` | `AStrikeStatingKillFervourPays...`, `RestlessSpiritsFly...`, `LastTollDrags...`, `PaleRiderCripples...`, `GrimSwathMows...` |
+| G2, N7 | `CataclysmSkillTemplate.cpp` | `return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(` (in `FervourHeldBy`) becomes `return 0.0f * FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(` | `AStrikeScalingByFervour...`, `ASelfBuffScalingByFervour...`, `GrimSwathMows...`, `ColdBloodGrants...` |
+| G3, N8 | `CataclysmFervour.cpp` | `if (UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Character))` becomes `if (false && UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Character))` | `ASelfBuffThatHoldsFervour...`, `ColdBloodGrants...` |
+| G4, N10 | `CataclysmSkillTemplates.cpp` | `const float Added = FMath::Min(Params.DurationPer, Ceiling - FlickerSecondsInAll);` becomes `const float Added = 0.0f * FMath::Min(Params.DurationPer, Ceiling - FlickerSecondsInAll);` | `AFlickerItsDeathsLengthenGains...`, `DanseMacabreDances...` (not the fresh-circle test, which this break leaves working) |
+| G5, N5 | `CataclysmRisingCurse.cpp` | `if (!UCataclysmKillFervour::CarriesACurseLaidBy(Dying, Mark->Curses, Curser))` becomes `if (true \|\| !UCataclysmKillFervour::CarriesACurseLaidBy(Dying, Mark->Curses, Curser))` | `ACreatureDyingUnderARisingCurse...`, `DeathRattleCripples...` |
+
+**Python checks moved with the rows:** the script's built rows 22 to 31 and what each waiting row waits on
+(`test_reapply_death_skills_workbook.py`); the undesigned count 77 of 198 to 68 (`CataclysmUndesignedSkill.h`); a
+rising curse names its kind in `RisesAs` and is a Debuff (`test_minion_skill_shapes.py`, three checks widened, one
+added); the death hook pinned (`test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`). **New:** in
+`test_death_skill_shape_keys.py`, each new key accepted on its rows' cells and refused where it would do nothing, and
+`validate_risen_kinds` on hand-built tables; in the script's tests, a rising curse waiting with the row its kind is
+read from.
+
+### What was run, on `b843c1000`
+
+- **Full Python suite: "1 failed, 8371 passed, 9 skipped in 359.75s"; JUnit 8381 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` and `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the twenty changed and new C++ files: "20 files read, 0 with complaints". The
+  engine-name, anonymous-helper, header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0 cells
+  to write; nothing written"; `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- **Ten Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `7f52f4c10`** (the rename
+  after it touched no Python), each failing with the break in and passing restored:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N6 | the Debuff-without-`OnDeath=SpreadDebuff` refusal made `if False and ...` | `test_a_curse_paying_kill_fervour_without_marking_the_death_is_refused` |
+| P2, N6 | the below-nought refusal made `if False and ...` | `test_kill_fervour_below_nought_is_refused` |
+| P3, N7 | the `ScalingSource=Fervour` shape refusal made `if False and ...` | the three `test_scaling_by_the_fervour_held_on_a_shape_that_does_not_read_it_is_refused` |
+| P4, N10 | the refusal of `DurationPer` off a flicker counting kills made `if False and ...` | two `test_a_lengthening_a_move_would_not_read_is_refused` |
+| P5, N10 | the nothing-to-cap refusal made `if False and ...` | its `test_a_lengthening_a_move_would_not_read_is_refused` case |
+| P6, N10 | the ceiling-below-`Duration` refusal made `if False and ...` | its `test_a_lengthening_a_move_would_not_read_is_refused` case |
+| P7, N5 | the off-a-Debuff refusal made `if False and ...` | its `test_a_rising_curse_that_could_raise_nothing_is_refused` case |
+| P8, N5 | the `RisesAs`-without-`OnDeath=Rise` refusal made `if False and ...` | its `test_a_rising_curse_that_could_raise_nothing_is_refused` case |
+| P9, N5 | `validate_risen_kinds`' one-row rule made `if False and ...` | the four `test_a_risen_kind_no_single_summon_row_of_its_damage_type_raises_is_refused` |
+| P10, the rows | `BUILT` without N5 in the script | six checks of `test_reapply_death_skills_workbook.py` (the committed workbook and table among them) and two of `test_minion_skill_shapes.py` |
+
+---
+
+## 2026-11-24 — The Death weapon skills, slice DS2: ten more rows working; Bleed on a skill row, permanent raises that strike as they rise, a skill that explodes its caster's minions, a strike that commands, minions that lay their row's effect; four ranges brought to 14 m (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS1 (`4860e7f7d`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N16, N1, N2), change B (N3, N4, N11) and change
+  C (the rows, the data and the row tests). Issue [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **N14 IS NOT BUILT, SO GRAVETOUCH STILL WAITS, ON N14 ALONE.** Judged not small: an enemy dying "while the wound still
+  bleeds" needs a mark the strike leaves (a component, as `UCataclysmCurseSpread` is), a new death hook in
+  `UCataclysmSkillEffects::MarkDead` beside the curse spread, a judgement on which bleed is "the wound" when another
+  source's bleed has replaced it under the one-stack rule, and a ruling-sized question whether the burst (a share of the
+  dying creature's maximum health) credits Gravetouch. N4 and N11 were each small and are built, so Gravebell and Bone
+  Choir work.
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming `MinionTypes.csv` and `WeaponSkills.csv` (and bug
+  batch 2's `SkillSlots.csv`, already registered), and every row test below reads a stale table: the eight row tests
+  and the two counting tests fail at their set-up lines, which say so.
+- **A DETONATION IS AN EXPLOSION AND NOT A DEATH -- a judgement, worth a look.** `ACataclysmMinion::Explode` deals the
+  minion's own blast and destroys it, which frees its reserve at once (the Necromancer draft's "An explosion frees the
+  reservation at once, which is what drives the loop"). So nothing a minion's death raises answers a detonation:
+  Press-Ganged and Rekindled replace nothing, Shared Ruin's blast does not go off, no Fervour is paid for the loss, and
+  the minion does not need `minion_explodes_on_death`. A skill that explodes a minion is the explosion; Every One
+  Bursts makes a death into one. If the Necromancer tree's Mass Grave or Rekindled is meant to answer a detonation, that
+  is a ruling for the tree's slice.
+- **WHICH MINIONS A SKILL EXPLODES -- judgements.** Every creature the caster raised (`ACataclysmMinion` whose
+  `Summoner` it is), whatever its kind, by the owner's ruling quoted below; so a Barrow Guard inside Gravebell's arc
+  explodes, as the approved draft's "Effects that now reach every minion" says. **Not a machine** (a turret, a skill
+  gadget, a skill trap: placed, not raised, and no Death sentence names one) **and not a thrall** (an enemy taken, with
+  no `Explode` of its own). Found by who commands it (`UCataclysmCommand::ThingsCommandedBy`), not by side, so a minion
+  Madness has turned is still the caster's.
+- **THE FOUR LONG RANGES ARE 14 M**, by the coordinating session's ruling, and their sentences say 14: None Spared and
+  Coffin Nail from 17, Soul Lance and Pale Rider from 16. None Spared needed nothing else and works. **Pale Rider keeps
+  its 1.5 seconds** (a judgement, the draft's time), so its charge is 9.3 m a second where it was 10.7. The re-apply
+  script now rewrites a cell holding what slice DS1 wrote there before a ruling changed it (`SUPERSEDED`), and still
+  refuses any other value it did not write.
+
+**Affects:** `tools/generate_datatables.py` (`SKILL_ROW_AILMENTS`, `SHAPE_PARAMS`, `check_death_skill_keys`,
+`check_a_summon_effect_has_a_carrier`) and its copy in `sim/cataclysm_sim/enemy_abilities.py`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp` (`bPermanent`, `bMinionsLayEffect`,
+`bDetonates`); `CataclysmSkillTemplate.h` and `.cpp` (`DetonateOwnMinionsWhere`, `DetonateOwnMinionsAround`,
+`DetonateOwnMinionsAlong`, `OrderEveryCommandedStrikeOn`, `MinionsDetonated`, and `CommandedStrikes` moved here from the
+projectile template); `CataclysmSkillTemplates.h` and `.cpp` (`UCataclysmStrikeSkill::SwingOnce`,
+`UCataclysmProjectileSkill::Land` and `OnProjectileFinished`, `UCataclysmMovementSkill::DetonateWhereItArrived`,
+`UCataclysmSummonSkill::StrikesAsItRises`, `StrikeAsItRises` and `RecordTheSkillOn`); `CataclysmMinion.h` and `.cpp`
+(`EffectTagsItsBlowsLay` and its three neighbours, `LayTheEffectsItsBlowsLay`, `AttackTarget`);
+`CataclysmUndesignedSkill.h` (the counts); `tools/reapply_death_skills_workbook.py` and the workbook it edits;
+`game/Data/WeaponSkills.csv` and `game/Data/MinionTypes.csv`; `docs/README.md`; the Unreal tests
+`CataclysmDeathSkillsTests.cpp` and `CataclysmDataTableTests.cpp`; and the Python checks named below.
+
+### The rulings, verbatim
+
+- The coordinating session, 2026-11-24, ruling 1: "**Range: 14 m.** `tools/tests/test_enemy_abilities.py::
+  test_the_sentinel_reach_is_the_longest_range_any_player_attack_has` holds that no player attack outranges the
+  Corrupted Sentinel's 14 m reach. So None Spared (17 m), Coffin Nail (17 m), Soul Lance (16 m) and Pale Rider (16 m)
+  become 14 m."
+- The coordinating session, 2026-11-24, ruling 2: "**Bleed is allowed on a skill row.** The owner accepted the Death and
+  War plan's Q22 on 2026-11-24 ("Your recommendations work for all of those death/war questions"): widen the closed set
+  of row ailments from Poison, Disease, Necrosis and Void Splinter to those plus Bleed". This is N16.
+- The owner's ruling of 2026-11-24 on the 40 drafted skills, which N3 follows: "I'm not sure what the difference is
+  between minions and "pop minions" minion pop is a playstyle, not a distinction. So stuff that references "pop minions"
+  should be changed to just say it kills minions or minions that explode or something like that."
+
+### The rows
+
+**Ten more written whole**, 22 of the 45 in all, each as approved but for the ranges above:
+
+| Row | Needs |
+| :-- | :-- |
+| Gravebell (Greatsword Heavy) | N3, N4 |
+| Barrow Guard (Greatsword Ultimate) | N1, N2, C3 |
+| Barrow Leap (Greatsword Movement) | N3, N22 |
+| Exhume (Greataxe Ultimate) | N1, N2 |
+| Open Grave (Greataxe Movement) | N3 |
+| Marrow Lance (Staff Heavy) | N3 |
+| Bone Choir (Staff Ultimate) | N1, N2, N11 |
+| Grave Return (Wand Movement) | N3 |
+| Severing Rush (Fist Movement) | N16 |
+| None Spared (Crossbow Ultimate) | the range ruling |
+
+**23 still wait, with no shape** (`tools/reapply_death_skills_workbook.py` holds each one's shape):
+
+| Waits on | Rows |
+| :-- | :-- |
+| N5 (the dying rise) | Death Rattle, Soul Snare |
+| N6 (Fervour per kill) | Death Warrant, Hungering Soul, Restless Spirits, Last Toll, Pale Rider; Danse Macabre also N10; Grim Swath also N7 |
+| N7, N8 | Cold Blood |
+| N9 | Mercy Stroke |
+| N12 | Grave Mouth |
+| N13 | Requiem |
+| N14 (burst on death) | Gravetouch |
+| N15 | Quietus |
+| N17 | Hemlock, Death Grip; Grim Reach also N21 |
+| N18 | Wraithwalk |
+| N19 | Soul Lance |
+| C1 | Coffin Nail |
+| C2 | Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+
+**The minion kinds** the three permanent raises raise, the draft's figures unchanged: `BarrowGuard` (400 health, 15.75
+a blow each second, threat 150), `BoneReaper` (300, 42 every 2 s, 60, reach 2.5 m) and `SkeletalMage` (150, 15.75 every
+1.5 s, 40, reach 9 m, `Minion.Spell`). The Wisp waits with Grave Mouth and Soul Snare.
+
+**The workbook cells**, 66: on Weapon Skills, the Shape and Shape Params of the ten rows (20) and the four range
+sentences (4); on Minion Types, rows 13 to 15, every column (42). Run a second time the script writes nothing
+("0 cells to write; nothing written"), and `generate_datatables.py --check` says "All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N16, Bleed on a skill row.** `SKILL_ROW_AILMENTS` gains `Bleed`. The engine needed nothing:
+  `UCataclysmAilments::KindNamedInASkillRow` already finds it among the eleven, and a bleed's movement gate (issue #918)
+  applies as it does to a gear chance's bleed, so Severing Rush's "whatever chases you pays for it" is that gate.
+- **N1, `Permanent=1` on a Summon.** `UCataclysmSummonSkill::RecordTheSkillOn`, which both places that make a summon's
+  minion call, takes its lifespan away (`SetLifeSpan(0)`, the engine's "never expires", as `PlaceSkillGadget` does).
+  A replacement, a re-summon and a spawn at a kill are permanent too. The reserve is the army's limit, as a thrall's is.
+  The generator refuses it beside a `Duration`, a rift `Interval` or `Possess`.
+- **N2, a raise that strikes as it rises.** A Summon row stating a Damage Percent of its own, and not possessing, strikes
+  before the first minion is made (`StrikeAsItRises`): every enemy within the row's `Radius` of the rift, or, with
+  `MaxTargets=1`, the one enemy within its `Range` of the caster nearest where the player points (Subjugate's rule),
+  at whose feet the raise then rises. The row's `Effect` goes on what the blow landed on, after it. No key of its own:
+  a summon row's damage figure said nothing before, so stating one is what makes the raise strike; the generator
+  refuses a Summon naming an `Effect` that neither such a blow nor N11 lays. **Judgements:** with no enemy in reach,
+  Exhume strikes nobody and its Reaper rises where it was aimed (the Fervour is spent and the Reaper is the larger half
+  of the row); and the blow spends no next-use charge, as Subjugate's does not, since the summon template's
+  `DeliversDamageItself` is ground alone by the ruling of 2026-09-24 on #1833.
+
+**Change B.**
+
+- **N3, `Detonates=1` on a Strike, a Projectile or a Movement.** The caster's minions inside the skill's area explode,
+  measured as the skill's enemy search measures an enemy: a strike's cone (or its ring when a row made the use hit all
+  around), a beam's line or landing circle, a move's single arrival mode by mode (a charge's line, a blink's and a
+  trade's two circles, a leap's and a return's circle). After the blow and the curse, as the sentences order them. **A
+  flying shot detonates once, as it finishes, along the line it flew** (a judgement: the line is known only then, as its
+  ground's is, and a lance a wall stopped detonates nothing beyond it). The generator refuses it on a flicker and a
+  walked charge, whose blows are struck step by step.
+- **N4, `CommandStrike=1` on a Strike.** Compel's order moved, unchanged, from `UCataclysmProjectileSkill::Land` to
+  `UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn`, with `CommandedStrikes`. A swing orders everything its caster
+  commands onto **the first enemy it struck that it left standing** (a judgement: the search answers nearest first, and
+  a creature ordered onto one just killed strikes nothing), after its own minions in the arc exploded, so an exploded one
+  is not also ordered.
+- **N11, `MinionsLayEffect=1` on a Summon.** `RecordTheSkillOn` teaches each minion the row's named effects with the
+  seconds the skill would lay them, the row's magnitude and its damage type; `ACataclysmMinion::AttackTarget` lays them
+  on a blow that landed (not evaded, not refused as immune to its attacker), the minion as the instigator, as it sets the
+  fire `Burn=1` gives it. Its explosion lays none. The generator refuses it with no `Effect` or on a possession.
+
+### Research
+
+No formula is new. Each shape is the approved draft's, with the draft's sources (Diablo IV's Book of the Dead and Bone
+Spear, Path of Exile's minion skills); `.claude/windows/death_weapon_skills_draft.md` lists them and they were not
+fetched again for this slice. What they do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Fourteen new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **28 performed, 28 succeeded** (DS1's 14 and
+these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `APermanentRaiseStandsWithNoLifespanAndARaiseWithoutTheKeyLastsItsDuration` | A, N1 | no lifespan, a replacement too; control: 8 s |
+| `ARaiseStatingItsDamageStrikesAndCripplesTheRingItRisesInAndOneStatingNoneStrikesNothing` | A, N2 | 3 m struck, Crippled 30 for 4 s, 7 m not; control: no damage of its own, no blow |
+| `ARaiseThatHewsOneEnemyStrikesTheNearestInReachAndRisesAtItsFeet` | A, N2 | the nearest in 4 m hewn, not 3.5 m or 6 m; rises at its feet; control: nobody in reach, rises at the rift |
+| `ADetonatingSwingExplodesTheCastersMinionsInsideItsArcAndNoOthers` | B, N3 | in the arc explodes and its blast lands; behind, beyond, another's stand; control: no key |
+| `ASwingThatCommandsOrdersEveryCreatureItsCasterCommandsAndOneThatDoesNotOrdersNone` | B, N4 | a minion 20 m off ordered and swings; control: no key |
+| `AMinionTaughtTheRowsEffectLaysItWithItsBlowAndOneNotTaughtLaysNone` | B, N11 | taught Cripple 20 for 2 s, laid by its blow; control: no key |
+| `SeveringRushOpensABleedOnTheEnemyItsChargeCrossesAndNoneBesideIt` | C, row | the line's enemy bleeds; control: 4 m off |
+| `BarrowGuardRaisesTwoPermanentTauntingGuardsInABurstThatCripplesWithinFiveMetres` | C, row | burst 30 for 4 s at 4 m; two guards, no lifespan, 5 m taunt; control: 7 m |
+| `ExhumeHewsTheEnemyWithinFourMetresAndRaisesAPermanentBoneReaperAtItsFeet` | C, row | hewn at 3 m, Reaper at its feet; control: 6 m |
+| `GravebellExplodesTheMinionsInItsArcAndOrdersTheRestOntoTheEnemyItStruck` | C, row | Necrosis; one exploded; one ordered |
+| `BarrowLeapCripplesAndExplodesTheCastersMinionsWithinFourMetresOfItsLanding` | C, row | 30 for 3 s; 3 m explodes; 7 m and another's stand |
+| `MarrowLanceExplodesTheCastersMinionsOnTheLineItFlewAndNoneBesideIt` | C, row | nothing in flight; on finishing, 0.5 m off explodes, 3 m off stands |
+| `GraveReturnExplodesTheCastersMinionsWithinThreeMetresOfTheShadeItReturnsTo` | C, row | first press nothing; return explodes 1.8 m, not 5 m |
+| `BoneChoirRaisesTwoPermanentMagesWhoseBurstAndBlowsCrippleByTwenty` | C, row | burst 20 for 2 s; two mages, no lifespan; a mage's blow 20 for 2 s |
+
+**Three Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 22 rows (from 12) and the four new keys, and None Spared's certain critical strike and 14 m;
+`Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` reads 23 waiting (from 33) and 28
+of 51 shaped (from 18); `Cataclysm.Data.EveryGeneratedTableImports` pins `MinionTypes.csv` at 14 (from 11). **The whole
+suite is registered as 5440**: slice DS1's registered 5426 and these 14; a prediction, the run is the figure.
+
+**Five C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.` (N16 has no C++ and is
+proven in Python below). Change A has two, change B three:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N1 | `CataclysmSkillTemplates.cpp` | `if (Params.bPermanent)` becomes `if (false && Params.bPermanent)` | `APermanentRaiseStands...`, `BarrowGuardRaises...`, `ExhumeHews...`, `BoneChoirRaises...` |
+| G2, N2 | `CataclysmSkillTemplates.cpp` | `return !Params.bPossess && DamagePercentOverride > 0.0f;` becomes `return false && !Params.bPossess && DamagePercentOverride > 0.0f;` | `ARaiseStatingItsDamage...`, `ARaiseThatHewsOneEnemy...`, `BarrowGuardRaises...`, `ExhumeHews...`, `BoneChoirRaises...` |
+| G3, N3 | `CataclysmSkillTemplate.cpp` | `if (!Params.bDetonates \|\| !Self)` becomes `if (true \|\| !Params.bDetonates \|\| !Self)` | `ADetonatingSwing...`, `GravebellExplodes...`, `BarrowLeapCripples...`, `MarrowLanceExplodes...`, `GraveReturnExplodes...` |
+| G4, N4 | `CataclysmSkillTemplates.cpp` | `if (Params.bCommandStrike)` (the strike's; Compel's line reads `if (Params.bCommandStrike && !Targets.IsEmpty())` and is untouched) becomes `if (false && Params.bCommandStrike)` | `ASwingThatCommands...`, `GravebellExplodes...` |
+| G5, N11 | `CataclysmMinion.cpp` | `if (!EffectTagsItsBlowsLay.IsEmpty() && !Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)` becomes `if (false && !EffectTagsItsBlowsLay.IsEmpty() && !Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)` | `AMinionTaughtTheRowsEffect...`, `BoneChoirRaises...` |
+
+**Python checks moved with the rows:** `RESERVING_SKILLS` 7 to 10 (`test_every_gadget_skill_reserves_fervour.py`);
+`BarrowGuard`, `BoneReaper` and `SkeletalMage` in the minion table (`test_minion_stat_blocks.py`); the README's Minion
+Types row count 11 to 14; the undesigned count 87 of 198 to 77 (`CataclysmUndesignedSkill.h`); the script's built rows
+12 to 22 (`test_reapply_death_skills_workbook.py`); `test_the_owners_four_are_exactly_the_closed_set` holds five, its
+name kept because this log cites it; the impact test's rule-strike anchor follows Compel's order to
+`OrderEveryCommandedStrikeOn`. **New:** `tools/tests/test_death_skill_shape_keys.py` (each new key accepted where the
+engine reads it and refused where it would do something else), and in the script's tests what each waiting row waits
+on, no script row out-ranging the Sentinel, and the `SUPERSEDED` rewrite beside its refusal.
+
+### What was run, on `849aafcb0`
+
+- **Full Python suite: "1 failed, 8331 passed, 9 skipped in 444.79s"; JUnit 8341 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` (bug batch 2's) and `WeaponSkills.csv`; the editor step clears it. ruff: "All
+  checks passed!". `tools/check_resolved_cpp.py` on the eleven changed C++ files: "11 files read, 0 with complaints".
+  The engine-name, anonymous-helper, header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0
+  cells to write; nothing written"; `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- **Seven Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `849aafcb0`**, each
+  failing with the break in and passing restored:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N16 | `"Bleed"` taken out of `SKILL_ROW_AILMENTS` | `test_the_owners_four_are_exactly_the_closed_set`, both `test_bleed_is_accepted_on_the_two_fist_rows_that_state_it`, `test_every_row_the_script_writes_whole_is_accepted_by_the_generator`, `test_it_writes_the_edit_on_a_copy_put_back_to_before_it` |
+| P2, N1 | `if is_on(params, "Permanent"):` made `if False and ...` | the three `test_a_permanent_raise_with_a_lifespan_or_a_possession_is_refused` |
+| P3, N2 | the carrier check's condition made `False and (...)` | the three `test_a_summons_effect_that_nothing_lays_is_refused` |
+| P4, N11 | the no-`Effect` refusal made `if False:` | `test_minions_told_to_lay_an_effect_the_row_does_not_name_are_refused` |
+| P5, N3 | the flicker and walked-charge refusal made `if False:` | both `test_a_detonation_on_a_move_that_strikes_step_by_step_is_refused` |
+| P6, `SUPERSEDED` | its rewrite made `if False and ...` | `test_it_rewrites_what_an_earlier_slice_wrote_and_still_refuses_anything_else` |
+| P7, the range ruling | None Spared's `Range=14` made 17 in the script | `test_no_death_row_outranges_the_corrupted_sentinel`, and the three checks that hold the script to the committed workbook and table |
+
+---
+
+## 2026-11-24 — The Death weapon skills, slice DS1: the 45 rows entered, twelve of them working; a movement lays its row's effect, a raised minion taunts, and a skill row's Cripple slows by its stated size (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885`, cut from `feat/bug-batch-2`
+  (`632a43022`) with `origin/development` (`5cdd6bdc4`) merged in, as the coordinating session asked on 2026-11-24; its
+  commits are cherry-picked onto development after the bug batches squash-merge. Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **NONE SPARED WAITS ON A RULING, NOT ON CODE.** It is data only, and its `Range=17` would out-range the Corrupted
+  Sentinel, whose 14 m reach is held to the longest range any player attack has
+  (`test_the_sentinel_reach_is_the_longest_range_any_player_attack_has`, issue
+  [#352](https://github.com/sdubois777/Cataclysm/issues/352)): "A creature that cannot move and can be out-ranged is a
+  free kill." The drafts did not see that rule. **Needed: a ruling whether the Sentinel's reach rises to 17 m (the
+  Gatekeeper's mortar is "exactly as the Sentinel's" and moves with it) or the Death ranges fall to 14.** Coffin Nail
+  (17), Soul Lance (16) and Pale Rider (16) meet the same rule when their code is built. Until then None Spared is
+  entered with its numbers, its critical strike chance of 100 among them, and no shape.
+- **THE EFFIGY WAITS** on C4 (the Siphon keystone, not in the game; not built, as instructed) and on a second piece
+  found while entering it: `UCataclysmDeployableSkill::DeployOne` reserves no Fervour (the no-War rule, issue
+  [#1934](https://github.com/sdubois777/Cataclysm/issues/1934)), so its "reserves 5 Fervour while it stands" would be
+  false. C3 is built for a placed machine as well as for a raised minion, and tested on a hand-written cell.
+- **A BUG FOUND AND FIXED: A SKILL ROW'S CRIPPLE SLOWED BY 30 WHATEVER IT STATED.**
+  `UCataclysmSkillEffects::ApplyNamedEffectOnly` lays an effect whose row moves no stat as its tag alone, and dropped
+  the size; Cripple's slow is read off the size its application stated (`CrippleMultiplierOn`, issue
+  [#1256](https://github.com/sdubois777/Cataclysm/issues/1256)). So Grave Muster's and Nightshade's 20 would have been
+  the Cripple row's 30. A ground zone found the same drop on 2026-10-06 and went round it; the fix states the size,
+  held to the row's cap of 80, for a Cripple and nothing else. No row before this one stated a Cripple's size.
+- **THE SHADE'S THREAT IS NOUGHT, WHERE THE DRAFT WROTE 20 -- a judgement.** Wailing Host's sentence says the enemies
+  "pay them little attention", and since the owner's decision of 2026-11-01 (issue
+  [#2553](https://github.com/sdubois777/Cataclysm/issues/2553)) a threat above nought draws nothing in an ordinary
+  choice, while nought is what makes the nearest-enemy search pass a minion over. Path of Exile's Raging Spirit, the
+  draft's precedent, reads "Enemies will not directly engage these spirits".
+- **TWO DESIGN-DOCUMENT ARGUMENTS MOVED WITH THE ROWS -- judgements, worth a look.** (1) The knockdown paragraph of the
+  anti-stun-lock rule said both knockdowns are longer than every stun; Open Grave (1 s) and Last Toll (1.5 s) are not
+  longer than Shield Bash's 1.5 s stun. The rule is unchanged (a knockdown is a hard stop and is covered); the sentence
+  now says the longest hold in the game is a knockdown and that shorter ones are covered too, and
+  `test_the_longest_knockdown_is_longer_than_every_skill_stun` checks that in place of the shortest. (2) "All twelve
+  displacing skills" is thirteen: Severing Rush knocks enemies aside, from the Movement slot, which the argument
+  allows.
+- **BLEED (N16) STILL NEEDS THE OWNER'S CLOSED SET WIDENED** (the Death draft's said-first item 2). Gravetouch and
+  Severing Rush wait on it with no shape, so `SKILL_ROW_AILMENTS` is untouched.
+- **THE CREATION SCREEN'S "DESIGNED, DOES NOTHING YET"** line is `fix/creation-skill-count`'s, which is not in this
+  branch's base: there, by its own wording, "Death, Sword    2 of 6 skills work; 4 more are designed and do nothing
+  yet" (Pale Stride and the Death aura work; the other four wait). Its tests read Demonic rows only, so these rows move none of them.
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming the two CSVs, and the row tests below read stale
+  tables.
+
+**Affects:** `tools/reapply_death_skills_workbook.py` (new) and the workbook it edits, `docs/All_Things_Cataclysm.xlsx`;
+`game/Data/WeaponSkills.csv` and `game/Data/MinionTypes.csv`; `tools/generate_datatables.py` and
+`sim/cataclysm_sim/enemy_abilities.py` (`Taunts`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and
+`.cpp` (`bTaunts`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`
+(`UCataclysmMovementSkill::LayTheRowsEffectsOn`; `SummonOne`, `SummonReplacementAt` and `DeployOne` begin a taunt);
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`BeginTaunting`, `RowTauntStep`);
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the step);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (a Cripple's size);
+`game/Source/Cataclysm/AbilitySystem/CataclysmUndesignedSkill.h` (the counts);
+`game/Source/Cataclysm/Tests/CataclysmDeathSkillsTests.cpp` (new), `CataclysmDataTableTests.cpp` and
+`CataclysmAuraDamageTests.cpp`; `docs/Cataclysm_GDD_v2.md`, `docs/README.md`; and the Python checks named below.
+
+### The rulings, verbatim
+
+- The owner, on Death and crossbows: "Does Death not roll on crossbows? Seems like it should given the classes. I'll
+  accept your judgement on that." The coordinating session's judgement (comment 7149138032): "Death gains the
+  one-handed Crossbow. The two-handed Crossbow stays off Death."
+- The owner's review of the 40, 2026-11-24: "I think I'm good with most of the Death skills, provided the rework on
+  'pop minions'. With the exception of spear, it just feels like it would play really bad. Need your input". The
+  rulings: "I'm not sure what the difference is between minions and "pop minions" minion pop is a playstyle, not a
+  distinction. So stuff that references "pop minions" should be changed to just say it kills minions or minions that
+  explode or something like that." And for the Spear, the option chosen: "Use the reach kit (Recommended)".
+- The five Crossbow skills, the option chosen: "Approve with all four (Recommended)": a skill may mention a class
+  mechanic as long as it works for a character without it; None Spared's critical strikes are certain; Coffin Nail's
+  +5 is flat critical strike chance; the husks use C3's taunt.
+- Open question 8 of the 40-skill draft, ruled the same day as relayed by the coordinating session: the Barrow Guards
+  taunt with C3, like the husks.
+
+### The rows
+
+Every number is the draft's, a placeholder to tune in play. Two changes to the approved rows, both labelled: the
+`Slot.` tag is left to the generator, which adds it (`tags_with_slot`), and **Barrow Guard taunts** -- `Taunts=1` in
+its shape and a sentence, my wording, "draw the fight onto themselves: every enemy within 5 meters of a guard turns on
+it and attacks it, though Bosses are not fooled", by the ruling of open question 8. Its 5 m is the row's own `Radius`,
+as the husks' 4 m is theirs.
+
+**Twelve written whole** (data only, or needing only this slice's code): Grave Muster, Wailing Host (and the Shade),
+Shallow Graves (C3, and the Husk), Grasping Dead, Nightshade, Soul Lash, Gallows Chain, Soul Herd, Reaping Arc, Pale
+Stride (N22), Pale Vault (N22), Parting Shot (N22).
+
+**Thirty-three entered with their name, description, tags and numbers and no shape**, granted as the placeholder
+(`UCataclysmUndesignedSkill`) until what they wait on lands; `tools/reapply_death_skills_workbook.py` holds each one's
+whole shape and writes it then:
+
+| Waits on | Rows |
+| :-- | :-- |
+| N1, N2 (a permanent summon that strikes as it rises) | Barrow Guard, Exhume; Bone Choir also N11 |
+| N3 (explode your minions in the area) | Barrow Leap, Open Grave, Marrow Lance, Grave Return; Gravebell also N4 |
+| N5 (the dying rise) | Death Rattle, Soul Snare |
+| N6 (Fervour per kill) | Death Warrant, Hungering Soul, Restless Spirits, Last Toll, Pale Rider; Danse Macabre also N10; Grim Swath also N7 |
+| N7, N8 (scale by Fervour held; no decay) | Cold Blood |
+| N9 (a strike refunds its cooldown) | Mercy Stroke |
+| N12 (a rift's minions burst when it closes) | Grave Mouth |
+| N13 (spend every Fervour) | Requiem |
+| N14, N16 (burst on death; Bleed) | Gravetouch |
+| N15 (cash in ailments) | Quietus |
+| N16 (Bleed, which needs the owner's set widened) | Severing Rush |
+| N17 (every blow) | Hemlock, Death Grip; Grim Reach also N21 |
+| N18 (untargetable on a charge) | Wraithwalk |
+| N19 (Fervour per enemy hit, a cap a cast) | Soul Lance |
+| C1, C2 | Coffin Nail, Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+| A ruling on the Sentinel's reach | None Spared |
+
+**The workbook cells**, 228, each found by its row's Weapon Type, Damage Type and Slot or its Minion Type: on Weapon
+Skills, the 40 empty Death rows (sheet rows 6 to 323) gain Skill Name, Skill Description and Tags, and the twelve
+written whole Shape and Shape Params; Crit Chance on 2 rows, Damage Percent on 15, Cooldown on 6, Fervour Cost on 3;
+rows 405 to 409 are the five Death Crossbow rows, appended with their Weapon Type, Damage Type and Slot. On Minion
+Types, rows 11 and 12, Shade and Husk, every column. The script refuses a workbook holding formulas, charts or images
+and any Death cell holding neither its value before this edit nor its value after, and reads the file back to prove no
+other cell changed; run a second time it writes nothing.
+
+### The code
+
+- **N22, a movement lays its row's effect.** `UCataclysmMovementSkill::LayTheRowsEffectsOn`, after each of the move's
+  own blows: an arrival, a step of a walked charge, a flicker's arrival. On what the blow landed on, after it, as a
+  Strike lays its curses. **A judgement:** nothing for a row that leaves ground of its own, whose ground carries its
+  effect; that is Foul Wake, the one Movement row that stated an effect before this, so it is exactly as it was. The
+  three War rows writing `Effect=Stun` lay nothing more, since `NamedEffectTags` leaves a stun out.
+- **C3, a taunt.** `Taunts=1` on a Summon or a Deployable row (the generator refuses it with no `Radius`, or on a
+  summon that possesses). Each minion the row raises, or machine it places, taunts every enemy within the row's
+  `Radius` of it through `UCataclysmTaunt::ApplyTaunt`, as it appears and then each beat on the regeneration step:
+  once a second for a summon, the row's `Interval` (else a second) for a placed machine, as the Crossbow draft states
+  C3. How enemies choose a target today: `ACataclysmEnemyController::ChooseTarget` asks `UCataclysmTaunt::TaunterOf`
+  first, before an order, a gadget's choice and the nearest-enemy search; a threat figure is read only by Behind the
+  Veil. So C3 is a beat on the existing taunt, as Brute's Heart's six-piece aura is. Each taunt lasts **3 seconds, a
+  judgement**: the figure the aura and the Warhound taunt for, longer than the beat so a standing minion holds an enemy
+  without a gap. The radius is the row's own, not widened by area of effect (**a judgement**, as the explosion radius
+  a summon records is the row's own). Bosses are refused, another taunter holding an enemy keeps it, and the taunt ends
+  the moment the minion dies or goes, all `UCataclysmTaunt`'s rules.
+- **A skill row's Cripple slows by the size it states**, held to the row's cap, in
+  `UCataclysmSkillEffects::ApplyNamedEffectOnly`.
+- **Grave Mouth is not a spell**, by the owner's ruling on Summon Imp of 2026-09-23 (issue
+  [#2012](https://github.com/sdubois777/Cataclysm/issues/2012)), which the approved draft applies to it:
+  `NOT_SPELLS` gains it.
+
+### Research
+
+The drafts' sources, fetched by the drafting session; no formula here is new. Path of Exile's Raging Spirit (short-lived
+minions enemies will not engage: the Shade), Summon Skeletons and Raise Zombie, and Decoy Totem ("taunts nearby
+monsters to attack it": the Effigy and C3); Path of Exile 2's Unearth and Escape Shot ("Leap backwards, firing an icy
+arrow": Parting Shot); Diablo IV's Army of the Dead, Book of the Dead (Defender, Reaper, Cold Mages: the three
+permanent raises), Corpse Tendrils (Grasping Dead), Bone Spear (Marrow Lance), Reap, and Heartseeker (Coffin Nail's 5%
+for 4 seconds, up to 20%); Diablo III's Companion and, unverified, Exploding Palm; Diablo II's Strafe (None Spared).
+Last Epoch could not be read from a primary source and is not relied on. What the research does not settle is
+labelled a judgement in the drafts and above: every number, the slot placements, and the taunt's 3 seconds.
+
+### Tests, and what they move
+
+**Fourteen new Unreal tests, group `Cataclysm.DeathSkills.`** (`CataclysmDeathSkillsTests.cpp`), predicted 14
+performed, 14 succeeded:
+
+| Test | What it holds |
+| :-- | :-- |
+| `AMovementRowsEffectIsLaidOnWhatItsArrivalStrikesAndAMoveStatingNoneLaysNothing` | N22 at an arrival; control without the effect |
+| `AWalkedChargeAndAFlickerLayTheirRowsEffectOnEachEnemyTheirBlowsReach` | N22 at a walk's step and a flicker's arrival |
+| `AMovementThatLeavesItsOwnGroundLaysItsEffectThroughThatGroundAndNotWithItsBlow` | the Foul Wake judgement; control with no ground |
+| `ASkillRowsCrippleSlowsByTheMagnitudeItStatesHeldToTheCap` | 20 slows by 20, none by the row's 30, 95 by the cap's 80; Grave Muster's row by 20 |
+| `ATauntingSummonsMinionTauntsTheEnemiesWithinItsRowsRadiusAndNoneBeyond` | C3 within 4 m and not at 7; the brain chooses the minion; control without `Taunts` |
+| `ATauntingMinionLeavesABossAloneAndTauntsTheRungBelow` | a Boss refused, a Herald taunted |
+| `ATauntingMinionTauntsAgainEachSecondAndItsTauntEndsWhenItFalls` | the beat, through the replacement path; the taunt ends at the minion's death |
+| `ATauntingDeployableTauntsWithinItsRadiusEachIntervalItsRowStates` | a placed machine's 8 m and 2 s beat |
+| `EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers` | the twelve rows' numbers through their templates |
+| `EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` | the 33 have no shape; 51 named Death rows, 18 shaped |
+| `PaleStrideCripplesTheFirstEnemyItReachesAndGivesTheStrideBackOnAKill` | its row: 30 for 3 s, one enemy, the refund on a kill |
+| `PaleVaultStrikesAndCripplesWithinThreeMetresOfItsLandingAndNotAtFour` | its row: 30 for 4 s within 3 m |
+| `PartingShotCripplesTheNearestEnemyToItsLandingAndNoOther` | its row: the nearest within 10 m, one |
+| `ShallowGravesRaisesFourHusksAndTheEnemyNearThemIsTauntedByOne` | its row: four husks, one taunt landed among their four first beats |
+
+**Two Unreal tests change, counts unchanged:** `Cataclysm.Data.EveryGeneratedTableImports` pins `WeaponSkills.csv` at
+408 (from 403) and `MinionTypes.csv` at 11 (from 9); `Cataclysm.AuraDamage.EveryAuraRowDealsOnlyTheDamageItsRowStates`
+counts 13 aura rows (from 12), Grave Muster dealing nought. **The whole suite is registered as 5426**: bug batch 2's
+registered 5406, the six `Cataclysm.RarityCap.` tests development brought, and these 14; a prediction, the run is the
+figure.
+
+**Three C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N22 | `CataclysmSkillTemplates.cpp` | `if (Params.Effect.IsEmpty() \|\| Params.LeavesGround())` becomes `if (true \|\| Params.Effect.IsEmpty() \|\| Params.LeavesGround())` | `AMovementRowsEffectIsLaid...`, `AWalkedChargeAndAFlicker...`, `AMovementThatLeavesItsOwnGround...` (its control), `PaleStride...`, `PaleVault...`, `PartingShot...` |
+| G2, C3 | `CataclysmMinion.cpp` | `ApplyTaunt(Minion, Enemy, RowTauntSeconds)` becomes `ApplyTaunt(Minion, Enemy, 0.0f)` | `ATauntingSummonsMinion...`, `ATauntingMinionLeavesABoss...`, `ATauntingMinionTauntsAgain...`, `ATauntingDeployable...`, `ShallowGraves...` |
+| G3, a Cripple's size | `CataclysmSkillEffects.cpp` | `if (Magnitude > 0.0f && EffectTag == UCataclysmDebuffs::CrippleTag())` becomes `if (false && Magnitude > 0.0f && EffectTag == UCataclysmDebuffs::CrippleTag())` | `ASkillRowsCrippleSlows...`, `PaleStride...`, `PaleVault...`, `PartingShot...` |
+
+**Python checks moved with the rows** (each change says why in its own words): `RESERVING_SKILLS` 5 to 7
+(`test_every_gadget_skill_reserves_fervour.py`); the Type.Minion count 5 to 14 and the design document's "There are
+fourteen" (`test_minion_damage.py`); Shade and Husk in the minion table, and the Staff imp check held to Demonic
+(`test_minion_stat_blocks.py`); a minion row waiting on code exempt from the shape checks only while it has no half of
+a shape (`test_minion_skill_shapes.py`, with four new checks of `Taunts`); Grave Muster in `AURAS`; Grave Mouth in
+`NOT_SPELLS`; Mercy Stroke's 10 and None Spared's 100 as the two rows stating a critical strike chance; the three
+permanent raises' Fervour costs beside Subjugate's; the undesigned count 54 of 153 to 87 of 198; the README's row
+counts; the two anti-stun-lock checks above. **New:** `tools/tests/test_reapply_death_skills_workbook.py`, ten checks
+of the script against the generated tables, and on a copy of the workbook put back to before the edit.
+
+### What was run, on `c97415efd`
+
+- **Full Python suite: "1 failed, 8296 passed, 9 skipped in 458.97s"; JUnit 8306 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` (bug batch 2's, already registered for its editor step) and `WeaponSkills.csv`;
+  the editor step clears it. ruff: "All checks passed!". `tools/check_resolved_cpp.py --changed`: "10 files read, 0
+  with complaints". The engine-name, anonymous-helper, header-reach and shape-parameter checks: "14 passed".
+  `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date"; the script's `--check`: "0 cells to
+  write; nothing written".
+- **Five Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `c97415efd`**: the
+  script's refusal of a changed cell (`if not same(value, before[column])` made `if False and ...`: fails
+  `test_it_refuses_a_cell_somebody_else_changed`); the two `Taunts` refusals (each condition made `False and ...`:
+  fails `test_a_taunting_row_with_no_radius_is_refused`, `test_a_taunting_row_that_possesses_is_refused`); the waiting
+  rows' exemption (`BUILT` without C3: fails `test_a_minion_skill_waiting_on_code_states_no_half_of_a_shape`); and
+  the script against the table (Reaping Arc's `Radius=7` made 8 in the script: fails three checks of
+  `test_reapply_death_skills_workbook.py`). Each passed again restored.
+
+---
+
+## 2026-11-24 — Bug batch 2: five more fix branches, stacked on bug batch 1, with a guard proof registered for every new test (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Assembled on `feat/bug-batch-2`, stacked on `feat/bug-batch-1` so it moves
+  with it, as the coordinating session asked on 2026-11-24. **At its turn it is rebased with batch 1 onto the
+  then-current development, on a new branch name, every proof anchor re-checked, and re-registered from the newest
+  measured engine log**; the figures below are relative to batch 1's registration.
+- **It needs an editor step**: `fix/auras-2869` edits the design workbook, and `SkillSlots.csv` and `WeaponSkills.csv`
+  change with it, so `DT_SkillSlots` and `DT_WeaponSkills` are rebuilt.
+- **`feat/abyssal-rifts-2864` is left out**, as ruled: it also edits the workbook and takes the run record from 18 to
+  19; it goes in batch 3 after auras merges.
+- **A RISK, A READING AND NOT A RUN.** `fix/weapon-skills-2870` (#2872) makes an axe whose leap kills its new host tear
+  free and leap on, inside the dying creature's hooks; it was written against the `MarkDead` before batch 1's
+  `fix/drops-and-death-2871`, which refuses a death already being marked. That branch's test
+  `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` has a bonded ally 3 m away and no
+  "catcher", where weapon-skills added one to its own changed test for this chaining. The chain starts only when a leap
+  kills, and that test's leap leaves the ally alive, so it should hold; `BuriedWeaponKills.` runs alone to show it.
+
+### What it holds
+
+| Merge | Branch | Issues |
+| :-- | :-- | :-- |
+| `cc5b1826e` | `fix/thralls-2856` at `eb15b7a30` | #2856, #2867, #2868 |
+| `9ca0a2641` | `fix/resume-position-2858` at `82666c31a` | #2858 |
+| `7855f9a01` | `fix/weapon-skills-2870` at `32cb4c3ed` | #2870, #2872 |
+| `8b57235e0` | `fix/auras-2869` at `516446450` | #2869 |
+| `22a890c3d` | `fix/upthrust-wall-2878` at `fd4669be5` (built on `fix/masochist-shield-2873`, which batch 1 carries) | #2878 |
+
+- **Conflicts: this log at every merge, and `docs/Cataclysm_GDD_v2.md` at auras.** The design document's conflict was
+  two neighbouring rows of the skills table: thralls changed Subjugate's and auras Conflagration's. Each branch's row
+  was kept, after asserting each side left the other row as the base had it. No code file conflicted.
+- `778041f06` puts the seven new entries first, newest first, above batch 1's, each one's text equal to its branch's.
+- **Every file arrived as written**: each of the 68 changed files but this log differs from batch 1 by exactly the
+  union of the five branches' changed lines. The workbook, `SkillSlots.csv` and `WeaponSkills.csv` are byte for byte
+  `fix/auras-2869`'s.
+- `tools/check_resolved_cpp.py` on the 56 changed C++ files: "56 files read, 0 with complaints". No branch names a save
+  version or a committed save file. The engine-name and anonymous-helper checks: "7 passed".
+- **Full Python suite: "1 failed, 8268 passed, 10 skipped"; JUnit 8279 tests, 1 failure, 0 errors, 10 skipped.** The
+  one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming `SkillSlots.csv` and
+  `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+
+### Registered for its window
+
+**28 new test names, none removed** (read from the name literals in the diff). **The whole suite is registered as
+5406**, batch 1's 5378 plus 28, all succeeded; 57 skipped halves; **test saves 0 left behind, the number written not
+predicted**: the two new resume tests write the run slot through the game's own save, which a reading cannot count.
+
+| Branch | New tests |
+| :-- | --: |
+| thralls | 8 |
+| resume-position | 3 |
+| weapon-skills | 7 |
+| auras | 5 |
+| upthrust-wall | 5 |
+
+**Editor step**: `tools/run_editor_python.py tools/generate_datatable_assets.py`, committing `DT_SkillSlots`,
+`DT_WeaponSkills` and `datatable_asset_sources.json` only.
+
+**Groups alone, first**, at batch 1's head count plus what this batch adds: `Command.` 31 (25 + 6), `LevelCosts.` 5,
+`Gatekeeper.` 15, `Terrain.` 12, `Telegraph.` 16, `AuraDamage.` 4 (new), `SkillNumbers.` 4, `Targeting.` 7, `WhipAim.`
+3 (new), `HarrowerLeaps.` 2 (new), `SaveLoad.` 83, `Travel.` 10; and with nothing added, `BuriedWeaponKills.` 4 (the
+risk above), and the groups the thralls entries name to read: `Overlay.` 34, `SkillLevelSources.` 19,
+`MinionFollowSpeed.` 11, `SkillCost.` 3, `DungeonModifierEffects.` 785.
+
+**30 C++ guard proofs** (`.claude/windows/prove_bb2_table.py.txt`), every anchor matching once on `778041f06`, each
+narrowed to the full names of the tests it is for. Every selected test must fail with the break in, except RP1's, and
+pass restored:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| TR1 | the take prices the reserve with no target | `Command.AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| TR2 | every thrall at scale 1 | the same |
+| TR3 | a Herald's scale 1 | the same |
+| TR4 | the re-price forgets the thrall's rarity | `LevelCosts.AHeraldThrallIsRepricedAtAHeraldsFigureWhenItsSkillLevels` |
+| O1 | the oldest never released | `Command.AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O2 | the newest released first | the same |
+| O3 | a machine released | the same |
+| O4 | the take asks for room now, not room that can be made (re-anchored: the call passes `ThrallReserve`) | the same |
+| L1 | a taken creature keeps its health | `Command.ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+| L2 | built at level 1 | the same |
+| L3 | its kind's share ignored | the same |
+| H1 | the blow's target never held alive | `Command.SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H2 | the hold never read | the same |
+| H3 | every target held, a boss too | `Command.SubjugatesBlowStillKillsABossItCannotTake` |
+| TF1 | "dead" never a reason | `Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem` |
+| GB1 | the bar asks the near commander | `Gatekeeper.ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` |
+| GB2 | no creature on the player's side | the same |
+| UW1 | the wall's near end at its start's height | the three new `Terrain.` tests |
+| UW2 | a point brought to the creature's feet | the two new `Telegraph.` tests |
+| AU1 | the Aura rule never applies | `AuraDamage.MiasmasRow...`, `AuraDamage.EveryAuraRow...`, `SkillNumbers.AnAuraStatingNoDamage...` |
+| AU2 | the pulse reaches 2.5 times as far | `AuraDamage.ConflagrationsRow...`, `AuraDamage.LivingPyresRow...` |
+| W1 | a cone ignores a body's radius | `WhipAim.TheWhipStrikesAnEnemyOneMetreAhead...`, `Targeting.AConeSearchFindsABodyBesideItsAim...` |
+| W2 | a body never overlaps a cone's side | both new `Targeting.` tests |
+| W3 | an enemy under the cursor ignored (re-anchored: `if (Enemy)` is twice in its file) | `WhipAim.ACursorOnAnEnemyAims...` |
+| W4 | the cursor's point never used | `WhipAim.ASwingGoesTowardTheCursor...`, `WhipAim.ACursorOnAnEnemyAims...` |
+| W5 | an axe always tears free | `HarrowerLeaps.ALeapThatKillsItsNewHostTearsFreeAgainAndGoesOn` |
+| W6 | the leap's line reworded | both `HarrowerLeaps.` tests |
+| RP1 | the floor's start told it reached nobody | `Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce` only; it selects the two resume tests too, which pass |
+| RP2 | the floor started again on a resume | all three new resume-position tests |
+| RP3 | every load reports the character put back | `Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` |
+
+Thralls' proofs are renamed from their entries (R to TR, its second R to TF, B to GB) because batch 1 has a B1 and B2;
+the resume-position agent's R1 to R3 are RP here. Its two earlier proofs, which set the flag false or its read false,
+are not used: by its report they no longer fail anything, the two protections each covering the other.
+
+---
+
+## 2026-11-24 — A thrall's Fervour reserve rises with the rarity of the creature taken: Common 30, Elite 45, Legendary 60, Herald 90 (#2856, #2868)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A third commit on `fix/thralls-2856`, by the coordinating
+session's brief of 2026-11-24, which also confirmed Judgement 1 of the entry below (a released follower is removed,
+not killed). Issues [#2856](https://github.com/sdubois777/Cataclysm/issues/2856) and
+[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
+
+**Affects:** `UCataclysmCommand::ThrallReserveScaleFor` (new, `CataclysmCommand.h`, `.cpp`); the reserve helper
+`FervourReserveFor`, `UCataclysmSummonSkill::FervourReserveOfOne` (a creature to price for, optional) and `Possess`,
+which prices its target once and asks every room question with that figure (`CataclysmSkillTemplates.cpp`, `.h`);
+`UCataclysmSkillLevels::RepriceReservesOf`, which re-prices a thrall at its own rarity's figure
+(`Character/CataclysmSkillLevels.cpp`, `.h`); `docs/Cataclysm_GDD_v2.md` (the Fervour reserve paragraphs and
+Subjugate's row); one new automation test.
+
+### The ruling, verbatim
+
+The owner, 2026-11-24, on what keeps rare thralls in check (the entry below shows a taken Herald Brute at 39.8 times a
+summoned Imp's health), the option chosen: **"Reserve grows with rarity (Recommended)"**. The option's text: "A thrall's
+Fervour reserve rises with its rarity, e.g. Common 30, Elite 45, Legendary 60, Herald 90. A Herald thrall takes most of
+your pool, so it is a choice between one monster and an army. Exact figures set by the builder."
+
+### What changes in play
+
+**A thrall reserves its rung's figure:** the row's 30 for a Common, times 1.5 for an Elite (45), 2 for a Legendary (60)
+and 3 for a Herald (90), then the skill's level and the reductions -- Crowned's 5 and the percentages -- as every reserve
+takes them. A boss cannot be taken. Subjugate asks whether its target fits at the target's own figure, releases the
+oldest followers until that figure fits ("Replace the oldest", the entry below), and the thrall holds that figure back
+once taken. A Herald holds back 90 of a Ritualist's 150, so beside it there is room for two Common thralls or six imps.
+When the skill levels, a thrall is re-priced at its own rarity's figure, not a Common's.
+
+**What a screen shows is a Common's figure,** the skill bar's and the assignment screen's "reserves" box: they name no
+creature. The row's description, generated from the design workbook, says "Holding a thrall reserves Fervour, so your
+army is only as large as your pool" and states no figure, so the workbook is not touched.
+
+### Judgement 9, the figures: the ruling's example, kept
+
+**Common 30, Elite 45, Legendary 60, Herald 90**, as multiples of the row's figure so a re-tune of the row carries them:
+1, 1.5, 2 and 3. Kept because they do what the ruling asks and because of what they cost against what they buy:
+
+- **"A Herald thrall takes most of your pool"**: 90 is 60% of the Ritualist's 150, so a Herald is the choice between one
+  monster and an army, as the option says.
+- **Each rung still pays for itself.** By `game/Data/EnemyRarities.csv` a rung multiplies health by 1.85 and damage by
+  1.4, so a creature's power over a Common of its kind -- the square root of health times damage -- is 1.61 at Elite,
+  2.59 at Legendary and 4.17 at Herald, against reserves of 1.5, 2 and 3 times. Taking a rarer creature is still worth its
+  Fervour, which is the point of the skill, and the pool bounds how many.
+- **Not matched to the power exactly**, which would be 48, 78 and 125: a Herald at 125 would leave a Ritualist room for
+  one Common thrall beside it, and taking a rare creature would buy nothing a Common does not.
+
+**The research does not settle a figure.** Path of Exile's Dominating Blow takes a monster at its rarity and reserves
+nothing per Sentinel (the entry below); no game read for this work prices a taken creature by its rarity. So the shape is
+the owner's ruling and the figures are this judgement, on this game's own tables.
+
+### Tests
+
+Registered, not run. **One new automation test**, predicting `Cataclysm.Command.` 30 to 31 (25 before this branch):
+
+- `Cataclysm.Command.AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits`: a creature of each rung prices at 30,
+  45, 60 and 90, and with no creature named the figure is 30; then a pool of 150 holding six imps and a Common thrall
+  (90) takes a Herald at 50 health: it releases the three oldest imps, one at a time, and no more, keeps the Common thrall
+  taken fourth though releasing it alone would have fitted, holds the Herald alive through the blow, and the Herald holds
+  back 90, the pool's whole 150.
+
+**Not tested:** the re-price at the Herald's figure when Subjugate levels (`RepriceReservesOf`), which needs a player
+state holding skill levels; the line is one call, shown in the diff.
+
+**Tested in this branch's next commit, at the coordinating session's request:**
+`Cataclysm.LevelCosts.AHeraldThrallIsRepricedAtAHeraldsFigureWhenItsSkillLevels`, on the Staff player
+`Cataclysm.LevelCosts.AHeldThrallIsRepricedWhenItsSkillLevels` builds (a possessed player whose state holds skill
+levels). Subjugate takes a Common and a Herald at level 1, 30 and 90; at Subjugate's level 10 the Common, the control,
+holds 30 x 0.72028 and the Herald 90 x 0.72028, 64.8, not a Common's 21.6; the ceiling rises by 120 x (1 - 0.72028).
+Predicting `Cataclysm.LevelCosts.` 4 to 5. Its proof is R4 below. **Judgement 9 was confirmed by the coordinating
+session on 2026-11-24.**
+
+**Guard proofs registered for the window:**
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| R1 | `FervourReserveFor(Self, Params, SkillTags, this, Target)` to `FervourReserveFor(Self, Params, SkillTags, this, nullptr)` (`CataclysmSkillTemplates.cpp`, `Possess`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| R2 | `UCataclysmCommand::ThrallReserveScaleFor(Taken)` to `(Taken ? 1.0f : 1.0f)` (`CataclysmSkillTemplates.cpp`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| R3 | `return 1.5f;` to `return 1.0f;` (`CataclysmCommand.cpp`, `ThrallReserveScaleFor`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| R4 | `Maker->FervourReserveOfOne(nullptr, Thrall)` to `Maker->FervourReserveOfOne(nullptr, nullptr)` (`Character/CataclysmSkillLevels.cpp`, `RepriceReservesOf`) | `AHeraldThrallIsRepricedAtAHeraldsFigureWhenItsSkillLevels` |
+
+---
+
+## 2026-11-24 — Skill terrain stands on the floor under its near end, so the Upthrust wall's base is on the floor; and a creature's aim point is the surface under it, not its own feet (#2878)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/upthrust-wall-2878`, made from
+`fix/masochist-shield-2873` (unmerged when this was written; it adds `CataclysmEffectPlacement`, which this change
+calls), written by a bug-fix agent for the coordinating session on 2026-11-24. A later window builds and runs it.
+Issue [#2878](https://github.com/sdubois777/Cataclysm/issues/2878).
+
+### The rulings, verbatim
+
+- **Issue #2878, filed by the agent on #2863 and carrying no comments:** "Place the base on the floor under the point
+  (a downward trace; branch fix/masochist-shield-2873 adds CataclysmEffectPlacement::FloorSurfaceUnder and OnTheFloor
+  for this), keep the wall's height above the floor as designed, and test that its base is within a few centimetres
+  of the floor surface and that it blocks a creature walking into it."
+- **The coordinating session's brief, 2026-11-24:** "Place the base on the floor under the point (use the helper),
+  keep the wall's designed height above the floor, and check every other piece of terrain or collision the skills
+  create (search ACataclysmTerrain and any other spawned blocking geometry) for the same capsule-centre placement; fix
+  them the same way and list them." And, of `ACataclysmEnemyController::FloorUnder`: "if FloorUnder feeds an effect
+  or a placement, make it use the floor surface under the target instead, and say what it feeds."
+
+### What was found
+
+**The wall.** Upthrust's Strike hands `ACataclysmTerrain::Spawn` its `CastOrigin()`, the caster's actor location,
+which is its capsule centre: 98 cm above the floor for a player standing on it. `Spawn` put the actor there and
+`BuildWall` raised the block from that height, so the ridge's base stood about 98 cm above the floor and its top about
+498, while the comment above it said it "stands on the floor". Every creature and the player are 160 cm tall or more,
+so the lower edge still met them; what passed underneath was anything shorter than 98 cm -- a summoned minion is
+90 cm -- and any shot flying lower than that. A shot is stopped by geometry only along the line its centre travels
+(`ACataclysmProjectile::TraceStep`), and a flat shot flies at the height it was fired from: the Succubus's Soulfire,
+fired from its capsule centre about 92 cm up, flew under the ridge Upthrust says "blocks movement and projectiles".
+That is a reading of the code, not something seen in play.
+
+**Every other piece of terrain or collision a skill creates.**
+
+| What | Left by | Height it was handed | Collision | Now |
+| :-- | :-- | :-- | :-- | :-- |
+| Wall | Upthrust, `UCataclysmStrikeSkill`, `LeaveTerrainAlong(Feet, Feet + Ahead * TerrainSizeCm)` in `CataclysmSkillTemplates.cpp` | the caster's capsule centre (`CastOrigin`) | yes, `BlockAll` | on the floor under the near end, 400 cm tall from it |
+| Thicket | the Spear's Thicket, the same Strike call with both ends at `Feet` | the caster's capsule centre | none | on the floor |
+| Pit | Break the World, the same Strike call | the caster's capsule centre | none | on the floor |
+| Pit | Crater, `UCataclysmMovementSkill`, `LeaveTerrainAlong(ArrivedAt, ArrivedAt)` | the caster's actor location on arrival, its capsule centre | none | on the floor |
+| Fissure | Groundbreaker, `UCataclysmSelfBuffSkill::NoteBlowLanded`, `LeaveTerrainAlong(Where, Where)` | the struck creature's actor location from a swing (`CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp`), the place a shot or the buried weapon struck from the other two callers | none | on the floor |
+
+**No other actor a skill spawns has collision.** Every class spawned from `AbilitySystem/` and `Character/` was read:
+the ground zone, the planted weapon, the tether and the Reaper's soul have only a scene root; the telegraph marker's
+four meshes, the debris burst's pieces, the projectile's body and the minion's placeholder body are each set to no
+collision; a minion is a character. The only collision profiles the game's source sets are on `ACataclysmTerrain`'s
+blocks and on the dungeon's ground, walls, exit stairs and `ACataclysmFloorObstacle`, which the floor builds on its
+own cells.
+
+**What `FloorUnder` feeds.** It was the creature's own capsule bottom moved under a point's X and Y, so a point over
+ground higher than the creature's -- a target on the exit stairs, 60 cm at the top tier -- was inside that ground. It
+is called from four places:
+
+- `ACataclysmEnemyController::AimPointFor`, under the target's capsule centre (or, for a charge, under the end of the
+  lane ahead). Its answer is `WindUpAimedAt`, and the aim an untelegraphed ability is used at. That point is:
+  - the centre of a lob's landing circle and the far end of a flat shot's or a charge's lane (the marker itself is
+    put on the floor by `OnTheFloor` since #2863);
+  - **the landing height of every lob**: the Brute's Rock Throw, the Corrupted Sentinel's Brimstone Mortar and the
+    Gatekeeper's Soulfall (`ACataclysmProjectile::Fire` keeps a lob's `To.Z` as its landing height; their flight
+    times are measured across the ground and are unchanged);
+  - **where a creature's burning ground is laid**: Soulfall's ground at it, and the far end of the Hellhound's
+    Hellrush lane;
+  - the aim of the two flat shots (the Sentinel's Siege Bolt, the Succubus's Soulfire) and the end of the two charges
+    (Hellrush, the Abyssal Warden's Stampede), all of which read only its X and Y and are unchanged;
+  - the direction of a quick cast's flare, `WindUpAimedAt` minus the creature's location, which tilts by the change in
+    height.
+- `ACataclysmEnemyController::ShowWindUpMarker`, under the creature itself: the centre of a Strike's circle and the
+  near end of every lane.
+- `CataclysmEnemyModifiers.cpp`, Inferno Charge, twice: under the creature and under the player it charges. The two
+  are the drawn lane, the charge (X and Y only) and **the burning path laid between them**.
+
+### What changed
+
+- **`ACataclysmTerrain::Spawn` stands every kind on the floor.** It asks
+  `CataclysmEffectPlacement::FloorSurfaceUnder` for the walking surface under `Start` and spawns the actor there; the
+  far end keeps its offset from the near end. With no surface under `Start` -- every test world that builds no
+  geometry, a point over the void -- the actor is left at `Start`, as before.
+- **`ACataclysmTerrain::BuildWall` raises the block from the actor's own height**, the near end's, rather than the
+  middle's. The base is on the floor and the top is `WallHeightCm`, 400 cm, above it.
+- **`ACataclysmEnemyController::FloorUnder` answers the walking surface under its point**, through the same
+  `FloorSurfaceUnder`, and the creature's capsule bottom only where there is no surface. Over a flat floor every point
+  it gives is about 2 cm lower than before (the gap a capsule keeps); over the stairs it is on their top.
+- **Comments that described the old placement**: `ACataclysmTelegraphMarker`'s spawn and the header of
+  `CataclysmEffectPlacement`, which said the gameplay points were untouched.
+
+### Judgements of the writing session
+
+1. **Every kind of terrain moves, not only the wall.** A judgement, for the brief's "fix them the same way" and so
+   that terrain is where it says it is. The three round kinds decide who is inside them by a flat test, and the sphere
+   their sweep gathers with, now centred on the floor, still reaches every body standing inside its radius above about
+   1.3 m; the smallest the sheet states is a fissure's 2 m. So who they hold does not change.
+2. **The floor under the near end, not under the middle or each end.** A judgement: the near end is where the caster
+   (or the struck creature) stands, so a surface is certainly under it, while under the middle of a ten metre ridge
+   there may be a dungeon wall, a pillar or the void. A wall is one block with one base height.
+3. **On the surface itself, with no lift and no sinking.** A judgement: `OnTheFloor`'s 2 cm lift keeps a flat drawing
+   from fighting the floor for its pixels, and a wall is not a drawing; any gap under it is the fault being fixed.
+4. **`FloorUnder` answers the surface, not the surface plus the capsule's 2 cm.** A judgement: a gameplay point on the
+   ground is the ground, and the marker drawn there adds its own lift.
+5. **The creature's feet remain the answer where no surface is found**, so no test world without geometry sees a
+   different point, and a point over the void is not left without a height.
+6. **The walking test uses a body as short as a summoned minion**, an ordinary creature's capsule resized to the
+   minion's 30 by 45 cm. A judgement: an ordinary creature, 160 cm tall, was stopped by the floating wall's lower edge
+   as well, so only a body shorter than the 98 cm gap tells the fix from the fault.
+7. **"Walking into it" is tested through `UCataclysmMovement::MoveWithoutSticking`**, the movement component's swept
+   move, which is the move the walking physics makes each frame. A test world is never ticked, so the walking physics
+   and the pathfinding that would choose the route are not run.
+8. **No formula or number was chosen**, so no genre research was done.
+
+### Not settled
+
+- **Whether the floating wall was cut out of the navigation mesh** was not looked at. A wall standing on the floor
+  certainly is, since `SetCanEverAffectNavigation(true)` is set on its blocks.
+- **The caster stands inside the first 42 cm of its own ridge**, before and after this change: the ridge begins at the
+  caster's capsule centre and runs forward, so the caster's capsule overlaps its near end. Not changed here, and
+  reported rather than decided.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.Terrain.`, three added (9 before, 12 predicted)**, each on a world-static floor with its
+top at 500 cm:
+
+- `AWallRaisedFromACapsuleCentreStandsOnTheFloorUnderIt`: a wall raised from 598 cm, a player's capsule centre on that
+  floor, has its block's base within 5 cm of the floor and its top within 5 cm of 400 cm above it; its actor and far
+  end are on the floor, only the height moved and it is still ten metres long. Control: a wall past the floor's edge
+  stands where it was asked.
+- `ARaisedWallStopsACreatureWalkingIntoIt`: an ordinary creature and a minion-height one, each moved six metres
+  through the movement component's swept move. Control first: with no wall both go the whole way. With a wall raised
+  across their way from a capsule centre, both stop with their leading edge within 10 cm of its near face.
+- `APitLeftAtACapsuleCentreLiesOnTheFloorAndStillFloorsWhatFallsIn`: the pit's actor is on the floor and still round;
+  two creatures standing on the floor that walk in, near the middle and 20 cm inside the rim, are both knocked down.
+
+**Unreal, prefix `Cataclysm.Telegraph.`, two added (14 before, 16 predicted)**, on the same floor with the game's own
+exit stairs on it:
+
+- `APointOverRaisedGroundIsBroughtToItsSurfaceNotToTheCreaturesFeet`: with the creature on the floor, `FloorUnder`
+  under a capsule centre on the stairs' top tier is at the top tier, 560 cm, and more than 50 cm above the creature's
+  feet; over the open floor it is at 500 cm. Control: past the floor's edge it is the creature's feet.
+- `ARockThrownAtATargetOnTheStairsIsAimedAtTheirTopNotInsideThem`: a Brute on the floor winds up its Rock Throw at a
+  target on the top tier; `WindUpAimedAt` is at the top tier, at the target's place, and the circle is drawn `LiftCm`
+  above it.
+
+**No existing test should move.** Every other test that spawns terrain or reaches `FloorUnder` builds no geometry,
+where both answer as before, except the Vesselstep wall test in `CataclysmDungeonModifierEffectsTests.cpp`, which
+raises its wall from the floor's own surface, where the search finds that same surface. That is a reading, not a run.
+
+**Python:** nothing in `sim/` or `tools/` models terrain or an aim point's height, so no Python test was added.
+
+### Guard proofs registered, not run (`prove_cpp_guard`)
+
+| Break, in | The change | Prefix | Must fail |
+| :-- | :-- | :-- | :-- |
+| `CataclysmTerrain.cpp` | `Near.Z = FloorZ;` to `Near.Z = Start.Z;` | `Cataclysm.Terrain.` | `AWallRaisedFromACapsuleCentreStandsOnTheFloorUnderIt`, `ARaisedWallStopsACreatureWalkingIntoIt`, `APitLeftAtACapsuleCentreLiesOnTheFloorAndStillFloorsWhatFallsIn` |
+| `CataclysmEnemyController.cpp` | `return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ));` to `return FVector(Point.X, Point.Y, Driven->GetActorLocation().Z - Driven->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());` | `Cataclysm.Telegraph.` | `APointOverRaisedGroundIsBroughtToItsSurfaceNotToTheCreaturesFeet`, `ARockThrownAtATargetOnTheStairsIsAimedAtTheirTopNotInsideThem` |
+
+---
+
+## 2026-11-24 — A full pool releases the oldest minion or thrall so Subjugate's take happens (#2856), and a thrall is built from its own kind and rarity at its commander's level, not the floor's (#2868)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A second commit on `fix/thralls-2856`, on top of the entry
+below, by the coordinating session's brief of 2026-11-24 carrying the owner's two rulings of that day. Issues
+[#2856](https://github.com/sdubois777/Cataclysm/issues/2856) and
+[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
+
+**Affects:** `UCataclysmCommand::ReleasableOldestFirst`, `RoomCanBeMadeForAThrall` and `ReleaseOldestForAThrall`
+(new), and `Subjugate`, which now builds a thrall's figures (`CataclysmCommand.h`, `.cpp`);
+`UCataclysmSummonSkill::Possess` and `ReleasedToMakeRoom` (`CataclysmSkillTemplates.cpp`, `.h`);
+`UCataclysmEnemyStrength::ThrallFiguresFor` and `ThrallMeasuredAgainst` (`Dungeon/CataclysmEnemyStrength.h`, `.cpp`);
+`ACataclysmMinion::LevelOfSummonerFor` and `TypeFiguresAtLevel` (`CataclysmMinion.h`, `.cpp`); `docs/Cataclysm_GDD_v2.md`
+(the reserve paragraph, Subjugate's row, and a new paragraph after "The summoner's level is the floor"); two new
+automation tests.
+
+### The rulings, verbatim
+
+- **#2856, the owner, 2026-11-24, the option chosen for a take the pool has no room for:** "Replace the oldest". The
+  option's text: "the oldest minion (an Imp or thrall) is released to make room, and the take happens". The brief:
+  "Released means it stops being the player's: decide whether it dies or reverts to an enemy, as a judgement
+  (recommended: it dies, so no surprise enemy appears beside the player), and log the release."
+- **#2868, the owner, 2026-11-24:** "Shouldn't minions scale based off your stats? Like not 1 for 1, but if A has 100
+  health, and B has 500 health, and minion health scales at like 2x per your level, A would have 200 health and B
+  would have 1000 health. That's how I envision the scaling I think. Same with damage and such, but obviously more
+  thought out and balanced than that". **The coordinating session's reading, recorded on #2868:** "every minion,
+  summoned or taken, has the base of its own type and rarity, multiplied by one factor that grows with the summoner's
+  level (and the summoner's minion modifiers on top, as now) ... A taken creature's floor-tier scaling is replaced by
+  the summoner's level factor, so a thrall is not scaled twice." **This build follows that reading** and asks the
+  coordinating session to confirm it, as it asked.
+
+### #2856: a full pool releases the oldest
+
+**What changes in play.** When Subjugate would take a creature and the Fervour pool has no room for the thrall, the
+oldest minion or thrall the player holds is released, then the next oldest if that is not enough, until the thrall
+fits, and the take happens. Such a target is held at one health through the blow too (the entry below), because a take
+releasing can make room for is a take that will happen. When releasing every minion and thrall would still not make
+room, nothing is released and the take is refused for room, as before.
+
+**Judgement 1, what "released" is: it leaves the world, as a follower does when its commander leaves the dungeon
+(`ACataclysmDungeonGameMode::EndEveryPlayersFollowers`) or as a summoned minion does when its time runs out.** It does
+not turn back into an enemy, which was the brief's reason to recommend a death. It does not die either, and that is the
+departure from the recommendation: a death sets off what this game hangs on a minion's death -- Every One Bursts'
+explosion, Press-Ganged and Rekindled summoning a replacement into the room the release just made, the Ritualist's 5
+Fervour for losing a minion, a Soul for Reaper's Embrace, a Tyrant's Minion -- and a release made to fit a thrall should
+pay the player nothing and must not refill the pool it emptied. Each release is logged at `Log`: "RELEASED: '<player>'
+released '<follower>', which held <n> Fervour back and was commanded from <t> s, to make room for a thrall reserving
+<n>."
+
+**Judgement 2, oldest is `CommandedSinceSeconds`**, the stamp a summoning and a take both write, which is what A Second
+Self already reads as "held longest"; a follower never stamped counts as the newest, as there; a tie goes to the nearer.
+
+**Judgement 3, a deployable machine is never released.** The ruling names "an Imp or thrall". A turret, a ballista or a
+trap is placed for a fight, and A Second Self chooses among the same followers (`ACataclysmMinion::bIsMachine`).
+
+**Judgement 4, releases stop as soon as the thrall fits, one at a time,** each followed by `HasRoomForAnotherThrall`,
+so A Second Self's double count, which moves to the next oldest when the oldest goes, is counted the way that function
+counts it. The oldest goes even when a newer, cheaper one would have made room: the ruling says the oldest.
+
+**Judgement 5, nothing is released for a take that will not happen.** The release is made after the health threshold
+has been judged and only when none of `Subjugate`'s refusals holds; and `RoomCanBeMadeForAThrall` first asks whether
+releasing every releasable follower would make room -- the machines' reserves staying, and the new thrall counting
+twice while A Second Self is held, since nothing would be left to be chosen before it.
+
+### #2868: a thrall's figures from its kind and its commander's level
+
+**How summoned minions rise with level today, read 2026-11-24:** `ACataclysmMinion::Spawn` gives each minion
+`Base + PerLevel x Level` of its row of `game/Data/MinionTypes.csv`, at its summoner's level, fixed at the summoning.
+That is the type's own base times `1 + (PerLevel / Base) x Level`: one factor per stat growing with the level, which is
+the owner's model. Every creature row climbs 0.45 of its base health a level; damage climbs 1.0 of its base (0.9 for the
+Mote).
+
+**So the factor is reused, Judgement 6:** a thrall is a summoned Imp's health and blow at its commander's level, times
+the multiple `game/Data/EnemyArchetypes.csv` makes its kind of an Imp (health shares and damage shares apart), times its
+rarity's scale from Common (`UCataclysmEnemyRarity::ScalingFromCommon`) and the modifiers it carries, as every creature
+applies them, and then its commander's minion health, as before. A taken Common Imp is a summoned Imp, and every thrall
+keeps its ratio to a summoned Imp at every level. The option not taken: a new curve for thralls alone, which would make
+an Imp and a taken creature grow apart.
+
+**Judgement 7, armour keeps the proportion to health the kind has on a floor:** `health x (Common's ArmorPerScore x the
+kind's ArmorShare) / (Common's HealthPerScore x the kind's HealthShare)`. The Imp states no armour, so there is no Imp
+figure to multiply, and a floor's armour beside a level's health would be the double scaling the reading forbids.
+
+**Judgement 8, the rarity is its scale from Common and no more.** On a floor a rarer creature also scores higher, so
+rarity reaches it twice; the reading says "the base of its own type and rarity", and the rarity's own scale is what the
+creature applies to whatever figures it is given.
+
+**Fixed at the take**, through the creature's three Starting setters, so a rung raised later scales them and a save
+keeps them. A creature with no archetype row -- the sandbox's training dummy, which most thrall tests take -- or a missing
+table keeps its own figures. **Summoned minions are not changed.** The Warzone's allied soldiers, taken with
+`Subjugate`, are built this way too.
+
+**The research, fetched 2026-11-24:**
+
+- **Path of Exile, Raise Spectre** ([poedb](https://poedb.tw/us/Raise_Spectre)): "Raised Spectres are Level (28—70)",
+  from the gem, and the community section: "the level of a Spectre is now based on the level of the Raise Spectre skill
+  gem"; spectres are "the normal version of that monster type". A taken creature's level comes from the player's
+  investment and not from the area: the reading's replacement of the floor tier.
+- **Path of Exile, Dominating Blow** ([poedb](https://poedb.tw/us/Dominating_Blow)): the Sentinel keeps "the same
+  rarity, prefix and suffix modifiers", and "Sentinel stats scale heavily with the gem level". Rarity kept, level from
+  the player.
+- **Last Epoch**, patch notes ([forum](https://forum.lastepoch.com/t/last-epoch-beneath-ancient-skies-patch-notes/78635/3)):
+  "You now gain 0.8% minion power per character level (from 0.6%)", "at level 100 your minions deal 60% more damage and
+  take 60% less damage". One multiplier from the character's level over every minion.
+- **Diablo 4**: no page this tool could read stated how minions scale with level (maxroll's resource page answered 404);
+  community posts say minions inherit a share of the Necromancer's stats, which is not a level factor and was not
+  verified. Not used.
+
+**What the research settles:** a taken or raised creature in the genre takes its level, and so its figures, from the
+player and not from where it was found, and keeps its rarity where it is taken (Dominating Blow). **What it does not
+settle, and is Judgement 6:** the curve. This game already has one for its minions, tuned so that three imps out-damage
+their summoner's basic attack at every tier (`tools/tests/test_minion_stat_blocks.py`), and a thrall reuses it.
+
+**The comparison, from the tables as they stand** (a summoned Imp's attack interval is 1.0 s; an enemy Imp's 0.9 s and
+a Brute's 1.2 s, which a thrall keeps; armour after the rarity's scale; no minion modifier):
+
+| Level | Summoned Imp | Taken Common Imp | Taken Common Brute | Taken Herald Brute | Taken Herald Imp |
+| :-: | :-- | :-- | :-- | :-- | :-- |
+| 1 | 290 health, 21.0 a hit, 21.0 a second | 290 health, 21.0 a hit, 23.3 a second | 1,823 health, 81.7 a hit, 68.1 a second, 497 armour | 11,542 health, 224.1 a hit, 186.7 a second, 1,223 armour | 1,836 health, 57.6 a hit, 64.0 a second |
+| 10 | 1,100 health, 115.5 a hit, 115.5 a second | 1,100 health, 115.5 a hit, 128.3 a second | 6,914 health, 449.2 a hit, 374.3 a second, 1,886 armour | 43,779 health, 1,232.5 a hit, 1,027.1 a second, 4,640 armour | 6,965 health, 316.9 a hit, 352.1 a second |
+| 50 | 4,700 health, 535.5 a hit, 535.5 a second | 4,700 health, 535.5 a hit, 595.0 a second | 29,543 health, 2,082.5 a hit, 1,735.4 a second, 8,057 armour | 187,054 health, 5,714.4 a hit, 4,762.0 a second, 19,824 armour | 29,759 health, 1,469.4 a hit, 1,632.7 a second |
+
+The multiples, the same at every level: a Common Brute 6.29 times an Imp's health and 3.89 times its blow; a Herald
+Brute 39.8 and 10.7; a Herald Imp 6.33 and 2.74. **For the owner, a balance question this does not settle:** a thrall
+reserves 30 Fervour and an imp 10, so a taken Common Brute is about three imps' damage a second in one body of six
+imps' health, and a taken Herald Brute nine imps' damage a second and forty imps' health, for the reserve of three. That
+is the design's own size for a Herald, which is one creature in 25. Before this change a taken Herald Brute kept the
+floor's figures, 3,232 health and 72 a hit on the last floor of a tier 1 dungeon, which is why the owner's level-10 imps
+out-hit one.
+
+**The simulation does not model minions or thralls** (`sim/cataclysm_sim` has the minion affixes and no minion stat
+block), so nothing there moves.
+
+### Tests
+
+Registered, not run. **Two new automation tests**, predicting `Cataclysm.Command.` 28 to 30 (25 before this branch):
+
+- `Cataclysm.Command.AFullPoolReleasesTheOldestMinionAndTakesTheTarget`: the control first, a pool of 25 that cannot
+  hold a thrall of 30 even emptied releases nothing, refuses for room, keeps its imp, and its target is killed by the
+  unheld blow; then a pool of 75 holding a turret, a thrall and two imps (55) releases exactly the thrall, the oldest a
+  take may release, keeps the older turret and both imps, and takes a target at 50 health alive.
+- `Cataclysm.Command.ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel`: at commander levels 10 and 30, a
+  Herald Brute taken from figures nothing like its kind's has, to the summoned Imp of the same level, the Brute's share
+  ratio times the Herald's scale, health and damage apart, read from the tables, so both rise by the same factor; a taken
+  Common Imp has a summoned Imp's health and blow; and a training dummy keeps its own maximum.
+
+**Guard proofs registered for the window:**
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| O1 | `Oldest->Destroy();` to `(void)Oldest;` (`CataclysmCommand.cpp`) | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O2 | `return AFrom < BFrom;` to `return AFrom > BFrom;` | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O3 | `if (Body && !(Minion && Minion->bIsMachine))` to `if (Body && !(Minion && false))` | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O4 | `&& UCataclysmCommand::RoomCanBeMadeForAThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))` to `&& UCataclysmCommand::HasRoomForAnotherThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))` (`CataclysmSkillTemplates.cpp`) | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| L1 | `AsCreature->SetHealth(AsAMinion.Health);` to `(void)AsAMinion.Health;` (`CataclysmCommand.cpp`) | `ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+| L2 | `ACataclysmMinion::LevelOfSummonerFor(Commander), AsAMinion))` to `1, AsAMinion))` | `ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+| L3 | `ImpHealth * Kind->HealthShare / ImpKind->HealthShare` to `ImpHealth` (`CataclysmEnemyStrength.cpp`) | `ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+
+**Regressions to read in the window:** every test that takes a creature of a designed kind now sees that creature's
+figures rebuilt at the take. A read of the take sites on 2026-11-24 found the ones that read figures after a take read
+a training dummy or a relative change; the groups to read are `Cataclysm.DungeonModifierEffects.`,
+`Cataclysm.Gatekeeper.`, `Cataclysm.MinionFollowSpeed.`, `Cataclysm.EnemyBehaviour.`, `Cataclysm.SkillCost.`,
+`Cataclysm.DungeonGameMode.` and `Cataclysm.ReachAgainstACreature.`.
+
+---
+
+## 2026-11-24 — Conflagration is a 4 m ring dealing 10% of weapon damage a second, and an aura deals damage only where its row states it (#2869, #2875)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/auras-2869`, written by a bug-fix agent for the
+coordinating session. Nothing here was compiled and no Unreal test was run; every statement below about what the
+engine does was read from the code. Issues [#2869](https://github.com/sdubois777/Cataclysm/issues/2869) and
+[#2875](https://github.com/sdubois777/Cataclysm/issues/2875).
+
+**THE WINDOW MUST REBUILD TWO DATATABLE ASSETS FIRST**, `DT_WeaponSkills` and `DT_SkillSlots`
+(`python tools/run_editor_python.py tools/generate_datatable_assets.py`): `game/Data/WeaponSkills.csv` and
+`game/Data/SkillSlots.csv` changed, so `tools/tests/test_datatable_assets_are_current.py` fails until they are rebuilt,
+and the four `Cataclysm.AuraDamage.` tests read the asset. **This branch carries an unmerged edit to
+`docs/All_Things_Cataclysm.xlsx`**, six cells, listed under "What changed".
+
+### The rulings, quoted
+
+- **#2869**, the owner, 2026-11-24, as recorded on the issue: "4 m, 10% a second (Recommended)". "Row
+  Demonic_All_Aura: Radius=4, DamagePercent 10 (10% of weapon damage a second). Burn=1, the 15% Demonic shred, the
+  allies' 8% increased damage and the mana drain stay. The tier 1 reference character then kills an average tier 1
+  Common in about 6 s (3 s today). The design document's 15-40% band for the Aura slot opens to include 10%. Note: the
+  allies' 8% and the shred now reach 4 m only."
+- **#2875**, the owner, 2026-11-24, as recorded on the issue: "No damage unless stated (Recommended)". "The option
+  text: an aura deals damage only if its description says so. Those five become pure effects, and Living Pyre's
+  per-pulse damage is checked against its text."
+- **Living Pyre**, the owner, 2026-11-24, as relayed by the coordinating session, chosen option quoted: "400% spread
+  over 6 pulses (Recommended)". The row states 66.67 a pulse.
+
+### The research behind #2869, re-fetched before it was recorded
+
+The proposal the owner ruled on fetched these on 2026-11-24; each figure was fetched again from the same page before
+this entry was written, and each matched.
+
+| Game, aura | Radius | Its own damage | Its price | Source |
+| :-- | :-- | :-- | :-- | :-- |
+| Path of Exile, Righteous Fire | 1.8 m at gem level 1, 2.3 m at 20 (the page gives metres) | 70% of maximum life and of maximum energy shield as base fire damage a second | burns its holder for 90% of maximum life and 70% of maximum energy shield a second | [poedb.tw/us/Righteous_Fire](https://poedb.tw/us/Righteous_Fire) |
+| Path of Exile, Death Aura | radius 30, 3 m at ten units a metre | 1,600 base chaos damage a second at level 20 | granted by Death's Oath, a unique body armour | [poedb.tw/us/Death_Aura](https://poedb.tw/us/Death_Aura) |
+| Path of Exile, Anger | radius 60, plus up to 1.9 m with gem level: 6 m to 7.9 m | none ("base deal no damage"); adds fire damage to you and your allies | reserves 50% of mana | [poedb.tw/us/Anger](https://poedb.tw/us/Anger) |
+| Diablo II, Holy Fire | 4 yards at level 1, 16.6 at 20 | 1-3 fire at level 1 and 18-21 at 20, against 6-18 and 109-127 added to each attack | the aura slot | [skill chart, classic.battle.net mirror](https://classic.hiveworkshop.com/diablo2exp/skills/paladin-offense.shtml) |
+| Diablo II, Fanaticism | 7.3 yards at level 1, 20 at 20 | none | the aura slot | the same chart |
+| Diablo IV, Hurricane | not stated | 360% over 6 seconds | a 17 second cooldown | [diablo4.wiki.fextralife.com/Hurricane](https://diablo4.wiki.fextralife.com/Hurricane) |
+| Last Epoch, Aura of Decay | not stated on the page | poisons nearby enemies four times a second | poisons its caster every second (50% less poison damage taken while on) | [arreatsummit.gg](https://arreatsummit.gg/last-epoch/database/skills/AuraOfDecay) |
+
+**What it settles:** an aura dealing real damage around its holder is small (1.8 to 3 m) and paid for heavily; the
+large ones buff and deal nothing, or about a sixth of what they add to an attack. **What it does not settle, and the
+owner ruled:** exactly 4 m and exactly 10%. The proposal's reasons, recorded for the next reader: every timed aura a
+weapon grants in this game is 3 or 4 m, Living Pyre among them; 4 m is under half the 10 m at which Imps, Hellhounds,
+Succubi and Brutes notice the player; and 10% is the largest whole figure at which the tier 1 reference character's
+aura kills the average tier 1 Common six seconds after its first pulse (the simulation's arithmetic, not an engine
+measurement).
+
+### What changed
+
+1. **The rule, in one place.** `UCataclysmSkillTemplate::GetDamagePercent`
+   (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`) answers the row's own figure as before, and then,
+   **for a skill of the Aura shape stating none, nought** where it used to fall through to the slot's figure. The shape
+   and not the slot, so it holds on any key and for Living Pyre, an aura made for the Ultimate slot. A cell left blank
+   is still written to the CSV as -1; the game decides what -1 means for an aura, so the rule is not in two places. The
+   comments that said a skill stating nothing takes its slot's figure now say an aura takes nought
+   (`CataclysmSkillTemplate.h`, `CataclysmGameplayAbility.h`, `CataclysmWeaponSkills.cpp`, `UCataclysmAuraSkill::Pulse`
+   in `CataclysmSkillTemplates.cpp`, and the `UNSTATED_SKILL_NUMBER` comment in `tools/generate_datatables.py`).
+2. **A pulse at nought is still dealt**, so everything a row states that rides a landed blow still arrives: the burn,
+   the ailment, the shove and the pull (`HitTargets` lays each whether or not the blow hurt, issue #917), and after it
+   the named curse and the ally bonus. What a pure-effect aura no longer does is anything that asks whether the blow
+   carried damage: it earns no Fervour per enemy hit, tells no running buff a blow landed, and kills nothing.
+3. **Conflagration's row** (workbook, Weapon Skills sheet row 398, three cells): Shape Params `Radius=10` became
+   `Radius=4`, the rest unchanged; Damage Percent `10`; and the sentence became "Emanate a ring of hellfire in a 4
+   meter radius. Enemies within it take 10% weapon damage each second, are continuously set alight and have their
+   Demonic resistance reduced by 15%. Allies within it deal 8% increased damage. Drains mana per second while active."
+4. **Living Pyre's row** (row 188, one cell): Damage Percent **`66.67`**, the Ultimate's 400% spread over its six
+   pulses, by the owner's ruling quoted above; before, it dealt the Ultimate slot's 400 on every pulse. **The figure
+   the sheet holds is 66.67 exactly as typed** (a number cell); the generator writes `66.67` to the CSV, and the engine
+   reads it into a float, 66.67f. Six pulses are 400.02% before the 8% growth for each hit taken. Its sentence is
+   unchanged: it already names the pyre's fire damage.
+5. **The Aura slot** (Skill Slots sheet row 6, two cells): Damage Lowest 15 became **10**, and the note now ends "and
+   it is what an aura stating damage is typically worth: an aura whose row states none deals none." The typical 25% is
+   unchanged. `SKILL_SLOTS` in `sim/cataclysm_sim/character.py` moves with it, which
+   `tools/tests/test_skill_slot_sheet_matches_the_model.py` requires.
+6. **`docs/Cataclysm_GDD_v2.md`**: the What a Skill Is Worth table's band reads 10–40% with "An aura deals damage only
+   when it states a figure", a paragraph after the table states both rulings, the Demonic examples line reads "Hellfire
+   aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. Allies: +8%
+   damage. Drains mana.", and the Eight Shapes table's Aura row says it deals damage only when its row states a Damage
+   Percent.
+
+`python tools/generate_datatables.py` regenerated `game/Data/WeaponSkills.csv` (two rows) and
+`game/Data/SkillSlots.csv` (one row) and nothing else; `--check` reports all 34 CSVs up to date.
+
+### Every aura row, and what it deals
+
+Every row of `game/Data/WeaponSkills.csv` whose Shape is Aura, twelve, with its sentence whole. "Before" is what a pulse
+dealt until this change, in per cent of weapon damage.
+
+| Row | Skill | Slot | Its sentence | Before | After |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `Demonic_All_Aura` | Conflagration | Aura | Emanate a ring of hellfire in a 4 meter radius. Enemies within it take 10% weapon damage each second, are continuously set alight and have their Demonic resistance reduced by 15%. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second, in 10 m | **10 a second, in 4 m** (#2869) |
+| `Demonic_Fist_Ultimate` | Living Pyre | Ultimate | Set yourself alight for 6 seconds. You cannot be stunned, slowed or knocked back, your own fire does you no harm, and enemies within 4 meters are continuously set alight. Every hit you take raises the pyre's fire damage by 8% with no cap, and returns health equal to 25% of the damage that hit dealt. | 400 a pulse, six pulses | **66.67 a pulse**, 400.02 over the six (ruled 2026-11-24) |
+| `Celestial_All_Aura` | Exposing Light | Aura | Shine a judging light 10 meters around you. Enemies within it have their Celestial resistance reduced by 15. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second | **none** |
+| `Pestilence_All_Aura` | Miasma | Aura | Breathe a plague cloud 10 meters around you. Enemies within it are poisoned continuously. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second | **none**; the poison stays |
+| `Void_All_Aura` | Undertow | Aura | Bend the ground toward you 8 meters around. Every 6 seconds every enemy within it is dragged 2 meters closer. Allies within it deal 8% increased damage. Drains mana per second while active. | 150 every 6 seconds (25 a second) | **none**; the pull stays |
+| `Death_All_Aura` | Pall of Ending | Aura | Let the grave's cold spread 10 meters around you. Enemies within it deal 15% less damage while they stay and for 5 seconds after they leave. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second | **none** |
+| `Chaos_All_Aura` | Unreason | Aura | Let unreason spill 10 meters around you. Each second every enemy within it suffers one curse drawn at random: Shred, Weaken or Withered Touch. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second | **none** |
+| `Famine_All_Aura` | Gnawing Want | Aura | Hunger spreads 10 meters around you. Enemies within it are Withered: their damage, maximum mana and maximum energy shield are reduced by 20% while they stay and for 5 seconds after they leave. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second | **none** |
+| `Death_Dagger_Support` | Grave Shroud | Support | Wrap yourself in grave-cold for 6 seconds. You cannot be slowed or stunned, and every enemy within 4 meters is given Necrosis each second it stays. | none (the Support slot's 0) | none |
+| `Pestilence_Fist_Support` | Fevered Blood | Support | Let the sickness run hot in your veins for 8 seconds. You cannot be slowed, and anything within 3 meters of you is poisoned each second. | none | none |
+| `Chaos_Whip_Support` | Coin of Misrule | Support | Flip chaos's coin for 8 seconds. You cannot be slowed or stunned, and each second every enemy within 4 meters suffers one of two misfortunes drawn at random: it deals 30% less damage, or its Chaos resistance is cut by 30. | none | none |
+| `Celestial_Warhammer_Support` | Aegis of Dawn | Support | Raise a ward of dawnlight for 8 seconds. You cannot be stunned, knocked down or slowed, and each second the ward pushes every enemy within 4 meters away from you: 3 meters the first time, and each push within 5 seconds of the last half as far as the one before. | none | none |
+
+**Two rows carry `Type.AOE.Aura` and no shape**: `War_All_Aura` (Blood and Iron) and `War_Whip_Ultimate` (Whirlwind of
+Steel). No template runs them; they are granted the placeholder and deal nothing before or after. Untouched under the
+standing order of no War work.
+
+### Living Pyre: checked against its text, put to the owner, and ruled
+
+**Its sentence says the pyre has fire damage and gives it no figure.** "Enemies within 4 meters are continuously set
+alight" is the burn (`Burn=1`), and "every hit you take raises the pyre's fire damage by 8% with no cap" names damage
+of its own that grows; the project has read that growth as the pulse's damage since issue #1162
+(`MoreDamagePer=8; ScalingSource=HitTaken`, applied in `UCataclysmAuraSkill::Pulse` to the pulse and not to the burn).
+So under #2875 the pyre deals damage. It states neither a figure a pulse nor a total, so the brief's two readings
+("what the text says", or "split the 400% across the pulses if the text describes one total") both lack their premise.
+The first commit of this branch (`48a0ef463`) stated 400 on the row, the figure it dealt before, and put the
+question to the owner.
+
+**The question as it was put, with the recommendation.** What is a pulse of Living Pyre worth?
+
+- **(a) 400% a pulse, as now.** Six pulses are 2,400% before any growth: six times the Ultimate slot's 400% a use, and
+  nearly five times Skull Splitter's 500%, the largest single figure an Ultimate states.
+- **(b) The Ultimate's 400% across the six pulses: 66.67% a pulse**, still raised 8% a hit taken. **Recommended.**
+  This game's own precedent is Butcher's Bill: thirty axes at the Ultimate slot's 400% each would have been
+  12,000%; issue #1142 found it, and the row now states 14% an axe, so the whole use is 420%, inside the Ultimate
+  band. Diablo IV's Hurricane, the nearest shipped analogue, is 360% over 6 seconds on a 17 second cooldown
+  (re-fetched above).
+- **(c) No pulse damage, the burn its only fire.** "Set alight" read as the whole of the pyre's fire. But the 8% growth
+  raises the pulse and not the burn, so under (c) "raises the pyre's fire damage" would raise nothing until the growth
+  is moved onto the burn, which is a mechanism that does not exist.
+
+**The owner chose (b) on 2026-11-24: "400% spread over 6 pulses (Recommended)".** The second commit of this branch
+sets the row to 66.67, the re-apply script's value for that cell, the figures in
+`Cataclysm.AuraDamage.LivingPyresRow...`, `Cataclysm.AuraDamage.EveryAuraRowDealsOnlyTheDamageItsRowStates`,
+`Cataclysm.SkillNumbers.AnAuraStatingNoDamageDealsNoneOnAnyKeyAndKeepsAFigureItStates` and
+`Cataclysm.Skills.AnAuraStatingNeitherEffectNorAllyBonusGivesNeither`, the Python list, and the design document.
+
+### Judgements of this change, each with its reason
+
+1. **Undertow is a pure effect too, though the ruling names five.** The ruling's rule is "an aura deals damage only if
+   its description says so", and Undertow's sentence names no damage. It was missed by the research because its pulse
+   is every 6 seconds rather than every second, so it dealt 150% a pulse rather than 25. A reading of the rule, flagged
+   to the coordinating session.
+2. **Conflagration's sentence names its damage**: "Enemies within it take 10% weapon damage each second". Under #2875
+   an aura deals damage only if its description says so, so the one aura given damage has to say it; and "N% weapon
+   damage" is the form every row stating a figure uses, which `test_a_skill_deals_the_damage_its_description_states.py`
+   holds to the row's figure.
+3. **The rule is the shape's, in `GetDamagePercent`, not the slot's and not the generator's.** The slot is a key, and
+   Living Pyre shows the rule has to reach an aura on another key. A generator writing 0 for a blank aura cell would put
+   the fallback rule in a second place, which the comment beside `WeaponSkillFromRow` warns against.
+4. **The Aura slot keeps its 25% as the typical figure, and its band opens to 10 in the sheet and the model as well as
+   in the document.** The owner ruled the document's band; the Skill Slots sheet and `SKILL_SLOTS` carry the same band
+   and a test holds them equal.
+5. **Test fixtures that grant an aura with hand-written parameters keep their 10 m radius.** They test machinery, not
+   the row; the four that read a pulse's damage now state a figure of their own (below). Four comments that called
+   such a fixture "the sheet's row" now say it is the row as it stood before 2026-11-24.
+
+### Tests
+
+**Unreal, written and not run.** A new group, **`Cataclysm.AuraDamage.`, 4 tests**, in
+`game/Source/Cataclysm/Tests/CataclysmAuraDamageTests.cpp`, every one reading `DT_WeaponSkills`:
+
+| Test | What it shows |
+| :-- | :-- |
+| `ConflagrationsRowHitsWithinFourMetresForTenPercentOfWeaponDamageAndNotAtFive` | the real row: radius 4 m and 10% read off it; a pulse takes 10 from an enemy 3 m out, sets it alight and lays the Shred; an enemy 5 m out loses nothing and carries neither; a second pulse takes 10 again |
+| `MiasmasRowPoisonsAndHelpsWhatIsInsideAndDealsNoDamage` | the real row states none; a pulse finds the enemy, takes no health, poisons it and helps the ally inside; CONTROL: given 25 by hand the next pulse takes 25 |
+| `EveryAuraRowDealsOnlyTheDamageItsRowStates` | every one of the twelve Aura rows, stamped as a grant stamps it: Conflagration 10, Living Pyre 66.67, the rest nought |
+| `LivingPyresRowBurnsWithinFourMetresForItsStatedFigureAndGrowsEightPercentAHitTaken` | the real row: a pulse takes 66.67 from an enemy 2 m out (given 1,000 health, so the float reads it back to within a ten-thousandth) and sets it alight, not one 5 m out; a hit of 200 returns 50; the next pulse takes 8% more, 66.67 times 1.08 |
+
+**And one in `Cataclysm.SkillNumbers.`**, now 4: `AnAuraStatingNoDamageDealsNoneOnAnyKeyAndKeepsAFigureItStates`, an
+aura stating nothing answers nought in the Aura and Ultimate slots and keeps 10 and 66.67 when it states them; CONTROL: a
+strike stating nothing in the Aura slot takes the slot's 25.
+
+**Four existing tests read a pulse's damage from an aura stating nothing, and now state a figure**:
+`Cataclysm.Skills.AnAuraSwitchesOffWhenTheManaRunsOut` (10),
+`Cataclysm.Skills.AnAuraStatingNeitherEffectNorAllyBonusGivesNeither` (Living Pyre's 66.67),
+`Cataclysm.Chorus.AnAurasPulseComesAfterTheCastAndIsNotRepeated` (10) and
+`Cataclysm.TriggeredSkill.ARunningAuraKeepsPulsingWhileItsCasterIsStunned` (10). Every other test granting an aura was
+read for a damage assertion and has none, or states its figure already.
+
+**Python:** `tools/tests/test_an_aura_deals_damage_only_where_its_row_states_it.py`, 9 checks: every Aura row listed
+with what it deals and why; each states exactly that or none; a row stating none names no weapon or fire damage, and a
+row stating one does; the figures 10, 66.67 and nought; Conflagration's row is the ruling; the Aura band holds 10; and the
+C++ rule is present in `GetDamagePercent` between the row's own figure and the slot's, comments stripped.
+
+**Python guard proofs, `tools/prove_guard.py`, 4 of 4 PROVED**, each command the new file alone:
+
+| Break | Failed with it in | Restored |
+| :-- | :-- | :-- |
+| the rule names `ECataclysmSkillShape::None` instead of `Aura` | `test_the_game_gives_an_aura_stating_nothing_no_damage` | 9 passed |
+| Conflagration's Damage Percent back to -1 in the CSV | `test_each_aura_states_exactly_the_figure_listed_or_none`, `test_what_each_aura_deals_a_second`, `test_conflagrations_row_is_the_ruling` | 9 passed |
+| Miasma's Damage Percent 25 in the CSV | `test_each_aura_states_exactly_the_figure_listed_or_none`, `test_what_each_aura_deals_a_second` | 9 passed |
+| the Aura band's lowest back to 15 | `test_the_aura_slots_band_holds_conflagrations_ten` | 9 passed |
+
+**C++ guard proofs proposed for the window, not run:** the rule's `Aura` changed to `None` in `GetDamagePercent`
+must fail `MiasmasRowPoisonsAndHelpsWhatIsInsideAndDealsNoDamage` and `EveryAuraRowDealsOnlyTheDamageItsRowStates`
+(prefix `Cataclysm.AuraDamage.`), and `AnAuraStatingNoDamageDealsNoneOnAnyKeyAndKeepsAFigureItStates` (prefix
+`Cataclysm.SkillNumbers.`); and `ScaledRadiusCm()` in `UCataclysmAuraSkill::Pulse` multiplied by 2.5 must fail the
+Conflagration and Living Pyre row tests on their enemy 5 m out.
+
+**Python suite, the whole of it once, on the branch before it was committed:** "1 failed, 8224 passed, 9 skipped in
+422.83s"; JUnit 8234 tests, 1 failure, 0 errors, 9 skipped. **The one failure is the expected one**,
+`test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`, naming
+`SkillSlots.csv` and `WeaponSkills.csv`: it clears when the window rebuilds their two assets. ruff: "All checks
+passed!". The re-apply script below and this paragraph were added after that run; ruff was run again on them.
+
+**After the Living Pyre ruling, the second commit was not given a whole-suite run**, by the coordinating session's
+instruction: the 274 Python test files that read anything it changed (the design documents, this log, the workbook,
+`WeaponSkills.csv`, `SkillSlots.csv`, the C++ it edits) gave "5995 passed, 8 skipped in 278.99s"; JUnit 6003 tests,
+0 failures, 0 errors, 8 skipped. That set does not include `test_datatable_assets_are_current.py`, which still fails
+as above until the window rebuilds the two assets. The four guard proofs above were run again on it, 4 of 4 PROVED,
+and the re-apply script's proof below was repeated with Living Pyre's cell at 66.67, every figure as stated.
+
+### The workbook edit, as data, and the script that re-applies it
+
+**Granted to this branch by the coordinating session, and not the only unmerged one**: `feat/abyssal-rifts-2864`
+carries a one-cell edit to the same file, made before the grant. Git cannot merge the binary, so whichever lands second
+takes the other's workbook whole and re-applies its own cells. **`tools/reapply_aura_damage_workbook_edit.py`** is that
+re-application for this branch: it finds the six cells by content (the Weapon Skills rows named Conflagration and
+Living Pyre, the Skill Slots row named Aura), refuses unless each holds its value before or after this edit, writes,
+checks that no other cell changed, and runs `tools/generate_datatables.py`. `--check` writes nothing.
+
+| Sheet | Row (key) | Cell | Before | After |
+| :-- | :-- | :-- | :-- | :-- |
+| Weapon Skills | 398 (Conflagration) | E, Skill Description | "...in a 10 meter radius. Enemies within it are continuously set alight..." | the sentence quoted under "What changed" |
+| Weapon Skills | 398 (Conflagration) | H, Shape Params | `Radius=10; ...` | `Radius=4; ...`, the rest unchanged |
+| Weapon Skills | 398 (Conflagration) | J, Damage Percent | blank | 10 |
+| Weapon Skills | 188 (Living Pyre) | J, Damage Percent | blank | 66.67 |
+| Skill Slots | 6 (Aura) | C, Damage Lowest | 15 | 10 |
+| Skill Slots | 6 (Aura) | J, Note | "...This is per second rather than per use." | "...per use, and it is what an aura stating damage is typically worth: an aura whose row states none deals none." |
+
+**Proved on a fresh copy of `origin/development`'s workbook** (`4d33f5994`): `--check` listed six cells to change; the
+apply wrote six and reported no other cell changed; the result matched this branch's workbook in every cell of all 28
+sheets (15,114 non-empty cells, none differing); the generator run on it wrote `WeaponSkills.csv` and `SkillSlots.csv`
+byte-identical to this branch's; a second run reported all six already set and wrote nothing; and a copy with
+Conflagration's Shape Params set to a third value was refused, exit 1, before anything was written.
+
+---
+
+## 2026-11-24 — A cone counts a creature's body, a skill aims at the enemy under the cursor, and Harrower's axe says each leap, is drawn where it is, and goes on from a host its own leap killed (#2870, #2872)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.h` and `.cpp` (`IsBodyInCone`, `BodyRadiusOf`,
+`IsActorInCone`; `FindEnemiesInCone` applies the last);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAreaShareOnAllies.h` and `.cpp` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.h` and `.cpp` (their cones use the same test);
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (`AimPointUnderCursor`, and
+`PointCursorForTest` for tests); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`AimPoint` asks
+the controller); `game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.h` and `.cpp` (the leap's log lines, the
+drawn weapon, and the chain going on from a host its leap killed);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (`BuryInStruck` names, draws and logs);
+`game/Source/Cataclysm/Tests/CataclysmTargetingTests.cpp` (two tests),
+`game/Source/Cataclysm/Tests/CataclysmWhipAimTests.cpp` (new, three tests),
+`game/Source/Cataclysm/Tests/CataclysmHarrowerLeapsTests.cpp` (new, two tests),
+`game/Source/Cataclysm/Tests/CataclysmBuriedWeaponKillTests.cpp` (one test's layout gains two catchers);
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two patterns follow the code's new shape);
+`docs/Cataclysm_GDD_v2.md` (the Strike shape's row, and how every ability aims). Issues
+[#2870](https://github.com/sdubois777/Cataclysm/issues/2870) and
+[#2872](https://github.com/sdubois777/Cataclysm/issues/2872).
+
+**WRITTEN AND NOT COMPILED, AND NO UNREAL TEST HAS RUN.** The session that wrote it had no build: the coordinating
+session's window compiles the branch and runs the tests registered in its report.
+
+### What the owner said, verbatim
+
+- #2870, 2026-11-23: "Some weapons, like the whip, don't actually hit enemies in their range, it's like it only hits
+  them if they're on the edge. Also, is the targeting towards the cursor or is it based on the direction the player is
+  walking? It should be towards the cursor."
+- #2872, 2026-11-24: "I don't think the axe skill, Harrower, is actually working."
+
+Neither issue carries a comment; nothing below is a ruling of the owner's beyond those two sentences. The coordinating
+session's brief asked for: an enemy whose capsule overlaps the cone is hit; aiming at the cursor, a click on an enemy at
+the enemy, the facing only with no cursor hit; Harrower's leap built or fixed, burning each target, the axe visibly in
+the target where a mesh exists, and a log line for each leap.
+
+### SAID FIRST: what a player will notice
+
+- **A narrow swing now reaches an enemy beside the character.** The Whip's basic attack (`Weapon_Whip`: Radius=3;
+  Angle=45) took an enemy only when its centre was inside the cone, and a 45 degree cone is 41 cm either side of the aim
+  a metre out: an enemy a metre ahead and half a metre aside, its 48 cm body squarely in the swing, was missed, while
+  the same half metre at three metres was inside. Now an enemy is inside when its body overlaps the cone's angle. One
+  metre out, an ordinary creature's centre may now stand this far to one side of the aim and be struck (before, after),
+  for every Strike of under 180 degrees in the data: 15 degrees (the Warhammer's Upthrust) 13 cm to 62; 30 (the Spear's
+  Impale) 27 to 76; 40 (the Spear's basic) 36 to 87; **45 (the Whip's basic, Searing Lash, Wild Lash) 41 to 93**; 60
+  (the Dagger's and Fist's basics, Shield Bash, Emberpierce, Gravepoint, Searing Hook, Septic Hook) 58 to 113; 80 (the
+  Warhammer's basic, Sentence, Molten Crush) 84 to 147; 90 (the Sword's basic, Quench, Hollow Cut) 100 to 168; 100 (the
+  Axe's basic) 119 to 194; 120 (the Greataxe's basic, Molten Cleave) 173 to 269; 140 (the Greatsword's basic,
+  Backswing, Erasure) 275 to 415, where the reach caps it first. The narrow ones change most, and those are the ones the
+  owner met.
+- **The reach does not change.** An enemy is still in reach only while its centre is within the Strike's radius:
+  ruling P7-c of 2026-10-16 ("Reach is measured between the two actors' origins") stands, for the click's walk and for
+  the swing alike.
+- **A creature's cone reaches the player the same way.** The Gatekeeper's Cleave searches with `FindEnemiesInCone` and
+  now counts the player's 42 cm body; an ally sharing a point-blank blow and a wearer in its deployable's cone are
+  inside on the same test.
+- **A skill pressed with the cursor on an enemy is aimed at that enemy.** Aiming was already at the cursor, and is:
+  the facing is used only when the cursor points at nothing in the world. But the cursor's trace is on the visibility
+  channel, which every creature ignores, so a cursor on a creature's body landed on the floor behind it: the camera
+  looks down at sixty degrees, so about 0.58 m beyond its feet for a point a metre up, up the screen. For a creature a
+  metre to the character's left or right that turned the aim thirty degrees off it, outside the Whip's 22.5. That was
+  the other half of "only hits them on the edge". Now an enemy under the cursor, by the click's own test, is aimed at
+  itself; anything else under it, the floor as before. A click on an enemy already aimed at it (P7-b).
+- **Harrower was working, and almost nothing showed it.** The log of the owner's session on 2026-11-24 (the main
+  checkout's `Cataclysm.log`) holds 304 lines "HIT OUT: ranged attack on ...", 143 of them with exactly the sent figure
+  of the Harrower throw before them: those are the leaps, named "ranged attack" because a leap carries the throwing
+  skill's tags and no skill object, which ruling N1/N2 of 2026-10-22 (#2465) keeps. The leap's own line was Verbose,
+  which the log never prints, and nothing was drawn. Now each burial, each leap and each stop writes a Display line
+  beginning "BURIED WEAPON: ", naming the skill, the two creatures, the distance, the figure sent and whether it burned;
+  and the axe is drawn in the creature it is in, when its mesh loads.
+- **And the chain stopped at the first leap that killed.** The new host's death was recorded inside the leap's own
+  blow, before the axe was in it, so nothing tore free and the axe was buried in a corpse. Against ordinary creatures
+  Harrower's leap kills most of what it reaches, so the chain was usually one leap long. Now the axe tears free of a
+  host its own blow killed and goes on, at once, to the nearest living enemy within 10 m of that body, until a host
+  survives or nothing is in reach: "it goes on doing so until nothing is left in reach".
+
+### The shape of the cone test, and where the genre settles it
+
+`UCataclysmTargeting::IsBodyInCone`: inside when the centre is (the old test, unchanged), or when the centre is within
+the radius and either the apex stands inside the body or the body's circle reaches the nearer of the cone's two edges.
+
+**What the research settles is small, and it is said here so it is not overstated.** No shipped game's documentation
+that this session could read states how a melee cone treats a creature's size:
+
+- Path of Exile: `poedb.tw` (the readable mirror; `poewiki.net` refuses this tool) lists a humanoid's hitbox radius
+  and melee ranges of "4 to 7 units", and says nothing of edge or centre. A forum thread
+  (`pathofexile.com/forum/view-thread/3757630`, a player, 2025-04-12, no staff reply) reads an aura failing between two
+  large creatures as "the distance created by two hitboxes", a player's theory that range checks see hitboxes.
+- Last Epoch: player reports of melee missing an enemy pressed against the character and of a cone's "narrow point"
+  being sidestepped close in turned up in search results; the threads answered this tool 404, so they are not quoted.
+- An Unreal cone trace write-up (`sreitich.github.io/cone-trace`) sweeps a sphere and tests the IMPACT POINT on each
+  collider, so a body whose edge is inside counts; it is a tutorial, not a shipped game.
+
+**So the shape is a judgement of the writing session**, with one reason that is not taste: the owner's own words
+describe the centre test's failure exactly, and the body test is the smallest change that removes it. **The reach is
+held to the centre, also a judgement**, because ruling P7-c measures reach between centres and lengthening every melee
+reach by its target's width is a balance change nobody asked for.
+
+### Where the aim's rule comes from
+
+The owner's sentence settles the rule: "It should be towards the cursor." Path of Exile players say the same against
+its auto-targeting: "It should always shoot where the mouse is" (`pathofexile.com/forum/view-thread/3596654`, a
+player, 2024-12-07); and one describes the screen-space gap between the ground point and the height an attack leaves
+from (`pathofexile.com/forum/view-thread/3778983`, a player, 2025-05-08). None of these is a staff post. **Aiming at
+the creature under the cursor, and at nothing that is not under it, is a judgement of the writing session**: it is what
+the cursor is visibly on, it is the test the click already uses, and it adds no auto-target of the kind those players
+object to.
+
+### Judgements of the writing session, each labelled
+
+1. **The body is the creature's simple collision cylinder** (`AActor::GetSimpleCollisionRadius`): 48 cm for an
+   ordinary creature, 30 for an Imp or a minion, 42 for the player.
+2. **The reach stays at the centre** (above).
+3. **An enemy under the cursor aims at its location** for every shape, a Movement skill included: a blink with the
+   cursor on a creature now goes toward the creature and is stopped by its body, where it used to aim at the floor
+   0.6 m behind it.
+4. **A leap that kills goes on at once**, inside the same death, rather than waiting a frame. Every body this chain has
+   left is excluded from its later searches by name, because none of them is recorded dead until the chain returns,
+   and a death already tearing an axe free is not torn again: that is what stops a second axe, in a host this one
+   killed, leaping back into a creature still dying further up the chain.
+5. **No burn on a host the leap killed**: a corpse is not set alight, and the axe goes on to the next.
+6. **The axe is drawn with the mesh the hand draws** for the skill's `Item.Weapon.` tag (`Weapon_Axe`, `SM_Axe`),
+   two thirds of the body's radius out on the side it came from and a third of the way up, its forward axis into the
+   body. Placed without seeing the mesh; **the owner is asked to look.** It has no collision. A base whose mesh does not
+   load is not asked again in the run, so a worktree warns once.
+7. **The test cursor** (`PointCursorForTest`) replaces both traces with what the test gives and runs the controller's
+   own choice between them, so the choice is tested and the traces are not; a test world has no viewport to trace.
+
+### An existing test's layout changed, and why
+
+`Cataclysm.BuriedWeaponKills.ATrapsBuriedWeaponLeapKillExplodesForItsShareAndTheExplosionsOwnKillDoesNot` kills a
+50-health enemy with a leap and reads an explosion's share off a bystander 3 m from it. With the chain going on, the axe
+would leap from the dead into that bystander. Each of its two killing groups gains a catcher of 50,000 health 1 m east
+of the dead, nearer than the bystander, so the bystander still takes the explosion alone; one new assertion reads that
+the control's catcher was struck. No figure the test reads changed.
+
+`test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced` reads the buried weapon's code as
+text. Its rule, that the weapon never reads `CastBy` through `Get`, is unchanged; its control looked for the caster read
+through `Get` as `Buried->Caster.Get()`, and the leap now copies the component's fields out first, so it is
+`Carried.Caster.Get()`; and its pattern for `BuryInStruck` ended in three closing brackets, two since the call's result
+is kept. Both patterns follow the code. Proved with `tools/prove_guard.py`: with `Carried.CastBy.Get()` written into
+the leap's delivery, that test alone failed, and it passed with the file restored.
+
+### What was not done
+
+- **Nothing shows the axe in flight from one body to the next.** The leap is instant, as it was; the drawn axe leaves
+  one body and appears in the next. A flight would need a projectile or an effect along the line.
+- **The HIT OUT line still names a leap "ranged attack"**, because the hit notice names a skill object and ruling
+  N1/N2 (#2465) keeps the leap without one; the new BURIED WEAPON line beside it names the skill.
+- **Where the axe is drawn was not seen.** Without the art pack in a worktree, the tests report that half as skipped.
+
+---
+
+## 2026-11-24 — A character continued inside a dungeon stands where it was saved, and a level's first floor starts for the player once: the dungeon level's start no longer stands it at the entrance, or starts the floor again, after the floor's own start has reached it (#2858)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/resume-position-2858`, from the coordinating
+session's brief of 2026-11-24. Issue [#2858](https://github.com/sdubois777/Cataclysm/issues/2858).
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `game/Source/Cataclysm/Player/CataclysmGameMode.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveLoad.h`, `game/Source/Cataclysm/Save/CataclysmSaveLoad.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveWriter.cpp`, `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`,
+`docs/Save_System_Design.md`.
+
+### What the owner saw, and why no ruling was needed
+
+The owner, playtest of 2026-11-22, verbatim: "It should be loading you back in the spot you were, with whatever enemies
+were alive as well. Right now it seems to load you back at the start of the level." And on the issue the same day: "The
+enemies were dead up to where I had made it on that floor". `docs/Save_System_Design.md` section 6 already restores
+"Which floor, and where on it the character is standing", so this is a fault against the design, not a new rule.
+
+### The cause, read from the code in the order it runs
+
+1. **The pawn stands before play begins.** The engine spawns the player at login and only then begins play:
+   `UEngine::LoadMap` calls `SpawnPlayActor` before `BeginPlay` (UnrealEngine.cpp lines 16647 and 16661 in the 5.8
+   install), and Play In Editor does the same (GameInstance.cpp 538 and 566). `AGameModeBase::HandleStartingNewPlayer`
+   restarts the player at once. The load it asks for (`ACataclysmGameMode::LoadThePendingCharacter`) waits, because
+   the save writer begins in `StartPlay`.
+2. **`ACataclysmDungeonGameMode::StartPlay` builds the level's floor and calls `Super::StartPlay`**, where the writer
+   begins and the load runs: `ResumeEmpireDungeon` builds the saved floor (the first "Floor N carries ..." line), the
+   saved creatures go back, and `FCataclysmSaveApply::PlacementInto` puts the character where its record says. The load
+   logs "placed where it was saved", and that was true.
+3. **Back in the dungeon's `StartPlay`, `PlaceAtEntrance` stood the pawn at the floor's entrance**, and
+   `ApplyFloorRulesKeepingHealth` wrote "Floor N carries ..." a second time: the 3 milliseconds the issue measured.
+
+**The save was not at fault**: `FCataclysmSaveGather::PlacementFrom` writes the character's own location, and the
+creatures came back as the owner saw. The entrance placement after `Super::StartPlay` came with the dungeon level (#40,
+commit `23d3fec0c`); the load joined the parent's `StartPlay` with select-screen step 3a (commit `17c95a8d1`). No test
+ran a resume through `StartPlay`: every one called the load after it.
+
+### What changed
+
+- `FCataclysmLoadReport::bPutWhereSaved` and `SavedLocation`: set when a placement was found for the character on a
+  record that holds a floor. `ACataclysmGameMode::LoadThePendingCharacter` keeps it, and
+  `PendingLoadPutTheCharacterWhereSaved` answers it.
+- `ACataclysmDungeonGameMode::StartPlay` asks which pawn stood before its `GoToFloor` ran. After `Super::StartPlay` it
+  starts the first floor for the player -- the entrance, `NoteTheConsumptionDoubleAsAFloorIsEntered`,
+  `ApplyFloorRulesKeepingHealth` and `floor_start` -- only when that `GoToFloor` reached no pawn and no load put the
+  character where it was saved. Otherwise it logs which of the two it was, with how far a loaded character stands from
+  the entrance. A hand-over's record, which holds no floor, leaves the character where `GoToFloor` stood it.
+- **The log lines the issue asked for.** Every run record write logs the trigger that raised it and the place it holds
+  ("The run record was written for the clock: the character at X=... on floor N of '...', with M creature(s)
+  standing"); the load logs where the character stands just after the put-back, and a timer logs it again a second
+  later.
+- The comments that said no pawn stands during `StartPlay`'s first `GoToFloor` were corrected; they were the premise
+  the old order rested on.
+- No save record version and no fixture changed.
+
+### Judgements
+
+- **A judgement: the level's start reads a flag the load sets, rather than the load moving after the entrance
+  placement.** The placement stays for what it is for: a pawn that did not stand when `GoToFloor` ran, and a load that
+  put back no place. A flag answers exactly the question the start needs, and a load that runs later, in
+  `HandleStartingNewPlayer`, already came after every placement.
+- **A judgement: every run record write is logged, not only the clock's, a floor change's and the hand-over's.** Every
+  write restarts the clock, so in a fight the last write before a quit is usually a creature's death or a fight starting,
+  and a line for three triggers would miss the write a resume reads. The run record is written at most once a frame, so
+  the lines are at most one a frame.
+- **A judgement: the line a second after the load comes from a timer** on the world's timer manager, held by a weak
+  pointer to the character, so it is written in play and never in an automation test, whose world is not ticked.
+- **First reported, then ruled and fixed in the same branch.** In a launched game the first floor's start reached the
+  player twice, because `StartPlay` repeated `NoteTheConsumptionDoubleAsAFloorIsEntered`,
+  `ApplyFloorRulesKeepingHealth` and the `floor_start` event for a pawn `GoToFloor` had already reached; after a load the
+  repeated `floor_start` came after the saved health was put back, so "You start every dungeon floor at 30%-50% of your
+  maximum HP" capped a resumed character. The coordinating session, 2026-11-24, verbatim: "ruled by the coordinating
+  session as a defect, not a design question: the first floor's start must reach the player once, not twice. (1) In a
+  launched game, StartPlay must not repeat NoteTheConsumptionDoubleAsAFloorIsEntered, ApplyFloorRulesKeepingHealth and
+  the floor_start event when GoToFloor already reached the pawn. (2) On a resume (a load that put the character where it
+  was saved), the floor is not newly started: the floor_start event must not fire again after the saved health is put
+  back, so "You start every dungeon floor at 30%-50% of your maximum HP" (health_capped_at) does not cap a resumed
+  character."
+- **A judgement: "reached" means the same pawn stood before `GoToFloor` and after `Super::StartPlay`,** held by a weak
+  pointer, so a pawn destroyed or replaced in between is started here as before. No floor rule is lost by not repeating
+  them: they are held on the ability system (`SetDungeonStatModifiers`), so the stat refresh the character's
+  `BeginPlay` makes when it puts on its starting weapon keeps them.
+- **A judgement: the resume is protected twice, by the reached pawn and by the load's flag.** In a launched game and in
+  every test the pawn the load reaches is the one `GoToFloor` reached, so either answer alone keeps a resume's health;
+  the flag is kept for a pawn that came to stand inside `Super::StartPlay`, which `AGameModeBase` does not do today. So
+  no single-line break of either answer alone fails the resume tests, and their guard proof breaks the line that joins
+  the two.
+
+### Tests
+
+- New: `Cataclysm.SaveLoad.ACharacterContinuedInsideADungeonStandsWhereItWasSaved`. Saved as play saves it (floor 2 of
+  a walk, two creatures killed, the character moved to a cell three cells or more from both ends of the floor, the
+  clock's write), continued through the dungeon level's own `StartPlay` with the pawn standing first, then one beat of
+  the floor. The character must be within 10 cm of where the record says it stood after the start and after the beat;
+  the CONTROL is that place's distance from the entrance, over 100 times that. It also asserts the creatures standing
+  are the ones saved and that the clock's line and the start's line are each written once.
+- Changed: `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` asserts a hand-over's load
+  reports no place put back, so the level's start still stands that character at the entrance.
+- New: `Cataclysm.Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce`. The pawn stands before the dungeon level's
+  `StartPlay`, as login leaves it, and nothing is pending: `floor_start` reaches it exactly once, and it stands at the
+  floor's entrance (the CONTROL that the floor's start did reach it).
+- New: `Cataclysm.SaveLoad.AResumedCharacterWearingTheFloorStartCapKeepsItsSavedHealth`. Saved on floor 2 wearing the
+  cap on a helm, at 80% of its maximum health; continued through `StartPlay`. It keeps the health it was saved with,
+  and still after a beat, and no `floor_start` reaches it after the load put it back. CONTROLS: the loaded character
+  wears the cap, its saved health is above any share the cap lowers to, and the resumed floor's start did reach it
+  during the load.
+
+---
+
+## 2026-11-24 — Subjugate takes a creature its blow would have killed, its refusal line names every reason including "dead", and a taken Gatekeeper's Imps wear the green bar (#2856, #2867); a thrall's minion scaling is as designed and goes to the owner (#2868)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/thralls-2856`, from development `4d33f5994`, by
+the coordinating session's brief of 2026-11-24. Nothing below has been built or run in Unreal; the counts and proofs
+are registered for the window, not measured. Issues [#2856](https://github.com/sdubois777/Cataclysm/issues/2856),
+[#2867](https://github.com/sdubois777/Cataclysm/issues/2867) and
+[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
+
+**Affects:** `UCataclysmCommand` (`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`, `.cpp`: the list
+`ECataclysmSubjugateRefusal`, `WhySubjugateRefuses`, `SubjugateRefusalHolds`, `SubjugateRefusalName`,
+`SubjugateRefusalsText`, `IsHeldAliveForATake` and `TopCommanderOf`, all new, and `Subjugate`, which now refuses by
+the list); `ACataclysmCharacterBase::bHeldAliveForATake` (new); `UCataclysmSummonSkill::Possess` and its header
+(`CataclysmSkillTemplates.cpp`, `.h`); `UCataclysmVitalAttributeSet::PreAttributeChange` and its damage branch
+(`CataclysmVitalAttributeSet.cpp`); `UCataclysmCombatOverlay::HealthFillHexFor` (`CataclysmCombatOverlay.cpp`, `.h`);
+`docs/Cataclysm_GDD_v2.md` (Subjugate's row and the health bar paragraph); four new automation tests and one new
+Python test.
+
+### The rulings and reports it carries, verbatim
+
+- **#2856, the owner, 2026-11-22:** "ok, well it should still take them even if it would kill". The report before it,
+  the owner the same day: "just did it again with over 50 fervour. It's just killing them". The issue's first report:
+  "subjugate has stopped taking enemies, it's just killing them now".
+- **#2867, the owner's playtest of 2026-11-23:** "The Gatekeeper's minions when subjugated appear with red healthbars,
+  making it seem like they're enemies."
+- **#2868, the same playtest:** "verify subjugated minions are getting the minion scaling from my character, it doesn't
+  seem like they are. My imps are hitting harder than a Herald."
+- **Standing:** the owner's of 2026-09-13, "turn their healthbar green so you know it's yours"; and #2791's rulings of
+  2026-11-20 by the coordinating session, that a taken Gatekeeper's Imps follow the Gatekeeper and not the player, and
+  "stay on its commander's side after it dies, until they are killed".
+
+### #2856: taken instead of killed
+
+**What changes in play.** When Subjugate's blow would kill a target it could otherwise take -- not dead, not a boss,
+not one that cannot be hurt, not already the caster's, and with room in the Fervour pool for the thrall -- the blow
+leaves it at 1 health instead. One health is below the row's half (and below Dominion's 65%), so the take goes
+ahead, and the take restores it to full as before. The half-health condition is unchanged: a blow that leaves a
+creature above the threshold still takes nothing. Anything the take would refuse anyway is not spared: a boss, a
+creature already the caster's, and every target when the pool has no room can still be killed by the blow.
+
+**How it is built.** `Possess` asks `UCataclysmCommand::WhySubjugateRefuses` and `HasRoomForAnotherThrall` before
+its blow -- the same two questions it asks after -- and when neither refuses, sets the target's
+`bHeldAliveForATake` for the length of `HitTargets` and clears it after. `UCataclysmVitalAttributeSet` holds such a
+target at one health exactly where it holds a creature in a friendly Unholy Sigil (issue #1559): in
+`PreAttributeChange`, so every write that would empty health -- a blow, a tick, an execute's direct loss -- leaves
+one point; and in the damage branch, so the blow is announced as not lethal and the health base is written back to
+the point held.
+
+**Judgement 1, how to build the ruling: a hold at one health during the blow, not a take decided before the
+damage.** The ruling left it open ("for example, the hit could stop at 1 health on a target that can be taken, or
+the take could be decided before the hit lands"). The hold was chosen because a blow's outcome is resolved inside the
+target's own attribute set -- evasion, block, armour, energy shield, the saves -- and cannot be known before it
+lands, so deciding first would have to take creatures the blow never reached; and because the hold is the shape the
+sigil already uses, at the same two places, so no new kind of rule enters the damage path. The option not taken:
+take the target before the blow and skip or soften the blow. It would also have changed what the blow does to a
+target that is then refused, which the ruling did not ask for.
+
+**Judgement 2, what the hold covers: everything the blow sets off before `HitTargets` returns** -- a burn's first
+tick if it fires on application, a row's answer to the hit, an execute the hit asks for. The ruling says the hit
+"must not kill it first", and those are the hit's. Nothing after the call is held: the take then heals the creature
+to full.
+
+**Judgement 3, the threshold is not pre-judged.** It depends on the blow, so it is judged after it, as before. One
+health passes it for any creature whose maximum is above two at the row's 50%.
+
+**The genre agrees that a kill need not stop a take**, re-fetched 2026-11-24. Path of Exile's Dominating Blow
+([poedb](https://poedb.tw/us/Dominating_Blow)): "If a non-unique enemy dies while affected by the debuff", "a
+Sentinel of Dominance with the same rarity, prefix and suffix modifiers will be summoned"; unique enemies are
+excluded. Diablo 2's Conversion ([diablo2.io](https://diablo2.io/skills/conversion-t4033.html)) takes the monster
+alive: a successful attack "has a chance to convert the target to fight evil", and it "will not work on Super Unique
+Monsters, Champions, and Bosses". **What the research settles:** a take survives the target's death in one shipped
+game, and bosses are excluded in both. **What it does not settle, and is Judgement 1:** Path of Exile raises a copy
+from the corpse, and this game keeps the creature itself, because Subjugate's row says it "keeps its own abilities"
+and is "restored to full health"; holding it at one point is how it stays the same creature.
+
+### #2856: the refusal line names every reason, "dead" among them
+
+**What was wrong.** The play log's line for the command's own refusal asked three of `Subjugate`'s six reasons
+again for itself -- boss, cannot be hurt, already on its side -- so the owner's log of 2026-11-22 read "TAKE REFUSED:
+'Subjugate' could not take 'CataclysmBruteCharacter_258': boss no, cannot be hurt no, already on its side no." for a
+creature the blow had killed.
+
+**What it prints now.** "TAKE REFUSED: '<skill>' could not take '<creature>', refused as <reason>: nothing to take
+no, not a character no, dead yes, boss no, cannot be hurt no, already on its side no." Both halves come from the list
+`ECataclysmSubjugateRefusal`: the reason is `WhySubjugateRefuses`, which `Subjugate` itself now refuses by, and the
+list is every reason asked by `SubjugateRefusalHolds`. So a refusal always prints a "yes", and a reason added to the
+list is printed without anybody editing the line. The order of the reasons is the order `Subjugate` asked them in.
+
+### #2856: the no-room refusal is still silent to the player, and nothing was built for it
+
+The issue's body asks three questions for a ruling: (1) show the refusal on screen, "at least 'No room: imps reserve
+80 of 104 Fervour'"; (2) refuse the press before the blow when no thrall would fit; (3) displace the oldest imp. Its
+recommendation of (1) is the filing session's, not the owner's, and no comment on the issue rules on any of the
+three. **So nothing was built for them**, by the brief ("do it if it is stated"). The play log line is unchanged.
+
+### #2867: the bar follows the top of the chain of command
+
+**The cause.** `HealthFillHexFor` was green only when `UCataclysmCommand::CommanderOf(creature)` was the local
+player. A taken Gatekeeper's Imps answer the Gatekeeper there (#2791), so every Imp a taken Gatekeeper called wore
+the enemy red. A thrall the player takes directly, Gatekeeper's Imps included, was already green: its owner is the
+player.
+
+**What it does now.** It climbs the chain with `UCataclysmCommand::TopCommanderOf` -- each step `CommanderOf`, at most
+eight -- and is green when the local player is at the top. Every creature the game makes a commander for was checked:
+a thrall (owner, set by `Subjugate`, the Warzone's allies and a load), a summoned minion (`Summoner`), and a taken
+Gatekeeper's Imps (owner, the Gatekeeper); no other code names a commander.
+
+**Judgement 4, an Imp whose taken Gatekeeper is gone stays green.** Once the Gatekeeper's body is destroyed its Imps'
+chain stops at nobody: the owner is a destroyed actor, and later nothing. They still fight on the player's side,
+ruled for #2791, so a creature that answers to nobody still here is green when it is on the local player's side
+(`UCataclysmTeams::ShareSideIgnoringMadness`). Every ordinary creature answers to nobody and is on the Monsters side,
+so it stays red. **A creature at the top of whose chain stands somebody else stays red**, as another commander's
+thrall always was: the green says "yours", not "on your side". The option not taken: the side alone, which would
+turn another player's creatures green if co-op is ever built.
+
+### #2868: what the design says, and what the code does -- for the owner to rule
+
+**Nothing was changed.** The design gives a thrall its commander's minion modifiers and keeps its own base figures,
+and the code does both. Quoted:
+
+- The owner, 2026-09-13 (entry "A subjugated enemy is a minion, is healed to full when taken, and says so in its own
+  description"): the enemy you take over "should be considered a minion".
+- The entry of 2026-10-02, "A subjugated enemy takes its commander's minion damage and minion health, as the owner
+  ruled it should": "A thrall's blow is multiplied by its commander's minion damage, read at the blow and against its
+  target", and "A thrall's maximum health is multiplied by its commander's minion health when it is taken".
+- Issue #340, ruled 2026-11-02 by the coordinating session: a thrall is asked as a `Minion.Creature`, so its
+  commander's Spirit reaches its blow through `game/Data/MinionScaling.csv`, as it reaches an imp's.
+- `docs/Cataclysm_GDD_v2.md`, the minion channels: "A minion reaches its summoner through exactly three channels" --
+  its side; "Its base health and base damage | The type's own base, raised by the summoner's **level**"; and increased
+  damage from one primary attribute. Subjugate's row in `game/Data/WeaponSkills.csv`: a thrall "keeps its own
+  abilities".
+- The owner's "minions update live rather than snapshotting", recorded on 2026-09-13 "and not built".
+
+**What the code does.** A thrall's blows through `UCataclysmSkillEffects::ApplyHit` are multiplied by
+`UCataclysmCommand::ThrallDamageMultiplierAgainst`, its commander's `minion_damage` asked as `Minion.Creature`; its
+maximum health by `minion_health` once, at the take; its attack interval by `minion_attack_speed`
+(`AttackIntervalScaleFor`); its blows on creatures by Subjugate's level factor (#2764). **What it does not get:** the
+summoner's level on its base figures, which stay the creature's own (archetype, rarity, the floor's tier), because the
+design states that channel for a minion TYPE's base and a thrall has no type; minion damage on what does not pass
+through `ApplyHit` (burning ground, its damage over time, Infernal Brand, retaliation, Shared Ruin, Chorus), listed in
+the 2026-10-02 entry; and later changes to minion health, which is fixed at the take. A summoned Imp's base IS raised
+by the player's level, so an Imp at a high character level can out-hit a thrall taken on a low tier even with the same
+minion modifiers. **Whether a thrall's base should also follow its commander's level is a design question for the
+owner.**
+
+### Tests
+
+Registered, not run. **Four new automation tests**, predicting `Cataclysm.Command.` 25 to 28 and
+`Cataclysm.Gatekeeper.` 14 to 15:
+
+- `Cataclysm.Command.SubjugateTakesAnEnemyItsBlowWouldHaveKilled`: the control first, a caster with no room whose
+  300% blow kills a creature at 50 of 1,000 health; then a caster with room takes an identical creature, alive, at its
+  full maximum, commanded, and not left held.
+- `Cataclysm.Command.SubjugatesBlowStillKillsABossItCannotTake`: the same blow kills a boss at 50 health from a caster
+  with room, and takes nothing.
+- `Cataclysm.Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem`: each of the six reasons made to hold once; each is
+  refused, named, and says "yes" for itself, every reason is named in every text, a dead creature's says "dead yes";
+  and a creature that can be taken names none and says "yes" to nothing.
+- `Cataclysm.Gatekeeper.ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain`: a free Gatekeeper's
+  Imps red; the taken Gatekeeper and its Imps green to its commander; another commander's Gatekeeper's Imps red to it
+  and green to theirs; and the Imps of the taken Gatekeeper still green after it is destroyed.
+
+**One new Python test**, `test_the_commands_refusal_line_names_every_reason_it_can_refuse_for` in
+`tools/tests/test_a_refused_press_and_a_take_say_why.py`: the line prints the reason and the list, `Subjugate` refuses
+by `WhySubjugateRefuses`, and every reason on the list is asked and named. **Proved** with `tools/prove_guard.py`,
+the list in the line replaced by a fixed "boss no": `PROVED: 1 failed, 4 passed | restored: 5 passed`, the failure
+being that test.
+
+**Guard proofs registered for the window**, each with the test it must fail:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| H1 | `Held->bHeldAliveForATake = true;` to `= false;` (`CataclysmSkillTemplates.cpp`) | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H2 | `IsHeldAliveForATake(CataclysmDefendingBody(*this)))` to `IsHeldAliveForATake(nullptr))` in `PreAttributeChange` | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H3 | `if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None` to `if (true` | `SubjugatesBlowStillKillsABossItCannotTake` |
+| R1 | `return Character && UCataclysmSkillEffects::IsDead(Character);` to `return false;` | `ATakeRefusalNamesItsReasonAndDeadIsOneOfThem` |
+| B1 | `UCataclysmCommand::TopCommanderOf(Creature))` to `UCataclysmCommand::CommanderOf(Creature))` in `HealthFillHexFor` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` |
+| B2 | `return UCataclysmTeams::ShareSideIgnoringMadness(Creature, LocalPlayerPawn)` to `return false` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` (the destroyed Gatekeeper's Imps only) |
+
+**Regressions to read in the window:** `Cataclysm.Overlay.ACreatureThePlayerCommandsHasAGreenHealthBar`, every
+`Cataclysm.Command.` Subjugate test, `Cataclysm.Gatekeeper.ATakenGatekeepersImpsFightForItsCommanderAndAFreeOnesDoNot`,
+and the `Cataclysm.SkillLevelSources.` and `Cataclysm.LevelCosts.` tests that call `Possess`.
+
+---
+
+## 2026-11-24 — Bug batch 1: five fix branches in one window, and a guard proof registered for every new test (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Assembled on `feat/bug-batch-1` from development `6dd62aba6` (#2880
+  merged), as the coordinating session asked on 2026-11-24. Its window comes after the rarity cap window and inv-w1.
+- **27 OF THE 37 NEW UNREAL TESTS HAD NO GUARD PROOF IN THEIR ENTRIES.** The coordinating session ruled that each gets
+  one before the window. The writing agents' planned breaks, passed on in their reports, were checked here against
+  this branch; one was rewritten (G4) and three were written here (GD8 to GD10) for tests no planned break covered.
+- The five branches' own entries, below this one, hold each fix's reasons, rulings and tests.
+
+### What it holds
+
+Merged in this order, `git merge --no-ff`:
+
+| Merge | Branch | Issues |
+| :-- | :-- | :-- |
+| `2bde3bc06` | `fix/creature-combat-2874` at `c371d75d8`, with `fix/drops-and-death-2871` at `472bc1b56` inside it | #2871, #2874, #2876, #2877 |
+| `2e0f8ef8e` | `fix/modifiers-2854` at `83fdb1e61` | #2855, #2854 |
+| `0fcbb55ec` | `fix/empire-cities-2859` at `95534b793` | #2859, #2866 |
+| `282ade7e5` | `fix/demonic-guide-2860` at `6d9815cc1` | #2860, #2861, #2862 |
+| `5d696dc7e` | `fix/masochist-shield-2873` at `a04b611ee` | #2873, #2863 |
+
+- **Only this log conflicted**, at every merge, resolved with `tools/resolve_decisions_log.py`. No code file conflicted,
+  the overlaps named beforehand included (`CataclysmVitalAttributeSet.cpp`, `CataclysmSkillEffects.*`,
+  `CataclysmEnemyCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`).
+- **The resolutions left some of the 2026-11-24 entries below the 2026-11-22 ones**; `b80b1f21a` puts the seven new
+  entries first, newest first by the author date of the branch commit that first wrote each heading, each one's text
+  checked equal to its branch's.
+- **Every file arrived as written**: each of the 70 changed files but this log differs from development by exactly the
+  union of the five branches' changed lines, compared from their base `4d33f5994`.
+- `tools/check_resolved_cpp.py` on the 57 changed C++ files: "57 files read, 0 with complaints".
+- No branch names a save version or a committed save file; they were written at run 17 and character 14, and
+  development is at 18 and 15 since #2880.
+- The engine-name and anonymous-helper checks: "7 passed". **Full Python suite: "8259 passed, 10 skipped"; JUnit 8269
+  tests, 0 failures, 0 errors, 10 skipped.** ruff: "All checks passed!".
+
+### Registered for its window
+
+**The base is window sd-w2's whole-suite engine log** (`sdw2_suite_engine_45a0138d.log`, 5341 performed, 57 skipped
+halves, 861 test saves). The batch adds 38 test names and removes 1 (`...HurtsThePlayerWithinReach`, renamed
+`...AnywhereOnTheFloor`), read from the name literals in the diff, since several files register through their own
+wrapper macros. **The whole suite is registered as 5378**, all succeeded; 57 skipped halves and 861 test saves written
+and deleted, 0 left behind (no added line reports a skipped half or writes a save: a reading).
+
+| Branch | New tests |
+| :-- | --: |
+| creature-combat | 6 |
+| drops-and-death | 4 |
+| modifiers | 3, and 1 renamed |
+| empire-cities | 6 (its entry lists none; counted from the code) |
+| demonic-guide | 11 |
+| masochist-shield | 7 |
+
+**Groups alone, first**, at sd-w2's count plus what the batch adds: `EffectPlacement.` 4 (new), `PassThroughBodies.` 5
+(new), `DungeonModifierEffects.` 785 (777 + 8), `EnemyModifiers.` 61 (57 + 4), `EnemyHitTiming.` 15, `EnemyStrength.` 9,
+`PlayerCopies.` 8, `BuriedWeaponKills.` 4, `HitLog.` 8, `Fervour.` 32, `ThornsOfGlass.` 11, `EmpireTreeCity.` 21,
+`EmpireTreeEvents.` 15, `WalkFromTheScreen.` 6; and with nothing added, `EmpireScreen.` 16, `CityScreen.` 19 and
+`SaveLoad.` 81, because empire-cities changes the map, the city screen's layout and the load code. No editor step: no
+branch changes a CSV or an asset. Python and ruff beside the whole suite.
+
+**35 C++ guard proofs**, in `.claude/windows/prove_bb1_table.py.txt`, every anchor matching once on `b80b1f21a`. Each
+is narrowed to the tests it is for -- a group with its trailing dot, or the tests' full names joined with `+` -- so a
+break that moves other tests of a large group is not read as this proof's. Predicted, not run:
+
+| Proof | Break | Selects | Must fail |
+| :-- | :-- | --: | :-- |
+| EP1 | `OnTheFloor` returns the point asked | 4 | all four `EffectPlacement.` tests |
+| EP2 | a ground zone drawn where asked | 4 | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
+| EP3 | a telegraph marker drawn where asked | 4 | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
+| EP4 | debris left where asked | 4 | `DebrisIsLeftOnTheFloorUnderTheImpact` |
+| F1 | Fervour from the health lost only | 32 | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
+| F2 | the shield's recharge removes Fervour | 32 | `TheEnergyShieldRechargingRemovesNoFervour` |
+| B1 | Blood Altar's old reach back | 2 | `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`, `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
+| B2 | the unfed pulse's line reworded | 2 | `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
+| T1 | Thorns of Glass's interval without buffs | 11 | `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond` |
+| T2 | ticks let into the strike back | 11 | `ADamageOverTimeTickIsNotStruckBack`, `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval` |
+| G1 | `MarkDead` never notes the actor being marked | 1 | `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` |
+| G2 | a death keeps the waiting blow | 1 | `EnemyHitTiming.ACreatureKilledBeforeItsSwingConnectsDealsNothingAfterwards` |
+| G3 | Infernal Brand brands a dead target | 1 | `EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt` |
+| G4 | the death line said at Verbose, not Display | 1 | `HitLog.ACreaturesDeathIsSaidOnceAfterTheBlowThatKilledIt` |
+| CC1 | the brand called for every blow, ticks included | 1 | `EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` |
+| CC2 | the brand's explosion can critically strike | 1 | `EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` |
+| CC3 | a dead copy's waiting swing still lands | 1 | `PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` |
+| CC4 | Infernal Sacrifice eats a creature that cannot be hurt | 1 | `EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` |
+| CC5 | the chain's end kills a creature that cannot be hurt | 1 | `DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` |
+| CC6 | a creature's damage scaled by 2 (the measurement's control) | 1 | `EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` |
+| GD1 | the search takes the guide | 1 | `DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` |
+| GD2 | a blow at the guide is not refused | 1 | `DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` |
+| GD3 | "untargetable" forgets the guide | 2 | both guide tests above |
+| GD4 | the guide's body never refreshed | 1 | `DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` |
+| GD5 | every capsule ignores nothing | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ThePlayerAndItsMinionWalkThroughEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| GD6 | a waiting guide's prints told it walks | 1 | `DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` |
+| GD7 | prints last 100 times as long | 1 | `DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` |
+| GD8 | a jump read as a walk (100 times the jump) | 1 | `DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` |
+| GD9 | a creature moves through every pass-through body | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| GD10 | a body moves through its own kind | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `TwoMinionsStillBlockEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| EC1 | a buy or respec does not keep the shares | 3 | `EmpireTreeCity.ABoughtNodeKeepsEveryCityAtItsShareOfTheRaisedMaximum`, `ARespecKeepsEveryCityAtItsShareOfTheLoweredMaximum`, `ABuyAndARespecInTheCapitalKeepACitysShare` |
+| EC2 | an upgrade does not keep the shares | 1 | `EmpireTreeCity.TheRoyalEngineersCountMovingKeepsEveryCityAtItsShare` |
+| EC3 | a fall does not keep the shares | 1 | the same |
+| EC4 | the day's turn does not keep the shares | 1 | `EmpireTreeEvents.EnduringFoundationsKeepsTheCitysShareAsTheDayTurns` |
+| EC5 | a fallen city's box opens nothing | 1 | `WalkFromTheScreen.AFallenCityOpensItsScreenAndItsFallenCityDungeonIsWalkedFromIt` |
+
+**Every proof must also pass every selected test restored.** B1 and B2 were registered by their entry with the whole
+`DungeonModifierEffects.` group (785 tests); they are narrowed to the two Blood Altar tests here so the group does not
+run twice per proof. B1 and T2 are anchored on a longer text than their entry quotes, because the quoted text occurs
+12 and 5 times in its file. **G4 is rewritten**: the planned break gave a one-placeholder format extra arguments, which
+the engine's compile-time format check may refuse.
+
+---
+
+## 2026-11-24 — The tier 1 Boss Brute killed with its Infernal Brand, not its swing: a brand is built by hits alone and its explosion never critically strikes; a creature killed mid-swing lands nothing; Sacrifice and Epidemic pass over a creature that cannot be hurt (#2874, #2877, #2876)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/creature-combat-2874`, made from
+`fix/drops-and-death-2871`, a bug-fix agent of the coordinating session, 2026-11-24. Issues
+[#2874](https://github.com/sdubois777/Cataclysm/issues/2874) (part 2),
+[#2877](https://github.com/sdubois777/Cataclysm/issues/2877) and
+[#2876](https://github.com/sdubois777/Cataclysm/issues/2876), and an addition the coordinating session sent the same
+day.
+
+**THIS ENTRY SUPERSEDES TWO SENTENCES OF THE ENTRY BELOW**, written on the branch this one was made from, which is not
+this branch's to change. It said of the owner's death "The brand was not part of the kill -- the swing took the 396
+health left", and "the melee critical is the outlier and the reading of this branch cannot say why". **The killing
+blow was the brand's explosion, and there was no melee critical.** What follows is the evidence.
+
+### What the owner said, and what was ruled
+
+- **The owner, verbatim, on #2874:** "I just got 1 shot by something. I killed a boss, and immediately died."
+- **The coordinating session's rulings of 2026-11-24, verbatim:** "(1a) approved: Infernal Brand stacks only on hits,
+  never on damage-over-time ticks (the row says "on hit"; "a tick is not a hit" is the project's rule). (1b) approved
+  as the coordinating session's ruling, not only a judgement: the Brand's explosion cannot critically strike,
+  consistent with the overkill explosion and death blast ruled 2026-10-07; keep it as its own commit and quote that
+  precedent. (1c) yes, add the melee-critical measurement test. Correct the base branch's DECISIONS note that "the
+  brand was not part of the kill" in your entry (the base branch is not yours to push to; say in your entry that it
+  supersedes that note). (2) Do NOT take the design workbook: it is a binary git cannot merge, so only one branch may
+  carry an unmerged edit to it, and other branches may. Leave #2876's row unchanged and report the exact new text; I
+  will schedule the workbook edit separately."
+- **The precedent (1b) names**, this file, 2026-10-07, ruling 4 on the overkill explosion: "Direct damage of no damage
+  type, dealt by the killer, delivered as area damage and never retaliated against, as `ACataclysmMinion::DeathBlast`
+  delivers a blast at a death. It cannot critically strike."
+- **The addition**, the coordinating session, 2026-11-24: Infernal Sacrifice and Epidemic's chain end write a
+  creature's health to nought and call `HandleDeath` directly, which skips the health hold, so they can kill creatures
+  that cannot be hurt; make both refuse such a target and one already dead or being marked dead, and check the two
+  other direct `HandleDeath` callers.
+
+### #2874: what the log shows
+
+`game/Saved/Logs/Cataclysm.log` in the main checkout, read 2026-11-24:
+
+```
+18:51:16.330  HIT: took 76 from CataclysmBruteCharacter_136 (Boss), ranged attack: 39 to health; health 430 of 430 before it
+18:51:17.512  HIT: took 8.9 from CataclysmBruteCharacter_136 (Boss), burn, 2 ticks within one second: 4.1 to health; ...
+18:51:19.499  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.7 to health; ...
+18:51:19.499  HIT: took 396 from CataclysmBruteCharacter_136 (Boss), attack: 396 to health; critical; health 396 of 430 before it
+18:51:19.507  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.5 to health; damage over time; health 396 of 430 before the first
+18:51:19.507  CataclysmPlayerCharacter_0 died at 0 of 430 health ... the killing blow: 396 from CataclysmBruteCharacter_136 (Boss), attack: ...
+18:51:19.509  CataclysmBruteCharacter_136's Infernal Brand reached five stacks on CataclysmPlayerState_0 and dealt 367.
+```
+
+1. **"attack" is not the Brute's swing.** The hit log names a blow with no skill by its tags: a spell, a ranged attack,
+   a melee attack, or "attack" when it carries none of the three (`FCataclysmHitLog::WhatText`). A creature's ordinary
+   swing carries `Type.Melee` (`ACataclysmEnemyCharacter::BasicAttackTags`) and the Brute's stomp carries it too, so
+   either would read "melee attack". The log holds 779 "melee attack" lines and none is from
+   `CataclysmBruteCharacter_136`.
+2. **Every "attack" line that is not a retaliation is a brand's explosion.** All 11 in the log are followed in the same
+   frame, by the same creature, with "Infernal Brand reached five stacks ... dealt X":
+
+   | Time | Creature | Took | Dealt (sent) |
+   | :-- | :-- | --: | --: |
+   | 17:00:47.866 | AbyssalWarden_16 (Boss) | 144, the health left: the killing blow | 273 |
+   | 17:01:27.913 | Imp_151 (Legendary) | 13 | 16 |
+   | 17:16:00.573 | Brute_37 (Boss) | 190 | 245 |
+   | 17:16:59.769 | Imp_284 (Boss) | 59 | 76 |
+   | 17:18:26.152 | Imp_377 (Herald) | 41 | 53 |
+   | 17:20:08.334 | Imp_486 (Boss) | 87 | 105 |
+   | 17:20:12.402 | Imp_478 (Herald) | 50 | 63 |
+   | 18:01:53.309 | Brute_108 (Herald) | 136 | 238 |
+   | 18:35:50.854 | Brute_120 (Boss) | 214, the health left: the killing blow | 532 |
+   | 18:51:19.499 | Brute_136 (Boss) | 396 critical, the health left: the killing blow | 367 |
+   | 19:15:24.904 | Hellhound_242 (Boss) | 272 critical | 225 |
+
+   `BrandOnHit` writes its line after the explosion's blow returns, so the blow's own line comes first, and the death
+   line between them is the explosion's kill. **Three of the owner's deaths that day were brand explosions.**
+3. **The explosion of 18:51:19 was 367 sent**, five times an attack damage of 73.4, **struck critically**, so 734, and
+   was cut to the 396 health left. The design's Brute there, `strength_on_floor("Boss", 1, "Basic", "Timed", 10, 6,
+   kind="Brute", ring="Outpost")`, hits for 72.32; the 1.5% between them was not traced and is most likely the
+   dungeon's modifier score, which that call leaves at nought.
+4. **Its five stacks were one rock and four burn ticks.** `UCataclysmVitalAttributeSet` called `BrandOnHit` for every
+   blow that took health, ticks of damage over time included. The ticks before 16.330 took nothing from health; the
+   rock (39 to health), the two ticks of 17.512, the tick closed at 19.499 and the tick at 19.507 made five, and the
+   last of them, a tick of 0.5, set off the explosion. **The Brute never landed a melee swing in this fight.**
+5. **The other figures fit the design**, as #2874 said: the rock sent 110.1 (150% of 73.4) and landed 76, so the
+   character kept 69% of a hit; the aura's tick is 9% of the hit, 6.6, and landed 4.5.
+
+### What changed
+
+1. **A brand is built by hits alone** (ruling 1a). `BrandOnHit` is called inside the `!Hit.bIsDamageOverTime` block,
+   beside `WitherOnHit` and `TouchOfNothingOnHit`, which the owner's rule for Withering Blows on #1722 already put
+   there: "one stack per hit that takes health". Beguiling's charm is left where it was, on any blow the creature takes.
+2. **The explosion can never be a critical strike** (ruling 1b), in its own commit. `BrandOnHit` sends it with a
+   delivery whose `bCannotCriticallyStrike` is set, as the overkill explosion's is.
+3. **A creature killed while its swing waits lands nothing** (#2877). The Corrupted Stalker and the Worn Residue double
+   strike through the player's skill templates, whose blow waits on `UCataclysmSkillTemplate::SwingTimer`, which
+   nothing cleared at a creature's death. The timer now asks, when it fires, whether its avatar is a creature that has
+   died; if so the blow is dropped and the skill ended as a cancelled one, as an interrupted skill is. **A player's
+   waiting blow is unchanged**: the question is asked only of an `ACataclysmEnemyCharacter`, and the owner answered
+   #1549, a dead player's waiting blow, "not important" with no change planned.
+4. **Infernal Sacrifice and Epidemic's chain end pass over a creature that cannot be hurt, or whose death is being
+   marked** (the addition): each asks `bCannotBeHurt` and `IsBeingMarkedDead` beside `IsDead`, and goes on to the next
+   creature. Shrouded creatures (`bShrouded`) are not passed over: the ruling of 2026-09-26 keeps that field apart from
+   `bCannotBeHurt` for rules that read the latter, and the addition named the latter.
+5. **The two other direct `HandleDeath` callers have the same shape and cannot reach such a creature today; not
+   changed.** The delayed-damage drain (`UCataclysmDelayedDamage::DrainStep`): `TakesNoDamage` empties a blow on a
+   creature that cannot be hurt before `DelayShare` takes its share, so no parcel is ever held. The health-debt drain
+   (`UCataclysmHealthDebt`): a debt is run up only through the class resource set's unpayable-cost rule, and as far
+   as was read a creature holds that set only with a player's build (the Stalker, the double), which no rule makes
+   unhurtable: Blood Bond takes the Elite rung alone, and both stand at Common. The Demonic Guide is handled on
+   `fix/demonic-guide-2860`.
+6. **`docs/Cataclysm_GDD_v2.md`**: "Nor does a payout of damage banked from earlier blows" under the critical strike
+   rule, and "A blow a creature has not yet struck is not struck" under "What Dying Does at the Moment It Happens".
+
+### #2874: the figures, reported and not retuned
+
+- **The melee critical is the design's.** A floor-built tier 1 Outpost Boss Brute on floor 6 hits for 72.32 and
+  critically for 144.64 before mitigation. On the level 6 reference character -- the starting Ravager with its
+  starting weapon and nothing else, 230 health, 42.5 armour (5.05% at tier 1) and 3.25% reduction -- with the
+  Boss's Overwhelm taking the armour's share away, about 140 lands, about 61% of its health: **not a one-shot**. On
+  the owner's character, which kept 69% of a hit, about 100 of 430. **Predicted, not run**: the measurement test
+  below is what runs it.
+- **The Boss Brute's brand, as now built, is 361.6 before mitigation, never doubled.** About 250 of the owner's 430,
+  58%. **On the level 6 reference character it is about 350 against 230 health: it still kills a gearless level 6
+  character outright**, which the design states as intended ("A geared character is never one-shot, and a gearless
+  one still is", `docs/Cataclysm_GDD_v2.md`, "How Long a Geared Character Survives", fitted at tier 8). Reported for
+  the coordinating session, not retuned. After this change the brand needs five of the Brute's own hits within eight
+  seconds of each other, which a Brute swinging every 1.2 seconds in contact reaches in about six.
+
+### #2876: the design says Commander, so the row's text changes, in the workbook, later
+
+- **What the design says.** This file, 2026-09-05, "The remaining six Demonic enemy modifiers", under Infernal
+  Sacrifice: "**The damage buff is Commander**, which is the buff this game has for "hits harder and moves faster",
+  rather than inventing a second one meaning the same thing." Commander had been ruled by the owner on 2026-08-20 to
+  move two stats only (`docs/Cataclysm_GDD_v2.md`: "Those two stats and not every stat"): 20% increased movement speed
+  and attack speed. **So the code grants what the design chose, and the row's "temporary damage buffs" is the
+  inaccuracy.** Nothing in `docs/Cataclysm_GDD_v2.md` names Infernal Sacrifice.
+- **Not changed here, by ruling (2).** The row's text is generated from the design workbook's Enemy Modifiers sheet,
+  so the change is a workbook edit, `game/Data/EnemyModifiers.csv` regenerated, and `DT_EnemyModifiers` rebuilt in a
+  window. **The proposed text**, for the Demonic column's Infernal Sacrifice cell: "Infernal Sacrifice: Sacrifice a
+  nearby ally every 6 seconds to heal yourself for a quarter of your maximum health and gain Commander (20% increased
+  movement speed and attack speed) for 8 seconds." Its figures are the code's: `SacrificeIntervalSeconds` 6,
+  `SacrificeHealShareOfHealth` 0.25, `SacrificeBuffSeconds` 8.
+- **The code's comment beside the grant** said Commander makes "nearby allies hit harder"; it now says what Commander
+  moves and points at #2876.
+
+### Tests
+
+**Six new Unreal tests, in four groups:**
+
+| Test | What it shows |
+| :-- | :-- |
+| `Cataclysm.EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` | CONTROL: one direct hit is one brand. THEN the brander's burn runs three seconds on the clock, at least two ticks taking health, and the player still holds one brand and nothing burst |
+| `Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` | every roll critical (chance 100, roll pinned 0); CONTROL: the five one-point hits are each critical. The explosion sends five 100-point hits, is not critical, and lands no more than it sent |
+| `Cataclysm.EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` | the Brute built in `ApplyDesignedStats`' order on the owner's floor: attack damage the design's 72.32 within 0.5%, multiplier 200; its swing ordered and landed when it connects, critical and melee, on the starting class at level 6, lands within 1% of 144.64 times what armour and resistance less its Overwhelm and the flat reduction leave, and less than the character's health. Prints "BOSS BRUTE MELEE CRITICAL" with every figure |
+| `Cataclysm.PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` | CONTROL: Famine's Stalker's first blow waits and lands when its swing connects. THEN its second blow waits, it is killed in the gap, the clock runs past the swing's moment, nothing waits, its body still stands, and the target is untouched |
+| `Cataclysm.EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` | an unhurtable ally nearest the eater and an ordinary one farther: CONTROL, the ordinary one is eaten; the unhurtable one stands at its whole health |
+| `Cataclysm.DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` | the chain test's line and an unhurtable Imp 3 m from the fifth kill: CONTROL, every creature of the line dies; the unhurtable Imp stands |
+
+**Python:** `tools/tests/test_a_brand_is_built_by_hits_and_a_dead_creature_lands_nothing.py`, 6 checks, by reading the
+source with comments stripped: `BrandOnHit` is called once, inside the block that calls `WitherOnHit`; the explosion's
+delivery is marked before the blow is sent with it; the swing timer asks a creature avatar's death before the blow;
+Sacrifice and Epidemic ask `bCannotBeHurt` and `IsBeingMarkedDead` before `HandleDeath`; and the measurement's design
+figure is `enemy_stats.strength_on_floor`'s.
+
+### Judgements of this change
+
+- **The measurement's reference character** is the starting class at level 6 with its starting weapon and nothing
+  else, which `tools/tests/test_the_starting_character_survives_a_pack.py` and `sim/analyse_opening.py` measure, and
+  its design figure after mitigation includes the Overwhelm the Boss applies (#2824 slice b) and resistance, which
+  that file's `share_of_a_hit_taken` leaves out. A judgement: the design now has Overwhelm, and a figure without it
+  would not be what the game should land. Tolerance 1%.
+- **A creature's dropped blow ends its skill as a cancelled use**, not merely skipped, so nothing of it is left
+  running; a judgement following "A CANCELLED SKILL STRIKES NOTHING" in `UCataclysmSkillTemplate::EndAbility`.
+- **The words of the two `docs/Cataclysm_GDD_v2.md` paragraphs.**
+
+### Sources
+
+No shipped game was researched: no formula or number is chosen. The two brand rulings apply this project's own rules
+(a tick is not a hit; a payout banked from earlier blows cannot critically strike, as ruled 2026-10-07), and the rest
+restore what the code and the design already said.
+
+---
+
+## 2026-11-24 — An effect drawn on the ground is drawn on the floor under it, through one helper, and every effect spawn site was checked (#2863)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
+for the coordinating session on 2026-11-24 beside the entry below, which builds and runs it in a later window. Issue
+[#2863](https://github.com/sdubois777/Cataclysm/issues/2863).
+
+### The owner's report, verbatim
+
+"There seems to be skill fx going off under the floor, I only noticed because I got close to an edge and saw
+something. Need to check all current effects and see which are appearing below the ground." Playtesting the main
+checkout at `development` 4d33f5994, 2026-11-23.
+
+### What was found, said first: the code places no player skill effect below a flat floor
+
+Every height in the list below was traced to its origin by reading the code at `development` 4d33f5994; line numbers
+are as of that commit. **No player skill chooses a height below the walking surface on a flat floor.** What the code
+does place below it is narrower: a point taken from `ACataclysmEnemyController::FloorUnder`, which is a creature's own
+capsule bottom moved under its target's X and Y, wherever the target stands higher than the creature (the exit
+stairs, up to 60 cm, are the one raised walking surface a dungeon floor has); the Blood Altar ring, centred on the
+exit cell where the stairs stand; and a walked charge's trail start if the walk descended more than about 96 cm,
+which a flat floor with 60 cm stairs cannot do. Most ground drawings were wrong the other way: 46 of the 68 calls that
+leave a ground zone place it at a capsule centre, or a stored copy of one, so its ring was drawn 45 to 155 cm above
+the floor.
+
+**So what the owner saw is either one of those cases or something this sweep could not read.** Where each Niagara
+system's own emitters and meshes sit relative to the point it is spawned at is authored in the editor; the five
+systems are binary assets, and in a worktree only Git LFS pointers. A system whose geometry reaches below its spawn
+point -- a cylinder centred on its pivot and scaled with the skill's radius, say -- draws under the floor however
+correctly the code places it. The cast burst is the first to look at: it plays on every skill, at the caster's
+capsule centre, and its `Flare` layer is the mesh `SM_VFX_In_Out_Cyl_01`, the pack's cylinder that is not the
+`_Floor_` variant the ground ring uses. **That needs the editor and is not settled here.**
+
+### What changed
+
+- **`CataclysmEffectPlacement`**, new, `game/Source/Cataclysm/AbilitySystem/CataclysmEffectPlacement.h` and `.cpp`:
+  `FloorSurfaceUnder` searches straight down through a point for world-static geometry, from `LookAboveCm` (100)
+  above it to `LookBelowCm` (300) below it, by object type as the charge's floor search does, and refuses a search
+  that starts inside a solid shape; `OnTheFloor` moves the point to `LiftCm` (2) above what it finds, or leaves it
+  where it was asked when there is nothing. No such helper existed: `FloorUnder` answers from a capsule rather than
+  the ground, and the two floor traces in the project (the charge's, the cloth stress spawner's) are private to their
+  callers.
+- **The three things that draw on the ground ask it**, so every caller is placed by one change and a caller added
+  later is placed without knowing: `UCataclysmGroundEffect::PlayFor` puts each copy of a zone's ring on the floor under
+  that copy (so every one of the 68 zone sites below), `ACataclysmTelegraphMarker`'s spawn puts a marker on the floor
+  under its centre (all five marker sites), and `ACataclysmDebrisBurst::Scatter` puts its pieces on the floor under the
+  impact (the Brute's rip crater).
+- **Only the drawing moves.** A zone's actor, its sweep, `UCataclysmGroundEffect::LastStart` and `LastFarEnd`, the
+  point an attack is aimed at and where a shot lands are all where they were. `LastDrawnStart` and `LastDrawnFarEnd`
+  are new, recorded from the same array the spawns read, for the tests.
+- **`docs/Niagara_Conventions.md`**, a rule under section 5A: an effect drawn on the ground is placed through
+  `OnTheFloor`; one that belongs to a body or the air is not.
+
+### Judgements of the writing session
+
+1. **Snap in both directions, not only up.** The issue asked for effects under the floor; most ground rings were
+   floating instead, and a ring at waist height marks the floor no better than one under it. Both are the same fault:
+   nothing asked where the floor was.
+2. **Move the drawing, not the gameplay point.** Moving where a zone sweeps or a lob lands would change what hits what,
+   which is beyond a report about what is seen. On a flat floor the marker and the landing agree within a centimetre,
+   which keeps issue #471's rule that a telegraphed attack arrives where it was marked; on raised ground they now
+   differ in height only, with the warning on the surface the player can see.
+3. **The window: a metre above, three metres below, 2 cm lift.** A metre above clears the stairs' 60 cm and, from the
+   tallest capsule centre (the Gatekeeper's 155.53 cm), still starts inside a dungeon wall's 400 cm height rather than
+   above its top. Three metres below reaches the floor from any capsule centre with room for a body in the air, and
+   no further, so a point out past a floor's edge is not moved onto whatever lies far below. 2 cm is the gap the
+   engine's character movement keeps under a capsule (1.9 to 2.4 cm), where every telegraph marker was already drawn.
+4. **Bodies and the air are left alone.** The cast burst, the swing arc, the hit burst and a projectile are drawn where
+   their body is; they are under the floor only when the body is.
+5. **The Upthrust wall is not changed here, and is reported.** `ACataclysmTerrain::BuildWall` stands its blocks on
+   `Start.Z`, the caster's capsule centre, so the wall's base is about 96 cm above the floor although its comment says
+   it stands on it. It is collision geometry, not only a drawing, so moving it changes play; it is not below the floor.
+
+### Every site that was checked
+
+**The five Niagara spawns.**
+
+| Spawn | Called from | Height | Below a flat floor? |
+| :-- | :-- | :-- | :-- |
+| `UCataclysmCastEffect::PlayFor`, `NS_Cast_Windup` | `CataclysmSkillTemplate.cpp:548` (every skill); `CataclysmEnemyController.cpp:1172` (a quick cast's flare) | the caster's capsule centre | no, unless the caster is; the system's own geometry is unread, see above |
+| `UCataclysmStrikeEffect::PlayAt`, `NS_Strike_Arc` | `CataclysmSkillTemplates.cpp:494` (`Apex`, the cast origin) and `:937` (the planted sword, the caster's capsule centre when planted) | capsule centre, facing flattened | no |
+| `UCataclysmImpactEffect::SpawnAt`, `NS_Impact_Point` | `CataclysmVitalAttributeSet.cpp`, `PlayImpactEffect` | the hit result's impact point, or the struck actor's capsule centre | no: on the struck body |
+| `UCataclysmProjectileEffect::AttachTo`, `NS_Proj_Body` | `CataclysmProjectile.cpp:320` | attached to the projectile: a flat shot flies at its `From` height, a lob ends at its `To` height | a lob's end, only where `To` is a `FloorUnder` point under higher ground (below) |
+| `UCataclysmGroundEffect::PlayFor`, `NS_Impact_Ground` | `CataclysmGroundZone.cpp` `BeginPlay`, `Redraw`, `LastFor` | the zone's location | **changed**: on the floor under each copy |
+
+**Meshes placed for effects.** `ACataclysmTelegraphMarker` (changed), `ACataclysmDebrisBurst` (changed; its one caller,
+`CataclysmBruteCharacter.cpp:808`, the rip crater, is the Brute's capsule bottom), `ACataclysmTerrain`'s Upthrust wall
+(capsule centre, judgement 5). The planted weapon is a scene component and draws nothing. No decal is spawned anywhere.
+
+**Telegraph markers**, all `FloorUnder`, the creature's own capsule bottom, so below only where they lie over ground
+higher than the creature: `CataclysmEnemyController.cpp:1192` (a Strike's circle at its own feet), `:1211` (a lob's
+landing circle), `:1221` (a flat projectile's lane), `:1243` (a charge's lane), `CataclysmEnemyModifiers.cpp:1263`
+(Inferno Charge's lane).
+
+**Projectile fires.** From a player's capsule centre: `CataclysmSkillTemplates.cpp:1477` and `:1549` (aimed at
+`AimedPointWithin`, held at that height, and flat) and `:1850` (the rack's axes, at a creature's capsule centre, flat).
+From a creature's capsule centre to a `FloorUnder` point: the Corrupted Sentinel's Siege Bolt
+(`CataclysmCorruptedSentinelCharacter.cpp:319`, flat) and Brimstone Mortar (`:335`, lobbed), the Succubus's Soulfire
+(`CataclysmSuccubusCharacter.cpp:417`, flat) and the Gatekeeper's Soulfall gout (`CataclysmGatekeeperCharacter.cpp:471`,
+lobbed); from the Brute's hand to one, its Rock Throw (`CataclysmBruteCharacter.cpp:1026`, lobbed). Infernal Rain's
+fireball falls from 15 m above and 6 m beside the player to the player's capsule-centre height
+(`CataclysmDungeonGameMode.cpp:17604`). Only the three lobs end at their `To` height.
+
+**Ground zones, by where their height comes from** (each is drawn by `PlayFor`, so each is now on the floor):
+
+| Height | Sites |
+| :-- | :-- |
+| The player's capsule centre, 96 cm up | `CataclysmDungeonGameMode.cpp` 4723 Wings of the Host, 9247 Swarm of Locusts' swarm, 10185 Funereal Procession, 14322 Divine Wrath, 17637 Singularity Wells, 19082 Edict of Vigil, 19334 Artillery Strike, 19451 Hallowed Groundfall, 19604 Grasping Tentacles, 20406 Judgment Zones, 21147 Anti-Magic Zones, 24287 Necrotic Ground; `CataclysmSkillTemplates.cpp` 213 and 217 a Strike's ground and row zone, 722, 724, 760 and 762 a held Strike's, 857 Buried Fire, 3655 and 3661 a Blink or Swap's start, 3763 a charge's trail, 3767, 3773 and 3774 a move's arrival, 4836 Open the Rift; `CataclysmTimeLockRift.cpp:235` the Time-Lock Rift |
+| A creature's capsule centre, 45 to 155 cm up | `CataclysmDungeonGameMode.cpp` 4440 Plague Harbingers, 4951 Eternal Chorus, 5449 Golden Spires, 5817 Obsidian Sarcophagi, 6143 Portal Unleashing, 9397 Abyssal Rifts, 10022 Quarantine Breach, 11748 Infested Veins, 23427 Withered Ground, 23489 Leech Spores, 23674 Fungal Overgrowth; `CataclysmSkillTemplates.cpp:5733` a row's zone under a cursed target; `CataclysmMinion.cpp:1951` a minion's chaos pool |
+| A stored copy of a capsule centre | `CataclysmDungeonGameMode.cpp` 16331 and 16848 (Plague Harbingers' and Quarantine Breach's patches, loaded from a save), 17666 Infernal Rain's patch; `CataclysmSkillTemplates.cpp` 2099, 2113 and 2117 a projectile's ground, at its launch height |
+| A creature's capsule bottom (`FloorUnder`) | `CataclysmEnemyModifiers.cpp:1210` Inferno Charge's path, `CataclysmGatekeeperCharacter.cpp:501` Soulfall's ground: **below where the target stood higher** |
+| The floor's walking surface | `CataclysmDungeonGameMode.cpp` 6805 Demonic Guide, 6852 Raw Sewage, 8140 Those in the Dark, 9062 Warzone Control Points, 9172 Swarm of Locusts' shelters, 9774 Infection Bloom, 10606, 10791 and 10797 Reality Rifts, 11191 Carrion Feast's altar, 11974 Shadowy Enemies, 12931 War Banner, 14156 Grim Totems, 14204 Void Parasite; 24106 Blood Altar, **whose centre is under the exit stairs** |
+| Other | `CataclysmHellhoundCharacter.cpp:291` Hellrush's lane, from its capsule centre to a `FloorUnder` point (below at the far end only over higher ground); `CataclysmSkillTemplates.cpp` 4133, 4137, 4138 and 4139 a walked charge's trail and row zones, all at the walk's last height (below at the start only if the walk descended more than about 96 cm) |
+
+`UCataclysmSkillTemplate::LeaveAZoneFor` (`CataclysmSkillTemplate.cpp:3761`) is the pass-through every skill's
+ground goes through, with no height of its own.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.EffectPlacement.`, a new group of four** in
+`game/Source/Cataclysm/Tests/CataclysmEffectPlacementTests.cpp`. Each lays a world-static floor 40 cm thick with its
+top at 500 cm, not at the origin.
+
+- `APointIsPutOnTheFloorUnderItFromAboveOrBelow`: a capsule centre comes down to 502, a point 60 cm under the surface
+  comes up to 502, only the height moves; a point past the floor's edge, one further under it than the search looks,
+  and one with no world are each left where they were asked.
+- `AGroundZoneIsDrawnOnTheFloorUnderIt`: a round zone at a capsule centre stays there and asks there, and its ring is
+  drawn at 502; one 60 cm under the surface is drawn at 502; a long zone from under the surface to a capsule centre has
+  both ends drawn at 502; a zone past the edge is drawn where it was asked.
+- `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre`: a circle centred under the surface and a lane at capsule height
+  are each drawn at 502; one past the edge where it was asked.
+- `DebrisIsLeftOnTheFloorUnderTheImpact`: debris left under the surface is put at 502; past the edge, where it was asked.
+
+**No existing test should move.** Every other test of these three runs in a world with no geometry, where
+`OnTheFloor` answers the point it was given. The four test files that build geometry (`CataclysmAbyssalWardenTests.cpp`,
+`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmSkillTemplateTests.cpp`, `CataclysmTerrainTests.cpp`) and the
+ones that build a dungeon floor read no marker's or burst's height and no drawn height; they read `LastStart`, which is
+unchanged. That is a reading, not a run.
+
+### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.EffectPlacement.`)
+
+| Break, in | The change | Must fail |
+| :-- | :-- | :-- |
+| `CataclysmEffectPlacement.cpp` | `return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ + LiftCm));` to `return Point;` | all four |
+| `CataclysmGroundEffect.cpp` | `Places.Add(CataclysmEffectPlacement::OnTheFloor(World, Start + Along * Fraction));` to `Places.Add(Start + Along * Fraction);` | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
+| `CataclysmTelegraphMarker.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, Location), Rotation, SpawnParams);` to `Location, Rotation, SpawnParams);` | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
+| `CataclysmDebrisBurst.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, At), FRotator::ZeroRotator, SpawnParams);` to `At, FRotator::ZeroRotator, SpawnParams);` | `DebrisIsLeftOnTheFloorUnderTheImpact` |
+
+---
+
+## 2026-11-24 — Damage the Masochist's energy shield absorbs fills Fervour as health lost does, and the shield recharging removes none (#2873)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
+for the coordinating session on 2026-11-24, which builds and runs it in a later window. Issue
+[#2873](https://github.com/sdubois777/Cataclysm/issues/2873).
+
+### The rulings, verbatim
+
+- **The project owner, 2026-11-24:** "the massochist doesn't gain fervour with damage to energy shield, and it should."
+- **The coordinating session, 2026-11-24, on the detail the issue left open, recorded as its ruling:** option (a),
+  damage absorbed by the energy shield counts exactly like health lost, at the existing rate (1 Fervour per 1% of
+  maximum HEALTH, so the existing rate and its tree nodes are unchanged), and energy shield recharge does NOT remove
+  Fervour (only healing health does, as now).
+
+### What changed
+
+- **The one line that connects a blow to Fervour moved and reads both pools.** In
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` the call to `UCataclysmFervour::GainFromDamage` sat inside
+  the block that writes health, which runs only when something reaches health, so a blow the shield took whole filled
+  nothing whatever its amount was. It now sits directly after that block and is handed what reached health
+  (`ToHealth`, as before) plus what the shield lost (`Outcome.AbsorbedByShield`), with the hit's tags, so the Masochist's
+  Shared Agony still scales a tick the shield took. A share of an ally's blow still fills nothing (ruled 2026-10-15,
+  R7), its shield share included.
+- **The recharge needed no code, and is now tested.** `UCataclysmRegeneration::TopUp` is where every pool comes back,
+  and it asks `UCataclysmFervour::RemoveForHealing` for the health pool alone, so the shield's own recharge and energy
+  shield leech already removed nothing. Its comment now records the ruling.
+- **The design document**, in three places: the paragraph led by "A generator is a set of rates", the class table's
+  Masochist row, and the paragraph in the class stat lines that said "every point of energy shield is a point of
+  resource the class does not generate", which is now led by "For the Masochist it no longer costs resource
+  generation, since 2026-11-24" and says what a shield still keeps from the class: The Breaking Point converts only
+  what reaches health, and Low Life, The Last Drop and Rock Bottom are measured against health.
+- **The simulation needed nothing.** `sim/cataclysm_sim/` holds the Fervour pool's size and no generator at all:
+  searched for `fervour` and `class_resource`, which appear only as the pool and the flat affix. The Masochist's base
+  energy shield stays at zero in `classes.py`, as the owner did not change it.
+
+### Judgements of the writing session
+
+1. **The shield's figure is the points the shield lost, `Outcome.AbsorbedByShield`**, not the raw damage it stopped.
+   A magic blow's bonus and a defender's "energy shield takes increased damage" make the shield lose more than the
+   raw blow held, as a slashing blow's bonus makes health lose more, and health's half already counts what health
+   lost. The figure on the bar is the figure that fills Fervour.
+2. **The temporary absorb and the mana a row puts first fill nothing.** The owner named the energy shield, and ruled on
+   2026-10-07 that the temporary absorb is separate from it.
+3. **A cost paid from the shield fills nothing.** `cost_paid_from_energy_shield` pays a mana cost from the shield; the
+   ruling is about damage, and the cost generator (`fervour_from_cost`) is health spent.
+4. **A blow The Breaking Point converts whole still fills Fervour for its shield share at once.** The shield took that
+   share before the conversion was asked; the health share still arrives a tick at a time as the bleed takes health.
+5. **No formula was chosen, so no genre research was done.** The rate is the existing one, by ruling.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.Fervour.`, three added (29 before, 32 predicted):**
+
+- `Cataclysm.Fervour.ABlowTheEnergyShieldTakesWholeFillsTheBar`: a real blow through `ApplyHit` on a defender with
+  10,000 health and 10,000 shield; the shield takes it all and health none, and Fervour is the shield's loss over
+  10,000 times 100. A control defender with the same shield and no generator gains nothing.
+- `Cataclysm.Fervour.ABlowSplitBetweenTheShieldAndHealthCountsBothHalves`: a shield of 100 against a blow of about 500;
+  Fervour is the two halves' sum over 10,000 times 100.
+- `Cataclysm.Fervour.TheEnergyShieldRechargingRemovesNoFervour`: `UCataclysmRegeneration::ApplyStep` recharging the
+  shield from nothing, then shield leech through `TopUp`, each leave 50 Fervour at 50; a control through the same step
+  with health regenerating does remove Fervour.
+
+**Python:** `tools/tests/test_class_passive_trees.py::test_the_gdd_counts_energy_shield_damage_as_health_lost_for_the_masochist`,
+new, holds the generator paragraph and the table row to the ruling. `tools/tests/test_a_zero_class_stat_is_not_a_gate.py`'s
+Masochist assertion is rewritten for the new paragraph, as
+`test_it_says_what_a_shield_does_and_no_longer_does_to_a_masochist`.
+
+### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.Fervour.`)
+
+| Break, in | The change | Must fail |
+| :-- | :-- | :-- |
+| `CataclysmVitalAttributeSet.cpp` | `GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);` to `GetOwningAbilitySystemComponent(), HealthLostToTheBlow, AssetTags);` | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
+| `CataclysmRegeneration.cpp` | `if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())\n\t{\n\t\tUCataclysmFervour::RemoveForHealing(` to the same with `\|\| Pool == UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()` added inside the condition | `TheEnergyShieldRechargingRemovesNoFervour` |
+
+---
+
+## 2026-11-24 — Demonic Guide's guide is nobody's target and cannot be killed, the player and what it commands walk through each other and through the guide, and the guide leaves yellow footprints (#2860, #2861, #2862)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/demonic-guide-2860`, by a bug-fix agent working
+for the coordinating session on 2026-11-24. A window compiles it and runs the tests below. Issues
+[#2860](https://github.com/sdubois777/Cataclysm/issues/2860), [#2861](https://github.com/sdubois777/Cataclysm/issues/2861)
+and [#2862](https://github.com/sdubois777/Cataclysm/issues/2862).
+
+### What the owner said, verbatim, from the play-test of 2026-11-23
+
+- #2860: "Demonic Guide: sometimes he manages to die. My minions are constantly trying to attack him even though they
+  usually do 0 damage."
+- #2861: "He can't walk through my minions, and neither can I, which is annoying. There shouldn't be collision between
+  player and minions." ("He" is the guide.)
+- #2862: "I also think we should show like yellow footsteps or something pointing to where he's gone. He's kinda easy
+  to lose track of."
+
+No issue carried a comment, so there is no further ruling; every choice below not in those words is a judgement.
+
+### Why the guide was attacked, and how it could die (#2860)
+
+- **Attacked.** The guide is an Imp on the monsters' side. `UCataclysmTargeting::MatchesAttitude` asked three things
+  of a candidate -- can it hold damage, is it dead, which side -- so a minion's and a thrall's search
+  (`UCataclysmTargetCandidates::NearestHostile`, through `IsHostileTo`) found it as the nearest enemy, and its
+  `bCannotBeHurt` emptied every blow: the owner's "0 damage".
+- **Killed.** `bCannotBeHurt` holds its health at the maximum in `UCataclysmVitalAttributeSet::PreAttributeChange`, so
+  no write to health kills it. But four rules write health to nought and then call `HandleDeath` outright, and
+  `ACataclysmEnemyCharacter::HandleDeath` asked nothing about being unhurtable: Epidemic's chain ending
+  (`ACataclysmDungeonGameMode::EpidemicEndTheChain`, which finds its victims with `FindEnemiesInSphere` as the player),
+  Infernal Sacrifice (`UCataclysmEnemyModifiers::TimedStep`, which eats the nearest of `FindAlliesInSphere`), a drained
+  delayed blow (`UCataclysmDelayedDamage::DrainStep`) and health debt (`UCataclysmHealthDebt`). Which one killed the
+  owner's guide is not known -- no log of that run was read -- and the first two are the ones whose searches could
+  reach it.
+
+### What changed
+
+1. **Nobody's target** (#2860). `ACataclysmCharacterBase::IsNeverATarget`, false for every character but the guide
+   (`ACataclysmEnemyCharacter` answers `bGuidesThePlayerForTheFloorRule`). `UCataclysmTargeting::MatchesAttitude`
+   refuses it beside the dead, so it is neither an enemy nor an ally of anybody, and the side-less search (a
+   Hellhound's lane) refuses it too: every minion, thrall, skill search, click and floor-rule sweep passes it over.
+   `UCataclysmSkillEffects::IsUntargetable` answers true for it, so `ApplyHit` refuses a blow aimed straight at it
+   before anything is sent and no rider sees a landed blow.
+2. **It does not die** (#2860). `ACataclysmEnemyCharacter::HandleDeath` returns before the mark for a character that
+   is nobody's target, and logs that it did, so a rule's outright kill leaves it standing and not marked dead.
+3. **Which bodies block which** (#2861). Three of the engine's six collision mask bits: the player 1, anything else on
+   the player's side (a summoned minion, a deployed machine, a thrall) 2, the guide 4. Each capsule carries its bit as
+   its mask filter and ignores the other two as it moves (`UPrimitiveComponent::SetMoveIgnoreMask`); a creature
+   carries and ignores nothing. `ACataclysmCharacterBase::RefreshPassThroughBody` writes both, at `BeginPlay`, from
+   `SetGenericTeamId` (so a minion takes its summoner's side's body and a thrall changes body when taken, and back if
+   anything ever gives it back), and from `PlaceTheGuide` once the creature is the guide. So: the player, its minions
+   and thralls, and the guide pass through one another; a creature blocks all of them and all of them block a
+   creature; two commanded bodies still block each other.
+4. **Footprints** (#2862). `ACataclysmGuideFootprints`, one actor holding a fixed pool of 40 prints, begun by
+   `PlaceTheGuide`, destroyed by `ForgetTheGuide`, and stepped on the guide's beat by `StepDemonicGuide`. It lays a
+   print every 80 cm the guide walks, left and right in turn, each fading evenly to nothing over 10 seconds, and the
+   oldest print is taken for the next. Drawn with the engine's cylinder squashed to an oval and the telegraph markers'
+   unlit translucent material, `/Game/Effects/M_TelegraphMarker`, so no asset is added.
+5. **The design document** gains "What a minion's body blocks" after "How fast a minion walks".
+
+### Research
+
+- **Path of Exile 2 lets the summoner walk through its own minions, and its minions block each other.** A player's
+  post on the official forum, 2025-01-04 (thread 3680211, Shadoe Wrayth): "I can walk right through my minions, but
+  they cannot walk through each other?" The thread and its neighbours (3619145) are players asking for minion-minion
+  collision to go, with no developer reply.
+- **Last Epoch treats a minion blocking the player as a bug.** Patch 1.3.3's notes, under Items: "Evolution's End: Fixed
+  an issue where the Rift Beast minion would block player movement". In its 2019 alpha it had the collision and players
+  asked for it to go ("Please Remove Minion Collision", forum topic 13844); one, cpurdy, wrote that "in almost every
+  other arpg" a summoner can walk through its minions while they still block the enemy.
+- **A trail of footprints to follow.** The Witcher 3's tracks, which glow under Witcher Senses and are followed to where
+  a creature went, are the nearest shipped mechanic found. No shipped ARPG found publishes a guide's trail, so no
+  figure below is read off a game.
+- **What the research settles:** the player and the player's own minions do not block each other, and minions still
+  block the enemy. **What it does not settle**, and is judged below: minion against minion, the guide's body, the
+  footprints' figures.
+
+### Judgements, each labelled
+
+1. **The guide alone is nobody's target.** The Reaper, an echo, a rift and the floor's other unhurtable objects are
+   found and struck for nothing as their own rulings have them; making them untargetable is not what was asked.
+   Infernal Sacrifice and Epidemic can still call the death of those creatures outright -- see "Not settled" below.
+2. **Nobody's target is no ally either**, so a creature's search for allies passes the guide over as well: Infernal
+   Sacrifice cannot eat it, and the Field Medic's heal and Horde Leader's rally, which it never needed, skip it.
+3. **The death is refused for the guide only, before the mark**, rather than for every creature that cannot be hurt:
+   other rules kill an unhurtable creature on purpose after clearing its flag (Blood Bond's elite), and the guide is
+   destroyed, never killed, when its arena ends.
+4. **The engine's mask filter, not a new collision channel or profile.** A channel would give the capsule another object
+   type, and every target search asks for `ECC_Pawn` by object type (`UCataclysmTargeting::Gather`,
+   `UCataclysmTargetCandidates::CapsuleReachesInto`), so a minion moved onto it would stop being found by the creatures
+   that fight it. The mask filter is the engine's own for exactly this ("Red team", "Blue team" in its declaration),
+   and every sweep the character movement component makes -- the move, the floor check, the push out of an overlap --
+   reads it through `UPrimitiveComponent::InitSweepCollisionParams`.
+5. **Two of the player's minions still block each other**, as Path of Exile 2's do: the owner named the player, and the
+   change is one line (`MovesThroughMaskFor`) should the owner want them through each other too.
+6. **The guide passes through the player as well as the minions**, the coordinating session's reading of #2861.
+7. **A deployed machine is a commanded body**, so the player walks through its own turret and ballista; a creature is
+   still blocked by them.
+8. **Crowd avoidance is unchanged.** The guide and the minions are Detour crowd agents, so the guide still steers round
+   a minion in its way rather than walking a straight line through it; what is gone is the body that stopped it. The
+   owner's play-test is what says whether that is enough.
+9. **The footprints' figures**: a print every 80 cm walked (one a beat at the guide's default 320 cm/s), 14 cm either
+   side of the line walked, 32 by 16 cm (about a third of the player's width, readable from the 8 m camera),
+   `#FFD800` -- a saturated yellow, told from Celestial's pale gold ground and from a telegraph's red -- at 0.9 opacity
+   fading evenly to nothing over 10 seconds, so the newest is the brightest and the trail shows which way it went; a
+   pool of 40, which holds a whole lifetime's trail at the default walk (a faster guide's trail is cut short instead of
+   growing); a move of more than 6 m in one beat starts the trail again rather than printing the gap.
+10. **A print does not age while the guide waits for the player.** The guide waits exactly when the player has fallen
+    15 m behind, which is when the trail is wanted.
+11. **A mesh and the telegraph material, not a decal.** The project holds no deferred decal material, and the issue's
+    brief said not to add binary assets. Without the material the prints draw in the engine's default and do not fade,
+    and the log says so once.
+12. **Stepped on the game mode's beat, not by a tick of its own**, as the guide's walk and its chain are, so an
+    automation test can walk a guide and watch its prints come and go.
+
+### Not settled
+
+- **Infernal Sacrifice and Epidemic can still kill the other creatures that cannot be hurt.** Both call `HandleDeath`
+  outright on what their search finds; the Reaper and an echo are on the monsters' side and can be found. Not changed
+  here, because the issue is the guide's and their rulings are their own.
+
+### Tests
+
+Unreal, 11 new, written and not run:
+
+| Test | What it shows |
+|---|---|
+| `Cataclysm.DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` | A minion and a thrall 1.5 m from the guide choose the Imp 6 m beyond it; the player's search and a creature's ally search pass it over; a blow at it is refused. CONTROL: not the guide, it is the minion's choice |
+| `Cataclysm.DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` | A blow of 100,000% is refused before anything is sent; its health stays at the maximum; its death called outright leaves it standing. CONTROL: the blow kills an Imp |
+| `Cataclysm.DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` | Swept both ways against the player and a minion it passes; against an Imp it is stopped, both ways |
+| `Cataclysm.DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` | One print at the first beat, ten more for 8.5 m, at its feet, either side in turn, the newest the brightest; none after 10 s standing |
+| `Cataclysm.DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` | Four prints stay 14 s while it waits; gone 10 s after the player is back |
+| `Cataclysm.DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` | 121 prints laid, never more than 40 shown, one trail actor; a 10 m jump lays one |
+| `Cataclysm.PassThroughBodies.EachBodyCarriesItsBitAndMovesThroughTheOtherTwo` | The player 1/6, a minion 2/5, a creature 0/0 |
+| `Cataclysm.PassThroughBodies.ThePlayerAndItsMinionWalkThroughEachOther` | Both ways. CONTROL: the player is stopped by a creature |
+| `Cataclysm.PassThroughBodies.ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt` | All four sweeps stopped |
+| `Cataclysm.PassThroughBodies.TwoMinionsStillBlockEachOther` | Judgement 5 |
+| `Cataclysm.PassThroughBodies.AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` | Blocks, taken passes both ways (2/5), given back blocks again (0/0) |
+
+Python, `tools/tests/test_demonic_guide_is_no_target_and_no_obstacle.py`, 9 tests, which continuous integration runs:
+the search's refusal, the guide's override and the blow's refusal, the death guard before the mark, the three bits,
+the block table worked out from the figures for every pair, where the bodies are written, the guide's raising, beat
+and end, and the footprint pool. Proved with `tools/prove_guard.py`: removing the search's refusal fails
+`test_the_search_refuses_nobodys_target_on_every_side`; making the guide's bit the commanded bit fails
+`test_the_three_bits_are_separate_and_fit_the_engines_filter` and
+`test_the_bodies_block_the_pairs_the_issue_names_and_no_others`; disabling the death guard fails
+`test_the_guides_death_called_outright_is_refused_before_the_mark`. Each passed again with the file restored.
+
+---
+
+## 2026-11-24 — A city keeps its share of its maximum when the empire tree moves it, and a fallen city's box opens its screen so its Dungeon City can be walked (#2859, #2866)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `fix/empire-cities-2859`, a bug-fix branch of the
+coordinating session's of 2026-11-24. Nothing was built or run in Unreal; the C++ and its six new Unreal tests were
+written and read, not compiled. The Python was run; what it printed is in the commit message. Issues
+[#2859](https://github.com/sdubois777/Cataclysm/issues/2859) and [#2866](https://github.com/sdubois777/Cataclysm/issues/2866).
+
+### Issue #2859: the owner's ruling
+
+The owner, playtesting on 2026-11-23, verbatim: "When increasing city defenses through the empire tree, it actually
+lowers the total % each city is at. It should maintain the % they were at before buying the upgrades." The issue adds:
+"A city at 80% before the purchase is at 80% of the new, higher maximum after it", and "A respec that lowers the
+maximum should keep the percentage the same way."
+
+**This replaces half of the coordinating session's S1 of 2026-11-18** (the slice 3a entry, "S1, what a changed maximum
+does to what a city holds"): "nothing is written at a buy or a respec" no longer holds. The rest of S1 stands: a READ
+of a city writes nothing and reads what it holds above its maximum as the maximum, a run begun with the tree builds its
+cities full, and a city upgrade raises what its city holds by the rise in its effective maximum. **No genre research
+was done for this**, because the shape is the owner's ruling; the Path of Exile 2 forum posts S1 cited for the opposite
+rule are not weighed against it.
+
+### What it does
+
+- **`UCataclysmEmpireMap::SharesNow` and `KeepShares`** (`FCataclysmCityShares`): every city's maxima with the tree and
+  the share of each it is read as holding, taken before a change; and every city standing before and after put back at
+  that share of its maxima after it. Defence and population both.
+- **`UCataclysmEmpireRun::ChangeTreeBonuses`**, the door for a tree changed in play, keeps the shares around
+  `SetTreeBonuses`, which is unchanged and is now the door for a run being handed its tree as it begins or loads.
+- **`UCataclysmGameInstance::RefreshEmpireTreeBonuses`** (a point bought, an option or extra option chosen, a respec,
+  and Reinvestment's count after a city upgrade's price) goes through `ChangeTreeBonuses`; a load goes through the new
+  **`HandEmpireTreeBonusesToALoadedRun`**, which writes nothing.
+- **`UCataclysmEmpireMap::AddUpgrade`, `Fall` and `Retake`** keep every city's share across The Royal Engineer's
+  Blessing's count moving, and **`UCataclysmEmpireRun::AdvanceDay`** keeps it across the day's turn, when Enduring
+  Foundations reaches an upgrade held ten days.
+
+### Judgements of this change, each labelled
+
+- **J1, a judgement: the rule reaches every place a tree node moves a city's maximum in play, not only the purchase.**
+  The Royal Engineer's Blessing moves every maximum when a city finishes, loses with its fall or regains with its retake
+  a defensive upgrade, and Enduring Foundations moves one on the tenth day an upgrade is held. Left as they were, both
+  would lower a city's percentage with nothing bought, which is the drop the owner reported.
+- **J2, a judgement: a city upgrade's raise of its own city's maximum keeps its rule**, adding what the effective
+  maximum rose by. That rise never lowers the share -- (D + r) / (M + r) is at least D / M -- so the fault is not there,
+  and the share rule would give a damaged city less than it gets now. The brief named city upgrades "if they move the
+  maximum"; this keeps them, and the coordinating session may rule otherwise.
+- **J3, a judgement: a load writes nothing into its cities.** They were saved holding what they held under the tree,
+  and a run rebuilt from its record has had no tree until the load hands it one, so keeping shares there would scale
+  every city by the whole tree. **Not settled:** an account's tree is shared by the characters of one lethality mode,
+  so it can change between a run's save and its load (another character buying a node). The loaded city then holds its
+  saved figure against the new maximum, as under S1. Keeping the share there would need the run record to hold each
+  city's maxima at the save, a record version, and was not done.
+- **J4, a judgement: a maximum has moved when it changes by more than a ten-thousandth of itself.** Only then is a city
+  written, so a city whose maximum did not move keeps exactly what it holds. The smallest move anything makes is a
+  hundredth.
+- **J5, a judgement: a fallen city is left as it is**, and a city just retaken has the share `Retake` gives it.
+
+### The simulation
+
+`sim/` has no fault to fix: its empire tree is a fixed preset for a whole campaign, applied once in
+`world.build_empire` (`EmpireTree.city_health_mult`), so no maximum moves during a campaign, and it has no city
+upgrades (`world.City.upgrades` is a bare count). Nothing in `sim/` changed.
+
+### Issue #2866: why a fallen city could not be retaken
+
+**The fault:** `UCataclysmEmpireMapWidget::PlaceCities` made a fallen city's box unavailable (`bAvailable` was
+`Mark != ECataclysmCityMark::Fallen`, from commit `5ee18f625a` of 2026-08-31, before a fall left a Fallen City dungeon
+on its city). An unavailable `UCataclysmChoiceButton` is disabled and its `Press` returns, so the box could not be
+pressed, and the city screen -- the only place a dungeon standing on a city is walked from -- never opened. Nothing
+else refuses: `FCataclysmWalkFromTheScreen::RefusalFor`, `ACataclysmDungeonGameMode::EnterEmpireDungeon` and
+`ACataclysmCapitalGameMode::TravelToWalk` take a Fallen City dungeon like any other, and `UCataclysmEmpireRun::
+ClearDungeon` retakes the city when it is cleared. The owner's log shows the dungeon standing ("dungeon 52, the Fallen
+City dungeon on Outpost (2,1)") and no Walk pressed for it.
+
+**The fix:** the box is available and dimmed (`UCataclysmChoiceButton::SetDimmed`, issue #2064's state for "read but
+not taken"), from `UCataclysmEmpireMapLayout::CityOpensItsScreen` and `IsCityDimmed`. The line under the map and the
+city screen say how the city is retaken while its Fallen City dungeon stands on it.
+
+- **J6, a judgement: every city's box opens its screen**, an erased one's too, whose screen already says "Erased by the
+  Void. It can never be retaken."
+- **J7, a judgement: the words.** The line under the map: "fallen: walk its Fallen City dungeon to retake it (press the
+  city, then Walk)", "erased by the Void, it can never be retaken", or "fallen" with no such dungeon. The city screen
+  adds "Walk its Fallen City dungeon below to retake it." after "Fallen. Nothing can be built here until it is
+  retaken." A fallen city with no such dungeon reads as before.
+
+### Issue #2866: does a city's fall fire a surge?
+
+**The design**, section VIII, Dungeon Basics: "If a city falls, it becomes a Dungeon City — a staging ground with more
+floors and multiple boss fights, triggering a Surge." **The code** does, with the least interval of 2026-10-12 (the
+entry "The game's surge when a city falls waits for the 25-day least interval", issue #2380):
+`UCataclysmEmpireRun::CityFell` fires one when `UCataclysmSurgeScheduler::IsDueOnCityFall` answers yes, which is
+`bSurgeOnCityFall` (true) and the last surge at least `LeastIntervalDays`, 25, behind.
+
+**What happened in the owner's run**, read from `game/Saved/Logs/Cataclysm-backup-2026.11.23-22.53.02.log` in the main
+checkout, line 215834 and the three lines after it. The walk began on day 416, so the days that ran were 417 to 441,
+and "1 surge brought 8 dungeons" in them: dungeons 44 to 51. Dungeons 45, 47, 48, 49 and 50 resolved, 44 and 51 still
+stand, and 46 is in neither list, which is what a dungeon absorbed by the fall looks like (an inference: the log does
+not name it). Outpost (2,1) fell, and its Fallen City dungeon is 52, made after the surge's eight. **So the surge came
+first, its dungeons felled the city, and the fall came at most 24 days after it: by the least-interval rule the fall
+brought no surge of its own.** A fall surge would have made dungeons numbered after 52 and the summary would say 2
+surges. The fall did not cause the surge the owner saw; the rule worked as written. No surge rule changed here. The
+capital's summary does not say whether a fall brought a surge or was refused one, and the design's line does not name
+the 25-day brake; both are left to the coordinating session, since fix/empty-board-surge-2865 changes surges.
+
+---
+
+## 2026-11-24 — A death is marked once even when a blow dealt from inside it reaches back to the dying creature; a stack built on hit is refused to a dead target; a creature's death is logged (#2871, #2874)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/drops-and-death-2871`, a bug-fix agent of the
+coordinating session, 2026-11-24. Issues [#2871](https://github.com/sdubois777/Cataclysm/issues/2871) and
+[#2874](https://github.com/sdubois777/Cataclysm/issues/2874).
+
+### What the owner reported, and ruled
+
+- **#2871**, verbatim: "uhhhh.. I just got a ton of duplicate drops." The screenshot showed at least 13 ground labels
+  reading "Masterful Fetish of Venom". The owner's answers on the issue, 2026-11-24, verbatim: "1. All of the duplicates
+  appeared at once, I just accidentally picked up two of them. 2. yes" -- every copy appeared at one moment, and each
+  is a real item that can be picked up.
+- **#2874**, verbatim: "I just got 1 shot by something. I killed a boss, and immediately died." No ruling was asked for
+  or given on the Boss's damage: the coordinating session's brief says to report the figures and not to retune them.
+
+### #2871: what the log shows
+
+`game/Saved/Logs/Cataclysm.log` in the main checkout, dungeon 11, floor 2 (Blood Bond):
+
+- 17:52:42.108, `CataclysmBruteCharacter_85` (Legendary) drew `Demonic_Sacrificial_Bond` and `Generic_Shielder`.
+- 17:56:24.093 and 17:56:29.770, the player's Harrower struck three creatures and then nine,
+  `CataclysmBruteCharacter_85` among the nine, and buried its axe in each it struck.
+- **17:56:37.020 to .032, all in frame 454: 31 lines "HIT OUT: ranged attack on CataclysmBruteCharacter_85 (Legendary):
+  sent 65, ..."** -- 26 landing 54, three critical landing 91, then 39 and 12. "ranged attack" with no skill name is
+  the axe's leap (its blow carries Harrower's tags and no skill object), and "sent 65" is what Harrower's own blow sent
+  at 17:56:24.093.
+- No HIT OUT line names the creature that died in that frame: it died to a tick of damage over time, which the hit log
+  does not say as an outgoing line.
+- 17:57:20.308 and 17:57:21.780, "picked up Masterful Fetish of Venom, +0" twice.
+
+### #2871: the cause
+
+`UCataclysmSkillEffects::MarkDead` refused a second death by asking for the `State.Dead` tag at its top, and put the tag
+on at its bottom, after five hooks that can strike: a spreading curse, a buried weapon's leap, a pinned line released,
+a held swing broken, a planted sword returned. The axe in the dying creature leapt to the nearest living enemy, the
+bonded Brute. Sacrificial Bond divided that blow with the Brute's allies, and the dying creature, not yet tagged, was
+one of them: `ReduceHealthDirectly` wrote its health at nought, `NotifyIfHealthReachedZero` saw a character not yet dead
+and called its `HandleDeath` again, and that `MarkDead` passed the top check, leapt again, and returned true. So did
+every call inside it. **`ACataclysmEnemyCharacter::HandleDeath` ran its whole body once per leap**: drops, gold, gems,
+experience, potion charges, the kill's events. Its drop roll is seeded from the creature's identity and the world's
+time, both the same within one frame, so every run rolled the same items: about 31 copies of each, lying on one spot,
+whose names the heads-up display stacks into a column.
+
+### #2871: the fix
+
+- **`MarkDead` keeps a set of the actors whose death it is marking.** It refuses an actor already in it, adds the actor
+  before the five hooks, and takes it out once the tag is on, before the death is announced. The outer call finishes
+  the death, once; the inner call returns false, and `HandleDeath` returns at once as it does for a creature already
+  dead.
+- **`UCataclysmSkillEffects::IsBeingMarkedDead`** answers whether an actor is in that set, and
+  **`UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`** asks it beside `IsDead`, so the inner death is not even
+  started: a minion's or thrall's commander's Fervour, its death blast and its burst, which run before `HandleDeath`, are
+  not repeated either.
+- **`IsDead` is unchanged**, deliberately: the hooks run while the dying actor is still an ordinary target, and each
+  one that searches excludes it by name. Making it read as dead there would change what each finds.
+
+### #2874: what was checked, and what was found
+
+1. **A creature's swing cannot land after it dies, and it could not before this change.** Its ordinary blow waits for
+   the swing (#783) as a pending basic attack; `HandleDeath` forgets it, and `LandPendingBasicAttack` asks `IsDead` as
+   well. A brain's wind-up is dropped by `Think` and by `LandWindUpIfDue`, both of which ask `IsDead`; a charge is
+   cancelled by `HandleDeath`; `UCataclysmEnemyModifiers::TimedStep` refuses a dead creature. A projectile already in
+   flight still lands, as the design states ("a hit already in flight still resolves, because a projectile outlives
+   whoever fired it"). **The Boss Brute was very likely alive when it swung.** The player's critical on it reads "sent
+   421, landed 438, 438 to health"; a blow's landed figure is cut to the health left (the Herald's killing blow at
+   17:57:02.295 reads "sent 175, landed 75"), so the Brute held at least 438 health before it, and would have died only
+   at exactly 438. **Found and not fixed: the Corrupted Stalker.** Its weapon kits strike through the player's skill
+   templates, whose blow waits for the swing on `UCataclysmSkillTemplate::SwingTimer`, and nothing clears that timer when
+   a creature dies, so a Stalker killed mid-swing still lands its blow. The same timer is the player's, and #1549 asked
+   whether a dead player's waiting blow should land; the owner answered on 2026-09-11 that it is not important and no
+   change is planned. Changing the shared timer for creatures only is a ruling for the coordinating session, so this
+   branch reports it rather than deciding it.
+2. **The figures, reported and not retuned.** The design's creature at that spot -- `sim/cataclysm_sim/enemy_stats.py`
+   `strength_on_floor("Boss", 1, "Basic", "Timed", total_floors=10, floor=6, kind="Brute", ring="Outpost")`, dungeon 0,
+   a Timed dungeon of 10 floors on an Outpost at tier 1 -- has a score of 331, 4,264.9 health, **72.3 damage a hit and
+   144.6 on a critical** (the Brute's 200% multiplier), before the player's mitigation. **The log's critical took at
+   least 396 after mitigation**: "took 396 ... health 396 of 430 before it" is cut to the health left, so the swing was
+   larger. That is at least 2.7 times the design's whole critical before mitigation. The same Brute's other figures in
+   the log fit the design: its Hellfire Aura ticked 4.5 (a tick is 0.09 of its weapon damage, 6.5 at 72.3, before the
+   player's resistance), and a ranged attack took 76. So **the melee critical is the outlier and the reading of this
+   branch cannot say why**; a measurement is needed (the Brute as the floor builds it, its `AttackDamage` and one
+   critical swing against a level 6 character). What the design says: "A geared character is never one-shot, and a
+   gearless one still is" (`docs/Cataclysm_GDD_v2.md`, "How Long a Geared Character Survives", fitted at tier 8), and
+   tier 1's damage was refitted by issue #2749 so the starting character wins every floor of every first-surge Outpost
+   dungeon with at least 10% of its health left.
+3. **Infernal Brand burst on a corpse, and no longer does.** "CataclysmBruteCharacter_136's Infernal Brand reached five
+   stacks on CataclysmPlayerState_0 and dealt 367" was written 2 ms after the player's death line. The attribute set
+   calls `BrandOnHit` after a blow's health write, so for the killing blow, after `HandleDeath` has marked the player
+   dead. The brand was not part of the kill -- the swing took the 396 health left -- but it stacked and burst on the
+   body. **`BrandOnHit` now refuses a target already dead**: no stack, no visible tag, no explosion.
+4. **A creature's death is now logged.** "DIED: CataclysmBruteCharacter_136 (Boss) at 0.0 of 4265 health; last struck
+   by CataclysmPlayerCharacter_0", at `Display`, once, from `ACataclysmEnemyCharacter::HandleDeath` below the mark, so it
+   sits among the HIT and HIT OUT lines in a play session's log and the order of a death and a swing can be read.
+   `FCataclysmHitLog::CreatureDeathLine` builds it; who struck last is the creature's own record of the last blow to
+   reach its health.
+
+### Judgements of this change
+
+- **Withering Blows and Touch of Nothing refuse a dead target as Infernal Brand does**, by the brand's reasoning. A
+  judgement of the writing session: the issue names only the brand, and both build stacks from the same call after the
+  same health write, so a stack on a body is cleared at the respawn and does nothing before it.
+- **The death line's words**: "DIED: ", never " died at ", which is the player's own death line and what its readers
+  search for; figures as every hit log line says them (whole from ten up, one decimal below); "nobody on record" when no
+  blow reached its health. A judgement.
+- **A creature being marked dead is still found by searches**, so Sacrificial Bond still pays the dying host its share
+  of the leap, which it cannot lose, and the bonded creature keeps half. Excluding it would change what every hook's
+  search finds; left as it was and reported.
+
+### Tests
+
+**Four new Unreal tests, one in each of four groups:**
+
+| Test | What it shows |
+| :-- | :-- |
+| `Cataclysm.BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` | the owner's floor in small: a host of 50 health paying as a Cataclysm Boss, an axe in it, and a bonded ally of 1.25 leaps' health 3 m away; the player's blow kills the host; its death is announced once, no piece of gear on the floor is a copy of another, and the ally lives having kept half of one leap. Before the fix: four deaths, four copies of each item, the ally dead |
+| `Cataclysm.EnemyHitTiming.ACreatureKilledBeforeItsSwingConnectsDealsNothingAfterwards` | a Brute KILLED in the gap by a blow, not marked dead: its death forgets the waiting blow at once, and at its swing's moment its own frame and `LandPendingBasicAttack` land nothing |
+| `Cataclysm.EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt` | CONTROL: a living player's fifth brand bursts, a second blow resolved, stacks spent. THEN: four brands on a second player and a fifth blow that kills it; one blow resolved, and the four stacks are left as they were |
+| `Cataclysm.HitLog.ACreaturesDeathIsSaidOnceAfterTheBlowThatKilledIt` | one DIED line at Display, after the HIT OUT line of the killing blow, naming the creature, its rarity and the player; a blow on the body says no second; the words with nobody on record |
+
+**Python:** `tools/tests/test_a_death_is_marked_once_from_inside_its_own_hooks.py`, 5 checks: `MarkDead` refuses an
+actor already being marked before adding it, adds it before its first hook, and takes it out after the tag and before
+the announcement; `NotifyIfHealthReachedZero` asks `IsBeingMarkedDead` before `HandleDeath`; each of the three on-hit
+stack builders asks `IsDead(Target)` before its status and its stack. `test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
+pins the death line as one of `HandleDeath`'s jobs and lists the two attribute reads beside it as questions.
+
+### Sources
+
+No shipped game was researched: no formula or number is chosen here. The fixes restore what the code already said it
+did ("Nothing here is safe to run twice"; "a death is announced once").
+
+---
+
+## 2026-11-24 — Blood Altar's pulse reaches the player anywhere on the floor and every pulse says a line; Thorns of Glass was measured against the owner's death and did what its row says (#2855, #2854)
+
+**Affects:** `UCataclysmDungeonModifierEffects::BloodAltarRingRadiusCm` (was `BloodAltarReachCm`, the same 1000) and the
+accounts of `BloodAltarKey` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`);
+`ACataclysmDungeonGameMode::StepBloodAltar` (`Dungeon/CataclysmDungeonGameMode.cpp`, `.h`). Tests:
+`CataclysmDungeonModifierEffectsTests.cpp` (one renamed and changed, one new), `CataclysmThornsOfGlassTests.cpp` (two new),
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and `tools/tests/test_thorns_of_glass_strikes_back.py` (one
+new each). Thorns of Glass's game code is not changed. Issues
+[#2855](https://github.com/sdubois777/Cataclysm/issues/2855) and
+[#2854](https://github.com/sdubois777/Cataclysm/issues/2854).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED; NO WINDOW YET.** The four Unreal tests below are registered, not run.
+- **BLOOD ALTAR NOW REACHES THE WHOLE FLOOR, WHICH REPLACES THE JUDGEMENT OF 2026-09-16** (the entry "Blood Altar pulses
+  at the player from the exit ...", its table row "Reach | 1000 cm"). It is the coordinating session's brief, not this
+  session's idea; quoted below. The ring at the stairs stays, as wide as before, and now only marks the altar.
+- **THE INTERVAL STAYS 30 SECONDS: THE DESIGN HAS ONE, AND IT IS THE OWNER'S.** The 2026-09-16 entry: "A pulse every 30
+  seconds, counted from the floor's start. This is the project owner's figure, not a judgement." The owner's
+  recollection relayed in the brief, "probably every minute or so? i don't remember the design.", differs from it; the
+  brief says to use about a minute only "If the design gives no interval". **The owner should confirm 30 seconds or say
+  60.** It is one constant, `BloodAltarSecondsBetweenPulses`.
+- **A FLOOR-WIDE PULSE CANNOT BE WALKED AWAY FROM, AND ITS CEILING WAS JUDGED WHEN IT COULD.** At the 60th death a pulse
+  is 30% of maximum health every 30 seconds, about 1% a second on average, the same as Mortal Decay's most
+  (`MortalDecayMostPercentPerSecond`, also a danger-15 row). Not changed; flagged.
+- **THORNS OF GLASS: NO DEVIATION FROM ITS ROW WAS FOUND, SO NO GAME CODE CHANGED.** The owner's death is accounted for
+  by the row as written, the owner's ruling of 2026-11-19 on its interval, and a second modifier on the same Boss
+  ("Thorns of Glass and the owner's death", below). Two Unreal tests reproduce the fight's cadence.
+- **FOUND AND NOT FIXED: INFERNAL SACRIFICE'S BUFF IS ATTACK SPEED, WHERE ITS ROW SAYS DAMAGE.** Its row: "Sacrifice
+  nearby allies to heal yourself and gain temporary damage buffs." `UCataclysmEnemyModifiers` grants its carrier
+  Commander for 8 seconds, whose row is "All nearby allies gain 20% increased movement speed and attack speed." On the
+  owner's Boss that shortened Thorns of Glass's interval from 1.2 seconds to 1.0 for the five seconds that killed the
+  owner. A different row and a different concern; for the coordinating session.
+- **THE ISSUE'S THREE QUESTIONS FOR A RULING ARE ANSWERED BY RULINGS ALREADY MADE**, and this entry recommends no
+  change ("The questions #2854 asks", below).
+
+### The rulings
+
+**The coordinating session's brief of 2026-11-24**, verbatim. On #2855: "find why no pulse happens in play (not built,
+not spawned, timer never started, damage applied to the wrong side, floor-wide reach missing), and fix it to the
+design. If the design gives no interval, use the issue's and the owner's suggestion of about a minute as a judgement and
+say so." And: "Unreal tests: a Thorns of Glass creature retaliates at most once per its attack interval under rapid
+hits and damage over time; the Blood Altar pulses on its interval, damages the player anywhere on the floor, and grows
+with kills." On #2854: "find what made the retaliation lethal (fired more often than once per attack interval, fired per
+tick of an aura or damage over time, used the wrong damage, stacked across creatures, or was correct and simply
+strong), fix any deviation from the row's text, and report what the row does now with numbers."
+
+**The project owner**, relayed in that brief: "probably every minute or so? i don't remember the design."
+
+**Carried, not new.** The owner, 2026-11-19, on Thorns of Glass: "Once per its attack time: It can strike back at most
+once per its own attack interval, so it returns about what its own swings would deal (~40 in the example). Still
+punishes hitting it; can no longer out-damage itself." The owner, 2026-11-18: "When struck, a reflecting creature hits
+back for its own attack damage, sized by its strength like any other hit and reduced by your defences. Your own damage
+no longer matters to it." The coordinating session, 2026-11-18 (B2): "It applies once per direct hit it takes. Damage
+over time does not trigger it, as in Path of Exile."
+
+### Blood Altar: why no pulse found the owner
+
+The rule was built, placed and running. `StepBloodAltar` runs on the quarter-second beat of every floor carrying the
+row; it places the altar's ring on the exit cell on the first beat and pulses every 30 seconds from the floor's start.
+But a pulse dealt damage only when `FindEveryoneInLine` found the player's body inside the ring's 1000 cm around the
+stairs, and a player is inside that ring only on the way down the stairs, for well under one 30 second pulse. The
+owner's floors 1 to 4 took about six minutes (04:26:26 to 04:32:21 in the log of 2026-11-22), so about a dozen pulses
+came and found nobody. And nothing said so: the rule logged nothing at all.
+
+### What Blood Altar does now
+
+- **A pulse every 30 seconds from the floor's start, at the player wherever they stand on the floor**, and at nothing
+  else. 0.5% of the player's maximum health for each creature death counted on the floor, up to 30% at the 60th death,
+  Demonic, dealt from the floor's source as an area hit, so the player's Demonic resistance and defences reduce it. A
+  dead player is not struck again. For the owner's level 10 character with 414 maximum health: 2.07 a death before
+  defences, 124.3 at the ceiling.
+- **Every pulse says one line**, at `Log`, so the play log carries it: "Blood Altar: pulse on floor 2 after 14
+  death(s) counted: sent 29.0, 7.0% of maximum health 414; took 24.8 of health 390.0." An unfed altar's pulse says
+  "... after 0 death(s) counted: sends nothing (maximum health 414)." (Figures illustrative.)
+- **The ring stays on the exit cell, as wide as before** (`BloodAltarRingRadiusCm`, 1000). It marks the altar;
+  nothing reads it to decide who a pulse hits. A judgement of this session: changing how the altar looks is not what
+  either issue asks.
+- **No genre research was done for this**: no formula or number changed. The reach is the brief's, the interval the
+  owner's, and the share and ceiling the 2026-09-16 judgements.
+
+### Thorns of Glass and the owner's death
+
+From `game/Saved/Logs/Cataclysm-backup-2026.11.23-06.08.07.log` in the main checkout, the session of 2026-11-22 at
+development `4d33f5994`, every line naming `CataclysmBruteCharacter_212` between 04:23:30 and 04:23:43 read. A Boss Brute
+carrying Infernal Sacrifice, Perfect Aim, Overpowered and Thorns of Glass; the player's Conflagration is an aura
+("Conflagration in Slot.Aura"), "Radius=10; Interval=1; Burn=1" in `WeaponSkills.csv`, so it hit the Brute once a second
+from up to 10 metres, and its burn ticked between.
+
+| Time (04:23:) | Player's blow on the Brute | Struck back | Seconds since the last strike back |
+| :-- | :-- | :-- | --: |
+| 30.332 | Conflagration | 68, 0 to health | first |
+| 31.336 | Conflagration | no | 1.004 |
+| 31.908 | Compel | 68, 54 to health | 1.575 |
+| 32.336 | Conflagration | no | 0.429 |
+| 33.329 | Conflagration | 73 | 1.422 |
+| 34.335 | Conflagration | no | 1.006 |
+| 34.804 | (the Brute sacrificed `CataclysmGatekeeperCharacter_8`: Commander for 8 seconds) | | |
+| 35.329 | Conflagration | 85 | 2.000 |
+| 36.339 | Conflagration | no | 1.010 |
+| 37.329 | Conflagration | no | 2.000 |
+| 37.927 | Basic Attack | no | 2.598 |
+| 38.327 | Conflagration | 85 | 2.998 |
+| 38.623 | Compel | no | 0.296 |
+| 39.328 | Conflagration | 85 | 1.001 |
+| 39.408 | Basic Attack | no | 0.080 |
+| 40.329 | Conflagration | 80, the killing blow at 80 health | 1.001 |
+
+Read against each cause the brief names:
+
+1. **More often than once per its attack interval: no.** Until the sacrifice every strike back came 1.42 seconds or more
+   after the last, and blows 1.004 and 1.006 seconds after one were refused: a Brute's designed 1.2. After it, strike
+   backs 1.001 seconds apart: an interval of at most 1.001, which is the Brute's 1.2 divided by Commander's 1.2. "Its own
+   attack interval" is `SecondsBetweenAttacks()` at the moment of the hit, buffs included, the definition the
+   2026-11-19 entry gives. The blows refused at 36.339, 37.329 and 37.927, when the interval had passed, are explained
+   if the player's own creatures took those strike backs: Compel says "Everything you command strikes that same enemy
+   at once", the player held a thrall (and two Imps from 04:23:39.2: "1 thralls 28, 2 Imp 19"), and a minion's blow
+   is struck back at the minion and is not logged. The log cannot show those blows, so that part is inference.
+2. **Per tick of an aura or a damage over time: no.** Every strike back answers a logged "HIT OUT" line, which the
+   log never writes for a tick, and the burn's ticks drew none. Conflagration's once-a-second blow is a hit in this
+   game, not a tick: it rolls critical strikes (the log's "critical" on two of them) and is logged as a hit.
+3. **The wrong damage: no.** Each was the Brute's own attack damage, not critical (Overpowered's always-crit does not
+   reach a strike back), after the player's defences: 68, then 73 and 85, rising as Soul Harvest's souls reached the
+   Brute (3 by 33.24, 5 by 34.69; the row gives souls "increased health, damage, and resistances"), then 80 because 80
+   health was left.
+4. **Stacked across creatures: no.** One creature.
+5. **So: correct, and strong.** 85 is 20.5% of 414. A Boss's own blow every second its interval allows, at a player who
+   stood in an aura's reach of it: four strike backs took 335 health in 5 seconds. The Brute swung at the player not
+   once in those thirteen seconds; with Overpowered, its own swing would have been that blow and a critical.
+
+**What the row does now, unchanged, with numbers.** Each hit that lands on a carrier and is not a tick is struck back
+for the carrier's own current attack damage, not critical, through the striker's defences, if at least its current
+attack interval has passed since its last strike back. Against an aura hitting once a second (1.001 seconds apart): a
+Brute (1.2 seconds) strikes back on every second pulse, so 4 of 7 pulses in six seconds; a hasted Brute (1.0) on
+every pulse, 7 of 7; an Abyssal Warden (2.4) on every third pulse; the default creature (1.5) on every second.
+
+### The questions #2854 asks
+
+| Question | Already ruled | Genre |
+| :-- | :-- | :-- |
+| A ranged hit, or a tick? | Any hit, "whatever hits it" (the row, 2026-11-19); never a tick (B2, 2026-11-18) | Path of Exile 2: inherent Thorns answers melee attack hits only, and a passive extends it to "any kind of Hit". Diablo IV, as the design's Retaliation section records: "a flat value that fires on any direct attack, melee or ranged, and never on damage over time" |
+| Its full attack damage, or a share? | Its own attack damage (the owner, 2026-11-18) | Path of Exile 2: Thorns is "a kind of Hit Damage", a figure of the retaliator's own, not a share |
+| Do the player's defences apply? | Yes, "reduced by your defences" (the owner, 2026-11-18), and they do: `ApplyHit` through the player's damage calculation | Path of Exile 2's Spiked Armour notable gives Thorns "50% chance to ignore Enemy Armour", so armour applies to it otherwise |
+
+**RECOMMENDATION: change nothing.** The row did what its sentence and both of the owner's rulings say, and the
+2026-11-19 ruling already cut its rate to its own swings'. **If the owner finds an aura cannot be played near it**, the
+genre's narrower trigger is Path of Exile 2's, melee hits only, and that would be a new ruling and a new sentence, not
+a fix. A judgement of this session, for the owner.
+
+The research, fetched 2026-11-24 by this session and quoted as returned: `poe2db.tw/us/Thorns` read ("Thorns damage is
+a kind of Hit Damage you can deal"; "If you have Thorns damage, you inherently Retaliate against Melee Attack Hits,
+dealing your Thorns damage to the enemy that Hit you"; "Retaliate against all Hits" extends it to "any kind of Hit dealt
+to you by enemies, rather than just Melee Attacks"). `diablo4.wiki.fextralife.com/Thorns` read; it says Thorns
+"Excludes attacks that are entirety damage over time" and does not say melee or ranged. `maxroll.gg/d4/resources/
+thorns-explained` and `poedb.tw/us/Reflect` answered 404. The Diablo IV sentence in the table is the design document's
+own record, not re-fetched.
+
+### The tests
+
+- **`Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`**, renamed from
+  `...WithinReach` and changed: its last reading put the player's body just outside the ring and asserted the pulse took
+  nothing; it now asserts the pulse takes as much as at the altar after the same three deaths (within 0.5). The ring's
+  width is read from `BloodAltarRingRadiusCm`.
+- **`Cataclysm.DungeonModifierEffects.ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`**, new: the play
+  case. The player stands at the floor's entrance, asserted outside the ring first; three pulses at the 30 second
+  clock, each with nothing taken and no line a beat before it; the unfed pulse takes nothing and says "after 0
+  death(s) counted"; after two deaths, and after four, each takes health, no more than its stated share, the second
+  more than the first, and says its count.
+- **`Cataclysm.ThornsOfGlass.AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`**, new: a
+  carrier given a Brute's 1.2 seconds; seven pulses 1.001 seconds apart, each with quick hits 0.05 and 0.1 seconds
+  after it and a burn tick 0.5 after; pulses 0, 2, 4 and 6 struck back, no quick hit or tick, 4 x 40 lost. Control:
+  every blow landed.
+- **`Cataclysm.ThornsOfGlass.ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`**, new: the same
+  carrier given Commander by itself, as Infernal Sacrifice does, so its interval is 1.0; all seven pulses struck back,
+  no quick hit or tick, 7 x 40 lost.
+- Python, one each: `test_blood_altar_pulses_the_player_anywhere_on_the_floor_and_says_each_pulse` (no reach search in
+  `StepBloodAltar`, both log lines present) and `test_a_tick_never_reaches_the_strike_back_or_its_clock` (the strike
+  back and its clock sit inside the branch a tick never enters, and the clock is asked once).
+
+### Registered before the window
+
+| Group | Base, last measured | After this change | Why |
+| :-- | --: | --: | :-- |
+| `Cataclysm.ThornsOfGlass.` | 9 | 11 | +2 new |
+| `Cataclysm.DungeonModifierEffects.` | 777 | 778 | +1 new, 1 renamed |
+
+The whole suite: the base's last measured total plus 3.
+
+The guard proofs, each a one-place break, run with the prefix named:
+
+- **B1**, prefix `Cataclysm.DungeonModifierEffects.`: in `StepBloodAltar`, the condition
+  `UCataclysmSkillEffects::IsDead(Player)` gains `|| FVector::Dist2D(Player->GetActorLocation(), Ring->GetActorLocation())
+  > Effects::BloodAltarRingRadiusCm`, the old reach back. Must fail exactly
+  `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor` and
+  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
+- **B2**, the same prefix: the unfed line's text `Blood Altar: pulse on floor %d after %d death(s) counted: sends
+  nothing` becomes `Blood Altar: quiet on floor ...`. Must fail exactly
+  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
+- **T1**, prefix `Cataclysm.ThornsOfGlass.`: in `TakeAStrikeBackIfDue`, `static_cast<double>(SecondsBetweenAttacks())`
+  becomes `static_cast<double>(DesignedSecondsBetweenAttacks())`, an interval without buffs. Must fail exactly
+  `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`.
+- **T2**, prefix `Cataclysm.ThornsOfGlass.`: in `UCataclysmVitalAttributeSet`, the retaliation branch's opening
+  `if (!Hit.bIsDamageOverTime` (the one followed by `&& !AssetTags.HasTag(` and `NoRetaliationTag()`) becomes
+  `if ((true || !Hit.bIsDamageOverTime)`, letting ticks in. Must fail exactly `ADamageOverTimeTickIsNotStruckBack` and
+  `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`; the hasted test passes, because its
+  ticks come half a second after a strike back and are never due.
 
 ---
 

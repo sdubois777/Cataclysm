@@ -611,6 +611,43 @@ public:
 	static float GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Add Fervour a skill's row states it pays, and answer what arrived. Issue #2885, the Death draft's N6, slice DS3:
+	 * `KillFervour`, "every enemy it kills gives you 5 Fervour". A FIFTH FUNCTION THAT ADDS A PLAIN COUNT, beside the
+	 * four above, and the one whose count is the row's own rather than a stat's: so nothing is asked of the stat lines.
+	 *
+	 * IT DOES NOT DECIDE WHETHER THE KILL HAPPENED OR WHOSE IT WAS. `UCataclysmKillFervour`, the curse spread, the buried
+	 * weapon and the flicker do; this is the write to the pool, which happens in this file for every route so there is
+	 * one place that clamps it.
+	 *
+	 * SCALED BY HOW FAST THE CLASS RESOURCE GENERATES, then handed whole to `RaisePool`, which clamps it at the spendable
+	 * maximum and gives Overflow what does not fit, as every gain here is.
+	 *
+	 * A ROW'S `KillFervour` IS A KILL'S PAYMENT: `bForAKill` opens the kill-payment marker for the whole gain, as
+	 * `GainOnOwnKill` does, so Any Fuel refuses it and Kindred Fires and Borrowed Time leave the hold alone. Every
+	 * `KillFervour` route passes true; a row's `HitFervour` does not. The Death skills merge, obligation 4.
+	 *
+	 * @param AbilitySystem  whoever's skill it was: the caster's, never the dying creature's
+	 * @param Stated         the row's figure; nought or less adds nothing
+	 * @param bForAKill      whether this pays for a death (`KillFervour`), not a hit
+	 * @return how much Fervour was really added, which is zero for a full bar and for no class resource set
+	 */
+	static float GainStated(UAbilitySystemComponent* AbilitySystem, float Stated, bool bForAKill = false);
+
+	/**
+	 * Empty the pool, and answer what left it: every point held. Issue #2885, the Death draft's N13, slice DS4: the
+	 * Wand's Requiem, "spend every Fervour you hold, the Ultimate's 50 among it". THE WRITE TO THE POOL, here for the
+	 * reason every other is: one place clamps it. It decides nothing about whether a use spends all; the strike asks
+	 * its row's `SpendsAllFervour` and pays its own cost first, through `ApplyCost`.
+	 *
+	 * NO `resource_consumed` EVENT, a judgement of slice DS4: the use's cost already raised one ("once per payment
+	 * whatever its size", issue #1833), and this is the rest of the same payment rather than a second one.
+	 *
+	 * @param AbilitySystem  the spender's; nothing for one with no class resource set
+	 * @return how much Fervour left the pool, nought or more
+	 */
+	static float SpendAll(UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Fervour gained when an enemy dies near this character.
 	 * `Ritualist_capstone_50`'s second option, Fed by the Fallen, is its only
 	 * source. Issue #1515.
@@ -973,10 +1010,9 @@ public:
 	 * seconds have passed since your last kill" has no last kill to count from, and holding for ever would make a
 	 * multiclassed Soul Collector's other generator a bar that never empties.
 	 *
-	 * IT DOES NOT ASK WHETHER A RUNNING SELF BUFF HOLDS FERVOUR. The Death skills branch (#2885) adds
-	 * `UCataclysmSkillTemplate::ARunningBuffHoldsFervour` for Cold Blood; whichever of that branch and this one lands
-	 * second adds that one call here, with its test, as it does to `DecayStep`. Ruled by the coordinating session on
-	 * 2026-11-24.
+	 * NOR WHILE A RUNNING SELF BUFF HOLDS FERVOUR (`UCataclysmSkillTemplate::ARunningBuffHoldsFervour`, the Sword's Cold
+	 * Blood), asked as `DecayStep` asks it. Added by the Death skills merge, obligation 3, as the coordinating session
+	 * ruled on 2026-11-24.
 	 *
 	 * @return how much Fervour really left, which is zero for a character with no rate, an empty pool, a hold not yet
 	 *         run out, and a creature holding a player build

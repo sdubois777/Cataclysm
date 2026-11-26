@@ -9,11 +9,15 @@
 #include "AbilitySystem/CataclysmChorus.h"
 // For announcing a skill once it has been paid for. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
+// For the nails a flying shot drives into what it lands on. Issue #2885, the Death Crossbow draft's C1.
+#include "AbilitySystem/CataclysmCoffinNails.h"
 // For the health cost a character adds to every skill. Issue #970.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For marking a cursed creature so its curse passes on when it dies.
 // The Wand's Anathema. Issue #37.
 #include "AbilitySystem/CataclysmCurseSpread.h"
+// For a curse under which the dying rise. Issue #2885, N5.
+#include "AbilitySystem/CataclysmRisingCurse.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1344,9 +1348,55 @@ int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
 			Buff->NoteKill();
 			++Told;
 		}
+		// AND A FLICKER COUNTING THE DEATHS DURING IT, the second listener. Issue #2885, the Death draft's N6 and N10,
+		// slice DS3: the Sword's Danse Macabre, "every enemy that dies during the dance gives you 5 Fervour and adds half
+		// a second to it". Counted only when it took the death into account, so a move that counts nothing tells
+		// nobody; every self buff is still counted as before, whether or not it counts kills.
+		else if (UCataclysmMovementSkill* Move =
+					 Cast<UCataclysmMovementSkill>(Spec.GetPrimaryInstance()))
+		{
+			Told += Move->NoteADeathWhileItRuns() ? 1 : 0;
+		}
 	}
 
 	return Told;
+}
+
+float UCataclysmSkillTemplate::FervourHeldBy(const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO POOL, NOTHING HELD: every creature and every minion. Issue #2885, N7.
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(
+								UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()));
+}
+
+bool UCataclysmSkillTemplate::ARunningBuffHoldsFervour(const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// THE SAME WALK `NoteKill` MAKES. Issue #2885, N8: Cold Blood's `HoldsFervour=1`.
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmSelfBuffSkill* Buff = Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance());
+		if (Buff && Buff->Params.bHoldsFervour)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
@@ -1558,6 +1608,43 @@ int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
 		}
 	}
 
+	return Told;
+}
+
+int32 UCataclysmSkillTemplate::NoteCriticalStrikeLanded(AActor* Striker, AActor* Struck, const UGameplayAbility* BySkill)
+{
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Striker);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// THE RUNNING BUFFS STATING `StrikesOnCritical`, GATHERED BEFORE ANY IS TOLD, because a buff told strikes, and a blow
+	// can change what its striker holds; the list walked is then a copy, not the ability system's own. The shape of
+	// `NoteBlowLanded` above otherwise: a buff that lasts is an active ability for as long as it lasts.
+	TArray<UCataclysmSelfBuffSkill*> Listening;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+		UCataclysmSelfBuffSkill* Buff = Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance());
+		if (Buff && Buff->Params.bStrikesOnCritical)
+		{
+			Listening.Add(Buff);
+		}
+	}
+
+	int32 Told = 0;
+	for (UCataclysmSelfBuffSkill* Buff : Listening)
+	{
+		if (IsValid(Buff))
+		{
+			Buff->CriticalStrikeLanded(Struck, BySkill);
+			++Told;
+		}
+	}
 	return Told;
 }
 
@@ -1827,10 +1914,170 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 	if (Applied > 0 && Params.OnDeathRangeCm > 0.0f
 		&& Params.OnDeath.Equals(TEXT("SpreadDebuff"), ESearchCase::IgnoreCase))
 	{
-		UCataclysmCurseSpread::MarkOn(Target, Self, Params.OnDeathRangeCm);
+		UCataclysmCurseSpread* Mark = UCataclysmCurseSpread::MarkOn(Target, Self, Params.OnDeathRangeCm);
+
+		// AND WHAT A DEATH UNDER IT PAYS, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N6, slice DS3: the Sword's
+		// Death Warrant, "if it dies while the warrant holds, you gain 10 Fervour and the warrant passes to the nearest
+		// enemy within 10 meters". The curses this application laid are what "the warrant holds" asks about, so a
+		// creature whose warrant ran out or was cleansed pays nothing when it dies. `MarkOn` clears all three, so a
+		// curse that states none -- Anathema's, Quarry's -- leaves none behind.
+		if (Mark && Params.KillFervour > 0.0f)
+		{
+			Mark->KillFervour = Params.KillFervour;
+			Mark->SkillName = SkillName;
+			Mark->Curses = Laying;
+		}
+	}
+
+	// AND A CREATURE THAT DIES UNDER IT RISES FOR ITS CASTER, IF THE ROW SAYS SO. Issue #2885, the Death draft's N5,
+	// slice DS3: the Greataxe's Death Rattle, "any that dies while it rattles rises at once as a husk, the same husk
+	// Shallow Graves raises", written as `OnDeath=Rise; RisesAs=Husk`. Marked only when something was laid, as the
+	// spreading curse above is; what rises is read from the Summon row of this skill's damage type that raises the kind.
+	if (Applied > 0 && !Params.RisesAs.IsEmpty() && Params.OnDeath.Equals(TEXT("Rise"), ESearchCase::IgnoreCase))
+	{
+		UCataclysmRisingCurse::MarkOn(Target, Self, Params.RisesAs, Type.ToString(), Laying);
 	}
 
 	return Applied;
+}
+
+// ==========================================================================
+// Detonating the caster's own minions, and ordering them -- issue #2885
+// ==========================================================================
+
+int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside)
+{
+	AActor* Self = Avatar();
+	if (!Params.bDetonates || !Self)
+	{
+		return 0;
+	}
+
+	// WHO THE CASTER COMMANDS, AND NOT WHICH SIDE IS FRIENDLY. "Every minion of yours" is a question about whose it is,
+	// which `UCataclysmCommand::ThingsCommandedBy` answers by walking the level (the living only); a side would leave
+	// out a minion of the caster's that Madness has turned, and would need the caster to have a team at all.
+	//
+	// GATHERED FIRST AND EXPLODED AFTER. An explosion strikes enemies, and a kill it makes may raise or destroy things
+	// in its turn; the list is settled before the first one goes off, and each is asked again as it comes up.
+	TArray<TWeakObjectPtr<ACataclysmMinion>> Caught;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
+	{
+		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (Minion && Minion->Summoner.Get() == Self && !Minion->bIsMachine && IsInside(*Minion))
+		{
+			Caught.Add(Minion);
+		}
+	}
+
+	// AND THE CASTER IS TOLD EACH ONE WENT, AS IT IS TOLD OF A MINION KILLED (`NoteMinionDied`): Marrow Feast, "When one
+	// of your minions dies or is detonated" (the Death skills merge, 2026-11-26). A JUDGEMENT: a detonation is one way a
+	// minion dies, as the Necromancer's "dies without being detonated" nodes read it, so the clocks Death Ward and Bone
+	// Knit ask start too. Told before the blast, while the body still stands, as a killed minion is. NOT the Fervour or
+	// the shield a minion killed grants (`UCataclysmFervour::GainOnMinionDeath`): those pay for a loss, and a minion
+	// spent on purpose is not one.
+	UCataclysmAbilitySystemComponent* Told = Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	int32 Exploded = 0;
+	for (const TWeakObjectPtr<ACataclysmMinion>& One : Caught)
+	{
+		ACataclysmMinion* Minion = One.Get();
+		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion))
+		{
+			if (Told)
+			{
+				Told->NoteMinionDied(Minion, Minion->TypeTags);
+			}
+			Minion->Explode();
+			++Exploded;
+		}
+	}
+
+	MinionsDetonated = Exploded;
+	if (Exploded > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' exploded %d of its caster's minions."), *SkillName, Exploded);
+	}
+	return Exploded;
+}
+
+int32 UCataclysmSkillTemplate::DetonateOwnMinionsAround(const FVector& Centre, float RadiusCm)
+{
+	// THE BODY COUNTS, AS IT DOES FOR AN ENEMY: `FindEnemiesInSphere` overlaps the sphere with a body's capsule, so a
+	// minion is inside when its centre is within the radius and its own body's. Measured along the ground, as the cone
+	// and the line are, so a minion on a step is not left out.
+	if (RadiusCm <= 0.0f)
+	{
+		return 0;
+	}
+	return DetonateOwnMinionsWhere([&Centre, RadiusCm](const AActor& Minion)
+	{
+		const float Reach = RadiusCm + UCataclysmTargeting::BodyRadiusOf(&Minion);
+		return FVector::DistSquared2D(Minion.GetActorLocation(), Centre) <= Reach * Reach;
+	});
+}
+
+int32 UCataclysmSkillTemplate::DetonateOwnMinionsAlong(const FVector& Start, const FVector& End, float HalfWidthCm)
+{
+	// EACH BODY MEASURED AT ITS CENTRE, as `UCataclysmTargeting::FindEnemiesInLine` measures an enemy.
+	if (HalfWidthCm <= 0.0f)
+	{
+		return 0;
+	}
+	return DetonateOwnMinionsWhere([&Start, &End, HalfWidthCm](const AActor& Minion)
+	{
+		return UCataclysmTargeting::IsInLine(Start, End, Minion.GetActorLocation(), HalfWidthCm);
+	});
+}
+
+int32 UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn(AActor* Target)
+{
+	CommandedStrikes = 0;
+	AActor* Self = Avatar();
+	if (!Self || !IsValid(Target))
+	{
+		return 0;
+	}
+
+	// "WHEREVER IT HAPPENS TO BE STANDING" IS THE HALF THAT NEEDED SAYING, and it is why nothing here checks a
+	// distance. A creature ordered onto an enemy across the room strikes it from where it is; the row is explicit
+	// that reaching it is not the player's problem. That is what makes Compel worth a Heavy slot rather than being a
+	// slower Quarry. (Compel's own words, moved here from `UCataclysmProjectileSkill::Land` on 2026-11-24.)
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
+	{
+		if (ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower))
+		{
+			// A STUNNED, KNOCKED-DOWN OR FEARED CREATURE IS NOT ORDERED, ruled 2026-10-27 (#2560), as the echo
+			// strike asks since #2558: `CannotAct`, then the flee step, in the brain's order. Skipped before the
+			// order, so it is neither ordered nor counted, and `CommandedStrikes` still means "ordered".
+			const AActor* Striker = Body;
+			FVector FleeSource;
+			if (UCataclysmSkillEffects::CannotAct(Striker) || UCataclysmFear::FleeSourceOf(Striker, FleeSource))
+			{
+				continue;
+			}
+			// `AttackTarget` IS WHAT A BRAIN CALLS WHEN IT DECIDES TO SWING, so ordering one is the same act the
+			// creature would have taken itself. A minion swings; a subjugated enemy uses its own attack, which is
+			// what "keeps its own abilities" means for a thrall; the base class does nothing at all.
+			//
+			// A THRALL STRIKES AS A RULE ORDERS IT, issue #783: its blow waits for its swing and is not measured
+			// against reach when it lands, which is "wherever it happens to be standing" kept true.
+			if (ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Body))
+			{
+				Thrall->StrikeAsARuleOrders(Target);
+			}
+			else
+			{
+				Body->AttackTarget(Target);
+			}
+			++CommandedStrikes;
+		}
+	}
+
+	if (CommandedStrikes > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' ordered %d commanded creatures onto '%s'."), *SkillName,
+			   CommandedStrikes, *Target->GetName());
+	}
+	return CommandedStrikes;
 }
 
 // ==========================================================================
@@ -2131,6 +2378,36 @@ float UCataclysmSkillTemplate::HeldRangeIncreasePercent(const AActor* Self)
 	return Largest;
 }
 
+float UCataclysmSkillTemplate::HeldMeleeReachCm(const AActor* Self)
+{
+	// THE SAME SHAPE AS `HeldRangeIncreasePercent` DIRECTLY ABOVE. Issue #2885, the Death draft's N21, slice DS4: the
+	// Spear's Grim Reach. A lasting buff is an active ability while it lasts, so its own number is the answer and
+	// nothing is left behind when it ends, is cancelled, or its holder dies.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Self);
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	float Largest = 0.0f;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmSkillTemplate* Running =
+			Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+		if (Running && Running->Shape() == ECataclysmSkillShape::SelfBuff)
+		{
+			Largest = FMath::Max(Largest, Running->Params.MeleeReachCm);
+		}
+	}
+	return Largest;
+}
+
 // ==========================================================================
 // A skill's own damage scaling
 // ==========================================================================
@@ -2262,6 +2539,26 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		}
 
 		return 0.0f;
+	}
+
+	if (Params.ScalingSource.Equals(TEXT("Fervour"), ESearchCase::IgnoreCase))
+	{
+		// THE FERVOUR HELD AS THE BLOW LANDS. Issue #2885, the Death draft's N7, slice DS3: the Greataxe's Grim Swath,
+		// "200% weapon damage, 1% more for every 2 Fervour you hold, to at most 350%", written as `MoreDamagePer=0.5;
+		// ScalingSource=Fervour; MaxDamagePercent=350`. Every point held is a unit, so 100 held is 50% more. Read here,
+		// at the blow, after the use's own Fervour cost was paid (`CommitAndBegin`), which is "what you hold" when it
+		// lands; the draft's judgement that it reads before Soul Fuel spends is about a node not built.
+		return FervourHeldBy(Avatar());
+	}
+
+	if (Params.ScalingSource.Equals(TEXT("FervourSpent"), ESearchCase::IgnoreCase))
+	{
+		// THE FERVOUR THIS USE SPENT, ITS COST AMONG IT. Issue #2885, the Death draft's N13, slice DS4: the Wand's
+		// Requiem, "spend every Fervour you hold, the Ultimate's 50 among it ... 250% weapon damage, 1% more for every
+		// Fervour spent, to at most 700%", written as `SpendsAllFervour=1; MoreDamagePer=1; ScalingSource=FervourSpent;
+		// MaxDamagePercent=700`. Spent when the use was paid for (`UCataclysmStrikeSkill::ActivateAbility`), so the pool
+		// is empty by the time the blow lands and only this remembers it.
+		return FervourSpentThisUse;
 	}
 
 	// One of the sources nothing counts here -- Kill, Bounce, Pierced, Pinned --
@@ -3237,7 +3534,44 @@ bool UCataclysmSkillTemplate::LayWhatALandedShotCarries(AActor* Firer, AActor* T
 	// and `SwingOnce` the second once the blows are dealt, so a Shred never lowers the resistance its own blow met.
 	const bool bPinned = LayTheLandedBlowsHolds(Firer, Target, Dealt);
 	ApplyNamedEffectsTo(Target);
+
+	// AND A NAIL, WHEN THE ROW DRIVES ONE. Issue #2885, the Death Crossbow draft's C1, slice DS5: the Crossbow's Coffin
+	// Nail, "the nail stays in: for every nail an enemy carries, your critical strike chance against it is 5% higher, up
+	// to 4 nails, and they stay until 4 seconds pass without a new one". Last, after the blow it rode in on: the shot
+	// that drives a nail was settled before it, so its own chance had none of it. In the firer's name, whose later blows
+	// it raises. The row's `EffectDuration` is the nails' hold; nothing for a row stating no `CritChanceAgainst`.
+	if (Params.CritChanceAgainst > 0.0f)
+	{
+		UCataclysmCoffinNails::DriveInto(Target, Firer, Params.CritChanceAgainst, Params.CritChanceAgainstMax,
+										 Params.EffectDuration);
+	}
 	return bPinned;
+}
+
+float UCataclysmSkillTemplate::PayHitFervourFor(AActor* Firer, float& StatedPaidThisUse) const
+{
+	if (Params.HitFervour <= 0.0f || !IsValid(Firer))
+	{
+		// The ordinary case: every skill but Soul Lance states none.
+		return 0.0f;
+	}
+
+	// WHAT THIS CONTACT OFFERS: the row's figure, or what is left under the row's cap a cast, in the row's own figures. A
+	// cap of nought or less is none. See the header for why the cap counts what was offered and not what arrived.
+	float Offered = Params.HitFervour;
+	if (Params.HitFervourPerCast > 0.0f)
+	{
+		Offered = FMath::Min(Offered, Params.HitFervourPerCast - StatedPaidThisUse);
+	}
+	if (Offered <= 0.0f)
+	{
+		return 0.0f;
+	}
+	StatedPaidThisUse += Offered;
+
+	// THROUGH THE ONE WRITE EVERY ROW'S STATED FERVOUR TAKES (`UCataclysmFervour::GainStated`, N6's): scaled by how fast
+	// the class resource generates, and clamped at what may be held.
+	return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), Offered);
 }
 
 bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target) const
@@ -3262,6 +3596,51 @@ bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target)
 	// tags. NO DAMAGE TYPE IS HANDED OVER: the ticks are met as the instigator's, as an ailment a gear chance rolled
 	// is, which is `RollOnLandedBlow`'s call.
 	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/1.0f, this);
+}
+
+int32 UCataclysmSkillTemplate::CashInOwnAilmentsAround(const FVector& Centre)
+{
+	AilmentsCashedIn = 0;
+	AActor* Self = Avatar();
+	if (!Self || Params.CashInRadiusCm <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE THREE THE SENTENCE NAMES, BY THE TAGS THEIR OWN AILMENT ROWS GRANT. Issue #2885, the Death draft's N15: "every
+	// Poison, Bleed and Necrosis you have laid". Not a burn, a disease or a splinter. Read from `UCataclysmAilments` so
+	// the tag is the one an application grants, not a second spelling of it.
+	static const TCHAR* const CashedInByName[] = {TEXT("Poison"), TEXT("Bleed"), TEXT("Necrosis")};
+	TArray<FGameplayTag> CashedInTags;
+	for (const TCHAR* const AilmentName : CashedInByName)
+	{
+		const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(AilmentName);
+		const FGameplayTag Granted = Kind
+			? FGameplayTag::RequestGameplayTag(FName(Kind->TagName), /*ErrorIfNotFound=*/false)
+			: FGameplayTag();
+		if (Granted.IsValid())
+		{
+			CashedInTags.Add(Granted);
+		}
+	}
+
+	// THE ROW'S OWN RADIUS, NOT WIDENED BY AREA OF EFFECT, a judgement of slice DS4: the sentence's "within 10 meters"
+	// is a reach that decides whose ailments are cashed, as a taunt's radius is the row's own (C3), not an area the blow
+	// strikes. Every enemy in it, with no limit on how many, as the precedent's "on nearby enemies" has none.
+	for (AActor* Ailing : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, Centre, Params.CashInRadiusCm))
+	{
+		for (const FGameplayTag& Granting : CashedInTags)
+		{
+			AilmentsCashedIn += UCataclysmSkillEffects::DealRemainingDamageOverTime(
+				Self, Ailing, /*Percent=*/100.0f, Granting, /*bEndEach=*/true);
+		}
+	}
+
+	if (AilmentsCashedIn > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' cashed in %d of its caster's ailments."), *SkillName, AilmentsCashedIn);
+	}
+	return AilmentsCashedIn;
 }
 
 float UCataclysmSkillTemplate::DrawDamageRoll() const
@@ -3485,7 +3864,17 @@ float UCataclysmSkillTemplate::MeleeReachBonusCm() const
 	const float Metres = Mine->StatForSkill(FName(MeleeReachMetresStat), SkillTags, 0.0f);
 	const float Centimetres =
 		Mine->StatForSkill(FName(MeleeReachCentimetresStat), SkillTags, 0.0f);
-	return FMath::Max(0.0f, Metres * 100.0f + Centimetres);
+	const float FromTheStat = FMath::Max(0.0f, Metres * 100.0f + Centimetres);
+
+	// AND WHAT A RUNNING SELF BUFF ADDS, BESIDE IT, TO A MELEE STRIKE. Issue #2885, the Death draft's N21, slice DS4: the
+	// Spear's Grim Reach, "your attacks reach 3 meters farther", so the spear's swing reaches 6.3 m and Reaping Arc 10.
+	// The stat's rows scope themselves to `Type.Melee`; a buff has no rows, so the same scope is asked here, of the
+	// skill's own tags: a strike made with a melee weapon carries it (issue #944), the basic attack among them, and a
+	// spell's strike does not. ASKED AFRESH RATHER THAN KEPT IN A STATIC, for the reason `CommitAndBegin` gives for its
+	// own tags: a static filled before the tag table loaded would hold an invalid tag for the life of the process.
+	const FGameplayTag MeleeTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
+	const float FromABuff = MeleeTag.IsValid() && SkillTags.HasTag(MeleeTag) ? HeldMeleeReachCm(Avatar()) : 0.0f;
+	return FromTheStat + FromABuff;
 }
 
 float UCataclysmSkillTemplate::ScaledRadiusCm() const

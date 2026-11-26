@@ -9,6 +9,9 @@
 class ACataclysmMinion;
 class ACataclysmPlantedWeapon;
 class ACataclysmProjectile;
+class UAbilitySystemComponent;
+// The pool's change a self buff scaling by `Fervour` follows. Issue #2885, N7.
+struct FOnAttributeChangeData;
 
 /**
  * The seven shared skill templates.
@@ -666,6 +669,20 @@ public:
 	int32 CursesSpread = 0;
 
 	/**
+	 * The Fervour, in the row's own figures, the last use has paid for enemies its shots landed on, under the row's
+	 * `HitFervourPerCast`; nought before a use, and for a row stating no `HitFervour`. Issue #2885, the Death draft's
+	 * N19, slice DS5: the Spear's Soul Lance. Read by tests.
+	 */
+	float HitFervourStatedThisUse() const { return HitFervourOfThisUse.IsValid() ? *HitFervourOfThisUse : 0.0f; }
+
+	/**
+	 * The record `HitFervourStatedThisUse` reads: made fresh by each use as it releases its throw, and handed to every
+	 * projectile that use fires (`ACataclysmProjectile::HitFervourStatedInItsUse`), a rack's axes included. Null before
+	 * the first use. Issue #2885, N19.
+	 */
+	TSharedPtr<float> HitFervourOfThisUse;
+
+	/**
 	 * Bind a burning line between enemies near the caster, if the row asks.
 	 *
 	 * ONE ROW ASKS: the Whip's Tether, "bind two enemies within 12 meters
@@ -690,15 +707,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	TObjectPtr<class ACataclysmTether> Tethered;
 
-	/**
-	 * How many commanded creatures this use ordered onto its target.
-	 *
-	 * ONE ROW ORDERS ANY: the Staff's Compel, "everything you command strikes
-	 * that same enemy at once". Zero for every other projectile, and zero for
-	 * Compel cast by a character commanding nothing.
-	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
-	int32 CommandedStrikes = 0;
+	// `CommandedStrikes`, how many commanded creatures Compel's last use ordered onto its target, moved to
+	// `UCataclysmSkillTemplate` on 2026-11-24 with the order itself, so the Greatsword's Gravebell can give it from a
+	// strike (issue #2885, the Death draft's N4). Read the same way, off this class.
 
 	/**
 	 * Copy the curses on each of these enemies onto the nearest others.
@@ -1046,6 +1057,54 @@ public:
 	int32 CooldownsReturned = 0;
 
 	/**
+	 * How many landed blows this buff has laid its ailment, its forced movement and its effect on, this activation, for
+	 * a row stating `EveryBlow=1`. Issue #2885, the Death draft's N17, slice DS4. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 BlowsLaidOn = 0;
+
+	/**
+	 * Answer one of the holder's critical strikes, for a row stating `StrikesOnCritical=1`: strike again for the row's
+	 * Damage Percent. Issue #2885, the Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "Each time you
+	 * land a critical strike, a crow dives at the enemy you struck for 40% weapon damage, or at the nearest enemy within
+	 * 10 meters if the strike killed it. At most four crows dive each second, and a crow's own critical strike calls no
+	 * other."
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteCriticalStrikeLanded`, once the critical blow is wholly resolved, so
+	 * whether it killed is known. THE RULES, in the row's words:
+	 *   - AT THE ENEMY STRUCK, or, if that blow killed it, at the nearest enemy of the holder's within the row's own
+	 *     `Radius` of where it stood (a judgement of slice DS5: the crow was diving there). None when nothing is there.
+	 *   - AT MOST ONE A `CrowCooldownSeconds`, "four a second", the quarter second every hit-fired row waits. A critical
+	 *     strike inside it calls nothing and is not kept for later, as a row on cooldown keeps nothing.
+	 *   - A STRIKE OF THIS BUFF'S OWN CALLS NO OTHER: one that names this skill, or one landed while this buff is
+	 *     striking, is passed over, so a crow that critically strikes cannot loop.
+	 *
+	 * THE CROW IS AN ORDINARY HIT OF THE HOLDER'S, `UCataclysmSkillEffects::ApplyHit` at the row's Damage Percent with the
+	 * skill's tags and its own critical strike chance, which it may roll, as a row's path hit is dealt
+	 * (`UCataclysmMovementSkill::HitWhatThePathCrossed`): it raises the hit notice every on-hit row hears and lays what a
+	 * blow's chances lay, and it is no skill swing through `HitTargets`, so it pays no `fervour_per_enemy_hit` and tells
+	 * no running buff it landed. AT ONCE, with no bird in flight: a judgement of slice DS5, which draws nothing.
+	 *
+	 * Public so a test can drive it without a critical strike.
+	 *
+	 * @param Struck   what the critical strike landed on
+	 * @param BySkill  the skill whose blow it was
+	 */
+	void CriticalStrikeLanded(AActor* Struck, const UGameplayAbility* BySkill);
+
+	/**
+	 * The least time between two of this buff's strikes for its holder's critical strikes: "at most four crows dive each
+	 * second". Issue #2885, C2. The quarter second every hit-fired row waits, `DEFAULT_TRIGGER_COOLDOWN` in
+	 * `tools/generate_datatables.py`; `tools/tests/test_death_skill_shape_keys.py` compares the two, as
+	 * `ACataclysmMinion::WarhoundSummonCooldownSeconds` is compared.
+	 */
+	static constexpr float CrowCooldownSeconds = 0.25f;
+
+	/** How many strikes this buff has sent for its holder's critical strikes this activation. Issue #2885, C2. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 CrowsSent = 0;
+
+	/**
 	 * React to a blow landed ON this buff's holder, if its row says to.
 	 *
 	 * ONE ROW STATES IT: the Greataxe's Burning Wrath, "while it lasts, any enemy
@@ -1202,8 +1261,39 @@ private:
 	 * `Burning` is the count taken at the cast; `Kill` is the running tally.
 	 * Every other source answers zero, so a buff naming one grants nothing
 	 * rather than a figure taken from the wrong thing.
+	 *
+	 * AND `Fervour`, SINCE ISSUE #2885 SLICE DS3, the Death draft's N7: the whole
+	 * points of Fervour held now, read again each time the pool moves across a
+	 * whole point (`FervourChanged`). The Sword's Cold Blood: "your hits deal 1%
+	 * more damage for every 4 Fervour you hold".
 	 */
 	int32 ScalingCount() const;
+
+	/**
+	 * Follow the Fervour held while a buff scaling by it runs: bind `FervourChanged` to the pool's change. Issue #2885,
+	 * N7. `StopWatchingTheFervourHeld` unbinds it, from `EndAbility`, however the buff ends.
+	 */
+	void WatchTheFervourHeld();
+	void StopWatchingTheFervourHeld();
+
+	/**
+	 * The pool moved while a buff scaling by `Fervour` runs: put the bonus back at what is held now, when a whole point
+	 * was crossed. Put back rather than adjusted, as `NoteKill` and `SecondPassed` put theirs back. Issue #2885, N7.
+	 */
+	void FervourChanged(const FOnAttributeChangeData& Change);
+
+	/** The binding `WatchTheFervourHeld` made, and the ability system it was made on. Empty while none is made. */
+	FDelegateHandle FervourChangedHandle;
+	TWeakObjectPtr<UAbilitySystemComponent> FervourWatched;
+
+	/**
+	 * The world's time this buff last struck for a critical strike, or below nought for none this activation. Issue
+	 * #2885, C2: `CriticalStrikeLanded` holds its strikes a `CrowCooldownSeconds` apart.
+	 */
+	double LastCrowAt = -1.0;
+
+	/** True while this buff's own strike is being dealt, so a critical strike it lands calls no other. Issue #2885, C2. */
+	bool bSendingACrow = false;
 
 
 	FTimerHandle FinishTimer;
@@ -1375,6 +1465,39 @@ public:
 	int32 Arrivals = 0;
 
 	/**
+	 * Take one enemy death that happened while this flicker runs into account: pay the row's `KillFervour`, and lengthen
+	 * the flicker by its `DurationPer`, to its `MaxDuration` in all. Issue #2885, the Death draft's N6 and N10, slice
+	 * DS3: the Sword's Danse Macabre, "every enemy that dies during the dance gives you 5 Fervour and adds half a second
+	 * to it, up to 8 seconds in all".
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteKill`, which the enemy death path calls once per death, as Butcher's
+	 * Heat's `UCataclysmSelfBuffSkill::NoteKill` is: the precedent the draft names, so "every enemy that dies during the
+	 * dance" is every death the character is told of, whoever dealt it. Nothing for any move but a running flicker
+	 * stating `ScalingSource=Kill` (`UCataclysmKillFervour::CountsTheDeathsWhileItRuns`).
+	 *
+	 * THE UNTARGETABILITY IS LENGTHENED WITH IT, for a row stating `Untargetable=1`: "nothing can touch you between
+	 * arrivals" is the whole dance, however long it runs.
+	 *
+	 * Public so a test can drive it without killing anything.
+	 *
+	 * @return whether it was taken into account
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	bool NoteADeathWhileItRuns();
+
+	/** How long this flicker now runs in all, after any lengthening. Read by tests. Issue #2885, N10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float FlickerSecondsInAll = 0.0f;
+
+	/** How many deaths this flicker has been told of while it runs. Read by tests. Issue #2885, N10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 DeathsDuringTheFlicker = 0;
+
+	/** How many fresh circles a flicker lengthened by deaths has gathered since its first. Read by tests. N10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 FreshCirclesGathered = 0;
+
+	/**
 	 * The creature a `Swap` traded places with, or null. Read by tests.
 	 *
 	 * THE STAFF'S VESSELSTEP IS THE ONE ROW: "trade places with a creature you
@@ -1540,6 +1663,19 @@ private:
 	/** Ends a flicker when its duration runs out. */
 	void FinishFlicker();
 
+	/**
+	 * Whether this is a flicker its deaths lengthen: `Mode=Flicker; ScalingSource=Kill` and a `DurationPer` above
+	 * nought. Issue #2885, N10, Danse Macabre. Such a flicker gathers a fresh circle when its last has fallen.
+	 */
+	bool LengthensWithDeaths() const;
+
+	/**
+	 * Gather a fresh circuit of every living enemy within the move's range of `Around`, nearest first, and start it from
+	 * its first. Issue #2885, N10: "re-gathering its circle", so a dance lengthened past the enemies it began among goes
+	 * on to the next within reach rather than standing still. @return whether anything was gathered
+	 */
+	bool GatherAFreshCircle(const FVector& Around);
+
 	/** What a worn row gives this skill for `RiderStat`, asked with the skill's own tags. Nought with no row. */
 	float WornRowStat(const TCHAR* RiderStat) const;
 
@@ -1608,6 +1744,34 @@ private:
 	/** Where a walked Charge passing through enemies began, for `StepOutOfEnemies` when it ends. */
 	FVector PassingThroughFrom = FVector::ZeroVector;
 	bool bPassingThrough = false;
+
+	/**
+	 * The row's named `Effect`, on every enemy of `Struck` the move's own blow landed on. Issue #2885, the Death
+	 * skills' N22: until 2026-11-24 only the Strike, Projectile, Aura and Debuff templates called
+	 * `ApplyNamedEffectsTo`, so a Movement row's `Effect=Cripple` was accepted by the generator and dropped here.
+	 *
+	 * CALLED AFTER EACH OF THE MOVE'S OWN BLOWS, wherever one lands: an arrival (`ActivateAbility`), a step of a walked
+	 * charge (`AdvanceOneStep`) and a flicker's arrival (`FlickerOnce`). AFTER THE BLOW, as a Strike lays its curses,
+	 * so a Shred never lowers the resistance its own blow met; and only on a blow that landed (`BlowLandedOn`, #1156).
+	 *
+	 * NOTHING FOR A ROW THAT LEAVES GROUND OF ITS OWN, a judgement of 2026-11-24: that ground carries the row's first
+	 * named effect (`LeaveZoneAlong`), which is how the Demonic Wand's Foul Wake lays its Shred, "the ground you fled
+	 * ... strips the Demonic resistance of anything that walks into it". Its sentence gives the curse to the ground and
+	 * not to the blink, so the blow does not lay it as well, and Foul Wake, the one Movement row that stated an effect
+	 * before this, is exactly as it was. A stun named as an effect is left out by `NamedEffectTags`, so the three War
+	 * rows writing `Effect=Stun` beside a `StunSeconds` are unchanged too.
+	 */
+	void LayTheRowsEffectsOn(const TArray<AActor*>& Struck);
+
+	/**
+	 * Explode every minion of the caster's inside the area the move's single arrival struck, when the row states
+	 * `Detonates=1`. Issue #2885, the Death draft's N3: Barrow Leap, Open Grave and Grave Return, "every minion of
+	 * yours within it explodes as you land". THE SAME AREA THE ENEMIES WERE SEARCHED IN, mode by mode: a charge's line
+	 * from `Start` to `End`, a blink's and a trade's circle at both ends, and a leap's and a return's circle at `End`.
+	 * After the blow and its effects, as the sentence orders them. A flicker and a walked charge never come here, and the
+	 * generator refuses `Detonates` on either.
+	 */
+	void DetonateWhereItArrived(const FVector& Start, const FVector& End);
 
 	/**
 	 * `HitScaled`, for a charge's own blow, told how far the charge has gone.
@@ -1791,6 +1955,38 @@ public:
 	/** Spawn one, if the pool holds its reserve. Public so a test can summon without waiting. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	ACataclysmMinion* SummonOne();
+
+	/**
+	 * Whether this row's raise strikes as it rises: it states a Damage Percent of its own above nought and does not
+	 * possess. Issue #2885, the Death draft's N2: Barrow Guard's "they rise in a burst of grave-cold: every enemy within
+	 * 5 meters takes 300% weapon damage", Bone Choir's burst and Exhume's "hew one enemy within 4 meters for 400%".
+	 *
+	 * NO KEY OF ITS OWN, the draft's design: a summon row's damage figure said nothing before this, since what a summon
+	 * deals is its creatures' blows, so a row stating one is a row whose raise strikes. A row stating none takes its
+	 * slot's figure for every other purpose and strikes nothing here, which is every summon written before slice DS2.
+	 */
+	bool StrikesAsItRises() const;
+
+	/**
+	 * The raise's own blow, when `StrikesAsItRises`: answers how many enemies it struck, and records it in
+	 * `StruckAsItRose`. Called by `ActivateAbility` before the first minion is made; public so a test can drive it.
+	 *
+	 * A RING, OR ONE ENEMY. With `MaxTargets=1` it hews one enemy: the one within the row's `Range` of the caster
+	 * nearest where the player points, Subjugate's rule (`Possess`), and the rift moves to that enemy's feet, so what
+	 * rises rises there ("drag a Bone Reaper up out of the ground at its feet"). With no enemy in reach nothing is
+	 * struck and the raise rises where it was aimed, a judgement of slice DS2: the Fervour is spent and the Reaper is
+	 * the larger half of the row. Otherwise it is every enemy within the row's `Radius` of the rift, which is the
+	 * caster's feet for a row with no `Range`.
+	 *
+	 * AND THE ROW'S `Effect` ON EVERY ENEMY THE BLOW LANDED ON, after it, as a Strike lays its curses: Barrow Guard's and
+	 * Bone Choir's Cripple. THE BLOW LANDS WHETHER OR NOT ANYTHING RISES, as Subjugate's does whether or not it takes.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	int32 StrikeAsItRises();
+
+	/** How many enemies the last raise's own blow struck. Issue #2885, N2. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 StruckAsItRose = 0;
 
 	/**
 	 * Minions this ability instance is holding, oldest first.
@@ -2020,15 +2216,34 @@ public:
 	 */
 	static ACataclysmMinion* SummonAtAKillFor(AActor* Commander, const AActor* Victim, const FVector& Where);
 
-private:
+	/**
+	 * One spawn of an open rift, and the rift's closing: what `SpawnTimer` and `CollapseTimer` call. PUBLIC SINCE ISSUE
+	 * #2885 SLICE DS4, so a test can drive a rift without a clock, as `SummonOne` is public for.
+	 *
+	 * THE CLOSING DEALS THE ROW'S `FinalHitPercent` IN ITS RADIUS AND DESTROYS WHAT THE RIFT MADE -- Open the Rift --
+	 * OR, FOR A ROW STATING `CollapseBursts=1`, BURSTS IT FIRST. The Death draft's N12: the Staff's Grave Mouth, "when the
+	 * grave closes, every wisp still out bursts at once". Each living one explodes as `ACataclysmMinion::Explode`
+	 * explodes, for its own blow in the row's `Radius`, and is gone, its reserve freed with it; what is left is
+	 * destroyed as before.
+	 */
 	void SpawnTick();
 	void Collapse();
 
+	/** How many minions this rift's last closing burst. Issue #2885, N12 (`CollapseBursts`). Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 BurstAtCollapse = 0;
+
+private:
 	/**
 	 * Record this skill's row and its level factor on a minion it has just made (`ACataclysmMinion::SummoningSkillRow`
 	 * and `LevelFactorOnCreatures`), read now, once. Issue #2764, slice 2b. Called by `SummonOne` and
 	 * `SummonReplacementAt`, the two places `SummonedBy` is set, so every minion this skill makes -- a replacement, a
 	 * re-summon and a spawn at a kill included -- credits it and grows with it. None and 1 for a skill no row levels.
+	 *
+	 * AND, SINCE 2026-11-24, THE TWO THINGS ITS ROW SAYS OF EVERY MINION IT MAKES, for the same two places and the same
+	 * reason. Issue #2885: `Permanent=1` (N1) takes its lifespan away, so it stands until it is destroyed; and
+	 * `MinionsLayEffect=1` (N11) teaches it the row's named effects, each for the seconds the skill would lay it, the
+	 * row's magnitude and the skill's damage type, which its blows then lay (`ACataclysmMinion::AttackTarget`).
 	 */
 	void RecordTheSkillOn(ACataclysmMinion* Minion) const;
 

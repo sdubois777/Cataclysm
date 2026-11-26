@@ -93,6 +93,25 @@ def test_mark_dead_refuses_a_death_already_being_marked_before_any_hook_runs() -
         "MarkDead must keep the record until the dead tag is on, and take it out before the death is announced")
 
 
+def test_a_wound_bursts_inside_the_record_and_before_the_tag() -> None:
+    """Issue #2885, the Death draft's N14, slice DS5: `UCataclysmWoundBurst::BurstFromDying`, Gravetouch's burst, is a
+    sixth hook that strikes. It must run AFTER the death is recorded as being marked, so a burst's blow reaching back to
+    the dying creature cannot start its death again, and BEFORE the dead tag, while the running bleed it reads is still
+    on the dying creature and the creature is excluded from the search by name. THE CONTROL that the order binds: the
+    first hook, the curse spread, is found before it, so the check is reading the hooks' own region."""
+    body = body_of(SKILL_EFFECTS, "bool UCataclysmSkillEffects::MarkDead")
+    where = "UCataclysmSkillEffects::MarkDead"
+
+    added = position(body, "BeingMarked.Add(Actor)", where)
+    first_hook = position(body, "UCataclysmCurseSpread::SpreadFromDying(Actor)", where)
+    burst = position(body, "UCataclysmWoundBurst::BurstFromDying(Actor)", where)
+    tagged = position(body, "System->AddLooseGameplayTag(Dead)", where)
+    assert added < first_hook < burst < tagged, (
+        "MarkDead must burst a wounded creature between recording its death as being marked and putting the dead tag "
+        "on: before the record, a burst reaching back would start the death again (issue #2871); after the tag, the "
+        "bleed it reads may be gone and the corpse is no longer excluded by name")
+
+
 def test_a_health_write_at_nought_starts_no_second_death_while_one_is_being_marked() -> None:
     body = body_of(VITAL_SET, "void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero")
     where = "UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero"

@@ -2382,7 +2382,7 @@ Not all damage types are available on all weapons. Damage type availability is t
 | :-: | :-: |
 | War | Sword, Greatsword, Dagger, Axe, Greataxe, Spear, Fist, Shield, Crossbow, 2H Crossbow, Warhammer, Whip |
 | Demonic | Sword, Greatsword, Dagger, Axe, Greataxe, Spear, Fist, Whip, Warhammer, Wand, Staff |
-| Death | Sword, Greatsword, Dagger, Greataxe, Spear, Fist, Whip, Wand, Staff |
+| Death | Sword, Greatsword, Dagger, Greataxe, Spear, Fist, Whip, Crossbow, Wand, Staff |
 | Pestilence | Sword, Dagger, Spear, Fist, Whip, Crossbow, 2H Crossbow, Wand, Staff |
 | Famine | Sword, Dagger, Axe, Fist, Whip, Warhammer, Wand, Staff |
 | Celestial | Sword, Greatsword, Spear, Shield, Crossbow, Warhammer, Wand, Staff |
@@ -2395,6 +2395,12 @@ Each list is set by what the damage type's three classes need to function. Void 
 the most restricted at 8 weapons because it is the least physical type; Chaos is
 unrestricted because the Chaos Shaper changes form based on weapon type. Wand and
 Staff are excluded from War, which has no caster build.
+
+Death gained the one-handed Crossbow on 2026-11-24 (issue #2885), a judgement of the
+coordinating session under the project owner's delegation: a crossbow beside a dagger
+gives the Shadow a ranged option while it moves, and the Soul Collector's siphon works
+at range. The two-handed Crossbow stays off Death; it is War's slow siege weapon, and
+the Necromancer's raises are already on the two-handed Greatsword, Greataxe and Staff.
 
   
 
@@ -2603,7 +2609,7 @@ and evasion build new offensive slots to serve six skills.
 
   
 
-**This reverses the rule this document used to state**, which was that a minion's attack deals 30% of its summoner's weapon damage, that it attacks once per second, and that it has no stats of its own. That rule was justified "for two skills". There are five, and two of them already state their own health and attack rate: a bolt turret has 200 health and fires every 1.5 seconds, a ballista has 500 health and fires every 2 seconds. A class whose survival depends on its minions — the Ritualist "survives at range and behind what it summons" — had no way to make them tougher, because minion durability was not stated anywhere.
+**This reverses the rule this document used to state**, which was that a minion's attack deals 30% of its summoner's weapon damage, that it attacks once per second, and that it has no stats of its own. That rule was justified "for two skills". There are fourteen (nine of them the Death skills of issue #2885), and two of them already state their own health and attack rate: a bolt turret has 200 health and fires every 1.5 seconds, a ballista has 500 health and fires every 2 seconds. A class whose survival depends on its minions — the Ritualist "survives at range and behind what it summons" — had no way to make them tougher, because minion durability was not stated anywhere.
 
   
 
@@ -2823,7 +2829,7 @@ of its uses.
 
   
 
-**A knockdown is a hard stop, so it carries all three parts of the rule.** It stops the target acting for a stated number of seconds, which is the whole of what a stun does; the target simply happens to be on the floor. Two Ultimates knock down — Warlord's Decree for 2 seconds and Cataclysm for 3 — and both are longer than every stun any skill grants, which run 0.75 to 1.5 seconds. Leaving knockdown outside the rule would mean the longest hold in the game is the one nothing limits, and that it works on a boss while Shield Bash's 1.5 seconds does not. The same exemption applies as for stun: a skill whose stated effect is to knock down ignores the damage threshold, and does **not** ignore boss immunity or the immunity window. The two share one window rather than one each, because two 3-second holds taken in turn is exactly the failure the window exists to stop.
+**A knockdown is a hard stop, so it carries all three parts of the rule.** It stops the target acting for a stated number of seconds, which is the whole of what a stun does; the target simply happens to be on the floor. Two Ultimates knock down for longer than every stun any skill grants, which run 0.75 to 1.5 seconds: Warlord's Decree for 2 seconds and Cataclysm for 3. Leaving knockdown outside the rule would mean the longest hold in the game is the one nothing limits, and that it works on a boss while Shield Bash's 1.5 seconds does not. Shorter knockdowns exist as well, the Death Whip's Last Toll for 1.5 seconds and the Death Greataxe's Open Grave for 1 (issue #2885, 2026-11-24), and the rule covers them as it covers a stun of the same length: a knockdown is a hard stop whatever its length. The same exemption applies as for stun: a skill whose stated effect is to knock down ignores the damage threshold, and does **not** ignore boss immunity or the immunity window. The two share one window rather than one each, because two 3-second holds taken in turn is exactly the failure the window exists to stop.
 
   
 
@@ -2847,7 +2853,7 @@ of its uses.
 
   
 
-**Why distance rather than immunity.** Path of Exile 2 already treats distance as the quantity rather than as a yes or no: skills carry increased knockback distance, and defensive modifiers reduce the distance an incoming knockback moves you. Diablo IV takes the other route, adding a flat 40% to a hidden crowd control resistance per knockback and making the target immune once that resistance reaches 65%. Immunity works there because knockback in Diablo IV comes from skills that can be repeated quickly. **Here it mostly cannot**: all twelve displacing skills, the skills whose words knock a target back, sit in the Heavy or Movement slot, so the case Diablo IV's threshold exists to stop is bounded by which slots the effect lives in. A Heavy attack is the slow one by design — Molten Crush is described as "the slowest heavy blow in the game" — and a Movement skill goes on cooldown. The exceptions are pulses that repeat on a timer: Coil of Embers and Aegis of Dawn push, and Undertow pulls. The halving above is what holds them, since a target pushed or pulled every second moves less than twice the stated distance however long it stays; that is why Undertow pulses every 6 seconds rather than every second, and why Aegis of Dawn's sentence states the halving (issue #2580).
+**Why distance rather than immunity.** Path of Exile 2 already treats distance as the quantity rather than as a yes or no: skills carry increased knockback distance, and defensive modifiers reduce the distance an incoming knockback moves you. Diablo IV takes the other route, adding a flat 40% to a hidden crowd control resistance per knockback and making the target immune once that resistance reaches 65%. Immunity works there because knockback in Diablo IV comes from skills that can be repeated quickly. **Here it mostly cannot**: all thirteen displacing skills, the skills whose words knock a target back, sit in the Heavy or Movement slot, so the case Diablo IV's threshold exists to stop is bounded by which slots the effect lives in. A Heavy attack is the slow one by design — Molten Crush is described as "the slowest heavy blow in the game" — and a Movement skill goes on cooldown. The exceptions are pulses that repeat on a timer: Coil of Embers and Aegis of Dawn push, and Undertow pulls. The halving above is what holds them, since a target pushed or pulled every second moves less than twice the stated distance however long it stays; that is why Undertow pulses every 6 seconds rather than every second, and why Aegis of Dawn's sentence states the halving (issue #2580).
 
   
 

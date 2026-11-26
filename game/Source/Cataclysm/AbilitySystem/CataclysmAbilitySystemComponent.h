@@ -5525,7 +5525,9 @@ public:
 	 * raise `gadget_destroyed` or nothing. The Death trees' slice C6d2 (2026-11-25), as ruled (P1). Records when, for
 	 * `seconds_after_minion_death`, and raises the action event `minion_death` with the follower's tags and the body,
 	 * which is still standing, so a row may ask how far away it fell. Called by
-	 * `UCataclysmVitalAttributeSet` before the follower's own `HandleDeath`, beside the Fervour for losing it.
+	 * `UCataclysmVitalAttributeSet` before the follower's own `HandleDeath`, beside the Fervour for losing it, AND by
+	 * `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` for each minion a skill detonates, before it explodes: Marrow
+	 * Feast's "dies or is detonated" (the Death skills merge, a judgement that a detonation is one way a minion dies).
 	 */
 	void NoteMinionDied(const AActor* Body, const FGameplayTagContainer& FollowerTags);
 

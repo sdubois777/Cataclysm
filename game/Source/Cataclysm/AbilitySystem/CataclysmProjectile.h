@@ -581,6 +581,18 @@ public:
 	bool bPaidManaOnHit = false;
 
 	/**
+	 * The Fervour, in its firing row's own figures, that the use which fired this has paid for enemies hit: the record
+	 * every projectile of the use shares, made fresh by `UCataclysmProjectileSkill` for each use and handed to each shot
+	 * it fires, so the row's `HitFervourPerCast` caps the use and not each shot. Issue #2885, the Death draft's N19, slice
+	 * DS5: the Spear's Soul Lance, "at most 4 a throw". Null for a shot fired with none, which then counts its own in
+	 * `HitFervourStatedByThisShot`. `UCataclysmSkillTemplate::PayHitFervourFor` adds to it.
+	 */
+	TSharedPtr<float> HitFervourStatedInItsUse;
+
+	/** What this shot alone has paid for enemies hit, for a shot no use handed a record. See `HitFervourStatedInItsUse`. */
+	float HitFervourStatedByThisShot = 0.0f;
+
+	/**
 	 * Where the use that fired this was cast from, when that was not its firer's own place: read while
 	 * `bStrikesFromAPoint` is set. Ruled 2026-10-14, for a gadget's copy of its summoner's skill: the firer is the
 	 * summoner and the shot leaves the gadget. Set by `UCataclysmProjectileSkill` just after `Fire`. Only whether a

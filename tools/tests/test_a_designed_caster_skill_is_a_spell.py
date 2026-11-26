@@ -35,6 +35,10 @@ SPELL_TAG = "Type.Spell"
 NOT_SPELLS = {
     "Demonic_Staff_Special": "Summon Imp is a summon, not a spell: the project owner, 2026-09-23 (#2012). It "
                              "receives no spell damage and stays usable inside an anti-magic zone.",
+    "Death_Staff_Special": "Grave Mouth is a summon, not a spell, by the same ruling on Summon Imp (#2012): the "
+                           "Death skill draft says so (its 'said first' item 3, 'not a spell'), and the owner "
+                           "approved that draft on 2026-11-24 (#2885). Its wisps are minions, as Summon Imp's "
+                           "imps are.",
 }
 
 

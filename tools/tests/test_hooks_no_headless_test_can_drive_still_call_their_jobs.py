@@ -230,6 +230,10 @@ HOOKS = {
             "UCataclysmRisenImps::RiseOnDeath":
                 "a creature dying carrying a curse a Ritualist laid rising as "
                 "an imp for that Ritualist, issue #1479",
+            "UCataclysmRisingCurse::RiseFromDying":
+                "a creature dying under a rising curse -- Death Rattle's -- "
+                "rising as the kind its row names for whoever laid it, issue "
+                "#2885 (the Death draft's N5)",
             "FCataclysmHitLog::CreatureDeathLine":
                 "the log line saying the creature died, with its health and who "
                 "struck it last, so a play session's log shows a death among the "

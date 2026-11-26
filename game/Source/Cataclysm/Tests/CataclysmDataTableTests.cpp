@@ -86,7 +86,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// only dungeon modifier described in prose and missing from the data, and a
 	// modifier with no weight cannot contribute to a dungeon's Modifier Score.
 	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      123)
-	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          403)
+	// 408 SINCE 2026-11-24, from 403: Death gained the one-handed Crossbow (issue #2885), and with it five rows,
+	// Death_Crossbow_Support to Death_Crossbow_Special. The 40 Death rows filled the same day were in the matrix already.
+	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          408)
 	// 379, not 380. The two minion count enchantments were merged into one for
 	// issue #339: the rarer of the two granted half as much, and they said the
 	// same thing in different words.
@@ -185,7 +187,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 8 SINCE 2026-10-18 TOO: the Warhound, which Warlord's Will's six-piece
 	// summons on a blow taken. No skill row produces it.
 	// AND 9 SINCE THE SKILL TRAP, a slot converted into a placeable trap, ruled 2026-10-19, from 8.
-	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             9)
+	// AND 11 SINCE 2026-11-24: the Shade and the Husk, which the Death Greatsword's Wailing Host and Greataxe's
+	// Shallow Graves raise (issue #2885).
+	// AND 14 SINCE SLICE DS2 THE SAME DAY: the Barrow Guard, the Bone Reaper and the Skeletal Mage, the three permanent
+	// raises' kinds (Barrow Guard, Exhume, Bone Choir).
+	// AND 15 SINCE SLICE DS4 THE SAME DAY: the Wisp, which the Death Staff's Grave Mouth raises and the Wand's Soul
+	// Snare's snared dead rise as.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",            15)
 	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
 	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
 	// per point. Health is expressible in the same table and no figure has been
@@ -600,7 +608,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 897 SINCE THE BUNDLE 3 MERGE, 2026-11-25: the Death line's 669 and the War
 	// line's 592, less the 364 both had.
 	// AND 898 THE SAME DAY, for Slippery's Fervour on an evasion (window death3-w1's second pass).
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        898)
+	// AND 899 ON 2026-11-26, for the Bulwark's Fervour for a kill (the final bundle).
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        899)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

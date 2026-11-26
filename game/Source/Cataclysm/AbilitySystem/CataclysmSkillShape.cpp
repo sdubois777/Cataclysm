@@ -234,6 +234,8 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			// AND TWO MORE ON 2026-11-17 FOR THE STALKER'S KITS, issue #2580: an ailment's name and a pick. Each would
 			// otherwise go through Atof and take the whole cell down, as `Minions` did on #622.
 			TEXT("Ailment"), TEXT("EffectPick"),
+			// AND ONE ON 2026-11-24 FOR THE DEATH SKILLS, issue #2885 slice DS3, N5: the kind that rises, a name.
+			TEXT("RisesAs"),
 			// AND WHAT AN AURA'S ALLIES CANNOT BE, on 2026-11-25 for War's Blood and Iron: "Slow", in `Immune`'s words.
 			TEXT("AllyImmune"),
 		};
@@ -403,6 +405,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.DurationPer = Number;
 		}
+		// The Death draft's N10, issue #2885 slice DS3: the ceiling on a flicker its deaths lengthen.
+		else if (Key.Equals(TEXT("MaxDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.MaxDuration = Number;
+		}
 		else if (Key.Equals(TEXT("ScalingSource"), ESearchCase::IgnoreCase))
 		{
 			// Not checked against the closed list here, for the same reason
@@ -421,6 +428,20 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("RangeIncrease"), ESearchCase::IgnoreCase))
 		{
 			Params.RangeIncrease = Number;
+		}
+		// The Death draft's N21 and N17, issue #2885 slice DS4: a buff's added melee reach, and its riders on every blow.
+		else if (Key.Equals(TEXT("MeleeReachMetres"), ESearchCase::IgnoreCase))
+		{
+			Params.MeleeReachCm = Number * ToCm;
+		}
+		else if (Key.Equals(TEXT("EveryBlow"), ESearchCase::IgnoreCase))
+		{
+			Params.bEveryBlow = Number != 0.0f;
+		}
+		// The Death Crossbow draft's C2, issue #2885 slice DS5: a buff whose holder's critical strikes strike again.
+		else if (Key.Equals(TEXT("StrikesOnCritical"), ESearchCase::IgnoreCase))
+		{
+			Params.bStrikesOnCritical = Number != 0.0f;
 		}
 		// --- Applied effect detail --------------------------------------
 		else if (Key.Equals(TEXT("EffectDuration"), ESearchCase::IgnoreCase))
@@ -564,6 +585,53 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.OnDeathRangeCm = Number * ToCm;
 		}
+		// The Death draft's N5, issue #2885 slice DS3: the kind that rises from a creature dying under the curse.
+		else if (Key.Equals(TEXT("RisesAs"), ESearchCase::IgnoreCase))
+		{
+			Params.RisesAs = Value;
+		}
+		// The Death draft's N14, issue #2885 slice DS5: the share of its maximum health a wounded creature bursts for.
+		else if (Key.Equals(TEXT("BurstPercentOfMaximumHealth"), ESearchCase::IgnoreCase))
+		{
+			Params.BurstPercentOfMaximumHealth = Number;
+		}
+		// The Death draft's N6 and N8, issue #2885 slice DS3: Fervour paid for a kill, and Fervour held from decay.
+		else if (Key.Equals(TEXT("KillFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.KillFervour = Number;
+		}
+		else if (Key.Equals(TEXT("HoldsFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.bHoldsFervour = Number != 0.0f;
+		}
+		// The Death draft's N13 and N15, issue #2885 slice DS4: a strike spending every Fervour held, and one cashing in
+		// its caster's Poison, Bleed and Necrosis around it.
+		else if (Key.Equals(TEXT("SpendsAllFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.bSpendsAllFervour = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("CashInRadius"), ESearchCase::IgnoreCase))
+		{
+			Params.CashInRadiusCm = Number * ToCm;
+		}
+		// The Death draft's N19, issue #2885 slice DS5: Fervour for each enemy a flying shot lands on, to a cap a cast.
+		else if (Key.Equals(TEXT("HitFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.HitFervour = Number;
+		}
+		else if (Key.Equals(TEXT("HitFervourPerCast"), ESearchCase::IgnoreCase))
+		{
+			Params.HitFervourPerCast = Number;
+		}
+		// The Death Crossbow draft's C1, issue #2885 slice DS5: a nail's critical strike chance, and the nails' ceiling.
+		else if (Key.Equals(TEXT("CritChanceAgainst"), ESearchCase::IgnoreCase))
+		{
+			Params.CritChanceAgainst = Number;
+		}
+		else if (Key.Equals(TEXT("CritChanceAgainstMax"), ESearchCase::IgnoreCase))
+		{
+			Params.CritChanceAgainstMax = Number;
+		}
 		// --- Projectile extras ------------------------------------------
 		else if (Key.Equals(TEXT("Bounces"), ESearchCase::IgnoreCase))
 		{
@@ -610,7 +678,32 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.HealthThresholdPercent = Number;
 		}
+		// The Death Crossbow draft's C3, issue #2885: what the row raises or places taunts the enemies near it.
+		else if (Key.Equals(TEXT("Taunts"), ESearchCase::IgnoreCase))
+		{
+			Params.bTaunts = Number != 0.0f;
+		}
+		// The Death draft's N1 and N11, issue #2885: a raise that stands until destroyed, and minions that lay the
+		// row's effect with their blows.
+		else if (Key.Equals(TEXT("Permanent"), ESearchCase::IgnoreCase))
+		{
+			Params.bPermanent = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("MinionsLayEffect"), ESearchCase::IgnoreCase))
+		{
+			Params.bMinionsLayEffect = Number != 0.0f;
+		}
+		// The Death draft's N12, issue #2885 slice DS4: what a rift raised bursts as it closes.
+		else if (Key.Equals(TEXT("CollapseBursts"), ESearchCase::IgnoreCase))
+		{
+			Params.bCollapseBursts = Number != 0.0f;
+		}
 		// --- Other riders -----------------------------------------------
+		// The Death draft's N3, issue #2885: the caster's minions inside the skill's area explode.
+		else if (Key.Equals(TEXT("Detonates"), ESearchCase::IgnoreCase))
+		{
+			Params.bDetonates = Number != 0.0f;
+		}
 		else if (Key.Equals(TEXT("RefundsCooldown"), ESearchCase::IgnoreCase))
 		{
 			Params.RefundsCooldown = Value;
@@ -618,6 +711,10 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("Untargetable"), ESearchCase::IgnoreCase))
 		{
 			Params.bUntargetable = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("PassesThroughEnemies"), ESearchCase::IgnoreCase))
+		{
+			Params.bPassesThroughEnemies = Number != 0.0f;
 		}
 		else if (Key.Equals(TEXT("DisarmsUntilRecalled"), ESearchCase::IgnoreCase))
 		{

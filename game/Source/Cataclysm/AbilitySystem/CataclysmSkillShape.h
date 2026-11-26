@@ -352,6 +352,15 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	float DurationPer = 0.0f;
 
 	/**
+	 * The most a skill `DurationPer` lengthens may run in all, in seconds, or nought for no ceiling. `MaxDuration=8`,
+	 * the Death draft's N10, slice DS3: the Sword's Danse Macabre, "adds half a second to it, up to 8 seconds in all",
+	 * read by `UCataclysmMovementSkill::NoteADeathWhileItRuns`. The generator refuses it beside no `DurationPer` or
+	 * below the skill's own `Duration`. Butcher's Heat states none: "the bonus has no ceiling".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MaxDuration = 0.0f;
+
+	/**
 	 * What the three keys above count, as written in the sheet.
 	 *
 	 * One of Kill, Burning, Second, Meter, HitTaken, Consume, Consumed, Bounce,
@@ -369,7 +378,20 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * the design can state them and scale by nothing, which is the state
 	 * StunSeconds is in and is recorded rather than hidden. A skill naming one
 	 * deals its plain damage. Three of the four belong to the Greatsword and
-	 * issue #1141 carries them.
+	 * issue #1141 carries them. (That paragraph predates the counts some of them
+	 * since gained, and is kept as written.)
+	 *
+	 * `Fervour` IS A TWELFTH, issue #2885 slice DS3, the Death draft's N7: the
+	 * Fervour held, read by a Strike's blow (`UCataclysmSkillTemplate::
+	 * ScalingUnits`, Grim Swath) and by a self buff's bonus as it changes
+	 * (`UCataclysmSelfBuffSkill::ScalingCount`, Cold Blood). The generator
+	 * refuses it on any other shape.
+	 *
+	 * `FervourSpent` IS A THIRTEENTH, slice DS4, the Death draft's N13: the
+	 * Fervour this use spent, its cost and everything else held, when its row
+	 * states `SpendsAllFervour=1` (`UCataclysmSkillTemplate::
+	 * FervourSpentThisUse`, the Wand's Requiem). The generator refuses it
+	 * without that key.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ScalingSource;
@@ -411,6 +433,37 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	/** Percentage points added to the caster's attack range. Coil of Embers. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float RangeIncrease = 0.0f;
+
+	/**
+	 * Centimetres a running self buff adds to its holder's melee reach; nought for none. `MeleeReachMetres=3`, on a
+	 * SelfBuff. Issue #2885, the Death draft's N21, slice DS4: the Spear's Grim Reach, "your attacks reach 3 meters
+	 * farther". NOT `RangeIncrease`, a percentage that lengthens no strike carrying an area tag: this is added beside
+	 * the flat `melee_reach_metres` stat in `UCataclysmSkillTemplate::MeleeReachBonusCm`, after area of effect and a
+	 * range increase, to every melee strike, the basic attack among them.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MeleeReachCm = 0.0f;
+
+	/**
+	 * True when a self buff's `Ailment`, `Effect` and `ForcedMovement` are laid by every blow its holder lands while it
+	 * runs, and its `Effect` is not granted to its holder. `EveryBlow=1`, on a SelfBuff. Issue #2885, the Death draft's
+	 * N17, slice DS4: the Fist's Hemlock ("every blow you land while it lasts Poisons what it hits"), the Whip's Death
+	 * Grip ("every blow you land drags what it hits 1 meter toward you") and the Spear's Grim Reach ("every hit you land
+	 * Cripples what it hits"). `UCataclysmSelfBuffSkill::NoteBlowLanded` lays them, as Groundbreaker's fissure is laid.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bEveryBlow = false;
+
+	/**
+	 * True when, while a self buff runs, each critical strike its holder lands strikes again for the row's Damage
+	 * Percent: at the enemy struck, or the nearest within the row's `Radius` of it if that blow killed it; at most one a
+	 * quarter second; a strike of the buff's own calls no other. `StrikesOnCritical=1`, on a SelfBuff. Issue #2885, the
+	 * Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "each time you land a critical strike, a crow
+	 * dives at the enemy you struck for 40% weapon damage ... At most four crows dive each second, and a crow's own
+	 * critical strike calls no other". `UCataclysmSelfBuffSkill::CriticalStrikeHeard`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bStrikesOnCritical = false;
 
 	// --- Riders every shape may carry -------------------------------------
 
@@ -609,7 +662,9 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * The ailment a landed blow of this skill applies outright, at magnitude one, or empty. Issue #2580, [N1], ruled
 	 * by the owner 2026-11-17: `Poison`, `Disease`, `Necrosis` or `VoidSplinter`, through `UCataclysmAilments::Apply`,
 	 * the way `Burn=1` applies burn through `ApplyBurn`. A STATED AILMENT, so the damage threshold an incidental one
-	 * must clear is not asked (#917); an evaded blow applies nothing (#1156).
+	 * must clear is not asked (#917); an evaded blow applies nothing (#1156). AND `Bleed` SINCE 2026-11-24, issue #2885,
+	 * the Death draft's N16, for the Fist's Gravetouch and Severing Rush: the owner accepted the Death and War plan's Q22
+	 * that day. Nothing here changed for it; the generator's closed set did.
 	 *
 	 * NOT `Effect`, WHICH DROPS EVERY DAMAGE OVER TIME IT NAMES, and keeps doing so: `NamedEffectTags` would grant the
 	 * tag with no per-tick amount behind it, a target bleeding for nothing. This key is the route that prices one.
@@ -1047,13 +1102,112 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 
 	// --- On death ----------------------------------------------------------
 
-	/** What happens when an affected enemy dies: Leap, SpreadDebuff or Release. */
+	/**
+	 * What happens when an affected enemy dies: Leap, SpreadDebuff, Release or, since issue #2885 (N5), Rise, and since
+	 * slice DS5 (N14) Burst, a wound that bursts as its bearer dies (`BurstPercentOfMaximumHealth`).
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString OnDeath;
 
 	/** Centimetres the on-death effect reaches for its next target. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float OnDeathRangeCm = 0.0f;
+
+	/**
+	 * The kind that rises from a creature dying under this curse, a Minion Types row, beside `OnDeath=Rise`; empty for
+	 * none. Issue #2885, the Death draft's N5, slice DS3: the Greataxe's Death Rattle, `RisesAs=Husk`, "rises at once as
+	 * a husk, the same husk Shallow Graves raises". Every figure of what rises is read from the Summon row of the curse's
+	 * damage type that raises the kind (`UCataclysmRisingCurse`); the generator refuses a kind no such row raises.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString RisesAs;
+
+	/**
+	 * The share of its own maximum health, in per cent, a creature bursts for when it dies while the ailment this skill
+	 * laid on it still runs, dealt to every enemy of the skill's caster within `OnDeathRangeCm` of it; nought for none.
+	 * `OnDeath=Burst; BurstPercentOfMaximumHealth=10`, beside the row's `Ailment`. Issue #2885, the Death draft's N14,
+	 * slice DS5: the Fist's Gravetouch, "if it dies while the wound still bleeds, it bursts, dealing 10% of its maximum
+	 * health to every enemy within 4 meters". `UCataclysmWoundBurst::BurstFromDying`, from
+	 * `UCataclysmSkillEffects::MarkDead`, reads it off the skill the running ailment names.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float BurstPercentOfMaximumHealth = 0.0f;
+
+	// --- Fervour a skill pays and holds (the Death skills, issue #2885) ----
+
+	/**
+	 * Extra Fervour for each enemy this skill kills, or that dies carrying its mark. `KillFervour=N`, the Death draft's
+	 * N6, slice DS3: Grim Swath, Last Toll, Pale Rider and Restless Spirits pay for what their own blow kills
+	 * (`UCataclysmKillFervour::PayForTheKillingBlow`); Death Warrant pays for a death while its curse holds, through the
+	 * mark `OnDeath=SpreadDebuff` leaves (`UCataclysmCurseSpread`); Hungering Soul for each host its soul leaves dead,
+	 * through the weapon `OnDeath=Leap` buries (`UCataclysmBuriedWeapon`); and Danse Macabre, a flicker counting kills,
+	 * for each death during the dance (`UCataclysmMovementSkill::NoteADeathWhileItRuns`). One death pays one skill once.
+	 * Scaled by how fast the class resource generates, as every gain is (`UCataclysmFervour::GainStated`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float KillFervour = 0.0f;
+
+	/**
+	 * True when the holder's Fervour does not decay while this self buff runs. `HoldsFervour=1`, the Death draft's N8,
+	 * slice DS3: the Sword's Cold Blood, "while it lasts your Fervour does not decay". Every decay asks
+	 * `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`: the Ravager's (`UCataclysmFervour::DecayStep`), and since the
+	 * Death skills merge the Death classes' after a kill (`KillDecayStep`) and the War classes' out of combat
+	 * (`FCataclysmWarFervour::OutOfCombatDecayStep`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bHoldsFervour = false;
+
+	/**
+	 * True when a use spends every Fervour its caster holds, its own cost among it. `SpendsAllFervour=1`, on a Strike.
+	 * Issue #2885, the Death draft's N13, slice DS4: the Wand's Requiem, "spend every Fervour you hold, the Ultimate's 50
+	 * among it". What was spent is `UCataclysmSkillTemplate::FervourSpentThisUse`, which `ScalingSource=FervourSpent`
+	 * counts ("1% more for every Fervour spent"); the pool is emptied by `UCataclysmFervour::SpendAll`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bSpendsAllFervour = false;
+
+	/**
+	 * Centimetres around the caster within which its own Poison, Bleed and Necrosis deal all the damage they had left,
+	 * and end, as the strike lands; nought for none. `CashInRadius=10`, on a Strike. Issue #2885, the Death draft's N15,
+	 * slice DS4: the Fist's Quietus, "every Poison, Bleed and Necrosis you have laid on enemies within 10 meters deals
+	 * all the damage it had left, and ends". `UCataclysmSkillTemplate::CashInOwnAilmentsAround`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float CashInRadiusCm = 0.0f;
+
+	/**
+	 * The Fervour each enemy a flying shot of this skill lands on pays its firer; nought for none. `HitFervour=1`, on a
+	 * Projectile with a speed. Issue #2885, the Death draft's N19, slice DS5: the Spear's Soul Lance, "each enemy it
+	 * hits gives you 1 Fervour, at most 4 a throw". Paid at each landed contact carrying damage
+	 * (`UCataclysmSkillTemplate::PayHitFervourFor`, from `ACataclysmProjectile::HitOne`), scaled by how fast the class
+	 * resource generates, as every gain is (`UCataclysmFervour::GainStated`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float HitFervour = 0.0f;
+
+	/**
+	 * The most `HitFervour` one use of this skill pays, in the row's own figures, before the generation rate; nought for
+	 * no cap. `HitFervourPerCast=4`, Soul Lance's "at most 4 a throw". Counted across every projectile the use puts in
+	 * the air, through the record the use hands each of them (`ACataclysmProjectile::HitFervourStatedInItsUse`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float HitFervourPerCast = 0.0f;
+
+	/**
+	 * Percentage points of critical strike chance each nail a flying shot of this skill drives into what it lands on
+	 * gives its firer's blows at that creature; nought for none. `CritChanceAgainst=5`, on a Projectile with a speed,
+	 * beside `CritChanceAgainstMax` and `EffectDuration`, how long the nails stay without a new one. Issue #2885, the
+	 * Death Crossbow draft's C1, slice DS5: the Crossbow's Coffin Nail, "for every nail an enemy carries, your critical
+	 * strike chance against it is 5% higher, up to 4 nails, and they stay until 4 seconds pass without a new one".
+	 * Driven by `UCataclysmSkillTemplate::LayWhatALandedShotCarries` (`UCataclysmCoffinNails`), added to a blow's chance
+	 * by `UCataclysmVitalAttributeSet`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float CritChanceAgainst = 0.0f;
+
+	/** The most the nails together give, in percentage points; nought for no ceiling. `CritChanceAgainstMax=20`, C1. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float CritChanceAgainstMax = 0.0f;
 
 	// --- Projectile extras -------------------------------------------------
 
@@ -1125,15 +1279,78 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float HealthThresholdPercent = 0.0f;
 
+	/**
+	 * True when what the row raises or places taunts the enemies near it. `Taunts=1`, on a Summon or a Deployable.
+	 * Issue #2885, the Death Crossbow draft's C3, approved by the owner on 2026-11-24 for the Greataxe's Shallow Graves.
+	 * Each minion taunts every enemy within the row's `Radius` of it when it appears and once a beat after
+	 * (`ACataclysmMinion::BeginTaunting`); a taunt is `UCataclysmTaunt`'s, which refuses a boss.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bTaunts = false;
+
+	/**
+	 * True when what the row raises stands until it is destroyed. `Permanent=1`, on a Summon. Issue #2885, the Death
+	 * draft's N1, for the three permanent raises: Barrow Guard, Exhume and Bone Choir. Without it a summon lasts its
+	 * `Duration`, or twenty seconds when the row states none (`UCataclysmSummonSkill::SummonOne`). Its reserve is what
+	 * limits the army, as a thrall's is; the generator refuses it beside a `Duration` or a possession.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bPermanent = false;
+
+	/**
+	 * True when every minion the row raises lays the row's `Effect` with each blow it lands. `MinionsLayEffect=1`, on
+	 * a Summon. Issue #2885, the Death draft's N11, for Bone Choir: "the burst and every bolt they throw Cripple what
+	 * they hit". The way `Burn=1` makes Summon Imp's imps set alight what they strike, for a named effect.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bMinionsLayEffect = false;
+
+	/**
+	 * True when what a rift raised bursts as the rift closes, rather than being destroyed. `CollapseBursts=1`, on a
+	 * Summon that spawns over time (an `Interval` and a `Duration`). Issue #2885, the Death draft's N12, slice DS4: the
+	 * Staff's Grave Mouth, "when the grave closes, every wisp still out bursts at once". Each living one explodes as
+	 * `ACataclysmMinion::Explode` explodes, for its own blow in the row's `Radius` (`UCataclysmSummonSkill::Collapse`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bCollapseBursts = false;
+
 	// --- Other riders ------------------------------------------------------
 
-	/** Which cooldown the skill returns: Self or Movement. Empty returns none. */
+	/**
+	 * True when every minion of the caster's inside the skill's area explodes. `Detonates=1`, on a Strike, a
+	 * Projectile or a Movement. Issue #2885, the Death draft's N3, for Gravebell, Barrow Leap, Open Grave, Marrow Lance
+	 * and Grave Return. WHATEVER KIND IT IS, by the owner's ruling of 2026-11-24 that "pop minion" is a playstyle and
+	 * not a distinction; `UCataclysmSkillTemplate::DetonateOwnMinionsWhere` says which minions count.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bDetonates = false;
+
+	/**
+	 * Which cooldown the skill returns: Self or Movement. Empty returns none. A movement's arrival returns it when it
+	 * kills (Emberhaul), a self buff on a blow from behind (Slipstream), and since issue #2885, the Death draft's N9,
+	 * slice DS4, a STRIKE when its swing kills what it struck: the Sword's Mercy Stroke, "if the stroke kills, the sword
+	 * is ready to strike again at once" (`UCataclysmStrikeSkill::SwingOnce`).
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString RefundsCooldown;
 
-	/** True when the caster cannot be hit while the skill runs. */
+	/**
+	 * True when the caster cannot be hit while the skill runs. Read by a flicker for its whole `Duration` (the Dagger's
+	 * Everywhere at Once, the Sword's Danse Macabre) and, since issue #2885 slice DS5, the Death draft's N18, by a walked
+	 * charge for its `Duration` (`UCataclysmMovementSkill::BeginAdvance`): the Staff's Wraithwalk, "nothing can touch
+	 * you while you drift". The generator refuses it on any other move or shape, which would end in the frame it began.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bUntargetable = false;
+
+	/**
+	 * True when a walked charge passes through enemy bodies for its walk: `PassesThroughEnemies=1`, the Staff's
+	 * Wraithwalk, "straight through anything in the way". The same passing Hollow Step's `movement_passes_through_enemies`
+	 * gives a walked charge (`UCataclysmMovementSkill::BeginAdvance`), stated by the row instead of worn. The Death skills
+	 * merge, 2026-11-26. The generator refuses it on anything but a walked charge.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bPassesThroughEnemies = false;
 
 	/** True when the player fights unarmed until the weapon is retrieved. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
