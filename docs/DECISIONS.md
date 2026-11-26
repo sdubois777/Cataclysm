@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Shadow's marks, Hollow Step, the kill strikes and Lethal Dose, and the Necromancer's Interpose and Guard the Master (Death trees, slice C6e)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: the Shadow's marks
+  (`MaintainShadowMarks`, `MoveShadowMarkFrom`, `MoveShadowMarksOff`, `HoldsShadowMarkOn`, `IsShadowMarked`,
+  `MarkedOrStrongestNear`); the kill actions `strike_strongest_near` and `dash_to_strongest_and_strike` in `ActOnEvent`;
+  `WithTargetState` asks the two new target questions; Lethal Dose's and Interpose's stat names.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions `target_marked_by_you` and
+  `target_is_your_last_attacker`; two action flags. The count sentences: forty-eight of the hundred-and-six compare
+  nothing, and the hundred-and-seventh.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.h` and `.cpp`: `HostileBodyMaskBit` (8) on a hostile
+  creature's capsule filter; `SetMovesThroughHostiles`, `MovesThroughHostiles`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`: Hollow Step in the movement skill
+  (`PassesThroughEnemies`, `PassThroughEnemies`, `StepOutOfEnemies`, `HitTheLineOnce`; `HitWhatThePathCrossed` takes a
+  percent; `EndAbility` restores). `CataclysmMovement.h` and `.cpp`: `StepOutOfEnemies` and `PlaceBeside`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `StrongestEnemyNear` can leave creatures out.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp`: `RollOnLandedBlow` is told whether the blow was
+  a critical strike, and lends Lethal Dose's share. `CataclysmSkillEffects.cpp`: `DamageOverTimeNumbers` adds it.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: a dying creature's marks move; the critical flag
+  passed to the ailment roll; Interpose. `CataclysmRegeneration.cpp`: the marks kept up each step.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`, `Character/CataclysmEnemyController.cpp`:
+  `CommandersLastAttackerFor`, asked after a Quarry order. `Items/CataclysmItem.cpp`: the two action flags from rows.
+- `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`: "Marked" under a marked creature's bar.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: five stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmShadowMarksAndStepTests.cpp`, new (7);
+  `CataclysmShadowStrikesTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (one probe);
+  `CataclysmPassiveTreeTests.cpp`; `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (three, and two names),
+  `test_demonic_guide_is_no_target_and_no_obstacle.py`, `test_passive_effects_match_the_node_text.py`,
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (one exception), and the inventory in
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (669 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **A FAULT FOUND BY THE WHOLE SUITE, AND FIXED.** `CataclysmShadowStrikesTests.cpp` pinned Interpose's roll at code
+  priority, which `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py` refuses: such a write
+  is dropped once an earlier test wrote the variable at console priority (issue #1470). It is written at console
+  priority since `efdacb9c7`.
+- **THE SHADOW'S DEATHMARK IS NOT WAR'S**, as ruled (Q5): a mark kept on the marker, keyed by it, chosen only while it
+  holds fewer than its count, kept until its creature dies, then moved to the strongest enemy within 10 metres of the
+  body; with none that near it is lifted and the next regeneration step chooses within 15 metres of the marker. Its
+  label is "Marked". War's Deathmark (`Berserker_crit_004`) is not touched.
+- **HOLLOW STEP, AS RULED (H1, H2), AND ITS THREE CONDITIONS.**
+  1. *Every reader of the body mask bits was checked.* `ACataclysmCharacterBase::RefreshPassThroughBody` is the only code
+     that writes or reads them; the floor guide's refresh in `ACataclysmDungeonGameMode` calls it. Nothing treats a
+     creature's mask of nought as meaning hostile. Two checks assert that a creature's own pass-through bit is nought
+     (`CataclysmPassThroughBodiesTests.cpp`) and are unchanged, because the hostile bit is put on the capsule's FILTER
+     only and `PassThroughBodyMaskBit` still answers nought for a creature. The obvious shape -- giving a creature bit 8
+     as its own bit -- would have made `MovesThroughMaskFor` let every creature walk through the player and its
+     minions; the filter-only shape keeps a creature's own move-ignore mask at nought. One text check in
+     `tools/tests/test_demonic_guide_is_no_target_and_no_obstacle.py` read the old line and reads the new one.
+  2. *A move never ends inside an enemy*: the mover is put back along its line toward where it began, in steps of 10
+     centimetres, to the first point where its capsule overlaps no living hostile creature.
+     `HollowStepEndingInsideAnEnemyEndsBesideItAlongTheLine` aims a Leap at a creature's centre.
+  3. *The mask is restored on every way out*: right after an instant move, and in `EndAbility` for a walked Charge,
+     which every end reaches, a cancel and an interruption included.
+     `AnInterruptedWalkedChargeLeavesTheMoverBlockedByEnemiesAgain` cancels one part way.
+  Every mode hits the line from where it began to where it arrived once, at the skill's own percent, skipping what its
+  own hit struck in that use (H2). A walked Charge already hits its line each step and gains no extra hit; a Swap
+  gains only the line hit; a Flicker counts each arrival's line.
+- **BLADE ECHO AND THOUSAND CUTS**, as ruled (Q6): on a kill, an instant hit of 100% of weapon damage, no projectile
+  drawn, on the wearer's own mark if it lives within 10 metres of the wearer, else the strongest enemy within 10
+  metres of the wearer, the one just slain left out. JUDGEMENT: "within 10 metres" is measured from the wearer.
+  Thousand Cuts first puts the wearer at the creature's feet, unswept, and steps it out along the line back toward
+  where it stood. Each is dealt inside the action loop, so its own kill acts on none of the wearer's rows and cannot
+  chain.
+- **LETHAL DOSE**, as ruled (Q8): a landed critical strike's Poison or Bleed takes half of the critical strike
+  multiplier's INCREASED bucket, summed into `dot_damage`'s increases for that application alone, so with 100%
+  increased damage over time and 50 points lent a tick is 2.5 / 2 of what it was. The ailment roll is now told whether
+  the blow was a critical strike. The increases are read with no skill tags.
+- **INTERPOSE**, as ruled (Q9): on a roll of its chance, a hit aimed at the character -- not a tick -- is taken by its
+  nearest follower within 3 metres that is not a gadget or a trap. JUDGEMENT: the figure handed over is the hit as
+  sent, before the defender's evasion, block and mitigation, re-dealt from the attacker as direct damage that cannot
+  be evaded or retaliated against, through the follower's own defences, so no critical strike is rolled on it; the
+  defender takes nothing; overkill is not passed back. A hit with no attacker on record is not interposed.
+- **GUARD THE MASTER**: a follower turns on the last character whose blow reached its commander's health, after a
+  Quarry order and before every other choice, while that character lives, is hostile to it and is within what it
+  notices; never a gadget or a trap. Its damage row reads the same record.
+
+### What each reads
+
+- **DEATHMARK (the Shadow, keystone):** `death_marks_held` 1; `attack_damage` and `spell_damage` 30% more, and
+  `fervour_per_critical_strike` 5, each under `target_marked_by_you`.
+- **TWO MARKS (keystone):** `death_marks_held` 1 more.
+- **HOLLOW STEP (keystone):** `movement_passes_through_enemies` 1.
+- **LETHAL DOSE (keystone):** `crit_multiplier_increases_to_poison_and_bleed_percent` 50.
+- **BLADE ECHO (the 50 vow, option 1):** `strike_strongest_near` 100 on `kill`.
+- **THOUSAND CUTS (the 200 vow, option 1):** `dash_to_strongest_and_strike` 100 on `kill`.
+- **INTERPOSE (the Necromancer, basic, 8 points):** `interpose_chance` 3 a point.
+- **GUARD THE MASTER (basic, 6 points):** `minions_turn_on_your_last_attacker` 1 a point; `minion_damage` 3%
+  increased a point under `target_is_your_last_attacker`.
+
+`PassiveEffects.csv` 657 to 669; the Shadow 119 to 128 rows, the Necromancer 40 to 43. The pins: rows 669, nodes 400,
+options 59.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25: Q5 (the mark, sticky, its own label), Q6 (an instant 100% hit, Thousand Cuts
+moving first), Q8 (half of the increased bucket), Q9 (the nearest minion within 3 metres takes the whole hit, overkill
+not passed back); and, on the collision report, H1 (Hollow Step on issue #2861's masks, with its three conditions) and
+H2 (once a use).
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: the strongest-enemy search (Blood Debt, slice
+C4c2), issue #2861's body masks, the strike action (issue #1833), the ailment roll (issue #41), and the last blow
+record (issue #1755).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.ShadowMarks.` | new: `DeathmarkMarksTheStrongestWithinFifteenMetresAndSaysMarked`, `AMarkIsKeptUntilItsCreatureDiesThenMovesWithinTenMetresOfIt`, `TwoMarksMarkTwoDifferentCreaturesAndTheMarkedTakeThirtyMore`, `HollowStepPassesThroughAnEnemyAndHitsItOnce`, `HollowStepEndingInsideAnEnemyEndsBesideItAlongTheLine`, `AnInterruptedWalkedChargeLeavesTheMoverBlockedByEnemiesAgain`, `HollowStepsLineHitDoesNotStrikeWhatTheSkillsOwnHitStruck` | 7 |
+| `Cataclysm.ShadowStrikes.` | new: `BladeEchoStrikesTheStrongestWithinTenMetresAndTheMarkFirst`, `ThousandCutsMovesBesideTheStrongestAndStrikesIt`, `LethalDoseAddsItsShareToTheDamageOverTimeIncreases`, `InterposeHandsAHitToTheNearestMinionWithinThreeMetres`, `GuardTheMastersMinionsTurnOnTheLastAttackerAndDealMoreToIt` | 5 |
+| `Cataclysm.StatExemption.` | the no-attribute probe table runs `death_marks_held` | unchanged |
+| `Cataclysm.PassThroughBodies.` | unchanged; a creature's own bit is still nought | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 669 | unchanged |
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmSkillTemplates.cpp`,
+`EndAbility`: the `PassThroughEnemies(false);` inside `if (bPassingThrough)` removed, so a cancelled walked Charge
+keeps passing through. Prefix `Cataclysm.ShadowMarks.`; must fail
+`AnInterruptedWalkedChargeLeavesTheMoverBlockedByEnemiesAgain`.
+
+### What was run
+
+FIGURES_HERE
+
+---
+
 ## 2026-11-25 — When the Necromancer's minions die, and when he is hurt: the minion death event, eight nodes, and a War node's slow (Death trees, slice C6d2)
 
 **Affects:**
