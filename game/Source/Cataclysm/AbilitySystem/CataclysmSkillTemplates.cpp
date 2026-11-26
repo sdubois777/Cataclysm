@@ -50,6 +50,8 @@
 // For the flee step Compel's order asks. Issue #2560.
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// Shadow Step's target, the Death line's finishing slice E (2026-11-26).
+#include "AbilitySystem/CataclysmShadowImages.h"
 // For telling a player character's throw from any other, where Cripple is read. Issue #2273.
 #include "Character/CataclysmPlayerCharacter.h"
 // For a thrall's Compel strike, ordered as a rule's. Issue #783.
@@ -3908,6 +3910,23 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// your axe in the FIRST enemy within 12 meters and haul yourself to it".
 	FVector End = ConditionalDestination(Start);
 
+	// AND SHADOW STEP TAKES IT BEHIND AN ENEMY AIMED AT: "Your movement skill can target any enemy within 15 metres that
+	// you can see and puts you behind it" (the Death line's finishing slice E, 2026-11-26). Only a move that goes where
+	// the player pointed (a leap, a blink, a charge that arrives once), as the random direction below: a move whose
+	// `Requires` names its creature, a return, a trade, a flicker and a walked charge each have their own destination.
+	// Aimed at no such enemy, the move is as it was: "can".
+	AActor* SteppedBehind = nullptr;
+	if ((Params.MovementMode == ECataclysmMovementMode::Leap || Params.MovementMode == ECataclysmMovementMode::Blink
+		 || Params.MovementMode == ECataclysmMovementMode::Charge)
+		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target")))
+	{
+		SteppedBehind = UCataclysmShadowImages::ShadowStepTarget(Self, AimPoint(), SkillTags);
+		if (SteppedBehind)
+		{
+			End = UCataclysmMovement::SpotBehind(Self, SteppedBehind);
+		}
+	}
+
 	// AND A ROW MAY SEND IT IN A RANDOM DIRECTION INSTEAD: "Your movement abilities now move you in a random
 	// direction". Ruled 2026-10-07. ONLY A MOVE THAT GOES WHERE THE PLAYER POINTED. One that travels to a creature
 	// its `Requires` names takes a target and not a direction, and a return and a trade replace the end point
@@ -3917,7 +3936,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 	if (Params.MovementMode != ECataclysmMovementMode::Recall
 		&& Params.MovementMode != ECataclysmMovementMode::Swap
 		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target"))
-		&& RolledDirection(RolledWay))
+		&& !SteppedBehind && RolledDirection(RolledWay))
 	{
 		End = Start + RolledWay * FVector::Dist2D(Start, End);
 	}
@@ -4071,6 +4090,12 @@ void UCataclysmMovementSkill::ActivateAbility(
 		// Issue #2792.
 		Self->TeleportTo(End, Self->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true);
 	}
+	else if (SteppedBehind)
+	{
+		// SHADOW STEP'S ARRIVAL: put behind the creature, unswept, as Thousand Cuts puts the wearer beside one, since a
+		// sweep would stop against the creature it is going round.
+		UCataclysmMovement::PlaceBehind(Self, SteppedBehind);
+	}
 	else
 	{
 		if (bThroughEnemies)
@@ -4102,9 +4127,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 
 	// A BLINK, A TRADE AND A RETURN ARE INSTANT RELOCATIONS; A LEAP AND A CHARGE TRAVEL, and stay counted as
 	// ground moved, which is the 2026-09-12 judgement that a movement skill that travels is movement. Issue #2388.
+	// AND A SHADOW STEP IS ONE, whatever the skill's mode.
 	if (Params.MovementMode == ECataclysmMovementMode::Blink
 		|| Params.MovementMode == ECataclysmMovementMode::Swap
-		|| Params.MovementMode == ECataclysmMovementMode::Recall)
+		|| Params.MovementMode == ECataclysmMovementMode::Recall
+		|| SteppedBehind)
 	{
 		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
 	}

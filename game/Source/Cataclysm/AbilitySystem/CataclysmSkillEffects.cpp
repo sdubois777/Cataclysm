@@ -38,6 +38,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSilence.h"
+#include "AbilitySystem/CataclysmShadowImages.h"
 // A taunt is crowd control, as a silence is. Warlord's Will's six-piece, ruled 2026-10-18 (B).
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -972,6 +973,10 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
+	// THE PERCENTAGE AS ASKED, before the level factors below multiply it: Flurry of the Dead deals the hit again
+	// through this function, which applies them again (the Death line's finishing slice E, 2026-11-26).
+	const float PercentAsAsked = DamagePercent;
+
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
 	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
 	if (!Source || !Defender)
@@ -1537,6 +1542,17 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 			&& !Arrived.bIsARowsAnswerToAnEvent)
 		{
 			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
+		}
+		// AND FLURRY OF THE DEAD: "Your hits strike again once for every 10 Fervour held, up to 10 extra strikes" (the Death
+		// line's finishing slice E, 2026-11-26). The same filter as the crows' above, less the critical strike: a blow the
+		// instigator struck and landed. Each extra strike is this hit again, whole, marked a row's answer to an event, so
+		// it strikes nothing again itself. Nothing for a wearer without the row, which is every creature.
+		if (bDealt && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
+			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
+			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
+			&& !Arrived.bIsARowsAnswerToAnEvent)
+		{
+			UCataclysmShadowImages::StrikeAgain(Instigator, Target, PercentAsAsked, SkillTags, Delivery);
 		}
 		return bDealt ? Sent : 0.0f;
 	}

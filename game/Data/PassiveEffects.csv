@@ -920,3 +920,9 @@ Necromancer_capstone_50#3,Necromancer_capstone_50,minion_detonation_raises_husk_
 Necromancer_capstone_50#4,Necromancer_capstone_50,minion_detonation_husk_seconds,flat,8.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_capstone_200#2,Necromancer_capstone_200,minions_cast_your_skills_within_metres,flat,10.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_capstone_200#3,Necromancer_capstone_200,minion_skill_copy_damage_percent,flat,10.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_25#5,Shadow_capstone_25,afterimage_repeats_your_next_attack,flat,1.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_50#3,Shadow_capstone_50,shadow_clone_every_elite_kills,flat,3.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_50#4,Shadow_capstone_50,shadow_clone_seconds,flat,5.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_100#3,Shadow_capstone_100,movement_targets_an_enemy_within_metres,flat,15.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_capstone_200#5,Shadow_capstone_200,hits_strike_again,flat,1.0,,,0.0,class_resource_held,10.0,3,-1.0,0,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Shadow_keystone_d_kB#1,Shadow_keystone_d_kB,evasion_against_area_percent,flat,50.0,,while_moving,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

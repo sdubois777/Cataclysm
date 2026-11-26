@@ -126,8 +126,10 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     # THE SAME DAY, for slice C4d2's Patient Blade and Death by Inches:
     # `boss_ticks_pay_a_kill_every_seconds` and `boss_hits_counted_as_a_kill_every`.
     # 36 THE SAME DAY, for slice C4d3's Wearer of the Dead: `max_health`. 37
-    # THE SAME DAY, for slice C6d1's Ringed in Bone: `immune_to_slow`.
-    assert sizes["ConditionedProbes"] == 37, sizes
+    # THE SAME DAY, for slice C6d1's Ringed in Bone: `immune_to_slow`. 38 ON
+    # 2026-11-26, for the Death line's finishing slice E's Ever Moving:
+    # `evasion_against_area_percent`.
+    assert sizes["ConditionedProbes"] == 38, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes

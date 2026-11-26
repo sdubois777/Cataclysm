@@ -130,4 +130,22 @@ public:
 	 * instant relocation.
 	 */
 	static void PlaceBeside(AActor* Mover, const AActor* Creature);
+
+	/**
+	 * Where Shadow Step puts the mover (the Death line's finishing slice E, 2026-11-26): behind `Creature`, opposite its
+	 * facing along the ground, its capsule touching the creature's and not inside it (the two radii and
+	 * `BehindGapCm` apart), at the mover's own height.
+	 */
+	static FVector SpotBehind(const AActor* Mover, const AActor* Creature);
+
+	/**
+	 * Shadow Step's move: the mover is put at `SpotBehind`, unswept, as Thousand Cuts' move is made; then, if a wall
+	 * leaves no room there, at the nearest place the world finds it room (`UWorld::FindTeleportSpot`), and failing
+	 * that beside the creature (`PlaceBeside`); then out of any OTHER enemy's body, further behind; and turned to face
+	 * the creature. NOT noted as an instant relocation here: the movement skill that calls it notes it, once.
+	 */
+	static void PlaceBehind(AActor* Mover, const AActor* Creature);
+
+	/** How far apart two touching capsules are put behind a creature, past their two radii. */
+	static constexpr float BehindGapCm = 5.0f;
 };

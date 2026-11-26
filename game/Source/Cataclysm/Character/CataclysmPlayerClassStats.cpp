@@ -1266,13 +1266,24 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minions_detonate_on_contact"),
 		TEXT("minion_detonation_raises_husk_chance"),
 		TEXT("minion_detonation_husk_seconds"),
-		// And Teeming Grave's chance of one more minion raised, shared with the Legion's Rise Together by the coordinating
-		// session's ruling of 2026-11-26. Read by UCataclysmSummonSkill::RaiseOneMoreIfRolled. No attribute and no base.
+		// And Teeming Grave's chance of one more minion raised, rolled once a use (the coordinating session's ruling at the
+		// bundle's assembly, 2026-11-26; Rise Together has a stat of its own). Read by
+		// UCataclysmSummonSkill::RaiseOneMoreIfRolled. No attribute and no base.
 		TEXT("minion_extra_raise_chance"),
 		// And the Horde Ascendant's reach and share, read by UCataclysmHordeAscendant::EveryFollowerNearCasts at each
 		// skill use. No attribute and no base.
 		TEXT("minions_cast_your_skills_within_metres"),
 		TEXT("minion_skill_copy_damage_percent"),
+		// And the Shadow's four remaining vow options and its Ever Moving, the Death line's finishing slice E (2026-11-26):
+		// Afterimage's flag, Shadow Clone's count and seconds, Shadow Step's metres and Flurry of the Dead's extra strikes,
+		// read by UCataclysmShadowImages; Ever Moving's share of evasion against area damage, read by
+		// UCataclysmDamageCalculation::Resolve. No attribute and no base.
+		TEXT("afterimage_repeats_your_next_attack"),
+		TEXT("shadow_clone_every_elite_kills"),
+		TEXT("shadow_clone_seconds"),
+		TEXT("movement_targets_an_enemy_within_metres"),
+		TEXT("hits_strike_again"),
+		TEXT("evasion_against_area_percent"),
 		// THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24, each read by its own function in
 		// FCataclysmWarFervour (CataclysmWarFervour.cpp) at its event's own site. The Bulwark's: Fervour per hit taken
 		// (UCataclysmVitalAttributeSet, a landed blow that is not a tick) and per block.

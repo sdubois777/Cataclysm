@@ -12609,6 +12609,11 @@ STATS_WITH_AN_ASKER = frozenset({
     "siphon_radius_metres",
     "siphon_life_percent",
     "siphon_fervour_per_second",
+    # THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Flurry of the Dead's extra
+    # strikes, 1 for every 10 Fervour held. `UCataclysmShadowImages::StrikeAgain`
+    # asks it through `StatForSkill` after each landed hit; `ProbeHitsStrikeAgain`
+    # measures the scaled row.
+    "hits_strike_again",
 })
 
 
@@ -12764,6 +12769,9 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "damage_reduction": ASKER_PASSES_A_BLOW_TAKEN,
     "damage_taken": ASKER_PASSES_A_BLOW_TAKEN,
     "evasion": ASKER_PASSES_A_BLOW_TAKEN,
+    # Ever Moving's share of evasion against area damage, the Death line's finishing
+    # slice E (2026-11-26): asked at the evasion step with the blow, as evasion is.
+    "evasion_against_area_percent": ASKER_PASSES_A_BLOW_TAKEN,
     # Asked for while a hit is priced, with the character struck.
     "armor_penetration": ASKER_PASSES_A_HIT_DEALT,
     "attack_damage": ASKER_PASSES_A_HIT_DEALT,
