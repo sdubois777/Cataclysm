@@ -64,7 +64,7 @@ float UCataclysmKillFervour::PayForTheKillingBlow(AActor* Dying)
 	}
 
 	const float Paid = UCataclysmFervour::GainStated(Skill->GetAbilitySystemComponentFromActorInfo(),
-													 Skill->Params.KillFervour);
+													 Skill->Params.KillFervour, /*bForAKill=*/true);
 	UE_LOG(LogCataclysm, Display,
 		TEXT("%s's blow killed %s: %.1f Fervour paid of the %.1f its row states for a kill."),
 		*Skill->SkillName, *GetNameSafe(Dying), Paid, Skill->Params.KillFervour);

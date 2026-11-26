@@ -79,7 +79,7 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 		&& UCataclysmKillFervour::CarriesACurseLaidBy(Dying, PayingCurses, Mark->Caster.Get()))
 	{
 		const float Paid = UCataclysmFervour::GainStated(
-			UCataclysmTargeting::AbilitySystemOf(Mark->Caster.Get()), PaysOnDeath);
+			UCataclysmTargeting::AbilitySystemOf(Mark->Caster.Get()), PaysOnDeath, /*bForAKill=*/true);
 		UE_LOG(LogCataclysm, Display,
 			TEXT("%s died under %s's curse, which holds: %.1f Fervour paid of the %.1f its row states."),
 			*GetNameSafe(Dying), *PayingSkill, Paid, PaysOnDeath);

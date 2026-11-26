@@ -173,7 +173,20 @@ void UCataclysmStrikeSkill::ActivateAbility(
 	if (Params.bSpendsAllFervour && (!bFreeRepeat || bFreeRepeatPaysCost))
 	{
 		UAbilitySystemComponent* Spender = GetAbilitySystemComponentFromActorInfo();
-		FervourSpentThisUse = FervourCostFor(Spender) + UCataclysmFervour::SpendAll(Spender);
+		const float Rest = UCataclysmFervour::SpendAll(Spender);
+		FervourSpentThisUse = FervourCostFor(Spender) + Rest;
+
+		// AND THE REST IS A SPEND, recorded as `ApplyCost` records the cost: the clock, `fervour_spent` with the
+		// amount and this skill's tags, Cinders Kept's share, and the War classes' count of Fervour spent. The Death
+		// skills merge, obligation 1 ("Requiem calls NoteFervourSpent"). TWO RECORDS FOR ONE PRESS, the cost's and the
+		// rest's, a judgement: `ApplyCost` is every skill's and records before this runs, and a 50 cost is whole tens,
+		// so "for every 10 Fervour spent" pays the same on the two as on their sum.
+		if (UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(Spender);
+			Paying && Rest > 0.0f)
+		{
+			Paying->NoteFervourSpent(Rest, &SkillTagsForStats());
+			FCataclysmWarFervour::NoteFervourSpentOrDrained(Paying, Rest);
+		}
 	}
 
 	// EVERYTHING BELOW WAITS FOR THE WEAPON TO ARRIVE. Issue #1133. Until this,
@@ -4354,7 +4367,7 @@ bool UCataclysmMovementSkill::NoteADeathWhileItRuns()
 	// for every death heard of while it runs, whether or not the dance's ceiling has been reached.
 	if (Params.KillFervour > 0.0f && Self)
 	{
-		UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Self), Params.KillFervour);
+		UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Self), Params.KillFervour, /*bForAKill=*/true);
 	}
 
 	// "AND ADDS HALF A SECOND TO IT, UP TO 8 SECONDS IN ALL." Issue #2885, N10. The stop timer is reset to what is left

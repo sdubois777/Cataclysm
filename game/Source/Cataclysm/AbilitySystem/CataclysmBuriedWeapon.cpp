@@ -228,7 +228,8 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// living enemy is in reach to leap to. ONLY WHILE THE THROWER IS HERE: a thrower gone has no pool to fill.
 	if (Carried.KillFervour > 0.0f && Carried.Caster.IsValid())
 	{
-		UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Carried.Caster.Get()), Carried.KillFervour);
+		UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Carried.Caster.Get()), Carried.KillFervour,
+										 /*bForAKill=*/true);
 	}
 
 	AActor* From = Dying;
@@ -357,7 +358,8 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 		// the blow, before the weapon was in it, so nothing else pays for it. Issue #2885, N6.
 		if (bKilledIt && bThrowerIsHere && Carried.KillFervour > 0.0f)
 		{
-			UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Credited), Carried.KillFervour);
+			UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Credited), Carried.KillFervour,
+											 /*bForAKill=*/true);
 		}
 
 		// AND THE FERVOUR THE LANDING EARNS WHOEVER THREW THE AXE. Issue #1515, the

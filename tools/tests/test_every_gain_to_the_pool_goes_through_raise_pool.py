@@ -41,6 +41,7 @@ INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
     (FERVOUR, "UCataclysmFervour::LoseFromDamage"): (1, "Soulbound's loss on health lost to damage, a negative change"),
     (FERVOUR, "UCataclysmFervour::RestoreHealthOnKill"): (1, "Wrung Out's spend of Fervour, a negative change"),
     (FERVOUR, "UCataclysmFervour::BuyDamageForEnemiesStruckTogether"): (1, "a spend of Fervour, a negative change"),
+    (FERVOUR, "UCataclysmFervour::SpendAll"): (1, "Requiem's spend of every Fervour held, a negative change"),
     (ASC, "UCataclysmAbilitySystemComponent::TakeFervourForLethalSave"): (1, "Phylactery's spend, a negative change"),
     (ASC, "UCataclysmAbilitySystemComponent::ApplyPoolAction"): (
         1, "a row's drain of any pool, floored, a negative change; its gain branch goes through TopUp"),
@@ -89,6 +90,8 @@ GAINS = (
     (FERVOUR, "UCataclysmFervour::GainOnMinionDeath"),
     (FERVOUR, "UCataclysmFervour::GainOnEnemyDeathNearby"),
     (FERVOUR, "UCataclysmFervour::GainOnOwnKill"),
+    # AND A SKILL ROW'S STATED FERVOUR (the Death skills' `KillFervour` and `HitFervour`), since the Death skills merge.
+    (FERVOUR, "UCataclysmFervour::GainStated"),
     (ASC, "UCataclysmAbilitySystemComponent::ReturnFervourDue"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp", "UCataclysmRegeneration::TopUp"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::FervourOnce"),
@@ -175,3 +178,44 @@ def test_the_kill_payment_is_marked_for_its_whole_length():
         "GainOnOwnKill must open the kill-payment marker before it pays and close it on the way out")
     assert re.search(r"ON_SCOPE_EXIT\s*\{\s*Paying->EndKillPayment\(\);\s*\}", body), (
         "the marker must be closed on every way out of GainOnOwnKill, by ON_SCOPE_EXIT")
+
+
+#: Every call that pays a skill row's `KillFervour`, by file: each must pass `bForAKill` true. The Death skills merge,
+#: obligation 4: "A skill's kill Fervour sets the kill-payment marker and goes through RaisePool."
+KILL_FERVOUR_PAYERS = {
+    "game/Source/Cataclysm/AbilitySystem/CataclysmKillFervour.cpp": 1,
+    "game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.cpp": 2,
+    "game/Source/Cataclysm/AbilitySystem/CataclysmCurseSpread.cpp": 1,
+    "game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp": 1,
+}
+
+
+def test_a_skills_stated_fervour_marks_a_kills_payment_before_it_is_scaled():
+    """GainStated opens the marker before the rate is asked, closes it on every way out, and pays through RaisePool."""
+    body = bodies()[(FERVOUR, "UCataclysmFervour::GainStated")]
+    opened = body.find("BeginKillPayment()")
+    scaled = body.find("ClassResourceGainScaled(")
+    paid = body.find("RaisePool(")
+    assert 0 <= opened < min(scaled, paid), (
+        "GainStated must open the kill-payment marker before ClassResourceGainScaled asks the rate, so Any Fuel refuses "
+        "a kill's payment, and pay through RaisePool")
+    assert re.search(r"ON_SCOPE_EXIT\s*\{[^}]*Paying->EndKillPayment\(\);", body), (
+        "the marker must be closed on every way out of GainStated, by ON_SCOPE_EXIT")
+    assert "bForAKill" in body[:opened], "the marker opens only for a kill's payment"
+
+
+def test_every_kill_fervour_payment_is_marked_and_a_hit_fervour_payment_is_not():
+    found = {}
+    for path in KILL_FERVOUR_PAYERS:
+        text = code_only((ROOT / path).read_text(encoding="utf-8"))
+        calls = re.findall(r"GainStated\((.*?)\);", text, flags=re.S)
+        found[path] = [c for c in calls if "KillFervour" in c or "PaysOnDeath" in c]
+        assert len(found[path]) == KILL_FERVOUR_PAYERS[path], (
+            f"{path}: {len(found[path])} KillFervour payments found, {KILL_FERVOUR_PAYERS[path]} listed")
+        unmarked = [c for c in found[path] if "true" not in c]
+        assert not unmarked, f"{path}: a KillFervour payment without bForAKill true: {unmarked}"
+    hit = code_only((ROOT / "game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp").read_text(encoding="utf-8"))
+    hit_calls = re.findall(r"GainStated\((.*?)\);", hit, flags=re.S)
+    assert hit_calls and all("true" not in c for c in hit_calls), (
+        "a row's HitFervour pays for a hit, not a death, so it must not open the kill-payment marker")
+

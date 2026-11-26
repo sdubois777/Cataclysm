@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -467,8 +468,13 @@ float FCataclysmWarFervour::OutOfCombatDecayStep(ACataclysmCharacterBase* Charac
 		return 0.0f;
 	}
 
-	// (THE RUNNING-BUFF HOLD BELONGS HERE once `UCataclysmSkillTemplate::ARunningBuffHoldsFervour` is on the same
-	// branch; see the header.)
+	// AND NOTHING DECAYS WHILE A BUFF THAT HOLDS FERVOUR RUNS: the Sword's Cold Blood, as the Ravager's and the Death
+	// classes' decays ask it. The Death skills merge, obligation 10. Each decay stops only itself, so a buff is never
+	// counted twice by a character under this decay and the kill decay both.
+	if (UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Character))
+	{
+		return 0.0f;
+	}
 
 	// AND NEVER BELOW MISER'S GRIP'S FLOOR, a share of the full bar after reserves, as the Death classes' decay after a
 	// kill stops at it (the Death trees' slice C6c; the bundle 3 merge, obligation 17): "Your Fervour never decays below

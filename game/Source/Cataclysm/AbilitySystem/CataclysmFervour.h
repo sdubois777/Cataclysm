@@ -619,13 +619,19 @@ public:
 	 * weapon and the flicker do; this is the write to the pool, which happens in this file for every route so there is
 	 * one place that clamps it.
 	 *
-	 * SCALED BY HOW FAST THE CLASS RESOURCE GENERATES and CLAMPED AT THE SPENDABLE MAXIMUM, as every gain here is.
+	 * SCALED BY HOW FAST THE CLASS RESOURCE GENERATES, then handed whole to `RaisePool`, which clamps it at the spendable
+	 * maximum and gives Overflow what does not fit, as every gain here is.
+	 *
+	 * A ROW'S `KillFervour` IS A KILL'S PAYMENT: `bForAKill` opens the kill-payment marker for the whole gain, as
+	 * `GainOnOwnKill` does, so Any Fuel refuses it and Kindred Fires and Borrowed Time leave the hold alone. Every
+	 * `KillFervour` route passes true; a row's `HitFervour` does not. The Death skills merge, obligation 4.
 	 *
 	 * @param AbilitySystem  whoever's skill it was: the caster's, never the dying creature's
 	 * @param Stated         the row's figure; nought or less adds nothing
+	 * @param bForAKill      whether this pays for a death (`KillFervour`), not a hit
 	 * @return how much Fervour was really added, which is zero for a full bar and for no class resource set
 	 */
-	static float GainStated(UAbilitySystemComponent* AbilitySystem, float Stated);
+	static float GainStated(UAbilitySystemComponent* AbilitySystem, float Stated, bool bForAKill = false);
 
 	/**
 	 * Empty the pool, and answer what left it: every point held. Issue #2885, the Death draft's N13, slice DS4: the
@@ -1004,10 +1010,9 @@ public:
 	 * seconds have passed since your last kill" has no last kill to count from, and holding for ever would make a
 	 * multiclassed Soul Collector's other generator a bar that never empties.
 	 *
-	 * IT DOES NOT ASK WHETHER A RUNNING SELF BUFF HOLDS FERVOUR. The Death skills branch (#2885) adds
-	 * `UCataclysmSkillTemplate::ARunningBuffHoldsFervour` for Cold Blood; whichever of that branch and this one lands
-	 * second adds that one call here, with its test, as it does to `DecayStep`. Ruled by the coordinating session on
-	 * 2026-11-24.
+	 * NOR WHILE A RUNNING SELF BUFF HOLDS FERVOUR (`UCataclysmSkillTemplate::ARunningBuffHoldsFervour`, the Sword's Cold
+	 * Blood), asked as `DecayStep` asks it. Added by the Death skills merge, obligation 3, as the coordinating session
+	 * ruled on 2026-11-24.
 	 *
 	 * @return how much Fervour really left, which is zero for a character with no rate, an empty pool, a hold not yet
 	 *         run out, and a creature holding a player build

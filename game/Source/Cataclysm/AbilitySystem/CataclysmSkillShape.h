@@ -1149,9 +1149,10 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 
 	/**
 	 * True when the holder's Fervour does not decay while this self buff runs. `HoldsFervour=1`, the Death draft's N8,
-	 * slice DS3: the Sword's Cold Blood, "while it lasts your Fervour does not decay". `UCataclysmFervour::DecayStep`, the
-	 * one decay built (the Ravager's), asks `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`; the Soul Collector's and
-	 * the Shadow's decay from the last kill, not built yet, must ask the same when it is.
+	 * slice DS3: the Sword's Cold Blood, "while it lasts your Fervour does not decay". Every decay asks
+	 * `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`: the Ravager's (`UCataclysmFervour::DecayStep`), and since the
+	 * Death skills merge the Death classes' after a kill (`KillDecayStep`) and the War classes' out of combat
+	 * (`FCataclysmWarFervour::OutOfCombatDecayStep`).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bHoldsFervour = false;

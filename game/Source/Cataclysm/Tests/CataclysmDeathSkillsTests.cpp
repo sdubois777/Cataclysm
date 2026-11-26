@@ -30,6 +30,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 // For a wound that bursts as its bearer dies. Slice DS5, N14.
 #include "AbilitySystem/CataclysmWoundBurst.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -3105,6 +3106,126 @@ bool FCataclysmDeathSkillsBuffHoldsFervourTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBuffHoldsEveryDecayTest,
+	"Cataclysm.DeathSkills.ABuffThatHoldsFervourStopsTheKillDecayAndTheWarDecayAsWell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Death skills merge, obligations 3 and 10 (`UCataclysmFervour::KillDecayStep`,
+ * `FCataclysmWarFervour::OutOfCombatDecayStep`, each asking `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`): a
+ * character given the Death classes' decay after a kill, 5 a second, and the War classes' out of combat, 5 a second,
+ * never having killed and 4 seconds out of combat, loses 5 of its 100 Fervour to each decay's step, THE CONTROL that
+ * both are real; with a buff stating `Duration=6; HoldsFervour=1` running, neither step takes anything; and once that
+ * buff is cancelled, each takes 5 again. Each decay stops only itself, so the one buff holds both once each.
+ */
+bool FCataclysmDeathSkillsBuffHoldsEveryDecayTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillCreature Holder(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	Holder.Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	Holder.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	DeathSkillSetFervour(Holder.Actor, 100.0f);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.FindOrAdd(FName(UCataclysmFervour::KillDecayPerSecondStat)).Base = 5.0f;
+	Stats.FindOrAdd(FName(FCataclysmWarFervour::OutOfCombatDecayPerSecondStat)).Base = 5.0f;
+	Holder.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	World->TimeSeconds += 4.0f;
+
+	const float KillDecayAlone = UCataclysmFervour::KillDecayStep(Holder.AbilitySystem, 1.0f);
+	const float WarDecayAlone = FCataclysmWarFervour::OutOfCombatDecayStep(Holder.Actor, 1.0f);
+	if (!TestEqual(TEXT("control: the kill decay's step takes 5"), KillDecayAlone, -5.0f, DeathSkillAllowance)
+		|| !TestEqual(TEXT("control: the War decay's step takes 5"), WarDecayAlone, -5.0f, DeathSkillAllowance)
+		|| !TestEqual(TEXT("control: 90 of the 100 are left"), DeathSkillFervourOf(Holder.Actor), 90.0f,
+					  DeathSkillAllowance))
+	{
+		return false;
+	}
+
+	UCataclysmSelfBuffSkill* Holding = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Support, TEXT("Duration=6; HoldsFervour=1"),
+		TEXT("A buff that holds Fervour"));
+	if (!TestNotNull(TEXT("set-up: the buff is granted"), Holding)
+		|| !TestTrue(TEXT("the buff goes up"), ActivateDeathSkill(Holder.AbilitySystem, Holding)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("WHILE IT RUNS THE KILL DECAY TAKES NOTHING"), UCataclysmFervour::KillDecayStep(Holder.AbilitySystem,
+			  1.0f), 0.0f, DeathSkillAllowance);
+	TestEqual(TEXT("AND THE WAR DECAY TAKES NOTHING"), FCataclysmWarFervour::OutOfCombatDecayStep(Holder.Actor, 1.0f),
+			  0.0f, DeathSkillAllowance);
+	TestEqual(TEXT("so 90 are still held"), DeathSkillFervourOf(Holder.Actor), 90.0f, DeathSkillAllowance);
+
+	Holder.AbilitySystem->CancelAbilityHandle(Holding->GetCurrentAbilitySpecHandle());
+	TestEqual(TEXT("cancelled, the kill decay takes 5 again"), UCataclysmFervour::KillDecayStep(Holder.AbilitySystem,
+			  1.0f), -5.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and the War decay 5"), FCataclysmWarFervour::OutOfCombatDecayStep(Holder.Actor, 1.0f), -5.0f,
+			  DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsKillFervourIsAKillsPaymentTest,
+	"Cataclysm.DeathSkills.ASkillRowsKillFervourIsPaidAsAKillAndItsHitFervourIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Death skills merge, obligation 4 (`UCataclysmFervour::GainStated`, `bForAKill`): a row's stated Fervour now goes
+ * through `RaisePool`, and a `KillFervour` payment opens the kill-payment marker. Read through Kindred Fires, which
+ * restarts the decay hold on any rise that is not a kill's payment: two characters with Kindred Fires, a common kill's
+ * 4 s grace and the kill decay, neither ever having killed, so neither is held. THE CONTROL: 5 paid as a hit's Fervour
+ * restarts the first one's hold. THE CASE: 5 paid as a kill's Fervour reaches the second one's pool and leaves its hold
+ * alone, the kill's own stamp being what sets a hold.
+ */
+bool FCataclysmDeathSkillsKillFervourIsAKillsPaymentTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const auto Kindled = [World](float X)
+	{
+		TUniquePtr<FDeathSkillCreature> Made =
+			MakeUnique<FDeathSkillCreature>(World, FVector(X * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Players);
+		DeathSkillSetFervour(Made->Actor, 0.0f);
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.FindOrAdd(FName(UCataclysmFervour::KillDecayPerSecondStat)).Base = 5.0f;
+		Stats.FindOrAdd(FName(UCataclysmFervour::KillDecayGraceSecondsStat)).Base = 4.0f;
+		Stats.FindOrAdd(FName(UCataclysmFervour::HoldRestartedByAnyGainStat)).Base = 1.0f;
+		Made->AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		return Made;
+	};
+
+	TUniquePtr<FDeathSkillCreature> ByAHit = Kindled(0.0f);
+	TUniquePtr<FDeathSkillCreature> ByAKill = Kindled(100.0f);
+	if (!TestFalse(TEXT("set-up: never having killed, the first is not held"), ByAHit->AbilitySystem->KillDecayIsHeld())
+		|| !TestFalse(TEXT("set-up: nor the second"), ByAKill->AbilitySystem->KillDecayIsHeld()))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("control: 5 paid as a hit's Fervour arrives"), UCataclysmFervour::GainStated(ByAHit->AbilitySystem,
+			  5.0f), 5.0f, DeathSkillAllowance);
+	TestTrue(TEXT("control: and Kindred Fires restarts the hold on it"), ByAHit->AbilitySystem->KillDecayIsHeld());
+
+	TestEqual(TEXT("5 paid as a kill's Fervour arrives"), UCataclysmFervour::GainStated(ByAKill->AbilitySystem, 5.0f,
+			  /*bForAKill=*/true), 5.0f, DeathSkillAllowance);
+	TestFalse(TEXT("A KILL'S PAYMENT LEAVES THE HOLD ALONE"), ByAKill->AbilitySystem->KillDecayIsHeld());
+	TestFalse(TEXT("and the marker is closed after it"), ByAKill->AbilitySystem->IsPayingForAKill());
+	return true;
+}
+
 // ==========================================================================
 // Slice DS3, change B. N10: a flicker its deaths lengthen, re-gathering its circle. N5: a curse under which the dying
 // rise.
@@ -4741,6 +4862,57 @@ bool FCataclysmDeathSkillsRequiemTest::RunTest(const FString&)
 	TestEqual(TEXT("for its 6 seconds"), DeathSkillSecondsLeft(Reached.Actor, Cripple), 6.0f, DeathSkillAllowance);
 	TestEqual(TEXT("the creature 15 m off, beyond the 14 m wave, is untouched"), DeathSkillHealthLost(Beyond), 0.0f,
 			  DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsRequiemRecordsItsSpendTest,
+	"Cataclysm.DeathSkills.RequiemRecordsEveryFervourItSpendsAndNotOnlyItsCost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Death skills merge, obligation 1 ("Requiem calls NoteFervourSpent"): what Requiem spends beyond its cost is a
+ * spend, read through Cinders Kept, which queues a share of every spend to return. Each singer holds a flat 10% of
+ * `fervour_spent_returned_percent`. THE CONTROL: sung at 50 Fervour it spends its 50 cost and nothing beside, and 5 waits
+ * to return. THE CASE: sung at 100 it spends its 50 cost and 50 beside, and 10 waits to return, not the cost's 5 alone.
+ */
+bool FCataclysmDeathSkillsRequiemRecordsItsSpendTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Wand"), ECataclysmAbilitySlot::Ultimate);
+	if (!TestEqual(TEXT("set-up: the Death Wand's Ultimate row is Requiem. If empty, DT_WeaponSkills is older than the "
+						"CSV"), Row.Name, FString(TEXT("Requiem"))))
+	{
+		return false;
+	}
+
+	const auto WaitingAfterSinging = [World, &Row](float HeldFervour, float AcrossMetres) -> float
+	{
+		FDeathSkillFighter Singer(World, FVector(0.0f, AcrossMetres * DeathSkillMetre, 0.0f));
+		Singer.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		DeathSkillSetFervour(Singer.Actor, HeldFervour);
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.FindOrAdd(FName(UCataclysmAbilitySystemComponent::FervourSpentReturnedPercentStat)).Base = 10.0f;
+		Singer.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		UCataclysmStrikeSkill* Wave = GrantDeathRow<UCataclysmStrikeSkill>(Singer.AbilitySystem, Singer.Actor, Row);
+		if (!Wave || !ActivateDeathSkill(Singer.AbilitySystem, Wave))
+		{
+			return -1.0f;
+		}
+		return Singer.AbilitySystem->FervourWaitingToReturn();
+	};
+
+	TestEqual(TEXT("control: sung at 50, the cost's 5 waits to return"), WaitingAfterSinging(50.0f, 0.0f), 5.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("SUNG AT 100, THE COST'S 5 AND THE REST'S 5 WAIT TO RETURN"), WaitingAfterSinging(100.0f, 100.0f),
+			  10.0f, DeathSkillAllowance);
 	return true;
 }
 
