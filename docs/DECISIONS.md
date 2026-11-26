@@ -174,7 +174,24 @@ away and a summoner without the vow; a chance of nought; an Imp 15 m away, a tur
 
 ### What was run
 
-RESULTS_GO_HERE
+**The whole Python suite on `7f4fe622d`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 9582 passed, 9 skipped in 1133.58s
+(0:18:53)". The JUnit file agrees: tests 9592, failures 1, errors 0, skipped 9, so 9582 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/reapply_death_finish_c_workbook.py --check`: nothing to write.
+
+**Four Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`7f4fe622d`, and each `proved` (failed with the break in, passed with it out):
+
+| Break | Named failure |
+|---|---|
+| `DetonateOwnMinionsWhere`'s `if (!DetonatesOwnMinions())` made `if (false && ...)` | `test_necromancer_detonations_are_wired.py::test_the_key_is_asked_around_the_minions_and_no_call_site_asks_it` |
+| `ReleaseOldestForAThrall` handing `DetonateOnRelease` a null minion | `test_necromancer_detonations_are_wired.py::test_made_room_detonates_a_released_minion_instead_of_destroying_it` |
+| `LifeSpanExpired` asking Ripened before Rekindled | `test_necromancer_detonations_are_wired.py::test_ripened_is_asked_after_rekindled_and_before_the_actor_goes` |
+| Mass Grave's share written as 30 in `PassiveEffects.csv` | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
