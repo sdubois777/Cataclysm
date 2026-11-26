@@ -931,9 +931,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecromancerDetonationTeemingGraveTest
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Teeming Grave's stat, `minion_extra_raise_chance`, shared with Rise Together (`UCataclysmSummonSkill::
- * RaiseOneMoreIfRolled`): at 100, one summon of an Imp reserving 10 raises two, and no more -- the one more does not roll
- * again. THE CONTROL: at nought, one.
+ * Teeming Grave's stat, `minion_extra_raise_chance` (`UCataclysmSummonSkill::RaiseOneMoreIfRolled`), ROLLED ONCE A USE
+ * (the coordinating session's ruling of 2026-11-26 at the bundle's assembly). Each case USES a summon of Imps reserving
+ * 10: at 100, a use raising one raises two, and no more -- the one more does not roll again; a use raising two
+ * (`Count=2`) raises three, not four, so it rolled once. THE CONTROL: at nought, a use raising one raises one.
  */
 bool FCataclysmNecromancerDetonationTeemingGraveTest::RunTest(const FString&)
 {
@@ -950,7 +951,7 @@ bool FCataclysmNecromancerDetonationTeemingGraveTest::RunTest(const FString&)
 	TArray<ACataclysmMinion*> Made;
 	ON_SCOPE_EXIT { Clear(Made); };
 
-	const auto Raise = [&](float ChancePercent, float AcrossMetres, int32& OutExtra) -> int32
+	const auto Raise = [&](float ChancePercent, int32 Count, float AcrossMetres, int32& OutExtra) -> int32
 	{
 		FDetonationFighter Caster(World, FVector(0.0f, AcrossMetres * Metre, 0.0f));
 		SideWithThePlayers(Caster, Side);
@@ -959,13 +960,15 @@ bool FCataclysmNecromancerDetonationTeemingGraveTest::RunTest(const FString&)
 			Caster.Lines({{UCataclysmDetonation::ExtraRaiseChanceStat, Flat(ChancePercent)}});
 		}
 		UCataclysmSummonSkill* Summon = Grant<UCataclysmSummonSkill>(
-			Caster, ECataclysmAbilitySlot::Special, TEXT("Minions=Imp:1; Duration=20; FervourReserve=10"),
+			Caster, ECataclysmAbilitySlot::Special,
+			FString::Printf(TEXT("Count=%d; Minions=Imp:%d; Duration=20; FervourReserve=10"), Count, Count),
 			TEXT("A summon"));
-		if (!Summon)
+		if (!Summon
+			|| !Caster.AbilitySystem->TryActivateAbility(Summon->GetCurrentAbilitySpecHandle(),
+														 /*bAllowRemoteActivation=*/false))
 		{
 			return -1;
 		}
-		Made.Add(Summon->SummonOne());
 		const TArray<ACataclysmMinion*> Imps = UCataclysmCommand::MinionsOfTypeCommandedBy(Caster.Actor, TEXT("Imp"));
 		Made.Append(Imps);
 		OutExtra = Summon->ExtraMinionsRaised;
@@ -973,11 +976,15 @@ bool FCataclysmNecromancerDetonationTeemingGraveTest::RunTest(const FString&)
 	};
 
 	int32 Extra = -1;
-	const int32 Teeming = Raise(100.0f, 0.0f, Extra);
-	TestEqual(TEXT("TEEMING GRAVE: at 100%, one summon raises two Imps"), Teeming, 2);
+	const int32 Teeming = Raise(100.0f, 1, 0.0f, Extra);
+	TestEqual(TEXT("TEEMING GRAVE: at 100%, a use raising one raises two Imps"), Teeming, 2);
 	TestEqual(TEXT("TEEMING GRAVE: one of them the one more"), Extra, 1);
+	int32 ExtraOfTwo = -1;
+	const int32 Pair = Raise(100.0f, 2, 200.0f, ExtraOfTwo);
+	TestEqual(TEXT("ONCE A USE: at 100%, a use raising two raises three, not four"), Pair, 3);
+	TestEqual(TEXT("ONCE A USE: one more, not two"), ExtraOfTwo, 1);
 	int32 NoExtra = -1;
-	const int32 Plain = Raise(0.0f, 100.0f, NoExtra);
+	const int32 Plain = Raise(0.0f, 1, 100.0f, NoExtra);
 	TestEqual(TEXT("CONTROL: at nought, one"), Plain, 1);
 	TestEqual(TEXT("CONTROL: and none more"), NoExtra, 0);
 	return true;

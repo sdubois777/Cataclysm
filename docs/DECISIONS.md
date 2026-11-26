@@ -43,12 +43,14 @@ Decisions made outside the Google Drive documents, newest first.
   rebuilds `DT_PassiveEffects`, and runs `Cataclysm.NecromancerDetonation.` and the groups below.
 - **BONE COLOSSUS IS NOT HERE.** The coordinating session moved it to slice D on 2026-11-26: its sentence feeds it
   remains, which slice D builds.
-- **TEEMING GRAVE ROLLS FOR EACH MINION RAISED, NOT ONCE PER RAISE.** Its sentence says "Each time a summon skill raises
-  minions, it has an 8% chance per point to raise one more"; the coordinating session ruled that it and slice B's Rise
-  Together ("Each permanent minion you raise has a 4% chance per point to raise a second one") share one stat,
-  `minion_extra_raise_chance`, read in the summon path when a minion is raised, which is Rise Together's shape. For
-  every summon row raising one minion a press the two readings are the same; a row raising two (`Count=2`) rolls twice.
-  Worth a look by the owner if a multi-minion summon ships.
+- **TEEMING GRAVE ROLLS ONCE FOR EACH USE OF A SUMMON SKILL.** Its sentence says "Each time a summon skill raises
+  minions, it has an 8% chance per point to raise one more". This slice first rolled it for each minion raised; the
+  coordinating session ruled at the bundle's assembly (2026-11-26) that it rolls once a use: `SummonOne` asks
+  `RaiseOneMoreIfRolled` only at the first minion each use raises (`bExtraRaiseRolledThisUse`, cleared in
+  `ActivateAbility`), so a `Count=2` summon rolls once and a rift raising one at each interval rolls once. Slice B's
+  Rise Together ("Each permanent minion you raise has a 4% chance per point to raise a second one beside it") reads
+  per minion, and Barrow Guard and Bone Choir raise two permanent minions a use, so whether it shares this reader was
+  put to the coordinating session at assembly.
 - **EVERY WEAPON SKILL'S LANDING NOW CALLS `DetonateOwnMinionsWhere`**, as the coordinating session asked, so slice D
   can detonate remains there. A skill with neither `Detonates=1` nor Lit Fuse still detonates no minion: tested.
 

@@ -5692,8 +5692,14 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
 		}
 
-		// AND IT MAY RAISE ONE MORE: Teeming Grave and Rise Together, one stat (the finishing of the Death Cataclysm).
-		RaiseOneMoreIfRolled(Minion);
+		// AND THE USE MAY RAISE ONE MORE: Teeming Grave (the finishing of the Death Cataclysm), ROLLED ONCE A USE, at the
+		// first minion the use raises, as the coordinating session ruled at the bundle's assembly on 2026-11-26: "Each
+		// time a summon skill raises minions ... one more".
+		if (!bExtraRaiseRolledThisUse && !bRaisingOneMore)
+		{
+			bExtraRaiseRolledThisUse = true;
+			RaiseOneMoreIfRolled(Minion);
+		}
 	}
 	return Minion;
 }
@@ -5713,10 +5719,10 @@ ACataclysmMinion* UCataclysmSummonSkill::RaiseOneMoreIfRolled(const ACataclysmMi
 		return nullptr;
 	}
 
-	// THE SKILL'S TAGS AND THE RAISED MINION'S, so a row naming a kind of minion -- Rise Together's "permanent" ones --
-	// reaches only it. The coordinating session's ruling of 2026-11-26: Teeming Grave ("Each time a summon skill raises
-	// minions, it has an 8% chance per point to raise one more") and slice B's Rise Together share this one stat and this
-	// one reader. ROLLED FOR EACH MINION RAISED, the ruling's words; see `docs/DECISIONS.md`.
+	// THE SKILL'S TAGS AND THE RAISED MINION'S, so a row naming a kind of minion reaches only it. Teeming Grave ("Each
+	// time a summon skill raises minions, it has an 8% chance per point to raise one more"), ROLLED ONCE A USE: the
+	// caller, `SummonOne`, asks only at the first minion each use raises. The coordinating session's ruling of
+	// 2026-11-26 at the bundle's assembly; see `docs/DECISIONS.md`.
 	FGameplayTagContainer Asked = SkillTags;
 	Asked.AppendTags(Raised->TypeTags);
 	const float Chance = Mine->StatForSkill(FName(UCataclysmDetonation::ExtraRaiseChanceStat), Asked, 0.0f);
@@ -5747,6 +5753,9 @@ void UCataclysmSummonSkill::ActivateAbility(
 	{
 		return;
 	}
+
+	// A NEW USE, WHICH MAY ROLL ONCE FOR ONE MORE (Teeming Grave; `RaiseOneMoreIfRolled`).
+	bExtraRaiseRolledThisUse = false;
 
 	AActor* Self = Avatar();
 	if (!Self)

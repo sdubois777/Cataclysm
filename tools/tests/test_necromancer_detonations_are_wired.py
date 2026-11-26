@@ -137,7 +137,11 @@ def test_the_minion_asking_fills_its_age_and_its_fellows():
 
 def test_a_summon_rolls_one_more_and_the_horde_ascendant_answers_a_skill_use():
     summon = body_of(SKILL_TEMPLATES, "ACataclysmMinion* UCataclysmSummonSkill::SummonOne")
-    position(summon, "RaiseOneMoreIfRolled(Minion);", "SummonOne")
+    guarded = position(summon, "if (!bExtraRaiseRolledThisUse && !bRaisingOneMore)", "SummonOne")
+    rolled = position(summon, "RaiseOneMoreIfRolled(Minion);", "SummonOne")
+    assert guarded < rolled, "Teeming Grave must roll once a use: the roll sits inside the once-a-use guard"
+    activated = body_of(SKILL_TEMPLATES, "void UCataclysmSummonSkill::ActivateAbility")
+    position(activated, "bExtraRaiseRolledThisUse = false;", "UCataclysmSummonSkill::ActivateAbility")
     used = body_of(PLAYER, "void ACataclysmPlayerCharacter::OnSkillWasUsed")
     asked = position(used, "UCataclysmHordeAscendant::Holds(this)", "OnSkillWasUsed")
     cast = position(used, "UCataclysmHordeAscendant::EveryFollowerNearCasts(this, Used, Aimed)", "OnSkillWasUsed")
