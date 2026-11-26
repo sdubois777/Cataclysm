@@ -2601,7 +2601,9 @@ public:
 	 * they instantly die." The design document does not mention the Reaper.
 	 *
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
-	 * - AN ABYSSAL WARDEN AT THE COMMON RUNG (`TheReaperRung`), raised by the rule.
+	 * - AN ABYSSAL WARDEN AT THE COMMON RUNG (`TheReaperRung`), raised by the rule. A WRAITH SINCE 2026-11-26, the
+	 *   owner's ruling that the Wraith art plays The Reaper, walking at the Warden's 2.8 metres a second with neither
+	 *   its dash nor its pull (`ACataclysmWraithCharacter::BecomeTheReaper`), so "slowly" is still true.
 	 * - IT CANNOT DIE: blows on it resolve and nothing reaches its health
 	 *   (`ACataclysmEnemyCharacter::bCannotBeHurt`).
 	 * - ONCE PER FLOOR CARRYING THE ROW, `TheReaperDelaySeconds` after the floor begins,
@@ -2612,8 +2614,9 @@ public:
 	 *   die".
 	 * - IT GOES WITH THE FLOOR; the next floor carrying the row raises a new one.
 	 *
-	 * "SLOWLY" NEEDS NOTHING OF ITS OWN: the Warden's designed walk is 2.8 metres a second
-	 * and the slowest class moves at 3.5. "STALKS" IS `TheReaperSightMultiplier`.
+	 * "SLOWLY" NEEDED NOTHING OF ITS OWN while it was a Warden, whose designed walk is 2.8 metres a
+	 * second against the slowest class's 3.5. As a Wraith it is held to that same 2.8
+	 * (`ACataclysmWraithCharacter::ReaperWalkSpeedCmPerSecond`). "STALKS" IS `TheReaperSightMultiplier`.
 	 */
 	static const TCHAR* TheReaperKey;
 
@@ -7312,7 +7315,7 @@ public:
 	/** The rung a creature drawn at `DrawnRung` stands at on the dark floor. See the figures above. */
 	static int32 ThoseInTheDarkRungOnTheDarkFloor(int32 DrawnRung);
 
-	/** The Reaper's rung: Common, the rung that adds nothing to the Warden. Ruled. */
+	/** The Reaper's rung: Common, the rung that adds nothing to its body (a Wraith since 2026-11-26). Ruled. */
 	static constexpr int32 TheReaperRung = 0;
 
 	/**

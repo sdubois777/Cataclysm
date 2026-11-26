@@ -37,6 +37,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
+#include "Character/CataclysmWraithCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Dungeon/CataclysmFloorObject.h"
@@ -26789,7 +26790,20 @@ bool FCataclysmReaperArrivesTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestTrue(TEXT("it is an Abyssal Warden"), First->IsA<ACataclysmAbyssalWardenCharacter>());
+	// A WRAITH SINCE 2026-11-26, the owner's ruling that the Wraith art plays The Reaper; an Abyssal Warden until then.
+	// It keeps the row's "slowly": the Warden's 2.8 metres a second, under the slowest class, and no dash or pull.
+	const ACataclysmWraithCharacter* AsWraith = Cast<ACataclysmWraithCharacter>(First);
+	if (!TestNotNull(TEXT("it is a Wraith"), AsWraith))
+	{
+		return false;
+	}
+	TestTrue(TEXT("in the Reaper's form"), AsWraith->bIsTheReaper);
+	TestEqual(TEXT("designed to walk at the Reaper's 2.8 metres a second"), AsWraith->ACataclysmEnemyCharacter::DesignedWalkSpeedCmPerSecond,
+			  ACataclysmWraithCharacter::ReaperWalkSpeedCmPerSecond, 0.01f);
+	TestTrue(*FString::Printf(TEXT("and walking slower than the slowest class's 3.5: %.1f cm/s"),
+							  AsWraith->GetCharacterMovement()->MaxWalkSpeed),
+			 AsWraith->GetCharacterMovement()->MaxWalkSpeed < 350.0f);
+	TestEqual(TEXT("with neither the dash nor the pull"), AsWraith->EnemyAbilities().Num(), 0);
 	TestEqual(TEXT("at the Common rung"), First->RarityStep, Effects::TheReaperRung);
 	TestTrue(TEXT("that cannot be hurt"), First->bCannotBeHurt);
 	TestTrue(TEXT("raised by a rule"), First->bRaisedByARule);
@@ -50607,6 +50621,7 @@ namespace CataclysmDungeonModifierEffectsTest
 		Mode->AbyssalWardenRarityStep = 0;
 		Mode->CorruptedSentinelRarityStep = 0;
 		Mode->SuccubusRarityStep = 0;
+		Mode->WraithRarityStep = 0;
 	}
 
 	/** The floor's creatures that still stand and carry this section number. */
@@ -55807,6 +55822,7 @@ namespace CataclysmDungeonModifierEffectsTest
 		Mode->AbyssalWardenRarityStep = Rung;
 		Mode->CorruptedSentinelRarityStep = Rung;
 		Mode->SuccubusRarityStep = Rung;
+		Mode->WraithRarityStep = Rung;
 		Mode->GatekeeperRarityStep = Rung;
 	}
 

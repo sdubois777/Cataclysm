@@ -1007,6 +1007,35 @@ it needs one**: the automation command runs with `-nullrhi`.
 instead, which is the closest existing motion, and its speed is therefore the
 one number on this creature that was chosen rather than derived from a clip.
 
+### The Wraith — the owner's Wraith pack (Death)
+
+**Read 2026-11-26 without the editor**, from each asset's `SequenceLength` and `bEnableRootMotion` tags, for Death's
+first creature of its own. **The pack is not Paragon art**: the owner bought it, and like the Paragon packs it lives
+only in the main checkout at `game/Content/Wraith/`, gitignored, so a worktree has none of it.
+
+**What it is.** `SK_Wraith` (the body, already in the Skin1 materials), four helms `SK_Wraith_Helm1` to `Helm4`, each a
+skeletal mesh of its own that follows the body's pose, and five weapons as static meshes, the scythe
+`SM_Wraith_Scythe` among them. `SK_Wraith_Skeleton` has a `scythe` bone, and the pack's own `BP_Wraith` attaches a
+weapon "to its weapon bone" and the helm by `SetLeaderPoseComponent`. 84 clips, root motion off except the `_RM`
+versions.
+
+**What the creature actually plays**, from `ACataclysmWraithCharacter`. One look for every Wraith, as ruled: Skin1
+with Helm1 and the scythe. The Reaper wears Helm2.
+
+| Animation | Length | What plays it |
+|---|:-:|---|
+| `Anim_Wraith_Scythe_Attack2` and `_Attack5` | 1.667 s each | Reap, alternating, at 1.33 inside the 1.25 s interval |
+| `Anim_Wraith_Ghost_PhaseDash_InPlace` | 1.458 s | Phase Dash, across its 0.69 s wind-up and 0.7 s run |
+| `Anim_Wraith_Ghost_SoulGrab` | 2.292 s | Soul Grab, across its 1.54 s wind-up |
+| `Anim_Wraith_idle1Weap` | 2.458 s | standing, holding the scythe |
+| `Anim_Wraith_FlyingForwardWeap` | 0.792 s | moving, at its authored speed: a hovering body has no planted foot to slide |
+| `Anim_Wraith_gethit1`, `Hit_Back`, `Hit_Left`, `Hit_Right` | 1.208 s each | the four flinches, front, back, left, right |
+| `Anim_Wraith_FlyingDeath1` and `2` | 2.458 s each | its two deaths |
+
+**Not measured, and said so.** The mesh's height (the capsule's half-height of 88 cm is a judgement), the swings'
+strike moments (they land at once, as the Hellhound's bite does, issue #783), and `Ghost_Appear` (1.958 s) is not wired:
+nothing in the game yet tells a creature a rule raised it.
+
 ### The Abyssal Warden — Grux, molten
 
 **Re-measured 2026-08-09** with `tools/probe_warden_animation.py`, and extended

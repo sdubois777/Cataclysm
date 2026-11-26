@@ -78,6 +78,7 @@
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
+#include "Character/CataclysmWraithCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
@@ -1904,6 +1905,8 @@ TSubclassOf<ACataclysmEnemyCharacter> ACataclysmDungeonGameMode::ClassFor(
 		return ACataclysmSuccubusCharacter::StaticClass();
 	case ECataclysmDungeonCreature::Gatekeeper:
 		return ACataclysmGatekeeperCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Wraith:
+		return ACataclysmWraithCharacter::StaticClass();
 	default:
 		// NOT A FALLBACK TO SOMETHING SPAWNABLE, deliberately. A creature added
 		// to the enum and forgotten here should show up as a creature that never
@@ -2009,6 +2012,10 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 	// sandbox's `SpawnGatekeepers` uses; on a dungeon floor it is built from the score like every other creature.
 	case ECataclysmDungeonCreature::Gatekeeper:
 		Build(GatekeeperRarityStep, GatekeeperHealth, GatekeeperAttackDamage, &GatekeeperArmour);
+		break;
+
+	case ECataclysmDungeonCreature::Wraith:
+		Build(WraithRarityStep, WraithHealth, WraithAttackDamage, &WraithArmour);
 		break;
 
 	default:
@@ -2582,7 +2589,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		TEXT("Put %d creatures on the dungeon floor now and %d more arrive over "
 			 "the next %d frames, %d in all, in %d groups: %d Imps, %d "
 			 "Hellhounds, %d Brutes, %d Abyssal Wardens, %d Corrupted Sentinels, "
-			 "%d Succubi and %d Gatekeepers. The floor has %d walkable cells and "
+			 "%d Succubi, %d Gatekeepers and %d Wraiths. The floor has %d walkable cells and "
 			 "the density asked for %d. No creature stands within %d cells of "
 			 "where the player arrives. It is %s, and its modifiers are worth "
 			 "%.1f. It is wave %d of this arena, it notices from %.1f times the "
@@ -2597,6 +2604,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		Population.HowMany(ECataclysmDungeonCreature::CorruptedSentinel),
 		Population.HowMany(ECataclysmDungeonCreature::Succubus),
 		Population.HowMany(ECataclysmDungeonCreature::Gatekeeper),
+		Population.HowMany(ECataclysmDungeonCreature::Wraith),
 		CurrentFloor->GetPlan().FloorCount(), Population.Wanted,
 		FCataclysmFloorPopulator::LeastCellsFromEntrance,
 		FloorBrief.bWaveWalksIn
@@ -3271,17 +3279,22 @@ void ACataclysmDungeonGameMode::RaiseTheReaper()
 		return;
 	}
 
-	// AN ABYSSAL WARDEN AT THE ENTRANCE, AT THE COMMON RUNG, the way Unstable Portal
-	// raises its Warden at the exit. The rung is set before its modifiers are drawn;
-	// see `SpawnPlacedCreature`.
+	// A WRAITH AT THE ENTRANCE, AT THE COMMON RUNG, the way Unstable Portal raises its Warden at the exit. The rung is
+	// set before its modifiers are drawn; see `SpawnPlacedCreature`. A WRAITH SINCE 2026-11-26, the owner's ruling that
+	// the Wraith art plays The Reaper; an Abyssal Warden until then. It walks at the Warden's 2.8 metres a second and
+	// neither dashes nor grabs (`ACataclysmWraithCharacter::BecomeTheReaper`), so "slowly stalks" stays true.
 	FCataclysmEnemyPlacement Placement;
 	Placement.Cell = CurrentFloor->CellOfWorld(CurrentFloor->EntranceWorld());
-	Placement.Creature = ECataclysmDungeonCreature::AbyssalWarden;
+	Placement.Creature = ECataclysmDungeonCreature::Wraith;
 	ACataclysmEnemyCharacter* Reaper = SpawnPlacedCreature(
 		Placement, Effects::TheReaperSightMultiplier, Effects::TheReaperRung);
 	if (!Reaper)
 	{
 		return;
+	}
+	if (ACataclysmWraithCharacter* AsWraith = Cast<ACataclysmWraithCharacter>(Reaper))
+	{
+		AsWraith->BecomeTheReaper();
 	}
 	Reaper->bCannotBeHurt = true;
 	FloorEnemies.Add(Reaper);
@@ -17020,6 +17033,9 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 			Creature.bCannotBeHurt = true; // A load's: the Reaper cannot be hurt.
 			TheReaper = &Creature; // A load's: the Reaper.
 			bTheReaperRaised = true; // A load's: the Reaper has come.
+			// AND IT WALKS SLOWLY AND NEITHER DASHES NOR GRABS AGAIN, since it is a Wraith (2026-11-26): the class comes
+			// back from its archetype row as an ordinary Wraith, so the Reaper's form is put back on.
+			if (ACataclysmWraithCharacter* AsWraith = Cast<ACataclysmWraithCharacter>(&Creature)) { AsWraith->BecomeTheReaper(); } // A load's: the Reaper's form.
 		}
 		else if (Saved.RaisedBy == FName(RaisedPortalUnleashing) && VoidPortals.IsValidIndex(Saved.RaisedGroup))
 		{
@@ -21307,9 +21323,12 @@ void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
 		return;
 	}
 
+	// AND WHAT RISES IS A WRAITH, since 2026-11-26: the owner's ruling that the Wraith art plays Vengeful Wraiths. The
+	// slain creature's kind still decides whether anything rises at all (the refusal above), and the figures are the
+	// Wraith's own raised by the row, as they were the slain kind's raised by it before.
 	FCataclysmEnemyPlacement Placement;
 	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
-	Placement.Creature = Kind;
+	Placement.Creature = ECataclysmDungeonCreature::Wraith;
 
 	// THE SIGHT MULTIPLIER IS GIVEN AT THE SPAWN, not written afterwards, because that is
 	// the parameter `SpawnPlacedCreature` already takes and the floor's own creatures get
