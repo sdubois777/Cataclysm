@@ -2,6 +2,143 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Death line meets the War line and runs in Unreal: the bundle 3 merge, its obligations, and four windows (death3-w1 to w4)
+
+**Affects:**
+- The merge of development at `9bd6ed996` (the War line, #2925) into the Death trees branch, commit `0bec3c68c`.
+  Every conflict kept both lines' work; the workbook is development's with `tools/reapply_death_trees_workbook.py` run on
+  it again, and every CSV was regenerated from the merged workbook and generator rather than resolved by hand.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `GainOnCriticalStrike` takes the blow's skill
+  tags. `CataclysmWarFervour.h` and `.cpp`: its `GainOnCriticalStrike` hands on to the Death line's; its
+  `PerCriticalStrikeStat` is a reference to the Death line's; `GainByRate` and Cleave's net gain go through
+  `UCataclysmFervour::RaisePool`; its decay out of combat stops at Miser's Grip's floor.
+  `Character/CataclysmPlayerCharacter.cpp`: one payment of a critical strike's Fervour, with the blow's tags.
+  `Character/CataclysmPlayerClassStats.cpp`: the stat listed once.
+- Tests: `CataclysmFervourGainsTests.cpp` (one new), `CataclysmWarFervourTests.cpp` (one new),
+  `CataclysmStatExemptionTests.cpp` (the War line's second probe of the stat removed);
+  `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py`, `test_stat_lookups_hand_over_what_they_should.py`,
+  `test_charge_and_placed_action_names_match_the_engine.py`, and the merged pins named under "The merge".
+- What the four windows found, fixed in commits `a568ab43c`, `61a254cbe`, `cfcabc9b2`, `469386286`, `08c93f562` and
+  `c10e1ab3f`, each named under "The four windows" with what it changed; and bundle 4 merged in, `dd04be38b`.
+
+### SAID FIRST
+
+- **WINDOW death3-w4 PASSED ON `dd04be38b`, WITH ONE PROOF ACCEPTED ON ITS ENGINE RESULT.** The whole Unreal suite:
+  5,959 performed, 5,959 succeeded. Python: 9,379 passed, 10 skipped. Proofs B and C proved. Proof A is recorded NOT
+  PROVED by the window's runner and accepted by the coordinating session on its engine result (2026-11-26): 80 tests
+  failed with its 59 breaks in and every test passed with them restored, but 2 of the 66 tests it predicted did not
+  fail. Both are named under "Window death3-w4" below, and issue [#2936](https://github.com/sdubois777/Cataclysm/issues/2936) holds them.
+- **IT TOOK FOUR WINDOWS.** death3-w1 did not compile (two errors); death3-w2 ended in a stack overflow and showed five more
+  faults; death3-w3 had 53 failures from three causes; death3-w4 passed. Each is under "The four windows" below.
+- **THE WAR LINE'S GAINS NOW REACH KINDRED FIRES, BORROWED TIME AND OVERFLOW.** Until this merge they wrote the pool
+  directly, which `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py` refuses. This changes play only
+  for a character holding both a War rate and one of those Soul Collector nodes.
+- **A FAULT IN SLICE C6c, FOUND IN THIS MERGE AND FIXED IN THE SECOND PASS (`61a254cbe`).** Every gain clamped itself to
+  the full bar before it called `RaisePool`, so Overflow, which counts what did not fit, heard almost nothing from a
+  real gain; its test called `RaisePool` directly. Every gain now hands `RaisePool` its whole amount, which holds the
+  pool to the bar as before. New test `Cataclysm.FervourLossAndChain.AGainPastTheBarThroughARealPathGivesOverflowItsExcess`
+  and Python guard `test_every_gain_hands_raise_pool_the_whole_gain.py`, proved.
+- **SLIPPERY HAS ITS ROW (`cfcabc9b2`).** The War Saboteur's `Saboteur_basic_trunk_004`, "At 5 points: After
+  successfully evading, gain 3 Fervour", had no row; the Death line's sentence-and-condition check found it. One
+  `class_resource` action row on `dodge`, 3 Fervour, from 5 points, written by the new
+  `tools/reapply_saboteur_slippery_workbook.py`. Ruled by the coordinating session.
+- **OBLIGATIONS 1 TO 4 AND 10 GO WITH `feat/death-skills-2885` TO THE FINAL BUNDLE.** Obligation 10 is about
+  `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`, which only that branch has.
+
+### The merge
+
+Twenty-nine files conflicted. The rules, so the next merge can follow them:
+
+- **Where both lines added beside one place, both are kept**: condition labels and their switch cases, stat names,
+  probes, enum members, word tables, event lists. The count sentences then say 114 conditions, 53 of them comparing
+  nothing, and "adds a hundred-and-fifteenth".
+- **Where both lines extended one entry, the two are joined into one**: `hit_taken` carries the share of maximum health
+  (Avenging Dead) AND the attacker (Thornwall); the passive row's `ChancePercent` and `MaxPoints` follow `PerPointFrom`
+  in that order, in the struct, the generator and the tests; `class_resource_at_maximum`'s words, `seconds_after_dodge`'s,
+  `own_stacks`' and `fervour_per_critical_strike`'s forms in the node-text test. Four of those were duplicate keys in a
+  Python dictionary, where the later silently wins; each is now one entry.
+- **The passive row port both lines carried** (slice B28) was merged against its own commit, `cb92ec18d`, as the base,
+  since the true merge base has neither copy; the result was checked for lines one side had deleted and the other kept.
+- **No class member is declared twice** in the nine headers both lines changed (issue #2900), checked by name.
+- **The data**: 897 Passive Effects rows (the Death line's 669 and the War line's 592, less the 364 both had), 497
+  authored nodes, 95 authored options, 108 named options; the enchantment table unchanged cell for cell from
+  development's, with a `ChancePercent` of 0 on every row.
+
+### The four windows
+
+| Window | Head | What it found | What was done |
+|---|---|---|---|
+| death3-w1 | `16a358e7c` | Two compile errors: `UCataclysmMovementSkill::PassesThroughEnemiesStat` was private (C2248), and `CataclysmBossFervourTests.cpp` built its expected rows from nested brace lists (C2440) | `a568ab43c`; then the second pass, ruled by the coordinating session: the Overflow fix and Slippery's row (`61a254cbe`, `cfcabc9b2`) |
+| death3-w2 | `cfcabc9b2`; its editor step committed the rebuilt tables (`acd9eb3e0`) | A stack overflow ended the whole suite: the full-bar reserve count asked the Second Self's flag, a stat, which read the conditions again. And five faults: `minions_in_reach_at_least` counted nothing for a commander that is not a character; Grave Pact never reached an Imp; `minion_hit` carried 0, so no Necrosis on it passed the tenth-of-health rule (#917); four tests built a player whose weapon could not reach a Death tree; Soul Tide's test expected the old condition | `469386286`: a guard (`bCountingFervourReserve`) breaks the cycle; each fault fixed. A diagnostic run on that head: 63 of 66 passed; `08c93f562` fixed the last three (Shared Leech sat inside the no-leech check; two tests used a victim or an ailment their rule refuses) |
+| death3-w3 | `08c93f562` | 53 whole-suite failures from three causes: 50 from `FCataclysmEnchantmentEffectRow::ChancePercent` not marked `DataTableImportOptional`, so every test-built enchantment table was refused; 2 from Hollow Step's hostile bit, which two body tests still expected to read `0/0`; 1 test naming seven Death stats with no exemption probe. The 27 new groups all passed alone | `c10e1ab3f`: the column marked optional, the two tests expect `8/0`, seven probes added. A diagnostic run on that head: 504 of 504 passed |
+| death3-w4 | `dd04be38b` (`c10e1ab3f` with bundle 4 merged in) | Passed; proof A accepted on its engine result | Below |
+
+### Window death3-w4
+
+On `dd04be38b`, the groups-alone step skipped as ruled (all 27 passed alone in death3-w3 and nothing since changes
+them), registered against bundle 4's window b4-w2 (5,794 performed) plus this line's tests:
+
+| Step | Result |
+|---|---|
+| Build | Succeeded, 80 actions, 73 files compiled |
+| Whole Unreal suite | 5,959 performed, 5,959 succeeded, 0 failed (registered 5,959). 58 skipped part of what they check (registered 58). Test saves: 892 written and deleted, 0 left behind (registered 892) |
+| Python | 9,379 passed, 10 skipped; JUnit `tests=9389`, `failures=0`, `errors=0`, `skipped=10`. Ruff: no problems |
+| Proof A, 59 breaks across the line's slices | With the breaks in, 168 tests performed and 80 failed; restored, every test passed. NOT PROVED by the runner, because 2 of its 66 predicted tests passed with the breaks in; accepted on the engine result by the coordinating session, 2026-11-26 |
+| Proof B, 2 breaks, `Cataclysm.KindReserves.` | Proved: 2 failed with the breaks in, 14 of 14 passed restored |
+| Proof C, 1 break, `Cataclysm.Death.` | Proved: 1 failed with the break in, 30 of 30 passed restored |
+
+**THE TWO PREDICTED TESTS PROOF A DID NOT FAIL**, opened as issue [#2936](https://github.com/sdubois777/Cataclysm/issues/2936):
+
+1. **Break C6b3** sends `ApplyPoolAction`'s class-resource branch to no pool, and was to fail
+   `Cataclysm.FervourOnEvents.AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt`. It passed. Since the Overflow fix
+   (`61a254cbe`), `UCataclysmRegeneration::TopUp` also sends the class resource through `RaisePool`, so the branch the
+   break removes and the path it then falls through to do the same thing, and no test can see the break. The branch
+   duplicates the TopUp path.
+2. **Break C4b1-1** deletes `AfterPoolRose`'s return on a kill's payment, and was to fail
+   `Cataclysm.FervourGains.KindredFiresLeavesAKillsHoldToTheKillsOwnStamp` as well as Borrowed Time's test. Borrowed
+   Time's failed; the Kindred Fires test passed. The cause is not confirmed.
+
+### The obligations
+
+| # | What | Done |
+|---|---|---|
+| 5 | `fervour_per_critical_strike` paid twice | One payment, the Death line's, before the `critical_strike` rows act, with the blow's skill tags (Battle Lust's melee row), a minion's left out. War's call removed from the hit handler; War's function hands on; War's constant is a reference to the Death one; War's class-stats line and probe removed; the generator's second asker entry removed. Held by `Cataclysm.WarFervour.ACriticalStrikeARealPlayerDealtFillsItsFervourAndAMeleeRowAddsToAMeleeOne` and `Cataclysm.CritsAndExecutes.ThePlayersCriticalStrikePaysFervourThroughTheRealHitHandler`, each of which fails on a double payment |
+| 6 | The condition-count sentences | Joined: 114, 53 |
+| 7 | Required columns on test-built sheets | `Max Points` added to `PASSIVE_PORT_HEADERS` |
+| 8 | The full bar with War's conditioned maximum | By reading: War's conditioned maximum adjusts `ClassResourceMaximum`, the field `ClassResourceAtMaximum` reads, less `ClassResourceReserved`. War's comment anticipated this merge and now says it is done. No new test |
+| 9 | The passive order script's sentence | Both lines' sentences kept in the merge; the order script's tests pass in the whole Python suite on `dd04be38b` (9,379 passed, 0 failed) |
+| 11 | Threshold action rows renamed `_From<N>` | No War action row has a Min Points threshold, and no War node has two action rows on one action and event, so no War key changes |
+| 13 | `points` in `FRACTION_BASES` | Present beside War's three |
+| 14, 17 | War's gains through `RaisePool` | `GainByRate` and Cleave's net gain; War's six losses listed in the guard's inventory with their reasons. New test `Cataclysm.FervourGains.AWarRateAndCleavesNetGainAreGainsKindredFiresHears` |
+| 16 | War's crit rows and the next-hit charge | By reading: War's crit code acts on the announced critical strike, which the charge decides; nothing in it reads the count |
+| 17 | War's decay and Miser's Grip | The decay out of combat stops at the floor. New test `Cataclysm.WarFervour.TheDecayOutOfCombatStopsAtMisersGripsFloor`. A JUDGEMENT: the sentence, "Your Fervour never decays below 3% of your maximum Fervour per point", names no one decay. The Ravager's decay does not read the floor, as before; nobody ruled it should |
+| 19 | Unstoppable, Nothing Moves You, Relentless | Merged as built in C6d2 |
+| 20 | Hollow Step's hostile bit | Merged as built in C6e |
+
+### PLAY-TEST POINT FOR THE OWNER: TIMED GAINS KEEP OVERFLOW'S STACKS UP
+
+Since the Overflow fix every gain hands `RaisePool` its whole amount, so a gain on a timer feeds Overflow at a full
+bar too: Living Harvest (`SoulCollector_keystone_c_kA`, 0.5 Fervour a second for each enemy in the Siphon) with 2 or
+more enemies in the Siphon, and the Masochist's Fervour-per-second rows (`UCataclysmFervour::GainPerSecondStep`), keep
+Overflow's stacks up at a full bar for as long as that lasts. Each gain counts whole Fervour only, so one enemy's 0.5 a
+second gives none. No timed gain reaches the pool through `UCataclysmRegeneration::TopUp`: its timed callers fill
+health, mana and the energy shield.
+
+RULED BY THE COORDINATING SESSION, 2026-11-25: keep it as built (option a). "Fervour gained above the maximum" has no
+exception; keeping the stacks costs the player a full bar they are not spending; the owner likes two pieces that
+combine into something strong. IF IT PROVES TOO STRONG IN PLAY, the change to make is option (b): `GainPerSecondStep`
+and `FCataclysmSiphon::FervourOnce` cut themselves to what fits, so only gains from events reach Overflow.
+
+### PLAY-TEST POINT FOR THE OWNER: NECROSIS FROM MINIONS FOLLOWS THE TENTH-OF-HEALTH RULE
+
+`minion_hit` carries what the minion's blow dealt to health, and an ailment a row applies on it is refused when that is
+under a tenth of the target's maximum health (#917, `UCataclysmAilments::BlowCanCarryAnAilment`), exactly as a player's
+own `apply_status` row on `hit_dealt` is: that event carries `Notice.DealtToHealth` into the same check. RULED BY THE
+COORDINATING SESSION, 2026-11-25: consistency, so no exemption. Cold Hands (`Necromancer_basic_spine_004`) and Grave Cold
+(`Necromancer_keystone_spine_002`) therefore rarely apply Necrosis from a weak minion against a strong enemy.
+
+---
+
 ## 2026-11-26 — Bundle 4: six branches merged (creatures belong to their Cataclysm, pause, Abyssal Rifts, War's Quest Sieges, Abomination lairs, the Death and War enemy modifiers), a Fallen City takes the Cataclysm that felled it, and seven windows
 
 **Branch `feat/bundle-4-creatures-pause-rifts-sieges-lairs-modifiers`, cut from development `9bd6ed996`**, which held
