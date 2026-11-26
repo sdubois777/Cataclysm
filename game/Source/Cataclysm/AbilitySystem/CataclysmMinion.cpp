@@ -1981,7 +1981,10 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		if (UCataclysmAbilitySystemComponent* Theirs =
 				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
 		{
-			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, 0.0f,
+			// WITH WHAT REACHED THE ENEMY'S HEALTH AS ITS AMOUNT, so an ailment a row applies on it meets the owner's
+			// rule of 2026-09-02 (#917, a tenth of the target's maximum health) as a hit's does. Window death3-w2 found
+			// it carried nought, which refused every ailment: Cold Hands' and Grave Cold's Necrosis never landed.
+			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, Resolved.DealtToHealth,
 							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker, Target);
 		}
 	}

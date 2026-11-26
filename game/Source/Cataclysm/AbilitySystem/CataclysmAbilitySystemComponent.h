@@ -1873,6 +1873,14 @@ public:
 	float HitBeingAnnouncedPercentOfMaxHealth = -1.0f;
 
 	/**
+	 * True while `CurrentConditions` is counting what followers hold back of the class resource. Window death3-w2 found
+	 * the cycle: `UCataclysmCommand::ReservedFervourAmong` asks `UCataclysmSecondSelf::Chosen`, which asks a stat, which
+	 * asks `CurrentConditions` again, without end, and the editor stopped on a stack overflow. A reading made inside
+	 * that count leaves the reserve at nought; the Second Self's flag is no full-bar row, so nothing it reads changes.
+	 */
+	mutable bool bCountingFervourReserve = false;
+
+	/**
 	 * Move this character to a random reachable point within this many metres of where it stands, or leave it where
 	 * it stands. Ruled 2026-10-12, for "Teleport to a random location within 4 meters when hit".
 	 *

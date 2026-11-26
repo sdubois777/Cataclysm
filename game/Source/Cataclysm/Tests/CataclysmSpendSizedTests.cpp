@@ -419,6 +419,10 @@ bool FCataclysmSpendSizedRealRowsTest::RunTest(const FString&)
 		return false;
 	}
 	State->SetCreationChoice(FName(TEXT("Dagger")), FName(TEXT("Death")));
+	// THE STARTING WEAPON TAKEN OFF: `ACataclysmPlayerCharacter::GiveStartingWeapon` made it at spawn with the default
+	// damage type, before Death was chosen, so it carried the character to the Demonic trees and no Death tree was
+	// reachable. Window death3-w2 found it. With nothing worn the creation type is what the character carries.
+	Equipment->UnequipEverything();
 	State->SetLevelAndExperience(30, 0);
 	const FName Spent(TEXT("fervour_spent"));
 	const auto OnASpendCount = [System, Spent]()

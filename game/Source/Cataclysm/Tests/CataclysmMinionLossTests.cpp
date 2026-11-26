@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystemGlobals.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -490,6 +491,16 @@ bool FCataclysmMinionLossSharedLeechTest::RunTest(const FString&)
 
 	AddInfo(FString::Printf(TEXT("SHARED LEECH: blows took %.2f and %.2f; %d payment(s) before the row, %d after"),
 							FirstLoss, SecondLoss, PaidWithNoRow, Paid.Num()));
+	// WHERE A PAYMENT COULD STOP, read for window death3-w2's diagnosis: the Imp's commander, its ability system, and the
+	// share the commander's stat line answers.
+	const AActor* CommanderFound = UCataclysmCommand::CommanderOf(Imp);
+	AddInfo(FString::Printf(TEXT("SHARED LEECH DIAGNOSIS: commander is the summoner %d; its ability system found %d; "
+								 "the share asked %.3f; the Imp's own ability system found %d"),
+							CommanderFound == Summoner.Actor ? 1 : 0,
+							UCataclysmTargeting::AbilitySystemOf(CommanderFound) == Summoner.AbilitySystem ? 1 : 0,
+							Summoner.AbilitySystem->StatForSkill(FName(UCataclysmLeech::MinionDamageLeechedStat),
+																 FGameplayTagContainer(), 0.0f),
+							UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Imp) != nullptr ? 1 : 0));
 	if (!TestTrue(TEXT("set-up: both blows landed"), FirstLoss > 0.0f && SecondLoss > 0.0f))
 	{
 		return false;

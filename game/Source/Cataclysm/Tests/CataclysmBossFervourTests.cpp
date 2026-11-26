@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -216,7 +217,31 @@ bool FCataclysmBossFervourPatientHandlerTest::RunTest(const FString&)
 		return false;
 	}
 
+	// THE TICKS ANNOUNCED, counted for window death3-w2's diagnosis: how many reach the hit announcement, and how many
+	// name the player as their attacker, which `ACataclysmPlayerCharacter::OnSomethingWasHit` requires.
+	int32 TicksAnnounced = 0;
+	int32 TicksOfThePlayers = 0;
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FDelegateHandle Counting;
+	if (Events)
+	{
+		Counting = Events->OnHit.AddLambda([&TicksAnnounced, &TicksOfThePlayers, &Scene](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.bDamageOverTime)
+			{
+				++TicksAnnounced;
+				TicksOfThePlayers += Notice.Attacker == Scene.Player ? 1 : 0;
+			}
+		});
+	}
 	RunClock(World, 1.05f);
+	if (Events)
+	{
+		Events->OnHit.Remove(Counting);
+	}
+	AddInfo(FString::Printf(TEXT("PATIENT BLADE DIAGNOSIS: %d tick(s) announced in 1.05 seconds, %d naming the player; "
+								 "a Boss tick paid %.2f seconds ago"),
+							TicksAnnounced, TicksOfThePlayers, Scene.System->SecondsSinceBossTickPaid()));
 	TestEqual(TEXT("at 1.05 seconds: the Boss's tick paid 5 and the Common's nothing"), FervourHeld(Scene.System), 5.0f,
 			  0.001f);
 	RunClock(World, 1.0f);

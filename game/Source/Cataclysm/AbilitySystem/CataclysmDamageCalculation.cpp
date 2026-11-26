@@ -1251,9 +1251,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// AND A DEATHMARK'S PERCENT, "Marked enemies take +3% increased damage per point from all sources" (the
 			// Berserker's Deathmark, 2026-11-25): from every attacker, minions and allies included (question 3), as the
 			// rider beside it is.
-			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)) / 100.0f
-			// AND A COMMANDED DEFENDER'S SHARE FROM ITS COMMANDER, Grave Pact (the Death trees' slice C6d1).
-			* MinionDamageTakenFactor(Defender);
+			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)) / 100.0f;
 		Damage *= DamageTakenFactor;
 
 		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS
@@ -1338,6 +1336,19 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 				// tick but one its applier's stats priced; see `FCataclysmIncomingHit::TargetConditionedDotDamageMultiplier`.
 				Damage *= FMath::Max(0.0f, Hit.TargetConditionedDotDamageMultiplier);
 			}
+		}
+	}
+
+	// 6a. A COMMANDED DEFENDER'S SHARE FROM ITS COMMANDER, Grave Pact (the Death trees' slice C6d1): "Your minions take
+	// 30% less damage". A STEP OF ITS OWN AND NOT INSIDE STEP 6, which runs only for a defender with a combat set: an
+	// Imp has none, and window death3-w2 found the share never applied to one. The same two rules as step 6: only a blow
+	// that meets defences, and a blow that cannot be mitigated is not lowered by it (ruled 2026-10-12).
+	if (bMeetsDefences)
+	{
+		const float CommandersShare = MinionDamageTakenFactor(Defender);
+		if (!Hit.bCannotBeMitigated || CommandersShare > 1.0f)
+		{
+			Damage *= CommandersShare;
 		}
 	}
 

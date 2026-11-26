@@ -399,7 +399,10 @@ bool FCataclysmKillHooksRealRowsTest::RunTest(const FString&)
 		{
 			++Tide;
 			TestEqual(TEXT("Soul Tide: Fervour a kill"), Row->Stat, FString(UCataclysmFervour::PerKillStat));
-			TestEqual(TEXT("Soul Tide: under the kill clock"), Row->Condition, FString(TEXT("seconds_after_kill")));
+			// UNDER THE KILL-CHAIN CLOCK SINCE SLICE C6c, which Unbroken Chain lengthens; this read the plain kill clock
+			// until window death3-w2 ran it.
+			TestEqual(TEXT("Soul Tide: under the kill-chain clock"), Row->Condition,
+					  FString(TEXT("kill_chain_within_seconds")));
 			TestEqual(TEXT("Soul Tide: 2 seconds"), Row->ConditionValue, 2.0f, 0.001f);
 		}
 	}

@@ -1428,14 +1428,16 @@ def test_a_minions_and_a_thralls_blow_raise_minion_hit_on_the_commander() -> Non
     minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
     assert re.search(r"else if \(OwnDamagePerHit > 0\.0f\)\s*\{\s*if \(UCataclysmAbilitySystemComponent\* Theirs =\s*"
                      r"Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\(Summoner\)\)\)\s*"
-                     r"\{\s*Theirs->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &TypeTags, 0\.0f,\s*"
+                     # WITH WHAT REACHED HEALTH AS ITS AMOUNT since window death3-w2, so an ailment a row applies
+                     # on it meets the owner's tenth-of-maximum-health rule (#917) as a hit's does.
+                     r"\{\s*Theirs->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &TypeTags, Resolved\.DealtToHealth,\s*"
                      r"!Resolved\.bEvaded && !Resolved\.bRefusedByImmunityToAttacker, Target\);",
                      minion)
     assert minion.count('"minion_hit"') == 1
     effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
     assert re.search(r"UCataclysmTargeting::AbilitySystemOf\(UCataclysmCommand::CommanderOf\(Instigator\)\)\)\)\s*\{\s*"
-                     r"Commanders->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &SkillTags, 0\.0f,\s*true, "
-                     r"Target\);", effects)
+                     r"Commanders->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &SkillTags, Landed->DealtToHealth,\s*"
+                     r"true,\s*Target\);", effects)
     assert effects.count('"minion_hit"') == 1
 
 
@@ -1453,7 +1455,11 @@ def test_the_minion_stats_of_the_slice_are_read_where_they_act() -> None:
                      r"FName\(TEXT\(\"immune_to_slow\"\)\), FGameplayTagContainer\(\), 0\.0f\) > 0\.0f\)\s*\{\s*"
                      r"return true;", body)
     calculation = code_without_comments(SOURCE.parent / "CataclysmDamageCalculation.cpp")
-    assert re.search(r"\* MinionDamageTakenFactor\(Defender\);\s*Damage \*= DamageTakenFactor;", calculation)
+    # A STEP OF ITS OWN SINCE WINDOW death3-w2, outside step 6, which a defender with no combat set (an Imp) never
+    # reaches: under the defences rule, and never lowering a blow that cannot be mitigated.
+    assert re.search(r"if \(bMeetsDefences\)\s*\{\s*const float CommandersShare = MinionDamageTakenFactor\(Defender\);\s*"
+                     r"if \(!Hit\.bCannotBeMitigated \|\| CommandersShare > 1\.0f\)\s*\{\s*Damage \*= CommandersShare;",
+                     calculation)
     assert 'SummonerMultiplierFor(\n\t\t\tCommander, TEXT("minion_damage_taken")' in calculation \
         or re.search(r'SummonerMultiplierFor\(\s*Commander, TEXT\("minion_damage_taken"\)', calculation)
     command = code_without_comments(SOURCE.parent / "CataclysmCommand.cpp")

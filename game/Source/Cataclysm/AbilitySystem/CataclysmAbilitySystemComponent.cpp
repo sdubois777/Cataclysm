@@ -1422,7 +1422,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND WHAT THEY HOLD BACK OF THE CLASS RESOURCE, from the same list, for
 	// the full bar `ClassResourceAtMaximum` judges against the maximum less it.
 	// Ruled 2026-11-25 (the Death trees' slice C).
-	State.ClassResourceReserved = UCataclysmCommand::ReservedFervourAmong(GetAvatarActor(), Commanded);
+	// NOT FROM INSIDE THAT COUNT: it asks the Second Self's flag, a stat, which reads this function again. See
+	// `bCountingFervourReserve`.
+	if (!bCountingFervourReserve)
+	{
+		TGuardValue<bool> Counting(bCountingFervourReserve, true);
+		State.ClassResourceReserved = UCataclysmCommand::ReservedFervourAmong(GetAvatarActor(), Commanded);
+	}
 
 	// AND HOW MANY OF THEM ARE DEPLOYABLE MACHINES. Issue #1833, deployable
 	// Part 3: "Each active gadget increases your evasion chance by 5%-10%".
@@ -1836,6 +1842,25 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// player's ability system lives on its player state, which stands
 	// nowhere; the avatar is the body the rows are about. An ability system
 	// with no avatar has no position, so there is nothing near it.
+	// AND THE COMMANDER'S OWN FOLLOWERS WITHIN THE WIDEST REACH A ROW ASKS ABOUT, for `MinionsInReachAtLeast`. The Death
+	// trees' slice C6d1 (2026-11-25). `UCataclysmCommand::ThingsCommandedBy` is the one list of a commander's minions,
+	// imps and thralls. FROM THE AVATAR, WHATEVER ITS CLASS, and before the character-only return below: a commander
+	// need not be a character, and window death3-w2 found this count never ran for one that was not.
+	if (WidestMinions > 0.0f)
+	{
+		if (const AActor* Commander = GetAvatarActor())
+		{
+			const FVector From = Commander->GetActorLocation();
+			for (const AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander, WidestMinions * 100.0f))
+			{
+				if (IsValid(Follower))
+				{
+					State.OwnMinionDistancesMetres.Add(FVector::Dist(From, Follower->GetActorLocation()) / 100.0f);
+				}
+			}
+		}
+	}
+
 	const ACataclysmCharacterBase* Character =
 		Cast<ACataclysmCharacterBase>(GetAvatarActor());
 	if (!Character)
@@ -1905,21 +1930,6 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 						State.CrippledHostileDistancesMetres.Add(Distances[Index]);
 					}
 				}
-			}
-		}
-	}
-
-	// AND THE CHARACTER'S OWN FOLLOWERS WITHIN THE WIDEST REACH A ROW ASKS ABOUT, for `MinionsInReachAtLeast`. The Death
-	// trees' slice C6d1 (2026-11-25). `UCataclysmCommand::ThingsCommandedBy` is the one list of a commander's minions,
-	// imps and thralls.
-	if (WidestMinions > 0.0f)
-	{
-		const FVector From = Character->GetActorLocation();
-		for (const AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Character, WidestMinions * 100.0f))
-		{
-			if (IsValid(Follower))
-			{
-				State.OwnMinionDistancesMetres.Add(FVector::Dist(From, Follower->GetActorLocation()) / 100.0f);
 			}
 		}
 	}

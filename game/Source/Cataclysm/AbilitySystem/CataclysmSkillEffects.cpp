@@ -1510,7 +1510,9 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 				if (UCataclysmAbilitySystemComponent* Commanders = Cast<UCataclysmAbilitySystemComponent>(
 						UCataclysmTargeting::AbilitySystemOf(UCataclysmCommand::CommanderOf(Instigator))))
 				{
-					Commanders->ActOnEvent(FName(TEXT("minion_hit")), &SkillTags, 0.0f, /*bLanded=*/true, Target);
+					// WITH WHAT REACHED HEALTH, as an imp's carries since window death3-w2 (the ailment rule, #917).
+					Commanders->ActOnEvent(FName(TEXT("minion_hit")), &SkillTags, Landed->DealtToHealth, /*bLanded=*/true,
+										   Target);
 				}
 			}
 		}
