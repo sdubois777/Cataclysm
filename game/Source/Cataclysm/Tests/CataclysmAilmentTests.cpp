@@ -1016,7 +1016,7 @@ CATACLYSM_AILMENT_TEST(FCataclysmCrippleAndWeakenPastCertaintyTest,
 // ---------------------------------------------------------------------------
 
 CATACLYSM_AILMENT_TEST(FCataclysmAilmentThresholdTest,
-	"Cataclysm.Ailments.ABlowMustTakeATenthOfMaximumHealthAndLeaveItsTargetAlive")
+	"Cataclysm.Ailments.ABlowThatDealtAnythingCarriesAnAilmentAndOneThatKilledOrDealtNothingDoesNot")
 {
 	using namespace CataclysmAilmentTest;
 
@@ -1051,25 +1051,119 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentThresholdTest,
 		return Defender.Carries(Bleed->TagName);
 	};
 
-	// THE PROJECT OWNER'S RULE FOR AN AILMENT NOT FROM THE SKILL'S OWN ROW,
-	// settled on #917: the blow must take at least a tenth of maximum health.
+	// THE OWNER'S RULING OF 2026-11-26 ("I agree, fix it"): an ailment that is not the skill's own needs a blow that
+	// landed and dealt more than nought, and no longer the tenth of maximum health #917 asked (2026-09-02).
 	float Taken = 0.0f;
-	TestFalse(TEXT("a blow taking 9.9% of maximum health applies nothing"),
-		Bleeds(990.0f, 10'000.0f, 10'000.0f, Taken));
-	TestEqual(TEXT("and it did land"), Taken, 990.0f, 0.5f);
+	TestTrue(TEXT("a blow taking 1% of maximum health applies the bleed"),
+		Bleeds(100.0f, 10'000.0f, 10'000.0f, Taken));
+	TestEqual(TEXT("and it did land"), Taken, 100.0f, 0.5f);
 
-	TestTrue(TEXT("a blow taking 10.1% applies the bleed"),
-		Bleeds(1'010.0f, 10'000.0f, 10'000.0f, Taken));
+	// THE CONTROL: A BLOW THAT DEALT NOTHING APPLIES NOTHING, #917's original concern.
+	TestFalse(TEXT("CONTROL: a blow of nought applies nothing"),
+		Bleeds(0.0f, 10'000.0f, 10'000.0f, Taken));
+	TestEqual(TEXT("and took nothing"), Taken, 0.0f, 0.01f);
 
-	// AND A BLOW THAT KILLED APPLIES NOTHING, as a burn is never set on a
-	// corpse. 150 is more than a tenth of 1,000, so the threshold is not what
-	// stops it.
+	// AND A BLOW THAT KILLED APPLIES NOTHING, as a burn is never set on a corpse.
 	TestFalse(TEXT("a blow that kills applies nothing"),
 		Bleeds(500.0f, 150.0f, 1'000.0f, Taken));
-	TestEqual(TEXT("though it took more than a tenth"), Taken, 150.0f, 0.5f);
+	TestEqual(TEXT("though it took everything"), Taken, 150.0f, 0.5f);
 
 	TestTrue(TEXT("while the same blow at full health applies the bleed"),
 		Bleeds(500.0f, 1'000.0f, 1'000.0f, Taken));
+	return true;
+}
+
+CATACLYSM_AILMENT_TEST(FCataclysmAilmentShieldTest,
+	"Cataclysm.Ailments.ABlowTheShieldAbsorbsWholeLaysPoisonButNotBleed")
+{
+	using namespace CataclysmAilmentTest;
+	// THE OWNER, 2026-11-26: "bleed should be the only ailment that doesn't apply against energy shield. The rest should
+	// work." A blow of 1,000 into a shield of 10,000 reaches no health: it poisons and does not bleed. THE CONTROL: the
+	// same blow on a defender with no shield does both.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
+
+	const FCataclysmAilmentKind* Bleed = KindOf(TEXT("Bleed"));
+	const FCataclysmAilmentKind* Poison = KindOf(TEXT("Poison"));
+	if (!TestNotNull(TEXT("Bleed"), Bleed) || !TestNotNull(TEXT("Poison"), Poison))
+	{
+		return false;
+	}
+	const FScopedFighter Attacker(World);
+	Attacker.ArmFor(1'000.0f);
+	Attacker.SetChance(*Bleed, 100.0f);
+	Attacker.SetChance(*Poison, 100.0f);
+
+	const FScopedFighter Shielded(World, 5'000.0f);
+	Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 10'000.0f);
+	Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 10'000.0f);
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Shielded.Actor, 100.0f);
+	TestEqual(TEXT("set-up: the shield took the whole blow, health none"), Shielded.Health(), 5'000.0f, 0.5f);
+	TestTrue(TEXT("a blow the shield absorbed whole poisons"), Shielded.Carries(Poison->TagName));
+	TestFalse(TEXT("and does not bleed"), Shielded.Carries(Bleed->TagName));
+
+	const FScopedFighter Bare(World, 5'000.0f);
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Bare.Actor, 100.0f);
+	TestTrue(TEXT("CONTROL: with no shield the same blow poisons"), Bare.Carries(Poison->TagName));
+	TestTrue(TEXT("CONTROL: and bleeds"), Bare.Carries(Bleed->TagName));
+	return true;
+}
+
+CATACLYSM_AILMENT_TEST(FCataclysmAilmentVoidSplinterShieldTest,
+	"Cataclysm.Ailments.AVoidSplinterTickGoesPastTheShieldAndAPoisonTickDoesNot")
+{
+	using namespace CataclysmAilmentTest;
+	// THE OWNER, 2026-11-26: "Maybe void splinter should ignore es altogether?", ruled yes by the coordinating session.
+	// A Void Splinter on a defender with a full shield takes its share from health and leaves the shield whole. THE
+	// CONTROL: a poison on the same kind of defender is taken by the shield, and health is untouched.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FCataclysmAilmentKind* Splinter = KindOf(TEXT("Void Splinter"));
+	const FCataclysmAilmentKind* Poison = KindOf(TEXT("Poison"));
+	if (!TestNotNull(TEXT("Void Splinter"), Splinter) || !TestNotNull(TEXT("Poison"), Poison))
+	{
+		return false;
+	}
+	const FScopedFighter Attacker(World);
+	Attacker.ArmFor(1'000.0f);
+	const auto Shielded = [](const FScopedFighter& Fighter)
+	{
+		Fighter.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 1'000.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 1'000.0f);
+	};
+	const auto ShieldOf = [](const FScopedFighter& Fighter)
+	{
+		return Fighter.AbilitySystem->GetNumericAttribute(Vital::GetEnergyShieldAttribute());
+	};
+
+	const FScopedFighter Splintered(World, 5'000.0f);
+	Shielded(Splintered);
+	const FScopedFighter Poisoned(World, 5'000.0f);
+	Shielded(Poisoned);
+	if (!TestTrue(TEXT("set-up: the splinter is laid"),
+				  UCataclysmAilments::Apply(Attacker.Actor, Splintered.Actor, *Splinter, /*Magnitude=*/1.0f))
+		|| !TestTrue(TEXT("set-up: the poison is laid"),
+					 UCataclysmAilments::Apply(Attacker.Actor, Poisoned.Actor, *Poison, /*Magnitude=*/1.0f)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 2.1f);
+
+	TestTrue(*FString::Printf(TEXT("the splinter took health past the shield: %.1f of 5,000 left"), Splintered.Health()),
+			 Splintered.Health() < 5'000.0f);
+	TestEqual(TEXT("and left the shield whole"), ShieldOf(Splintered), 1'000.0f, 0.5f);
+	TestEqual(TEXT("CONTROL: the poison took no health"), Poisoned.Health(), 5'000.0f, 0.5f);
+	TestTrue(*FString::Printf(TEXT("CONTROL: the shield took the poison: %.1f of 1,000 left"), ShieldOf(Poisoned)),
+			 ShieldOf(Poisoned) < 1'000.0f);
 	return true;
 }
 

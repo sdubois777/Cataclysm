@@ -303,7 +303,7 @@ CATACLYSM_TEST(FCataclysmBlockTest, "Cataclysm.Damage.BlockRemovesHalfAndApplies
 }
 
 CATACLYSM_TEST(FCataclysmEnergyShieldTest,
-	"Cataclysm.Damage.EnergyShieldAbsorbsBeforeHealthAndEveryTickButABleed")
+	"Cataclysm.Damage.EnergyShieldAbsorbsBeforeHealthAndEveryTickAndHoldsABleedOff")
 {
 	UWorld* World = CataclysmDamageTest::MakeWorld();
 	{
@@ -327,14 +327,31 @@ CATACLYSM_TEST(FCataclysmEnergyShieldTest,
 		TestEqual(TEXT("and health takes the rest of it"),
 			OverTime.DealtToHealth, 600.0f);
 
-		// A BLEED STILL PASSES STRAIGHT THROUGH, to a defender with no flag.
+		// A BLEED DEALS NOTHING WHILE THE SHIELD HOLDS. The owner, 2026-11-26:
+		// "Bleed deals no damage while the target has energy shield." Until then
+		// it passed straight through to health, and this case asserted that.
+		D.Vitals->SetEnergyShield(400.0f);
 		FCataclysmIncomingHit Bleed = Dot;
 		Bleed.bIsBleed = true;
 		const FCataclysmDamageResult Bled = D.Resolve(Bleed);
 		TestEqual(TEXT("The shield absorbs none of a bleed"),
 			Bled.AbsorbedByShield, 0.0f);
-		TestEqual(TEXT("and a bleed reaches health in full"),
-			Bled.DealtToHealth, 1000.0f);
+		TestEqual(TEXT("and a bleed takes nothing from health while the shield holds"),
+			Bled.DealtToHealth, 0.0f);
+
+		// THE CONTROL: with the shield gone, the same bleed reaches health in full.
+		D.Vitals->SetEnergyShield(0.0f);
+		const FCataclysmDamageResult BledUnshielded = D.Resolve(Bleed);
+		TestEqual(TEXT("CONTROL: with no shield the bleed reaches health in full"),
+			BledUnshielded.DealtToHealth, 1000.0f);
+
+		// AND A TICK THAT IGNORES THE SHIELD -- Void Splinter's, since 2026-11-26 -- goes to health past a full one.
+		D.Vitals->SetEnergyShield(400.0f);
+		FCataclysmIncomingHit PastTheShield = Dot;
+		PastTheShield.bIgnoresEnergyShield = true;
+		const FCataclysmDamageResult Past = D.Resolve(PastTheShield);
+		TestEqual(TEXT("a tick that ignores the shield leaves it whole"), Past.AbsorbedByShield, 0.0f);
+		TestEqual(TEXT("and reaches health in full"), Past.DealtToHealth, 1000.0f);
 	}
 	World->DestroyWorld(false);
 	return true;
