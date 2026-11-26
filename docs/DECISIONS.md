@@ -52,6 +52,22 @@ Decisions made outside the Google Drive documents, newest first.
 - **THE LABEL HAS NOT BEEN SEEN.** It is the gadget's type name, spaced ("Bolt Turret x2"), on the status line every
   character with an overhead bar draws.
 
+### WINDOW war2-w1 (the War line's first window), and what it cost
+
+- **The build failed twice before it ran.** Both times the error was C2666, an ambiguous `TestEqual`. In Unreal Engine
+  5.8, `FVector::Dist2D` and `GetActorScale3D` return `double`, and `TestEqual` has no overload taking a `double` with a
+  `float`.
+  - The first build stopped on twelve such calls, the second on one more: the expected value was a `double`.
+  - Each was fixed with a `static_cast<float>`. Two builds of the machine's time went on this.
+  - **Write `static_cast<float>(FVector::Dist2D(...))` from the start** in any new test.
+- **The run itself:** 5,731 tests performed, 5,716 succeeded and 15 failed. Python passed.
+  - One failure was a game fault. Ambush's row, whose only condition is the trap history, was refused because the
+    ability system's state builder returned early, before it read that history.
+  - Thirteen were faults in the tests.
+  - One needed a ruling: Lightning Rod. Its ruling (L3) is revised in the V5a entry.
+  - The coordinating session then revised G3 as well; see the V5g entry.
+- The fixes, and the record of the run, go in the window record for war2-w2.
+
 ### WHAT WAS RULED
 
 - The owner, 2026-11-25, first message, verbatim: "Well my thought was, players would probably want to build more than
@@ -330,13 +346,16 @@ which would fail `TheNextAttackDealsTheStoredHitWholeAndOnlyOnce`.
 - **WITH NO CURSOR**, as in every automation test and for a press the controller does not route, gadgets move to the
   player's feet. A War cast with no cursor uses the avatar's location, as `AimPoint` already did.
 - **PLAY-TEST POINTS, as ruled:**
-  - G3: a War cast with no room spends its cost and its cooldown on moving the gadgets.
+  - G3: a War cast with no room spends its cost and its cooldown on moving the gadgets. **Revised after window
+    war2-w1:** the move is free and starts the cooldown. See below.
   - G5: the converted basic attack, with no room, moves every gadget on every click, so clicking quickly moves them
     again and again.
 - **WHERE THE TEXT APPEARS (G6):** the second line of a skill box's pop-up, its cost line
   (`UCataclysmSkillBar::CostLineFor`).
   - On a slot converted into a gadget: "Each gadget reserves 15 Fervour. Press again to place another while your
     Fervour can hold it; with no room, every gadget moves to where you aim." (15 before levels and reductions).
+    **After window war2-w1** the rule reads: "Press again to place another while you can pay for it and your Fervour
+    can hold it; otherwise every gadget moves to where you aim, at no cost."
   - On a War deployable whose set holds a gadget: after its costs, "Each gadget reserves 5 Fervour." (Iron Fortress:
     "Each machine reserves 5 Fervour.") and the same rule.
   - A War deployable's reserve was not named in the pop-up before.
@@ -367,6 +386,47 @@ which would fail `TheNextAttackDealsTheStoredHitWholeAndOnlyOnce`.
   - G9: rewrite the tests of the old rule.
 - The coordinating session, on enchantments: the place-or-move rule covers a skill gadget an enchantment places; test
   one. **TRAPS KEEP TODAY'S BEHAVIOUR: each press places one while the reserve fits, and traps never move.**
+
+### G3, REVISED AFTER WINDOW war2-w1
+
+- **What the window found.** War2-w1 failed the V5g War-cast test. An Iron Fortress cast was refused for its cost, 50
+  Fervour from a pool of 5, before it reached the room check. The fix sent with the window's diagnosis set the tests'
+  Fervour cost to nought.
+- **What the coordinating session ruled instead.** It went back to the owner's own words: "no moving unless you don't
+  have enough fervour to put out another". The revised G3, as the coordinating session put it:
+  - "a gadget press that cannot place another gadget, because the reserve does not fit OR the cast's cost cannot be
+    paid, moves every gadget instead";
+  - "The move pays no resource cost and starts the skill's cooldown";
+  - "Apply it to every gadget skill, not only War casts";
+  - "Check for room and cost before CheckCost refuses".
+- **How it is built.**
+  - `UCataclysmDeployableSkill::MovesInsteadOfPlacing` decides whether a use moves.
+    - It moves when the set holds a gadget, the caster commands a gadget, and either the whole set's reserve does not
+      fit or the parent class's `CheckCost` refuses.
+    - The deployable's `CheckCost` override answers yes when the use will move. A cost that cannot be paid therefore
+      no longer stops the press before it reaches `ActivateAbility`.
+  - `ActivateAbility` asks that first, before `CommitAndBegin`. When the use moves, it:
+    - commits only the cooldown;
+    - moves every gadget to the aimed point;
+    - ends the ability.
+  - The old move, made after the cost was paid, is gone.
+- **A converted slot's move was already free.** It now starts a cooldown of its own, kept on the ability system per
+  slot: `SkillGadgetMoveReadyAtSeconds`, read by `SkillGadgetMoveSecondsLeft`.
+  - Its length is the interval the slot's newest gadget casts on, `SkillGadgetSecondsBetweenCasts`. That is a
+    judgement: a converted slot's skill no longer runs a cooldown of its own.
+  - A move press while the cooldown runs does nothing. Placing another gadget is unchanged and never waits.
+  - G5, rapid clicking on the basic gadget, stays a play-test point. The cooldown now limits it.
+- **Judgement: with no gadget standing, nothing moves.** A use that cannot place is refused as before, because a free
+  use that moves nothing would only start the cooldown.
+- **Tests.**
+  - `Grants` sets the real costs again.
+  - `ACastThatCannotPayOrFitMovesEveryGadgetFreeAndStartsTheCooldown` (new) holds four things:
+    - a Bolt Turret with room and mana places another and pays (the control);
+    - Iron Fortress at its real 50, with 30 Fervour and room for its set, moves the turret and spends nothing;
+    - a Bolt Turret, a mana gadget, with no room moves and spends no mana;
+    - the cooldown tag is held after that move.
+  - The press test adds that a second move during the slot's cooldown moves nothing, and that one made after it does.
+  - `ThePopupSaysWhatAPressCosts` holds the new sentence.
 
 ### WHERE EVERY RULE IS KEYED (G8)
 
@@ -849,6 +909,16 @@ The coordinating session's rulings on V5, 2026-11-25, "every recommendation as w
   defences; the device takes `Hit.Damage` from the attacker, meeting its own defences; the player takes nothing. L2: 3%
   for each device at any distance, up to 30%; a roll only when a device stands within 10 m. L3: a skill trap struck
   goes off; a War Spike Trap deals its ordinary blow at the attacker; a gadget only takes the blow.
+- **L3, AFTER WINDOW war2-w1**, the coordinating session, verbatim: "A trap killed by the blow still goes off."
+  - **L3 had no survival condition.** `SendBlowToDevice` added one: it returned when the blow had killed the device.
+    A Spike Trap has 40 health and the test's blow is 500, so the trap never went off. The window caught it.
+  - `|| UCataclysmSkillEffects::IsDead(Device)` is taken out of that early return. `!IsValid` and
+    `IsActorBeingDestroyed` stay, so a trap already gone does not fire.
+  - `AHitOnThePlayerCanStrikeTheNearestDeviceWithinTenMetresInstead` now measures one Spike Trap blow first, on a
+    creature 60 m away. It then asserts three things:
+    - the blow kills the trap;
+    - the attacker loses exactly one such blow (it fires once, not twice);
+    - the trap leaves as a dead trap does, its collision off.
 
 ### JUDGEMENTS
 

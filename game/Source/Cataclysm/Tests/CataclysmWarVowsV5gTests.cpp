@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -151,12 +152,17 @@ namespace CataclysmWarVowsV5gTest
 				Skill->Params = UCataclysmSkillShapes::ParseParams(ParamText);
 				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Deployable, Type.Minion"));
 				Skill->CooldownOverride = 0.0f;
-				// AND NO FERVOUR COST (window war2-w1): the room rule is what these tests hold, and an Ultimate's 50
-				// Fervour cannot be paid from their small pools.
-				Skill->FervourCostOverride = 0.0f;
+				// AT ITS REAL COST: an Ultimate's 50 Fervour, a Special's mana. G3 as revised after window war2-w1 makes a
+				// cost that cannot be paid a reason to move, so these tests no longer take the cost away.
 			}
 			return Skill;
 		}
+
+		float Fervour() const
+		{
+			return System->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		}
+		float Mana() const { return System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute()); }
 
 		/** One use of `Skill`. */
 		bool Casts(UCataclysmDeployableSkill* Skill) const
@@ -261,6 +267,23 @@ CATACLYSM_WAR_VOWS_V5G_TEST(FCataclysmWarVowsV5gPressTest,
 	TestEqual(TEXT("a moved gadget keeps its health"), WarVowsV5gHealthOf(First), FirstHealth, 0.001f);
 	TestTrue(TEXT("control: the Spike Trap, a trap, stays where it was"),
 			 FVector::Dist2D(Spike->GetActorLocation(), SpikeStood) < 1.0f);
+
+	// THE MOVE STARTS THE SLOT'S COOLDOWN (G3 as revised after window war2-w1), the interval its gadgets cast on: a
+	// second move press at once does nothing, and one made after the cooldown moves them again.
+	const float Wait = Player.System->SkillGadgetMoveSecondsLeft(Heavy);
+	if (!TestTrue(*FString::Printf(TEXT("the move started the slot's cooldown: %.2f s"), Wait), Wait > 0.0f))
+	{
+		return false;
+	}
+	const FVector TurretAfterMove = Turret->GetActorLocation();
+	const FVector Again = East * -40.0f + North * 40.0f;
+	Player.Presses(Heavy, &Again);
+	TestTrue(TEXT("a move press during the cooldown moves nothing"),
+			 FVector::Dist2D(Turret->GetActorLocation(), TurretAfterMove) < 1.0f);
+	World->TimeSeconds += Wait + 0.1f;
+	Player.Presses(Heavy, &Again);
+	TestTrue(TEXT("control: one after it moves every gadget again"),
+			 FVector::Dist2D(Turret->GetActorLocation(), Again + East * 1.5f) < 1.0f);
 	return true;
 }
 
@@ -326,6 +349,82 @@ CATACLYSM_WAR_VOWS_V5G_TEST(FCataclysmWarVowsV5gWarCastTest,
 	TestTrue(TEXT("to the player"), FVector::Dist2D(Placed0->GetActorLocation(), Elsewhere) < 1.0f);
 	TestTrue(TEXT("control: and the Spike Trap stays"), FVector::Dist2D(Spike->GetActorLocation(), SpikeStood) < 1.0f);
 	TestEqual(TEXT("control: nothing of the fortress is placed"), Player.Gadgets().Num(), 1);
+	return true;
+}
+
+CATACLYSM_WAR_VOWS_V5G_TEST(FCataclysmWarVowsV5gCostTest,
+	"Cataclysm.WarVowsV5g.ACastThatCannotPayOrFitMovesEveryGadgetFreeAndStartsTheCooldown")
+{
+	using namespace CataclysmWarVowsV5gTest;
+	// G3 AS REVISED after window war2-w1, on the owner's words "no moving unless you don't have enough fervour to put out
+	// another": a gadget cast that cannot place, because its set's reserve does not fit OR its cost cannot be paid, moves
+	// every gadget instead, pays nothing, and starts the cooldown. AT THE REAL COSTS: Iron Fortress's 50 Fervour, a Bolt
+	// Turret's Special mana.
+	// THE CONTROL: a Bolt Turret cast with room and mana places another and pays. Then Iron Fortress at 30 Fervour of 100,
+	// with room for its set, cannot pay its 50: it moves the turret and spends nothing. Then, the pool cut to 5, a Bolt
+	// Turret cast has no room: it moves the turret, spends no mana, and starts its 10 s cooldown.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FWarVowsV5gPlayer Player(World);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Player.Holds({});
+	Player.Pool(100.0f);
+	UCataclysmDeployableSkill* Turret = Player.Grants(ECataclysmAbilitySlot::Special, WarVowsV5gBoltTurret, TEXT("Bolt Turret"));
+	UCataclysmDeployableSkill* Fortress =
+		Player.Grants(ECataclysmAbilitySlot::Ultimate, WarVowsV5gFortress, TEXT("Iron Fortress"));
+	if (!TestTrue(TEXT("set-up: the two skills"), Turret && Fortress)
+		|| !TestEqual(TEXT("set-up: Iron Fortress costs its real 50 Fervour"),
+					  Fortress->FervourCostFor(Player.System), 50.0f, 0.001f)
+		|| !TestTrue(TEXT("set-up: a Bolt Turret costs mana"), Turret->ManaCostFor(Player.System) > 0.0f))
+	{
+		return false;
+	}
+
+	const float ManaBefore = Player.Mana();
+	Player.Casts(Turret);
+	if (!TestEqual(TEXT("control: with room and mana a Bolt Turret cast places a turret"), Player.Gadgets().Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmMinion* Placed = Player.Gadgets()[0];
+	TestTrue(*FString::Printf(TEXT("control: and pays its mana: %.2f to %.2f"), ManaBefore, Player.Mana()),
+			 Player.Mana() < ManaBefore);
+	TestEqual(TEXT("control: and moves nothing"), Turret->GadgetsMovedForWantOfRoom, 0);
+
+	Player.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 30.0f);
+	const FVector Here(0.0f, 30.0f * WarVowsV5gMetre, 0.0f);
+	Player.StandsAt(Here);
+	const float ManaBeforeFortress = Player.Mana();
+	Player.Casts(Fortress);
+	TestEqual(TEXT("Iron Fortress at 30 Fervour, with room for its set, cannot pay its 50: it moves the turret"),
+			  Fortress->GadgetsMovedForWantOfRoom, 1);
+	TestTrue(TEXT("to the player"), FVector::Dist2D(Placed->GetActorLocation(), Here) < 1.0f);
+	TestEqual(TEXT("and places nothing"), ACataclysmMinion::DevicesOf(Player.Character).Num(), 1);
+	TestEqual(TEXT("and spends no Fervour"), Player.Fervour(), 30.0f, 0.001f);
+	TestEqual(TEXT("nor mana"), Player.Mana(), ManaBeforeFortress, 0.001f);
+
+	Player.Pool(5.0f);
+	Turret->CooldownOverride = 10.0f;
+	const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Special);
+	if (!TestFalse(TEXT("set-up: no Special cooldown runs before the move"), Player.System->HasMatchingGameplayTag(Cooldown)))
+	{
+		return false;
+	}
+	const FVector There(30.0f * WarVowsV5gMetre, 0.0f, 0.0f);
+	Player.StandsAt(There);
+	const float ManaBeforeMove = Player.Mana();
+	Player.Casts(Turret);
+	TestEqual(TEXT("a Bolt Turret cast with no room moves the turret"), Turret->GadgetsMovedForWantOfRoom, 1);
+	TestTrue(TEXT("to the player"), FVector::Dist2D(Placed->GetActorLocation(), There) < 1.0f);
+	TestEqual(TEXT("and spends no mana"), Player.Mana(), ManaBeforeMove, 0.001f);
+	TestTrue(TEXT("and starts the skill's cooldown"), Player.System->HasMatchingGameplayTag(Cooldown));
 	return true;
 }
 

@@ -2065,6 +2065,18 @@ public:
 	int32 GadgetsMovedForWantOfRoom = 0;
 
 	/**
+	 * THE GADGET RULE, G3 AS REVISED after window war2-w1, on the owner's words "no moving unless you don't have enough
+	 * fervour to put out another": whether a use of this skill moves every gadget instead of placing its set, because
+	 * the set holds a gadget, the caster commands a gadget to move, and either the whole set's reserve does not fit or
+	 * the use's cost cannot be paid. Such a use pays no cost and starts the cooldown.
+	 */
+	bool MovesInsteadOfPlacing(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo) const;
+
+	/** A use that will move instead of placing is not refused for its cost: the move is free (G3 revised). */
+	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+						   FGameplayTagContainer* OptionalRelevantTags) const override;
+
+	/**
 	 * Whether the last use, or the last `DeployOne`, was refused for want of room in the pool. Issue #1934, ruled
 	 * 2026-11-25 (Q3): a refusal writes a log line saying why and sets this, which a test asserts, as the thrall's
 	 * `UCataclysmSummonSkill::bRefusedForRoom` does. An on-screen refusal is a separate item for every reserve.

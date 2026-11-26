@@ -386,6 +386,28 @@ CATACLYSM_WAR_VOWS_V5A_TEST(FCataclysmWarVowsV5aLightningRodTest,
 	{
 		return false;
 	}
+	// ONE SPIKE TRAP BLOW, MEASURED FIRST on a creature of the same kind 60 m away by a second Spike Trap, which then
+	// leaves: the struck trap must go off once, not twice (the coordinating session's ruling after window war2-w1).
+	float OneSpikeBlow = 0.0f;
+	{
+		ACataclysmMinion* Measurer = WarVowsV5aMachineAt(Player.Character, FVector(0.0f, -60.0f * WarVowsV5aMetre, 0.0f),
+														 TEXT("SpikeTrap"));
+		ACataclysmEnemyCharacter* Far = WarVowsV5aCreatureAt(World, FVector(0.0f, -61.0f * WarVowsV5aMetre, 0.0f));
+		if (!TestNotNull(TEXT("set-up: a measuring Spike Trap"), Measurer) || !TestNotNull(TEXT("set-up: a far creature"), Far))
+		{
+			return false;
+		}
+		const float FarBefore = WarVowsV5aHealthOf(Far);
+		Measurer->AttackTarget(Far);
+		OneSpikeBlow = FarBefore - WarVowsV5aHealthOf(Far);
+		Measurer->Destroy();
+		Far->Destroy();
+	}
+	if (!TestTrue(*FString::Printf(TEXT("set-up: one Spike Trap blow deals something: %.2f"), OneSpikeBlow),
+				  OneSpikeBlow > 0.0f))
+	{
+		return false;
+	}
 	const auto Blow = [&](float Roll, float& PlayerLost, float& SpikeLost, float& AttackerLost)
 	{
 		FWarVowsV5aPinnedRoll Pinned(Roll);
@@ -410,7 +432,13 @@ CATACLYSM_WAR_VOWS_V5A_TEST(FCataclysmWarVowsV5aLightningRodTest,
 	Blow(5.0f, PlayerLost, SpikeLost, AttackerLost);
 	TestEqual(TEXT("at a roll of 5 the player takes nothing"), PlayerLost, 0.0f, 0.01f);
 	TestTrue(*FString::Printf(TEXT("the Spike Trap takes the blow: %.2f"), SpikeLost), SpikeLost > 0.0f);
-	TestTrue(*FString::Printf(TEXT("and, struck, goes off at the attacker: %.2f"), AttackerLost), AttackerLost > 0.0f);
+	// A TRAP THE BLOW KILLS STILL GOES OFF (ruled after window war2-w1: L3 states no survival condition). 500 kills a
+	// Spike Trap's 40 health, so this is that case.
+	TestTrue(TEXT("the blow kills the Spike Trap"), UCataclysmSkillEffects::IsDead(Spike));
+	TestEqual(*FString::Printf(TEXT("and, killed, it still goes off at the attacker, once: %.2f against one blow of %.2f"),
+							   AttackerLost, OneSpikeBlow),
+			  AttackerLost, OneSpikeBlow, 0.01f);
+	TestFalse(TEXT("and it leaves as a dead trap does: its collision off"), Spike->GetActorEnableCollision());
 
 	Spike->Destroy();
 	Spike = nullptr;

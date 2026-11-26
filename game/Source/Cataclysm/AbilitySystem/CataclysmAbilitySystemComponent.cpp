@@ -6536,8 +6536,10 @@ void UCataclysmAbilitySystemComponent::SendBlowToDevice(ACataclysmMinion* Device
 	}
 	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Device, Damage);
 	// "A TRAP STRUCK THIS WAY GOES OFF" (ruled L3): a skill trap by the forced set-off, a War trap by its ordinary blow
-	// at the attacker. A gadget only takes the blow.
-	if (!IsValid(Device) || Device->IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(Device))
+	// at the attacker. A gadget only takes the blow. A TRAP THE BLOW KILLS STILL GOES OFF: L3 states no survival
+	// condition, and a Spike Trap's 40 health is killed by almost any blow (the coordinating session's ruling after
+	// window war2-w1). Only one already gone does not.
+	if (!IsValid(Device) || Device->IsActorBeingDestroyed())
 	{
 		return;
 	}
@@ -9906,10 +9908,34 @@ bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTa
 		return true;
 	}
 	// AND WITH NO ROOM, EVERY GADGET MOVES TO WHERE THE PLAYER AIMS (G1), keeping each one's health and clock, at the
-	// player's own height. Nothing is placed.
+	// player's own height. Nothing is placed. THE MOVE STARTS THE SKILL'S COOLDOWN (G3 as revised after window war2-w1):
+	// for a converted slot, the interval its gadgets cast on; a move press while it runs does nothing.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	if (SkillGadgetMoveSecondsLeft(Slot) > 0.0f)
+	{
+		return true;
+	}
 	const FVector MoveTo = AimAt ? FVector(AimAt->X, AimAt->Y, At.Z) : At;
 	ACataclysmMinion::MoveEveryGadgetOf(Player, MoveTo);
+	float Cooldown = 0.0f;
+	if (const ACataclysmMinion* Newest = SkillGadgetIn(Slot))
+	{
+		FCataclysmWeaponSkill Skill;
+		if (Newest->SkillGadgetsSkill(Skill))
+		{
+			Cooldown = Newest->SkillGadgetSecondsBetweenCasts(Skill);
+		}
+	}
+	SkillGadgetMoveReadyAtSeconds.Add(Slot, Now + FMath::Max(0.0f, Cooldown));
 	return true;
+}
+
+float UCataclysmAbilitySystemComponent::SkillGadgetMoveSecondsLeft(ECataclysmAbilitySlot Slot) const
+{
+	const UWorld* World = GetWorld();
+	const float* Ready = SkillGadgetMoveReadyAtSeconds.Find(Slot);
+	return World && Ready ? FMath::Max(0.0f, *Ready - World->GetTimeSeconds()) : 0.0f;
 }
 
 void UCataclysmAbilitySystemComponent::ReleaseOfASkillGadgetSlot(const FGameplayTag& SlotTag)

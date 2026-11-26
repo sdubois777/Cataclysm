@@ -4202,6 +4202,43 @@ float UCataclysmDeployableSkill::FervourReserveOfOne() const
 	return Self ? FervourReserveFor(Self, Params, SkillTags, this) : 0.0f;
 }
 
+bool UCataclysmDeployableSkill::MovesInsteadOfPlacing(const FGameplayAbilitySpecHandle Handle,
+													   const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	const AActor* Self = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (!Self || !PlacesAGadget())
+	{
+		return false;
+	}
+	// A GADGET TO MOVE: with none standing, a use that cannot place is refused as any other (a judgement: there is
+	// nothing for the move to do, and a free use that does nothing would only start the cooldown).
+	const bool bAGadgetStands = ACataclysmMinion::DevicesOf(Self).ContainsByPredicate(
+		[](const ACataclysmMinion* Each) { return Each->IsGadget(); });
+	if (!bAGadgetStands)
+	{
+		return false;
+	}
+	int32 Machines = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		Machines += FMath::Max(0, Kind.Count);
+	}
+	if (!UCataclysmCommand::HasRoomToReserve(Self, FervourReserveFor(Self, Params, SkillTags, this)
+										   * static_cast<float>(Machines)))
+	{
+		return true;
+	}
+	// THE COST ASKED AS THE PRESS ASKS IT, by the parent's own check, never this class's override.
+	return !UCataclysmSkillTemplate::CheckCost(Handle, ActorInfo, nullptr);
+}
+
+bool UCataclysmDeployableSkill::CheckCost(const FGameplayAbilitySpecHandle Handle,
+										  const FGameplayAbilityActorInfo* ActorInfo,
+										  FGameplayTagContainer* OptionalRelevantTags) const
+{
+	return MovesInsteadOfPlacing(Handle, ActorInfo) || Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags);
+}
+
 bool UCataclysmDeployableSkill::PlacesAGadget() const
 {
 	return Params.Minions.ContainsByPredicate(
@@ -4308,6 +4345,28 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
+	// THE GADGET RULE, G3 AS REVISED after window war2-w1: a use that cannot place its set -- the reserve does not fit, or
+	// the cost cannot be paid -- moves every gadget to the aimed point instead, at the caster's height and with no range
+	// limit (G1). IT PAYS NO COST AND STARTS THE COOLDOWN. Asked before anything is committed, because a cost that cannot
+	// be paid is one of the two reasons. Iron Fortress's traps, and every trap, stay where they are.
+	bRefusedForRoom = false;
+	GadgetsMovedForWantOfRoom = 0;
+	if (MovesInsteadOfPlacing(Handle, ActorInfo))
+	{
+		bRefusedForRoom = true;
+		CommitAbilityCooldown(Handle, ActorInfo, ActivationInfo, /*ForceCooldown=*/false);
+		if (AActor* Mover = Avatar())
+		{
+			const FVector Aim = AimPoint();
+			GadgetsMovedForWantOfRoom = ACataclysmMinion::MoveEveryGadgetOf(
+				Mover, FVector(Aim.X, Aim.Y, Mover->GetActorLocation().Z));
+			UE_LOG(LogCataclysm, Log, TEXT("DEPLOY MOVED: '%s' could not place its set and moved %d gadgets, paying no "
+										   "cost."), *SkillName, GadgetsMovedForWantOfRoom);
+		}
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
 	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
 	{
 		return;
@@ -4323,26 +4382,17 @@ void UCataclysmDeployableSkill::ActivateAbility(
 	// THE WHOLE SET HAS TO FIT, OR NONE OF IT GOES DOWN. Issue #1934, ruled 2026-11-25 (Q1): Iron Fortress places five
 	// machines in one cast, "so the set reserves 25", and a fortress placed in part is a press that half-works. Asked
 	// before anything is placed; the press is spent, as a refused Summon Imp's is.
-	bRefusedForRoom = false;
-	GadgetsMovedForWantOfRoom = 0;
 	int32 Machines = 0;
 	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
 	{
 		Machines += FMath::Max(0, Kind.Count);
 	}
 	const float Each = FervourReserveFor(Self, Params, SkillTags, this);
+	// A SET OF TRAPS ALONE THAT CANNOT FIT, or a gadget set with no gadget standing to move, is refused as before: a
+	// gadget set with a gadget to move never reaches here (`MovesInsteadOfPlacing` above).
 	if (!UCataclysmCommand::HasRoomToReserve(Self, Each * static_cast<float>(Machines)))
 	{
 		bRefusedForRoom = true;
-		// THE GADGET RULE (V5g, G3): a set holding a gadget that cannot fit MOVES EVERY GADGET to the aimed point
-		// instead, at the caster's height and with no range limit (G1). The cost and the cooldown were spent by
-		// `CommitAndBegin` above. Iron Fortress's traps, and every trap, stay where they are.
-		if (PlacesAGadget())
-		{
-			const FVector Aim = AimPoint();
-			GadgetsMovedForWantOfRoom = ACataclysmMinion::MoveEveryGadgetOf(
-				Self, FVector(Aim.X, Aim.Y, Self->GetActorLocation().Z));
-		}
 		const UCataclysmAbilitySystemComponent* Pool =
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
 		UE_LOG(LogCataclysm, Log,

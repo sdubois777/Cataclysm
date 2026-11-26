@@ -5288,6 +5288,9 @@ public:
 	 */
 	bool PressOfASkillGadgetSlot(const FGameplayTag& SlotTag, const FVector* AimAt = nullptr);
 
+	/** The seconds before `Slot`'s next move may be made, or nought (G3 revised). */
+	float SkillGadgetMoveSecondsLeft(ECataclysmAbilitySlot Slot) const;
+
 	/** The key of a slot is up: its next press may place or move its gadget again. Called by `AbilityInputTagReleased`. */
 	void ReleaseOfASkillGadgetSlot(const FGameplayTag& SlotTag);
 
@@ -5346,6 +5349,13 @@ public:
 	/** `FlatTheAttributeCannotCarry` leaving out every row that names ANY of `LeavingOut` (`Type.Deployable`, `Type.Gadget`). */
 	float FlatTheAttributeCannotCarry(FName Stat, const FGameplayTagContainer& LeavingOut,
 									  const FGameplayTagContainer& Tags, const AActor* Target) const;
+
+	/**
+	 * When each converted slot's next move may be made, by the world's clock (G3 as revised after window war2-w1: a move
+	 * starts the skill's cooldown, which for a converted slot is the interval its gadgets cast on). See
+	 * `PressOfASkillGadgetSlot`.
+	 */
+	TMap<ECataclysmAbilitySlot, float> SkillGadgetMoveReadyAtSeconds;
 
 	/** The converted slots whose key is down and has already placed or moved its gadget in this press. */
 	TSet<ECataclysmAbilitySlot> SkillGadgetSlotsHeldDown;

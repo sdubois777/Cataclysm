@@ -475,7 +475,8 @@ public:
 
 	/**
 	 * THE GADGET RULE IN THE GAME'S OWN WORDS, said once where the game describes a gadget press (V5g, ruled G6): "Press
-	 * again to place another while your Fervour can hold it; with no room, every gadget moves to where you aim."
+	 * again to place another while you can pay for it and your Fervour can hold it; otherwise every gadget moves to where
+	 * you aim, at no cost." The cost and "at no cost" since G3 was revised after window war2-w1.
 	 */
 	static const TCHAR* const GadgetPressRule;
 

@@ -480,7 +480,8 @@ FString UCataclysmSkillBar::FervourTextFor(const FCataclysmSkillBarSlot& Slot)
 }
 
 const TCHAR* const UCataclysmSkillBar::GadgetPressRule =
-	TEXT("Press again to place another while your Fervour can hold it; with no room, every gadget moves to where you aim.");
+	TEXT("Press again to place another while you can pay for it and your Fervour can hold it; otherwise every gadget "
+		 "moves to where you aim, at no cost.");
 
 FString UCataclysmSkillBar::CostLineFor(const FCataclysmSkillBarSlot& Slot)
 {
