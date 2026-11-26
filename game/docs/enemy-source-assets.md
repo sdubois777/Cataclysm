@@ -199,11 +199,13 @@ being sped up, and the creature starts an attack it has not finished.
 | Succubus | 1.0 s | `Primary_Attack_Normal` | 0.90 s | 1.00 | Passes as authored, by 0.10 s |
 | Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | 1.00 | Passes as authored |
 | Brute | 1.2 s | `Attack_Melee_A` | 0.97 s | 1.00 | Passes as authored, by 0.23 s |
+| Wraith | 1.25 s | `Anim_Wraith_Scythe_Attack2` | 1.67 s | **1.34** | Passes, sped up, under the 2.50 ceiling |
 | Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | 1.00 | Passes as authored |
 | Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | 1.00 | Passes as authored |
 
-**The Corrupted Sentinel is the only one of the seven that needs any compression,
-and since issue #2808 it needs 2.40.** Its two rooted firing clips are both 2.40
+**The Corrupted Sentinel is the only one of the seven Demonic enemies that needs any compression,
+and since issue #2808 it needs 2.40.** Death's Wraith needs 1.34: its two scythe swings,
+`Scythe_Attack2` and `Scythe_Attack5`, are 1.67 seconds each against a 1.25 second interval. Its two rooted firing clips are both 2.40
 seconds, and its interval has been 1.0 second since 2026-11-21, when the owner
 asked for its bolt every second ("a basic attack sort of thing"); the
 coordinating session accepted the faster rate the same day. Until then the
