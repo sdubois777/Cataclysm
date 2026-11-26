@@ -2384,8 +2384,8 @@ enum class ECataclysmStatScale : uint8
 
 	/**
 	 * Multiplied by the whole `ScaleStep` passive points the character has
-	 * spent, past `ScaleOffset`. Issue #1686: "Your skills deal 1.5%-2.5% less
-	 * damage for every 10 class points spent above 100" is a step of 10 and an
+	 * spent, past `ScaleOffset`. Issue #1686: "Your skills deal 3%-5% less
+	 * damage for every 20 class points spent above 100" is a step of 20 and an
 	 * offset of 100.
 	 *
 	 * A CLASS POINT IS A PASSIVE POINT SPENT, ruled under the owner's
@@ -2422,8 +2422,9 @@ enum class ECataclysmStatScale : uint8
 
 	/**
 	 * `Value` per whole `ScaleStep` enemies the character has killed this run.
-	 * Issue #1833, the kill counter: "Your damage is increased by 0.01%-0.05%
-	 * permanently for every 1000 enemies killed this run" is a step of 1000.
+	 * Issue #1833, the kill counter: "Your damage is increased by 1%-5%
+	 * permanently for every 100,000 enemies killed this run" is a step of
+	 * 100,000 (1000 at 0.01%-0.05% until issue #2883, D8).
 	 *
 	 * A KILL IS THE CHARACTER'S OWN "kill" EVENT, and "this run" is since the
 	 * session began; see `ACataclysmPlayerState::NoteKill`. A CHARACTER WITH

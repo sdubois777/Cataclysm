@@ -131,8 +131,11 @@ def roll_item(slot: str, tier: int, magic_find: float, rng, all_resistance_at_ti
         candidates = [c for c in loot._candidates_for(slot, position, rng)
                       if all_resistance_at_tier_one or af.rolls_on_a_drop_at(c.affix, tier)]
         drawn.extend(af.draw_without_repeating_a_group(candidates, count, rng, group_of=loot._groups_of_candidate))
-    rolled = tuple(loot.RolledAffix(affix=c.affix, tier=af.roll_affix_tier(tier, rng), roll=rng.random(),
-                                    covers=c.covers)
+    # A HYBRID IS RAISED TO TIER 3 AFTER THE DRAW, as `loot.roll_item` raises it (issue #2883).
+    rolled = tuple(loot.RolledAffix(affix=c.affix,
+                                    tier=loot._a_hybrid_rolls_tier_three_at_the_least(
+                                        c.affix, af.roll_affix_tier(tier, rng)),
+                                    roll=rng.random(), covers=c.covers)
                    for c in drawn)
     return loot.RolledItem(base=base, gear_level=loot.gear_level_gate(rarity), affixes=rolled,
                            enchantments=af.enchantments_for(rarity), residue=loot.roll_residue(rarity, rng),

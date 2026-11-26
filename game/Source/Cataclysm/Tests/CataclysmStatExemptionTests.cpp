@@ -528,11 +528,26 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `melee_reach_metres`, read by `UCataclysmSkillTemplate::MeleeReachBonusCm`
-	 * into a melee strike's reach. Issue #1515, Overreach. The same melee strike
-	 * on two fighters, one granted a flat metre and a half: its reach is longer.
+	 * A reach stat, read by `UCataclysmSkillTemplate::MeleeReachBonusCm` into a
+	 * melee strike's reach. The same melee strike on two fighters, one granted
+	 * `Granted` of `Stat` flat: its reach is longer.
 	 */
+	void ProbeMeleeReachBy(FAutomationTestBase& Test, const TCHAR* Stat, float Granted);
+
+	/** `melee_reach_metres`, Overreach's stat. Issue #1515. A metre and a half. */
 	void ProbeMeleeReach(FAutomationTestBase& Test)
+	{
+		ProbeMeleeReachBy(Test, UCataclysmSkillTemplate::MeleeReachMetresStat, 1.5f);
+	}
+
+	/** `melee_reach_centimetres`, the reach enchantment's stat since issue
+	 *  #2883 (D8). Seventy-five centimetres. */
+	void ProbeMeleeReachCentimetres(FAutomationTestBase& Test)
+	{
+		ProbeMeleeReachBy(Test, UCataclysmSkillTemplate::MeleeReachCentimetresStat, 75.0f);
+	}
+
+	void ProbeMeleeReachBy(FAutomationTestBase& Test, const TCHAR* Stat, float Granted)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Test.TestNotNull(TEXT("a world"), World))
@@ -541,7 +556,7 @@ namespace CataclysmStatExemptionTest
 		}
 		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-		const auto ReachOfAMeleeStrike = [&Test, World](float GrantedMetres)
+		const auto ReachOfAMeleeStrike = [&Test, World, Stat](float GrantedAmount)
 		{
 			FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
 			UCataclysmAbilitySystemComponent* System = Fighter.AbilitySystem;
@@ -559,15 +574,14 @@ namespace CataclysmStatExemptionTest
 			Strike->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=2"));
 			Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
 
-			if (GrantedMetres > 0.0f)
+			if (GrantedAmount > 0.0f)
 			{
 				FCataclysmStatModifier Flat;
 				Flat.Bucket = ECataclysmStatBucket::Flat;
 				Flat.Source = ECataclysmModifierSource::PassiveKeystone;
-				Flat.Value = GrantedMetres;
+				Flat.Value = GrantedAmount;
 				TMap<FName, FCataclysmStatInputs> Inputs;
-				FCataclysmStatInputs& Line =
-					Inputs.FindOrAdd(FName(UCataclysmSkillTemplate::MeleeReachMetresStat));
+				FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
 				Line.Base = 0.0f;
 				Line.Modifiers = {Flat};
 				System->SetStatInputs(MoveTemp(Inputs));
@@ -576,12 +590,12 @@ namespace CataclysmStatExemptionTest
 		};
 
 		const float Plain = ReachOfAMeleeStrike(0.0f);
-		const float Granted = ReachOfAMeleeStrike(1.5f);
+		const float Longer = ReachOfAMeleeStrike(Granted);
 		Test.TestTrue(TEXT("the plain strike reaches at all"), Plain > 0.0f);
 		Test.TestTrue(
-			TEXT("melee_reach_metres lengthens a melee strike, so "
-				 "UCataclysmSkillTemplate::MeleeReachBonusCm really reads it"),
-			Granted > Plain + 0.001f);
+			FString::Printf(TEXT("%s lengthens a melee strike, so "
+								 "UCataclysmSkillTemplate::MeleeReachBonusCm really reads it"), Stat),
+			Longer > Plain + 0.001f);
 	}
 
 	void ProbeCrippleAndWeakenDuration(FAutomationTestBase& Test)
@@ -12866,6 +12880,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_duration"),     &ProbeDuration},
 			{TEXT("cripple_and_weaken_duration"), &ProbeCrippleAndWeakenDuration},
 			{TEXT("melee_reach_metres"),  &ProbeMeleeReach},
+			{TEXT("melee_reach_centimetres"), &ProbeMeleeReachCentimetres},
 			{TEXT("minion_death_replaced_every_seconds"), &ProbeReplacedOnDeath},
 			{TEXT("minion_explosion_replaced_every_seconds"), &ProbeReplacedOnExplosion},
 			{TEXT("minion_death_blast_percent_of_maximum_health"), &ProbeDeathBlastPercent},

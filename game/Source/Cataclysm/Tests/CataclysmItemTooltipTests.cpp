@@ -664,16 +664,17 @@ bool FCataclysmTooltipImplicitFollowsUpgrade::RunTest(const FString& Parameters)
 {
 	// THE NUMBER THIS PIECE HAS, NOT THE NUMBER IN THE TABLE. An implicit does
 	// not roll, so it is tempting to print the base's stated value; it does
-	// scale with the upgrade level, so a +10 helm's armour is over three times a
-	// +0 helm's. Printing the stated value would make every helm look identical,
-	// which is exactly the problem this whole tool tip exists to solve.
+	// scale with the upgrade level, so a +10 helm's armour is 2.5 times a +0
+	// helm's. Printing the stated value would make every helm look identical,
+	// which is exactly the problem this whole tool tip exists to solve. The
+	// figure passed is the whole +0 value since issue #2883: 80 at +0.
 	const FString AtZero =
 		UCataclysmItemTooltip::ImplicitLine(TEXT("armor"), TEXT("flat"),
-											200.0f, 0, /*bTwoHanded=*/false,
+											80, 0, /*bTwoHanded=*/false,
 											CataclysmTooltipTest::Affixes());
 	const FString AtTen =
 		UCataclysmItemTooltip::ImplicitLine(TEXT("armor"), TEXT("flat"),
-											200.0f, 10, /*bTwoHanded=*/false,
+											80, 10, /*bTwoHanded=*/false,
 											CataclysmTooltipTest::Affixes());
 
 	TestTrue(TEXT("a +0 piece states an implicit"), !AtZero.IsEmpty());
@@ -683,7 +684,7 @@ bool FCataclysmTooltipImplicitFollowsUpgrade::RunTest(const FString& Parameters)
 
 	// AN EMPTY STAT IS HOW A BASE SAYS IT HAS ONLY ONE IMPLICIT.
 	TestTrue(TEXT("a base with no second implicit produces no second line"),
-		UCataclysmItemTooltip::ImplicitLine(FString(), TEXT("flat"), 5.0f, 0,
+		UCataclysmItemTooltip::ImplicitLine(FString(), TEXT("flat"), 5, 0,
 											false,
 											CataclysmTooltipTest::Affixes()).IsEmpty());
 
@@ -704,10 +705,10 @@ bool FCataclysmTooltipImplicitStatesItsUnit::RunTest(const FString& Parameters)
 	// not. Issue #1224. Real stats rather than invented ones, so a stat
 	// leaving the data fails here.
 	const FString Evasion = UCataclysmItemTooltip::ImplicitLine(
-		TEXT("evasion"), TEXT("flat"), 4.0f, 0, /*bTwoHanded=*/false,
+		TEXT("evasion"), TEXT("flat"), 2, 0, /*bTwoHanded=*/false,
 		Affixes());
 	const FString Armour = UCataclysmItemTooltip::ImplicitLine(
-		TEXT("armor"), TEXT("flat"), 200.0f, 0, /*bTwoHanded=*/false,
+		TEXT("armor"), TEXT("flat"), 80, 0, /*bTwoHanded=*/false,
 		Affixes());
 
 	TestTrue(FString::Printf(TEXT("implicit evasion says it is a "
@@ -996,13 +997,13 @@ bool FCataclysmTooltipHybridReadsBothHalves::RunTest(const FString& Parameters)
 
 	auto HalfInWords = [&Item](const FCataclysmAffixRow& Part)
 	{
+		// EACH HALF ITS OWN AFFIX TWO TIERS DOWN since issue #2883 (D6), the
+		// same function the tool tip and the modifiers call.
 		return UCataclysmItemTooltip::NumberInWords(
-			UCataclysmItemValues::AffixValue(Part.TopValue, Part.Floor,
-											 Item.Affixes[0].Tier,
-											 Item.Affixes[0].Roll,
-											 Item.GearLevel,
-											 /*bTwoHanded=*/false)
-			* UCataclysmItemValues::HybridFraction);
+			UCataclysmItemValues::HybridHalfValue(Part, Item.Affixes[0].Tier,
+												  Item.Affixes[0].Roll,
+												  Item.GearLevel,
+												  /*bTwoHanded=*/false));
 	};
 
 	const FString HealthPhrase =

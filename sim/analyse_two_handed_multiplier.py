@@ -26,10 +26,13 @@ the averaged one is what the current weapon base damages were set against and
 the comparison is what shows they no longer fit.
 
 WHAT SUMMING CHANGES, and it is not small. Two one-handed bases sum to more than
-any two-handed base: an Axe and a Sword give 86 against a Greatsword's 78. The
-six two-handed bases average 1.00 times two one-handed ones, which is parity, so
+any two-handed base: an Axe and a Sword give 85 against a Greatsword's 78. The
+six two-handed bases average 1.01 times two one-handed ones, which is parity, so
 a two-handed weapon has no base damage advantage at all. Section VI states that
 the two-hander stays ahead on raw damage, and under summing it is not.
+
+(86 and 1.00 UNTIL ISSUE #2883 made each implicit a whole number at +0; the
+Axe's 46 is 45 at +10.)
 
 THAT SENTENCE USED TO READ "the five two-handed bases average 1.03 times two
 one-handed ones", and it was true when it was written. Issue #146 then gave the

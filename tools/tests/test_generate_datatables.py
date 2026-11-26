@@ -796,7 +796,8 @@ class TestBasicAttacks:
                "Max Damage Types", "Implicit 1 Stat", "Implicit 1 Kind",
                "Implicit 1 Value", "Attack Speed", "Basic Shape",
                "Basic Shape Params", "Cells Wide", "Cells High",
-               "Implicit 2 Stat", "Implicit 2 Kind", "Implicit 2 Value"]
+               "Implicit 2 Stat", "Implicit 2 Kind", "Implicit 2 Value",
+               "Implicit 1 At +0", "Implicit 2 At +0"]
 
     def sheet(self, tmp_path, *rows) -> "openpyxl.Workbook":
         path = workbook_with(tmp_path / "b.xlsx",
@@ -807,8 +808,13 @@ class TestBasicAttacks:
         row = ["Sword", "Weapon", 1, "Slashing", "Sword", 4,
                "attack_damage", "flat", 40.0, 1.3,
                "Strike", "Radius=1.8; Angle=90; MaxTargets=1", 1, 3]
+        row += [None] * (len(self.HEADERS) - len(row))
         for column, value in changes.items():
             row[self.HEADERS.index(column)] = value
+        # THE IMPLICIT'S WHOLE VALUE AT +0, issue #2883: 40 at +10 is 16 at +0.
+        # Only for an implicit that has a stat, which the generator requires.
+        if row[self.HEADERS.index("Implicit 1 Stat")] and "Implicit 1 At +0" not in changes:
+            row[self.HEADERS.index("Implicit 1 At +0")] = 16
         return row
 
     def test_a_base_with_no_footprint_is_refused(self, tmp_path):
@@ -1266,11 +1272,14 @@ class TestTheWordAnAffixGivesAnItemsName:
     HEADER = ["Affix Name", "Affix Kind", "Position", "Stat", "Value Kind",
               "Top Value", "Breadth", "Ailment", "Gem", "Hybrid Part 1",
               "Hybrid Part 2", "Allowed Slots", "Name Word", "Floor",
-              "Percent"]
+              "Percent", *gen.AFFIX_TIER_COLUMNS]
 
     def row(self, name, position, word):
+        # SEVEN WHOLE, SEPARATE TIER RANGES (issue #2883), which every non-hybrid
+        # row must state: 1-2, 3-4 ... 13-14.
         return [name, "Stat", position, "max_health", "flat", 100, None,
-                None, None, None, None, "Chest", word]
+                None, None, None, None, "Chest", word, None, None,
+                *range(1, 15)]
 
     def book(self, tmp_path, rows):
         return openpyxl.load_workbook(workbook_with(

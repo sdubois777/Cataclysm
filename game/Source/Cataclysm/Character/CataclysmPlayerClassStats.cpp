@@ -293,6 +293,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmSkillTemplate::MeleeReachBonusCm for the swing and for the
 		// basic attack's walk into reach. Issue #1515, the Overreach keystone.
 		TEXT("melee_reach_metres"),
+		// Flat centimetres of reach on a melee strike, read by the same
+		// function and added to the metres. The reach enchantment's stat since
+		// issue #2883 (D8), so its roll is a whole number.
+		TEXT("melee_reach_centimetres"),
 		// The seconds between replacements, read by
 		// UCataclysmSummonSkill::ReplaceLost after a commanded death: above zero
 		// means the keystone is held. Press-Ganged replaces a minion or thrall

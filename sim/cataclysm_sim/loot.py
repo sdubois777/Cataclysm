@@ -1047,6 +1047,16 @@ def roll_slot(rng) -> str:
     return rng.choice(SLOTS_A_DROP_CAN_BE)
 
 
+def _a_hybrid_rolls_tier_three_at_the_least(affix, tier: int) -> int:
+    """A HYBRID ROLLS TIERS 3 TO 7 ONLY, since issue #2883 (D6 of the approved proposal): at tier N
+    it grants each half at that half's tier N - 2. Raised after the draw rather than drawn from a
+    smaller range, so no extra number is taken from the stream and every seeded drop keeps its base,
+    its affixes and their rolls. The game's `UCataclysmDropRoll::RollItem` does the same."""
+    if isinstance(affix, af.HybridAffix):
+        return max(tier, af.affix_ranges.LOWEST_HYBRID_TIER)
+    return tier
+
+
 def roll_item(slot: str, tier: int, magic_find: float, rng, rarity: str | None = None) -> RolledItem:
     """Roll one whole item for a gear slot at a difficulty tier.
 
@@ -1096,7 +1106,8 @@ def roll_item(slot: str, tier: int, magic_find: float, rng, rarity: str | None =
 
     rolled = tuple(
         RolledAffix(affix=candidate.affix,
-                    tier=af.roll_affix_tier(tier, rng),
+                    tier=_a_hybrid_rolls_tier_three_at_the_least(
+                        candidate.affix, af.roll_affix_tier(tier, rng)),
                     roll=rng.random(),
                     covers=candidate.covers)
         for candidate in drawn)

@@ -765,6 +765,21 @@ struct FCataclysmItemBaseRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit2Stat;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") FString Implicit2Kind;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") float Implicit2Value = 0.0f;
+
+	/**
+	 * Each implicit's value on an un-upgraded piece, a whole number. Zero for an
+	 * implicit the base does not have.
+	 *
+	 * WHAT THE GAME UPGRADES, since issue #2883 (D9 of the approved proposal;
+	 * the owner, 2026-11-24: "Approve as written (Recommended)"). It is the
+	 * stated +10 figure above over 2.5, rounded half up, at least 1, and
+	 * UCataclysmItemValues::ImplicitValue upgrades it the way an affix's range
+	 * is upgraded, so an implicit is a whole number at every level. The +10
+	 * figure stays as the design's statement of the top; the game no longer
+	 * divides it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") int32 Implicit1AtZero = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item Base") int32 Implicit2AtZero = 0;
 };
 
 /**
@@ -938,6 +953,46 @@ struct FCataclysmAffixRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
 	bool Percent = false;
+
+	/**
+	 * THE SEVEN TIER RANGES ON AN UN-UPGRADED PIECE, whole numbers, tier 1
+	 * first: T1Min to T1Max is everything a tier 1 roll can give at +0.
+	 *
+	 * WHAT AN AFFIX ROLLS, since issue #2883 (the owner, 2026-11-24: "Approve
+	 * as written (Recommended)"). TopValue and Floor above are no longer read
+	 * for a value; issue #2904 retires them. UCataclysmItemValues::AffixValue
+	 * upgrades both ends of the tier's range, then the roll picks one of the
+	 * whole numbers in it, each equally likely.
+	 *
+	 * tools/generate_datatables.py refuses a range that is not whole numbers of
+	 * at least 1, a tier holding fewer than two values, and a tier starting at
+	 * or below where the tier beneath it ends. All fourteen are zero on a
+	 * Hybrid, whose halves are other rows carrying their own.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T1Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T1Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T2Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T2Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T3Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T3Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T4Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T4Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T5Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T5Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T6Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T6Max = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T7Min = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix|Tiers") int32 T7Max = 0;
+
+	/** A tier's range at +0, tier clamped to 1..7. Zero to zero on a Hybrid. */
+	void TierRange(int32 Tier, int32& OutMin, int32& OutMax) const
+	{
+		const int32 Mins[7] = { T1Min, T2Min, T3Min, T4Min, T5Min, T6Min, T7Min };
+		const int32 Maxes[7] = { T1Max, T2Max, T3Max, T4Max, T5Max, T6Max, T7Max };
+		const int32 Index = FMath::Clamp(Tier, 1, 7) - 1;
+		OutMin = Mins[Index];
+		OutMax = Maxes[Index];
+	}
 };
 
 /**

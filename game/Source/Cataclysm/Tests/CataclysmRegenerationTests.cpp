@@ -387,15 +387,17 @@ bool FCataclysmRegenerationWornShieldComesBack::RunTest(const FString& Parameter
 		return false;
 	}
 
-	// FIVE SECONDS, AND THE RULE IS THAT IT DOES NOT DEPEND ON THE SIZE. Every
-	// source of maximum energy shield grants a fifth of what it gave, so this
-	// holds whatever the character is wearing and whichever class it is.
-	// tools/tests/test_an_energy_shield_refills_in_five_seconds.py holds the
-	// data side of the same rule.
+	// ABOUT FIVE SECONDS, 4.8 TO 5.5, AND IT DOES NOT DEPEND ON THE SIZE. Every
+	// source of maximum energy shield grants about a fifth of what it gave. It
+	// was exactly a fifth until issue #2883 made each implicit a whole number at
+	// +0, rounded on its own: the Vestment's 48 shield and 10 a second refill in
+	// 4.8 seconds. Ruled by the coordinating session on 2026-11-25: about five
+	// seconds, no data changed. tools/tests/test_an_energy_shield_refills_in_five_seconds.py
+	// holds the data side of the same rule.
 	TestTrue(FString::Printf(
-			TEXT("%.1f shield at %.1f a second refills in %.1f seconds"),
+			TEXT("%.1f shield at %.1f a second refills in %.1f seconds, about five"),
 			Maximum, Rate, Maximum / Rate),
-		FMath::IsNearlyEqual(Maximum / Rate, 5.0f, 0.01f));
+		FMath::IsNearlyEqual(Maximum / Rate, 5.0f, 0.6f));
 
 	// AND IT ACTUALLY COMES BACK, walked one step at a time rather than
 	// asserted from the two numbers above.
@@ -415,8 +417,10 @@ bool FCataclysmRegenerationWornShieldComesBack::RunTest(const FString& Parameter
 			Filled, Maximum),
 		FMath::IsNearlyEqual(Filled, Maximum, 0.5f));
 
-	// HALF THE STEPS FILL HALF OF IT, so the figure above is a rate and not a
-	// single write that happened to land on the maximum.
+	// HALF THE STEPS FILL HALF OF FIVE SECONDS' WORTH, so the figure above is a
+	// rate and not a single write that happened to land on the maximum. Read
+	// against the rate rather than half the maximum, since the two are no
+	// longer exactly a fifth apart (issue #2883).
 	Write(Player, UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
 	for (int32 Taken = 0; Taken < StepsInFiveSeconds / 2; ++Taken)
 	{
@@ -425,10 +429,11 @@ bool FCataclysmRegenerationWornShieldComesBack::RunTest(const FString& Parameter
 
 	const float Half =
 		Read(Player, UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	const float HalfOfFiveSeconds = Rate * Step * static_cast<float>(StepsInFiveSeconds / 2);
 	TestTrue(FString::Printf(
-			TEXT("and half the steps fill half of it: %.1f of %.1f"),
-			Half, Maximum),
-		FMath::IsNearlyEqual(Half, Maximum * 0.5f, 0.5f));
+			TEXT("and half the steps refill %.1f of %.1f, the rate for that long: %.1f"),
+			Half, Maximum, HalfOfFiveSeconds),
+		FMath::IsNearlyEqual(Half, FMath::Min(HalfOfFiveSeconds, Maximum), 0.5f));
 
 	return true;
 }

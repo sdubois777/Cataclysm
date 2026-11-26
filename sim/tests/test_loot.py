@@ -691,14 +691,26 @@ def test_nothing_drops_below_the_upgrade_level_its_rarity_requires():
 
 
 def test_no_affix_rolls_above_the_tier_gate():
-    """A drop's affix tiers are capped at the difficulty tier plus one."""
+    """A drop's affix tiers are capped at the difficulty tier plus one.
+
+    A HYBRID BY WHAT IT GRANTS (issue #2883, ruled 2026-11-25): its halves are
+    tier N - 2, and the hybrid itself is tier 3 at the least. Both are checked,
+    and a tier 1 drop must have shown a hybrid, or the hybrid half proves nothing.
+    """
     rng = random.Random(77)
+    hybrids_at_tier_one = 0
     for tier in (1, 3, 8):
         cap = af.max_affix_tier_on_a_drop(tier)
         for _ in range(200):
             item = loot.roll_item("Gloves", tier, magic_find=400.0, rng=rng)
             for rolled in item.affixes:
-                assert 1 <= rolled.tier <= cap
+                if isinstance(rolled.affix, af.HybridAffix):
+                    assert af.affix_ranges.LOWEST_HYBRID_TIER <= rolled.tier <= af.affix_ranges.MAX_TIER
+                    assert rolled.tier - af.affix_ranges.HYBRID_TIER_DROP <= cap
+                    hybrids_at_tier_one += tier == 1
+                else:
+                    assert 1 <= rolled.tier <= cap
+    assert hybrids_at_tier_one > 0
 
 
 def test_a_roll_lands_inside_its_band():
