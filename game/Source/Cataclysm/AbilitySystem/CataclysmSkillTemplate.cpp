@@ -1960,12 +1960,17 @@ int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const A
 	// GATHERED FIRST AND EXPLODED AFTER. An explosion strikes enemies, and a kill it makes may raise or destroy things
 	// in its turn; the list is settled before the first one goes off, and each is asked again as it comes up.
 	TArray<TWeakObjectPtr<ACataclysmMinion>> Caught;
+	int32 Held = 0;
 	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
 	{
 		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
-		if (Minion && Minion->Summoner.Get() == Self && !Minion->bIsMachine && IsInside(*Minion))
+		if (Minion && Minion->Summoner.Get() == Self && !Minion->bIsMachine)
 		{
-			Caught.Add(Minion);
+			++Held;
+			if (IsInside(*Minion))
+			{
+				Caught.Add(Minion);
+			}
 		}
 	}
 
@@ -1986,16 +1991,17 @@ int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const A
 			{
 				Told->NoteMinionDied(Minion, Minion->TypeTags);
 			}
-			Minion->Explode();
+			// AS THIS SKILL'S AREA HIT, since 2026-11-26: 200% of the caster's weapon damage (`ExplodeSetOffBy`).
+			Minion->ExplodeSetOffBy(this);
 			++Exploded;
 		}
 	}
 
 	MinionsDetonated = Exploded;
-	if (Exploded > 0)
-	{
-		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' exploded %d of its caster's minions."), *SkillName, Exploded);
-	}
+	// SAID EVERY TIME, NOUGHT INCLUDED, at Display since 2026-11-26: the owner's play-test could not tell from the log
+	// whether Open Grave's landing had reached any of the husks.
+	UE_LOG(LogCataclysm, Display, TEXT("%s exploded %d of its caster's %d minion%s within its reach."), *SkillName,
+		   Exploded, Held, Held == 1 ? TEXT("") : TEXT("s"));
 	return Exploded;
 }
 
