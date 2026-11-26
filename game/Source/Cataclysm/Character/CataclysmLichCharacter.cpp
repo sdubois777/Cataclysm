@@ -97,8 +97,9 @@ void ACataclysmLichCharacter::AttackTarget(AActor* /*Target*/)
 
 bool ACataclysmLichCharacter::HasFallenToRaise() const
 {
-	const UWorld* World = GetWorld();
-	const ACataclysmDungeonGameMode* Mode = World ? World->GetAuthGameMode<ACataclysmDungeonGameMode>() : nullptr;
+	// FOUND BY WALKING THE LEVEL (`InWorld`) rather than asked of the world's authority game mode, as the player's
+	// revival finds it: a world built for a test has none, and the raise's tests run in one.
+	const ACataclysmDungeonGameMode* Mode = ACataclysmDungeonGameMode::InWorld(GetWorld());
 	return Mode && Mode->FallenToRaiseNear(GetActorLocation(), RaiseRadiusCm) > 0;
 }
 
@@ -255,7 +256,7 @@ void ACataclysmLichCharacter::UseEnemyAbility(int32 Index, AActor* Target, const
 	{
 		// THE DUNGEON KEEPS THE DEATHS AND RAISES THEM: the record is the floor's, not the Lich's, so two Liches share it
 		// and a death is raised at most once whichever raises it.
-		ACataclysmDungeonGameMode* Mode = World->GetAuthGameMode<ACataclysmDungeonGameMode>();
+		ACataclysmDungeonGameMode* Mode = ACataclysmDungeonGameMode::InWorld(World);
 		LastRaised = Mode ? Mode->RaiseTheFallenNear(this, GetActorLocation(), RaiseRadiusCm, RaiseMostAtOnce) : 0;
 		return;
 	}

@@ -77,6 +77,7 @@ of the 28 files exists there.
 | The Hellhound | `ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations` | `IggyScorch_HitReact_Front` | `IggyScorch_HitReact_Back` | `IggyScorch_HitReact_Left` | `IggyScorch_HitReact_Right` |
 | The Gatekeeper | `ParagonSevarog/Characters/Heroes/Sevarog/Animations` | `Hitreact_Front` | `Hitreact_Back` | `Hitreact_Left` | `Hitreact_Right` |
 | The Succubus | `ParagonCountess/Characters/Heroes/Countess/Animations` | `Hitreact_Fwd` | `Hitreact_Bwd` | `Hitreact_Left` | `Hitreact_Right` |
+| The Lich | `Lich/Animations` | `Anim_Hit1_Lich` | `Anim_Hit1_Lich` | `Anim_Hit2_Lich` | `Anim_Hit2_Lich` |
 
 **Their lengths, in seconds**, read on 2026-11-02 from the `SequenceLength`
 asset registry tag stored in each `.uasset` file's bytes -- the tag this file's
@@ -93,6 +94,7 @@ its own length, which is the only limit on how often a creature flinches.
 | The Hellhound | 0.8333 | 1.3333 | 0.8333 | 0.8333 |
 | The Gatekeeper | 1.7667 | 1.9000 | 1.9667 | 1.5667 |
 | The Succubus | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| The Lich | 0.9333 | 0.9333 | 1.0333 | 1.0333 |
 
 **The Gatekeeper's are the longest by far, up to 1.97 seconds**, against its
 3.0 second attack interval. A boss struck steadily would spend most of the
@@ -197,6 +199,7 @@ being sped up, and the creature starts an attack it has not finished.
 | Imp | 0.9 s | `Attack_A_SetA` | 0.80 s | 1.00 | Passes as authored |
 | Corrupted Sentinel | 1.0 s | `Fire_Planted` | 2.40 s | **2.40** | Passes, sped up, under the 2.50 ceiling |
 | Succubus | 1.0 s | `Primary_Attack_Normal` | 0.90 s | 1.00 | Passes as authored, by 0.10 s |
+| Lich | 1.0 s | `Anim_Attack4_Lich` | 1.00 s | 1.00 | Passes as authored, with nothing to spare |
 | Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | 1.00 | Passes as authored |
 | Brute | 1.2 s | `Attack_Melee_A` | 0.97 s | 1.00 | Passes as authored, by 0.23 s |
 | Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | 1.00 | Passes as authored |
@@ -939,6 +942,44 @@ python tools/run_editor_python.py tools/measure_animation_stride.py
 
 Both change nothing. The results land in
 `game/Saved/Logs/run_editor_python.log`, the first on lines beginning `PROBE|`.
+
+### The Lich — the owner's Lich pack
+
+**Read 2026-11-26 without the editor**, from the `SequenceLength`,
+`NumFrames`, `RootMotion` and `bEnableRootMotion` asset registry tags stored in
+each `.uasset` file's bytes in the main checkout's `game/Content/Lich`. The pack
+is the owner's purchase and is gitignored like the Paragon packs, so a worktree
+has none of it. **Every clip has root motion off and no notifies.**
+
+The mesh is `SK_Lich`, the whole body with its cloth off; `Mesh/Separate_Mesh`
+holds the same body in parts and is unused. **Its height was not measured**, so
+`ACataclysmLichCharacter` borrows the Succubus's capsule, a judgement.
+
+**What the creature plays**, from `ACataclysmLichCharacter`:
+
+| Animation | Length | What plays it |
+|---|:-:|---|
+| `Anim_Attack4_Lich` | 1.0000 | Grave Bolt's quick cast. The only attack clip short enough for a bolt every second |
+| `Anim_Attack2_Lich` | 2.4667 | Grave Burst, lined up so its release falls as the 1.26 s wind-up ends |
+| `Anim_Attack1_Lich` | 3.9333 | Raise the Fallen, lined up the same way |
+| `Anim_Idle1_Lich` | 1.4667 | Standing |
+| `Anim_WalkingF_Lich` | 1.1000 | Walking, at its authored rate: its stride was not measured |
+| `Anim_Dead1_Lich` | 4.9667 | Dying. One clip |
+| `Anim_Hit1_Lich` | 0.9333 | Struck from the front or from behind |
+| `Anim_Hit2_Lich` | 1.0333 | Struck from the left or the right |
+
+**Measured and not used:** `Anim_Attack3_Lich` (4.5667, the raise's
+alternative), `Anim_Attack5_Lich` (3.7667), `Anim_Dodge_Lich` (1.9667),
+`Anim_Idle2_Lich` (4.0000), `Anim_Idle3_Lich` (6.1667), `Anim_Run_Lich`
+(3.3333), `Anim_WalkingB_Lich` (4.1000), `Anim_WalkingL_Lich` and
+`Anim_WalkingR_Lich` (1.1333 each).
+
+**NOT CONFIRMED, and to be checked by eye in the editor:** which attack clip is
+a cast and which a strike, the frame each releases on, and whether the bones
+carry the body forward. The attack clips are named only `Attack1` to `Attack5`
+and were chosen by length. Each release moment is one named constant in
+`ACataclysmLichCharacter.h` -- `GraveBoltReleaseSeconds`,
+`GraveBurstReleaseSeconds`, `RaiseReleaseSeconds` -- so a correction is one line.
 
 ### The Hellhound — IggyScorch
 

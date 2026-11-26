@@ -2,6 +2,172 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — The Lich, Death's caster: Grave Bolt, Grave Burst and Raise the Fallen, a floor's own record of its deaths, and the Lich in the Succubus's place as the escort of Death dungeons
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmLichCharacter.h` and `.cpp` (new): the creature.
+- `game/Source/Cataclysm/Dungeon/CataclysmFloorPopulation.h` and `.cpp`: `ECataclysmDungeonCreature::Lich`, its name,
+  and `FCataclysmFloorPopulator::EscortFor`, which the escort line now reads.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`: `ClassFor` and `ApplyDesignedStats` for the
+  Lich; the record `FallenThisFloor`, filled by `NoteDeathForRaiseTheFallen` from `OnSomethingDied` and emptied as a
+  floor begins and when the walk ends; `FallenToRaiseNear`, `RaiseTheFallenNear` and `FallenRecordedThisFloor`.
+- `game/Source/Cataclysm/Player/CataclysmGameMode.h`: `LichHealth`, `LichArmour`, `LichAttackDamage`,
+  `LichRarityStep`, whose key `game/Config/DefaultGame.ini` now carries at -1.
+- `sim/cataclysm_sim/enemy_stats.py` (the `Lich` archetype), `sim/cataclysm_sim/enemy_abilities.py` (its reach and
+  three abilities), `game/Data/EnemyArchetypes.csv` (regenerated, 9 rows).
+- `docs/Cataclysm_GDD_v2.md`: `### **The Lich**`, and Lich rows in the resistance, Attack Telegraphs and quick cast
+  tables. `game/docs/enemy-source-assets.md`: the Lich's clips, its timing row and its two flinch rows.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmLichTests.cpp` (new, 6 tests), three tests at the end of
+  `game/Source/Cataclysm/Tests/CataclysmDeathModifierTests.cpp` for the floor rig; the population sweep and the
+  archetype table's row count; six Python checks given the Lich.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL.** Nothing here has been compiled. The coordinating session schedules the window.
+- **Two things fail until the window's editor step, by design:** `test_every_csv_still_hashes_to_what_was_recorded`
+  in Python, and `Cataclysm.Data.EveryGeneratedTableImports` in Unreal, because `EnemyArchetypes.csv` gained a row
+  and `DT_EnemyArchetypes` has not been rebuilt. The Wraith's branch adds a row too, so the asset is rebuilt once,
+  after both merge.
+- **One Unreal test fails on this branch alone:** part 4 of
+  `Cataclysm.CreatureCataclysm.TheBriefCarriesTheSenderAndEveryRosterIsTheDemonicSevenForNow` says a Death floor
+  places the same creature on every cell as a floor nobody sent, and a Death floor's escort is now a Lich. The
+  coordinating session gave that test to the Wraith's branch to rewrite (Q2), since the Wraith changes Death's roster
+  in the same place.
+- **The clips are not confirmed.** See "What was read from the clips, and what was not".
+
+### The owner's ruling, verbatim
+
+"I'm happy with those enemy designs. And your recommendations for the rest are good with me. for 4. yes use the
+wraith. 5. use the animation if we've got it" (2026-11-26). So the design in
+`.claude/windows/death_creatures_design.md` stands as approved: the Lich's role, figures and three abilities; it
+**replaces the Succubus as the escort** that joins one group in four in Death dungeons; raised creatures are
+**Commons at half health, worth nothing**; it **reuses its two hit clips for four sides**; and its attack clips are
+to be checked before they are wired.
+
+### What the creature is
+
+A slow skeletal caster that stays behind a fight and raises what the player has just killed. Health share 1.60,
+damage share 0.60 with a bolt every 1.0 s, armour share 0.50, 10% for 200% critical strikes, 3.0 m/s, an energy shield
+of 30% of its health, 25% resistance. `stats_on_floor("Common", 1, "Cataclysm", kind="Lich")` gives 399.2 health and
+24.95 armour, which are the sandbox's 399 and 25.
+
+| Ability | Slot | Shape | What it does |
+|---|---|---|---|
+| Raise the Fallen | Special | Summon | Up to 3 of the latest deaths within 10 m stand up where they fell, Commons of their own kind at half health, worth nothing. 10 s cooldown. No marker |
+| Grave Burst | Heavy | Strike | A 3 m ring all round it at 250%, after a 1.26 s circle (0.4 + 3.0 ÷ 3.5). 8 s cooldown |
+| Grave Bolt | Basic | Projectile | A quick cast every second: Range 8, Radius 0.5, Speed 1200, Soulfire's figures |
+
+**The escort follows the sender**: `EscortFor(Death)` is the Lich; every other sender, and none, keeps the Succubus.
+The coordinating session ruled that as Q1 and limited the edit to the escort lines.
+
+### The record of the fallen
+
+**Echoes of the Past's record could not serve.** `FEchoOfTheDead` holds a kind, a rung, an attack and whether it is
+spent: no position and no time, and it hands the LAST floor's dead to the next floor. A raise needs where each death
+fell on THIS floor. So the floor keeps a record of its own, `FallenThisFloor`: kind, where, when, and whether a Lich
+has raised it. It is kept apart from Echoes of the Past and from the Necromancer's player-owned remains
+(`feat/death-finish-d-remains`), as the brief asked.
+
+- **What is recorded.** Every death that pays, of something that can be hurt, that is not a Lich or a Gatekeeper (by
+  class, which takes in the Cataclysm Boss) and is not the Cataclysm Boss.
+- **A death is raised at most once.** `OnSomethingDied` counts `FloorEnemies` before Undying Will, Haunting and Dead
+  Rising and after them; if one of the three raised this death the list grew, and the death is not recorded. A death
+  a Lich raises is marked spent before its spawn, so two Liches share one record and neither raises it twice. What a
+  Lich raises is marked `bRisenFromTheDead`, so its own death pays nothing and is not recorded: nothing loops.
+- **Emptied** where Echoes of the Past hands over (`GoToFloor`) and where it is emptied on leaving
+  (`LeaveEmpireDungeon`).
+- **Held from obstacles.** A raise comes later than the death and spawns whatever stands on the cell, so the cells of
+  deaths not yet raised are in `CellsTheFloorHolds`, as Divine Resurgence's graves are. The check
+  `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py` found this.
+
+### Judgements, each labelled as one
+
+- **J1, the record is not saved.** A load mid-floor forgets which deaths a Lich could raise. That costs the player
+  nothing; saving it would add a field to the walk's save for a list that only ever helps the enemy.
+- **J2, the latest deaths first, with no time limit.** The design says "the most recent deaths" and gives no window;
+  a death stays raisable until the floor ends.
+- **J3, the raise is chosen only when a death lies near.** The brain has no veto for a creature, so
+  `EnemyAbilities` gives the raise a range of nought when no unraised death lies within 10 m. A Lich never casts at
+  nothing and never spends its cooldown on nothing.
+- **J4, release times.** One named constant each, so a correction is one line: `GraveBoltReleaseSeconds` 0.5 (half
+  of `Attack4`), `GraveBurstReleaseSeconds` 1.2 (about half of `Attack2`), `RaiseReleaseSeconds` 2.0 into `Attack1`.
+  The raise's wind-up is its release time, so the creatures stand up as the clip reaches it.
+- **J5, flinches.** `Hit1` front and back, `Hit2` left and right: the owner's accepted recommendation, with which way
+  each clip leans unchecked.
+- **Evasion none.** The design states none; a slow skeleton in robes has no reason to dodge.
+- **The capsule is the Succubus's** (48 by 90.4 cm): the Lich mesh's height was not measured.
+- **The walk plays `WalkingF` at its authored rate**: its stride was not measured, so no play-rate fit was made.
+- **Grave Bolt's tags are Soulfire's** (`Type.Spell, Type.Projectile`), a direct hit that can be evaded. **Grave
+  Burst's are `Type.AOE.PointBlank, Type.Spell`**: area damage, which cannot be evaded, and a caster's spell rather
+  than the Brute's melee stomp, so it carries no stun and no knockback.
+- **The raise finds the dungeon by walking the level** (`ACataclysmDungeonGameMode::InWorld`), as the player's
+  revival does, rather than through the world's authority game mode, which a test world does not have.
+
+### What was read from the clips, and what was not
+
+Read without the editor from the asset registry tags in each `.uasset` under the main checkout's
+`game/Content/Lich/Animations`: every clip has root motion off and no notifies. Lengths: Attack1 3.933 s, Attack2
+2.467 s, Attack3 4.567 s, Attack4 1.000 s, Attack5 3.767 s, Dead1 4.967 s, Hit1 0.933 s, Hit2 1.033 s, Idle1 1.467 s,
+WalkingF 1.100 s. `game/docs/enemy-source-assets.md` lists them all.
+
+**NOT CONFIRMED**, to be checked by eye in the editor during the window, as the coordinating session arranged:
+which attack clip is a cast and which a strike; the frame each releases on; and whether the bones carry the body
+forward. They were chosen by length: `Attack4`, the only clip short enough for a bolt every second, for Grave Bolt;
+`Attack2` for Grave Burst; `Attack1` for the raise, `Attack3` its alternative.
+
+### Genre sources (from the approved design)
+
+Path of Exile 2's Desiccated Lich (poe2db.tw): 150% life, a shield of 30% of life, a projectile every second and a
+revive on a 10 second cooldown. Path of Exile's Soul Conduit (poedb.tw): a monster that raises after death. Diablo
+II's Greater Mummy revives fallen undead (search snippets only). No Last Epoch source could be reached.
+
+### The shared edits, listed for the Wraith's branch
+
+Both branches touch these, so expect conflicts here and nowhere else:
+- `ECataclysmDungeonCreature`: `Lich` after `Succubus`, before `Gatekeeper`.
+- `ACataclysmDungeonGameMode::ClassFor` and `ApplyDesignedStats`: a Lich case after the Succubus's.
+- `ACataclysmGameMode`: the four Lich sandbox fields after the Succubus's.
+- `sim/cataclysm_sim/enemy_stats.py` and `enemy_abilities.py`, and `game/Data/EnemyArchetypes.csv`.
+- `CataclysmDataTableTests.cpp`: `EnemyArchetypes.csv` 8 rows to 9 (10 once both merge).
+- `CataclysmFloorPopulationTests.cpp`: Death floors added to the variety sweep, the coordinating session's Q3.
+- `tools/tests/test_enemy_telegraphs.py`: the creature count follows the model, at least seven.
+- `docs/Cataclysm_GDD_v2.md`: the "Only the ... are designed" sentence, and the resistance and telegraph tables.
+- **Not edited:** the floor's log line in `ACataclysmDungeonGameMode` that counts each kind. Both branches would add
+  to the same format string; whichever merges second should add both.
+
+### Unreal tests to register
+
+New group `Cataclysm.Lich.`, nine tests:
+- `Cataclysm.Lich.ItsAbilitiesAreTheRaiseTheBurstAndTheBoltInThatOrder`
+- `Cataclysm.Lich.ItDealsNoMeleeHitAtItsBoltsRange`
+- `Cataclysm.Lich.GraveBurstCatchesEverythingInItsRingAndNothingOutside`
+- `Cataclysm.Lich.GraveBoltLeavesAsAProjectile`
+- `Cataclysm.Lich.ItWearsTheLichPackWhenItIsInstalled` (a skipped half without the pack)
+- `Cataclysm.Lich.ADeathFloorsEscortIsALichAndADemonicFloorsIsTheSuccubus`
+- `Cataclysm.Lich.RaiseTheFallenRaisesTheThreeLatestDeathsNearAsCommonsAtHalfHealthAndEachOnlyOnce`
+- `Cataclysm.Lich.ItNeverRaisesALichAGatekeeperSomethingWorthNothingOrADeathAnotherRuleRaised`
+- `Cataclysm.Lich.TheRecordOfTheFallenIsEmptiedWhenTheNextFloorBegins`
+
+Changed: `Cataclysm.DungeonEnemies.AFloorHoldsMoreThanOneKindOfCreature` and `Cataclysm.Data.EveryGeneratedTableImports`.
+
+### C++ guard breaks to register, each conditional
+
+- **A, the second life.** In `NoteDeathForRaiseTheFallen`, `if (bAnotherRuleRaisedIt)` becomes
+  `if (bAnotherRuleRaisedIt && FallenThisFloor.Num() < 0)`. Predicted to fail
+  `ItNeverRaisesALichAGatekeeperSomethingWorthNothingOrADeathAnotherRuleRaised` ("and that death is not recorded for
+  a Lich").
+- **B, raised at most once.** In `RaiseTheFallenNear`, `Dead.bRaised = true;` becomes `Dead.bRaised = Most < 0;`.
+  Predicted to fail `RaiseTheFallenRaisesTheThreeLatestDeathsNearAsCommonsAtHalfHealthAndEachOnlyOnce`.
+- **C, the escort.** In `EscortFor`, `ECataclysmType::Death` becomes `ECataclysmType::War`. Predicted to fail
+  `ADeathFloorsEscortIsALichAndADemonicFloorsIsTheSuccubus`, and the variety sweep's "a Lich is placed somewhere".
+
+### Evidence
+
+Python, before the decisions entry was added, on the branch's working tree: "4 failed, 9578 passed, 9 skipped"; JUnit
+9,591 tests, 4 failures. Three of the four were this branch's own and are fixed above (the held cells, and the ini key
+named twice); the fourth is the DataTable hash in "SAID FIRST". The final figures are in the report to the
+coordinating session and the pull request.
+
 ## 2026-11-26 — The owner's first play test: the passive screen opens on the class chosen, every class's starting node draws the Fervour bar, and a minion a skill detonates explodes for twice the caster's weapon (window dfix-w1)
 
 **Affects:**

@@ -289,8 +289,12 @@ def test_the_per_enemy_table_matches_the_enemy_stat_model(section, archetypes):
             f"reaction allowance, it is {expected:.2f} m.")
         checked += 1
 
-    assert checked == 7, (
-        f"only {checked} of the seven vertical slice enemies were checked. "
+    # EVERY CREATURE IN THE MODEL, AND NEVER FEWER THAN THE SLICE'S SEVEN. The
+    # count follows the model since 2026-11-26, when Death's creatures made it
+    # eight and more; the floor of seven is what still catches a model read empty.
+    creatures = sum(1 for name in archetypes if name != "Baseline")
+    assert checked == creatures and checked >= 7, (
+        f"only {checked} of the {creatures} enemies in the model were checked. "
         f"Either the model gained an archetype the document does not cover, or "
         f"the table's format changed and these rows stopped matching.")
 

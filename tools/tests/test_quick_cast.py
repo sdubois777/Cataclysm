@@ -50,7 +50,8 @@ def test_the_design_documents_table_is_what_the_model_computes() -> None:
     text = GDD.read_text(encoding="utf-8")
     quick = [(enemy, a) for enemy, entries in ABILITIES.items()
              for a in entries if a.quick_cast]
-    assert len(quick) == 2, quick
+    # THREE SINCE 2026-11-26: the Lich's Grave Bolt joined Soulfire and Siege Bolt.
+    assert len(quick) == 3, quick
     for enemy, ability in quick:
         owner = "the Succubus" if enemy == "Succubus" else f"the {enemy}"
         row = (f"| {owner[0].upper() + owner[1:]}'s {ability.name} "

@@ -9158,6 +9158,15 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 		{
 			HoldWhere(Grave.Location);
 		}
+		// THE LICH'S DEAD NOT YET RAISED, as Divine Resurgence's graves: a raise stands each where it fell, later, and
+		// spawns whatever is in the way, so no obstacle may close that cell first. 2026-11-26.
+		for (const FFallenToRaise& Dead : FallenThisFloor)
+		{
+			if (!Dead.bRaised)
+			{
+				HoldWhere(Dead.Where);
+			}
+		}
 	}
 	Held.Append(RealityRiftCells);
 	if (RealityChamberRiftCell != FIntPoint(-1, -1))
