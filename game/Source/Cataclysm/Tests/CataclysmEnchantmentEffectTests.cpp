@@ -3806,18 +3806,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedDrawbackReachesTheShieldTest,
 /**
  * "Energy shield can now be effected by bleed", from its row, worn. Issue #2014.
  *
- * THE ONE EXCEPTION TO THE ONE EXCEPTION. The project owner, 2026-09-18:
- * "every DoT except bleed reaches ES." A bleed passes an energy shield to
- * health; this drawback makes its wearer's shield take bleed too, by granting
- * `shield_absorbs_damage_over_time`, the flag Warded grants.
+ * THE ONE EXCEPTION TO THE ONE EXCEPTION. The project owner, 2026-11-26: "Bleed
+ * deals no damage while the target has energy shield." This drawback makes its
+ * wearer's bleed drain the shield one for one and then health, by granting
+ * `bleed_drains_energy_shield` (the coordinating session's ruling of the same
+ * day; the stat was `shield_absorbs_damage_over_time` until then).
  *
  * READ FROM THE ROW AND WORN, NOT GRANTED BY HAND. A case that wrote the flag
  * itself would pass with no row at all, which is how three nodes on the passive
  * side came to grant nothing. The drawback is paired with a benefit that has
  * no effect row, so the flag is the only thing the item changes.
  *
- * BOTH HALVES, WITHOUT AND WITH, on the same wearer: a bleed passes the shield
- * before the item is worn and is absorbed after.
+ * BOTH HALVES, WITHOUT AND WITH, on the same wearer: a bleed deals nothing
+ * before the item is worn, and comes off the shield and then health after.
  */
 bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
 {
@@ -3853,7 +3854,7 @@ bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("which grants the flag that lets bleed into the shield"),
 			  Effect->Stat,
-			  FString(UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat));
+			  FString(UCataclysmDamageCalculation::BleedDrainsEnergyShieldStat));
 	TestEqual(TEXT("stated flat"), Effect->ValueKind, FString(TEXT("flat")));
 	TestTrue(TEXT("and above zero, which is what the flag asks"),
 			 Effect->ValueLow > 0.0f);
@@ -3895,8 +3896,10 @@ bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
 	// shield's share is exactly its whole 400 when it applies at all.
 	constexpr float Tick = 100000.0f;
 
-	TestEqual(TEXT("wearing nothing, the shield absorbs none of a bleed"),
-			  BleedFor(Tick).AbsorbedByShield, 0.0f, 0.001f);
+	const FCataclysmDamageResult Bare = BleedFor(Tick);
+	TestEqual(TEXT("wearing nothing, the shield absorbs none of a bleed"), Bare.AbsorbedByShield, 0.0f, 0.001f);
+	TestEqual(TEXT("and the bleed deals nothing to health while the shield stands"), Bare.DealtToHealth, 0.0f,
+			  0.001f);
 
 	FCataclysmItem Removed;
 	FCataclysmItem AlsoRemoved;
@@ -18774,12 +18777,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearerDamageOverTimeRowsTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Six stat rows. The two that raise a figure are read against a figure of
+ * Six stat rows. The three that scale a figure are read against a figure of
  * 100, with the bleed tag and with the burn tag, since each is scoped to bleed:
  * "Bleed effects applied to you deal 30%-50% increased damage" makes 150 of a
- * bleed and leaves a burn at 100, and "Bleeding on you lasts 50%-100% longer"
- * makes 200. A drawback is worn at its harshest roll. The four flat rows read
- * their own figure: 1, 20, 1 and 1, the bleed immunity only with the bleed tag.
+ * bleed and leaves a burn at 100, "Bleeding on you lasts 50%-100% longer"
+ * makes 200, and "You take 10%-20% less damage from bleeding" (the owner's
+ * choice of 2026-11-26) makes 80. A drawback is worn at its harshest roll and a
+ * benefit at its best. The three flat rows read their own figure: 1, 1 and 1,
+ * the bleed immunity only with the bleed tag.
  */
 bool FCataclysmWearerDamageOverTimeRowsTest::RunTest(const FString&)
 {
@@ -18797,14 +18802,16 @@ bool FCataclysmWearerDamageOverTimeRowsTest::RunTest(const FString&)
 		const TCHAR* Row;
 		const TCHAR* Stat;
 		float OfABleed;
+		bool bBenefit = false;
 	};
 	const FRaised Raised[] = {
 		{TEXT("Negative_Bleed_effects_applied_to_you_deal_30_50_increa"), TEXT("damage_over_time_taken"), 150.0f},
 		{TEXT("Negative_Bleeding_on_you_lasts_50_100_longer"), TEXT("debuff_duration_taken"), 200.0f},
+		{TEXT("Positive_You_take_10_20_less_damage_from_bleeding"), TEXT("damage_over_time_taken"), 80.0f, true},
 	};
 	for (const FRaised& Case : Raised)
 	{
-		FWorn Worn(Case.Row, false);
+		FWorn Worn(Case.Row, Case.bBenefit);
 		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 		{
 			return false;
@@ -18828,8 +18835,6 @@ bool FCataclysmWearerDamageOverTimeRowsTest::RunTest(const FString&)
 	};
 	const FFlat Flats[] = {
 		{TEXT("Positive_Unaffected_by_bleeding"), true, TEXT("ailment_immunity"), true, 1.0f},
-		{TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y"), true,
-		 TEXT("bleed_damage_taken_from_energy_shield"), false, 20.0f},
 		{TEXT("Positive_DoTs_deal_damage_to_your_mana_pool_first"), true,
 		 TEXT("damage_over_time_taken_from_mana_first"), false, 1.0f},
 		{TEXT("Negative_Your_persistent_AOE_zones_apply_their_effects_to"), false,

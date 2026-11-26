@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-26 — Any blow that dealt something can carry an ailment; a bleed needs health and deals nothing while a shield stands; a Void Splinter ignores the shield
+## 2026-11-26 — Any blow that dealt something can carry an ailment; a bleed needs health and deals nothing while a shield stands; a Void Splinter ignores the shield; Warded and two bleed enchantments reworded
 
 **Affects:**
 - `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp`: `BlowCanCarryAnAilment` takes what the blow
@@ -21,14 +21,21 @@ Decisions made outside the Google Drive documents, newest first.
   `game/Source/Cataclysm/Tests/CataclysmDamageCalculationTests.cpp` (the energy shield test extended).
 - `docs/Cataclysm_GDD_v2.md`: the mitigation table's step 8, the energy shield bullets, "Applying Damage Over Time and
   Other Effects", and the Succubus's shield.
+- The rulings on the rows that named bleed and the shield: `CataclysmCombatAttributeSet.h` and `.cpp` (the attribute
+  `ShieldAbsorbsDamageOverTime` renamed `BleedDrainsEnergyShield`, and a new `ShieldAbsorbsWhatBypassesIt`),
+  `CataclysmPlayerClassStats.cpp`, `CataclysmEnchantmentRenames.cpp` (one alias),
+  `tools/apply_ailment_shield_rulings_2026_11_26.py` (new: writes the workbook cells and Warded's sentence),
+  `docs/All_Things_Cataclysm.xlsx`, `docs/Ritualist_Class_Tree_Final.json`, the regenerated `game/Data/` CSVs,
+  `tools/tests/enchantment_row_names.txt`, and the tests in `CataclysmEnergyShieldKeystoneTests.cpp`,
+  `CataclysmEnchantmentEffectTests.cpp`, `CataclysmStatExemptionTests.cpp`, `CataclysmPlayerClassStatsTests.cpp`,
+  `CataclysmPassiveTreeTests.cpp`, `CataclysmDataTableTests.cpp` and three files in `tools/tests/`.
 
 ### SAID FIRST
 
 - **NOT YET RUN IN UNREAL.** The C++ is written and not compiled; it waits for a window. Nothing below claims a
   measured outcome in the game.
-- **Four rows that put bleed and energy shield together await a ruling** (listed below). Until it comes, the two rows
-  carrying `shield_absorbs_damage_over_time` still let a bleed into the shield, the row carrying
-  `bleed_damage_taken_from_energy_shield` still moves its share, and The Breaking Point's converted damage is exempt.
+- **The DataTable assets are not regenerated.** `game/Data/` CSVs are; the `.uasset` files under
+  `game/Content/Data/` need the editor and wait for the window, as every workbook change's do.
 
 ### The owner, verbatim
 
@@ -39,6 +46,11 @@ Decisions made outside the Google Drive documents, newest first.
   hit actual health."
 - 2026-11-25: "bleed does nothing against energy shield."
 - The Void Splinter question was ruled yes by the coordinating session on 2026-11-26.
+- **Warded**, the owner's choice of the coordinating session's recommended option (2026-11-26): "Your Energy Shield
+  absorbs damage that would bypass it."
+- **The positive enchantment** "10%-20% of bleed damage you take is taken from your energy shield instead of your
+  health", the owner's choice of the coordinating session's recommended option (2026-11-26): "You take 10%-20% less
+  damage from bleeding."
 
 ### The rules built
 
@@ -67,29 +79,54 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### Judgements by the writing session, labelled as such
 
-- **Mana counts as dealt.** A blow the mana took whole landed and dealt something, as a blow the shield took whole
-  did. Put to the coordinating session to confirm.
 - **A stated bleed with no blow figure** (a caller that has none) asks the target's shield instead: it applies only
   when the shield is at nought.
 - **A random damage over time that draws a bleed it may not lay lays nothing**, rather than drawing again, so a draw
   pinned by its index for a test still means the same kind.
 - **A bleed tick that deals nothing does not restart the shield's refill wait**, because nothing landed; a bleed alone
   never keeps a shield from refilling.
-- **The Breaking Point's converted damage is exempt from rule 3's tick**, as it is from bleed's movement gate (#918):
-  it is damage already taken and deferred, not cancelled. Without the exemption a Masochist with any shield would
-  take nothing from its own converted damage.
 - **`ApplyBurn`'s incidental burn** asks only that the hit dealt more than nought.
 
-### Rows that put bleed and energy shield together, reported for a ruling
+### The rows that put bleed and energy shield together, and what each became
 
-1. Warded, `Ritualist_keystone_c_kA`: "Your Energy Shield absorbs damage over time as well as hits."
-   (`shield_absorbs_damage_over_time` 1). Recommended: inert, with an issue to give it a new effect.
-2. The drawback `Negative_Energy_shield_can_now_be_effected_by_bleed` (the same stat). Recommended: a bleed drains the
-   shield, which keeps it a drawback.
-3. `Positive_10_20_of_bleed_damage_you_take_is_taken_from_y`: "10%-20% of bleed damage you take is taken from your
-   energy shield instead of your health" (`bleed_damage_taken_from_energy_shield`). Recommended: inert while the shield
-   stands, with an issue.
-4. The Breaking Point, `Masochist_basic_ll_b1`: converted damage laid as a bleed. Recommended: exempt, as built.
+Ruled by the coordinating session on 2026-11-26 within the owner's delegation, except where the owner chose.
+
+1. **Mana counts as dealt.** "MANA: yes. Count mana as dealt. The blow did damage."
+2. **The drawback "Energy shield can now be effected by bleed"** (`Negative_Energy_shield_can_now_be_effected_by_bleed`)
+   keeps a drawback's meaning: a bleed on its holder is not stopped by the shield, and its ticks come off the shield one
+   for one, then off health. Its stat is renamed from `shield_absorbs_damage_over_time`, which had not been true since
+   issue #2014, to `bleed_drains_energy_shield`, in the workbook, the C++ (the attribute too) and every test. Its Weight
+   and Tags are unchanged. No save holds the stat: a character's stats are rebuilt from its passive points and its
+   items' enchantments on load.
+3. **The Breaking Point's converted damage** (`Masochist_basic_ll_b1`) is exempt from rule 3 and keeps going to health,
+   "because it already met every defence when it was converted", as bleed's movement gate (#918) already exempts it.
+4. **Warded** (`Ritualist_keystone_c_kA`): the owner's words above. Its row moves to a stat of its own,
+   `shield_absorbs_what_bypasses_it`: with it, a blow or tick marked `bIgnoresEnergyShield` is taken by the shield like
+   any other while the shield stands. Two things set that mark, found by searching where the flag is assigned: a Void
+   Splinter's tick and a blow of a creature carrying Soul Eater (`UCataclysmEnemyModifiers::IgnoresEnergyShield`). **A
+   bleed is not included**: "Warded must not turn that into a cost." Its sentence is rewritten in
+   `docs/Ritualist_Class_Tree_Final.json` (and so `PassiveNodes.csv`) and in the design document.
+5. **The positive enchantment**: the owner's words above, at the same range, as the row shape the drawback "Bleed
+   effects applied to you deal 30%-50% increased damage" already has: `damage_over_time_taken` requiring
+   `Keyword.DoT.Bleed`, `more` at -10 to -20 ("less" is `more` at a negative figure in every "you take N% less damage"
+   row). No stat was added: the search for one found `damage_over_time_taken`, which already reads the tick's ailment
+   tag. Its Weight (3) and Tags (`Keyword.Shield, Stat.Defense.EnergyShield`) are unchanged. **Its row name changes**,
+   because a row name is the sentence's first 48 characters: `Positive_10_20_of_bleed_damage_you_take_is_taken_from_y`
+   becomes `Positive_You_take_10_20_less_damage_from_bleeding`. The old name, and the name it was itself renamed from,
+   `Positive_Your_energy_shield_absorbs_10_20_of_HP_damage`, both point at the new one in
+   `FCataclysmEnchantmentRenames::Aliases()` and in `tools/tests/enchantment_row_names.txt`, so a saved item carrying
+   either still resolves. The only other reader of the old name was one entry in
+   `Cataclysm.Enchantments.TheSixStatRowsOnDamageOverTimeAndZonesOnTheWearerEachGiveTheFigureTheGameAsksFor`, now
+   the new row read at 80 of a bleed's 100.
+6. **`bleed_damage_taken_from_energy_shield` is retired.** After item 5 no row grants it, and its only readers were
+   step 8 of `Resolve`, the stats-without-an-attribute list in `CataclysmPlayerClassStats.cpp`, and two tests in
+   `CataclysmStatExemptionTests.cpp` (its probe and one case of
+   `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment`, now the new enchantment's case).
+
+**Not changed, and said so:** `sim/cataclysm_sim/damage.py` keeps a field named `shield_absorbs_damage_over_time`. It
+belongs to the simulation's own older energy shield model, in which no tick reaches the shield unless the field is set,
+and that model was already behind the game before this change (the game has let every tick but bleed in since
+2026-09-18). Bringing the simulation's shield up to the game is a change of its own.
 
 ## 2026-11-26 — The owner's first play test: the passive screen opens on the class chosen, every class's starting node draws the Fervour bar, and a minion a skill detonates explodes for twice the caster's weapon (window dfix-w1)
 

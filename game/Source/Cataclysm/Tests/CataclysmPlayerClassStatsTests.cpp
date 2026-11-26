@@ -586,9 +586,14 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// THE HALVED RATES TWO OF THEM STATE ARE CONSTANTS AT THEIR READ SITES
 		// rather than stats, because the design rows fix them and nothing else
 		// grants them. A stat would be a second place to write the same figure.
-		{TEXT("shield_absorbs_damage_over_time"),
+		{TEXT("bleed_drains_energy_shield"),
+		 TEXT("the drawback \"Energy shield can now be effected by bleed\", as a "
+			  "flat flag, read where the damage calculation decides whether the "
+			  "shield takes a bleed")},
+		{TEXT("shield_absorbs_what_bypasses_it"),
 		 TEXT("the Ritualist's Warded keystone, as a flat flag, read where the "
-			  "damage calculation decides whether the shield applies to a hit")},
+			  "damage calculation decides whether a blow that bypasses the shield "
+			  "is taken by it")},
 		{TEXT("shield_recharges_while_damaged"),
 		 TEXT("the Ritualist's Ablative keystone, as a flat flag, read where the "
 			  "regeneration step scales the shield's recharge")},

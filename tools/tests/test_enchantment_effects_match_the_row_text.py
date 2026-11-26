@@ -212,10 +212,12 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.I
 #: stats states 1 and nothing else, so the exemption cannot grow to cover a
 #: magnitude nobody wrote down.
 #:
-#: `shield_absorbs_damage_over_time` JOINED ON 2026-09-23, issue #2014, with
-#: "Energy shield can now be effected by bleed". Above zero it lets a bleed into
-#: the wearer's energy shield; the sentence says what happens and the 1 says
-#: that it happens.
+#: `bleed_drains_energy_shield` JOINED ON 2026-09-23, issue #2014, with
+#: "Energy shield can now be effected by bleed", under its first name,
+#: `shield_absorbs_damage_over_time` (renamed 2026-11-26). Above zero a bleed on
+#: the wearer drains the shield and then health, where otherwise it deals nothing
+#: while the shield stands; the sentence says what happens and the 1 says that it
+#: happens.
 #:
 #: `shield_recharge_has_no_delay` JOINED ON 2026-09-25, issue #1833's small
 #: engine halves, with "Energy shield regeneration begins immediately after
@@ -240,7 +242,7 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.I
 #: `zone_applies_own_ailment`, "Persistent AOE zones apply a DoT to enemies
 #: standing in them". A zone asks each whether it is above nought.
 FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death",
-              "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay",
+              "bleed_drains_energy_shield", "shield_recharge_has_no_delay",
               "aura_shares_immunities_with_allies", "zone_staggers_on_entry",
               "zone_applies_own_ailment",
               # JOINED 2026-10-06 with Plague Doctor's six-piece row: above nought,
@@ -747,8 +749,8 @@ BASE_PLUS_SINGLE_VALUES = {
 #: sentences' own numbers.
 #: AND 264 OVER 205 SINCE ISSUE #2014, from 263 over 204: one flag row on
 #: "Energy shield can now be effected by bleed", an enchantment that had none.
-#: It grants `shield_absorbs_damage_over_time`, which since that issue lets a
-#: bleed into the wearer's energy shield.
+#: It grants what is now `bleed_drains_energy_shield` (renamed 2026-11-26),
+#: which lets a bleed drain the wearer's energy shield.
 #: AND 270 OVER 211 SINCE GROUP B OF ISSUE #1815, from 264
 #: over 205: one row each on 6 enchantments that had none -- the five movement speed windows' rows and the one lengthened to three seconds.
 #: AND 274 OVER 214 SINCE THE FIRST HIT AGAINST EACH ENEMY, issue #1815, from

@@ -4458,45 +4458,6 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `bleed_damage_taken_from_energy_shield` is the percent of a bleed tick the energy shield takes, read by
-	 * `UCataclysmDamageCalculation::Resolve`. Ruled 2026-10-06.
-	 *
-	 * TWO SHIELDED CHARACTERS, the second carrying the stat at 20, each asked about the same bleed tick. The plain
-	 * one's shield takes none of it. The other's takes a fifth and their health the rest.
-	 */
-	void ProbeBleedDamageTakenFromEnergyShield(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-
-		FScopedSwinger Plain(World, FVector::ZeroVector);
-		FScopedSwinger Held(World, FVector(0, 100 * M, 0));
-		for (FScopedSwinger* One : {&Plain, &Held})
-		{
-			One->Set(Vital::GetMaxEnergyShieldAttribute(), 500.0f);
-			One->Set(Vital::GetEnergyShieldAttribute(), 500.0f);
-		}
-		GrantFlat(Held.Actor, UCataclysmDamageCalculation::BleedDamageTakenFromEnergyShieldStat, 20.0f);
-
-		const FCataclysmIncomingHit Bleed = TickOf(100.0f, UCataclysmDebuffs::BleedTag());
-		const FCataclysmDamageResult OnPlain = ResolveATick(Bleed, Plain.AbilitySystem);
-		const FCataclysmDamageResult OnHeld = ResolveATick(Bleed, Held.AbilitySystem);
-		if (!Test.TestTrue(TEXT("set-up: the tick is a bleed and it reaches a plain character's health"),
-						   Bleed.bIsBleed && OnPlain.DealtToHealth > 0.0f))
-		{
-			return;
-		}
-		Test.TestEqual(TEXT("control: a plain character's shield takes none of a bleed"), OnPlain.AbsorbedByShield, 0.0f, 0.001f);
-		Test.TestEqual(TEXT("one carrying bleed_damage_taken_from_energy_shield at 20 has a fifth of it taken from the shield, so Resolve really reads it"),
-					   OnHeld.AbsorbedByShield, OnPlain.DealtToHealth * 0.2f, 0.01f);
-		Test.TestEqual(TEXT("and the other four fifths from health"), OnHeld.DealtToHealth, OnPlain.DealtToHealth * 0.8f, 0.01f);
-	}
-
-	/**
 	 * `damage_over_time_taken_from_mana_first` is a flag read by `UCataclysmDamageCalculation::Resolve`, and
 	 * `UCataclysmVitalAttributeSet` takes the figure from the mana. Ruled 2026-10-06.
 	 *
@@ -14893,7 +14854,6 @@ namespace CataclysmStatExemptionTest
 			{TEXT("zone_follows_owner_percent"), &ProbeZoneFollowsOwnerPercent},
 			{TEXT("minions_leave_chaos_pools"), &ProbeMinionsLeaveChaosPools},
 			{TEXT("ailment_immunity"), &ProbeAilmentImmunity},
-			{TEXT("bleed_damage_taken_from_energy_shield"), &ProbeBleedDamageTakenFromEnergyShield},
 			{TEXT("damage_over_time_taken_from_mana_first"), &ProbeDamageOverTimeTakenFromManaFirst},
 			{TEXT("health_reserved"), &ProbeHealthReserved},
 			{TEXT("health_reserved_percent"), &ProbeHealthReservedPercent},
@@ -17234,10 +17194,11 @@ bool FCataclysmRandomBuffWarhoundTest::RunTest(const FString&)
 	return true;
 }
 
-// DAMAGE OVER TIME ON THE WEARER, SCOPED BY AILMENT. Ruled 2026-10-06, for seven drawbacks: "Bleed effects applied to
+// DAMAGE OVER TIME ON THE WEARER, SCOPED BY AILMENT. Ruled 2026-10-06, for seven rows: "Bleed effects applied to
 // you deal 30%-50% increased damage", "Bleeding on you lasts 50%-100% longer", "DoTs on you have 100%-300% more duration", "DoTs
-// on you tick twice as fast while moving", "Unaffected by bleeding", "10%-20% of bleed damage you take is taken from
-// your energy shield instead of your health" and "DoTs deal damage to your mana pool first". Issue #1833.
+// on you tick twice as fast while moving", "Unaffected by bleeding", "You take 10%-20% less damage from bleeding" (the
+// owner's choice of 2026-11-26, replacing "10%-20% of bleed damage you take is taken from your energy shield instead of
+// your health") and "DoTs deal damage to your mana pool first". Issue #1833.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageOverTimeOnTheWearerByAilmentTest,
 	"Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment",
@@ -17443,28 +17404,18 @@ bool FCataclysmDamageOverTimeOnTheWearerByAilmentTest::RunTest(const FString&)
 				 bConvertedApplied && UCataclysmDebuffs::IsBleeding(Wearer.AbilitySystem));
 	}
 
-	// "10%-20% OF BLEED DAMAGE YOU TAKE IS TAKEN FROM YOUR ENERGY SHIELD": the share is taken as far as the shield has
-	// it, and every tick that is not a bleed meets the shield whole, as it did.
+	// "YOU TAKE 10%-20% LESS DAMAGE FROM BLEEDING", the owner's choice of 2026-11-26: `damage_over_time_taken` more
+	// -20 requiring the bleed tag, at its best roll. A bleed tick is a fifth smaller; THE CONTROLS: a burn tick and a
+	// tick with no ailment are as they were.
 	{
-		FScopedSwinger Unchanged(World, FVector(0.0f, 24000.0f, 0.0f));
-		FScopedSwinger Wearer(World, FVector(200.0f, 24000.0f, 0.0f));
-		for (FScopedSwinger* One : {&Unchanged, &Wearer})
-		{
-			One->Set(Vital::GetMaxEnergyShieldAttribute(), 500.0f);
-			One->Set(Vital::GetEnergyShieldAttribute(), 500.0f);
-		}
-		GrantFlat(Wearer.Actor, UCataclysmDamageCalculation::BleedDamageTakenFromEnergyShieldStat, 20.0f);
-		const FCataclysmDamageResult BurnOnUnchanged = ResolveATick(BurnTick, Unchanged.AbilitySystem);
-		const FCataclysmDamageResult BurnOnWearer = ResolveATick(BurnTick, Wearer.AbilitySystem);
-		TestTrue(TEXT("set-up: a shield takes a burn tick"), BurnOnUnchanged.AbsorbedByShield > 0.0f);
-		TestEqual(TEXT("control: the wearer's shield takes the same of a burn tick as a plain character's"),
-				  BurnOnWearer.AbsorbedByShield, BurnOnUnchanged.AbsorbedByShield, 0.001f);
-		TestEqual(TEXT("control: and their health the same"), BurnOnWearer.DealtToHealth, BurnOnUnchanged.DealtToHealth, 0.001f);
-
-		Wearer.Set(Vital::GetEnergyShieldAttribute(), 5.0f);
-		const FCataclysmDamageResult OnALowShield = ResolveATick(BleedTick, Wearer.AbilitySystem);
-		TestEqual(TEXT("a shield holding 5 takes 5 of a bleed tick whose fifth is more"), OnALowShield.AbsorbedByShield, 5.0f, 0.001f);
-		TestEqual(TEXT("and health takes all the rest"), OnALowShield.DealtToHealth, PlainBleed - 5.0f, 0.01f);
+		FScopedSwinger Wearer(World, FVector(0.0f, 24000.0f, 0.0f));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		CarryOnAHundred(Inputs, TakenStat, ECataclysmStatBucket::More, -20.0f, Bleed);
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestEqual(TEXT("a holder of \"You take 10%-20% less damage from bleeding\" at 20 takes a fifth less of a bleed tick"),
+				  Taken(BleedTick, Wearer), PlainBleed * 0.8f, 0.01f);
+		TestEqual(TEXT("control: and a burn tick in full"), Taken(BurnTick, Wearer), PlainBurn, 0.01f);
+		TestEqual(TEXT("control: and a tick with no ailment in full"), Taken(BareTick, Wearer), PlainBare, 0.01f);
 	}
 
 	// "DoTs DEAL DAMAGE TO YOUR MANA POOL FIRST": a tick larger than the mana held empties it and the rest reaches

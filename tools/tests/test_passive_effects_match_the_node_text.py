@@ -3748,8 +3748,10 @@ VALUE_IN_WORDS = {
     # Ironhide's sentence goes on to name armour penetration and piercing
     # weapons; the rule is "cannot be ignored" and that is what a reword would
     # have to keep for the row to still be right.
-    ("Ritualist_keystone_c_kA", "shield_absorbs_damage_over_time"):
-        ("absorbs damage over time as well as hits", 1.0),
+    # WARDED SINCE 2026-11-26, the owner's choice: "Your Energy Shield absorbs damage that would bypass it." Until then
+    # "absorbs damage over time as well as hits", on `shield_absorbs_damage_over_time`.
+    ("Ritualist_keystone_c_kA", "shield_absorbs_what_bypasses_it"):
+        ("absorbs damage that would bypass it", 1.0),
 
     # ATTRITION, "Your melee attacks always Cripple and always Weaken, with no
     # chance roll." Issue #1515, written 2026-09-23. A hundred on each chance is

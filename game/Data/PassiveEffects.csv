@@ -286,7 +286,7 @@ Ritualist_keystone_a_kA#1,Ritualist_keystone_a_kA,possession_threshold_bonus,fla
 Ravager_basic_c_c0#1,Ravager_basic_c_c0,area_of_effect,increased,4.0,,can_cripple_or_weaken,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Ritualist_keystone_a_kC#1,Ritualist_keystone_a_kC,minion_reserve_reduction,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Ritualist_keystone_b_kA#1,Ritualist_keystone_b_kA,kill_summons_minion_where_it_fell,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
-Ritualist_keystone_c_kA#1,Ritualist_keystone_c_kA,shield_absorbs_damage_over_time,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Ritualist_keystone_c_kA#1,Ritualist_keystone_c_kA,shield_absorbs_what_bypasses_it,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Ritualist_keystone_c_kB#1,Ritualist_keystone_c_kB,shield_recharges_while_damaged,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Ritualist_keystone_d_kA#1,Ritualist_keystone_d_kA,mana_regen_restores_shield,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Ravager_keystone_spine_001#1,Ravager_keystone_spine_001,armor_penetration_suppressed,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

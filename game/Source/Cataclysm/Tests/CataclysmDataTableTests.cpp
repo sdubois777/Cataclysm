@@ -702,8 +702,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// characters, so EnchantmentsPositive.csv keeps its count.
 	//
 	// AND 264 SINCE ISSUE #2014: one flag row on "Energy shield can now be
-	// effected by bleed", granting `shield_absorbs_damage_over_time`, which
-	// since that issue lets a bleed into the wearer's energy shield.
+	// effected by bleed", granting what is now `bleed_drains_energy_shield`
+	// (renamed 2026-11-26), which lets a bleed drain the wearer's shield.
 	//
 	// AND 270 SINCE GROUP B OF ISSUE #1815, from 264: the five movement speed windows' rows and the one lengthened to three seconds.
 	// One sentence was lengthened after its first 48 characters, so

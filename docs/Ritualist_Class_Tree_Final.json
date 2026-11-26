@@ -1189,7 +1189,7 @@
       "data": {
         "kind": "keystone",
         "name": "Warded",
-        "description": "Your Energy Shield absorbs damage over time as well as hits.",
+        "description": "Your Energy Shield absorbs damage that would bypass it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

@@ -352,6 +352,16 @@ CATACLYSM_TEST(FCataclysmEnergyShieldTest,
 		const FCataclysmDamageResult Past = D.Resolve(PastTheShield);
 		TestEqual(TEXT("a tick that ignores the shield leaves it whole"), Past.AbsorbedByShield, 0.0f);
 		TestEqual(TEXT("and reaches health in full"), Past.DealtToHealth, 1000.0f);
+
+		// AND THE MASOCHIST'S CONVERTED DAMAGE, laid as a bleed by The Breaking Point, still reaches health past a full
+		// shield: it is damage already taken and deferred, and met every defence when it was converted. Ruled by the
+		// coordinating session on 2026-11-26. Its control is the bleed above, which deals nothing on the same shield.
+		D.Vitals->SetEnergyShield(400.0f);
+		FCataclysmIncomingHit Converted = Bleed;
+		Converted.bIsConvertedDamage = true;
+		const FCataclysmDamageResult Deferred = D.Resolve(Converted);
+		TestEqual(TEXT("converted damage arriving as a bleed takes nothing from the shield"), Deferred.AbsorbedByShield, 0.0f);
+		TestEqual(TEXT("and reaches health in full past it"), Deferred.DealtToHealth, 1000.0f);
 	}
 	World->DestroyWorld(false);
 	return true;
