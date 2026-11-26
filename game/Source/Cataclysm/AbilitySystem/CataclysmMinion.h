@@ -1784,7 +1784,7 @@ public:
 	 * tenth of its maximum health. Whether anything was laid or refreshed. Asked by `UCataclysmSkillEffects::ApplyHit`.
 	 */
 	static bool LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth,
-											FName SkillRow = NAME_None);
+											FName SkillRow = NAME_None, float Landed = -1.0f);
 
 	/** Whether this trigger's share of its enemy's maximum health has been added, by its first blow on it. */
 	mutable bool bSkillTrapGaveItsEnemysHealthShare = false;

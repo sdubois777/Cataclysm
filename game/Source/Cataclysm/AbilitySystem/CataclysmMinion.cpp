@@ -1986,8 +1986,12 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			// WITH WHAT REACHED THE ENEMY'S HEALTH AS ITS AMOUNT, so an ailment a row applies on it meets the owner's
 			// rule of 2026-09-02 (#917, a tenth of the target's maximum health) as a hit's does. Window death3-w2 found
 			// it carried nought, which refused every ailment: Cold Hands' and Grave Cold's Necrosis never landed.
+			// AND EVERYTHING IT LANDED, its shield's part included, which an ailment a row lays asks above nought since the
+			// owner's ruling of 2026-11-26.
+			const float WasLanded = Theirs->SetHitBeingAnnouncedLanded(Resolved.Landed());
 			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, Resolved.DealtToHealth,
 							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker, Target);
+			Theirs->SetHitBeingAnnouncedLanded(WasLanded);
 		}
 	}
 
@@ -3976,7 +3980,8 @@ float ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(const AActor* Player)
 	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapDamageOverTimeShareStat));
 }
 
-bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth, FName SkillRow)
+bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth, FName SkillRow,
+												   float Landed)
 {
 	// A GENERIC DAMAGE OVER TIME AND NOT AN AILMENT (F9): its own tag, so a second blow lays over it as every damage over
 	// time does, the stronger a second replacing it and a weaker refreshing its time, and it never stacks.
@@ -3988,9 +3993,11 @@ bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struc
 		return false;
 	}
 
-	// THE OWNER'S RULE OF A TENTH (#917), against what this blow took from that enemy's health: "Follow the tenth rule",
-	// which the owner holds for every lasting effect a trap lays on an enemy (F9).
-	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))
+	// THE OWNER'S RULE FOR EVERY LASTING EFFECT A TRAP LAYS ON AN ENEMY (F9, "Follow the tenth rule"), which is the rule
+	// for every ailment that is not the skill's own. Since the owner's ruling of 2026-11-26 that rule asks a blow that
+	// dealt more than nought, its shield's part counted, and no longer a tenth of maximum health. The share below is
+	// still a share of what reached health.
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, Landed >= 0.0f ? Landed : DealtToHealth))
 	{
 		return false;
 	}

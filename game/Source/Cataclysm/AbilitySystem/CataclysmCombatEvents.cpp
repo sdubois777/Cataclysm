@@ -237,8 +237,7 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	{
 		Notice.SkillTags = UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec);
 	}
-	Notice.Landed = Outcome.AbsorbedByMana + Outcome.AbsorbedByShield
-		+ Outcome.AbsorbedByTemporary + Outcome.DealtToHealth;
+	Notice.Landed = Outcome.Landed();
 	Notice.DealtToHealth = Outcome.DealtToHealth;
 	// AND WHAT WAS SENT: the figure the defender's calculation was given, which nothing changes after it. Issue #2749.
 	Notice.Sent = Hit.Damage;

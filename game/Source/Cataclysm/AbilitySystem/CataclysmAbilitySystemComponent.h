@@ -4683,6 +4683,24 @@ public:
 	}
 
 	/**
+	 * Everything the hit being announced dealt, its energy shield's part included (`FCataclysmDamageResult::Landed`),
+	 * for the row actions that lay an ailment: they ask it to be above nought, where the event's amount is only what
+	 * reached health. The owner's ruling of 2026-11-26. Set beside `SetHitBeingAnnouncedSent` by whoever announces a hit;
+	 * returns what it held before, for the caller to put back. Nought when no hit is being announced, and then the
+	 * event's own amount answers.
+	 */
+	float SetHitBeingAnnouncedLanded(float Landed)
+	{
+		const float Was = HitBeingAnnouncedLanded;
+		HitBeingAnnouncedLanded = Landed;
+		return Was;
+	}
+
+	/** What an ailment-laying row action asks to be above nought: the hit's whole landed figure, or the event's amount
+	 *  when no hit is being announced. */
+	float DealtForAnAilment(float EventAmount) const { return FMath::Max(EventAmount, HitBeingAnnouncedLanded); }
+
+	/**
 	 * Lightning Rod's device for a blow about to strike this character, or null: rolled against
 	 * `BlowToDeviceChancePerDeviceStat` times this character's devices, at most `BlowToDeviceMostChancePercent`, and
 	 * only when a device stands within `BlowToDeviceReachCm`, which is the nearest one (ruled L2). The console variable
@@ -6171,7 +6189,8 @@ public:
 	 * `UCataclysmSkillEffects::ApplyHit` for every blow of a used-up trap's cast, with the identity `SpentSkillTrapNamed`
 	 * found it by (traps layer 3b), so a blow no slow waits for lays nothing.
 	 */
-	bool LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck, float DealtToHealth);
+	bool LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck, float DealtToHealth,
+							   float Landed = -1.0f);
 
 	/**
 	 * TRAPS LAYER 3B, A TRAP'S LATE BLOWS. Ruled 2026-10-21 by the coordinating session (#2462): "a trap's late shot, a
@@ -6748,6 +6767,9 @@ protected:
 
 	/** See `SetHitBeingAnnouncedSent`. V5a, 2026-11-25. */
 	float HitBeingAnnouncedSent = 0.0f;
+
+	/** See `SetHitBeingAnnouncedLanded`. The owner's ruling of 2026-11-26 on ailments. */
+	float HitBeingAnnouncedLanded = 0.0f;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

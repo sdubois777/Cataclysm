@@ -1274,6 +1274,9 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	const bool bAHitThatMayBeRepeated =
 		!Notice.bDamageOverTime && !Notice.bRetaliation && !Cast<ACataclysmMinion>(Notice.DealtBy);
 	const float WasHitSent = Acting->SetHitBeingAnnouncedSent(bAHitThatMayBeRepeated ? Notice.Sent : 0.0f);
+	// AND EVERYTHING THE HIT LANDED, its shield's part included, for the rows that lay an ailment on it: the owner's
+	// ruling of 2026-11-26. Held across the three events below, which are all this hit's, and put back after them.
+	const float WasHitLanded = Acting->SetHitBeingAnnouncedLanded(Notice.Landed);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
@@ -1333,6 +1336,7 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		FCataclysmWarFervour::SkullSplitterOnCriticalStrike(Acting, Notice.Target, CritTags);
 		FCataclysmWarFervour::DeathmarkOnCriticalStrike(Acting, Notice.Target, CritTags);
 	}
+	Acting->SetHitBeingAnnouncedLanded(WasHitLanded);
 
 	// AND EVERY Nth LANDED HIT OF THE CHARACTER'S OWN ON A BOSS COUNTS AS A KILL OF IT: Death by Inches, the Death trees'
 	// slice C4d2 (2026-11-25). After the hit's own rows, so the kill's rows act on a hit already heard. A minion's hit is

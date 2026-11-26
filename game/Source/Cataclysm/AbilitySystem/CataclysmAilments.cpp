@@ -294,7 +294,7 @@ TMap<FName, float> UCataclysmAilments::ChancesFor(
 	return Chances;
 }
 
-bool UCataclysmAilments::BlowCanCarryAnAilment(const AActor* Defender, float DealtToHealth)
+bool UCataclysmAilments::BlowCanCarryAnAilment(const AActor* Defender, float Landed)
 {
 	const UAbilitySystemComponent* Struck =
 		UCataclysmTargeting::AbilitySystemOf(Defender);
@@ -303,17 +303,35 @@ bool UCataclysmAilments::BlowCanCarryAnAilment(const AActor* Defender, float Dea
 		return false;
 	}
 
-	// A TENTH OF MAXIMUM HEALTH, AND A TARGET STILL ALIVE TO CARRY IT. The first
-	// is the owner's rule for an ailment that does not come from the skill's own
-	// row, settled on #917 and recorded in `docs/DECISIONS.md` on 2026-09-02. Its
-	// constant is the one the incidental stun and the incidental burn read. The
-	// second matches `ApplyBurn`, which refuses to set a corpse alight.
+	// A BLOW THAT DEALT SOMETHING, AND A TARGET STILL ALIVE TO CARRY IT. The owner's ruling of 2026-11-26 dropped the
+	// tenth of maximum health #917 asked of these ailments (2026-09-02) and kept "the hit landed and dealt more than 0
+	// damage"; what the shield absorbed counts as dealt. The second half matches `ApplyBurn`, which refuses to set a
+	// corpse alight. The stun keeps its tenth, in `UCataclysmSkillEffects::ApplyStun`.
 	const float Health = Struck->GetNumericAttribute(Vital::GetHealthAttribute());
-	const float MaxHealth =
-		Struck->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	return Health > 0.0f && MaxHealth > 0.0f
-		&& DealtToHealth
-			>= MaxHealth * UCataclysmSkillEffects::StunDamageThresholdPercent / 100.0f;
+	return Health > 0.0f && Landed > 0.0f;
+}
+
+bool UCataclysmAilments::BlowCanCarryABleed(const AActor* Defender, float DealtToHealth)
+{
+	const UAbilitySystemComponent* Struck = UCataclysmTargeting::AbilitySystemOf(Defender);
+	if (!Struck || !Struck->HasAttributeSetForAttribute(Vital::GetHealthAttribute())
+		|| Struck->GetNumericAttribute(Vital::GetHealthAttribute()) <= 0.0f)
+	{
+		return false;
+	}
+	// THE BLOW'S OWN FIGURE WHEN THE CALLER HAS IT; THE SHIELD'S STATE WHEN IT DOES NOT. A shield absorbs before health,
+	// so a blow that reached health left it at nought.
+	if (DealtToHealth >= 0.0f)
+	{
+		return DealtToHealth > 0.0f;
+	}
+	return !Struck->HasAttributeSetForAttribute(Vital::GetEnergyShieldAttribute())
+		|| Struck->GetNumericAttribute(Vital::GetEnergyShieldAttribute()) <= 0.0f;
+}
+
+bool UCataclysmAilments::IsBleed(const FCataclysmAilmentKind& Kind)
+{
+	return FCString::Strcmp(Kind.Ailment, TEXT("Bleed")) == 0;
 }
 
 TArray<const FCataclysmAilmentKind*> UCataclysmAilments::RandomDamageOverTimePool()
@@ -333,7 +351,7 @@ TArray<const FCataclysmAilmentKind*> UCataclysmAilments::RandomDamageOverTimePoo
 }
 
 const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDamageOverTime(
-	AActor* Instigator, AActor* Target)
+	AActor* Instigator, AActor* Target, bool bBleedMayBeChosen)
 {
 	const TArray<const FCataclysmAilmentKind*> Pool = RandomDamageOverTimePool();
 	if (Pool.IsEmpty() || !Instigator || !Target)
@@ -344,6 +362,13 @@ const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDamageOverTime(
 	const int32 Pick = Pool.IsValidIndex(Pinned)
 		? Pinned
 		: FMath::RandRange(0, Pool.Num() - 1);
+	// A BLEED DRAWN FOR A BLOW THAT DID NOT REACH HEALTH LAYS NOTHING: the owner's ruling of 2026-11-26, "bleed should be
+	// the only ailment that doesn't apply against energy shield". The draw is kept as it is, so a pinned pick still names
+	// the same kind.
+	if (!bBleedMayBeChosen && IsBleed(*Pool[Pick]))
+	{
+		return nullptr;
+	}
 	// THE NORMAL MAGNITUDE, one, because the sentence states none.
 	return Apply(Instigator, Target, *Pool[Pick], /*Magnitude=*/1.0f)
 		? Pool[Pick]
@@ -410,10 +435,12 @@ const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDebuff(
 }
 
 int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
-										   AActor* Defender, float DealtToHealth,
+										   AActor* Defender, float DealtToHealth, float Landed,
 										   bool bIsBlunt, bool bCritical)
 {
-	if (!BlowCanCarryAnAilment(Defender, DealtToHealth))
+	// WHAT LANDED, the shield's part included (the owner's ruling of 2026-11-26). The stun below still reads the
+	// health figure against its own tenth, and a bleed asks for health of its own.
+	if (!BlowCanCarryAnAilment(Defender, Landed))
 	{
 		return 0;
 	}
@@ -458,6 +485,12 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 		}
 
 		if (Total <= 0.0f)
+		{
+			continue;
+		}
+		// A BLEED ONLY FROM A BLOW THAT REACHED HEALTH: "bleed should be the only ailment that doesn't apply against
+		// energy shield" (the owner, 2026-11-26).
+		if (IsBleed(Kind) && !BlowCanCarryABleed(Defender, DealtToHealth))
 		{
 			continue;
 		}

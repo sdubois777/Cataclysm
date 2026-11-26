@@ -1404,10 +1404,14 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 
 	// 8. Energy shield. It absorbs every hit and every kind of damage over time
-	// EXCEPT BLEED, which passes straight to health. The project owner,
-	// 2026-09-18: "every DoT except bleed reaches ES." Issue #2014. Until then
-	// no tick of any kind reached the shield, the rule of 2026-08-02 that this
-	// reverses.
+	// EXCEPT BLEED, AND A BLEED DEALS NOTHING AT ALL WHILE THE SHIELD HOLDS. The
+	// project owner, 2026-11-26: "Bleed deals no damage while the target has
+	// energy shield. Can bleed a magical barrier after all, so you'd need to hit
+	// actual health." Until then a bleed passed straight to health (2026-09-18,
+	// "every DoT except bleed reaches ES", issue #2014), and before that no tick
+	// of any kind reached the shield (2026-08-02). AND A VOID SPLINTER TICK
+	// IGNORES THE SHIELD, going straight to health (the same day), through
+	// `bIgnoresEnergyShield`.
 	//
 	// UNLESS THIS CHARACTER CARRIES THE FLAG THAT LETS BLEED IN TOO:
 	// `Ritualist_keystone_c_kA` Warded, "Your Energy Shield absorbs damage over
@@ -1435,6 +1439,16 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		|| DefenderStat(Defender, ShieldAbsorbsDamageOverTimeStat,
 						Combat ? Combat->GetShieldAbsorbsDamageOverTime() : 0.0f)
 			> 0.0f;
+
+	// A BLEED TICK DEALS NOTHING WHILE THE TARGET'S SHIELD HOLDS, and ticks again once it is gone: the owner, 2026-11-26,
+	// "Bleed deals no damage while the target has energy shield. Can bleed a magical barrier after all, so you'd need
+	// to hit actual health." It neither reaches health nor takes from the shield. A character whose shield takes bleed
+	// (`shield_absorbs_damage_over_time`) is left as it was until the coordinating session rules on that stat's two
+	// rows, and a tick that ignores the shield is not stopped by it.
+	if (Hit.bIsBleed && !bShieldApplies && !Hit.bIgnoresEnergyShield && Vitals->GetEnergyShield() > 0.0f)
+	{
+		Damage = 0.0f;
+	}
 
 	// AND A SHARE OF A BLEED THE SHIELD WOULD LET THROUGH, for a character
 	// carrying `bleed_damage_taken_from_energy_shield`: "10%-20% of bleed damage

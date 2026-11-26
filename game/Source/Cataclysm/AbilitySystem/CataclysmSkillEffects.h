@@ -1353,14 +1353,12 @@ public:
 	 * skill dealing no damage by design still sets alight what its sentence
 	 * says it does.
 	 *
-	 * THE THRESHOLD IS ON MAXIMUM HEALTH AND NOT ON THE HIT, so a scratch
-	 * against a Boss cannot ignite it while the same scratch against a Common
-	 * enemy can. That is the shape stunning already has and the reason is the
-	 * same: what matters is whether the blow was a real blow for that target.
-	 *
-	 * IT IS THE SAME NUMBER AS THE STUN'S AND READS `StunDamageThresholdPercent`
-	 * RATHER THAN DECLARING A SECOND ONE. The design states one figure and one
-	 * figure is what the code holds, so moving it moves both.
+	 * **THE TENTH OF MAXIMUM HEALTH IS GONE SINCE THE OWNER'S RULING OF
+	 * 2026-11-26** ("I agree, fix it"): an incidental burn, like every ailment
+	 * that is not the skill's own, needs a blow that dealt more than nought and
+	 * a target still alive, and no longer a tenth of its maximum health. The
+	 * stun and the knockdown keep the tenth, `StunDamageThresholdPercent`; the
+	 * paragraphs on the threshold below describe the rule as it was.
 	 *
 	 * WHAT IT DOES NOT TAKE FROM THE STUN: the five second immunity window and
 	 * boss immunity. Those belong to hard stops -- effects that completely stop

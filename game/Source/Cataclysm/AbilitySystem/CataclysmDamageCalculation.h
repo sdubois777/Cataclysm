@@ -217,9 +217,11 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	/**
 	 * A damage-over-time tick that is a bleed. Issue #2014.
 	 *
-	 * THE ONE KIND OF DAMAGE OVER TIME AN ENERGY SHIELD DOES NOT ABSORB. The
-	 * project owner, 2026-09-18: "every DoT except bleed reaches ES." A bleed
-	 * passes to health unless the defender carries
+	 * THE ONE KIND OF DAMAGE OVER TIME AN ENERGY SHIELD DOES NOT ABSORB, AND
+	 * SINCE 2026-11-26 IT DEALS NOTHING WHILE THE SHIELD HOLDS: "Bleed deals no
+	 * damage while the target has energy shield" (the owner). Until then
+	 * ("every DoT except bleed reaches ES", 2026-09-18) a bleed passed to
+	 * health, as it still does once the shield is gone, unless the defender carries
 	 * `shield_absorbs_damage_over_time`, which the Warded keystone and the
 	 * "Energy shield can now be effected by bleed" drawback grant.
 	 *
@@ -533,6 +535,14 @@ struct CATACLYSM_API FCataclysmDamageResult
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	float DealtToHealth = 0.0f;
+
+	/**
+	 * EVERYTHING THE BLOW DEALT after every mitigation step: what the mana, the energy shield and a temporary barrier
+	 * absorbed, and what reached health. What `FCataclysmHitNotice::Landed` is filled from, and what an ailment that is
+	 * not the skill's own asks to be above nought (the owner's ruling of 2026-11-26; see
+	 * `UCataclysmAilments::BlowCanCarryAnAilment`).
+	 */
+	float Landed() const { return AbsorbedByMana + AbsorbedByShield + AbsorbedByTemporary + DealtToHealth; }
 
 	/**
 	 * How far the blow went past the health the defender held: the damage that reached the health step, less that
