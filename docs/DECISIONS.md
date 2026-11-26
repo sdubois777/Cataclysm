@@ -52,21 +52,77 @@ Decisions made outside the Google Drive documents, newest first.
 - **THE LABEL HAS NOT BEEN SEEN.** It is the gadget's type name, spaced ("Bolt Turret x2"), on the status line every
   character with an overhead bar draws.
 
-### WINDOW war2-w1 (the War line's first window), and what it cost
+### THE WINDOW, war2-w1 and war2-w2 (bundle 2: the War line)
 
-- **The build failed twice before it ran.** Both times the error was C2666, an ambiguous `TestEqual`. In Unreal Engine
-  5.8, `FVector::Dist2D` and `GetActorScale3D` return `double`, and `TestEqual` has no overload taking a `double` with a
-  `float`.
-  - The first build stopped on twelve such calls, the second on one more: the expected value was a `double`.
-  - Each was fixed with a `static_cast<float>`. Two builds of the machine's time went on this.
-  - **Write `static_cast<float>(FVector::Dist2D(...))` from the start** in any new test.
-- **The run itself:** 5,731 tests performed, 5,716 succeeded and 15 failed. Python passed.
-  - One failure was a game fault. Ambush's row, whose only condition is the trap history, was refused because the
-    ability system's state builder returned early, before it read that history.
-  - Thirteen were faults in the tests.
-  - One needed a ruling: Lightning Rod. Its ruling (L3) is revised in the V5a entry.
-  - The coordinating session then revised G3 as well; see the V5g entry.
-- The fixes, and the record of the run, go in the window record for war2-w2.
+This record covers the whole War line, which ran in these two windows together. The other War entries below say
+"NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL"; that was true when each was written, and this section supersedes it.
+
+**war2-w1, tested head `46423d824`, on development `dcd86be4c`: FAILED, and fixed.**
+- **The build failed twice before anything ran.** Both times the error was C2666, an ambiguous `TestEqual`. In Unreal
+  Engine 5.8, `FVector::Dist2D` and `GetActorScale3D` return `double`, and `TestEqual` has no overload taking a
+  `double` with a `float`.
+  - The first build stopped on twelve such calls (fixed at `b9e3bc77d`); the second on one more, whose expected value
+    was a `double` (fixed at `61e74940e`). Each was fixed with a `static_cast<float>`.
+  - Two builds of the machine's time went on this. **Write `static_cast<float>(FVector::Dist2D(...))` from the start**
+    in any new test.
+- **The editor step** rebuilt the five tables and committed them alone as `46423d824`.
+- **The whole suite:** "5731 tests performed, 5716 succeeded, 15 failed". 58 skipped halves and 881 test saves, both as
+  registered. 67 of the 78 groups run alone passed. Python passed, 9,081, and ruff was clean. The proofs did not run.
+- **The fifteen failures, diagnosed at `4c47c3e7e`:**
+  - **One was a game fault.** Ambush's row, whose only condition is the trap history
+    (`TargetNotYetTriggeredYourTrap`), was refused. The ability system's state builder (`WithTargetState`) returned
+    early before reading that history, because neither its "wants everything" test nor its "wants nothing" test named
+    it. Both now do.
+  - **Thirteen were faults in the tests:**
+    - timers ticked by hand twice in one engine frame, which the timer manager ignores (V4a, V4b, V5a); the frame
+      counter is advanced first;
+    - a timer set before the first tick (V5b1, SaboteurTrapTiming), now run with `RunClock`;
+    - Titanfall's two tests asked a bare actor whether it was dead, and only a character is ever marked dead; they now
+      read its health;
+    - Crossfire's repeat keeps the starting Greataxe's slashing bonus, so it expects 1,650 rather than 1,500;
+    - Skull Splitter's test lacked Wrath's own flag;
+    - V2a read the conditioned maximum instead of the attribute;
+    - V3b's condition needed the maximum health set;
+    - two V5g tests ran a skill on a slot that the starting Greataxe's skill still held.
+  - **One needed a ruling:** Lightning Rod. Its ruling (L3) is revised in the V5a entry. The coordinating session then
+    revised the gadget rule (G3) as well; see the V5g entry. Both were built at `5c833c8a1`.
+- Proof A's Titan's Scale break was moved from the attribute write to the scale's read, because V2b made the old place
+  void. The coordinating session accepted this.
+
+**war2-w2, tested head `4b83e3c66`, on development `f52294218`: PASSED.**
+- Development `f52294218` (the affix ranges and the enemy re-fit, #2924) was merged in at `9ef81a52e`. The editor step
+  rebuilt the five tables again and committed them alone as `4b83e3c66`.
+- **Three builds:** 55, 90 and 28 files compiled; 0 compiler warning or error lines.
+- **Groups alone:** "78 of 78 passed", 1,398 tests, each at its registered count. The 24 new War groups ran first.
+- **The whole Unreal suite:** "Tests: 5731 tests performed, 5731 succeeded, 0 failed. 58 skipped part of what they
+  check". "Test saves: 881 written and deleted, 0 left behind". Every declared test was reported by the run.
+  - The registered 5,731 was the affix window ar-w2's 5,620 tests, less the 4 the War line renamed or replaced, plus
+    the 114 War tests and the 1 added after war2-w1.
+- **Python, beside it:** "9093 passed, 10 skipped in 711.89s"; JUnit 9,103 tests, 0 failures, 0 errors.
+- **ruff:** "All checks passed!"
+- **No War test moved with the affix branch's enemy re-fit.**
+- **The two C++ guard proofs, run COMBINED** as the coordinating session ruled (Q-W1). Each break was applied together
+  with every other break in its proof. A caught test shows that it fails when its mechanism is broken alongside others,
+  not alone.
+
+  | Proof | Breaks | Prefix | With the breaks in | Restored |
+  | :-- | :-- | :-- | :-- | :-- |
+  | A | 14, one a slice (V2a to V5c, Titanfall, the owner's rulings) | `Cataclysm.War` | 96 performed, 75 succeeded, 21 failed: all 20 predicted, and `TwoClustersBuiltApartStayTwoUntilAMoveMakesThemOne` | 96 of 96 |
+  | B | 1, the Fervour reserve | `Cataclysm.FervourReserve.` | 6 performed, 5 succeeded, 1 failed: `IronFortressPlacesItsWholeSetOrNoneOfIt` | 6 of 6 |
+
+  Both printed "proved: True": the engine proved it, and every predicted test was among the named failures.
+- **PROOF A FAILED TO COMPILE THE FIRST TIME.** The build stopped on C4702, "unreachable code": 13 errors in
+  `CataclysmMinion.cpp` and 3 in engine headers inlined there. No test ran.
+  - The cause was the V5c break. It put a bare `return nullptr;` at the top of `ACataclysmMinion::BoltOnPlacing`,
+    which made the rest of the function unreachable, and this build treats that warning as an error.
+  - The break was changed to `if (IsValid(Placed)) { return nullptr; }`. Every gadget the tests place is valid, so it
+    breaks the same thing. Proof A was then run again, on the same head, under its own lock.
+  - **A C++ break must never be an unconditional early return.** Make the return conditional on something the
+    compiler cannot decide. `if (true)` and `false &&` in a condition compiled here; a bare return did not.
+- **The Cat's Cradle wire was not seen on screen.** The editor was opened in this worktree after Proof A, for at most
+  15 minutes, as the coordinating session allowed. Setting up a War character with Cat's Cradle needs the game's own
+  console commands. The editor connection this session had offered no way to run them, so the editor was closed with
+  nothing shown. The wire's tests passed (`Cataclysm.WarVowsV5b2.`, 3 of 3).
 
 ### WHAT WAS RULED
 
