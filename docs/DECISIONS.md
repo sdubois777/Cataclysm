@@ -152,6 +152,8 @@ Several Last Epoch and Diablo pages refused automated reads, and those rows are 
 settles the shapes.** The percentages are this game's, from the sentences. **Not settled by it**: whether a shared hit
 meets the minion's defences, and the Restless Dead's chance.
 
+---
+
 ## 2026-11-26 — The final Death bundle: the Death weapon skills merged with the Death trees, their five merge obligations, Wraithwalk through enemies, Marrow Feast on a detonation, and the Bulwark's Fervour for a kill (window dfinal-w1)
 
 **Affects:**

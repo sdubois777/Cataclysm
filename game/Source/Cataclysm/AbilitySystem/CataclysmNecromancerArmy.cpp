@@ -60,7 +60,7 @@ namespace
 	 */
 	constexpr float MinionOwnCritMultiplierPercent = 150.0f;
 
-	const UCataclysmAbilitySystemComponent* SystemOf(const AActor* Actor)
+	const UCataclysmAbilitySystemComponent* ArmySystemOf(const AActor* Actor)
 	{
 		return Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
 	}
@@ -68,7 +68,7 @@ namespace
 	/** A stat of `Commander`'s, asked with `Tags`. Nought for a commander with no stat line. */
 	float CommanderStat(const AActor* Commander, const TCHAR* Stat, const FGameplayTagContainer& Tags)
 	{
-		const UCataclysmAbilitySystemComponent* Theirs = SystemOf(Commander);
+		const UCataclysmAbilitySystemComponent* Theirs = ArmySystemOf(Commander);
 		return Theirs ? Theirs->StatForSkill(FName(Stat), Tags, 0.0f) : 0.0f;
 	}
 
@@ -214,7 +214,7 @@ FGameplayTagContainer UCataclysmNecromancerArmy::TagsOfARaise(const FGameplayTag
 
 float UCataclysmNecromancerArmy::ReserveMultiplier(const AActor* Commander, const FGameplayTagContainer& Tags)
 {
-	const UCataclysmAbilitySystemComponent* Theirs = SystemOf(Commander);
+	const UCataclysmAbilitySystemComponent* Theirs = ArmySystemOf(Commander);
 	return Theirs ? FMath::Max(0.0f, Theirs->MultiplierForStatAgainst(FName(ReserveStat), Tags, nullptr)) : 1.0f;
 }
 
@@ -726,7 +726,7 @@ int32 UCataclysmNecromancerArmy::FollowerDied(AActor* Follower, AActor* Commande
 
 ACataclysmMinion* UCataclysmNecromancerArmy::EnemyDied(AActor* Dying)
 {
-	const UCataclysmAbilitySystemComponent* Its = SystemOf(Dying);
+	const UCataclysmAbilitySystemComponent* Its = ArmySystemOf(Dying);
 	if (!Its || !Its->GetLastBlow().IsOnRecord() || UCataclysmCommand::CommanderOf(Dying))
 	{
 		// No blow on record, or the dying one is somebody's follower and no enemy.
@@ -780,7 +780,7 @@ ACataclysmMinion* UCataclysmNecromancerArmy::EnemyDied(AActor* Dying)
 
 ACataclysmMinion* UCataclysmNecromancerArmy::RaiseLichHusk(AActor* Player, const FVector& Aim, bool bBasicAttack)
 {
-	const UCataclysmAbilitySystemComponent* Theirs = SystemOf(Player);
+	const UCataclysmAbilitySystemComponent* Theirs = ArmySystemOf(Player);
 	if (bBasicAttack || !Theirs)
 	{
 		return nullptr;

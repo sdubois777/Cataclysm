@@ -143,14 +143,14 @@ namespace CataclysmNecromancerArmyTest
 			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.NecromancerArmyRoll"));
 			if (Variable)
 			{
-				Variable->Set(Roll, ECVF_SetByCode);
+				Variable->Set(Roll, ECVF_SetByConsole);
 			}
 		}
 		~FPinnedArmyRoll()
 		{
 			if (Variable)
 			{
-				Variable->Set(-1.0f, ECVF_SetByCode);
+				Variable->Set(-1.0f, ECVF_SetByConsole);
 			}
 		}
 		IConsoleVariable* Variable = nullptr;

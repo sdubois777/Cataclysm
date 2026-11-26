@@ -8532,6 +8532,9 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 	SkillInHandName = SkillName;
 	SkillInHandAim = Aim;
 	bSkillInHandHasCooldown = bHasCooldown;
+	// LICH FORM: a skill used within its seconds of the bar filling raises a husk where it lands (the Death line's
+	// finishing slice B, 2026-11-26). Nothing for the basic attack, which is no skill (ruled 2026-09-14).
+	UCataclysmNecromancerArmy::RaiseLichHusk(GetAvatarActor(), Aim, bBasicAttack);
 	// NOT `skill_use` FOR THE BASIC ATTACK, as ruled 2026-09-14. `attack_use` is for every paid use.
 	if (!bBasicAttack)
 	{
@@ -8555,10 +8558,6 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 		}
 	}
 	ActOnEvent(FName(TEXT("attack_use")), SkillTags);
-
-	// AND LICH FORM: a skill used within its seconds of the bar filling raises a husk where it lands (the Death line's
-	// finishing slice B, 2026-11-26). Nothing for the basic attack, which is no skill (ruled 2026-09-14).
-	UCataclysmNecromancerArmy::RaiseLichHusk(GetAvatarActor(), Aim, bBasicAttack);
 
 	// AND `melee_attack_use`, ONLY FOR A USE WHOSE TAGS HOLD `Type.Melee`, THE BASIC ATTACK INCLUDED. Ruled 2026-10-17
 	// (R1) for Spellblade's Will's six-piece bonus, "When you use a melee attack, you gain a stack of Spellslinger": the

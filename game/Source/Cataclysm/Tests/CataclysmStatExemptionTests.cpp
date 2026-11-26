@@ -14799,13 +14799,13 @@ namespace CataclysmStatExemptionTest
 		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.NecromancerArmyRoll"));
 		if (Roll)
 		{
-			Roll->Set(0.0f, ECVF_SetByCode);
+			Roll->Set(0.0f, ECVF_SetByConsole);
 		}
 		ON_SCOPE_EXIT
 		{
 			if (Roll)
 			{
-				Roll->Set(-1.0f, ECVF_SetByCode);
+				Roll->Set(-1.0f, ECVF_SetByConsole);
 			}
 		};
 
