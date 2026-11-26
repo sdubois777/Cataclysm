@@ -332,7 +332,11 @@ namespace CataclysmDeathModifiersTest
 	bool DeathPlayerKills(FAutomationTestBase& Test, const FDeathModifiersPlayer& Player,
 						  ACataclysmEnemyCharacter* Victim)
 	{
-		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		// A BLOW THAT CANNOT BE EVADED: the Imp's evasion attribute is set to nought, and still one evaded the kill in
+		// window dfb-w1's proof (Cataclysm.Lich.RaiseTheFallen..., "sent 58000, evaded"). The kill is the set-up here.
+		FCataclysmHitDelivery Certain;
+		Certain.bCannotBeEvaded = true;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f, FGameplayTagContainer(), Certain);
 		return Test.TestTrue(TEXT("the player's blow killed it"), UCataclysmSkillEffects::IsDead(Victim));
 	}
 
