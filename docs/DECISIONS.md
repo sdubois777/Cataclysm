@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-26 — The Death finish bundle: the roster and slices C, E, F, D, A and B merged, and the coordinating session's rulings at assembly
+## 2026-11-26 — The Death finish bundle: the roster, slices C, E, F, D, A and B, the Wraith and the Lich merged, and the coordinating session's rulings at assembly
 
 **Affects:** the branch `feat/death-finish-bundle`, which merges the roster branch and the Death line's finishing
 slices C, E, F, D, A and B in that order. Each slice's workbook script is run on the bundle's copy of
@@ -20,7 +20,9 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
 
 - **NOTHING THE BUNDLE ADDS HAS BEEN COMPILED OR RUN IN UNREAL YET.** The coordinating session's window does that;
   its figures are added here after it runs.
-- **THE WRAITH AND THE LICH ARE NOT MERGED YET.** They join this branch when the coordinating session sends them.
+- **THE WRAITH AND THE LICH ARE MERGED LAST**, each cut from `development` and not from this branch:
+  `feat/death-creature-wraith` at 46d9f964b (with `Ghost_Appear` for a Wraith a rule raised) and
+  `feat/death-creature-lich` at 090829b87. Their own entries follow this one.
 
 ### The rulings, made by the coordinating session at assembly (2026-11-26)
 
@@ -54,6 +56,21 @@ below: `CataclysmSkillTemplates.h` and `.cpp` (Teeming Grave), `CataclysmShadowI
   path. `LoneRevenantGivesTheAbominationFiveTimesNotTwentyFive` grants the real node and checks five times the health
   and the blow at a swing, with a control that the same rows give a minion tagged `Minion.Permanent` five times.
 - **THE RESTLESS DEAD'S 20% IS A PLAY-TEST NUMBER.** It stands until play says otherwise.
+
+### Joining the Wraith and the Lich
+
+- **THE LICH IS LAST IN THE CREATURE LIST** (`ECataclysmDungeonCreature`), after the Wraith, as the coordinating
+  session asked if any save might store the number. The Lich's branch had it after the Succubus, which moved the
+  Gatekeeper from 6 to 7. A search found no save storing the enum as a number: it is a plain enum, not reflected, so
+  no saved property can hold it; the saved creature keeps its archetype row name; and Echoes of the Past's records
+  and the morale break's escapees are loaded by matching the kind's name. Nothing compares its order. It moved anyway,
+  so no number moves and the search need not be repeated.
+- **THE FLOOR POPULATION LOG LINE COUNTS WRAITHS AND LICHES.**
+- **THE ROSTER TEST MAPS BOTH SWAPS.** `TheBriefCarriesTheSenderAndDeathHasTheWraithWhereTheOthersHaveTheHellhound`
+  expects a Death floor to hold a Wraith for each Hellhound and a Lich for each Succubus (Death's escort, `EscortFor`),
+  and searches seeds 11 to 210 for a floor holding both, with a control for each.
+- **TEN ENEMY ARCHETYPES** (`EnemyArchetypes.csv`, pinned at 10 in `CataclysmDataTableTests.cpp`), so the window's
+  editor step rebuilds `DT_EnemyArchetypes` once, after both. `test_enemy_telegraphs.py` follows the model's count.
 
 ### Found while merging
 
