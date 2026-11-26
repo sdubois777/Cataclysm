@@ -3,6 +3,9 @@
     python tools/apply_war_fervour_sources_2026_11_24.py docs
     python tools/apply_war_fervour_sources_2026_11_24.py --check docs
 
+THE BULWARK'S SENTENCE IS NO LONGER WRITTEN HERE: the final bundle's slice of 2026-11-26 took it over to state its
+Fervour for a kill (`tools/apply_war_bulwark_kill_fervour_sentence_2026_11_26.py`). What follows is slice C's account.
+
 Slice C of `plan_death_and_war.md` (2026-11-24) gives the three War classes a way
 to fill Fervour. Two of their starting nodes named the sources and stated no
 number, and every passive row's value must appear in its node's own words
@@ -43,16 +46,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import apply_passive_order_fixes_2026_11_24 as order  # noqa: E402
 
 FIXES: dict[str, tuple[order.Reword, ...]] = {
-    "Bulwark": (
-        order.Reword(
-            node="Fervour",
-            before=("Taking hits, blocking and killing enemies generate Fervour. While you have "
-                    "this, your Fervour decays slowly out of combat."),
-            after=("Taking hits, blocking and killing enemies generate Fervour: 1 for each hit "
-                   "you take and 1 for each block. While you have this, your Fervour decays at "
-                   "5 per second after 3 seconds out of combat."),
-        ),
-    ),
     "Saboteur": (
         order.Reword(
             node="Fervour",

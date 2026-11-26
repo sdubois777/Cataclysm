@@ -139,6 +139,107 @@ COORDINATING SESSION, 2026-11-25: consistency, so no exemption. Cold Hands (`Nec
 
 ---
 
+## 2026-11-26 — The Bulwark's starting node pays 1 Fervour for each enemy you kill, on the Death line's kill generator
+
+**Affects:**
+- `tools/reapply_war_bulwark_kill_fervour_workbook.py` (new) writes the Bulwark starting node's four rows into
+  `docs/All_Things_Cataclysm.xlsx`: slice C's three and `fervour_per_kill` 1. It takes the node over from
+  `tools/reapply_war_fervour_sources_workbook.py`, which now writes only the Berserker's and the Saboteur's.
+- `tools/apply_war_bulwark_kill_fervour_sentence_2026_11_26.py` (new) rewords the node's sentence in
+  `docs/Bulwark_Class_Tree_Final.json`. It takes the sentence over from `tools/apply_war_fervour_sources_2026_11_24.py`.
+- Generated: `game/Data/PassiveEffects.csv` (899 rows, one more) and `game/Data/PassiveNodes.csv` (the sentence).
+  `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- C++, comments only:
+  - `CataclysmFervour.cpp`, in `GainOnOwnKill`;
+  - `CataclysmPlayerCharacter.cpp`, at the kill's payment.
+
+  Both said a character without a Death starting node is paid nothing for a kill. The Bulwark's is paid too now.
+- Tests:
+  - Unreal:
+    - `CataclysmWarFervourTests.cpp`: one new test, and the Bulwark's kill row in `TheThreeWarStartingNodesGrantTheirFervourRates`.
+    - `CataclysmDataTableTests.cpp`: the pin, 899.
+  - Python:
+    - `tools/tests/test_war_bulwark_kill_fervour_scripts.py` (new, eleven).
+    - `test_war_fervour_sources_scripts.py`: six rows, not nine, and its refusal test on the Saboteur's sentence.
+    - `test_passive_effects_match_the_node_text.py`: 899.
+    - `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`: the Bulwark's sentence in
+      `EXPRESSED_ANOTHER_WAY`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the final bundle's window with the Death skills. That
+  window has to:
+  - compile `CataclysmWarFervourTests.cpp` and the two comment changes;
+  - rebuild `DT_PassiveEffects` and `DT_PassiveNodes`;
+  - run `Cataclysm.WarFervour.` (one test more) and `Cataclysm.Data.` (the 899 pin).
+- **NO GAME CODE CHANGES, so no C++ guard proof is needed.** `UCataclysmFervour::GainOnOwnKill` already pays any row
+  on `fervour_per_kill`, whatever the class.
+  - It asks the stat against the slain creature, scales the gain by `class_resource_generation`, and writes it through
+    `UCataclysmFervour::RaisePool`. That is how the Death line pays (the bundle 3 merge, obligation 4).
+  - The new Unreal test calls that same function with the node's real rows.
+- **THE RATE IS A JUDGEMENT AND A PLAY-TEST POINT.** The node's sentence has always said killing enemies generates
+  Fervour, and it stated no number.
+  - 1 a kill is the rate of every gain on a War starting node: slice C's judgement of 2026-11-24, under the owner's
+    delegation of unstated numbers.
+  - It is the same at every rarity, because the sentence names none. The Soul Collector's starting node is the
+    contrast: its sentence states 1, 3, 5, 8 and 15 by rarity.
+- **THE SENTENCE IS NEW WORDING**, written so that the row's value appears in the node's own words, as
+  `test_passive_effects_match_the_node_text.py` requires:
+  - before: "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit you take and 1 for each block.
+    While you have this, your Fervour decays at 5 per second after 3 seconds out of combat."
+  - after: "Taking hits, blocking and killing enemies generate Fervour: 1 for each hit you take, 1 for each block and 1
+    for each enemy you kill. While you have this, your Fervour decays at 5 per second after 3 seconds out of combat."
+- **THE BULWARK'S KILL DOES NOT DECAY.** The Death classes' kill decay (`fervour_kill_decay_per_second`) is a separate
+  stat on their own nodes, and the Bulwark holds none. Its Fervour decays only by slice C's rule, 5 a second after 3
+  seconds out of combat.
+- **BLOOD AND SWEAT IS NOT BUILT HERE.** That is the Bulwark keystone that says "Killing an enemy generates 1 Fervour,
+  up to 5 per second" (`Bulwark_keystone_trunk_002`). It still has no row, because "up to 5 per second" needs a cap the
+  kill generator does not have. Not in this task's scope.
+
+- **THE FIRST WHOLE PYTHON SUITE FAILED ON THREE TESTS THIS CHANGE MOVED**, beside the expected stale-asset test.
+  The three were in files I had not run. Both causes are corrected in the same change:
+  - `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` reads "each enemy you kill" as the Soul
+    Collector's rarity condition. The Bulwark's sentence now has an entry in `EXPRESSED_ANOTHER_WAY`, beside Gleaning's
+    for the same words: every kill, not a rarity.
+  - Two tests in `test_reapply_death_trees_workbook.py` expect every Death row to sit after every War row in
+    Passive Effects. The kill row was appended at the end of the sheet, after the Death rows. The Death rows were then
+    taken out and written back by `tools/reapply_death_trees_workbook.py`, the same steps those tests perform, which put
+    the kill row at sheet row 595, before them, where Slippery's row sits. A comparison of the workbook before and
+    after found all 28 sheets identical, the kill row's position aside.
+
+### WHAT WAS RULED
+
+- Slice C's entry (2026-11-24) left the kill unbuilt: "The Bulwark's kill row is to be a `fervour_per_kill` row on its
+  starting node, written once that branch has landed."
+- The coordinating session, 2026-11-26, set this task: the Bulwark kill Fervour node's row on `fervour_per_kill`,
+  checked to pay through `RaisePool` as the Death line does. It is built on `feat/death-trees-c6b` at `dd04be38b`, and
+  is to be merged into the final bundle with the Death skills.
+
+### WHY THE NODE IS TAKEN OVER RATHER THAN SHARED
+
+Slice C's scripts refuse a node or a sentence that holds anything other than what they wrote, so that nobody's later
+edit is overwritten silently. Adding a fourth row, or a new sentence, would have made them refuse. They no longer list
+the Bulwark's starting node. The new scripts hold all four rows and the sentence, and pass the three slice C rows over
+when a workbook already has them. That is the case a merge meets, because the War scripts are re-run in the order they
+were added. This is how the Saboteur's Calculated and its trap-timing nodes were taken over on 2026-11-25.
+
+### TESTS
+
+| Test | What it holds | Control |
+|---|---|---|
+| `Cataclysm.WarFervour.ABulwarkIsPaidOneFervourForAKillAtEveryRarityThroughTheRealRow` (Unreal, predicted, not run) | the real rows pay 1 for a common creature and 1 for a Boss, 10 to 11 in the pool | a Berserker's starting node is paid nothing for the same kill |
+| `Cataclysm.WarFervour.TheThreeWarStartingNodesGrantTheirFervourRates` (Unreal, one entry more) | the table holds the Bulwark's `fervour_per_kill` 1 | the other eight rates as before |
+| `test_war_bulwark_kill_fervour_scripts.py` (eleven) | the sentence and the four rows are written, idempotently; a workbook holding slice C's three gets only the kill row | a workbook with none gets four; a node or sentence somebody changed is refused |
+
+### PYTHON GUARD PROOF
+
+`tools/prove_guard.py`, breaking the generated row `Bulwark_basic_trunk_000#4` from `1.0` to `2.0` in
+`game/Data/PassiveEffects.csv`, command `python -m pytest tools/tests/test_war_bulwark_kill_fervour_scripts.py`:
+"PROVED: 1 failed, 10 passed in 8.05s | restored: 11 passed in 8.08s". `named_failures`:
+`tools/tests/test_war_bulwark_kill_fervour_scripts.py::test_the_generated_csv_holds_the_four_rows`.
+
+---
+
 ## 2026-11-26 — Bundle 4: six branches merged (creatures belong to their Cataclysm, pause, Abyssal Rifts, War's Quest Sieges, Abomination lairs, the Death and War enemy modifiers), a Fallen City takes the Cataclysm that felled it, and seven windows
 
 **Branch `feat/bundle-4-creatures-pause-rifts-sieges-lairs-modifiers`, cut from development `9bd6ed996`**, which held

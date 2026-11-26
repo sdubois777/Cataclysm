@@ -1525,7 +1525,8 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			}
 
 			// AND THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. The Fervour this kill pays by the slain creature's
-			// rarity rung first, nought for a character without a Death starting node; then the stamp, for every
+			// rarity rung first, nought for a character without a Death starting node or the Bulwark's (1 a kill, the
+			// final bundle, 2026-11-26); then the stamp, for every
 			// character: the clock a row under `seconds_after_kill` reads, and the grace before the decay after a
 			// kill, asked against the slain creature. ON EVERY KILL CREDITED HERE, its damage over time's and a row's
 			// included; a skill's own `KillFervour` (#2885) pays on top when that skill's blow made the kill.

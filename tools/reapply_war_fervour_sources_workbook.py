@@ -5,14 +5,15 @@
 
 Slice C of `plan_death_and_war.md` (2026-11-24): the rows that make the three War
 classes fill Fervour, on the starting nodes whose sentences
-`tools/apply_war_fervour_sources_2026_11_24.py` makes state them. Nine rows:
+`tools/apply_war_fervour_sources_2026_11_24.py` makes state them. Six rows now:
 
-    Bulwark_basic_trunk_000    fervour_per_hit_taken 1, fervour_per_block 1,
-                               fervour_decay_out_of_combat_per_second 5
     Berserker_trunk_000        fervour_per_critical_strike 1,
                                fervour_decay_out_of_combat_per_second 10
     Saboteur_basic_trunk_000   fervour_per_trap_placed 1, fervour_per_gadget_placed 1,
                                fervour_per_trap_triggered 1, fervour_per_device_hit 1
+
+THE BULWARK'S STARTING NODE WAS WRITTEN HERE TOO, with three rows, until the final bundle's slice of 2026-11-26 took it
+over to add its Fervour for a kill: `tools/reapply_war_bulwark_kill_fervour_workbook.py` holds all four of its rows.
 
 `docs/All_Things_Cataclysm.xlsx` is a binary nobody can merge, so the rows are
 written by this script and the script is what a reviewer reads. IT IS IDEMPOTENT:
@@ -52,11 +53,6 @@ ReapplyError = rows_of.ReapplyError
 
 #: Each starting node, the `Node Name` its rows carry, and its rows.
 NODES: tuple[tuple[str, str, tuple[rows_of.Row, ...]], ...] = (
-    ("Bulwark_basic_trunk_000", "Fervour", (
-        R("fervour_per_hit_taken", "flat", 1),
-        R("fervour_per_block", "flat", 1),
-        R("fervour_decay_out_of_combat_per_second", "flat", 5),
-    )),
     ("Berserker_trunk_000", "Fervour", (
         R("fervour_per_critical_strike", "flat", 1),
         R("fervour_decay_out_of_combat_per_second", "flat", 10),

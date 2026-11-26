@@ -608,7 +608,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 897 SINCE THE BUNDLE 3 MERGE, 2026-11-25: the Death line's 669 and the War
 	// line's 592, less the 364 both had.
 	// AND 898 THE SAME DAY, for Slippery's Fervour on an evasion (window death3-w1's second pass).
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        898)
+	// AND 899 ON 2026-11-26, for the Bulwark's Fervour for a kill (the final bundle).
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        899)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
