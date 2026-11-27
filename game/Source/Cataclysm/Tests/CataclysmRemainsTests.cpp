@@ -1472,6 +1472,10 @@ bool FCataclysmRemainsLivingBombsReachTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	// A BLAST'S REACH, as the skill that raises a minion records it (`RecordExplosionRadius`); a minion spawned by hand
+	// has none, and its detonation would strike nothing.
+	Mage->RecordExplosionRadius(3.0f * M);
+	FarMage->RecordExplosionRadius(3.0f * M);
 	TestTrue(TEXT("set-up: under the vow the Skeletal Mage is a living bomb"),
 			 UCataclysmDetonation::IsALivingBomb(Mage));
 	TestEqual(TEXT("set-up: and its reach is cut to contact"), Mage->AttackReachCm(),
