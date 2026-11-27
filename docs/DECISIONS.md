@@ -38,6 +38,25 @@ still work only on enemies (#2899). So the built list is Demonic and Death.
 - `Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone` searches for a seed that draws Demonic
   first, so it is unaffected.
 
+### The simulation's figures that moved, re-measured
+
+Each was measured on this branch, not argued.
+
+- **The Siege prose in `sim/cataclysm_sim/policies.py`**, over 10,000 campaigns (seeds 0 to 9999, 1,955,187 dungeons)
+  by the method of `sim/tests/test_the_siege_prose_in_policies_is_true.py`. Against a median walk of 6 / 19 / 32 days,
+  the slack is nineteen, twenty and twenty-three days (the Pillar's median walk is 125). It was 8 / 23 / 37. The
+  120,293 Sieges that reached the map were 95% Basic, 0% Quest, 5% Fallen City and 0% Cataclysm, about 12.03 a
+  campaign, where they were 50 / 45 / 4 / 0 and 18.17 with War built: War is the only Cataclysm whose Quest dungeons
+  are Sieges. `config.py`'s copy of the medians follows.
+- **The opening wave on day 1** (`tools/tests/test_the_first_surge_fires_at_run_start.py`): seed 7 now faces Demonic,
+  and a wave's size is `surge_opening_count` times its Cataclysm's `count_mult` (in `sim/cataclysm_sim/patterns.py`)
+  to the power 0.7, rounded. That is 11 for Demonic's 0.9 and 18 for Death's 1.8, by design and not a fault. The test,
+  which is about the day the wave lands, counts every Cataclysm as built so that seed 7 faces War, whose 1.0 gives
+  exactly 12.
+- **The starting character's sample** (`tools/tests/test_the_starting_character_survives_a_pack.py`): the same
+  campaigns give 445 first-surge Outpost dungeons of 7 or 8 floors, so the floor on the sample's size is now 400, from
+  500. The assertion on the levels is unchanged and passes.
+
 ---
 
 ## 2026-11-26 — Any blow that dealt something can carry an ailment; a bleed needs health and deals nothing while a shield stands; a Void Splinter ignores the shield; Warded and two bleed enchantments reworded

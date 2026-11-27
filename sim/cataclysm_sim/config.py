@@ -898,7 +898,8 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 8 / 23 / 37 (the walk today, re-measured on 2026-11-24 over 10,000
+    # 6 / 19 / 32 (the walk today, re-measured on 2026-11-26 after War left the
+    # built Cataclysms; it was 8 / 23 / 37 on 2026-11-24, over 10,000
     # campaigns, seeds 0 to 9999, by the prose test's own method: its report
     # settings, no tree, `triage`, every dungeon recorded when it is made, with
     # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749, Demonic
