@@ -494,9 +494,12 @@ stated as a rule three times that day before being disproven.
 **THE RUNNER TAKES THE BUILD LOCK AND NOT THE EDITOR LOCK.** So
 `tools/unreal_lock.py status` saying the editor is free does **not** mean the
 machine is free to build, and holding that lock protects nobody from it. The
-runner compiles on every pull request touching `game/`, which means **merging is
-what triggers it** -- the collision is likeliest exactly when somebody has just
-landed work and is trying to move on. Issue #1514 carries that gap.
+runner compiles every pull request that touches `game/` when it is opened or
+updated, and every release into `main`. **Opening or updating a pull request is what triggers it.**
+Until 2026-11-27 it also compiled every merge into `development`, so the collision
+was likeliest just after somebody had landed work; that push build was removed
+because it compiled the tree the pull request had just compiled. Issue #1514
+carries that gap.
 
 **NEVER PUT A TIMEOUT ON AN UNREAL BUILD.** Killing the wrapper does not kill the
 compile workers, which Unreal Build Accelerator runs detached; they go on holding
