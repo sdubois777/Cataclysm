@@ -162,7 +162,10 @@ and a future save change needs no upgrade step. Current versions, unchanged: run
 
 - **No editor step**: no CSV or asset changes.
 - **Groups alone (new only, the owner's rule of 2026-11-25):** `Cataclysm.SaveVersion.` 3.
-- **The whole suite: 6100**, with Python beside it, on development 81e7179b2 merged in. **This said 6093 against
+- **The whole suite: 6100**, with Python beside it, on development 487adb68c merged in (slice 4, #2955, which renames
+  two tests and adds none; the base below is then fr-w1's log, `fr_w1/fr_suite_engine_c82eae0b.log` in the
+  nice-carson worktree: "6145" completed, 895 saves, 62 skipped halves, on a tree declaring 6094 tests, development's
+  count; none of the removed tests wrote a save there). **This said 6093 against
   rost-w1's log (6138 on 4520d824) until that merge**; development then held 7 tests more (the weapon grip's 3, slices
   5 and 6's 1, and slices 1 and 3's 3), and slice 4's window had measured a newer whole suite. The base is that log,
   `s4_suite_engine_9a04952f.log` (C:\w2928s4): "6145 tests performed", on a tree declaring 6094 tests, the same count
