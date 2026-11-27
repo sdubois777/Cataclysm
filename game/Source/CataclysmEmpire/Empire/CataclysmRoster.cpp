@@ -46,8 +46,31 @@ const TArray<ECataclysmType>& UCataclysmRoster::All()
 	return Roster;
 }
 
+namespace
+{
+	/** The list a live `FCataclysmBuiltCataclysmsForTests` names, or null. Tests only; see the header. */
+	const TArray<ECataclysmType>* GCataclysmBuiltForTests = nullptr;
+}
+
+FCataclysmBuiltCataclysmsForTests::FCataclysmBuiltCataclysmsForTests(const TArray<ECataclysmType>& InInstead)
+	: Instead(InInstead)
+	, Replaced(GCataclysmBuiltForTests)
+{
+	GCataclysmBuiltForTests = &Instead;
+}
+
+FCataclysmBuiltCataclysmsForTests::~FCataclysmBuiltCataclysmsForTests()
+{
+	GCataclysmBuiltForTests = Replaced;
+}
+
 const TArray<ECataclysmType>& UCataclysmRoster::Built()
 {
+	if (GCataclysmBuiltForTests)
+	{
+		return *GCataclysmBuiltForTests;
+	}
+
 	// ONE LINE A CATACLYSM: when another one is built, add it here. The project owner's ruling of 2026-11-26 and
 	// `tools/tests/test_only_built_cataclysms_are_drawn_first.py`, which holds this list equal to the model's
 	// `BUILT_CATACLYSMS`, are in the header. Function-local for `All`'s reason.

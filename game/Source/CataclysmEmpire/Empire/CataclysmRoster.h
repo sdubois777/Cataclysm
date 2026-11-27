@@ -284,3 +284,28 @@ public:
 	 */
 	static constexpr int32 ModifierSalt = 3;
 };
+
+/**
+ * FOR TESTS ONLY: `UCataclysmRoster::Built` answers `Instead` while one of these is alive, and its own list again once
+ * the last is gone. Nothing in the game makes one.
+ *
+ * WHY IT EXISTS. A test that begins a run from a fixed seed faces whatever that seed draws, and the built list decides
+ * the draw's front. When War left the built list (the owner, 2026-11-26: "it put me in the war cataclysm, which as far
+ * as i'm aware is not built yet"), nine tests whose seeds had faced War began facing Demonic or Death, whose waves,
+ * Quest dungeons and modifiers follow their own rules, and failed on things that have nothing to do with what they
+ * measure. Each now holds one of these naming the list it was written against, so its run is the one it checked.
+ *
+ * Nested scopes restore in order: each remembers the list it replaced.
+ */
+struct CATACLYSMEMPIRE_API FCataclysmBuiltCataclysmsForTests
+{
+	explicit FCataclysmBuiltCataclysmsForTests(const TArray<ECataclysmType>& InInstead);
+	~FCataclysmBuiltCataclysmsForTests();
+
+	FCataclysmBuiltCataclysmsForTests(const FCataclysmBuiltCataclysmsForTests&) = delete;
+	FCataclysmBuiltCataclysmsForTests& operator=(const FCataclysmBuiltCataclysmsForTests&) = delete;
+
+private:
+	TArray<ECataclysmType> Instead;
+	const TArray<ECataclysmType>* Replaced = nullptr;
+};

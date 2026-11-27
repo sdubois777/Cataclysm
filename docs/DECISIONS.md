@@ -38,6 +38,28 @@ still work only on enemies (#2899). So the built list is Demonic and Death.
 - `Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone` searches for a seed that draws Demonic
   first, so it is unaffected.
 
+### Nine Unreal tests that had faced War, and the override that keeps them as written
+
+Window rost-w1's first whole suite on `f3aeeea10` failed 9 of 6138: "6138 tests performed, 6129 succeeded, 9 failed".
+Each begins a run from a fixed seed that, with War built, faced War. The same seed now faces Demonic or Death, whose waves,
+Quest dungeons and modifiers follow their own rules. For example, a Demonic Quest dungeon is a Rift and opens behind the
+front line, which fails "dungeon 0 landed on an Outpost". None measures which Cataclysm is faced:
+
+- `Cataclysm.EmpireRun.ARunBeginsWithAnIntactEmpireAndASurgeDue`
+- `Cataclysm.EmpireTreeWalk.FloorsAreAddedWhenADungeonIsMadeAndNotToItsHit` and `...InfiniteDepthsCountsActiveTypesAndFloorsNeverGoBelowOne`
+- `Cataclysm.EnemyStrength.AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage`
+- `Cataclysm.BossFloor.OnlyTheLastFloorOfACataclysmDungeonPlacesTheCataclysmBoss`
+- `Cataclysm.DungeonMode.TheDungeonBeingWalkedIsTheOneTimerThatStops`
+- `Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotAPortal`, `...TheLastFloorsWayOutIsNotSealed` and
+  `...ThoseInTheDarkTheLastFloorHasNoChasm`
+
+Each now holds `FCataclysmBuiltCataclysmsForTests` (`CataclysmRoster.h`), naming Demonic, Death and War, so its run is the
+one it checked when those were the built list. `UCataclysmRoster::Built` answers the override's list while one is alive.
+Nothing in the game makes one. Setting the run's `ActiveCataclysms` after `Begin` was not used, because `Begin` already
+reads the list for the tree's added floors and the quest objectives. A judgement by the writing session.
+`Cataclysm.Roster.TheBuiltCataclysmsAreDemonicAndDeathAndNotWar` checks the override too: inside its scope War is
+built, nested scopes restore in order, and once the last is gone War is not built.
+
 ### The simulation's figures that moved, re-measured
 
 Each was measured on this branch, not argued.

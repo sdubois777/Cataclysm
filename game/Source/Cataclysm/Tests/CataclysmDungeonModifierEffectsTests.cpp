@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Empire/CataclysmRoster.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
@@ -22599,6 +22600,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesLastFloorTest,
 
 bool FCataclysmBloodGatesLastFloorTest::RunTest(const FString& Parameters)
 {
+	// THE BUILT LIST THIS TEST WAS WRITTEN AGAINST, Demonic, Death and War: its fixed seed faced War, and since War left
+	// the built list (2026-11-26) the same seed faces Demonic or Death, whose waves, Quest dungeons and modifiers follow
+	// their own rules. See `FCataclysmBuiltCataclysmsForTests`.
+	const FCataclysmBuiltCataclysmsForTests WarAsWhenWritten(
+		{ECataclysmType::Demonic, ECataclysmType::Death, ECataclysmType::War});
 	using namespace CataclysmDungeonModifierEffectsTest;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -23833,6 +23839,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalLastFloorTest,
 
 bool FCataclysmPortalLastFloorTest::RunTest(const FString& Parameters)
 {
+	// THE BUILT LIST THIS TEST WAS WRITTEN AGAINST, Demonic, Death and War: its fixed seed faced War, and since War left
+	// the built list (2026-11-26) the same seed faces Demonic or Death, whose waves, Quest dungeons and modifiers follow
+	// their own rules. See `FCataclysmBuiltCataclysmsForTests`.
+	const FCataclysmBuiltCataclysmsForTests WarAsWhenWritten(
+		{ECataclysmType::Demonic, ECataclysmType::Death, ECataclysmType::War});
 	using namespace CataclysmDungeonModifierEffectsTest;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -55307,6 +55318,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkLastFloorTest,
 
 bool FCataclysmThoseInTheDarkLastFloorTest::RunTest(const FString& Parameters)
 {
+	// THE BUILT LIST THIS TEST WAS WRITTEN AGAINST, Demonic, Death and War: its fixed seed faced War, and since War left
+	// the built list (2026-11-26) the same seed faces Demonic or Death, whose waves, Quest dungeons and modifiers follow
+	// their own rules. See `FCataclysmBuiltCataclysmsForTests`.
+	const FCataclysmBuiltCataclysmsForTests WarAsWhenWritten(
+		{ECataclysmType::Demonic, ECataclysmType::Death, ECataclysmType::War});
 	using namespace CataclysmDungeonModifierEffectsTest;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();

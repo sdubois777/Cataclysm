@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Empire/CataclysmRoster.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -268,6 +269,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonTimerStopsTest,
 
 bool FCataclysmDungeonTimerStopsTest::RunTest(const FString& Parameters)
 {
+	// THE BUILT LIST THIS TEST WAS WRITTEN AGAINST, Demonic, Death and War: its fixed seed faced War, and since War left
+	// the built list (2026-11-26) the same seed faces Demonic or Death, whose waves, Quest dungeons and modifiers follow
+	// their own rules. See `FCataclysmBuiltCataclysmsForTests`.
+	const FCataclysmBuiltCataclysmsForTests WarAsWhenWritten(
+		{ECataclysmType::Demonic, ECataclysmType::Death, ECataclysmType::War});
 	using namespace CataclysmDungeonCostsDaysTest;
 
 	FBound Bound = Make();

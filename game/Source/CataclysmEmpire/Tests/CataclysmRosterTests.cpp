@@ -415,6 +415,21 @@ bool FCataclysmRosterBuiltNamesTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("War is not built: it has no creatures of its own, and its enemy modifiers work only on enemies"),
 			  UCataclysmRoster::IsBuilt(ECataclysmType::War));
 	TestFalse(TEXT("CONTROL: Pestilence is not built"), UCataclysmRoster::IsBuilt(ECataclysmType::Pestilence));
+
+	// AND THE TESTS' OVERRIDE (`FCataclysmBuiltCataclysmsForTests`), which nine fixed-seed tests hold: inside its scope
+	// the list is the one it names, nested scopes restore in order, and once the last is gone War is not built again.
+	{
+		const FCataclysmBuiltCataclysmsForTests Outer({ECataclysmType::Demonic, ECataclysmType::Death, ECataclysmType::War});
+		TestTrue(TEXT("inside the override War is built"), UCataclysmRoster::IsBuilt(ECataclysmType::War));
+		{
+			const FCataclysmBuiltCataclysmsForTests Inner({ECataclysmType::Pestilence});
+			TestTrue(TEXT("a nested override names its own list"), UCataclysmRoster::IsBuilt(ECataclysmType::Pestilence)
+				&& !UCataclysmRoster::IsBuilt(ECataclysmType::War));
+		}
+		TestTrue(TEXT("and leaving it restores the outer one"), UCataclysmRoster::IsBuilt(ECataclysmType::War));
+	}
+	TestFalse(TEXT("once every override is gone War is not built"), UCataclysmRoster::IsBuilt(ECataclysmType::War));
+	TestEqual(TEXT("and two are built again"), UCataclysmRoster::Built().Num(), 2);
 	return true;
 }
 
