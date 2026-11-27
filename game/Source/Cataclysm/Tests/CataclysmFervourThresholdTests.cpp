@@ -26,8 +26,8 @@
 /**
  * The Soul Collector's four Fervour thresholds (the Death trees' slice C3d, 2026-11-25): the condition
  * `fervour_threshold_reached` and the scale `fervour_thresholds_reached`, both read from one answer the conditions fill
- * works out, `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`; Generous Count's reduction, Long Shadow's
- * seconds after a fall, Steady Count's count; and the fourth vow's faster cooldown recovery, a rate the regeneration
+ * works out, `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`; Generous Count's reduction and
+ * Steady Count's count; and the fourth vow's faster cooldown recovery, a rate the regeneration
  * step applies, as the coordinating session ruled.
  */
 
@@ -61,12 +61,6 @@ namespace CataclysmFervourThresholdTest
 			{
 				Actor->Destroy();
 			}
-		}
-
-		void Hold(float Fervour) const
-		{
-			AbilitySystem->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
-												   Fervour);
 		}
 
 		/** One stat given flat by hand, as its row will give it. Replaces every stat given before. */
@@ -201,49 +195,6 @@ bool FCataclysmFervourThresholdGenerousTest::RunTest(const FString&)
 	TestEqual(TEXT("with it at 6, 34 held reaches the second too"),
 			  Holder.AbilitySystem->FervourThresholdsReachedFor(34.0f, 200), Bits({20, 40}));
 	TestEqual(TEXT("and 33 does not"), Holder.AbilitySystem->FervourThresholdsReachedFor(33.0f, 200), Bits({20}));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourThresholdLongShadowTest,
-	"Cataclysm.FervourThreshold.LongShadowKeepsAThresholdFiveSecondsAfterAFall",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * Long Shadow at 5 seconds: Fervour held falls from 45 to 30, and the second threshold stays reached for 5 seconds,
- * recorded by the class resource set just before the fall. THE CONTROLS: a holder without the keystone loses it at the
- * fall, and 5.1 seconds after the fall the keystone's holder has lost it too.
- */
-bool FCataclysmFervourThresholdLongShadowTest::RunTest(const FString&)
-{
-	using namespace CataclysmFervourThresholdTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	const FThresholdHolder Plain(World);
-	const FThresholdHolder Shadowed(World);
-	Shadowed.Grant(UCataclysmAbilitySystemComponent::FervourThresholdLingerSecondsStat, 5.0f);
-
-	Plain.Hold(45.0f);
-	Plain.Hold(30.0f);
-	TestEqual(TEXT("control: without Long Shadow the fall from 45 to 30 loses the second at once"),
-			  Plain.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60), Bits({20}));
-
-	Shadowed.Hold(45.0f);
-	Shadowed.Hold(30.0f);
-	TestEqual(TEXT("with it, the second is still reached just after the fall"),
-			  Shadowed.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60), Bits({20, 40}));
-	RunClock(World, 4.9f);
-	TestEqual(TEXT("and 4.9 seconds after"), Shadowed.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60),
-			  Bits({20, 40}));
-	RunClock(World, 0.2f);
-	TestEqual(TEXT("control: and not 5.1 seconds after"), Shadowed.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60),
-			  Bits({20}));
-
-	Shadowed.Hold(45.0f);
-	Shadowed.AbilitySystem->NoteFervourThresholdsHeld(45.0f);
-	Shadowed.AbilitySystem->ClearWhatDeathEnds();
-	TestEqual(TEXT("a death forgets what was held before it"),
-			  Shadowed.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60), Bits({20}));
 	return true;
 }
 

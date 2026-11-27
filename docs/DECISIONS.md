@@ -131,6 +131,195 @@ Renamed, because their names stopped being true:
 
 ---
 
+## 2026-11-27 — The Soul Collector's keystones use Fervour and the dead rather than keep Fervour: eight keystones and eleven small nodes rewritten
+
+**Affects:**
+- `docs/Soul_Collector_Class_Tree_Final.json`: twenty nodes' sentences and nine names, written by
+  `tools/apply_soul_collector_keystones_rework_2026_11_27.py`.
+- The design workbook's Passive Effects sheet: those nodes' rows, defined in `tools/reapply_death_trees_workbook.py`
+  (`SOUL_COLLECTOR_REWORK`) and written on their own by `tools/reapply_soul_collector_keystones_rework_workbook.py`.
+- `game/Data/PassiveNodes.csv` and `PassiveEffects.csv`: 998 rows to 1003.
+- The engine and the generator: see "What is new code".
+- `docs/Cataclysm_GDD_v2.md`: the Soul Collector's row of the Fervour table.
+
+Issue [#2951](https://github.com/sdubois777/Cataclysm/issues/2951).
+
+### What the owner said
+
+The project owner, 2026-11-27, after play-testing the Soul Collector, verbatim: "the soul collectors keystones pretty
+much all have something to do with retaining/gaining fervour but you don't need any of them which makes the tree
+pretty lame. Should probably rework most of those to be something like buffs based on fervour or something more in line
+with the class theme."
+
+A draft (the session's `.claude/windows/soul_collector_keystones_draft.md`) proposed replacements and asked five
+questions. **The owner's five answers, 2026-11-27, relayed by the coordinating session, each the recommended option:**
+
+1. Replace all eight. Death Made Flesh replaces Soulbound and is the tree's one conversion keystone.
+2. Rework the small nodes about gaining or keeping Fervour, in the same change.
+3. Death Made Flesh and Deathly Presence stack, unchanged.
+4. Gathered Souls counts deaths within 6 metres, the Siphon's radius, not 3.
+5. Kills by your minions, gadgets and traps count as your kills for every kill-based Soul Collector node, tree-wide. This
+   takes the place of Death's Toll's second half and costs no keystone.
+
+**The eleven small nodes' sentences are the coordinating session's ruling within the owner's approval**, 2026-11-27, as
+drafted. So are three wordings the code required, approved the same day:
+- Unquiet Souls and Gleaning strike "the strongest enemy within 10 metres", the reach of the existing action
+  `strike_strongest_near`, rather than a nearest enemy at 8 or 6 metres.
+- Gathered Souls' stacks share one 6-second window, restarted by each new stack, as every stack row's do.
+- Miser's Grip and Cold Storage say "50 or more Fervour", the existing condition `class_resource_points_at_least` that
+  Brimming and Held Close already use.
+
+Every number is a judgement under the owner's delegation of unstated numbers.
+
+### The genre research
+
+Fetched 2026-11-27.
+
+- **Path of Exile, Soul Eater** ([poedb](https://poedb.tw/us/Soul_Eater)): souls are consumed from "anything killed
+  nearby", each granting increased attack and cast speed, and lost over time when none are eaten. Gathered Souls is that
+  shape at this game's scale.
+- **Path of Exile, Rage** ([poedb](https://poedb.tw/us/Rage)): each Rage grants 1% more attack damage up to 30, and
+  nodes add a second benefit per Rage held. The unique gloves Painshed give "5% less Damage taken per 5 Rage", capped
+  at 30%. Death Made Flesh is that shape.
+- **Diablo IV, Ossified Essence** (fextralife): 0.5% more damage for each point of Essence above 50. Heavy Urn copies
+  the shape and the number.
+- **Diablo IV, Unbridled Rage** (fextralife): more damage for more resource cost, a conversion.
+- **Not read:** Path of Exile's charge pages (404) and Diablo IV's passive lists (404). Last Epoch gave no game text:
+  its wikis refuse automated fetches, and the Maxroll guides read paraphrase their nodes.
+
+What the three agree on: a resource matters for what it gives while held or when spent, and decay is what makes holding
+it hard. None makes a keystone of "gain more" or "lose less".
+
+### The twenty nodes
+
+| Node | Was | Is |
+| :-- | :-- | :-- |
+| basic_spine_000 Fervour | the class's generator | the same, its damage rows under `fervour_held_adds_damage`, and answer 5 (`follower_kills_count_as_yours`) |
+| keystone_spine_001 | Death's Toll | **Gathered Souls**: each enemy death within 6 m, 2% increased attack speed and movement speed a stack, up to 10, 6 s |
+| keystone_spine_002 | Reclaimed | **Unquiet Souls**: every 5 Fervour decayed, a strike of 40% weapon damage on the strongest enemy within 10 m |
+| keystone_spine_003 | Soulbound | **Death Made Flesh**: the Fervour held adds no damage; 1% less damage taken for every 4 held, up to 25% |
+| keystone_a_kB | Hoarder | **Heavy Urn**: 0.5% more damage for each Fervour held above 50 |
+| keystone_a_kC | Long Shadow | **Tolling Count**: rising to an opened threshold, a 100% weapon damage blast within 5 m, each threshold once in 5 s |
+| keystone_b_kB | Hungry for the Strong | **Trophy of the Strong**: an Elite or stronger kill, 20% more damage for 10 s |
+| keystone_b_kC | Kindred Fires | **Reaper's Rhythm**: a chain of 5 or more kills, 15% more damage and 10% less damage taken |
+| keystone_c_kA | Living Harvest | **Hungering Siphon**: the Siphon drains 0.5% of weapon damage a second for every 5 Fervour held |
+| basic_spine_001 Tithe of the Dead | more Fervour from kills | +1% increased damage a point against enemies within 6 m |
+| basic_spine_004 Grave Patience | a later decay | every 5 Fervour decayed restores 0.2% of maximum health a point |
+| basic_spine_007 Claimed | a struck enemy's Fervour | +1% increased damage a point for 4 s after a kill |
+| basic_a_b1 Miser's Grip | a decay floor | +2% increased damage a point at 50 or more Fervour |
+| basic_a_b2 Cold Storage | a slower decay | 1% reduced damage taken a point at 50 or more Fervour |
+| basic_b_stem0 Gleaning | a chance of an extra Fervour | a 5% chance a point on a kill to strike the strongest enemy within 10 m for 50% |
+| basic_b_stem2 Thinning the Herd | more Fervour by the crowd | +1% increased damage a point for every 2 enemies within 8 m, up to 10 |
+| basic_b_b1 Tear Loose | a chance at Fervour on an Elite hit | an Elite or stronger kill restores 1% of maximum health a point |
+| basic_b_b2 Vigil Over the Strong | a slower decay near an Elite | +1% increased attack speed a point while an Elite or stronger is within 15 m |
+| basic_b_c0 Any Fuel, now **Gathering Pace** | more Fervour from other sources | +0.5% increased attack speed a point for each kill in the current chain, up to 10 |
+| basic_b_c1 Borrowed Time | a longer hold on other gains | 0.5% reduced damage taken a point for every 2 kills in the chain, up to 10 |
+
+**A save is untouched.** A passive allocation stores node identifiers (`FCataclysmSpentNode::Node`), and no identifier,
+position, maximum or edge moved, so renaming Any Fuel to Gathering Pace changes no saved character.
+
+### What is new code
+
+- **`nearby_death` reaches 6 metres.** The player character raises it for a death up to
+  `UCataclysmAbilitySystemComponent::NearbyDeathFarthestMetres` (6) and carries the distance. `EventThresholdCrossed`
+  holds each row to its Event Value, or 3 metres when it states none. So the one enchantment row on the event,
+  "When an enemy dies near you", reaches the 3 metres it always did.
+- **A kill stack judges a target-rarity condition against the creature killed** (`IsJudgedWhereItsStackIsGranted` in
+  `CataclysmItem.cpp`). On the stat it would have been read against the next enemy struck. No stack row carried such a
+  condition before, so no other row's meaning changed.
+- **`ScaleOffset` is read on `class_resource_held`**, for Heavy Urn's "above 50", in the pipeline, its validator and
+  the generator. Before, only `class_points_spent` and `traps_active` read one.
+- **The condition `fervour_held_adds_damage`**, with the stat `fervour_held_adds_no_damage`, for Death Made Flesh.
+  - It asks whether the Fervour held adds to the character's damage, and is false while the stat is above nought.
+  - It takes no value.
+  - **When the reading is unknown it holds**: `FCataclysmStatConditions::bFervourHeldAddsDamage` is true by default, so
+    a lookup nobody filled keeps the starting node's damage, which is what every character but one holding the
+    keystone has.
+  - The starting node's two damage rows state it. No mechanism existed to take away one node's rows: the value kind
+    `removed` zeroes the whole stat, gear's attack damage with it.
+- **The event `fervour_decayed`**, raised by `NoteFervourDecayed` once for each 5 Fervour decay takes, counted across
+  steps and not cleared by a kill. Unquiet Souls and Grave Patience act on it.
+- **The event `fervour_threshold_reached`**, raised by `RaiseFervourThresholdsReached`, which `FervourThresholdStep`
+  calls every step. It fires for each threshold reached since the last step, each threshold at most once every 5
+  seconds (`FervourThresholdReachedEverySeconds`), and the first step only records. Tolling Count acts on it.
+- **`strike_strongest_near` rolls a row's chance** (Gleaning). The generator now allows a Chance Percent on it.
+- **A stack row may state a whole-number step above 1**: Borrowed Time's 2, and Reaper's Rhythm's 5 capped at 5
+  stacks, which is nothing below 5 kills and one step at 5. The engine's `StackedValue` already counted any step; the
+  generator's bound was 1.
+- **`siphon_drain_weapon_percent` is a stat with an asker** (`STATS_WITH_AN_ASKER`, `ProbeScaledSiphonDrain`), so
+  Hungering Siphon may scale it.
+
+### What needed no new code
+
+- **Reaper's Rhythm, Gathering Pace and Borrowed Time** are kill stack rows with a 2-second window, the chain Kill Chain
+  defines. Unbroken Chain lengthens their window as it does Kill Chain's.
+- **Trophy of the Strong** is the same kind of row, and so Unbroken Chain lengthens its 10 seconds by up to 2 as well.
+  That is a consequence of the existing rule that a passive kill stack lasts the chain's extra seconds, and is recorded
+  here rather than changed.
+- **Tithe of the Dead** reads the existing outgoing-hit condition `target_within_metres`. `opponent_within_metres` is
+  the defender's.
+- **Hungering Siphon** scales Drain's own stat.
+
+### Not changed
+
+Overflow, Deathly Presence, Passed On, Soul Furnace, Feast and Turn of the Wheel already use Fervour or the death theme.
+Of the small nodes, Ossuary and Deep Urn now lead to Heavy Urn. Between the Dead, Held Close and Unbroken Chain give
+movement speed, crowd control resistance and a longer chain. Chained Souls and Bound Offering count Fervour held back for
+minions, which answer 5 keeps useful.
+
+### The retired stats' code, deleted
+
+The coordinating session ruled on 2026-11-27 that the code of a stat no row under `game/Data` uses any more is deleted
+in this change, with the tests that only test it, and a stat something else still uses is kept. **Deleted**, each read
+only by a retired node:
+
+| Stat or condition | Was read for |
+| :-- | :-- |
+| `decay_given_back_on_kill_seconds` | Reclaimed |
+| `fervour_claimed_within_seconds` | Claimed |
+| `health_percent_lost_per_fervour_lost` | Soulbound's loss on health lost |
+| `fervour_threshold_linger_seconds` | Long Shadow, with its record of thresholds held |
+| `fervour_hold_restarted_by_any_gain` | Kindred Fires |
+| `fervour_hold_extended_on_gain_seconds` | Borrowed Time |
+| `siphon_fervour_per_second` | Living Harvest |
+| `fervour_per_kill_extra_chance` | Gleaning, with the console variable `Cataclysm.KillFervourExtraRoll` |
+| the condition `fervour_gain_not_from_a_kill` | Any Fuel |
+
+**Kept:**
+- `fervour_decay_floor_percent`, Miser's Grip's before the rework: the War Fervour's decay out of combat reads it
+  (`CataclysmWarFervour.cpp`).
+- `class_resource_generation`, Any Fuel's before the rework: every gain of the class resource is scaled by it.
+- **The kill-payment marker** (`BeginKillPayment`, `IsPayingForAKill`, and `GainStated`'s `bForAKill`). Its readers
+  were Any Fuel's condition and Kindred Fires and Borrowed Time, so nothing in the game reads it now. It is not a stat
+  and it has callers in five files and Python checks of its own, so it was left for a change of its own.
+
+### The run (window sc-w1, 2026-11-27)
+
+| Step | Head | What it printed |
+| :-- | :-- | :-- |
+| Compile alone | `2c9012a20` | Failed: 11 errors, all `ReworkAllowance` undeclared in the new rows test, which did not name its namespace |
+| Compile alone | `38efdceb` | "Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.45.cpp" |
+| DataTables | `38efdceb` | `DT_PassiveEffects` and `DT_PassiveNodes` rebuilt, committed as `0e8bfd2da` |
+| `Cataclysm.SoulCollectorRework.` alone | `0e8bfd2da` | "17 tests performed, 17 succeeded, 0 failed"; saves 0 written, 0 left behind |
+| Whole suite | `0e8bfd2da` | "6109 tests performed, 6108 succeeded, 1 failed: TheSixNodesRowsAreTheirSentences"; saves 893 written and deleted, 0 left behind. 6109 was the registered prediction (6105 + 23 - 19) |
+| `Cataclysm.FervourOnEvents.` | `21873f778` | "7 tests performed, 7 succeeded, 0 failed", after that test was told Tear Loose's base is the maximum |
+| Python of record | `0e8bfd2da` | "9670 passed, 10 skipped"; JUnit 9,680 tests, 0 failures, 0 errors. ruff: all checks passed |
+| Python reading the test sources | `21873f778` | "1456 passed, 6 skipped" (135 files) |
+
+**The whole suite's one failure was the test's and not the game's.** `Cataclysm.FervourOnEvents.TheSixNodesRowsAreTheirSentences`
+expected every action row it reads to pay a flat amount; Tear Loose now restores 1% of maximum health, so its row's base
+is `maximum`, as `PassiveEffects.csv` says. The test now states each row's base. The whole suite was not run again after
+that change; the group was.
+
+**C++ guard proof, PROVED, registered before the run**, three breaks in one call on `Cataclysm.SoulCollectorRework.`:
+Gathered Souls' row reach ignored (every `nearby_death` row at 3 metres), the decay counted per step rather than across
+steps, and Death Made Flesh's switch read as off at 1. With them in: "17 tests performed, 13 succeeded, 4 failed:
+DeathMadeFleshTakesAwayTheFervoursDamageAndGivesDefence, GatheredSoulsCountsADeathWithinSixMetresAndNotSeven,
+GravePatienceHealsForEachFiveFervourDecayed, UnquietSoulsStrikesForEachFiveFervourDecayed", the four predicted.
+Restored: "17 tests performed, 17 succeeded, 0 failed".
+
+---
+
 ## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
 
 **Affects:**

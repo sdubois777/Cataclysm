@@ -23,7 +23,6 @@ const TCHAR* FCataclysmSiphon::LingerStat = TEXT("siphon_linger_seconds");
 const TCHAR* FCataclysmSiphon::DrainStat = TEXT("siphon_drain_weapon_percent");
 const TCHAR* FCataclysmSiphon::NecrosisChanceStat = TEXT("siphon_necrosis_chance");
 const TCHAR* FCataclysmSiphon::LifeStat = TEXT("siphon_life_percent");
-const TCHAR* FCataclysmSiphon::FervourStat = TEXT("siphon_fervour_per_second");
 
 namespace CataclysmSiphonParts
 {
@@ -176,7 +175,6 @@ void FCataclysmSiphon::Pulse(ACataclysmCharacterBase* Holder)
 	DrainOnce(Holder);
 	NecrosisOnce(Holder);
 	LifeOnce(System);
-	FervourOnce(System);
 }
 
 float FCataclysmSiphon::DrainOnce(ACataclysmCharacterBase* Holder)
@@ -268,31 +266,6 @@ float FCataclysmSiphon::LifeOnce(UAbilitySystemComponent* Holder)
 	// THROUGH `TopUp`, as every heal is, so the ceiling and the healing-received rules apply.
 	UCataclysmRegeneration::TopUp(*Holder, Health, MaxHealth, Maximum * Percent / 100.0f);
 	return Holder->GetNumericAttribute(Health) - Before;
-}
-
-float FCataclysmSiphon::FervourOnce(UAbilitySystemComponent* Holder)
-{
-	const float Amount = CataclysmSiphonParts::HolderStat(Holder, FervourStat);
-	const UCataclysmClassResourceAttributeSet* Resource =
-		Holder ? Holder->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
-	if (!Resource || Amount <= 0.0f)
-	{
-		return 0.0f;
-	}
-	// AT THE GENERATION RATE AND CLAMPED AT THE MAXIMUM LESS THE RESERVE, the rule every gain follows. NOT A KILL: it
-	// stamps no kill clock, so "on its own it does not hold off decay", as Living Harvest says.
-	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
-	const float Before = Holder->GetNumericAttribute(Pool);
-	// THE WHOLE GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
-	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
-	const float Gain = UCataclysmAbilitySystemComponent::ClassResourceGainScaled(Holder, Amount);
-	if (Gain <= 0.0f)
-	{
-		return 0.0f;
-	}
-	// THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES (the Death trees' slice C4b1, 2026-11-25).
-	UCataclysmFervour::RaisePool(Holder, Gain);
-	return Holder->GetNumericAttribute(Pool) - Before;
 }
 
 FString FCataclysmSiphon::DisplayLine(const UCataclysmAbilitySystemComponent* Holder)
