@@ -68,6 +68,17 @@ CataclysmEnemyCharacter_3: sent 960.8, landed 100.0, 100.0 to health", the Colos
   - **MNG**: `IsALivingBomb` without `&& !UCataclysmBoneGiants::IsAGiant(Minion)`. Must fail the test, on "THE COLOSSUS
     IS NO LIVING BOMB", "and keeps its own reach" and the Colossus's "in reach".
 
+### The window, mn-w1 (tested head `481a639c0`)
+
+- **Whole Unreal suite: "6101 tests performed, 6101 succeeded, 0 failed"**, 62 skipped halves, test saves "893 written
+  and deleted, 0 left behind", as registered. Python beside it: "9665 passed, 10 skipped". ruff: "All checks passed!".
+- **MNR PROVED**: with the break in, the test failed on "A SKELETAL MAGE 10 CM FROM AN ENEMY'S BODY IS IN REACH", as
+  registered, and passed restored.
+- **MNG PROVED**: with the break in, the test failed on "THE COLOSSUS IS NO LIVING BOMB" and "and keeps its own reach"
+  (50 where 200 was expected), and passed restored. **It did not fail the Colossus's "in reach", which was registered
+  too: that prediction was wrong.** With MNR's body-to-body measure in place, a Colossus wrongly given the 50 cm contact
+  reach still has 50 plus both bodies' radii, about 110 cm, which covers an enemy 10 cm from its body.
+
 ---
 
 ## 2026-11-27 — A weapon is held by its grip: the Greatsword, the Sword and the Dagger were held by the tip of the blade, and each weapon mesh now names where the hand holds it
