@@ -2,6 +2,81 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; and why the owner did not see one with them
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmEnemyRarity.h` and `.cpp`: `UCataclysmEnemyRarity::BodyScaleForHealthMultiple`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmBoneGiants.h` and `.cpp`: `ColossusStartsAtStep`; `StepColossusOf` draws
+  the Colossus on the enemies' ladder; `RemainsLanded` draws it at its size as it rises, and its rise line says its size
+  and where it stands. `ColossusLargestScale` is removed.
+- Tests: `Cataclysm.EnemyRarity.ABodyWithARungsHealthIsDrawnAtThatRungsSize` (new) in
+  `game/Source/Cataclysm/Tests/CataclysmEnemyRarityTests.cpp`;
+  `Cataclysm.Remains.TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder` (new) and one line of
+  `Cataclysm.Remains.TheBoneColossusRisesOnTheFirstRemainsIsFedWithinSixMetresAndShrinksWhenHurt` in
+  `game/Source/Cataclysm/Tests/CataclysmRemainsTests.cpp`; `tools/tests/test_the_bone_colossus_is_drawn_on_the_enemies_ladder.py`
+  (new).
+
+### SAID FIRST
+
+- **NOT BUILT, NOT RUN IN UNREAL AND NOT SEEN.** The coordinating session schedules the window.
+- **No fault was found in whether the Colossus is present.** The owner's log says it rose, stayed alive and stayed with
+  the player; what it does not say is what it looked like. See below.
+
+### The owner's words, verbatim
+
+"it should start larger, and grow with the same scale as enemies. Also, i'm in a dungeon right now and there isn't one
+with me" (2026-11-27, play-testing The First Rite's option 2).
+
+### Why the owner did not see it: the log of 2026-11-27, read-only
+
+- **It rose**: `16.23.35:994 ... BONE COLOSSUS: CataclysmPlayerCharacter_0's Colossus rose on the remains of Wraith,
+  20976 health`, seven seconds into dungeon 5's first floor, where a Wraith a Wisp's blast killed fell; the player
+  stood at X=6478 Y=4550. The log gives no minion's position, which is why its rise line now does.
+- **It stayed alive**: no DIED line and no release names it, no second Colossus rose on that floor, and every Fervour
+  line to the end of the log holds "1 BarrowGuard 20". That count is of minions standing
+  (`UCataclysmSkillTemplate::ReservedFervourByKindText`), and nothing else in this log summons a Barrow Guard.
+- **It stayed with the player**: it is `CataclysmMinion_8` (the eight Wisps blasting at the same moment are 0 to 7), and
+  at `16.27.57:483` the player's own area attack hit it with five other minions, `HIT OUT: attack on CataclysmMinion_8`,
+  with the player at X=-747 Y=4539: 72 metres from where the player stood when it rose. The minion numbers are read
+  from their order; that `CataclysmMinion_8` is the Colossus is an inference, not a logged fact. `ACataclysmEnemyController::FollowCommander` walks a
+  minion with nothing to fight back to its commander, and the Barrow Guard type walks at 4.4 m/s.
+- **It looked like every other minion.** Every minion is drawn as the engine's placeholder cone. It rose at scale 1.0,
+  a normal minion's, among seven Wisps and four Skeletal Mages, and being fed barely moved it: the six feeds at
+  `16.23.36` added 15 health to 20976, so its cube-root size grew by 0.02%.
+
+**A second finding, not acted on:** in dungeon 1 (from `15.59.27`), floors 2 to 6 show "1 BarrowGuard 20" throughout and
+no Colossus rose on them, so one Colossus was carried down five floors; in dungeon 8 a new one rose on every floor. The
+header says it is "Gone when the floor changes". Reported to the coordinating session.
+
+### The size
+
+The enemies' rule is a ladder in `game/Data/EnemyRarities.csv`: each rarity step multiplies health by 1.85 (its
+`HealthPerScore` over Common's) and drawn size by 1.2 (`BodyScale`). So size is the health multiple to the power
+ln 1.2 / ln 1.85, about 0.296, at every step.
+
+- **`BodyScaleForHealthMultiple`** reads that table and interpolates between steps in log-log space, which reproduces
+  every step exactly and follows the same power between them. Below Common it carries the first pair's power down;
+  above the last step it holds the Cataclysm Boss's 2.49.
+- **THE STARTING STEP IS A JUDGEMENT: Legendary.** The enemy rule gives 1.0 to a Common's health, so "start larger" needs
+  a step. An Elite's 1.2 is hard to pick out among cones that are all one size; a Legendary's 1.44 is not, and leaves
+  room to grow. `ColossusStartsAtStep` is one constant.
+- **Its multiple** is that step's (3.42) times its health over the health it rose with, so hurt to half it is drawn as
+  an enemy with 1.71 times a Common's health (1.17), and fed it grows on the same ladder.
+- **The clamps:** the 3.0 ceiling is gone, replaced by the table's last step. The 0.6 floor stays: the rule carried
+  below Common reaches nought as health does, and a Colossus at one health must still be seen.
+- Its blow still follows its health against the health it rose with, as before.
+- **Its reach grows with its body** (the coordinating session, 2026-11-27): a minion's reach is measured centre to
+  centre, so a Colossus drawn larger beside a wide creature could touch it and be out of reach. Its reach is the reach
+  it rose with plus its capsule's unscaled radius times its size over one, so its reach from its body's edge is what it
+  was at a normal minion's size: at 1.44, 13.2 cm further from its centre. How it chooses and lands an attack is not
+  changed; the empire-tree session's `fix/minions-that-do-not-attack` holds why minions dealt no damage.
+
+**Open, and reported rather than changed:** feeding adds 10% of the fed creature's maximum health, and on these floors
+that is a few health against a Colossus of 20,000, so "grows with each creature's remains" is invisible in play at any
+size rule. The coordinating session is asked whether the feed should be a share of the Colossus's own health instead.
+
+---
+
 ## 2026-11-27 — A weapon is held by its grip: the Greatsword, the Sword and the Dagger were held by the tip of the blade, and each weapon mesh now names where the hand holds it
 
 **Affects:**

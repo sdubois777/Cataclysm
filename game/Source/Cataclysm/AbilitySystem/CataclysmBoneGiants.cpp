@@ -15,6 +15,7 @@
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 
 const TCHAR* UCataclysmBoneGiants::AbominationRisesStat = TEXT("abomination_rises");
@@ -350,6 +351,7 @@ void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker
 	Tally.Colossus = Risen;
 	Tally.ColossusStartHealth = BoneGiantsMaximumHealthOf(Risen);
 	Tally.ColossusStartDamage = Risen->OwnDamagePerHit;
+	Tally.ColossusStartReach = Risen->ReachCm;
 	Remains->Destroy();
 	// DRAWN AT ITS STARTING SIZE AT ONCE, not a quarter of a second later at a normal minion's.
 	StepColossusOf(Player);
@@ -370,7 +372,7 @@ void UCataclysmBoneGiants::StepColossusOf(const AActor* Player)
 	{
 		return;
 	}
-	// ITS MASS IS ITS HEALTH: its blow follows it, and its size follows the cube root of it, as a body's volume.
+	// ITS MASS IS ITS HEALTH against the health it rose with: its blow follows it, and so does its size, below.
 	const float Mass = FMath::Max(0.0f, BoneGiantsHealthOf(Colossus) / Tally->ColossusStartHealth);
 	Colossus->OwnDamagePerHit = Tally->ColossusStartDamage * Mass;
 	// AN ENEMY'S SIZE FOR ITS HEALTH: the multiple a `ColossusStartsAtStep` creature has over a Common, carried by its
@@ -380,8 +382,14 @@ void UCataclysmBoneGiants::StepColossusOf(const AActor* Player)
 	float UnusedDamage = 1.0f;
 	float UnusedArmour = 1.0f;
 	UCataclysmEnemyRarity::ScalingFromCommon(Rarities, ColossusStartsAtStep, StartMultiple, UnusedDamage, UnusedArmour);
-	Colossus->SetActorScale3D(FVector(FMath::Max(
-		ColossusSmallestScale, UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * Mass))));
+	const float Scale = FMath::Max(ColossusSmallestScale,
+								   UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * Mass));
+	Colossus->SetActorScale3D(FVector(Scale));
+	// ITS REACH FROM ITS BODY'S EDGE KEPT: a minion's reach is centre to centre, and its capsule grows with its scale.
+	if (const UCapsuleComponent* Body = Colossus->GetCapsuleComponent(); Body && Tally->ColossusStartReach > 0.0f)
+	{
+		Colossus->ReachCm = Tally->ColossusStartReach + (Scale - 1.0f) * Body->GetUnscaledCapsuleRadius();
+	}
 }
 
 void UCataclysmBoneGiants::StartColossusStep()

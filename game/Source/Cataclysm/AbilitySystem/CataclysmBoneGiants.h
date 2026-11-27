@@ -26,10 +26,11 @@ struct FCataclysmGiantsOfAPlayer
 	TWeakObjectPtr<ACataclysmMinion> Abomination;
 	bool bAbominationRose = false;
 
-	/** The Bone Colossus, while it stands, and the health and blow it rose with. */
+	/** The Bone Colossus, while it stands, and the health, blow and reach it rose with. */
 	TWeakObjectPtr<ACataclysmMinion> Colossus;
 	float ColossusStartHealth = 0.0f;
 	float ColossusStartDamage = 0.0f;
+	float ColossusStartReach = 0.0f;
 };
 
 /**
@@ -75,6 +76,10 @@ struct FCataclysmGiantsOfAPlayer
  *     1.44 times a normal minion), and that multiple follows its health against the health it rose with;
  *     `UCataclysmEnemyRarity::BodyScaleForHealthMultiple` turns it into a size on the rarity steps' own ladder. Never
  *     smaller than `ColossusSmallestScale`, never bigger than a Cataclysm Boss.
+ *   - ITS REACH GROWS WITH ITS BODY (the coordinating session, 2026-11-27): a minion's reach is measured centre to
+ *     centre, so a Colossus drawn larger would touch a creature and still be out of reach. Its reach is the reach it
+ *     rose with plus its capsule's radius times its size over one, so its reach from its body's edge is what it
+ *     was at a normal minion's size.
  *   - ONE AT A TIME. Killed, the next remains raises a new one at the start. Gone when the floor changes.
  */
 UCLASS()

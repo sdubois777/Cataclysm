@@ -25,6 +25,7 @@
 #include "Character/CataclysmEnemyRarity.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmFloorContents.h"
@@ -1448,6 +1449,20 @@ bool FCataclysmRemainsColossusSizeTest::RunTest(const FString&)
 		TestTrue(TEXT("so the Colossus is drawn larger than it"), Colossus->GetActorScale3D().X > 1.3f);
 	}
 
+	// ITS REACH GROWS WITH ITS BODY, measured from its edge (the coordinating session, 2026-11-27). CONTROL: the ordinary
+	// Barrow Guard at a normal minion's size reaches its type's reach from its centre, and that is the edge reach both keep.
+	float EdgeReach = 0.0f;
+	if (Ordinary)
+	{
+		EdgeReach = Ordinary->ReachCm - Ordinary->GetCapsuleComponent()->GetScaledCapsuleRadius();
+		TestTrue(TEXT("CONTROL: the ordinary one's capsule is a normal minion's"),
+				 FMath::IsNearlyEqual(Ordinary->GetCapsuleComponent()->GetScaledCapsuleRadius(),
+									  Ordinary->GetCapsuleComponent()->GetUnscaledCapsuleRadius()));
+		TestEqual(TEXT("the Colossus reaches as far beyond its body's edge as the ordinary one does"),
+				  Colossus->ReachCm - Colossus->GetCapsuleComponent()->GetScaledCapsuleRadius(), EdgeReach, 0.01f);
+		TestTrue(TEXT("so from its centre it reaches further"), Colossus->ReachCm > Ordinary->ReachCm + 1.0f);
+	}
+
 	// HURT TO HALF, it is drawn at the size an enemy with half a Legendary's health multiple is.
 	float StartMultiple = 1.0f;
 	float UnusedDamage = 1.0f;
@@ -1462,6 +1477,8 @@ bool FCataclysmRemainsColossusSizeTest::RunTest(const FString&)
 		Colossus->GetActorScale3D().X,
 		UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * 0.5f), 0.001f);
 	TestTrue(TEXT("which is smaller than it rose"), Colossus->GetActorScale3D().X < Legendary - 0.1f);
+	TestEqual(TEXT("and at its smaller size its reach from its body's edge is still a normal minion's"),
+			  Colossus->ReachCm - Colossus->GetCapsuleComponent()->GetScaledCapsuleRadius(), EdgeReach, 0.01f);
 
 	// AND NEVER SMALLER THAN ITS LEAST, however hurt.
 	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Risen * 0.001f);
