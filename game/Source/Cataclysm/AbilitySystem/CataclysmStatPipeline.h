@@ -1822,8 +1822,8 @@ enum class ECataclysmStatCondition : uint8
 	 *
 	 * WORKED OUT ONCE A CONDITIONS FILL, by `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`, into
 	 * `FCataclysmStatConditions::FervourThresholdsReached`: the threshold is OPEN (25, 50, 100 or 200 passive points
-	 * spent, as the vows' sentences say), and either the Fervour held reaches its figure less Generous Count's
-	 * reduction or Long Shadow's seconds have not passed since it last did. A figure that is none of the four is never
+	 * spent, as the vows' sentences say), and the Fervour held reaches its figure less Generous Count's reduction. A
+	 * figure that is none of the four is never
 	 * reached, and the generator refuses one. See `CataclysmFervourThresholds`.
 	 */
 	FervourThresholdReached
@@ -1856,21 +1856,6 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetCarriesYourPoisonOrBleed
 		UMETA(DisplayName = "Target Carries Your Poison Or Bleed"),
-
-	/**
-	 * The class resource being gained is not a kill's payment: the Soul Collector's Any Fuel, "+2% increased Fervour
-	 * gained from sources other than kills per point". The Death trees' slice C4b1 (2026-11-25), as ruled: Any Fuel is a
-	 * row on `class_resource_generation`, the rate every gain is scaled by, under this condition, so its increase adds
-	 * to the rate's other increases.
-	 *
-	 * READ FROM THE KILL-PAYMENT MARKER: `UCataclysmAbilitySystemComponent::IsPayingForAKill`, set while a kill's
-	 * Fervour is paid (`UCataclysmFervour::GainOnOwnKill`). It holds whenever no kill is being paid for, so it is
-	 * meaningful only on the rate a gain asks.
-	 *
-	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
-	 */
-	FervourGainNotFromAKill
-		UMETA(DisplayName = "Fervour Gain Not From A Kill"),
 
 	/**
 	 * The kill being acted on was made by a hit, not by a tick of damage over time: the Soul Collector's Passed On,
@@ -2239,6 +2224,17 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	MinionHasYourMostMaximumHealth
 		UMETA(DisplayName = "Minion Has Your Most Maximum Health"),
+
+	/**
+	 * The Fervour the character holds adds to its damage: true unless the character holds the Soul Collector's Death
+	 * Made Flesh, "The Fervour you hold no longer adds to your damage" (issue #2951, the keystone rework of 2026-11-27,
+	 * the tree's one conversion). The starting node's two damage rows state it, so the keystone takes away those rows
+	 * and no other: "removed" would zero the whole stat, gear's attack damage with it. Read from
+	 * `bFervourHeldAddsDamage`, which `UCataclysmAbilitySystemComponent::CurrentConditions` fills from the stat
+	 * `UCataclysmFervour::FervourHeldAddsNoDamageStat`. IT TAKES NO VALUE: it names a state.
+	 */
+	FervourHeldAddsDamage
+		UMETA(DisplayName = "Fervour Held Adds Damage"),
 };
 
 /**
@@ -3542,6 +3538,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bAskingMinionHasTheMostMaximumHealth = false;
 
 	/**
+	 * Whether the Fervour held adds to the character's damage: false while it holds Death Made Flesh. Issue #2951. See
+	 * `FervourHeldAddsDamage`. TRUE BY DEFAULT, so a lookup nobody filled keeps the starting node's damage, which is what
+	 * every character but one holding the keystone has.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFervourHeldAddsDamage = true;
+
+	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
 	 * nor ever, as above.
 	 */
@@ -4216,14 +4220,6 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetCarriesYourPoisonOrBleed = false;
-
-	/**
-	 * Whether the class resource being gained is not a kill's payment. The Death trees' slice C4b1 (2026-11-25). Filled
-	 * by `UCataclysmAbilitySystemComponent::CurrentConditions` as the opposite of `IsPayingForAKill`; false in a state
-	 * nobody filled, which refuses. See `ECataclysmStatCondition::FervourGainNotFromAKill`.
-	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
-	bool bFervourGainNotFromAKill = false;
 
 	/**
 	 * Whether the kill being acted on was made by a hit. The Death trees' slice C4c1 (2026-11-25). Filled by

@@ -371,8 +371,7 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		}
 	}
 
-	// THE CLASS RESOURCE THROUGH THE ONE HELPER EVERY GAIN TO IT TAKES, so Kindred Fires and Borrowed Time see a row's
-	// gain (the Death trees' slice C4b1, 2026-11-25), AND the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
+	// THE CLASS RESOURCE THROUGH THE ONE HELPER EVERY GAIN TO IT TAKES (the Death trees' slice C4b1, 2026-11-25), AND the whole GAIN TO `RaisePool`, NOT ONLY WHAT FITS, since window death3-w1's second pass (2026-11-25, as ruled):
 	// `RaisePool` holds the pool to the full bar after reserves, and what did not fit is Overflow's.
 	// Before the ceiling's refusal below, so a gain to a full bar still reaches it. Nothing below this is about it.
 	if (Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())

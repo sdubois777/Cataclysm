@@ -153,17 +153,6 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		// Apotheosis, said "Your Fervour has no maximum", and all twelve
 		// Masochist capstone options were rewritten without it.
 		NewValue = FMath::Clamp(NewValue, 0.0f, MaximumClassResourceAsked());
-
-		// AND, JUST BEFORE A FALL, WHICH FERVOUR THRESHOLDS THE AMOUNT FALLING FROM REACHED, for Long Shadow's seconds
-		// after it. The Death trees' slice C3d (2026-11-25).
-		if (NewValue < GetClassResource())
-		{
-			if (UCataclysmAbilitySystemComponent* Cataclysm =
-					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
-			{
-				Cataclysm->NoteFervourThresholdsHeld(GetClassResource());
-			}
-		}
 	}
 	else if (Attribute == GetDeferredHealthCostShareAttribute())
 	{
