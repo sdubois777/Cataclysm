@@ -4,13 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "CataclysmSaveRecord.generated.h"
 
 /**
- * What every saved record has in common: a name for its kind, the schema version
- * the file on disk was written by, and the chain that brings an older one up to
- * date.
+ * What every saved record has in common: a name for its kind and the schema
+ * version the file on disk was written by.
+ *
+ * NO UPGRADE STEPS. A record is read only at the version this build writes
+ * (`FCataclysmSaveVersion`); an older one is refused and left on disk. The
+ * owner's ruling of 2026-11-27, "Remove; old saves reset", issue #2928 slice 12.
  *
  * THREE RECORDS AND NOT ONE FILE. `docs/Save_System_Design.md` section 1: the
  * account, the character and the run have three different lifetimes and, in
@@ -20,14 +22,13 @@
  * makes co-operative play impossible to retrofit.
  *
  * THE VERSION IS PER RECORD TYPE. Section 5, rule 2. Bumping the character
- * record's version does not touch the account record's, so a change to one does
- * not force a migration of the other. That is why the number is answered by each
- * subclass rather than held once here, and why the chain that reaches it is
- * answered right beside it.
+ * record's version does not touch the account record's, so a change to one
+ * refuses only the old files of that one. That is why the number is answered by
+ * each subclass rather than held once here.
  *
  * `SchemaVersion` IS THE VERSION THE FILE WAS WRITTEN BY, not the version this
- * build understands. They are the same only after a record has been loaded and
- * migrated. `CurrentSchemaVersion()` is what this build understands.
+ * build understands. A record that loaded holds the same number as
+ * `CurrentSchemaVersion()`, because no other version is read.
  */
 UCLASS(Abstract)
 class CATACLYSM_API UCataclysmSaveRecord : public USaveGame
@@ -39,8 +40,8 @@ public:
 	 * The schema version this record was written by.
 	 *
 	 * WRITTEN FIRST IN THE FILE, which section 5 rule 1 requires "so it can be
-	 * read without parsing the rest, which is what lets a migration run before
-	 * the record is interpreted". A JSON object has no inherent order, so being
+	 * read without parsing the rest", which is what lets the version check refuse
+	 * a record before it is interpreted. A JSON object has no inherent order, so being
 	 * first is something `FCataclysmSaveStorage::ToJson` arranges rather than
 	 * something the language gives; there is a test that reads the produced text
 	 * and checks the first key really is this one.
@@ -97,31 +98,11 @@ public:
 		PURE_VIRTUAL(UCataclysmSaveRecord::CurrentSchemaVersion, return 0;);
 
 	/**
-	 * The single steps that bring an older record of this type up to
-	 * `CurrentSchemaVersion`, in any order.
-	 *
-	 * EMPTY FOR A RECORD TYPE AT VERSION 1, which is all three of them today:
-	 * version 1 is the first, so there is nothing to migrate from. The first
-	 * bump adds a step here and an example save file for the version it leaves
-	 * behind.
-	 *
-	 * ANSWERED BESIDE THE VERSION NUMBER RATHER THAN FROM A TABLE SOMEWHERE
-	 * ELSE. A central registry would be a second copy of a number that already
-	 * exists on the class, and the failure it invites -- bumping the version and
-	 * forgetting the table -- is silent until somebody loads an old file.
-	 */
-	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const
-	{
-		return TArrayView<const FCataclysmSaveMigrationStep>();
-	}
-
-	/**
 	 * The name of the version field, as it appears in the file.
 	 *
-	 * ONE COPY, because the storage layer writes it, the migration chain reads
-	 * and rewrites it, and the tests look for it. Three spellings of the same
-	 * key is a class of bug that only shows up on a file written by an older
-	 * build, which is the one case that cannot be tried out by hand.
+	 * ONE COPY, because the storage layer writes it, the version check reads it,
+	 * and the tests look for it. Two spellings of the same key would make every
+	 * file look as if it had no version.
 	 */
 	static const TCHAR* SchemaVersionField;
 

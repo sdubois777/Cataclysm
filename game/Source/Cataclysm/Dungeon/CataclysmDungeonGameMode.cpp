@@ -16602,8 +16602,7 @@ void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCatacl
 	// A FALLEN CITY WAS SENT BY NOBODY, so its record names none (`UCataclysmEmpireRun::AddFallenCityDungeon`), and its
 	// creatures take THE CATACLYSM WHOSE HIT FELLED ITS CITY, which the city records (`FCataclysmCity::FellTo`, saved
 	// since run record version 21, issue #51 slice B4): the coordinating session's first ruling of 2026-11-25, wired in
-	// bundle 4 once that field existed. A city that records nobody -- one a version 20 run felled, which the migration
-	// gives `None` -- takes THE RUN'S NEWEST ACTIVE CATACLYSM, the last the character's draw added, the fallback ruled
+	// bundle 4 once that field existed. A city that records nobody -- one whose field holds `None` -- takes THE RUN'S NEWEST ACTIVE CATACLYSM, the last the character's draw added, the fallback ruled
 	// the same day. Read from the run at every bind, so a load finds the same one. Any other dungeon nobody sent -- one
 	// built by hand in a test -- stays Demonic.
 	DungeonCataclysm = Dungeon.Cataclysm;

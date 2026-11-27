@@ -831,7 +831,7 @@ public:
 	 * reclaims a city, and set again at the next check if the population is still below half. A fact of the run, kept
 	 * whether or not the node is bought, so a point bought later reads the run as it is.
 	 *
-	 * SAVED, RUN RECORD VERSION 12. `Migrate_11_to_12` writes false: the effective maximum depends on the tree, which
+	 * SAVED, RUN RECORD VERSION 12. The upgrade step to version 12 (removed 2026-11-27) wrote false: the effective maximum depends on the tree, which
 	 * the record does not hold, so an older run is set by its next day's check.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
@@ -1098,7 +1098,7 @@ public:
 	 * 2026-11-18: "two runs' dungeons must differ, because the design's dungeons are procedurally generated".
 	 *
 	 * DRAWN BY `Begin` FROM THE RUN'S SEED, as `CorruptedStalkerSeed` is, and never below 0. Saved on the run record
-	 * since its version 8. 0, THE DEFAULT, IS THE SEED EVERY DUNGEON HAD BEFORE: `Migrate_7_to_8` writes it into a run
+	 * since its version 8. 0, THE DEFAULT, IS THE SEED EVERY DUNGEON HAD BEFORE: the upgrade step to version 8 (removed 2026-11-27) wrote it into a run
 	 * saved at version 7, so that run's dungeons keep their floors, their Edicts and their Corrupted Stalker roll.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")

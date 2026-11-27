@@ -264,7 +264,7 @@ public:
 	 * the board, which only a clear does, "the Cataclysm boss dungeon has been
 	 * cleared". A run whose requirement is met and whose boss has not opened --
 	 * which play cannot reach, because the clear that meets it opens it, but a
-	 * run record from before version 4 can, since `Migrate_3_to_4` writes it
+	 * run record from before version 4 can, since the upgrade step to version 4 (removed 2026-11-27) wrote it
 	 * unopened -- is told the next quest dungeon cleared opens it, which is when
 	 * `OpenCataclysmDungeonIfEarned` next runs.
 	 *

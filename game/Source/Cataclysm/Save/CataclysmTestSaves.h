@@ -14,8 +14,7 @@
  * WHAT IS NOTED. `FCataclysmSaveStorage` calls `NoteAWrite` before each write, on the thread that asks for it -- the game
  * thread -- and BEFORE an asynchronous write is queued, not when it lands. A slot is noted only while an automation test
  * runs and ONLY IF IT DID NOT EXIST BEFORE THAT WRITE, so a slot that was there before, a player's or anything else's, is
- * never noted and never deleted. A migration's backup is noted only when the slot it backs up is noted (`NoteABackup`),
- * so migrating a slot that existed before never has its backup deleted.
+ * never noted and never deleted.
  *
  * WHEN. `FAutomationTestFramework::OnTestEndEvent`, after the test's result is set, deletes exactly the noted slots once
  * their writes in flight finish, and then logs the run's totals so far, as "Test saves: N written and deleted, M left
@@ -32,9 +31,6 @@ struct CATACLYSM_API FCataclysmTestSaves
 {
 	/** Before a write to `SlotName`: noted when an automation test runs and the slot does not exist yet. */
 	static void NoteAWrite(const FString& SlotName, int32 UserIndex);
-
-	/** Before writing `BackupName`, a migration's backup of `SourceSlot`: noted only when `SourceSlot` is noted. */
-	static void NoteABackup(const FString& BackupName, const FString& SourceSlot, int32 UserIndex);
 
 	/** Whether `SlotName` is noted for deletion at the end of the running test. */
 	static bool IsNoted(const FString& SlotName);

@@ -134,11 +134,11 @@ struct CATACLYSM_API FCataclysmSaveLoad
 	 * Every saved character, newest first by its record's last write, then those with no time by name, then by slot.
 	 *
 	 * FOUND BY SCANNING THE `Character_` SLOTS the save system holds (ruling 1), not from the account records: a Solo
-	 * Self-Found character has no account record, and the account record's list is never written. A migration's backups
-	 * are left out.
+	 * Self-Found character has no account record, and the account record's list is never written. A backup an older
+	 * build's migration left is left out.
 	 *
-	 * READS AND WRITES NOTHING BACK. A record older than this build is migrated in memory only, as `FromJson` does, so a
-	 * listing never rewrites or backs up a file; a load does that when the player picks one.
+	 * READS AND WRITES NOTHING. A record of another build's version -- older or newer -- is listed as unreadable with the
+	 * refusal as its reason, and its file is left as it is (issue #2928 slice 12, 2026-11-27).
 	 */
 	static TArray<FCataclysmCharacterSummary> SavedCharacters(int32 UserIndex);
 
@@ -149,7 +149,7 @@ struct CATACLYSM_API FCataclysmSaveLoad
 	 * - its character slot, `Character_<its identifier>`;
 	 * - for a record that reads, its run's slot, `Run_<the run it names>` (ruling 6), unless one of `OtherRows` names the
 	 *   same run, which solo play never does;
-	 * - and the migration backups of those two slots, `<slot>_BackupOfVersion` and digits only (Q1).
+	 * - and the backups an older build's migration left of those two slots, `<slot>_BackupOfVersion` and digits only (Q1).
 	 *
 	 * AN UNREADABLE RECORD GIVES ITS CHARACTER SLOT ONLY (Q2): its run cannot be known, and its backups are kept, being the
 	 * only way to recover it. Empty when the character slot is not among `AllSlotNames`.

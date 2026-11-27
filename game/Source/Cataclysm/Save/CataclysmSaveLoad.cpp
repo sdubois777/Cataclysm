@@ -33,13 +33,13 @@
 namespace CataclysmSaveLoad
 {
 	/**
-	 * Whether the slot holds a record written by a newer build than this one, and its version.
+	 * Whether the slot holds a record of a real version other than this build's -- older or newer -- and its version.
 	 *
-	 * READ FROM THE FILE'S OWN VERSION FIELD rather than from the read's result, because the result for a newer file
-	 * is the one the migration chain gives every refusal. Section 5 rule 1 puts the version first so that it can be
-	 * read without the rest.
+	 * READ FROM THE FILE'S OWN VERSION FIELD rather than from the read's result, because the result is the same
+	 * `VersionRefusedIt` for an older file, a newer one and one with no usable version, and the reason given to the
+	 * player differs. Section 5 rule 1 puts the version first so that it can be read without the rest.
 	 */
-	bool IsNewerThanThisBuild(const FString& SlotName, int32 ThisBuildReads, int32& OutVersion)
+	bool IsAnotherBuildsVersion(const FString& SlotName, int32 ThisBuildReads, int32& OutVersion)
 	{
 		// ASKED WHETHER IT EXISTS FIRST. Reading a file that is not there logs a warning from the engine, and a warning
 		// fails whichever automation test is running.
@@ -54,7 +54,27 @@ namespace CataclysmSaveLoad
 
 		FString Json;
 		FFileHelper::BufferToString(Json, Bytes.GetData(), Bytes.Num());
-		return FCataclysmSaveStorage::ReadSchemaVersion(Json, OutVersion) && OutVersion > ThisBuildReads;
+		return FCataclysmSaveStorage::ReadSchemaVersion(Json, OutVersion)
+			&& OutVersion >= UCataclysmSaveRecord::FirstSchemaVersion && OutVersion != ThisBuildReads;
+	}
+
+	/**
+	 * Why a record of another build's version is refused, in words for the player and the log.
+	 *
+	 * AN OLDER RECORD IS NOT KEPT, by the owner's ruling of 2026-11-27, "Remove; old saves reset" (issue #2928 slice
+	 * 12): there is no upgrade step, and the file is left on disk as it is. A newer one is refused rather than guessed
+	 * at, as before.
+	 */
+	FString AnotherBuildsVersion(const TCHAR* Record, const FString& SlotName, int32 Version, int32 ThisBuildReads)
+	{
+		return Version > ThisBuildReads
+			? FString::Printf(TEXT("the %s record in '%s' was written by a newer build, at version %d where this build "
+								   "reads version %d, and is refused rather than guessed at"),
+							  Record, *SlotName, Version, ThisBuildReads)
+			: FString::Printf(TEXT("the %s record in '%s' was written by an older build, at version %d where this build "
+								   "reads version %d; saves from before version %d are not kept, and the file is left "
+								   "as it is"),
+							  Record, *SlotName, Version, ThisBuildReads, ThisBuildReads);
 	}
 
 	/**
@@ -127,12 +147,10 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 	if (!SavedCharacter || !FCataclysmSaveStorage::Succeeded(Result))
 	{
 		int32 Version = 0;
-		if (IsNewerThanThisBuild(CharacterSlot, UCataclysmCharacterSave::SchemaVersionNow, Version))
+		if (IsAnotherBuildsVersion(CharacterSlot, UCataclysmCharacterSave::SchemaVersionNow, Version))
 		{
-			return Refused(FString::Printf(
-				TEXT("the character record in '%s' was written by a newer build, at version %d where this build reads "
-					 "version %d, and is refused rather than guessed at"),
-				*CharacterSlot, Version, UCataclysmCharacterSave::SchemaVersionNow));
+			return Refused(AnotherBuildsVersion(TEXT("character"), CharacterSlot, Version,
+												UCataclysmCharacterSave::SchemaVersionNow));
 		}
 		return Refused(FString::Printf(TEXT("the character record in '%s' could not be read: %s%s%s"),
 									   *CharacterSlot, FCataclysmSaveStorage::Describe(Result),
@@ -161,16 +179,16 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 		{
 			SavedRun = nullptr;
 
-			// A NEWER RUN REFUSES EVERYTHING, ruled 2026-10-30. A new run begun here would be written over the
-			// character's `CurrentRunId` at its next write, and the newer run would be lost to it.
+			// A RUN OF ANOTHER BUILD'S VERSION REFUSES EVERYTHING: a newer one, ruled 2026-10-30, and an older one by the
+			// same reasoning since the old saves stopped being upgraded (2026-11-27). A new run begun here would be
+			// written over the character's `CurrentRunId` at its next write, and the run in that file would be lost
+			// to it; the file is left as it is instead.
 			int32 Version = 0;
-			if (IsNewerThanThisBuild(RunSlot, UCataclysmRunSave::SchemaVersionNow, Version))
+			if (IsAnotherBuildsVersion(RunSlot, UCataclysmRunSave::SchemaVersionNow, Version))
 			{
-				return Refused(FString::Printf(
-					TEXT("the run record in '%s' was written by a newer build, at version %d where this build reads "
-						 "version %d; it is refused, and so is the character, because beginning a new run would "
-						 "replace the character's run and lose the newer one"),
-					*RunSlot, Version, UCataclysmRunSave::SchemaVersionNow));
+				return Refused(AnotherBuildsVersion(TEXT("run"), RunSlot, Version, UCataclysmRunSave::SchemaVersionNow)
+							   + TEXT("; the character is refused with it, because beginning a new run would replace "
+									  "the character's run"));
 			}
 			WhyNoRun = Result == ECataclysmSaveLoadResult::SlotIsEmpty
 				? FString::Printf(TEXT("there is no run record in '%s'"), *RunSlot)
@@ -445,7 +463,7 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 
 namespace
 {
-	/** A record read out of a slot's text, migrated in memory only; null with `OutWhy` when it cannot be read. */
+	/** A record read out of a slot's text, writing nothing; null with `OutWhy` when it cannot be read. */
 	template <typename TRecord>
 	TRecord* ReadForAList(const FString& SlotName, int32 UserIndex, FString& OutWhy)
 	{
@@ -511,8 +529,8 @@ TArray<FCataclysmCharacterSummary> FCataclysmSaveLoad::SavedCharacters(int32 Use
 	const FString Prefix = TEXT("Character_");
 	for (const FString& SlotName : Names)
 	{
-		// ONLY A CHARACTER'S OWN SLOT: its name is the prefix and the 32 digits of its identifier, so a migration's
-		// backup, which has more after them, is left out.
+		// ONLY A CHARACTER'S OWN SLOT: its name is the prefix and the 32 digits of its identifier, so a backup an
+		// older build's migration left, which has more after them, is left out.
 		FGuid Id;
 		if (!SlotName.StartsWith(Prefix, ESearchCase::CaseSensitive)
 			|| !FGuid::ParseExact(SlotName.RightChop(Prefix.Len()), EGuidFormats::Digits, Id)
@@ -619,6 +637,7 @@ TArray<FString> FCataclysmSaveLoad::SlotsToDelete(const FCataclysmCharacterSumma
 	}
 
 	// THE BACKUPS OF THOSE SLOTS, `<slot>_BackupOfVersion<N>` exactly: the slot's whole name, the infix, then digits only.
+	// Nothing writes one since the migrations were removed (2026-11-27), but an older build's may still be on disk.
 	for (const FString& Record : Records)
 	{
 		const FString Prefix = Record + FCataclysmSaveStorage::BackupInfix;
