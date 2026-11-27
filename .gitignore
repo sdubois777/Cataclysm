@@ -91,6 +91,25 @@ game/Content/Lich/
 game/Content/PsykerEpic/
 game/Content/Alien5Remake/
 game/Content/AbsorbtionFX/
+# The sixteen further Fab packs the owner added on 2026-11-26, catalogued that day (environments, effects, a
+# material set, a sword, a creature and an animation set). PIrateIsland was deleted on 2026-11-26 at the owner's word (sent to the
+# Recycle Bin with its demo levels); its lines stay so a fresh download of it is not committed.
+game/Content/ASCTeuthisan/
+game/Content/CastleTown/
+game/Content/Cave/
+game/Content/HallowedDepths/
+game/Content/HauntedVillage/
+game/Content/MetalMat/
+game/Content/MysticDungeon/
+game/Content/PIrateIsland/
+game/Content/RPGEnvironmentVFX/
+game/Content/Ravenhold/
+game/Content/Sewer/
+game/Content/SmokePack/
+game/Content/SoulCave/
+game/Content/Sword/
+game/Content/TheMessenger/
+game/Content/ZombieAnimationPack/
 # THIRD-PARTY-PACKS-END
 
 # The world-partition actor storage for the weapons pack's own demo levels.
@@ -112,6 +131,34 @@ game/Content/AbsorbtionFX/
 # would parse into prefixes that never match anything.
 game/Content/__ExternalActors__/Hivemind/
 game/Content/__ExternalActors__/Medieval_Weapons/
+
+# And the same storage for the 2026-11-26 packs' demo levels, by the folder each pack's levels were authored under.
+# Medieval_Docks, Maps/bloking and Maps/SL_Landscape are Castle Town's (its LI_Buildings level instances, its bloking
+# and landscape sublevels);
+# HiveMind_FortCastle_Kit is Ravenhold's; FirstPerson is Pirate Island's demo map, and ThirdPerson is the
+# third-person template map several of the environment packs ship. Those two Maps/ subfolders only, never all of Maps/, which
+# is where this project's own levels are.
+game/Content/__ExternalActors__/CastleTown/
+game/Content/__ExternalActors__/Medieval_Docks/
+game/Content/__ExternalActors__/Maps/bloking/
+game/Content/__ExternalActors__/Maps/SL_Landscape/
+game/Content/__ExternalActors__/Cave/
+game/Content/__ExternalActors__/MysticDungeon/
+game/Content/__ExternalActors__/PIrateIsland/
+game/Content/__ExternalActors__/FirstPerson/
+game/Content/__ExternalActors__/Ravenhold/
+game/Content/__ExternalActors__/HiveMind_FortCastle_Kit/
+game/Content/__ExternalActors__/Sewer/
+game/Content/__ExternalActors__/ThirdPerson/
+game/Content/__ExternalObjects__/CastleTown/
+game/Content/__ExternalObjects__/Maps/bloking/
+game/Content/__ExternalObjects__/MysticDungeon/
+game/Content/__ExternalObjects__/PIrateIsland/
+game/Content/__ExternalObjects__/Ravenhold/
+game/Content/__ExternalObjects__/Sewer/
+# A loose level the editor saved at the root of Content on 2026-11-26, referring only to Pirate Island's first-person
+# demo map and saved by engine 5.1, the version Pirate Island was saved by.
+game/Content/NewMap.umap
 
 # Unreal crash and log output
 *.log
