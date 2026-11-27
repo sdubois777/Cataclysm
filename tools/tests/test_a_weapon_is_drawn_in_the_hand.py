@@ -283,3 +283,67 @@ def test_the_asset_record_exists_and_names_the_pack():
             f"{ASSET_RECORD.relative_to(REPO_ROOT).as_posix()} does not "
             f"mention {expected}. It is the only record of which mesh each "
             f"weapon base draws and what was measured to choose it.")
+
+
+# ---------------------------------------------------------------------------
+# The grip, 2026-11-27
+# ---------------------------------------------------------------------------
+
+#: The rows held somewhere other than their origin, and how: (Grip Z, Grip Roll).
+#: Measured from each mesh's own vertices on 2026-11-27; game/docs/weapon-source-assets.md.
+GRIPS = {
+    "Weapon_Sword": (69.5, 180.0),
+    "Weapon_Dagger": (26.5, 180.0),
+    "Weapon_Greatsword": (83.0, 180.0),
+    "Weapon_Warhammer": (-19.0, 0.0),
+}
+
+GRIP_FIELDS = ("GripX", "GripY", "GripZ", "GripPitch", "GripYaw", "GripRoll")
+
+
+def test_each_corrected_row_holds_its_measured_grip_and_every_other_its_origin():
+    """The owner, 2026-11-27: "he's holding the greatsword by the tip.. instead of the handle".
+
+    THE CONTROL is every other row: all six grip fields nought, held at the origin
+    as before, because those meshes were measured the right way round."""
+    seen = {}
+    for row in rows(WEAPON_MESHES):
+        values = {field: float(row[field]) for field in GRIP_FIELDS}
+        seen[row["Name"]] = values
+        if row["Name"] in GRIPS:
+            grip_z, roll = GRIPS[row["Name"]]
+            assert values == {"GripX": 0.0, "GripY": 0.0, "GripZ": grip_z, "GripPitch": 0.0, "GripYaw": 0.0,
+                              "GripRoll": roll}, (row["Name"], values)
+        else:
+            assert all(value == 0.0 for value in values.values()), (row["Name"], values)
+    assert set(GRIPS) <= set(seen)
+    assert seen["Weapon_Greatsword"]["GripRoll"] == 180.0
+
+
+def test_the_workbook_holds_the_grips_the_script_writes():
+    import sys
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import apply_weapon_grips_2026_11_27 as script
+
+    workbook = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
+    assert script.apply(workbook, check_only=True) == ["every grip is already written; nothing written"]
+    assert {name: (grip[2], grip[5]) for name, grip in script.GRIPS.items()} == {
+        name.removeprefix("Weapon_"): grip for name, grip in GRIPS.items()}
+
+
+def test_the_hand_is_placed_by_the_grip():
+    """`DrawWeaponsInHands` sets the hand's whole relative transform from `GripFor`.
+
+    A version that went on setting only the scale would compile, draw every
+    weapon, and hold the Greatsword by its tip; a comment naming `GripFor` would
+    satisfy a plain search, which is why `function_body` strips comments."""
+    body = function_body(read(PLAYER_CPP), "void ACataclysmPlayerCharacter::DrawWeaponsInHands")
+    assert "SetRelativeTransform(UCataclysmWeaponMeshes::GripFor(Table, Worn->Base, Scale))" in body
+    assert "SetRelativeScale3D" not in body, (
+        "DrawWeaponsInHands sets the scale apart from the grip; GripFor's transform carries the scale")
+
+
+def test_grip_for_reads_all_six_fields():
+    body = function_body(read(LOOKUP_CPP), "FTransform UCataclysmWeaponMeshes::GripFor")
+    for field in GRIP_FIELDS:
+        assert f"Row->{field}" in body, f"GripFor does not read {field}"
