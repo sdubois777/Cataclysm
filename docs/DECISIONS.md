@@ -21,7 +21,11 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT BUILT, NOT RUN IN UNREAL AND NOT SEEN.** The coordinating session schedules the window.
+- **WINDOW bc-w1 PASSED IN UNREAL ON `ab09edba1`, AND NOTHING HAS BEEN SEEN IN PLAY.** The owner is asked to look at a Colossus
+  rising, being hurt and being fed, and at a Horde dungeon's next floor.
+- **Two faults of this branch's own tests were found in the window and fixed before the passing run:** four `TestEqual`
+  calls compared a `double` scale with `float` figures and did not compile (C2666), and the Horde floor test's
+  creature was refused by the arena's geometry at 3 m and now spawns whatever stands there.
 - **No fault was found in whether the Colossus is present.** The owner's log says it rose, stayed alive and stayed with
   the player; what it does not say is what it looked like. See below.
 
@@ -104,6 +108,22 @@ Elite's +3.7%, and so on up the steps. It adds to maximum and current health, as
   was moved to the new figure.
 
 **Starting at Legendary (1.44) was approved by the coordinating session as a judgement.**
+
+### Window bc-w1, on `ab09edba1`
+
+- Merged with development at `79d3da751` (#2957, the Living Bombs reach). `CataclysmRemainsTests.cpp` kept both sides;
+  `tools/check_resolved_cpp.py --changed`: 5 files read, 0 with complaints.
+- Build: "Succeeded - 4 actions, 1 file compiled".
+- `Cataclysm.Remains.` alone: "20 tests performed, 20 succeeded, 0 failed". `Cataclysm.EnemyRarity.` alone: "7 tests
+  performed, 7 succeeded, 0 failed". Neither left a save behind.
+- The whole suite: "6105 tests performed, 6105 succeeded, 0 failed", the 6101 on development and this branch's 4; 62
+  skipped part of what they check; "Test saves: 893 written and deleted, 0 left behind".
+- Python beside it: "9672 passed, 10 skipped"; JUnit 9,682 tests, 0 failures. ruff: all checks passed.
+- C++ proof, prefix `Cataclysm.Remains.`, two breaks together: the Colossus's size read without its starting
+  multiple (`ColossusStartsAtStep < 0 ? StartMultiple * Mass : Mass`), and the kept-arena branch in `GoToFloor`
+  made unreachable (`&& FloorNumber < 0`). PROVED: with them in, "20 tests performed, 18 succeeded, 2 failed:
+  AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest, TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder",
+  the two predicted; restored, "20 tests performed, 20 succeeded, 0 failed".
 
 ---
 
