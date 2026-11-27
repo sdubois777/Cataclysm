@@ -51,14 +51,14 @@ bool FCataclysmDungeonModifierTableLoadsTest::RunTest(const FString& Parameters)
 	const TArray<FCataclysmDungeonModifier> Pool =
 		UCataclysmDungeonModifierTable::PoolFromTable(Table);
 
-	// 123 SINCE 2026-10-23, WHEN THE LAST THREE CELESTIAL EDICTS BECAME ROWS (G7c); 120 FROM 2026-10-22 (G7b);
-	// AND 117 BEFORE THAT, NOT 116.
-	// The Corrupted Stalker was added by issue #504 and the
-	// simulation's copy of this table missed it for four months.
-	// `tools/tests/test_dungeon_modifier_port.py` is what compares the two
-	// copies; this is what says the asset the game actually reads holds them.
-	TestEqual(TEXT("the table has 123 rows"), Table->GetRowMap().Num(), 123);
-	TestEqual(TEXT("and every one becomes a pool entry"), Pool.Num(), 123);
+	// `tools/tests/test_dungeon_modifier_port.py` compares the simulation's copy
+	// of this table with the game's (the Corrupted Stalker was once missing from
+	// it for four months, issue #504). NOT PINNED AS 123 SINCE ISSUE #2928: that only restated the CSV, and
+	// `tools/tests/test_datatable_assets_are_current.py` already says whether the
+	// asset was built from the current CSV. What only this test can say is that
+	// the pool loses no row.
+	TestTrue(TEXT("CONTROL: the table has rows"), Table->GetRowMap().Num() > 0);
+	TestEqual(TEXT("and every one becomes a pool entry"), Pool.Num(), Table->GetRowMap().Num());
 
 	for (const FCataclysmDungeonModifier& Modifier : Pool)
 	{

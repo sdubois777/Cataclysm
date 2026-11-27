@@ -157,7 +157,7 @@ def test_the_thresholds_are_the_files_and_the_rulings(tree, node_rows) -> None:
 
 
 def test_every_edge_is_carried_with_its_requirement(tree, edge_rows) -> None:
-    assert len(tree["edges"]) == 158
+    assert len(tree["edges"]) == len(tree["nodes"]) - 1, "the tree is a tree: one edge fewer than nodes"
     assert set(edge_rows) == {edge["id"] for edge in tree["edges"]}
     for edge in tree["edges"]:
         row = edge_rows[edge["id"]]

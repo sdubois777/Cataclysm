@@ -100,16 +100,25 @@ bool FCataclysmEmpireTreeTablesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	TestEqual(TEXT("159 nodes"), Nodes->GetRowMap().Num(), 159);
-	TestEqual(TEXT("158 edges"), Edges->GetRowMap().Num(), 158);
-
-	// THE BRANCHES THE GENERATOR READ FROM WHERE EACH NODE SITS: 40, 39, 38 and 38 with each branch's capstone, and
-	// the four tier-milestone capstones in the middle.
-	TestEqual(TEXT("Architect"), UCataclysmEmpireTree::NodesIn(Nodes, TEXT("Architect")).Num(), 40);
-	TestEqual(TEXT("Explorer"), UCataclysmEmpireTree::NodesIn(Nodes, TEXT("Explorer")).Num(), 39);
-	TestEqual(TEXT("Treasury"), UCataclysmEmpireTree::NodesIn(Nodes, TEXT("Treasury")).Num(), 38);
-	TestEqual(TEXT("Artisan"), UCataclysmEmpireTree::NodesIn(Nodes, TEXT("Artisan")).Num(), 38);
-	TestEqual(TEXT("the centre"), UCataclysmEmpireTree::NodesIn(Nodes, UCataclysmEmpireTree::CentreBranch).Num(), 4);
+	// WHAT THE TABLES MUST BE, AND NOT HOW BIG THEY ARE TODAY (issue #2928). The counts (159 nodes, 158 edges, 40, 39,
+	// 38 and 38 a branch) only restated the tree file, and moved with every node added. What holds whatever the size:
+	// the tree is a tree, so it has one edge fewer than it has nodes, and every node sits in one of the four branches
+	// or the centre.
+	const int32 NodeCount = Nodes->GetRowMap().Num();
+	TestTrue(TEXT("CONTROL: the node table holds nodes"), NodeCount > 0);
+	TestEqual(TEXT("one edge fewer than there are nodes, since the tree is a tree"), Edges->GetRowMap().Num(),
+			  NodeCount - 1);
+	int32 InABranch = 0;
+	for (const TCHAR* Branch : {TEXT("Architect"), TEXT("Explorer"), TEXT("Treasury"), TEXT("Artisan")})
+	{
+		const int32 InThis = UCataclysmEmpireTree::NodesIn(Nodes, Branch).Num();
+		TestTrue(FString::Printf(TEXT("the %s branch holds nodes"), Branch), InThis > 0);
+		InABranch += InThis;
+	}
+	// THE FOUR TIER-MILESTONE CAPSTONES IN THE MIDDLE: a figure the design fixes, one for each milestone.
+	const int32 InTheCentre = UCataclysmEmpireTree::NodesIn(Nodes, UCataclysmEmpireTree::CentreBranch).Num();
+	TestEqual(TEXT("the centre holds the four tier milestones (the design's figure)"), InTheCentre, 4);
+	TestEqual(TEXT("and every node is in a branch or the centre"), InABranch + InTheCentre, NodeCount);
 	TestEqual(TEXT("Foundation is an Architect node"), UCataclysmEmpireTree::BranchOf(Nodes, Foundation),
 			  FString(TEXT("Architect")));
 	TestEqual(TEXT("Pacing is an Explorer node"), UCataclysmEmpireTree::BranchOf(Nodes, Pacing),

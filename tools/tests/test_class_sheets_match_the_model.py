@@ -162,34 +162,3 @@ class TestAttributeEffects:
         for row in attribute_sheet:
             assert float(row["Percent Per Point"]) > 0, row
 
-
-class TestTheCountsThatAreAssertedInUnreal:
-    """`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins these row
-    counts by hand, and these two are restated here.
-
-    THE CLAIM THIS DOCSTRING USED TO MAKE was "No Python test can catch a stale
-    number there". That stopped being true on 2026-08-14:
-    `tools/tests/test_unreal_pinned_row_counts.py` reads every `CHECK_TABLE`
-    line out of that file and compares it against the real CSV row count, for
-    all seventeen tables rather than these two.
-
-    It was written because restating the numbers by hand had just failed twice
-    in one afternoon. Issues #339 and #504 each changed a row count and merged
-    with the pinned number left stale, because neither of those tables was one
-    of the two restated here.
-
-    These two stay, because they check the count against the WORKBOOK SHEET
-    rather than against the generated CSV. That is a different comparison and it
-    is what the rest of this file is about."""
-
-    def test_the_class_stat_row_count(self, class_sheet):
-        # 30 until issue #243 added a Default row for loot_quantity, which
-        # needed a baseline of 100 rather than zero. 33 since issue #205 added
-        # Default rows for dot_damage and dot_duration, which need a baseline of
-        # 100 for the same reason. 49 since 2026-11-24, when the three Death
-        # classes' lines added 16 rows: five for the Soul Collector, seven for
-        # the Necromancer and four for the Shadow.
-        assert len(class_sheet) == 49
-
-    def test_the_attribute_effect_row_count(self, attribute_sheet):
-        assert len(attribute_sheet) == 17

@@ -489,8 +489,9 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		//
 		// NO CLASS LINE NAMES EITHER AND NONE SHOULD. No affix grants them,
 		// nothing scales them and no class differs on them, which is the rule
-		// `Cataclysm.Attributes.CharacterSheetIsComplete` uses to decide a stat
-		// is off the character sheet. Both attributes also hold 100 for every
+		// that keeps a stat off the character sheet (written out in
+		// `Cataclysm.Attributes.CharacterSheetIsComplete` until issue #2928).
+		// Both attributes also hold 100 for every
 		// character, because all three nodes that move them carry a condition.
 		{TEXT("damage_taken"),
 		 TEXT("UCataclysmDamageCalculation::NormalDamageTaken, with three "
